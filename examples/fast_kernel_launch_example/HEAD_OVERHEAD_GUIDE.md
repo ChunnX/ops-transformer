@@ -2,19 +2,20 @@
 
 ## 概述
 
-本指南说明如何在 Ascend 950PR 环境上复测 add、grouped_matmul、incre_flash_attention 三个算子的 kernel launch 头开销数据，并给出打点前后（T0 之前 entry 段 / T2 之后 epilogue 段）的反汇编阶段分析。
+本指南说明如何在 Ascend 950PR (A5) 与 Ascend 910C (A3) 环境上复测 add、grouped_matmul、incre_flash_attention 三个算子的 kernel launch 头开销数据，并给出打点前后（T0 之前 entry 段 / T2 之后 epilogue 段）的反汇编阶段分析。
 
 测量方法：**GetSystemCycle 打点**——kernel 内 `GetSystemCycle()` 读取 SYS_CNT 寄存器，周期级精度（~1 cycle），支持头开销的细粒度分解（调度 / 硬件头 / 软件头 / kernel 主体 / 硬件尾）。
 
 ## 环境要求
 
-| 项目 | 要求 |
-|------|------|
-| NPU | Ascend 950PR (dav-3510) |
-| CANN | 9.1.0+ (需含 msprof) |
-| torch | 2.7.1+ |
-| torch_npu | 2.7.1.post4+ (需支持 Ascend950) |
-| Python | 3.12+ |
+| 项目 | A5: Ascend 950PR | A3: Ascend 910C |
+|------|------|------|
+| NPU | Ascend 950PR (dav-3510, 28 Cube + 56 Vector) | Ascend910_9392 (dav-2201, 24 Cube + 48 Vector) |
+| CANN | 9.1.0+ (需含 msprof) | 9.1.T103 实测 (需含 msprof) |
+| SYS_CNT | 1000MHz (1 cycle = 1ns) | 50MHz (1 cycle = 20ns) |
+| torch | 2.7.1+ | 2.7.1+ |
+| torch_npu | 2.7.1.post4+ (需支持 Ascend950) | 无 Ascend950 支持要求 |
+| Python | 3.12+ | 3.12+ |
 
 > **注意**：torch_npu 2.7.1.post2 及更早版本不支持 Ascend950PR，会报 `Unsupported soc version`。需使用 torch_npu 2.7.1.post4 或更高版本。
 
@@ -34,8 +35,8 @@ bash run_head_overhead.sh
 
 脚本会自动完成：
 1. 检查 CANN 环境 + NPU 设备 + torch_npu，平台自动检测（A5/A3/A2）
-2. sed 改核数构建满核 wheel（IFA 及其 meta 算子在 ascend950 纳入构建）
-3. 采集 add / grouped_matmul（NPUGraph capture + replay 多拍）；ascend950 上追加采集 incre_flash_attention（250 次发射 + 打点回读）
+2. sed 改核数构建满核 wheel（IFA 及其 meta 算子在 ascend950 / ascend910_93 纳入构建）
+3. 采集 add / grouped_matmul（NPUGraph capture + replay 多拍）；ascend950 与 ascend910_93 上追加采集 incre_flash_attention（250 次发射 + 打点回读）
 4. 汇总输出结果表 + `summary_{soc}.csv`（三算子 min/mean/max 长表）
 
 可选环境变量：`RUN_ADD` / `RUN_GMM`（默认 1）、`SKIP_BUILD=1`（跳过构建）、`REPLAY_SHOTS`（多拍次数，默认 5）、`ADD_CORES` / `GMM_CORES`（真核数实验）。
@@ -44,7 +45,7 @@ bash run_head_overhead.sh
 
 ## 打点方法：GetSystemCycle
 
-**原理**：在 kernel 内部关键位置调用 `AscendC::GetSystemCycle()` 读取 SYS_CNT 硬件寄存器（A5 实测 1000MHz，1 cycle = 1ns），获取周期级时间戳。结果写入持久 GM buffer（跨 launch 复用，capture/replay 兼容），host 侧读取后计算各阶段耗时。
+**原理**：在 kernel 内部关键位置调用 `AscendC::GetSystemCycle()` 读取 SYS_CNT 硬件寄存器（A5 实测 1000MHz，1 cycle = 1ns；A3 实测 50MHz，1 cycle = 20ns，脚本按 SoC 内置默认，可用 `SYS_CNT_FREQ_MHZ` 覆盖），获取周期级时间戳。结果写入持久 GM buffer（跨 launch 复用，capture/replay 兼容），host 侧读取后计算各阶段耗时。
 
 **时间轴与打点位置**：
 
@@ -70,9 +71,9 @@ STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → 
 | 硬件尾 pmu_end-T2 | 写回 GM + SyncAll + DCCI + END（ffts PMU 权威时间戳） |
 | 全链路 pmu_end-stars | dispatch → 最慢核结束（与 TaskDur 同语义闭环校验） |
 
-add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰；IFA 采用 250 次发射（50 热身 + 200 稳态），56 AIV 核逐 block 回读打点。
+add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰；IFA 采用 250 次发射（50 热身 + 200 稳态），逐 block 回读打点（A5 56 AIV 核 / A3 48 AIV 核）。
 
-## 参考数据（打点口径，Ascend950PR, CANN 9.1.0, SYS_CNT=1000MHz）
+### A5（Ascend950PR, CANN 9.1.0, SYS_CNT=1000MHz）
 
 | 指标 (mean/max us) | add (Vector, 56核) | grouped_matmul (Cube, 28核) | incre_flash_attention (MIX, 28+56核) |
 |------|-----------|-----------|-----------|
@@ -86,6 +87,20 @@ add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立
 
 注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾约 0.9us 计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
 
+### A3（Ascend910_9392, CANN 9.1.T103, SYS_CNT=50MHz，5 轮独立复测跨轮平均）
+
+| 指标 (mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (Vector, 48核) |
+|------|-----------|-----------|-----------|
+| 调度+硬件头 T0-stars | 0.49 / 0.74 | 1.60 / 2.06 | 2.53 / 3.91 |
+| 软件头 T1-T0 | 0.69 / 1.35 | 1.63 / 2.36 | 7.08 / 9.42 |
+| **头开销 T1-stars** | **1.19 / 1.91** | **3.24 / 4.02** | **9.61 / 12.13** |
+| kernel末指令 T2-stars | 8.62 / 8.97 | 4.40 / 6.22 | 9.63 / 12.15 |
+| TaskDur 稳态 mean | 10.22 | 6.99 | 9.83 |
+
+注：
+- A3 上 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无 kick 拆分，硬件尾/全链路不输出分布口径（仅单点 max），故表中无对应行。
+- A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
+
 ## 打点前后的反汇编阶段分析
 
 ### 操作步骤
@@ -93,7 +108,7 @@ add/gmm 采用 NPUGraph capture + replay 多拍（默认 5 拍），各拍独立
 ```bash
 # 1. 提取 device 二进制 (host .o 的 .aicore_binary section, 本身为 elf64-hiipu ELF)
 objcopy --dump-section .aicore_binary=add_kernel.bin \
-  build/csrc/add/ascend950/CMakeFiles/add_obj.dir/add.cpp.o
+  build/csrc/add/ascend950/CMakeFiles/add_obj.dir/add.cpp.o   # A3 把 ascend950 换成 ascend910_93
 
 # 2. 反汇编 (需支持 hiipu64 的 llvm-objdump, A5 反汇编工具包)
 llvm-objdump -d add_kernel.bin > add_full_aicore.txt
@@ -102,7 +117,15 @@ llvm-objdump -d add_kernel.bin > add_full_aicore.txt
 grep -n 'SYS_CNT' add_full_aicore.txt
 ```
 
-Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_mix_aic` 与 `_mix_aiv` 两套函数。注意正常发布二进制是 strip 过的（mapping symbols 丢失会反汇编失败），调试需用未 strip 的构建产物。工程内已归档三算子反汇编产物：`disasm/` 目录。
+A3 (dav-2201) 反汇编需用 ccec_compiler 包的 llvm-objdump 并指定 mcpu，否则 Ascend 专用指令显示为 `<unknown>`：
+
+```bash
+# llvm-objdump 来自 CANN-compiler 包 (如 CANN-compiler-7.12.*-linux.aarch64.run,
+# bash xxx.run --full --install-path=<prefix> 安装后位于 <prefix>/<ver>/compiler/ccec_compiler/bin/)
+llvm-objdump --mcpu=dav-c220-vec -d add_kernel.bin > add_full_aicore.txt
+```
+
+Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_mix_aic` 与 `_mix_aiv` 两套函数。注意正常发布二进制是 strip 过的（mapping symbols 丢失会反汇编失败），调试需用未 strip 的构建产物。工程内已归档三算子反汇编产物（A5 `*_ascend950_*` / A3 `*_ascend910_93_*`）：`disasm/` 目录。
 
 ### T0 之前的 entry 段（打点前）
 
@@ -128,6 +151,8 @@ Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_m
 
 - **add/gmm**：指令级估算与实测吻合。gmm 慢 0.63us 根因 = 参数区体积（48B vs 2KB）：预取数据量 + 装载指令数双重放大
 - **IFA**：指令数与参数量均小于 gmm，但 kick→T0 是其 2.5 倍，~1.4us 缺口归因：**230KB 大二进制 ICache 冷启动**（8 组模板实例化只用 1 组）+ **MIX 1:2 派发错峰**（max/mean≈2.4 倍佐证）+ 84 核重复预取同一参数区的总线竞争
+
+> A3 的 entry/epilogue 段可用归档产物 `disasm/*_ascend910_93_disasm.txt` 同法分析：entry 段要素与 A5 一致（PARA_BASE 装载 → 预取/栈帧 → 参数装载 → T0 打点），但 A3 的 add/gmm 二进制中**无 `DC_PRELOADI` 参数预取**（A5 上 add ×1 / gmm ×33），IFA 保留（60 处），跨平台对账时注意该差异。
 
 ### T2 之后的 epilogue 段（打点后）
 
@@ -158,19 +183,19 @@ add_sources("--npu-arch=dav-3510 -mllvm -cce-aicore-dcci-before-kernel-end=false
 
 ```
 examples/fast_kernel_launch_example/
-├── csrc/                          # 算子源码
-│   ├── add/ascend950/             # add 算子 (dav-3510)
-│   ├── grouped_matmul/ascend950/  # grouped_matmul 算子 (dav-3510)
-│   ├── incre_flash_attention/ascend950/       # IFA 算子 (MIX 1:2)
+├── csrc/                          # 算子源码 (ascend950=A5 / ascend910_93=A3 / ascend910b=A2)
+│   ├── add/ascend950/             # add 算子 (dav-3510); ascend910_93/ascend910b 下为对应平台源码
+│   ├── grouped_matmul/ascend950/  # grouped_matmul 算子 (dav-3510); 同上多平台
+│   ├── incre_flash_attention/ascend950/       # IFA 算子 (A5: MIX 1:2; A3: 纯 Vector)
 │   └── incre_flash_attention_meta/ascend950/  # IFA metadata (AICPU)
 ├── tests/                         # 测试脚本
 │   ├── add/                       # test_add / cycle_test / compile_kernel / test_tail_return
 │   ├── grouped_matmul/test_groupedmatmul.py
 │   └── incre_flash_attention/     # test.py + run_head_overhead.sh + analyze_head_overhead.py
-├── disasm/                        # 三算子 device 反汇编产物 (含 add 关 DCCI 对照版)
+├── disasm/                        # 三算子 device 反汇编产物 (A5/A3 两平台, 含 add 关 DCCI 对照版)
 ├── scan_replay.py                 # NPUGraph capture/replay + 逐 block 打点 dump
 ├── parse_stars_log.py             # STARS dispatch 事件解析
-├── run_head_overhead.sh           # 一键测试脚本 (构建+三算子采集+汇总)
+├── run_head_overhead.sh           # 一键测试脚本 (构建+三算子采集+汇总, 平台自动检测)
 ├── HEAD_OVERHEAD_GUIDE.md         # 本文档
 ├── CMakeLists.txt
 ├── setup.py

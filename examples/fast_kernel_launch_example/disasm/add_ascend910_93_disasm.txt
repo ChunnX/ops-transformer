@@ -1,0 +1,3085 @@
+
+disasm/add_ascend910_93.aicore_binary:	file format elf64-hiipu
+
+Disassembly of section .text:
+
+0000000000000000 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>:
+       0:				073a7f80	MOV 		X29, #32640
+       4:				077b0010	MOVK 		X29, #16, #1
+       8:				029e3880	MOV		X15, SYS_VA_BASE
+       c:				003bd781	ADD.s64 	X29, X29, X15
+      10:				021f0880	MOV		X15, COREID
+      14:				07207fff	MOV 		X16, #32767
+      18:				07000001	MOV 		X0, #1
+      1c:				00def80a	AND.b64  	X15, X15, X16
+      20:				07228000	MOV 		X17, #32768
+      24:				02000080	NEG.s64 	X0, X0
+      28:				003af884	MADD.s64 	X29, X15, X17
+      2c:				80400000	MOVEMASK 	MASK[0], X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+      30:				80400080	MOVEMASK 	MASK[1], X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+      34:				083dd220	ADD.s64 	X30, X29, #544
+      38:				02004880	MOV		X0, PARA_BASE
+      3c:				07020000	MOV 		X1, #0
+      40:				03c60030	LD.b64 		X3, [X0], #48, #0
+      44:				09d00330	LDP.b64 	X8, X6, [X0], #24
+      48:				09ca0110	LDP.b64 	X5, X2, [X0], #8
+      4c:				03ce0000	LD.b64 		X7, [X0], #0, #0
+      50:				03800028	LD.b32 		X0, [X0], #40, #0
+      54:				02828880	MOV		X1, SYS_CNT
+      58:				02123880	MOV		X9, CTRL
+      5c:				07140000	MOV 		X10, #0
+      60:				0212acc2	INSERT 		X9, X10, #6, #2
+      64:				02069900	MOV		CTRL, X9
+      68:				02123880	MOV		X9, CTRL
+      6c:				02538b00	INSERT 		X9, #0, #56, #0
+      70:				02069900	MOV		CTRL, X9
+      74:				07080000	MOV 		X4, #0
+      78:				1014fff0	MOVX8 		X10, #65520
+      7c:				0893e660	SUB.s64 	X9, X30, #1632
+      80:				0495edd8	ST.b32 		X10, [X30], #-552, #0
+      84:				0fa7e200	STI.b32 	0, [X30], #-1648, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+      88:				0fe7e300	STI.b64 	0, [X30], #-1640, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+      8c:				09c89201	STP.b64 	X4, X4, [X9], #0
+      90:				0fe5e500	STI.b64 	0, [X30], #-1752, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+      94:				0893e6c0	SUB.s64 	X9, X30, #1728
+      98:				09c89261	STP.b64 	X4, X4, [X9], #-16
+      9c:				09c89201	STP.b64 	X4, X4, [X9], #0
+      a0:				0895e6a0	SUB.s64 	X10, X30, #1696
+      a4:				0893e680	SUB.s64 	X9, X30, #1664
+      a8:				09c8a261	STP.b64 	X4, X4, [X10], #-16
+      ac:				09c8a201	STP.b64 	X4, X4, [X10], #0
+      b0:				09c89261	STP.b64 	X4, X4, [X9], #-16
+      b4:				09c89201	STP.b64 	X4, X4, [X9], #0
+      b8:				0893e790	SUB.s64 	X9, X30, #1936
+      bc:				0252028f	SHR.u64 	X9, #15
+      c0:				02d2020f	SHL.b64 	X9, #15
+      c4:				081e9000	ADD.s64 	X15, X9, #0
+      c8:				0714ffe0	MOV 		X10, #65504
+      cc:				0893e6d8	SUB.s64 	X9, X30, #1752
+      d0:				0755ffff	MOVK 		X10, #65535, #1
+      d4:				04d2f000	ST.b64 		X9, [X15], #0, #0
+      d8:				0812001f	ADD.s64 	X9, X0, #31
+      dc:				07950001	MOVK 		X10, #1, #2
+      e0:				00d2950a	AND.b64  	X9, X9, X10
+      e4:				07180500	MOV 		X12, #1280
+      e8:				0895e650	SUB.s64 	X10, X30, #1616
+      ec:				0759ffff	MOVK 		X12, #65535, #1
+      f0:				04d5e920	ST.b64 		X10, [X30], #-1760, #0
+      f4:				0895e640	SUB.s64 	X10, X30, #1600
+      f8:				089be630	SUB.s64 	X13, X30, #1584
+      fc:				0fb7e602	STI.b32 	f, [X30], #-592, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     100:				0fb7e702	STI.b32 	f, [X30], #-584, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     104:				0fb7e682	STI.b32 	f, [X30], #-588, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     108:				0f37eba0	STI.b8 	0, [X30], #-547, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     10c:				04d9e9b0	ST.b64 		X12, [X30], #-1616, #0
+     110:				0493e9b8	ST.b32 		X9, [X30], #-1608, #0
+     114:				0fa7e782	STI.b32 	f, [X30], #-1604, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     118:				0998a481	STP.b32 	X12, X9, [X10], #0
+     11c:				02149800	MOV 		X10, X9
+     120:				07160002	MOV 		X11, #2
+     124:				02d40201	SHL.b64 	X10, #1
+     128:				089de700	SUB.s64 	X14, X30, #1792
+     12c:				09dae581	STP.b64 	X13, X11, [X14], #0
+     130:				089be630	SUB.s64 	X13, X30, #1584
+     134:				0493e9c8	ST.b32 		X9, [X30], #-1592, #0
+     138:				0fa7e982	STI.b32 	f, [X30], #-1588, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     13c:				04d7e8e8	ST.b64 		X11, [X30], #-1816, #0
+     140:				0998d501	STP.b32 	X12, X10, [X13], #0
+     144:				08549003	MUL.s64 	X10, X9, #3
+     148:				04d7e8c8	ST.b64 		X11, [X30], #-1848, #0
+     14c:				089be620	SUB.s64 	X13, X30, #1568
+     150:				0897e610	SUB.s64 	X11, X30, #1552
+     154:				0493e9d8	ST.b32 		X9, [X30], #-1576, #0
+     158:				0fa7eb82	STI.b32 	f, [X30], #-1572, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     15c:				0998d501	STP.b32 	X12, X10, [X13], #0
+     160:				02149800	MOV 		X10, X9
+     164:				07180600	MOV 		X12, #1536
+     168:				02d40202	SHL.b64 	X10, #2
+     16c:				0759ffff	MOVK 		X12, #65535, #1
+     170:				04d7e8e0	ST.b64 		X11, [X30], #-1824, #0
+     174:				0897e610	SUB.s64 	X11, X30, #1552
+     178:				0493e9e8	ST.b32 		X9, [X30], #-1560, #0
+     17c:				0fa7ed82	STI.b32 	f, [X30], #-1556, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     180:				0998b501	STP.b32 	X12, X10, [X11], #0
+     184:				08549005	MUL.s64 	X10, X9, #5
+     188:				08569006	MUL.s64 	X11, X9, #6
+     18c:				072c0006	MOV 		X22, #6
+     190:				089be600	SUB.s64 	X13, X30, #1536
+     194:				0493e9f8	ST.b32 		X9, [X30], #-1544, #0
+     198:				0fa7ef82	STI.b32 	f, [X30], #-1540, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     19c:				0998d501	STP.b32 	X12, X10, [X13], #0
+     1a0:				0493ea08	ST.b32 		X9, [X30], #-1528, #0
+     1a4:				0fa9e182	STI.b32 	f, [X30], #-1524, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     1a8:				0497e994	ST.b32 		X11, [X30], #-1644, #0
+     1ac:				042deddc	ST.b8 		X22, [X30], #-548, #0
+     1b0:				02121880	MOV		X9, BLOCKID
+     1b4:				0295f880	MOV		X10, SUBBLOCKDIM
+     1b8:				02929980	SIGNEXT.s32 	X9, X9
+     1bc:				02d60880	MOV		X11, SUBBLOCKID
+     1c0:				00169504	MADD.s64 	X11, X9, X10
+     1c4:				0295f880	MOV		X10, SUBBLOCKDIM
+     1c8:				02d80880	MOV		X12, SUBBLOCKID
+     1cc:				029bf880	MOV		X13, SUBBLOCKDIM
+     1d0:				02e40880	MOV		X18, SUBBLOCKID
+     1d4:				02a1f880	MOV		X16, SUBBLOCKDIM
+     1d8:				02e20880	MOV		X17, SUBBLOCKID
+     1dc:				00230484	MADD.s64 	X17, X16, X9
+     1e0:				0016b303	MUL.s64 	X11, X11, X6
+     1e4:				0018a484	MADD.s64 	X12, X10, X9
+     1e8:				07140000	MOV 		X10, #0
+     1ec:				00211303	MUL.s64 	X16, X17, X6
+     1f0:				02d60202	SHL.b64 	X11, #2
+     1f4:				000e7581	ADD.s64 	X7, X7, X11
+     1f8:				00108802	SUB.s64 	X8, X8, X16
+     1fc:				02200800	MOV 		X16, X0
+     200:				00108308	MIN.s64  	X8, X8, X6
+     204:				02600282	SHR.u64 	X16, #2
+     208:				0024d484	MADD.s64 	X18, X13, X9
+     20c:				001c8805	DIV.s64 	X14, X8, X16
+     210:				02948880	MOV		X10, SYS_CNT
+     214:				029bf880	MOV		X13, SUBBLOCKDIM
+     218:				02e60880	MOV		X19, SUBBLOCKID
+     21c:				04cfe8b0	ST.b64 		X7, [X30], #-1872, #0
+     220:				000ec303	MUL.s64 	X7, X12, X6
+     224:				0026d484	MADD.s64 	X19, X13, X9
+     228:				000d2303	MUL.s64 	X6, X18, X6
+     22c:				02ce0202	SHL.b64 	X7, #2
+     230:				000a5381	ADD.s64 	X5, X5, X7
+     234:				02cc0202	SHL.b64 	X6, #2
+     238:				04cbe8b8	ST.b64 		X5, [X30], #-1864, #0
+     23c:				084b3018	MUL.s64 	X5, X19, #24
+     240:				000ee803	MUL.s64 	X7, X14, X16
+     244:				00042301	ADD.s64 	X2, X2, X6
+     248:				07120001	MOV 		X9, #1
+     24c:				04c5e8c0	ST.b64 		X2, [X30], #-1856, #0
+     250:				00043281	ADD.s64 	X2, X3, X5
+     254:				00068382	SUB.s64 	X3, X8, X7
+     258:				04c7e880	ST.b64 		X3, [X30], #-1920, #0
+     25c:				0891e6f8	SUB.s64 	X8, X30, #1784
+     260:				088be718	SUB.s64 	X5, X30, #1816
+     264:				0887e738	SUB.s64 	X3, X30, #1848
+     268:				0a80e001	CMP.LT.s64	X14, #1
+     26c:				02129080	NEG.s64 	X9, X9
+     270:				804000a4	MOVEMASK 	MASK[1], X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     274:				04cfe878	ST.b64 		X7, [X30], #-1928, #0
+     278:				09c22501	STP.b64 	X1, X10, [X2], #0
+     27c:				04c5e888	ST.b64 		X2, [X30], #-1912, #0
+     280:				04dde8a8	ST.b64 		X14, [X30], #-1880, #0
+     284:				80400024	MOVEMASK 	MASK[0], X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     288:				40200148	JUMPC 		#1960 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x7a8>
+     28c:				07260007	MOV 		X19, #7
+     290:				00c2898b	OR.b64  	X1, X8, X19
+     294:				0329e908	LD.b8 		X20, [X30], #-1784, #0
+     298:				032e1000	LD.b8 		X23, [X1], #0, #0
+     29c:				00c28b0b	OR.b64  	X1, X8, X22
+     2a0:				072a0000	MOV 		X21, #0
+     2a4:				04c3e898	ST.b64 		X1, [X30], #-1896, #0
+     2a8:				00c2598b	OR.b64  	X1, X5, X19
+     2ac:				07340001	MOV 		X26, #1
+     2b0:				04c3e890	ST.b64 		X1, [X30], #-1904, #0
+     2b4:				0702fffc	MOV 		X1, #65532
+     2b8:				0743001f	MOVK 		X1, #31, #1
+     2bc:				00f2008a	AND.b64  	X25, X0, X1
+     2c0:				02f20210	SHL.b64 	X25, #16
+     2c4:				02324b01	INSERT 		X25, #1, #4, #0
+     2c8:				00f6398b	OR.b64  	X27, X3, X19
+     2cc:				070e0000	MOV 		X7, #0
+     2d0:				07140000	MOV 		X10, #0
+     2d4:				07080000	MOV 		X4, #0
+     2d8:				073a0000	MOV 		X29, #0
+     2dc:				04e1e8a0	ST.b64 		X16, [X30], #-1888, #0
+     2e0:				4000001b	JUMP 		#844 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x34c>
+     2e4:				03c0f000	LD.b64 		X0, [X15], #0, #0
+     2e8:				08047001	ADD.s64 	X2, X7, #1
+     2ec:				024c2a00	ZEROEXT.u16 	X6, X2
+     2f0:				00406d3e	CMP.GT.u64	X6, X26
+     2f4:				00cf5109	SEL.b64  	X7, X21, X2
+     2f8:				02043800	MOV 		X2, X3
+     2fc:				02041b01	INSERT 		X2, #1, #1, #0
+     300:				03cde8c0	LD.b64 		X6, [X30], #-1856, #0
+     304:				044e2000	ST.b16 		X7, [X2], #0, #0
+     308:				03841004	LD.b32 		X2, [X1], #4, #0
+     30c:				000c6f81	ADD.s64 	X6, X6, X31
+     310:				083bd001	ADD.s64 	X29, X29, #1
+     314:				6bcc2cd6	MOV_UB_TO_OUT_ALIGN.b32	[X6], [X2], X25, X21
+     318:				03c40010	LD.b64 		X2, [X0], #16, #0
+     31c:				02cc2380	SFF0.b64  	X6, X2
+     320:				02c46440	SBITSET1.b64  	X2, X6
+     324:				04c40010	ST.b64 		X2, [X0], #16, #0
+     328:				040c1003	ST.b8 		X6, [X1], #3, #0
+     32c:				0f001000	STI.b8 	0, [X1], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     330:				03c3e8a8	LD.b64 		X1, [X30], #-1880, #0
+     334:				02006980	SIGNEXT.s8 	X0, X6
+     338:				40a21480	SET_FLAG.MTE3.V  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     33c:				00c03b0b	OR.b64  	X0, X3, X22
+     340:				0001d08e	CMP.EQ.s64	X29, X1
+     344:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     348:				4020011a	JUMPC 		#1968 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x7b0>
+     34c:				03c3e920	LD.b64 		X1, [X30], #-1760, #0
+     350:				003fd803	MUL.s64 	X31, X29, X16
+     354:				08017001	ADD.s64 	X0, X23, #1
+     358:				020c0a00	ZEROEXT.u8 	X6, X0
+     35c:				00006a0e	CMP.EQ.s64	X6, X20
+     360:				02057a00	ZEROEXT.u8 	X2, X23
+     364:				00ef5009	SEL.b64  	X23, X21, X0
+     368:				00c0898b	OR.b64  	X0, X8, X19
+     36c:				02c40204	SHL.b64 	X2, #4
+     370:				042e0000	ST.b8 		X23, [X0], #0, #0
+     374:				01001100	LD.b8 		X0, [X1], X2, #0
+     378:				48047ee0	JUMPCMP.NE.s64	#852, 	X0, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x354>
+     37c:				00381101	ADD.s64 	X28, X1, X2
+     380:				0e001101	STI.b8 	1, [X1], X2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     384:				0301c003	LD.b8 		X0, [X28], #3, #0
+     388:				0a0000ff	CMP.EQ.s64	X0, #255
+     38c:				4020000a	JUMPC 		#948 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x3b4>
+     390:				02000980	SIGNEXT.s8 	X0, X0
+     394:				03ccf000	LD.b64 		X6, [X15], #0, #0
+     398:				40c20600	WAIT_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     39c:				0301c003	LD.b8 		X0, [X28], #3, #0
+     3a0:				03d26008	LD.b64 		X9, [X6], #8, #0
+     3a4:				02000980	SIGNEXT.s8 	X0, X0
+     3a8:				02d20400	SBITSET0.b64  	X9, X0
+     3ac:				04d26008	ST.b64 		X9, [X6], #8, #0
+     3b0:				0f01c062	STI.b8 	f, [X28], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     3b4:				03d7e898	LD.b64 		X11, [X30], #-1896, #0
+     3b8:				000c1101	ADD.s64 	X6, X1, X2
+     3bc:				03d9e900	LD.b64 		X12, [X30], #-1792, #0
+     3c0:				0312b000	LD.b8 		X9, [X11], #0, #0
+     3c4:				08009001	ADD.s64 	X0, X9, #1
+     3c8:				0400b000	ST.b8 		X0, [X11], #0, #0
+     3cc:				03966004	LD.b32 		X11, [X6], #4, #0
+     3d0:				03cde890	LD.b64 		X6, [X30], #-1904, #0
+     3d4:				0301e8e8	LD.b8 		X0, [X30], #-1816, #0
+     3d8:				030c6000	LD.b8 		X6, [X6], #0, #0
+     3dc:				021a6a00	ZEROEXT.u8 	X13, X6
+     3e0:				080c6001	ADD.s64 	X6, X6, #1
+     3e4:				02246a00	ZEROEXT.u8 	X18, X6
+     3e8:				0001200e	CMP.EQ.s64	X18, X0
+     3ec:				00cd5309	SEL.b64  	X6, X21, X6
+     3f0:				00e4598b	OR.b64  	X18, X5, X19
+     3f4:				02da0204	SHL.b64 	X13, #4
+     3f8:				040d2000	ST.b8 		X6, [X18], #0, #0
+     3fc:				0124c680	LD.b8 		X18, [X12], X13, #0
+     400:				49247ee0	JUMPCMP.NE.s64	#988, 	X18, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x3dc>
+     404:				000cc681	ADD.s64 	X6, X12, X13
+     408:				0e00c681	STI.b8 	1, [X12], X13, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     40c:				03006003	LD.b8 		X0, [X6], #3, #0
+     410:				0a4000ff	CMP.NE.s64	X0, #255
+     414:				40200002	JUMPC 		#1052 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x41c>
+     418:				4000000b	JUMP 		#1092 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x444>
+     41c:				02000980	SIGNEXT.s8 	X0, X0
+     420:				03e4f000	LD.b64 		X18, [X15], #0, #0
+     424:				40c20600	WAIT_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     428:				03006003	LD.b8 		X0, [X6], #3, #0
+     42c:				03f12008	LD.b64 		X24, [X18], #8, #0
+     430:				02000980	SIGNEXT.s8 	X0, X0
+     434:				02f00400	SBITSET0.b64  	X24, X0
+     438:				04f12008	ST.b64 		X24, [X18], #8, #0
+     43c:				0f006062	STI.b8 	f, [X6], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     440:				40000002	JUMP 		#1096 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x448>
+     444:				03e4f000	LD.b64 		X18, [X15], #0, #0
+     448:				00f05b0b	OR.b64  	X24, X5, X22
+     44c:				0018c681	ADD.s64 	X12, X12, X13
+     450:				03018000	LD.b8 		X0, [X24], #0, #0
+     454:				03dbe8b0	LD.b64 		X13, [X30], #-1872, #0
+     458:				02fe0202	SHL.b64 	X31, #2
+     45c:				08220001	ADD.s64 	X17, X0, #1
+     460:				001adf81	ADD.s64 	X13, X13, X31
+     464:				04238000	ST.b8 		X17, [X24], #0, #0
+     468:				03a2c004	LD.b32 		X17, [X12], #4, #0
+     46c:				6b96dcd6	MOV_OUT_TO_UB_ALIGN.b32	[X11], [X13], X25, X21
+     470:				03d7e8b8	LD.b64 		X11, [X30], #-1864, #0
+     474:				021a8800	MOV 		X13, X8
+     478:				021a2b01	INSERT 		X13, #1, #2, #0
+     47c:				0016bf81	ADD.s64 	X11, X11, X31
+     480:				6ba2bcd6	MOV_OUT_TO_UB_ALIGN.b32	[X17], [X11], X25, X21
+     484:				0356d000	LD.b16 		X11, [X13], #0, #0
+     488:				08a1e6f0	SUB.s64 	X16, X30, #1776
+     48c:				02228800	MOV 		X17, X8
+     490:				02220b01	INSERT 		X17, #1, #0, #0
+     494:				01f905a0	ST.b64 		X28, [X16], X11, #0
+     498:				03f12000	LD.b64 		X24, [X18], #0, #0
+     49c:				03391000	LD.b8 		X28, [X17], #0, #0
+     4a0:				00021101	ADD.s64 	X1, X1, X2
+     4a4:				02dd8380	SFF0.b64  	X14, X24
+     4a8:				02f0e440	SBITSET1.b64  	X24, X14
+     4ac:				04f12000	ST.b64 		X24, [X18], #0, #0
+     4b0:				02245800	MOV 		X18, X5
+     4b4:				02242b01	INSERT 		X18, #1, #2, #0
+     4b8:				041c1002	ST.b8 		X14, [X1], #2, #0
+     4bc:				03452000	LD.b16 		X2, [X18], #0, #0
+     4c0:				0802b001	ADD.s64 	X1, X11, #1
+     4c4:				02561a00	ZEROEXT.u16 	X11, X1
+     4c8:				0040bd3e	CMP.GT.u64	X11, X26
+     4cc:				02162800	MOV 		X11, X2
+     4d0:				02d60203	SHL.b64 	X11, #3
+     4d4:				03f0f000	LD.b64 		X24, [X15], #0, #0
+     4d8:				00c35089	SEL.b64  	X1, X21, X1
+     4dc:				00165581	ADD.s64 	X11, X5, X11
+     4e0:				0442d000	ST.b16 		X1, [X13], #0, #0
+     4e4:				04ccb008	ST.b64 		X6, [X11], #8, #0
+     4e8:				03c38000	LD.b64 		X1, [X24], #0, #0
+     4ec:				020c5800	MOV 		X6, X5
+     4f0:				020c0b01	INSERT 		X6, #1, #0, #0
+     4f4:				02ec1380	SFF0.b64  	X22, X1
+     4f8:				02c36440	SBITSET1.b64  	X1, X22
+     4fc:				03166000	LD.b8 		X11, [X6], #0, #0
+     500:				04c38000	ST.b64 		X1, [X24], #0, #0
+     504:				042cc002	ST.b8 		X22, [X12], #2, #0
+     508:				02188800	MOV 		X12, X8
+     50c:				02181b01	INSERT 		X12, #1, #1, #0
+     510:				08022001	ADD.s64 	X1, X2, #1
+     514:				0344c000	LD.b16 		X2, [X12], #0, #0
+     518:				025a1a00	ZEROEXT.u16 	X13, X1
+     51c:				0040dd3e	CMP.GT.u64	X13, X26
+     520:				00db5089	SEL.b64  	X13, X21, X1
+     524:				01c30100	LD.b64 		X1, [X16], X2, #0
+     528:				045b2000	ST.b16 		X13, [X18], #0, #0
+     52c:				04391000	ST.b8 		X28, [X17], #0, #0
+     530:				021ce980	SIGNEXT.s8 	X14, X14
+     534:				031a1002	LD.b8 		X13, [X1], #2, #0
+     538:				40a210b8	SET_FLAG.MTE2.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     53c:				021d6980	SIGNEXT.s8 	X14, X22
+     540:				0a00d0ff	CMP.EQ.s64	X13, #255
+     544:				40a210b8	SET_FLAG.MTE2.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     548:				4020000a	JUMPC 		#1392 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x570>
+     54c:				03dcf000	LD.b64 		X14, [X15], #0, #0
+     550:				03221002	LD.b8 		X17, [X1], #2, #0
+     554:				021ad980	SIGNEXT.s8 	X13, X13
+     558:				03e4e000	LD.b64 		X18, [X14], #0, #0
+     55c:				02231980	SIGNEXT.s8 	X17, X17
+     560:				40c210b4	WAIT_FLAG.MTE2.V  	X13 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     564:				02e51400	SBITSET0.b64  	X18, X17
+     568:				04e4e000	ST.b64 		X18, [X14], #0, #0
+     56c:				0f001042	STI.b8 	f, [X1], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     570:				021a5800	MOV 		X13, X5
+     574:				021a1b01	INSERT 		X13, #1, #1, #0
+     578:				08042001	ADD.s64 	X2, X2, #1
+     57c:				0364d000	LD.b16 		X18, [X13], #0, #0
+     580:				025c2a00	ZEROEXT.u16 	X14, X2
+     584:				0040ed3e	CMP.GT.u64	X14, X26
+     588:				021d2800	MOV 		X14, X18
+     58c:				02dc0203	SHL.b64 	X14, #3
+     590:				001c5701	ADD.s64 	X14, X5, X14
+     594:				00e35109	SEL.b64  	X17, X21, X2
+     598:				03c4e008	LD.b64 		X2, [X14], #8, #0
+     59c:				0462c000	ST.b16 		X17, [X12], #0, #0
+     5a0:				03b81004	LD.b32 		X28, [X1], #4, #0
+     5a4:				04166000	ST.b8 		X11, [X6], #0, #0
+     5a8:				030c2002	LD.b8 		X6, [X2], #2, #0
+     5ac:				03e1e8a0	LD.b64 		X16, [X30], #-1888, #0
+     5b0:				0a0060ff	CMP.EQ.s64	X6, #255
+     5b4:				4020000a	JUMPC 		#1500 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5dc>
+     5b8:				03d6f000	LD.b64 		X11, [X15], #0, #0
+     5bc:				03182002	LD.b8 		X12, [X2], #2, #0
+     5c0:				020c6980	SIGNEXT.s8 	X6, X6
+     5c4:				03dcb000	LD.b64 		X14, [X11], #0, #0
+     5c8:				0218c980	SIGNEXT.s8 	X12, X12
+     5cc:				40c21098	WAIT_FLAG.MTE2.V  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     5d0:				02dcc400	SBITSET0.b64  	X14, X12
+     5d4:				04dcb000	ST.b64 		X14, [X11], #0, #0
+     5d8:				0f002042	STI.b8 	f, [X2], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     5dc:				080d2001	ADD.s64 	X6, X18, #1
+     5e0:				02566a00	ZEROEXT.u16 	X11, X6
+     5e4:				0040bd3e	CMP.GT.u64	X11, X26
+     5e8:				00cd5309	SEL.b64  	X6, X21, X6
+     5ec:				03d7e8e0	LD.b64 		X11, [X30], #-1824, #0
+     5f0:				044cd000	ST.b16 		X6, [X13], #0, #0
+     5f4:				038c2004	LD.b32 		X6, [X2], #4, #0
+     5f8:				072c0006	MOV 		X22, #6
+     5fc:				02184a00	ZEROEXT.u8 	X12, X4
+     600:				08084001	ADD.s64 	X4, X4, #1
+     604:				021a4a00	ZEROEXT.u8 	X13, X4
+     608:				0a00d002	CMP.EQ.s64	X13, #2
+     60c:				00c95209	SEL.b64  	X4, X21, X4
+     610:				02d80204	SHL.b64 	X12, #4
+     614:				0409b000	ST.b8 		X4, [X27], #0, #0
+     618:				011ab600	LD.b8 		X13, [X11], X12, #0
+     61c:				48c4ff00	JUMPCMP.NE.s64	#1532, 	X13, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5fc>
+     620:				001ab601	ADD.s64 	X13, X11, X12
+     624:				0e00b601	STI.b8 	1, [X11], X12, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     628:				0324d003	LD.b8 		X18, [X13], #3, #0
+     62c:				0a4120ff	CMP.NE.s64	X18, #255
+     630:				40200002	JUMPC 		#1592 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x638>
+     634:				4000000b	JUMP 		#1632 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x660>
+     638:				021d2980	SIGNEXT.s8 	X14, X18
+     63c:				03e4f000	LD.b64 		X18, [X15], #0, #0
+     640:				40c214b8	WAIT_FLAG.MTE3.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     644:				031cd003	LD.b8 		X14, [X13], #3, #0
+     648:				03e32010	LD.b64 		X17, [X18], #16, #0
+     64c:				021ce980	SIGNEXT.s8 	X14, X14
+     650:				02e2e400	SBITSET0.b64  	X17, X14
+     654:				04e32010	ST.b64 		X17, [X18], #16, #0
+     658:				0f00d062	STI.b8 	f, [X13], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     65c:				40000002	JUMP 		#1636 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x664>
+     660:				03e4f000	LD.b64 		X18, [X15], #0, #0
+     664:				00dc3b0b	OR.b64  	X14, X3, X22
+     668:				0016b601	ADD.s64 	X11, X11, X12
+     66c:				0f00e001	STI.b8 	1, [X14], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     670:				0398b004	LD.b32 		X12, [X11], #4, #0
+     674:				40e00400	BAR.V <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     678:				021c3880	MOV		X14, CTRL
+     67c:				025d8b01	INSERT 		X14, #1, #56, #0
+     680:				0206e900	MOV		CTRL, X14
+     684:				071c0101	MOV 		X14, #257
+     688:				075d0801	MOVK 		X14, #2049, #1
+     68c:				079d0808	MOVK 		X14, #2056, #2
+     690:				07dd0100	MOVK 		X14, #256, #3
+     694:				804000d4	MOVEMASK 	MASK[1], X21 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     698:				07220001	MOV 		X17, #1
+     69c:				02231080	NEG.s64 	X17, X17
+     6a0:				80400040	MOVEMASK 	MASK[0], X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     6a4:				85d9c338	VADD.f32	[X12], [X28], [X6], X14, MASK
+     6a8:				020c3880	MOV		X6, CTRL
+     6ac:				024d8b00	INSERT 		X6, #0, #56, #0
+     6b0:				02066900	MOV		CTRL, X6
+     6b4:				0258aa00	ZEROEXT.u16 	X12, X10
+     6b8:				088de730	SUB.s64 	X6, X30, #1840
+     6bc:				021c6800	MOV 		X14, X6
+     6c0:				804000c4	MOVEMASK 	MASK[1], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     6c4:				01dae620	ST.b64 		X13, [X14], X12, #0
+     6c8:				03cd2018	LD.b64 		X6, [X18], #24, #0
+     6cc:				02183800	MOV 		X12, X3
+     6d0:				02182b01	INSERT 		X12, #1, #2, #0
+     6d4:				02da6380	SFF0.b64  	X13, X6
+     6d8:				02ccd440	SBITSET1.b64  	X6, X13
+     6dc:				04cd2018	ST.b64 		X6, [X18], #24, #0
+     6e0:				080ca001	ADD.s64 	X6, X10, #1
+     6e4:				041ab002	ST.b8 		X13, [X11], #2, #0
+     6e8:				02546a00	ZEROEXT.u16 	X10, X6
+     6ec:				03d6f000	LD.b64 		X11, [X15], #0, #0
+     6f0:				0040ad3e	CMP.GT.u64	X10, X26
+     6f4:				00d55309	SEL.b64  	X10, X21, X6
+     6f8:				80400044	MOVEMASK 	MASK[0], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     6fc:				0454c000	ST.b16 		X10, [X12], #0, #0
+     700:				03ccb008	LD.b64 		X6, [X11], #8, #0
+     704:				02d86380	SFF0.b64  	X12, X6
+     708:				02ccc440	SBITSET1.b64  	X6, X12
+     70c:				04ccb008	ST.b64 		X6, [X11], #8, #0
+     710:				04181003	ST.b8 		X12, [X1], #3, #0
+     714:				0f001000	STI.b8 	0, [X1], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     718:				03c2f000	LD.b64 		X1, [X15], #0, #0
+     71c:				00cc8b0b	OR.b64  	X6, X8, X22
+     720:				02163800	MOV 		X11, X3
+     724:				04126000	ST.b8 		X9, [X6], #0, #0
+     728:				03cc1008	LD.b64 		X6, [X1], #8, #0
+     72c:				0212d980	SIGNEXT.s8 	X9, X13
+     730:				02160b01	INSERT 		X11, #1, #0, #0
+     734:				02da6380	SFF0.b64  	X13, X6
+     738:				02ccd440	SBITSET1.b64  	X6, X13
+     73c:				40a206a4	SET_FLAG.V.MTE3  	X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     740:				04cc1008	ST.b64 		X6, [X1], #8, #0
+     744:				02427a00	ZEROEXT.u16 	X1, X7
+     748:				041a2003	ST.b8 		X13, [X2], #3, #0
+     74c:				0f002000	STI.b8 	0, [X2], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     750:				01c2e080	LD.b64 		X1, [X14], X1, #0
+     754:				00c45b0b	OR.b64  	X2, X5, X22
+     758:				0f00b000	STI.b8 	0, [X11], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     75c:				04002000	ST.b8 		X0, [X2], #0, #0
+     760:				03041002	LD.b8 		X2, [X1], #2, #0
+     764:				020cc980	SIGNEXT.s8 	X6, X12
+     768:				0200d980	SIGNEXT.s8 	X0, X13
+     76c:				0a4020ff	CMP.NE.s64	X2, #255
+     770:				40a20618	SET_FLAG.V.MTE2  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     774:				40a20600	SET_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     778:				40200002	JUMPC 		#1920 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x780>
+     77c:				4000feda	JUMP 		#740 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2e4>
+     780:				03c0f000	LD.b64 		X0, [X15], #0, #0
+     784:				030c1002	LD.b8 		X6, [X1], #2, #0
+     788:				02042980	SIGNEXT.s8 	X2, X2
+     78c:				03d20018	LD.b64 		X9, [X0], #24, #0
+     790:				020c6980	SIGNEXT.s8 	X6, X6
+     794:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     798:				02d26400	SBITSET0.b64  	X9, X6
+     79c:				04d20018	ST.b64 		X9, [X0], #24, #0
+     7a0:				0f001042	STI.b8 	f, [X1], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     7a4:				4000fed1	JUMP 		#744 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2e8>
+     7a8:				070e0000	MOV 		X7, #0
+     7ac:				07140000	MOV 		X10, #0
+     7b0:				03f5e880	LD.b64 		X26, [X30], #-1920, #0
+     7b4:				49ac0040	JUMPCMP.GT.s64	#1980, 	X26, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x7bc>
+     7b8:				40000164	JUMP 		#3400 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xd48>
+     7bc:				07020007	MOV 		X1, #7
+     7c0:				00c4808b	OR.b64  	X2, X8, X1
+     7c4:				03c1e920	LD.b64 		X0, [X30], #-1760, #0
+     7c8:				030de908	LD.b8 		X6, [X30], #-1784, #0
+     7cc:				03182000	LD.b8 		X12, [X2], #0, #0
+     7d0:				0213a800	MOV 		X9, X26
+     7d4:				02d20202	SHL.b64 	X9, #2
+     7d8:				07160000	MOV 		X11, #0
+     7dc:				0202ca00	ZEROEXT.u8 	X1, X12
+     7e0:				0818c001	ADD.s64 	X12, X12, #1
+     7e4:				021aca00	ZEROEXT.u8 	X13, X12
+     7e8:				0000d30e	CMP.EQ.s64	X13, X6
+     7ec:				00d8b609	SEL.b64  	X12, X11, X12
+     7f0:				02c20204	SHL.b64 	X1, #4
+     7f4:				04182000	ST.b8 		X12, [X2], #0, #0
+     7f8:				011a0080	LD.b8 		X13, [X0], X1, #0
+     7fc:				48c4ff00	JUMPCMP.NE.s64	#2012, 	X13, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x7dc>
+     800:				00040081	ADD.s64 	X2, X0, X1
+     804:				0e000081	STI.b8 	1, [X0], X1, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     808:				030c2003	LD.b8 		X6, [X2], #3, #0
+     80c:				03f3e878	LD.b64 		X25, [X30], #-1928, #0
+     810:				0a0060ff	CMP.EQ.s64	X6, #255
+     814:				4020000e	JUMPC 		#2124 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x84c>
+     818:				0897e790	SUB.s64 	X11, X30, #1936
+     81c:				0256028f	SHR.u64 	X11, #15
+     820:				02d6020f	SHL.b64 	X11, #15
+     824:				0816b000	ADD.s64 	X11, X11, #0
+     828:				020c6980	SIGNEXT.s8 	X6, X6
+     82c:				03d6b000	LD.b64 		X11, [X11], #0, #0
+     830:				40c20618	WAIT_FLAG.V.MTE2  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     834:				030c2003	LD.b8 		X6, [X2], #3, #0
+     838:				03d8b008	LD.b64 		X12, [X11], #8, #0
+     83c:				020c6980	SIGNEXT.s8 	X6, X6
+     840:				02d86400	SBITSET0.b64  	X12, X6
+     844:				04d8b008	ST.b64 		X12, [X11], #8, #0
+     848:				0f002062	STI.b8 	f, [X2], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     84c:				070c0006	MOV 		X6, #6
+     850:				00cc830b	OR.b64  	X6, X8, X6
+     854:				00180081	ADD.s64 	X12, X0, X1
+     858:				031c6000	LD.b8 		X14, [X6], #0, #0
+     85c:				031be8e8	LD.b8 		X13, [X30], #-1816, #0
+     860:				071e0000	MOV 		X15, #0
+     864:				0816e001	ADD.s64 	X11, X14, #1
+     868:				04166000	ST.b8 		X11, [X6], #0, #0
+     86c:				07160007	MOV 		X11, #7
+     870:				03a2c004	LD.b32 		X17, [X12], #4, #0
+     874:				00d8558b	OR.b64  	X12, X5, X11
+     878:				03cde900	LD.b64 		X6, [X30], #-1792, #0
+     87c:				0320c000	LD.b8 		X16, [X12], #0, #0
+     880:				02170a00	ZEROEXT.u8 	X11, X16
+     884:				08210001	ADD.s64 	X16, X16, #1
+     888:				02250a00	ZEROEXT.u8 	X18, X16
+     88c:				0001268e	CMP.EQ.s64	X18, X13
+     890:				00e0f809	SEL.b64  	X16, X15, X16
+     894:				02d60204	SHL.b64 	X11, #4
+     898:				0420c000	ST.b8 		X16, [X12], #0, #0
+     89c:				01246580	LD.b8 		X18, [X6], X11, #0
+     8a0:				49247f00	JUMPCMP.NE.s64	#2176, 	X18, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x880>
+     8a4:				00206581	ADD.s64 	X16, X6, X11
+     8a8:				0e006581	STI.b8 	1, [X6], X11, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     8ac:				03190003	LD.b8 		X12, [X16], #3, #0
+     8b0:				0a40c0ff	CMP.NE.s64	X12, #255
+     8b4:				40200002	JUMPC 		#2236 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x8bc>
+     8b8:				4000000f	JUMP 		#2292 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x8f4>
+     8bc:				089be790	SUB.s64 	X13, X30, #1936
+     8c0:				025a028f	SHR.u64 	X13, #15
+     8c4:				02da020f	SHL.b64 	X13, #15
+     8c8:				081ad000	ADD.s64 	X13, X13, #0
+     8cc:				021ec980	SIGNEXT.s8 	X15, X12
+     8d0:				03d8d000	LD.b64 		X12, [X13], #0, #0
+     8d4:				40c2063c	WAIT_FLAG.V.MTE2  	X15 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     8d8:				031b0003	LD.b8 		X13, [X16], #3, #0
+     8dc:				03dec008	LD.b64 		X15, [X12], #8, #0
+     8e0:				021ad980	SIGNEXT.s8 	X13, X13
+     8e4:				02ded400	SBITSET0.b64  	X15, X13
+     8e8:				04dec008	ST.b64 		X15, [X12], #8, #0
+     8ec:				0f010062	STI.b8 	f, [X16], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     8f0:				40000006	JUMP 		#2312 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x908>
+     8f4:				0899e790	SUB.s64 	X12, X30, #1936
+     8f8:				0258028f	SHR.u64 	X12, #15
+     8fc:				02d8020f	SHL.b64 	X12, #15
+     900:				0818c000	ADD.s64 	X12, X12, #0
+     904:				03d8c000	LD.b64 		X12, [X12], #0, #0
+     908:				071a0006	MOV 		X13, #6
+     90c:				00da568b	OR.b64  	X13, X5, X13
+     910:				02f20202	SHL.b64 	X25, #2
+     914:				031ed000	LD.b8 		X15, [X13], #0, #0
+     918:				02268800	MOV 		X19, X8
+     91c:				02260b01	INSERT 		X19, #1, #0, #0
+     920:				0824f001	ADD.s64 	X18, X15, #1
+     924:				00000081	ADD.s64 	X0, X0, X1
+     928:				0424d000	ST.b8 		X18, [X13], #0, #0
+     92c:				00246581	ADD.s64 	X18, X6, X11
+     930:				0716fffc	MOV 		X11, #65532
+     934:				03cde8b0	LD.b64 		X6, [X30], #-1872, #0
+     938:				0757001f	MOVK 		X11, #31, #1
+     93c:				00da958a	AND.b64  	X13, X9, X11
+     940:				02da0210	SHL.b64 	X13, #16
+     944:				000c6c81	ADD.s64 	X6, X6, X25
+     948:				021a4b01	INSERT 		X13, #1, #4, #0
+     94c:				07120000	MOV 		X9, #0
+     950:				03972004	LD.b32 		X11, [X18], #4, #0
+     954:				6ba266a6	MOV_OUT_TO_UB_ALIGN.b32	[X17], [X6], X13, X9
+     958:				03cde8b8	LD.b64 		X6, [X30], #-1864, #0
+     95c:				02228800	MOV 		X17, X8
+     960:				02222b01	INSERT 		X17, #1, #2, #0
+     964:				000c6c81	ADD.s64 	X6, X6, X25
+     968:				022c5800	MOV 		X22, X5
+     96c:				6b9666a6	MOV_OUT_TO_UB_ALIGN.b32	[X11], [X6], X13, X9
+     970:				034d1000	LD.b16 		X6, [X17], #0, #0
+     974:				0897e6f0	SUB.s64 	X11, X30, #1776
+     978:				0236b800	MOV 		X27, X11
+     97c:				022c2b01	INSERT 		X22, #1, #2, #0
+     980:				01c5b320	ST.b64 		X2, [X27], X6, #0
+     984:				03c4c000	LD.b64 		X2, [X12], #0, #0
+     988:				03293000	LD.b8 		X20, [X19], #0, #0
+     98c:				07020001	MOV 		X1, #1
+     990:				02ea2380	SFF0.b64  	X21, X2
+     994:				02c55440	SBITSET1.b64  	X2, X21
+     998:				04c4c000	ST.b64 		X2, [X12], #0, #0
+     99c:				042a0002	ST.b8 		X21, [X0], #2, #0
+     9a0:				08006001	ADD.s64 	X0, X6, #1
+     9a4:				088de790	SUB.s64 	X6, X30, #1936
+     9a8:				036f6000	LD.b16 		X23, [X22], #0, #0
+     9ac:				024c028f	SHR.u64 	X6, #15
+     9b0:				02cc020f	SHL.b64 	X6, #15
+     9b4:				02440a00	ZEROEXT.u16 	X2, X0
+     9b8:				08166000	ADD.s64 	X11, X6, #0
+     9bc:				004020be	CMP.GT.u64	X2, X1
+     9c0:				02057800	MOV 		X2, X23
+     9c4:				02c40203	SHL.b64 	X2, #3
+     9c8:				03d8b000	LD.b64 		X12, [X11], #0, #0
+     9cc:				00c09009	SEL.b64  	X0, X9, X0
+     9d0:				00045101	ADD.s64 	X2, X5, X2
+     9d4:				04411000	ST.b16 		X0, [X17], #0, #0
+     9d8:				04e02008	ST.b64 		X16, [X2], #8, #0
+     9dc:				03c0c000	LD.b64 		X0, [X12], #0, #0
+     9e0:				02045800	MOV 		X2, X5
+     9e4:				02040b01	INSERT 		X2, #1, #0, #0
+     9e8:				02f00380	SFF0.b64  	X24, X0
+     9ec:				02c18440	SBITSET1.b64  	X0, X24
+     9f0:				030c2000	LD.b8 		X6, [X2], #0, #0
+     9f4:				04c0c000	ST.b64 		X0, [X12], #0, #0
+     9f8:				02188800	MOV 		X12, X8
+     9fc:				02181b01	INSERT 		X12, #1, #1, #0
+     a00:				04312002	ST.b8 		X24, [X18], #2, #0
+     a04:				0362c000	LD.b16 		X17, [X12], #0, #0
+     a08:				08017001	ADD.s64 	X0, X23, #1
+     a0c:				02600a00	ZEROEXT.u16 	X16, X0
+     a10:				004100be	CMP.GT.u64	X16, X1
+     a14:				00e09009	SEL.b64  	X16, X9, X0
+     a18:				01c1b880	LD.b64 		X0, [X27], X17, #0
+     a1c:				04616000	ST.b16 		X16, [X22], #0, #0
+     a20:				04293000	ST.b8 		X20, [X19], #0, #0
+     a24:				02255980	SIGNEXT.s8 	X18, X21
+     a28:				03200002	LD.b8 		X16, [X0], #2, #0
+     a2c:				40a210c8	SET_FLAG.MTE2.V  	X18 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     a30:				02258980	SIGNEXT.s8 	X18, X24
+     a34:				0a0100ff	CMP.EQ.s64	X16, #255
+     a38:				40a210c8	SET_FLAG.MTE2.V  	X18 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     a3c:				4020000a	JUMPC 		#2660 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa64>
+     a40:				03d6b000	LD.b64 		X11, [X11], #0, #0
+     a44:				03240002	LD.b8 		X18, [X0], #2, #0
+     a48:				02210980	SIGNEXT.s8 	X16, X16
+     a4c:				03e6b000	LD.b64 		X19, [X11], #0, #0
+     a50:				02252980	SIGNEXT.s8 	X18, X18
+     a54:				40c210c0	WAIT_FLAG.MTE2.V  	X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     a58:				02e72400	SBITSET0.b64  	X19, X18
+     a5c:				04e6b000	ST.b64 		X19, [X11], #0, #0
+     a60:				0f000042	STI.b8 	f, [X0], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     a64:				02165800	MOV 		X11, X5
+     a68:				02161b01	INSERT 		X11, #1, #1, #0
+     a6c:				08231001	ADD.s64 	X17, X17, #1
+     a70:				0360b000	LD.b16 		X16, [X11], #0, #0
+     a74:				02651a00	ZEROEXT.u16 	X18, X17
+     a78:				004120be	CMP.GT.u64	X18, X1
+     a7c:				02030800	MOV 		X1, X16
+     a80:				02c20203	SHL.b64 	X1, #3
+     a84:				00025081	ADD.s64 	X1, X5, X1
+     a88:				00e29889	SEL.b64  	X17, X9, X17
+     a8c:				03d21008	LD.b64 		X9, [X1], #8, #0
+     a90:				0462c000	ST.b16 		X17, [X12], #0, #0
+     a94:				03820004	LD.b32 		X1, [X0], #4, #0
+     a98:				040c2000	ST.b8 		X6, [X2], #0, #0
+     a9c:				03049002	LD.b8 		X2, [X9], #2, #0
+     aa0:				0a0020ff	CMP.EQ.s64	X2, #255
+     aa4:				4020000e	JUMPC 		#2780 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xadc>
+     aa8:				088de790	SUB.s64 	X6, X30, #1936
+     aac:				024c028f	SHR.u64 	X6, #15
+     ab0:				02cc020f	SHL.b64 	X6, #15
+     ab4:				080c6000	ADD.s64 	X6, X6, #0
+     ab8:				03189002	LD.b8 		X12, [X9], #2, #0
+     abc:				03cc6000	LD.b64 		X6, [X6], #0, #0
+     ac0:				02042980	SIGNEXT.s8 	X2, X2
+     ac4:				0218c980	SIGNEXT.s8 	X12, X12
+     ac8:				03e26000	LD.b64 		X17, [X6], #0, #0
+     acc:				40c21088	WAIT_FLAG.MTE2.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     ad0:				02e2c400	SBITSET0.b64  	X17, X12
+     ad4:				04e26000	ST.b64 		X17, [X6], #0, #0
+     ad8:				0f009042	STI.b8 	f, [X9], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     adc:				08050001	ADD.s64 	X2, X16, #1
+     ae0:				024c2a00	ZEROEXT.u16 	X6, X2
+     ae4:				07180001	MOV 		X12, #1
+     ae8:				0040663e	CMP.GT.u64	X6, X12
+     aec:				07180000	MOV 		X12, #0
+     af0:				00c4c109	SEL.b64  	X2, X12, X2
+     af4:				070c0007	MOV 		X6, #7
+     af8:				0444b000	ST.b16 		X2, [X11], #0, #0
+     afc:				03849004	LD.b32 		X2, [X9], #4, #0
+     b00:				03d7e8e0	LD.b64 		X11, [X30], #-1824, #0
+     b04:				00e0330b	OR.b64  	X16, X3, X6
+     b08:				020c4a00	ZEROEXT.u8 	X6, X4
+     b0c:				08084001	ADD.s64 	X4, X4, #1
+     b10:				02224a00	ZEROEXT.u8 	X17, X4
+     b14:				0a011002	CMP.EQ.s64	X17, #2
+     b18:				00c8c209	SEL.b64  	X4, X12, X4
+     b1c:				02cc0204	SHL.b64 	X6, #4
+     b20:				04090000	ST.b8 		X4, [X16], #0, #0
+     b24:				0122b300	LD.b8 		X17, [X11], X6, #0
+     b28:				4904ff00	JUMPCMP.NE.s64	#2824, 	X17, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xb08>
+     b2c:				0008b301	ADD.s64 	X4, X11, X6
+     b30:				0e00b301	STI.b8 	1, [X11], X6, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     b34:				03184003	LD.b8 		X12, [X4], #3, #0
+     b38:				0a40c0ff	CMP.NE.s64	X12, #255
+     b3c:				40200002	JUMPC 		#2884 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xb44>
+     b40:				4000000f	JUMP 		#2940 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xb7c>
+     b44:				08a1e790	SUB.s64 	X16, X30, #1936
+     b48:				0260028f	SHR.u64 	X16, #15
+     b4c:				02e0020f	SHL.b64 	X16, #15
+     b50:				08210000	ADD.s64 	X16, X16, #0
+     b54:				0222c980	SIGNEXT.s8 	X17, X12
+     b58:				03d90000	LD.b64 		X12, [X16], #0, #0
+     b5c:				40c214c4	WAIT_FLAG.MTE3.V  	X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     b60:				03204003	LD.b8 		X16, [X4], #3, #0
+     b64:				03e2c010	LD.b64 		X17, [X12], #16, #0
+     b68:				02210980	SIGNEXT.s8 	X16, X16
+     b6c:				02e30400	SBITSET0.b64  	X17, X16
+     b70:				04e2c010	ST.b64 		X17, [X12], #16, #0
+     b74:				0f004062	STI.b8 	f, [X4], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     b78:				40000006	JUMP 		#2960 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xb90>
+     b7c:				0899e790	SUB.s64 	X12, X30, #1936
+     b80:				0258028f	SHR.u64 	X12, #15
+     b84:				02d8020f	SHL.b64 	X12, #15
+     b88:				0818c000	ADD.s64 	X12, X12, #0
+     b8c:				03d8c000	LD.b64 		X12, [X12], #0, #0
+     b90:				02a3a980	SIGNEXT.s32 	X17, X26
+     b94:				80400044	MOVEMASK 	MASK[0], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     b98:				07220006	MOV 		X17, #6
+     b9c:				00e4388b	OR.b64  	X18, X3, X17
+     ba0:				000cb301	ADD.s64 	X6, X11, X6
+     ba4:				0f012001	STI.b8 	1, [X18], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     ba8:				03966004	LD.b32 		X11, [X6], #4, #0
+     bac:				07200000	MOV 		X16, #0
+     bb0:				40e00400	BAR.V <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     bb4:				02243880	MOV		X18, CTRL
+     bb8:				02658b01	INSERT 		X18, #1, #56, #0
+     bbc:				02072900	MOV		CTRL, X18
+     bc0:				07240101	MOV 		X18, #257
+     bc4:				07650801	MOVK 		X18, #2049, #1
+     bc8:				07a50808	MOVK 		X18, #2056, #2
+     bcc:				07e50100	MOVK 		X18, #256, #3
+     bd0:				804000c0	MOVEMASK 	MASK[1], X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     bd4:				85d61148	VADD.f32	[X11], [X1], [X2], X18, MASK
+     bd8:				02023880	MOV		X1, CTRL
+     bdc:				02438b00	INSERT 		X1, #0, #56, #0
+     be0:				0897e730	SUB.s64 	X11, X30, #1840
+     be4:				02061900	MOV		CTRL, X1
+     be8:				0242aa00	ZEROEXT.u16 	X1, X10
+     bec:				0224b800	MOV 		X18, X11
+     bf0:				07040001	MOV 		X2, #1
+     bf4:				01c920a0	ST.b64 		X4, [X18], X1, #0
+     bf8:				03c2c018	LD.b64 		X1, [X12], #24, #0
+     bfc:				02083800	MOV 		X4, X3
+     c00:				02082b01	INSERT 		X4, #1, #2, #0
+     c04:				02d61380	SFF0.b64  	X11, X1
+     c08:				02c2b440	SBITSET1.b64  	X1, X11
+     c0c:				02042080	NEG.s64 	X2, X2
+     c10:				04c2c018	ST.b64 		X1, [X12], #24, #0
+     c14:				0883e790	SUB.s64 	X1, X30, #1936
+     c18:				0242028f	SHR.u64 	X1, #15
+     c1c:				02c2020f	SHL.b64 	X1, #15
+     c20:				04166002	ST.b8 		X11, [X6], #2, #0
+     c24:				080ca001	ADD.s64 	X6, X10, #1
+     c28:				08021000	ADD.s64 	X1, X1, #0
+     c2c:				02546a00	ZEROEXT.u16 	X10, X6
+     c30:				07180001	MOV 		X12, #1
+     c34:				0040a63e	CMP.GT.u64	X10, X12
+     c38:				03d41000	LD.b64 		X10, [X1], #0, #0
+     c3c:				00cd0309	SEL.b64  	X6, X16, X6
+     c40:				80400088	MOVEMASK 	MASK[1], X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     c44:				044c4000	ST.b16 		X6, [X4], #0, #0
+     c48:				03c8a008	LD.b64 		X4, [X10], #8, #0
+     c4c:				02cc4380	SFF0.b64  	X6, X4
+     c50:				02c86440	SBITSET1.b64  	X4, X6
+     c54:				04c8a008	ST.b64 		X4, [X10], #8, #0
+     c58:				040c0003	ST.b8 		X6, [X0], #3, #0
+     c5c:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     c60:				03c01000	LD.b64 		X0, [X1], #0, #0
+     c64:				80400008	MOVEMASK 	MASK[0], X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     c68:				00c4888b	OR.b64  	X2, X8, X17
+     c6c:				02083800	MOV 		X4, X3
+     c70:				041c2000	ST.b8 		X14, [X2], #0, #0
+     c74:				03c40008	LD.b64 		X2, [X0], #8, #0
+     c78:				02080b01	INSERT 		X4, #1, #0, #0
+     c7c:				0210b980	SIGNEXT.s8 	X8, X11
+     c80:				02d42380	SFF0.b64  	X10, X2
+     c84:				02c4a440	SBITSET1.b64  	X2, X10
+     c88:				40a206a0	SET_FLAG.V.MTE3  	X8 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     c8c:				04c40008	ST.b64 		X2, [X0], #8, #0
+     c90:				02407a00	ZEROEXT.u16 	X0, X7
+     c94:				04149003	ST.b8 		X10, [X9], #3, #0
+     c98:				0f009000	STI.b8 	0, [X9], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     c9c:				01c12000	LD.b64 		X0, [X18], X0, #0
+     ca0:				00c4588b	OR.b64  	X2, X5, X17
+     ca4:				0f004000	STI.b8 	0, [X4], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     ca8:				041e2000	ST.b8 		X15, [X2], #0, #0
+     cac:				03040002	LD.b8 		X2, [X0], #2, #0
+     cb0:				020a6980	SIGNEXT.s8 	X5, X6
+     cb4:				0208a980	SIGNEXT.s8 	X4, X10
+     cb8:				0a4020ff	CMP.NE.s64	X2, #255
+     cbc:				40a20614	SET_FLAG.V.MTE2  	X5 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     cc0:				40a20610	SET_FLAG.V.MTE2  	X4 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     cc4:				40200002	JUMPC 		#3276 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xccc>
+     cc8:				4000000b	JUMP 		#3316 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xcf4>
+     ccc:				03c21000	LD.b64 		X1, [X1], #0, #0
+     cd0:				03080002	LD.b8 		X4, [X0], #2, #0
+     cd4:				02042980	SIGNEXT.s8 	X2, X2
+     cd8:				03ca1018	LD.b64 		X5, [X1], #24, #0
+     cdc:				02084980	SIGNEXT.s8 	X4, X4
+     ce0:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     ce4:				02ca4400	SBITSET0.b64  	X5, X4
+     ce8:				04ca1018	ST.b64 		X5, [X1], #24, #0
+     cec:				0f000042	STI.b8 	f, [X0], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     cf0:				40000002	JUMP 		#3320 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xcf8>
+     cf4:				03c21000	LD.b64 		X1, [X1], #0, #0
+     cf8:				08047001	ADD.s64 	X2, X7, #1
+     cfc:				02482a00	ZEROEXT.u16 	X4, X2
+     d00:				070a0001	MOV 		X5, #1
+     d04:				004042be	CMP.GT.u64	X4, X5
+     d08:				07080000	MOV 		X4, #0
+     d0c:				00c44109	SEL.b64  	X2, X4, X2
+     d10:				02061b01	INSERT 		X3, #1, #1, #0
+     d14:				04443000	ST.b16 		X2, [X3], #0, #0
+     d18:				03c7e8c0	LD.b64 		X3, [X30], #-1856, #0
+     d1c:				03840004	LD.b32 		X2, [X0], #4, #0
+     d20:				00063c81	ADD.s64 	X3, X3, X25
+     d24:				6bc62692	MOV_UB_TO_OUT_ALIGN.b32	[X3], [X2], X13, X4
+     d28:				03c41010	LD.b64 		X2, [X1], #16, #0
+     d2c:				02c62380	SFF0.b64  	X3, X2
+     d30:				02c43440	SBITSET1.b64  	X2, X3
+     d34:				04c41010	ST.b64 		X2, [X1], #16, #0
+     d38:				02023980	SIGNEXT.s8 	X1, X3
+     d3c:				04060003	ST.b8 		X3, [X0], #3, #0
+     d40:				40a21484	SET_FLAG.MTE3.V  	X1 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     d44:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     d48:				03c1e988	LD.b64 		X0, [X30], #-1656, #0
+     d4c:				02c20380	SFF0.b64  	X1, X0
+     d50:				02c01440	SBITSET1.b64  	X0, X1
+     d54:				04c1e988	ST.b64 		X0, [X30], #-1656, #0
+     d58:				02001980	SIGNEXT.s8 	X0, X1
+     d5c:				03c3e988	LD.b64 		X1, [X30], #-1656, #0
+     d60:				40a21400	SET_FLAG.MTE3.S  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     d64:				02c20400	SBITSET0.b64  	X1, X0
+     d68:				40c21400	WAIT_FLAG.MTE3.S  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     d6c:				07000000	MOV 		X0, #0
+     d70:				04c3e988	ST.b64 		X1, [X30], #-1656, #0
+     d74:				02808880	MOV		X0, SYS_CNT
+     d78:				03c3e888	LD.b64 		X1, [X30], #-1912, #0
+     d7c:				04c01010	ST.b64 		X0, [X1], #16, #0
+     d80:				0301eddd	LD.b8 		X0, [X30], #-547, #0
+     d84:				48040040	JUMPCMP.NE.s64	#3468, 	X0, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xd8c>
+     d88:				40000005	JUMP 		#3484 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xd9c>
+     d8c:				071e0000	MOV 		X15, #0
+     d90:				41400000	NOP
+     d94:				402ef000	DCCI 		X15, #1
+     d98:				41600000	END
+     d9c:				0307eddc	LD.b8 		X3, [X30], #-548, #0
+     da0:				0f37eba1	STI.b8 	1, [X30], #-547, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     da4:				48209260	JUMPCMP.EQ.s64	#4080, 	X3, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xff0>
+     da8:				07020000	MOV 		X1, #0
+     dac:				0881e64d	SUB.s64 	X0, X30, #1613
+     db0:				4000000b	JUMP 		#3548 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xddc>
+     db4:				02042980	SIGNEXT.s8 	X2, X2
+     db8:				40c20408	WAIT_FLAG.V.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     dbc:				0f000002	STI.b8 	f, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     dc0:				0307eddc	LD.b8 		X3, [X30], #-548, #0
+     dc4:				08021001	ADD.s64 	X1, X1, #1
+     dc8:				02041a00	ZEROEXT.u8 	X2, X1
+     dcc:				02083a00	ZEROEXT.u8 	X4, X3
+     dd0:				08000010	ADD.s64 	X0, X0, #16
+     dd4:				4a290044	JUMPCMP.LT.u64	#3548, 	X2, 	X4 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xddc>
+     dd8:				40000086	JUMP 		#4080 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xff0>
+     ddc:				03040000	LD.b8 		X2, [X0], #0, #0
+     de0:				0a0020ff	CMP.EQ.s64	X2, #255
+     de4:				4020fff8	JUMPC 		#3524 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdc4>
+     de8:				03080ffd	LD.b8 		X4, [X0], #-3, #0
+     dec:				48447ec0	JUMPCMP.NE.s64	#3524, 	X4, 	#0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdc4>
+     df0:				03060ffe	LD.b8 		X3, [X0], #-2, #0
+     df4:				0ac03017	CMP.GT.s64	X3, #23
+     df8:				40200010	JUMPC 		#3640 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe38>
+     dfc:				0ac03011	CMP.GT.s64	X3, #17
+     e00:				40200002	JUMPC 		#3592 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe08>
+     e04:				4000001c	JUMP 		#3700 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe74>
+     e08:				0ac03014	CMP.GT.s64	X3, #20
+     e0c:				40200031	JUMPC 		#3792 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xed0>
+     e10:				0a003012	CMP.EQ.s64	X3, #18
+     e14:				40200050	JUMPC 		#3924 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf54>
+     e18:				0a003013	CMP.EQ.s64	X3, #19
+     e1c:				40200051	JUMPC 		#3936 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf60>
+     e20:				0a003014	CMP.EQ.s64	X3, #20
+     e24:				40200002	JUMPC 		#3628 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe2c>
+     e28:				4000ffe5	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     e2c:				02042980	SIGNEXT.s8 	X2, X2
+     e30:				40c21288	WAIT_FLAG.MTE2.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     e34:				4000ffe2	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     e38:				0ac0301c	CMP.GT.s64	X3, #28
+     e3c:				40200002	JUMPC 		#3652 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe44>
+     e40:				40000017	JUMP 		#3740 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe9c>
+     e44:				0ac0301f	CMP.GT.s64	X3, #31
+     e48:				4020002c	JUMPC 		#3832 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xef8>
+     e4c:				0a00301d	CMP.EQ.s64	X3, #29
+     e50:				40200047	JUMPC 		#3948 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf6c>
+     e54:				0a00301e	CMP.EQ.s64	X3, #30
+     e58:				40200048	JUMPC 		#3960 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf78>
+     e5c:				0a00301f	CMP.EQ.s64	X3, #31
+     e60:				40200002	JUMPC 		#3688 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe68>
+     e64:				4000ffd6	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     e68:				02042980	SIGNEXT.s8 	X2, X2
+     e6c:				40c22a88	WAIT_FLAG.F.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+     e70:				4000ffd3	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     e74:				482c8045	JUMPCMP.GT.s64	#3708, 	X3, 	#5 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe7c>
+     e78:				40000029	JUMP 		#3868 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf1c>
+     e7c:				48208846	JUMPCMP.EQ.s64	#3972, 	X3, 	#6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf84>
+     e80:				48208887	JUMPCMP.EQ.s64	#3984, 	X3, 	#7 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf90>
+     e84:				0a003011	CMP.EQ.s64	X3, #17
+     e88:				40200002	JUMPC 		#3728 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xe90>
+     e8c:				4000ffcc	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     e90:				02042980	SIGNEXT.s8 	X2, X2
+     e94:				40c24908	WAIT_FLAG.M.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     e98:				4000ffc9	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     e9c:				0ac03019	CMP.GT.s64	X3, #25
+     ea0:				40200002	JUMPC 		#3752 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xea8>
+     ea4:				40000024	JUMP 		#3892 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf34>
+     ea8:				0a00301a	CMP.EQ.s64	X3, #26
+     eac:				4020003c	JUMPC 		#3996 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf9c>
+     eb0:				0a00301b	CMP.EQ.s64	X3, #27
+     eb4:				4020003d	JUMPC 		#4008 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xfa8>
+     eb8:				0a00301c	CMP.EQ.s64	X3, #28
+     ebc:				40200002	JUMPC 		#3780 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xec4>
+     ec0:				4000ffbf	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     ec4:				02042980	SIGNEXT.s8 	X2, X2
+     ec8:				40c22a08	WAIT_FLAG.F.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+     ecc:				4000ffbc	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     ed0:				0a003015	CMP.EQ.s64	X3, #21
+     ed4:				40200038	JUMPC 		#4020 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xfb4>
+     ed8:				0a003016	CMP.EQ.s64	X3, #22
+     edc:				4020ffb6	JUMPC 		#3508 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdb4>
+     ee0:				0a003017	CMP.EQ.s64	X3, #23
+     ee4:				40200002	JUMPC 		#3820 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xeec>
+     ee8:				4000ffb5	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     eec:				02042980	SIGNEXT.s8 	X2, X2
+     ef0:				40c20208	WAIT_FLAG.S.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     ef4:				4000ffb2	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     ef8:				0a003020	CMP.EQ.s64	X3, #32
+     efc:				40200031	JUMPC 		#4032 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xfc0>
+     f00:				0a003021	CMP.EQ.s64	X3, #33
+     f04:				40200032	JUMPC 		#4044 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xfcc>
+     f08:				0a003022	CMP.EQ.s64	X3, #34
+     f0c:				40200002	JUMPC 		#3860 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf14>
+     f10:				4000ffab	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f14:				40e02800	BAR.F <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+     f18:				4000ffa9	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f1c:				482085e4	JUMPCMP.EQ.s64	#4056, 	X3, 	#4 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xfd8>
+     f20:				48208045	JUMPCMP.EQ.s64	#3880, 	X3, 	#5 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf28>
+     f24:				4000ffa6	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f28:				02042980	SIGNEXT.s8 	X2, X2
+     f2c:				40c20608	WAIT_FLAG.V.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     f30:				4000ffa3	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f34:				0a003018	CMP.EQ.s64	X3, #24
+     f38:				4020002b	JUMPC 		#4068 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xfe4>
+     f3c:				0a003019	CMP.EQ.s64	X3, #25
+     f40:				40200002	JUMPC 		#3912 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xf48>
+     f44:				4000ff9e	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f48:				02042980	SIGNEXT.s8 	X2, X2
+     f4c:				40c20288	WAIT_FLAG.S.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     f50:				4000ff9b	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f54:				02042980	SIGNEXT.s8 	X2, X2
+     f58:				40c22908	WAIT_FLAG.F.M  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+     f5c:				4000ff98	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f60:				02042980	SIGNEXT.s8 	X2, X2
+     f64:				40c21608	WAIT_FLAG.MTE3.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     f68:				4000ff95	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f6c:				02042980	SIGNEXT.s8 	X2, X2
+     f70:				40c22808	WAIT_FLAG.F.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+     f74:				4000ff92	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f78:				02042980	SIGNEXT.s8 	X2, X2
+     f7c:				40c20808	WAIT_FLAG.M.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+     f80:				4000ff8f	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f84:				02042980	SIGNEXT.s8 	X2, X2
+     f88:				40c21488	WAIT_FLAG.MTE3.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     f8c:				4000ff8c	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f90:				02042980	SIGNEXT.s8 	X2, X2
+     f94:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+     f98:				4000ff89	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     f9c:				02042980	SIGNEXT.s8 	X2, X2
+     fa0:				40c21408	WAIT_FLAG.MTE3.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+     fa4:				4000ff86	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     fa8:				02042980	SIGNEXT.s8 	X2, X2
+     fac:				40c25108	WAIT_FLAG.MTE2.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     fb0:				4000ff83	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     fb4:				02042980	SIGNEXT.s8 	X2, X2
+     fb8:				40c20088	WAIT_FLAG.S.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+     fbc:				4000ff80	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     fc0:				02042980	SIGNEXT.s8 	X2, X2
+     fc4:				40c24d08	WAIT_FLAG.MTE1.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x3>
+     fc8:				4000ff7d	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     fcc:				02042980	SIGNEXT.s8 	X2, X2
+     fd0:				40c22988	WAIT_FLAG.F.MTE1  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+     fd4:				4000ff7a	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     fd8:				02042980	SIGNEXT.s8 	X2, X2
+     fdc:				40c21088	WAIT_FLAG.MTE2.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     fe0:				4000ff77	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     fe4:				02042980	SIGNEXT.s8 	X2, X2
+     fe8:				40c21008	WAIT_FLAG.MTE2.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+     fec:				4000ff74	JUMP 		#3516 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xdbc>
+     ff0:				40e01800	BAR.ALL <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x6>
+     ff4:				071e0000	MOV 		X15, #0
+     ff8:				41400000	NOP
+     ffc:				402ef000	DCCI 		X15, #1
+    1000:				41600000	END
+
+0000000000001004 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_>:
+    1004:				073a7f80	MOV 		X29, #32640
+    1008:				077b0010	MOVK 		X29, #16, #1
+    100c:				029e3880	MOV		X15, SYS_VA_BASE
+    1010:				003bd781	ADD.s64 	X29, X29, X15
+    1014:				021f0880	MOV		X15, COREID
+    1018:				07207fff	MOV 		X16, #32767
+    101c:				07000001	MOV 		X0, #1
+    1020:				00def80a	AND.b64  	X15, X15, X16
+    1024:				07228000	MOV 		X17, #32768
+    1028:				02000080	NEG.s64 	X0, X0
+    102c:				003af884	MADD.s64 	X29, X15, X17
+    1030:				80400000	MOVEMASK 	MASK[0], X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1034:				80400080	MOVEMASK 	MASK[1], X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1038:				083dd220	ADD.s64 	X30, X29, #544
+    103c:				02004880	MOV		X0, PARA_BASE
+    1040:				07020000	MOV 		X1, #0
+    1044:				03c60030	LD.b64 		X3, [X0], #48, #0
+    1048:				09d00330	LDP.b64 	X8, X6, [X0], #24
+    104c:				09ca0110	LDP.b64 	X5, X2, [X0], #8
+    1050:				03ce0000	LD.b64 		X7, [X0], #0, #0
+    1054:				03800028	LD.b32 		X0, [X0], #40, #0
+    1058:				02828880	MOV		X1, SYS_CNT
+    105c:				02123880	MOV		X9, CTRL
+    1060:				07140000	MOV 		X10, #0
+    1064:				0212acc2	INSERT 		X9, X10, #6, #2
+    1068:				02069900	MOV		CTRL, X9
+    106c:				02123880	MOV		X9, CTRL
+    1070:				02538b00	INSERT 		X9, #0, #56, #0
+    1074:				02069900	MOV		CTRL, X9
+    1078:				07080000	MOV 		X4, #0
+    107c:				1014fff0	MOVX8 		X10, #65520
+    1080:				0893e660	SUB.s64 	X9, X30, #1632
+    1084:				0495edd8	ST.b32 		X10, [X30], #-552, #0
+    1088:				0fa7e200	STI.b32 	0, [X30], #-1648, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    108c:				0fe7e300	STI.b64 	0, [X30], #-1640, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1090:				09c89201	STP.b64 	X4, X4, [X9], #0
+    1094:				0fe5e500	STI.b64 	0, [X30], #-1752, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1098:				0893e6c0	SUB.s64 	X9, X30, #1728
+    109c:				09c89261	STP.b64 	X4, X4, [X9], #-16
+    10a0:				09c89201	STP.b64 	X4, X4, [X9], #0
+    10a4:				0895e6a0	SUB.s64 	X10, X30, #1696
+    10a8:				0893e680	SUB.s64 	X9, X30, #1664
+    10ac:				09c8a261	STP.b64 	X4, X4, [X10], #-16
+    10b0:				09c8a201	STP.b64 	X4, X4, [X10], #0
+    10b4:				09c89261	STP.b64 	X4, X4, [X9], #-16
+    10b8:				09c89201	STP.b64 	X4, X4, [X9], #0
+    10bc:				0893e790	SUB.s64 	X9, X30, #1936
+    10c0:				0252028f	SHR.u64 	X9, #15
+    10c4:				02d2020f	SHL.b64 	X9, #15
+    10c8:				081e9000	ADD.s64 	X15, X9, #0
+    10cc:				0714ffe0	MOV 		X10, #65504
+    10d0:				0893e6d8	SUB.s64 	X9, X30, #1752
+    10d4:				0755ffff	MOVK 		X10, #65535, #1
+    10d8:				04d2f000	ST.b64 		X9, [X15], #0, #0
+    10dc:				0812001f	ADD.s64 	X9, X0, #31
+    10e0:				07950001	MOVK 		X10, #1, #2
+    10e4:				00d2950a	AND.b64  	X9, X9, X10
+    10e8:				07180500	MOV 		X12, #1280
+    10ec:				0895e650	SUB.s64 	X10, X30, #1616
+    10f0:				0759ffff	MOVK 		X12, #65535, #1
+    10f4:				04d5e920	ST.b64 		X10, [X30], #-1760, #0
+    10f8:				0895e640	SUB.s64 	X10, X30, #1600
+    10fc:				089be630	SUB.s64 	X13, X30, #1584
+    1100:				0fb7e602	STI.b32 	f, [X30], #-592, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1104:				0fb7e702	STI.b32 	f, [X30], #-584, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1108:				0fb7e682	STI.b32 	f, [X30], #-588, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    110c:				0f37eba0	STI.b8 	0, [X30], #-547, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1110:				04d9e9b0	ST.b64 		X12, [X30], #-1616, #0
+    1114:				0493e9b8	ST.b32 		X9, [X30], #-1608, #0
+    1118:				0fa7e782	STI.b32 	f, [X30], #-1604, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    111c:				0998a481	STP.b32 	X12, X9, [X10], #0
+    1120:				02149800	MOV 		X10, X9
+    1124:				07160002	MOV 		X11, #2
+    1128:				02d40201	SHL.b64 	X10, #1
+    112c:				089de700	SUB.s64 	X14, X30, #1792
+    1130:				09dae581	STP.b64 	X13, X11, [X14], #0
+    1134:				089be630	SUB.s64 	X13, X30, #1584
+    1138:				0493e9c8	ST.b32 		X9, [X30], #-1592, #0
+    113c:				0fa7e982	STI.b32 	f, [X30], #-1588, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1140:				04d7e8e8	ST.b64 		X11, [X30], #-1816, #0
+    1144:				0998d501	STP.b32 	X12, X10, [X13], #0
+    1148:				08549003	MUL.s64 	X10, X9, #3
+    114c:				04d7e8c8	ST.b64 		X11, [X30], #-1848, #0
+    1150:				089be620	SUB.s64 	X13, X30, #1568
+    1154:				0897e610	SUB.s64 	X11, X30, #1552
+    1158:				0493e9d8	ST.b32 		X9, [X30], #-1576, #0
+    115c:				0fa7eb82	STI.b32 	f, [X30], #-1572, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1160:				0998d501	STP.b32 	X12, X10, [X13], #0
+    1164:				02149800	MOV 		X10, X9
+    1168:				07180600	MOV 		X12, #1536
+    116c:				02d40202	SHL.b64 	X10, #2
+    1170:				0759ffff	MOVK 		X12, #65535, #1
+    1174:				04d7e8e0	ST.b64 		X11, [X30], #-1824, #0
+    1178:				0897e610	SUB.s64 	X11, X30, #1552
+    117c:				0493e9e8	ST.b32 		X9, [X30], #-1560, #0
+    1180:				0fa7ed82	STI.b32 	f, [X30], #-1556, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1184:				0998b501	STP.b32 	X12, X10, [X11], #0
+    1188:				08549005	MUL.s64 	X10, X9, #5
+    118c:				08569006	MUL.s64 	X11, X9, #6
+    1190:				072c0006	MOV 		X22, #6
+    1194:				089be600	SUB.s64 	X13, X30, #1536
+    1198:				0493e9f8	ST.b32 		X9, [X30], #-1544, #0
+    119c:				0fa7ef82	STI.b32 	f, [X30], #-1540, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    11a0:				0998d501	STP.b32 	X12, X10, [X13], #0
+    11a4:				0493ea08	ST.b32 		X9, [X30], #-1528, #0
+    11a8:				0fa9e182	STI.b32 	f, [X30], #-1524, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    11ac:				0497e994	ST.b32 		X11, [X30], #-1644, #0
+    11b0:				042deddc	ST.b8 		X22, [X30], #-548, #0
+    11b4:				02121880	MOV		X9, BLOCKID
+    11b8:				0295f880	MOV		X10, SUBBLOCKDIM
+    11bc:				02929980	SIGNEXT.s32 	X9, X9
+    11c0:				02d60880	MOV		X11, SUBBLOCKID
+    11c4:				00169504	MADD.s64 	X11, X9, X10
+    11c8:				0295f880	MOV		X10, SUBBLOCKDIM
+    11cc:				02d80880	MOV		X12, SUBBLOCKID
+    11d0:				029bf880	MOV		X13, SUBBLOCKDIM
+    11d4:				02e40880	MOV		X18, SUBBLOCKID
+    11d8:				02a1f880	MOV		X16, SUBBLOCKDIM
+    11dc:				02e20880	MOV		X17, SUBBLOCKID
+    11e0:				00230484	MADD.s64 	X17, X16, X9
+    11e4:				0016b303	MUL.s64 	X11, X11, X6
+    11e8:				0018a484	MADD.s64 	X12, X10, X9
+    11ec:				07140000	MOV 		X10, #0
+    11f0:				00211303	MUL.s64 	X16, X17, X6
+    11f4:				02d60201	SHL.b64 	X11, #1
+    11f8:				000e7581	ADD.s64 	X7, X7, X11
+    11fc:				00108802	SUB.s64 	X8, X8, X16
+    1200:				02200800	MOV 		X16, X0
+    1204:				00108308	MIN.s64  	X8, X8, X6
+    1208:				02600281	SHR.u64 	X16, #1
+    120c:				0024d484	MADD.s64 	X18, X13, X9
+    1210:				001c8805	DIV.s64 	X14, X8, X16
+    1214:				02948880	MOV		X10, SYS_CNT
+    1218:				029bf880	MOV		X13, SUBBLOCKDIM
+    121c:				02e60880	MOV		X19, SUBBLOCKID
+    1220:				04cfe8b0	ST.b64 		X7, [X30], #-1872, #0
+    1224:				000ec303	MUL.s64 	X7, X12, X6
+    1228:				0026d484	MADD.s64 	X19, X13, X9
+    122c:				000d2303	MUL.s64 	X6, X18, X6
+    1230:				02ce0201	SHL.b64 	X7, #1
+    1234:				000a5381	ADD.s64 	X5, X5, X7
+    1238:				02cc0201	SHL.b64 	X6, #1
+    123c:				04cbe8b8	ST.b64 		X5, [X30], #-1864, #0
+    1240:				084b3018	MUL.s64 	X5, X19, #24
+    1244:				000ee803	MUL.s64 	X7, X14, X16
+    1248:				00042301	ADD.s64 	X2, X2, X6
+    124c:				07120001	MOV 		X9, #1
+    1250:				04c5e8c0	ST.b64 		X2, [X30], #-1856, #0
+    1254:				00043281	ADD.s64 	X2, X3, X5
+    1258:				00068382	SUB.s64 	X3, X8, X7
+    125c:				04c7e880	ST.b64 		X3, [X30], #-1920, #0
+    1260:				0891e6f8	SUB.s64 	X8, X30, #1784
+    1264:				088be718	SUB.s64 	X5, X30, #1816
+    1268:				0887e738	SUB.s64 	X3, X30, #1848
+    126c:				0a80e001	CMP.LT.s64	X14, #1
+    1270:				02129080	NEG.s64 	X9, X9
+    1274:				804000a4	MOVEMASK 	MASK[1], X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1278:				04cfe878	ST.b64 		X7, [X30], #-1928, #0
+    127c:				09c22501	STP.b64 	X1, X10, [X2], #0
+    1280:				04c5e888	ST.b64 		X2, [X30], #-1912, #0
+    1284:				04dde8a8	ST.b64 		X14, [X30], #-1880, #0
+    1288:				80400024	MOVEMASK 	MASK[0], X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    128c:				40200148	JUMPC 		#6060 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x7a8>
+    1290:				07260007	MOV 		X19, #7
+    1294:				00c2898b	OR.b64  	X1, X8, X19
+    1298:				0329e908	LD.b8 		X20, [X30], #-1784, #0
+    129c:				032e1000	LD.b8 		X23, [X1], #0, #0
+    12a0:				00c28b0b	OR.b64  	X1, X8, X22
+    12a4:				072a0000	MOV 		X21, #0
+    12a8:				04c3e898	ST.b64 		X1, [X30], #-1896, #0
+    12ac:				00c2598b	OR.b64  	X1, X5, X19
+    12b0:				07340001	MOV 		X26, #1
+    12b4:				04c3e890	ST.b64 		X1, [X30], #-1904, #0
+    12b8:				0702fffe	MOV 		X1, #65534
+    12bc:				0743001f	MOVK 		X1, #31, #1
+    12c0:				00f2008a	AND.b64  	X25, X0, X1
+    12c4:				02f20210	SHL.b64 	X25, #16
+    12c8:				02324b01	INSERT 		X25, #1, #4, #0
+    12cc:				00f6398b	OR.b64  	X27, X3, X19
+    12d0:				070e0000	MOV 		X7, #0
+    12d4:				07140000	MOV 		X10, #0
+    12d8:				07080000	MOV 		X4, #0
+    12dc:				073a0000	MOV 		X29, #0
+    12e0:				04e1e8a0	ST.b64 		X16, [X30], #-1888, #0
+    12e4:				4000001b	JUMP 		#4944 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x34c>
+    12e8:				03c0f000	LD.b64 		X0, [X15], #0, #0
+    12ec:				08047001	ADD.s64 	X2, X7, #1
+    12f0:				024c2a00	ZEROEXT.u16 	X6, X2
+    12f4:				00406d3e	CMP.GT.u64	X6, X26
+    12f8:				00cf5109	SEL.b64  	X7, X21, X2
+    12fc:				02043800	MOV 		X2, X3
+    1300:				02041b01	INSERT 		X2, #1, #1, #0
+    1304:				03cde8c0	LD.b64 		X6, [X30], #-1856, #0
+    1308:				044e2000	ST.b16 		X7, [X2], #0, #0
+    130c:				03841004	LD.b32 		X2, [X1], #4, #0
+    1310:				000c6f81	ADD.s64 	X6, X6, X31
+    1314:				083bd001	ADD.s64 	X29, X29, #1
+    1318:				6bcc2cd5	MOV_UB_TO_OUT_ALIGN.b16	[X6], [X2], X25, X21
+    131c:				03c40010	LD.b64 		X2, [X0], #16, #0
+    1320:				02cc2380	SFF0.b64  	X6, X2
+    1324:				02c46440	SBITSET1.b64  	X2, X6
+    1328:				04c40010	ST.b64 		X2, [X0], #16, #0
+    132c:				040c1003	ST.b8 		X6, [X1], #3, #0
+    1330:				0f001000	STI.b8 	0, [X1], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1334:				03c3e8a8	LD.b64 		X1, [X30], #-1880, #0
+    1338:				02006980	SIGNEXT.s8 	X0, X6
+    133c:				40a21480	SET_FLAG.MTE3.V  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1340:				00c03b0b	OR.b64  	X0, X3, X22
+    1344:				0001d08e	CMP.EQ.s64	X29, X1
+    1348:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    134c:				4020011a	JUMPC 		#6068 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x7b0>
+    1350:				03c3e920	LD.b64 		X1, [X30], #-1760, #0
+    1354:				003fd803	MUL.s64 	X31, X29, X16
+    1358:				08017001	ADD.s64 	X0, X23, #1
+    135c:				020c0a00	ZEROEXT.u8 	X6, X0
+    1360:				00006a0e	CMP.EQ.s64	X6, X20
+    1364:				02057a00	ZEROEXT.u8 	X2, X23
+    1368:				00ef5009	SEL.b64  	X23, X21, X0
+    136c:				00c0898b	OR.b64  	X0, X8, X19
+    1370:				02c40204	SHL.b64 	X2, #4
+    1374:				042e0000	ST.b8 		X23, [X0], #0, #0
+    1378:				01001100	LD.b8 		X0, [X1], X2, #0
+    137c:				48047ee0	JUMPCMP.NE.s64	#4952, 	X0, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x354>
+    1380:				00381101	ADD.s64 	X28, X1, X2
+    1384:				0e001101	STI.b8 	1, [X1], X2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1388:				0301c003	LD.b8 		X0, [X28], #3, #0
+    138c:				0a0000ff	CMP.EQ.s64	X0, #255
+    1390:				4020000a	JUMPC 		#5048 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x3b4>
+    1394:				02000980	SIGNEXT.s8 	X0, X0
+    1398:				03ccf000	LD.b64 		X6, [X15], #0, #0
+    139c:				40c20600	WAIT_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    13a0:				0301c003	LD.b8 		X0, [X28], #3, #0
+    13a4:				03d26008	LD.b64 		X9, [X6], #8, #0
+    13a8:				02000980	SIGNEXT.s8 	X0, X0
+    13ac:				02d20400	SBITSET0.b64  	X9, X0
+    13b0:				04d26008	ST.b64 		X9, [X6], #8, #0
+    13b4:				0f01c062	STI.b8 	f, [X28], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    13b8:				03d7e898	LD.b64 		X11, [X30], #-1896, #0
+    13bc:				000c1101	ADD.s64 	X6, X1, X2
+    13c0:				03d9e900	LD.b64 		X12, [X30], #-1792, #0
+    13c4:				0312b000	LD.b8 		X9, [X11], #0, #0
+    13c8:				08009001	ADD.s64 	X0, X9, #1
+    13cc:				0400b000	ST.b8 		X0, [X11], #0, #0
+    13d0:				03966004	LD.b32 		X11, [X6], #4, #0
+    13d4:				03cde890	LD.b64 		X6, [X30], #-1904, #0
+    13d8:				0301e8e8	LD.b8 		X0, [X30], #-1816, #0
+    13dc:				030c6000	LD.b8 		X6, [X6], #0, #0
+    13e0:				021a6a00	ZEROEXT.u8 	X13, X6
+    13e4:				080c6001	ADD.s64 	X6, X6, #1
+    13e8:				02246a00	ZEROEXT.u8 	X18, X6
+    13ec:				0001200e	CMP.EQ.s64	X18, X0
+    13f0:				00cd5309	SEL.b64  	X6, X21, X6
+    13f4:				00e4598b	OR.b64  	X18, X5, X19
+    13f8:				02da0204	SHL.b64 	X13, #4
+    13fc:				040d2000	ST.b8 		X6, [X18], #0, #0
+    1400:				0124c680	LD.b8 		X18, [X12], X13, #0
+    1404:				49247ee0	JUMPCMP.NE.s64	#5088, 	X18, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x3dc>
+    1408:				000cc681	ADD.s64 	X6, X12, X13
+    140c:				0e00c681	STI.b8 	1, [X12], X13, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1410:				03006003	LD.b8 		X0, [X6], #3, #0
+    1414:				0a4000ff	CMP.NE.s64	X0, #255
+    1418:				40200002	JUMPC 		#5152 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x41c>
+    141c:				4000000b	JUMP 		#5192 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x444>
+    1420:				02000980	SIGNEXT.s8 	X0, X0
+    1424:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    1428:				40c20600	WAIT_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    142c:				03006003	LD.b8 		X0, [X6], #3, #0
+    1430:				03f12008	LD.b64 		X24, [X18], #8, #0
+    1434:				02000980	SIGNEXT.s8 	X0, X0
+    1438:				02f00400	SBITSET0.b64  	X24, X0
+    143c:				04f12008	ST.b64 		X24, [X18], #8, #0
+    1440:				0f006062	STI.b8 	f, [X6], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1444:				40000002	JUMP 		#5196 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x448>
+    1448:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    144c:				00f05b0b	OR.b64  	X24, X5, X22
+    1450:				0018c681	ADD.s64 	X12, X12, X13
+    1454:				03018000	LD.b8 		X0, [X24], #0, #0
+    1458:				03dbe8b0	LD.b64 		X13, [X30], #-1872, #0
+    145c:				02fe0201	SHL.b64 	X31, #1
+    1460:				08220001	ADD.s64 	X17, X0, #1
+    1464:				001adf81	ADD.s64 	X13, X13, X31
+    1468:				04238000	ST.b8 		X17, [X24], #0, #0
+    146c:				03a2c004	LD.b32 		X17, [X12], #4, #0
+    1470:				6b96dcd5	MOV_OUT_TO_UB_ALIGN.b16	[X11], [X13], X25, X21
+    1474:				03d7e8b8	LD.b64 		X11, [X30], #-1864, #0
+    1478:				021a8800	MOV 		X13, X8
+    147c:				021a2b01	INSERT 		X13, #1, #2, #0
+    1480:				0016bf81	ADD.s64 	X11, X11, X31
+    1484:				6ba2bcd5	MOV_OUT_TO_UB_ALIGN.b16	[X17], [X11], X25, X21
+    1488:				0356d000	LD.b16 		X11, [X13], #0, #0
+    148c:				08a1e6f0	SUB.s64 	X16, X30, #1776
+    1490:				02228800	MOV 		X17, X8
+    1494:				02220b01	INSERT 		X17, #1, #0, #0
+    1498:				01f905a0	ST.b64 		X28, [X16], X11, #0
+    149c:				03f12000	LD.b64 		X24, [X18], #0, #0
+    14a0:				03391000	LD.b8 		X28, [X17], #0, #0
+    14a4:				00021101	ADD.s64 	X1, X1, X2
+    14a8:				02dd8380	SFF0.b64  	X14, X24
+    14ac:				02f0e440	SBITSET1.b64  	X24, X14
+    14b0:				04f12000	ST.b64 		X24, [X18], #0, #0
+    14b4:				02245800	MOV 		X18, X5
+    14b8:				02242b01	INSERT 		X18, #1, #2, #0
+    14bc:				041c1002	ST.b8 		X14, [X1], #2, #0
+    14c0:				03452000	LD.b16 		X2, [X18], #0, #0
+    14c4:				0802b001	ADD.s64 	X1, X11, #1
+    14c8:				02561a00	ZEROEXT.u16 	X11, X1
+    14cc:				0040bd3e	CMP.GT.u64	X11, X26
+    14d0:				02162800	MOV 		X11, X2
+    14d4:				02d60203	SHL.b64 	X11, #3
+    14d8:				03f0f000	LD.b64 		X24, [X15], #0, #0
+    14dc:				00c35089	SEL.b64  	X1, X21, X1
+    14e0:				00165581	ADD.s64 	X11, X5, X11
+    14e4:				0442d000	ST.b16 		X1, [X13], #0, #0
+    14e8:				04ccb008	ST.b64 		X6, [X11], #8, #0
+    14ec:				03c38000	LD.b64 		X1, [X24], #0, #0
+    14f0:				020c5800	MOV 		X6, X5
+    14f4:				020c0b01	INSERT 		X6, #1, #0, #0
+    14f8:				02ec1380	SFF0.b64  	X22, X1
+    14fc:				02c36440	SBITSET1.b64  	X1, X22
+    1500:				03166000	LD.b8 		X11, [X6], #0, #0
+    1504:				04c38000	ST.b64 		X1, [X24], #0, #0
+    1508:				042cc002	ST.b8 		X22, [X12], #2, #0
+    150c:				02188800	MOV 		X12, X8
+    1510:				02181b01	INSERT 		X12, #1, #1, #0
+    1514:				08022001	ADD.s64 	X1, X2, #1
+    1518:				0344c000	LD.b16 		X2, [X12], #0, #0
+    151c:				025a1a00	ZEROEXT.u16 	X13, X1
+    1520:				0040dd3e	CMP.GT.u64	X13, X26
+    1524:				00db5089	SEL.b64  	X13, X21, X1
+    1528:				01c30100	LD.b64 		X1, [X16], X2, #0
+    152c:				045b2000	ST.b16 		X13, [X18], #0, #0
+    1530:				04391000	ST.b8 		X28, [X17], #0, #0
+    1534:				021ce980	SIGNEXT.s8 	X14, X14
+    1538:				031a1002	LD.b8 		X13, [X1], #2, #0
+    153c:				40a210b8	SET_FLAG.MTE2.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1540:				021d6980	SIGNEXT.s8 	X14, X22
+    1544:				0a00d0ff	CMP.EQ.s64	X13, #255
+    1548:				40a210b8	SET_FLAG.MTE2.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    154c:				4020000a	JUMPC 		#5492 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x570>
+    1550:				03dcf000	LD.b64 		X14, [X15], #0, #0
+    1554:				03221002	LD.b8 		X17, [X1], #2, #0
+    1558:				021ad980	SIGNEXT.s8 	X13, X13
+    155c:				03e4e000	LD.b64 		X18, [X14], #0, #0
+    1560:				02231980	SIGNEXT.s8 	X17, X17
+    1564:				40c210b4	WAIT_FLAG.MTE2.V  	X13 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1568:				02e51400	SBITSET0.b64  	X18, X17
+    156c:				04e4e000	ST.b64 		X18, [X14], #0, #0
+    1570:				0f001042	STI.b8 	f, [X1], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1574:				021a5800	MOV 		X13, X5
+    1578:				021a1b01	INSERT 		X13, #1, #1, #0
+    157c:				08042001	ADD.s64 	X2, X2, #1
+    1580:				0364d000	LD.b16 		X18, [X13], #0, #0
+    1584:				025c2a00	ZEROEXT.u16 	X14, X2
+    1588:				0040ed3e	CMP.GT.u64	X14, X26
+    158c:				021d2800	MOV 		X14, X18
+    1590:				02dc0203	SHL.b64 	X14, #3
+    1594:				001c5701	ADD.s64 	X14, X5, X14
+    1598:				00e35109	SEL.b64  	X17, X21, X2
+    159c:				03c4e008	LD.b64 		X2, [X14], #8, #0
+    15a0:				0462c000	ST.b16 		X17, [X12], #0, #0
+    15a4:				03b81004	LD.b32 		X28, [X1], #4, #0
+    15a8:				04166000	ST.b8 		X11, [X6], #0, #0
+    15ac:				030c2002	LD.b8 		X6, [X2], #2, #0
+    15b0:				03e1e8a0	LD.b64 		X16, [X30], #-1888, #0
+    15b4:				0a0060ff	CMP.EQ.s64	X6, #255
+    15b8:				4020000a	JUMPC 		#5600 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x5dc>
+    15bc:				03d6f000	LD.b64 		X11, [X15], #0, #0
+    15c0:				03182002	LD.b8 		X12, [X2], #2, #0
+    15c4:				020c6980	SIGNEXT.s8 	X6, X6
+    15c8:				03dcb000	LD.b64 		X14, [X11], #0, #0
+    15cc:				0218c980	SIGNEXT.s8 	X12, X12
+    15d0:				40c21098	WAIT_FLAG.MTE2.V  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    15d4:				02dcc400	SBITSET0.b64  	X14, X12
+    15d8:				04dcb000	ST.b64 		X14, [X11], #0, #0
+    15dc:				0f002042	STI.b8 	f, [X2], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    15e0:				080d2001	ADD.s64 	X6, X18, #1
+    15e4:				02566a00	ZEROEXT.u16 	X11, X6
+    15e8:				0040bd3e	CMP.GT.u64	X11, X26
+    15ec:				00cd5309	SEL.b64  	X6, X21, X6
+    15f0:				03d7e8e0	LD.b64 		X11, [X30], #-1824, #0
+    15f4:				044cd000	ST.b16 		X6, [X13], #0, #0
+    15f8:				038c2004	LD.b32 		X6, [X2], #4, #0
+    15fc:				072c0006	MOV 		X22, #6
+    1600:				02184a00	ZEROEXT.u8 	X12, X4
+    1604:				08084001	ADD.s64 	X4, X4, #1
+    1608:				021a4a00	ZEROEXT.u8 	X13, X4
+    160c:				0a00d002	CMP.EQ.s64	X13, #2
+    1610:				00c95209	SEL.b64  	X4, X21, X4
+    1614:				02d80204	SHL.b64 	X12, #4
+    1618:				0409b000	ST.b8 		X4, [X27], #0, #0
+    161c:				011ab600	LD.b8 		X13, [X11], X12, #0
+    1620:				48c4ff00	JUMPCMP.NE.s64	#5632, 	X13, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x5fc>
+    1624:				001ab601	ADD.s64 	X13, X11, X12
+    1628:				0e00b601	STI.b8 	1, [X11], X12, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    162c:				0324d003	LD.b8 		X18, [X13], #3, #0
+    1630:				0a4120ff	CMP.NE.s64	X18, #255
+    1634:				40200002	JUMPC 		#5692 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x638>
+    1638:				4000000b	JUMP 		#5732 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x660>
+    163c:				021d2980	SIGNEXT.s8 	X14, X18
+    1640:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    1644:				40c214b8	WAIT_FLAG.MTE3.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1648:				031cd003	LD.b8 		X14, [X13], #3, #0
+    164c:				03e32010	LD.b64 		X17, [X18], #16, #0
+    1650:				021ce980	SIGNEXT.s8 	X14, X14
+    1654:				02e2e400	SBITSET0.b64  	X17, X14
+    1658:				04e32010	ST.b64 		X17, [X18], #16, #0
+    165c:				0f00d062	STI.b8 	f, [X13], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1660:				40000002	JUMP 		#5736 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x664>
+    1664:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    1668:				00dc3b0b	OR.b64  	X14, X3, X22
+    166c:				0016b601	ADD.s64 	X11, X11, X12
+    1670:				0f00e001	STI.b8 	1, [X14], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1674:				0398b004	LD.b32 		X12, [X11], #4, #0
+    1678:				40e00400	BAR.V <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    167c:				021c3880	MOV		X14, CTRL
+    1680:				025d8b01	INSERT 		X14, #1, #56, #0
+    1684:				0206e900	MOV		CTRL, X14
+    1688:				071c0101	MOV 		X14, #257
+    168c:				075d0801	MOVK 		X14, #2049, #1
+    1690:				079d0808	MOVK 		X14, #2056, #2
+    1694:				07dd0100	MOVK 		X14, #256, #3
+    1698:				804000d4	MOVEMASK 	MASK[1], X21 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    169c:				07220001	MOV 		X17, #1
+    16a0:				02231080	NEG.s64 	X17, X17
+    16a4:				80400040	MOVEMASK 	MASK[0], X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    16a8:				8559c338	VADD.f16	[X12], [X28], [X6], X14, MASK
+    16ac:				020c3880	MOV		X6, CTRL
+    16b0:				024d8b00	INSERT 		X6, #0, #56, #0
+    16b4:				02066900	MOV		CTRL, X6
+    16b8:				0258aa00	ZEROEXT.u16 	X12, X10
+    16bc:				088de730	SUB.s64 	X6, X30, #1840
+    16c0:				021c6800	MOV 		X14, X6
+    16c4:				804000c4	MOVEMASK 	MASK[1], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    16c8:				01dae620	ST.b64 		X13, [X14], X12, #0
+    16cc:				03cd2018	LD.b64 		X6, [X18], #24, #0
+    16d0:				02183800	MOV 		X12, X3
+    16d4:				02182b01	INSERT 		X12, #1, #2, #0
+    16d8:				02da6380	SFF0.b64  	X13, X6
+    16dc:				02ccd440	SBITSET1.b64  	X6, X13
+    16e0:				04cd2018	ST.b64 		X6, [X18], #24, #0
+    16e4:				080ca001	ADD.s64 	X6, X10, #1
+    16e8:				041ab002	ST.b8 		X13, [X11], #2, #0
+    16ec:				02546a00	ZEROEXT.u16 	X10, X6
+    16f0:				03d6f000	LD.b64 		X11, [X15], #0, #0
+    16f4:				0040ad3e	CMP.GT.u64	X10, X26
+    16f8:				00d55309	SEL.b64  	X10, X21, X6
+    16fc:				80400044	MOVEMASK 	MASK[0], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1700:				0454c000	ST.b16 		X10, [X12], #0, #0
+    1704:				03ccb008	LD.b64 		X6, [X11], #8, #0
+    1708:				02d86380	SFF0.b64  	X12, X6
+    170c:				02ccc440	SBITSET1.b64  	X6, X12
+    1710:				04ccb008	ST.b64 		X6, [X11], #8, #0
+    1714:				04181003	ST.b8 		X12, [X1], #3, #0
+    1718:				0f001000	STI.b8 	0, [X1], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    171c:				03c2f000	LD.b64 		X1, [X15], #0, #0
+    1720:				00cc8b0b	OR.b64  	X6, X8, X22
+    1724:				02163800	MOV 		X11, X3
+    1728:				04126000	ST.b8 		X9, [X6], #0, #0
+    172c:				03cc1008	LD.b64 		X6, [X1], #8, #0
+    1730:				0212d980	SIGNEXT.s8 	X9, X13
+    1734:				02160b01	INSERT 		X11, #1, #0, #0
+    1738:				02da6380	SFF0.b64  	X13, X6
+    173c:				02ccd440	SBITSET1.b64  	X6, X13
+    1740:				40a206a4	SET_FLAG.V.MTE3  	X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1744:				04cc1008	ST.b64 		X6, [X1], #8, #0
+    1748:				02427a00	ZEROEXT.u16 	X1, X7
+    174c:				041a2003	ST.b8 		X13, [X2], #3, #0
+    1750:				0f002000	STI.b8 	0, [X2], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1754:				01c2e080	LD.b64 		X1, [X14], X1, #0
+    1758:				00c45b0b	OR.b64  	X2, X5, X22
+    175c:				0f00b000	STI.b8 	0, [X11], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1760:				04002000	ST.b8 		X0, [X2], #0, #0
+    1764:				03041002	LD.b8 		X2, [X1], #2, #0
+    1768:				020cc980	SIGNEXT.s8 	X6, X12
+    176c:				0200d980	SIGNEXT.s8 	X0, X13
+    1770:				0a4020ff	CMP.NE.s64	X2, #255
+    1774:				40a20618	SET_FLAG.V.MTE2  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1778:				40a20600	SET_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    177c:				40200002	JUMPC 		#6020 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x780>
+    1780:				4000feda	JUMP 		#4840 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x2e4>
+    1784:				03c0f000	LD.b64 		X0, [X15], #0, #0
+    1788:				030c1002	LD.b8 		X6, [X1], #2, #0
+    178c:				02042980	SIGNEXT.s8 	X2, X2
+    1790:				03d20018	LD.b64 		X9, [X0], #24, #0
+    1794:				020c6980	SIGNEXT.s8 	X6, X6
+    1798:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    179c:				02d26400	SBITSET0.b64  	X9, X6
+    17a0:				04d20018	ST.b64 		X9, [X0], #24, #0
+    17a4:				0f001042	STI.b8 	f, [X1], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    17a8:				4000fed1	JUMP 		#4844 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x2e8>
+    17ac:				070e0000	MOV 		X7, #0
+    17b0:				07140000	MOV 		X10, #0
+    17b4:				03f5e880	LD.b64 		X26, [X30], #-1920, #0
+    17b8:				49ac0040	JUMPCMP.GT.s64	#6080, 	X26, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x7bc>
+    17bc:				40000164	JUMP 		#7500 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xd48>
+    17c0:				07020007	MOV 		X1, #7
+    17c4:				00c4808b	OR.b64  	X2, X8, X1
+    17c8:				03c1e920	LD.b64 		X0, [X30], #-1760, #0
+    17cc:				030de908	LD.b8 		X6, [X30], #-1784, #0
+    17d0:				03182000	LD.b8 		X12, [X2], #0, #0
+    17d4:				0213a800	MOV 		X9, X26
+    17d8:				02d20201	SHL.b64 	X9, #1
+    17dc:				07160000	MOV 		X11, #0
+    17e0:				0202ca00	ZEROEXT.u8 	X1, X12
+    17e4:				0818c001	ADD.s64 	X12, X12, #1
+    17e8:				021aca00	ZEROEXT.u8 	X13, X12
+    17ec:				0000d30e	CMP.EQ.s64	X13, X6
+    17f0:				00d8b609	SEL.b64  	X12, X11, X12
+    17f4:				02c20204	SHL.b64 	X1, #4
+    17f8:				04182000	ST.b8 		X12, [X2], #0, #0
+    17fc:				011a0080	LD.b8 		X13, [X0], X1, #0
+    1800:				48c4ff00	JUMPCMP.NE.s64	#6112, 	X13, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x7dc>
+    1804:				00040081	ADD.s64 	X2, X0, X1
+    1808:				0e000081	STI.b8 	1, [X0], X1, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    180c:				030c2003	LD.b8 		X6, [X2], #3, #0
+    1810:				03f3e878	LD.b64 		X25, [X30], #-1928, #0
+    1814:				0a0060ff	CMP.EQ.s64	X6, #255
+    1818:				4020000e	JUMPC 		#6224 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x84c>
+    181c:				0897e790	SUB.s64 	X11, X30, #1936
+    1820:				0256028f	SHR.u64 	X11, #15
+    1824:				02d6020f	SHL.b64 	X11, #15
+    1828:				0816b000	ADD.s64 	X11, X11, #0
+    182c:				020c6980	SIGNEXT.s8 	X6, X6
+    1830:				03d6b000	LD.b64 		X11, [X11], #0, #0
+    1834:				40c20618	WAIT_FLAG.V.MTE2  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1838:				030c2003	LD.b8 		X6, [X2], #3, #0
+    183c:				03d8b008	LD.b64 		X12, [X11], #8, #0
+    1840:				020c6980	SIGNEXT.s8 	X6, X6
+    1844:				02d86400	SBITSET0.b64  	X12, X6
+    1848:				04d8b008	ST.b64 		X12, [X11], #8, #0
+    184c:				0f002062	STI.b8 	f, [X2], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1850:				070c0006	MOV 		X6, #6
+    1854:				00cc830b	OR.b64  	X6, X8, X6
+    1858:				00180081	ADD.s64 	X12, X0, X1
+    185c:				031c6000	LD.b8 		X14, [X6], #0, #0
+    1860:				031be8e8	LD.b8 		X13, [X30], #-1816, #0
+    1864:				071e0000	MOV 		X15, #0
+    1868:				0816e001	ADD.s64 	X11, X14, #1
+    186c:				04166000	ST.b8 		X11, [X6], #0, #0
+    1870:				07160007	MOV 		X11, #7
+    1874:				03a2c004	LD.b32 		X17, [X12], #4, #0
+    1878:				00d8558b	OR.b64  	X12, X5, X11
+    187c:				03cde900	LD.b64 		X6, [X30], #-1792, #0
+    1880:				0320c000	LD.b8 		X16, [X12], #0, #0
+    1884:				02170a00	ZEROEXT.u8 	X11, X16
+    1888:				08210001	ADD.s64 	X16, X16, #1
+    188c:				02250a00	ZEROEXT.u8 	X18, X16
+    1890:				0001268e	CMP.EQ.s64	X18, X13
+    1894:				00e0f809	SEL.b64  	X16, X15, X16
+    1898:				02d60204	SHL.b64 	X11, #4
+    189c:				0420c000	ST.b8 		X16, [X12], #0, #0
+    18a0:				01246580	LD.b8 		X18, [X6], X11, #0
+    18a4:				49247f00	JUMPCMP.NE.s64	#6276, 	X18, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x880>
+    18a8:				00206581	ADD.s64 	X16, X6, X11
+    18ac:				0e006581	STI.b8 	1, [X6], X11, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    18b0:				03190003	LD.b8 		X12, [X16], #3, #0
+    18b4:				0a40c0ff	CMP.NE.s64	X12, #255
+    18b8:				40200002	JUMPC 		#6336 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x8bc>
+    18bc:				4000000f	JUMP 		#6392 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x8f4>
+    18c0:				089be790	SUB.s64 	X13, X30, #1936
+    18c4:				025a028f	SHR.u64 	X13, #15
+    18c8:				02da020f	SHL.b64 	X13, #15
+    18cc:				081ad000	ADD.s64 	X13, X13, #0
+    18d0:				021ec980	SIGNEXT.s8 	X15, X12
+    18d4:				03d8d000	LD.b64 		X12, [X13], #0, #0
+    18d8:				40c2063c	WAIT_FLAG.V.MTE2  	X15 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    18dc:				031b0003	LD.b8 		X13, [X16], #3, #0
+    18e0:				03dec008	LD.b64 		X15, [X12], #8, #0
+    18e4:				021ad980	SIGNEXT.s8 	X13, X13
+    18e8:				02ded400	SBITSET0.b64  	X15, X13
+    18ec:				04dec008	ST.b64 		X15, [X12], #8, #0
+    18f0:				0f010062	STI.b8 	f, [X16], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    18f4:				40000006	JUMP 		#6412 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0x908>
+    18f8:				0899e790	SUB.s64 	X12, X30, #1936
+    18fc:				0258028f	SHR.u64 	X12, #15
+    1900:				02d8020f	SHL.b64 	X12, #15
+    1904:				0818c000	ADD.s64 	X12, X12, #0
+    1908:				03d8c000	LD.b64 		X12, [X12], #0, #0
+    190c:				071a0006	MOV 		X13, #6
+    1910:				00da568b	OR.b64  	X13, X5, X13
+    1914:				02f20201	SHL.b64 	X25, #1
+    1918:				031ed000	LD.b8 		X15, [X13], #0, #0
+    191c:				02268800	MOV 		X19, X8
+    1920:				02260b01	INSERT 		X19, #1, #0, #0
+    1924:				0824f001	ADD.s64 	X18, X15, #1
+    1928:				00000081	ADD.s64 	X0, X0, X1
+    192c:				0424d000	ST.b8 		X18, [X13], #0, #0
+    1930:				00246581	ADD.s64 	X18, X6, X11
+    1934:				0716fffe	MOV 		X11, #65534
+    1938:				03cde8b0	LD.b64 		X6, [X30], #-1872, #0
+    193c:				0757001f	MOVK 		X11, #31, #1
+    1940:				00da958a	AND.b64  	X13, X9, X11
+    1944:				02da0210	SHL.b64 	X13, #16
+    1948:				000c6c81	ADD.s64 	X6, X6, X25
+    194c:				021a4b01	INSERT 		X13, #1, #4, #0
+    1950:				07120000	MOV 		X9, #0
+    1954:				03972004	LD.b32 		X11, [X18], #4, #0
+    1958:				6ba266a5	MOV_OUT_TO_UB_ALIGN.b16	[X17], [X6], X13, X9
+    195c:				03cde8b8	LD.b64 		X6, [X30], #-1864, #0
+    1960:				02228800	MOV 		X17, X8
+    1964:				02222b01	INSERT 		X17, #1, #2, #0
+    1968:				000c6c81	ADD.s64 	X6, X6, X25
+    196c:				022c5800	MOV 		X22, X5
+    1970:				6b9666a5	MOV_OUT_TO_UB_ALIGN.b16	[X11], [X6], X13, X9
+    1974:				034d1000	LD.b16 		X6, [X17], #0, #0
+    1978:				0897e6f0	SUB.s64 	X11, X30, #1776
+    197c:				0236b800	MOV 		X27, X11
+    1980:				022c2b01	INSERT 		X22, #1, #2, #0
+    1984:				01c5b320	ST.b64 		X2, [X27], X6, #0
+    1988:				03c4c000	LD.b64 		X2, [X12], #0, #0
+    198c:				03293000	LD.b8 		X20, [X19], #0, #0
+    1990:				07020001	MOV 		X1, #1
+    1994:				02ea2380	SFF0.b64  	X21, X2
+    1998:				02c55440	SBITSET1.b64  	X2, X21
+    199c:				04c4c000	ST.b64 		X2, [X12], #0, #0
+    19a0:				042a0002	ST.b8 		X21, [X0], #2, #0
+    19a4:				08006001	ADD.s64 	X0, X6, #1
+    19a8:				088de790	SUB.s64 	X6, X30, #1936
+    19ac:				036f6000	LD.b16 		X23, [X22], #0, #0
+    19b0:				024c028f	SHR.u64 	X6, #15
+    19b4:				02cc020f	SHL.b64 	X6, #15
+    19b8:				02440a00	ZEROEXT.u16 	X2, X0
+    19bc:				08166000	ADD.s64 	X11, X6, #0
+    19c0:				004020be	CMP.GT.u64	X2, X1
+    19c4:				02057800	MOV 		X2, X23
+    19c8:				02c40203	SHL.b64 	X2, #3
+    19cc:				03d8b000	LD.b64 		X12, [X11], #0, #0
+    19d0:				00c09009	SEL.b64  	X0, X9, X0
+    19d4:				00045101	ADD.s64 	X2, X5, X2
+    19d8:				04411000	ST.b16 		X0, [X17], #0, #0
+    19dc:				04e02008	ST.b64 		X16, [X2], #8, #0
+    19e0:				03c0c000	LD.b64 		X0, [X12], #0, #0
+    19e4:				02045800	MOV 		X2, X5
+    19e8:				02040b01	INSERT 		X2, #1, #0, #0
+    19ec:				02f00380	SFF0.b64  	X24, X0
+    19f0:				02c18440	SBITSET1.b64  	X0, X24
+    19f4:				030c2000	LD.b8 		X6, [X2], #0, #0
+    19f8:				04c0c000	ST.b64 		X0, [X12], #0, #0
+    19fc:				02188800	MOV 		X12, X8
+    1a00:				02181b01	INSERT 		X12, #1, #1, #0
+    1a04:				04312002	ST.b8 		X24, [X18], #2, #0
+    1a08:				0362c000	LD.b16 		X17, [X12], #0, #0
+    1a0c:				08017001	ADD.s64 	X0, X23, #1
+    1a10:				02600a00	ZEROEXT.u16 	X16, X0
+    1a14:				004100be	CMP.GT.u64	X16, X1
+    1a18:				00e09009	SEL.b64  	X16, X9, X0
+    1a1c:				01c1b880	LD.b64 		X0, [X27], X17, #0
+    1a20:				04616000	ST.b16 		X16, [X22], #0, #0
+    1a24:				04293000	ST.b8 		X20, [X19], #0, #0
+    1a28:				02255980	SIGNEXT.s8 	X18, X21
+    1a2c:				03200002	LD.b8 		X16, [X0], #2, #0
+    1a30:				40a210c8	SET_FLAG.MTE2.V  	X18 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1a34:				02258980	SIGNEXT.s8 	X18, X24
+    1a38:				0a0100ff	CMP.EQ.s64	X16, #255
+    1a3c:				40a210c8	SET_FLAG.MTE2.V  	X18 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1a40:				4020000a	JUMPC 		#6760 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xa64>
+    1a44:				03d6b000	LD.b64 		X11, [X11], #0, #0
+    1a48:				03240002	LD.b8 		X18, [X0], #2, #0
+    1a4c:				02210980	SIGNEXT.s8 	X16, X16
+    1a50:				03e6b000	LD.b64 		X19, [X11], #0, #0
+    1a54:				02252980	SIGNEXT.s8 	X18, X18
+    1a58:				40c210c0	WAIT_FLAG.MTE2.V  	X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1a5c:				02e72400	SBITSET0.b64  	X19, X18
+    1a60:				04e6b000	ST.b64 		X19, [X11], #0, #0
+    1a64:				0f000042	STI.b8 	f, [X0], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1a68:				02165800	MOV 		X11, X5
+    1a6c:				02161b01	INSERT 		X11, #1, #1, #0
+    1a70:				08231001	ADD.s64 	X17, X17, #1
+    1a74:				0360b000	LD.b16 		X16, [X11], #0, #0
+    1a78:				02651a00	ZEROEXT.u16 	X18, X17
+    1a7c:				004120be	CMP.GT.u64	X18, X1
+    1a80:				02030800	MOV 		X1, X16
+    1a84:				02c20203	SHL.b64 	X1, #3
+    1a88:				00025081	ADD.s64 	X1, X5, X1
+    1a8c:				00e29889	SEL.b64  	X17, X9, X17
+    1a90:				03d21008	LD.b64 		X9, [X1], #8, #0
+    1a94:				0462c000	ST.b16 		X17, [X12], #0, #0
+    1a98:				03820004	LD.b32 		X1, [X0], #4, #0
+    1a9c:				040c2000	ST.b8 		X6, [X2], #0, #0
+    1aa0:				03049002	LD.b8 		X2, [X9], #2, #0
+    1aa4:				0a0020ff	CMP.EQ.s64	X2, #255
+    1aa8:				4020000e	JUMPC 		#6880 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xadc>
+    1aac:				088de790	SUB.s64 	X6, X30, #1936
+    1ab0:				024c028f	SHR.u64 	X6, #15
+    1ab4:				02cc020f	SHL.b64 	X6, #15
+    1ab8:				080c6000	ADD.s64 	X6, X6, #0
+    1abc:				03189002	LD.b8 		X12, [X9], #2, #0
+    1ac0:				03cc6000	LD.b64 		X6, [X6], #0, #0
+    1ac4:				02042980	SIGNEXT.s8 	X2, X2
+    1ac8:				0218c980	SIGNEXT.s8 	X12, X12
+    1acc:				03e26000	LD.b64 		X17, [X6], #0, #0
+    1ad0:				40c21088	WAIT_FLAG.MTE2.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1ad4:				02e2c400	SBITSET0.b64  	X17, X12
+    1ad8:				04e26000	ST.b64 		X17, [X6], #0, #0
+    1adc:				0f009042	STI.b8 	f, [X9], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1ae0:				08050001	ADD.s64 	X2, X16, #1
+    1ae4:				024c2a00	ZEROEXT.u16 	X6, X2
+    1ae8:				07180001	MOV 		X12, #1
+    1aec:				0040663e	CMP.GT.u64	X6, X12
+    1af0:				07180000	MOV 		X12, #0
+    1af4:				00c4c109	SEL.b64  	X2, X12, X2
+    1af8:				070c0007	MOV 		X6, #7
+    1afc:				0444b000	ST.b16 		X2, [X11], #0, #0
+    1b00:				03849004	LD.b32 		X2, [X9], #4, #0
+    1b04:				03d7e8e0	LD.b64 		X11, [X30], #-1824, #0
+    1b08:				00e0330b	OR.b64  	X16, X3, X6
+    1b0c:				020c4a00	ZEROEXT.u8 	X6, X4
+    1b10:				08084001	ADD.s64 	X4, X4, #1
+    1b14:				02224a00	ZEROEXT.u8 	X17, X4
+    1b18:				0a011002	CMP.EQ.s64	X17, #2
+    1b1c:				00c8c209	SEL.b64  	X4, X12, X4
+    1b20:				02cc0204	SHL.b64 	X6, #4
+    1b24:				04090000	ST.b8 		X4, [X16], #0, #0
+    1b28:				0122b300	LD.b8 		X17, [X11], X6, #0
+    1b2c:				4904ff00	JUMPCMP.NE.s64	#6924, 	X17, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xb08>
+    1b30:				0008b301	ADD.s64 	X4, X11, X6
+    1b34:				0e00b301	STI.b8 	1, [X11], X6, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1b38:				03184003	LD.b8 		X12, [X4], #3, #0
+    1b3c:				0a40c0ff	CMP.NE.s64	X12, #255
+    1b40:				40200002	JUMPC 		#6984 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xb44>
+    1b44:				4000000f	JUMP 		#7040 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xb7c>
+    1b48:				08a1e790	SUB.s64 	X16, X30, #1936
+    1b4c:				0260028f	SHR.u64 	X16, #15
+    1b50:				02e0020f	SHL.b64 	X16, #15
+    1b54:				08210000	ADD.s64 	X16, X16, #0
+    1b58:				0222c980	SIGNEXT.s8 	X17, X12
+    1b5c:				03d90000	LD.b64 		X12, [X16], #0, #0
+    1b60:				40c214c4	WAIT_FLAG.MTE3.V  	X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1b64:				03204003	LD.b8 		X16, [X4], #3, #0
+    1b68:				03e2c010	LD.b64 		X17, [X12], #16, #0
+    1b6c:				02210980	SIGNEXT.s8 	X16, X16
+    1b70:				02e30400	SBITSET0.b64  	X17, X16
+    1b74:				04e2c010	ST.b64 		X17, [X12], #16, #0
+    1b78:				0f004062	STI.b8 	f, [X4], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1b7c:				40000006	JUMP 		#7060 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xb90>
+    1b80:				0899e790	SUB.s64 	X12, X30, #1936
+    1b84:				0258028f	SHR.u64 	X12, #15
+    1b88:				02d8020f	SHL.b64 	X12, #15
+    1b8c:				0818c000	ADD.s64 	X12, X12, #0
+    1b90:				03d8c000	LD.b64 		X12, [X12], #0, #0
+    1b94:				02a3a980	SIGNEXT.s32 	X17, X26
+    1b98:				80400044	MOVEMASK 	MASK[0], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1b9c:				07220006	MOV 		X17, #6
+    1ba0:				00e4388b	OR.b64  	X18, X3, X17
+    1ba4:				000cb301	ADD.s64 	X6, X11, X6
+    1ba8:				0f012001	STI.b8 	1, [X18], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1bac:				03966004	LD.b32 		X11, [X6], #4, #0
+    1bb0:				07200000	MOV 		X16, #0
+    1bb4:				40e00400	BAR.V <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1bb8:				02243880	MOV		X18, CTRL
+    1bbc:				02658b01	INSERT 		X18, #1, #56, #0
+    1bc0:				02072900	MOV		CTRL, X18
+    1bc4:				07240101	MOV 		X18, #257
+    1bc8:				07650801	MOVK 		X18, #2049, #1
+    1bcc:				07a50808	MOVK 		X18, #2056, #2
+    1bd0:				07e50100	MOVK 		X18, #256, #3
+    1bd4:				804000c0	MOVEMASK 	MASK[1], X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1bd8:				85561148	VADD.f16	[X11], [X1], [X2], X18, MASK
+    1bdc:				02023880	MOV		X1, CTRL
+    1be0:				02438b00	INSERT 		X1, #0, #56, #0
+    1be4:				0897e730	SUB.s64 	X11, X30, #1840
+    1be8:				02061900	MOV		CTRL, X1
+    1bec:				0242aa00	ZEROEXT.u16 	X1, X10
+    1bf0:				0224b800	MOV 		X18, X11
+    1bf4:				07040001	MOV 		X2, #1
+    1bf8:				01c920a0	ST.b64 		X4, [X18], X1, #0
+    1bfc:				03c2c018	LD.b64 		X1, [X12], #24, #0
+    1c00:				02083800	MOV 		X4, X3
+    1c04:				02082b01	INSERT 		X4, #1, #2, #0
+    1c08:				02d61380	SFF0.b64  	X11, X1
+    1c0c:				02c2b440	SBITSET1.b64  	X1, X11
+    1c10:				02042080	NEG.s64 	X2, X2
+    1c14:				04c2c018	ST.b64 		X1, [X12], #24, #0
+    1c18:				0883e790	SUB.s64 	X1, X30, #1936
+    1c1c:				0242028f	SHR.u64 	X1, #15
+    1c20:				02c2020f	SHL.b64 	X1, #15
+    1c24:				04166002	ST.b8 		X11, [X6], #2, #0
+    1c28:				080ca001	ADD.s64 	X6, X10, #1
+    1c2c:				08021000	ADD.s64 	X1, X1, #0
+    1c30:				02546a00	ZEROEXT.u16 	X10, X6
+    1c34:				07180001	MOV 		X12, #1
+    1c38:				0040a63e	CMP.GT.u64	X10, X12
+    1c3c:				03d41000	LD.b64 		X10, [X1], #0, #0
+    1c40:				00cd0309	SEL.b64  	X6, X16, X6
+    1c44:				80400088	MOVEMASK 	MASK[1], X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1c48:				044c4000	ST.b16 		X6, [X4], #0, #0
+    1c4c:				03c8a008	LD.b64 		X4, [X10], #8, #0
+    1c50:				02cc4380	SFF0.b64  	X6, X4
+    1c54:				02c86440	SBITSET1.b64  	X4, X6
+    1c58:				04c8a008	ST.b64 		X4, [X10], #8, #0
+    1c5c:				040c0003	ST.b8 		X6, [X0], #3, #0
+    1c60:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1c64:				03c01000	LD.b64 		X0, [X1], #0, #0
+    1c68:				80400008	MOVEMASK 	MASK[0], X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1c6c:				00c4888b	OR.b64  	X2, X8, X17
+    1c70:				02083800	MOV 		X4, X3
+    1c74:				041c2000	ST.b8 		X14, [X2], #0, #0
+    1c78:				03c40008	LD.b64 		X2, [X0], #8, #0
+    1c7c:				02080b01	INSERT 		X4, #1, #0, #0
+    1c80:				0210b980	SIGNEXT.s8 	X8, X11
+    1c84:				02d42380	SFF0.b64  	X10, X2
+    1c88:				02c4a440	SBITSET1.b64  	X2, X10
+    1c8c:				40a206a0	SET_FLAG.V.MTE3  	X8 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1c90:				04c40008	ST.b64 		X2, [X0], #8, #0
+    1c94:				02407a00	ZEROEXT.u16 	X0, X7
+    1c98:				04149003	ST.b8 		X10, [X9], #3, #0
+    1c9c:				0f009000	STI.b8 	0, [X9], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1ca0:				01c12000	LD.b64 		X0, [X18], X0, #0
+    1ca4:				00c4588b	OR.b64  	X2, X5, X17
+    1ca8:				0f004000	STI.b8 	0, [X4], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1cac:				041e2000	ST.b8 		X15, [X2], #0, #0
+    1cb0:				03040002	LD.b8 		X2, [X0], #2, #0
+    1cb4:				020a6980	SIGNEXT.s8 	X5, X6
+    1cb8:				0208a980	SIGNEXT.s8 	X4, X10
+    1cbc:				0a4020ff	CMP.NE.s64	X2, #255
+    1cc0:				40a20614	SET_FLAG.V.MTE2  	X5 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1cc4:				40a20610	SET_FLAG.V.MTE2  	X4 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1cc8:				40200002	JUMPC 		#7376 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xccc>
+    1ccc:				4000000b	JUMP 		#7416 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xcf4>
+    1cd0:				03c21000	LD.b64 		X1, [X1], #0, #0
+    1cd4:				03080002	LD.b8 		X4, [X0], #2, #0
+    1cd8:				02042980	SIGNEXT.s8 	X2, X2
+    1cdc:				03ca1018	LD.b64 		X5, [X1], #24, #0
+    1ce0:				02084980	SIGNEXT.s8 	X4, X4
+    1ce4:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1ce8:				02ca4400	SBITSET0.b64  	X5, X4
+    1cec:				04ca1018	ST.b64 		X5, [X1], #24, #0
+    1cf0:				0f000042	STI.b8 	f, [X0], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1cf4:				40000002	JUMP 		#7420 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xcf8>
+    1cf8:				03c21000	LD.b64 		X1, [X1], #0, #0
+    1cfc:				08047001	ADD.s64 	X2, X7, #1
+    1d00:				02482a00	ZEROEXT.u16 	X4, X2
+    1d04:				070a0001	MOV 		X5, #1
+    1d08:				004042be	CMP.GT.u64	X4, X5
+    1d0c:				07080000	MOV 		X4, #0
+    1d10:				00c44109	SEL.b64  	X2, X4, X2
+    1d14:				02061b01	INSERT 		X3, #1, #1, #0
+    1d18:				04443000	ST.b16 		X2, [X3], #0, #0
+    1d1c:				03c7e8c0	LD.b64 		X3, [X30], #-1856, #0
+    1d20:				03840004	LD.b32 		X2, [X0], #4, #0
+    1d24:				00063c81	ADD.s64 	X3, X3, X25
+    1d28:				6bc62691	MOV_UB_TO_OUT_ALIGN.b16	[X3], [X2], X13, X4
+    1d2c:				03c41010	LD.b64 		X2, [X1], #16, #0
+    1d30:				02c62380	SFF0.b64  	X3, X2
+    1d34:				02c43440	SBITSET1.b64  	X2, X3
+    1d38:				04c41010	ST.b64 		X2, [X1], #16, #0
+    1d3c:				02023980	SIGNEXT.s8 	X1, X3
+    1d40:				04060003	ST.b8 		X3, [X0], #3, #0
+    1d44:				40a21484	SET_FLAG.MTE3.V  	X1 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1d48:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1d4c:				03c1e988	LD.b64 		X0, [X30], #-1656, #0
+    1d50:				02c20380	SFF0.b64  	X1, X0
+    1d54:				02c01440	SBITSET1.b64  	X0, X1
+    1d58:				04c1e988	ST.b64 		X0, [X30], #-1656, #0
+    1d5c:				02001980	SIGNEXT.s8 	X0, X1
+    1d60:				03c3e988	LD.b64 		X1, [X30], #-1656, #0
+    1d64:				40a21400	SET_FLAG.MTE3.S  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1d68:				02c20400	SBITSET0.b64  	X1, X0
+    1d6c:				40c21400	WAIT_FLAG.MTE3.S  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1d70:				07000000	MOV 		X0, #0
+    1d74:				04c3e988	ST.b64 		X1, [X30], #-1656, #0
+    1d78:				02808880	MOV		X0, SYS_CNT
+    1d7c:				03c3e888	LD.b64 		X1, [X30], #-1912, #0
+    1d80:				04c01010	ST.b64 		X0, [X1], #16, #0
+    1d84:				0301eddd	LD.b8 		X0, [X30], #-547, #0
+    1d88:				48040040	JUMPCMP.NE.s64	#7568, 	X0, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xd8c>
+    1d8c:				40000005	JUMP 		#7584 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xd9c>
+    1d90:				071e0000	MOV 		X15, #0
+    1d94:				41400000	NOP
+    1d98:				402ef000	DCCI 		X15, #1
+    1d9c:				41600000	END
+    1da0:				0307eddc	LD.b8 		X3, [X30], #-548, #0
+    1da4:				0f37eba1	STI.b8 	1, [X30], #-547, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1da8:				48209260	JUMPCMP.EQ.s64	#8180, 	X3, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xff0>
+    1dac:				07020000	MOV 		X1, #0
+    1db0:				0881e64d	SUB.s64 	X0, X30, #1613
+    1db4:				4000000b	JUMP 		#7648 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xddc>
+    1db8:				02042980	SIGNEXT.s8 	X2, X2
+    1dbc:				40c20408	WAIT_FLAG.V.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1dc0:				0f000002	STI.b8 	f, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1dc4:				0307eddc	LD.b8 		X3, [X30], #-548, #0
+    1dc8:				08021001	ADD.s64 	X1, X1, #1
+    1dcc:				02041a00	ZEROEXT.u8 	X2, X1
+    1dd0:				02083a00	ZEROEXT.u8 	X4, X3
+    1dd4:				08000010	ADD.s64 	X0, X0, #16
+    1dd8:				4a290044	JUMPCMP.LT.u64	#7648, 	X2, 	X4 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xddc>
+    1ddc:				40000086	JUMP 		#8180 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xff0>
+    1de0:				03040000	LD.b8 		X2, [X0], #0, #0
+    1de4:				0a0020ff	CMP.EQ.s64	X2, #255
+    1de8:				4020fff8	JUMPC 		#7624 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdc4>
+    1dec:				03080ffd	LD.b8 		X4, [X0], #-3, #0
+    1df0:				48447ec0	JUMPCMP.NE.s64	#7624, 	X4, 	#0 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdc4>
+    1df4:				03060ffe	LD.b8 		X3, [X0], #-2, #0
+    1df8:				0ac03017	CMP.GT.s64	X3, #23
+    1dfc:				40200010	JUMPC 		#7740 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe38>
+    1e00:				0ac03011	CMP.GT.s64	X3, #17
+    1e04:				40200002	JUMPC 		#7692 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe08>
+    1e08:				4000001c	JUMP 		#7800 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe74>
+    1e0c:				0ac03014	CMP.GT.s64	X3, #20
+    1e10:				40200031	JUMPC 		#7892 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xed0>
+    1e14:				0a003012	CMP.EQ.s64	X3, #18
+    1e18:				40200050	JUMPC 		#8024 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf54>
+    1e1c:				0a003013	CMP.EQ.s64	X3, #19
+    1e20:				40200051	JUMPC 		#8036 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf60>
+    1e24:				0a003014	CMP.EQ.s64	X3, #20
+    1e28:				40200002	JUMPC 		#7728 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe2c>
+    1e2c:				4000ffe5	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1e30:				02042980	SIGNEXT.s8 	X2, X2
+    1e34:				40c21288	WAIT_FLAG.MTE2.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1e38:				4000ffe2	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1e3c:				0ac0301c	CMP.GT.s64	X3, #28
+    1e40:				40200002	JUMPC 		#7752 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe44>
+    1e44:				40000017	JUMP 		#7840 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe9c>
+    1e48:				0ac0301f	CMP.GT.s64	X3, #31
+    1e4c:				4020002c	JUMPC 		#7932 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xef8>
+    1e50:				0a00301d	CMP.EQ.s64	X3, #29
+    1e54:				40200047	JUMPC 		#8048 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf6c>
+    1e58:				0a00301e	CMP.EQ.s64	X3, #30
+    1e5c:				40200048	JUMPC 		#8060 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf78>
+    1e60:				0a00301f	CMP.EQ.s64	X3, #31
+    1e64:				40200002	JUMPC 		#7788 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe68>
+    1e68:				4000ffd6	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1e6c:				02042980	SIGNEXT.s8 	X2, X2
+    1e70:				40c22a88	WAIT_FLAG.F.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    1e74:				4000ffd3	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1e78:				482c8045	JUMPCMP.GT.s64	#7808, 	X3, 	#5 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe7c>
+    1e7c:				40000029	JUMP 		#7968 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf1c>
+    1e80:				48208846	JUMPCMP.EQ.s64	#8072, 	X3, 	#6 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf84>
+    1e84:				48208887	JUMPCMP.EQ.s64	#8084, 	X3, 	#7 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf90>
+    1e88:				0a003011	CMP.EQ.s64	X3, #17
+    1e8c:				40200002	JUMPC 		#7828 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xe90>
+    1e90:				4000ffcc	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1e94:				02042980	SIGNEXT.s8 	X2, X2
+    1e98:				40c24908	WAIT_FLAG.M.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1e9c:				4000ffc9	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1ea0:				0ac03019	CMP.GT.s64	X3, #25
+    1ea4:				40200002	JUMPC 		#7852 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xea8>
+    1ea8:				40000024	JUMP 		#7992 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf34>
+    1eac:				0a00301a	CMP.EQ.s64	X3, #26
+    1eb0:				4020003c	JUMPC 		#8096 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf9c>
+    1eb4:				0a00301b	CMP.EQ.s64	X3, #27
+    1eb8:				4020003d	JUMPC 		#8108 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xfa8>
+    1ebc:				0a00301c	CMP.EQ.s64	X3, #28
+    1ec0:				40200002	JUMPC 		#7880 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xec4>
+    1ec4:				4000ffbf	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1ec8:				02042980	SIGNEXT.s8 	X2, X2
+    1ecc:				40c22a08	WAIT_FLAG.F.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    1ed0:				4000ffbc	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1ed4:				0a003015	CMP.EQ.s64	X3, #21
+    1ed8:				40200038	JUMPC 		#8120 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xfb4>
+    1edc:				0a003016	CMP.EQ.s64	X3, #22
+    1ee0:				4020ffb6	JUMPC 		#7608 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdb4>
+    1ee4:				0a003017	CMP.EQ.s64	X3, #23
+    1ee8:				40200002	JUMPC 		#7920 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xeec>
+    1eec:				4000ffb5	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1ef0:				02042980	SIGNEXT.s8 	X2, X2
+    1ef4:				40c20208	WAIT_FLAG.S.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1ef8:				4000ffb2	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1efc:				0a003020	CMP.EQ.s64	X3, #32
+    1f00:				40200031	JUMPC 		#8132 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xfc0>
+    1f04:				0a003021	CMP.EQ.s64	X3, #33
+    1f08:				40200032	JUMPC 		#8144 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xfcc>
+    1f0c:				0a003022	CMP.EQ.s64	X3, #34
+    1f10:				40200002	JUMPC 		#7960 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf14>
+    1f14:				4000ffab	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f18:				40e02800	BAR.F <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    1f1c:				4000ffa9	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f20:				482085e4	JUMPCMP.EQ.s64	#8156, 	X3, 	#4 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xfd8>
+    1f24:				48208045	JUMPCMP.EQ.s64	#7980, 	X3, 	#5 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf28>
+    1f28:				4000ffa6	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f2c:				02042980	SIGNEXT.s8 	X2, X2
+    1f30:				40c20608	WAIT_FLAG.V.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1f34:				4000ffa3	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f38:				0a003018	CMP.EQ.s64	X3, #24
+    1f3c:				4020002b	JUMPC 		#8168 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xfe4>
+    1f40:				0a003019	CMP.EQ.s64	X3, #25
+    1f44:				40200002	JUMPC 		#8012 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xf48>
+    1f48:				4000ff9e	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f4c:				02042980	SIGNEXT.s8 	X2, X2
+    1f50:				40c20288	WAIT_FLAG.S.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1f54:				4000ff9b	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f58:				02042980	SIGNEXT.s8 	X2, X2
+    1f5c:				40c22908	WAIT_FLAG.F.M  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    1f60:				4000ff98	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f64:				02042980	SIGNEXT.s8 	X2, X2
+    1f68:				40c21608	WAIT_FLAG.MTE3.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1f6c:				4000ff95	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f70:				02042980	SIGNEXT.s8 	X2, X2
+    1f74:				40c22808	WAIT_FLAG.F.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    1f78:				4000ff92	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f7c:				02042980	SIGNEXT.s8 	X2, X2
+    1f80:				40c20808	WAIT_FLAG.M.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    1f84:				4000ff8f	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f88:				02042980	SIGNEXT.s8 	X2, X2
+    1f8c:				40c21488	WAIT_FLAG.MTE3.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1f90:				4000ff8c	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1f94:				02042980	SIGNEXT.s8 	X2, X2
+    1f98:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    1f9c:				4000ff89	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fa0:				02042980	SIGNEXT.s8 	X2, X2
+    1fa4:				40c21408	WAIT_FLAG.MTE3.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    1fa8:				4000ff86	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fac:				02042980	SIGNEXT.s8 	X2, X2
+    1fb0:				40c25108	WAIT_FLAG.MTE2.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1fb4:				4000ff83	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fb8:				02042980	SIGNEXT.s8 	X2, X2
+    1fbc:				40c20088	WAIT_FLAG.S.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    1fc0:				4000ff80	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fc4:				02042980	SIGNEXT.s8 	X2, X2
+    1fc8:				40c24d08	WAIT_FLAG.MTE1.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x3>
+    1fcc:				4000ff7d	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fd0:				02042980	SIGNEXT.s8 	X2, X2
+    1fd4:				40c22988	WAIT_FLAG.F.MTE1  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    1fd8:				4000ff7a	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fdc:				02042980	SIGNEXT.s8 	X2, X2
+    1fe0:				40c21088	WAIT_FLAG.MTE2.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1fe4:				4000ff77	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1fe8:				02042980	SIGNEXT.s8 	X2, X2
+    1fec:				40c21008	WAIT_FLAG.MTE2.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    1ff0:				4000ff74	JUMP 		#7616 <_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_+0xdbc>
+    1ff4:				40e01800	BAR.ALL <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x6>
+    1ff8:				071e0000	MOV 		X15, #0
+    1ffc:				41400000	NOP
+    2000:				402ef000	DCCI 		X15, #1
+    2004:				41600000	END
+
+0000000000002008 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_>:
+    2008:				073a7f80	MOV 		X29, #32640
+    200c:				077b0010	MOVK 		X29, #16, #1
+    2010:				029e3880	MOV		X15, SYS_VA_BASE
+    2014:				003bd781	ADD.s64 	X29, X29, X15
+    2018:				021f0880	MOV		X15, COREID
+    201c:				07207fff	MOV 		X16, #32767
+    2020:				07000001	MOV 		X0, #1
+    2024:				00def80a	AND.b64  	X15, X15, X16
+    2028:				07228000	MOV 		X17, #32768
+    202c:				02000080	NEG.s64 	X0, X0
+    2030:				003af884	MADD.s64 	X29, X15, X17
+    2034:				80400000	MOVEMASK 	MASK[0], X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2038:				80400080	MOVEMASK 	MASK[1], X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    203c:				083dd220	ADD.s64 	X30, X29, #544
+    2040:				02004880	MOV		X0, PARA_BASE
+    2044:				07020000	MOV 		X1, #0
+    2048:				03c60030	LD.b64 		X3, [X0], #48, #0
+    204c:				09d00330	LDP.b64 	X8, X6, [X0], #24
+    2050:				09ca0110	LDP.b64 	X5, X2, [X0], #8
+    2054:				03ce0000	LD.b64 		X7, [X0], #0, #0
+    2058:				03800028	LD.b32 		X0, [X0], #40, #0
+    205c:				02828880	MOV		X1, SYS_CNT
+    2060:				02123880	MOV		X9, CTRL
+    2064:				07140000	MOV 		X10, #0
+    2068:				0212acc2	INSERT 		X9, X10, #6, #2
+    206c:				02069900	MOV		CTRL, X9
+    2070:				02123880	MOV		X9, CTRL
+    2074:				02538b00	INSERT 		X9, #0, #56, #0
+    2078:				02069900	MOV		CTRL, X9
+    207c:				07080000	MOV 		X4, #0
+    2080:				1014fff0	MOVX8 		X10, #65520
+    2084:				0893e660	SUB.s64 	X9, X30, #1632
+    2088:				0495edd8	ST.b32 		X10, [X30], #-552, #0
+    208c:				0fa7e200	STI.b32 	0, [X30], #-1648, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2090:				0fe7e300	STI.b64 	0, [X30], #-1640, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2094:				09c89201	STP.b64 	X4, X4, [X9], #0
+    2098:				0fe5e500	STI.b64 	0, [X30], #-1752, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    209c:				0893e6c0	SUB.s64 	X9, X30, #1728
+    20a0:				09c89261	STP.b64 	X4, X4, [X9], #-16
+    20a4:				09c89201	STP.b64 	X4, X4, [X9], #0
+    20a8:				0895e6a0	SUB.s64 	X10, X30, #1696
+    20ac:				0893e680	SUB.s64 	X9, X30, #1664
+    20b0:				09c8a261	STP.b64 	X4, X4, [X10], #-16
+    20b4:				09c8a201	STP.b64 	X4, X4, [X10], #0
+    20b8:				09c89261	STP.b64 	X4, X4, [X9], #-16
+    20bc:				09c89201	STP.b64 	X4, X4, [X9], #0
+    20c0:				0893e790	SUB.s64 	X9, X30, #1936
+    20c4:				0252028f	SHR.u64 	X9, #15
+    20c8:				02d2020f	SHL.b64 	X9, #15
+    20cc:				081e9000	ADD.s64 	X15, X9, #0
+    20d0:				0714ffe0	MOV 		X10, #65504
+    20d4:				0893e6d8	SUB.s64 	X9, X30, #1752
+    20d8:				0755ffff	MOVK 		X10, #65535, #1
+    20dc:				04d2f000	ST.b64 		X9, [X15], #0, #0
+    20e0:				0812001f	ADD.s64 	X9, X0, #31
+    20e4:				07950001	MOVK 		X10, #1, #2
+    20e8:				00d2950a	AND.b64  	X9, X9, X10
+    20ec:				07180500	MOV 		X12, #1280
+    20f0:				0895e650	SUB.s64 	X10, X30, #1616
+    20f4:				0759ffff	MOVK 		X12, #65535, #1
+    20f8:				04d5e920	ST.b64 		X10, [X30], #-1760, #0
+    20fc:				0895e640	SUB.s64 	X10, X30, #1600
+    2100:				089be630	SUB.s64 	X13, X30, #1584
+    2104:				0fb7e602	STI.b32 	f, [X30], #-592, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2108:				0fb7e702	STI.b32 	f, [X30], #-584, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    210c:				0fb7e682	STI.b32 	f, [X30], #-588, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2110:				0f37eba0	STI.b8 	0, [X30], #-547, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2114:				04d9e9b0	ST.b64 		X12, [X30], #-1616, #0
+    2118:				0493e9b8	ST.b32 		X9, [X30], #-1608, #0
+    211c:				0fa7e782	STI.b32 	f, [X30], #-1604, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2120:				0998a481	STP.b32 	X12, X9, [X10], #0
+    2124:				02149800	MOV 		X10, X9
+    2128:				07160002	MOV 		X11, #2
+    212c:				02d40201	SHL.b64 	X10, #1
+    2130:				089de700	SUB.s64 	X14, X30, #1792
+    2134:				09dae581	STP.b64 	X13, X11, [X14], #0
+    2138:				089be630	SUB.s64 	X13, X30, #1584
+    213c:				0493e9c8	ST.b32 		X9, [X30], #-1592, #0
+    2140:				0fa7e982	STI.b32 	f, [X30], #-1588, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2144:				04d7e8e8	ST.b64 		X11, [X30], #-1816, #0
+    2148:				0998d501	STP.b32 	X12, X10, [X13], #0
+    214c:				08549003	MUL.s64 	X10, X9, #3
+    2150:				04d7e8c8	ST.b64 		X11, [X30], #-1848, #0
+    2154:				089be620	SUB.s64 	X13, X30, #1568
+    2158:				0897e610	SUB.s64 	X11, X30, #1552
+    215c:				0493e9d8	ST.b32 		X9, [X30], #-1576, #0
+    2160:				0fa7eb82	STI.b32 	f, [X30], #-1572, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2164:				0998d501	STP.b32 	X12, X10, [X13], #0
+    2168:				02149800	MOV 		X10, X9
+    216c:				07180600	MOV 		X12, #1536
+    2170:				02d40202	SHL.b64 	X10, #2
+    2174:				0759ffff	MOVK 		X12, #65535, #1
+    2178:				04d7e8e0	ST.b64 		X11, [X30], #-1824, #0
+    217c:				0897e610	SUB.s64 	X11, X30, #1552
+    2180:				0493e9e8	ST.b32 		X9, [X30], #-1560, #0
+    2184:				0fa7ed82	STI.b32 	f, [X30], #-1556, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2188:				0998b501	STP.b32 	X12, X10, [X11], #0
+    218c:				08549005	MUL.s64 	X10, X9, #5
+    2190:				08569006	MUL.s64 	X11, X9, #6
+    2194:				072c0006	MOV 		X22, #6
+    2198:				089be600	SUB.s64 	X13, X30, #1536
+    219c:				0493e9f8	ST.b32 		X9, [X30], #-1544, #0
+    21a0:				0fa7ef82	STI.b32 	f, [X30], #-1540, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    21a4:				0998d501	STP.b32 	X12, X10, [X13], #0
+    21a8:				0493ea08	ST.b32 		X9, [X30], #-1528, #0
+    21ac:				0fa9e182	STI.b32 	f, [X30], #-1524, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    21b0:				0497e994	ST.b32 		X11, [X30], #-1644, #0
+    21b4:				042deddc	ST.b8 		X22, [X30], #-548, #0
+    21b8:				02121880	MOV		X9, BLOCKID
+    21bc:				0295f880	MOV		X10, SUBBLOCKDIM
+    21c0:				02929980	SIGNEXT.s32 	X9, X9
+    21c4:				02d60880	MOV		X11, SUBBLOCKID
+    21c8:				00169504	MADD.s64 	X11, X9, X10
+    21cc:				0295f880	MOV		X10, SUBBLOCKDIM
+    21d0:				02d80880	MOV		X12, SUBBLOCKID
+    21d4:				029bf880	MOV		X13, SUBBLOCKDIM
+    21d8:				02e40880	MOV		X18, SUBBLOCKID
+    21dc:				02a1f880	MOV		X16, SUBBLOCKDIM
+    21e0:				02e20880	MOV		X17, SUBBLOCKID
+    21e4:				00230484	MADD.s64 	X17, X16, X9
+    21e8:				0016b303	MUL.s64 	X11, X11, X6
+    21ec:				0018a484	MADD.s64 	X12, X10, X9
+    21f0:				07140000	MOV 		X10, #0
+    21f4:				00211303	MUL.s64 	X16, X17, X6
+    21f8:				02d60202	SHL.b64 	X11, #2
+    21fc:				000e7581	ADD.s64 	X7, X7, X11
+    2200:				00108802	SUB.s64 	X8, X8, X16
+    2204:				02200800	MOV 		X16, X0
+    2208:				00108308	MIN.s64  	X8, X8, X6
+    220c:				02600282	SHR.u64 	X16, #2
+    2210:				0024d484	MADD.s64 	X18, X13, X9
+    2214:				001c8805	DIV.s64 	X14, X8, X16
+    2218:				02948880	MOV		X10, SYS_CNT
+    221c:				029bf880	MOV		X13, SUBBLOCKDIM
+    2220:				02e60880	MOV		X19, SUBBLOCKID
+    2224:				04cfe8b0	ST.b64 		X7, [X30], #-1872, #0
+    2228:				000ec303	MUL.s64 	X7, X12, X6
+    222c:				0026d484	MADD.s64 	X19, X13, X9
+    2230:				000d2303	MUL.s64 	X6, X18, X6
+    2234:				02ce0202	SHL.b64 	X7, #2
+    2238:				000a5381	ADD.s64 	X5, X5, X7
+    223c:				02cc0202	SHL.b64 	X6, #2
+    2240:				04cbe8b8	ST.b64 		X5, [X30], #-1864, #0
+    2244:				084b3018	MUL.s64 	X5, X19, #24
+    2248:				000ee803	MUL.s64 	X7, X14, X16
+    224c:				00042301	ADD.s64 	X2, X2, X6
+    2250:				07120001	MOV 		X9, #1
+    2254:				04c5e8c0	ST.b64 		X2, [X30], #-1856, #0
+    2258:				00043281	ADD.s64 	X2, X3, X5
+    225c:				00068382	SUB.s64 	X3, X8, X7
+    2260:				04c7e880	ST.b64 		X3, [X30], #-1920, #0
+    2264:				0891e6f8	SUB.s64 	X8, X30, #1784
+    2268:				088be718	SUB.s64 	X5, X30, #1816
+    226c:				0887e738	SUB.s64 	X3, X30, #1848
+    2270:				0a80e001	CMP.LT.s64	X14, #1
+    2274:				02129080	NEG.s64 	X9, X9
+    2278:				804000a4	MOVEMASK 	MASK[1], X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    227c:				04cfe878	ST.b64 		X7, [X30], #-1928, #0
+    2280:				09c22501	STP.b64 	X1, X10, [X2], #0
+    2284:				04c5e888	ST.b64 		X2, [X30], #-1912, #0
+    2288:				04dde8a8	ST.b64 		X14, [X30], #-1880, #0
+    228c:				80400024	MOVEMASK 	MASK[0], X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2290:				40200148	JUMPC 		#10160 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x7a8>
+    2294:				07260007	MOV 		X19, #7
+    2298:				00c2898b	OR.b64  	X1, X8, X19
+    229c:				0329e908	LD.b8 		X20, [X30], #-1784, #0
+    22a0:				032e1000	LD.b8 		X23, [X1], #0, #0
+    22a4:				00c28b0b	OR.b64  	X1, X8, X22
+    22a8:				072a0000	MOV 		X21, #0
+    22ac:				04c3e898	ST.b64 		X1, [X30], #-1896, #0
+    22b0:				00c2598b	OR.b64  	X1, X5, X19
+    22b4:				07340001	MOV 		X26, #1
+    22b8:				04c3e890	ST.b64 		X1, [X30], #-1904, #0
+    22bc:				0702fffc	MOV 		X1, #65532
+    22c0:				0743001f	MOVK 		X1, #31, #1
+    22c4:				00f2008a	AND.b64  	X25, X0, X1
+    22c8:				02f20210	SHL.b64 	X25, #16
+    22cc:				02324b01	INSERT 		X25, #1, #4, #0
+    22d0:				00f6398b	OR.b64  	X27, X3, X19
+    22d4:				070e0000	MOV 		X7, #0
+    22d8:				07140000	MOV 		X10, #0
+    22dc:				07080000	MOV 		X4, #0
+    22e0:				073a0000	MOV 		X29, #0
+    22e4:				04e1e8a0	ST.b64 		X16, [X30], #-1888, #0
+    22e8:				4000001b	JUMP 		#9044 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x34c>
+    22ec:				03c0f000	LD.b64 		X0, [X15], #0, #0
+    22f0:				08047001	ADD.s64 	X2, X7, #1
+    22f4:				024c2a00	ZEROEXT.u16 	X6, X2
+    22f8:				00406d3e	CMP.GT.u64	X6, X26
+    22fc:				00cf5109	SEL.b64  	X7, X21, X2
+    2300:				02043800	MOV 		X2, X3
+    2304:				02041b01	INSERT 		X2, #1, #1, #0
+    2308:				03cde8c0	LD.b64 		X6, [X30], #-1856, #0
+    230c:				044e2000	ST.b16 		X7, [X2], #0, #0
+    2310:				03841004	LD.b32 		X2, [X1], #4, #0
+    2314:				000c6f81	ADD.s64 	X6, X6, X31
+    2318:				083bd001	ADD.s64 	X29, X29, #1
+    231c:				6bcc2cd6	MOV_UB_TO_OUT_ALIGN.b32	[X6], [X2], X25, X21
+    2320:				03c40010	LD.b64 		X2, [X0], #16, #0
+    2324:				02cc2380	SFF0.b64  	X6, X2
+    2328:				02c46440	SBITSET1.b64  	X2, X6
+    232c:				04c40010	ST.b64 		X2, [X0], #16, #0
+    2330:				040c1003	ST.b8 		X6, [X1], #3, #0
+    2334:				0f001000	STI.b8 	0, [X1], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2338:				03c3e8a8	LD.b64 		X1, [X30], #-1880, #0
+    233c:				02006980	SIGNEXT.s8 	X0, X6
+    2340:				40a21480	SET_FLAG.MTE3.V  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2344:				00c03b0b	OR.b64  	X0, X3, X22
+    2348:				0001d08e	CMP.EQ.s64	X29, X1
+    234c:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2350:				4020011a	JUMPC 		#10168 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x7b0>
+    2354:				03c3e920	LD.b64 		X1, [X30], #-1760, #0
+    2358:				003fd803	MUL.s64 	X31, X29, X16
+    235c:				08017001	ADD.s64 	X0, X23, #1
+    2360:				020c0a00	ZEROEXT.u8 	X6, X0
+    2364:				00006a0e	CMP.EQ.s64	X6, X20
+    2368:				02057a00	ZEROEXT.u8 	X2, X23
+    236c:				00ef5009	SEL.b64  	X23, X21, X0
+    2370:				00c0898b	OR.b64  	X0, X8, X19
+    2374:				02c40204	SHL.b64 	X2, #4
+    2378:				042e0000	ST.b8 		X23, [X0], #0, #0
+    237c:				01001100	LD.b8 		X0, [X1], X2, #0
+    2380:				48047ee0	JUMPCMP.NE.s64	#9052, 	X0, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x354>
+    2384:				00381101	ADD.s64 	X28, X1, X2
+    2388:				0e001101	STI.b8 	1, [X1], X2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    238c:				0301c003	LD.b8 		X0, [X28], #3, #0
+    2390:				0a0000ff	CMP.EQ.s64	X0, #255
+    2394:				4020000a	JUMPC 		#9148 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x3b4>
+    2398:				02000980	SIGNEXT.s8 	X0, X0
+    239c:				03ccf000	LD.b64 		X6, [X15], #0, #0
+    23a0:				40c20600	WAIT_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    23a4:				0301c003	LD.b8 		X0, [X28], #3, #0
+    23a8:				03d26008	LD.b64 		X9, [X6], #8, #0
+    23ac:				02000980	SIGNEXT.s8 	X0, X0
+    23b0:				02d20400	SBITSET0.b64  	X9, X0
+    23b4:				04d26008	ST.b64 		X9, [X6], #8, #0
+    23b8:				0f01c062	STI.b8 	f, [X28], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    23bc:				03d7e898	LD.b64 		X11, [X30], #-1896, #0
+    23c0:				000c1101	ADD.s64 	X6, X1, X2
+    23c4:				03d9e900	LD.b64 		X12, [X30], #-1792, #0
+    23c8:				0312b000	LD.b8 		X9, [X11], #0, #0
+    23cc:				08009001	ADD.s64 	X0, X9, #1
+    23d0:				0400b000	ST.b8 		X0, [X11], #0, #0
+    23d4:				03966004	LD.b32 		X11, [X6], #4, #0
+    23d8:				03cde890	LD.b64 		X6, [X30], #-1904, #0
+    23dc:				0301e8e8	LD.b8 		X0, [X30], #-1816, #0
+    23e0:				030c6000	LD.b8 		X6, [X6], #0, #0
+    23e4:				021a6a00	ZEROEXT.u8 	X13, X6
+    23e8:				080c6001	ADD.s64 	X6, X6, #1
+    23ec:				02246a00	ZEROEXT.u8 	X18, X6
+    23f0:				0001200e	CMP.EQ.s64	X18, X0
+    23f4:				00cd5309	SEL.b64  	X6, X21, X6
+    23f8:				00e4598b	OR.b64  	X18, X5, X19
+    23fc:				02da0204	SHL.b64 	X13, #4
+    2400:				040d2000	ST.b8 		X6, [X18], #0, #0
+    2404:				0124c680	LD.b8 		X18, [X12], X13, #0
+    2408:				49247ee0	JUMPCMP.NE.s64	#9188, 	X18, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x3dc>
+    240c:				000cc681	ADD.s64 	X6, X12, X13
+    2410:				0e00c681	STI.b8 	1, [X12], X13, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2414:				03006003	LD.b8 		X0, [X6], #3, #0
+    2418:				0a4000ff	CMP.NE.s64	X0, #255
+    241c:				40200002	JUMPC 		#9252 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x41c>
+    2420:				4000000b	JUMP 		#9292 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x444>
+    2424:				02000980	SIGNEXT.s8 	X0, X0
+    2428:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    242c:				40c20600	WAIT_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2430:				03006003	LD.b8 		X0, [X6], #3, #0
+    2434:				03f12008	LD.b64 		X24, [X18], #8, #0
+    2438:				02000980	SIGNEXT.s8 	X0, X0
+    243c:				02f00400	SBITSET0.b64  	X24, X0
+    2440:				04f12008	ST.b64 		X24, [X18], #8, #0
+    2444:				0f006062	STI.b8 	f, [X6], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2448:				40000002	JUMP 		#9296 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x448>
+    244c:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    2450:				00f05b0b	OR.b64  	X24, X5, X22
+    2454:				0018c681	ADD.s64 	X12, X12, X13
+    2458:				03018000	LD.b8 		X0, [X24], #0, #0
+    245c:				03dbe8b0	LD.b64 		X13, [X30], #-1872, #0
+    2460:				02fe0202	SHL.b64 	X31, #2
+    2464:				08220001	ADD.s64 	X17, X0, #1
+    2468:				001adf81	ADD.s64 	X13, X13, X31
+    246c:				04238000	ST.b8 		X17, [X24], #0, #0
+    2470:				03a2c004	LD.b32 		X17, [X12], #4, #0
+    2474:				6b96dcd6	MOV_OUT_TO_UB_ALIGN.b32	[X11], [X13], X25, X21
+    2478:				03d7e8b8	LD.b64 		X11, [X30], #-1864, #0
+    247c:				021a8800	MOV 		X13, X8
+    2480:				021a2b01	INSERT 		X13, #1, #2, #0
+    2484:				0016bf81	ADD.s64 	X11, X11, X31
+    2488:				6ba2bcd6	MOV_OUT_TO_UB_ALIGN.b32	[X17], [X11], X25, X21
+    248c:				0356d000	LD.b16 		X11, [X13], #0, #0
+    2490:				08a1e6f0	SUB.s64 	X16, X30, #1776
+    2494:				02228800	MOV 		X17, X8
+    2498:				02220b01	INSERT 		X17, #1, #0, #0
+    249c:				01f905a0	ST.b64 		X28, [X16], X11, #0
+    24a0:				03f12000	LD.b64 		X24, [X18], #0, #0
+    24a4:				03391000	LD.b8 		X28, [X17], #0, #0
+    24a8:				00021101	ADD.s64 	X1, X1, X2
+    24ac:				02dd8380	SFF0.b64  	X14, X24
+    24b0:				02f0e440	SBITSET1.b64  	X24, X14
+    24b4:				04f12000	ST.b64 		X24, [X18], #0, #0
+    24b8:				02245800	MOV 		X18, X5
+    24bc:				02242b01	INSERT 		X18, #1, #2, #0
+    24c0:				041c1002	ST.b8 		X14, [X1], #2, #0
+    24c4:				03452000	LD.b16 		X2, [X18], #0, #0
+    24c8:				0802b001	ADD.s64 	X1, X11, #1
+    24cc:				02561a00	ZEROEXT.u16 	X11, X1
+    24d0:				0040bd3e	CMP.GT.u64	X11, X26
+    24d4:				02162800	MOV 		X11, X2
+    24d8:				02d60203	SHL.b64 	X11, #3
+    24dc:				03f0f000	LD.b64 		X24, [X15], #0, #0
+    24e0:				00c35089	SEL.b64  	X1, X21, X1
+    24e4:				00165581	ADD.s64 	X11, X5, X11
+    24e8:				0442d000	ST.b16 		X1, [X13], #0, #0
+    24ec:				04ccb008	ST.b64 		X6, [X11], #8, #0
+    24f0:				03c38000	LD.b64 		X1, [X24], #0, #0
+    24f4:				020c5800	MOV 		X6, X5
+    24f8:				020c0b01	INSERT 		X6, #1, #0, #0
+    24fc:				02ec1380	SFF0.b64  	X22, X1
+    2500:				02c36440	SBITSET1.b64  	X1, X22
+    2504:				03166000	LD.b8 		X11, [X6], #0, #0
+    2508:				04c38000	ST.b64 		X1, [X24], #0, #0
+    250c:				042cc002	ST.b8 		X22, [X12], #2, #0
+    2510:				02188800	MOV 		X12, X8
+    2514:				02181b01	INSERT 		X12, #1, #1, #0
+    2518:				08022001	ADD.s64 	X1, X2, #1
+    251c:				0344c000	LD.b16 		X2, [X12], #0, #0
+    2520:				025a1a00	ZEROEXT.u16 	X13, X1
+    2524:				0040dd3e	CMP.GT.u64	X13, X26
+    2528:				00db5089	SEL.b64  	X13, X21, X1
+    252c:				01c30100	LD.b64 		X1, [X16], X2, #0
+    2530:				045b2000	ST.b16 		X13, [X18], #0, #0
+    2534:				04391000	ST.b8 		X28, [X17], #0, #0
+    2538:				021ce980	SIGNEXT.s8 	X14, X14
+    253c:				031a1002	LD.b8 		X13, [X1], #2, #0
+    2540:				40a210b8	SET_FLAG.MTE2.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2544:				021d6980	SIGNEXT.s8 	X14, X22
+    2548:				0a00d0ff	CMP.EQ.s64	X13, #255
+    254c:				40a210b8	SET_FLAG.MTE2.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2550:				4020000a	JUMPC 		#9592 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x570>
+    2554:				03dcf000	LD.b64 		X14, [X15], #0, #0
+    2558:				03221002	LD.b8 		X17, [X1], #2, #0
+    255c:				021ad980	SIGNEXT.s8 	X13, X13
+    2560:				03e4e000	LD.b64 		X18, [X14], #0, #0
+    2564:				02231980	SIGNEXT.s8 	X17, X17
+    2568:				40c210b4	WAIT_FLAG.MTE2.V  	X13 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    256c:				02e51400	SBITSET0.b64  	X18, X17
+    2570:				04e4e000	ST.b64 		X18, [X14], #0, #0
+    2574:				0f001042	STI.b8 	f, [X1], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2578:				021a5800	MOV 		X13, X5
+    257c:				021a1b01	INSERT 		X13, #1, #1, #0
+    2580:				08042001	ADD.s64 	X2, X2, #1
+    2584:				0364d000	LD.b16 		X18, [X13], #0, #0
+    2588:				025c2a00	ZEROEXT.u16 	X14, X2
+    258c:				0040ed3e	CMP.GT.u64	X14, X26
+    2590:				021d2800	MOV 		X14, X18
+    2594:				02dc0203	SHL.b64 	X14, #3
+    2598:				001c5701	ADD.s64 	X14, X5, X14
+    259c:				00e35109	SEL.b64  	X17, X21, X2
+    25a0:				03c4e008	LD.b64 		X2, [X14], #8, #0
+    25a4:				0462c000	ST.b16 		X17, [X12], #0, #0
+    25a8:				03b81004	LD.b32 		X28, [X1], #4, #0
+    25ac:				04166000	ST.b8 		X11, [X6], #0, #0
+    25b0:				030c2002	LD.b8 		X6, [X2], #2, #0
+    25b4:				03e1e8a0	LD.b64 		X16, [X30], #-1888, #0
+    25b8:				0a0060ff	CMP.EQ.s64	X6, #255
+    25bc:				4020000a	JUMPC 		#9700 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x5dc>
+    25c0:				03d6f000	LD.b64 		X11, [X15], #0, #0
+    25c4:				03182002	LD.b8 		X12, [X2], #2, #0
+    25c8:				020c6980	SIGNEXT.s8 	X6, X6
+    25cc:				03dcb000	LD.b64 		X14, [X11], #0, #0
+    25d0:				0218c980	SIGNEXT.s8 	X12, X12
+    25d4:				40c21098	WAIT_FLAG.MTE2.V  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    25d8:				02dcc400	SBITSET0.b64  	X14, X12
+    25dc:				04dcb000	ST.b64 		X14, [X11], #0, #0
+    25e0:				0f002042	STI.b8 	f, [X2], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    25e4:				080d2001	ADD.s64 	X6, X18, #1
+    25e8:				02566a00	ZEROEXT.u16 	X11, X6
+    25ec:				0040bd3e	CMP.GT.u64	X11, X26
+    25f0:				00cd5309	SEL.b64  	X6, X21, X6
+    25f4:				03d7e8e0	LD.b64 		X11, [X30], #-1824, #0
+    25f8:				044cd000	ST.b16 		X6, [X13], #0, #0
+    25fc:				038c2004	LD.b32 		X6, [X2], #4, #0
+    2600:				072c0006	MOV 		X22, #6
+    2604:				02184a00	ZEROEXT.u8 	X12, X4
+    2608:				08084001	ADD.s64 	X4, X4, #1
+    260c:				021a4a00	ZEROEXT.u8 	X13, X4
+    2610:				0a00d002	CMP.EQ.s64	X13, #2
+    2614:				00c95209	SEL.b64  	X4, X21, X4
+    2618:				02d80204	SHL.b64 	X12, #4
+    261c:				0409b000	ST.b8 		X4, [X27], #0, #0
+    2620:				011ab600	LD.b8 		X13, [X11], X12, #0
+    2624:				48c4ff00	JUMPCMP.NE.s64	#9732, 	X13, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x5fc>
+    2628:				001ab601	ADD.s64 	X13, X11, X12
+    262c:				0e00b601	STI.b8 	1, [X11], X12, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2630:				0324d003	LD.b8 		X18, [X13], #3, #0
+    2634:				0a4120ff	CMP.NE.s64	X18, #255
+    2638:				40200002	JUMPC 		#9792 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x638>
+    263c:				4000000b	JUMP 		#9832 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x660>
+    2640:				021d2980	SIGNEXT.s8 	X14, X18
+    2644:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    2648:				40c214b8	WAIT_FLAG.MTE3.V  	X14 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    264c:				031cd003	LD.b8 		X14, [X13], #3, #0
+    2650:				03e32010	LD.b64 		X17, [X18], #16, #0
+    2654:				021ce980	SIGNEXT.s8 	X14, X14
+    2658:				02e2e400	SBITSET0.b64  	X17, X14
+    265c:				04e32010	ST.b64 		X17, [X18], #16, #0
+    2660:				0f00d062	STI.b8 	f, [X13], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2664:				40000002	JUMP 		#9836 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x664>
+    2668:				03e4f000	LD.b64 		X18, [X15], #0, #0
+    266c:				00dc3b0b	OR.b64  	X14, X3, X22
+    2670:				0016b601	ADD.s64 	X11, X11, X12
+    2674:				0f00e001	STI.b8 	1, [X14], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2678:				0398b004	LD.b32 		X12, [X11], #4, #0
+    267c:				40e00400	BAR.V <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2680:				021c3880	MOV		X14, CTRL
+    2684:				025d8b01	INSERT 		X14, #1, #56, #0
+    2688:				0206e900	MOV		CTRL, X14
+    268c:				071c0101	MOV 		X14, #257
+    2690:				075d0801	MOVK 		X14, #2049, #1
+    2694:				079d0808	MOVK 		X14, #2056, #2
+    2698:				07dd0100	MOVK 		X14, #256, #3
+    269c:				804000d4	MOVEMASK 	MASK[1], X21 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    26a0:				07220001	MOV 		X17, #1
+    26a4:				02231080	NEG.s64 	X17, X17
+    26a8:				80400040	MOVEMASK 	MASK[0], X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    26ac:				8519c338	VADD.s32	[X12], [X28], [X6], X14, MASK
+    26b0:				020c3880	MOV		X6, CTRL
+    26b4:				024d8b00	INSERT 		X6, #0, #56, #0
+    26b8:				02066900	MOV		CTRL, X6
+    26bc:				0258aa00	ZEROEXT.u16 	X12, X10
+    26c0:				088de730	SUB.s64 	X6, X30, #1840
+    26c4:				021c6800	MOV 		X14, X6
+    26c8:				804000c4	MOVEMASK 	MASK[1], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    26cc:				01dae620	ST.b64 		X13, [X14], X12, #0
+    26d0:				03cd2018	LD.b64 		X6, [X18], #24, #0
+    26d4:				02183800	MOV 		X12, X3
+    26d8:				02182b01	INSERT 		X12, #1, #2, #0
+    26dc:				02da6380	SFF0.b64  	X13, X6
+    26e0:				02ccd440	SBITSET1.b64  	X6, X13
+    26e4:				04cd2018	ST.b64 		X6, [X18], #24, #0
+    26e8:				080ca001	ADD.s64 	X6, X10, #1
+    26ec:				041ab002	ST.b8 		X13, [X11], #2, #0
+    26f0:				02546a00	ZEROEXT.u16 	X10, X6
+    26f4:				03d6f000	LD.b64 		X11, [X15], #0, #0
+    26f8:				0040ad3e	CMP.GT.u64	X10, X26
+    26fc:				00d55309	SEL.b64  	X10, X21, X6
+    2700:				80400044	MOVEMASK 	MASK[0], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2704:				0454c000	ST.b16 		X10, [X12], #0, #0
+    2708:				03ccb008	LD.b64 		X6, [X11], #8, #0
+    270c:				02d86380	SFF0.b64  	X12, X6
+    2710:				02ccc440	SBITSET1.b64  	X6, X12
+    2714:				04ccb008	ST.b64 		X6, [X11], #8, #0
+    2718:				04181003	ST.b8 		X12, [X1], #3, #0
+    271c:				0f001000	STI.b8 	0, [X1], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2720:				03c2f000	LD.b64 		X1, [X15], #0, #0
+    2724:				00cc8b0b	OR.b64  	X6, X8, X22
+    2728:				02163800	MOV 		X11, X3
+    272c:				04126000	ST.b8 		X9, [X6], #0, #0
+    2730:				03cc1008	LD.b64 		X6, [X1], #8, #0
+    2734:				0212d980	SIGNEXT.s8 	X9, X13
+    2738:				02160b01	INSERT 		X11, #1, #0, #0
+    273c:				02da6380	SFF0.b64  	X13, X6
+    2740:				02ccd440	SBITSET1.b64  	X6, X13
+    2744:				40a206a4	SET_FLAG.V.MTE3  	X9 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2748:				04cc1008	ST.b64 		X6, [X1], #8, #0
+    274c:				02427a00	ZEROEXT.u16 	X1, X7
+    2750:				041a2003	ST.b8 		X13, [X2], #3, #0
+    2754:				0f002000	STI.b8 	0, [X2], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2758:				01c2e080	LD.b64 		X1, [X14], X1, #0
+    275c:				00c45b0b	OR.b64  	X2, X5, X22
+    2760:				0f00b000	STI.b8 	0, [X11], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2764:				04002000	ST.b8 		X0, [X2], #0, #0
+    2768:				03041002	LD.b8 		X2, [X1], #2, #0
+    276c:				020cc980	SIGNEXT.s8 	X6, X12
+    2770:				0200d980	SIGNEXT.s8 	X0, X13
+    2774:				0a4020ff	CMP.NE.s64	X2, #255
+    2778:				40a20618	SET_FLAG.V.MTE2  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    277c:				40a20600	SET_FLAG.V.MTE2  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2780:				40200002	JUMPC 		#10120 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x780>
+    2784:				4000feda	JUMP 		#8940 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x2e4>
+    2788:				03c0f000	LD.b64 		X0, [X15], #0, #0
+    278c:				030c1002	LD.b8 		X6, [X1], #2, #0
+    2790:				02042980	SIGNEXT.s8 	X2, X2
+    2794:				03d20018	LD.b64 		X9, [X0], #24, #0
+    2798:				020c6980	SIGNEXT.s8 	X6, X6
+    279c:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    27a0:				02d26400	SBITSET0.b64  	X9, X6
+    27a4:				04d20018	ST.b64 		X9, [X0], #24, #0
+    27a8:				0f001042	STI.b8 	f, [X1], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    27ac:				4000fed1	JUMP 		#8944 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x2e8>
+    27b0:				070e0000	MOV 		X7, #0
+    27b4:				07140000	MOV 		X10, #0
+    27b8:				03f5e880	LD.b64 		X26, [X30], #-1920, #0
+    27bc:				49ac0040	JUMPCMP.GT.s64	#10180, 	X26, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x7bc>
+    27c0:				40000164	JUMP 		#11600 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xd48>
+    27c4:				07020007	MOV 		X1, #7
+    27c8:				00c4808b	OR.b64  	X2, X8, X1
+    27cc:				03c1e920	LD.b64 		X0, [X30], #-1760, #0
+    27d0:				030de908	LD.b8 		X6, [X30], #-1784, #0
+    27d4:				03182000	LD.b8 		X12, [X2], #0, #0
+    27d8:				0213a800	MOV 		X9, X26
+    27dc:				02d20202	SHL.b64 	X9, #2
+    27e0:				07160000	MOV 		X11, #0
+    27e4:				0202ca00	ZEROEXT.u8 	X1, X12
+    27e8:				0818c001	ADD.s64 	X12, X12, #1
+    27ec:				021aca00	ZEROEXT.u8 	X13, X12
+    27f0:				0000d30e	CMP.EQ.s64	X13, X6
+    27f4:				00d8b609	SEL.b64  	X12, X11, X12
+    27f8:				02c20204	SHL.b64 	X1, #4
+    27fc:				04182000	ST.b8 		X12, [X2], #0, #0
+    2800:				011a0080	LD.b8 		X13, [X0], X1, #0
+    2804:				48c4ff00	JUMPCMP.NE.s64	#10212, 	X13, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x7dc>
+    2808:				00040081	ADD.s64 	X2, X0, X1
+    280c:				0e000081	STI.b8 	1, [X0], X1, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2810:				030c2003	LD.b8 		X6, [X2], #3, #0
+    2814:				03f3e878	LD.b64 		X25, [X30], #-1928, #0
+    2818:				0a0060ff	CMP.EQ.s64	X6, #255
+    281c:				4020000e	JUMPC 		#10324 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x84c>
+    2820:				0897e790	SUB.s64 	X11, X30, #1936
+    2824:				0256028f	SHR.u64 	X11, #15
+    2828:				02d6020f	SHL.b64 	X11, #15
+    282c:				0816b000	ADD.s64 	X11, X11, #0
+    2830:				020c6980	SIGNEXT.s8 	X6, X6
+    2834:				03d6b000	LD.b64 		X11, [X11], #0, #0
+    2838:				40c20618	WAIT_FLAG.V.MTE2  	X6 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    283c:				030c2003	LD.b8 		X6, [X2], #3, #0
+    2840:				03d8b008	LD.b64 		X12, [X11], #8, #0
+    2844:				020c6980	SIGNEXT.s8 	X6, X6
+    2848:				02d86400	SBITSET0.b64  	X12, X6
+    284c:				04d8b008	ST.b64 		X12, [X11], #8, #0
+    2850:				0f002062	STI.b8 	f, [X2], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2854:				070c0006	MOV 		X6, #6
+    2858:				00cc830b	OR.b64  	X6, X8, X6
+    285c:				00180081	ADD.s64 	X12, X0, X1
+    2860:				031c6000	LD.b8 		X14, [X6], #0, #0
+    2864:				031be8e8	LD.b8 		X13, [X30], #-1816, #0
+    2868:				071e0000	MOV 		X15, #0
+    286c:				0816e001	ADD.s64 	X11, X14, #1
+    2870:				04166000	ST.b8 		X11, [X6], #0, #0
+    2874:				07160007	MOV 		X11, #7
+    2878:				03a2c004	LD.b32 		X17, [X12], #4, #0
+    287c:				00d8558b	OR.b64  	X12, X5, X11
+    2880:				03cde900	LD.b64 		X6, [X30], #-1792, #0
+    2884:				0320c000	LD.b8 		X16, [X12], #0, #0
+    2888:				02170a00	ZEROEXT.u8 	X11, X16
+    288c:				08210001	ADD.s64 	X16, X16, #1
+    2890:				02250a00	ZEROEXT.u8 	X18, X16
+    2894:				0001268e	CMP.EQ.s64	X18, X13
+    2898:				00e0f809	SEL.b64  	X16, X15, X16
+    289c:				02d60204	SHL.b64 	X11, #4
+    28a0:				0420c000	ST.b8 		X16, [X12], #0, #0
+    28a4:				01246580	LD.b8 		X18, [X6], X11, #0
+    28a8:				49247f00	JUMPCMP.NE.s64	#10376, 	X18, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x880>
+    28ac:				00206581	ADD.s64 	X16, X6, X11
+    28b0:				0e006581	STI.b8 	1, [X6], X11, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    28b4:				03190003	LD.b8 		X12, [X16], #3, #0
+    28b8:				0a40c0ff	CMP.NE.s64	X12, #255
+    28bc:				40200002	JUMPC 		#10436 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x8bc>
+    28c0:				4000000f	JUMP 		#10492 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x8f4>
+    28c4:				089be790	SUB.s64 	X13, X30, #1936
+    28c8:				025a028f	SHR.u64 	X13, #15
+    28cc:				02da020f	SHL.b64 	X13, #15
+    28d0:				081ad000	ADD.s64 	X13, X13, #0
+    28d4:				021ec980	SIGNEXT.s8 	X15, X12
+    28d8:				03d8d000	LD.b64 		X12, [X13], #0, #0
+    28dc:				40c2063c	WAIT_FLAG.V.MTE2  	X15 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    28e0:				031b0003	LD.b8 		X13, [X16], #3, #0
+    28e4:				03dec008	LD.b64 		X15, [X12], #8, #0
+    28e8:				021ad980	SIGNEXT.s8 	X13, X13
+    28ec:				02ded400	SBITSET0.b64  	X15, X13
+    28f0:				04dec008	ST.b64 		X15, [X12], #8, #0
+    28f4:				0f010062	STI.b8 	f, [X16], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    28f8:				40000006	JUMP 		#10512 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0x908>
+    28fc:				0899e790	SUB.s64 	X12, X30, #1936
+    2900:				0258028f	SHR.u64 	X12, #15
+    2904:				02d8020f	SHL.b64 	X12, #15
+    2908:				0818c000	ADD.s64 	X12, X12, #0
+    290c:				03d8c000	LD.b64 		X12, [X12], #0, #0
+    2910:				071a0006	MOV 		X13, #6
+    2914:				00da568b	OR.b64  	X13, X5, X13
+    2918:				02f20202	SHL.b64 	X25, #2
+    291c:				031ed000	LD.b8 		X15, [X13], #0, #0
+    2920:				02268800	MOV 		X19, X8
+    2924:				02260b01	INSERT 		X19, #1, #0, #0
+    2928:				0824f001	ADD.s64 	X18, X15, #1
+    292c:				00000081	ADD.s64 	X0, X0, X1
+    2930:				0424d000	ST.b8 		X18, [X13], #0, #0
+    2934:				00246581	ADD.s64 	X18, X6, X11
+    2938:				0716fffc	MOV 		X11, #65532
+    293c:				03cde8b0	LD.b64 		X6, [X30], #-1872, #0
+    2940:				0757001f	MOVK 		X11, #31, #1
+    2944:				00da958a	AND.b64  	X13, X9, X11
+    2948:				02da0210	SHL.b64 	X13, #16
+    294c:				000c6c81	ADD.s64 	X6, X6, X25
+    2950:				021a4b01	INSERT 		X13, #1, #4, #0
+    2954:				07120000	MOV 		X9, #0
+    2958:				03972004	LD.b32 		X11, [X18], #4, #0
+    295c:				6ba266a6	MOV_OUT_TO_UB_ALIGN.b32	[X17], [X6], X13, X9
+    2960:				03cde8b8	LD.b64 		X6, [X30], #-1864, #0
+    2964:				02228800	MOV 		X17, X8
+    2968:				02222b01	INSERT 		X17, #1, #2, #0
+    296c:				000c6c81	ADD.s64 	X6, X6, X25
+    2970:				022c5800	MOV 		X22, X5
+    2974:				6b9666a6	MOV_OUT_TO_UB_ALIGN.b32	[X11], [X6], X13, X9
+    2978:				034d1000	LD.b16 		X6, [X17], #0, #0
+    297c:				0897e6f0	SUB.s64 	X11, X30, #1776
+    2980:				0236b800	MOV 		X27, X11
+    2984:				022c2b01	INSERT 		X22, #1, #2, #0
+    2988:				01c5b320	ST.b64 		X2, [X27], X6, #0
+    298c:				03c4c000	LD.b64 		X2, [X12], #0, #0
+    2990:				03293000	LD.b8 		X20, [X19], #0, #0
+    2994:				07020001	MOV 		X1, #1
+    2998:				02ea2380	SFF0.b64  	X21, X2
+    299c:				02c55440	SBITSET1.b64  	X2, X21
+    29a0:				04c4c000	ST.b64 		X2, [X12], #0, #0
+    29a4:				042a0002	ST.b8 		X21, [X0], #2, #0
+    29a8:				08006001	ADD.s64 	X0, X6, #1
+    29ac:				088de790	SUB.s64 	X6, X30, #1936
+    29b0:				036f6000	LD.b16 		X23, [X22], #0, #0
+    29b4:				024c028f	SHR.u64 	X6, #15
+    29b8:				02cc020f	SHL.b64 	X6, #15
+    29bc:				02440a00	ZEROEXT.u16 	X2, X0
+    29c0:				08166000	ADD.s64 	X11, X6, #0
+    29c4:				004020be	CMP.GT.u64	X2, X1
+    29c8:				02057800	MOV 		X2, X23
+    29cc:				02c40203	SHL.b64 	X2, #3
+    29d0:				03d8b000	LD.b64 		X12, [X11], #0, #0
+    29d4:				00c09009	SEL.b64  	X0, X9, X0
+    29d8:				00045101	ADD.s64 	X2, X5, X2
+    29dc:				04411000	ST.b16 		X0, [X17], #0, #0
+    29e0:				04e02008	ST.b64 		X16, [X2], #8, #0
+    29e4:				03c0c000	LD.b64 		X0, [X12], #0, #0
+    29e8:				02045800	MOV 		X2, X5
+    29ec:				02040b01	INSERT 		X2, #1, #0, #0
+    29f0:				02f00380	SFF0.b64  	X24, X0
+    29f4:				02c18440	SBITSET1.b64  	X0, X24
+    29f8:				030c2000	LD.b8 		X6, [X2], #0, #0
+    29fc:				04c0c000	ST.b64 		X0, [X12], #0, #0
+    2a00:				02188800	MOV 		X12, X8
+    2a04:				02181b01	INSERT 		X12, #1, #1, #0
+    2a08:				04312002	ST.b8 		X24, [X18], #2, #0
+    2a0c:				0362c000	LD.b16 		X17, [X12], #0, #0
+    2a10:				08017001	ADD.s64 	X0, X23, #1
+    2a14:				02600a00	ZEROEXT.u16 	X16, X0
+    2a18:				004100be	CMP.GT.u64	X16, X1
+    2a1c:				00e09009	SEL.b64  	X16, X9, X0
+    2a20:				01c1b880	LD.b64 		X0, [X27], X17, #0
+    2a24:				04616000	ST.b16 		X16, [X22], #0, #0
+    2a28:				04293000	ST.b8 		X20, [X19], #0, #0
+    2a2c:				02255980	SIGNEXT.s8 	X18, X21
+    2a30:				03200002	LD.b8 		X16, [X0], #2, #0
+    2a34:				40a210c8	SET_FLAG.MTE2.V  	X18 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2a38:				02258980	SIGNEXT.s8 	X18, X24
+    2a3c:				0a0100ff	CMP.EQ.s64	X16, #255
+    2a40:				40a210c8	SET_FLAG.MTE2.V  	X18 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2a44:				4020000a	JUMPC 		#10860 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xa64>
+    2a48:				03d6b000	LD.b64 		X11, [X11], #0, #0
+    2a4c:				03240002	LD.b8 		X18, [X0], #2, #0
+    2a50:				02210980	SIGNEXT.s8 	X16, X16
+    2a54:				03e6b000	LD.b64 		X19, [X11], #0, #0
+    2a58:				02252980	SIGNEXT.s8 	X18, X18
+    2a5c:				40c210c0	WAIT_FLAG.MTE2.V  	X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2a60:				02e72400	SBITSET0.b64  	X19, X18
+    2a64:				04e6b000	ST.b64 		X19, [X11], #0, #0
+    2a68:				0f000042	STI.b8 	f, [X0], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2a6c:				02165800	MOV 		X11, X5
+    2a70:				02161b01	INSERT 		X11, #1, #1, #0
+    2a74:				08231001	ADD.s64 	X17, X17, #1
+    2a78:				0360b000	LD.b16 		X16, [X11], #0, #0
+    2a7c:				02651a00	ZEROEXT.u16 	X18, X17
+    2a80:				004120be	CMP.GT.u64	X18, X1
+    2a84:				02030800	MOV 		X1, X16
+    2a88:				02c20203	SHL.b64 	X1, #3
+    2a8c:				00025081	ADD.s64 	X1, X5, X1
+    2a90:				00e29889	SEL.b64  	X17, X9, X17
+    2a94:				03d21008	LD.b64 		X9, [X1], #8, #0
+    2a98:				0462c000	ST.b16 		X17, [X12], #0, #0
+    2a9c:				03820004	LD.b32 		X1, [X0], #4, #0
+    2aa0:				040c2000	ST.b8 		X6, [X2], #0, #0
+    2aa4:				03049002	LD.b8 		X2, [X9], #2, #0
+    2aa8:				0a0020ff	CMP.EQ.s64	X2, #255
+    2aac:				4020000e	JUMPC 		#10980 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xadc>
+    2ab0:				088de790	SUB.s64 	X6, X30, #1936
+    2ab4:				024c028f	SHR.u64 	X6, #15
+    2ab8:				02cc020f	SHL.b64 	X6, #15
+    2abc:				080c6000	ADD.s64 	X6, X6, #0
+    2ac0:				03189002	LD.b8 		X12, [X9], #2, #0
+    2ac4:				03cc6000	LD.b64 		X6, [X6], #0, #0
+    2ac8:				02042980	SIGNEXT.s8 	X2, X2
+    2acc:				0218c980	SIGNEXT.s8 	X12, X12
+    2ad0:				03e26000	LD.b64 		X17, [X6], #0, #0
+    2ad4:				40c21088	WAIT_FLAG.MTE2.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2ad8:				02e2c400	SBITSET0.b64  	X17, X12
+    2adc:				04e26000	ST.b64 		X17, [X6], #0, #0
+    2ae0:				0f009042	STI.b8 	f, [X9], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2ae4:				08050001	ADD.s64 	X2, X16, #1
+    2ae8:				024c2a00	ZEROEXT.u16 	X6, X2
+    2aec:				07180001	MOV 		X12, #1
+    2af0:				0040663e	CMP.GT.u64	X6, X12
+    2af4:				07180000	MOV 		X12, #0
+    2af8:				00c4c109	SEL.b64  	X2, X12, X2
+    2afc:				070c0007	MOV 		X6, #7
+    2b00:				0444b000	ST.b16 		X2, [X11], #0, #0
+    2b04:				03849004	LD.b32 		X2, [X9], #4, #0
+    2b08:				03d7e8e0	LD.b64 		X11, [X30], #-1824, #0
+    2b0c:				00e0330b	OR.b64  	X16, X3, X6
+    2b10:				020c4a00	ZEROEXT.u8 	X6, X4
+    2b14:				08084001	ADD.s64 	X4, X4, #1
+    2b18:				02224a00	ZEROEXT.u8 	X17, X4
+    2b1c:				0a011002	CMP.EQ.s64	X17, #2
+    2b20:				00c8c209	SEL.b64  	X4, X12, X4
+    2b24:				02cc0204	SHL.b64 	X6, #4
+    2b28:				04090000	ST.b8 		X4, [X16], #0, #0
+    2b2c:				0122b300	LD.b8 		X17, [X11], X6, #0
+    2b30:				4904ff00	JUMPCMP.NE.s64	#11024, 	X17, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xb08>
+    2b34:				0008b301	ADD.s64 	X4, X11, X6
+    2b38:				0e00b301	STI.b8 	1, [X11], X6, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2b3c:				03184003	LD.b8 		X12, [X4], #3, #0
+    2b40:				0a40c0ff	CMP.NE.s64	X12, #255
+    2b44:				40200002	JUMPC 		#11084 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xb44>
+    2b48:				4000000f	JUMP 		#11140 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xb7c>
+    2b4c:				08a1e790	SUB.s64 	X16, X30, #1936
+    2b50:				0260028f	SHR.u64 	X16, #15
+    2b54:				02e0020f	SHL.b64 	X16, #15
+    2b58:				08210000	ADD.s64 	X16, X16, #0
+    2b5c:				0222c980	SIGNEXT.s8 	X17, X12
+    2b60:				03d90000	LD.b64 		X12, [X16], #0, #0
+    2b64:				40c214c4	WAIT_FLAG.MTE3.V  	X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2b68:				03204003	LD.b8 		X16, [X4], #3, #0
+    2b6c:				03e2c010	LD.b64 		X17, [X12], #16, #0
+    2b70:				02210980	SIGNEXT.s8 	X16, X16
+    2b74:				02e30400	SBITSET0.b64  	X17, X16
+    2b78:				04e2c010	ST.b64 		X17, [X12], #16, #0
+    2b7c:				0f004062	STI.b8 	f, [X4], #3, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2b80:				40000006	JUMP 		#11160 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xb90>
+    2b84:				0899e790	SUB.s64 	X12, X30, #1936
+    2b88:				0258028f	SHR.u64 	X12, #15
+    2b8c:				02d8020f	SHL.b64 	X12, #15
+    2b90:				0818c000	ADD.s64 	X12, X12, #0
+    2b94:				03d8c000	LD.b64 		X12, [X12], #0, #0
+    2b98:				02a3a980	SIGNEXT.s32 	X17, X26
+    2b9c:				80400044	MOVEMASK 	MASK[0], X17 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2ba0:				07220006	MOV 		X17, #6
+    2ba4:				00e4388b	OR.b64  	X18, X3, X17
+    2ba8:				000cb301	ADD.s64 	X6, X11, X6
+    2bac:				0f012001	STI.b8 	1, [X18], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2bb0:				03966004	LD.b32 		X11, [X6], #4, #0
+    2bb4:				07200000	MOV 		X16, #0
+    2bb8:				40e00400	BAR.V <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2bbc:				02243880	MOV		X18, CTRL
+    2bc0:				02658b01	INSERT 		X18, #1, #56, #0
+    2bc4:				02072900	MOV		CTRL, X18
+    2bc8:				07240101	MOV 		X18, #257
+    2bcc:				07650801	MOVK 		X18, #2049, #1
+    2bd0:				07a50808	MOVK 		X18, #2056, #2
+    2bd4:				07e50100	MOVK 		X18, #256, #3
+    2bd8:				804000c0	MOVEMASK 	MASK[1], X16 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2bdc:				85161148	VADD.s32	[X11], [X1], [X2], X18, MASK
+    2be0:				02023880	MOV		X1, CTRL
+    2be4:				02438b00	INSERT 		X1, #0, #56, #0
+    2be8:				0897e730	SUB.s64 	X11, X30, #1840
+    2bec:				02061900	MOV		CTRL, X1
+    2bf0:				0242aa00	ZEROEXT.u16 	X1, X10
+    2bf4:				0224b800	MOV 		X18, X11
+    2bf8:				07040001	MOV 		X2, #1
+    2bfc:				01c920a0	ST.b64 		X4, [X18], X1, #0
+    2c00:				03c2c018	LD.b64 		X1, [X12], #24, #0
+    2c04:				02083800	MOV 		X4, X3
+    2c08:				02082b01	INSERT 		X4, #1, #2, #0
+    2c0c:				02d61380	SFF0.b64  	X11, X1
+    2c10:				02c2b440	SBITSET1.b64  	X1, X11
+    2c14:				02042080	NEG.s64 	X2, X2
+    2c18:				04c2c018	ST.b64 		X1, [X12], #24, #0
+    2c1c:				0883e790	SUB.s64 	X1, X30, #1936
+    2c20:				0242028f	SHR.u64 	X1, #15
+    2c24:				02c2020f	SHL.b64 	X1, #15
+    2c28:				04166002	ST.b8 		X11, [X6], #2, #0
+    2c2c:				080ca001	ADD.s64 	X6, X10, #1
+    2c30:				08021000	ADD.s64 	X1, X1, #0
+    2c34:				02546a00	ZEROEXT.u16 	X10, X6
+    2c38:				07180001	MOV 		X12, #1
+    2c3c:				0040a63e	CMP.GT.u64	X10, X12
+    2c40:				03d41000	LD.b64 		X10, [X1], #0, #0
+    2c44:				00cd0309	SEL.b64  	X6, X16, X6
+    2c48:				80400088	MOVEMASK 	MASK[1], X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2c4c:				044c4000	ST.b16 		X6, [X4], #0, #0
+    2c50:				03c8a008	LD.b64 		X4, [X10], #8, #0
+    2c54:				02cc4380	SFF0.b64  	X6, X4
+    2c58:				02c86440	SBITSET1.b64  	X4, X6
+    2c5c:				04c8a008	ST.b64 		X4, [X10], #8, #0
+    2c60:				040c0003	ST.b8 		X6, [X0], #3, #0
+    2c64:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2c68:				03c01000	LD.b64 		X0, [X1], #0, #0
+    2c6c:				80400008	MOVEMASK 	MASK[0], X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2c70:				00c4888b	OR.b64  	X2, X8, X17
+    2c74:				02083800	MOV 		X4, X3
+    2c78:				041c2000	ST.b8 		X14, [X2], #0, #0
+    2c7c:				03c40008	LD.b64 		X2, [X0], #8, #0
+    2c80:				02080b01	INSERT 		X4, #1, #0, #0
+    2c84:				0210b980	SIGNEXT.s8 	X8, X11
+    2c88:				02d42380	SFF0.b64  	X10, X2
+    2c8c:				02c4a440	SBITSET1.b64  	X2, X10
+    2c90:				40a206a0	SET_FLAG.V.MTE3  	X8 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2c94:				04c40008	ST.b64 		X2, [X0], #8, #0
+    2c98:				02407a00	ZEROEXT.u16 	X0, X7
+    2c9c:				04149003	ST.b8 		X10, [X9], #3, #0
+    2ca0:				0f009000	STI.b8 	0, [X9], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2ca4:				01c12000	LD.b64 		X0, [X18], X0, #0
+    2ca8:				00c4588b	OR.b64  	X2, X5, X17
+    2cac:				0f004000	STI.b8 	0, [X4], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2cb0:				041e2000	ST.b8 		X15, [X2], #0, #0
+    2cb4:				03040002	LD.b8 		X2, [X0], #2, #0
+    2cb8:				020a6980	SIGNEXT.s8 	X5, X6
+    2cbc:				0208a980	SIGNEXT.s8 	X4, X10
+    2cc0:				0a4020ff	CMP.NE.s64	X2, #255
+    2cc4:				40a20614	SET_FLAG.V.MTE2  	X5 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2cc8:				40a20610	SET_FLAG.V.MTE2  	X4 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2ccc:				40200002	JUMPC 		#11476 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xccc>
+    2cd0:				4000000b	JUMP 		#11516 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xcf4>
+    2cd4:				03c21000	LD.b64 		X1, [X1], #0, #0
+    2cd8:				03080002	LD.b8 		X4, [X0], #2, #0
+    2cdc:				02042980	SIGNEXT.s8 	X2, X2
+    2ce0:				03ca1018	LD.b64 		X5, [X1], #24, #0
+    2ce4:				02084980	SIGNEXT.s8 	X4, X4
+    2ce8:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2cec:				02ca4400	SBITSET0.b64  	X5, X4
+    2cf0:				04ca1018	ST.b64 		X5, [X1], #24, #0
+    2cf4:				0f000042	STI.b8 	f, [X0], #2, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2cf8:				40000002	JUMP 		#11520 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xcf8>
+    2cfc:				03c21000	LD.b64 		X1, [X1], #0, #0
+    2d00:				08047001	ADD.s64 	X2, X7, #1
+    2d04:				02482a00	ZEROEXT.u16 	X4, X2
+    2d08:				070a0001	MOV 		X5, #1
+    2d0c:				004042be	CMP.GT.u64	X4, X5
+    2d10:				07080000	MOV 		X4, #0
+    2d14:				00c44109	SEL.b64  	X2, X4, X2
+    2d18:				02061b01	INSERT 		X3, #1, #1, #0
+    2d1c:				04443000	ST.b16 		X2, [X3], #0, #0
+    2d20:				03c7e8c0	LD.b64 		X3, [X30], #-1856, #0
+    2d24:				03840004	LD.b32 		X2, [X0], #4, #0
+    2d28:				00063c81	ADD.s64 	X3, X3, X25
+    2d2c:				6bc62692	MOV_UB_TO_OUT_ALIGN.b32	[X3], [X2], X13, X4
+    2d30:				03c41010	LD.b64 		X2, [X1], #16, #0
+    2d34:				02c62380	SFF0.b64  	X3, X2
+    2d38:				02c43440	SBITSET1.b64  	X2, X3
+    2d3c:				04c41010	ST.b64 		X2, [X1], #16, #0
+    2d40:				02023980	SIGNEXT.s8 	X1, X3
+    2d44:				04060003	ST.b8 		X3, [X0], #3, #0
+    2d48:				40a21484	SET_FLAG.MTE3.V  	X1 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2d4c:				0f000000	STI.b8 	0, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2d50:				03c1e988	LD.b64 		X0, [X30], #-1656, #0
+    2d54:				02c20380	SFF0.b64  	X1, X0
+    2d58:				02c01440	SBITSET1.b64  	X0, X1
+    2d5c:				04c1e988	ST.b64 		X0, [X30], #-1656, #0
+    2d60:				02001980	SIGNEXT.s8 	X0, X1
+    2d64:				03c3e988	LD.b64 		X1, [X30], #-1656, #0
+    2d68:				40a21400	SET_FLAG.MTE3.S  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2d6c:				02c20400	SBITSET0.b64  	X1, X0
+    2d70:				40c21400	WAIT_FLAG.MTE3.S  	X0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2d74:				07000000	MOV 		X0, #0
+    2d78:				04c3e988	ST.b64 		X1, [X30], #-1656, #0
+    2d7c:				02808880	MOV		X0, SYS_CNT
+    2d80:				03c3e888	LD.b64 		X1, [X30], #-1912, #0
+    2d84:				04c01010	ST.b64 		X0, [X1], #16, #0
+    2d88:				0301eddd	LD.b8 		X0, [X30], #-547, #0
+    2d8c:				48040040	JUMPCMP.NE.s64	#11668, 	X0, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xd8c>
+    2d90:				40000005	JUMP 		#11684 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xd9c>
+    2d94:				071e0000	MOV 		X15, #0
+    2d98:				41400000	NOP
+    2d9c:				402ef000	DCCI 		X15, #1
+    2da0:				41600000	END
+    2da4:				0307eddc	LD.b8 		X3, [X30], #-548, #0
+    2da8:				0f37eba1	STI.b8 	1, [X30], #-547, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2dac:				48209260	JUMPCMP.EQ.s64	#12280, 	X3, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xff0>
+    2db0:				07020000	MOV 		X1, #0
+    2db4:				0881e64d	SUB.s64 	X0, X30, #1613
+    2db8:				4000000b	JUMP 		#11748 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xddc>
+    2dbc:				02042980	SIGNEXT.s8 	X2, X2
+    2dc0:				40c20408	WAIT_FLAG.V.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2dc4:				0f000002	STI.b8 	f, [X0], #0, #0 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2dc8:				0307eddc	LD.b8 		X3, [X30], #-548, #0
+    2dcc:				08021001	ADD.s64 	X1, X1, #1
+    2dd0:				02041a00	ZEROEXT.u8 	X2, X1
+    2dd4:				02083a00	ZEROEXT.u8 	X4, X3
+    2dd8:				08000010	ADD.s64 	X0, X0, #16
+    2ddc:				4a290044	JUMPCMP.LT.u64	#11748, 	X2, 	X4 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xddc>
+    2de0:				40000086	JUMP 		#12280 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xff0>
+    2de4:				03040000	LD.b8 		X2, [X0], #0, #0
+    2de8:				0a0020ff	CMP.EQ.s64	X2, #255
+    2dec:				4020fff8	JUMPC 		#11724 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdc4>
+    2df0:				03080ffd	LD.b8 		X4, [X0], #-3, #0
+    2df4:				48447ec0	JUMPCMP.NE.s64	#11724, 	X4, 	#0 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdc4>
+    2df8:				03060ffe	LD.b8 		X3, [X0], #-2, #0
+    2dfc:				0ac03017	CMP.GT.s64	X3, #23
+    2e00:				40200010	JUMPC 		#11840 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe38>
+    2e04:				0ac03011	CMP.GT.s64	X3, #17
+    2e08:				40200002	JUMPC 		#11792 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe08>
+    2e0c:				4000001c	JUMP 		#11900 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe74>
+    2e10:				0ac03014	CMP.GT.s64	X3, #20
+    2e14:				40200031	JUMPC 		#11992 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xed0>
+    2e18:				0a003012	CMP.EQ.s64	X3, #18
+    2e1c:				40200050	JUMPC 		#12124 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf54>
+    2e20:				0a003013	CMP.EQ.s64	X3, #19
+    2e24:				40200051	JUMPC 		#12136 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf60>
+    2e28:				0a003014	CMP.EQ.s64	X3, #20
+    2e2c:				40200002	JUMPC 		#11828 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe2c>
+    2e30:				4000ffe5	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2e34:				02042980	SIGNEXT.s8 	X2, X2
+    2e38:				40c21288	WAIT_FLAG.MTE2.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2e3c:				4000ffe2	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2e40:				0ac0301c	CMP.GT.s64	X3, #28
+    2e44:				40200002	JUMPC 		#11852 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe44>
+    2e48:				40000017	JUMP 		#11940 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe9c>
+    2e4c:				0ac0301f	CMP.GT.s64	X3, #31
+    2e50:				4020002c	JUMPC 		#12032 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xef8>
+    2e54:				0a00301d	CMP.EQ.s64	X3, #29
+    2e58:				40200047	JUMPC 		#12148 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf6c>
+    2e5c:				0a00301e	CMP.EQ.s64	X3, #30
+    2e60:				40200048	JUMPC 		#12160 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf78>
+    2e64:				0a00301f	CMP.EQ.s64	X3, #31
+    2e68:				40200002	JUMPC 		#11888 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe68>
+    2e6c:				4000ffd6	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2e70:				02042980	SIGNEXT.s8 	X2, X2
+    2e74:				40c22a88	WAIT_FLAG.F.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    2e78:				4000ffd3	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2e7c:				482c8045	JUMPCMP.GT.s64	#11908, 	X3, 	#5 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe7c>
+    2e80:				40000029	JUMP 		#12068 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf1c>
+    2e84:				48208846	JUMPCMP.EQ.s64	#12172, 	X3, 	#6 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf84>
+    2e88:				48208887	JUMPCMP.EQ.s64	#12184, 	X3, 	#7 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf90>
+    2e8c:				0a003011	CMP.EQ.s64	X3, #17
+    2e90:				40200002	JUMPC 		#11928 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xe90>
+    2e94:				4000ffcc	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2e98:				02042980	SIGNEXT.s8 	X2, X2
+    2e9c:				40c24908	WAIT_FLAG.M.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2ea0:				4000ffc9	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2ea4:				0ac03019	CMP.GT.s64	X3, #25
+    2ea8:				40200002	JUMPC 		#11952 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xea8>
+    2eac:				40000024	JUMP 		#12092 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf34>
+    2eb0:				0a00301a	CMP.EQ.s64	X3, #26
+    2eb4:				4020003c	JUMPC 		#12196 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf9c>
+    2eb8:				0a00301b	CMP.EQ.s64	X3, #27
+    2ebc:				4020003d	JUMPC 		#12208 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xfa8>
+    2ec0:				0a00301c	CMP.EQ.s64	X3, #28
+    2ec4:				40200002	JUMPC 		#11980 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xec4>
+    2ec8:				4000ffbf	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2ecc:				02042980	SIGNEXT.s8 	X2, X2
+    2ed0:				40c22a08	WAIT_FLAG.F.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    2ed4:				4000ffbc	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2ed8:				0a003015	CMP.EQ.s64	X3, #21
+    2edc:				40200038	JUMPC 		#12220 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xfb4>
+    2ee0:				0a003016	CMP.EQ.s64	X3, #22
+    2ee4:				4020ffb6	JUMPC 		#11708 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdb4>
+    2ee8:				0a003017	CMP.EQ.s64	X3, #23
+    2eec:				40200002	JUMPC 		#12020 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xeec>
+    2ef0:				4000ffb5	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2ef4:				02042980	SIGNEXT.s8 	X2, X2
+    2ef8:				40c20208	WAIT_FLAG.S.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2efc:				4000ffb2	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f00:				0a003020	CMP.EQ.s64	X3, #32
+    2f04:				40200031	JUMPC 		#12232 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xfc0>
+    2f08:				0a003021	CMP.EQ.s64	X3, #33
+    2f0c:				40200032	JUMPC 		#12244 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xfcc>
+    2f10:				0a003022	CMP.EQ.s64	X3, #34
+    2f14:				40200002	JUMPC 		#12060 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf14>
+    2f18:				4000ffab	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f1c:				40e02800	BAR.F <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    2f20:				4000ffa9	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f24:				482085e4	JUMPCMP.EQ.s64	#12256, 	X3, 	#4 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xfd8>
+    2f28:				48208045	JUMPCMP.EQ.s64	#12080, 	X3, 	#5 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf28>
+    2f2c:				4000ffa6	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f30:				02042980	SIGNEXT.s8 	X2, X2
+    2f34:				40c20608	WAIT_FLAG.V.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2f38:				4000ffa3	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f3c:				0a003018	CMP.EQ.s64	X3, #24
+    2f40:				4020002b	JUMPC 		#12268 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xfe4>
+    2f44:				0a003019	CMP.EQ.s64	X3, #25
+    2f48:				40200002	JUMPC 		#12112 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xf48>
+    2f4c:				4000ff9e	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f50:				02042980	SIGNEXT.s8 	X2, X2
+    2f54:				40c20288	WAIT_FLAG.S.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2f58:				4000ff9b	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f5c:				02042980	SIGNEXT.s8 	X2, X2
+    2f60:				40c22908	WAIT_FLAG.F.M  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    2f64:				4000ff98	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f68:				02042980	SIGNEXT.s8 	X2, X2
+    2f6c:				40c21608	WAIT_FLAG.MTE3.MTE2  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2f70:				4000ff95	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f74:				02042980	SIGNEXT.s8 	X2, X2
+    2f78:				40c22808	WAIT_FLAG.F.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    2f7c:				4000ff92	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f80:				02042980	SIGNEXT.s8 	X2, X2
+    2f84:				40c20808	WAIT_FLAG.M.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x2>
+    2f88:				4000ff8f	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f8c:				02042980	SIGNEXT.s8 	X2, X2
+    2f90:				40c21488	WAIT_FLAG.MTE3.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2f94:				4000ff8c	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2f98:				02042980	SIGNEXT.s8 	X2, X2
+    2f9c:				40c20688	WAIT_FLAG.V.MTE3  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x1>
+    2fa0:				4000ff89	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fa4:				02042980	SIGNEXT.s8 	X2, X2
+    2fa8:				40c21408	WAIT_FLAG.MTE3.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x5>
+    2fac:				4000ff86	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fb0:				02042980	SIGNEXT.s8 	X2, X2
+    2fb4:				40c25108	WAIT_FLAG.MTE2.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2fb8:				4000ff83	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fbc:				02042980	SIGNEXT.s8 	X2, X2
+    2fc0:				40c20088	WAIT_FLAG.S.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_>
+    2fc4:				4000ff80	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fc8:				02042980	SIGNEXT.s8 	X2, X2
+    2fcc:				40c24d08	WAIT_FLAG.MTE1.F  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x3>
+    2fd0:				4000ff7d	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fd4:				02042980	SIGNEXT.s8 	X2, X2
+    2fd8:				40c22988	WAIT_FLAG.F.MTE1  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0xa>
+    2fdc:				4000ff7a	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fe0:				02042980	SIGNEXT.s8 	X2, X2
+    2fe4:				40c21088	WAIT_FLAG.MTE2.V  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2fe8:				4000ff77	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2fec:				02042980	SIGNEXT.s8 	X2, X2
+    2ff0:				40c21008	WAIT_FLAG.MTE2.S  	X2 <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x4>
+    2ff4:				4000ff74	JUMP 		#11716 <_ZN10ascend_ops3Add10add_kernelIiEEvPhS2_S2_lljS2_+0xdbc>
+    2ff8:				40e01800	BAR.ALL <_ZN10ascend_ops3Add10add_kernelIfEEvPhS2_S2_lljS2_+0x6>
+    2ffc:				071e0000	MOV 		X15, #0
+    3000:				41400000	NOP
+    3004:				402ef000	DCCI 		X15, #1
+    3008:				41600000	END
