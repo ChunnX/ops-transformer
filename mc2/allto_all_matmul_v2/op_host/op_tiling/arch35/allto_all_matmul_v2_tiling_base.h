@@ -19,7 +19,7 @@
 #include "securec.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "apace/tiling/matmul_tiling/quant_matmul_tiling.h"
-#include "apace/tiling/wave_aligned_comm_tiling.h"
+#include "apace/tiling/core_occupancy_first_tiling.h"
 #include "allto_all_matmul_v2_fit_balance_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
@@ -704,7 +704,7 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
-        // fit-balance 通信切分: 环境开关 + 标定数据就绪时启用, 否则走现有 WaveAlignedCommTiling 路径。
+        // fit-balance 通信切分: 环境开关 + 标定数据就绪时启用, 否则走现有 CoreOccupancyFirstTiling 路径。
         // 逻辑与拟合数据来源见 allto_all_matmul_v2_fit_balance_tiling.h。
         bool fitBalanceUsed = false;
         if (fit_balance::IsEnabled()) {
@@ -724,13 +724,13 @@ protected:
             } else {
                 OP_LOGI(opName,
                         "fit-balance tiling: calibrated data missing (rankDim=%lu, fp4=%d, mode=%u), "
-                        "fallback to WaveAlignedCommTiling",
+                        "fallback to CoreOccupancyFirstTiling",
                         worldSize_, static_cast<int32_t>(x1Dtype == ge::DT_FLOAT4_E2M1), precisionMode_);
             }
         }
         if (!fitBalanceUsed) {
-            apace::WaveAlignedCommTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
-                                                            td->scaleCommTilingData);
+            apace::CoreOccupancyFirstTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
+                                                               td->scaleCommTilingData);
 
             // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
             // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。

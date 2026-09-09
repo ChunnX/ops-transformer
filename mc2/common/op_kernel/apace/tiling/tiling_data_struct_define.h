@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file apace_tiling_data_def.h
+ * \file tiling_data_struct_define.h
  * \brief Apace tiling 公共数据结构定义（CommTilingData）
  *
  * 该结构体同时被 host 端切分算法和 kernel 端通信实现使用，

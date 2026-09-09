@@ -16,7 +16,7 @@
 #pragma once
 
 #include "../../../tiling/matmul_tiling/quant_matmul_tiling_data.h"
-#include "../../../tiling/apace_tiling_data_def.h"
+#include "../../../tiling/tiling_data_struct_define.h"
 #include "../../../core/aiv_comm/collective_comm_context.h"
 
 struct MatmulAllToAllTilingData {

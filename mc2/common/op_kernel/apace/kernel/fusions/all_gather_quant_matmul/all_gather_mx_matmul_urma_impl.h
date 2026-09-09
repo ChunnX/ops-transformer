@@ -23,7 +23,7 @@
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/core/aiv_comm/collective_comm_api.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
-#include "apace/tiling/apace_tiling_data_def.h"
+#include "apace/tiling/tiling_data_struct_define.h"
 #include "include/tensor_api/tensor.h"
 
 namespace Apace {

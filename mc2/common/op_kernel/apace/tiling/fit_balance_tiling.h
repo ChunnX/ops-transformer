@@ -213,7 +213,7 @@ inline uint64_t CalcMaxRounds(double totalCommUs, const FitBalanceConfig &cfg)
  *
  * Flow: wave maths -> total time / ratio estimate -> no-cut gates -> k search
  * (powers of two, round-capped) -> head/tail emission. The output maps 1:1 to
- * CommTilingData; k = 1 reproduces the plain WaveAlignedCommTiling behaviour.
+ * CommTilingData; k = 1 reproduces the plain CoreOccupancyFirstTiling behaviour.
  */
 inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
 {
@@ -328,7 +328,7 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     // Tiny-tail merge: fold a sub-threshold tail round into the last head
     // round (headCnt - 1 uniform rounds + one bigger tail round). Only applied
     // on the searched path; noCut / balanced gates stay bit-identical to the
-    // plain WaveAlignedCommTiling behaviour. estTimeUs keeps the unmerged estimate
+    // plain CoreOccupancyFirstTiling behaviour. estTimeUs keeps the unmerged estimate
     // (conservative upper bound). Kernel contract: the merged round still
     // starts at a multiple of headSize, and the fused urma kernel takes the
     // explicit round count, so the AIC wait mapping stays correct.

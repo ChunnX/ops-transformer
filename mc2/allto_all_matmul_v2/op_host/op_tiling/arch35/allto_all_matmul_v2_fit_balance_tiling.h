@@ -22,7 +22,7 @@
  *   - op tiling 侧把常量与运行时 shape 打包成 AllToAllFitBalanceInput，
  *     调用本文件的 Schedule() 拿到切分结果，再经 FillCommTilingData() 写回 tilingData。
  *
- * 数据来源(标定完成后回填, 占位值 <= 0 时自动回退 WaveAlignedCommTiling 路径):
+ * 数据来源(标定完成后回填, 占位值 <= 0 时自动回退 CoreOccupancyFirstTiling 路径):
  *   COMM_FIT_ROWS / ROUND_COST_ROWS <-- 标定计划表A / 表C (按 rankDim)
  *   EFF_MAC_PER_CYCLE_*             <-- 标定计划表B (按 dtype × precisionMode 分档:
  *                                       mode 0/1 同档(REMOTE/DEFERRED_SYNC, 总 MACs 相同),
@@ -36,7 +36,7 @@
 
 #include <cstdlib>
 #include "apace/tiling/fit_balance_tiling.h"
-#include "apace/tiling/apace_tiling_data_def.h"
+#include "apace/tiling/tiling_data_struct_define.h"
 #include "apace/utils/apace_constant.h"
 
 namespace MC2Tiling {
@@ -196,7 +196,7 @@ struct AllToAllFitBalanceResult {
 
 /*!
  * \brief 打包常量与运行时 shape, 生成调度入参
- * \return false 表示拟合数据缺失(含该 precisionMode 档位未标定), 调用方应回退 WaveAlignedCommTiling 路径
+ * \return false 表示拟合数据缺失(含该 precisionMode 档位未标定), 调用方应回退 CoreOccupancyFirstTiling 路径
  */
 inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t rankDim, bool isFp4,
                                uint32_t precisionMode, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,

@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file wave_aligned_comm_tiling.h
- * \brief 计算波对齐的通信切分策略：根据 matmul tiling 结果推导 AllToAll/AllGather 通信切分方案
+ * \file core_occupancy_first_tiling.h
+ * \brief 核利用率优先的通信切分策略：根据 matmul tiling 结果推导 AllToAll/AllGather 通信切分方案
  *
- * 这不是基类，而是一个独立的静态切分策略：核利用率优先，通信切分直接跟随
+ * 这不是基类，而是一个独立的静态切分策略：以核利用率为第一优先级，通信切分直接跟随
  * matmul 的最优分核结果——每轮通信的 M 跨度等于一个计算波
  * （headMSize = ceil(usedCoreNum / nTile) * baseM），不引入任何时延模型。
  * 当通算耗时不均衡时的进一步配平，见 fit_balance_tiling.h 的 fit-balance 策略。
@@ -26,13 +26,13 @@
 #pragma once
 
 #include <cstdint>
-#include "apace_tiling_data_def.h"
+#include "tiling_data_struct_define.h"
 #include "matmul_tiling/quant_matmul_tiling_data.h"
 #include "../utils/apace_constant.h"
 
 namespace apace {
 
-class WaveAlignedCommTiling {
+class CoreOccupancyFirstTiling {
 public:
     /*!
      * \brief 计算数据通道的通信 tiling
