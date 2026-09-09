@@ -1511,7 +1511,8 @@ struct ExpertWeightTensorGroupInputs {
  * 以第 0 项为基准，从第 1 项开始逐项比较。
  */
 static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext *context, const NamedIndex &input,
-                                                       uint32_t expectedDimNum, const char *nodeName)
+                                                       uint32_t expectedDimNum, uint32_t weightDimNum,
+                                                       const char *referenceWeightName, const char *nodeName)
 {
     uint32_t tensorCount = GetDynamicInputTensorCount(context, input.index);
     OP_TILING_CHECK(tensorCount == 0U, OP_LOGE_WITH_INVALID_INPUT(nodeName, input.name), return ge::GRAPH_FAILED);
@@ -1521,8 +1522,12 @@ static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext
     OP_CHECK_NULL_WITH_CONTEXT(context, referenceShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, referenceDesc);
     uint32_t referenceDimNum = referenceShape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(referenceDimNum != expectedDimNum,
-                    OP_LOGE(nodeName, "%s[0] must be %uD.", input.name, expectedDimNum), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        referenceDimNum != expectedDimNum,
+        OP_LOGE(nodeName, "%s[0] must have %s %s[0], but got %u and %u dimensions, respectively.", input.name,
+                expectedDimNum == weightDimNum ? "the same number of dimensions as" : "one more dimension than",
+                referenceWeightName, referenceDimNum, weightDimNum),
+        return ge::GRAPH_FAILED);
 
     for (uint32_t tensorIdx = 1; tensorIdx < tensorCount; ++tensorIdx) {
         auto currentShape = context->GetDynamicInputShape(input.index, tensorIdx);
@@ -1531,9 +1536,12 @@ static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext
         OP_CHECK_NULL_WITH_CONTEXT(context, currentDesc);
 
         uint32_t currentDimNum = currentShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(currentDimNum != expectedDimNum,
-                        OP_LOGE(nodeName, "%s[%u] must be %uD.", input.name, tensorIdx, expectedDimNum),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            currentDimNum != expectedDimNum,
+            OP_LOGE(nodeName,
+                    "%s[%u] is %uD, but %s[0] is %uD; tensors in the same list must have matching dimensions.",
+                    input.name, tensorIdx, currentDimNum, input.name, referenceDimNum),
+            return ge::GRAPH_FAILED);
         bool shapeMismatch = false;
         for (uint32_t dimIdx = 0; dimIdx < referenceDimNum && !shapeMismatch; ++dimIdx) {
             shapeMismatch =
@@ -1561,16 +1569,17 @@ static ge::graphStatus CheckExpertWeightInputGroupLayout(const gert::TilingConte
                                                          const ExpertWeightTensorGroupInputs &inputs,
                                                          uint32_t weightDimNum, const char *nodeName)
 {
-    // scale 比对应的 weight 多一个 multi-base 维度。
+    // The first weight must match the MoE layout; subsequent inputs use weights within their own expert group.
     uint32_t scaleDimNum = weightDimNum + 1U;
-    OP_TILING_CHECK(
-        CheckTensorPropertiesWithinList(context, inputs.weightOne, weightDimNum, nodeName) != ge::GRAPH_SUCCESS ||
-            CheckTensorPropertiesWithinList(context, inputs.weightTwo, weightDimNum, nodeName) != ge::GRAPH_SUCCESS ||
-            CheckTensorPropertiesWithinList(context, inputs.weightScalesOne, scaleDimNum, nodeName) !=
-                ge::GRAPH_SUCCESS ||
-            CheckTensorPropertiesWithinList(context, inputs.weightScalesTwo, scaleDimNum, nodeName) !=
-                ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "%s weight layout is invalid.", inputs.expertTypeName), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckTensorPropertiesWithinList(context, inputs.weightOne, weightDimNum, weightDimNum, "weight1",
+                                                    nodeName) != ge::GRAPH_SUCCESS ||
+                        CheckTensorPropertiesWithinList(context, inputs.weightTwo, weightDimNum, weightDimNum,
+                                                        inputs.weightOne.name, nodeName) != ge::GRAPH_SUCCESS ||
+                        CheckTensorPropertiesWithinList(context, inputs.weightScalesOne, scaleDimNum, weightDimNum,
+                                                        inputs.weightOne.name, nodeName) != ge::GRAPH_SUCCESS ||
+                        CheckTensorPropertiesWithinList(context, inputs.weightScalesTwo, scaleDimNum, weightDimNum,
+                                                        inputs.weightTwo.name, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "%s weight layout is invalid.", inputs.expertTypeName), return ge::GRAPH_FAILED);
 
     // 四个 TensorList 以相同下标表示同一专家，因此长度必须一致；堆叠布局只允许一个 tensor。
     uint32_t weightOneTensorCount = GetDynamicInputTensorCount(context, inputs.weightOne.index);

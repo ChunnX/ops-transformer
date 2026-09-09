@@ -278,6 +278,19 @@ class SymmBuffer:
     ):
         # Metadata
         self.group = group
+        self.num_experts = num_experts
+        self.max_recv_token_num = max_recv_token_num
+        self.num_max_tokens_per_rank = num_max_tokens_per_rank
+        self.num_topk = num_topk
+        self.hidden = hidden
+        self.intermediate_hidden = intermediate_hidden
+        self.dispatch_quant_mode = dispatch_quant_mode
+        self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
+        self.combine_quant_mode = combine_quant_mode
+        self.comm_alg = comm_alg
+        self.topk_weights_type = topk_weights_type
+        self._check_params()
+
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
             self.rank_id, init_comm=False
@@ -311,20 +324,40 @@ class SymmBuffer:
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
-        self.num_experts = num_experts
-        self.max_recv_token_num = max_recv_token_num
-        self.num_max_tokens_per_rank = num_max_tokens_per_rank
-        self.num_topk = num_topk
-        self.hidden = hidden
-        self.intermediate_hidden = intermediate_hidden
-        self.dispatch_quant_mode = dispatch_quant_mode
-        self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
-        self.combine_quant_mode = combine_quant_mode
-        self.comm_alg = comm_alg
-        self.topk_weights_type = topk_weights_type
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
         self.mask_buffer = None
+
+    def _check_params(self) -> None:
+        intermediate_hidden = self.intermediate_hidden
+        if "Ascend950" in torch.npu.get_device_name():
+            if self.dispatch_quant_mode != 4:
+                raise ValueError(
+                    "dispatch_quant_mode only supports 4 (MXFP) on Ascend950, "
+                    f"got {self.dispatch_quant_mode}."
+                )
+            if _dtype_to_int(self.dispatch_quant_out_dtype) not in (23, 24, 296):
+                raise ValueError(
+                    "dispatch_quant_out_dtype only supports float8_e5m2 (23), "
+                    "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
+                    f"got {self.dispatch_quant_out_dtype}."
+                )
+            if self.combine_quant_mode not in (0, 3, 4):
+                raise ValueError(
+                    "combine_quant_mode only supports 0, 3 or 4 on Ascend950, "
+                    f"got {self.combine_quant_mode}."
+                )
+            if self.topk_weights_type not in (0, 1):
+                raise ValueError(
+                    "topk_weights_type only supports 0 or 1 on Ascend950, "
+                    f"got {self.topk_weights_type}."
+                )
+            # arch35 checks the full GMM1 output width: 2 * intermediate_hidden.
+            if not 256 <= intermediate_hidden <= 4096 or intermediate_hidden % 128 != 0:
+                raise ValueError(
+                    "intermediate_hidden must be in [256, 4096] and a multiple of 128 "
+                    f"on Ascend950, got {intermediate_hidden}."
+                )
 
     def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
         return torch.zeros(ep_world_size, dtype=torch.int32, device=self.context.device)
