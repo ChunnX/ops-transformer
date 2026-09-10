@@ -33,9 +33,14 @@ Golden 计算与输入构造沿用 ST 的 gen_data.py / verify_result.py 逻辑,
     HCCL_BUFFSIZE 环境变量 (单位 MB) 显式指定.
 
 用法示例:
-  python3 test_golden_matmul_alltoall.py --m 2048 --k 3584 --n 4096 --rank-per-dev 4
-  python3 test_golden_matmul_alltoall.py --quant-type 2 --is-fp16 1 --is-bias 1
-    --quant-type: 0=E2M1E2M1(FP4), 1=E4M3E4M3, 2=E5M2E5M2, 3=E4M3E5M2, 4=E5M2E4M3
+  1. 头部组合方式 (默认): 直接编辑下方 M_LIST / KN_LIST 后运行, 一次性遍历
+     M_LIST × KN_LIST 所有 case 并按 case 输出精度对比结果
+     python3 test_golden_matmul_alltoall.py --rank-per-dev 4
+  2. 命令行单 shape 模式 (--m/--k/--n 须同时给出):
+     python3 test_golden_matmul_alltoall.py --m 2048 --k 3584 --n 4096 --rank-per-dev 4
+  3. 指定量化类型/输出类型/bias:
+     python3 test_golden_matmul_alltoall.py --quant-type 2 --is-fp16 1 --is-bias 1
+     --quant-type: 0=E2M1E2M1(FP4), 1=E4M3E4M3, 2=E5M2E5M2, 3=E4M3E5M2, 4=E5M2E4M3
 """
 
 import os
@@ -70,6 +75,12 @@ MX_QUANT_MODE = 6
 MX_GROUP_SIZES = [1, 1, 32]
 MX_GROUP_SIZE = 32  # 每个 e8m0 scale 覆盖连续 32 个 K 元素 (64 元素组共享 2 个 scale)
 
+# shape 组合配置 (--m/--k/--n 均未指定时生效): 测试 case = M_LIST × KN_LIST 笛卡尔积,
+# 每个 case 独立生成输入、调用算子并做 golden 对比, 结束后按 case 汇总 PASS/FAIL.
+# 约束与单 shape 模式一致: m > 0; ceil(k/64) 为偶数; n % world_size == 0.
+M_LIST = [2048]
+KN_LIST = [(3584, 4096)]  # (K, N) 组合列表
+
 # MXFP 量化输入 + BF16/FP16 输出精度标准 (与 ST verify_result.py 一致)
 ERROR_TOL_RTOL = 0.02  # 2% 相对误差
 ERROR_TOL_ATOL = 0.2  # 绝对误差
@@ -102,13 +113,17 @@ def parse_args():
         "e8m0 scale, bf16/fp16 输出)"
     )
     parser.add_argument(
-        "--m", type=int, default=2048, help="左矩阵 A 的行数 M (每 rank, 不切分)"
+        "--m", type=int, default=None,
+        help="左矩阵 A 的行数 M (每 rank, 不切分); 须与 --k/--n 同时给出, "
+             "否则使用头部 M_LIST × KN_LIST 组合",
     )
     parser.add_argument(
-        "--k", type=int, default=3584, help="左矩阵 A 的列数 K (完整 K, 需被 64 整除)"
+        "--k", type=int, default=None,
+        help="左矩阵 A 的列数 K (完整 K, 需被 64 整除)",
     )
     parser.add_argument(
-        "--n", type=int, default=4096, help="右矩阵 B 的列数 N (切分为 N/world_size)"
+        "--n", type=int, default=None,
+        help="右矩阵 B 的列数 N (切分为 N/world_size)",
     )
     parser.add_argument(
         "--quant-type",
@@ -131,6 +146,22 @@ def parse_args():
     )
     parser.add_argument("--server-num", type=int, default=1, help="服务器数量")
     return parser.parse_args()
+
+
+def parse_shapes(args):
+    """shape 来源优先级: --m/--k/--n (须同时给出) > 头部 M_LIST × KN_LIST 笛卡尔积."""
+    given = [v for v in (args.m, args.k, args.n) if v is not None]
+    if given:
+        if len(given) != 3:
+            raise SystemExit(
+                "Error: --m/--k/--n 需同时给出，或都不给（使用头部 M_LIST × KN_LIST 组合）"
+            )
+        return [(args.m, args.k, args.n)]
+    if not M_LIST or not KN_LIST:
+        raise SystemExit(
+            "Error: 头部 M_LIST 与 KN_LIST 均不能为空（或改用 --m --k --n 单 shape 模式）"
+        )
+    return [(m, k, n) for m in M_LIST for (k, n) in KN_LIST]
 
 
 def set_device(rank, rank_per_dev):
@@ -320,58 +351,87 @@ def np_e8m0_to_torch(np_arr):
 # ---------------------------------------------------------------------------
 
 
-def golden_test_worker(queue, rank, args, world_size):
+def golden_test_worker(queue, rank, args, world_size, shapes):
+    shape_results = []  # [(shape_str, "PASS"/"FAIL"), ...] 与 shapes 顺序一致
     try:
         set_device(rank, args.rank_per_dev)
         group = init_hccl_comm(rank, world_size)
 
-        m, k, n = args.m, args.k, args.n
-        np_ = n // world_size
-
-        print(
-            f"[INFO] rank {rank} world_size={world_size}, m={m}, k={k}, n={n}, Np={np_}"
-        )
+        print(f"[INFO] rank {rank} world_size={world_size}, cases={len(shapes)}")
         print(
             f"[INFO] rank {rank} scenario: x1={QUANT_TYPES[args.quant_type][0]}, "
             f"x2={QUANT_TYPES[args.quant_type][1]}, scale=fp8_e8m0, "
             f"y={'fp16' if args.is_fp16 else 'bf16'} (MX quant), bias={args.is_bias}"
         )
 
-        # 1. 生成输入 (固定种子, 所有 rank 数据一致)
-        inputs = generate_inputs(m, k, n, world_size, args.quant_type, args.is_bias)
-
-        # 本 rank 的输入数据
-        a_local = inputs["a_local_list"][rank]
-        a_scale = inputs["a_scale_list"][rank]
-        b_ori = inputs["b_ori_list"][rank]
-        b_scale = inputs["b_scale_list"][rank]
-        bias = inputs["bias_list"][rank]
-
-        # numpy 量化数据 -> torch 张量并搬至 NPU
-        x1 = np_quant_to_torch(a_local, inputs["a_kind"]).npu()  # [M, K]
-        x2 = (
-            np_quant_to_torch(b_ori, inputs["b_kind"]).npu().t()
-        )  # [K, N] 转置视图 (存储 [N, K])
-        x1_scale = np_e8m0_to_torch(a_scale).npu()  # [M, ck, 2]
-        x2_scale = np_e8m0_to_torch(b_scale).npu()  # [N, ck, 2]
-        bias_t = torch.from_numpy(bias).npu() if bias is not None else None
-
-        print(
-            f"[INFO] rank {rank} x1.shape={tuple(x1.shape)} dtype={x1.dtype}, "
-            f"x2.shape={tuple(x2.shape)} dtype={x2.dtype}"
-        )
-        print(
-            f"[INFO] rank {rank} x1_scale.shape={tuple(x1_scale.shape)} dtype={x1_scale.dtype}, "
-            f"x2_scale.shape={tuple(x2_scale.shape)} dtype={x2_scale.dtype}"
-        )
-
-        # 2. Warmup
-        for i in range(args.warmup):
+        for shape_idx, (m, k, n) in enumerate(shapes):
+            np_ = n // world_size
             print(
-                f"[INFO] rank {rank} warmup iter {i}/{args.warmup}: "
-                f"calling quant_matmul_all_to_all ...",
+                f"\n[INFO] rank {rank} ===== case {shape_idx + 1}/{len(shapes)}: "
+                f"m={m}, k={k}, n={n}, Np={np_} =====",
                 flush=True,
             )
+
+            # 1. 生成输入 (固定种子, 所有 rank 数据一致)
+            inputs = generate_inputs(m, k, n, world_size, args.quant_type, args.is_bias)
+
+            # 本 rank 的输入数据
+            a_local = inputs["a_local_list"][rank]
+            a_scale = inputs["a_scale_list"][rank]
+            b_ori = inputs["b_ori_list"][rank]
+            b_scale = inputs["b_scale_list"][rank]
+            bias = inputs["bias_list"][rank]
+
+            # numpy 量化数据 -> torch 张量并搬至 NPU
+            x1 = np_quant_to_torch(a_local, inputs["a_kind"]).npu()  # [M, K]
+            x2 = (
+                np_quant_to_torch(b_ori, inputs["b_kind"]).npu().t()
+            )  # [K, N] 转置视图 (存储 [N, K])
+            x1_scale = np_e8m0_to_torch(a_scale).npu()  # [M, ck, 2]
+            x2_scale = np_e8m0_to_torch(b_scale).npu()  # [N, ck, 2]
+            bias_t = torch.from_numpy(bias).npu() if bias is not None else None
+
+            print(
+                f"[INFO] rank {rank} x1.shape={tuple(x1.shape)} dtype={x1.dtype}, "
+                f"x2.shape={tuple(x2.shape)} dtype={x2.dtype}"
+            )
+            print(
+                f"[INFO] rank {rank} x1_scale.shape={tuple(x1_scale.shape)} dtype={x1_scale.dtype}, "
+                f"x2_scale.shape={tuple(x2_scale.shape)} dtype={x2_scale.dtype}"
+            )
+
+            # 2. Warmup
+            for i in range(args.warmup):
+                print(
+                    f"[INFO] rank {rank} warmup iter {i}/{args.warmup}: "
+                    f"calling quant_matmul_all_to_all ...",
+                    flush=True,
+                )
+                y = cann_ops_transformer.quant_matmul_all_to_all(
+                    x1,
+                    x2,
+                    group,
+                    bias=bias_t,
+                    x1_scale=x1_scale,
+                    x2_scale=x2_scale,
+                    y_dtype=Y_DTYPE_FP16 if args.is_fp16 else Y_DTYPE_BF16,
+                    x1_quant_mode=MX_QUANT_MODE,
+                    x2_quant_mode=MX_QUANT_MODE,
+                    group_sizes=MX_GROUP_SIZES,
+                    x1_dtype=QUANT_DTYPE_FP4 if inputs["a_kind"] == "e2m1" else None,
+                    x2_dtype=QUANT_DTYPE_FP4 if inputs["b_kind"] == "e2m1" else None,
+                    x1_scale_dtype=SCALE_DTYPE_FP8_E8M0,
+                    x2_scale_dtype=SCALE_DTYPE_FP8_E8M0,
+                    comm_mode="urma",
+                )
+                torch.npu.synchronize()
+            if args.warmup > 0:
+                print(
+                    f"[INFO] rank {rank} Warmup done. y.shape={tuple(y.shape)} dtype={y.dtype}"
+                )
+
+            # 3. Golden 对比运行
+            print(f"[INFO] rank {rank} golden comparison run ...", flush=True)
             y = cann_ops_transformer.quant_matmul_all_to_all(
                 x1,
                 x2,
@@ -390,80 +450,59 @@ def golden_test_worker(queue, rank, args, world_size):
                 comm_mode="urma",
             )
             torch.npu.synchronize()
-        if args.warmup > 0:
+
+            expected_shape = (m * world_size, np_)
+            if tuple(y.shape) != expected_shape:
+                raise ValueError(
+                    f"rank {rank} output shape {tuple(y.shape)} != expected {expected_shape}"
+                )
+
+            # 4. CPU 侧计算 golden
+            golden = compute_golden(inputs, rank, args.is_fp16)
+
+            # 5. 精度对比 (标准与 ST verify_result.py 一致: rtol=0.02, atol=0.2)
+            y_npu_cpu = y.cpu()
+
+            abs_err = (y_npu_cpu.float() - golden.float()).abs()
+            denom = golden.float().abs().clamp_min(1e-8)
+            rel_err = abs_err / denom
+
+            over_tol = (abs_err > ERROR_TOL_ATOL).sum().item()
+            numel = m * world_size * np_
+            passed = torch.allclose(
+                golden, y_npu_cpu, rtol=ERROR_TOL_RTOL, atol=ERROR_TOL_ATOL, equal_nan=True
+            )
+
+            print(f"\n{'=' * 60}")
+            print(f"[Rank {rank}] shape=({m * world_size}, {np_}), elements={numel}")
             print(
-                f"[INFO] rank {rank} Warmup done. y.shape={tuple(y.shape)} dtype={y.dtype}"
+                f"  abs_err: max={abs_err.max().item():.6e}, mean={abs_err.mean().item():.6e}, "
+                f"rmse={(abs_err.pow(2).mean().sqrt()).item():.6e}"
             )
+            print(f"  rel_err: max={rel_err.max().item():.6e}")
+            print(f"  count(|abs_err| > {ERROR_TOL_ATOL:g}): {over_tol} / {numel}")
 
-        # 3. Golden 对比运行
-        print(f"[INFO] rank {rank} golden comparison run ...", flush=True)
-        y = cann_ops_transformer.quant_matmul_all_to_all(
-            x1,
-            x2,
-            group,
-            bias=bias_t,
-            x1_scale=x1_scale,
-            x2_scale=x2_scale,
-            y_dtype=Y_DTYPE_FP16 if args.is_fp16 else Y_DTYPE_BF16,
-            x1_quant_mode=MX_QUANT_MODE,
-            x2_quant_mode=MX_QUANT_MODE,
-            group_sizes=MX_GROUP_SIZES,
-            x1_dtype=QUANT_DTYPE_FP4 if inputs["a_kind"] == "e2m1" else None,
-            x2_dtype=QUANT_DTYPE_FP4 if inputs["b_kind"] == "e2m1" else None,
-            x1_scale_dtype=SCALE_DTYPE_FP8_E8M0,
-            x2_scale_dtype=SCALE_DTYPE_FP8_E8M0,
-            comm_mode="urma",
-        )
-        torch.npu.synchronize()
+            # 打印左上 4x4 角块便于快速人工检查
+            cr = min(4, m * world_size)
+            cc = min(4, np_)
+            if cr > 0 and cc > 0:
+                print(f"  golden (top-left {cr}x{cc}):\n{golden[:cr, :cc]}")
+                print(f"  npu   (top-left {cr}x{cc}):\n{y_npu_cpu[:cr, :cc]}")
 
-        expected_shape = (m * world_size, np_)
-        if tuple(y.shape) != expected_shape:
-            raise ValueError(
-                f"rank {rank} output shape {tuple(y.shape)} != expected {expected_shape}"
+            status = "PASS" if passed else "FAIL"
+            print(
+                f"  [{status}] Rank {rank}: {'match' if passed else 'mismatch'} "
+                f"(rtol={ERROR_TOL_RTOL}, atol={ERROR_TOL_ATOL})"
             )
+            shape_results.append((f"m={m}, k={k}, n={n}", status))
 
-        # 4. CPU 侧计算 golden
-        golden = compute_golden(inputs, rank, args.is_fp16)
+            # 组间同步, 确保所有 rank 完成当前 case 再进入下一组
+            dist.barrier()
+            torch.npu.synchronize()
+            del inputs, x1, x2, x1_scale, x2_scale, bias_t, y, y_npu_cpu, golden
+            torch.npu.empty_cache()
 
-        # 5. 精度对比 (标准与 ST verify_result.py 一致: rtol=0.02, atol=0.2)
-        y_npu_cpu = y.cpu()
-
-        abs_err = (y_npu_cpu.float() - golden.float()).abs()
-        denom = golden.float().abs().clamp_min(1e-8)
-        rel_err = abs_err / denom
-
-        over_tol = (abs_err > ERROR_TOL_ATOL).sum().item()
-        numel = m * world_size * np_
-        passed = torch.allclose(
-            golden, y_npu_cpu, rtol=ERROR_TOL_RTOL, atol=ERROR_TOL_ATOL, equal_nan=True
-        )
-
-        print(f"\n{'=' * 60}")
-        print(f"[Rank {rank}] shape=({m * world_size}, {np_}), elements={numel}")
-        print(
-            f"  abs_err: max={abs_err.max().item():.6e}, mean={abs_err.mean().item():.6e}, "
-            f"rmse={(abs_err.pow(2).mean().sqrt()).item():.6e}"
-        )
-        print(f"  rel_err: max={rel_err.max().item():.6e}")
-        print(f"  count(|abs_err| > {ERROR_TOL_ATOL:g}): {over_tol} / {numel}")
-
-        # 打印左上 4x4 角块便于快速人工检查
-        cr = min(4, m * world_size)
-        cc = min(4, np_)
-        if cr > 0 and cc > 0:
-            print(f"  golden (top-left {cr}x{cc}):\n{golden[:cr, :cc]}")
-            print(f"  npu   (top-left {cr}x{cc}):\n{y_npu_cpu[:cr, :cc]}")
-
-        status = "PASS" if passed else "FAIL"
-        print(
-            f"  [{status}] Rank {rank}: {'match' if passed else 'mismatch'} "
-            f"(rtol={ERROR_TOL_RTOL}, atol={ERROR_TOL_ATOL})"
-        )
-
-        dist.barrier()
-        torch.npu.synchronize()
-
-        queue.put([rank, "PASS" if passed else "FAIL", None])
+        queue.put([rank, shape_results, None])
 
     except Exception as e:
         print(f"[ERROR] rank {rank} 执行失败: {str(e)}", flush=True)
@@ -472,7 +511,7 @@ def golden_test_worker(queue, rank, args, world_size):
             dist.barrier(timeout=5)
         except Exception:
             pass
-        queue.put([rank, f"error: {str(e)}", None])
+        queue.put([rank, shape_results, f"error: {str(e)}"])
 
     finally:
         if dist.is_initialized():
@@ -487,36 +526,38 @@ def golden_test_worker(queue, rank, args, world_size):
 if __name__ == "__main__":
     args = parse_args()
     world_size = args.rank_per_dev * args.server_num
+    shapes = parse_shapes(args)
 
     # 形状约束 (与 ST gen_data.py 及算子 tiling 校验一致)
-    if args.m <= 0 or args.k <= 0 or args.n <= 0:
-        raise SystemExit(
-            f"Error: m/k/n must be positive, got {args.m}/{args.k}/{args.n}"
-        )
-    if args.k % 64 != 0:
-        raise SystemExit(f"Error: k={args.k} not divisible by 64 (MX quantization)")
-    if math.ceil(args.k / 64) % 2 != 0:
-        raise SystemExit(
-            f"Error: ceil(k/64)={math.ceil(args.k / 64)} not even (scale layout)"
-        )
-    if args.n % world_size != 0:
-        raise SystemExit(f"Error: n={args.n} not divisible by world_size={world_size}")
     if world_size not in (2, 4, 8, 16):
         raise SystemExit(f"Error: world_size={world_size} must be one of 2/4/8/16")
     if args.quant_type not in QUANT_TYPES:
         raise SystemExit(f"Error: quant_type={args.quant_type} must be 0-4")
+    for m, k, n in shapes:
+        if m <= 0 or k <= 0 or n <= 0:
+            raise SystemExit(f"Error: m/k/n must be positive, got {m}/{k}/{n}")
+        if k % 64 != 0:
+            raise SystemExit(f"Error: k={k} not divisible by 64 (MX quantization)")
+        if math.ceil(k / 64) % 2 != 0:
+            raise SystemExit(
+                f"Error: ceil(k/64)={math.ceil(k / 64)} not even (scale layout)"
+            )
+        if n % world_size != 0:
+            raise SystemExit(f"Error: n={n} not divisible by world_size={world_size}")
 
     # HCCL 通信 buffer: 每 rank 的窗口需容纳所有 rank 写来的 y 分片
     # (totalTileCnt * world_size * maxTileM * Np * 2B + 2MB <= m*n*2B + 2MB)
-    est_mb = math.ceil((args.m * args.n * 2 + 2 * 1024 * 1024) / (1024 * 1024))
+    est_mb = max(
+        math.ceil((m * n * 2 + 2 * 1024 * 1024) / (1024 * 1024)) for m, _, n in shapes
+    )
     os.environ.setdefault("HCCL_BUFFSIZE", str(max(est_mb, 200)))
 
     print(
-        f"[INFO] 开始 matmul_allto_all_v2 golden 精度对比测试, world_size={world_size}"
+        f"[INFO] 开始 matmul_allto_all_v2 golden 精度对比测试, world_size={world_size}, "
+        f"cases={len(shapes)}"
     )
-    print(
-        f"[INFO] m={args.m}, k={args.k}, n={args.n}, Np={args.n // world_size} (per rank, K 不切分)"
-    )
+    for idx, (m, k, n) in enumerate(shapes):
+        print(f"[INFO]   case {idx + 1}: m={m}, k={k}, n={n}, Np={n // world_size}")
     print(
         f"[INFO] quant_type={args.quant_type} (x1={QUANT_TYPES[args.quant_type][0]}, "
         f"x2={QUANT_TYPES[args.quant_type][1]}), y_dtype={'fp16' if args.is_fp16 else 'bf16'}, "
@@ -534,7 +575,8 @@ if __name__ == "__main__":
 
     for rank in range(world_size):
         proc = Process(
-            target=golden_test_worker, args=(result_queue, rank, args, world_size)
+            target=golden_test_worker,
+            args=(result_queue, rank, args, world_size, shapes),
         )
         proc.start()
         proc_list.append(proc)
@@ -543,22 +585,44 @@ if __name__ == "__main__":
         proc.join()
 
     # 默认值兜底: worker 异常退出未上报结果时也能正确判定 FAIL
-    rank_outputs = [("error: no result reported", None)] * world_size
+    rank_outputs = [(None, "error: no result reported")] * world_size
     for _ in range(world_size):
-        rank_id, result, detail = result_queue.get()
-        rank_outputs[rank_id] = (result, detail)
-        print(f"[INFO] rank {rank_id} result: {result}")
+        rank_id, shape_results, err = result_queue.get()
+        rank_outputs[rank_id] = (shape_results, err)
+        print(f"[INFO] rank {rank_id} result: {err if err else 'done'}")
 
-    all_pass = all(r == "PASS" for r, _ in rank_outputs)
+    # 按 case 汇总 (case 的最终结论取所有 rank 的最差结果)
+    print(f"\n{'=' * 60}")
+    print(f"Summary (rtol={ERROR_TOL_RTOL}, atol={ERROR_TOL_ATOL})")
+    print(f"{'=' * 60}")
+    all_pass = True
+    for idx, (m, k, n) in enumerate(shapes):
+        per_rank = []
+        for r in range(world_size):
+            results, err = rank_outputs[r]
+            if err:
+                per_rank.append("ERROR")
+            elif idx < len(results):
+                per_rank.append(results[idx][1])
+            else:
+                per_rank.append("MISSING")
+        case_pass = all(s == "PASS" for s in per_rank)
+        all_pass = all_pass and case_pass
+        print(
+            f"  case {idx + 1}/{len(shapes)} m={m}, k={k}, n={n}: "
+            f"{'PASS' if case_pass else 'FAIL'}  {per_rank}"
+        )
+
     if all_pass:
         print(f"\n{'=' * 60}")
-        print(f"[PASS] 所有 {world_size} 个 rank 精度对比通过!")
+        print(f"[PASS] 全部 {len(shapes)} 个 case 在所有 {world_size} 个 rank 精度对比通过!")
         print(f"{'=' * 60}")
     else:
         print(f"\n{'=' * 60}")
-        print("[FAIL] 存在失败的 rank:")
-        for i, (r, _) in enumerate(rank_outputs):
-            if r != "PASS":
-                print(f"  rank {i}: {r}")
+        print("[FAIL] 存在失败的 case/rank:")
+        for r in range(world_size):
+            results, err = rank_outputs[r]
+            if err:
+                print(f"  rank {r}: {err}")
         print(f"{'=' * 60}")
         raise SystemExit(1)
