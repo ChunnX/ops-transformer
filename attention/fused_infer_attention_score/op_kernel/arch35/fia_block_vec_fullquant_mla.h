@@ -779,7 +779,7 @@ public:
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         if constexpr (splitD) {
             dSizeAligned64 = constInfo.dBasicBlock;
-        }
+        } 
 
         attenOut.SetAddr(vec2ResUb.address_);
 
@@ -828,7 +828,7 @@ public:
 
             bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
             blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
- 
+
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
