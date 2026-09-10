@@ -581,8 +581,12 @@ public:
 
         InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
 
+        ASCEND_LOGI("HcclChannelAcquire begin, rank: %u, protocol: %d, channels: %u", srcRankId,
+                    static_cast<int>(protocol), channelNum);
         auto hcclRet =
             HcclChannelAcquireFunc(commHandle, engine, channelDesc.data(), channelNum, commContextStruct->hcommHandle_);
+        ASCEND_LOGI("HcclChannelAcquire returned, rank: %u, protocol: %d, ret: %d", srcRankId,
+                    static_cast<int>(protocol), static_cast<int>(hcclRet));
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
     }
 
