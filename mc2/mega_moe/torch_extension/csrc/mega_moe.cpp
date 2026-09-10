@@ -46,6 +46,21 @@ static void CheckInputAbsent(const c10::optional<T> &input, const std::string &n
     TORCH_CHECK(!input.has_value(), name, " must be None on ", socName, ".");
 }
 
+// Validate the public type value before GetAclDataType interprets it.
+static void CheckWeightType(const c10::optional<int64_t> &weightType, const char *name, const char *socName)
+{
+    if (!weightType.has_value()) {
+        return;
+    }
+    const int64_t value = weightType.value();
+    TORCH_CHECK(value == static_cast<int64_t>(at::ScalarType::Float8_e5m2) ||
+                    value == static_cast<int64_t>(at::ScalarType::Float8_e4m3fn) ||
+                    value == static_cast<int64_t>(DType::FLOAT4_E2M1),
+                name, " must be None, float8_e5m2 (", static_cast<int64_t>(at::ScalarType::Float8_e5m2),
+                "), float8_e4m3fn (", static_cast<int64_t>(at::ScalarType::Float8_e4m3fn), ") or float4_e2m1 (",
+                static_cast<int64_t>(DType::FLOAT4_E2M1), ") on ", socName, ", but got ", value, ".");
+}
+
 // Validate storage types before TensorListWrapper replaces the ACL dtype.
 static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, const char *name, const char *socName)
 {
@@ -64,11 +79,10 @@ static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, 
             expectedName = "uint8 (packed FP4)";
             break;
         default:
-            TORCH_CHECK(false, "The resolved weight type for ", name, " is ACL dtype ", static_cast<int>(expectedDtype),
-                        ", which is unsupported on ", socName, ". Supported types are ACL_FLOAT8_E5M2 (",
-                        static_cast<int>(aclDataType::ACL_FLOAT8_E5M2), "), ACL_FLOAT8_E4M3FN (",
-                        static_cast<int>(aclDataType::ACL_FLOAT8_E4M3FN), ") and ACL_FLOAT4_E2M1 (",
-                        static_cast<int>(aclDataType::ACL_FLOAT4_E2M1), ").");
+            TORCH_CHECK(false, name, "[0] has unsupported dtype ", weights[0].scalar_type(), " on ", socName,
+                        ". Without an explicit weight type, only float8_e5m2 and float8_e4m3fn are supported. "
+                        "For uint8 packed FP4, specify the corresponding weight type as ",
+                        static_cast<int64_t>(DType::FLOAT4_E2M1), ".");
     }
     for (size_t i = 0; i < weights.size(); ++i) {
         const auto dtype = weights[i].scalar_type();
@@ -207,6 +221,12 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                                      maskBuffer};
     const char *socName = aclrtGetSocName();
     CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, socName);
+    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+        CheckWeightType(weight1Type, "weight1_type", socName);
+        CheckWeightType(weight2Type, "weight2_type", socName);
+        CheckWeightType(sharedWeight1Type, "shared_weight1_type", socName);
+        CheckWeightType(sharedWeight2Type, "shared_weight2_type", socName);
+    }
 
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;

@@ -1650,7 +1650,7 @@ static ge::graphStatus CheckWeightScaleTrailingDim(const gert::TilingContext *co
     OP_TILING_CHECK(
         scaleOneMultiBase != WEIGHT_SCALE_MULTI_BASE_DIM_SIZE || scaleTwoMultiBase != WEIGHT_SCALE_MULTI_BASE_DIM_SIZE,
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(nodeName, scaleNames.c_str(), trailingDimensions.c_str(),
-                                               "The trailing dimension of each weight scale tensor must be 2."),
+                                               "The trailing dimension of each weight scale tensor must be 2"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1938,7 +1938,7 @@ static ge::graphStatus CheckWeightScaleShapeRelation(const gert::StorageShape *w
                         nodeName, (std::string(expertTypeName) + " " + weightScaleRole).c_str(),
                         (std::string("matrix dimension=") + std::to_string(weightScaleMatrixDimSize)).c_str(),
                         (std::string("The matrix dimension must equal the row count of ") + expertTypeName + " " +
-                         weightRole + "(" + std::to_string(weightRowCount) + ").")
+                         weightRole + "(" + std::to_string(weightRowCount) + ")")
                             .c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(weightScaleGroupDimSize != ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
@@ -1947,7 +1947,7 @@ static ge::graphStatus CheckWeightScaleShapeRelation(const gert::StorageShape *w
                         (std::string("group dimension=") + std::to_string(weightScaleGroupDimSize)).c_str(),
                         (std::string("The group dimension must equal CeilDiv(") + expertTypeName + " " + weightRole +
                          " column count, INPUT_WEIGHT_SCALES_CEIL_ALIGN) = " +
-                         std::to_string(ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+                         std::to_string(ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)))
                             .c_str()),
                     return ge::GRAPH_FAILED);
 
