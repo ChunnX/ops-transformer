@@ -37,7 +37,8 @@ struct PAShape{
     uint32_t actHeadDim; // 实际拷贝col大小，考虑到N切块 s*d， 对应d
     uint32_t copyRowNum;
     uint32_t copyRowNumAlign;
-    uint32_t pageStride;
+    uint64_t pageStride = 0;
+    uint64_t n2Stride = 0;
 };
 
 struct Position{
@@ -184,8 +185,13 @@ __aicore__ inline void GmCopyInToL1HasRopePANoContinue(LocalTensor<L1Type>& nope
         }
 
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
-            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.blockSize * ropeShape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
+            const uint64_t n2Stride = shape.n2Stride > 0 ? shape.n2Stride : shape.blockSize * shape.headDim;
+            const uint64_t ropeN2Stride =
+                ropeShape.n2Stride > 0 ? ropeShape.n2Stride : ropeShape.blockSize * ropeShape.headDim;
+            offset += static_cast<uint64_t>(startPos.n2Idx) * n2Stride +
+                remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx) * ropeN2Stride +
+                remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
             LocalTensor<L1Type> tmpNopeDstTensor = nopeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = nopeGmTensor[offset];
             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
@@ -202,8 +208,14 @@ __aicore__ inline void GmCopyInToL1HasRopePANoContinue(LocalTensor<L1Type>& nope
                 dStride = shape.headDim * shape.headNum;
                 dRopeStride = ropeShape.headDim * ropeShape.headNum;
             } else{
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim * ropeShape.blockSize) + remainRowCnt * ropeShape.headDim;
+                const uint64_t n2Stride =
+                    shape.n2Stride > 0 ? shape.n2Stride : shape.headDim * shape.blockSize;
+                const uint64_t ropeN2Stride =
+                    ropeShape.n2Stride > 0 ? ropeShape.n2Stride : ropeShape.headDim * ropeShape.blockSize;
+                offset += static_cast<uint64_t>(startPos.n2Idx) * n2Stride +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
+                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx) * ropeN2Stride +
+                    remainRowCnt * ropeShape.headDim;
             }
 
             uint32_t dValue = shape.actHeadDim;
@@ -245,11 +257,18 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
-        uint64_t keyRopeOffset = idInBlockTable * ropeShape.blockSize * ropeShape.headNum * ropeShape.headDim;
+        uint64_t offset = shape.pageStride > 0 ? idInBlockTable * shape.pageStride :
+            idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
+        uint64_t keyRopeOffset = ropeShape.pageStride > 0 ? idInBlockTable * ropeShape.pageStride :
+            idInBlockTable * ropeShape.blockSize * ropeShape.headNum * ropeShape.headDim;
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
-            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.blockSize * ropeShape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
+            const uint64_t n2Stride = shape.n2Stride > 0 ? shape.n2Stride : shape.blockSize * shape.headDim;
+            const uint64_t ropeN2Stride =
+                ropeShape.n2Stride > 0 ? ropeShape.n2Stride : ropeShape.blockSize * ropeShape.headDim;
+            offset += static_cast<uint64_t>(startPos.n2Idx) * n2Stride +
+                remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx) * ropeN2Stride +
+                remainRowCnt * blockElementCnt + startPos.dIdx * ropeShape.blockSize;
             LocalTensor<L1Type> tmpNopeDstTensor = nopeTensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = nopeGmTensor[offset];
             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
@@ -266,8 +285,14 @@ __aicore__ inline void GmCopyInToL1HasRopePA(LocalTensor<L1Type>& nopeTensor, Lo
                 dStride = shape.headDim * shape.headNum;
                 dRopeStride = ropeShape.headDim * ropeShape.headNum;
             } else{
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
-                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx * ropeShape.headDim * ropeShape.blockSize) + remainRowCnt * ropeShape.headDim;
+                const uint64_t n2Stride =
+                    shape.n2Stride > 0 ? shape.n2Stride : shape.headDim * shape.blockSize;
+                const uint64_t ropeN2Stride =
+                    ropeShape.n2Stride > 0 ? ropeShape.n2Stride : ropeShape.headDim * ropeShape.blockSize;
+                offset += static_cast<uint64_t>(startPos.n2Idx) * n2Stride +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
+                keyRopeOffset += static_cast<uint64_t>(startPos.n2Idx) * ropeN2Stride +
+                    remainRowCnt * ropeShape.headDim;
             }
 
             uint32_t dValue = shape.actHeadDim;
@@ -305,9 +330,12 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        uint64_t offset = shape.pageStride > 0 ? idInBlockTable * shape.pageStride :
+            idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            const uint64_t n2Stride = shape.n2Stride > 0 ? shape.n2Stride : shape.blockSize * shape.headDim;
+            offset += static_cast<uint64_t>(startPos.n2Idx) * n2Stride +
+                remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
             
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
@@ -318,7 +346,10 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
                 offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
+                const uint64_t n2Stride =
+                    shape.n2Stride > 0 ? shape.n2Stride : shape.headDim * shape.blockSize;
+                offset += static_cast<uint64_t>(startPos.n2Idx) * n2Stride +
+                    remainRowCnt * shape.headDim + startPos.dIdx;
             }
 
             uint32_t dValue = shape.actHeadDim;

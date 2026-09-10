@@ -235,9 +235,13 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
+        shape.pageStride = this->tilingData->inputParamsRegbase.keyStrides.bnStride;
+        shape.n2Stride = this->tilingData->inputParamsRegbase.keyStrides.n2Stride;
         PAShape ropeShape = shape;
         ropeShape.headDim = headDimRope;
         ropeShape.actHeadDim = headDimRope;
+        ropeShape.pageStride = this->tilingData->inputParamsRegbase.kRopeStrides.bnStride;
+        ropeShape.n2Stride = this->tilingData->inputParamsRegbase.kRopeStrides.n2Stride;
         uint32_t dstNzC0Stride = (runInfo.s2RealSize + 15) >> 4 << 4;
         LocalTensor<INPUT_T> mm1BRopeTensor = mm1BTensor[dstNzC0Stride * constInfo.dSize];
         GlobalTensor<INPUT_T> mm1BNopeGmTensor = this->keyGm;

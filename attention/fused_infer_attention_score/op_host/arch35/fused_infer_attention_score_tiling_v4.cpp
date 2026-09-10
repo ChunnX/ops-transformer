@@ -42,11 +42,19 @@ ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
         return ge::GRAPH_FAILED;
     }
 
-    if (FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo) == ge::GRAPH_SUCCESS) {
+    const ge::graphStatus registryStatus = FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo);
+    if (registryStatus == ge::GRAPH_SUCCESS) {
         return ge::GRAPH_SUCCESS;
-    } else {        // 假设，老的模板也注册，把else分支和下面的逻辑删掉
-        OP_LOGD(context, "reconstruct template do not support, routing to old template.");
     }
+
+    const bool hasNonContiguousCache = fiaInfo.keyNonContigDim != -1 || fiaInfo.valueNonContigDim != -1 ||
+        fiaInfo.keyRopeNonContigDim != -1;
+    OP_CHECK_IF(!fiaInfo.emptyTensorFlag && fiaInfo.quantMode == FiaQuantMode::FULL_QUANT && hasNonContiguousCache,
+        OP_LOGE(fiaInfo.opName,
+            "A stride-aware arch35 full-quant template is required for non-contiguous K/V cache."),
+        return ge::GRAPH_FAILED);
+
+    OP_LOGD(context, "reconstruct template do not support, routing to old template.");
 
     if (fiav4.DoOpTiling(context, fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

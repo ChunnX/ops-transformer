@@ -26,7 +26,11 @@
 #include "const_args.hpp"
 #include "mc2_moe_context.h"
 
+#if __has_include("../../../common/moe_distribute_base.h")
+#include "../../../common/moe_distribute_base.h"
+#else
 #include "../../../../common/op_kernel/moe_distribute_base.h"
+#endif
 
 #define FORCE_INLINE_AICORE inline __attribute__((always_inline)) __aicore__
 constexpr int32_t SHMEM_MEM = 700 * MB_SIZE;
@@ -527,7 +531,8 @@ public:
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
         pipe_barrier(PIPE_ALL);
 
-        ctrBuffer.SetValue(0, epStateValue_);
+        int64_t epStateValue64 = static_cast<int64_t>(static_cast<uint32_t>(epStateValue_));
+        ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, epStateValue64);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::LocalTensor<uint64_t> rdmaUbLocal;

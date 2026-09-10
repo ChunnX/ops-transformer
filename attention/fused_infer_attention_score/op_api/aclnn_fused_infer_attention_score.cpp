@@ -41,11 +41,17 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
+    aclnnStatus ret = CheckKVContiguous(key, value);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "When key/value is not contiguous, the opbase package must support TensorV2.");
+        return ret;
+    }
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
     FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv, deqScale1, quantScale1, deqScale2,
         quantScale2, quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,

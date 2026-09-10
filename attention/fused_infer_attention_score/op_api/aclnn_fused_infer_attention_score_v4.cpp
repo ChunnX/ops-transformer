@@ -93,12 +93,19 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
     TensorPreProcess(tensorListKey, tensorListValue);
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret = CheckKVRopeContiguous(tensorListKey, tensorListValue, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "When key/value/keyRope is not contiguous, the opbase package must support TensorV2.");
+        return ret;
+    }
+
     aclTensor *fakeActualSeqLengthsOptional{nullptr};
     aclTensor *fakeActualSeqLengthsKvOptional{nullptr};
     aclTensor *fakeActualSharedPrefixLenOptional{nullptr};
 
     // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
-    aclnnStatus ret = FakeArray(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
+    ret = FakeArray(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
     CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsOptional failed");
 
     ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
@@ -187,11 +194,18 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret = CheckKVRopeContiguous(key, value, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "When key/value/keyRope is not contiguous, the opbase package must support TensorV2.");
+        return ret;
+    }
+
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
     FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,

@@ -76,6 +76,12 @@ FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::InitUniqueConstIn
         this->constInfo.blockSize = this->sharedParams.blockSize;
         this->constInfo.paLayoutType = this->sharedParams.paLayoutType;
         this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
+        this->constInfo.keyBnStride = this->sharedParams.keyBnStride;
+        this->constInfo.keyN2Stride = this->sharedParams.keyN2Stride;
+        this->constInfo.valueBnStride = this->sharedParams.valueBnStride;
+        this->constInfo.valueN2Stride = this->sharedParams.valueN2Stride;
+        this->constInfo.keyRopeBnStride = this->sharedParams.keyRopeBnStride;
+        this->constInfo.keyRopeN2Stride = this->sharedParams.keyRopeN2Stride;
     }
 
     this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
