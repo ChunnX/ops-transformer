@@ -1927,7 +1927,7 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
             AscendC::DataCopyPad(gmSharedActivationBf16[start], ubBf16,
-                                 {1U, static_cast<uint16_t>(len * sizeof(ElementD1)), 0U, 0U, 0U}, {});
+                                 {1U, static_cast<uint16_t>(len * sizeof(ElementD1)), 0U, 0U});
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
