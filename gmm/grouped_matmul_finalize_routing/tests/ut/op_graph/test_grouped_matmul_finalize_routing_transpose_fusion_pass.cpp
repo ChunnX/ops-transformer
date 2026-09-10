@@ -49,6 +49,7 @@ struct FusionCase {
     int expectedReshapeCount;
     int expectedBitcastCount;
     bool expectedTransposeWeight;
+    bool nonUnitWeightReshape = false;
 };
 
 class TestGroupedMatmulFinalizeRoutingTransposeFusionPass
@@ -207,7 +208,8 @@ static GraphPtr BuildGraph(const FusionCase &param)
     auto *graph = graphBuilder.GetCGraphBuilder()->GetGraph();
 
     auto xDesc = MakeTensorDesc({4, 64}, param.xDtype);
-    const auto weightShape = param.useWeightReshape && param.validWeightPattern ? std::vector<int64_t>{2, 1, 64} :
+    const auto weightShape = param.useWeightReshape && param.validWeightPattern && !param.nonUnitWeightReshape ?
+                                                                 std::vector<int64_t>{2, 1, 64} :
                                                                                   std::vector<int64_t>{2, 32, 64};
     auto weightDesc = MakeTensorDesc(weightShape, param.weightDtype);
     const auto weightScaleShape =
@@ -325,6 +327,8 @@ INSTANTIATE_TEST_CASE_P(GroupedMatmulFinalizeRoutingTransposeFusionPass,
                                                    false, GRAPH_NOT_CHANGED, 1, 0, 0, false},
                                         FusionCase{"unit_axis_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true,
                                                    true, true, SUCCESS, 0, 0, 0, true},
+                                        FusionCase{"regular_reshape_without_unit_axis", DT_INT8, DT_INT8, DT_FLOAT8_E8M0,
+                                                   false, true, true, true, SUCCESS, 0, 0, 0, true, true},
                                         FusionCase{"invalid_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true,
                                                    false, true, GRAPH_NOT_CHANGED, 1, 1, 0, false}),
                         TestName);

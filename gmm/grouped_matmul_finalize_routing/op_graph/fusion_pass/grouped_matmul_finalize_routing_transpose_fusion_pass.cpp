@@ -26,6 +26,7 @@
 #include "log/log.h"
 #include "platform/platform_info.h"
 #include "register/register_custom_pass.h"
+#include "securec.h"
 #include "version/ge-compiler_version.h"
 
 using namespace ge;
@@ -49,6 +50,9 @@ constexpr char OP_TYPE_TRANSPOSE[] = "Transpose";
 constexpr char OP_TYPE_TRANSPOSED[] = "TransposeD";
 constexpr char OP_TYPE_RESHAPE[] = "Reshape";
 constexpr char OP_TYPE_BITCAST[] = "Bitcast";
+constexpr char OP_TYPE_SHAPE[] = "Shape";
+constexpr char OP_TYPE_GATHER[] = "Gather";
+constexpr char OP_TYPE_PACK[] = "Pack";
 constexpr char ATTR_TRANSPOSE_WEIGHT[] = "transpose_w";
 constexpr char ASCEND_950_SOC_VERSION[] = "Ascend950";
 
@@ -187,6 +191,179 @@ bool GetShapeDims(const GNodePtr &node, bool input, std::vector<int64_t> &dims)
     return true;
 }
 
+bool GetConstScalar(const GNode &node, int64_t inputIndex, int64_t &value)
+{
+    Tensor tensor;
+    TensorDesc desc;
+    if (node.GetInputConstData(inputIndex, tensor) != GRAPH_SUCCESS ||
+        node.GetInputDesc(inputIndex, desc) != GRAPH_SUCCESS || tensor.GetData() == nullptr) {
+        return false;
+    }
+    if (desc.GetDataType() == DT_INT32 && tensor.GetSize() >= sizeof(int32_t)) {
+        int32_t int32Value = 0;
+        if (memcpy_s(&int32Value, sizeof(int32Value), tensor.GetData(), sizeof(int32_t)) != EOK) {
+            return false;
+        }
+        value = static_cast<int64_t>(int32Value);
+        return true;
+    }
+    if (desc.GetDataType() == DT_INT64 && tensor.GetSize() >= sizeof(int64_t)) {
+        if (memcpy_s(&value, sizeof(value), tensor.GetData(), sizeof(int64_t)) != EOK) {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool IsSameNode(const GNodePtr &lhs, const GNodePtr &rhs)
+{
+    if (lhs == nullptr || rhs == nullptr) {
+        return false;
+    }
+    AscendString lhsName;
+    AscendString rhsName;
+    return lhs->GetName(lhsName) == GRAPH_SUCCESS && rhs->GetName(rhsName) == GRAPH_SUCCESS &&
+           lhsName.GetString() != nullptr && rhsName.GetString() != nullptr &&
+           std::string(lhsName.GetString()) == rhsName.GetString();
+}
+
+bool IsGatherOfSourceDim(const GNodePtr &gatherNode, const GNodePtr &sourceNode, int64_t dimIndex)
+{
+    if (!IsType(gatherNode, OP_TYPE_GATHER)) {
+        return false;
+    }
+    auto shapeNode = GetInputNode(*gatherNode, 0);
+    auto shapeSourceNode = shapeNode == nullptr ? nullptr : GetInputNode(*shapeNode, 0);
+    int64_t actualDimIndex = 0;
+    return IsType(shapeNode, OP_TYPE_SHAPE) && IsSameNode(shapeSourceNode, sourceNode) &&
+           GetConstScalar(*gatherNode, 1, actualDimIndex) && actualDimIndex == dimIndex;
+}
+
+bool IsPackAxisSourceDim(const GNodePtr &packNode, std::size_t outputAxis, const GNodePtr &sourceNode,
+                         int64_t sourceAxis, const std::vector<int64_t> &sourceDims)
+{
+    auto shapeInput = GetInputNode(*packNode, static_cast<int64_t>(outputAxis));
+    if (IsGatherOfSourceDim(shapeInput, sourceNode, sourceAxis)) {
+        return true;
+    }
+    // TorchAir emits a Const directly into Pack for dimensions that are
+    // statically known, while dynamic dimensions are represented by
+    // Gather(Shape(source), axis).  Accept the former only when it exactly
+    // matches the corresponding source dimension; this keeps the dynamic
+    // proof structural and prevents an unrelated constant reshape from
+    // being treated as an axis swap.
+    if (sourceAxis < 0 || static_cast<std::size_t>(sourceAxis) >= sourceDims.size() ||
+        IsUnknownDim(sourceDims[static_cast<std::size_t>(sourceAxis)])) {
+        return false;
+    }
+    int64_t constantDim = 0;
+    return GetConstScalar(*packNode, static_cast<int64_t>(outputAxis), constantDim) &&
+           constantDim == sourceDims[static_cast<std::size_t>(sourceAxis)];
+}
+
+bool IsShapePackDerivedFromSource(const GNodePtr &reshapeNode, const GNodePtr &sourceNode, int64_t sourceOutputPort)
+{
+    if (!IsType(reshapeNode, OP_TYPE_RESHAPE) || sourceNode == nullptr || GetOutputConsumerNum(reshapeNode) != 1) {
+        return false;
+    }
+    auto packNode = GetInputNode(*reshapeNode, 1);
+    if (!IsType(packNode, OP_TYPE_PACK) || packNode->GetInputsSize() == 0) {
+        return false;
+    }
+
+    TensorDesc sourceDesc;
+    if (sourceNode->GetOutputDesc(sourceOutputPort, sourceDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    const auto sourceDims = sourceDesc.GetShape().GetDims();
+    bool hasGather = false;
+    for (std::size_t outputAxis = 0; outputAxis < packNode->GetInputsSize(); ++outputAxis) {
+        auto shapeInput = GetInputNode(*packNode, static_cast<int64_t>(outputAxis));
+        bool isSourceDim = false;
+        if (IsType(shapeInput, OP_TYPE_GATHER)) {
+            int64_t sourceAxis = 0;
+            if (GetConstScalar(*shapeInput, 1, sourceAxis) && sourceAxis >= 0 &&
+                static_cast<std::size_t>(sourceAxis) < sourceDims.size() &&
+                IsGatherOfSourceDim(shapeInput, sourceNode, sourceAxis)) {
+                isSourceDim = true;
+                hasGather = true;
+            }
+        }
+        if (isSourceDim) {
+            continue;
+        }
+
+        // A unit constant is used by TorchAir when a dynamic view drops or
+        // restores a statically known leading axis.  Other constants are
+        // accepted only when they match a known source dimension.
+        int64_t constantDim = 0;
+        if (!GetConstScalar(*packNode, static_cast<int64_t>(outputAxis), constantDim)) {
+            return false;
+        }
+        const bool matchesSourceDim = std::any_of(sourceDims.begin(), sourceDims.end(),
+                                                   [constantDim](int64_t dim) {
+                                                       return !IsUnknownDim(dim) && dim == constantDim;
+                                                   });
+        if (constantDim != 1 && !matchesSourceDim) {
+            return false;
+        }
+    }
+    return hasGather;
+}
+
+bool IsDynamicAxisSwapReshape(const GNodePtr &reshapeNode, int64_t inputIndex)
+{
+    if (!IsType(reshapeNode, OP_TYPE_RESHAPE)) {
+        return false;
+    }
+    auto sourceNode = GetInputNode(*reshapeNode, 0);
+    auto packNode = GetInputNode(*reshapeNode, 1);
+    if (sourceNode == nullptr || !IsType(packNode, OP_TYPE_PACK)) {
+        return false;
+    }
+    TensorDesc inputDesc;
+    if (reshapeNode->GetInputDesc(0, inputDesc) != GRAPH_SUCCESS) {
+        return false;
+    }
+    const auto sourceDims = inputDesc.GetShape().GetDims();
+    const auto rank = sourceDims.size();
+    if (rank < 3) {
+        return false;
+    }
+    std::size_t firstAxis = rank - 2;
+    std::size_t secondAxis = rank - 1;
+    if (inputIndex == WEIGHT_SCALE_INDEX) {
+        if (rank != 4) {
+            return false;
+        }
+        firstAxis = 1;
+        secondAxis = 2;
+    }
+    if (packNode->GetInputsSize() != rank) {
+        return false;
+    }
+    for (std::size_t outputAxis = 0; outputAxis < rank; ++outputAxis) {
+        const auto sourceAxis = outputAxis == firstAxis ? secondAxis :
+                                (outputAxis == secondAxis ? firstAxis : outputAxis);
+        if (!IsPackAxisSourceDim(packNode, outputAxis, sourceNode, static_cast<int64_t>(sourceAxis), sourceDims)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsDynamicTwoReshapeChain(const GNodePtr &topReshapeNode, const GNodePtr &bottomReshapeNode,
+                              const GNodePtr &sourceNode, int64_t sourceOutputPort)
+{
+    // The dynamic view optimizer may remove a unit leading axis.  Therefore
+    // the two Pack nodes need not have the same rank as their Reshape inputs;
+    // the Shape/Gather/Pack construction is the proof that no arbitrary
+    // data-layout reshape was introduced.
+    return IsShapePackDerivedFromSource(topReshapeNode, sourceNode, sourceOutputPort) &&
+           IsShapePackDerivedFromSource(bottomReshapeNode, sourceNode, sourceOutputPort);
+}
+
 bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int64_t> &outputDims, int64_t inputIndex,
                     bool requireUnitAxis)
 {
@@ -205,11 +382,8 @@ bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int
     if (requireUnitAxis && inputDims[firstAxis] != 1 && inputDims[secondAxis] != 1) {
         return false;
     }
-    // A dynamic Reshape may not have an output shape descriptor yet.  The
-    // known unit axis and rank are sufficient to identify the view-generated
-    // transpose; ordinary Reshape inputs without that proof remain rejected.
     if (outputDims.empty()) {
-        return requireUnitAxis;
+        return false;
     }
     if (inputDims.size() != outputDims.size()) {
         return false;
@@ -228,8 +402,23 @@ bool CheckDirectReshape(const GNodePtr &reshapeNode, int64_t inputIndex)
 {
     std::vector<int64_t> inputDims;
     std::vector<int64_t> outputDims;
-    return GetOutputConsumerNum(reshapeNode) == 1 && GetShapeDims(reshapeNode, true, inputDims) &&
-           GetShapeDims(reshapeNode, false, outputDims) && IsExpectedSwap(inputDims, outputDims, inputIndex, true);
+    if (GetOutputConsumerNum(reshapeNode) != 1 || !GetShapeDims(reshapeNode, true, inputDims) ||
+        !GetShapeDims(reshapeNode, false, outputDims)) {
+        return false;
+    }
+    // For a static graph, exact shape equality after the expected axis swap
+    // is sufficient even when neither swapped axis is one.  This is the
+    // ordinary transpose-as-reshape form emitted by view optimization.
+    const bool hasUnknownOutputDim = std::any_of(outputDims.begin(), outputDims.end(), [](int64_t dim) {
+        return IsUnknownDim(dim);
+    });
+    if (!outputDims.empty() && !hasUnknownOutputDim) {
+        return IsExpectedSwap(inputDims, outputDims, inputIndex, false);
+    }
+    // Dynamic graphs do not always carry the Reshape output descriptor.  In
+    // that case accept only the explicit Shape/Gather/Pack construction that
+    // proves the last two (or MX scale N/K) axes were exchanged.
+    return IsDynamicAxisSwapReshape(reshapeNode, inputIndex);
 }
 
 bool IsLegalDataType(DataType dtype, const std::vector<DataType> &legalDtypes)
@@ -365,11 +554,21 @@ bool TryResolveTwoReshapeChain(const GNode &nodeGmmFr, int64_t inputIndex, Trans
     TensorDesc targetDesc;
     if (sourceNode->GetOutputDesc(srcOutputPort, sourceDesc) != GRAPH_SUCCESS ||
         nodeGmmFr.GetInputDesc(inputIndex, targetDesc) != GRAPH_SUCCESS ||
-        !IsExpectedSwap(sourceDesc.GetShape().GetDims(), targetDesc.GetShape().GetDims(), inputIndex, false) ||
         !CheckTransposeNode(transposeNode, inputIndex, true) || GetOutputConsumerNum(topReshapeNode) != 1 ||
         GetOutputConsumerNum(bottomNode) != 1 ||
         (chain.bitcastNode != nullptr && GetOutputConsumerNum(chain.bitcastNode) != 1) ||
         (chain.tailReshapeNode != nullptr && GetOutputConsumerNum(chain.tailReshapeNode) != 1)) {
+        return false;
+    }
+
+    const auto sourceDims = sourceDesc.GetShape().GetDims();
+    const auto targetDims = targetDesc.GetShape().GetDims();
+    const bool exactShapeMatch = IsExpectedSwap(sourceDims, targetDims, inputIndex, false);
+    const bool hasUnknownShape = sourceDims.empty() || targetDims.empty() ||
+                                 std::any_of(sourceDims.begin(), sourceDims.end(), IsUnknownDim) ||
+                                 std::any_of(targetDims.begin(), targetDims.end(), IsUnknownDim);
+    if (!exactShapeMatch &&
+        (!hasUnknownShape || !IsDynamicTwoReshapeChain(topReshapeNode, bottomNode, sourceNode, srcOutputPort))) {
         return false;
     }
     chain.inputIndex = inputIndex;
