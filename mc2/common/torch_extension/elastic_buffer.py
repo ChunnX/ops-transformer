@@ -1128,7 +1128,11 @@ class ElasticBuffer:
         )
 
         combined_x, combined_topk_weights = self._runtime.moe_ep_combine_epilogue(
+            x,
             handle.topk_idx,
+            _checked_handle_metadata_buffer(
+                handle, x.shape[0], self._ep_world_size, x.device
+            ),
             topk_weights,
             self._ep_world_size,
             self._rank_id,
