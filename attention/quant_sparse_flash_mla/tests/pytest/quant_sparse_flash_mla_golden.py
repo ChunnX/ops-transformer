@@ -439,16 +439,16 @@ class GeneralizedSFAQuant:
         i_B,
         i_N2,
         i_S1,
-        cur_act_kv,
+        cur_cmp_restored,
         cur_act_q,
         cmp_topk_length_bnsd=None,
         sparse_block_size=1,
     ):
         s2_sparse = list()
-        cur_cmp_act_kv = math.floor(cur_act_kv / self.cmp_ratio)
+        cur_cmp_act_kv = math.floor(cur_cmp_restored / self.cmp_ratio)
         threshold = 0
         if self.cmp_mask_mode == 3:
-            threshold = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / self.cmp_ratio)
+            threshold = math.floor((cur_cmp_restored - cur_act_q + i_S1 + 1) / self.cmp_ratio)
         elif self.cmp_mask_mode == 0:
             threshold = cur_cmp_act_kv
         if cmp_topk_length_bnsd is not None:
@@ -485,12 +485,12 @@ class GeneralizedSFAQuant:
             k_sparse = k_tensor[i_B, i_N2, s2_sparse, :]
         return empty_flag, k_sparse
 
-    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
+    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q):
         threshold = 0
         if self.cmp_mask_mode == 3:
-            threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
+            threshold = (cur_cmp_restored - cur_act_q + i_S1 + 1) // self.cmp_ratio
         elif self.cmp_mask_mode == 0:
-            threshold = cur_act_kv // self.cmp_ratio
+            threshold = cur_cmp_restored // self.cmp_ratio
         empty_flag = True
         k_sparse = []
         if threshold > 0:
@@ -861,7 +861,7 @@ def gen_sparse_indices_bsnd(
                             1, cur_valid_s2_max, (1, 1)
                         )[0]
                     else:
-                        cur_valid_s2_max_update = 1
+                        cur_valid_s2_max_update = cur_valid_s2_max
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
 
@@ -964,7 +964,7 @@ def gen_sparse_indices_tnd(
                             1, cur_valid_s2_max, (1, 1)
                         )[0]
                     else:
-                        cur_valid_s2_max_update = 1
+                        cur_valid_s2_max_update = cur_valid_s2_max
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
 

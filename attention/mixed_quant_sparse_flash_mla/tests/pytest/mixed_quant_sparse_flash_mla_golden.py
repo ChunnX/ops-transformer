@@ -348,6 +348,7 @@ class GeneralizedSFAQuant:
             cur_cmp_residual = (
                 cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
             )
+            cur_cmp_restored = cur_cmp_act_kv * self.cmp_ratio + cur_cmp_residual
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G]
@@ -405,13 +406,13 @@ class GeneralizedSFAQuant:
                             i_B,
                             i_N2,
                             i_S1,
-                            cur_ori_act_kv,
+                            cur_cmp_restored,
                             cur_act_q,
                             cmp_topk_length_bnsd,
                         )
                     elif self.template_run_mode == "HCA":
                         empty_flag, cur_cmp_k = self.mask_cmp_kv(
-                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q
+                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q
                         )
                     elif (
                         self.template_run_mode == "ORI_SPARSE"
@@ -455,7 +456,7 @@ class GeneralizedSFAQuant:
                             i_B,
                             i_N2,
                             i_S1,
-                            cur_ori_act_kv,
+                            cur_cmp_restored,
                             cur_act_q,
                             cmp_topk_length_bnsd,
                         )
@@ -662,16 +663,16 @@ class GeneralizedSFAQuant:
         i_B,
         i_N2,
         i_S1,
-        cur_act_kv,
+        cur_cmp_restored,
         cur_act_q,
         cmp_topk_length_bnsd=None,
         sparse_block_size=1,
     ):
         s2_sparse = list()
-        cur_cmp_act_kv = math.floor(cur_act_kv / self.cmp_ratio)
+        cur_cmp_act_kv = math.floor(cur_cmp_restored / self.cmp_ratio)
         threshold = 0
         if self.cmp_mask_mode == 3:
-            threshold = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / self.cmp_ratio)
+            threshold = math.floor((cur_cmp_restored - cur_act_q + i_S1 + 1) / self.cmp_ratio)
         elif self.cmp_mask_mode == 0:
             threshold = cur_cmp_act_kv
         # 与kernel逻辑保持一致: topkLen中的值与sparseIndices.Dim[-1]取最小
@@ -709,12 +710,12 @@ class GeneralizedSFAQuant:
             k_sparse = k_tensor[i_B, i_N2, s2_sparse, :]
         return empty_flag, k_sparse
 
-    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
+    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_cmp_restored, cur_act_q):
         threshold = 0
         if self.cmp_mask_mode == 3:
-            threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
+            threshold = (cur_cmp_restored - cur_act_q + i_S1 + 1) // self.cmp_ratio
         elif self.cmp_mask_mode == 0:
-            threshold = cur_act_kv // self.cmp_ratio
+            threshold = cur_cmp_restored // self.cmp_ratio
         empty_flag = True
         k_sparse = []
         if threshold > 0:
@@ -1098,7 +1099,7 @@ def gen_sparse_indices_bsnd(
                             1, cur_valid_s2_max, (1, 1)
                         )[0]
                     else:
-                        cur_valid_s2_max_update = 1
+                        cur_valid_s2_max_update = cur_valid_s2_max
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
 
@@ -1200,7 +1201,7 @@ def gen_sparse_indices_tnd(
                             1, cur_valid_s2_max, (1, 1)
                         )[0]
                     else:
-                        cur_valid_s2_max_update = 1
+                        cur_valid_s2_max_update = cur_valid_s2_max
                 else:
                     cur_valid_s2_max_update = cur_valid_s2_max
 
@@ -1921,7 +1922,8 @@ def gen_cmp_kv_quant_2_pa(
     layout_q,
     cu_seqlens_q,
     seqused_q,
-    seqused_ori_kv,
+    cmp_restored_len,
+    seqused_cmp_kv,
     cmp_ratio,
     cmp_mask_mode,
     template_run_mode,
@@ -1934,7 +1936,7 @@ def gen_cmp_kv_quant_2_pa(
     cmp_topk_length_override=None,
 ):
     if cmp_max_s2 == 0:
-        return None, None, None, None
+        return None, None, None, None, None
     # --- 1. 生成原始数据 ---
     # 量化参数 (7字节)
     cmp_kv_quant_param_tensor_npu = torch.tensor(
@@ -1978,8 +1980,7 @@ def gen_cmp_kv_quant_2_pa(
     # --- 2. 计算 Block 映射 ---
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
-    for cur_ori_act_kv in seqused_ori_kv:
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+    for cur_cmp_act_kv in seqused_cmp_kv:
         cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
         cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
         cmp_block_num_sum += cur_cmp_kv_block_num
@@ -2074,7 +2075,7 @@ def gen_cmp_kv_quant_2_pa(
                 N2,
                 K,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
                 cmp_mask_mode,
                 cmp_sparse_indices_mode,
                 cmp_kv_topk_mode,
@@ -2089,7 +2090,7 @@ def gen_cmp_kv_quant_2_pa(
                 K,
                 cu_seqlens_q,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
                 cmp_mask_mode,
                 cmp_sparse_indices_mode,
                 cmp_kv_topk_mode,
@@ -2127,7 +2128,7 @@ def gen_cmp_kv(
     cmp_max_block_num_per_batch,
     cu_seqlens_q,
     seqused_q,
-    seqused_ori_kv,
+    cmp_restored_len,
     seqused_cmp_kv,
     cu_seqlens_cmp_kv,
     cmp_ratio,
@@ -2289,7 +2290,7 @@ def gen_cmp_kv(
                 N2,
                 K,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
                 cmp_mask_mode,
                 cmp_sparse_indices_mode,
                 cmp_kv_topk_mode,
@@ -2304,7 +2305,7 @@ def gen_cmp_kv(
                 K,
                 cu_seqlens_q,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
                 cmp_mask_mode,
                 cmp_sparse_indices_mode,
                 cmp_kv_topk_mode,
@@ -2371,6 +2372,16 @@ def gen_data(params, generate_golden=True):
     cu_seqlens_ori_kv = params["cu_seqlens_ori_kv"]
     cu_seqlens_cmp_kv = params["cu_seqlens_cmp_kv"]
     cmp_residual_kv = params["cmp_residual_kv"]
+    # Restored compressed length defines the cmp mask independently of ori_kv.
+    cmp_restored_len = (
+        [
+            length * params["cmp_ratio"]
+            + (cmp_residual_kv[batch] if cmp_residual_kv is not None else 0)
+            for batch, length in enumerate(seqused_cmp_kv)
+        ]
+        if seqused_cmp_kv is not None
+        else None
+    )
     softmax_scale = params["softmax_scale"]
     cmp_ratio = params["cmp_ratio"]
     ori_mask_mode = params["ori_mask_mode"]
@@ -2612,7 +2623,7 @@ def gen_data(params, generate_golden=True):
                 cmp_max_block_num_per_batch,
                 cu_seqlens_q,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
                 seqused_cmp_kv,
                 cu_seqlens_cmp_kv,
                 cmp_ratio,
@@ -2656,7 +2667,8 @@ def gen_data(params, generate_golden=True):
                 layout_q,
                 cu_seqlens_q,
                 seqused_q,
-                seqused_ori_kv,
+                cmp_restored_len,
+                seqused_cmp_kv,
                 cmp_ratio,
                 cmp_mask_mode,
                 template_run_mode,

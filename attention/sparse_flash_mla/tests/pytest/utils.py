@@ -595,8 +595,11 @@ def generate_case_with_default_param(
         if layout_kv == "TND":
             if case_param["cu_seqlens_cmp_kv"] is None:
                 cmp_full_lengths = [
-                    length // effective_cmp_ratio
-                    for length in generate_seqused(case_param["cu_seqlens_ori_kv"])
+                    max(length // effective_cmp_ratio, actual)
+                    for length, actual in zip(
+                        generate_seqused(case_param["cu_seqlens_ori_kv"]),
+                        case_param["seqused_cmp_kv"],
+                    )
                 ]
                 case_param["cu_seqlens_cmp_kv"] = generate_cu_seqlens(cmp_full_lengths)
                 print(
@@ -619,7 +622,7 @@ def generate_case_with_default_param(
     cmp_block_num_sum = 0
 
     if layout_kv == "PA_BBND":
-        for cur_ori_act_kv in case_param["seqused_ori_kv"]:
+        for batch, cur_ori_act_kv in enumerate(case_param["seqused_ori_kv"]):
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param["block_size1"])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
@@ -628,7 +631,7 @@ def generate_case_with_default_param(
                 and effective_cmp_ratio is not None
                 and case_param["block_size2"] is not None
             ):
-                cur_cmp_act_kv = math.floor(cur_ori_act_kv / effective_cmp_ratio)
+                cur_cmp_act_kv = case_param["seqused_cmp_kv"][batch]
                 cur_cmp_kv_block_num = math.ceil(
                     cur_cmp_act_kv / case_param["block_size2"]
                 )

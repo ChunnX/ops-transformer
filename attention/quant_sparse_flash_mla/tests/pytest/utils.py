@@ -165,12 +165,8 @@ def gen_cu_seqlens_cmp_kv(
         return inferred
 
     required = sum(seqused_cmp_kv)
-    total = inferred[-1]
-    if required > total:
-        raise ValueError(
-            f"compressed actual lengths require {required} elements, "
-            f"but inferred T3 capacity is {total}"
-        )
+    # Explicit compressed lengths may exceed the default inferred from ori_kv.
+    total = max(inferred[-1], required)
     adjusted = list(seqused_cmp_kv)
     adjusted[-1] += total - required
     return gen_cu_seqlens_from_seqused(adjusted)
@@ -197,7 +193,7 @@ def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp
         cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
         ori_block_num_sum += cur_ori_kv_block_num
 
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+    for cur_cmp_act_kv in seqused_cmp_kv:
         cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
         cmp_block_num_sum += cur_cmp_kv_block_num
 

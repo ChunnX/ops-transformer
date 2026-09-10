@@ -236,10 +236,15 @@ class ActualInputSemanticOracle:
             ratio = int(
                 tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1
             )
+            residuals = tensors.get("cmp_residual_kv")
+            residual = int(residuals[batch]) if residuals is not None else 0
+            cmp_restored_length = cmp_length * ratio + residual
             if cmp_mode == 0:
-                end = min(cmp_length, ori_length // ratio)
+                end = cmp_length
             elif cmp_mode == 3:
-                end = min(cmp_length, (ori_length - q_length + token + 1) // ratio)
+                end = min(
+                    cmp_length, (cmp_restored_length - q_length + token + 1) // ratio
+                )
             else:
                 raise InvalidTransformError(
                     f"Unsupported cmp_mask_mode={cmp_mode} in semantic oracle"
@@ -862,12 +867,25 @@ class BatchCaseTransformer:
         if ori_mode not in (3, 4) and not (has_cmp and cmp_mode in (3, 4)):
             return
 
-        self._set_kv_lengths(input_data, "ori", [new_ori_length])
-        if has_cmp:
+        old_ori_length = ActualInputSemanticOracle._lengths(self.input_data, "ori")[
+            source_batch
+        ]
+        position_delta = new_ori_length - old_ori_length
+        if ori_mode in (3, 4):
+            self._set_kv_lengths(input_data, "ori", [new_ori_length])
+        if has_cmp and cmp_mode in (3, 4):
             ratio = int(
                 tensors.get("cmp_ratio") or adapter.metadata.get("cmp_ratio") or 1
             )
-            cmp_length, residual = divmod(new_ori_length, ratio)
+            old_cmp_length = ActualInputSemanticOracle._lengths(self.input_data, "cmp")[
+                source_batch
+            ]
+            residuals = self.tensors.get("cmp_residual_kv")
+            old_residual = int(residuals[source_batch]) if residuals is not None else 0
+            cmp_restored_length = old_cmp_length * ratio + old_residual + position_delta
+            if cmp_restored_length < 0:
+                raise InvalidTransformError("Aligned compressed mask length is negative")
+            cmp_length, residual = divmod(cmp_restored_length, ratio)
             self._set_kv_lengths(input_data, "cmp", [cmp_length])
             reference = tensors.get("cmp_residual_kv")
             self._set_vector(adapter, "cmp_residual_kv", [residual], reference)
@@ -914,7 +932,7 @@ class BatchCaseTransformer:
                 if self._has_position_sensitive_context()
                 else old_ori_length
             )
-            if self._has_position_sensitive_context() and new_ori_length < 0:
+            if int(self.tensors.get("ori_mask_mode") or 0) in (3, 4) and new_ori_length < 0:
                 raise InvalidTransformError(
                     f"Mode 3 part [{start},{end}) requires a negative aligned KV length"
                 )
@@ -968,7 +986,7 @@ class BatchCaseTransformer:
             if self._has_position_sensitive_context()
             else old_ori_length
         )
-        if self._has_position_sensitive_context() and new_ori_length < 0:
+        if int(self.tensors.get("ori_mask_mode") or 0) in (3, 4) and new_ori_length < 0:
             raise InvalidTransformError("Mode 4 requires a negative aligned KV length")
         self._align_position_sensitive_context(new_data, batch_id, new_ori_length)
 
