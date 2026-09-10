@@ -14,6 +14,9 @@
  */
 #include "all_gather_formulaic_tiling_a5.h"
 #include "all_gather_matmul_tiling_a5.h"
+#include "all_gather_matmul_v2/op_host/op_tiling/arch35/all_gather_comm_algo_table.h"
+#include "mc2_comm_algo_selector.h"
+#include "mc2_comm_utils.h"
 
 namespace optiling {
 
@@ -30,7 +33,8 @@ ge::graphStatus AllGatherMatmulTilingA5::CheckValidRank(Mc2Tiling::AllGatherMatm
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group)
+void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                          [[maybe_unused]] const char *group)
 {
     tilingData->socParam.isA3 = 0U;
     tilingData->socParam.isStep = 0U;
@@ -39,7 +43,15 @@ void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *
 
 std::string AllGatherMatmulTilingA5::GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData)
 {
-    return "AllGather=level0:fullmesh";
+    uint32_t algoCount = 0;
+    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
+    // V1 tiling 侧无 comm_engine 概念，arch35 仅存在 AICPU 引擎路径（op_api 固定以 ai_cpu 转发），故固定传 AICPU
+    std::string algConfig = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
+        "AllGatherMatmul", group_, Mc2Comm::ENGINE_AICPU, commDataBytes_, tilingData->param.rankDim, algoEntries,
+        algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
+    OP_LOGD("AllGatherMatmul", "GetAlgConfig selected algConfig=%s, commDataBytes=%llu, rankDim=%u", algConfig.c_str(),
+            commDataBytes_, tilingData->param.rankDim);
+    return algConfig;
 }
 
 CutResult AllGatherMatmulTilingA5::GetCutResult(Mc2Tiling::AllGatherMatmulTilingData &tilingData,
@@ -48,6 +60,9 @@ CutResult AllGatherMatmulTilingA5::GetCutResult(Mc2Tiling::AllGatherMatmulTiling
     AllGatherPlusMMA5 tileFormulate(args, args.rankDim, KernelType::ALL_GATHER, SocVersion::SOC950);
     tileFormulate.GetTiling();
     CutResult mCutGather = tileFormulate.tilingM_.cutRes;
+    // 单轮通信量 = 每轮切分的 tileM(longTileLen) × K × dtypeSize（per-rank send，对齐 alltoall 口径），
+    // 超出算法表项 [minBytes, maxBytes] 范围时由选择器回退默认算法
+    commDataBytes_ = mCutGather.longTileLen * args.kValue * args.inputDtypeSize;
     return mCutGather;
 }
 

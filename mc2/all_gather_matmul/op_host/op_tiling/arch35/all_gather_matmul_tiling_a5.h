@@ -25,6 +25,9 @@ public:
                                    gert::TilingContext *context, uint32_t rankSize) override;
     void SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group) override;
     std::string GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData) override;
+
+private:
+    uint64_t commDataBytes_ = 0; // GetCutResult 时缓存单轮通信量 tileM * kValue * dtypeSize
 };
 } // namespace optiling
 #endif //__ALL_GATHER_MATMUL_TILING_A5_H__
