@@ -110,10 +110,10 @@ void FlashMlaWithKvcacheTilingImpl::InitImplParam()
 
 void FlashMlaWithKvcacheTilingImpl::SplitPolicy()
 {
-    // MLA uses M64/S2=128; each AIV handles 32 rows. The metadata producer
+    // MLA uses M96/S2=112; each AIV handles 48 rows. The metadata producer
     // owns task partitioning, and the kernel executes its FA/FD sections.
-    sOuterFactor_ = arch35MLA::SOUTER_32;
-    sInnerFactor_ = arch35MLA::SINNER_128;
+    sOuterFactor_ = 48;
+    sInnerFactor_ = 112;
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = true;
 }

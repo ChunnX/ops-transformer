@@ -226,8 +226,8 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitDeviceInfo()
 
 void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
 {
-    param.mBaseSize = 64;
-    param.s2BaseSize = 128;
+    param.mBaseSize = 96;
+    param.s2BaseSize = 112;
     // M 方向总行数 = g * S1 = (N1/N2) * maxSeqlenQ。若总行数 <= 2*mBaseSize（M 最多 2 块），
     // 多 section 切分无收益，仅增加 metadata/re-init/SyncAll 开销，故关闭。
     {
@@ -293,15 +293,7 @@ bool FlashMlaWithKvcacheMetadataCpuKernel::GenMetadata(load_balance::SectionStre
     faMetadata.Clear(); // set to all 0
 
     faMetadata.SetHeadMetadata(HEAD_SECTION_NUM_INDEX, splitRes.sectionNum);
-    // D18 fallback (unconditional, D29/R6): HEAD_M_BASE_SIZE / HEAD_S2_BASE_SIZE are FORCED to the MLA
-    // kernel template base sizes 64/128 (D17) and do NOT trust the value derived by
-    // fa_tiling_util::AdjustSinnerAndSouter + the aiv/aic ratio scaling above. The invariant source is
-    // the kernel-side static_assert mBaseSize==64 && s2BaseSize==128 (fia_block_cube_noquant_mla.h:106,
-    // ported as flash_mla_block_cube_mla.h) for D=576; this forced head-field write keeps the
-    // AICPU producer in agreement. The per-core split math (BalanceSchedule -> SectionStreamK::Compute)
-    // is intentionally UNCHANGED - only the two head fields are overridden. Trigger rule: if the Todo 13
-    // byte-golden / on-board smoke shows SectionStreamK mis-splitting D=576, port FIA split_core_v2
-    // per D18 and re-run.
+    // Keep metadata tile sizes consistent with the fixed M96/S2=112 kernel.
     faMetadata.SetHeadMetadata(HEAD_M_BASE_SIZE_INDEX, HEAD_M_BASE_SIZE_MLA);
     faMetadata.SetHeadMetadata(HEAD_S2_BASE_SIZE_INDEX, HEAD_S2_BASE_SIZE_MLA);
     faMetadata.SetHeadMetadata(HEAD_AIC_NUM_INDEX, static_cast<FA_METADATA_T>(aicCoreNum_));

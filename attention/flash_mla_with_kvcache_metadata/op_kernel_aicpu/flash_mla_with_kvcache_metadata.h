@@ -43,12 +43,10 @@ constexpr uint32_t HEAD_AIC_NUM_INDEX = 4U;
 constexpr uint32_t HEAD_AIV_NUM_INDEX = 5U;
 constexpr uint32_t HEAD_OUTPUT_LAYOUT_INDEX = 6U;
 
-// MLA fixed base sizes (D17/B3): hard-forced into the head metadata by GenMetadata. The MLA kernel
-// template asserts mBaseSize==64 && s2BaseSize==128 for D=576 (fia_block_cube_noquant_mla.h:106,
-// ported as flash_mla_block_cube_mla.h) - that static_assert is the invariant source, so these
-// MUST NOT be derived from fa_tiling_util::AdjustSinnerAndSouter.
-constexpr uint32_t HEAD_M_BASE_SIZE_MLA = 64U;
-constexpr uint32_t HEAD_S2_BASE_SIZE_MLA = 128U;
+// Fixed MLA tile sizes must match the main kernel and host tiling.
+// GenMetadata writes these values directly; do not derive them through FA tile adjustment.
+constexpr uint32_t HEAD_M_BASE_SIZE_MLA = 96U;
+constexpr uint32_t HEAD_S2_BASE_SIZE_MLA = 112U;
 
 // FA Metadata Index Definitions
 constexpr uint32_t FA_BN2_START_INDEX = 0U;

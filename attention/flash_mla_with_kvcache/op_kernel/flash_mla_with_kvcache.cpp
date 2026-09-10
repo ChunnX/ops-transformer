@@ -112,8 +112,8 @@ __global__ __aicore__ void flash_mla_with_kvcache(__gm__ uint8_t *query, __gm__ 
     constexpr FLASH_MLA_WITH_KVCACHE_LAYOUT outLayout = GetOutLayoutMla<inOutLayoutType>();
     constexpr GmFormat kvGmFormat = GetKvLayoutMla<inOutLayoutType, KvLayoutType>();
     constexpr bool pageAttention = IsPageAttentionMla<KvLayoutType>();
-    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
-    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(96);
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(112);
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 

@@ -96,7 +96,9 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T *maskUb, uint16_t headGLoop, uint16_
     RegTensor<T> vreg_g_tail;
 
     MaskReg preg_all;
-    if constexpr (s2BaseSize == 128) {
+    if constexpr (s2BaseSize == 64) {
+        preg_all = CreateMask<bool, MaskPattern::VL64>();
+    } else if constexpr (s2BaseSize == 128) {
         preg_all = CreateMask<bool, MaskPattern::VL128>();
     } else { // s2BaseSize = 256
         preg_all = CreateMask<bool, MaskPattern::ALL>();
