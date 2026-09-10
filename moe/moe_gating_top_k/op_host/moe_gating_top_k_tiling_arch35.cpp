@@ -421,10 +421,10 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtypes()
                 return ge::GRAPH_FAILED);
 
     auto outDesc = context_->GetOutputDesc(OUT_OUTPUT_INDEX);
-    if (outFlag_ && outDesc != nullptr) {
+    if (outDesc != nullptr) {
         auto outDtype = outDesc->GetDataType();
         OP_CHECK_IF((outDtype != ge::DataType::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "outDtype",
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "out",
                                               Ops::Base::ToString(outDtype).c_str(), "float32"),
                     return ge::GRAPH_FAILED);
     }
