@@ -1,5 +1,5 @@
 # ops-transformer
-
+1
 ## 🔥Latest News
 
 - [2026/08] 仓内集成[pre-commit代码检查框架](docs/zh/develop/pre-commit_guide.md)，配置后`git commit`时自动检查并修复格式问题，将规范问题拦截在提交阶段、提升代码合入效率，详见[pre-commit配置指导书](docs/zh/develop/pre-commit_guide.md)。
