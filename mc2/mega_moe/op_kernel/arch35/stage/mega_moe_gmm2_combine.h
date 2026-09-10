@@ -779,13 +779,13 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
 
     if constexpr (g_coreType == AscendC::AIC) {
         if (blockMmadContext != nullptr) {
-            InitBlockMmad(*blockMmadContext, config);
+            InitBlockMmad<GmmStage::GMM2>(*blockMmadContext, config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
-            InitBlockMmad(localBlockMmadContext, config);
+            InitBlockMmad<GmmStage::GMM2>(localBlockMmadContext, config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);
