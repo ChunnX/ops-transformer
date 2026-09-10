@@ -57,7 +57,9 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using AType = DTYPE_X;
     using BType = DTYPE_W;
     using CType = DTYPE_Y;
-    using C1Type = CType;
+    // Keep Cube accumulation and the epilogue input in FP32. The requested
+    // output dtype is applied by the vector epilogue after logit processing.
+    using C1Type = float;
     using LogitType = DTYPE_LOGIT;
     using RowIndexType = AscendC::Std::conditional_t<AscendC::Std::is_same_v<CType, bfloat16_t>, int32_t, int64_t>;
     using LayoutA = layoutA;

@@ -58,11 +58,14 @@ constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
+constexpr int DIM_ONE = 1;
 constexpr int DIM_TWO = 2;
 constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 64U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
 constexpr uint32_t MEM_HANDLE_NUM = 1U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
+constexpr int64_t MOE_EP_METADATA_FIELDS = 5;
+constexpr int64_t MOE_EP_METADATA_ALIGN_BYTES = 512;
 
 // RAII guard for multi-step host buffer allocation
 struct HostBufferGuard {
@@ -99,6 +102,26 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     TORCH_CHECK(y > 0, "AlignTo divisor must be positive, got ", y);
     TORCH_CHECK(x <= INT64_MAX - y + 1, "AlignTo overflow: x=", x, " y=", y);
     return CeilDiv(x, y) * y;
+}
+
+static inline void CheckMoeEpMetadataTensor(const at::Tensor &metadata, const char *name, int64_t capacity,
+                                            int64_t epWorldSize, const at::Device &device)
+{
+    TORCH_CHECK(capacity >= 0 && capacity <= INT32_MAX, "metadata capacity must be in [0, INT32_MAX]");
+    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size must be in [2, 1024]");
+    // Packed ABI: five-column A_alloc rows, then separately 512B-aligned rank offsets.
+    const int64_t elementBytes = sizeof(int32_t);
+    const int64_t offsetBytes = AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
+    const int64_t elements =
+        (offsetBytes + AlignTo((epWorldSize + 1) * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) / elementBytes;
+    TORCH_CHECK(metadata.scalar_type() == at::kInt && metadata.dim() == DIM_ONE, name,
+                " must be a 1D int32 packed tensor");
+    TORCH_CHECK(metadata.numel() == static_cast<int64_t>(elements), name, " packed length must be ", elements);
+    TORCH_CHECK(metadata.is_contiguous() && metadata.storage_offset() == 0, name,
+                " must describe the full contiguous packed allocation, not a metadata-only view");
+    TORCH_CHECK(metadata.device() == device, name, " must be on device ", device);
+    TORCH_CHECK(reinterpret_cast<uintptr_t>(metadata.data_ptr()) % MOE_EP_METADATA_ALIGN_BYTES == 0, name,
+                " base address must be 512-byte aligned");
 }
 
 static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStream)
@@ -1150,7 +1173,7 @@ public:
                   bool withGrad = false, bool explicitlyDestroy = false);
     ~ElasticBuffer();
 
-    void EngramWrite(const at::Tensor &storage);
+    void EngramWrite(const at::Tensor &storage, const c10::optional<at::Tensor> &sf);
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
@@ -1172,7 +1195,7 @@ public:
     }
 
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                  int64_t numEntries, int64_t dtypeEnum);
+                                  int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
@@ -1361,7 +1384,7 @@ int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerSe
 }
 
 // EngramWrite - write data with automatic barrier.
-void ElasticBuffer::EngramWrite(const at::Tensor &storage)
+void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<at::Tensor> &sf)
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                              "please create a new ElasticBuffer instance");
@@ -1428,7 +1451,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
 at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                      int64_t numEntries, int64_t dtypeEnum)
+                                      int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1439,7 +1462,7 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
     ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, fetched, nullTensor, nullTensor, nullTensor, nullTensor,
-              nullTensor, hiddenSize, numEntries, zero, zero, zero);
+              nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, sfTableAddr);
     return fetched;
 }
 
@@ -1465,8 +1488,11 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
+        aclTensor *nullTensor = nullptr;
+        int64_t zero = 0;
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, fetched, perm, sendCounts, recvCounts,
-                  recvLocalEntry, numRecv, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize, withGrad);
+                  recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize,
+                  withGrad, zero);
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -1736,6 +1762,13 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
     const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
 {
+    TORCH_CHECK(recvX.dim() == DIM_TWO, "recv_x dims must be 2, but got ", recvX.dim());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), epWorldSize, recvX.device());
+    if (cachedRecvSrcMetadata.has_value()) {
+        CheckMoeEpMetadataTensor(*cachedRecvSrcMetadata, "cached_recv_src_metadata", recvX.size(0), epWorldSize,
+                                 recvX.device());
+    }
+
     EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
@@ -1779,6 +1812,7 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
     EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
@@ -1828,12 +1862,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"), pybind11::arg("numMaxTokensPerRank") = 0, pybind11::arg("withGrad") = false,
              pybind11::arg("explicitlyDestroy") = false)
-        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
+        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
+             pybind11::arg("sf") = pybind11::none())
         .def_static("engram_fetch",
-                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t)>(
-                        &Mc2Api::ElasticBuffer::EngramFetch),
+                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
+                                               at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
                     pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"))
+                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("fetched_sf"),
+                    pybind11::arg("sf_table_addr"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
