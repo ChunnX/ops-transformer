@@ -18,6 +18,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
+#include "acl/acl_rt.h"
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -27,6 +30,7 @@
 #include "../../../op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
+#include "../../../op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #include "gmm_csv_ge_parse_utils.h"
 
 
@@ -34,6 +38,47 @@ using namespace std;
 using namespace ge;
 
 namespace {
+int32_t gDevkitVersion = 0;
+aclError gDevkitVersionStatus = ACL_SUCCESS;
+
+class ScopedDevkitVersion {
+public:
+    ScopedDevkitVersion(int32_t version, aclError status)
+        : previousVersion_(gDevkitVersion), previousStatus_(gDevkitVersionStatus)
+    {
+        gDevkitVersion = version;
+        gDevkitVersionStatus = status;
+    }
+    ~ScopedDevkitVersion()
+    {
+        gDevkitVersion = previousVersion_;
+        gDevkitVersionStatus = previousStatus_;
+    }
+private:
+    int32_t previousVersion_;
+    aclError previousStatus_;
+};
+} // namespace
+
+// Host UT executable stub; production resolves this API from acl_rt.
+extern "C" aclError aclsysGetVersionNum(char *name, int32_t *version)
+{
+    if (name == nullptr || version == nullptr || std::strcmp(name, "asc-devkit") != 0) {
+        return static_cast<aclError>(1);
+    }
+    *version = gDevkitVersion;
+    return gDevkitVersionStatus;
+}
+
+namespace {
+// Routing may only inspect this shared prefix before deciding which full layout to read.
+static_assert(offsetof(GroupedMatmulTilingData::GMMQuantTilingData, gmmQuantParams) == 0);
+static_assert(offsetof(GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData, gmmQuantParams) == 0);
+static_assert(sizeof(GroupedMatmulTilingData::GMMQuantBasicApiTilingData) == 72);
+static_assert(sizeof(GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData) == 1608);
+static_assert(offsetof(GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData, mmTilingData) == 24);
+static_assert(offsetof(GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData, gmmArray) == 72);
+
 
 using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
@@ -89,11 +134,11 @@ public:
             static_cast<uint32_t>(coreNum > 0 ? coreNum : 32),     // aicNum
             static_cast<uint32_t>(coreNum > 0 ? coreNum * 2 : 64), // aivNum
             262144,                                                // ubSize
-            524288,                                                // l1Size
+            l1Bytes,                                               // l1Size
             134217728,                                             // l2Size
-            262144,                                                // l0CSize
-            65536,                                                 // l0ASize
-            65536,                                                 // l0BSize
+            l0CBytes,                                              // l0CSize
+            l0ABytes,                                              // l0ASize
+            l0BBytes,                                              // l0BSize
             platform_ascendc::SocVersion::ASCEND950,               // socVersion
             NpuArch::DAV_3510,
         };
@@ -164,26 +209,87 @@ public:
         if (!result) {
             return;
         }
-        if (expectTilingData.empty()) {
-            // For some csv cases we only care success/failure path, not exact tiling binary details.
+        ASSERT_EQ(tilingInfo.blockNum, expectBlockDim) << "prefix=" << prefix;
+        if (expectCubeBasicApi) {
+            // Fixpipe keeps kernel type 0; B transpose occupies the low two bits.
+            ASSERT_EQ(tilingInfo.tilingKey, static_cast<uint64_t>(transposeWeight));
+            ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData));
+            const auto &data = *reinterpret_cast<const GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData *>(
+                tilingInfo.tilingData.get());
+            const auto &mm = data.mmTilingData;
+            EXPECT_EQ(mm.m, m);
+            EXPECT_EQ(mm.n, n);
+            EXPECT_EQ(mm.k, k);
+            EXPECT_EQ(mm.isBias, hasBias);
+            EXPECT_EQ(mm.l1BufferStage, 2);
+            EXPECT_EQ(mm.scaleKAL1, 0);
+            EXPECT_EQ(mm.scaleKBL1, 0);
+            EXPECT_EQ(mm.reserved1, 0);
+            EXPECT_EQ(mm.reserved2, 0);
+            EXPECT_EQ(data.gmmQuantParams.groupNum, groupNum);
+            EXPECT_EQ(data.gmmQuantParams.groupType, groupType);
+            EXPECT_EQ(data.gmmQuantParams.hasBias, hasBias);
+            EXPECT_EQ(data.gmmQuantParams.singleX, 1);
+            EXPECT_EQ(data.gmmQuantParams.singleW, 1);
+            EXPECT_EQ(data.gmmQuantParams.singleY, 1);
+            EXPECT_EQ(data.gmmArray.mList[0], -1);
+            EXPECT_EQ(data.gmmArray.kList[0], k);
+            EXPECT_EQ(data.gmmArray.nList[0], n);
+            for (size_t i = 1; i < 128; ++i) {
+                EXPECT_EQ(data.gmmArray.mList[i], 0);
+                EXPECT_EQ(data.gmmArray.kList[i], 0);
+                EXPECT_EQ(data.gmmArray.nList[i], 0);
+            }
+            ASSERT_GT(mm.baseK, 0);
+            ASSERT_GE(mm.kAL1, mm.baseK);
+            ASSERT_GE(mm.kBL1, mm.baseK);
+            EXPECT_EQ(mm.kAL1 % mm.baseK, 0);
+            EXPECT_EQ(mm.kBL1 % mm.baseK, 0);
+            if (expectedKAL1 != 0) {
+                EXPECT_EQ(mm.kAL1, expectedKAL1);
+                EXPECT_EQ(mm.kBL1, expectedKBL1);
+            }
+            const auto align = [](uint64_t value, uint64_t unit) { return (value + unit - 1) / unit * unit; };
+            const bool fp4 = xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_FLOAT4_E1M2;
+            const uint64_t c0 = fp4 ? 64 : 32;
+            // All covered input storage types have sizeof == 1 in BlockMmad.
+            const uint64_t aStage = align(mm.baseM, 16) * align(mm.kAL1, c0);
+            const uint64_t bStage = transposeWeight ? align(mm.kBL1, c0) * align(mm.baseN, 16) :
+                                                     align(mm.kBL1, 16) * align(mm.baseN, c0);
+            const uint64_t scaleStage = scaleMode == "PERCHANNEL" ? align(mm.baseN * 8UL, 32) : 0;
+            const uint64_t biasStage = hasBias ? align(mm.baseN * 4UL, 32) : 0;
+            EXPECT_LE(aStage + bStage + scaleStage + biasStage, compileInfo.l1Size / 2);
+            EXPECT_LE(align(mm.baseM, 16) * align(mm.baseK, c0), compileInfo.l0ASize / 2);
+            EXPECT_LE(align(mm.baseN, c0) * align(mm.baseK, c0), compileInfo.l0BSize / 2);
+            const uint64_t cBytes = uint64_t{mm.baseM} * mm.baseN * 4;
+            EXPECT_LE(cBytes * mm.dbL0C, compileInfo.l0CSize);
+            EXPECT_EQ(mm.dbL0C, cBytes * 2 <= compileInfo.l0CSize ? 2 : 1);
             return;
         }
-
-        ASSERT_EQ(tilingInfo.blockNum, expectBlockDim) << "prefix=" << prefix;
         ASSERT_EQ(tilingInfo.tilingKey, expectTilingKey) << "prefix=" << prefix;
-        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMQuantTilingData))
-            << "prefix=" << prefix;
-        string actualTilingData = TilingData2Str(tilingInfo.tilingData.get(), tilingInfo.tilingDataSize);
-        ASSERT_EQ(actualTilingData, expectTilingData) << "prefix=" << prefix;
+        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(GroupedMatmulTilingData::GMMQuantTilingData));
+        if (!expectTilingData.empty()) {
+            EXPECT_EQ(TilingData2Str(tilingInfo.tilingData.get(), tilingInfo.tilingDataSize), expectTilingData);
+        }
     }
 
     void Test() const
     {
+        ScopedDevkitVersion versionScope(devkitVersion, devkitVersionStatus);
         optiling::GMMCompileInfo compileInfo;
         Prepare(compileInfo);
         InvokeTilingFunc(compileInfo);
     }
 
+    int32_t devkitVersion = 90100000;
+    aclError devkitVersionStatus = ACL_SUCCESS;
+    bool expectCubeBasicApi = true;
+    uint64_t l1Bytes = 524288;
+    uint64_t l0ABytes = 65536;
+    uint64_t l0BBytes = 65536;
+    uint64_t l0CBytes = 262144;
+    uint32_t expectedKAL1 = 0;
+    uint32_t expectedKBL1 = 0;
     string socVersion;
     string caseName;
     bool enable = true;
@@ -299,6 +405,186 @@ const vector<GroupedQuantCubeonlyArch35TilingTestParam> &GetAscend950Params()
     return params;
 }
 
+GroupedQuantCubeonlyArch35TilingTestParam MakeCubeCase()
+{
+    GroupedQuantCubeonlyArch35TilingTestParam p;
+    p.expectBlockDim = 32;
+    p.caseName = p.prefix = "cube_basic_contract";
+    p.m = 64;
+    p.n = 256;
+    p.k = 4096;
+    p.groupNum = 4;
+    p.xDtype = p.weightDtype = ge::DT_INT8;
+    p.yDtype = ge::DT_FLOAT16;
+    p.scaleDtype = ge::DT_UINT64;
+    p.biasDtype = ge::DT_INT32;
+    p.hasBias = false;
+    p.transposeX = p.transposeWeight = false;
+    p.weightFormat = "ND";
+    p.scaleMode = "PERTENSOR";
+    p.perTokenScaleMode = "NONE";
+    p.groupType = 0;
+    p.expectTilingKey = 0;
+    p.expectTilingData.clear();
+    p.result = true;
+    return p;
+}
+
+TEST(TestGroupedQuantCubeBasicApi, BandwidthTarget)
+{
+    auto p = MakeCubeCase();
+    p.expectedKAL1 = 1024;
+    p.expectedKBL1 = 256;
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, Int32WithoutScale)
+{
+    auto p = MakeCubeCase();
+    p.yDtype = ge::DT_INT32;
+    p.scaleMode = "NONE";
+    for (auto scaleDtype : {ge::DT_UINT64, ge::DT_FLOAT, ge::DT_UNDEFINED}) {
+        p.scaleDtype = scaleDtype;
+        p.Test();
+    }
+}
+
+TEST(TestGroupedQuantCubeBasicApi, AbsentBiasIgnoresDescriptorDefault)
+{
+    for (auto biasDtype : {ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_UNDEFINED}) {
+        auto p = MakeCubeCase();
+        p.biasDtype = biasDtype;
+        p.Test();
+        p.xDtype = p.weightDtype = ge::DT_FLOAT8_E4M3FN;
+        p.scaleDtype = ge::DT_FLOAT;
+        p.yDtype = ge::DT_BF16;
+        p.Test();
+    }
+}
+
+TEST(TestGroupedQuantCubeBasicApi, HiFloat8Routing)
+{
+    for (bool transposeWeight : {false, true}) {
+        for (const auto &format : {"ND", "NZ"}) {
+            for (bool hasBias : {false, true}) {
+                for (auto biasDtype : {ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_UNDEFINED}) {
+                    auto p = MakeCubeCase();
+                    p.xDtype = p.weightDtype = ge::DT_HIFLOAT8;
+                    p.yDtype = ge::DT_FLOAT;
+                    p.scaleDtype = ge::DT_FLOAT;
+                    p.biasDtype = biasDtype;
+                    p.hasBias = hasBias;
+                    p.transposeWeight = transposeWeight;
+                    p.weightFormat = format;
+                    p.expectTilingKey = static_cast<uint64_t>(transposeWeight);
+                    // Existing public validation rejects HIFLOAT8 NZ and any actual bias.
+                    p.result = p.weightFormat == "ND" && !hasBias;
+                    p.expectCubeBasicApi = p.result;
+                    p.Test();
+                }
+            }
+        }
+    }
+}
+
+TEST(TestGroupedQuantCubeBasicApi, NativeBiasAndKTail)
+{
+    auto p = MakeCubeCase();
+    p.k = 4097;
+    p.hasBias = true;
+    p.scaleMode = "PERCHANNEL";
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, RejectTransposeAForSplitM)
+{
+    auto p = MakeCubeCase();
+    p.xDtype = p.weightDtype = ge::DT_FLOAT8_E4M3FN;
+    p.scaleDtype = ge::DT_FLOAT;
+    p.yDtype = ge::DT_BF16;
+    p.transposeX = true;
+    p.expectCubeBasicApi = false;
+    p.result = false;
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, BiasEpilogueUsesOriginalTiling)
+{
+    auto p = MakeCubeCase();
+    p.hasBias = true;
+    p.biasDtype = ge::DT_FLOAT;
+    p.scaleDtype = ge::DT_FLOAT;
+    p.expectCubeBasicApi = false;
+    p.expectTilingKey = 0x10;
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, DevkitVersionRouting)
+{
+    struct VersionCase { int32_t version; bool basicApi; };
+    const VersionCase cases[] = {
+        {0, false}, {80500000, false}, {90000000, false}, {90099999, false},
+        {90100000, true}, {90101999, true}, {90200000, true},
+        {100000000, false}, {100100000, true}, {-1, false}
+    };
+    for (const auto &versionCase : cases) {
+        for (bool transposeWeight : {false, true}) {
+            for (auto format : {ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ}) {
+                auto p = MakeCubeCase();
+                p.devkitVersion = versionCase.version;
+                p.expectCubeBasicApi = versionCase.basicApi;
+                p.transposeWeight = transposeWeight;
+                p.expectTilingKey = static_cast<uint64_t>(transposeWeight);
+                p.weightFormat = format == ge::FORMAT_ND ? "ND" : "NZ";
+                p.Test();
+            }
+        }
+    }
+}
+
+TEST(TestGroupedQuantCubeBasicApi, DevkitQueryFailureUsesHostOriginalLayout)
+{
+    // Host behavior only: a Blaze-built kernel cannot distinguish this fallback layout.
+    auto p = MakeCubeCase();
+    p.devkitVersionStatus = static_cast<aclError>(1);
+    p.expectCubeBasicApi = false;
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, ScaleAndBiasReservedInBothHalves)
+{
+    auto p = MakeCubeCase();
+    p.hasBias = true;
+    p.scaleMode = "PERCHANNEL";
+    // A 64 KiB + B 64 KiB + scale 2 KiB + bias 1 KiB requires 134144 per half.
+    p.l1Bytes = 268288;
+    p.expectedKAL1 = 1024;
+    p.expectedKBL1 = 256;
+    p.Test();
+    p.l1Bytes -= 32; // must shrink rather than place auxiliary buffers past the half boundary
+    p.expectedKAL1 = 512;
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, RejectInsufficientL1)
+{
+    auto p = MakeCubeCase();
+    p.l1Bytes = 1024;
+    p.result = false;
+    p.Test();
+}
+
+TEST(TestGroupedQuantCubeBasicApi, RejectInsufficientL0)
+{
+    auto p = MakeCubeCase();
+    p.l0ABytes = p.l0BBytes = 1024;
+    p.result = false;
+    p.Test();
+    p.l0ABytes = p.l0BBytes = 65536;
+    p.l0CBytes = 1024;
+    p.Test();
+}
+
 class TestGroupedQuantCubeonlyArch35Tiling : public testing::TestWithParam<GroupedQuantCubeonlyArch35TilingTestParam> {
 protected:
     static void SetUpTestCase()
@@ -312,6 +598,10 @@ protected:
 TEST_P(TestGroupedQuantCubeonlyArch35Tiling, generalTest)
 {
     GetParam().Test();
+    auto oldDevkit = GetParam();
+    oldDevkit.devkitVersion = 90000000;
+    oldDevkit.expectCubeBasicApi = false;
+    oldDevkit.Test();
 }
 
 

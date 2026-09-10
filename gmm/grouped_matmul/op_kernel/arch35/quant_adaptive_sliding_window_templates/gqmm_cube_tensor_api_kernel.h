@@ -21,7 +21,7 @@
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
-using GMMQuantTilingData = GroupedMatmulTilingData::GMMQuantTilingData;
+using GMMQuantCubeBasicApiTilingData = GroupedMatmulTilingData::GMMQuantCubeBasicApiTilingData;
 
 namespace GROUPED_MATMUL {
 
@@ -35,15 +35,18 @@ __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
     if ASCEND_IS_AIV {
         return;
     }
-    GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);
-    GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);
-    GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);
+    GET_TILING_DATA_MEMBER(GMMQuantCubeBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);
+    GET_TILING_DATA_MEMBER(GMMQuantCubeBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
+    GET_TILING_DATA_MEMBER_ADDR(GMMQuantCubeBasicApiTilingData, gmmArray, gmmArrayAddr_, tiling);
 
     using AType = xType;
     using BType = wType;
     using CType = yType;
-    using BiasType = biasType;
-    using ScaleGmType = scaleType;
+    // Host admits only native accumulator bias types when bias is present.
+    // Absent optional bias may have an unrelated framework default dtype.
+    using BiasType = AscendC::Std::conditional_t<AscendC::IsSameType<xType, int8_t>::value, int32_t, float>;
+    // INT32 output never reads scale; keep its unused template type valid even for an absent scale.
+    using ScaleGmType = AscendC::Std::conditional_t<AscendC::IsSameType<CType, int32_t>::value, uint64_t, scaleType>;
     using LayoutA = xLayout;
     using LayoutB = wLayout;
     using LayoutC = yLayout;
@@ -63,19 +66,19 @@ __aicore__ inline void GmmCubeTensorApiKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
     const uint32_t baseK = static_cast<uint32_t>(mmTilingData_.baseK);
     GMMTiling gmmParams{};
     gmmParams.groupNum = gmmQuantParams_.groupNum;
-    gmmParams.m = static_cast<int64_t>(mmTilingData_.M);
-    gmmParams.n = static_cast<int64_t>(mmTilingData_.N);
-    gmmParams.k = static_cast<int64_t>(mmTilingData_.Ka);
+    gmmParams.m = static_cast<int64_t>(mmTilingData_.m);
+    gmmParams.n = static_cast<int64_t>(mmTilingData_.n);
+    gmmParams.k = static_cast<int64_t>(mmTilingData_.k);
     gmmParams.baseM = static_cast<uint32_t>(mmTilingData_.baseM);
     gmmParams.baseN = static_cast<uint32_t>(mmTilingData_.baseN);
     gmmParams.baseK = baseK;
-    gmmParams.kAL1 = static_cast<uint32_t>(mmTilingData_.stepKa) * baseK; 
-    gmmParams.kBL1 = static_cast<uint32_t>(mmTilingData_.stepKb) * baseK; 
+    gmmParams.kAL1 = mmTilingData_.kAL1;
+    gmmParams.kBL1 = mmTilingData_.kBL1;
     // nBufferNum 不再由此传入：当前 cube fixpipe-quant BlockMmad 固定双缓冲，
     // kernel 内部直接使用 Blaze::Gemm::DOUBLE_BUFFER_COUNT。
     gmmParams.x1QuantMode = gmmQuantParams_.aQuantMode;
     gmmParams.x2QuantMode = gmmQuantParams_.bQuantMode;
-    gmmParams.isBias = static_cast<uint8_t>(gmmQuantParams_.hasBias);
+    gmmParams.isBias = mmTilingData_.isBias;
     gmmParams.dbL0C = static_cast<uint8_t>(mmTilingData_.dbL0C);
     gmmParams.groupType = static_cast<int8_t>(gmmQuantParams_.groupType);
     gmmParams.groupListType = gmmQuantParams_.groupListType;

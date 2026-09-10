@@ -120,6 +120,14 @@ struct GMMQuantBasicApiTilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
+struct GMMQuantCubeBasicApiTilingData {
+    GMMQuantParams gmmQuantParams;
+    QuantBasicApiMMTiling mmTilingData;
+    GMMArray gmmArray;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
 struct GMMS8S4BasicApiParams {
     uint32_t quantGroupSize = 0;
     uint32_t quantGroupNum = 0;
