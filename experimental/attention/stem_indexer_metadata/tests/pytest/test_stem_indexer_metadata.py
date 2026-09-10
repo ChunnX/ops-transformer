@@ -18,8 +18,8 @@ qHeads = 1
 kvHeads = 1
 dimQkflat = 2048
 stemBlockSize = 128
-causal=True
-windowSize=4
+causal = True
+windowSize = 4
 
 metadata = torch.ops.npu_ops_transformer.npu_stem_indexer_metadata(
     q_seq_lens=qSeqLens,

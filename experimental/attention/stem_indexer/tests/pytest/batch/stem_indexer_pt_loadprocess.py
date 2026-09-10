@@ -56,7 +56,7 @@ def call_stem_indexer(case, npu_inputs):
     )
 
 
-def stem_indexer_process(filepath, device_id=0, return_test_data=False, mode="eager"):
+def stem_indexer_process(filepath, device_id=0, mode="eager"):
     test_data = torch_load_cpu(filepath)
     case = test_data["case"]
     print(f"Running StemIndexer testcase (mode={mode}):", filepath)
@@ -69,12 +69,10 @@ def stem_indexer_process(filepath, device_id=0, return_test_data=False, mode="ea
         npu_result = call_stem_indexer(case, npu_inputs)
 
     torch_npu.npu.synchronize()
-    result = (
+    return (
         test_data["expected_sparse_indices"],
         test_data["expected_sparse_seq_len"],
         npu_result,
         case,
+        test_data,
     )
-    if return_test_data:
-        return (*result, test_data)
-    return result
