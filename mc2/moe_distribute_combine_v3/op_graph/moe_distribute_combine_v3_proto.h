@@ -19,7 +19,6 @@
 
 namespace ge {
 
-
 /**
 * @brief MoeDistributeCombineV3 operator interface implementation.
 
@@ -98,6 +97,7 @@ REG_OP(MoeDistributeCombineV3)
     .OPTIONAL_INPUT(const_expert_v, TensorType({DT_BF16, DT_FLOAT16, DT_INT32}))
     .OPTIONAL_INPUT(performance_info, TensorType({DT_INT64}))
     .OUTPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
+    .OUTPUT(shared_expert_out, TensorType({DT_BF16, DT_FLOAT16}))
     .REQUIRED_ATTR(ep_world_size, Int)
     .REQUIRED_ATTR(ep_rank_id, Int)
     .REQUIRED_ATTR(moe_expert_num, Int)
@@ -115,10 +115,9 @@ REG_OP(MoeDistributeCombineV3)
     .ATTR(zero_expert_num, Int, 0)
     .ATTR(copy_expert_num, Int, 0)
     .ATTR(const_expert_num, Int, 0)
+    .ATTR(enable_independent_shared_expert, Bool, false)
     .OP_END_FACTORY_REG(MoeDistributeCombineV3)
 
-
 } // namespace ge
-
 
 #endif // OPS_BUILT_IN_OP_PROTO_INC_FUSION_OPS_H_

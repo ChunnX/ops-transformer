@@ -78,6 +78,7 @@ constexpr int64_t MOE_EXPERT_MAX_NUM_LAYERED = 512;
 constexpr int64_t LOCAL_EXPERT_MAX_SIZE = 2048;
 constexpr int64_t K_MAX = 16;
 constexpr int64_t FULLMESH_K_MAX = 12;
+constexpr int64_t FULLMESH_K_MAX_A5 = 16;
 constexpr size_t SYSTEM_NEED_WORKSPACE = 16UL * 1024UL * 1024UL;
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
 // A5前缀和临时区位于recvCnt工作区之后，分为数据区和同步标记区
@@ -937,9 +938,11 @@ static bool CheckCommAlgAttrs(const gert::TilingContext *context, const char *no
                             fullMeshBsUpperBound, bs),
                     return false);
     // 检查comm_alg和topK是否冲突
-    OP_TILING_CHECK(isSetFullMeshV2 && (k > FULLMESH_K_MAX),
+    const int64_t fullMeshKMax =
+        (mc2tiling::GetSocVersion(context) == "Ascend950") ? FULLMESH_K_MAX_A5 : FULLMESH_K_MAX;
+    OP_TILING_CHECK(isSetFullMeshV2 && (k > fullMeshKMax),
                     OP_LOGE(nodeName, "When comm_alg is fullmesh_v2, topK should be between [1, %lld], but got %u.",
-                            FULLMESH_K_MAX, k),
+                            fullMeshKMax, k),
                     return false);
     // 校验动态缩容和分层不能同时启用
     OP_TILING_CHECK((isLayered && hasElasticInfo),
@@ -1445,8 +1448,9 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
                                   isSharedExpert, isPerformance, config) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check input elasticInfo or performanceInfo failed"), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckExpandXAndDynamicScalesTensorShape(context, nodeName, tilingData, quantMode, A, xDim1) !=
-                        ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckExpandXAndDynamicScalesTensorShape(
+                        context, nodeName, tilingData, config.isIndependentSharedRank ? 0U : quantMode, A,
+                        config.isIndependentSharedRank ? xDim1 * 2 : xDim1) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check expandX or dynamicScales failed"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckAssistInfoAndExpertTokenNumsTensorShape(context, nodeName, tilingData, A, localMoeExpertNum,
@@ -1549,8 +1553,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::TilingCheckMoeDistributeD
     OP_TILING_CHECK(!CheckTensorPtrNullptr(context, nodeName, isScales, quantMode, isActiveMask, hasElasticInfo,
                                            isPerformance, config),
                     OP_LOGE(nodeName, "params check nullptr failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, quantMode, isActiveMask, hasElasticInfo, isPerformance,
-                                    isLayered, config),
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isScales, config.isIndependentSharedRank ? 0U : quantMode,
+                                    isActiveMask, hasElasticInfo, isPerformance, isLayered, config),
                     OP_LOGE_WITH_INVALID_INPUT(nodeName, "params shape"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, isScales, quantMode, isActiveMask, hasElasticInfo,
                                          isPerformance, config),
@@ -1586,7 +1590,12 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
                                           const bool isSetFullMeshV2, uint32_t localMoeExpertNum, bool isLayered,
                                           DispatchV2Config &config)
 {
-    CheckWinSizeData winSizeData;
+    CheckWinSizeData winSizeData{};
+    winSizeData.enableIndependentSharedExpert = config.enableIndependentSharedExpert;
+    winSizeData.sharedExpertRankNum = tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum;
+    winSizeData.dispatchQuantMode = tilingData.moeDistributeDispatchV2Info.quantMode;
+    winSizeData.dispatchDtype = config.moeExpertDtype;
+    winSizeData.checkDispatch = true;
     winSizeData.localMoeExpertNum = localMoeExpertNum;
     winSizeData.sharedExpertNum = tilingData.moeDistributeDispatchV2Info.sharedExpertNum;
     winSizeData.a = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.a);
@@ -1691,8 +1700,109 @@ static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context,
     return UbForBasic;
 }
 
+// K>12 is a penetration extension, not the future full-scale UB-reuse implementation.
+// Reject unsupported live-buffer peaks before launch; legacy K<=12 keeps its existing checks.
+static ge::graphStatus CheckExtendedFullMeshUb(const gert::TilingContext *context,
+                                               const MoeDistributeDispatchV2TilingData &tilingData,
+                                               const DispatchV2Config &config)
+{
+    const auto &info = tilingData.moeDistributeDispatchV2Info;
+    if (!config.enableIndependentSharedExpert && info.k <= FULLMESH_K_MAX) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const uint64_t idsBytes = LatentAlign(uint64_t{info.bs} * info.k * sizeof(int32_t), SIZE_ALIGN_256);
+    const uint64_t tokenIndicesBytes = LatentAlign(uint64_t{info.bs} * info.k * sizeof(int32_t), UB_ALIGN);
+    const bool masked = info.isTokenMask || info.isExpertMask || info.zeroComputeExpertNum != 0U;
+    const auto scales = context->GetOptionalInputShape(config.scalesIndex);
+    ge::DataType commType = config.enableIndependentSharedExpert ?
+                                config.moeExpertDtype :
+                                context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType();
+    uint64_t tokenBytes = LatentDispatchTokenBytes(info.h, info.quantMode, commType);
+    uint64_t inputBytes = LatentAlign(uint64_t{info.h} * sizeof(uint16_t), UB_ALIGN);
+    if (info.quantMode == 3U || info.quantMode == 4U || info.quantMode == 5U) {
+        inputBytes = LatentAlign(info.h, 128U) * sizeof(uint16_t);
+    }
+    if (info.quantMode == 0U && scales != nullptr) {
+        const uint64_t scaleBytes = uint64_t{info.scalesCol} * info.scalesTypeSize;
+        inputBytes += scaleBytes;
+        tokenBytes =
+            LatentAlign(LatentAlign(uint64_t{info.h} * sizeof(uint16_t), UB_ALIGN) + scaleBytes, UB_ALIGN) + UB_ALIGN;
+        tokenBytes = LatentAlign(tokenBytes, SPLIT_BLOCK_DATA_SIZE) / SPLIT_BLOCK_DATA_SIZE * SPLIT_BLOCK_SIZE;
+    }
+    const uint64_t packedBytes = tokenBytes / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_DATA_SIZE;
+    if (config.enableIndependentSharedExpert && info.quantMode == 0U) {
+        inputBytes = packedBytes;
+    }
+    // calBegin, dataState, calEnd; input queues; expert IDs; reduction scratch.
+    uint64_t fixedBytes = 3U * UB_ALIGN + BUFFER_NUM * inputBytes + idsBytes + tokenIndicesBytes;
+    fixedBytes += info.hasExpertScales ? idsBytes : 0U;
+    fixedBytes += masked ? idsBytes : 0U;
+    fixedBytes += BUFFER_NUM * ((info.quantMode != 0U || masked) ? info.maxSizeForUbBuffer : tokenIndicesBytes);
+    if (info.quantMode != 0U) {
+        // Conservative for legacy 32-byte-aligned tempBuf; exact for the independent path.
+        fixedBytes += packedBytes;
+    }
+    if (info.isExpertMask || info.zeroComputeExpertNum != 0U) {
+        const uint64_t maskBytes = uint64_t{info.bs} * LatentAlign(info.k, UB_ALIGN) * 2U;
+        fixedBytes +=
+            LatentAlign(uint64_t{info.bs} * sizeof(int32_t), UB_ALIGN) + std::max(tokenIndicesBytes, maskBytes);
+    }
+    if (info.hasElasticInfo) {
+        fixedBytes +=
+            LatentAlign(uint64_t{ELASTIC_INFO_OFFSET + RANK_LIST_NUM * info.epWorldSize} * sizeof(int32_t), UB_ALIGN);
+    }
+    uint64_t available = 0U;
+    auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, available);
+    available = std::min(available, uint64_t{248U * 1024U});
+    OP_TILING_CHECK(fixedBytes + tokenBytes > available,
+                    OP_LOGE(context->GetNodeName(),
+                            "Extended fullmesh sender needs %lu fixed UB bytes plus %lu token bytes, available %lu. "
+                            "Full-scale K=16 requires the follow-up UB-reuse implementation.",
+                            fixedBytes, tokenBytes, available),
+                    return ge::GRAPH_FAILED);
+    const uint64_t aivNum = platform.GetCoreNumAiv();
+    const uint64_t localExperts = info.moeExpertNum / (info.epWorldSize - info.sharedExpertRankNum);
+    const uint64_t totalExperts = uint64_t{info.moeExpertNum} + info.sharedExpertRankNum;
+    const uint64_t countAiv =
+        std::min(std::max(totalExperts / 16U, uint64_t{1}), std::min(aivNum / 2U, uint64_t{A5_CUMSUM_MAX_CORE_NUM}));
+    OP_TILING_CHECK(countAiv == 0U, OP_LOGE(context->GetNodeName(), "No count cores available."),
+                    return ge::GRAPH_FAILED);
+    const uint64_t recvStatuses =
+        info.epRankId < info.sharedExpertRankNum ? info.epWorldSize : info.epWorldSize * localExperts;
+    const uint64_t perCore = (recvStatuses + countAiv - 1U) / countAiv;
+    uint64_t countBytes = 2U * UB_ALIGN + 2U * info.maxSizeForUbBuffer + 2U * idsBytes +
+                          LatentAlign(totalExperts, UB_ALIGN / sizeof(int32_t)) * UB_ALIGN;
+    countBytes += info.hasExpertScales ? idsBytes : 0U;
+    if (info.isExpertMask || info.zeroComputeExpertNum != 0U) {
+        countBytes += LatentAlign(uint64_t{info.bs} * sizeof(int32_t), UB_ALIGN) +
+                      std::max(tokenIndicesBytes, uint64_t{info.bs} * LatentAlign(info.k, UB_ALIGN) * 2U);
+    }
+    countBytes += LatentAlign(perCore * UB_ALIGN, SIZE_ALIGN_256) +
+                  LatentAlign(std::max(LatentAlign(perCore * sizeof(float), UB_ALIGN),
+                                       info.epWorldSize * localExperts * sizeof(float)),
+                              UB_ALIGN) +
+                  2U * aivNum * UB_ALIGN + LatentAlign(aivNum * sizeof(float), UB_ALIGN) + 4U * UB_ALIGN +
+                  LatentAlign(localExperts * sizeof(int64_t), UB_ALIGN);
+    if (info.isPerformance) {
+        countBytes += LatentAlign(uint64_t{info.epWorldSize} * sizeof(int64_t), UB_ALIGN) +
+                      LatentAlign(perCore * sizeof(int32_t), UB_ALIGN);
+    }
+    if (info.hasElasticInfo) {
+        // Initial elastic table and an additional performance-path copy.
+        countBytes +=
+            (info.isPerformance ? 2U : 1U) *
+            LatentAlign(uint64_t{ELASTIC_INFO_OFFSET + RANK_LIST_NUM * info.epWorldSize} * sizeof(int32_t), UB_ALIGN);
+    }
+    OP_TILING_CHECK(countBytes > available,
+                    OP_LOGE(context->GetNodeName(), "Extended fullmesh count stage needs %lu UB bytes, available %lu.",
+                            countBytes, available),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
-                                   const char *nodeName)
+                                   const char *nodeName, bool independentShared)
 {
     uint32_t ubSize = UB_ALIGN; // dataStateBuf
 
@@ -1705,6 +1815,11 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     uint32_t hOutSizeAlign = 0;
     ubSize = ubSize + AllToAllBasicUsedBuffer(context, tilingData, quantMode, expertIdsBufSize, hSize, expertIdsCnt,
                                               hOutSizeAlign, nodeName);
+    if (independentShared && quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
+        const uint32_t inputBytes = Ceil(hSize * SIZE_OF_UNQUANT, UB_ALIGN, nodeName);
+        const uint32_t packedInputBytes = Ceil(inputBytes + UB_ALIGN, SPLIT_BLOCK_DATA_SIZE, nodeName);
+        ubSize += BUFFER_NUM * (packedInputBytes - inputBytes);
+    }
 
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
@@ -1744,6 +1859,9 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     uint64_t ubRealSize = 0;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubRealSize);
+    if (independentShared || kSize > FULLMESH_K_MAX) {
+        ubRealSize = std::min(ubRealSize, uint64_t{248U * 1024U});
+    }
     OP_TILING_CHECK(ubSize > ubRealSize,
                     OP_LOGE(nodeName,
                             "Current scenario is exceeds the size limit, BS = %u, H = %u, topK = %u, moeExpertNum = "
@@ -1912,8 +2030,11 @@ ge::graphStatus CheckSizeAndSetRelevantCfg(gert::TilingContext *context, MoeDist
 {
     // 校验UB大小
     if (isSetFullMeshV2) {
-        OP_TILING_CHECK(CheckUBSize(context, *tilingData, nodeName) != ge::GRAPH_SUCCESS,
-                        OP_LOGE(nodeName, "Tiling check UB size failed."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            CheckUBSize(context, *tilingData, nodeName, config.enableIndependentSharedExpert) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Tiling check UB size failed."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(CheckExtendedFullMeshUb(context, *tilingData, config) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(nodeName, "Extended sender UB check failed."), return ge::GRAPH_FAILED);
     }
 
     // 校验win区大小
@@ -1946,6 +2067,10 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext *context, MoeDistrib
         return ge::GRAPH_FAILED);
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    if (tilingData->moeDistributeDispatchV2Info.reserved1 ||
+        tilingData->moeDistributeDispatchV2Info.k > FULLMESH_K_MAX) {
+        ubSize = std::min(ubSize, uint64_t{248U * 1024U});
+    }
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     context->SetScheduleMode(1); // 设置为batch mode模式, 所有核同时启动
@@ -2012,12 +2137,29 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 
     uint64_t tilingKey = CalTilingKey(isScales, quantMode, isSetFullMeshV2, isLayered);
     tilingData->moeDistributeDispatchV2Info.isMc2Context = config.isMc2Context;
+    tilingData->moeDistributeDispatchV2Info.reserved1 = config.enableIndependentSharedExpert;
+    tilingData->moeDistributeDispatchV2Info.moeExpertDtype = static_cast<uint32_t>(config.moeExpertDtype);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
     OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set platformInfo Failed"), return ge::GRAPH_FAILED);
 
+    if (config.isMc2Context) {
+        const auto &info = tilingData->moeDistributeDispatchV2Info;
+        const char *role = info.epRankId < info.sharedExpertRankNum ? "shared" : "moe";
+        OP_LOGI(nodeName,
+                "[latent_ep][tiling] dispatch selected: ep_rank=%u/%u, role=%s, "
+                "independent_shared=%d, fullmesh_v2=%d, layered=%d, BS=%u, H_moe=%u, K=%u, "
+                "quant_mode=%u, moe_dtype=%d, tiling_key=%llu, UB=%llu, win=%llu.",
+                info.epRankId, info.epWorldSize, role, static_cast<int>(info.reserved1),
+                static_cast<int>(isSetFullMeshV2), static_cast<int>(isLayered), info.bs, info.h, info.k, quantMode,
+                static_cast<int>(config.enableIndependentSharedExpert ?
+                                     config.moeExpertDtype :
+                                     context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType()),
+                static_cast<unsigned long long>(tilingKey), static_cast<unsigned long long>(info.totalUbSize),
+                static_cast<unsigned long long>(info.totalWinSizeEp));
+    }
     // A5 CumSum 最小 tmp 大小
     if (tilingData->moeDistributeDispatchV2Info.expertTokenNumsType != 0) {
         tilingData->moeDistributeDispatchV2Info.cumsumTmpMinSize = 0;

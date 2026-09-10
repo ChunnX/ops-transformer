@@ -21,7 +21,6 @@
 using namespace Ops::Transformer;
 using namespace op;
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,11 +36,12 @@ aclnnStatus aclnnMoeDistributeDispatchV5GetWorkspaceSize(
     aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    OP_LOGD("aclnn_dispatch v5 WorkspaceSize start");
+    OP_LOGI("[latent_ep][api] dispatch V5 -> InnerV3, independent_shared=0, ep_rank=%lld/%lld.",
+            static_cast<long long>(epRankId), static_cast<long long>(epWorldSize));
     int64_t yDtype = expandXOut->GetDataType();
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
         context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-        performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, cclBufferSize, tpWorldSize, tpRankId,
+        performanceInfoOptional, nullptr, epWorldSize, epRankId, moeExpertNum, cclBufferSize, tpWorldSize, tpRankId,
         expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
         const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, yDtype, expandXOut, dynamicScalesOut,
         assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize,

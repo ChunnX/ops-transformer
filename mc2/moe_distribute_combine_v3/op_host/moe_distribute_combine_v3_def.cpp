@@ -140,6 +140,11 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
+        this->Output("shared_expert_out")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
+
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
@@ -157,6 +162,7 @@ public:
         this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);
         this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
         this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
+        this->Attr("enable_independent_shared_expert").AttrType(OPTIONAL).Bool(false);
 
         // A3 (arch22): _a3 entry (opFile -> arch22/..._a3.cpp). Reuses the class-level I/O.
         OpAICoreConfig aicore_config_a3;

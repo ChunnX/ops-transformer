@@ -13,8 +13,10 @@ __all__ = [
     "MoeDistributeBuffer",
     "ElasticBuffer",
     "EPHandle",
+    "latent_ep",
 ]
 
+from . import latent_ep
 from .comm_context import CommContextManager
 from .moe_distribute_buffer import MoeDistributeBuffer
 from .elastic_buffer import ElasticBuffer, EPHandle

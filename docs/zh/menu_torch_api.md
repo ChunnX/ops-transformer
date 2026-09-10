@@ -20,6 +20,7 @@
 - [kv_compress_epilog](../../torch_extension/cann_ops_transformer/docs/zh/kv_compress_epilog.md)
 - [lightning_indexer](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)
 - [lightning_indexer_kl_loss](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer_kl_loss.md)
+- [latent_ep](../../torch_extension/cann_ops_transformer/docs/zh/latent_ep.md)
 - [low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_combine.md)
 - [low_latency_dispatch](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_dispatch.md)
 - [mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)

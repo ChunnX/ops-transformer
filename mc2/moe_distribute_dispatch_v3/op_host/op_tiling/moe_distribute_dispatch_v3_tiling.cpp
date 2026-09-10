@@ -27,13 +27,84 @@
 #include <string>
 
 #include "moe_distribute_dispatch_v3_tiling_base.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
 
-
 namespace optiling {
+static ge::graphStatus CheckIndependentSharedDispatch(gert::TilingContext *context, DispatchV2Config &config)
+{
+    if (!config.enableIndependentSharedExpert) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_TILING_CHECK(mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510,
+                    OP_LOGE(context->GetNodeName(), "Independent shared experts are only supported on A5."),
+                    return ge::GRAPH_FAILED);
+    const auto attrs = context->GetAttrs();
+    const auto tp = attrs->GetAttrPointer<int64_t>(4U);
+    const auto tpRank = attrs->GetAttrPointer<int64_t>(5U);
+    const auto shard = attrs->GetAttrPointer<int64_t>(6U);
+    const auto shared = attrs->GetAttrPointer<int64_t>(7U);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+    const auto ep = attrs->GetAttrPointer<int64_t>(0U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, tp);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, tpRank);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, shard);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, shared);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, ep);
+    const char *name = context->GetNodeName();
+    OP_TILING_CHECK(*tp != 1 || *tpRank != 0 || *shard != 0 || *shared <= 0 || *sharedRanks <= 0 ||
+                        *sharedRanks >= *ep || *sharedRanks % *shared != 0,
+                    OP_LOGE(name, "Independent shared experts require TP=1, shard=0 and a valid shared rank group."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context->GetOptionalInputDesc(config.elasticInfoIndex) != nullptr,
+                    OP_LOGE(name, "Independent shared experts do not support elastic_info."), return ge::GRAPH_FAILED);
+    const auto input = context->GetInputShape(config.xIndex);
+    const auto inputDesc = context->GetInputDesc(config.xIndex);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, input);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, inputDesc);
+    OP_TILING_CHECK(input->GetStorageShape().GetDimNum() != 2U, OP_LOGE(name, "Token input must be a matrix."),
+                    return ge::GRAPH_FAILED);
+    auto dtype = inputDesc->GetDataType();
+    OP_TILING_CHECK(dtype != ge::DT_BF16 && dtype != ge::DT_FLOAT16,
+                    OP_LOGE(name, "Independent shared tokens must be BF16 or FP16."), return ge::GRAPH_FAILED);
+    int64_t h = input->GetStorageShape().GetDim(1U);
+    const auto original = context->GetOptionalInputShape(8U);
+    const auto originalDesc = context->GetOptionalInputDesc(8U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, original);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, originalDesc);
+    OP_TILING_CHECK(original->GetStorageShape().GetDimNum() != 2U ||
+                        original->GetStorageShape().GetDim(0U) != input->GetStorageShape().GetDim(0U) ||
+                        original->GetStorageShape().GetDim(1U) != h * 2 || originalDesc->GetDataType() != dtype ||
+                        originalDesc->GetStorageFormat() != ge::FORMAT_ND,
+                    OP_LOGE(name, "shared_expert_input must have shape [BS, 2*H] and the same dtype as x."),
+                    return ge::GRAPH_FAILED);
+    const auto alg = attrs->GetAttrPointer<char>(config.attrCommAlgIndex);
+    OP_TILING_CHECK(alg == nullptr || std::strcmp(alg, "fullmesh_v2") != 0,
+                    OP_LOGE(name, "Independent shared dispatch requires fullmesh_v2."), return ge::GRAPH_FAILED);
+    const auto quant = attrs->GetAttrPointer<int64_t>(config.attrQuantModeIndex);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, quant);
+    if (*quant == 0 && config.moeExpertDtype == ge::DT_UNDEFINED) {
+        config.moeExpertDtype = static_cast<ge::DataType>(dtype);
+    }
+    if ((*quant == 4 || *quant == 5) && config.moeExpertDtype == ge::DT_UNDEFINED) {
+        config.moeExpertDtype = ge::DT_FLOAT8_E4M3FN;
+    }
+    OP_TILING_CHECK(config.moeExpertDtype == ge::DT_UNDEFINED || (*quant == 0 && config.moeExpertDtype != dtype) ||
+                        ((*quant == 4 || *quant == 5) && config.moeExpertDtype != ge::DT_FLOAT8_E4M3FN),
+                    OP_LOGE(name, "Invalid moe_expert_dtype; MX requires E4M3FN."), return ge::GRAPH_FAILED);
+    const auto output = context->GetOutputDesc(0U);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, output);
+    OP_TILING_CHECK(output->GetDataType() != (config.isIndependentSharedRank ? dtype : config.moeExpertDtype),
+                    OP_LOGE(name, "expand_x dtype does not match this rank's expert role."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(h < 1024 || h > 4096, OP_LOGE(name, "Independent shared experts require 1024 <= latent H <= 4096."),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MoeDistributeDispatchV3TilingFuncBase::MoeDistributeDispatchV3TilingFunc(gert::TilingContext *context)
 {
     DispatchV2Config config;
@@ -62,7 +133,24 @@ ge::graphStatus MoeDistributeDispatchV3TilingFuncBase::MoeDistributeDispatchV3Ti
     config.attrCopyExpertNumIndex = 14;  // 14: 根据dispatchV3算子原型标志位初始化copyExpertNumIndex索引
     config.attrConstExpertNumIndex = 15; // 15: 根据dispatchV3算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = true;
+    if (context->GetOptionalInputDesc(8U) != nullptr) {
+        const auto attrs = context->GetAttrs();
+        OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
+        config.enableIndependentSharedExpert = true;
+        // Preserve V3 y_dtype at index 16; V6 supplies the MoE communication dtype.
+        const auto moeDtype = attrs->GetAttrPointer<int64_t>(16U);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, moeDtype);
+        config.moeExpertDtype = static_cast<ge::DataType>(*moeDtype);
+        const auto rank = attrs->GetAttrPointer<int64_t>(1U);
+        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
+        OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
+        config.isIndependentSharedRank = config.enableIndependentSharedExpert && *rank < *sharedRanks;
+    }
 
+    OP_TILING_CHECK(CheckIndependentSharedDispatch(context, config) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "Independent shared expert validation failed."),
+                    return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeDispatchV3 tiling");
     ge::graphStatus ret = MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
