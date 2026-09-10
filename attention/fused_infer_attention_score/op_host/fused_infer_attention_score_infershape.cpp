@@ -60,14 +60,14 @@ static constexpr uint32_t FIA_QUERY_ROPE_INDEX = 24;
 static constexpr uint32_t FIA_OUT_DTYPE_INDEX = 15;
 
 static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP = {
-    {5,  ge::DT_FLOAT16}, 
+    {5,  ge::DT_FLOAT16},
     {15, ge::DT_BF16},
     {24, ge::DT_FLOAT8_E4M3FN},
     {290, ge::DT_HIFLOAT8}
 };
 
 static const std::map<int64_t, std::string> TORCH_DTYOE_NOT_SUPPORT_MAP = {
-    {23,  "DT_FLOAT8_E5M2"}, 
+    {23,  "DT_FLOAT8_E5M2"},
 };
 
 static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
@@ -271,7 +271,7 @@ static ge::graphStatus InferAttentionOutShape(std::string attentionOutLayout,
         GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
         int64_t outD = valueD;
         outD = (outD == 0 || d1 == 0) ? d1 : outD;
-        *attentionOutShape = {n1, s1, outD};   
+        *attentionOutShape = {n1, s1, outD};
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -359,17 +359,28 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 
     std::string queryLayout = "BSH";
     std::string attentionOutLayout = "BSH";
-    GetQueryAndOutLayout(queryLayout, attentionOutLayout, queryShape, inputLayoutPtr);
+    if (GetQueryAndOutLayout(queryLayout, attentionOutLayout, queryShape, inputLayoutPtr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     int64_t valueD = 0;
-    GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads);
+    if (GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
-    InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr, valueD);
+    if (InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr,
+                               valueD) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(FIA_ATTR_INPUT_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
     if (softmaxLseFlag) {
-        InferLseOutShape(inputLayoutPtr, softmaxLseShape, queryShape, queryLayout, numHeadsPtr);
+        if (InferLseOutShape(inputLayoutPtr, softmaxLseShape, queryShape, queryLayout, numHeadsPtr) !=
+            ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     } else {
         softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_1);
         (*softmaxLseShape)[FIA_LAYOUT_DIM0] = NUM_0;
@@ -391,7 +402,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
     // 10 is quant_scale2's index, if not instantiated or illegal return ge::DT_UNDEFINED
     if (context->GetOptionalInputDataType(FIA_QUANT_SCALE2_INDEX) != ge::DT_UNDEFINED) {
         outputType = ge::DT_INT8;
-        
+
         auto attrs = context->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
