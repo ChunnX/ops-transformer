@@ -139,6 +139,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx(); // 获取当前核ID
+    AscendC::printf("[ROCE] core=%u Init enter\n", aivId_);
     epWorldSize_ = tilingData->worldSize;
     context_ = (__gm__ Mc2MoeContext *)context;
 
@@ -147,6 +148,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     axisH_ = tilingData->dataSize; // hidden size
     aivNum_ = tilingData->aivNum;
     epRankId_ = context_->epRankId;
+    AscendC::printf("[ROCE] rank=%d core=%u context loaded\n", epRankId_, aivId_);
     hOutSize_ = axisH_ * sizeof(XType);
     totalWinSizeEp_ = tilingData->totalWinSize;
     totalUbSize_ = static_cast<uint32_t>(tilingData->totalUbSize);
@@ -228,6 +230,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     tpipe_->InitBuffer(xQueue_, BUFFER_SINGLE, hOutAlignUbSize_);
     tpipe_->InitBuffer(hcommBuf_, BandwidthTestTiling::ROCE_HCOMM_UB_BYTES);
     if (hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES) != HCOMM_SUCCESS) {
+        AscendC::printf("[ROCE] rank=%d core=%u Hcomm Init failed\n", epRankId_, aivId_);
         Trap();
     }
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendExpertNum_);
@@ -237,6 +240,8 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
             hcommHandle_[rankId] = context_->hcommHandle_[channelIndex];
         }
     }
+    AscendC::printf("[ROCE] rank=%d core=%u Init done state=%u peers=[%u,%u)\n",
+               epRankId_, aivId_, dataState_, startRankId_, endRankId_);
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
@@ -291,6 +296,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         bool isRemote = rankId != static_cast<uint32_t>(epRankId_);
         uint32_t curExpertCnt = 0;
+        AscendC::printf("[ROCE] rank=%d core=%u peer=%u data begin\n", epRankId_, aivId_, rankId);
         for (uint32_t chunkStart = 0; chunkStart < axisBS_;) {
             uint32_t chunkTokens = axisBS_ - chunkStart;
             chunkTokens = chunkTokens < BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS ?
@@ -314,16 +320,22 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
                 ++curExpertCnt;
                 if (isRemote &&
                     hcomm_.WriteNbi(hcommHandle_[rankId], remoteAddr, localAddr, hOutSize_) != HCOMM_SUCCESS) {
+                    AscendC::printf("[ROCE] rank=%d core=%u peer=%u token=%u data WriteNbi failed\n",
+                               epRankId_, aivId_, rankId, tokenIndex);
                     Trap();
                 }
             }
             chunkStart += chunkTokens;
         }
         statusTensor_((rankId - startRankId_) * 8 + 1) = curExpertCnt;
+        AscendC::printf("[ROCE] rank=%d core=%u peer=%u data posted tokens=%u\n",
+                   epRankId_, aivId_, rankId, curExpertCnt);
         // Each channel has one owner core. Keep staging live until all writes to this peer complete.
         if (isRemote && curExpertCnt != 0 && hcomm_.Drain(hcommHandle_[rankId]) != HCOMM_SUCCESS) {
+            AscendC::printf("[ROCE] rank=%d core=%u peer=%u data Drain failed\n", epRankId_, aivId_, rankId);
             Trap();
         }
+        AscendC::printf("[ROCE] rank=%d core=%u peer=%u data done\n", epRankId_, aivId_, rankId);
     }
 }
 
@@ -331,8 +343,10 @@ template <TemplateBandwidthTestRoceTypeClass>
 __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SetStatus()
 {
     // SendToMoeExpert has accumulated counts, including zero-token destinations.
+    AscendC::printf("[ROCE] rank=%d core=%u send barrier enter\n", epRankId_, aivId_);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>(); // 等待所有核完成统计
+    AscendC::printf("[ROCE] rank=%d core=%u send barrier done\n", epRankId_, aivId_);
     if (startRankId_ >= epWorldSize_) {
         return;
     }
@@ -351,15 +365,29 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Set
         SyncFunc<HardEvent::MTE3_S>();
         if (isRemote) {
             ChannelHandle channel = hcommHandle_[rankId];
+            AscendC::printf("[ROCE] rank=%d core=%u peer=%u count WriteNbi begin\n", epRankId_, aivId_, rankId);
             // Publish count before flag; both sources are in the registered local Win.
             if (hcomm_.WriteNbi(channel, remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t),
-                                sizeof(int32_t)) != HCOMM_SUCCESS || hcomm_.Drain(channel) != HCOMM_SUCCESS) {
+                                sizeof(int32_t)) != HCOMM_SUCCESS) {
+                AscendC::printf("[ROCE] rank=%d core=%u peer=%u count WriteNbi failed\n", epRankId_, aivId_, rankId);
                 Trap();
             }
-            if (hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t)) != HCOMM_SUCCESS ||
-                hcomm_.Drain(channel) != HCOMM_SUCCESS) {
+            AscendC::printf("[ROCE] rank=%d core=%u peer=%u count Drain begin\n", epRankId_, aivId_, rankId);
+            if (hcomm_.Drain(channel) != HCOMM_SUCCESS) {
+                AscendC::printf("[ROCE] rank=%d core=%u peer=%u count Drain failed\n", epRankId_, aivId_, rankId);
                 Trap();
             }
+            AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag WriteNbi begin\n", epRankId_, aivId_, rankId);
+            if (hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t)) != HCOMM_SUCCESS) {
+                AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag WriteNbi failed\n", epRankId_, aivId_, rankId);
+                Trap();
+            }
+            AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag Drain begin\n", epRankId_, aivId_, rankId);
+            if (hcomm_.Drain(channel) != HCOMM_SUCCESS) {
+                AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag Drain failed\n", epRankId_, aivId_, rankId);
+                Trap();
+            }
+            AscendC::printf("[ROCE] rank=%d core=%u peer=%u notify done\n", epRankId_, aivId_, rankId);
         }
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -401,7 +429,9 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
 
     // 如果当前核没有需要等待的rank，直接返回
     if (unlikely(startStatusIndex_ >= rscvStatusNum_)) {
+        AscendC::printf("[ROCE] rank=%d core=%u idle receive barrier enter\n", epRankId_, aivId_);
         SyncAll<true>();
+        AscendC::printf("[ROCE] rank=%d core=%u idle receive barrier done\n", epRankId_, aivId_);
         return;
     }
 
@@ -414,6 +444,8 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
 
     // ============ 轮询等待状态 ============
     SyncFunc<AscendC::HardEvent::S_V>();
+    AscendC::printf("[ROCE] rank=%d core=%u wait flags begin state=%u peers=[%u,%u)\n",
+               epRankId_, aivId_, dataState_, startRankId_, endRankId_);
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
         SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -426,6 +458,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
+    AscendC::printf("[ROCE] rank=%d core=%u wait flags done\n", epRankId_, aivId_);
 
     // ============ 清零状态区，为下一次通信做准备 ============
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
@@ -438,7 +471,9 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 
+    AscendC::printf("[ROCE] rank=%d core=%u receive barrier enter\n", epRankId_, aivId_);
     SyncAll<true>(); // 等待所有核完成
+    AscendC::printf("[ROCE] rank=%d core=%u receive barrier done\n", epRankId_, aivId_);
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
@@ -538,10 +573,14 @@ template <TemplateBandwidthTestRoceTypeClass>
 __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
+        AscendC::printf("[ROCE] rank=%d core=%u Process enter\n", epRankId_, aivId_);
         SendToMoeExpert();
         SetStatus();
+        AscendC::printf("[ROCE] rank=%d core=%u WaitDispatch enter\n", epRankId_, aivId_);
         WaitDispatch();
+        AscendC::printf("[ROCE] rank=%d core=%u LocalWindowCopy enter\n", epRankId_, aivId_);
         LocalWindowCopy();
+        AscendC::printf("[ROCE] rank=%d core=%u Process done\n", epRankId_, aivId_);
     }
 }
 
