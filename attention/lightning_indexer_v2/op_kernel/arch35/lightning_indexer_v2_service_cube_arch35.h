@@ -379,10 +379,10 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
     // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
     fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
 #if CVRATIO > 1	 
-    // A5(1:2): 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数	 
+    // 950(1:2): 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数	 
     fixpipeParams.dualDstCtl = 1;	 
 #else  
-    // A6(1:1): 单目标模式，不拆M; relu随路执行（vec1不做relu）  
+    // 960(1:1): 单目标模式，不拆M; relu随路执行（vec1不做relu）  
     fixpipeParams.dualDstCtl = 0;  
     fixpipeParams.reluEn = true;  
 #endif

@@ -205,11 +205,11 @@ int32_t LightningIndexerV2MetadataCpuKernel::GetQueryBatchSize()
 ValidSocVersion LightningIndexerV2MetadataCpuKernel::ProcessSocVersion()
 {
     const std::string ascend950 = "Ascend950";
-    const std::string ascend910_96 = "Ascend910_96";  // A6: 待确认实际soc字符串
+    const std::string ascend960 = "Ascend960";
     if (socVersion_.find(ascend950) != std::string::npos) {
         return ValidSocVersion::ASCEND950;
-    } else if (socVersion_.find(ascend910_96) != std::string::npos) {
-        return ValidSocVersion::ASCEND910_96;
+    } else if (socVersion_.find(ascend960) != std::string::npos) {
+        return ValidSocVersion::ASCEND960;
     } else {
         return ValidSocVersion::ASCEND910B;
     }
@@ -233,8 +233,7 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 2048U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950 ||
-               validSocVersion == ValidSocVersion::ASCEND910_96) {
-        // A6(ASCEND910_96) 复用 A5(ASCEND950) 的分块策略，不做单独设置
+               validSocVersion == ValidSocVersion::ASCEND960) {
         if (groupSize_ > 32 || topk_ > 2048) {
             s1BaseSize_ = 2;
         }

@@ -896,7 +896,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
                     return ge::GRAPH_FAILED);
     }
     // -----------------------check metadata-------------------
-    // A6(DAV_9201): metadata大小为2048; A5(DAV_3510): metadata大小为1024
+    // 960(DAV_9201): metadata大小为2048; 950(DAV_3510): metadata大小为1024
     uint32_t metadataLimit = (npuArch_ == NpuArch::DAV_9201) ? 2048 : METADATA_LIMIT;
     OP_CHECK_IF(
         ((opParamInfo_.metadata.tensor != nullptr) && (opParamInfo_.metadata.tensor->GetShapeSize() != metadataLimit)),

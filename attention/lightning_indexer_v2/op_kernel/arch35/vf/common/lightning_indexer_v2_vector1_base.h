@@ -226,9 +226,9 @@ __simd_callee__ inline void DuplicateZero(AscendC::MicroAPI::RegTensor<T> (&regA
     }
 }
 
-// A6: relu在cube随路做(fixpipe reluEn)，vec1不做relu; A5: relu在vec1做
-// A6: __NPU_ARCH__ 9201(芯片121) / 9202(芯片122)
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+// 960: relu在cube随路做(fixpipe reluEn)，vec1不做relu; 950: relu在vec1做
+// 960: __NPU_ARCH__ 9201
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
 template <typename T, size_t N, bool ApplyRelu = false>
 #else
 template <typename T, size_t N, bool ApplyRelu = true>

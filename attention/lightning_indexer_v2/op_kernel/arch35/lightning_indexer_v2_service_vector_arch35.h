@@ -154,7 +154,6 @@ private:
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *pipe)
 {
-    // CeilDiv(x, CVRATIO): A5(CVRATIO=2)每个vec核处理一半, A6(CVRATIO=1)单核处理全部
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(M_BASIC_BLOCK, CVRATIO) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);

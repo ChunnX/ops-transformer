@@ -15,9 +15,8 @@
 #ifndef LIGHTNING_INDEXER_V2_COMMON_ARCH35_H
 #define LIGHTNING_INDEXER_V2_COMMON_ARCH35_H
 
-// CVRATIO: A6(1:1)=1, A5(1:2)=2
-// A6: __NPU_ARCH__ 9201(芯片121) / 9202(芯片122)
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
+// CVRATIO: 960(1:1)=1, 950(1:2)=2
+#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     #define CVRATIO 1
 #else
     #define CVRATIO 2
