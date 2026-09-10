@@ -31,6 +31,7 @@
 
 #include "flash_attn_tiling_data.h"
 #include "../../../common/op_kernel/arch_info.h"
+#include "flash_attn_dn_config.h"
 
 using namespace AscendC;
 using namespace optiling;
@@ -51,11 +52,7 @@ public:
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
     static constexpr bool HAS_MASK = FA_T::hasMask;
 
-    static constexpr uint32_t PRELOAD_N =
-        (static_cast<uint32_t>(FA_T::dBaseSize) == 64 && static_cast<uint32_t>(FA_T::dVBaseSize) == 64 &&
-         mBaseSize == 128 && (s2BaseSize == 128 || s2BaseSize == 256)) ?
-            3U :
-            2U;
+    static constexpr uint32_t PRELOAD_N = FaDnConfig<FA_T>::PRELOAD_N;
     // Four slots cover PRELOAD_N+1 for both preload depths and allow bitmask indexing.
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;

@@ -57,10 +57,10 @@ __simd_vf__ inline void FlashUpdateD64FullVF(__ubuf__ float *dst, __ubuf__ float
 }
 
 // PV is DN: each vector holds64 query rows for one value column.
-template <bool last, uint16_t columns = 64>
-__simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor)
+template <bool last>
+__simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor,
+                                              uint16_t columns)
 {
-    static_assert(columns % 4 == 0, "DN update requires groups of four value columns");
     MaskReg mask = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> scale, p0, p1, p2, p3, c0, c1, c2, c3;
     LoadAlign(scale, factor);
@@ -96,8 +96,8 @@ __simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ fl
 }
 static constexpr Reg::CastTrait castDnOutput = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
                                                 RoundMode::CAST_ROUND};
-template <uint16_t columns = 64>
-__simd_vf__ inline void FlashPackOutputDnRows64VF(__ubuf__ bfloat16_t *out, __ubuf__ float *accum, __ubuf__ float *sum)
+__simd_vf__ inline void FlashPackOutputDnRows64VF(__ubuf__ bfloat16_t *out, __ubuf__ float *accum, __ubuf__ float *sum,
+                                                  uint16_t columns)
 {
     MaskReg mf = CreateMask<float, MaskPattern::ALL>();
     MaskReg half = CreateMask<uint16_t, MaskPattern::VL64>();
