@@ -1,108 +1,108 @@
-# QFA Ëã×Ó MXFP8 Ä£°å Kernel ¼¼ÊõÎÄµµ
+# QFA ç®—å­ MXFP8 æ¨¡æ¿ Kernel æŠ€æœ¯æ–‡æ¡£
 
-> ÊÊÓÃËã×Ó£º`quant_flash_attn`£¨QFA£©£¬Á¿»¯Ä£°å£ºMXFP8£¨`A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32`£©
-> ÊÊÓÃÆ½Ì¨£ºAscend 310£¨arch35£¬C310£¬Ascend 950 Àà£©
-> ±¾ÎÄµµÄ¿µÄ£ºÍêÕûÊáÀí MXFP8 Ä£°å kernel ²à PREFILL / DECODE Á½Ì×Ä£°åµÄËùÓĞ¼ÆËãÁ÷£¨C1/V1/C2/V2£©¡¢ÄÚ´æÕ¼ÓÃÓë buffer ¹æ»®¡¢¿çºËÍ¬²½»úÖÆ£¬¹©ÈÕºó¾«¶ÈÎÊÌâ¶¨Î»Óë¼¼Êõ¸´ÓÃ¡£
+> é€‚ç”¨ç®—å­ï¼š`quant_flash_attn`ï¼ˆQFAï¼‰ï¼Œé‡åŒ–æ¨¡æ¿ï¼šMXFP8ï¼ˆ`A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32`ï¼‰
+> é€‚ç”¨å¹³å°ï¼šAscend 310ï¼ˆarch35ï¼ŒC310ï¼ŒAscend 950 ç±»ï¼‰
+> æœ¬æ–‡æ¡£ç›®çš„ï¼šå®Œæ•´æ¢³ç† MXFP8 æ¨¡æ¿ kernel ä¾§ PREFILL / DECODE ä¸¤å¥—æ¨¡æ¿çš„æ‰€æœ‰è®¡ç®—æµï¼ˆC1/V1/C2/V2ï¼‰ã€å†…å­˜å ç”¨ä¸ buffer è§„åˆ’ã€è·¨æ ¸åŒæ­¥æœºåˆ¶ï¼Œä¾›æ—¥åç²¾åº¦é—®é¢˜å®šä½ä¸æŠ€æœ¯å¤ç”¨ã€‚
 
 ---
 
-## 1. Ëã×Ó¸ÅÊö
+## 1. ç®—å­æ¦‚è¿°
 
-QFA µÄ MXFP8 Ä£°å×ö"È«Á¿»¯" Flash Attention£º
+QFA çš„ MXFP8 æ¨¡æ¿åš"å…¨é‡åŒ–" Flash Attentionï¼š
 
-- **ÊäÈë**£ºQ / K / V ¾ùÎª `fp8_e4m3fn_t`£¨`INPUT_T`£©£¬Åä `fp8_e8m0_t`£¨`SCALE_T`£©ÖğÕÅÁ¿/Öğ¿éËõ·ÅÒò×Ó£¨dequantScale£©¡£
-- **¼ÆËã¾«¶È**£ºMM1£¨QK^T£©Óë MM2£¨P¡¤V£©µÄÀÛ¼ÓÀàĞÍ `T = float`£¨`MM_T`£©¡£
-- **ÖĞ¼ä½á¹û P**£ºÒÔ `fp8_e4m3fn_t` ĞÎÌ¬¿ç AIC¡úAIV ´«Êä£¬²¢Ğ¯´ø `fp8_e8m0_t` µÄ PScale£¨per-32 ÔªËØÒ»¸ö scale£¬¼´ MXFP8 ¸ñÊ½£©¡£
-- **Êä³ö**£º`OUT_T = bfloat16_t`£¨softmax ºó LSE Êä³öÎª fp32£©¡£
+- **è¾“å…¥**ï¼šQ / K / V å‡ä¸º `fp8_e4m3fn_t`ï¼ˆ`INPUT_T`ï¼‰ï¼Œé… `fp8_e8m0_t`ï¼ˆ`SCALE_T`ï¼‰é€å¼ é‡/é€å—ç¼©æ”¾å› å­ï¼ˆdequantScaleï¼‰ã€‚
+- **è®¡ç®—ç²¾åº¦**ï¼šMM1ï¼ˆQK^Tï¼‰ä¸ MM2ï¼ˆPÂ·Vï¼‰çš„ç´¯åŠ ç±»å‹ `T = float`ï¼ˆ`MM_T`ï¼‰ã€‚
+- **ä¸­é—´ç»“æœ P**ï¼šä»¥ `fp8_e4m3fn_t` å½¢æ€è·¨ AICâ†’AIV ä¼ è¾“ï¼Œå¹¶æºå¸¦ `fp8_e8m0_t` çš„ PScaleï¼ˆper-32 å…ƒç´ ä¸€ä¸ª scaleï¼Œå³ MXFP8 æ ¼å¼ï¼‰ã€‚
+- **è¾“å‡º**ï¼š`OUT_T = bfloat16_t`ï¼ˆsoftmax å LSE è¾“å‡ºä¸º fp32ï¼‰ã€‚
 
-ºËĞÄ¼ÆËã×é¼ş£¨4 ¶ÎÁ÷Ë®£©£º
+æ ¸å¿ƒè®¡ç®—ç»„ä»¶ï¼ˆ4 æ®µæµæ°´ï¼‰ï¼š
 
-| ×é¼ş | ¼ÆËãÄÚÈİ | Ö´ĞĞºË | º¯Êı |
+| ç»„ä»¶ | è®¡ç®—å†…å®¹ | æ‰§è¡Œæ ¸ | å‡½æ•° |
 |------|----------|--------|------|
-| C1 | S = Q¡¤K^T ¡¤ scale£¨MM1£© | AIC£¨Cube£© | `IterateBmm1` ¡ú `IterateBmm1Dn/Nd` |
-| V1 | softmax(S) ¡ú P£¨º¬ mask¡¢max/sum ÔÚÏß¸üĞÂ£© | AIV£¨Vector£© | `ProcessVec1` ¡ú `ProcessVec1Dn/Nd` |
-| C2 | O = P¡¤V£¨MM2£© | AIC£¨Cube£© | `IterateBmm2` ¡ú `IterateBmm2Dn/Nd` |
-| V2 | O ¼ÓÈ¨ÀÛ¼Ó£¨flash ÔÚÏß¸üĞÂ£©¡ú ³ıÒÔ sum ¡ú Êä³ö | AIV£¨Vector£© | `ProcessVec2` ¡ú `ProcessVec2OnUb` |
+| C1 | S = QÂ·K^T Â· scaleï¼ˆMM1ï¼‰ | AICï¼ˆCubeï¼‰ | `IterateBmm1` â†’ `IterateBmm1Dn/Nd` |
+| V1 | softmax(S) â†’ Pï¼ˆå« maskã€max/sum åœ¨çº¿æ›´æ–°ï¼‰ | AIVï¼ˆVectorï¼‰ | `ProcessVec1` â†’ `ProcessVec1Dn/Nd` |
+| C2 | O = PÂ·Vï¼ˆMM2ï¼‰ | AICï¼ˆCubeï¼‰ | `IterateBmm2` â†’ `IterateBmm2Dn/Nd` |
+| V2 | O åŠ æƒç´¯åŠ ï¼ˆflash åœ¨çº¿æ›´æ–°ï¼‰â†’ é™¤ä»¥ sum â†’ è¾“å‡º | AIVï¼ˆVectorï¼‰ | `ProcessVec2` â†’ `ProcessVec2OnUb` |
 
-**AIC:AIV = 1:2**£¨`CV_RATIO = 2`£©£¬Ò»¸ö AIC ¶ÔÓ¦Á½¸ö AIV ×ÓºË£¨`subBlockIdx = 0/1`£©£¬M Î¬¶È°´°ë¿éÇĞ·Ö¸øÁ½¸ö AIV ×ÓºË¡£
+**AIC:AIV = 1:2**ï¼ˆ`CV_RATIO = 2`ï¼‰ï¼Œä¸€ä¸ª AIC å¯¹åº”ä¸¤ä¸ª AIV å­æ ¸ï¼ˆ`subBlockIdx = 0/1`ï¼‰ï¼ŒM ç»´åº¦æŒ‰åŠå—åˆ‡åˆ†ç»™ä¸¤ä¸ª AIV å­æ ¸ã€‚
 
 ---
 
-## 2. PREFILL Óë DECODE Á½ÖÖÄ£Ê½
+## 2. PREFILL ä¸ DECODE ä¸¤ç§æ¨¡å¼
 
-### 2.1 Ä£Ê½ÅĞ¶¨Á´Â·
+### 2.1 æ¨¡å¼åˆ¤å®šé“¾è·¯
 
 ```
-Host ²à (quant_flash_attn_tiling_mxfp8.cpp):
-  decodeS1GMerge_ = (layoutQDescale == QfaLayout::N2TGD)   // Q descale ÅÅ²¼Îª N2TGD ¼´°´ N2 ºÏ²¢ ¡ú decode
+Host ä¾§ (quant_flash_attn_tiling_mxfp8.cpp):
+  decodeS1GMerge_ = (layoutQDescale == QfaLayout::N2TGD)   // Q descale æ’å¸ƒä¸º N2TGD å³æŒ‰ N2 åˆå¹¶ â†’ decode
   quantMode = decodeS1GMerge_ ? QFA_MXFP8_FP32_DECODE(2) : QFA_MXFP8_FP32_PREFILL(1)
 
-Kernel ²à (quant_flash_attn.cpp):
-  useDn = (quantMode == QFA_MXFP8_FP32_PREFILL)   // ±àÒëÆÚ³£Á¿£¬¾ö¶¨ÕûÌ× DN/ND Ä£°å
+Kernel ä¾§ (quant_flash_attn.cpp):
+  useDn = (quantMode == QFA_MXFP8_FP32_PREFILL)   // ç¼–è¯‘æœŸå¸¸é‡ï¼Œå†³å®šæ•´å¥— DN/ND æ¨¡æ¿
 ```
 
-¼´£º**PREFILL ? DN Ä£°å£»DECODE ? ND Ä£°å**¡£`USE_DN` Îª `true` Ê±È«Á´Â·×ß `*Dn` ±äÌå£¬`false` Ê±×ß `*Nd` ±äÌå¡£
+å³ï¼š**PREFILL ? DN æ¨¡æ¿ï¼›DECODE ? ND æ¨¡æ¿**ã€‚`USE_DN` ä¸º `true` æ—¶å…¨é“¾è·¯èµ° `*Dn` å˜ä½“ï¼Œ`false` æ—¶èµ° `*Nd` å˜ä½“ã€‚
 
-### 2.2 ºËĞÄ²îÒì×ÜÀÀ
+### 2.2 æ ¸å¿ƒå·®å¼‚æ€»è§ˆ
 
-| Î¬¶È | PREFILL£¨DN£© | DECODE£¨ND£© |
+| ç»´åº¦ | PREFILLï¼ˆDNï¼‰ | DECODEï¼ˆNDï¼‰ |
 |------|--------------|--------------|
 | quantMode | `QFA_MXFP8_FP32_PREFILL = 1` | `QFA_MXFP8_FP32_DECODE = 2` |
 | USE_DN | `true` | `false` |
-| ÖáºÏ²¢£¨InitConstInfo£© | ²»ºÏÖá£º`realN2Size = n2Size*gSize`£¬`realGSize = 1` | ºÏÖá£º`realN2Size = n2Size`£¬`realGSize = gSize` |
-| MM1 ¾ØÕó³ËĞò | K^T ¡Á Q£ºA=K(M=s2)£¬B=Q^T(N=m)£¬**Q ×¤Áô L1** | Q ¡Á K^T£ºA=Q(M=m)£¬B=K^T(N=s2)£¬**K ×¤Áô L1** |
-| µäĞÍ³¡¾° | ³¤ĞòÁĞ S1 ´ó¡¢KV ÇĞÍâÑ­»·£¨GS1>80£© | S1 Ğ¡£¨decode µ¥ token£©£¬S2 ´ó£¬°´ S2 ÇĞ |
-| L0C¡úUB Fixpipe ²ğ·Ö | `dualDstCtl = 2`£¨°´ N ²ğ·Ö£¬M¡ÁN/2 Ğ´ÈëÃ¿¸ö UB£© | `dualDstCtl = 1`£¨°´ M ²ğ·Ö£¬M/2¡ÁN Ğ´ÈëÃ¿¸ö UB£© |
-| MM2 µÄ PScale À´Ô´ | **Î± scale**£º`InitConstValue` Ìî `0x7f7f`£¨= fp8_e8m0 µÄ 1.0£© | **Õæ PScale**£ºV1 ½×¶ÎĞ´Èë L1P£¬C2 Ö±½Ó¶ÁÈ¡ |
-| V1 ÈíÓ²¼ş½»»¥ | `ProcessVec1VfDnMxfp8`£¨×¨ÓÃ DN °æ±¾£© | `ProcessVec1VfMxfp8`£¨°´ s2CalcSize ·ÖÖ§ EQ_128 / ¡Ü64 / 64~128 / 128~256£© |
-| actVecMSize£¨AIV °ë¿é£© | `actMSize <= 16 ? actMSize : actMSizeAlign32 >> 1` | `(actMSize + 1) >> 1` |
-| Êı¾İ×¤Áô | Q ×¤Áô L1£¨¶à S2 ÍâÑ­»·¸´ÓÃ£© | K ×¤Áô L1£¨¶à S1G ¸´ÓÃ£© |
+| è½´åˆå¹¶ï¼ˆInitConstInfoï¼‰ | ä¸åˆè½´ï¼š`realN2Size = n2Size*gSize`ï¼Œ`realGSize = 1` | åˆè½´ï¼š`realN2Size = n2Size`ï¼Œ`realGSize = gSize` |
+| MM1 çŸ©é˜µä¹˜åº | K^T Ã— Qï¼šA=K(M=s2)ï¼ŒB=Q^T(N=m)ï¼Œ**Q é©»ç•™ L1** | Q Ã— K^Tï¼šA=Q(M=m)ï¼ŒB=K^T(N=s2)ï¼Œ**K é©»ç•™ L1** |
+| å…¸å‹åœºæ™¯ | é•¿åºåˆ— S1 å¤§ã€KV åˆ‡å¤–å¾ªç¯ï¼ˆGS1>80ï¼‰ | S1 å°ï¼ˆdecode å• tokenï¼‰ï¼ŒS2 å¤§ï¼ŒæŒ‰ S2 åˆ‡ |
+| L0Câ†’UB Fixpipe æ‹†åˆ† | `dualDstCtl = 2`ï¼ˆæŒ‰ N æ‹†åˆ†ï¼ŒMÃ—N/2 å†™å…¥æ¯ä¸ª UBï¼‰ | `dualDstCtl = 1`ï¼ˆæŒ‰ M æ‹†åˆ†ï¼ŒM/2Ã—N å†™å…¥æ¯ä¸ª UBï¼‰ |
+| MM2 çš„ PScale æ¥æº | **ä¼ª scale**ï¼š`InitConstValue` å¡« `0x7f7f`ï¼ˆ= fp8_e8m0 çš„ 1.0ï¼‰ | **çœŸ PScale**ï¼šV1 é˜¶æ®µå†™å…¥ L1Pï¼ŒC2 ç›´æ¥è¯»å– |
+| V1 è½¯ç¡¬ä»¶äº¤äº’ | `ProcessVec1VfDnMxfp8`ï¼ˆä¸“ç”¨ DN ç‰ˆæœ¬ï¼‰ | `ProcessVec1VfMxfp8`ï¼ˆæŒ‰ s2CalcSize åˆ†æ”¯ EQ_128 / â‰¤64 / 64~128 / 128~256ï¼‰ |
+| actVecMSizeï¼ˆAIV åŠå—ï¼‰ | `actMSize <= 16 ? actMSize : actMSizeAlign32 >> 1` | `(actMSize + 1) >> 1` |
+| æ•°æ®é©»ç•™ | Q é©»ç•™ L1ï¼ˆå¤š S2 å¤–å¾ªç¯å¤ç”¨ï¼‰ | K é©»ç•™ L1ï¼ˆå¤š S1G å¤ç”¨ï¼‰ |
 
-### 2.3 Ä£°å²ÎÊıÓëµäĞÍ Config
+### 2.3 æ¨¡æ¿å‚æ•°ä¸å…¸å‹ Config
 
 ```
 S1BaseSize = 128 (s1TemplateType)
-S2BaseSize = 512£¨d¡Ü128 Ê±£©»ò 256£¨d¡Ü256 Ê±£©
-dBaseSize / dVBaseSize ¡Ê {64, 72, 128, 256, 512, 576}
-s2SplitSize = (dBaseSize == 256) ? 128 : 256    // C1/C2 µÄ K ·½Ïò×ÓÇĞ·Ö
+S2BaseSize = 512ï¼ˆdâ‰¤128 æ—¶ï¼‰æˆ– 256ï¼ˆdâ‰¤256 æ—¶ï¼‰
+dBaseSize / dVBaseSize âˆˆ {64, 72, 128, 256, 512, 576}
+s2SplitSize = (dBaseSize == 256) ? 128 : 256    // C1/C2 çš„ K æ–¹å‘å­åˆ‡åˆ†
 ```
 
-×¢Òâ£º`s2BaseSizeCur = s2BaseSize >> 1`£¨256 »ò 128£©ÊÇ V1 ÖĞµ¥´Î´¦ÀíµÄ S2 °ë¿é´óĞ¡£¬C1 °´ `s2SplitSize` ÔÙÇĞ subLoop£¨`c1v1Loop = ceil(actSingleLoopS2Size / s2SplitSize)`£©¡£
+æ³¨æ„ï¼š`s2BaseSizeCur = s2BaseSize >> 1`ï¼ˆ256 æˆ– 128ï¼‰æ˜¯ V1 ä¸­å•æ¬¡å¤„ç†çš„ S2 åŠå—å¤§å°ï¼ŒC1 æŒ‰ `s2SplitSize` å†åˆ‡ subLoopï¼ˆ`c1v1Loop = ceil(actSingleLoopS2Size / s2SplitSize)`ï¼‰ã€‚
 
 ---
 
-## 3. Kernel Ö÷Ö´ĞĞÁ÷
+## 3. Kernel ä¸»æ‰§è¡Œæµ
 
-ÎÄ¼ş£º`op_kernel/arch35/quant_flash_attn_kernel_mxfp8.h`£¨Àà `QuantFlashAttnKernelMxfp8`£©
+æ–‡ä»¶ï¼š`op_kernel/arch35/quant_flash_attn_kernel_mxfp8.h`ï¼ˆç±» `QuantFlashAttnKernelMxfp8`ï¼‰
 
-### 3.1 Init ½×¶Î
+### 3.1 Init é˜¶æ®µ
 
-`Init(...)` Ë³Ğò£º
+`Init(...)` é¡ºåºï¼š
 
-1. `InitConstInfo()`£º½âÎö `QuantFlashAttnTilingData` ¡ú `constInfo_`£»°´ `USE_DN` ¼ÆËã `realN2Size/realGSize`¡£
-2. ÉèÖÃ Q/KV Êµ¼ÊĞòÁĞ³¤¶È parser£¨`ActualSeqLensParser`£ºTND ÓÃ cuSeqLens£¬BSH/BNSD ÓÃ seqused£©¡£
-3. `InitMMResBuf(workspace)`£º³õÊ¼»¯¿çºË¹²Ïí buffer£¨¼ûµÚ 4 ½Ú£©¡£
-4. AIV ²à£º`vecFaBlock_.InitVecBlock(...)` + `ClearOutput()`£¨ÓÃ `matmul::InitOutput` °Ñ attenOut / LSE ÎŞĞ§ĞĞÇå 0 / ÖÃ inf£©¡£
-5. AIC ²à£º`cubeBlock_.InitCubeBlock(...)`£¨°ó¶¨ GM tensor Óë offset calculator£©¡£
-6. Èô `FLASH_DECODE`£ºAIV ³õÊ¼»¯ `vecFdBlock_`£¨FlashDecode ºó´¦Àí£¬±¾Ä£°å `isFdConst = false`£¬²»ÆôÓÃ£©¡£
+1. `InitConstInfo()`ï¼šè§£æ `QuantFlashAttnTilingData` â†’ `constInfo_`ï¼›æŒ‰ `USE_DN` è®¡ç®— `realN2Size/realGSize`ã€‚
+2. è®¾ç½® Q/KV å®é™…åºåˆ—é•¿åº¦ parserï¼ˆ`ActualSeqLensParser`ï¼šTND ç”¨ cuSeqLensï¼ŒBSH/BNSD ç”¨ sequsedï¼‰ã€‚
+3. `InitMMResBuf(workspace)`ï¼šåˆå§‹åŒ–è·¨æ ¸å…±äº« bufferï¼ˆè§ç¬¬ 4 èŠ‚ï¼‰ã€‚
+4. AIV ä¾§ï¼š`vecFaBlock_.InitVecBlock(...)` + `ClearOutput()`ï¼ˆç”¨ `matmul::InitOutput` æŠŠ attenOut / LSE æ— æ•ˆè¡Œæ¸… 0 / ç½® infï¼‰ã€‚
+5. AIC ä¾§ï¼š`cubeBlock_.InitCubeBlock(...)`ï¼ˆç»‘å®š GM tensor ä¸ offset calculatorï¼‰ã€‚
+6. è‹¥ `FLASH_DECODE`ï¼šAIV åˆå§‹åŒ– `vecFdBlock_`ï¼ˆFlashDecode åå¤„ç†ï¼Œæœ¬æ¨¡æ¿ `isFdConst = false`ï¼Œä¸å¯ç”¨ï¼‰ã€‚
 
-### 3.2 Process() Ö÷Ñ­»·
+### 3.2 Process() ä¸»å¾ªç¯
 
 ```cpp
 if (aicIdx < coreNum) { CrossCoreBufferInit(); /* AIV: vecFaBlock_.InitBuffers()+AllocEventID; AIC: cubeBlock_.InitBuffers()+AllocEventID */ }
 for (sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-    FlashAttention(sectionIdx);   // Ö÷ FA ¼ÆËã£¨AIC+AIV Ğ­×÷£©
+    FlashAttention(sectionIdx);   // ä¸» FA è®¡ç®—ï¼ˆAIC+AIV åä½œï¼‰
     if (FLASH_DECODE) { if ASCEND_IS_AIV { FlashDecode(sectionIdx); } }
 }
-/* ÊÕÎ²£ºFreeEventID + CrossCoreBufferUnInit */
+/* æ”¶å°¾ï¼šFreeEventID + CrossCoreBufferUnInit */
 ```
 
-- **sectionNum_** À´×Ô metadata[0]£»Ã¿¸ö section ÊÇÒ»´ÎÍêÕûµÄÈÎÎñ·ÖÆ¬¡£
-- `FlashAttention` ÄÚÍ¨¹ı FA metadata£¨GM ÖĞÃ¿ºË 16 ¸ö uint32£©ÄÃµ½±¾ºËµÄ `bN2Start/End, gS1OStart/End, s2OStart/End, coreFirstTmpOutWsPos_`¡£
+- **sectionNum_** æ¥è‡ª metadata[0]ï¼›æ¯ä¸ª section æ˜¯ä¸€æ¬¡å®Œæ•´çš„ä»»åŠ¡åˆ†ç‰‡ã€‚
+- `FlashAttention` å†…é€šè¿‡ FA metadataï¼ˆGM ä¸­æ¯æ ¸ 16 ä¸ª uint32ï¼‰æ‹¿åˆ°æœ¬æ ¸çš„ `bN2Start/End, gS1OStart/End, s2OStart/End, coreFirstTmpOutWsPos_`ã€‚
 
-### 3.3 FlashAttention ÈÎÎñµ÷¶È£¨PRELOAD_N = 2 Á÷Ë®£©
+### 3.3 FlashAttention ä»»åŠ¡è°ƒåº¦ï¼ˆPRELOAD_N = 2 æµæ°´ï¼‰
 
-²ÉÓÃ **C1¡úC1¡úC1¡úC2** µÄ 2 ¼¶Ô¤ÔØÁ÷Ë®£º
+é‡‡ç”¨ **C1â†’C1â†’C1â†’C2** çš„ 2 çº§é¢„è½½æµæ°´ï¼š
 
 ```
 while (shouldDispatchTask || validTaskCount) {
@@ -110,136 +110,136 @@ while (shouldDispatchTask || validTaskCount) {
     if (shouldDispatchTask) {
         mode = GetTaskDealMode(...);          // CREATE_TASK / DEAL_ZERO / SKIP_ZERO / NOT_START / SKIP_REMAINING_S2
         if (mode == CREATE_TASK) {
-            CreateTask(createdTaskCount_, ...);   // Ö»Ìî RunInfoX£¨CalcParams£©£¬²»Ö´ĞĞ
+            CreateTask(createdTaskCount_, ...);   // åªå¡« RunInfoXï¼ˆCalcParamsï¼‰ï¼Œä¸æ‰§è¡Œ
             validTaskCount++;
         }
-        UpdateAxisInfo(mode, bN2Cur, gS1Cur, s2Cur);  // ¿ì½ø / »»ĞĞ / »»¿é
+        UpdateAxisInfo(mode, bN2Cur, gS1Cur, s2Cur);  // å¿«è¿› / æ¢è¡Œ / æ¢å—
     }
     if (validTaskCount) {
-        ExecuteTask(executedTaskCount, taskRunInfo);  // ÕæÕıÖ´ĞĞ
+        ExecuteTask(executedTaskCount, taskRunInfo);  // çœŸæ­£æ‰§è¡Œ
         if (executedTaskCount > PRELOAD_N) validTaskCount--;
     }
 }
 ```
 
-- `taskRunInfo[PRELOAD_TASK_CACHE_SIZE=3]` »·ĞÎ»º´æÈÎÎñ²ÎÊı£¬`loop % 3` È¡µ±Ç°ÈÎÎñ¡¢`(loop - 2) % 3` È¡ 2 ÂÖÇ°µÄÈÎÎñ£¨¹© C2/V2 Ïû·Ñ£©¡£
-- **ExecuteTask Âß¼­**£º
-  - ¶Ôµ±Ç°ÈÎÎñ `runInfo0`£º°´ `c1v1Loop` ¸ö subLoop£¬AIC Ö´ĞĞ `ComputeMm1`£¨C1£©£¬AIV Ö´ĞĞ `ComputeVec1`£¨V1£©¡£
-  - µ± `loop >= PRELOAD_N` Ê±£ºÏû·Ñ `runInfoNegN`£¨2 ÂÖÇ°µÄÈÎÎñ£©£¬AIC Ö´ĞĞ `ComputeMm2`£¨C2£©£¬AIV Ö´ĞĞ `ComputeVec2`£¨V2£©£¬²¢ÖÃ `isValid = false`¡£
-- **ÈÎÎñÖáĞò**£ºbN2£¨Íâ²ã£©¡ú gS1£¨ÖĞ²ã£©¡ú s2£¨ÄÚ²ã£©£»`UpdateAxisInfo` ¸ºÔğ¿çĞĞ/¿ç¿é¿ì½ø¡£
-- **Sparse Ö§³Ö**£º`GetTaskDealMode` ÖĞ `CalcCurS2StartEndWithSparse`£¨BAND/CAUSAL/TREE µÈ£©¼ÆËãÃ¿ĞĞÓĞĞ§ S2 Çø¼ä `[curS2Start_, curS2End_)`£¬mask Ä£Ê½ÏÂÌø¹ıÎŞĞ§¿é¡£
-- **RunInfoX ¹Ø¼ü×Ö¶Î**£¨`quant_flash_attn_common_def.h`£©£º`bIdx/n2Idx/realN2Idx/gS1Idx/s1Idx/s2Idx`¡¢`actMSize/actMSizeAlign32/actVecMSize/vecMbaseIdx`¡¢`actSingleLoopS2Size/actSingleLoopS2SizeAlign`¡¢`isFirstS2Loop/isLastS2Loop/isS2SplitCore`¡¢`faTmpOutWsPos`¡¢`mloop/loop`¡£
+- `taskRunInfo[PRELOAD_TASK_CACHE_SIZE=3]` ç¯å½¢ç¼“å­˜ä»»åŠ¡å‚æ•°ï¼Œ`loop % 3` å–å½“å‰ä»»åŠ¡ã€`(loop - 2) % 3` å– 2 è½®å‰çš„ä»»åŠ¡ï¼ˆä¾› C2/V2 æ¶ˆè´¹ï¼‰ã€‚
+- **ExecuteTask é€»è¾‘**ï¼š
+  - å¯¹å½“å‰ä»»åŠ¡ `runInfo0`ï¼šæŒ‰ `c1v1Loop` ä¸ª subLoopï¼ŒAIC æ‰§è¡Œ `ComputeMm1`ï¼ˆC1ï¼‰ï¼ŒAIV æ‰§è¡Œ `ComputeVec1`ï¼ˆV1ï¼‰ã€‚
+  - å½“ `loop >= PRELOAD_N` æ—¶ï¼šæ¶ˆè´¹ `runInfoNegN`ï¼ˆ2 è½®å‰çš„ä»»åŠ¡ï¼‰ï¼ŒAIC æ‰§è¡Œ `ComputeMm2`ï¼ˆC2ï¼‰ï¼ŒAIV æ‰§è¡Œ `ComputeVec2`ï¼ˆV2ï¼‰ï¼Œå¹¶ç½® `isValid = false`ã€‚
+- **ä»»åŠ¡è½´åº**ï¼šbN2ï¼ˆå¤–å±‚ï¼‰â†’ gS1ï¼ˆä¸­å±‚ï¼‰â†’ s2ï¼ˆå†…å±‚ï¼‰ï¼›`UpdateAxisInfo` è´Ÿè´£è·¨è¡Œ/è·¨å—å¿«è¿›ã€‚
+- **Sparse æ”¯æŒ**ï¼š`GetTaskDealMode` ä¸­ `CalcCurS2StartEndWithSparse`ï¼ˆBAND/CAUSAL/TREE ç­‰ï¼‰è®¡ç®—æ¯è¡Œæœ‰æ•ˆ S2 åŒºé—´ `[curS2Start_, curS2End_)`ï¼Œmask æ¨¡å¼ä¸‹è·³è¿‡æ— æ•ˆå—ã€‚
+- **RunInfoX å…³é”®å­—æ®µ**ï¼ˆ`quant_flash_attn_common_def.h`ï¼‰ï¼š`bIdx/n2Idx/realN2Idx/gS1Idx/s1Idx/s2Idx`ã€`actMSize/actMSizeAlign32/actVecMSize/vecMbaseIdx`ã€`actSingleLoopS2Size/actSingleLoopS2SizeAlign`ã€`isFirstS2Loop/isLastS2Loop/isS2SplitCore`ã€`faTmpOutWsPos`ã€`mloop/loop`ã€‚
 
-### 3.4 C1/V1/C2/V2 µ÷ÓÃÁ´
-
-```
-ComputeMm1  (AIC) ©¤©¤¡ú cubeBlock_.IterateBmm1(bmm1Buffers_.Get(), runInfo, subLoop)        [C1]
-ComputeVec1 (AIV) ©¤©¤¡ú vecFaBlock_.ProcessVec1(l1PBuffers_.Get/GetPre(), bmm1Buffers_.Get(), ...) [V1]
-ComputeMm2  (AIC) ©¤©¤¡ú cubeBlock_.IterateBmm2(bmm2Buffers_.Get(), l1PBuffers_, runInfo)   [C2]
-ComputeVec2 (AIV) ©¤©¤¡ú vecFaBlock_.ProcessVec2(bmm2Buffers_.Get(), runInfo)               [V2]
-```
-
-Êı¾İÁ÷£¨¿çºË¹²ÏíÄÚ´æ£©£º
+### 3.4 C1/V1/C2/V2 è°ƒç”¨é“¾
 
 ```
-C1(AIC): GM Q/K ¡ú L1 ¡ú L0A/L0B ¡ú L0C ¡ú Fixpipe ¡ú UB(bmm1) ©¤©¤¡ú V1(AIV): UB(bmm1) ¡ú softmax ¡ú P
-V1(AIV): P + PScale ©¤©¤¡ú L1(l1PBuffers_, 3buff) ©¤©¤¡ú C2(AIC): L1(P) + L1(KV) ¡ú L0A/L0B ¡ú L0C ¡ú Fixpipe ¡ú UB(bmm2) ©¤©¤¡ú V2(AIV)
-V2(AIV): UB(bmm2) ¡ú ÔÚÏß¸üĞÂ ¡ú GM(attnOut / LSE)
+ComputeMm1  (AIC) â”€â”€â†’ cubeBlock_.IterateBmm1(bmm1Buffers_.Get(), runInfo, subLoop)        [C1]
+ComputeVec1 (AIV) â”€â”€â†’ vecFaBlock_.ProcessVec1(l1PBuffers_.Get/GetPre(), bmm1Buffers_.Get(), ...) [V1]
+ComputeMm2  (AIC) â”€â”€â†’ cubeBlock_.IterateBmm2(bmm2Buffers_.Get(), l1PBuffers_, runInfo)   [C2]
+ComputeVec2 (AIV) â”€â”€â†’ vecFaBlock_.ProcessVec2(bmm2Buffers_.Get(), runInfo)               [V2]
+```
+
+æ•°æ®æµï¼ˆè·¨æ ¸å…±äº«å†…å­˜ï¼‰ï¼š
+
+```
+C1(AIC): GM Q/K â†’ L1 â†’ L0A/L0B â†’ L0C â†’ Fixpipe â†’ UB(bmm1) â”€â”€â†’ V1(AIV): UB(bmm1) â†’ softmax â†’ P
+V1(AIV): P + PScale â”€â”€â†’ L1(l1PBuffers_, 3buff) â”€â”€â†’ C2(AIC): L1(P) + L1(KV) â†’ L0A/L0B â†’ L0C â†’ Fixpipe â†’ UB(bmm2) â”€â”€â†’ V2(AIV)
+V2(AIV): UB(bmm2) â†’ åœ¨çº¿æ›´æ–° â†’ GM(attnOut / LSE)
 ```
 
 ---
 
-## 4. ÄÚ´æ¹æ»®Óë Buffer ²¼¾Ö
+## 4. å†…å­˜è§„åˆ’ä¸ Buffer å¸ƒå±€
 
-### 4.1 ¿çºË¹²Ïí UB£¨InitMMResBuf£¬kernel ²ã£©
+### 4.1 è·¨æ ¸å…±äº« UBï¼ˆInitMMResBufï¼Œkernel å±‚ï¼‰
 
-| Buffer | Policy | ´óĞ¡£¨×Ö½Ú£© | ËµÃ÷ |
+| Buffer | Policy | å¤§å°ï¼ˆå­—èŠ‚ï¼‰ | è¯´æ˜ |
 |--------|--------|--------------|------|
-| `ubBufferManager_` | UB | `mm1ResultSize*2 + mm2ResultSize` | ×Ü¹ÜÀíÆ÷ |
-| `bmm1Buffers_` | `BuffersPolicyDB<UB, CROSS_CORE_SYNC_BOTH>`£¨Ë«»º³å£© | Ã¿¿é `mm1ResultSize = (mBaseSize/2) * s2BaseSize * 4 / 2` | C1 ½á¹û£¨S ¾ØÕó£¬fp32£©£¬AIC Ğ´/AIV ¶Á |
-| `bmm2Buffers_` | `BuffersPolicySingleBuffer<UB, CROSS_CORE_SYNC_BOTH>`£¨µ¥»º³å£© | `mm2ResultSize = (mBaseSize/2) * dVBaseSize * 4` | C2 ½á¹û£¨O ¾ØÕó£¬fp32£©£¬AIC Ğ´/AIV ¶Á |
+| `ubBufferManager_` | UB | `mm1ResultSize*2 + mm2ResultSize` | æ€»ç®¡ç†å™¨ |
+| `bmm1Buffers_` | `BuffersPolicyDB<UB, CROSS_CORE_SYNC_BOTH>`ï¼ˆåŒç¼“å†²ï¼‰ | æ¯å— `mm1ResultSize = (mBaseSize/2) * s2BaseSize * 4 / 2` | C1 ç»“æœï¼ˆS çŸ©é˜µï¼Œfp32ï¼‰ï¼ŒAIC å†™/AIV è¯» |
+| `bmm2Buffers_` | `BuffersPolicySingleBuffer<UB, CROSS_CORE_SYNC_BOTH>`ï¼ˆå•ç¼“å†²ï¼‰ | `mm2ResultSize = (mBaseSize/2) * dVBaseSize * 4` | C2 ç»“æœï¼ˆO çŸ©é˜µï¼Œfp32ï¼‰ï¼ŒAIC å†™/AIV è¯» |
 
-µäĞÍÊıÖµ£¨mBaseSize=128£¬T=fp32=4B£¬CV_RATIO=2£©£º
+å…¸å‹æ•°å€¼ï¼ˆmBaseSize=128ï¼ŒT=fp32=4Bï¼ŒCV_RATIO=2ï¼‰ï¼š
 
-| Config | mm1ResultSize/¿é | mm1 Ë«»º³å | mm2ResultSize | UB ºÏ¼Æ |
+| Config | mm1ResultSize/å— | mm1 åŒç¼“å†² | mm2ResultSize | UB åˆè®¡ |
 |--------|------------------|-----------|---------------|---------|
 | S2=512, dV=128 | 64KB | 128KB | 32KB | 160KB |
 | S2=256, dV=256 | 32KB | 64KB | 64KB | 128KB |
 
-> ×¢£ºAIV ²à `QuantFlashAttnBlockVecMxfp8::InitBuffers` ÖĞ `mm1ResultSize = (mBaseSize/2)*s2BaseSize*4 = 128KB` ÊÇ"Á½¸ö°ë¿éºÏ¼Æ"¿Ú¾¶£¨= kernel µ¥¿é 64KB ¡Á 2 ¸ö dualDst Ä¿±ê£©£¬²¢²»ÖØ¸´ÉêÇëÄÚ´æ£¬bmm1/bmm2 buffer Í³Ò»ÓÉ kernel ²ã·ÖÅä¡£
+> æ³¨ï¼šAIV ä¾§ `QuantFlashAttnBlockVecMxfp8::InitBuffers` ä¸­ `mm1ResultSize = (mBaseSize/2)*s2BaseSize*4 = 128KB` æ˜¯"ä¸¤ä¸ªåŠå—åˆè®¡"å£å¾„ï¼ˆ= kernel å•å— 64KB Ã— 2 ä¸ª dualDst ç›®æ ‡ï¼‰ï¼Œå¹¶ä¸é‡å¤ç”³è¯·å†…å­˜ï¼Œbmm1/bmm2 buffer ç»Ÿä¸€ç”± kernel å±‚åˆ†é…ã€‚
 
-### 4.2 ¿çºË¹²Ïí L1£¨P ½á¹û£©
+### 4.2 è·¨æ ¸å…±äº« L1ï¼ˆP ç»“æœï¼‰
 
-| Buffer | Policy | ´óĞ¡£¨×Ö½Ú£© | ÄÚÈİ |
+| Buffer | Policy | å¤§å°ï¼ˆå­—èŠ‚ï¼‰ | å†…å®¹ |
 |--------|--------|--------------|------|
-| `l1BufferManager_` | L1 | `524288`£¨512KB£© | ×Ü¹ÜÀíÆ÷ |
-| `l1PBuffers_` | `BuffersPolicy3buff<L1, CROSS_CORE_SYNC_FORWARD>`£¨Èı»º³å£© | `mm2LeftSize = mBaseSize*s2BaseSize*1 + mBaseSize*s2BaseSize/32` | V1 Ğ´ P(fp8) + PScale(fp8_e8m0)£¬C2 ¶Á |
+| `l1BufferManager_` | L1 | `524288`ï¼ˆ512KBï¼‰ | æ€»ç®¡ç†å™¨ |
+| `l1PBuffers_` | `BuffersPolicy3buff<L1, CROSS_CORE_SYNC_FORWARD>`ï¼ˆä¸‰ç¼“å†²ï¼‰ | `mm2LeftSize = mBaseSize*s2BaseSize*1 + mBaseSize*s2BaseSize/32` | V1 å†™ P(fp8) + PScale(fp8_e8m0)ï¼ŒC2 è¯» |
 
-²¼¾Ö£¨µ¥¿é£©£º`[0, mBaseSize*s2BaseSize)` Îª P£¨fp8£¬M¡ÁS2£©£»`[mBaseSize*s2BaseSize, ...)` Îª PScale£¨Ã¿ 32 ¸ö P ÔªËØÒ»¸ö fp8_e8m0£©¡£
+å¸ƒå±€ï¼ˆå•å—ï¼‰ï¼š`[0, mBaseSize*s2BaseSize)` ä¸º Pï¼ˆfp8ï¼ŒMÃ—S2ï¼‰ï¼›`[mBaseSize*s2BaseSize, ...)` ä¸º PScaleï¼ˆæ¯ 32 ä¸ª P å…ƒç´ ä¸€ä¸ª fp8_e8m0ï¼‰ã€‚
 
-> ´úÂë×¢ÊÍÇ¿µ÷£º±£´æ P µÄ L1 ÄÚ´æ±ØĞë·ÅÔÚµÚÒ»¸ö L1 policy ÉÏ£¬±£Ö¤Óë vec ÉêÇëµÄµØÖ·ÏàÍ¬£¨TODO ËµÃ÷¹²Ïí buffer ³õÊ¼»¯´ıÏÂ³Áµ½ block ²ã£©¡£
+> ä»£ç æ³¨é‡Šå¼ºè°ƒï¼šä¿å­˜ P çš„ L1 å†…å­˜å¿…é¡»æ”¾åœ¨ç¬¬ä¸€ä¸ª L1 policy ä¸Šï¼Œä¿è¯ä¸ vec ç”³è¯·çš„åœ°å€ç›¸åŒï¼ˆTODO è¯´æ˜å…±äº« buffer åˆå§‹åŒ–å¾…ä¸‹æ²‰åˆ° block å±‚ï¼‰ã€‚
 
-µäĞÍÊıÖµ£ºS2=512 ¡ú 128*512 + 128*512/32 = 65536 + 2048 = **67584B£¨66KB£©/¿é**£»S2=256 ¡ú 33792B£¨33KB£©/¿é¡£
+å…¸å‹æ•°å€¼ï¼šS2=512 â†’ 128*512 + 128*512/32 = 65536 + 2048 = **67584Bï¼ˆ66KBï¼‰/å—**ï¼›S2=256 â†’ 33792Bï¼ˆ33KBï¼‰/å—ã€‚
 
-### 4.3 AIC ²à L1 / L0£¨cube block ²ã£¬InitBuffers£©
+### 4.3 AIC ä¾§ L1 / L0ï¼ˆcube block å±‚ï¼ŒInitBuffersï¼‰
 
 ```
-l1QBuffers_  = mBaseSize*dBaseSize*1 + mBaseSize*dBaseSize/32          // Q + QScale£¨fp8£©
-l1KVBuffers_ = dBaseSize*s2BaseSize*1 + s2BaseSize*dBaseSize/32        // d=256 Ê±È«Á¿£¨decode ·½°¸£©
-             = dBaseSize*s2BaseSizeCur*1 + s2BaseSizeCur*dBaseSize/32  // d¡Ù256 Ê±°´°ë¿é
-l0aBufferManager_.Init(tPipe_, 65536);    // 64KB£»mmL0ABuffers_ Ã¿¿é 32KB
-l0bBufferManager_.Init(tPipe_, 65536);    // 64KB£»mmL0BBuffers_ Ã¿¿é 32KB
+l1QBuffers_  = mBaseSize*dBaseSize*1 + mBaseSize*dBaseSize/32          // Q + QScaleï¼ˆfp8ï¼‰
+l1KVBuffers_ = dBaseSize*s2BaseSize*1 + s2BaseSize*dBaseSize/32        // d=256 æ—¶å…¨é‡ï¼ˆdecode æ–¹æ¡ˆï¼‰
+             = dBaseSize*s2BaseSizeCur*1 + s2BaseSizeCur*dBaseSize/32  // dâ‰ 256 æ—¶æŒ‰åŠå—
+l0aBufferManager_.Init(tPipe_, 65536);    // 64KBï¼›mmL0ABuffers_ æ¯å— 32KB
+l0bBufferManager_.Init(tPipe_, 65536);    // 64KBï¼›mmL0BBuffers_ æ¯å— 32KB
 l0cBufferManager_.Init(tPipe_, 262144);   // 256KB
 mmL0CBuffers_.Init = (mBaseSize*s2BaseSize*4 <= 256KB/4 && mBaseSize*dVBaseSize*4 <= 256KB/4)
                      ? 64KB : 128KB
 ```
 
-µäĞÍÊıÖµ£¨S2=512, d=128£©£ºl1Q ¡Ö 16384+512 = 16896B£»l1KV ¡Ö 128*256 + 256*128/32 = 32768+1024 = 33792B¡£
+å…¸å‹æ•°å€¼ï¼ˆS2=512, d=128ï¼‰ï¼šl1Q â‰ˆ 16384+512 = 16896Bï¼›l1KV â‰ˆ 128*256 + 256*128/32 = 32768+1024 = 33792Bã€‚
 
-### 4.4 AIV ²à UB ²¼¾Ö£¨vec block ²ã£¬InitBuffers£©
+### 4.4 AIV ä¾§ UB å¸ƒå±€ï¼ˆvec block å±‚ï¼ŒInitBuffersï¼‰
 
-| Buffer | ´óĞ¡£¨×Ö½Ú£© | ÄÚÈİ |
+| Buffer | å¤§å°ï¼ˆå­—èŠ‚ï¼‰ | å†…å®¹ |
 |--------|--------------|------|
-| `stage1OutQue_[2]` | Ã¿¿é `16640` | softmax ½á¹û£¨P£¬fp8£©Ôİ´æ + **PScale ¸´ÓÃÇø**£¨`pScaleByteOffset = 16640`£¬¼ûµÚ 9 ½Ú£© |
-| `stage2OutBuf_` | `64 * dTemplateAlign64 * 4`£¨dV=128 ¡ú 32KB£© | V2 ½á¹ûÔİ´æ |
-| `softmaxSumBuf_[3]` | 256B¡Á3 | sum£¨fp32 [64,1]£© |
-| `softmaxMaxBuf_[3]` | 256B¡Á3 | max£¨fp32 [64,1]£© |
-| `softmaxExpBuf_[3]` | 256B¡Á3 | exp ½á¹û |
-| `preLoopMaxBuf_ / preLoopSumBuf_ / firstLoopSumBuf_` | ¸÷ 256B | ÔÚÏß softmax ×´Ì¬ |
-| `vselrIndexesBuf_[4]` | DN: 256B£»ND: 128B + 64B | vselr Ë÷Òı±í£¨Êı¾İÖØÅÅ£© |
-| `attenMaskInQue_[0]` | `(mBaseSize/2) * (s2BaseSize/2)` = 16384B | mask ÊäÈë£¨HAS_MASK Ê±£© |
-| `commonTBuf_` | 512B | ÁÙÊ±Çø |
-| `softmaxLseQueue_` | `(mBaseSize/2)*4*8` = 2048B | LSE Êä³ö£¨LSE Ê¹ÄÜÊ±£© |
-| `maxBrdcst_ / sumBrdcst_` | 2048B¡Á2 | FD Ä£Ê½ broadcast£¨FLASH_DECODE Ê±£© |
+| `stage1OutQue_[2]` | æ¯å— `16640` | softmax ç»“æœï¼ˆPï¼Œfp8ï¼‰æš‚å­˜ + **PScale å¤ç”¨åŒº**ï¼ˆ`pScaleByteOffset = 16640`ï¼Œè§ç¬¬ 9 èŠ‚ï¼‰ |
+| `stage2OutBuf_` | `64 * dTemplateAlign64 * 4`ï¼ˆdV=128 â†’ 32KBï¼‰ | V2 ç»“æœæš‚å­˜ |
+| `softmaxSumBuf_[3]` | 256BÃ—3 | sumï¼ˆfp32 [64,1]ï¼‰ |
+| `softmaxMaxBuf_[3]` | 256BÃ—3 | maxï¼ˆfp32 [64,1]ï¼‰ |
+| `softmaxExpBuf_[3]` | 256BÃ—3 | exp ç»“æœ |
+| `preLoopMaxBuf_ / preLoopSumBuf_ / firstLoopSumBuf_` | å„ 256B | åœ¨çº¿ softmax çŠ¶æ€ |
+| `vselrIndexesBuf_[4]` | DN: 256Bï¼›ND: 128B + 64B | vselr ç´¢å¼•è¡¨ï¼ˆæ•°æ®é‡æ’ï¼‰ |
+| `attenMaskInQue_[0]` | `(mBaseSize/2) * (s2BaseSize/2)` = 16384B | mask è¾“å…¥ï¼ˆHAS_MASK æ—¶ï¼‰ |
+| `commonTBuf_` | 512B | ä¸´æ—¶åŒº |
+| `softmaxLseQueue_` | `(mBaseSize/2)*4*8` = 2048B | LSE è¾“å‡ºï¼ˆLSE ä½¿èƒ½æ—¶ï¼‰ |
+| `maxBrdcst_ / sumBrdcst_` | 2048BÃ—2 | FD æ¨¡å¼ broadcastï¼ˆFLASH_DECODE æ—¶ï¼‰ |
 
-### 4.5 GM ²à
+### 4.5 GM ä¾§
 
-- **metadata**£ºFA ²¿·Ö `QFA_AIC_CORE_NUM(36) * 16 * sectionNum`£»FD ²¿·ÖÆ«ÒÆ `FA_METADATA_HEADER_OFFSET + QFA_METADATA_SIZE(16)*36*sectionNum*4B` Ö®ºó£¬`QFA_AIV_CORE_NUM(72) * 16 * sectionNum`¡£
-- **workspace**£¨FLASH_DECODE Ê±£©£º`faTmpAttenGmSize = numBlocks_*2*mSize*dSize`£¬`logSumExpSize = numBlocks_*2*mSize*8`£¬`accumOut` ÔÚ workspace Ê×²¿£¬`softmaxFDSum/Max` ½ôËæÆäºó£¨InitVecInput£©¡£
+- **metadata**ï¼šFA éƒ¨åˆ† `QFA_AIC_CORE_NUM(36) * 16 * sectionNum`ï¼›FD éƒ¨åˆ†åç§» `FA_METADATA_HEADER_OFFSET + QFA_METADATA_SIZE(16)*36*sectionNum*4B` ä¹‹åï¼Œ`QFA_AIV_CORE_NUM(72) * 16 * sectionNum`ã€‚
+- **workspace**ï¼ˆFLASH_DECODE æ—¶ï¼‰ï¼š`faTmpAttenGmSize = numBlocks_*2*mSize*dSize`ï¼Œ`logSumExpSize = numBlocks_*2*mSize*8`ï¼Œ`accumOut` åœ¨ workspace é¦–éƒ¨ï¼Œ`softmaxFDSum/Max` ç´§éšå…¶åï¼ˆInitVecInputï¼‰ã€‚
 
 ---
 
-## 5. C1£¨MM1£©ÊµÏÖÏê½â
+## 5. C1ï¼ˆMM1ï¼‰å®ç°è¯¦è§£
 
-ÎÄ¼ş£º`op_kernel/arch35/quant_flash_attn_block_cube_mxfp8.h`£¨`QuantFlashAttnBlockCubeMxfp8`£©
+æ–‡ä»¶ï¼š`op_kernel/arch35/quant_flash_attn_block_cube_mxfp8.h`ï¼ˆ`QuantFlashAttnBlockCubeMxfp8`ï¼‰
 
-Èë¿Ú£º`IterateBmm1(outputBuf=UB(bmm1), runInfo, subLoop)` ¡ú °´ `USE_DN` ·Ö·¢¡£
+å…¥å£ï¼š`IterateBmm1(outputBuf=UB(bmm1), runInfo, subLoop)` â†’ æŒ‰ `USE_DN` åˆ†å‘ã€‚
 
-### 5.1 ND£¨decode£©£º`IterateBmm1Nd`
+### 5.1 NDï¼ˆdecodeï¼‰ï¼š`IterateBmm1Nd`
 
-¼ÆËã£º**Q ¡Á K^T**£¨M=mBaseSize, N=s2£¬K=d£©¡£K Ã¿´Î°áÈë£¬Q Ê×ÂÖ°áÈëºó×¤Áô¡£
+è®¡ç®—ï¼š**Q Ã— K^T**ï¼ˆM=mBaseSize, N=s2ï¼ŒK=dï¼‰ã€‚K æ¯æ¬¡æ¬å…¥ï¼ŒQ é¦–è½®æ¬å…¥åé©»ç•™ã€‚
 
-1. **s2CurSize ¼ÆËã**£ºÄ¬ÈÏ `s2SplitSize`£»Î²²¿ `actSingleLoopS2Size < s2BaseSize` Ê±£¬subLoop0 È¡ `min(s2SplitSize, actSize)`£¬·ñÔòÈ¡Ê£Óà¡£
-2. **°á Q**£¨½ö `isFirstS2Loop && subLoop==0`£©£º
-   - `mm1A = l1QBuffers_.Get()`£¬`Wait<MTE1_MTE2>`£»
-   - `CopyQueryTile`£¨GM¡úL1£¬NZ ²¼¾Ö£¬dstStride = actMSize ¶ÔÆë 32£©£« `CopyQueryScaleTile`£¨QScale£¬Æ«ÒÆ `qScaleOffset = actMSizeAlign32 * dBaseSize`£©£»
-   - `Set<MTE2_MTE1>`¡£ÆäÓàÂÖ´ÎÓÃ `GetPre()`£¨ping-pong£©¡£
-3. **°á K**£¨Ã¿ subLoop£©£º
-   - `mm1B = l1KVBuffers_.Get()`£¬`Wait<MTE1_MTE2>`£»
-   - `CopyKeyTile(mm1BTensor, runInfo, s2CurSize, subLoop)`£º`s2Offset = subLoop%2==0 ? s2Idx : s2Idx + s2BaseSize/2`£¨K °ë¿é ping-pong °áÈë£©£»
-   - `CopyKeyScaleTile`£¨Æ«ÒÆ `kScaleOffset = s2CurSizeAlign32 * dBaseSize`£©£»
-   - `Set<MTE2_MTE1>`£»È»ºó `mm1A.Wait<MTE2_MTE1>(); mm1B.Wait<MTE2_MTE1>();`
-4. **Matmul**£º
+1. **s2CurSize è®¡ç®—**ï¼šé»˜è®¤ `s2SplitSize`ï¼›å°¾éƒ¨ `actSingleLoopS2Size < s2BaseSize` æ—¶ï¼ŒsubLoop0 å– `min(s2SplitSize, actSize)`ï¼Œå¦åˆ™å–å‰©ä½™ã€‚
+2. **æ¬ Q**ï¼ˆä»… `isFirstS2Loop && subLoop==0`ï¼‰ï¼š
+   - `mm1A = l1QBuffers_.Get()`ï¼Œ`Wait<MTE1_MTE2>`ï¼›
+   - `CopyQueryTile`ï¼ˆGMâ†’L1ï¼ŒNZ å¸ƒå±€ï¼ŒdstStride = actMSize å¯¹é½ 32ï¼‰ï¼‹ `CopyQueryScaleTile`ï¼ˆQScaleï¼Œåç§» `qScaleOffset = actMSizeAlign32 * dBaseSize`ï¼‰ï¼›
+   - `Set<MTE2_MTE1>`ã€‚å…¶ä½™è½®æ¬¡ç”¨ `GetPre()`ï¼ˆping-pongï¼‰ã€‚
+3. **æ¬ K**ï¼ˆæ¯ subLoopï¼‰ï¼š
+   - `mm1B = l1KVBuffers_.Get()`ï¼Œ`Wait<MTE1_MTE2>`ï¼›
+   - `CopyKeyTile(mm1BTensor, runInfo, s2CurSize, subLoop)`ï¼š`s2Offset = subLoop%2==0 ? s2Idx : s2Idx + s2BaseSize/2`ï¼ˆK åŠå— ping-pong æ¬å…¥ï¼‰ï¼›
+   - `CopyKeyScaleTile`ï¼ˆåç§» `kScaleOffset = s2CurSizeAlign32 * dBaseSize`ï¼‰ï¼›
+   - `Set<MTE2_MTE1>`ï¼›ç„¶å `mm1A.Wait<MTE2_MTE1>(); mm1B.Wait<MTE2_MTE1>();`
+4. **Matmul**ï¼š
    ```
    MatmulFullMX<Q_T, KV_T, T, 128, s2BaseSize>>1, dBaseSize, ABLayout::MK, ABLayout::KN,
                 L0AType, L0BType, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
@@ -247,51 +247,51 @@ mmL0CBuffers_.Init = (mBaseSize*s2BaseSize*4 <= 256KB/4 && mBaseSize*dVBaseSize*
        MakeMMParam(actMSize, s2CurSize, dBaseSize, false, true),
        mm1A+[qScaleOffset], mm1B+[kScaleOffset]);
    ```
-   £¨mmL0ABuffers_ µÄ scale ²ÎÊıÎª `false,true`£ºA ÎŞ trans¡¢B ÓĞ trans£©
-5. **Í¬²½Óë°á³ö**£º`mm1ResL0C.Set<M_FIX>() ¡ú Wait<M_FIX>() ¡ú outputBuf.WaitCrossCore() ¡ú FixpipeMm1 ¡ú Set<FIX_M>() ¡ú outputBuf.SetCrossCore()`¡£
+   ï¼ˆmmL0ABuffers_ çš„ scale å‚æ•°ä¸º `false,true`ï¼šA æ—  transã€B æœ‰ transï¼‰
+5. **åŒæ­¥ä¸æ¬å‡º**ï¼š`mm1ResL0C.Set<M_FIX>() â†’ Wait<M_FIX>() â†’ outputBuf.WaitCrossCore() â†’ FixpipeMm1 â†’ Set<FIX_M>() â†’ outputBuf.SetCrossCore()`ã€‚
 
-### 5.2 DN£¨prefill£©£º`IterateBmm1Dn`
+### 5.2 DNï¼ˆprefillï¼‰ï¼š`IterateBmm1Dn`
 
-¼ÆËã£º**K^T ¡Á Q**£¨M=s2, N=mBaseSize£¬K=d£©¡£**Q ×¤Áô L1**£¬K Ã¿´Î°áÈë¡£
+è®¡ç®—ï¼š**K^T Ã— Q**ï¼ˆM=s2, N=mBaseSizeï¼ŒK=dï¼‰ã€‚**Q é©»ç•™ L1**ï¼ŒK æ¯æ¬¡æ¬å…¥ã€‚
 
-- ¾ØÕó³Ë½ÇÉ«¶Ôµ÷£º**B ¾ØÕó£¨`mm1B = l1QBuffers_`£©×¤Áô**£¬A ¾ØÕó£¨`mm1A = l1KVBuffers_`£©Ã¿ÂÖ°áÈë¡£
-- Matmul ²ÎÊı£º
+- çŸ©é˜µä¹˜è§’è‰²å¯¹è°ƒï¼š**B çŸ©é˜µï¼ˆ`mm1B = l1QBuffers_`ï¼‰é©»ç•™**ï¼ŒA çŸ©é˜µï¼ˆ`mm1A = l1KVBuffers_`ï¼‰æ¯è½®æ¬å…¥ã€‚
+- Matmul å‚æ•°ï¼š
   ```
   MatmulFullMX<Q_T, KV_T, T, s2BaseSize>>1, 128, dBaseSize, ABLayout::MK, ABLayout::KN,
               L0AType, L0BType, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
       mm1A(K), mm1B(Q), ..., MakeMMParam(s2CalcSize, actMSize, dBaseSize, false, true),
       mm1A+[kScaleOffset], mm1B+[qScaleOffset]);
   ```
-- `s2CalcSize` ¼ÆËãÍ¬ ND£¨Î²²¿ĞŞÕı£©¡£
-- ÊÍ·Å²ßÂÔ²îÒì£ºDN ÔÚ `isLastS2Loop` Ê±ÊÍ·ÅµÄÊÇ **mm1B£¨Q ×¤Áô»º³å£©**¡£
+- `s2CalcSize` è®¡ç®—åŒ NDï¼ˆå°¾éƒ¨ä¿®æ­£ï¼‰ã€‚
+- é‡Šæ”¾ç­–ç•¥å·®å¼‚ï¼šDN åœ¨ `isLastS2Loop` æ—¶é‡Šæ”¾çš„æ˜¯ **mm1Bï¼ˆQ é©»ç•™ç¼“å†²ï¼‰**ã€‚
 
-### 5.3 Fixpipe£¨L0C¡úUB£©²îÒì
+### 5.3 Fixpipeï¼ˆL0Câ†’UBï¼‰å·®å¼‚
 
 ```cpp
-// ND (FixpipeMm1): dualDstCtl = 1£¬°´ M ²ğ·Ö
+// ND (FixpipeMm1): dualDstCtl = 1ï¼ŒæŒ‰ M æ‹†åˆ†
 fixpipeParams.nSize       = (s2RealSize + 7) >> 3 << 3;            // N = S2
-fixpipeParams.mSize       = (actMSize + 31) >> 5 << 5;             // M = ĞĞÊı(¶ÔÆë32)
+fixpipeParams.mSize       = (actMSize + 31) >> 5 << 5;             // M = è¡Œæ•°(å¯¹é½32)
 fixpipeParams.srcStride   = ((actMSize + 15) / 16) * 16;
-fixpipeParams.dstStride   = s2SplitSize;                           // UB Á½ĞĞ¼ä¸ô
-fixpipeParams.dualDstCtl  = 1;                                     // M/2¡ÁN Ğ´Ã¿¸ö UB
+fixpipeParams.dstStride   = s2SplitSize;                           // UB ä¸¤è¡Œé—´éš”
+fixpipeParams.dualDstCtl  = 1;                                     // M/2Ã—N å†™æ¯ä¸ª UB
 
-// DN (FixpipeMm1Dn): dualDstCtl = 2£¬°´ N ²ğ·Ö
-fixpipeParams.nSize       = (actMSize + 31) >> 5 << 5;             // M£¨½ÇÉ«»¥»»£©
+// DN (FixpipeMm1Dn): dualDstCtl = 2ï¼ŒæŒ‰ N æ‹†åˆ†
+fixpipeParams.nSize       = (actMSize + 31) >> 5 << 5;             // Mï¼ˆè§’è‰²äº’æ¢ï¼‰
 fixpipeParams.mSize       = (s2RealSize + 7) >> 3 << 3;            // S2
 fixpipeParams.srcStride   = ((fixpipeParams.mSize + 15) / 16) * 16;
-fixpipeParams.dstStride   = 64;                                    // UB Á½ĞĞ¼ä¸ô
-fixpipeParams.dualDstCtl  = 2;                                     // M¡ÁN/2 Ğ´Ã¿¸ö UB
+fixpipeParams.dstStride   = 64;                                    // UB ä¸¤è¡Œé—´éš”
+fixpipeParams.dualDstCtl  = 2;                                     // MÃ—N/2 å†™æ¯ä¸ª UB
 ```
 
-¹Ø¼üµã£º**Fixpipe µÄ½á¹ûÅÅ²¼¾ö¶¨ AIV ²à¶ÁÈ¡·½Ê½**¡£ND °´ M ²ğ³ÉÉÏÏÂÁ½¿é£¨subBlockIdx 0 È¡ÉÏ°ë¡¢1 È¡ÏÂ°ë£©£»DN °´ N ²ğ³É×óÓÒÁ½¿é£¨Ã¿¸ö subBlock ´¦ÀíÈ«²¿ 64 ĞĞ ¡Á N/2£©¡£
+å…³é”®ç‚¹ï¼š**Fixpipe çš„ç»“æœæ’å¸ƒå†³å®š AIV ä¾§è¯»å–æ–¹å¼**ã€‚ND æŒ‰ M æ‹†æˆä¸Šä¸‹ä¸¤å—ï¼ˆsubBlockIdx 0 å–ä¸ŠåŠã€1 å–ä¸‹åŠï¼‰ï¼›DN æŒ‰ N æ‹†æˆå·¦å³ä¸¤å—ï¼ˆæ¯ä¸ª subBlock å¤„ç†å…¨éƒ¨ 64 è¡Œ Ã— N/2ï¼‰ã€‚
 
 ---
 
-## 6. V1£¨softmax ¡ú P£©ÊµÏÖÏê½â
+## 6. V1ï¼ˆsoftmax â†’ Pï¼‰å®ç°è¯¦è§£
 
-ÎÄ¼ş£º`op_kernel/arch35/quant_flash_attn_block_vec_mxfp8.h`£¨`QuantFlashAttnBlockVecMxfp8`£©
+æ–‡ä»¶ï¼š`op_kernel/arch35/quant_flash_attn_block_vec_mxfp8.h`ï¼ˆ`QuantFlashAttnBlockVecMxfp8`ï¼‰
 
-Èë¿Ú£º`ProcessVec1(outputBuf=L1P, bmm1ResBuf=UB(bmm1), runInfo, subLoop)`£º
+å…¥å£ï¼š`ProcessVec1(outputBuf=L1P, bmm1ResBuf=UB(bmm1), runInfo, subLoop)`ï¼š
 
 ```cpp
 bmm1ResBuf.WaitCrossCore();
@@ -299,74 +299,74 @@ if (actVecMSize == 0) { bmm1ResBuf.SetCrossCore(); ...; return; }
 USE_DN ? ProcessVec1Dn(...) : ProcessVec1Nd(...);
 ```
 
-`actVecMSize`£ºAIV ×ÓºËÊµ¼Ê´¦ÀíĞĞÊı£¨M °ë¿é£©£¬`vecMbaseIdx` Îª¸Ã×ÓºËĞĞÆ«ÒÆ£¨¼û 2.2 ½Ú¹«Ê½£¬`subBlockIdx==1` Ê±È¡ºó°ë¸ö M£©¡£
+`actVecMSize`ï¼šAIV å­æ ¸å®é™…å¤„ç†è¡Œæ•°ï¼ˆM åŠå—ï¼‰ï¼Œ`vecMbaseIdx` ä¸ºè¯¥å­æ ¸è¡Œåç§»ï¼ˆè§ 2.2 èŠ‚å…¬å¼ï¼Œ`subBlockIdx==1` æ—¶å–ååŠä¸ª Mï¼‰ã€‚
 
-### 6.1 ¹«¹²ÊäÈë
+### 6.1 å…¬å…±è¾“å…¥
 
-- softmax ×´Ì¬ buffer£º`sumUb/maxUb = softmaxSumBuf_/MaxBuf_[mloop % 3]`¡¢`expUb = softmaxExpBuf_[loop % 3]`¡¢`preLoopMax/Sum`¡¢`firstLoopSum`¡£
-- `mmRes = bmm1ResBuf.GetTensor<T>()`£¨C1 ½á¹û fp32£©¡£
-- `stage1CastTensor = stage1OutQue_[subLoop % 2].AllocTensor<INPUT_T>()`£¨Êä³ö P£¬fp8£©¡£
-- **PScale Çø¸´ÓÃ**£º`pScaleSubLoop0Tensor = stage1CastTensor.ReinterpretCast<fp8_e8m0_t>()[16640]` ¡ª¡ª 16640 ¼´ softmax ½á¹ûÇøµÄ×Ö½Ú´óĞ¡£¬PScale Êı¾İ½ô¸úÔÚÍ¬Ò»¸ö stage1 buffer Ö®ºó£¨Í¬Ò»¿é UB ¿Õ¼ä¸´ÓÃ£©¡£
-- `s2CalcSize`£º`actSingleLoopS2Size > s2SplitSize` Ê± subLoop0 = `s2BaseSizeCur`£¬·ñÔòÎªÊ£Óà¡£
-- `descaleQK = 1.0`£¨scale ÒÑÓÉ cube ²àÍ¨¹ı dequantScale ´¦Àí£©£»`scaleValue` ´«Èë `ProcessVec1Vf*` ×÷Îª QK Ëõ·Å¡£
+- softmax çŠ¶æ€ bufferï¼š`sumUb/maxUb = softmaxSumBuf_/MaxBuf_[mloop % 3]`ã€`expUb = softmaxExpBuf_[loop % 3]`ã€`preLoopMax/Sum`ã€`firstLoopSum`ã€‚
+- `mmRes = bmm1ResBuf.GetTensor<T>()`ï¼ˆC1 ç»“æœ fp32ï¼‰ã€‚
+- `stage1CastTensor = stage1OutQue_[subLoop % 2].AllocTensor<INPUT_T>()`ï¼ˆè¾“å‡º Pï¼Œfp8ï¼‰ã€‚
+- **PScale åŒºå¤ç”¨**ï¼š`pScaleSubLoop0Tensor = stage1CastTensor.ReinterpretCast<fp8_e8m0_t>()[16640]` â€”â€” 16640 å³ softmax ç»“æœåŒºçš„å­—èŠ‚å¤§å°ï¼ŒPScale æ•°æ®ç´§è·Ÿåœ¨åŒä¸€ä¸ª stage1 buffer ä¹‹åï¼ˆåŒä¸€å— UB ç©ºé—´å¤ç”¨ï¼‰ã€‚
+- `s2CalcSize`ï¼š`actSingleLoopS2Size > s2SplitSize` æ—¶ subLoop0 = `s2BaseSizeCur`ï¼Œå¦åˆ™ä¸ºå‰©ä½™ã€‚
+- `descaleQK = 1.0`ï¼ˆscale å·²ç”± cube ä¾§é€šè¿‡ dequantScale å¤„ç†ï¼‰ï¼›`scaleValue` ä¼ å…¥ `ProcessVec1Vf*` ä½œä¸º QK ç¼©æ”¾ã€‚
 
-### 6.2 DN£º`ProcessVec1Dn`
+### 6.2 DNï¼š`ProcessVec1Dn`
 
-- `maskLine = ComputeMaskLineDN(runInfo, subLoop)`£¨HAS_MASK Ê±£©£»`isFullMask_` Ê± `maskLine = -256`¡£
-- µ÷ÓÃ **`ProcessVec1VfDnMxfp8<T, INPUT_T, isFirstS2Loop, hasAtten, s2BaseSizeCur>`**£¨`vf_mul_sel_softmaxflashv2_cast_nz_dn.h`£©£¬²ÎÊı£º
-  `(stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_[DN_INDEX], pScaleSubLoop0Tensor, vecMSizeAlign, actS2Align/2, s2CalcSize, scaleValue, descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine)`¡£
-- Íê³É£º`bmm1ResBuf.SetCrossCore()`£¨ÊÍ·Å UB ¹©ÏÂÒ»ÂÖ C1 Ğ´£©¡£
-- **P Ğ´Èë L1P**£¨`DataCopy` Ñ­»·£©£º
-  - Ä¿±ê£º`mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>()`£»
-  - `subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop`£»
-  - Ñ­»· `i ¡Ê [0, ceil(mBaseSize/2/32))`£º`dstOffset = 32*s2BaseSizeCur*i + subLoopOffset`£¨subBlockIdx==1 ÔÙ¼Ó `s2BaseSizeCur*actVec0Align32`£©£¬`srcOffset = i*(((s2BaseSizeCur>>2)+1)<<5)`£¬`DataCopy(dst, src, {4, s2BaseSizeCur/4, s2BaseSizeCur/4+2, 0})`¡£
-- **PScale Ğ´Èë L1P**£¨½öµ±µÚ¶ş¸ö subLoop »òµ¥ subLoop£¬¼´Õû¿é S2 ´¦ÀíÍê£©£º
-  - Ä¿±êÆ«ÒÆ `pScaleL1Offset = mBaseSize*s2BaseSize`£¨ÔªËØµ¥Î»£©£¬`vecOffset = subBlockIdx * pScaleDataLen`£¬`pScaleDataLen = (mBaseSize>>1)*s2BaseSizeCur/32`£»
-  - `DataCopy(mm2AScaleL1Tensor[vecOffset+i*32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride})`£¬`pScaleDstStride = s2BaseSizeCur/32/2 - 1`£¬Ñ­»· `copyTimes = s2BaseSizeCur/32/2` ´Î£¨16¡Á2 ·ÖĞÎÖØ¸´ 4 ´Î£©¡£
-- `outputBuf.SetCrossCore()`£¨Õû¿é S2 ´¦ÀíÍê²Å·ÅĞĞ C2£©¡£
-- `isLastS2Loop` Ê± `SoftmaxDataCopyOut`£¨LSE/FD sum-max Ğ´³ö£¬¼û 6.4£©¡£
+- `maskLine = ComputeMaskLineDN(runInfo, subLoop)`ï¼ˆHAS_MASK æ—¶ï¼‰ï¼›`isFullMask_` æ—¶ `maskLine = -256`ã€‚
+- è°ƒç”¨ **`ProcessVec1VfDnMxfp8<T, INPUT_T, isFirstS2Loop, hasAtten, s2BaseSizeCur>`**ï¼ˆ`vf_mul_sel_softmaxflashv2_cast_nz_dn.h`ï¼‰ï¼Œå‚æ•°ï¼š
+  `(stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_[DN_INDEX], pScaleSubLoop0Tensor, vecMSizeAlign, actS2Align/2, s2CalcSize, scaleValue, descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine)`ã€‚
+- å®Œæˆï¼š`bmm1ResBuf.SetCrossCore()`ï¼ˆé‡Šæ”¾ UB ä¾›ä¸‹ä¸€è½® C1 å†™ï¼‰ã€‚
+- **P å†™å…¥ L1P**ï¼ˆ`DataCopy` å¾ªç¯ï¼‰ï¼š
+  - ç›®æ ‡ï¼š`mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>()`ï¼›
+  - `subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop`ï¼›
+  - å¾ªç¯ `i âˆˆ [0, ceil(mBaseSize/2/32))`ï¼š`dstOffset = 32*s2BaseSizeCur*i + subLoopOffset`ï¼ˆsubBlockIdx==1 å†åŠ  `s2BaseSizeCur*actVec0Align32`ï¼‰ï¼Œ`srcOffset = i*(((s2BaseSizeCur>>2)+1)<<5)`ï¼Œ`DataCopy(dst, src, {4, s2BaseSizeCur/4, s2BaseSizeCur/4+2, 0})`ã€‚
+- **PScale å†™å…¥ L1P**ï¼ˆä»…å½“ç¬¬äºŒä¸ª subLoop æˆ–å• subLoopï¼Œå³æ•´å— S2 å¤„ç†å®Œï¼‰ï¼š
+  - ç›®æ ‡åç§» `pScaleL1Offset = mBaseSize*s2BaseSize`ï¼ˆå…ƒç´ å•ä½ï¼‰ï¼Œ`vecOffset = subBlockIdx * pScaleDataLen`ï¼Œ`pScaleDataLen = (mBaseSize>>1)*s2BaseSizeCur/32`ï¼›
+  - `DataCopy(mm2AScaleL1Tensor[vecOffset+i*32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride})`ï¼Œ`pScaleDstStride = s2BaseSizeCur/32/2 - 1`ï¼Œå¾ªç¯ `copyTimes = s2BaseSizeCur/32/2` æ¬¡ï¼ˆ16Ã—2 åˆ†å½¢é‡å¤ 4 æ¬¡ï¼‰ã€‚
+- `outputBuf.SetCrossCore()`ï¼ˆæ•´å— S2 å¤„ç†å®Œæ‰æ”¾è¡Œ C2ï¼‰ã€‚
+- `isLastS2Loop` æ—¶ `SoftmaxDataCopyOut`ï¼ˆLSE/FD sum-max å†™å‡ºï¼Œè§ 6.4ï¼‰ã€‚
 
-### 6.3 ND£º`ProcessVec1Nd`
+### 6.3 NDï¼š`ProcessVec1Nd`
 
-- ÏÈ `AttenMaskCopyIn`£¨HAS_MASK Ê±È«Á¿¿½±´ mask µ½ `attenMaskInQue_[0]`£©¡£
-- µ÷ÓÃ **`ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, isFirstS2Loop, mBaseSize, s2BaseSizeCur, S2RANGE_TAG, HAS_MASK, PSE_NONE_TYPE, ...>`**£¨`vf_mul_sel_softmaxflashv2_cast_nz.h`£©£¬°´ `s2CalcSize` ·ÖÖ§£º
-  - `s2CalcSize == 128` ¡ú `EQ_128`£»
-  - `<= 64` ¡ú `GT_0_AND_LTE_64`£»
-  - `< 128` ¡ú `GT_64_AND_LTE_128`£»
-  - ·ñÔò£¨s2BaseSizeCur==256£©¡ú `GT_128_AND_LTE_256`¡£
-- ´«Èë `attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, pScaleUb(=¿Õ), preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift, scaleValue, descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue_`¡£
-- **P Ğ´Èë L1P**£º
+- å…ˆ `AttenMaskCopyIn`ï¼ˆHAS_MASK æ—¶å…¨é‡æ‹·è´ mask åˆ° `attenMaskInQue_[0]`ï¼‰ã€‚
+- è°ƒç”¨ **`ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, isFirstS2Loop, mBaseSize, s2BaseSizeCur, S2RANGE_TAG, HAS_MASK, PSE_NONE_TYPE, ...>`**ï¼ˆ`vf_mul_sel_softmaxflashv2_cast_nz.h`ï¼‰ï¼ŒæŒ‰ `s2CalcSize` åˆ†æ”¯ï¼š
+  - `s2CalcSize == 128` â†’ `EQ_128`ï¼›
+  - `<= 64` â†’ `GT_0_AND_LTE_64`ï¼›
+  - `< 128` â†’ `GT_64_AND_LTE_128`ï¼›
+  - å¦åˆ™ï¼ˆs2BaseSizeCur==256ï¼‰â†’ `GT_128_AND_LTE_256`ã€‚
+- ä¼ å…¥ `attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, pScaleUb(=ç©º), preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, actVecMSizeAlign16, s2CalcSize, pseStride, slopes, posShift, scaleValue, descaleQK, negativeFloatScalar_, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue_`ã€‚
+- **P å†™å…¥ L1P**ï¼š
   ```
   dstOffset = subBlockIdx * 32 * actVecMSizeAlign16 + s2BaseSizeCur*mBaseSize*subLoop;
   DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor,
            {s2BaseSizeCur/32, actVecMSizeAlign16, vec1Srcstride - actVecMSizeAlign16, mBaseSize - actVecMSizeAlign16});
   ```
-  ÆäÖĞ `vec1Srcstride = (mBaseSize>>1) + 1 = 65`¡£
-- **PScale Ğ´Èë L1P**£º`copyCount = actVecMSizeAlign16/16` ĞĞ£»
-  - Ë« subLoop µÄµÚ¶ş¸ö£¨`actSize > s2SplitSize && subLoop%2==1`£©£º´Ó `pScaleSubLoop0Tensor` Óë `pScaleSubLoop0Tensor[128]` Á½¶Î¸÷¿½Ò»·İ `{copyCount,1,0,pScaleDstStride}`£»
-  - µ¥ subLoop£¨`actSize <= s2SplitSize`£©£º½ö¿½µÚÒ»¶Î¡£
-  - `pScaleSubLoopOffset = pScaleDataLen * 2` ÎªµÚ¶ş¶ÎÄ¿±êÆ«ÒÆ¡£
+  å…¶ä¸­ `vec1Srcstride = (mBaseSize>>1) + 1 = 65`ã€‚
+- **PScale å†™å…¥ L1P**ï¼š`copyCount = actVecMSizeAlign16/16` è¡Œï¼›
+  - åŒ subLoop çš„ç¬¬äºŒä¸ªï¼ˆ`actSize > s2SplitSize && subLoop%2==1`ï¼‰ï¼šä» `pScaleSubLoop0Tensor` ä¸ `pScaleSubLoop0Tensor[128]` ä¸¤æ®µå„æ‹·ä¸€ä»½ `{copyCount,1,0,pScaleDstStride}`ï¼›
+  - å• subLoopï¼ˆ`actSize <= s2SplitSize`ï¼‰ï¼šä»…æ‹·ç¬¬ä¸€æ®µã€‚
+  - `pScaleSubLoopOffset = pScaleDataLen * 2` ä¸ºç¬¬äºŒæ®µç›®æ ‡åç§»ã€‚
 
-### 6.4 softmax ×´Ì¬Î¬»¤ÓëÊä³ö
+### 6.4 softmax çŠ¶æ€ç»´æŠ¤ä¸è¾“å‡º
 
-- `SoftmaxDataCopyOut`£ºFLASH_DECODE ÇÒ `isS2SplitCore` ¡ú `ComputeLogSumExpAndCopyToGm`£¨°Ñ sum/max ¾­ `BroadcastMaxSum`£¨[64,1]¡ú[64,8]£©Ğ´µ½ workspace µÄ `softmaxFDSumGm_/softmaxFDMaxGm_`£¬¹© FD ½×¶ÎÓÃ£©£»·ñÔò LSE Ê¹ÄÜ ¡ú `SoftmaxLseCopyOut`£¨`ComputeLseOutputVF` Éú³É LSE£¬°´ TND/NTD/BSH/BNSD ²»Í¬²¼¾Ö `DataCopySoftmaxLse*Arch35` Ğ´³ö£©¡£
+- `SoftmaxDataCopyOut`ï¼šFLASH_DECODE ä¸” `isS2SplitCore` â†’ `ComputeLogSumExpAndCopyToGm`ï¼ˆæŠŠ sum/max ç» `BroadcastMaxSum`ï¼ˆ[64,1]â†’[64,8]ï¼‰å†™åˆ° workspace çš„ `softmaxFDSumGm_/softmaxFDMaxGm_`ï¼Œä¾› FD é˜¶æ®µç”¨ï¼‰ï¼›å¦åˆ™ LSE ä½¿èƒ½ â†’ `SoftmaxLseCopyOut`ï¼ˆ`ComputeLseOutputVF` ç”Ÿæˆ LSEï¼ŒæŒ‰ TND/NTD/BSH/BNSD ä¸åŒå¸ƒå±€ `DataCopySoftmaxLse*Arch35` å†™å‡ºï¼‰ã€‚
 
 ---
 
-## 7. C2£¨MM2£©ÊµÏÖÏê½â
+## 7. C2ï¼ˆMM2ï¼‰å®ç°è¯¦è§£
 
-Èë¿Ú£º`IterateBmm2(outputBuf=UB(bmm2), inputBuf=l1PBuffers_, runInfo)` ¡ú °´ `USE_DN` ·Ö·¢¡£A Îª L1P ÖĞµÄ P£¨º¬ PScale£©£¬B Îª V¡£
+å…¥å£ï¼š`IterateBmm2(outputBuf=UB(bmm2), inputBuf=l1PBuffers_, runInfo)` â†’ æŒ‰ `USE_DN` åˆ†å‘ã€‚A ä¸º L1P ä¸­çš„ Pï¼ˆå« PScaleï¼‰ï¼ŒB ä¸º Vã€‚
 
-### 7.1 ¹«¹²Á÷³Ì
+### 7.1 å…¬å…±æµç¨‹
 
-1. `mm2A = inputBuf.Get()`£»`mm2A.WaitCrossCore()`£¨µÈ V1 Ğ´Íê P£©¡£
-2. **PScale Æ«ÒÆ**£º`pScaleOffset = mBaseSize * s2BaseSize`£¨ÔªËØµ¥Î»£©£¬`mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset)`¡£
-3. °´ `baseK = s2SplitSize` ÇĞ K Ñ­»·£º`kLoops = ceil(actSingleLoopS2Size / baseK)`£»Ã¿ÂÖ£º
-   - `mm2B = l1KVBuffers_.Get()`£¬`Wait<MTE1_MTE2>`£»
-   - `CopyValueSlice(mm2BTensor, s2Idx + k*baseK, realK, 0, dSizeV)`£¨V °ë¿é£©£»
-   - `vScaleOffset = align64(realK) * dSizeV`£»`CopyValueScaleSlice(..., (s2Idx+k*baseK)/64, ..., 0, dSizeV*2)`£¨VScale£¬Ã¿ 64 ¸ö S2 Ò»¸ö¡¢d ·½ÏòÃ¿ 2 ¸öÒ»¸ö£©£»
-   - `Set<MTE2_MTE1>() ¡ú Wait<MTE2_MTE1>()`£»
-   - Matmul£º
+1. `mm2A = inputBuf.Get()`ï¼›`mm2A.WaitCrossCore()`ï¼ˆç­‰ V1 å†™å®Œ Pï¼‰ã€‚
+2. **PScale åç§»**ï¼š`pScaleOffset = mBaseSize * s2BaseSize`ï¼ˆå…ƒç´ å•ä½ï¼‰ï¼Œ`mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset)`ã€‚
+3. æŒ‰ `baseK = s2SplitSize` åˆ‡ K å¾ªç¯ï¼š`kLoops = ceil(actSingleLoopS2Size / baseK)`ï¼›æ¯è½®ï¼š
+   - `mm2B = l1KVBuffers_.Get()`ï¼Œ`Wait<MTE1_MTE2>`ï¼›
+   - `CopyValueSlice(mm2BTensor, s2Idx + k*baseK, realK, 0, dSizeV)`ï¼ˆV åŠå—ï¼‰ï¼›
+   - `vScaleOffset = align64(realK) * dSizeV`ï¼›`CopyValueScaleSlice(..., (s2Idx+k*baseK)/64, ..., 0, dSizeV*2)`ï¼ˆVScaleï¼Œæ¯ 64 ä¸ª S2 ä¸€ä¸ªã€d æ–¹å‘æ¯ 2 ä¸ªä¸€ä¸ªï¼‰ï¼›
+   - `Set<MTE2_MTE1>() â†’ Wait<MTE2_MTE1>()`ï¼›
+   - Matmulï¼š
      ```
      MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN,
                   L0AType, L0BType, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
@@ -374,24 +374,24 @@ USE_DN ? ProcessVec1Dn(...) : ProcessVec1Nd(...);
          MakeMMParam(mBaseSize, dVBaseSize, align64(realK), isTransA?, false, kIdx==0, kIdx==0),
          mm2AScaleFakeTensor[kIdx*l1ScaleOffset], mm2BScaleTensor);
      ```
-     - ND£º`param.realM = actMSize`£»`l1ScaleOffset = baseK/32 * actMSizeAlign32`£»`MakeMMParam(..., false, false, k==0, k==0)`¡£
-     - DN£º`l1ScaleOffset = l1BaseKOffset / 32`£»`MakeMMParam(..., USE_DN, false, k==0, k==0)`¡£
-   - `l1BaseKOffset = baseK * mBaseSize`£¨P ÔÚ L1 µÄ K ·½Ïò²½½ø£¬fp8 ÔªËØ£©¡£
-   - `mm2B.Set<MTE1_MTE2>()`£¨ÊÍ·Å L1B£©¡£
-4. Î²²¿´¦Àí£º`isLastS2Loop` Ê±ÏÈ `InitValueL1BufferNoTrans`£¨nd2nz ²¹ 64 ¶ÔÆë padding Îª 0£©¡£
-5. ½á¹û°á³ö£º`mm2ResL0C.Set<M_FIX>() ¡ú Wait<M_FIX>() ¡ú outputBuf.WaitCrossCore() ¡ú FixpipeMm2 ¡ú Set<FIX_M>() ¡ú outputBuf.SetCrossCore()`¡£
+     - NDï¼š`param.realM = actMSize`ï¼›`l1ScaleOffset = baseK/32 * actMSizeAlign32`ï¼›`MakeMMParam(..., false, false, k==0, k==0)`ã€‚
+     - DNï¼š`l1ScaleOffset = l1BaseKOffset / 32`ï¼›`MakeMMParam(..., USE_DN, false, k==0, k==0)`ã€‚
+   - `l1BaseKOffset = baseK * mBaseSize`ï¼ˆP åœ¨ L1 çš„ K æ–¹å‘æ­¥è¿›ï¼Œfp8 å…ƒç´ ï¼‰ã€‚
+   - `mm2B.Set<MTE1_MTE2>()`ï¼ˆé‡Šæ”¾ L1Bï¼‰ã€‚
+4. å°¾éƒ¨å¤„ç†ï¼š`isLastS2Loop` æ—¶å…ˆ `InitValueL1BufferNoTrans`ï¼ˆnd2nz è¡¥ 64 å¯¹é½ padding ä¸º 0ï¼‰ã€‚
+5. ç»“æœæ¬å‡ºï¼š`mm2ResL0C.Set<M_FIX>() â†’ Wait<M_FIX>() â†’ outputBuf.WaitCrossCore() â†’ FixpipeMm2 â†’ Set<FIX_M>() â†’ outputBuf.SetCrossCore()`ã€‚
 
-### 7.2 PScale ²îÒì£¨¹Ø¼ü£©
+### 7.2 PScale å·®å¼‚ï¼ˆå…³é”®ï¼‰
 
-- **ND£¨decode£¬Õæ PScale£©**£ºÖ±½Ó¶ÁÈ¡ V1 Ğ´ÈëµÄ PScale£¬`mm2AScaleFakeTensor[kIdx*l1ScaleOffset]` ¼´ÎªÕæÊµËõ·Å¡£
-- **DN£¨prefill£¬Î± scale£©**£º
+- **NDï¼ˆdecodeï¼ŒçœŸ PScaleï¼‰**ï¼šç›´æ¥è¯»å– V1 å†™å…¥çš„ PScaleï¼Œ`mm2AScaleFakeTensor[kIdx*l1ScaleOffset]` å³ä¸ºçœŸå®ç¼©æ”¾ã€‚
+- **DNï¼ˆprefillï¼Œä¼ª scaleï¼‰**ï¼š
   ```cpp
   if (actSingleLoopS2Size > s2SplitSize)
-      InitConstValue(mm2AScaleTensor, {1, mBaseSize*s2SplitSize/32*1/32, 0, 0x7f7f});  // Æ«ÒÆ pScaleOffset/2 + mBaseSize*s2SplitSize/32/2
+      InitConstValue(mm2AScaleTensor, {1, mBaseSize*s2SplitSize/32*1/32, 0, 0x7f7f});  // åç§» pScaleOffset/2 + mBaseSize*s2SplitSize/32/2
   else
-      InitConstValue(mm2AScaleTensor, {1, mBaseSize*s2SplitSize/32*1/32, 0, 0x7f7f});  // Æ«ÒÆ pScaleOffset/2
+      InitConstValue(mm2AScaleTensor, {1, mBaseSize*s2SplitSize/32*1/32, 0, 0x7f7f});  // åç§» pScaleOffset/2
   ```
-  ¼´°Ñ PScale ÇøÌî³É `0x7f7f`£¨int16 ÊÓ½Ç£©£¬¶ÔÓ¦ fp8_e8m0 µÄ **1.0£¨Î± scale£©** ¡ª¡ª ÒòÎª DN Â·¾¶ÖĞ softmax ½á¹û P ±¾ÉíÒÑÍ¨¹ı `ProcessVec1VfDnMxfp8` ½« scale ÕÛËã£¨descaleQK/scaleValue ÔÚ V1 ÄÚ²¿´¦Àí£©£¬V ²à dequantScale ÓÉ cube µÄ dequantScaleValue ´¦Àí£¬¹Ê C2 ÎŞĞèÔÙ³ËÕæÊµ PScale¡£
+  å³æŠŠ PScale åŒºå¡«æˆ `0x7f7f`ï¼ˆint16 è§†è§’ï¼‰ï¼Œå¯¹åº” fp8_e8m0 çš„ **1.0ï¼ˆä¼ª scaleï¼‰** â€”â€” å› ä¸º DN è·¯å¾„ä¸­ softmax ç»“æœ P æœ¬èº«å·²é€šè¿‡ `ProcessVec1VfDnMxfp8` å°† scale æŠ˜ç®—ï¼ˆdescaleQK/scaleValue åœ¨ V1 å†…éƒ¨å¤„ç†ï¼‰ï¼ŒV ä¾§ dequantScale ç”± cube çš„ dequantScaleValue å¤„ç†ï¼Œæ•… C2 æ— éœ€å†ä¹˜çœŸå® PScaleã€‚
 
 ### 7.3 FixpipeMm2
 
@@ -400,26 +400,26 @@ nSize       = (dSizeV + 7) >> 3 << 3;              // N = dV
 mSize       = ND: (actMSize+31)>>5<<5   DN: mBaseSize;
 srcStride   = ND: ((actMSize+15)/16)*16  DN: ((mBaseSize+15)/16)*16;
 dstStride   = (dVTemplateType + 15) >> 4 << 4;
-dualDstCtl  = 1;                                   // °´ M ²ğ·Ö£¨DN/ND ¾ùÎª 1£©
+dualDstCtl  = 1;                                   // æŒ‰ M æ‹†åˆ†ï¼ˆDN/ND å‡ä¸º 1ï¼‰
 ```
 
 ---
 
-## 8. V2£¨O ¼ÓÈ¨ÀÛ¼Ó + Êä³ö£©ÊµÏÖÏê½â
+## 8. V2ï¼ˆO åŠ æƒç´¯åŠ  + è¾“å‡ºï¼‰å®ç°è¯¦è§£
 
-Èë¿Ú£º`ProcessVec2(bmm2ResBuf=UB(bmm2), runInfo)` ¡ú `WaitCrossCore()` ¡ú `ProcessVec2OnUb`¡£
+å…¥å£ï¼š`ProcessVec2(bmm2ResBuf=UB(bmm2), runInfo)` â†’ `WaitCrossCore()` â†’ `ProcessVec2OnUb`ã€‚
 
-### 8.1 ¼ÓÈ¨ÀÛ¼Ó£¨flash ÔÚÏß¸üĞÂ£©
+### 8.1 åŠ æƒç´¯åŠ ï¼ˆflash åœ¨çº¿æ›´æ–°ï¼‰
 
 ```cpp
 vecMSize    = USE_DN ? actVecMSize : actMSizeAlign32 / 2;
 vec2CalcSize = vecMSize * dTemplateAlign64;
 vec2ResUb    = stage2OutBuf_.Get<T>();
 mmRes        = bmm2ResBuf.GetTensor<T>();
-WaitFlag<MTE3_V>(mte3ToVId_[0]);   // µÈÉÏÒ»ÂÖÊä³ö°áÍê
+WaitFlag<MTE3_V>(mte3ToVId_[0]);   // ç­‰ä¸Šä¸€è½®è¾“å‡ºæ¬å®Œ
 
 if (isFirstS2Loop)
-    DataCopy(vec2ResUb, mmRes, vec2CalcSize);        // µÚÒ»¿é£ºÖ±½Ó¿½Èë£¨Ïàµ±ÓÚ ¡Á1£©
+    DataCopy(vec2ResUb, mmRes, vec2CalcSize);        // ç¬¬ä¸€å—ï¼šç›´æ¥æ‹·å…¥ï¼ˆç›¸å½“äº Ã—1ï¼‰
 else if (!isLastS2Loop)
     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
@@ -431,105 +431,105 @@ else
 bmm2ResBuf.SetCrossCore();
 ```
 
-- `expUb = softmaxExpBuf_[loop % 3]`£ºÉÏÒ»ÂÖ exp(max - max_prev) ½á¹û£¨ÓÉ V1 Ğ´Èë£©¡£
-- ×îºóÒ»¸ö S2 Ñ­»·£º`LastDivNew`£¨O /= sum£©ºóÊä³ö£»ÈôÍ¬Ê±ÊÇµÚÒ»¸ö S2 Ñ­»·£¨µ¥¿é³¡¾°£©£¬ÏÈ `LastDivNew` ÔÙÊä³ö¡£
+- `expUb = softmaxExpBuf_[loop % 3]`ï¼šä¸Šä¸€è½® exp(max - max_prev) ç»“æœï¼ˆç”± V1 å†™å…¥ï¼‰ã€‚
+- æœ€åä¸€ä¸ª S2 å¾ªç¯ï¼š`LastDivNew`ï¼ˆO /= sumï¼‰åè¾“å‡ºï¼›è‹¥åŒæ—¶æ˜¯ç¬¬ä¸€ä¸ª S2 å¾ªç¯ï¼ˆå•å—åœºæ™¯ï¼‰ï¼Œå…ˆ `LastDivNew` å†è¾“å‡ºã€‚
 
-### 8.2 Êä³öÂ·¾¶
+### 8.2 è¾“å‡ºè·¯å¾„
 
 ```
 CopyOutAttentionOut(runInfo, vec2ResUb, 0, vecMSize, DealRowCount)
- ©À©¤ FLASH_DECODE && isS2SplitCore: Bmm2ResForFDCopyOut ¡ú DataCopyPad Ğ´ workspace(accumOutGm_)
- ©¸©¤ ·ñÔò: Bmm2ResCastAndCopyOut
-        ©À©¤ RowInvalid (HAS_MASK ÇÒÏ¡Êè´°¿Ú±ß½çĞĞÔ½½çÊ±£¬ÓÃ max + minValue_ °ÑÎŞĞ§ĞĞË¢Îª¼«Ğ¡Öµ)
-        ©À©¤ Cast(attenOut, vec2ResUb, CAST_ROUND, mDealSize*dSizeAligned64)   // fp32 ¡ú bf16£¨POST_QUANT Ê±×ß PostQuant£©
-        ©¸©¤ Bmm2DataCopyOutTrans ¡ú CopyAttentionOut£¨TND¡úTNGD / NTD¡úNGTD / BSH¡úBSNGD / BNSD¡úBNGSD ²¼¾Ö×ª»»Ğ´ GM£©
+ â”œâ”€ FLASH_DECODE && isS2SplitCore: Bmm2ResForFDCopyOut â†’ DataCopyPad å†™ workspace(accumOutGm_)
+ â””â”€ å¦åˆ™: Bmm2ResCastAndCopyOut
+        â”œâ”€ RowInvalid (HAS_MASK ä¸”ç¨€ç–çª—å£è¾¹ç•Œè¡Œè¶Šç•Œæ—¶ï¼Œç”¨ max + minValue_ æŠŠæ— æ•ˆè¡Œåˆ·ä¸ºæå°å€¼)
+        â”œâ”€ Cast(attenOut, vec2ResUb, CAST_ROUND, mDealSize*dSizeAligned64)   // fp32 â†’ bf16ï¼ˆPOST_QUANT æ—¶èµ° PostQuantï¼‰
+        â””â”€ Bmm2DataCopyOutTrans â†’ CopyAttentionOutï¼ˆTNDâ†’TNGD / NTDâ†’NGTD / BSHâ†’BSNGD / BNSDâ†’BNGSD å¸ƒå±€è½¬æ¢å†™ GMï¼‰
 ```
 
-- `SetFlag/WaitFlag<V_MTE3>(vToMte3Id_[0])` ±£Ö¤ Cast Íê³ÉºóÔÙ°á³ö¡£
-- `DealRowCount`£ºDN = `actVecMSize`£»ND = `subBlockIdx==0 ? min(actMSize, groupsOf32*16) : actMSize - 16*groupsOf32`£¨ÉÏ/ÏÂ°ë¿é¸÷×ÔµÄÓĞĞ§ĞĞÊı£©¡£
+- `SetFlag/WaitFlag<V_MTE3>(vToMte3Id_[0])` ä¿è¯ Cast å®Œæˆåå†æ¬å‡ºã€‚
+- `DealRowCount`ï¼šDN = `actVecMSize`ï¼›ND = `subBlockIdx==0 ? min(actMSize, groupsOf32*16) : actMSize - 16*groupsOf32`ï¼ˆä¸Š/ä¸‹åŠå—å„è‡ªçš„æœ‰æ•ˆè¡Œæ•°ï¼‰ã€‚
 
 ---
 
-## 9. PScale È«Á´Â·
+## 9. PScale å…¨é“¾è·¯
 
-PScale£¨fp8_e8m0£©µÄÉú³ÉÓëÏû·ÑÊÇ MXFP8 Ä£°åµÄºËĞÄ£º
+PScaleï¼ˆfp8_e8m0ï¼‰çš„ç”Ÿæˆä¸æ¶ˆè´¹æ˜¯ MXFP8 æ¨¡æ¿çš„æ ¸å¿ƒï¼š
 
 ```
-[V1 ½×¶Î] ProcessVec1Vf*Mxfp8 ÄÚ²¿¼ÆËã³öÃ¿ 32 ¸ö P ÔªËØµÄ scale
-    ©¸©¤ Ğ´Èë stage1CastTensor Æ«ÒÆ 16640 ´¦£¨Í¬Ò» UB ¿é¸´ÓÃ£©
-    ©¸©¤ DataCopy Ñ­»·Ğ´Èë L1P: offset = mBaseSize*s2BaseSize + subBlockIdx*(M/2*S2/32) + i*32
-[L1P ²¼¾Ö] | P(fp8, M¡ÁS2) | PScale(fp8_e8m0, M¡ÁS2/32) |
-[C2 ½×¶Î]  ND: Ö±½Ó¶Á L1P ÖĞµÄÕæ PScale ×÷Îª A ¾ØÕó scale
-           DN: ½« L1P µÄ PScale Çø InitConstValue Îª 0x7f7f£¨Î± scale = 1.0£©£¬
-               ÒòÎª DN Â·¾¶ V1 ÒÑ°Ñ descale/scale ÕÛËã½ø P
+[V1 é˜¶æ®µ] ProcessVec1Vf*Mxfp8 å†…éƒ¨è®¡ç®—å‡ºæ¯ 32 ä¸ª P å…ƒç´ çš„ scale
+    â””â”€ å†™å…¥ stage1CastTensor åç§» 16640 å¤„ï¼ˆåŒä¸€ UB å—å¤ç”¨ï¼‰
+    â””â”€ DataCopy å¾ªç¯å†™å…¥ L1P: offset = mBaseSize*s2BaseSize + subBlockIdx*(M/2*S2/32) + i*32
+[L1P å¸ƒå±€] | P(fp8, MÃ—S2) | PScale(fp8_e8m0, MÃ—S2/32) |
+[C2 é˜¶æ®µ]  ND: ç›´æ¥è¯» L1P ä¸­çš„çœŸ PScale ä½œä¸º A çŸ©é˜µ scale
+           DN: å°† L1P çš„ PScale åŒº InitConstValue ä¸º 0x7f7fï¼ˆä¼ª scale = 1.0ï¼‰ï¼Œ
+               å› ä¸º DN è·¯å¾„ V1 å·²æŠŠ descale/scale æŠ˜ç®—è¿› P
 ```
 
-> ¹Ø¼üÏİÚå£¨¾«¶ÈÎÊÌâÅÅ²éµã£©£ºDN Ä£°åÏÂÈôÎó¶Á PScale ÇøÎ´³õÊ¼»¯Êı¾İ£¬»ò ND Ä£°åÏÂ V1 Î´Ğ´Íê PScale ¾Í SetCrossCore£¬¶¼»áµ¼ÖÂ C2 ½á¹ûÒì³£¡£DN µÄÎ± scale Îª `0x7f7f`£¨int16£©£¬¶ÔÓ¦ fp8_e8m0 µÄ 1.0¡£
+> å…³é”®é™·é˜±ï¼ˆç²¾åº¦é—®é¢˜æ’æŸ¥ç‚¹ï¼‰ï¼šDN æ¨¡æ¿ä¸‹è‹¥è¯¯è¯» PScale åŒºæœªåˆå§‹åŒ–æ•°æ®ï¼Œæˆ– ND æ¨¡æ¿ä¸‹ V1 æœªå†™å®Œ PScale å°± SetCrossCoreï¼Œéƒ½ä¼šå¯¼è‡´ C2 ç»“æœå¼‚å¸¸ã€‚DN çš„ä¼ª scale ä¸º `0x7f7f`ï¼ˆint16ï¼‰ï¼Œå¯¹åº” fp8_e8m0 çš„ 1.0ã€‚
 
 ---
 
-## 10. Í¬²½»úÖÆ»ã×Ü
+## 10. åŒæ­¥æœºåˆ¶æ±‡æ€»
 
-| Í¬²½¶ÔÏó | »úÖÆ | Î»ÖÃ |
+| åŒæ­¥å¯¹è±¡ | æœºåˆ¶ | ä½ç½® |
 |----------|------|------|
-| C1 Ğ´ UB(bmm1) ¡ú V1 ¶Á | `bmm1Buffers_.Set/WaitCrossCore()`£¨CROSS_CORE_SYNC_BOTH£© | `IterateBmm1*` / `ProcessVec1` |
-| C2 Ğ´ UB(bmm2) ¡ú V2 ¶Á | `bmm2Buffers_.Set/WaitCrossCore()` | `IterateBmm2*` / `ProcessVec2` |
-| V1 Ğ´ L1P ¡ú C2 ¶Á | `l1PBuffers_.Set/WaitCrossCore()`£¨CROSS_CORE_SYNC_FORWARD£¬3buff£© | `ProcessVec1*` / `IterateBmm2*` |
-| MTE3 °á³ö vs Vector ¼ÆËã | `mte3ToVId_[2]/vToMte3Id_[2]` event + `SetFlag/WaitFlag<MTE3_V/V_MTE3>` | `ProcessVec2OnUb` / `Bmm2ResCastAndCopyOut` |
-| L0C Óë Fixpipe | `Set/Wait<M_FIX>`¡¢`Set/Wait<FIX_M>` | `IterateBmm1* / IterateBmm2*` |
-| L1 Óë Cube | `Wait/Set<MTE1_MTE2>`¡¢`Set/Wait<MTE2_MTE1>` | cube block ¸÷ Copy º¯Êı |
-| Êä³öÇåÁã | `initOutputEventId` + `Set/WaitFlag<MTE3_V>` + `SyncAll()` | `ClearOutput` |
+| C1 å†™ UB(bmm1) â†’ V1 è¯» | `bmm1Buffers_.Set/WaitCrossCore()`ï¼ˆCROSS_CORE_SYNC_BOTHï¼‰ | `IterateBmm1*` / `ProcessVec1` |
+| C2 å†™ UB(bmm2) â†’ V2 è¯» | `bmm2Buffers_.Set/WaitCrossCore()` | `IterateBmm2*` / `ProcessVec2` |
+| V1 å†™ L1P â†’ C2 è¯» | `l1PBuffers_.Set/WaitCrossCore()`ï¼ˆCROSS_CORE_SYNC_FORWARDï¼Œ3buffï¼‰ | `ProcessVec1*` / `IterateBmm2*` |
+| MTE3 æ¬å‡º vs Vector è®¡ç®— | `mte3ToVId_[2]/vToMte3Id_[2]` event + `SetFlag/WaitFlag<MTE3_V/V_MTE3>` | `ProcessVec2OnUb` / `Bmm2ResCastAndCopyOut` |
+| L0C ä¸ Fixpipe | `Set/Wait<M_FIX>`ã€`Set/Wait<FIX_M>` | `IterateBmm1* / IterateBmm2*` |
+| L1 ä¸ Cube | `Wait/Set<MTE1_MTE2>`ã€`Set/Wait<MTE2_MTE1>` | cube block å„ Copy å‡½æ•° |
+| è¾“å‡ºæ¸…é›¶ | `initOutputEventId` + `Set/WaitFlag<MTE3_V>` + `SyncAll()` | `ClearOutput` |
 
 ---
 
-## 11. ¹Ø¼ü³£Á¿±í
+## 11. å…³é”®å¸¸é‡è¡¨
 
-| ³£Á¿ | Öµ | ËµÃ÷ |
+| å¸¸é‡ | å€¼ | è¯´æ˜ |
 |------|----|------|
-| `CV_RATIO` | 2 | AIC:AIV = 1:2£¨`attention/flash_attn/op_host/fa_tiling_info.h`£© |
-| `PRELOAD_N` | 2 | C1/C2 Ô¤ÔØÉî¶È£¨Á÷Ë®¼¶Êı£© |
-| `PRELOAD_TASK_CACHE_SIZE` | 3 | RunInfoX »·ĞÎ»º³åÊı |
-| `MXFP_GROUP_SIZE` | 32 | PScale Á£¶È£¨Ã¿ 32 ÔªËØ 1 scale£© |
-| `MXFP_DIVISOR_SIZE` | 64 | VScale µÄ S2 Á£¶È |
-| `MXFP_MULTI_BASE_SIZE` | 2 | VScale µÄ d ·½ÏòÁ£¶È |
-| `s2SplitSize` | d=256¡ú128£¬·ñÔò 256 | C1/C2 µÄ S2/K ×ÓÇĞ·Ö |
-| `DB` | 2 | stage1OutQue_ ping-pong Êı |
-| `pScaleByteOffset` | 16640 | stage1 »º³åÄÚ PScale ¸´ÓÃÆ«ÒÆ |
-| `pScaleL1Offset` | `mBaseSize*s2BaseSize` | L1P ÖĞ PScale Æ«ÒÆ£¨ÔªËØ£© |
-| `QFA_AIC_CORE_NUM / AIV_CORE_NUM` | 36 / 72 | metadata ºËÊı³£Á¿ |
-| `QFA_MXFP8_FP32_PREFILL / DECODE` | 1 / 2 | quantMode Ã¶¾Ù |
-| Æ½Ì¨ÄÚ´æ | L1=512KB, L0C=256KB, L0A/L0B=64KB | µ±Ç°Ğ´ËÀ£¨`l1BufferManager_.Init(pipe_, 524288)` µÈ£© |
+| `CV_RATIO` | 2 | AIC:AIV = 1:2ï¼ˆ`attention/flash_attn/op_host/fa_tiling_info.h`ï¼‰ |
+| `PRELOAD_N` | 2 | C1/C2 é¢„è½½æ·±åº¦ï¼ˆæµæ°´çº§æ•°ï¼‰ |
+| `PRELOAD_TASK_CACHE_SIZE` | 3 | RunInfoX ç¯å½¢ç¼“å†²æ•° |
+| `MXFP_GROUP_SIZE` | 32 | PScale ç²’åº¦ï¼ˆæ¯ 32 å…ƒç´  1 scaleï¼‰ |
+| `MXFP_DIVISOR_SIZE` | 64 | VScale çš„ S2 ç²’åº¦ |
+| `MXFP_MULTI_BASE_SIZE` | 2 | VScale çš„ d æ–¹å‘ç²’åº¦ |
+| `s2SplitSize` | d=256â†’128ï¼Œå¦åˆ™ 256 | C1/C2 çš„ S2/K å­åˆ‡åˆ† |
+| `DB` | 2 | stage1OutQue_ ping-pong æ•° |
+| `pScaleByteOffset` | 16640 | stage1 ç¼“å†²å†… PScale å¤ç”¨åç§» |
+| `pScaleL1Offset` | `mBaseSize*s2BaseSize` | L1P ä¸­ PScale åç§»ï¼ˆå…ƒç´ ï¼‰ |
+| `QFA_AIC_CORE_NUM / AIV_CORE_NUM` | 36 / 72 | metadata æ ¸æ•°å¸¸é‡ |
+| `QFA_MXFP8_FP32_PREFILL / DECODE` | 1 / 2 | quantMode æšä¸¾ |
+| å¹³å°å†…å­˜ | L1=512KB, L0C=256KB, L0A/L0B=64KB | å½“å‰å†™æ­»ï¼ˆ`l1BufferManager_.Init(pipe_, 524288)` ç­‰ï¼‰ |
 
 ---
 
-## 12. ¾«¶ÈÎÊÌâÅÅ²éËÙ²é±í£¨¸´ÓÃÒªµã£©
+## 12. ç²¾åº¦é—®é¢˜æ’æŸ¥é€ŸæŸ¥è¡¨ï¼ˆå¤ç”¨è¦ç‚¹ï¼‰
 
-1. **Ä£Ê½ÅĞ¶¨**£ºÏÈÈ·ÈÏ tilingKey µÄ quantMode ÊÇ PREFILL(1)/DECODE(2)£¬¶ÔÓ¦ DN/ND£»`layoutQDescale == N2TGD` ²Å»á×ß DECODE¡£
-2. **scale ÊÇ·ñÕıÈ·ÕÛËã**£º
-   - DN£ºC2 ÓÃÎ± scale£¨0x7f7f£©£¬ÕæÊµ scale ÔÚ V1 ÄÚ²¿ÕÛËã£»Èô°Ñ pScaleValue_£¨GM ¶ÁÈë£©Îóµ± 1.0 »áµ¼ÖÂ DN ½á¹ûÆ«Ğ¡¡£
-   - ND£ºC2 Ö±½Ó¶Á L1P µÄ PScale£»Èô V1 Î´Ğ´ PScale »òĞ´ÈëË³Ğò´í£¨subBlockIdx Æ«ÒÆ£©£¬C2 ½á¹ûÒì³£¡£
-3. **UB ¸´ÓÃÏİÚå**£ºstage1 »º³å 16640B Ö®ºó´æ PScale£¬ĞèÈ·ÈÏ `pScaleSubLoop0Tensor` Óë P Êı¾İµÄĞ´¶ÁÊ±Ğò£¨EnQue/DeQue/FreeTensor Åä¶Ô£©¡£
-4. **actVecMSize / vecMbaseIdx**£ºAIV ×ÓºË M °ë¿é»®·Ö¹«Ê½ DN Óë ND ²»Í¬£¨2.2 ½Ú£©£¬´íÅä»áµ¼ÖÂÖ»ËãÒ»°ëĞĞ»òÖØ¸´¼ÆËã¡£
-5. **Fixpipe ÅÅ²¼**£ºdualDstCtl=1£¨M ²ğ£©/2£¨N ²ğ£©£¬UB ¶ÁÈ¡ stride ±ØĞëÓëÖ®Ò»ÖÂ£¨`dstStride` ²ÎÊı£©£¬·ñÔò½á¹û´íÎ»¡£
-6. **Î²²¿·ÇÕû¿é**£º`actSingleLoopS2Size < s2BaseSize` Ê± s2CurSize/s2CalcSize µÄÎ²²¿ĞŞÕı·ÖÖ§£¨subLoop0 È¡ min£©£¬ÎğÖ±½ÓÊ¹ÓÃÍêÕû s2SplitSize¡£
-7. **mask Ïà¹Ø**£º`ComputeMaskLineDN` Î¬»¤ `isSkipMask_/isFullMask_` ×´Ì¬£¬Ö±½ÓÓ°Ïì VF Ä£°å·ÖÖ§£»mask Ê± `maskLine=-256` ±íÊ¾È« mask¡£
-8. **LSE Êä³ö**£º`3e+99` ³õÊ¼»¯ÎŞĞ§ĞĞ£»TND ²¼¾Ö LSE Îª N-major ÅÅ²¼£¬Ğ´ GM ÓÃ `DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge`¡£
-9. **ÔÚÏß softmax ×´Ì¬**£º`preLoopMax/Sum`£¨Á½ÂÖÇ°£©¡¢`firstLoopSum`£¨Ê×ÂÖ sum£©ÓÉ V1 Î¬»¤¡¢V2 ÒÀÀµ `expUb` ×ö¼ÓÈ¨£¬Ë³Ğò´íÂÒ»áÒıÈë flash ¸üĞÂÎó²î¡£
-10. **workspace£¨FD£©**£º`accumOut/logSumExp` µÄÆ«ÒÆ°´ `faTmpAttenGmSize` ¶ÔÆë£¬`isS2SplitCore` ¾ö¶¨ O Ğ´ workspace »¹ÊÇÖ±½ÓÊä³ö¡£
+1. **æ¨¡å¼åˆ¤å®š**ï¼šå…ˆç¡®è®¤ tilingKey çš„ quantMode æ˜¯ PREFILL(1)/DECODE(2)ï¼Œå¯¹åº” DN/NDï¼›`layoutQDescale == N2TGD` æ‰ä¼šèµ° DECODEã€‚
+2. **scale æ˜¯å¦æ­£ç¡®æŠ˜ç®—**ï¼š
+   - DNï¼šC2 ç”¨ä¼ª scaleï¼ˆ0x7f7fï¼‰ï¼ŒçœŸå® scale åœ¨ V1 å†…éƒ¨æŠ˜ç®—ï¼›è‹¥æŠŠ pScaleValue_ï¼ˆGM è¯»å…¥ï¼‰è¯¯å½“ 1.0 ä¼šå¯¼è‡´ DN ç»“æœåå°ã€‚
+   - NDï¼šC2 ç›´æ¥è¯» L1P çš„ PScaleï¼›è‹¥ V1 æœªå†™ PScale æˆ–å†™å…¥é¡ºåºé”™ï¼ˆsubBlockIdx åç§»ï¼‰ï¼ŒC2 ç»“æœå¼‚å¸¸ã€‚
+3. **UB å¤ç”¨é™·é˜±**ï¼šstage1 ç¼“å†² 16640B ä¹‹åå­˜ PScaleï¼Œéœ€ç¡®è®¤ `pScaleSubLoop0Tensor` ä¸ P æ•°æ®çš„å†™è¯»æ—¶åºï¼ˆEnQue/DeQue/FreeTensor é…å¯¹ï¼‰ã€‚
+4. **actVecMSize / vecMbaseIdx**ï¼šAIV å­æ ¸ M åŠå—åˆ’åˆ†å…¬å¼ DN ä¸ ND ä¸åŒï¼ˆ2.2 èŠ‚ï¼‰ï¼Œé”™é…ä¼šå¯¼è‡´åªç®—ä¸€åŠè¡Œæˆ–é‡å¤è®¡ç®—ã€‚
+5. **Fixpipe æ’å¸ƒ**ï¼šdualDstCtl=1ï¼ˆM æ‹†ï¼‰/2ï¼ˆN æ‹†ï¼‰ï¼ŒUB è¯»å– stride å¿…é¡»ä¸ä¹‹ä¸€è‡´ï¼ˆ`dstStride` å‚æ•°ï¼‰ï¼Œå¦åˆ™ç»“æœé”™ä½ã€‚
+6. **å°¾éƒ¨éæ•´å—**ï¼š`actSingleLoopS2Size < s2BaseSize` æ—¶ s2CurSize/s2CalcSize çš„å°¾éƒ¨ä¿®æ­£åˆ†æ”¯ï¼ˆsubLoop0 å– minï¼‰ï¼Œå‹¿ç›´æ¥ä½¿ç”¨å®Œæ•´ s2SplitSizeã€‚
+7. **mask ç›¸å…³**ï¼š`ComputeMaskLineDN` ç»´æŠ¤ `isSkipMask_/isFullMask_` çŠ¶æ€ï¼Œç›´æ¥å½±å“ VF æ¨¡æ¿åˆ†æ”¯ï¼›mask æ—¶ `maskLine=-256` è¡¨ç¤ºå…¨ maskã€‚
+8. **LSE è¾“å‡º**ï¼š`3e+99` åˆå§‹åŒ–æ— æ•ˆè¡Œï¼›TND å¸ƒå±€ LSE ä¸º N-major æ’å¸ƒï¼Œå†™ GM ç”¨ `DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge`ã€‚
+9. **åœ¨çº¿ softmax çŠ¶æ€**ï¼š`preLoopMax/Sum`ï¼ˆä¸¤è½®å‰ï¼‰ã€`firstLoopSum`ï¼ˆé¦–è½® sumï¼‰ç”± V1 ç»´æŠ¤ã€V2 ä¾èµ– `expUb` åšåŠ æƒï¼Œé¡ºåºé”™ä¹±ä¼šå¼•å…¥ flash æ›´æ–°è¯¯å·®ã€‚
+10. **workspaceï¼ˆFDï¼‰**ï¼š`accumOut/logSumExp` çš„åç§»æŒ‰ `faTmpAttenGmSize` å¯¹é½ï¼Œ`isS2SplitCore` å†³å®š O å†™ workspace è¿˜æ˜¯ç›´æ¥è¾“å‡ºã€‚
 
 ---
 
-## 13. Éæ¼°Ô´ÎÄ¼şÇåµ¥
+## 13. æ¶‰åŠæºæ–‡ä»¶æ¸…å•
 
-| ÎÄ¼ş | ×÷ÓÃ |
+| æ–‡ä»¶ | ä½œç”¨ |
 |------|------|
-| `op_kernel/quant_flash_attn.cpp` | Ä£°åÊµÀı»¯Èë¿Ú£¬`useDn = (quantMode==PREFILL)` |
-| `op_kernel/arch35/quant_flash_attn_kernel_mxfp8.h` | Kernel ±àÅÅ£ºµ÷¶È¡¢C1/V1/C2/V2 ·Ö·¢¡¢ÄÚ´æ¹ÜÀí |
-| `op_kernel/arch35/quant_flash_attn_block_cube_mxfp8.h` | C1/C2£¨IterateBmm1/2 + Fixpipe + Êı¾İ°áÈë£© |
-| `op_kernel/arch35/quant_flash_attn_block_vec_mxfp8.h` | V1/V2£¨ProcessVec1/2 + softmax ×´Ì¬ + Êä³ö£© |
-| `op_kernel/arch35/quant_flash_attn_common_def.h` | `ConstInfo_t`¡¢`RunInfoX`¡¢quantMode ºê |
-| `op_kernel/arch35/quant_flash_attn_tiling_data.h` | tiling Êı¾İ½á¹¹Óë metadata Ë÷Òı³£Á¿ |
-| `op_kernel/arch35/quant_flash_attn_template_tiling_key.h` | Ä£°å key ×éºÏ£¨º¬ quantMode£© |
-| `op_host/arch35/quant_flash_attn_tiling_mxfp8.cpp` | Host tiling£ºÄ£Ê½ÅĞ¶¨¡¢config Ñ¡Ôñ¡¢workspace |
-| `common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h` | V1 DN µÄ VF ÄÚºËº¯Êı `ProcessVec1VfDnMxfp8` |
-| `common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h` | V1 ND µÄ VF ÄÚºËº¯Êı `ProcessVec1VfMxfp8` |
+| `op_kernel/quant_flash_attn.cpp` | æ¨¡æ¿å®ä¾‹åŒ–å…¥å£ï¼Œ`useDn = (quantMode==PREFILL)` |
+| `op_kernel/arch35/quant_flash_attn_kernel_mxfp8.h` | Kernel ç¼–æ’ï¼šè°ƒåº¦ã€C1/V1/C2/V2 åˆ†å‘ã€å†…å­˜ç®¡ç† |
+| `op_kernel/arch35/quant_flash_attn_block_cube_mxfp8.h` | C1/C2ï¼ˆIterateBmm1/2 + Fixpipe + æ•°æ®æ¬å…¥ï¼‰ |
+| `op_kernel/arch35/quant_flash_attn_block_vec_mxfp8.h` | V1/V2ï¼ˆProcessVec1/2 + softmax çŠ¶æ€ + è¾“å‡ºï¼‰ |
+| `op_kernel/arch35/quant_flash_attn_common_def.h` | `ConstInfo_t`ã€`RunInfoX`ã€quantMode å® |
+| `op_kernel/arch35/quant_flash_attn_tiling_data.h` | tiling æ•°æ®ç»“æ„ä¸ metadata ç´¢å¼•å¸¸é‡ |
+| `op_kernel/arch35/quant_flash_attn_template_tiling_key.h` | æ¨¡æ¿ key ç»„åˆï¼ˆå« quantModeï¼‰ |
+| `op_host/arch35/quant_flash_attn_tiling_mxfp8.cpp` | Host tilingï¼šæ¨¡å¼åˆ¤å®šã€config é€‰æ‹©ã€workspace |
+| `common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h` | V1 DN çš„ VF å†…æ ¸å‡½æ•° `ProcessVec1VfDnMxfp8` |
+| `common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h` | V1 ND çš„ VF å†…æ ¸å‡½æ•° `ProcessVec1VfMxfp8` |
