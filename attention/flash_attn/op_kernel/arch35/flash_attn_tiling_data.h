@@ -50,6 +50,7 @@ struct FlashAttnBaseParams {
     uint32_t bSize;
     uint32_t t1Size;
     uint32_t t2Size;
+    uint32_t n1Size;
     uint32_t n2Size;
     uint32_t gSize;
     uint32_t s1Size;

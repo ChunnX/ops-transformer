@@ -231,6 +231,7 @@ struct RunInfo {
     bool isLastS2Loop = false;
 
     uint32_t bIdx = 0;
+    uint32_t n1Idx = 0; // 不合轴: 当前 query 头(DN 模板); ND 模板未用
     uint32_t n2Idx = 0;
     uint32_t gS1Idx = 0;
     uint32_t gIdx = 0;
@@ -267,6 +268,7 @@ struct CommonConstInfo {
     uint32_t dBasicBlock;
     uint32_t dSizeRope;
     uint32_t gSize; /* g轴的大小 */
+    uint32_t n1Size; /* N1(query头)轴的大小, 不合轴分核的 bn1 轴基数 */
     uint32_t n2Size;
     uint64_t s1Size;          /* s1总大小 */
     uint64_t s2Size;          /* s2总大小 */

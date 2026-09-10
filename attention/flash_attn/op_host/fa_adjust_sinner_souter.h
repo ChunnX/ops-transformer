@@ -87,6 +87,17 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
     }
 }
 
+// DN 模板路由的共享判定: host tiling 与 flash_attn_metadata(AICPU) 必须使用同一份逻辑,
+// 保证 metadata 的分核 outputLayout 选择与 kernel 模板选择严格一致。
+// 条件: 无mask, 或压缩因果mask(mode=3)且 qLayout=BNSD; 且 config 属于 {0,2,6}(sOuter=64)。
+// config 计算复用 AdjustSinnerAndSouter 的 sOuter 结果(64 保持, 否则 32)。
+inline bool IsDnTemplateRouted(int64_t maskMode, uint32_t qLayout, uint32_t sOuterFactor)
+{
+    bool maskAllowed = (maskMode == 0) || (maskMode == 3 && qLayout == LAYOUT_BNSD);
+    bool configAllowed = (sOuterFactor == SOUTER_64); // 对应 config 0/2/6; sOuter=32 对应 config 1/3/5/7
+    return maskAllowed && configAllowed;
+}
+
 } // namespace fa_tiling_util
 } // namespace flash_attn
 } // namespace optiling

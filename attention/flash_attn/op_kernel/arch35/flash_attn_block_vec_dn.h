@@ -132,7 +132,8 @@ public:
     static constexpr GmFormat OUT_FORMAT = GetAttentionOutGmFormat<LAYOUT_OUT>();
     using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
     FaGmTensorOut outGmTensor_;
-    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
+    // 不合轴 DN: 输出按 (b, n1, s1) 寻址(quant_flash_attn USE_DN 先例用 UbFormat::S1_ONLY)
+    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, UbFormat::S1_ONLY> copyAttenOutUbToGm_;
     GlobalTensor<OUTPUT_T> attentionOutGm_;
     GlobalTensor<float> softmaxLseGm_;
     GlobalTensor<float> accumOutGm_;
@@ -225,18 +226,18 @@ public:
         if (constInfo_.learnableSinkFlag && runInfo.isFirstFdBlock) {
             Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
 
-            uint32_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+            uint32_t s1Start = runInfo.s1Idx + runInfo.vecMbaseIdx;
 
             Mutex::Lock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
             {
                 LocalTensor<float> sinkTmpUb =
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<float>();
                 if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
-                    AttentionCommon::SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
-                                                   runInfo.n2Idx, constInfo_.gSize);
+                    AttentionCommon::SinkCopyInS1G(sinkTmpUb, sinkGm_, s1Start, runInfo.actVecMSize,
+                                                   runInfo.actS1Size, runInfo.n2Idx, constInfo_.gSize);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    AttentionCommon::SinkCopyInGS1(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
-                                                   runInfo.n2Idx, constInfo_.gSize);
+                    AttentionCommon::SinkCopyInGS1(sinkTmpUb, sinkGm_, s1Start, runInfo.actVecMSize,
+                                                   runInfo.actS1Size, runInfo.n2Idx, constInfo_.gSize);
                 }
             }
             Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -247,10 +248,10 @@ public:
                     ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<float>();
 
                 if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
-                    AttentionCommon::SinkExpandMaxVf<T, float, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                    AttentionCommon::SinkExpandMaxVf<T, float, true>(maxUb, sinkTmpUb, s1Start, runInfo.actVecMSize,
                                                                      runInfo.actS1Size, constInfo_.gSize);
                 } else {
-                    AttentionCommon::SinkExpandMaxVf<T, float, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                    AttentionCommon::SinkExpandMaxVf<T, float, false>(maxUb, sinkTmpUb, s1Start, runInfo.actVecMSize,
                                                                       runInfo.actS1Size, constInfo_.gSize);
                 }
             }
@@ -367,7 +368,7 @@ public:
         }
 
         Mutex::Lock<PIPE_V>(UB_OUT_LSE_OUT_EVENT0 + lseOutUbBufId_);
-        uint32_t vecMIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        uint32_t vecMIdx = runInfo.s1Idx + runInfo.vecMbaseIdx; // 纯 s1 坐标
         LocalTensor<float> lseUb =
             ubLseOutBuffers_[lseOutUbBufId_ * UB_LSE_OUT_BUF_BYTES].template ReinterpretCast<float>();
         ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.actVecMSize);
@@ -468,12 +469,13 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
         FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
-        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
-                                .n2Idx = info.n2Idx,
-                                .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                                .dIdx = 0,
-                                .gS1DealSize = dealRowCount,
-                                .dDealSize = (uint32_t)constInfo_.dSizeV};
+        GmCoordS1Only gmCoord{.bIdx = info.bIdx,
+                              .n2Idx = info.n2Idx,
+                              .gIdx = info.gIdx,
+                              .s1Idx = info.s1Idx + info.vecMbaseIdx + vecMIdx,
+                              .dIdx = 0,
+                              .s1DealSize = dealRowCount,
+                              .dDealSize = (uint32_t)constInfo_.dSizeV};
         copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }
 

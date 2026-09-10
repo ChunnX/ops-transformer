@@ -22,8 +22,11 @@
 namespace FlashAttnKernel {
 struct TaskInfo {
     uint32_t bIdx;
+    uint32_t n1Idx; // 不合轴: 当前 query 头
     uint32_t n2Idx;
-    uint32_t gS1Idx;
+    uint32_t gIdx;
+    uint32_t s1Idx; // 纯 s1 坐标(不合轴)
+    uint32_t gS1Idx; // 兼容保留
     uint32_t actualCombineLoopSize;
 };
 
@@ -111,7 +114,7 @@ protected:
     static constexpr GmFormat OUT_FORMAT = GetAttentionOutGmFormat<LAYOUT_OUT>();
     using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
     FaGmTensorOut outGmTensor_;
-    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
+    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, UbFormat::S1_ONLY> copyAttenOutUbToGm_;
 
 private:
     // ================================FD Local Buffer区====================================
@@ -292,12 +295,13 @@ protected:
             .rowCount = dealRowCount,
             .colCount = columnCount,
         };
-        GmCoordGs1Merge gmCoord{.bIdx = taskInfo_.bIdx,
-                                .n2Idx = taskInfo_.n2Idx,
-                                .gS1Idx = taskInfo_.gS1Idx + startRow,
-                                .dIdx = 0,
-                                .gS1DealSize = dealRowCount,
-                                .dDealSize = (uint32_t)constInfo_.dSizeV};
+        GmCoordS1Only gmCoord{.bIdx = taskInfo_.bIdx,
+                              .n2Idx = taskInfo_.n2Idx,
+                              .gIdx = taskInfo_.gIdx,
+                              .s1Idx = taskInfo_.s1Idx + startRow,
+                              .dIdx = 0,
+                              .s1DealSize = dealRowCount,
+                              .dDealSize = (uint32_t)constInfo_.dSizeV};
         copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }
     __aicore__ inline void ReduceFinalRes(LocalTensor<T> &reduceOut, LocalTensor<T> &mm2Res, LocalTensor<T> &lseLocal,
@@ -366,7 +370,7 @@ protected:
         fa_base_vector::InvalidRowParams params{
             .actS1Size = actSeqLensQ_,
             .gSize = static_cast<uint64_t>(constInfo_.gSize),
-            .gS1Idx = taskInfo_.gS1Idx + startRow,
+            .gS1Idx = taskInfo_.s1Idx + startRow, // 纯 s1 坐标(单头块, 不跨 G)
             .dealRowCount = dealRowCount,
             .columnCount = columnCount,
             .preTokensPerBatch = preTokensPerBatch_,
@@ -409,9 +413,13 @@ public:
 
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
-        taskInfo_.bIdx = fd.fdBN2Idx / constInfo_.n2Size;
-        taskInfo_.n2Idx = fd.fdBN2Idx % constInfo_.n2Size;
-        taskInfo_.gS1Idx = fd.fdMIdx * mBaseSize;
+        // 不合轴(BN1_S1): fdBN2Idx 语义为 bn1 = b*n1, K/V 按 n2 = n1/gSize 共享
+        taskInfo_.bIdx = fd.fdBN2Idx / constInfo_.n1Size;
+        taskInfo_.n1Idx = fd.fdBN2Idx % constInfo_.n1Size;
+        taskInfo_.n2Idx = taskInfo_.n1Idx / constInfo_.gSize;
+        taskInfo_.gIdx = taskInfo_.n1Idx % constInfo_.gSize;
+        taskInfo_.s1Idx = fd.fdMIdx * mBaseSize;
+        taskInfo_.gS1Idx = taskInfo_.s1Idx; // 兼容保留
         taskInfo_.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * mBaseSize;
@@ -444,10 +452,11 @@ public:
             if (constInfo_.isSoftmaxLseEnable) {
                 LocalTensor<T> maxLseUb = fdLseUbBuf_;
                 Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
-                uint32_t mOffset = taskInfo_.gS1Idx + startRow;
+                uint32_t mOffset = taskInfo_.s1Idx + startRow;
                 if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
-                    uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
+                    uint64_t bN2Offset =
+                        static_cast<uint64_t>(taskInfo_.n1Idx) * constInfo_.t1Size + prefixBS1; // bn1 维
                     DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,
                                                                     actualGSplitSize, constInfo_);
                 } else if constexpr (LAYOUT_T == FA_LAYOUT::BSND) {

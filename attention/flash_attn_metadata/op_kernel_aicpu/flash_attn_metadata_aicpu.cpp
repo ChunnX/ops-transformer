@@ -217,6 +217,11 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(headDimV_, gSize, maxSeqlenQ_, maxSeqlenKv_, maskMode_,
                                                                 baseInfo.preToken, baseInfo.nextToken, qlayout,
                                                                 mBaseSize_, s2BaseSize_);
+    // DN 模板(不合轴)按 BN1_S1 分核(B轴*N1轴, M轴=纯S1); 判定逻辑与 host UpdateTilingKeyTemplateId
+    // 共享 fa_tiling_util::IsDnTemplateRouted, 保证 metadata 分核模式与 kernel 模板选择严格一致。
+    // 注意: 必须在 mBaseSize_ 乘 CV ratio 之前用 AdjustSinnerAndSouter 的原始输出(sOuterFactor)判定
+    bool dnRouted = optiling::flash_attn::fa_tiling_util::IsDnTemplateRouted(
+        static_cast<int64_t>(maskMode_), qlayout, mBaseSize_);
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
@@ -224,7 +229,8 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     param.fdTolerance = 10;             // 10: tolerance block
     param.fdLeastBlock = 3;             // 3: least block
     param.fdOn = true;
-    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
+    param.outputLayout =
+        dnRouted ? load_balance::OutputLayout::BN1_S1 : load_balance::OutputLayout::BN2_S1G;
 }
 
 void FlashAttnMetadataCpuKernel::InitBaseInfo()

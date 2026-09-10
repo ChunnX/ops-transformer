@@ -57,7 +57,7 @@ public:
     FaGmTensorQ queryGm_;
     FaGmTensorKV keyGm_;
     FaGmTensorKV valueGm_;
-    CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1_;
+    CopyQueryGmToL1<Q_T, Q_FORMAT, L1Format::NZ, InnerMLayout::S1_ONLY_LAYOUT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
     GlobalTensor<int32_t> blockTableGm_;
 
@@ -232,12 +232,14 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                                .n2Idx = runInfo.n2Idx,
-                                .gS1Idx = runInfo.gS1Idx,
-                                .dIdx = dOffset,
-                                .gS1DealSize = runInfo.actMSize,
-                                .dDealSize = dRealSize};
+        // 不合轴: 任务为单 query 头(n1)的纯 s1 块, 按 (b, n1) 直接寻址(n1 = n2*g + g)
+        GmCoordS1Only gmCoord{.bIdx = runInfo.bIdx,
+                              .n2Idx = runInfo.n2Idx,
+                              .gIdx = runInfo.gIdx,
+                              .s1Idx = runInfo.s1Idx,
+                              .dIdx = dOffset,
+                              .s1DealSize = runInfo.actMSize,
+                              .dDealSize = dRealSize};
         copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
     }
 

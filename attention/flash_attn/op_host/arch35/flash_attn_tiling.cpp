@@ -191,11 +191,14 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 
 void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
-    // templateId: 0=ND模板, 1=DN模板
-    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
-    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
+    // templateId: 0=ND模板, 1=DN模板(不合轴 BN1_S1 分核)
+    // 判定与 flash_attn_metadata 的 outputLayout 选择共享 fa_tiling_util::IsDnTemplateRouted, 两侧严格一致
+    uint32_t qLayoutCode = static_cast<uint32_t>(faInfo_->qLayout);
+    bool dnRouted = fa_tiling_util::IsDnTemplateRouted(
+        faInfo_->maskMode, qLayoutCode,
+        (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? fa_tiling_util::SOUTER_64 : fa_tiling_util::SOUTER_32);
+    dnFlag_ = dnRouted && ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) ||
+                           (tilingKeyInfo_.config == 6));
     tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
 }
 
@@ -321,6 +324,7 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.bSize = faInfo_->bSize;
     tilingData_.baseTiling.flashAttnBaseParams.t1Size = faInfo_->qTSize;
     tilingData_.baseTiling.flashAttnBaseParams.t2Size = faInfo_->kTSize;
+    tilingData_.baseTiling.flashAttnBaseParams.n1Size = faInfo_->n1Size;
     tilingData_.baseTiling.flashAttnBaseParams.n2Size = faInfo_->n2Size;
     tilingData_.baseTiling.flashAttnBaseParams.gSize = faInfo_->gSize;
     tilingData_.baseTiling.flashAttnBaseParams.s1Size = faInfo_->s1Size;
