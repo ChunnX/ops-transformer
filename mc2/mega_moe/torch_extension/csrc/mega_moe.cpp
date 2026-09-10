@@ -46,6 +46,39 @@ static void CheckInputAbsent(const c10::optional<T> &input, const std::string &n
     TORCH_CHECK(!input.has_value(), name, " must be None on ", socName, ".");
 }
 
+// Validate storage types before TensorListWrapper replaces the ACL dtype.
+static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, const char *name, const char *socName)
+{
+    if (weights.empty()) {
+        return;
+    }
+    const char *expectedName = nullptr;
+    switch (expectedDtype) {
+        case aclDataType::ACL_FLOAT8_E5M2:
+            expectedName = "float8_e5m2";
+            break;
+        case aclDataType::ACL_FLOAT8_E4M3FN:
+            expectedName = "float8_e4m3fn";
+            break;
+        case aclDataType::ACL_FLOAT4_E2M1:
+            expectedName = "float4_e2m1fn_x2 or uint8 (packed FP4)";
+            break;
+        default:
+            TORCH_CHECK(false, name, " weight type must be FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1 on ", socName,
+                        ", but got ACL dtype ", static_cast<int>(expectedDtype), " (", name,
+                        "[0] dtype: ", weights[0].scalar_type(), ").");
+    }
+    for (size_t i = 0; i < weights.size(); ++i) {
+        const auto dtype = weights[i].scalar_type();
+        const bool matches =
+            (expectedDtype == aclDataType::ACL_FLOAT8_E5M2 && dtype == at::ScalarType::Float8_e5m2) ||
+            (expectedDtype == aclDataType::ACL_FLOAT8_E4M3FN && dtype == at::ScalarType::Float8_e4m3fn) ||
+            (expectedDtype == aclDataType::ACL_FLOAT4_E2M1 &&
+             (dtype == at::ScalarType::Float4_e2m1fn_x2 || dtype == at::ScalarType::Byte));
+        TORCH_CHECK(matches, name, "[", i, "] dtype must be ", expectedName, " on ", socName, ", but got ", dtype, ".");
+    }
+}
+
 struct MegaMoeTensorInputs {
     const at::Tensor &context;
     const at::Tensor &x;
@@ -171,7 +204,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                                      sharedBias2,
                                      xActiveMask,
                                      maskBuffer};
-    CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, aclrtGetSocName());
+    const char *socName = aclrtGetSocName();
+    CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, socName);
 
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
@@ -244,6 +278,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::Tensor y;
     y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
 
+    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+        CheckWeightDtype(weight1Ref, weight1RefDtype, "l1_weights", socName);
+        CheckWeightDtype(weight2Ref, weight2RefDtype, "l2_weights", socName);
+    }
+
     TensorListWrapper weight1Wrapper = {weight1Ref, weight1RefDtype};
     TensorListWrapper weight2Wrapper = {weight2Ref, weight2RefDtype};
     TensorListWrapper weightScales1Wrapper = {weightScales1Ref, weightScales1Dtype};
@@ -272,6 +311,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                    aclDataType::ACL_FLOAT8_E8M0 :
                    aclDataType::ACL_UINT64;
     };
+
+    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+        CheckWeightDtype(sharedWeight1Ref, sharedWeight1RefDtype, "shared_l1_weights", socName);
+        CheckWeightDtype(sharedWeight2Ref, sharedWeight2RefDtype, "shared_l2_weights", socName);
+    }
 
     TensorListWrapper sharedWeight1Wrapper = {sharedWeight1Ref, sharedWeight1RefDtype};
     TensorListWrapper sharedWeight2Wrapper = {sharedWeight2Ref, sharedWeight2RefDtype};
