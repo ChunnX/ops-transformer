@@ -32,6 +32,7 @@ constexpr uint32_t MAX_CCU_RANKSIZE = 8;
 constexpr char KC_SCENE[] = "KC quantization(x1QuantMode=3, x2QuantMode=2)";
 constexpr char KCDYN_SCENE[] = "KCDYN quantization(x1QuantMode=7, x2QuantMode=2)";
 constexpr char MX_SCENE[] = "MX quantization(x1QuantMode=6, x2QuantMode=6)";
+constexpr char HIF4_SCENE[] = "HIF4 quantization(x1QuantMode=8, x2QuantMode=8)";
 
 // 通信域相关枚举值
 enum class NnopbaseHcclServerType : uint32_t {
@@ -49,7 +50,8 @@ enum class QuantModeType : int64_t {
     PERGROUP_QUANT = 4,
     PERBLOCK_QUANT = 5,
     MX_QUANT = 6,
-    DYN_PERTOKEN_QUANT = 7
+    DYN_PERTOKEN_QUANT = 7,
+    HIFLOAT4_QUANT = 8
 };
 
 // 带场景标识的校验宏，用于区分不同量化场景下的校验错误
