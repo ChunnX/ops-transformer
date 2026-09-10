@@ -488,6 +488,13 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     if (*aivNumPtr > 0) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
     }
+    if (IsRoce(context)) {
+        OP_TILING_CHECK(platformAivNum < 1,
+                        OP_LOGE(nodeName, "ROCE debug requires one AIV core."), return ge::GRAPH_FAILED);
+        aivNum = 1;
+        OP_LOGI(nodeName, "ROCE debug: requested aiv_num=%ld, selected=1; core 0 sends and receives.",
+                *aivNumPtr);
+    }
 
     if (IsSharedJetty(context)) {
         OP_TILING_CHECK(static_cast<uint32_t>(tilingData->sharedJettyNum) > aivNum,
@@ -574,7 +581,8 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint64_t waitBytes = std::max(alignUp(waitRanksPerCore, 8) * 32, uint64_t(256));
     uint64_t gatherBytes = alignUp(std::max(static_cast<uint64_t>(tilingData->worldSize) * 4,
                                           alignUp(waitRanksPerCore * 4, 32)), 32);
-    uint64_t receiveBytes = waitBytes + gatherBytes + 64 + static_cast<uint64_t>(tilingData->worldSize) * 32;
+    uint64_t receiveBytes = waitBytes + (IsRoce(context) ? 0 : gatherBytes + 64) +
+        static_cast<uint64_t>(tilingData->worldSize) * 32;
     OP_TILING_CHECK(requiredUb > ubSize || (!directWin && receiveBytes + rowBytes * 2 > ubSize),
                     OP_LOGE(nodeName, "Insufficient UB for BandwidthTest send or receive buffers."),
                     return ge::GRAPH_FAILED);

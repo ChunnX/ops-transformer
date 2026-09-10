@@ -55,8 +55,6 @@ private:
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void BufferInit();
     __aicore__ inline void ProcessToken(GlobalTensor<XType> &outTokenGT, uint32_t tokenIndex);
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
-                                       uint32_t &endTokenId, uint32_t &sendTokenNum);
 
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
@@ -83,8 +81,6 @@ private:
     TBuf<> dstRankIdsBuf_;    // dst_rank_id 缓冲区
     TBuf<> statusBuf_;        // 状态缓冲区
     TBuf<> waitStatusBuf_;    // 等待状态缓冲区
-    TBuf<> gatherMaskOutBuf_; // 中间计算缓冲区
-    TBuf<> scalarBuf_;        // 标量缓冲区
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
 
     // ==================== 全局内存地址 ====================
@@ -98,7 +94,6 @@ private:
 
     uint32_t axisBS_{0};              // batch size (token数量)
     uint32_t axisH_{0};               // hidden size (特征维度)
-    uint32_t aivNum_{0};              // AIV核总数
     uint32_t epWorldSize_{0};         // rank总数
     int32_t epRankId_{0};             // 当前rank ID
     uint32_t aivId_{0};               // 当前AIV核ID
@@ -110,7 +105,6 @@ private:
     uint32_t hAlignSize_{0};          // UB对齐后的hidden size
     uint32_t startRankId_{0};         // 当前核处理的起始expert ID
     uint32_t endRankId_{0};           // 当前核处理的结束expert ID
-    uint32_t sendExpertNum_{0};       // 当前核处理的expert数量
     uint32_t totalCnt_{0};            // 总计处理的token数
     uint32_t dataState_{0};           // 数据状态 (用于双缓冲)
     uint32_t totalUsedUB_{0};         // 已使用的UB大小
@@ -119,7 +113,6 @@ private:
     uint32_t stateOffset_{0};         // 状态偏移 (32字节)
     uint32_t recStatusNumPerCore_{0}; // 每个核负责等待的rank数量
     uint32_t rscvStatusNum_{0};       // 需要等待的rank总数
-    uint32_t remainderRankNum_{0};    // 分配后剩余的rank数量
     uint32_t startStatusIndex_{0};    // 起始状态索引
     uint32_t totalUbSize_{0};         // 总UB大小
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
@@ -127,7 +120,6 @@ private:
     TBuf<> hcommBuf_;
     ChannelHandle hcommHandle_[HCCL_MAX_RANK_SIZE];
     float sumTarget_;                 // 状态同步目标值 (1.0)
-
 
 };
 
@@ -146,7 +138,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     // ============ 从tiling获取配置参数 ============
     axisBS_ = tilingData->maxBs;   // token数量
     axisH_ = tilingData->dataSize; // hidden size
-    aivNum_ = tilingData->aivNum;
     epRankId_ = context_->epRankId;
     AscendC::printf("[ROCE] rank=%d core=%u context loaded\n", epRankId_, aivId_);
     hOutSize_ = axisH_ * sizeof(XType);
@@ -189,22 +180,14 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     uint32_t axisMaxBS = globalBS_ / epWorldSize_;
     expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS) * hAlignWinSize_;
 
-    // ============ 计算状态等待的任务分发 ============
-    // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
+    // ============ 初始化单核状态等待范围 ============
     stateOffset_ = 32UL; // 32字节
     rscvStatusNum_ = epWorldSize_;
-    recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
-    remainderRankNum_ = rscvStatusNum_ % aivNum_;
-    startStatusIndex_ = recStatusNumPerCore_ * aivId_;
-    if (aivId_ < remainderRankNum_) {
-        recStatusNumPerCore_ += 1;
-        startStatusIndex_ += aivId_;
-    } else {
-        startStatusIndex_ += remainderRankNum_;
-    }
+    // Core 0 sends to and receives from every peer for debugging.
+    recStatusNumPerCore_ = epWorldSize_;
+    startStatusIndex_ = 0;
 
-    // ============ 初始化状态缓冲区 ============
-    uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
+    uint32_t statusBufCntAlign = Ceil(epWorldSize_, 8) * 8;
     uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     statusTensor_ = statusBuf_.Get<int32_t>();
@@ -232,7 +215,8 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     if (hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES) != HCOMM_SUCCESS) {
         AscendC::printf("[ROCE] rank=%d core=%u Hcomm Init failed\n", epRankId_, aivId_);
     }
-    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendExpertNum_);
+    startRankId_ = 0;
+    endRankId_ = epWorldSize_;
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (rankId != static_cast<uint32_t>(epRankId_)) {
             uint32_t channelIndex = rankId < static_cast<uint32_t>(epRankId_) ? rankId : rankId - 1;
@@ -241,23 +225,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     }
     AscendC::printf("[ROCE] rank=%d core=%u Init done state=%u peers=[%u,%u)\n",
                epRankId_, aivId_, dataState_, startRankId_, endRankId_);
-}
-
-template <TemplateBandwidthTestRoceTypeClass>
-__aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SplitToCore(
-    uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum)
-{
-    sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
-    uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
-    uint32_t newAivId = aivId_;
-    startTokenId = sendTokenNum * newAivId; // 每个aiv发送时的起始rankid
-    if (newAivId < remainderTokenNum) {     // 前remainderRankNum个aiv需要多发1个卡的数据
-        sendTokenNum += 1;
-        startTokenId += newAivId;
-    } else {
-        startTokenId += remainderTokenNum;
-    }
-    endTokenId = startTokenId + sendTokenNum;
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
@@ -340,10 +307,7 @@ template <TemplateBandwidthTestRoceTypeClass>
 __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SetStatus()
 {
     // SendToMoeExpert has accumulated counts, including zero-token destinations.
-    AscendC::printf("[ROCE] rank=%d core=%u send barrier enter\n", epRankId_, aivId_);
     PipeBarrier<PIPE_ALL>();
-    SyncAll<true>(); // 等待所有核完成统计
-    AscendC::printf("[ROCE] rank=%d core=%u send barrier done\n", epRankId_, aivId_);
     if (startRankId_ >= epWorldSize_) {
         return;
     }
@@ -397,16 +361,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Buf
     waitStatusBufSize = waitStatusBufSize > 256 ? waitStatusBufSize : 256;
     tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
     totalUsedUB_ += waitStatusBufSize;
-    uint64_t recvWinBlockNumSpace = epWorldSize_ * sizeof(float);
-    uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    uint64_t gatherMaskOutSize =
-        (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
-    gatherMaskOutSize = Ceil(gatherMaskOutSize, UB_ALIGN) * UB_ALIGN;
-    tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);
-    totalUsedUB_ += gatherMaskOutSize;
-
-    tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2);
-    totalUsedUB_ += UB_ALIGN * 2;
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
@@ -418,17 +372,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
     BufferInit();
     startRankId_ = startStatusIndex_;
     endRankId_ = startRankId_ + recStatusNumPerCore_;
-    sendExpertNum_ = recStatusNumPerCore_;
 
-    // 如果当前核没有需要等待的rank，直接返回
-    if (unlikely(startStatusIndex_ >= rscvStatusNum_)) {
-        AscendC::printf("[ROCE] rank=%d core=%u idle receive barrier enter\n", epRankId_, aivId_);
-        SyncAll<true>();
-        AscendC::printf("[ROCE] rank=%d core=%u idle receive barrier done\n", epRankId_, aivId_);
-        return;
-    }
-
-    LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
     float compareTarget = sumTarget_ * recStatusNumPerCore_; // 目标值 = 1.0 * 等待的rank数量
     float sumOfFlag = static_cast<float>(-1.0);
@@ -444,12 +388,12 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy(statusFp32Tensor_, windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
                  intriParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-
-        // 计算所有flag的和
-        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(), 1, recStatusNumPerCore_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = statusSumOutTensor.GetValue(0);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        // Scalar polling avoids the vector repeat-count limit when one core owns all ranks.
+        sumOfFlag = 0.0f;
+        for (uint32_t peer = 0; peer < recStatusNumPerCore_; ++peer) {
+            sumOfFlag += statusFp32Tensor_.GetValue(peer * stateOffset_ / sizeof(float));
+        }
     }
     AscendC::printf("[ROCE] rank=%d core=%u wait flags done\n", epRankId_, aivId_);
 
@@ -463,10 +407,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
     DataCopy(windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-
-    AscendC::printf("[ROCE] rank=%d core=%u receive barrier enter\n", epRankId_, aivId_);
-    SyncAll<true>(); // 等待所有核完成
-    AscendC::printf("[ROCE] rank=%d core=%u receive barrier done\n", epRankId_, aivId_);
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
@@ -507,7 +447,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Loc
         WriteGmByPassDCache(reinterpret_cast<__gm__ uint32_t *>(receiveCntGM_) + idx, receiveCount);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-
 
     // ============ 初始化数据拷贝队列 ============
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;

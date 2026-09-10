@@ -39,7 +39,10 @@ ROCE 会检查全部 rank 对（包括同机卡之间）的 ROCE link，仅跨�
 
 在 `config.py` 中设置 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`，脚本会选择
 ROCE context 和独立的 ROCE tiling 分支。`mode=None` 时 ROCE 默认使用 mode 0；显式设置
-其他 mode 会报错。支持 `aiv_num`；`batch_tokens` 必须为 0，ROCE 不支持 Batch 接口。
+其他 mode 会报错。当前 ROCE 调试路径固定只使用 AIV 0，依次发送全部 peer 的数据和通知、
+等待全部 peer 的通知、搬运接收数据；非 0 核在 `Init()` 前直接返回，不初始化、不打印。
+`aiv_num` 建议设为 `-1`：参数仍需通过原有合法性检查，ROCE tiling 随后固定实际核数为 1。
+`batch_tokens` 必须为 0，ROCE 不支持 Batch 接口。该单核路径用于定位问题，不用于性能对比。
 
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="roce")
@@ -59,9 +62,10 @@ Channel 的 `memHandles=customMemHandle_`、`memHandleNum=1`，远端 Win 通过
 
 `bandwidth_test_roce.h` 是独立的 mode 0 模板，使用 `Hcomm<COMM_PROTOCOL_ROCE>` 的
 `Init`、普通 `WriteNbi(ChannelHandle, dst, src, len)` 和 `Drain(ChannelHandle)`，不使用
-`BatchHandle`、`MakeBatchHandle`、`BatchCommit` 或锁接口。每个目标 rank 由一个 AIV 负责，
+`BatchHandle`、`MakeBatchHandle`、`BatchCommit` 或锁接口。全部目标 rank 都由 AIV 0 负责，
 逐 token 写入（默认立即提交），对该 peer 的数据全部发送后 Drain，再依次发布 count、Drain、
-ready flag、Drain。SDK 负责普通写入的队列空间管理；通信错误会 Trap，不静默继续等待。
+ready flag、Drain。SDK 负责普通写入的队列空间管理；当前调试版本在接口返回失败时仅打印错误，
+继续执行后续流程，不调用 `Trap()`。
 网络写入的数据和通知的源地址、目的地址全部位于 HCCL 注册 Win；输入先经 UB 拷贝到本地 Win，
 接收完成后再从本地 Win 拷贝到输出 tensor。
 
