@@ -115,10 +115,15 @@ bool GroupedQmmTiling::IsWeightNzMultiTensorLayout() const
            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && IsMultiTensorWeight();
 }
 
-uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
+uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index, uint16_t maxCount) const
 {
     uint16_t count = 0U;
-    while (count < GroupedMatmul::MAX_TENSOR_CONT && context_->GetDynamicInputShape(index, count) != nullptr) {
+    while (count < maxCount && context_->GetDynamicInputShape(index, count) != nullptr) {
+        ++count;
+    }
+    // Probe one extra tensor only for the extended limit to reject oversized lists.
+    if (maxCount == GMM_MAX_GROUP_LIST_SIZE && count == maxCount &&
+        context_->GetDynamicInputShape(index, count) != nullptr) {
         ++count;
     }
     return count;
@@ -133,8 +138,10 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     if (!IsWeightNzMultiTensorLayout()) {
         return true;
     }
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
-    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX);
+    const uint16_t maxCount =
+        IsWeightNzMultiTensorLayout() && IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
+    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX, maxCount);
     OP_CHECK_IF(weightTensorNum == 0,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "weight", "0", "positive integer"), return false);
     OP_CHECK_IF(weightTensorNum != inputParams_.groupNum,
@@ -877,7 +884,9 @@ bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScale
         return true;
     }
 
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
+    const uint16_t maxCount =
+        IsWeightNzMultiTensorLayout() && IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
     const auto *firstWeightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, FIRST_TENSOR_INDEX);
     OP_CHECK_IF(firstWeightShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "In WeightNz single-multi-single mode, current weight[0] is "
