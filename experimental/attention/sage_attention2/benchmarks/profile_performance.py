@@ -10,7 +10,9 @@
 
 import argparse
 import json
-import statistics
+import math
+import os
+import time
 from pathlib import Path
 
 import torch
@@ -19,19 +21,68 @@ from cases import ALL_CASES
 from sageattention2 import sageattn
 
 
+# Batch timing follows the task script; warmup is controlled by elapsed time.
+def _sync(device: torch.device):
+    if str(device).startswith("npu"):
+        torch.npu.synchronize()
+    elif device.type == "cuda":
+        torch.cuda.synchronize()
+
+
+def _warmup_seconds(fn, seconds: float, device: torch.device) -> float:
+    # Exclude first-call compilation/initialization from the warmup duration.
+    fn()
+    _sync(device)
+    start = time.perf_counter()
+    calls = 1
+    while time.perf_counter() - start < seconds:
+        batch_start = time.perf_counter()
+        for _ in range(calls):
+            fn()
+        _sync(device)
+        elapsed = time.perf_counter() - batch_start
+        # Keep roughly 20 ms queued, bounding memory and deadline overshoot.
+        # This batch size controls queue depth, not the warmup stopping rule.
+        calls = max(1, min(32, int(calls * 0.02 / max(elapsed, 1e-9))))
+    return time.perf_counter() - start
+
+
+def _time_ms(fn, iters: int = 20, device: torch.device = None) -> float:
+    if str(device).startswith("npu"):
+        starter = torch.npu.Event(enable_timing=True)
+        ender = torch.npu.Event(enable_timing=True)
+        starter.record()
+        for _ in range(iters):
+            fn()
+        ender.record()
+        _sync(device)
+        return starter.elapsed_time(ender) / iters
+
+    t0 = time.perf_counter()
+    for _ in range(iters):
+        fn()
+    _sync(device)
+    t1 = time.perf_counter()
+    return (t1 - t0) * 1000.0 / iters
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--case", choices=[case[0] for case in ALL_CASES], required=True
     )
-    parser.add_argument("--warmup", type=int, default=20)
-    parser.add_argument("--repeats", type=int, default=50)
+    parser.add_argument(
+        "--warmup-seconds", type=float, default=10.0
+    )
+    parser.add_argument(
+        "--repeats", type=int, default=int(os.environ.get("SAGEATTN_PERF_ITERS", "20"))
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seq", type=int, help="Override context length")
     parser.add_argument("--smooth-v", action="store_true")
     args = parser.parse_args()
-    if args.warmup < 1 or args.repeats < 1:
-        parser.error("warmup and repeats must be positive")
+    if not math.isfinite(args.warmup_seconds) or args.warmup_seconds <= 0 or args.repeats < 1:
+        parser.error("warmup-seconds must be finite and positive; repeats must be positive")
     _, seq, hk, batch, dtype_name, causal = next(
         c for c in ALL_CASES if c[0] == args.case
     )
@@ -67,37 +118,22 @@ def main():
             sparse_mode=2 if causal else 0,
         )[0]
 
-    torch.npu.synchronize()
-    outputs = {}
     event_samples = {}
-    # Finish every Sage call before starting FIA. Each operator gets its own
-    # warmup, excluded from the Event samples.
-    for operator, fn in (("sage", run_sage), ("fia", run_fia)):
-        samples = []
-        start = torch.npu.Event(enable_timing=True)
-        end = torch.npu.Event(enable_timing=True)
-        for iteration in range(args.warmup + args.repeats):
-            measured = iteration >= args.warmup
-            if measured:
-                start.record()
-            outputs[operator] = fn()
-            if measured:
-                end.record()
-                end.synchronize()
-                samples.append(start.elapsed_time(end) * 1000)
-            else:
-                torch.npu.synchronize()
-        if samples:
-            ordered = sorted(samples)
-            event_samples[operator] = {
-                "samples_us": samples,
-                "median_us": statistics.median(samples),
-                "mean_us": statistics.mean(samples),
-                "min_us": min(samples),
-                "max_us": max(samples),
-                "p10_us": ordered[int(0.1 * (len(ordered) - 1))],
-                "p90_us": ordered[int(0.9 * (len(ordered) - 1))],
-            }
+    # Match the task script: FIA first; one Event pair around the entire batch.
+    for operator, fn in (("fia", run_fia), ("sage", run_sage)):
+        warmup_elapsed = _warmup_seconds(fn, args.warmup_seconds, q.device)
+        mean_ms = _time_ms(fn, iters=args.repeats, device=q.device)
+        print(f"MEASURED {args.case} {operator}: {mean_ms:.6f} ms; cooldown 10s", flush=True)
+        time.sleep(10)
+        event_samples[operator] = {
+            "mean_us": mean_ms * 1000,
+            "batch_total_us": mean_ms * args.repeats * 1000,
+            "calls": args.repeats,
+            "warmup_elapsed_seconds": warmup_elapsed,
+        }
+    # Accuracy outputs are obtained outside the timed batches.
+    outputs = {"sage": run_sage(), "fia": run_fia()}
+    torch.npu.synchronize()
 
     assert all(torch.isfinite(out).all().item() for out in outputs.values())
     error = (outputs["sage"].float() - outputs["fia"].float()).abs()
@@ -107,18 +143,20 @@ def main():
         "sage_api": "sageattn -> aclnnSageAttention2",
         "fia_api": "torch_npu.npu_fused_infer_attention_score",
         "operator_stages": ["Fused"],
-        "timing": "torch.npu.Event per call; warmup excluded",
-        "order": "sage-first",
-        "v_max": 448.0,
+        "timing": "torch.npu.Event batch total / repeats; synchronize after warmup and timed batch",
+        "order": "fia-first",
+        "pv_quantization": "mxfp8_e4m3_e8m0",
         "pv_accumulation": "fp32",
-        "smooth_v": args.smooth_v,
+        "smooth_v": False,
+        "smooth_v_requested": args.smooth_v,
         "shape": list(q.shape),
         "kv_heads": hk,
         "dtype": dtype_name,
         "causal": causal,
         "fia_sparse_mode": 2 if causal else 0,
-        "warmup": args.warmup,
+        "warmup_seconds": args.warmup_seconds,
         "repeats": args.repeats,
+        "cooldown_seconds_after_measurement": 10,
         "torch": torch.__version__,
         "torch_npu": torch_npu.__version__,
         "device": torch.npu.get_device_name(),
@@ -129,7 +167,7 @@ def main():
     if event_samples:
         report["event"] = event_samples
         report["event_speedup"] = (
-            event_samples["fia"]["median_us"] / event_samples["sage"]["median_us"]
+            event_samples["fia"]["mean_us"] / event_samples["sage"]["mean_us"]
         )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")

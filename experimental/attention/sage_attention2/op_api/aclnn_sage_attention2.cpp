@@ -20,12 +20,11 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(SageAttention2);
 
-aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v, float scale, float vmax, bool smooth,
-                      bool causal, bool returnLse, bool smoothV, const aclTensor *out, const aclTensor *lse,
-                      aclOpExecutor *executor)
+aclnnStatus BuildSage(const aclTensor *q, const aclTensor *k, const aclTensor *v, float scale, bool smooth, bool causal,
+                      bool returnLse, const aclTensor *out, const aclTensor *lse, aclOpExecutor *executor)
 {
     return ADD_TO_LAUNCHER_LIST_AICORE(SageAttention2, OP_INPUT(q, k, v), OP_OUTPUT(out, lse),
-                                       OP_ATTR(scale, vmax, smooth, causal, returnLse, smoothV));
+                                       OP_ATTR(scale, smooth, causal, returnLse));
 }
 } // namespace l0op
 namespace {
@@ -65,7 +64,9 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     }
     *workspaceSize = 0;
     *executor = nullptr;
-    if (std::strcmp(qkQuantGran, "per_token") != 0 || !std::isfinite(smScale) ||
+    const bool perToken = std::strcmp(qkQuantGran, "per_token") == 0;
+    if ((!perToken && std::strcmp(qkQuantGran, "per_thread") != 0 && std::strcmp(qkQuantGran, "per_warp") != 0) ||
+        !std::isfinite(smScale) ||
         std::abs(smScale) > 3.4028234663852886e38) {
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -74,8 +75,12 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
         return ACLNN_ERR_PARAM_INVALID;
     }
     // Compatibility argument only: this NPU implementation always accumulates in FP32.
-    (void)pvAccumDtype;
-    constexpr double vmax = 448.0;
+    if (!perToken)
+        OP_LOGW("qk_quant_gran=%s falls back to per_token on Ascend 950.", qkQuantGran);
+    if (!pvAccumDtype || std::strcmp(pvAccumDtype, "fp32") != 0)
+        OP_LOGW("pv_accum_dtype=%s falls back to fp32 on Ascend 950.", pvAccumDtype ? pvAccumDtype : "null");
+    if (smoothV)
+        OP_LOGW("smooth_v is ignored: SageAttention2 uses MXFP8 PV without value centering.");
     if (!TensorValid(q) || !TensorValid(k) || !TensorValid(v) || !TensorValid(out) ||
         q->GetDataType() != k->GetDataType() || q->GetDataType() != v->GetDataType() ||
         q->GetDataType() != out->GetDataType() || q->GetViewShape() != out->GetViewShape()) {
@@ -116,8 +121,8 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (!result || !resultLse) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
-    auto ret = l0op::BuildSage(qc, kc, vc, static_cast<float>(smScale), static_cast<float>(vmax), smoothK, isCausal,
-                               returnLse, smoothV, result, resultLse, owner.get());
+    auto ret = l0op::BuildSage(qc, kc, vc, static_cast<float>(smScale), smoothK, isCausal, returnLse, result, resultLse,
+                               owner.get());
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }

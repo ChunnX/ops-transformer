@@ -13,6 +13,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+// smoothV is retained for ABI compatibility; true logs a warning and is ignored.
+// per_thread/per_warp log a warning and use per_token Q/K quantization.
+// Non-fp32 pvAccumDtype values log a warning and use FP32 accumulation.
+// PV always uses MXFP8.
 ACL_FUNC_VISIBILITY aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v, const char *tensorLayout, bool isCausal,
     const char *qkQuantGran, double smScale, const char *pvAccumDtype, bool smoothK, bool smoothV, bool returnLse,

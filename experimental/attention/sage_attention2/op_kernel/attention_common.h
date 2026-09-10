@@ -28,8 +28,8 @@ static_assert(M * N <= 32 * 1024 && N * 128 <= 32 * 1024 && M * 128 <= 32 * 1024
 constexpr uint32_t PV_SLOTS = 2, PV_SLOT_BYTES = HALF * 128 * 4;
 static_assert(LOOKAHEAD == 2 && PV_SLOTS == 2 && ALPHA_SLOTS == 4, "paired O ownership requires these ring depths");
 constexpr uint32_t SCORE_UB = 0, PV_UB = PIPE_SLOTS * HALF * N * 2, ACCUM_UB = PV_UB + PV_SLOTS * PV_SLOT_BYTES;
-constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4, VS_UB = P_UB + PIPE_SLOTS * P_SLOT_BYTES, MU_UB = VS_UB + 512;
-constexpr uint32_t VMU_UB = MU_UB + 512, KS_UB = VMU_UB + 512, QS_UB = KS_UB + 2 * N * 2;
+constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4, MU_UB = P_UB + PIPE_SLOTS * P_SLOT_BYTES;
+constexpr uint32_t KS_UB = MU_UB + 512, QS_UB = KS_UB + 2 * N * 2;
 constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
 constexpr uint32_t SUM_UB = ALPHA_UB + ALPHA_SLOTS * 512, UB_END = SUM_UB + HALF * 4;
 // Final-only LSE temporaries reuse P0 after the output's MTE3_S fence.

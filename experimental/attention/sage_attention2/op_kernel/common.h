@@ -11,6 +11,29 @@
 #pragma once
 #include "kernel_operator.h"
 #include "params.h"
+
+namespace Sage {
+__aicore__ inline bool UseDieGroups(const SageParams &p) {
+    return p.cores > 0 && p.cores % 2 == 0 && (uint64_t(p.b) * p.hk) % 2 == 0 &&
+           p.sq % 128 == 0;
+}
+__aicore__ inline uint64_t DieTask(uint64_t task, uint64_t total, uint32_t cores) {
+    const uint32_t half = cores / 2;
+    return (task % cores / half) * (total / 2) + (task / cores) * half + task % half;
+}
+}
+
+namespace Sage {
+// Per-core end in the virtual cyclic task space, including a partial final wave.
+__aicore__ inline uint64_t DieTaskEnd(const SageParams &p, uint64_t total, uint32_t core) {
+    if (!UseDieGroups(p)) return total;
+    const uint32_t half = p.cores / 2, rank = core % half;
+    const uint64_t local = total / 2;
+    const uint64_t count = local > rank ? (local - rank + half - 1) / half : 0;
+    return core + count * p.cores;
+}
+}
+
 #include "catlass/arch/resource.hpp"
 using namespace AscendC;
 namespace Sage {

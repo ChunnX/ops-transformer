@@ -48,7 +48,7 @@ def test_aclnn_matches_reference(dtype, layout, causal, return_lse):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("smooth_v", [False, True])
 def test_fused_concurrent_streams(dtype, smooth_v):
-    """Exercise idle cores, split stats and repeated per-call workspace reuse."""
+    """Exercise idle cores, atomic stats and repeated per-call workspace reuse."""
     torch.manual_seed(273)
     inputs = []
     for sq, sk, dim in [(17, 65, 48), (128, 4096, 128)]:
@@ -57,6 +57,11 @@ def test_fused_concurrent_streams(dtype, smooth_v):
         inputs.append((q, k, torch.randn_like(k)))
     options = {"smooth_v": smooth_v, "return_lse": True}
     expected = [run(*tensors, **options) for tensors in inputs]
+    # Check each serial baseline against the independent CPU algorithm as well.
+    for tensors, result in zip(inputs, expected):
+        cpu = reference.attention(*(x.cpu() for x in tensors), **options)
+        assert_reference(result[0], cpu[0])
+        torch.testing.assert_close(result[1].cpu(), cpu[1], atol=2e-4, rtol=2e-4)
     torch.npu.synchronize()
     streams = [torch.npu.Stream(), torch.npu.Stream()]
     actual = []
@@ -68,8 +73,16 @@ def test_fused_concurrent_streams(dtype, smooth_v):
         stream.synchronize()
     for result, gold in actual:
         for value, expected_tensor in zip(result, gold):
+            # Use the existing CPU-reference LSE tolerance and dtype output
+            # tolerances, allowing the
+            # FP32 atomic summation order to vary across concurrent launches.
+            tol = (
+                2e-4
+                if value.dtype == torch.float32
+                else 2 ** (-9 if dtype == torch.float16 else -6)
+            )
             torch.testing.assert_close(
-                value.cpu(), expected_tensor.cpu(), atol=0, rtol=0
+                value.cpu(), expected_tensor.cpu(), atol=tol, rtol=tol
             )
 
 

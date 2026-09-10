@@ -6,7 +6,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""Explicit CPU reference for the revised per-token INT8 / FP8 algorithm.
+"""Explicit CPU reference for the revised per-token INT8 / MXFP8 algorithm.
 
 Never used as an NPU fallback. Streaming KV blocks bound score storage.
 """
@@ -16,7 +16,22 @@ import math
 import torch
 
 
-def quantize(q, k, v, *, smooth_k=True, smooth_v=False, v_max=448.0):
+def quantize_v_mx(v):
+    """Independent MX reference: E4M3 data and one E8M0 scale per 32 tokens/channel.
+
+    Return unpadded data and FP32 decoded scales shaped [B,H,ceil(S/32),D].
+    Zero-padding contributes nothing to a group's magnitude maximum.
+    """
+    seq = v.shape[-2]
+    padded = torch.nn.functional.pad(v.float(), (0, 0, 0, (-seq) % 32))
+    groups = padded.reshape(*v.shape[:-2], -1, 32, v.shape[-1])
+    amax = groups.abs().amax(-2, keepdim=True)
+    scales = torch.exp2(torch.ceil(torch.log2((amax / 448.0).clamp_min(1e-30))))
+    data = (groups / scales).to(torch.float8_e4m3fn)
+    return data.reshape_as(padded)[..., :seq, :], scales.squeeze(-2)
+
+
+def quantize(q, k, v, *, smooth_k=True, smooth_v=False):
     q, k, v = q.float(), k.float(), v.float()
     mean = k.mean(-2, keepdim=True) if smooth_k else torch.zeros_like(k[..., :1, :])
     kc = k - mean
@@ -28,12 +43,9 @@ def quantize(q, k, v, *, smooth_k=True, smooth_v=False, v_max=448.0):
 
     q8, qs = token(q)
     k8, ks = token(kc)
-    vmean = v.mean(-2, keepdim=True) if smooth_v else torch.zeros_like(v[..., :1, :])
-    v = v - vmean
-    vs = (v.abs().amax(-2, keepdim=True) / v_max).clamp_min(1e-30)
-    v8 = (v / vs).to(torch.float8_e4m3fn)
-    packed = (q8, k8, v8, qs, ks, mean.squeeze(-2), vs.squeeze(-2))
-    return (*packed, vmean.squeeze(-2)) if smooth_v else packed
+    # smooth_v is a compatibility argument only, matching the public API.
+    v8, vs = quantize_v_mx(v)
+    return q8, k8, v8, qs, ks, mean.squeeze(-2), vs
 
 
 def prepare_scales(qs, ks, sm_scale):
@@ -54,7 +66,6 @@ def attention(
     is_causal=False,
     smooth_k=True,
     smooth_v=False,
-    v_max=448.0,
     tensor_layout="HND",
     return_lse=False,
     block_q=128,
@@ -75,12 +86,12 @@ def attention(
         raise ValueError("causal requires Sq == Sk")
     scale = 1 / math.sqrt(d) if sm_scale is None else float(sm_scale)
     packed = (
-        quantize(q, k, v, smooth_k=smooth_k, smooth_v=smooth_v, v_max=v_max)
+        quantize(q, k, v, smooth_k=smooth_k, smooth_v=smooth_v)
         if quantized is None
         else quantized
     )
     q8, k8, v8, qs, ks, mean, vs = packed[:7]
-    vmean = packed[7] if smooth_v else None
+    v_dequant = v8.float() * vs.repeat_interleave(32, dim=-2)[..., :sk, :]
     if score_mode not in ("fp16", "fp32"):
         raise ValueError("score_mode must be fp16 or fp32")
     if score_mode == "fp16":
@@ -128,16 +139,14 @@ def attention(
                 # Device FP8 Cast saturates; torch's E4M3 conversion alone can
                 # produce NaN when a rounded FP16 max makes P exceed its range.
                 p8 = prob.clamp(max=448.0).to(torch.float8_e4m3fn).float()
-                partial = p8 @ v8[:, kh, j:je].float()
+                partial = p8 @ v_dequant[:, kh, j:je]
                 if pv_storage == "bf16":
                     partial = partial.to(torch.bfloat16).float()
                 elif pv_storage != "fp32":
                     raise ValueError("pv_storage must be bf16 or fp32")
                 acc = acc * alpha + partial
                 m = nm
-            result = acc / den * vs[:, kh, None, :]
-            if smooth_v:
-                result += vmean[:, kh, None, :]
+            result = acc / den
             output[:, h, start:end] = result.to(q.dtype)
             lse[:, h, start:end] = (m + den.log()).squeeze(-1)
             if smooth_k:

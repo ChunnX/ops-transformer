@@ -17,8 +17,8 @@ struct WideVectorLayout {
     static constexpr uint32_t P_PART_BYTES = HALF * N, PV_SLOT_BYTES = 2 * P_PART_BYTES,
                               ACCUM_UB = PV_UB + 2 * PV_SLOT_BYTES;
     static constexpr uint32_t P_UB = ACCUM_UB + HALF * 128 * 4;
-    static constexpr uint32_t VS_UB = P_UB + P_SLOT_BYTES, MU_UB = VS_UB + 512;
-    static constexpr uint32_t VMU_UB = MU_UB + 512, KS_UB = VMU_UB + 512, QS_UB = KS_UB + 2 * 512 * 2;
+    static constexpr uint32_t MU_UB = P_UB + P_SLOT_BYTES;
+    static constexpr uint32_t KS_UB = MU_UB + 512, QS_UB = KS_UB + 2 * 512 * 2;
     static constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
     static constexpr uint32_t SUM_UB = ALPHA_UB + 2 * 512, END = SUM_UB + HALF * 4;
     static constexpr uint32_t X_UB = P_UB, RED_UB = P_UB + 1024, WORK_UB = P_UB + 2048, QI_UB = P_UB + 4096;
@@ -147,12 +147,6 @@ public:
     __aicore__ inline __attribute__((always_inline)) void PrepareStreamOutput(uint32_t b, uint32_t kh)
     {
         Sync<HardEvent::V_MTE2>();
-        DataCopy(Base::vsu_, Base::vsg_[(uint64_t(b) * Base::params_.hk + kh) * DP], DP);
-        if (Base::params_.smoothV)
-            DataCopy(
-                Base::vmu_,
-                Base::mg_[(uint64_t(Base::params_.b) * Base::params_.hk + uint64_t(b) * Base::params_.hk + kh) * DP],
-                DP);
         if (Base::params_.returnLse && Base::params_.smoothK)
             DataCopy(Base::mu_, Base::mg_[(uint64_t(b) * Base::params_.hk + kh) * DP], DP);
         Sync<HardEvent::MTE2_V>();
@@ -168,16 +162,12 @@ public:
                 FinalizeWideFp32VF<T, DP, true>(
                     (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
                     (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                    (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)Base::vsu_.GetPhyAddr(),
-                    (__ubuf__ float *)scratch.GetPhyAddr(),
-                    Base::params_.smoothV ? (__ubuf__ float *)Base::vmu_.GetPhyAddr() : nullptr);
+                    (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
             else
                 FinalizeWideFp32VF<T, DP, false>(
                     (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
                     (__ubuf__ float *)pv.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                    (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)Base::vsu_.GetPhyAddr(),
-                    (__ubuf__ float *)scratch.GetPhyAddr(),
-                    Base::params_.smoothV ? (__ubuf__ float *)Base::vmu_.GetPhyAddr() : nullptr);
+                    (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
         } else if (first)
             InitializeWideFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)pv.GetPhyAddr(),
                                      (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr());

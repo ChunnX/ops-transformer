@@ -11,6 +11,7 @@
 import ctypes as C
 import functools
 import os
+import warnings
 from pathlib import Path
 
 import torch
@@ -85,6 +86,24 @@ def run(
     scale = q.shape[-1] ** -0.5 if sm_scale is None else float(sm_scale)
     if not math.isfinite(scale) or abs(scale) > 3.4028234663852886e38:
         raise ValueError("invalid FP32 sm_scale")
+    if qk_quant_gran != "per_token":
+        warnings.warn(
+            f"qk_quant_gran={qk_quant_gran!r} falls back to per_token on Ascend 950.",
+            UserWarning,
+            stacklevel=2,
+        )
+    if pv_accum_dtype != "fp32":
+        warnings.warn(
+            f"pv_accum_dtype={pv_accum_dtype!r} falls back to fp32 on Ascend 950.",
+            UserWarning,
+            stacklevel=2,
+        )
+    if smooth_v:
+        warnings.warn(
+            "smooth_v is ignored: SageAttention2 uses MXFP8 PV without value centering.",
+            UserWarning,
+            stacklevel=2,
+        )
     base, lib = _libs()
     with torch.npu.device(q.device):
         # The ACL bridge describes ND storage explicitly.
@@ -141,9 +160,9 @@ def run(
                 is_causal,
                 qk_quant_gran.encode(),
                 scale,
-                b"fp32",
+                pv_accum_dtype.encode() if isinstance(pv_accum_dtype, str) else None,
                 smooth_k,
-                smooth_v,
+                False,
                 return_lse,
                 desc(out),
                 desc(lse),

@@ -9,11 +9,10 @@
 """Task-document case matrix, with the explicitly revised numerical contract.
 
 The original JSON is retained unchanged. Positive granularity choices map to
-per_token; the invalid-accum case now checks compatibility. Fourteen performance
+per_token by the public API; the invalid-accum case checks compatibility. Fourteen performance
 rows are covered by the separate two-interface profiler/Event driver.
 """
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -26,9 +25,6 @@ CASES = json.loads((Path(__file__).parent / "data/task_cases_500.json").read_tex
     "cases"
 ]
 FUNCTIONAL = [c for c in CASES if c["suite"] != "perf"]
-MAX_ABS_WAIVERS = json.loads(
-    (Path(__file__).parent / "data/accuracy_waivers.json").read_text()
-)
 
 
 @pytest.mark.parametrize("case", FUNCTIONAL, ids=lambda c: c["id"])
@@ -48,7 +44,7 @@ def test_task_document_matrix(case, record_property):
         return torch.randn(shape, generator=generator).to(dtype)
 
     q, k, v = make(hq, sq), make(hk, sk), make(hk, sk)
-    gran = case["qk_quant_gran"] if "gran" in case["tags"] else "per_token"
+    gran = case["qk_quant_gran"]
     options = {
         "tensor_layout": layout,
         "is_causal": case["is_causal"],
@@ -83,25 +79,13 @@ def test_task_document_matrix(case, record_property):
     error = (actual.float() - golden.float()).abs()
     tolerance = 2 ** (-9 if dtype == torch.float16 else -6)
     matched = (error <= tolerance * (1 + golden.float().abs())).float().mean().item()
-    record_property("reference", "revised per-token CPU algorithm")
+    record_property("reference", "per-token QK / MXFP8 PV CPU algorithm")
     record_property("matched_ratio", matched)
     max_abs = error.max().item()
     record_property("max_abs", max_abs)
     limit = 0.1 if dtype == torch.float16 else 1.0
     record_property("original_max_abs_limit", limit)
     record_property("strict_max_abs_passed", str(max_abs <= limit).lower())
-    waiver = MAX_ABS_WAIVERS.get(case["id"])
-    if waiver is not None:
-        case_hash = hashlib.sha256(
-            json.dumps(case, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        assert case_hash == waiver["case_sha256"], (
-            "Changed case requires review of its accuracy waiver"
-        )
-        assert limit == waiver["original_max_abs_limit"]
-        record_property("max_abs_waiver_applied", str(max_abs > limit).lower())
-        record_property("max_abs_waiver_reason", waiver["reason"])
-        limit = waiver["approved_max_abs_limit"]
     record_property("effective_max_abs_limit", limit)
     assert matched >= 0.99
     assert max_abs <= limit

@@ -18,9 +18,7 @@ struct DefaultVectorLayout {
     static constexpr uint32_t X_UB = Sage::X_UB;
     static constexpr uint32_t RED_UB = Sage::RED_UB;
     static constexpr uint32_t WORK_UB = Sage::WORK_UB;
-    static constexpr uint32_t VS_UB = Sage::VS_UB;
     static constexpr uint32_t MU_UB = Sage::MU_UB;
-    static constexpr uint32_t VMU_UB = Sage::VMU_UB;
     static constexpr uint32_t QI_UB = Sage::QI_UB;
     static constexpr uint32_t P_UB = Sage::P_UB;
     static constexpr uint32_t QS_UB = Sage::QS_UB;
@@ -38,9 +36,9 @@ struct DefaultVectorLayout {
 template <class T, uint32_t DP, class Layout = DefaultVectorLayout>
 class AttentionBlockVec {
 public:
-    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q,
-                                                               GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR vs,
-                                                               GM_ADDR out, GM_ADDR lse, SageParams params)
+    __aicore__ inline __attribute__((always_inline)) void Init(FixedResource &resource, GM_ADDR q, GM_ADDR qs,
+                                                               GM_ADDR ks, GM_ADDR mean, GM_ADDR out, GM_ADDR lse,
+                                                               SageParams params)
     {
         resource_ = &resource;
         params_ = params;
@@ -48,7 +46,6 @@ public:
         qsg_.SetGlobalBuffer((__gm__ half *)qs);
         ksg_.SetGlobalBuffer((__gm__ half *)ks);
         mg_.SetGlobalBuffer((__gm__ float *)mean);
-        vsg_.SetGlobalBuffer((__gm__ float *)vs);
         lg_.SetGlobalBuffer((__gm__ float *)lse);
         qg_.SetGlobalBuffer((__gm__ T *)q);
         og_.SetGlobalBuffer((__gm__ T *)out);
@@ -57,9 +54,7 @@ public:
         x_ = resource_->ubBuf.GetBufferByByte<float>(X_UB);
         red_ = resource_->ubBuf.GetBufferByByte<float>(RED_UB);
         work_ = resource_->ubBuf.GetBufferByByte<float>(WORK_UB);
-        vsu_ = resource_->ubBuf.GetBufferByByte<float>(VS_UB);
         mu_ = resource_->ubBuf.GetBufferByByte<float>(MU_UB);
-        vmu_ = resource_->ubBuf.GetBufferByByte<float>(VMU_UB);
         qi_ = resource_->ubBuf.GetBufferByByte<T>(QI_UB);
         qo_ = resource_->ubBuf.GetBufferByByte<T>(P_UB);
         qsu_ = resource_->ubBuf.GetBufferByByte<half>(QS_UB);
@@ -71,11 +66,7 @@ public:
     {
         Sync<HardEvent::V_MTE2>();
         Duplicate(accum_, 0.0f, HALF * params_.dp);
-        DataCopy(vsu_, vsg_[(uint64_t(b) * params_.hk + kh) * params_.dp], params_.dp);
         DataCopy(mu_, mg_[(uint64_t(b) * params_.hk + kh) * params_.dp], params_.dp);
-        if (params_.smoothV)
-            DataCopy(vmu_, mg_[(uint64_t(params_.b) * params_.hk + uint64_t(b) * params_.hk + kh) * params_.dp],
-                     params_.dp);
         DataCopy(qsu_, qsg_[qb + qstart + subBlockIdx_ * HALF], HALF);
         Sync<HardEvent::MTE2_S>();
         Duplicate(maxima_, half(-65504.0f), 128);
@@ -170,13 +161,10 @@ public:
         if constexpr (FusedCast) {
             NormalizeCastVF<T, DP>(
                 (__ubuf__ T *)qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
-                (__ubuf__ float *)vsu_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
-                (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr(),
-                params_.smoothV ? (__ubuf__ float *)vmu_.GetPhyAddr() : nullptr);
+                (__ubuf__ float *)denom_.GetPhyAddr(),
+                (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(SUM_UB).GetPhyAddr());
         } else {
-            NormalizeVF((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)vsu_.GetPhyAddr(),
-                        (__ubuf__ float *)denom_.GetPhyAddr(), params_.dp, HALF,
-                        params_.smoothV ? (__ubuf__ float *)vmu_.GetPhyAddr() : nullptr);
+            NormalizeVF((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(), params_.dp, HALF);
             PipeBarrier<PIPE_V>();
             Cast(qo_, accum_, RoundMode::CAST_RINT, HALF * params_.dp);
         }
@@ -225,9 +213,7 @@ protected:
     static constexpr uint32_t X_UB = Layout::X_UB;
     static constexpr uint32_t RED_UB = Layout::RED_UB;
     static constexpr uint32_t WORK_UB = Layout::WORK_UB;
-    static constexpr uint32_t VS_UB = Layout::VS_UB;
     static constexpr uint32_t MU_UB = Layout::MU_UB;
-    static constexpr uint32_t VMU_UB = Layout::VMU_UB;
     static constexpr uint32_t QI_UB = Layout::QI_UB;
     static constexpr uint32_t P_UB = Layout::P_UB;
     static constexpr uint32_t QS_UB = Layout::QS_UB;
@@ -243,9 +229,9 @@ protected:
     SageParams params_;
     uint32_t subBlockIdx_;
     GlobalTensor<half> qsg_, ksg_;
-    GlobalTensor<float> mg_, vsg_, lg_;
+    GlobalTensor<float> mg_, lg_;
     GlobalTensor<T> qg_, og_;
-    LocalTensor<float> accum_, x_, red_, work_, vsu_, mu_, vmu_, denom_;
+    LocalTensor<float> accum_, x_, red_, work_, mu_, denom_;
     LocalTensor<half> qsu_, maxima_;
     LocalTensor<T> qi_, qo_;
 };

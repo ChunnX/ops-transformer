@@ -19,7 +19,7 @@ template <class T, uint32_t DP>
 class AttentionKernel {
 public:
     __aicore__ inline __attribute__((always_inline)) void Init(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
-                                                               GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR vs,
+                                                               GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR mxScale,
                                                                GM_ADDR out, GM_ADDR lse, SageParams params)
     {
         static_assert(DP == 64 || DP == 128, "unsupported padded head dimension");
@@ -28,11 +28,13 @@ public:
         q8_ = q8;
         k8_ = k8;
         v8_ = v8;
-        vector_.Init(resource_, q, qs, ks, mean, vs, out, lse, params_);
+        vsmx_ = mxScale;
+        vector_.Init(resource_, q, qs, ks, mean, out, lse, params_);
     }
     __aicore__ inline __attribute__((always_inline)) void Process()
     {
         auto &r = resource_;
+        MxScaleCache mxCache;
         SageParams p = params_;
         GM_ADDR q8 = q8_;
         GM_ADDR k8 = k8_;
@@ -42,6 +44,7 @@ public:
             core /= 2;
         }
         if ASCEND_IS_AIC {
+            InitMxP(r);
             SetFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
             SetFlag<HardEvent::MTE1_MTE2>(PV_EVENT);
             SetFlag<HardEvent::M_MTE1>(QK_EVENT);
@@ -50,8 +53,10 @@ public:
             SetFlag<HardEvent::FIX_M>(PV_EVENT);
         }
         uint32_t tiles = (p.sq + M - 1) / M;
-        for (uint64_t task = core; task < uint64_t(p.b) * p.hq * tiles; task += p.cores) {
-            uint32_t tile = task % tiles, h = (task / tiles) % p.hq, b = task / tiles / p.hq, kh = h / (p.hq / p.hk);
+        const uint64_t taskEnd = DieTaskEnd(p, uint64_t(p.b) * p.hq * tiles, core);
+        for (uint64_t task = core; task < taskEnd; task += p.cores) {
+            const uint64_t mapped = UseDieGroups(p) ? DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores) : task;
+            uint32_t tile = mapped % tiles, h = (mapped / tiles) % p.hq, b = mapped / tiles / p.hq, kh = h / (p.hq / p.hk);
             uint32_t qstart = tile * M;
             uint64_t qb = (uint64_t(b) * p.hq + h) * p.qp, kb = (uint64_t(b) * p.hk + kh) * p.kp;
             if ASCEND_IS_AIV {
@@ -83,7 +88,8 @@ public:
                         }
                         Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true>(
                             r, v8, v8 + (kb + (step - LOOKAHEAD) * N) * p.dp, N, p.dp,
-                            PV_UB + ((step - LOOKAHEAD) % PV_SLOTS) * PV_SLOT_BYTES, previous);
+                            PV_UB + ((step - LOOKAHEAD) % PV_SLOTS) * PV_SLOT_BYTES, previous, true,
+                            vsmx_ + (kb + (step - LOOKAHEAD) * N) / 32 * p.dp, &mxCache, p.kp, (step - LOOKAHEAD) * N);
                         Notify(PV_READY);
                     }
                 } else {
@@ -124,33 +130,35 @@ private:
     GM_ADDR q8_;
     GM_ADDR k8_;
     GM_ADDR v8_;
+    GM_ADDR vsmx_;
 };
 template <class T, uint32_t DP>
 __aicore__ inline __attribute__((always_inline)) void AttentionImpl(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
-                                                                    GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR vs,
-                                                                    GM_ADDR out, GM_ADDR lse, SageParams params)
+                                                                    GM_ADDR qs, GM_ADDR ks, GM_ADDR mean,
+                                                                    GM_ADDR mxScale, GM_ADDR out, GM_ADDR lse,
+                                                                    SageParams params)
 {
     AttentionKernel<T, DP> kernel;
-    kernel.Init(q, q8, k8, v8, qs, ks, mean, vs, out, lse, params);
+    kernel.Init(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, params);
     kernel.Process();
 }
 template <class T, bool WIDE>
 __aicore__ inline __attribute__((always_inline)) void Attention(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
-                                                                GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR vs,
+                                                                GM_ADDR qs, GM_ADDR ks, GM_ADDR mean, GM_ADDR mxScale,
                                                                 GM_ADDR out, GM_ADDR lse, SageParams p)
 {
     // Joint N512 uses NZ softmax on aligned prefill, including the causal frontier.
     if constexpr (WIDE) {
         if (p.causal)
-            AttentionWideStream<T, true>(q, q8, k8, v8, qs, ks, mean, vs, out, lse, p);
+            AttentionWideStream<T, true>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
         else
-            AttentionWideStream<T>(q, q8, k8, v8, qs, ks, mean, vs, out, lse, p);
+            AttentionWideStream<T>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
     } else {
         // Select a dimension once, before the steady-state Cube/Vector pipeline.
         if (p.dp == 128)
-            AttentionImpl<T, 128>(q, q8, k8, v8, qs, ks, mean, vs, out, lse, p);
+            AttentionImpl<T, 128>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
         else
-            AttentionImpl<T, 64>(q, q8, k8, v8, qs, ks, mean, vs, out, lse, p);
+            AttentionImpl<T, 64>(q, q8, k8, v8, qs, ks, mean, mxScale, out, lse, p);
     }
 }
 } // namespace Sage

@@ -11,6 +11,8 @@
 import argparse
 import csv
 import json
+import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,13 +29,22 @@ def main():
         choices=[c[0] for c in ALL_CASES],
         default=[c[0] for c in ALL_CASES if c[0].startswith("P-")],
     )
-    parser.add_argument("--warmup", type=int, default=20)
-    parser.add_argument("--repeats", type=int, default=50)
+    parser.add_argument(
+        "--warmup-seconds", type=float, default=10.0
+    )
+    parser.add_argument(
+        "--repeats", type=int, default=int(os.environ.get("SAGEATTN_PERF_ITERS", "20"))
+    )
     parser.add_argument("--smooth-v", action="store_true")
     parser.add_argument("--seq", type=int)
     args = parser.parse_args()
-    if args.warmup < 1 or args.repeats < 1 or (args.seq is not None and args.seq < 1):
-        parser.error("warmup, repeats and context length must be positive")
+    if (
+        not math.isfinite(args.warmup_seconds)
+        or args.warmup_seconds <= 0
+        or args.repeats < 1
+        or (args.seq is not None and args.seq < 1)
+    ):
+        parser.error("warmup-seconds must be finite and positive; repeats and context length must be positive")
     root = Path(__file__).resolve().parent
     output_root = args.output.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -51,8 +62,8 @@ def main():
             str(root / "profile_performance.py"),
             "--case",
             name,
-            "--warmup",
-            str(args.warmup),
+            "--warmup-seconds",
+            str(args.warmup_seconds),
             "--repeats",
             str(args.repeats),
             "--output",
@@ -62,7 +73,7 @@ def main():
             command.append("--smooth-v")
         if args.seq is not None:
             command += ["--seq", str(args.seq)]
-        print(f"Benchmarking {name} with torch.npu.Event: Sage then FIA", flush=True)
+        print(f"Benchmarking {name} with torch.npu.Event: FIA then Sage", flush=True)
         with (directory / "run.log").open("w") as log:
             subprocess.run(
                 command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=900
@@ -78,8 +89,8 @@ def main():
             "dtype": result["dtype"],
             "causal": result["causal"],
             "smooth_v": result["smooth_v"],
-            "sage_ms": result["event"]["sage"]["median_us"] / 1000,
-            "fia_ms": result["event"]["fia"]["median_us"] / 1000,
+            "sage_ms": result["event"]["sage"]["mean_us"] / 1000,
+            "fia_ms": result["event"]["fia"]["mean_us"] / 1000,
             "speedup": result["event_speedup"],
             "max_abs_vs_fia": result["max_abs_vs_fia"],
             "rmse_vs_fia": result["rmse_vs_fia"],
@@ -94,8 +105,8 @@ def main():
         (output_root / "summary.json").write_text(
             json.dumps(
                 {
-                    "timing": "torch.npu.Event median; each complete public API call",
-                    "warmup": args.warmup,
+                    "timing": "torch.npu.Event batch total / repeats; complete public API calls",
+                    "warmup_seconds": args.warmup_seconds,
                     "repeats": args.repeats,
                     "cases": rows,
                 },

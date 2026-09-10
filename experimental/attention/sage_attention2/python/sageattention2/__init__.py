@@ -6,7 +6,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-"""SageAttention2 Ascend 950: per-token INT8 QK, FP8 PV, FP32 accumulation."""
+"""SageAttention2 Ascend 950: per-token INT8 QK, MXFP8 PV, FP32 accumulation."""
 
 import torch
 
@@ -14,8 +14,8 @@ import torch
 def _validate(q, k, v, layout, causal, gran, kwargs):
     if layout not in ("HND", "NHD"):
         raise ValueError("tensor_layout must be HND or NHD")
-    if gran != "per_token":
-        raise ValueError("only per_token Q/K quantization is supported")
+    if gran not in ("per_token", "per_thread", "per_warp"):
+        raise ValueError("qk_quant_gran must be per_token, per_thread or per_warp")
     if kwargs.pop("attn_mask", None) is not None:
         raise ValueError("attn_mask is unsupported")
     if kwargs.pop("dropout_p", 0.0) != 0:

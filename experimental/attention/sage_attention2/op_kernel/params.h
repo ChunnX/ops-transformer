@@ -11,11 +11,9 @@
 #pragma once
 #include <cstdint>
 // Seven partitions make 8/32/64 KV heads occupy whole waves of 56 AIV.
-inline constexpr uint32_t SAGE_STATS_SPLITS = 7;
 struct SageParams {
     uint32_t b, hq, hk, sq, sk, d, dp, qp, kp, cores;
     uint32_t bf16, causal, smoothK, returnLse;
-    float smScale, vMax;
+    float smScale;
     uint64_t qs[3], ks[3], vs[3]; // canonical B,H,S strides, in elements
-    uint32_t smoothV = 0;
 };

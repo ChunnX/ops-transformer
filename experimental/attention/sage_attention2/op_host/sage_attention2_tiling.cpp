@@ -74,19 +74,14 @@ ge::graphStatus Tile(gert::TilingContext *c)
     p.kp = (p.sk + 511) / 512 * 512;
     const auto *attrs = c->GetAttrs();
     auto sm = attrs->GetAttrPointer<float>(0);
-    auto vm = attrs->GetAttrPointer<float>(1);
-    auto smooth = attrs->GetAttrPointer<bool>(2);
-    auto causal = attrs->GetAttrPointer<bool>(3);
-    auto lse = attrs->GetAttrPointer<bool>(4);
-    auto smoothV = attrs->GetAttrPointer<bool>(5);
-    if (!sm || !vm || !smooth || !causal || !lse || !smoothV || !std::isfinite(*sm) || *vm != 448.0f ||
-        (*causal && p.sq != p.sk)) {
+    auto smooth = attrs->GetAttrPointer<bool>(1);
+    auto causal = attrs->GetAttrPointer<bool>(2);
+    auto lse = attrs->GetAttrPointer<bool>(3);
+    if (!sm || !smooth || !causal || !lse || !std::isfinite(*sm) || (*causal && p.sq != p.sk)) {
         return Failure(__LINE__);
     }
     p.smScale = *sm;
-    p.vMax = *vm;
     p.smoothK = *smooth;
-    p.smoothV = *smoothV;
     p.causal = *causal;
     p.returnLse = *lse;
     p.bf16 = dt == ge::DT_BF16;
@@ -154,14 +149,10 @@ ge::graphStatus Tile(gert::TilingContext *c)
         bytes += size;
         return true;
     };
-    const bool splitStats = p.smoothV || (p.d == p.dp && p.sk >= 1024);
-    if (!allocate(t.mean, {p.smoothV ? 2ULL : 1ULL, p.b, p.hk, p.dp, sizeof(float)}) ||
-        !allocate(t.vScale, {p.b, p.hk, p.dp, sizeof(float)}) || !allocate(t.q8, {p.b, p.hq, p.qp, p.dp}) ||
-        !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) ||
-        !allocate(t.qScale, {p.b, p.hq, p.qp, sizeof(uint16_t)}) ||
-        !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)}) ||
-        !allocate(t.partials,
-                  {splitStats ? SAGE_STATS_SPLITS : 0, p.b, p.hk, p.smoothV ? 4ULL : 2ULL, p.dp, sizeof(float)})) {
+    if (!allocate(t.mean, {p.b, p.hk, p.dp, sizeof(float)}) || !allocate(t.vMxScale, {p.b, p.hk, p.kp / 32, p.dp}) ||
+        !allocate(t.q8, {p.b, p.hq, p.qp, p.dp}) || !allocate(t.k8, {p.b, p.hk, p.kp, p.dp}) ||
+        !allocate(t.v8, {p.b, p.hk, p.kp, p.dp}) || !allocate(t.qScale, {p.b, p.hq, p.qp, sizeof(uint16_t)}) ||
+        !allocate(t.kScale, {p.b, p.hk, p.kp, sizeof(uint16_t)})) {
         return Failure(__LINE__);
     }
     // dav3510 GetUserWorkspace skips the CANN system workspace prefix.

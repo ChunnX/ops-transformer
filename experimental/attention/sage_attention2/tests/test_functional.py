@@ -70,7 +70,7 @@ def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
     actual, al = sageattn_qk_int8_pv_fp8_asc(*device_inputs, **opts)
     torch.npu.synchronize()
     expected, el = reference.attention(
-        q, k, v, tensor_layout=layout, sm_scale=scale, return_lse=True, v_max=448.0
+        q, k, v, tensor_layout=layout, sm_scale=scale, return_lse=True
     )
     assert_quantized_close(actual.cpu(), expected)
     # CPU and device quantization can also shift LSE slightly.
@@ -80,8 +80,7 @@ def test_layout_dtype_tail(dtype, layout, d, sq, sk, scale):
 @pytest.mark.parametrize(
     "bad",
     [
-        {"qk_quant_gran": "per_thread"},
-        {"qk_quant_gran": "per_warp"},
+        {"qk_quant_gran": "invalid"},
         {"dropout_p": 0.1},
         {"attn_mask": torch.ones(1)},
     ],

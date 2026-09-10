@@ -36,11 +36,9 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("sm_scale").AttrType(REQUIRED).Float();
-        this->Attr("v_max").AttrType(REQUIRED).Float();
         this->Attr("smooth_k").AttrType(REQUIRED).Bool();
         this->Attr("is_causal").AttrType(REQUIRED).Bool();
         this->Attr("return_lse").AttrType(REQUIRED).Bool();
-        this->Attr("smooth_v").AttrType(REQUIRED).Bool();
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true)
             .DynamicShapeSupportFlag(true)

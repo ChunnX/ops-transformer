@@ -24,7 +24,9 @@ def test_output_without_lse(dtype, causal, seq):
     v = torch.randn_like(k)
     out = sageattn(q, k, v, is_causal=causal)
     with_lse, _ = sageattn(q, k, v, is_causal=causal, return_lse=True)
-    torch.testing.assert_close(out.cpu(), with_lse.cpu(), atol=0, rtol=0)
+    # Atomic K mean reduction may change quantization-boundary rounding.
+    tol = 2 ** (-9 if dtype == torch.float16 else -6)
+    torch.testing.assert_close(out.cpu(), with_lse.cpu(), atol=tol, rtol=tol)
     qc, kc, vc = [t.cpu().float() for t in (q, k, v)]
     truth = torch.nn.functional.scaled_dot_product_attention(
         qc, kc, vc, is_causal=causal, enable_gqa=True

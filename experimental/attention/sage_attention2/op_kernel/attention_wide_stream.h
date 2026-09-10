@@ -25,6 +25,8 @@ __aicore__ inline __attribute__((always_inline)) WideFragmentInfo DecodeWideQuer
     WideFragmentInfo info;
     const uint32_t tiles = p.sq / M;
     info.task = task;
+    if (UseDieGroups(p))
+        task = DieTask(task, uint64_t(p.b) * p.hq * tiles, p.cores);
     info.ordinal = ordinal;
     info.qstart = (task % tiles) * M;
     info.h = (task / tiles) % p.hq;
@@ -54,8 +56,8 @@ __aicore__ inline __attribute__((always_inline)) uint64_t WideScaleAhead(const S
 }
 template <class T, bool CAUSAL>
 __aicore__ inline __attribute__((always_inline)) void ProcessWideStreamStep(
-    FixedResource &r, AttentionBlockVecWide<T, 128> &vector, WideFragmentInfo *pending,
-    uint64_t fragment, bool hasQk, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, const SageParams &p, uint64_t totalTasks)
+    FixedResource &r, AttentionBlockVecWide<T, 128> &vector, WideFragmentInfo *pending, uint64_t fragment, bool hasQk,
+    GM_ADDR q8, GM_ADDR k8, GM_ADDR v8, GM_ADDR vsmx, MxScaleCache &mxCache, const SageParams &p, uint64_t totalTasks)
 {
     constexpr uint32_t DP = 128, WIDE_B_L1 = P_L1 + 4 * M * N;
     if (hasQk) {
@@ -88,11 +90,13 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideStreamStep(
                     CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE + AIV_FLAG_OFFSET);
                 }
                 Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, true, false>(
-                    r, v8, v8 + (old.kb + old.part * N) * DP, N, DP, pvOffset, parity);
+                    r, v8, v8 + (old.kb + old.part * N) * DP, N, DP, pvOffset, parity, true,
+                    vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N);
                 Notify(PV_READY);
             } else {
                 Gemm<float8_e4m3_t, Catlass::layout::RowMajor, true, WIDE_B_L1, false, true>(
-                    r, v8, v8 + (old.kb + old.part * N) * DP, N, DP, pvOffset, parity);
+                    r, v8, v8 + (old.kb + old.part * N) * DP, N, DP, pvOffset, parity, true,
+                    vsmx + (old.kb + old.part * N) / 32 * DP, &mxCache, p.kp, old.part * N);
             }
         } else {
             if (previous & 1) {
@@ -109,20 +113,22 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideStreamStep(
 template <class T, bool CAUSAL = false>
 __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADDR q, GM_ADDR q8, GM_ADDR k8, GM_ADDR v8,
                                                                           GM_ADDR qs, GM_ADDR ks, GM_ADDR mean,
-                                                                          GM_ADDR vs, GM_ADDR out, GM_ADDR lse,
+                                                                          GM_ADDR mxScale, GM_ADDR out, GM_ADDR lse,
                                                                           SageParams p)
 {
     FixedResource r;
+    MxScaleCache mxCache;
     AttentionBlockVecWide<T, 128> vector;
-    vector.Init(r, q, qs, ks, mean, vs, out, lse, p);
+    vector.Init(r, q, qs, ks, mean, out, lse, p);
     uint32_t core = GetBlockIdx();
     if ASCEND_IS_AIV {
         core /= 2;
     }
-    const uint64_t totalTasks = uint64_t(p.b) * p.hq * (p.sq / M);
+    const uint64_t totalTasks = DieTaskEnd(p, uint64_t(p.b) * p.hq * (p.sq / M), core);
     if (core >= totalTasks)
         return;
     if ASCEND_IS_AIC {
+        InitMxP(r);
         SetFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
         SetFlag<HardEvent::MTE1_MTE2>(PV_EVENT);
         SetFlag<HardEvent::M_MTE1>(QK_EVENT);
@@ -142,12 +148,14 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         for (uint32_t part = 0; part < current.count * 2; ++part, ++fragment) {
             current.part = part;
             pending[fragment & 3] = current;
-            ProcessWideStreamStep<T, CAUSAL>(r, vector, pending, fragment, true, q8, k8, v8, p, totalTasks);
+            ProcessWideStreamStep<T, CAUSAL>(r, vector, pending, fragment, true, q8, k8, v8, mxScale, mxCache, p,
+                                             totalTasks);
         }
     }
     // Drain once at the end of the complete stream, including a one-group core.
     for (uint32_t tail = 0; tail < 3; ++tail)
-        ProcessWideStreamStep<T, CAUSAL>(r, vector, pending, fragment + tail, false, q8, k8, v8, p, totalTasks);
+        ProcessWideStreamStep<T, CAUSAL>(r, vector, pending, fragment + tail, false, q8, k8, v8, mxScale, mxCache, p,
+                                         totalTasks);
     if ASCEND_IS_AIC {
         for (uint32_t i = 0; i < Min(uint64_t(2), fragment / 2); ++i) {
             CrossCoreWaitFlag<4, PIPE_FIX>(PV_RELEASE);

@@ -12,8 +12,7 @@
 #include "params.h"
 
 // Byte offsets relative to GetUserWorkspace(), aligned to 512 bytes.
-// Keep the diagnostic SageParams ABI independent of the registered operator.
 struct SageAttention2TilingData {
     SageParams params;
-    uint64_t mean, vScale, q8, k8, v8, qScale, kScale, partials;
+    uint64_t mean, vMxScale, q8, k8, v8, qScale, kScale;
 };
