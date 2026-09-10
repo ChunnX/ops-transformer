@@ -66,7 +66,7 @@ bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
     // 参照 AlltoAllMatmul 的 MX 切 apace 策略：
     // rank 数与段数在当前 APACE tiling 表容量内时切换 hcomm 纯 C 核实现。
     // permute_out 由 AllToAllV 直接接收到 expert-major 偏移；共享专家复用 Blaze MX GMM。
-    if (epWorldSize_ == 0 || epWorldSize_ > Apace::A2AV_GMM_MAX_RANK_NUM) {
+    if (epWorldSize_ == 0 || epWorldSize_ > A2AV_GMM_MAX_RANK_NUM) {
         return false;
     }
     if (e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
