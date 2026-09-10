@@ -50,6 +50,7 @@ constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
 constexpr uint8_t LOCAL_COPY_BUFFER_NUM = 2U;
+constexpr uint8_t MAX_COPY_TOKEN_NUM = 2U;
 constexpr uint32_t DATA_COPY_MAX_BLOCK_COUNT = 4095U;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
@@ -213,6 +214,7 @@ private:
     GM_ADDR statusDataSpaceGM_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
+	uint32_t loopIndex_{0};
     uint32_t syncFlagId_{0};
     uint8_t sendTokenBufNum_{0};
     uint32_t axisBS_{0};
@@ -274,6 +276,7 @@ private:
     uint32_t recStatusNumPerCore_{0};
     uint32_t aivUsedCumSum_{0};
     uint32_t aivUsedAllToAll_{0};
+    uint32_t aivUsedLocalCopy_{0};
     uint32_t maxSize_{0};
     uint32_t expertIdsSize_{0};
     uint32_t globalBS_{0};
@@ -388,13 +391,15 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     aivUsedCumSum_ = (aivUsedCumSum_ >= CUMSUM_MAX_CORE_NUM) ? CUMSUM_MAX_CORE_NUM : aivUsedCumSum_;
     // 确保每个核至少处理一个状态
     aivUsedCumSum_ = (aivUsedCumSum_ >= rscvStatusNum_) ? rscvStatusNum_ : aivUsedCumSum_;
-    aivUsedAllToAll_ = aivNum_ - aivUsedCumSum_;
+    aivUsedAllToAll_ = aivNum_ / 2; // 收发并行各占一半核
     if (sharedExpertRankNum_ != 0U) {
         sharedUsedAivNum_ = (aivUsedAllToAll_ * sharedExpertNum_) / (axisK_ + sharedExpertNum_);
         if (sharedUsedAivNum_ == 0) {
             sharedUsedAivNum_ = 1;
         }
     }
+
+    aivUsedLocalCopy_ = aivNum_ - aivUsedAllToAll_; // 用来接收的核数
     moeUsedAivNum_ = aivUsedAllToAll_ - sharedUsedAivNum_;
 }
 
@@ -413,6 +418,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint64_t hSizeAlignCombine = Ceil(axisH_ * COMBINE_IN_DATA_SIZE, SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
     winDataSizeOffset_ =
         dataState_ * (totalWinSize_ / BUFFER_NUM) + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
+    // 	loopIndex_ = opCnt 作为收齐的标志，免去flag清零
+    LocalTensor<uint64_t> opCntTensor = dataStateBuf.Get<uint64_t>();
+	loopIndex_ = opCntTensor.GetValue(OP_CNT_POSUL);
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -558,7 +566,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint32_t remainderTokenNum = curSendCnt % curUseAivNum; // 余数
     uint32_t newAivId;
     if (isFront) {
-        newAivId = aivId_;
+        newAivId = aivId_ - aivUsedAllToAll_; // 收发并行, 后面aivUsedLocalCopy_核用来接收
     } else if (aivId_ >= aivUsedAllToAll_) { // aiv中后面aivUsedCumSum_个核给cusum计算使用
         newAivId = aivId_ - aivUsedAllToAll_;
     } else {
@@ -630,7 +638,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 {
     // 按Token分核
     LocalTensor<float> outTensorFp32 = outBuf.Get<float>();
-    Duplicate<float>(outTensorFp32, float(1), hCommuSize_ * sendTokenBufNum_ / sizeof(float));
+    Duplicate<float>(outTensorFp32, float(loopIndex_), hCommuSize_ * sendTokenBufNum_ / sizeof(float));
     uint32_t validTokenNum = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
     syncFlagId_ = 0;
 
@@ -1262,7 +1270,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     DataCopyPad(sendCntTensor_, workspaceGlobal[aivId_ * rscvStatusNum_], scalesCopyInParams, copyPadExtParams);
     PipeBarrier<PIPE_ALL>();
 
-    if (aivId_ == 0) {
+    // 收发并行, 后面aivUsedLocalCopy_个接收，第1个接收核id为aivUsedAllToAll_
+    if (aivId_ == aivUsedAllToAll_) {
         uint32_t localExpertNum = isShareExpertRankFlag_ ? 1 : moeExpertNumPerRank_;
         int64_t lastVal = 0;
         uint32_t tokenNumBufSize = Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
@@ -1316,7 +1325,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMe
     ReduceSum(flagSumOutTensor, flagRecvTensor_, flagReduceWorkTensor_, 1U, flagNum, 1U);
     SyncFunc<AscendC::HardEvent::V_S>();
     // aicore禁止uint->float的显式转换，借助浮点乘法隐式转换得到期望和
-    float expectFlagSum = 1.0F * flagNum;
+    // 作为收齐的标志，免去flag清零
+    float expectFlagSum = float(loopIndex_) * flagNum;
     return flagSumOutTensor.GetValue(0) == expectFlagSum ? static_cast<uint32_t>(copyCnt) : 0U;
 }
 
@@ -1460,6 +1470,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         }
         --maxCopyTokenCnt;
     }
+    maxCopyTokenCnt = (maxCopyTokenCnt > MAX_COPY_TOKEN_NUM) ? MAX_COPY_TOKEN_NUM : maxCopyTokenCnt; // 合适的收齐拷贝粒度能提高效率
 
     LocalTensor<XOutType> xTmpPingTensor = tBuf.GetWithOffset<XOutType>(dataBufferSize / sizeof(XOutType), 0);
     LocalTensor<XOutType> xTmpPongTensor =
@@ -1510,7 +1521,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     for (uint32_t dataBufferId = 0; dataBufferId < usedDataBufferNum; ++dataBufferId) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(dataBufferId);
     }
-    ClearLocalWindowDataFlags(tBuf, validNum, localExpertNum);
+    // ClearLocalWindowDataFlags(tBuf, validNum, localExpertNum); // 使用loopIndex_判断收齐免清零
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -1539,7 +1550,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     statusFp32Tensor_ = statusWaitBuf.Get<float>();
     statusCleanFp32Tensor_ = statusCleanBuf.Get<float>();
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
-    SplitToCore(rscvStatusNum_, aivNum_, startId_, endId_, sendNum_, true);
+
+    SplitToCore(rscvStatusNum_, aivUsedLocalCopy_, startId_, endId_, sendNum_, true); // 收发并行，接收核的个数aivUsedLocalCopy_
     // 软同步
     WaitCumSumFlag();
     if (sendNum_ == 0) {
@@ -1819,12 +1831,15 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     if ASCEND_IS_AIV { // 全aiv处理
         if (aivId_ < aivUsedAllToAll_) {
             AllToAllDispatch(); // 前面核all2all发送
-        } else {
+        } else if (aivId_ < aivUsedAllToAll_ + aivUsedCumSum_) {
             CalCumSum(); // 后面核计算前缀和，输出epRecvCnt/exportTokenNums
         }
-        // localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        LocalWindowCopy(); // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+
+        if (aivId_ >= aivUsedAllToAll_) { // 收发并行
+            // localWindowCopy中包含reset操作，需确保前面操作完成
+            PipeBarrier<PIPE_ALL>();
+            LocalWindowCopy(); // 本卡上专家数据连续化，输出expandX/scales/expandIdx
+        }
     }
 }
 
