@@ -90,7 +90,6 @@ private:
     ge::graphStatus GetQShapeInfo();    // bSize/n1Size/s1Size/qTSize/headDimQk
     ge::graphStatus GetKvCacheShapeInfo(); // blockSize/blockNum/n2Size校验
     ge::graphStatus GetS2Size();
-    int64_t CalcMaxSeqFromTensor(const gert::Tensor *tensor, bool isCumulative) const;
 
     const gert::TilingContext *context_ = nullptr;
     const char *opName_ = nullptr;

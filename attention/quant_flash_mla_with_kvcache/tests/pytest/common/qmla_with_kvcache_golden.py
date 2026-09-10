@@ -61,7 +61,7 @@ GRAPH_PATH = 0
 DEVICE_ID = 0
 
 B = 1
-N_q = 12
+N_q = 96
 N_kv = 1
 
 # MLA dims: D_nope + D_rope = qkHeadDim
@@ -73,8 +73,8 @@ QMLA_QUANT_MODE = 1  # 1=FP8_E4M3（mla 新接口）
 QMLA_QK_HEAD_DIM = D + D_rope  # 576 = nope(512) + rope(64)，q/k_cache 沿末维拼接
 QMLA_V_HEAD_DIM = D_V  # 512
 
-SEQUSED_Q = [1]
-CACHE_SEQLENS = [1024]
+SEQUSED_Q = [8] * B
+CACHE_SEQLENS = [102400] * B
 MAX_SEQLEN_Q = -1   # -1 means auto-derive from SEQUSED_Q
 MAX_SEQLEN_KV = -1  # -1 means auto-derive from CACHE_SEQLENS
 # Layout 选择 (TND: query 排布 (T, N_q, D); deq_q 用 TN (T, N_q) 第0维与 query 一致)
@@ -82,7 +82,7 @@ INPUT_LAYOUT = "TND"
 OUTPUT_LAYOUT = "TND"
 
 # PA KV Cache Layout：BnBsH、BnNBsD、NZ
-KV_CACHE_LAYOUT = "BnNBsD"  # 新接口仅支持 PA_BNBD
+KV_CACHE_LAYOUT = "NZ"  # 新接口仅支持 PA_BNBD
 
 # Data Range (lo, hi)
 Q_DATA_RANGE = (-1.0, 1.0)
@@ -944,7 +944,7 @@ def call_npu_fa_op(
         dequant_scale_k.float().reshape(-1)[0].contiguous().view(1).view(-1).npu()
     )
 
-    # cache_seqlens: 每 batch KV 实际长度（非累计）
+    # cache_seqlens: PA场景下为每batch KV实际长度（BY_BATCH模式, 非累积）
     batch_size = len(seqused_q)
     max_sq = MAX_SEQLEN_Q if MAX_SEQLEN_Q > 0 else max(seqused_q)
     max_skv = MAX_SEQLEN_KV if MAX_SEQLEN_KV > 0 else max(cache_seqlens)
