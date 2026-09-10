@@ -1,4 +1,0 @@
-Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
-0,_ZN10ascend_ops3Add10add_kernelIDhEEvPhS2_S2_lljS2_,AI_VECTOR_CORE,606,6181.143,9.58,10.2,35.561,99.684
-0,ZerosLike,AI_VECTOR_CORE,6,11.88,1.54,1.98,2.86,0.192
-0,Fill,AI_VECTOR_CORE,2,7.74,3.7,3.87,4.04,0.125

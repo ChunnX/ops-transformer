@@ -1,4 +1,0 @@
-Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
-0,_Z21incre_flash_attentionILh0ELh1ELh0EEvPhS0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_S0_N8optiling29IncreFlashAttentionTilingDataE,MIX_AIC,1251,12512.248,9.18,10.002,16.54,99.922
-0,ZerosLike,AI_VECTOR_CORE,1,4.92,4.92,4.92,4.92,0.039
-0,Fill,AI_VECTOR_CORE,2,4.84,1.68,2.42,3.16,0.039
