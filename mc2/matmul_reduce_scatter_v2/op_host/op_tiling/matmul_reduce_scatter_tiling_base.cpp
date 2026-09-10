@@ -283,9 +283,9 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
     commMode_ = isAicpu ? TPL_AICPU_COMM_MODE : TPL_CCU_COMM_MODE;
     // AICPU时不走All2All + Vec Reduce通路
-    if (commMode_ == TPL_AICPU_COMM_MODE) {
-        isA2APath_ = false;
-    }
+    // if (commMode_ == TPL_AICPU_COMM_MODE) {
+    isA2APath_ = false;
+    // }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 };
