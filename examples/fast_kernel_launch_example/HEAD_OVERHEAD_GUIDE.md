@@ -255,7 +255,7 @@ examples/fast_kernel_launch_example/
 │   ├── add/                       # test_add / cycle_test / compile_kernel / test_tail_return（for 体内 return 死代码与 tail 块开销的历史探索结论）
 │   ├── grouped_matmul/test_groupedmatmul.py
 │   └── incre_flash_attention/     # test.py + run_head_overhead.sh + analyze_head_overhead.py
-├── disasm/                        # 三算子 device 反汇编产物 (A5/A3 两平台, 含 add 关 DCCI 对照版)
+├── disasm/                        # 三算子 device 反汇编产物 (A5/A3 两平台, 含 add 关 DCCI 对照版; A3 仅归档 txt, IFA 对应当前全量执行形态)
 ├── scan_replay.py                 # NPUGraph capture 101 次连发 + 多拍 replay + 逐 block 打点 dump
 ├── parse_stars_log.py             # STARS dispatch 事件解析
 ├── parse_ffts_pmu.py              # ffts_profile PMU 解析（核侧 pmu_start/pmu_end 时戳）
