@@ -45,12 +45,12 @@ struct TndC4aParams {
         TensorDesc({optiling::SMLA_METADATA_TOTAL_SIZE}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
 };
 
-aclnnStatus RunParamsCheck(const TndC4aParams &params, const aclTensor *cmpResidualKv)
+aclnnStatus RunParamsCheck(const TndC4aParams &params, const aclTensor *cmpResidualKv, int64_t cmpTopk = CMP_TOPK)
 {
     return ParamsCheck(params.cuSeqlensQ.get(), params.cuSeqlensOriKv.get(), params.cuSeqlensCmpKv.get(),
                        nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, NUM_HEADS_Q, NUM_HEADS_KV,
                        HEAD_DIM, BATCH_SIZE, MAX_SEQLEN_Q, MAX_SEQLEN_ORI_KV, MAX_SEQLEN_CMP_KV, ORI_TOPK,
-                       CMP_TOPK, CMP_RATIO, ORI_MASK_MODE, CMP_MASK_MODE, ORI_WIN_LEFT, ORI_WIN_RIGHT, "TND",
+                       cmpTopk, CMP_RATIO, ORI_MASK_MODE, CMP_MASK_MODE, ORI_WIN_LEFT, ORI_WIN_RIGHT, "TND",
                        "TND", true, true, AIC_CORE_NUM, AIV_CORE_NUM, "Ascend910B", params.metadata.get());
 }
 } // namespace
@@ -77,4 +77,18 @@ TEST_F(SparseFlashMlaMetadataApiTest, cmp_residual_kv_batch_must_match)
     auto wrongBatchResidual = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ToAclType();
 
     EXPECT_EQ(RunParamsCheck(params, wrongBatchResidual.get()), ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(SparseFlashMlaMetadataApiTest, a2_a3_accepts_cmp_topk_upper_bound)
+{
+    TndC4aParams params;
+
+    EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), 8192), ACLNN_SUCCESS);
+}
+
+TEST_F(SparseFlashMlaMetadataApiTest, a2_a3_rejects_cmp_topk_above_upper_bound)
+{
+    TndC4aParams params;
+
+    EXPECT_EQ(RunParamsCheck(params, params.cmpResidualKv.get(), 8193), ACLNN_ERR_PARAM_INVALID);
 }
