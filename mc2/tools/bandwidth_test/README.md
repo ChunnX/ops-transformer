@@ -281,14 +281,14 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 `min(BS, tiling最大值)`，因此放得下时一次提交，否则按最大容量分批。
 单 rank 流量为 `N * BS * (world_size - 1) * H * 2`，带宽分子使用该实际发送量，不包含 flag。
 本卡跳过；允许 `BS >= 1`，仍要求 `bs == max_bs` 和 `world_size > 1`。
-接收区按来源 rank 和 Jetty 分配完整 BS 槽位；同一 shape 的 Win 需求会随 Jetty 数增长。
+接收区由所有来源 rank 和 Jetty 共用，允许覆盖；同一 shape 的 Win 容量不随卡数或 Jetty 数增长。
 
 共享 Jetty 模式 4 忽略配置的 `shared_jetty_num`，脚本建立 `world_size - 1` 个 Jetty，并按跳过本卡的
 rank 顺序一一绑定远端卡。每个 Jetty 向负责卡发送完整 BS，单 rank 流量为
 `BS * (world_size - 1) * H * 2`。有效批量为
 `min(batch_tokens or BS, BS, tiling最大值)`，超过 BS 或最大容量时直接取对应上限。
 
-kernel 直接从已注册 Win 的只读源区向远端独立接收区逐 token 调用 Batch Write，
+kernel 直接从已注册 Win 的只读源区向远端公共接收区逐 token 调用 Batch Write，
 只分配 WQE buffer，不读取 x 或目标 ID，不做 token 搬运、统计、输出拷贝或双缓冲初始化。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置，完全使用 SDK 默认值。
 所有 URMA 模式通过公开 Hcomm 接口提交通信，不读取 channel entity、队列深度或 handle 内部字段。
@@ -304,9 +304,11 @@ flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 
 普通 URMA 路径改变核数需要重建 context；共享 jetty 路径使用公共双缓冲位，同步完成后可以改变
 `aiv_num`，但仍须满足 `aiv_num >= shared_jetty_num`。
 此模式不校验数据内容，y 和 receive_cnt 不保证有效；脚本不初始化输入内容、不保存或回传无效输出。
-输出 tensor 形状沿用接口约定。模式 2 的窗口最小值为 `1 MiB + 2 * BS * H * 2`；
-模式 3 为 `1 MiB + (1 + world_size*N)*BS*H*2`；
-模式 4 为 `1 MiB + (world_size+1)*BS*H*2`。
+输出 tensor 形状沿用接口约定。模式 2/3/4 的窗口最小值统一为 `1 MiB + 2 * BS * H * 2`：
+前 1 MiB 为状态区，随后是 BS 个 token 的只读源区，再后是 BS 个 token 的公共接收区。
+源 token `i` 写入目标接收区的 token `i`；模式 2 保留目标分片和分核规则，模式 3/4 发送完整 BS。
+不执行 `X → UB → Win` 搬运，接收数据允许并发覆盖且不校验；完成 flag 仍按来源和核独立存储。
+带宽分子统计每次实际发送的字节数，包括覆盖写，不使用接收区最终保留的数据量。
 Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag 等待。
 普通 URMA 的模式 2 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 2` 分支执行；
 共享 jetty 使用 `BandwidthTestUrmaSharedJetty` 和共享 tiling key。Win 打流分支的 `Init()` 只读取需要的

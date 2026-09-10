@@ -613,7 +613,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Sen
     uint64_t peerBytes = static_cast<uint64_t>(remaining) * hOutSize_;
     uint64_t sourceBytes = static_cast<uint64_t>(axisBS_) * hOutSize_;
     GM_ADDR src = windowGM_ + STATE_SIZE + rankId * peerBytes;
-    GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + epRankId_ * peerBytes;
+    // All sources overwrite the same receive block at the original token index.
+    GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + rankId * peerBytes;
     while (remaining != 0) {
         uint32_t count = remaining < batchCapacity_ ? remaining : batchCapacity_;
         remaining -= count;

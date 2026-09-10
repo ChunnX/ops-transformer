@@ -146,10 +146,9 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
 - mode 2：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
   总流量口径不变，各 `(源 rank, 核)` 使用独立 epoch flag，空区间仍通知完成。
 - mode 3：N 个 Jetty 都遍历全部远端，每个 Jetty 向每张远端卡发送完整 `BS` 个 token。
-  `batch_tokens` 不生效，实际 batch 取 `min(BS, tiling最大值)`；接收区按
-  `(源 rank, Jetty)` 分槽，避免并发覆盖。
+  `batch_tokens` 不生效，实际 batch 取 `min(BS, tiling最大值)`；所有来源和 Jetty 共用一个 BS 接收区，允许覆盖。
 - mode 4：实际 Jetty 数固定为 `world_size - 1`，每个 Jetty 绑定一张远端卡并发送完整 BS。
-  有效批量为 `min(batch_tokens or BS, BS, tiling最大值)`；接收区按源 rank 分槽。
+  有效批量为 `min(batch_tokens or BS, BS, tiling最大值)`；所有来源共用一个 BS 接收区，允许覆盖。
 - 每个发送核只操作自己的共享 jetty，并在切换 peer 前完成上一批 Drain；同一 Jetty 上的 Channel 不并发使用。
   数据、count、ready 和 epoch 的远端写都使用
   `MakeBatchHandle(MultiChannelHandle) → GetHandleRef(peerIndex) → WriteNbi(batch) → BatchCommit → Drain`。
@@ -356,8 +355,10 @@ flag 位于 Win 的 128 KiB 处（每个来源卡 32B），本核序号位于 16
 `mode=3/4` 仅支持共享 Jetty。mode 3 的每个 Jetty 都向全部远端发送完整 `BS` 个 token，
 按 tiling 最大容量决定一次提交或分批；mode 4 使用 `world_size - 1` 个 Jetty，一对一向远端发送完整 BS。
 mode 3 允许 `BS >= 1`，要求 `bs == max_bs`、`world_size > 1`；本卡跳过。
-其 Win 最小容量为 `1 MiB + (1 + world_size * shared_jetty_num) * BS * H * 2`。
-mode 3/4 与 mode 2 共用 Win 状态区和公开 Hcomm batch 接口，但采用独立的接收槽布局；脚本、Torch 入参检查
+mode 2/3/4 的 Win 最小容量统一为 `1 MiB + 2 * BS * H * 2`，与卡数、Jetty 数无关。
+状态区后依次为 BS 源区和 BS 公共接收区；直接用 Win 地址发送，不将 X 搬入 UB 或 Win。
+源 token `i` 对应目标接收区的 token `i`，所有来源和 Jetty 允许覆盖同一位置；完成 flag 保持独立。
+mode 3/4 与 mode 2 共用 Win 布局和公开 Hcomm batch 接口；脚本、Torch 入参检查
 和 host tiling 使用同一套有效 Jetty 数、批量和 Win 容量公式。
 共享 mode 2/3/4 始终先 Commit/Drain 完整数据批，再单独 Commit/Drain flag，不将 flag 合入 payload 尾批。
 有远端任务的核每次调用递增本核序号；等待时允许对方序号超前一轮，支持 uint32 回绕。

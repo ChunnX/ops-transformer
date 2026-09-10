@@ -121,12 +121,8 @@ def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
     required_bytes = 1024 * 1024 + 2 * (ep_world_size + 1) * test_max_bs * row_bytes
     token_bytes = h * dtype_bytes
     source_bytes = test_max_bs * token_bytes
-    if mode == 2:
+    if mode in WIN_STREAM_MODES:
         required_bytes = 1024 * 1024 + 2 * source_bytes
-    elif mode == 3:
-        required_bytes = 1024 * 1024 + (1 + ep_world_size * effective_shared_jetty_num) * source_bytes
-    elif mode == 4:
-        required_bytes = 1024 * 1024 + (ep_world_size + 1) * source_bytes
     return str((required_bytes + 2 * 1024 * 1024 - 1) // (2 * 1024 * 1024))
 
 

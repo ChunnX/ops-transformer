@@ -94,13 +94,8 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     # Kernel divides the data window in two and reserves one max_bs block per half.
     row_bytes = ((x.size(1) * 2 + 511) // 512) * 512
     required_bytes = 1024 * 1024 + 2 * (world_size + 1) * max_bs * row_bytes
-    if test_mode == 2:
+    if test_mode in (2, 3, 4):
         required_bytes = 1024 * 1024 + 2 * max_bs * x.size(1) * 2
-    elif test_mode == 3:
-        source_bytes = max_bs * x.size(1) * 2
-        required_bytes = 1024 * 1024 + (1 + world_size * shared_jetty_num) * source_bytes
-    elif test_mode == 4:
-        required_bytes = 1024 * 1024 + (world_size + 1) * max_bs * x.size(1) * 2
     torch._check(ccl_buffer_size >= required_bytes,
                  lambda: "HCCL buffer too small; increase HCCL_BUFFSIZE before creating the group")
 

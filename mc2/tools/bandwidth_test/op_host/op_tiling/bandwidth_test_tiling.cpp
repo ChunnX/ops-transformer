@@ -386,15 +386,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
         uint64_t required = MB_SIZE + 2 * (worldSize + 1) * rankBytes;
         uint64_t tokenBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
         uint64_t sourceBytes = static_cast<uint64_t>(tilingData->maxBs) * tokenBytes;
-        if (tilingData->mode == 2) {
-            // One read-only BS block and one disjoint receive block, with compact token rows.
+        if (IsWinStreamMode(tilingData->mode)) {
+            // One read-only BS source and one BS receive block shared by all senders; overwrites are intentional.
             required = MB_SIZE + 2 * sourceBytes;
-        } else if (tilingData->mode == 3) {
-            // Every Jetty sends the full BS block; receive slots are disjoint by source rank and Jetty.
-            required = MB_SIZE + (1 + worldSize * tilingData->sharedJettyNum) * sourceBytes;
-        } else if (tilingData->mode == 4) {
-            // One source BS block plus one complete BS receive block for every source rank.
-            required = MB_SIZE + (worldSize + 1) * sourceBytes;
         }
         OP_TILING_CHECK(static_cast<uint64_t>(*bufferSize) < required,
                         OP_LOGE(nodeName, "Context Win too small: need %lu bytes, got %ld.", required, *bufferSize),

@@ -649,20 +649,17 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     uint32_t remaining = axisBS_;
     uint64_t sourceBytes = static_cast<uint64_t>(axisBS_) * hOutSize_;
     GM_ADDR src = windowGM_ + STATE_SIZE;
-    GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + static_cast<uint64_t>(epRankId_) * sourceBytes;
+    // All sources and Jettys overwrite one BS receive block, separate from the read-only source.
+    GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes;
     if (mode_ == 2) {
         uint32_t peerTokens = axisBS_ / epWorldSize_;
         uint64_t peerBytes = static_cast<uint64_t>(peerTokens) * hOutSize_;
         uint32_t end = 0;
         SplitToCore(peerTokens, sharedJettyNum_, start, end);
         remaining = end - start;
-        dst = remoteWin + STATE_SIZE + sourceBytes + static_cast<uint64_t>(epRankId_) * peerBytes +
-            static_cast<uint64_t>(start) * hOutSize_;
-        src += static_cast<uint64_t>(rankId) * peerBytes + static_cast<uint64_t>(start) * hOutSize_;
-    } else if (mode_ == 3) {
-        // Each Jetty reads the full source block and writes its own receive slot on every remote rank.
-        dst = remoteWin + STATE_SIZE + sourceBytes +
-            (static_cast<uint64_t>(epRankId_) * sharedJettyNum_ + aivId_) * sourceBytes;
+        uint64_t tokenOffsetBytes = static_cast<uint64_t>(rankId) * peerBytes + static_cast<uint64_t>(start) * hOutSize_;
+        src += tokenOffsetBytes;
+        dst += tokenOffsetBytes;
     }
     while (remaining != 0) {
         --remaining;
