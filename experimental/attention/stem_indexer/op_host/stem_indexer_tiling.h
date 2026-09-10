@@ -213,6 +213,16 @@ public:
     void GenerateInfo(StemIndexerTilingInfo &stemInfo);
 
 private:
+    ge::graphStatus CheckBasicAttrValues();
+    ge::graphStatus CheckTopkAttrValues();
+    ge::graphStatus CheckInputShapeDim();
+    ge::graphStatus CheckOutputShapeDim();
+    ge::graphStatus CheckHeadShapeInfo();
+    ge::graphStatus CheckQkvShapesMatch();
+    ge::graphStatus CheckSequenceShapesMatch();
+    ge::graphStatus CheckMetadataShape();
+    ge::graphStatus CheckOutputShapesMatch();
+
     __attribute__((noinline)) bool IsFloatEqual(float lhs, float rhs) const;
     __attribute__((noinline)) bool IsSupportedQHeadNum(uint32_t qHeadNum) const;
     __attribute__((noinline)) bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
@@ -245,6 +255,13 @@ public:
         : context_(context)
     {}
     ge::graphStatus DoTiling(const StemIndexerTilingInfo *tilingInfo);
+
+private:
+    void ConfigureWorkspace(const StemIndexerTilingInfo *tilingInfo,
+                            platform_ascendc::PlatformAscendC &ascendcPlatform, uint32_t aivNum);
+    void FillTilingData(const StemIndexerTilingInfo *tilingInfo,
+                       platform_ascendc::PlatformAscendC &ascendcPlatform, uint32_t blockDim);
+    void ConfigureTilingKey(const StemIndexerTilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
