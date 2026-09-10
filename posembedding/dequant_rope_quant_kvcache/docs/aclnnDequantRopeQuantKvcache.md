@@ -147,7 +147,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
         <td>输入</td>
         <td>公式中用于切分的输入x。</td>
         <td>shape为[B, S, H]或[B, H]，H=(Nq+Nkv+Nkv)*D。x的尾轴小于等于4096，且按64对齐。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、INT32</td>
         <td>ND</td>
         <td>2-3</td>
         <td>√</td>
@@ -455,7 +455,7 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 
 2. cacheModeOptional为contiguous时：kCacheRef的第0维大于x的第0维，indices数据值大于等于0且小于等于vCacheRef的第1维([b，s，n，d]格式中的s)减x的第1维。
 3. cacheModeOptional为page时：indices数据值大于等于0，小于kCacheRef的第0维*第1维且不重复。
-4. 输入x不为INT32时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效。
+4. 输入x为FLOAT16或BFLOAT16时，x、cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时activationScaleOptional，weightScaleOptional、biasOptional不生效。
 5. 输入x为INT32时，cos、sin与输出qOut、kOut、vOut的数据类型保持一致，此时weightScaleOptional必选，activationScaleOptional、biasOptional可选（biasOptional不需要与其他输入类型一致）。
 6. x的尾轴小于等于4096，且按64对齐。
 
