@@ -966,7 +966,8 @@ inline const char *GetAclErrorDetail()
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
-        TORCH_CHECK(workspace_status == 0, "Call " #aclnn_api "GetWorkspaceSize failed, detail: ", GetAclErrorDetail()); \
+        TORCH_CHECK(workspace_status == 0, \
+                    "Call " #aclnn_api "GetWorkspaceSize failed, detail: ", GetAclErrorDetail()); \
         void *workspace_addr = nullptr; \
         at::Tensor workspace_tensor; \
         if (workspace_size != 0) { \
@@ -1015,7 +1016,8 @@ inline const char *GetAclErrorDetail()
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr); \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr); \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
-        TORCH_CHECK(workspace_status == 0, "Call " #aclnn_api "GetWorkspaceSize failed, detail: ", GetAclErrorDetail()); \
+        TORCH_CHECK(workspace_status == 0, \
+                    "Call " #aclnn_api "GetWorkspaceSize failed, detail: ", GetAclErrorDetail()); \
         void *workspace_addr = nullptr; \
         at::Tensor workspace_tensor; \
         if (workspace_size != 0) { \
