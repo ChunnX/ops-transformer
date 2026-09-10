@@ -149,7 +149,7 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
                                                   MmadContext *blockMmadContext)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
-    InitBlockMmad(*blockMmadContext, config);
+    InitBlockMmad<GmmStage::GMM1>(*blockMmadContext, config);
     auto &blockMmad = blockMmadContext->blockMmad;
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
@@ -194,7 +194,7 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
                                           uint16_t &pingpongIdx, MmadContext *blockMmadContext)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
-    InitBlockMmad(*blockMmadContext, config);
+    InitBlockMmad<GmmStage::GMM1>(*blockMmadContext, config);
     auto &blockMmad = blockMmadContext->blockMmad;
 
     using KernelConfig = typename Config::KernelConfig;
@@ -668,9 +668,9 @@ __aicore__ inline void RunGmm1Generic(BlockEpilogueActivationMxQuant<EpilogueEle
                                       uint16_t &pingpongIdx, void *blockMmadContext = nullptr,
                                       bool allowWeightL2Bypass = false, const LayoutArgs &...layoutArgs)
 {
-    using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                        ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared, false,
-                                        IsWaveFlagGrained, Blaze::Gemm::GroupedMatmulWithScaleMx<>>;
+    using GmmConfig =
+        GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
+                          IsWeightNZ, TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained>;
     auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM);
 
     GmmKernel::BlockScheduler scheduler({config.m, config.schedulerN, config.k},
