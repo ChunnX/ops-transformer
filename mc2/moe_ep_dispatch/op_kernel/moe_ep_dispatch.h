@@ -49,6 +49,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 
 namespace MoeEpDispatchImpl {
 
@@ -80,6 +81,18 @@ constexpr uint32_t HCOMM_WRITE_TASK_BYTES = 64U;
 constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = 2 * HCOMM_BATCH_CAPACITY * HCOMM_WRITE_TASK_BYTES;
 constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+
+enum class MoeEpDispatchProfileStage : uint32_t {
+    KERNEL = 0,
+    BUFFER_INIT = 1,
+    SEND_CNT_CALC = 2,
+    COUNT_SYNC = 3,
+    COMMUNICATION = 4,
+    RECV_COUNT = 5,
+    SEND_PHASE = 6,
+    SEND_SYNC = 7,
+    REMOTE_WRITE = 8,
+};
 
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
@@ -129,6 +142,7 @@ private:
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> topkIdxGMTensor_;
@@ -266,6 +280,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     workspaceGM_ = workspaceGM;
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::DISPATCH, aivNum_);
     channelsPerRank_ = mc2Context_->channelsPerRank;
     constexpr size_t metadataOffset =
         offsetof(MoeEpDispatchTilingData, moeEpDispatchInfo) + offsetof(MoeEpDispatchInfo, dumpMetadata);
@@ -1148,16 +1163,55 @@ template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::BUFFER_INIT, MoeEpProfileBoundary::BEGIN));
         BufferInit();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::BUFFER_INIT, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchProfileStage::SEND_CNT_CALC,
+                                                 MoeEpProfileBoundary::BEGIN));
         CalSendCnt();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchProfileStage::SEND_CNT_CALC, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchProfileStage::COUNT_SYNC, MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchProfileStage::COUNT_SYNC, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::COMMUNICATION,
+                                                 MoeEpProfileBoundary::BEGIN));
         Communication();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::COMMUNICATION, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchProfileStage::RECV_COUNT, MoeEpProfileBoundary::BEGIN));
         GetRecvCount();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchProfileStage::RECV_COUNT, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchProfileStage::SEND_PHASE, MoeEpProfileBoundary::BEGIN));
         SendPhase();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchProfileStage::SEND_PHASE, MoeEpProfileBoundary::END));
         SetStatus();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchProfileStage::SEND_SYNC, MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchProfileStage::SEND_SYNC, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::REMOTE_WRITE, MoeEpProfileBoundary::BEGIN));
         WriteToRemoteWindow();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::URMA,
+                                                 MoeEpDispatchProfileStage::REMOTE_WRITE, MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchProfileStage::KERNEL, MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_FLUSH();
     }
 }
 

@@ -9,7 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 import os
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple, Union
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -17,6 +18,13 @@ from torch.library import impl
 from torch import _check as _torch_check
 
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
+
+
+# Read before importing this module; the installed kernels must use the same ABI.
+# Direct replacement of installed files does not run setup.py.
+_MOE_EP_PROFILING_BUILD = (
+    os.environ.get("CANN_OPS_MOE_EP_PROFILING_BUILD", "").strip() == "1"
+)
 
 
 _ENGRAM_DTYPE_TO_INT = {
@@ -246,6 +254,13 @@ class ElasticBufferOpBuilder(OpBuilder):
             os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
             os.path.join(self._package_path, "common"),
         ]
+
+    def cxx_args(self):
+        """Select the lazy JIT ABI to match the installed profiling kernels."""
+        args = super().cxx_args()
+        if _MOE_EP_PROFILING_BUILD:
+            args.append("-DENABLE_MOE_EP_PROFILING=1")
+        return args
 
 
 _elastic_buffer_op_builder = ElasticBufferOpBuilder()
@@ -1139,6 +1154,62 @@ class ElasticBuffer:
             combined_topk_weights,
         )
         return combined_x, combined_topk_weights
+
+    def enable_cycle_profiler(self, slots_per_core: int = 4096) -> None:
+        """Enable the profiling-build-only MoE EP device cycle recorder.
+
+        This must be called before the first dispatch/combine operation on this
+        buffer. The four device rings are initialized once and persist across
+        all subsequent launches. An enabled buffer requires exclusive ownership
+        of its MoE communication group; use another group for a second buffer.
+        """
+        if self._runtime is None:
+            raise RuntimeError("cycle profiler cannot be enabled after destroy")
+        enable = getattr(self._runtime, "enable_moe_ep_profiler", None)
+        if enable is None:
+            raise RuntimeError(
+                "MoE EP cycle profiler is unavailable in the loaded C++ extension; "
+                "set CANN_OPS_MOE_EP_PROFILING_BUILD=1 before starting Python, "
+                "then verify JIT source paths, compiler flags, and the loaded so"
+            )
+        enable(slots_per_core)
+
+    def dump_cycle_profiler(
+        self, output_dir: Union[str, Path], rank: Optional[int] = None
+    ) -> List[str]:
+        """Copy the four persistent rings to raw files after the caller syncs NPU.
+
+        Each file already contains its 64-byte self-describing device header.
+        No cycle-to-time conversion is performed here.
+        """
+        if self._runtime is None:
+            raise RuntimeError("cycle profiler cannot be dumped after destroy")
+        get_buffers = getattr(self._runtime, "get_moe_ep_profiler_buffers", None)
+        if get_buffers is None:
+            raise RuntimeError(
+                "MoE EP cycle profiler is unavailable in the loaded C++ extension; "
+                "set CANN_OPS_MOE_EP_PROFILING_BUILD=1 before starting Python, "
+                "then verify JIT source paths, compiler flags, and the loaded so"
+            )
+        rank_id = self._rank_id if rank is None else rank
+        rank_dir = Path(output_dir) / "raw" / f"rank_{rank_id:03d}"
+        rank_dir.mkdir(parents=True, exist_ok=True)
+        op_names = (
+            "moe_ep_dispatch",
+            "moe_ep_dispatch_epilogue",
+            "moe_ep_combine",
+            "moe_ep_combine_epilogue",
+        )
+        output_paths = []
+        for op_name, device_buffer in zip(op_names, get_buffers()):
+            output_path = rank_dir / f"{op_name}.profbin"
+            temporary_path = output_path.with_suffix(output_path.suffix + ".tmp")
+            raw = device_buffer.detach().cpu().contiguous().numpy().tobytes()
+            with open(temporary_path, "wb") as output_file:
+                output_file.write(raw)
+            os.replace(temporary_path, output_path)
+            output_paths.append(str(output_path))
+        return output_paths
 
     def destroy(self) -> None:
         """
