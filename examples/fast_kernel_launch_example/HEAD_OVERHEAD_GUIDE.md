@@ -22,8 +22,8 @@
 ## 一键执行
 
 ```bash
-# 1. Clone 仓库（token 已内嵌）
-git clone -b head-overhead-clean https://oauth2:NpWjsPrRrAxRsyv5sYqKhCMi@gitcode.com/liulinxiang/ops-transformer.git
+# 1. Clone 仓库（fork 的 head-overhead-clean 分支; 私有库需自行配置凭证）
+git clone -b head-overhead-clean https://gitcode.com/liulinxiang/ops-transformer.git
 cd ops-transformer/examples/fast_kernel_launch_example
 
 # 2. Source CANN 环境
