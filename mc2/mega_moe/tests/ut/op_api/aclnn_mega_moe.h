@@ -54,7 +54,8 @@ extern "C" {
  * @param [in] epWorldSize: 计算输入，int。专家并行通信域大小。
  * @param [in] cclBufferSize: 计算输入，int。CCL通信缓冲区大小。
  * @param [in] maxRecvTokenNum: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示自动计算。
- * @param [in] dispatchQuantMode: 计算可选输入，int。dispatch通信时量化模式，目前仅支持4（MXFP模式）。默认值为0。
+ * @param [in] dispatchQuantMode: 计算可选输入，int。BF16在线量化使用4（MXFP模式）；预量化x直通时
+ *                               不传该属性，使用默认值0。
  * @param [in] dispatchQuantOutDtype:
  * 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
  * @param [in] sharedExpertQuantOutDtype:

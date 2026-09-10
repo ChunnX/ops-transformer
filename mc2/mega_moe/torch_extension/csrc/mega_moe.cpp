@@ -69,7 +69,9 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                 isPreQuantizedX ? "scales is required for pre-quantized x."
                                 : "scales must be None when x is bfloat16 or float16.");
     if (isPreQuantizedX) {
-        TORCH_CHECK(dispatchQuantMode == 4, "dispatch_quant_mode must be 4 for pre-quantized x.");
+        TORCH_CHECK(dispatchQuantMode == 0,
+                    "dispatch_quant_mode must be left at its default value 0 for pre-quantized x because dispatch "
+                    "only forwards the existing quantized data and scales.");
         TORCH_CHECK(topoType.value_or(0) == 0, "pre-quantized x is supported only by the A5 MTE path (topo_type=0).");
         TORCH_CHECK(!dispatchQuantOutDtype.has_value(),
                     "dispatch_quant_out_dtype must be None for pre-quantized x; the dispatch dtype is inferred "

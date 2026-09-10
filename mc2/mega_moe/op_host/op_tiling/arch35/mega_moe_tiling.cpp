@@ -314,15 +314,16 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 }
 
 /*
- * 将专家权重类型、量化输出类型、通信拓扑和可选能力编码为 kernel tiling key。
+ * 将专家权重类型、dispatch 输入处理模式、量化输出类型、通信拓扑和可选能力编码为 kernel tiling key。
  */
-static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeExpertParams &expertParams,
-                              const MegaMoeTilingData *tilingData)
+static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeConfig &config,
+                              const MegaMoeExpertParams &expertParams, const MegaMoeTilingData *tilingData)
 {
     auto moeWeightDesc = context->GetDynamicInputDesc(expertParams.moe.inputs.weightOne, 0);
     auto sharedWeightDesc = expertParams.shared.expertCount > 0 ?
                                 context->GetDynamicInputDesc(expertParams.shared.inputs.weightOne, 0) :
                                 moeWeightDesc;
+    auto dispatchQuantModePtr = context->GetAttrs()->GetAttrPointer<int64_t>(config.attrDispatchQuantModeIndex);
 
     int64_t topoType = TILINGKEY_TPL_MTE;
     if (tilingData->topoType == TOPO_TYPE_URMA) {
@@ -331,7 +332,7 @@ static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeE
 
     return GET_TPL_TILING_KEY(
         static_cast<int64_t>(moeWeightDesc->GetDataType()), static_cast<int64_t>(sharedWeightDesc->GetDataType()),
-        DISPATCH_QUANT_MODE_MXFP, EXPERT_QUANT_MODE_MAP.at(expertParams.moe.quantOutDtype),
+        *dispatchQuantModePtr, EXPERT_QUANT_MODE_MAP.at(expertParams.moe.quantOutDtype),
         EXPERT_QUANT_MODE_MAP.at(expertParams.shared.quantOutDtype), static_cast<int64_t>(tilingData->combineQuantMode),
         topoType, static_cast<int64_t>(tilingData->topkWeightsPrefetch));
 }
@@ -639,16 +640,24 @@ static uint8_t ResolveExpertGmmMode(ge::DataType quantOutDtype, ge::DataType wei
 
 /*
  * 校验 dispatch 和 combine 阶段的量化模式，并将 combine 模式写入 tiling data。
+ * 预量化 x 已携带 data/scales，dispatch 仅直通，公开属性和 tiling key 均使用非量化模式。
  */
 static ge::graphStatus CheckAndSetQuantModeAttrs(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                  MegaMoeTilingData *tilingData, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
+    auto xDesc = context->GetInputDesc(config.xIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
+    const bool isPreQuantizedX = IsPreQuantizedXType(xDesc->GetDataType());
+    const int64_t expectedDispatchQuantMode =
+        isPreQuantizedX ? DISPATCH_QUANT_MODE_NO_QUANT : DISPATCH_QUANT_MODE_MXFP;
+    const char *expectedModeReason =
+        isPreQuantizedX ? "default 0 (no quantization) for pre-quantized x" : "4 (MXFP quantization) for BF16 x";
     OP_TILING_CHECK(
-        *dispatchQuantModePtr != DISPATCH_QUANT_MODE_MXFP,
+        *dispatchQuantModePtr != expectedDispatchQuantMode,
         OP_LOGE_WITH_INVALID_ATTR(nodeName, "dispatch_quant_mode", std::to_string(*dispatchQuantModePtr).c_str(),
-                                  std::to_string(DISPATCH_QUANT_MODE_MXFP).c_str()),
+                                  expectedModeReason),
         return ge::GRAPH_FAILED);
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
@@ -2385,7 +2394,8 @@ static ge::graphStatus CheckAndSetTopoType(const gert::TilingContext *context, c
 }
 
 /*
- * 校验并记录不依赖 tensor 元数据或问题规模的算子属性。
+ * 校验并记录不依赖权重元数据或问题规模的算子属性；dispatch_quant_mode 仅根据 x dtype 区分在线量化与
+ * 预量化直通。
  * 直接属性：topo_type、ep_world_size、comm_alg、dispatch_quant_mode、combine_quant_mode、
  * activation、activation_params 和 topk_weights_type。
  * 具体属性的拦截项由各子函数保留，本函数只表达该阶段的执行顺序。
@@ -2463,8 +2473,9 @@ static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, M
 /*
  * 在所有校验和资源规划完成后，统一提交 workspace、block dim、tiling key 及诊断信息。
  */
-static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const MegaMoeExpertParams &expertParams,
-                                          MegaMoeTilingData *tilingData, const char *nodeName)
+static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const MegaMoeConfig &config,
+                                          const MegaMoeExpertParams &expertParams, MegaMoeTilingData *tilingData,
+                                          const char *nodeName)
 {
     WorkspaceLayout workspaceLayout(tilingData);
     OP_TILING_CHECK(SetWorkspace(context, workspaceLayout, nodeName) != ge::GRAPH_SUCCESS,
@@ -2474,7 +2485,7 @@ static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const Me
     context->SetBlockDim(
         ascendcPlatform.CalcTschBlockDim(tilingData->blockAivNum, tilingData->aicNum, tilingData->blockAivNum));
     context->SetScheduleMode(1); // batch model, all cores start at the same time
-    uint64_t tilingKey = CalcTilingKey(context, expertParams, tilingData);
+    uint64_t tilingKey = CalcTilingKey(context, config, expertParams, tilingData);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
@@ -2531,7 +2542,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     SetPrefetchAndWaveParams(tilingData, aicNum);
     SetAdaptiveBufferConfigs(context, config, expertParams, tilingData, static_cast<uint32_t>(ubSize));
 
-    return CommitTilingResult(context, expertParams, tilingData, nodeName);
+    return CommitTilingResult(context, config, expertParams, tilingData, nodeName);
 }
 
 /*
