@@ -80,16 +80,24 @@ constexpr const char *GMMFR_ACLNN_OP_NAME = "aclnnGroupedMatmulFinalizeRoutingGe
 
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
-const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
-const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
-static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
-static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
-static const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
-static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
-static const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
-static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP4 = {op::DataType::DT_FLOAT4_E2M1};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8 = {op::DataType::DT_FLOAT8_E4M3FN,
+                                                                           op::DataType::DT_FLOAT8_E5M2};
+const std::initializer_list<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_FP8 = {op::DataType::DT_FLOAT4_E2M1};
+static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT = {op::DataType::DT_FLOAT,
+                                                                                        op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST_MX = {op::DataType::DT_FLOAT,
+                                                                             op::DataType::DT_BF16};
+constexpr int64_t OUT_DTYPE_FLOAT32 = 0;
+constexpr int64_t OUT_DTYPE_BF16 = 2;
 
 const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN,
                                                                    DataType::DT_HIFLOAT8};
@@ -444,12 +452,31 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             GMMFR_CHECK_DTYPE(gmmParams_.shareInput, "shareInput", SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
         }
-        GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST, return false);
-        GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST, return false);
-        if ((gmm::CheckDTypeInVector(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4) !=
-             gmm::CheckDTypeInVector(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4)) ||
-            (gmm::CheckDTypeInVector(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8) !=
-             gmm::CheckDTypeInVector(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP8))) {
+        GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST_MX, return false);
+        bool isBf16Output = gmmParams_.dtype == OUT_DTYPE_BF16 || gmmParams_.out->GetDataType() == DataType::DT_BF16;
+        if (isBf16Output) {
+            GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16_OUTPUT, return false);
+            GMMFR_CHECK_REPORT(
+                gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16, return false,
+                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
+            GMMFR_CHECK_REPORT(gmmParams_.out->GetDataType() == DataType::DT_BF16, return false,
+                               OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                   GMMFR_ACLNN_OP_NAME, "y", op::ToString(gmmParams_.out->GetDataType()).GetString(),
+                                   "when dtype is 2 or y is BF16, y must be DT_BF16"));
+        } else {
+            GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST, return false);
+            GMMFR_CHECK_REPORT(
+                gmmParams_.dtype == OUT_DTYPE_FLOAT32, return false,
+                OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
+            GMMFR_CHECK_REPORT(gmmParams_.out->GetDataType() == DataType::DT_FLOAT, return false,
+                               OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                   GMMFR_ACLNN_OP_NAME, "y", op::ToString(gmmParams_.out->GetDataType()).GetString(),
+                                   "when dtype is 0, y must be DT_FLOAT"));
+        }
+        if ((CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4) !=
+             CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_FP4)) ||
+            (CheckType(gmmParams_.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8) !=
+             CheckType(gmmParams_.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX_FP8))) {
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "x and weight",
                 "x=" + std::string(op::ToString(gmmParams_.x1->GetDataType()).GetString()) +
