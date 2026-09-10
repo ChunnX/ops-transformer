@@ -82,6 +82,7 @@ private:
 protected:
     __aicore__ inline void SendAndQuantBuffInit();
     __aicore__ inline void DispatchBuffInit();
+    __aicore__ inline void EnterSteadyDispatch();
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
@@ -299,6 +300,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
                                                   reinterpret_cast<GM_ADDR>(&mc2Context_->epRankId));
 }
 
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EnterSteadyDispatch()
+{
+    if (GetSubBlockIdx() == 1U) {
+        // Startup has drained the ring. Keep its UB layout and route batch unchanged.
+        tokenDispatchConfig_.bufferConfig.bufferCount = MIN_DISPATCH_BUFFER_COUNT;
+    }
+}
+
 // 普通模板 Token Dispatch 使用的 UB/GM 视图。
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
@@ -340,14 +350,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         static_cast<int64_t>(bufferConfig.routeItemsPerBatch * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     scratch.validTopkIndexTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
-    // 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
-    // Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
-    // EVENT_ID0..EVENT_ID(bufferCount-1) 形成软流水；
-    // 只记基址：槽视图在热路径由 GetDispatchCopyBuffer 现场构造，
-    // Tensor 大小：bufferConfig.bufferCount 块（主线自适应 UB 预算给出的 2~6），
-    // 每块 tokenDispatchConfig_.quantTokenScaleAlignBytes；
-    // 该值即 Init() 算好的 Align256(token) + Align32(scale) + optional Align32(weight)，与 host
-    // CalcDispatchBufferConfig 的 copyBufferBytes 恒相等，故连续 ring 中每个槽位均保持 32B 对齐。
+    /*
+     * 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
+     * Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
+     * EVENT_ID0..EVENT_ID(bufferCount-1) 形成软流水；
+     * 只记基址：槽视图在热路径由 GetDispatchCopyBuffer 现场构造，
+     * Tensor 大小：bufferConfig.bufferCount 块（启动轮按 Host 自适应分配 2~6 槽；稳态仅使用前 2 槽，不重新布局），
+     * 每块 tokenDispatchConfig_.quantTokenScaleAlignBytes；
+     * 该值即 Init() 算好的 Align256(token) + Align32(scale) + optional Align32(weight)，与 host
+     * CalcDispatchBufferConfig 的 copyBufferBytes 恒相等，故连续 ring 中每个槽位均保持 32B 对齐。
+     */
     scratch.copyTmpBaseAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
     uint32_t copyTmpTotalSize = static_cast<uint32_t>(bufferConfig.bufferCount) * context.quantTokenScaleAlignBytes;
     uint32_t expertTokenNumsOutTensorAddr = scratch.copyTmpBaseAddr + copyTmpTotalSize;
