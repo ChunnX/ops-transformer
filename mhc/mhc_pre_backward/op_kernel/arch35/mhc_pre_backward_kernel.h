@@ -948,53 +948,40 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
-        // FP32短序列将最多两个BS块在同一L0C中连续累加并一次写回，避免GM原子累加改变近零dphi的加法顺序。
-        // 两个xRs槽按[SINGLE_M, ND_BLOCK_SIZE]连续布局，支持firstK/secondK分段读取。
-        bool mergeC1BsBlock = !enableHf32 && totalLength_ > SINGLE_M && totalLength_ <= 2 * SINGLE_M;
-        if (mergeC1BsBlock) {
-            uint32_t secondBSBlock = static_cast<uint32_t>(totalLength_ - SINGLE_M);
-            // 先消费首块V2信号再发射第二块C0，避免同一flag的两次发布在首次等待前合并。
-            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
-            ProcessC0(offsetND, currentNDBlock, SINGLE_M, secondBSBlock, buffId + 1);
-            uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffId % VEC_CORE_VECIDX_MOD);
-            c0Basic_.ProcessC1TwoStage(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(0)], workSpaceGm_[offsetXs],
-                                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, SINGLE_M, secondBSBlock,
-                                       fusionSize_, ND_BLOCK_SIZE, nD_);
-            buffId += 2;
-
-            uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
-            if (nextOffsetND < dealEndND_) {
-                uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
-                ProcessC0(nextOffsetND, nextNDBlock, 0, static_cast<uint32_t>(Min(
-                    static_cast<uint64_t>(SINGLE_M), totalLength_)), buffId);
-            }
-            continue;
-        }
-
-        // 普通路径先发射下一块C0，再等待当前块V2完成并执行C1。
+        bool firstC1Block = true;
         for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             currentBSBlock =
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
 
+            AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
+            uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffId % VEC_CORE_VECIDX_MOD);
+            if (firstC1Block) {
+                c0Basic_.BeginC1Accumulation(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)],
+                                             workSpaceGm_[offsetXs], fusionSize_, currentNDBlock, currentBSBlock,
+                                             fusionSize_, ND_BLOCK_SIZE);
+                firstC1Block = false;
+            } else {
+                c0Basic_.ContinueC1Accumulation(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)],
+                                                workSpaceGm_[offsetXs], fusionSize_, currentNDBlock,
+                                                currentBSBlock, fusionSize_, ND_BLOCK_SIZE);
+            }
+            ++buffId;
+
             uint64_t nextOffsetBS = offsetBS + SINGLE_M;
             if (nextOffsetBS < totalLength_) {
-                uint32_t nextBSBlock =
-                    static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
-                ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, buffId + 1);
+                uint32_t nextBSBlock = static_cast<uint32_t>(
+                    Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
+                ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, buffId);
             } else {
                 uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
                 if (nextOffsetND < dealEndND_) {
                     uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
-                    nextOffsetBS = 0;
-                    uint32_t nextBSBlock =
-                        static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
-                    ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, buffId + 1);
+                    uint32_t nextBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
+                    ProcessC0(nextOffsetND, nextNDBlock, 0, nextBSBlock, buffId);
                 }
             }
-
-            ProcessC1(offsetND, currentNDBlock, offsetBS, currentBSBlock, buffId);
-            buffId++;
         }
+        c0Basic_.EndC1Accumulation(gradPhiGm_[offsetND], fusionSize_, currentNDBlock, nD_);
     }
     c0Basic_.End();
 
