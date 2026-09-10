@@ -26,6 +26,7 @@ class AllGatherMMFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     double frontMMTime_ = 0;
     double expandThresholdUs_ = 40.0;
+    bool fineTile_ = false;
     explicit AllGatherMMFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                          TopoType topoType = TopoType::STANDARD_CARD,
                                          SocVersion socVersion = SocVersion::SOC950)
