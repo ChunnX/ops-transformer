@@ -289,9 +289,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
-        pipe_->InitBuffer(vecInQueue0_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue0_, DOUBLE_BUFFER, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueue1_, DOUBLE_BUFFER, INOUT_QUEUE_SIZE);
-        pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
+        pipe_->InitBuffer(vecInQueue1_, DOUBLE_BUFFER, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
         globalUbOffset_ = 0;
@@ -1171,7 +1171,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     uint32_t currentN = static_cast<uint32_t>(offsetND / D_);
     // 统一使用64行chunk，使N=4时两个FP32主工作区各由32KB降为16KB，
     // 从而压缩V2的TBuf峰值，并为后续输出队列双缓冲腾出UB空间。
-    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE / 2;
+    uint32_t chunkSize = PROCESS_V2_CHUNK_SIZE / NUMBER_TWO;
     uint32_t currentBsSize = static_cast<uint32_t>(bsEnd - bsStart);
     buffId = buffId % VEC_CORE_VECIDX_MOD;
 
@@ -1360,7 +1360,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     fp32ExtCopyParams.dstStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
 
     uint64_t offset = workspaceBuf_.GetXRsOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
-    uint32_t vecIdx = blockIdx_ % 2;
+    uint32_t vecIdx = blockIdx_ % NUMBER_TWO;
     offset += (bsChunkStart - bsStart) * ND_BLOCK_SIZE;
     offset += vecIdx * (ND_BLOCK_SIZE / 2);
 
@@ -1376,7 +1376,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradM
 {
     DataCopyPadParams dataCopyPadParams;
     dataCopyPadParams.isPad = false;
-    uint32_t vecIdx = blockIdx_ % 2;
+    uint32_t vecIdx = blockIdx_ % NUMBER_TWO;
     uint64_t offsetXRsGradMm = workspaceBuf_.GetXRsGradOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
     offsetXRsGradMm += (bsChunkStart - bsStart) * ND_BLOCK_SIZE + vecIdx * (ND_BLOCK_SIZE / 2);
 

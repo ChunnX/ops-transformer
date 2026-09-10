@@ -28,7 +28,7 @@ constexpr uint32_t CUBE_BASE_M = 128U;
 constexpr uint32_t CUBE_BASE_N = 128U;
 constexpr uint32_t CUBE_L1_K = 64U;
 constexpr uint32_t CUBE_BASE_K = 32U;
-constexpr uint32_t CUBE_BUFFER_DEPTH = 2U;
+constexpr uint32_t CUBE_BUFFER_DEPTH = MhcPreBackwardUtils::NUMBER_TWO;
 constexpr uint32_t CUBE_L0_EVENT_BASE = 3U;
 constexpr uint32_t CUBE_L1_BUFFER_BYTES = 512U * 1024U;
 // L1均分为A0/A1/B0/B1四个128KB区域，便于MTE2和MTE1跨块重叠。
@@ -272,7 +272,7 @@ private:
         p.mStartPosition = 0;
         p.kStartPosition = 0;
         p.mStep = BasicCubeCeilDiv(k, BLOCK_CUBE);
-        p.kStep = BasicCubeCeilDiv(m, BLOCK_CUBE) * 2U;
+        p.kStep = BasicCubeCeilDiv(m, BLOCK_CUBE) * MhcPreBackwardUtils::NUMBER_TWO;
         p.dstStride = p.kStep >> 1U;
         p.srcStride = BasicCubeCeilDiv(kL1, BLOCK_CUBE);
         p.ifTranspose = true;
@@ -286,7 +286,7 @@ private:
         p.mStartPosition = 0;
         p.kStartPosition = 0;
         p.mStep = BasicCubeCeilDiv(k, BLOCK_CUBE);
-        p.kStep = BasicCubeCeilDiv(n, BLOCK_CUBE) * 2U;
+        p.kStep = BasicCubeCeilDiv(n, BLOCK_CUBE) * MhcPreBackwardUtils::NUMBER_TWO;
         p.dstStride = p.kStep >> 1U;
         p.srcStride = BasicCubeCeilDiv(kL1, BLOCK_CUBE);
         p.ifTranspose = true;
