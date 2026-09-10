@@ -447,9 +447,9 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     if (isMxQuant) {
         OP_LOGD("MX quant mode: transGmmWeight(input)=%d, transMmWeight(input)=%d", transGmmWeight, transMmWeight);
         // MX Scale Shape 校验
-        scaleRet = CheckMxScaleShape(mmWeightScaleOptional, "mmWeightScale");
+        auto scaleRet = CheckMxScaleShape(mmWeightScaleOptional, "mmWeightScale");
         CHECK_RET(scaleRet == ACLNN_SUCCESS, scaleRet);
-        auto scaleRet = CheckMxScaleShape(gmmWeightScale, "gmmWeightScale");
+        scaleRet = CheckMxScaleShape(gmmWeightScale, "gmmWeightScale");
         CHECK_RET(scaleRet == ACLNN_SUCCESS, scaleRet);
         // 检测 weight stride 转置，同时 reshape weight 和 scale
         auto transRet = HandleGmmMxTranspose(gmmWeight, gmmWeightScale, transGmmWeight);
