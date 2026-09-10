@@ -346,15 +346,16 @@ __simd_vf__ inline void BlockAttnResUpdatePhase2OneVLVF(__ubuf__ float *partial,
         Reg::ExpSub<float>(alphaReg, historyMaxReg, currentMaxReg, allMask);
         Reg::ExpSub<float>(betaReg, scoreReg, currentMaxReg, allMask);
         Reg::MulDstAdd<float>(historyEllReg, alphaReg, betaReg, allMask);
+        Reg::Div<float>(alphaReg, alphaReg, historyEllReg, allMask);
+        Reg::Div<float>(betaReg, betaReg, historyEllReg, allMask);
 
         const uint32_t fp32TOffset = static_cast<uint32_t>(tIdx) * dAlignFp32;
         const uint32_t bf16TOffset = static_cast<uint32_t>(tIdx) * dAlignBf16;
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(partialReg, partial + fp32TOffset);
         Reg::LoadAlign<float, Reg::LoadDist::DIST_NORM>(numeratorReg, numerator + fp32TOffset);
-        // Factor the shared denominator into the single output VREG to replace two coefficient divisions with one.
+        // Match the TwoVL/Generic order: normalize the weights before forming h.
         Reg::Mul<float>(tmpReg, partialReg, betaReg, dMask);
         Reg::MulDstAdd<float>(numeratorReg, alphaReg, tmpReg, dMask);
-        Reg::Div<float>(numeratorReg, numeratorReg, historyEllReg, dMask);
         Reg::Cast<bfloat16_t, float, BARU_CAST_FP32_TO_BF16>(outputBf16Reg, numeratorReg, dMask);
         Reg::StoreAlign<bfloat16_t, Reg::StoreDist::DIST_PACK_B32>(deltaH + bf16TOffset, outputBf16Reg, dMask);
     }
