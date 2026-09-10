@@ -427,7 +427,13 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
                                               "Block_table is required for PA execution path");
         return ge::GRAPH_FAILED;
     }
-    if (opParamInfo.cuSeqlensQ.tensor == nullptr) {
+    const bool paddedQ = tilingInfo_.layoutQStr == "BSND" || tilingInfo_.layoutQStr == "BNSD";
+    if (paddedQ && opParamInfo.cuSeqlensQ.tensor != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_q", "non-null",
+                                              "BSND/BNSD requires null cu_seqlens_q; query length comes from shape S");
+        return ge::GRAPH_FAILED;
+    }
+    if (!paddedQ && opParamInfo.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_q", "nullptr",
                                               "Cu_seqlens_q is required to describe effective query lengths "
                                               "with PA BNBD KV-cache");

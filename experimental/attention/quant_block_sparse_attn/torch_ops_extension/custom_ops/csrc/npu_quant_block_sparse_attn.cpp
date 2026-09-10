@@ -94,6 +94,10 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
+    if (layout_q == "BSND" || layout_q == "BNSD") {
+        TORCH_CHECK(!cu_seqlens_q.has_value(), "BSND/BNSD requires cu_seqlens_q=None; Q length comes from shape S.");
+        TORCH_CHECK(!seqused_q.has_value(), "BSND/BNSD requires seqused_q=None.");
+    }
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
                 "key/value should be 4D PA_BNBD [blockNum, Nkv, blockSize, headDim], but got dims ", key.dim(), "/",
@@ -229,6 +233,10 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
+    if (layout_q == "BSND" || layout_q == "BNSD") {
+        TORCH_CHECK(!cu_seqlens_q.has_value(), "BSND/BNSD requires cu_seqlens_q=None; Q length comes from shape S.");
+        TORCH_CHECK(!seqused_q.has_value(), "BSND/BNSD requires seqused_q=None.");
+    }
     return construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
 }
 } // namespace custom

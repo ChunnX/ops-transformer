@@ -84,10 +84,12 @@ public:
         sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
         metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata);
-        cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        if constexpr (LAYOUT == QBSALayout::TND) {
+            cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+            dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqlensQ), 0);
+        }
         seqUsedKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv);
         // 预取序列长度元数据，重叠 InitBuffers 期间的 HBM 延迟。
-        dc_preload(reinterpret_cast<__gm__ uint64_t *>(cuSeqlensQ), 0);
         dc_preload(reinterpret_cast<__gm__ uint64_t *>(seqUsedKv), 0);
         InitConstInfo();
         InitMMResBuf();
@@ -423,12 +425,12 @@ private:
                 const uint32_t n2Idx = n1Idx / constInfo.gSize;
                 // 同一 batch 的所有 N1 head 复用序列长度，避免每个 head 重复访问 GM。
                 if (unlikely(bIdx != cachedBIdx)) {
-                    queryTokenBase = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx));
-                    actualS1Size = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U)) - queryTokenBase;
                     if constexpr (LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) {
                         queryTokenBase = bIdx * constInfo.qSeqSize;
-                        // cu_seqlens_q describes effective lengths, never the padded GM batch stride.
-                        actualS1Size = actualS1Size < constInfo.qSeqSize ? actualS1Size : constInfo.qSeqSize;
+                        actualS1Size = constInfo.qSeqSize;
+                    } else {
+                        queryTokenBase = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx));
+                        actualS1Size = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U)) - queryTokenBase;
                     }
                     actualS2Size = static_cast<uint32_t>(seqUsedKvGm.GetValue(bIdx));
                     cachedBIdx = bIdx;

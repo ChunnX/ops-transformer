@@ -276,12 +276,16 @@ def _mxfp8_cpu_golden(
         batch = int(sparse_indices.shape[0])
         q_prefix = to_list(cu_seqlens_q)
         q_lengths = lengths_from_prefix(cu_seqlens_q)
+        sq = int(query.shape[1 if layout_q == "BSND" else 2]) if layout_q in ("BSND", "BNSD") else None
+        if sq is not None:
+            q_lengths = [sq] * batch
         kv_lengths = to_list(seqused_kv)
         case = {
             "B": batch,
             "N1": int(query.shape[2] if layout_q == "BSND" else query.shape[1]),
             "N2": int(key.shape[1]),
             "D": int(query.shape[-1]),
+            "S1_max": sq,
             "cu_seqlens_q": q_prefix,
             "cu_seqlens_kv": to_list(cu_seqlens_kv),
             "seqused_q": to_list(seqused_q),
@@ -337,7 +341,7 @@ def _mxfp8_cpu_golden(
             "block_table": to_cpu(block_table),
             "q_lengths": q_lengths,
             "kv_lengths": kv_lengths,
-            "cu_seqlens_q": torch.tensor(q_prefix, dtype=torch.int32),
+            "cu_seqlens_q": torch.tensor([b * sq for b in range(batch + 1)] if sq is not None else q_prefix, dtype=torch.int32),
         }
     else:
         case = cached["case"]

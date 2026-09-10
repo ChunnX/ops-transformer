@@ -28,10 +28,11 @@ MX tiling data 新增 `qSeqSize`，传递 padded Q 的物理序列长度 Sq。
 Q 和 Q descale 要求连续。attention_out 为 BF16，LSE 为 FP32。
 LSE 关闭时，新布局返回空 Tensor；开启时固定 BNS。
 
-继续要求 `cu_seqlens_q` 为 int32 [B+1]，起始值为 0，各差值表示有效 Q 长度，且位于 [0,Sq]。
-例如有效长度 [129,65]、物理 Sq=129 时，传 [0,129,194]；第二个 batch 的物理起点仍是 129 个 token 容量。
-本版不消费 `seqused_q`。仅写有效 token；padding 部分的输出值未定义。
-稀疏索引保持 [B,Nq,Qb,Kb]，Qb 至少覆盖 ceil(Sq/q_block_size)，无效 Q 行应令 sparse_seq_len 为零。
+BSND/BNSD 下 `cu_seqlens_q` 和 `seqused_q` 必须传 nullptr（Python 为 `None`）。
+每个 batch 的 Q 长度均为 shape 中的 Sq，batch 起点为 b*Sq，不支持同一 Tensor 内 Q 长度不等。
+Host 和 Torch extension 拒绝非空 Q 长度参数，Kernel 的对应编译实例不绑定、不预取、不读取 cu_seqlens_q。
+TND 仍要求 int32 [B+1] 的累积 Q 长度。
+稀疏索引保持 [B,Nq,Qb,Kb]，Qb 至少覆盖 ceil(Sq/q_block_size)，Sq 尾部不足一个稀疏块时按实际剩余长度计算。
 
 ## 模块改动
 
@@ -39,20 +40,21 @@ LSE 关闭时，新布局返回空 Tensor；开启时固定 BNS。
    `quant_block_sparse_attn_template_tiling_key.h` 增加 MX 的实例选择，FP8 实例列表保留。
 2. **Host parser/check**：`op_host/quant_block_sparse_attn_info_parser.*` 解析四维 Q 和物理 Sq，
    总 token 容量按 B*Sq 计算；`quant_block_sparse_attn_check.cpp` 校验量化模式、匹配布局、
-   Q/QScale/输出 shape、连续 stride 和稀疏 Q 行容量。
+   Q/QScale/输出 shape、连续 stride、稀疏 Q 行容量及 Q 长度参数的空值约束。
 3. **InferShape/TilingData**：`quant_block_sparse_attn_infershape.cpp` 推导四维输出和 BNS LSE，
    输出 Dv 读取 Value；`quant_block_sparse_attn_tiling.cpp` 写入新增的 MX `qSeqSize` 字段。
-4. **Kernel 调度与地址**：`arch35/quant_block_sparse_attn_mx_kernel.h` 将有效 Q 长度和物理 batch 起点分开，
+4. **Kernel 调度与地址**：`arch35/quant_block_sparse_attn_mx_kernel.h` 在新布局编译分支直接令 actualS1Size=Sq，
    使用 `b*Sq` 定位 padded batch；`common/util_regbase_mx.h` 统一 Q/scale/输出 token-head 地址计算，使用 64 位偏移。
 5. **Cube 搬运**：`quant_block_sparse_attn_mx_block_cube.h` 的 Q ND2NZ、QScale DN2NZ 使用对应行间距：
    BSND 为 Nq*D / Nq*Cscale，BNSD 为 D / Cscale。L1/L0、MX 随路反量化及 Matmul 主计算复用。
 6. **Vector 写回**：`quant_block_sparse_attn_mx_block_vec.h` 同步修改正常输出与 ClearEmptyQBlock；
    两种新布局的 LSE 地址均为 `(b*Nq+n)*Sq+s`，目标行间空隙为 0。
 7. **Torch extension**：`torch_ops_extension/custom_ops/csrc/npu_quant_block_sparse_attn.cpp` 同步 NPU/Meta 的输出分配，
-   新布局四维 attention_out、三维 BNS LSE，检查连续 Q/QScale；converter 原本透传布局属性，可直接复用。
+   新布局四维 attention_out、三维 BNS LSE，检查连续 Q/QScale 以及两个 Q 长度参数必须为 None；converter 原本透传布局属性，可直接复用。
 8. **Golden**：`tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py` 放开布局检查，
    在调用边界将 packed CPU 数据打包为 BSND/BNSD，QScale 同步转换；将有效输出恢复 TND/TN 与 CPU golden 比较。
-   eager 和 graph 路径共用该适配。额外提供 `QBSA_CHECK_PADDED_LAYOUTS=1` 的 TND 等价回归入口。
+   eager 和 graph 路径共用该适配，两个 Q 长度参数传 None。CPU 参考内部按 Sq 生成累积索引，不传给算子。
+   额外提供 `QBSA_CHECK_PADDED_LAYOUTS=1` 的 TND 等价回归入口，仅比较各 batch Q 等长且非零的用例。
 9. **TTK**：`tests/assets/bsa_ttk_ops.py` 修正 BNSD 的 batch/head/sequence 识别；
    `tests/assets/impl/inputs.py` 生成对应公共 Q/QScale 布局，`impl/golden.py` 返回对应 output 和 BNS LSE。
 10. **Metadata**：已检查独立 metadata 算子，它按 sparse_seq_len 的 batch/head/query-row 调度，
@@ -61,13 +63,13 @@ LSE 关闭时，新布局返回空 Tensor；开启时固定 BNS。
 ## STC 与单元测试
 
 - pytest STC 新增 12 条（每种布局 6 条）：覆盖 B=1/2/4、GQA、64/128 稀疏块、dense/random、mask=0/3、
-  对齐与非对齐尾块、batch 间不同有效长度、LSE 开关。
-- TTK STC 新增 12 条匹配布局用例。TTK 全 Tensor 比较不忽略 padding，因此新 TTK 用例采用各 batch 等长 Q；
-  batch 间不等长由 pytest STC 覆盖。
+  对齐与非对齐尾块、LSE 开关；沿用已有 layout_q/layout_out 字段，Sq 取 S1_max，Q 长度字段为空。
+- TTK STC 新增 12 条匹配布局用例。Sq 取 Q shape，cu_seqlens_q/seqused_q 使用空占位 Tensor，
+  调用适配器转换为 None。两个测试入口都按每个 batch 完整 Sq 比较输出。
 - InferShape CSV 新增 8 条：两种布局的 LSE 开/关、输出布局不匹配、FP8 拒绝新布局。
-- Host tiling CSV 新增 6 条：两种布局正确输入、QScale shape 错误、LSE shape 错误。
+- Host tiling CSV 新增 10 条：两种布局的空 Q 长度正确输入、QScale/LSE shape 错误，以及分别拒绝非空 cu_seqlens_q/seqused_q。
 - `test_quant_block_sparse_attn_shape_infershape.cpp`：直接测试生产 C++ 地址函数，覆盖多个 batch/head、129-token 尾块及超 32 位偏移。
-- `qbsa_mxfp8_golden.py --check_layout_helpers`：合并后的 CPU 打包/还原自检，覆盖数据、scale、LSE、空 batch 和容量错误；使用现有 golden 依赖环境，不调用 NPU 算子。
+- `qbsa_mxfp8_golden.py --check_layout_helpers`：合并后的 CPU 打包/还原自检，覆盖数据、scale、LSE、空 batch、容量错误及固定长度布局的空参数契约；使用现有 golden 依赖环境，不调用 NPU 算子。
 
 测试文件均位于当前算子目录。运行单个新增 STC 的示例：
 
@@ -82,6 +84,7 @@ python qbsa_mxfp8_golden.py --check_layout_helpers
 - 已在本机 MSVC 编译并运行生产 C++ 地址函数测试（使用轻量断言适配替代本机缺失的 gtest）。
 - 已通过修改 Python 文件的语法检查、CSV 列数/用例名唯一性检查及 git diff --check。
 - 使用 NumPy 字节视图适配器执行生产 golden 打包/还原函数，54 组场景通过；该检查不等同于真实 Torch/NPU 执行。
+- 空参数修订：通过 NumPy 适配执行生产长度解析函数，检查 124 条 pytest 用例及 36 个非法参数组合；模拟 metadata 调用验证 None 透传，检查 124 条 TTK 及 tiling 正反例 CSV 结构。
 - CANN Host/Kernel 全量编译、Host UT、CPU Torch 单测、NPU STC 精度与性能尚未执行；本机无 CANN/NPU/Torch 环境。
 - MX tiling data 的结构发生变化，必须同时重新编译安装 host 与 kernel，不能混用旧二进制。
 - NPU 回归须包含旧 TND 用例，性能对比建议使用相同硬件、数据和测量配置。

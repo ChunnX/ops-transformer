@@ -85,6 +85,7 @@ _CASE_BOOL_FIELDS = {
     "return_softmax_lse",
 }
 _CASE_INT_FIELDS = {
+    "S1_max",
     "B",
     "N1",
     "N2",
@@ -369,17 +370,24 @@ def _case_list(case, name):
 
 
 def _get_sequence_inputs(case):
-    """Return the four operator sequence inputs and their effective lengths.
+    """Resolve lengths and packed CPU-reference prefixes.
 
-    New MXFP8 cases use cu_seqlens_q + seqused_kv as the two effective-length
-    sources.  cu_seqlens_kv and seqused_q are present but must be empty for the
-    current operator contract.
+    BSND/BNSD cases specify S1_max and empty Q sequence inputs. Their synthetic
+    prefix is used only by the packed CPU reference, never passed to an operator.
     """
     batch = int(case["B"])
     cu_q = _case_list(case, "cu_seqlens_q")
     cu_kv = _case_list(case, "cu_seqlens_kv")
     seq_q = _case_list(case, "seqused_q")
     seq_kv = _case_list(case, "seqused_kv")
+
+    if case["layout_q"] in ("BSND", "BNSD"):
+        if cu_q or seq_q:
+            raise ValueError("BSND/BNSD requires empty cu_seqlens_q and seqused_q (passed as None)")
+        sq = int(case.get("S1_max") or 0)
+        if sq <= 0:
+            raise ValueError("BSND/BNSD requires positive S1_max for the physical Q shape")
+        cu_q = [b * sq for b in range(batch + 1)]  # CPU-reference indexing only.
 
     if len(cu_q) != batch + 1 or not cu_q or cu_q[0] != 0:
         raise ValueError(
@@ -431,7 +439,8 @@ def _normalize_case(case):
     )
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
-        case[name] = sequence_inputs[name].tolist()
+        case[name] = ([] if name == "cu_seqlens_q" and case["layout_q"] in ("BSND", "BNSD")
+                      else sequence_inputs[name].tolist())
     case = _resolve_sparse_mode(case)
     validate_mxfp8_case(case)
     return case
@@ -2390,7 +2399,7 @@ def _prepare_npu_metadata(
     sparse_seq_len,
 ):
     """准备 metadata 算子输入，并生成主算子依赖的 metadata。"""
-    cu_seqlens_q = _to_npu(cu_seqlens_q)
+    cu_seqlens_q = None if layout_q in ("BSND", "BNSD") else _to_npu(cu_seqlens_q)
     cu_seqlens_kv = _optional_npu_tensor(cu_seqlens_kv)
     seqused_q = _optional_npu_tensor(seqused_q)
     seqused_kv = _to_npu(seqused_kv)
@@ -2493,15 +2502,31 @@ def check_layout_helpers():
         pass
     else:
         raise AssertionError("Packing must reject insufficient sequence capacity")
-    logger.info("[Layout self-check] %d roundtrips and capacity validation passed", checked)
+    for layout in ("BSND", "BNSD"):
+        case = {"B": 2, "layout_q": layout, "S1_max": 129,
+                "cu_seqlens_q": [], "cu_seqlens_kv": [], "seqused_q": [], "seqused_kv": [65, 97]}
+        resolved = _get_sequence_inputs(case)
+        assert resolved["q_lengths"] == [129, 129]
+        assert resolved["cu_seqlens_q"].tolist() == [0, 129, 258]  # Reference-only prefix.
+        for key, value in (("cu_seqlens_q", [0, 129, 258]), ("seqused_q", [129, 129]), ("S1_max", 0)):
+            try:
+                _get_sequence_inputs(dict(case, **{key: value}))
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"{layout} must reject invalid {key}")
+    logger.info("[Layout self-check] %d roundtrips, capacity and sequence contract validation passed", checked)
 
 
 def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
     """Compare padded BSND/BNSD against the same TND computation, including Q scale."""
     cu = cu_seqlens_q.cpu().tolist()
     lengths = [cu[i + 1] - cu[i] for i in range(len(cu) - 1)]
-    sq = max(lengths)
-    # Keep padding inside the existing sparse query row capacity.
+    if len(set(lengths)) != 1 or not lengths[0]:
+        logger.info("Skip padded equivalence check: BSND/BNSD requires equal positive Q lengths")
+        return
+    sq = lengths[0]
+    # Every batch uses the full physical sequence dimension.
     batch, heads, dim = len(lengths), q.shape[1], q.shape[2]
     q_cpu = q.detach().cpu().view(torch.uint8)
     scale_cpu = q_scale.detach().cpu().view(torch.uint8)
@@ -2592,7 +2617,7 @@ def _call_npu_fa_op(
             softmax_scale,
             SPARSE_BLOCK_SIZE,
             SPARSE_BLOCK_SIZE,
-            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_q=None if q_layout in ("BSND", "BNSD") else cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,

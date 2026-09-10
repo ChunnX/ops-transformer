@@ -12,13 +12,13 @@ K/V remain segmented PA_BNBD. This does not add continuous BSND/BNSD KV support.
 Q and Q descale must be contiguous. Pass `layout_out` explicitly to match `layout_q`.
 Existing head dimension, sparse block, mask and PA constraints still apply.
 
-`cu_seqlens_q` remains required: int32 [B+1], starting at zero, with nonnegative
-differences no greater than physical Sq. Differences give effective Q lengths.
-For equal lengths use [0,Sq,2*Sq,...]. `seqused_q` is not consumed by this MX path.
-The GM batch stride uses physical Sq, never the cumulative effective lengths.
-Only effective tokens are written; padded output/LSE elements are unspecified.
+For BSND/BNSD, pass both `cu_seqlens_q` and `seqused_q` as nullptr (Python `None`).
+Every batch has Q length Sq from the query shape; unequal Q lengths are unsupported.
+Host and Torch extension reject non-null Q length inputs. The kernel neither reads
+nor prefetches cu_seqlens_q in these layout instances. TND still requires its int32
+[B+1] cumulative Q lengths. The GM batch base for BSND/BNSD is b*Sq.
 Sparse tensors retain [B,Nq,Qb,Kb] / [B,Nq,Qb]; Qb must cover ceil(Sq/q_block_size).
-Rows beyond each batch's effective Q length should have zero sparse counts.
+Each batch uses the full Sq dimension, including a final partial sparse block.
 The existing metadata scheduler is driven by these sparse rows and requires no
 new layout-specific scheduling format. Regenerate metadata when sparse rows change.
 
@@ -32,16 +32,19 @@ test_quant_block_sparse_attn_shape_infershape.cpp checks the production address 
 On an Ascend device, set `QBSA_CHECK_PADDED_LAYOUTS=1` when running the existing
 MXFP8 golden in eager mode. It reuses each TND case's Q/K/V/scales/sparse metadata,
 repackages Q and Q scale, and compares both padded outputs and BNS LSE exactly.
-Include B>1, GQA, unequal Q lengths, S1 tails, empty sparse rows and causal cases;
+The equivalence check skips TND cases with unequal or zero Q lengths.
+Include B>1, GQA, S1 tails, empty sparse rows and causal cases;
 enable LSE to exercise its output. Performance must be checked on device separately.
 
 ## STC
 
 Both `tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_stc.csv` and the matching
-`tests/ttk` CSV contain 12 added layout cases (six per layout). Pytest cases include
-unequal batch lengths and normalize valid output tokens to TND/TN for the existing
-CPU comparison. TTK cases use equal Q lengths because its comparator checks all
-output elements, including the full physical sequence dimension.
+`tests/ttk` CSV contain 12 added layout cases (six per layout). The existing
+`layout_q` and `layout_out` fields select the layout. BSND/BNSD rows have empty
+`cu_seqlens_q` and `seqused_q` values; adapters pass them as None. Pytest uses
+`S1_max` to construct the physical Q shape, and TTK reads Sq from its tensor shape.
+The CPU reference generates its own packed prefix [0,Sq,2*Sq,...] solely for
+internal indexing. Both runners compare the full output sequence dimension.
 
 Run the new pytest STC cases on the Ascend test machine, for example:
 
