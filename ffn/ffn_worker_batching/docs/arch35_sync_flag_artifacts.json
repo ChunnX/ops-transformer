@@ -1,0 +1,25 @@
+{
+  "baseline_commit": "231489eb5b1cf86528e00e1d6f74508fabeaa814",
+  "source_sha256": {
+    "op_kernel/arch35/ffn_wb_a5_context.h": "5455abda26618f67397b44467e0db124d0bd7125e71cb4803b59de5649dd4166",
+    "op_kernel/arch35/ffn_wb_a5_gather.h": "cfaf05d7f18c59345ef97fd525943cedd36fb634c15795a3ed01dd5a606e603e",
+    "op_kernel/arch35/ffn_wb_a5_group_list.h": "53f08cb2c2372e6b875c86acf42fbe09cba4c1c0462d35fecfc0d44b477567e4",
+    "op_kernel/arch35/ffn_wb_a5_prepare.h": "47900e21fe4a9a26f3caa87b663066c6999d63e5d33a864fa12257438eed0259",
+    "op_kernel/arch35/ffn_wb_a5_sort.h": "b23995550f5c77104dc1483cadc9c8e1d20f2cda4a74af4086942330c128f0fe",
+    "op_kernel/arch35/ffn_worker_batching_arch35_tiling_def.h": "1651d504392df69450bc56448c9edd6d72dbcdf3d3ae527972e3ba74bf6216f2",
+    "op_kernel/ffn_worker_batching_apt.cpp": "78d2a84d88ebf50e74927962713be713e3c79d2abc03e9b2cd8ec287ffa8c966",
+    "op_host/ffn_worker_batching_tiling_arch35.cpp": "f81a337c7ef9e3dbbc591695f1a2abc5464feb7488b71e411ab3400b9edaf39c",
+    "op_host/ffn_worker_batching_def.cpp": "9fcdfec154c7e7ac66c2f1c68726b915bbc5839ff348878ca6230c4aae2be553"
+  },
+  "date": "2026-09-10",
+  "installed_package": "/tmp/ffn_refactor_verify_opp/vendors/custom_transformer",
+  "build_log": "/tmp/ffn_refactor_verify_build.log",
+  "kernel_binary_sha256": {
+    "FfnWorkerBatching_1b219784fc1d5b37632e0ff80b4c5bb6.o": "52d6704cf7c5c020237df858ed5701102b6b7bc3c6b878e5d835994e6dbe0036",
+    "FfnWorkerBatching_662e39d41f3998f436b33d0f7653d24d.o": "700e42cdad08b4f081f4bbcfd24247851d5e5ae10df97be01aef66619b0bca86",
+    "FfnWorkerBatching_758eebc7dbe4f87ffa7166eaa413f701.o": "21f6e6b6a29fd9c4b1cf6f4c978f036b1a217a00abcc0f630202dd8cadd84aaf",
+    "FfnWorkerBatching_a96a778238ccbadabc69fb113ed778f8.o": "c68fcc3674f8524c269fcdb41758567333b48aa5cdaebba62046e960c10005c8",
+    "FfnWorkerBatching_ca5280b259dcbf397d581116311a6562.o": "4957709f06f833834ba60aeb291db05b24b17bcebce41ca36c29363468a99ec3",
+    "FfnWorkerBatching_f84ab4fb02e939cdaf6a2dcd250db8a7.o": "6e6bdcb09028ba58d047107fd3bcea47c71b369d20aca3e1797e29b8d4914a5a"
+  }
+}

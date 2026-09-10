@@ -114,7 +114,7 @@ def main():
         attr = dev.array(P(shape.ctypes.data), 4)
         reports = []
 
-        def invoke(name, selected, mb, cursor, sync_flag=1, publish=None):
+        def invoke(name, selected, mb, cursor, sync_flag=1, publish=None, expected_count=None):
             nonlocal desc, ctx
             before = desc.copy()
             ws, exe = (Q(), P())
@@ -142,6 +142,9 @@ def main():
                     if e < 1000000:
                         rows.append((int(e), a, t // K, t % K))
             rows.sort(key=lambda r: r[0])
+            # 增量写场景另给固定 token 数，避免把残留 ids 错当成 golden 的合法数据。
+            if expected_count is not None:
+                assert len(rows) == expected_count, (name, 'stale expert_ids', len(rows), expected_count)
             assert result[7][0] == len(rows), (name, result[7], len(rows))
             for i, (e, a, b, k) in enumerate(rows):
                 np.testing.assert_array_equal(result[0][i], tokens[a, mb, b, k])
@@ -189,6 +192,31 @@ def main():
         dev.upload(ti, desc)
         # 对照组：已有一个 session ready 时仍应等待其它三个，防止默认同步语义退化。
         invoke('sync_waits_for_all', list(range(A)), 1, 2, sync_flag=0, publish=[(1, 1), (2, 1), (3, 1)])
+        def publish_incremental(a, m, positions):
+            # 只在上一轮调用完成后复用已清理的槽。与真实上游一样仅写发送位置的 ids，
+            # 不替消费者清理未发送位置：若消费端漏清 ids，下一轮会产生幽灵 token。
+            assert desc[a, m, 0] == 0
+            for position in positions:
+                eid = np.array([(position + 3) % E], np.int32)
+                desc[a, m, position + 2] = eid[0]
+                offset = ((a * M + m) * desc.shape[-1] + position + 2) * desc.itemsize
+                dev.upload(P(ti.value + offset), eid)
+                b, k = divmod(position, K)
+                tokens[a, m, b, k] = -17 - position
+                token_offset = (((a * M + m) * BS + b) * K + k) * H * tokens.itemsize
+                dev.upload(P(td.value + token_offset), tokens[a, m, b, k])
+            flag = np.array([1], np.int32)
+            desc[a, m, 0] = 1
+            dev.upload(P(ti.value + (a * M + m) * desc.shape[-1] * desc.itemsize), flag)
+
+        # 当前 cursor=2：两个 micro batch 同时 ready，只消费 mb=2，并保留 mb=0 的 flag=1。
+        publish_incremental(3, 2, [1, 7])
+        publish_incremental(2, 0, [4])
+        invoke('incremental_reuse_preserves_other_ready', [3], 2, 0, expected_count=2)
+        invoke('consume_preserved_other_ready', [2], 0, 1, expected_count=1)
+        # 仅发布头、不写任何 ids：必须依赖上一轮消费留下的 MASK_SENTINEL 返回 0。
+        publish_incremental(3, 2, [])
+        invoke('reuse_without_id_writes', [3], 2, 0, expected_count=0)
         check(dev.destroy_array(attr))
         print(json.dumps(reports, indent=2))
     finally:

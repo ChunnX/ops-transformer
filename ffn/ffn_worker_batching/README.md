@@ -173,7 +173,7 @@ Ascend 950PR/Ascend 950DT（arch35）支持 `token_dtype=0～5`；Atlas A2/A3 �
 ## arch35低精度设计与验证
 
 - [需求设计文档](docs/arch35_low_precision_design.md)：类型映射、token/scale存储布局、FP4约束及UB分块设计。
-- [验证报告与复现命令](docs/arch35_low_precision_validation.md)：Host UT 32/32、Kernel ST 68/68、ACLNN ST 67/67通过。
+- [低精度阶段历史验证报告](docs/arch35_low_precision_validation.md)：2026-09-08 Host UT 32/32、Kernel ST 68/68、ACLNN ST 67/67通过；包含后续异步调度的最新结果见 [当前全量验证报告](docs/arch35_sync_flag_validation.md)。
 - [逐用例结果](docs/arch35_low_precision_results.csv)、[Kernel用例](tests/st/arch35/test_ffn_worker_batching_arch35.csv)、[ACLNN用例](tests/st/arch35/test_aclnn_ffn_worker_batching_arch35.csv)。
 
 ## 调度上下文数据结构
@@ -234,3 +234,16 @@ struct ScheduleContext {
 ### arch35 syncFlag
 
 新增可选属性 `sync_flag`（ACLNN 参数 `syncFlag`，位于 `layerNum` 后），默认 0，取值 0/1。仅 arch35 的 `need_schedule=1` 生效：0 等 A 个 session 全 ready；1 从轮询下标循环扫描 micro batch，无数据时等待，有数据时立即处理该次快照中的 ready session。`need_schedule=0` 不改变行为。ACLNN 调用方需用新头文件重新编译。详见 [需求设计](docs/arch35_sync_flag_design.md)。
+
+## arch35 Torch 接口
+
+`cann_ops_transformer.ffn_worker_batching` 返回 8 个输出，支持六种 token_dtype、NORM、同步/异步 RECV，以及 Meta/FakeTensor 元数据推导。FP4 返回 PyTorch 打包形状 `[Y,H/2]`。六种 dtype 支持固定形状 `torch.compile(backend="npugraph_ex", fullgraph=True, dynamic=False)` 推理图；MX 使用 `mx_output_uint8=True`，以 uint8 传递 E8M0 scale 和 FP4 打包输出。默认 eager 保留原生 dtype；当前不支持 TorchAir GE 后端。
+
+- [Torch 接口文档](../../torch_extension/cann_ops_transformer/docs/zh/ffn_worker_batching.md)：安装、参数、设备指针生命周期、流约定与真实地址示例。
+- [Torch 验证报告](docs/arch35_torch_validation.md)、[测试脚本](tests/st/arch35/verify_torch_interface.py)。
+
+- [图模式验证报告](docs/arch35_torch_graph_validation.md)、[图模式测试脚本](tests/st/arch35/verify_torch_graph.py)。
+
+### arch35 验证命令
+
+当前 Torch 图模式 46/46、eager/Meta 回归 98/98 通过；底层真实地址状态测试 9 场景通过。三个 `verify_*.py` 分别验证 ACLNN 接收协议、Torch eager 桥接和 npugraph_ex 完整图/replay，运行环境与命令见 [三个 verify 命令指南](docs/arch35_verify_guide.md)。

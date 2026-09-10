@@ -1,6 +1,8 @@
 # arch35 低精度扩展验证报告
 
-验证日期：2026-09-08。算子仓基线 b54822324a，验证对象为当前工作区修改后的源码；TTK 基线 7136cc9。
+验证日期：2026-09-08。算子仓基线 b54822324a，验证对象为当时低精度扩展后的源码；TTK 基线 7136cc9。
+
+> 本文及配套 CSV 为低精度扩展阶段的历史验证记录，保留原日期、命令、包路径和结果，不作为最新工作区产物说明。包含异步调度与 `LoadSelectedMicroBatch` 的当前实现验证见 [最新全量验证报告](arch35_sync_flag_validation.md)。
 
 ## 结果
 
@@ -60,3 +62,12 @@ python -m ttk aclnn \
 ## 接口约束
 
 新增支持仅限 arch35；FP4 要求 H 为偶数。每 32 个逻辑元素对应一个 E8M0 scale，尾组向上取整，scale 紧跟整行 token 数据。详细存储协议和 UB 规划见 [需求设计](arch35_low_precision_design.md)。本次验证功能和位模式一致性，未设定性能提升目标。
+
+## Torch 接口与最新图模式方案
+
+Torch 扩展支持六种 token_dtype 的 eager、Meta/FakeTensor 及固定形状 npugraph_ex 推理图。
+MX 图模式使用 `mx_output_uint8=True`：E8M0 scale 和 FP4 打包输出以 uint8 返回，FP8 token 保持原生类型；
+默认 False 保留原生 eager dtype。该参数仅控制 Torch 输出表示，ACLNN 仍使用原生类型描述符，
+设备端存储布局、scale 分组、sync_flag 和描述符清理协议不变。
+最新图测试 46/46、eager/Meta 回归 98/98 通过；这些是 Torch 层验证，不替换本报告的底层阶段记录。
+详见 [图模式报告](arch35_torch_graph_validation.md) 与 [三个 verify 命令指南](arch35_verify_guide.md)。

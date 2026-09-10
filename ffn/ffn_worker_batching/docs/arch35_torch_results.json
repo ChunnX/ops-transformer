@@ -1,0 +1,361 @@
+{
+  "baseline_commit": "20d40e5ed0a90ae9cca1d40dfd3c7b7c9cc2fda3",
+  "date": "2026-09-10",
+  "opp": "/tmp/ffn_refactor_verify_opp/vendors/custom_transformer",
+  "package": "/tmp/ffn_torch_final_install/cann_ops_transformer_ffn_verify",
+  "results": [
+    {
+      "case": "meta_metadata_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "meta_metadata_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "npu_metadata_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_token_dtype",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_sync_flag",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_need_schedule",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_layer_num",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_fp4_odd_h",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_short_context",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_strided_context",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_context_dtype",
+      "status": "PASS"
+    },
+    {
+      "case": "reject_shape_length",
+      "status": "PASS"
+    },
+    {
+      "case": "schema_context_mutation",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_3_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_4_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_h_66_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_5_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_0",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_1",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_2",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_3",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_4",
+      "status": "PASS"
+    },
+    {
+      "case": "singleton_dtype_5",
+      "status": "PASS"
+    },
+    {
+      "case": "persistent_fp4_context_and_reuse",
+      "status": "PASS"
+    },
+    {
+      "case": "nondefault_stream",
+      "status": "PASS"
+    },
+    {
+      "case": "delayed_publication_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "delayed_publication_sync_1",
+      "status": "PASS"
+    }
+  ],
+  "source_sha256": {
+    "ffn/ffn_worker_batching/torch_extension/__init__.py": "a4613bd9eb85ff3c062e7a9a9a1010a91574bec0380545f851d3986907ddeb94",
+    "ffn/ffn_worker_batching/torch_extension/ffn_worker_batching.py": "1dfea43c7518e87197fd8d434d6b459e9d9efc0eb595624cdb774e68208c083e",
+    "ffn/ffn_worker_batching/torch_extension/csrc/ffn_worker_batching.cpp": "f8f192fcd5912109c18d8fec83e0cbd8ccb8f1d921ad4d89f2cf6595f432946f",
+    "ffn/ffn_worker_batching/tests/st/arch35/verify_torch_interface.py": "3766c47b0cf84ecfb2e23f4c9429d5c0e0242272e40b62a5d8744a13b1966441"
+  },
+  "wheel_sha256": {
+    "cann_ops_transformer_ffn_verify-1.0.0-py3-none-any.whl": "6fa718e5a94de24885cff88586fe3e1efdd3b1de1f99a917cf70725006b61e1d"
+  }
+}

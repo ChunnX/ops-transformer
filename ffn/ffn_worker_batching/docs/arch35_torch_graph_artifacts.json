@@ -1,0 +1,28 @@
+{
+  "files": [
+    {
+      "path": "/home/chenpengyi/ops-transformer/ffn/ffn_worker_batching/torch_extension/__init__.py",
+      "sha256": "254ad70f8a5c15b30f891968d5fbb81a20ae5113ace95a33477bf8b80939af80"
+    },
+    {
+      "path": "/home/chenpengyi/ops-transformer/ffn/ffn_worker_batching/torch_extension/ffn_worker_batching.py",
+      "sha256": "c6d44019a9f835cfc1533ff4d14e73891d0c141f1ca1a842ff76237aef3b75db"
+    },
+    {
+      "path": "/home/chenpengyi/ops-transformer/ffn/ffn_worker_batching/torch_extension/csrc/ffn_worker_batching.cpp",
+      "sha256": "f8f192fcd5912109c18d8fec83e0cbd8ccb8f1d921ad4d89f2cf6595f432946f"
+    },
+    {
+      "path": "/home/chenpengyi/ops-transformer/ffn/ffn_worker_batching/tests/st/arch35/verify_torch_graph.py",
+      "sha256": "5834388609f983fc5f0a59dbedd6dd3c3eb2cc1ee07716b2349fe2d12b7d4021"
+    },
+    {
+      "path": "/home/chenpengyi/ops-transformer/ffn/ffn_worker_batching/tests/st/arch35/verify_torch_interface.py",
+      "sha256": "ae2c6e09d7eaad0a11ec6779badea96e5eea0477890fb3cc93b6bfff30de2498"
+    },
+    {
+      "path": "/tmp/ffn_torch_graph_wheels/cann_ops_transformer_ffn_graph-1.0.0-py3-none-any.whl",
+      "sha256": "41f0eb6e05163a890a088cedc4b7c65d7d429e58348c77470700c62db2b877c2"
+    }
+  ]
+}
