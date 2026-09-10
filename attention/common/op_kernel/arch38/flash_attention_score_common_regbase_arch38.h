@@ -59,6 +59,11 @@ constexpr uint64_t KB_TO_BYTES = 1024;
 constexpr uint64_t L0C_SIZE = 256;
 constexpr uint64_t BASE_SIZE_128 = 128;
 constexpr uint64_t FLOAT_BYTES = 4;
+
+static constexpr uint64_t SYNC_C1_V1_FLAG[2] = {0, 1};
+static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
+static constexpr uint64_t SYNC_C2_V2_FLAG[2] = {5, 6};
+
 enum class SparseModeEnum {
     ALL = 0,
     NONE = 1,

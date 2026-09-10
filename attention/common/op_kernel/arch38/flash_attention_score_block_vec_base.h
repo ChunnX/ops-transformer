@@ -258,6 +258,8 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
     int64_t stage1Offset = runInfo.taskIdMod2;
     AscendC::LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
 
+    WaitFlag<HardEvent::FIX_V>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+
     if (unlikely(runInfo.s2LoopCount == 0)) {
         FaVectorApi::ProcessVec1VfDnRegbaseV2<T, INPUT_T, false, s2BaseSize>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, runInfo.s1RealSizeAlign32, runInfo.s2RealSize,
@@ -267,6 +269,9 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, runInfo.s1RealSizeAlign32, runInfo.s2RealSize,
             static_cast<T>(constInfo.scaleValue), negativeFloatScalar, constInfo.quantScalePValue);
     }
+
+    SetFlag<HardEvent::V_FIX>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     stage1CastTensor = this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
     //-------------------------Data copy to l1-------------------------
@@ -347,7 +352,9 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
         descaleQK = deSCaleQValue * deSCaleKValue;
     }
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
-    LocalTensor<float> null;
+
+    WaitFlag<HardEvent::FIX_V>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
+
     if (runInfo.s2LoopCount == 0) {
         if (runInfo.s2RealSize == 128) {
             SoftmaxFlashV510_VF<T, INPUT_T, false, 1, s1BaseSize, s2BaseSize, hasAtten>(
@@ -379,6 +386,8 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1NdRegbaseV
     if constexpr (hasPseOuter) {
         this->pseInQue.template FreeTensor(pseUb);
     }
+
+    SetFlag<HardEvent::V_FIX>(SYNC_C1_V1_FLAG[runInfo.taskIdMod2]);
 
     // ===================DataCopy to L1 ====================
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
@@ -423,6 +432,9 @@ FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUbRegbaseV2(LocalTensor<T> mmRe
     }
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+
+    WaitFlag<HardEvent::FIX_V>(SYNC_C2_V2_FLAG[runInfo.taskIdMod2]);
+
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
@@ -441,6 +453,9 @@ FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnUbRegbaseV2(LocalTensor<T> mmRe
                                                            runInfo.vec2S1RealSize, dTemplateAlign64);
         }
     }
+
+    SetFlag<HardEvent::V_FIX>(SYNC_C2_V2_FLAG[runInfo.taskIdMod2]);
+    
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();

@@ -92,9 +92,7 @@ public:
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool splitD = CubeBlockType::splitD;
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint64_t SYNC_C1_V1_FLAG[2] = {0, 1};
-    static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
-    static constexpr uint64_t SYNC_C2_V2_FLAG[2] = {5, 6};
+
     /* 核间通道 */
     BufferManager<BufferType::GM> gmBufferManager;
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
