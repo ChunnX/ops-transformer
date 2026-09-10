@@ -12,50 +12,27 @@
  * \file incre_flash_attention_arch22.h
  * \brief
  */
-#ifndef IFA_HEAD_TIMING_MODE
-#define IFA_HEAD_TIMING_MODE 2
-#endif
-
-#if IFA_HEAD_TIMING_MODE == 2
+// 头开销打点: 全量执行 kernel 主体, T0/T1/T2 全打点 (对齐 add/gmm 的 cycleBuf 方案)
 #define IFA_HEAD_TIMING_DEBUG
-#endif
 
 #define asc_get_system_cycle AscendC::GetSystemCycle
 #include "incre_flash_attention_preload_dd.h"
 
-__aicore__ inline void RecordKernelEntryTiming(__gm__ uint8_t *attentionOut, uint64_t entryCycle)
-{
-    if ASCEND_IS_AIV {
-        constexpr uint64_t HEAD_TIMING_MAGIC = 0x1FA20268ULL;
-        constexpr uint64_t HEAD_TIMING_ENTRY_COMMIT = 0xE17E2026ULL;
-        constexpr uint32_t HEAD_TIMING_SLOT_COUNT = 8;
-        constexpr uint64_t CORE_TYPE_VECTOR = 1;
-        const uint32_t vectorBlockIdx = GetBlockIdx();
-        const uint32_t base = vectorBlockIdx * HEAD_TIMING_SLOT_COUNT;
-        GlobalTensor<uint64_t> headTimingGm;
-        headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
-
-        headTimingGm.SetValue(base + 5, 0);
-        headTimingGm.SetValue(base + 0, HEAD_TIMING_MAGIC);
-        headTimingGm.SetValue(base + 1, vectorBlockIdx);
-        headTimingGm.SetValue(base + 2, CORE_TYPE_VECTOR);
-        headTimingGm.SetValue(base + 3, entryCycle);
-        headTimingGm.SetValue(base + 4, 0);
-        headTimingGm.SetValue(base + 6, vectorBlockIdx / 2);
-        headTimingGm.SetValue(base + 7, 0);
-        headTimingGm.SetValue(base + 5, HEAD_TIMING_ENTRY_COMMIT);
-    }
-}
-
-__aicore__ inline void RecordKernelEndTiming(__gm__ uint8_t *attentionOut)
+__aicore__ inline void RecordKernelEndTiming(__gm__ uint8_t *cycleBuf, TPipe &pipe)
 {
     // T2: kernel 末尾打点 (op.Process 返回后, 源码最后一行), 写 slot 7 (原保留位)
+    // 对齐 add/gmm 口径: 等 MTE3 搬出排空后再打点, 否则 Scalar 管道跑在计算管道前,
+    // GetSystemCycle 读到的只是指令下发完成时刻 (T2 会退化为 T1)
     if ASCEND_IS_AIV {
+        event_t mte3DoneEvent = static_cast<event_t>(pipe.AllocEventID<AscendC::HardEvent::MTE3_S>());
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(mte3DoneEvent);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(mte3DoneEvent);
+        pipe.ReleaseEventID<AscendC::HardEvent::MTE3_S>(mte3DoneEvent);
         constexpr uint32_t HEAD_TIMING_SLOT_COUNT = 8;
         const uint32_t vectorBlockIdx = GetBlockIdx();
         const uint32_t base = vectorBlockIdx * HEAD_TIMING_SLOT_COUNT;
         GlobalTensor<uint64_t> headTimingGm;
-        headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
+        headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)cycleBuf);
         headTimingGm.SetValue(base + 7, static_cast<uint64_t>(asc_get_system_cycle()));
     }
 }
@@ -85,11 +62,11 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
         const IncreFlashAttentionMetaData *__restrict meta_data = nullptr;                                             \
         op.blockNum = GetBlockNum();                                                                                   \
         op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable,               \
-                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe);                        \
+                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, cycleBuf, tiling_data, &tPipe);              \
         op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
                      keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
         op.Process();                                                                                                  \
-        RecordKernelEndTiming(attentionOut);                                                                           \
+        RecordKernelEndTiming(cycleBuf, tPipe);                                                                               \
     } while (0)
 
 #define INVOKE_IFA_NO_KFC_DD_OP_IMPL_SK(templateClass, headStartCycle, ...)                                            \
@@ -109,7 +86,7 @@ __inline__ __attribute__((always_inline)) __aicore__ void InitMetaData(const __g
             op.blockNum = sysArgs->skNumBlocks / 2;                                                                    \
         }                                                                                                              \
         op.Init(query, key, value, pseShift, attenMask, actualSeqLengthsQ, actualSeqLengths, blocktable,               \
-                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, tiling_data, &tPipe);                        \
+                kvPaddingSize, meta_data, attentionOut, softmaxLse, user, attentionOut, tiling_data, &tPipe);          \
         op.InitQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset,    \
                      keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset, user);          \
         op.Process();                                                                                                  \
@@ -127,13 +104,9 @@ __global__ __mix__(1, 2) void incre_flash_attention(
     __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *metaData,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-    optiling::IncreFlashAttentionTilingData tiling)
+    __gm__ uint8_t *cycleBuf, optiling::IncreFlashAttentionTilingData tiling)
 {
     const uint64_t headStartCycle = static_cast<uint64_t>(asc_get_system_cycle());
-#if IFA_HEAD_TIMING_MODE == 1
-    RecordKernelEntryTiming(attentionOut, headStartCycle);
-    return;
-#endif
     TPipe tPipe;
     __gm__ uint8_t *user = workspace;
 
@@ -184,10 +157,6 @@ template <uint8_t FLASH_DECODE, uint8_t LAYOUT_T, uint8_t ANTIQUANT_MODE, uint32
 __sk__ void incre_flash_attention_sk(const SKArgsStruct *args, const sk::SkSystemArgs *sysArgs)
 {
     const uint64_t headStartCycle = static_cast<uint64_t>(asc_get_system_cycle());
-#if IFA_HEAD_TIMING_MODE == 1
-    RecordKernelEntryTiming(args->attentionOut, headStartCycle);
-    return;
-#endif
     GM_ADDR query = args->query;
     GM_ADDR key = args->key;
     GM_ADDR value = args->value;

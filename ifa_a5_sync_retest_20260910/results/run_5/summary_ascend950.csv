@@ -1,0 +1,4 @@
+soc,算子,类型,核数,shots,blocks,TaskDur稳态mean(us),统计口径,调度+硬件头T0-stars(us),软件头T1-T0(us),头开销T1-stars(us),T2-stars(us),硬件尾(us),全链路(us)
+ascend950,incre_flash_attention,Vector,56,1,168,140.18,min,0.87,1.04,2.62,133.54,N/A,N/A
+ascend950,incre_flash_attention,Vector,56,1,168,140.18,mean,3.03,1.33,4.36,136.67,N/A,N/A
+ascend950,incre_flash_attention,Vector,56,1,168,140.18,max,4.45,2.90,5.63,140.97,0.37,141.02

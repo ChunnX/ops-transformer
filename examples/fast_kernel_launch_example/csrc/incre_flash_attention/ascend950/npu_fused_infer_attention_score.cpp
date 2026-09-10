@@ -44,6 +44,9 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
                                             int? dequant_scale_value_dtype=None,
                                             int? dequant_scale_key_rope_dtype=None) -> (Tensor, Tensor))");
 
+    // 对齐 add/gmm 的 cycleBuf 方案: 持久独立 timing 缓冲, Python 回读 T0/T1/T2
+    m.def("npu_fused_ifa_cycle_tensor() -> Tensor");
+
     m.def(R"(npu_fused_infer_attention_score_metadata(int batch_size,
                                                     int query_seq_size,
                                                     int query_head_num,
@@ -54,6 +57,18 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
                                                     Tensor actual_seq_lengths_kv=None,
                                                     *,
                                                     str layout_query='BSND') -> Tensor)");
+}
+
+// 对齐 add/gmm: 持久 buffer 懒初始化 (一次分配固定地址; capture 时该地址被固化进 kernel 参数)
+static at::Tensor g_ifa_cycle_tensor;
+
+static at::Tensor &get_ifa_cycle_tensor(const at::Tensor &like)
+{
+    if (!g_ifa_cycle_tensor.defined() || g_ifa_cycle_tensor.device() != like.device()) {
+        auto options = at::TensorOptions().dtype(at::kLong).device(like.device());
+        g_ifa_cycle_tensor = at::zeros({64 * 8}, options); // 64 blocks x 8 slots
+    }
+    return g_ifa_cycle_tensor;
 }
 
 #define LAUNCH_INCRE_FA(FD, LAYOUT, ANTIQ)                                                                             \
@@ -85,7 +100,7 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
         (GM_ADDR)(dequant_scale_key_rope.has_value() ? dequant_scale_key_rope->data_ptr() : nullptr),                  \
         (GM_ADDR)(dequant_scale_query.has_value() ? dequant_scale_query->data_ptr() : nullptr),                        \
         (GM_ADDR)(metadata.has_value() ? metadata->data_ptr() : nullptr), (GM_ADDR)(output.data_ptr()),                \
-        (GM_ADDR)(softmax_lse.data_ptr()), (GM_ADDR)(workspaceTensor.data_ptr()), tilingData)
+        (GM_ADDR)(softmax_lse.data_ptr()), (GM_ADDR)(workspaceTensor.data_ptr()), (GM_ADDR)(cycle_ptr), tilingData)
 
 const static int FLASH_THRESHOLD = 512;
 const static int64_t PFA_SPARSE_HIGH_PRECISION_NO_MASK = 10;
@@ -329,6 +344,9 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
     // blockdim
     uint32_t blockDim = tilingData.increFlashAttentionSingleCoreParams.get_usedCoreNum();
 
+    at::Tensor &cycleTensor = get_ifa_cycle_tensor(query);
+    auto cycle_ptr = cycleTensor.data_ptr();
+
     if (fdFlag == 0 && layoutVal == 0 && antiquantMode == 0) {
         LAUNCH_INCRE_FA(0, 0, 0);
     } else if (fdFlag == 0 && layoutVal == 0 && antiquantMode == 1) {
@@ -350,6 +368,14 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
     }
 
     return std::tuple<at::Tensor, at::Tensor>(output, softmax_lse);
+}
+
+// 回读 IFA 头开销 cycle buffer (T0/T1/T2 per block)
+at::Tensor npu_fused_ifa_cycle_tensor()
+{
+    TORCH_CHECK(g_ifa_cycle_tensor.defined(),
+                "IFA cycle tensor not initialized; call npu_fused_infer_attention_score first");
+    return g_ifa_cycle_tensor;
 }
 
 // 为META设备实现前向接口
@@ -387,6 +413,12 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_meta(
 TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("npu_fused_infer_attention_score", &custom::npu_fused_infer_attention_score_npu);
+}
+
+// cycle tensor 回读: 无 tensor 入参, dispatcher 不会按 device 路由 -> 注册 Composite 显式兜底
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, CompositeExplicitAutograd, m)
+{
+    m.impl("npu_fused_ifa_cycle_tensor", &custom::npu_fused_ifa_cycle_tensor);
 }
 
 // 为META设备注册前向实现

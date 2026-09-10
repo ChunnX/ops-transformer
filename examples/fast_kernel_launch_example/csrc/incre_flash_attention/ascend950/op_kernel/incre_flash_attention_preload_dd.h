@@ -105,6 +105,7 @@ public:
                                 __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *kvPaddingSize, const IncreFlashAttentionMetaData *__restrict metadata,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *timingBuf,
                                 const optiling::IncreFlashAttentionTilingData *__restrict tiling, TPipe *tPipe,
                                 bool isPrefix = false);
     __aicore__ inline void InitQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2,
@@ -199,10 +200,8 @@ protected:
     GlobalTensor<T> lseSumFdGm;
     GlobalTensor<T> lseMaxFdGm;
     uint64_t headStartCycle = 0;
-#ifdef IFA_HEAD_TIMING_DEBUG
     GlobalTensor<uint64_t> headTimingGm;
     __aicore__ inline void RecordHeadTiming(uint64_t beforeFirstMte2Cycle);
-#endif
 
     // kv_left_padding
     GlobalTensor<int64_t> kvPaddingSizeGm;
@@ -961,6 +960,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *kvPaddingSize, const IncreFlashAttentionMetaData *__restrict metaData,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *timingBuf,
     const optiling::IncreFlashAttentionTilingData *__restrict tiling, TPipe *tPipe, bool isPrefix)
 {
     if ASCEND_IS_AIV {
@@ -989,9 +989,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     // init global buffer
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
-#ifdef IFA_HEAD_TIMING_DEBUG
-    headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
-#endif
+    headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)timingBuf);
     // batch连续时,只需要初始化一次;不连续时,需要在使用时根据batchIdx初始化
     if (batchContinuous) {
         InitKeyGm(0);
@@ -1304,7 +1302,6 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 }
 
-#ifdef IFA_HEAD_TIMING_DEBUG
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::RecordHeadTiming(uint64_t beforeFirstMte2Cycle)
 {
@@ -1325,7 +1322,6 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::RecordHeadTiming
     headTimingGm.SetValue(base + 7, 0);
     headTimingGm.SetValue(base + 5, beforeFirstMte2Cycle == 0 ? HEAD_TIMING_ENTRY_COMMIT : HEAD_TIMING_COMMIT);
 }
-#endif
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantScale(LocalTensor<T> &castUb,
@@ -4030,24 +4026,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
 {
-#ifdef IFA_HEAD_TIMING_DEBUG
-    if ASCEND_IS_AIC {
-        return;
-    }
-    if (aiCoreIdx >= usedCoreNum) {
-        RecordHeadTiming(0);
-        return;
-    }
-#endif
-// Early return cannot leave pipeline events live across consecutive graph launches.
-#ifndef IFA_HEAD_TIMING_DEBUG
+    // SetFlag: V->MTE2 / MTE3->V 初始同步 (原业务行为)
     if ASCEND_IS_AIV {
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
         SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
     }
-#endif
+
     if (aiCoreIdx < usedCoreNum) {
         if ASCEND_IS_AIV {
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
@@ -4100,11 +4086,13 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
 
         for (uint32_t bn2gIdx = 0; bn2gIdx < bn2LoopTimes; bn2gIdx++) {
             GetBN2Gid(bn2gIdx);
-#ifdef IFA_HEAD_TIMING_DEBUG
-            const uint64_t beforeFirstMte2Cycle = static_cast<uint64_t>(asc_get_system_cycle());
-            RecordHeadTiming(beforeFirstMte2Cycle);
-            return;
-#endif
+            if (bn2gIdx == 0) {
+                if ASCEND_IS_AIV {
+                    // T1: Init 完成, 首个 MTE2 搬运前 (每核仅记一次)
+                    const uint64_t beforeFirstMte2Cycle = static_cast<uint64_t>(asc_get_system_cycle());
+                    RecordHeadTiming(beforeFirstMte2Cycle);
+                }
+            }
             GetActualSeqLen(bIdx, s1Idx);
             UpdateInnerLoopCond();
             if (curActSeqLenIsZero) {

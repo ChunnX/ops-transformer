@@ -1,0 +1,74 @@
+============================================
+  Kernel Launch 头开销测试
+============================================
+  Python:          /workspace/liulinxiang/venv_test_91t103/bin/python3
+  NPU_SOC_VERSION: ascend950
+  SRC_SUFFIX:      ascend950
+  Output:          /tmp/opencode/ifa_retest/round1
+============================================
+
+[CHECK] CANN 环境: /workspace/liulinxiang/91T103/Ascend/cann-9.1.T103
+[CHECK] NPU 设备:
++-------------------------------------------------------------------------------------------------+
+| npu-smi 25.7.rc1.6                               Version: 25.7.rc1.6                            |
++--------+------------------+---------------+-----------------------------------------------------+
+| NPU ID | Name             | Health        | Power(W)    Temp(C)           Hugepages-Usage(page) |
+|        |                  | Bus-Id        | NPU Util(%) Memory-Usage(MB)  HBM-Usage(MB)         |
++========+==================+===============+=====================================================+
+| 0      | Ascend950PR      | OK            | 207.6       55                0     / 0             |
+|        |                  | 0000:81:00.0  | 0           0    / 0          5238  / 131072        |
++========+==================+===============+=====================================================+
++---------------------------+---------------+-----------------------------------------------------+
+
+[CHECK] torch_npu OK
+
+[CHECK] 设备: Ascend950PR_9579  Cube 核数: 28  Vector 核数: 56  SYS_CNT=1000MHz
+
+========== 满核 ==========
+[BUILD] 构建 (add=56核, gmm=28核)...
+[CHECK] add  numBlocks:     int64_t numBlocks = 56;
+[CHECK] add  launch<<<: <<<
+[CHECK] gmm  blockDim:      uint32_t blockDim = 28; tilingData.gmmBaseParams.coreNum = 28;
+[W910 15:07:24.574199924 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+[W910 15:07:28.577232737 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+[W910 15:08:12.063019902 FunctionLoader.cpp:48] Warning: LD_PRELOAD detected, FunctionLoader prefers RTLD_DEFAULT for symbol resolution. (function operator())
+[CHECK] import ascend_ops OK: /workspace/liulinxiang/test0909/pr10421_retest/examples/fast_kernel_launch_example/ascend_ops/__init__.py
+[BUILD] 构建完成 (cmake 补丁构建 + 直装 site-packages)
+
+[COLLECT] 采集 incre_flash_attention (满核, 250 次发射 + 打点回读)...
+T2-T0_total_head: n=168 min=2563 mean=4019.69 median=4152 max=4975 cycles (max=4.975 us)
+Summary written to /tmp/opencode/ifa_retest/round1/ifa_full/run_20260910_150816/ifa_head_summary.csv
+
+========== 汇总 ==========
+
+============================================
+  头开销分段测试结果 (稳态=跳过前2次; 多拍各拍独立计算取 median)
+  4时间点: Tstars→T0→T1→T2
+    Tstars      STARS 调度器 dispatch kernel 的时刻
+    T0          kernel 入口第一行 (GetSystemCycle 打点)
+    T1          Init 完成后、首个 MTE2 搬运前
+    T2          kernel 末指令 (同步实验里=等 MTE3/Fixpipe 排空后)
+  3段: 软件头 / kernel主体 / (硬件尾=PMU Tpmu_end-T2, 仅max)
+  核间有快有慢, 每指标三组统计: min=最快核 / mean=核平均 / max=最慢核(墙钟,与TaskDur同语义)
+============================================
+
+  Tstars       T0      T1            T2
+    │           │       │             │
+    │←调度+硬件头→│←软件头→│←kernel主体→│
+    └─── 头开销(T1-stars) ───→ │
+    └── kernel末指令(T2-stars) ──→ │
+
+incre_flash_attention (Vector, 56核, 1拍)  TaskDur=138.41us
+  调度+硬件头     T0-stars     min=0.77 mean=2.76 max=3.75 us
+  软件头        T1-T0        min=1.04 mean=1.26 max=2.75 us
+  kernel主体   T2-T1        min=131.02 mean=132.29 max=133.51 us
+  头开销        T1-stars     min=2.56 mean=4.02 max=4.97 us
+  kernel末指令  T2-stars     min=133.58 mean=136.31 max=138.49 us
+  [ffts PMU] 硬件尾(Tpmu_end-T2)=0.47us  全链路(Tpmu_end-Tstars)=138.68us  (vs TaskDur +0.27)
+
+汇总 CSV: /tmp/opencode/ifa_retest/round1/summary_ascend950.csv
+
+============================================
+  完成!
+============================================
+[CLEANUP] 源码已恢复

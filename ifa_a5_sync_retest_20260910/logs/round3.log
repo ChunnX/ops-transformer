@@ -1,0 +1,65 @@
+============================================
+  Kernel Launch 头开销测试
+============================================
+  Python:          /workspace/liulinxiang/venv_test_91t103/bin/python3
+  NPU_SOC_VERSION: ascend950
+  SRC_SUFFIX:      ascend950
+  Output:          /tmp/opencode/ifa_retest/round3
+============================================
+
+[CHECK] CANN 环境: /workspace/liulinxiang/91T103/Ascend/cann-9.1.T103
+[CHECK] NPU 设备:
++-------------------------------------------------------------------------------------------------+
+| npu-smi 25.7.rc1.6                               Version: 25.7.rc1.6                            |
++--------+------------------+---------------+-----------------------------------------------------+
+| NPU ID | Name             | Health        | Power(W)    Temp(C)           Hugepages-Usage(page) |
+|        |                  | Bus-Id        | NPU Util(%) Memory-Usage(MB)  HBM-Usage(MB)         |
++========+==================+===============+=====================================================+
+| 0      | Ascend950PR      | OK            | 208.2       57                0     / 0             |
+|        |                  | 0000:81:00.0  | 0           0    / 0          5246  / 131072        |
++========+==================+===============+=====================================================+
++---------------------------+---------------+-----------------------------------------------------+
+
+[CHECK] torch_npu OK
+
+[CHECK] 设备: Ascend950PR_9579  Cube 核数: 28  Vector 核数: 56  SYS_CNT=1000MHz
+
+========== 满核 ==========
+[BUILD] SKIP_BUILD=1, 跳过构建 (使用已安装 wheel)
+[COLLECT] 采集 incre_flash_attention (满核, 250 次发射 + 打点回读)...
+T2-T0_total_head: n=168 min=2652 mean=4395.46 median=4350 max=6553 cycles (max=6.553 us)
+Summary written to /tmp/opencode/ifa_retest/round3/ifa_full/run_20260910_151207/ifa_head_summary.csv
+
+========== 汇总 ==========
+
+============================================
+  头开销分段测试结果 (稳态=跳过前2次; 多拍各拍独立计算取 median)
+  4时间点: Tstars→T0→T1→T2
+    Tstars      STARS 调度器 dispatch kernel 的时刻
+    T0          kernel 入口第一行 (GetSystemCycle 打点)
+    T1          Init 完成后、首个 MTE2 搬运前
+    T2          kernel 末指令 (同步实验里=等 MTE3/Fixpipe 排空后)
+  3段: 软件头 / kernel主体 / (硬件尾=PMU Tpmu_end-T2, 仅max)
+  核间有快有慢, 每指标三组统计: min=最快核 / mean=核平均 / max=最慢核(墙钟,与TaskDur同语义)
+============================================
+
+  Tstars       T0      T1            T2
+    │           │       │             │
+    │←调度+硬件头→│←软件头→│←kernel主体→│
+    └─── 头开销(T1-stars) ───→ │
+    └── kernel末指令(T2-stars) ──→ │
+
+incre_flash_attention (Vector, 56核, 1拍)  TaskDur=138.21us
+  调度+硬件头     T0-stars     min=1.11 mean=3.15 max=5.39 us
+  软件头        T1-T0        min=1.01 mean=1.24 max=2.40 us
+  kernel主体   T2-T1        min=130.55 mean=131.49 max=131.65 us
+  头开销        T1-stars     min=2.65 mean=4.40 max=6.55 us
+  kernel末指令  T2-stars     min=133.21 mean=135.88 max=138.20 us
+  [ffts PMU] 硬件尾(Tpmu_end-T2)=0.42us  全链路(Tpmu_end-Tstars)=137.92us  (vs TaskDur -0.29)
+
+汇总 CSV: /tmp/opencode/ifa_retest/round3/summary_ascend950.csv
+
+============================================
+  完成!
+============================================
+[CLEANUP] 源码已恢复
