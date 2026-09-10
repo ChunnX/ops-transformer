@@ -48,15 +48,12 @@ protected:
     TPipe pipe;
     TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque;
     TBuf<TPosition::VECCALC> temp_buffer0, temp_buffer1, temp_buffer2;
-    TBuf<TPosition::VECCALC> shared_sum_buffer, branch_round_buffer;
     TQue<QuePosition::VECOUT, 1> outque;
     GlobalTensor<T1> tokensGM, sharedTokensGM, outGM;
     GlobalTensor<T2> indicesGM;
     GlobalTensor<T3> probsGM;
     LocalTensor<T2> indicesLocal;
     LocalTensor<float> token_tensor0, token_tensor1, probs_tensor;
-    LocalTensor<float> shared_sum_tensor;
-    LocalTensor<T1> branch_round_tensor;
     DataCopyPadExtParams<T1> extParams1{false, 0, 0, 0};
     DataCopyPadExtParams<T2> extParams2{false, 0, 0, 0};
     DataCopyPadExtParams<T3> extParams3{false, 0, 0, 0};
@@ -113,18 +110,6 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     this->hidden_splited_length = tiling_data->hidden_splited_length;
     this->hidden_splited_num = tiling_data->hidden_splited_num;
     this->hidden_splited_remain = tiling_data->hidden_splited_remain;
-    if constexpr (!IsSameType<T1, float>::value) {
-        if (this->shared_expert_num > 0U) {
-            // Bound all hidden-dimension buffers, including the independent
-            // shared accumulator and rounding scratch. Token/index tiling is unchanged.
-            constexpr int64_t sharedHiddenTile = 1024;
-            if (this->hidden_splited_length > sharedHiddenTile) {
-                this->hidden_splited_length = sharedHiddenTile;
-                this->hidden_splited_num = this->hidden_size / sharedHiddenTile;
-                this->hidden_splited_remain = this->hidden_size % sharedHiddenTile;
-            }
-        }
-    }
     // token_tiling
     this->tokens_core_length = tiling_data->tokens_core_length;
     this->tokens_core_remain = tiling_data->tokens_core_remain;
@@ -186,12 +171,6 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
         this->pipe.InitBuffer(temp_buffer1, hidden_splited_length_align512 * sizeof(float));
         this->token_tensor0 = this->temp_buffer0.template Get<float>();
         this->token_tensor1 = this->temp_buffer1.template Get<float>();
-        if (this->shared_expert_num > 0U) {
-            this->pipe.InitBuffer(shared_sum_buffer, hidden_splited_length_align512 * sizeof(float));
-            this->pipe.InitBuffer(branch_round_buffer, hidden_splited_length_align512 * sizeof(T1));
-            this->shared_sum_tensor = this->shared_sum_buffer.template Get<float>();
-            this->branch_round_tensor = this->branch_round_buffer.template Get<T1>();
-        }
     }
 
     if constexpr (PROBS) {
@@ -317,42 +296,10 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
 
     if (this->shared_expert_num > 0U) {
         const int64_t global_out_token_index = this->out_token_offset + out_token_index;
-        if constexpr (!IsSameType<T1, float>::value) {
-            // Match the unfused reference's rounding boundaries:
-            // T1(T1(routed sum) + T1(shared sum)), not T1(routed sum + shared sum).
-            // The distinction matters when the two branches nearly cancel.
-            // VECCALC scratch has a fixed lifetime. Input/output queues remain
-            // exclusively GM transfer queues and never hold saved branch values.
+        for (uint32_t shared_idx = 0U; shared_idx < this->shared_expert_num; ++shared_idx) {
+            CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
             PipeBarrier<PIPE_V>();
-            Cast(this->branch_round_tensor, this->token_tensor0, RoundMode::CAST_RINT, h_length);
-            PipeBarrier<PIPE_V>();
-            Cast(this->token_tensor0, this->branch_round_tensor, RoundMode::CAST_NONE, h_length);
-            PipeBarrier<PIPE_V>();
-
-            // Keep token_tensor0 as the rounded routed result throughout.
-            Duplicate(this->shared_sum_tensor, 0.0f, h_length);
-            for (uint32_t shared_idx = 0U; shared_idx < this->shared_expert_num; ++shared_idx) {
-                CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
-                LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
-                PipeBarrier<PIPE_V>();
-                Cast(this->token_tensor1, tokensLocal, RoundMode::CAST_NONE, h_length);
-                PipeBarrier<PIPE_V>();
-                this->tokens_inque.FreeTensor(tokensLocal);
-                Add(this->shared_sum_tensor, this->shared_sum_tensor, this->token_tensor1, h_length);
-                PipeBarrier<PIPE_V>();
-            }
-
-            Cast(this->branch_round_tensor, this->shared_sum_tensor, RoundMode::CAST_RINT, h_length);
-            PipeBarrier<PIPE_V>();
-            Cast(this->token_tensor1, this->branch_round_tensor, RoundMode::CAST_NONE, h_length);
-            PipeBarrier<PIPE_V>();
-            Add(this->token_tensor0, this->token_tensor0, this->token_tensor1, h_length);
-        } else {
-            for (uint32_t shared_idx = 0U; shared_idx < this->shared_expert_num; ++shared_idx) {
-                CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
-                PipeBarrier<PIPE_V>();
-                CalSharedToken(h_length);
-            }
+            CalSharedToken(h_length);
         }
     }
 

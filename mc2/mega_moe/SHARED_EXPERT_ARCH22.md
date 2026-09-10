@@ -28,9 +28,7 @@ master's complete routing allocation, including per-chunk receive-round tables.
 The shared activation must be published before its GMM1 buffer can be reused.
 INT8/INT4 GMM2 epilogues publish BF16 to a separate result buffer; this preserves
 the rounding point and avoids W4A8 high/low-row in-place aliasing. Unpermute adds
-routed weighted outputs in FP32 and shared outputs in a separate FP32 sum.
-For BF16/FP16 output, each branch is rounded to the output dtype before their
-final FP32 addition and output cast, matching the unfused reference boundaries.
+routed weighted outputs and shared outputs in FP32, then casts once to output.
 
 Token-active masks apply to routed assignments; shared experts still consume
 the original dense X. Rank masks keep master's early-return and communication
@@ -128,48 +126,33 @@ rerunning it was blocked by execution approval limits. Its full matrix and
 INT8/INT4 device regression **after these routing fixes** remain pending. The
 earlier quantized passes predate these fixes and are not substitutes for reruns.
 
-### Shared reduction rounding fix (2026-09-10)
+### Rounding rollback and small-batch tiling fix (2026-09-10)
 
-Restore the branch rounding previously introduced by `4cf085ad7`, removed by
-the FP32 shared-GMM2 experiment `6ea278b14`, and not restored when `6de7312ba`
-returned shared GMM2 to BF16. Non-FP32 outputs now compute
-`T1(float(T1(routed_sum)) + float(T1(shared_sum)))`. Shared experts are summed
-independently in FP32 before their branch cast. The initial implementation in
-`9bfb56a52` used existing queue slots to hold the rounded branches.
-Zero-shared and FP32-output paths retain their existing behavior. This also
-applies to quantized paths producing BF16; their device regression is required.
+Revert the branch-rounding implementation from `9bfb56a52` and its buffer
+isolation/hidden-tiling follow-up `3d1977c0c`, retaining the routing fixes in
+`1d15f3b31`. Routed and shared results again accumulate in FP32 with only the
+final output cast. The user reported that this rollback restored DeepSeek
+INT8/SwiGLU to 13/13 passing and GLM BF16/SwiGLU to its 10/13 baseline; GLM
+cases 0/1/4 remain unresolved. Kimi was not rerun after the rollback.
 
-The BF16 regression script now uses ND weights and INT8 active masks, as required
-by the interface. Compilation and tests for this rounding fix were intentionally
-not run at the user's request. The earlier results above predate this fix and
-must not be taken as validation of it. Recheck the supplied EP16 cases with the
-full dual-benchmark criteria, not only cosine similarity.
+Inspection also found a separate small-batch tiling defect: when tokens are
+fewer than participating cores, the base per-core count and token tile length
+were zero. This caused division/modulo by zero and zero-byte indices/probs
+queue allocations, even though remainder cores still process one token.
+The zero-byte indices queue shares the next allocation's address (outque).
+Hidden-dimension splitting can expose this alias when the first output tile
+overwrites indices that subsequent tiles reread. This explains a concrete
+failure mechanism in the split implementation, not every failure of the
+earlier rounding implementation.
 
-### Shared reduction queue isolation (2026-09-10)
+Keep the token tile capacity at least one. For an empty base assignment,
+full-tile and remainder counts now start at zero; Init adds one remainder
+token only on assigned cores. Existing nonempty-base tiling is unchanged:
+the base remainder is less than capacity, so adding one still fits. This
+change does not restore branch rounding, extra buffers or hidden splitting.
+The standalone regression retains its ND BF16 weights and INT8 active-mask
+interface corrections; those are independent of the reverted arithmetic.
 
-The user reported a severe regression after `9bfb56a52`: DeepSeek INT8/SwiGLU
-shared=1 went from 13/13 to 0/13 passing, GLM BF16/SwiGLU shared=2 from 10/13
-to 0/13, while Kimi INT8/SiTU shared=4 remained at 13/13. These errors are
-not explained by ordinary rounding. Unpermute does not select this reduction
-by activation type, so Kimi passing does not establish that it bypasses it.
-
-Replace the queue-backed branch temporaries with dedicated VECCALC buffers:
-keep the rounded routed result in its own FP32 accumulator, reduce shared
-outputs into a separate FP32 accumulator, and use one dedicated T1 scratch
-for both branch casts. Explicit vector barriers separate scratch consumers
-from reuse. VECIN and VECOUT queues now serve only their normal GM transfer
-roles; no saved branch is written into VECIN or read back from VECOUT.
-This removes the suspect queue-lifetime/synchronization pattern; the exact
-instruction responsible for the reported regression is not yet demonstrated.
-
-Non-FP32 shared paths cap the hidden tile at 1024 elements to bound UB use.
-At that tile size, the new FP32 accumulator and BF16/FP16 cast scratch require
-6 KiB; larger hidden dimensions use additional tiles with the original row
-stride and a final partial tile when necessary. GM workspace, cross-core
-scheduling, zero-shared and FP32-output paths are unchanged. Extra tiling and
-barriers may affect performance; no speedup is claimed.
-
-Compilation and device tests for this replacement were not run, per the user's
-request. Precision is not yet validated. Rerun all three reported suites with
-the unchanged full comparison criteria, including Kimi, and cover hidden-dimension
-tails, active masks and receive-round splitting before accepting this fix.
+No compilation or tests were run for the tiling fix, per user request. The
+rollback results above do not validate this additional fix or resolve the
+remaining GLM precision failures.
