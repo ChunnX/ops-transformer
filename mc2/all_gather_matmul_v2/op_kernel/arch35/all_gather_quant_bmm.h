@@ -204,14 +204,14 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
         uint64_t scaleStride = mxfpScalesCount;
         handleList_[SCALE1_HANDLE_IDX] = hcclAllgather_.template AllGather<true>(
             dequantGM1_, gatherDequantGM1_, mxfpScalesCount, dataType_, scaleStride, repeat);
-        opStateDump_.DoDump(DUMP_FIELD_PHASE | DUMP_FIELD_COMMIT, 0, Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        opStateDump_.DoDump(DUMP_FIELD_PHASE | DUMP_FIELD_COMMIT, 0, Utils::RT_PHASE_COMM_COMMIT);
     }
 
     // 对于mxfp4场景，实际传输数据量需要做减半处理，已在前面代码中进行处理
     for (uint32_t i = 0U; i < tileCnt; i++) {
         handleList_[i] =
             hcclAllgather_.template AllGather<true>(aGM, gatherOut, tileSendCount, dataType_, stride, repeat);
-        opStateDump_.DoDump(DUMP_FIELD_PHASE | DUMP_FIELD_COMMIT, 0, Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        opStateDump_.DoDump(DUMP_FIELD_PHASE | DUMP_FIELD_COMMIT, 0, Utils::RT_PHASE_COMM_COMMIT);
         // 刷新aGM和目的地址
         aGM += tileSendCount * sizeof(AType);
         gatherOut += tileSendCount * sizeof(AType);
@@ -221,7 +221,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     for (uint32_t i = 0U; i < tailCnt; i++) {
         handleList_[tileCnt + i] =
             hcclAllgather_.template AllGather<true>(aGM, gatherOut, tailSendCount, dataType_, stride, repeat);
-        opStateDump_.DoDump(DUMP_FIELD_PHASE | DUMP_FIELD_COMMIT, 0, Mc2Tiling::RT_PHASE_COMM_COMMIT);
+        opStateDump_.DoDump(DUMP_FIELD_PHASE | DUMP_FIELD_COMMIT, 0, Utils::RT_PHASE_COMM_COMMIT);
         aGM += tailSendCount * sizeof(AType);
         gatherOut += tailSendCount * sizeof(AType);
     }
@@ -405,7 +405,7 @@ AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CType, ATrans, BTrans, Is
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
         hcclAllgather_.Finalize();
-        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, RT_PHASE_COMM_FINALIZE);
+        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, Utils::RT_PHASE_COMM_FINALIZE);
     }
 }
 

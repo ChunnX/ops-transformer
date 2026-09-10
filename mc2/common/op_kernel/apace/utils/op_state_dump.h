@@ -48,12 +48,12 @@ class OpStateDump {
 public:
     __aicore__ inline OpStateDump() = default;
 
-    __aicore__ inline void Init(GM_ADDR workspaceGM, Mc2Tiling::WorkspaceLayoutInfo *wsLayout, uint32_t aicCoreNum)
+    __aicore__ inline void Init(GM_ADDR workspaceGM, const Utils::WorkspaceLayoutInfo *wsLayout, uint32_t aicCoreNum)
     {
         opStateDumpBase_ = nullptr;
         slotIdx_ = 0;
 
-        if (wsLayout == nullptr) {
+        if (wsLayout == nullptr || workspaceGM == nullptr) {
             return;
         }
 
@@ -62,13 +62,13 @@ public:
         // 但段表中的 offset 是从 0 累加的(含 LIB_API)，因此需减去 libApiSize
         // 得到用户段实际偏移，否则基地址越界导致 GM 写入崩溃。
         uint64_t libApiSize = 0;
-        for (uint32_t i = 0; i < wsLayout->segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
-            if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_LIB_API) {
+        for (uint32_t i = 0; i < wsLayout->segCount && i < Utils::MAX_WORKSPACE_SEGMENTS; i++) {
+            if (wsLayout->segments[i].type == Utils::WS_SEG_LIB_API) {
                 libApiSize = wsLayout->segments[i].size;
             }
-            if (wsLayout->segments[i].type == Mc2Tiling::WS_SEG_STATE_DUMP) {
+            if (wsLayout->segments[i].type == Utils::WS_SEG_STATE_DUMP) {
                 uint64_t userOffset = wsLayout->segments[i].offset - libApiSize;
-                opStateDumpBase_ = reinterpret_cast<__gm__ Mc2Tiling::StateDumpPerCore *>(workspaceGM + userOffset);
+                opStateDumpBase_ = reinterpret_cast<__gm__ Utils::StateDumpPerCore *>(workspaceGM + userOffset);
                 break;
             }
         }
@@ -83,12 +83,12 @@ public:
             slotIdx_ = aicCoreNum + AscendC::GetBlockIdx();
         }
 
-        __gm__ Mc2Tiling::StateDumpPerCore *mySlot = &opStateDumpBase_[slotIdx_];
+        __gm__ Utils::StateDumpPerCore *mySlot = &opStateDumpBase_[slotIdx_];
         mySlot->magicNum = 0x5A5A5A5AU;
         mySlot->coreId = static_cast<uint16_t>(slotIdx_);
         mySlot->execTurn = 0;
         mySlot->execPosition = 0;
-        mySlot->commPhase = static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_INIT);
+        mySlot->commPhase = static_cast<uint8_t>(Utils::RT_PHASE_COMM_INIT);
         mySlot->commCommitCount = 0;
         mySlot->commWaitCount = 0;
 
@@ -105,7 +105,7 @@ public:
         if (opStateDumpBase_ == nullptr) {
             return;
         }
-        __gm__ Mc2Tiling::StateDumpPerCore *mySlot = &opStateDumpBase_[slotIdx_];
+        __gm__ Utils::StateDumpPerCore *mySlot = &opStateDumpBase_[slotIdx_];
         if (fields & DUMP_FIELD_TURN_INC) {
             mySlot->execTurn++;
         } else if (fields & DUMP_FIELD_TURN) {
@@ -131,41 +131,22 @@ private:
     {
         AscendC::GlobalTensor<uint8_t> cacheLine;
         cacheLine.SetGlobalBuffer(reinterpret_cast<GM_ADDR>(&opStateDumpBase_[slotIdx_]),
-                                  Mc2Tiling::STATE_DUMP_PER_CORE_SIZE);
+                                  Utils::STATE_DUMP_PER_CORE_SIZE);
         DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
             cacheLine);
     }
 
-    __gm__ Mc2Tiling::StateDumpPerCore *opStateDumpBase_ = nullptr;
+    __gm__ Utils::StateDumpPerCore *opStateDumpBase_ = nullptr;
     uint32_t slotIdx_ = 0;
 };
 #else  // !MC2_DFX_ENABLE
 class OpStateDump {
 public:
     __aicore__ inline OpStateDump() = default;
-    __aicore__ inline void Init(GM_ADDR, Mc2Tiling::WorkspaceLayoutInfo *, uint32_t) {}
+    __aicore__ inline void Init(GM_ADDR, const Utils::WorkspaceLayoutInfo *, uint32_t) {}
     __aicore__ inline void DoDump(uint8_t, uint8_t = 0, uint8_t = 0, uint8_t = 0, uint8_t = 1, uint8_t = 1) {}
 };
 #endif // MC2_DFX_ENABLE
-
-// kernel DumpPolicy 通用实现: 每次 DoDump() 即 execTurn 自增(计算轮次推进，即 tile 计数)。
-// 供 AllToAllQbmmMxKernel/AllGatherQbmmMxKernel 等 kernel 模板作 DumpPolicy 实参，
-// 由外层 impl 经 SetOpStateDump 接线。判空必须保留: ST 测试 launcher
-// (apace_a2a_kernel_launcher.h)等未接线场景不注入。
-struct TurnIncDumpPolicy {
-    OpStateDump *opStateDump_{nullptr};
-    __aicore__ inline void SetOpStateDump(OpStateDump *rt)
-    {
-        opStateDump_ = rt;
-    }
-
-    __aicore__ inline void DoDump()
-    {
-        if (opStateDump_ != nullptr) {
-            opStateDump_->DoDump(DUMP_FIELD_TURN_INC);
-        }
-    }
-};
 
 } // namespace Mc2Kernel
 #endif // __CCE_AICORE__

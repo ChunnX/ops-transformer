@@ -727,15 +727,18 @@ protected:
         platform_ascendc::PlatformAscendC ascendcPlatform(context_->GetPlatformInfo());
         libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
 
-        td->workspaceLayout.totalSize = libApiWorkSpaceSize_ + Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
-        td->workspaceLayout.segCount = 2;
+        td->workspaceLayout.totalSize = libApiWorkSpaceSize_;
+        td->workspaceLayout.segCount = 1;
         td->workspaceLayout.segments[0] = {
-            0UL, libApiWorkSpaceSize_, static_cast<uint8_t>(Mc2Tiling::WS_SEG_LIB_API), {}};
+            0UL, libApiWorkSpaceSize_, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
+#if MC2_DFX_ENABLE
+        td->workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
+        td->workspaceLayout.segCount = 2;
         td->workspaceLayout.segments[1] = {libApiWorkSpaceSize_,
-                                           Mc2Tiling::STATE_DUMP_TOTAL_SIZE,
-                                           static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP),
+                                           Utils::STATE_DUMP_TOTAL_SIZE,
+                                           static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP),
                                            {}};
-
+#endif
         double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
         uint64_t scaleKDim = (k_ + 63UL) / 64UL;
         uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
@@ -743,9 +746,9 @@ protected:
         td->peermemDataSize = dataRegionBytes + scaleRegionBytes;
         td->peermemLayout.totalSize = td->peermemDataSize;
         td->peermemLayout.segCount = 2;
-        td->peermemLayout.segments[0] = {0UL, dataRegionBytes, static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_DATA), {}};
+        td->peermemLayout.segments[0] = {0UL, dataRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_DATA), {}};
         td->peermemLayout.segments[1] = {
-            dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Mc2Tiling::PEERMEM_SEG_SCALE), {}};
+            dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_SCALE), {}};
 
         return ge::GRAPH_SUCCESS;
     }
@@ -763,10 +766,10 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        workspaceSize_ = libApiWorkSpaceSize_ + Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
+        workspaceSize_ = libApiWorkSpaceSize_ + Utils::STATE_DUMP_TOTAL_SIZE;
         OP_LOGI(context_->GetNodeName(),
                 "AAMV2 workspace: libApiWorkSpaceSize=%lu, stateDumpSize=%lu, workspaceSize=%lu",
-                libApiWorkSpaceSize_, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, workspaceSize_);
+                libApiWorkSpaceSize_, Utils::STATE_DUMP_TOTAL_SIZE, workspaceSize_);
         auto *wsBuf = context_->GetWorkspaceSizes(1);
         if (wsBuf != nullptr) {
             wsBuf[0] = workspaceSize_;

@@ -136,7 +136,7 @@ __aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, Tiling
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
             if (opStateDump_ != nullptr) {
-                opStateDump_->DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+                opStateDump_->DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
             }
         }
     }
@@ -161,7 +161,7 @@ __aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, Tiling
         hccl_.Commit(hTasks_[startIndex_ + taskIndex]);
         taskSuccess_[startIndex_ + taskIndex] = false;
         if (opStateDump_ != nullptr) {
-            opStateDump_->DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+            opStateDump_->DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
         }
     }
 }
@@ -222,7 +222,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
             if (opStateDump_ != nullptr) {
-                opStateDump_->DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE)); 
+                opStateDump_->DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE)); 
             }
         }
     }
@@ -260,7 +260,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
     if (notifyFlag_) {
         hccl_.Finalize();
         if (opStateDump_ != nullptr) {
-            opStateDump_->DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE)); 
+            opStateDump_->DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE)); 
         }
     }
 }

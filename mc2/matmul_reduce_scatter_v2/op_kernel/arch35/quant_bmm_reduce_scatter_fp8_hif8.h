@@ -134,13 +134,13 @@ __aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Pos
     if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
             opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMM_BEFORE,
-                                static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT), i + 1U);
+                                static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT), i + 1U);
             hccl_.Wait(handles_[i]);
             opStateDump_.DoDump(DUMP_FIELD_WAIT);
         }
         // 终止hcclserver
         // 仅切commPhase，到达finalize即表示通信全流程成功结束
-        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
         hccl_.Finalize();
     }
 }
@@ -269,14 +269,14 @@ __aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Mat
     for (uint32_t i = 0; i < tileCnt; i++) {
         // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
         opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMP_CUBE_MATMUL_BEFORE,
-                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE), i + 1 + shift);
+                            static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE), i + 1 + shift);
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
         opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMM_BEFORE,
-                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT), i + 1 + shift);
+                            static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT), i + 1 + shift);
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         opStateDump_.DoDump(DUMP_FIELD_COMMIT);

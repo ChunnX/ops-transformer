@@ -37,8 +37,8 @@ struct alignas(8) AllGatherMxMatmulUrmaTilingData {
     QuantMatmulTilingData mmTile;
     CommTilingData commTile;
     uint8_t isBias{0};
-    Mc2Tiling::WorkspaceLayoutInfo workspaceLayout{};
+    Utils::WorkspaceLayoutInfo workspaceLayout{};
     uint64_t peermemDataSize{0};
-    Mc2Tiling::PeermemLayoutInfo peermemLayout{};
+    Utils::PeermemLayoutInfo peermemLayout{};
 };
 #pragma pack(pop)

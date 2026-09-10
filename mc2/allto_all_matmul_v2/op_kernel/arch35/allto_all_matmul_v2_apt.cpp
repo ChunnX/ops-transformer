@@ -12,7 +12,6 @@
 #include "allto_all_matmul_v2_tiling_key.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_mx_quant_matmul_urma_impl.h"
-#include "apace/utils/op_state_dump.h"
 
 using namespace AscendC;
 using namespace Apace;
@@ -45,9 +44,6 @@ __global__ __aicore__ void allto_all_matmul_v2(GM_ADDR context, GM_ADDR x1, GM_A
 #endif
 
     Impl impl;
-    Mc2Kernel::OpStateDump opStateDump;
-    opStateDump.Init(workspaceGM, &tilingData.workspaceLayout, tilingData.tileQbmmTilingData.usedCoreNum);
-    impl.SetOpStateDump(&opStateDump);
-    impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, &tilingData);
+    impl.Init(hcommCtx, x1, x1_scale, x2, x2_scale, y, bias, workspaceGM, &tilingData);
     impl.Run();
 }

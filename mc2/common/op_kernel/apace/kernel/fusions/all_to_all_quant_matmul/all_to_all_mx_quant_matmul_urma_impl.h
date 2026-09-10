@@ -44,9 +44,10 @@ using asc::te::get;
 using namespace Apace::AivComm;
 
 struct UrmaCommWaitPolicy {
-    __aicore__ inline void WaitTile(uint32_t tileIdx)
+    __aicore__ inline uint32_t WaitTile(uint32_t tileIdx)
     {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+        return 0; // AIC flag 等待不计入 commWaitCount(AIV 侧另行计数，保持 commit/wait 两侧对称)
     }
 };
 
@@ -71,17 +72,12 @@ public:
      * @brief 初始化算子状态和参数
      */
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM,
-                                GM_ADDR scaleBGM, GM_ADDR cGM, GM_ADDR biasGM,
+                                GM_ADDR scaleBGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR workspaceGM,
                                 const allToAllMatmulTilingData *tilingData);
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
      */
     __aicore__ inline void Run();
-
-    __aicore__ inline void SetOpStateDump(Mc2Kernel::OpStateDump *rt)
-    {
-        opStateDump_ = rt;
-    }
 
     using TypeA = AType;
     using TypeB = BType;
@@ -112,8 +108,7 @@ public:
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC,
                                                     BiasType, LayoutBias>;
     using QuantMatmulKernelImpl =
-        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaCommWaitPolicy,
-                                     Mc2Kernel::TurnIncDumpPolicy>;
+        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaCommWaitPolicy>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -154,8 +149,7 @@ private:
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
-    // 状态打点指针，由 apt 入口/ST launcher 在 Init 前通过 SetOpStateDump 注入，保证非空
-    Mc2Kernel::OpStateDump *opStateDump_{nullptr};
+    Mc2Kernel::OpStateDump opStateDump_{};
     static constexpr uint8_t POS_COMM_BEFORE = 0U;
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
     static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 2U;
@@ -175,7 +169,7 @@ private:
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR cGM,
-    GM_ADDR biasGM, const allToAllMatmulTilingData *tilingData)
+    GM_ADDR biasGM, GM_ADDR workspaceGM, const allToAllMatmulTilingData *tilingData)
 {
     tilingData_ = tilingData;
     baseParams_.aGm = aGM;
@@ -184,6 +178,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
     baseParams_.biasGm = biasGM;
+    opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, tilingData->tileQbmmTilingData.usedCoreNum);
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
@@ -191,7 +186,6 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.rankSize = udmaCtx_->rankSize;
 
     InitBaseParams(tilingData);
-    quantMatmulKernelImpl_.GetDumpPolicy().SetOpStateDump(opStateDump_);
 
     baseParams_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId]);
     uint32_t ubOffset = 0;
@@ -232,16 +226,16 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
 {
-    opStateDump_->DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE,
-                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE,
+                         static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
             allToAllScaleA_.Commit();
             allToAllA_.Commit();
-            opStateDump_->DoDump(DUMP_FIELD_COMMIT);
+            opStateDump_.DoDump(DUMP_FIELD_COMMIT);
             allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
-            opStateDump_->DoDump(DUMP_FIELD_WAIT);
+            opStateDump_.DoDump(DUMP_FIELD_WAIT);
         }
 
         AscendC::SyncAll<true>();
@@ -250,7 +244,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Finalize();
     allToAllA_.Finalize();
-    opStateDump_->DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+    opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     // 通信接口使用了 channel 内的字段，需要刷新 GM 地址保证跨 kernel launch 的 GM 状态与 aiCore cache 一致
     // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
     dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
@@ -335,8 +329,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     Params localParams;
     SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
-    opStateDump_->DoDump(DUMP_FIELD_STEP, POS_COMP_LOCAL_BEFORE, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
-    quantMatmulKernelImpl_(localParams);
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMP_LOCAL_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT));
+    quantMatmulKernelImpl_(localParams, opStateDump_);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -350,9 +344,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
-    opStateDump_->DoDump(DUMP_FIELD_STEP, POS_COMP_CUBE_MATMUL_BEFORE,
-                         static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_WAIT));
-    quantMatmulKernelImpl_(params);
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMP_CUBE_MATMUL_BEFORE,
+                         static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT));
+    quantMatmulKernelImpl_(params, opStateDump_);
 }
 
 } // namespace Apace
