@@ -178,6 +178,7 @@ if (BUILD_OPEN_PROJECT)
     message(STATUS "TESTS_EXAMPLE_OPS_TEST=${TESTS_EXAMPLE_OPS_TEST}")
     message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
     message(STATUS "VERSION=${VERSION}")
+    message(STATUS "ENABLE_MOE_EP_PROFILING=${ENABLE_MOE_EP_PROFILING}")
 endif ()
 
 ########################################################################################################################
@@ -254,6 +255,7 @@ if (BUILD_OPEN_PROJECT)
                 --enable_tiling_sink ${ENABLE_TILING_SINK}
                 --enable_aicpu ${ENABLE_AICPU}
                 --enable_aicpu_kernel ${ENABLE_AICPU_KERNEL}
+                --enable_moe_ep_profiling ${ENABLE_MOE_EP_PROFILING}
                 --module ${ASCEND_MODULE_NAME}
                 RESULT_VARIABLE result
                 OUTPUT_STRIP_TRAILING_WHITESPACE
