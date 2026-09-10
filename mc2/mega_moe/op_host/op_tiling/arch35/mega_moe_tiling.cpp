@@ -1895,7 +1895,7 @@ static ge::graphStatus CheckWeightScaleTensorDim(const gert::StorageShape *weigh
                         nodeName, weightScaleName,
                         (std::string("matrix dimension=") + std::to_string(weightScaleMatrixDimSize)).c_str(),
                         (std::string("The matrix dimension of ") + weightScaleName + " must equal the row count of " +
-                         weightName + "(" + std::to_string(weightRowCount) + ").")
+                         weightName + "(" + std::to_string(weightRowCount) + ")")
                             .c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(weightScaleGroupDimSize != ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
@@ -1904,7 +1904,7 @@ static ge::graphStatus CheckWeightScaleTensorDim(const gert::StorageShape *weigh
                         (std::string("group dimension=") + std::to_string(weightScaleGroupDimSize)).c_str(),
                         (std::string("The group dimension of ") + weightScaleName + " must equal CeilDiv(" +
                          weightName + " column count, INPUT_WEIGHT_SCALES_CEIL_ALIGN) = " +
-                         std::to_string(ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+                         std::to_string(ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)))
                             .c_str()),
                     return ge::GRAPH_FAILED);
 
@@ -1948,7 +1948,7 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
                         weightScalesTwoMultiBaseDimSize != WEIGHT_SCALE_MULTI_BASE_DIM_SIZE,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "weightScales1, weightScales2", scaleMultiBaseDimensionsString.c_str(),
-                        "The per-expert trailing dimension of weightScales1 and weightScales2 must be 2."),
+                        "The per-expert trailing dimension of weightScales1 and weightScales2 must be 2"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
