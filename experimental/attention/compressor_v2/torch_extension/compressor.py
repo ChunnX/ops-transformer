@@ -42,7 +42,7 @@ compressor_op_builder._ensure_initialized()
 # Register compressor forward
 # ===========================================================================
 @torch.library.custom_op(
-    "cann_ops_transformer::_compressor_v2_forward", mutates_args=(), device_types="npu"
+    "cann_ops_transformer::cpv2.compressor", mutates_args=(), device_types="npu"
 )
 def _compressor_forward(
     x: torch.Tensor,
@@ -69,7 +69,7 @@ def _compressor_forward(
     )
 
 
-@torch.library.register_fake("cann_ops_transformer::_compressor_v2_forward")
+@torch.library.register_fake("cann_ops_transformer::cpv2.compressor")
 def _compressor_forward_fake(
     x: torch.Tensor,
     wkv: torch.Tensor,

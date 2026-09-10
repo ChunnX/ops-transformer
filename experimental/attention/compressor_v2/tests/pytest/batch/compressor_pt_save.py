@@ -408,22 +408,20 @@ def compressor_output_single(data_case):
         block_table = torch.tensor(
             random.sample(list(range(batch_size)), batch_size), dtype=torch.int32
         )
-        token_size = (
-            (2 * cmp_ratio + Seq_len - 1) if coff == 2 else (cmp_ratio + Seq_len - 1)
-        )
+        # 直接用传入的 block_size 构造 state_cache，不做约束裁剪
         if batch_size == 0:
             kv_state = torch.tensor(
                 np.random.uniform(
                     kv_state_datarange[0],
                     kv_state_datarange[1],
-                    (batch_size, token_size, coff * head_dim),
+                    (batch_size, block_size, coff * head_dim),
                 )
             ).to(torch.float32)
             score_state = torch.tensor(
                 np.random.uniform(
                     score_state_datarange[0],
                     score_state_datarange[1],
-                    (0, token_size, coff * head_dim),
+                    (0, block_size, coff * head_dim),
                 )
             ).to(torch.float32)
         else:
@@ -431,14 +429,14 @@ def compressor_output_single(data_case):
                 np.random.uniform(
                     kv_state_datarange[0],
                     kv_state_datarange[1],
-                    (batch_size, token_size, coff * head_dim),
+                    (batch_size, block_size, coff * head_dim),
                 )
             ).to(torch.float32)
             score_state = torch.tensor(
                 np.random.uniform(
                     score_state_datarange[0],
                     score_state_datarange[1],
-                    (batch_size, token_size, coff * head_dim),
+                    (batch_size, block_size, coff * head_dim),
                 )
             ).to(torch.float32)
 

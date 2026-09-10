@@ -1270,9 +1270,7 @@ def run_compressor_eager(
             ).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
-        block_size = min(
-            (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1), 1024
-        )  # block_size max is 1024
+        # 直接用入参 block_size 构造 state_cache，不做约束裁剪
         if B == 0:
             kv_state = torch.tensor(
                 np.random.uniform(
