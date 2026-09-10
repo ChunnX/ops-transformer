@@ -15,6 +15,7 @@ import numpy
 
 
 _FP32_TINY = numpy.float32(numpy.finfo(numpy.float32).tiny)
+_VREG_FP32_ELEMENTS = 64
 
 
 __spec__ = {
@@ -90,6 +91,103 @@ def _fma_float32(dst, src0, src1):
     return result.astype(numpy.float32, copy=False)
 
 
+def _multiply_float32(lhs, rhs):
+    """Multiply with an FP32 result, matching ``Reg::Mul<float>``."""
+    with numpy.errstate(over="ignore", invalid="ignore", under="ignore"):
+        return numpy.multiply(lhs, rhs, dtype=numpy.float32)
+
+
+def _add_float32(lhs, rhs):
+    """Add with an FP32 result, matching ``Reg::Add<float>``."""
+    with numpy.errstate(over="ignore", invalid="ignore", under="ignore"):
+        return numpy.add(lhs, rhs, dtype=numpy.float32)
+
+
+def _binary_tree_sum_float32(value):
+    """Match the adjacent-pair binary tree used by ``Reg::Reduce<SUM>``."""
+    result = numpy.asarray(value, dtype=numpy.float32)
+    while result.shape[-1] > 1:
+        result = _add_float32(result[..., 0::2], result[..., 1::2])
+    return result[..., 0]
+
+
+def _phase1_reductions_float32(partial, query):
+    """Match the D-dependent Phase 1 VREG accumulation and reduction order."""
+    d_size = partial.shape[-1]
+    vector_count = (d_size + _VREG_FP32_ELEMENTS - 1) // _VREG_FP32_ELEMENTS
+    padded_d = vector_count * _VREG_FP32_ELEMENTS
+
+    partial_padded = numpy.zeros(partial.shape[:-1] + (padded_d,), dtype=numpy.float32)
+    partial_padded[..., :d_size] = partial
+    query_padded = numpy.zeros((padded_d,), dtype=numpy.float32)
+    query_padded[:d_size] = query
+    partial_vectors = partial_padded.reshape(
+        partial.shape[:-1] + (vector_count, _VREG_FP32_ELEMENTS)
+    )
+    query_vectors = query_padded.reshape(vector_count, _VREG_FP32_ELEMENTS)
+
+    partial_reg0 = partial_vectors[..., 0, :]
+    query_reg0 = query_vectors[0]
+    if d_size <= _VREG_FP32_ELEMENTS:
+        square_reg = _multiply_float32(partial_reg0, partial_reg0)
+        dot_reg = _multiply_float32(partial_reg0, query_reg0)
+    elif d_size <= 2 * _VREG_FP32_ELEMENTS:
+        partial_reg1 = partial_vectors[..., 1, :]
+        query_reg1 = query_vectors[1]
+        square_reg = _multiply_float32(partial_reg0, partial_reg0)
+        dot_reg = _multiply_float32(partial_reg0, query_reg0)
+        # Reg::MulAddDst(dst, src0, src1) computes one fused dst + src0 * src1.
+        square_reg = _fma_float32(partial_reg1, partial_reg1, square_reg)
+        dot_reg = _fma_float32(partial_reg1, query_reg1, dot_reg)
+    else:
+        accumulator_shape = partial.shape[:-1] + (_VREG_FP32_ELEMENTS,)
+        square_acc0 = numpy.zeros(accumulator_shape, dtype=numpy.float32)
+        square_acc1 = numpy.zeros(accumulator_shape, dtype=numpy.float32)
+        dot_acc0 = numpy.zeros(accumulator_shape, dtype=numpy.float32)
+        dot_acc1 = numpy.zeros(accumulator_shape, dtype=numpy.float32)
+        full_loops = d_size // _VREG_FP32_ELEMENTS
+        pair_full_loops = full_loops // 2
+
+        for loop in range(pair_full_loops):
+            vector_index0 = 2 * loop
+            vector_index1 = vector_index0 + 1
+            partial_reg0 = partial_vectors[..., vector_index0, :]
+            partial_reg1 = partial_vectors[..., vector_index1, :]
+            square_acc0 = _fma_float32(partial_reg0, partial_reg0, square_acc0)
+            square_acc1 = _fma_float32(partial_reg1, partial_reg1, square_acc1)
+            dot_acc0 = _fma_float32(
+                partial_reg0, query_vectors[vector_index0], dot_acc0
+            )
+            dot_acc1 = _fma_float32(
+                partial_reg1, query_vectors[vector_index1], dot_acc1
+            )
+
+        if full_loops & 1:
+            vector_index = 2 * pair_full_loops
+            partial_reg0 = partial_vectors[..., vector_index, :]
+            square_acc0 = _fma_float32(partial_reg0, partial_reg0, square_acc0)
+            dot_acc0 = _fma_float32(partial_reg0, query_vectors[vector_index], dot_acc0)
+
+        if d_size % _VREG_FP32_ELEMENTS:
+            vector_index = full_loops
+            partial_reg0 = partial_vectors[..., vector_index, :]
+            if full_loops & 1:
+                square_acc1 = _fma_float32(partial_reg0, partial_reg0, square_acc1)
+                dot_acc1 = _fma_float32(
+                    partial_reg0, query_vectors[vector_index], dot_acc1
+                )
+            else:
+                square_acc0 = _fma_float32(partial_reg0, partial_reg0, square_acc0)
+                dot_acc0 = _fma_float32(
+                    partial_reg0, query_vectors[vector_index], dot_acc0
+                )
+
+        square_reg = _add_float32(square_acc0, square_acc1)
+        dot_reg = _add_float32(dot_acc0, dot_acc1)
+
+    return _binary_tree_sum_float32(square_reg), _binary_tree_sum_float32(dot_reg)
+
+
 def _torch_ftz_float32(value):
     """Torch counterpart of :func:`_ftz_float32`."""
     import torch
@@ -134,6 +232,102 @@ def _torch_fma_float32(dst, src0, src1):
     return result.to(dtype=torch.float32)
 
 
+def _torch_binary_tree_sum_float32(value):
+    """Torch counterpart of :func:`_binary_tree_sum_float32`."""
+    result = value
+    while result.shape[-1] > 1:
+        result = result[..., 0::2] + result[..., 1::2]
+    return result[..., 0]
+
+
+def _torch_phase1_reductions_float32(partial, query):
+    """Torch counterpart of :func:`_phase1_reductions_float32`."""
+    import torch
+
+    d_size = partial.shape[-1]
+    vector_count = (d_size + _VREG_FP32_ELEMENTS - 1) // _VREG_FP32_ELEMENTS
+    padded_d = vector_count * _VREG_FP32_ELEMENTS
+    padding = padded_d - d_size
+    partial_padded = torch.cat(
+        (partial, partial.new_zeros(partial.shape[:-1] + (padding,))), dim=-1
+    )
+    query_padded = torch.cat((query, query.new_zeros((padding,))), dim=-1)
+    partial_vectors = partial_padded.reshape(
+        partial.shape[:-1] + (vector_count, _VREG_FP32_ELEMENTS)
+    )
+    query_vectors = query_padded.reshape(vector_count, _VREG_FP32_ELEMENTS)
+
+    partial_reg0 = partial_vectors[..., 0, :]
+    query_reg0 = query_vectors[0]
+    if d_size <= _VREG_FP32_ELEMENTS:
+        square_reg = partial_reg0 * partial_reg0
+        dot_reg = partial_reg0 * query_reg0
+    elif d_size <= 2 * _VREG_FP32_ELEMENTS:
+        partial_reg1 = partial_vectors[..., 1, :]
+        query_reg1 = query_vectors[1]
+        square_reg = partial_reg0 * partial_reg0
+        dot_reg = partial_reg0 * query_reg0
+        square_reg = _torch_fma_float32(partial_reg1, partial_reg1, square_reg)
+        dot_reg = _torch_fma_float32(partial_reg1, query_reg1, dot_reg)
+    else:
+        accumulator_shape = partial.shape[:-1] + (_VREG_FP32_ELEMENTS,)
+        square_acc0 = torch.zeros(
+            accumulator_shape, dtype=torch.float32, device=partial.device
+        )
+        square_acc1 = torch.zeros_like(square_acc0)
+        dot_acc0 = torch.zeros_like(square_acc0)
+        dot_acc1 = torch.zeros_like(square_acc0)
+        full_loops = d_size // _VREG_FP32_ELEMENTS
+        pair_full_loops = full_loops // 2
+
+        for loop in range(pair_full_loops):
+            vector_index0 = 2 * loop
+            vector_index1 = vector_index0 + 1
+            partial_reg0 = partial_vectors[..., vector_index0, :]
+            partial_reg1 = partial_vectors[..., vector_index1, :]
+            square_acc0 = _torch_fma_float32(partial_reg0, partial_reg0, square_acc0)
+            square_acc1 = _torch_fma_float32(partial_reg1, partial_reg1, square_acc1)
+            dot_acc0 = _torch_fma_float32(
+                partial_reg0, query_vectors[vector_index0], dot_acc0
+            )
+            dot_acc1 = _torch_fma_float32(
+                partial_reg1, query_vectors[vector_index1], dot_acc1
+            )
+
+        if full_loops & 1:
+            vector_index = 2 * pair_full_loops
+            partial_reg0 = partial_vectors[..., vector_index, :]
+            square_acc0 = _torch_fma_float32(partial_reg0, partial_reg0, square_acc0)
+            dot_acc0 = _torch_fma_float32(
+                partial_reg0, query_vectors[vector_index], dot_acc0
+            )
+
+        if d_size % _VREG_FP32_ELEMENTS:
+            vector_index = full_loops
+            partial_reg0 = partial_vectors[..., vector_index, :]
+            if full_loops & 1:
+                square_acc1 = _torch_fma_float32(
+                    partial_reg0, partial_reg0, square_acc1
+                )
+                dot_acc1 = _torch_fma_float32(
+                    partial_reg0, query_vectors[vector_index], dot_acc1
+                )
+            else:
+                square_acc0 = _torch_fma_float32(
+                    partial_reg0, partial_reg0, square_acc0
+                )
+                dot_acc0 = _torch_fma_float32(
+                    partial_reg0, query_vectors[vector_index], dot_acc0
+                )
+
+        square_reg = square_acc0 + square_acc1
+        dot_reg = dot_acc0 + dot_acc1
+
+    return _torch_binary_tree_sum_float32(square_reg), _torch_binary_tree_sum_float32(
+        dot_reg
+    )
+
+
 def _torch_golden(
     partial_block,
     delta,
@@ -159,11 +353,16 @@ def _torch_golden(
     if partial_out.numel() == 0:
         return partial_out, torch.empty_like(delta)
 
-    square_sum = torch.sum(partial_out * partial_out, dim=-1)
-    rms = _torch_sqrt_ftz_float32(square_sum / partial_out.shape[-1] + float(eps))
-    score = _torch_div_ftz_float32(
-        torch.sum(partial_out * pseudo_query_fp32, dim=-1), rms
+    square_sum, dot_sum = _torch_phase1_reductions_float32(
+        partial_out, pseudo_query_fp32
     )
+    inv_d = torch.tensor(
+        float(numpy.float32(1.0 / partial_out.shape[-1])),
+        dtype=torch.float32,
+        device=partial_out.device,
+    )
+    rms = _torch_sqrt_ftz_float32(square_sum * inv_d + float(eps))
+    score = _torch_div_ftz_float32(dot_sum, rms)
 
     current_max = torch.maximum(logit_max_fp32, score)
     alpha = _torch_exp_sub_ftz_float32(logit_max_fp32, current_max)
@@ -202,10 +401,11 @@ class BlockAttnResUpdateTestSpec:
         # aliases input 0 only in the kernel launch buffers.
         partial_out = numpy.add(partial, delta_fp32).astype(numpy.float32, copy=False)
 
-        square_sum = numpy.sum(partial_out * partial_out, axis=-1, dtype=numpy.float32)
+        square_sum, dot_sum = _phase1_reductions_float32(partial_out, pseudo_query)
         inv_d = numpy.float32(1.0 / partial_out.shape[-1])
-        rms = _sqrt_ftz_float32(square_sum * inv_d + numpy.float32(eps))
-        dot_sum = numpy.sum(partial_out * pseudo_query, axis=-1, dtype=numpy.float32)
+        rms = _sqrt_ftz_float32(
+            _add_float32(_multiply_float32(square_sum, inv_d), numpy.float32(eps))
+        )
         score = _div_ftz_float32(dot_sum, rms)
 
         current_max = numpy.maximum(logit_max, score)
