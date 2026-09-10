@@ -76,7 +76,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
-    int32_t headDimV_ = -1; // -1: unset, normalized to headDim_
+    int32_t headDimV_ = -1; // -1: 未指定, 归一化后等于 headDim_
     int32_t maskMode_ = 1;
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;
@@ -148,26 +148,21 @@ private:
     bool FagIsValid(int64_t blockIdx);
     bool FagIsValidUnpad(int64_t blockIdx);
     bool FagCheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx);
-    void FagFillBlockInfoLoadBalance(
-        std::vector<std::vector<int64_t>> &totalBlockInfo,
-        std::vector<std::vector<float>> &acturalBlockInfo);
+    void FagFillBlockInfoLoadBalance(std::vector<std::vector<int64_t>> &totalBlockInfo,
+                                     std::vector<std::vector<float>> &acturalBlockInfo);
 
     // BN2S2 split implementations
     void TryBn2s2Sparse();
     void DoFagBn2s2DenseSplit();
     void DoFagBn2s2SparseTndSplit();
-    float Bn2s2BinarySearchMaxBlockNumPerCore(
-        int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-        std::vector<std::vector<int64_t>> &totalBlockInfo,
-        std::vector<std::vector<float>> &acturalBlockInfo);
-    bool Bn2s2IsPossible(
-        int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
-        std::vector<std::vector<float>> &acturalBlockInfo);
-    bool Bn2s2CaclePerCoreBlockInfo(
-        int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-        std::vector<std::vector<int64_t>> &totalBlockInfo,
-        std::vector<std::vector<float>> &acturalBlockInfo,
-        float maxBlockNumPerCore);
+    float Bn2s2BinarySearchMaxBlockNumPerCore(int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+                                              std::vector<std::vector<int64_t>> &totalBlockInfo,
+                                              std::vector<std::vector<float>> &acturalBlockInfo);
+    bool Bn2s2IsPossible(int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
+                         std::vector<std::vector<float>> &acturalBlockInfo);
+    bool Bn2s2CaclePerCoreBlockInfo(int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+                                    std::vector<std::vector<int64_t>> &totalBlockInfo,
+                                    std::vector<std::vector<float>> &acturalBlockInfo, float maxBlockNumPerCore);
 
     // BN2 split implementations
     bool TryBn2MultiBlkSparse();
