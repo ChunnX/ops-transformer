@@ -65,6 +65,7 @@ using namespace AscendC;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
+constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
 static constexpr uint32_t RECV_META_FIELDS = 5U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
@@ -92,6 +93,7 @@ private:
     __aicore__ inline void BuffInit();
     __aicore__ inline uint32_t GetCompletionChannelCount();
     __aicore__ inline void LoadTopkIds();
+    __aicore__ inline void MaskCheck();
     __aicore__ inline bool WaitDispatch(uint32_t completionChannelCount);
     __aicore__ inline void ClearCompletionFlags();
     __aicore__ inline void BuildLocalRecvIndex();
@@ -135,6 +137,8 @@ private:
     uint32_t tEnd_{0};
     uint32_t tPerCore_{0};
     uint32_t maskTokenNum_{0};
+    uint32_t bsKCastCnt_{0};
+    uint32_t activeMaskAlignSize_{0};
     uint64_t localIndexStrideElems_{0};
 
     GlobalTensor<XType> xGm_;
@@ -150,6 +154,9 @@ private:
     LocalTensor<float> ubTmpFp32_;
     LocalTensor<int32_t> topkIdsTensor_;
     LocalTensor<int32_t> localRecvIdxTensor_;
+    LocalTensor<bool> maskGenerateTensor_;
+    LocalTensor<bool> maskStrideTensor_;
+    LocalTensor<half> tokenTargetTensor_;
 
     TQue<QuePosition::VECIN, 1> xInQue_;
     TQue<QuePosition::VECOUT, 1> xOutQue_;
@@ -164,7 +171,11 @@ private:
     TBuf<> localRecvIdxBuf_;
     LocalTensor<int32_t> rankOffsetsTensor_;
 
+    TBuf<> topkIdsBuf_;
     TBuf<> compareBuf_;
+    TBuf<> rowTmpFloatBuf_;
+    TBuf<> tokenBuf_;
+    TBuf<> tokenTargetTBuf_;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
 };
@@ -249,9 +260,24 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (tStart_ < numTokens_) {
         maskTokenNum_ = tPerCore_ * topK_;
         uint32_t bsKInt32Align = Ceil(maskTokenNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+        uint32_t bsKFloatAlign = Ceil(maskTokenNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+        uint32_t bsKHalfAlign = Ceil(maskTokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
+        uint32_t bsHalfAlign = Ceil(tPerCore_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
+
+        bsKCastCnt_ = Ceil(maskTokenNum_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+        activeMaskAlignSize_ = tPerCore_ * Ceil(topK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN * sizeof(half);
+        bsKInt32Align = (bsKInt32Align > bsKCastCnt_ ? bsKInt32Align : bsKCastCnt_);
+        bsKHalfAlign = (bsKHalfAlign > activeMaskAlignSize_ ? bsKHalfAlign : activeMaskAlignSize_);
+        bsKFloatAlign = (bsKFloatAlign > bsKCastCnt_ ? bsKFloatAlign : bsKCastCnt_);
+        bsKFloatAlign = (bsKFloatAlign > activeMaskAlignSize_ ? bsKFloatAlign : activeMaskAlignSize_);
+
+        tpipe_->InitBuffer(tokenTargetTBuf_, bsHalfAlign);
+        tpipe_->InitBuffer(topkIdsBuf_, bsKInt32Align);
         tpipe_->InitBuffer(compareBuf_, bsKInt32Align);
+        tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);
+        tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
         tpipe_->InitBuffer(localRecvIdxBuf_, bsKInt32Align);
-        topkIdsTensor_ = compareBuf_.Get<int32_t>();
+        topkIdsTensor_ = topkIdsBuf_.Get<int32_t>();
         localRecvIdxTensor_ = localRecvIdxBuf_.Get<int32_t>();
     }
     if constexpr (HasTopkWeight == 1) {
@@ -342,6 +368,32 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
     DataCopyPad(topkIdsTensor_, topkIdxGm_[tStart_ * topK_], topkIdsCntParams, topkIdsCntCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+}
+
+template <TemplateMoeEpCombineEpilogueTypeClass>
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::MaskCheck()
+{
+    if (tStart_ >= numTokens_) {
+        return;
+    }
+    LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
+    LocalTensor<float> topkIdsFloatTensor = rowTmpFloatBuf_.Get<float>();
+    LocalTensor<uint8_t> maskTensor = compareBuf_.Get<uint8_t>();
+    LocalTensor<half> maskCalcSelectedTensor = rowTmpFloatBuf_.Get<half>();
+    maskGenerateTensor_ = compareBuf_.Get<bool>();
+    LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
+    maskStrideTensor_ = tokenBuf_.Get<bool>();
+    tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
+
+    Duplicate<half>(maskCalcTensor, static_cast<half>(1),
+                    Ceil(maskTokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
+    uint32_t calcCnt = bsKCastCnt_ / sizeof(int32_t);
+    Cast(topkIdsFloatTensor, topkIdsTensor_, RoundMode::CAST_NONE, calcCnt);
+    CompareScalar(maskTensor, topkIdsFloatTensor, static_cast<float>(0), AscendC::CMPMODE::GE, calcCnt);
+    Select(maskCalcSelectedTensor, maskTensor, maskCalcTensor, static_cast<half>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE,
+           calcCnt);
+    Cast(maskGenerateTensor_.ReinterpretCast<uint8_t>(), maskCalcSelectedTensor, RoundMode::CAST_NONE, calcCnt);
+    SyncFunc<AscendC::HardEvent::V_S>();
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -460,10 +512,11 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         uint32_t lookupIndex = (tokenIndex - tStart_) * topK_ + topkId;
-        int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
-        if (expertId < 0) {
+        bool maskExpertFlag = maskGenerateTensor_.GetValue(lookupIndex);
+        if (!maskExpertFlag) {
             continue;
         }
+        int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
         int32_t localRecvXIdx = localRecvIdxTensor_.GetValue(lookupIndex);
         if (localRecvXIdx < 0 && expertId >= static_cast<int32_t>(localExpertBegin) &&
             expertId < static_cast<int32_t>(localExpertEnd)) {
@@ -548,6 +601,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 {
     BuffInit();
     LoadTopkIds();
+    MaskCheck();
     RecvPhaseReduce();
 }
 
