@@ -40,7 +40,6 @@ using namespace AscendC;
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
 
-#include "utils/select_helper.hpp"
 #include "utils/const_args.hpp"
 #include "utils/dispatch_policy_custom.hpp"
 #include "mc2_moe_context.h"
@@ -103,10 +102,6 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR tilingGM_{nullptr};
 
-    GM_ADDR moeInitRoutingQuantV2Scale_ = nullptr;
-    GM_ADDR moeInitRoutingQuantV2Offset_ = nullptr;
-    GM_ADDR expertTokensBeforeCapacity_ = nullptr;
-
     TBuf<AscendC::TPosition::VECCALC> uBuf_;
 
     int32_t rank_;
@@ -137,8 +132,6 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR
                                                       GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
                                                       GM_ADDR tilingGM)
 {
-    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int8_t>;
-
     contextGM_ = contextGM;
     xGM_ = xGM;
     topkIdsGM_ = topkIdsGM;
@@ -156,46 +149,24 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR
     workspaceGM_ = workspaceGM;
     tilingGM_ = tilingGM;
 
-    if constexpr (kRoutingIsQuant) {
-        auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
-        GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
+    GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
 
-        aivNum_ = tilingData.common.aivNum;
-        m_ = tilingData.common.M;
-        k_ = tilingData.common.K;
-        n_ = tilingData.common.N;
-        epWorldSize_ = tilingData.common.worldSize;
-        topK_ = tilingData.common.topK;
-        expertPerRank_ = tilingData.common.expertPerRank;
-        // maxOutputSize 语义 = 发送侧单 chunk 接收预算 B（recvRoundBudget，host 已算好）；
-        // 接收行按 chunk 分段（numChunks * B <= maxRecvTokenNum），kernel 内逐 chunk 复用
-        maxOutputSize_ = tilingData.common.recvRoundBudget;
-        listLen_ = tilingData.common.listLen;
+    aivNum_ = tilingData.aivNum;
+    m_ = tilingData.M;
+    k_ = tilingData.K;
+    n_ = tilingData.N;
+    epWorldSize_ = tilingData.worldSize;
+    topK_ = tilingData.topK;
+    expertPerRank_ = tilingData.expertPerRank;
+    // maxOutputSize 语义 = 发送侧单 chunk 接收预算 B（recvRoundBudget，host 已算好）；
+    // 接收行按 chunk 分段（numChunks * B <= maxRecvTokenNum），kernel 内逐 chunk 复用
+    maxOutputSize_ = tilingData.recvRoundBudget;
+    listLen_ = tilingData.listLen;
 
-        activationCode_ = tilingData.common.activationCode;
-        activationClamp_ = tilingData.common.activationClamp;
-        activationParams1_ = tilingData.common.activationParams1;
-        activationParams2_ = tilingData.common.activationParams2;
-    } else {
-        auto tiling = (__gm__ MegaMoeTilingDataNonQuant *)tilingGM;
-        GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
-
-        aivNum_ = tilingData.common.aivNum;
-        m_ = tilingData.common.M;
-        k_ = tilingData.common.K;
-        n_ = tilingData.common.N;
-        epWorldSize_ = tilingData.common.worldSize;
-        topK_ = tilingData.common.topK;
-        expertPerRank_ = tilingData.common.expertPerRank;
-        // maxOutputSize 语义 = 发送侧单 chunk 接收预算 B（recvRoundBudget，host 已算好）
-        maxOutputSize_ = tilingData.common.recvRoundBudget;
-        listLen_ = tilingData.common.listLen;
-
-        activationCode_ = tilingData.common.activationCode;
-        activationClamp_ = tilingData.common.activationClamp;
-        activationParams1_ = tilingData.common.activationParams1;
-        activationParams2_ = tilingData.common.activationParams2;
-    }
+    activationCode_ = tilingData.activationCode;
+    activationClamp_ = tilingData.activationClamp;
+    activationParams1_ = tilingData.activationParams1;
+    activationParams2_ = tilingData.activationParams2;
 }
 
 template <MegaMoeClassA2>
@@ -228,8 +199,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         typename std::conditional<Nz_, layout::zN,
                                   typename std::conditional<TB1_, layout::ColumnMajor, layout::RowMajor>::type>::type;
 
-    LayoutB layoutB1 = LayoutBInitializer<LayoutB, BElement>::create(k_, n_);
-    LayoutB layoutB2 = LayoutBInitializer<LayoutB, BElement>::create(k2, n2);
+    LayoutB layoutB1 = LayoutB::template MakeLayout<BElement>(k_, n_);
+    LayoutB layoutB2 = LayoutB::template MakeLayout<BElement>(k2, n2);
     using LayoutC = layout::RowMajor;
 
     using L1TileShape =
@@ -338,9 +309,6 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                                                              layoutD1,
                                                                              layoutD2,
                                                                              topkIdsGM_,
-                                                                             moeInitRoutingQuantV2Scale_,
-                                                                             moeInitRoutingQuantV2Offset_,
-                                                                             expertTokensBeforeCapacity_,
                                                                              topkWeightsGM_,
                                                                              workspaceGM_,
                                                                              gmExpertTokenNums_,
@@ -385,9 +353,6 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              layoutD1,
                                              layoutD2,
                                              topkIdsGM_,
-                                             moeInitRoutingQuantV2Scale_,
-                                             moeInitRoutingQuantV2Offset_,
-                                             expertTokensBeforeCapacity_,
                                              topkWeightsGM_,
                                              workspaceGM_,
                                              gmExpertTokenNums_,
@@ -432,9 +397,6 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              layoutD1,
                                              layoutD2,
                                              topkIdsGM_,
-                                             moeInitRoutingQuantV2Scale_,
-                                             moeInitRoutingQuantV2Offset_,
-                                             expertTokensBeforeCapacity_,
                                              topkWeightsGM_,
                                              workspaceGM_,
                                              gmExpertTokenNums_,

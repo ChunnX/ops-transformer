@@ -55,7 +55,9 @@ public:
     using TileMmad = TileMmad_;
     using CopyGmToL1A = typename TileCopy_::CopyGmToL1A;
     using CopyGmToL1B = typename TileCopy_::CopyGmToL1B;
-    using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<uint64_t, layout::VectorLayout>>;
+    using CopyGmToL1S =
+        Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::GM>,
+                               Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::A1>>;
     using CopyL1ToFP =
         typename Gemm::Tile::QuantTileCopy<ArchTag, AType_, BType_, CType_, void,
                                            Catlass::Gemm::Tile::ScaleGranularity::PER_CHANNEL>::CopyL1ToFP;

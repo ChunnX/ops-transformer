@@ -47,15 +47,18 @@ public:
     using TileMmad = TileMmad_;
     using CopyGmToL1A = typename TileCopy_::CopyGmToL1A;
     using CopyGmToL1B = typename TileCopy_::CopyGmToL1B;
-    using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<uint64_t, layout::VectorLayout>>;
+    using CopyGmToL1S =
+        Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::GM>,
+                               Gemm::GemmType<uint64_t, layout::VectorLayout, AscendC::TPosition::A1>>;
     using CopyL1ToL0A = typename TileCopy_::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy_::CopyL1ToL0B;
 
     using ElementAccumulator =
         typename Gemm::helper::ElementAccumulatorSelector<ElementA, ElementB>::ElementAccumulator;
-    using CopyL0CToGm = typename std::conditional<std::is_same_v<ElementA, int8_t>,
-                                                  Gemm::Tile::CopyL0CToGmPerChannel<ElementAccumulator, ElementC>,
-                                                  typename TileCopy_::CopyL0CToGm>::type;
+    using CopyL0CToGm = typename std::conditional<
+        std::is_same_v<ElementA, int8_t>,
+        Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType_, Gemm::Tile::ScaleGranularity::PER_CHANNEL>,
+        typename TileCopy_::CopyL0CToGm>::type;
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
     using LayoutBInL1 = typename CopyL1ToL0B::LayoutSrc;
     using LayoutAInL0 = typename CopyL1ToL0A::LayoutDst;

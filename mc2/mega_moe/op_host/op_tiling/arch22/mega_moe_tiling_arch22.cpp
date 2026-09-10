@@ -352,7 +352,7 @@ static ge::graphStatus CheckActivationParamCount(uint32_t activationCode, size_t
 }
 
 static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVector<float> *params,
-                                                 MegaMoeA2A3TilingData &info)
+                                                 MegaMoeTilingData &info)
 {
     OP_TILING_CHECK(params == nullptr, OP_LOGE_WITH_INVALID_ATTR(K_OP_NAME, "activation_params", "null", "not null"),
                     return GRAPH_FAILED);
@@ -478,7 +478,7 @@ static ge::graphStatus CheckWeight1InterleaveAttr(gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *context, MegaMoeTilingData &info)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get operator attributes."),
@@ -1079,7 +1079,7 @@ static ge::graphStatus CheckBiasInput(gert::TilingContext *context, uint32_t inp
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *context, MegaMoeTilingData &info)
 {
     // ==================== 1. 输入张量非空校验 ====================
     const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
@@ -1230,7 +1230,7 @@ static ge::graphStatus MegaMoeA2A3CheckShapeAndSetTiling(gert::TilingContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3GetPlatformInfoAndSetTiling(gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+static ge::graphStatus MegaMoeA2A3GetPlatformInfoAndSetTiling(gert::TilingContext *context, MegaMoeTilingData &info)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -1263,7 +1263,7 @@ static ge::graphStatus MegaMoeA2A3CommAlg(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *context, MegaMoeA2A3TilingData &info)
+static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *context, MegaMoeTilingData &info)
 {
     const char *nodeName = K_INNER_DEBUG;
     // info.cclBufferSize是winIn和winOut空间之和（两者相等），这里只通过winIn校验
@@ -1301,7 +1301,7 @@ static ge::graphStatus MegaMoeA2A3CheckHcclBuffSize(const gert::TilingContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context, const MegaMoeA2A3TilingData &info)
+static ge::graphStatus MegaMoeA2A3CheckOutputTensor(gert::TilingContext *context, const MegaMoeTilingData &info)
 {
     // ==================== 1. y 输出校验 ====================
     const gert::StorageShape *yStorageShape = context->GetOutputShape(OUTPUT_Y_INDEX);
@@ -1390,11 +1390,11 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     auto ret = context->SetScheduleMode(batch_mode);
 
     // 1. tilingData
-    MegaMoeTilingDataQuant *tilingData = context->GetTilingData<MegaMoeTilingDataQuant>();
+    MegaMoeTilingData *tilingData = context->GetTilingData<MegaMoeTilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get tiling data."),
                     return ge::GRAPH_FAILED);
     OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData.");
-    MegaMoeA2A3TilingData &info = tilingData->common;
+    MegaMoeTilingData &info = *tilingData;
     OP_LOGI(K_INNER_DEBUG, "MegaMoeA2A3 get tilingData info.");
 
     OP_TILING_CHECK(MegaMoeA2A3CommAlg(context) != ge::GRAPH_SUCCESS,
@@ -1454,19 +1454,6 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
     int64_t expertNum = info.expertPerRank * info.worldSize;
     size_t initRoutingWorkspace = 0;
 
-    if (info.isQuantRouting != 0U) {
-        MegaMoeTilingDataQuant *quantTilingData = context->GetTilingData<MegaMoeTilingDataQuant>();
-        OP_TILING_CHECK(tilingData == nullptr,
-                        OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get quant tiling data."),
-                        return ge::GRAPH_FAILED);
-        quantTilingData->common = info;
-    } else {
-        MegaMoeTilingDataNonQuant *nonQuantTilingData = context->GetTilingData<MegaMoeTilingDataNonQuant>();
-        OP_TILING_CHECK(tilingData == nullptr,
-                        OP_LOGE_WITHOUT_REPORT(K_INNER_DEBUG, "Failed to get non-quant tiling data."),
-                        return ge::GRAPH_FAILED);
-        nonQuantTilingData->common = info;
-    }
     Mc2Tiling::MoePermutePrologueTilingBase permuteTilingBase;
     permuteTilingBase.DoTiling(info.M, info.topK, expertNum);
     initRoutingWorkspace = permuteTilingBase.workspaceSize_;

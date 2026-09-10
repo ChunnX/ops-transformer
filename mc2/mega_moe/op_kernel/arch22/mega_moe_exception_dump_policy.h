@@ -42,14 +42,11 @@ enum class Stage : uint32_t {
 
 // MegaMoe ExceptionDump Policy：提供算子专属类型与编译期常量
 // 模板参数：
-//   - kIsQuantRouting: 是否为 quant routing，决定 TilingDataT 类型
+//   - kIsQuantRouting: 预留（历史遗留，tiling 结构体已合并为单一 MegaMoeTilingData）
 //   - ArchTag: 架构标签（如 Catlass::Arch::AtlasA2），预留供架构差异扩展
 template <bool kIsQuantRouting, typename ArchTag = void>
 struct MegaMoeExceptionDumpPolicy {
-    // 根据是否为 quant routing 选择完整 tiling 结构体
-    // quant: MegaMoeTilingDataQuant
-    // non-quant: MegaMoeTilingDataNonQuant
-    using TilingDataT = std::conditional_t<kIsQuantRouting, MegaMoeTilingDataQuant, MegaMoeTilingDataNonQuant>;
+    using TilingDataT = MegaMoeTilingData;
     using StageEnumT = Stage;
     static constexpr MC2ExceptionDump::OpType OP_TYPE = MC2ExceptionDump::OpType::OP_TYPE_MEGA_MOE;
 };
