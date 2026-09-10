@@ -34,6 +34,7 @@
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
+#include "apace/basic/buffer/buffer_channel.h"
 
 namespace Apace {
 
@@ -42,10 +43,16 @@ using namespace Blaze::Gemm;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
-struct UrmaCommWaitPolicy {
-    __aicore__ inline void WaitTile(uint32_t tileIdx)
+struct UrmaBufferSync {
+    uint32_t slotNum{0};
+
+    __aicore__ inline void Acquire(uint32_t slotIdx)
     {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(slotIdx);
+    }
+    __aicore__ inline void Release(uint32_t slotIdx)
+    {
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(slotIdx);
     }
 };
 
@@ -106,7 +113,7 @@ public:
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC,
                                                     BiasType, LayoutBias>;
     using QuantMatmulKernelImpl =
-        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaCommWaitPolicy>;
+        Kernel::AllToAllQbmmMxKernel<ProblemShape, BlockMmad, BlockScheduler, UrmaBufferSync>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -127,6 +134,11 @@ private:
     CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
     TeamBarrier teamBarrier_;
 
+    Apace::Basic::BufferChannel dataChannel_;
+    Apace::Basic::BufferChannel scaleChannel_;
+    uint64_t dataBytesPerMRow_{0};
+    uint64_t scaleBytesPerMRow_{0};
+
     struct BaseParams {
         GM_ADDR selfWinAddr{nullptr}; // 通信窗口地址
         GM_ADDR aGm{nullptr};
@@ -144,6 +156,7 @@ private:
         uint64_t headMSize{0};   // 长块 M 大小
         uint64_t scaleKaSize{0}; // Scale 的 K 轴字节长度
         uint64_t rankDataBytes{0};
+        uint64_t scaleWinOffset{0}; // win区data部分字节大小，用作scale的winOffset
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
@@ -195,7 +208,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
                          commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
-                         baseParams_.rankSize * baseParams_.rankDataBytes);
+                         baseParams_.scaleWinOffset);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -220,16 +233,28 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
 {
-    for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
-        // 必选保证baseParams_.rankSize <= BlockNum
+    for (uint32_t tid = 0; tid < static_cast<uint32_t>(baseParams_.commTurn); ++tid) {
+        auto dataSlot = dataChannel_.GetNextSlot();
+        auto scaleSlot = scaleChannel_.GetNextSlot();
+
+        // win buffer 复用：写 tile tid 覆盖槽位 tid%dataSlotNum，需等本端 cube 消费完该槽位
+        // flagId 直接用 slotIdx(dataSlot.slotIdx)，<14 避开 SyncAll<true> 的 14
+        if (tid >= dataChannel_.GetSlotNum()) {
+            AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE3>(dataSlot.slotIdx);
+            AscendC::SyncAll<true>();
+            if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
+                teamBarrier_.CrossDevice();
+            }
+        }
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
-            allToAllScaleA_.Commit();
-            allToAllA_.Commit();
-            allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
+            allToAllScaleA_.Commit(scaleSlot.offset * scaleBytesPerMRow_);
+            allToAllA_.Commit(dataSlot.offset * dataBytesPerMRow_);
+            allToAllA_.template Wait<BARRIER_DEVICE>(); // scale与a通信共用channel，只wait一次
         }
 
         AscendC::SyncAll<true>();
-        CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
+        // data-ready 的 flagId 直接用 slotIdx
+        CrossCoreSetFlag<0x2, PIPE_MTE3>(dataSlot.slotIdx);
     }
 
     allToAllScaleA_.Finalize();
@@ -265,6 +290,26 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
         // MXFP4 打包存储(2 个 fp4 占 1 字节)，A 矩阵通信字节数减半
         baseParams_.rankDataBytes >>= 1;
     }
+
+    uint64_t commTiles = tilingData->commTilingData.splitAxisTileCnt + tilingData->commTilingData.splitAxisTailCnt;
+    uint64_t rawSlotNum = tilingData->commTilingData.slotNum;
+    uint32_t slotNum = (rawSlotNum > 0 && rawSlotNum < commTiles) ?
+                       static_cast<uint32_t>(rawSlotNum) : static_cast<uint32_t>(commTiles);
+    quantMatmulKernelImpl_.GetBufferSyncMgr().slotNum = slotNum;
+    uint64_t maxTileSize = tilingData->commTilingData.splitAxisTileSize >
+        tilingData->commTilingData.splitAxisTailSize ?
+        tilingData->commTilingData.splitAxisTileSize : tilingData->commTilingData.splitAxisTailSize;
+    baseParams_.scaleWinOffset = static_cast<uint64_t>(baseParams_.rankSize) * slotNum *
+                           maxTileSize * baseParams_.axisKa * sizeof(AType);
+
+    // channel 统一行单位 slotSize：AIC/AIV 各自独立拷贝，游标不共享
+    uint64_t winPerRound = static_cast<uint64_t>(baseParams_.rankSize) * baseParams_.headMSize;
+    dataChannel_.Init(winPerRound, slotNum);
+    scaleChannel_.Init(winPerRound, static_cast<uint32_t>(commTiles));
+
+    // 写端 Commit 需字节偏移，行→字节转换系数
+    dataBytesPerMRow_ = tilingData->commTilingData.nonSplitAxisSize * sizeof(AType);
+    scaleBytesPerMRow_ = tilingData->scaleCommTilingData.nonSplitAxisSize * sizeof(TypeScaleA);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -319,6 +364,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     Params localParams;
     SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
+    localParams.dataChannel = &dataChannel_;
+    localParams.scaleChannel = &scaleChannel_;
     quantMatmulKernelImpl_(localParams);
 }
 
@@ -329,10 +376,12 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     MatmulMode mode = (tilingData_->localMatmul == 1) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
     SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
     params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
-    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
+    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.scaleWinOffset;
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
+    params.dataChannel = &dataChannel_;
+    params.scaleChannel = &scaleChannel_;
     quantMatmulKernelImpl_(params);
 }
 

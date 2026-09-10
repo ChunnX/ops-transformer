@@ -85,6 +85,14 @@ public:
                                 tilingData_->splitAxisTileSize :
                                 tilingData_->splitAxisTailSize) *
                            nonSplitAxisBytes;
+
+        uint64_t commTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
+        bufferCount_ = tilingData_->slotNum;
+        if (bufferCount_ == 0 || bufferCount_ >= commTiles) {
+            bufferCount_ = commTiles;
+        }
+        dstChunkBytes_ = bufferCount_ * tileMaxByteSize_;
+
         currentTileIdx_ = 0;
         tileByteOffset_ = 0;
         remainingChunkSize_ = chunkSize;
@@ -94,7 +102,7 @@ public:
     }
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
-    __aicore__ inline void Commit()
+    __aicore__ inline void Commit(uint64_t bufferOffset)
     {
         if (remainingChunkSize_ <= 0) {
             return;
@@ -120,7 +128,7 @@ public:
             for (uint32_t i = 0; i < targetRankCnt; i++) {
                 uint32_t targetRankId = targetRankStart + i;
                 static_cast<Impl *>(this)->template DoCommit<BarrierMode>(
-                    targetRankId, currentTileByteSize);
+                    targetRankId, currentTileByteSize, bufferOffset);
             }
         }
 
@@ -146,7 +154,7 @@ public:
 
     __aicore__ inline uint64_t GetCommByteSize() const
     {
-        return chunkBytes_ * udmaCtx_->rankSize;
+        return dstChunkBytes_ * udmaCtx_->rankSize;
     }
 
     __aicore__ inline uint64_t GetCommTurn() const
@@ -177,6 +185,9 @@ protected:
     uint64_t tileMaxByteSize_;
     uint64_t slotByteOffset_;
     uint64_t chunkByteOffset_;
+
+    uint64_t bufferCount_{0};
+    uint64_t dstChunkBytes_{0};
 
     uint32_t targetRankStart_;
     uint32_t targetRankCnt_;
