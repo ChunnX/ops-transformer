@@ -175,7 +175,9 @@ public:
             constexpr uint32_t BASE = UB_FD_BASE_OFFSET;
             // D64 split QK/PV queues occupy 160.5KiB; FD processes at most eight rows.
             constexpr bool COMPACT_D64_FD = dVBaseSize == 64 && BASE == 160U * 1024U + 512U;
-            constexpr uint32_t MATRIX_BYTES = COMPACT_D64_FD ? 8U * 64U * sizeof(T) : BUFFER_SIZE_BYTE_16K;
+            constexpr bool COMPACT_D72_FD = dVBaseSize == 128 && BASE == 160U * 1024U + 384U;
+            constexpr uint32_t MATRIX_BYTES =
+                COMPACT_D64_FD ? 8U * 64U * sizeof(T) : (COMPACT_D72_FD ? 8U * 128U * sizeof(T) : BUFFER_SIZE_BYTE_16K);
             constexpr uint32_t GROUP_PADDING = COMPACT_D64_FD ? 0U : BUFFER_SIZE_BYTE_256B;
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）

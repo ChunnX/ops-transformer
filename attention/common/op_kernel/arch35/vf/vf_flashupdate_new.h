@@ -57,13 +57,14 @@ __simd_vf__ inline void FlashUpdateD64FullVF(__ubuf__ float *dst, __ubuf__ float
 }
 
 // PV is DN: each vector holds64 query rows for one value column.
-template <bool last>
-__simd_vf__ inline void FlashUpdateD64DnVF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor)
+template <bool last, uint16_t columns = 64>
+__simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor)
 {
+    static_assert(columns % 4 == 0, "DN update requires groups of four value columns");
     MaskReg mask = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> scale, p0, p1, p2, p3, c0, c1, c2, c3;
     LoadAlign(scale, factor);
-    for (uint16_t i = 0; i < 16; ++i) {
+    for (uint16_t i = 0; i < columns / 4; ++i) {
         LoadAlign(p0, accum + (i * 4 + 0) * 64);
         LoadAlign(c0, cur + (i * 4 + 0) * 64);
         LoadAlign(p1, accum + (i * 4 + 1) * 64);
@@ -95,14 +96,15 @@ __simd_vf__ inline void FlashUpdateD64DnVF(__ubuf__ float *accum, __ubuf__ float
 }
 static constexpr Reg::CastTrait castDnOutput = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
                                                 RoundMode::CAST_ROUND};
-__simd_vf__ inline void FlashPackOutputD64DnVF(__ubuf__ bfloat16_t *out, __ubuf__ float *accum, __ubuf__ float *sum)
+template <uint16_t columns = 64>
+__simd_vf__ inline void FlashPackOutputDnRows64VF(__ubuf__ bfloat16_t *out, __ubuf__ float *accum, __ubuf__ float *sum)
 {
     MaskReg mf = CreateMask<float, MaskPattern::ALL>();
     MaskReg half = CreateMask<uint16_t, MaskPattern::VL64>();
     RegTensor<float> denominator, x;
     RegTensor<bfloat16_t> cast, packed;
     LoadAlign(denominator, sum);
-    for (uint16_t col = 0; col < 64; ++col) {
+    for (uint16_t col = 0; col < columns; ++col) {
         LoadAlign(x, accum + col * 64);
         Div(x, x, denominator, mf);
         Cast<bfloat16_t, float, castDnOutput>(cast, x, mf);

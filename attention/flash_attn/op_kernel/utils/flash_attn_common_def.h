@@ -177,6 +177,8 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // config=7
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
      inferDTemplateType::Aligned64}, // config=8: D64 long-prefill experiment
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // config=9: D72 long prefill
 };
 
 // Config macro definitions for D=64

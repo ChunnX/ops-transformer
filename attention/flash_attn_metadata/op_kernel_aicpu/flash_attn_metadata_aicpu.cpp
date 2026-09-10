@@ -216,9 +216,11 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     uint32_t gSize = static_cast<uint32_t>(numHeadsQ_ / numHeadsKv_);
     const bool enableD64Prefill =
         baseInfo.batchSize == 1 && headDim_ == 64 && layoutQ_ == "BNSD" && layoutKv_ == "BNSD" && layoutOut_ == "BNSD";
-    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(headDimV_, gSize, maxSeqlenQ_, maxSeqlenKv_, maskMode_,
-                                                                baseInfo.preToken, baseInfo.nextToken, qlayout,
-                                                                mBaseSize_, s2BaseSize_, enableD64Prefill);
+    const bool enableD72Prefill =
+        baseInfo.batchSize == 1 && headDim_ == 72 && layoutQ_ == "BNSD" && layoutKv_ == "BNSD" && layoutOut_ == "BNSD";
+    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(
+        headDimV_, gSize, maxSeqlenQ_, maxSeqlenKv_, maskMode_, baseInfo.preToken, baseInfo.nextToken, qlayout,
+        mBaseSize_, s2BaseSize_, enableD64Prefill, enableD72Prefill);
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;

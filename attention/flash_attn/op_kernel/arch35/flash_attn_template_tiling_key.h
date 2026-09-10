@@ -88,7 +88,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
                          ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
                          ASCENDC_TPL_UINT_SEL(TemplateId, ASCENDC_TPL_UI_LIST, 1),
-                         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 2, 6, 8),
+                         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 2, 6, 8, 9),
                          ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
 
 #endif // TEMPLATE_TILING_KEY_FLASH_ATTN_H_
