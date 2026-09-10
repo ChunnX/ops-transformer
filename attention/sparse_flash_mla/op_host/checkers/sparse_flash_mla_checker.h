@@ -13,6 +13,7 @@
 
 #include "../sparse_flash_mla_tiling.h"
 #include "log/error_code.h"
+#include "graph/ge_error_codes.h"
 
 namespace optiling {
 
