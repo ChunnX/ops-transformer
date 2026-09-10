@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+
 #include "register/op_def_registry.h"
 
 namespace ops {
