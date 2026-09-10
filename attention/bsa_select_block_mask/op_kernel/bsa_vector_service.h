@@ -44,7 +44,8 @@ public:
                                   GlobalTensor<half> &pooledScoreGm, GlobalTensor<T> &postStagingGm,
                                   GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                   GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                  GlobalTensor<int64_t> &actualSeqLensQGm, GlobalTensor<int64_t> &actualSeqLensKVGm);
+                                  GlobalTensor<int64_t> &actualSeqLensQGm, GlobalTensor<int64_t> &actualSeqLensKVGm,
+                                  GlobalTensor<T> &partSumGm, GlobalTensor<T> &partMaxGm);
 
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -63,6 +64,8 @@ public:
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                     uint32_t kChunkSize, uint32_t batchIdx, uint32_t headIdx,
                                                     uint32_t validXBlocks, uint32_t validYBlocks);
+    __aicore__ inline void SoftmaxFinalize(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t batchIdx,
+                                           uint32_t headIdx, uint32_t validXBlocks, uint32_t validYBlocks);
 
 private:
     BSAConstInfo constInfo;
@@ -99,11 +102,11 @@ __aicore__ inline void BSAVectorService<BSAT>::InitGM(
     GlobalTensor<T> &ScoreFp32Gm, GlobalTensor<half> &pooledScoreGm, GlobalTensor<T> &postStagingGm,
     GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm, GlobalTensor<int64_t> &actualBlockLenQGm,
     GlobalTensor<int64_t> &actualBlockLenKVGm, GlobalTensor<int64_t> &actualSeqLensQGm,
-    GlobalTensor<int64_t> &actualSeqLensKVGm)
+    GlobalTensor<int64_t> &actualSeqLensKVGm, GlobalTensor<T> &partSumGm, GlobalTensor<T> &partMaxGm)
 {
     poolOP.InitGM(qCmpGm, kCmpGm, queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm, actualSeqLensQGm,
                   actualSeqLensKVGm);
-    softmaxOP.InitGM(ScoreFp32Gm, attnScorFp16eGm, pooledScoreGm, postStagingGm);
+    softmaxOP.InitGM(ScoreFp32Gm, attnScorFp16eGm, pooledScoreGm, postStagingGm, partSumGm, partMaxGm);
 }
 
 template <typename BSAT>
@@ -146,6 +149,14 @@ __aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(uint3
                                                                            uint32_t validXBlocks, uint32_t validYBlocks)
 {
     softmaxOP.OnlineSoftmaxFirstPassChunk(qChunkStart, qChunkSize, kChunkStart, kChunkSize, validXBlocks, validYBlocks);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSAVectorService<BSAT>::SoftmaxFinalize(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                               uint32_t batchIdx, uint32_t headIdx,
+                                                               uint32_t validXBlocks, uint32_t validYBlocks)
+{
+    softmaxOP.SoftmaxFinalize(qChunkStart, qChunkSize, batchIdx, headIdx, validXBlocks, validYBlocks);
 }
 
 template <typename BSAT>

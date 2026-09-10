@@ -90,6 +90,22 @@ public:
     /// 本 tile 全部切片折叠完成：分段除 count、Cast、写出 pooledScore
     __aicore__ inline void FlushTile();
 
+    /// softmax 单趟化收尾：已行折叠的组值行 [1 × kCols]（每列=一个 post_y 组的值）
+    /// 按 FoldUnitColumns 的 lead/fulls/trail 语义落 emit 行
+    __aicore__ inline void FoldFinalizedRow(LocalTensor<T> &tile, const PostRowSlice &slice, uint32_t kChunkStart,
+                                            uint32_t kCols, bool isLastKTile, uint32_t validYBlocks);
+    /// 折叠临时访问器（SoftmaxFinalize 组值缓冲用：借 softmax 相位 reduceSharedTemp 24KB，
+    /// 收尾相位 post 服务不再使用；需求 [unit8×g32×8lane=2048 fp32] + [foldRow 256] + [fp16 512half]）
+    __aicore__ inline LocalTensor<T> GetReduceTemp()
+    {
+        return reduceSharedTemp.ReinterpretCast<T>();
+    }
+    /// pooledScore GM 访问器（SoftmaxFinalize 直写用）
+    __aicore__ inline GlobalTensor<OUT_T> GetPooledScoreGm()
+    {
+        return pooledScoreGmTensor;
+    }
+
 private:
     /// 行方向处理单元（一个 postXBlock 组或其跨 chunk 片元）
     struct PostXUnit {
@@ -459,6 +475,33 @@ __aicore__ inline void BSAVecPostPoolService<BSAT>::FoldNormalizedSlice(LocalTen
             FoldUnitColumns(i, kChunkStart, kCols, kColsAlign, isLastKTile);
             unitFoldedRows[i] = 0; // 每 tile 完整折叠一次：完成后清零，供下一 tile 重新累计
         }
+    }
+}
+
+
+/**
+ * @brief softmax 单趟化收尾的列折叠：tile = 已行折叠的组值行 [1 × kCols]
+ * @details 与 FoldUnitColumns 同构：leadClip 判定 → lead/fulls/trail 落槽。
+ *          区别：无行折叠（上游已完成），rowSumUb 直接 = tile（1 行 kCols 列）。
+ */
+template <typename BSAT>
+__aicore__ inline void BSAVecPostPoolService<BSAT>::FoldFinalizedRow(LocalTensor<T> &tile,
+                                                                     const PostRowSlice &slice, uint32_t kChunkStart,
+                                                                     uint32_t kCols, bool isLastKTile,
+                                                                     uint32_t validYBlocks)
+{
+    // 多 unit 行装载：tile = [slice.rowCount(=unit 数) × kCols]，每 unit 行独立列折叠
+    // （部分和已在 pass1 全量累积并归一化，收尾一 tile 一发）
+    for (uint32_t i = 0; i < unitNum; i++) {
+        if (!unitIsMine[i]) {
+            continue;
+        }
+        // 该 unit 在 tile 里的行号（unit 的 chunk 行起点 / postBlockShapeX，本 case 对齐）
+        uint32_t unitRow = units[i].chunkRowStart / constInfo.postBlockShapeX;
+        // 装载该 unit 行：rowSumUb ← tile[unitRow * kCols .. +kCols)
+        AscendC::DataCopy(rowSumUb, tile[unitRow * kCols], kCols);
+        AscendC::PipeBarrier<PIPE_V>();
+        FoldUnitColumns(i, kChunkStart, kCols, kCols, isLastKTile);
     }
 }
 

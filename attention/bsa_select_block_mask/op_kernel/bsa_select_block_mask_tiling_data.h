@@ -394,6 +394,8 @@ public:
     uint64_t pooledScoreOffset;
     uint64_t postStagingSize;
     uint64_t postStagingOffset;
+    uint64_t partSumSize;    // softmax 单趟化：per-tile 列组部分和 [aivNum*16槽][128行×32组 fp32]
+    uint64_t partMaxSize;    // per-tile 局部行 max [aivNum*16槽][128 fp32]
 
     uint64_t get_qCmpSize() const
     {
@@ -474,6 +476,26 @@ public:
     void set_postStagingOffset(uint64_t v)
     {
         this->postStagingOffset = v;
+    }
+
+    uint64_t get_partSumSize() const
+    {
+        return partSumSize;
+    }
+
+    void set_partSumSize(uint64_t v)
+    {
+        this->partSumSize = v;
+    }
+
+    uint64_t get_partMaxSize() const
+    {
+        return partMaxSize;
+    }
+
+    void set_partMaxSize(uint64_t v)
+    {
+        this->partMaxSize = v;
     }
 };
 

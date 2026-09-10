@@ -364,6 +364,17 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
         totalWorkspaceSize += pooledScoreSize + postStagingSize;
     }
 
+    // softmax 单趟化：per-tile 列组部分和（每 AIV 16 个 kTile 槽，每槽 128 行×(K_TILE_COLS/16) 列组 fp32）
+    // + per-tile 局部行 max（128 fp32/槽）
+    constexpr uint32_t KTILE_COLS = 4 * 128; // = kernel 侧 CV_EXEC_RATIO*K_CHUNK_SIZE
+    uint32_t ktilesPerChunk = static_cast<uint32_t>((yBlocks + KTILE_COLS - 1) / KTILE_COLS);
+    // 槽数必须与 kernel 一致：kernel 用 GetBlockNum()*AIC_AIV_RATIO（MIX_AIC_1_2 下 = aicNum*2）
+    uint32_t aivSubCoreNum = aicNum * 2;
+    uint64_t partSumSize = static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE *
+                           (KTILE_COLS / 16) * sizeof(float);
+    uint64_t partMaxSize = static_cast<uint64_t>(aivSubCoreNum) * ktilesPerChunk * Q_CHUNK_SIZE * sizeof(float);
+    totalWorkspaceSize += partSumSize + partMaxSize;
+
     outputParams_->set_qCmpSize(qCmpSize);
     outputParams_->set_kCmpSize(kCmpSize);
     outputParams_->set_attnScoreSize(attnScoreFp16Size);
@@ -373,6 +384,8 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     outputParams_->set_pooledScoreOffset(pooledScoreOffset);
     outputParams_->set_postStagingSize(postStagingSize);
     outputParams_->set_postStagingOffset(pooledScoreOffset + pooledScoreSize);
+    outputParams_->set_partSumSize(partSumSize);
+    outputParams_->set_partMaxSize(partMaxSize);
     outputParams_->set_totalWorkspaceSize(totalWorkspaceSize);
 }
 

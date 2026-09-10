@@ -138,10 +138,13 @@ struct BSAConstInfo {
     uint64_t attnScoreOffset;
     uint64_t softmaxTmpOffset;
     uint64_t topkWorkspaceOffset;
+    uint64_t partSumOffset;   // softmax 单趟化：per-tile 列组部分和区
+    uint64_t partMaxOffset;   // per-tile 局部行 max 区
     uint64_t pooledScoreOffset;
     uint64_t postStagingOffset;
 
     uint8_t usePostBlockShape;
+    uint8_t debugOldPass2 = 0; // 诊断开关（测后删除）：1 = post 模式走旧两趟路径
     uint16_t postBlockShapeX;
     uint16_t postBlockShapeY;
     uint32_t postXBlocks;
@@ -227,6 +230,33 @@ __aicore__ inline void BSASubRowBroadcast(LocalTensor<float> const &ubOut, Local
 }
 
 // 广播除法：ubIn1 为 Brcb 8 倍展开的逐行向量，跨 [row, col] 矩阵按行广播。
+__aicore__ inline void BSAvRowBroadcastMul(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn1,
+                                            uint64_t row, uint64_t col)
+{
+    // out[r,c] *= in1[r]（行广播原地乘，行主序 [row × col]）
+    uint32_t countEachRepeat = 256 / sizeof(float);
+    uint32_t colLoop = (col + countEachRepeat - 1) / countEachRepeat;
+    uint32_t remain = col % countEachRepeat;
+    uint64_t mask = countEachRepeat;
+    uint8_t repeatTimes = row;
+    AscendC::BinaryRepeatParams repeatParams;
+    repeatParams.dstBlkStride = 1;
+    repeatParams.src0BlkStride = 1;
+    repeatParams.src1BlkStride = 0;
+    repeatParams.dstRepStride = col / FLOAT_DATA_BLOCK_NUM;
+    repeatParams.src0RepStride = col / FLOAT_DATA_BLOCK_NUM;
+    repeatParams.src1RepStride = 1;
+
+    for (uint32_t i = 0; i < colLoop; i++) {
+        if (i == colLoop - 1 && remain != 0) {
+            mask = remain;
+        }
+        AscendC::Mul(ubOut[i * countEachRepeat], ubOut[i * countEachRepeat], ubIn1[0], mask, repeatTimes,
+                     repeatParams);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+}
+
 __aicore__ inline void BSADivRowBroadcast(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
                                           LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
 {

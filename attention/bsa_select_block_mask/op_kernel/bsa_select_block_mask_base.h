@@ -88,6 +88,8 @@ private:
     GlobalTensor<SFTMAX_OUT_T> pooledScoreGm;
     GlobalTensor<T> postStagingGm;
     GlobalTensor<T> scoreFp32Gm;
+    GlobalTensor<T> partSumGm;
+    GlobalTensor<T> partMaxGm;
     GlobalTensor<int32_t> topkWorkspaceGm;
 };
 
@@ -138,8 +140,11 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.postStagingOffset = constInfo.pooledScoreOffset + outInfo.pooledScoreSize;
     constInfo.softmaxTmpOffset = constInfo.postStagingOffset + outInfo.postStagingSize;
     constInfo.topkWorkspaceOffset = constInfo.softmaxTmpOffset + outInfo.softmaxTmpSize;
+    constInfo.partSumOffset = constInfo.topkWorkspaceOffset + outInfo.topkWorkspaceSize;
+    constInfo.partMaxOffset = constInfo.partSumOffset + outInfo.partSumSize;
 
     constInfo.usePostBlockShape = baseInfo.usePostBlockShape;
+    constInfo.debugOldPass2 = 0; // 诊断开关：置 1 走旧两趟（对照精度基线）
     constInfo.postBlockShapeX = baseInfo.postBlockShapeX;
     constInfo.postBlockShapeY = baseInfo.postBlockShapeY;
     constInfo.postXBlocks = baseInfo.postXBlocks;
@@ -165,6 +170,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
     }
     scoreFp32Gm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset),
                                 outInfo.softmaxTmpSize / sizeof(T));
+    partSumGm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.partSumOffset), outInfo.partSumSize / sizeof(T));
+    partMaxGm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.partMaxOffset), outInfo.partMaxSize / sizeof(T));
     topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset),
                                     outInfo.topkWorkspaceSize / sizeof(int32_t));
 
@@ -353,8 +360,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitBuffers(pipe);
-        vectorService.InitGM(qCmpGm, kCmpGm, attnScoreFp16Gm, scoreFp32Gm, pooledScoreGm, postStagingGm, queryGm, keyGm,
-                             actualBlockLenQGm, actualBlockLenKVGm, actualSeqLensQGm, actualSeqLensKVGm);
+        vectorService.InitGM(qCmpGm, kCmpGm, attnScoreFp16Gm, scoreFp32Gm, pooledScoreGm, postStagingGm, queryGm,
+                             keyGm, actualBlockLenQGm, actualBlockLenKVGm, actualSeqLensQGm, actualSeqLensKVGm,
+                             partSumGm, partMaxGm);
 
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
@@ -592,18 +600,20 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessSoftmaxSecondPass(ui
                                                                               uint32_t validYBlocks)
 {
     if ASCEND_IS_AIV {
-#if 1 // TODO(perf-test): 跳过 pass2（含 post 折叠），测完恢复
         AscendC::PipeBarrier<PIPE_ALL>();
-        uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
-        // D1: K loop truncated to validYBlocks
-        for (uint32_t kChunkStart = 0; kChunkStart < validYBlocks; kChunkStart += loopChunkSize) {
-            uint32_t kChunkEnd = BSAMin(kChunkStart + loopChunkSize, validYBlocks);
-            uint32_t curKChunkSize = kChunkEnd - kChunkStart;
+        if (constInfo.usePostBlockShape && !constInfo.debugOldPass2) {
+            // softmax 单趟化收尾：per-tile 部分和（pass1 已写出）× 修正因子 → 行折叠 → pooledScore
+            vectorService.SoftmaxFinalize(qChunkStart, curQChunkSize, batchIdx, headIdx, validXBlocks, validYBlocks);
+        } else {
+            uint32_t loopChunkSize = CV_EXEC_RATIO * constInfo.kChunkSize;
+            for (uint32_t kChunkStart = 0; kChunkStart < validYBlocks; kChunkStart += loopChunkSize) {
+                uint32_t kChunkEnd = BSAMin(kChunkStart + loopChunkSize, validYBlocks);
+                uint32_t curKChunkSize = kChunkEnd - kChunkStart;
 
-            vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx,
-                                                   headIdx, validXBlocks, validYBlocks);
+                vectorService.SoftmaxSecondPassAndCast(qChunkStart, curQChunkSize, kChunkStart, curKChunkSize, batchIdx,
+                                                       headIdx, validXBlocks, validYBlocks);
+            }
         }
-#endif
     }
 }
 
