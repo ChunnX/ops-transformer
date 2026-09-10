@@ -67,14 +67,14 @@ LSE 关闭时，新布局返回空 Tensor；开启时固定 BNS。
 - InferShape CSV 新增 8 条：两种布局的 LSE 开/关、输出布局不匹配、FP8 拒绝新布局。
 - Host tiling CSV 新增 6 条：两种布局正确输入、QScale shape 错误、LSE shape 错误。
 - `test_quant_block_sparse_attn_shape_infershape.cpp`：直接测试生产 C++ 地址函数，覆盖多个 batch/head、129-token 尾块及超 32 位偏移。
-- `test_padded_layout_helpers.py`：CPU Torch 的打包/还原测试，覆盖数据、scale、LSE、空 batch 和容量错误。
+- `qbsa_mxfp8_golden.py --check_layout_helpers`：合并后的 CPU 打包/还原自检，覆盖数据、scale、LSE、空 batch 和容量错误；使用现有 golden 依赖环境，不调用 NPU 算子。
 
 测试文件均位于当前算子目录。运行单个新增 STC 的示例：
 
 ```bash
 cd experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test
 python qbsa_mxfp8_golden.py --csv --case_files qbsa_mxfp8_stc.csv --case_name MXSTC003_B1_N3K3_G1_S513x513_SB128_PA128_EQUU_M3R_L1_PVC_BSND --mode all
-python -m unittest test_padded_layout_helpers
+python qbsa_mxfp8_golden.py --check_layout_helpers
 ```
 
 ## 验证状态与部署注意事项

@@ -2465,6 +2465,37 @@ def unpack_padded_query(tensor, lengths, layout):
     return torch.cat([raw[b, :length] for b, length in enumerate(lengths)], dim=0).contiguous().view(dtype).squeeze(-1)
 
 
+def check_layout_helpers():
+    """Run CPU packing checks in the golden environment without invoking the NPU operator."""
+    lengths = [129, 65, 0]
+    checked = 0
+    for dtype in (torch.uint8, torch.bfloat16, torch.float32):
+        for tail in ((8, 128), (8, 2, 2), (8,)):
+            shape = (sum(lengths), *tail)
+            count = math.prod(shape)
+            original = (torch.arange(count) % 127).reshape(shape).to(dtype)
+            for layout in ("BSND", "BNSD"):
+                padded = pack_padded_query(original, lengths, layout, 129)
+                expected = (3, 129, *tail) if layout == "BSND" else (3, tail[0], 129, *tail[1:])
+                if tuple(padded.shape) != expected or not padded.is_contiguous():
+                    raise AssertionError(f"{layout}: expected contiguous {expected}, got {tuple(padded.shape)}")
+                torch.testing.assert_close(
+                    unpack_padded_query(padded, lengths, layout), original, rtol=0, atol=0
+                )
+                if layout == "BNSD":
+                    torch.testing.assert_close(
+                        padded[1, :, :65].transpose(0, 1), original[129:], rtol=0, atol=0
+                    )
+                checked += 1
+    try:
+        pack_padded_query(torch.zeros((5, 2, 8)), [3, 2], "BSND", 2)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Packing must reject insufficient sequence capacity")
+    logger.info("[Layout self-check] %d roundtrips and capacity validation passed", checked)
+
+
 def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
     """Compare padded BSND/BNSD against the same TND computation, including Q scale."""
     cu = cu_seqlens_q.cpu().tolist()
@@ -3555,6 +3586,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="MXFP8 QuantBlockSparseAttn Golden")
     parser.add_argument(
+        "--check_layout_helpers",
+        action="store_true",
+        help="仅执行 Q/QScale/LSE 布局打包的 CPU 自检，不运行算子或 STC",
+    )
+    parser.add_argument(
         "--case_files",
         default=None,
         help="case 文件路径，支持逗号分隔；默认文件由是否指定 --csv 决定",
@@ -3626,6 +3662,9 @@ if __name__ == "__main__":
         help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
     args = parser.parse_args()
+    if args.check_layout_helpers:
+        check_layout_helpers()
+        sys.exit(0)
 
     use_quant_matmul = args.quant_matmul
     logger.info(

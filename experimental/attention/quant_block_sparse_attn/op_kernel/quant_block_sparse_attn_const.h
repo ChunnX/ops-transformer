@@ -48,7 +48,9 @@ enum class QBSAAxis : size_t {
     MAX_BLOCK_NUM, // block_table dim1: max blocks per batch
 };
 
-// === Layout-aware axis index mapping for Q/KV (QBSALayout::TND/NTD/PA_BNBD) ===
+// Host shape parsing: map a semantic axis to its position in the public tensor shape.
+// Q supports TND/NTD/BSND/BNSD; QBSAAxis::T also denotes S for padded layouts.
+// Kernel layout specialization is selected separately through the tiling key.
 constexpr size_t QBSAGetAxisIdx(QBSALayout layout, QBSAAxis axis)
 {
     switch (layout) {
