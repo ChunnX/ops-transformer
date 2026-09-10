@@ -124,7 +124,7 @@ public:
     __aicore__ inline void VFDoV3ProcessAlphaGrad(__ubuf__ P *alphaGradOut, __ubuf__ P *alphaGradIn);
 
 private:
-    MhcPreBackwardC0Basic c0Basic_;
+    MhcPreBackwardCubeCompute cubeCompute_;
     uint32_t coreNum_;
     uint64_t totalLength_;
     uint64_t vecDealBSPeCore_;
@@ -285,7 +285,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     if ASCEND_IS_AIC {
         pipe_ = initParams.tPipeIn;
-        c0Basic_.Init(pipe_);
+        cubeCompute_.Init(pipe_);
     }
     if ASCEND_IS_AIV {
         pipe_ = initParams.tPipeIn;
@@ -969,7 +969,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             buffId++;
         }
     }
-    c0Basic_.End();
+    cubeCompute_.End();
 
     if ASCEND_IS_AIC {
         if (enableHf32) {
@@ -986,8 +986,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
-                     workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_, true);
+    cubeCompute_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+                         workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_, true);
 }
 
 template <class T, class P>
@@ -1000,9 +1000,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     bool enAtomic = (offsetBS != 0);
-    c0Basic_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
-                       gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_, ND_BLOCK_SIZE,
-                       nD_, enAtomic);
+    cubeCompute_.ProcessC1(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], workSpaceGm_[offsetXs],
+                           gradPhiGm_[offsetND], fusionSize_, currentNDBlock, currentBSBlock, fusionSize_,
+                           ND_BLOCK_SIZE, nD_, enAtomic);
 }
 
 template <class T, class P>
