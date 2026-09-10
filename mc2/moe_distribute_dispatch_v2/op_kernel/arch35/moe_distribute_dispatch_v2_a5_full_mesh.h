@@ -42,9 +42,8 @@ constexpr int32_t FULL_MESH_MAX_UB_SIZE = 190 * 1024;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t SPLIT_BLOCK_DATA_COUNT = 120U; // 120 = SPLIT_BLOCK_DATA_SIZE / sizeof(float)
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
-// 按32核上限预留前缀和数据区（32*32*32=32KB）
-constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL;
+constexpr uint32_t ALLTOALL_FIXED_CORE_NUM = 32U;
+constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 64UL * 1024UL;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
 constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
@@ -382,10 +381,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     rscvStatusNum_ = isShareExpertRankFlag_ ? epWorldSize_ : (epWorldSize_ * moeExpertNumPerRank_);
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
     statusCntAlign_ = Ceil(totalExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
-    aivUsedCumSum_ = totalExpertNum_ / 16; // 单核处理16个专家cnt发送
-    aivUsedCumSum_ = (aivUsedCumSum_ == 0) ? 1 : aivUsedCumSum_;
-    aivUsedCumSum_ = (aivUsedCumSum_ >= (aivNum_ / 2)) ? (aivNum_ / 2) : aivUsedCumSum_;
-    aivUsedCumSum_ = (aivUsedCumSum_ >= CUMSUM_MAX_CORE_NUM) ? CUMSUM_MAX_CORE_NUM : aivUsedCumSum_;
+    // AllToAll固定32核
+    aivUsedCumSum_ = (aivNum_ > ALLTOALL_FIXED_CORE_NUM) ? (aivNum_ - ALLTOALL_FIXED_CORE_NUM) : 1U;
     // 确保每个核至少处理一个状态
     aivUsedCumSum_ = (aivUsedCumSum_ >= rscvStatusNum_) ? rscvStatusNum_ : aivUsedCumSum_;
     aivUsedAllToAll_ = aivNum_ - aivUsedCumSum_;
