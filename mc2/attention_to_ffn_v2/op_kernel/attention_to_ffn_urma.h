@@ -947,7 +947,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                         AppendRemoteFlagWrite(batchHandle, relayInfo[i].remoteFlagAddr, relayInfo[i].sourceAivId);
                     }
                     hcomm_.BatchCommit(batchHandle);
-                    hcomm_.Drain(batchHandle);
+                    //hcomm_.Drain(batchHandle);
                 }
             }
 
