@@ -12,48 +12,11 @@
  * \file incre_flash_attention_arch22.h
  * \brief
  */
-// IFA_HEAD_TIMING_MODE:
-//   0 (default): 全量执行 kernel 主体, T0/T1/T2 全打点 (对齐 add/gmm 的 cycleBuf 方案)
-//   1: kernel 入口记录 T0 后立即返回 (entry 模式, 独立编译产物)
-//   2: Init 后首个 MTE2 前记录 T1 后立即返回 (头开销模式, 独立编译产物)
-#ifndef IFA_HEAD_TIMING_MODE
-#define IFA_HEAD_TIMING_MODE 0
-#endif
-
-#if IFA_HEAD_TIMING_MODE == 2
-#define IFA_HEAD_TIMING_HEAD_ONLY
-#endif
-
-#if IFA_HEAD_TIMING_MODE == 0 || IFA_HEAD_TIMING_MODE == 2
+// 头开销打点: 全量执行 kernel 主体, T0/T1/T2 全打点 (对齐 add/gmm 的 cycleBuf 方案)
 #define IFA_HEAD_TIMING_DEBUG
-#endif
 
 #define asc_get_system_cycle AscendC::GetSystemCycle
 #include "incre_flash_attention_preload_dd.h"
-
-__aicore__ inline void RecordKernelEntryTiming(__gm__ uint8_t *attentionOut, uint64_t entryCycle)
-{
-    if ASCEND_IS_AIV {
-        constexpr uint64_t HEAD_TIMING_MAGIC = 0x1FA20268ULL;
-        constexpr uint64_t HEAD_TIMING_ENTRY_COMMIT = 0xE17E2026ULL;
-        constexpr uint32_t HEAD_TIMING_SLOT_COUNT = 8;
-        constexpr uint64_t CORE_TYPE_VECTOR = 1;
-        const uint32_t vectorBlockIdx = GetBlockIdx();
-        const uint32_t base = vectorBlockIdx * HEAD_TIMING_SLOT_COUNT;
-        GlobalTensor<uint64_t> headTimingGm;
-        headTimingGm.SetGlobalBuffer((__gm__ uint64_t *)attentionOut);
-
-        headTimingGm.SetValue(base + 5, 0);
-        headTimingGm.SetValue(base + 0, HEAD_TIMING_MAGIC);
-        headTimingGm.SetValue(base + 1, vectorBlockIdx);
-        headTimingGm.SetValue(base + 2, CORE_TYPE_VECTOR);
-        headTimingGm.SetValue(base + 3, entryCycle);
-        headTimingGm.SetValue(base + 4, 0);
-        headTimingGm.SetValue(base + 6, vectorBlockIdx / 2);
-        headTimingGm.SetValue(base + 7, 0);
-        headTimingGm.SetValue(base + 5, HEAD_TIMING_ENTRY_COMMIT);
-    }
-}
 
 __aicore__ inline void RecordKernelEndTiming(__gm__ uint8_t *cycleBuf, TPipe &pipe)
 {
@@ -149,10 +112,6 @@ __global__ __mix__(1, 2) void incre_flash_attention(
     __gm__ uint8_t *cycleBuf, optiling::IncreFlashAttentionTilingData tiling)
 {
     const uint64_t headStartCycle = static_cast<uint64_t>(asc_get_system_cycle());
-#if IFA_HEAD_TIMING_MODE == 1
-    RecordKernelEntryTiming(cycleBuf, headStartCycle);
-    return;
-#endif
     TPipe tPipe;
     __gm__ uint8_t *user = workspace;
 
@@ -202,10 +161,6 @@ template <uint8_t FLASH_DECODE, uint8_t LAYOUT_T, uint8_t ANTIQUANT_MODE, uint32
 __sk__ void incre_flash_attention_sk(const SKArgsStruct *args, const sk::SkSystemArgs *sysArgs)
 {
     const uint64_t headStartCycle = static_cast<uint64_t>(asc_get_system_cycle());
-#if IFA_HEAD_TIMING_MODE == 1
-    RecordKernelEntryTiming(args->attentionOut + 4 * 1024 * 1024, headStartCycle);
-    return;
-#endif
     GM_ADDR query = args->query;
     GM_ADDR key = args->key;
     GM_ADDR value = args->value;

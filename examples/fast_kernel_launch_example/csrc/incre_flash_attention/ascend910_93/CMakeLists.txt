@@ -8,13 +8,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if(DEFINED ENV{IFA_HEAD_TIMING_MODE})
-    set(IFA_HEAD_TIMING_MODE "$ENV{IFA_HEAD_TIMING_MODE}")
-elseif(NOT DEFINED IFA_HEAD_TIMING_MODE)
-    set(IFA_HEAD_TIMING_MODE 0)
-endif()
-if(NOT IFA_HEAD_TIMING_MODE MATCHES "^[012]$")
-    message(FATAL_ERROR "IFA_HEAD_TIMING_MODE must be 0 (full exec) / 1 (entry) / 2 (before first MTE2)")
-endif()
-
-add_sources("--npu-arch=dav-2201 -DIFA_HEAD_TIMING_MODE=${IFA_HEAD_TIMING_MODE}")
+add_sources("--npu-arch=dav-2201")
