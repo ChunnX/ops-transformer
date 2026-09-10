@@ -530,8 +530,9 @@ __aicore__ inline void WaitUntilGmFlagAtLeast(__gm__ int32_t *flagAddr, int32_t 
 }
 
 // 同一 launch 内阶段由 0 单调推进到 1、2；公共输入屏障前由 ResetSyncStatus 清零。
-// 每个 AIV1 独占一个 cache line，达到更晚阶段也表示已通过此前阶段。
-__aicore__ inline void SyncAiv1Subgroup(GM_ADDR syncPtr, const AivJobContext &job, int32_t phase)
+// 每个 topK 有效下标发送核独占一个 cache line，达到更晚阶段也表示已通过此前阶段。
+// 当前共享并行路径的发送核均为 AIV1，包括共享专家使用 A8W4 的场景。
+__aicore__ inline void SyncTopkValidIndexSendCores(GM_ADDR syncPtr, const AivJobContext &job, int32_t phase)
 {
     auto *arrivals = reinterpret_cast<__gm__ int32_t *>(syncPtr);
     WriteGmByPassDCache(arrivals + job.jobIndex * INT_CACHELINE, phase);
@@ -580,7 +581,6 @@ template <bool Aiv1Only>
 __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
                                                 const AivJobContext &aivJob, GM_ADDR aiv1SyncPtr)
 {
-    static_assert(Aiv1Only, "Use the four-argument overload for all-AIV synchronization");
     if constexpr (g_coreType == AIC) {
         return;
     }
@@ -589,7 +589,7 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
     }
     const AivJobContext syncJob{.jobIndex = aivJob.jobIndex / 2U, .totalJobs = aivJob.totalJobs / 2U};
     // 本卡所有发送核完成后，才能向远端发布本卡输入就绪信号。
-    SyncAiv1Subgroup(aiv1SyncPtr, syncJob, 1);
+    SyncTopkValidIndexSendCores(aiv1SyncPtr, syncJob, 1);
     const uint32_t firstPhysicalCoreIdx = syncJob.jobIndex * 2U;
     auto *syncCount = reinterpret_cast<__gm__ int32_t *>(
         rankSyncInWorldPtr + 48U * 1024U + static_cast<uint64_t>(firstPhysicalCoreIdx) * 64U);
@@ -598,7 +598,7 @@ __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint
     WriteGmByPassDCache(syncCount + 64U / sizeof(int32_t), count);
     PipeBarrier<PIPE_ALL>();
     // 未分到 rank 握手任务的核，也必须等待本卡全部握手及 epoch 更新完成。
-    SyncAiv1Subgroup(aiv1SyncPtr, syncJob, 2);
+    SyncTopkValidIndexSendCores(aiv1SyncPtr, syncJob, 2);
 }
 
 template <AscendC::HardEvent event, int32_t eventId>

@@ -740,18 +740,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
     // 共享专家启用时，计算与 topK 有效下标发送在公共输入屏障后分别推进。
-    // A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行发送及输入同步。
-    // A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成发送及同步后执行共享激活。
+    // 共享专家使用 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行发送及输入同步。
+    // 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成发送及同步后执行共享激活。
     // 子组同步只等待 AIV1，避免阻塞正在执行共享计算的 AIV0。
-    if (sharedExpertNum_ > 0U) {
-        if constexpr (g_coreType == AIV) {
-            if (GetSubBlockIdx() == 1U) {
-                const AivJobContext topkValidIndexJob{
-                    .jobIndex = blockIdx_, .totalJobs = blockNum_};
-                GatherAndSendExpertCompactRoutes(topkValidIndexJob, commonConfig_, params_, g_winRankAddr_,
-                                                 sendMaskConfig_, sendMaskScratch_, aivCoreIdx_);
-            }
-        }
+    if (sharedExpertNum_ > 0U && GetSubBlockIdx() == 1U) {
+        const AivJobContext topkValidIndexJob{.jobIndex = blockIdx_, .totalJobs = blockNum_};
+        GatherAndSendExpertCompactRoutes(topkValidIndexJob, commonConfig_, params_, g_winRankAddr_,
+                                         sendMaskConfig_, sendMaskScratch_);
     }
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
     SyncInputAcrossRanks();

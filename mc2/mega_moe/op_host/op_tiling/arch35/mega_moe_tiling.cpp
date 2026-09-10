@@ -1287,10 +1287,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tilingData,
                                                    uint32_t moeActivationElementsPerByte,
                                                    uint32_t sharedActivationElementsPerByte,
-                                                   bool needsIndependentSharedQuant)
+                                                   bool needsIndependentSharedQuant, uint32_t topkValidIndexCoreNum)
 {
-    const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
-    const uint32_t topkValidIndexCoreNum = sharedMte ? tilingData->blockAivNum / 2U : tilingData->blockAivNum;
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
         static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
@@ -1328,8 +1326,11 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
                                            uint32_t sharedActivationElementsPerByte, bool needsIndependentSharedQuant,
                                            uint32_t availableUbBytes)
 {
+    const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
+    const uint32_t topkValidIndexCoreNum = sharedMte ? tilingData->blockAivNum / 2U : tilingData->blockAivNum;
     uint32_t sendMaskFixedBufferBytes = CalcTopkValidIndexFixedBufferBytes(
-        tilingData, moeActivationElementsPerByte, sharedActivationElementsPerByte, needsIndependentSharedQuant);
+        tilingData, moeActivationElementsPerByte, sharedActivationElementsPerByte, needsIndependentSharedQuant,
+        topkValidIndexCoreNum);
 
     /*
      * 与 kernel topK 有效下标发送的 expert 连续均衡分核一一对应。totalExpertCount 除以 topkValidIndexCoreNum 后，
