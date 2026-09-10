@@ -253,7 +253,7 @@ static int LaunchOneThreadMx(Args &args)
         gmmX, gmmW, gmmXScale, gmmWScale,
         nullptr, // sendCountsTensorOptional
         nullptr, // recvCountsTensorOptional
-        nullptr, // mmX（apace 路径不支持共享专家，置空）
+        nullptr, // mmX（本样例不启用共享专家）
         nullptr, // mmWeight
         nullptr, // mmXScale
         nullptr, // mmWeightScale
@@ -261,7 +261,7 @@ static int LaunchOneThreadMx(Args &args)
         false, // transGmmWeight
         false, // transMmWeight
         groupSize,
-        false, // permuteOutFlag（apace 路径不支持 permute_out）
+        false, // permuteOutFlag（本样例不请求 permute_out）
         gmmY, nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize failed. ret = %d \n", ret);

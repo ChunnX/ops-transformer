@@ -54,9 +54,12 @@ static_assert(sizeof(QuantAlltoAllvGroupedMatmulTilingData) >= sizeof(Apace::hco
     do { \
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommA2avQuantGmmTilingData, tilingData, tilingGM); \
         Apace::AllToAllvQuantGmmHcommImpl<DTYPE_GMM_X, DTYPE_GMM_WEIGHT, DTYPE_GMM_Y, \
-                                          TILINGKEY_GMM_WEIGHT_TRANSPOSE, hcclServerType> \
+                                          TILINGKEY_GMM_WEIGHT_TRANSPOSE, TILINGKEY_MM_WEIGHT_TRANSPOSE, \
+                                          hcclServerType> \
             op(&tilingData); \
-        op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, gmmyGM, userWorkspace, tilingGM); \
+        op.Init(gmmxGM, gmmxScaleGM, gmmweightGM, gmmWeightScaleGM, mmxOptionalGM, mmxScaleGM, \
+                mmweightOptionalGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, \
+                userWorkspace, tilingGM); \
         op.Run(); \
     } while (0)
 

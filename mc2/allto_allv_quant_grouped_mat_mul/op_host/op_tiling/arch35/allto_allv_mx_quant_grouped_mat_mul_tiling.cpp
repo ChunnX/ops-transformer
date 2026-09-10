@@ -23,12 +23,6 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-namespace {
-// Keep the production APACE admission range aligned with the validated
-// MatmulAllToAll APACE path. Larger groups continue to use the legacy kernel.
-constexpr uint64_t APACE_IMPL_MAX_RANK_SIZE = 8;
-constexpr uint64_t APACE_MX_K_ALIGNMENT = 1024;
-}
 
 bool AlltoAllvMXQuantGmmTiling::IsCapable()
 {
@@ -51,9 +45,7 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
     if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    // apace 路径不支持共享专家，transMm 固定取 false
-    const bool transMmForKey = usingApaceImpl_ ? false : transMmWeight_;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmForKey, commMode, usingApaceImpl_);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode, usingApaceImpl_);
     return tilingKey;
 }
 
@@ -62,26 +54,22 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
     // 复用公共 shape/attr 解析，再判定是否切换 apace 实现
     MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo());
     usingApaceImpl_ = CheckApaceImplCapable();
-    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGroupedMatMul MX implementation: %s, rankSize=%lu.",
-            usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", epWorldSize_);
+    OP_LOGI(context_->GetNodeName(),
+            "AlltoAllvQuantGroupedMatMul MX implementation: %s, rankSize=%lu, sharedExpert=%d, permuteOut=%d.",
+            usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", epWorldSize_, static_cast<int>(hasSharedExpertFlag_),
+            static_cast<int>(permuteOutFlag_));
     return ge::GRAPH_SUCCESS;
 }
 
 bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
 {
     // 参照 AlltoAllMatmul 的 MX 切 apace 策略：
-    // 无 permute_out 输出、无共享专家（mm 路径）、rank 数与段数在 apace 表容量内时，
-    // MX 量化场景切换 hcomm 纯 C 核（AIC_ONLY）实现
-    if (permuteOutFlag_ || hasSharedExpertFlag_) {
-        return false;
-    }
-    if (epWorldSize_ == 0 || epWorldSize_ > APACE_IMPL_MAX_RANK_SIZE) {
+    // rank 数与段数在当前 APACE tiling 表容量内时切换 hcomm 纯 C 核实现。
+    // permute_out 由 AllToAllV 直接接收到 expert-major 偏移；共享专家复用 Blaze MX GMM。
+    if (epWorldSize_ == 0 || epWorldSize_ > Apace::A2AV_GMM_MAX_RANK_NUM) {
         return false;
     }
     if (e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
-        return false;
-    }
-    if (h1_ == 0 || h1_ % APACE_MX_K_ALIGNMENT != 0) {
         return false;
     }
     return true;
@@ -94,15 +82,18 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
     Apace::BuildHcommA2avQuantGmmTiling(static_cast<uint32_t>(epWorldSize_), static_cast<uint32_t>(e_),
                                          static_cast<uint32_t>(h1_), static_cast<uint32_t>(n1_), transGmmWeight_,
                                          gmmXDataType_ == ge::DT_FLOAT4_E2M1, sendCounts, recvCounts, aicCoreNum_, 0,
-                                         permuteOutSize_, apaceTilingData_);
+                                         permuteOutSize_, permuteOutFlag_, hasSharedExpertFlag_, static_cast<uint32_t>(bs_),
+                                         static_cast<uint32_t>(h2_), static_cast<uint32_t>(n2_), transMmWeight_,
+                                         apaceTilingData_);
     apaceTilingData_.mc2InitTiling = tilingData->hcclA2avTilingInfo.hcclInitTiling;
     apaceTilingData_.mc2CcTiling = tilingData->hcclA2avTilingInfo.a2avCcTiling;
     OP_LOGI(opName,
             "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
-            "scaleRecvOffset=%lu",
+            "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u",
             epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
             apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
-            apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset);
+            apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset,
+            apaceTilingData_.localMatmul, apaceTilingData_.hasPermuteOut);
     return ge::GRAPH_SUCCESS;
 }
 

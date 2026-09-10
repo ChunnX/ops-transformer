@@ -92,7 +92,7 @@ TEST(AlltoAllvQuantGroupedMatMulApaceTilingTest, BuildsInclusiveSegmentTableAndU
     Apace::hcommA2avQuantGmmTilingData tiling{};
 
     Apace::BuildHcommA2avQuantGmmTiling(rankSize, expertNum, 128, 256, false, false, sendCounts, recvCounts,
-                                        32, 0, 4096, tiling);
+                                        32, 0, 4096, false, false, 0, 0, 0, false, tiling);
 
     EXPECT_EQ(tiling.segNum, 4U);
     EXPECT_EQ(tiling.segList[0], 257U);
@@ -112,6 +112,30 @@ TEST(AlltoAllvQuantGroupedMatMulApaceTilingTest, BuildsInclusiveSegmentTableAndU
     EXPECT_EQ(tiling.segSendRows[2], 1U);
     EXPECT_EQ(tiling.segSendRows[3], 3U);
     EXPECT_EQ(tiling.baseM, 256U);
+}
+
+TEST(AlltoAllvQuantGroupedMatMulApaceTilingTest, BuildsSharedExpertMatmulTiling)
+{
+    constexpr uint32_t rankSize = 2;
+    constexpr uint32_t expertNum = 2;
+    const int64_t sendCounts[rankSize * expertNum] = {1, 2, 3, 4};
+    const int64_t recvCounts[rankSize * expertNum] = {1, 2, 3, 4};
+    Apace::hcommA2avQuantGmmTilingData tiling{};
+
+    Apace::BuildHcommA2avQuantGmmTiling(rankSize, expertNum, 192, 320, false, false, sendCounts, recvCounts,
+                                        32, 0, 4096, true, true, 448, 192, 256, false, tiling);
+
+    EXPECT_EQ(tiling.localMatmul, 1U);
+    EXPECT_EQ(tiling.hasPermuteOut, 1U);
+    EXPECT_EQ(tiling.mmM, 448U);
+    EXPECT_EQ(tiling.mmK, 192U);
+    EXPECT_EQ(tiling.mmN, 256U);
+    EXPECT_EQ(tiling.mmGroupList[0], 448U);
+    EXPECT_GT(tiling.mmBaseM, 0U);
+    EXPECT_GT(tiling.mmBaseN, 0U);
+    EXPECT_GT(tiling.mmBaseK, 0U);
+    EXPECT_EQ(tiling.mmKAL1, tiling.mmKBL1);
+    EXPECT_EQ(tiling.mmKAL1, tiling.mmScaleKAL1);
 }
 
 INSTANTIATE_TEST_SUITE_P(

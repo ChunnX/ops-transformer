@@ -40,7 +40,7 @@ struct AllToAllvQuantGmmTilingData {
     uint32_t rankSize{0};
     uint32_t rankId{0};
     uint32_t expertNum{0}; // 本 rank 专家数 E
-    uint32_t k{0};         // H1（约束 K % 1024 == 0，保证通信 32B 对齐）
+    uint32_t k{0};         // H1
     uint32_t n{0};         // N1
     uint32_t transB{0};    // 0: weight [E,K,N]；1: weight [E,N,K]
     uint32_t scaleKLen{0}; // ceildiv(K,64) * 2，A scale 每行字节数
@@ -242,6 +242,7 @@ struct hcommA2avQuantGmmTilingData {
     uint32_t isMxFp4{0};
     uint32_t segNum{0};      // 段数 = W*E
     uint32_t usedCoreNum{0}; // AIC 核数
+    uint32_t hasPermuteOut{0};
     // workspace 内通信缓冲偏移（字节）
     uint64_t dataRecvOffset{0};  // 数据接收区
     uint64_t scaleRecvOffset{0}; // scale 接收区
@@ -266,7 +267,18 @@ struct hcommA2avQuantGmmTilingData {
     uint32_t kAL1{0};
     uint32_t kBL1{0};
     uint32_t scaleKAL1{0};
-    uint32_t localMatmul{0}; // 预留
+    // optional shared-expert local MX matmul
+    uint32_t localMatmul{0};
+    uint32_t mmM{0};
+    uint32_t mmK{0};
+    uint32_t mmN{0};
+    uint32_t mmBaseM{0};
+    uint32_t mmBaseN{0};
+    uint32_t mmBaseK{0};
+    uint32_t mmKAL1{0};
+    uint32_t mmKBL1{0};
+    uint32_t mmScaleKAL1{0};
+    uint32_t mmGroupList[1]{0};
 };
 
 /*!
@@ -288,6 +300,8 @@ struct hcommA2avQuantGmmTilingData {
 inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, uint32_t k, uint32_t n, bool transB,
                                          bool isMxFp4, const int64_t *sendCounts, const int64_t *recvCounts,
                                          uint32_t usedCoreNum, uint64_t dataRecvOffset, uint64_t scaleRecvOffset,
+                                         bool hasPermuteOut, bool localMatmul, uint32_t mmM, uint32_t mmK, uint32_t mmN,
+                                         bool transMmB,
                                          hcommA2avQuantGmmTilingData &tiling)
 {
     tiling = {};
@@ -300,8 +314,14 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
     tiling.usedCoreNum = usedCoreNum;
     tiling.dataRecvOffset = dataRecvOffset;
     tiling.scaleRecvOffset = scaleRecvOffset;
+    tiling.hasPermuteOut = hasPermuteOut ? 1U : 0U;
     tiling.segNum = rankSize * expertNum;
     tiling.scaleKLen = static_cast<uint32_t>(((k + 63U) / 64U) * 2U);
+    tiling.localMatmul = localMatmul ? 1U : 0U;
+    tiling.mmM = mmM;
+    tiling.mmK = mmK;
+    tiling.mmN = mmN;
+    tiling.mmGroupList[0] = mmM;
 
     auto sendAt = [sendCounts, expertNum](uint32_t d, uint32_t e) -> int64_t {
         return sendCounts[d * expertNum + e];
@@ -425,6 +445,26 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
     tiling.kAL1 = static_cast<uint32_t>(ceilAlign(static_cast<uint32_t>(kAL1), 64U));
     tiling.kBL1 = tiling.kAL1;
     tiling.scaleKAL1 = tiling.kAL1; // MX 要求 scaleKAL1 == scaleKBL1
+
+    if (localMatmul) {
+        tiling.mmBaseK = ceilAlign(std::min(mmK, 128U), 64U);
+        const uint32_t mmMaxByL0 = std::max(16U, 32768U / tiling.mmBaseK);
+        tiling.mmBaseM = ceilAlign(std::min(std::min(mmM, 256U), mmMaxByL0), 16U);
+        const uint32_t mmNAlign = transMmB ? 16U : 32U;
+        tiling.mmBaseN = ceilAlign(std::min(std::min(mmN, 256U), mmMaxByL0), mmNAlign);
+        const uint32_t mmMaxNByL0c =
+            (std::max<uint32_t>(mmNAlign, 32768U / tiling.mmBaseM) / mmNAlign) * mmNAlign;
+        tiling.mmBaseN = std::min(tiling.mmBaseN, mmMaxNByL0c);
+        uint64_t mmKAL1 = std::min<uint64_t>(mmK, 512U);
+        const uint64_t mmPerK = static_cast<uint64_t>(tiling.mmBaseM) + tiling.mmBaseN +
+                                (static_cast<uint64_t>(tiling.mmBaseM) + tiling.mmBaseN) / 32U;
+        while (mmKAL1 > 64U && mmKAL1 * mmPerK > l1Budget) {
+            mmKAL1 -= 64U;
+        }
+        tiling.mmKAL1 = ceilAlign(static_cast<uint32_t>(mmKAL1), 64U);
+        tiling.mmKBL1 = tiling.mmKAL1;
+        tiling.mmScaleKAL1 = tiling.mmKAL1;
+    }
 }
 
 } // namespace Apace

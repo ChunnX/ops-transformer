@@ -51,7 +51,8 @@ constexpr uint64_t GetA2avHcclDataType()
     }
 }
 
-template <typename AType, typename BType, typename CType, bool TransB, AscendC::HcclServerType ServerType>
+template <typename AType, typename BType, typename CType, bool TransB, bool TransMmB,
+          AscendC::HcclServerType ServerType>
 class AllToAllvQuantGmmHcommImpl {
 public:
     explicit __aicore__ inline AllToAllvQuantGmmHcommImpl(hcommA2avQuantGmmTilingData *tilingData)
@@ -80,6 +81,11 @@ public:
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using GmmKernel = Apace::Kernel::QuantGroupedMatmulKernel<ProblemShape, BlockMmad, BlockScheduler>;
+    using MmLayoutB = typename AscendC::Std::conditional_t<TransMmB, AscendC::Te::DNExtLayoutPtn,
+                                                           AscendC::Te::NDExtLayoutPtn>;
+    using MmBlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, MmLayoutB, CType,
+                                                      LayoutC, BiasType, LayoutBias>;
+    using MmKernel = Apace::Kernel::QuantGroupedMatmulKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
 
     static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     static constexpr uint64_t xHcclDataType_ = GetA2avHcclDataType<AType>();
@@ -91,7 +97,9 @@ public:
      *            段表（segList/segAOff/segCOff）以 __gm__ 指针按偏移直接引用 tiling buffer
      */
     __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightGM,
-                                GM_ADDR gmmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR userWorkspaceGM, GM_ADDR tilingGM)
+                                GM_ADDR gmmWeightScaleGM, GM_ADDR mmxGM, GM_ADDR mmxScaleGM,
+                                GM_ADDR mmWeightGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
+                                GM_ADDR permuteOutGM, GM_ADDR userWorkspaceGM, GM_ADDR tilingGM)
     {
         if ASCEND_IS_AIV {
             return;
@@ -101,14 +109,21 @@ public:
         weightGM_ = gmmWeightGM;
         weightScaleGM_ = gmmWeightScaleGM;
         yGM_ = gmmyGM;
-        dataRecvGM_ = userWorkspaceGM + tilingData_->dataRecvOffset;
+        mmxGM_ = mmxGM;
+        mmxScaleGM_ = mmxScaleGM;
+        mmWeightGM_ = mmWeightGM;
+        mmWeightScaleGM_ = mmWeightScaleGM;
+        mmyGM_ = mmyGM;
+        // Each expert is communicated independently, so receive directly into the
+        // expert-major output when requested. Otherwise use the workspace buffer.
+        dataRecvGM_ = tilingData_->hasPermuteOut != 0U ? permuteOutGM : userWorkspaceGM + tilingData_->dataRecvOffset;
         scaleRecvGM_ = userWorkspaceGM + tilingData_->scaleRecvOffset;
         segListGm_ = reinterpret_cast<__gm__ const uint32_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, segList));
-        segAOffGm_ =
-            reinterpret_cast<__gm__ const uint32_t *>(tilingGM + offsetof(hcommA2avQuantGmmTilingData, segAOff));
         segCOffGm_ =
             reinterpret_cast<__gm__ const uint32_t *>(tilingGM + offsetof(hcommA2avQuantGmmTilingData, segCOff));
+        mmGroupListGm_ = reinterpret_cast<__gm__ const uint32_t *>(
+            tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList));
 
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
@@ -125,6 +140,10 @@ public:
     {
         if ASCEND_IS_AIV {
             return;
+        }
+        // Hide the independent shared-expert matmul behind the first communication.
+        if (tilingData_->localMatmul != 0U) {
+            RunLocalMatmul();
         }
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
             const uint32_t slot = expertIdx & 1U;
@@ -162,7 +181,9 @@ private:
             }
             const uint64_t sendRows = tilingData_->segSendRows[segIdx];
             const uint64_t recvRows = GetSegmentRows(segIdx);
-            const uint64_t recvRowOffset = tilingData_->segAOff[segIdx];
+            // Receive each expert directly in expert-major order. This is also the
+            // externally visible permute_out layout and removes the former AIV permute.
+            const uint64_t recvRowOffset = tilingData_->segCOff[segIdx];
             dataSendCnt_[slot][peer] = sendRows * dataAxis;
             dataSendOff_[slot][peer] = tilingData_->dataSendOff[peer] + sendRowOffset * dataAxis;
             dataRecvCnt_[slot][peer] = recvRows * dataAxis;
@@ -205,7 +226,8 @@ private:
         params.cBasePtr = reinterpret_cast<__gm__ CType *>(yGM_);
         const uint32_t firstSegment = expertIdx * tilingData_->rankSize;
         params.groupList = segListGm_ + firstSegment;
-        params.segAOff = segAOffGm_ + firstSegment;
+        // Communication receive data is already expert-major.
+        params.segAOff = segCOffGm_ + firstSegment;
         params.segCOff = segCOffGm_ + firstSegment;
         params.segW = tilingData_->rankSize;
         params.expertBase = expertIdx;
@@ -213,9 +235,42 @@ private:
         params.gmm = gmm;
         gmmKernel_(params);
     }
+
+    __aicore__ inline void RunLocalMatmul()
+    {
+        typename MmKernel::GMMTiling mm;
+        mm.groupNum = 1U;
+        mm.n = tilingData_->mmN;
+        mm.k = tilingData_->mmK;
+        mm.baseM = tilingData_->mmBaseM;
+        mm.baseN = tilingData_->mmBaseN;
+        mm.baseK = tilingData_->mmBaseK;
+        mm.kAL1 = tilingData_->mmKAL1;
+        mm.kBL1 = tilingData_->mmKBL1;
+        mm.scaleKAL1 = tilingData_->mmScaleKAL1;
+        mm.isBias = 0;
+        mm.dbL0C = 2;
+        mm.l1BufferStage = 2;
+
+        typename MmKernel::Params params;
+        params.aBasePtr = reinterpret_cast<__gm__ AType *>(mmxGM_);
+        params.scaleABasePtr = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(mmxScaleGM_);
+        params.bBasePtr = reinterpret_cast<__gm__ BType *>(mmWeightGM_);
+        params.scaleBBasePtr = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(mmWeightScaleGM_);
+        params.cBasePtr = reinterpret_cast<__gm__ CType *>(mmyGM_);
+        params.groupList = mmGroupListGm_;
+        params.segAOff = nullptr;
+        params.segCOff = nullptr;
+        params.segW = 0U;
+        params.expertBase = 0U;
+        params.groupListBase = 0U;
+        params.gmm = mm;
+        mmKernel_(params);
+    }
     hcommA2avQuantGmmTilingData *tilingData_{nullptr};
     AscendC::Hccl<ServerType> hccl_;
     GmmKernel gmmKernel_;
+    MmKernel mmKernel_;
     AscendC::HcclHandle scaleHandle_[2] = {0, 0};
     AscendC::HcclHandle dataHandle_[2] = {0, 0};
 
@@ -224,12 +279,17 @@ private:
     GM_ADDR weightGM_{nullptr};
     GM_ADDR weightScaleGM_{nullptr};
     GM_ADDR yGM_{nullptr};
+    GM_ADDR mmxGM_{nullptr};
+    GM_ADDR mmxScaleGM_{nullptr};
+    GM_ADDR mmWeightGM_{nullptr};
+    GM_ADDR mmWeightScaleGM_{nullptr};
+    GM_ADDR mmyGM_{nullptr};
     GM_ADDR dataRecvGM_{nullptr};
     GM_ADDR scaleRecvGM_{nullptr};
     // 段表 __gm__ 指针（引用 tiling buffer 原始地址，避免本地拷贝地址空间问题）
     __gm__ const uint32_t *segListGm_{nullptr};
-    __gm__ const uint32_t *segAOffGm_{nullptr};
     __gm__ const uint32_t *segCOffGm_{nullptr};
+    __gm__ const uint32_t *mmGroupListGm_{nullptr};
 
     // AlltoAllV 本地参数表（元素计）
     uint64_t dataSendCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
