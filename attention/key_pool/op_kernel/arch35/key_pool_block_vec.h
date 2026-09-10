@@ -1467,32 +1467,7 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeVec1(const Vec1RunInfo &
 template <typename COMP>
 __aicore__ inline void KeyPoolBlockVector<COMP>::ComputeIncrementalPool()
 {
-    uint32_t dDealSize = BlockElementNum<HIDDEN_STATES_T>();
-    uint32_t dStartIdx = constInfo_.aiCoreIdx * dDealSize;
-    if (dStartIdx >= constInfo_.headDim) {
-        return;
-    }
-    dDealSize = min(dDealSize, constInfo_.headDim - dStartIdx);
-    uint32_t outputPoolCapacity = CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
-
-    for (uint32_t bIdx = 0; bIdx < constInfo_.batchSize; bIdx++) {
-        uint32_t startPool = GetStartPos(bIdx) / cmpRatio_;
-        uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;
-        uint32_t newPoolCount = validPoolCount > startPool ? validPoolCount - startPool : 0;
-        const uint32_t clearPoolCapacity =
-            max(1U, static_cast<uint32_t>(BUFFER_SIZE_BYTE_16K / (dDealSize * sizeof(HIDDEN_STATES_T))));
-        for (uint32_t clearStart = newPoolCount; clearStart < outputPoolCapacity; clearStart += clearPoolCapacity) {
-            uint32_t clearCount = min(clearPoolCapacity, outputPoolCapacity - clearStart);
-            LocalTensor<HIDDEN_STATES_T> zeroUb = outputQue2.AllocTensor<HIDDEN_STATES_T>();
-            Duplicate(zeroUb, static_cast<HIDDEN_STATES_T>(0), clearCount * dDealSize);
-            outputQue2.EnQue(zeroUb);
-            outputQue2.DeQue<HIDDEN_STATES_T>();
-            uint64_t outGmOffset =
-                (static_cast<uint64_t>(bIdx) * outputPoolCapacity + clearStart) * constInfo_.headDim + dStartIdx;
-            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], zeroUb, clearCount, dDealSize, dDealSize, constInfo_.headDim);
-            outputQue2.FreeTensor(zeroUb);
-        }
-    }
+    return;
 }
 } // namespace KeyPool
 #endif // KEY_POOL_BLOCK_VECTOR_H
