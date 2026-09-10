@@ -30,6 +30,8 @@ constexpr uint32_t SPARSE_SEQ_LEN_INDEX = 1;
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
+constexpr uint32_t DIM_IDX_THREE = 3;
+constexpr uint32_t DIM_NUM_THREE = 3;
 constexpr uint32_t DIM_NUM_FOUR = 4;
 
 static ge::graphStatus InferShapeStemIndexer(gert::InferShapeContext *context)
@@ -56,15 +58,15 @@ static ge::graphStatus InferShapeStemIndexer(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseSeqLenShape);
 
     sparseIndicesShape->SetDimNum(DIM_NUM_FOUR);
-    sparseIndicesShape->SetDim(0, qflatShape->GetDim(DIM_IDX_ZERO));
-    sparseIndicesShape->SetDim(1, qflatShape->GetDim(DIM_IDX_ONE));
-    sparseIndicesShape->SetDim(2, qflatShape->GetDim(DIM_IDX_TWO));
-    sparseIndicesShape->SetDim(3, kflatShape->GetDim(DIM_IDX_TWO));
+    sparseIndicesShape->SetDim(DIM_IDX_ZERO, qflatShape->GetDim(DIM_IDX_ZERO));
+    sparseIndicesShape->SetDim(DIM_IDX_ONE, qflatShape->GetDim(DIM_IDX_ONE));
+    sparseIndicesShape->SetDim(DIM_IDX_TWO, qflatShape->GetDim(DIM_IDX_TWO));
+    sparseIndicesShape->SetDim(DIM_IDX_THREE, kflatShape->GetDim(DIM_IDX_TWO));
 
-    sparseSeqLenShape->SetDimNum(3);
-    sparseSeqLenShape->SetDim(0, qflatShape->GetDim(DIM_IDX_ZERO));
-    sparseSeqLenShape->SetDim(1, qflatShape->GetDim(DIM_IDX_ONE));
-    sparseSeqLenShape->SetDim(2, qflatShape->GetDim(DIM_IDX_TWO));
+    sparseSeqLenShape->SetDimNum(DIM_NUM_THREE);
+    sparseSeqLenShape->SetDim(DIM_IDX_ZERO, qflatShape->GetDim(DIM_IDX_ZERO));
+    sparseSeqLenShape->SetDim(DIM_IDX_ONE, qflatShape->GetDim(DIM_IDX_ONE));
+    sparseSeqLenShape->SetDim(DIM_IDX_TWO, qflatShape->GetDim(DIM_IDX_TWO));
 
     OP_LOGI(context->GetNodeName(), "StemIndexer InferShape end.");
     return ge::GRAPH_SUCCESS;

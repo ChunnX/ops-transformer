@@ -127,6 +127,15 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         return ge::GRAPH_FAILED;
     }
 
+    if (CheckBasicAttrValues() != ge::GRAPH_SUCCESS ||
+        CheckTopkAttrValues() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckBasicAttrValues()
+{
     OP_CHECK_IF(
         *opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
         OP_LOGE_WITH_INVALID_ATTR(opName_, "stem_block_size", std::to_string(*opParamInfo_.stemBlockSize).c_str(),
@@ -150,6 +159,11 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         OP_LOGE_WITH_INVALID_ATTR(opName_, "alpha", std::to_string(*opParamInfo_.alpha).c_str(),
                                   ("(" + std::to_string(ALPHA_MIN) + ", " + std::to_string(ALPHA_MAX) + "]").c_str()),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckTopkAttrValues()
+{
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
                 OP_LOGE_WITH_INVALID_ATTR(opName_, "k_block_num_rate_medium",
                                           std::to_string(*opParamInfo_.kBlockNumRateMedium).c_str(),
@@ -294,6 +308,15 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckInOutDataType()
 
 ge::graphStatus StemIndexerInfoParser::CheckShapeDim()
 {
+    if (CheckInputShapeDim() != ge::GRAPH_SUCCESS ||
+        CheckOutputShapeDim() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckInputShapeDim()
+{
     OP_CHECK_IF(opParamInfo_.qflat.shape->GetStorageShape().GetDimNum() != DIM_NUM_FOUR,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(
                     opName_, "qflat",
@@ -330,6 +353,11 @@ ge::graphStatus StemIndexerInfoParser::CheckShapeDim()
                     opName_, "metadata",
                     (std::to_string(opParamInfo_.metadata.tensor->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckOutputShapeDim()
+{
     OP_CHECK_IF(
         opParamInfo_.sparseIndicesOut.shape->GetStorageShape().GetDimNum() != DIM_NUM_FOUR,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
@@ -368,6 +396,11 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
             opName_, "qflat", Ops::Base::ToString(opParamInfo_.qflat.shape->GetStorageShape()).c_str(),
             "The batch dimension of input qflat should be less than or equal to " + std::to_string(BATCH_SIZE_LIMIT)),
         return ge::GRAPH_FAILED);
+    return CheckHeadShapeInfo();
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckHeadShapeInfo()
+{
     OP_CHECK_IF(!IsSupportedQHeadNum(qHeadNum_),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "qflat", Ops::Base::ToString(opParamInfo_.qflat.shape->GetStorageShape()).c_str(),
@@ -400,14 +433,20 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
 
 ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
 {
+    if (CheckQkvShapesMatch() != ge::GRAPH_SUCCESS ||
+        CheckSequenceShapesMatch() != ge::GRAPH_SUCCESS ||
+        CheckMetadataShape() != ge::GRAPH_SUCCESS ||
+        CheckOutputShapesMatch() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckQkvShapesMatch()
+{
     const auto &qShape = opParamInfo_.qflat.shape->GetStorageShape();
     const auto &kShape = opParamInfo_.kflat.shape->GetStorageShape();
     const auto &vShape = opParamInfo_.vbias.shape->GetStorageShape();
-    const auto &qSeqShape = opParamInfo_.qSeqLens.shape->GetStorageShape();
-    const auto &kvSeqShape = opParamInfo_.kvSeqLens.shape->GetStorageShape();
-    const auto &metadataShape = opParamInfo_.metadata.tensor->GetStorageShape();
-    const auto &sparseIndicesShape = opParamInfo_.sparseIndicesOut.shape->GetStorageShape();
-    const auto &sparseSeqLenShape = opParamInfo_.sparseSeqLenOut.shape->GetStorageShape();
     const std::string qkShapeStr = Ops::Base::ToString(qShape) + " and " + Ops::Base::ToString(kShape);
 
     OP_CHECK_IF(
@@ -427,6 +466,14 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
                                            std::to_string(maxKb_) + "]")
                                               .c_str()),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckSequenceShapesMatch()
+{
+    const auto &qSeqShape = opParamInfo_.qSeqLens.shape->GetStorageShape();
+    const auto &kvSeqShape = opParamInfo_.kvSeqLens.shape->GetStorageShape();
+
     OP_CHECK_IF(
         qSeqShape.GetDim(DIM_IDX_ZERO) != bSize_ || kvSeqShape.GetDim(DIM_IDX_ZERO) != bSize_,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
@@ -441,6 +488,13 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
                                               ("[" + std::to_string(bSize_) + "]").c_str()),
                     return ge::GRAPH_FAILED);
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckMetadataShape()
+{
+    const auto &metadataShape = opParamInfo_.metadata.tensor->GetStorageShape();
+
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint64_t metadataAicCoreNum = STEM_INDEXER_METADATA_AIC_CORE_NUM;
     uint64_t metadataAivCoreNum = STEM_INDEXER_METADATA_AIV_CORE_NUM;
@@ -458,6 +512,14 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
                      " when batch is " + std::to_string(bSize_) + " and kv_heads is " + std::to_string(kvHeadNum_))
                         .c_str()),
                 return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus StemIndexerInfoParser::CheckOutputShapesMatch()
+{
+    const auto &sparseIndicesShape = opParamInfo_.sparseIndicesOut.shape->GetStorageShape();
+    const auto &sparseSeqLenShape = opParamInfo_.sparseSeqLenOut.shape->GetStorageShape();
+
     OP_CHECK_IF(
         sparseIndicesShape.GetDim(DIM_IDX_ZERO) != bSize_ || sparseIndicesShape.GetDim(DIM_IDX_ONE) != qHeadNum_ ||
             sparseIndicesShape.GetDim(DIM_IDX_TWO) != maxQb_ || sparseIndicesShape.GetDim(DIM_IDX_THREE) != maxKb_,
@@ -540,6 +602,19 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context_->SetBlockDim(blockDim);
 
+    ConfigureWorkspace(tilingInfo, ascendcPlatform, aivNum);
+    FillTilingData(tilingInfo, ascendcPlatform, blockDim);
+    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+
+    ConfigureTilingKey(tilingInfo);
+    context_->SetScheduleMode(1);
+    return ge::GRAPH_SUCCESS;
+}
+
+void StemIndexerTiling::ConfigureWorkspace(const StemIndexerTilingInfo *tilingInfo,
+                                         platform_ascendc::PlatformAscendC &ascendcPlatform, uint32_t aivNum)
+{
     size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9201 ||
         ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_9202) {
@@ -555,7 +630,11 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     }
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize;
+}
 
+void StemIndexerTiling::FillTilingData(const StemIndexerTilingInfo *tilingInfo,
+                                    platform_ascendc::PlatformAscendC &ascendcPlatform, uint32_t blockDim)
+{
     tilingData_.set_bSize(tilingInfo->bSize);
     tilingData_.set_qHeadNum(tilingInfo->qHeadNum);
     tilingData_.set_kvHeadNum(tilingInfo->kvHeadNum);
@@ -584,9 +663,10 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     tilingData_.set_kBlockNumBiasMedium(tilingInfo->kBlockNumBiasMedium);
     tilingData_.set_kBlockNumRateLarge(tilingInfo->kBlockNumRateLarge);
     tilingData_.set_kBlockNumBiasLarge(tilingInfo->kBlockNumBiasLarge);
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+}
 
+void StemIndexerTiling::ConfigureTilingKey(const StemIndexerTilingInfo *tilingInfo)
+{
     uint32_t inputQType = static_cast<uint32_t>(tilingInfo->inputQType);
     uint32_t inputKType = static_cast<uint32_t>(tilingInfo->inputKType);
     uint32_t outputType = static_cast<uint32_t>(tilingInfo->outputType);
@@ -594,8 +674,6 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     uint32_t topkScorePrecision = tilingInfo->topkScorePrecision;
     uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, causal, topkScorePrecision);
     context_->SetTilingKey(tilingKey);
-    context_->SetScheduleMode(1);
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus TilingForStemIndexer(gert::TilingContext *context)
