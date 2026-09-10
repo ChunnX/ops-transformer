@@ -75,12 +75,8 @@ TILE_D = HEAD_DIM_ALIGN
 
 
 # ---- NZ 分形排布常量 (ASC vf_cast_transdata_deconflict.h) ----
-
-# ==================================================================
-#  CopyUB2L1 —— 对应 block_vec.h::CopyUB2L1
-#  pypto 无 Vec->Mat 的 move，必须 cast -> ND2NZ(Vec->Vec) -> insert
-#  insert 的源必须已是 NZ，否则能编过但结果错
-# ==================================================================
+# v3/v4 的融合 VF 直接以 NZ 写出，随后 insert 进 CV 共享 L1；
+# 搬运在 fag_block_vec.copy_ub2l1，这里只放几何。
 # NZ 分形：fp16 的 C0 = 16 元素 = 32B(一个 DataBlock)
 FRACTAL_C0 = 16
 UB_BLOCK_BYTES = 32

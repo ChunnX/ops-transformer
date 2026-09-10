@@ -46,7 +46,7 @@ from fag_common import (
 # --- end generated imports ---
 
 # ==================================================================
-#  IterateMmQK —— mm2: S = Q @ K^T   (block_cube.h::IterateMmQK)
+#  C2 / IterateMmQK —— mm2: S = Q @ K^T
 # ==================================================================
 def _mm_k_chunk(lt, rt, at, srcL, srcR, dOff, dW, s2Real, isFirst):
     """MM2/MM1 的一个 K 分块：D 落在 K 轴，故各块要累加到同一个 acc。
@@ -116,7 +116,7 @@ def iterate_mm_qk(constInfo, runInfo, tensor_q, tensor_k,
 
 
 # ==================================================================
-#  IterateMmDyV —— mm1: dP = dO @ V^T  (block_cube.h::IterateMmDyV)
+#  C1 / IterateMmDyV —— mm1: dP = dO @ V^T
 # ==================================================================
 def iterate_mm_dyv(constInfo, runInfo, tensor_dy, tensor_v,
                    do_t, v_l1, left, right, acc, mm1_ub, loadKV):
@@ -168,7 +168,7 @@ def iterate_mm_dyv(constInfo, runInfo, tensor_dy, tensor_v,
 
 
 # ==================================================================
-#  IterateMmDsK —— mm3: dQ = dS @ K    (block_cube.h::IterateMmDsK)
+#  C3 / IterateMmDsK —— mm3: dQ = dS @ K
 #  IS_DQ_WRITE_UB=false -> fixpipe 直出 GM，needAtomic=true(BN2GS1S2)
 # ==================================================================
 def _mm_n_chunk(left, right, acc, srcL, srcR, tensor_out, outIdx,
@@ -226,7 +226,7 @@ def iterate_mm_dsk(constInfo, runInfo, tensor_k, tensor_dq_ws, loadKV,
 
 
 # ==================================================================
-#  IterateMmDsQ —— mm4: dK = dS^T @ Q  (block_cube.h::IterateMmDsQ)
+#  C4 / IterateMmDsQ —— mm4: dK = dS^T @ Q
 #  左矩阵取已在 vector 侧转置好的 dS^T L1
 # ==================================================================
 def _mm_resident_chunk(left, right, at, srcL, srcR, mReal, kReal, dOff, dW,
@@ -272,7 +272,7 @@ def iterate_mm_dsq(constInfo, runInfo, ds_t_l1, q_t,
 
 
 # ==================================================================
-#  IterateMmPDy —— mm5: dV = P^T @ dO  (block_cube.h::IterateMmPDy)
+#  C5 / IterateMmPDy —— mm5: dV = P^T @ dO
 # ==================================================================
 def dv_chunk_w(constInfo, chunkIdx):
     """dV 第 chunkIdx 块的有效列宽(按 Dv 截断，可能为 0)。

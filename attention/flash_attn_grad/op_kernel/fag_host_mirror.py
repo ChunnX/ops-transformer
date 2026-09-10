@@ -20,7 +20,8 @@ host，拿不到 host 算好的值。
 任何错，只会让 JIT 验证的二进制与 host 实际派发的那份不是同一个。
 
 把它们单独拎成一个模块，就是为了让「这些函数不会被 trace」这件事在目录结构
-上是显然的：kernel 侧任何模块都不 import 本文件。
+上是显然的：除了入口 ``flash_attn_grad`` 为兼容旧调用方做 re-export 之外，
+kernel 侧没有任何模块 import 本文件，被 trace 的代码里也不会出现这些名字。
 """
 
 BN2_MAX_S = 128
