@@ -616,29 +616,6 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
                 leastCclBufferSizeBytes);
     }
 
-    // Validate ccl_buffer_size when provided (V2 path)
-    if (config.attrCclBufferSizeIndex != UINT32_MAX) {
-        auto attrsPtr = context->GetAttrs();
-        OP_TILING_CHECK(attrsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
-        auto cclBufferSizePtr = attrsPtr->GetAttrPointer<int64_t>(config.attrCclBufferSizeIndex);
-        OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "ccl_buffer_size"),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(*cclBufferSizePtr <= 0,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "ccl_buffer_size",
-                                                  std::to_string(*cclBufferSizePtr).c_str(), "greater than 0"),
-                        return ge::GRAPH_FAILED);
-        uint64_t leastCclBufferSizeBytes = AlignUp(neededSize, CCL_BUFFER_ALIGN_SIZE);
-        OP_TILING_CHECK(static_cast<uint64_t>(*cclBufferSizePtr) < leastCclBufferSizeBytes,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "ccl_buffer_size", std::to_string(*cclBufferSizePtr).c_str(),
-                            (std::string("should >= ") + std::to_string(leastCclBufferSizeBytes) +
-                             " bytes (token_info + token_data)")
-                                .c_str()),
-                        return ge::GRAPH_FAILED);
-        OP_LOGD(nodeName, "ccl_buffer_size is %ld bytes, leastCclBufferSize is %lu bytes", *cclBufferSizePtr,
-                leastCclBufferSizeBytes);
-    }
-
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
