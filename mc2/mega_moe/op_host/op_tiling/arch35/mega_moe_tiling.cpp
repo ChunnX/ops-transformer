@@ -219,9 +219,12 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             "blockNumPerEP=%u, topoType=%ld, rankNumPerServer=%u",
             tilingData->moeExpertPerRank, tilingData->sharedExpertNum, tilingData->epWorldSize, tilingData->aicNum,
             tilingData->blockAivNum, tilingData->blockNumPerEP, tilingData->topoType, tilingData->rankNumPerServer);
-    OP_LOGD(nodeName, "mode: moeGmmMode=%u, sharedGmmMode=%u, combineQuantMode=%ld, clampLimit=%f",
+    OP_LOGD(nodeName,
+            "mode: moeGmmMode=%u, sharedGmmMode=%u, needsIndependentSharedQuant=%u, combineQuantMode=%ld, "
+            "clampLimit=%f",
             static_cast<uint32_t>(tilingData->moeGmmMode), static_cast<uint32_t>(tilingData->sharedGmmMode),
-            tilingData->combineQuantMode, tilingData->clampLimit);
+            static_cast<uint32_t>(tilingData->needsIndependentSharedQuant), tilingData->combineQuantMode,
+            tilingData->clampLimit);
     OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
@@ -280,6 +283,7 @@ void PrintWorkspaceLayout(const struct WorkspaceLayout *layout, const char *node
     OP_LOGD(nodeName, "gmm2ReadyOffset:               %ld\n", layout->gmm2ReadyOffset);
     OP_LOGD(nodeName, "gmm2CombineSyncCounterOffset:  %ld\n", layout->gmm2CombineSyncCounterOffset);
     OP_LOGD(nodeName, "gmm2MmadResOffset:             %ld\n", layout->gmm2MmadResOffset);
+    OP_LOGD(nodeName, "sharedExpertInputOffset:       %ld\n", layout->sharedExpertInputOffset);
     OP_LOGD(nodeName, "workspaceSize:                 %ld\n", layout->workspaceSize);
 }
 
@@ -791,6 +795,8 @@ static ge::graphStatus CheckAndSetExpertGmmModes(const gert::TilingContext *cont
 
     tilingData->moeGmmMode = params.moe.gmmMode;
     tilingData->sharedGmmMode = params.shared.gmmMode;
+    tilingData->needsIndependentSharedQuant =
+        params.shared.expertCount > 0 && params.shared.quantOutDtype != params.moe.quantOutDtype;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1421,8 +1427,6 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
 
     uint32_t activationElementsPerByte = expertParams.moe.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
     uint32_t sharedActivationElementsPerByte = expertParams.shared.quantOutDtype == ge::DT_FLOAT4_E2M1 ? 2U : 1U;
-    bool needsIndependentSharedQuant =
-        expertParams.shared.expertCount > 0 && expertParams.shared.quantOutDtype != expertParams.moe.quantOutDtype;
     // 所有 AIV 核共用同一套 dispatch UB 配置，该布局与分核方式无关。
     // 若 kernel 改为按核拆分 tensor 或调整 copyTmp 槽位布局，需同步更新此处计算。
     tilingData->dispatchBufferConfig =
@@ -1433,7 +1437,7 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
-                                   needsIndependentSharedQuant, availableUbBytes);
+                                   tilingData->needsIndependentSharedQuant != 0U, availableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
