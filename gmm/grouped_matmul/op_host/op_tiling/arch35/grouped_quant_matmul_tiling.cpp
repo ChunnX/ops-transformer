@@ -118,7 +118,8 @@ bool GroupedQmmTiling::IsWeightNzMultiTensorLayout() const
 uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
 {
     uint16_t count = 0U;
-    while (count < GroupedMatmul::MAX_TENSOR_CONT && context_->GetDynamicInputShape(index, count) != nullptr) {
+    // Count one extra tensor so an oversized list cannot be mistaken for a valid 1024-tensor list.
+    while (count <= GMM_MAX_GROUP_LIST_SIZE && context_->GetDynamicInputShape(index, count) != nullptr) {
         ++count;
     }
     return count;
@@ -135,6 +136,13 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     }
     const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
     const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX);
+    const uint64_t maxTensorNum = IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    OP_CHECK_IF(
+        weightTensorNum > maxTensorNum || scaleTensorNum > maxTensorNum,
+        OP_LOGE_FOR_INVALID_LISTSIZE(
+            inputParams_.opType, "weight, scale", ListToString(weightTensorNum, scaleTensorNum),
+            "in WeightNz single-multi-single mode, tensor counts must not exceed " + std::to_string(maxTensorNum)),
+        return false);
     OP_CHECK_IF(weightTensorNum == 0,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "weight", "0", "positive integer"), return false);
     OP_CHECK_IF(weightTensorNum != inputParams_.groupNum,
@@ -1247,6 +1255,11 @@ bool GroupedQmmTiling::SetMKNList()
         mList_[0] = -1;
         if (IsWeightNzMultiTensorLayout()) {
             uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
+            // MX uses GroupedQmmBasicApiTiling without per-group M/K/N arrays.
+            OP_CHECK_IF(weightTensorNum > GroupedMatmul::MAX_TENSOR_CONT,
+                        OP_LOGE(inputParams_.opName, "Weight tensor count %u exceeds the M/K/N array capacity %u.",
+                                weightTensorNum, GroupedMatmul::MAX_TENSOR_CONT),
+                        return false);
             for (uint16_t i = 0; i < weightTensorNum; ++i) {
                 auto weightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, i);
                 OP_CHECK_IF(weightShape == nullptr,
