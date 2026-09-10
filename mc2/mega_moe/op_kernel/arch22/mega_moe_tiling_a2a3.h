@@ -30,7 +30,7 @@ using namespace Mc2Tiling;
 #define SOC_ASCEND910B 0
 #define SOC_ASCEND910_93 1
 
-struct MegaMoeA2A3TilingData {
+struct MegaMoeTilingData {
     uint32_t M;
     uint32_t K;
     uint32_t N;
@@ -76,13 +76,5 @@ struct MegaMoeA2A3TilingData {
     //   单 chunk 接收行数 <= 总接收行数 <= maxRecvTokenNum，kernel 的 maxOutputSize 取 B）。
     uint64_t recvRoundBudget;
     uint64_t recvRoundsMax;
-};
-
-struct MegaMoeTilingDataQuant {
-    MegaMoeA2A3TilingData common;
-};
-
-struct MegaMoeTilingDataNonQuant {
-    MegaMoeA2A3TilingData common;
 };
 #endif

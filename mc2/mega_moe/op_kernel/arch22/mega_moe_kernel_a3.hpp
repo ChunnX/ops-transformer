@@ -16,13 +16,8 @@
 #ifndef MEGA_MOE_KERNEL_A3_HPP
 #define MEGA_MOE_KERNEL_A3_HPP
 
-// Guard against 3rdparty copy_l0c_to_gm.hpp so the custom PER_CHANNEL
-// specialization in copy_l0c_to_gm_custom.hpp takes precedence.
-#define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
 #include <limits>
 #include "kernel_operator.h"
-
-#include "utils/copy_l0c_to_gm_custom.hpp"
 
 #include "catlass/catlass.hpp"
 #include "catlass/arch/cross_core_sync.hpp"
@@ -35,7 +30,6 @@
 
 #include "utils/block_mmad_w4a4.hpp"
 #include "utils/block_mmad_preload_async_fixpipe_quant.hpp"
-#include "utils/copy_gm_to_l1_custom.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_v2.hpp"
 #include "utils/block_epilogue_w4a8post_pertoken_swiglu.hpp"
 #include "utils/block_epilogue_pertoken_v2.hpp"
@@ -141,12 +135,9 @@ public:
         uint32_t gmm1InputExpertSlotWidth;
         //--------------
         GM_ADDR expertIdx;
-        GM_ADDR moeInitRoutingQuantV2Scale;
-        GM_ADDR moeInitRoutingQuantV2Offset;
         GM_ADDR expandedX;
         GM_ADDR expandedRowIdx;
         GM_ADDR expertTokensCountOrCumsum;
-        GM_ADDR expertTokensBeforeCapacity;
         GM_ADDR dynamicQuantScale;
         GM_ADDR probs;
         GM_ADDR ptrXActiveMask;
@@ -177,9 +168,8 @@ public:
                LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_, LayoutB layoutB1_, GM_ADDR ptrBias1_,
                GM_ADDR ptrB2_, LayoutB layoutB2_, GM_ADDR ptrBias2_, GM_ADDR ptrScale1_, LayoutScale layoutScale1_,
                GM_ADDR ptrScale2_, LayoutScale layoutScale2_, GM_ADDR ptrOutput_, LayoutD1 layoutD1_,
-               LayoutD2 layoutD2_, GM_ADDR expertIdx_, GM_ADDR moeInitRoutingQuantV2Scale_,
-               GM_ADDR moeInitRoutingQuantV2Offset_, GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_,
-               GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_, GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
+               LayoutD2 layoutD2_, GM_ADDR expertIdx_, GM_ADDR probs_, GM_ADDR ptrWorkspace_,
+               GM_ADDR gmExpertTokenNums_, GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
                uint32_t activationCode_ = 0, float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr,
@@ -216,9 +206,6 @@ public:
               layoutD1(layoutD1_),
               layoutD2(layoutD2_),
               expertIdx(expertIdx_),
-              moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
-              moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
-              expertTokensBeforeCapacity(expertTokensBeforeCapacity_),
               probs(probs_),
               ptrXActiveMask(ptrXActiveMask_),
               ptrScales(ptrScales_),
