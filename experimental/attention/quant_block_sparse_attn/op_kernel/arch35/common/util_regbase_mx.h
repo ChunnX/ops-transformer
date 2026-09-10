@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include "../../quant_block_sparse_attn_common.h"
+#include "mx_query_layout.h"
 
 namespace regbasemx {
 constexpr uint32_t QBSA_MX_SCALE_LAST_DIM = 2U;
@@ -80,6 +81,9 @@ struct MxBaseConstInfo {
     uint32_t coreNum = 0U;
     uint32_t aicIdx = 0U;
     uint8_t subBlockIdx = 0U;
+    uint32_t qSeqSize = 0U;
+    uint32_t queryRowStride = 0U;
+    uint32_t queryScaleRowStride = 0U;
     uint32_t n2GD = 0U;
     uint32_t qScaleN1D = 0U;
     // PA BNBD scale 中单个 kv head 的 stride。

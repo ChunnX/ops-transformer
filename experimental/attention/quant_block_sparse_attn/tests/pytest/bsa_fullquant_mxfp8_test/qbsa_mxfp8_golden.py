@@ -13,7 +13,7 @@
 MXFP8 Flash Attention Golden
 
 功能：参考式生成输入 → CPU golden → NPU 调用 → layout 对齐 → 精度对比
-支持：MXFP8 Q/QDescale 公共输入仅为 TND；NPU 侧 K/V 使用 PA KV cache
+支持：MXFP8 Q/QDescale 公共输入为 TND/BSND/BNSD；NPU 侧 K/V 使用 PA KV cache
 支持：PA 场景、GQA、causal/dense sparse mode、QDescale 固定 TND D-group 打包
 数据：随机 FP8 Q/K/V + MXFP8 D-group descale，生成结构对齐 quant_block_sparse_attn_golden.py
 输出：逐元素表格 + 统计汇总 (PctRlt 通过率，双千分之五标准)
@@ -322,10 +322,10 @@ def _resolve_sparse_mode(case):
 
 def validate_mxfp8_case(case):
     """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
-    if str(case.get("layout_q", "")).upper() != "TND":
-        raise ValueError(
-            f"MXFP8 layout_q only supports TND, got {case.get('layout_q')!r}"
-        )
+    if case.get("layout_q") not in ("TND", "BSND", "BNSD"):
+        raise ValueError(f"MXFP8 layout_q must be TND/BSND/BNSD, got {case.get('layout_q')!r}")
+    if case.get("layout_out") != case.get("layout_q"):
+        raise ValueError("MXFP8 layout_out must match layout_q")
 
     if case["N2"] <= 0 or case["N1"] % case["N2"] != 0:
         raise ValueError(
@@ -2432,6 +2432,71 @@ def _prepare_npu_metadata(
     )
 
 
+def pack_padded_query(tensor, lengths, layout, sq=None):
+    """Pack TND data or Q scale into contiguous BSND/BNSD without FP8 arithmetic."""
+    if layout == "TND":
+        return tensor
+    if layout not in ("BSND", "BNSD"):
+        raise ValueError(f"Unsupported padded layout: {layout}")
+    sq = max(lengths) if sq is None else int(sq)
+    if sq < max(lengths) or sum(lengths) != tensor.shape[0]:
+        raise ValueError("Padded capacity / effective lengths do not match packed tensor")
+    # CPU uint8 views preserve E4M3/E8M0 bits and avoid unsupported fill/copy kernels.
+    raw = tensor.detach().cpu().contiguous().view(torch.uint8).reshape(*tensor.shape, tensor.element_size())
+    padded = torch.zeros((len(lengths), sq, *raw.shape[1:]), dtype=torch.uint8)
+    offset = 0
+    for b, length in enumerate(lengths):
+        padded[b, :length] = raw[offset:offset + length]
+        offset += length
+    if layout == "BNSD":
+        padded = padded.transpose(1, 2).contiguous()
+    return padded.contiguous().view(tensor.dtype).squeeze(-1)
+
+
+def unpack_padded_query(tensor, lengths, layout):
+    """Return effective TND tokens, retaining all trailing data/scale dimensions."""
+    if layout == "TND":
+        return tensor
+    tensor = tensor.detach().cpu().contiguous()
+    dtype = tensor.dtype
+    raw = tensor.view(torch.uint8).reshape(*tensor.shape, tensor.element_size())
+    if layout == "BNSD":
+        raw = raw.transpose(1, 2)
+    return torch.cat([raw[b, :length] for b, length in enumerate(lengths)], dim=0).contiguous().view(dtype).squeeze(-1)
+
+
+def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
+    """Compare padded BSND/BNSD against the same TND computation, including Q scale."""
+    cu = cu_seqlens_q.cpu().tolist()
+    lengths = [cu[i + 1] - cu[i] for i in range(len(cu) - 1)]
+    sq = max(lengths)
+    # Keep padding inside the existing sparse query row capacity.
+    batch, heads, dim = len(lengths), q.shape[1], q.shape[2]
+    q_cpu = q.detach().cpu().view(torch.uint8)
+    scale_cpu = q_scale.detach().cpu().view(torch.uint8)
+    q_bsnd = torch.zeros((batch, sq, heads, dim), dtype=torch.uint8)
+    scale_bsnd = torch.zeros((batch, sq, *q_scale.shape[1:]), dtype=torch.uint8)
+    for b, length in enumerate(lengths):
+        q_bsnd[b, :length] = q_cpu[cu[b]:cu[b + 1]]
+        scale_bsnd[b, :length] = scale_cpu[cu[b]:cu[b + 1]]
+    for layout in ("BSND", "BNSD"):
+        q_bytes = q_bsnd if layout == "BSND" else q_bsnd.transpose(1, 2).contiguous()
+        scale_bytes = scale_bsnd if layout == "BSND" else scale_bsnd.transpose(1, 2).contiguous()
+        out, lse = invoke(q_bytes.view(q.dtype).to(q.device),
+                          scale_bytes.view(q_scale.dtype).to(q_scale.device), layout, layout)
+        torch_npu.npu.synchronize()
+        assert tuple(out.shape) == ((batch, sq, heads, dim) if layout == "BSND" else (batch, heads, sq, dim))
+        out = out.cpu() if layout == "BSND" else out.cpu().transpose(1, 2)
+        for b, length in enumerate(lengths):
+            torch.testing.assert_close(out[b, :length], out_tnd.cpu()[cu[b]:cu[b + 1]], rtol=0, atol=0)
+        if ENABLE_LSE:
+            assert tuple(lse.shape) == (batch, heads, sq)
+            for b, length in enumerate(lengths):
+                torch.testing.assert_close(lse.cpu()[b, :, :length].T,
+                                           lse_tn.cpu()[cu[b]:cu[b + 1]], rtol=0, atol=0)
+        logger.info("[NPU] %s output and BNS LSE match TND", layout)
+
+
 def _call_npu_fa_op(
     q,
     k,
@@ -2481,36 +2546,40 @@ def _call_npu_fa_op(
         sparse_seq_len,
     )
 
-    output = torch.ops.custom.npu_quant_block_sparse_attn(
-        q,
-        k,
-        v,
-        dequant_scale_q,
-        dequant_scale_k,
-        dequant_scale_v,
-        p_scale,
-        sparse_indices,
-        sparse_seq_len,
-        mask,
-        softmax_scale,
-        SPARSE_BLOCK_SIZE,
-        SPARSE_BLOCK_SIZE,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        block_table=block_table,
-        metadata=metadata,
-        layout_kv=layout_kv,
-        layout_q=layout_q,
-        layout_sparse_indices=SPARSE_INDICES_LAYOUT,
-        layout_out=OUT_LAYOUT,
-        quant_mode=QUANT_MODE_MXFP8,
-        mask_mode=MASK_MODE,
-        return_softmax_lse=ENABLE_LSE,
-    )
+    def invoke(query, q_scale, q_layout, out_layout):
+        return torch.ops.custom.npu_quant_block_sparse_attn(
+            query,
+            k,
+            v,
+            q_scale,
+            dequant_scale_k,
+            dequant_scale_v,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            mask,
+            softmax_scale,
+            SPARSE_BLOCK_SIZE,
+            SPARSE_BLOCK_SIZE,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            metadata=metadata,
+            layout_kv=layout_kv,
+            layout_q=q_layout,
+            layout_sparse_indices=SPARSE_INDICES_LAYOUT,
+            layout_out=out_layout,
+            quant_mode=QUANT_MODE_MXFP8,
+            mask_mode=MASK_MODE,
+            return_softmax_lse=ENABLE_LSE,
+        )
+    output = invoke(q, dequant_scale_q, layout_q, OUT_LAYOUT)
     torch_npu.npu.synchronize()
     atten_out, lse_out = output
+    if layout_q == "TND" and os.environ.get("QBSA_CHECK_PADDED_LAYOUTS") == "1":
+        _check_padded_layouts(invoke, q, dequant_scale_q, cu_seqlens_q, atten_out, lse_out)
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
@@ -2890,16 +2959,18 @@ def npu_mxfp8_fa(
 
     softmax_scale = float(CASE["softmax_scale"])
 
-    q_layout = "TND"
+    q_layout = Q_INPUT_LAYOUT
     q_input = require_q_tnd(q_fp8, q_lengths, N_q, "Q").view(FP8_DTYPE)
+    q_input = pack_padded_query(q_input, q_lengths, q_layout)
     q_npu = q_input.npu()
     logger.info("[NPU %s] q=%s", q_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
         pack_q_scale_tnd_for_npu(dequant_scale_q, q_lengths), "Q descale"
     )
+    q_scale_e8m0 = pack_padded_query(q_scale_e8m0, q_lengths, q_layout)
     deq_q_npu = q_scale_e8m0.npu()
-    logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
+    logger.info("[NPU] Q descale layout=%s, shape=%s", q_layout, q_scale_e8m0.shape)
 
     if p_scale is None:
         p_scale_npu = None
@@ -3019,8 +3090,21 @@ def npu_mxfp8_fa(
         )
         atten_out, lse_out = _call_npu_fa_op(*npu_call_args)
 
-    npu_output = atten_out
-    npu_lse = lse_out
+    if q_layout in ("BSND", "BNSD"):
+        sq = max(q_lengths)
+        expected_out = (len(q_lengths), sq, N_q, D) if q_layout == "BSND" else (len(q_lengths), N_q, sq, D)
+        if tuple(atten_out.shape) != expected_out:
+            raise AssertionError(f"attention_out: expected {expected_out}, got {tuple(atten_out.shape)}")
+        npu_output = unpack_padded_query(atten_out, q_lengths, q_layout)
+        if ENABLE_LSE:
+            if tuple(lse_out.shape) != (len(q_lengths), N_q, sq):
+                raise AssertionError(f"Expected BNS LSE, got {tuple(lse_out.shape)}")
+            npu_lse = torch.cat([lse_out[b, :, :length].T for b, length in enumerate(q_lengths)], dim=0)
+        else:
+            npu_lse = lse_out
+    else:
+        npu_output = atten_out
+        npu_lse = lse_out
     T_actual = sum(q_lengths)
     if npu_output.shape[0] > T_actual:
         npu_output = npu_output[:T_actual]
@@ -3239,7 +3323,7 @@ def run_one_case(
     logger.info("MXFP8 Flash Attention Golden")
     logger.info("输出: 逐元素表格 + 统计汇总 (PctRlt 通过率)")
     logger.info("场景: PA")
-    logger.info("Q_INPUT_LAYOUT=%s, QDescale layout=TND", Q_INPUT_LAYOUT)
+    logger.info("Q_INPUT_LAYOUT=%s, QDescale uses the same layout", Q_INPUT_LAYOUT)
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
     logger.info("Q_LENGTHS=%s, KV_LENGTHS=%s", Q_LENGTHS, KV_LENGTHS)

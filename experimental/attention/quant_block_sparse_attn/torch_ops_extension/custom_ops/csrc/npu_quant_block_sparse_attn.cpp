@@ -28,12 +28,28 @@ const int64_t QBSA_MXFP8_SCALE_LAST_DIM = 2;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
 //   - attention_out: BF16，TND 保持原布局，NTD 转为 TND
-//   - softmax_lse:   FLOAT32，FP8 为 (N1,T)，MXFP8 为 (T,N1)
+//   - softmax_lse: FLOAT32，FP8 为 (N1,T)，MXFP8 TND 为 (T,N1)，BSND/BNSD 为 (B,N1,S)
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
-                                                                c10::string_view layout_q, int64_t quant_mode,
+                                                                c10::string_view layout_q, c10::string_view layout_out,
+                                                                int64_t quant_mode,
                                                                 bool return_softmax_lse)
 {
     const std::string layout_q_str(layout_q);
+    const bool padded = layout_q_str == "BSND" || layout_q_str == "BNSD";
+    if (padded) {
+        TORCH_CHECK(quant_mode == QBSA_MXFP8_FULL_QUANT_MODE && std::string(layout_out) == layout_q_str,
+                    "BSND/BNSD require MXFP8 and matching layout_out");
+        TORCH_CHECK(query.dim() == 4, "BSND/BNSD query must be 4D");
+        TORCH_CHECK(query.is_contiguous(), "BSND/BNSD query must be contiguous");
+        const bool bsnd = layout_q_str == "BSND";
+        at::SmallVector<int64_t, SIZE> out_size = {query.size(0), query.size(1), query.size(2), value.size(-1)};
+        at::SmallVector<int64_t, SIZE> lse_size = {query.size(0), query.size(bsnd ? 2 : 1), query.size(bsnd ? 1 : 2)};
+        if (!return_softmax_lse) {
+            lse_size = {0};
+        }
+        return {at::empty(out_size, query.options().dtype(at::kBFloat16)),
+                at::empty(lse_size, query.options().dtype(at::kFloat))};
+    }
     TORCH_CHECK(query.dim() == DIM_THREE, "query should be 3D for layout_q TND/NTD, but got ", query.dim(), "D.");
     TORCH_CHECK(layout_q_str == "TND" || layout_q_str == "NTD", "layout_q should be TND or NTD, but got ",
                 layout_q_str);
@@ -161,9 +177,12 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs =
-        construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
+        construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
+    if (layout_q == "BSND" || layout_q == "BNSD") {
+        TORCH_CHECK(q_descale.is_contiguous(), "BSND/BNSD q_descale must be contiguous");
+    }
 
     // convert str
     std::string layout_kv_str = std::string(layout_kv);
@@ -210,7 +229,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
     int64_t mask_mode, bool return_softmax_lse)
 {
-    return construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
+    return construct_bsa_output_tensors(query, value, layout_q, layout_out, quant_mode, return_softmax_lse);
 }
 } // namespace custom
 

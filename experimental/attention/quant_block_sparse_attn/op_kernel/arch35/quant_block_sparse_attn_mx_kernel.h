@@ -50,8 +50,9 @@ public:
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
-                  "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
+    static_assert((LAYOUT == QBSALayout::TND || LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) &&
+                      KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
+                  "MXFullQuantMode currently supports TND/BSND/BNSD query and PA_BNBD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
     // C2 延迟两个 task，V2 再延迟一个 task。单 BMM2 UB 作为跨 iteration 的流水寄存器：
@@ -127,6 +128,7 @@ private:
         const auto &sparseParams = tilingData->sparseParams;
         const auto &scaleParams = tilingData->scaleParams;
 
+        constInfo.qSeqSize = baseParams.qSeqSize;
         constInfo.n2Size = baseParams.n2Size;
         constInfo.gSize = baseParams.gSize;
         constInfo.realN2Size = baseParams.n2Size * baseParams.gSize;
@@ -153,6 +155,16 @@ private:
         constInfo.keyScaleDSize = scaleParams.keyScaleDSize;
         constInfo.valueScaleDSize = scaleParams.valueScaleDSize;
         constInfo.qScaleN1D = constInfo.realN2Size * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+        constInfo.queryRowStride = constInfo.n2GD;
+        constInfo.queryScaleRowStride = constInfo.qScaleN1D;
+        if constexpr (LAYOUT == QBSALayout::BNSD) {
+            constInfo.queryRowStride = constInfo.dSize;
+            constInfo.queryScaleRowStride = constInfo.queryScaleDSize * constInfo.scaleLastDim;
+            constInfo.attentionOutStride = 0U;
+        }
+        if constexpr (LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) {
+            constInfo.softmaxLseStride = 0U;
+        }
         constInfo.kScaleN2D = static_cast<uint32_t>(baseParams.kScaleStrides.n2Stride);
         constInfo.valueScaleN2D = static_cast<uint32_t>(baseParams.vScaleStrides.n2Stride);
     }
@@ -318,13 +330,18 @@ private:
         runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
         if ASCEND_IS_AIC {
             // GM 元素偏移可能超过 32 位；从 token 基址开始宽化，并保证 head 内偏移也在 64 位域计算。
-            const uint64_t queryTokenOffset =
-                static_cast<uint64_t>(runInfo.queryTokenBase) + static_cast<uint64_t>(runInfo.s1Idx);
-            runInfo.queryOffset = queryTokenOffset * static_cast<uint64_t>(constInfo.n2GD) +
-                                  static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.dSize;
-            runInfo.queryScaleOffset =
-                queryTokenOffset * static_cast<uint64_t>(constInfo.qScaleN1D) +
-                static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+            if constexpr (LAYOUT == QBSALayout::TND) {
+                const uint64_t queryTokenOffset = runInfo.queryTokenBase + runInfo.s1Idx;
+                runInfo.queryOffset = queryTokenOffset * static_cast<uint64_t>(constInfo.n2GD) +
+                                      static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.dSize;
+                runInfo.queryScaleOffset = queryTokenOffset * static_cast<uint64_t>(constInfo.qScaleN1D) +
+                    static_cast<uint64_t>(runInfo.realN2Idx) * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+            } else {
+                const uint64_t querySlot = MxQuerySlot<LAYOUT>(runInfo.queryTokenBase, runInfo.s1Idx,
+                    runInfo.realN2Idx, constInfo.realN2Size, constInfo.qSeqSize);
+                runInfo.queryOffset = querySlot * constInfo.dSize;
+                runInfo.queryScaleOffset = querySlot * constInfo.queryScaleDSize * constInfo.scaleLastDim;
+            }
         }
     }
 
@@ -408,6 +425,11 @@ private:
                 if (unlikely(bIdx != cachedBIdx)) {
                     queryTokenBase = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx));
                     actualS1Size = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U)) - queryTokenBase;
+                    if constexpr (LAYOUT == QBSALayout::BSND || LAYOUT == QBSALayout::BNSD) {
+                        queryTokenBase = bIdx * constInfo.qSeqSize;
+                        // cu_seqlens_q describes effective lengths, never the padded GM batch stride.
+                        actualS1Size = actualS1Size < constInfo.qSeqSize ? actualS1Size : constInfo.qSeqSize;
+                    }
                     actualS2Size = static_cast<uint32_t>(seqUsedKvGm.GetValue(bIdx));
                     cachedBIdx = bIdx;
                 }

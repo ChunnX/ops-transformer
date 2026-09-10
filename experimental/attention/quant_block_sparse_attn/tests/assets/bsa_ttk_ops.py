@@ -67,7 +67,7 @@ class QuantBlockSparseAttnMetadataBuilder:
 
     @staticmethod
     def batch_size(q, layout_q, cu_seqlens_q, seqused_q, sparse_indices=None):
-        if layout_q == "BSND":
+        if layout_q in ("BSND", "BNSD"):
             return int(q.shape[0])
         if seqused_q is not None:
             return int(seqused_q.numel())
@@ -111,6 +111,9 @@ class QuantBlockSparseAttnMetadataBuilder:
         if layout_q == "BSND":
             num_heads_q = int(query.shape[2])
             q_fallback = int(query.shape[1])
+        elif layout_q == "BNSD":
+            num_heads_q = int(query.shape[1])
+            q_fallback = int(query.shape[2])
         elif layout_q == "NTD":
             num_heads_q = int(query.shape[0])
             q_fallback = int(query.shape[1])
