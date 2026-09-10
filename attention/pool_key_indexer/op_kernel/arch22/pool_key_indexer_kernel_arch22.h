@@ -196,6 +196,17 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
+    // [Plan-D/T6] arch22 切分常量以 kernel 侧硬编码为准, 覆盖 host tiling 字段:
+    // host CalcTilingParams(op_host/pool_key_indexer_tiling.cpp) 下发的
+    // s1BaseSize=4|2 / s2BaseSize=128 / mBaseSizeMax=256|128 供 arch35 消费
+    // (arch35 亦自有同值硬编码), arch22 此处直接覆盖为
+    //   s2BaseSize = S2_BASE_SIZE = 512,
+    //   s1BaseSize = isSparseCountOver2K ? SPARSE_COUNT_8K/sparseCount*2 : 8
+    //            (目标场景 sc=512 → 8),
+    //   mBaseSize  = s1BaseSize*gSize (目标场景 gSize=32 → 256)。
+    // workspace 公式(CalcWorkspaceSize)已按 kernel 侧值(8/512)镜像推导,
+    // 两端自洽; 旧仓设计说明书"4/128"为 arch35/host 口径, 对 arch22 失实
+    // (round0 tiling 科已核, 本注释为 T6 对齐说明, 不改任何行为)。
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.isSparseCountOver2K = (constInfo.sparseCount <= BASE_TOPK) ? false : true;
 
