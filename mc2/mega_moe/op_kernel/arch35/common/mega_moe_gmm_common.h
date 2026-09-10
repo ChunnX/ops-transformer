@@ -17,7 +17,6 @@
 #include "mega_moe_constants.h"
 #include "mega_moe_types.h"
 #include "mega_moe_utils.h"
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "../blaze/gemm/tile/copy_gmm1_concat.h"
 #include "../blaze/gemm/block/block_scheduler_swizzle.h"
 #include "../blaze/gemm/block/block_mmad_mx_fp8fp4.h"
@@ -67,8 +66,7 @@ struct QGmmL1Config {
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false,
-          typename MmadPolicy = Blaze::Gemm::MatmulWithScaleMx<>>
+          bool IsShared = false, bool IsLayered = false, bool IsWaveFlagGrained = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool IS_WEIGHT_NZ = IsWeightNZ;
@@ -92,7 +90,8 @@ struct Config {
     using LayoutScaleB = Te::ScaleBDNLayoutPtn;
 
     using LayoutBias = Te::NDExtLayoutPtn;
-    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, MmadPolicy>;
+    using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit,
+                                              Blaze::Gemm::GroupedMatmulWithScaleMx<>>;
     using LayoutB = Std::conditional_t<IsA8W4, Te::ZNLayoutPtn,
                                        Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>>;
 
@@ -393,25 +392,31 @@ struct BlockMmadContext {
     bool initialized = false;
 };
 
-// 仅在 tile/L1 配置变化时初始化；QGMM 另按 problem 更新完整 N/K，供 concat 定位 up 权重。
-template <typename MmadContext, typename ProblemConfig>
+enum class GmmStage {
+    GMM1,
+    GMM2
+};
+
+// GMM1 uses the concat half-width; GMM2 uses the full ordinary tile width.
+// Cache the effective Init shape so a later shared context also detects stage transitions.
+// QGMM updates the full problem shape separately on every call.
+template <GmmStage Stage, typename MmadContext, typename ProblemConfig>
 __aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
 {
     using BlockMmad = decltype(context.blockMmad);
     const auto &tilingConfig = config.blockMmadTiling;
-    const BlockMmadInitConfig requestedConfig{config.k,
-                                              config.n,
-                                              tilingConfig.tileM,
-                                              tilingConfig.tileN,
-                                              tilingConfig.l1Params.kL1,
-                                              tilingConfig.l1Params.scaleKL1};
+    uint32_t tileN = tilingConfig.tileN;
+    if constexpr (Stage == GmmStage::GMM1 &&
+                  Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
+        tileN /= ACTIVATION_N_HALF;
+    }
+    const BlockMmadInitConfig requestedConfig{
+        config.k, config.n, tilingConfig.tileM, tileN, tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
     if (!context.initialized || context.initConfig != requestedConfig) {
-        typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tilingConfig.tileN, L0_TILE_K, 0};
+        typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tileN, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
         constexpr bool enableL0CPingPong = false;
         if constexpr (Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
-            // Upstream concat takes the gate width and produces twice that many columns.
-            Get<N_VALUE>(l0TileShape) /= ACTIVATION_N_HALF;
             typename BlockMmad::MmadParams params{
                 l0TileShape,
                 {tilingConfig.l1Params.kL1, tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1},
