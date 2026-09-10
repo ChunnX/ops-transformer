@@ -175,8 +175,8 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
 
     const auto &sendMaskConfigWithExtraExpert = tilingData->sendMaskConfigForCoreWithExtraExpert;
     const auto &sendMaskConfigWithoutExtraExpert = tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    OP_LOGD(nodeName, "sendMask: routeJobCount=%u, coreCountWithExtraExpert=%u",
-            tilingData->routeJobCount, tilingData->sendMaskCoreCountWithExtraExpert);
+    OP_LOGD(nodeName, "sendMask: topkValidIndexCoreNum=%u, coreCountWithExtraExpert=%u",
+            GetTopkValidIndexCoreNum(tilingData), tilingData->sendMaskCoreCountWithExtraExpert);
     OP_LOGD(nodeName,
             "sendMaskWithExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
             sendMaskConfigWithExtraExpert.routeItemsPerBatch, sendMaskConfigWithExtraExpert.routeBatchCount,
@@ -1316,8 +1316,7 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte,
                                            uint32_t availableUbBytes)
 {
-    const bool sharedRoutesOverlap = tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE;
-    tilingData->routeJobCount = sharedRoutesOverlap ? tilingData->blockAivNum / 2U : tilingData->blockAivNum;
+    const uint32_t topkValidIndexCoreNum = GetTopkValidIndexCoreNum(tilingData);
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
         static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
@@ -1336,9 +1335,9 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     }
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
-    // sendCntAccTensor_ 按每个 routing job 的最大专家数分配，与 kernel 地址布局一致。
+    // sendCntAccTensor_ 按每个 topK 有效下标计算发送核负责的最大专家数分配，与 kernel 地址布局一致。
     uint32_t maxExpertCountPerCore =
-        ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, tilingData->routeJobCount);
+        ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, topkValidIndexCoreNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
@@ -1346,7 +1345,7 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
                                         2U * quantInputBufferBytes + sendCountAccumulatorBytes;
 
     /*
-     * 与 kernel topK 有效下标发送的 expert 连续均衡分核一一对应。totalExpertCount 除以 routeJobCount 后，
+     * 与 kernel topK 有效下标发送的 expert 连续均衡分核一一对应。totalExpertCount 除以 topkValidIndexCoreNum 后，
      * 前 remainder 个 AIV job 各多处理一个 expert，其余 job 处理 quotient 个 expert，因此这里只需
      * 预计算两套配置。Dispatch/Combine 的 wave 内 token 轮转由各自阶段完成，与这里的一次性发送分核无关。
      *
@@ -1354,8 +1353,8 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
      * 这里的两类 core 划分和 kernel 配置选择条件。
      */
     uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->moeExpertPerRank;
-    uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / tilingData->routeJobCount;
-    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % tilingData->routeJobCount;
+    uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / topkValidIndexCoreNum;
+    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % topkValidIndexCoreNum;
     uint32_t expertCountPerCoreWithExtraExpert = expertCountPerCoreWithoutExtraExpert + 1U;
     tilingData->sendMaskConfigForCoreWithExtraExpert = CalcTopkValidIndexBufferConfig(
         tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);

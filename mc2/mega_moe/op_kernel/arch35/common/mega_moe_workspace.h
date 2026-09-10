@@ -28,6 +28,13 @@ constexpr int64_t SIZE_BF_16 = 2U;
 
 constexpr int64_t INVALID_WORKSPACE_OFFSET = -1LL;
 
+// Host 与 Kernel 共用分核规则，避免为可推导的核数量增加 tiling 字段。
+HOST_DEVICE uint32_t GetTopkValidIndexCoreNum(const MegaMoeTilingData *tilingData)
+{
+    const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
+    return sharedMte ? tilingData->blockAivNum / 2U : tilingData->blockAivNum;
+}
+
 // 每个共享专家按 256-token group 预留独立的同步槽，所有量化模式使用相同布局。
 HOST_DEVICE int64_t CalcSharedActivationFlagElementsPerExpert(int64_t tokenNum)
 {
@@ -66,7 +73,7 @@ struct WorkspaceLayout {
     int64_t dispatchRemoteReadyFlagSnapshotOffset{
         INVALID_WORKSPACE_OFFSET}; // 各逻辑核的固定 256-token 远端就绪标志窗口
 
-    int64_t routesSubgroupSyncOffset{INVALID_WORKSPACE_OFFSET}; // Per-Block AIV1 arrival phase.
+    int64_t aiv1SyncOffset{INVALID_WORKSPACE_OFFSET}; // 每个 block 的 AIV1 子组同步阶段。
 
     // 连续 flag 通知区（自 flagActivationToGmm2Offset 起）的 int32 元素总数。
     // 在分配处顺手记账，保证 ResetSyncStatus 的清零范围与分配范围恒同源。
@@ -197,7 +204,7 @@ private:
                 SIZE_INT_32 * tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
         }
         if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
-            routesSubgroupSyncOffset = workspaceSize;
+            aiv1SyncOffset = workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
         flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
@@ -310,7 +317,7 @@ private:
 };
 
 struct WorkspaceInfo {
-    GM_ADDR routesSubgroupSyncPtr{nullptr};
+    GM_ADDR aiv1SyncPtr{nullptr};
     GM_ADDR dispatchRevDataPtr{nullptr};
     GM_ADDR dispatchRevScalePtr{nullptr};
     GM_ADDR dispatchRevWeightsPtr{nullptr};
@@ -357,7 +364,7 @@ private:
 public:
     HOST_DEVICE void Bind(GM_ADDR base, const WorkspaceLayout &layout)
     {
-        routesSubgroupSyncPtr = ResolveWorkspaceAddress(base, layout.routesSubgroupSyncOffset);
+        aiv1SyncPtr = ResolveWorkspaceAddress(base, layout.aiv1SyncOffset);
         dispatchRevDataPtr = ResolveWorkspaceAddress(base, layout.dispatchRevDataOffset);
         dispatchRevScalePtr = ResolveWorkspaceAddress(base, layout.dispatchRevScaleOffset);
         dispatchRevWeightsPtr = ResolveWorkspaceAddress(base, layout.dispatchRevWeightsOffset);
