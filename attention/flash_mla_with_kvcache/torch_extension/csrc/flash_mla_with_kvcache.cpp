@@ -29,22 +29,21 @@ const int64_t MAX_DIM_SIZE = 8;
 
 // MLA geometry (m0070 / R1): 每核 16 word，kv head num == 1。
 // Metadata buffer worst-case capacity (plan B2/D16): ((aic + aiv) * batch_size * 1 + 1) * 16 int32 words,
-// aligned to 4096 (Oracle caveat 8)。aic/aiv 核数由 python 侧
+// aligned to 4096 int32 elements (same as flash_attn.py)。aic/aiv 核数由 python 侧
 // 从硬件获取（torch.npu.get_device_limit）透传，不写死常量。
 constexpr int64_t MLA_META_WORDS_PER_CORE = 16;
-constexpr int64_t MLA_METADATA_ALIGN_BYTES = 4096;
+constexpr int64_t MLA_METADATA_ALIGN_WORDS = 4096;
 
 int64_t CalculateMlaMetadataSizeWords(int64_t batchSize, int64_t aicCoreNum, int64_t aivCoreNum)
 {
     // kv==1 upper bound: ((aic + aiv) * batch * 1 + 1) * 16 (int32 words)
-    return ((aicCoreNum + aivCoreNum) * batchSize * DIM_ONE + DIM_ONE) * MLA_META_WORDS_PER_CORE;
+    const int64_t words = ((aicCoreNum + aivCoreNum) * batchSize * DIM_ONE + DIM_ONE) * MLA_META_WORDS_PER_CORE;
+    return ((words + MLA_METADATA_ALIGN_WORDS - 1) / MLA_METADATA_ALIGN_WORDS) * MLA_METADATA_ALIGN_WORDS;
 }
 
 int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize, int64_t aicCoreNum, int64_t aivCoreNum)
 {
-    int64_t bytes =
-        CalculateMlaMetadataSizeWords(batchSize, aicCoreNum, aivCoreNum) * static_cast<int64_t>(sizeof(int32_t));
-    return ((bytes + MLA_METADATA_ALIGN_BYTES - 1) / MLA_METADATA_ALIGN_BYTES) * MLA_METADATA_ALIGN_BYTES;
+    return CalculateMlaMetadataSizeWords(batchSize, aicCoreNum, aivCoreNum) * static_cast<int64_t>(sizeof(int32_t));
 }
 
 at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const at::Tensor &cacheSeqlens,
@@ -70,7 +69,7 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
         " bytes, required at least ", requiredBytes, " bytes for batch_size=", batchSize, " (capacity = ((aic ",
         aicCoreNum, " + aiv ", aivCoreNum,
         ") * batch_size * 1 + 1) * 16 int32 words, "
-        "aligned to 4096; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
+        "aligned to 4096 int32 elements; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);

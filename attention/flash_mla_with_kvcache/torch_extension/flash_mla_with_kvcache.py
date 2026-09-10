@@ -32,7 +32,7 @@ def _calculate_metadata_size(batch_size, aic_core_num, aiv_core_num):
 
     MLA 硬约束 kv head num == 1（B2/D16 上界公式，禁止按 num_heads_kv>1 放大）：
     最坏容量 = ((aic + aiv) * batch_size * 1 + 1) * 16 个 int32（每核 16 word，
-    外加 1 个 header），对齐 4096（照 flash_attn.py 同款对齐，Oracle caveat 8）。
+    外加 1 个 header），按 4096 个 INT32 元素对齐（与 flash_attn.py 一致）。
     核数从硬件获取，见 _get_core_nums。
     """
     metadata_size = ((aic_core_num + aiv_core_num) * batch_size * 1 + 1) * 16
@@ -46,7 +46,7 @@ def _check_metadata_capacity(metadata, batch_size, aic_core_num, aiv_core_num):
         metadata.numel() >= required,
         lambda: f"The metadata tensor is too small: {metadata.numel()} elements, required at least "
         f"{required} elements for batch_size={batch_size} (capacity = ((aic {aic_core_num} + aiv {aiv_core_num})"
-        f" * batch_size * 1 + 1) * 16, aligned to 4096; kv head num is 1 for MLA).",
+        f" * batch_size * 1 + 1) * 16, aligned to 4096 int32 elements; kv head num is 1 for MLA).",
     )
 
 
@@ -76,7 +76,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             "Tensor? attn_mask=None, Tensor? metadata=None, "
             "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
-            'str layout_q="TND", str layout_kv="PA_NZ", str? layout_out=None, '
+            'str layout_q="BSND", str layout_kv="PA_BBND", str? layout_out="BSND", '
             "bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
 
@@ -120,11 +120,13 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
             mask_mode: Optional[int] = 0,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
-            layout_q: Optional[str] = "TND",
-            layout_kv: Optional[str] = "PA_NZ",
-            layout_out: Optional[str] = None,
+            layout_q: Optional[str] = "BSND",
+            layout_kv: Optional[str] = "PA_BBND",
+            layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
         ):
+            layout_q = "BSND" if layout_q is None else layout_q
+            layout_out = "BSND" if layout_out is None else layout_out
             # MLA: attn_out 最后一维 = head_dim_v（nope/value 宽度 512）；q/k_cache 最后维为
             # 576（nope 512 + rope 64），rope 已合并进输入，故输出 D 不能取 q 最后维（对照 flash_attn.py
             # 由 v 推导 D 的逻辑，MLA 无独立 v 输入，改用 head_dim_v）。
@@ -146,7 +148,7 @@ class FlashMlaWithKvcacheOpBuilder(OpBuilder):
                 d_size = head_dim_v
                 softmax_out_size = (b_size, n_size, s_size)
 
-            # D7: 输出布局默认跟随 layout_q，允许 TND→NTD 转置。
+            # 输出默认 BSND；显式布局必须与 query 一致，或为 TND→NTD。
             if layout_out is not None:
                 torch._check(
                     layout_out == layout_q
@@ -237,9 +239,9 @@ def flash_mla_with_kvcache(
     mask_mode: Optional[int] = 0,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    layout_q: Optional[str] = "TND",
-    layout_kv: Optional[str] = "PA_NZ",
-    layout_out: Optional[str] = None,
+    layout_q: Optional[str] = "BSND",
+    layout_kv: Optional[str] = "PA_BBND",
+    layout_out: Optional[str] = "BSND",
     return_softmax_lse: Optional[bool] = False,
 ):
     """
@@ -257,10 +259,10 @@ def flash_mla_with_kvcache(
         if batch_size is not None:
             _check_metadata_capacity(metadata, batch_size, aic_core_num, aiv_core_num)
 
-    layout_q = "TND" if layout_q is None else layout_q
-    layout_kv = "PA_NZ" if layout_kv is None else layout_kv
-    # D7: 输出布局跟随 query（out==q，不支持转置）；旧默认 "NTD" 已淘汰。
-    layout_out = layout_q if layout_out is None else layout_out
+    layout_q = "BSND" if layout_q is None else layout_q
+    layout_kv = "PA_BBND" if layout_kv is None else layout_kv
+    layout_out = "BSND" if layout_out is None else layout_out
+    softmax_scale = 1.0 if softmax_scale is None else softmax_scale
 
     op_module = flash_mla_with_kvcache_op_builder.load()
     return op_module.flash_mla_with_kvcache(

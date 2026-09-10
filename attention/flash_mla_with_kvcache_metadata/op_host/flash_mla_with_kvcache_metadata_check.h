@@ -198,7 +198,7 @@ inline aclnnStatus
 FlashMlaWithKvcacheMetadataCheck::CheckMetadataCapacity(const aclTensor *metadata, int64_t batchSize,
                                                         uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
-    // 最坏容量（kv head==1）：((aic+aiv)*batch*1+1)*16 个 int32 word；torch 侧分配按 4096B 对齐只会更大
+    // 最坏容量（kv head==1）：((aic+aiv)*batch*1+1)*16 个 int32 word；torch 侧分配按 4096 个 int32 元素对齐只会更大
     constexpr int64_t WORDS_PER_CORE = 16;
     int64_t needWords = ((static_cast<int64_t>(aicCoreNum) + aivCoreNum) * batchSize + 1) * WORDS_PER_CORE;
     int64_t actualWords = metadata->GetViewShape().GetDim(0);

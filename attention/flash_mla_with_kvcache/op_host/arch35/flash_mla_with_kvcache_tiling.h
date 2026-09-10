@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache_tiling.h
- * \brief FlashMlaWithKvcache arch35 tiling impl 声明（基于 fia_tiling_nonquant_mla.h 移植）
+ * \brief FlashMlaWithKvcache arch35 tiling implementation
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_TILING_IMPL_H_
 #define FLASH_MLA_WITH_KVCACHE_TILING_IMPL_H_
@@ -60,31 +60,25 @@ public:
 protected:
     void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;
-    bool IsCapableBasicCheckMla();
-    bool IsCapableFeatureCheckMla();
-    bool IsCapableSparseLayoutCheckMla();
     ge::graphStatus DoOpTiling() override;
 
 private:
     ge::graphStatus SetPlatMemoryInfo();
     void InitImplParam();
     void SplitPolicy();
-    void AdjustSinnerAndSouter();
     void ComputeTilingData();
-    void SetAttenMaskTilingData();
-    void SetStartIdxTilingData();
-    void SetPageAttentionLayoutTilingData();
     void GenTilingKey();
     void CalcNumBlocks(uint32_t aicNum);
-    void CalcMaxWorkspaceSize();
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
+    void UpdateTilingKeyKvLayout();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void FillTiling();
     void PrintAllTilingData();
     void CalcScheduleMode();
+    bool CheckNeedInitOutput() const;
     ge::graphStatus SetTilingData(FlashMlaWithKvcacheTilingData &tilingData);
 
     FlashMlaWithKvcacheTilingData tilingData_;
@@ -93,13 +87,9 @@ private:
     uint32_t sOuterFactor_ = 0;
     uint32_t sInnerFactor_ = 0;
     bool flashDecodeFlag_ = false;
-    bool metadataPassthrough_ = false;
-    bool actualSeqLenQFlag_ = false;
-    bool actualSeqLenKVFlag_ = false;
-    // host 侧推导的每 batch 实际长度（INT32 输入，无 int64 GM 物化）
-    std::vector<int64_t> actualSeqLengthsQ_ = {};
-    std::vector<int64_t> actualSeqLengthsKV_ = {};
-    bool needInit_ = false;
+    bool cuSeqLenQFlag_ = false;
+    bool seqUsedQFlag_ = false;
+    bool cacheSeqlensFlag_ = false;
     uint64_t tilingKey_ = 0;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;

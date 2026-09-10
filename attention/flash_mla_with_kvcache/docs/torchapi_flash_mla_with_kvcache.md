@@ -59,7 +59,7 @@
 
 > [!NOTE]
 >
-> query（q）支持TND、BNSD、BSND三种布局；KV缓存（k_cache）仅支持Paged Attention（PA）分页布局（PA_NZ、PA_BBND、PA_BNBD），不支持连续KV；输出（attn_out）默认与q保持相同布局，TND输入支持NTD输出（转置），其余布局必须与输入一致。其中B（Batch）表示输入样本批量大小、Q_S表示seqlen_q、Q_N表示heads_q、Q_T表示所有query batch序列长度的累加和、D表示头维（nope部分512，整体576含rope64）。
+> query（q）支持TND、BNSD、BSND三种布局；KV缓存（k_cache）仅支持Paged Attention（PA）分页布局（PA_NZ、PA_BBND、PA_BNBD），不支持连续KV；输出（attn_out）默认布局为BSND，TND输入支持NTD输出（转置），其余布局必须与输入一致。其中B（Batch）表示输入样本批量大小、Q_S表示seqlen_q、Q_N表示heads_q、Q_T表示所有query batch序列长度的累加和、D表示头维（nope部分512，整体576含rope64）。
 
 ## 函数原型
 
@@ -96,9 +96,9 @@ cann_ops_transformer.flash_mla_with_kvcache(
     mask_mode=0,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
-    layout_q="TND",
-    layout_kv="NZ",
-    layout_out=None,
+    layout_q="BSND",
+    layout_kv="PA_BBND",
+    layout_out="BSND",
     return_softmax_lse=False
 ) -> (Tensor, Tensor)
 ```
@@ -123,25 +123,27 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 ### flash_mla_with_kvcache
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| q | Tensor | 必选 | 公式中的q（含RoPE，最后64维为rope） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, 576)</li><li>BNSD -> (B, Q_N, Q_S, 576)</li><li>BSND -> (B, Q_S, Q_N, 576)</li></ul> |
-| k_cache | Tensor | 必选 | 共享KV缓存（Key与Value同一份输入，最后64维为rope），仅支持Paged Attention（PA）分页布局 | bfloat16/float16 | ND | <ul><li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)</li><li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li><li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li></ul> |
-| block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射，k_cache为PA分页布局时必须传入 | int32 | ND | (B, max_num_blocks_per_seq) |
-| cache_seqlens | Tensor | 可选 | 每batch的KV缓存实际长度（seqused_kv语义） | int32 | ND | (B,) |
-| cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0；layout_q为TND时必传 | int32 | ND | (B+1,) |
-| seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) |
-| attn_mask | Tensor | 可选 | 掩码矩阵（mask_mode为3时必传） | int8 | ND | (2048, 2048) |
-| metadata | Tensor | 可选 | `flash_mla_with_kvcache_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) |
-| head_dim_v | int | 可选 | nope（value）部分宽度，仅支持512 | int32 | - | - |
-| softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
-| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3），其余取值将被拒绝 | int32 | - | - |
-| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
-| max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - |
-| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"TND"/"BNSD"/"BSND" | string | - | - |
-| layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持PA分页布局"NZ"/"PA_BBND"/"PA_BNBD" | string | - | - |
-| layout_out | string | 可选 | 定义输出张量的布局格式，默认与layout_q保持一致；TND输入支持NTD输出（转置），其余布局必须与layout_q一致 | string | - | - |
-| return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | bool | - | - |
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 默认值 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| q | Tensor | 必选 | 公式中的q（含RoPE，最后64维为rope） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, 576)</li><li>BNSD -> (B, Q_N, Q_S, 576)</li><li>BSND -> (B, Q_S, Q_N, 576)</li></ul> | — |
+| k_cache | Tensor | 必选 | 共享KV缓存（Key与Value同一份输入，最后64维为rope），仅支持Paged Attention（PA）分页布局 | bfloat16/float16 | ND | <ul><li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)</li><li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li><li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li></ul> | — |
+| block_table | Tensor | 可选 | 用于分块注意力计算中的块索引映射，k_cache为PA分页布局时必须传入 | int32 | ND | (B, max_num_blocks_per_seq) | `None` |
+| cache_seqlens | Tensor | 可选 | 每batch的KV缓存实际长度（seqused_kv语义） | int32 | ND | (B,) | `None` |
+| cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0；layout_q为TND时必传 | int32 | ND | (B+1,) | `None` |
+| seqused_q | Tensor | 可选 | 指定每batch中实际使用的查询序列长度，截断冗余运算 | int32 | ND | (B,) | `None` |
+| attn_mask | Tensor | 可选 | 掩码矩阵（mask_mode为3时必传） | int8 | ND | (2048, 2048) | `None` |
+| metadata | Tensor | 可选 | `flash_mla_with_kvcache_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) | `None` |
+| head_dim_v | int | 可选 | nope（value）部分宽度，仅支持512 | int32 | - | - | `512` |
+| softmax_scale | float | 可选 | 默认1.0；显式传值时使用传入值 | float32 | - | - | `1.0` |
+| mask_mode | int | 可选 | 掩码模式，仅支持NO_MASK与RIGHT_DOWN两种取值（对应值0与3），其余取值将被拒绝 | int32 | - | - | `0` |
+| max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | `-1` |
+| max_seqlen_kv | int | 可选 | 指定KV缓存序列的长度上限 | int32 | - | - | `-1` |
+| layout_q | string | 可选 | 定义输入q张量的布局格式，支持"TND"/"BNSD"/"BSND" | string | - | - | `"BSND"` |
+| layout_kv | string | 可选 | 定义输入k_cache张量的布局格式，仅支持PA分页布局"PA_NZ"/"PA_BBND"/"PA_BNBD" | string | - | - | `"PA_BBND"` |
+| layout_out | string | 可选 | 定义输出张量的布局格式，默认为BSND；TND输入支持NTD输出（转置），其余布局必须与layout_q一致 | string | - | - | `"BSND"` |
+| return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | bool | - | - | `False` |
+
+默认值表示 Python 接口省略参数时的取值；`None` 不代表该参数在所有场景下都可省略，必传条件仍按下文约束执行。`softmax_scale` 默认使用 `1.0`，不会自动按头维度计算；如需缩放，请显式传值。当 `layout_q` 显式设为 TND 或 BNSD 时，也需显式设置匹配的 `layout_out`（TND 还支持 NTD）。
 
 ## 返回值说明
 
@@ -149,32 +151,49 @@ cann_ops_transformer.flash_mla_with_kvcache(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| metadata | Tensor | 必选 | flash_mla_with_kvcache的任务切分数据 | int32 | ND | shape根据batch_size动态计算，容量上界为((36+72)×batch_size×1+1)×16对齐4096 |
+| metadata | Tensor | 必选 | flash_mla_with_kvcache的任务切分数据 | int32 | ND | shape根据batch_size动态计算，容量上界为((aic_core_num+aiv_core_num)×batch_size×1+1)×16，按4096个INT32元素对齐（核数取当前设备实际值） |
 
 ### flash_mla_with_kvcache
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| attn_out | Tensor | 必选 | flash_mla_with_kvcache的计算输出，布局默认与q保持一致；TND输入支持NTD输出（转置，此时shape为(N, T, D)） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, D)</li><li>NTD -> (Q_N, Q_T, D)</li><li>BNSD -> (B, Q_N, Q_S, D)</li><li>BSND -> (B, Q_S, Q_N, D)</li></ul>D=head_dim_v |
+| attn_out | Tensor | 必选 | flash_mla_with_kvcache的计算输出，默认布局为BSND；TND输入支持NTD输出（转置，此时shape为(N, T, D)） | bfloat16/float16 | ND | <ul><li>TND -> (Q_T, Q_N, D)</li><li>NTD -> (Q_N, Q_T, D)</li><li>BNSD -> (B, Q_N, Q_S, D)</li><li>BSND -> (B, Q_S, Q_N, D)</li></ul>D=head_dim_v |
 | softmax_lse | Tensor | 可选 | softmax的LSE结果 | float32 | ND | <ul><li>TND -> (Q_N, Q_T)</li><li>BNSD/BSND -> (B, Q_N, Q_S)</li></ul> |
 
 **说明**
 
-- attn_out：输出D维度与`head_dim_v`保持一致（512）；维度排布默认与layout_q保持一致，TND输入支持NTD输出（转置）。
+- attn_out：输出D维度与`head_dim_v`保持一致（512）；维度排布默认为BSND，TND输入支持NTD输出（转置）。
 - softmax_lse：return_softmax_lse为True时，layout_q为TND输出shape为(Q_N, Q_T)，layout_q为BNSD/BSND时输出shape为(B, Q_N, Q_S)；return_softmax_lse为False时，则输出shape为[1]的值为0的Tensor。
 
 ## 约束说明
 
-- 参数cu_seqlens_q、cache_seqlens、seqused_q、block_table及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+- 参数cu_seqlens_q、cache_seqlens、seqused_q、block_table及attn_mask属于设备侧Tensor。主算子的host tiling仅校验shape、dtype和属性等信息，不读取设备Tensor的元素值，也不校验这些值之间的大小关系。调用方必须保证下述值约束成立；非法值可能导致错误调度、精度异常或非法内存访问。
+- metadata算子的AICPU会读取序列长度值用于调度，并进行部分值校验，但不接收q和k_cache，不能确认长度是否超出实际存储容量。metadata生成成功不代表主算子的所有输入值约束均已通过校验。
 - flash_mla_with_kvcache_metadata和flash_mla_with_kvcache的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - metadata由`flash_mla_with_kvcache_metadata`生成后原样传入`flash_mla_with_kvcache`；用户自建过小的metadata缓冲区将被容量校验拒绝。
-- layout_q支持TND、BNSD、BSND三种布局；layout_out默认为layout_q；TND输入支持NTD输出（转置），其余布局必须与layout_q一致。
+- layout_q支持TND、BNSD、BSND三种布局；layout_out默认为BSND；TND输入支持NTD输出（转置），其余布局必须与layout_q一致。
 - **KV缓存仅支持Paged Attention（PA）分页布局**：layout_kv仅支持"NZ"（PA_NZ）、"PA_BBND"、"PA_BNBD"，且必须传入`block_table`；不支持连续KV布局，其余布局一律由算子校验拒绝。
 - **q与k_cache的最后维（D）必须为576**（= head_dim_v 512 + rope 64），不允许512宽输入。
 - **head_dim_v必须为512**（nope/value部分宽度，即 k_cache 最后维576减去rope宽度64）；传入其它值将被拒绝。
 - `num_heads_kv`必须为1（单latent KV头）。
 - 掩码仅支持NO_MASK（0）与RIGHT_DOWN（3，右对齐因果）两种模式，其余mask_mode取值将被拒绝；具体约束与flash_attn一致（mask_mode为0时不支持传入attn_mask，mask_mode为3时必须传入attn_mask矩阵）。
 - 空Tensor（必有输入的任一轴shape为0）将被全部拦截报错。
+
+### 序列长度值约束（由调用方保证）
+
+下表中的`b`表示batch下标，`Q_S`表示BSND/BNSD输入q的S维大小，`Q_T`表示TND输入q的T维大小。数组元素数属于shape信息，主算子host tiling可获取；数组中记录的实际序列长度属于设备数据，host tiling不读取。
+
+| 参数/场景 | 值约束 |
+| :--- | :--- |
+| TND的cu_seqlens_q | 必传，shape为`(B+1,)`；首元素为0，单调不减，最后一个元素等于`Q_T`。第b个batch的存储长度为`cu_seqlens_q[b+1] - cu_seqlens_q[b]`。 |
+| TND的seqused_q | 如传入，shape为`(B,)`，且`0 <= seqused_q[b] <= cu_seqlens_q[b+1] - cu_seqlens_q[b]`；不传时使用上述存储长度。当前接口不保证拦截超过该上界的值。 |
+| BSND/BNSD的seqused_q | 如传入，shape为`(B,)`，且`0 <= seqused_q[b] <= Q_S`；不传时主算子使用`Q_S`。这两种布局不传cu_seqlens_q。当前接口不保证拦截超过该上界的值。 |
+| BSND/BNSD的metadata长度来源 | 不传seqused_q时，生成metadata必须显式传入与主算子`Q_S`一致的max_seqlen_q，不能保留未指定值。 |
+| cache_seqlens与block_table | `0 <= cache_seqlens[b] <= block_table.shape[1] * block_size`；实际使用的页表项必须满足`0 <= block_table[b, j] < num_blocks`，其中`j < ceil(cache_seqlens[b] / block_size)`。 |
+
+例如，TND输入`cu_seqlens_q=[0, 4, 8]`表示两个batch各存储4个token，`seqused_q=[6, 4]`是不合法的：第一个batch要求使用的6个token超过其存储范围，可能读到下一batch的数据。调用方应在构造输入时保证长度合法，不应依赖主算子host tiling读取设备数据后拦截。
+
+生成metadata和调用主算子时，必须使用一致的序列长度、布局、头数和mask模式；修改影响调度的输入后，应重新生成metadata。
 
 ### 特性参数组
 
@@ -257,7 +276,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
             <ul>
                 <li>q、k_cache、attn_out的数据类型需相同</li>
                 <li>q与k_cache的最后维（D）必须相等，且必须为576</li>
-                <li>layout_out默认与layout_q一致；TND输入支持NTD输出（转置），其余布局必须与layout_q一致</li>
+                <li>layout_out默认为BSND；TND输入支持NTD输出（转置），其余布局必须与layout_q一致</li>
                 <li>Layout校验规则见layout匹配关系表</li>
             </ul>
         </td>
@@ -377,7 +396,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
                     <ul>
                         <li>tensor_type仅支持int32</li>
                         <li>shape由flash_mla_with_kvcache_metadata动态计算</li>
-                        <li>容量上界为((36+72)×batch_size×1+1)×16，对齐4096</li>
+                        <li>容量上界为((aic_core_num+aiv_core_num)×batch_size×1+1)×16，按4096个INT32元素对齐（核数取当前设备实际值）</li>
                     </ul>
                 </td>
                 <td>可选参数，不传入时不启用负载均衡调度优化</td>

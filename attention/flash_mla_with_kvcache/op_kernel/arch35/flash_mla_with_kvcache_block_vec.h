@@ -626,7 +626,7 @@ public:
                                                 LocalTensor<OUTPUT_T> &attenOutUb, uint32_t vecMIdx,
                                                 uint32_t dealRowCount)
     {
-        GmCoord gmCoord{.bIdx = info.bIdx,
+        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
                         .n2Idx = info.n2Idx,
                         .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
                         .dIdx = 0,
@@ -637,7 +637,7 @@ public:
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T, false> &ubTensor, GmCoordGs1Merge &gmCoord)
     {
         copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }

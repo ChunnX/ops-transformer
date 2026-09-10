@@ -77,13 +77,13 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Attr("head_dim_v").AttrType(OPTIONAL).Int(512);
-        this->Attr("softmax_scale").AttrType(OPTIONAL).Float(0.0f);
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float(1.0f);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);
         this->Attr("max_seqlen_kv").AttrType(OPTIONAL).Int(-1);
-        this->Attr("layout_q").AttrType(OPTIONAL).String("TND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_NZ");
-        this->Attr("layout_out").AttrType(OPTIONAL).String("NTD");
+        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BBND");
+        this->Attr("layout_out").AttrType(OPTIONAL).String("BSND");
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config_95;
