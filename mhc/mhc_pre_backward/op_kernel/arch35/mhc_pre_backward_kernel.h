@@ -421,7 +421,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
 
     for (uint64_t i = runBSStart; i < runBSEnd; i++) {
         uint64_t inputOffset = static_cast<uint64_t>(i) * N_ * copySizeD;
-        // 同一行的grad_h_in[t, :]由所有N分块共享，在UB中保留一份，避免从GM重复加载D个元素。
         dataCopyParams.blockLen = copySizeD * sizeof(T);
         dataCopyParams.blockCount = 1;
         dataCopyParams.srcStride = 0;
