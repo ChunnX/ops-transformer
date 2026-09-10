@@ -1041,7 +1041,16 @@ ge::graphStatus PoolKeyIndexerTiling::CheckKeyContiguous(const PoolKeyIndexerTil
 
 ge::graphStatus PoolKeyIndexerTiling::CalcTilingParams(PoolKeyIndexerTilingInfo &info)
 {
-    // s1BaseSize / mBaseSizeMax selection (ref design §5.2)
+    // [Plan-D/T6] s1BaseSize / mBaseSizeMax selection (ref design §5.2)
+    // 注意: 此处写入 tilingData 的 s1BaseSize/s2BaseSize/mBaseSize(Max) 为
+    // arch35/host 侧口径(PKI_S1_BASE_SIZE=4 等, 见 pool_key_indexer_tiling.h),
+    // arch22 kernel 不消费——arch22 InitTilingData
+    // (op_kernel/arch22/pool_key_indexer_kernel_arch22.h) 以自有硬编码覆盖:
+    // s1BaseSize=8(或 sc>2048 时 8192/sc*2) / s2BaseSize=512 /
+    // mBaseSize=s1BaseSize*gSize。workspace 大小(CalcWorkspaceSize)按
+    // kernel 侧口径镜像推导(sc>2048 分支与 arch22 覆盖式一致), 两端自洽;
+    // 本函数仅保持 tilingData 字段填充完整性, 不影响 arch22 行为。
+    // (T6 纯注释对齐, 不改任何行为/字段值。)
     if (info.sparseCount > PKI_TOPK_6K) {
         tilingData_.set_s1BaseSize(PKI_S1_BASE_SIZE_SMALL);
         tilingData_.set_mBaseSizeMax(PKI_M_BASE_SIZE_SMALL);
