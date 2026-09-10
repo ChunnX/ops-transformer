@@ -82,7 +82,7 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 - add：fp16 一维 **7,339,920** 元素（336×21845；A5 56 核 / A3 48 核均分整 tile，无尾块分支）
 - grouped_matmul：bf16 **E=1, M=448, K=16, N=16**（x [448,16] × weight [16,16]；M=448 切满 A5 28 Cube 核 / A3 24 Cube 核，聚焦头开销取小 K/N）
 
-### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz）
+### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz；**add/gmm 为当前参考，IFA 列为 return 形态历史数据（主体未执行）**）
 
 数据版本 20260909 刷新：以 5 轮独立复测平均为准（每轮全量重建 + capture + 5-shot median，各轮 min/mean/max 分别跨轮取平均）。add/grouped_matmul 与 PR 描述 §3.2（B 环境独立复测，20260904，NPU 15，提交 c26563855）跨机器一致：add 头开销 0.33/0.79/1.04 精确相同，gmm 头开销差 ≤0.04us，TaskDur 差 ≤0.06us。
 
@@ -102,7 +102,7 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 
 > 旧版参考表（头开销 add 0.44/0.51、gmm 1.47/1.68、IFA 3.00/4.98 mean/max）经多轮独立复测均无法复现——差距集中在其偏低的软件头（add 0.28/0.36 vs 实测 0.63/0.88）——已废弃，以本表为准。
 
-注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
+注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。本表 IFA 列为 return 形态历史数据（主体未执行），A5 全量执行形态复测见下文「参考数据」A5 小节。
 
 ### A3（Ascend910_9392, CANN 9.1.0T103, SYS_CNT=50MHz，5 轮独立复测跨轮平均；**return 形态历史数据，IFA 主体未执行**）
 
@@ -118,9 +118,11 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 - A3 上 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无 kick 拆分，硬件尾/全链路不输出分布口径（仅单点 max），故表中无对应行。
 - A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
 
-## 参考数据（打点口径，Ascend910_93/A3, CANN 9.1.T103, SYS_CNT=50MHz）
+## 参考数据（打点口径，当前全量执行形态）
 
-**当前形态**（IFA_HEAD_TIMING_MODE 宏系统已删除，kernel 全量执行 + 独立 cycleBuf 回读）。上文 A3 小节的 5 轮复测为历史 return 形态（IFA 主体未执行，T2≈T1+ε、TaskDur 仅含头开销），两套数据不可比；IFA TaskDur 9.83→96.84us 即主体从未执行到真实执行的差异。
+**当前形态**（IFA_HEAD_TIMING_MODE 宏系统已删除，kernel 全量执行 + 独立 cycleBuf 回读）。上文 A3/A5 小节的 5 轮复测为历史 return 形态（IFA 主体未执行，T2≈T1+ε、TaskDur 仅含头开销），两套数据不可比；IFA TaskDur 9.83→96.84us（A3）/ 5.79→138.74us（A5）即主体从未执行到真实执行的差异。
+
+### A3（Ascend910_9392, CANN 9.1.T103, SYS_CNT=50MHz，5 轮）
 
 多拍 median 口径（add/gmm 各 5 拍，IFA 1 拍，稳态=跳过前 2 次；min=最快核 / max=最慢核）：
 
@@ -133,6 +135,26 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 | kernel末指令 T2-stars | 8.55 / 9.10 | 4.47 / 6.26 | 94.14 / 98.02 |
 | 硬件尾 pmu_end-T2 | 0.80 | 0.60 | 0.66 |
 | TaskDur 稳态 mean | 10.16 | 7.13 | 96.84 |
+
+### A5（Ascend950PR, CANN 9.1.T103, SYS_CNT=1000MHz，满核 56 AIV + 28 AIC，5 轮，20260910）
+
+A5 同步 A3 全量执行形态（commit `2bc9d4a06`：cycleBuf 独立打点缓冲 + 删 HEAD_ONLY + T2 等 MTE3 排空）后复测，IFA 单算子（RUN_ADD=0 RUN_GMM=0，首轮全量构建 + 4 轮 SKIP_BUILD；torch 2.12.0+cpu + torch_npu 2.12.0.dev，venv_test_91t103）。各轮 min/mean/max 分别跨轮取平均：
+
+| 指标 (min/mean/max us) | incre_flash_attention (MIX 1:2, 28+56核, AIV 56核打点) |
+|------|-----------|
+| 调度+硬件头 T0-stars | 0.93 / 2.96 / 4.51 |
+| 软件头 T1-T0 | 1.03 / 1.33 / 3.01 |
+| **头开销 T1-stars** | **2.57 / 4.29 / 5.81** |
+| kernel主体 T2-T1 | 130.83 / 131.76 / 133.08 |
+| kernel末指令 T2-stars | 133.40 / 136.06 / 138.89 |
+| 硬件尾 pmu_end-T2 | 0.37 ~ 0.52 |
+| TaskDur 稳态 mean | 138.74（轮间 138.21~140.18） |
+
+注：
+- **A5 头开销与旧 return 形态同量级**（软件栈复验 1.35/3.70/5.73 → 2.57/4.29/5.81，mean +0.6us）——与 A3（9.61→17.65，+8us）形成鲜明对比。A5 头开销以参数搬运为主（stars→kick ~0.19us + kick→T0 ~2.1us），未观察到 A3 那种 MIX 72-task burst kick 串行化暴露，因此"return 版偏小根因"（见下文 A3 小节）的 burst 隐藏效应在 A5 上不明显，主体从 5.79us 变 138us 后头开销基本不变。
+- ffts PMU 全链路与 TaskDur 交叉验证一致（逐轮差 -0.74 ~ +0.84us）。
+- 5/5 轮通过无死锁，每拍 56 核 T0<T1<T2 记录完整；结果归档 `ifa_a5_sync_retest_20260910/`（5 轮日志 + 汇总 CSV）。
+- **数值正确性注意**：golden 对拍（CPU float64，GQA 64:1 + per-channel 反量化 + NZ 布局）发现该 demo 分支 IFA 输出数值不正确——attention 质量 0.5（仅每块前 64/128 token 参与 P·V，softmax 分母按全量归一），rel_err ~103%，与 kv 长度/FD 路径/metadata 无关，为既有问题（旧 return 形态主体不执行从未暴露，A3 同源同样不达标）。不影响头开销/耗时测量结论（时序为硬件打点事实，三方口径交叉验证一致），但该 demo 输出不可用作数值正确性依据。
 
 ### A3 IFA T0-stars 偏大的三层分解（16us）
 
