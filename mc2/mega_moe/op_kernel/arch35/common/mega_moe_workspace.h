@@ -28,13 +28,6 @@ constexpr int64_t SIZE_BF_16 = 2U;
 
 constexpr int64_t INVALID_WORKSPACE_OFFSET = -1LL;
 
-// Host 与 Kernel 共用分核规则，避免为可推导的核数量增加 tiling 字段。
-HOST_DEVICE uint32_t GetTopkValidIndexCoreNum(const MegaMoeTilingData *tilingData)
-{
-    const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
-    return sharedMte ? tilingData->blockAivNum / 2U : tilingData->blockAivNum;
-}
-
 // 每个共享专家按 256-token group 预留独立的同步槽，所有量化模式使用相同布局。
 HOST_DEVICE int64_t CalcSharedActivationFlagElementsPerExpert(int64_t tokenNum)
 {

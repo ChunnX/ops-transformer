@@ -85,6 +85,7 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
+    __aicore__ inline void SyncInputAcrossRanks();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
                                                    uint32_t sliceTokenCount,
@@ -459,7 +460,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchElementCount), static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
 
-    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, GetTopkValidIndexCoreNum(params_.tilingData));
+    const uint32_t topkValidIndexCoreNum = sharedExpertNum_ > 0U ? blockNum_ : blockAivNum_;
+    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, topkValidIndexCoreNum);
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
@@ -706,6 +708,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
 }
 
+// 输入阶段根据共享专家分工选择同步协议，主流程不展开核参与和 epoch 维护细节。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncInputAcrossRanks()
+{
+    if (sharedExpertNum_ > 0U) {
+        CrossRankSyncInWorldSize<true>(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_,
+                                       aivJob_, params_.workspaceInfo.aiv1SyncPtr);
+    } else {
+        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
+    }
+}
+
 /*
  * 所有 MTE Wave 路径共用相同的阶段边界，派生类只负责 MoE 专家 Wave 的具体编排。
  */
@@ -733,18 +747,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
                 const AivJobContext topkValidIndexJob{
-                    .jobIndex = blockIdx_, .totalJobs = GetTopkValidIndexCoreNum(params_.tilingData)};
+                    .jobIndex = blockIdx_, .totalJobs = blockNum_};
                 GatherAndSendExpertCompactRoutes(topkValidIndexJob, commonConfig_, params_, g_winRankAddr_,
                                                  sendMaskConfig_, sendMaskScratch_, aivCoreIdx_);
-                exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-                CrossRankSyncInWorldSize<true>(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_,
-                                               aivJob_, params_.workspaceInfo.aiv1SyncPtr);
             }
         }
-    } else {
-        exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-        CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
     }
+    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+    SyncInputAcrossRanks();
 
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。

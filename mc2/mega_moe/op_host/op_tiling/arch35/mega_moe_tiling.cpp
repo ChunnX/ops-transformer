@@ -228,8 +228,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
 
     const auto &sendMaskConfigWithExtraExpert = tilingData->sendMaskConfigForCoreWithExtraExpert;
     const auto &sendMaskConfigWithoutExtraExpert = tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    OP_LOGD(nodeName, "sendMask: topkValidIndexCoreNum=%u, coreCountWithExtraExpert=%u",
-            GetTopkValidIndexCoreNum(tilingData), tilingData->sendMaskCoreCountWithExtraExpert);
+    OP_LOGD(nodeName, "sendMask: coreCountWithExtraExpert=%u", tilingData->sendMaskCoreCountWithExtraExpert);
     OP_LOGD(nodeName,
             "sendMaskWithExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
             sendMaskConfigWithExtraExpert.routeItemsPerBatch, sendMaskConfigWithExtraExpert.routeBatchCount,
@@ -1290,7 +1289,8 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
                                                    uint32_t sharedActivationElementsPerByte,
                                                    bool needsIndependentSharedQuant)
 {
-    const uint32_t topkValidIndexCoreNum = GetTopkValidIndexCoreNum(tilingData);
+    const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
+    const uint32_t topkValidIndexCoreNum = sharedMte ? tilingData->blockAivNum / 2U : tilingData->blockAivNum;
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
         static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
