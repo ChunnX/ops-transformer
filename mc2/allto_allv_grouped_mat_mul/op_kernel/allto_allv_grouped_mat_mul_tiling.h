@@ -107,7 +107,10 @@ A2AVGMM_AIV_TILING_HOST_DEVICE bool ShouldUseAutomaticExpertOverlap(const int32_
              k >= A2AVGMM_MIN_EXPERT_OVERLAP_DIMENSION && n >= A2AVGMM_MIN_EXPERT_OVERLAP_DIMENSION));
 }
 
-// Nine routed flags, each with at most fifteen outstanding notifications.
+// Nine routed flags with a software limit of fifteen outstanding notifications.
+// This schedule follows the validated MegaMoE counted-event usage; fifteen is
+// not an assertion of a universally documented hardware counter depth.
+// Revalidate on every newly supported architecture before changing this limit.
 // Mixed-core SyncAll uses the runtime-reserved flag 13, outside 0..10.
 constexpr uint32_t kExpertReadyFlagCount = 9U;
 constexpr uint32_t kExpertReadyCountPerFlag = 15U;
@@ -165,19 +168,6 @@ struct AlltoAllvGmmCoCTiling {
     uint32_t ubMoveNum = 0U;
     uint32_t swizzlCount = 0U;
     uint32_t swizzlDirect = 0U;
-};
-
-struct AlltoAllvGmmExpertMeta {
-    uint64_t recvTokenBase = 0U;
-    uint32_t tokenCount = 0U;
-    uint32_t reserved = 0U;
-};
-
-struct AlltoAllvGmmExpertSourceMeta {
-    uint64_t dstTokenOffset = 0U;
-    uint64_t srcTokenOffset = 0U;
-    uint32_t tokenCount = 0U;
-    uint32_t sourceRank = 0U;
 };
 
 struct AlltoAllvGmmAivTilingData {

@@ -114,16 +114,6 @@ A2AVGMM_AIV_MODE_HOST_DEVICE bool PartitionElements(uint64_t totalElements, uint
     return true;
 }
 
-A2AVGMM_AIV_MODE_HOST_DEVICE bool IsSourceWorker(uint32_t taskIdx, uint32_t taskRatio, uint32_t subBlockIdx,
-                                                 uint32_t rankSize, uint32_t sourceRank)
-{
-    if (taskRatio == 0U || subBlockIdx != 0U || sourceRank >= rankSize) {
-        return false;
-    }
-    const uint32_t blockIdx = taskIdx / taskRatio;
-    return blockIdx < rankSize && blockIdx == sourceRank;
-}
-
 A2AVGMM_AIV_MODE_HOST_DEVICE bool GetProducerWorkerCount(uint32_t aivCoreNum, uint32_t taskRatio, uint32_t &workerNum)
 {
     workerNum = 0U;
@@ -191,6 +181,8 @@ __aicore__ inline bool ShouldUseExpertOverlap(const __gm__ AlltoAllvGmmAivTiling
         return false;
     }
 
+    // Host selects the workload policy. Both core types recheck the immutable
+    // prefix so producer and consumer use the same nonempty notification sequence.
     uint32_t nonEmptyExperts = 0U;
     for (uint32_t expertIdx = 0U; expertIdx < tiling.gmmInfo.expertPerRank; ++expertIdx) {
         ExpertMeta expert = {};
@@ -263,7 +255,7 @@ __aicore__ inline bool CopyInitialWindowPayload(GM_ADDR gmmx, const __gm__ Allto
                                                 AscendC::TBuf<AscendC::TPosition::VECCALC> &copyBuffer1,
                                                 AscendC::TBuf<AscendC::TPosition::VECCALC> &countBuffer)
 {
-    if (tiling.countNum == 0U) {
+    if (tiling.countNum == 0U || tiling.countNum > A2AVGMM_MAX_COUNT_NUM) {
         return false;
     }
     const int32_t tokenPrefix = tiling.sendPrefix[tiling.countNum - 1U];
@@ -386,6 +378,7 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
         if (mmx == nullptr || mmweight == nullptr || mmy == nullptr ||
             !AlltoAllvGroupedMatMulCatlass::RunSharedExpertGemm<T, MM_TRANSPOSE_B>(mmx, mmweight, mmy, mmInfo,
                                                                                    mmCocTiling)) {
+            trap();
             return;
         }
     }
@@ -410,6 +403,7 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
         ExpertMeta expert = {};
         if (!BuildExpertMetaForIndex(tiling.recvPrefix, gmmInfo.rankSize, gmmInfo.expertPerRank, expertIdx,
                                      gmmInfo.maxOutputSize, expert)) {
+            trap();
             return;
         }
         if (expert.tokenCount == 0U) {
@@ -420,6 +414,7 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
         }
         if (!AlltoAllvGroupedMatMulCatlass::RunExpertGemm<T, GMM_TRANSPOSE_B>(recvBuffer, gmmweight, gmmy, expertIdx,
                                                                               expert, gmmInfo, gmmCocTiling)) {
+            trap();
             return;
         }
         // All ready counts in this window have been consumed before reuse.
@@ -445,6 +440,7 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
     const uint32_t blockIdx = taskRatio == 0U ? 0xffffffffU : taskIdx / taskRatio;
     uint32_t workerNum = 0U;
     if (!GetProducerWorkerCount(tiling.gmmInfo.aivCoreNum, taskRatio, workerNum)) {
+        trap();
         return;
     }
 
@@ -455,8 +451,11 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
     AscendC::SyncAll<true>();
     epoch = LoadInvocationEpoch(context, layout, flagBuffer);
 
-    (void)CopyInitialWindowPayload<T>(gmmx, tiling, context, layout, taskIdx, subBlockIdx, copyBuffer, copyBuffer1,
-                                      flagBuffer);
+    if (!CopyInitialWindowPayload<T>(gmmx, tiling, context, layout, taskIdx, subBlockIdx, copyBuffer, copyBuffer1,
+                                     flagBuffer)) {
+        trap();
+        return;
+    }
     AscendC::SyncAll<true>();
     AlltoAllvGroupedMatMulAiv::PublishPeerPhase(context, layout, control.publishSlotsOffset, epoch, blockIdx, workerNum,
                                                 subBlockIdx, flagBuffer);
@@ -476,6 +475,7 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
             ExpertMeta expert = {};
             if (!BuildExpertMetaForIndex(tiling.recvPrefix, tiling.gmmInfo.rankSize, tiling.gmmInfo.expertPerRank,
                                          expertIdx, tiling.gmmInfo.maxOutputSize, expert)) {
+                trap();
                 return;
             }
             // All local cores inspect the same immutable expert-major prefix.
@@ -484,8 +484,11 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
             }
             if (subBlockIdx == 0U && blockIdx < workerNum) {
                 for (uint32_t rank = blockIdx; rank < context.RankSize(); rank += workerNum) {
-                    (void)CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
-                                                  copyBuffer1);
+                    if (!CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
+                                                 copyBuffer1)) {
+                        trap();
+                        return;
+                    }
                 }
             }
             AscendC::SyncAll<true>();
@@ -501,8 +504,11 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
             // assigned producers inspect source counts; avoid an all-core prefix scan.
             if (subBlockIdx == 0U && blockIdx < workerNum) {
                 for (uint32_t rank = blockIdx; rank < context.RankSize(); rank += workerNum) {
-                    (void)CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
-                                                  copyBuffer1);
+                    if (!CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
+                                                 copyBuffer1)) {
+                        trap();
+                        return;
+                    }
                 }
             }
         }
@@ -528,24 +534,32 @@ __aicore__ inline void Run(GM_ADDR gmmx, GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR
                              permuteOut :
                              userWorkspace + tiling.recvTokenOffset;
 
+    // Failure must raise a device exception: returning only one core type can
+    // strand the other type in a ready wait or a mixed-core synchronization.
     if ASCEND_IS_AIV {
         AlltoAllvGroupedMatMulAiv::PeerWindowContext context;
-        if (!context.Init(tiling.is910C) || context.RankSize() != tiling.gmmInfo.rankSize) {
+        if (!context.Init(tiling.is910C, tiling.actualWindowBytes) || context.RankSize() != tiling.gmmInfo.rankSize) {
+            trap();
             return;
         }
 
         AlltoAllvGroupedMatMulAiv::A2avWindowLayout layout = {};
         AlltoAllvGroupedMatMulAiv::RuntimeControlLayout control = {};
-        if (tiling.countNum == 0U) {
+        if (tiling.countNum == 0U || tiling.countNum > A2AVGMM_MAX_COUNT_NUM ||
+            AlltoAllvGroupedMatMulAiv::MulU32ToU64(tiling.gmmInfo.rankSize, tiling.gmmInfo.expertPerRank) !=
+                tiling.countNum) {
+            trap();
             return;
         }
         const int32_t inputTokenPrefix = tiling.sendPrefix[tiling.countNum - 1U];
         if (inputTokenPrefix < 0) {
+            trap();
             return;
         }
         const uint64_t inputTokens = static_cast<uint32_t>(inputTokenPrefix);
         if (!detail::BuildDeviceWindowLayout<T>(inputTokens, tiling.gmmInfo.K, tiling.countNum, tiling.gmmInfo.rankSize,
                                                 tiling.gmmInfo.expertPerRank, context.WindowBytes(), control, layout)) {
+            trap();
             return;
         }
         AscendC::TPipe pipe;
@@ -555,6 +569,7 @@ __aicore__ inline void Run(GM_ADDR gmmx, GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR
         AscendC::TBuf<AscendC::TPosition::VECCALC> copyBuffer;
         const uint32_t queueBytes = detail::GetCopyQueueBytes<T>(tiling);
         if (queueBytes == 0U) {
+            trap();
             return;
         }
         pipe.InitBuffer(copyBuffer, queueBytes);

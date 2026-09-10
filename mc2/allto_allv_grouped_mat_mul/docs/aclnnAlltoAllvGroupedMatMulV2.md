@@ -710,3 +710,11 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(
     ```
 
 <!-- end id11 -->
+
+
+### AIV 通信域与窗口生命周期
+
+- commMode 为 "aiv" 时，必须使用专用于本算子 AIV 模式的通信域；不得与其他算子或本算子的其他通信模式共用该通信域。控制区包含跨调用保留的 epoch 和握手标志，其他算子使用同一窗口可能破坏这些状态。
+- 同一通信域内的调用必须串行执行，所有 rank 按相同顺序参与；不支持多流并发复用。各 rank 必须使用一致的专家配置、K 和数据类型。
+- 单 rank 输入 payload（输入 token 数 × K × 2 字节）不超过 180 MiB，并且 payload、前缀和控制区所需空间不得超过实际 HCCL 窗口。180 MiB 限制不代表允许与其他算子共享控制区。
+- 查询实际 HCCL 窗口大小失败时，GetWorkspaceSize 阶段返回失败，不启动 kernel。
