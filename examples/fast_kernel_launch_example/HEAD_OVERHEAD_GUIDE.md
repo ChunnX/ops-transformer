@@ -120,29 +120,33 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 - A5 IFA 头开销以参数搬运为主（stars→kick ~0.19us + kick→T0 ~2.1us），无 A3 的 MIX 72-task burst kick 串行化暴露，头开销与 kernel 主体时长基本解耦。ffts PMU 全链路与 TaskDur 交叉验证一致（逐轮差 -0.74 ~ +0.84us）；5/5 轮无死锁，每拍 56 核 T0<T1<T2 完整；结果归档 `ifa_a5_sync_retest_20260910/`。
 - **数值正确性注意**：golden 对拍（CPU float64，GQA 64:1 + per-channel 反量化 + NZ 布局）发现该 demo 分支 IFA 输出数值不正确——attention 质量 0.5（仅每块前 64/128 token 参与 P·V，softmax 分母按全量归一），rel_err ~103%，与 kv 长度/FD 路径/metadata 无关，为既有问题（A3 同源同样不达标）。不影响头开销/耗时测量结论（时序为硬件打点事实），但该 demo 输出不可用作数值正确性依据。
 
-### A3（Ascend910_9392, CANN 9.1.T103, SYS_CNT=50MHz，5 轮跨轮平均）
+### A3（Ascend910_9392, CANN 9.1.T103, SYS_CNT=50MHz）
 
-多拍 median 口径（add/gmm 各 5 拍，IFA 1 拍，稳态=跳过前 2 次；min=最快核 / max=最慢核）：
+以 5 轮独立复测平均为准（B 环境，20260910，NPU 15，提交 21f93655f，5/5 轮 PASS；每轮全量重建 + capture + 多拍 replay，各轮 min/mean/max 分别跨轮取平均）。
 
-| 指标 (mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (MIX 1:2, 24+48核) |
+多拍口径（add/gmm 各 5 拍 median，IFA 1 拍、稳态=跳过前 2 次 launch；min=最快核 / mean=核平均 / max=最慢核）：
+
+| 指标 (min/mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (Vector, 48核) |
 |------|-----------|-----------|-----------|
-| 调度+硬件头 T0-stars | 0.49 / 0.72 | 1.67 / 2.02 | 13.32 / 16.28 |
-| 软件头 T1-T0 | 0.69 / 1.36 | 1.61 / 2.24 | 4.33 / 8.32 |
-| **头开销 T1-stars** | **1.18 / 2.10** | **3.31 / 4.08** | **17.65 / 19.62** |
-| kernel主体 T2-T1 | 7.87 / 7.74 | 2.80 / 4.02 | 76.49 / 78.48 |
-| kernel末指令 T2-stars | 8.55 / 9.10 | 4.47 / 6.26 | 94.14 / 98.02 |
-| 硬件尾 pmu_end-T2 | 0.80 | 0.60 | 0.66 |
-| TaskDur 稳态 mean | 10.16 | 7.13 | 96.84 |
+| 调度+硬件头 T0-stars | 0.23 / 0.49 / 0.76 | 0.78 / 1.58 / 2.06 | 5.66 / 12.06 / 14.94 |
+| 软件头 T1-T0 | 0.14 / 0.72 / 1.36 | 0.96 / 1.61 / 2.26 | 2.60 / 3.73 / 6.42 |
+| **头开销 T1-stars** | 0.38 / 1.21 / **2.06** | 1.93 / 3.20 / **4.19** | 10.59 / 15.80 / **17.82** |
+| kernel主体 T2-T1 (mean) | 7.43 | 1.18 | 76.44 |
+| kernel末指令 T2-stars | 7.95 / 8.64 / 9.19 | 2.70 / 4.38 / 6.30 | 87.67 / 92.24 / 96.38 |
+| 硬件尾 pmu_end-T2 | 0.78 | 0.57 | 0.75 |
+| TaskDur 稳态 mean | 10.28 | 7.02 | 96.31 |
 
 注：
-- A3 上 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无 kick 拆分，硬件尾/全链路不输出分布口径（仅单点 max），故表中无对应行。
+- 数据来源：PR #10421 B 环境复测（20260910，NPU 15，提交 21f93655f），归档 `pr10421_retest/pr10421_retest_20260910_194041/`（summary.log + 5 轮 logs/results + avg_summary.md 跨轮平均表）。
+- A3 上 ffts f[19] 非 kick 时刻（本轮实测与 dispatch 时刻相同），无 kick 拆分；硬件尾/全链路仅 ffts PMU 单点口径，表中硬件尾为 5 轮单点平均（逐轮 add 0.54~1.14 / gmm 0.46~0.80 / IFA 0.66~0.96us）。
+- kernel主体 T2-T1 为 mean 口径（= T2-stars mean − T1-stars mean）。
 - A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
 
-### A3 IFA T0-stars 偏大的三层分解（16us）
+### A3 IFA T0-stars 偏大的三层分解（~15us）
 
-1. **每核 baseline ~6us（软件，反汇编证实）**：T0（kernel 第一条 `MOV Xn, SYS_CNT`，AIV 函数偏移 0xC0/第 48 条指令）之前是 33 个 GM_ADDR 指针 + **按值传递的大 tiling struct** 的参数搬运（13 条标量 GM 读 + 8 条 ST 写栈）。标量 GM 读 ~100-200 core cycle/条 → ~6us。对比 add 仅 5-6 个参数（0.72us）、gmm（2.02us）。
-2. **逐核 stagger 10.08us（硬件 kick 串行化）**：MIX kernel 24 组 × [1 AIC + 2 AIV] = 72 task，FFTS 逐组 kick ~0.15-0.2us/任务（实测 T0-stars 对 block_id 斜率 155.7ns/blk，B0=6.06 → B47=16.14）。前几组间隔 ~1us、后段压缩至 ~0.1us（kick 管道渐进加速特征）。
-3. **调度基线 ~2-4us**：STARS dispatch 为完成驱动（shot 内 launch 间距 ≈ kernel 时长 102us）。
+1. **每核 baseline ~5-6us（软件，反汇编证实）**：T0（kernel 第一条 `MOV Xn, SYS_CNT`，AIV 函数偏移 0xC0/第 48 条指令）之前是 33 个 GM_ADDR 指针 + **按值传递的大 tiling struct** 的参数搬运（13 条标量 GM 读 + 8 条 ST 写栈）。标量 GM 读 ~100-200 core cycle/条 → ~5-6us（本轮稳态拍最快核 B0=5.38us）。对比 add 仅 5-6 个参数（本轮 max 0.76us）、gmm（本轮 max 2.06us）。
+2. **逐核 stagger ~9us（硬件 kick 串行化）**：纯 Vector kernel 48 task，FFTS 逐 task kick。本轮稳态拍实测 T0-stars 对 block_id 单调递增：B0=5.38 → B47=14.20us（总 stagger ~8.8us，均值斜率 ~188ns/blk），前几组间隔 ~0.8-1.2us、后段压缩至 ~0.1us/blk（kick 管道渐进加速特征）。
+3. **调度为完成驱动**：STARS dispatch 的 shot 内 launch 间距 ≈ kernel 时长（本轮 TaskDur ~96us）；T0-stars 量级主要由前两层决定。
 
 ## 打点前后的反汇编阶段分析
 
