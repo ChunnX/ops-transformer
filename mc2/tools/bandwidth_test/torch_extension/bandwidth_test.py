@@ -79,8 +79,8 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                  lambda: "mode 2/3/4 requires comm_alg=urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
-    torch._check(comm_alg in ("urma", "roce") or batch_tokens == 0,
-                 lambda: "batch_tokens is only supported for urma or roce")
+    torch._check(comm_alg == "urma" or batch_tokens == 0,
+                 lambda: "batch_tokens is only supported for urma; roce requires 0")
     torch._check(not shared_jetty or comm_alg == "urma", lambda: "shared_jetty requires urma")
     torch._check(test_mode not in (3, 4) or shared_jetty,
                  lambda: "mode 3/4 requires shared_jetty=True")
@@ -204,7 +204,8 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
             shared mode 4 creates one Jetty per remote rank and sends all BS rows.
         comm_alg: "mte", "", "urma" or "roce" (mode 0 only); must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
-        batch_tokens: URMA/ROCE tokens per commit; mode 3 ignores it and uses the largest feasible batch.
+        batch_tokens: URMA tokens per commit; ROCE requires 0 and uses no batch interface.
+            Mode 3 ignores it and uses the largest feasible batch.
             In mode 4, 0 selects BS and the result is capped by BS and the tiling maximum.
         shared_jetty: Enable the URMA shared jetty kernel and context.
         shared_jetty_num: Number of shared jettys and sending AIVs, in [1, min(aiv_num, 56)].

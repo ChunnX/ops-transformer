@@ -355,6 +355,9 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     workSpaces[0] = SYSTEM_NEED_WORKSPACE;
+    if (IsRoce(context)) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (!IsWinStreamMode(tilingData->mode)) {
         if (IsSharedJetty(context)) {
             // Each shared-Jetty core records one world-size row of destination token counts.
@@ -508,7 +511,13 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                     OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
     tilingData->batchTokens = 0;
     bool directWin = IsWinStreamMode(tilingData->mode);
-    if (IsUrma(context) || IsRoce(context)) {
+    if (IsRoce(context)) {
+        OP_TILING_CHECK(*batchTokensPtr != 0,
+                        OP_LOGE(nodeName, "roce has no batch interface; batch_tokens must be 0."),
+                        return ge::GRAPH_FAILED);
+        requiredUb = 32 + statusBytes + rowBytes + ROCE_HCOMM_UB_BYTES +
+            ROCE_ID_CHUNK_TOKENS * sizeof(int32_t);
+    } else if (IsUrma(context)) {
         // Direct Win streaming only needs WQEs; business modes also stage one row and a chunk of IDs.
         uint64_t countBytes =
             IsSharedJetty(context) ? alignUp(static_cast<uint64_t>(tilingData->worldSize) * 4, 32) : 0;
@@ -553,7 +562,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                 tilingData->mode == 3 ? " (mode 3 ignores the request)" : "");
     } else {
         OP_TILING_CHECK(*batchTokensPtr != 0,
-                        OP_LOGE(nodeName, "batch_tokens is only supported for urma or roce; use 0 for mte."),
+                        OP_LOGE(nodeName, "batch_tokens is only supported for urma; use 0 for mte."),
                         return ge::GRAPH_FAILED);
         uint64_t dstRankBytes = alignUp(static_cast<uint64_t>(tilingData->maxBs) * 4, 32);
         uint64_t dstRankBufferBytes =

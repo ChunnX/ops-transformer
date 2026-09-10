@@ -15,6 +15,7 @@
 | `model.comm_alg` | `"roce"` | `"roce"` |
 | `model.mode` | `0` | `0` |
 | `model.shared_jetty` | `False` | `False` |
+| `model.batch_tokens` | `0` | `0` |
 
 两台机器使用相同的 shape、测试模式、随机种子、图模式和其他通信配置，且各自可见 16 个 NPU。
 脚本在每台机器自行启动 16 个进程：机器 0 负责全局 rank 0–15，机器 1 负责 16–31，
@@ -38,13 +39,13 @@ ROCE 会检查全部 rank 对（包括同机卡之间）的 ROCE link，仅跨�
 
 在 `config.py` 中设置 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`，脚本会选择
 ROCE context 和独立的 ROCE tiling 分支。`mode=None` 时 ROCE 默认使用 mode 0；显式设置
-其他 mode 会报错。支持 `aiv_num` 和 `batch_tokens`，批量容量计算与普通 URMA 相同。
+其他 mode 会报错。支持 `aiv_num`；`batch_tokens` 必须为 0，ROCE 不支持 Batch 接口。
 
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="roce")
 y, receive_cnt = bandwidth_test(
     sym_buffer, x, dst_rank_id, sym_buffer.world_size, x.size(0),
-    mode=0, comm_alg="roce", batch_tokens=128)
+    mode=0, comm_alg="roce", batch_tokens=0)
 ```
 
 `HcclChannelContextBuilder` 逐 peer 遍历网络层并确认
@@ -56,9 +57,17 @@ Channel 的 `memHandles=customMemHandle_`、`memHandleNum=1`，远端 Win 通过
 需在创建通信组前设置足够大的 `HCCL_BUFFSIZE`，mode 0 每卡至少需要
 `1 MiB + 2 * (world_size + 1) * max_bs * align_up(hidden * 2, 512)` 字节。
 
-`BandwidthTestRoce` 复用 URMA 的 mode 0 数据中转、通知、等待和输出拷贝流程，实例化
-`Hcomm<COMM_PROTOCOL_ROCE>`。网络写入的数据和通知的源地址、目的地址全部位于 HCCL Win；
-输入先经 UB 拷贝到本地 Win，接收完成后再从本地 Win 拷贝到输出 tensor。
+`bandwidth_test_roce.h` 是独立的 mode 0 模板，使用 `Hcomm<COMM_PROTOCOL_ROCE>` 的
+`Init`、普通 `WriteNbi(ChannelHandle, dst, src, len)` 和 `Drain(ChannelHandle)`，不使用
+`BatchHandle`、`MakeBatchHandle`、`BatchCommit` 或锁接口。每个目标 rank 由一个 AIV 负责，
+逐 token 写入（默认立即提交），对该 peer 的数据全部发送后 Drain，再依次发布 count、Drain、
+ready flag、Drain。SDK 负责普通写入的队列空间管理；通信错误会 Trap，不静默继续等待。
+网络写入的数据和通知的源地址、目的地址全部位于 HCCL 注册 Win；输入先经 UB 拷贝到本地 Win，
+接收完成后再从本地 Win 拷贝到输出 tensor。
+
+ROCE 使用 512 字节 Hcomm 初始化 UB 和 256 个 rank ID 的分块扫描缓冲，BS 超过 256 时继续
+分块扫描，不限制总 token 数。该分块仅用于读取路由，不是通信 Batch；tiling 的 Batch 字段为 0，
+性能表的 Batch 列显示 N/A。URMA 保留原来的 Batch 接口和批量设置。
 
 窗口由 context manager 分配并持有，复用原有注册、建链和释放流程，context tensor 使用原有布局。
 每个 buffer 使用独立的注册 tag；窗口在首次申请时清零，再注册和建链。所有 rank 都要在图捕获前

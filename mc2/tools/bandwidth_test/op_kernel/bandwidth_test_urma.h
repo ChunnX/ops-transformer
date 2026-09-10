@@ -37,10 +37,10 @@ using namespace AscendC;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
 
-#define TemplateBandwidthTestUrmaTypeClass typename XType, typename YType, auto Protocol
-#define TemplateBandwidthTestUrmaTypeFunc XType, YType, Protocol
+#define TemplateBandwidthTestUrmaTypeClass typename XType, typename YType
+#define TemplateBandwidthTestUrmaTypeFunc XType, YType
 
-template <typename XType, typename YType, auto Protocol = COMM_PROTOCOL_UBC_CTP>
+template <typename XType, typename YType>
 class BandwidthTestUrma {
 public:
     __aicore__ inline BandwidthTestUrma(){};
@@ -131,7 +131,7 @@ private:
     uint32_t startStatusIndex_{0};    // 起始状态索引
     uint32_t totalUbSize_{0};         // 总UB大小
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
-    Hcomm<Protocol> hcomm_;
+    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
     TBuf<> batchBuf_;
     LocalTensor<uint8_t> batchTensor_;
@@ -317,17 +317,9 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Beg
     uint64_t channel = hcommHandle_[rankId];
     hcomm_.Lock(channel);
     preparedWrites_ = 0;
-    if constexpr (Protocol == COMM_PROTOCOL_ROCE) {
-        // Both address bases are registered with HCCL, including payload and notification sources.
-        batchHandle_ = hcomm_.MakeBatchHandle(
-            channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
-            reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]),
-            reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[epRankId_]));
-    } else {
-        batchHandle_ = hcomm_.MakeBatchHandle(
-            channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
-            reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
-    }
+    batchHandle_ = hcomm_.MakeBatchHandle(
+        channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
+        reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
 }
 
 template <TemplateBandwidthTestUrmaTypeClass>

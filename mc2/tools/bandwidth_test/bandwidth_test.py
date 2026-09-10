@@ -89,6 +89,8 @@ if mode is None:
     mode = 0 if CONFIG.run.is_precision_test or CONFIG.model.comm_alg == "roce" else 1
 if CONFIG.model.comm_alg == "roce" and mode != 0:
     raise ValueError("roce only supports mode=0")
+if CONFIG.model.comm_alg == "roce" and CONFIG.model.batch_tokens != 0:
+    raise ValueError("roce has no batch interface; batch_tokens must be 0")
 if mode not in (0, 1, 2, 3, 4):
     raise ValueError("mode must be in [0, 4]")
 if mode in WIN_STREAM_MODES and CONFIG.model.comm_alg != "urma":
@@ -1147,7 +1149,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
         if mode in WIN_STREAM_MODES:
             rank_data_bytes = win_stream_rank_data_bytes(cfg["bs"], token_bytes, world_size)
         rank_data_mb = rank_data_bytes / (1024 * 1024)
-        if CONFIG.model.comm_alg not in ("urma", "roce"):
+        if CONFIG.model.comm_alg != "urma":
             batch_tokens_text = batch_data_mb_text = "N/A"
         elif CONFIG.model.shared_jetty:
             batch_tokens = r["shared_jetty_batch_tokens"]

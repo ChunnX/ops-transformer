@@ -28,6 +28,7 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
     TORCH_CHECK(mode >= 0 && mode <= 4, "mode must be in [0, 4]");
     TORCH_CHECK(comm_alg != "roce" || (mode == 0 && !shared_jetty),
                 "roce requires mode=0 and shared_jetty=false");
+    TORCH_CHECK(comm_alg != "roce" || batch_tokens == 0, "roce requires batch_tokens=0");
     TORCH_CHECK(mode < 2 || comm_alg == "urma", "mode 2/3/4 requires comm_alg=urma");
     TORCH_CHECK(mode < 3 || shared_jetty, "mode 3/4 requires shared_jetty=true");
     TORCH_CHECK(mode != 3 || (world_size > 1 && max_bs >= world_size),
