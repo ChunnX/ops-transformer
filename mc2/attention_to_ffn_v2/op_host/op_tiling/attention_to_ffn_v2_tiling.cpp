@@ -151,7 +151,7 @@ ge::graphStatus SetUrmaWorkspace(gert::TilingContext *context, AttentionToFfnV2T
     OP_TILING_CHECK(dataWorkspaceStride > std::numeric_limits<size_t>::max() / aivNum,
                     OP_LOGE(context->GetNodeName(), "URMA data workspace size overflow"), return ge::GRAPH_FAILED);
     const size_t dataWorkspaceSize = URMA_DOUBLE_BUFFER_NUM * aivNum * dataWorkspaceStride;
-    const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
+    const size_t flagWorkspaceSize = URMA_DOUBLE_BUFFER_NUM * aivNum * URMA_FLAG_SLOT_SIZE;
     OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);
     const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize + RESERVED_WORKSPACE_SIZE;

@@ -85,6 +85,7 @@ constexpr uint8_t URMA_DOUBLE_BUFFER_NUM = 2U;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_FLAG_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_LAYER_FLAG_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 1, .inlineEn = 0};
 
 using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 
@@ -841,7 +842,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             PipeBarrier<PIPE_MTE3>();
         } else {
             uint64_t channel = GetUrmaCommHandle(ffnIdx);
-            hcomm_.WriteNbi(channel, tableFlagGM, localFlagAddr_,
+            hcomm_.WriteNbi<REMOTE_LAYER_FLAG_WQE_CONFIG>(channel, tableFlagGM, localFlagAddr_,
                             static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
         }
     }
@@ -976,16 +977,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
 
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
-
-        if (aivId_ == 0U) {
-            for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
-                if (dstRank == rankId_) {
-                    continue;
-                }
-                uint64_t channel = GetUrmaCommHandle(dstRank);
-                hcomm_.Drain(channel);
-            }
-        }
 
         SetFlagToFFN();
         if constexpr (isActiveMask) {
