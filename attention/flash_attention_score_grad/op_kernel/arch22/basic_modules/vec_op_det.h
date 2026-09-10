@@ -119,6 +119,7 @@ protected:
     int32_t attenMaskDimS2;
     // offset
     int32_t softMaxOffset = 0;
+    int64_t sfmgOffset = 0; 
     int64_t attnMaskOffset = 0;
     int64_t copyInOffset = 0;
     int64_t copyOutOffset = 0;
@@ -497,7 +498,7 @@ __aicore__ inline void VecOpDet<FAGT>::SubGrapB(int64_t curIdx, const VecBlockIn
     }
 
     if (!skipSftMaxSumCopy) {
-        DataCopy(sfmgTensor, sfmgWorkspaceGm[softMaxOffset], s1Extend * 8);
+        DataCopy(sfmgTensor, sfmgWorkspaceGm[sfmgOffset], s1Extend * 8);
     }
 
     SET_FLAG(MTE2, V, EVENT_ID0);
@@ -601,7 +602,23 @@ __aicore__ inline void VecOpDet<FAGT>::DetVector1(const VecAddrInfoDet &addrs)
                              subIdx * s1VecSize) *
                             8;
         }
+        sfmgOffset = softMaxOffset;
+        if (layout == TND) {
+            const int64_t seqStart =
+                batchIdx == 0
+                    ? 0
+                    : ((__gm__ SEQLEN_TYPE *)actual_seq_qlen_addr)[batchIdx - 1];
 
+            const int64_t headIdx =
+                static_cast<int64_t>(blockInfo.n2Idx) * g + blockInfo.gIdx;
+
+            const int64_t rowIdx =
+                static_cast<int64_t>(blockInfo.s1Idx) +
+                static_cast<int64_t>(subIdx) * s1VecSize;
+
+            sfmgOffset =
+                (seqStart * n2 * g + headIdx * actualS1Len + rowIdx) * 8;
+        }
         copyInOffset = cubeCoreIdx * CUBE_BLOCK_SIZE * 2 + pingpongIdx * CUBE_BLOCK_SIZE + blockInfo.cubeBlockOffset +
                        subIdx * s1VecSize * 128;
         copyOutOffset = 2 * copyInOffset;
