@@ -43,7 +43,7 @@ at::Tensor ConstructKeyPoolOutputTensor(const at::Tensor &hidden_states, const a
     int64_t pcap = (cacheBlockTable.size(1) * stateCache.size(1) + cmpRatio - 1) / cmpRatio;
     pooledKeySize = {cacheBlockTable.size(0), pcap, wk.size(0)};
 
-    pooledKey = at::zeros(pooledKeySize, hidden_states.options().dtype(hidden_states.dtype()));
+    pooledKey = at::empty(pooledKeySize, hidden_states.options().dtype(hidden_states.dtype()));
     return pooledKey;
 }
 
