@@ -11,6 +11,8 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <map>
+#include <string>
 #include "log/log.h"
 #include <gtest/gtest.h>
 #include "register/op_impl_registry.h"
@@ -38,11 +40,22 @@ protected:
     }
 };
 
-static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataType mxScale1Dtype, ge::DataType y2Dtype,
-                            ge::DataType mxScale2Dtype, gert::StorageShape xShape, gert::StorageShape y1Shape,
-                            gert::StorageShape mxScale1Shape, gert::StorageShape y2Shape,
-                            gert::StorageShape mxScale2Shape, bool activate_left, const string &round_mode,
-                            int64_t dst_type, int64_t scale_alg, ge::graphStatus status = ge::GRAPH_SUCCESS)
+namespace {
+constexpr int64_t SCALE_BLOCK_H = 64;
+constexpr int64_t SCALE_LAST_DIM = 2;
+
+// The operator takes four TND inputs and five attributes.  The attribute order
+// (dst_type, scale_alg, round_mode, quant_mode, layout) must stay in sync with
+// op_host/cla_gate_mx_quant_with_dual_axis_def.cpp and the tiling implementation.
+//
+// Expected output shapes:
+//   row_data   : [T, N*D]
+//   row_scale  : [T, ceil(N*D/64), 2]
+//   col_data   : [T, N*D]        when quant_mode == 1, otherwise [0]
+//   col_scale  : [ceil(T/64), N*D, 2] when quant_mode == 1, otherwise [0]
+static void ExecuteTestCase(ge::DataType xDtype, ge::DataType outDtype, int64_t t, int64_t n, int64_t d,
+                            const string &round_mode, int64_t dst_type, int64_t scale_alg, int64_t quant_mode,
+                            int64_t layout, ge::graphStatus status = ge::GRAPH_SUCCESS)
 {
     string compile_info_string = R"({
          "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1",
@@ -87,27 +100,49 @@ static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataT
 
     ASSERT_EQ(tiling_parse_func(kernel_holder.GetContext<gert::KernelContext>()), ge::GRAPH_SUCCESS);
 
+    const int64_t k = n * d;
+    const int64_t rowScaleNum = (k + SCALE_BLOCK_H - 1) / SCALE_BLOCK_H;
+    const int64_t colScaleNum = (t + SCALE_BLOCK_H - 1) / SCALE_BLOCK_H;
+
+    gert::StorageShape globalOutShape({t, n, d}, {t, n, d});
+    gert::StorageShape localOutShape({t, n, d}, {t, n, d});
+    gert::StorageShape globalGateShape({t, n}, {t, n});
+    gert::StorageShape localGateShape({t, n}, {t, n});
+    gert::StorageShape rowDataShape({t, k}, {t, k});
+    gert::StorageShape rowScaleShape({t, rowScaleNum, SCALE_LAST_DIM}, {t, rowScaleNum, SCALE_LAST_DIM});
+    // Single-axis mode (quant_mode == 0) emits empty col_data/col_scale ([0]).
+    gert::StorageShape colDataShape = quant_mode == 0 ? gert::StorageShape({0}, {0})
+                                                      : gert::StorageShape({t, k}, {t, k});
+    gert::StorageShape colScaleShape = quant_mode == 0
+                                           ? gert::StorageShape({0}, {0})
+                                           : gert::StorageShape({colScaleNum, k, SCALE_LAST_DIM},
+                                                                {colScaleNum, k, SCALE_LAST_DIM});
+
     auto param = gert::TilingData::CreateCap(4096);
     auto workspace_size_holer = gert::ContinuousVector::Create<size_t>(4096);
     auto ws_size = reinterpret_cast<gert::ContinuousVector *>(workspace_size_holer.get());
     ASSERT_NE(param, nullptr);
     auto holder = gert::TilingContextFaker()
                       .SetOpType(op_type)
-                      .NodeIoNum(1, 4)
-                      .IrInstanceNum({1})
-                      .InputShapes({&xShape})
-                      .OutputShapes({&y1Shape, &mxScale1Shape, &y2Shape, &mxScale2Shape})
+                      .NodeIoNum(4, 4)
+                      .IrInstanceNum({1, 1, 1, 1}, {1, 1, 1, 1})
+                      .InputShapes({&globalOutShape, &localOutShape, &globalGateShape, &localGateShape})
+                      .OutputShapes({&rowDataShape, &rowScaleShape, &colDataShape, &colScaleShape})
                       .CompileInfo(&compile_info)
                       .PlatformInfo(reinterpret_cast<char *>(&platform_info))
                       .NodeInputTd(0, xDtype, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, y1Dtype, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(1, mxScale1Dtype, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(2, y2Dtype, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(3, mxScale2Dtype, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeAttrs({{"activate_left", Ops::NN::AnyValue::CreateFrom<bool>(activate_left)},
-                                  {"round_mode", Ops::NN::AnyValue::CreateFrom<string>(round_mode)},
+                      .NodeInputTd(1, xDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeInputTd(2, xDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeInputTd(3, xDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeOutputTd(0, outDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeOutputTd(1, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeOutputTd(2, outDtype, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeOutputTd(3, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, ge::FORMAT_ND)
+                      .NodeAttrs({{"dst_type", Ops::NN::AnyValue::CreateFrom<int64_t>(dst_type)},
                                   {"scale_alg", Ops::NN::AnyValue::CreateFrom<int64_t>(scale_alg)},
-                                  {"dst_type", Ops::NN::AnyValue::CreateFrom<int64_t>(dst_type)}})
+                                  {"round_mode", Ops::NN::AnyValue::CreateFrom<string>(round_mode)},
+                                  {"quant_mode", Ops::NN::AnyValue::CreateFrom<int64_t>(quant_mode)},
+                                  {"layout", Ops::NN::AnyValue::CreateFrom<int64_t>(layout)}})
                       .TilingData(param.get())
                       .Workspace(ws_size)
                       .Build();
@@ -123,115 +158,64 @@ static void ExecuteTestCase(ge::DataType xDtype, ge::DataType y1Dtype, ge::DataT
 
     EXPECT_EQ(tiling_func(tiling_context), status);
 }
+} // namespace
 
 TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_fp16_to_fp8_e4m3fn)
 {
-    ge::DataType xDtype = ge::DT_FLOAT16;
-    ge::DataType y1Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{8, 8192}, {8, 8192}};
-    gert::StorageShape y1Shape = {{8, 4096}, {8, 4096}};
-    gert::StorageShape mxScale1Shape = {{8, 64, 2}, {8, 64, 2}};
-    gert::StorageShape y2Shape = {{8, 4096}, {8, 4096}};
-    gert::StorageShape mxScale2Shape = {{1, 4096, 2}, {1, 4096, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "rint", 36, 0, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, 8, 32, 256, "rint", 36, 0, 1, 0, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_bf16_to_fp8_e5m2)
 {
-    ge::DataType xDtype = ge::DT_BF16;
-    ge::DataType y1Dtype = ge::DT_FLOAT8_E5M2;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT8_E5M2;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape y1Shape = {{4, 1024}, {4, 1024}};
-    gert::StorageShape mxScale1Shape = {{4, 16, 2}, {4, 16, 2}};
-    gert::StorageShape y2Shape = {{4, 1024}, {4, 1024}};
-    gert::StorageShape mxScale2Shape = {{1, 1024, 2}, {1, 1024, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "rint", 35, 0, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(ge::DT_BF16, ge::DT_FLOAT8_E5M2, 4, 16, 128, "rint", 35, 0, 1, 0, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_fp16_to_fp4_e2m1)
 {
-    ge::DataType xDtype = ge::DT_FLOAT16;
-    ge::DataType y1Dtype = ge::DT_FLOAT4_E2M1;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT4_E2M1;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{4, 4096}, {4, 4096}};
-    gert::StorageShape y1Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale1Shape = {{4, 32, 2}, {4, 32, 2}};
-    gert::StorageShape y2Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale2Shape = {{1, 2048, 2}, {1, 2048, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "rint", 40, 0, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT4_E2M1, 4, 16, 256, "rint", 40, 0, 1, 0, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_bf16_to_fp4_e1m2)
 {
-    ge::DataType xDtype = ge::DT_BF16;
-    ge::DataType y1Dtype = ge::DT_FLOAT4_E1M2;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT4_E1M2;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{2, 2048}, {2, 2048}};
-    gert::StorageShape y1Shape = {{2, 1024}, {2, 1024}};
-    gert::StorageShape mxScale1Shape = {{2, 16, 2}, {2, 16, 2}};
-    gert::StorageShape y2Shape = {{2, 1024}, {2, 1024}};
-    gert::StorageShape mxScale2Shape = {{1, 1024, 2}, {1, 1024, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "floor", 41, 0, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(ge::DT_BF16, ge::DT_FLOAT4_E1M2, 2, 8, 128, "floor", 41, 0, 1, 0, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_fp8_scale_alg_1)
+{
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, 4, 16, 128, "rint", 36, 1, 1, 0, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_quant_mode_0_fp8)
+{
+    ExecuteTestCase(ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, 13, 11, 128, "rint", 36, 1, 0, 0, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_quant_mode_0_fp4)
+{
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT4_E2M1, 24, 11, 128, "floor", 40, 0, 0, 0, ge::GRAPH_SUCCESS);
 }
 
 TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_invalid_round_mode_fp8)
 {
-    ge::DataType xDtype = ge::DT_FLOAT16;
-    ge::DataType y1Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{4, 4096}, {4, 4096}};
-    gert::StorageShape y1Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale1Shape = {{4, 32, 2}, {4, 32, 2}};
-    gert::StorageShape y2Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale2Shape = {{1, 2048, 2}, {1, 2048, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "floor", 36, 0, ge::GRAPH_FAILED);
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, 4, 16, 128, "floor", 36, 0, 1, 0, ge::GRAPH_FAILED);
 }
 
 TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_invalid_dst_type)
 {
-    ge::DataType xDtype = ge::DT_FLOAT16;
-    ge::DataType y1Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{4, 4096}, {4, 4096}};
-    gert::StorageShape y1Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale1Shape = {{4, 32, 2}, {4, 32, 2}};
-    gert::StorageShape y2Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale2Shape = {{1, 2048, 2}, {1, 2048, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "rint", 99, 0, ge::GRAPH_FAILED);
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, 4, 16, 128, "rint", 99, 0, 1, 0, ge::GRAPH_FAILED);
 }
 
-TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_scale_alg_1)
+TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_invalid_scale_alg_fp4)
 {
-    ge::DataType xDtype = ge::DT_FLOAT16;
-    ge::DataType y1Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale1Dtype = ge::DT_FLOAT8_E8M0;
-    ge::DataType y2Dtype = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType mxScale2Dtype = ge::DT_FLOAT8_E8M0;
-    gert::StorageShape xShape = {{4, 4096}, {4, 4096}};
-    gert::StorageShape y1Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale1Shape = {{4, 32, 2}, {4, 32, 2}};
-    gert::StorageShape y2Shape = {{4, 2048}, {4, 2048}};
-    gert::StorageShape mxScale2Shape = {{1, 2048, 2}, {1, 2048, 2}};
-    ExecuteTestCase(xDtype, y1Dtype, mxScale1Dtype, y2Dtype, mxScale2Dtype, xShape, y1Shape, mxScale1Shape, y2Shape,
-                    mxScale2Shape, false, "rint", 36, 1, ge::GRAPH_SUCCESS);
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT4_E2M1, 4, 16, 128, "floor", 40, 1, 1, 0, ge::GRAPH_FAILED);
+}
+
+TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_invalid_layout)
+{
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, 4, 16, 128, "rint", 36, 0, 1, 1, ge::GRAPH_FAILED);
+}
+
+TEST_F(ClaGateMxQuantWithDualAxisTilingTest, test_tiling_invalid_n)
+{
+    ExecuteTestCase(ge::DT_FLOAT16, ge::DT_FLOAT8_E4M3FN, 4, 256, 128, "rint", 36, 0, 1, 0, ge::GRAPH_FAILED);
 }

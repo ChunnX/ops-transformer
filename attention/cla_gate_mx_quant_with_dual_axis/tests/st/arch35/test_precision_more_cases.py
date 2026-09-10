@@ -262,6 +262,7 @@ def main():
                 round_mode=case["round_mode"],
                 scale_alg=case["scale_alg"],
                 dst_type=case["dst_type"],
+                layout=0,
                 quant_mode=case["quant_mode"],
             )
             golden = _small_op(

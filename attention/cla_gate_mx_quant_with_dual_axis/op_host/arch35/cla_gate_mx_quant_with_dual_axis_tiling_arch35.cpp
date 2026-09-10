@@ -50,6 +50,56 @@ constexpr int64_t MIN_N = 1;
 constexpr int64_t MAX_N = 128;
 constexpr int64_t FULL_ROW_BLOCK = 64;
 constexpr int64_t FULL_COL_BLOCK = 256;
+constexpr int64_t UB_BLOCK_BYTES = 32;
+constexpr int64_t RESERVED_UB_BYTES = 2 * 1024;
+constexpr int64_t DB_BUFFER_COUNT = 2;
+constexpr int64_t FP32_VF_ELEMENTS = 64;
+constexpr int64_t OCP_COL_SCALE_FRAME_BYTES = FULL_COL_BLOCK * 3;
+constexpr int64_t CUBLAS_COL_SCALE_FRAME_BYTES = 896;
+
+int64_t AlignUbBlock(int64_t bytes)
+{
+    return Ops::Base::CeilDiv(bytes, UB_BLOCK_BYTES) * UB_BLOCK_BYTES;
+}
+
+// Keep this calculation synchronized with CommonBase::Init.  It deliberately
+// accounts for every TQue frame (including DB depth) and every TBuf instead of
+// using a fixed row limit.  max-exp scratch reuses colScaleReciprocalBuf_ in
+// the single-axis path and therefore grows with the selected batch.
+int64_t CalcTailAxisUbBytes(const ClaGateMxQuantWithDualAxisTilingParam &params, int64_t batchTiles)
+{
+    int64_t headsPerTile = FULL_COL_BLOCK / params.dimHeadSize;
+    int64_t halfBufferElems = batchTiles * FULL_COL_BLOCK;
+    int64_t inputFrameBytes = halfBufferElems * params.dtypeSize * 2; // global + local
+    // Kernel gives each global/local gate (and sigmoid) side a complete FP32
+    // VF span.  The last sigmoid iteration stores one full VF without a tail
+    // mask, so accounting only the logical gate count would both misalign the
+    // second side and underestimate its physical scratch footprint.
+    int64_t logicalGateCount = batchTiles * headsPerTile;
+    int64_t gateSideElems = Ops::Base::CeilDiv(logicalGateCount, FP32_VF_ELEMENTS) * FP32_VF_ELEMENTS;
+    int64_t gateFrameBytes = gateSideElems * params.dtypeSize * 2;
+    int64_t mergedBytes = halfBufferElems * params.dtypeSize;
+    int64_t sigmoidBytes = gateSideElems * static_cast<int64_t>(sizeof(float)) * 2;
+    int64_t rowDataFrameBytes = halfBufferElems; // current common queue stores bytes for both FP8/FP4
+    int64_t rowScaleFrameBytes = batchTiles * UB_BLOCK_BYTES;
+    int64_t colScaleFrameBytes =
+        params.scaleAlg == 0 ? OCP_COL_SCALE_FRAME_BYTES : CUBLAS_COL_SCALE_FRAME_BYTES;
+    int64_t rowReciprocalBytes = batchTiles * UB_BLOCK_BYTES;
+    int64_t fixedColReciprocalBytes = FULL_COL_BLOCK * 2 * params.dtypeSize;
+    constexpr int64_t B16_VF_ELEMENTS = 128;
+    int64_t compactScaleCount = batchTiles * (FULL_COL_BLOCK / 32);
+    int64_t compactMaxExpBytes = Ops::Base::CeilDiv(compactScaleCount, B16_VF_ELEMENTS) *
+                                 B16_VF_ELEMENTS * static_cast<int64_t>(sizeof(uint16_t));
+    int64_t colReciprocalBytes = std::max(fixedColReciprocalBytes, compactMaxExpBytes);
+
+    return DB_BUFFER_COUNT * AlignUbBlock(inputFrameBytes) +
+           DB_BUFFER_COUNT * AlignUbBlock(gateFrameBytes) + AlignUbBlock(mergedBytes) +
+           AlignUbBlock(sigmoidBytes) + DB_BUFFER_COUNT * AlignUbBlock(rowDataFrameBytes) +
+           DB_BUFFER_COUNT * AlignUbBlock(rowDataFrameBytes) +
+           DB_BUFFER_COUNT * AlignUbBlock(rowScaleFrameBytes) +
+           DB_BUFFER_COUNT * AlignUbBlock(colScaleFrameBytes) + AlignUbBlock(rowReciprocalBytes) +
+           AlignUbBlock(colReciprocalBytes);
+}
 
 const std::set<ge::DataType> INPUT_SUPPORT_DTYPE_SET = {ge::DT_FLOAT16, ge::DT_BF16};
 const std::set<ge::DataType> Y_SUPPORT_DTYPE_SET = {ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT8_E4M3FN,
@@ -151,12 +201,38 @@ void CalcTailAxisTiling(ClaGateMxQuantWithDualAxisTilingParam &params)
         params.colTailSize = colBlock;
     }
 
-    // UB batch parameters are computed on the host side. Each batch is simply
-    // up to 64 full 256-column tiles; the last batch is allowed to be smaller.
+    // Derive the maximum resident 1x256 tile count from the actual UB size and
+    // the buffers allocated by CommonBase::Init.  This may be smaller or larger
+    // than 64 on a different product/configuration; the final batch is allowed
+    // to be smaller than the selected capacity.
     int64_t totalTiles = params.rowTileNum * params.colTileNum;
     int64_t maxTilesPerCore = Ops::Base::CeilDiv(totalTiles, params.usedCoreNum);
-    params.batchSize = FULL_ROW_BLOCK;
-    params.batchCount = Ops::Base::CeilDiv(maxTilesPerCore, FULL_ROW_BLOCK);
+    int64_t availableUb = std::max<int64_t>(0, params.ubSize - RESERVED_UB_BYTES);
+    int64_t ubBatchSize = 1;
+    for (int64_t candidate = 1; candidate <= maxTilesPerCore; ++candidate) {
+        if (CalcTailAxisUbBytes(params, candidate) > availableUb) {
+            break;
+        }
+        ubBatchSize = candidate;
+    }
+    int64_t selectedBatchSize = std::min(maxTilesPerCore, ubBatchSize);
+    // Number of gate scalars carried by one full-width 1x256 tile.
+    int64_t headsPerTile = FULL_COL_BLOCK / params.dimHeadSize;
+    // A repeated full batch should contain complete 64-scalar sigmoid VFs.
+    // One 256-column tile contains 256 / headDim gate scalars, so the optimal
+    // tile quantum is 64 / headsPerTile: 64 tiles for D=256 and 32 for D=128.
+    // For example, D=256 with capacity 67 would execute two Exp/Div VFs per
+    // batch while using only three lanes in the second VF.
+    // If all work fits in one batch, keep the exact tile count to avoid an
+    // unnecessary split; otherwise round the UB-derived capacity down to the
+    // largest sigmoid tile-quantum multiple.  This also satisfies the smaller
+    // OCP (16-tile) and cuBLAS (8-tile) scale-vector granularities.
+    int64_t sigmoidTileQuantum = FP32_VF_ELEMENTS / headsPerTile;
+    if (maxTilesPerCore > ubBatchSize && ubBatchSize >= sigmoidTileQuantum) {
+        selectedBatchSize = (ubBatchSize / sigmoidTileQuantum) * sigmoidTileQuantum;
+    }
+    params.batchSize = std::max<int64_t>(1, selectedBatchSize);
+    params.batchCount = Ops::Base::CeilDiv(maxTilesPerCore, params.batchSize);
 }
 
 ge::graphStatus GetPlatformInfo(gert::TilingContext *context, ClaGateMxQuantWithDualAxisTilingParam &params)

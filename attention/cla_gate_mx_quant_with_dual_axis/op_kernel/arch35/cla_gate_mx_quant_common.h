@@ -150,7 +150,8 @@ protected:
                                                __ubuf__ uint8_t *rowDataAddr);
     __aicore__ inline void ComputeRowDataToFp4(uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype *xAddr,
                                                __ubuf__ uint16_t *rowScaleReciprocalAddr,
-                                               __ubuf__ uint8_t *rowDataAddr);
+                                               __ubuf__ uint8_t *rowDataAddr,
+                                               uint16_t reciprocalStride = ROW_SCALE_RECIPROCAL_ROW_ELEMS);
     __aicore__ inline void ComputeFP4FromHalf(Reg::RegTensor<float> &value);
 
     // tiling data
@@ -209,13 +210,29 @@ __aicore__ inline void ClaGateMxQuantCommonBase<xDtype, rowDataDtype, mode, roun
     blockIdx_ = GetBlockIdx();
     tileRowLength_ = ONCE_ROW_LEN; // 固定256
     tileTailLength_ = tilingData_->dimNTail;
-    tileRowCount_ = DOUBLE_BLOCK_SIZE; // 固定64
+    // Dual-axis keeps its 64-row algorithmic tile.  Single-axis receives the
+    // UB-derived batch capacity from host tiling instead of assuming 64.
+    tileRowCount_ = (tilingData_->quantMode == 0 && tilingData_->batchSize > 0) ?
+                        tilingData_->batchSize :
+                        DOUBLE_BLOCK_SIZE;
 
     rowLength_ = tilingData_->dimN;
     headCount_ = tilingData_->headNum;
     headSize_ = tilingData_->headDim;
     headsPerTileRow_ = tileRowLength_ / headSize_;
-    gateSideOffset_ = headsPerTileRow_ * tileRowCount_;
+    int64_t logicalGateCount = headsPerTileRow_ * tileRowCount_;
+    if (tilingData_->quantMode == 0) {
+        // Single-axis batch sigmoid is generated a full FP32 VF (64 scalars)
+        // at a time.  Keep each global/local side on a complete-VF boundary:
+        // this satisfies the MTE alignment requirement and prevents the final
+        // unmasked VF store from overwriting the opposite side.
+        gateSideOffset_ =
+            ops::CeilDiv(logicalGateCount, static_cast<int64_t>(VF_LEN_FP32)) * VF_LEN_FP32;
+    } else {
+        // Preserve the established dual-axis UB layout exactly.  Dynamic batch
+        // sizing and its extra padding are single-axis-only optimizations.
+        gateSideOffset_ = logicalGateCount;
+    }
 
     // Set dtype-specific constants for MX quantization
     if constexpr (IsSameType<rowDataDtype, fp8_e4m3fn_t>::value) {
@@ -265,6 +282,17 @@ __aicore__ inline void ClaGateMxQuantCommonBase<xDtype, rowDataDtype, mode, roun
 
     // axis=-2 1/scale (xDtype sized for bf16 reciprocal storage)
     int64_t tmpScale2BufferSize = tileRowLength_ * DIGIT_TWO * static_cast<int64_t>(sizeof(xDtype));
+    if (tilingData_->quantMode == 0) {
+        // Single-axis reuses this buffer for the compact max-exp stream:
+        // eight uint16 values are produced for every 1x256 tile.
+        int64_t compactScaleCount = tileRowCount_ * (tileRowLength_ / BLOCK_SIZE);
+        // Phase 2 loads up to one complete B16 VF (128 maxima), so reserve the
+        // aligned tail as well even when the logical batch is not a multiple
+        // of 16 rows.
+        int64_t compactMaxExpSize =
+            ops::CeilDiv(compactScaleCount, static_cast<int64_t>(VF_LEN_B16)) * VF_LEN_B16 * sizeof(uint16_t);
+        tmpScale2BufferSize = tmpScale2BufferSize > compactMaxExpSize ? tmpScale2BufferSize : compactMaxExpSize;
+    }
 
     // Allocate queues with double buffering (DB_BUFFER=2).
     // activationInQueue_ holds the two 64x256 activation halves (global/local).
@@ -502,7 +530,7 @@ __aicore__ inline void ClaGateMxQuantCommonBase<xDtype, rowDataDtype, mode, roun
 template <typename xDtype, typename rowDataDtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg>
 __aicore__ inline void ClaGateMxQuantCommonBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::ComputeRowDataToFp4(
     uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype *xAddr, __ubuf__ uint16_t *rowScaleReciprocalAddr,
-    __ubuf__ uint8_t *rowDataAddr)
+    __ubuf__ uint8_t *rowDataAddr, uint16_t reciprocalStride)
 {
     __VEC_SCOPE__
     {
@@ -532,7 +560,7 @@ __aicore__ inline void ClaGateMxQuantCommonBase<xDtype, rowDataDtype, mode, roun
             Reg::LoadAlign<xDtype, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
                 evenData, oddData, xAddr, ONCE_ROW_LEN);
             Reg::LoadAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_E2B_B16>(
-                scaleForMulFP16, rowScaleReciprocalAddr, ROW_SCALE_RECIPROCAL_ROW_ELEMS);
+                scaleForMulFP16, rowScaleReciprocalAddr, reciprocalStride);
 
             if constexpr (IsSameType<xDtype, half>::value) {
                 Reg::Cast<float, bfloat16_t, CAST_X_TO_FP32_ZERO>(

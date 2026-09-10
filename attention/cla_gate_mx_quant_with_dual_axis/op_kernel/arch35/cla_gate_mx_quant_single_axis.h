@@ -88,13 +88,22 @@ protected:
     __aicore__ inline void ComputeRowScaleOcpSingleAxis(uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype *xAddr,
                                                         __ubuf__ uint8_t *rowScaleAddr,
                                                         __ubuf__ uint16_t *rowScaleReciprocalAddr);
+    __aicore__ inline void ComputeRowScaleOcpBatchCompact(
+        uint16_t blockCount, __ubuf__ xDtype *xAddr, __ubuf__ uint8_t *rowScaleAddr,
+        __ubuf__ uint16_t *rowScaleReciprocalAddr, __ubuf__ uint16_t *maxExpAddr);
+    __aicore__ inline void ComputeRowDataToFp8Compact(uint16_t blockCount, __ubuf__ xDtype *xAddr,
+                                                      __ubuf__ uint16_t *rowScaleReciprocalAddr,
+                                                      __ubuf__ uint8_t *rowDataAddr);
     __aicore__ inline void ComputeRowScaleCuBLASSingleAxis(uint16_t dataLen, uint16_t blockCount,
                                                            __ubuf__ xDtype *xAddr, __ubuf__ uint8_t *rowDataAddr,
                                                            __ubuf__ uint8_t *rowScaleAddr,
                                                            __ubuf__ uint16_t *rowScaleReciprocalAddr,
-                                                           __ubuf__ uint16_t *absMaxTempAddr);
+                                                           __ubuf__ uint16_t *absMaxTempAddr,
+                                                           bool compactLayout = false);
     __aicore__ inline void CopyOutRowOnly(int64_t rowDataOutOffset, int64_t rowScaleOutOffset, int64_t blockCount,
                                           int64_t dataLen, bool hasSecondAxis = false);
+    __aicore__ inline void CopyOutRowOnlyBatch(int64_t rowDataOutOffset, int64_t rowScaleOutOffset,
+                                               int64_t tileCount);
 };
 
 template <typename xDtype, typename rowDataDtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg>
@@ -121,65 +130,52 @@ __aicore__ inline void ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, ro
         return;
     }
 
-    // UB batch parameters are precomputed by tiling and passed via tiling data.
-    // Each batch contains at most 64 full 256-column tiles; the last batch may
-    // be smaller and is handled as a tail.
-    int64_t batchCount = tilingData_->batchCount;
+    // UB batch capacity is derived by host tiling.  Repeated batches use a
+    // complete 64-gate sigmoid-VF quantum (64 tiles for D=256, 32 for D=128),
+    // while the last batch may contain fewer tiles.
     int64_t batchSize = tilingData_->batchSize;
-    if (batchCount <= 0 || batchSize <= 0) {
-        batchCount = 1;
+    if (batchSize <= 0) {
         batchSize = loops < DOUBLE_BLOCK_SIZE ? loops : DOUBLE_BLOCK_SIZE;
     }
 
-    // If all tiles owned by this core are full 256-column blocks, the whole
-    // range is memory-contiguous and can be copied in batches with one DataCopy
-    // per batch. The batch size is supplied by tiling.
-    // A contiguous range of full 256-column tiles can cross row boundaries.
-    // All full tiles have the same per-tile head count, so ProcessBatchChunk
-    // can safely batch them once the local slot/head addressing is explicit.
-    bool canBatchFullTiles = true;
-    int64_t firstRow = firstBlock / colTileNum;
-    int64_t lastRow = (firstBlock + loops - 1) / colTileNum;
-    for (int64_t i = 0; i < loops; ++i) {
+    // Partition this core's range into maximal consecutive full-width runs.
+    // The tail position is deterministic (the last column tile of each row),
+    // so calculate the run length directly instead of scanning every following
+    // tile with another modulo and width check.
+    const bool hasColTail = tilingData_->colTailSize != tilingData_->colBlockSize;
+    int64_t i = 0;
+    while (i < loops) {
         int64_t tile = firstBlock + i;
-        int64_t colTileIdx = tile % colTileNum;
-        int64_t calcCol = (colTileIdx == colTileNum - 1) ? tilingData_->colTailSize : tilingData_->colBlockSize;
-        if (calcCol != tileRowLength_) {
-            canBatchFullTiles = false;
-            break;
-        }
-    }
-    if (canBatchFullTiles) {
-        for (int64_t start = 0; start < loops; start += batchSize) {
-            int64_t count = (loops - start < batchSize) ? (loops - start) : batchSize;
-            ProcessBatchChunk(firstBlock + start, count);
-        }
-        return;
-    }
-
-    for (int64_t batch = 0; batch < batchCount; ++batch) {
-        int64_t batchStart = batch * batchSize;
-        if (batchStart >= loops) {
-            break;
-        }
-        int64_t batchEnd = (batch + 1) * batchSize < loops ? (batch + 1) * batchSize : loops;
-        for (int64_t i = batchStart; i < batchEnd; ++i) {
-            int64_t tile = firstBlock + i;
-            int64_t rowTileIdx = tile / colTileNum;
-            int64_t colTileIdx = tile % colTileNum;
-
-            int64_t absRowStart = rowTileIdx * tilingData_->rowBlockSize;
-            int64_t colOffset = colTileIdx * tilingData_->colBlockSize;
-            int64_t calcRow = (rowTileIdx == rowTileNum - 1) ? tilingData_->rowTailSize : tilingData_->rowBlockSize;
-            int64_t calcCol = (colTileIdx == colTileNum - 1) ? tilingData_->colTailSize : tilingData_->colBlockSize;
-            if (calcRow <= 0 || calcCol <= 0) {
-                continue;
+        int64_t colTileIdxNow = tile % colTileNum;
+        bool isTailTile = hasColTail && colTileIdxNow == colTileNum - 1;
+        if (!isTailTile) {
+            int64_t remaining = loops - i;
+            int64_t fullRun = remaining;
+            if (hasColTail) {
+                // Number of full tiles before this row's unique short tail.
+                int64_t fullTilesBeforeTail = colTileNum - 1 - colTileIdxNow;
+                fullRun = remaining < fullTilesBeforeTail ? remaining : fullTilesBeforeTail;
             }
+            for (int64_t start = 0; start < fullRun; start += batchSize) {
+                int64_t count = (fullRun - start < batchSize) ? (fullRun - start) : batchSize;
+                ProcessBatchChunk(tile + start, count);
+            }
+            i += fullRun;
+            continue;
+        }
 
-            int64_t headStart = colOffset / headSize_;
-            int64_t headsThisTile =
-                (headCount_ - headStart < headsPerTileRow_) ? (headCount_ - headStart) : headsPerTileRow_;
-            CopyInClaGate(absRowStart, colOffset, calcRow, calcCol, headsThisTile);
+        int64_t rowTileIdx = tile / colTileNum;
+        int64_t colTileIdx = colTileIdxNow;
+
+        int64_t absRowStart = rowTileIdx * tilingData_->rowBlockSize;
+        int64_t colOffset = colTileIdx * tilingData_->colBlockSize;
+        int64_t calcRow = tilingData_->rowBlockSize; // single-axis rowBlockSize is always 1
+        int64_t calcCol = tilingData_->colTailSize;  // this branch is only the short column tail
+
+        int64_t headStart = colOffset / headSize_;
+        int64_t headsThisTile =
+            (headCount_ - headStart < headsPerTileRow_) ? (headCount_ - headStart) : headsPerTileRow_;
+        CopyInClaGate(absRowStart, colOffset, calcRow, calcCol, headsThisTile);
 
             LocalTensor<xDtype> activationInput = activationInQueue_.template DeQue<xDtype>();
             LocalTensor<xDtype> gateInput = gateInQueue_.template DeQue<xDtype>();
@@ -238,7 +234,7 @@ __aicore__ inline void ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, ro
                 int64_t rowScaleOutOffset = absRowStart * rowScaleElementsPerRow_ + colOffset / BLOCK_SIZE;
                 CopyOutRowOnly(rowDataOutOffset, rowScaleOutOffset, calcRow, calcCol);
             }
-        }
+        ++i;
     }
 }
 
@@ -290,10 +286,42 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
     __VEC_SCOPE__
     {
         Reg::RegTensor<xDtype> globalReg, localReg, outputReg;
-        Reg::RegTensor<xDtype> globalGateReg, localGateReg;
+        Reg::RegTensor<xDtype> gateReg;
         Reg::RegTensor<float> gateF, tmpF, oneF, globalSigF, localSigF;
         Reg::RegTensor<float> globalRegF, localRegF, outputRegF;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+
+        // Compute the compact gate scalars vector-wise once per batch.  The
+        // previous code broadcast every scalar to a full vector before Exp/Div,
+        // causing up to 128 full-vector sigmoid evaluations per 64-tile batch.
+        __ubuf__ uint8_t *sigmoidBytes =
+            (__ubuf__ uint8_t *)sigmoidBroadcastBuf_.template Get<float>().GetPhyAddr();
+        __ubuf__ float *globalSigmoidUb = (__ubuf__ float *)sigmoidBytes;
+        __ubuf__ float *localSigmoidUb = (__ubuf__ float *)(sigmoidBytes + gateSideOffset_ * sizeof(float));
+        uint16_t gateCount = static_cast<uint16_t>(calcRows * headsPerRow);
+        uint16_t gateVecLoops = static_cast<uint16_t>(ops::CeilDiv(gateCount, static_cast<uint16_t>(VF_LEN_FP32)));
+
+        for (uint16_t i = 0; i < gateVecLoops; ++i) {
+            uint32_t gateOffset = i * VF_LEN_FP32;
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateRow + gateOffset);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
+            Reg::Muls(tmpF, gateF, -1.0f, allMask);
+            Reg::Exp(tmpF, tmpF, allMask);
+            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
+            Reg::Duplicate(oneF, 1.0f, allMask);
+            Reg::Div(globalSigF, oneF, tmpF, allMask);
+            Reg::StoreAlign<float>(globalSigmoidUb + gateOffset, globalSigF, allMask);
+
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateRow + gateOffset);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
+            Reg::Muls(tmpF, gateF, -1.0f, allMask);
+            Reg::Exp(tmpF, tmpF, allMask);
+            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
+            Reg::Div(localSigF, oneF, tmpF, allMask);
+            Reg::StoreAlign<float>(localSigmoidUb + gateOffset, localSigF, allMask);
+        }
+
+        AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
 
         for (uint16_t slot = 0; slot < calcRows; ++slot) {
             uint32_t tileOffset = slot * static_cast<uint32_t>(tileRowLength_);
@@ -303,21 +331,8 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
             uint32_t localHeadBase = slot * headsPerRow;
             for (uint16_t h = 0; h < headsPerRow; ++h) {
                 uint32_t localHead = localHeadBase + h;
-
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(globalGateReg, globalGateRow + localHead);
-                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, globalGateReg, allMask);
-                Reg::Muls(tmpF, gateF, -1.0f, allMask);
-                Reg::Exp(tmpF, tmpF, allMask);
-                Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-                Reg::Duplicate(oneF, 1.0f, allMask);
-                Reg::Div(globalSigF, oneF, tmpF, allMask);
-
-                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_BRC_B16>(localGateReg, localGateRow + localHead);
-                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, localGateReg, allMask);
-                Reg::Muls(tmpF, gateF, -1.0f, allMask);
-                Reg::Exp(tmpF, tmpF, allMask);
-                Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-                Reg::Div(localSigF, oneF, tmpF, allMask);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(globalSigF, globalSigmoidUb + localHead);
+                Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(localSigF, localSigmoidUb + localHead);
 
                 for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
                     uint32_t vfOffset = h * static_cast<uint32_t>(headSize_) + vf * VF_LEN_FP32;
@@ -361,6 +376,66 @@ __aicore__ inline void ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, ro
                                      static_cast<uint16_t>(tileCount), static_cast<uint16_t>(firstColTile));
     activationInQueue_.template FreeTensor(activationInput);
     gateInQueue_.template FreeTensor(gateInput);
+
+    if constexpr (scaleAlg == TPL_SCALE_ALG_0) {
+        // The full-width batch is contiguous in both merged data and logical
+        // row-scale order.  Process all rows in one VF invocation so constant
+        // setup, queue synchronization and GM copy-out are amortized across
+        // the batch, matching the core strategy used by DynamicMxQuant.
+        LocalTensor<uint8_t> rowScaleTensor = rowScaleQueue_.template AllocTensor<uint8_t>();
+        LocalTensor<uint8_t> rowDataTensor = rowDataQueue_.template AllocTensor<uint8_t>();
+        LocalTensor<uint16_t> rowScaleReciprocalTensor = rowScaleReciprocalBuf_.template Get<uint16_t>();
+        auto rowDataAddr = (__ubuf__ uint8_t *)rowDataTensor.GetPhyAddr();
+        auto rowScaleAddr = (__ubuf__ uint8_t *)rowScaleTensor.GetPhyAddr();
+        auto rowScaleReciprocalAddr = (__ubuf__ uint16_t *)rowScaleReciprocalTensor.GetPhyAddr();
+
+        LocalTensor<uint16_t> maxExpTensor = colScaleReciprocalBuf_.template Get<uint16_t>();
+        auto maxExpAddr = (__ubuf__ uint16_t *)maxExpTensor.GetPhyAddr();
+        ComputeRowScaleOcpBatchCompact(static_cast<uint16_t>(tileCount), mergedAddr, rowScaleAddr,
+                                        rowScaleReciprocalAddr, maxExpAddr);
+        if constexpr (IsSameType<rowDataDtype, fp4x2_e2m1_t>::value ||
+                      IsSameType<rowDataDtype, fp4x2_e1m2_t>::value) {
+            ComputeRowDataToFp4(static_cast<uint16_t>(tileRowLength_), static_cast<uint16_t>(tileCount), mergedAddr,
+                                rowScaleReciprocalAddr, rowDataAddr, ONCE_ROW_LEN / BLOCK_SIZE);
+        } else {
+            ComputeRowDataToFp8Compact(static_cast<uint16_t>(tileCount), mergedAddr, rowScaleReciprocalAddr,
+                                       rowDataAddr);
+        }
+
+        rowScaleQueue_.template EnQue(rowScaleTensor);
+        rowDataQueue_.template EnQue(rowDataTensor);
+
+        int64_t firstRow = firstTile / colTileNum;
+        int64_t rowDataOutOffset = firstRow * rowLength_ + firstColTile * tileRowLength_;
+        int64_t rowScaleOutOffset =
+            firstRow * rowScaleElementsPerRow_ + firstColTile * (tileRowLength_ / BLOCK_SIZE);
+        CopyOutRowOnlyBatch(rowDataOutOffset, rowScaleOutOffset, tileCount);
+        return;
+    }
+
+    if constexpr (scaleAlg == TPL_SCALE_ALG_1) {
+        // cuBLAS FP8 uses the same compact three-stage organization as
+        // DynamicMxQuant: compact amax, batch scale/reciprocal, batch data.
+        LocalTensor<uint8_t> rowScaleTensor = rowScaleQueue_.template AllocTensor<uint8_t>();
+        LocalTensor<uint8_t> rowDataTensor = rowDataQueue_.template AllocTensor<uint8_t>();
+        LocalTensor<uint16_t> rowScaleReciprocalTensor = rowScaleReciprocalBuf_.template Get<uint16_t>();
+        LocalTensor<uint16_t> maxTensor = colScaleReciprocalBuf_.template Get<uint16_t>();
+        auto rowDataAddr = (__ubuf__ uint8_t *)rowDataTensor.GetPhyAddr();
+        auto rowScaleAddr = (__ubuf__ uint8_t *)rowScaleTensor.GetPhyAddr();
+        auto rowScaleReciprocalAddr = (__ubuf__ uint16_t *)rowScaleReciprocalTensor.GetPhyAddr();
+        auto maxAddr = (__ubuf__ uint16_t *)maxTensor.GetPhyAddr();
+        ComputeRowScaleCuBLASSingleAxis(static_cast<uint16_t>(tileRowLength_), static_cast<uint16_t>(tileCount),
+                                        mergedAddr, rowDataAddr, rowScaleAddr, rowScaleReciprocalAddr, maxAddr, true);
+        rowScaleQueue_.template EnQue(rowScaleTensor);
+        rowDataQueue_.template EnQue(rowDataTensor);
+
+        int64_t firstRow = firstTile / colTileNum;
+        int64_t rowDataOutOffset = firstRow * rowLength_ + firstColTile * tileRowLength_;
+        int64_t rowScaleOutOffset =
+            firstRow * rowScaleElementsPerRow_ + firstColTile * (tileRowLength_ / BLOCK_SIZE);
+        CopyOutRowOnlyBatch(rowDataOutOffset, rowScaleOutOffset, tileCount);
+        return;
+    }
 
     for (int64_t slot = 0; slot < tileCount; ++slot) {
         int64_t tile = firstTile + slot;
@@ -413,6 +488,212 @@ __aicore__ inline void ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, ro
             int64_t rowDataOutOffset = absRowStart * rowLength_ + colOffset;
             int64_t rowScaleOutOffset = absRowStart * rowScaleElementsPerRow_ + colOffset / BLOCK_SIZE;
             CopyOutRowOnly(rowDataOutOffset, rowScaleOutOffset, calcRow, calcCol);
+        }
+    }
+}
+
+template <typename xDtype, typename rowDataDtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg>
+__aicore__ inline void
+ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::CopyOutRowOnlyBatch(
+    int64_t rowDataOutOffset, int64_t rowScaleOutOffset, int64_t tileCount)
+{
+    LocalTensor<uint8_t> rowDataLocal = rowDataQueue_.template DeQue<uint8_t>();
+    LocalTensor<uint8_t> rowScaleLocal = rowScaleQueue_.template DeQue<uint8_t>();
+
+    int64_t dataBytesPerTile = tileRowLength_;
+    int64_t rowDataOutOffsetNow = rowDataOutOffset;
+    if constexpr (IsSameType<rowDataDtype, fp4x2_e2m1_t>::value ||
+                  IsSameType<rowDataDtype, fp4x2_e1m2_t>::value) {
+        dataBytesPerTile /= DIGIT_TWO;
+        rowDataOutOffsetNow /= DIGIT_TWO;
+    }
+
+    DataCopyExtParams rowDataCopy = {1, static_cast<uint32_t>(tileCount * dataBytesPerTile), 0, 0, 0};
+    DataCopyPad(rowDataGm_[rowDataOutOffsetNow], rowDataLocal, rowDataCopy);
+
+    constexpr uint32_t SCALE_BYTES_PER_TILE = ONCE_ROW_LEN / BLOCK_SIZE;
+    // Full-width OCP batches produce dense scale bytes for both FP8 and FP4.
+    DataCopyExtParams rowScaleCopy = {
+        1, static_cast<uint32_t>(tileCount * SCALE_BYTES_PER_TILE), 0, 0, 0};
+    DataCopyPad(rowScaleGm_[rowScaleOutOffset], rowScaleLocal, rowScaleCopy);
+    PipeBarrier<PIPE_MTE3>();
+
+    rowDataQueue_.template FreeTensor(rowDataLocal);
+    rowScaleQueue_.template FreeTensor(rowScaleLocal);
+}
+
+template <typename xDtype, typename rowDataDtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg>
+__aicore__ inline void
+ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::ComputeRowScaleOcpBatchCompact(
+    uint16_t blockCount, __ubuf__ xDtype *xAddr, __ubuf__ uint8_t *rowScaleAddr,
+    __ubuf__ uint16_t *rowScaleReciprocalAddr, __ubuf__ uint16_t *maxExpAddr)
+{
+    // Phase 1: every 256 input values produce eight block maxima.  Store them
+    // densely; UnalignRegForStore is required for a multi-iteration stream.
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<xDtype> evenData;
+        Reg::RegTensor<xDtype> oddData;
+        Reg::RegTensor<uint16_t> evenExpFp16;
+        Reg::RegTensor<uint16_t> oddExpFp16;
+        Reg::RegTensor<bfloat16_t> evenBf16;
+        Reg::RegTensor<bfloat16_t> oddBf16;
+        Reg::RegTensor<uint16_t> evenExpBf16;
+        Reg::RegTensor<uint16_t> oddExpBf16;
+        Reg::RegTensor<uint16_t> expMax;
+        Reg::RegTensor<uint16_t> expMaskBF16;
+        Reg::RegTensor<uint16_t> expMaskFP16;
+        Reg::MaskReg maskAll = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg evenValid;
+        Reg::MaskReg oddValid;
+        Reg::UnalignRegForStore ureg;
+
+        Reg::Duplicate(expMaskBF16, EXP_MASK_BF16);
+        Reg::Duplicate(expMaskFP16, EXP_MASK_FP16);
+        for (uint16_t i = 0; i < blockCount; ++i) {
+            Reg::LoadAlign<xDtype, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
+                evenData, oddData, xAddr, ONCE_ROW_LEN);
+            if constexpr (IsSameType<xDtype, half>::value) {
+                Reg::And(evenExpFp16, (Reg::RegTensor<uint16_t> &)evenData, expMaskFP16, maskAll);
+                Reg::And(oddExpFp16, (Reg::RegTensor<uint16_t> &)oddData, expMaskFP16, maskAll);
+                Reg::Compare<uint16_t, CMPMODE::NE>(evenValid, evenExpFp16, expMaskFP16, maskAll);
+                Reg::Compare<uint16_t, CMPMODE::NE>(oddValid, oddExpFp16, expMaskFP16, maskAll);
+                Reg::Cast<bfloat16_t, xDtype, CAST_HALF_TO_BF16>(evenBf16, evenData, maskAll);
+                Reg::Cast<bfloat16_t, xDtype, CAST_HALF_TO_BF16>(oddBf16, oddData, maskAll);
+                Reg::And(evenExpBf16, (Reg::RegTensor<uint16_t> &)evenBf16, expMaskBF16, maskAll);
+                Reg::And(oddExpBf16, (Reg::RegTensor<uint16_t> &)oddBf16, expMaskBF16, maskAll);
+                Reg::Select<uint16_t>(evenExpBf16, evenExpBf16, expMaskBF16, evenValid);
+                Reg::Select<uint16_t>(oddExpBf16, oddExpBf16, expMaskBF16, oddValid);
+            } else {
+                Reg::And(evenExpBf16, (Reg::RegTensor<uint16_t> &)evenData, expMaskBF16, maskAll);
+                Reg::And(oddExpBf16, (Reg::RegTensor<uint16_t> &)oddData, expMaskBF16, maskAll);
+            }
+            Reg::Max(expMax, evenExpBf16, oddExpBf16, maskAll);
+            Reg::ReduceDataBlock<AscendC::Reg::ReduceType::MAX>(expMax, expMax, maskAll);
+            Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+                maxExpAddr, expMax, ureg, ONCE_ROW_LEN / BLOCK_SIZE);
+        }
+        Reg::StoreUnAlignPost(maxExpAddr, ureg, 0);
+    }
+
+    PipeBarrier<PIPE_V>();
+
+    // Phase 2: transform up to 128 compact maxima per VF.  Scale is packed to
+    // uint8 in UB and reciprocal remains a dense uint16 stream (eight/row).
+    uint32_t totalScale = static_cast<uint32_t>(blockCount) * (ONCE_ROW_LEN / BLOCK_SIZE);
+    uint16_t scaleLoops = static_cast<uint16_t>(ops::CeilDiv(totalScale, static_cast<uint32_t>(VF_LEN_B16)));
+    uint16_t outputDtypeMaxExp = outputDtypeMaxExp_;
+    auto packedScaleAddr = (__ubuf__ uint16_t *)rowScaleAddr;
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<uint16_t> maxExp;
+        Reg::RegTensor<uint16_t> sharedExp;
+        Reg::RegTensor<uint16_t> scale;
+        Reg::RegTensor<uint16_t> reciprocal;
+        Reg::RegTensor<uint16_t> expMask;
+        Reg::RegTensor<uint16_t> dtypeMax;
+        Reg::RegTensor<uint16_t> bias;
+        Reg::RegTensor<uint16_t> nanScale;
+        Reg::RegTensor<uint16_t> zero;
+        Reg::RegTensor<uint16_t> nanReciprocal;
+        Reg::RegTensor<uint16_t> specialExp;
+        Reg::MaskReg validMask;
+        Reg::MaskReg infMask;
+        Reg::MaskReg nonZeroMask;
+        Reg::MaskReg clampMask;
+        Reg::MaskReg specialMask;
+
+        Reg::Duplicate(expMask, EXP_MASK_BF16);
+        Reg::Duplicate(dtypeMax, outputDtypeMaxExp);
+        Reg::Duplicate(bias, BF16_EXP_BIAS);
+        Reg::Duplicate(nanScale, NAN_FOR_FP8_E8M0);
+        Reg::Duplicate(zero, static_cast<uint16_t>(0));
+        Reg::Duplicate(nanReciprocal, NAN_CUSTOMIZATION);
+        Reg::Duplicate(specialExp, SPECIAL_EXP_THRESHOLD);
+
+        for (uint16_t i = 0; i < scaleLoops; ++i) {
+            validMask = Reg::UpdateMask<uint16_t>(totalScale);
+            Reg::LoadAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(maxExp, maxExpAddr, VF_LEN_B16);
+            Reg::Compare<uint16_t, CMPMODE::NE>(infMask, maxExp, expMask, validMask);
+            Reg::Compare<uint16_t, CMPMODE::LE>(clampMask, maxExp, dtypeMax, validMask);
+            Reg::Select<uint16_t>(maxExp, dtypeMax, maxExp, clampMask);
+            Reg::Sub(sharedExp, maxExp, dtypeMax, validMask);
+            Reg::ShiftRights(scale, sharedExp, SHR_NUM_FOR_BF16, validMask);
+            Reg::Select<uint16_t>(scale, scale, nanScale, infMask);
+            Reg::StoreAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_PACK_B16>(
+                packedScaleAddr, scale, VF_LEN_FP32, validMask);
+
+            Reg::Compare<uint16_t, CMPMODE::NE>(nonZeroMask, sharedExp, zero, validMask);
+            Reg::Compare<uint16_t, CMPMODE::EQ>(specialMask, sharedExp, bias, validMask);
+            Reg::Sub(reciprocal, bias, sharedExp, validMask);
+            Reg::Select<uint16_t>(reciprocal, reciprocal, nanReciprocal, infMask);
+            Reg::Select<uint16_t>(reciprocal, reciprocal, zero, nonZeroMask);
+            Reg::Select<uint16_t>(reciprocal, specialExp, reciprocal, specialMask);
+            Reg::StoreAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+                rowScaleReciprocalAddr, reciprocal, VF_LEN_B16, validMask);
+        }
+    }
+}
+
+template <typename xDtype, typename rowDataDtype, uint64_t mode, AscendC::RoundMode roundMode, uint64_t scaleAlg>
+__aicore__ inline void
+ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::ComputeRowDataToFp8Compact(
+    uint16_t blockCount, __ubuf__ xDtype *xAddr, __ubuf__ uint16_t *rowScaleReciprocalAddr,
+    __ubuf__ uint8_t *rowDataAddr)
+{
+    __VEC_SCOPE__
+    {
+        Reg::MaskReg maskAll = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
+        Reg::MaskReg maskAllB8 = Reg::CreateMask<uint8_t, Reg::MaskPattern::ALL>();
+        Reg::RegTensor<uint16_t> scaleForMulFP16;
+        Reg::RegTensor<float> scaleForMulFP32;
+        Reg::RegTensor<xDtype> evenData;
+        Reg::RegTensor<xDtype> oddData;
+        Reg::RegTensor<float> evenZeroFp32;
+        Reg::RegTensor<float> evenOneFp32;
+        Reg::RegTensor<float> oddZeroFp32;
+        Reg::RegTensor<float> oddOneFp32;
+        Reg::RegTensor<rowDataDtype> evenZeroFp8;
+        Reg::RegTensor<rowDataDtype> evenOneFp8;
+        Reg::RegTensor<rowDataDtype> oddZeroFp8;
+        Reg::RegTensor<rowDataDtype> oddOneFp8;
+
+        for (uint16_t i = 0; i < blockCount; ++i) {
+            Reg::LoadAlign<xDtype, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
+                evenData, oddData, xAddr, ONCE_ROW_LEN);
+            Reg::LoadAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_E2B_B16>(
+                scaleForMulFP16, rowScaleReciprocalAddr, ONCE_ROW_LEN / BLOCK_SIZE);
+            if constexpr (IsSameType<xDtype, half>::value) {
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(evenZeroFp32, evenData, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ONE>(evenOneFp32, evenData, maskAll);
+                Reg::Cast<float, bfloat16_t, CAST_X_TO_FP32_ZERO>(
+                    scaleForMulFP32, (Reg::RegTensor<bfloat16_t> &)scaleForMulFP16, maskAll);
+                Reg::Mul(evenZeroFp32, evenZeroFp32, scaleForMulFP32, maskAll);
+                Reg::Mul(evenOneFp32, evenOneFp32, scaleForMulFP32, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(oddZeroFp32, oddData, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ONE>(oddOneFp32, oddData, maskAll);
+                Reg::Mul(oddZeroFp32, oddZeroFp32, scaleForMulFP32, maskAll);
+                Reg::Mul(oddOneFp32, oddOneFp32, scaleForMulFP32, maskAll);
+            } else {
+                Reg::Mul(evenData, evenData, (Reg::RegTensor<xDtype> &)scaleForMulFP16, maskAll);
+                Reg::Mul(oddData, oddData, (Reg::RegTensor<xDtype> &)scaleForMulFP16, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(evenZeroFp32, evenData, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ONE>(evenOneFp32, evenData, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(oddZeroFp32, oddData, maskAll);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ONE>(oddOneFp32, oddData, maskAll);
+            }
+            Reg::Cast<rowDataDtype, float, CAST_32_TO_80>(evenZeroFp8, evenZeroFp32, maskAll);
+            Reg::Cast<rowDataDtype, float, CAST_32_TO_82>(evenOneFp8, evenOneFp32, maskAll);
+            Reg::Cast<rowDataDtype, float, CAST_32_TO_81>(oddZeroFp8, oddZeroFp32, maskAll);
+            Reg::Cast<rowDataDtype, float, CAST_32_TO_83>(oddOneFp8, oddOneFp32, maskAll);
+            Reg::Add((Reg::RegTensor<uint8_t> &)evenZeroFp8, (Reg::RegTensor<uint8_t> &)evenZeroFp8,
+                     (Reg::RegTensor<uint8_t> &)evenOneFp8, maskAllB8);
+            Reg::Add((Reg::RegTensor<uint8_t> &)evenZeroFp8, (Reg::RegTensor<uint8_t> &)evenZeroFp8,
+                     (Reg::RegTensor<uint8_t> &)oddZeroFp8, maskAllB8);
+            Reg::Add((Reg::RegTensor<uint8_t> &)evenZeroFp8, (Reg::RegTensor<uint8_t> &)evenZeroFp8,
+                     (Reg::RegTensor<uint8_t> &)oddOneFp8, maskAllB8);
+            Reg::StoreAlign<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B8>(
+                rowDataAddr, (Reg::RegTensor<uint8_t> &)evenZeroFp8, ONCE_ROW_LEN, maskAllB8);
         }
     }
 }
@@ -511,7 +792,8 @@ template <typename xDtype, typename rowDataDtype, uint64_t mode, AscendC::RoundM
 __aicore__ inline void
 ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::ComputeRowScaleCuBLASSingleAxis(
     uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype *xAddr, __ubuf__ uint8_t *rowDataAddr,
-    __ubuf__ uint8_t *rowScaleAddr, __ubuf__ uint16_t *rowScaleReciprocalAddr, __ubuf__ uint16_t *absMaxTempAddr)
+    __ubuf__ uint8_t *rowScaleAddr, __ubuf__ uint16_t *rowScaleReciprocalAddr, __ubuf__ uint16_t *absMaxTempAddr,
+    bool compactLayout)
 {
     uint32_t outputDtypeInvMax = outputDtypeInvMax_;
     __ubuf__ xDtype *dataStartAddr = xAddr;
@@ -529,7 +811,7 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         Reg::RegTensor<uint16_t> absMaxDim1;
         Reg::RegTensor<uint16_t> absMask;
         Reg::MaskReg maskAll = Reg::CreateMask<xDtype, Reg::MaskPattern::ALL>();
-        Reg::UnalignReg ureg;
+        Reg::UnalignRegForStore ureg;
 
         Reg::Duplicate(absMask, ABS_MASK_FOR_16BIT);
         for (uint16_t i = 0; i < blockCount; i++) {
@@ -544,6 +826,8 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         }
         Reg::StoreUnAlignPost(absMaxTempAddr, ureg, 0);
     }
+
+    PipeBarrier<PIPE_V>();
 
     // Phase 2: compute/scatter row scale and reciprocal from the compacted maxima.
     __VEC_SCOPE__
@@ -576,6 +860,8 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         Reg::MaskReg maskAll32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
         Reg::MaskReg maskReduceB8 = Reg::CreateMask<uint8_t, Reg::MaskPattern::VL8>();
         Reg::MaskReg maskReduceB16 = Reg::CreateMask<uint8_t, Reg::MaskPattern::VL16>();
+        uint32_t compactStoreElements = VF_LEN_FP32;
+        Reg::MaskReg compactStoreMask = Reg::UpdateMask<uint16_t>(compactStoreElements);
 
         Reg::Duplicate(invMax, outputDtypeInvMax);
         Reg::Duplicate(manMaskReg, MAN_MASK_FLOAT);
@@ -618,16 +904,25 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
             Reg::Select<uint32_t>(halfScale, halfScale, zeroReg32, zeroMask);
             Reg::Pack<uint16_t, uint32_t, Reg::HighLowPart::LOWEST>(reciprocalBf16Reg, halfScale);
 
-            for (uint16_t k = 0; k < 8; k++) {
-                Reg::Arange(extractIdx, static_cast<int8_t>(k * 8));
-                Reg::Gather(scaleU8Row, scaleU8Reg, (Reg::RegTensor<uint8_t> &)extractIdx);
-                Reg::StoreAlign<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE>(rowScaleAddr, scaleU8Row, UB_BLOCK_SIZE,
-                                                                             maskReduceB8);
-                Reg::Arange(extractIdx, static_cast<int8_t>(k * 16));
-                Reg::Gather((Reg::RegTensor<uint8_t> &)reciprocalBf16Row, (Reg::RegTensor<uint8_t> &)reciprocalBf16Reg,
-                            (Reg::RegTensor<uint8_t> &)extractIdx);
-                Reg::StoreAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(
-                    rowScaleReciprocalAddr, reciprocalBf16Row, ROW_SCALE_RECIPROCAL_ROW_ELEMS, maskReduceB16);
+            if (compactLayout) {
+                auto packedScaleAddr = (__ubuf__ uint16_t *)rowScaleAddr;
+                Reg::StoreAlign<uint16_t, Reg::StoreDist::DIST_PACK_B16>(
+                    packedScaleAddr + j * (VF_LEN_FP32 / DIGIT_TWO), scaleBf16, compactStoreMask);
+                Reg::StoreAlign<uint16_t>(rowScaleReciprocalAddr + j * VF_LEN_FP32, reciprocalBf16Reg,
+                                          compactStoreMask);
+            } else {
+                for (uint16_t k = 0; k < 8; k++) {
+                    Reg::Arange(extractIdx, static_cast<int8_t>(k * 8));
+                    Reg::Gather(scaleU8Row, scaleU8Reg, (Reg::RegTensor<uint8_t> &)extractIdx);
+                    Reg::StoreAlign<uint8_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+                        rowScaleAddr, scaleU8Row, UB_BLOCK_SIZE, maskReduceB8);
+                    Reg::Arange(extractIdx, static_cast<int8_t>(k * 16));
+                    Reg::Gather((Reg::RegTensor<uint8_t> &)reciprocalBf16Row,
+                                (Reg::RegTensor<uint8_t> &)reciprocalBf16Reg,
+                                (Reg::RegTensor<uint8_t> &)extractIdx);
+                    Reg::StoreAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(
+                        rowScaleReciprocalAddr, reciprocalBf16Row, ROW_SCALE_RECIPROCAL_ROW_ELEMS, maskReduceB16);
+                }
             }
         }
     }
@@ -651,12 +946,14 @@ ClaGateMxQuantTailAxisBase<xDtype, rowDataDtype, mode, roundMode, scaleAlg>::Com
         Reg::RegTensor<rowDataDtype> oddOneFp8;
         __ubuf__ xDtype *dataReadAddr = dataStartAddr;
         __ubuf__ uint16_t *rowScaleReciprocalReadAddr = rowScaleReciprocalStartAddr;
+        uint16_t reciprocalStride =
+            compactLayout ? static_cast<uint16_t>(ONCE_ROW_LEN / BLOCK_SIZE) : ROW_SCALE_RECIPROCAL_ROW_ELEMS;
 
         for (uint16_t i = 0; i < blockCount; i++) {
             Reg::LoadAlign<xDtype, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B16>(
                 evenData, oddData, dataReadAddr, dataLen);
             Reg::LoadAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_E2B_B16>(
-                scaleForMulFP16, rowScaleReciprocalReadAddr, ROW_SCALE_RECIPROCAL_ROW_ELEMS);
+                scaleForMulFP16, rowScaleReciprocalReadAddr, reciprocalStride);
             if constexpr (IsSameType<xDtype, half>::value) {
                 Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(evenZeroFp32, evenData, maskAll);
                 Reg::Cast<float, xDtype, CAST_X_TO_FP32_ONE>(evenOneFp32, evenData, maskAll);

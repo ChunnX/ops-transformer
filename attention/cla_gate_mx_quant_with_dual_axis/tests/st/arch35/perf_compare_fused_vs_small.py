@@ -251,6 +251,7 @@ def run_fused(global_out, local_out, global_gate, local_gate, mode):
         round_mode=mode["round_mode"],
         scale_alg=mode["scale_alg"],
         dst_type=mode["dst_type"],
+        layout=0,
         quant_mode=mode["quant_mode"],
     )
 

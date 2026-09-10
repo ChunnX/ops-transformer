@@ -20,6 +20,7 @@ row_data, row_scale, col_data, col_scale = (
         round_mode="rint",
         scale_alg=1,
         dst_type=36,
+        layout=0,
     )
 )
 

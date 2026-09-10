@@ -252,6 +252,7 @@ def main():
                 round_mode=case["round_mode"],
                 scale_alg=case["scale_alg"],
                 dst_type=case["dst_type"],
+                layout=0,
                 quant_mode=0,
             )
             golden = _small_op_single_axis(
