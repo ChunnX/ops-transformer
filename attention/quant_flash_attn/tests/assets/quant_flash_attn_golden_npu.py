@@ -1056,9 +1056,7 @@ def cpu_mxfp8_golden(
     o_max = torch.cat(m_BLOCKS, dim=2)
     all_masked = o_max <= minValue.item()
     # kernel 语义: 全跳过行 (s=0 且 m 未更新) 输出 0, 其余 0/0=NaN 保留
-    out = torch.where(
-        (out_sum == 0) & all_masked, torch.zeros_like(out), out
-    )
+    out = torch.where((out_sum == 0) & all_masked, torch.zeros_like(out), out)
     true_padding = mask_global.all(dim=-1).unsqueeze(-1).to(o_max.device)
     true_all_masked = all_masked & true_padding
     lse = torch.where(
