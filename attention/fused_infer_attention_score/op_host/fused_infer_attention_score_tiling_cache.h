@@ -28,6 +28,8 @@
  *   - 全部 16 个属性（含 outDtype）
  *   - 输出 shape/dtype
  *   - tiling 过程中会读取内容的 host tensor：actualSeqLengths/actualSeqLengthsKv/actualSharedPrefixLen
+ *     以及 qStartIdx/kvStartIdx（Alibi PSE 路径写入 tiling data）和 queryPaddingSize/kvPaddingSize
+ *     （已声明为 TilingInputsDataDependency 的 host 依赖）
  *
  * 逃生开关：环境变量 FIA_TILING_CACHE_DISABLE=1 可关闭缓存（退化回原有行为）。
  */
@@ -121,6 +123,12 @@ public:
         AppendHostTensorData(key, context, ACTUAL_SEQ_Q_INDEX);
         AppendHostTensorData(key, context, ACTUAL_SEQ_KV_INDEX);
         AppendHostTensorData(key, context, ACTUAL_SHARED_PREFIX_LEN_INDEX);
+        // qStartIdx/kvStartIdx：Alibi PSE 路径会读取内容并写入 tiling data；
+        // queryPaddingSize/kvPaddingSize：已声明为 TilingInputsDataDependency，tiling 可读内容
+        AppendHostTensorData(key, context, Q_START_IDX_INDEX);
+        AppendHostTensorData(key, context, KV_START_IDX_INDEX);
+        AppendHostTensorData(key, context, QUERY_PADDING_SIZE_INDEX);
+        AppendHostTensorData(key, context, KV_PADDING_SIZE_INDEX);
 
         // 输出
         for (uint32_t outputIndex = 0; outputIndex <= SOFTMAX_LSE_INDEX; ++outputIndex) {
@@ -199,7 +207,7 @@ public:
     }
 
 private:
-    static constexpr uint32_t kCacheKeyVersion = 1; // 键序列化格式变化时递增
+    static constexpr uint32_t kCacheKeyVersion = 2; // 键序列化格式变化时递增
     static constexpr size_t kMaxCacheEntryNum = 128;
     static constexpr uint32_t kMaxDynamicTensorNum = 1024; // 动态输入数量防御上限
     static constexpr uint64_t kMaxHostTensorElems = 65536; // host tensor 元素数防御上限
