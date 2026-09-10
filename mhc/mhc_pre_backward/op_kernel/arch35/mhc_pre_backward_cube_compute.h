@@ -85,6 +85,31 @@ public:
         ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false, false);
     }
 
+    __aicore__ inline void ProcessC1TwoStage(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
+                                             const GlobalTensor<float> &c, uint32_t m, uint32_t n,
+                                             uint32_t firstK, uint32_t secondK, uint32_t aGmStride,
+                                             uint32_t bGmStride, uint32_t cGmStride)
+    {
+        // 先将前半块累加到L0C；后半块V2就绪后继续在同一L0C累加，最后只写回一次GM。
+        // 既保持1024行单一FP32累加链的精度，又让前半块C1与后半块V2并行。
+        uint32_t cSlot = l0cLoopCount_ & 1U;
+        LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
+        WaitFlag<HardEvent::FIX_M>(cSlot);
+
+        AccumulateKRange(currentC, a, b, m, n, firstK, aGmStride, bGmStride, true, true);
+        // Mmad为异步发射；跨核等待前先完成前半段M流水，避免等待指令与未完成MMAD互相阻塞。
+        AscendC::PipeBarrier<PIPE_M>();
+        CrossCoreWaitFlag(MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C1);
+        AccumulateKRange(currentC, a[firstK * aGmStride], b[firstK * bGmStride], m, n, secondK,
+                         aGmStride, bGmStride, true, false);
+
+        SetFlag<HardEvent::M_FIX>(cSlot);
+        WaitFlag<HardEvent::M_FIX>(cSlot);
+        CopyOut(c, currentC, m, n, cGmStride);
+        SetFlag<HardEvent::FIX_M>(cSlot);
+        ++l0cLoopCount_;
+    }
+
     __aicore__ inline void End()
     {
         for (uint32_t slot = 0; slot < BASIC_CUBE_BUFFER_NUM; ++slot) {

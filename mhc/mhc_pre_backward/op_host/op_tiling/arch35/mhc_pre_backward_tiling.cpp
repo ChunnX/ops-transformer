@@ -57,7 +57,7 @@ const constexpr uint32_t WORKSPACE_ALIGN_SIZE = 32;
 const constexpr uint64_t SYSTEM_WORKSPACE_SIZE = 40 * 1024 * 1024;
 const constexpr int32_t SCHEDULE_MODE = 1;
 
-const constexpr uint32_t C0_SET_SHAPE_M = 1024;
+const constexpr uint32_t C0_SET_SHAPE_M = 512;
 const constexpr uint32_t C0_SET_SHAPE_N = 128;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
