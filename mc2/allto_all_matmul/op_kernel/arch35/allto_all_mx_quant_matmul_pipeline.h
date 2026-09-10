@@ -55,8 +55,8 @@ public:
 
     __aicore__ inline void End();
 
-    // 注入 opStateDump 指针，使 pipeline 循环内可记录 tile/tail 进度
-    __aicore__ inline void SetOpStateDump(Mc2Kernel::OpStateDump *rt)
+    // 注入 opStateDump，使 pipeline 循环内可记录 tile/tail 进度
+    __aicore__ inline void SetOpStateDump(Mc2Kernel::OpStateDump &rt)
     {
         opStateDump_ = rt;
     }
@@ -71,8 +71,8 @@ private:
     TransposeType *transStage_;           // 转置计算的计算节点
     ScaleTransposeType *scaleTransStage_; // 缩放转置的计算节点
     ComputationType *computeStage_;       // 矩阵乘的计算节点
-    // 状态打点指针，由 arch35/kernel_base 通过 SetOpStateDump 注入(先于 Init/Process，保证非空)
-    Mc2Kernel::OpStateDump *opStateDump_ = nullptr;
+    // 状态打点，由 arch35/kernel_base 通过 SetOpStateDump 注入；未注入时 DoDump 为空操作
+    Mc2Kernel::OpStateDump opStateDump_{};
 };
 
 template <typename CommunicationType, typename TransposeType, typename ScaleTransposeType, typename ComputationType,
@@ -101,14 +101,14 @@ template <typename CommunicationType, typename TransposeType, typename ScaleTran
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
                                                      ComputationType, ContextType>::Process(uint32_t taskCnt)
 {
-    opStateDump_->DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_COMM_BEFORE, 
+    opStateDump_.DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_COMM_BEFORE,
                             static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
         if ASCEND_IS_AIV {
             commStage_->Process(index);
             AscendC::SyncAll<true>();
-            opStateDump_->DoDump(DUMP_FIELD_POSITION, POS_COMP_VEC_PERMUTE_BEFORE);
+            opStateDump_.DoDump(DUMP_FIELD_POSITION, POS_COMP_VEC_PERMUTE_BEFORE);
             transStage_->Process(index);
             // 核间使用软同步，当前搭配的matmul没有使用软同步标识索引8和9，后续如果matmul有变化需要同步调整
             AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
@@ -117,7 +117,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
         }
         if ASCEND_IS_AIC {
             AscendC::CrossCoreWaitFlag(9);
-            opStateDump_->DoDump(DUMP_FIELD_TURN_INC | DUMP_FIELD_POSITION, POS_COMP_CUBE_MATMUL_BEFORE);
+            opStateDump_.DoDump(DUMP_FIELD_TURN_INC | DUMP_FIELD_POSITION, POS_COMP_CUBE_MATMUL_BEFORE);
             computeStage_->Process(index);
         }
     }
@@ -128,7 +128,7 @@ template <typename CommunicationType, typename TransposeType, typename ScaleTran
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
                                                      ComputationType, ContextType>::ProcessScale()
 {
-    opStateDump_->DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_SCALE_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
+    opStateDump_.DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_SCALE_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
         commStage_->Process(0);
