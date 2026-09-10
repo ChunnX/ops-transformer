@@ -75,9 +75,13 @@ constexpr uint32_t HISTOGRAM_SCOPE_SIZE = 256U; // 直方图uint8, 统计范围0
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr uint32_t NOTIFY_VAL_SHIFT = 32U;       // notify 高32位为 sendCnt, 低32位为 state(=1)
 constexpr uint32_t MAX_BATCH_SIZE = 160 * 1024U; // srcTokenIdx 160KB
-constexpr uint32_t HCOMM_BATCH_CAPACITY = 256U;
-constexpr uint32_t HCOMM_WRITE_TASK_BYTES = 64U;
-constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = 2 * HCOMM_BATCH_CAPACITY * HCOMM_WRITE_TASK_BYTES;
+constexpr uint32_t SGE_PER_SLOT = 2U;            // 每 slot 两个 SGE: x 与 meta
+constexpr uint32_t SGE_PER_SQE = 8U;             // 单 SQE 的 SGE 数
+constexpr uint32_t SLOT_NUM_PER_SQE = SGE_PER_SQE / SGE_PER_SLOT; // 单 SQE 的 slot 数
+constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;
+constexpr uint32_t HCOMM_SGE_BYTES = 16U;
+constexpr uint32_t HCOMM_SQE_BYTES = 48U;
+constexpr uint32_t HCOMM_WQE_BYTES = 64U;
 constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
@@ -209,6 +213,8 @@ private:
     uint32_t channelIndex_{0};
     uint32_t coreIndexInGroup_{0};
     uint32_t groupSize_{1};
+    uint32_t hcommBatchBufferBytes_{0};
+    uint32_t tokenSize_{0};
     uint32_t hAlignSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -296,7 +302,8 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     dispatchNotifyCount_ = info.dispatchNotifyCount;
     hostPinnedCounterAddrGM_ = reinterpret_cast<GM_ADDR>(info.hostPinnedCounterAddr);
 
-    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
+    tokenSize_ = axisH_ * sizeof(XType);
+    hAlignSize_ = Ceil(tokenSize_, UB_ALIGN) * UB_ALIGN;
     kAlignSize_ = Ceil(axisK_ * TOPK_INFO_SIZE, UB_ALIGN) * UB_ALIGN;
     axisKAlign_ = kAlignSize_ / TOPK_INFO_SIZE;
     metaSlotBytesAlign512_ = Ceil(metaSlotBytes_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // stash 紧凑步长
@@ -344,7 +351,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     sendPerExpertParams_ = {1U, static_cast<uint16_t>(moeExpertNum_ * sizeof(int32_t)), 0U, 0U};
     sendPerRankParams_ = {1U, static_cast<uint16_t>(epWorldSize_ * sizeof(int32_t)), 0U, 0U};
     metaSlotCopyParams_ = {1U, static_cast<uint16_t>(metaSlotBytes_), 0U, 0U};
-    xCopyParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+    xCopyParams_ = {1U, static_cast<uint16_t>(tokenSize_), 0U, 0U};
     topkCopyParams_ = {1U, static_cast<uint16_t>(axisK_ * TOPK_INFO_SIZE), 0U, 0U};
     scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
     padParams_ = {true, 0, 0, 0};
@@ -943,7 +950,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::ProcessMeta
             (static_cast<uint32_t>(srcTokenTensor.GetValue(localIdx)) == tokenId)) { // 本端命中判断
             localMetaSlotGMTensor_.SetGlobalBuffer(
                 (__gm__ int32_t *)(localSlotWinAddr_ + static_cast<uint64_t>(curLocalSlot) * perSlotBytes_ +
-                                   hAlignSize_));
+                                   tokenSize_));
             DataCopyPad(localMetaSlotGMTensor_, metaLocalTensor_, metaSlotCopyParams_);
             localIdx++;
             curLocalSlot++;
@@ -1042,8 +1049,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CommBufferI
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
     // 通信初始化
-    uint32_t hcommBatchSize = HCOMM_BATCH_BUFFER_BYTES / sizeof(uint8_t);
-    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE + HCOMM_BATCH_BUFFER_BYTES);
+    uint32_t hcommWriteWqeCnt = Ceil(HCOMM_SQE_BYTES + SGE_PER_SQE * HCOMM_SGE_BYTES, HCOMM_WQE_BYTES);
+    hcommBatchBufferBytes_ = HCOMM_BATCH_CAPACITY * hcommWriteWqeCnt * HCOMM_WQE_BYTES;
+    uint32_t hcommBatchSize = hcommBatchBufferBytes_ / sizeof(uint8_t);
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE + hcommBatchBufferBytes_);
     hcommTensor_ = hcommBuf_.GetWithOffset<uint8_t>(HCOMM_INIT_SIZE, 0);
     hcommBatchTensor_ = hcommBuf_.GetWithOffset<uint8_t>(hcommBatchSize, HCOMM_INIT_SIZE);
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
@@ -1104,7 +1113,12 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
     uint32_t processed = 0;
     uint32_t commCnt = 0;
     uint32_t maxBatchCnt = MAX_BATCH_SIZE / sizeof(int32_t);
-    uint32_t tokenSize = axisH_ * sizeof(XType);
+    uint32_t sgeNum = 0;
+    BufDesc localDescs[SGE_PER_SQE] = {};
+    for (uint32_t i = 0; i < SGE_PER_SQE; i += SGE_PER_SLOT) { // srcLen 预填
+        localDescs[i].len = tokenSize_;
+        localDescs[i + 1].len = metaSlotBytesAlign512_;
+    }
     DataCopyExtParams srcTokenCopyParams = {1U, 0U, 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> srcTokenCopyPadParams{false, 0U, 0U, 0U};
     LocalTensor<int32_t> srcTokenIdxTensor = tempBuf_.Get<int32_t>();
@@ -1114,8 +1128,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
     GM_ADDR remoteWinBaseAddr = GetWinAddrByRankId(mc2Context_, dstRankId, winDataOffset_) + dstRankWinOffset_ +
                                 static_cast<uint64_t>(tokenStart) * perSlotBytes_;
     SyncFunc<AscendC::HardEvent::V_S>(); // hcommBatchTensor_ init
+
     auto batchHandle =
-        hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor_, HCOMM_BATCH_BUFFER_BYTES, remoteWinBaseAddr);
+        hcomm_.MakeBatchHandle(commHandle, hcommBatchTensor_, hcommBatchBufferBytes_, remoteWinBaseAddr);
     GM_ADDR remoteWinAddr = remoteWinBaseAddr;
     while (processed < tokenNum) {
         uint32_t batchCnt = (tokenNum - processed > maxBatchCnt) ? maxBatchCnt : tokenNum - processed;
@@ -1123,24 +1138,38 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
         DataCopyPad(srcTokenIdxTensor, srcTokenIdxGMTensor[tokenStart + processed], srcTokenCopyParams,
                     srcTokenCopyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
-        for (uint32_t i = 0; i < batchCnt; i++) {
-            uint64_t srcTokenId = static_cast<uint64_t>(srcTokenIdxTensor.GetValue(i));
-            GM_ADDR metaStashAddr = payloadStashWinAddr_ + srcTokenId * metaSlotBytesAlign512_;
-            hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr, xAddr_ + srcTokenId * tokenSize, tokenSize);
-            hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr + hAlignSize_, metaStashAddr, metaSlotBytes_);
+        uint32_t batchGroup = Ceil(batchCnt, SLOT_NUM_PER_SQE);
+        uint32_t srcIdx = 0;
+        uint32_t slotNum = SLOT_NUM_PER_SQE;
+        uint32_t sgePerSqe = SGE_PER_SQE;
+        for (uint32_t i = 0; i < batchGroup; i++) {
+            if (i == batchGroup - 1) {
+                slotNum = batchCnt - i * SLOT_NUM_PER_SQE;
+                sgePerSqe = slotNum * SGE_PER_SLOT;
+            }
+            for (uint32_t i = 0; i < sgePerSqe; i += SGE_PER_SLOT) {
+                uint64_t srcTokenId = static_cast<uint64_t>(srcTokenIdxTensor.GetValue(srcIdx));
+                GM_ADDR metaStashAddr = payloadStashWinAddr_ + srcTokenId * metaSlotBytesAlign512_;
+                localDescs[i].addr = xAddr_ + srcTokenId * tokenSize_;
+                localDescs[i + 1].addr = metaStashAddr;
+                srcIdx++;
+            }
+            hcomm_.WriteNbi<DATA_CFG>(batchHandle, remoteWinAddr, localDescs, sgeNum);
             commCnt++;
             if (commCnt == HCOMM_BATCH_CAPACITY) {
                 hcomm_.BatchCommit(batchHandle);
                 commCnt = 0;
             }
-            processed++;
-            remoteWinAddr += perSlotBytes_;
+            remoteWinAddr += slotNum * perSlotBytes_;
         }
+        processed += batchCnt;
         if (processed < tokenNum) {
             SyncFunc<AscendC::HardEvent::S_MTE2>();
         }
     }
-    hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, payloadStashStateWinAddr_, WIN_ADDR_ALIGN);
+    localDescs[0].addr = payloadStashStateWinAddr_;
+    localDescs[0].len = WIN_ADDR_ALIGN;
+    hcomm_.WriteNbi<NOTIFY_CFG>(batchHandle, notifyAddr, localDescs, 1);
     hcomm_.BatchCommit(batchHandle);
 }
 
