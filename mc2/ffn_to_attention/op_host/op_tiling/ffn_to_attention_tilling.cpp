@@ -708,11 +708,6 @@ ge::graphStatus FFNToAttentionTilingFuncBase(gert::TilingContext *context, const
         CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
         return ge::GRAPH_FAILED, return ge::GRAPH_FAILED);
 
-    // Validate ccl_buffer_size when provided (V2 path)
-    OP_TILING_CHECK(
-        CheckCclBufferSize(context, nodeName, config.attrCclBufferSizeIndex, neededSize) != ge::GRAPH_SUCCESS,
-        return ge::GRAPH_FAILED, return ge::GRAPH_FAILED);
-
     // Set WorkSpace
     OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
