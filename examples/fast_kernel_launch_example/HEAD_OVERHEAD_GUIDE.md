@@ -219,6 +219,65 @@ add_sources("--npu-arch=dav-3510 -mllvm -cce-aicore-dcci-before-kernel-end=false
 - grouped_matmul_kernel.h (ascend910_93)：GMM_CUBE_IMP 宏内 "Hard Event" typo 修正为 HardEvent
 - 上述修复已在 A3（Ascend910_9392）实测编译通过并完成 5 轮复测
 
+## 新增算子接入指南
+
+本工程是**可扩展的算子头开销测试框架**：新增算子按下述清单接入，采集/汇总/跨轮平均链路自动复用。
+
+### 接入清单（按序）
+
+| # | 层 | 位置 | 要求 |
+|---|-----|------|------|
+| 1 | kernel 源码 | `csrc/<op_name>/<soc>/`（ascend950 / ascend910_93 按需） | `CMakeLists.txt` 用 `add_sources("--npu-arch=<arch> ...")`；多选项拼单字符串（宏只收一个参数） |
+| 2 | 打点 | kernel 内 | 按下文两种打点模式之一 |
+| 3 | host 侧 | `csrc/<op_name>/<soc>/<op_name>.cpp` | cycle 读回 getter（capture/replay 外调用）+ launch 计数 + reset；extension 注册 |
+| 4 | 测试脚本 | `tests/<op_name>/test.py` | NPUGraph capture 连发 + 多拍 replay + 逐核打点回读；核数用 `properties.vector_core_num` 动态获取，选卡读 `NPU_DEVICE` |
+| 5 | 一键脚本 | `run_head_overhead.sh` 四处 | 见下 |
+
+### 打点模式（二选一）
+
+**模式 A：cycleData 参数模式（简单算子，参考 add / grouped_matmul）**
+```cpp
+int64_t T0 = AscendC::GetSystemCycle();   // kernel 入口第一行
+// ... TPipe/tiling 初始化 ...
+int64_t T1 = AscendC::GetSystemCycle();   // Init 完成后、首个 MTE2 前
+__gm__ int64_t *cycleBuf = (__gm__ int64_t *)cycleData + GetBlockIdx() * 3;
+cycleBuf[0] = T0; cycleBuf[1] = T1;
+// ... 计算主体 ...
+// [可选] MTE3/FIX 排空同步 (PipeBarrier + SetFlag/WaitFlag)
+int64_t T2 = AscendC::GetSystemCycle();   // kernel 末尾
+cycleBuf[2] = T2;
+```
+
+**模式 B：8-slot 复用模式（参数多/有既有输出 tensor，参考 incre_flash_attention）**
+复用输出 tensor 地址作 timing buffer，每核 8×int64 slot：`[0]=magic [1]=blockIdx [2]=coreType [3]=T0 [4]=T1 [5]=commit标志 [6]=aiCoreIdx [7]=T2`。写入顺序：先清 commit → 写数据 → 写 commit（host 侧校验 magic+commit 才采信）。
+
+### 一键脚本接入（run_head_overhead.sh）
+
+```
+① collect_<op>() { ... }                  # 采集函数: msprof 包裹测试脚本, 输出 $OUTPUT_DIR/<op>_full
+② 执行段: collect_<op> "满核" "$OUTPUT_DIR/<op>_full"   # 放在 gmm 之后
+③ Python 段: analyze_<op>(prof_dir, label) # 返回 (taskdur, m); m 的 keys 必须对齐:
+   t0_stars/t1_t0/t1_stars/t2_stars 各带 _min/_mean/_max(_max_blk) + shots/n
+④ 汇总段: results.append((op名, 类型, 核数, r, m, fm))  # 自动进 summary CSV 与跨轮平均
+```
+
+构建侧：若算子仅部分平台支持，参考 `BUILD_IFA` 的 SOC 条件控制纳入/排除（排除用 mv CMakeLists.txt.bak，trap 自动恢复）；不兼容算子进 `INCOMPAT_OPS`。
+
+### 硬约束
+
+1. **指标口径不可改**：T0=kernel 入口 / T1=prologue 后 / T2=kernel 末；min=最快核 / mean=核平均 / max=最慢核——保证跨算子可比
+2. **打点 GM 写依赖 kernel 末 DCCI 刷出**（标量写走 DCache write-back）；若实验性关闭 DCCI（`-mllvm -cce-aicore-dcci-before-kernel-end=false`），必须对 cycleBuf 补 `DataCacheCleanAndInvalid` 单行刷，否则 host 读不回
+3. **cycle buffer 必须持久 GM**（跨 launch 地址不变），与 NPUGraph capture 兼容；host 回读只能在 capture/replay 外
+4. **MIX 核**（`__mix__`）T2 打 AIV 侧（口径注明）；AIC 拖尾计入 TaskDur 不计入 T2
+5. **平台差异**：A3 的 SYS_CNT=50MHz（脚本自动换算）、ffts f[19] 非 kick（无 kick 拆分）；新算子两平台都要跑通才算接入完成
+
+### 验收标准
+
+- [ ] `summary_{soc}.csv` 出现新算子 3 行（min/mean/max），打屏段落与 add/gmm 同格式
+- [ ] 全链路（pmu_end-stars）与 TaskDur 差值 < ±1us（或书面说明差值来源）
+- [ ] A5 + A3 双平台 5 轮复测稳定（无死锁、逐拍 T0<T1<T2 单调）
+- [ ] 打屏数据回填本指南"测试结果"章节（新算子列）
+
 ## 目录结构
 
 ```
