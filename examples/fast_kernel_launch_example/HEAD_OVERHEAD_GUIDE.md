@@ -120,7 +120,7 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 
 多拍口径（add/gmm 各 5 拍 median，IFA 1 拍、稳态=跳过前 2 次 launch；min=最快核 / mean=核平均 / max=最慢核）：
 
-| 指标 (min/mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (Vector, 48核) |
+| 指标 (min/mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (MIX 24+48核, AIV 48核打点) |
 |------|-----------|-----------|-----------|
 | 调度+硬件头 T0-stars | 0.23 / 0.49 / 0.76 | 0.78 / 1.58 / 2.06 | 5.66 / 12.06 / 14.94 |
 | 软件头 T1-T0 | 0.14 / 0.72 / 1.36 | 0.96 / 1.61 / 2.26 | 2.60 / 3.73 / 6.42 |
@@ -134,7 +134,7 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 - 数据来源：PR #10421 B 环境复测（20260910，NPU 15，提交 21f93655f），归档 `pr10421_retest/pr10421_retest_20260910_194041/`（summary.log + 5 轮 logs/results + avg_summary.md 跨轮平均表）。
 - A3 上 ffts f[19] 非 kick 时刻（本轮实测与 dispatch 时刻相同），无 kick 拆分；硬件尾/全链路仅 ffts PMU 单点口径，表中硬件尾为 5 轮单点平均（逐轮 add 0.54~1.14 / gmm 0.46~0.80 / IFA 0.66~0.96us）。
 - kernel主体 T2-T1 为 mean 口径（= T2-stars mean − T1-stars mean）。
-- A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
+- A3 的 IFA 与 A5 同为 MIX 1:2 形态（24 AIC + 48 AIV = 72 task；反汇编含 8×`_mix_aic` + 8×`_mix_aiv` 实例化，op_summary 实测 Block Num=24 / Mix Block Num=48 佐证），AIC Cube 拖尾计入 TaskDur 而非 T2，T2 打点仅 AIV 侧，两平台仅核数不同，跨平台对比时注意。
 
 ## 打点前后的反汇编阶段分析
 
@@ -187,19 +187,22 @@ Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_m
 - **add/gmm**：指令级估算与实测吻合。gmm 慢 0.63us 根因 = 参数区体积（48B vs 2KB）：预取数据量 + 装载指令数双重放大
 - **IFA**：指令数与参数量均小于 gmm，但 kick→T0（~2.1us）是其 3.3 倍，~1.5us 缺口归因：**230KB 大二进制 ICache 冷启动**（8 组模板实例化只用 1 组）+ **MIX 1:2 派发错峰**（max/mean≈2.3 倍佐证）+ 84 核重复预取同一参数区的总线竞争
 
-> A3 的 entry/epilogue 段可用归档产物 `disasm/*_ascend910_93_disasm.txt` 同法分析：entry 段要素与 A5 一致（PARA_BASE 装载 → 预取/栈帧 → 参数装载 → T0 打点），但 A3 的 add/gmm 二进制中**无 `DC_PRELOADI` 参数预取**（A5 上 add ×1 / gmm ×33），IFA 保留（60 处），跨平台对账时注意该差异。
+> A3 的 entry/epilogue 段可用归档产物 `disasm/*_ascend910_93_disasm.txt` 同法分析：entry 段要素与 A5 一致（PARA_BASE 装载 → 预取/栈帧 → 参数装载 → T0 打点），但 A3 的 add/gmm 二进制中**无参数预取指令**（A5 上 add `DC_PRELOADI` ×1 / gmm ×32，按实例化口径），IFA 保留 **44 处 `DC_PRELOAD`**（dav-c220 无 `DC_PRELOADI` 立即数变体；A5 IFA 为 `DC_PRELOADI` ×320），跨平台对账时注意该差异。
 
 ### T2 之后的 epilogue 段（打点后）
 
 ```
 T2 打点
-【尾1: T2 写回 GM】   LD_IO cycleBuf地址 + ST_IO 写 T2        (~0.13-0.18us)
-【尾2: SyncAll】      is_sync_all 分支; add/IFA: BAR.ALL 硬件栅栏
+【尾1: T2 写回 GM】   LD cycleBuf地址 + ST 写 T2              (~0.13-0.18us)
+                       (A5: LD_IO/ST_IO; A3: LD.b64/ST.b64, add 写 slot2 / IFA 写 slot7)
+【尾2: 出口分支】      flag 快路: 直接 DCCI+END (prologue 强置 flag=0, 实际不可达)
+                       慢路: TPipe 析构排空 — add/IFA ~164 条
+                       (WAIT_FLAG ×21 多管道排空 + BAR.F + BAR.ALL)
                        gmm: 软件自旋轮询 + BAR.F + BAR.ALL      (~0.02-0.15us)
 【尾3: DCCI+END】     MOVI X15,#0; DCCI X15,#1; END            (~0.40-0.50us)
 ```
 
-实测硬件尾（pmu_end-T2）与逐段估算合计吻合，**DCCI 占硬件尾 60~80%**。
+实测硬件尾（pmu_end-T2）与逐段估算合计吻合，**DCCI 占硬件尾 60~80%（A5）**；A3 上 TPipe 析构排空占比上升（add 0.94us 中 DCCI 约 0.4-0.5，其余为排空+BAR，见下文 A3 对账）。
 
 **DCCI 实验方法**（测量 kernel 末自动 DCache 全刷的代价）：
 
@@ -213,6 +216,48 @@ add_sources("--npu-arch=dav-3510 -mllvm -cce-aicore-dcci-before-kernel-end=false
 1. 反汇编确认：kernel 实例化的 `DCCI X15,#1` 全部消失，epilogue 变为直接 `END`
 2. TaskDur A/B（604 稳态样本）：**关闭后 8.49us vs 基线 8.88~9.03us → DCCI ≈ 0.4-0.5us**
 3. 副作用：打点数据（cycleBuf）读不回——证明标量写停在 DCache 脏行，**可见性依赖 DCCI**；需要打点时应在源码对 cycleBuf 调 `DataCacheCleanAndInvalid<T, CacheLine>(GlobalTensor)` 单行刷（A5/3510 支持）代替全量刷
+
+### A3 实测分段对账（Ascend910_9362, 20260910）
+
+测量条件：Ascend910_9362（dav-c220, 40 AIV + 20 AIC），CANN 9.2.0，SYS_CNT=50MHz；源码核数 add=40 / gmm=20（各自满核），IFA tiling 固定 24+48（本机超额订阅，TaskDur +3.5% vs 满核 B 环境，头开销结论不受影响）。反汇编为理论、实测为数据，两链吻合即符合预期；指令数统计基于同一 ascend910_93 二进制（9392/9362 通用）。
+
+**① Entry 段 ↔ T0-stars（调度+硬件头）**：
+
+| | add (AIV) | gmm (AIC) | IFA (AIV) |
+|---|---|---|---|
+| entry 指令数 | 21 | 26 | 48 |
+| 段内 GM 读 LD | 5（60B 集中 4 行内） | 5（跨 2.1KB 参数区 33 行，tiling 首字@+2096） | 13 读 + 8 栈写 |
+| 实测 T0-stars mean | 0.47us | 1.50us | 11.35us |
+
+- add ≈ kick(~0.15-0.2) + 21 条指令 + 5 次集中 GM 读，逐项吻合
+- gmm +1.03us 差值 ≈ 参数区跨行 miss（同样 5 条 LD 但分散在 33 个 64B 行）+ AIC kick 路径
+- **IFA 的 11.35us 中指令本身仅占 ~0.5us**，其余为 72-task 串行 kick stagger（max/mean=1.23 佐证）+ ICache 冷启动（全 .text 1.49MB / 16 组实例化只用 1 组执行对 ~208KB）+ 13 次 GM 往返——IFA 大头开销不是代码路径长，而是派发与访存
+
+**② Init 段 ↔ T1-T0（软件头）——线性规律**：
+
+| | add | gmm | IFA (AIV) |
+|---|---|---|---|
+| T0→T1 指令数 | 111 | 433 | 1057 |
+| 段内 tiling/GM 读 LD | 0 | 37 | 124 |
+| 实测 T1-T0 mean | 0.59us | 1.64us | 4.14us |
+| 折算 ns/条 | 5.3 | 3.8 | 3.9 |
+
+三算子折算 **~4-5ns/条** 常数——软件头 ≈ 指令数 × 常数，可用反汇编线性预测。构成 = TPipe InitBuffer（UB 描述符栈写 ST 41/110/229 条）+ 按值 tiling struct 读取（LD 37/124 条；add 无 tiling 故 LD=0）。
+
+**③ 硬件尾 ↔ T2→END**：
+
+| | add | gmm | IFA (AIV) |
+|---|---|---|---|
+| T2→END 执行路径 | 164 条 | 13 条快路（实际走慢路分支） | 164 条 |
+| WAIT_FLAG 排空 / BAR | 21 / F+ALL | 34 / F+M+F+ALL | 21 / F+ALL |
+| 实测硬件尾 | **0.94us** | **0.54us** | **0.62us** |
+
+硬件尾 = 写回(1 LD+1 ST) + TPipe 析构排空(WAIT_FLAG×21) + BAR.F/ALL + DCCI + END。**排序 add > IFA > gmm 由 TPipe 队列数决定**：add 3×TQue(VECIN×2/VECOUT)×2 深度需排空，gmm 为 AIC 核无 VEC 队列，IFA 队列在 T2 前已被 MTE3_S flush 实验排空。B 环境（9392）5 轮硬件尾 add 0.78 / gmm 0.57 / IFA 0.75 同序，结构性结论跨机成立；DCCI ≈ 0.4-0.5us 为公共底（A5 A/B 实验值）。
+
+**补充结构事实**（反汇编新发现）：
+- 三算子 epilogue 均为**双出口**：`flag != 0 → 快路 DCCI+END`（prologue 强置 0，防御性死代码）`/ flag == 0 → 慢路 sync 排空`；gmm 慢路入口经 `JUMP X0` 间接跳转分发（MTE3_S/FIX_S 多实验出口遗产）
+- A3 entry 指令数全面小于 A5：add 21 vs 30、gmm 26 vs 82（A3 无预取指令）、IFA AIC 29 vs 37 / AIV 48 vs 55；A3 独有 `MOVEMASK MASK[0/1]` 初始化，栈帧步进 COREID×0x8000（32KB/核）
+- IFA AIV Init 段（T0→T1）1057 条远超 add 111 / gmm 433，是软件头最大化的指令级来源；IFA T2 写回偏移 +56 = slot 7，与采集侧 `kernel_end_from_stars` 口径互证
 
 ## 编译适配（跨平台修复）
 

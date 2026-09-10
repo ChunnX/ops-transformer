@@ -58,7 +58,7 @@ std::tuple<int64_t, int64_t, int64_t> calc_tiling_params(int64_t totalLength)
     ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     int64_t coreNum = ascendcPlatform->GetCoreNumAiv();
     TORCH_CHECK(coreNum > 0, "coreNum must be positive.");
-    int64_t numBlocks = 48;
+    int64_t numBlocks = 40;
     int64_t blockLength = (totalLength + numBlocks - 1) / numBlocks;
     int64_t tileSize = ubSize / PIPELINE_DEPTH / BUFFER_NUM;
     return std::make_tuple(numBlocks, blockLength, tileSize);

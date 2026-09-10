@@ -96,7 +96,7 @@ void groupedmatmul_api(const TypeCombo &matchedCombo, int comboIndex, aclrtStrea
                                                                     c10::optional<torch::Tensor>>(
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, groupList, perTokenScale, tilingData,
         ascendcPlatform->GetCoreNumAic(), ubSizePlatFrom);
-    uint32_t blockDim = 24; tilingData.gmmBaseParams.coreNum = 24;
+    uint32_t blockDim = 20; tilingData.gmmBaseParams.coreNum = 20;
     auto x_ptr = get_first_tensor_address<at::TensorList>(matchedCombo.x, x, false);
     auto weight_ptr = get_first_tensor_address<at::TensorList>(matchedCombo.weight, weight, false);
     auto y_ptr = get_first_tensor_address<at::TensorList>(matchedCombo.output, y, false);

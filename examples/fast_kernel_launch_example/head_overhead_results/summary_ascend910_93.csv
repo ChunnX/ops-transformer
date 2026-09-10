@@ -1,0 +1,10 @@
+soc,算子,类型,核数,shots,blocks,TaskDur稳态mean(us),统计口径,调度+硬件头T0-stars(us),软件头T1-T0(us),头开销T1-stars(us),T2-stars(us),硬件尾(us),全链路(us)
+ascend910_93,add,Vector,48,5,39,10.95,min,0.24,0.14,0.42,8.84,N/A,N/A
+ascend910_93,add,Vector,48,5,39,10.95,mean,0.47,0.59,1.08,9.48,N/A,N/A
+ascend910_93,add,Vector,48,5,39,10.95,max,0.68,1.06,1.72,10.00,0.94,10.66
+ascend910_93,grouped_matmul,Cube,24,5,18,6.59,min,0.70,0.96,1.78,2.58,N/A,N/A
+ascend910_93,grouped_matmul,Cube,24,5,18,6.59,mean,1.50,1.64,3.12,4.19,N/A,N/A
+ascend910_93,grouped_matmul,Cube,24,5,18,6.59,max,1.80,2.44,3.58,5.72,0.54,6.22
+ascend910_93,incre_flash_attention,Vector,48,1,120,99.70,min,3.68,2.92,12.12,93.50,N/A,N/A
+ascend910_93,incre_flash_attention,Vector,48,1,120,99.70,mean,11.35,4.14,15.50,98.11,N/A,N/A
+ascend910_93,incre_flash_attention,Vector,48,1,120,99.70,max,13.94,8.44,16.98,101.88,0.62,101.34
