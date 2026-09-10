@@ -173,8 +173,6 @@ public:
             // FD 业务区起始字节偏移（跳过 FA 侧 bmm1/bmm2/mm2In 区域），
             // 以模板参数传入（取值为 FA vec block 的 GetFdBaseOffset()），避免两侧重复推导漂移
             constexpr uint32_t BASE = UB_FD_BASE_OFFSET;
-            constexpr uint32_t MATRIX_BYTES = BUFFER_SIZE_BYTE_16K;
-            constexpr uint32_t GROUP_PADDING = BUFFER_SIZE_BYTE_256B;
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
@@ -185,19 +183,21 @@ public:
             // SharedBuffer1[0]：stage1OutBuf[0](FA) / fdMm2Res(FD)，33024 bytes
             constexpr uint32_t OFF_BUF1A = OFF_BUF3 + 32768U;
             // SharedBuffer1[1]：stage1OutBuf[1](FA) / fdReduce/Output(FD)，33024 bytes
-            constexpr uint32_t OFF_BUF1B = OFF_BUF1A + 2U * MATRIX_BYTES + GROUP_PADDING;
-            static_assert(OFF_BUF1B + 2U * MATRIX_BYTES <= 248U * 1024U, "FD exceeds available UB");
+            constexpr uint32_t OFF_BUF1B = OFF_BUF1A + 33024U;
+            static_assert(OFF_BUF1B + 2U * BUFFER_SIZE_BYTE_16K <= 248U * 1024U, "FD exceeds available UB");
 
             // sharedBuf1a 内：fdMm2ResBuf1_（前16K）、fdMm2ResBuf2_（后16K）
             fdMm2ResBuf1_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1A, MATRIX_BYTES).template ReinterpretCast<T>();
-            fdMm2ResBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1A + MATRIX_BYTES, MATRIX_BYTES)
-                                .template ReinterpretCast<T>();
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1A, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
+            fdMm2ResBuf2_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1A + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+                    .template ReinterpretCast<T>();
             // sharedBuf1b 内：fdReduceBuf_（前16K）、fdOutputBuf_（后16K）
             fdReduceBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, MATRIX_BYTES).template ReinterpretCast<T>();
-            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + MATRIX_BYTES, MATRIX_BYTES)
-                               .template ReinterpretCast<OUTPUT_T>();
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
+            fdOutputBuf_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+                    .template ReinterpretCast<OUTPUT_T>();
 
             // sharedBuf3 内：5 个 6144-byte 槽（fdSum1/2, fdMax1/2, fdLseExp）
             constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
