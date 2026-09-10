@@ -62,7 +62,7 @@ class LatentEpOpBuilder(OpBuilder):
             "Tensor? shared_expert_input=None, int tp_world_size=0, int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, "
             "int shared_expert_rank_num=0, int quant_mode=0, int global_bs=0, int expert_token_nums_type=1, "
             'str comm_alg="", int zero_expert_num=0, int copy_expert_num=0, int const_expert_num=0, '
-            "int? moe_expert_dtype=None, int? x_dtype=None, int? x_smooth_scales_dtype=None) "
+            "int? y_dtype=None, int? x_dtype=None, int? x_smooth_scales_dtype=None) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
         )
         combine_schema = (
@@ -204,7 +204,7 @@ class LatentEpOpBuilder(OpBuilder):
             zero_expert_num=0,
             copy_expert_num=0,
             const_expert_num=0,
-            moe_expert_dtype=None,
+            y_dtype=None,
             x_dtype=None,
             x_smooth_scales_dtype=None,
         ):
@@ -280,9 +280,10 @@ class LatentEpOpBuilder(OpBuilder):
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num
             if quant_mode == 0:
                 out_dtype = x.dtype
-            if moe_expert_dtype is not None:
-                out_dtype = get_dtype_from_enum(moe_expert_dtype)
+            if y_dtype is not None:
+                out_dtype = get_dtype_from_enum(y_dtype)
 
+            # y_dtype selects MoE communication; shared reception keeps the original token dtype.
             independent_shared_rank = (
                 shared_expert_input is not None and ep_rank_id < shared_expert_rank_num
             )
@@ -293,13 +294,13 @@ class LatentEpOpBuilder(OpBuilder):
             expand_x_shape = tuple([max(a, a * tp_world_size), h])
             if (
                 not independent_shared_rank
-                and moe_expert_dtype is not None
-                and is_packed_float4(moe_expert_dtype)
+                and y_dtype is not None
+                and is_packed_float4(y_dtype)
                 and scales is None
             ):
                 torch._check(
                     (h % 2) == 0,
-                    lambda: "h must be divisible by 2 when moe_expert_dtype is packed float4.",
+                    lambda: "h must be divisible by 2 when y_dtype is packed float4.",
                 )
                 expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
             expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
@@ -409,7 +410,7 @@ def _dispatch(
     zero_expert_num=0,
     copy_expert_num=0,
     const_expert_num=0,
-    moe_expert_dtype=None,
+    y_dtype=None,
     x_dtype=None,
     x_smooth_scales_dtype=None,
 ):
@@ -440,7 +441,7 @@ def _dispatch(
         zero_expert_num,
         copy_expert_num,
         const_expert_num,
-        moe_expert_dtype,
+        y_dtype,
         x_dtype,
         x_smooth_scales_dtype,
     )
@@ -531,7 +532,7 @@ def get_ccl_buffer_size(
     shared_expert_num,
     shared_expert_rank_num,
     quant_mode=0,
-    moe_expert_dtype=None,
+    y_dtype=None,
 ):
     """Return the HCCL buffer configuration size in MiB (called MB in legacy APIs).
 
@@ -568,9 +569,9 @@ def get_ccl_buffer_size(
         )
     if quant_mode not in (0, 1, 2, 3, 4, 5):
         raise ValueError("quant_mode must be in [0, 5].")
-    if quant_mode in (1, 2, 3) and moe_expert_dtype is None:
-        raise ValueError("moe_expert_dtype is required for quant_mode 1, 2, 3.")
-    if quant_mode in (4, 5) and moe_expert_dtype not in (None, 24, 292):
+    if quant_mode in (1, 2, 3) and y_dtype is None:
+        raise ValueError("y_dtype is required for quant_mode 1, 2, 3.")
+    if quant_mode in (4, 5) and y_dtype not in (None, 24, 292):
         raise ValueError("MX requires E4M3FN.")
     allowed_types = {
         0: (None, 5, 15),
@@ -580,9 +581,9 @@ def get_ccl_buffer_size(
         4: (None, 24, 292),
         5: (None, 24, 292),
     }
-    if moe_expert_dtype not in allowed_types[quant_mode]:
+    if y_dtype not in allowed_types[quant_mode]:
         raise ValueError(
-            "moe_expert_dtype is not supported for this independent dispatch quant_mode."
+            "y_dtype is not supported for this independent dispatch quant_mode."
         )
     token_bytes = align(hidden * 2 if quant_mode == 0 else hidden, 32)
     if quant_mode == 2:
@@ -657,7 +658,7 @@ if _TORCHAIR_AVAILABLE:
         zero_expert_num=0,
         copy_expert_num=0,
         const_expert_num=0,
-        moe_expert_dtype=None,
+        y_dtype=None,
         x_dtype=None,
         x_smooth_scales_dtype=None,
         meta_outputs=None,
@@ -665,9 +666,9 @@ if _TORCHAIR_AVAILABLE:
         if (
             shared_expert_input is not None
             and quant_mode in (1, 2, 3)
-            and moe_expert_dtype is None
+            and y_dtype is None
         ):
-            raise ValueError("moe_expert_dtype is required for quant_mode 1, 2, 3.")
+            raise ValueError("y_dtype is required for quant_mode 1, 2, 3.")
         if x_dtype is not None:
             x = ge.Bitcast(x, type=torch_dtype_value_to_ge_type(x_dtype))
             x.desc.dtype = torch_dtype_value_to_ge_proto_type(x_dtype)
@@ -679,8 +680,8 @@ if _TORCHAIR_AVAILABLE:
                 x_smooth_scales_dtype
             )
         moe_dtype = (
-            torch_dtype_value_to_ge_type(moe_expert_dtype)
-            if moe_expert_dtype is not None
+            torch_dtype_value_to_ge_type(y_dtype)
+            if y_dtype is not None
             else (
                 x.dtype
                 if quant_mode == 0
@@ -784,7 +785,7 @@ if _TORCHAIR_AVAILABLE:
             else DataType.DT_FLOAT8_E8M0
         )
         outputs[1].desc.dtype = ge_dtype_to_ge_proto_dtype(scale_dtype)
-        if not shared_rank and moe_expert_dtype in (296, 297):
+        if not shared_rank and y_dtype in (296, 297):
             shape = ge.Shape(outputs[0])
             half_shape = ge.Div(shape, ge.Const([1, 2], dtype=DataType.DT_INT32))
             packed_shape = ge.ConcatV2(

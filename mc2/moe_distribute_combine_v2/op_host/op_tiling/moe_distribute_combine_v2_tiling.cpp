@@ -1732,8 +1732,17 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
             (activeMaskAlignHalfSize > hFloatAlign32Size ? activeMaskAlignHalfSize : hFloatAlign32Size);
     }
 
-    uint64_t totalBufferSize = static_cast<uint64_t>(maxSizeTokenBuf) + maxSizeRowTmpFloatBuf + mulBufSize +
-                               hFloatAlign32Size * bufferNum + UB_ALIGN;
+    uint64_t sharedSumBytes = 0U;
+    if (config.enableIndependentSharedExpert) {
+        // Match the interleaved receiver: separate sums, shared input/cast/output scratch.
+        const uint32_t sharedOutputBytes = (hExpandXTypeSize * 2U + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
+        const uint32_t sharedFloatBytes = (hFloatSize * 2U + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
+        maxSizeTokenBuf = std::max(maxSizeTokenBuf, sharedOutputBytes);
+        maxSizeRowTmpFloatBuf = std::max(maxSizeRowTmpFloatBuf, sharedFloatBytes);
+        sharedSumBytes = sharedFloatBytes;
+    }
+    uint64_t totalBufferSize = sharedSumBytes + static_cast<uint64_t>(maxSizeTokenBuf) + maxSizeRowTmpFloatBuf +
+                               mulBufSize + hFloatAlign32Size * bufferNum + UB_ALIGN;
     if (config.hasAddRmsNorm) {
         totalBufferSize += hExpandXAlign32Size + NUM_PER_REP_FP32 * sizeof(float) * BUFFER_NUM;
     }
@@ -1898,6 +1907,19 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     uint64_t commBufferSize = static_cast<uint64_t>(scaleNumAlignSize) + clearFlagBufSize;
     dispatchBufferSize =
         isA5 ? GetDispatchBufferSize(tilingData, moeQueueBytes, commDataBytes, packedDataBytes, quantBufferSize) : 0U;
+    if (config.enableIndependentSharedExpert) {
+        const uint32_t sharedBlocks = (hExpandXTypeSize * 2U + SPLIT_BLOCK_DATA_SIZE - 1U) / SPLIT_BLOCK_DATA_SIZE;
+        const uint32_t sharedPackedBytes = sharedBlocks * SPLIT_BLOCK_DATA_SIZE;
+        const uint32_t sharedClearBytes = sharedBlocks * SPLIT_BLOCK_FLAG_COUNT * sizeof(float);
+        // Only receive queues grow. MoE sender queues still use the original communication format.
+        moeQueueBytes = std::max(moeQueueBytes, sharedPackedBytes);
+        commBufferSize = static_cast<uint64_t>(scaleNumAlignSize) + std::max(clearFlagBufSize, sharedClearBytes);
+        if (config.isIndependentSharedRank) {
+            // calBegin/fixedEnd/minimum indexCounts/calEnd plus one input/output pair; no quantization scratch.
+            dispatchBufferSize =
+                4UL * UB_ALIGN + sharedPackedBytes + static_cast<uint64_t>(sharedBlocks) * WIN_ADDR_ALIGN;
+        }
+    }
     return commBufferSize;
 }
 

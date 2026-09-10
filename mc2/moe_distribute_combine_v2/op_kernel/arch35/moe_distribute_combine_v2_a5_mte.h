@@ -76,8 +76,11 @@ private:
         return (static_cast<uint64_t>(token) * (axisK_ + sharedExpertNum_) + slot) * hAlignWinSize_;
     }
     __aicore__ inline void SendIndependentShared(uint32_t rank, uint32_t token, uint32_t slot, uint32_t index);
-    __aicore__ inline void ReceiveIndependentShared();
+    __aicore__ inline void ProcessIndependentSharedToken();
     GlobalTensor<XType> sharedOutGM_;
+    TBuf<> sharedSumBuf_;
+    uint32_t sharedTokenIndex_{0};
+    uint32_t sharedExpertIndex_{0};
     uint64_t moeCombineBytes_{0};
     uint64_t sharedCombineBytes_{0};
     uint64_t tokenBytes_{0};
@@ -727,6 +730,17 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
         maxSizeRowTmpFloatBuf =
             (activeMaskAlignHalfSize > hFloatAlign32Size_ ? activeMaskAlignHalfSize : hFloatAlign32Size_);
     }
+    if constexpr (IndependentShared) {
+        // Both streams keep their sums; input/cast/output scratch is shared between ready slots.
+        const uint32_t sharedOutputBytes = Ceil(axisH_ * 2U * sizeof(XType), UB_ALIGN) * UB_ALIGN;
+        const uint32_t sharedFloatBytes = Ceil(axisH_ * 2U * sizeof(float), UB_ALIGN) * UB_ALIGN;
+        maxSizeTokenBuf = MAX(maxSizeTokenBuf, sharedOutputBytes);
+        maxSizeRowTmpFloatBuf = MAX(maxSizeRowTmpFloatBuf, sharedFloatBytes);
+        tpipe_->InitBuffer(sharedSumBuf_, sharedFloatBytes);
+        // Give the early receiving cores the first tokens, including BS=1.
+        sharedTokenIndex_ = coreIdx_ >= sendAivNum_ ? coreIdx_ - sendAivNum_ : recvAivNum_ + coreIdx_;
+        sharedExpertIndex_ = 0U;
+    }
     // InitBuffer需要在tiling中计算ub总量
     tpipe_->InitBuffer(tokenBuf_, maxSizeTokenBuf);             // 16K 用于搬入输入token
     tpipe_->InitBuffer(rowTmpFloatBuf_, maxSizeRowTmpFloatBuf); // 32K 用于存储cast之后的fp32 token数据
@@ -737,6 +751,9 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     uint32_t moeQueueBytes = Ceil(packedDataBytes, UB_ALIGN) * UB_ALIGN;
     moeQueueBytes = (moeQueueBytes > rawPackedDataBytes) ? moeQueueBytes : rawPackedDataBytes;
     moeQueueBytes = (moeQueueBytes > hExpandXAlign32Size_) ? moeQueueBytes : hExpandXAlign32Size_;
+    if constexpr (IndependentShared) {
+        moeQueueBytes = MAX(moeQueueBytes, sharedCombineBytes_ / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_DATA_SIZE);
+    }
     // 普通、拷贝和常量专家串行处理，复用同一个队列
     tpipe_->InitBuffer(moeMainSumQueue_, bufferNum_, moeQueueBytes);
     if constexpr (HasAddRmsNorm) {
@@ -745,8 +762,17 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
         // H取最大值时，根据ReduceSum接口公式计算所需空间至少为64 * 2 = 128个元素
     }
     uint32_t clearFlagCount = flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
+    if constexpr (IndependentShared) {
+        clearFlagCount = MAX(clearFlagCount, sharedCombineBytes_ / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_FLAG_COUNT);
+    }
     uint32_t clearFlagBufSize = Ceil(clearFlagCount * sizeof(float), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(packedClearFlagBuf_, clearFlagBufSize);
+    if constexpr (IndependentShared) {
+        // Shared-only cores may have no active MoE tokens and never call LocalWindowInit.
+        auto clear = packedClearFlagBuf_.Get<float>();
+        Duplicate(clear, 0.0f, clearFlagCount);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+    }
 }
 
 template <A5MteCombineTypeClass>
@@ -1658,8 +1684,10 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
         firstRecordTensor_ = firstRecordBuf_.Get<int32_t>();
         Duplicate<int32_t>(firstRecordTensor_, static_cast<int32_t>(0), tokenPerAivNum_ * flagRcvCount_);
     }
-    LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
-    Duplicate<float>(flagTensor, float(0), flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT);
+    if constexpr (!IndependentShared) {
+        LocalTensor<float> flagTensor = packedClearFlagBuf_.Get<float>();
+        Duplicate<float>(flagTensor, float(0), flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT);
+    }
     SyncFunc<AscendC::HardEvent::V_S>();
     performanceTimeStart_ = static_cast<uint64_t>(GetSystemCycle());
     outputCopyPending_ = false;
@@ -1792,12 +1820,18 @@ __aicore__ inline bool MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
 template <A5MteCombineTypeClass>
 __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalWindowCopy()
 {
-    if (!LocalWindowSplitCoreCal()) {
-        return;
+    const bool hasMoeTokens = LocalWindowSplitCoreCal();
+    if (!hasMoeTokens) {
+        if constexpr (!IndependentShared) {
+            return;
+        }
+        tokenPerAivNum_ = 0U;
     }
     tokenNumCompleted_ = 0U;
     statePos_ = 1U;
-    LocalWindowInit();
+    if (hasMoeTokens) {
+        LocalWindowInit();
+    }
     uint32_t tokenLocalIdx0 = tokenPerAivNum_;
     uint32_t topkId0 = 0U;
     uint32_t index0 = 0U;
@@ -1805,7 +1839,13 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
     uint32_t topkId1 = 0U;
     uint32_t index1 = 0U;
     // token内按slot顺序处理，两个token之间轮转
-    while (tokenNumCompleted_ < tokenPerAivNum_) {
+    while (tokenNumCompleted_ < tokenPerAivNum_ || (IndependentShared && sharedTokenIndex_ < axisBS_)) {
+        if constexpr (IndependentShared) {
+            ProcessIndependentSharedToken();
+        }
+        if (tokenNumCompleted_ >= tokenPerAivNum_) {
+            continue;
+        }
         if (bufferNum_ == 1U) {
             TokenInit(0U, tokenLocalIdx0, topkId0, index0);
             ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
@@ -1813,16 +1853,26 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
             TokenInit(0U, tokenLocalIdx0, topkId0, index0);
             TokenInit(1U, tokenLocalIdx1, topkId1, index1);
             ProcessToken(0U, tokenLocalIdx0, topkId0, index0);
+            if constexpr (IndependentShared) {
+                ProcessIndependentSharedToken();
+            }
             ProcessToken(1U, tokenLocalIdx1, topkId1, index1);
         }
     }
     if (isPerformanceFlag_) {
         SyncFunc<AscendC::HardEvent::V_MTE3>();
+        if constexpr (IndependentShared) {
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
+        }
         SetAtomicMax<int32_t>();
         DataCopyExtParams performanceInfoCopyParams{
             1U, static_cast<uint32_t>(JUMP_WRITE * epWorldSizeOriginal_ * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(performanceInfoGM_, performanceInfoTensor_, performanceInfoCopyParams);
         SetAtomicNone();
+    }
+    if constexpr (IndependentShared) {
+        // Drain both output streams only at kernel completion, not between MoE and shared reception.
+        PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -1837,9 +1887,6 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
         }
         AlltoAllBuffInitAndMaskCal();
         LocalWindowCopy();
-        if constexpr (IndependentShared) {
-            ReceiveIndependentShared();
-        }
     }
 }
 
@@ -1874,80 +1921,70 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIn
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ReceiveIndependentShared()
+__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessIndependentSharedToken()
 {
-    // All MoE output copies on this core are complete before their UB is reused.
-    PipeBarrier<PIPE_ALL>();
-    tpipe_->Reset();
-    AscendC::SetCtrlSpr<A5_MTE_FLOAT_OVERFLOW_MODE_CTRL, A5_MTE_FLOAT_OVERFLOW_MODE_CTRL>(0);
+    if (sharedTokenIndex_ >= axisBS_) {
+        return;
+    }
     const uint32_t h = axisH_ * 2U;
-    blockCntPerToken_ = sharedCombineBytes_ / SPLIT_BLOCK_SIZE;
-    hFloatAlign32Size_ = Ceil(h * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    TBuf<> inputBuf, sumBuf, clearBuf, sharedPerformanceBuf;
-    tpipe_->InitBuffer(inputBuf, blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE);
-    tpipe_->InitBuffer(rowTmpFloatBuf_, hFloatAlign32Size_);
-    tpipe_->InitBuffer(sumBuf, hFloatAlign32Size_);
-    tpipe_->InitBuffer(clearBuf, blockCntPerToken_ * SPLIT_BLOCK_FLAG_SIZE);
+    const uint32_t blocks = sharedCombineBytes_ / SPLIT_BLOCK_SIZE;
+    GM_ADDR address = epWindowGM_ + GetTokenOffset(sharedTokenIndex_, axisK_ + sharedExpertIndex_);
+    const uint32_t flags = blocks * SPLIT_BLOCK_FLAG_COUNT;
+    // The preceding MoE Add may still read the cast scratch reused by the flag check.
+    PipeBarrier<PIPE_V>();
+    // Do not change blockCntPerToken_: the interleaved MoE stream still uses its quantized block size.
+    if (CheckPackedFlagRangeArrive(address + SPLIT_BLOCK_DATA_SIZE, static_cast<uint16_t>(blocks), flags,
+                                   SPLIT_BLOCK_DATA_SIZE) != flags) {
+        return;
+    }
     if (isPerformanceFlag_) {
-        tpipe_->InitBuffer(sharedPerformanceBuf,
-                           Ceil(JUMP_WRITE * epWorldSizeOriginal_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
-        performanceInfoTensor_ = sharedPerformanceBuf.Get<int32_t>();
-        Duplicate(performanceInfoTensor_, 0, JUMP_WRITE * epWorldSizeOriginal_);
+        uint32_t rank = sharedExpertIndex_ * rankNumPerShareExpert_ + epRankId_ % rankNumPerShareExpert_;
+        int32_t elapsed = static_cast<int32_t>((GetSystemCycle() - performanceTimeStart_) / CYCLES_PER_US);
+        // The performance buffer may still contain vector initialization or a preceding scalar update.
+        SyncFunc<AscendC::HardEvent::V_S>();
+        int32_t previous = performanceInfoTensor_.GetValue(rank * JUMP_WRITE);
+        performanceInfoTensor_.SetValue(rank * JUMP_WRITE, elapsed > previous ? elapsed : previous);
     }
-    mulBuf_ = inputBuf; // Flag comparison finishes before the token is copied in.
-    auto input = inputBuf.Get<ExpandXType>();
-    auto row = rowTmpFloatBuf_.Get<float>();
-    auto sum = sumBuf.Get<float>();
-    auto clear = clearBuf.Get<float>();
-    Duplicate(clear, 0.0f, blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT);
-    DataCopyExtParams inputParams{static_cast<uint16_t>(blockCntPerToken_), SPLIT_BLOCK_DATA_SIZE,
-                                  SPLIT_BLOCK_FLAG_SIZE, 0U, 0U};
-    DataCopyPadExtParams<ExpandXType> padding{false, 0U, 0U, 0U};
-    DataCopyExtParams clearParams{static_cast<uint16_t>(blockCntPerToken_), SPLIT_BLOCK_FLAG_SIZE, 0U,
-                                  SPLIT_BLOCK_DATA_SIZE, 0U};
-    DataCopyExtParams outputParams{1U, static_cast<uint32_t>(h * sizeof(XType)), 0U, 0U, 0U};
-    for (uint32_t token = coreIdx_; token < axisBS_; token += aivNum_) {
-        SyncFunc<AscendC::HardEvent::MTE3_V>();
+    auto sum = sharedSumBuf_.Get<float>();
+    if (sharedExpertIndex_ == 0U) {
         Duplicate(sum, 0.0f, h);
-        for (uint32_t expert = 0U; expert < sharedExpertNum_; ++expert) {
-            GM_ADDR address = epWindowGM_ + GetTokenOffset(token, axisK_ + expert);
-            while (CheckPackedTokenArrive(address, 1U) == 0U) {
-            }
-            if (isPerformanceFlag_) {
-                uint32_t rank = expert * rankNumPerShareExpert_ + epRankId_ % rankNumPerShareExpert_;
-                int32_t elapsed = static_cast<int32_t>((GetSystemCycle() - performanceTimeStart_) / CYCLES_PER_US);
-                int32_t previous = performanceInfoTensor_.GetValue(rank * JUMP_WRITE);
-                performanceInfoTensor_.SetValue(rank * JUMP_WRITE, elapsed > previous ? elapsed : previous);
-            }
-            GlobalTensor<ExpandXType> source;
-            source.SetGlobalBuffer((__gm__ ExpandXType *)address);
-            SyncFunc<AscendC::HardEvent::V_MTE2>();
-            DataCopyPad(input, source, inputParams, padding);
-            SyncFunc<AscendC::HardEvent::MTE2_V>();
-            Cast(row, input, RoundMode::CAST_NONE, h);
-            PipeBarrier<PIPE_V>();
-            Add(sum, sum, row, h);
-            PipeBarrier<PIPE_V>();
-            GlobalTensor<float> flags;
-            flags.SetGlobalBuffer((__gm__ float *)(address + SPLIT_BLOCK_DATA_SIZE));
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopyPad(flags, clear, clearParams);
-        }
-        auto output = inputBuf.Get<XType>();
-        Cast(output, sum, RoundMode::CAST_RINT, h);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(sharedOutGM_[static_cast<uint64_t>(token) * h], output, outputParams);
     }
-    // Only participating cores have synchronized the vector initialization in the token loop.
-    if (isPerformanceFlag_ && coreIdx_ < axisBS_) {
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        SetAtomicMax<int32_t>();
-        DataCopyExtParams params{
-            1U, static_cast<uint32_t>(JUMP_WRITE * epWorldSizeOriginal_ * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(performanceInfoGM_, performanceInfoTensor_, params);
-        SetAtomicNone();
+    GlobalTensor<ExpandXType> source;
+    source.SetGlobalBuffer((__gm__ ExpandXType *)address);
+    auto input = moeMainSumQueue_.AllocTensor<ExpandXType>();
+    DataCopyExtParams inputParams{static_cast<uint16_t>(blocks), SPLIT_BLOCK_DATA_SIZE, SPLIT_BLOCK_FLAG_SIZE, 0U, 0U};
+    DataCopyPadExtParams<ExpandXType> padding{false, 0U, 0U, 0U};
+    DataCopyPad(input, source, inputParams, padding);
+    moeMainSumQueue_.EnQue(input);
+    input = moeMainSumQueue_.DeQue<ExpandXType>();
+    auto row = rowTmpFloatBuf_.Get<float>();
+    Cast(row, input, RoundMode::CAST_NONE, h);
+    PipeBarrier<PIPE_V>();
+    Add(sum, sum, row, h);
+    PipeBarrier<PIPE_V>();
+    moeMainSumQueue_.FreeTensor(input);
+    GlobalTensor<float> flagGlobal;
+    flagGlobal.SetGlobalBuffer((__gm__ float *)(address + SPLIT_BLOCK_DATA_SIZE));
+    DataCopyExtParams clearParams{static_cast<uint16_t>(blocks), SPLIT_BLOCK_FLAG_SIZE, 0U, SPLIT_BLOCK_DATA_SIZE, 0U};
+    auto clear = packedClearFlagBuf_.Get<float>();
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(flagGlobal, clear, clearParams);
+    ++sharedExpertIndex_;
+    if (sharedExpertIndex_ != sharedExpertNum_) {
+        return;
     }
-    PipeBarrier<PIPE_ALL>();
+    if (outputCopyPending_) {
+        // tokenBuf_ also holds asynchronous MoE output; protect it before the shared Cast overwrites it.
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+    }
+    auto output = tokenBuf_.Get<XType>();
+    Cast(output, sum, RoundMode::CAST_RINT, h);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyExtParams outputParams{1U, static_cast<uint32_t>(h * sizeof(XType)), 0U, 0U, 0U};
+    DataCopyPad(sharedOutGM_[static_cast<uint64_t>(sharedTokenIndex_) * h], output, outputParams);
+    outputCopyPending_ = true;
+    sharedExpertIndex_ = 0U;
+    sharedTokenIndex_ += aivNum_;
 }
 
 } // namespace MoeDistributeCombineV2A5MteImpl
