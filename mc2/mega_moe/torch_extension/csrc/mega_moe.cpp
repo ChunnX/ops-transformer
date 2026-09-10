@@ -61,7 +61,7 @@ static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, 
             expectedName = "float8_e4m3fn";
             break;
         case aclDataType::ACL_FLOAT4_E2M1:
-            expectedName = "float4_e2m1fn_x2 or uint8 (packed FP4)";
+            expectedName = "uint8 (packed FP4)";
             break;
         default:
             TORCH_CHECK(false, name, " weight type must be FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1 on ", socName,
@@ -73,8 +73,7 @@ static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, 
         const bool matches =
             (expectedDtype == aclDataType::ACL_FLOAT8_E5M2 && dtype == at::ScalarType::Float8_e5m2) ||
             (expectedDtype == aclDataType::ACL_FLOAT8_E4M3FN && dtype == at::ScalarType::Float8_e4m3fn) ||
-            (expectedDtype == aclDataType::ACL_FLOAT4_E2M1 &&
-             (dtype == at::ScalarType::Float4_e2m1fn_x2 || dtype == at::ScalarType::Byte));
+            (expectedDtype == aclDataType::ACL_FLOAT4_E2M1 && dtype == at::ScalarType::Byte);
         TORCH_CHECK(matches, name, "[", i, "] dtype must be ", expectedName, " on ", socName, ", but got ", dtype, ".");
     }
 }
