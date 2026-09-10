@@ -40,8 +40,11 @@ pip install pandas openpyxl
 | wgate_datarange | str | wgate 数值范围 | -10,10 |
 | kv_state_datarange | str | kv_state 数值范围 | -10,10 |
 | score_state_datarange | str | score_state 数值范围 | -10,10 |
+| is_contiguous | bool | 可选。是否连续 state_cache：True=不加 pad（连续）；不填/False=随机 pad（非连续，默认） | False |
 
-> 注：新版接口已移除 `coff`、`cache_mode`、`ape` 三个参数，测试中统一硬编码 coff=1、cache_mode=2，不再填列。
+> 注：新版接口已移除 `coff`、`cache_mode`、`ape` 三个参数，测试中统一硬编码 coff=1、cache_mode=2（固定环形buffer）。
+>
+> 注：`is_contiguous` 为可选列，**不填则默认为非连续**（带 pad），与算子默认行为一致。
 
 ### 参数限制（README 说明）
 

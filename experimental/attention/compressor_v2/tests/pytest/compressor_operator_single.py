@@ -75,6 +75,7 @@ def output_operator(params):
         wgate_datarange,
         kv_state_datarange,
         score_state_datarange,
+        is_contiguous,
     ) = params
     S_max = 0
     save_state_seqlens = None
@@ -133,4 +134,5 @@ def output_operator(params):
         wgate_datarange=wgate_datarange,
         kv_state_datarange=kv_state_datarange,
         score_state_datarange=score_state_datarange,
+        is_contiguous=is_contiguous,
     )

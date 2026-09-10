@@ -1,5 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """Generate compressor_v2 test case Excel from test_compressor_paramset.py ENABLED_PARAMS."""
 
 import itertools
@@ -52,6 +61,7 @@ OUT_COLUMNS = [
     "wgate_datarange",
     "kv_state_datarange",
     "score_state_datarange",
+    "is_contiguous",
 ]
 
 
@@ -85,6 +95,7 @@ for group_name, params in p.TEST_PARAMS.items():
             "wgate_datarange": fmt_range(d["wgate_datarange"]),
             "kv_state_datarange": fmt_range(d["kv_state_datarange"]),
             "score_state_datarange": fmt_range(d["score_state_datarange"]),
+            "is_contiguous": params.get("is_contiguous", [False])[0],
         }
         rows.append(row)
 

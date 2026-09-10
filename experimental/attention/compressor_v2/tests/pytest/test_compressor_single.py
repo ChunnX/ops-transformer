@@ -22,6 +22,7 @@ locals()["param_combinations"] = []
 
 for _, params in enumerate(ENABLED_PARAMS):
     # 将params的所有字段注册为局部变量
+    locals()["param_is_contiguous"] = [False]
     for key, value in params.items():
         locals()[f"param_{key}"] = value
 
@@ -44,6 +45,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         "wgate_datarange",
         "kv_state_datarange",
         "score_state_datarange",
+        "is_contiguous",
     ]
 
     param_values = [
@@ -64,6 +66,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_wgate_datarange"],
         locals()["param_kv_state_datarange"],
         locals()["param_score_state_datarange"],
+        locals()["param_is_contiguous"],
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -91,6 +94,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         wgate_datarange = param_combinations["wgate_datarange"]
         kv_state_datarange = param_combinations["kv_state_datarange"]
         score_state_datarange = param_combinations["score_state_datarange"]
+        is_contiguous = param_combinations["is_contiguous"]
 
         test_data = (
             batch_size,
@@ -110,6 +114,7 @@ for _, params in enumerate(ENABLED_PARAMS):
             wgate_datarange,
             kv_state_datarange,
             score_state_datarange,
+            is_contiguous,
         )
 
         torch_npu.npu.set_device(0)

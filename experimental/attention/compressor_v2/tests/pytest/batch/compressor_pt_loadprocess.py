@@ -52,67 +52,36 @@ def test_compressor_process(filepath, device_id=0):
     coff = 1
     cache_mode = 2
 
-    is_contiguous_flag = True
-    if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
-        if is_contiguous_flag:
-            state_cache = torch.zeros(
-                (kv_state.shape[0], kv_state.shape[1], 2 * kv_state.shape[2])
-            )
-            state_cache[:, :, : state_cache.shape[2] // 2] = kv_state.clone()
-            state_cache[:, :, state_cache.shape[2] // 2 :] = score_state.clone()
-        else:
-            layer_stride = random.randint(1, 10)
-            print(f"layer_stride: {layer_stride}")
-            state_cache_pad = torch.zeros(
-                (
-                    kv_state.shape[0],
-                    (kv_state.shape[1] + layer_stride) * kv_state.shape[2] * 2,
-                )
-            )
-            print(f"state_cache_pad: shape {state_cache_pad.shape}")
-            # 使用 as_strided 创建非连续视图
-            state_cache = torch.as_strided(
-                state_cache_pad,
-                size=(kv_state.shape[0], kv_state.shape[1], kv_state.shape[2] * 2),
-                stride=(
-                    (kv_state.shape[1] + layer_stride) * kv_state.shape[2] * 2,
-                    kv_state.shape[2] * 2,
-                    1,
-                ),
-            )
-            # 填充数据
-            state_cache[:, :, : kv_state.shape[2]] = kv_state.clone()
-            state_cache[:, :, kv_state.shape[2] :] = score_state.clone()
-            print(
-                f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}"
-            )
+    # 该算子已固定为非连续(环形 buffer)模式；is_contiguous 仅控制是否加 pad：
+    #   True  -> layer_pad=0，state_cache 连续
+    #   False -> 随机 pad，state_cache 非连续（默认）
+    is_contiguous = bool(test_data.get("is_contiguous", False))
+    if is_contiguous:
+        layer_pad = 0
+        layer_start_idx = 0
     else:
-        layer_num = random.randint(1, 50)
-        layer_start_idx = random.randint(0, layer_num - 1)
-        print(f"layer_num: {layer_num}")
-        print(f"layer_start_idx: {layer_start_idx}")
-        state_cache_pad = torch.zeros(
-            (kv_state.shape[0], layer_num * kv_state.shape[1] * kv_state.shape[2] * 2)
-        )
-        print(f"state_cache_pad: shape {state_cache_pad.shape}")
-        # state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
-        state_cache = state_cache_pad[
-            :,
-            layer_start_idx * kv_state.shape[1] * kv_state.shape[2] * 2 : (
-                layer_start_idx + 1
-            )
-            * kv_state.shape[1]
-            * kv_state.shape[2]
-            * 2,
-        ].view(-1, kv_state.shape[1], kv_state.shape[2] * 2)
-        # state_cache = state_cache.to("npu:%s" % DEVICE_ID)
-        state_cache[:, :, : state_cache.shape[2] // 2] = kv_state.clone()
-        state_cache[:, :, state_cache.shape[2] // 2 :] = score_state.clone()
-        print(
-            f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}"
-        )
-
-    state_cache = state_cache.npu()
+        layer_pad = random.randint(1, 50)
+        layer_start_idx = random.randint(0, layer_pad - 1)
+    print(f"layer_pad: {layer_pad}, layer_start_idx: {layer_start_idx}")
+    state_cache_pad = torch.zeros(
+        (kv_state.shape[0], kv_state.shape[1] * kv_state.shape[2] * 2 + layer_pad)
+    )
+    print(f"state_cache_pad: shape {state_cache_pad.shape}")
+    # 先搬到 NPU，再从 NPU tensor 建非连续视图（否则 state_cache 仍是 CPU 视图）
+    state_cache_pad = state_cache_pad.to("npu:%s" % device_id)
+    state_cache = state_cache_pad[
+        :,
+        layer_start_idx : layer_start_idx + kv_state.shape[1] * kv_state.shape[2] * 2,
+    ].view(-1, kv_state.shape[1], kv_state.shape[2] * 2)
+    state_cache[:, :, : state_cache.shape[2] // 2] = kv_state.clone().to(
+        "npu:%s" % device_id
+    )
+    state_cache[:, :, state_cache.shape[2] // 2 :] = score_state.clone().to(
+        "npu:%s" % device_id
+    )
+    print(
+        f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}"
+    )
     if cu_seqlens is not None:
         cu_seqlens = cu_seqlens.npu()
     if seqused is not None:

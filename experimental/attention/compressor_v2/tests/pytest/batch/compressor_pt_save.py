@@ -103,6 +103,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row["wgate_datarange"],
                     row["kv_state_datarange"],
                     row["score_state_datarange"],
+                    bool(row.get("is_contiguous", False)),
                 )
             )
 
@@ -176,6 +177,7 @@ def compressor_output_single(data_case):
         wgate_datarange,
         kv_state_datarange,
         score_state_datarange,
+        is_contiguous,
     ) = params
 
     if data_type == "FP16":
@@ -513,6 +515,7 @@ def compressor_output_single(data_case):
         "cmp_ratio": cmp_ratio,
         "coff": coff,
         "cache_mode": cache_mode,
+        "is_contiguous": is_contiguous,
     }
     return casename, output_tensors
 
