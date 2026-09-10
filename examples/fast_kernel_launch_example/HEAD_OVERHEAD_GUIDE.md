@@ -77,10 +77,11 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 
 ## 测试输入与参考数据
 
-测试输入 shape（scan_replay.py 定义，A5/A3 双平台同一 shape）：
+测试输入 shape（scan_replay.py / tests/incre_flash_attention/test.py 定义）：
 
 - add：fp16 一维 **7,339,920** 元素（336×21845；A5 56 核 / A3 48 核均分整 tile，无尾块分支）
 - grouped_matmul：bf16 **E=1, M=448, K=16, N=16**（x [448,16] × weight [16,16]；M=448 切满 A5 28 Cube 核 / A3 24 Cube 核，聚焦头开销取小 K/N）
+- incre_flash_attention：bf16 query **[B, 64, 1, 128]**（BNSD，GQA 64:1，B=A5 28 / A3 24 随平台 Cube 核数满核）+ int8 KV cache NZ 布局 **[65B, 1, 4, 128, 32]**（block_size=128，kv_seq=8192）+ bf16 per-channel 反量化 scale [1,1,128]（伪量化场景，key/value int8）
 
 ### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz）
 
