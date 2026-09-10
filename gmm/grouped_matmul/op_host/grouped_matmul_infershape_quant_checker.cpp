@@ -29,10 +29,10 @@ static const std::unordered_set<ge::DataType> PERTOEKN_SCALE_TYPE_SUPPORT_SET = 
 constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
 constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
 constexpr int64_t GROUP_LIST_TYPE_SPARSE_M = 2L;
-constexpr size_t X_SHAPE_DIM_SPLIT_M = 2;
-constexpr size_t W_SHAPE_DIM_SPLIT_M = 3;
-constexpr size_t X_SHAPE_DIM_SPLIT_K = 2;
-constexpr size_t W_SHAPE_DIM_SPLIT_K = 2;
+constexpr size_t X_SHAPE_DIM_SPLIT_M = 2UL;
+constexpr size_t W_SHAPE_DIM_SPLIT_M = 3UL;
+constexpr size_t X_SHAPE_DIM_SPLIT_K = 2UL;
+constexpr size_t W_SHAPE_DIM_SPLIT_K = 2UL;
 
 static bool inline IsNonEmpty(const gert::Shape *shape)
 {
