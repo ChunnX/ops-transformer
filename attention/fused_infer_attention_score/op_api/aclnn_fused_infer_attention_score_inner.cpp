@@ -11,6 +11,7 @@
 #include "fused_infer_attention_score_inner.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -132,6 +133,32 @@ void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTen
     } else {
         placeHolder = softmaxLse;
     }
+}
+
+aclnnStatus CheckKVContiguous(const aclTensorList *key, const aclTensorList *value)
+{
+    const aclTensorList *kvLists[] = {key, value};
+    for (const aclTensorList *tensorList : kvLists) {
+        if (tensorList == nullptr) {
+            continue;
+        }
+        for (uint64_t i = 0; i < tensorList->Size(); ++i) {
+            if ((*tensorList)[i] != nullptr && !IsContiguous((*tensorList)[i])) {
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus CheckKVRopeContiguous(const aclTensorList *key, const aclTensorList *value,
+                                  const aclTensor *keyRope)
+{
+    if (CheckKVContiguous(key, value) != ACLNN_SUCCESS ||
+        (keyRope != nullptr && !IsContiguous(keyRope))) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
 }
 
 } // namespace

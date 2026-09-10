@@ -620,22 +620,22 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
             ToStringRaw(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        if (fiaInfo.s1Size < 1) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
-                ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-                "S of query must be >=1 in the Decode MLA scenario");
-            return ge::GRAPH_FAILED;
-        }
-        static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
-        if ((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end())) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
-                std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
-                "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
-                "in the Decode MLA scenario");
-            return ge::GRAPH_FAILED;
-        }
-    }
+    // if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+    //     if (fiaInfo.s1Size < 1) {
+    //         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+    //             ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+    //             "S of query must be >=1 in the Decode MLA scenario");
+    //         return ge::GRAPH_FAILED;
+    //     }
+    //     static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
+    //     if ((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end())) {
+    //         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
+    //             std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
+    //             "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
+    //             "in the Decode MLA scenario");
+    //         return ge::GRAPH_FAILED;
+    //     }
+    // }
     OP_LOGI(fiaInfo.opName, "The axis B(%u), qkD(%u), vD(%u), G(%u), qT(%u), kT(%u).",
             fiaInfo.bSize, fiaInfo.qkHeadDim, fiaInfo.vHeadDim, fiaInfo.gSize, fiaInfo.qTSize, fiaInfo.kTSize);
     return ge::GRAPH_SUCCESS;
@@ -1083,22 +1083,22 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
-        static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
-        if ((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end())) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
-                std::to_string(fiaInfo.n1Size).c_str(),
-                "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
-                "in the Decode MLA scenario");
-            return ge::GRAPH_FAILED;
-        }
-        if (fiaInfo.n2Size != 1U) {
-            std::string reason = "The value of num_key_value_heads must be 1 in the Decode MLA scenario";
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
-                std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
-            return ge::GRAPH_FAILED;
-        }
-    }
+    // if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
+    //     static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
+    //     if ((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end())) {
+    //         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+    //             std::to_string(fiaInfo.n1Size).c_str(),
+    //             "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
+    //             "in the Decode MLA scenario");
+    //         return ge::GRAPH_FAILED;
+    //     }
+    //     if (fiaInfo.n2Size != 1U) {
+    //         std::string reason = "The value of num_key_value_heads must be 1 in the Decode MLA scenario";
+    //         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
+    //             std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
+    //         return ge::GRAPH_FAILED;
+    //     }
+    // }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1367,51 +1367,6 @@ bool CommonChecker::CheckTransposeLayoutCrossover(const FiaTilingInfo &fiaInfo)
     return true;
 }
 
-ge::graphStatus CommonChecker::CheckKvISContiguous(const FiaTilingInfo &fiaInfo)
-{
-    if (fiaInfo.isTensorV1) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    for (int i = 0; i < fiaInfo.kCache.size(); ++i) {
-        const gert::Shape &keyShape = fiaInfo.kCache[i]->GetStorageShape();
-        const gert::Shape &valueShape = fiaInfo.vCache[i]->GetStorageShape();
-        uint32_t keyDimNum = keyShape.GetDimNum();
-        uint32_t valueDimNum = valueShape.GetDimNum();
-        int32_t dimIndex = 0;
-
-        if (!fiaInfo.pageAttentionFlag) {
-            OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape, fiaInfo.kStrideCache[i], dimIndex) !=
-                         ge::GRAPH_SUCCESS),
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                        "In non-PA scenarios, key tensor must be contiguous"),
-                return ge::GRAPH_FAILED);
-
-            OP_CHECK_IF(CheckTensorContiguous(valueDimNum, valueShape, fiaInfo.vStrideCache[i], dimIndex) !=
-                        ge::GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                        "In non-PA scenarios, value tensor must be contiguous"),
-                return ge::GRAPH_FAILED);
-        } else {
-            bool isMxfp8 = (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT);
-            if (!isMxfp8) {
-                OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape, fiaInfo.kStrideCache[i], dimIndex) !=
-                             ge::GRAPH_SUCCESS),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                            "In PA and not MXFP8 Fullquant scenarios, key tensor must be contiguous"),
-                    return ge::GRAPH_FAILED);
-
-                OP_CHECK_IF(CheckTensorContiguous(valueDimNum, valueShape, fiaInfo.vStrideCache[i], dimIndex) !=
-                            ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                            "In PA and not MXFP8 Fullquant scenarios, value tensor must be contiguous"),
-                    return ge::GRAPH_FAILED);
-            }
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CommonChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
@@ -1494,9 +1449,6 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         }
     }
     if (CheckShapeConsistency(fiaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (CheckKvISContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
