@@ -1,4 +1,11 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """Attenmask copy-in and ProcessVec2 softmax VF.
 
 ASC: vector_api/pse_atten_mask_muls_simple_softmax.h
@@ -14,12 +21,13 @@ VECTOR_BASEM = 64
 VECTOR_BASEN = 128
 VF_LANES = 64
 ATTEN_MASK_COMPRESS = 2048
-ATTEN_MASK_MIN = -3.4028234663852886e+38
+ATTEN_MASK_MIN = -3.4028234663852886e38
 
 
 @pl.vector_function
-def muls_sel_simple_softmax_vf(mm2_ub, lse_ub, mask_ub, scale: pl.DT_FP32,
-                               srcM: pl.DT_INT64, rowShift: pl.DT_INT64):
+def muls_sel_simple_softmax_vf(
+    mm2_ub, lse_ub, mask_ub, scale: pl.DT_FP32, srcM: pl.DT_INT64, rowShift: pl.DT_INT64
+):
     """ASC MulsSelSimpleSoftMax / MulsSelVFPseType1。
 
     P = exp(S * scale - lse)。mask_mode 是 tilingkey，与 d_align 一样在
@@ -79,8 +87,7 @@ def _load_compress_mask(tensor_mask, mask_ub, off, halfS1, s2Real):
     pl.set_validshape(mask_ub, [VECTOR_BASEM, VECTOR_BASEN])
 
 
-def copy_in_atten_mask(constInfo, runInfo, subIdx, tensor_mask, mask_ub,
-                       mask_pre_ub):
+def copy_in_atten_mask(constInfo, runInfo, subIdx, tensor_mask, mask_ub, mask_pre_ub):
     """ASC CopyInAttenMask / AttenMaskCopyIn / ComputeAttenMaskOffset。"""
     if runInfo.halfS1RealSize == 0:
         return
