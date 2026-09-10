@@ -1,0 +1,303 @@
+# ============================================================
+# roi_extractor — L0 数学约束 spec
+# 分类：Interpolation（category_enum.yaml 明确列出 roi_align）
+# 范式：Interpolation（category_paradigm_map.yaml 必含集）
+# 说明：实际算子输入为 L 个独立 4D 张量（GE DYNAMIC_INPUT features，H/W 逐层递减）；
+#       本 spec 以打包视图表达数学语义：feats 折叠维 '...lnc' 展开为 (L,N,C)，
+#       显式尾维 (H,W)；单层级时 L=1。rois 折叠维 '...k' 允许前导 batch 维（通常为空）。
+#       kernel 逐层处理时 shape 由 dynamic input 携带，数学上每个 RoI 只触及自身映射层级。
+# ============================================================
+schema_version: 1
+
+op:
+  name: roi_extractor
+  version: "1.0"
+  description: "多层级 RoI 特征提取：FPN 层级映射 + RoIAlign 双线性插值池化，兼容 mmdet SingleRoIExtractor 与遗留 GE RoiExtractor 属性面"
+  category: Interpolation
+  paradigms: [Interpolation]
+  lifecycle: stable
+  error_codes: [null_input, attribute_value_out_of_range, shape_mismatch, dtype_not_supported]
+  platform_constraints:
+    supported_chips: [Ascend910B, Ascend950PR]
+    requires_hccl: false
+
+inputs:
+  - name: feats
+    description: "多层级特征图（dynamic input L 层 NCHW；折叠维 ...lnc 展开 (L,N,C)，L∈[1,5]，各层 C 相同）"
+    role: tensor
+    dtype_set: [float16, float32]
+    rank_range: [4, 5]
+    layout: NCHW
+    shape:
+      symbolic: ["...lnc", "H", "W"]
+  - name: rois
+    description: "RoI 框 [K,5]=(batch_idx,x1,y1,x2,y2)；[K,4]+index 变体（GEIR 名 index，int32 [K]）在数学上等价，见 notes"
+    role: tensor
+    dtype_set: [float16, float32]
+    rank_range: [2, 3]
+    layout: ND
+    shape:
+      symbolic: ["...k", "K", 5]
+
+attributes:
+  - name: finest_scale
+    type: int64
+    default: 56
+    semantics: "层级映射基准尺度：lvl = clamp(floor(log2(scale/finest_scale+1e-6)), 0, L-1)"
+    machine_constraint: {kind: int_in_range, lower_inclusive: 1, upper_inclusive: 4096}
+  - name: roi_scale_factor
+    type: float32
+    default: 0.0
+    semantics: ">0 时层级映射前 RoI 坐标除以该因子（遗留 TBE 版为 no-op，本 spec 明确为映射前重缩放语义）"
+    machine_constraint: {kind: float_in_range, lower_inclusive: 0.0, upper_inclusive: 16.0}
+  - name: spatial_scale
+    type: list[float32]
+    default: [0.25, 0.125, 0.0625, 0.03125]
+    semantics: "每层坐标缩放因子（乘法语义），长度=L；遗留 ini 默认 [4,8,16,32] 与乘法语义矛盾，此处修正"
+  - name: pooled_height
+    type: int64
+    default: 7
+    semantics: "输出特征高（修复遗留版 pooled_w 被 pooled_h 覆盖的缺口，支持非方形）"
+    machine_constraint: {kind: int_in_range, lower_inclusive: 1, upper_inclusive: 56}
+  - name: pooled_width
+    type: int64
+    default: 7
+    semantics: "输出特征宽"
+    machine_constraint: {kind: int_in_range, lower_inclusive: 1, upper_inclusive: 56}
+  - name: sample_num
+    type: int64
+    default: 0
+    semantics: "每 bin 每 维采样点数；0=自适应 ceil(bin_size)，等价 torchvision sampling_ratio<=0"
+    machine_constraint: {kind: int_in_range, lower_inclusive: 0, upper_inclusive: 16}
+  - name: pool_mode
+    type: enum
+    default: avg
+    semantics: "bin 内聚合模式 avg/max（遗留 TBE 版仅 avg，此处补齐）"
+    machine_constraint: {kind: enum_in, values: [avg, max]}
+  - name: aligned
+    type: bool
+    default: true
+    semantics: "true 时坐标 −0.5 对齐偏移（mmdet 默认；torchvision 默认 False）"
+    machine_constraint: {kind: bool}
+
+outputs:
+  - name: y
+    description: "RoI 特征 [K,C,pooled_height,pooled_width]"
+    shape_rule_kind: numpy_expr
+    shape_rule: |
+      y.shape = (rois.shape[0], feats.shape[2], pooled_height, pooled_width)
+    dtype_rule_kind: numpy_expr
+    dtype_rule: |
+      y.dtype = feats.dtype
+    layout: ND
+    aliasing: none
+
+shape_constraints:
+  symbols:
+    H: {kind: dim, range: [1, 8192]}
+    W: {kind: dim, range: [1, 8192]}
+    K: {kind: dim, range: [0, 65536]}
+  global_constraints:
+    - "len(spatial_scale) == feats 折叠维展开后的 L（dynamic input 个数）"
+    - "rois 最后一维 == 5（或 ==4 且提供 index）"
+    - "0 <= rois[:,0] < N（batch_idx 越界在 op_api/tiling 校验报 shape_mismatch，kernel 侧安全钳制）"
+  notes:
+    - "不支持空 tensor（H 为 0 或 W 为 0 的特征图视为非法输入，K=0 空 RoIs 合法）"
+    - "实际输入为 L 个独立 [N,C,Hl,Wl] 张量，Hl/Wl 逐层递减；spec 打包视图 '...lnc'+(H,W) 仅为数学表达与验证抽象"
+    - "[K,4]+index 变体：batch_idx 由 index 携带，数学与 [K,5] 完全等价，故 spec 仅以 [K,5] 表达"
+    - "退化 RoI（w<=0 或 h<=0）按 max(w,1)/max(h,1) 处理，输出不全 0"
+    - "C 由各层特征图携带（折叠维内），输出通道维等于输入通道维"
+
+dtype_policy:
+  promotion: same_as_first_input
+  supported_combinations:
+    - {inputs: {feats: float16, rois: float16},  outputs: {y: float16}}
+    - {inputs: {feats: float32, rois: float32},  outputs: {y: float32}}
+
+broadcast:
+  kind: none
+
+math_semantics:
+  formula_kind: numpy_expr
+  formula: |
+    fa = feats if feats.ndim == 5 else (feats.reshape(1, feats.shape[0], feats.shape[1], feats.shape[2], feats.shape[3]) if feats.ndim == 4 else feats.reshape(1, 1, feats.shape[0], feats.shape[1], feats.shape[2]))
+    ra = rois if rois.ndim == 2 else rois.reshape(-1, 5)
+    L_ = fa.shape[0]
+    N_ = fa.shape[1]
+    C_ = fa.shape[2]
+    H_ = fa.shape[3]
+    W_ = fa.shape[4]
+    K_ = ra.shape[0]
+    bidx = np.clip(ra[:, 0].astype(np.int64), 0, N_ - 1)
+    x1 = ra[:, 1:2].astype(np.float64)
+    y1 = ra[:, 2:3].astype(np.float64)
+    x2 = ra[:, 3:4].astype(np.float64)
+    y2 = ra[:, 4:5].astype(np.float64)
+    f = float(roi_scale_factor)
+    x1m = x1 / f if f > 0.0 else x1
+    y1m = y1 / f if f > 0.0 else y1
+    x2m = x2 / f if f > 0.0 else x2
+    y2m = y2 / f if f > 0.0 else y2
+    scale = np.sqrt(np.clip((x2m - x1m) * (y2m - y1m), 0.0, None))
+    lvls = np.clip(np.floor(np.log2(scale / float(finest_scale) + 1e-6)), 0, L_ - 1).astype(np.int64)
+    ss_arr = np.asarray(spatial_scale, dtype=np.float64)
+    ss = ss_arr[np.minimum(lvls[:, 0], ss_arr.shape[0] - 1)]
+    off = 0.5 if aligned else 0.0
+    rx1 = x1 * ss[:, None] - off
+    ry1 = y1 * ss[:, None] - off
+    rx2 = x2 * ss[:, None] - off
+    ry2 = y2 * ss[:, None] - off
+    rw = np.maximum(rx2 - rx1, 1.0)
+    rh = np.maximum(ry2 - ry1, 1.0)
+    bw = rw / float(pooled_width)
+    bh = rh / float(pooled_height)
+    snum = int(sample_num)
+    nhv = np.maximum(np.ceil(bh), 1.0) if snum <= 0 else np.zeros_like(bh) + float(snum)
+    nwv = np.maximum(np.ceil(bw), 1.0) if snum <= 0 else np.zeros_like(bw) + float(snum)
+    SH = int(np.max(nhv)) if K_ > 0 else 1
+    SW = int(np.max(nwv)) if K_ > 0 else 1
+    PH = int(pooled_height)
+    PW = int(pooled_width)
+    ph = np.arange(PH).reshape(1, PH, 1, 1, 1).astype(np.float64)
+    pw = np.arange(PW).reshape(1, 1, PW, 1, 1).astype(np.float64)
+    ih = np.arange(SH).reshape(1, 1, 1, SH, 1).astype(np.float64)
+    iw = np.arange(SW).reshape(1, 1, 1, 1, SW).astype(np.float64)
+    bhr = bh.reshape(K_, 1, 1, 1, 1)
+    bwr = bw.reshape(K_, 1, 1, 1, 1)
+    nhr = nhv.reshape(K_, 1, 1, 1, 1)
+    nwr = nwv.reshape(K_, 1, 1, 1, 1)
+    yy = ry1.reshape(K_, 1, 1, 1, 1) + (ph + 0.5) * bhr + (ih + 0.5) * bhr / nhr
+    xx = rx1.reshape(K_, 1, 1, 1, 1) + (pw + 0.5) * bwr + (iw + 0.5) * bwr / nwr
+    yy = np.broadcast_to(yy, (K_, PH, PW, SH, SW))
+    xx = np.broadcast_to(xx, (K_, PH, PW, SH, SW))
+    valid = np.logical_and(np.broadcast_to(ih < nhr, (K_, PH, PW, SH, SW)), np.broadcast_to(iw < nwr, (K_, PH, PW, SH, SW)))
+    inside = np.logical_and(np.logical_and(yy >= -1.0, yy <= float(H_)), np.logical_and(xx >= -1.0, xx <= float(W_)))
+    vis = np.logical_and(valid, inside)
+    yyc = np.maximum(yy, 0.0)
+    xxc = np.maximum(xx, 0.0)
+    y0 = np.floor(yyc)
+    x0 = np.floor(xxc)
+    ly = yyc - y0
+    lx = xxc - x0
+    y0i = np.clip(y0.astype(np.int64), 0, H_ - 1)
+    x0i = np.clip(x0.astype(np.int64), 0, W_ - 1)
+    y1i = np.minimum(y0i + 1, H_ - 1)
+    x1i = np.minimum(x0i + 1, W_ - 1)
+    g = fa[lvls[:, 0], bidx].astype(np.float64)
+    P_ = PH * PW * SH * SW
+    y0q = y0i.reshape(K_, 1, P_, 1)
+    x0q = x0i.reshape(K_, 1, P_, 1)
+    y1q = y1i.reshape(K_, 1, P_, 1)
+    x1q = x1i.reshape(K_, 1, P_, 1)
+    gy0 = np.take_along_axis(g, y0q, 2)
+    gy1 = np.take_along_axis(g, y1q, 2)
+    v00 = np.take_along_axis(gy0, x0q, 3).reshape(K_, C_, P_)
+    v01 = np.take_along_axis(gy0, x1q, 3).reshape(K_, C_, P_)
+    v10 = np.take_along_axis(gy1, x0q, 3).reshape(K_, C_, P_)
+    v11 = np.take_along_axis(gy1, x1q, 3).reshape(K_, C_, P_)
+    w00 = ((1.0 - ly) * (1.0 - lx)).reshape(K_, 1, PH, PW, SH, SW)
+    w01 = ((1.0 - ly) * lx).reshape(K_, 1, PH, PW, SH, SW)
+    w10 = (ly * (1.0 - lx)).reshape(K_, 1, PH, PW, SH, SW)
+    w11 = (ly * lx).reshape(K_, 1, PH, PW, SH, SW)
+    visr = vis.reshape(K_, 1, PH, PW, SH, SW)
+    val = v00.reshape(K_, C_, PH, PW, SH, SW) * w00 + v01.reshape(K_, C_, PH, PW, SH, SW) * w01 + v10.reshape(K_, C_, PH, PW, SH, SW) * w10 + v11.reshape(K_, C_, PH, PW, SH, SW) * w11
+    val = np.where(visr, val, 0.0)
+    cnt = (nhv * nwv).reshape(K_, 1, 1, 1)
+    y_sum = np.sum(val, axis=(4, 5)) / cnt
+    y_max = np.max(val, axis=(4, 5))
+    y32 = y_sum if pool_mode == "avg" else y_max
+    y = y32.astype(feats.dtype)
+
+  reference_oracle:
+    framework: torch
+    api: torchvision.ops.roi_align
+    kwargs: {}
+    available_for_dtype: [float16, float32]
+    absent: true
+
+  invariants:
+    - name: shape_contract
+      kind: shape_equals_macro
+      macro: same_as
+      tolerance_inherit: false
+
+numerical_stability:
+  required: true
+  techniques:
+    - name: fp32_accumulation
+      applies_to: "fp16 输入时插值四点加权与 bin 内求和均升 fp32 累加，仅输入输出保持 fp16"
+      rationale: "fp16 直接累加在 sample_num 较大时舍入误差累积，破坏 1e-3 判据"
+      anti_pattern_id: AP-007
+  affects_invariants: false
+
+numerical_tolerance:
+  source: "ops-precision-standard/float_compute_community.md"
+  per_dtype:
+    float16:  {rtol: 1.0e-3, atol: 1.0e-3, metric: max_relative}
+    float32:  {rtol: 1.0e-5, atol: 1.0e-5, metric: max_relative}
+
+boundary_conditions:
+  - case: "单层级退化（L=1，等价 roi_align）"
+    synthesize: {feats.shape: "[1,2,4,8,8]", rois.shape: "[3,5]"}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "多层级跨层分布（K 个 RoI 落在不同层级，含 clamp 到 L-1）"
+    synthesize: {feats.shape: "[4,2,3,32,32]", rois.shape: "[8,5]"}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "空 RoIs（K=0 → 输出 [0,C,ph,pw]）"
+    synthesize: {feats.shape: "[2,2,3,16,16]", rois.shape: "[0,5]"}
+    machine_check: {kind: returns_empty}
+  - case: "退化 RoI（x2<=x1，w<=0 → max(w,1) 处理）"
+    synthesize: {feats.shape: "[1,2,3,16,16]", rois.shape: "[2,5]"}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "RoI 完全越界（采样点全部 <-1 或 >H/W → 输出 0）"
+    synthesize: {feats.shape: "[1,2,3,8,8]", rois.shape: "[1,5]"}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "非方形池化（pooled_h != pooled_w，修复遗留缺口）"
+    synthesize: {feats.shape: "[2,1,3,16,16]", rois.shape: "[3,5]", attr.pooled_height: 7, attr.pooled_width: 14}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "max 池化模式（遗留版仅 avg，此处补齐）"
+    synthesize: {feats.shape: "[2,1,3,16,16]", rois.shape: "[3,5]", attr.pool_mode: "max"}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "固定采样点数（sample_num=4 > 自适应）"
+    synthesize: {feats.shape: "[1,1,3,16,16]", rois.shape: "[2,5]", attr.sample_num: 4}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "sample_num 越界 (<0) → 报错"
+    synthesize: {feats.shape: "[1,2,3,8,8]", rois.shape: "[2,5]", attr.sample_num: -1}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  - case: "pool_mode 非法 → 报错"
+    synthesize: {feats.shape: "[1,2,3,8,8]", rois.shape: "[2,5]", attr.pool_mode: "median"}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  - case: "pooled_height 越界 (>56) → 报错"
+    synthesize: {feats.shape: "[1,2,3,8,8]", rois.shape: "[2,5]", attr.pooled_height: 64}
+    machine_check: {kind: raises_error, error_type: attribute_value_out_of_range}
+  - case: "batch_idx 越界（>= N → op_api/tiling 校验报错）"
+    synthesize: {feats.shape: "[2,1,3,8,8]", rois.shape: "[1,5]"}
+    machine_check: {kind: raises_error, error_type: shape_mismatch}
+
+extreme_inputs:
+  - case: "大尺度 RoI（映射 clamp 到 L-1 层，特征全 1 时 max 模式输出恒 1）"
+    synthesize:
+      shapes: {feats: "[3,1,4,64,64]", rois: "[4,5]"}
+      patterns:
+        - {pattern: "all_same(1.0)", target: feats}
+      attrs: {finest_scale: 56, pooled_height: 7, pooled_width: 7, pool_mode: "max"}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "全零特征（avg/max 输出均应为 0）"
+    synthesize:
+      shapes: {feats: "[2,2,3,16,16]", rois: "[3,5]"}
+      patterns:
+        - {pattern: "all_zero", target: feats}
+      attrs: {finest_scale: 56, pooled_height: 7, pooled_width: 7}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+  - case: "含 NaN 的 RoI 坐标（NaN 经 clip/钳制后映射受限传播）"
+    synthesize:
+      shapes: {feats: "[2,2,3,16,16]", rois: "[3,5]"}
+      patterns:
+        - {pattern: inject_nan_one_element, target: rois}
+      attrs: {finest_scale: 56, pooled_height: 7, pooled_width: 7}
+    machine_check: {kind: matches_invariant, name: shape_contract}
+
+determinism:
+  required: true
+  accumulation_order: tree
+  bitwise_reproducible: false

@@ -301,6 +301,10 @@ else()
     if(ADD_MAMBA)
         add_subdirectory(mamba)
     endif()
+    should_add_module("detection" ADD_DETECTION)
+    if(ADD_DETECTION)
+        add_subdirectory(detection)
+    endif()
 endif()
 
 # 编译examples目录下算子
