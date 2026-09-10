@@ -50,6 +50,7 @@ struct MoeDistributeDispatchV2Info {
     uint32_t scalesTypeSize;
     uint64_t scalesCount;
     uint32_t cumsumTmpMinSize; // cumsum min tmp size, 0 means no cumsum
+    uint32_t moeExpertDtype;   // Independent shared experts only; ignored when reserved1 is false
 };
 
 struct MoeDistributeDispatchV2TilingData {

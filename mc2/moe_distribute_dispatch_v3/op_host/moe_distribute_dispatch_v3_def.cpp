@@ -100,6 +100,12 @@ public:
         this->Output("tp_recv_count").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Output("expand_scales").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
 
+        this->Input("shared_expert_input")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
@@ -116,6 +122,7 @@ public:
         this->Attr("zero_expert_num").AttrType(OPTIONAL).Int(0);
         this->Attr("copy_expert_num").AttrType(OPTIONAL).Int(0);
         this->Attr("const_expert_num").AttrType(OPTIONAL).Int(0);
+        // With shared_expert_input, y_dtype describes only the MoE output.
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(ge::DT_UNDEFINED);
 
         // A3 (arch22): _a3 entry (opFile -> arch22/..._a3.cpp). Reuses the class-level I/O.

@@ -87,6 +87,8 @@ struct CombineV2Config {
     uint32_t attrConstExpertNumIndex = 17;     // 根据combineV2算子原型标志位初始化attrConstExpertNum索引
     bool hasAddRmsNorm = false;
     bool isMc2Context = false;
+    bool enableIndependentSharedExpert = false;
+    bool isIndependentSharedRank = false;
 };
 
 class MoeDistributeCombineTilingHelper {

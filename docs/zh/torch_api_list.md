@@ -64,6 +64,7 @@
 |[key_pool](../../attention/key_pool/docs/torchapi_key_pool.md)|推理场景下的Key压缩算子：对输入token做K/Gate投影，按cmp_ratio分组加权池化为Key，未完成组状态经state_cache跨调用保存。|-|-|
 |[kv_compress_epilog](../../attention/kv_compress_epilog/docs/torchapi_kv_compress_epilog.md)| 在KV Cache的Epilog阶段对cache进行原地量化压缩更新，封装aclnnKvCompressEpilog。|默认确定性实现|-|
 |[kv_quant_sparse_flash_attention](../../attention/kv_quant_sparse_flash_attention_v2/docs/torchapi_kv_quant_sparse_flash_attention.md)|调用`KvQuantSparseFlashAttentionV2`完成量化和稀疏场景下的注意力计算，支持Per-Token-Head-Tile-128量化输入。|-|默认支持确定性计算|
+|[latent_ep](../../mc2/common/docs/torchapi_latent_ep.md)|独立共享专家的 dispatch/combine 接口：MoE 分发 latent token，共享专家分发原始 token，分别返回两路汇总结果；提供通信缓存容量估算。|-|-|
 |[lightning_indexer](../../attention/lightning_indexer_v2/docs/torchapi_lightning_indexer.md)| 基于一系列操作得到每一个token对应的Top-k个位置。支持KV压缩场景。|默认确定性实现|-|
 |[lightning_indexer_metadata](../../attention/lightning_indexer_v2/docs/torchapi_lightning_indexer.md)| lightning_indexer接口的前置接口，用于计算lightning_indexer的负载均衡。|默认确定性实现|默认确定性实现|
 |[lightning_indexer_kl_loss](../../attention/lightning_indexer_kl_loss/docs/torchapi_lightning_indexer_kl_loss.md)|计算Lightning Indexer中teacher分布与student分布之间的KL散度损失。|默认非确定性，支持通过`torch.use_deterministic_algorithms`开启确定性计算。|-|

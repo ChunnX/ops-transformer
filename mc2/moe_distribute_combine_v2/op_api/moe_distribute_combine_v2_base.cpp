@@ -54,8 +54,9 @@ extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor *performanceInfo, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
     int64_t cclBufferSize, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
-    const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, aclTensor *x,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
+    bool enableIndependentSharedExpert, aclTensor *x, aclTensor *sharedExpertOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                     aclrtStream stream);
@@ -204,7 +205,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
             moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
             globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum,
-            xOut, workspaceSize, executor);
+            false, xOut, nullptr, workspaceSize, executor);
 #endif
     }
     SetCommArgs(executor, is910B, is950, commAlg);

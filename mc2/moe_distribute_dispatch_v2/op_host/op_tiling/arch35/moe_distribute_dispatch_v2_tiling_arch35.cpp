@@ -1125,10 +1125,11 @@ static bool CheckTensorDataTypeMxfp8(const gert::TilingContext *context, const c
                             Ops::Base::ToString(xDesc->GetDataType()).c_str()),
                     return false);
     // No Scales input
-    OP_TILING_CHECK(dynamicScalesDesc->GetDataType() != ge::DT_FLOAT8_E8M0,
-                    OP_LOGE(nodeName, "dynamicScales datatype is invalid, datatype should be e8m0, but is %s.",
-                            Ops::Base::ToString(dynamicScalesDesc->GetDataType()).c_str()),
-                    return false);
+    OP_TILING_CHECK(
+        dynamicScalesDesc->GetDataType() != (config.isIndependentSharedRank ? ge::DT_FLOAT : ge::DT_FLOAT8_E8M0),
+        OP_LOGE(nodeName, "dynamicScales datatype is invalid, datatype should be e8m0, but is %s.",
+                Ops::Base::ToString(dynamicScalesDesc->GetDataType()).c_str()),
+        return false);
     return true;
 }
 
@@ -1209,7 +1210,9 @@ static bool CheckQuantModeAndExpandXTypeStatic(const gert::TilingContext *contex
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(config.attrQuantModeIndex);
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
     QuantModeA5 quantMode = static_cast<QuantModeA5>(*quantModePtr);
-    auto modeToFind = QUANT_MODE_MAP.find({quantMode, static_cast<ge::DataType>(expandXDesc->GetDataType())});
+    const auto moeDtype = config.enableIndependentSharedExpert ? config.moeExpertDtype :
+                                                                 static_cast<ge::DataType>(expandXDesc->GetDataType());
+    auto modeToFind = QUANT_MODE_MAP.find({quantMode, moeDtype});
     OP_TILING_CHECK(modeToFind == QUANT_MODE_MAP.end(),
                     OP_LOGE(nodeName, "Failed to find real mode for quantMode=%u and expandx datatype=%s",
                             static_cast<uint32_t>(quantMode), Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
