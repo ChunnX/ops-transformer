@@ -334,29 +334,36 @@ class SymmBuffer:
             if self.dispatch_quant_mode != 4:
                 raise ValueError(
                     "dispatch_quant_mode only supports 4 (MXFP) on Ascend950, "
-                    f"got {self.dispatch_quant_mode}."
+                    f"got {self.dispatch_quant_mode!r} (type: {type(self.dispatch_quant_mode).__name__})."
                 )
             if _dtype_to_int(self.dispatch_quant_out_dtype) not in (23, 24, 296):
                 raise ValueError(
                     "dispatch_quant_out_dtype only supports float8_e5m2 (23), "
                     "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
-                    f"got {self.dispatch_quant_out_dtype}."
+                    f"got {self.dispatch_quant_out_dtype!r} (type: {type(self.dispatch_quant_out_dtype).__name__})."
                 )
             if self.combine_quant_mode not in (0, 3, 4):
                 raise ValueError(
                     "combine_quant_mode only supports 0, 3 or 4 on Ascend950, "
-                    f"got {self.combine_quant_mode}."
+                    f"got {self.combine_quant_mode!r} (type: {type(self.combine_quant_mode).__name__})."
                 )
             if self.topk_weights_type not in (0, 1):
                 raise ValueError(
                     "topk_weights_type only supports 0 or 1 on Ascend950, "
-                    f"got {self.topk_weights_type}."
+                    f"got {self.topk_weights_type!r} (type: {type(self.topk_weights_type).__name__})."
                 )
             # arch35 checks the full GMM1 output width: 2 * intermediate_hidden.
-            if not 256 <= intermediate_hidden <= 4096 or intermediate_hidden % 128 != 0:
+            try:
+                valid_intermediate_hidden = (
+                    256 <= intermediate_hidden <= 4096
+                    and intermediate_hidden % 128 == 0
+                )
+            except TypeError:
+                valid_intermediate_hidden = False
+            if not valid_intermediate_hidden:
                 raise ValueError(
                     "intermediate_hidden must be in [256, 4096] and a multiple of 128 "
-                    f"on Ascend950, got {intermediate_hidden}."
+                    f"on Ascend950, got {intermediate_hidden!r} (type: {type(intermediate_hidden).__name__})."
                 )
 
     def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
@@ -510,10 +517,13 @@ def _dtype_to_int(dtype):
         return dtype
     if isinstance(dtype, torch.dtype):
         if dtype not in _TORCH_DTYPE_TO_INT:
-            raise TypeError(f"Unsupported dispatch_quant_out_dtype: {dtype}.")
+            raise TypeError(
+                f"Unsupported dispatch_quant_out_dtype: {dtype!r} (type: {type(dtype).__name__})."
+            )
         return _TORCH_DTYPE_TO_INT[dtype]
     raise TypeError(
-        f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}."
+        f"dispatch_quant_out_dtype must be torch.dtype or int, "
+        f"got {dtype!r} (type: {type(dtype).__name__})."
     )
 
 
