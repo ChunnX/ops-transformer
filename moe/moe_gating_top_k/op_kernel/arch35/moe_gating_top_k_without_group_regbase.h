@@ -851,7 +851,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Init(GM_ADDR x, GM_A
     normType_ = tilingData_->normType;
     renorm_ = tilingData_->renorm;
     outFlag_ = tilingData_->outFlag == 1;
-    noNorm_ = !ShouldRenormalizeScore(normType_, renorm_);
+    noNorm_ = !ShouldRenormalize(normType_, renorm_);
     routedScalingFactor_ = tilingData_->routedScalingFactor;
     eps_ = tilingData_->eps;
     batchRows_ = tilingData_->batchRows > 0 ? tilingData_->batchRows : DEFAULT_BATCH_ROWS;

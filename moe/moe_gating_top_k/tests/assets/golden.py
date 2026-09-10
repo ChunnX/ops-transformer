@@ -40,6 +40,10 @@ def _softmax_numpy(x, axis=-1):
     return y / x_sum
 
 
+def _should_renormalize(norm_type, renorm):
+    return norm_type == 2 or renorm == 1
+
+
 class AclnnMoeGatingTopKTestSpec:
     @staticmethod
     def golden(
@@ -105,7 +109,7 @@ class AclnnMoeGatingTopKTestSpec:
 
         y = torch.gather(original_x, 1, indices)
 
-        if normType == 2 or renorm != 0:
+        if _should_renormalize(normType, renorm):
             y = y / (y.sum(dim=-1, keepdim=True) + eps)
         y = y * routedScalingFactor
 
@@ -187,7 +191,7 @@ class AclnnMoeGatingTopKV2TestSpec:
 
         y = torch.gather(original_x, 1, indices)
 
-        if normType == 2 or renorm != 0:
+        if _should_renormalize(normType, renorm):
             y = y / (y.sum(dim=-1, keepdim=True) + eps)
         y = y * routedScalingFactor
 
@@ -264,7 +268,7 @@ class MoeGatingTopKTestSpec:
 
         y = numpy.take_along_axis(original_x, indices, axis=1)
 
-        if norm_type == 2 or renorm != 0:
+        if _should_renormalize(norm_type, renorm):
             y = y / (numpy.sum(y, axis=-1, keepdims=True) + eps)
         y = y * routed_scaling_factor
 

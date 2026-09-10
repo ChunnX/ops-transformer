@@ -84,10 +84,10 @@ $$
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=0或1时由renorm控制是否归一化；normType=2时保持归一化：
+  normType=0或1时由renorm控制是否归一化；normType=2时始终做归一化：
 
   $$
-  if\ (normType = 2)\ or\ ((normType = 0\ or\ normType = 1)\ and\ renorm = 1):
+  if\ (normType = 2)\ or\ (renorm = 1):
   $$
 
   $$
@@ -141,10 +141,10 @@ $$
   gathered = normOut[expertIdxOut]
   $$
 
-  normType=0或1时由renorm控制是否归一化；normType=2时保持归一化：
+  normType=0或1时由renorm控制是否归一化；normType=2时始终做归一化：
 
   $$
-  if\ (normType = 2)\ or\ ((normType = 0\ or\ normType = 1)\ and\ renorm = 1):
+  if\ (normType = 2)\ or\ (renorm = 1):
   $$
 
   $$
