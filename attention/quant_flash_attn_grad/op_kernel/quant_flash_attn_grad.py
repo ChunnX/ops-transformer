@@ -1107,12 +1107,22 @@ def gen_band_info(const_info, band_info):
     m = const_info.s1_outer
     n = const_info.s2_outer
     b = const_info.b_size * const_info.n2_size
-    p = _ceil_trunc(const_info.s1_token, CUBE_BASEM) + 1
-    q = _ceil_trunc(const_info.s2_token, CUBE_BASEN) + 1
-    p = m if p > m else p
-    q = n if q > n else q
+    s1_token = const_info.s1_token
+    s2_token = const_info.s2_token
     m_offset = 0
     n_offset = 0
+    # mask_mode=3 且 S1>S2：整列前 skip_m 个 S1 outer 全无效。
+    # 裁掉后再算 p/q，第一块有效落在 loop 0，避免 cal_deter_index 跳空后错位碰旗。
+    if const_info.mask_mode == 3 and const_info.s1_size > const_info.s2_size:
+        skip_m = (const_info.s1_size - const_info.s2_size) // CUBE_BASEM
+        if skip_m > 0 and skip_m < m:
+            m = m - skip_m
+            s2_token = s2_token + skip_m * CUBE_BASEM
+            m_offset = skip_m
+    p = _ceil_trunc(s1_token, CUBE_BASEM) + 1
+    q = _ceil_trunc(s2_token, CUBE_BASEN) + 1
+    p = m if p > m else p
+    q = n if q > n else q
     if p < 0:
         actual_m = m
         actual_n = n + p
@@ -3863,6 +3873,20 @@ def quant_flash_attn_grad(
         # with pl.section_cube():
         #     pl.printf("wenyu check3 next_valid_loop_idx : %d next_block_idx : %d is_valid_block : %d \n", next_valid_loop_idx, next_block_idx, is_valid_block)
         if is_valid_block:
+            # 第一块有效若落在 loop>0，对面空核已经在 wait；这里补齐 4 拍，避免当「第一块」不 wait。
+            if loop_idx > 0 and task_id == 0:
+                with pl.section_vector():
+                    for j in pl.range(4):
+                        pl.system.wait_cross_core(
+                            pipe=pl.PipeType.MTE3,
+                            event_id=SYNC_DETER_FLAG,
+                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                        )
+                        pl.system.set_cross_core(
+                            pipe=pl.PipeType.MTE3,
+                            event_id=SYNC_DETER_FLAG,
+                            sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK,
+                        )
             set_run_info(
                 run_infos[task_id % 2],
                 run_infos[(task_id + 1) % 2],
