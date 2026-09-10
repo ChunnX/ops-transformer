@@ -1,0 +1,501 @@
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# the CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+"""
+PoolKeyIndexer 已知缺陷场景用例注册表。
+
+来源: tests/pytest/test_pool_key_indexer_general.py 模块 docstring 的
+"未纳入泛化的功能与已知缺陷" C/D/E 三项(2026-08-24 在 arch22/910B3 上实测):
+
+  C. pool_size ∈ [2,7] 及非 8 的倍数: 任意 shape 触发 aicore 崩溃
+     (EE9999/507015); 规格声称 [1,128] 任意整数。
+  D. topk ∈ {5120, 6144, 7168}: shape 相关崩溃(如 ps=16/topk=5120 在
+     s2pool∈{384,512} 崩、640 正常), 崩溃面不稳定。
+  E. pool_size>=32 且 topk>=6144: 已知缺陷(test_pool_key_indexer.py NOTE)。
+
+本注册表将这些被排除的组合按缺陷家族重新纳入, 在 arch35(Ascend 950)上
+逐个复现、定位与修复(见 docs/build_fix_record.md)。每个用例经
+_defect_case_runner.py 在独立子进程中执行, 崩溃不污染其他用例。
+
+字段说明:
+  id:            用例唯一标识(前缀 d1/d2/d3 对应缺陷 C/D/E 家族)
+  group:         缺陷家族 group_pool_size / group_topk_special / group_ps32_topk6k
+  layout_q/k:    BSND / TND / PA_BBND
+  dtype:         fp16/bf16
+  q_lens:        每 batch query token 数(list; BSND 要求各 batch 相等)
+  k_pools:       每 batch 池数(list; BSND 要求各 batch 相等)
+  n1/topk/pool_size/mask_mode/return_value: 算子属性
+  tail:          pool_tail_k; None=随机, list=每 batch 定值
+  pa_block_size: PA 物理块大小
+  note:          缺陷背景备注
+约束: topk % pool_size == 0(host tiling 强制校验)。
+"""
+
+import torch
+
+FP16 = torch.float16
+BF16 = torch.bfloat16
+
+# ---------------------------------------------------------------------------
+# 缺陷家族 C: pool_size 非 8 的倍数(规格 [1,128] 任意整数, 实测仅 {1}∪{8k} 可用)
+# 覆盖: [2,7] 全档 + ≥8 非 8 倍数(12/100/127) + 上限非对齐值 + PA + canary 对照
+# ---------------------------------------------------------------------------
+GROUP_POOL_SIZE = [
+    # canary: 同 shape 下 ps=8(已知可用), 验证 harness 本身正确性
+    dict(
+        id="d1_canary_ps8",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=96,
+        pool_size=8,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="canary 对照: ps=8 同 shape 应通过, 验证 harness",
+    ),
+    dict(
+        id="d1_bsnd_ps2_topk128",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=128,
+        pool_size=2,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷C: ps=2 ∈ [2,7] 崩溃区间",
+    ),
+    dict(
+        id="d1_bsnd_ps3_topk96",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=96,
+        pool_size=3,
+        mask_mode=0,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷C: ps=3 奇数 pool",
+    ),
+    dict(
+        id="d1_bsnd_ps4_topk128",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=128,
+        pool_size=4,
+        mask_mode=3,
+        return_value=False,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷C: ps=4 4 的幂但非 8 倍数",
+    ),
+    dict(
+        id="d1_bsnd_ps5_topk160",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=160,
+        pool_size=5,
+        mask_mode=3,
+        return_value=True,
+        tail=[3],
+        pa_block_size=16,
+        note="缺陷C: ps=5 奇数 + 尾块 tail=3",
+    ),
+    dict(
+        id="d1_tnd_ps7_topk112",
+        group="group_pool_size",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP16,
+        q_lens=[32, 16],
+        k_pools=[200, 100],
+        n1=8,
+        topk=112,
+        pool_size=7,
+        mask_mode=0,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷C: ps=7 上界奇数, TND 双 batch",
+    ),
+    dict(
+        id="d1_bsnd_ps12_topk96",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=96,
+        pool_size=12,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷C: ps=12 ≥8 但非 8 倍数",
+    ),
+    dict(
+        id="d1_tnd_ps100_topk200",
+        group="group_pool_size",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=BF16,
+        q_lens=[40, 24],
+        k_pools=[80, 60],
+        n1=4,
+        topk=200,
+        pool_size=100,
+        mask_mode=3,
+        return_value=True,
+        tail=[37, 99],
+        pa_block_size=16,
+        note="缺陷C: ps=100 大 pool 非 8 倍数, 尾块含 ps-1",
+    ),
+    dict(
+        id="d1_bsnd_ps127_topk254",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[48],
+        k_pools=[300],
+        n1=8,
+        topk=254,
+        pool_size=127,
+        mask_mode=3,
+        return_value=True,
+        tail=[126],
+        pa_block_size=16,
+        note="缺陷C: ps=127 上限-1 非 8 倍数, tail=ps-1",
+    ),
+    dict(
+        id="d1_pa_ps5_topk160",
+        group="group_pool_size",
+        layout_q="BSND",
+        layout_k="PA_BBND",
+        dtype=FP16,
+        q_lens=[32, 32],
+        k_pools=[160, 96],
+        n1=8,
+        topk=160,
+        pool_size=5,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷C: ps=5 + PA 布局(不等池数)",
+    ),
+    dict(
+        id="d1_tnd_ps12_topk96",
+        group="group_pool_size",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP16,
+        q_lens=[24, 24],
+        k_pools=[150, 150],
+        n1=8,
+        topk=96,
+        pool_size=12,
+        mask_mode=0,
+        return_value=True,
+        tail=[5, 11],
+        pa_block_size=16,
+        note="缺陷C: ps=12 TND + tail 边界",
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# 缺陷家族 D: topk ∈ {5120, 6144, 7168}(shape 相关崩溃, 崩溃面不稳定)
+# arch22 实测: ps=16/topk=5120 在 s2pool∈{384,512} 崩、640 正常; ps=1/8 全部正常
+# ---------------------------------------------------------------------------
+GROUP_TOPK_SPECIAL = [
+    # canary: ps=16/topk=4096(已验证稳定特殊值)同 shape 对照
+    dict(
+        id="d2_canary_ps16_topk4096",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[384],
+        n1=8,
+        topk=4096,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="canary 对照: topk=4096 已验证稳定",
+    ),
+    dict(
+        id="d2_bsnd_ps16_topk5120_s2p384",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[384],
+        n1=8,
+        topk=5120,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D: arch22 实测崩溃点(s2pool=384)",
+    ),
+    dict(
+        id="d2_bsnd_ps16_topk5120_s2p512",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[512],
+        n1=8,
+        topk=5120,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D: arch22 实测崩溃点(s2pool=512)",
+    ),
+    dict(
+        id="d2_bsnd_ps16_topk5120_s2p640",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[640],
+        n1=8,
+        topk=5120,
+        pool_size=16,
+        mask_mode=0,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D: arch22 实测正常点(s2pool=640), 作行为对照",
+    ),
+    dict(
+        id="d2_tnd_ps16_topk5120",
+        group="group_topk_special",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP16,
+        q_lens=[8, 8],
+        k_pools=[256, 256],
+        n1=8,
+        topk=5120,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D: topk=5120 TND 形态",
+    ),
+    dict(
+        id="d2_bsnd_ps16_topk6144",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[448],
+        n1=8,
+        topk=6144,
+        pool_size=16,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D: topk=6144(sparseCount=384)",
+    ),
+    dict(
+        id="d2_tnd_ps16_topk7168",
+        group="group_topk_special",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP16,
+        q_lens=[8, 8],
+        k_pools=[288, 288],
+        n1=8,
+        topk=7168,
+        pool_size=16,
+        mask_mode=3,
+        return_value=False,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D: topk=7168(sparseCount=448) TND",
+    ),
+    dict(
+        id="d2_bsnd_ps1_topk5120",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[8],
+        k_pools=[5376],
+        n1=8,
+        topk=5120,
+        pool_size=1,
+        mask_mode=3,
+        return_value=False,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D 对照: ps=1/topk=5120(sparseCount=5120), arch22 实测正常",
+    ),
+    dict(
+        id="d2_bsnd_ps8_topk6144",
+        group="group_topk_special",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=BF16,
+        q_lens=[8],
+        k_pools=[896],
+        n1=8,
+        topk=6144,
+        pool_size=8,
+        mask_mode=0,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷D 对照: ps=8/topk=6144(sparseCount=768), arch22 实测正常",
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# 缺陷家族 E: pool_size>=32 且 topk>=6144(确定性崩溃)
+# arch22 实测: TND ps32/topk6144、BSND ps64/topk8192(k=16384) 必崩,
+# 已在 test_pool_key_indexer.py TEST_CASES 的 NOTE 中登记为不执行
+# ---------------------------------------------------------------------------
+GROUP_PS32_TOPK6K = [
+    dict(
+        id="d3_tnd_ps32_topk6144_k16k",
+        group="group_ps32_topk6k",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP16,
+        q_lens=[8, 8],
+        k_pools=[256, 256],
+        n1=8,
+        topk=6144,
+        pool_size=32,
+        mask_mode=3,
+        return_value=False,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷E: 原始崩溃形态(TND ps32/topk6144, k=16384)",
+    ),
+    dict(
+        id="d3_bsnd_ps64_topk8192_k16k",
+        group="group_ps32_topk6k",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[256],
+        n1=8,
+        topk=8192,
+        pool_size=64,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷E: 原始崩溃形态(BSND ps64/topk8192, k=16384)",
+    ),
+    dict(
+        id="d3_bsnd_ps32_topk6144",
+        group="group_ps32_topk6k",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[448],
+        n1=8,
+        topk=6144,
+        pool_size=32,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷E: ps32/topk6144 BSND 形态",
+    ),
+    dict(
+        id="d3_tnd_ps64_topk8192",
+        group="group_ps32_topk6k",
+        layout_q="TND",
+        layout_k="TND",
+        dtype=FP16,
+        q_lens=[8, 8],
+        k_pools=[128, 128],
+        n1=8,
+        topk=8192,
+        pool_size=64,
+        mask_mode=3,
+        return_value=True,
+        tail=None,
+        pa_block_size=16,
+        note="缺陷E: ps64/topk8192 TND 形态",
+    ),
+    dict(
+        id="d3_bsnd_ps128_topk8192",
+        group="group_ps32_topk6k",
+        layout_q="BSND",
+        layout_k="BSND",
+        dtype=FP16,
+        q_lens=[16],
+        k_pools=[128],
+        n1=8,
+        topk=8192,
+        pool_size=128,
+        mask_mode=0,
+        return_value=True,
+        tail=[127],
+        pa_block_size=16,
+        note="缺陷E: ps128(上限)/topk8192 + tail=ps-1",
+    ),
+]
+
+ALL_DEFECT_CASES = GROUP_POOL_SIZE + GROUP_TOPK_SPECIAL + GROUP_PS32_TOPK6K
+
+CASE_BY_ID = {c["id"]: c for c in ALL_DEFECT_CASES}
+
+
+def get_cases_by_group(group):
+    return [c for c in ALL_DEFECT_CASES if c["group"] == group]

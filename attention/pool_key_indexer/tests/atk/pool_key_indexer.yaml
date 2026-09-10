@@ -1,0 +1,243 @@
+api: pytorch
+api_type: pool_key_indexer
+aclnn_name: PoolKeyIndexer
+aclnn_api_type: aclnn_pool_key_indexer
+version: v1.0
+name: pool_key_indexer
+generate: pki_gen
+# 初始 dtype 笛卡尔积 = 2(query) × 2(poolKey) × 2(weights) = 8, generator 修正后 4 种有效
+dtype_numbers: 700
+extra_numbers: 0
+standard:
+  # 双标杆精度标准(自定义比较器见 pool_key_indexer_compare.py):
+  #   - 名字包含 "benchmark" 触发 ATK 真值任务(CPU 金标升精度, 输出落盘 cpu_benchmark/);
+  #   - indices(整型): 算子 vs 真值 集合比对(逐行有效索引排序集合相等, 100% 行通过);
+  #   - values(浮点): 按索引排序后双标杆对比(算子/标杆 vs 真值, Actual/Benchmark 比例门禁)。
+  acc:
+    pki_double_benchmark:
+      max_re_ratio: 2        # max_re 的 Actual/Benchmark 比例上限
+      avg_re_ratio: 1.2      # avg_re 的 Actual/Benchmark 比例上限
+      rmse_ratio: 1.2        # rmse 的 Actual/Benchmark 比例上限
+      row_pass_ratio: 1.0    # indices 集合比对行通过率阈值(1.0 = 严格 100%)
+      abs_floor: 1.0e-5      # 误差噪声 floor(双方均低于该值视为精确一致)
+      denom_floor: 1.0e-3    # 相对误差分母下限(小值域转绝对误差口径)
+      # ---- 索引并列翻转容忍(TopK 边界近并列分数的取舍随计算路径翻转, 非选池错误) ----
+      tie_rtol: 1.0e-2       # 翻转池分数差容忍(相对); 差异行池分数差<=该值判为并列翻转
+      max_flip_pools: 2      # 单行翻转的最大差集池数(差集不等量=真错误, 直接失败)
+      flip_row_ratio: 1.0e-2 # rv=False 无 values 分数仲裁时的结构翻转行比例上限(兜底防蒙混)
+      # ---- values 精度比对开关 ----
+      skip_values_compare: true  # 默认 false=正常比对 values; true=跳过 values 精度比对
+                                  # (rv=True 用例 values 直接判定通过, 仅保留 indices 门禁)
+  perf: not_key
+inputs:
+  - name: query
+    type: tensor
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-1, 1]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values:
+          - 1
+          - 3
+          - 8
+          - 16
+          - 24
+          - 32
+          - 64
+          - 128
+          - 256
+          - 512
+          - 1024
+          - 2048
+          - 3072
+          - 4096
+          - 6144
+          - 8192
+      max_length: 4294967295
+  - name: poolKey
+    type: tensor
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-1, 1]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 4294967295
+  - name: weights
+    type: tensor
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-10, 10]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 4294967295
+  - name: poolTailK
+    type: tensor
+    dtypes:
+      values: [int64]
+    ranges:
+      valid:
+        values: [[0, 127]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 4294967295
+  - name: actualSeqQ
+    type: tensor
+    dtypes:
+      values: [int64]
+    ranges:
+      valid:
+        values: [[1, 8192]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 4294967295
+  - name: actualSeqK
+    type: tensor
+    dtypes:
+      values: [int64]
+    ranges:
+      valid:
+        values: [[1, 8192]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 4294967295
+  - name: blockTable
+    type: tensor
+    dtypes:
+      values: [int32]
+    ranges:
+      valid:
+        values: [[0, 65536]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 4294967295
+  - name: qDescale
+    type: tensor
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[-1, 1]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [0]
+      max_length: 4294967295
+  - name: kDescale
+    type: tensor
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[-1, 1]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [0]
+      max_length: 4294967295
+  - name: layout_q
+    type: attr
+    dtypes:
+      values: [string]
+    ranges:
+      valid:
+        values: ["BSND"]
+  - name: layout_k
+    type: attr
+    dtypes:
+      values: [string]
+    ranges:
+      valid:
+        values: ["BSND"]
+  - name: topk
+    type: attr
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [1, 8192]
+  - name: pool_size
+    type: attr
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [1, 128]
+  - name: mask_mode
+    type: attr
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [0, 3]
+  - name: quant_mode
+    type: attr
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [-1]
+  - name: return_value
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false, true]
+  # ---- 非量化场景覆盖标志(generator 约束合法组合, prepare_pki_inputs 消费) ----
+  - name: tnd_unequal
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+  - name: zero_q_batch
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+  - name: zero_pool_batch
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]
+  - name: key_non_contig
+    type: attr
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [false]

@@ -58,7 +58,11 @@ constexpr uint32_t PKI_HEAD_DIM = 128;
 constexpr uint32_t PKI_N2_FIXED = 1;
 constexpr uint32_t PKI_N1_LIMIT = 64;
 constexpr uint32_t PKI_POOL_SIZE_LIMIT = 128;
-constexpr uint32_t PKI_BLOCK_SIZE_LIMIT = 1024;
+// PA block_size 上限。原为 1024(lightning_indexer 家族沿袭的规格保守值,
+// 非实现能力上限): arch22(A2/A3) 与 arch35(A5) 的 PA 寻址(KeyNd2NzForPA
+// 除模查表 + 块边界钳制 / descale 分块搬运 / scoreGm 布局)均按运行时
+// blockSize 动态计算, 对任意 16 对齐 blockSize 通用, 统一放开至 2048。
+constexpr uint32_t PKI_BLOCK_SIZE_LIMIT = 2048;
 constexpr uint32_t PKI_BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t PKI_TOPK_DEFAULT = 2048;
 // quant_mode host-side values (match def.cpp attribute defaults, may be negative)

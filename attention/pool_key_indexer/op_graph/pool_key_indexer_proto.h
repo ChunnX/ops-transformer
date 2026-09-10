@@ -97,7 +97,7 @@ namespace ge {
  *  - pool_size supports [1, 128]; topk supports [1, 2048] and 3072/4096/5120/6144/7168/8192.
  *  - pool_tail_k value range is [0, pool_size - 1].
  *  - head_dim supports 128; query head num (N1) supports [1, 64]; pool_key head num (N2) supports 1.
- *  - block_size must be a multiple of 16 and no greater than 1024.
+ *  - block_size must be a multiple of 16 and no greater than 2048.
  *  - Padding invalid data on S1/S2 of query/pool_key is not supported.
  *  - pool_key supports non-contiguous input on axis 0 in the PA_BBND scenario
  *    (the actual stride must be passed via the key_stride0 attribute); all other

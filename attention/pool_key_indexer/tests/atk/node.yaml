@@ -1,0 +1,24 @@
+# PoolKeyIndexer ATK 节点配置 (双标杆精度标准)
+#
+# 节点拓扑(pki_double_benchmark 双标杆):
+#   - operator:  算子执行端, PyAclnn 后端(aclnnPoolKeyIndexer 直调), 主节点;
+#   - npu_golden: NPU 组合标杆(torch 标准算子向量化, 与 pytest 一致), 参与比对;
+#   - 真值:      无需配置节点 —— 精度标准名含 "benchmark", ATK 自动追加
+#     benchmark 任务(CPU 金标升精度 fp16/bf16->fp32), 输出落盘 cpu_benchmark/。
+#
+# 用法(与 run.sh 等价, 二选一):
+#   atk task -c result/pool_key_indexer/json/all_pool_key_indexer.json \
+#       -n node.yaml -p . --task accuracy -s 0 -e 10 -cp -to 60
+#
+# 说明: -to 60 为单用例超时时间(秒), 防止 A2 全量验证时个别用例卡死。
+
+nodes:
+  - backend: pyaclnn
+    task: ['accuracy']
+    devices: [2]
+    name: operator
+
+  - backend: npu
+    task: ['accuracy']
+    devices: [2]
+    name: npu_golden
