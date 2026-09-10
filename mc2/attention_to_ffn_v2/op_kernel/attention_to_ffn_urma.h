@@ -80,6 +80,11 @@ constexpr int32_t URMA_FLAG_VALUE = 1;
 
 constexpr uint32_t HCOMM_BATCH_WQE_BYTES = 64U;
 constexpr uint32_t ATTN_FFN_HCOMM_BATCH_UB_BYTES = 16U * 1024U;
+constexpr uint8_t URMA_DOUBLE_BUFFER_NUM = 2U;
+
+static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_FLAG_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
 
 using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 
@@ -129,11 +134,11 @@ private:
     __aicore__ inline void SendToLocal(const AttentionToFfnTokenMetaData &metaData,
                                        const DataCopyExtParams &xCopyParams);
     __aicore__ inline void StageRemoteData(const AttentionToFfnTokenMetaData &metaData,
-                                           const DataCopyExtParams &xCopyParams);
+                                           const DataCopyExtParams &xCopyParams, uint32_t bufIdx);
     __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteDataAddr,
-                                                 uint32_t sourceAivId);
+                                                 uint32_t sourceAivId, uint32_t bufIdx);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteFlagAddr,
-                                                 uint32_t sourceAivId);
+                                                 uint32_t sourceAivId, uint32_t bufIdx);
     __aicore__ inline void FindExpertRank(int32_t expertId);
     __aicore__ inline void QuantInit(GM_ADDR scales);
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
@@ -339,8 +344,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
 
     dataWorkspaceStride_ = Ceil(hCommuSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
     const uint64_t urmaWorkspaceOffset = tilingData->attentionToFfnV2Info.urmaWorkspaceOffset;
+    const uint64_t urmaDataBufStride = static_cast<uint64_t>(aivNum_) * dataWorkspaceStride_;
     localDataAddr_ = workspaceGM + urmaWorkspaceOffset + static_cast<uint64_t>(aivId_) * dataWorkspaceStride_;
-    localFlagAddr_ = workspaceGM + urmaWorkspaceOffset + static_cast<uint64_t>(aivNum_) * dataWorkspaceStride_ +
+    localFlagAddr_ = workspaceGM + urmaWorkspaceOffset + URMA_DOUBLE_BUFFER_NUM * urmaDataBufStride +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
 }
 
@@ -671,11 +677,13 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
 
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::StageRemoteData(
-    const AttentionToFfnTokenMetaData &metaData, const DataCopyExtParams &xCopyParams)
+    const AttentionToFfnTokenMetaData &metaData, const DataCopyExtParams &xCopyParams, uint32_t bufIdx)
 {
     DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams hCommuCopyParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
     DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
+    const uint64_t dataBufOffset = static_cast<uint64_t>(bufIdx) * aivNum_ * dataWorkspaceStride_;
+    const uint64_t flagBufOffset = static_cast<uint64_t>(bufIdx) * aivNum_ * URMA_FLAG_SLOT_SIZE;
 
     if constexpr (QuantMode == 0) {
         xTmpTensor_ = xQueue_.AllocTensor<XType>();
@@ -683,7 +691,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         xQueue_.EnQue(xTmpTensor_);
         xTmpTensor_ = xQueue_.DeQue<XType>();
         GlobalTensor<XType> localDataGMTensor;
-        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(localDataAddr_));
+        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(localDataAddr_ + dataBufOffset));
         DataCopyPad(localDataGMTensor, xTmpTensor_, xCopyParams);
         xQueue_.FreeTensor<XType>(xTmpTensor_);
     } else {
@@ -694,7 +702,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         xOutTensor_ = xOutQueue_.AllocTensor<StorageXOutType>();
         QuantProcess(dstExpertId_);
         GlobalTensor<uint8_t> localDataGMTensor;
-        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(localDataAddr_));
+        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(localDataAddr_ + dataBufOffset));
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<StorageXOutType>();
         auto xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
@@ -706,25 +714,30 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
     statusTensor_.SetValue(0, metaData.localExpId);
     SyncFunc<HardEvent::S_MTE3>();
     GlobalTensor<int32_t> localFlagGMTensor;
-    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
+    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_ + flagBufOffset));
     DataCopyPad(localFlagGMTensor, statusTensor_, flagCopyParams);
     PipeBarrier<PIPE_MTE3>();
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::AppendRemoteDataWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteDataAddr, uint32_t sourceAivId)
+    HcommBatchHandle &batchHandle, GM_ADDR remoteDataAddr, uint32_t sourceAivId, uint32_t bufIdx)
 {
-    GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(sourceAivId) * dataWorkspaceStride_;
-    hcomm_.WriteNbi(batchHandle, remoteDataAddr, sourceDataAddr, static_cast<int64_t>(hCommuSize_));
+    const uint64_t dataBufOffset = static_cast<uint64_t>(bufIdx) * aivNum_ * dataWorkspaceStride_;
+    GM_ADDR sourceDataAddr = localDataAddr_ + dataBufOffset + static_cast<uint64_t>(sourceAivId) * dataWorkspaceStride_;
+    hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteDataAddr, sourceDataAddr,
+                                            static_cast<int64_t>(hCommuSize_));
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::AppendRemoteFlagWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteFlagAddr, uint32_t sourceAivId)
+    HcommBatchHandle &batchHandle, GM_ADDR remoteFlagAddr, uint32_t sourceAivId, uint32_t bufIdx)
 {
-    GM_ADDR sourceFlagAddr = localFlagAddr_ + static_cast<uint64_t>(sourceAivId) * URMA_FLAG_SLOT_SIZE;
-    hcomm_.WriteNbi(batchHandle, remoteFlagAddr, sourceFlagAddr, static_cast<int64_t>(sizeof(int32_t)));
+    const uint64_t flagBufOffset = static_cast<uint64_t>(bufIdx) * aivNum_ * URMA_FLAG_SLOT_SIZE;
+    GM_ADDR sourceFlagAddr =
+        localFlagAddr_ + flagBufOffset + static_cast<uint64_t>(sourceAivId) * URMA_FLAG_SLOT_SIZE;
+    hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteFlagAddr, sourceFlagAddr,
+                                                     static_cast<int64_t>(sizeof(int32_t)));
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -870,6 +883,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
 
         for (uint64_t round = 0; round < roundNum; ++round) {
+            const uint32_t bufIdx = static_cast<uint32_t>(round % URMA_DOUBLE_BUFFER_NUM);
             const uint32_t tokenOffset = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
             if (tokenOffset < totalSendNum_) {
                 AttentionToFfnTokenMetaData metaData;
@@ -888,7 +902,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                 if (metaData.toRankId == static_cast<int32_t>(rankId_)) {
                     SendToLocal(metaData, xCopyParams);
                 } else {
-                    StageRemoteData(metaData, xCopyParams);
+                    StageRemoteData(metaData, xCopyParams, bufIdx);
                 }
             }
 
@@ -938,16 +952,15 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                         if (relayInfo[i].toRankId != static_cast<int32_t>(dstRank)) {
                             continue;
                         }
-                        AppendRemoteDataWrite(batchHandle, relayInfo[i].remoteDataAddr, relayInfo[i].sourceAivId);
+                        AppendRemoteDataWrite(batchHandle, relayInfo[i].remoteDataAddr, relayInfo[i].sourceAivId, bufIdx);
                     }
                     for (uint32_t i = 0U; i < relayCount; ++i) {
                         if (relayInfo[i].toRankId != static_cast<int32_t>(dstRank)) {
                             continue;
                         }
-                        AppendRemoteFlagWrite(batchHandle, relayInfo[i].remoteFlagAddr, relayInfo[i].sourceAivId);
+                        AppendRemoteFlagWrite(batchHandle, relayInfo[i].remoteFlagAddr, relayInfo[i].sourceAivId, bufIdx);
                     }
                     hcomm_.BatchCommit(batchHandle);
-                    //hcomm_.Drain(batchHandle);
                 }
             }
 
@@ -963,6 +976,17 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
 
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+
+        if (aivId_ == 0U) {
+            for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+                if (dstRank == rankId_) {
+                    continue;
+                }
+                uint64_t channel = GetUrmaCommHandle(dstRank);
+                hcomm_.Drain(channel);
+            }
+        }
+
         SetFlagToFFN();
         if constexpr (isActiveMask) {
             SetFlagInAttn();
