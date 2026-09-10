@@ -281,7 +281,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(
     if (aivId_ >= aivNum_) {
         return;
     }
-    // epRankId_ = tilingData->moeDistributeDispatchSetupInfo.epRankId;
     mc2Context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ = mc2Context_->epRankId;
 
