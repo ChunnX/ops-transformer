@@ -62,6 +62,8 @@ private:
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
+    using MegaMoeBase::waveCombineDedupScratch_;
+    using MegaMoeBase::waveCombineDedupState_;
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
@@ -136,6 +138,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
+    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount, waveCombineDedupState_);
     }
 }
 
@@ -166,6 +170,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     WaveCombineBufferConfig combineBufferConfig{};
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
+    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        // 非量化 combine 去重：专家粒度独立消费（基类 RunGmm2CombineForExpert 内接入）。
+        combineBufferConfig =
+            InitWaveCombineBuffersDedup<false>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
     }
     uint32_t combineRowSequence = 0U;
 

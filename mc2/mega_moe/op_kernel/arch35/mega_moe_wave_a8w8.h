@@ -117,6 +117,11 @@ private:
                                                  const CombineBufferConfig &bufferConfig,
                                                  uint32_t allCoreCombineExpertIndex,
                                                  const ExpertLoopState &allCoreCombineExpertState);
+    __aicore__ inline void ProcessCombineExpertsDedup(uint32_t expertBegin, uint32_t expertEnd,
+                                                      ExpertLoopState &combineState,
+                                                      const CombineBufferConfig &bufferConfig,
+                                                      uint32_t allCoreCombineExpertIndex,
+                                                      const ExpertLoopState &allCoreCombineExpertState);
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
@@ -163,7 +168,9 @@ private:
      *                     从 GM 恢复并压紧最多 1024 个专家的 token count；
      *   [64, 160 KiB)     非量化 Combine 的 6 个 BF16 row buffer（H 最大 8 KiB）；
      *                     量化 Combine 使用 2 个 [BF16 row | FP8 data + scale] 槽及共享量化 scratch；
-     *   [160, 184 KiB)    空闲；
+     *   [160, 184 KiB)    基线空闲；combine 去重把 [64,184 KiB) 整段动态切分为
+     *                     行环(2..6) + 合并发送整行 + 成员乒乓/fp32/累加段 + desc 批区
+     *                     （InitWaveCombineBuffersDedup，h≤10240 由 host 门保证装得下）；
      *   [184, 187.5 KiB)  GMM2-ready 序号的 GM 搬入与逐 AIC lane 检查区；
      *   [187.5, 200 KiB)  空闲；
      *   [200, 248 KiB)    Combine 共用的 meta-info，共 1536 token * 8 int32；
@@ -175,6 +182,9 @@ private:
     SendMaskScratch sendMaskScratch_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
     WaveCombineScratch waveCombineScratch_;
+    // 非量化 combine 去重的追加 UB 视图与跨行事件武装状态（排空时消费）。
+    WaveCombineDedupScratch waveCombineDedupScratch_;
+    WaveCombineDedupState waveCombineDedupState_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
 
     static constexpr uint32_t GMM1_TILE_M = L1_TILE_M_256;
@@ -777,7 +787,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 }
                 NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
             } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
-                // 非量化 combine 去重：合并驱动行要等成员专家 GMM2 落地，补发 per-expert 标记。
+                // 非量化 combine 去重：独立 combine 阶段按 per-expert 标记推进；末专家状态供 AIV0 参战。
+                if constexpr (g_coreType == AIV) {
+                    if (GetSubBlockIdx() == 0U && gmm2Position.expertIdx == allCoreCombineExpertIndex) {
+                        allCoreCombineExpertState = gmm2ExpertState;
+                    }
+                }
                 NotifyWaveGmm2Ready(waveCombineJob_, params_, gmm2Position.expertIdx);
             }
             ++gmm2Position.expertIdx;
@@ -837,6 +852,51 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
 }
 
+// 非量化 combine 去重：与量化 ProcessCombineExperts 同构的专家粒度消费，末专家由全部 AIV 处理。
+// 去重 UB 布局对 AIV0/AIV1 一致，AIV1 全程沿用 pipeline 起始配置，无 steady/final 两套之分。
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessCombineExpertsDedup(
+    uint32_t expertBegin, uint32_t expertEnd, ExpertLoopState &combineState, const CombineBufferConfig &bufferConfig,
+    uint32_t allCoreCombineExpertIndex, const ExpertLoopState &allCoreCombineExpertState)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() == 0U) {
+        if (allCoreCombineExpertIndex < expertBegin || allCoreCombineExpertIndex >= expertEnd) {
+            return;
+        }
+        CombineBufferConfig activeBufferConfig =
+            InitWaveCombineBuffersDedup<true>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
+        uint32_t rowSequence = 0U;
+        RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, activeBufferConfig, waveCombineScratch_,
+                                       waveCombineDedupScratch_, params_, allCoreCombineExpertState,
+                                       allCoreCombineExpertIndex, rowSequence, waveCombineDedupState_);
+        DrainCombineRowBuffersDedup(rowSequence, activeBufferConfig.rowBufferCount, waveCombineDedupState_);
+        return;
+    }
+
+    uint32_t rowSequence = 0U;
+    for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                     countWorkspace_, moeExpertPerRank_, expertIdx);
+        UpdateExpertLoopState(combineState, expertIdx, expertTokenCount);
+        if (expertTokenCount == 0U) {
+            continue;
+        }
+        if (expertIdx == allCoreCombineExpertIndex) {
+            RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, bufferConfig, waveCombineScratch_,
+                                           waveCombineDedupScratch_, params_, combineState, combineState.expertIdx,
+                                           rowSequence, waveCombineDedupState_);
+        } else {
+            RunWaveCombineStageDedup<false>(commonConfig_, waveCombineJob_, bufferConfig, waveCombineScratch_,
+                                            waveCombineDedupScratch_, params_, combineState, combineState.expertIdx,
+                                            rowSequence, waveCombineDedupState_);
+        }
+    }
+    DrainCombineRowBuffersDedup(rowSequence, bufferConfig.rowBufferCount, waveCombineDedupState_);
+}
+
 /*
  * 按动态 WAVE 边界滚动执行 A8W8 MoE 流水。AIV1 启动时连续准备 W0/W1，稳态消费已准备 WAVE 的同时
  * Dispatch 下一 WAVE，始终保持一轮 lookahead。每次先规划完整 WAVE 的 [begin, end) 范围，再通过统一的
@@ -852,9 +912,15 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     tokenDispatchScratch_.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.expertRevTokenNumsPtr));
     DispatchBuffInit();
+    // 非量化 combine 去重复用量化 combine 的专家粒度独立消费形态（tiling 已保证两者互斥）。
+    const bool dedupCombineActive =
+        CombineQuantMode == COMBINE_NO_QUANT && (params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
     CombineBufferConfig combineBufferConfig{};
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitCombineBuffers();
+    } else if (dedupCombineActive) {
+        combineBufferConfig = InitWaveCombineBuffersDedup<false>(commonConfig_, waveCombineScratch_,
+                                                                 waveCombineDedupScratch_);
     }
     MM_KTS_T(ktsCountT0);
     PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
@@ -898,7 +964,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (GetSubBlockIdx() == 0U) {
             WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
         }
-        if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        if (CombineQuantMode != COMBINE_NO_QUANT || dedupCombineActive) {
             for (uint32_t expertEnd = moeExpertPerRank_; expertEnd > 0U; --expertEnd) {
                 uint32_t expertIdx = expertEnd - 1U;
                 uint64_t countOffset =
@@ -955,6 +1021,12 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                           combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
                                           allCoreCombineExpertState);
                     combineBeginExpertIndex = combineEndExpertIndex;
+                } else if (dedupCombineActive) {
+                    uint32_t combineEndExpertIndex = gmm2PendingWaveEnd.expertIdx;
+                    ProcessCombineExpertsDedup(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
+                                               combineBufferConfig, allCoreCombineExpertIndex,
+                                               allCoreCombineExpertState);
+                    combineBeginExpertIndex = combineEndExpertIndex;
                 }
             }
             gmm2PendingWaveEnd = waveEndPosition;
@@ -969,6 +1041,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
                                       combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
                                       allCoreCombineExpertState);
+                combineBeginExpertIndex = combineEndExpertIndex;
+            } else if (dedupCombineActive) {
+                uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
+                ProcessCombineExpertsDedup(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
+                                           combineBufferConfig, allCoreCombineExpertIndex, allCoreCombineExpertState);
                 combineBeginExpertIndex = combineEndExpertIndex;
             }
         }
@@ -993,6 +1070,9 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             ProcessCombineExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,
                                   combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
                                   allCoreCombineExpertState);
+        } else if (dedupCombineActive) {
+            ProcessCombineExpertsDedup(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,
+                                       combineBufferConfig, allCoreCombineExpertIndex, allCoreCombineExpertState);
         }
     }
 

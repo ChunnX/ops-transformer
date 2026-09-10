@@ -175,6 +175,9 @@ protected:
     SharedBlockEpilogue sharedEpilogueOp_;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
     WaveCombineScratch waveCombineScratch_;
+    // 非量化 combine 去重的追加 UB 视图与跨行事件武装状态（排空时消费）。
+    WaveCombineDedupScratch waveCombineDedupScratch_;
+    WaveCombineDedupState waveCombineDedupState_;
     TokenUnpermuteScratch tokenUnpermuteScratch_;
     MegaMoeImpl::ExceptionDumpEngine exceptionDump_;
     __gm__ MegaMoeImpl::GmmLoopCount *gmmLoopCount_{nullptr};
@@ -554,13 +557,32 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        // 非量化 combine 去重：专家末 slice 完成后补发 per-expert 标记（含 AIC 被跳过 problem 的情形，
-        // 本分支在 HandleWaveProblemWithoutWork 之后、两条路径都会到达）。
-        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0 &&
-            tokenStartIndexInExpert + sliceTokenCount >= expertTokenCount) {
-            NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
+        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            // combine 去重：跨 WAVE 的专家等最后一个 slice 完成后按专家粒度独立消费（与量化路径
+            // 同构；AIC 被跳过 problem 的情形也会到达本分支，per-expert 标记不漏发）。
+            if (tokenStartIndexInExpert + sliceTokenCount >= expertTokenCount) {
+                NotifyWaveGmm2Ready(waveCombineJob_, params_, state.expertIdx);
+                if (isFinalCombine) {
+                    if constexpr (g_coreType == AIV) {
+                        if (GetSubBlockIdx() == 0U) {
+                            // W4 prologue 完成后，末轮 AIV0 才能通过 MTE2 复用同一 UB 区域。
+                            SyncFuncStatic<HardEvent::MTE3_MTE2, SYNC_EVENT_ID0>();
+                        }
+                    }
+                    combineBufferConfig = InitWaveCombineBuffersDedup<true>(commonConfig_, waveCombineScratch_,
+                                                                            waveCombineDedupScratch_);
+                    RunWaveCombineStageDedup<true>(commonConfig_, waveCombineJob_, combineBufferConfig,
+                                                   waveCombineScratch_, waveCombineDedupScratch_, params_, state,
+                                                   state.expertIdx, combineRowSequence, waveCombineDedupState_);
+                } else {
+                    RunWaveCombineStageDedup<false>(commonConfig_, waveCombineJob_, combineBufferConfig,
+                                                    waveCombineScratch_, waveCombineDedupScratch_, params_, state,
+                                                    state.expertIdx, combineRowSequence, waveCombineDedupState_);
+                }
+            }
+            return;
         }
-        // AIV1 已在上述 GMM2 调用中消费当前 slice；无需在外部重建 scheduler。
+        // 基线路径：AIV1 已在上述 GMM2 调用中逐 tile 消费当前 slice；无需在外部重建 scheduler。
         return;
     }
 

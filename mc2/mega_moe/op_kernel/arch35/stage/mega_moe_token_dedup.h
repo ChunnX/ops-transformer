@@ -136,12 +136,10 @@ __aicore__ inline uint32_t FindDedupExpertByGlobalRow(const LocalTensor<int32_t>
 /*
  * 去重 prepass：扫描 route 槽（[expert][srcRank]，槽内按 topkIndex 升序），为每个接收行写一条
  * rowDesc（布局见 mega_moe_constants.h DEDUP_ROW_*）。
- * 分工：工作项 = (srcRank, token 段)，全体 AIV1 平铺认领（v3 曾挪 AIV0 以并行隐藏建表，但实测
- * 大 bs 下 AIV0 早期密集访问 route 窗口触发 aicore trap（机制待与驱动侧对齐，2026-09-09 通宵二分
- * F 系探针铁证：不调 prepass 不崩/调即崩且崩点在公共段），回退 AIV1 保稳；原 AIV0 设计动机——
- * 它在等首 wave GMM1 输出；prepass 挪到 AIV0 后与 AIV1 dispatch 完全并行，建表本体离开关键路径。
- * 依赖链 prepass→dispatch→GMM1→Activation 严格串行，故 Activation 动 UB 前 prepass 必已用完该区。
- * count 表 AIV0 侧同样由 PrepareMoeExpertTokenCountTable 建好；per-item flag 经 GM 跨子核可见）；
+ * 分工：工作项 = (srcRank, token 段)，全体 AIV1 平铺认领。
+ * （历史：v3 曾把 prepass 挪到 AIV0——它在等首 wave GMM1 输出，可与 AIV1 dispatch 完全并行；
+ * 但实测大 bs 下 AIV0 早期密集访问 route 窗口触发 aicore trap（机制待与驱动侧对齐，2026-09-09
+ * 通宵二分 F 系探针铁证：不调 prepass 不崩/调即崩且崩点在公共段），已回退 AIV1 保稳。）
  * 同一 (srcRank, token) 的所有出现恒落在同一工作项内，槽内二分定界后工作项之间零交叠，无需原子。
  * 依赖：PrepareMoeExpertTokenCountTable 已完成（cumsumInfoTensor 就绪；count epoch 校验到达
  * 即 route 槽到达，是 DispatchRankTokens 沿用的既有契约）。
