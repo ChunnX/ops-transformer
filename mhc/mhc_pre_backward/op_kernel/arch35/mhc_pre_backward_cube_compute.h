@@ -105,7 +105,7 @@ private:
         LocalTensor<float> currentC = cL0_[cSlot * CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
-        AccumulateKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, transA, true, reuseB1);
+        ProcessKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, transA, true, reuseB1);
 
         SetFlag<HardEvent::M_FIX>(cSlot);
         WaitFlag<HardEvent::M_FIX>(cSlot);
@@ -117,7 +117,7 @@ private:
         }
         CopyOut(c, currentC, m, n, cGmStride);
         if (atomicAdd) {
-            DisableDmaAtomic();
+            SetAtomicNone();
         }
         if (publishC0) {
             // FIX流水完成当前最多128行C0写回后，按原粒度唤醒对应Vector核。
@@ -128,10 +128,10 @@ private:
         ++l0cLoopCount_;
     }
 
-    __aicore__ inline void AccumulateKRange(const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
-                                            const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
-                                            uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst,
-                                            bool reuseB1 = false)
+    __aicore__ inline void ProcessKRange(const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
+                                        const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
+                                        uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst,
+                                        bool reuseB1 = false)
     {
 
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += CUBE_L1_K) {
