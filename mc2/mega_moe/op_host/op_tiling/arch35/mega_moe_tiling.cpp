@@ -1700,7 +1700,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     OP_TILING_CHECK(weightOneColumnCount != weightTwoRowCount || weightOneColumnCount != xColumnCount,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "weight1, weight2 and x", commonMatrixDimensionsString.c_str(),
-                        "The column count of weight1 and the row count of weight2 must equal the column count of x."),
+                        "The column count of weight1 and the row count of weight2 must equal the column count of x"),
                     return ge::GRAPH_FAILED);
 
     const std::string weightRowColumnDimensionsString =
@@ -1708,7 +1708,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     OP_TILING_CHECK(weightOneRowCount != weightTwoColumnCount * SWIGLU_GATE_UP_SPLIT_FACTOR,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "weight1 and weight2", weightRowColumnDimensionsString.c_str(),
-                        "The row count of weight1 must equal the column count of weight2 multiplied by 2."),
+                        "The row count of weight1 must equal the column count of weight2 multiplied by 2"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
