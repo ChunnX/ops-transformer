@@ -196,25 +196,21 @@ private:
 
         Buffer<BufferType::L1> qBuf;
         const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
-        if constexpr (LOAD_Q_TO_L0B) {
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
-                qBuf = l1QBuffers_.Get();
-                qBuf.Wait<HardEvent::MTE1_MTE2>();
-                LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
-                CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
-                                       constInfo.n2GD);
+        if (LOAD_Q_TO_L0B && unlikely(runInfo.isFirstS2Loop)) {
+            // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
+            qBuf = l1QBuffers_.Get();
+            qBuf.Wait<HardEvent::MTE1_MTE2>();
+            LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
+            CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
+                                   constInfo.n2GD);
 
-                LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
-                MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
-                                              constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
-                                              constInfo.qScaleN1D);
-                qBuf.Set<HardEvent::MTE2_MTE1>();
-            } else {
-                qBuf = l1QBuffers_.GetPre();
-            }
+            LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
+            MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
+                                          constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
+                                          constInfo.qScaleN1D);
+            qBuf.Set<HardEvent::MTE2_MTE1>();
         } else {
-            // Paired subLoop1 reuses both the current L1 Q buffer and its already loaded L0B tile.
+            // Reuse L1 Q for later S2 loops and the paired subLoop1.
             qBuf = l1QBuffers_.GetPre();
         }
 
