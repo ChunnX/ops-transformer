@@ -23,11 +23,13 @@
 
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
+#include "reduce_scatter_comm_algo_table.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_algo_selector.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
@@ -127,6 +129,15 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
                   args_.rankDim == PEER_ONLY_RANK_SIZE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+    } else if (commMode_ == TPL_CCU_COMM_MODE && !isA2APath_) {
+        uint64_t commDataBytes = args_.orgMValue * args_.orgNValue * args_.outputDtypeSize;
+        uint32_t algoCount = 0;
+        const Mc2Hcom::CommAlgoEntry *algoEntries = GetReduceScatterCommAlgoTable(algoCount);
+        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
+            opName_, group, mc2tiling::A5_CCU_ENGINE, commDataBytes, static_cast<uint32_t>(args_.rankDim),
+            algoEntries, algoCount, REDUCE_SCATTER_DEFAULT_ALGO_NAME);
+        OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
+        mc2CcTilingConfig.SetAlgConfig(algoName);
     }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
