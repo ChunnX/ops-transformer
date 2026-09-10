@@ -696,7 +696,7 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock_.InitBuffers();
+        vecFdBlock_.InitBuffers(fdParams_.fdS2SplitNum);
         AscendC::ICachePreLoad(2);
         AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
