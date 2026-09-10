@@ -166,8 +166,8 @@ math_semantics:
     bwr = bw.reshape(K_, 1, 1, 1, 1)
     nhr = nhv.reshape(K_, 1, 1, 1, 1)
     nwr = nwv.reshape(K_, 1, 1, 1, 1)
-    yy = ry1.reshape(K_, 1, 1, 1, 1) + (ph + 0.5) * bhr + (ih + 0.5) * bhr / nhr
-    xx = rx1.reshape(K_, 1, 1, 1, 1) + (pw + 0.5) * bwr + (iw + 0.5) * bwr / nwr
+    yy = ry1.reshape(K_, 1, 1, 1, 1) + ph * bhr + (ih + 0.5) * bhr / nhr
+    xx = rx1.reshape(K_, 1, 1, 1, 1) + pw * bwr + (iw + 0.5) * bwr / nwr
     yy = np.broadcast_to(yy, (K_, PH, PW, SH, SW))
     xx = np.broadcast_to(xx, (K_, PH, PW, SH, SW))
     valid = np.logical_and(np.broadcast_to(ih < nhr, (K_, PH, PW, SH, SW)), np.broadcast_to(iw < nwr, (K_, PH, PW, SH, SW)))

@@ -333,7 +333,7 @@ def process_level_roi(
                 else:
                     init_acc_row_vf(acc_tile, pw_i, NEG_INF)
             for ih in pl.range(0, nh):
-                yy = ry1 + (ph + 0.5) * bh + (ih + 0.5) * bh / nh
+                yy = ry1 + ph * bh + (ih + 0.5) * bh / nh
                 inside_y = yy >= -1.0 and yy <= h_l * 1.0
                 yyc = yy if yy > 0.0 else 0.0
                 floor_vf(ints_tile, yyc)
@@ -345,7 +345,7 @@ def process_level_roi(
                 wy1 = lam_y
 
                 # window [0, x_hi]: main path when it fits SPAN columns
-                x_last = rx1 + (pw_num - 0.5) * bw + (nw - 0.5) * bw / nw
+                x_last = rx1 + (pw_num - 1) * bw + (nw - 0.5) * bw / nw
                 floor_vf(ints_tile, x_last + 2.0)
                 x_hi = pl.getval(ints_tile, 0)
                 x_hi_c = x_hi if x_hi < wl1 else wl1
@@ -367,7 +367,7 @@ def process_level_roi(
                         pl.cast(t1f_tile, t1x_tile)
                     for pw_i in pl.range(0, pw_num):
                         for iw in pl.range(0, nw):
-                            xx = rx1 + (pw_i + 0.5) * bw + (iw + 0.5) * bw / nw
+                            xx = rx1 + pw_i * bw + (iw + 0.5) * bw / nw
                             inside_x = xx >= -1.0 and xx <= w_l * 1.0
                             if inside_y and inside_x:
                                 xxc = xx if xx > 0.0 else 0.0
@@ -387,7 +387,7 @@ def process_level_roi(
                     # x0 and wl1_rel clamping the second gather column.
                     for pw_i in pl.range(0, pw_num):
                         for iw in pl.range(0, nw):
-                            xx = rx1 + (pw_i + 0.5) * bw + (iw + 0.5) * bw / nw
+                            xx = rx1 + pw_i * bw + (iw + 0.5) * bw / nw
                             inside_x = xx >= -1.0 and xx <= w_l * 1.0
                             if inside_y and inside_x:
                                 xxc = xx if xx > 0.0 else 0.0
