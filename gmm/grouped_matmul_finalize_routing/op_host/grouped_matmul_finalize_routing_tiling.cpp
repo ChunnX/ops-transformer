@@ -40,11 +40,15 @@ static ge::graphStatus GroupedMatmulFinalizeRoutingTilingFunc(gert::TilingContex
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
                 return ge::GRAPH_FAILED);
+
     auto compileInfoPtr = context->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
                 OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
                 return ge::GRAPH_FAILED);
     if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
+        auto atomicRet = context->SetNeedAtomic(true);
+        OP_CHECK_IF(atomicRet != ge::GRAPH_SUCCESS,
+                    OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "SetNeedAtomic failed"), return ge::GRAPH_FAILED);
         OP_CHECK_NULL_WITH_CONTEXT(context, context);
         auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
         OP_CHECK_NULL_WITH_CONTEXT(context, xDesc); // check xDesc is not null
@@ -100,7 +104,7 @@ static ge::graphStatus TilingPrepareForGroupedMatmulFinalizeRouting(gert::Tiling
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size);
 
     OP_LOGI(context->GetNodeName(),
-            "parse compile info success soc:%d, l1Size(bytes):%lu, l2Size(bytes):%lu, coreNum:%lu, supportL0c2out:%d, "
+            "parse compile info success soc:%d, l1Size:%lu, l2Size:%lu, coreNum:%lu, supportL0c2out:%d, "
             "supportL12BtBf16:%d",
             static_cast<int>(compileInfoPtr->socVersion), compileInfoPtr->l1Size, compileInfoPtr->l2Size,
             compileInfoPtr->aicNum, compileInfoPtr->supportL0c2out, compileInfoPtr->supportL12BtBf16);
