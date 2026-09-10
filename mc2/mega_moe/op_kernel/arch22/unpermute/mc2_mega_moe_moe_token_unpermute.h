@@ -329,7 +329,7 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CopyToken
     this->tokens_inque.template EnQue(tokensLocal);
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS>
+template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CopySharedTokenIn(
     const int64_t shared_expert_index, const int64_t out_token_index, const int64_t h_index, const int64_t h_length)
 {
