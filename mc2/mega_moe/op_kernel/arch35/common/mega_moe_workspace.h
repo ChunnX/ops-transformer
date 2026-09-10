@@ -179,7 +179,9 @@ private:
         // W4 GMM1 activation 始终使用该序号；非量化 GMM2/Combine 也复用它做 tile 一对一通知。
         bool hasSharedW4Gmm = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
         bool isW4Mode = IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm;
-        if (isW4Mode || (tilingData->topoType == TOPO_TYPE_MTE && tilingData->combineQuantMode == COMBINE_NO_QUANT)) {
+        // MTE wave 的 GMM2 tile 消费者（非量化重放 / 量化直通）均使用该槽做 word0/1/2 协议，
+        // 三种 combine 模式统一分配（量化 k 门限回退时空置，量级 ~9KB 无害）。
+        if (isW4Mode || tilingData->topoType == TOPO_TYPE_MTE) {
             flagGmmToEpilogueOffset = workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }

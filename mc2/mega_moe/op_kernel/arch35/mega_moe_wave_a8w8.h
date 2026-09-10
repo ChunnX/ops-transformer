@@ -69,6 +69,7 @@ private:
     using MegaMoeBase::moeExpertPerRank_;
     using MegaMoeBase::moeWeightTensorListAddrs_;
     using MegaMoeBase::params_;
+    using MegaMoeBase::sharedExpertNum_;
     using MegaMoeBase::startBlockIdx_;
     using MegaMoeBase::syncWorkspaceLayout_;
     using MegaMoeBase::tokenDispatchConfig_;
@@ -102,12 +103,15 @@ private:
                                            const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
                                            GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, int32_t &gmmTileSequence,
                                            uint32_t allCoreCombineExpertIndex,
-                                           ExpertLoopState &allCoreCombineExpertState);
+                                           ExpertLoopState &allCoreCombineExpertState, bool gmm2DirectL0cUb,
+                                           int32_t epilogueDrainExpected, bool gmm2SeqFlagPrecharged);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
                                                  ExpertLoopState &combineState, GMMAddrInfo &combineAddrInfo,
                                                  const CombineBufferConfig &bufferConfig,
                                                  uint32_t allCoreCombineExpertIndex,
                                                  const ExpertLoopState &allCoreCombineExpertState);
+    __aicore__ inline void DirectQuantScatterExperts(uint32_t expertBegin, uint32_t expertEnd,
+                                                     ExpertLoopState &combineState);
 
     uint32_t gmm1TilesPerMGroup_ = 1U;
     uint32_t gmm2TilesPerMGroup_ = 1U;
@@ -270,11 +274,22 @@ template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmm2Wave(
     ExpertTokenPosition &gmm2Position, const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
     GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, int32_t &gmmTileSequence, uint32_t allCoreCombineExpertIndex,
-    ExpertLoopState &allCoreCombineExpertState)
+    ExpertLoopState &allCoreCombineExpertState, bool gmm2DirectL0cUb, int32_t epilogueDrainExpected,
+    bool gmm2SeqFlagPrecharged)
 {
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
         if (GetSubBlockIdx() == 1U) {
             return;
+        }
+    }
+    if constexpr (g_coreType == AIC) {
+        if (gmm2DirectL0cUb) {
+            // 直通相位边界防护：直通 tile 槽与 AIV0 的 GMM1 ping-pong 槽同 UB 重叠，等 AIV0
+            // 排空刚完成 wave 的 epilogue 槽读（word2 追上 wave 计数）后，本阶段首个直通
+            // fixpipe 才能写该区间；三角色同调用序保证两侧 wave 计数同拍。
+            WaitUntilGmFlagAtLeast(GetGmm2EpilogueFlagSlot(params_, gmmExecutionConfig_.blockJob) +
+                                       GMM2_DIRECT_L0C_EPILOGUE_DRAINED_SEQ_OFFSET,
+                                   epilogueDrainExpected);
         }
     }
 
@@ -323,23 +338,28 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateMoeExpertGmm2GlobalBuffer<MoeWeightType, ActivationType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2AddrInfo,
             gmm2ExpertState, gmm2Position.tokenIndexInExpert);
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            gmm2AddrInfo.gmmToEpilogueFlag =
-                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT || CombineQuantMode == MXFP8_E4M3_COMM_QUANT ||
+                      CombineQuantMode == MXFP8_E5M2_COMM_QUANT) {
+            // 非量化重放与量化直通的 tile 消费者都走该槽（word0 就绪 / word1 消费 / word2 排空）。
+            gmm2AddrInfo.gmmToEpilogueFlag = GetGmm2EpilogueFlagSlot(params_, gmmExecutionConfig_.blockJob);
         }
         // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
         bool isWholeExpert =
             gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
         int32_t *tileSequence = nullptr;
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT || CombineQuantMode == MXFP8_E4M3_COMM_QUANT ||
+                      CombineQuantMode == MXFP8_E5M2_COMM_QUANT) {
+            // 量化直通同样消费逐 tile 序号（word0/word1）；GM 回退时序号只推进不发布。
             tileSequence = &gmmTileSequence;
         }
-        RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+        // 首个模板实参必须传类级 CombineQuantMode：GmmKernel 层据它路由量化直通的消费者
+        // （Gmm2DirectQuantSlotStage）与序号发布策略，硬编码 NO_QUANT 会让量化模式误入
+        // 非量化 bf16 重放分支（layered 路径同款传法）。
+        RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                        MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, IsGmm1Interleaved,
-                       true, CombineQuantMode == COMBINE_NO_QUANT>(
-            gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-            gmm2Position.tokenIndexInExpert, &params_, tileSequence);
+                       true, true>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob,
+                                   nullptr, isWholeExpert, gmm2Position.tokenIndexInExpert, &params_, tileSequence,
+                                   gmm2SeqFlagPrecharged);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
@@ -410,6 +430,107 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 }
 
 /*
+ * 量化直通的散射段（AIV1）：等 gmm2Ready（全 AIC 的暂存已 retire，通知点在 G1 word1 排空
+ * 之后）后按均衡行范围消费 GM 量化平面——每 token 读 data 整行 + scale 槽行（nSlices×32B，
+ * 暂存走默认 L2 路径故重读命中），标量紧凑（每切片取 32B 槽内前 8B，~2×nSlices 次 int32
+ * 搬运）拼装成窗口记录的连续 scale 区，单条 MTE3 整记录发送（记录布局与基线量化路径
+ * 逐字节一致，接收侧 unpermute 零改动）。AIV1 的 UB 不受 AIC fixpipe 影响，散射可任意滞后
+ * 于 GMM2 主流水，仅由输出 barrier 收口；替代 GM 回退路径的 ProcessCombineExperts。
+ */
+template <TemplateMegaMoeA8W8WaveTypeClass>
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::DirectQuantScatterExperts(
+    uint32_t expertBegin, uint32_t expertEnd, ExpertLoopState &combineState)
+{
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT || g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return;
+    }
+    const uint32_t hiddenDim = commonConfig_.tokenHiddenDim;
+    const uint32_t nScale = Ops::Base::CeilDiv(hiddenDim, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
+    const uint32_t nSlices = Ops::Base::CeilDiv(hiddenDim, static_cast<uint32_t>(L1_TILE_N));
+    const uint32_t scaleSlotRowBytes = nSlices * 32U;
+    const uint32_t tokenStorageBytes = Ops::Base::CeilAlign(hiddenDim, static_cast<uint32_t>(ALIGN_256));
+    const uint32_t recordBytes =
+        Ops::Base::CeilAlign(tokenStorageBytes + Ops::Base::CeilAlign(nScale, 2U), static_cast<uint32_t>(ALIGN_32));
+    const uint64_t planeBase = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(params_.workspaceInfo.gmm2MmadResPtr));
+    const uint64_t scalePlaneBase =
+        planeBase + static_cast<uint64_t>(params_.tilingData->maxOutputSize) * static_cast<uint64_t>(hiddenDim);
+    const uint64_t gmRemoteBaseOffset =
+        static_cast<uint64_t>(params_.peermemInfo.combineSendPtr - params_.peermemInfo.rankSyncInWorldPtr);
+    // 记录拼装缓冲（data 段 + 紧凑 scale 段）+ 尾接的 scale 槽行读入区：复用 Combine 行环
+    // 区起点，直通模式下该区空闲。
+    LocalTensor<uint8_t> recordTensor(TPosition::VECIN, WAVE_COMBINE_UB_BASE, recordBytes + scaleSlotRowBytes);
+    LocalTensor<int32_t> recordWords(TPosition::VECIN, WAVE_COMBINE_UB_BASE,
+                                     (recordBytes + scaleSlotRowBytes) / sizeof(int32_t));
+    AscendC::GlobalTensor<uint8_t> dataPlaneGm;
+    AscendC::GlobalTensor<uint8_t> scalePlaneGm;
+    dataPlaneGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params_.workspaceInfo.gmm2MmadResPtr));
+    scalePlaneGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(scalePlaneBase));
+    AscendC::GlobalTensor<uint8_t> gmRemoteD;
+
+    for (uint32_t expertIdx = expertBegin; expertIdx < expertEnd; ++expertIdx) {
+        uint32_t expertTokenCount = GetExpertTokenCountFromWorkspace(params_.workspaceInfo.expertRevTokenNumsPtr,
+                                                                     countWorkspace_, moeExpertPerRank_, expertIdx);
+        UpdateExpertLoopState(combineState, expertIdx, expertTokenCount);
+        if (expertTokenCount == 0U) {
+            continue;
+        }
+        WorkRange scatterRange =
+            GetWaveCombineOwnedRange<false>(waveCombineJob_, expertTokenCount, combineState.globalTokenStartIndex);
+        if (scatterRange.count == 0U) {
+            continue;
+        }
+        // 全部 AIC 的暂存 retire 后平面数据才完整（gmm2Ready 在 G1 word1 排空之后发布）。
+        WaitWaveGmm2Ready(waveCombineJob_, params_, expertIdx);
+        for (uint32_t processed = 0U; processed < scatterRange.count;) {
+            uint32_t chunk = scatterRange.count - processed < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
+                                 scatterRange.count - processed :
+                                 WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
+            PreloadWaveCombineMetaInfo(params_, waveCombineScratch_,
+                                       combineState.globalTokenStartIndex + scatterRange.start + processed, chunk, 0U);
+            for (uint32_t i = 0U; i < chunk; ++i) {
+                CombineImpl::CombineTokenRoute route =
+                    CombineImpl::LoadCombineTokenRoute(waveCombineScratch_.metaInfoTensor, i);
+                // 平面按全局行号索引（生产侧 expertRowBase 含累计专家前缀），读入侧同补前缀。
+                const uint64_t globalRow = combineState.globalTokenStartIndex + scatterRange.start + processed + i;
+                AscendC::DataCopyExtParams readParams{1U, hiddenDim, 0U, 0U, 0U};
+                AscendC::DataCopyPad(recordTensor[0], dataPlaneGm[globalRow * hiddenDim], readParams);
+                AscendC::DataCopyExtParams scaleReadParams{1U, scaleSlotRowBytes, 0U, 0U, 0U};
+                AscendC::DataCopyPad(recordTensor[recordBytes], scalePlaneGm[globalRow * scaleSlotRowBytes],
+                                     scaleReadParams);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+                // 紧凑：每切片 32B 槽取前 8B（2 个 int32），拼成记录 scale 区的连续 nScale 字节。
+                // nScale 为 8 的倍数（H 为 256 倍数），int32 边界整除无残片。
+                const uint32_t scaleWordBase = tokenStorageBytes / sizeof(int32_t);
+                const uint32_t paddedWordBase = recordBytes / sizeof(int32_t);
+                for (uint32_t s = 0U; s < nSlices; ++s) {
+                    recordWords.SetValue(scaleWordBase + 2U * s, recordWords.GetValue(paddedWordBase + 8U * s));
+                    recordWords.SetValue(scaleWordBase + 2U * s + 1U,
+                                         recordWords.GetValue(paddedWordBase + 8U * s + 1U));
+                }
+                // 发送前双可见性：记录 data 段为 MTE2 产物（MTE2_MTE3），紧凑 scale 段为标量
+                // 产物（S_MTE3，token_dispatch 的标量写→MTE3 发送同款先例）。
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+                AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(0);
+                gmRemoteD.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ uint8_t *>(GetRankWinAddrWithOffset(route.dstRankId, gmRemoteBaseOffset)));
+                uint64_t dstRowOffset = CombineImpl::GetCombineDstRowIndex(route, params_) * recordBytes;
+                AscendC::DataCopyExtParams sendParams{1U, recordBytes, 0U, 0U, 0U};
+                AscendC::DataCopyPad(gmRemoteD[dstRowOffset], recordTensor[0], sendParams);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+            }
+            processed += chunk;
+        }
+    }
+}
+
+/*
  * 按动态 WAVE 边界滚动执行 A8W8 MoE 流水。AIV1 启动时连续准备 W0/W1，稳态消费已准备 WAVE 的同时
  * Dispatch 下一 WAVE，始终保持一轮 lookahead。每次先规划完整 WAVE 的 [begin, end) 范围，再通过统一的
  * DispatchTokenRange 执行搬运和 ready 发布；GMM1、Activation、GMM2 与 Combine 复用同一 WAVE 终点。
@@ -455,6 +576,15 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // bs8192 净收益（-820us），故仅在每卡 token 数达到阈值时启用；2048/8192 之间未实测，
     // 阈值取中点偏保守，中间形状合入前需补测。
     const bool gmm2LagActive = commonConfig_.tokenNum >= GMM2_LAG_MIN_TOKEN_NUM;
+    // 直通 GMM2 的编排层判据（与 GmmKernel 层 UseGmm2DirectL0cUb 同一公式；K = GMM2 的 K 维 =
+    // activation 宽 = gmm1OutputDim / ACTIVATION_N_HALF）。W4/A4W4 共享专家 GMM1 的完成序号
+    // 由 AIV1 消费，会把 word0 预充到 AIV0 本地计数之外，该混合配置回退 GM 中继。
+    const bool gmm2SeqFlagPrecharged =
+        sharedExpertNum_ > 0U && (MegaMoeBase::SharedQuantConfig::AXW_MODE == AxWMode::A8W4 ||
+                                  MegaMoeBase::SharedQuantConfig::AXW_MODE == AxWMode::A4W4);
+    const bool gmm2DirectL0cUb =
+        IsGmm2DirectL0cUbActive(CombineQuantMode, commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF,
+                                commonConfig_.tokenHiddenDim, gmm2SeqFlagPrecharged);
     // 三角色整体滞后一拍的缓存：上一 wave 的边界（见循环内注释）。
     ExpertTokenPosition gmm2PendingWaveEnd{};
     bool hasPendingGmm2Wave = false;
@@ -499,6 +629,16 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             }
         }
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
+        if constexpr (g_coreType == AIV) {
+            if (GetSubBlockIdx() == 0U && gmm2DirectL0cUb) {
+                // 发布 epilogue 排空计数（直通相位边界防护）：末 tile 的 NotifyGmm2InputReady
+                // 前置的数据面同步已保证本 wave 的 ping-pong 向量读退役（基线 activation 可见
+                // 性依赖同一保证），AIC 侧据此放行首个直通 fixpipe。
+                AscendC::WriteGmByPassDCache(GetGmm2EpilogueFlagSlot(params_, gmmExecutionConfig_.blockJob) +
+                                                 GMM2_DIRECT_L0C_EPILOGUE_DRAINED_SEQ_OFFSET,
+                                             static_cast<int32_t>(gmm1Count));
+            }
+        }
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
         /*
@@ -513,13 +653,18 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (gmm2LagActive) {
             if (hasPendingGmm2Wave) {
                 ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
-                                gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                                gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState, gmm2DirectL0cUb,
+                                static_cast<int32_t>(gmm1Count), gmm2SeqFlagPrecharged);
                 UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                     uint32_t combineEndExpertIndex = gmm2PendingWaveEnd.expertIdx;
-                    ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
-                                          combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
-                                          allCoreCombineExpertState);
+                    if (gmm2DirectL0cUb) {
+                        DirectQuantScatterExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState);
+                    } else {
+                        ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
+                                              combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
+                                              allCoreCombineExpertState);
+                    }
                     combineBeginExpertIndex = combineEndExpertIndex;
                 }
             }
@@ -527,13 +672,18 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             hasPendingGmm2Wave = true;
         } else {
             ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
-                            gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                            gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState, gmm2DirectL0cUb,
+                            static_cast<int32_t>(gmm1Count), gmm2SeqFlagPrecharged);
             UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                 uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
-                ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
-                                      combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
-                                      allCoreCombineExpertState);
+                if (gmm2DirectL0cUb) {
+                    DirectQuantScatterExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState);
+                } else {
+                    ProcessCombineExperts(combineBeginExpertIndex, combineEndExpertIndex, combineExpertState,
+                                          combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
+                                          allCoreCombineExpertState);
+                }
                 combineBeginExpertIndex = combineEndExpertIndex;
             }
         }
@@ -551,12 +701,17 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 滞后流水收尾：三角色共同补跑最后一个 wave 的 GMM2/Combine（与循环内滞后分支同构）。
     if (hasPendingGmm2Wave) {
         ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
-                        gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                        gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState, gmm2DirectL0cUb,
+                        static_cast<int32_t>(gmm1Count), gmm2SeqFlagPrecharged);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-            ProcessCombineExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,
-                                  combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
-                                  allCoreCombineExpertState);
+            if (gmm2DirectL0cUb) {
+                DirectQuantScatterExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState);
+            } else {
+                ProcessCombineExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,
+                                      combineAddrInfo, combineBufferConfig, allCoreCombineExpertIndex,
+                                      allCoreCombineExpertState);
+            }
         }
     }
 

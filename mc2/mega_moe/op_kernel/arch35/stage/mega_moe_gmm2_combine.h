@@ -278,6 +278,82 @@ constexpr uint32_t WAVE_COMBINE_UB_BASE = 64U * 1024U;
 constexpr uint32_t WAVE_COMBINE_UB_LIMIT = 184U * 1024U;
 constexpr uint32_t WAVE_COMBINE_META_INFO_TOKEN_CAPACITY = 1536U;
 
+/*
+ * 非量化 Combine 的 GMM2 L0C->UB 直通：AIC 的 fixpipe 将 GMM2 tile 直接写入消费核 UB 的
+ * tileUb 槽（C 张量落 UB 时 BlockMmad 自动走 L0C2UB，目的核为配对 V0），重放核跳过 GM
+ * 读回，GM bf16 中继退役（本地 HBM 每 token 消 4H 往返）。就绪仍复用 gmmToEpilogueFlag
+ * 序号；消费序号复用同一 AIC flag 槽（INT_CACHELINE 个 int32）的 word 1，随 flag 区
+ * 每 launch 一次清零。GM 读回退役后 GM 写同步退役（双写不成立：消费读 UB 即需槽生命
+ * 周期管理，GM 无界缓冲作用被架空）。
+ *
+ * 相位边界防护：直通 tile 槽 [64K,192K) 与 metaInfo 区 [200K,208K) 和 AIV0 的 GMM1
+ * ping-pong 槽（[0,128K)/[128K,256K)）在 UB 上重叠，两个方向都需要显式排空——
+ * word2（AIV0->AIC）：AIV0 排空本 wave epilogue 的 ping-pong 槽读后发布 wave 计数，
+ * AIC 的首个直通 fixpipe 等它追平，防 GMM2 fixpipe 覆写进行中的 epilogue 读；
+ * word1（AIV0->AIC）：AIC 离开直通阶段前等消费序号追平，防下一相位 GMM1 fixpipe
+ * 覆写进行中的重放读。
+ */
+constexpr uint32_t GMM2_DIRECT_L0C_CONSUMED_SEQ_OFFSET = 1U;
+constexpr uint32_t GMM2_DIRECT_L0C_EPILOGUE_DRAINED_SEQ_OFFSET = 2U;
+// 直通要求 MMAD 每 tile 的生产时间稳定长于消费时间（深度 1 锁步零暴露）；K 低于该值时
+// 生产不再慢于消费，回退 GM 中继避免拖累 GMM2。
+constexpr uint32_t GMM2_DIRECT_L0C_MIN_K = 2048U;
+
+// 量化直通（二期）在 AIV0 的槽外工作区：分组量化 band 与量化临时 scratch。
+// [tile 槽末端 192K, ~202K) 不与 GMM2 tile 槽 [64K,192K) 冲突；落在 GMM1 ping-pong 槽
+// [128K,256K) 内，由 word1（阶段出口排空）与 word2（阶段入口排空）相位护栏保护。
+// 区间同时压过 metaInfo 区 [200K,248K) 的头部：AIV0 仅在量化直通下使用 band（此时
+// CombineTokenRange/metaInfo 消费不在此核运行），两特性按 CombineQuantMode 互斥，改动
+// 任一侧前须重审该互斥。
+constexpr uint32_t GMM2_DIRECT_QUANT_BAND_ADDR =
+    WAVE_COMBINE_UB_BASE + L1_TILE_M_256 * L1_TILE_N * static_cast<uint32_t>(sizeof(bfloat16_t));
+constexpr uint32_t GMM2_DIRECT_QUANT_ROW_GROUP_COUNT = 32U;
+// band 行距 288B = 256B fp8 data + 8B scale + 24B 垫整（QuantMxFp8 的输出布局，scale 段位于
+// 行内 256B 偏移）：data 段暂存的 UB 源步进恰为 1 个 dataBlock(32B)；行尾 [256,288) 即本切片
+// 32B 平面槽的有效内容（8B scale + 24B 残留，残留落自己槽内、散射侧紧凑时跳过），scale 暂存
+// 直接以行尾 32B 为块源（源步进 8 个 dataBlock）——生产侧全程 V/MTE3，无标量中转。
+constexpr uint32_t GMM2_DIRECT_QUANT_BAND_ROW_BYTES = 288U;
+constexpr uint32_t GMM2_DIRECT_QUANT_BAND_BYTES = GMM2_DIRECT_QUANT_ROW_GROUP_COUNT * GMM2_DIRECT_QUANT_BAND_ROW_BYTES;
+constexpr uint32_t GMM2_DIRECT_QUANT_TEMP_ADDR = GMM2_DIRECT_QUANT_BAND_ADDR + GMM2_DIRECT_QUANT_BAND_BYTES;
+constexpr uint32_t GMM2_DIRECT_QUANT_TEMP_BYTES = 1024U;
+
+// 编排层与 GmmKernel 层共用的直通激活判据（gmm2K 为 GMM2 的 K 维 = activation 宽 =
+// gmm1OutputDim / ACTIVATION_N_HALF，与 BuildGmm2ProblemConfig 的 config.k 同源）。
+// seqFlagPrecharged：存在 W4/A4W4 共享专家 GMM1 时，其完成序号由 AIV1 消费、word0 被
+// 预充到 AIV0 本地计数之外（直通重放在 AIV0、序号域无法对齐），该混合配置回退 GM 中继。
+// 非量化与两种 MXFP8 量化均支持直通：量化为槽内 tile 局部量化 + 双平面暂存（scale 按
+// 切片独立落 32B 槽，规避 N 切片跨核散布下的凑组问题）。量化直通的定宽切片量化/落位与
+// 紧凑公式（nScale = 8×nSlices）要求 tokenHiddenDim 为 L1_TILE_N 整数倍：末切片部分宽会
+// 越界量化 UB 尾巴并越行写 data 平面，非整倍形状回退 GM 中继（非量化按 actualShape 处理
+// 边界切片，无此约束）。主线 H（2048/4096/5120/7168）均满足，门控为防回归加固。
+__aicore__ inline bool IsGmm2DirectL0cUbActive(int32_t combineQuantMode, uint32_t gmm2K, uint32_t tokenHiddenDim,
+                                               bool seqFlagPrecharged)
+{
+    const bool tileConsumerMode = combineQuantMode == COMBINE_NO_QUANT || combineQuantMode == MXFP8_E4M3_COMM_QUANT ||
+                                  combineQuantMode == MXFP8_E5M2_COMM_QUANT;
+    const bool quantShapeAligned =
+        combineQuantMode == COMBINE_NO_QUANT || tokenHiddenDim % static_cast<uint32_t>(L1_TILE_N) == 0U;
+    return tileConsumerMode && quantShapeAligned && !seqFlagPrecharged && gmm2K >= GMM2_DIRECT_L0C_MIN_K;
+}
+
+// tile 序号通知（wave MoE 路径）且 K 足够大时启用 GMM2 L0C->UB 直通；AIC 与重放核用同一
+// config 计算本判定，保证两侧路径选择一致。
+template <uint8_t CombineQuantMode, bool NotifyCombineTileReady, typename Config>
+__aicore__ inline bool UseGmm2DirectL0cUb(const Config &config, bool seqFlagPrecharged)
+{
+    if constexpr (NotifyCombineTileReady) {
+        return IsGmm2DirectL0cUbActive(CombineQuantMode, config.k, config.n, seqFlagPrecharged);
+    }
+    return false;
+}
+
+// 每个 AIC 独占的 GMM2->Combine 序号 flag 槽（word0 就绪 / word1 消费 / word2 epilogue 排空）。
+__aicore__ inline __gm__ int32_t *GetGmm2EpilogueFlagSlot(const Params &params, const BlockJobContext &blockJob)
+{
+    return reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagGmmToEpiloguePtr) +
+           static_cast<uint64_t>(blockJob.jobIndex) * INT_CACHELINE;
+}
+
 // 非 layered 路径统一使用的 Combine 行环。常规 Wave 只有 AIV1 建立并使用这些 UB 视图；
 // 最后一轮不再与 GMM1/SwiGLU 并行时，调用方才为 AIV0 补充初始化。
 template <uint8_t CombineMode, bool IncludeAiv0 = false, uint32_t MaxRowBufferCount = WAVE_COMBINE_MAX_ROW_BUFFER_COUNT>
@@ -549,7 +625,8 @@ template <uint8_t CombineQuantMode, typename BlockMmad, bool IsShared, bool IsLa
           bool NotifyCombineTileReady = false, typename WorkSet, typename Config>
 __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo,
                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                          uint32_t rowOffsetInExpert = 0U, int32_t *gmTileSequence = nullptr)
+                                          uint32_t rowOffsetInExpert = 0U, int32_t *gmTileSequence = nullptr,
+                                          bool seqFlagPrecharged = false)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -563,6 +640,16 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
         }
         groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
     }
+
+    // L0C->UB 直通：C 张量改指向消费核 UB 的 tileUb 槽（与重放核 CombineTokenRange 的槽地址
+    // 同约定），fixpipe 按 C 位置自动走 L0C2UB；GM 写同步退役。直通要求 gmmTileSequence 有效，
+    // 由调用路径保证（NotifyCombineTileReady=true 仅出现在带序号的 wave 非量化 MoE 路径）。
+    const bool directL0cUb = UseGmm2DirectL0cUb<CombineQuantMode, NotifyCombineTileReady>(config, seqFlagPrecharged);
+    using DirectElementC = typename Config::KernelConfig::ElementCType;
+    using DirectMakeLayoutC = typename Config::KernelConfig::MakeLayoutC;
+    auto directUbCTensor =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, DirectElementC>(static_cast<int64_t>(WAVE_COMBINE_UB_BASE)),
+                       DirectMakeLayoutC{}(config.tileM, L1_TILE_N));
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
@@ -596,29 +683,53 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
                                           Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto gmBlockScaleB =
             workSet.gmScaleB.Slice(Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
-        auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
-                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+        if (directL0cUb) {
+            // 深度 1 背压：fixpipe 复写 UB 槽前，等重放核释放上一个 tile（MTE3 读离 UB 并发布
+            // 消费序号）。主线规格下 MMAD 每 tile 比消费慢一个数量级以上，此处常态零等待。
+            WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag + GMM2_DIRECT_L0C_CONSUMED_SEQ_OFFSET,
+                                   *gmTileSequence);
+            auto tensorBlockUb = directUbCTensor.Slice(
+                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, tensorBlockUb, singleShape);
+        } else {
+            auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
+                                              Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+        }
         if constexpr (NotifyCombineTileReady && !IsShared) {
-            // GMM2 tile 与配对 AIV1 的 Combine tile 一对一通知。
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+            // GMM2 tile 与配对重放核的一对一通知。非量化恒发布（GM 回退重放也消费该序号）；
+            // 量化仅直通时发布（GM 回退走专家粒度 gmm2Ready，无逐 tile 消费者），本地序号仍推进。
+            if (directL0cUb || CombineQuantMode == COMBINE_NO_QUANT) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++(*gmTileSequence));
+            } else {
+                ++(*gmTileSequence);
+            }
         } else if constexpr (IsLayered && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
         } else if constexpr (IsShared && !IsLayered) {
             NotifySharedExpertTileCompletion(mLoc, gmmAddrInfo.sharedExpertGmm2TileCounter);
         }
     }
+    if (directL0cUb) {
+        // 相位边界排空：直通 tile 槽与 metaInfo 区同 AIV0 的 GMM1 ping-pong 槽重叠，AIC 离开
+        // 本阶段（下一相位 GMM1 fixpipe 将复写 ping-pong 槽）前，须等重放核读离最后一个 tile。
+        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag + GMM2_DIRECT_L0C_CONSUMED_SEQ_OFFSET, *gmTileSequence);
+    }
 }
 
-// 非量化 Combine 的统一入口。AIV1 直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
+// 非量化 Combine 的统一入口。重放核直接使用 GMM2 已构造的 scheduler，逐 tile 等待配对 AIC 并消费。
 // 当前 GMM2 problem 的起始地址和 M 大小共同限定 token 范围，无需再次遍历专家或重建 scheduler。
 // UB 从 64 KiB 起步，避开 AIV1 Dispatch 跨 wave 保留在低区的 cumsum 状态。
+// useDirectUb=true 为 L0C->UB 直通模式：tile 已由 AIC fixpipe 直投本核 UB 的 tileUb 槽，
+// 跳过 GM 读回（目的行号由路由任意散射，发送仍逐 token 切片，消费开销与 GM 路径一致、被
+// GMM2 计算 bound 裕量吸收）；就绪仍等 gmmToEpilogueFlag 序号，消费完发布消费序号供 AIC
+// 背压（深度 1 槽复用）。
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                          const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
-                                         uint32_t startLoopIdx, uint32_t tileNum)
+                                         uint32_t startLoopIdx, uint32_t tileNum, bool useDirectUb = false)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -628,14 +739,16 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
 
         int32_t expectedReadySequence = gmTileSequence + 1;
         WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
-        auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
-                                            Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         constexpr uint32_t tileUbBase = WAVE_COMBINE_UB_BASE;
-        auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
-        auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(tileUbBase), layoutTileUb);
         LocalTensor<ElementC> tileUb = LocalTensor<ElementC>(TPosition::VECIN, tileUbBase, config.tileM * L1_TILE_N);
-        auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
-        AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+        if (!useDirectUb) {
+            auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
+                                                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            auto layoutTileUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
+            auto tensorBlockUb = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(tileUbBase), layoutTileUb);
+            auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
+            AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+        }
 
         int32_t lenTile = Get<M_VALUE>(actualShape);
         GlobalTensor<int32_t> metaInfoGm;
@@ -650,6 +763,101 @@ __aicore__ inline void CombineTokenRange(Scheduler &scheduler, TensorC &l0cOutGm
                                                                     L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        if (useDirectUb) {
+            // 槽释放通知：MTE3 已读离本核 UB 槽（数据进入远端写通路），发布消费序号后 AIC 才能
+            // 复写该槽。发布点与就绪序号同域（expectedReadySequence），AIC 侧按 tile 序号对齐。
+            AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag + GMM2_DIRECT_L0C_CONSUMED_SEQ_OFFSET,
+                                         expectedReadySequence);
+        }
+        gmTileSequence = expectedReadySequence;
+    }
+}
+
+/*
+ * 量化直通的槽内消费者（AIV0）：等 word0 后对 fixpipe 直投的 bf16 tile 做 tile 局部量化
+ * （MXFP8 scale 为 32 元素组局部，与整行量化逐位等价），量化记录按双平面暂存 GM——data
+ * 平面 [行 × H] 落切片 nLoc；scale 平面 [行 × nSlices×32] 按切片独立落 32B 槽。tile 的
+ * N 切片按 block 跨核散布（loopIdx += blockNum），切片独立落位不依赖同核凑组；槽内 8B
+ * 有效 + 24B 残留，记录所需的连续 scale 区由散射侧紧凑拼装（窗口记录布局不变，接收侧
+ * unpermute 零改动）。暂存走默认 L2 路径（不加 bypass hint），散射侧重读命中 L2。暂存
+ * MTE3 排空后发布 word1 释放槽位——散射与链路完全离槽，AIC 背压只覆盖量化+暂存（消费侧
+ * 稳态速率含 V pass，k 门限实测后校准）。
+ */
+template <uint8_t CombineQuantMode, typename Scheduler, typename Config>
+__aicore__ inline void Gmm2DirectQuantSlotStage(Scheduler &scheduler, const GMMAddrInfo &gmmAddrInfo,
+                                                int32_t &gmTileSequence, const Config &config, uint32_t startLoopIdx,
+                                                uint32_t tileNum, const Params &params)
+{
+    constexpr uint32_t rowGroupCount = GMM2_DIRECT_QUANT_ROW_GROUP_COUNT;
+    const uint32_t hiddenDim = config.n;
+    const uint32_t nSlices = Ops::Base::CeilDiv(hiddenDim, static_cast<uint32_t>(L1_TILE_N));
+    const uint32_t scaleSlotRowBytes = nSlices * 32U;
+    const uint64_t planeBase = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(params.workspaceInfo.gmm2MmadResPtr));
+    const uint64_t expertRowBase =
+        (static_cast<uint64_t>(reinterpret_cast<uintptr_t>(gmmAddrInfo.gmm2OutGlobal)) - planeBase) /
+        (2UL * static_cast<unsigned long>(hiddenDim));
+    const uint64_t scalePlaneBase =
+        planeBase + static_cast<uint64_t>(params.tilingData->maxOutputSize) * static_cast<uint64_t>(hiddenDim);
+
+    LocalTensor<bfloat16_t> bandTensor(TPosition::VECIN, GMM2_DIRECT_QUANT_BAND_ADDR,
+                                       GMM2_DIRECT_QUANT_BAND_BYTES / sizeof(bfloat16_t));
+    LocalTensor<float> tempTensor(TPosition::VECCALC, GMM2_DIRECT_QUANT_TEMP_ADDR,
+                                  GMM2_DIRECT_QUANT_TEMP_BYTES / sizeof(float));
+    AscendC::GlobalTensor<uint8_t> dataPlaneGm;
+    AscendC::GlobalTensor<uint8_t> scalePlaneGm;
+    dataPlaneGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(params.workspaceInfo.gmm2MmadResPtr));
+    scalePlaneGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(scalePlaneBase));
+
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        int32_t lenTile = Get<M_VALUE>(actualShape);
+
+        int32_t expectedReadySequence = gmTileSequence + 1;
+        WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
+        LocalTensor<bfloat16_t> tileUb(TPosition::VECIN, WAVE_COMBINE_UB_BASE, config.tileM * L1_TILE_N);
+        const uint32_t sliceIdx = nLoc / L1_TILE_N;
+        // 量化前关闭浮点溢出检查（60 = FLOAT_OVERFLOW_MODE_CTRL，GMM1 epilogue 量化同款）；
+        // ProcessWave 已对全流程置 0，此处为局部自足的防御性重申。
+        AscendC::SetCtrlSpr<60, 60>(0);
+        for (int32_t groupStart = 0; groupStart < lenTile; groupStart += static_cast<int32_t>(rowGroupCount)) {
+            const uint32_t rows = static_cast<uint32_t>(lenTile - groupStart) < rowGroupCount ?
+                                      static_cast<uint32_t>(lenTile - groupStart) :
+                                      rowGroupCount;
+            for (uint32_t r = 0U; r < rows; ++r) {
+                LocalTensor<bfloat16_t> inRow = tileUb[(static_cast<uint32_t>(groupStart) + r) * L1_TILE_N];
+                LocalTensor<bfloat16_t> outRow =
+                    bandTensor[r * (GMM2_DIRECT_QUANT_BAND_ROW_BYTES / sizeof(bfloat16_t))];
+                Mxfp8::QuantMxFp8<CombineQuantMode, bfloat16_t>(outRow, inRow, tempTensor, L1_TILE_N);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+            // data 平面：band 数据段（288B 行距）strided 暂存到全行长 H 的 fp8 行的 nLoc 切片。
+            const uint64_t dataDstOffset =
+                (expertRowBase + mLoc + static_cast<uint32_t>(groupStart)) * hiddenDim + nLoc;
+            AscendC::DataCopyExtParams dataParams{static_cast<uint16_t>(rows), L1_TILE_N, 1U, hiddenDim - L1_TILE_N,
+                                                  0U};
+            AscendC::DataCopyPad(dataPlaneGm[dataDstOffset], bandTensor[0], dataParams);
+            // scale：直接以 band 行尾 [256,288) 的 32B 为块源（8B 有效 + 24B 残留，落本切片自己
+            // 的槽、散射侧紧凑时跳过残留），源步进 8 个 dataBlock——无标量中转与跨管线可见性问题。
+            const uint64_t scaleDstOffset =
+                (expertRowBase + mLoc + static_cast<uint32_t>(groupStart)) * scaleSlotRowBytes + sliceIdx * 32U;
+            constexpr uint32_t bandScaleElemOffset = 256U / sizeof(bfloat16_t);
+            constexpr uint32_t bandScaleSrcStrideBlocks = (GMM2_DIRECT_QUANT_BAND_ROW_BYTES - 32U) / 32U;
+            AscendC::DataCopyExtParams scaleParams{static_cast<uint16_t>(rows), 32U, bandScaleSrcStrideBlocks,
+                                                   scaleSlotRowBytes - 32U, 0U};
+            AscendC::DataCopyPad(scalePlaneGm[scaleDstOffset], bandTensor[bandScaleElemOffset], scaleParams);
+            // band/scale 暂存带复用：下一行组量化写 band 前等本组暂存读离。
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        // 槽释放：暂存已 retire（默认 L2 路径），散射与链路离槽，AIC 背压到此处即止。
+        AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag + GMM2_DIRECT_L0C_CONSUMED_SEQ_OFFSET,
+                                     expectedReadySequence);
         gmTileSequence = expectedReadySequence;
     }
 }
@@ -735,7 +943,7 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
                                        uint32_t startLoopIdx, uint32_t tileNum,
                                        BlockMmadContext<BlockMmad> *blockMmadContext, bool allowWeightL2Bypass,
                                        uint32_t rowOffsetInExpert = 0U, const Params *params = nullptr,
-                                       int32_t *gmTileSequence = nullptr)
+                                       int32_t *gmTileSequence = nullptr, bool seqFlagPrecharged = false)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -772,19 +980,36 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
             InitBlockMmad(*blockMmadContext, config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
-                gmTileSequence);
+                gmTileSequence, seqFlagPrecharged);
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
             InitBlockMmad(localBlockMmadContext, config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
-                gmTileSequence);
+                gmTileSequence, seqFlagPrecharged);
         }
     } else if constexpr (NotifyCombineTileReady) {
-        if (GetSubBlockIdx() == 1U) {
-            using MakeLayoutC = typename KernelConfig::MakeLayoutC;
-            CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
-                                                     *gmTileSequence, config, startLoopIdx, tileNum);
+        // 直通 tile 由 fixpipe 落配对 V0 的 UB（L0C2UB 默认目的核），消费者随之在 AIV0——
+        // 非量化 GMM2 时段该核空闲，且 GM 序号协议不依赖消费核身份。两侧用同一 config 判定
+        // 直通开关，AIC 与消费核的路径选择恒一致。
+        const bool directL0cUb =
+            UseGmm2DirectL0cUb<CombineQuantMode, NotifyCombineTileReady>(config, seqFlagPrecharged);
+        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+            // GM 回退路径的重放核保持 AIV1（基线路径）。
+            const uint32_t replaySubBlockIdx = directL0cUb ? 0U : 1U;
+            if (GetSubBlockIdx() == replaySubBlockIdx) {
+                using MakeLayoutC = typename KernelConfig::MakeLayoutC;
+                CombineTokenRange<ElementC, MakeLayoutC>(workSet.scheduler, workSet.gmC, *params, gmmAddrInfo,
+                                                         *gmTileSequence, config, startLoopIdx, tileNum, directL0cUb);
+            }
+        } else {
+            // 量化直通：AIV0 槽内 tile 局部量化并暂存 GM 双平面（word1 到暂存为止）；散射由
+            // AIV1 在专家粒度消费（gmm2Ready 门控，见 DirectQuantScatterExperts）。量化 GM
+            // 回退无 tile 消费者（专家粒度 combine 走基线 ProcessCombineExperts）。
+            if (directL0cUb && GetSubBlockIdx() == 0U) {
+                Gmm2DirectQuantSlotStage<CombineQuantMode>(workSet.scheduler, gmmAddrInfo, *gmTileSequence, config,
+                                                           startLoopIdx, tileNum, *params);
+            }
         }
     }
 }
@@ -859,7 +1084,8 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                       const BlockJobContext &blockJob, void *blockMmadContext = nullptr,
                                       bool allowWeightL2Bypass = false, uint32_t rowOffsetInExpert = 0U,
-                                      const Params *params = nullptr, int32_t *gmTileSequence = nullptr)
+                                      const Params *params = nullptr, int32_t *gmTileSequence = nullptr,
+                                      bool seqFlagPrecharged = false)
 {
     static_assert(!IsShared || !NotifyCombineTileReady, "Shared expert GMM2 has its own completion counter");
     static_assert(!IsLayered || !NotifyCombineTileReady, "Layered GMM2 selects its synchronization through IsLayered");
@@ -885,7 +1111,7 @@ __aicore__ inline void RunGmm2Generic(const AscendC::Shape<int64_t, int64_t, int
     auto *typedBlockMmadContext = reinterpret_cast<MmadContext *>(blockMmadContext);
     GmmKernel::Gmm2ExecGeneric<CombineQuantMode, BlockMmad, ElementC, IsLayered, IsShared, NotifyCombineTileReady>(
         scheduler, gmmAddrInfo, config, startLoopIdx, tileNum, typedBlockMmadContext, allowWeightL2Bypass,
-        rowOffsetInExpert, params, gmTileSequence);
+        rowOffsetInExpert, params, gmTileSequence, seqFlagPrecharged);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
