@@ -13,9 +13,12 @@
 
 #include "op_common/log/log.h"
 #include "opdev/op_errno.h"
+#include "opdev/format_utils.h"
 #include "opdev/shape_utils.h"
+#include "opdev/tensor_view_utils.h"
 
 #include <cstdint>
+#include <limits>
 
 namespace QkvRmsNormRopeCacheWithKScaleCheck {
 
@@ -70,8 +73,8 @@ class QkvRmsNormRopeCacheWithKScaleChecker {
 public:
     static constexpr const char *ACLNN_NAME = "aclnnQkvRmsNormRopeCacheWithKScale";
 
-    // Semantic validation belongs to InferShape/graph tiling. ACLNN only checks
-    // pointers required to construct the task and public optional-output presence.
+    // Shape/dtype semantics stay in graph tiling. Validate caller-owned format,
+    // view and storage metadata before Contiguous/CreateView can replace them.
     aclnnStatus CheckParams(const QkvRmsNormRopeCacheWithKScaleParams &params) const
     {
         const PointerNullRule requiredPointers[] = {
@@ -126,10 +129,89 @@ public:
                                                   "qScaleOptional is required when Q output is quantized");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
-        return ACLNN_SUCCESS;
+        return CheckTensorDescriptors(params);
     }
 
 private:
+    static bool CheckCacheStorage(const aclTensor *tensor, const char *name)
+    {
+        uint64_t capacity = 1;
+        const auto &storage = tensor->GetStorageShape();
+        for (size_t i = 0; i < storage.GetDimNum(); ++i) {
+            const int64_t dim = storage.GetDim(i);
+            if (dim <= 0 || capacity > std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(dim)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s has invalid declared storage.", name);
+                return false;
+            }
+            capacity *= static_cast<uint64_t>(dim);
+        }
+        const auto &shape = tensor->GetViewShape();
+        const auto &strides = tensor->GetViewStrides();
+        const int64_t offset = tensor->GetViewOffset();
+        if (offset < 0 || static_cast<uint64_t>(offset) >= capacity || shape.GetDimNum() != strides.size()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s has invalid view offset or stride rank.", name);
+            return false;
+        }
+        // Each dimension consumes part of the remaining storage span. Division
+        // before multiplication also rejects address arithmetic overflow.
+        uint64_t remaining = capacity - 1U - static_cast<uint64_t>(offset);
+        for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+            const int64_t dim = shape.GetDim(i);
+            const int64_t stride = strides[i];
+            if (dim <= 0 || stride <= 0 || static_cast<uint64_t>(dim - 1) > remaining / static_cast<uint64_t>(stride)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "%s view exceeds its declared storage or has invalid dimensions/strides.", name);
+                return false;
+            }
+            remaining -= static_cast<uint64_t>(dim - 1) * static_cast<uint64_t>(stride);
+        }
+        return true;
+    }
+
+    static aclnnStatus CheckTensorDescriptors(const QkvRmsNormRopeCacheWithKScaleParams &params)
+    {
+        struct TensorRule {
+            const char *name;
+            const aclTensor *tensor;
+            bool cache;
+        };
+        const TensorRule rules[] = {
+            {"qkv", params.qkv, false},
+            {"qGamma", params.qGamma, false},
+            {"kGamma", params.kGamma, false},
+            {"cosSin", params.cosSin, false},
+            {"slotMapping", params.slotMapping, false},
+            {"kCacheRef", params.kCache, true},
+            {"vCacheRef", params.vCache, true},
+            {"kScaleCacheRef", params.kScaleCache, true},
+            {"queryStartLocOptional", params.queryStartLoc, false},
+            {"seqLensOptional", params.seqLens, false},
+            {"rotationOptional", params.rotationOptional, false},
+            {"vScaleOptional", params.vScaleOptional, false},
+            {"mropePositionOptional", params.mropePositionOptional, false},
+            {"qOut", params.qOut, false},
+            {"qScaleOptional", params.qScale, false},
+        };
+        for (const auto &rule : rules) {
+            if (rule.tensor == nullptr) {
+                continue;
+            }
+            if (op::IsPrivateFormat(rule.tensor->GetStorageFormat()) ||
+                op::IsPrivateFormat(rule.tensor->GetViewFormat())) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s must not use a private format.", rule.name);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (!rule.cache && !op::IsContiguous(rule.tensor)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s must be contiguous.", rule.name);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (rule.cache && !CheckCacheStorage(rule.tensor, rule.name)) {
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+        return ACLNN_SUCCESS;
+    }
+
     struct PointerNullRule {
         const char *paramName;
         const void *ptr;
