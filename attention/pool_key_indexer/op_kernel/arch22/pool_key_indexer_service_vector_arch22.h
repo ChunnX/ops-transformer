@@ -30,46 +30,13 @@ constexpr uint32_t LD_PARAM_NUM = 16;
 // (=topk+ps-1)线性增长。arch22 UB 仅 192KB, poolSize>1 时固定 171KB 缓冲
 // 叠加整行展开缓冲会越界(缺陷 D/E, 507015), 分段是根治手段。
 constexpr uint32_t EXPAND_CHUNK = 1024;
-// Plan-A(模式 G): vgather 展开路径的段长(独立于标量/vecPath 的 EXPAND_CHUNK)。
-// round1 取 512 为保守决策(qOff/pTpl 模板 UB + count≤512 全有原代码先例,
-// 见 plan-A §4); Plan-D(P-5, round2) 提升为 1024(开关 PKI_EXPAND_CHUNK2,
-// 置 0 回退 512, 行为与 round1 交付一致): topk=2048 时段数 4→2, 省段间
-// MTE3ToVSync/段尾 VToMTE3Sync/DataCopyPad。PoC 结论(plan-D round2):
-// 2201 Gather Level-2 软件展开为 Level-0(count 模式 mask=64/次 ×
-// repeatTime=count/64, uint8 repeatTime 上限 255, 1024→16 无溢出),
-// 上板 count=1024 正确性+吞吐验证通过(ps4 专项 9/9 + 目标形态裸计时)。
-// UB: 模板 qOff/pTpl 各 1024 int32(共 8KB), 目标场景(ps=4,sc=512) workBuf
-// 10272B、全账 189376B(+M2, 逐 buffer 核算表见 plans/plan-D.md)< 196608B;
-// ps%8!=0 且 sc 巨大的合法 shape(无套例, 如 ps=2/topk=8192→sc=4096)由
-// InitBuffers 的 PKI_UB_POOL_LIMIT_BYTES 门禁回退标量路径, 不越池。
-#ifndef PKI_EXPAND_CHUNK2
-#define PKI_EXPAND_CHUNK2 0
-#endif
-constexpr uint32_t EXPAND_GATHER_CHUNK = PKI_EXPAND_CHUNK2 ? 1024 : 512;
-// Plan-D(M2, round2): 尾块区(poolSize-1 个 token)并入最后一个展开段一次
-// 写出, 省尾块独立搬运的 MTE3ToVSync/Duplicate/VToMTE3Sync/DataCopyPad
-// (每行 4 段×~102 行/核)。语义保持: 尾区随末段 Duplicate(-1) 预填,
-// visibleTailK 个尾 token 仍在 -1 落地后(VToSSync)以标量写回(原尾块分支
-// 时序语义不变), 末段 DataCopyPad 一次覆盖 [segDone, totalOut); expandOutBuf_
-// 需扩容 EXPAND_CHUNK+poolSize(1024+3>1024 为越界陷阱, 见 InitBuffers)。
-// 置 0 回退原独立尾块分支(与 round1 一致)。
-#ifndef PKI_EXPAND_TAIL_MERGE
-#define PKI_EXPAND_TAIL_MERGE 0
-#endif
-// Plan-D(P-5): 2201(A2/A3) AIV TPipe UB 池硬上限 = 196608B(=192*1024,
-// ConstDefiner bufferInitLen@2201; PTO a2a3 TTrans.hpp 同值独立佐证)。
-// release 模式 TPipe::InitBuffer 越池不报错(检查仅 ASCENDC_CPU_DEBUG 编译,
-// 越池返回越界地址 → 静默踩内存), 故自建预算门禁: InitBuffers 中
-// expandGatherOn_ 置位前按本上限核算 fixedBytes+workBuf 字节, 超限回退
-// 标量路径(逐 buffer 核算表见 plans/plan-D.md round2)。
+// vgather 展开路径的段长(独立于标量/vecPath 的 EXPAND_CHUNK; Gather/Muls/Add
+// 均为 Level-2 count 形式, 2201 下软件展开为 count-mask, repeatTime=count/64)。
+constexpr uint32_t EXPAND_GATHER_CHUNK = 512;
+// A2/A3 AIV TPipe UB 池硬上限(release 模式 InitBuffer 越池不报错), 超限回退标量展开。
 constexpr uint32_t PKI_UB_POOL_LIMIT_BYTES = 196608;
-// Plan-A(模式 G: 标量展开向量化/S→V 通道迁移): ExpandAndAppendIndices 对
-// poolSize%8!=0 的全标量展开路径改为 vgather 向量展开(Gather+Muls+Add)。
-// 1=启用; 0=回退原全标量路径(行为与改造前逐位一致)。
-// 前置条件(InitBuffers/InitLDBuffers): poolSize>1 且 poolSize%8!=0 时在
-// workLocal_ 尾部常驻 qOff/pTpl 模板(各 EXPAND_GATHER_CHUNK int32, Plan-D
-// P-5 后各 4KB 共 8KB; 目标场景总 UB 189376B < 196608B 上限, 且 InitBuffers
-// 按 PKI_UB_POOL_LIMIT_BYTES 门禁核算, 超限 shape 回退标量路径)。
+// poolSize%8!=0 展开路径向量化开关: 1=vgather 向量展开(Gather+Muls+Add);
+// 0=回退原全标量展开路径(逐 token GetValue/SetValue)。
 #ifndef PKI_EXPAND_VEC
 #define PKI_EXPAND_VEC 1
 #endif
@@ -134,16 +101,13 @@ private:
                                                   int64_t idxOutBase, uint32_t sparseCount, uint32_t poolSize,
                                                   uint32_t validS2Len, int32_t poolTailK, int32_t L_orig,
                                                   uint32_t curS1Idx, uint32_t curS1Size);
-    // Plan-A(模式 G): vgather 展开模板(qOff/pTpl)在 workLocal_ 中的起始偏移
-    // (poolIndices 区之后), InitBuffers/InitLDBuffers 与 ExpandAndAppendIndices
-    // 共用同一计算, 防布局漂移。
+    // vgather 展开模板(qOff/pTpl)在 workLocal_ 中的起始偏移(poolIndices 区之后)
     __aicore__ inline uint32_t ExpandGatherTplOffset()
     {
         uint32_t alignedPoolSize = PkiCommon::Align(poolSize_, (uint32_t)8);
         return alignedPoolSize + PkiCommon::Align(static_cast<uint32_t>(constInfo_.sparseCount), (uint32_t)8);
     }
-    // Plan-A(模式 G): 一次性构建 qOff[i]=(i/ps)*4(字节偏移)/pTpl[i]=i%ps 模板
-    // 并常驻 workLocal_ 尾部(仅 expandGatherOn_ 时调用, 见 InitBuffers 注释)
+    // 一次性构建 qOff[i]=(i/ps)*4 / pTpl[i]=i%ps 展开模板, 常驻 workLocal_ 尾部
     __aicore__ inline void BuildExpandGatherTpl();
 
     // 标量(S pipe)与向量(V pipe)/MTE3 间必须显式硬同步, PipeBarrier<PIPE_V>
@@ -231,9 +195,7 @@ private:
     int32_t s2BaseSize_ = 0;
     uint32_t poolSize_ = 1;
     uint32_t outputLen_ = 0;
-    // Plan-A(模式 G): poolSize>1 且 poolSize%8!=0 时置 true(InitBuffers),
-    // ExpandAndAppendIndices 据此选择 vgather 展开路径; PKI_EXPAND_VEC=0
-    // 时恒 false -> 完全回退原标量路径。
+    // poolSize%8!=0 且 UB 预算允许时置 true(InitBuffers), 展开走 vgather 路径
     bool expandGatherOn_ = false;
 
     // para for LD
@@ -255,8 +217,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     outNeedBufSize = reduceCacheSize > outNeedBufSize ? reduceCacheSize : outNeedBufSize;
     virTopK = constInfo_.isSparseCountOver2K ? constInfo_.sparseCount : BASE_TOPK;
 
-    // 尺寸先落具名局部量(Plan-D: 供下方 UB 门禁精确字节核算, 与 InitBuffer
-    // 调用同源防漂移; 各值均为 32B 倍数, InitBuffer 的 32B 上取整无暗损)
+    // 尺寸落具名局部量, 供下方 UB 预算按字节核算(与 InitBuffer 调用同源)
     uint32_t tmpBufSize = (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float);
     uint32_t sortOutBufSize = CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float);
     uint32_t indexBufSize = s2BaseSize_ * sizeof(int32_t);
@@ -278,26 +239,14 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
         // 生成并 DataCopyPad 写 GM, 不再按整行 outputLen(=topk+ps-1)线性分配
         // (大 topk 时 8~33KB, 叠加固定缓冲 171KB 越 arch22 192KB UB 上限,
         // 缺陷 D/E 根因, 见 ExpandAndAppendIndices/CleanInvalidOutput 分段写)
-        // Plan-D(M2): 尾块并入末段后, 末段需容纳 segLen+tailLen
-        // (≤ EXPAND_CHUNK+poolSize-1) 个元素——1024+3>1024 为越界陷阱
-        // (precision 科警示), expandOutBuf_ 按 EXPAND_CHUNK+poolSize_ 扩容
-        // (Align 8 元素 = 32B); 宏关时保持原 1024 与 round1 一致。
-#if PKI_EXPAND_TAIL_MERGE
-        uint32_t expandOutLen = PkiCommon::Align(static_cast<uint64_t>(EXPAND_CHUNK) + poolSize_, (uint64_t)8);
-#else
         uint32_t expandOutLen = PkiCommon::Align(static_cast<uint64_t>(EXPAND_CHUNK), (uint64_t)8);
-#endif
         pipe->InitBuffer(expandOutBuf_, expandOutLen * sizeof(uint32_t));
         expandOutLocal_ = expandOutBuf_.Get<int32_t>();
         uint32_t workSize = PkiCommon::Align(static_cast<uint64_t>(poolSize_ + 64), (uint64_t)8) +
                             PkiCommon::Align(static_cast<uint64_t>(constInfo_.sparseCount + 64), (uint64_t)8);
 #if PKI_EXPAND_VEC
-        // Plan-A(模式 G): ps%8!=0 时 workLocal_ 尾部常驻 qOff/pTpl 模板
-        // (各 EXPAND_GATHER_CHUNK int32)。Plan-D(P-5) UB 硬门禁: 196608B
-        // 池上限下按字节核算, 超限(ps%8!=0 且 sparseCount 巨大, 如
-        // ps=2/topk=8192→sc=4096, 合法 shape 但无套例)则回退标量路径
-        // (workSize 保持原式, 标量路径无模板需求)——release 模式 InitBuffer
-        // 越池不报错, 此守卫是唯一护栏(核算表见 plans/plan-D.md round2)。
+        // ps%8!=0 时 workLocal_ 尾部常驻 qOff/pTpl 模板; 按 UB 池上限核算,
+        // 超限(如 ps=2/topk=8192→sc=4096)回退标量路径(正确性优先)。
         expandGatherOn_ = (poolSize_ % 8 != 0);
         if (expandGatherOn_) {
             uint32_t tplEnd = ExpandGatherTplOffset() + EXPAND_GATHER_CHUNK * 2;
@@ -327,7 +276,6 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
         }
 #if PKI_EXPAND_VEC
         else if (expandGatherOn_) {
-            // Plan-A(模式 G): ps%8!=0 的 vgather 展开模板(一次性, 常驻只读)
             BuildExpandGatherTpl();
         }
 #endif
@@ -370,22 +318,13 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitLDBuffers(TPipe *pi
     pipe->InitBuffer(ldOutValueBuf_, BASE_TOPK * sizeof(float));
     pipe->InitBuffer(ldOutIdxBuf_, BASE_TOPK * sizeof(int32_t));
     if (poolSize_ > 1) {
-        // Plan-D(M2): 与 InitBuffers 同式扩容 expandOutBuf_(尾块并入末段,
-        // EXPAND_CHUNK+poolSize_ 元素; 宏关时保持原 EXPAND_CHUNK 与 round1 一致)
-#if PKI_EXPAND_TAIL_MERGE
-        uint32_t expandOutLen = PkiCommon::Align(static_cast<uint64_t>(EXPAND_CHUNK) + poolSize_, (uint64_t)8);
-#else
         uint32_t expandOutLen = PkiCommon::Align(static_cast<uint64_t>(EXPAND_CHUNK), (uint64_t)8);
-#endif
         pipe->InitBuffer(expandOutBuf_, expandOutLen * sizeof(uint32_t));
         expandOutLocal_ = expandOutBuf_.Get<int32_t>();
         uint32_t workSize = PkiCommon::Align(static_cast<uint64_t>(poolSize_ + 64), (uint64_t)8) +
                             PkiCommon::Align(static_cast<uint64_t>(constInfo_.sparseCount + 64), (uint64_t)8);
 #if PKI_EXPAND_VEC
-        // Plan-A(模式 G): 与 InitBuffers 同式(expandGatherOn_ 已在 InitBuffers
-        // 按相同条件+UB 门禁置位, 此处仅重算尺寸)。poolSize>1 时主集固定缓冲
-        // ≥158592B > LD 集固定缓冲 147456B, 主集预算通过 ⇒ LD 集必通过,
-        // 无需重复门禁。
+        // 与 InitBuffers 同式重算模板尺寸(expandGatherOn_ 已在 InitBuffers 门禁置位)
         if (expandGatherOn_) {
             uint32_t tplEnd = ExpandGatherTplOffset() + EXPAND_GATHER_CHUNK * 2;
             workSize = PkiCommon::Max(workSize, tplEnd);
@@ -455,13 +394,10 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::FreeEventID()
 }
 
 #if PKI_EXPAND_VEC
-// Plan-A(模式 G): vgather 展开模板一次性构建, 常驻 workLocal_ 尾部只读:
-//   qOff[i] = (i/poolSize_)*4  —— Gather srcOffset 的段内字节偏移(池粒度)
-//   pTpl[i] = i % poolSize_    —— 池内偏移(纯周期, 与段等长供 Add 连续读)
-// 全标量构建(各 EXPAND_GATHER_CHUNK 次 SetValue, 一次性 ~2.5us, 无需倍增
-// DataCopy/Adds 的复杂度与 lcm(ps,8)>chunk 的特例), SToVSync 保证 S 写对
-// 后续 V pipe 读(Gather/Muls/Add)可见。调用前提 expandGatherOn_==true
-// (poolSize>1 且 ps%8!=0, InitBuffers/InitLDBuffers)。
+// 一次性构建 vgather 展开模板, 常驻 workLocal_ 尾部只读:
+//   qOff[i] = (i/poolSize_)*4 (Gather srcOffset 的段内字节偏移)
+//   pTpl[i] = i % poolSize_   (池内偏移, 与段等长供 Add 连续读)
+// S pipe 标量写, SToVSync 保证后续 V pipe(Gather/Muls/Add)读可见。
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::BuildExpandGatherTpl()
 {
@@ -500,12 +436,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     uint32_t expandRounds = (validS2Len > 0) ? PkiCommon::Min(validS2Len, sparseCount) : 0;
     bool vecPath = (poolSize % 8 == 0);
 #if PKI_EXPAND_VEC
-    // Plan-A(模式 G): ps%8!=0 时改走 vgather 向量展开(Gather+Muls+Add, 全 V
-    // pipe, 同步链与 vecPath 同构), 替代全标量 GetValue/SetValue 展开。
-    // 等价数学: out[ps*k+p] = poolIdx[k]*ps + p (k<expandRounds) —— 纯整数
-    // 重排, 逐位一致。回退: PKI_EXPAND_VEC=0 或模板未构建(expandGatherOn_
-    // ==false)时走原路径。
-    bool gatherPath = !vecPath && expandGatherOn_;
+    bool gatherPath = !vecPath && expandGatherOn_; // ps%8!=0 时走 vgather 向量展开
 #else
     bool gatherPath = false;
 #endif
@@ -515,10 +446,8 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     // 一次性构建并常驻 workBuf 头部, 无需逐行标量重建(省 ps 次 SetValue +
     // SToVSync, 对齐 arch35 一次性模板优化)
     LocalTensor<int32_t> offsetTpl = workBuf;
-    // 模式 G: vgather 展开模板 qOff/pTpl 亦常驻 workLocal_ 尾部(见
-    // BuildExpandGatherTpl), 与 offsetTpl 同法一次性构建、kernel 生命周期只读。
-    // 声明置于 #if 之外保证 PKI_EXPAND_VEC=0 时 gatherPath 分支体仍可编译
-    // (宏关时 gatherPath 恒 false, 运行期不进入)
+    // vgather 展开模板 qOff/pTpl 常驻 workLocal_ 尾部(见 BuildExpandGatherTpl);
+    // 声明置于 #if 外保证宏关时仍可编译(gatherPath 恒 false 不进入)
     LocalTensor<uint32_t> qOffTpl;
     LocalTensor<int32_t> pTpl;
 #if PKI_EXPAND_VEC
@@ -529,81 +458,41 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     }
 #endif
     if (expandRounds > 0 && !gatherPath) {
-        // poolIndices 向量写 → 后续标量 GetValue 可见(标量/vecPath 现状保留;
-        // gatherPath 无 S 侧读, 同 pipe 有序即够, 不需要此跨流水对)
-        VToSSync();
+        VToSSync(); // poolIndices 向量写 → 后续标量 GetValue 可见(gatherPath 无 S 侧读)
     }
 
-    // 分段生成并写出: expandOutBuf_ 固定 EXPAND_CHUNK(1024) 元素(4KB, Plan-D
-    // M2 后按 EXPAND_CHUNK+poolSize 扩容, 见 InitBuffers), 不再随
-    // outputLen(=topk+ps-1, 大 topk 时 8~33KB)线性增长, 否则叠加固定缓冲
-    // (171KB, arch22 UB 仅 192KB)越界(缺陷 D/E, 507015)。
+    // 分段生成并写出: expandOutBuf_ 固定 EXPAND_CHUNK(1024) 元素(4KB),
+    // 不再随 outputLen(=topk+ps-1, 大 topk 时 8~33KB)线性增长, 否则叠加
+    // 固定缓冲(171KB, arch22 UB 仅 192KB)越界(缺陷 D/E, 507015)。
     // 展开区段边界对齐到池(poolSize 粒度): 每池完整包含, 向量路径纯
     // Duplicate+Add SIMD(poolSize%8==0 时 alignedPoolSize==poolSize, 32B 对齐)。
-    // 模式 G 的段长独立取 EXPAND_GATHER_CHUNK(Plan-D P-5 后 1024, 见其注释),
-    // 段循环结构不变, expandOutBuf_ 足够容纳(含 M2 并入的尾块)。
     uint32_t segChunk = gatherPath ? EXPAND_GATHER_CHUNK : EXPAND_CHUNK;
     uint32_t poolsPerSeg = PkiCommon::Max((uint32_t)1, segChunk / poolSize);
-    // 尾块区长度(= poolSize - 1), M2 时并入末段(见循环内 tailInSeg)
-    uint32_t tailLen = totalOut - topk;
 
     // ---- 展开区 [0, topk): 按池对齐分段 ----
     uint32_t segDone = 0;
     bool outStarted = false;
-#if PKI_EXPAND_TAIL_MERGE
-    // Plan-D(M2): 尾块区 [topk, totalOut) 并入最后一个展开段一次写出:
-    // 省去尾块独立搬运的 MTE3ToVSync/Duplicate/VToMTE3Sync/DataCopyPad。
-    // 末段 DataCopyPad 由 segLen 扩为 outLen(= segLen+tailLen ≤
-    // EXPAND_CHUNK+poolSize-1, 在扩容后的 expandOutBuf_ 界内), 一次覆盖
-    // [segDone, totalOut); 尾 token 值/位置与原尾块分支逐位一致。
-    bool tailMerged = false;
-#endif
     while (segDone < topk) {
         uint32_t kLen = PkiCommon::Min(poolsPerSeg, (topk - segDone) / poolSize);
         uint32_t segLen = kLen * poolSize; // 池对齐, <= EXPAND_CHUNK
-#if PKI_EXPAND_TAIL_MERGE
-        // 末段判定恒精确成立: topk 与 topk-segDone 均为 poolSize 倍数,
-        // 最后一次迭代 kLen 取尽剩余整池 ⇒ segDone+segLen == topk
-        bool tailInSeg = (segDone + segLen == topk) && (tailLen > 0);
-        uint32_t outLen = tailInSeg ? (segLen + tailLen) : segLen;
-#else
-        uint32_t outLen = segLen;
-#endif
 
         if (outStarted) {
             MTE3ToVSync(); // 上一段 DataCopyPad 读完 tokenIndices 方可覆写
         }
         outStarted = true;
-        Duplicate<int32_t>(tokenIndices, -1, outLen);
+        Duplicate<int32_t>(tokenIndices, -1, segLen);
         PipeBarrier<PIPE_V>();
         if (!vecPath && !gatherPath) {
-            // V→S: 标量路径的 SetValue 必须等本段 -1 填充(V 写)先落地 —— 否则
-            // S 写先发射、V 写后落地时标量 token 被 -1 覆盖(丢池, ps%8!=0 +
-            // 多块全选场景实测每行丢 1-3 池)。arch35 修复含此同步(Duplicate →
-            // VToSSync → 标量写), arch22 移植时展开段遗漏(尾块段已有)。
-            // gatherPath 的展开写全在 V pipe, 与 Duplicate 同 pipe 有序, 不需要。
+            // V→S: 标量 SetValue 须等本段 -1 填充(V 写)落地, 否则会被迟到的 V 写覆盖
             VToSSync();
         }
 
         uint32_t kLo = segDone / poolSize;
         uint32_t kHi = PkiCommon::Min(kLo + kLen, expandRounds);
         if (gatherPath) {
-            // Plan-A(模式 G): vgather 向量展开, 全 V pipe:
-            //   Gather: tokenIndices[i] = poolIndices[kLo + i/ps]
-            //           (srcOffset=qOffTpl 字节偏移模板, srcBaseOffset=段内
-            //            首池 kLo*4B; 有效长度 count 精确截断到 validLen,
-            //            count 模式 mask 下 [validLen, segLen) 不写, 保持本段
-            //            Duplicate(-1) 预填 —— k>=expandRounds 的 [-ps,-1]
-            //            负索引残留陷阱由 poolIndices 尾部 -1 不被消费规避)
-            //   Muls:   tokenIndices[i] *= ps
-            //   Add:    tokenIndices[i] += pTpl[i] (= i%ps)
-            // validLen <= EXPAND_GATHER_CHUNK: Gather/Muls/Add 均为 Level-2
-            // count 形式(2201 Gather Level-2 软件展开为 count-mask=64 ×
-            // repeatTime=count/64, uint8 repeatTime≤255; P-5 后 count≤1024
-            // → repeatTime≤16, 上板 PoC 已验, 见 EXPAND_GATHER_CHUNK 注释)。
-            // kHi<kLo(段起始池号 kLo 已超 expandRounds, 全 -1 段)时必须显式
-            // 归零: (kHi-kLo) 为 uint32 会下溢成巨大值, 使 count 模式
-            // Gather/Muls/Add 越界写(原标量路径 for(k=kLo;k<kHi) 天然免疫)
+            // vgather 向量展开(全 V pipe): tokenIndices[i] = poolIndices[kLo+i/ps]*ps + i%ps
+            // count 模式下 [validLen, segLen) 不写, 保持本段 -1 预填;
+            // kHi<kLo(全 -1 段)时 validLen 须显式归零, 防 uint32 下溢越界写。
             uint32_t validLen = (kHi > kLo) ? (kHi - kLo) * poolSize : 0;
             if (validLen > 0) {
                 Gather(tokenIndices, poolIndices, qOffTpl, static_cast<uint32_t>(kLo * sizeof(int32_t)), validLen);
@@ -630,46 +519,19 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
             }
         }
 
-#if PKI_EXPAND_TAIL_MERGE
-        if (tailInSeg) {
-            // Plan-D(M2): 尾块并入末段。visibleTailK 个尾 token 的标量写
-            // 时序语义与原尾块分支一致: 先保证本段 -1 预填(V 写, 含尾区)
-            // 落地(VToSSync), 再标量精确写 [segLen, segLen+visibleTailK),
-            // 最后 S→MTE3 对 DataCopyPad 可见。标量路径(!vecPath && !gatherPath)
-            // 循环体开头已有一次 VToSSync, 此处为统一时序保守重发(即时对,
-            // 幂等无害); gather/vec 路径此对为必需。
-            if (visibleTailK > 0) {
-                VToSSync();
-                for (int32_t t = 0; t < visibleTailK; t++) {
-                    tokenIndices.SetValue(segLen + t, L_orig - poolTailK + t);
-                }
-                SToMTE3Sync();
-            }
-            tailMerged = true;
-        }
-#endif
-
-        // V 写(Duplicate -1 / 向量展开)对 MTE3(DataCopyPad) 可见; 非 vec 路径
-        // 的标量 SetValue 也需 S→MTE3(gatherPath 全 V 写, 与 vecPath 同构仅
-        // 需 VToMTE3Sync)
+        // V 写(Duplicate -1 / 向量展开)对 MTE3(DataCopyPad) 可见; 标量路径另需 S→MTE3
         VToMTE3Sync();
         if (!vecPath && !gatherPath) {
             SToMTE3Sync();
         }
         DataCopyPad(idxOutGm[idxOutBase + segDone], tokenIndices,
-                    {1, static_cast<uint16_t>(outLen * sizeof(int32_t)), 0, 0});
+                    {1, static_cast<uint16_t>(segLen * sizeof(int32_t)), 0, 0});
         segDone += segLen;
     }
 
-    // ---- 尾块区 [topk, totalOut): 长度 poolSize-1 ----
-#if PKI_EXPAND_TAIL_MERGE
-    // Plan-D(M2): 尾块已并入末段一次写出(tailMerged), 此独立分支仅在主
-    // 展开循环未执行(topk==0, 宿主约束 topk>=1 下不可达, 防御性保留)或
-    // 宏关回退时使用。
-    if (tailLen > 0 && !tailMerged) {
-#else
+    // ---- 尾块区 [topk, totalOut): 长度 poolSize-1, 单独处理 ----
+    uint32_t tailLen = totalOut - topk; // = poolSize - 1
     if (tailLen > 0) {
-#endif
         if (outStarted) {
             MTE3ToVSync();
         }

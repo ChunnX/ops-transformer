@@ -269,10 +269,7 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
 {
     if (mrgDstNum <= 3072) { // 3072: threshold of data size for different processing strategy
         AscendC::MrgSort4Info params;
-        // src 顺序: 累加器(mrgDst)必须在 src1, 新块(mrgSrc)在 src2 —— 与
-        // SparseTopK(cached 路径, 实测正确)一致。vmrgsort4 的区域归并语义下
-        // 新块置 src1 会使输出不完整, DataCopy 回读越出实际归并长度的 stale
-        // 尾部, 累加器被污染(多块累加时丢池/换池, actS1Size>4 主路径)。
+        // src 顺序: 累加器(mrgDst)必须在 src1, 新块(mrgSrc)在 src2, 否则输出不完整污染累加器
         params.elementLengths[MRG_QUE_0] = mrgDstNum;
         params.elementLengths[MRG_QUE_1] = mrgSrcNum;
         params.ifExhaustedSuspension = false;
@@ -288,14 +285,8 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
         AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
         AscendC::PipeBarrier<PIPE_V>();
     } else {
-        // 4 路归并: 将累加器 mrgDst 按三段切分 + 新块 mrgSrc。
-        // 切分必须精确覆盖 [0, mrgDstNum): 原实现 segNum = mrgDstNum/1024 整除,
-        // mrgDstNum 非 1024 整倍数时(如 sparseCount=3584, segNum=3, 3*1024=3072
-        // != 3584)累加器尾部 512 项被静默丢弃 —— 后续与含 (-inf,-1) 填充的尾块
-        // (cuS2Len<512 的 sort 填充)归并时, 被丢弃的有效项由填充顶替, 输出混入
-        // -1 无效池索引(展开为 [-ps,-1] 非法 slots); 且 segNum=3 时原
-        // mrgQuelen_3 = 0, validBit=0b1111 带零长度队列配置非法。
-        // 改为精确三等分(任意 mrgDstNum 均覆盖, 各段 >=1):
+        // 4 路归并: 累加器 mrgDst 精确三等分(各段>=1, 完整覆盖 [0, mrgDstNum)) + 新块 mrgSrc,
+        // 避免 1024 整除切分时尾部被静默丢弃(输出混入无效索引)或出现零长度队列。
         int64_t len1 = (mrgDstNum + 2) / 3;
         int64_t len2 = (mrgDstNum - len1 + 1) / 2;
         int64_t len3 = mrgDstNum - len1 - len2;
