@@ -166,6 +166,7 @@ public:
     {
         return sortWorkspace_.GetWithOffset<uint32_t>(tileElements_, 2U * tileAlignBytes_);
     }
+    __aicore__ inline void GetPhaseCycles(uint64_t &hist, uint64_t &prefix, uint64_t &scat, uint64_t &cp) const;
 
 private:
     __aicore__ inline void ComputePrefixAndOffsets(uint32_t tc, AscendC::GlobalTensor<int32_t> &prefixGm,
@@ -224,6 +225,10 @@ private:
     uint32_t coreCount_{0};
     uint32_t byteRounds_{BYTES_PER_INT32};
     int32_t valueOffset_{0};
+    uint64_t histCycles_{0};
+    uint64_t prefixCycles_{0};
+    uint64_t scatCycles_{0};
+    uint64_t copyTempCycles_{0};
 
     AscendC::GlobalTensor<int32_t> valueGm_;
     AscendC::GlobalTensor<int32_t> indexGm_;
@@ -1017,12 +1022,19 @@ __aicore__ inline void EngramFetchGradSort::ProcessOneByteRound(
 {
     uint32_t batchCount = CeilDiv(tileCount_, coreCount_);
     AscendC::GlobalTensor<int32_t> *srcValueGm = GetSrcValueGm(byteRound, valueGm, tempValueGm, outputValueGm);
+    uint64_t t0 = static_cast<uint64_t>(AscendC::GetSystemCycle());
     ProcessHist(byteRound, batchCount, srcValueGm, histGm, pipe);
+    uint64_t t1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ComputePrefixAndOffsets(tileCount_, prefixGm, tileOffsetsGm, histGm, pipe);
+    uint64_t t2 = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
     ProcessScatter(byteRound, batchCount, srcValueGm, indexGm, outputValueGm, outputIndexGm, tempValueGm, tempIndexGm,
                    histGm, prefixGm, tileOffsetsGm, pipe);
+    uint64_t t3 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+    histCycles_ += t1 - t0;
+    prefixCycles_ += t2 - t1;
+    scatCycles_ += t3 - t2;
 }
 
 __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, AscendC::TPipe &pipe)
@@ -1041,14 +1053,29 @@ __aicore__ inline void EngramFetchGradSort::Process(uint32_t actualCount, Ascend
     }
     tileCount_ = CeilDiv(elementCount_, tileElements_);
 
+    histCycles_ = 0;
+    prefixCycles_ = 0;
+    scatCycles_ = 0;
+    copyTempCycles_ = 0;
     for (uint32_t byteRound = 0; byteRound < byteRounds_; byteRound++) {
         ProcessOneByteRound(byteRound, valueGm_, indexGm_, valueGm_, indexGm_, tempValueGm_, tempIndexGm_, histGm_,
                             prefixGm_, tileOffsetsGm_, pipe);
     }
 
     if (byteRounds_ % EVEN_NUMBER == 1) {
+        uint64_t cpStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         CopyTempToOutput(tempValueGm_, tempIndexGm_, valueGm_, indexGm_, pipe);
+        copyTempCycles_ = static_cast<uint64_t>(AscendC::GetSystemCycle()) - cpStart;
     }
+}
+
+__aicore__ inline void EngramFetchGradSort::GetPhaseCycles(uint64_t &hist, uint64_t &prefix, uint64_t &scat,
+                                                           uint64_t &cp) const
+{
+    hist = histCycles_;
+    prefix = prefixCycles_;
+    scat = scatCycles_;
+    cp = copyTempCycles_;
 }
 
 // One core sorts the whole array (actualCount <= MAX_SINGLE_CORE_ELEMENTS): for each byte round,

@@ -706,6 +706,41 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     OP_LOGD(nodeName, "permanentUb=%llu (status=%u, temp=%u, indices=%u)", permanentUb, statusBytes, tempBytes,
             indicesBytes);
 
+    // deferRecv（通信/计算重叠开关）
+    uint32_t halfBlocks = tilingData.aivNum / 2U;
+    if (halfBlocks == 0U) {
+        halfBlocks = 1U;
+    }
+    uint32_t sendersPerRank = halfBlocks / rankSize;
+    if (sendersPerRank < 1U) {
+        sendersPerRank = 1U;
+    }
+    if (sendersPerRank > Mc2Kernel::NUM_SLOTS) {
+        sendersPerRank = Mc2Kernel::NUM_SLOTS;
+    }
+    int64_t headerBytes = 3LL * static_cast<int64_t>(rankSize) * static_cast<int64_t>(sendersPerRank) *
+                          static_cast<int64_t>(Mc2Kernel::STATE_OFFSET);
+    int64_t tokenAreaRaw = (tilingData.commBufferSize > headerBytes) ? (tilingData.commBufferSize - headerBytes) : 0;
+    int64_t tokenArea =
+        (tilingData.hiddenBytes > 0) ? (tokenAreaRaw / tilingData.hiddenBytes) * tilingData.hiddenBytes : tokenAreaRaw;
+    int64_t tokenSlotSize =
+        (rankSize > 0) ? (tokenArea / static_cast<int64_t>(rankSize) / static_cast<int64_t>(Mc2Kernel::NUM_SLOTS)) : 0;
+    int64_t maxTokensPerSlot = (tilingData.hiddenBytes > 0) ? (tokenSlotSize / tilingData.hiddenBytes) : 0;
+    if (maxTokensPerSlot < 1) {
+        maxTokensPerSlot = 1;
+    } else {
+        tokenSlotSize = maxTokensPerSlot * tilingData.hiddenBytes;
+    }
+    int64_t slotsPerSender = static_cast<int64_t>(Mc2Kernel::NUM_SLOTS / sendersPerRank);
+    if (slotsPerSender < 1) {
+        slotsPerSender = 1;
+    }
+    int64_t maxNoBlockTokens = slotsPerSender * maxTokensPerSlot * static_cast<int64_t>(sendersPerRank);
+    tilingData.deferRecv = (numTokens <= maxNoBlockTokens) ? 1U : 0U;
+    OP_LOGD(nodeName,
+            "deferRecv=%u (sendersPerRank=%u, tokenSlotSize=%lld, maxTokensPerSlot=%lld, maxNoBlockTokens=%lld)",
+            tilingData.deferRecv, sendersPerRank, tokenSlotSize, maxTokensPerSlot, maxNoBlockTokens);
+
     OP_LOGD(nodeName,
             "SetTilingData: numTokens=%lld, hiddenDim=%lld, numEntriesPerRank=%d, hiddenBytes=%lld, "
             "ubSize=%llu, rankSize=%u, totalRecv=%lld, commBufferSize=%lld",
