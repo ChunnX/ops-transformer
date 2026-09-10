@@ -405,20 +405,14 @@ void FiaTilingFullQuantGqaArch35::UpdateTilingKeyLayout()
     }
 }
 
-void FiaTilingFullQuantGqaArch35::UpdateTilingKeyPseMode()
-{
-    tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE;
-}
+void FiaTilingFullQuantGqaArch35::UpdateTilingKeyPseMode() { tilingKeyInfo_.pseMode = PSE_MODE_PSE_NONE_TYPE; }
 
 void FiaTilingFullQuantGqaArch35::UpdateTilingKeyQuantMode()
 {
     tilingKeyInfo_.quantMode = FULLQUANT_MODE_QK_PER_TOKEN_HEAD_V_PER_HEAD;
 }
 
-void FiaTilingFullQuantGqaArch35::UpdateTilingKeyHasRope()
-{
-    tilingKeyInfo_.hasRope = false;
-}
+void FiaTilingFullQuantGqaArch35::UpdateTilingKeyHasRope() { tilingKeyInfo_.hasRope = false; }
 
 void FiaTilingFullQuantGqaArch35::UpdateTilingKeyInfo()
 {
@@ -660,7 +654,7 @@ void FiaTilingFullQuantGqaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "totalOutputSize:%d", fiaEmptyTensorParams.totalOutputSize);
     OP_LOGD(fiaInfo_->opName, "totalSoftMaxLseOutputSize:%d", fiaEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx <= NPU_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < NPU_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(fiaInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, fiaMetaData.FAMetadata[aicIdx][0], fiaMetaData.FAMetadata[aicIdx][1],
                 fiaMetaData.FAMetadata[aicIdx][2], fiaMetaData.FAMetadata[aicIdx][3], fiaMetaData.FAMetadata[aicIdx][4],
@@ -668,7 +662,7 @@ void FiaTilingFullQuantGqaArch35::PrintAllTilingData()
                 fiaMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx <= NPU_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < NPU_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(fiaInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, fiaMetaData.FDMetadata[aivIdx][0], fiaMetaData.FDMetadata[aivIdx][1],
                 fiaMetaData.FDMetadata[aivIdx][2], fiaMetaData.FDMetadata[aivIdx][3], fiaMetaData.FDMetadata[aivIdx][4],

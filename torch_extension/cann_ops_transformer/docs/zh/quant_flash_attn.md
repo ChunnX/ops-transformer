@@ -339,7 +339,7 @@ cann_ops_transformer.quant_flash_attn(
                     <li>65536 > B > 0</li>
                     <li>Q_S ≥ 0；KV_S ≥ 0</li>
                     <li>Q_T ≥ 0、KV_T ≥ 0</li>
-                    <li>D仅支持64、72、128或256；其中D=72仅MxFP8场景支持</li>
+                    <li>D仅支持64、72、128或256；其中D=72仅MxFP8场景支持；FP8场景仅支持D=128</li>
                     <li>Q_N % KV_N == 0且Q_N / KV_N > 0</li>
                     <li>Q_N ≤ 256；KV_N ≤ 256；Q_N / KV_N ≤ 64</li>
                 </ul>
