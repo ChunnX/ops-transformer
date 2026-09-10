@@ -79,12 +79,7 @@ constexpr uint32_t PKI_MX_E8M0_SCALE_PACK_NUM = 2; // E8M0 尾维打包数(2 个
 constexpr uint32_t PKI_MX_SCALE_SHAPE_ALIGN = 64;  // headDim 对齐约束(headDim=128 恒真, 防御保留)
 
 // ------------------ Tiling Constants ------------------
-// [Plan-D/T6] 以下 S1/S2/M 基本块常量为 arch35/host 侧口径, 经
-// CalcTilingParams 写入 tilingData 字段; arch22 kernel 不消费这些字段——
-// arch22 InitTilingData 以自有硬编码覆盖(s1BaseSize=8|8192/sc*2 /
-// s2BaseSize=512 / mBaseSize=s1BaseSize*gSize, 见
-// op_kernel/arch22/pool_key_indexer_kernel_arch22.h)。两端 workspace 公式
-// 均按各自 kernel 口径镜像推导, 自洽。(T6 纯注释对齐, 不改值。)
+// 以下 S1/S2/M 基本块常量为 arch35/host 侧口径; arch22 kernel 以自有硬编码覆盖, 不消费这些字段。
 constexpr uint32_t PKI_S1_BASE_SIZE = 4;
 constexpr uint32_t PKI_S1_BASE_SIZE_SMALL = 2;
 constexpr uint32_t PKI_S2_BASE_SIZE = 128;

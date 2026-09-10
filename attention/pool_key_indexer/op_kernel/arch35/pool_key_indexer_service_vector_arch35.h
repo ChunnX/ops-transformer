@@ -277,24 +277,14 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
         pipe->InitBuffer(expandOutBuf_, expandOutLen * sizeof(uint32_t));
         expandOutLocal_ = expandOutBuf_.Get<int32_t>();
         // workLocal_ 布局(段起始均 256B 对齐):
-        //   [0, 64)        rIdxTpl: r/ps(gather 索引模板, pow2 ps 向量展开用)
-        //   [64, 128)      rOffTpl: r%ps(lane 偏移模板, 同上)
-        //   [128, 128+ps)  offsetTpl: 0..ps-1(非 pow2 ps 的 Duplicate+Add 回退路径用)
-        // 注: 历史版本的第二段 Align(outputLen+64,8) slack(最大 ~33KB)无任何
-        // 消费方, 已删除; sc=1024(topk=8192)场景 UB 贴近上限, 冗余分配会挤出
-        // aicore exception(实测 ERR9999)
+        //   [0, 64) rIdxTpl=r/ps 与 [64,128) rOffTpl=r%ps: pow2 ps gather 向量展开模板
+        //   [128, 128+ps) offsetTpl=0..ps-1: 非 pow2 ps 的 Duplicate+Add 回退路径模板
         uint32_t workSize = 128 + PkiCommon::Align(static_cast<uint64_t>(poolSize_ + 64), (uint64_t)8);
         pipe->InitBuffer(workBuf_, workSize * sizeof(uint32_t));
         workLocal_ = workBuf_.Get<int32_t>();
-        // 展开模板 0..ps-1 一次性构建并常驻 workLocal_[128](kernel 生命周期
-        // 内不变)。CreateVecIndex 为 V pipe 向量写, 与 ExpandAndAppendIndices
-        // 中消费它的 Add 同 pipe(中间隔多次向量操作, 同 pipe 有序性足够,
-        // 与既有 CreateVecIndex→Duplicate+PipeBarrier 用法一致), 替代原先
-        // 每行 ps 次 SetValue 标量重建 + SToVSync 硬同步的逐行开销
+        // 展开模板一次性构建并常驻(替代每行标量重建 + SToVSync 的逐行开销)
         AscendC::CreateVecIndex(workLocal_[128], static_cast<int32_t>(0), poolSize_);
-        // pow2 ps 的 gather 展开模板(rIdx/rOff)一次构建常驻头部。
-        // SetValue 为 S pipe 标量写, 后续向量 LoadAlign 读需 S->V 硬同步;
-        // 仅 kernel 初始化执行一次, 开销可忽略
+        // pow2 ps 的 gather 模板为 S pipe 标量写, 后续 V pipe LoadAlign 读前需 S->V 硬同步
         const uint32_t tplLoop = 64;
         for (uint32_t r = 0; r < tplLoop; r++) {
             workLocal_.SetValue(r, static_cast<int32_t>(r / poolSize_));
@@ -504,35 +494,23 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         }
     }
 
-    // pow2 pool_size(2/4/8/.../64)走 gather 向量展开: out[m] = ps*idx[m/ps] + m%ps,
-    // 消除逐 pool 标量 GetValue/SetValue 循环(ps 非 8 倍数时全标量、8 倍数时
-    // 每轮仍需 1 次 GetValue + 2 次小向量 + PipeBarrier)。
-    // pow2 下 (chunkBase+r)/ps == chunkBase/ps + r/ps, 64 lane 窗口的 gather
-    // 索引可由常驻模板 rIdx[r]=r/ps 加标量基址得到(见 vf/pool_key_indexer_vf_expand.h)。
-    // ps=128 不走此路径: 64 lane chunk 不跨满 pool 窗口需逐 chunk 偏移修正
-    // (多一条 Adds 实测触发寄存器溢出, aiv_vec 翻倍), 落到下方原有
-    // Duplicate+Add 对齐路径(sc=topk/128 轮次少, 开销可接受)
+    // pow2 pool_size(2/4/.../64)走 gather 向量展开(见 vf/pool_key_indexer_vf_expand.h):
+    // out[m] = ps*idx[m/ps] + m%ps, 消除逐 pool 标量循环; ps=128 走下方 Duplicate+Add 路径
     if ((poolSize & (poolSize - 1)) == 0 && poolSize <= 64) {
         Duplicate<int32_t>(tokenIndices, -1, alignedTotalOut);
         PipeBarrier<PIPE_V>();
         if (validS2Len > 0) {
-            // 展开轮数受 sparseCount(TopK 选池数)截断: validS2Len 为 causal 可见池数,
-            // 可见池多于选中池时, 多余池不应展开(否则越写 outputLen 之外污染尾区/相邻行)
+            // 展开轮数受 TopK 选池数截断, 多余可见池不展开(防越写 outputLen 污染尾区)
             uint32_t expandRounds = PkiCommon::Min(validS2Len, sparseCount);
             uint32_t effExpand = expandRounds * poolSize;
-            // gather 表 = TopK 输出池索引(poolIndices), 其最近写入方为向量操作
-            // (topkOp_ 结尾 DataCopy/CreateVecIndex/-1 Duplicate), 调用方已
-            // PipeBarrier<PIPE_V>; vgather2 为 V pipe 读, 同屏障后可见
+            // gather 表为 TopK 向量写产物, 调用方已 PipeBarrier<PIPE_V>, V pipe 读可见
             pkiexpand::ExpandPow2PoolIndices(tokenIndices, poolIndices.ReinterpretCast<uint32_t>(), workBuf, effExpand,
                                              poolSize);
         }
         uint32_t validExpand = validS2Len * poolSize;
         if (validExpand < topk) {
             PipeBarrier<PIPE_V>();
-            // [validExpand, topk) 补 -1(覆盖 gather 尾块 lane 的垃圾值)。
-            // ps=2/4 时 validExpand 仅 4/2 对齐, 普通 Duplicate 起始偏移不满足
-            // 32B 对齐(ps 非 8 倍数即 aicore exception 的根因), 需按 ProcessTopK
-            // 无效区的 mask Duplicate 模式: mask 单次刷 64 元素块, 再对齐续刷
+            // [validExpand, topk) 补 -1 覆盖 gather 尾块垃圾; 起始可能非 32B 对齐, 走 mask Duplicate
             uint64_t mask[1];
             mask[0] = ~0;
             mask[0] = mask[0] << (validExpand % 8);
@@ -543,11 +521,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
             }
             PipeBarrier<PIPE_V>();
         }
-        // 尾区 [topk, totalOut) 恒做 -1 清空: gather 尾块 lane 可能越 topk 写入
-        // 垃圾值(至 Align(topk,64), 落在尾区/缓冲 slack 内), visibleTailK==0 时
-        // 也必须覆盖, 否则垃圾随 copyOut 暴露。topk(=sc*ps)在 ps=2/4 时可能
-        // 非 8 对齐, 同样走 mask Duplicate 头块 + 对齐续刷; 越过 totalOut 的
-        // 部分落在缓冲 +64 slack 内且不出块(copyOut blockLen=outputLen), 无害
+        // 尾区 [topk, totalOut) 恒做 -1 清空(gather 尾块 lane 可能越 topk 写垃圾, 同走 mask Duplicate)
         uint32_t tailPos = topk;
         uint64_t mask[1];
         mask[0] = ~0;
@@ -558,10 +532,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
             Duplicate<int32_t>(tokenIndices[tailPos / 8 * 8 + 64], -1, totalOut - (tailPos / 8 * 8 + 64));
         }
         if (visibleTailK > 0) {
-            // 标量精确写 visibleTailK 个尾 token; 不可按 Align(visibleTailK,8)
-            // 对齐写, 否则会越出 tail 容量(ps-1)污染行尾/相邻行(与 arch22 修复一致)
-            // V→S: 上述 -1 向量填充必须先于标量 SetValue 落地,
-            // 否则迟到的 V 写会覆盖标量写(实测尾区全 -1)
+            // V→S: -1 向量填充先落地, 再标量精确写尾 token(不可对齐写, 防越出尾区容量)
             VToSSync();
             for (int32_t t = 0; t < visibleTailK; t++) {
                 tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);
@@ -572,16 +543,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
         return;
     }
 
-    // poolSize 非 8 的倍数: 向量写偏移(outOff=k*poolSize / tailPos=topk /
-    // validExpand=v*poolSize)不满足 32B 操作数地址对齐, 触发 aicore
-    // exception(EE9999/507015; 判别实验: sc=1+tail=0 的唯一对齐形态不崩,
-    // 尾块/第2轮起展开必崩)。退化标量精确写路径: 先向量铺 -1(offset 0
-    // 对齐)再逐 token 标量写, 无对齐要求; 标量写精确到 pool 边界, 同时
-    // 消除向量按 Align(ps,8) 对齐写越出 pool 边界残留垃圾索引的问题。
+    // poolSize 非 8 的倍数: 向量写偏移不满足 32B 对齐会触发 aicore exception,
+    // 退化为先向量铺 -1 再逐 token 标量精确写(精确到 pool 边界, 无对齐要求)。
     if (poolSize % 8 != 0) {
         Duplicate<int32_t>(tokenIndices, -1, alignedTotalOut);
-        // V→S: 向量 -1 填充必须先于标量写落地(迟到的 V 写会覆盖标量写);
-        // 同时保证 poolIndices(topkOp_ 向量写)对标量 GetValue 可见
+        // V→S: -1 向量填充先落地, 同时保证 poolIndices 向量写对标量 GetValue 可见
         VToSSync();
         if (validS2Len > 0) {
             uint32_t expandRounds = PkiCommon::Min(validS2Len, sparseCount);
@@ -607,18 +573,14 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
     PipeBarrier<PIPE_V>();
 
     if (validS2Len > 0) {
-        // V→S: poolIndices(indicesOutLocal_) 的最近写入方为向量操作
-        // (topkOp_ 结尾 DataCopy / CreateVecIndex / -1 Duplicate 填充),
-        // 后续标量 GetValue 必须等其可见, 否则读到陈旧/垃圾 pool 序号
+        // V→S: poolIndices 最近写入方为向量操作, 标量 GetValue 前须等其可见
         VToSSync();
 
-        // 展开模板 offsetTpl(0..ps-1) 已在 InitBuffers 经 CreateVecIndex
-        // 一次性构建并常驻(位于 workLocal_[128]), 无需逐行标量重建
+        // 展开模板 offsetTpl(0..ps-1) 已在 InitBuffers 构建并常驻 workLocal_[128]
         LocalTensor<int32_t> offsetTpl = workBuf[128];
 
         uint32_t outOff = 0;
-        // 展开轮数受 sparseCount(TopK 选池数)截断: validS2Len 为 causal 可见池数,
-        // 可见池多于选中池时, 多余池不应展开(否则越写 outputLen 之外污染尾区/相邻行)
+        // 展开轮数受 TopK 选池数截断, 多余可见池不展开(防越写污染尾区/相邻行)
         uint32_t expandRounds = PkiCommon::Min(validS2Len, sparseCount);
         for (uint32_t k = 0; k < expandRounds; k++) {
             int32_t base = poolIndices.GetValue(k) * static_cast<int32_t>(poolSize);
@@ -638,12 +600,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ExpandAndAppendIndices(
 
     if (visibleTailK > 0) {
         uint32_t tailPos = topk;
-        // 先按 8 对齐清空整个尾区, 再标量精确写 visibleTailK 个尾 token;
-        // 不可按 Align(visibleTailK,8) 对齐写, 否则会越出 tail 容量(ps-1)
-        // 污染行尾/相邻行(与 arch22 修复一致)
+        // 先按 8 对齐清空整个尾区, 再标量精确写尾 token(不可对齐写, 防越出尾区容量)
         Duplicate<int32_t>(tokenIndices[tailPos], -1, PkiCommon::Align(totalOut - tailPos, (uint32_t)8));
-        // V→S: 上述 -1 向量填充必须先于标量 SetValue 落地,
-        // 否则迟到的 V 写会覆盖标量写(实测尾区全 -1)
+        // V→S: -1 向量填充必须先于标量 SetValue 落地
         VToSSync();
         for (int32_t t = 0; t < visibleTailK; t++) {
             tokenIndices.SetValue(tailPos + t, L_orig - poolTailK + t);

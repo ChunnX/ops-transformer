@@ -196,17 +196,9 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
-    // [Plan-D/T6] arch22 切分常量以 kernel 侧硬编码为准, 覆盖 host tiling 字段:
-    // host CalcTilingParams(op_host/pool_key_indexer_tiling.cpp) 下发的
-    // s1BaseSize=4|2 / s2BaseSize=128 / mBaseSizeMax=256|128 供 arch35 消费
-    // (arch35 亦自有同值硬编码), arch22 此处直接覆盖为
-    //   s2BaseSize = S2_BASE_SIZE = 512,
-    //   s1BaseSize = isSparseCountOver2K ? SPARSE_COUNT_8K/sparseCount*2 : 8
-    //            (目标场景 sc=512 → 8),
-    //   mBaseSize  = s1BaseSize*gSize (目标场景 gSize=32 → 256)。
-    // workspace 公式(CalcWorkspaceSize)已按 kernel 侧值(8/512)镜像推导,
-    // 两端自洽; 旧仓设计说明书"4/128"为 arch35/host 口径, 对 arch22 失实
-    // (round0 tiling 科已核, 本注释为 T6 对齐说明, 不改任何行为)。
+    // arch22 切分常量以 kernel 侧硬编码为准, 覆盖 host tiling 字段(host 下发的
+    // s1BaseSize/s2BaseSize/mBaseSizeMax 供 arch35 消费); workspace 公式已按
+    // kernel 侧口径镜像推导, 两端自洽。
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.isSparseCountOver2K = (constInfo.sparseCount <= BASE_TOPK) ? false : true;
 
@@ -367,16 +359,8 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
                     findLastCoreEnd = false;
                 }
                 uint32_t s2RemainBaseNum = s2Loop - s2Idx;
-                // S2 跨核规避(LD 缺陷修复): 当前 fill 已包含本 gS1 的 S2 首块(s2Idx==0,
-                // 配额未在更早的 gS1 耗尽)且自然终点会落在本 S2 中间时, 扩展配额吃满
-                // 整个 S2 —— 保证每个 (batch, gS1) 的 S2 块完整落在单核内, isLD 永不
-                // 触发, 走 needCopyOutGm 单核直出路径。LD 跨核归并(ProcessLD)在
-                // arch22 上存在三族缺陷: ① 归并链 >=5 表时尾部部分归并(validBit !=
-                // 0b1111)触发 VEC 指令非法配置(aicore exception, 大规格用例挂死);
-                // ② 归并列表污染导致缺选/多选(indices 集合比对失败); ③ 部分 M 块
-                // 行输出未写(GM 残留垃圾值)。代价是多 batch 大 S2 场景核利用率下降
-                // (fill 数 = 参与计算的 (batch, gS1) 组数), 空闲核重复处理首块(幂等,
-                // 无害)。仅扩展不收缩: 配额充足跨多个 gS1 的场景保持原行为。
+                // S2 跨核规避: 保证每个 (batch, gS1) 的 S2 块完整落在单核内(arch22
+                // LD 跨核归并存在缺陷), 代价是多 batch 大 S2 场景核利用率下降。
                 if (s2Idx == 0 && lastGS1RemainBlockCnt + s2RemainBaseNum > coreDealBlockCnt) {
                     coreDealBlockCnt = lastGS1RemainBlockCnt + s2RemainBaseNum;
                 }
@@ -415,10 +399,7 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
             }
         }
     }
-    // 尾部残余 fill: S2 整块对齐(LD 规避)后各 fill 向上取整到 (batch,gS1) 的 S2
-    // 边界, 最后一段块数可能不足配额而永远凑不满 —— 若不处理, 遍历走完仍不
-    // return, 尾部块无人执行(对应行输出缺失/残留)。由当前核吃满剩余, 终点为
-    // 最后一个累计过的 (batch,gS1) 的 S2 末块; 空尾 batch 的输出清理同主路径。
+    // 尾部残余 fill: 最后一段块数可能永远凑不满配额, 由当前核吃满剩余块, 防尾部块漏执行。
     if (!findLastCoreEnd && coreIdx == curCoreIdx) {
         info.bN2End = tailBN2End;
         info.gS1End = tailGS1End;
