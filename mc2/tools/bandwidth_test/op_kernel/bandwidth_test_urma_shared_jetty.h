@@ -346,7 +346,10 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     ++preparedWrites_;
     if (lastInBatch || preparedWrites_ == batchCapacity_) {
         hcomm_.BatchCommit(batchHandle_);
-        hcomm_.Drain(batchHandle_);
+        // Temporary diagnostic: stop on a failed Drain instead of continuing the benchmark.
+        if (hcomm_.Drain(batchHandle_) != HCOMM_SUCCESS) {
+            Trap();
+        }
         preparedWrites_ = 0;
     }
 }
