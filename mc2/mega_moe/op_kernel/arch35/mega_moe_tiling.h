@@ -208,5 +208,8 @@ struct MegaMoeTilingData {
     uint32_t numMaxTokensPerRank;
     // URMA 分层拓扑；Host workspace 计算与 Device 通道映射必须使用同一个值。
     uint32_t rankNumPerServer;
+    // 预取 scratch 的 UB 偏移（= 平台 ubSize − 16KB chunk，即 UB 顶部；运行时由 host 下发，
+    // 布局钳位与 kernel scratch 落点共用该值）。
+    uint32_t weightPrefetchUbOffset;
 };
 #endif
