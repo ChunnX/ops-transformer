@@ -312,19 +312,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
 
-    // FP32 shared-FFN path (non-quant): GMM1/GMM2 keep the FP32 accumulator (no BF16 rounding in front of
-    // SwiGLU / result merge), SwiGLU stays FP32, and only the GMM2 MMAD input is cast back to BF16 because the
-    // cube requires A/B to share the same precision. The routed pipeline is unaffected.
-    using SharedCType = Gemm::GemmType<float, layout::RowMajor>;
-    using SharedD1Type = Gemm::GemmType<float, layout::RowMajor>;
-    using SharedBlockMmad = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, SharedCType>;
-    using SharedTileCopy1 = Epilogue::Tile::TileCopy<ArchTag, SharedCType, ScaleType, PerTokenScaleType, SharedD1Type>;
-    using SharedBlockEpilogue1 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy1, SharedCType, PerTokenScaleType,
-                                                                SharedD1Type, TileElemWiseMuls, SharedTileCopy1>;
-
-    using MatmulKernel =
-        Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2,
-                                    BlockEpilogue3, SharedBlockMmad, SharedBlockEpilogue1>;
+    using MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
+                                                     BlockEpilogue2, BlockEpilogue3>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_)};
     LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};

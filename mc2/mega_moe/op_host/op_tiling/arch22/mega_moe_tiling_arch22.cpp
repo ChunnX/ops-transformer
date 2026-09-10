@@ -1705,12 +1705,10 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
         };
         // Shared GMM1 C and GMM2 C are not live at the same time and reuse the
         // larger buffer. W4A8 uses two logical M rows for its high/low nibbles.
-        // Non-quant keeps GMM1 C / activation / GMM2 C in FP32 for precision.
         const uint64_t msdFactor = info.isW4A8 != 0U ? 2UL : 1UL;
-        const uint64_t gmmElementSize = info.isQuantRouting != 0U ? sizeof(int16_t) : sizeof(float);
         const uint64_t sharedGmmBuffer = alignSharedBuffer(static_cast<uint64_t>(info.sharedExpertNum) * info.M *
-                                                           std::max(info.N, info.K) * gmmElementSize * msdFactor);
-        const uint64_t activationElementSize = info.isQuantRouting != 0U ? sizeof(int8_t) : sizeof(float);
+                                                           std::max(info.N, info.K) * sizeof(int16_t) * msdFactor);
+        const uint64_t activationElementSize = info.isQuantRouting != 0U ? sizeof(int8_t) : sizeof(int16_t);
         const uint64_t sharedActivationBuffer = alignSharedBuffer(static_cast<uint64_t>(info.sharedExpertNum) * info.M *
                                                                   (info.N / 2U) * activationElementSize);
         sharedExpertWorkspace = sharedGmmBuffer + sharedActivationBuffer;
@@ -1728,11 +1726,6 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                 alignSharedBuffer(static_cast<uint64_t>(info.sharedExpertNum) * info.M * info.K * sizeof(int16_t));
             sharedExpertWorkspace +=
                 sharedInputBuffer + sharedInputScaleBuffer + sharedActivationScaleBuffer + sharedResultBuffer;
-        } else {
-            // BF16 copy of the FP32 activation, consumed by the GMM2 cube MMAD.
-            const uint64_t sharedActivationBf16Buffer = alignSharedBuffer(static_cast<uint64_t>(info.sharedExpertNum) *
-                                                                          info.M * (info.N / 2U) * sizeof(int16_t));
-            sharedExpertWorkspace += sharedActivationBf16Buffer;
         }
     }
 

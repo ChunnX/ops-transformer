@@ -20,7 +20,7 @@
 #include "mc2_mega_moe_moe_token_unpermute_tiling.h"
 using namespace AscendC;
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4 = T1>
+template <typename T1, typename T2, typename T3, bool PROBS>
 class KernelMoeTokenUnpermute {
 public:
     __aicore__ inline KernelMoeTokenUnpermute() {}
@@ -46,11 +46,10 @@ protected:
     __aicore__ inline void CopyOut(const int64_t out_token_index, const int64_t h_index, const int64_t h_length);
 
     TPipe pipe;
-    TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque, shared_tokens_inque;
+    TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque;
     TBuf<TPosition::VECCALC> temp_buffer0, temp_buffer1, temp_buffer2;
     TQue<QuePosition::VECOUT, 1> outque;
-    GlobalTensor<T1> tokensGM, outGM;
-    GlobalTensor<T4> sharedTokensGM;
+    GlobalTensor<T1> tokensGM, sharedTokensGM, outGM;
     GlobalTensor<T2> indicesGM;
     GlobalTensor<T3> probsGM;
     LocalTensor<T2> indicesLocal;
@@ -81,8 +80,8 @@ protected:
     int32_t blockNum;
 };
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::Init(
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
     const MoeTokenUnpermuteTilingData *__restrict tiling_data, bool useAllVectorCore, GM_ADDR shared_tokens,
     uint32_t shared_expert_num, GM_ADDR x_active_mask, int64_t shared_token_count, int64_t shared_token_base)
@@ -161,14 +160,11 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::Init(
                                 this->tokens_core_length * this->hidden_size);
     this->out_token_offset = shared_token_base + out_block_offset / this->hidden_size;
     if (this->shared_expert_num > 0U) {
-        this->sharedTokensGM.SetGlobalBuffer((__gm__ T4 *)shared_tokens);
+        this->sharedTokensGM.SetGlobalBuffer((__gm__ T1 *)shared_tokens);
     }
     this->pipe.InitBuffer(tokens_inque, tiling_data->buffer_num, hidden_splited_length_align512 * sizeof(T1));
     this->pipe.InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
     this->pipe.InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));
-    if (this->shared_expert_num > 0U) {
-        this->pipe.InitBuffer(shared_tokens_inque, 1, hidden_splited_length_align512 * sizeof(T4));
-    }
 
     if constexpr (!IsSameType<T1, float>::value) {
         this->pipe.InitBuffer(temp_buffer0, hidden_splited_length_align512 * sizeof(float) + 256);
@@ -187,8 +183,8 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::Init(
     }
 };
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::Process()
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Process()
 {
     if (blockIdx >= blockNum) {
         return;
@@ -202,9 +198,9 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::Process()
     }
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalMultiOutToken(const int64_t out_offset,
-                                                                                        const int64_t out_tokens_number)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalMultiOutToken(const int64_t out_offset,
+                                                                                    const int64_t out_tokens_number)
 {
     this->indicesLocal = this->indices_inque.template AllocTensor<T2>();
     int64_t in_offset = out_offset * this->top_k;
@@ -238,9 +234,9 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalMultiO
     }
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalSingleOutToken(const int64_t start_token,
-                                                                                         const int64_t out_token_idx)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalSingleOutToken(const int64_t start_token,
+                                                                                     const int64_t out_token_idx)
 {
     for (int64_t h_index = 0; h_index < this->hidden_splited_num; ++h_index) {
         CalPartOutToken(start_token, h_index, this->hidden_splited_length, out_token_idx);
@@ -251,11 +247,11 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalSingle
     }
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalPartOutToken(const int64_t start_token,
-                                                                                       const int64_t h_index,
-                                                                                       const int64_t h_length,
-                                                                                       const int64_t out_token_index)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutToken(const int64_t start_token,
+                                                                                   const int64_t h_index,
+                                                                                   const int64_t h_length,
+                                                                                   const int64_t out_token_index)
 {
     if constexpr (IsSameType<T1, float>::value) {
         this->token_tensor0 = this->outque.template AllocTensor<T1>();
@@ -311,10 +307,10 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalPartOu
     CopyOut(out_token_index, h_index, h_length);
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CopyTokenIn(const T2 in_token_index,
-                                                                                   const int64_t h_index,
-                                                                                   const int64_t h_length)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CopyTokenIn(const T2 in_token_index,
+                                                                               const int64_t h_index,
+                                                                               const int64_t h_length)
 {
     LocalTensor<T1> tokensLocal = this->tokens_inque.template AllocTensor<T1>();
     int64_t offset = in_token_index * this->hidden_size + h_index * this->hidden_splited_length;
@@ -329,26 +325,27 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CopyToken
     this->tokens_inque.template EnQue(tokensLocal);
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CopySharedTokenIn(
-    const int64_t shared_expert_index, const int64_t out_token_index, const int64_t h_index, const int64_t h_length)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CopySharedTokenIn(const int64_t shared_expert_index,
+                                                                                     const int64_t out_token_index,
+                                                                                     const int64_t h_index,
+                                                                                     const int64_t h_length)
 {
-    LocalTensor<T4> tokensLocal = this->shared_tokens_inque.template AllocTensor<T4>();
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template AllocTensor<T1>();
     int64_t offset = (shared_expert_index * this->out_token_count + out_token_index) * this->hidden_size +
                      h_index * this->hidden_splited_length;
-    if (likely((h_length * sizeof(T4)) % BLOCK_SIZE == 0)) {
+    if (likely((h_length * sizeof(T1)) % BLOCK_SIZE == 0)) {
         DataCopy(tokensLocal, this->sharedTokensGM[offset], h_length);
     } else {
-        DataCopyPadExtParams<T4> extParams4{false, 0, 0, 0};
-        this->copyParams.blockLen = h_length * sizeof(T4);
-        DataCopyPad(tokensLocal, this->sharedTokensGM[offset], this->copyParams, extParams4);
+        this->copyParams.blockLen = h_length * sizeof(T1);
+        DataCopyPad(tokensLocal, this->sharedTokensGM[offset], this->copyParams, this->extParams1);
     }
-    this->shared_tokens_inque.template EnQue(tokensLocal);
+    this->tokens_inque.template EnQue(tokensLocal);
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalFirstToken(const float prob_value,
-                                                                                     const int64_t h_length)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalFirstToken(const float prob_value,
+                                                                                 const int64_t h_length)
 {
     LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
 
@@ -367,9 +364,9 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalFirstT
     }
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalToken(const float prob_value,
-                                                                                const int64_t h_length)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalToken(const float prob_value,
+                                                                            const int64_t h_length)
 {
     LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
 
@@ -392,26 +389,26 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalToken(
     }
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CalSharedToken(const int64_t h_length)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalSharedToken(const int64_t h_length)
 {
-    LocalTensor<T4> tokensLocal = this->shared_tokens_inque.template DeQue<T4>();
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
 
-    if constexpr (!IsSameType<T4, float>::value) {
+    if constexpr (!IsSameType<T1, float>::value) {
         Cast(this->token_tensor1, tokensLocal, RoundMode::CAST_NONE, h_length);
-        this->shared_tokens_inque.FreeTensor(tokensLocal);
+        this->tokens_inque.FreeTensor(tokensLocal);
         PipeBarrier<PIPE_V>();
         Add(this->token_tensor0, this->token_tensor0, this->token_tensor1, h_length);
     } else {
         Add(this->token_tensor0, this->token_tensor0, tokensLocal, h_length);
-        this->shared_tokens_inque.FreeTensor(tokensLocal);
+        this->tokens_inque.FreeTensor(tokensLocal);
     }
 }
 
-template <typename T1, typename T2, typename T3, bool PROBS, typename T4>
-__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS, T4>::CopyOut(const int64_t out_token_index,
-                                                                               const int64_t h_index,
-                                                                               const int64_t h_length)
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CopyOut(const int64_t out_token_index,
+                                                                           const int64_t h_index,
+                                                                           const int64_t h_length)
 {
     LocalTensor<T1> temp_out_tensors;
     if constexpr (!IsSameType<T1, float>::value) {

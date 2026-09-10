@@ -208,13 +208,8 @@ struct GatedActivation {
                                                AscendC::LocalTensor<Element> const &packedInput, uint32_t branchStride,
                                                uint32_t dataLength)
     {
-        if constexpr (std::is_same_v<Element, float>) {
-            AscendC::DataCopy(gate, packedInput, dataLength);
-            AscendC::DataCopy(up, packedInput[branchStride], dataLength);
-        } else {
-            AscendC::Cast(gate, packedInput, AscendC::RoundMode::CAST_NONE, dataLength);
-            AscendC::Cast(up, packedInput[branchStride], AscendC::RoundMode::CAST_NONE, dataLength);
-        }
+        AscendC::Cast(gate, packedInput, AscendC::RoundMode::CAST_NONE, dataLength);
+        AscendC::Cast(up, packedInput[branchStride], AscendC::RoundMode::CAST_NONE, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
