@@ -178,7 +178,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
     baseParams_.biasGm = biasGM;
-    opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, tilingData->tileQbmmTilingData.usedCoreNum);
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, tilingData->tileQbmmTilingData.usedCoreNum);
+#endif
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);

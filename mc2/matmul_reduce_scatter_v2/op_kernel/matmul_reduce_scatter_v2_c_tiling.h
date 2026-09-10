@@ -15,7 +15,6 @@
 #ifndef _MATMUL_REDUCE_SCATTER_V2_C_TILING_H_
 #define _MATMUL_REDUCE_SCATTER_V2_C_TILING_H_
 
-#include <cstddef>
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/mc2_tiling_struct.h"
@@ -27,10 +26,12 @@ namespace Mc2Tiling {
 constexpr uint32_t MAX_EXPERT_SIZE = 256U; // 最大通信域专家的数量
 constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
 
-// DFX 头部约定: workspaceLayout 必须是 tiling 结构的第一个成员(offset 0)，
-// 异常 dump 回调直接从 tiling blob 起始位置解析 workspace 分段布局
+// DFX 头部约定: dumpInfo 必须是 tiling 结构的第一个成员(offset 0)，
+// 异常 dump 回调直接从 tiling blob 起始位置解析 DfxDumpInfo
 struct MatmulReduceScatterV2TilingData {
-    Utils::DfxWorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     RCSTiling param;
@@ -42,7 +43,9 @@ struct MatmulReduceScatterV2TilingData {
 };
 
 struct QuantBatchMatmulV3ReduceScatterTilingData {
-    Utils::DfxWorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     RCSTiling param;
@@ -52,10 +55,5 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
     uint64_t tilingKey; // tilingKey，用于确认kernel模板特化路径
 };
-
-static_assert(offsetof(MatmulReduceScatterV2TilingData, workspaceLayout) == 0,
-              "workspaceLayout must be the first member (DFX head convention)");
-static_assert(offsetof(QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout) == 0,
-              "workspaceLayout must be the first member (DFX head convention)");
 } // namespace Mc2Tiling
 #endif

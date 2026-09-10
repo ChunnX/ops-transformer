@@ -23,7 +23,6 @@
 #include "graph/types.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "mc2_exception_dump.h"
-#include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 
 using namespace ge;
 
@@ -72,9 +71,7 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
                                             8U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
                                      0U, // contextArgIdx
-                                     9U, // tilingGmArgIdx
-                                     offsetof(allToAllMatmulTilingData, peermemDataSize),
-                                     offsetof(allToAllMatmulTilingData, peermemLayout));
+                                     9U); // tilingGmArgIdx
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()

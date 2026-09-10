@@ -15,7 +15,6 @@
 #ifndef ALLTO_ALL_MATMUL_TILING_DATA_H
 #define ALLTO_ALL_MATMUL_TILING_DATA_H
 
-#include <cstddef>
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../common/op_kernel/mc2_tiling_struct.h"
@@ -44,10 +43,12 @@ struct AlltoAllMatmulTilingInfo {
     uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
 };
 
-// DFX 头部约定: workspaceLayout 必须是 tiling 结构的第一个成员(offset 0)，
-// 异常 dump 回调直接从 tiling blob 起始位置解析 workspace 分段布局
+// DFX 头部约定: dumpInfo 必须是 tiling 结构的第一个成员(offset 0)，
+// 异常 dump 回调直接从 tiling blob 起始位置解析 DfxDumpInfo
 struct AlltoAllMatmulTilingData {
-    Utils::DfxWorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllMatmulTilingInfo;
@@ -57,17 +58,14 @@ struct AlltoAllMatmulTilingData {
 
 // MX量化tiling结构体
 struct AlltoAllQuantMatmulTilingData {
-    Utils::DfxWorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     Mc2InitTiling mc2InitTiling;                   // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;                       // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo; // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据
 };
-
-static_assert(offsetof(AlltoAllMatmulTilingData, workspaceLayout) == 0,
-              "workspaceLayout must be the first member (DFX head convention)");
-static_assert(offsetof(AlltoAllQuantMatmulTilingData, workspaceLayout) == 0,
-              "workspaceLayout must be the first member (DFX head convention)");
 
 #endif // ALLTO_ALL_MATMUL_TILING_H

@@ -109,7 +109,9 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     auto &&cfg = tilingData_->param;
     if constexpr (IS_MX_DFX) {
         // 初始化状态打点(写入magicNum+COMM_INIT阶段)，HCCL初始化期间崩溃dump显示INIT
-        opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
+#if MC2_DFX_ENABLE
+        opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, cfg.aicCoreNum);
+#endif
     }
     for (uint32_t j = 0; j < cfg.rankDim; j++) {
         batchWeight_[j] = j;

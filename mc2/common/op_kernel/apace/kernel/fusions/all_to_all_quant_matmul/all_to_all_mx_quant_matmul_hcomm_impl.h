@@ -189,7 +189,9 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
     if (all2all_out == nullptr) {
         commOutGM_ = workspaceGM + x1ScaleLen;
     }
-    opStateDump_.Init(workspaceGM_, &tilingData_->workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM_, &tilingData_->dumpInfo.workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
+#endif
     quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
