@@ -439,8 +439,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
         bmm1Buffers.Get().SetCrossCore();
     }
     uint32_t v0ResSize = constInfo.s2BaseSize * 512U * sizeof(Q_T);
-    int64_t totalOffset = IS_SPLIT_G ? static_cast<int64_t>(v0ResSize) * 3 * (aicIdx >> 1U) :
-                                       static_cast<int64_t>(v0ResSize) * 3 * aicIdx;
+    int64_t totalOffset;
+    if constexpr (IS_SPLIT_G) {
+        totalOffset = static_cast<int64_t>(v0ResSize) * 3 * (aicIdx >> 1U);
+    } else {
+        totalOffset = static_cast<int64_t>(v0ResSize) * 3 * aicIdx;
+    }
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
     v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
@@ -536,14 +540,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
     if (this->constInfo.needInit) {
         SyncAll<false>();
     }
-    FdRunInfo fdRunInfo;
-    if ASCEND_IS_AIV {
-        ParseFdRunInfo(fdRunInfo);
-    }
     ICachePreLoad(6);
     ProcessMainLoop();
     SyncAll();
     if ASCEND_IS_AIV {
+        FdRunInfo fdRunInfo;
+        ParseFdRunInfo(fdRunInfo);
         if (fdRunInfo.coreEnable) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
         }
