@@ -119,6 +119,10 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
      (ORIG_DTYPE_WEIGHT1 == DT_FLOAT4_E2M1)) && \
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     constexpr bool isBf16Input = ORIG_DTYPE_X == DT_BF16;
+    // dispatch mode 与输入生产方式严格配对：BF16 由算子在线 MXFP 量化，预量化 x 仅执行直通打包。
+    constexpr bool isMteInputCompatibleWithDispatchMode =
+        (isBf16Input && DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) ||
+        (!isBf16Input && DispatchQuantMode == DISPATCH_QUANT_MODE_NO_QUANT);
     // tiling key 中保存的是 Host 解析后的有效量化类型。预量化 x 不再做数值转换，
     // 因此 MoE 与共享专家都必须使用与 x 相同的 record 类型。
     constexpr bool isMteInputCompatibleWithQuantTypes =
@@ -130,7 +134,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
         (DispatchQuantOutType == EXPERT_QUANT_OUT_DTYPE_E2M1 &&
          SharedQuantOutType == EXPERT_QUANT_OUT_DTYPE_E2M1 && ORIG_DTYPE_X == DT_FLOAT4_E2M1);
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
-        if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP && isMteInputCompatibleWithQuantTypes) {
+        if constexpr (isMteInputCompatibleWithDispatchMode && isMteInputCompatibleWithQuantTypes) {
             MegaMoeImpl::MegaMoeMteWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, MoeWeightType, FORMAT_WEIGHT1,
                                         FORMAT_WEIGHT2, SharedWeightType, FORMAT_SHARED_WEIGHT1, FORMAT_SHARED_WEIGHT2,
                                         DispatchQuantOutType, SharedQuantOutType, CombineQuantOutType,
