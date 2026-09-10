@@ -25,6 +25,7 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "include/tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "apace/basic/buffer/buffer_channel.h"
 #define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #undef WINDOW_LEN
@@ -34,21 +35,21 @@ namespace Gemm {
 namespace Kernel {
 
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class BufferSyncManager>
 
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, BufferSyncManager
 using namespace AscendC;
 using AscendC::Te::Get;
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
  * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
- * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
- * 调用点直接 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
+ * 通信等待逻辑经 BufferSyncManager 策略类注入（组合模式）：基类持 bufferSyncMgr_ 成员对象，
+ * 调用点直接 bufferSyncMgr_.Acquire(tileIdx)，编译期由模板参数绑定具体策略，
  * 无需继承与 static_cast。
  */
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class BufferSyncManager>
 class AllToAllQbmmMxKernel {
 public:
     __aicore__ inline AllToAllQbmmMxKernel() {}
@@ -133,6 +134,8 @@ public:
         BlockSchedulerParams schParams;
         QBMMTiling qbmmParams;
         LocalParams localParams;
+        Apace::Basic::BufferChannel *dataChannel{nullptr};
+        Apace::Basic::BufferChannel *scaleChannel{nullptr};
     };
 
 public:
@@ -143,9 +146,9 @@ public:
         Run(params);
     }
 
-    __aicore__ inline CommPolicy &GetCommPolicy()
+    __aicore__ inline BufferSyncManager &GetBufferSyncMgr()
     {
-        return commPolicy_;
+        return bufferSyncMgr_;
     }
 
 private:
@@ -164,7 +167,7 @@ private:
 
 private:
     BlockMmad mmadOp_;
-    CommPolicy commPolicy_;
+    BufferSyncManager bufferSyncMgr_;
 
     __gm__ AType *aGmAddr_;      // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_; // 本地数据基址
@@ -324,10 +327,18 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
         Blaze::Gemm::CeilDiv(Te::Get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
 
+    uint32_t dataSlotNum = params.dataChannel->GetSlotNum();
+    uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
+    uint64_t winPerRound = static_cast<uint64_t>(rankSize) * params.localParams.headTileSize;
+
+    uint64_t winTotalM = static_cast<uint64_t>(params.dataChannel->GetSlotNum()) * winPerRound;
+    uint64_t scaleWinTotalM = static_cast<uint64_t>(params.scaleChannel->GetSlotNum()) * winPerRound;
+
     // 构建各 Tensor 的全局布局
-    auto layoutA = MakeLayoutA{}(rankSize * params.localParams.originalM, Te::Get<MNK_K>(params.problemShape));
+    auto layoutA = MakeLayoutA{}(winTotalM, Te::Get<MNK_K>(params.problemShape));
     auto layoutALocal = MakeLayoutA{}(rankSize * oriM, Te::Get<MNK_K>(params.problemShape));
-    auto layoutScaleA = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
+    auto layoutScaleA = MakeLayoutScaleA{}(scaleWinTotalM, scaleKLen);
+    auto layoutScaleALocal = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
 
     auto layoutB = MakeLayoutB{}(rankSize * Te::Get<MNK_K>(params.problemShape), Te::Get<MNK_N>(params.problemShape));
     auto layoutScaleB = MakeLayoutScaleB{}(rankSize * scaleKLen, Te::Get<MNK_N>(params.problemShape));
@@ -338,7 +349,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(aGmAddr_), layoutA);
     auto gmALocal = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(localAGmAddr_), layoutALocal); // local输入
     auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleAGmAddr_), layoutScaleA);
-    auto gmScaleALocal = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(localScaleAGmAddr_), layoutScaleA);
+    auto gmScaleALocal = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(localScaleAGmAddr_), layoutScaleALocal);
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), layoutB);
     auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasGmAddr_), layoutBias);
@@ -360,17 +371,20 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     int64_t mPos = 0L;
     int64_t nPos = 0L;
     constexpr int64_t kPos = 0L;
-    uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     int32_t readyTileIdx = -1;
+    uint64_t dataSlotOffset = 0;
+    uint64_t scaleSlotOffset = 0;
     // 遍历当前块的调度任务
     while (bs.GetTileIdx(blockIdx)) {
         BlockShape singleShape =
             bs.template GetBlockShape<QuantMode::MX_PERGROUP_MODE, QuantMode::MX_PERGROUP_MODE, weightNz>(blockIdx);
         if ((Te::Get<IDX_M_TILEIDX>(singleShape) <= 0) || (Te::Get<IDX_N_TILEIDX>(singleShape) <= 0)) {
-            return;
+            break;
         }
 
         bs.GetTileCoord(blockIdx, mPos, nPos);
+        int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
+        int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC = gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
                                   AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
@@ -393,8 +407,6 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
         } else if (deferredSync) {
             // DEFERRED_SYNC 模式：
-            int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
-            int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，remoteRankCnt=0）
             //          此处读 GM 的 localAGmAddr_，不依赖通信，可与 AIV 的 UDMA put 并行。
             auto selfMPos = rankId * oriM + mPos;
@@ -413,79 +425,119 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
 
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
+                // release 已被前序 block 读完的 tile（每 block 只读 dependTileIdx 一个 tile）
+                if (readyTileIdx >= 0 &&
+                    readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
+                    bufferSyncMgr_.Release(static_cast<uint32_t>(readyTileIdx) % dataSlotNum %
+                        Apace::Basic::BufferChannel::FLAG_ID_MODULO);
+                }
                 readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
+                auto dataSlot = params.dataChannel->GetNextSlot();
+                bufferSyncMgr_.Acquire(dataSlot.slotIdx);
+                dataSlotOffset = dataSlot.offset;
+                scaleSlotOffset = params.scaleChannel->GetNextSlot().offset;
             }
             // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
             uint32_t remoteRankCnt = 1;
+            uint64_t tileOffset = static_cast<uint64_t>(mPos) % params.localParams.headTileSize;
+            uint64_t rankMOffset = 0;
+            uint64_t rankKOffset = 0;
+            uint64_t rankScaleKOffset = 0;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
-                if (rank == rankId)
-                    continue;
-                auto actualMPos = rank * oriM + mPos;
-                auto gmBlockA_remote =
-                    gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                              AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                                                           AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
-                auto gmBlockB_r =
-                    gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
-                              AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-                auto gmBlockScaleB_r = gmScaleB.Slice(AscendC::Te::MakeCoord(rank * scaleKLen, nPos),
-                                                      AscendC::Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
-                mmadOp_(gmBlockA_remote, gmBlockB_r, gmBlockScaleA_remote, gmBlockScaleB_r, gmBlockBias, gmBlockC,
-                        singleShape, remoteRankCnt);
-                remoteRankCnt++;
+                if (rank != rankId) {
+                    uint64_t actualMPos = dataSlotOffset + rankMOffset + tileOffset;
+                    uint64_t scaleActualMPos = scaleSlotOffset + rankMOffset + tileOffset;
+                    auto gmBlockA_remote =
+                        gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                                  AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
+                    auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(scaleActualMPos, kPos),
+                                                               AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
+                    auto gmBlockB_r =
+                        gmB.Slice(AscendC::Te::MakeCoord(rankKOffset, nPos),
+                                  AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
+                    auto gmBlockScaleB_r = gmScaleB.Slice(AscendC::Te::MakeCoord(rankScaleKOffset, nPos),
+                                                          AscendC::Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
+                    mmadOp_(gmBlockA_remote, gmBlockB_r, gmBlockScaleA_remote, gmBlockScaleB_r, gmBlockBias, gmBlockC,
+                            singleShape, remoteRankCnt);
+                    remoteRankCnt++;
+                }
+                rankMOffset += params.localParams.headTileSize;
+                rankKOffset += Get<MNK_K>(params.problemShape);
+                rankScaleKOffset += scaleKLen;
             }
         } else {
             // REMOTE 模式：低精度模式下遍历除本 Rank 外的所有其他卡发送过来的数据
             auto remoteRankCnt = 0UL;
-            int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
-            int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
+                // release 已被前序 block 读完的 tile（每 block 只读 dependTileIdx 一个 tile）
+                if (readyTileIdx >= 0 &&
+                    readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
+                    bufferSyncMgr_.Release(static_cast<uint32_t>(readyTileIdx) % dataSlotNum %
+                        Apace::Basic::BufferChannel::FLAG_ID_MODULO);
+                }
                 readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
+                auto dataSlot = params.dataChannel->GetNextSlot();
+                bufferSyncMgr_.Acquire(dataSlot.slotIdx);
+                dataSlotOffset = dataSlot.offset;
+                scaleSlotOffset = params.scaleChannel->GetNextSlot().offset;
             }
+            uint64_t tileOffset = static_cast<uint64_t>(mPos) % params.localParams.headTileSize;
+            uint64_t rankMOffset = 0;
+            uint64_t rankKOffset = 0;
+            uint64_t rankScaleKOffset = 0;
+            uint64_t rankDenseMOffset = 0;
             for (uint64_t rank = 0; rank < rankSize; rank++) {
-                auto actualMPos = rank * oriM + mPos;
-                // 从通信buffer上切片
-                auto gmBlockA =
-                    gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                              AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
-                                                    AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
+                bool skip = (rank == rankId) && (params.localParams.localMatmul == 2);
+                if (!skip) {
+                    uint64_t actualMPos = dataSlotOffset + rankMOffset + tileOffset;
+                    uint64_t scaleActualMPos = scaleSlotOffset + rankMOffset + tileOffset;
+                    // 从通信buffer上切片
+                    auto gmBlockA =
+                        gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                                  AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
+                    auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(scaleActualMPos, kPos),
+                                                        AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
 
-                if (rank == rankId) {
-                    if (params.localParams.localMatmul == 2) {
-                        continue; // GM累加模式：self rank 已在 RunLocalMatmul 计算，REMOTE 阶段跳过
-                    } else {
+                    if (rank == rankId) {
+                        uint64_t denseMPos = rankDenseMOffset + static_cast<uint64_t>(mPos);
                         gmBlockA = gmALocal.Slice(
-                            AscendC::Te::MakeCoord(actualMPos, kPos),
+                            AscendC::Te::MakeCoord(denseMPos, kPos),
                             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
-                        gmBlockScaleA = gmScaleALocal.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
+                        gmBlockScaleA = gmScaleALocal.Slice(AscendC::Te::MakeCoord(denseMPos, kPos),
                                                             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
                     }
+
+                    auto gmBlockB =
+                        gmB.Slice(AscendC::Te::MakeCoord(rankKOffset, nPos),
+                                  AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
+                    auto gmBlockScaleB = gmScaleB.Slice(AscendC::Te::MakeCoord(rankScaleKOffset, nPos),
+                                                        AscendC::Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
+
+                    // L0C上累加
+                    mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape,
+                            remoteRankCnt);
+                    remoteRankCnt++;
                 }
-
-                auto gmBlockB =
-                    gmB.Slice(AscendC::Te::MakeCoord(rank * Get<MNK_K>(params.problemShape), nPos),
-                              AscendC::Te::MakeShape(Get<MNK_K>(params.problemShape), Get<MNK_N>(singleShape)));
-                auto gmBlockScaleB = gmScaleB.Slice(AscendC::Te::MakeCoord(rank * scaleKLen, nPos),
-                                                    AscendC::Te::MakeShape(scaleKLen, Get<MNK_N>(singleShape)));
-
-                // L0C上累加
-                mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape,
-                        remoteRankCnt);
-                remoteRankCnt++;
+                rankMOffset += params.localParams.headTileSize;
+                rankKOffset += Get<MNK_K>(params.problemShape);
+                rankScaleKOffset += scaleKLen;
+                rankDenseMOffset += oriM;
             }
         }
     }
 
     // 存在尾核没用满核，所以这里要等flag兜底
     if (!localFirst) {
-        while (readyTileIdx < totalTiles - 1) {
+        while (readyTileIdx < static_cast<int32_t>(totalTiles) - 1) {
+            if (readyTileIdx >= 0 &&
+                readyTileIdx < static_cast<int32_t>(totalTiles) - static_cast<int32_t>(dataSlotNum)) {
+                bufferSyncMgr_.Release(static_cast<uint32_t>(readyTileIdx) % dataSlotNum %
+                    Apace::Basic::BufferChannel::FLAG_ID_MODULO);
+            }
             readyTileIdx++;
-            commPolicy_.WaitTile(readyTileIdx);
+            bufferSyncMgr_.Acquire(static_cast<uint32_t>(readyTileIdx) % dataSlotNum %
+                Apace::Basic::BufferChannel::FLAG_ID_MODULO);
         }
     }
 }
