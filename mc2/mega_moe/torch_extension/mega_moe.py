@@ -69,8 +69,11 @@ def _check_pre_quantized_x_contract(
         return
 
     torch._check(
-        dispatch_quant_mode == 4,
-        lambda: "dispatch_quant_mode must be 4 for pre-quantized x.",
+        dispatch_quant_mode == 0,
+        lambda: (
+            "dispatch_quant_mode must be left at its default value 0 for pre-quantized x because dispatch "
+            "only forwards the existing quantized data and scales."
+        ),
     )
     torch._check(
         dispatch_quant_out_dtype is None,
