@@ -81,9 +81,8 @@ public:
     __aicore__ inline MoeEpCombineEpilogue(){};
 
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
-                                GM_ADDR recvRankOffsets, GM_ADDR topkWeights, GM_ADDR combinedX,
-                                GM_ADDR combinedTopkWeights, GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
-                                const MoeEpCombineEpilogueInfo *tilingData);
+                                GM_ADDR topkWeights, GM_ADDR combinedX, GM_ADDR combinedTopkWeights, GM_ADDR workspace,
+                                GM_ADDR tilingGM, TPipe *pipe, const MoeEpCombineEpilogueInfo *tilingData);
 
     __aicore__ inline void Process();
 
@@ -182,8 +181,8 @@ private:
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata, GM_ADDR recvRankOffsets, GM_ADDR topkWeights,
-    GM_ADDR combinedX, GM_ADDR combinedTopkWeights, GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata, GM_ADDR topkWeights, GM_ADDR combinedX,
+    GM_ADDR combinedTopkWeights, GM_ADDR workspace, GM_ADDR tilingGM, TPipe *pipe,
     const MoeEpCombineEpilogueInfo *tilingData)
 {
     tpipe_ = pipe;
@@ -201,8 +200,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint64_t localIndexStrideBytes =
         Ceil(maxTokensPerAiv * topK_ * sizeof(int32_t), WORKSPACE_ALIGN_BYTES) * WORKSPACE_ALIGN_BYTES;
     localIndexStrideElems_ = localIndexStrideBytes / sizeof(int32_t);
-    localRecvIdxWorkspaceGm_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(workspace + SYSTEM_WORKSPACE_BYTES));
+    localRecvIdxWorkspaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace + SYSTEM_WORKSPACE_BYTES));
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -217,7 +215,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
-    recvRankOffsetsGm_.SetGlobalBuffer((__gm__ int32_t *)recvRankOffsets);
+    recvRankOffsetsGm_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(recvSrcMetadata + tilingData_->metadataRankOffsetsOffset));
     if constexpr (HasTopkWeight == 1) {
         topkWeightsGm_.SetGlobalBuffer((__gm__ float *)topkWeights);
     }
@@ -446,9 +445,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t extraTokenAivCount = numTokens_ % aivNum_;
     uint32_t extraTokenEnd = (baseTokensPerAiv + 1U) * extraTokenAivCount;
     for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
-        uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < rangeEnd ?
-                                chunkStart + metadataChunkTokens_ :
-                                rangeEnd;
+        uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < rangeEnd ? chunkStart + metadataChunkTokens_ : rangeEnd;
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
         DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, metadataPadParams);
@@ -483,9 +480,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
                 ownerTokenStart = extraTokenEnd + (ownerAiv - extraTokenAivCount) * baseTokensPerAiv;
             }
             uint32_t lookupIndex = (tokenIndex - ownerTokenStart) * topK_ + static_cast<uint32_t>(srcTopKIdx);
-            DataCopyPad(localRecvIdxWorkspaceGm_[static_cast<uint64_t>(ownerAiv) * localIndexStrideElems_ +
-                                                  lookupIndex],
-                        scatterValueLocal[i * UB_ALIGN / sizeof(int32_t)], scatterCopyParams);
+            DataCopyPad(
+                localRecvIdxWorkspaceGm_[static_cast<uint64_t>(ownerAiv) * localIndexStrideElems_ + lookupIndex],
+                scatterValueLocal[i * UB_ALIGN / sizeof(int32_t)], scatterCopyParams);
         }
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -526,8 +523,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         if (localRecvXIdx >= 0) {
             DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_], xCopyParams, padParams);
         } else {
-            uint64_t slotOffset =
-                (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
+            uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
             GM_ADDR tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
             GlobalTensor<XType> srcTokenTensor;
             srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
