@@ -734,8 +734,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
         // Both streams keep their sums; input/cast/output scratch is shared between ready slots.
         const uint32_t sharedOutputBytes = Ceil(axisH_ * 2U * sizeof(XType), UB_ALIGN) * UB_ALIGN;
         const uint32_t sharedFloatBytes = Ceil(axisH_ * 2U * sizeof(float), UB_ALIGN) * UB_ALIGN;
-        maxSizeTokenBuf = MAX(maxSizeTokenBuf, sharedOutputBytes);
-        maxSizeRowTmpFloatBuf = MAX(maxSizeRowTmpFloatBuf, sharedFloatBytes);
+        maxSizeTokenBuf = (maxSizeTokenBuf > sharedOutputBytes) ? maxSizeTokenBuf : sharedOutputBytes;
+        maxSizeRowTmpFloatBuf = (maxSizeRowTmpFloatBuf > sharedFloatBytes) ? maxSizeRowTmpFloatBuf : sharedFloatBytes;
         tpipe_->InitBuffer(sharedSumBuf_, sharedFloatBytes);
         // Give the early receiving cores the first tokens, including BS=1.
         sharedTokenIndex_ = coreIdx_ >= sendAivNum_ ? coreIdx_ - sendAivNum_ : recvAivNum_ + coreIdx_;
@@ -752,7 +752,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     moeQueueBytes = (moeQueueBytes > rawPackedDataBytes) ? moeQueueBytes : rawPackedDataBytes;
     moeQueueBytes = (moeQueueBytes > hExpandXAlign32Size_) ? moeQueueBytes : hExpandXAlign32Size_;
     if constexpr (IndependentShared) {
-        moeQueueBytes = MAX(moeQueueBytes, sharedCombineBytes_ / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_DATA_SIZE);
+        const uint64_t sharedQueueBytes = sharedCombineBytes_ / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_DATA_SIZE;
+        moeQueueBytes = (moeQueueBytes > sharedQueueBytes) ? moeQueueBytes : sharedQueueBytes;
     }
     // 普通、拷贝和常量专家串行处理，复用同一个队列
     tpipe_->InitBuffer(moeMainSumQueue_, bufferNum_, moeQueueBytes);
@@ -763,7 +764,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     }
     uint32_t clearFlagCount = flagRcvCount_ * blockCntPerToken_ * SPLIT_BLOCK_FLAG_COUNT;
     if constexpr (IndependentShared) {
-        clearFlagCount = MAX(clearFlagCount, sharedCombineBytes_ / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_FLAG_COUNT);
+        const uint64_t sharedFlagCount = sharedCombineBytes_ / SPLIT_BLOCK_SIZE * SPLIT_BLOCK_FLAG_COUNT;
+        clearFlagCount = (clearFlagCount > sharedFlagCount) ? clearFlagCount : sharedFlagCount;
     }
     uint32_t clearFlagBufSize = Ceil(clearFlagCount * sizeof(float), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(packedClearFlagBuf_, clearFlagBufSize);
