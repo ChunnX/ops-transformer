@@ -19,25 +19,12 @@
 
 #include "engram_fetch_grad_tiling_data.h"
 
-// 确定性失败兜底：用于不可恢复的容量/一致性校验（Kernel 侧无返回值路径的最后手段）
-#ifndef RUNTIME_ABORT
-#define RUNTIME_ABORT(fmt, ...) \
-    do { \
-        ascendc_assert(false, fmt, ##__VA_ARGS__); \
-        while (true) { \
-            (void)AscendC::GetSystemCycle(); \
-        } \
-    } while (0)
-#endif
-
 namespace Mc2Kernel {
 // 共享布局常量已收敛至 engram_fetch_grad_tiling_data.h（单一权威定义），此处仅保留 Kernel 侧私有常量
 constexpr int32_t BITS_PER_BYTE = 8;
 constexpr uint32_t ALIGNED_LEN_256 = 256U;
 
 constexpr uint32_t NUM_SLOTS = 8U;
-constexpr uint32_t SENDER_CHANNEL_IDX = 0U;
-constexpr uint32_t RECEIVER_CHANNEL_IDX = 1U;
 
 constexpr int32_t ENGRAM_DT_BFLOAT16 = 27;
 constexpr int32_t ENGRAM_DT_FLOAT16 = 1;

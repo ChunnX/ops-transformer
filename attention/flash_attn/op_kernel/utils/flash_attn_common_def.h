@@ -131,6 +131,10 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
 
+// templateId
+#define FA_Template_ND 0
+#define FA_Template_DN 1
+
 struct ConfigParams {
     inferS1TemplateType s1;
     inferS2TemplateType s2;
@@ -145,6 +149,8 @@ struct ConfigParams {
 //   config=3: sOuter=32, sInner=256 → S1=64,  S2=256, D=128
 //   config=4: sOuter=64, sInner=128 → S1=128, S2=128, D=256
 //   config=5: sOuter=32, sInner=256 → S1=64,  S2=256, D=256
+//   config=6: sOuter=64, sInner=128 → S1=128, S2=128, D=192, DV=128
+//   config=7: sOuter=32, sInner=256 → S1=64,  S2=256, D=192, DV=128
 static constexpr ConfigParams ConfigValue[] = {
     // D=64 configurations
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
@@ -163,6 +169,12 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned256}, // config=4
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
      inferDTemplateType::Aligned256}, // config=5
+
+    // D=192, DV=128 configurations (MLA qk != v)
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=6
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=7
 };
 
 // Config macro definitions for D=64
@@ -176,6 +188,10 @@ static constexpr ConfigParams ConfigValue[] = {
 // Config macro definitions for D=256
 #define Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256 4
 #define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 5
+
+// Config macro definitions for D=192, DV=128 (MLA qk != v)
+#define Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128 6
+#define Config_S1Aligned64_S2Aligned256_DAligned192_DVAligned128 7
 
 // PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
@@ -229,6 +245,7 @@ struct RunInfo {
     // uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    bool isFirstFdBlock = false;
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;

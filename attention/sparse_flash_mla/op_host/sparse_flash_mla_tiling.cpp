@@ -648,7 +648,8 @@ size_t SMLAInfoParser::GetAxisIdx(const SMLAAxis &axis, const SMLALayout &layout
 
 uint32_t SMLAInfoParser::GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const
 {
-    return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
+    return HasAxis(axis, layout, shape) ? static_cast<uint32_t>(shape.GetDim(GetAxisIdx(axis, layout))) :
+                                          invalidDimValue_;
 }
 
 void SMLAInfoParser::SetSMLAShape()
@@ -972,7 +973,6 @@ ge::graphStatus SMLAInfoParser::GetSinks()
 
 ge::graphStatus SMLAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
     if (qLayout_ == SMLALayout::TND) {
         if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
             if (opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() != bSize_ + 1) {
@@ -1089,20 +1089,14 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.outputType = outputType_;
     smlaInfo.perfMode = perfMode_;
 
-    smlaInfo.totalBlockNum =
-        (opParamInfo_.oriKv.tensor != nullptr) ? opParamInfo_.oriKv.tensor->GetStorageShape().GetDim(0) : 0;
     smlaInfo.sparseBlockSize = 1;
     smlaInfo.oriBlockSize = oriBlockSize_;
     smlaInfo.cmpBlockSize = cmpBlockSize_;
-    smlaInfo.blockTypeSize = sizeof(float);
     smlaInfo.oriMaxBlockNumPerBatch = oriMaxBlockNumPerBatch_;
     smlaInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
     smlaInfo.actualLenDimsQ = actualLenDimsQ_;
     smlaInfo.actualLenDimsKV = actualLenDimsKV_;
-    smlaInfo.maxActualseq = maxActualseq_;
-    smlaInfo.actualSeqLenFlag = (opParamInfo_.sequsedOriKv.tensor != nullptr);
-    smlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
 
     smlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
     smlaInfo.cmpRatio = *opParamInfo_.cmpRatio;
@@ -2143,26 +2137,6 @@ ge::graphStatus SMLATilingCheck::CheckFeature() const
     return ge::GRAPH_SUCCESS;
 }
 
-void SMLATilingCheck::SetSMLAShapeCompare()
-{
-    queryShapeCmp_ = opParamInfo_.q.shape->GetStorageShape();
-    oriKvShapeCmp_ = opParamInfo_.oriKv.tensor->GetShape().GetStorageShape();
-    attenOutShapeCmp_ = opParamInfo_.attnOut.shape->GetStorageShape();
-    if (smlaInfo_.perfMode == SMLATemplateMode::HCA_TEMPLATE_MODE ||
-        smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-        smlaInfo_.perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        cmpKvShapeCmp_ = opParamInfo_.cmpKv.tensor->GetShape().GetStorageShape();
-    }
-    if (smlaInfo_.perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-        smlaInfo_.perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        cmpKvSparseIndicesCmp_ = opParamInfo_.cmpSparseIndices.tensor->GetShape().GetStorageShape();
-    }
-    if (smlaInfo_.perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-        smlaInfo_.perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        oriKvSparseIndicesCmp_ = opParamInfo_.oriSparseIndices.tensor->GetShape().GetStorageShape();
-    }
-}
-
 ge::graphStatus SMLATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
                                                        const std::string &name) const
 {
@@ -2257,17 +2231,10 @@ ge::graphStatus SMLATilingCheck::CheckActualSeqLens() const
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SMLATilingCheck::CheckBlockTable() const
-{
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus SMLATilingCheck::CheckMultiParaConsistency()
 {
-    SetSMLAShapeCompare();
     if (ge::GRAPH_SUCCESS != CheckOriAndCmpKv() || ge::GRAPH_SUCCESS != CheckAttenOut() ||
-        ge::GRAPH_SUCCESS != CheckActualSeqLensQ() || ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
-        ge::GRAPH_SUCCESS != CheckBlockTable()) {
+        ge::GRAPH_SUCCESS != CheckActualSeqLensQ() || ge::GRAPH_SUCCESS != CheckActualSeqLens()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

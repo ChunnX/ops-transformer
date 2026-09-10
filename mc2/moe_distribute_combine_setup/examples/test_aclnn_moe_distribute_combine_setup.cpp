@@ -23,16 +23,16 @@
 #include "aclnnop/aclnn_moe_distribute_combine_setup.h"
 #include "aclnnop/aclnn_moe_distribute_combine_teardown.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 constexpr int DEV_NUM = 2;
@@ -40,9 +40,9 @@ constexpr int DEV_NUM = 2;
 template <typename Func>
 class Guard {
 public:
-    explicit Guard(Func &func) : func_(func)
-    {
-    }
+    explicit Guard(Func &func)
+        : func_(func)
+    {}
     ~Guard()
     {
         func_();
@@ -131,7 +131,7 @@ int LaunchOneProcess(Args &args)
     int64_t bs = 16;
     int64_t h = 4096;
     int64_t k = 6;
-    int64_t expertSharedType = 0;
+    int64_t expertShardType = 0;
     int64_t sharedExpertNum = 0;
     int64_t sharedExpertRankNum = 0;
     int64_t moeExpertNum = 32;
@@ -239,7 +239,7 @@ int LaunchOneProcess(Args &args)
     /******************************调用combine_setup********************************************/
     ret = aclnnMoeDistributeCombineSetupGetWorkspaceSize(
         expandX, expertIds, assistInfoForCombineOut, hcomEpName, epWorldSize, args.epRankId, moeExpertNum,
-        expertSharedType, sharedExpertNum, sharedExpertRankNum, globalBS, commQuantMode, commType, nullptr,
+        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, commQuantMode, commType, nullptr,
         quantExpandXOut, commCmdInfoOutforCombine, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] aclnnMoeDistributeCombineSetupGetWorkspaceSize failed. ret = %d \n", ret);
@@ -263,7 +263,7 @@ int LaunchOneProcess(Args &args)
     /******************************调用combine_teardown********************************************/
     ret = aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
         expandX, quantExpandXOut, expertIds, expandIdx, expertScales, commCmdInfoOutforCombine, nullptr, nullptr,
-        hcomEpName, epWorldSize, args.epRankId, moeExpertNum, expertSharedType, sharedExpertNum, sharedExpertRankNum,
+        hcomEpName, epWorldSize, args.epRankId, moeExpertNum, expertShardType, sharedExpertNum, sharedExpertRankNum,
         globalBS, commQuantMode, commType, nullptr, xOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] aclnnMoeDistributeCombineTeardownGetWorkspaceSize failed. ret = %d \n", ret);

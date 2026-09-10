@@ -489,7 +489,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 - 输入shape限制：
     * B<sub>qkv</sub>为输入qkv的batch_size，S<sub>qkv</sub>为输入qkv的sequence length，大小由qkvSize决定。
     * N<sub>qkv</sub>为输入qkv的head number。D<sub>qkv</sub>为输入qkv的head dim，目前仅支持128。D<sub>q</sub>、D<sub>k</sub>和D<sub>k</sub>分别为q、k、v的head dim，要求D<sub>qkv</sub> = D<sub>q</sub> = D<sub>k</sub> = D<sub>v</sub>，D<sub>qkv</sub>需要满足（D<sub>qkv</sub>*qkv数据类型占字节数）可以被32整除。
-    * 根据rope规则，D<sub>k</sub>和D<sub>q</sub>为偶数。若cacheMode为PA_NZ场景下，D<sub>k</sub>、D<sub>q</sub>需32B对齐；BlockSize需32B对齐。
+    * 根据rope规则，D<sub>k</sub>和D<sub>q</sub>为偶数。若cacheMode为PA_NZ场景下，D<sub>k</sub>、D<sub>q</sub>需32 Byte对齐；BlockSize需32 Byte对齐。
     * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为int8，则需要满足BlockSize % 32 = 0；若cache的数据类型为float16，则需要满足BlockSize % 16 = 0；若kCache与vCache参数的dtype不一致，BlockSize需同时满足BlockSize % 32 = 0和BlockSize % 16 = 0。
     * BlockNum为写入cache的内存块数，大小由用户输入场景决定，要求BlockNum >= Ceil(S<sub>qkv</sub> / BlockSize) * B<sub>qkv</sub>。
     * 使用requireMemory表示存放数据所需的空间大小，需满足：requireMemory >= (B<sub>qkv</sub> *S<sub>qkv</sub>* N<sub>qkv</sub> *D<sub>qkv</sub> + 2* D<sub>qkv</sub> + 2 *B<sub>qkv</sub>* S<sub>qkv</sub> *D<sub>qkv</sub> + B<sub>qkv</sub>* S<sub>qkv</sub> *N<sub>q</sub>* D<sub>qkv</sub> + BlockNum *BlockSize* N<sub>v</sub> *D<sub>qkv</sub> + BlockNum* BlockSize *N<sub>k</sub>* D<sub>qkv</sub>) *sizeof(FLOAT16) + B<sub>qkv</sub>* S<sub>qkv</sub> *sizeof(INT64) + (2* N<sub>k</sub> *D<sub>qkv</sub> + 2* N<sub>v</sub>) * sizeof(FLOAT)，当计算出requireMemory的大小超过当前AI处理器的GM空间总大小，不支持使用该接口。
@@ -508,18 +508,18 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 #include "aclnnop/aclnn_qkv_rms_norm_rope_cache.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -528,18 +528,19 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr)
+void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<int8_t> resultData(size, 0);
-    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
+                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("result[%ld] is: %d\n", i, resultData[i]);
     }
 }
 
-int Init(int32_t deviceId, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtStream *stream)
 {
     // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
@@ -552,9 +553,8 @@ int Init(int32_t deviceId, aclrtStream* stream)
 }
 
 template <typename T>
-int CreateAclTensor(
-    const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr, aclDataType dataType,
-    aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -571,15 +571,14 @@ int CreateAclTensor(
     }
 
     // 调用aclCreateTensor接口创建aclTensor
-    *tensor = aclCreateTensor(
-        shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(),
-        *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
 int main()
 {
-    // 1. 固定写法，device/stream初始化，参考acl API
+    // 1. 固定写法，device/stream初始化, 参考acl API
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -613,35 +612,35 @@ int main()
     std::vector<float> kScaleHostData(1 * 128, 0.0f);
     std::vector<float> vScaleHostData(1 * 128, 0.0f);
 
-    void* qkvDeviceAddr = nullptr;
-    void* qGammaDeviceAddr = nullptr;
-    void* kGammaDeviceAddr = nullptr;
-    void* cosDeviceAddr = nullptr;
-    void* sinDeviceAddr = nullptr;
-    void* indexDeviceAddr = nullptr;
-    void* qOutDeviceAddr = nullptr;
-    void* kCacheDeviceAddr = nullptr;
-    void* vCacheDeviceAddr = nullptr;
-    void* kScaleDeviceAddr = nullptr;
-    void* vScaleDeviceAddr = nullptr;
+    void *qkvDeviceAddr = nullptr;
+    void *qGammaDeviceAddr = nullptr;
+    void *kGammaDeviceAddr = nullptr;
+    void *cosDeviceAddr = nullptr;
+    void *sinDeviceAddr = nullptr;
+    void *indexDeviceAddr = nullptr;
+    void *qOutDeviceAddr = nullptr;
+    void *kCacheDeviceAddr = nullptr;
+    void *vCacheDeviceAddr = nullptr;
+    void *kScaleDeviceAddr = nullptr;
+    void *vScaleDeviceAddr = nullptr;
 
-    aclTensor* qkv = nullptr;
-    aclTensor* qGamma = nullptr;
-    aclTensor* kGamma = nullptr;
-    aclTensor* cos = nullptr;
-    aclTensor* sin = nullptr;
-    aclTensor* index = nullptr;
-    aclTensor* qOut = nullptr;
-    aclTensor* kCache = nullptr;
-    aclTensor* vCache = nullptr;
-    aclTensor* kScale = nullptr;
-    aclTensor* vScale = nullptr;
+    aclTensor *qkv = nullptr;
+    aclTensor *qGamma = nullptr;
+    aclTensor *kGamma = nullptr;
+    aclTensor *cos = nullptr;
+    aclTensor *sin = nullptr;
+    aclTensor *index = nullptr;
+    aclTensor *qOut = nullptr;
+    aclTensor *kCache = nullptr;
+    aclTensor *vCache = nullptr;
+    aclTensor *kScale = nullptr;
+    aclTensor *vScale = nullptr;
 
     aclIntArray *qkv_size = aclCreateIntArray(qkv_size_list.data(), qkv_size_list.size());
     aclIntArray *head_nums = aclCreateIntArray(head_nums_list.data(), head_nums_list.size());
 
     double epsilon = 1e-6;
-    char* cacheMode = "PA_NZ";
+    char *cacheMode = "PA_NZ";
 
     ret = CreateAclTensor(qkvHostData, qkvShape, &qkvDeviceAddr, aclDataType::ACL_FLOAT16, &qkv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -668,16 +667,17 @@ int main()
 
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor;
+    aclOpExecutor *executor;
 
     // 调用aclnnQkvRmsNormRopeCache第一段接口
-    ret = aclnnQkvRmsNormRopeCacheGetWorkspaceSize(
-        qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale, vScale, nullptr, nullptr, qkv_size,
-        head_nums, epsilon, cacheMode, nullptr, nullptr, nullptr, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQkvRmsNormRopeCacheGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnQkvRmsNormRopeCacheGetWorkspaceSize(qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScale,
+                                                   vScale, nullptr, nullptr, qkv_size, head_nums, epsilon, cacheMode,
+                                                   nullptr, nullptr, nullptr, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQkvRmsNormRopeCacheGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
@@ -708,7 +708,7 @@ int main()
     aclDestroyTensor(kScale);
     aclDestroyTensor(vScale);
 
-    // 7. 释放device资源
+    // 7. 释放device 资源
     aclrtFree(qkvDeviceAddr);
     aclrtFree(qGammaDeviceAddr);
     aclrtFree(kGammaDeviceAddr);

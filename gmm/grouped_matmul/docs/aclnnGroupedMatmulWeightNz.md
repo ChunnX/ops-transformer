@@ -614,7 +614,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 在全量化场景下，当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，actType支持传入0、1、2、4、5。其余全量化场景actType仅支持0。
   - 当前支持非量化场景、伪量化场景与全量化场景
   - 非量化场景支持的数据类型为：
-    - 输入weight矩阵的n轴与k轴需要满足32B对齐
+    - 输入weight矩阵的n轴与k轴需要满足32 Byte对齐
     - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
 
@@ -1591,17 +1591,10 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     void *dstDeviceAddr = nullptr;
 
     uint64_t tensorSize = 1;
-    for (int64_t i = 0; i < dstShape[i]; i++) {
+    for (uint64_t i = 0; i < dstShapeSize; ++i) {
         tensorSize *= dstShape[i];
     }
-    ret = aclrtMalloc(&dstDeviceAddr, tensorSize * sizeof(T), ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-    int64_t weightLen = shape.size();
-    for (int64_t i = 0; i < weightLen + 2; i++) {
-        tensorSize = tensorSize * dstShape[i];
-    }
-    std::vector<uint16_t> dstTensorHostData(tensorSize, 0);
+    std::vector<T> dstTensorHostData(tensorSize, 0);
 
     ret = CreateAclTensorWithFormat(dstTensorHostData, shape, &dstShape, &dstShapeSize, &dstDeviceAddr, dataType,
                                     &dstTensor, static_cast<aclFormat>(actualFormat));
@@ -1631,6 +1624,7 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
+    *deviceAddr = dstDeviceAddr;
     *tensor = dstTensor;
     return ACL_SUCCESS;
 }

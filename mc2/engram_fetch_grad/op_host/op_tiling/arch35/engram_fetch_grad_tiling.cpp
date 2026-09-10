@@ -52,7 +52,6 @@ constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL;
 
-constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 
 static const std::vector<ge::DataType> GRAD_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
@@ -233,11 +232,6 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched",
                                               (std::string("dim1=") + std::to_string(hiddenDim)).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        hiddenDim % HIDDEN_SIZE_ALIGN != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "gradFetched", (std::string("dim1=") + std::to_string(hiddenDim)).c_str(),
-                                  (std::string("must be ") + std::to_string(HIDDEN_SIZE_ALIGN) + "-aligned").c_str()),
-        return ge::GRAPH_FAILED);
 
     // perm: 1D (T,), dim0 == numTokens
     const gert::StorageShape *permShape = context->GetInputShape(IN_PERM);
@@ -495,6 +489,50 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+constexpr int64_t SORT_UB_HISTOGRAM_BINS = 256;        // 镜像 HISTOGRAM_BINS
+constexpr int64_t SORT_UB_TILE_ELEMENTS = 4096;        // 镜像 DEFAULT_TILE_SIZE
+constexpr int64_t SORT_UB_SINGLE_CORE_ELEMENTS = 8192; // 镜像 MAX_SINGLE_CORE_ELEMENTS
+constexpr int64_t SORT_UB_SIMT_SLOT_ALIGN = 32;        // 镜像 SIMT_SLOT_ALIGN
+constexpr int64_t SORT_UB_SIMT_STAGING_PAD_BYTES =
+    SORT_UB_HISTOGRAM_BINS * (SORT_UB_SIMT_SLOT_ALIGN - sizeof(int32_t)) +
+    SORT_UB_SIMT_SLOT_ALIGN;                      // 镜像 SIMT_STAGING_PAD_BYTES
+constexpr int64_t SORT_UB_TMP_BUCKET_BYTES = 512; // 镜像 Mc2Kernel::SORT_TMP_BUCKET_BYTES
+constexpr int64_t SORT_UB_TMP_BYTES_PER_ELEM = 7; // 镜像 Mc2Kernel::SORT_TMP_BYTES_PER_ELEM
+constexpr int64_t SORT_UB_COUNT_ALIGN = 32;       // 镜像 Mc2Kernel::SORT_COUNT_ALIGN
+
+static uint32_t CalcSortUbBytes(uint32_t numCores)
+{
+    auto alignUb = [](uint64_t bytes) -> uint32_t {
+        return static_cast<uint32_t>((bytes + Mc2Kernel::UB_ALIGN - 1) / Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN);
+    };
+    const uint32_t tileAlignBytes = alignUb(SORT_UB_TILE_ELEMENTS * sizeof(int32_t));
+    const uint32_t phaseHistBytes = 2U * tileAlignBytes;
+    const uint32_t phasePrefixBytes = numCores * SORT_UB_HISTOGRAM_BINS * sizeof(int32_t) + tileAlignBytes;
+    const uint32_t simtPadBytes = alignUb(tileAlignBytes + SORT_UB_SIMT_STAGING_PAD_BYTES);
+    const uint32_t phaseScatterBytes =
+        3U * tileAlignBytes + 2U * SORT_UB_HISTOGRAM_BINS * sizeof(uint32_t) + 2U * simtPadBytes;
+    const uint32_t tmpAlignedCount = static_cast<uint32_t>((SORT_UB_SINGLE_CORE_ELEMENTS + SORT_UB_COUNT_ALIGN - 1) /
+                                                           SORT_UB_COUNT_ALIGN * SORT_UB_COUNT_ALIGN);
+    const uint32_t sortTmpBytes = static_cast<uint32_t>(SORT_UB_TMP_BUCKET_BYTES) +
+                                  static_cast<uint32_t>(SORT_UB_TMP_BYTES_PER_ELEM) * tmpAlignedCount;
+    const uint32_t scWorkspaceBytes = 3U * alignUb(SORT_UB_SINGLE_CORE_ELEMENTS * sizeof(int32_t)) + sortTmpBytes;
+    uint32_t workspaceBytes = phaseHistBytes;
+    if (phasePrefixBytes > workspaceBytes) {
+        workspaceBytes = phasePrefixBytes;
+    }
+    if (phaseScatterBytes > workspaceBytes) {
+        workspaceBytes = phaseScatterBytes;
+    }
+    if (scWorkspaceBytes > workspaceBytes) {
+        workspaceBytes = scWorkspaceBytes;
+    }
+    // keyBuffer + sortedKeyBuffer + histogram/cumulative/prefix/histWide/prefixQueue 五小 buf
+    const uint32_t smallBufsBytes = static_cast<uint32_t>(2U * SORT_UB_SINGLE_CORE_ELEMENTS) +
+                                    static_cast<uint32_t>(SORT_UB_HISTOGRAM_BINS) *
+                                        (2U * sizeof(int32_t) + sizeof(uint16_t) + 2U * sizeof(int32_t));
+    return workspaceBytes + smallBufsBytes;
+}
+
 static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetchGradTilingData &tilingData)
 {
     const char *nodeName = context->GetNodeName();
@@ -527,7 +565,7 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGradTilingData &tilingData,
+static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramFetchGradTilingData &tilingData,
                                      int64_t numTokens, uint32_t rankSize, int64_t totalRecv, int64_t hiddenDim)
 {
     const char *nodeName = context->GetNodeName();
@@ -570,7 +608,7 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
     tilingData.outputDtype = static_cast<int32_t>(gradUniqueDesc->GetDataType());
     // 半精度输出时 FlushAccum 借用 entryBuf_ 尾部（20KB 偏移后）作 flush cast 双缓冲，
-    // 需 20KB + 2*Align32(hiddenDim*2) 不越界（SEC-4.2③/TIL-3①；Kernel 侧另有 RUNTIME_ABORT 兜底）
+    // 需 20KB + 2*Align32(hiddenDim*2) 不越界（SEC-4.2③/TIL-3①；Kernel 侧另有 ascendc_assert 兜底）
     if (tilingData.outputDtype != static_cast<int32_t>(ge::DT_FLOAT)) {
         int64_t flushCastNeed =
             Mc2Kernel::FLUSH_CAST_HEAD_BYTES + 2 * AlignTo(static_cast<int64_t>(hiddenDim) * 2, Mc2Kernel::UB_ALIGN);
@@ -613,7 +651,10 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     OP_TILING_CHECK(permanentUb >= static_cast<uint64_t>(tilingData.ubSize),
                     OP_LOGE(nodeName, "permanent UB (%llu) exceeds availUbSize (%llu)", permanentUb, tilingData.ubSize),
                     return ge::GRAPH_FAILED);
-    uint32_t maxByPong = Mc2Kernel::GRAD_PING_BYTES / static_cast<uint32_t>(tilingData.hiddenBytes);
+    // UB 侧按 32B 对齐行 stride 排布 gradRaw/cast 行，容量计算必须与 kernel 侧一致（含非对齐 hiddenBytes）
+    uint32_t inRowStride = static_cast<uint32_t>(
+        AlignTo(static_cast<int64_t>(tilingData.hiddenBytes), static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
+    uint32_t maxByPong = Mc2Kernel::GRAD_PING_BYTES / inRowStride;
     if (maxByPong < 1U) {
         maxByPong = 1U;
     }
@@ -622,12 +663,33 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
                                                        static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
     bool needCast = (tilingData.inputDtype != static_cast<int32_t>(ge::DT_FLOAT));
     uint32_t availableForPool = static_cast<uint32_t>(tilingData.ubSize) - static_cast<uint32_t>(permanentUb);
-    uint32_t availableForCast = (availableForPool > Mc2Kernel::COMM_BUF_BYTES + accumNeed) ?
-                                    (availableForPool - Mc2Kernel::COMM_BUF_BYTES - accumNeed) :
-                                    0U;
-    uint32_t maxByCast = needCast ? (availableForCast / (static_cast<uint32_t>(tilingData.hiddenDim) * sizeof(float) *
-                                                         Mc2Kernel::ACCUM_BUF_COPIES)) :
-                                    maxByPong;
+    // sort 阶段池峰值 fail-fast：Kernel 侧 poolSize = max(sortUb, unique 峰值)，常驻区随 rankSize
+    // 增长会先挤破 sort 池（sortUb 仅依赖核数，本平台 177152），必须与 unique 一并建模
+    uint32_t sortUbBytes = CalcSortUbBytes(tilingData.aivNum);
+    OP_TILING_CHECK(sortUbBytes > availableForPool,
+                    OP_LOGE(nodeName,
+                            "sort-phase UB pool overflow: sortUb=%u exceeds availableForPool=%u "
+                            "(aivNum=%u, rankSize=%u, permanentUb=%llu)",
+                            sortUbBytes, availableForPool, tilingData.aivNum, rankSize, permanentUb),
+                    return ge::GRAPH_FAILED);
+    uint32_t uniqueEntryBytes = Mc2Kernel::FLUSH_CAST_HEAD_BYTES;
+    if (tilingData.outputDtype != static_cast<int32_t>(ge::DT_FLOAT)) {
+        uniqueEntryBytes += 2U * static_cast<uint32_t>(AlignTo(hiddenDim * 2, Mc2Kernel::UB_ALIGN));
+    }
+    // cast 缓冲行 stride 同样 32B 对齐（fp32 行）
+    uint32_t fp32RowStride = static_cast<uint32_t>(
+        AlignTo(static_cast<int64_t>(tilingData.hiddenDim) * sizeof(float), static_cast<int64_t>(Mc2Kernel::UB_ALIGN)));
+    uint32_t minUniqueNeed =
+        Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes + accumNeed + (needCast ? 2U * fp32RowStride : 0U);
+    OP_TILING_CHECK(minUniqueNeed > availableForPool,
+                    OP_LOGE(nodeName,
+                            "unique-phase UB pool overflow: grad=%u + entry=%u + accum=%u + minCast=%u "
+                            "exceeds availableForPool=%u (hiddenDim=%lld, inputDtype=%d, outputDtype=%d)",
+                            Mc2Kernel::GRAD_BUF_BYTES, uniqueEntryBytes, accumNeed, needCast ? 2U * fp32RowStride : 0U,
+                            availableForPool, hiddenDim, tilingData.inputDtype, tilingData.outputDtype),
+                    return ge::GRAPH_FAILED);
+    uint32_t availableForCast = availableForPool - Mc2Kernel::GRAD_BUF_BYTES - uniqueEntryBytes - accumNeed;
+    uint32_t maxByCast = needCast ? (availableForCast / (fp32RowStride * Mc2Kernel::ACCUM_BUF_COPIES)) : maxByPong;
     uint32_t gradSubBatch = maxByPong;
     if (maxByCast < gradSubBatch) {
         gradSubBatch = maxByCast;
