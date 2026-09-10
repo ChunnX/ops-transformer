@@ -1050,24 +1050,8 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     // 一个 dispatch ring slot 包含 token/scale copy buffer 和一条 32B triple。
     uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
 
-    if (tilingData->topoType == TOPO_TYPE_MTE) {
-        // Reserve all six startup slots. Steady dispatch changes the active depth
-        // to two without moving UB views or changing the compact-index batch.
-        bufferConfig.bufferCount = MAX_DISPATCH_BUFFER_COUNT;
-        uint64_t fixedBytes = static_cast<uint64_t>(fixedBufferBytes) +
-                              static_cast<uint64_t>(bufferConfig.bufferCount) * dispatchSlotBytes;
-        uint64_t routeBudget = availableUbBytes > fixedBytes ? availableUbBytes - fixedBytes : 0U;
-        uint64_t routeItems = routeBudget / sizeof(int32_t) / ALIGN_256 * ALIGN_256;
-        bufferConfig.routeItemsPerBatch = static_cast<int32_t>(std::min(routeItems, alignedTotalRouteItems));
-        // A zero batch reports insufficient capacity to the host validation below.
-        if (bufferConfig.routeItemsPerBatch > 0) {
-            bufferConfig.routeBatchCount = static_cast<int32_t>(
-                ops::CeilDiv(sendTotalNum, static_cast<uint64_t>(bufferConfig.routeItemsPerBatch)));
-        }
-    } else {
-        SelectDispatchRingAndRouteBatch(bufferConfig, sendTotalNum, alignedTotalRouteItems, fixedBufferBytes,
-                                        dispatchSlotBytes, availableUbBytes);
-    }
+    SelectDispatchRingAndRouteBatch(bufferConfig, sendTotalNum, alignedTotalRouteItems, fixedBufferBytes,
+                                    dispatchSlotBytes, availableUbBytes);
     return bufferConfig;
 }
 
@@ -2475,10 +2459,6 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     SetPrefetchAndWaveParams(tilingData, aicNum);
     SetAdaptiveBufferConfigs(context, config, expertParams, tilingData, static_cast<uint32_t>(ubSize));
-    OP_TILING_CHECK(tilingData->topoType == TOPO_TYPE_MTE &&
-                        tilingData->dispatchBufferConfig.routeItemsPerBatch <= 0,
-                    OP_LOGE(nodeName, "UB cannot fit six startup Dispatch buffers and one route batch."),
-                    return ge::GRAPH_FAILED);
 
     return CommitTilingResult(context, expertParams, tilingData, nodeName);
 }

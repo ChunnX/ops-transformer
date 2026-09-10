@@ -495,7 +495,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                     hasPreparedWave = false;
                 }
                 if (gmm1Count == 0U) {
-                    // Startup W0/W1 are fully dispatched using six slots.
+                    // Startup W0/W1 are fully dispatched using the host-selected ring depth.
                     EnterSteadyDispatch();
                 }
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
