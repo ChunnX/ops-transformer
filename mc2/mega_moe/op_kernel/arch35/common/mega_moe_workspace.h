@@ -127,7 +127,9 @@ private:
         InitializeGmm1TileStatus(tilingData);
         if (tilingData->sharedExpertNum > 0) {
             InitializeSharedExpertGmmOutputs(tilingData);
-            InitializeMteSharedExpertInput(tilingData);
+            if (tilingData->needsIndependentSharedQuant != 0U) {
+                InitializeMteSharedExpertInput(tilingData);
+            }
             InitializeSharedExpertActivationBuffers(tilingData);
         }
     }
