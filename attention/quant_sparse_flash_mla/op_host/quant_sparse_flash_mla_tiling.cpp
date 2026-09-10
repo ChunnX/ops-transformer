@@ -254,8 +254,7 @@ size_t QSMLAInfoParser::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &lay
 
 int64_t QSMLAInfoParser::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const
 {
-    return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) :
-                                          invalidDimValue_;
+    return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
 
 void QSMLAInfoParser::SetQSMLAShape()
