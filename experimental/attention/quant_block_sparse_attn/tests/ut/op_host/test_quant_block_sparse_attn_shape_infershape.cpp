@@ -17,6 +17,17 @@
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 
+// Compile the device address helpers in the existing host UT translation unit.
+#ifndef __aicore__
+#define __aicore__
+#define QBSA_UT_DEFINED_AICORE
+#endif
+#include "../../../op_kernel/arch35/common/util_regbase_mx.h"
+#ifdef QBSA_UT_DEFINED_AICORE
+#undef __aicore__
+#undef QBSA_UT_DEFINED_AICORE
+#endif
+
 namespace QuantBlockSparseAttnUT {
 
 static const std::string OP_NAME = "QuantBlockSparseAttn";
@@ -82,5 +93,47 @@ INSTANTIATE_TEST_SUITE_P(
     QuantBlockSparseAttnInferShape, QuantBlockSparseAttnInferShapeTest,
     testing::ValuesIn(GetCasesFromCsv<QuantBlockSparseAttnInferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<QuantBlockSparseAttnInferShapeUtParam>);
+
+namespace {
+template <QBSALayout layout>
+void CheckPaddedLayout()
+{
+    constexpr uint32_t batches = 3, heads = 8, sq = 129;
+    std::vector<uint64_t> slots;
+    // Independent storage order; each cell records its logical B,N,S identity.
+    for (uint32_t b = 0; b < batches; ++b) {
+        const uint32_t outer = layout == QBSALayout::BSND ? sq : heads;
+        const uint32_t inner = layout == QBSALayout::BSND ? heads : sq;
+        for (uint32_t i = 0; i < outer; ++i) {
+            for (uint32_t j = 0; j < inner; ++j) {
+                const uint32_t n = layout == QBSALayout::BSND ? j : i;
+                const uint32_t s = layout == QBSALayout::BSND ? i : j;
+                slots.push_back((b * heads + n) * sq + s);
+            }
+        }
+    }
+    for (uint32_t b = 0; b < batches; ++b) {
+        for (uint32_t n = 0; n < heads; ++n) {
+            for (uint32_t s = 0; s < sq; ++s) {
+                const uint64_t expected = (b * heads + n) * sq + s;
+                const auto slot = regbasemx::MxQuerySlot<layout>(b * sq, s, n, heads, sq);
+                ASSERT_LT(slot, slots.size());
+                EXPECT_EQ(slots[slot], expected);
+                EXPECT_EQ(regbasemx::MxLseSlot<layout>(b * sq, s, n, heads, sq), expected);
+            }
+        }
+    }
+}
+
+TEST(QbsaMxQueryLayout, BSND) { CheckPaddedLayout<QBSALayout::BSND>(); }
+TEST(QbsaMxQueryLayout, BNSD) { CheckPaddedLayout<QBSALayout::BNSD>(); }
+TEST(QbsaMxQueryLayout, PackedTndAndWideOffsets)
+{
+    const uint64_t base = uint64_t{1} << 30;
+    EXPECT_EQ(regbasemx::MxQuerySlot<QBSALayout::TND>(base, 7, 3, 8, 0), (base + 7) * 8 + 3);
+    EXPECT_EQ(regbasemx::MxLseSlot<QBSALayout::TND>(base, 7, 3, 8, 0), (base + 7) * 8 + 3);
+    EXPECT_EQ(regbasemx::MxQuerySlot<QBSALayout::BNSD>(base, 7, 3, 8, 129), base * 8 + 3 * 129 + 7);
+}
+} // namespace
 
 } // namespace QuantBlockSparseAttnUT
