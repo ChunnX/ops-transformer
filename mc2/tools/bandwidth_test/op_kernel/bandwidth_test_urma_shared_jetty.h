@@ -183,10 +183,6 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     axisH_ = tilingData->dataSize; // hidden size
     aivNum_ = tilingData->aivNum;
     sharedJettyNum_ = tilingData->sharedJettyNum;
-    ASCENDC_ASSERT(context_->sharedJettyNum == sharedJettyNum_, {
-        KERNEL_LOG(KERNEL_ERROR, "shared Jetty count mismatch, context=%u, tiling=%u", context_->sharedJettyNum,
-                   sharedJettyNum_);
-    });
     epRankId_ = context_->epRankId;
     hOutSize_ = axisH_ * sizeof(XType);
     batchBufferBytes_ = tilingData->batchBufferBytes;
@@ -346,18 +342,11 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
 {
     uint32_t channelIndex = batchRankId_ < static_cast<uint32_t>(epRankId_) ? batchRankId_ : batchRankId_ - 1;
     auto &peerHandle = hcomm_.GetHandleRef(batchHandle_, channelIndex, dst);
-    // A failed batch must abort the launch before any success flag can be published.
-    if (hcomm_.WriteNbi(peerHandle, dst, src, len) != HCOMM_SUCCESS) {
-        Trap();
-    }
+    hcomm_.WriteNbi(peerHandle, dst, src, len);
     ++preparedWrites_;
     if (lastInBatch || preparedWrites_ == batchCapacity_) {
-        if (hcomm_.BatchCommit(batchHandle_) != HCOMM_SUCCESS) {
-            Trap();
-        }
-        if (hcomm_.Drain(batchHandle_) != HCOMM_SUCCESS) {
-            Trap();
-        }
+        hcomm_.BatchCommit(batchHandle_);
+        hcomm_.Drain(batchHandle_);
         preparedWrites_ = 0;
     }
 }

@@ -85,7 +85,8 @@ MTE 使用 `batch_tokens=0`。
 `shared_jetty_comm_level=0` 沿用拓扑自动选择；1 和 2 分别要求所有远端能够在同一层通过
 UB_CTP 或 UB_RTP 建立共享 Jetty。该配置不作为算子属性下发，只用于共享 context 建链。
 调用方必须保证通信参数有效，并自行确认选定批量小于所有使用的 SQ 和 CQ 深度（包括 0/最大值模式）。
-kernel 不重复校验参数范围；模式 4 的 BS 截断由 tiling 完成，共享路径断言 context 与 tiling 的 Jetty 数量一致。
+kernel 不重复校验参数范围、context 与 tiling 的 Jetty 数量或通信返回值；模式 4 的 BS 截断由 tiling 完成。
+host 参数和资源检查保留；设备端断言、通信错误分支及 ROCE 调试打印已移除，避免在性能路径中执行。
 UB 预算与完成流控说明见 [Torch 扩展说明](torch_extension/README.md)。
 
 ### 性能采集配置

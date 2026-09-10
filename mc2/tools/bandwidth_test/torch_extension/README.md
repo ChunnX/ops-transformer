@@ -155,7 +155,7 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
   `MakeBatchHandle(MultiChannelHandle) → GetHandleRef(peerIndex) → WriteNbi(batch) → BatchCommit → Drain`。
   `batch_tokens` 是每核向一个目标卡提交的 payload token 数，mode 3 除外，尾批可以不足；
   统计表根据实际 BS 分核后的路由计算最大数据批量，状态通知不计入 payload。
-  `WriteNbi`、`BatchCommit`、`Drain` 返回错误时触发 `Trap()`，中止 kernel，避免继续发布成功标志。
+  kernel 直接调用 `WriteNbi`、`BatchCommit`、`Drain`，不检查返回值或触发 `Trap()`。
 
 共享模式的新增 workspace 为 `N * align_up(world_size, 8) * 4` 字节计数表；
 发送 UB 还包含一份按 world_size 对齐的本核计数。tiling 按 248 KiB 可用 UB 校验容量。
@@ -316,8 +316,8 @@ WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `c
 所有数据和状态通知完成后，`TPipe::Reset` 将发送阶段 UB 复用于等待和接收阶段。
 这是带宽测试：调用方必须保证 channel、目标 rank、Win 容量和各 rank 配置正确，
 并保证 tiling 选出的 `batch_tokens` 小于每条使用的 SQ 和 CQ 深度；使用 0/最大值时也须自行确认。
-本算子 kernel 直接使用 tiling 的有效批量，不额外校验批量范围或自动缩小批量；共享路径只断言
-context 与 tiling 的 Jetty 数量一致，通信接口报错时仍按上文说明 Trap。SDK 内部检查沿用原实现。
+本算子 kernel 直接使用 tiling 的有效批量，不额外校验批量范围或自动缩小批量；设备端不再断言
+context 与 tiling 的 Jetty 数量，也不检查通信返回值。host 参数、建链和资源检查保留，SDK 内部检查沿用原实现。
 kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还通过公开 `Lock/Unlock` 串行化通道使用。
 两条路径都不读取 channel entity、队列深度、游标或 batch handle 内部字段。
 当前 Batch 接口未提供队列余量查询，也未承诺自动处理多批在途的溢出；因此每批提交后调用 Drain，再复用下一批。
@@ -366,6 +366,7 @@ mode 3/4 与 mode 2 共用 Win 状态区和公开 Hcomm batch 接口，但采用
 需在装有 CANN、PyTorch、torch_npu 和兼容 TorchAir 的 Ascend950 多 rank 环境
 分别验证 eager 精度、图捕获及重复重放。本地静态检查不能替代上述验证。
 两份接收实现均包含状态 buffer 字节数、DataCopy 块长及 UB 记账修正；host 按实际缓冲区检查可用 UB。
-普通 URMA kernel 沿用原有通信返回值处理；共享路径在 WriteNbi、BatchCommit 或 Drain 失败时 Trap。
+URMA 和 ROCE kernel 均直接调用通信接口，不检查返回值；ROCE 的设备端调试打印已移除。
+通信失败不再由本算子 kernel 主动报错或 Trap，失败运行可能挂起或产生无效性能结果。
 调用方仍负责保证上述通信前置条件。
 这些修改仍需在目标 SDK 下验证编译和多卡可见性。
