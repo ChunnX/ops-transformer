@@ -83,6 +83,7 @@ constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t GM_FLAG_POLL_BACKOFF_CYCLES = 200;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 constexpr uint8_t COMBINE_NO_QUANT = 0;
+constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 constexpr uint32_t META_INFO_SIZE = 8U;
 constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
