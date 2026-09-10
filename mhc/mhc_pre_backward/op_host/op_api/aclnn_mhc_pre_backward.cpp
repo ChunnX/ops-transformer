@@ -792,33 +792,36 @@ static aclnnStatus MhcPreBackwardGetWorkspaceSizeCommon(
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
+    const aclTensor *gradXPostOptional,
     float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
         aclnnMhcPreBackward,
-        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, gradXPostOptional, hcEps),
+        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
+               gradXPostOptional, hcEps),
         DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
     return MhcPreBackwardGetWorkspaceSizeCommon(
-        x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, gradXPostOptional, hcEps,
+        x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional, gradXPostOptional, hcEps,
         MHC_PRE_BACKWARD_USE_FP32, gradX, gradPhi, gradAlpha, gradBias, gradGamma, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
+    const aclTensor *gradXPostOptional,
     float hcEps, int64_t opImplMode, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(
         aclnnMhcPreBackwardV2,
-        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, gradXPostOptional, hcEps,
-               opImplMode),
+        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
+               gradXPostOptional, hcEps, opImplMode),
         DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
     return MhcPreBackwardGetWorkspaceSizeCommon(
-        x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, gradXPostOptional, hcEps,
+        x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional, gradXPostOptional, hcEps,
         opImplMode, gradX, gradPhi, gradAlpha, gradBias, gradGamma, workspaceSize, executor);
 }
 

@@ -190,7 +190,7 @@
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMhcPreBackwardV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcPreBackwardV2”接口执行计算。
 
-```Cpp
+```cpp
 aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor     *x,
     const aclTensor     *phi,
@@ -202,7 +202,7 @@ aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor     *hMix,
     const aclTensor     *hPre,
     const aclTensor     *hPost,
-    const aclTensor     *gamma,
+    const aclTensor     *gammaOptional,
     const aclTensor     *gradXPostOptional,
     float               hcEps,
     int64_t             opImplMode,
@@ -215,7 +215,7 @@ aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     aclOpExecutor       **executor)
 ```
 
-```Cpp
+```cpp
 aclnnStatus aclnnMhcPreBackwardV2(
     void             *workspace,
     uint64_t          workspaceSize,
@@ -351,7 +351,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
             <td>√</td>
         </tr>
         <tr>
-            <td>gamma（aclTensor*）</td>
+            <td>gammaOptional（aclTensor*）</td>
             <td>可选输入</td>
             <td>RmsNorm的缩放系数gamma</td>
             <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全1的tensor。</li><li>shape为(N ,D)。其中，N与`x`的N保持一致；D与`x`的D保持一致。</li></ul></td>
@@ -613,7 +613,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```Cpp
+```cpp
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -713,7 +713,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int main()
 {
-    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+    // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -737,7 +737,7 @@ int main()
     std::vector<int64_t> gradPhiShape = {24, 2048};    // 2 * N + N * N, N * D
     std::vector<int64_t> gradAlphaShape = {3};         // 固定大小
     std::vector<int64_t> gradGammaShape = {4, 512};    // N, D
-    std::vector<int64_t> gradBiasShape = {24};         // T, N, D (grad_x_post)
+    std::vector<int64_t> gradBiasShape = {24};         // 2*N+N*N
     std::vector<int64_t> gradXPostOptionalShape = {1024, 4, 512};
 
     void *xDeviceAddr = nullptr;
@@ -855,7 +855,7 @@ int main()
     ret = aclnnMhcPreBackwardV2(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreBackwardV2 failed. ERROR: %d\n", ret); return ret);
 
-    // 4. （固定写法）同步等待任务执行结束
+    // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

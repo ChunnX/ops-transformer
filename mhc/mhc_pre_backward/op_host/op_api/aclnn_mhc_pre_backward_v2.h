@@ -31,7 +31,7 @@ extern "C" {
  * @param [in] hMix: Forward intermediate tensor.
  * @param [in] hPre: Forward intermediate tensor.
  * @param [in] hPost: Forward output tensor.
- * @param [in] gamma: Optional RMSNorm scale tensor.
+ * @param [in] gammaOptional: Optional RMSNorm scale tensor.
  * @param [in] gradXPostOptional: Optional input gradient.
  * @param [in] hcEps: Hyper-connection epsilon.
  * @param [in] opImplMode: Cube precision mode. 0 uses FP32 and 1 uses HF32.
@@ -47,7 +47,8 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
+    const aclTensor *gradXPostOptional,
     float hcEps, int64_t opImplMode, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor);
 
