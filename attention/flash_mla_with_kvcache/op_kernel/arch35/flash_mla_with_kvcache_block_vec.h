@@ -26,13 +26,8 @@
 #include <limits>
 
 #include "../utils/attenmask_gs1.h"
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#else
-#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#endif
 #include "adv_api/activation/softmax.h"
-#if __has_include("../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h")
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
@@ -40,21 +35,8 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/init_output.h"
 #include "../../../common/op_kernel/const_def.h"
-#else
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "../../common/arch35/vf/vf_flashupdate_new.h"
-#include "../../common/arch35/vf/vf_div_cast_arch35.h"
-#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../common/init_output.h"
-#include "../../common/const_def.h"
-#endif
 #include "flash_mla_with_kvcache_public_define_arch35.h"
-#if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
-#else
-#include "../../common/vector_common.h"
-#endif
 #include "memory_copy_arch35.h"
 #include "../utils/flash_mla_with_kvcache_type.h"
 
@@ -245,6 +227,9 @@ public:
 
     __aicore__ inline void ProcessVec1(FlashMlaWithKvcacheRunInfoX runInfo)
     {
+        if (unlikely(runInfo.loop == 0U)) {
+            AscendC::ICachePreLoad(7);
+        }
         uint32_t mm1ResUbBufId = runInfo.loop % UB_MM1_RES_BUFCNT;
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t c1v1CrossCoreSyncIdx = CROSSCORE_BMM1_0 + mm1ResUbBufId;

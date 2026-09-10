@@ -27,11 +27,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 
 #include "arch35/flash_mla_with_kvcache_template_tiling_key.h"
-#if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
-#else
-#include "../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#endif
 #include "adv_api/activation/softmax.h"
 #include "utils/flash_mla_with_kvcache_type.h"
 using namespace optiling;

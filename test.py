@@ -24,6 +24,7 @@
 """
 
 import argparse
+import json
 import importlib.util
 import math
 import os
@@ -357,8 +358,8 @@ def compare(
         # 框架严格容差: fp16=2.5e-5, bf16=0.0078125
         tol = 2.5e-5 if dt == torch.float16 else 0.0078125
     else:
-        # 冒烟容差: 匹配数据类型实际精度极限
-        tol = 0.001 if dt == torch.float16 else 0.008
+        # 冒烟绝对误差阈值；BF16 按本次精度检查要求设为 1e-4
+        tol = 0.001 if dt == torch.float16 else 0.0001
     passed = max_abs_err <= tol
     return passed, max_abs_err, lse_err, tol
 
@@ -378,6 +379,8 @@ def main() -> int:
         help="用例文件路径(默认 /tmp/opencode/gen_1000_b777.py)",
     )
     parser.add_argument("--num", type=int, default=100, help="选择条数(默认 100)")
+    parser.add_argument("--dtype", choices=("case", "fp16", "bf16"), default="case",
+                        help="输入浮点类型；case 沿用用例定义，fp16/bf16 覆盖全部用例")
     parser.add_argument("--seed", type=int, default=42, help="选择的随机种子")
     parser.add_argument(
         "--skip-edge",
@@ -405,6 +408,7 @@ def main() -> int:
         default=None,
         help="仓库根目录(需含 golden/ 子目录); 默认取脚本所在目录的父目录",
     )
+    parser.add_argument("--point-report", help="逐用例输出超阈值点数、比例和最大误差点的 JSON 路径")
     args = parser.parse_args()
 
     # 定位仓库根, 供 golden import 使用(脚本可放在任意目录)
@@ -451,6 +455,11 @@ def main() -> int:
         flush=True,
     )
 
+    if args.dtype != "case":
+        selected = [(name.replace("fp16", args.dtype).replace("bf16", args.dtype),
+                     {**case, "Dtype": [args.dtype]}) for name, case in selected]
+    print(f"  dtype={args.dtype}（case 表示沿用用例定义）", flush=True)
+
     # 统计选择覆盖
     groups = defaultdict(int)
     for name, case in selected:
@@ -466,6 +475,7 @@ def main() -> int:
     skipped = 0
     total_time = 0.0
     failures: List[Tuple[str, float, float]] = []
+    point_rows = []
 
     print(f"\n{'=' * 70}", flush=True)
     print(
@@ -505,6 +515,23 @@ def main() -> int:
                 out, lse, g_out, g_lse, tensors["dt"], args.strict
             )
 
+            if args.point_report:
+                actual = out.detach().float().cpu()
+                reference = g_out.detach().float().cpu()
+                delta = (actual - reference).abs()
+                finite = torch.isfinite(actual) & torch.isfinite(reference)
+                bad = (delta > tol) | ~finite
+                count = int(bad.sum())
+                flat_idx = int(torch.nan_to_num(delta, nan=float("inf")).reshape(-1).argmax())
+                index = [int(x) for x in torch.unravel_index(torch.tensor(flat_idx), delta.shape)]
+                point_rows.append({"case": name, "seed": _case_seed(case), "dtype": str(out.dtype),
+                    "shape": list(out.shape), "threshold": tol, "elements": out.numel(),
+                    "failed_elements": count, "failed_percent": 100.0 * count / out.numel(),
+                    "nonfinite_elements": int((~finite).sum()), "different_elements": int((actual != reference).sum()),
+                    "max_abs_error": err, "mean_abs_error": float(delta.mean()), "lse_max_abs_error": lse_err,
+                    "max_error_index": index, "actual_at_max": float(actual.reshape(-1)[flat_idx]),
+                    "golden_at_max": float(reference.reshape(-1)[flat_idx])})
+
             status = "PASS" if ok else "FAIL"
             # 对 lse 单独判断: 如果 lse 本来就是 zeros(1) 则忽略
             lse_str = f"{lse_err:.4e}" if lse.numel() > 1 else "N/A"
@@ -526,6 +553,11 @@ def main() -> int:
         t1 = time.time()
         total_time += t1 - t0
 
+    if args.point_report:
+        with open(args.point_report, "w") as report:
+            json.dump({"cases": point_rows, "execution_errors": [x for x in failures if x[1] == -1.0]}, report, indent=2)
+        print(f"  逐元素报告: {args.point_report}", flush=True)
+
     # 汇总
     print(f"\n{'=' * 70}", flush=True)
     print(
@@ -534,7 +566,7 @@ def main() -> int:
         flush=True,
     )
     print(
-        f"  容差: {'strict(2.5e-5/0.008)' if args.strict else 'smoke(0.001/0.008)'}",
+        f"  容差: {'strict(2.5e-5/0.0078125)' if args.strict else 'smoke(0.001/0.0001)'}",
         flush=True,
     )
 

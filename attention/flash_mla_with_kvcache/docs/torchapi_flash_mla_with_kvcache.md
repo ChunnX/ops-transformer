@@ -173,7 +173,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 - **q与k_cache的最后维（D）必须为576**（= head_dim_v 512 + rope 64），不允许512宽输入。
 - **head_dim_v必须为512**（nope/value部分宽度，即 k_cache 最后维576减去rope宽度64）；传入其它值将被拒绝。
 - `num_heads_kv`必须为1（单latent KV头）。
-- 掩码仅支持NO_MASK（0）与RIGHT_DOWN（3，右下三角/因果类）两种模式，其余mask_mode取值将被拒绝；具体约束与flash_attn一致（mask_mode为0时不支持传入attn_mask，mask_mode为3时必须传入attn_mask矩阵）。
+- 掩码仅支持NO_MASK（0）与RIGHT_DOWN（3，右对齐因果）两种模式，其余mask_mode取值将被拒绝；具体约束与flash_attn一致（mask_mode为0时不支持传入attn_mask，mask_mode为3时必须传入attn_mask矩阵）。
 - 空Tensor（必有输入的任一轴shape为0）将被全部拦截报错。
 
 ### 特性参数组
@@ -392,7 +392,7 @@ cann_ops_transformer.flash_mla_with_kvcache(
 mask_mode参数解释，具体约束与flash_attn一致
 <ul>
     <li>mask_mode=0，NO_MASK模式（全计算，默认值）</li>
-    <li>mask_mode=3，RIGHT_DOWN模式（右下三角/因果类）</li>
+    <li>mask_mode=3，RIGHT_DOWN模式（右对齐因果）</li>
 </ul>
 
 <table style="undefined;table-layout: fixed; width:1625px">
@@ -441,7 +441,7 @@ mask_mode参数解释，具体约束与flash_attn一致
             <td>
                 <ul>
                     <li>tensor_type支持int8</li>
-                    <li>tensor_shape维度为(2048, 2048)，该矩阵固定为2048*2048的下三角矩阵对角线全0</li>
+                    <li>tensor_shape维度为(2048, 2048)，该矩阵固定为2048*2048，左下三角包括对角线为0（保留），其余位置为1（屏蔽）</li>
                 </ul>
             </td>
             <td>
@@ -663,9 +663,11 @@ KV缓存仅支持Paged Attention（PA）分页布局，block_table不为空时�
     cu_seqlens_q = torch.tensor([0, 4, 8], dtype=torch.int32, device="npu")
     cache_seqlens = torch.tensor([8, 8], dtype=torch.int32, device="npu")
     block_table = torch.zeros(B, 2, dtype=torch.int32, device="npu")
-    # mask_mode=3（RIGHT_DOWN/因果）时必须传入 attn_mask：2048*2048 下三角矩阵，对角线全0
-    attn_mask = torch.tril(torch.ones(2048, 2048, dtype=torch.int8, device="npu"))
-    attn_mask = attn_mask.fill_diagonal_(0)
+    # mask_mode=3（RIGHT_DOWN/右对齐因果）：1=屏蔽，0=保留
+    # 固定为2048*2048，左下三角包括对角线为0（保留），其余位置为1（屏蔽）
+    attn_mask = torch.triu(
+        torch.ones(2048, 2048, dtype=torch.int8, device="npu"), diagonal=1
+    )
 
     metadata = cann_ops_transformer.ops.flash_mla_with_kvcache_metadata(
         cache_seqlens=cache_seqlens,

@@ -16,11 +16,7 @@
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
-#if __has_include("../../../common/op_kernel/const_def.h")
 #include "../../../common/op_kernel/const_def.h"
-#else
-#include "../../common/const_def.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "../utils/flash_mla_with_kvcache_type.h"
 using namespace AscendC;
@@ -450,10 +446,56 @@ public:
         }
     }
 
+    // Full S2 tile: retain 32KiB L0B ping-pong using N=256, K=64.
+    __aicore__ inline void Mm2MatmulN256K64(const LocalTensor<KV_T> &pL1Tensor,
+                                          const LocalTensor<KV_T> &kvpL1Tensor,
+                                          const LocalTensor<MM_T> &l0CSubTensor, uint32_t realM)
+    {
+        const uint32_t alignM = (realM + 15U) / 16U * 16U;
+        LocalTensor<KV_T> l0a = l0ABuffers_[Q_L0A_CACHE_COUNT * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
+        Mutex::Lock<PIPE_MTE1>(L0A_BUFFER_ID0);
+        Mm2LoadL0A(l0a, pL1Tensor, 128U, realM);
+        Mutex::Unlock<PIPE_MTE1>(L0A_BUFFER_ID0);
+        Mutex::Lock<PIPE_M>(L0A_BUFFER_ID0);
+        for (uint32_t n = 0; n < 2U; ++n) {
+            for (uint32_t k = 0; k < 2U; ++k) {
+                const uint32_t bId = L0B_BUFFER_ID0 + l0bBufId_;
+                LocalTensor<KV_T> l0b = l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
+                Mutex::Lock<PIPE_MTE1>(bId);
+                LoadData2DParamsV2 p;
+                p.mStartPosition = 0;
+                p.kStartPosition = 0;
+                p.ifTranspose = true;
+                p.mStep = 4; // K=64
+                p.kStep = 16; // N=256
+                p.srcStride = 8; // L1 physical K=128
+                p.dstStride = 16;
+                LoadData(l0b, kvpL1Tensor[n * 256U * 128U + k * 64U * 16U], p);
+                Mutex::Unlock<PIPE_MTE1>(bId);
+                Mutex::Lock<PIPE_M>(bId);
+                MmadParams mp;
+                mp.m = realM == 1U ? 16U : realM;
+                mp.n = 256U;
+                mp.k = 64U;
+                mp.cmatrixInitVal = (k == 0U);
+                mp.cmatrixSource = false;
+                mp.unitFlag = 0;
+                Mmad(l0CSubTensor[n * alignM * 256U], l0a[k * alignM * 64U], l0b, mp);
+                Mutex::Unlock<PIPE_M>(bId);
+                l0bBufId_ ^= 1U;
+            }
+        }
+        Mutex::Unlock<PIPE_M>(L0A_BUFFER_ID0);
+    }
+
     // ================== 特化 MatmulN（mm2: P·V, N=512 固定, 4×128, M=64, K=actS2）==================
     __aicore__ inline void Mm2MatmulN(const LocalTensor<KV_T> &pL1Tensor, const LocalTensor<KV_T> &kvpL1Tensor,
                                       const LocalTensor<MM_T> &l0CSubTensor, uint32_t realM, uint32_t actS2)
     {
+        if (likely(actS2 == 128U)) {
+            Mm2MatmulN256K64(pL1Tensor, kvpL1Tensor, l0CSubTensor, realM);
+            return;
+        }
         constexpr uint32_t nLoops = 4;   // (512+128-1)/128
         const uint64_t l0COffset = ((realM + 15) >> 4 << 4) * 128; // align16(M)*baseN, runtime once
         const uint64_t l1BOffset = ((actS2 + 15) >> 4 << 4) * 128; // align16(K)*baseN, runtime once
