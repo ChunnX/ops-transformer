@@ -295,6 +295,28 @@ def run(
             arguments_kwargs,
         )
         source = "main API fallback (sidecar unavailable)"
+    if (
+        int(quant_mode) == QUANT_MODE_MXFP4
+        and int(arguments["quant_mode"]) == QUANT_MODE_MXFP4
+        and int(arguments["head_dim"]) == 64
+        and all(
+            torch.is_tensor(tensor)
+            and tensor.dtype == torch.float4_e2m1fn_x2
+            and tensor.shape[-1] == 64
+            for tensor in (query, key)
+        )
+        and all(
+            torch.is_tensor(scale)
+            and scale.dtype == torch.float8_e8m0fnu
+            and tuple(scale.shape) == tuple(tensor.shape[:-1]) + (2, 2)
+            for tensor, scale in ((query, query_dequant_scale), (key, key_dequant_scale))
+        )
+    ):
+        arguments = dict(arguments, head_dim=128)
+        logging.warning(
+            "[%s] Legacy MXFP4 metadata head_dim=64 uses the packed storage dimension; "
+            "using logical head_dim=128 from Q/K and scales", testcase_name
+        )
     logging.info(
         "[%s] build QLI_V2 metadata from %s; forced=%s",
         testcase_name,
