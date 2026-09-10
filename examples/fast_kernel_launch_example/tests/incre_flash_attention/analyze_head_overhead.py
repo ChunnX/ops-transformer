@@ -180,6 +180,20 @@ def align_launches(dispatches, timing_launches):
     ]
     if len(dispatches) == len(replay_launches):
         return list(zip(dispatches, replay_launches))
+    # 多拍模式 (对齐 add/gmm): 每拍 replay 完整图 (N 节点), cycle 记录只反映
+    # 本拍最后一次 launch -> 该拍对齐最后一条 dispatch
+    # test.py warmup (capture 外 1 次发射) 会多 1 条 dispatch: 余 1 时剔除首条再对齐
+    for extra in (0, 1):
+        trimmed = dispatches[extra:] if extra and len(dispatches) % len(
+            timing_launches or [1]) == extra else dispatches
+        for launches in (timing_launches, replay_launches):
+            n = len(launches)
+            if n and len(trimmed) % n == 0:
+                per = len(trimmed) // n
+                return [
+                    (trimmed[(i + 1) * per - 1], launch)
+                    for i, launch in enumerate(launches)
+                ]
     raise RuntimeError(
         "Cannot align launches: "
         f"{len(dispatches)} IFA STARS dispatches, "

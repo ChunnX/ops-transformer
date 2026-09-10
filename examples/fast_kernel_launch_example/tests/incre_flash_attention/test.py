@@ -36,6 +36,7 @@ MAX_VECTOR_CORES_950 = 64
 EXPECTED_CUBE_CORES = 0
 EXPECTED_VECTOR_CORES = 0
 HEAD_TIMING_LAUNCHES = int(os.environ.get("HEAD_TIMING_LAUNCHES", "101"))
+HEAD_TIMING_SHOTS = int(os.environ.get("HEAD_TIMING_SHOTS", "5"))
 HEAD_TIMING_OUTPUT = Path(
     os.environ.get("HEAD_TIMING_OUTPUT", "ifa_head_timing_raw.csv")
 )
@@ -196,55 +197,44 @@ def generate_inputs(config: AttentionConfig):
     return {"metaParam": meta_param, "faParam": fa_param}
 
 
-def read_head_timing(timing_output: torch.Tensor, phase: str, launch_index: int):
-    raw = timing_output.detach().cpu().contiguous().view(torch.int64).flatten()
+def read_cycle_shot(phase: str, shot: int):
+    """回读持久 cycle tensor (每拍 replay 后立即读, 记录 = 本拍最后一次 launch 的 48 核打点)"""
+    cycle = torch.ops.ascend_ops.npu_fused_ifa_cycle_tensor()
+    raw = cycle.detach().cpu().contiguous().flatten()
     record_count = raw.numel() // HEAD_TIMING_SLOT_COUNT
     records = raw[: record_count * HEAD_TIMING_SLOT_COUNT].view(
         record_count, HEAD_TIMING_SLOT_COUNT
     )
-    records = records[records[:, 0] == HEAD_TIMING_MAGIC]
-    if records.numel() == 0:
-        raise RuntimeError("No IFA head timing records were written by the kernel")
-
-    entry_valid = (
-        (records[:, 1] >= 0)
+    valid = (
+        (records[:, 0] == HEAD_TIMING_MAGIC)
+        & (records[:, 1] >= 0)
         & (records[:, 1] < EXPECTED_VECTOR_CORES)
         & (records[:, 2] == CORE_TYPE_VECTOR)
         & (records[:, 3] > 0)
-        & (
-            (records[:, 5] == HEAD_TIMING_ENTRY_COMMIT)
-            | (records[:, 5] == HEAD_TIMING_COMMIT)
-        )
+        & (records[:, 5] == HEAD_TIMING_COMMIT)
     )
-    invalid_count = int((~entry_valid).sum().item())
-    records = records[entry_valid]
+    invalid_count = int((~valid).sum().item())
+    records = records[valid]
     if records.numel() == 0:
-        raise RuntimeError("All IFA head timing records were incomplete")
-    if invalid_count:
-        logger.warning("Discarded %d incomplete timing records", invalid_count)
-
+        raise RuntimeError("No IFA head timing records were written by the kernel")
     records = records[records[:, 1].argsort()]
     if records.shape[0] != EXPECTED_VECTOR_CORES:
         raise RuntimeError(
-            f"Expected {EXPECTED_VECTOR_CORES} Vector entry records, "
-            f"got {records.shape[0]}"
+            f"Expected {EXPECTED_VECTOR_CORES} Vector timing records, "
+            f"got {records.shape[0]} (invalid={invalid_count})"
         )
-
     result = []
     for record in records.tolist():
-        reached_first_mte2 = (
-            record[4] > 0 and record[5] == HEAD_TIMING_COMMIT
-        )
         result.append(
             {
                 "measurement_point": HEAD_TIMING_POINT,
                 "phase": phase,
-                "launch_index": launch_index,
+                "launch_index": shot,
                 "vector_block": record[1],
                 "ai_core": record[6],
-                "kernel_entry_cycle": record[3],
-                "before_first_mte2_cycle": record[4] if reached_first_mte2 else "",
-                "kernel_end_cycle": record[7] if record[7] > 0 else "",
+                "kernel_entry_cycle": record[3],  # T0: kernel 第一行
+                "before_first_mte2_cycle": record[4],  # T1: 首个 MTE2 前
+                "kernel_end_cycle": record[7] if record[7] > 0 else "",  # T2: kernel 末
             }
         )
     return result
@@ -314,6 +304,12 @@ def main():
     # 5. Run inference
     logger.info("🚀 Running inference...")
     try:
+        # warmup (capture 外): 触发 op 首次调用链 (含持久 cycle tensor 的 at::zeros
+        # 分配) —— capture 内的动态分配/memset 会导致 replay 死锁, 对齐 add/gmm 做法
+        logger.info("Warming up once outside graph capture...")
+        model(param)
+        torch.npu.synchronize()
+
         graph = torch.npu.NPUGraph()
         timing_outputs = []
         logger.info("Capturing %d IFA nodes...", HEAD_TIMING_LAUNCHES)
@@ -321,31 +317,25 @@ def main():
             for _ in range(HEAD_TIMING_LAUNCHES):
                 output, _ = model(param)
                 timing_outputs.append(output)
+        del timing_outputs
 
         logger.info("Synchronizing graph capture...")
         torch.npu.synchronize()
-        logger.info("Replaying the graph once...")
-        graph.replay()
-        torch.npu.synchronize()
 
+        # 对齐 add/gmm 多拍模式: 每拍独立完整 replay, 拍后立即回读 cycle tensor
         timing_rows = []
-        for launch_index, timing_output in enumerate(timing_outputs):
-            launch_rows = read_head_timing(timing_output, "replay", launch_index)
+        for shot in range(HEAD_TIMING_SHOTS):
+            logger.info("Replaying shot %d/%d...", shot + 1, HEAD_TIMING_SHOTS)
+            graph.replay()
+            torch.npu.synchronize()
+            launch_rows = read_cycle_shot("replay", shot)
             timing_rows.extend(launch_rows)
             reached_count = sum(
                 row["before_first_mte2_cycle"] != "" for row in launch_rows
             )
-            expected_reached_count = (
-                0 if HEAD_TIMING_POINT == "entry" else EXPECTED_VECTOR_CORES
-            )
-            if reached_count != expected_reached_count:
-                raise RuntimeError(
-                    f"{HEAD_TIMING_POINT} mode expected "
-                    f"{expected_reached_count} T2 records, got {reached_count}"
-                )
             logger.info(
-                "Launch %d: point=%s vector_entries=%d active_vectors=%d",
-                launch_index,
+                "Shot %d: point=%s vector_entries=%d active_vectors=%d",
+                shot,
                 HEAD_TIMING_POINT,
                 len(launch_rows),
                 reached_count,

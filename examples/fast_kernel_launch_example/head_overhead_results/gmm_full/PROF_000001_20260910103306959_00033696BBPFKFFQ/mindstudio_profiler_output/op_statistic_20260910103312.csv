@@ -1,0 +1,4 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,_ZN10ascend_ops13GroupedMatmul20groupedmatmul_kernelEPhS1_S1_S1_S1_S1_S1_S1_S1_S1_S1_23GroupedMatmulTilingDataS1_,AI_CORE,606,4327.426,6.32,7.141,12.78,99.468
+0,ZerosLike,AI_VECTOR_CORE,6,15.12,1.88,2.52,3.08,0.348
+0,Fill,AI_VECTOR_CORE,2,8.02,3.82,4.01,4.2,0.184

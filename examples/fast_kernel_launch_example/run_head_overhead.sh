@@ -785,7 +785,7 @@ def analyze_ifa(prof_dir, label):
         return None, None
     with open(runs[-1]) as f:
         rows = [r for r in csv.DictReader(f)
-                if r.get('phase') == 'replay' and int(r.get('launch_index', 0)) >= 50]
+                if r.get('phase') == 'replay' and int(r.get('launch_index', 0)) >= 2]
     if not rows:
         print(f"  {label}: [ifa 明细无稳态数据]")
         return None, None
@@ -839,7 +839,7 @@ def ffts_check_ifa(prof_dir, freq, taskdur):
         return None
     with open(runs[-1]) as f:
         rows = [r for r in csv.DictReader(f)
-                if r.get('phase') == 'replay' and int(r.get('launch_index', 0)) >= 50
+                if r.get('phase') == 'replay' and int(r.get('launch_index', 0)) >= 2
                 and r.get('kernel_end_cycle', '') != '']
     if not rows:
         return None

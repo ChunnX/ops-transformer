@@ -1,0 +1,91 @@
+-- System processer: aarch64
+-- CMAKE_ASC_COMPILER: /usr/local/Ascend/cann-9.1.T103/cann-9.1.T103/bin/bisheng
+-- ASCEND_CANN_PACKAGE_LINUX_PATH: /usr/local/Ascend/cann-9.1.T103/cann-9.1.T103/aarch64-linux
+-- CMAKE_ASC_LLD_LINKER: /usr/local/Ascend/cann-9.1.T103/cann-9.1.T103/aarch64-linux/ccec_compiler/bin/ld.lld
+-- Detecting AICPU compiler: /usr/local/Ascend/cann-9.1.T103/cann-9.1.T103/bin/bisheng
+-- The CXX compiler identification is GNU 12.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Using Ascend toolkit path: /usr/local/Ascend/cann-9.1.T103/cann-9.1.T103
+-- Bisheng compiler path: /usr/local/Ascend/cann-9.1.T103/cann-9.1.T103/aarch64-linux/ccec_compiler/bin/bisheng
+-- Found Python3: /usr/local/bin/python3 (found version "3.11.9") found components: Interpreter Development Development.Module Development.Embed 
+-- Found Python3: /usr/local/bin/python3 (found version 3.11.9)
+-- Python3 include dir: /usr/local/include/python3.11
+-- Python3 libraries: /usr/local/lib/libpython3.11.so
+-- Using Torch path: /usr/local/lib/python3.11/site-packages/torch/share/cmake/Torch
+CMake Warning at /usr/local/lib/python3.11/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:22 (message):
+  static library kineto_LIBRARY-NOTFOUND not found.
+Call Stack (most recent call first):
+  /usr/local/lib/python3.11/site-packages/torch/share/cmake/Torch/TorchConfig.cmake:125 (append_torchlib_if_found)
+  cmake/torch.cmake:13 (find_package)
+  CMakeLists.txt:54 (include)
+
+
+-- Found Torch: /usr/local/lib/python3.11/site-packages/torch/lib/libtorch.so  
+-- Found Torch version: 2.7.1
+-- Torch include dirs: /usr/local/lib/python3.11/site-packages/torch/include;/usr/local/lib/python3.11/site-packages/torch/include/torch/csrc/api/include
+-- Torch libraries: torch;torch_library;/usr/local/lib/python3.11/site-packages/torch/lib/libc10.so
+-- Using Torch NPU path: /usr/local/lib/python3.11/site-packages/torch_npu
+-- Torch NPU include path: /usr/local/lib/python3.11/site-packages/torch_npu/include
+-- Torch NPU lib path: /usr/local/lib/python3.11/site-packages/torch_npu/lib
+-- Find opbase source dir: /data01/liulinxiang/pr10421_retest/third_party/opbase
+HEAD is now at ec8c387 修改初始化时对stype的判断逻辑
+D	aicpu_common/context/CMakeLists.txt
+D	aicpu_common/context/common/async_cpu_kernel.cc
+D	aicpu_common/context/common/async_event_util.cc
+D	aicpu_common/context/common/context.cc
+D	aicpu_common/context/common/cpu_kernel_cache.cc
+D	aicpu_common/context/common/cpu_kernel_register.cc
+D	aicpu_common/context/common/cpu_kernel_utils.cc
+D	aicpu_common/context/common/device.cc
+D	aicpu_common/context/common/device_cpu_kernel.cc
+D	aicpu_common/context/common/device_sharder.cc
+D	aicpu_common/context/common/eigen_threadpool.cc
+D	aicpu_common/context/common/eigen_threadpool_embedding.cc
+D	aicpu_common/context/common/host_sharder.cc
+D	aicpu_common/context/common/node_def_builder.cpp
+D	aicpu_common/context/cpu_proto/attr_value.cc
+D	aicpu_common/context/cpu_proto/attr_value_impl.cc
+D	aicpu_common/context/cpu_proto/node_def.cc
+D	aicpu_common/context/cpu_proto/node_def_impl.cc
+D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
+D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
+D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
+D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
+D	aicpu_common/context/cpu_proto/tensor.cc
+D	aicpu_common/context/cpu_proto/tensor_impl.cc
+D	aicpu_common/context/cpu_proto/tensor_shape.cc
+D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
+D	aicpu_common/context/cust_op/cust_dlog_record.cc
+D	aicpu_common/context/cust_op/cust_dlog_record.h
+D	aicpu_common/context/cust_op/cust_op_log.cc
+D	aicpu_common/context/device/CMakeLists.txt
+D	aicpu_common/context/host/CMakeLists.txt
+D	aicpu_common/context/utils/bcast.cc
+D	aicpu_common/context/utils/eigen_tensor.cc
+D	aicpu_common/context/utils/kernel_util.cc
+-- OBJECTS_LIST before adding sources: 
+-- CMAKE_CURRENT_SOURCE_DIR = /data01/liulinxiang/pr10421_retest/examples/fast_kernel_launch_example/csrc/add/ascend910_93
+-- OP_NAME: add
+-- COMPILE FLAGS: --npu-arch=dav-2201 -xasc 
+-- SOURCE FILES: add.cpp
+-- CMAKE_CURRENT_SOURCE_DIR = /data01/liulinxiang/pr10421_retest/examples/fast_kernel_launch_example/csrc/grouped_matmul/ascend910_93
+-- OP_NAME: grouped_matmul
+-- COMPILE FLAGS: --npu-arch=dav-2201 --cce-aicore-input-parameter-size=4096 -xasc 
+-- SOURCE FILES: grouped_matmul.cpp
+-- CMAKE_CURRENT_SOURCE_DIR = /data01/liulinxiang/pr10421_retest/examples/fast_kernel_launch_example/csrc/incre_flash_attention/ascend910_93
+-- OP_NAME: incre_flash_attention
+-- COMPILE FLAGS: --npu-arch=dav-2201 -DIFA_HEAD_TIMING_MODE=2 -xasc 
+-- SOURCE FILES: npu_fused_infer_attention_score.cpp;op_host/incre_flash_attention_tiling.cpp;op_host/incre_flash_attention_tiling_check.cpp
+-- BUILD_TORCH_OPS ON in incre_flash_attention_metadata
+-- CMAKE_CURRENT_SOURCE_DIR = /data01/liulinxiang/pr10421_retest/examples/fast_kernel_launch_example/csrc/phase_delay/ascend910_93
+-- OP_NAME: phase_delay
+-- COMPILE FLAGS: --npu-arch=dav-2201 -xasc 
+-- SOURCE FILES: phase_delay.cpp
+-- OBJECTS_LIST after adding sources: $<TARGET_OBJECTS:add_obj>;$<TARGET_OBJECTS:grouped_matmul_obj>;$<TARGET_OBJECTS:incre_flash_attention_obj>;$<TARGET_OBJECTS:incre_flash_attention_meta_objects>;$<TARGET_OBJECTS:incre_flash_attention_meta_kernel_objects>;$<TARGET_OBJECTS:phase_delay_obj>
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /data01/liulinxiang/pr10421_retest/examples/fast_kernel_launch_example/build
