@@ -58,7 +58,11 @@ constexpr uint32_t PKI_HEAD_DIM = 128;
 constexpr uint32_t PKI_N2_FIXED = 1;
 constexpr uint32_t PKI_N1_LIMIT = 64;
 constexpr uint32_t PKI_POOL_SIZE_LIMIT = 128;
-constexpr uint32_t PKI_BLOCK_SIZE_LIMIT = 1024;
+// PA block_size 上限。原为 1024(lightning_indexer 家族沿袭的规格保守值,
+// 非实现能力上限): arch22(A2/A3) 与 arch35(A5) 的 PA 寻址(KeyNd2NzForPA
+// 除模查表 + 块边界钳制 / descale 分块搬运 / scoreGm 布局)均按运行时
+// blockSize 动态计算, 对任意 16 对齐 blockSize 通用, 统一放开至 2048。
+constexpr uint32_t PKI_BLOCK_SIZE_LIMIT = 2048;
 constexpr uint32_t PKI_BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t PKI_TOPK_DEFAULT = 2048;
 // quant_mode host-side values (match def.cpp attribute defaults, may be negative)
@@ -75,6 +79,12 @@ constexpr uint32_t PKI_MX_E8M0_SCALE_PACK_NUM = 2; // E8M0 尾维打包数(2 个
 constexpr uint32_t PKI_MX_SCALE_SHAPE_ALIGN = 64;  // headDim 对齐约束(headDim=128 恒真, 防御保留)
 
 // ------------------ Tiling Constants ------------------
+// [Plan-D/T6] 以下 S1/S2/M 基本块常量为 arch35/host 侧口径, 经
+// CalcTilingParams 写入 tilingData 字段; arch22 kernel 不消费这些字段——
+// arch22 InitTilingData 以自有硬编码覆盖(s1BaseSize=8|8192/sc*2 /
+// s2BaseSize=512 / mBaseSize=s1BaseSize*gSize, 见
+// op_kernel/arch22/pool_key_indexer_kernel_arch22.h)。两端 workspace 公式
+// 均按各自 kernel 口径镜像推导, 自洽。(T6 纯注释对齐, 不改值。)
 constexpr uint32_t PKI_S1_BASE_SIZE = 4;
 constexpr uint32_t PKI_S1_BASE_SIZE_SMALL = 2;
 constexpr uint32_t PKI_S2_BASE_SIZE = 128;
