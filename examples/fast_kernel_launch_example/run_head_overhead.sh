@@ -15,10 +15,10 @@
 #   OUTPUT_DIR       采集数据输出目录 (默认: ./head_overhead_results)
 #   RUN_ADD          是否跑 add (默认: 1)
 #   RUN_GMM          是否跑 grouped_matmul (默认: 1)
-#                    (ascend950 上追加跑 incre_flash_attention, 无开关;
+#                    (ascend950/ascend910_93 上追加跑 incre_flash_attention, 无开关;
 #                    采集走 tests/incre_flash_attention/run_head_overhead.sh,
-#                    250 次发射 + 打点回读, 口径: T0-stars=schedule_hardware,
-#                    T1-T0=software_init, T1-stars=t2_from_stars, 无 T2/硬件尾)
+#                    capture 250 连发 + 5 拍 replay + 逐拍打点回读 (对齐 add/gmm 多拍口径),
+#                    全量执行形态: T0/T1/T2 打点, 含 kernel 主体 T2-T1 与硬件尾)
 #   REPLAY_SHOTS     replay 多拍次数 (默认: 5, 传给 scan_replay.py; 各拍独立计算指标取 median)
 #   ADD_CORES        add 实际 launch 核数 (默认: 平台满核; 真核数实验用,
 #                    blockLength = totalLength/numBlocks 随核数自适应, 配合 ADD_TOTAL 控制每核 tile 数)
