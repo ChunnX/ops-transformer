@@ -20,11 +20,13 @@
 
 constexpr uint64_t FP4_EXPANSION_RATIO = 2;
 constexpr double FP4_COMPUTE_PER_CYCLE_RATIO = 4;
+constexpr uint64_t AGM_MIN_OVERLAP_TILES = 8;
 
 class AllGatherMMFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     double frontMMTime_ = 0;
-
+    double expandThresholdUs_ = 40.0;
+    bool fineTile_ = false;
     explicit AllGatherMMFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                          TopoType topoType = TopoType::STANDARD_CARD,
                                          SocVersion socVersion = SocVersion::SOC950)
@@ -53,6 +55,12 @@ public:
         } else {
             commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
         }
+        bool isFp4Type = (args.geAType == ge::DataType::DT_FLOAT4_E2M1);
+        bool isMxFp8Type = (args.geAType == ge::DataType::DT_FLOAT8_E4M3FN) || (args.geAType == ge::DataType::DT_FLOAT8_E5M2);
+        if (isFp4Type || isMxFp8Type) {
+            fineTile_ = true;
+            expandThresholdUs_ = isFp4Type ? 10.0 : 20.0;
+        }
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
         tilingM_.SetAlignLength(matmulPerf_.GetBaseM());
     }
@@ -61,6 +69,7 @@ public:
     void SetShortTileLen() override;
     void SetLongTileLen() override;
     void AdjustLongShortTileLen() override;
+    CutResult GetTiling() override;
 };
 
 #endif // __ALL_GATHER_FIT_BALANCE_TILING_H__

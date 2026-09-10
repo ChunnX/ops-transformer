@@ -15,8 +15,8 @@
 #include "mc2_log.h"
 #include "all_gather_fit_balance_tiling.h"
 
-constexpr static double MM_EXPANSION_TIME = 40;
-constexpr static double COMM_EXPANSION_TIME = 40;
+// constexpr static double MM_EXPANSION_TIME = 40;
+// constexpr static double COMM_EXPANSION_TIME = 40;
 
 void AllGatherMMFitBalanceTiling::EstimateMMCommTime()
 {
@@ -58,7 +58,7 @@ void AllGatherMMFitBalanceTiling::SetShortTileLen()
     uint64_t cutLen = tilingM_.GetAlignLength() / TWO;
     double mmCost = matmulPerf_.MatmulTime(cutLen, rankDim_);
     double commCost = commPerf_.CommTime(cutLen);
-    if (isCalcCommBalance && (mmCost > MM_EXPANSION_TIME) && (commCost > COMM_EXPANSION_TIME)) {
+    if (isCalcCommBalance && (mmCost > expandThresholdUs_) && (commCost > expandThresholdUs_)) {
         tilingM_.SetAlignLength(cutLen);
         tilingM_.SetMinLenByMin(cutLen);
     }
@@ -76,4 +76,45 @@ void AllGatherMMFitBalanceTiling::AdjustLongShortTileLen()
         tilingM_.cutRes.numShortTile = 0U;
         tilingM_.cutRes.numLongTile++;
     }
+}
+
+CutResult AllGatherMMFitBalanceTiling::GetTiling()
+{
+    CutResult result = Mc2FitBasedBalanceTiling::GetTiling();
+    if (fineTile_) {
+        uint64_t baseM = matmulPerf_.GetBaseM();
+        uint64_t totalLen = tilingM_.totalLen;
+        uint64_t maxTileCnt = tilingM_.tileArgs.maxTileCnt;
+        uint64_t targetTileCnt = (result.totalTileCnt > AGM_MIN_OVERLAP_TILES) ? result.totalTileCnt
+                                                                               : AGM_MIN_OVERLAP_TILES;
+        if (targetTileCnt > maxTileCnt) {
+            targetTileCnt = maxTileCnt;
+        }
+        if (result.totalTileCnt < targetTileCnt) {
+            uint64_t tileM = (totalLen + targetTileCnt - 1U) / targetTileCnt;
+            if (baseM > 0) {
+                tileM = ((tileM + baseM - 1U) / baseM) * baseM;
+            }
+            uint64_t numLong = (totalLen + tileM - 1U) / tileM;
+            if (numLong > maxTileCnt) {
+                numLong = maxTileCnt;
+                tileM = (totalLen + numLong - 1U) / numLong;
+                if (baseM > 0) {
+                    tileM = ((tileM + baseM - 1U) / baseM) * baseM;
+                    numLong = (totalLen + tileM - 1U) / tileM;
+                }
+            }
+            uint64_t tail = totalLen - (numLong - 1U) * tileM;
+            bool hasTail = (tail < tileM) && (tail > 0U);
+            result.longTileLen = tileM;
+            result.numLongTile = hasTail ? (numLong - 1U) : numLong;
+            result.shortTileLen = hasTail ? tail : 0U;
+            result.numShortTile = hasTail ? 1U : 0U;
+            result.totalTileCnt = result.numLongTile + result.numShortTile;
+            OPS_LOG_D("AllGatherMatmul",
+                      "fineTile adjusted: targetTileCnt %lu, longTileM %lu, numLongTile %lu, tailM %lu, totalTileCnt %lu",
+                      targetTileCnt, tileM, result.numLongTile, result.shortTileLen, result.totalTileCnt);
+        }
+    }
+    return result;
 }
