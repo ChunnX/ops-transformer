@@ -116,30 +116,31 @@ inline const gert::Stride *GetKeyStrideDesc(gert::TilingContext *context)
     return context->GetInputStride(MSA_IDX_KEY);
 }
 
-inline bool ValidateKeyInnerAxesContiguous(gert::TilingContext *context, const gert::Stride *stride,
-                                           const gert::Shape &shape)
+// 对齐 MlaProlog GetCacheStride0：dim1…末维须等于紧凑 stride，仅 dim0 可非连续。
+// size-1 轴不参与寻址：PyTorch / torch_npu 对其 stride 不做连续约束（BBND↔BNBD 且 N2=1
+// 时 permute().contiguous() 仍可能是 dim1 stride=P 而非 N2*P*D），跳过该轴比较。
+inline ge::graphStatus ValidateKeyInnerAxesContiguous(gert::TilingContext *context, const gert::Stride *stride,
+                                                      const gert::Shape &shape)
 {
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
-        return true;
+        return ge::GRAPH_SUCCESS;
     }
-    uint64_t expectedStride = 1;
-    for (int64_t i = static_cast<int64_t>(shape.GetDimNum()) - 1; i >= 1; --i) {
-        const int64_t dimSize = shape.GetDim(static_cast<size_t>(i));
-        if (dimSize <= 1) {
-            // size-1 轴不参与寻址；PyTorch 对其 stride 不做连续约束（BNBD 且 N2=1 时常见）。
-            continue;
-        }
-        const uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(static_cast<size_t>(i)));
-        if (actualStride != expectedStride) {
-            OP_LOGE(context,
-                    "key dim%ld must be contiguous, actual stride=%lu, expected=%lu. "
-                    "Only dim0 (PA page axis) may be non-contiguous.",
-                    i, actualStride, expectedStride);
-            return false;
+    uint64_t expectedStride = 1U;
+    for (int64_t dim = static_cast<int64_t>(shape.GetDimNum()) - 1; dim >= 1; --dim) {
+        const int64_t dimSize = shape.GetDim(static_cast<size_t>(dim));
+        OP_CHECK_IF(dimSize < 0, OP_LOGE(context, "key dim%ld size is negative.", dim), return ge::GRAPH_FAILED);
+        if (dimSize > 1) {
+            const uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(static_cast<size_t>(dim)));
+            OP_CHECK_IF(actualStride != expectedStride,
+                        OP_LOGE(context,
+                                "key dim%ld must be contiguous, actual stride is %lu, expected stride is %lu. "
+                                "Only dim0 may be non-contiguous.",
+                                dim, actualStride, expectedStride),
+                        return ge::GRAPH_FAILED);
         }
         expectedStride *= static_cast<uint64_t>(dimSize);
     }
-    return true;
+    return ge::GRAPH_SUCCESS;
 }
 
 // PA：strideKvBlock 取 key dim0 元素 stride。连续输入写入值与 shape 推算相同。
@@ -162,8 +163,9 @@ inline ge::graphStatus ResolveStrideKvBlock(gert::TilingContext *context, const 
                 strideKvBlock);
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(!ValidateKeyInnerAxesContiguous(context, stride, kc),
-                OP_LOGE(context, "key inner axes must stay contiguous."), return ge::GRAPH_FAILED);
+    if (ValidateKeyInnerAxesContiguous(context, stride, kc) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     const int64_t actualStride0 = stride->GetStride(MSA_DIM_0);
     if (info.keyLayout == MSA_KEY_LAYOUT_TND) {
