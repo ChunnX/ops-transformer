@@ -103,7 +103,7 @@ __aicore__ inline T AlignUp(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102) || (__NPU_ARCH__ == 9201))
+#if (__NPU_ARCH != 2201)
 template <typename T>
 __aicore__ inline uint32_t GetBlockNum(uint32_t size)
 {
@@ -629,7 +629,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     auto l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.template Wait<HardEvent::M_MTE1>();
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102) || (__NPU_ARCH__ == 9201))
+#if (__NPU_ARCH != 2201)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
                                             param.singleM); // d,s2
@@ -643,7 +643,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
     auto l0bBuffer = bL0BuffsDb.Get();
     l0bBuffer.template Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 9201)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value || IsSameType<L0BDType, fp4x2_e2m1_t>::value ||
                   IsSameType<L0BDType, hifloat4x2_t>::value) {
         LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
@@ -691,7 +691,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
     uint32_t tailK = tailSize ? tailSize : baseK;
     uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 9201)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
                   IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
         L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
@@ -715,7 +715,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         auto l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK,
                                                 param.singleM); // s2,
@@ -732,7 +732,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
         l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value || IsSameType<L0BDType, fp4x2_e2m1_t>::value ||
                       IsSameType<L0BDType, hifloat4x2_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK,
@@ -791,7 +791,7 @@ __aicore__ inline void MatmulKbias(const LocalTensor<A> &aL1Tensor, const LocalT
                              ((param.singleM + 15) >> 4 << 4) * baseK; // 给传入的s1realsize对齐到16的倍数
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK :
                                                   baseK << 4; // 给传入的s2realsize对齐到16的倍数
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 9201)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
                   IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
         L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK; // 给传入的s1realsize对齐到32的倍数
@@ -863,7 +863,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     uint32_t tailSize = param.singleN % baseN;
     uint32_t tailN = tailSize ? tailSize : baseN;
     uint64_t L1Boffset = param.isRightTranspose ? (baseN << 4) : ((param.singleK + 15) >> 4 << 4) * baseN;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 9201)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value ||
                   IsSameType<A, hifloat8_t>::value || IsSameType<A, int8_t>::value) {
         L1Boffset = ((param.singleK + 31) >> 5 << 5) * baseN;
@@ -884,7 +884,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
     auto l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH == 9201)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
                                             param.singleM); // d,s2
@@ -901,7 +901,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
         l0bBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.template GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH == 9201)
+#if (__NPU_ARCH != 2201) && (__NPU_ARCH != 5102)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value || IsSameType<L0BDType, fp4x2_e2m1_t>::value ||
                       IsSameType<L0BDType, hifloat4x2_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK,
