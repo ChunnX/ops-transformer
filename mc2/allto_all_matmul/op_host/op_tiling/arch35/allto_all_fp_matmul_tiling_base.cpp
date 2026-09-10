@@ -358,9 +358,6 @@ void AllToAllFpMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingI
     tilingInfo.biasLen = inferredInfo_.biasLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
     tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
-    tilingInfo.x1QuantMode = 0U;
-    tilingInfo.x2QuantMode = 0U;
-    tilingInfo.tilingKey = GetTilingKey();
     tilingInfo.hcclDataType = (static_cast<uint64_t>(
         mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geAType))); // hccl数据类型
 }

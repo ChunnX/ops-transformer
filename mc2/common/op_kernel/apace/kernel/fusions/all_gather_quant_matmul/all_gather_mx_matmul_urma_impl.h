@@ -126,7 +126,9 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     bScaleGM_ = bScaleGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, tilingData->mmTile.usedCoreNum);
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, tilingData->mmTile.usedCoreNum);
+#endif
 
     InitBaseParams(tilingData);
 

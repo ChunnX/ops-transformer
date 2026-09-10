@@ -26,30 +26,32 @@ namespace Mc2Tiling {
 constexpr uint32_t MAX_EXPERT_SIZE = 256U; // 最大通信域专家的数量
 constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
 
+// DFX 约定: dumpInfo 位于 mc2InitTiling/mc2CcTiling 之后，
+// 异常 dump 回调按调用方传入的 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo
 struct MatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
-    uint32_t quantMode;
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
-    uint64_t tilingKey;                             // tilingKey，用于确认kernel模板特化路径
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct QuantBatchMatmulV3ReduceScatterTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
-    uint32_t quantMode; // 0=非量化, 1=量化
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
-    uint64_t tilingKey;                             // tilingKey，用于确认kernel模板特化路径
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 } // namespace Mc2Tiling
 #endif

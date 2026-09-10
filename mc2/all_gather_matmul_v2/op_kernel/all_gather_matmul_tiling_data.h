@@ -22,32 +22,34 @@
 
 namespace Mc2Tiling {
 
+// DFX 约定: dumpInfo 位于 mc2InitTiling/mc2CcTiling 之后，
+// 异常 dump 回调按调用方传入的 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo
 struct AllGatherMatmulTilingDataV2 {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
-    uint32_t quantMode; // 0=非量化, 1=量化
     Mc2MatMulV3TilingData mc2MmV3LocalTilingData;
     Mc2MatMulV3TilingData mc2MmV3TileTilingData;
     Mc2MatMulV3TilingData mc2MmV3TailTilingData;
-    uint64_t tilingKey;                             // tilingKey，用于确认kernel模板特化路径
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 struct AllGatherMatmulTilingDataFp8 {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
-    uint32_t quantMode; // 0=非量化, 1=量化
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3LocalTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TailTiling;
-    uint64_t tilingKey;                             // tilingKey，用于确认kernel模板特化路径
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
 };
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \

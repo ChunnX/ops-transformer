@@ -74,7 +74,7 @@ struct HcommCommWaitPolicy {
 
     // 返回本次实际执行的 hccl.Wait 次数: tile0=2(scale+data)，其余=1(data)，
     // 供 kernel 侧经 DoDump 的 waitDelta 计入 commWaitCount，与 commit 侧 tiles 计数对称。
-    __aicore__ inline uint32_t void(uint32_t tileIdx)
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         if (tileIdx == 0) {
             state_->hccl_.Wait(state_->scaleHandle_);
@@ -189,7 +189,9 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
     if (all2all_out == nullptr) {
         commOutGM_ = workspaceGM + x1ScaleLen;
     }
-    opStateDump_.Init(workspaceGM_, &tilingData_->workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM_, &tilingData_->dumpInfo.workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
+#endif
     quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
     commState_.hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(AlltoAllMatmulTilingDataType, mc2CcTiling)));
