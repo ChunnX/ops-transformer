@@ -14,11 +14,7 @@
 
 #include <torch/extension.h>
 #include "aclnn_common.h"
-#if __has_include("aclnnop/aclnn_moe_token_permute_v2.h")
 #include "aclnnop/aclnn_moe_token_permute_v2.h"
-#elif __has_include("aclnn_moe_token_permute_v2.h")
-#include "aclnn_moe_token_permute_v2.h"
-#endif
 
 namespace {
 constexpr int64_t DIM_ONE = 1;

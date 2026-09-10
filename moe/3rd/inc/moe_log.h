@@ -26,11 +26,7 @@
 #include "log/log.h"
 #include "securec.h"
 
-#if __has_include("error_manager/error_manager.h")
 #include "error_manager/error_manager.h"
-#else
-#include "err_mgr.h"
-#endif
 
 inline const char *MoeConvertStringToCstr(const std::string &str)
 {

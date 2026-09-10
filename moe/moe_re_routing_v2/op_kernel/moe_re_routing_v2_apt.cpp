@@ -13,14 +13,8 @@
  * \brief
  */
 #include "kernel_operator.h"
-#if __has_include("../moe_re_routing/arch35/moe_re_routing_re_regbase.h")
 #include "../moe_re_routing/arch35/moe_re_routing_re_regbase.h"
 #include "../moe_re_routing/arch35/moe_re_routing_r_regbase.h"
-#else
-#include "../../moe_re_routing/op_kernel/arch35/moe_re_routing_re_regbase.h"
-#include "../../moe_re_routing/op_kernel/arch35/moe_re_routing_r_regbase.h"
-#endif
-
 using namespace MoeReRouting;
 
 #define MOE_RE_ROUTING_RE_WITHOUT_SCALE 200000UL
