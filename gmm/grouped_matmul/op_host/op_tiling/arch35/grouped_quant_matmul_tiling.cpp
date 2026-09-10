@@ -124,6 +124,20 @@ uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
     return count;
 }
 
+uint16_t GroupedQmmTiling::GetWeightNzTensorListSize(uint32_t index) const
+{
+    uint16_t count = GetTensorListSize(index);
+    if (!IsWeightNzMultiTensorLayout() || !IsMicroScaling() ||
+        (index != WEIGHT_INDEX && index != SCALE_INDEX)) {
+        return count;
+    }
+    // Probe one extra tensor so an oversized MX WeightNz list fails the count checks.
+    while (count <= GMM_MAX_GROUP_LIST_SIZE && context_->GetDynamicInputShape(index, count) != nullptr) {
+        ++count;
+    }
+    return count;
+}
+
 bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
 {
     OP_CHECK_IF(IsWeightNzMultiTensorLayout() && inputParams_.hasBias,
@@ -133,8 +147,8 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     if (!IsWeightNzMultiTensorLayout()) {
         return true;
     }
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
-    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX);
+    const uint16_t weightTensorNum = GetWeightNzTensorListSize(WEIGHT_INDEX);
+    const uint16_t scaleTensorNum = GetWeightNzTensorListSize(SCALE_INDEX);
     OP_CHECK_IF(weightTensorNum == 0,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "weight", "0", "positive integer"), return false);
     OP_CHECK_IF(weightTensorNum != inputParams_.groupNum,
@@ -877,7 +891,7 @@ bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScale
         return true;
     }
 
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
+    const uint16_t weightTensorNum = GetWeightNzTensorListSize(WEIGHT_INDEX);
     const auto *firstWeightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, FIRST_TENSOR_INDEX);
     OP_CHECK_IF(firstWeightShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "In WeightNz single-multi-single mode, current weight[0] is "

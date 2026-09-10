@@ -264,6 +264,7 @@ protected:
     bool IsMultiTensorWeight() const;
     bool IsWeightNzMultiTensorLayout() const;
     uint16_t GetTensorListSize(uint32_t index) const;
+    uint16_t GetWeightNzTensorListSize(uint32_t index) const;
     bool CheckWeightTensorListForWeightNz() const;
     uint64_t GetWeightLogicalNSize(const gert::Shape &wShape) const;
     bool CheckMultiWeightNzInputs(const gert::StorageShape *xScaleStorageShape) const;
