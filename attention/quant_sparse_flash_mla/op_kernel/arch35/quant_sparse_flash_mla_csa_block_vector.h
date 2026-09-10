@@ -27,9 +27,9 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/get_kv_phy_addr_vf.h"
+using AscendC::Reg::StoreDist;
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/smla_vector_common_arch35.h"
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h"
-using AscendC::Reg::StoreDist;
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/buffers_policy.h"
 #include "../../../common/op_kernel/attn_buffer_manager.h"
@@ -491,8 +491,8 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             qsmlaKeyOffset0 = tokenData[i];
             qsmlaKeyOffset1 = tokenData[i + 1];
         } else {
-            qsmlaKeyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
-            qsmlaKeyOffset1 = GetkeyOffset(tokenData[i + 1], runInfo, constInfo);
+            qsmlaKeyOffset0 = GetKeyOffset(tokenData[i], runInfo, constInfo);
+            qsmlaKeyOffset1 = GetKeyOffset(tokenData[i + 1], runInfo, constInfo);
         }
         if (unlikely(qsmlaKeyOffset0 < 0 && qsmlaKeyOffset1 < 0)) {
             return dealRow;
