@@ -50,8 +50,13 @@ constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_S
 constexpr uint64_t URMA_WQE_MAX_DATA_SIZE = static_cast<uint64_t>(0xFFFFFFFFU);
 constexpr uint32_t METADATA_CHUNK_TOKEN_NUM = 256U;
 constexpr uint32_t METADATA_FIELD_NUM = 4U;
+constexpr uint32_t METADATA_TOKEN_BATCH_OFFSET_FIELD_INDEX = 2U;
+constexpr uint32_t METADATA_TOKEN_TOPK_OFFSET_FIELD_INDEX = 3U;
 constexpr uint32_t METADATA_CHUNK_BUFFER_SIZE = METADATA_CHUNK_TOKEN_NUM * METADATA_FIELD_NUM * sizeof(int32_t);
 constexpr uint32_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
+constexpr uint32_t REMOTE_FLAG_OFFSET_FIELD_INDEX = 1U;
+constexpr uint32_t SOURCE_TOKEN_INDEX_FIELD_INDEX = 2U;
+constexpr uint32_t NEXT_TOKEN_INDEX_FIELD_INDEX = 3U;
 constexpr uint32_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
 constexpr uint64_t INVALID_TOKEN_INDEX = 0xFFFFFFFFFFFFFFFFULL;
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
@@ -241,7 +246,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     GlobalTensor<int32_t> localFlagGMTensor;
     localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
     DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
-    SyncFunc<HardEvent::MTE3_S>();
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -297,10 +301,12 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::R
     int32_t curMicroBatchId = metadataTensor_.GetValue(METADATA_CHUNK_TOKEN_NUM + localOffset);
     metaDataStruct.curMicroBatchIds = static_cast<uint32_t>(curMicroBatchId);
 
-    int32_t curTokenBatchOffset = metadataTensor_.GetValue(2U * METADATA_CHUNK_TOKEN_NUM + localOffset);
+    int32_t curTokenBatchOffset =
+        metadataTensor_.GetValue(METADATA_TOKEN_BATCH_OFFSET_FIELD_INDEX * METADATA_CHUNK_TOKEN_NUM + localOffset);
     metaDataStruct.curTokenBatchOffset = static_cast<uint32_t>(curTokenBatchOffset);
 
-    int32_t curTokenTopkOffset = metadataTensor_.GetValue(3U * METADATA_CHUNK_TOKEN_NUM + localOffset);
+    int32_t curTokenTopkOffset =
+        metadataTensor_.GetValue(METADATA_TOKEN_TOPK_OFFSET_FIELD_INDEX * METADATA_CHUNK_TOKEN_NUM + localOffset);
     metaDataStruct.curTokenTopkOffset = static_cast<uint32_t>(curTokenTopkOffset);
 }
 
@@ -360,9 +366,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 {
     const uint64_t base = tokenIndex * REMOTE_RELAY_INFO_FIELD_NUM;
     remoteRelayInfoGMTensor_.SetValue(base, relayInfo.remoteDataOffset);
-    remoteRelayInfoGMTensor_.SetValue(base + 1U, relayInfo.remoteFlagOffset);
-    remoteRelayInfoGMTensor_.SetValue(base + 2U, relayInfo.sourceTokenIndex);
-    remoteRelayInfoGMTensor_.SetValue(base + 3U, relayInfo.nextTokenIndex);
+    remoteRelayInfoGMTensor_.SetValue(base + REMOTE_FLAG_OFFSET_FIELD_INDEX, relayInfo.remoteFlagOffset);
+    remoteRelayInfoGMTensor_.SetValue(base + SOURCE_TOKEN_INDEX_FIELD_INDEX, relayInfo.sourceTokenIndex);
+    remoteRelayInfoGMTensor_.SetValue(base + NEXT_TOKEN_INDEX_FIELD_INDEX, relayInfo.nextTokenIndex);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -371,9 +377,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::L
 {
     const uint64_t base = tokenIndex * REMOTE_RELAY_INFO_FIELD_NUM;
     relayInfo.remoteDataOffset = remoteRelayInfoGMTensor_.GetValue(base);
-    relayInfo.remoteFlagOffset = remoteRelayInfoGMTensor_.GetValue(base + 1U);
-    relayInfo.sourceTokenIndex = remoteRelayInfoGMTensor_.GetValue(base + 2U);
-    relayInfo.nextTokenIndex = remoteRelayInfoGMTensor_.GetValue(base + 3U);
+    relayInfo.remoteFlagOffset = remoteRelayInfoGMTensor_.GetValue(base + REMOTE_FLAG_OFFSET_FIELD_INDEX);
+    relayInfo.sourceTokenIndex = remoteRelayInfoGMTensor_.GetValue(base + SOURCE_TOKEN_INDEX_FIELD_INDEX);
+    relayInfo.nextTokenIndex = remoteRelayInfoGMTensor_.GetValue(base + NEXT_TOKEN_INDEX_FIELD_INDEX);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -396,10 +402,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
         DataCopyPad(metadataTensor_, sessionIdsGMTensor_[tokenStart], metadataCopyParams, metadataPadParams);
         DataCopyPad(metadataTensor_[METADATA_CHUNK_TOKEN_NUM], microBatchIdsGMTensor_[tokenStart], metadataCopyParams,
                     metadataPadParams);
-        DataCopyPad(metadataTensor_[2U * METADATA_CHUNK_TOKEN_NUM], tokenIdsGMTensor_[tokenStart], metadataCopyParams,
-                    metadataPadParams);
-        DataCopyPad(metadataTensor_[3U * METADATA_CHUNK_TOKEN_NUM], expertOffsetsGMTensor_[tokenStart],
-                    metadataCopyParams, metadataPadParams);
+        DataCopyPad(metadataTensor_[METADATA_TOKEN_BATCH_OFFSET_FIELD_INDEX * METADATA_CHUNK_TOKEN_NUM],
+                    tokenIdsGMTensor_[tokenStart], metadataCopyParams, metadataPadParams);
+        DataCopyPad(metadataTensor_[METADATA_TOKEN_TOPK_OFFSET_FIELD_INDEX * METADATA_CHUNK_TOKEN_NUM],
+                    expertOffsetsGMTensor_[tokenStart], metadataCopyParams, metadataPadParams);
         SyncFunc<HardEvent::MTE2_S>();
 
         for (uint32_t localOffset = 0U; localOffset < tokenNum; ++localOffset) {
@@ -423,7 +429,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
             if (tailTokenIndex == INVALID_TOKEN_INDEX) {
                 remoteRelayListHeadGMTensor_.SetValue(dstRank, yOffset);
             } else {
-                remoteRelayInfoGMTensor_.SetValue(tailTokenIndex * REMOTE_RELAY_INFO_FIELD_NUM + 3U, yOffset);
+                remoteRelayInfoGMTensor_.SetValue(
+                    tailTokenIndex * REMOTE_RELAY_INFO_FIELD_NUM + NEXT_TOKEN_INDEX_FIELD_INDEX, yOffset);
             }
             remoteRelayListTailGMTensor_.SetValue(dstRank, yOffset);
         }
