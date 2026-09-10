@@ -9,6 +9,7 @@
 # ----------------------------------------------------------------------------
 set(OPTENSOR_TAG_ID 23be4cb58513adef50e61544046c1044def6f81c)
 
+
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
