@@ -17,7 +17,6 @@
 #define STEM_INDEXER_METADATA_H
 
 #include <cstdint>
-#include <cassert>
 
 namespace optiling {
 
@@ -73,29 +72,33 @@ struct SliMetadata {
 
     void SetHeadMetadata(uint32_t metaIdx, uint32_t val)
     {
-        assert(metaIdx < HEAD_METADATA_STRIDE);
+        if (metaIdx >= HEAD_METADATA_STRIDE) {
+            return;
+        }
         headMetadata[metaIdx] = val;
     }
 
     uint32_t GetHeadMetadata(uint32_t metaIdx)
     {
-        assert(metaIdx < HEAD_METADATA_STRIDE);
+        if (metaIdx >= HEAD_METADATA_STRIDE) {
+            return 0U;
+        }
         return headMetadata[metaIdx];
     }
 
     void SetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
     {
-        assert(sectionIdx < sectionNum);
-        assert(aicIdx < AIC_CORE_NUM);
-        assert(metaIdx < FA_METADATA_STRIDE);
+        if (sectionIdx >= sectionNum || aicIdx >= AIC_CORE_NUM || metaIdx >= FA_METADATA_STRIDE) {
+            return;
+        }
         faMetadata[sectionIdx * AIC_CORE_NUM * FA_METADATA_STRIDE + aicIdx * FA_METADATA_STRIDE + metaIdx] = val;
     }
 
     uint32_t GetFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx)
     {
-        assert(sectionIdx < sectionNum);
-        assert(aicIdx < AIC_CORE_NUM);
-        assert(metaIdx < FA_METADATA_STRIDE);
+        if (sectionIdx >= sectionNum || aicIdx >= AIC_CORE_NUM || metaIdx >= FA_METADATA_STRIDE) {
+            return 0U;
+        }
         return faMetadata[AIC_CORE_NUM * FA_METADATA_STRIDE * sectionIdx + FA_METADATA_STRIDE * aicIdx + metaIdx];
     }
 };

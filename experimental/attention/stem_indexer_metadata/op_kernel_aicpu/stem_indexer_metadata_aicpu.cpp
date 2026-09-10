@@ -22,6 +22,18 @@
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
 
+namespace {
+// 920R1 平台核数（AIC 64 + AIV 64），用于分核参数的平台识别。
+constexpr int32_t AIC_CORE_NUM_920R1 = 64;
+constexpr int32_t AIV_CORE_NUM_920R1 = 64;
+// 920R1 平台分核基本块大小（与主算子 STEM_M/S2_BASE_SIZE_920R1 一致）。
+constexpr int32_t M_BASE_SIZE_920R1 = 64;
+constexpr int32_t S2_BASE_SIZE_920R1 = 512;
+// A5（arch35）平台分核基本块大小（与主算子 STEM_M/S2_BASE_SIZE 对应）。
+constexpr int32_t M_BASE_SIZE_A5 = 96;
+constexpr int32_t S2_BASE_SIZE_A5 = 256;
+} // namespace
+
 namespace aicpu {
 uint32_t StemIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
@@ -163,7 +175,7 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
     baseInfo.querySeqSize = 0;
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = 0;
-    baseInfo.headDim = headDim_;
+    baseInfo.headdimV = headDim_;
     baseInfo.attenMaskFlag = causal_;
     baseInfo.sparseMode = (causal_) ? static_cast<uint32_t>(load_balance::SparseMode::RIGHT_DOWN_CAUSAL) :
                                       static_cast<uint32_t>(load_balance::SparseMode::BUTT);
@@ -190,12 +202,12 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
 bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::SectionStreamKParam &param)
 {
     param.l2Byte = 96U * 1024U * 1024U;
-    if (aicCoreNum_ == 64 && aivCoreNum_ == 64) {
-        param.mBaseSize = 64;
-        param.s2BaseSize = 512;
+    if (aicCoreNum_ == AIC_CORE_NUM_920R1 && aivCoreNum_ == AIV_CORE_NUM_920R1) {
+        param.mBaseSize = M_BASE_SIZE_920R1;
+        param.s2BaseSize = S2_BASE_SIZE_920R1;
     } else {
-        param.mBaseSize = 96;
-        param.s2BaseSize = 256;
+        param.mBaseSize = M_BASE_SIZE_A5;
+        param.s2BaseSize = S2_BASE_SIZE_A5;
     }
     param.fdOn = false;
     return true;

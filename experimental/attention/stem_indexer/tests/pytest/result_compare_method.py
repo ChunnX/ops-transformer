@@ -31,7 +31,7 @@ def print_log(data=None, level="INFO"):
     print(
         "[%s] [%s]-%s:%s - %s"
         % (
-            datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
+            datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y/%m/%d %H:%M:%S"),
             level,
             os.path.basename(sys._getframe().f_back.f_code.co_filename),
             str(sys._getframe().f_back.f_lineno).zfill(4),
