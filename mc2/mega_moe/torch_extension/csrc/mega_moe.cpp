@@ -64,9 +64,9 @@ static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, 
             expectedName = "uint8 (packed FP4)";
             break;
         default:
-            TORCH_CHECK(false, name, " weight type must be FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1 on ", socName,
-                        ", but got ACL dtype ", static_cast<int>(expectedDtype), " (", name,
-                        "[0] dtype: ", weights[0].scalar_type(), ").");
+            TORCH_CHECK(false, "The resolved weight type for ", name, " is ACL dtype ", static_cast<int>(expectedDtype),
+                        ", which is unsupported on ", socName,
+                        ". Supported types are FLOAT8_E5M2, FLOAT8_E4M3FN and FLOAT4_E2M1.");
     }
     for (size_t i = 0; i < weights.size(); ++i) {
         const auto dtype = weights[i].scalar_type();
