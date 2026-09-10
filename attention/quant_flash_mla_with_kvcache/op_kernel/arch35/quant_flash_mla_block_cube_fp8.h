@@ -389,6 +389,9 @@ public:
         }
 
         Buffer<BufferType::L1> mm2B = l1KBuffers_.GetReused();
+        // V读取需与bmm1的K buffer轮转握手：消费bmm1(T)入队的释放标志，
+        // 并在V读取完成后释放该buffer，防止bmm1(T+4)的MTE2在MTE1读V未完成时覆写
+        mm2B.Wait<HardEvent::MTE1_MTE2>();
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
@@ -397,6 +400,7 @@ public:
         MatmulN<INPUT_T, INPUT_T, MLA_FULLQUANT_MM2_T, 128, 256, 128, ABLayout::MK, ABLayout::KN>(
             mm2A.GetTensor<INPUT_T>(), mm2B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
             mm2ResL0C.GetTensor<MLA_FULLQUANT_MM2_T>(), param);
+        mm2B.Set<HardEvent::MTE1_MTE2>();
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();

@@ -188,7 +188,7 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyInfo()
     tilingKeyInfo_.hasAttenMask = qmlaInfo_->attnMaskFlag;
     UpdateTilingKeyKvLayout();
     // MLA 分核由metadata算子完成，FD调度由kernel运行时读取metadata，tiling key固定false
-    tilingKeyInfo_.isFd = false;
+    tilingKeyInfo_.isFd = true;
 }
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::GenTilingKey()
