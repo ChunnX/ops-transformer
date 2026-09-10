@@ -53,6 +53,10 @@ __aicore__ inline void EngramFetchTrainSyncFunc()
 constexpr uint32_t ENGRAM_TIMEOUT_US = 60U * 1000U * 1000U;
 constexpr uint32_t ENGRAM_CYCLES_PER_US = 1000U;
 
+// 反向 engram_fetch_grad 的 sendersPerRank clamp 上限（其 tiling_data.h 中 NUM_SLOTS=8，
+// 与本文件 NUM_SLOTS=4 不同），仅用于推导反向 win counter 区的上界，见 ClearGradWinCounters
+constexpr uint32_t GRAD_KERNEL_NUM_SLOTS = 8U;
+
 constexpr uint32_t HCOMM_BATCH_CAPACITY = 128U;
 constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64U;
 constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
@@ -165,6 +169,7 @@ private:
     __aicore__ inline uint32_t CalcMyShareCount(uint32_t subIdx, uint32_t totalU32, uint32_t &myStart);
     __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
     __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
+    __aicore__ inline void ClearGradWinCounters();
     __aicore__ inline GM_ADDR GetRemoteWinAddr(uint32_t dstRank, uint64_t offset);
     __aicore__ inline uint64_t GetCommHandle(uint32_t dstRank);
     __aicore__ inline int32_t ReadLocalCounter(GM_ADDR winBase, uint64_t counterOffset, uint32_t srcRank,
@@ -630,6 +635,46 @@ __aicore__ inline void EngramFetchTrainArch35::InitFlagsAndCounters()
         }
         EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
     }
+}
+
+// 反向 engram_fetch_grad 的启动前提：其 win counter 区（tokenWrite/tokenRead）必须为零。
+// 该清零在本前向 kernel 结尾执行，配合框架在前向/反向之间插入的全卡 barrier，可保证所有
+// rank 的反向通知写都发生在本清零之后，反向 kernel 因此无需任何跨卡同步。
+// 清零范围取反向布局的超集：反向 counter 区为
+// [numRanks*sr*STATE_OFFSET, 3*numRanks*sr*STATE_OFFSET]，sendersPerRank ∈
+// [1, GRAD_KERNEL_NUM_SLOTS]，故清 [numRanks*STATE_OFFSET, 3*numRanks*GRAD_KERNEL_NUM_SLOTS*
+// STATE_OFFSET] 必然覆盖；此刻前向已不再使用 win 区，超集清零对前向无影响。
+// numTokens==0 提前返回时不产生任何 a2a 流量（send/recvCounts 全 0），反向不会读取
+// counter 区，故该路径无需清零。
+// 注意：GRAD_KERNEL_NUM_SLOTS 须与反向 engram_fetch_grad_tiling_data.h 的 NUM_SLOTS(=8)
+// 保持一致。
+__aicore__ inline void EngramFetchTrainArch35::ClearGradWinCounters()
+{
+    if (aivId_ != 0) {
+        return;
+    }
+
+    uint32_t clearInts = numRanks_ * STATE_OFFSET / sizeof(int32_t);
+    uint64_t chunkBytes = static_cast<uint64_t>(clearInts) * sizeof(int32_t);
+    LocalTensor<int32_t> zeroLocal = statusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(zeroLocal, 0, clearInts);
+    EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
+
+    uint64_t clearStart = static_cast<uint64_t>(numRanks_) * STATE_OFFSET;
+    uint64_t clearEnd = clearStart * GRAD_KERNEL_NUM_SLOTS * 3U;
+    if (clearEnd > winSize_) {
+        clearEnd = winSize_;
+    }
+    uint64_t clearBytes = (clearEnd > clearStart) ? (clearEnd - clearStart) : 0U;
+    uint64_t chunks = clearBytes / chunkBytes;
+
+    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
+    GlobalTensor<int32_t> counterGM;
+    for (uint64_t i = 0; i < chunks; i++) {
+        counterGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + clearStart + i * chunkBytes));
+        DataCopy(counterGM, zeroLocal, clearInts);
+    }
+    EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchTrainArch35::CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen)
@@ -1833,6 +1878,7 @@ __aicore__ inline void EngramFetchTrainArch35::Process()
         ExchangeIndices();
         ExchangeTokenWithLocalRead();
         ReorderAndSaveCtx();
+        ClearGradWinCounters();
     }
 }
 

@@ -1123,7 +1123,7 @@ __aicore__ inline void EngramFetchGradSort::ProcessSingleCore(uint32_t actualCou
                 (__local_mem__ uint32_t *)histWide.GetPhyAddr());
             AscendC::PipeBarrier<PIPE_V>();
             // Sort is V-pipe; V->V program order with the keys above.
-            Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTempBig, actualCount);
+            AscendC::Sort<uint8_t, false, sortConfig>(sortedKey, sortIndices, keyLocal, sortTempBig, actualCount);
             // Join V -> VF through S (the proven launch pattern).
             AscendC::SetFlag<AscendC::HardEvent::V_S>(evtVS);
             AscendC::WaitFlag<AscendC::HardEvent::V_S>(evtVS);

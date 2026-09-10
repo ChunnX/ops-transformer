@@ -61,9 +61,10 @@ constexpr int32_t GRAD_CREDIT_READ_SENTINEL = -1;
 // 超时部位标记：用于 TimeoutCheck 定位卡死等待点
 enum TimeoutSite {
     TIMEOUT_CREDIT_READ_WAIT = 1,  // CompleteCreditCounter 等待异步读完成
-    TIMEOUT_STATUS_FLAG_WAIT = 2,  // WaitAllStatusFlags 等待跨 rank barrier
+    TIMEOUT_STATUS_FLAG_WAIT = 2,  // 预留：等待跨 rank 状态标志
     TIMEOUT_SEND_CREDIT_WAIT = 3,  // SendGradRemote 发送端等待对端 credit
     TIMEOUT_RECV_COUNTER_WAIT = 4, // RecvGradFromPeers 接收端等待对端写计数
+    TIMEOUT_PAIR_IDLE_WAIT = 5,    // WaitRemotePairIdle 等待对端上一轮消费完成复位
 };
 
 class EngramFetchGradArch35 {
@@ -78,7 +79,6 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void WriteNbiChecked(uint64_t handle, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void DrainChecked(uint64_t handle);
     __aicore__ inline void TimeoutCheck(uint64_t startTime, TimeoutSite site);
     __aicore__ inline void UnsortGrad();
@@ -95,21 +95,17 @@ private:
     __aicore__ inline void InitCompanion(uint32_t numRecv);
     __aicore__ inline void RunSort(uint32_t numRecv);
     __aicore__ inline void InitFlagsAndDispls();
-    __aicore__ inline void ClearWinCounters();
-    __aicore__ inline void CrossRankBarrierIssue();
-    __aicore__ inline void CrossRankBarrierWait();
 
-    __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
-    __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
     __aicore__ inline GM_ADDR GetRemoteWinAddr(uint32_t dstRank, uint64_t offset);
     __aicore__ inline uint64_t GetCommHandle(uint32_t dstRank, uint32_t senderIdx);
     __aicore__ inline int32_t ReadLocalCounter(GM_ADDR winBase, uint64_t counterOffset, uint32_t srcRank,
                                                uint32_t senderIdx);
     __aicore__ inline void WriteLocalCounter(GM_ADDR winBase, uint64_t counterOffset, uint32_t peerRank,
                                              uint32_t senderIdx, int32_t value);
-    __aicore__ inline void PrefetchCreditCounter(uint32_t dstRank, uint32_t senderIdx);
+    __aicore__ inline void PrefetchRemoteCounter(uint32_t dstRank, uint64_t counterOffset, uint32_t senderIdx);
     __aicore__ inline int32_t CompleteCreditCounter(uint64_t startTime);
     __aicore__ inline void RetireCreditCounter();
+    __aicore__ inline void WaitRemotePairIdle(uint32_t dstRank, uint32_t senderIdx);
     __aicore__ inline void LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len);
 
     TPipe *tpipe_{nullptr};
@@ -140,6 +136,11 @@ private:
     uint64_t winSize_{0};
     uint64_t ubSize_{0};
     uint32_t tileBytes_{0};
+    // LocalCopySlice 的安全分块上限：跟随 entryBuf_ 当前容量（master 将 unique 阶段的
+    // entryBuf_ 收缩为 uniqueEntryBytes_≈20KB，而 deferRecv=1 时 RecvGradFromPeers 在
+    // 二次 InitBuffer 之后执行，若仍按 MAX_BLOCK_BYTES=65504 分块会 UB 越界写踩坏
+    // 池内相邻缓冲导致精度错误）
+    uint32_t copyBlockBytes_{MAX_BLOCK_BYTES};
     uint32_t gradSubBatch_{Mc2Kernel::GRAD_SUB_BATCH};
     bool deferRecv_{false};
     uint32_t uniqueEntryBytes_{0};
@@ -147,10 +148,7 @@ private:
     uint64_t sendWspinCycles_{0};
     uint64_t sendWnbCycles_{0};
     uint64_t sendLocalCycles_{0};
-    uint64_t barDrainCycles_{0};
-    uint64_t barFlagwCycles_{0};
 
-    uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
     uint64_t tokenReadOffset_{0};
     uint64_t tokenDataOffset_{0};
@@ -165,7 +163,6 @@ private:
     bool creditReadInFlight_{false};
     bool isSender_{false};
     bool isReceiver_{false};
-    bool isFlagCore_{false};
 
     GM_ADDR gradSortedGM_{0};
     GM_ADDR recvGradGM_{0};
@@ -175,7 +172,6 @@ private:
     GM_ADDR rdisplsGM_{0};
     GM_ADDR recvLocalEntryGM_{0};
     GM_ADDR counterScratchGM_{0};
-    GM_ADDR flagScratchGM_{0};
     GM_ADDR segCountGM_{0};
     GM_ADDR coreStartGM_{0};
     GM_ADDR sortCompanionGM_{0};
@@ -198,12 +194,6 @@ private:
     EngramFetchGradSort::EngramFetchGradSort sorter_;
     EngramFetchGradUnique::EngramFetchGradUnique uniqueScatter_;
 };
-
-__aicore__ inline void EngramFetchGradArch35::WriteNbiChecked(uint64_t handle, GM_ADDR dst, GM_ADDR src, uint64_t len)
-{
-    int32_t ret = hcomm_.WriteNbi(handle, dst, src, len);
-    ascendc_assert(ret == 0, "WriteNbi failed, ret=%d, rankId=%u, aivId=%u", ret, rankId_, aivId_);
-}
 
 __aicore__ inline void EngramFetchGradArch35::DrainChecked(uint64_t handle)
 {
@@ -260,7 +250,8 @@ __aicore__ inline void EngramFetchGradArch35::WriteLocalCounter(GM_ADDR winBase,
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
-__aicore__ inline void EngramFetchGradArch35::PrefetchCreditCounter(uint32_t dstRank, uint32_t senderIdx)
+__aicore__ inline void EngramFetchGradArch35::PrefetchRemoteCounter(uint32_t dstRank, uint64_t counterOffset,
+                                                                    uint32_t senderIdx)
 {
     if (creditReadInFlight_) {
         return;
@@ -276,7 +267,7 @@ __aicore__ inline void EngramFetchGradArch35::PrefetchCreditCounter(uint32_t dst
     DataCopyPad(scratchGM, sentinelLocal, sentinelParams);
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 
-    GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, tokenReadOffset_) +
+    GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, counterOffset) +
                                 (static_cast<uint64_t>(rankId_) * sendersPerRank_ + senderIdx) * STATE_OFFSET;
     uint64_t handle = GetCommHandle(dstRank, senderIdx);
     int32_t ret = hcomm_.ReadNbi(handle, scratchAddr, remoteCounterAddr, sizeof(int32_t));
@@ -312,33 +303,26 @@ __aicore__ inline void EngramFetchGradArch35::RetireCreditCounter()
     (void)CompleteCreditCounter(startTime);
 }
 
-__aicore__ inline void EngramFetchGradArch35::WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount)
+// 等待对端 (本rank, senderIdx) 这一对收发单元进入空闲态 (tokenWrite==0 && tokenRead==0)，
+// 即对端已消费完上一轮数据并复位。该逐对等待替代原 CrossRankBarrier 的全卡对齐：
+// 只阻塞本对的首块发送，且只等"对端上一轮消费结束"这一必要依赖。配合接收端消费完成后的
+// 逐对复位，连续多轮反向（中间无前向清零）时协议自持，counter 每轮走 (0,0)->(K,K)->(0,0)。
+__aicore__ inline void EngramFetchGradArch35::WaitRemotePairIdle(uint32_t dstRank, uint32_t senderIdx)
 {
-    int32_t sumOfFlag = 0;
-    int32_t compareFlag = static_cast<int32_t>(expectCount);
     uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
-    while (sumOfFlag != compareFlag) {
-        sumOfFlag = 0;
-        for (uint32_t i = 0; i < numRanks_; i++) {
-            GlobalTensor<int32_t> slotGM;
-            slotGM.SetGlobalBuffer((__gm__ int32_t *)(statusWinBase + i * STATE_OFFSET));
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(slotGM);
-            int32_t flagVal = slotGM.GetValue(0);
-            sumOfFlag += flagVal;
+    for (;;) {
+        PrefetchRemoteCounter(dstRank, tokenWriteOffset_, senderIdx);
+        if (CompleteCreditCounter(startTime) != 0) {
+            TimeoutCheck(startTime, TIMEOUT_PAIR_IDLE_WAIT);
+            continue;
         }
-        TimeoutCheck(startTime, TIMEOUT_STATUS_FLAG_WAIT);
+        PrefetchRemoteCounter(dstRank, tokenReadOffset_, senderIdx);
+        if (CompleteCreditCounter(startTime) != 0) {
+            TimeoutCheck(startTime, TIMEOUT_PAIR_IDLE_WAIT);
+            continue;
+        }
+        break;
     }
-}
-
-__aicore__ inline void EngramFetchGradArch35::ClearStatusFlags(GM_ADDR statusWinBase)
-{
-    LocalTensor<int32_t> cleanTensor = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(cleanTensor, 0, numRanks_ * STATE_OFFSET / sizeof(int32_t));
-    EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> statusGM;
-    statusGM.SetGlobalBuffer((__gm__ int32_t *)statusWinBase);
-    DataCopy(statusGM, cleanTensor, numRanks_ * STATE_OFFSET / sizeof(int32_t));
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
@@ -365,7 +349,10 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     bool hasPendingMte3 = false;
 
     while (off < len) {
-        uint32_t thisLen = (len - off > MAX_BLOCK_BYTES) ? MAX_BLOCK_BYTES : static_cast<uint32_t>(len - off);
+        // 分块上限取 min(MAX_BLOCK_BYTES, entryBuf_ 当前容量, gradBuf_ 容量)：entryBuf_ 在
+        // unique 阶段被收缩为 uniqueEntryBytes_，块大小必须随之 clamp 防止 UB 越界
+        uint32_t blockBytes = (copyBlockBytes_ < GRAD_BUF_BYTES) ? copyBlockBytes_ : GRAD_BUF_BYTES;
+        uint32_t thisLen = (len - off > blockBytes) ? blockBytes : static_cast<uint32_t>(len - off);
         uint32_t bufIdx = tileIdx % 2U;
         LocalTensor<uint8_t> &buf = (bufIdx == 0U) ? buf0 : buf1;
 
@@ -532,11 +519,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     }
     isSender_ = (aivId_ < numSendCores_) || (totalBlocks_ <= 1U);
     isReceiver_ = (aivId_ >= numSendCores_ && aivId_ < totalBlocks_ - 1U) || (totalBlocks_ <= 1U);
-    isFlagCore_ = (aivId_ == totalBlocks_ - 1U);
 
     uint64_t totalCounterEntries = static_cast<uint64_t>(numRanks_) * static_cast<uint64_t>(sendersPerRank_);
     uint64_t totalRanksOffset = totalCounterEntries * STATE_OFFSET;
-    barrierFlagOffset_ = 0;
     tokenWriteOffset_ = totalRanksOffset;
     tokenReadOffset_ = tokenWriteOffset_ + totalRanksOffset;
     tokenDataOffset_ = 3U * totalRanksOffset;
@@ -583,8 +568,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     wsOffset += numRanks_ * UB_ALIGN;
     counterScratchGM_ = workspaceGM_ + wsOffset;
     wsOffset += static_cast<uint64_t>(tilingData->aivNum) * UB_ALIGN;
-    flagScratchGM_ = workspaceGM_ + wsOffset;
-    wsOffset += UB_ALIGN;
     segCountGM_ = workspaceGM_ + wsOffset;
     wsOffset += Ceil(static_cast<uint64_t>(totalBlocks_) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     coreStartGM_ = workspaceGM_ + wsOffset;
@@ -933,16 +916,20 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
         slotsPerSender = 1U;
     }
 
+    // 首块前等待对端上一轮消费完成并复位（空闲态 (0,0)），保证 notify 序列从 1 起步时
+    // 对端 counter 必为 0，接收端不会误读上一轮残留数据（连续多轮反向的自持前提）
+    WaitRemotePairIdle(dstRank, senderIdx);
+
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
             uint64_t spinStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
             uint64_t startTime = static_cast<uint64_t>(AscendC::GetSystemCycle()) / ENGRAM_GRAD_CYCLES_PER_US;
             if (!creditReadInFlight_ && localWriteCnt + 1U >= static_cast<uint32_t>(remoteReadCnt) + slotsPerSender) {
-                PrefetchCreditCounter(dstRank, senderIdx);
+                PrefetchRemoteCounter(dstRank, tokenReadOffset_, senderIdx);
             }
             while (localWriteCnt >= static_cast<uint32_t>(remoteReadCnt) &&
                    localWriteCnt - static_cast<uint32_t>(remoteReadCnt) >= slotsPerSender) {
-                PrefetchCreditCounter(dstRank, senderIdx);
+                PrefetchRemoteCounter(dstRank, tokenReadOffset_, senderIdx);
                 remoteReadCnt = CompleteCreditCounter(startTime);
                 TimeoutCheck(startTime, TIMEOUT_SEND_CREDIT_WAIT);
             }
@@ -966,20 +953,8 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, u
         uint64_t wnbStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         int32_t ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
                                                 static_cast<uint64_t>(localWriteCnt + 1));
-        if (ret != 0) {
-            for (uint32_t i = 0; i < COMM_RETRY_COUNT; i++) {
-                ret = hcomm_.WriteWithNotifyNbi(handle, remoteSlotAddr, srcAddr, dataBytes, remoteCounterAddr,
-                                                static_cast<uint64_t>(localWriteCnt + 1));
-                if (ret == 0) {
-                    break;
-                }
-            }
-            if (ret != 0) {
-                RUNTIME_ABORT(
-                    "WriteWithNotifyNbi failed after %u retries, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u",
-                    COMM_RETRY_COUNT, ret, rankId_, dstRank);
-            }
-        }
+        ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
+                       rankId_, dstRank);
         sendWnbCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - wnbStart;
 
         localWriteCnt++;
@@ -1124,6 +1099,13 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
             senderReceived += tokensRead;
             WriteLocalCounter(localWinBase, tokenReadOffset_, srcRank, si, static_cast<int32_t>(localReadCnt));
         }
+
+        // 本对消费完成：将 (tokenWrite, tokenRead) 复位为 (0,0) 向对端宣告空闲。对端下一轮
+        // 发送首块前会等待本对进入 (0,0)（WaitRemotePairIdle），故本复位与对端写入在时间上
+        // 天然隔离，单写者原则不被破坏；同时使连续多轮反向（中间无前向清零）时协议自持。
+        // senderRecvCount==0 的对双方都不触碰 counter，保持 (0,0) 不变，后续轮自然通过。
+        WriteLocalCounter(localWinBase, tokenWriteOffset_, srcRank, si, 0);
+        WriteLocalCounter(localWinBase, tokenReadOffset_, srcRank, si, 0);
     }
 }
 
@@ -1177,14 +1159,6 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
         return;
     }
 
-    LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> flagInit;
-    flagInit.SetGlobalBuffer((__gm__ int32_t *)flagScratchGM_);
-    DataCopy(flagInit, flagLocal, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-
     LocalTensor<int32_t> countsBuf = indicesBuf_.Get<int32_t>();
     GlobalTensor<int32_t> recvCountsGM;
     recvCountsGM.SetGlobalBuffer((__gm__ int32_t *)recvCountsOutGM_);
@@ -1224,101 +1198,26 @@ __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
-__aicore__ inline void EngramFetchGradArch35::ClearWinCounters()
-{
-    if (aivId_ != 0) {
-        return;
-    }
-
-    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-    uint32_t cleanElements = numRanks_ * sendersPerRank_ * STATE_OFFSET / sizeof(int32_t);
-    uint32_t totalCleanElements = 2U * cleanElements;
-    LocalTensor<int32_t> cleanLocal = entryBuf_.Get<int32_t>(totalCleanElements);
-    Duplicate<int32_t>(cleanLocal, 0, totalCleanElements);
-    EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> countersGM;
-    countersGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenWriteOffset_));
-    DataCopy(countersGM, cleanLocal, totalCleanElements);
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-}
-
-// First half of the cross-rank barrier: issue all barrier flag writes WITHOUT waiting
-// for completion (no drain, no sync). Split from CrossRankBarrierWait so the cross-rank
-// flag flight overlaps with local work (UnsortGrad) instead of blocking.
-__aicore__ inline void EngramFetchGradArch35::CrossRankBarrierIssue()
-{
-    if (isSender_) {
-        uint32_t dstRank = aivId_ % numRanks_;
-        uint32_t senderIdx = aivId_ / numRanks_;
-        if (senderIdx == 0U && dstRank != rankId_) {
-            uint64_t handle = GetCommHandle(dstRank, 0U);
-            GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, barrierFlagOffset_) + rankId_ * STATE_OFFSET;
-            WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
-        }
-    }
-    if (aivId_ == 0) {
-        GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-        GM_ADDR localFlagAddr = localWinBase + barrierFlagOffset_ + rankId_ * STATE_OFFSET;
-        LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
-        Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
-        EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-        GlobalTensor<int32_t> flagGM;
-        flagGM.SetGlobalBuffer((__gm__ int32_t *)localFlagAddr);
-        DataCopy(flagGM, flagLocal, STATE_OFFSET / sizeof(int32_t));
-        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-    }
-}
-
-// Second half of the cross-rank barrier: drain the flag writes issued by
-// CrossRankBarrierIssue (the drain latency was overlapped with UnsortGrad), then wait for
-// every rank's flag. The trailing SyncAll also orders every core's UnsortGrad output
-// before SendGradToPeers reads gradSortedGM_.
-__aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
-{
-    if (isSender_) {
-        uint32_t dstRank = aivId_ % numRanks_;
-        uint32_t senderIdx = aivId_ / numRanks_;
-        if (senderIdx == 0U && dstRank != rankId_) {
-            uint64_t handle = GetCommHandle(dstRank, 0U);
-            uint64_t drainStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
-            DrainChecked(handle);
-            barDrainCycles_ += static_cast<uint64_t>(AscendC::GetSystemCycle()) - drainStart;
-        }
-    }
-    SyncAll<true>();
-
-    if (isFlagCore_) {
-        GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-        GM_ADDR localFlagBase = localWinBase + barrierFlagOffset_;
-        uint64_t flagStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        WaitAllStatusFlags(localFlagBase, numRanks_);
-        barFlagwCycles_ = static_cast<uint64_t>(AscendC::GetSystemCycle()) - flagStart;
-        ClearStatusFlags(localFlagBase);
-    }
-    SyncAll<true>();
-}
-
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
         uint64_t processStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        barDrainCycles_ = 0;
-        barFlagwCycles_ = 0;
         InitFlagsAndDispls();
         uint64_t iflagEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        ClearWinCounters();
-        SyncAll<true>();
-        uint64_t clearEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
-        // Barrier split: issue the cross-rank flag writes, then run the local 10MB
-        // UnsortGrad while the flags fly; the wait phase drains + spins, and its trailing
-        // SyncAll doubles as the gradSorted-completion barrier before SendGradToPeers.
-        CrossRankBarrierIssue();
-        uint64_t issueEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        // 无全卡 barrier 的正确性由两部分保证：
+        // ① 逐对握手（自持）：发送端每对首块前 WaitRemotePairIdle 等对端 (0,0)，接收端每对
+        //    消费完复位 (0,0)，counter 每轮走 (0,0)->(K,K)->(0,0)，连续多轮反向也成立；
+        //    首轮基线由前向 kernel 结尾的 ClearGradWinCounters 清零提供（前向必须先于首个
+        //    反向执行一次）。
+        // ② 框架在前向/反向之间插入的全卡 barrier（测试脚本各相位间 dist.barrier）：保证
+        //    反向对 win 的写入不会与前向对重叠字节区间的使用并发（前向/反向布局共享同一窗口）。
+        // 此处仅保留 UnsortGrad 后的本地 SyncAll：全核 gradSortedGM_ 就绪后才开始交换
+        // （同时保证 aivId 0 构造的 sdispls/rdispls 对其他核可见）。
         uint64_t unsortStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UnsortGrad();
         uint64_t unsortEndCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        CrossRankBarrierWait();
+        SyncAll<true>();
 
         uint64_t sendStartCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SendGradToPeers();
@@ -1333,24 +1232,19 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
         uint64_t dataReadyCycle = static_cast<uint64_t>(AscendC::GetSystemCycle());
-        if (numRecv > static_cast<uint64_t>(totalRecv_)) {
-            RUNTIME_ABORT("numRecv %u exceeds totalRecv %lld, rankId=%u, aivId=%u", numRecv, totalRecv_, rankId_,
-                          aivId_);
-        }
+        ascendc_assert(numRecv <= static_cast<uint64_t>(totalRecv_),
+                       "numRecv %u exceeds totalRecv %lld, rankId=%u, "
+                       "aivId=%u",
+                       numRecv, totalRecv_, rankId_, aivId_);
         if (numRecv == 0) {
             uint64_t gapCycles = dataReadyCycle - sendEndCycle;
             uint64_t copyCycles = (recvSpinCycles_ < gapCycles) ? (gapCycles - recvSpinCycles_) : 0U;
             AscendC::printf("ENGRAM core=%u numRecv=0 "
-                            "pre=%lluu(iflag=%lluu,clear=%lluu,issue=%lluu,unsort=%lluu,barw=%lluu,"
-                            "drain=%lluu,flagw=%lluu) "
+                            "pre=%lluu(iflag=%lluu,unsort=%lluu) "
                             "send=%lluu(wspin=%lluu,wnb=%lluu,local=%lluu) gap=%lluu(rspin=%lluu,copy=%lluu)\n",
                             aivId_, (sendStartCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             (iflagEndCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            (clearEndCycle - iflagEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            (issueEndCycle - clearEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             (unsortEndCycle - unsortStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            (sendStartCycle - unsortEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            barDrainCycles_ / ENGRAM_GRAD_CYCLES_PER_US, barFlagwCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
                             (sendEndCycle - sendStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             sendWspinCycles_ / ENGRAM_GRAD_CYCLES_PER_US, sendWnbCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
                             sendLocalCycles_ / ENGRAM_GRAD_CYCLES_PER_US, gapCycles / ENGRAM_GRAD_CYCLES_PER_US,
@@ -1370,6 +1264,11 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             sortPool_.Reset();
             sortPool_.InitBuffer(entryBuf_, uniqueEntryBytes_);
             sortPool_.InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
+            // entryBuf_ 已收缩（fp32 输出时为 FLUSH_CAST_HEAD_BYTES=20KB），此后执行的
+            // deferRecv 接收路径 LocalCopySlice 必须按收缩后的容量分块
+            copyBlockBytes_ = (uniqueEntryBytes_ < static_cast<uint32_t>(MAX_BLOCK_BYTES)) ?
+                                  uniqueEntryBytes_ :
+                                  static_cast<uint32_t>(MAX_BLOCK_BYTES);
             uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
             if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
                 sortPool_.InitBuffer(castFp32Buf_, CastBufBytes(hiddenDim_, maxByPong));
@@ -1401,8 +1300,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uint64_t copyCycles = (recvSpinCycles_ < gapCycles) ? (gapCycles - recvSpinCycles_) : 0U;
 
             AscendC::printf("ENGRAM core=%u dr=%u total=%lluu "
-                            "pre=%lluu(iflag=%lluu,clear=%lluu,issue=%lluu,unsort=%lluu,barw=%lluu,"
-                            "drain=%lluu,flagw=%lluu) "
+                            "pre=%lluu(iflag=%lluu,unsort=%lluu) "
                             "send=%lluu(wspin=%lluu,wnb=%lluu,local=%lluu) "
                             "gap=%lluu(rspin=%lluu,copy=%lluu) "
                             "init=%lluu sort=%lluu(hist=%lluu,prefix=%lluu,scat=%lluu,cp=%lluu) "
@@ -1411,11 +1309,7 @@ __aicore__ inline void EngramFetchGradArch35::Process()
                             (processEndCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             (sendStartCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             (iflagEndCycle - processStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            (clearEndCycle - iflagEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            (issueEndCycle - clearEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             (unsortEndCycle - unsortStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            (sendStartCycle - unsortEndCycle) / ENGRAM_GRAD_CYCLES_PER_US,
-                            barDrainCycles_ / ENGRAM_GRAD_CYCLES_PER_US, barFlagwCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
                             (sendEndCycle - sendStartCycle) / ENGRAM_GRAD_CYCLES_PER_US,
                             sendWspinCycles_ / ENGRAM_GRAD_CYCLES_PER_US, sendWnbCycles_ / ENGRAM_GRAD_CYCLES_PER_US,
                             sendLocalCycles_ / ENGRAM_GRAD_CYCLES_PER_US, gapCycles / ENGRAM_GRAD_CYCLES_PER_US,
