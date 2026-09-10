@@ -27,7 +27,13 @@ class ClaGateQuantTailAxisBase : public ClaGateQuantCommonBase<xDtype, rowDataDt
 public:
     using Base = ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, scaleAlg>;
     using Base::Base;
-    using Base::Init;
+
+    __aicore__ inline void Init(GM_ADDR globalOut, GM_ADDR localOut, GM_ADDR globalGate, GM_ADDR localGate,
+                                GM_ADDR rowData, GM_ADDR rowScale, GM_ADDR colData, GM_ADDR colScale)
+    {
+        Base::template Init<TPL_SINGLE_AXIS>(globalOut, localOut, globalGate, localGate, rowData, rowScale, colData,
+                                             colScale);
+    }
 
     __aicore__ inline void Process();
 
@@ -41,7 +47,6 @@ protected:
     using Base::ComputeRowDataToFp4;
     using Base::ComputeRowDataToFp8;
     using Base::CopyInClaGate;
-    using Base::InitParams;
     using Base::FillZero;
     using Base::activationInQueue_;
     using Base::blockIdx_;
@@ -65,11 +70,9 @@ protected:
     using Base::rowScaleGm_;
     using Base::colScaleGm_;
     using Base::rowScaleQueue_;
-    using Base::colScaleQueue_;
     using Base::ubBlockElemCountB16_;
     using Base::ubBlockElemCountB8_;
     using Base::rowDataQueue_;
-    using Base::colDataQueue_;
     using Base::pipe_;
     using Base::sigmoidBroadcastBuf_;
     using Base::tilingData_;
@@ -101,7 +104,7 @@ protected:
                                                            __ubuf__ uint16_t *absMaxTempAddr,
                                                            bool compactLayout = false);
     __aicore__ inline void CopyOutRowOnly(int64_t rowDataOutOffset, int64_t rowScaleOutOffset, int64_t blockCount,
-                                          int64_t dataLen, bool hasSecondAxis = false);
+                                          int64_t dataLen);
     __aicore__ inline void CopyOutRowOnlyBatch(int64_t rowDataOutOffset, int64_t rowScaleOutOffset,
                                                int64_t tileCount);
 };
@@ -187,7 +190,7 @@ __aicore__ inline void ClaGateQuantTailAxisBase<xDtype, rowDataDtype, roundMode,
             auto mergedAddr = (__ubuf__ xDtype *)mergedResult.GetPhyAddr();
 
             ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr,
-                                   static_cast<uint16_t>(calcRow), static_cast<uint16_t>(headsThisTile));
+                                   static_cast<uint16_t>(calcRow));
 
             activationInQueue_.template FreeTensor(activationInput);
             gateInQueue_.template FreeTensor(gateInput);
@@ -286,8 +289,9 @@ ClaGateQuantTailAxisBase<xDtype, rowDataDtype, roundMode, scaleAlg>::ComputeClaG
     __VEC_SCOPE__
     {
         Reg::RegTensor<xDtype> globalReg, localReg, outputReg;
-        Reg::RegTensor<xDtype> gateReg;
-        Reg::RegTensor<float> gateF, tmpF, oneF, globalSigF, localSigF;
+        Reg::RegTensor<xDtype> globalGateReg, localGateReg;
+        Reg::RegTensor<float> globalGateF, localGateF, globalTmpF, localTmpF, oneF;
+        Reg::RegTensor<float> globalSigF, localSigF;
         Reg::RegTensor<float> globalRegF, localRegF, outputRegF;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
 
@@ -301,23 +305,22 @@ ClaGateQuantTailAxisBase<xDtype, rowDataDtype, roundMode, scaleAlg>::ComputeClaG
         uint16_t gateCount = static_cast<uint16_t>(calcRows * headsPerRow);
         uint16_t gateVecLoops = static_cast<uint16_t>(ops::CeilDiv(gateCount, static_cast<uint16_t>(VF_LEN_FP32)));
 
+        Reg::Duplicate(oneF, 1.0f, allMask);
         for (uint16_t i = 0; i < gateVecLoops; ++i) {
             uint32_t gateOffset = i * VF_LEN_FP32;
-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateRow + gateOffset);
-            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
-            Reg::Muls(tmpF, gateF, -1.0f, allMask);
-            Reg::Exp(tmpF, tmpF, allMask);
-            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-            Reg::Duplicate(oneF, 1.0f, allMask);
-            Reg::Div(globalSigF, oneF, tmpF, allMask);
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalGateReg, globalGateRow + gateOffset);
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localGateReg, localGateRow + gateOffset);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalGateF, globalGateReg, allMask);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localGateF, localGateReg, allMask);
+            Reg::Muls(globalTmpF, globalGateF, -1.0f, allMask);
+            Reg::Muls(localTmpF, localGateF, -1.0f, allMask);
+            Reg::Exp(globalTmpF, globalTmpF, allMask);
+            Reg::Exp(localTmpF, localTmpF, allMask);
+            Reg::Adds(globalTmpF, globalTmpF, 1.0f, allMask);
+            Reg::Adds(localTmpF, localTmpF, 1.0f, allMask);
+            Reg::Div(globalSigF, oneF, globalTmpF, allMask);
+            Reg::Div(localSigF, oneF, localTmpF, allMask);
             Reg::StoreAlign<float>(globalSigmoidUb + gateOffset, globalSigF, allMask);
-
-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateRow + gateOffset);
-            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
-            Reg::Muls(tmpF, gateF, -1.0f, allMask);
-            Reg::Exp(tmpF, tmpF, allMask);
-            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-            Reg::Div(localSigF, oneF, tmpF, allMask);
             Reg::StoreAlign<float>(localSigmoidUb + gateOffset, localSigF, allMask);
         }
 
@@ -991,7 +994,7 @@ ClaGateQuantTailAxisBase<xDtype, rowDataDtype, roundMode, scaleAlg>::ComputeRowS
 
 template <typename xDtype, typename rowDataDtype, AscendC::RoundMode roundMode, uint64_t scaleAlg>
 __aicore__ inline void ClaGateQuantTailAxisBase<xDtype, rowDataDtype, roundMode, scaleAlg>::CopyOutRowOnly(
-    int64_t rowDataOutOffset, int64_t rowScaleOutOffset, int64_t blockCount, int64_t dataLen, bool hasSecondAxis)
+    int64_t rowDataOutOffset, int64_t rowScaleOutOffset, int64_t blockCount, int64_t dataLen)
 {
     uint16_t outBurst = static_cast<uint16_t>(blockCount);
     uint32_t outBlockLen = 0;
@@ -1026,14 +1029,6 @@ __aicore__ inline void ClaGateQuantTailAxisBase<xDtype, rowDataDtype, roundMode,
     DataCopyPad(rowScaleGm_[rowScaleOutOffset], rowScaleLocal, rowScaleCopyOutParams);
     rowScaleQueue_.FreeTensor(rowScaleLocal);
 
-    // Single-axis mode: col_data/col_scale are empty. If the second-axis
-    // queue buffers were used (scale_alg=1 fallback), release them without copy.
-    if (hasSecondAxis) {
-        LocalTensor<uint8_t> colDataLocal = colDataQueue_.template DeQue<uint8_t>();
-        colDataQueue_.FreeTensor(colDataLocal);
-        LocalTensor<uint8_t> colScaleLocal = colScaleQueue_.template DeQue<uint8_t>();
-        colScaleQueue_.FreeTensor(colScaleLocal);
-    }
 }
 } // namespace ClaGateQuant
 

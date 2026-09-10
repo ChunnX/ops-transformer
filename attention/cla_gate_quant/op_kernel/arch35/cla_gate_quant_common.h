@@ -126,6 +126,7 @@ public:
     __aicore__ inline ClaGateQuantCommonBase(const ClaGateQuantTilingData *tilingData, TPipe *pipe)
         : tilingData_(tilingData),
           pipe_(pipe){};
+    template <uint64_t dualAxisFlag>
     __aicore__ inline void Init(GM_ADDR globalOut, GM_ADDR localOut, GM_ADDR globalGate, GM_ADDR localGate,
                                 GM_ADDR rowData, GM_ADDR rowScale, GM_ADDR colData, GM_ADDR colScale);
 
@@ -137,13 +138,16 @@ protected:
     static constexpr Reg::CastTrait castTraitFp32toYdtype = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
                                                              Reg::MaskMergeMode::ZEROING, roundMode};
 
+    template <uint64_t dualAxisFlag>
     __aicore__ inline void InitParams();
     __aicore__ inline void CopyInClaGate(int64_t absRowStart, int64_t colOffset, int64_t calcRow, int64_t calcCol,
                                          int64_t headsThisTile);
     __aicore__ inline void ComputeClaGateFullTile(__ubuf__ xDtype *globalAddr, __ubuf__ xDtype *localAddr,
                                                   __ubuf__ xDtype *globalGateAddr, __ubuf__ xDtype *localGateAddr,
-                                                  __ubuf__ xDtype *outputAddr, uint16_t calcRows,
-                                                  uint16_t headsThisTile);
+                                                  __ubuf__ xDtype *outputAddr, uint16_t calcRows);
+    __aicore__ inline void ComputeClaGateD128TwoHeads(__ubuf__ xDtype *globalAddr, __ubuf__ xDtype *localAddr,
+                                                       __ubuf__ xDtype *globalGateAddr, __ubuf__ xDtype *localGateAddr,
+                                                       __ubuf__ xDtype *outputAddr, uint16_t calcRows);
     __aicore__ inline void FillZero(__ubuf__ xDtype *outputAddr, uint32_t elementCount);
     __aicore__ inline void ComputeRowDataToFp8(uint16_t dataLen, uint16_t blockCount, __ubuf__ xDtype *xAddr,
                                                __ubuf__ uint16_t *rowScaleReciprocalAddr,
@@ -205,6 +209,7 @@ protected:
 };
 
 template <typename xDtype, typename rowDataDtype, AscendC::RoundMode roundMode, uint64_t scaleAlg>
+template <uint64_t dualAxisFlag>
 __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, scaleAlg>::InitParams()
 {
     blockIdx_ = GetBlockIdx();
@@ -212,16 +217,18 @@ __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, s
     tileTailLength_ = tilingData_->dimNTail;
     // Dual-axis keeps its 64-row algorithmic tile.  Single-axis receives the
     // UB-derived batch capacity from host tiling instead of assuming 64.
-    tileRowCount_ = (tilingData_->dualAxisFlag == 0 && tilingData_->batchSize > 0) ?
-                        tilingData_->batchSize :
-                        DOUBLE_BLOCK_SIZE;
+    if constexpr (dualAxisFlag == TPL_SINGLE_AXIS) {
+        tileRowCount_ = tilingData_->batchSize > 0 ? tilingData_->batchSize : DOUBLE_BLOCK_SIZE;
+    } else {
+        tileRowCount_ = DOUBLE_BLOCK_SIZE;
+    }
 
     rowLength_ = tilingData_->dimN;
     headCount_ = tilingData_->headNum;
     headSize_ = tilingData_->headDim;
     headsPerTileRow_ = tileRowLength_ / headSize_;
     int64_t logicalGateCount = headsPerTileRow_ * tileRowCount_;
-    if (tilingData_->dualAxisFlag == 0) {
+    if constexpr (dualAxisFlag == TPL_SINGLE_AXIS) {
         // Single-axis batch sigmoid is generated a full FP32 VF (64 scalars)
         // at a time.  Keep each global/local side on a complete-VF boundary:
         // this satisfies the MTE alignment requirement and prevents the final
@@ -247,6 +254,7 @@ __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, s
 }
 
 template <typename xDtype, typename rowDataDtype, AscendC::RoundMode roundMode, uint64_t scaleAlg>
+template <uint64_t dualAxisFlag>
 __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, scaleAlg>::Init(
     GM_ADDR globalOut, GM_ADDR localOut, GM_ADDR globalGate, GM_ADDR localGate, GM_ADDR rowData, GM_ADDR rowScale,
     GM_ADDR colData, GM_ADDR colScale)
@@ -255,7 +263,7 @@ __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, s
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #endif
 
-    InitParams();
+    InitParams<dualAxisFlag>();
 
     // Set up Global Memory tensors
     globalOutGm_.SetGlobalBuffer((__gm__ xDtype *)(globalOut));
@@ -282,7 +290,7 @@ __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, s
 
     // axis=-2 1/scale (xDtype sized for bf16 reciprocal storage)
     int64_t tmpScale2BufferSize = tileRowLength_ * DIGIT_TWO * static_cast<int64_t>(sizeof(xDtype));
-    if (tilingData_->dualAxisFlag == 0) {
+    if constexpr (dualAxisFlag == TPL_SINGLE_AXIS) {
         // Single-axis reuses this buffer for the compact max-exp stream:
         // eight uint16 values are produced for every 1x256 tile.
         int64_t compactScaleCount = tileRowCount_ * (tileRowLength_ / BLOCK_SIZE);
@@ -305,9 +313,11 @@ __aicore__ inline void ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, s
     // Sigmoid scratch: one gateSideOffset_-element FP32 region per global/local side.
     pipe_->InitBuffer(sigmoidBroadcastBuf_, DIGIT_TWO * gateSideOffset_ * sizeof(float));
     pipe_->InitBuffer(rowDataQueue_, DB_BUFFER, halfBufferElemCount_);
-    pipe_->InitBuffer(colDataQueue_, DB_BUFFER, halfBufferElemCount_);
     pipe_->InitBuffer(rowScaleQueue_, DB_BUFFER, mxScale1BufferSize);
-    pipe_->InitBuffer(colScaleQueue_, DB_BUFFER, mxScale2BufferSize);
+    if constexpr (dualAxisFlag == TPL_DUAL_AXIS) {
+        pipe_->InitBuffer(colDataQueue_, DB_BUFFER, halfBufferElemCount_);
+        pipe_->InitBuffer(colScaleQueue_, DB_BUFFER, mxScale2BufferSize);
+    }
     pipe_->InitBuffer(rowScaleReciprocalBuf_, mxScale1BufferSize);
     pipe_->InitBuffer(colScaleReciprocalBuf_, tmpScale2BufferSize); // 后续检查下这些ub大小是否正确
 }
@@ -367,69 +377,149 @@ template <typename xDtype, typename rowDataDtype, AscendC::RoundMode roundMode, 
 __aicore__ inline void
 ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, scaleAlg>::ComputeClaGateFullTile(
     __ubuf__ xDtype *globalAddr, __ubuf__ xDtype *localAddr, __ubuf__ xDtype *globalGateAddr,
-    __ubuf__ xDtype *localGateAddr, __ubuf__ xDtype *outputAddr, uint16_t calcRows, uint16_t headsThisTile)
+    __ubuf__ xDtype *localGateAddr, __ubuf__ xDtype *outputAddr, uint16_t calcRows)
 {
     uint16_t vfsPerHead = static_cast<uint16_t>(headSize_ / VF_LEN_FP32);
     __VEC_SCOPE__
     {
-        Reg::RegTensor<xDtype> globalReg, localReg, gateReg;
-        Reg::RegTensor<float> gateF, tmpF, oneF;
+        Reg::RegTensor<xDtype> globalReg, localReg, globalGateReg, localGateReg, outputReg;
+        Reg::RegTensor<float> globalGateF, localGateF, globalTmpF, localTmpF, oneF;
         Reg::RegTensor<float> globalSigmoidF, localSigmoidF;
         Reg::RegTensor<float> globalRegF, localRegF, outputRegF;
-        Reg::RegTensor<xDtype> outputReg;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
-        const uint16_t heads = headsThisTile;
         // Sigmoid scratch stores FP32 values. Keep global/local regions separated.
         __ubuf__ uint8_t *sigmoidBytes = (__ubuf__ uint8_t *)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
         __ubuf__ float *globalSigmoidUb = (__ubuf__ float *)sigmoidBytes;
         __ubuf__ float *localSigmoidUb = (__ubuf__ float *)(sigmoidBytes + gateSideOffset_ * sizeof(float));
 
-        // Phase 1: vectorized sigmoid for each head's 64 per-row gate values.
-        for (uint16_t head = 0; head < heads; ++head) {
-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, globalGateAddr + head * tileRowCount_);
-            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
-            Reg::Muls(tmpF, gateF, -1.0f, allMask);
-            Reg::Exp(tmpF, tmpF, allMask);
-            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-            Reg::Duplicate(oneF, 1.0f, allMask);
-            Reg::Div(globalSigmoidF, oneF, tmpF, allMask);
-            Reg::StoreAlign<float>(globalSigmoidUb + head * tileRowCount_, globalSigmoidF, allMask);
-        }
-
-        for (uint16_t head = 0; head < heads; ++head) {
-            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(gateReg, localGateAddr + head * tileRowCount_);
-            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(gateF, gateReg, allMask);
-            Reg::Muls(tmpF, gateF, -1.0f, allMask);
-            Reg::Exp(tmpF, tmpF, allMask);
-            Reg::Adds(tmpF, tmpF, 1.0f, allMask);
-            Reg::Duplicate(oneF, 1.0f, allMask);
-            Reg::Div(localSigmoidF, oneF, tmpF, allMask);
-            Reg::StoreAlign<float>(localSigmoidUb + head * tileRowCount_, localSigmoidF, allMask);
-        }
+        // This fallback handles one head only; full D=128 two-head tiles are
+        // dispatched to ComputeClaGateD128TwoHeads by the dual-axis caller.
+        Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalGateReg, globalGateAddr);
+        Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localGateReg, localGateAddr);
+        Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalGateF, globalGateReg, allMask);
+        Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localGateF, localGateReg, allMask);
+        Reg::Muls(globalTmpF, globalGateF, -1.0f, allMask);
+        Reg::Muls(localTmpF, localGateF, -1.0f, allMask);
+        Reg::Exp(globalTmpF, globalTmpF, allMask);
+        Reg::Exp(localTmpF, localTmpF, allMask);
+        Reg::Adds(globalTmpF, globalTmpF, 1.0f, allMask);
+        Reg::Adds(localTmpF, localTmpF, 1.0f, allMask);
+        Reg::Duplicate(oneF, 1.0f, allMask);
+        Reg::Div(globalSigmoidF, oneF, globalTmpF, allMask);
+        Reg::Div(localSigmoidF, oneF, localTmpF, allMask);
+        Reg::StoreAlign<float>(globalSigmoidUb, globalSigmoidF, allMask);
+        Reg::StoreAlign<float>(localSigmoidUb, localSigmoidF, allMask);
 
         // Phase 2: broadcast each per-row/per-head FP32 sigmoid over its D-sized span.
         AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
         Reg::AddrReg offset;
         for (uint16_t row = 0; row < calcRows; ++row) {
-            for (uint16_t head = 0; head < heads; ++head) {
-                Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(globalSigmoidF,
-                                                                   globalSigmoidUb + head * tileRowCount_ + row);
-                Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(localSigmoidF,
-                                                                   localSigmoidUb + head * tileRowCount_ + row);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(globalSigmoidF, globalSigmoidUb + row);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(localSigmoidF, localSigmoidUb + row);
 
-                for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
-                    offset = Reg::CreateAddrReg<xDtype>(row, ONCE_ROW_LEN, head, headSize_, vf, VF_LEN_FP32);
-                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
-                    Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
+            for (uint16_t vf = 0; vf < vfsPerHead; ++vf) {
+                offset = Reg::CreateAddrReg<xDtype>(row, ONCE_ROW_LEN, vf, VF_LEN_FP32);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg, globalAddr, offset);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg, localAddr, offset);
 
-                    Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalRegF, globalReg, allMask);
-                    Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localRegF, localReg, allMask);
-                    Reg::Mul(globalRegF, globalRegF, globalSigmoidF, allMask);
-                    Reg::Mul(localRegF, localRegF, localSigmoidF, allMask);
-                    Reg::Add(outputRegF, globalRegF, localRegF, allMask);
-                    Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg, outputRegF, allMask);
-                    Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
-                }
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalRegF, globalReg, allMask);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localRegF, localReg, allMask);
+                Reg::Mul(globalRegF, globalRegF, globalSigmoidF, allMask);
+                Reg::Mul(localRegF, localRegF, localSigmoidF, allMask);
+                Reg::Add(outputRegF, globalRegF, localRegF, allMask);
+                Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg, outputRegF, allMask);
+                Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputAddr, outputReg, offset, allMask);
+            }
+        }
+    }
+}
+
+template <typename xDtype, typename rowDataDtype, AscendC::RoundMode roundMode, uint64_t scaleAlg>
+__aicore__ inline void
+ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, scaleAlg>::ComputeClaGateD128TwoHeads(
+    __ubuf__ xDtype *globalAddr, __ubuf__ xDtype *localAddr, __ubuf__ xDtype *globalGateAddr,
+    __ubuf__ xDtype *localGateAddr, __ubuf__ xDtype *outputAddr, uint16_t calcRows)
+{
+    __VEC_SCOPE__
+    {
+        Reg::RegTensor<xDtype> globalReg0, localReg0, globalReg1, localReg1;
+        Reg::RegTensor<xDtype> globalGateReg, localGateReg, outputReg0, outputReg1;
+        Reg::RegTensor<float> globalGateF, localGateF, globalTmpF, localTmpF, oneF;
+        Reg::RegTensor<float> globalSigmoidF0, localSigmoidF0;
+        Reg::RegTensor<float> globalSigmoidF1, localSigmoidF1;
+        Reg::RegTensor<float> globalRegF0, localRegF0, outputRegF0;
+        Reg::RegTensor<float> globalRegF1, localRegF1, outputRegF1;
+        Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        __ubuf__ uint8_t *sigmoidBytes = (__ubuf__ uint8_t *)sigmoidBroadcastBuf_.Get<float>().GetPhyAddr();
+        __ubuf__ float *globalSigmoidUb = (__ubuf__ float *)sigmoidBytes;
+        __ubuf__ float *localSigmoidUb = (__ubuf__ float *)(sigmoidBytes + gateSideOffset_ * sizeof(float));
+
+        Reg::Duplicate(oneF, 1.0f, allMask);
+        for (uint16_t head = 0; head < static_cast<uint16_t>(DIGIT_TWO); ++head) {
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalGateReg,
+                                                                    globalGateAddr + head * tileRowCount_);
+            Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localGateReg,
+                                                                    localGateAddr + head * tileRowCount_);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalGateF, globalGateReg, allMask);
+            Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localGateF, localGateReg, allMask);
+            Reg::Muls(globalTmpF, globalGateF, -1.0f, allMask);
+            Reg::Muls(localTmpF, localGateF, -1.0f, allMask);
+            Reg::Exp(globalTmpF, globalTmpF, allMask);
+            Reg::Exp(localTmpF, localTmpF, allMask);
+            Reg::Adds(globalTmpF, globalTmpF, 1.0f, allMask);
+            Reg::Adds(localTmpF, localTmpF, 1.0f, allMask);
+            Reg::Div(globalSigmoidF0, oneF, globalTmpF, allMask);
+            Reg::Div(localSigmoidF0, oneF, localTmpF, allMask);
+            Reg::StoreAlign<float>(globalSigmoidUb + head * tileRowCount_, globalSigmoidF0, allMask);
+            Reg::StoreAlign<float>(localSigmoidUb + head * tileRowCount_, localSigmoidF0, allMask);
+        }
+
+        AscendC::Reg::LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
+        for (uint16_t row = 0; row < calcRows; ++row) {
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(globalSigmoidF0, globalSigmoidUb + row);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(localSigmoidF0, localSigmoidUb + row);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(globalSigmoidF1,
+                                                               globalSigmoidUb + tileRowCount_ + row);
+            Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(localSigmoidF1,
+                                                               localSigmoidUb + tileRowCount_ + row);
+
+            constexpr uint16_t d128VfsPerHead = static_cast<uint16_t>(128U / VF_LEN_FP32);
+            uint32_t rowOffset = static_cast<uint32_t>(row) * ONCE_ROW_LEN;
+            __ubuf__ xDtype *globalHead0 = globalAddr + rowOffset;
+            __ubuf__ xDtype *globalHead1 = globalHead0 + 128;
+            __ubuf__ xDtype *localHead0 = localAddr + rowOffset;
+            __ubuf__ xDtype *localHead1 = localHead0 + 128;
+            __ubuf__ xDtype *outputHead0 = outputAddr + rowOffset;
+            __ubuf__ xDtype *outputHead1 = outputHead0 + 128;
+            for (uint16_t vf = 0; vf < d128VfsPerHead; ++vf) {
+                uint32_t vfOffset = static_cast<uint32_t>(vf) * VF_LEN_FP32;
+                __ubuf__ xDtype *globalVf0 = globalHead0 + vfOffset;
+                __ubuf__ xDtype *globalVf1 = globalHead1 + vfOffset;
+                __ubuf__ xDtype *localVf0 = localHead0 + vfOffset;
+                __ubuf__ xDtype *localVf1 = localHead1 + vfOffset;
+                __ubuf__ xDtype *outputVf0 = outputHead0 + vfOffset;
+                __ubuf__ xDtype *outputVf1 = outputHead1 + vfOffset;
+
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg0, globalVf0);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(globalReg1, globalVf1);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg0, localVf0);
+                Reg::LoadAlign<xDtype, Reg::LoadDist::DIST_UNPACK_B16>(localReg1, localVf1);
+
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalRegF0, globalReg0, allMask);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(globalRegF1, globalReg1, allMask);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localRegF0, localReg0, allMask);
+                Reg::Cast<float, xDtype, CAST_X_TO_FP32_ZERO>(localRegF1, localReg1, allMask);
+
+                Reg::Mul(globalRegF0, globalRegF0, globalSigmoidF0, allMask);
+                Reg::Mul(globalRegF1, globalRegF1, globalSigmoidF1, allMask);
+                Reg::Mul(localRegF0, localRegF0, localSigmoidF0, allMask);
+                Reg::Mul(localRegF1, localRegF1, localSigmoidF1, allMask);
+                Reg::Add(outputRegF0, globalRegF0, localRegF0, allMask);
+                Reg::Add(outputRegF1, globalRegF1, localRegF1, allMask);
+                Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg0, outputRegF0, allMask);
+                Reg::Cast<xDtype, float, CAST_FP32_TO_FP16_BF16>(outputReg1, outputRegF1, allMask);
+                Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputVf0, outputReg0, allMask);
+                Reg::StoreAlign<xDtype, Reg::StoreDist::DIST_PACK_B32>(outputVf1, outputReg1, allMask);
             }
         }
     }

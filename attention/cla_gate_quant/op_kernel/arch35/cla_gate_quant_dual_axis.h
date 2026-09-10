@@ -28,12 +28,19 @@ class ClaGateQuantDualAxisBase
 public:
     using Base = ClaGateQuantCommonBase<xDtype, rowDataDtype, roundMode, scaleAlg>;
     using Base::Base;
-    using Base::Init;
+
+    __aicore__ inline void Init(GM_ADDR globalOut, GM_ADDR localOut, GM_ADDR globalGate, GM_ADDR localGate,
+                                GM_ADDR rowData, GM_ADDR rowScale, GM_ADDR colData, GM_ADDR colScale)
+    {
+        Base::template Init<TPL_DUAL_AXIS>(globalOut, localOut, globalGate, localGate, rowData, rowScale, colData,
+                                           colScale);
+    }
 
     __aicore__ inline void Process();
 
 protected:
     // Expose common primitives/data to this dual-axis implementation.
+    using Base::ComputeClaGateD128TwoHeads;
     using Base::ComputeClaGateFullTile;
     using Base::ComputeFP4FromHalf;
     using Base::castTraitBF16toFp4;
@@ -42,7 +49,6 @@ protected:
     using Base::ComputeRowDataToFp4;
     using Base::ComputeRowDataToFp8;
     using Base::CopyInClaGate;
-    using Base::InitParams;
     using Base::FillZero;
     using Base::activationInQueue_;
     using Base::blockIdx_;
@@ -125,7 +131,25 @@ __aicore__ inline void ClaGateQuantDualAxisBase<xDtype, rowDataDtype, roundMode,
     int64_t blockPerCore = totalBlocks / totalCoreNum;
     int64_t tailCore = totalBlocks % totalCoreNum;
     int64_t loops = blockPerCore + (blockIdx_ < tailCore ? 1 : 0);
+    if (loops == 0) {
+        return;
+    }
     int64_t firstBlock = blockIdx_ * blockPerCore + (blockIdx_ < tailCore ? blockIdx_ : tailCore);
+
+    // Prologue: enqueue the first tile.  Subsequent tiles are prefetched as
+    // soon as the current input tensors are released, allowing their MTE2
+    // copies to progress while the current tile is quantized and written out.
+    int64_t firstRowBlockIdx = firstBlock / tilingData_->dimNBlockNum;
+    int64_t firstColBlockIdx = firstBlock % tilingData_->dimNBlockNum;
+    int64_t firstAbsRowStart = firstRowBlockIdx * tileRowCount_;
+    int64_t firstColOffset = firstColBlockIdx * tileRowLength_;
+    int64_t firstCalcRow = (firstRowBlockIdx == dimMSplit - 1) ? dimMTail : tileRowCount_;
+    int64_t firstCalcCol =
+        (firstColBlockIdx == tilingData_->dimNBlockNum - 1) ? tileTailLength_ : tileRowLength_;
+    int64_t firstHeadStart = firstColOffset / headSize_;
+    int64_t firstHeadsThisTile =
+        (headCount_ - firstHeadStart < headsPerTileRow_) ? (headCount_ - firstHeadStart) : headsPerTileRow_;
+    CopyInClaGate(firstAbsRowStart, firstColOffset, firstCalcRow, firstCalcCol, firstHeadsThisTile);
 
     for (int64_t i = 0; i < loops; ++i) {
         int64_t block = firstBlock + i;
@@ -139,7 +163,6 @@ __aicore__ inline void ClaGateQuantDualAxisBase<xDtype, rowDataDtype, roundMode,
         int64_t headStart = colOffset / headSize_;
         int64_t headsThisTile =
             (headCount_ - headStart < headsPerTileRow_) ? (headCount_ - headStart) : headsPerTileRow_;
-        CopyInClaGate(absRowStart, colOffset, calcRow, calcCol, headsThisTile);
 
         LocalTensor<xDtype> activationInput = activationInQueue_.template DeQue<xDtype>();
         LocalTensor<xDtype> gateInput = gateInQueue_.template DeQue<xDtype>();
@@ -150,8 +173,16 @@ __aicore__ inline void ClaGateQuantDualAxisBase<xDtype, rowDataDtype, roundMode,
         auto localGateAddr = (__ubuf__ xDtype *)gateInput[gateSideOffset_].GetPhyAddr();
         auto mergedAddr = (__ubuf__ xDtype *)mergedResult.GetPhyAddr();
 
-        ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr,
-                               static_cast<uint16_t>(calcRow), static_cast<uint16_t>(headsThisTile));
+        // A full 256-column D=128 tile holds two complete heads.  Use the
+        // fixed two-head implementation; partial-width tails retain the
+        // generic path so the existing tail semantics stay unchanged.
+        if (headSize_ == 128 && calcCol == tileRowLength_ && headsThisTile == DIGIT_TWO) {
+            ComputeClaGateD128TwoHeads(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr,
+                                       static_cast<uint16_t>(calcRow));
+        } else {
+            ComputeClaGateFullTile(globalAddr, localAddr, globalGateAddr, localGateAddr, mergedAddr,
+                                   static_cast<uint16_t>(calcRow));
+        }
 
         // For T % 64 != 0, zero-fill merged tail rows after the merge stage so
         // the following 64-row scale/quantization path reads zero-padded rows.
@@ -162,6 +193,24 @@ __aicore__ inline void ClaGateQuantDualAxisBase<xDtype, rowDataDtype, roundMode,
 
         activationInQueue_.template FreeTensor(activationInput);
         gateInQueue_.template FreeTensor(gateInput);
+
+        // Steady state: with one DB input slot released, start the next tile's
+        // GM->UB transfer before running this tile's scale/quantization stage.
+        if (i + 1 < loops) {
+            int64_t nextBlock = block + 1;
+            int64_t nextRowBlockIdx = nextBlock / tilingData_->dimNBlockNum;
+            int64_t nextColBlockIdx = nextBlock % tilingData_->dimNBlockNum;
+            int64_t nextAbsRowStart = nextRowBlockIdx * tileRowCount_;
+            int64_t nextColOffset = nextColBlockIdx * tileRowLength_;
+            int64_t nextCalcRow = (nextRowBlockIdx == dimMSplit - 1) ? dimMTail : tileRowCount_;
+            int64_t nextCalcCol =
+                (nextColBlockIdx == tilingData_->dimNBlockNum - 1) ? tileTailLength_ : tileRowLength_;
+            int64_t nextHeadStart = nextColOffset / headSize_;
+            int64_t nextHeadsThisTile = (headCount_ - nextHeadStart < headsPerTileRow_) ?
+                                             (headCount_ - nextHeadStart) :
+                                             headsPerTileRow_;
+            CopyInClaGate(nextAbsRowStart, nextColOffset, nextCalcRow, nextCalcCol, nextHeadsThisTile);
+        }
 
         int64_t calcRowAligned = ops::CeilDiv(calcRow, tileRowCount_) * tileRowCount_;
         int64_t calcColAligned = ops::CeilDiv(calcCol, DOUBLE_BLOCK_SIZE) * DOUBLE_BLOCK_SIZE;

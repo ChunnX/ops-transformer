@@ -54,18 +54,17 @@ constexpr int64_t UB_BLOCK_BYTES = 32;
 constexpr int64_t RESERVED_UB_BYTES = 2 * 1024;
 constexpr int64_t DB_BUFFER_COUNT = 2;
 constexpr int64_t FP32_VF_ELEMENTS = 64;
-constexpr int64_t OCP_COL_SCALE_FRAME_BYTES = FULL_COL_BLOCK * 3;
-constexpr int64_t CUBLAS_COL_SCALE_FRAME_BYTES = 896;
 
 int64_t AlignUbBlock(int64_t bytes)
 {
     return Ops::Base::CeilDiv(bytes, UB_BLOCK_BYTES) * UB_BLOCK_BYTES;
 }
 
-// Keep this calculation synchronized with CommonBase::Init.  It deliberately
-// accounts for every TQue frame (including DB depth) and every TBuf instead of
-// using a fixed row limit.  max-exp scratch reuses colScaleReciprocalBuf_ in
-// the single-axis path and therefore grows with the selected batch.
+// Keep this calculation synchronized with the single-axis branch of
+// CommonBase::Init.  The tail-axis kernel has no col_data/col_scale output, so
+// it deliberately does not reserve the two second-axis queues.  The remaining
+// colScaleReciprocalBuf_ is reused as compact max-exp scratch and therefore
+// still grows with the selected batch.
 int64_t CalcTailAxisUbBytes(const ClaGateQuantTilingParam &params, int64_t batchTiles)
 {
     int64_t headsPerTile = FULL_COL_BLOCK / params.dimHeadSize;
@@ -82,8 +81,6 @@ int64_t CalcTailAxisUbBytes(const ClaGateQuantTilingParam &params, int64_t batch
     int64_t sigmoidBytes = gateSideElems * static_cast<int64_t>(sizeof(float)) * 2;
     int64_t rowDataFrameBytes = halfBufferElems; // current common queue stores bytes for both FP8/FP4
     int64_t rowScaleFrameBytes = batchTiles * UB_BLOCK_BYTES;
-    int64_t colScaleFrameBytes =
-        params.scaleAlg == 0 ? OCP_COL_SCALE_FRAME_BYTES : CUBLAS_COL_SCALE_FRAME_BYTES;
     int64_t rowReciprocalBytes = batchTiles * UB_BLOCK_BYTES;
     int64_t fixedColReciprocalBytes = FULL_COL_BLOCK * 2 * params.dtypeSize;
     constexpr int64_t B16_VF_ELEMENTS = 128;
@@ -95,9 +92,7 @@ int64_t CalcTailAxisUbBytes(const ClaGateQuantTilingParam &params, int64_t batch
     return DB_BUFFER_COUNT * AlignUbBlock(inputFrameBytes) +
            DB_BUFFER_COUNT * AlignUbBlock(gateFrameBytes) + AlignUbBlock(mergedBytes) +
            AlignUbBlock(sigmoidBytes) + DB_BUFFER_COUNT * AlignUbBlock(rowDataFrameBytes) +
-           DB_BUFFER_COUNT * AlignUbBlock(rowDataFrameBytes) +
-           DB_BUFFER_COUNT * AlignUbBlock(rowScaleFrameBytes) +
-           DB_BUFFER_COUNT * AlignUbBlock(colScaleFrameBytes) + AlignUbBlock(rowReciprocalBytes) +
+           DB_BUFFER_COUNT * AlignUbBlock(rowScaleFrameBytes) + AlignUbBlock(rowReciprocalBytes) +
            AlignUbBlock(colReciprocalBytes);
 }
 

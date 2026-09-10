@@ -45,7 +45,7 @@ python3 -m ttk kernel \
     -o "$RESULT_FILE" \
     --plugin "${TTK_GOLDEN_PLUGIN:-$OP_DIR/tests/assets/golden_small_op.py}" \
     --sim-soc Ascend950 \
-    --sim-cores 0 \
+    --sim-cores 4 \
     --sim-output "$SIM_OUTPUT_DIR" \
     --sim-report \
     --warmup=false \

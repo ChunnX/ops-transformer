@@ -53,3 +53,4 @@ third_party/
 log/
 oat_reports/
 extra-info/data-dump/0/exception_info.57.4.20260906165443628
+sim_output/
