@@ -96,7 +96,6 @@ class MoeFFN : public OpDef {
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
 
         this->AICore()
-            .SetTiling(optiling::TilingMoeFFN)
             .AddConfig("ascend910b", aicore_config);
     }
 };

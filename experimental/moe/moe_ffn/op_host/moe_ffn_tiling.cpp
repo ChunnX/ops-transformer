@@ -363,4 +363,7 @@ ge::graphStatus TilingMoeFFN(gert::TilingContext *context)
     MoeFFNTiling tiling_handle;
     return tiling_handle.runTiling(context);
 }
+
+IMPL_OP_OPTILING(MoeFFN)
+    .Tiling(TilingMoeFFN);
 } // namespace optiling
