@@ -128,7 +128,7 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
                      const c10::optional<at::Tensor> &sharedExpertInput, int64_t tpWorldSize, int64_t tpRankId,
                      int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode,
                      int64_t globalBs, int64_t expertTokenNumsType, std::string commAlg, int64_t zeroExpertNum,
-                     int64_t copyExpertNum, int64_t constExpertNum, c10::optional<int64_t> moeExpertDtype,
+                     int64_t copyExpertNum, int64_t constExpertNum, c10::optional<int64_t> yDtype,
                      c10::optional<int64_t> xDtype, c10::optional<int64_t> scalesDtype)
 {
     TORCH_CHECK((x.dim() == DIM_TWO) && (expertIds.dim() == DIM_TWO), "The x and expert_ids should be 2D");
@@ -163,8 +163,8 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
                     "Independent shared experts require TP=1 and shared ranks, without elastic_info.");
         TORCH_CHECK(x.size(1) >= 1024 && x.size(1) <= 4096 && commAlg == "fullmesh_v2",
                     "Independent shared dispatch requires latent H in [1024,4096] and fullmesh_v2.");
-        TORCH_CHECK(quantMode == 0 || quantMode == 4 || quantMode == 5 || moeExpertDtype.has_value(),
-                    "moe_expert_dtype is required for quant_mode 1, 2, 3.");
+        TORCH_CHECK(quantMode == 0 || quantMode == 4 || quantMode == 5 || yDtype.has_value(),
+                    "y_dtype is required for quant_mode 1, 2, 3.");
     }
     auto xSize = x.sizes();
     auto expertIdsSize = expertIds.sizes();
@@ -214,13 +214,15 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
     if (quantMode == QuantMode::QUANT_MODE_NO_QUANT) {
         outputAclDtype = ConvertToAclDataType(x.scalar_type());
     }
-    if (moeExpertDtype.has_value()) {
-        outputAclDtype = GetAclDataType(moeExpertDtype.value());
+    if (yDtype.has_value()) {
+        outputAclDtype = GetAclDataType(yDtype.value());
     }
-    if (!moeExpertDtype.has_value() && (quantMode == 4 || quantMode == 5)) {
+    if (!yDtype.has_value() && (quantMode == 4 || quantMode == 5)) {
         outputAclDtype = ACL_FLOAT8_E4M3FN;
     }
-    int64_t moeAclDtype = static_cast<int64_t>(outputAclDtype);
+    // All ranks use the same y_dtype for MoE communication, including shared expert ranks.
+    // Preserve it before selecting this rank's local expand_x dtype.
+    const int64_t moeAclDtype = static_cast<int64_t>(outputAclDtype);
     TORCH_CHECK(!independent || (quantMode != 4 && quantMode != 5) || outputAclDtype == ACL_FLOAT8_E4M3FN,
                 "Independent shared MX quantization requires E4M3FN.");
     const bool independentSharedRank = independent && isSharedExpert;
@@ -242,7 +244,7 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
         auto localDevice = c10::Device(x.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         expandX = at::empty({std::max(a, a * tpWorldSize), h}, x.options().dtype(outputDtype));
-        if (moeExpertDtype.has_value() && IsPackedFloat4(outputAclDtype) && !HasTensor(scales)) {
+        if (yDtype.has_value() && IsPackedFloat4(outputAclDtype) && !HasTensor(scales)) {
             TORCH_CHECK(h % PACKED_FLOAT4_ELEMENTS_PER_BYTE == 0,
                         "The last dim input shape must be divisible by 2 if y dtype is packed float4.");
             expandX = at::empty({std::max(a, a * tpWorldSize), h / PACKED_FLOAT4_ELEMENTS_PER_BYTE},
