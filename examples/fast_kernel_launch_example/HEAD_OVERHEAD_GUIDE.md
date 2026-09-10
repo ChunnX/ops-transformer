@@ -104,7 +104,7 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 
 注：IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
 
-### A3（Ascend910_9392, CANN 9.1.0T103, SYS_CNT=50MHz，5 轮独立复测跨轮平均）
+### A3（Ascend910_9392, CANN 9.1.0T103, SYS_CNT=50MHz，5 轮独立复测跨轮平均；**return 形态历史数据，IFA 主体未执行**）
 
 | 指标 (mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (Vector, 48核) |
 |------|-----------|-----------|-----------|
@@ -117,6 +117,43 @@ add/gmm 采用 NPUGraph capture 101 次连发 + replay 多拍（默认 5 拍）�
 注：
 - A3 上 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无 kick 拆分，硬件尾/全链路不输出分布口径（仅单点 max），故表中无对应行。
 - A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
+
+## 参考数据（打点口径，Ascend910_93/A3, CANN 9.1.T103, SYS_CNT=50MHz）
+
+**当前形态**（IFA_HEAD_TIMING_MODE 宏系统已删除，kernel 全量执行 + 独立 cycleBuf 回读）。上文 A3 小节的 5 轮复测为历史 return 形态（IFA 主体未执行，T2≈T1+ε、TaskDur 仅含头开销），两套数据不可比；IFA TaskDur 9.83→96.84us 即主体从未执行到真实执行的差异。
+
+多拍 median 口径（add/gmm 各 5 拍，IFA 1 拍，稳态=跳过前 2 次；min=最快核 / max=最慢核）：
+
+| 指标 (mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (MIX 1:2, 24+48核) |
+|------|-----------|-----------|-----------|
+| 调度+硬件头 T0-stars | 0.49 / 0.72 | 1.67 / 2.02 | 13.32 / 16.28 |
+| 软件头 T1-T0 | 0.69 / 1.36 | 1.61 / 2.24 | 4.33 / 8.32 |
+| **头开销 T1-stars** | **1.18 / 2.10** | **3.31 / 4.08** | **17.65 / 19.62** |
+| kernel主体 T2-T1 | 7.87 / 7.74 | 2.80 / 4.02 | 76.49 / 78.48 |
+| kernel末指令 T2-stars | 8.55 / 9.10 | 4.47 / 6.26 | 94.14 / 98.02 |
+| 硬件尾 pmu_end-T2 | 0.80 | 0.60 | 0.66 |
+| TaskDur 稳态 mean | 10.16 | 7.13 | 96.84 |
+
+### A3 IFA T0-stars 偏大的三层分解（16us）
+
+1. **每核 baseline ~6us（软件，反汇编证实）**：T0（kernel 第一条 `MOV Xn, SYS_CNT`，AIV 函数偏移 0xC0/第 48 条指令）之前是 33 个 GM_ADDR 指针 + **按值传递的大 tiling struct** 的参数搬运（13 条标量 GM 读 + 8 条 ST 写栈）。标量 GM 读 ~100-200 core cycle/条 → ~6us。对比 add 仅 5-6 个参数（0.72us）、gmm（2.02us）。
+2. **逐核 stagger 10.08us（硬件 kick 串行化）**：MIX kernel 24 组 × [1 AIC + 2 AIV] = 72 task，FFTS 逐组 kick ~0.15-0.2us/任务（实测 T0-stars 对 block_id 斜率 155.7ns/blk，B0=6.06 → B47=16.14）。前几组间隔 ~1us、后段压缩至 ~0.1us（kick 管道渐进加速特征）。
+3. **调度基线 ~2-4us**：STARS dispatch 为完成驱动（shot 内 launch 间距 ≈ kernel 时长 102us）。
+
+### return 版本（MODE=2，已删）测的头开销偏小的原因
+
+头开销不是常数，依赖**前驱 kernel 的完成模式**：
+
+- **长 kernel（~100us，真实形态）**：所有块几乎同时完成 → 资源一次性集中释放 → 72 task burst kick 串行化完全暴露 → T1-stars 13.6~19.6us
+- **短 kernel（return 版 ~10us）**：块完成时间分散（启动 stagger + 短执行）→ FFTS **流水式 kick**（某组资源一释放即 kick 下一 kernel 对应组）→ kick 延迟被前 kernel 尾部重叠隐藏 → T1-stars 仅 5.5~11.5us
+
+即 return 版本测到的是"短 kernel 自我复制"的乐观值，kick 开销被流水化隐藏 ~6-8us；真实长 kernel 接续场景以非 return 版本数据为准。
+
+### A3 死锁教训（排查 3 天，两个独立根因）
+
+1. **live pipeline events + early return**：Process 入口的 4 条 SetFlag（V_MTE2/MTE3_V 初始同步）若在提前 return 的路径上执行，kernel 携带 live pipeline events 退出，下一次 graph replay 必死锁（runtime 报 "three minutes timeout"，device 0 整体 hang 连普通 matmul 都超时，只能重启容器恢复）。源码原有注释 "Early return cannot leave pipeline events live across consecutive graph launches" 即此意。
+2. **timing 缓冲越界写**：timing 基址曾用 `attentionOut+4MB`，而 attentionOut 输出仅 ~384KB —— 越界写破坏内存导致死锁/NaN。修复：host 侧持久分配独立 `g_cycle_tensor`（64 blocks × 8 slots int64，对齐 add 的 g_cycle_tensor 方案），kernel 经 `cycleBuf` 参数写入，新增 `torch.ops.ascend_ops.npu_fused_ifa_cycle_tensor()` 回读（无 tensor 入参的 op 需注册 CompositeExplicitAutograd）。
+3. **构建宏陷阱**：IFA 的 CMakeLists 曾以 `-DIFA_HEAD_TIMING_MODE=2`（缓存默认值）传给编译器，**优先级高于源文件 `#ifndef` 默认值** —— 源码改默认 MODE=0 不生效，所有"MODE=0"轮次实际编译为 MODE=2（主体从未执行，T2 恒等于 T1+ε，输出 NaN）。该宏系统已整体删除。
 
 ## 打点前后的反汇编阶段分析
 
