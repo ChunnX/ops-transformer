@@ -43,6 +43,43 @@ namespace Kernel {
 using namespace AscendC;
 using asc::te::get;
 
+// Scale 类型判定: MX 的 scale 为 fp8_e8m0(1字节/组32元素), HiF4 的 scale 为 hif4_scale
+// (4字节: E6M2+E1_8+E1_16, 每64元素组1个, scale shape [M, K/64, 1])。
+// hif4_scale 由 devkit(blaze) 侧定义, 本文件按设计文档约定以未限定名引用。
+template <typename ScaleType>
+__aicore__ inline constexpr bool IsHiF4Scale()
+{
+    return AscendC::IsSameType<ScaleType, hif4_scale>::value;
+}
+
+// Scale K 方向单元数(按 scale 元素计):
+// MX: 每64元素2个E8M0单元(即shape [M, K/64, 2] 的展平单元数);
+// HiF4: 每64元素1个hif4_scale单元(shape [M, K/64, 1])。
+template <typename ScaleType>
+__aicore__ inline int64_t MxScaleKLen(int64_t kValue)
+{
+    if constexpr (IsHiF4Scale<ScaleType>()) {
+        return Blaze::Gemm::CeilDiv(kValue, static_cast<int64_t>(MXFP_DIVISOR_SIZE));
+    } else {
+        return Blaze::Gemm::CeilDiv(kValue, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    }
+}
+
+// 每64个数据元素对应的 scale 字节数: MX为2字节(2×E8M0), HiF4为4字节(1×hif4_scale)
+template <typename ScaleType>
+__aicore__ inline int64_t MxScaleBytesPerDivisor()
+{
+    return MxScaleKLen<ScaleType>(static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * static_cast<int64_t>(sizeof(ScaleType));
+}
+
+// Scale framing 的 C0 值(按 scale 数据类型导出): MX 为 2(每 2 个 E8M0 单元构成一个 framing 单元),
+// HiF4 为 1(单个 4 字节 hif4_scale 即为完整的 framing 单元)
+template <typename ScaleType>
+__aicore__ inline constexpr int32_t MxScaleC0()
+{
+    return IsHiF4Scale<ScaleType>() ? 1 : 2;
+}
+
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
  * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
@@ -72,21 +109,27 @@ public:
     using LayoutC = typename BlockMmad::LayoutC;
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     static constexpr int64_t kCacheLineAlignMask = IsFp4<AType>() ? 0xff : 0x7f;
-    static constexpr int32_t SCALE_C0 = 2;
+    // Scale framing C0: 按 scale 数据类型导出(MX/E8M0 → 2, HiF4/hif4_scale → 1)
+    static constexpr int32_t SCALE_C0_A = MxScaleC0<ScaleAType>();
+    static constexpr int32_t SCALE_C0_B = MxScaleC0<ScaleBType>();
 
     using BlockShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = asc::te::coord<int64_t, int64_t, int64_t, int64_t>;
 
     using BlockSchedulerParams = typename BlockScheduler::Params;
+    // Scale 元素类型从 Blaze BlockMmad 导出: MX 为 fp8_e8m0_t, HiF4 为 hif4_scale
+    // (blaze 侧已定义, 直接 using 使用)
+    using ScaleAType = typename BlockMmad::ScaleAType;
+    using ScaleBType = typename BlockMmad::ScaleBType;
     using MakeLayoutA = asc::te::frame_layout_format<LayoutA, Std::Int<C0_SIZE>>;
     using MakeLayoutB = asc::te::frame_layout_format<LayoutB, Std::Int<C0_SIZE>>;
     using MakeLayoutC = asc::te::frame_layout_format<LayoutC, Std::Int<asc::te::c0_element<CType>>>;
     using MakeLayoutScaleA =
-        Std::conditional_t<transA, asc::te::frame_layout_format<asc::te::scalea_dn_layout_ptn, Std::Int<SCALE_C0>>,
-                           asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transA, asc::te::frame_layout_format<asc::te::scalea_dn_layout_ptn, Std::Int<SCALE_C0_A>>,
+                           asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, Std::Int<SCALE_C0_A>>>;
     using MakeLayoutScaleB =
-        Std::conditional_t<transB, asc::te::frame_layout_format<asc::te::scaleb_dn_layout_ptn, Std::Int<SCALE_C0>>,
-                           asc::te::frame_layout_format<asc::te::scaleb_nd_layout_ptn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transB, asc::te::frame_layout_format<asc::te::scaleb_dn_layout_ptn, Std::Int<SCALE_C0_B>>,
+                           asc::te::frame_layout_format<asc::te::scaleb_nd_layout_ptn, Std::Int<SCALE_C0_B>>>;
     /**
      * @brief 算子模式：NORMAL (常规), LOCAL (仅本地计算), REMOTE (仅远程同步数据后的计算),
      *                 DEFERRED_SYNC (per-tile 本地先算驻留 L0C → wait_flag → 远程累加 → 单次 fixpipe)
@@ -183,9 +226,9 @@ private:
     __gm__ BType *bGmAddr_;
     __gm__ CType *cGmAddr_; // 输出基址（已根据流水步偏移）
     __gm__ BiasType *biasGmAddr_ = nullptr;
-    __gm__ ::fp8_e8m0_t *scaleAGmAddr_; // 远程 Scale 基址
-    __gm__ ::fp8_e8m0_t *localScaleAGmAddr_;
-    __gm__ ::fp8_e8m0_t *scaleBGmAddr_;
+    __gm__ ScaleAType *scaleAGmAddr_; // 远程 Scale 基址
+    __gm__ ScaleAType *localScaleAGmAddr_;
+    __gm__ ScaleBType *scaleBGmAddr_;
 
     bool isAtomicAdd_{false}; // REMOTE 模式下需要原子累加到 C
     bool isBias_{false};
@@ -222,19 +265,21 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Set
     if (asc::te::get<MNK_B>(problemShape) != 1) {
         return;
     }
+    // 每64元素的 scale 字节数: MX 为 2(E8M0), HiF4 为 4(hif4_scale)
+    const int64_t scaleBytesPerDivisor = MxScaleBytesPerDivisor<ScaleBType>();
     if constexpr (transB) {
         const int64_t scaleKRowBytes =
-            Blaze::Gemm::CeilDiv(asc::te::get<MNK_K>(problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-            MXFP_MULTI_BASE_SIZE;
-        const int64_t scaleKL1RowBytes = Blaze::Gemm::CeilDiv(scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        // 0x7f: 128B cache line alignment for mx scale GM streaming
+            MxScaleKLen<ScaleBType>(asc::te::get<MNK_K>(problemShape)) * static_cast<int64_t>(sizeof(ScaleBType));
+        const int64_t scaleKL1RowBytes =
+            MxScaleKLen<ScaleBType>(static_cast<int64_t>(scaleKL1)) * static_cast<int64_t>(sizeof(ScaleBType));
+        // 128B cache line alignment for scale GM streaming
         const bool scaleAlignForL2Stream =
             (scaleKRowBytes & kCacheLineAlignMask) == 0 && (scaleKL1RowBytes & kCacheLineAlignMask) == 0;
         gmScaleB.set_l2_cache_hint(scaleAlignForL2Stream ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
     } else {
-        const int64_t scaleNStrideBytes = asc::te::get<MNK_N>(problemShape) * MXFP_MULTI_BASE_SIZE;
-        const int64_t scaleBaseNStrideBytes = baseN * MXFP_MULTI_BASE_SIZE;
-        // 0x7f: 128B cache line alignment for mx scale GM streaming
+        const int64_t scaleNStrideBytes = asc::te::get<MNK_N>(problemShape) * scaleBytesPerDivisor;
+        const int64_t scaleBaseNStrideBytes = static_cast<int64_t>(baseN) * scaleBytesPerDivisor;
+        // 128B cache line alignment for scale GM streaming
         const bool scaleAlignForL2Stream =
             (scaleNStrideBytes & kCacheLineAlignMask) == 0 && (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
         gmScaleB.set_l2_cache_hint(scaleAlignForL2Stream ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
@@ -299,9 +344,9 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Res
     bGmAddr_ = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
     cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
     localAGmAddr_ = reinterpret_cast<__gm__ AType *>(params.localParams.localAGmAddr);
-    localScaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.localParams.localScaleAGmAddr);
-    scaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmadParams.scaleAGmAddr);
-    scaleBGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmadParams.scaleBGmAddr);
+    localScaleAGmAddr_ = reinterpret_cast<__gm__ ScaleAType *>(params.localParams.localScaleAGmAddr);
+    scaleAGmAddr_ = reinterpret_cast<__gm__ ScaleAType *>(params.mmadParams.scaleAGmAddr);
+    scaleBGmAddr_ = reinterpret_cast<__gm__ ScaleBType *>(params.mmadParams.scaleBGmAddr);
     biasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
 }
 
@@ -327,9 +372,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     // DEFERRED_SYNC: per-tile 内 local 先算驻留 L0C → wait_flag → remote 累加 → 单次 fixpipe。
     // wait_flag 必须由 kernel 内部发出（在 self rank 的 mmad 之后、其它 rank 的 mmad 之前）。
     bool deferredSync = (params.localParams.matmulMode == MatmulMode::DEFERRED_SYNC);
-    auto scaleKLen =
-        Blaze::Gemm::CeilDiv(asc::te::get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE;
+    // Scale K 方向单元数(按 scale 元素计): MX 为 E8M0 单元(K/64*2), HiF4 为 hif4_scale 单元(K/64)
+    auto scaleKLen = MxScaleKLen<ScaleAType>(asc::te::get<MNK_K>(params.problemShape));
 
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     uint64_t winPerTurn = static_cast<uint64_t>(rankSize) * params.localParams.headTileSize;
