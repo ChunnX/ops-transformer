@@ -20,6 +20,7 @@
 #include "quant_bmm_reduce_scatter_tiling.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
+#include "reduce_scatter_comm_algo_table.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
