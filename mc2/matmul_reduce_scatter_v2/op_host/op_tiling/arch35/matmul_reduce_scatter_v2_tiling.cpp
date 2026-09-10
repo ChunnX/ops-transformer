@@ -23,11 +23,13 @@
 
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
+#include "reduce_scatter_comm_algo_table.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_algo_selector.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
