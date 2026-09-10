@@ -45,12 +45,12 @@ class MhcPreBackwardC0Basic {
 public:
     __aicore__ inline void Init(TPipe *pipe)
     {
-        pipe->InitBuffer(l1Buffer_, CUBE_L1_BUFFER_BYTES);
-        aL1_ = l1Buffer_.Get<float>();
-        bL1_ = aL1_[CUBE_B_L1_OFFSET];
-        aL0_ = LocalTensor<float>(TPosition::A2, 0, CUBE_L0_BUFFER_BYTES / sizeof(float));
-        bL0_ = LocalTensor<float>(TPosition::B2, 0, CUBE_L0_BUFFER_BYTES / sizeof(float));
-        cL0_ = LocalTensor<float>(TPosition::CO1, 0, CUBE_L0C_BUFFER_BYTES / sizeof(float));
+        pipe->InitBuffer(l1Buf_, CUBE_L1_BUFFER_BYTES);
+        aL1Local_ = l1Buf_.Get<float>();
+        bL1Local_ = aL1Local_[CUBE_B_L1_OFFSET];
+        aL0Local_ = LocalTensor<float>(TPosition::A2, 0, CUBE_L0_BUFFER_BYTES / sizeof(float));
+        bL0Local_ = LocalTensor<float>(TPosition::B2, 0, CUBE_L0_BUFFER_BYTES / sizeof(float));
+        cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, CUBE_L0C_BUFFER_BYTES / sizeof(float));
 
         for (uint32_t slot = 0; slot < CUBE_BUFFER_DEPTH; ++slot) {
             // 三组初始令牌分别表示L1、L0A/B和L0C对应半区可写。
@@ -101,8 +101,8 @@ private:
                                        bool atomicAdd, bool publishC0, bool reuseB1)
     {
         // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
-        uint32_t cSlot = l0cLoopCount_ & 1U;
-        LocalTensor<float> currentC = cL0_[cSlot * CUBE_L0C_SLOT_ELEMS];
+        uint32_t cSlot = cl0PingPongID_ & 1U;
+        LocalTensor<float> currentC = cL0Local_[cSlot * CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
         ProcessKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, transA, true, reuseB1);
@@ -125,7 +125,7 @@ private:
                 MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
         }
         SetFlag<HardEvent::FIX_M>(cSlot);
-        ++l0cLoopCount_;
+        ++cl0PingPongID_;
     }
 
     __aicore__ inline void ProcessKRange(const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
@@ -138,9 +138,9 @@ private:
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < CUBE_L1_K ? remainKL1 : CUBE_L1_K;
             uint32_t l1Slot =
-                reuseB1 ? ((offsetKL1 / CUBE_L1_K) & 1U) : (l1LoopCount_ & 1U);
-            LocalTensor<float> currentA1 = aL1_[l1Slot * CUBE_L1_SLOT_ELEMS];
-            LocalTensor<float> currentB1 = bL1_[l1Slot * CUBE_L1_SLOT_ELEMS];
+                reuseB1 ? ((offsetKL1 / CUBE_L1_K) & 1U) : (l1PingPongID_ & 1U);
+            LocalTensor<float> currentA1 = aL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
+            LocalTensor<float> currentB1 = bL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
 
             WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
             if (transA) {
@@ -157,10 +157,10 @@ private:
             for (uint32_t offsetKL0 = 0; offsetKL0 < currentKL1; offsetKL0 += CUBE_BASE_K) {
                 uint32_t remainKL0 = currentKL1 - offsetKL0;
                 uint32_t currentKL0 = remainKL0 < CUBE_BASE_K ? remainKL0 : CUBE_BASE_K;
-                uint32_t l0Slot = l0LoopCount_ & 1U;
+                uint32_t l0Slot = l0PingPongID_ & 1U;
                 uint32_t l0Offset = l0Slot * CUBE_L0_SLOT_ELEMS;
-                LocalTensor<float> currentA2 = aL0_[l0Offset];
-                LocalTensor<float> currentB2 = bL0_[l0Offset];
+                LocalTensor<float> currentA2 = aL0Local_[l0Offset];
+                LocalTensor<float> currentB2 = bL0Local_[l0Offset];
 
                 WaitFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + l0Slot);
                 if (transA) {
@@ -176,12 +176,12 @@ private:
                 bool initC = initFirst && offsetKL1 == 0U && offsetKL0 == 0U;
                 Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC);
                 SetFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + l0Slot);
-                ++l0LoopCount_;
+                ++l0PingPongID_;
             }
 
             // MTE1完成该L1半区的最后一次读取后，允许MTE2复用此半区。
             SetFlag<HardEvent::MTE1_MTE2>(l1Slot);
-            ++l1LoopCount_;
+            ++l1PingPongID_;
         }
     }
 
@@ -192,7 +192,7 @@ private:
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < CUBE_L1_K ? remainKL1 : CUBE_L1_K;
             uint32_t l1Slot = (offsetKL1 / CUBE_L1_K) & 1U;
-            LocalTensor<float> currentB1 = bL1_[l1Slot * CUBE_L1_SLOT_ELEMS];
+            LocalTensor<float> currentB1 = bL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
 
             WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
             CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
@@ -319,15 +319,15 @@ private:
         DataCopy(dst, src, p);
     }
 
-    TBuf<TPosition::A1> l1Buffer_;
-    LocalTensor<float> aL1_;
-    LocalTensor<float> bL1_;
-    LocalTensor<float> aL0_;
-    LocalTensor<float> bL0_;
-    LocalTensor<float> cL0_;
-    uint32_t l1LoopCount_{0};
-    uint32_t l0LoopCount_{0};
-    uint32_t l0cLoopCount_{0};
+    TBuf<TPosition::A1> l1Buf_;
+    LocalTensor<float> aL1Local_;
+    LocalTensor<float> bL1Local_;
+    LocalTensor<float> aL0Local_;
+    LocalTensor<float> bL0Local_;
+    LocalTensor<float> cL0Local_;
+    uint32_t l1PingPongID_{0};
+    uint32_t l0PingPongID_{0};
+    uint32_t cl0PingPongID_{0};
 };
 } // namespace MhcPreBackward
 #endif
