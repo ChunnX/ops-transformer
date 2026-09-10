@@ -33,8 +33,18 @@ namespace Blaze {
 namespace Gemm {
 namespace Block {
 
-template <uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
-          class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
+// 用于区分 FragmentTensor 与普通连续 tensor，从而在 GM2L1 拷贝时分流：
+//   - FragmentTensor → FragmentSliceCopy（跨 GM 段拼装）
+//   - 普通 tensor   → Te::Copy（单段连续）
+template <typename T> struct IsFragmentTensor { static constexpr bool value = false; };
+template <uint32_t Dims, uint32_t MaxFragments, typename LayoutFactory, typename ElementType>
+struct IsFragmentTensor<Apace::Basic::FragmentTensor<Dims, MaxFragments, LayoutFactory, ElementType>> {
+    static constexpr bool value = true;
+};
+
+template <
+    uint64_t A_FULL_LOAD_MODE, bool ATOMIC_ADD, class AType_, class LayoutA_, class BType_, class LayoutB_,
+    class CType_, class LayoutC_, class BiasType_, class LayoutBias_>
 class QmmMxBlockMmadFragment;
 
 #if (defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510)
@@ -203,6 +213,17 @@ public:
         kL1Iter_ = CeilDiv(k_, kL1_);
     }
 
+    // GM → L1 分段/连续 统一入口：FragmentTensor 走 FragmentSliceCopy，普通 tensor 走单段 Te::Copy。
+    template <typename CopyHandleT, typename TensorDstT, typename GmSrcT>
+    __aicore__ inline void CopyGmToL1(CopyHandleT handle, TensorDstT& dst, GmSrcT const& src)
+    {
+        if constexpr (IsFragmentTensor<GmSrcT>::value) {
+            Apace::Basic::FragmentSliceCopy<false>(handle, dst, src);
+        } else {
+            AscendC::Te::Copy(handle, dst, src);
+        }
+    }
+
     template <typename TensorScaleA, typename TensorScaleB>
     __aicore__ inline auto CopyScalesInL1(TensorScaleA const &gmScaleA, TensorScaleB const &gmScaleB,
                                           TileL1L0Param &tileL1L0Param, uint64_t scaleL1BufId, uint64_t iter0)
@@ -228,9 +249,10 @@ public:
                 }
                 uint64_t scaleKStart = iter0 * Blaze::Gemm::CeilDiv(kL1_, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
                 uint64_t scaleKLength = Blaze::Gemm::CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-                auto blockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(0, scaleKStart),
-                                                  AscendC::Te::MakeShape(tileL1L0Param.curM, scaleKLength));
-                FragmentSliceCopy<false>(CopyScaleGM2L1, tensorScaleAL1, blockScaleA);
+                auto blockScaleA = gmScaleA.Slice(
+                    AscendC::Te::MakeCoord(0, scaleKStart),
+                    AscendC::Te::MakeShape(tileL1L0Param.curM, scaleKLength));
+                CopyGmToL1(CopyScaleGM2L1, tensorScaleAL1, blockScaleA);
 
                 auto gmBlockScaleB = gmScaleB.Slice(AscendC::Te::MakeCoord(scaleKStart, 0),
                                                     AscendC::Te::MakeShape(scaleKLength, tileL1L0Param.curN));
@@ -256,7 +278,7 @@ public:
                 AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleBL1, gmBlockScaleB);
             }
             if (abL1LoopCnt_ == 0) {
-                FragmentSliceCopy<false>(CopyScaleGM2L1, tensorScaleAL1, gmScaleA);
+                CopyGmToL1(CopyScaleGM2L1, tensorScaleAL1, gmScaleA);
             }
             return ScalePair<decltype(tensorScaleAL1), decltype(tensorScaleBL1)>{tensorScaleAL1, tensorScaleBL1};
         }
@@ -273,7 +295,7 @@ public:
             auto blockA = gmA.Slice(AscendC::Te::MakeCoord(0, iter0 * kL1_),
                                     AscendC::Te::MakeShape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
             Apace::Basic::PadMxKAL1Zero(tensorAL1, tileL1L0Param.curGmAKL1);
-            FragmentSliceCopy<false>(copyGM2L1, tensorAL1, blockA);
+            CopyGmToL1(copyGM2L1, tensorAL1, blockA);
             return tensorAL1;
         } else {
             auto layoutAL1 = MakeLayoutAL1{}(tileL1L0Param.curM, Blaze::Gemm::CeilAlign(k_, MXFP_DIVISOR_SIZE));
@@ -285,7 +307,7 @@ public:
                 auto blockA = gmA.Slice(AscendC::Te::MakeCoord(0, iter0 * kL1_),
                                         AscendC::Te::MakeShape(tileL1L0Param.curM, tileL1L0Param.curGmAKL1));
                 Apace::Basic::PadMxKAL1Zero(tensorAL1, tileL1L0Param.curGmAKL1);
-                FragmentSliceCopy<false>(copyGM2L1, tensorAL1, blockA);
+                CopyGmToL1(copyGM2L1, tensorAL1, blockA);
             }
             return tensorAL1;
         }
