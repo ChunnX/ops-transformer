@@ -140,6 +140,11 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
     string qOutDtype;
     string qScaleShape;
     string qScaleDtype;
+    vector<int64_t> qOutStride;
+    vector<int64_t> qOutStorageShape;
+    vector<int64_t> qScaleStride;
+    vector<int64_t> qScaleStorageShape;
+    bool invalidOutputBuffer = false;
     string mropePositionShape;
     string mropePositionDtype;
     string mropeSectionValue;
@@ -199,8 +204,12 @@ QkvRmsNormRopeCacheWithKScaleAclArgs BuildAclArgs(const QkvRmsNormRopeCacheWithK
     args.mropeSection = BuildIntArray(testCase.mropeSectionValue);
     args.qQuantMode = BuildStringArg(testCase.qQuantMode);
     args.kQuantMode = BuildStringArg(testCase.kQuantMode);
-    args.qOut = BuildTensor(testCase.qOutShape, testCase.qOutDtype, false);
-    args.qScale = BuildTensor(testCase.qScaleShape, testCase.qScaleDtype, false);
+    args.qOut = testCase.qOutStride.empty() ?
+                    BuildTensor(testCase.qOutShape, testCase.qOutDtype, false) :
+                    BuildTensor(testCase.qOutShape, testCase.qOutDtype, testCase.qOutStride, testCase.qOutStorageShape);
+    args.qScale = testCase.qScaleStride.empty() ? BuildTensor(testCase.qScaleShape, testCase.qScaleDtype, false) :
+                                                  BuildTensor(testCase.qScaleShape, testCase.qScaleDtype,
+                                                              testCase.qScaleStride, testCase.qScaleStorageShape);
     return args;
 }
 
@@ -234,6 +243,13 @@ void RunCase(const QkvRmsNormRopeCacheWithKScaleCase &testCase)
         expectedRet = ACLNN_ERR_PARAM_INVALID;
     } else if (expectedRet == ACLNN_SUCCESS && qOutputQuantized && IsNullArg(testCase.qScaleShape)) {
         expectedRet = ACLNN_ERR_PARAM_NULLPTR;
+    }
+    const auto qOutDims = IsNullArg(testCase.qOutShape) ? vector<int64_t>{} : ParseDims(testCase.qOutShape);
+    const auto qScaleDims = IsNullArg(testCase.qScaleShape) ? vector<int64_t>{} : ParseDims(testCase.qScaleShape);
+    const bool emptyOutput = std::find(qOutDims.begin(), qOutDims.end(), 0) != qOutDims.end() ||
+                             std::find(qScaleDims.begin(), qScaleDims.end(), 0) != qScaleDims.end();
+    if (expectedRet == ACLNN_SUCCESS && (testCase.invalidOutputBuffer || emptyOutput)) {
+        expectedRet = ACLNN_ERR_PARAM_INVALID;
     }
     EXPECT_EQ(ret, expectedRet) << "caseName=" << testCase.caseName
                                 << ", operatorExpectRet=" << testCase.operatorExpectRet;
@@ -378,6 +394,58 @@ QkvRmsNormRopeCacheWithKScaleCase MakeMropeMxTwoKvHeadsCase()
 TEST(QkvRmsNormRopeCacheWithKScaleAclnn, AcceptsMropeMxFiveOutputContract)
 {
     RunCase(MakeMropeMxCase());
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, RejectsEveryEmptyOutputDimension)
+{
+    for (const bool qScale : {false, true}) {
+        for (const int64_t dim : {0, 1, 2}) {
+            SCOPED_TRACE(std::to_string(qScale) + ":" + std::to_string(dim));
+            auto testCase = MakeMropeMxCase();
+            auto &shape = qScale ? testCase.qScaleShape : testCase.qOutShape;
+            auto dims = ParseDims(shape);
+            dims[dim] = 0;
+            shape = std::to_string(dims[0]) + ":" + std::to_string(dims[1]) + ":" + std::to_string(dims[2]);
+            testCase.invalidOutputBuffer = true;
+            RunCase(testCase);
+        }
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, RejectsNonContiguousOutputBuffers)
+{
+    for (const bool qScale : {false, true}) {
+        SCOPED_TRACE(qScale);
+        auto testCase = MakeMropeMxCase();
+        const int64_t width = qScale ? 4 : 128;
+        auto &stride = qScale ? testCase.qScaleStride : testCase.qOutStride;
+        auto &storage = qScale ? testCase.qScaleStorageShape : testCase.qOutStorageShape;
+        stride = {width, 5 * width, 1};
+        storage = {8, 5, width};
+        testCase.invalidOutputBuffer = true;
+        RunCase(testCase);
+        stride = {16 * width, width, 1};
+        storage = {10, 8, width};
+        RunCase(testCase);
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, ChecksOutputStorageCapacity)
+{
+    for (const bool qScale : {false, true}) {
+        SCOPED_TRACE(qScale);
+        auto testCase = MakeMropeMxCase();
+        const int64_t width = qScale ? 4 : 128;
+        auto &stride = qScale ? testCase.qScaleStride : testCase.qOutStride;
+        auto &storage = qScale ? testCase.qScaleStorageShape : testCase.qOutStorageShape;
+        stride = {8 * width, width, 1};
+        storage = {1, 8, width};
+        testCase.invalidOutputBuffer = true;
+        RunCase(testCase);
+        storage = {10, 8, width};
+        testCase.invalidOutputBuffer = false;
+        RunCase(testCase);
+    }
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleAclnn, AcceptsModifiedV1PerTokenPerHeadContract)

@@ -527,6 +527,51 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, MropeMxQTailWaveFallsBackToSingleT
     EXPECT_EQ(tiling->tokenTile, 1U);
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsOverlappingCacheViews)
+{
+    const auto *baseCase = FindTilingCase("mrope_mx_h16_t129_current_route");
+    ASSERT_NE(baseCase, nullptr);
+    const auto makeStride = [](std::array<int64_t, 4> values) {
+        gert::Stride stride;
+        stride.SetDimNum(values.size());
+        for (size_t i = 0; i < values.size(); ++i) {
+            stride.SetStride(i, values[i]);
+        }
+        return stride;
+    };
+    TilingInfo baselineInfo;
+    ASSERT_TRUE(RunTiling(*baseCase, baselineInfo));
+    // Descriptor-only negatives do not write through an overlapping test tensor.
+    for (const auto &stride : {std::array<int64_t, 4>{0, 2048, 128, 1}, {128, 2048, 128, 1}, {4096, 128, 128, 1}}) {
+        SCOPED_TRACE(::testing::PrintToString(stride));
+        auto testCase = *baseCase;
+        testCase.kCache.stride_ = makeStride(stride);
+        testCase.kCache.hasStride_ = true;
+        testCase.vCache.stride_ = testCase.kCache.stride_;
+        testCase.vCache.hasStride_ = true;
+        TilingInfo tilingInfo;
+        EXPECT_FALSE(RunTiling(testCase, tilingInfo));
+    }
+    for (const auto &stride : {std::array<int64_t, 4>{0, 64, 4, 1}, {4, 64, 4, 1}, {128, 4, 4, 1}}) {
+        SCOPED_TRACE(::testing::PrintToString(stride));
+        auto testCase = *baseCase;
+        testCase.kScaleCache.stride_ = makeStride(stride);
+        testCase.kScaleCache.hasStride_ = true;
+        TilingInfo tilingInfo;
+        EXPECT_FALSE(RunTiling(testCase, tilingInfo));
+    }
+    // Padding is allowed: non-contiguous alone must not imply overlap.
+    auto paddedCase = *baseCase;
+    paddedCase.kCache.stride_ = makeStride({8192, 4096, 128, 1});
+    paddedCase.kCache.hasStride_ = true;
+    paddedCase.vCache.stride_ = paddedCase.kCache.stride_;
+    paddedCase.vCache.hasStride_ = true;
+    paddedCase.kScaleCache.stride_ = makeStride({256, 128, 4, 1});
+    paddedCase.kScaleCache.hasStride_ = true;
+    TilingInfo paddedInfo;
+    EXPECT_TRUE(RunTiling(paddedCase, paddedInfo));
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleTilingDataAbi, Remains144BytesWithFrozenOffsets)
 {
     EXPECT_EQ(sizeof(TilingData), 144U);
