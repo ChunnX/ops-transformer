@@ -228,6 +228,8 @@ protected:
     ge::graphStatus SetQKVStartIdx(ContextParamsForPFATiling &contextKeyParams);
     bool CheckAlibiPseCrossover(ContextParamsForPFATiling &contextKeyParams);
 
+    bool CheckArch38ScenarioSupported(const ContextParamsForPFATiling& contextKeyParams,
+                                      const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& valueShapeInfo);
 protected:
     ContextParamsForPFATiling *contextKeyParamsPtr = nullptr;
     int64_t ubSizeRemain = 1;
