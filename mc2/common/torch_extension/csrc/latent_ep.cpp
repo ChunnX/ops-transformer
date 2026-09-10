@@ -122,14 +122,13 @@ bool IsAscend950()
  */
 tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::Tensor &expertIds, int64_t epWorldSize,
                      int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
-                     const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &xActiveMask,
-                     const c10::optional<at::Tensor> &expertScales, const c10::optional<at::Tensor> &elasticInfo,
-                     const c10::optional<at::Tensor> &performanceInfo,
-                     const c10::optional<at::Tensor> &sharedExpertInput, int64_t tpWorldSize, int64_t tpRankId,
-                     int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode,
-                     int64_t globalBs, int64_t expertTokenNumsType, std::string commAlg, int64_t zeroExpertNum,
-                     int64_t copyExpertNum, int64_t constExpertNum, c10::optional<int64_t> yDtype,
-                     c10::optional<int64_t> xDtype, c10::optional<int64_t> scalesDtype)
+                     const c10::optional<at::Tensor> &sharedExpertInput, const c10::optional<at::Tensor> &scales,
+                     const c10::optional<at::Tensor> &xActiveMask, const c10::optional<at::Tensor> &expertScales,
+                     const c10::optional<at::Tensor> &elasticInfo, const c10::optional<at::Tensor> &performanceInfo,
+                     int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+                     int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType,
+                     std::string commAlg, int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
+                     c10::optional<int64_t> yDtype, c10::optional<int64_t> xDtype, c10::optional<int64_t> scalesDtype)
 {
     TORCH_CHECK((x.dim() == DIM_TWO) && (expertIds.dim() == DIM_TWO), "The x and expert_ids should be 2D");
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
@@ -292,8 +291,8 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
     TensorWrapper expandXWrapper = {expandX, outputAclDtype};
     TensorWrapper dynamicScalesWrapper = {dynamicScales, dynamicScalesAclDtype};
 
-    ACLNN_CMD(aclnnMoeDistributeDispatchV6, context, xWrapper, expertIds, scalesWrapper, xActiveMask, expertScales,
-              elasticInfo, performanceInfo, sharedExpertInput, epWorldSize, epRankId, moeExpertNum, cclBufferSize,
+    ACLNN_CMD(aclnnMoeDistributeDispatchV6, context, xWrapper, expertIds, sharedExpertInput, scalesWrapper, xActiveMask,
+              expertScales, elasticInfo, performanceInfo, epWorldSize, epRankId, moeExpertNum, cclBufferSize,
               tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBsReal,
               expertTokenNumsType, commAlgPtr, zeroExpertNum, copyExpertNum, constExpertNum, moeAclDtype,
               expandXWrapper, dynamicScalesWrapper, assistInfoForcombine, expertTokenNums, epRecvCounts, tpRecvCounts,

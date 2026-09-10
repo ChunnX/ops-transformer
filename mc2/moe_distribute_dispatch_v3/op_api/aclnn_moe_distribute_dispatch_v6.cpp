@@ -26,15 +26,16 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnMoeDistributeDispatchV6GetWorkspaceSize(
-    const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
-    const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const aclTensor *elasticInfoOptional,
-    const aclTensor *performanceInfoOptional, const aclTensor *sharedExpertInputOptional, int64_t epWorldSize,
-    int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize, int64_t tpWorldSize, int64_t tpRankId,
-    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
-    int64_t expertTokenNumsType, const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum,
-    int64_t constExpertNum, int64_t moeExpertDtype, aclTensor *expandXOut, aclTensor *dynamicScalesOut,
-    aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut, aclTensor *epRecvCountsOut,
-    aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *context, const aclTensor *x, const aclTensor *expertIds,
+    const aclTensor *sharedExpertInputOptional, const aclTensor *scalesOptional, const aclTensor *xActiveMaskOptional,
+    const aclTensor *expertScalesOptional, const aclTensor *elasticInfoOptional,
+    const aclTensor *performanceInfoOptional, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
+    int64_t cclBufferSize, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char *commAlg,
+    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, int64_t moeExpertDtype, aclTensor *expandXOut,
+    aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut,
+    aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     OP_LOGI("[latent_ep][api] dispatch V6 -> InnerV3, independent_shared=%d, ep_rank=%lld/%lld, "
             "quant_mode=%lld.",
@@ -51,6 +52,7 @@ aclnnStatus aclnnMoeDistributeDispatchV6GetWorkspaceSize(
             moeExpertDtype = ge::DT_FLOAT8_E4M3FN;
         }
     }
+    // Keep the V3 prototype input order unchanged for existing V5 and GE callers.
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
         context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
         performanceInfoOptional, sharedExpertInputOptional, epWorldSize, epRankId, moeExpertNum, cclBufferSize,

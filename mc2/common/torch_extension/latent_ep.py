@@ -57,9 +57,9 @@ class LatentEpOpBuilder(OpBuilder):
         dispatch_schema = (
             "latent_ep_dispatch(Tensor context, Tensor x, Tensor expert_ids, "
             "int ep_world_size, int ep_rank_id, int moe_expert_num, int ccl_buffer_size, "
-            "*, Tensor? scales=None, Tensor? x_active_mask=None, "
+            "*, Tensor? shared_expert_input=None, Tensor? scales=None, Tensor? x_active_mask=None, "
             "Tensor? expert_scales=None, Tensor? elastic_info=None, Tensor? performance_info=None, "
-            "Tensor? shared_expert_input=None, int tp_world_size=0, int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, "
+            "int tp_world_size=0, int tp_rank_id=0, int expert_shard_type=0, int shared_expert_num=1, "
             "int shared_expert_rank_num=0, int quant_mode=0, int global_bs=0, int expert_token_nums_type=1, "
             'str comm_alg="", int zero_expert_num=0, int copy_expert_num=0, int const_expert_num=0, '
             "int? y_dtype=None, int? x_dtype=None, int? x_smooth_scales_dtype=None) "
@@ -186,12 +186,12 @@ class LatentEpOpBuilder(OpBuilder):
             ep_rank_id,
             moe_expert_num,
             ccl_buffer_size,
+            shared_expert_input=None,
             scales=None,
             x_active_mask=None,
             expert_scales=None,
             elastic_info=None,
             performance_info=None,
-            shared_expert_input=None,
             tp_world_size=0,
             tp_rank_id=0,
             expert_shard_type=0,
@@ -392,12 +392,12 @@ def _dispatch(
     ep_rank_id,
     moe_expert_num,
     ccl_buffer_size,
+    shared_expert_input=None,
     scales=None,
     x_active_mask=None,
     expert_scales=None,
     elastic_info=None,
     performance_info=None,
-    shared_expert_input=None,
     tp_world_size=0,
     tp_rank_id=0,
     expert_shard_type=0,
@@ -423,12 +423,12 @@ def _dispatch(
         ep_rank_id,
         moe_expert_num,
         ccl_buffer_size,
+        shared_expert_input,
         scales,
         x_active_mask,
         expert_scales,
         elastic_info,
         performance_info,
-        shared_expert_input,
         tp_world_size,
         tp_rank_id,
         expert_shard_type,
@@ -640,12 +640,12 @@ if _TORCHAIR_AVAILABLE:
         moe_expert_num,
         ccl_buffer_size,
         *,
+        shared_expert_input=None,
         scales=None,
         x_active_mask=None,
         expert_scales=None,
         elastic_info=None,
         performance_info=None,
-        shared_expert_input=None,
         tp_world_size=0,
         tp_rank_id=0,
         expert_shard_type=0,

@@ -30,6 +30,7 @@
 - [key_pool](../../attention/key_pool/docs/torchapi_key_pool.md)
 - [kv_compress_epilog](../../attention/kv_compress_epilog/docs/torchapi_kv_compress_epilog.md)
 - [kv_quant_sparse_flash_attention](../../attention/kv_quant_sparse_flash_attention_v2/docs/torchapi_kv_quant_sparse_flash_attention.md)
+- [latent_ep](../../mc2/common/docs/torchapi_latent_ep.md)
 - [lightning_indexer](../../attention/lightning_indexer_v2/docs/torchapi_lightning_indexer.md)
 - [lightning_indexer_kl_loss](../../attention/lightning_indexer_kl_loss/docs/torchapi_lightning_indexer_kl_loss.md)
 - [low_latency_combine](../../mc2/common/docs/torchapi_low_latency_combine.md)
