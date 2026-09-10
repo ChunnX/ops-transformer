@@ -779,7 +779,7 @@ public:
         int64_t dSizeAligned64 = (int64_t)dVTemplateType;
         if constexpr (splitD) {
             dSizeAligned64 = constInfo.dBasicBlock;
-        } 
+        }
 
         attenOut.SetAddr(vec2ResUb.address_);
 
