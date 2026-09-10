@@ -913,14 +913,36 @@ static ge::graphStatus SetBasicAttrParams(const gert::TilingContext *context, Me
         // （savedBytes≥80MB）通信重新成为瓶颈，收益回归（-1.6%/-5.4%）。故 bs>1024 时门槛抬到
         // 60MB（实测 40MB 亏 / 80MB 赢的区间中插）。两阈值均基于 4P 实测，8 卡矩阵后需重校准。
         constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
+        /*
+         * combine 去重（专家粒度合并版）的收益边界低于纯 dispatch 去重：小 bs 档实测
+         * S4(bs256,h5120,k6,saved=3.56MB) full 组合净赢 -2.8%，而 S1(bs64,saved=1.15MB)
+         * 净亏 +11.7%——combine 位使能（必 tkw=1）时阈值取 3MB（贴 S4 侧保守，边界两侧
+         * 均有实测）。纯 dispatch 维持 6MB（S4 的 dd tkw1 实测 +3.9% 亏，不可放宽）；
+         * 中档 60MB 分界由 PF3(39.8MB,+1.5%)/PF2(79.6MB,-3.7%) 两侧实测支撑，combine
+         * 与 dispatch 同界。数据：2026-09-10 cv2b 门降实验批 + PF 域批（4P）。
+         */
+        constexpr double DEDUP_COMBINE_MIN_SAVED_BYTES = 3.0 * 1024.0 * 1024.0;
         constexpr int32_t DEDUP_SMALL_BS_LIMIT = 1024;
-        const double requiredSavedBytes = (tilingData->bs > DEDUP_SMALL_BS_LIMIT)
-                                              ? DEDUP_MID_BS_MIN_SAVED_BYTES
-                                              : DEDUP_MIN_SAVED_BYTES;
+        const bool combineDedupOn = (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+        const double requiredSavedBytes =
+            (tilingData->bs > DEDUP_SMALL_BS_LIMIT)
+                ? DEDUP_MID_BS_MIN_SAVED_BYTES
+                : (combineDedupOn ? DEDUP_COMBINE_MIN_SAVED_BYTES : DEDUP_MIN_SAVED_BYTES);
         if (savedBytes < requiredSavedBytes) {
             OP_LOGI(nodeName, "dedup gate: estimated saved bytes %.0f < required %.0f (bs=%d), disable dedup for this shape",
                     savedBytes, requiredSavedBytes, tilingData->bs);
             tilingData->dedupMode = 0;
+        }
+    }
+    // combine 去重 UB 容量护栏：独立 combine 阶段需要行环(≥2)+整行合并发送共 3×行宽，外加固定
+    // 60KiB（成员乒乓/fp32/累加段 + desc 批区），装进 [64KiB,184KiB) 要求 h ≤ 10240。与收益门同为
+    // per-shape 能力开关：超界只关 combine 位（dispatch 去重不受影响），保持"无脑常开"用法可用。
+    if ((tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        constexpr int64_t DEDUP_COMBINE_MAX_H = 10240;
+        if (static_cast<int64_t>(tilingData->h) > DEDUP_COMBINE_MAX_H) {
+            OP_LOGI(nodeName, "dedup gate: h=%d exceeds combine dedup UB capacity limit %ld, disable combine dedup",
+                    static_cast<int32_t>(tilingData->h), DEDUP_COMBINE_MAX_H);
+            tilingData->dedupMode &= ~DEDUP_MODE_COMBINE;
         }
     }
     // MTE 下 attr 为 0 时上界取本卡 bs；URMA 已在参数校验阶段拒绝 0。
