@@ -74,7 +74,7 @@ public:
             uint32_t remainM = m - offsetM;
             uint32_t currentM = remainM < BASIC_CUBE_M ? remainM : BASIC_CUBE_M;
             ComputeTile(a[offsetM * k], b, c[offsetM * BASIC_CUBE_N_STRIDE], currentM, n, k, k,
-                        bGmStride, BASIC_CUBE_N_STRIDE, false, false, true, reuseB1, 0U);
+                        bGmStride, BASIC_CUBE_N_STRIDE, false, false, true, reuseB1);
         }
     }
 
@@ -82,34 +82,7 @@ public:
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd)
     {
-        ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false, false, 1U);
-    }
-
-    __aicore__ inline void BeginC1Accumulation(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                               uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride,
-                                               uint32_t bGmStride)
-    {
-        LocalTensor<float> currentC = cL0_[BASIC_CUBE_L0C_SLOT_ELEMS];
-        WaitFlag<HardEvent::FIX_M>(1U);
-        AccumulateKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, true, true);
-    }
-
-    __aicore__ inline void ContinueC1Accumulation(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                                  uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride,
-                                                  uint32_t bGmStride)
-    {
-        LocalTensor<float> currentC = cL0_[BASIC_CUBE_L0C_SLOT_ELEMS];
-        AccumulateKRange(currentC, a, b, m, n, k, aGmStride, bGmStride, true, false);
-    }
-
-    __aicore__ inline void EndC1Accumulation(const GlobalTensor<float> &c, uint32_t m, uint32_t n,
-                                             uint32_t cGmStride)
-    {
-        LocalTensor<float> currentC = cL0_[BASIC_CUBE_L0C_SLOT_ELEMS];
-        SetFlag<HardEvent::M_FIX>(1U);
-        WaitFlag<HardEvent::M_FIX>(1U);
-        CopyOut(c, currentC, m, n, cGmStride);
-        SetFlag<HardEvent::FIX_M>(1U);
+        ComputeTile(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false, false);
     }
 
     __aicore__ inline void ProcessC1TwoStage(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
@@ -119,7 +92,7 @@ public:
     {
         // 先将前半块累加到L0C；后半块V2就绪后继续在同一L0C累加，最后只写回一次GM。
         // 既保持1024行单一FP32累加链的精度，又让前半块C1与后半块V2并行。
-        uint32_t cSlot = 1U;
+        uint32_t cSlot = l0cLoopCount_ & 1U;
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
@@ -150,8 +123,10 @@ private:
     __aicore__ inline void ComputeTile(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                        const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
-                                       bool atomicAdd, bool publishC0, bool reuseB1, uint32_t cSlot)
+                                       bool atomicAdd, bool publishC0, bool reuseB1)
     {
+        // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
+        uint32_t cSlot = l0cLoopCount_ & 1U;
         LocalTensor<float> currentC = cL0_[cSlot * BASIC_CUBE_L0C_SLOT_ELEMS];
         WaitFlag<HardEvent::FIX_M>(cSlot);
 
