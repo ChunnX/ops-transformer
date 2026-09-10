@@ -430,10 +430,9 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
     if (isRegbase) {
         const auto &unpermutedOutputDStorageShape = unpermutedOutputDShape->GetStorageShape();
         OP_CHECK_IF(unpermutedOutputDStorageShape.GetDimNum() != DIM_NUM_TWO,
-                    OP_LOGE(
-                        context->GetNodeName(),
-                        "[MoeTokenUnpermuteWithEpGrad] unpermutedTokensGrad dim number should be 2, but got %zu.",
-                        unpermutedOutputDStorageShape.GetDimNum()),
+                    OP_LOGE(context->GetNodeName(),
+                            "[MoeTokenUnpermuteWithEpGrad] unpermutedTokensGrad dim number should be 2, but got %zu.",
+                            unpermutedOutputDStorageShape.GetDimNum()),
                     return ge::GRAPH_FAILED);
         tokensNum = unpermutedOutputDStorageShape.GetDim(DIM_0);
         hiddenSize = unpermutedOutputDStorageShape.GetDim(DIM_1);
@@ -479,35 +478,37 @@ static ge::graphStatus SetTilingForTiling4MoeTokenUnpermuteWithEpGrad(gert::Tili
 
         totalNum = rowMapStorageShape.GetDim(DIM_0);
         if (shouldCheckTotalNum) {
-            OP_CHECK_IF(totalNum != tokensNum * topK,
-                        OP_LOGE(context->GetNodeName(),
-                                "[MoeTokenUnpermuteWithEpGrad] sortedIndices dim0 should equal tokensNum * topK, but got "
-                                "%ld, %ld and %ld.",
-                                totalNum, tokensNum, topK),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                totalNum != tokensNum * topK,
+                OP_LOGE(context->GetNodeName(),
+                        "[MoeTokenUnpermuteWithEpGrad] sortedIndices dim0 should equal tokensNum * topK, but got "
+                        "%ld, %ld and %ld.",
+                        totalNum, tokensNum, topK),
+                return ge::GRAPH_FAILED);
         }
 
         numOutTokens = rowMapStorageShape.GetDim(DIM_0);
         if (permutedTokensShape != nullptr) {
             const auto &permutedTokensStorageShape = permutedTokensShape->GetStorageShape();
             OP_CHECK_IF(permutedTokensStorageShape.GetDimNum() != DIM_NUM_TWO,
-                        OP_LOGE(
-                            context->GetNodeName(),
-                            "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim number should be 2, but got %zu.",
-                            permutedTokensStorageShape.GetDimNum()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(permutedTokensStorageShape.GetDim(DIM_0) != totalNum,
                         OP_LOGE(context->GetNodeName(),
-                                "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim0 should equal sortedIndices dim0, but "
-                                "got %ld and %ld.",
-                                permutedTokensStorageShape.GetDim(DIM_0), totalNum),
+                                "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim number should be 2, but got %zu.",
+                                permutedTokensStorageShape.GetDimNum()),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(permutedTokensStorageShape.GetDim(DIM_1) != hiddenSize,
-                        OP_LOGE(context->GetNodeName(),
-                                "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim1 should equal hiddenSize, but got %ld "
-                                "and %ld.",
-                                permutedTokensStorageShape.GetDim(DIM_1), hiddenSize),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                permutedTokensStorageShape.GetDim(DIM_0) != totalNum,
+                OP_LOGE(context->GetNodeName(),
+                        "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim0 should equal sortedIndices dim0, but "
+                        "got %ld and %ld.",
+                        permutedTokensStorageShape.GetDim(DIM_0), totalNum),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                permutedTokensStorageShape.GetDim(DIM_1) != hiddenSize,
+                OP_LOGE(context->GetNodeName(),
+                        "[MoeTokenUnpermuteWithEpGrad] permutedTokens dim1 should equal hiddenSize, but got %ld "
+                        "and %ld.",
+                        permutedTokensStorageShape.GetDim(DIM_1), hiddenSize),
+                return ge::GRAPH_FAILED);
             numOutTokens = permutedTokensStorageShape.GetDim(DIM_0);
         }
     } else {
