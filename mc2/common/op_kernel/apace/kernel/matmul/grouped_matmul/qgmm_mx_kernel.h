@@ -119,6 +119,8 @@ public:
         __gm__ const uint32_t *segAOff{nullptr}; // 段模式：段在 A/scaleA 的行偏移表（null = expert-major）
         __gm__ const uint32_t *segCOff{nullptr}; // 段模式：段在 C 的行偏移表
         uint32_t segW{0};                    // 段模式 rank 数（0 = expert-major 模式）
+        uint32_t expertBase{0};              // 子批段模式对应的首个 expert
+        uint32_t groupListBase{0};           // groupList[0] 之前的累计行数
         GMMTiling gmm;
     };
 
@@ -226,10 +228,11 @@ private:
         k_ = params.gmm.k;
         curBaseM_ = params.gmm.baseM;
         baseN_ = params.gmm.baseN;
-        preGroupOffset_ = 0;
+        preGroupOffset_ = params.groupListBase;
         segAOffGm_ = params.segAOff;
         segCOffGm_ = params.segCOff;
         segW_ = params.segW;
+        expertBase_ = params.expertBase;
 
         const BlockShape l0Shape{static_cast<int64_t>(params.gmm.baseM), static_cast<int64_t>(params.gmm.baseN),
                                  static_cast<int64_t>(params.gmm.baseK), 0};
@@ -264,7 +267,7 @@ private:
         int64_t scaleBOffset;
         int64_t cOffset;
         if (segW_ != 0) {
-            const uint32_t expertIdx = static_cast<uint32_t>(groupIdx) / segW_;
+            const uint32_t expertIdx = expertBase_ + static_cast<uint32_t>(groupIdx) / segW_;
             const int64_t aRowOff = static_cast<int64_t>(segAOffGm_[groupIdx]);
             const int64_t cRowOff = static_cast<int64_t>(segCOffGm_[groupIdx]);
             aOffset = Blaze::Gemm::IsFp4<AType>() ? ((aRowOff * k_) >> 1) : (aRowOff * k_);
@@ -337,6 +340,7 @@ private:
     __gm__ const uint32_t *segAOffGm_{nullptr};
     __gm__ const uint32_t *segCOffGm_{nullptr};
     uint32_t segW_{0};
+    uint32_t expertBase_{0};
     int64_t preGroupOffset_{0};
     int64_t n_{0};
     int64_t k_{0};

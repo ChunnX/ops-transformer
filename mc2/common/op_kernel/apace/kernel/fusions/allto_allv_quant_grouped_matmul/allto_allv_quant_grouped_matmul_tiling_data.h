@@ -258,6 +258,7 @@ struct hcommA2avQuantGmmTilingData {
     uint32_t segList[A2AV_GMM_MAX_SEG_NUM + 1]{0}; // 段累计行数（kernel 分组列表）
     uint32_t segAOff[A2AV_GMM_MAX_SEG_NUM]{0};     // 段在数据/scale 接收区的行偏移
     uint32_t segCOff[A2AV_GMM_MAX_SEG_NUM]{0};     // 段在 gmm_y 输出的行偏移
+    uint32_t segSendRows[A2AV_GMM_MAX_SEG_NUM]{0}; // expert-major: [expert][dst rank]
     // GMM 计算 tiling
     uint32_t baseM{0};
     uint32_t baseN{0};
@@ -366,6 +367,7 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
         for (uint32_t s = 0; s < rankSize; ++s) {
             const uint32_t segIdx = e * rankSize + s;
             const uint32_t rows = static_cast<uint32_t>(recvAt(s, e));
+            tiling.segSendRows[segIdx] = static_cast<uint32_t>(sendAt(s, e));
             // 数据/scale 段行偏移（行数相同，scale 每行 scaleKLen 字节）
             uint32_t ePrefix = 0; // sum_{e'<e} recvCnt(s, e')
             for (uint32_t e2 = 0; e2 < e; ++e2) {
@@ -386,7 +388,10 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
     };
     uint32_t maxSegRows = 1;
     for (uint32_t seg = 0; seg < tiling.segNum; ++seg) {
-        const uint32_t rows = tiling.segList[seg + 1] - tiling.segList[seg];
+        // segList is inclusive: entry seg is the cumulative row count through
+        // that segment.  Do not read segList[segNum], which is not populated.
+        const uint32_t prevRows = (seg == 0U) ? 0U : tiling.segList[seg - 1U];
+        const uint32_t rows = tiling.segList[seg] - prevRows;
         maxSegRows = std::max(maxSegRows, rows);
     }
     tiling.baseK = std::min(k, 128U);

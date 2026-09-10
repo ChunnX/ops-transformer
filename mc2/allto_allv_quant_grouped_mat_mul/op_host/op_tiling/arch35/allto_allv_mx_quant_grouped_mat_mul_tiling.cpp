@@ -23,6 +23,13 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+namespace {
+// Keep the production APACE admission range aligned with the validated
+// MatmulAllToAll APACE path. Larger groups continue to use the legacy kernel.
+constexpr uint64_t APACE_IMPL_MAX_RANK_SIZE = 8;
+constexpr uint64_t APACE_MX_K_ALIGNMENT = 1024;
+}
+
 bool AlltoAllvMXQuantGmmTiling::IsCapable()
 {
     // support fp8_e5m2 or fp8_e4m3
@@ -55,7 +62,8 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
     // 复用公共 shape/attr 解析，再判定是否切换 apace 实现
     MC2_CHECK_LOG_RET(context_->GetNodeName(), AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo());
     usingApaceImpl_ = CheckApaceImplCapable();
-    OP_LOGD(context_->GetNodeName(), "AlltoAllvQuantGroupedMatMul usingApaceImpl=%d.", static_cast<int>(usingApaceImpl_));
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGroupedMatMul MX implementation: %s, rankSize=%lu.",
+            usingApaceImpl_ ? "Apace(pure-AIC)" : "legacy", epWorldSize_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -67,10 +75,13 @@ bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
     if (permuteOutFlag_ || hasSharedExpertFlag_) {
         return false;
     }
-    if (epWorldSize_ == 0 || epWorldSize_ > A2AV_GMM_MAX_RANK_NUM) {
+    if (epWorldSize_ == 0 || epWorldSize_ > APACE_IMPL_MAX_RANK_SIZE) {
         return false;
     }
     if (e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
+        return false;
+    }
+    if (h1_ == 0 || h1_ % APACE_MX_K_ALIGNMENT != 0) {
         return false;
     }
     return true;

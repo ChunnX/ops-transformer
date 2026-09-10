@@ -66,17 +66,23 @@ apace/
 - **输入**：`gmm_x [BSK, H1]`（E4M3/E5M2）、`gmm_x_scale [BSK, ceildiv(H1,64), 2]`（E8M0）、
   `gmm_weight`（`transB=0: [E, H1, N1]` / `transB=1: [E, N1, H1]`）、
   `gmm_weight_scale`（`transB=0: [E, ceildiv(H1,64), N1, 2]` / `transB=1: [E, N1, ceildiv(H1,64), 2]`）；
-- **输出**：`gmm_y [sumRecv, N1]`，行序为 expert-major（组内按 src rank 排列），BF16；
-- **通信即 permute**：AIV 按 (dst, expert) 段通过 hcomm WriteNbi 直接写入对端窗口的 expert-major
-  位置，免去通信后的独立 permute；本 rank 自身段经 UB 中转落窗；
+- **输出**：`gmm_y [sumRecv, N1]`，行序为 expert-major（组内按 src rank 排列），BF16 或 FP16；
+- **通信与布局**：standalone UDMA 变体由 AIV 按 `(dst, expert)` 段直接写入对端窗口；正式算子接入的
+  HCOMM 变体由 AIC 发起 `AlltoAllV`，接收区保持 rank-major，并通过段表直接映射到 expert-major 输出；
 - **计算**：AIC 侧 `kernel/matmul/grouped_matmul/qgmm_mx_kernel.h` 以 groupList（累计行数）驱动
   Blaze `BlockMmad<GroupedMatmulWithScaleMx>` 分组 MX 量化 Matmul，支持 M/N 尾块切分与负载均衡；
 - **hcomm 变体**（`*_hcomm_impl.h`，供算子集成）：通信走 AIC 核内 `Hccl<>::AlltoAllV`（变长原生支持），
   rank-major 接收布局由“段式分组”直接消费——每个 (expert, srcRank) 段为独立计算分组，
-  免去独立 permute；算子 `AlltoAllvQuantGroupedMatMul` 在 MX 量化且无共享专家/无 permute_out 时
+  免去独立 permute；专家级双缓冲在计算当前 expert 时推进下一 expert 的数据与 scale 通信；
+  算子 `AlltoAllvQuantGroupedMatMul` 在 MX 量化且无共享专家/无 permute_out 时
   由 tiling 自动切换到该路径（AIC_ONLY 纯 C 核），参照 AlltoAllMatmul 的“MX 切 apace”模式；
-- **约束**：`H1 % 1024 == 0`（MX scale 通信 32B 对齐）；`rankSize ≤ 16`、单卡专家数 ≤ 32；
+- **约束**：`H1 % 1024 == 0`（MX scale 通信 32B 对齐）；正式 APACE 路径 `rankSize ≤ 8`、
+  单卡专家数 ≤ 32，且 `rankSize * expertNum ≤ 256`；
   共享专家（mm 路径）与 `permute_out` 输出暂不支持。
+
+这里的正式算子路径是框架注入通信上下文的 HCOMM APACE 模式，与 Kernel 直调 ST 的 UDMA/SHMEM
+模式是两条不同入口。后者需要 host 显式创建并传入 `CommContext`，不能在保持当前 ACLNN ABI 不变的前提下
+直接替换前者。
 
 
 ### core 核心层

@@ -14,9 +14,10 @@
  *
  * 面向 AlltoAllvQuantGroupedMatMul 算子的 apace 切换路径（参照 AlltoAllMatmul 的
  * “MX 量化切 apace”模式）：
- *   - 通信：AIC 核内通过 Hccl<>::AlltoAllV 下发变长通信（量化 x 与 scale 各一个句柄），
+ *   - 通信：AIC 核内按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
  *     通信输出落在 workspace 的 rank-major 接收区；
- *   - 计算：等待通信完成后，以“段式分组”直接消费 rank-major 布局——
+ *   - 计算：等待当前 expert 通信完成、提交下一 expert 通信后，以“段式分组”消费当前数据，
+ *     形成 expert 级通信/计算双缓冲；rank-major 布局无需额外 permute——
  *     每个 (expert, srcRank) 段为独立计算分组（段内 A/scaleA/C 连续），
  *     免去通信后的独立 permute；
  *   - 计算 kernel 复用 apace 分组量化 Matmul（Blaze BlockMmad<GroupedMatmulWithScaleMx>）。
@@ -112,25 +113,9 @@ public:
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
 
-        // AlltoAllV 计数/偏移表复制到本地（避免直接依赖 tiling GM 地址空间约束）
-        const uint32_t rankSize = tilingData_->rankSize;
-        for (uint32_t i = 0; i < rankSize; ++i) {
-            dataSendCnt_[i] = tilingData_->dataSendCnt[i];
-            dataSendOff_[i] = tilingData_->dataSendOff[i];
-            dataRecvCnt_[i] = tilingData_->dataRecvCnt[i];
-            dataRecvOff_[i] = tilingData_->dataRecvOff[i];
-            scaleSendCnt_[i] = tilingData_->scaleSendCnt[i];
-            scaleSendOff_[i] = tilingData_->scaleSendOff[i];
-            scaleRecvCnt_[i] = tilingData_->scaleRecvCnt[i];
-            scaleRecvOff_[i] = tilingData_->scaleRecvOff[i];
+        if (tilingData_->expertNum > 0U) {
+            IssueExpertCommunication(0U, 0U);
         }
-
-        scaleHandle_ = hccl_.template AlltoAllV<true>(
-            xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
-            scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
-        dataHandle_ = hccl_.template AlltoAllV<true>(
-            xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
-            dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
     }
 
     /*!
@@ -141,11 +126,65 @@ public:
         if ASCEND_IS_AIV {
             return;
         }
-        hccl_.Wait(scaleHandle_);
-        hccl_.Wait(dataHandle_);
+        for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
+            const uint32_t slot = expertIdx & 1U;
+            hccl_.Wait(scaleHandle_[slot]);
+            hccl_.Wait(dataHandle_[slot]);
+            const uint32_t nextExpert = expertIdx + 1U;
+            if (nextExpert < tilingData_->expertNum) {
+                IssueExpertCommunication(nextExpert, nextExpert & 1U);
+            }
+            RunExpertMatmul(expertIdx);
+        }
 
+        AscendC::SyncAll();
+        hccl_.Finalize();
+    }
+
+private:
+    __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
+    {
+        const uint32_t previous = (segIdx == 0U) ? 0U : tilingData_->segList[segIdx - 1U];
+        return tilingData_->segList[segIdx] - previous;
+    }
+
+    __aicore__ inline void IssueExpertCommunication(uint32_t expertIdx, uint32_t slot)
+    {
+        const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ? (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U
+                                                             : static_cast<uint64_t>(tilingData_->k);
+        const uint64_t scaleAxis = tilingData_->scaleKLen;
+        const uint32_t rankSize = tilingData_->rankSize;
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            const uint32_t segIdx = expertIdx * rankSize + peer;
+            uint64_t sendRowOffset = 0U;
+            for (uint32_t previousExpert = 0; previousExpert < expertIdx; ++previousExpert) {
+                sendRowOffset += tilingData_->segSendRows[previousExpert * rankSize + peer];
+            }
+            const uint64_t sendRows = tilingData_->segSendRows[segIdx];
+            const uint64_t recvRows = GetSegmentRows(segIdx);
+            const uint64_t recvRowOffset = tilingData_->segAOff[segIdx];
+            dataSendCnt_[slot][peer] = sendRows * dataAxis;
+            dataSendOff_[slot][peer] = tilingData_->dataSendOff[peer] + sendRowOffset * dataAxis;
+            dataRecvCnt_[slot][peer] = recvRows * dataAxis;
+            dataRecvOff_[slot][peer] = recvRowOffset * dataAxis;
+            scaleSendCnt_[slot][peer] = sendRows * scaleAxis;
+            scaleSendOff_[slot][peer] = tilingData_->scaleSendOff[peer] + sendRowOffset * scaleAxis;
+            scaleRecvCnt_[slot][peer] = recvRows * scaleAxis;
+            scaleRecvOff_[slot][peer] = recvRowOffset * scaleAxis;
+        }
+        scaleHandle_[slot] = hccl_.template AlltoAllV<true>(
+            xScaleGM_, scaleSendCnt_[slot], scaleSendOff_[slot],
+            static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleRecvGM_, scaleRecvCnt_[slot],
+            scaleRecvOff_[slot], static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
+        dataHandle_[slot] = hccl_.template AlltoAllV<true>(
+            xGM_, dataSendCnt_[slot], dataSendOff_[slot], static_cast<AscendC::HcclDataType>(xHcclDataType_),
+            dataRecvGM_, dataRecvCnt_[slot], dataRecvOff_[slot], static_cast<AscendC::HcclDataType>(xHcclDataType_));
+    }
+
+    __aicore__ inline void RunExpertMatmul(uint32_t expertIdx)
+    {
         typename GmmKernel::GMMTiling gmm;
-        gmm.groupNum = tilingData_->segNum;
+        gmm.groupNum = tilingData_->rankSize;
         gmm.n = tilingData_->n;
         gmm.k = tilingData_->k;
         gmm.baseM = tilingData_->baseM;
@@ -164,23 +203,21 @@ public:
         params.bBasePtr = reinterpret_cast<__gm__ BType *>(weightGM_);
         params.scaleBBasePtr = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(weightScaleGM_);
         params.cBasePtr = reinterpret_cast<__gm__ CType *>(yGM_);
-        params.groupList = segListGm_;
-        params.segAOff = segAOffGm_;
-        params.segCOff = segCOffGm_;
+        const uint32_t firstSegment = expertIdx * tilingData_->rankSize;
+        params.groupList = segListGm_ + firstSegment;
+        params.segAOff = segAOffGm_ + firstSegment;
+        params.segCOff = segCOffGm_ + firstSegment;
         params.segW = tilingData_->rankSize;
+        params.expertBase = expertIdx;
+        params.groupListBase = (firstSegment == 0U) ? 0U : tilingData_->segList[firstSegment - 1U];
         params.gmm = gmm;
         gmmKernel_(params);
-
-        AscendC::SyncAll();
-        hccl_.Finalize();
     }
-
-private:
     hcommA2avQuantGmmTilingData *tilingData_{nullptr};
     AscendC::Hccl<ServerType> hccl_;
     GmmKernel gmmKernel_;
-    AscendC::HcclHandle scaleHandle_{0};
-    AscendC::HcclHandle dataHandle_{0};
+    AscendC::HcclHandle scaleHandle_[2] = {0, 0};
+    AscendC::HcclHandle dataHandle_[2] = {0, 0};
 
     GM_ADDR xGM_{nullptr};
     GM_ADDR xScaleGM_{nullptr};
@@ -195,14 +232,14 @@ private:
     __gm__ const uint32_t *segCOffGm_{nullptr};
 
     // AlltoAllV 本地参数表（元素计）
-    uint64_t dataSendCnt_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t dataSendOff_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t dataRecvCnt_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t dataRecvOff_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t scaleSendCnt_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t scaleSendOff_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t scaleRecvCnt_[A2AV_GMM_MAX_RANK_NUM] = {0};
-    uint64_t scaleRecvOff_[A2AV_GMM_MAX_RANK_NUM] = {0};
+    uint64_t dataSendCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t dataSendOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t dataRecvCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t dataRecvOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t scaleSendCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t scaleSendOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t scaleRecvCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t scaleRecvOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
 };
 
 } // namespace Apace
