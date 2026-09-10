@@ -27,7 +27,9 @@ public:
 
     __aicore__ inline void Init(GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs,
                                 GM_ADDR unpermuted_tokens, const MoeTokenUnpermuteTilingData *__restrict tiling_data,
-                                bool useAllVectorCore = false);
+                                bool useAllVectorCore = false, GM_ADDR shared_tokens = nullptr,
+                                uint32_t shared_expert_num = 0, GM_ADDR x_active_mask = nullptr,
+                                int64_t shared_token_count = 0, int64_t shared_token_base = 0);
     __aicore__ inline void Process();
 
 protected:
@@ -36,15 +38,18 @@ protected:
     __aicore__ inline void CalPartOutToken(const int64_t start_token, const int64_t h_index, const int64_t h_length,
                                            const int64_t out_token_index);
     __aicore__ inline void CopyTokenIn(const T2 in_token_index, const int64_t h_index, const int64_t h_length);
+    __aicore__ inline void CopySharedTokenIn(const int64_t shared_expert_index, const int64_t out_token_index,
+                                             const int64_t h_index, const int64_t h_length);
     __aicore__ inline void CalFirstToken(const float prob_value, const int64_t h_length);
     __aicore__ inline void CalToken(const float prob_value, const int64_t h_length);
+    __aicore__ inline void CalSharedToken(const int64_t h_length);
     __aicore__ inline void CopyOut(const int64_t out_token_index, const int64_t h_index, const int64_t h_length);
 
     TPipe pipe;
     TQue<QuePosition::VECIN, 1> tokens_inque, indices_inque, probs_inque;
     TBuf<TPosition::VECCALC> temp_buffer0, temp_buffer1, temp_buffer2;
     TQue<QuePosition::VECOUT, 1> outque;
-    GlobalTensor<T1> tokensGM, outGM;
+    GlobalTensor<T1> tokensGM, sharedTokensGM, outGM;
     GlobalTensor<T2> indicesGM;
     GlobalTensor<T3> probsGM;
     LocalTensor<T2> indicesLocal;
@@ -60,6 +65,9 @@ protected:
     int64_t hidden_size;
     int64_t top_k;
     int64_t num_out_tokens;
+    int64_t out_token_count;
+    int64_t out_token_offset;
+    uint32_t shared_expert_num;
     int64_t hidden_splited_length;
     int64_t hidden_splited_num;
     int64_t hidden_splited_remain;
@@ -75,7 +83,8 @@ protected:
 template <typename T1, typename T2, typename T3, bool PROBS>
 __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
-    const MoeTokenUnpermuteTilingData *__restrict tiling_data, bool useAllVectorCore)
+    const MoeTokenUnpermuteTilingData *__restrict tiling_data, bool useAllVectorCore, GM_ADDR shared_tokens,
+    uint32_t shared_expert_num, GM_ADDR x_active_mask, int64_t shared_token_count, int64_t shared_token_base)
 {
     if (useAllVectorCore) {
         this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
@@ -93,6 +102,10 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     this->hidden_size = tiling_data->hidden_size;
     this->top_k = tiling_data->top_k;
     this->num_out_tokens = tiling_data->num_out_tokens;
+    // Shared output is expert-major over the full batch, not the routed chunk.
+    this->out_token_count = shared_token_count > 0 ? shared_token_count : this->num_out_tokens / this->top_k;
+    this->shared_expert_num = shared_expert_num;
+    (void)x_active_mask;
     // hidden_tiling
     this->hidden_splited_length = tiling_data->hidden_splited_length;
     this->hidden_splited_num = tiling_data->hidden_splited_num;
@@ -145,7 +158,10 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
 
     this->outGM.SetGlobalBuffer((__gm__ T1 *)unpermuted_tokens + out_block_offset,
                                 this->tokens_core_length * this->hidden_size);
-
+    this->out_token_offset = shared_token_base + out_block_offset / this->hidden_size;
+    if (this->shared_expert_num > 0U) {
+        this->sharedTokensGM.SetGlobalBuffer((__gm__ T1 *)shared_tokens);
+    }
     this->pipe.InitBuffer(tokens_inque, tiling_data->buffer_num, hidden_splited_length_align512 * sizeof(T1));
     this->pipe.InitBuffer(indices_inque, 1, block_splited_length * (sizeof(T2)));
     this->pipe.InitBuffer(outque, 1, hidden_splited_length_align512 * sizeof(T1));
@@ -278,6 +294,15 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
         }
     }
 
+    if (this->shared_expert_num > 0U) {
+        const int64_t global_out_token_index = this->out_token_offset + out_token_index;
+        for (uint32_t shared_idx = 0U; shared_idx < this->shared_expert_num; ++shared_idx) {
+            CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
+            PipeBarrier<PIPE_V>();
+            CalSharedToken(h_length);
+        }
+    }
+
     // Write out the computed result
     CopyOut(out_token_index, h_index, h_length);
 }
@@ -297,6 +322,24 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CopyTokenIn(c
         DataCopyPad(tokensLocal, this->tokensGM[offset], this->copyParams, this->extParams1);
     }
 
+    this->tokens_inque.template EnQue(tokensLocal);
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CopySharedTokenIn(const int64_t shared_expert_index,
+                                                                                     const int64_t out_token_index,
+                                                                                     const int64_t h_index,
+                                                                                     const int64_t h_length)
+{
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template AllocTensor<T1>();
+    int64_t offset = (shared_expert_index * this->out_token_count + out_token_index) * this->hidden_size +
+                     h_index * this->hidden_splited_length;
+    if (likely((h_length * sizeof(T1)) % BLOCK_SIZE == 0)) {
+        DataCopy(tokensLocal, this->sharedTokensGM[offset], h_length);
+    } else {
+        this->copyParams.blockLen = h_length * sizeof(T1);
+        DataCopyPad(tokensLocal, this->sharedTokensGM[offset], this->copyParams, this->extParams1);
+    }
     this->tokens_inque.template EnQue(tokensLocal);
 }
 
@@ -341,6 +384,22 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalToken(cons
             Muls(tokensLocal, tokensLocal, prob_value, h_length);
             PipeBarrier<PIPE_V>();
         }
+        Add(this->token_tensor0, this->token_tensor0, tokensLocal, h_length);
+        this->tokens_inque.FreeTensor(tokensLocal);
+    }
+}
+
+template <typename T1, typename T2, typename T3, bool PROBS>
+__aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalSharedToken(const int64_t h_length)
+{
+    LocalTensor<T1> tokensLocal = this->tokens_inque.template DeQue<T1>();
+
+    if constexpr (!IsSameType<T1, float>::value) {
+        Cast(this->token_tensor1, tokensLocal, RoundMode::CAST_NONE, h_length);
+        this->tokens_inque.FreeTensor(tokensLocal);
+        PipeBarrier<PIPE_V>();
+        Add(this->token_tensor0, this->token_tensor0, this->token_tensor1, h_length);
+    } else {
         Add(this->token_tensor0, this->token_tensor0, tokensLocal, h_length);
         this->tokens_inque.FreeTensor(tokensLocal);
     }
