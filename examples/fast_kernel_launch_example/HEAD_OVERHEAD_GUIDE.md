@@ -65,12 +65,6 @@ STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → 
 | DCCI/END | 编译器自动插入的 DCache 全刷 + 核结束指令 | 无打点（反汇编可见：`MOVI X15,#0; DCCI X15,#1; END`），代价由 DCCI 实验（TaskDur A/B）测得 |
 | pmu_end | 核硬件侧真正结束的时刻 | `ffts_profile.data` PMU f[20]（权威时间戳），由 `parse_ffts_pmu.py` 解析 |
 
-| 打点 | add / grouped_matmul | incre_flash_attention |
-|------|---------------------|----------------------|
-| T0 | kernel 入口第一行 | AIV 入口（`headStartCycle`） |
-| T1 | TPipe Init 完成后、首个 MTE2 搬运前 | 首个 MTE2 搬运前（`beforeFirstMte2Cycle`） |
-| T2 | kernel 末尾（MTE3/FIX 排空同步后） | AIV 侧 `op.Process()` 返回后，MTE3 排空同步（timing slot 7） |
-
 add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类型。
 
 **输出指标口径**（每指标 min=最快核 / mean=核平均 / max=最慢核）：
@@ -141,12 +135,6 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 - A3 上 ffts f[19] 非 kick 时刻（本轮实测与 dispatch 时刻相同），无 kick 拆分；硬件尾/全链路仅 ffts PMU 单点口径，表中硬件尾为 5 轮单点平均（逐轮 add 0.54~1.14 / gmm 0.46~0.80 / IFA 0.66~0.96us）。
 - kernel主体 T2-T1 为 mean 口径（= T2-stars mean − T1-stars mean）。
 - A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
-
-### A3 IFA T0-stars 偏大的三层分解（~15us）
-
-1. **每核 baseline ~5-6us（软件，反汇编证实）**：T0（kernel 第一条 `MOV Xn, SYS_CNT`，AIV 函数偏移 0xC0/第 48 条指令）之前是 33 个 GM_ADDR 指针 + **按值传递的大 tiling struct** 的参数搬运（13 条标量 GM 读 + 8 条 ST 写栈）。标量 GM 读 ~100-200 core cycle/条 → ~5-6us（本轮稳态拍最快核 B0=5.38us）。对比 add 仅 5-6 个参数（本轮 max 0.76us）、gmm（本轮 max 2.06us）。
-2. **逐核 stagger ~9us（硬件 kick 串行化）**：纯 Vector kernel 48 task，FFTS 逐 task kick。本轮稳态拍实测 T0-stars 对 block_id 单调递增：B0=5.38 → B47=14.20us（总 stagger ~8.8us，均值斜率 ~188ns/blk），前几组间隔 ~0.8-1.2us、后段压缩至 ~0.1us/blk（kick 管道渐进加速特征）。
-3. **调度为完成驱动**：STARS dispatch 的 shot 内 launch 间距 ≈ kernel 时长（本轮 TaskDur ~96us）；T0-stars 量级主要由前两层决定。
 
 ## 打点前后的反汇编阶段分析
 
