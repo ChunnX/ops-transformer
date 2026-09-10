@@ -17,6 +17,7 @@
 #include "acl/acl_dump.h"
 #include "../op_kernel/moe_distribute_comm_ctx.h"
 #include "../op_kernel/mc2_moe_context.h"
+#include "urma_comm_ctx_dump.h"
 #include "mc2_log.h"
 #include "mc2_tiling_utils.h"
 #include <chrono>
@@ -884,8 +885,8 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
 
     // 2. 解析 WorkspaceLayoutInfo，若首选偏移无效则尝试所有提供的偏移
-    constexpr uint32_t wsLayoutInfoSize = sizeof(Mc2Tiling::WorkspaceLayoutInfo);
-    Mc2Tiling::WorkspaceLayoutInfo wsLayout;
+    constexpr uint32_t wsLayoutInfoSize = sizeof(Utils::WorkspaceLayoutInfo);
+    Utils::WorkspaceLayoutInfo wsLayout;
     bool wsLayoutValid = false;
     uint32_t tryOffsets[] = {wsLayoutOffset, wsLayoutOffsetApace, wsLayoutOffsetQuant, wsLayoutOffsetNonQuant};
     for (uint32_t tryOff : tryOffsets) {
@@ -894,7 +895,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         }
         memcpy(&wsLayout, tilingBuf.data() + tryOff, wsLayoutInfoSize);
         if (wsLayout.totalSize != 0 && wsLayout.segCount > 0 &&
-            wsLayout.segCount <= Mc2Tiling::MAX_WORKSPACE_SEGMENTS) {
+            wsLayout.segCount <= Utils::MAX_WORKSPACE_SEGMENTS) {
             wsLayoutOffset = tryOff;
             wsLayoutValid = true;
             break;
@@ -926,7 +927,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
 
     // 4. 逐段 D2H 拷贝并落盘
-    for (uint32_t i = 0; i < wsLayout.segCount && i < Mc2Tiling::MAX_WORKSPACE_SEGMENTS; i++) {
+    for (uint32_t i = 0; i < wsLayout.segCount && i < Utils::MAX_WORKSPACE_SEGMENTS; i++) {
         auto &seg = wsLayout.segments[i];
         if (seg.size == 0) {
             continue;
@@ -1069,11 +1070,11 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     //    否则回退到原有单文件 peermem_window_ dump
     bool segDumped = false;
     if (peermemLayoutOffset != 0U && tilingGM != 0U) {
-        Mc2Tiling::PeermemLayoutInfo peermemLayout;
+        Utils::PeermemLayoutInfo peermemLayout;
         std::memset(&peermemLayout, 0, sizeof(peermemLayout));
         if (aclrtMemcpy(&peermemLayout, sizeof(peermemLayout), reinterpret_cast<void *>(tilingGM + peermemLayoutOffset),
                         sizeof(peermemLayout), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS &&
-            peermemLayout.segCount > 0 && peermemLayout.segCount <= Mc2Tiling::MAX_PEERMEM_SEGMENTS) {
+            peermemLayout.segCount > 0 && peermemLayout.segCount <= Utils::MAX_PEERMEM_SEGMENTS) {
             OP_LOGE(OP_NAME, "Peermem segmented dump: segCount=%u, totalSize=%lu", peermemLayout.segCount,
                     peermemLayout.totalSize);
             for (uint32_t i = 0; i < peermemLayout.segCount; i++) {

@@ -28,22 +28,18 @@
 #define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #undef WINDOW_LEN
+#include "apace/utils/op_state_dump.h"
 
 namespace Blaze {
 namespace Gemm {
 namespace Kernel {
 
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy, class DumpPolicy>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy, DumpPolicy
+    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
 
 using namespace AscendC;
 using AscendC::Te::Get;
-
-// 计算进度打点策略的默认实现: 空操作，未接线的实例化点零成本编译
-struct NullDumpPolicy {
-    __aicore__ inline void DoDump() {}
-};
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
@@ -51,12 +47,9 @@ struct NullDumpPolicy {
  * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
  * 调用点直接 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
  * 无需继承与 static_cast。
- * 计算进度打点逻辑经 DumpPolicy 策略类注入（同上组合模式）：tile 循环头调用
- * dumpPolicy_.DoDump()，默认 NullDumpPolicy 空实现。
  */
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy,
-          class DumpPolicy = NullDumpPolicy>
+template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
 class AllToAllQbmmMxKernel {
 public:
     __aicore__ inline AllToAllQbmmMxKernel() {}
@@ -145,10 +138,10 @@ public:
 
 public:
     __aicore__ inline void Init(const Params &params);
-    __aicore__ inline void Run(const Params &params);
-    __aicore__ inline void operator()(const Params &params)
+    __aicore__ inline void Run(const Params &params, Mc2Kernel::OpStateDump &opStateDump);
+    __aicore__ inline void operator()(const Params &params, Mc2Kernel::OpStateDump &opStateDump)
     {
-        Run(params);
+        Run(params, opStateDump);
     }
 
     __aicore__ inline CommPolicy &GetCommPolicy()
@@ -156,15 +149,10 @@ public:
         return commPolicy_;
     }
 
-    __aicore__ inline DumpPolicy &GetDumpPolicy()
-    {
-        return dumpPolicy_;
-    }
-
 private:
     __aicore__ inline void ResetGmAddr(const Params &params);
     __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler &bs, uint64_t restBatch,
-                                              bool isTailRound);
+                                              bool isTailRound, Mc2Kernel::OpStateDump &opStateDump);
     __aicore__ inline int32_t CalcDependTileIdx(int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const;
 
     template <typename TensorB, typename TensorScaleB, typename TensorC>
@@ -178,7 +166,6 @@ private:
 private:
     BlockMmad mmadOp_;
     CommPolicy commPolicy_;
-    DumpPolicy dumpPolicy_;
 
     __gm__ AType *aGmAddr_;      // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_; // 本地数据基址
@@ -195,7 +182,8 @@ private:
 };
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params)
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run(const Params &params,
+                                                                                 Mc2Kernel::OpStateDump &opStateDump)
 {
     Init(params);
 
@@ -208,7 +196,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Run
     mmadOp_.Init(params.problemShape, l0TileShape, params.l1Params, isBias_, params.qbmmParams.dbL0C > 1,
                  params.localParams.splitKNum);
 
-    ProcessSingleBatch(params, bs, 0, true);
+    ProcessSingleBatch(params, bs, 0, true, opStateDump);
 
     if (isAtomicAdd_) {
         AscendC::SetAtomicNone();
@@ -322,10 +310,9 @@ __aicore__ inline int32_t AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(const Params &params,
-                                                                                                BlockScheduler &bs,
-                                                                                                uint64_t restBatch,
-                                                                                                bool isTailRound)
+__aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
+    const Params &params, BlockScheduler &bs, uint64_t restBatch, bool isTailRound,
+    Mc2Kernel::OpStateDump &opStateDump)
 {
     auto rankId = params.localParams.rankId;
     auto rankSize = params.localParams.rankSize;
@@ -384,7 +371,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             return;
         }
 
-        dumpPolicy_.DoDump();
+        opStateDump.DoDump(DUMP_FIELD_TURN_INC);
         bs.GetTileCoord(blockIdx, mPos, nPos);
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
         auto gmBlockC = gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
@@ -429,7 +416,10 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
+                uint32_t waitCnt = commPolicy_.WaitTile(readyTileIdx);
+                if (waitCnt != 0) {
+                    opStateDump.DoDump(DUMP_FIELD_WAIT, 0, 0, 0, 0, static_cast<uint8_t>(waitCnt));
+                }
             }
             // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
             uint32_t remoteRankCnt = 1;
@@ -459,7 +449,10 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
-                commPolicy_.WaitTile(readyTileIdx);
+                uint32_t waitCnt = commPolicy_.WaitTile(readyTileIdx);
+                if (waitCnt != 0) {
+                    opStateDump.DoDump(DUMP_FIELD_WAIT, 0, 0, 0, 0, static_cast<uint8_t>(waitCnt));
+                }
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto actualMPos = rank * oriM + mPos;
@@ -500,7 +493,10 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     if (!localFirst) {
         while (readyTileIdx < totalTiles - 1) {
             readyTileIdx++;
-            commPolicy_.WaitTile(readyTileIdx);
+            uint32_t waitCnt = commPolicy_.WaitTile(readyTileIdx);
+            if (waitCnt != 0) {
+                opStateDump.DoDump(DUMP_FIELD_WAIT, 0, 0, 0, 0, static_cast<uint8_t>(waitCnt));
+            }
         }
     }
 }

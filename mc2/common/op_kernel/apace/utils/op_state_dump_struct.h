@@ -21,7 +21,7 @@
 #define MC2_DFX_ENABLE 1
 #endif
 
-namespace Mc2Tiling {
+namespace Utils {
 
 // ==================== Workspace 段布局信息 ====================
 
@@ -119,5 +119,5 @@ struct alignas(512) StateDumpPerCore {
     uint8_t commWaitCount;   // 1B  HCCL Wait 次数 (B层 communicator 递增)
     uint8_t reserved[501];   // 501B 预留
 }; // 512 bytes
-} // namespace Mc2Tiling
+} // namespace Utils
 #endif // OP_STATE_DUMP_STRUCT_H

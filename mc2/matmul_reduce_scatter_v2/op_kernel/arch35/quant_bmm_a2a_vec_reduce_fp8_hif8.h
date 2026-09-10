@@ -223,7 +223,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::PostPr
     if (GetBlockIdx() == 0) {
         // 仅切commPhase，到达finalize即表示通信全流程成功结束
         hccl_.Finalize();
-        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
+        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     }
 }
 
@@ -361,7 +361,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
 
     for (uint32_t i = 0; i < count; i++) {
         // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
-        opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMP_CUBE_MATMUL_BEFORE, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE),
+        opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMP_CUBE_MATMUL_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE),
                             i + 1 + (isTail ? cfg.tileCnt : 0U));
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
@@ -406,7 +406,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
     VecWaitCube(); // 确保依赖的 MatMul 已完成
     handles_[0 + handleShift] =
         hccl_.template AlltoAll<true>(currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat);
-    opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_COMM_BEFORE, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_COMMIT));
+    opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
     // 移动指针准备下一轮
     currentSendPtr += rankSliceBytes;
     currentRecvPtr += rankSliceBytes;

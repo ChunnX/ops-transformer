@@ -139,8 +139,6 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     if (mc2Tiling_.tailCnt > 0) {
         ProcessTail(mc2Tiling_.tailCnt);
     }
-    // 结束流水线: 仅切 commPhase，到达 finalize 即表示成功
-    opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_FINALIZE));
     // 结束流水线
     pipeLine_->End();
 }

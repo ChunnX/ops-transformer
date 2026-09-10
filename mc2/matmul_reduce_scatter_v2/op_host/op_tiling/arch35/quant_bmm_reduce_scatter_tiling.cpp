@@ -596,7 +596,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
 
 ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
 {
-    static_assert(Mc2Tiling::MAX_WORKSPACE_SEGMENTS >= 5U, "Quant MMRS workspace layout capacity is insufficient");
+    static_assert(Utils::MAX_WORKSPACE_SEGMENTS >= 5U, "Quant MMRS workspace layout capacity is insufficient");
     // launch 层不会为 mmrsv2 跳过系统 LibApi 段，kernel 直接以 workspaceGM 为用户区起点，
     // 段表 offset 即 kernel workspaceGM 的相对偏移，不设 LIB_API 头段。
     // GetWorkspaceSize 已按 factor 倍 cToFloatLen 累加出总分配 (A2A: send+recv+matmul; RS: result+matmul)，
@@ -612,31 +612,31 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     uint32_t idx = 0;
     uint64_t offset = 0;
     // Direct RS: gmToFloat_ = workspaceGM. A2A: sendBuf_ = workspaceGM.
-    workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_RESULT), {}};
+    workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Utils::WS_SEG_MM_RESULT), {}};
     offset += resultSize;
     if (isA2APath_) {
         // recvBuf_ = sendBuf_ + cfg.cToFloatLen.
-        workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RECV_BUF), {}};
+        workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Utils::WS_SEG_RECV_BUF), {}};
         offset += resultSize;
     }
     if (matmulWorkspaceSize != 0U) {
         // Direct RS: workspaceGM_ = gmToFloat_ + cfg.cToFloatLen.
         // A2A: workspaceGM_ = recvBuf_ + cfg.cToFloatLen.
         workspaceLayout_.segments[idx++] = {
-            offset, matmulWorkspaceSize, static_cast<uint8_t>(Mc2Tiling::WS_SEG_MM_WORKSPACE), {}};
+            offset, matmulWorkspaceSize, static_cast<uint8_t>(Utils::WS_SEG_MM_WORKSPACE), {}};
         offset += matmulWorkspaceSize;
     }
 #if MC2_DFX_ENABLE
     // DFX: 状态打点段前做512B对齐padding，再追加64KB STATE_DUMP段
-    const uint64_t alignment = Mc2Tiling::STATE_DUMP_PER_CORE_SIZE;
+    const uint64_t alignment = Utils::STATE_DUMP_PER_CORE_SIZE;
     const uint64_t padding = (alignment - offset % alignment) % alignment;
     if (padding != 0U) {
-        workspaceLayout_.segments[idx++] = {offset, padding, static_cast<uint8_t>(Mc2Tiling::WS_SEG_RESERVED), {}};
+        workspaceLayout_.segments[idx++] = {offset, padding, static_cast<uint8_t>(Utils::WS_SEG_RESERVED), {}};
         offset += padding;
     }
     workspaceLayout_.segments[idx++] = {
-        offset, Mc2Tiling::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Mc2Tiling::WS_SEG_STATE_DUMP), {}};
-    offset += Mc2Tiling::STATE_DUMP_TOTAL_SIZE;
+        offset, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
+    offset += Utils::STATE_DUMP_TOTAL_SIZE;
 #endif
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;

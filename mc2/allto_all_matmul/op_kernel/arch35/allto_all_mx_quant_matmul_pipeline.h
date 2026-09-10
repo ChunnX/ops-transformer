@@ -102,7 +102,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
                                                      ComputationType, ContextType>::Process(uint32_t taskCnt)
 {
     opStateDump_->DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_COMM_BEFORE, 
-                            static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+                            static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
         if ASCEND_IS_AIV {
@@ -128,7 +128,7 @@ template <typename CommunicationType, typename TransposeType, typename ScaleTran
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
                                                      ComputationType, ContextType>::ProcessScale()
 {
-    opStateDump_->DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_SCALE_COMM_BEFORE, static_cast<uint8_t>(Mc2Tiling::RT_PHASE_COMM_PREPARE));
+    opStateDump_->DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_SCALE_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
         commStage_->Process(0);
