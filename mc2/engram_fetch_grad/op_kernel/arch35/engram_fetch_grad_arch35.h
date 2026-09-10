@@ -36,9 +36,8 @@
 #include "adv_api/hcomm/hcomm.h"
 #endif
 
-#include "engram_fetch_grad_sort.h"
 #include "engram_fetch_grad_unique.h"
-#include "sortlib/sort_lib.h" 
+#include "sortlib/sort_lib.h"
 
 namespace Mc2Kernel {
 
@@ -92,8 +91,6 @@ private:
     __aicore__ inline void DrainAndSendFlags();
     __aicore__ inline void RecvGradFromPeers();
     __aicore__ inline void FinishExchangeGrad();
-    __aicore__ inline void InitCompanion(uint32_t numRecv);
-    __aicore__ inline void RunSort(uint32_t numRecv);
     __aicore__ inline void InitFlagsAndDispls();
     __aicore__ inline void ClearWinCounters();
     __aicore__ inline void CrossRankBarrierIssue();
@@ -174,7 +171,6 @@ private:
     GM_ADDR sortCompanionGM_{0};
     GM_ADDR sortWorkspaceGm_{0};
 
-    int32_t sortImpl_{0};          // 0=legacy 1=SortLib
     uint32_t sortNumTileData_{0U}; // SortLib tile 元素数
     uint32_t sortTmpUbSize_{0U};   // SortLib AscendC::Sort 临时 UB
 
@@ -189,10 +185,14 @@ private:
     uint32_t indicesBufElements_{0};
     TBuf<> castFp32Buf_;
     TBuf<> accumBuf_;
-    TBufPool<TPosition::VECCALC, SORT_POOL_NUMBER> sortPool_;
+    // scatter所需
+    uint32_t statusBufBytes_{0U};
+    uint32_t tempBufBytes_{0U};
+    uint32_t indicesBufBytes_{0U};
+    uint32_t castBufBytes_{0U};
+    uint32_t accumBufBytes_{0U};
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
-    EngramFetchGradSort::EngramFetchGradSort sorter_;
     EngramFetchGradUnique::EngramFetchGradUnique uniqueScatter_;
 };
 
@@ -490,8 +490,6 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     outputDtype_ = tilingData->outputDtype;
     ubSize_ = tilingData->ubSize;
     gradSubBatch_ = tilingData->gradSubBatch;
-    // SortLib 参数(host tiling 计算, 非 direct dtype 或预算不足时 sortImpl=0 回退 legacy)
-    sortImpl_ = tilingData->sortImpl;
     sortNumTileData_ = tilingData->sortNumTileData;
     sortTmpUbSize_ = tilingData->sortTmpUbSize;
     if (gradSubBatch_ == 0U) {
@@ -592,9 +590,21 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint64_t sortCompanionSize = Ceil(static_cast<uint64_t>(maxSortCount) * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     sortCompanionGM_ = workspaceGM_ + wsOffset;
     wsOffset += sortCompanionSize;
-    uint64_t sortWorkspaceSize = EngramFetchGradSort::EngramFetchGradSort::GetWorkspaceSize(maxSortCount, totalBlocks_);
+    // SortLib 所需workspace区
+    constexpr uint64_t kRadixRounds = 4U; // sizeof(int32_t)
+    uint64_t slTileCount = static_cast<uint64_t>(tilingData->sortTileCount);
+    uint64_t seg0 = Ceil(256U * kRadixRounds * 4U, UB_ALIGN) * UB_ALIGN;
+    uint64_t seg1 = Ceil(slTileCount * 256U * kRadixRounds * 4U, UB_ALIGN) * UB_ALIGN;
+    uint64_t seg2 = Ceil(static_cast<uint64_t>(totalRecv_) * 4U, UB_ALIGN) * UB_ALIGN;
+    uint64_t seg3 = 2U * Ceil(slTileCount * 256U * 2U, UB_ALIGN) * UB_ALIGN;
+    uint64_t seg4 = Ceil(slTileCount * static_cast<uint64_t>(sortNumTileData_), UB_ALIGN) * UB_ALIGN;
+    uint64_t seg5 = Ceil(static_cast<uint64_t>(totalRecv_) * 4U, UB_ALIGN) * UB_ALIGN;
+    uint64_t sortWorkspaceSize = seg0 + seg1 + seg2 + seg3 + seg4 + seg5;
+    sortWorkspaceGm_ = workspaceGM_ + wsOffset;
+    wsOffset += sortWorkspaceSize;
 
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
+    statusBufBytes_ = statusBufSize; 
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     uint32_t tempBufSize = statusBufSize;
     uint32_t entryBatchBytes = ENTRY_BATCH_CAP * sizeof(int32_t);
@@ -611,6 +621,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         tempBufSize = displsBatchBytes;
     }
     tpipe_->InitBuffer(tempBuf_, tempBufSize);
+    tempBufBytes_ = tempBufSize; 
     uint32_t indicesBufSize = Mc2Kernel::IDX_BUF_BYTES;
     if (indicesBufSize < statusBufSize) {
         indicesBufSize = statusBufSize;
@@ -622,46 +633,24 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
         indicesBufSize = stagingBytes;
     }
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
+    indicesBufBytes_ = indicesBufSize; 
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
-    uint32_t sortUbSize = EngramFetchGradSort::EngramFetchGradSort::GetUbSize(maxSortCount, totalBlocks_);
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-    // direct 模式(入出同 dtype)cast 仅需单行, 释放 ~50KB+ 给 SortLib;
-    // 非 direct 保持全量预算(该场景 host 已回退 legacy, 此收缩仅影响池预算)
-    bool canDirectCopyDtype = (inputDtype_ == outputDtype_);
-    uint32_t castBufSize = 0U;
-    if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-        if (canDirectCopyDtype) {
-            castBufSize = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) /
-                          Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN;
-        } else {
-            castBufSize = CastBufBytes(hiddenDim_, maxByPong);
-        }
-    }
-    uint32_t accumBufSize = AccumBufBytes(hiddenDim_);
+    castBufBytes_ = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? CastBufBytes(hiddenDim_, maxByPong) : 0U;
+    accumBufBytes_ = AccumBufBytes(hiddenDim_);
     uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
-    // unique 阶段池峰值：grad 整缓冲 + entryBuf 收缩区 + cast + accum（与 Process 二次 InitBuffer 布局一致）
-    uint32_t uniqueBufSize = Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes_ + castBufSize + accumBufSize;
-    // 档1 搬运布局(entry+grad 各 64K)也从池内分配, 池峰值不得低于该下限
-    if (uniqueBufSize < Mc2Kernel::COMM_BUF_BYTES) {
-        uniqueBufSize = Mc2Kernel::COMM_BUF_BYTES;
-    }
-    // legacy 排序在池内分配, 需覆盖其 UB 峰值; SortLib 不在池内(直接 TPipe 分配), 池只需装下 unique 阶段
-    uint32_t poolSize = uniqueBufSize;
-    if (sortImpl_ == 0 && sortUbSize > poolSize) {
-        poolSize = sortUbSize;
-    }
-    // UB 池预算自检：池 + 常驻四缓冲必须落在 SetLocalMemorySize 授权范围内，超限确定性失败
-    uint64_t permanentUsed = Mc2Kernel::HCOMM_INIT_SIZE + statusBufSize + tempBufSize + indicesBufSize;
-    uint64_t budgetLeft = (ubSize_ > permanentUsed) ? (ubSize_ - permanentUsed) : 0U;
-    ascendc_assert(static_cast<uint64_t>(poolSize) <= budgetLeft,
-                   "UB pool overflow: pool=%u, permanent=%llu, ubSize=%llu", poolSize, permanentUsed, ubSize_);
-    tpipe_->InitBufPool(sortPool_, poolSize);
-    sortPool_.InitBuffer(entryBuf_, Mc2Kernel::ENTRY_BUF_BYTES);
-    sortPool_.InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
-
-    sortWorkspaceGm_ = workspaceGM_ + wsOffset;
-    wsOffset += sortWorkspaceSize;
+    // scatter 重建(常驻三缓冲+entry/grad/cast/accum)必须落在授权 UB 内;
+    // UB 分时复用, 两阶段取峰值: 交换阶段布局(entry+grad 各 64K) 与 scatter 阶段布局
+    // (grad 64K + entryBuf 收缩区 + cast + accum), 后者随 hiddenDim 增长
+    uint32_t scatterPeak = Mc2Kernel::GRAD_BUF_BYTES + uniqueEntryBytes_ + castBufBytes_ + accumBufBytes_;
+    uint32_t uniqueBufSize = (scatterPeak > Mc2Kernel::COMM_BUF_BYTES) ? scatterPeak : Mc2Kernel::COMM_BUF_BYTES;
+    uint64_t permanentUsed = Mc2Kernel::HCOMM_INIT_SIZE + statusBufBytes_ + tempBufBytes_ + indicesBufBytes_;
+    ascendc_assert(static_cast<uint64_t>(uniqueBufSize) <= ubSize_ - permanentUsed,
+                   "scatter stage buffers overflow: need=%u, permanent=%llu, ubSize=%llu", uniqueBufSize,
+                   permanentUsed, ubSize_);
+    tpipe_->InitBuffer(entryBuf_, Mc2Kernel::ENTRY_BUF_BYTES);
+    tpipe_->InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
 
     uniqueScatter_.Init(aivId_, totalBlocks_, rankId_, numRanks_, numEntriesPerRank_, hiddenDim_, hiddenBytes_,
                         inputDtype_, outputDtype_, tpipe_, entryBuf_, gradBuf_, indicesBuf_, tempBuf_, statusBuf_,
@@ -1111,45 +1100,6 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
     }
 }
 
-__aicore__ inline void EngramFetchGradArch35::InitCompanion(uint32_t numRecv)
-{
-    uint32_t chunk = (numRecv + totalBlocks_ - 1U) / totalBlocks_;
-    uint32_t start = aivId_ * chunk;
-    uint32_t end = start + chunk;
-    if (end > numRecv) {
-        end = numRecv;
-    }
-
-    LocalTensor<int32_t> idxLocal = indicesBuf_.Get<int32_t>();
-    GlobalTensor<int32_t> compGM;
-    compGM.SetGlobalBuffer((__gm__ int32_t *)sortCompanionGM_);
-
-    uint32_t cur = start;
-    while (cur < end) {
-        uint32_t batchLen = end - cur;
-        if (batchLen > ENTRY_BATCH_CAP) {
-            batchLen = ENTRY_BATCH_CAP;
-        }
-        for (uint32_t i = 0; i < batchLen; i++) {
-            idxLocal.SetValue(i, static_cast<int32_t>(cur + i));
-        }
-        EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-        DataCopyParams cp = {1U, static_cast<uint16_t>(batchLen * sizeof(int32_t)), 0U, 0U};
-        DataCopyPad(compGM[cur], idxLocal, cp);
-        EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
-        cur += batchLen;
-    }
-}
-
-__aicore__ inline void EngramFetchGradArch35::RunSort(uint32_t numRecv)
-{
-    // 乘积上限由 Host 侧 rankSize*numEntriesPerRank <= INT32_MAX 校验保证，int64 中间量双保险
-    int64_t offset = static_cast<int64_t>(rankId_) * static_cast<int64_t>(numEntriesPerRank_);
-    sorter_.SetValueOffset(static_cast<int32_t>(offset));
-    sorter_.SetMaxValue(static_cast<uint32_t>(numEntriesPerRank_));
-    sorter_.Process(numRecv, *tpipe_);
-}
-
 __aicore__ inline void EngramFetchGradArch35::InitFlagsAndDispls()
 {
     if (aivId_ != 0) {
@@ -1289,56 +1239,51 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
         SendGradToPeers();
 
-        // RecvGradFromPeers 必须先于 entry 阶段的 SyncAll 执行：其内部的 tokenRead 计数器推进是
-        // 发送核流控自旋（SendGradRemote）唯一的解锁来源；若延后到 sort 之后的 FinishExchangeGrad，
-        // 发送核会因无法到达 SyncAll 而与接收核形成跨 rank 进度依赖环（超窗口场景死锁）。
+        // RecvGradFromPeers 必须先于 entry 阶段的全核屏障执行：其内部的 tokenRead 计数器推进是
+        // 发送核流控自旋（SendGradRemote）唯一的解锁来源；若延后到 sort 之后的全核屏障，
+        // 发送核会因无法到达屏障而与接收核形成跨 rank 进度依赖环（超窗口场景死锁）。
         RecvGradFromPeers();
+
+        // 分时方案: drain 提前 —— FinishExchangeGrad(Drain+SyncAll) 在排序前 Reset 之前执行,
+        // hcomm 生命周期完全收敛在 a2a 交换阶段(Reset 后 hcommBuf 绑定作废, 不可再使用);
+        // 其 SyncAll 兼作 a2a 完成屏障(sort 消费 recvLocalEntry 前的全核落盘保证)
+        FinishExchangeGrad();
 
         // PR10464 flow: receivers pull grad right after senders finish issuing, so the
         // flow-control tokenRead advance never depends on a full-core barrier; the
-        // entry-only phases (initCompanion/sort/count/zero) then run on the received
+        // entry-only phases (sort/count/zero) then run on the received
         // entries, and scatterCast is the only consumer of recvGradGM_.
         GlobalTensor<int32_t> numRecvGM;
         numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
         uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
         if (numRecv == 0) {
-            FinishExchangeGrad();
             uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
         } else {
-            InitCompanion(numRecv);
-            SyncAll<true>();
+            tpipe_->Reset();
 
-            if (sortImpl_ == 1) {
-                // CANN SortLib(decoupled lookback 单遍前缀和, 全 vf 数据面)。
-                // x 与 sortedValues 同址别名安全: int32 共 4 轮(偶数), ping-pong 最终落在 out 段;
-                // 输出契约与 legacy 一致(values 原地有序, companion=permutation), 下游零改动
-                SortLib::SortParams p;
-                p.numTileData = sortNumTileData_;
-                p.tileCount = (numRecv + p.numTileData - 1U) / p.numTileData;
-                p.activeCores = (p.tileCount < totalBlocks_) ? p.tileCount : totalBlocks_;
-                p.tmpUbSize = sortTmpUbSize_;
-                p.totalElements = static_cast<int64_t>(numRecv);
-                p.isSingleCore = 0;
-                SortLib::SortInvoke<int32_t, int32_t, uint32_t, false>(
-                    tpipe_, (__gm__ int32_t *)recvLocalEntryOutGM_, (__gm__ int32_t *)recvLocalEntryOutGM_,
-                    (__gm__ int32_t *)sortCompanionGM_, (__gm__ char *)sortWorkspaceGm_, p);
-            } else {
-                sortPool_.Reset();
-                uint32_t maxSortCount = static_cast<uint32_t>(totalRecv_);
-                sorter_.Init(maxSortCount, totalBlocks_, recvLocalEntryOutGM_, sortCompanionGM_, sortWorkspaceGm_, *tpipe_,
-                             sortPool_);
-                RunSort(numRecv);
-            }
+            SortLib::SortParams sortParams;
+            sortParams.numTileData = sortNumTileData_;
+            sortParams.tileCount = (numRecv + sortParams.numTileData - 1U) / sortParams.numTileData;
+            sortParams.activeCores = (sortParams.tileCount < totalBlocks_) ? sortParams.tileCount : totalBlocks_;
+            sortParams.tmpUbSize = sortTmpUbSize_;
+            sortParams.totalElements = static_cast<int64_t>(numRecv);
+            sortParams.isSingleCore = 0;
+            SortLib::SortInvoke<int32_t, int32_t, uint32_t, false>(
+                tpipe_, (__gm__ int32_t *)recvLocalEntryOutGM_, (__gm__ int32_t *)recvLocalEntryOutGM_,
+                (__gm__ int32_t *)sortCompanionGM_, (__gm__ char *)sortWorkspaceGm_, sortParams);
 
-            sortPool_.Reset();
-            sortPool_.InitBuffer(entryBuf_, uniqueEntryBytes_);
-            sortPool_.InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
-            uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-            if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
-                sortPool_.InitBuffer(castFp32Buf_, CastBufBytes(hiddenDim_, maxByPong));
+            tpipe_->Reset();
+            tpipe_->InitBuffer(statusBuf_, statusBufBytes_);
+            tpipe_->InitBuffer(tempBuf_, tempBufBytes_);
+            tpipe_->InitBuffer(indicesBuf_, indicesBufBytes_);
+            // scatter 阶段 entryBuf 为收缩区: 表头20K(4张int32表) + FlushAccum 双缓冲, 按 hiddenDim 按需分配
+            tpipe_->InitBuffer(entryBuf_, uniqueEntryBytes_);
+            tpipe_->InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
+            if (castBufBytes_ > 0U) {
+                tpipe_->InitBuffer(castFp32Buf_, castBufBytes_);
             }
-            sortPool_.InitBuffer(accumBuf_, AccumBufBytes(hiddenDim_));
+            tpipe_->InitBuffer(accumBuf_, accumBufBytes_);
             uniqueScatter_.SetCastBuf(castFp32Buf_);
             uniqueScatter_.SetAccumBuf(accumBuf_);
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
@@ -1346,9 +1291,9 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
             uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
             uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
-            FinishExchangeGrad();
+            SyncAll<true>();
             uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
-                                          gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
+                                           gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_, sortCompanionGM_);
         }
     }
 }
