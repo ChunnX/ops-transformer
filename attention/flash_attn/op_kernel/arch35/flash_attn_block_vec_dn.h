@@ -82,6 +82,10 @@ public:
     // L1
     static constexpr uint32_t L1_P_BUFCNT = D64_DEEP_PRELOAD ? 4U : 3U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+    __aicore__ inline uint32_t PSlotOffset(uint32_t id) const
+    {
+        return qPreScale_ ? (id & 1U) * 262144U + (id >> 1U) * 65536U : id * L1_P_BUF_BYTES;
+    }
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
@@ -239,7 +243,8 @@ public:
         /*--------------------------------------------L1--------------------------------------------*/
         // l1P 三缓冲
         uint32_t addrL1 = 0;
-        l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
+        l1PBuffers_ =
+            LocalTensor<uint8_t>(TPosition::A1, addrL1, qPreScale_ ? 512U * 1024U : L1_P_BUFCNT * L1_P_BUF_BYTES);
 
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
@@ -355,9 +360,8 @@ public:
             FaVectorApi::ScaleQueryD64VF((__ubuf__ bfloat16_t *)qUb.GetPhyAddr());
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
             Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            auto qL1 =
-                LocalTensor<uint8_t>(TPosition::A1, L1_P_BUFCNT * L1_P_BUF_BYTES + qPrescaleSlot_ * 16384U, 16384U)
-                    .template ReinterpretCast<INPUT_T>();
+            auto qL1 = LocalTensor<uint8_t>(TPosition::A1, qPrescaleSlot_ * 262144U + 131072U, 16384U)
+                           .template ReinterpretCast<INPUT_T>();
             for (uint32_t c = 0; c < 4; ++c) {
                 DataCopy(qL1[c * 2048U], qUb[c * 16U], {128, 1, 3, 0});
             }
@@ -373,7 +377,7 @@ public:
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
-        LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+        LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[PSlotOffset(pL1BufId)].template ReinterpretCast<INPUT_T>();
         auto mm1ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<T>();
 
         if (unlikely(runInfo.isFirstS2Loop)) {

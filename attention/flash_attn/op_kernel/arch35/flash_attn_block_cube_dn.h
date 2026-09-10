@@ -125,6 +125,18 @@ public:
                       512U * 1024U,
                   "FA buffers exceed L1 capacity");
     // buffer位置+用途+Buffers, 例如l1PBuffers; 使用时命名: 用途+buffer位置+Tensor, 例如pL1Tensor
+    __aicore__ inline uint32_t PSlotOffset(uint32_t id) const
+    {
+        return qPreScale_ ? (id & 1U) * 262144U + (id >> 1U) * 65536U : id * L1_P_BUF_BYTES;
+    }
+    __aicore__ inline uint32_t QSlotOffset(uint32_t id) const
+    {
+        return qPreScale_ ? id * 262144U + 131072U : id * L1_Q_BUF_BYTES;
+    }
+    __aicore__ inline uint32_t KvSlotOffset(uint32_t id) const
+    {
+        return qPreScale_ ? (id >> 1U) * 262144U + 147456U + (id & 1U) * 32768U : id * L1_KV_BUF_BYTES;
+    }
     LocalTensor<uint8_t> l1PBuffers_;
     LocalTensor<uint8_t> l1QBuffers_;
     LocalTensor<uint8_t> l1KvBuffers_;
@@ -228,11 +240,14 @@ public:
 
         /*--------------------------------------------L1--------------------------------------------*/
         uint32_t addrL1 = 0;
-        l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
+        l1PBuffers_ =
+            LocalTensor<uint8_t>(TPosition::A1, addrL1, qPreScale_ ? 512U * 1024U : L1_P_BUFCNT * L1_P_BUF_BYTES);
         addrL1 = L1_P_BUFCNT * L1_P_BUF_BYTES;
-        l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_Q_BUFCNT * L1_Q_BUF_BYTES);
+        l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, qPreScale_ ? 0U : addrL1,
+                                           qPreScale_ ? 512U * 1024U : L1_Q_BUFCNT * L1_Q_BUF_BYTES);
         addrL1 += L1_Q_BUFCNT * L1_Q_BUF_BYTES;
-        l1KvBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_KV_BUFCNT * L1_KV_BUF_BYTES);
+        l1KvBuffers_ = LocalTensor<uint8_t>(TPosition::A1, qPreScale_ ? 0U : addrL1,
+                                            qPreScale_ ? 512U * 1024U : L1_KV_BUFCNT * L1_KV_BUF_BYTES);
 
         // /*--------------------------------------------L0A--------------------------------------------*/
         l0aBufferManager_.Init(BUFFER_SIZE_BYTE_64K);
@@ -403,7 +418,7 @@ public:
 
     __aicore__ inline void IterateBmm1Dn(LocalTensor<MM_T> &mm1ResUbTensor, RunInfo &runInfo)
     {
-        LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
+        LocalTensor<Q_T> qL1Tensor = l1QBuffers_[QSlotOffset(qL1BufId_)].template ReinterpretCast<Q_T>();
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (qPreScale_) {
                 CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(8 + qL1BufId_);
@@ -415,7 +430,7 @@ public:
             }
         }
 
-        LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[KvSlotOffset(kvL1BufId_)].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         CopyKeySlice(kL1Tensor, 0, constInfo_.dSize, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
@@ -468,7 +483,7 @@ public:
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
         uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
-        LocalTensor<Q_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<Q_T>();
+        LocalTensor<Q_T> pL1Tensor = l1PBuffers_[PSlotOffset(pL1BufId)].template ReinterpretCast<Q_T>();
         LocalTensor<MM_T> mm2ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<MM_T>();
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
@@ -500,7 +515,7 @@ public:
 
     __aicore__ inline void IterateBmm2DnOutput(LocalTensor<MM_T> &dst, LocalTensor<Q_T> &p, RunInfo &runInfo)
     {
-        auto v = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        auto v = l1KvBuffers_[KvSlotOffset(kvL1BufId_)].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         CopyValueSlice(v, 0, 64, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
@@ -542,7 +557,7 @@ public:
                 return;
             }
         }
-        LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[KvSlotOffset(kvL1BufId_)].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
