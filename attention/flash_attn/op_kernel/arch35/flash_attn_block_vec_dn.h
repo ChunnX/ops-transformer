@@ -28,6 +28,7 @@
 #include "memory_copy_arch35.h"
 #include "../utils/attn_sink_gs1.h"
 #include "../../../common/op_kernel/arch_info.h"
+#include "flash_attn_dn_config.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -39,6 +40,7 @@ using ArchInfo::CV_RATIO;
 template <typename FA_T>
 class FANoQuantGqaBlockVecDn {
 public:
+    using Config = FaDnConfig<FA_T>;
     using INPUT_T = typename FA_T::inputType;
     using OUTPUT_T = typename FA_T::outputType;
     static constexpr uint32_t mBaseSize = (uint32_t)FA_T::mBaseSize;
@@ -58,18 +60,10 @@ public:
     // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
     static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
 
-    static constexpr bool D64_DEEP_PRELOAD =
-        dBaseSize == 64 && dVBaseSize == 64 && mBaseSize == 128 && (s2BaseSize == 128 || s2BaseSize == 256);
-
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
     static constexpr uint32_t CC_MM_0 = 0U;
-    static constexpr uint32_t CC_MM_1 = 1U;
-    static constexpr uint32_t CC_MM_2 = 2U;
-    static constexpr uint32_t CC_MM_3 = 3U;
-    static constexpr uint32_t CC_L1P_0 = (D64_DEEP_PRELOAD ? 4U : 5U) + 0U;
-    static constexpr uint32_t CC_L1P_1 = (D64_DEEP_PRELOAD ? 4U : 5U) + 1U;
-    static constexpr uint32_t CC_L1P_2 = (D64_DEEP_PRELOAD ? 4U : 5U) + 2U;
+    static constexpr uint32_t CC_L1P_0 = Config::L1P_SYNC_BASE + 0U;
 
     // 核内同步ID
     // MTE3<->V, 输出buffer
@@ -80,95 +74,60 @@ public:
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
 
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = D64_DEEP_PRELOAD ? 4U : 3U;
-    static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+    static constexpr uint32_t L1_P_BUFCNT = Config::L1_P_BUFCNT;
+    static constexpr uint32_t L1_P_BUF_BYTES = Config::L1_P_BUF_BYTES;
     __aicore__ inline uint32_t PSlotOffset(uint32_t id) const
     {
-        return qPreScale_ ? (id & 1U) * 262144U + (id >> 1U) * 65536U : id * L1_P_BUF_BYTES;
+        return id * L1_P_BUF_BYTES;
     }
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
-    static constexpr bool D72_LARGE_TILE =
-        dBaseSize == 128 && dVBaseSize == 128 && mBaseSize == 128 && s2BaseSize == 256;
-    static constexpr bool SPLIT_MM_QUEUES = (D64_DEEP_PRELOAD && s2BaseSize == 256) || D72_LARGE_TILE;
-    static constexpr uint32_t UB_MM_RES_BUFCNT = D72_LARGE_TILE ? 3U :
-                                                 (D64_DEEP_PRELOAD && s2BaseSize == 256) ?
-                                                                  4U :
-                                                                  ((dBaseSize > 128 || s2BaseSize > 128) ? 2U : 4U);
-    static constexpr uint32_t UB_MM_RES_BUF_BYTES =
-        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T) +
-        ((dBaseSize == 64 && dVBaseSize == 64 && mBaseSize == 128 && s2BaseSize == 128) ? 128U : 0U);
-    static constexpr uint32_t UB_MM1_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-    static constexpr uint32_t UB_MM2_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
+    static constexpr bool SPLIT_MM_QUEUES = Config::SPLIT_MM_QUEUES;
+    static constexpr uint32_t UB_MM_RES_BUFCNT = Config::UB_MM_RES_BUFCNT;
+    static constexpr uint32_t UB_MM_RES_BUF_BYTES = Config::UB_MM_RES_BUF_BYTES;
+    static constexpr uint32_t UB_MM1_BUF_BYTES = Config::UB_MM1_BUF_BYTES;
+    static constexpr uint32_t UB_MM2_BUF_BYTES = Config::UB_MM2_BUF_BYTES;
     // bmm1/bmm2(mmRes) 区域总字节数：FD block 以此作为 FD 业务区的 UB 起始偏移
-    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES =
-        D72_LARGE_TILE ? 2U * (UB_MM1_BUF_BYTES + 128U) + UB_MM2_BUF_BYTES + 128U :
-                         (SPLIT_MM_QUEUES ? 2U * (UB_MM1_BUF_BYTES + UB_MM2_BUF_BYTES + 256U) :
-                                            UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES);
+    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = Config::UB_MM_RES_TOTAL_BYTES;
     // FD 业务区在 UB 中的起始字节偏移，供 kernel 传给 FD block 的 InitBuffers
     static __aicore__ inline constexpr uint32_t GetFdBaseOffset()
     {
         return UB_MM_RES_TOTAL_BYTES;
     }
     LocalTensor<uint8_t> ubMmResBuffers_;
-    uint32_t mmResBufId_ = 0;
-    uint32_t mm1ResBufId_ = 0U;
-    uint32_t mm2ResBufId_ = 0U;
 
+    FaDnMmSlots<Config> mmSlots_;
     __aicore__ inline uint32_t AcquireMmSlot(bool second)
     {
-        if constexpr (SPLIT_MM_QUEUES) {
-            if (second) {
-                uint32_t id = mm2ResBufId_;
-                mm2ResBufId_ = (mm2ResBufId_ + 1U) % (D72_LARGE_TILE ? 1U : 2U);
-                return 2U + id;
-            }
-            uint32_t id = mm1ResBufId_;
-            mm1ResBufId_ = (mm1ResBufId_ + 1U) % 2U;
-            return id;
-        } else {
-            uint32_t id = mmResBufId_;
-            mmResBufId_ = (mmResBufId_ + 1U) % UB_MM_RES_BUFCNT;
-            return id;
-        }
+        return mmSlots_.Acquire(second);
     }
 
     __aicore__ inline uint32_t MmSlotOffset(uint32_t id)
     {
-        if constexpr (SPLIT_MM_QUEUES) {
-            // Rotate the four slot bases through UB phases 0/128/256/384B.
-            return id < 2U ? id * (UB_MM1_BUF_BYTES + 128U) :
-                             2U * (UB_MM1_BUF_BYTES + 128U) + (id - 2U) * (UB_MM2_BUF_BYTES + 128U);
-        } else {
-            return id * UB_MM_RES_BUF_BYTES;
-        }
+        return Config::MmSlotOffset(id);
     }
 
-    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
+    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = Config::UB_VEC2_RES_BUF_BYTES;
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
-    static constexpr uint32_t UB_VEC1_RES_BUFCNT = D72_LARGE_TILE ? 1U : 2U;
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1U) * s2BaseSize * sizeof(INPUT_T);
+    static constexpr uint32_t UB_VEC1_RES_BUFCNT = Config::UB_VEC1_RES_BUFCNT;
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = Config::UB_VEC1_RES_BUF_BYTES;
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = D64_DEEP_PRELOAD ? 4U : 3U;
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES =
-        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = Config::UB_SOFTMAX_MAX_BUFCNT;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES = Config::UB_SOFTMAX_MAX_BUF_BYTES;
     LocalTensor<T> softmaxSumBuf_;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = D64_DEEP_PRELOAD ? 4U : 3U;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES =
-        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = Config::UB_SOFTMAX_SUM_BUFCNT;
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES = Config::UB_SOFTMAX_SUM_BUF_BYTES;
     LocalTensor<T> softmaxMaxBuf_;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = D64_DEEP_PRELOAD ? 4U : 3U;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES =
-        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = Config::UB_SOFTMAX_EXP_BUFCNT;
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES = Config::UB_SOFTMAX_EXP_BUF_BYTES;
     LocalTensor<T> softmaxExpBuf_;
 
-    static constexpr uint32_t UB_LSE_OUT_BUFCNT = SPLIT_MM_QUEUES ? 1U : 2U;
-    static constexpr uint32_t UB_LSE_OUT_BUF_BYTES =
-        AttentionCommon::Align(mBaseSize / CV_RATIO * 8 * static_cast<uint32_t>(sizeof(T)), 256U);
+    static constexpr uint32_t UB_LSE_OUT_BUFCNT = Config::UB_LSE_OUT_BUFCNT;
+    static constexpr uint32_t UB_LSE_OUT_BUF_BYTES = Config::UB_LSE_OUT_BUF_BYTES;
     static_assert(UB_MM_RES_TOTAL_BYTES + UB_VEC2_RES_BUF_BYTES + UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES +
                           UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES +
                           UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES +
@@ -197,10 +156,7 @@ public:
     GlobalTensor<float> sinkGm_;
 
     T negativeFloatScalar_;
-    bool qPreScale_ = false;
-    bool pvDn72_ = false;
-    uint32_t qPrescaleSlot_ = 0;
-    GlobalTensor<INPUT_T> queryScaleGm_;
+    bool pvDn_ = false;
 
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVecDn(ConstInfo_t &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
@@ -213,26 +169,13 @@ public:
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                      __gm__ uint8_t *workspace, __gm__ uint8_t *query)
     {
-        if constexpr (dBaseSize == 128 && dVBaseSize == 128 && mBaseSize == 128 &&
-                      IsSameType<INPUT_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
+        if constexpr (dVBaseSize <= 128 && mBaseSize == 128 && IsSameType<INPUT_T, bfloat16_t>::value &&
+                      IsSameType<OUTPUT_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
                       LAYOUT_T == FA_LAYOUT::BNSD && LAYOUT_KV == FA_LAYOUT::BNSD &&
                       FA_T::attnOutLayout == FA_LAYOUT::BNSD) {
-            pvDn72_ = constInfo_.bSize == 1 && constInfo_.gSize == 1 && constInfo_.dSize == 72 &&
-                      constInfo_.dSizeV == 72 && !constInfo_.learnableSinkFlag && constInfo_.s1Size >= 16384 &&
-                      constInfo_.s1Size % 128 == 0 && constInfo_.s2Size >= 16384 &&
-                      constInfo_.s2Size % s2BaseSize == 0 && qSeqLensTool_.GetActualSeqLength(0) == constInfo_.s1Size &&
-                      kvSeqLensTool_.GetActualSeqLength(0) == constInfo_.s2Size;
+            pvDn_ = Config::UsePvDn(constInfo_, qSeqLensTool_, kvSeqLensTool_);
         }
-        queryScaleGm_.SetGlobalBuffer((__gm__ INPUT_T *)query);
-        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
-                      LAYOUT_T == FA_LAYOUT::BNSD && LAYOUT_KV == FA_LAYOUT::BNSD &&
-                      FA_T::attnOutLayout == FA_LAYOUT::BNSD) {
-            qPreScale_ = constInfo_.bSize == 1 && constInfo_.gSize == 1 && constInfo_.dSize == 64 &&
-                         constInfo_.dSizeV == 64 && constInfo_.scaleValue == 0.125f && constInfo_.s1Size > 0 &&
-                         constInfo_.s1Size % 128 == 0 && constInfo_.s2Size > 0 && constInfo_.s2Size % 256 == 0 &&
-                         qSeqLensTool_.GetActualSeqLength(0) == constInfo_.s1Size &&
-                         kvSeqLensTool_.GetActualSeqLength(0) == constInfo_.s2Size;
-        }
+
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
 
@@ -260,8 +203,7 @@ public:
         /*--------------------------------------------L1--------------------------------------------*/
         // l1P 三缓冲
         uint32_t addrL1 = 0;
-        l1PBuffers_ =
-            LocalTensor<uint8_t>(TPosition::A1, addrL1, qPreScale_ ? 512U * 1024U : L1_P_BUFCNT * L1_P_BUF_BYTES);
+        l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
 
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
@@ -349,44 +291,11 @@ public:
         }
     }
 
-    __aicore__ inline void UnInitCrossCoreSync()
-    {
-        if (qPreScale_ && constInfo_.subBlockIdx == 0) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(10);
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(11);
-        }
-    }
+    __aicore__ inline void UnInitCrossCoreSync() {}
 
     __aicore__ inline void AllocEventID() {}
 
     __aicore__ inline void FreeEventID() {}
-
-    __aicore__ inline void PrepareScaledQuery(RunInfo &runInfo)
-    {
-        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value) {
-            if (!qPreScale_ || constInfo_.subBlockIdx != 0) {
-                return;
-            }
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(10 + qPrescaleSlot_);
-            Mutex::Lock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            auto qUb = ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-            uint64_t offset = (static_cast<uint64_t>(runInfo.n2Idx) * constInfo_.s1Size + runInfo.s1Idx) * 64U;
-            DataCopy(qUb, queryScaleGm_[offset], 8192U);
-            Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            FaVectorApi::ScaleQueryD64VF((__ubuf__ bfloat16_t *)qUb.GetPhyAddr());
-            Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            auto qL1 = LocalTensor<uint8_t>(TPosition::A1, qPrescaleSlot_ * 262144U + 131072U, 16384U)
-                           .template ReinterpretCast<INPUT_T>();
-            for (uint32_t c = 0; c < 4; ++c) {
-                DataCopy(qL1[c * 2048U], qUb[c * 16U], {128, 1, 3, 0});
-            }
-            Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(8 + qPrescaleSlot_);
-            qPrescaleSlot_ = (qPrescaleSlot_ + 1U) % 2U;
-        }
-    }
 
     __aicore__ inline void ProcessVec1(RunInfo runInfo)
     {
@@ -398,7 +307,6 @@ public:
         auto mm1ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<T>();
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            PrepareScaledQuery(runInfo);
             ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT, runInfo);
             AscendC::PipeBarrier<PIPE_V>();
         }
@@ -533,26 +441,10 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        // VEC1_COMPUTE_BEGIN
-        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value) {
-            if (qPreScale_ && runInfo.actVecMSize == 64 && (runInfo.actMSizeAlign32 >> 1) == 64 &&
-                runInfo.actSingleLoopS2Size == 256 && runInfo.actSingleLoopS2SizeAlign == 256) {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true, true>(
-                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                    runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
-            } else {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                    runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                    static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
-            }
-        } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
-        }
+        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32 >> 1,
+            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue),
+            descaleQK, negativeFloatScalar_, 0.0F, false);
         // VEC1_COMPUTE_END
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
@@ -657,10 +549,10 @@ public:
         DataCopyPad(accumOutGm_[gmOffset], ubVec2Res, dataCopyParams);
     }
 
-    template <uint32_t columns = 64, uint32_t paddedColumns = 64>
     __aicore__ inline void ProcessVec2DnOutput(RunInfo &runInfo, uint32_t slot, uint32_t sync)
     {
-        static_assert(columns <= paddedColumns && paddedColumns % 16 == 0, "Invalid DN output padding");
+        const uint32_t columns = constInfo_.dSizeV;
+        const uint32_t paddedColumns = (columns + 15U) / 16U * 16U;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(sync);
         Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         auto cur = ubMmResBuffers_[MmSlotOffset(slot)].template ReinterpretCast<T>();
@@ -670,13 +562,13 @@ public:
             auto factor =
                 softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
             if (runInfo.isLastS2Loop) {
-                FaVectorApi::FlashUpdateDnRows64VF<true, columns>((__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
-                                                                  (__ubuf__ float *)cur.GetPhyAddr(),
-                                                                  (__ubuf__ float *)factor.GetPhyAddr());
+                FaVectorApi::FlashUpdateDnRows64VF<true>(
+                    (__ubuf__ float *)ubVec2Res_.GetPhyAddr(), (__ubuf__ float *)cur.GetPhyAddr(),
+                    (__ubuf__ float *)factor.GetPhyAddr(), static_cast<uint16_t>(columns));
             } else {
-                FaVectorApi::FlashUpdateDnRows64VF<false, columns>((__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
-                                                                   (__ubuf__ float *)cur.GetPhyAddr(),
-                                                                   (__ubuf__ float *)factor.GetPhyAddr());
+                FaVectorApi::FlashUpdateDnRows64VF<false>(
+                    (__ubuf__ float *)ubVec2Res_.GetPhyAddr(), (__ubuf__ float *)cur.GetPhyAddr(),
+                    (__ubuf__ float *)factor.GetPhyAddr(), static_cast<uint16_t>(columns));
             }
         }
         if (runInfo.isLastS2Loop) {
@@ -684,11 +576,11 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
             auto sum = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
             auto output = cur.template ReinterpretCast<OUTPUT_T>();
-            FaVectorApi::FlashPackOutputDnRows64VF<columns>((__ubuf__ bfloat16_t *)output.GetPhyAddr(),
-                                                            (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
-                                                            (__ubuf__ float *)sum.GetPhyAddr());
+            FaVectorApi::FlashPackOutputDnRows64VF((__ubuf__ bfloat16_t *)output.GetPhyAddr(),
+                                                   (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                                                   (__ubuf__ float *)sum.GetPhyAddr(), static_cast<uint16_t>(columns));
             AscendC::PipeBarrier<PIPE_V>();
-            if constexpr (paddedColumns > columns) {
+            if (paddedColumns > columns) {
                 auto padding = output[columns * 64U].template ReinterpretCast<uint16_t>();
                 Duplicate(padding, static_cast<uint16_t>(0), (paddedColumns - columns) * 64U);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -718,16 +610,8 @@ public:
     {
         uint32_t mmResUbBufId = AcquireMmSlot(true);
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
-        if constexpr (dBaseSize == 128 && dVBaseSize == 128 && mBaseSize == 128 &&
-                      IsSameType<INPUT_T, bfloat16_t>::value) {
-            if (pvDn72_ && !runInfo.isS2SplitCore) {
-                ProcessVec2DnOutput<72, 80>(runInfo, mmResUbBufId, mmSyncIdx);
-                return;
-            }
-        }
-        if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value &&
-                      IsSameType<OUTPUT_T, bfloat16_t>::value) {
-            if (qPreScale_ && !runInfo.isS2SplitCore) {
+        if constexpr (dVBaseSize <= 128 && mBaseSize == 128 && IsSameType<INPUT_T, bfloat16_t>::value) {
+            if (pvDn_ && !runInfo.isS2SplitCore) {
                 ProcessVec2DnOutput(runInfo, mmResUbBufId, mmSyncIdx);
                 return;
             }
