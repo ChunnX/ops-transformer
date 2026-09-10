@@ -103,14 +103,6 @@ using namespace GROUPED_MATMUL;
 #endif
 
 namespace {
-// blaze fixpipe block 的 MMAD bias 类型约束（Te API check_data_type）：
-// A8W8（int8×int8，L0C=int32）bias 仅支持 int32；fp8/fp4（L0C=float）bias 仅支持 float。
-// 用 C++ 类型判断（DTYPE_X/DTYPE_BIAS 是类型别名，不能用预处理宏比较）；不支持的组合回落 cgmct。
-template <class GmmCubeXType, class GmmCubeBiasType>
-constexpr bool GmmCubeBiasSupported =
-    AscendC::Std::is_same_v<GmmCubeXType, int8_t> ? AscendC::Std::is_same_v<GmmCubeBiasType, int32_t>
-                                                   : AscendC::Std::is_same_v<GmmCubeBiasType, float>;
-
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
 constexpr CubeFormat wFormat = CubeFormat::NZ;
 #else
@@ -344,51 +336,50 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) // scale64/perTensor/double perTensor
-    if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
 #if IS_BLAZE
-        if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
-            if constexpr (wFormat == CubeFormat::NZ) {
+    if constexpr (QUANT_A_TRANS == GMM_NO_TRANS &&
+                  (QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
+        // Keep this predicate in sync with GroupedQmmBasicApiTiling::IsCubeBasicApi().
+        constexpr bool isInt8 = AscendC::IsSameType<DTYPE_X, int8_t>::value &&
+                                AscendC::IsSameType<DTYPE_WEIGHT, int8_t>::value;
+        constexpr bool isHiFloat8 = ORIG_DTYPE_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT == DT_HIFLOAT8;
+        constexpr bool isFp8X = ORIG_DTYPE_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_X == DT_FLOAT8_E5M2;
+        constexpr bool isFp8W = ORIG_DTYPE_WEIGHT == DT_FLOAT8_E4M3FN || ORIG_DTYPE_WEIGHT == DT_FLOAT8_E5M2;
+        constexpr bool outputSupported = AscendC::IsSameType<DTYPE_Y, half>::value ||
+            AscendC::IsSameType<DTYPE_Y, bfloat16_t>::value ||
+            (isInt8 ? (AscendC::IsSameType<DTYPE_Y, int8_t>::value ||
+                       AscendC::IsSameType<DTYPE_Y, int32_t>::value) :
+                      AscendC::IsSameType<DTYPE_Y, float>::value);
+        constexpr bool scaleSupported = AscendC::IsSameType<DTYPE_Y, int32_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, uint64_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, int64_t>::value ||
+            AscendC::IsSameType<DTYPE_SCALE, bfloat16_t>::value || AscendC::IsSameType<DTYPE_SCALE, float>::value;
+        if constexpr ((isInt8 || isHiFloat8 || (isFp8X && isFp8W)) && outputSupported && scaleSupported) {
+            // Both layouts start with GMMQuantParams. Do not read mmTilingData before selecting the layout.
+            GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, cubeRouteParams, tiling);
+            using NativeBiasType = AscendC::Std::conditional_t<isInt8, int32_t, float>;
+            constexpr bool biasSupported = AscendC::IsSameType<DTYPE_BIAS, NativeBiasType>::value;
+            if (!cubeRouteParams.hasBias || biasSupported) {
+                using CubeWLayout = AscendC::Std::conditional_t<wFormat == CubeFormat::NZ,
+                    AscendC::Std::conditional_t<QUANT_B_TRANS == GMM_TRANS, AscendC::Te::ZNLayoutPtn,
+                                              AscendC::Te::NZLayoutPtn>,
+                    AscendC::Std::conditional_t<QUANT_B_TRANS == GMM_TRANS, AscendC::Te::DNExtLayoutPtn,
+                                              AscendC::Te::NDExtLayoutPtn>>;
                 GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
-                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                    user1, tiling);
-            } else {
-                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
-                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                    user1, tiling);
+                                      AscendC::Te::NDExtLayoutPtn, CubeWLayout, AscendC::Te::NDExtLayoutPtn>(
+                    x, weight, bias, scale, groupList, perTokenScale, y, user1, tiling);
+                return;
             }
-        } else {
-            GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
-            GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
         }
-#else
+    }
+#endif
+    if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
-#endif
     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
-#if IS_BLAZE
-        if constexpr (GmmCubeBiasSupported<DTYPE_X, DTYPE_BIAS>) {
-            if constexpr (wFormat == CubeFormat::NZ) {
-                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::ZNLayoutPtn,
-                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                    user1, tiling);
-            } else {
-                GmmCubeTensorApiKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y,
-                                    AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn,
-                                    AscendC::Te::NDExtLayoutPtn>(x, weight, bias, scale, groupList, perTokenScale, y,
-                                                                    user1, tiling);
-            }
-        } else {
-            GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
-            GMM_QUANT_IMPL_CLASS(false, true, GmmASWKernel);
-        }
-#else
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_IMPL_CLASS(false, true, GmmASWKernel);
-#endif
     }
 #endif
 #if defined(V310_GMM_QUANT_PERTENSOR_CUBE) // perTensor/double perTensor
