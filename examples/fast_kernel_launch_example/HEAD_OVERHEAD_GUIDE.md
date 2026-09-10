@@ -53,6 +53,18 @@ bash run_head_overhead.sh
 STARS dispatch → kick(核启动) → T0(kernel入口) → T1(prologue后) → [计算主体] → T2(kernel末) → DCCI → END → pmu_end
 ```
 
+**时间轴各时刻的含义与获取方式**：
+
+| 时刻 | 含义 | 获取方式 |
+|------|------|---------|
+| STARS dispatch | STARS 调度器把 kernel 任务下发到硬件队列的时刻 | `stars_soc.data`（msprof 采集）中 func type=0 事件的每核 sys cnt，由 `parse_stars_log.py` 解析 |
+| kick（核启动） | 任务被 FFTS 派发、核真正开始执行的时刻 | `ffts_profile.data` PMU f[19]（pmu_start）；**仅 A5 有效**（A3 的 f[19] 实测恒为 dispatch+20cyc，非 kick 时刻） |
+| T0 | kernel 入口第一行执行到打点指令 | kernel 内 `GetSystemCycle()`（读 SYS_CNT 寄存器），写 GM cycle buffer |
+| T1 | prologue（TPipe/tiling 初始化）完成 | 同上，Init 后、首个 MTE2 搬运前打点 |
+| T2 | kernel 末指令（MTE3/FIX 排空同步后） | 同上，kernel 最后一行打点 |
+| DCCI/END | 编译器自动插入的 DCache 全刷 + 核结束指令 | 无打点（反汇编可见：`MOVI X15,#0; DCCI X15,#1; END`），代价由 DCCI 实验（TaskDur A/B）测得 |
+| pmu_end | 核硬件侧真正结束的时刻 | `ffts_profile.data` PMU f[20]（权威时间戳），由 `parse_ffts_pmu.py` 解析 |
+
 | 打点 | add / grouped_matmul | incre_flash_attention |
 |------|---------------------|----------------------|
 | T0 | kernel 入口第一行 | AIV 入口（`headStartCycle`） |
@@ -63,15 +75,15 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 
 **输出指标口径**（每指标 min=最快核 / mean=核平均 / max=最慢核）：
 
-| 指标 | 含义 |
-|------|------|
-| 调度+硬件头 T0-stars | STARS dispatch → kernel 入口（含 ICache/参数预取/栈帧/参数装载） |
-| 软件头 T1-T0 | TPipe/tiling 初始化 |
-| 头开销 T1-stars | 前两项之和 |
-| kernel主体 T2-T1 | 实际计算 |
-| kernel末指令 T2-stars | dispatch → kernel 末打点 |
-| 硬件尾 pmu_end-T2 | 写回 GM + SyncAll + DCCI + END（ffts PMU 权威时间戳） |
-| 全链路 pmu_end-stars | dispatch → 最慢核结束（与 TaskDur 同语义闭环校验） |
+| 指标 | 含义 | 对应时间轴 |
+|------|------|------------|
+| 调度+硬件头 T0-stars | STARS dispatch → kernel 入口（含 ICache/参数预取/栈帧/参数装载） | stars → T0 |
+| 软件头 T1-T0 | TPipe/tiling 初始化 | T0 → T1 |
+| 头开销 T1-stars | 前两项之和 | stars → T1 |
+| kernel主体 T2-T1 | 实际计算 | T1 → T2 |
+| kernel末指令 T2-stars | dispatch → kernel 末打点 | stars → T2 |
+| 硬件尾 pmu_end-T2 | 写回 GM + SyncAll + DCCI + END（ffts PMU 权威时间戳） | T2 → pmu_end |
+| 全链路 pmu_end-stars | dispatch → 最慢核结束（与 TaskDur 同语义闭环校验） | stars → pmu_end |
 
 三算子统一多拍口径：NPUGraph capture 连发（add/gmm 101 次 / IFA 250 次）+ replay 多拍（默认 5 拍），各拍独立计算全部指标后取 median，滤除单拍快照的 icache 冷热 / 核启动错峰干扰。IFA 每拍 replay 后回读 cycle tensor（该拍末次 launch 的逐核打点，A5 56 AIV 核 / A3 48 AIV 核），稳态 = 跳过前 2 拍。
 
@@ -214,14 +226,8 @@ add_sources("--npu-arch=dav-3510 -mllvm -cce-aicore-dcci-before-kernel-end=false
 
 - grouped_matmul_utils.h 宏守卫添加 `__NPU_ARCH__ == 3510`（GetSplitValueFromGroupList 在 dav-3510 下可用）
 - ascend950/ascend910_93 的 groupedmatmul_kernel 增加 `__cube__` 核属性（A5/A3 Cube 核函数声明）
-- CMakeLists.txt ASC/AICPU 路径自动探测（兼容 CANN 8.5.T107 的 ASCConfig.cmake 与新版 asc-config.cmake）
-- add.cpp (ascend910_93)：HardEvent/SetFlag/WaitFlag 补 `AscendC::` 前缀，AllocEventID 返回的 TEventID 显式 `static_cast<event_t>`（新版 CANN ccec 不再注入全局命名空间）
-- grouped_matmul_kernel.h (ascend910_93)：GMM_CUBE_IMP 宏内 "Hard Event" typo 修正为 HardEvent
-- 上述修复已在 A3（Ascend910_9392）实测编译通过并完成 5 轮复测
 
 ## 新增算子接入指南
-
-本工程是**可扩展的算子头开销测试框架**：新增算子按下述清单接入，采集/汇总/跨轮平均链路自动复用。
 
 ### 接入清单（按序）
 
