@@ -69,7 +69,7 @@ public:
     static constexpr uint32_t CROSSCORE_MM_1 = 1U;
     static constexpr uint32_t CROSSCORE_MM_2 = 2U;
     static constexpr uint32_t CROSSCORE_MM_3 = 3U;
-    static constexpr uint32_t CROSSCORE_L1P_0 = 8U - (PRELOAD_N + 1U);
+    static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
     static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
 
@@ -373,51 +373,45 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
     }
 
-    __aicore__ inline void IterateBmm2DnOutput(LocalTensor<MM_T> &dst, LocalTensor<Q_T> &p, RunInfo &runInfo)
+    __aicore__ inline void IterateBmm2DnOutput(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor,
+                                               RunInfo &runInfo)
     {
         static_assert(mBaseSize == 128 && s2BaseSize == 128 && dVBaseSize <= 128,
                       "PV DN requires the original KV128 configurations with DV storage <=128");
-        auto v = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        CopyValueSlice(v, 0, constInfo_.dSizeV, runInfo);
+        CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
+        {
+            Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
+            uint32_t ldK = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
+            MMParam param = {
+                constInfo_.dSizeV, 128, (uint32_t)runInfo.actSingleLoopS2Size, true, false, true, true, 0, 0, ldK, 0};
+            MatmulK<KV_T, Q_T, MM_T, dVBaseSize, mBaseSize, 128, ABLayout::MK, ABLayout::KN>(
+                vL1Tensor, pL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
 
-        Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
 
-        auto accum = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-        MMParam param{};
-        param.singleM = constInfo_.dSizeV;
-        param.singleN = 128;
-        param.singleK = runInfo.actSingleLoopS2Size;
-        param.loadK = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
-        param.isLeftTranspose = true;
-        param.isRightTranspose = false;
-        param.isOutKFisrt = true;
-        param.unitFlag = 0U;
-        MatmulK<KV_T, Q_T, MM_T, dVBaseSize, mBaseSize, 128, ABLayout::MK, ABLayout::KN>(v, p, mmL0APolicy_,
-                                                                                         mmL0BPolicy_, accum, param);
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+            fixpipeParams.nSize = 128;
+            fixpipeParams.mSize = (constInfo_.dSizeV + 15U) / 16U * 16U;
+            fixpipeParams.srcStride = fixpipeParams.mSize;
+            fixpipeParams.dstStride = 64;
+            fixpipeParams.dualDstCtl = 2;
+            fixpipeParams.unitFlag = 0U;
+            fixpipeParams.params.ndNum = 1;
+            fixpipeParams.params.srcNdStride = 0;
+            fixpipeParams.params.dstNdStride = 0;
+            Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(mm2ResUbTensor, l0CSubTensor, fixpipeParams);
 
-        Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-        Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fix;
-        fix.nSize = 128;
-        fix.mSize = (constInfo_.dSizeV + 15U) / 16U * 16U;
-        fix.srcStride = fix.mSize;
-        fix.dstStride = 64;
-        fix.dualDstCtl = 2;
-        fix.unitFlag = 0U;
-        fix.params.ndNum = 1;
-        fix.params.srcNdStride = 0;
-        fix.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dst, accum, fix);
-
-        Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-
-        l0cBufId_ = (l0cBufId_ + 1U) % L0C_BUFCNT;
+            Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
+        }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        kvL1BufId_ = (kvL1BufId_ + 1U) % L1_KV_BUFCNT;
+        kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
     }
 }; // FANoQuantGqaBlockCubeDn
 
