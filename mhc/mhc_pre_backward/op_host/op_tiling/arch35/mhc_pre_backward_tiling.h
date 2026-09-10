@@ -90,7 +90,7 @@ protected:
 
     ge::graphStatus GetInputShape();
     ge::graphStatus GetInputTensors(const gert::Tensor *&gradHInTensor, const gert::Tensor *&gradHPostTensor,
-                                   const gert::Tensor *&gradHResTensor);
+                                    const gert::Tensor *&gradHResTensor);
     ge::graphStatus ValidateInputDims(int64_t gradHInDims, int64_t gradHPostDims, int64_t gradHResDims);
     ge::graphStatus ParseBSDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);

@@ -48,8 +48,7 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
-    const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional, const aclTensor *gradXPostOptional,
     float hcEps, int64_t opImplMode, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor);
 

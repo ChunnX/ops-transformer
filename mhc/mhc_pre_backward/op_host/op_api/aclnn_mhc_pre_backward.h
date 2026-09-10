@@ -32,7 +32,8 @@ extern "C" {
  * @param [in] hPre: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
  * @param [in] hPost: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
  * @param [in] gammaOptional: 可选输入tensor，shape为[N,D]，数据类型：FP32。
- * @param [in] gradXPostOptional: 可选输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型：BF16/FP16。
+ * @param [in]
+ * gradXPostOptional: 可选输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型：BF16/FP16。
  * @param [in] hcEps: 可选属性，默认值为1e-6。
  * @param [out] gradX: 输出梯度，数据类型支持：BF16/FP16。
  * @param [out] gradPhi: 输出梯度，数据类型支持：FP32。
@@ -46,8 +47,7 @@ extern "C" {
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
-    const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional, const aclTensor *gradXPostOptional,
     float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor);
 

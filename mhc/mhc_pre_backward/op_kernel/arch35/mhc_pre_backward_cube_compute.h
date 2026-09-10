@@ -1,7 +1,16 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
+ * CANN
+ * Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not
+ * use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT
+ * WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY,
+ * OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the
+ * License.
  */
 #ifndef MHC_PRE_BACKWARD_CUBE_COMPUTE_H
 #define MHC_PRE_BACKWARD_CUBE_COMPUTE_H
@@ -28,8 +37,7 @@ constexpr uint32_t CUBE_B_L1_OFFSET = CUBE_BUFFER_DEPTH * CUBE_L1_SLOT_ELEMS;
 constexpr uint32_t CUBE_L0_BUFFER_BYTES = 64U * 1024U;
 constexpr uint32_t CUBE_L0_SLOT_ELEMS = CUBE_L0_BUFFER_BYTES / CUBE_BUFFER_DEPTH / sizeof(float);
 constexpr uint32_t CUBE_L0C_BUFFER_BYTES = 256U * 1024U;
-constexpr uint32_t CUBE_L0C_SLOT_ELEMS =
-    CUBE_L0C_BUFFER_BYTES / CUBE_BUFFER_DEPTH / sizeof(float);
+constexpr uint32_t CUBE_L0C_SLOT_ELEMS = CUBE_L0C_BUFFER_BYTES / CUBE_BUFFER_DEPTH / sizeof(float);
 
 __aicore__ inline uint64_t BasicCubeCeilDiv(uint64_t x, uint64_t n)
 {
@@ -61,8 +69,8 @@ public:
     }
 
     __aicore__ inline void Process(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                   const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
-                                   uint32_t bGmStride, bool enableB1Reuse)
+                                   const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k, uint32_t bGmStride,
+                                   bool enableB1Reuse)
     {
         // MhcPreBackward的fusionSize最大为80，最多占两个K_L1分块。
         // C0的所有M tile共享同一块phi，先装入两个B-L1槽，避免每128行重复GM到L1搬运。
@@ -73,8 +81,8 @@ public:
         for (uint32_t offsetM = 0; offsetM < m; offsetM += CUBE_BASE_M) {
             uint32_t remainM = m - offsetM;
             uint32_t currentM = remainM < CUBE_BASE_M ? remainM : CUBE_BASE_M;
-            ComputeTile(a[offsetM * k], b, c[offsetM * CUBE_BASE_N], currentM, n, k, k,
-                        bGmStride, CUBE_BASE_N, false, false, true, reuseB1);
+            ComputeTile(a[offsetM * k], b, c[offsetM * CUBE_BASE_N], currentM, n, k, k, bGmStride, CUBE_BASE_N, false,
+                        false, true, reuseB1);
         }
     }
 
@@ -129,16 +137,14 @@ private:
     }
 
     __aicore__ inline void ProcessKRange(const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
-                                        const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
-                                        uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst,
-                                        bool reuseB1 = false)
+                                         const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
+                                         uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst,
+                                         bool reuseB1 = false)
     {
-
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += CUBE_L1_K) {
             uint32_t remainKL1 = k - offsetKL1;
             uint32_t currentKL1 = remainKL1 < CUBE_L1_K ? remainKL1 : CUBE_L1_K;
-            uint32_t l1Slot =
-                reuseB1 ? ((offsetKL1 / CUBE_L1_K) & 1U) : (l1PingPongID_ & 1U);
+            uint32_t l1Slot = reuseB1 ? ((offsetKL1 / CUBE_L1_K) & 1U) : (l1PingPongID_ & 1U);
             LocalTensor<float> currentA1 = aL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
             LocalTensor<float> currentB1 = bL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
 
@@ -164,8 +170,7 @@ private:
 
                 WaitFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + l0Slot);
                 if (transA) {
-                    CopyInA2Trans(currentA2, currentA1[offsetKL0 * AuxGetC0Size<float>()], m, currentKL0,
-                                  currentKL1);
+                    CopyInA2Trans(currentA2, currentA1[offsetKL0 * AuxGetC0Size<float>()], m, currentKL0, currentKL1);
                 } else {
                     CopyInA2(currentA2, currentA1[offsetKL0 * BasicCubeAlign(m, BLOCK_CUBE)], m, currentKL0);
                 }
@@ -185,8 +190,7 @@ private:
         }
     }
 
-    __aicore__ inline void PreloadB1(const GlobalTensor<float> &b, uint32_t n, uint32_t k,
-                                     uint32_t bGmStride)
+    __aicore__ inline void PreloadB1(const GlobalTensor<float> &b, uint32_t n, uint32_t k, uint32_t bGmStride)
     {
         for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += CUBE_L1_K) {
             uint32_t remainKL1 = k - offsetKL1;

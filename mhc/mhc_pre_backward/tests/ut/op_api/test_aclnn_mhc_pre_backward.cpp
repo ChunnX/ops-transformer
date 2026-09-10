@@ -66,9 +66,8 @@ aclnnStatus RunMhcPreBackward(bool useFactorialGradHRes = false)
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
     auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto gradHRes = useFactorialGradHRes
-                        ? TensorDesc({t, residualSize}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1)
-                        : TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = useFactorialGradHRes ? TensorDesc({t, residualSize}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1) :
+                                           TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
     auto hMix = TensorDesc({t, fusionSize}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -81,10 +80,10 @@ aclnnStatus RunMhcPreBackward(bool useFactorialGradHRes = false)
     auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
     float hcEps = 1e-6f;
 
-    auto ut = OP_API_UT(
-        aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
-        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    auto ut =
+        OP_API_UT(aclnnMhcPreBackward,
+                  INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+                  OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -116,11 +115,10 @@ aclnnStatus RunMhcPreBackwardV2(int64_t opImplMode)
     auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
     float hcEps = 1e-6f;
 
-    auto ut = OP_API_UT(
-        aclnnMhcPreBackwardV2,
-        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps,
-              opImplMode),
-        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    auto ut = OP_API_UT(aclnnMhcPreBackwardV2,
+                        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr,
+                              hcEps, opImplMode),
+                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);

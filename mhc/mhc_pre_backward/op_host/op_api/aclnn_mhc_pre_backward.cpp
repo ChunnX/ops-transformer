@@ -650,8 +650,7 @@ bool MhcGradCheckFormat(const AclnnMhcPreBackwardParams &params)
 bool MhcGradCheckOpImplMode(const AclnnMhcPreBackwardParams &params)
 {
     if (params.opImplMode != MHC_PRE_BACKWARD_USE_FP32 && params.opImplMode != MHC_PRE_BACKWARD_USE_HF32) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode",
-                                              std::to_string(params.opImplMode).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode", std::to_string(params.opImplMode).c_str(),
                                               "must be 0 (FP32) or 1 (HF32)");
         return false;
     }
@@ -738,12 +737,11 @@ static aclnnStatus mhcPreBackwardCommonProcess(AclnnMhcPreBackwardParams &params
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = MhcGradCovertDataContiguous(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    auto outParams =
-        l0op::MhcPreBackward(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.gradHInContiguous,
-                             params.gradHPostContiguous, params.gradHResContiguous, params.invRmsContiguous,
-                             params.hMixContiguous, params.hPreContiguous, params.hPostContiguous,
-                             params.gammaContiguous, params.gradXPostOptionalContiguous, params.hcEps,
-                             params.opImplMode, executor);
+    auto outParams = l0op::MhcPreBackward(
+        params.xContiguous, params.phiContiguous, params.alphaContiguous, params.gradHInContiguous,
+        params.gradHPostContiguous, params.gradHResContiguous, params.invRmsContiguous, params.hMixContiguous,
+        params.hPreContiguous, params.hPostContiguous, params.gammaContiguous, params.gradXPostOptionalContiguous,
+        params.hcEps, params.opImplMode, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CopyOutput(std::get<0>(outParams), params.gradX, executor), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CopyOutput(std::get<1>(outParams), params.gradPhi, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -792,16 +790,14 @@ static aclnnStatus MhcPreBackwardGetWorkspaceSizeCommon(
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
-    const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional, const aclTensor *gradXPostOptional,
     float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(
-        aclnnMhcPreBackward,
-        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
-               gradXPostOptional, hcEps),
-        DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    L2_DFX_PHASE_1(aclnnMhcPreBackward,
+                   DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
+                          gradXPostOptional, hcEps),
+                   DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
     return MhcPreBackwardGetWorkspaceSizeCommon(
         x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional, gradXPostOptional, hcEps,
         MHC_PRE_BACKWARD_USE_FP32, gradX, gradPhi, gradAlpha, gradBias, gradGamma, workspaceSize, executor);
@@ -810,19 +806,17 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
 aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional,
-    const aclTensor *gradXPostOptional,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional, const aclTensor *gradXPostOptional,
     float hcEps, int64_t opImplMode, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(
-        aclnnMhcPreBackwardV2,
-        DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
-               gradXPostOptional, hcEps, opImplMode),
-        DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
-    return MhcPreBackwardGetWorkspaceSizeCommon(
-        x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional, gradXPostOptional, hcEps,
-        opImplMode, gradX, gradPhi, gradAlpha, gradBias, gradGamma, workspaceSize, executor);
+    L2_DFX_PHASE_1(aclnnMhcPreBackwardV2,
+                   DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
+                          gradXPostOptional, hcEps, opImplMode),
+                   DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    return MhcPreBackwardGetWorkspaceSizeCommon(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost,
+                                                gammaOptional, gradXPostOptional, hcEps, opImplMode, gradX, gradPhi,
+                                                gradAlpha, gradBias, gradGamma, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
@@ -831,8 +825,7 @@ aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpEx
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-aclnnStatus aclnnMhcPreBackwardV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                  aclrtStream stream)
+aclnnStatus aclnnMhcPreBackwardV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcPreBackwardV2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

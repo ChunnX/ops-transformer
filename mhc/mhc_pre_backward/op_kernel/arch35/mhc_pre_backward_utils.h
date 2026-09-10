@@ -59,8 +59,8 @@ __aicore__ inline constexpr uint16_t GetVRegSize()
 using namespace AscendC;
 
 constexpr uint32_t DOUBLE_BUFFER = 2;
-constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024;              // 32KB
-constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
+constexpr uint32_t INOUT_QUEUE_SIZE = 32 * 1024; // 32KB
+constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;  // 1KB
 // V0/V1的最大占用约49.5KB；V2统一使用64行chunk后最大占用约42.75KB。
 // 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
 constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
@@ -148,7 +148,8 @@ struct V0V1Buffers {
  * 3. bias_grad: [vecCoreNum, 2N + N*N] = [vecCoreNum * fusionSize]
  * 4. inv_rms_grad: [B, S] = [totalLength]
  * 5. x_rs_grad_mm: [cubeCoreNum * DOUBLE_BUFFER, BS_BLOCK_SIZE * ND_BLOCK_SIZE]
- * 6. x_rs: [cubeCoreNum * DOUBLE_BUFFER, BS_BLOCK_SIZE * ND_BLOCK_SIZE]
+ * 6. x_rs: [cubeCoreNum *
+ * DOUBLE_BUFFER, BS_BLOCK_SIZE * ND_BLOCK_SIZE]
  */
 template <class P>
 struct WorkspaceBuffer {
