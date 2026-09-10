@@ -62,6 +62,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t COMM_ALIGN = 512UL;
 constexpr uint64_t METADATA_FIELDS = 5UL;
+constexpr uint64_t LOCAL_INDEX_SLOT_BYTES = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr int64_t H_MIN = 1;
 constexpr int64_t H_MAX = 8192;
@@ -419,7 +420,7 @@ static ge::graphStatus MoeEpCombineEpilogueTilingFunc(gert::TilingContext *conte
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
     uint64_t maxTokensPerAiv = (static_cast<uint64_t>(info.cfg.numTokens) + aivNum - 1UL) / aivNum;
     uint64_t localIndexStrideBytes =
-        ((maxTokensPerAiv * info.cfg.topK * sizeof(int32_t) + COMM_ALIGN - 1UL) / COMM_ALIGN) * COMM_ALIGN;
+        ((maxTokensPerAiv * info.cfg.topK * LOCAL_INDEX_SLOT_BYTES + COMM_ALIGN - 1UL) / COMM_ALIGN) * COMM_ALIGN;
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + aivNum * localIndexStrideBytes;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
