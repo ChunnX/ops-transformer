@@ -1,10 +1,10 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software: you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * Please refer to the License for details. You should not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -22,6 +22,7 @@
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
 
+namespace aicpu {
 namespace {
 // 920R1 平台核数（AIC 64 + AIV 64），用于分核参数的平台识别。
 constexpr int32_t AIC_CORE_NUM_920R1 = 64;
@@ -29,12 +30,11 @@ constexpr int32_t AIV_CORE_NUM_920R1 = 64;
 // 920R1 平台分核基本块大小（与主算子 STEM_M/S2_BASE_SIZE_920R1 一致）。
 constexpr int32_t M_BASE_SIZE_920R1 = 64;
 constexpr int32_t S2_BASE_SIZE_920R1 = 512;
-// A5（arch35）平台分核基本块大小（与主算子 STEM_M/S2_BASE_SIZE 对应）。
-constexpr int32_t M_BASE_SIZE_A5 = 96;
+// A5（arch35）平台分核基本块大小（与主算子 STEM_M/S2_BASE_SIZE 一致）。
+constexpr int32_t M_BASE_SIZE_A5 = 64;
 constexpr int32_t S2_BASE_SIZE_A5 = 256;
 } // namespace
 
-namespace aicpu {
 uint32_t StemIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
@@ -85,54 +85,48 @@ std::vector<int64_t> StemIndexerMetadataCpuKernel::GetTensorDataAsInt64(Tensor *
     void *data = tensor->GetData();
 
     switch (dataType) {
-        case DT_INT32:
-            {
-                int32_t *ptr = static_cast<int32_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+        case DT_INT32: {
+            int32_t *ptr = static_cast<int32_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_INT64:
-            {
-                int64_t *ptr = static_cast<int64_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = ptr[i];
-                }
-                break;
+            break;
+        }
+        case DT_INT64: {
+            int64_t *ptr = static_cast<int64_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = ptr[i];
             }
-        case DT_INT16:
-            {
-                int16_t *ptr = static_cast<int16_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_INT16: {
+            int16_t *ptr = static_cast<int16_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT32:
-            {
-                uint32_t *ptr = static_cast<uint32_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT32: {
+            uint32_t *ptr = static_cast<uint32_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT64:
-            {
-                uint64_t *ptr = static_cast<uint64_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT64: {
+            uint64_t *ptr = static_cast<uint64_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
-        case DT_UINT16:
-            {
-                uint16_t *ptr = static_cast<uint16_t *>(data);
-                for (size_t i = 0; i < size; ++i) {
-                    result[i] = static_cast<int64_t>(ptr[i]);
-                }
-                break;
+            break;
+        }
+        case DT_UINT16: {
+            uint16_t *ptr = static_cast<uint16_t *>(data);
+            for (size_t i = 0; i < size; ++i) {
+                result[i] = static_cast<int64_t>(ptr[i]);
             }
+            break;
+        }
         default:
             break;
     }
@@ -175,7 +169,8 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
     baseInfo.querySeqSize = 0;
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = 0;
-    baseInfo.headdimV = headDim_;
+    baseInfo.headDimQk = headDim_;
+    baseInfo.headDimV = headDim_;
     baseInfo.attenMaskFlag = causal_;
     baseInfo.sparseMode = (causal_) ? static_cast<uint32_t>(load_balance::SparseMode::RIGHT_DOWN_CAUSAL) :
                                       static_cast<uint32_t>(load_balance::SparseMode::BUTT);
@@ -210,6 +205,7 @@ bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::Sec
         param.s2BaseSize = S2_BASE_SIZE_A5;
     }
     param.fdOn = false;
+    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
     return true;
 }
 
@@ -231,24 +227,21 @@ bool StemIndexerMetadataCpuKernel::GenMetadata(SectionStreamKResult &result)
 
     sliMetadata.SetHeadMetadata(optiling::HEAD_SECTION_NUM_INDEX, result.sectionNum);
 
-    load_balance::SectionStreamKFaResult dummyHead { static_cast<uint32_t>(aicCoreNum_) };
+    load_balance::SectionStreamKFaResult dummyHead{static_cast<uint32_t>(aicCoreNum_)};
     for (uint32_t secIdx = 0; secIdx < result.sectionNum; ++secIdx) {
         auto &faRes = result.sectionFaResult[secIdx];
         for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
             auto &prevFaRes = (secIdx == 0U) ? dummyHead : result.sectionFaResult[secIdx - 1U];
             auto prevLastCore = (secIdx == 0U) ? 0U : prevFaRes.usedCoreNum - 1U;
-            SLI_METADATA_T bn2Start =
-                (aicIdx == 0) ? prevFaRes.bN2End[prevLastCore] : faRes.bN2End[aicIdx - 1U];
-            SLI_METADATA_T mStart =
-                (aicIdx == 0) ? prevFaRes.gS1End[prevLastCore] : faRes.gS1End[aicIdx - 1U];
-            SLI_METADATA_T s2Start =
-                (aicIdx == 0) ? prevFaRes.s2End[prevLastCore] : faRes.s2End[aicIdx - 1U];
+            SLI_METADATA_T bnStart = (aicIdx == 0) ? prevFaRes.bNEnd[prevLastCore] : faRes.bNEnd[aicIdx - 1U];
+            SLI_METADATA_T mStart = (aicIdx == 0) ? prevFaRes.mEnd[prevLastCore] : faRes.mEnd[aicIdx - 1U];
+            SLI_METADATA_T s2Start = (aicIdx == 0) ? prevFaRes.s2End[prevLastCore] : faRes.s2End[aicIdx - 1U];
 
-            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN2_START_INDEX, bn2Start);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN_START_INDEX, bnStart);
             sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_M_START_INDEX, mStart);
             sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_S2_START_INDEX, s2Start);
-            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN2_END_INDEX, faRes.bN2End[aicIdx]);
-            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_M_END_INDEX, faRes.gS1End[aicIdx]);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_BN_END_INDEX, faRes.bNEnd[aicIdx]);
+            sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_M_END_INDEX, faRes.mEnd[aicIdx]);
             sliMetadata.SetFaMetadata(secIdx, aicIdx, optiling::SLI_SEC_S2_END_INDEX, faRes.s2End[aicIdx]);
         }
     }
