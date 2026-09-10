@@ -62,7 +62,8 @@ public:
     static_assert(BUFFER_SIZE + Activation::MIN_SHARED_TMP_BYTES <= ArchTag::UB_SIZE,
                   "The tiled activation buffers and workspace exceed UB capacity");
 
-    static_assert((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
+    static_assert((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t> ||
+                   std::is_same_v<ElementC, float>) &&
                       (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
                        std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
                   "The element type template parameters of BlockEpilogue are wrong");
@@ -390,18 +391,28 @@ private:
         auto &ubGate = ubGateFp32List[stageId];
         auto &ubUp = ubUpFp32List[stageId];
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
-        Activation::PrepareBranches(ubGate, ubUp, ubC, TILE_LENGTH, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
-        if (applyPerTokenScale) {
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
+        if constexpr (std::is_same_v<ElementC, float>) {
+            // Shared BF16 GMM1 already writes FP32. Consume the loaded branches
+            // directly; keep the input stage live until activation finishes.
+            static_assert(std::is_same_v<ElementD, bfloat16_t>, "FP32 input is for shared BF16 activation only");
+            Activation::Compute(ubActivationList[stageId], ubC, ubC[TILE_LENGTH], sharedTmpBuffer, tileLength,
+                                activationClamp, activationCode_, activationParams1_, activationParams2_);
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Muls(ubGate, ubGate, perTokenScale, tileLength);
-            AscendC::Muls(ubUp, ubUp, perTokenScale, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
+        } else {
+            Activation::PrepareBranches(ubGate, ubUp, ubC, TILE_LENGTH, tileLength);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
+            if (applyPerTokenScale) {
+                AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Muls(ubGate, ubGate, perTokenScale, tileLength);
+                AscendC::Muls(ubUp, ubUp, perTokenScale, tileLength);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+            Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
+                                activationCode_, activationParams1_, activationParams2_);
         }
-        Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
-                            activationCode_, activationParams1_, activationParams2_);
     }
 
     CATLASS_DEVICE

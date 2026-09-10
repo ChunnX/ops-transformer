@@ -57,11 +57,19 @@ using namespace Mc2Tiling;
 
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
+// Reserved for the once-per-batch shared pipeline. Do not introduce
+// SyncAll<false> while these signals are live (it also uses flags 11-13).
+// Input-ready and activation-ready reuse V2C=12 in strictly ordered phases;
+// flag 14 remains exclusively owned by SyncAll<true> on AIV.
+constexpr uint16_t SYNCFLAG_SHARED_GMM1_C2V = 11;
+constexpr uint16_t SYNCFLAG_SHARED_GMM1_V2C = 12;
+constexpr uint16_t SYNCFLAG_SHARED_GMM2_C2V = 13;
+constexpr uint16_t SYNCFLAG_SHARED_INPUT_V2C = SYNCFLAG_SHARED_GMM1_V2C;
 constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
 // 发送侧逐 chunk 处理的 chunk 大小（= moe_permute_prologue 的 MAX_TOKENS=1024）
 constexpr int64_t PERMUTE_CHUNK = 1024;
-// 相邻 chunk 通过 SyncAll<false> 全核屏障串行化，不同时执行，因此 C2V/V2C 固定占用 flag 9/10，
+// 相邻 chunk 通过 AIV 屏障及轮级握手串行化，因此 C2V/V2C 固定占用 flag 9/10，
 // 每 chunk 复用同一组 flag（syncgmm 流 0-8、C2V=9、V2C=10、GMM2-combine 0-8）。
 // 注意 mode0/1/2 下 flagId 仅 0-15，超出截取低 4bit；若改为按 chunk 偏移必须满足
 // C2V(chunk n) != V2C(chunk m) 且不落入 syncgmm 流 0-8 与 SyncAll<false> 的 11-13。
@@ -71,10 +79,14 @@ constexpr int64_t PERMUTE_MAX_CORES = 128;
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
-          class BlockEpilogue2_, class BlockEpilogue3_>
+          class BlockEpilogue2_, class BlockEpilogue3_, class SharedBlockMmad1_ = BlockMmad_,
+          class SharedBlockEpilogue1_ = BlockEpilogue1_>
 class MegaMoeKernel {
 public:
     using BlockMmad = BlockMmad_;
+    using SharedBlockMmad1 = SharedBlockMmad1_;
+    using SharedBlockEpilogue1 = SharedBlockEpilogue1_;
+    using SharedElementC1 = typename SharedBlockMmad1::ElementC;
     using ArchTag = typename BlockMmad::ArchTag;
     using L1TileShape = typename BlockMmad::L1TileShape;
     using ElementA = typename BlockMmad::ElementA;
@@ -162,6 +174,14 @@ public:
         float activationParams1{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
         float activationParams2{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
+        __gm__ ElementB *ptrSharedB1{nullptr};
+        __gm__ ElementB *ptrSharedB2{nullptr};
+        __gm__ ElementScale *ptrSharedScale1{nullptr};
+        __gm__ ElementScale *ptrSharedScale2{nullptr};
+        __gm__ float *ptrSharedBias1{nullptr};
+        __gm__ float *ptrSharedBias2{nullptr};
+        uint32_t sharedExpertNum{0};
+        uint64_t sharedWorkspaceOffset{0};
         // 算子tiling数据地址（GM），ADump启动时由0核dump到Tiling段
         GM_ADDR tilingGM{nullptr};
         GM_ADDR ptrMaskBuffer{nullptr};
@@ -260,6 +280,12 @@ public:
         if (IsRankMasked(RuntimeRank(params))) {
             return;
         }
+        if (params.sharedExpertNum > 0U) {
+            if constexpr (kRoutingIsQuant) {
+                AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAG_SHARED_INPUT_V2C);
+            }
+            SharedGMM1(params);
+        }
         syncgmmIdx = 0;
         const int64_t bs = params.problemShape.m();
         const int64_t numChunks = NumChunks(bs);
@@ -284,6 +310,10 @@ public:
                     SetRoundTableBuffers(params, chunkIdx, roundIdx);
                 }
                 GMM1(params, chunkIdx);
+                if (chunkIdx == 0 && roundIdx == 0 && params.sharedExpertNum > 0U) {
+                    AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAG_SHARED_GMM1_V2C);
+                    SharedGMM2(params);
+                }
                 if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                     AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C + chunkIdx * PERMUTE_CHUNK_FLAG_STRIDE);
                     GMM2(params, chunkIdx);
@@ -342,6 +372,20 @@ private:
 
         gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC));
         gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
+
+        if (params.sharedExpertNum > 0U) {
+            gmSharedGmmBuffer.SetGlobalBuffer(
+                reinterpret_cast<__gm__ SharedElementC1 *>(workspaceInfo.ptrSharedGmmBuffer));
+            gmSharedActivation.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrSharedActivation));
+            gmSharedResult.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(workspaceInfo.ptrSharedResult));
+            if constexpr (kRoutingIsQuant) {
+                gmSharedInput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedInput));
+                gmSharedInputScale.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrSharedInputScale));
+                gmSharedActivationScale.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrSharedActivationScale));
+            }
+        }
 
         gmPerTokenScale1.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrPerTokenScale));
@@ -677,11 +721,15 @@ private:
         if (routeCacheNum == 0) {
             return;
         }
-        // tokenPerExpert 紧凑化：[dstEpIdx][runtimeRank][groupIdx] -> UB[dstEpIdx*expertPerRank+groupIdx]
-        // 与 GetCumsumForMMAIV 相同的 2D DataCopyPad（跨 dstEpIdx 取 runtimeRank 平面）
+        // DataCopyPad pads each UB row to 32 bytes. Keep the cache compact even
+        // when expertPerRank is not a multiple of eight (e.g. four experts/rank).
         uint32_t runtimeRank = static_cast<uint32_t>(RuntimeRank(params));
+        const uint32_t paddedExperts = AlignUp(params.expertPerRank, BYTE_PER_BLK / sizeof(int32_t));
+        const bool needsCompaction = paddedExperts != params.expertPerRank;
+        AscendC::LocalTensor<int32_t> copiedCounts =
+            needsCompaction ? resource.ubBuf.template GetBufferByByte<int32_t>(0) : ubTokenPerExpertCache;
         AscendC::DataCopyPad(
-            ubTokenPerExpertCache, tokenPerExpert[runtimeRank * params.expertPerRank],
+            copiedCounts, tokenPerExpert[runtimeRank * params.expertPerRank],
             {static_cast<uint16_t>(params.EP), static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)),
              static_cast<uint16_t>((paddedExpertNumAligned - params.expertPerRank) * sizeof(int32_t)), 0},
             {});
@@ -691,6 +739,14 @@ private:
         // 标量读取前确保 MTE2 搬入完成（与 CopyRankMaskToLocal 一致）
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        if (needsCompaction) {
+            for (uint32_t rank = 0; rank < params.EP; ++rank) {
+                for (uint32_t expert = 0; expert < params.expertPerRank; ++expert) {
+                    ubTokenPerExpertCache.SetValue(rank * params.expertPerRank + expert,
+                                                   copiedCounts.GetValue(rank * paddedExperts + expert));
+                }
+            }
+        }
     }
 
     // 发送侧 chunk 总数
@@ -747,7 +803,8 @@ private:
     // 的三张轮表并写 GM。count[s][g] = cumsumMM[s*epr+g] - cumsumMM[(s-1)*epr+g]，不依赖 UB 缓存
     // （其内容已被上一轮轮表覆盖）。第 r 轮覆盖行区间 [r*B, min((r+1)*B, R))：
     //   tokenPerExpert_r[s][g] = max(0, min((r+1)*B, blkLo+cnt) - max(r*B, blkLo))
-    //   preSumBeforeRank_r[s][g] = max(r*B, blkLo)，即块内偏移（仍是 chunk A/D 行空间全局偏移）
+    //   preSumBeforeRank_r[s][g] = senderPrefix[s][g] + max(0, r*B - blkLo)
+    // blkLo is a receiver-order offset, NOT an offset in the sender's A/D buffers.
     //   cumsumMM_r[(s-1)*epr+g] = Σ_{s'<s} tokenPerExpert_r[g][s']，[(EP-1)*epr+g] = 轮内 group 行数
     CATLASS_DEVICE void BuildRoundTables(Params const &params, int64_t chunkIdx, int64_t roundIdx)
     {
@@ -760,11 +817,20 @@ private:
         const int64_t roundLo = roundIdx * B;
         const int64_t roundHi = roundLo + B; // 轮右界（开区间）
         const int64_t n = ep * epr;
+        const int64_t tableBytes = AlignUp(n * sizeof(int32_t), BYTE_PER_BLK);
 
         AscendC::LocalTensor<int32_t> ubCumR = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> ubTpeR = resource.ubBuf.template GetBufferByByte<int32_t>(n * sizeof(int32_t));
-        AscendC::LocalTensor<int32_t> ubPreSumR =
-            resource.ubBuf.template GetBufferByByte<int32_t>(2 * n * sizeof(int32_t));
+        AscendC::LocalTensor<int32_t> ubTpeR = resource.ubBuf.template GetBufferByByte<int32_t>(tableBytes);
+        AscendC::LocalTensor<int32_t> ubPreSumR = resource.ubBuf.template GetBufferByByte<int32_t>(2 * tableBytes);
+        AscendC::LocalTensor<int32_t> ubSenderPrefix = resource.ubBuf.template GetBufferByByte<int32_t>(3 * tableBytes);
+        // The member preSumBeforeRank and UB cache may refer to the previous
+        // round. Reload the original chunk's sender prefixes from their fixed
+        // workspace allocation; MTE2 also avoids stale scalar GM cache reads.
+        AscendC::GlobalTensor<int32_t> gmSenderPrefix;
+        gmSenderPrefix.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
+        AscendC::DataCopyPad(ubSenderPrefix, gmSenderPrefix, {1, static_cast<uint16_t>(n * sizeof(int32_t)), 0, 0}, {});
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
 
         for (int64_t g = 0; g < epr; ++g) {
             int64_t prevGroupSum = 0;
@@ -784,7 +850,9 @@ private:
                     ubCumR.SetValue((s - 1) * epr + g, static_cast<int32_t>(pre));
                 }
                 ubTpeR.SetValue(s * epr + g, static_cast<int32_t>(m));
-                ubPreSumR.SetValue(s * epr + g, static_cast<int32_t>(lo)); // = blkLo + slice_r
+                const int64_t senderOffset = ubSenderPrefix.GetValue(s * epr + g);
+                // Empty intersections must not manufacture out-of-range peer pointers.
+                ubPreSumR.SetValue(s * epr + g, static_cast<int32_t>(senderOffset + (m > 0 ? lo - blkLo : 0)));
                 pre += m;
             }
             ubCumR.SetValue((ep - 1) * epr + g, static_cast<int32_t>(pre));
@@ -820,7 +888,7 @@ private:
         roundPreSumBeforeRankGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
         // CombineV2 的 epilogue 以成员 GT 读 D 区写回偏移表，轮内切到 preSum_r
-        // （= 全局 chunk 行偏移，D 区布局不受轮次影响）；
+        // （= 对应发送 rank 的 chunk 行偏移，D 区布局不受轮次影响）；
         // 调用方须在下一 chunk 的 AllGather 前恢复其 chunk 级指向
         preSumBeforeRank.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(RoundTablePtr(params, chunkIdx, roundIdx, RoundTableSeg::kPreSum)));
@@ -840,6 +908,292 @@ private:
         // 标量读取前确保 MTE2 搬入完成（与 CacheRouteTablesToUb 一致）
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+    }
+
+    CATLASS_DEVICE
+    void PrepareSharedInput(Params const &params)
+    {
+        if constexpr (!kRoutingIsQuant) {
+            return;
+        } else {
+            const uint32_t m = params.problemShape.m();
+            const uint32_t k = params.problemShape.k();
+            const uint32_t rowsPerCore = m / coreNum;
+            const uint32_t remainder = m % coreNum;
+            const uint32_t rowCount = coreIdx < remainder ? rowsPerCore + 1U : rowsPerCore;
+            const uint32_t rowStart = coreIdx * rowsPerCore + (coreIdx < remainder ? coreIdx : remainder);
+
+            uint32_t ubOffset = 0U;
+            auto inputLocal = resource.ubBuf.template GetBufferByByte<ElementD2>(ubOffset);
+            ubOffset += AlignUp(k * sizeof(ElementD2), 32U);
+            auto inputFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+            ubOffset += AlignUp(k * sizeof(float), 32U);
+            auto tempFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+            ubOffset += AlignUp(k * sizeof(float), 32U);
+            auto quantLocal = resource.ubBuf.template GetBufferByByte<int8_t>(ubOffset);
+            ubOffset += AlignUp(k * sizeof(int8_t), 32U);
+            auto reduceMaxLocal = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+            ubOffset += 32U;
+
+            AscendC::LocalTensor<int4b_t> highI4;
+            AscendC::LocalTensor<int4b_t> lowI4;
+            AscendC::LocalTensor<half> highHalf;
+            AscendC::LocalTensor<half> lowHalf;
+            AscendC::LocalTensor<half> lowHalf2;
+            AscendC::LocalTensor<int16_t> lowMask;
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                highI4 = resource.ubBuf.template GetBufferByByte<int4b_t>(ubOffset);
+                ubOffset += AlignUp(k / 2U, 32U);
+                lowI4 = resource.ubBuf.template GetBufferByByte<int4b_t>(ubOffset);
+                ubOffset += AlignUp(k / 2U, 32U);
+                highHalf = resource.ubBuf.template GetBufferByByte<half>(ubOffset);
+                ubOffset += AlignUp(k * sizeof(half), 32U);
+                lowHalf = resource.ubBuf.template GetBufferByByte<half>(ubOffset);
+                ubOffset += AlignUp(k * sizeof(half), 32U);
+                lowHalf2 = resource.ubBuf.template GetBufferByByte<half>(ubOffset);
+                ubOffset += AlignUp(k * sizeof(half), 32U);
+                lowMask = resource.ubBuf.template GetBufferByByte<int16_t>(ubOffset);
+                AscendC::Duplicate(lowMask, static_cast<int16_t>(0x0F0F), 128U);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+
+            AscendC::GlobalTensor<ElementD2> input;
+            AscendC::GlobalTensor<int8_t> output;
+            AscendC::GlobalTensor<float> outputScale;
+            input.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(params.ptrA));
+            output.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(workspaceInfo.ptrSharedInput));
+            outputScale.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspaceInfo.ptrSharedInputScale));
+
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
+            for (uint32_t localRow = 0U; localRow < rowCount; ++localRow) {
+                const uint32_t row = rowStart + localRow;
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
+                AscendC::DataCopyPad(inputLocal, input[static_cast<uint64_t>(row) * k],
+                                     {1U, static_cast<uint32_t>(k * sizeof(ElementD2)), 0U, 0U, 0U}, {});
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID6);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID6);
+
+                AscendC::Cast(inputFp32, inputLocal, AscendC::RoundMode::CAST_NONE, k);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Abs(tempFp32, inputFp32, k);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::ReduceMax(reduceMaxLocal, tempFp32, tempFp32, k);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID6);
+                AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID6);
+
+                const float absMax = reduceMaxLocal.GetValue(0U);
+                const float dequantScale = absMax / 127.0F;
+                const float quantScale = absMax > 0.0F ? 127.0F / absMax : 0.0F;
+                AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID6);
+                AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID6);
+                AscendC::Muls(tempFp32, inputFp32, quantScale, k);
+                AscendC::PipeBarrier<PIPE_V>();
+                auto quantHalf = tempFp32.template ReinterpretCast<half>();
+                AscendC::Cast(quantHalf, tempFp32, AscendC::RoundMode::CAST_TRUNC, k);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Cast(quantLocal, quantHalf, AscendC::RoundMode::CAST_ROUND, k);
+                AscendC::PipeBarrier<PIPE_V>();
+
+                if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                    AscendC::Cast(highHalf, quantLocal, AscendC::RoundMode::CAST_NONE, k);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Muls(highHalf, highHalf, static_cast<half>(0.0625F), k);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Cast(highI4, highHalf, AscendC::RoundMode::CAST_FLOOR, k);
+
+                    const uint32_t repeat = (k / 2U) / 128U;
+                    const uint32_t tail = (k % 256U) / 2U;
+                    AscendC::And(lowHalf.template ReinterpretCast<int16_t>(),
+                                 quantLocal.template ReinterpretCast<int16_t>(), lowMask, 128U, repeat,
+                                 {1U, 1U, 1U, 8U, 8U, 0U});
+                    if (tail > 0U) {
+                        AscendC::And(lowHalf[repeat * 128U].template ReinterpretCast<int16_t>(),
+                                     quantLocal[repeat * 256U].template ReinterpretCast<int16_t>(), lowMask, tail, 1U,
+                                     {1U, 1U, 1U, 8U, 8U, 0U});
+                    }
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Cast(lowHalf2, lowHalf.template ReinterpretCast<int8_t>(), AscendC::RoundMode::CAST_NONE,
+                                  k);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Adds(highHalf, lowHalf2, static_cast<half>(-8.0F), k);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::Cast(lowI4, highHalf, AscendC::RoundMode::CAST_NONE, k);
+                }
+
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID6);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID6);
+                if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                    AscendC::DataCopy(output[static_cast<uint64_t>(row) * k], highI4.template ReinterpretCast<int8_t>(),
+                                      k / 2U);
+                    AscendC::DataCopy(output[static_cast<uint64_t>(row) * k + k / 2U],
+                                      lowI4.template ReinterpretCast<int8_t>(), k / 2U);
+                } else {
+                    AscendC::DataCopyPad(output[static_cast<uint64_t>(row) * k], quantLocal,
+                                         {1U, static_cast<uint32_t>(k * sizeof(int8_t)), 0U, 0U, 0U});
+                }
+                reduceMaxLocal.SetValue(0U, dequantScale);
+                AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID7);
+                AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID7);
+                AscendC::DataCopyPad(outputScale[row], reduceMaxLocal,
+                                     {1U, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U});
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
+            }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID6);
+            AscendC::SyncAll<true>();
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAG_SHARED_INPUT_V2C);
+        }
+    }
+
+    // BF16 consumes original X directly. Quantized paths consume the dense
+    // input published above; in both cases GMM1 overlaps routed preparation.
+    CATLASS_DEVICE
+    void SharedGMM1(Params const &params)
+    {
+        BlockScheduler blockScheduler;
+        SharedBlockMmad1 blockMmad(resource);
+        AscendC::GlobalTensor<ElementA> sharedInput;
+        AscendC::GlobalTensor<ElementB> sharedWeight;
+        AscendC::GlobalTensor<ElementScale> sharedWeightScale;
+        if constexpr (kRoutingIsQuant) {
+            sharedInput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedInput));
+        } else {
+            sharedInput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(params.ptrA));
+        }
+
+        uint32_t startCoreIdx = 0U;
+        const uint32_t m = params.problemShape.m();
+        constexpr uint32_t msdFactor = std::is_same_v<ElementB, AscendC::int4b_t> ? 2U : 1U;
+        const uint32_t computeM = m * msdFactor;
+        const uint32_t n = params.problemShape.n();
+        const uint32_t k = params.problemShape.k();
+        for (uint32_t sharedIdx = 0U; sharedIdx < params.sharedExpertNum; ++sharedIdx) {
+            sharedWeight.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB *>(
+                GetTensorAddr<ElementB>(sharedIdx, reinterpret_cast<GM_ADDR>(params.ptrSharedB1))));
+            if constexpr (kRoutingIsQuant) {
+                sharedWeightScale.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale *>(
+                    GetTensorAddr<int64_t>(sharedIdx, reinterpret_cast<GM_ADDR>(params.ptrSharedScale1))));
+            }
+            if (m <= L1TileShape::M) {
+                sharedWeight.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            }
+
+            GemmCoord sharedShape{computeM, n, k};
+            LayoutA sharedLayoutA = params.layoutA.GetTileLayout(sharedShape.GetCoordMK());
+            LayoutC sharedLayoutC{computeM, n};
+            blockScheduler.Update(sharedShape, MakeCoord(L1TileShape::M, L1TileShape::N));
+            const uint32_t coreLoops = blockScheduler.GetCoreLoops();
+            const uint32_t startLoopIdx = ((coreIdx < startCoreIdx) ? (coreIdx + coreNum) : coreIdx) - startCoreIdx;
+
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += coreNum) {
+                GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
+                GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
+                MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
+                MatrixCoord offsetB{blockCoord.k() * L1TileShape::K, blockCoord.n() * L1TileShape::N};
+                MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
+                const int64_t gmOffsetA = sharedLayoutA.GetOffset(offsetA);
+                const int64_t gmOffsetB = params.layoutB1.GetOffset(offsetB);
+                const int64_t gmOffsetC =
+                    static_cast<int64_t>(sharedIdx) * computeM * n + sharedLayoutC.GetOffset(offsetC);
+                if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                    const int64_t gmOffsetS = blockCoord.n() * L1TileShape::N;
+                    blockMmad(sharedWeightScale[gmOffsetS], params.layoutScale1, sharedInput[gmOffsetA], sharedLayoutA,
+                              sharedWeight[gmOffsetB], params.layoutB1, gmSharedGmmBuffer[gmOffsetC], sharedLayoutC,
+                              actualBlockShape, Callback{}, Callback{});
+                } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+                    const int64_t gmOffsetS = blockCoord.n() * L1TileShape::N;
+                    blockMmad(sharedInput[gmOffsetA], sharedLayoutA, sharedWeight[gmOffsetB], params.layoutB1,
+                              gmSharedGmmBuffer[gmOffsetC], sharedLayoutC, sharedWeightScale[gmOffsetS],
+                              params.layoutScale1, actualBlockShape);
+                } else {
+                    blockMmad(sharedInput[gmOffsetA], sharedLayoutA, sharedWeight[gmOffsetB], params.layoutB1,
+                              gmSharedGmmBuffer[gmOffsetC], sharedLayoutC, gmS, params.layoutScale1, actualBlockShape);
+                }
+            }
+            startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
+        }
+
+        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+            blockMmad.SynchronizeBlock();
+        }
+        blockMmad.Finalize(0, SYNCFLAG_SHARED_GMM1_C2V);
+    }
+
+    // AIV publishes the activated shared input while routed GMM1 is running.
+    // Once published, AIC uses the released GMM1-C workspace as dense GMM2 output.
+    CATLASS_DEVICE
+    void SharedGMM2(Params const &params)
+    {
+        BlockScheduler blockScheduler;
+        BlockMmad blockMmad(resource);
+        AscendC::GlobalTensor<ElementA> sharedActivation;
+        AscendC::GlobalTensor<ElementB> sharedWeight;
+        AscendC::GlobalTensor<ElementScale> sharedWeightScale;
+        AscendC::GlobalTensor<ElementC> sharedOutput;
+        sharedActivation.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedActivation));
+        if constexpr (kRoutingIsQuant) {
+            sharedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrSharedGmmBuffer));
+        } else {
+            sharedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrSharedResult));
+        }
+
+        uint32_t startCoreIdx = 0U;
+        const uint32_t m = params.problemShape.m();
+        constexpr uint32_t msdFactor = std::is_same_v<ElementB, AscendC::int4b_t> ? 2U : 1U;
+        const uint32_t computeM = m * msdFactor;
+        const uint32_t n = params.problemShape.k();
+        const uint32_t k = params.problemShape.n() / 2U;
+        for (uint32_t sharedIdx = 0U; sharedIdx < params.sharedExpertNum; ++sharedIdx) {
+            sharedWeight.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB *>(
+                GetTensorAddr<ElementB>(sharedIdx, reinterpret_cast<GM_ADDR>(params.ptrSharedB2))));
+            if constexpr (kRoutingIsQuant) {
+                sharedWeightScale.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale *>(
+                    GetTensorAddr<int64_t>(sharedIdx, reinterpret_cast<GM_ADDR>(params.ptrSharedScale2))));
+            }
+            if (m <= L1TileShape::M) {
+                sharedWeight.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            }
+
+            GemmCoord sharedShape{computeM, n, k};
+            LayoutA sharedLayoutA = params.layoutA2.GetTileLayout(sharedShape.GetCoordMK());
+            LayoutC sharedLayoutC{computeM, n};
+            blockScheduler.Update(sharedShape, MakeCoord(L1TileShape::M, L1TileShape::N));
+            const uint32_t coreLoops = blockScheduler.GetCoreLoops();
+            const uint32_t startLoopIdx = ((coreIdx < startCoreIdx) ? (coreIdx + coreNum) : coreIdx) - startCoreIdx;
+
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += coreNum) {
+                GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
+                GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
+                MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, blockCoord.k() * L1TileShape::K};
+                MatrixCoord offsetB{blockCoord.k() * L1TileShape::K, blockCoord.n() * L1TileShape::N};
+                MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
+                const int64_t gmOffsetA =
+                    static_cast<int64_t>(sharedIdx) * computeM * k + sharedLayoutA.GetOffset(offsetA);
+                const int64_t gmOffsetB = params.layoutB2.GetOffset(offsetB);
+                const int64_t gmOffsetC =
+                    static_cast<int64_t>(sharedIdx) * computeM * n + sharedLayoutC.GetOffset(offsetC);
+                if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                    const int64_t gmOffsetS = blockCoord.n() * L1TileShape::N;
+                    blockMmad(sharedWeightScale[gmOffsetS], params.layoutScale2, sharedActivation[gmOffsetA],
+                              sharedLayoutA, sharedWeight[gmOffsetB], params.layoutB2, sharedOutput[gmOffsetC],
+                              sharedLayoutC, actualBlockShape, Callback{}, Callback{});
+                } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+                    const int64_t gmOffsetS = blockCoord.n() * L1TileShape::N;
+                    blockMmad(sharedActivation[gmOffsetA], sharedLayoutA, sharedWeight[gmOffsetB], params.layoutB2,
+                              sharedOutput[gmOffsetC], sharedLayoutC, sharedWeightScale[gmOffsetS], params.layoutScale2,
+                              actualBlockShape);
+                } else {
+                    blockMmad(sharedActivation[gmOffsetA], sharedLayoutA, sharedWeight[gmOffsetB], params.layoutB2,
+                              sharedOutput[gmOffsetC], sharedLayoutC, gmS2, params.layoutScale2, actualBlockShape);
+                }
+            }
+            startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
+        }
+
+        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+            blockMmad.SynchronizeBlock();
+        }
+        blockMmad.Finalize(0, SYNCFLAG_SHARED_GMM2_C2V);
     }
 
     CATLASS_DEVICE
@@ -1300,7 +1654,7 @@ private:
     // 入口发出轮就绪信号（与 AIC 轮级 CrossCoreWaitFlag 配对），轮末 SyncAll
     // 保证轮间串行，C2V/V2C 与 syncgmm flag 槽位按轮复用（AIC 侧每轮同样归零）。
     CATLASS_DEVICE
-    void ProcessRecvRound(Params const &params, int64_t chunkIdx)
+    void ProcessRecvRound(Params const &params, int64_t chunkIdx, bool runShared)
     {
         int32_t runtimeRank = RuntimeRank(params);
         // 轮就绪信号：rounds==1 时即 chunk cumsum/路由就绪信号，rounds>1 时为轮表就绪信号
@@ -1412,6 +1766,9 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
 
+        if (runShared) {
+            SharedGMM1Epilogue(params);
+        }
         uint32_t n2 = params.problemShape.k();
 
         typename BlockEpilogue2::Params epilogueParams2{
@@ -1516,6 +1873,12 @@ private:
             }
         }
         blockEpilogue1.Finalize();
+        if (runShared) {
+            // All AIVs consume the completion signal exactly once, before
+            // split-subblock Unpermute. Quantized results retain the BF16
+            // rounding point before FP32 routed/shared reduction.
+            SharedGMM2Epilogue(params);
+        }
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::COMBINE);
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
             blockEpilogue3.InitFlag();
@@ -1529,6 +1892,100 @@ private:
         }
 
         AscendC::SyncAll<true>();
+    }
+
+    CATLASS_DEVICE
+    void SharedGMM1Epilogue(Params const &params)
+    {
+        AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAG_SHARED_GMM1_C2V);
+        AscendC::SyncAll<true>();
+        const uint32_t m = params.problemShape.m();
+        const uint32_t n = params.problemShape.n();
+        const uint32_t k2 = n / 2U;
+        constexpr uint32_t msdFactor = std::is_same_v<ElementB, AscendC::int4b_t> ? 2U : 1U;
+        SharedBlockEpilogue1 sharedEpilogue(resource, n);
+        for (uint32_t sharedIdx = 0U; sharedIdx < params.sharedExpertNum; ++sharedIdx) {
+            MatrixCoord shapeC{m, n};
+            const int64_t gmOffsetC = static_cast<int64_t>(sharedIdx) * m * n * msdFactor;
+            const int64_t gmOffsetD = static_cast<int64_t>(sharedIdx) * m * k2;
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                AscendC::GlobalTensor<float> sharedBias;
+                sharedBias.SetGlobalBuffer(
+                    GetTensorAddr<float>(sharedIdx, reinterpret_cast<GM_ADDR>(params.ptrSharedBias1)));
+                sharedEpilogue.SharedExpert(
+                    gmSharedGmmBuffer[gmOffsetC], shapeC, gmSharedInputScale, sharedBias, gmSharedActivation[gmOffsetD],
+                    gmSharedActivationScale[static_cast<uint64_t>(sharedIdx) * m], resource, params.epilogueCoreNum,
+                    params.swigluLimit, params.activationCode, params.activationParams1, params.activationParams2, n);
+            } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+                sharedEpilogue(gmSharedGmmBuffer[gmOffsetC], shapeC, gmSharedInputScale, gmSharedActivation[gmOffsetD],
+                               gmSharedActivationScale[static_cast<uint64_t>(sharedIdx) * m], resource,
+                               params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                               params.activationParams1, params.activationParams2, n);
+            } else {
+                sharedEpilogue(gmSharedGmmBuffer[gmOffsetC], shapeC, gmSharedActivation[gmOffsetD], resource,
+                               params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                               params.activationParams1, params.activationParams2, n);
+            }
+        }
+        sharedEpilogue.Finalize();
+        // Each shared expert owns a disjoint GM range. Drain the local
+        // epilogue pipeline first, then synchronize once before AIC consumes
+        // any of the published activation rows.
+        AscendC::SyncAll<true>();
+        AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAG_SHARED_GMM1_V2C);
+    }
+
+    CATLASS_DEVICE
+    void SharedGMM2Epilogue(Params const &params)
+    {
+        AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAG_SHARED_GMM2_C2V);
+        AscendC::SyncAll<true>();
+        if constexpr (kRoutingIsQuant) {
+            const uint32_t m = params.problemShape.m();
+            const uint32_t n = params.problemShape.k();
+            constexpr uint32_t msdFactor = std::is_same_v<ElementB, AscendC::int4b_t> ? 2U : 1U;
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                const int32_t runtimeRank = RuntimeRank(params);
+                typename BlockEpilogue3::Params epilogueParams{
+                    static_cast<int32_t>(params.EP),
+                    static_cast<int32_t>(params.expertPerRank),
+                    runtimeRank,
+                    reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
+                    params.layoutD2,
+                    static_cast<int32_t>(n),
+                    static_cast<int32_t>(L1TileShape::N),
+                    shmem,
+                    peermemInfo.offsetD,
+                    tokenPerExpertLayout};
+                BlockEpilogue3 sharedEpilogue(resource, epilogueParams);
+                for (uint32_t sharedIdx = 0U; sharedIdx < params.sharedExpertNum; ++sharedIdx) {
+                    AscendC::GlobalTensor<float> sharedBias;
+                    sharedBias.SetGlobalBuffer(
+                        GetTensorAddr<float>(sharedIdx, reinterpret_cast<GM_ADDR>(params.ptrSharedBias2)));
+                    const uint64_t cOffset = static_cast<uint64_t>(sharedIdx) * m * n * msdFactor;
+                    const uint64_t resultOffset = static_cast<uint64_t>(sharedIdx) * m * n;
+                    const uint64_t scaleOffset = static_cast<uint64_t>(sharedIdx) * m;
+                    sharedEpilogue.SharedExpert(gmSharedGmmBuffer[cOffset], gmSharedActivationScale[scaleOffset],
+                                                sharedBias, gmSharedResult[resultOffset], m, n, params.epilogueCoreNum);
+                }
+                AscendC::SyncAll<true>();
+            } else {
+                typename BlockEpilogue2::Params epilogueParams{
+                    static_cast<int32_t>(params.EP), static_cast<int32_t>(params.expertPerRank),
+                    reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
+                    static_cast<int32_t>(n)};
+                BlockEpilogue2 sharedEpilogue(resource, epilogueParams);
+                for (uint32_t sharedIdx = 0U; sharedIdx < params.sharedExpertNum; ++sharedIdx) {
+                    const uint64_t cOffset = static_cast<uint64_t>(sharedIdx) * m * n;
+                    const uint64_t resultOffset = static_cast<uint64_t>(sharedIdx) * m * n;
+                    const uint64_t scaleOffset = static_cast<uint64_t>(sharedIdx) * m;
+                    sharedEpilogue.SharedExpert(gmSharedGmmBuffer[cOffset], MatrixCoord{m, n},
+                                                gmSharedActivationScale[scaleOffset], gmSharedResult[resultOffset],
+                                                params.epilogueCoreNum);
+                }
+                AscendC::SyncAll<true>();
+            }
+        }
     }
 
     CATLASS_DEVICE
@@ -1562,12 +2019,18 @@ private:
             if (coreIdx == 0) {
                 AscendC::LocalTensor<int32_t> zeroBuf = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                 AscendC::Duplicate(zeroBuf, 0, params.expertPerRank);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(gmExpertTokenNums[0], zeroBuf, params.expertPerRank);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+                AscendC::DataCopyPad(gmExpertTokenNums, zeroBuf,
+                                     {1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0});
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
             }
         }
+        if (params.sharedExpertNum > 0U) {
+            PrepareSharedInput(params);
+        }
+        // Dense input preparation shares low UB with routing temporaries.
         CopyRankMaskToLocal(params);
 
         for (int64_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx) {
@@ -1630,14 +2093,16 @@ private:
                     AscendC::LocalTensor<int32_t> ubSum = resource.ubBuf.template GetBufferByByte<int32_t>(0);
                     AscendC::LocalTensor<int32_t> ubOut = resource.ubBuf.template GetBufferByByte<int32_t>(
                         AlignUp(params.expertPerRank * sizeof(int32_t), 32));
-                    AscendC::DataCopy(ubSum, cumsumMM[(params.EP - 1) * params.expertPerRank], params.expertPerRank);
-                    AscendC::DataCopy(ubOut, gmExpertTokenNums[0], params.expertPerRank);
+                    const AscendC::DataCopyParams countCopy{
+                        1, static_cast<uint16_t>(params.expertPerRank * sizeof(int32_t)), 0, 0};
+                    AscendC::DataCopyPad(ubSum, cumsumMM[(params.EP - 1) * params.expertPerRank], countCopy, {});
+                    AscendC::DataCopyPad(ubOut, gmExpertTokenNums, countCopy, {});
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::Add(ubOut, ubOut, ubSum, params.expertPerRank);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-                    AscendC::DataCopy(gmExpertTokenNums[0], ubOut, params.expertPerRank);
+                    AscendC::DataCopyPad(gmExpertTokenNums, ubOut, countCopy);
                     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
                 }
@@ -1659,7 +2124,7 @@ private:
                     SetRoundTableBuffers(params, chunkIdx, roundIdx);
                     CacheRoundTablesToUb();
                 }
-                ProcessRecvRound(params, chunkIdx);
+                ProcessRecvRound(params, chunkIdx, chunkIdx == 0 && roundIdx == 0 && params.sharedExpertNum > 0U);
                 if (roundIdx + 1 >= numRecvRounds) {
                     break;
                 }
@@ -1712,7 +2177,8 @@ private:
                     kernelMoeTokenUnpermuteOp.Init(
                         shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
                         reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
-                        reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData);
+                        reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData, false,
+                        workspaceInfo.ptrSharedResult, params.sharedExpertNum, params.ptrXActiveMask, bs, tokenBase);
                     kernelMoeTokenUnpermuteOp.Process();
                 }
             } else {
@@ -1729,7 +2195,8 @@ private:
                 kernelMoeTokenUnpermuteOp.Init(
                     shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
                     reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
-                    reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData, true);
+                    reinterpret_cast<GM_ADDR>(params.ptrOutput + tokenBase * hidden), &tilingData, true,
+                    workspaceInfo.ptrSharedResult, params.sharedExpertNum, params.ptrXActiveMask, bs, tokenBase);
                 kernelMoeTokenUnpermuteOp.Process();
             }
 
@@ -1905,6 +2372,12 @@ private:
         GM_ADDR ptrPermuteCounts;
         GM_ADDR ptrSumBeforeRank;
         GM_ADDR ptrRoundTables;
+        GM_ADDR ptrSharedGmmBuffer;
+        GM_ADDR ptrSharedActivation;
+        GM_ADDR ptrSharedInput;
+        GM_ADDR ptrSharedInputScale;
+        GM_ADDR ptrSharedActivationScale;
+        GM_ADDR ptrSharedResult;
         __gm__ float *ptrSoftFlagBase;
 
         CATLASS_DEVICE
@@ -1979,6 +2452,41 @@ private:
             if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                 ptrSoftFlagBase = reinterpret_cast<__gm__ float *>(params.ptrWorkspace + workspaceOffset);
                 workspaceOffset += params.EP * sizeof(int32_t) * FLAGSTRIDE;
+            }
+            ptrSharedGmmBuffer = params.ptrWorkspace + params.sharedWorkspaceOffset;
+            constexpr uint64_t sharedMsdFactor = std::is_same_v<ElementB, AscendC::int4b_t> ? 2UL : 1UL;
+            const uint64_t sharedGmmElementCount = static_cast<uint64_t>(params.sharedExpertNum) *
+                                                   params.problemShape.m() * params.gmmOutPreRowStride *
+                                                   sharedMsdFactor;
+            const auto alignSharedBuffer = [](uint64_t size) {
+                constexpr uint64_t sharedBufferAlignment = 512UL;
+                return (size + sharedBufferAlignment - 1UL) / sharedBufferAlignment * sharedBufferAlignment;
+            };
+            // Reserve the wider shared GMM1 type; GMM2 may reuse this region
+            // with its original narrower type only after activation completes.
+            ptrSharedActivation =
+                ptrSharedGmmBuffer + alignSharedBuffer(sharedGmmElementCount * sizeof(SharedElementC1));
+            const uint64_t sharedActivationElementCount =
+                static_cast<uint64_t>(params.sharedExpertNum) * params.problemShape.m() * params.problemShape.n() / 2U;
+            GM_ADDR sharedWorkspaceTail =
+                ptrSharedActivation + alignSharedBuffer(sharedActivationElementCount * sizeof(ElementD1));
+
+            if constexpr (kRoutingIsQuant) {
+                ptrSharedInput = sharedWorkspaceTail;
+                sharedWorkspaceTail += alignSharedBuffer(static_cast<uint64_t>(params.problemShape.m()) *
+                                                         params.problemShape.k() * sizeof(ElementABefore));
+                ptrSharedInputScale = sharedWorkspaceTail;
+                sharedWorkspaceTail +=
+                    alignSharedBuffer(static_cast<uint64_t>(params.problemShape.m()) * sizeof(float));
+                ptrSharedActivationScale = sharedWorkspaceTail;
+                sharedWorkspaceTail += alignSharedBuffer(static_cast<uint64_t>(params.sharedExpertNum) *
+                                                         params.problemShape.m() * sizeof(float));
+                ptrSharedResult = sharedWorkspaceTail;
+            } else {
+                ptrSharedInput = nullptr;
+                ptrSharedInputScale = nullptr;
+                ptrSharedActivationScale = nullptr;
+                ptrSharedResult = ptrSharedGmmBuffer;
             }
         }
     };
@@ -2096,6 +2604,12 @@ private:
 
     AscendC::GlobalTensor<ElementABefore> gmA;
     AscendC::GlobalTensor<ElementD1> gmPermutedToken;
+    AscendC::GlobalTensor<SharedElementC1> gmSharedGmmBuffer;
+    AscendC::GlobalTensor<ElementD1> gmSharedActivation;
+    AscendC::GlobalTensor<ElementA> gmSharedInput;
+    AscendC::GlobalTensor<ElementPerTokenScale> gmSharedInputScale;
+    AscendC::GlobalTensor<ElementPerTokenScale> gmSharedActivationScale;
+    AscendC::GlobalTensor<ElementD2> gmSharedResult;
 };
 } // namespace Catlass::Gemm::Kernel
 #endif // MEGA_MOE_KERNEL_HPP

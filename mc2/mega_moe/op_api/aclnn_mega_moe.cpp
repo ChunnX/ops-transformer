@@ -69,7 +69,7 @@ aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor
 static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList, aclTensorList *&outList,
                               aclOpExecutor *executor)
 {
-    if (ioList == nullptr) {
+    if (ioList == nullptr || ioList->Size() == 0) {
         std::vector<aclTensor *> emptyTensors;
         aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
         emptyTensors.emplace_back(emptyTensor);
@@ -81,7 +81,7 @@ static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList
 static void CreateEmptyTensorWithFormat(aclDataType dataType, ge::Format format, const aclTensorList *&ioList,
                                         aclTensorList *&outList, aclOpExecutor *executor)
 {
-    if (ioList == nullptr) {
+    if (ioList == nullptr || ioList->Size() == 0) {
         std::vector<aclTensor *> emptyTensors;
         aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
         emptyTensor->SetStorageFormat(format);
@@ -134,7 +134,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         uniqueExec.ReleaseTo(executor);
     }
 
-    // 可选 DYNAMIC 参数为 nullptr 时创建带 dtype 的 dummy tensor list 满足支持列表校验
+    // 可选 DYNAMIC 参数为 nullptr 或空列表时创建带 dtype 的 dummy tensor list 满足支持列表校验
     aclTensorList *tmpBiasList = nullptr;
     aclTensorList *tmpScaleList = nullptr;
     aclTensorList *tmpSharedBiasList = nullptr;
