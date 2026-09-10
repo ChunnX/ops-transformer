@@ -198,10 +198,15 @@ private:
         uint64_t baseASize = GetSizeWithDataType<aDataType>(runInfo_.baseM * runInfo_.baseK);
         uint64_t baseBSize = GetSizeWithDataType<bDataType>(runInfo_.baseN * runInfo_.baseK);
 
-        uint64_t baseScaleASize =
-            Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseM;
-        uint64_t baseScaleBSize =
-            Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseN;
+        // Scale bytes per base block: MX carries one E8M0 byte per 32-element
+        // group (pairs aligned), HiF4 one 4-byte hif4_scale element per
+        // 64-element group, i.e. scale shape (M, K/group, 1).
+        uint64_t baseScaleASize = Align(CeilDiv(runInfo_.baseK, GetPerGroupSize<aDataType>()),
+                                        GetAlignSize<aDataType>()) *
+                                  GetScaleUnitPerGroup<aDataType>() * runInfo_.baseM;
+        uint64_t baseScaleBSize = Align(CeilDiv(runInfo_.baseK, GetPerGroupSize<bDataType>()),
+                                        GetAlignSize<bDataType>()) *
+                                  GetScaleUnitPerGroup<bDataType>() * runInfo_.baseN;
         // Bias occupies DB_SIZE ping-pong L1 buffers next to the scale windows.
         runInfo_.biasL1Size =
             hasBias_ ? DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() : 0UL;
@@ -305,7 +310,9 @@ private:
         runInfo_.baseN = args_.transB ? Align(runInfo_.baseN, CUBE_BLOCK) :
                                         Align(runInfo_.baseN, GetShapeWithDataType<bDataType>(L1_ALIGN_SIZE));
         runInfo_.baseK = Align(
-            std::min(args_.k, aDataType == mm::DataType::DT_FLOAT4_E2M1 ? BASIC_BLOCK_SIZE_256 : BASIC_BLOCK_SIZE_128),
+            std::min(args_.k, (aDataType == mm::DataType::DT_FLOAT4_E2M1 || aDataType == mm::DataType::DT_HIFLOAT4) ?
+                                  BASIC_BLOCK_SIZE_256 :
+                                  BASIC_BLOCK_SIZE_128),
             TILING_MXFP_DIVISOR_SIZE);
 
         uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN) * args_.batch;

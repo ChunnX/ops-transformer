@@ -25,6 +25,7 @@ enum class DataType {
     DT_FLOAT4_E2M1,
     DT_FLOAT8_E4M3FN,
     DT_FLOAT8_E5M2,
+    DT_HIFLOAT4, // HiFloat4: S1P2 element, packed 2/byte, group size 64
 };
 
 // Bias element dtype for the SWAT tiling L1 budget; width mapping mirrors the
@@ -91,7 +92,7 @@ enum class DataType {
 template <mm::DataType dataType, typename T>
 constexpr T GetShapeWithDataType(T size)
 {
-    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
+    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1 || dataType == mm::DataType::DT_HIFLOAT4) {
         constexpr T shift = static_cast<T>(1);
         return size << shift;
     } else {
@@ -102,10 +103,50 @@ constexpr T GetShapeWithDataType(T size)
 template <mm::DataType dataType, typename T>
 constexpr T GetSizeWithDataType(T shape)
 {
-    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1) {
+    if constexpr (dataType == mm::DataType::DT_FLOAT4_E2M1 || dataType == mm::DataType::DT_HIFLOAT4) {
         constexpr T shift = static_cast<T>(1);
         return (shape + static_cast<T>(1)) >> shift;
     } else {
         return shape;
+    }
+}
+
+// Per-group element count of the quantization format along the K axis:
+// MX formats carry one scale unit per 32 elements, HiF4 per 64 elements.
+// The canonical names live in apace_constant.h (MX_GROUP_SIZE / HIF4_GROUP_SIZE);
+// this header may be included ahead of apace_constant.h, so keep the widths
+// local instead of pulling in that dependency (mirrors GetBiasDataSize above).
+template <mm::DataType dataType>
+constexpr uint64_t GetPerGroupSize()
+{
+    if constexpr (dataType == mm::DataType::DT_HIFLOAT4) {
+        return 64UL; // HIF4_GROUP_SIZE
+    } else {
+        return 32UL; // MX_GROUP_SIZE
+    }
+}
+
+// Scale bytes carried per group: MX emits one E8M0 byte per 32-element group,
+// HiF4 emits one 4-byte hif4_scale element (E6M2 + E1_8 + E1_16) per
+// 64-element group, i.e. scale shape (M, K/group, 1) with 4-byte elements.
+template <mm::DataType dataType>
+constexpr uint64_t GetScaleUnitPerGroup()
+{
+    if constexpr (dataType == mm::DataType::DT_HIFLOAT4) {
+        return 4UL; // HIF4_SCALE_UNIT (sizeof(hif4_scale))
+    } else {
+        return 1UL;
+    }
+}
+
+// Scale-group alignment (in scale units) required by the L1 layout framing:
+// MX frames E8M0 scale units in pairs, HiF4 needs no extra alignment.
+template <mm::DataType dataType>
+constexpr uint64_t GetAlignSize()
+{
+    if constexpr (dataType == mm::DataType::DT_HIFLOAT4) {
+        return 1UL; // TILING_HIF4_MULTI_BASE_SIZE
+    } else {
+        return 2UL; // TILING_MXFP_MULTI_BASE_SIZE
     }
 }
