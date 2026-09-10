@@ -1,0 +1,116 @@
+{
+  "backend": "npugraph_ex",
+  "fullgraph": true,
+  "dynamic": false,
+  "torch": "2.9.0+cpu",
+  "torch_npu": "2.9.0.post8",
+  "device": "Ascend950DT_9574",
+  "supported_token_dtypes": [
+    0,
+    1,
+    2
+  ],
+  "cases": [
+    {
+      "case": "dtype_0_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_singleton",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_0_persistent_replay",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_singleton",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_1_persistent_replay",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_need_0_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_need_0_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_need_1_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_need_1_sync_1",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_all_masked",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_singleton",
+      "status": "PASS"
+    },
+    {
+      "case": "dtype_2_persistent_replay",
+      "status": "PASS"
+    },
+    {
+      "case": "two_calls_discard_first_False",
+      "status": "PASS"
+    },
+    {
+      "case": "two_calls_discard_first_True",
+      "status": "PASS"
+    },
+    {
+      "case": "delayed_publication_sync_0",
+      "status": "PASS"
+    },
+    {
+      "case": "delayed_publication_sync_1",
+      "status": "PASS"
+    }
+  ],
+  "passed": 25
+}

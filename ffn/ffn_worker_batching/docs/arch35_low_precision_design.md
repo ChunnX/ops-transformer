@@ -1,5 +1,7 @@
 # FfnWorkerBatching arch35 低精度扩展需求与设计
 
+> 本文记录低精度扩展的实现设计；低精度搬运逻辑仍与当前实现一致。文末用例数量为 2026-09-08 阶段验收记录；后续新增的异步调度、ready workspace 及函数封装见 [当前调度设计](arch35_sync_flag_design.md)，最新全量结果见 [当前验证报告](arch35_sync_flag_validation.md)。
+
 ## 范围与接口
 
 仅为 Ascend950 / DAV_3510（arch35）增加以下 token_dtype，支持 need_schedule=0（batching）及 1（接收并 batching），kernel 和 aclnn 两种调用均覆盖。
@@ -15,7 +17,7 @@
 
 输入 schedule_context 仍为 int8 原始上下文，max_out_shape=[A,BS,K,H]，Y=A*BS*K。y 的逻辑形状仍为 [Y,H]，专家排序、mask 压缩、group_list 和四类索引输出保持原语义。搬运必须保持原始位模式，不进行量化、反量化或浮点转换。
 
-存储协议：三种新增类型均为每 32 个逻辑元素一个 E8M0 scale，全部 scale 紧跟整行 token 数据。令 S=ceil(H/32)，dynamic_scale 逻辑形状为 [Y,S]。FP8 token 占 H 字节，FP4 token 占 H/2 字节；每行有效长度 HS 分别为 H+S、H/2+S 字节，源行步长使用上下文中的 attn_to_ffn_token_size（允许行尾 padding）。尾部不足 32 元素的分组仍占一个 scale。
+存储协议：三种新增类型均为每 32 个逻辑元素一个 E8M0 scale，全部 scale 紧跟整行 token 数据。令 S=ceil(H/32)，dynamic_scale 逻辑形状为 [Y,S]。FP8 token 占 H 字节，FP4 token 占 H/2 字节；每行有效载荷长度分别为 H+S、H/2+S 字节；HS 表示上下文 attn_to_ffn_token_size 提供的源行字节步长，可大于有效载荷长度（允许行尾 padding）。尾部不足 32 元素的分组仍占一个 scale。
 
 FP4 每字节低/高半字节存放连续两个元素，要求 H 为偶数，以保持每行及多核输出起点按字节对齐；奇数 H 在 host 推导和 arch35 tiling 阶段拒绝。输出只保证 actual_token_num 范围内 token 和 scale 有效，其余尾部不参与比较。
 
@@ -49,9 +51,18 @@ Golden 直接构造低精度位模式（包括正负零、FP8 非有限值和全
 原 host arch35 用例仍以 A2 的 8 字段 tiling 和固定 32/64 核策略作为期望，本次修正为 arch35 独立结构的语义检查，保留 dtype、调度、UB 容量、大 shape 和大专家数覆盖，并补充工作区不重叠检查。
 
 
-ACLNN 用例的 schedule_context 输入 shape 为完整打包 buffer 长度，而不是仅 1024 字节的头部长度。当前 M=1 测试中，总长度为 `1024 + Y*HS + 4*Y + 8*A` 字节；FP4 使用 numpy 输入分支，其它类型使用 torch 输入分支，二者写入相同协议。kernel 适配器返回完整原始 buffer。
+ACLNN 用例的 schedule_context 输入 shape 为完整打包 buffer 长度，而不是仅 1024 字节的头部长度。本阶段 M=1、无行尾 padding 的测试中，总长度为 `1024 + Y*HS + 4*Y + 8*A` 字节；FP4 使用 numpy 输入分支，其它类型使用 torch 输入分支，二者写入相同协议。kernel 适配器返回完整原始 buffer。
 
 ACLNN 验证需要包含预编译 kernel 的算子包，应使用 `build.sh --pkg --soc=ascend950 --ops=ffn_worker_batching`；仅 `--jit` 包不满足当前 ACLNN 二进制匹配路径。构建产物安装到独立目录进行测试。
 
 
-实现和验证已完成：host UT 32/32，kernel ST 68/68，ACLNN ST 67/67 通过。参见 [验证报告](arch35_low_precision_validation.md) 和 [逐用例结果](arch35_low_precision_results.csv)。
+2026-09-08 低精度阶段实现和验证已完成：host UT 32/32，kernel ST 68/68，ACLNN ST 67/67 通过。参见 [验证报告](arch35_low_precision_validation.md) 和 [逐用例结果](arch35_low_precision_results.csv)。
+
+## Torch 接口与最新图模式方案
+
+Torch 扩展支持六种 token_dtype 的 eager、Meta/FakeTensor 及固定形状 npugraph_ex 推理图。
+MX 图模式使用 `mx_output_uint8=True`：E8M0 scale 和 FP4 打包输出以 uint8 返回，FP8 token 保持原生类型；
+默认 False 保留原生 eager dtype。该参数仅控制 Torch 输出表示，ACLNN 仍使用原生类型描述符，
+设备端存储布局、scale 分组、sync_flag 和描述符清理协议不变。
+最新图测试 46/46、eager/Meta 回归 98/98 通过；这些是 Torch 层验证，不替换本报告的底层阶段记录。
+详见 [图模式报告](arch35_torch_graph_validation.md) 与 [三个 verify 命令指南](arch35_verify_guide.md)。
