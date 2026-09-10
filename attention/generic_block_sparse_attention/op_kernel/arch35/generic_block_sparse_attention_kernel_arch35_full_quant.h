@@ -11,6 +11,7 @@
 #ifndef GENERIC_BLOCK_SPARSE_ATTENTION_KERNEL_ARCH35_FULL_QUANT_H
 #define GENERIC_BLOCK_SPARSE_ATTENTION_KERNEL_ARCH35_FULL_QUANT_H
 
+#include "../generic_block_sparse_attention_kv_resolver.h"
 #include "kernel_utils.hpp"
 #include "../kernel_common.hpp"
 #include "../generic_block_sparse_attention_metadata_kernel.h"
@@ -23,7 +24,7 @@ using namespace tla;
 namespace GbsaKernelArch35 {
 
 template <class BlockMmadQK, class EpilogueOnlineSoftmax, class BlockMmadPV, class EpilogueRescaleO, Format qFormat,
-          Format kvFormat>
+          Format kvFormat, bool PAGED_CACHE_FLAG = true>
 class GbsaFullQuantKernelArch35 {
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
@@ -86,17 +87,13 @@ public:
         if (hasSequsedQ) {
             gSequsedQ.SetGlobalBuffer((__gm__ int32_t *)params.sequsedQ);
         }
-        AscendC::GlobalTensor<int32_t> gSequsedKv;
-        if (params.sequsedKv != nullptr) {
-            gSequsedKv.SetGlobalBuffer((__gm__ int32_t *)params.sequsedKv);
-        }
+        GbsaKernel::KvBlockResolver<PAGED_CACHE_FLAG> kvResolver;
+        kvResolver.Init(params.cuSeqLengthsKv, params.sequsedKv, params.blockTable);
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx;
         gSparseBlockIdx.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockIdx);
         AscendC::GlobalTensor<int32_t> gSparseBlockCount;
         gSparseBlockCount.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockCount);
 
-        AscendC::GlobalTensor<int32_t> gBlockTable;
-        gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
         AscendC::GlobalTensor<ElementLse> gLse;
@@ -139,7 +136,7 @@ public:
 
         uint32_t groupSize = groupSize_;
         int64_t strideQO = qHeads_ * embed_;
-        int64_t strideKVRow = kvHeads_ * embed_;
+        int64_t strideKVRow = static_cast<int64_t>(kvHeads_) * embed_;
         uint32_t embedRound = RoundUp(embed_, 16);
 
 #ifdef __DAV_VEC__
@@ -223,8 +220,9 @@ public:
 
             uint32_t qStorageLen = static_cast<uint32_t>(gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx + 1)) -
                                                          gCuSeqLengths.GetValue(static_cast<int64_t>(batchIdx)));
-            // PA_BBND requires sequsedKv (host-enforced).
-            uint32_t kvSeqlen = static_cast<uint32_t>(gSequsedKv.GetValue(static_cast<int64_t>(batchIdx)));
+            int64_t kvStorageStart = 0;
+            uint32_t kvSeqlen = 0;
+            const bool validKvSequence = kvResolver.ReadSequence(batchIdx, kvStorageStart, kvSeqlen);
             uint32_t qSeqlen =
                 hasSequsedQ ? static_cast<uint32_t>(gSequsedQ.GetValue(static_cast<int64_t>(batchIdx))) : qStorageLen;
             int64_t qStorageToken =
@@ -239,7 +237,7 @@ public:
             auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, 1);
             auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
-            if (qSeqlen == 0U || kvSeqlen == 0U || kvSeqlen < qSeqlen) {
+            if (!validKvSequence || qSeqlen == 0U || kvSeqlen == 0U || kvSeqlen < qSeqlen) {
 #ifdef __DAV_VEC__
                 if (isFdPartial) {
                     epilogueRescaleO.WriteNeutralPartial(gPartialO, gPartialLse, fdPartialTaskId, groupSize, embed_,
@@ -275,29 +273,23 @@ public:
             }
 
             uint32_t historyLen = kvSeqlen - qSeqlen;
-            uint32_t lastBlockTileSize = (historyLen + qTokenInBatch) % blockShapeY_ + 1;
+            const uint32_t causalEnd = historyLen + qTokenInBatch + 1;
 
-            uint32_t kvSLoopNum = rawEnd - rawBegin;
-            int32_t validPhysicalIds[GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
-            uint32_t validTileSize[GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
-            uint32_t lastLogicalBlockId = (historyLen + qTokenInBatch) / blockShapeY_;
+            const int64_t kvBatchHeadOffset =
+                kvResolver.BatchHeadOffset(kvStorageStart, strideKVRow, kvHeadIdx, embed_);
+            uint32_t kvSLoopNum = 0;
+            GbsaKernel::KvTile validTiles[GbsaMetadata::MAX_SPARSE_BLOCK_CAPACITY];
             uint32_t actualLoopNum = 0;
             for (uint32_t i = rawBegin; i < rawEnd && i < topK_; i++) {
                 int32_t logicalId = gSparseBlockIdx.GetValue(sparseIdxBase + i);
-                if (logicalId < 0 || static_cast<uint32_t>(logicalId) >= maxBlocksPerBatch_ ||
-                    static_cast<uint32_t>(logicalId) > lastLogicalBlockId)
+                if (!kvResolver.ResolveSingleTileBlock(logicalId, blockShapeY_, causalEnd, batchIdx,
+                                                       maxBlocksPerBatch_, pagedBlockSize_, kvBaseTile_,
+                                                       validTiles[actualLoopNum])) {
                     continue;
-                int64_t btOffset = static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + logicalId;
-                int32_t physicalId = gBlockTable.GetValue(btOffset);
-                validPhysicalIds[actualLoopNum] = physicalId;
-                validTileSize[actualLoopNum] =
-                    (static_cast<uint32_t>(logicalId) == lastLogicalBlockId) ? lastBlockTileSize : blockShapeY_;
+                }
                 actualLoopNum++;
             }
             kvSLoopNum = actualLoopNum;
-            if (kvSLoopNum == 0) {
-                continue;
-            }
 
             uint32_t rowNum = groupSize;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
@@ -322,11 +314,10 @@ public:
 #endif
             for (uint32_t kvBlockIdx = 0; kvBlockIdx < kvSLoopNum + PRE_LAUNCH; kvBlockIdx++) {
                 if (kvBlockIdx < kvSLoopNum) {
-                    uint32_t kvSTileSizeAct = validTileSize[kvBlockIdx];
-                    int32_t physicalBlockId = validPhysicalIds[kvBlockIdx];
+                    uint32_t kvSTileSizeAct = validTiles[kvBlockIdx].tokenCount;
 
-                    int64_t gmOffsetK = static_cast<int64_t>(physicalBlockId) * static_cast<int64_t>(kStride0_) +
-                                        static_cast<int64_t>(kvHeadIdx) * embed_;
+                    int64_t gmOffsetK = kvResolver.Offset(validTiles[kvBlockIdx], kvBatchHeadOffset,
+                                                          kStride0_, strideKVRow);
 
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
                     uint32_t ubSBufId = kvBlockIdx % UB_S_OTMP_BUF_STAGES;
@@ -336,15 +327,15 @@ public:
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
 
 #ifdef __DAV_CUBE__
-                    auto gmKLayoutTla = tla::MakeLayout<ElementK, LayoutK>(strideKVRow, blockSize_);
+                    auto gmKLayoutTla = tla::MakeLayout<ElementK, LayoutK>(strideKVRow, kvBaseTile_);
                     auto gmKTensorTla = tla::MakeTensor(gK[gmOffsetK], gmKLayoutTla, Arch::PositionGM{});
 
                     uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         kvBlockIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         kvBlockIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    blockMmadQK(gmKTensorTla, ubSTensorTla, gIdentityIdx, actualBlockShapeQK, 0, blockSize_, blockSize_,
-                                blockSize_, 1, 1, prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag);
+                    blockMmadQK(gmKTensorTla, ubSTensorTla, gIdentityIdx, actualBlockShapeQK, 0, kvBaseTile_, kvBaseTile_,
+                                kvBaseTile_, 1, 1, prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag);
                     if (kvBlockIdx == kvSLoopNum - 1)
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
@@ -361,11 +352,10 @@ public:
                 }
                 if (kvBlockIdx >= PRE_LAUNCH) {
                     uint32_t kvBlockIdxDe = kvBlockIdx - PRE_LAUNCH;
-                    uint32_t kvSTileSizeAct = validTileSize[kvBlockIdxDe];
-                    int32_t physicalBlockIdV = validPhysicalIds[kvBlockIdxDe];
+                    uint32_t kvSTileSizeAct = validTiles[kvBlockIdxDe].tokenCount;
 
-                    int64_t gmOffsetV = static_cast<int64_t>(physicalBlockIdV) * static_cast<int64_t>(vStride0_) +
-                                        static_cast<int64_t>(kvHeadIdx) * embed_;
+                    int64_t gmOffsetV = kvResolver.Offset(validTiles[kvBlockIdxDe], kvBatchHeadOffset,
+                                                          vStride0_, strideKVRow);
 
                     GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
                     uint32_t ubOTmpBufId = kvBlockIdxDe % UB_S_OTMP_BUF_STAGES;
@@ -380,7 +370,7 @@ public:
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
 
-                    auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(blockSize_, strideKVRow);
+                    auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(kvBaseTile_, strideKVRow);
                     auto gmVTensorTla = tla::MakeTensor(gV[gmOffsetV], gmVLayoutTla, Arch::PositionGM{});
 
                     uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
@@ -388,7 +378,7 @@ public:
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         kvBlockIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gIdentityIdx, actualBlockShapePV, kvBlockIdxDe,
-                                blockSize_, blockSize_, blockSize_, 1, kvSLoopNum, prefixSumL0AStages,
+                                kvBaseTile_, kvBaseTile_, kvBaseTile_, 1, kvSLoopNum, prefixSumL0AStages,
                                 prefixSumL0BStages, smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
@@ -430,7 +420,7 @@ private:
         embed_ = tilingData->embeddingSize;
         blockShapeY_ = tilingData->blockShapeY;
         blockShapeX_ = tilingData->blockShapeX;
-        blockSize_ = tilingData->blockSize;
+        pagedBlockSize_ = tilingData->blockSize;
         qBlockNum_ = tilingData->qBlockNum;
         topK_ = tilingData->topK;
         maxBlocksPerBatch_ = tilingData->maxBlocksPerBatch;
@@ -620,14 +610,14 @@ private:
     uint32_t embed_;
     uint32_t blockShapeY_;
     uint32_t blockShapeX_;
-    uint32_t blockSize_;
+    uint32_t pagedBlockSize_;
     uint32_t qBlockNum_;
     uint32_t topK_;
     uint32_t maxBlocksPerBatch_;
     uint32_t totalTaskNum_;
     float scaleValue_;
     uint32_t groupSize_;
-    // PA_BBND page base strides (elements); may exceed blockSize*Nkv*D when dim0 is strided.
+    // Tensor dim0 strides: PA page strides (possibly with holes), or TND token strides.
     uint64_t kStride0_;
     uint64_t vStride0_;
     // base tile info

@@ -66,7 +66,7 @@
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>公式中的key。layoutKv为"PA_BBND"时，shape为[numBlocks, blockSize, N, D]，N为kv的headNum（N2）。</td>
+      <td>公式中的key。layoutKv为"PA_BBND"时，shape为[numBlocks, blockSize, N, D]；layoutKv为"TND"时shape为[totalKvTokens, N, D]。N为kv的headNum（N2）。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
     </tr>
@@ -150,7 +150,7 @@
     <tr>
       <td>layoutKv</td>
       <td>属性</td>
-      <td>key/value数据排布格式，当前仅支持"PA_BBND"。</td>
+      <td>key/value数据排布格式，当前支持"PA_BBND"或"TND"。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
@@ -223,3 +223,14 @@
 | -------- | -------- | ---- |
 | aclnn API | [test_aclnn_generic_block_sparse_attention](./examples/test_aclnn_generic_block_sparse_attention.cpp) | 通过[aclnnGenericBlockSparseAttention](./docs/aclnnGenericBlockSparseAttention.md)两段式接口调用GenericBlockSparseAttention算子 |
 | PyTorch API | - | 通过[generic_block_sparse_attention](../../attention/generic_block_sparse_attention/docs/torchapi_generic_block_sparse_attention.md)接口调用generic_block_sparse_attention算子。 |
+
+### 非 PA（原始 TND KV）
+
+显式设置`layoutKv="TND"`，Key/Value形状均为`[totalKvTokens, Nkv, 128]`，
+`blockTableOptional=nullptr`，并传入INT64的`cuSeqLengthsKvOptional[B+1]`。
+`sequsedKvOptional[B]`可省略，此时有效长度等于前缀和差分；传入时为INT32，
+须满足`0 <= sequsedKv[b] <= cuKv[b+1]-cuKv[b]`，padding位于每个batch存储片段尾部。
+前缀和须从0开始、单调非递减，末项等于`totalKvTokens`。
+稀疏索引始终是batch内逻辑KV块号，块起点为`cuKv[b]+logicalBlockId*128`。
+ACLNN会将非连续TND KV转换为连续Tensor；直接图调用要求TND KV全连续。
+Metadata和主算子须传入一致的layout及长度参数。默认layoutKv仍为PA_BBND。

@@ -31,7 +31,7 @@
   attentionOut = Softmax(scaleValue \cdot query \cdot key_{sparse}^{T} + atten\_mask) \cdot value_{sparse}
   $$
 
-  输入排布由layoutQ、layoutKv指定，当前仅支持layoutQ="TND"、layoutKv="PA_BBND"。
+  输入排布由layoutQ、layoutKv指定，当前支持layoutQ="TND"、layoutKv="PA_BBND"或"TND"。
 
 ## 函数原型
 
@@ -125,7 +125,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>key</td>
       <td>输入</td>
       <td>公式中的key。</td>
-      <td>可作为原始Key或Paged KV Cache。当前仅支持layoutKv="PA_BBND"。其余layout及原始KV的shape见<a href="#layout对应关系说明">layout对应关系说明</a>、<a href="#paged-attention相关说明">Paged Attention相关说明</a>；dim0非连续见<a href="#其他约束">其他约束</a>。</td>
+      <td>可作为原始Key或Paged KV Cache。当前支持layoutKv="PA_BBND"或"TND"。其余layout及原始KV的shape见<a href="#layout对应关系说明">layout对应关系说明</a>、<a href="#paged-attention相关说明">Paged Attention相关说明</a>；dim0非连续见<a href="#其他约束">其他约束</a>。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
       <td>[numBlocks, blockSize, numKeyValueHeads, headDim]</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>value</td>
       <td>输入</td>
       <td>公式中的value。</td>
-      <td>可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前仅支持layoutKv="PA_BBND"。</td>
+      <td>可作为原始Value输入或Paged KV Cache输入，shape与key一致。当前支持layoutKv="PA_BBND"或"TND"。</td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
       <td>与key一致</td>
@@ -251,7 +251,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
         可选输入，用于变长序列场景。
         <ul>
           <li>layoutKv为TND时必须传入。</li>
-          <li>layoutKv非TND时不传（须为nullptr）。当前仅支持PA_BBND。</li>
+          <li>layoutKv非TND时不传（须为nullptr）。当前支持PA_BBND或TND。</li>
           <li>layoutKv为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按key/value的shape中的S处理（当前不支持）。</li>
           <li>元素为前缀和：第0个元素为0，最后一个元素等于各batch KV存储长度之和，后一个元素须≥前一个元素。</li>
         </ul>
@@ -295,7 +295,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>blockTableOptional</td>
       <td>输入</td>
       <td>Block表用于PagedAttention。</td>
-      <td>如配置此输入，则表示使用PagedAttention。当前必须传入，且layoutKv须为PA_BBND。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
+      <td>如配置此输入，则表示使用PagedAttention。PA_BBND必须传入；TND必须为空。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, maxNumBlocksPerBatch)</td>
@@ -335,7 +335,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>layoutKv</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>目标支持"TND""BNSD""BSND""PA_BBND""PA_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"PA_BBND"。</td>
+      <td>目标支持"TND""BNSD""BSND""PA_BBND""PA_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前支持"PA_BBND"或"TND"。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -654,7 +654,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
   </tbody>
   </table>
 
-当前支持组合：layoutQ="TND" + layoutKv="PA_BBND"。其余layoutQ/layoutKv组合当前不支持。
+当前支持组合：layoutQ="TND" + layoutKv="PA_BBND"或"TND"。其余layoutQ/layoutKv组合当前不支持。
 
 query、attentionOut的shape由layoutQ决定：
 
@@ -775,7 +775,7 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
   </tbody>
   </table>
 
-当前必须传入非空blockTable，且layoutKv为PA_BBND。blockTable为nullptr（原始KV）及PA_BNBD当前不支持。
+layoutKv为PA_BBND时必须传入非空blockTable；layoutKv为TND时blockTable必须为nullptr，直接使用原始KV。PA_BNBD当前不支持。
 
 ### 量化相关说明
 
@@ -1309,3 +1309,14 @@ int main()
   return 0;
 }
 ```
+
+### 非 PA（原始 TND KV）
+
+显式设置`layoutKv="TND"`，Key/Value形状均为`[totalKvTokens, Nkv, 128]`，
+`blockTableOptional=nullptr`，并传入INT64的`cuSeqLengthsKvOptional[B+1]`。
+`sequsedKvOptional[B]`可省略，此时有效长度等于前缀和差分；传入时为INT32，
+须满足`0 <= sequsedKv[b] <= cuKv[b+1]-cuKv[b]`，padding位于每个batch存储片段尾部。
+前缀和须从0开始、单调非递减，末项等于`totalKvTokens`。
+稀疏索引始终是batch内逻辑KV块号，块起点为`cuKv[b]+logicalBlockId*128`。
+ACLNN会将非连续TND KV转换为连续Tensor；直接图调用要求TND KV全连续。
+Metadata和主算子须传入一致的layout及长度参数。默认layoutKv仍为PA_BBND。

@@ -1,5 +1,16 @@
 # generic_block_sparse_attention
 
+当前支持 `layout_q="TND"`，`layout_kv` 为 `"PA_BBND"` 或 `"TND"`：
+
+| KV布局 | K/V形状 | block_table | cu_seqlens_kv | seqused_kv |
+| --- | --- | --- | --- | --- |
+| PA_BBND（默认） | [num_blocks, 128, Nkv, 128] | 必选 | 必须为空 | INT32 [B]，必选 |
+| TND | [total_kv_tokens, Nkv, 128] | 必须为空 | INT64 [B+1]，必选 | INT32 [B]，可选 |
+
+TND的KV前缀和须从0开始、单调非递减、末项等于total_kv_tokens。
+seqused_kv省略时使用存储长度，传入时不得超过对应存储长度。
+TND KV通过ACLNN转为连续Tensor。稀疏索引表示batch内逻辑块号，两种模式语义相同。
+
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
@@ -931,3 +942,30 @@ quant_mode参数解释见「quant_mode 枚举」。
     assert attention_out.shape == q.shape
     assert attention_out.dtype == q.dtype
     ```
+
+### 非 PA 联合调用示例
+
+```python
+import torch
+import torch_npu
+import cann_ops_transformer
+
+ops = cann_ops_transformer.ops
+q = torch.randn(3, 4, 128, device="npu", dtype=torch.float16)
+k = torch.randn(259, 1, 128, device="npu", dtype=torch.float16)
+v = torch.randn_like(k)
+cu_q = torch.tensor([0, 1, 3], device="npu", dtype=torch.int64)
+cu_kv = torch.tensor([0, 130, 259], device="npu", dtype=torch.int64)
+idx = torch.tensor([[[0, 1], [0, 1], [0, 1]]], device="npu", dtype=torch.int32)
+count = torch.full((1, 3), 2, device="npu", dtype=torch.int32)
+# A2高精度使用0；A5使用1。
+precision = 1 if "950" in torch.npu.get_device_name() else 0
+lengths = dict(cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv, layout_kv="TND")
+metadata = ops.generic_block_sparse_attention_metadata(
+    idx, count, 4, 1, 128, [1, 128], softmax_precision=precision, **lengths
+)
+out, _ = ops.generic_block_sparse_attention(
+    q, k, v, idx, count, [1, 128], metadata=metadata,
+    softmax_precision=precision, **lengths
+)
+```

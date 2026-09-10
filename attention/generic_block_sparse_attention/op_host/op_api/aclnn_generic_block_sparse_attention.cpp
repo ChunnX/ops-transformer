@@ -99,7 +99,8 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShape)
 
 static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                   const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
-                                  const aclIntArray *blockShape, char *layoutQ, char *layoutKv)
+                                  const aclIntArray *blockShape, char *layoutQ, char *layoutKv,
+                                  const aclTensor *blockTable)
 {
     CHECK_RET(CheckMandatoryTensors(query, key, value, sparseBlockIdx, sparseBlockCount) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
@@ -119,8 +120,9 @@ static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, 
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layoutQ only supports TND, got %s.", layoutQStr.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (layoutKvStr != "PA_BBND") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layoutKv only supports PA_BBND, got %s.", layoutKvStr.c_str());
+    if ((blockTable != nullptr && layoutKvStr != "PA_BBND") || (blockTable == nullptr && layoutKvStr != "TND")) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layoutKv must be PA_BBND with blockTable or TND without it, got %s.",
+                layoutKvStr.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -296,8 +298,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t returnSoftmaxlse,
     aclTensor *attentionOut, aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    aclnnStatus ret =
-        ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ, layoutKv);
+    aclnnStatus ret = ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ,
+                                     layoutKv, blockTableOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -330,9 +332,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     std::string layoutQStr = ConvertLayoutString(layoutQ);
     std::string layoutKvStr = ConvertLayoutString(layoutKv);
 
-    const aclTensor *keyFinal = NormalizeDim0KvTensor(key, "key", executorImpl);
+    const aclTensor *keyFinal = blockTableOptional != nullptr ? NormalizeDim0KvTensor(key, "key", executorImpl) :
+                                                             l0op::Contiguous(key, executorImpl);
     CHECK_RET(keyFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor *valueFinal = NormalizeDim0KvTensor(value, "value", executorImpl);
+    const aclTensor *valueFinal = blockTableOptional != nullptr ? NormalizeDim0KvTensor(value, "value", executorImpl) :
+                                                               l0op::Contiguous(value, executorImpl);
     CHECK_RET(valueFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto outputs = l0op::GenericBlockSparseAttention(

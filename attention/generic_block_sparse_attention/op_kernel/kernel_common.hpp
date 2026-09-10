@@ -11,7 +11,7 @@
 #ifndef KERNEL_COMMON_HPP
 #define KERNEL_COMMON_HPP
 
-#include "kernel_operator.h"
+#include <cstdint>
 
 namespace GenericBlockSparseAttn {
 
@@ -24,7 +24,7 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t embeddingSize;
     uint32_t blockShapeX; // Q sparse block size (default 1)
     uint32_t blockShapeY; // KV sparse block size (default 128)
-    uint32_t blockSize;   // Paged KV cache block size, parsed from KV tensor shape
+    uint32_t blockSize;   // PA page size in tokens; zero for TND (no pages)
     uint32_t topK;        // sparseBlockIdx dim-3 (KVb): selected KV blocks per Q block
     uint32_t qBlockNum;   // sparseBlockIdx dim-2 (Qb): total Q blocks
     uint32_t maxBlocksPerBatch;
@@ -38,7 +38,7 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t groupSize;
     // BaseTileInfo
     uint32_t qBaseTile;
-    uint32_t kvBaseTile;
+    uint32_t kvBaseTile; // Compute tile width, independent of sparse block and PA page sizes.
     // MmPhaseL1TileInfo
     uint32_t mm1L1TileM;
     uint32_t mm1L1TileN;
@@ -52,7 +52,7 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t kL1BufNum;
     uint32_t vL1BufNum;
     uint32_t pL1BufNum;
-    // PA_BBND page base stride in elements (dim0). Allows first-axis non-contiguous KV cache.
+    // Tensor dim0 stride in elements: PA physical page stride or TND token stride Nkv*D.
     uint64_t kStride0;
     uint64_t vStride0;
     uint32_t fdStaticEnabled;

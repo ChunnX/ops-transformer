@@ -514,3 +514,55 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_softmax_precision)
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
+
+TEST_F(aclnn_generic_block_sparse_attention_ut, tnd_non_paged)
+{
+    auto query = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto key = TensorDesc({kS2, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto value = TensorDesc({kS2, kN2, kD}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto sparseBlockIdx = TensorDesc({kN2, kTotalQBlocks, kTopK}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto sparseBlockCount = TensorDesc({kN2, kTotalQBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{1});
+    auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
+    auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
+    char layoutQ[] = "TND";
+    char layoutKv[] = "TND";
+    auto cuSeqLengthsQ = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS1});
+    auto cuSeqLengthsKv = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS2});
+    auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
+                        INPUT(query,            // query
+                              key,              // key
+                              value,            // value
+                              sparseBlockIdx,   // sparseBlockIdx
+                              sparseBlockCount, // sparseBlockCount
+                              metadata,         // metadataOptional
+                              nullptr,          // attenMaskOptional
+                              nullptr,          // qDequantScaleOptional
+                              nullptr,          // kDequantScaleOptional
+                              nullptr,          // vDequantScaleOptional
+                              nullptr,          // pQuantScaleOptional
+                              cuSeqLengthsQ,    // cuSeqLengthsQOptional
+                              cuSeqLengthsKv,    // cuSeqLengthsKvOptional
+                              nullptr,          // sequsedQOptional
+                              nullptr,          // sequsedKvOptional
+                              nullptr,          // blockTableOptional
+                              blockShape,       // blockShape
+                              1,                // isPackedGQA
+                              layoutQ,          // layoutQ
+                              layoutKv,         // layoutKv
+                              kScale,           // scaleValue
+                              1,                // maskType
+                              0,                // quantType
+                              0.0,              // dstTypeMax
+                              0,                // softmaxPrecision
+                              -1,               // winLeft
+                              -1,               // winRight
+                              0                 // returnSoftmaxlse
+                              ),
+                        OUTPUT(attentionOut, nullptr));
+
+    uint64_t workspaceSize = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}

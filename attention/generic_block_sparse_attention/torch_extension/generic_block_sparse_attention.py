@@ -18,6 +18,20 @@ GBSA_METADATA_SIZE = 1024
 GBSA_METADATA_OP_NAME = "generic_block_sparse_attention_metadata"
 
 
+def _check_sequence_layouts(layout_q, layout_kv, cu_q, cu_kv, used_kv):
+    layout_q = "TND" if layout_q is None else layout_q
+    layout_kv = "PA_BBND" if layout_kv is None else layout_kv
+    if layout_q != "TND" or layout_kv not in ("TND", "PA_BBND"):
+        raise ValueError("Expected TND query and TND or PA_BBND KV")
+    if cu_q is None:
+        raise ValueError("cu_seqlens_q is required for TND query")
+    if layout_kv == "TND":
+        if cu_kv is None:
+            raise ValueError("cu_seqlens_kv is required for TND KV")
+    elif cu_kv is not None or used_kv is None:
+        raise ValueError("PA_BBND requires seqused_kv and no cu_seqlens_kv")
+
+
 class MaskMode(IntEnum):
     """mask_mode 取值，与 aclnn maskType 一致。可直接当 int 传入。"""
 
@@ -110,6 +124,7 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
         ):
+            _check_sequence_layouts(layout_q, layout_kv, cu_seqlens_q, cu_seqlens_kv, seqused_kv)
             return torch.empty((GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
@@ -145,6 +160,10 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             return_softmax_lse: Optional[bool] = False,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
+            _check_sequence_layouts(layout_q, layout_kv, cu_seqlens_q, cu_seqlens_kv, seqused_kv)
+            paged = layout_kv in (None, "PA_BBND")
+            if paged != (block_table is not None):
+                raise ValueError("block_table is required for PA_BBND and must be None for TND KV")
             # 与 C++ 实现保持一致：quant_mode != NO_QUANT 时 attention_out_dtype 必填
             if attention_out_dtype is not None:
                 out_dtype = attention_out_dtype
