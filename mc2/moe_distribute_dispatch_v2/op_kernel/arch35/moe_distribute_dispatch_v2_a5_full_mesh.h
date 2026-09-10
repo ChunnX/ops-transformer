@@ -683,7 +683,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     lastTokenId = tokenId;
     int32_t topKId = sendIdx % axisK_;
     SyncFunc<AscendC::HardEvent::V_S>();
-    FillTriple(tempTensor_, tokenId, topKId);
+    FillTriple(tempTensor_, tokenId, topKId, hasExpertScalesFlag_);
     SyncFunc<AscendC::HardEvent::S_V>();
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(syncFlagId_ % sendTokenBufNum_);
     LocalTensor<int32_t> tempTensorInt32 = tempTensor_.template ReinterpretCast<int32_t>();
