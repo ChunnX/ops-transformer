@@ -43,7 +43,7 @@ LSE 关闭时，新布局返回空 Tensor；开启时固定 BNS。
 3. **InferShape/TilingData**：`quant_block_sparse_attn_infershape.cpp` 推导四维输出和 BNS LSE，
    输出 Dv 读取 Value；`quant_block_sparse_attn_tiling.cpp` 写入新增的 MX `qSeqSize` 字段。
 4. **Kernel 调度与地址**：`arch35/quant_block_sparse_attn_mx_kernel.h` 将有效 Q 长度和物理 batch 起点分开，
-   使用 `b*Sq` 定位 padded batch；`common/mx_query_layout.h` 统一 Q/scale/输出 token-head 地址计算，使用 64 位偏移。
+   使用 `b*Sq` 定位 padded batch；`common/util_regbase_mx.h` 统一 Q/scale/输出 token-head 地址计算，使用 64 位偏移。
 5. **Cube 搬运**：`quant_block_sparse_attn_mx_block_cube.h` 的 Q ND2NZ、QScale DN2NZ 使用对应行间距：
    BSND 为 Nq*D / Nq*Cscale，BNSD 为 D / Cscale。L1/L0、MX 随路反量化及 Matmul 主计算复用。
 6. **Vector 写回**：`quant_block_sparse_attn_mx_block_vec.h` 同步修改正常输出与 ClearEmptyQBlock；

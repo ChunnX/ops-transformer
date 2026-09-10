@@ -22,7 +22,7 @@
 #define __aicore__
 #define QBSA_UT_DEFINED_AICORE
 #endif
-#include "../../../op_kernel/arch35/common/mx_query_layout.h"
+#include "../../../op_kernel/arch35/common/util_regbase_mx.h"
 #ifdef QBSA_UT_DEFINED_AICORE
 #undef __aicore__
 #undef QBSA_UT_DEFINED_AICORE
