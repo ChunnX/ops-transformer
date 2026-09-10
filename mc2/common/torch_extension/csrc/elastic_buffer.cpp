@@ -154,16 +154,16 @@ struct MoeContextResources {
     std::string contextTag;
 };
 
-// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内（无销毁接口），
-// 其内容(epHcclBuffer[])指向本类自建的物理内存。为避免"实例销毁释放内存后，缓存 ctx 中
-// 地址悬空导致其他实例/后续内核访问 use-after-free"，物理内存生命周期与 tag 绑定并由引用
-// 计数管理：同 tag 多实例共享，最后一个持有者 Destroy 时才真正释放。
+// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内，注册内存
+// (HcclCommMemReg)与 channel 均无反注册/销毁接口，其内容(epHcclBuffer[])指向本类自建的
+// 物理内存。因此物理内存生命周期与 tag 绑定并保留至进程级：同 tag 多实例共享，Destroy 仅
+// 解除本实例引用、不释放内存，同 group destroy 后重建 ElasticBuffer 时按既有容量直接复用
+// (重建声明的 cclBufferSize 不得超过首建值)。
 struct MoeSharedBufferEntry {
     void *deviceBufPtr = nullptr;
     aclrtDrvMemHandle physicalMemHandle = nullptr;
     HcclMemHandle memHandle = nullptr;
     int64_t cclBufferSize = 0; // 实际已申请的物理内存字节数
-    uint32_t refCount = 0;
 };
 static std::mutex gMoeSharedBufferMutex;
 static std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
@@ -812,14 +812,13 @@ public:
         resources.memHandle = memHandle_;
         resources.contextTag = groupName + "moe_dispatch_combine_multi_channel";
         if (createdNew_) {
-            // 首次创建: 物理内存入共享池(与引擎 ctx 同生命周期)，由引用计数管理最终释放
+            // 首次创建: 物理内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放，同 group 重建时复用
             std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
             MoeSharedBufferEntry &entry = gMoeSharedBuffers[resources.contextTag];
             entry.deviceBufPtr = deviceBufPtr_;
             entry.physicalMemHandle = physicalMemHandle_;
             entry.memHandle = memHandle_;
             entry.cclBufferSize = cclBufferSize_;
-            entry.refCount = 1;
         }
         ownershipReleased_ = true; // 所有权已转移(共享池/既有持有者)，builder 析构不释放
         return resources;
@@ -879,22 +878,20 @@ private:
             createdNew_ = true;
             return;
         }
-        // ctx 已存在(同 group 曾创建过)：物理内存由共享池按引用计数管理，此处复用既有 buffer。
-        // 容量校验：本次声明的容量不得超过既有 buffer 实际容量(物理内存按首次创建时大小申请)，
-        // 否则 tiling 按声明值校验通过、kernel 经共享 ctx 写入会超出实际物理内存。
+        // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：物理内存由共享池按 tag 保留，复用既有 buffer。
+        // 重建声明的容量不得超过首建容量，否则 tiling 按声明值校验通过、 kernel 经共享 ctx 写入会超出实际物理内存。
         MoeSharedBufferEntry entry;
         {
             std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
             auto iter = gMoeSharedBuffers.find(contextTag);
             TORCH_CHECK(iter != gMoeSharedBuffers.end(), "MoE comm context of group '", contextTag,
-                        "' exists but its buffer has been released; "
-                        "creating a new ElasticBuffer on the same group after destroy() is not supported, "
-                        "please reuse the previous instance or use a new comm group");
+                        "' exists but its buffer is missing from the shared pool; an earlier build on this "
+                        "group may have failed midway, please use a new comm group");
             TORCH_CHECK(cclBufferSize_ <= iter->second.cclBufferSize,
                         "ccl buffer size exceeds the existing buffer of this group, requested ", cclBufferSize_,
                         ", allocated ", iter->second.cclBufferSize,
-                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group");
-            iter->second.refCount++;
+                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group, "
+                        "destroy and recreate with a larger size is not supported, please use a new comm group");
             entry = iter->second;
         }
         deviceBufPtr_ = entry.deviceBufPtr;
@@ -1153,7 +1150,7 @@ public:
                   bool withGrad = false, bool explicitlyDestroy = false);
     ~ElasticBuffer();
 
-    void EngramWrite(const at::Tensor &storage);
+    void EngramWrite(const at::Tensor &storage, const c10::optional<at::Tensor> &sf);
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
@@ -1175,7 +1172,7 @@ public:
     }
 
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                  int64_t numEntries, int64_t dtypeEnum);
+                                  int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
@@ -1255,7 +1252,7 @@ private:
     void *moeDeviceBufPtr_ = nullptr;
     aclrtDrvMemHandle moePhysicalMemHandle_ = nullptr;
     HcclMemHandle moeMemHandle_ = nullptr;
-    std::string moeContextTag_; // 共享池 key（group + opName），Destroy 时按 tag 减引用
+    std::string moeContextTag_; // 共享池 key（group + opName），复用/入池时使用
     bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
@@ -1364,7 +1361,7 @@ int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerSe
 }
 
 // EngramWrite - write data with automatic barrier.
-void ElasticBuffer::EngramWrite(const at::Tensor &storage)
+void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<at::Tensor> &sf)
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                              "please create a new ElasticBuffer instance");
@@ -1431,7 +1428,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
 at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                      int64_t numEntries, int64_t dtypeEnum)
+                                      int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1442,7 +1439,7 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
     ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, fetched, nullTensor, nullTensor, nullTensor, nullTensor,
-              nullTensor, hiddenSize, numEntries, zero, zero, zero);
+              nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, sfTableAddr);
     return fetched;
 }
 
@@ -1468,8 +1465,11 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
+        aclTensor *nullTensor = nullptr;
+        int64_t zero = 0;
         ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, fetched, perm, sendCounts, recvCounts,
-                  recvLocalEntry, numRecv, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize, withGrad);
+                  recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize,
+                  withGrad, zero);
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -1556,36 +1556,9 @@ void ElasticBuffer::Destroy()
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
-    // MoE 通信 buffer 为同 tag(group+opName) 多实例共享，与 HCCL 引擎 ctx 同生命周期：
-    // 引用计数减一，最后一个持有者才释放物理内存，避免缓存 ctx 中的地址悬空(use-after-free)
-    if (moeDeviceBufPtr_ != nullptr) {
-        aclError aclRet = aclrtSynchronizeDevice();
-        TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
-        bool isLastOwner = false;
-        MoeSharedBufferEntry entry;
-        {
-            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
-            auto iter = gMoeSharedBuffers.find(moeContextTag_);
-            if (iter != gMoeSharedBuffers.end() && iter->second.refCount > 0) {
-                isLastOwner = (--iter->second.refCount == 0);
-                if (isLastOwner) {
-                    entry = iter->second;
-                    gMoeSharedBuffers.erase(iter);
-                }
-            }
-        }
-        if (isLastOwner) {
-            // 物理内存释放: 解除映射 → 释放物理内存 → 释放虚拟地址区间
-            if (entry.physicalMemHandle != nullptr) {
-                aclError ret = aclrtUnmapMem(entry.deviceBufPtr);
-                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtUnmapMem failed, ret: ", ret);
-                ret = aclrtFreePhysical(entry.physicalMemHandle);
-                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreePhysical failed, ret: ", ret);
-            }
-            aclError ret = aclrtReleaseMemAddress(entry.deviceBufPtr);
-            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtReleaseMemAddress failed, ret: ", ret);
-        }
-    }
+    // MoE 通信 buffer 已按 tag 注册进 HCCL 通信域(HcclCommMemReg 无反注册接口)，其地址被
+    // 引擎 ctx(含其他 rank 缓存的 epHcclBuffer[])引用且无法销毁：Destroy 仅解除本实例引用，
+    // 物理内存由共享池按 tag 保留，同 group 重建 ElasticBuffer 时复用(容量以首建为准)。
     moeDeviceBufPtr_ = nullptr;
     moePhysicalMemHandle_ = nullptr;
     moeMemHandle_ = nullptr;
@@ -1858,12 +1831,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"), pybind11::arg("numMaxTokensPerRank") = 0, pybind11::arg("withGrad") = false,
              pybind11::arg("explicitlyDestroy") = false)
-        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
+        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
+             pybind11::arg("sf") = pybind11::none())
         .def_static("engram_fetch",
-                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t)>(
-                        &Mc2Api::ElasticBuffer::EngramFetch),
+                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
+                                               at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
                     pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"))
+                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("fetched_sf"),
+                    pybind11::arg("sf_table_addr"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),

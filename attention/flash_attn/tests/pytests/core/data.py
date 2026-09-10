@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 # ============================================================
-# 参数组构造 — 按 flash_attn.md 的 6 组参数规范化
+# 参数组构造 — 按 torchapi_flash_attn.md 的 6 组参数规范化
 # ============================================================
 
 
@@ -119,6 +119,7 @@ def build_flash_attn_params(
         num_heads_q=nqh,
         num_heads_kv=nkh,
         head_dim=hd,
+        head_dim_v=p.get("DV", d),
         batch_size=bs,
         max_seqlen_q=msq,
         max_seqlen_kv=msk,

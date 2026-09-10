@@ -255,7 +255,7 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     QGMM_INPLACE_ADD_CHECK_REPORT(
         params.groupSize == 0, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupSize", std::to_string(params.groupSize), "0"));
-    CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckFormat(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtype(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -288,7 +288,7 @@ static aclnnStatus SetTransViewShape(const aclTensor *&inputTensor, aclOpExecuto
 {
     op::Shape viewShape = inputTensor->GetViewShape();
     uint32_t viewShapeDimsNum = viewShape.GetDimNum();
-    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID); // 矩阵转置操作要求 tensor 至少要有 2 个维度
     op::Shape shape;
     shape.SetScalar();
     // 2: the second last dimension; in for-loops, it indicates dimensions before the second last remain unchanged.
@@ -373,7 +373,7 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
     }
     // 固定写法，参数检查
     ret = CheckParams(params);
-    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     bool transposeX = gmm::IsTransposeLastTwoDims(params.x1);      // check is transpose x
     bool transposeWeight = gmm::IsTransposeLastTwoDims(params.x2); // check is transpose weight
     // when the last two dims of weight are (1, 1), consider tranB as false
