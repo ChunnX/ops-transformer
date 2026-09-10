@@ -184,8 +184,7 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext 
     int64_t e = gmmWeightShape->GetDim(DIM_0);
     int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
 
-    ge::graphStatus ret =
-        InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape);
+    ge::graphStatus ret = InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
