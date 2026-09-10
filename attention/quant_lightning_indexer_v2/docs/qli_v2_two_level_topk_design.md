@@ -144,6 +144,56 @@ dtype/精度约束：score 全程 fp32（现有路径不变）；块化 amax 与
 
 **稳定性验收**：多 seed（≥3）、边界 shape（S2%8≠0、actS2Size=1、numBlocks=1、topk_blocks>numBlocks）、B>1 变长 batch。
 
+### 1.6 mode=2 选择池语义（restrict→leak）与 v41 SparseFlashMla NaN 事件（2026-09-09 决策 leak，2026-09-10 已实施）
+
+> **Provenance**：事件来源 llm-ascend-v41-private issue #10（用户提供，2026-09-09）：188-token prefill、layer 24，npu_sparse_flash_mla（v41 私有仓重写的稀疏 MLA（Multi-head Latent Attention，多头潜在注意力）算子）仅 query row 90 输出非 finite；row 89/91 sparse indices 连续（0..vl−1 后接 -1），row 90 为 0..70, 88, 89, 90 后接 -1（报告 gap 71..87 共 17 个位置）；上游（layer 23 输出、q/qr/kv、cos/sin、有效 KV cache）全部 finite。语义对照基准：模型参考代码 `torch.where(idxs < compress_lens, idxs + offset, -1)` 只查位置不查分数。ds41 侧验证环境：121.37.53.41（910B3），custom_opp_qli_cand 部署（.o d566 含 R10 修复）；诊断脚本 /opt/tjj/qli_cand_test/{row90_repro,row90_sweep,row90_1m,row90_188,leak_equiv_check}.py。
+
+**1.6.1 事件根因链（三层独立缺陷叠加，缺一不出 NaN）**
+
+| 层 | 缺陷 | 机理 |
+|---|---|---|
+| ① 上游 indexer | **R10 修复前构建**（v41 仓 vendored 早于 fb5784f53） | row 90（vl=91→blkLen=96）`brmRepeat=96/64=1` 整除截断 → 块 8..11 分数 stale → 块 9,10 残留 -inf 位型被误杀、块 11 pin 保送、块 8 侥幸保留 → cand[90]={0..8,11} |
+| ② mode=2 语义 | **restrict：候选外索引置 -1** | service_vector_arch22.h:878-884 `idx' = idx−(idx+1)·isOut` → 缺块翻译成 gap 72..87（16 个，8 对齐）；-1 槽 437=421+16 |
+| ③ sparse attention | **对合法 gap 输入不鲁棒** | 行 89/91 连续索引走相邻对平铺搬运；row 90 含跨 gap 非相邻对 (70,88) 走 stride 合并搬运分支，v41 重写的 ProcessSliceL 在此路径缺陷 → q·k 溢出 inf → exp(inf−inf)=NaN；三嫌疑：stride 算术 / skip 槽 score 未置 -inf / -1 早退奇偶位记账 |
+
+ds41 侧复现结论（修复版二进制、新进程）：188/g32/g64×mask0/3、1K/2K/16K/1M、ratio2、TND B=2 变长、chained source→consumer **全部干净**；手工缺块候选（挖块 9,10）经 mode=2 产生的 gap 与 restrict 预测逐位一致——v41 症状 = R10 修复前签名。
+
+**1.6.2 restrict vs leak 语义（用户决策 2026-09-09：以 leak 为准）**
+
+| | restrict（kernel/§1.3-1.4/golden 现状） | leak（模型参考代码，为准） |
+|---|---|---|
+| 选择池 | 仅候选位置 | 全部可达位置 [0, vl) |
+| 候选外可达位置 | 索引置 -1（-1 槽增加） | 作为 topk 填充**泄漏**成有效索引（where 只滤不可达位置） |
+| 候选的作用 | 资格判定 | 仅降级排序（NEG_HUGE 参与排序但高于 -inf） |
+
+- 分歧窗口 = 候选缺可达块 ∧ topk > 候选内有效数；**正确上游下窗口为空**（小上下文无缺块、大上下文候选内数≫topk）——§1.1 关键点 5 的等价性声明因此当时成立；
+- leak 下 188-prefill row 90 输出完整 0..90 → 无 gap → 无 NaN（R10 在小上下文被泄漏语义"治愈"）；**大上下文两语义一致、缺块照样缺 → R10 修复与 sparse attention gap 鲁棒性均不豁免**。
+
+**1.6.3 等价性抽查实测（2026-09-09，leak_equiv_check.py，当前 restrict 代码）**
+
+同一输入 mode=3 基线 vs mode=2（全量候选 / 缺块候选挖块 9,10），vl≤topk 行有效索引集合对比：
+
+| shape | mode=2(全量候选) | mode=2(缺块 9,10) |
+|---|---|---|
+| 188 / 1K / 16K | 全部行一致 ✓ | 行 72..min(511,S2−1) 破裂；row90 缺 72..87（16 个），-1 槽 437 vs 421（+16=restrict 指纹） |
+
+破裂起点精确在行 72（首个使位置 72 可达的行），缺失 = 72..min(87,vl−1) 单调展开，与 restrict 语义预测逐行一致；全量候选下 mode=2 ≡ mode=3 逐行精确成立 → 正常路径无恙。
+
+**1.6.4 leak 改造方案（2026-09-10 已实施，验收全绿）**
+1. kernel：删 :878-884 idxPen 链（候选外保留真实索引）；保留 :852-857 NEG_HUGE 分数降级（排序用，避 -inf×0=NaN 算术坑）；清理 isOutI32 死代码（:524-528）；host/TilingData/接口零改动；
+2. regime 2（候选内数 < topk < 可达数，仅 cand_blocks<2048 类配置出现）：候选外按**索引升序**填充（NEG_HUGE>−inf 两档排序 + (value,idx) 对 tie-break 免费给出确定性规则）；
+3. golden：`topk_golden` 参与池从 score≠−inf 改为位置<vl；官方 golden mode=2 路径同步 leak；
+4. 新增回归：A) mode=2 + 故意缺块候选 + vl<topk → 输出必须完整 0..vl（v41 场景门禁）；B) cand_blocks=64 + vl>512 钉死 regime 2 填充规则；
+5. 验收：重跑 leak_equiv_check.py 右列翻转为全一致、-1 槽数回到与 mode=3 相等；
+6. **17 vs 16 澄清**：mode=2 掩蔽块对齐（Brcb 块内均匀展开），gap 只能是 8 的倍数——**本算子不可能产生 17-gap**；v41 报告的 17（含位置 71）系誊写偏差或 v41 移植层掩蔽展开 off-by-one；17-gap 直喂 sparse attention 的用例另行构造（测 op 鲁棒性，独立于本算子）。
+
+**实施结果（2026-09-10）**：kernel 删除 :878-884 idxPen 链与 isOutI32 死代码（R11 标记注释，host/接口零改动）；golden `topk_golden`/mode=2 掩蔽改 NEG_HUGE 泄漏语义（不可达保持 -inf）；新增 `r1_m2_leakprefill` 用例（prefill + candBlocks=64 + vl≤topk 行完整性 + regime 2 覆盖）。**验收**：leak_equiv_check.py 两列全部一致（188/1K/16K；row90 缺块候选下输出完整 91 个，-1 槽 421=421 与 mode=3 精确相等）；gap17_qli_test 缺块候选不再产生任何 gap（全行 gap 数 0）；全量套件 **92 passed**（31.5 分钟，含全部 mode=2 大 shape/cand64/few/rand/self/offset/TND/pa_gap/mask0 遍历重基线）。构建部署按 P5 全流程（DEPLOY_O_MATCH + R11 标记 grep 校验通过）。
+
+**1.6.5 行动项**
+1. v41 仓同步 fb5784f53 重建 indexer（必做，与语义决策无关）；
+2. 本算子 leak 改造（1.6.4，验收 = leak_equiv_check.py 全一致）；
+3. v41 sparse attention op gap 鲁棒性独立修复（大上下文 gap 合法存在，与 leak 改造正交）。
+
 ---
 
 ## 2. 算法拆解（在现有 6 阶段上的增量）
@@ -478,6 +528,7 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | R8（§11） | keyStride0 改造影响现网紧凑场景（PA 现网假设 stride==块大小） | keyStride0==0 或 ==紧凑值时走原公式兜底，现网行为 bit 级不变；pa_gap_m3_regress 回归 |
 | R9（§11.6） | **output_idx_offset 在 arch22 为死参数**（入口收指针未绑定未消费，host 校验完整但合法值被静默忽略）；调用方传非零偏移时 sparse_indices 不含偏移 → 上层绝对位置还原错误 | A15 对齐 arch35 使能；与 candidate 的契约：offset 仅作用于 sparse_indices，candidate_topk_index 保持相对块号（source 输出取加 offset 前），避免 mode=2 掩蔽整行错位 |
 | ~~R10（2026-09-08 实测，**当日已解**）~~ | mode=1 大 shape（总块数>candidate_topk_blocks）vl（行级有效长度）尾 tile 块分数 stale：`brmRepeat = blkLen/64` 整除截断，blkLen=96（AlignS2 在 (64,128] 段唯一非 64 倍数输出）时只归约 [0,64)，块 8..11 残留上一 tile/行分数 | 实测 big128k_b2_varlen b1 行 73：块 14344 拿 stale 3.5568（真值 1.1753）虚高挤掉第 2048 名边界块 2760（3.0918）；**小 shape 总块数≤2048 时候选集合=全部块，stale 分数不改变集合故漏检**；B=1 大 shape 抽样未踩中窗口行（尾 tile cuS2Len∈(64,96] 即行号 i∈[64,95] 每 batch 仅 32 行） | **修复：brmRepeat 改 `CeilDiv(blkLen, 64)`**（多归约的 [96,128) stale 只落 pad 块槽位，被 -inf 位型链位精确覆盖，无害）；harness 新增 force_rows 确定性锚点（§6.6），B=2 锚 6 行、B=4 锚 12 行覆盖各 batch 窗口 |
+| ~~R11（2026-09-09 决策 leak，**2026-09-10 已实施**）~~ | mode=2 选择池语义分歧：kernel/golden 为 restrict（候选外索引置 -1，service_vector :878-884），模型参考为 leak（候选外可达位置作 topk 填充保留有效索引）；候选缺可达块 ∧ topk>候选内数时输出集合不同（实测缺块候选 row90 缺 72..87 共 16 个，-1 槽 +16） | v41 NaN 事件中 restrict 把 R10 缺块翻译成 gap → 触发 sparse attention 非相邻对路径 NaN（§1.6.1 层②）；正确上游下两语义一致，故 87 用例未暴露 | **已实施**：删 idxPen 链 + golden NEG_HUGE 泄漏语义（§1.6.4 实施结果）；验收 leak_equiv_check 全一致 + 92 用例全绿 |
 | **R5（标红，O3 未决）** | **mid-chunk prefill（start_pos≠0 且 S1>1）形态下模型不做行内因果 mask，与常规认知相反**；该调用形态是否存在未确认 | 若误当作 bug "修复"（擅自加行级 mask）将引入语义变更；测试碰 mode0+S1>1 数据可能误报精度问题 | **暂不测试该用例，问题保留**（§5.0 O3 标红段）；三不准：不准顺手加 mask / 不准以"常规认知"为 golden / 处理前必须先与模型侧确认调用形态 |
 
 已决策记录：
