@@ -436,6 +436,16 @@ def _estimate_npu_golden_load(prep):
 # 仍超时)。CPU 向量化仅作 blocked 亦 OOM 的兜底。
 _NPU_GOLDEN_MAX_SCORE_ELEMS = 50_000_000
 _NPU_GOLDEN_MAX_TOKEN_ELEMS = 250_000_000
+# oversized 中的"CPU 安全带"上限: NPU 长跑 worker 上大 sort/大张量算子存在
+# 非确定 vector core 异常(ERR 507035)前科 —— 2026-09-10 全量跑中 case 633
+# (67M scores)的 npu_golden 打崩 device 2, 级联秒败后续 124 例(算子侧无责,
+# 该段算子任务从未执行)。golden 仅为参考节点(bm-vs-truth 为 reference-only
+# 指标, 比较器从落盘文件读取且统一 .cpu()), 该量级直接搬 CPU 跑分块标杆
+# (数值语义一致, 256 核主机秒级完成), 设备风险清零; 超过该带(输出/中间
+# 亿级, 主机放不下或分钟级过慢)保留 NPU 分块路径, 前后 empty_cache 释放
+# 长跑碎片化缓存, 大分配走全新块规避碎片相关的设备级异常。
+_NPU_GOLDEN_CPU_SAFE_SCORE_ELEMS = 200_000_000
+_NPU_GOLDEN_CPU_SAFE_TOKEN_ELEMS = 200_000_000
 
 
 @register("pool_key_indexer")
@@ -478,6 +488,52 @@ class PKIApi(BaseApi):
             or token_elems > _NPU_GOLDEN_MAX_TOKEN_ELEMS
         )
         if oversized and not quant:
+            if prep["query"].device.type == "npu":
+                if (
+                    scores_elems <= _NPU_GOLDEN_CPU_SAFE_SCORE_ELEMS
+                    and token_elems <= _NPU_GOLDEN_CPU_SAFE_TOKEN_ELEMS
+                ):
+                    # CPU 安全带: 搬 CPU 跑分块标杆(见阈值处注释), 设备零风险
+                    prep = {
+                        k: (v.cpu() if torch.is_tensor(v) else v)
+                        for k, v in prep.items()
+                    }
+                else:
+                    # 巨型带: 保留 NPU 分块(blocked 已加固: masked_fill 替代
+                    # AdvancedIndex setitem、单块免冗余 cat-argsort 归并),
+                    # 前后 empty_cache 释放长跑碎片化缓存
+                    common = dict(
+                        actual_seq_q=prep["actual_seq_q"],
+                        actual_seq_k=prep["actual_seq_k"],
+                        block_table=prep["block_table"],
+                        layout_q=prep["layout_q"],
+                        layout_k=prep["layout_k"],
+                        topk=prep["topk"],
+                        pool_size=prep["pool_size"],
+                        mask_mode=prep["mask_mode"],
+                        return_value=prep["return_value"],
+                    )
+                    torch.npu.empty_cache()
+                    try:
+                        indices, values = _reference_npu_blocked(
+                            prep["query"],
+                            prep["pool_key"],
+                            prep["weights"],
+                            prep["pool_tail_k"],
+                            **common,
+                        )
+                        torch.npu.empty_cache()
+                        return indices, values
+                    except torch.OutOfMemoryError:
+                        torch.npu.empty_cache()
+                        prep = {
+                            k: (v.cpu() if torch.is_tensor(v) else v)
+                            for k, v in prep.items()
+                        }
+            # common 必须在设备路由(可能整体搬 CPU)之后构建: 若提前构建,
+            # block_table/actual_seq_* 留在 NPU 与已搬 CPU 的 query/pool_key
+            # 混用, PA_BBND 场景 index_select 直接跨设备报错(全量跑实测
+            # 20 例 PA+oversized 用例失败, 均为本 bug)
             common = dict(
                 actual_seq_q=prep["actual_seq_q"],
                 actual_seq_k=prep["actual_seq_k"],
@@ -489,22 +545,6 @@ class PKIApi(BaseApi):
                 mask_mode=prep["mask_mode"],
                 return_value=prep["return_value"],
             )
-            if prep["query"].device.type == "npu":
-                try:
-                    indices, values = _reference_npu_blocked(
-                        prep["query"],
-                        prep["pool_key"],
-                        prep["weights"],
-                        prep["pool_tail_k"],
-                        **common,
-                    )
-                    return indices, values
-                except torch.OutOfMemoryError:
-                    torch.npu.empty_cache()
-                    prep = {
-                        k: (v.cpu() if torch.is_tensor(v) else v)
-                        for k, v in prep.items()
-                    }
             indices, values = _reference_npu_blocked(
                 prep["query"],
                 prep["pool_key"],

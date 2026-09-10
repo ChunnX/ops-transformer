@@ -1,0 +1,18 @@
+[2026-09-10 17:47:13,958] [INFO] [MainProcess] [2905871] [registry.py:109]  pki_gen is already registered, repeated registration will coverage it, new module path is gdd_gen_exec_pool_key_indexer
+[2026-09-10 17:47:13,958] [INFO] [MainProcess] [2905871] [registry.py:205]  Module pki_gen has been registered.
+[2026-09-10 17:47:13,958] [INFO] [MainProcess] [2905871] [registry.py:109]  pki_quant_gen is already registered, repeated registration will coverage it, new module path is gdd_gen_exec_pool_key_indexer
+[2026-09-10 17:47:15,819] [INFO] [MainProcess] [2905871] [reports.py:495]  Extra cases with amount: {'scalar': 0, 'lower_border': 0, 'upper_border': 0, 'empty': 0, 'infnan': 0}
+[2026-09-10 17:47:15,885] [INFO] [MainProcess] [2905871] [reports.py:504]  Generate Case cost time: 1.6493 s
+[2026-09-10 17:47:15,885] [INFO] [MainProcess] [2905871] [reports.py:507]  Case Metrics: {'oversize_case': False, 'shape_intervals': [[1000000000, 0.0], [100000000, 0.07285714285714286], [10000000, 0.5478571428571428]], 'case_repetition_rate': 0.0, 'result': False}
+[2026-09-10 17:47:16,323] [INFO] [MainProcess] [2905871] [reports.py:381]  save case json file: result/pool_key_indexer/json/all_pool_key_indexer.json
+[2026-09-10 17:47:17,188] [INFO] [MainProcess] [2905871] [reports.py:410]  save case excel file: result/pool_key_indexer/excel/pool_key_indexer20260910174714.xlsx
+[2026-09-10 17:47:17,295] [INFO] [MainProcess] [2905871] [reports.py:421]  save case csv file: result/pool_key_indexer/csv/pool_key_indexer.csv
+[2026-09-10 17:47:26,064] [INFO] [MainProcess] [2910422] [registry.py:109]  pki_gen is already registered, repeated registration will coverage it, new module path is gdd_gen_exec_pool_key_indexer
+[2026-09-10 17:47:26,064] [INFO] [MainProcess] [2910422] [registry.py:205]  Module pki_gen has been registered.
+[2026-09-10 17:47:26,065] [INFO] [MainProcess] [2910422] [registry.py:109]  pki_quant_gen is already registered, repeated registration will coverage it, new module path is gdd_gen_exec_pool_key_indexer
+[2026-09-10 17:47:28,084] [INFO] [MainProcess] [2910422] [reports.py:495]  Extra cases with amount: {'scalar': 0, 'lower_border': 0, 'upper_border': 0, 'empty': 0, 'infnan': 0}
+[2026-09-10 17:47:28,155] [INFO] [MainProcess] [2910422] [reports.py:504]  Generate Case cost time: 1.7528 s
+[2026-09-10 17:47:28,155] [INFO] [MainProcess] [2910422] [reports.py:507]  Case Metrics: {'oversize_case': False, 'shape_intervals': [[1000000000, 0.0], [100000000, 0.0], [10000000, 0.0]], 'case_repetition_rate': 0.0, 'result': False}
+[2026-09-10 17:47:28,681] [INFO] [MainProcess] [2910422] [reports.py:381]  save case json file: result/pool_key_indexer_quant/json/all_pool_key_indexer_quant.json
+[2026-09-10 17:47:29,610] [INFO] [MainProcess] [2910422] [reports.py:410]  save case excel file: result/pool_key_indexer_quant/excel/pool_key_indexer_quant20260910174726.xlsx
+[2026-09-10 17:47:29,729] [INFO] [MainProcess] [2910422] [reports.py:421]  save case csv file: result/pool_key_indexer_quant/csv/pool_key_indexer_quant.csv

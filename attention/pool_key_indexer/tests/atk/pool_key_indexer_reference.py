@@ -910,6 +910,10 @@ def _reference_npu_blocked(
 
         cum_v = torch.full((s1m, k_sel), _NEG_INF, dtype=torch.float32, device=device)
         cum_i = torch.full((s1m, k_sel), -1, dtype=torch.int64, device=device)
+        # 单块(pm <= block_w)时 cat-argsort 归并是纯冗余: 累积缓冲全 -inf,
+        # 白排一遍 2*k_sel 宽(case 633 类 8192x16384 argsort 即来自此处,
+        # 属设备上最大的单 sort 调用), 直接采用本块 topk 结果
+        single_block = pm <= block_w
         for lo in range(0, pm, block_w):
             hi = min(lo + block_w, pm)
             bw = hi - lo
@@ -919,9 +923,15 @@ def _reference_npu_blocked(
                 dot_n = torch.relu(q_b[:, n] @ kb.transpose(0, 1))  # (S1m, bw)
                 s_blk += w_b[:, n : n + 1] * dot_n
             s_blk *= scale
-            s_blk[:, ~pv[lo:hi]] = _NEG_INF
+            # 布尔 AdvancedIndex setitem 在 torch_npu 上走 NonZero/动态索引
+            # 路径, 大 shape 下有 AICPU 超时/vector core 异常前科(见
+            # _topk_desc 注释), 统一改 masked_fill_(与 _reference_npu 稠密
+            # 路径同款安全算子)
+            s_blk.masked_fill_(~pv[None, lo:hi], _NEG_INF)
             if valid_row is not None:
-                s_blk[col_ar[None, lo:hi] >= valid_row[:, None]] = _NEG_INF
+                s_blk.masked_fill_(
+                    col_ar[None, lo:hi] >= valid_row[:, None], _NEG_INF
+                )
 
             kk = min(k_sel, bw)
             v_blk, i_blk = _topk_desc(s_blk, kk)  # (S1m, kk)
@@ -935,6 +945,9 @@ def _reference_npu_blocked(
                 )
                 v_blk = torch.cat([v_blk, pad_v], dim=-1)
                 i_blk = torch.cat([i_blk, pad_i], dim=-1)
+            if single_block:
+                cum_v, cum_i = v_blk, i_blk
+                continue
             # 增量归并: cat 累积缓冲 + 本块 topk, 再取 k_sel
             cat_v = torch.cat([cum_v, v_blk], dim=-1)
             cat_i = torch.cat([cum_i, i_blk], dim=-1)

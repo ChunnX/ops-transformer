@@ -1,0 +1,9 @@
+  nodes: 
+    - backend: pyaclnn 
+      name: pyaclnn 
+      task: ['accuracy'] 
+      devices: [2] 
+    - backend: npu 
+      name: npu 
+      task: ['accuracy']
+      devices: [2] 
