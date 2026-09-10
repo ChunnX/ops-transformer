@@ -84,8 +84,9 @@ public:
     __aicore__ inline void Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM,
                                 GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
                                 GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
-                                GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
-                                GM_ADDR tilingGM);
+                                GM_ADDR sharedWeight1GM, GM_ADDR sharedWeight2GM, GM_ADDR sharedWeightScales1GM,
+                                GM_ADDR sharedWeightScales2GM, GM_ADDR sharedBias1GM, GM_ADDR sharedBias2GM,
+                                GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -102,6 +103,12 @@ private:
     GM_ADDR xActiveMaskGM_;
     GM_ADDR scalesGM_;
     GM_ADDR maskBufferGM_;
+    GM_ADDR sharedWeight1GM_;
+    GM_ADDR sharedWeight2GM_;
+    GM_ADDR sharedWeightScales1GM_;
+    GM_ADDR sharedWeightScales2GM_;
+    GM_ADDR sharedBias1GM_;
+    GM_ADDR sharedBias2GM_;
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
@@ -127,6 +134,8 @@ private:
     uint64_t recvRoundsMax_;
     int32_t epWorldSize_;
     int32_t listLen_;
+    uint32_t sharedExpertNum_;
+    uint64_t sharedWorkspaceOffset_;
     uint32_t activationCode_;
     float activationClamp_;
     float activationParams1_;
@@ -146,6 +155,8 @@ private:
         maxOutputSize_ = common.recvRoundBudget;
         recvRoundsMax_ = common.recvRoundsMax;
         listLen_ = common.listLen;
+        sharedExpertNum_ = common.sharedExpertNum;
+        sharedWorkspaceOffset_ = common.sharedWorkspaceOffset;
         activationCode_ = common.activationCode;
         activationClamp_ = common.activationClamp;
         activationParams1_ = common.activationParams1;
@@ -158,8 +169,10 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
                                                   GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,
                                                   GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM,
                                                   GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
-                                                  GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM,
-                                                  GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                                  GM_ADDR sharedWeight1GM, GM_ADDR sharedWeight2GM,
+                                                  GM_ADDR sharedWeightScales1GM, GM_ADDR sharedWeightScales2GM,
+                                                  GM_ADDR sharedBias1GM, GM_ADDR sharedBias2GM, GM_ADDR maskBufferGM, GM_ADDR yGM,
+                                                  GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant =
         std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t> || std::is_same_v<BType_, int8_t>;
@@ -177,6 +190,12 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
     xActiveMaskGM_ = xActiveMaskGM;
     scalesGM_ = scalesGM;
     maskBufferGM_ = maskBufferGM;
+    sharedWeight1GM_ = sharedWeight1GM;
+    sharedWeight2GM_ = sharedWeight2GM;
+    sharedWeightScales1GM_ = sharedWeightScales1GM;
+    sharedWeightScales2GM_ = sharedWeightScales2GM;
+    sharedBias1GM_ = sharedBias1GM;
+    sharedBias2GM_ = sharedBias2GM;
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
@@ -349,6 +368,14 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                          maskBufferGM_};
 
     params.recvRoundsMax = recvRoundsMax_;
+    params.ptrSharedB1 = reinterpret_cast<__gm__ BElement *>(sharedWeight1GM_);
+    params.ptrSharedB2 = reinterpret_cast<__gm__ BElement *>(sharedWeight2GM_);
+    params.ptrSharedScale1 = reinterpret_cast<__gm__ uint64_t *>(sharedWeightScales1GM_);
+    params.ptrSharedScale2 = reinterpret_cast<__gm__ uint64_t *>(sharedWeightScales2GM_);
+    params.ptrSharedBias1 = reinterpret_cast<__gm__ float *>(sharedBias1GM_);
+    params.ptrSharedBias2 = reinterpret_cast<__gm__ float *>(sharedBias2GM_);
+    params.sharedExpertNum = sharedExpertNum_;
+    params.sharedWorkspaceOffset = sharedWorkspaceOffset_;
 
     MatmulKernel kernel(params);
     kernel(params);

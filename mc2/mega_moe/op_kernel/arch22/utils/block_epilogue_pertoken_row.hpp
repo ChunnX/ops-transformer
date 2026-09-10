@@ -190,6 +190,28 @@ public:
         }
     }
 
+    CATLASS_DEVICE
+    void SharedExpert(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
+                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale,
+                      AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum)
+    {
+        SetFlag();
+        const uint32_t coreIdx = get_block_idx() + get_subblockid() * get_block_num();
+        const uint32_t blockM = shapeC.row();
+        const uint32_t blockN = shapeC.column();
+        if (coreIdx < epilogueCoreNum) {
+            const uint32_t rowsPerCore = blockM / epilogueCoreNum;
+            const uint32_t remainder = blockM % epilogueCoreNum;
+            const uint32_t rowCount = coreIdx < remainder ? rowsPerCore + 1U : rowsPerCore;
+            const uint32_t rowStart = coreIdx * rowsPerCore + (coreIdx < remainder ? coreIdx : remainder);
+            if (rowCount > 0U) {
+                operator()(gmC[static_cast<uint64_t>(rowStart) * blockN], MatrixCoord{rowCount, blockN},
+                           gmPerTokenScale[rowStart], gmD[static_cast<uint64_t>(rowStart) * blockN]);
+            }
+        }
+        Finalize();
+    }
+
 private:
     Params params;
 
