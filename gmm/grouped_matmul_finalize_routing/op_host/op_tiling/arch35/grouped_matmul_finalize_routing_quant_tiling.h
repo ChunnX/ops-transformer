@@ -82,10 +82,7 @@ public:
     }
 
 protected:
-    const char *GetOpType() const override
-    {
-        return "GroupedMatmulFinalizeRouting";
-    }
+    const char *GetOpType() const override { return "GroupedMatmulFinalizeRouting"; }
     // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
@@ -134,6 +131,7 @@ private:
     uint64_t rowIndex_ = 0;
     float sharedInputWeight_ = 1.0;
     uint64_t outputBs_ = 0;
+    uint64_t outputDtype_ = 0;
     int8_t scaleType_ = 0;
     int8_t rowIndexType_ = 0;
     uint32_t deterWorkspaceSize_ = 0;
