@@ -22,13 +22,15 @@
  *   - op tiling 侧把常量与运行时 shape 打包成 AllToAllFitBalanceInput，
  *     调用本文件的 Schedule() 拿到切分结果，再经 FillCommTilingData() 写回 tilingData。
  *
- * 数据来源(标定完成后回填, 占位值 <= 0 时自动回退 CoreOccupancyFirstTiling 路径):
+ * 数据来源(标定完成后回填, 占位值 <= 0 的档位自动回退 CoreOccupancyFirstTiling 路径):
  *   COMM_FIT_ROWS / ROUND_COST_ROWS <-- 标定计划表A / 表C (按 rankDim)
- *   EFF_MAC_PER_CYCLE_*             <-- 标定计划表B (按 dtype × precisionMode 分档:
+ *   EFF_MAC_ROWS                     <-- 标定计划表B (按 dtype × precisionMode 分档:
  *                                       mode 0/1 同档(REMOTE/DEFERRED_SYNC, 总 MACs 相同),
  *                                       mode 2 单独一档(GM 累加: local 前置 + atomiadd + 双写 GM 开销))
  *   FB_* 阈值                        <-- 标定计划表E
+ * 当前状态: 标卡 4P 已标定并默认启用; 8P 未标定自动回退。
  * 标定计划文档: tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_CALIBRATION_PLAN.md
+ * 标定操作手册: tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_CALIBRATION_SKILL.md
  */
 
 #ifndef ALL_TO_ALL_MATMUL_V2_FIT_BALANCE_TILING_H
@@ -43,18 +45,21 @@ namespace MC2Tiling {
 namespace fit_balance {
 
 // ============================================================================
-// 拟合数据与阈值常量（标定占位，唯一维护点）
+// 拟合数据与阈值常量（唯一维护点）
+// 标卡 4P（Ascend950PR ×4, CANN 9.2.0, usedCoreNum=28, waveM=512）已于
+// 2026-09-09~10 完成全量标定, 结果见 tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_TILING_PLAN.md §6。
 // ============================================================================
 
 // ====== 通信拟合数据: y(us) = slope * x(MB) + intercept, x 为单轮单 rank 总发送量 ======
+// fp4 通信复用 fp8 拟合（按 MB 计与 dtype 无关, 4P 验证点偏差 -0.6%/-0.2%）。
 struct CommFitRow {
     uint32_t rankDim;
     double slopeUsPerMb;
     double interceptUs;
 };
 static const CommFitRow COMM_FIT_ROWS[] = {
-    {4U, 0.0, 0.0}, // TODO(标定表A-4P): 回填 slope/intercept
-    {8U, 0.0, 0.0}, // TODO(标定表A-8P): 回填 slope/intercept
+    {4U, 7.724, 8.91}, // 标定表A-4P: R²=1.0000, 数据范围 [0.387, 99.0] MB, 有效带宽≈0.13MB/μs 恒定
+    {8U, 0.0, 0.0},    // TODO(标定表A-8P): 无 8P 环境, 未标定(该档位自动回退)
 };
 
 // ====== 每轮通信固定开销(用于轮次上限推导) ======
@@ -63,8 +68,8 @@ struct RoundCostRow {
     double roundCostUs;
 };
 static const RoundCostRow ROUND_COST_ROWS[] = {
-    {4U, 10.0}, // TODO(标定表C-4P): 回填实测值
-    {8U, 10.0}, // TODO(标定表C-8P): 回填实测值
+    {4U, 4.45}, // 标定表C-4P: R=2/4/8/16 严格线性; 校验 b(表A)=8.91 ≈ 截距4.68+b_round(差2.6%)
+    {8U, 10.0}, // TODO(标定表C-8P): 未标定, 缺省值
 };
 
 // ====== 计算有效算力(MACs/cycle, 含 cube 利用率) ======
@@ -79,10 +84,10 @@ struct EffMacRow {
     double effMacPerCycle;
 };
 static const EffMacRow EFF_MAC_ROWS[] = {
-    {false, 0U, 0.0}, // TODO(标定表B-01): fp8 × mode0/1 实测值
-    {false, 2U, 0.0}, // TODO(标定表B-2):  fp8 × mode2 实测值
-    {true, 0U, 0.0},  // TODO(标定表B-01): fp4 × mode0/1 实测值
-    {true, 2U, 0.0},  // TODO(标定表B-2):  fp4 × mode2 实测值
+    {false, 0U, 7490.0}, // 标定表B-01: fp8 × mode0/1, 标定用 (n=4096, ka=2048), 离散 14.1%
+    {false, 2U, 7213.0}, // 标定表B-2:  fp8 × mode2(GM 累加), 与 mode0/1 持平(±4%)
+    {true, 0U, 14064.0}, // 标定表B-01: fp4 × mode0/1, 约为 fp8 的 1.88×
+    {true, 2U, 14055.0}, // 标定表B-2:  fp4 × mode2, 与 mode0/1 一致
 };
 
 inline double FindEffMac(bool isFp4, uint32_t precisionMode)
@@ -107,11 +112,18 @@ static const bool FB_ENABLE_TAIL_MERGE = true;       // 尾轮合并(需 kernel 
 static const uint64_t FB_MAX_TILE_CNT = 16UL;        // 通信轮次硬上限
 static const uint64_t FB_MIN_ROUNDS = 3UL;           // 轮次下限
 
-// 环境开关: MC2_ALLTO_ALL_MATMUL_V2_FIT_BALANCE=1 启用(默认关闭, 行为与现状一致)
+// 环境开关: MC2_ALLTO_ALL_MATMUL_V2_FIT_BALANCE=0 强制关闭(一键回退); 缺省时按标定数据
+// 就绪情况自动启用——数据就绪的 (rankDim, dtype, mode) 档位走 fit-balance, 缺失档位由
+// BuildScheduleInput 返回 false 自动回退 CoreOccupancyFirstTiling。
+// 标定辅助开关 MC2_A2A_V2_CALIB_R1=1 隐含关闭 fit-balance(优先级最高, 保证 R=1 标定口径)。
 inline bool IsEnabled()
 {
+    const char *r1Env = getenv("MC2_A2A_V2_CALIB_R1");
+    if ((r1Env != nullptr) && (r1Env[0] == '1')) {
+        return false;
+    }
     const char *env = getenv("MC2_ALLTO_ALL_MATMUL_V2_FIT_BALANCE");
-    return (env != nullptr) && (env[0] == '1');
+    return !((env != nullptr) && (env[0] == '0'));
 }
 
 inline const CommFitRow *FindCommFit(uint32_t rankDim)

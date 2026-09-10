@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <cstdint>
 #include "tiling_data_struct_define.h"
 #include "matmul_tiling/quant_matmul_tiling_data.h"
@@ -47,6 +48,21 @@ public:
     static void GetCommTilingData(uint64_t m, uint64_t n, uint64_t ka, const QuantMatmulTilingData &mmTiling,
                                   CommTilingData &dataTiling, CommTilingData &scaleTiling)
     {
+        // 标定辅助开关: MC2_A2A_V2_CALIB_R1=1 强制单轮切分(R=1, splitAxisTileSize=m),
+        // 供通信/计算时延标定使用, 默认关闭。fit-balance 侧对该开关同步旁路(见算子侧
+        // fit-balance 头的 IsEnabled), 保证标定期不受 fit-balance 决策影响。
+        const char *r1Env = getenv("MC2_A2A_V2_CALIB_R1");
+        if ((r1Env != nullptr) && (r1Env[0] == '1')) {
+            dataTiling.splitAxisTileSize = m;
+            dataTiling.splitAxisTileCnt = 1;
+            dataTiling.splitAxisTailSize = 0;
+            dataTiling.splitAxisTailCnt = 0;
+            dataTiling.nonSplitAxisSize = ka;
+            scaleTiling = dataTiling;
+            scaleTiling.nonSplitAxisSize = ka / MX_GROUP_SIZE;
+            return;
+        }
+
         uint64_t baseM = mmTiling.baseM;
         uint64_t baseN = mmTiling.baseN;
         uint64_t usedCoreNum = mmTiling.usedCoreNum;
