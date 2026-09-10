@@ -105,7 +105,7 @@ mixed_quant_sparse_flash_mla(
 | `seqused_q` | Tensor | 可选 | 各batch中实际使用的query token数，仅作交叉校验：若传入，其值必须等于对应batch的query跨度（当前不支持query行padding）。不能替代`cu_seqlens_q`（不能由它推导累积序列长度）。 | `int32` | ND | `(B,)` |
 | `seqused_win_kv` | Tensor | 可选 | 预留参数。上游语义为各batch中实际使用的窗口KV token数；当前实现仅校验其为`int32`且形状为`(B,)`，不解析、不消费其内容，传入与否不影响计算结果。 | `int32` | ND | `(B,)` |
 | `seqused_cmp_kv` | Tensor | 可选 | 预留参数。上游语义为各batch中实际使用的压缩KV token数；当前实现仅校验其为`int32`且形状为`(B,)`，不解析、不消费其内容，传入与否不影响计算结果。 | `int32` | ND | `(B,)` |
-| `win_topk_length` | Tensor | 可选 | 默认None，使用全部K1列。 每个query实际使用的窗口稀疏索引数，是`win_sparse_indices`有效前缀的准确长度，取值范围为`[0, K1]`。两侧长度同时为0时不发射tile，输出保持调用方预填值。当前不支持空query；可不传（None）。 | `int32` | ND | `(T1, N2)` |
+| `win_topk_length` | Tensor | 可选 | 默认None，使用全部K1列。 每个query实际使用的窗口稀疏索引数，是`win_sparse_indices`有效前缀的准确长度，取值范围为`[0, K1]`。长度为0时跳过该侧KV；两侧均为0时输出为0，开启LSE时其值为sinks；可不传（None）。 | `int32` | ND | `(T1, N2)` |
 | `cmp_topk_length` | Tensor | 可选 | 默认None，使用全部K2列。 每个query实际使用的压缩稀疏索引数，是`cmp_sparse_indices`有效前缀的准确长度，取值范围为`[0, K2]`。仅在`ORI_CMP_SPARSE`模式可传。 当前不支持空query；可不传（None）。 | `int32` | ND | `(T1, N2)` |
 | `sinks` | Tensor | 可选 | 各Q头的可学习attention sink，只进softmax分母。算子不生成缺省值，缺传时拦截报错；不需要sink时显式传入全0张量。 | `float32` | ND | `(N1,)`，所有 batch/query 共用 |
 | `metadata` | Tensor | 可选 | 分核任务表，驱动多核的query行划分。前blocks项为各核分到的首个query行序号（m-tile起点），后blocks项为各核分到的query行数；所有核的区间合起来必须恰好无缝无叠地覆盖`[0, T1)`。算子不生成缺省值，缺传时拦截报错；须先调用`mixed_quant_sparse_flash_mla_metadata(win_topk_length, cmp_topk_length, cu_seqlens_q=..., num_heads_q=64, num_heads_kv=1, head_dim=512, quant_mode=1, has_cmp_kv=...)`生成（两阶段调用）。 | `int32` | ND | `(2 * blocks,)` |
@@ -208,7 +208,7 @@ byte_offset = physical_page * kv.stride(0) + (p % block_size) * row_bytes
 - `ORI_SPARSE`和`ORI_CMP_SPARSE`均不接收mask、window或压缩率参数。`seqused_win_kv`和`seqused_cmp_kv`为预留参数，当前实现不解析其内容；KV的有效计算长度只由对应的稀疏索引和`topk_length`指定。
 - 对每个query，`win_sparse_indices`的前`win_topk_length`项必须是合法的窗口KV逻辑token索引，其余项必须填`-1`。
 - 对每个query，`cmp_sparse_indices`的前`cmp_topk_length`项必须是合法的压缩KV逻辑token索引，其余项必须填`-1`。
-- 两侧`topk_length`独立可选；不传时对应全部K列参与计算（不得包含`-1`）。传入时必须为准确前缀长度且不得超过K。当前暂不支持空query：kernel不发射tile，输出保持调用方预填值。
+- 两侧`topk_length`独立可选；不传时对应全部K列参与计算（不得包含`-1`）。传入时必须为准确前缀长度且不得超过K。长度为0时跳过该侧KV；两侧均为0（无cmp时win为0）的query不发射KV tile，输出写0，开启LSE时写对应head的sinks。
 - `cu_seqlens_q`必须显式传入：首元素必须为0，整体非递减，末元素必须为`T1`；算子不生成缺省值，也不能由`seqused_q`推导。
 - `win_block_table`和`cmp_block_table`中的有效物理block编号不得越界；每个有效稀疏索引映射到的逻辑block必须位于对应block table的有效范围内。
 - `sinks`必须显式传入（不需要sink时传全0张量）；`metadata`必须显式传入（用`mixed_quant_sparse_flash_mla_metadata`生成，两阶段调用）。`metadata`为分核任务表：`int32`且形状为`(2 * blocks,)`；前blocks项是各核的query行起点、后blocks项是各核的query行数量，各核区间必须恰好覆盖`[0, T1)`（无缝、无重叠）。

@@ -10,7 +10,7 @@
 
 Packed KV decodes to shared K/V in logical [nope448, rope64] order.
 Each query gathers the specified optional TopK prefix (all K columns if omitted)
-(empty queries are unsupported). Attention uses
+(zero-length sides are skipped; empty queries return zero and LSE=sinks). Attention uses
 online softmax staging (sinks seed the running max/sum; per-tile running
 max/sum with BF16 probability staging and FP32 accumulation).
 """
@@ -173,8 +173,6 @@ def mqsmla_cpu_benchmark(ref, scenario=None, quant_mode=None, return_softmax_lse
         row_max = ref["sinks"].clone()
         row_sum = torch.ones(ref["n1"], dtype=torch.float32)
         acc = torch.zeros((ref["n1"], C.D), dtype=torch.float32)
-        if not any(int(lengths[side][row]) for side in sides):
-            raise ValueError("empty queries are not supported")
         for side in sides:
             width = int(lengths[side][row])
             indices = ref[f"{side}_sparse_indices"][row, :width].long()

@@ -152,6 +152,16 @@ def run_prepared(p, case, expected, expected_lse):
         omit_cmp_length=p.get("omit_cmp_topk_length", False))
     if kwargs["return_softmax_lse"]:
         torch.testing.assert_close(actual_lse, expected_lse, rtol=1e-5, atol=1e-5)
+    empty_rows = case["len_ori"].reshape(-1) == 0
+    if has_cmp:
+        empty_rows &= case["len_cmp"].reshape(-1) == 0
+    if bool(empty_rows.any()):
+        empty_out = actual.reshape(case["t1"], C.N1, C.D)[empty_rows]
+        assert torch.count_nonzero(empty_out) == 0, "empty queries must produce exact zero"
+        if kwargs["return_softmax_lse"]:
+            torch.testing.assert_close(
+                actual_lse[0, empty_rows],
+                case["sinks"].expand(int(empty_rows.sum()), C.N1), rtol=0, atol=0)
     result, percent = check_result(expected, actual)
     assert result == "Pass", f"strict BF16 comparator failed: {percent:.6f}%"
     # 大prefill输出可达16GiB，误差统计不要同时物化三份全量FP32输出。
