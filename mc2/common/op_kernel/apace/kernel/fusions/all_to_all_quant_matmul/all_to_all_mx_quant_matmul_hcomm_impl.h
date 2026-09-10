@@ -74,20 +74,16 @@ struct HcommCommWaitPolicy {
 
     // 返回本次实际执行的 hccl.Wait 次数: tile0=2(scale+data)，其余=1(data)，
     // 供 kernel 侧经 DoDump 的 waitDelta 计入 commWaitCount，与 commit 侧 tiles 计数对称。
-    __aicore__ inline uint32_t WaitTile(uint32_t tileIdx)
+    __aicore__ inline uint32_t void(uint32_t tileIdx)
     {
-        uint32_t waitCnt = 0;
         if (tileIdx == 0) {
             state_->hccl_.Wait(state_->scaleHandle_);
-            waitCnt++;
         }
         if (tileIdx < state_->headTileCnt_) {
             state_->hccl_.Wait(state_->dataHeadHandle_);
         } else {
             state_->hccl_.Wait(state_->dataTailHandle_);
         }
-        waitCnt++;
-        return waitCnt;
     }
 };
 

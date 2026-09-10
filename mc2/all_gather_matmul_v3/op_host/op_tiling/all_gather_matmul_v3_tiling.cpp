@@ -785,11 +785,15 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
 
     uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    tilingData->workspaceLayout.totalSize = libApiSize + Utils::STATE_DUMP_TOTAL_SIZE;
-    tilingData->workspaceLayout.segCount = 2;
+    tilingData->workspaceLayout.totalSize = libApiSize;
+    tilingData->workspaceLayout.segCount = 1;
     tilingData->workspaceLayout.segments[0] = {0UL, libApiSize, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
+#if MC2_DFX_ENABLE
+    tilingData->workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
+    tilingData->workspaceLayout.segCount = 2;
     tilingData->workspaceLayout.segments[1] = {
         libApiSize, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
+#endif
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
     double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
     uint64_t scaleKDim = (k + 63) / 64;
@@ -821,7 +825,10 @@ static void SetTilingKey(gert::TilingContext *context)
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 {
     platform_ascendc::PlatformAscendC ascendcPlatform(context->GetPlatformInfo());
-    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize() + Utils::STATE_DUMP_TOTAL_SIZE;
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize(); 
+#if MC2_DFX_ENABLE
+    workspaceSize += Utils::STATE_DUMP_TOTAL_SIZE;
+#endif
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(context->GetNodeName(), "workSpaces is nullptr"),
                     return ge::GRAPH_FAILED);

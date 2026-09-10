@@ -106,7 +106,7 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     }
     // 初始化状态打点并接线给 pipeline，使 pipeline 循环内可写 turn
     opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
-    pipeLine_->SetOpStateDump(&opStateDump_);
+    pipeLine_->SetOpStateDump(opStateDump_);
     // 初始化流水线
     pipeLine_->Init();
     // 获取流水线上下文

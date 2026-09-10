@@ -418,10 +418,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
-                uint32_t waitCnt = commPolicy_.WaitTile(readyTileIdx);
-                if (waitCnt != 0) {
-                    opStateDump.DoDump(DUMP_FIELD_WAIT, 0, 0, 0, 0, static_cast<uint8_t>(waitCnt));
-                }
+                commPolicy_.WaitTile(readyTileIdx);
+                opStateDump.DoDump(DUMP_FIELD_WAIT);
             }
             // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
             uint32_t remoteRankCnt = 1;
@@ -452,10 +450,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
             while (readyTileIdx < dependTileIdx) {
                 readyTileIdx++;
-                uint32_t waitCnt = commPolicy_.WaitTile(readyTileIdx);
-                if (waitCnt != 0) {
-                    opStateDump.DoDump(DUMP_FIELD_WAIT, 0, 0, 0, 0, static_cast<uint8_t>(waitCnt));
-                }
+                commPolicy_.WaitTile(readyTileIdx);
+                opStateDump.DoDump(DUMP_FIELD_WAIT);
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
                 auto actualMPos = rank * oriM + mPos;
@@ -497,10 +493,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     if (!localFirst) {
         while (readyTileIdx < totalTiles - 1) {
             readyTileIdx++;
-            uint32_t waitCnt = commPolicy_.WaitTile(readyTileIdx);
-            if (waitCnt != 0) {
-                opStateDump.DoDump(DUMP_FIELD_WAIT, 0, 0, 0, 0, static_cast<uint8_t>(waitCnt));
-            }
+            commPolicy_.WaitTile(readyTileIdx);
+            opStateDump.DoDump(DUMP_FIELD_WAIT);
         }
     }
 }
