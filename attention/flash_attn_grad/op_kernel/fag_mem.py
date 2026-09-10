@@ -17,8 +17,6 @@ AscendC 侧用 ``MutexBufferManager`` 在运行期从一个 pool 里 bump 分配
 UB 248KB），改布局时 assert 会先于上板失败。
 """
 
-import pypto_pro.language as pl
-
 # --- generated imports (fag_fiximports.py) ---
 from fag_common import (
     CUBE_BASEM,
@@ -258,6 +256,13 @@ def post_ub_addrs(nElems):
     return UB_POST_F32_0, f32_1, f16_0, f16_0 + f16Bytes
 
 
+# 与其它片上地址一样做成按档查好的表：tile 的 addrs= 只接受 trace 期常量，
+# 在 kernel 里做元组解包会撞上 codegen 的 "Array tuple assignment" 限制。
+_POST_TAB = {w: post_ub_addrs(POST_ELEMS[w]) for w in (64, 128, 192)}
+POST_F32_ADDRS = {w: [_POST_TAB[w][0], _POST_TAB[w][1]] for w in _POST_TAB}
+POST_F16_ADDRS = {w: [_POST_TAB[w][2], _POST_TAB[w][3]] for w in _POST_TAB}
+
+
 
 # ---- UB 地址，硬上限 248KB；实测总占用 242.5KB ----
 # mm1ResBuf[2] / mm2ResBuf[2] 与 AscendC 同名同尺寸(VECTOR_BASEM*VECTOR_BASEN*4)
@@ -327,3 +332,52 @@ BN2_UB_LSE_1 = UB_HEAD_RESERVE + 0x2C600
 # attenmask 复用 y/dy。v5/v6 cast 仍单独一块。
 BN2_CAST_W = VECTOR_BASEN
 BN2_UB_CAST = UB_HEAD_RESERVE + 0x2C800
+
+
+# ==================================================================
+#  mutex id 分配表
+# ==================================================================
+# pypto 用 mutex id 而不是显式 event 来排 buffer 的读写序，framework 据此
+# 在同一 id 的前后访问之间插同步。id 空间是 0..31，**按核类型各算一套**：
+# cube section 里的 id 与 vector section 里的同号 id 互不相干。
+#
+# 把它们集中命名在这里，是为了让「哪些同号是有意复用、哪些只是撞号」这件事
+# 可查 —— 散在 make_tile_group 的字面量里时，这是审不出来的。
+#
+# 三类有意的同号，都不是 bug：
+#   1) reader 视图与 writer 视图共用 id —— q_l1_dk/do_l1_dv 必须与
+#      q_l1/do_l1 同 id，否则 mm2 会在 mm4 读完前覆写(见 fag_buffers)；
+#   2) mask 复用 y/dy —— 同地址同 id，v1 用完 v2 才用；
+#   3) pre/post 复用主循环的 id —— 被 sync_all 完全隔开，不会同时活跃。
+#
+# ---- CV 共享 UB ----
+MTX_MM1_RES = [0, 1]
+MTX_MM2_RES = [2, 3]
+# ---- cube: L1 ----
+# Q / dO 是多槽位，按 d_align 分档，见 L1_Q_MUTEX / L1_DO_MUTEX (4/31/21/18,
+# 7/15/22/19)。
+MTX_L1_K = [5]
+MTX_L1_V = [6]
+MTX_L1_DS = [8]
+MTX_L1_P = [9]
+MTX_L1_DS_T = [10]      # 与 MTX_L1_DS 同址、不同 id：ZN 视图有独立游标
+MTX_L1_P_T = [11]
+MTX_L1_K_ND = [30]
+# ---- cube: L0 ----
+MTX_L0A = [12, 26]
+MTX_L0B = [13, 27]
+# acc 按 d_align 分档，见 L0C_ACC_MUTEX (14/28)。
+MTX_L0C_DK0 = [16]
+MTX_L0C_DV0 = [17]
+# 第二个 D 分块见 L0C_DK1_MUTEX / L0C_DV1_MUTEX。
+# ---- vector: UB ----
+MTX_UB_Y = [15]         # attenmask 复用
+MTX_UB_DY = [16]        # attenmask(pre) 复用
+MTX_UB_NZP = [19]
+MTX_UB_CAST = [20]      # 仅 BN2
+MTX_UB_SFMG = [23]
+MTX_UB_LSE = [24, 25]
+# ---- vector: pre / post (与主循环靠 sync_all 隔开，故复用上面的 id) ----
+MTX_UB_ZERO = [19]
+MTX_UB_POST_F32 = [19, 20]
+MTX_UB_POST_F16 = [21, 22]

@@ -123,7 +123,6 @@ def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub,
 def process_vec3(constInfo, runInfo, subIdx, ds_l1,
                  mm1_ub, mm2_ub, sfmg_ub, nzp_ub):
     rowOff = subIdx * VECTOR_BASEM
-    rows = runInfo.halfS1RealSize
     # nd/nz 不裁剪：列方向的脏数据由 matmul 的 valid_shape 与 store 挡掉。
     # VF 固定写满 VECTOR_BASEM 行：NZ+1 的分形列间距由行数决定，按尾块
     # 缩小会让间距漂移。尾块只在 insert 时用 valid_shape 裁掉。
@@ -143,7 +142,6 @@ def process_vec3(constInfo, runInfo, subIdx, ds_l1,
 def process_vec4(constInfo, runInfo, subIdx, p_l1,
                  mm2_ub, nzp_ub):
     rowOff = subIdx * VECTOR_BASEM
-    rows = runInfo.halfS1RealSize
     cast_p_vf(nzp_ub, mm2_ub, VECTOR_BASEM)
     # 同 process_vec3：mm5 从 p_t_l1(同地址 ZN 视图)读 P^T
     copy_ub2l1(p_l1, nzp_ub, rowOff)

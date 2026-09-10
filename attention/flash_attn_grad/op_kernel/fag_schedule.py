@@ -210,10 +210,6 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     tot = fused * constInfo.totalPerBatchNum
     remP = pl.max(tot - cBlockIdx, 0)
     swzPacked = (remP + coreNum - 1) // coreNum
-    if mask_mode == 0:
-        swz = swzDense
-    else:
-        swz = swzPacked
     lin = pl.max(blockEnd - blockStart, 0)
     if constInfo.enableSwizzle:
         if mask_mode == 0:
@@ -227,10 +223,6 @@ def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     """局部块序号 -> 全局块下标。线性支起点取自 metadata。"""
     swzDense = swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx)
     swzPacked = packed_to_dense_idx(constInfo, cBlockIdx + localIdx * coreNum)
-    if mask_mode == 0:
-        swz = swzDense
-    else:
-        swz = swzPacked
     lin = blockStart + localIdx
     if constInfo.enableSwizzle:
         if mask_mode == 0:
