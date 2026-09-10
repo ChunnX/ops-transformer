@@ -62,7 +62,7 @@ class MsaIndexScoreOpBuilder(OpBuilder):
             query: torch.Tensor,
             key: torch.Tensor,
             start_loc: torch.Tensor,
-            block_table: torch.Tensor | None,
+            block_table: Optional[torch.Tensor],
             scale: Optional[torch.Tensor],
             atten_mask: Optional[torch.Tensor],
             actual_seq_qlen: Optional[torch.Tensor],
