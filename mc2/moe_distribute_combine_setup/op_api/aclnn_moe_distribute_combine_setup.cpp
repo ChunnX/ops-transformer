@@ -94,14 +94,15 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expertIds,
                                const aclTensor *assistInfoForCombine, const char *groupEp, int64_t epWorldSize,
-                               int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
-                               int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType,
-                               const char *commAlg, aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut)
+                               int64_t epRankId, int64_t moeExpertNum, int64_t expertSharedType,
+                               int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t globalBs,
+                               int64_t commQuantMode, int64_t commType, const char *commAlg,
+                               aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut)
 {
     (void)epWorldSize;
     (void)epRankId;
     (void)moeExpertNum;
-    (void)expertShardType;
+    (void)expertSharedType;
     (void)sharedExpertNum;
     (void)sharedExpertRankNum;
     (void)globalBs;
@@ -130,7 +131,7 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
 
 extern "C" aclnnStatus aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
     const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertSharedType, int64_t sharedExpertNum,
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
     aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
@@ -141,7 +142,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertSharedType, int64_t sharedExpertNum,
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
     aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -155,20 +156,20 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     }
 
     auto retParam = CheckParams(expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum,
-                                expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
+                                expertSharedType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
                                 commType, commAlg, quantExpandXOut, commCmdInfoOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclnnStatus retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
         expandX, expertIds, assistInfoForCombine, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType,
+        expertSharedType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType,
         const_cast<char *>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
     return retStatus;
 }
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertSharedType, int64_t sharedExpertNum,
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
     uint64_t &tokenMsgSize, uint64_t &commCmdInfoOutSize)
 {
@@ -177,7 +178,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     (void)groupEp;
     (void)epRankId;
     (void)moeExpertNum;
-    (void)expertShardType;
+    (void)expertSharedType;
     (void)sharedExpertNum;
     (void)sharedExpertRankNum;
     (void)globalBs;
