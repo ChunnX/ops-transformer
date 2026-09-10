@@ -112,6 +112,7 @@ def _blockwise_quantize_p_eff(
     seqk_dim: int,
     mx_block_size: int = 32,
     mx_mode: str = "baseline",
+    softmax_scale: float = 1.0,
 ):
     NEG_INF = float("-inf")
     device = S.device
@@ -134,14 +135,13 @@ def _blockwise_quantize_p_eff(
     n_blk = S_moved.shape[-1] // mx_block_size
     S_reshape = S_moved.reshape(*other_shape, n_blk, mx_block_size)
 
-    # ★ NPU: S 已由 FixpipeMm1 QF322F16_PRE 随路乘 softmax_scale
-    #   (L0C fp32 × deqScalar(fp32 位型) 后一次性转 fp16),
-    #   Vec1 不再对 S / max 施加 dScale, 此处 max / P 直接作用于 scaled S。
-    m_block = S_reshape.max(dim=-1).values  # max of SCALED S
+    scale_s = np.float16(softmax_scale)
+    m_block = S_reshape.max(dim=-1).values  # max of UNSCALED S
+    m_block_scaled = m_block * scale_s  # NPU: Muls(max, dScale)
     m_block_safe = torch.where(
-        torch.isinf(m_block) & (m_block < 0),
-        torch.zeros_like(m_block),
-        m_block,
+        torch.isinf(m_block_scaled) & (m_block_scaled < 0),
+        torch.zeros_like(m_block_scaled),
+        m_block_scaled,
     )
     m_ij = m_block_safe.max(dim=-1).values  # [...], s_dtype
 
@@ -159,7 +159,7 @@ def _blockwise_quantize_p_eff(
     m_safe_new_s = m_safe_new_fp32.to(src_dtype)
 
     P_local_r = torch.exp(
-        S_reshape - m_block_safe.unsqueeze(-1)
+        S_reshape * scale_s - m_block_safe.unsqueeze(-1)
     )  # [..., n_blk, 32]
     # flatten 回 seqk 长度并 strip pad, 然后 move 回原 seqk_dim
     P_local_padded_moved = P_local_r.reshape(*other_shape, n_blk * mx_block_size)
@@ -191,6 +191,7 @@ def _blockwise_snap_local_quantize_p_eff(
     seqk_dim: int,
     mx_block_size: int = 32,
     mx_mode: str = "baseline",
+    softmax_scale: float = 1.0,
 ):
     NEG_INF = float("-inf")
     device = S.device
@@ -215,17 +216,19 @@ def _blockwise_snap_local_quantize_p_eff(
     n_blk = S_moved.shape[-1] // mx_block_size
     S_reshape = S_moved.reshape(*other_shape, n_blk, mx_block_size)
 
-    # ★ 与 NPU 对齐: S 已由 FixpipeMm1 QF322F16_PRE 随路乘 softmax_scale
-    #   (L0C fp32 × deqScalar(fp32 位型) 后一次性转 fp16),
-    #   Vec1 的 Max(curr_group_max, src) 直接作用于 scaled S, 不再施加 dScale
-    m_block_raw = S_reshape.max(dim=-1).values  # max of SCALED S
+    # ★ 与 NPU 对齐: 先对 unscaled S 取 max, 再施加 softmax_scale (fp16)
+    #   NPU: Max(curr_group_max, src) → Muls(curr_group_max, dScale)
+    scale_s = np.float16(softmax_scale)
+    m_block_raw = S_reshape.max(dim=-1).values  # max of UNSCALED S
     m_block_raw_safe = torch.where(
         torch.isinf(m_block_raw) & (m_block_raw < 0),
         torch.zeros_like(m_block_raw),
         m_block_raw,
     )
+    # NPU: Muls(curr_group_max, dScale) — 对 max 施加 scale
+    m_block_scaled = m_block_raw_safe * scale_s
     # snap: floor(m_scaled / ln 2) × ln 2, 落到全局 log2 网格上
-    K_block = (m_block_raw_safe * INV_LN2).floor()
+    K_block = (m_block_scaled * INV_LN2).floor()
 
     ### local_group_max
     local_group_max = K_block.T
@@ -234,7 +237,7 @@ def _blockwise_snap_local_quantize_p_eff(
 
     m_block_snap = (K_block - 2) * LN2  # [..., n_blk], on log2 grid
 
-    P_local_r = torch.exp(S_reshape - m_block_snap.unsqueeze(-1))
+    P_local_r = torch.exp(S_reshape * scale_s - m_block_snap.unsqueeze(-1))
 
     levels = _FP4_POS_LEVELS_FP32.to(device=device, dtype=src_dtype)
     midpoints = _FP4_POS_MIDPOINTS_FP32.to(device=device, dtype=src_dtype)
@@ -509,16 +512,17 @@ def _flash_attn_single_batch_kernel(
                 else:
                     S_ij = K_j @ Q_i.t()  # FP32 [bkv, bq]
 
-                # ★ S 施加 softmax_scale 并转入 s_dtype, 与 NPU 行为对齐:
-                #   NPU: FixpipeMm1 QF322F16_PRE 随路乘 — L0C fp32 结果
-                #   × deqScalar(fp32 位型) 后一次性转 fp16;
-                #   Vec1 不再对 S / max 施加 dScale, 后续 max/exp/P 均在
-                #   s_dtype 域直接作用于 scaled S。
-                S_ij = (S_ij * np.float32(softmax_scale)).to(s_torch_dtype)
+                # ★ S 转入 s_dtype, 后续 max/exp/P 都在 s_dtype 算
+                S_ij = S_ij.to(s_torch_dtype)
 
                 # S_ij.numpy().tofile("dump_data/mm1Res.bin")
                 # torch.save(S_ij, 'qk_result_padded.pt')
                 # print(f'mm1Res.shape={S_ij.shape} mm1Res.dtype={S_ij.dtype}')
+
+                # ★ 不在此处对 S 施加 softmax_scale, 与 NPU 行为对齐:
+                #   NPU 先对 unscaled S 取 max, 再对 max 施加 dScale (fp16),
+                #   然后在 Sub 循环里对 S 逐元素施加 dScale。
+                #   scale 的施加时机推迟到 helper / else 分支内部。
 
                 # (2) causal mask
                 if causal:
@@ -543,19 +547,20 @@ def _flash_attn_single_batch_kernel(
                     else:
                         _helper_fn = _blockwise_snap_local_quantize_p_eff
                     # helper 接收 FP32 m_running, 返回 FP32 m_new; P_eff_s 在 s_dtype
-                    # S_ij 已 scaled (fixpipe 随路乘), helper 内部不再施加 scale
                     P_eff_s, m_new = _helper_fn(
                         S_ij,
                         m_running=m_i,
                         seqk_dim=seqk_dim,
                         mx_block_size=mx_block_size,
                         mx_mode=mx_mode,
+                        softmax_scale=softmax_scale,
                     )
                     P_fp32 = P_eff_s.float()
                 else:
-                    # global quantize_p 或 quantize_p=False, S 在 s_dtype (已 scaled)
-                    # max / exp 直接作用于 scaled S, 不再施加 scale
-                    m_ij_s = S_ij.max(dim=seqk_dim).values  # max(S), S 已 scaled
+                    # global quantize_p 或 quantize_p=False, S 在 s_dtype (unscaled)
+                    # 与 NPU 对齐: 先取 max(S), 再 * scale
+                    scale_s = np.float16(softmax_scale)
+                    m_ij_s = S_ij.max(dim=seqk_dim).values * scale_s  # max(S) * scale
                     # m_new 在 FP32 (供 alpha); 通过 m_ij.float() 与 m_i 合并
                     m_new = torch.maximum(m_i, m_ij_s.float())  # FP32
                     m_safe_fp32 = torch.where(
@@ -566,11 +571,11 @@ def _flash_attn_single_batch_kernel(
                     m_safe_s = m_safe_fp32.to(s_torch_dtype)
                     if s_layout == "ND":
                         P_ij = torch.exp(
-                            S_ij - m_safe_s.unsqueeze(-1)
+                            S_ij * scale_s - m_safe_s.unsqueeze(-1)
                         )  # s_dtype
                     else:
                         P_ij = torch.exp(
-                            S_ij - m_safe_s.unsqueeze(0)
+                            S_ij * scale_s - m_safe_s.unsqueeze(0)
                         )  # s_dtype
 
                     if quantize_p:
@@ -710,15 +715,13 @@ def attention_cpu_golden_varlen(
         Kh = Kb.transpose(0, 1)  # [Hq, sk, D]
         Vh = Vb.transpose(0, 1)  # [Hq, sk, D_v]
 
-        # S 矩阵: matmul 累加在 FP32, ND = Q@K^T; DN = K@Q^T
+        # S 矩阵: matmul 累加在 FP32, ND = Q@K^T; DN = K@Q^T (unscaled, 与 NPU 对齐)
         if s_layout == "ND":
             S = Qh @ Kh.transpose(-1, -2)  # FP32 [Hq, sq, sk]
         else:
             S = Kh @ Qh.transpose(-1, -2)  # FP32 [Hq, sk, sq]
 
-        # ★ NPU: FixpipeMm1 QF322F16_PRE 随路乘 — fp32 × deqScalar(fp32 位型)
-        #   后一次性转 fp16; Vec1 不再施加 dScale, 后续 max/exp/P 直接用 scaled S
-        S = (S * np.float32(softmax_scale)).to(s_torch_dtype)
+        S = S.to(s_torch_dtype)
 
         if causal:
             offset = sk - sq
@@ -743,13 +746,13 @@ def attention_cpu_golden_varlen(
                 _helper_fn = _blockwise_quantize_p_eff
             else:
                 _helper_fn = _blockwise_snap_local_quantize_p_eff
-            # S 已 scaled (fixpipe 随路乘), helper 内部不再施加 scale
             P_eff_s, _ = _helper_fn(
                 S,
                 m_running=None,
                 seqk_dim=seqk_dim,
                 mx_block_size=mx_block_size,
                 mx_mode=mx_mode,
+                softmax_scale=softmax_scale,
             )
             P_eff_s = torch.nan_to_num(P_eff_s, nan=0.0)
             # ★ FP32 做 sum 与 PV matmul
@@ -761,10 +764,11 @@ def attention_cpu_golden_varlen(
             else:
                 Ob = (P_fp32.transpose(-1, -2) @ Vh) / l_safe.transpose(-1, -2)
         elif quantize and quantize_p:
-            # global quantize_p: max/exp/P 全在 s_dtype (S 已 scaled), qdq FP32 round-trip
-            m = S.max(dim=seqk_dim, keepdim=True).values  # max(S), S 已 scaled
+            # global quantize_p: max/exp/P 全在 s_dtype, qdq FP32 round-trip
+            scale_s = np.float16(softmax_scale)
+            m = S.max(dim=seqk_dim, keepdim=True).values * scale_s  # max(S) * scale
             m_safe = torch.where(torch.isinf(m) & (m < 0), torch.zeros_like(m), m)
-            P = torch.exp(S - m_safe)  # s_dtype
+            P = torch.exp(S * scale_s - m_safe)  # s_dtype
             P = torch.nan_to_num(P, nan=0.0)
             P = mxfp4_qdq(
                 P.float(), axis=seqk_dim, block_size=mx_block_size, mode=mx_mode
@@ -780,10 +784,10 @@ def attention_cpu_golden_varlen(
         else:
             # 不量化 P: 手动 softmax (max/exp/normalize 沿 s_dtype) 以便 s_dtype 生效
             # 注: 与 torch.softmax 在 FP32 下完全等价 (atol 1e-7), 但允许 s_dtype 透传
-            # S 已 scaled (fixpipe 随路乘), max/exp 直接作用于 scaled S
-            m = S.max(dim=seqk_dim, keepdim=True).values  # max(S), S 已 scaled
+            scale_s = np.float16(softmax_scale)
+            m = S.max(dim=seqk_dim, keepdim=True).values * scale_s  # max(S) * scale
             m_safe = torch.where(torch.isinf(m) & (m < 0), torch.zeros_like(m), m)
-            P = torch.exp(S - m_safe)  # s_dtype
+            P = torch.exp(S * scale_s - m_safe)  # s_dtype
             P = torch.nan_to_num(P, nan=0.0)
             # ★ FP32 做 sum 与归一化
             P_fp32 = P.float()
