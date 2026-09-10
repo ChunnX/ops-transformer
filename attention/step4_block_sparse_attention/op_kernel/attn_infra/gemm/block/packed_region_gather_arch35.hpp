@@ -119,7 +119,7 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
 // Compact live tokens from packed slots into a contiguous L1 tile.
 // Prefill INT32: phys_region | (valid_tokens << 24); meta < 0 skipped.
 // Decode INT64: start_token | (phys_region << 32); valid = clamp(kv_seqlen - start, 0, regionSize).
-// [mte2 inst halve] When the next segment has the same length and both stride constraints hold,
+// [mte2 inst halve] When the next segment has the same length and src stride is C0-aligned,
 // two segments are issued in ONE Nd2Nz (ndNum=2): srcNdMatrixStride = GM row gap * row stride
 // (elements); dstNzMatrixStride = segLen * ELE_NUM_PER_C0, because the zN L1 fractal row stride
 // is always ELE_NUM_PER_C0, i.e. compact row r sits exactly at r * ELE_NUM_PER_C0, so nd1 lands
@@ -149,9 +149,9 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
         auto gTile = tla::GetTile(gTensor, tla::MakeCoord(oriStart, 0), tla::MakeShape(segLen, embed));
         bool paired = false;
         if constexpr (kSupportPair) {
-            // Look ahead for an equal-length second segment; pair only when nd1's src base stays in
-            // the same C0-alignment class as nd0 (stride is a multiple of ELE_NUM_PER_C0) and both
-            // strides are inside the instruction limit.
+            // Look ahead for an equal-length second segment; pair when nd1's src base stays in
+            // the same C0-alignment class as nd0 (stride is a multiple of ELE_NUM_PER_C0).
+            // Arch35 Nd2Nz srcNdMatrixStride is uint64; do not clamp to the old 65536 element limit.
             uint32_t compactPos2 = compactPos;
             uint32_t slot2 = slot;
             uint32_t oriStart2 = 0;
@@ -163,8 +163,8 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
                                      static_cast<uint64_t>(tla::get<0>(gTensor.stride()));
                 const uint32_t eleNumPerC0 = tla::get<0, 0>(l1Tensor.stride());
                 const uint32_t dstStride = segLen * eleNumPerC0;
-                if (srcStride < STRIDE_LIMIT && srcStride % eleNumPerC0 == 0) {
-                    copyGmToL1(l1Tile, gTile, 2, static_cast<uint32_t>(srcStride), dstStride);
+                if (srcStride % eleNumPerC0 == 0) {
+                    copyGmToL1(l1Tile, gTile, 2, srcStride, dstStride);
                     AscendC::PipeBarrier<PIPE_MTE2>();
                     dealtLenAccum += segLen + segLen2;
                     compactPos = compactPos2;

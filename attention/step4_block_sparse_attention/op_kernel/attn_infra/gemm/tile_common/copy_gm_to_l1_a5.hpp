@@ -32,7 +32,7 @@ struct TileCopyTla<
 
     template <class TensorDst, class TensorSrc>
     __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint32_t ndNum = 1,
-                                      uint32_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
+                                      uint64_t srcNdMatrixStride = 0, uint32_t dstNzMatrixStride = 0)
     {
         static_assert(
             tla::detail::isRowMajor<typename TensorSrc::Layout>::value &&
