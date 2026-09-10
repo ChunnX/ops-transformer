@@ -235,7 +235,8 @@ public:
         tailS2Split_ = false;
 
         uint32_t bN2Cur = bN2Start_;
-        uint32_t gS1Cur = gS1OStart_;
+        // gS1Cur 语义为 gs1 轴坐标(元素粒度); metadata 的 M_START/M_END 为 mBaseSize 块序号, 此处换算
+        uint32_t gS1Cur = gS1OStart_ * mBaseSize;
         uint32_t s2Cur = s2OStart_;
         prevBN2Idx_ = bN2Cur;
         prevGS1Idx_ = gS1Cur;
@@ -277,15 +278,35 @@ public:
         if (bN2Cur != bN2End_) {
             return bN2Cur < bN2End_;
         }
-        if (gS1Cur != gS1OEnd_) {
-            return gS1Cur < gS1OEnd_;
+        uint32_t gS1EndCoord = gS1OEnd_ * mBaseSize;
+        if (gS1Cur != gS1EndCoord) {
+            return gS1Cur < gS1EndCoord;
         }
         return s2Cur < s2OEnd_;
     }
 
+    // gs1 轴步进(G对齐不合轴): GS布局(BNSD, gs1=g*s1Size+s1)块不跨G边界, 块内s1连续;
+    // SG布局(BSND/TND, gs1=s1*gSize+g)保持 mBaseSize 整块
+    __aicore__ inline uint32_t GetGS1Step(uint32_t gs1Cur)
+    {
+        uint64_t gS1Size = static_cast<uint64_t>(actSeqLensQ_) * constInfo_.gSize;
+        uint32_t step = mBaseSize;
+        if (gs1Cur + step > gS1Size) {
+            step = static_cast<uint32_t>(gS1Size) - gs1Cur;
+        }
+        if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
+            uint32_t inG = gs1Cur % actSeqLensQ_;
+            uint32_t toGEnd = actSeqLensQ_ - inG;
+            if (step > toGEnd) {
+                step = toGEnd;
+            }
+        }
+        return step;
+    }
+
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
+        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_ * mBaseSize) && (s2Cur == s2OStart_);
         uint32_t bIdx = bN2Cur / constInfo_.n2Size;
         if (isFirstTask || prevBIdx_ != bIdx) {
             prevBIdx_ = bIdx;
@@ -353,12 +374,12 @@ public:
         curS2Start_ = 0U;
         curS2End_ = (static_cast<uint32_t>(actSeqLensKv_) + s2BaseSize - 1) / s2BaseSize;
 
-        if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+        if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_ * mBaseSize)) {
             headS2Split_ = s2OStart_ != 0U;
             curS2Start_ = s2OStart_;
         }
 
-        if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+        if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_ * mBaseSize)) {
             tailS2Split_ = s2OEnd_ != 0U;
             curS2End_ = s2OEnd_;
         }
@@ -373,9 +394,9 @@ public:
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, preTokenLeftUp, nextTokenLeftUp);
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
-        int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
+        int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur);
         int64_t s1GLastToken =
-            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(GetGS1Step(gS1Cur)),
                                  static_cast<int64_t>(actSeqLensQ_) * static_cast<int64_t>(constInfo_.gSize)) -
             1;
         int64_t s1FirstToken = 0;
@@ -420,11 +441,11 @@ public:
         curS2Start_ = s2StartWithSparse;
         curS2End_ = s2EndWithSparse;
 
-        if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) { // first line
+        if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_ * mBaseSize) { // first line
             headS2Split_ = s2OStart_ > s2StartWithSparse ? true : false;
             curS2Start_ = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
-        if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) { // last line
+        if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_ * mBaseSize) { // last line
             tailS2Split_ = s2OEnd_ > 0U ? true : false;
             curS2End_ = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
@@ -490,7 +511,7 @@ public:
         info.isFirstFdBlock = (s2Cur == (s2FirstToken_ / s2BaseSize));
         info.bIdx = bN2Cur / constInfo_.n2Size;
         info.n2Idx = bN2Cur % constInfo_.n2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
+        info.gS1Idx = gS1Cur;
         if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo_.gSize;
@@ -504,11 +525,7 @@ public:
         info.actS1Size = actSeqLensQ_;
         info.actS2Size = actSeqLensKv_;
 
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo_.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
-        }
+        info.actMSize = GetGS1Step(gS1Cur);
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
@@ -538,10 +555,10 @@ public:
             // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
         } else {
-            if (headS2Split_ && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+            if (headS2Split_ && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_ * mBaseSize)) {
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
-            } else if (tailS2Split_ && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+            } else if (tailS2Split_ && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_ * mBaseSize)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split_ ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
@@ -570,8 +587,8 @@ public:
         }
         // 当前BN2未处理完
         s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
-            gS1Cur++;
+        if (gS1Cur < gS1Size) {
+            gS1Cur += GetGS1Step(gS1Cur);
             return;
         }
         // 当前BN2已处理完
