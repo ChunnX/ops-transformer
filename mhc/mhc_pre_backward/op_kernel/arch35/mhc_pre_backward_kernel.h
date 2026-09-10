@@ -56,14 +56,14 @@ public:
                                         float alphaPre, float alphaPost, float alphaComb);
     __aicore__ inline void AIV21Process(LocalTensor<P> &invRmsInBuf, LocalTensor<P> &invRmsUb,
                                         LocalTensor<P> &invRmsGradUb, uint32_t currentChunkSize);
-    // C0/C1 流程 (矩阵计算)
+    // Cube侧C0/C1流水
     __aicore__ inline void ProcessC0C1Pipeline();
     __aicore__ inline void ProcessC0(uint32_t offsetND, uint32_t currentNDBlock, uint64_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
     __aicore__ inline void ProcessC1(uint32_t offsetND, uint32_t currentNDBlock, uint64_t offsetBS,
                                      uint32_t currentBSBlock, uint32_t buffId);
 
-    // V2 流程 (向量计算)
+    // Vector侧V2流水
     __aicore__ inline void ProcessV2Pipeline();
     __aicore__ inline void ProcessV2(uint32_t offsetND, uint32_t copySizeND, uint64_t bsStart, uint64_t bsEnd,
                                      LocalTensor<P> &sumBuf, uint32_t buffId);
@@ -267,7 +267,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     N_ = static_cast<uint32_t>(tiling_->N);
     fusionSize_ = static_cast<uint32_t>(tiling_->fusionSize);
     coreNum_ = tiling_->coreNum;
-    // BS维全链路保留64位，避免大shape在核内截断后漏算或地址回绕。
     totalLength_ = tiling_->totalLength;
     hcEps_ = tiling_->hcEps;
     vecCoreNum_ = tiling_->vecCoreNum;
@@ -298,8 +297,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
         pipe_->InitBuffer(vecInQueue1_, 2, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueueSmall_, 1, SMALL_QUEUE_SIZE);
         pipe_->InitBuffer(fp32TBuf_, FP32_BUF_SIZE);
-        // V0/V1从TBuf起始地址按实际生命周期复用；原先预留的hFusion区域没有消费者，
-        // N=6时还会使实际偏移越过55KB TBuf并与双缓冲输出队列重叠。
         globalUbOffset_ = 0;
         vecDealBSPeCore_ = totalLength_ / vecCoreNum_;
         if (vecDealBSPeCore_ == 0) {
@@ -355,12 +352,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
     SyncAll<false>();
 
     if ASCEND_IS_AIC {
-        // 执行矩阵乘法 C0 -> C1
         ProcessC0C1Pipeline();
     }
 
     if ASCEND_IS_AIV {
-        // 执行向量计算V2
         ProcessV2Pipeline();
     }
 
@@ -620,7 +615,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint64_t runBSStart
     __ubuf__ P *gradHInAddr = (__ubuf__ P *)buffers.hPreGradBuf.GetPhyAddr();
     __ubuf__ P *hPreBufS1Addr = (__ubuf__ P *)buffers.hPreBufS1.GetPhyAddr();
     VFDoV0HPreGrad(hPreBufS1Addr, hPreAddr, gradHInAddr, buffers.stepLength);
-    // h_pre已消费完毕，及时归还q1缓冲，避免多轮V0耗尽队列。
     vecInQueue1_.FreeTensor(hPre);
 
     fp32InputBuf = vecInQueue1_.AllocTensor<P>();
@@ -634,7 +628,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint64_t runBSStart
     LocalTensor<P> hPost = vecInQueue1_.DeQue<P>();
     vecInQueue0_.DeQue<P>(gradHPost);
 
-    // 利用 q0 的第二个缓冲提前搬入 grad_h_res，使 MTE2 搬运与 grad_h_post 向量计算重叠。
     AscendC::LocalTensor<P> gradHResBuf;
     vecInQueue0_.AllocTensor<P>(gradHResBuf);
     dataCopyParams.blockLen = buffers.stepLength * N_ * sizeof(P);
@@ -816,14 +809,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     PipeBarrier<PIPE_V>();
 
     uint32_t shape[] = {curBSSize, static_cast<uint32_t>(fusionSize_)};
-    // inv rms grad
     ReduceSum<float, AscendC::Pattern::Reduce::AR, isReuse>(invRmsGradUb, hMixGradBuf, buffers.brcbTmpBuf, shape, true);
     vecOutQueueSmall_.EnQue(invRmsGradUb);
     LocalTensor<P> invRmsGradUbtBuf = vecOutQueueSmall_.DeQue<P>();
 
     dataCopyParams.blockLen = curBSSize * sizeof(P);
     DataCopyPad(workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(runBSStart)], invRmsGradUbtBuf, dataCopyParams);
-    // alpha grad (inv rms 梯度计算完成，复用hMixGradBuf)
     ReduceSum<float, AscendC::Pattern::Reduce::RA, isReuse>(hMixGradBuf, buffers.hFusionBuf, buffers.brcbTmpBuf, shape,
                                                             true);
     PipeBarrier<PIPE_V>();
@@ -952,19 +943,18 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
     uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
     uint32_t buffId = 0;
-    // 预执行第一块C0，后续每轮先计算下一块C0，再消费当前块执行C1。
+    // 预执行首块C0，为C0/V2/C1双缓冲流水建立初始槽。
     ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
 
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
-        // FP32下将两个连续512行V2结果合并为一次C1，避免GM原子累加改变近零dphi的加法顺序。
-        // C0和V2仍保持512/128/64流水；两个xRs双缓冲槽在GM中连续，可作为1024行右矩阵读取。
+        // FP32短序列将最多两个BS块在同一L0C中连续累加并一次写回，避免GM原子累加改变近零dphi的加法顺序。
+        // 两个xRs槽按[SINGLE_M, ND_BLOCK_SIZE]连续布局，支持firstK/secondK分段读取。
         bool mergeC1BsBlock = !enableHf32 && totalLength_ > SINGLE_M && totalLength_ <= 2 * SINGLE_M;
         if (mergeC1BsBlock) {
             uint32_t secondBSBlock = static_cast<uint32_t>(totalLength_ - SINGLE_M);
-            // 低阶C0较快，同一C1跨核flag的两次发布可能在Cube首次等待前合并。
-            // 先消费第一块V2完成信号，再发布第二块C0，保证两次C1握手一一对应。
+            // 先消费首块V2信号再发射第二块C0，避免同一flag的两次发布在首次等待前合并。
             AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
             ProcessC0(offsetND, currentNDBlock, SINGLE_M, secondBSBlock, buffId + 1);
             uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffId % VEC_CORE_VECIDX_MOD);
@@ -982,6 +972,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
             continue;
         }
 
+        // 普通路径先发射下一块C0，再等待当前块V2完成并执行C1。
         for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             currentBSBlock =
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
@@ -1024,7 +1015,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    // FP32的512～1024行合并C1路径会连续预执行两个C0，保持原B-L1事件生命周期以避免同步冲突。
     bool enableB1Reuse = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32 ||
                          totalLength_ <= SINGLE_M || totalLength_ > 2U * SINGLE_M;
     c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
@@ -1037,7 +1027,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
                                                              uint32_t buffIdx)
 {
     AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
-    // 1C2V 对应操作两块 workspaceGm_
+    // 两个Vector核写入同一xRs槽的前后半个ND块，C1按currentNDBlock整体读取。
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     bool enAtomic = (offsetBS != 0);
@@ -1106,7 +1096,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
         Reg::RegTensor<T> xInB16Reg;
         Reg::RegTensor<P> xFp32Reg, gammaReg, resultReg;
         if constexpr (hasGamma) {
-            // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
+            // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，可完整驻留在一个向量寄存器中。
             Reg::LoadAlign(gammaReg, gammaInAddr);
         }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
@@ -1123,7 +1113,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoV2XCastAndMulGamma(
             if constexpr (hasGamma) {
                 Reg::Mul(resultReg, gammaReg, xFp32Reg, mask); // 逐元素乘：gamma * x
                 Reg::StoreAlign(gammaOutAddr + offset, resultReg, mask);
-            } else { // 没有gamma，原始逻辑是 xFp32Reg * 1.0，等价于不处理，这里直接store
+            } else {
                 Reg::StoreAlign(gammaOutAddr + offset, xFp32Reg, mask);
             }
         }
@@ -1144,7 +1134,7 @@ MhcPreBackwardKernel<T, P>::VFDoV2GammaMulXRsGradMm(__ubuf__ P *xGradVec3Addr, _
         Reg::RegTensor<P> invRmsReg;
         Reg::MaskReg maskAll = Reg::CreateMask<P, Reg::MaskPattern::ALL>();
         if constexpr (hasGamma) {
-            // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，gamma可完整驻留在一个向量寄存器中。
+            // copySizeND最大为ND_BLOCK_SIZE的一半，即64个元素，可完整驻留在一个向量寄存器中。
             Reg::LoadAlign(gammaReg, gammaInAddr);
         }
         for (uint16_t tIdx = 0; tIdx < (uint16_t)currentChunkSize; tIdx++) {
@@ -1190,7 +1180,6 @@ MhcPreBackwardKernel<T, P>::VFDoV2HInMulHPre(__ubuf__ P *xGradVec3BufAddr, __ubu
             uint32_t lenND = copySizeND;
             uint32_t hInOffset = tIdx * copySizeND;
 
-            // hPre每行只使用一个FP32标量，直接广播加载，减少索引构造和Gather指令。
             Reg::DataCopy<P, Reg::LoadDist::DIST_BRC_B32>(hPreFullReg, hPreUbAddr + hPreOffset);
             // copySizeND最大为64，当前T行只需一次向量处理，删除恒单次的内层循环控制。
             mask = Reg::UpdateMask<P>(lenND);
