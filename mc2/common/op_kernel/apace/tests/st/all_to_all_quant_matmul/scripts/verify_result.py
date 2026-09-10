@@ -20,6 +20,8 @@ import torch
 # FP8(MXFP8) 量化输入 + BF16 输出，理论相对误差 ~0.5-1%。
 # atol/rtol 都用 1e-2 对齐低精度量化算子的通用验收门槛。
 ERROR_TOL = 1e-2
+# HiF4(4-bit S1P2 + 三级缩放) 量化输入 + BF16 输出, 误差阈值放宽为 rel_err < 0.1
+HIF4_ERROR_TOL = 1e-1
 DATA_TYPE = np.uint16
 FULL_TENSOR_PRINT_MAX_ELEMENTS = 1024
 CORNER_ROWS = 4
@@ -32,6 +34,7 @@ def _print_large_tensor_summary(
     m: int,
     n: int,
     rank_id: int = -1,
+    error_tol: float = ERROR_TOL,
 ) -> None:
     g = golden_tensor.float()
     p = npu_output_tensor.float()
@@ -41,7 +44,7 @@ def _print_large_tensor_summary(
     rel_err = abs_err / denom
 
     numel = m * n
-    over_tol = (abs_err > ERROR_TOL).sum().item()
+    over_tol = (abs_err > error_tol).sum().item()
 
     rank_prefix = f"[Rank {rank_id}] " if rank_id >= 0 else ""
     print(
@@ -51,8 +54,8 @@ def _print_large_tensor_summary(
         f"  abs_err: max={abs_err.max().item():.6e}, mean={abs_err.mean().item():.6e}, "
         f"rmse={(diff.pow(2).mean().sqrt()).item():.6e}"
     )
-    print(f"  rel_err: max={rel_err.max().item():.6e}")
-    print(f"  count(|abs_err| > {ERROR_TOL:g}): {over_tol} / {numel}")
+    print(f"  rel_err: max={rel_err.max().item():.6f}")
+    print(f"  count(|abs_err| > {error_tol:g}): {over_tol} / {numel}")
 
     cr = min(CORNER_ROWS, m)
     cc = min(CORNER_COLS, n)
@@ -61,7 +64,7 @@ def _print_large_tensor_summary(
         print(f"  npu output (top-left {cr}x{cc}):\n{npu_output_tensor[:cr, :cc]}")
 
 
-def verify_single_rank(m, n, rank_id, base_dir="./output"):
+def verify_single_rank(m, n, rank_id, base_dir="./output", error_tol=ERROR_TOL):
     output_path = os.path.join(base_dir, str(rank_id), "npu_out.bin")
     golden_path = os.path.join(base_dir, str(rank_id), "cpu_output.bin")
 
@@ -91,26 +94,26 @@ def verify_single_rank(m, n, rank_id, base_dir="./output"):
         print(f"\n[Rank {rank_id}] cpu golden:\n", golden_tensor)
         print(f"[Rank {rank_id}] npu output:\n", npu_output_tensor)
     else:
-        _print_large_tensor_summary(golden_tensor, npu_output_tensor, m, n, rank_id)
+        _print_large_tensor_summary(golden_tensor, npu_output_tensor, m, n, rank_id, error_tol)
 
     return torch.allclose(
-        golden_tensor, npu_output_tensor, rtol=ERROR_TOL, atol=ERROR_TOL, equal_nan=True
+        golden_tensor, npu_output_tensor, rtol=error_tol, atol=error_tol, equal_nan=True
     )
 
 
-def verify_result(m, n, rank_num, base_dir="./output"):
+def verify_result(m, n, rank_num, base_dir="./output", error_tol=ERROR_TOL):
     all_pass = True
     results = []
 
     print(f"\n{'=' * 60}")
-    print(f"Verifying outputs for {rank_num} ranks")
+    print(f"Verifying outputs for {rank_num} ranks (tol={error_tol:g})")
     print(f"Matrix shape: M={m}, N={n}")
     print("All ranks should produce the same result after All2All")
     print(f"{'=' * 60}")
 
     for rank_id in range(rank_num):
         try:
-            res = verify_single_rank(m, n, rank_id, base_dir)
+            res = verify_single_rank(m, n, rank_id, base_dir, error_tol)
             results.append(
                 (rank_id, bool(res), None if res else "allclose returned False")
             )
@@ -118,7 +121,7 @@ def verify_result(m, n, rank_num, base_dir="./output"):
                 print(f"[PASS] Rank {rank_id}: NPU results match CPU golden")
             else:
                 print(
-                    f"[FAIL] Rank {rank_id}: allclose returned False (rtol=atol={ERROR_TOL})"
+                    f"[FAIL] Rank {rank_id}: allclose returned False (rtol=atol={error_tol:g})"
                 )
                 all_pass = False
         except Exception as e:
@@ -140,11 +143,12 @@ def verify_result(m, n, rank_num, base_dir="./output"):
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        print("Usage: python3 verify_result.py m n rank_num [base_dir]")
+        print("Usage: python3 verify_result.py m n rank_num [base_dir] [quant_type]")
         print("  m: matrix M dimension")
         print("  n: matrix N dimension")
         print("  rank_num: number of ranks")
         print("  base_dir: output directory (default: ./output)")
+        print("  quant_type: 'mxfp8' (default, tol=1e-2) | 'hif4' (tol=1e-1)")
         print("\nExpected file structure:")
         print("  {base_dir}/0/npu_out.bin      - NPU output from rank 0")
         print("  {base_dir}/0/cpu_output.bin   - CPU golden for rank 0")
@@ -157,9 +161,11 @@ if __name__ == "__main__":
     n = int(sys.argv[2])
     rank_num = int(sys.argv[3])
     base_dir = sys.argv[4] if len(sys.argv) > 4 else "./output"
+    quant_type = sys.argv[5] if len(sys.argv) > 5 else "mxfp8"
+    error_tol = HIF4_ERROR_TOL if quant_type == "hif4" else ERROR_TOL
 
     try:
-        all_pass = verify_result(m, n, rank_num, base_dir)
+        all_pass = verify_result(m, n, rank_num, base_dir, error_tol)
         if not all_pass:
             raise ValueError("[ERROR] Some NPU results differ from CPU.\n")
         print(f"\n[ALL PASS] All {rank_num} ranks passed verification!\n")

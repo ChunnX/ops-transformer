@@ -24,6 +24,18 @@ ST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${ST_DIR}/build"
 PROF_DIR="${SCRIPT_DIR}/prof"
 KERNEL_TIMEOUT=${KERNEL_TIMEOUT:-600}  # 默认600秒(10分钟)，可用环境变量 KERNEL_TIMEOUT 覆盖
+# 量化通路切换: QUANT_TYPE=mxfp8(默认) | hif4; hif4 时 ST_BIN 自动切换为 Hcomm 目标
+# TRANS_B 仅 hif4 生效(true|false), 例:
+#   QUANT_TYPE=hif4 bash run.sh --csv cases_hif4.csv all
+#   QUANT_TYPE=hif4 TRANS_B=false bash run.sh --csv cases_hif4.csv 1
+QUANT_TYPE=${QUANT_TYPE:-mxfp8}
+ST_BIN=${ST_BIN:-apace_a2a_qmm_udma_st}
+TRANS_B=${TRANS_B:-true}
+
+if [ "${QUANT_TYPE}" = "hif4" ] && [ "${ST_BIN}" = "apace_a2a_qmm_udma_st" ]; then
+    echo "NOTE: QUANT_TYPE=hif4, auto switch ST_BIN to apace_a2a_qmm_hif4_hcomm_st"
+    ST_BIN=apace_a2a_qmm_hif4_hcomm_st
+fi
 
 SKIP_BUILD=0; GEN_ONLY=0; VERIFY_ONLY=0; CLI_MODE=0; PERF_MODE=0
 CSV_FILE="${SCRIPT_DIR}/cases.csv"
@@ -106,8 +118,12 @@ run_single() {
     rm -rf input output
 
     # ---- 1. 生成数据 ----
-    echo "[1/4] Generate CPU golden + input data..."
-    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM"
+    echo "[1/4] Generate CPU golden + input data (quant_type=${QUANT_TYPE}, trans_b=${TRANS_B})..."
+    if [ "${QUANT_TYPE}" = "hif4" ]; then
+        python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM" hif4 "$TRANS_B"
+    else
+        python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM"
+    fi
 
     if [ "$GEN_ONLY" -eq 1 ]; then return 0; fi
 
@@ -117,16 +133,20 @@ run_single() {
             echo "[2/4] Build..."
             mkdir -p "$BUILD_DIR"
             cmake -S "$ST_DIR" -B "$BUILD_DIR" || { echo "ERROR: cmake failed"; return 1; }
-            cmake --build "$BUILD_DIR" --target apace_a2a_qmm_udma_st --parallel 4 || { echo "ERROR: build failed"; return 1; }
+            cmake --build "$BUILD_DIR" --target "$ST_BIN" --parallel 4 || { echo "ERROR: build failed"; return 1; }
         else
-            [ -x "$BUILD_DIR/all_to_all_quant_matmul/apace_a2a_qmm_udma_st" ] || { echo "ERROR: --skip-build but binary missing"; return 1; }
+            [ -x "$BUILD_DIR/all_to_all_quant_matmul/$ST_BIN" ] || { echo "ERROR: --skip-build but binary missing"; return 1; }
             echo "[2/4] Skip build (--skip-build)"
         fi
 
         # ---- 3. 多 rank 运行 ----
         echo "[3/4] NPU run ($RANK_NUM ranks)..."
-        local EXE_PATH="$BUILD_DIR/all_to_all_quant_matmul/apace_a2a_qmm_udma_st"
+        local EXE_PATH="$BUILD_DIR/all_to_all_quant_matmul/$ST_BIN"
         local EXE_DIR="$(dirname "$EXE_PATH")"
+        local EXE_ARGS=("$M" "$K" "$N" "$RANK_NUM" "$MODE" "$HEAD_M_SIZE")
+        if [ "${QUANT_TYPE}" = "hif4" ]; then
+            EXE_ARGS+=("$TRANS_B")  # main_hif4: 第7参 transB
+        fi
         rm -rf "$EXE_DIR/input" "$EXE_DIR/output"
         cp -r input "$EXE_DIR/input"
         mkdir -p "$EXE_DIR/output"
@@ -155,17 +175,17 @@ run_single() {
                 local before_dirs after_dirs new_dirs
                 before_dirs=$(get_prof_dirs)
 
-                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $MODE $HEAD_M_SIZE ..."
+                echo "  [msprof] Running $EXE_PATH ${EXE_ARGS[*]} ..."
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
                     timeout ${KERNEL_TIMEOUT}s msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $MODE $HEAD_M_SIZE" 2>&1
+                        --application="$EXE_PATH ${EXE_ARGS[*]}" 2>&1
                     local MSPROF_RC=$?
                     set -e
                 else
                     set +e
                     msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $MODE $HEAD_M_SIZE" 2>&1
+                        --application="$EXE_PATH ${EXE_ARGS[*]}" 2>&1
                     local MSPROF_RC=$?
                     set -e
                 fi
@@ -221,7 +241,7 @@ run_single() {
                 local precision="FAIL"
                 if [ -d "$SCRIPT_DIR/output" ]; then
                     set +e
-                    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" >/dev/null 2>&1
+                    python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" "$QUANT_TYPE" >/dev/null 2>&1
                     local verify_rc=$?
                     set -e
                     if [ $verify_rc -eq 0 ]; then precision="PASS"; fi
@@ -245,12 +265,12 @@ run_single() {
                 # ---- precision 模式: 直接调 exe ----
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
-                    KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" 2>&1)
+                    KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" "${EXE_ARGS[@]}" 2>&1)
                     KERNEL_RC=$?
                     set -e
                 else
                     set +e
-                    KERNEL_OUT=$("$EXE_PATH" $M $K $N $RANK_NUM "$MODE" "$HEAD_M_SIZE" 2>&1)
+                    KERNEL_OUT=$("$EXE_PATH" "${EXE_ARGS[@]}" 2>&1)
                     KERNEL_RC=$?
                     set -e
                 fi
@@ -295,7 +315,7 @@ run_single() {
     # ---- 4. 精度比对（perf 模式已在步骤3内完成 verify，此处跳过）----
     if [ "$PERF_MODE" -eq 0 ]; then
         echo "[4/4] Verify..."
-        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output"
+        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" "$QUANT_TYPE"
         return $?
     fi
     echo "[4/4] Verify (done in perf loop)"

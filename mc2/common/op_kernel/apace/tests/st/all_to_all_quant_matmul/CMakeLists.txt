@@ -53,14 +53,30 @@ set_source_files_properties(src/main.cpp PROPERTIES
     INCLUDE_DIRECTORIES "${KERNEL_INCLUDES}"
 )
 
+# HiF4 全量化 Hcomm 通路 ST(依赖 blaze 侧 HiF4 BlockMmad 分发, devkit 就位后方可编译)
+add_executable(apace_a2a_qmm_hif4_hcomm_st
+    src/main_hif4.cpp
+)
+
+set_source_files_properties(src/main_hif4.cpp PROPERTIES
+    COMPILE_OPTIONS "${KERNEL_OPTS}"
+    INCLUDE_DIRECTORIES "${KERNEL_INCLUDES}"
+)
+
 # libhccl_fwk.so 在 ${SYSTEM_PREFIX}/lib64，需显式指定链接目录
 target_link_directories(apace_a2a_qmm_udma_st PRIVATE
     ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64
     ${ASCEND_DIR}/lib64
 )
+target_link_directories(apace_a2a_qmm_hif4_hcomm_st PRIVATE
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64
+    ${ASCEND_DIR}/lib64
+)
 
 target_link_libraries(apace_a2a_qmm_udma_st PRIVATE ${COMMON_LIBS} apace_blaze_api)
+target_link_libraries(apace_a2a_qmm_hif4_hcomm_st PRIVATE ${COMMON_LIBS} apace_blaze_api)
 
 # libhccl_fwk.so 提供 HCCL 内部符号（HcclChannelAcquire 等），
 # --no-as-needed 防止链接器丢弃，放在 OBJECT 之后确保符号解析
 target_link_libraries(apace_a2a_qmm_udma_st PRIVATE "-Wl,--no-as-needed" hccl_fwk "-Wl,--as-needed")
+target_link_libraries(apace_a2a_qmm_hif4_hcomm_st PRIVATE "-Wl,--no-as-needed" hccl_fwk "-Wl,--as-needed")

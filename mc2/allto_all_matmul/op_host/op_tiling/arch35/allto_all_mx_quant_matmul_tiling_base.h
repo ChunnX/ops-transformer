@@ -36,12 +36,20 @@ using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 constexpr size_t X1_QUANTMODE_VALUES = 6;
 constexpr size_t X2_QUANTMODE_VALUES = 6;
+// HiF4 量化模式: QuantModeType::HIFLOAT4_QUANT (x1/x2 quant mode 均为 8)
+constexpr size_t HIF4_QUANTMODE_VALUES = 8;
 constexpr size_t DIM_TWO = 2;
 constexpr size_t DIM_THREE = 3;
 constexpr uint64_t MX_SCALE_ALIGN = 64;
 constexpr uint64_t MX_SCALE_BLOCK_M = 1;
 constexpr uint64_t MX_SCALE_BLOCK_K = 32;
 constexpr uint64_t MX_SCALE_BLOCK_N = 1;
+// HiF4: 每 64 个元素共享 1 个 4-byte hif4_scale 元数据, scale shape 为 [M, K/64, 1]
+constexpr uint64_t HIF4_SCALE_BLOCK_K = 64;
+constexpr uint64_t HIF4_SCALE_LAST_DIM = 1;
+constexpr uint64_t HIF4_SCALE_UNIT_BYTES = 4;
+// HiF4: Ka(x1 的 K 维)需按 128 对齐(统一校验规则, 同时保证 Ka%64==0 且组数为偶数)
+constexpr uint64_t HIF4_KA_ALIGN_SIZE = 128;
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
@@ -86,6 +94,7 @@ private:
     AlltoAllQuantMatmulTilingData localTilingData_;
     Apace::hcommAllToAllMatmulTilingData hcommTilingData_;
     bool isMxFp4_ = false;
+    bool isHiF4_ = false;
     bool usingApaceImpl_ = false;
     uint64_t mmMvalueLen_ = 0;
     QuantType matmulQuantType_ = QuantType::MXFP8_QUANT;

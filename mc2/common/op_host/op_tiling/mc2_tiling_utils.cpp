@@ -428,9 +428,12 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
         auto kValue = mmInfo.x1Shape->GetStorageShape().GetDim(mmInfo.x1Shape->GetStorageShape().GetDimNum() - 1);
         int64_t scaleKValue = 0;
         if (mmInfo.isMxfp) {
+            // MX scale shape is [m, k/64, 2]: one E8M0 byte per 32-element group;
+            // HiF4 scale shape is [m, k/64, 1]: one 4-byte hif4_scale element per 64-element group.
+            const int64_t scaleLastDim = mmInfo.isHif4 ? 1 : 2;
             scaleKValue =
                 mmInfo.x1ScaleShape->GetStorageShape().GetDim(mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 2) *
-                2; // in mxfp scene, scaleshape is [m, k/2, 2]
+                scaleLastDim;
         } else {
             scaleKValue =
                 mmInfo.x1ScaleShape->GetStorageShape().GetDim(mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 1);
