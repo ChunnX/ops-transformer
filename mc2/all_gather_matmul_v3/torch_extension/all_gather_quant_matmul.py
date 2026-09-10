@@ -87,7 +87,7 @@ class _AllGatherQuantMatmulOpBuilder(OpBuilder):
 
 
 _all_gather_quant_matmul_op_builder = _AllGatherQuantMatmulOpBuilder()
-_op_module = _all_gather_quant_matmul_op_builder.load()
+_all_gather_quant_matmul_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), _all_gather_quant_matmul_op_builder.name, "PrivateUse1")
@@ -109,6 +109,7 @@ def _npu_all_gather_quant_matmul(
     y_dtype=None,
     comm_mode="ai_cpu",
 ):
+    _op_module = _all_gather_quant_matmul_op_builder.load()
     result = _op_module.npu_all_gather_quant_matmul(
         context,
         x1,
