@@ -15,9 +15,9 @@
 
 #pragma once
 
-#include "blaze/gemm/block/block_mmad_matmul_basic.h"
+#include "blaze/gemm/kernel/kernel_universal.h"
+#include "blaze/gemm/block/block_mmad.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
-#include "blaze/gemm/kernel/kernel_grouped_matmul.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
 using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
