@@ -134,8 +134,8 @@ Restore the branch rounding previously introduced by `4cf085ad7`, removed by
 the FP32 shared-GMM2 experiment `6ea278b14`, and not restored when `6de7312ba`
 returned shared GMM2 to BF16. Non-FP32 outputs now compute
 `T1(float(T1(routed_sum)) + float(T1(shared_sum)))`. Shared experts are summed
-independently in FP32 before their branch cast. Existing queue slots hold the
-rounded branches; neither workspace size nor cross-core scheduling changes.
+independently in FP32 before their branch cast. The initial implementation in
+`9bfb56a52` used existing queue slots to hold the rounded branches.
 Zero-shared and FP32-output paths retain their existing behavior. This also
 applies to quantized paths producing BF16; their device regression is required.
 
@@ -144,3 +144,32 @@ by the interface. Compilation and tests for this rounding fix were intentionally
 not run at the user's request. The earlier results above predate this fix and
 must not be taken as validation of it. Recheck the supplied EP16 cases with the
 full dual-benchmark criteria, not only cosine similarity.
+
+### Shared reduction queue isolation (2026-09-10)
+
+The user reported a severe regression after `9bfb56a52`: DeepSeek INT8/SwiGLU
+shared=1 went from 13/13 to 0/13 passing, GLM BF16/SwiGLU shared=2 from 10/13
+to 0/13, while Kimi INT8/SiTU shared=4 remained at 13/13. These errors are
+not explained by ordinary rounding. Unpermute does not select this reduction
+by activation type, so Kimi passing does not establish that it bypasses it.
+
+Replace the queue-backed branch temporaries with dedicated VECCALC buffers:
+keep the rounded routed result in its own FP32 accumulator, reduce shared
+outputs into a separate FP32 accumulator, and use one dedicated T1 scratch
+for both branch casts. Explicit vector barriers separate scratch consumers
+from reuse. VECIN and VECOUT queues now serve only their normal GM transfer
+roles; no saved branch is written into VECIN or read back from VECOUT.
+This removes the suspect queue-lifetime/synchronization pattern; the exact
+instruction responsible for the reported regression is not yet demonstrated.
+
+Non-FP32 shared paths cap the hidden tile at 1024 elements to bound UB use.
+At that tile size, the new FP32 accumulator and BF16/FP16 cast scratch require
+6 KiB; larger hidden dimensions use additional tiles with the original row
+stride and a final partial tile when necessary. GM workspace, cross-core
+scheduling, zero-shared and FP32-output paths are unchanged. Extra tiling and
+barriers may affect performance; no speedup is claimed.
+
+Compilation and device tests for this replacement were not run, per the user's
+request. Precision is not yet validated. Rerun all three reported suites with
+the unchanged full comparison criteria, including Kimi, and cover hidden-dimension
+tails, active masks and receive-round splitting before accepting this fix.
