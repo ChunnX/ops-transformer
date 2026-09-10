@@ -500,8 +500,12 @@ __aicore__ inline void CopyMultiMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Glo
     DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
 }
 
-template <typename Q_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
-class CopyQueryScaleGmToL1 {
+template <typename Q_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ,
+          InnerMLayout M_LAYOUT = InnerMLayout::GS1_MERGE_LAYOUT>
+class CopyQueryScaleGmToL1 {};
+
+template <typename Q_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT>
+class CopyQueryScaleGmToL1<Q_SCALE_T, GM_FORMAT, L1_FORMAT, InnerMLayout::GS1_MERGE_LAYOUT> {
 public:
     template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
@@ -621,6 +625,21 @@ private:
                                         s1IdxEnd, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
             }
         }
+    }
+};
+
+template <typename Q_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT>
+class CopyQueryScaleGmToL1<Q_SCALE_T, GM_FORMAT, L1_FORMAT, InnerMLayout::S1_ONLY_LAYOUT> {
+public:
+    template <typename FaGmTensorType>
+    __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
+                                      GmCoordS1Only &gmCoord)
+    {
+        auto &offsetCalculator = srcTensor.offsetCalculator;
+        uint64_t offset =
+            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.gIdx, gmCoord.s1Idx, gmCoord.dIdx);
+        CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.s1DealSize,
+                                offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
     }
 };
 
