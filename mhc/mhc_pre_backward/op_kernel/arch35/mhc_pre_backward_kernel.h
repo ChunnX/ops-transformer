@@ -940,7 +940,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     }
 
     uint32_t currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - dealStartND_);
-    uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
+    uint32_t currentBSBlock = static_cast<uint32_t>(Min(static_cast<uint64_t>(BS_BLOCK_SIZE), totalLength_));
     uint32_t buffId = 0;
     // 预执行首块C0，为C0/V2/C1双缓冲流水建立初始槽。
     ProcessC0(dealStartND_, currentNDBlock, 0, currentBSBlock, buffId);
@@ -949,14 +949,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
         // 普通路径先发射下一块C0，再等待当前块V2完成并执行C1。
-        for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
+        for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += BS_BLOCK_SIZE) {
             currentBSBlock =
-                static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
+                static_cast<uint32_t>(Min(static_cast<uint64_t>(BS_BLOCK_SIZE), totalLength_ - offsetBS));
 
-            uint64_t nextOffsetBS = offsetBS + SINGLE_M;
+            uint64_t nextOffsetBS = offsetBS + BS_BLOCK_SIZE;
             if (nextOffsetBS < totalLength_) {
                 uint32_t nextBSBlock =
-                    static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - nextOffsetBS));
+                    static_cast<uint32_t>(Min(static_cast<uint64_t>(BS_BLOCK_SIZE), totalLength_ - nextOffsetBS));
                 ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, buffId + 1);
             } else {
                 uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
@@ -964,7 +964,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
                     uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
                     nextOffsetBS = 0;
                     uint32_t nextBSBlock =
-                        static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_));
+                        static_cast<uint32_t>(Min(static_cast<uint64_t>(BS_BLOCK_SIZE), totalLength_));
                     ProcessC0(nextOffsetND, nextNDBlock, nextOffsetBS, nextBSBlock, buffId + 1);
                 }
             }
@@ -1034,11 +1034,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         }
         uint32_t copySizeND = Min(ND_BLOCK_SIZE / 2, dealEndND_ - offsetND);
 
-        // BS方向切分：与C0保持一致，按SINGLE_M切分
+        // BS方向切分：与C0保持一致，按BS_BLOCK_SIZE切分
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
-        for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
+        for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += BS_BLOCK_SIZE) {
             uint32_t currentBSBlock =
-                static_cast<uint32_t>(Min(static_cast<uint64_t>(SINGLE_M), totalLength_ - offsetBS));
+                static_cast<uint32_t>(Min(static_cast<uint64_t>(BS_BLOCK_SIZE), totalLength_ - offsetBS));
             // 执行当前的V2
             ProcessV2(offsetND, copySizeND, offsetBS, offsetBS + currentBSBlock, sumBuf, buffId);
             buffId++;

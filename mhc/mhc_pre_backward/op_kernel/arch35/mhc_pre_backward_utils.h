@@ -65,7 +65,7 @@ constexpr uint32_t SMALL_QUEUE_SIZE = 1 * 1024;               // 1KB
 // 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
 constexpr uint32_t FP32_BUF_SIZE = (248 - 32 * 6 - 1) * 1024; // 55KB；两个VECIN队列均使用双缓冲
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128;               // ProcessV2函数使用的chunk大小
-constexpr uint32_t SINGLE_M = 512;
+constexpr uint32_t BS_BLOCK_SIZE = 512;
 constexpr uint32_t ND_BLOCK_SIZE = 128;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
@@ -147,8 +147,8 @@ struct V0V1Buffers {
  * 2. alpha_grad: [ALPHA_GRAD_PADDING, vecCoreNum] = [24 * vecCoreNum]
  * 3. bias_grad: [vecCoreNum, 2N + N*N] = [vecCoreNum * fusionSize]
  * 4. inv_rms_grad: [B, S] = [totalLength]
- * 5. x_rs_grad_mm: [cubeCoreNum * DOUBLE_BUFFER, SINGLE_M * ND_BLOCK_SIZE]
- * 6. x_rs: [cubeCoreNum * DOUBLE_BUFFER, SINGLE_M * ND_BLOCK_SIZE]
+ * 5. x_rs_grad_mm: [cubeCoreNum * DOUBLE_BUFFER, BS_BLOCK_SIZE * ND_BLOCK_SIZE]
+ * 6. x_rs: [cubeCoreNum * DOUBLE_BUFFER, BS_BLOCK_SIZE * ND_BLOCK_SIZE]
  */
 template <class P>
 struct WorkspaceBuffer {
@@ -178,7 +178,7 @@ struct WorkspaceBuffer {
         biasGradOffset = alphaGradOffset + alphaGradSize;
         invRmsGradOffset = biasGradOffset + biasGradRows * fusionSize;
         xRsGradOffset = invRmsGradOffset + totalLength;
-        xRsOffset = xRsGradOffset + SINGLE_M * ND_BLOCK_SIZE * DOUBLE_BUFFER * cubeCoreNum;
+        xRsOffset = xRsGradOffset + BS_BLOCK_SIZE * ND_BLOCK_SIZE * DOUBLE_BUFFER * cubeCoreNum;
     }
 
     /**
@@ -225,13 +225,13 @@ struct WorkspaceBuffer {
     __aicore__ inline uint64_t GetXRsGradOffset(uint32_t coreId, uint32_t buffId)
     {
         return CeilAlign(xRsGradOffset, uint64_t(CEIL_ALIGN_DEFAULT)) +
-               (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+               (coreId * DOUBLE_BUFFER + buffId) * BS_BLOCK_SIZE * ND_BLOCK_SIZE;
     }
 
     __aicore__ inline uint64_t GetXRsOffset(uint32_t coreId, uint32_t buffId)
     {
         return CeilAlign(xRsOffset, uint64_t(CEIL_ALIGN_DEFAULT)) +
-               (coreId * DOUBLE_BUFFER + buffId) * SINGLE_M * ND_BLOCK_SIZE;
+               (coreId * DOUBLE_BUFFER + buffId) * BS_BLOCK_SIZE * ND_BLOCK_SIZE;
     }
 };
 } // namespace MhcPreBackwardUtils
