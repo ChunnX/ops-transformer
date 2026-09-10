@@ -15,7 +15,7 @@
  * 形态参照正向 attention/flash_attn/op_host/checkers/seq_len_checker_flash_attn.h 与
  * softmax_lse_checker_flash_attn.h；语义对应 arch35 的 CheckShape 系列。
  *
- * 易漂移口径（正反向对照见 docs/FlashAttnGrad_Tiling架构设计.md §5.3）：
+ * 易漂移口径：
  *   - TND 下 cu_seqlens_q / cu_seqlens_kv 必传且为 1D，非 TND 下必须不传；
  *   - D 与 Dv 可以不等，但要求 Dv <= D，且两者都落在 (0, MAX_HEAD_DIM]。
  */

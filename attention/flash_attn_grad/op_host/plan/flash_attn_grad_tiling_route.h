@@ -12,13 +12,13 @@
  * \file flash_attn_grad_tiling_route.h
  * \brief L4 策略层：选 kernel 模板（tilingkey 的 template / is_bn2_multiblk 两个字段）。
  *
- * 这是随上板实测变动最频繁的一段，组织方式见架构文档 §5.13：
+ * 这是随上板实测变动最频繁的一段：
  *   - 候选按性能优先级排成一张表，逐行试；
  *   - 每个候选的**能力**（能不能跑对）与**偏好**（哪个更快）是两个独立谓词，
  *     改性能标定只动 prefer，永不碰 feasible；
  *   - 每条淘汰都写进 trace，让"今天为什么选了它"可以从日志直接读出来。
  *
- * 函数签名刻意用 const 入参 + 返回值：路由不得修改解析结果（§5.13.7）。
+ * 函数签名刻意用 const 入参 + 返回值：路由不得修改解析结果。
  */
 
 #ifndef FLASH_ATTN_GRAD_TILING_ROUTE_H_

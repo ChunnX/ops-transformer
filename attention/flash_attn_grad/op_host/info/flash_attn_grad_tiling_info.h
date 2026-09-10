@@ -12,7 +12,7 @@
  * \file flash_attn_grad_tiling_info.h
  * \brief L1 契约层：输入/属性索引常量，以及 tiling 各阶段之间传递的 POD。
  *
- * 分层约定（docs/FlashAttnGrad_Tiling架构设计.md §4.1）：
+ * 分层约定：
  *   L2 parser 是唯一读 gert::TilingContext 取轴与属性的地方，结果写入
  *   FagParsedInfo；L4 策略层只读 FagParsedInfo、只产出各自的 Plan，
  *   不得回写解析字段，也不得触碰 context。
@@ -126,7 +126,7 @@ struct FagParsedInfo {
     bool hasAttenMask = false;
     bool hasSeqused = false;
     // 已解析但**不参与 tilingkey**。D4 暂定：sinks 是否占位要等 pypto 侧实现
-    // 方式确定后再定（§5.11），在那之前它只用于日志与将来的判据输入。
+    // 方式确定后再定，在那之前它只用于日志与将来的判据输入。
     bool hasSinks = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需

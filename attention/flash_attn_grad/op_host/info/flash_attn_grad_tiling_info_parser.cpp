@@ -176,8 +176,8 @@ ge::graphStatus ParsePlatform(gert::TilingContext *context, FagParsedInfo &info)
         info.libapiWorkspaceSize = static_cast<size_t>(compileInfo->libapiWorkspaceSize);
         info.l2CacheSize = compileInfo->l2CacheSize;
         OP_CHECK_IF(info.aicNum == 0 || info.aivNum == 0,
-                    OP_LOGE(context->GetNodeName(),
-                            "num of core from compile info is 0, aicNum=%u, aivNum=%u.", info.aicNum, info.aivNum),
+                    OP_LOGE(context->GetNodeName(), "num of core from compile info is 0, aicNum=%u, aivNum=%u.",
+                            info.aicNum, info.aivNum),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
                     OP_LOGE(context->GetNodeName(), "workSpaceSize got from ge is nullptr."),
@@ -189,14 +189,14 @@ ge::graphStatus ParsePlatform(gert::TilingContext *context, FagParsedInfo &info)
     info.aivNum = ascendcPlatform.GetCoreNumAiv();
     info.aicNum = ascendcPlatform.GetCoreNumAic();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, info.l2CacheSize);
-    OP_CHECK_IF(info.aicNum == 0 || info.aivNum == 0,
-                OP_LOGE(context->GetNodeName(), "num of core obtained is 0, aicNum=%u, aivNum=%u.", info.aicNum,
-                        info.aivNum),
-                return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(
+        info.aicNum == 0 || info.aivNum == 0,
+        OP_LOGE(context->GetNodeName(), "num of core obtained is 0, aicNum=%u, aivNum=%u.", info.aicNum, info.aivNum),
+        return ge::GRAPH_PARAM_INVALID);
     info.libapiWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
 
     // SOC 是否支持不在这里判：那是"哪个模板类能接"的问题，已下沉到
-    // FlashAttnGradTilingRegbase::IsCapable()（D1 / §5.4）。
+    // FlashAttnGradTilingRegbase::IsCapable()（D1）。
     OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
                 OP_LOGE(context->GetNodeName(), "workSpaceSize got from ge is nullptr."),
                 return ge::GRAPH_PARAM_INVALID);
@@ -214,8 +214,7 @@ ge::graphStatus ParseFlashAttnGradInfo(gert::TilingContext *context, FagParsedIn
         return ret;
     }
 
-    info.hasSeqused =
-        OptionalInputExists(context, SEQUSED_Q_INDEX) || OptionalInputExists(context, SEQUSED_KV_INDEX);
+    info.hasSeqused = OptionalInputExists(context, SEQUSED_Q_INDEX) || OptionalInputExists(context, SEQUSED_KV_INDEX);
     info.hasAttenMask = HasAttenMask(context, info.maskMode);
     info.hasSinks = OptionalInputExists(context, SINKS_INDEX);
 

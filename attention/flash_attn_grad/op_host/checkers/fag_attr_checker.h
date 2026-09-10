@@ -15,7 +15,7 @@
  * 形态参照正向 attention/flash_attn/op_host/checkers/mask_checker_flash_attn.h；
  * 语义对应 arch35 的 CheckAttrs / CheckSparseMode / CheckLayout。
  *
- * 易漂移口径（正反向对照见 docs/FlashAttnGrad_Tiling架构设计.md §5.3）：
+ * 易漂移口径：
  *   - mask_mode 只收 0/3/4，FAG arch35 的其余 sparse 模式本轮不接；
  *   - attn_mask 必须是 [2048, 2048]；
  *   - layout_q / layout_kv / layout_out 必须三者相同。

@@ -15,9 +15,8 @@
  * 形态参照正向 attention/flash_attn/op_host/checkers/base_checker_flash_attn.h 的
  * 组合模式；语义对应 arch35 FlashAttentionScoreGradTilingBase 的 CheckXxx 系列。
  *
- * D3（docs/FlashAttnGrad_Tiling架构设计.md §5.3）：校验代码本算子自持，不与正向
- * 共用、不抽到 attention/common。口径漂移靠文件头对照注释与文档里的正反向对照表
- * 兜住，不靠共享实现。
+ * D3：校验代码本算子自持，不与正向共用、不抽到 attention/common。
+ * 口径漂移靠文件头对照注释兜住，不靠共享实现。
  *
  * 与正向的一处结构差异：正向的 checker 吃已解析好的 FaTilingInfo，而 FAGrad 的
  * 校验发生在 parser 之前（入口顺序是 CheckParams -> ParseInfo），所以这里的

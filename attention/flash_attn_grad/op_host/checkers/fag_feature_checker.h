@@ -23,7 +23,7 @@
 
 namespace optiling {
 
-// D2（docs/FlashAttnGrad_Tiling架构设计.md §5.10）：确定性计算明确拒绝。
+// D2：确定性计算明确拒绝。
 class FagDeterministicChecker : public FagBaseChecker {
 public:
     ge::graphStatus Check(FagCheckCtx &ctx) override;

@@ -12,7 +12,7 @@
  * \file flash_attn_grad_tiling_base.h
  * \brief tiling 模板类的三步骨架与写回封装。
  *
- * D1（docs/FlashAttnGrad_Tiling架构设计.md §5.4）：采用 attention/common/op_host/
+ * D1：采用 attention/common/op_host/
  * fia_tiling_base.h 里 FiaTilingBase 的**形态**，但在本算子目录下**自持一份**，
  * 不 include 正向那份 —— 理由与 D3 相同，正向改骨架不应牵动反向。
  *
@@ -30,7 +30,7 @@
  * 的 8 步骨架（GetPlatformInfo/GetShapeAttrsInfo/IsCapable/DoOpTiling/
  * DoLibApiTiling/GetWorkspaceSize/PostTiling/GetTilingKey）。这里合成 3 步，
  * 是因为平台与解析已经上移到入口的 ParsePlatform / ParseFlashAttnGradInfo
- * （§4.1 要求 parser 独占 context），剩给模板类的只有"能不能接 + 怎么算"。
+ * （parser 独占 context），剩给模板类的只有"能不能接 + 怎么算"。
  */
 
 #ifndef FLASH_ATTN_GRAD_TILING_BASE_H_
@@ -52,7 +52,9 @@ enum class FagScheduleMode : uint32_t {
 
 class FagTilingBase {
 public:
-    explicit FagTilingBase(gert::TilingContext *context) : context_(context) {}
+    explicit FagTilingBase(gert::TilingContext *context)
+        : context_(context)
+    {}
     virtual ~FagTilingBase() = default;
 
     FagTilingBase(const FagTilingBase &) = delete;
@@ -92,8 +94,7 @@ protected:
     ge::graphStatus SetWorkspaceSize(size_t workspaceSize) const
     {
         size_t *workspaces = context_->GetWorkspaceSizes(1);
-        OP_CHECK_IF(workspaces == nullptr,
-                    OP_LOGE(context_->GetNodeName(), "workspace sizes got from ge is nullptr."),
+        OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "workspace sizes got from ge is nullptr."),
                     return ge::GRAPH_FAILED);
         workspaces[0] = workspaceSize;
         return ge::GRAPH_SUCCESS;
