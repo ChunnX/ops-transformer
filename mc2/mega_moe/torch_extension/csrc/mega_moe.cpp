@@ -14,7 +14,6 @@
 #include <cstring>
 #include <limits>
 #include "aclnn_common.h"
-#include "torch_npu/csrc/framework/utils/NpuUtils.h"
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
@@ -65,9 +64,8 @@ static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, 
             expectedName = "uint8 (packed FP4)";
             break;
         default:
-            TORCH_CHECK(false, "The resolved weight type for ", name, " is ",
-                        at_npu::native::AclDataTypeToString(expectedDtype), " (", static_cast<int>(expectedDtype),
-                        "), which is unsupported on ", socName, ". Supported types are ACL_FLOAT8_E5M2 (",
+            TORCH_CHECK(false, "The resolved weight type for ", name, " is ACL dtype ", static_cast<int>(expectedDtype),
+                        ", which is unsupported on ", socName, ". Supported types are ACL_FLOAT8_E5M2 (",
                         static_cast<int>(aclDataType::ACL_FLOAT8_E5M2), "), ACL_FLOAT8_E4M3FN (",
                         static_cast<int>(aclDataType::ACL_FLOAT8_E4M3FN), ") and ACL_FLOAT4_E2M1 (",
                         static_cast<int>(aclDataType::ACL_FLOAT4_E2M1), ").");
