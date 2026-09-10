@@ -13,6 +13,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
+#include <algorithm>
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -243,8 +244,7 @@ protected:
     ge::graphStatus DoOpTiling() override
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        // cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
-        cubeCoreNum_ = 5;
+        cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
 
         baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         baseN_ = blockShapeY_ <= 128 ? blockShapeY_ : 128;
@@ -259,6 +259,38 @@ protected:
         tilingData_.set_baseN(baseN_);
         tilingData_.set_singleM(singleM);
         tilingData_.set_deterministic(deterministic_ ? 1 : 0);
+        if (deterministic_ && strcmp(layout_, TND_STR) != 0) {
+            int64_t max_q = q_seq_len_;
+            int64_t max_kv = kv_seq_len_;
+            int64_t m = (max_q + baseM_ - 1) / std::max(baseM_, 1u);
+            int64_t n = (max_kv + baseN_ - 1) / std::max(baseN_, 1u);
+            int64_t aic = cubeCoreNum_;
+            int64_t k = aic;
+            uint32_t latin_max = 0;
+            if (q_group_ <= 1) {
+                int64_t bflat = static_cast<int64_t>(batch_num_) * q_head_num_;
+                k = std::min(aic, bflat * std::max(m, static_cast<int64_t>(1)));
+                k = std::max(k, static_cast<int64_t>(1));
+                int64_t kk = std::min(k, bflat * std::max(m, static_cast<int64_t>(1)));
+                latin_max = static_cast<uint32_t>(m * ((bflat * n + std::max(kk, static_cast<int64_t>(1)) - 1) /
+                                                       std::max(kk, static_cast<int64_t>(1))));
+            } else {
+                int64_t bflat = static_cast<int64_t>(batch_num_) * kv_head_num_;
+                k = std::min(aic, std::min(bflat * q_group_ * std::max(m, static_cast<int64_t>(1)),
+                                           bflat * std::max(n, static_cast<int64_t>(1))));
+                k = std::max(k, static_cast<int64_t>(1));
+                int64_t kk = k;
+                int64_t R = std::max(std::max((bflat * n * q_group_ + kk - 1) / kk, (n + std::max(m, static_cast<int64_t>(1)) - 1) /
+                                                                                       std::max(m, static_cast<int64_t>(1))),
+                                     static_cast<int64_t>(q_group_));
+                latin_max = static_cast<uint32_t>(R * m);
+            }
+            cubeCoreNum_ = static_cast<uint32_t>(k);
+            tilingData_.set_cubeCoreNum(cubeCoreNum_);
+            tilingData_.set_deterLatinMax(latin_max);
+        } else {
+            tilingData_.set_deterLatinMax(0);
+        }
         context_->SetBlockDim(cubeCoreNum_);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;

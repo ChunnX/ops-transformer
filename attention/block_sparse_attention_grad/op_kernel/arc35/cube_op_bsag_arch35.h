@@ -171,12 +171,7 @@ public:
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 
-        if constexpr (DETERMINISTIC_ENABLE) {
-            BindDetGm(det_dq_gm_, det_dq_base_, det_dq_tile_elems_, ping_pong_idx);
-            ComputeMMDQ(ds_l1_tensor, l1_b_tensor, det_dq_gm_, runTimeInfo);
-        } else {
-            ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
-        }
+        ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -184,12 +179,7 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
-        if constexpr (DETERMINISTIC_ENABLE) {
-            BindDetGm(det_dk_gm_, det_dk_base_, det_dkv_tile_elems_, ping_pong_idx);
-            ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, det_dk_gm_, runTimeInfo);
-        } else {
-            ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
-        }
+        ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -197,12 +187,7 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
-        if constexpr (DETERMINISTIC_ENABLE) {
-            BindDetGm(det_dv_gm_, det_dv_base_, det_dkv_tile_elems_, ping_pong_idx);
-            ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, det_dv_gm_, runTimeInfo);
-        } else {
-            ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
-        }
+        ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -306,13 +291,8 @@ private:
             fixpipeParamsV220.nSize = head_dim_;
             fixpipeParamsV220.srcStride = nProcessAlign;
             fixpipeParamsV220.unitFlag = 3;
-            if constexpr (DETERMINISTIC_ENABLE) {
-                fixpipeParamsV220.dstStride = head_dim_;
-                MM345CopyOut<false>(outGm, l0_c_tensor, fixpipeParamsV220);
-            } else {
-                fixpipeParamsV220.dstStride = kv_stride_;
-                MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
-            }
+            fixpipeParamsV220.dstStride = kv_stride_;
+            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         }
         SET_FLAG(FIX, M, evnet_id);
     }
@@ -352,13 +332,8 @@ private:
         fixpipeParamsV220.nSize = head_dim_;
         fixpipeParamsV220.srcStride = mProcessAlign;
         fixpipeParamsV220.unitFlag = 3;
-        if constexpr (DETERMINISTIC_ENABLE) {
-            fixpipeParamsV220.dstStride = head_dim_;
-            MM345CopyOut<false>(outGm, l0_c_tensor, fixpipeParamsV220);
-        } else {
-            fixpipeParamsV220.dstStride = q_stride_;
-            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
-        }
+        fixpipeParamsV220.dstStride = q_stride_;
+        MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
         SET_FLAG(FIX, M, evnet_id);
     }
 

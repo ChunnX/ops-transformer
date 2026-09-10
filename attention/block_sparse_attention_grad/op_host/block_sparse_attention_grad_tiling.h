@@ -46,6 +46,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sftgTmpSpaceSize);
 TILING_DATA_FIELD_DEF(uint32_t, BlockX);
 TILING_DATA_FIELD_DEF(uint32_t, BlockY);
 TILING_DATA_FIELD_DEF(uint8_t, deterministic);
+TILING_DATA_FIELD_DEF(uint32_t, deterLatinMax);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradFrontTilingData);
 END_TILING_DATA_DEF;
 

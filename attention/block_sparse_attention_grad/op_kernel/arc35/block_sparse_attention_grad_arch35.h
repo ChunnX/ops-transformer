@@ -141,21 +141,24 @@
  
              if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
                  CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
-                 if constexpr (DETERMINISTIC_ENABLE) {
-                    AscendC::CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_DETER_FLAG[1]);
-                 }
                  cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                  CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
                  cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                  cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                  SET_FLAG(MTE1, MTE2, EVENT_ID0);
                  WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
-                 if constexpr (DETERMINISTIC_ENABLE) {
-                     AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_DETER_FLAG[0]);
+             }
+             if constexpr (DETERMINISTIC_ENABLE) {
+                 if (taskId > 0) {
+                     CrossCoreSetFlag<0, PIPE_FIX>(FLAG_DETER_FIX);
+                     CrossCoreWaitFlag<0, PIPE_FIX>(FLAG_DETER_FIX);
                  }
              }
- 
-             if (runTimeInfo_[ping_pong_idx].need_compute == false) {
+             if constexpr (DETERMINISTIC_ENABLE) {
+                 if (taskId >= addr_.GetDeterMaxRound()) {
+                     break;
+                 }
+             } else if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                  break;
              }
              taskId++;
@@ -184,12 +187,6 @@
          SyncAll();
          AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
          this->SetEventFlag();
-         uint32_t max_task_num = 0;
-         if constexpr (DETERMINISTIC_ENABLE) {
-             AddrComputeMaxTaskModule<BSA_TYPE> maxTaskAddr;
-             maxTaskAddr.Init(tilingData, actualQseqlen, actualKvseqlen, blockSparseMask);
-             max_task_num = maxTaskAddr.PrecomputeMaxTaskNum();
-         }
 
          while (true) {
              ping_pong_idx = taskId % 2;
@@ -210,27 +207,10 @@
                  vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
                                           runTimeInfo_[ping_pong_idx]);
                  CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
-             } else if constexpr (DETERMINISTIC_ENABLE) {
-                 vecOp.WriteInvalidOffsetToGM(ping_pong_idx);
              }
 
              if constexpr (DETERMINISTIC_ENABLE) {
-                 if (taskId > 0) {
-                    bool last_valid = runTimeInfo_[last_ping_pong_idx].need_compute;
-                    if (last_valid) {
-                        CrossCoreWaitFlag<2, PIPE_MTE2>(FLAG_DETER_FLAG[0]);
-                    }
-                    SyncAll();
-                    vecOp.SendVecDeterPost(dq_workspace_, dk_workspace_, dv_workspace_, last_ping_pong_idx);
-                    SyncAll();
-                    if (last_valid) {
-                        CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_DETER_FLAG[1]);
-                    }
-                 }
-             }
-             
-             if constexpr (DETERMINISTIC_ENABLE) {
-                if (taskId > max_task_num) {
+                if (taskId >= addr_.GetDeterMaxRound()) {
                     break;
                 }
              } else if (runTimeInfo_[ping_pong_idx].need_compute == false) {
@@ -254,9 +234,6 @@
             SET_FLAG(FIX, M, EVENT_ID3);
             SET_FLAG(FIX, M, EVENT_ID4);
          } else {
-            if constexpr (DETERMINISTIC_ENABLE) {
-                CrossCoreSetFlag<2, PIPE_V>(FLAG_DETER_FLAG[1]);
-            }
             SET_FLAG(V, MTE2, EVENT_ID3);
             SET_FLAG(V, MTE2, EVENT_ID4);
          }
@@ -265,9 +242,6 @@
      __aicore__ inline void WaitEventFlag()
      {
          if ASCEND_IS_AIC {
-            if constexpr (DETERMINISTIC_ENABLE) {
-                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_DETER_FLAG[1]);
-            }
             WAIT_FLAG(M, MTE1, EVENT_ID3);
             WAIT_FLAG(M, MTE1, EVENT_ID4);
             WAIT_FLAG(FIX, M, EVENT_ID3);

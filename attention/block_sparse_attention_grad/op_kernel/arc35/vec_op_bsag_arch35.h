@@ -378,10 +378,6 @@ public:
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
         }
-        if constexpr (DETERMINISTIC_ENABLE) {
-            WriteOffsetToGM(pingpong_idx, runTimeInfo.queryGmOffset, runTimeInfo.keyGmOffset,
-                            runTimeInfo.s1Len, runTimeInfo.s2Len, runTimeInfo.is_singlekv_last);
-        }
     }
 
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
