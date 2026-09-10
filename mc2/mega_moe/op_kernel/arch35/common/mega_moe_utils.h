@@ -529,26 +529,65 @@ __aicore__ inline void WaitUntilGmFlagAtLeast(__gm__ int32_t *flagAddr, int32_t 
     }
 }
 
-// 全卡同步：各 AIV 按任务分工分摊 rank 握手，末尾执行本卡 AIV 同步。
+// 同一 launch 内阶段由 0 单调推进到 1、2；公共输入屏障前由 ResetSyncStatus 清零。
+// 每个 AIV1 独占一个 cache line，达到更晚阶段也表示已通过此前阶段。
+__aicore__ inline void SyncAiv1Subgroup(GM_ADDR syncPtr, const AivJobContext &job, int32_t phase)
+{
+    auto *arrivals = reinterpret_cast<__gm__ int32_t *>(syncPtr);
+    WriteGmByPassDCache(arrivals + job.jobIndex * INT_CACHELINE, phase);
+    for (uint32_t peer = 0; peer < job.totalJobs; ++peer) {
+        while (ReadGmByPassDCache(arrivals + peer * INT_CACHELINE) < phase) {
+            const int64_t pollStart = GetSystemCycle();
+            while (GetSystemCycle() - pollStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
+            }
+        }
+    }
+}
+
+// 默认全 AIV：调用前已通过公共屏障，握手后使用 SyncAll<true> 汇合。
+// Aiv1Only：发送已完成的 AIV1 先汇合再代表本卡握手，最后仅汇合 AIV1。
+// aivJob 始终使用物理 AIV 编号；子组模式在函数内转换为连续的 block 编号。
+template <bool Aiv1Only = false>
 __aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
-                                                const AivJobContext &aivJob)
+                                                const AivJobContext &aivJob, GM_ADDR aiv1SyncPtr = nullptr)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
-    __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
-    __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + 48U * 1024U +
-                                                                   static_cast<uint64_t>(aivJob.jobIndex) * 64U);
-    int32_t count = ReadGmByPassDCache(syncCount) + 1;
-    for (uint32_t rankIdx = aivJob.jobIndex; rankIdx < worldSize; rankIdx += aivJob.totalJobs) {
-        __gm__ int32_t *remoteSyncAddr =
-            reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
+    AivJobContext syncJob = aivJob;
+    uint32_t firstPhysicalCoreIdx = aivJob.jobIndex;
+    if constexpr (Aiv1Only) {
+        if (GetSubBlockIdx() != 1U) {
+            return;
+        }
+        syncJob = {.jobIndex = aivJob.jobIndex / 2U, .totalJobs = aivJob.totalJobs / 2U};
+        firstPhysicalCoreIdx = syncJob.jobIndex * 2U;
+        // 本卡所有发送核完成后，才能向远端发布本卡输入就绪信号。
+        SyncAiv1Subgroup(aiv1SyncPtr, syncJob, 1);
+    }
+    auto *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
+    auto *syncCount = reinterpret_cast<__gm__ int32_t *>(
+        rankSyncInWorldPtr + 48U * 1024U + static_cast<uint64_t>(firstPhysicalCoreIdx) * 64U);
+    const int32_t count = ReadGmByPassDCache(syncCount) + 1;
+    // 两种模式共用跨卡握手，仅参与核的逻辑分工不同。
+    for (uint32_t rankIdx = syncJob.jobIndex; rankIdx < worldSize; rankIdx += syncJob.totalJobs) {
+        auto *remoteSyncAddr = reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
         WriteGmByPassDCache(remoteSyncAddr, count);
         GmSignalWaitBarrier(syncRank + rankIdx * INT_CACHELINE, count);
     }
     WriteGmByPassDCache(syncCount, count);
+    if constexpr (Aiv1Only) {
+        // 代本 block 的两个物理 AIV 更新 epoch，保持计数读取及后续全 AIV 输出同步协议不变。
+        WriteGmByPassDCache(syncCount + 64U / sizeof(int32_t), count);
+    }
     PipeBarrier<PIPE_ALL>();
-    SyncAll<true>();
+    if constexpr (Aiv1Only) {
+        // 未分到 rank 握手任务的核，也必须等到本卡全部握手及 epoch 更新完成。
+        SyncAiv1Subgroup(aiv1SyncPtr, syncJob, 2);
+    } else {
+        (void)aiv1SyncPtr;
+        SyncAll<true>();
+    }
 }
 
 template <AscendC::HardEvent event, int32_t eventId>

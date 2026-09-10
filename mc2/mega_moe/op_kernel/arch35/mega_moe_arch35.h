@@ -85,7 +85,6 @@ protected:
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
     __aicore__ inline void ProcessInputPreparationStage();
-    __aicore__ inline void ProcessRoutesWithShared();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
                                                    uint32_t sliceTokenCount,
@@ -184,9 +183,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitInputPrepareConfigs
                                                              typename SharedQuantConfig::QuantScaleType, false,
                                                              SharedQuantConfig::A_ELEMS_PER_BYTE>(k_, params_);
     }
-    // Shared MTE routes use one AIV1 per block; other paths retain all AIV jobs.
-    const uint32_t routeJobIndex = sharedExpertNum_ > 0U ? blockIdx_ : aivCoreIdx_;
-    sendMaskConfig_ = CreateSendMaskConfig(params_, routeJobIndex);
+    // 共享专家启用时仅 AIV1 计算发送 topK 有效下标，其余情况保留全 AIV 分工。
+    const uint32_t topkValidIndexCoreIdx = sharedExpertNum_ > 0U ? blockIdx_ : aivCoreIdx_;
+    sendMaskConfig_ = CreateSendMaskConfig(params_, topkValidIndexCoreIdx);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -460,7 +459,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         Ops::Base::CeilAlign(static_cast<uint64_t>(resetBatchElementCount), static_cast<uint64_t>(INT32_PER_256B)) *
         sizeof(int32_t);
 
-    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, params_.tilingData->routeJobCount);
+    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, GetTopkValidIndexCoreNum(params_.tilingData));
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
@@ -707,55 +706,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
 }
 
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessRoutesWithShared()
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    if (GetSubBlockIdx() != 1U) {
-        return;
-    }
-    const AivJobContext routeJob{.jobIndex = blockIdx_, .totalJobs = params_.tilingData->routeJobCount};
-    GatherAndSendExpertCompactRoutes(routeJob, commonConfig_, params_, g_winRankAddr_, sendMaskConfig_,
-                                     sendMaskScratch_, aivCoreIdx_);
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    // ResetSyncStatus cleared these slots before the common input barrier.
-    // Monotonic 1 -> 2 allows a slow peer to observe an already-advanced slot.
-    auto *arrivals = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.routesSubgroupSyncPtr);
-    WriteGmByPassDCache(arrivals + blockIdx_ * INT_CACHELINE, 1);
-    for (uint32_t peer = 0; peer < blockNum_; ++peer) {
-        while (ReadGmByPassDCache(arrivals + peer * INT_CACHELINE) < 1) {
-            const int64_t pollStart = GetSystemCycle();
-            while (GetSystemCycle() - pollStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
-            }
-        }
-    }
-    auto *syncRank = reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.rankSyncInWorldPtr);
-    auto *counts = reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.rankSyncInWorldPtr + 48U * 1024U);
-    constexpr uint32_t counterStride = 64U / sizeof(int32_t);
-    const uint32_t firstJob = blockIdx_ * 2U;
-    const int32_t epoch = ReadGmByPassDCache(counts + firstJob * counterStride) + 1;
-    for (uint32_t peerRank = blockIdx_; peerRank < worldSize_; peerRank += blockNum_) {
-        auto *remote = reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[peerRank]);
-        WriteGmByPassDCache(remote + rankId_ * INT_CACHELINE, epoch);
-        GmSignalWaitBarrier(syncRank + peerRank * INT_CACHELINE, epoch);
-    }
-    // Preserve both physical-AIV counters, including slot zero consumed by
-    // count-table preparation and the original full-AIV output synchronization.
-    WriteGmByPassDCache(counts + firstJob * counterStride, epoch);
-    WriteGmByPassDCache(counts + (firstJob + 1U) * counterStride, epoch);
-    PipeBarrier<PIPE_ALL>();
-    WriteGmByPassDCache(arrivals + blockIdx_ * INT_CACHELINE, 2);
-    for (uint32_t peer = 0; peer < blockNum_; ++peer) {
-        while (ReadGmByPassDCache(arrivals + peer * INT_CACHELINE) < 2) {
-            const int64_t pollStart = GetSystemCycle();
-            while (GetSystemCycle() - pollStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
-            }
-        }
-    }
-}
-
 /*
  * 所有 MTE Wave 路径共用相同的阶段边界，派生类只负责 MoE 专家 Wave 的具体编排。
  */
@@ -775,13 +725,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
-    // Only shared-expert launches split roles after the common preparation barrier.
-    // A8W8/A4W4: AIC/AIV0 run shared GMM1/activation while AIV1 sends routes.
-    // A8W4: AIV0 runs the weight prologue; AIV1 starts activation after routes.
-    // Input readiness uses an AIV1-only handshake, without waiting for computing AIV0.
-    // Dispatch publishes count-ready flags before the compute roles consume MoE counts.
+    // 共享专家启用时，计算与 topK 有效下标发送在公共输入屏障后分别推进。
+    // A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行发送及输入同步。
+    // A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成发送及同步后执行共享激活。
+    // 子组同步只等待 AIV1，避免阻塞正在执行共享计算的 AIV0。
     if (sharedExpertNum_ > 0U) {
-        ProcessRoutesWithShared();
+        if constexpr (g_coreType == AIV) {
+            if (GetSubBlockIdx() == 1U) {
+                const AivJobContext topkValidIndexJob{
+                    .jobIndex = blockIdx_, .totalJobs = GetTopkValidIndexCoreNum(params_.tilingData)};
+                GatherAndSendExpertCompactRoutes(topkValidIndexJob, commonConfig_, params_, g_winRankAddr_,
+                                                 sendMaskConfig_, sendMaskScratch_, aivCoreIdx_);
+                exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
+                CrossRankSyncInWorldSize<true>(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_,
+                                               aivJob_, params_.workspaceInfo.aiv1SyncPtr);
+            }
+        }
     } else {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
