@@ -12,7 +12,7 @@
  * \file msa_index_score.cpp
  * \brief MsaIndexScore kernel 入口。
  *
- * 入参顺序与 op_def / aclnn 对齐：
+ * 入参顺序与 op_def/aclnn 对齐：
  *   query, key, block_table, scale, atten_mask, actual_seq_qlen, actual_seq_klen, start_loc, score
  * atten_mask 仅做 host 校验；device 侧按 sparse_mode 解析因果，不消费该 GM。
  */
