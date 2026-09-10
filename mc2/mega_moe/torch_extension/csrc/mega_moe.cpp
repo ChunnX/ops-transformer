@@ -67,38 +67,59 @@ struct MegaMoeTensorInputs {
     const c10::optional<at::Tensor> &maskBuffer;
 };
 
+static void CheckMegaMoeInputsA5(const MegaMoeTensorInputs &inputs, int64_t epWorldSize, int64_t moeExpertNum,
+                                 const char *socName)
+{
+    TORCH_CHECK(moeExpertNum >= epWorldSize && moeExpertNum <= 2048 && moeExpertNum % epWorldSize == 0,
+                "num_experts must be in [ep_world_size, 2048] and divisible by ep_world_size on ", socName,
+                ", but got num_experts=", moeExpertNum, " and ep_world_size=", epWorldSize);
+    TORCH_CHECK(!inputs.weight1.empty(), "l1_weights must not be empty on Ascend950.");
+    TORCH_CHECK(!inputs.weight2.empty(), "l2_weights must not be empty on Ascend950.");
+    TORCH_CHECK(inputs.weightScales1.has_value() && !inputs.weightScales1->empty(),
+                "l1_weights_sf must not be None or empty on Ascend950.");
+    TORCH_CHECK(inputs.weightScales2.has_value() && !inputs.weightScales2->empty(),
+                "l2_weights_sf must not be None or empty on Ascend950.");
+    CheckInputAbsent(inputs.xActiveMask, "x_active_mask", socName);
+    CheckInputAbsent(inputs.bias1, "l1_bias", socName);
+    CheckInputAbsent(inputs.bias2, "l2_bias", socName);
+    CheckInputAbsent(inputs.sharedBias1, "shared_l1_bias", socName);
+    CheckInputAbsent(inputs.sharedBias2, "shared_l2_bias", socName);
+    CheckNpuInput(inputs.x, "x", socName);
+    CheckNpuInput(inputs.context, "context", socName);
+    CheckNpuInput(inputs.topkIds, "topk_ids", socName);
+    CheckNpuInput(inputs.topkWeights, "topk_weights", socName);
+    CheckNpuInput(inputs.weight1, "l1_weights", socName);
+    CheckNpuInput(inputs.weight2, "l2_weights", socName);
+    CheckNpuInput(inputs.weightScales1, "l1_weights_sf", socName);
+    CheckNpuInput(inputs.weightScales2, "l2_weights_sf", socName);
+    CheckNpuInput(inputs.sharedWeight1, "shared_l1_weights", socName);
+    CheckNpuInput(inputs.sharedWeight2, "shared_l2_weights", socName);
+    CheckNpuInput(inputs.sharedWeightScales1, "shared_l1_weights_sf", socName);
+    CheckNpuInput(inputs.sharedWeightScales2, "shared_l2_weights_sf", socName);
+    CheckNpuInput(inputs.maskBuffer, "mask_buffer", socName);
+    // Check the original dtype before TensorListWrapper overrides the ACL dtype.
+    const auto checkScaleDtype = [socName](const c10::optional<std::vector<at::Tensor>> &scales, const char *name) {
+        if (!scales.has_value()) {
+            return;
+        }
+        for (size_t i = 0; i < scales->size(); ++i) {
+            const auto dtype = (*scales)[i].scalar_type();
+            TORCH_CHECK(dtype == at::ScalarType::Float8_e8m0fnu, name, "[", i, "] dtype must be float8_e8m0fnu on ",
+                        socName, ", but got ", dtype, ".");
+        }
+    };
+    checkScaleDtype(inputs.weightScales1, "l1_weights_sf");
+    checkScaleDtype(inputs.weightScales2, "l2_weights_sf");
+    checkScaleDtype(inputs.sharedWeightScales1, "shared_l1_weights_sf");
+    checkScaleDtype(inputs.sharedWeightScales2, "shared_l2_weights_sf");
+}
+
 static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorldSize, int64_t moeExpertNum,
                                const char *socName)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
-        TORCH_CHECK(moeExpertNum >= epWorldSize && moeExpertNum <= 2048 && moeExpertNum % epWorldSize == 0,
-                    "num_experts must be in [ep_world_size, 2048] and divisible by ep_world_size on ", socName,
-                    ", but got num_experts=", moeExpertNum, " and ep_world_size=", epWorldSize);
-        TORCH_CHECK(!inputs.weight1.empty(), "l1_weights must not be empty on Ascend950.");
-        TORCH_CHECK(!inputs.weight2.empty(), "l2_weights must not be empty on Ascend950.");
-        TORCH_CHECK(inputs.weightScales1.has_value() && !inputs.weightScales1->empty(),
-                    "l1_weights_sf must not be None or empty on Ascend950.");
-        TORCH_CHECK(inputs.weightScales2.has_value() && !inputs.weightScales2->empty(),
-                    "l2_weights_sf must not be None or empty on Ascend950.");
-        CheckInputAbsent(inputs.xActiveMask, "x_active_mask", socName);
-        CheckInputAbsent(inputs.bias1, "l1_bias", socName);
-        CheckInputAbsent(inputs.bias2, "l2_bias", socName);
-        CheckInputAbsent(inputs.sharedBias1, "shared_l1_bias", socName);
-        CheckInputAbsent(inputs.sharedBias2, "shared_l2_bias", socName);
-        CheckNpuInput(inputs.x, "x", socName);
-        CheckNpuInput(inputs.context, "context", socName);
-        CheckNpuInput(inputs.topkIds, "topk_ids", socName);
-        CheckNpuInput(inputs.topkWeights, "topk_weights", socName);
-        CheckNpuInput(inputs.weight1, "l1_weights", socName);
-        CheckNpuInput(inputs.weight2, "l2_weights", socName);
-        CheckNpuInput(inputs.weightScales1, "l1_weights_sf", socName);
-        CheckNpuInput(inputs.weightScales2, "l2_weights_sf", socName);
-        CheckNpuInput(inputs.sharedWeight1, "shared_l1_weights", socName);
-        CheckNpuInput(inputs.sharedWeight2, "shared_l2_weights", socName);
-        CheckNpuInput(inputs.sharedWeightScales1, "shared_l1_weights_sf", socName);
-        CheckNpuInput(inputs.sharedWeightScales2, "shared_l2_weights_sf", socName);
-        CheckNpuInput(inputs.maskBuffer, "mask_buffer", socName);
+        CheckMegaMoeInputsA5(inputs, epWorldSize, moeExpertNum, socName);
     }
     TORCH_CHECK((inputs.x.dim() == DIM_TWO) && (inputs.topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
     TORCH_CHECK(((inputs.x.scalar_type() == at::kBFloat16) || (inputs.x.scalar_type() == at::kHalf)) &&
