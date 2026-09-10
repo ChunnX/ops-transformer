@@ -158,10 +158,10 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
         qsmlaGs1LoopEndIdx = (runParam.actualS1Size + runParam.qSNumInOneBlock - 1) / runParam.qSNumInOneBlock;
     }
     if (!lastBN) {
-        runParam.qsmlaGs1LoopEndIdx = qsmlaGs1LoopEndIdx;
+        runParam.gs1LoopEndIdx = qsmlaGs1LoopEndIdx;
     } else {
         uint32_t actualNextGs1Idx = s2EndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
-        runParam.qsmlaGs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? qsmlaGs1LoopEndIdx : actualNextGs1Idx;
+        runParam.gs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? qsmlaGs1LoopEndIdx : actualNextGs1Idx;
     }
 
     if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {

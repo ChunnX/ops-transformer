@@ -503,8 +503,9 @@ __aicore__ inline uint32_t CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTenso
             // batch一致性场景，按逻辑 token 顺序读取，禁止交换物理地址顺序
             keySrcStride = (qsmlaKeyOffset1 - qsmlaKeyOffset0) - combineBytes;
         } else {
-            keySrcStride =
-                (qsmlaKeyOffset0 > qsmlaKeyOffset1 ? (qsmlaKeyOffset0 - qsmlaKeyOffset1) : (qsmlaKeyOffset1 - qsmlaKeyOffset0)) - combineBytes;
+            keySrcStride = (qsmlaKeyOffset0 > qsmlaKeyOffset1 ? (qsmlaKeyOffset0 - qsmlaKeyOffset1) :
+                                                                (qsmlaKeyOffset1 - qsmlaKeyOffset0)) -
+                           combineBytes;
         }
         if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || constInfo.sparseBlockSize > 1) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
