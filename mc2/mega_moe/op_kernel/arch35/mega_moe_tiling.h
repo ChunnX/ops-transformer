@@ -187,6 +187,7 @@ struct MegaMoeTilingData {
     MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithExtraExpert;
     MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithoutExtraExpert;
     uint32_t sendMaskCoreCountWithExtraExpert;
+    uint32_t routeJobCount; // Shared A8W8 MTE: one routing job per AIV1.
     // Unpermute 的 TilingByCore 生成若干完整 token chunk 和至多一个尾 chunk，分别预计算配置；
     // 对应 kernel UnpermuteBuffInit 的选择条件。
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
