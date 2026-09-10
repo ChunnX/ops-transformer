@@ -21,6 +21,7 @@ struct FaDnConfig {
     static constexpr uint32_t s2BaseSize = static_cast<uint32_t>(FA_T::s2BaseSize);
     static constexpr uint32_t dBaseSize = static_cast<uint32_t>(FA_T::dBaseSize);
     static constexpr uint32_t dVBaseSize = static_cast<uint32_t>(FA_T::dVBaseSize);
+    static_assert(mBaseSize == 128 && dVBaseSize <= 128, "PV DN requires 128 query rows and DV storage <=128");
     static constexpr uint32_t CV_RATIO = 2;
     static constexpr uint32_t dTemplateAlign64 = (dVBaseSize + 63U) / 64U * 64U;
     static constexpr bool DEEP_PRELOAD =
@@ -84,15 +85,6 @@ struct FaDnConfig {
                              2U * (UB_MM1_BUF_BYTES + 128U) + (id - 2U) * (UB_MM2_BUF_BYTES + 128U);
         }
         return id * UB_MM_RES_BUF_BYTES;
-    }
-    template <typename Info, typename QSeq, typename KvSeq>
-    static __aicore__ inline bool UsePvDn(const Info &info, QSeq &qSeq, KvSeq &kvSeq)
-    {
-        // Whole invocation guard; short/tail/split tasks retain the general output path.
-        return mBaseSize == 128 && info.bSize == 1 && info.gSize == 1 && info.dSizeV > 0 && info.dSizeV <= 128 &&
-               info.dSizeV % 4 == 0 && !info.learnableSinkFlag && info.s1Size >= 16384 &&
-               info.s1Size % mBaseSize == 0 && info.s2Size >= 16384 && info.s2Size % s2BaseSize == 0 &&
-               qSeq.GetActualSeqLength(0) == info.s1Size && kvSeq.GetActualSeqLength(0) == info.s2Size;
     }
 };
 // Cube and Vector maintain independent instances with the same slot sequence.

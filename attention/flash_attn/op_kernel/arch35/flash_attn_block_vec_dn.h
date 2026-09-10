@@ -156,7 +156,6 @@ public:
     GlobalTensor<float> sinkGm_;
 
     T negativeFloatScalar_;
-    bool pvDn_ = false;
 
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVecDn(ConstInfo_t &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
@@ -169,13 +168,6 @@ public:
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                      __gm__ uint8_t *workspace, __gm__ uint8_t *query)
     {
-        if constexpr (dVBaseSize <= 128 && mBaseSize == 128 && IsSameType<INPUT_T, bfloat16_t>::value &&
-                      IsSameType<OUTPUT_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
-                      LAYOUT_T == FA_LAYOUT::BNSD && LAYOUT_KV == FA_LAYOUT::BNSD &&
-                      FA_T::attnOutLayout == FA_LAYOUT::BNSD) {
-            pvDn_ = Config::UsePvDn(constInfo_, qSeqLensTool_, kvSeqLensTool_);
-        }
-
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
 
@@ -575,8 +567,20 @@ public:
             // Current PV is fully consumed; keep its slot owned until output MTE3 completes.
             AscendC::PipeBarrier<PIPE_V>();
             auto sum = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
+            if (constInfo_.enableFlashDecode && runInfo.isS2SplitCore) {
+                FaVectorApi::FlashOutputDnWorkspaceVF(
+                    (__ubuf__ float *)cur.GetPhyAddr(), (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
+                    (__ubuf__ float *)sum.GetPhyAddr(), static_cast<uint16_t>(runInfo.actVecMSize),
+                    static_cast<uint16_t>(columns), static_cast<uint16_t>(dTemplateAlign64));
+                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
+                Bmm2ResForFDCopyOut(runInfo, cur, 0, runInfo.actVecMSize);
+                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(sync);
+                return;
+            }
             auto output = cur.template ReinterpretCast<OUTPUT_T>();
-            FaVectorApi::FlashPackOutputDnRows64VF((__ubuf__ bfloat16_t *)output.GetPhyAddr(),
+            FaVectorApi::FlashPackOutputDnRows64VF((__ubuf__ OUTPUT_T *)output.GetPhyAddr(),
                                                    (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
                                                    (__ubuf__ float *)sum.GetPhyAddr(), static_cast<uint16_t>(columns));
             AscendC::PipeBarrier<PIPE_V>();
@@ -597,7 +601,7 @@ public:
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-            Bmm2DataCopyOutTrans(runInfo, finalOutput, 0, 64);
+            Bmm2DataCopyOutTrans(runInfo, finalOutput, 0, runInfo.actVecMSize);
             Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(sync);
         } else {
@@ -610,89 +614,12 @@ public:
     {
         uint32_t mmResUbBufId = AcquireMmSlot(true);
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
-        if constexpr (dVBaseSize <= 128 && mBaseSize == 128 && IsSameType<INPUT_T, bfloat16_t>::value) {
-            if (pvDn_ && !runInfo.isS2SplitCore) {
-                ProcessVec2DnOutput(runInfo, mmResUbBufId, mmSyncIdx);
-                return;
-            }
-        }
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             return;
         }
-
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
-        {
-            Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-            LocalTensor<T> mm2ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<T>();
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                uint32_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
-                DataCopy(ubVec2Res_, mm2ResUbTensor, vec2CalcSize);
-            } else {
-                LocalTensor<T> expUb =
-                    softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
-                LocalTensor<T> pScaleUb;
-
-                float deSCalePreVValue = 1.0f;
-                if (!runInfo.isLastS2Loop) {
-                    if constexpr (SPLIT_MM_QUEUES && IsSameType<INPUT_T, bfloat16_t>::value && dTemplateAlign64 == 64) {
-                        if (runInfo.actVecMSize == 64) {
-                            FaVectorApi::FlashUpdateD64FullVF((__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
-                                                              (__ubuf__ float *)mm2ResUbTensor.GetPhyAddr(),
-                                                              (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
-                                                              (__ubuf__ float *)expUb.GetPhyAddr());
-                        } else {
-                            FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                                ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize,
-                                dTemplateAlign64, 1.0, 1.0);
-                        }
-                    } else {
-                        FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                            ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize,
-                            dTemplateAlign64, 1.0, 1.0);
-                    }
-                } else {
-                    LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
-                                                              (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
-                    FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                        ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, sumUb, runInfo.actVecMSize,
-                        dTemplateAlign64, 1.0, 1.0);
-                }
-            }
-            Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-        }
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 通知下个BMM1: Vec2已读完mmRes, slot空闲
-
-        if (runInfo.isLastS2Loop) {
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-                LocalTensor<float> sumUb =
-                    softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
-                LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    ubVec2Res_, ubVec2Res_, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
-                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-            }
-            uint32_t mStartVec = 0;
-            uint32_t mDealSize = runInfo.actVecMSize;
-            if (constInfo_.enableFlashDecode && runInfo.isS2SplitCore) {
-                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                Bmm2ResForFDCopyOut(runInfo, ubVec2Res_, mStartVec, mDealSize);
-                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-            } else {
-                LocalTensor<OUTPUT_T> attenOut;
-                int64_t dSizeAligned64 = (int64_t)dVBaseSize;
-
-                attenOut.SetAddr(ubVec2Res_.address_);
-                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-                Cast(attenOut, ubVec2Res_, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
-                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-
-                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
-                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-            }
-        }
+        ProcessVec2DnOutput(runInfo, mmResUbBufId, mmSyncIdx);
     }
 };
 

@@ -93,23 +93,57 @@ __simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ fl
         StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + (i * 4 + 2) * 64, c2, mask);
         StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + (i * 4 + 3) * 64, c3, mask);
     }
+    for (uint16_t col = columns / 4 * 4; col < columns; ++col) {
+        LoadAlign(p0, accum + col * 64);
+        LoadAlign(c0, cur + col * 64);
+        if constexpr (last) {
+            Mul(p0, p0, scale, mask);
+            Add(c0, c0, p0, mask);
+        } else {
+            MulAddDst(c0, p0, scale, mask);
+        }
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(accum + col * 64, c0, mask);
+    }
+}
+// Split-KV workspace remains FP32 row-major for the existing reduction block.
+__simd_vf__ inline void FlashOutputDnWorkspaceVF(__ubuf__ float *out, __ubuf__ float *accum, __ubuf__ float *sum,
+                                                 uint16_t rows, uint16_t columns, uint16_t stride)
+{
+    MaskReg all = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<uint32_t> lane, base, index, rowIndex;
+    RegTensor<float> value, denominator;
+    Arange((RegTensor<int32_t> &)lane, 0);
+    Muls(base, lane, 64U, all);
+    for (uint16_t row = 0; row < rows; ++row) {
+        Duplicate(rowIndex, static_cast<uint32_t>(row));
+        Gather(denominator, sum, rowIndex, all);
+        for (uint16_t col = 0; col < columns; col += 64) {
+            uint32_t count = columns - col;
+            MaskReg mask = UpdateMask<float>(count);
+            Adds(index, base, static_cast<uint32_t>(col) * 64U + row, all);
+            Gather(value, accum, index, mask);
+            Div(value, value, denominator, mask);
+            StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(out + row * stride + col, value, mask);
+        }
+    }
 }
 static constexpr Reg::CastTrait castDnOutput = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
                                                 RoundMode::CAST_ROUND};
-__simd_vf__ inline void FlashPackOutputDnRows64VF(__ubuf__ bfloat16_t *out, __ubuf__ float *accum, __ubuf__ float *sum,
+template <typename OUT_T>
+__simd_vf__ inline void FlashPackOutputDnRows64VF(__ubuf__ OUT_T *out, __ubuf__ float *accum, __ubuf__ float *sum,
                                                   uint16_t columns)
 {
     MaskReg mf = CreateMask<float, MaskPattern::ALL>();
     MaskReg half = CreateMask<uint16_t, MaskPattern::VL64>();
     RegTensor<float> denominator, x;
-    RegTensor<bfloat16_t> cast, packed;
+    RegTensor<OUT_T> cast, packed;
     LoadAlign(denominator, sum);
     for (uint16_t col = 0; col < columns; ++col) {
         LoadAlign(x, accum + col * 64);
         Div(x, x, denominator, mf);
-        Cast<bfloat16_t, float, castDnOutput>(cast, x, mf);
+        Cast<OUT_T, float, castDnOutput>(cast, x, mf);
         Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t> &)packed, (RegTensor<uint32_t> &)cast);
-        StoreAlign<bfloat16_t, Reg::StoreDist::DIST_NORM_B16>(out + col * 64, packed, half);
+        StoreAlign<OUT_T, Reg::StoreDist::DIST_NORM_B16>(out + col * 64, packed, half);
     }
 }
 

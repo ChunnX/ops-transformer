@@ -81,8 +81,6 @@ public:
     static constexpr uint32_t L0B_BUFFER_ID1 = 9U;
     static constexpr uint32_t L0C_BUFFER_ID0 = 10U;
 
-    bool pvDn_ = false;
-
     // UB
     static constexpr bool SPLIT_MM_QUEUES = Config::SPLIT_MM_QUEUES;
     static constexpr uint32_t UB_MM_RES_BUFCNT = Config::UB_MM_RES_BUFCNT;
@@ -155,12 +153,6 @@ public:
     __aicore__ inline void InitBlock(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                      __gm__ uint8_t *blockTable)
     {
-        if constexpr (dVBaseSize <= 128 && mBaseSize == 128 && IsSameType<INPUT_T, bfloat16_t>::value &&
-                      IsSameType<OUTPUT_T, bfloat16_t>::value && !PAGE_ATTENTION && !FA_T::hasMask &&
-                      LAYOUT_T == FA_LAYOUT::BNSD && LAYOUT_KV == FA_LAYOUT::BNSD &&
-                      FA_T::attnOutLayout == FA_LAYOUT::BNSD) {
-            pvDn_ = Config::UsePvDn(constInfo_, qSeqLensTool_, kvSeqLensTool_);
-        }
         if constexpr (PAGE_ATTENTION) {
             blockTableGm_.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
@@ -171,9 +163,6 @@ public:
                      keyGm_, key, constInfo_.keyBnStride, constInfo_.keyN2Stride);
         InitKVBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, constInfo_.dSizeV,
                      valueGm_, value, constInfo_.valueBnStride, constInfo_.valueN2Stride);
-        // Whole-invocation guard: no mixing unit-managed and software-managed L0C reuse.
-
-        // The full D72 path writes and drains the same padded L0C unit ranges.
     }
 
     __aicore__ inline void InitBuffers()
@@ -418,26 +407,9 @@ public:
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
-        IterateBmm2l0Split(mm2ResUbTensor, pL1Tensor, runInfo);
+        IterateBmm2DnOutput(mm2ResUbTensor, pL1Tensor, runInfo);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
-    }
-
-    template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2PartialN(const DST_TENSOR_T &dstTensor, const LocalTensor<MM_T> &l0C,
-                                              uint32_t realN, RunInfo &runInfo)
-    {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (realN + 7) >> 3 << 3;
-        fixpipeParams.mSize = mBaseSize;
-        fixpipeParams.srcStride = (mBaseSize + 15) >> 4 << 4;
-        fixpipeParams.dstStride = (dVBaseSize + 15) >> 4 << 4;
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.unitFlag = 0U;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        CopyMmResult(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2DnOutput(LocalTensor<MM_T> &dst, LocalTensor<Q_T> &p, RunInfo &runInfo)
@@ -454,7 +426,8 @@ public:
         MMParam param{};
         param.singleM = constInfo_.dSizeV;
         param.singleN = 128;
-        param.singleK = s2BaseSize;
+        param.singleK = runInfo.actSingleLoopS2Size;
+        param.loadK = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
         param.isLeftTranspose = true;
         param.isRightTranspose = false;
         param.isOutKFisrt = true;
@@ -484,79 +457,6 @@ public:
         kvL1BufId_ = (kvL1BufId_ + 1U) % L1_KV_BUFCNT;
     }
 
-    __aicore__ inline void IterateBmm2l0Split(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor,
-                                              RunInfo &runInfo)
-    {
-        if constexpr (dVBaseSize <= 128 && mBaseSize == 128 && IsSameType<INPUT_T, bfloat16_t>::value) {
-            if (pvDn_ && !runInfo.isS2SplitCore) {
-                IterateBmm2DnOutput(mm2ResUbTensor, pL1Tensor, runInfo);
-                return;
-            }
-        }
-        LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[KvSlotOffset(kvL1BufId_)].template ReinterpretCast<KV_T>();
-        Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        CopyValueSlice(vL1Tensor, 0, constInfo_.dSizeV, runInfo);
-        Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        {
-            uint32_t nLoops = (constInfo_.dSizeV + 128 - 1) / 128;
-            // Mmad N=真实尾块宽度精确计算; LoadData 搬运宽度按分形粒度对齐(D=72→80, 与Nd2Nz写入组数一致);
-            // Fixpipe nSize=真实列 + dstStride=128(UB行距) → vec2 128宽读, 尾列脏但 D 轴逐元素隔离无害
-            uint32_t lastTileN = constInfo_.dSizeV - (nLoops - 1) * 128;
-            uint32_t ldN = ((lastTileN + 15) >> 4) << 4;
-            for (uint32_t n = 0; n < nLoops; n++) {
-                uint32_t tileN = (n == nLoops - 1) ? lastTileN : 128;
-                uint32_t tileLdN = (n == nLoops - 1) ? ldN : 128;
-
-                Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-
-                LocalTensor<MM_T> l0CSubTensor =
-                    l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
-                MMParam param = {(uint32_t)mBaseSize,
-                                 tileN,
-                                 (uint32_t)runInfo.actSingleLoopS2Size,
-                                 true,
-                                 false,
-                                 true,
-                                 true,
-                                 0,
-                                 0,
-                                 0,
-                                 tileLdN};
-                param.unitFlag = 0U;
-
-                uint32_t s2Aligned = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
-                uint64_t vL1Offset = n * 128U / 16U * s2Aligned * 16U;
-                LocalTensor<KV_T> vL1TileTensor = vL1Tensor[vL1Offset];
-
-                if constexpr (dVBaseSize > 128) {
-                    MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                        pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                } else {
-                    if constexpr (s2BaseSize == 128) {
-                        MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                    } else {
-                        // K128 keeps the full 128-row BF16 A tile within a 32KiB L0A slot.
-                        MatmulK<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(
-                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-                    }
-                }
-
-                Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-                Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-
-                uint32_t dstOffset = n * 128U;
-                FixpipeMm2PartialN(mm2ResUbTensor[dstOffset], l0CSubTensor, tileN, runInfo);
-
-                Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-
-                l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
-            }
-        }
-        Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
-        kvL1BufId_ = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
-    }
 }; // FANoQuantGqaBlockCubeDn
 
 // AIC/AIV 分编译占位（Mix kernel 在 AIV 侧重编译时使用）
