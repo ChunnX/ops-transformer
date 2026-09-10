@@ -1127,6 +1127,7 @@ class E2eMoeInitRoutingV3Spec:
         "float32": {"standard": "stat_rel_err"},
     }
 
+    @staticmethod
     def golden(
         x,
         expert_idx,
@@ -1171,47 +1172,188 @@ class E2eMoeInitRoutingV3Spec:
             active_expert_range,
             int(row_idx_type),
         )
+        return list(results)
 
-        templates = (
-            expanded_x_out,
-            expanded_row_idx_out,
-            expert_tokens_count_or_cumsum_out,
-            expanded_scale_out,
-        )
-        return [_numpy_to_torch(arr, tpl) for arr, tpl in zip(results, templates)]
-
-    def pre_compare(*outputs, **kwargs):
+    @staticmethod
+    def compare(*outputs, **kwargs):
+        results = []
         half = len(outputs) // 2
-        npu_outs = list(outputs[:half])
-        golden_outs = list(outputs[half:])
-        modified = False
         for i in range(half):
-            if npu_outs[i] is None or golden_outs[i] is None:
+            npu_out = outputs[i]
+            golden_out = outputs[half + i]
+            if golden_out is None:
+                results.append({"pass": True, "precision": 100.0})
                 continue
-            npu_arr = numpy.asarray(_torch_to_numpy(npu_outs[i]))
-            golden_arr = numpy.asarray(_torch_to_numpy(golden_outs[i]))
-            if (
-                npu_arr.size != golden_arr.size
-                and npu_arr.size > 0
-                and golden_arr.size > 0
-            ):
-                npu_flat = npu_arr.reshape(-1)
-                golden_flat = golden_arr.reshape(-1)
-                min_len = min(npu_flat.size, golden_flat.size)
-                npu_truncated = npu_flat[:min_len]
-                golden_truncated = golden_flat[:min_len]
-                target_shape = (
-                    golden_arr.shape
-                    if npu_flat.size >= golden_flat.size
-                    else npu_arr.shape
+            if npu_out is None:
+                results.append(
+                    {
+                        "pass": False,
+                        "precision": 0.0,
+                        "error_info": f"output[{i}] npu is None",
+                    }
                 )
-                npu_outs[i] = _numpy_to_torch(
-                    npu_truncated.reshape(target_shape), outputs[i]
+                continue
+            npu_arr = _torch_to_numpy(npu_out)
+            golden_arr = _torch_to_numpy(golden_out)
+            npu_flat = numpy.asarray(npu_arr).reshape(-1)
+            golden_flat = numpy.asarray(golden_arr).reshape(-1)
+            min_len = min(npu_flat.size, golden_flat.size)
+            npu_cmp = npu_flat[:min_len]
+            golden_cmp = golden_flat[:min_len]
+            dtype_name = str(golden_arr.dtype).lower()
+            all_custom_keywords = [
+                "e2m1",
+                "e1m2",
+                "float4",
+                "hifloat8",
+                "e4m3",
+                "e5m2",
+                "e8m0",
+                "hif8",
+                "int4",
+                "uint1",
+                "int2",
+                "uint2",
+            ]
+            is_custom_dtype = any(
+                x in dtype_name or x in str(npu_arr.dtype).lower()
+                for x in all_custom_keywords
+            )
+            if is_custom_dtype:
+                is_hifloat8 = (
+                    "hifloat8" in dtype_name
+                    or "hif8" in dtype_name
+                    or "hifloat8" in str(npu_arr.dtype).lower()
+                    or "hif8" in str(npu_arr.dtype).lower()
                 )
-                golden_outs[i] = _numpy_to_torch(
-                    golden_truncated.reshape(target_shape), outputs[half + i]
+
+                def _to_raw_uint8(arr):
+                    if arr.dtype.kind in ("i", "u"):
+                        vals = arr.reshape(-1).astype(numpy.uint8)
+                        if vals.size > 0 and numpy.max(vals) <= 15:
+                            n = vals.size - vals.size % 2
+                            lo = vals[:n:2]
+                            hi = vals[1:n:2]
+                            return ((hi << 4) | lo).astype(numpy.uint8)
+                        return vals
+                    try:
+                        raw = arr.view(numpy.uint8).reshape(-1).astype(numpy.uint8)
+                    except (ValueError, TypeError):
+                        raw = numpy.frombuffer(arr.tobytes(), dtype=numpy.uint8)
+                    if raw.size > 0 and numpy.max(raw) <= 15:
+                        n = raw.size - raw.size % 2
+                        lo = raw[:n:2]
+                        hi = raw[1:n:2]
+                        return ((hi << 4) | lo).astype(numpy.uint8)
+                    return raw
+
+                npu_raw = _to_raw_uint8(numpy.asarray(npu_arr))
+                golden_raw = _to_raw_uint8(numpy.asarray(golden_arr))
+                min_len_raw = min(npu_raw.size, golden_raw.size)
+                if is_hifloat8:
+                    npu_i8 = numpy.asarray(npu_raw[:min_len_raw]).astype(numpy.int8)
+                    golden_i8 = numpy.asarray(golden_raw[:min_len_raw]).astype(
+                        numpy.int8
+                    )
+                    diff = numpy.abs(numpy.subtract(npu_i8, golden_i8))
+                    npu_nan = numpy.isnan(npu_flat[:min_len].astype(numpy.float32))
+                    golden_nan = numpy.isnan(
+                        golden_flat[:min_len].astype(numpy.float32)
+                    )
+                    both_nan = numpy.logical_and(npu_nan, golden_nan)
+                    diff[both_nan[: diff.size]] = 0
+                    diff_count = int(numpy.sum(diff > 1))
+                    precision = (
+                        float(min_len_raw - diff_count) / min_len_raw * 100.0
+                        if min_len_raw > 0
+                        else 100.0
+                    )
+                    results.append(
+                        {
+                            "pass": (1 - precision / 100.0) <= 0.001,
+                            "precision": precision,
+                            "error_info": None
+                            if diff_count == 0
+                            else f"ulp mismatch {diff_count}/{min_len_raw}",
+                        }
+                    )
+                else:
+                    diff_count = int(
+                        numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                    )
+                    precision = (
+                        float(min_len_raw - diff_count) / min_len_raw * 100.0
+                        if min_len_raw > 0
+                        else 100.0
+                    )
+                    results.append(
+                        {
+                            "pass": diff_count == 0,
+                            "precision": precision,
+                            "error_info": None
+                            if diff_count == 0
+                            else f"byte mismatch {diff_count}/{min_len_raw}",
+                        }
+                    )
+                continue
+            is_int = golden_arr.dtype.kind in ("i", "u")
+            is_float = golden_arr.dtype.kind == "f" or any(
+                x in dtype_name
+                for x in [
+                    "float",
+                    "bfloat",
+                    "hifloat",
+                    "e4m3",
+                    "e5m2",
+                    "e8m0",
+                    "e2m1",
+                    "e1m2",
+                ]
+            )
+            if is_int and not is_float:
+                diff_count = int(numpy.sum(npu_cmp != golden_cmp))
+                precision = (
+                    float(min_len - diff_count) / min_len * 100.0
+                    if min_len > 0
+                    else 100.0
                 )
-                modified = True
+                results.append(
+                    {
+                        "pass": diff_count == 0,
+                        "precision": precision,
+                        "error_info": None
+                        if diff_count == 0
+                        else f"mismatch {diff_count}/{min_len}",
+                    }
+                )
+            else:
+                if "bfloat16" in dtype_name or "bf16" in dtype_name:
+                    rtol, atol = 0.004, 0.004
+                elif "float32" in dtype_name:
+                    rtol, atol = 0.0001, 0.0001
+                elif "float16" in dtype_name:
+                    rtol, atol = 0.001, 0.001
+                else:
+                    rtol = kwargs.get("rtol", 0.001)
+                    atol = kwargs.get("atol", 0.001)
+                npu_cmp_f = npu_cmp.astype(numpy.float32)
+                golden_cmp_f = golden_cmp.astype(numpy.float32)
+                close = numpy.isclose(
+                    npu_cmp_f, golden_cmp_f, rtol=rtol, atol=atol, equal_nan=True
+                )
+                fulfill = (
+                    float(numpy.sum(close)) / min_len * 100.0 if min_len > 0 else 100.0
+                )
+                results.append(
+                    {
+                        "pass": fulfill >= 99.5,
+                        "precision": fulfill,
+                        "error_info": None
+                        if fulfill >= 99.5
+                        else f"fulfill={fulfill:.2f}%",
+                    }
+                )
+        return results[0] if len(results) == 1 else results
 
 
 class AclnnMoeInitRoutingV3Spec:
