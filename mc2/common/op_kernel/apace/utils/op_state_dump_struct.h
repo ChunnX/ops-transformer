@@ -54,8 +54,8 @@ struct WorkspaceSegInfo {
     uint8_t reserved[7]; // 对齐
 };
 
-// Workspace 布局信息 (208 bytes)
-struct WorkspaceLayoutInfo {
+// Workspace 布局信息 (208 bytes)，用于异常时 DFX dump 解析 workspace 分段
+struct DfxWorkspaceLayoutInfo {
     uint64_t totalSize;                                // workspace 总大小
     uint32_t segCount;                                 // 实际段数
     uint32_t reserved;                                 // 对齐
@@ -84,11 +84,22 @@ struct PeermemSegInfo {
 };
 
 // Peermem 布局信息 (208 bytes)
-struct PeermemLayoutInfo {
-    uint64_t totalSize;                            // peermem 总大小 (== peermemDataSize)
-    uint32_t segCount;                             // 实际段数
-    uint32_t reserved;                             // 对齐
-    PeermemSegInfo segments[MAX_PEERMEM_SEGMENTS]; // 段数组 (按 offset 升序)
+// peermem: 本卡通信窗口内存，供对端 rank 通过 URMA/UDMA (RDMA) 直接读取
+struct DfxPeermemLayoutInfo {
+    uint64_t totalSize;                               // peermem 总大小 (== peermemDataSize)
+    uint32_t segCount;                                // 实际段数
+    uint32_t reserved;                                // 对齐
+    PeermemSegInfo segments[MAX_PEERMEM_SEGMENTS];    // 段数组 (按 offset 升序)
+};
+
+// ==================== DFX 统一头部 ====================
+
+// 统一 DFX 头部: 所有 MC2 tiling 结构的第一个成员(offset 0)，
+// 异常 dump 回调直接从 tiling blob 起始位置解析
+struct DfxDumpInfo {
+    DfxWorkspaceLayoutInfo workspaceLayout; // workspace 分段布局
+    uint64_t peermemDataSize;               // peermem 窗口总大小
+    DfxPeermemLayoutInfo peermemLayout;     // peermem 窗口分段布局
 };
 
 // ==================== State Dump ====================

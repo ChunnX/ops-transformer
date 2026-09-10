@@ -20,8 +20,9 @@
 #include "platform/platform_infos_def.h"
 #include "all_gather_matmul_v2_tiling_common.h"
 #include "mc2_exception_dump.h"
+#if MC2_DFX_ENABLE
 #include "../../op_kernel/all_gather_matmul_tiling_data.h"
-#include "op_host/op_tiling/mc2_tiling_struct.h"
+#endif
 
 using namespace AscendC;
 using namespace ge;
@@ -41,6 +42,9 @@ IMPL_OP_OPTILING(AllGatherMatmulV2)
 
 #if MC2_DFX_ENABLE
 // Register exception dump func
+// dump 回调按算子仅注册一次，dfxInfoOffset 取自 AllGatherMatmulTilingDataV2；
+// AllGatherMatmulTilingDataFp8 需与其保持相同的 mc2InitTiling/mc2CcTiling/dumpInfo
+// 前缀（即 dumpInfo 偏移一致），调整任一结构体前缀时必须同步维护该约束
 inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
     const char *socName = aclrtGetSocName();
@@ -49,14 +53,11 @@ inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AllGatherMatmulV2");
 
-    Mc2Exception::Mc2DumpTilingData(
-        args, "AllGatherMatmulV2",
-        11U,                                                                 // tilingGmArgIdx
-        0U,                                                                  // argsOffset
-        10U,                                                                 // workspaceGmArgIdx
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, quantMode),         // quantModeOffset
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, workspaceLayout),   // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, workspaceLayout)); // wsLayoutOffsetQuant
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AllGatherMatmulV2",
+                                            11U, // tilingGmArgIdx
+                                            10U, // workspaceGmArgIdx
+                                            static_cast<uint32_t>(offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2,
+                                                                           dumpInfo))); // dfxInfoOffset
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV2ExceptionFunc()

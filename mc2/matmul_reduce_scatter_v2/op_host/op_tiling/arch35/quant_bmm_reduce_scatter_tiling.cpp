@@ -594,6 +594,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     return tilingKey;
 }
 
+#if MC2_DFX_ENABLE
 ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
 {
     static_assert(Utils::MAX_WORKSPACE_SEGMENTS >= 5U, "Quant MMRS workspace layout capacity is insufficient");
@@ -626,7 +627,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
             offset, matmulWorkspaceSize, static_cast<uint8_t>(Utils::WS_SEG_MM_WORKSPACE), {}};
         offset += matmulWorkspaceSize;
     }
-#if MC2_DFX_ENABLE
     // DFX: 状态打点段前做512B对齐padding，再追加64KB STATE_DUMP段
     const uint64_t alignment = Utils::STATE_DUMP_PER_CORE_SIZE;
     const uint64_t padding = (alignment - offset % alignment) % alignment;
@@ -637,7 +637,6 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     workspaceLayout_.segments[idx++] = {
         offset, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
     offset += Utils::STATE_DUMP_TOTAL_SIZE;
-#endif
     workspaceLayout_.totalSize = offset;
     workspaceLayout_.segCount = idx;
     for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
@@ -647,6 +646,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
     }
     return ge::GRAPH_SUCCESS;
 }
+#endif // MC2_DFX_ENABLE
 
 ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
 {
@@ -660,10 +660,17 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
         OP_LOGE_WITH_INVALID_INPUT(opName_, "WorkspaceSizes");
         return ge::GRAPH_FAILED;
     }
+    workspaces[0] = myWorkSpaceSize_;
+#if MC2_DFX_ENABLE
     OP_TILING_CHECK(BuildQuantWorkspaceLayout() != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Failed to build quant MMRS workspace layout"), return ge::GRAPH_FAILED);
-    workspaces[0] = workspaceLayout_.totalSize;
-    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u", workspaceLayout_.totalSize, workspaceLayout_.segCount);
+    // DFX: 状态打点段前 512B 对齐 padding + 64KB 打点区
+    const uint64_t alignment = Utils::STATE_DUMP_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - myWorkSpaceSize_ % alignment) % alignment;
+    workspaces[0] += padding + Utils::STATE_DUMP_TOTAL_SIZE;
+    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u", workspaceLayout_.totalSize,
+            workspaceLayout_.segCount);
+#endif
     return ge::GRAPH_SUCCESS;
 }
 
@@ -721,9 +728,9 @@ void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTi
 
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
-    quantBmmMatmulReducescatterTilingData_->workspaceLayout = workspaceLayout_;
-    quantBmmMatmulReducescatterTilingData_->quantMode = 1;
-    quantBmmMatmulReducescatterTilingData_->tilingKey = GetTilingKey();
+#if MC2_DFX_ENABLE
+    quantBmmMatmulReducescatterTilingData_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
@@ -803,7 +810,9 @@ DequantBmm::Mc2SlidingWindowParams &QuantBmmReduceScatterTiling::MutableTailTCub
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
 {
+#if MC2_DFX_ENABLE
     myWorkSpaceSize_ = 0U;
+#endif
     // 主块切分
     uint32_t tempMValue = tileMValue_ == 0 ? MutableRCSTilingDataA5().rankM : tileMValue_;
     args_.mValue = ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||

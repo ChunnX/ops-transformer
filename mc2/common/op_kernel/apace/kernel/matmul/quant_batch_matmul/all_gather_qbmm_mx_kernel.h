@@ -356,6 +356,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     }
     uint32_t readyTileIdx = 0;
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
+    opStateDump.DoDump(DUMP_FIELD_WAIT);
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
@@ -376,6 +377,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
         while (readyTileIdx < ctx.dependTileIdx) {
             readyTileIdx++;
             CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+            opStateDump.DoDump(DUMP_FIELD_WAIT);
         }
 
         // Per-tile L2 cache hint
@@ -415,6 +417,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     while (readyTileIdx < fp.commTurn) {
         readyTileIdx++;
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+        opStateDump.DoDump(DUMP_FIELD_WAIT);
     }
 }
 
