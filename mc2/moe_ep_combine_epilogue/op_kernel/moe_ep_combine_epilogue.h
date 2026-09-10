@@ -58,7 +58,6 @@ using namespace AscendC;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
-constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
 static constexpr uint32_t RECV_META_FIELDS = 5U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
@@ -83,10 +82,10 @@ private:
                                        uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void BuffInit();
     __aicore__ inline uint32_t GetCompletionChannelCount();
-    __aicore__ inline void MaskCheck();
+    __aicore__ inline void LoadTopkIds();
     __aicore__ inline bool WaitDispatch(uint32_t completionChannelCount);
     __aicore__ inline void ClearCompletionFlags();
-    __aicore__ inline void ProcessLocalToken(uint32_t tokenIndex);
+    __aicore__ inline void BuildLocalRecvIndex();
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
     __aicore__ inline void RecvPhaseReduce();
     __aicore__ inline GM_ADDR GetUrmaWinAddrByRankId(uint32_t rankId, uint64_t offset)
@@ -127,8 +126,6 @@ private:
     uint32_t tEnd_{0};
     uint32_t tPerCore_{0};
     uint32_t maskTokenNum_{0};
-    uint32_t bsKCastCnt_{0};
-    uint32_t activeMaskAlignSize_{0};
 
     GlobalTensor<XType> xGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
@@ -140,9 +137,8 @@ private:
 
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
-    LocalTensor<bool> maskGenerateTensor_;
-    LocalTensor<bool> maskStrideTensor_;
-    LocalTensor<half> tokenTargetTensor_;
+    LocalTensor<int32_t> topkIdsTensor_;
+    LocalTensor<int32_t> localRecvIdxTensor_;
 
     TQue<QuePosition::VECIN, 1> xInQue_;
     TQue<QuePosition::VECOUT, 1> xOutQue_;
@@ -153,12 +149,10 @@ private:
     TBuf<> waitSumBuf_;
     TBuf<> rankOffsetsBuf_;
     TBuf<> metadataBuf_;
+    TBuf<> localRecvIdxBuf_;
     LocalTensor<int32_t> rankOffsetsTensor_;
 
     TBuf<> compareBuf_;
-    TBuf<> rowTmpFloatBuf_;
-    TBuf<> tokenBuf_;
-    TBuf<> tokenTargetTBuf_;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
 };
@@ -238,21 +232,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (tStart_ < numTokens_) {
         maskTokenNum_ = tPerCore_ * topK_;
         uint32_t bsKInt32Align = Ceil(maskTokenNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-        uint32_t bsKFloatAlign = Ceil(maskTokenNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-        uint32_t bsKHalfAlign = Ceil(maskTokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
-        uint32_t bsHalfAlign = Ceil(tPerCore_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
-
-        bsKCastCnt_ = Ceil(maskTokenNum_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-        activeMaskAlignSize_ = tPerCore_ * Ceil(topK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN * sizeof(half);
-        bsKInt32Align = (bsKInt32Align > bsKCastCnt_ ? bsKInt32Align : bsKCastCnt_);
-        bsKHalfAlign = (bsKHalfAlign > activeMaskAlignSize_ ? bsKHalfAlign : activeMaskAlignSize_);
-        bsKFloatAlign = (bsKFloatAlign > bsKCastCnt_ ? bsKFloatAlign : bsKCastCnt_);
-        bsKFloatAlign = (bsKFloatAlign > activeMaskAlignSize_ ? bsKFloatAlign : activeMaskAlignSize_);
-
-        tpipe_->InitBuffer(tokenTargetTBuf_, bsHalfAlign);
         tpipe_->InitBuffer(compareBuf_, bsKInt32Align);
-        tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);
-        tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
+        tpipe_->InitBuffer(localRecvIdxBuf_, bsKInt32Align);
+        topkIdsTensor_ = compareBuf_.Get<int32_t>();
+        localRecvIdxTensor_ = localRecvIdxBuf_.Get<int32_t>();
     }
     if constexpr (HasTopkWeight == 1) {
         tpipe_->InitBuffer(weightQue_, DOUBLE_BUFFER_NUM, UB_ALIGN);
@@ -331,38 +314,16 @@ __aicore__ inline bool MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::MaskCheck()
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::LoadTopkIds()
 {
     if (tStart_ >= numTokens_) {
         return;
     }
-    LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
-    LocalTensor<int32_t> topkIdsTensor = compareBuf_.Get<int32_t>();
-    LocalTensor<float> topkIdsFloatTensor = rowTmpFloatBuf_.Get<float>();
-    LocalTensor<uint8_t> maskTensor = compareBuf_.Get<uint8_t>();
-    LocalTensor<half> maskCalcSelectedTensor = rowTmpFloatBuf_.Get<half>();
-    maskGenerateTensor_ = compareBuf_.Get<bool>();
-    LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
-    maskStrideTensor_ = tokenBuf_.Get<bool>();
-    tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
-
-    // 构造二维全true的mask
-    Duplicate<half>(maskCalcTensor, static_cast<half>(1),
-                    Ceil(maskTokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
-    // 拷入topkIds
+    // Keep the complete expert-id slice in UB. The reduce loop must not issue scalar reads from topkIdx GM.
     DataCopyExtParams topkIdsCntParams = {1U, static_cast<uint32_t>(maskTokenNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> topkIdsCntCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(topkIdsTensor, topkIdxGm_[tStart_ * topK_], topkIdsCntParams, topkIdsCntCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    DataCopyPad(topkIdsTensor_, topkIdxGm_[tStart_ * topK_], topkIdsCntParams, topkIdsCntCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    // 根据topkIds大于0，得到考虑(-1专家) 后的mask
-    uint32_t calcCnt = bsKCastCnt_ / sizeof(int32_t);
-    Cast(topkIdsFloatTensor, topkIdsTensor, RoundMode::CAST_NONE, calcCnt);
-    CompareScalar(maskTensor, topkIdsFloatTensor, static_cast<float>(0), AscendC::CMPMODE::GE, calcCnt);
-    Select(maskCalcSelectedTensor, maskTensor, maskCalcTensor, static_cast<half>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE,
-           calcCnt);
-    Cast(maskGenerateTensor_.ReinterpretCast<uint8_t>(), maskCalcSelectedTensor, RoundMode::CAST_NONE, calcCnt);
-    SyncFunc<AscendC::HardEvent::V_S>();
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -385,21 +346,22 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
-__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ProcessLocalToken(
-    uint32_t tokenIndex)
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::BuildLocalRecvIndex()
 {
+    if (tStart_ >= numTokens_) {
+        return;
+    }
+    Duplicate<int32_t>(localRecvIdxTensor_, -1, maskTokenNum_);
+    SyncFunc<AscendC::HardEvent::V_S>();
     if (localMetadataBegin_ >= localMetadataEnd_) {
         return;
     }
 
-    // Metadata is contiguous by source rank but ordered by recvXIdx rather than destination token. Each AIV owns a
-    // disjoint output-token range, so it scans the local-rank interval and accumulates only the current token in FP32.
+    // Metadata is ordered by recvXIdx rather than destination token. Scan it once and build the lookup for this
+    // AIV's disjoint output-token range instead of rescanning the whole local-rank interval for every token.
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     DataCopyPadExtParams<int32_t> metadataPadParams{false, 0U, 0U, 0U};
-    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
-    DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
-    DataCopyPadParams padParams = {false, 0U, 0U, 0U};
     for (uint64_t chunkStart = localMetadataBegin_; chunkStart < localMetadataEnd_; chunkStart += metadataChunkTokens_) {
         uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < localMetadataEnd_ ?
                                 chunkStart + metadataChunkTokens_ :
@@ -411,7 +373,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         for (uint32_t i = 0U; i < chunkCount; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
             int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
-            if (srcTokenIdx != static_cast<int32_t>(tokenIndex)) {
+            if (srcTokenIdx < static_cast<int32_t>(tStart_) || srcTokenIdx >= static_cast<int32_t>(tEnd_)) {
                 continue;
             }
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
@@ -421,23 +383,9 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
                 continue;
             }
 
-            LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
-            DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(recvXIdx) * axisH_], xCopyParams, padParams);
-            xInQue_.EnQue(xLocal);
-            LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
-            Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
-            Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
-            xInQue_.FreeTensor(xIn);
-
-            if constexpr (HasTopkWeight == 1) {
-                LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
-                DataCopyPad(weightLocal, topkWeightsGm_[recvXIdx], weightCopyParams, padParams);
-                weightQue_.EnQue(weightLocal);
-                LocalTensor<float> weightOut = weightQue_.DeQue<float>();
-                DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + static_cast<uint32_t>(srcTopKIdx)],
-                            weightOut, weightCopyParams);
-                weightQue_.FreeTensor(weightOut);
-            }
+            uint32_t lookupIndex = (static_cast<uint32_t>(srcTokenIdx) - tStart_) * topK_ +
+                                   static_cast<uint32_t>(srcTopKIdx);
+            localRecvIdxTensor_.SetValue(lookupIndex, recvXIdx);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
@@ -447,28 +395,33 @@ template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ProcessTopKToken(uint32_t tokenIndex)
 {
     Duplicate<float>(ubAccFp32_, (float)0, axisH_);
-    ProcessLocalToken(tokenIndex);
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     uint32_t localExpertBegin = rankId_ * tilingData_->cfg.numLocalExperts;
     uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
-        bool maskExpertFlag = maskGenerateTensor_.GetValue((tokenIndex - tStart_) * topK_ + topkId);
-        if (!maskExpertFlag) {
+        uint32_t lookupIndex = (tokenIndex - tStart_) * topK_ + topkId;
+        int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
+        if (expertId < 0) {
             continue;
         }
-        int32_t expertId = topkIdxGm_.GetValue(static_cast<uint64_t>(tokenIndex) * topK_ + topkId);
-        if (expertId >= static_cast<int32_t>(localExpertBegin) && expertId < static_cast<int32_t>(localExpertEnd)) {
+        int32_t localRecvXIdx = localRecvIdxTensor_.GetValue(lookupIndex);
+        if (localRecvXIdx < 0 && expertId >= static_cast<int32_t>(localExpertBegin) &&
+            expertId < static_cast<int32_t>(localExpertEnd)) {
             continue;
         }
-        uint64_t slotOffset =
-            (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
-        GM_ADDR tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
-        GlobalTensor<XType> srcTokenTensor;
-        srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
         LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
-        DataCopyPad(xLocal, srcTokenTensor, xCopyParams, padParams);
+        if (localRecvXIdx >= 0) {
+            DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_], xCopyParams, padParams);
+        } else {
+            uint64_t slotOffset =
+                (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
+            GM_ADDR tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
+            GlobalTensor<XType> srcTokenTensor;
+            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
+            DataCopyPad(xLocal, srcTokenTensor, xCopyParams, padParams);
+        }
         xInQue_.EnQue(xLocal);
         LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
         Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
@@ -476,12 +429,16 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         xInQue_.FreeTensor(xIn);
 
         if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
-                                 (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
-            GlobalTensor<float> srcWeightTensor;
-            srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
             LocalTensor<float> weightLocal = weightQue_.AllocTensor<float>();
-            DataCopyPad(weightLocal, srcWeightTensor, weightCopyParams, padParams);
+            if (localRecvXIdx >= 0) {
+                DataCopyPad(weightLocal, topkWeightsGm_[localRecvXIdx], weightCopyParams, padParams);
+            } else {
+                GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
+                                     (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+                GlobalTensor<float> srcWeightTensor;
+                srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
+                DataCopyPad(weightLocal, srcWeightTensor, weightCopyParams, padParams);
+            }
             weightQue_.EnQue(weightLocal);
             LocalTensor<float> weightOut = weightQue_.DeQue<float>();
             DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], weightOut, weightCopyParams);
@@ -513,6 +470,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (tPerCore_ == 0) {
         return;
     }
+    BuildLocalRecvIndex();
 
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
@@ -529,7 +487,7 @@ template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::Process()
 {
     BuffInit();
-    MaskCheck();
+    LoadTopkIds();
     RecvPhaseReduce();
 }
 
