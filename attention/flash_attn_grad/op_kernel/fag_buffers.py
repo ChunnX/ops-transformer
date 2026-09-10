@@ -31,10 +31,10 @@ Unsupported function call），所以这里退化成**一个 buffer 一个工厂
 **声明顺序有意义**：tile 的声明顺序决定 codegen 里 buffer 的初始化顺序，
 调用点请按本文件的书写顺序调用。
 
-BN2 与 BN2GS1S2 共用 CV 共享区、cube L1 与 L0 工作集：BN2 只在 ``d_align``
-64/128 两档编译，而这两档的 ``D_PHYS_W`` / ``ACC_COLS`` / ``L1_*_ADDRS`` 取值
-与旧代码里写死的 128 档常量完全相同。两者不同的只有 dK/dV 累加器的块数
-（BN2 不切 D）与 vector 侧的 UB 地图。
+BN2 与 BN2GS1S2 共用 CV 共享区、cube L1 与 L0 工作集，连 dK/dV 累加器也共用
+（BN2 不切 D，而它只编 ``d_align`` 64/128 两档，那两档 ``D_NCHUNKS`` 本来就是
+1）。两者真正不同的只有 vector 侧的 tile 形状：BN2 的 y/dy 是 ``[64, d_align]``
+且带 ``valid_shape``，另有一块 v5/v6 的 cast 输出。
 """
 
 import pypto_pro.language as pl
@@ -63,14 +63,12 @@ from fag_mem import (
     L0AB_ADDRS,
     L0C_ACC_ADDRS,
     L0C_ACC_MUTEX,
-    L0C_DK,
     L0C_DK0_ADDR,
     L0C_DK1_ADDR,
-    L0C_DK1_MUTEX,
-    L0C_DV,
+    MTX_L0C_DK1,
     L0C_DV0_ADDR,
     L0C_DV1_ADDR,
-    L0C_DV1_MUTEX,
+    MTX_L0C_DV1,
     L1_DO_ADDRS,
     L1_DO_MUTEX,
     L1_DS_ADDR,
@@ -206,7 +204,7 @@ def make_k_l1():
     return pl.make_tile_group(
         type=pl.TileType(shape=[D_PHYS_W[d_align], CUBE_BASEN], dtype=pl.DT_FP16,
                          target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1),
-        addrs=[L1_K_ADDR[d_align]], mutex_ids=MTX_L1_K)
+        addrs=[L1_K_ADDR[d_align]], mutex_ids=MTX_L1_K[d_align])
 
 
 def make_k_nd_l1():
@@ -219,7 +217,7 @@ def make_k_nd_l1():
     return pl.make_tile_group(
         type=pl.TileType(shape=[CUBE_BASEN, D_PHYS_W[d_align]], dtype=pl.DT_FP16,
                          target_memory=pl.MemorySpace.Mat, compact=1),
-        addrs=[L1_KND_ADDR[d_align]], mutex_ids=MTX_L1_K_ND)
+        addrs=[L1_KND_ADDR[d_align]], mutex_ids=MTX_L1_K_ND[d_align])
 
 
 def make_v_l1():
@@ -232,7 +230,7 @@ def make_v_l1():
     return pl.make_tile_group(
         type=pl.TileType(shape=[D_PHYS_W[d_align], CUBE_BASEN], dtype=pl.DT_FP16,
                          target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1),
-        addrs=[L1_V_ADDR[d_align]], mutex_ids=MTX_L1_V)
+        addrs=[L1_V_ADDR[d_align]], mutex_ids=MTX_L1_V[d_align])
 
 
 def make_do_l1():
@@ -284,7 +282,7 @@ def make_l0a():
         type=pl.TileType(shape=[CUBE_BASEM, ACC_COLS[d_align]],
                          dtype=pl.DT_FP16,
                          target_memory=pl.MemorySpace.Left, compact=1),
-        addrs=L0AB_ADDRS[d_align], mutex_ids=MTX_L0A)
+        addrs=L0AB_ADDRS[d_align], mutex_ids=MTX_L0A[d_align])
 
 
 def make_l0b():
@@ -293,7 +291,7 @@ def make_l0b():
         type=pl.TileType(shape=[ACC_COLS[d_align], CUBE_BASEN],
                          dtype=pl.DT_FP16,
                          target_memory=pl.MemorySpace.Right, compact=1),
-        addrs=L0AB_ADDRS[d_align], mutex_ids=MTX_L0B)
+        addrs=L0AB_ADDRS[d_align], mutex_ids=MTX_L0B[d_align])
 
 
 def make_l0c_acc():
@@ -320,7 +318,7 @@ def make_dk_l0c_chunk0():
     return pl.make_tile_group(
         type=pl.TileType(shape=[CUBE_BASEN, D_CHUNK_MAXW[d_align]], dtype=pl.DT_FP32,
                          target_memory=pl.MemorySpace.Acc, compact=1),
-        addrs=[L0C_DK0_ADDR[d_align]], mutex_ids=MTX_L0C_DK0)
+        addrs=[L0C_DK0_ADDR[d_align]], mutex_ids=[MTX_L0C_DK0[d_align]])
 
 
 def make_dv_l0c_chunk0():
@@ -328,7 +326,7 @@ def make_dv_l0c_chunk0():
     return pl.make_tile_group(
         type=pl.TileType(shape=[CUBE_BASEN, D_CHUNK_MAXW[d_align]], dtype=pl.DT_FP32,
                          target_memory=pl.MemorySpace.Acc, compact=1),
-        addrs=[L0C_DV0_ADDR[d_align]], mutex_ids=MTX_L0C_DV0)
+        addrs=[L0C_DV0_ADDR[d_align]], mutex_ids=[MTX_L0C_DV0[d_align]])
 
 
 def make_dk_l0c_chunk1():
@@ -341,7 +339,7 @@ def make_dk_l0c_chunk1():
     return pl.make_tile_group(
         type=pl.TileType(shape=[CUBE_BASEN, D_CHUNK_MAXW[d_align]], dtype=pl.DT_FP32,
                          target_memory=pl.MemorySpace.Acc, compact=1),
-        addrs=[L0C_DK1_ADDR[d_align]], mutex_ids=[L0C_DK1_MUTEX[d_align]])
+        addrs=[L0C_DK1_ADDR[d_align]], mutex_ids=[MTX_L0C_DK1[d_align]])
 
 
 def make_dv_l0c_chunk1():
@@ -349,23 +347,11 @@ def make_dv_l0c_chunk1():
     return pl.make_tile_group(
         type=pl.TileType(shape=[CUBE_BASEN, D_CHUNK_MAXW[d_align]], dtype=pl.DT_FP32,
                          target_memory=pl.MemorySpace.Acc, compact=1),
-        addrs=[L0C_DV1_ADDR[d_align]], mutex_ids=[L0C_DV1_MUTEX[d_align]])
+        addrs=[L0C_DV1_ADDR[d_align]], mutex_ids=[MTX_L0C_DV1[d_align]])
 
 
-def make_dk_l0c_bn2():
-    """BN2 的 dK 常驻 L0C。BN2 不切 D（只编 64/128 档），故只有一块。"""
-    return pl.make_tile_group(
-        type=pl.TileType(shape=[CUBE_BASEN, D_PHYS_W[d_align]], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Acc, compact=1),
-        addrs=[L0C_DK], mutex_ids=MTX_L0C_DK0)
-
-
-def make_dv_l0c_bn2():
-    """BN2 的 dV 常驻 L0C。"""
-    return pl.make_tile_group(
-        type=pl.TileType(shape=[CUBE_BASEN, D_PHYS_W[d_align]], dtype=pl.DT_FP32,
-                         target_memory=pl.MemorySpace.Acc, compact=1),
-        addrs=[L0C_DV], mutex_ids=MTX_L0C_DV0)
+# BN2 不切 D，直接用上面的 chunk0：它只编 d_align 64/128 两档，那两档
+# D_CHUNK_MAXW 与 D_PHYS_W 同为 128、D_NCHUNKS 为 1，与 chunk0 完全一致。
 
 
 # ==================================================================

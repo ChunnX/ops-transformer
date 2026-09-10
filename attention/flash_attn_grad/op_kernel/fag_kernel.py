@@ -122,14 +122,12 @@ from fag_schedule import (
 )
 from fag_buffers import (
     make_cast_ub_bn2,
-    make_dk_l0c_bn2,
     make_dk_l0c_chunk0,
     make_dk_l0c_chunk1,
     make_do_l1,
     make_do_lag_view,
     make_ds_l1,
     make_ds_t_l1,
-    make_dv_l0c_bn2,
     make_dv_l0c_chunk0,
     make_dv_l0c_chunk1,
     make_dy_ub,
@@ -706,8 +704,8 @@ def flash_attn_grad_bn2(
     blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx)
     numBlocks = pl.max(blockEnd - blockStart, 0)
 
-    # BN2 只编 d_align 64/128 两档，这两档的 L1_DS_ADDR / L1_P_ADDR
-    # 与写死的 L1_DS / L1_P 取值相同，故与 GS1S2 共用同一套 CV 共享区。
+    # BN2 只编 d_align 64/128 两档，这两档在 fag_mem 里共用同一张 L1 图，
+    # L1_DS_ADDR / L1_P_ADDR 取值与 GS1S2 相同，故共用同一套 CV 共享区。
     mm1_res = make_mm1_res()
     mm2_res = make_mm2_res()
     ds_l1 = make_ds_l1()
@@ -749,8 +747,8 @@ def flash_attn_grad_bn2(
         left = make_l0a()
         right = make_l0b()
         acc = make_l0c_acc()
-        dk_acc = make_dk_l0c_bn2()
-        dv_acc = make_dv_l0c_bn2()
+        dk_acc = make_dk_l0c_chunk0()
+        dv_acc = make_dv_l0c_chunk0()
 
         runInfos = make_run_infos()
         taskId = 0

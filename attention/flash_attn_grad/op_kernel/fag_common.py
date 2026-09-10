@@ -24,13 +24,13 @@ CUBE_BASEM = 128          # s1TemplateType::Aligned128
 CUBE_BASEN = 128          # s2TemplateType::Aligned128
 # D 的分配宽度。这不是普通常量，而是 tilingkey 字段 d_align 的取值之一 ——
 # 见 FlashAttnGradTilingKey.d_align 与下方 D_CHUNKS 的说明。
-# 保留这个名字是为了让「D=128 档」的代码与改动前逐字一致(零回归)；
-# 需要按档变化的站点改用 d_align(tilingkey 字段，trace 期常量)。
+# 需要按档变化的站点一律用 d_align(tilingkey 字段，trace 期常量)；这个名字只
+# 在「明确指 128 这一档」时用，例如 fag_mem 里 BN2 复用的那张图。
 HEAD_DIM_ALIGN = 128      # dTemplateType::Aligned128
 BLOCK_ELEMS_F16 = 16
 
 # ---- 每档的 D 轴分块表 ----
-# D=128 只有一块 -> 展开后与改动前生成同样的代码，故 D=128 档天然零回归。
+# D<=128 只有一块，展开后就是一次完整的 matmul，不产生分块开销。
 # D=192 切成等宽两块 96+96 而非 128+64：实测(bench_dsplit.py/bench_dsplit_n.py，
 # 双点斜率法 + 5 次中位数，单位 us/次完整 D 遍历)
 #     方案            MM2(D 在 K 轴)   dQ/dK(D 在 N 轴)
