@@ -42,6 +42,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using AType = DTYPE_X;
     using BType = DTYPE_W;
     using CType = DTYPE_Y;
+    using C1Type = float;
+    using LogitType = DTYPE_LOGIT;
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = layout::RowMajorAlign;
@@ -55,13 +57,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
     using BlockMmadPolicy = Cgmct::Gemm::GMMPerTile<>;
 
     using BlockMmadBuilder =
-        Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, CType, LayoutC, L1TileShape,
+        Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
                                         L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
                                         Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
 
     using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
 
-    using BlockEpilogue = Cgmct::Gemm::Block::BlockEpilogueFinalizeRouting<CType>;
+    using BlockEpilogue = Cgmct::Gemm::Block::BlockEpilogueFinalizeRouting<CType, C1Type, LogitType>;
 
     using GmmKernel = Cgmct::Gemm::Kernel::KernelGmmFinalizeRouting<ProblemShape, BlockMmadBuilder, BlockPrologue,
                                                                     BlockEpilogue, BlockScheduler>;
