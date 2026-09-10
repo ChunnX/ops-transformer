@@ -359,17 +359,26 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 
     std::string queryLayout = "BSH";
     std::string attentionOutLayout = "BSH";
-    GetQueryAndOutLayout(queryLayout, attentionOutLayout, queryShape, inputLayoutPtr);
+    if (GetQueryAndOutLayout(queryLayout, attentionOutLayout, queryShape, inputLayoutPtr) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     int64_t valueD = 0;
-    GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads);
+    if (GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
-    InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr, valueD);
+    if (InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr,
+                               valueD) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(FIA_ATTR_INPUT_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
     if (softmaxLseFlag) {
-        InferLseOutShape(inputLayoutPtr, softmaxLseShape, queryShape, queryLayout, numHeadsPtr);
+        if (InferLseOutShape(inputLayoutPtr, softmaxLseShape, queryShape, queryLayout, numHeadsPtr) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     } else {
         softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_1);
         (*softmaxLseShape)[FIA_LAYOUT_DIM0] = NUM_0;
