@@ -50,8 +50,8 @@ static inline int64_t FagAlignTo(int64_t value, int64_t alignment)
 
 // Helper: calcle actual token for TND/unpad sparse modes
 // Source: common_regbase.cpp:914-936 CalcleActualToken
-static inline void FagCalcleActualToken(uint32_t sparseMode, int64_t s1Token, int64_t s2Token, int64_t actualS1Len,
-                                        int64_t actualS2Len, int64_t &actualCalcS1Token, int64_t &actualCalcS2Token)
+static inline void FagCalcleActualToken(uint32_t sparseMode, int64_t s1Token, int64_t s2Token,
+    int64_t actualS1Len, int64_t actualS2Len, int64_t &actualCalcS1Token, int64_t &actualCalcS2Token)
 {
     actualCalcS1Token = s1Token;
     actualCalcS2Token = s2Token;
@@ -81,10 +81,10 @@ void FlashAttnMetadataCpuKernel::InitFagBaseDims()
 
     int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
     int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
-    fagS1CvInner_ =
-        (s1 == 0) ? 1 : ((fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT > s1) ? s1 : fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
-    fagCvS2Inner_ =
-        (s2 == 0) ? 1 : ((fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT > s2) ? s2 : fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
+    fagS1CvInner_ = (s1 == 0) ? 1 :
+        ((fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT > s1) ? s1 : fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
+    fagCvS2Inner_ = (s2 == 0) ? 1 :
+        ((fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT > s2) ? s2 : fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
     fagS1Outer_ = (s1 == 0) ? 0 : (s1 + fagS1CvInner_ - 1) / fagS1CvInner_;
     fagS2Outer_ = (s2 == 0) ? 0 : (s2 + fagCvS2Inner_ - 1) / fagCvS2Inner_;
     fagG_ = static_cast<int64_t>(numHeadsQ_) / static_cast<int64_t>(numHeadsKv_);
@@ -195,15 +195,15 @@ void FlashAttnMetadataCpuKernel::InitFagActualSeqlen()
     // Detect zero-length sequences: TND with s1=0 or s2=0 in any batch
     // Source: normal_regbase.cpp:250-266 isSeqExistZero / sValueZeroUnderTND
     for (size_t i = 0; i < actualSeqlenQ_.size(); i++) {
-        if (actualSeqlenQ_[i] == 0 || (i < actualSeqlenKv_.size() && actualSeqlenKv_[i] == 0)) {
+        if (actualSeqlenQ_[i] == 0 ||
+            (i < actualSeqlenKv_.size() && actualSeqlenKv_[i] == 0)) {
             fagIsSeqExistZero_ = true;
             break;
         }
     }
 }
 
-void FlashAttnMetadataCpuKernel::SupportTransBSND()
-{
+void FlashAttnMetadataCpuKernel::SupportTransBSND() {
     bool isTND = (fagLayoutType_ == FAG_INPUT_FORMAT_TND);
     if (!actualSeqlenQ_.empty() && isTND) {
         fagIsAllSame_ = true;
@@ -216,7 +216,8 @@ void FlashAttnMetadataCpuKernel::SupportTransBSND()
             }
         }
     }
-    if (fagIsAllSame_ && isTND) {
+    if (fagIsAllSame_ && isTND)
+    {
         fagLayoutType_ = FAG_INPUT_FORMAT_BS2N2GD;
         fagUseTndSplit_ = false;
         if (fagSparseMode_ == FAG_SPARSE_RIGHT_DOWN_CAUSAL || fagSparseMode_ == FAG_SPARSE_BAND) {
@@ -242,41 +243,30 @@ void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
     // isAllSame: all batches have same seq lengths (for TND)
     SupportTransBSND();
 
-    // isBn2: S<=128, N1==N2, D<=512, no zero-length sequences in TND
-    // Source: common_regbase.cpp:1584-1589 (tailZeroCount==0 && !isSeqExistZero)
-    fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 512) && !fagIsSeqExistZero_;
-
-    // bnLimit: BN >= 256, or BN >= 128 with S1/S2 aligned to 128
-    bool bnLimit = ((b * n1) >= 256) || ((b * n1) >= 128 && (s1 % 128 == 0) && (s2 % 128 == 0));
-    bool bnSparseLimit = bnLimit && !fagUseTndSplit_;
-
-    // isBn2MultiBlk: BN limit + S>128 + S<=640 + N1==N2 + D<=512
-    fagIsBn2MultiBlk_ = bnSparseLimit && (s1 > 128 || s2 > 128) && (s1 <= 640 && s2 <= 640) && (n1 == n2) && (d <= 512);
-    fagIsBn2_ = fagIsBn2MultiBlk_ ? true : fagIsBn2_;
-
-    // Source: common_regbase.cpp:1608-1614
-    // isBn2 && !isBn2MultiBlk: TND+D>128 时关闭 isBn2 (dropMaskOuter 不涉及)
-    if (fagIsBn2_ && !fagIsBn2MultiBlk_) {
-        if (fagUseTndSplit_ && d > 128) {
-            fagIsBn2_ = false;
-        }
+    // Match pypto host: single-block BN2 (S<=128) or MultiBlk (S in (128, 640]
+    // and BN gate). Mask 3/4 is allowed on BN2 (kernel skip_invalid / packed).
+    // GQA / D>128 / TND stay on GS1S2.
+    fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
+    constexpr int64_t BN2_MULTIBLK_SEQ = 640;
+    constexpr int64_t BN2_MULTIBLK_BN_128 = 128;
+    constexpr int64_t BN2_MULTIBLK_BN_256 = 256;
+    constexpr int64_t ALIGN128 = 128;
+    bool bnLimit = ((b * n1) >= BN2_MULTIBLK_BN_256) ||
+                   ((b * n1) >= BN2_MULTIBLK_BN_128 && (s1 % ALIGN128 == 0) &&
+                    (s2 % ALIGN128 == 0));
+    fagIsBn2MultiBlk_ = bnLimit &&
+                        !fagUseTndSplit_ &&
+                        (s1 > 128 || s2 > 128) &&
+                        (s1 <= BN2_MULTIBLK_SEQ && s2 <= BN2_MULTIBLK_SEQ) &&
+                        (n1 == n2) && (d <= 128) && !fagIsSeqExistZero_;
+    if (fagIsBn2MultiBlk_) {
+        fagIsBn2_ = true;
     }
-
-    // BN2S2 route: Source common_regbase.cpp:1631-1639
-    // bn2S2RouteLimit = !hasRope(removed) && d<=512 &&
-    //   (isTND || (isAllSame && !isDeterministic(removed)) || bn2S2NotTndLimit) &&
-    //   (keepProb>=1(removed) || ...) && (n1==n2) && (queryType checks removed)
-    // Simplified: d<=512 && (isTND || isAllSame || bn2S2NotTndLimit) && (n1==n2)
-    bool bn2S2NotTndLimit = (s1 < s2) && (s2 <= 1024) && (s2 - s1 >= 128) && (d <= 128) && !fagIsSparse_;
-    bool bn2S2RouteLimit = (d <= 512) && (fagUseTndSplit_ || fagIsAllSame_ || bn2S2NotTndLimit) && (n1 == n2);
-
+    if (fagIsBn2_ && fagUseTndSplit_ && d > 128) {
+        fagIsBn2_ = false;
+    }
     if (fagIsBn2_) {
         fagSplitAxis_ = FAG_SPLIT_AXIS_BN2;
-    } else if (bn2S2RouteLimit) {
-        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
-        if (fagIsAllSame_) {
-            fagUseTndSplit_ = true;
-        }
     } else {
         fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
     }
@@ -418,7 +408,8 @@ void FlashAttnMetadataCpuKernel::DoFagSparseBlockInfo()
 
         // Encode as flat BNGS1S2 index
         // Source: normal_regbase.cpp:1606-1608
-        fagBlockStarts_[c] = (((bIdx * n2 + n2Idx) * g + gIdx) * fagS2Outer_ + s2oIdx) * fagS1Outer_ + s1oIdx + 1;
+        fagBlockStarts_[c] = (((bIdx * n2 + n2Idx) * g + gIdx) * fagS2Outer_ + s2oIdx) *
+                             fagS1Outer_ + s1oIdx + 1;
         fagBlockEnds_[c - 1] = fagBlockStarts_[c];
     }
     for (uint32_t c = static_cast<uint32_t>(blockOuter); c < FAG_CORE_LIST_NUM; c++) {
@@ -437,20 +428,22 @@ void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(std::vector<std::vecto
     fagIsInvalidRow_ = false;
     std::vector<bool> invalidS1Array(fagS1Outer_, false);
     for (int64_t i = 0; i < fagS2Outer_; i++) {
-        int64_t leftIntersectionPoint = std::max(static_cast<int64_t>(0), fagCvS2Inner_ * i - fagS2Token_);
+        int64_t leftIntersectionPoint = std::max(static_cast<int64_t>(0),
+            fagCvS2Inner_ * i - fagS2Token_);
         if (leftIntersectionPoint > s1) {
             parseInfo[i][0] = (s1 + fagS1CvInner_ - 1) / fagS1CvInner_; // BEGIN_IDX=0
         } else {
             parseInfo[i][0] = leftIntersectionPoint / fagS1CvInner_;
         }
         // Source: normal_regbase.cpp:1519: cvBlockTail = s2CvTail for last block, cvS2Inner otherwise
-        int64_t cvBlockTail =
-            (i == fagS2Outer_ - 1) ? (s2 % fagCvS2Inner_ == 0 ? fagCvS2Inner_ : s2 % fagCvS2Inner_) : fagCvS2Inner_;
-        int64_t rightPoint =
-            std::min(std::max(static_cast<int64_t>(0), fagCvS2Inner_ * i + cvBlockTail + fagS1Token_), s1);
+        int64_t cvBlockTail = (i == fagS2Outer_ - 1) ?
+            (s2 % fagCvS2Inner_ == 0 ? fagCvS2Inner_ : s2 % fagCvS2Inner_) : fagCvS2Inner_;
+        int64_t rightPoint = std::min(std::max(static_cast<int64_t>(0),
+            fagCvS2Inner_ * i + cvBlockTail + fagS1Token_), s1);
         parseInfo[i][1] = (rightPoint + fagS1CvInner_ - 1) / fagS1CvInner_; // END_IDX=1
 
-        int64_t tmpSize = (parseInfo[i][1] > parseInfo[i][0]) ? parseInfo[i][1] - parseInfo[i][0] : 0;
+        int64_t tmpSize = (parseInfo[i][1] > parseInfo[i][0]) ?
+            parseInfo[i][1] - parseInfo[i][0] : 0;
         if (i == 0) {
             parseInfo[i][2] = tmpSize; // LENGTH_IDX=2
         } else {
@@ -476,8 +469,8 @@ void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(std::vector<std::vecto
 
 // ===== FagCheckSparseLeftAndRight: check sparse validity for non-TND =====
 // Source: normal_regbase.cpp:734-771
-bool FlashAttnMetadataCpuKernel::FagCheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight,
-                                                            int64_t bIdx)
+bool FlashAttnMetadataCpuKernel::FagCheckSparseLeftAndRight(int64_t s1oDimIdx,
+    int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx)
 {
     int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
     int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
@@ -488,11 +481,11 @@ bool FlashAttnMetadataCpuKernel::FagCheckSparseLeftAndRight(int64_t s1oDimIdx, i
         return s2IdxLeft < s2EndLen;
     } else {
         // BAND mode
-        int64_t s2SparseLeft =
-            std::max(fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * s1oDimIdx - fagS1Token_, static_cast<int64_t>(0));
+        int64_t s2SparseLeft = std::max(
+            fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * s1oDimIdx - fagS1Token_, static_cast<int64_t>(0));
         s2SparseLeft = FagAlignTo(s2SparseLeft, FAG_ALIGN64);
-        int64_t s2SparseRight =
-            FagAlignTo(std::min(fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * (s1oDimIdx + 1), s1) + fagS2Token_, FAG_ALIGN64);
+        int64_t s2SparseRight = FagAlignTo(
+            std::min(fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * (s1oDimIdx + 1), s1) + fagS2Token_, FAG_ALIGN64);
         s2SparseRight = std::min(s2SparseRight, s2);
         return s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft;
     }
@@ -506,8 +499,8 @@ bool FlashAttnMetadataCpuKernel::FagIsValid(int64_t blockIdx)
     int64_t s2oDimIdx = gDimTail / fagS1Outer_;
     int64_t s1oDimIdx = gDimTail % fagS1Outer_;
     int64_t s2IdxLeft = s2oDimIdx * fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT;
-    int64_t s2IdxRight =
-        std::min((s2oDimIdx + 1) * fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT, static_cast<int64_t>(maxSeqlenKv_));
+    int64_t s2IdxRight = std::min((s2oDimIdx + 1) * fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT,
+        static_cast<int64_t>(maxSeqlenKv_));
     return FagCheckSparseLeftAndRight(s1oDimIdx, s2IdxLeft, s2IdxRight, 0);
 }
 
@@ -542,32 +535,29 @@ void FlashAttnMetadataCpuKernel::DoFagTndSplit()
         // CalValidUnpadBlockInfo
         // Source: varlen_regbase.cpp:1077-1125
         int64_t actualCalcS1Token, actualCalcS2Token;
-        FagCalcleActualToken(fagSparseMode_, fagS1Token_, fagS2Token_, actualS1Len, actualS2Len, actualCalcS1Token,
-                             actualCalcS2Token);
+        FagCalcleActualToken(fagSparseMode_, fagS1Token_, fagS2Token_,
+            actualS1Len, actualS2Len, actualCalcS1Token, actualCalcS2Token);
 
         for (int64_t j = 0; j < fagS2Outer_; j++) {
             if (fagCvS2Inner_ * j >= actualS2Len) {
                 calculatedBlockInfo[i][j][0] = 0; // BEGIN
                 calculatedBlockInfo[i][j][1] = 0; // END
             } else {
-                int64_t leftIntersectionPoint =
-                    std::max(fagCvS2Inner_ * j - actualCalcS2Token, static_cast<int64_t>(0));
+                int64_t leftIntersectionPoint = std::max(
+                    fagCvS2Inner_ * j - actualCalcS2Token, static_cast<int64_t>(0));
                 if (leftIntersectionPoint > actualS1Len) {
                     calculatedBlockInfo[i][j][0] = (actualS1Len + fagS1CvInner_ - 1) / fagS1CvInner_;
                 } else {
                     calculatedBlockInfo[i][j][0] = leftIntersectionPoint / fagS1CvInner_;
                 }
-                int64_t cvBlockTail =
-                    (fagCvS2Inner_ * (j + 1) > actualS2Len) ? actualS2Len - fagCvS2Inner_ * j : fagCvS2Inner_;
-                calculatedBlockInfo[i][j][1] =
-                    (std::min(actualS1Len,
-                              std::max(fagCvS2Inner_ * j + cvBlockTail + actualCalcS1Token, static_cast<int64_t>(0))) +
-                     fagS1CvInner_ - 1) /
-                    fagS1CvInner_;
+                int64_t cvBlockTail = (fagCvS2Inner_ * (j + 1) > actualS2Len) ?
+                    actualS2Len - fagCvS2Inner_ * j : fagCvS2Inner_;
+                calculatedBlockInfo[i][j][1] = (std::min(actualS1Len,
+                    std::max(fagCvS2Inner_ * j + cvBlockTail + actualCalcS1Token, static_cast<int64_t>(0))) +
+                    fagS1CvInner_ - 1) / fagS1CvInner_;
             }
             int64_t tmpLength = (calculatedBlockInfo[i][j][1] > calculatedBlockInfo[i][j][0]) ?
-                                    calculatedBlockInfo[i][j][1] - calculatedBlockInfo[i][j][0] :
-                                    0;
+                calculatedBlockInfo[i][j][1] - calculatedBlockInfo[i][j][0] : 0;
             if (j == 0) {
                 calculatedBlockInfo[i][j][2] = tmpLength; // SUM_S1S2
             } else {
@@ -580,8 +570,8 @@ void FlashAttnMetadataCpuKernel::DoFagTndSplit()
             calculatedBlockInfo[0][0][3] = n2 * g * calculatedBlockInfo[0][fagS2Outer_ - 1][2];
             totalBlockInfo[0][1] = n2 * g * totalBlockInfo[0][0];
         } else {
-            calculatedBlockInfo[i][0][3] =
-                n2 * g * calculatedBlockInfo[i][fagS2Outer_ - 1][2] + calculatedBlockInfo[i - 1][0][3];
+            calculatedBlockInfo[i][0][3] = n2 * g * calculatedBlockInfo[i][fagS2Outer_ - 1][2] +
+                calculatedBlockInfo[i - 1][0][3];
             totalBlockInfo[i][1] = n2 * g * totalBlockInfo[i][0] + totalBlockInfo[i - 1][1];
         }
     }
@@ -635,9 +625,9 @@ void FlashAttnMetadataCpuKernel::DoFagTndSplit()
             } else {
                 tndS1S2PrefixSumTmp += static_cast<uint64_t>(actualSeqlenQ_[bb] * actualSeqlenKv_[bb]);
                 int64_t s1Ot = (actualSeqlenQ_[bb] + fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT - 1) /
-                               (fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
+                    (fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
                 int64_t s2Ot = (actualSeqlenKv_[bb] + fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT - 1) /
-                               (fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
+                    (fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
                 tndPrefixSumTmp += static_cast<uint64_t>(s1Ot * s2Ot);
             }
         }
@@ -645,8 +635,8 @@ void FlashAttnMetadataCpuKernel::DoFagTndSplit()
         if (bIdx == 0) {
             fagBlockStarts_[c] = (n2Idx * g + gIdx) * totalBlockInfo[bIdx][0] + s2oIdx * s1OuterTmp + s1oIdx;
         } else {
-            fagBlockStarts_[c] = totalBlockInfo[bIdx - 1][1] + (n2Idx * g + gIdx) * totalBlockInfo[bIdx][0] +
-                                 s2oIdx * s1OuterTmp + s1oIdx;
+            fagBlockStarts_[c] = totalBlockInfo[bIdx - 1][1] +
+                (n2Idx * g + gIdx) * totalBlockInfo[bIdx][0] + s2oIdx * s1OuterTmp + s1oIdx;
         }
         fagBlockEnds_[c - 1] = fagBlockStarts_[c];
     }
@@ -669,10 +659,10 @@ bool FlashAttnMetadataCpuKernel::FagIsValidUnpad(int64_t blockIdx)
     for (int64_t bIdx = 0; bIdx < b; bIdx++) {
         int64_t actualS1Len = actualSeqlenQ_[bIdx];
         int64_t actualS2Len = actualSeqlenKv_[bIdx];
-        int64_t s1OuterTmp =
-            (actualS1Len + fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT - 1) / (fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
-        int64_t s2OuterTmp =
-            (actualS2Len + fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT - 1) / (fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
+        int64_t s1OuterTmp = (actualS1Len + fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT - 1) /
+            (fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT);
+        int64_t s2OuterTmp = (actualS2Len + fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT - 1) /
+            (fagS2Inner_ * FAG_S2CV_RATIO_DEFAULT);
         int64_t totalBaseIdx = n2 * g * s1OuterTmp * s2OuterTmp;
         if (resbaseIdx < totalBaseIdx) {
             int64_t gDimTail = resbaseIdx % (s1OuterTmp * s2OuterTmp);
@@ -692,8 +682,8 @@ bool FlashAttnMetadataCpuKernel::FagIsValidUnpad(int64_t blockIdx)
 
 // ===== FagCheckUnpadSparseLeftAndRight: check sparse validity for TND =====
 // Source: varlen_regbase.cpp:1168-1214
-bool FlashAttnMetadataCpuKernel::FagCheckUnpadSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft,
-                                                                 int64_t s2IdxRight, int64_t bIdx)
+bool FlashAttnMetadataCpuKernel::FagCheckUnpadSparseLeftAndRight(int64_t s1oDimIdx,
+    int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx)
 {
     int64_t actualS1Len = actualSeqlenQ_[bIdx];
     int64_t actualS2Len = actualSeqlenKv_[bIdx];
@@ -707,8 +697,8 @@ bool FlashAttnMetadataCpuKernel::FagCheckUnpadSparseLeftAndRight(int64_t s1oDimI
         actualCalcS2Token = fagS2Token_ - actualS1Len + actualS2Len;
     }
 
-    int64_t s2SparseLeft =
-        std::max(fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * s1oDimIdx - actualCalcS1Token, static_cast<int64_t>(0));
+    int64_t s2SparseLeft = std::max(
+        fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * s1oDimIdx - actualCalcS1Token, static_cast<int64_t>(0));
     s2SparseLeft = FagAlignTo(s2SparseLeft, FAG_ALIGN64);
     int64_t s2SparseRight = FagAlignTo(
         std::min(fagS1Inner_ * FAG_S1CV_RATIO_DEFAULT * (s1oDimIdx + 1), s1) + actualCalcS2Token, FAG_ALIGN64);
@@ -718,8 +708,9 @@ bool FlashAttnMetadataCpuKernel::FagCheckUnpadSparseLeftAndRight(int64_t s1oDimI
 
 // ===== FagFillBlockInfoLoadBalance: build load balance table for TND =====
 // Source: normal_regbase.cpp:1685-1750
-void FlashAttnMetadataCpuKernel::FagFillBlockInfoLoadBalance(std::vector<std::vector<int64_t>> &totalBlockInfo,
-                                                             std::vector<std::vector<float>> &acturalBlockInfo)
+void FlashAttnMetadataCpuKernel::FagFillBlockInfoLoadBalance(
+    std::vector<std::vector<int64_t>> &totalBlockInfo,
+    std::vector<std::vector<float>> &acturalBlockInfo)
 {
     int64_t b = static_cast<int64_t>(batchSize_);
     int64_t n2 = static_cast<int64_t>(numHeadsKv_);
@@ -736,30 +727,28 @@ void FlashAttnMetadataCpuKernel::FagFillBlockInfoLoadBalance(std::vector<std::ve
         totalBlockInfo[i][0] = actualS1Outer * actualS2Outer;
 
         int64_t actualCalcS1Token, actualCalcS2Token;
-        FagCalcleActualToken(fagSparseMode_, fagS1Token_, fagS2Token_, actualS1Len, actualS2Len, actualCalcS1Token,
-                             actualCalcS2Token);
+        FagCalcleActualToken(fagSparseMode_, fagS1Token_, fagS2Token_,
+            actualS1Len, actualS2Len, actualCalcS1Token, actualCalcS2Token);
 
         for (int64_t j = 0; j < fagS2Outer_; j++) {
             if (fagCvS2Inner_ * j >= actualS2Len) {
                 acturalBlockInfo[i][j] = 0;
             } else {
-                int64_t leftIntersectionPoint =
-                    std::max(fagCvS2Inner_ * j - actualCalcS2Token, static_cast<int64_t>(0));
-                int64_t cvBlockTail =
-                    (fagCvS2Inner_ * (j + 1) > actualS2Len) ? actualS2Len - fagCvS2Inner_ * j : fagCvS2Inner_;
-                float acturalS1Begin =
-                    static_cast<float>(leftIntersectionPoint > actualS1Len ? actualS1Len : leftIntersectionPoint);
-                float acturalS1End = static_cast<float>(
-                    std::min(actualS1Len,
-                             std::max(fagCvS2Inner_ * j + cvBlockTail + actualCalcS1Token, static_cast<int64_t>(0))));
+                int64_t leftIntersectionPoint = std::max(
+                    fagCvS2Inner_ * j - actualCalcS2Token, static_cast<int64_t>(0));
+                int64_t cvBlockTail = (fagCvS2Inner_ * (j + 1) > actualS2Len) ?
+                    actualS2Len - fagCvS2Inner_ * j : fagCvS2Inner_;
+                float acturalS1Begin = static_cast<float>(
+                    leftIntersectionPoint > actualS1Len ? actualS1Len : leftIntersectionPoint);
+                float acturalS1End = static_cast<float>(std::min(actualS1Len,
+                    std::max(fagCvS2Inner_ * j + cvBlockTail + actualCalcS1Token, static_cast<int64_t>(0))));
                 float acturalS1Num = acturalS1Begin > acturalS1End ? 0 : acturalS1End - acturalS1Begin;
                 float acturalS2Num = static_cast<float>(cvBlockTail);
-                acturalBlockInfo[i][j] =
-                    acturalS1Num / static_cast<float>(fagS1CvInner_) + acturalS2Num / static_cast<float>(fagCvS2Inner_);
+                acturalBlockInfo[i][j] = acturalS1Num / static_cast<float>(fagS1CvInner_) +
+                    acturalS2Num / static_cast<float>(fagCvS2Inner_);
                 acturalBlockInfo[b][0] += acturalBlockInfo[i][j] * n2 * g;
                 acturalBlockInfo[b + 1][0] = (acturalBlockInfo[b + 1][0] < acturalBlockInfo[i][j]) ?
-                                                 acturalBlockInfo[i][j] :
-                                                 acturalBlockInfo[b + 1][0];
+                    acturalBlockInfo[i][j] : acturalBlockInfo[b + 1][0];
             }
         }
         if (i == 0) {
@@ -835,9 +824,11 @@ void FlashAttnMetadataCpuKernel::DoFagBn2s2SparseTndSplit()
 
     FagFillBlockInfoLoadBalance(totalBlockInfo, acturalBlockInfo);
 
-    float maxBlockNumPerCore = Bn2s2BinarySearchMaxBlockNumPerCore(b, n2, g, aicNum, totalBlockInfo, acturalBlockInfo);
+    float maxBlockNumPerCore = Bn2s2BinarySearchMaxBlockNumPerCore(
+        b, n2, g, aicNum, totalBlockInfo, acturalBlockInfo);
 
-    bool success = Bn2s2CaclePerCoreBlockInfo(b, n2, g, aicNum, totalBlockInfo, acturalBlockInfo, maxBlockNumPerCore);
+    bool success = Bn2s2CaclePerCoreBlockInfo(
+        b, n2, g, aicNum, totalBlockInfo, acturalBlockInfo, maxBlockNumPerCore);
 
     if (!success) {
         fagBlockOuter_ = 0;
@@ -847,9 +838,10 @@ void FlashAttnMetadataCpuKernel::DoFagBn2s2SparseTndSplit()
 }
 
 // Source: varlen_regbase.cpp:1247-1262 BinarySearchMaxBlockNumPerCore
-float FlashAttnMetadataCpuKernel::Bn2s2BinarySearchMaxBlockNumPerCore(int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-                                                                      std::vector<std::vector<int64_t>> &totalBlockInfo,
-                                                                      std::vector<std::vector<float>> &acturalBlockInfo)
+float FlashAttnMetadataCpuKernel::Bn2s2BinarySearchMaxBlockNumPerCore(
+    int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+    std::vector<std::vector<int64_t>> &totalBlockInfo,
+    std::vector<std::vector<float>> &acturalBlockInfo)
 {
     float left = acturalBlockInfo[b + 1][0];
     float right = acturalBlockInfo[b][0];
@@ -866,8 +858,9 @@ float FlashAttnMetadataCpuKernel::Bn2s2BinarySearchMaxBlockNumPerCore(int64_t b,
 }
 
 // Source: varlen_regbase.cpp:1373-1412 IsPossible
-bool FlashAttnMetadataCpuKernel::Bn2s2IsPossible(int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
-                                                 std::vector<std::vector<float>> &acturalBlockInfo)
+bool FlashAttnMetadataCpuKernel::Bn2s2IsPossible(
+    int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
+    std::vector<std::vector<float>> &acturalBlockInfo)
 {
     float currentSum = 0;
     uint64_t needCoreNum = 1;
@@ -892,10 +885,11 @@ bool FlashAttnMetadataCpuKernel::Bn2s2IsPossible(int64_t b, int64_t n2, int64_t 
 }
 
 // Source: varlen_regbase.cpp:1264-1314 CaclePerCoreBlockInfo
-bool FlashAttnMetadataCpuKernel::Bn2s2CaclePerCoreBlockInfo(int64_t b, int64_t n2, int64_t g, int64_t aicNum,
-                                                            std::vector<std::vector<int64_t>> &totalBlockInfo,
-                                                            std::vector<std::vector<float>> &acturalBlockInfo,
-                                                            float maxBlockNumPerCore)
+bool FlashAttnMetadataCpuKernel::Bn2s2CaclePerCoreBlockInfo(
+    int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+    std::vector<std::vector<int64_t>> &totalBlockInfo,
+    std::vector<std::vector<float>> &acturalBlockInfo,
+    float maxBlockNumPerCore)
 {
     float currentSum = 0;
     int64_t coreIdx = 0;
@@ -941,12 +935,10 @@ bool FlashAttnMetadataCpuKernel::TryBn2MultiBlkSparse()
     if (fagUseTndSplit_) {
         return false;
     }
-    if (fagIsSparse_) {
-        return DoFagBn2SparseBlockInfo();
-    } else {
-        DoFagBn2DenseSplit();
-        return true;
-    }
+    // PyPTO BN2 线性路径按 dense [blockStart, blockEnd) + skip_invalid 消费，
+    // 与 GS1S2 mask 相同：AICPU 仍切 dense 矩形，不在这里做 packed 重映射。
+    DoFagBn2DenseSplit();
+    return true;
 }
 
 // ===== BN2 dense: BN 合轴多块均匀分核 =====
@@ -1040,7 +1032,8 @@ bool FlashAttnMetadataCpuKernel::DoFagBn2SparseBlockInfo()
             preSize = nextSize;
         }
 
-        fagBlockStarts_[c] = (((bIdx * n2 + n2Idx) * g + gIdx) * fagS2Outer_ + s2oIdx) * fagS1Outer_ + s1oIdx + 1;
+        fagBlockStarts_[c] = (((bIdx * n2 + n2Idx) * g + gIdx) * fagS2Outer_ + s2oIdx) *
+                             fagS1Outer_ + s1oIdx + 1;
         fagBlockEnds_[c - 1] = fagBlockStarts_[c];
     }
     for (uint32_t c = static_cast<uint32_t>(blockOuter); c < FAG_CORE_LIST_NUM; c++) {
@@ -1056,14 +1049,38 @@ bool FlashAttnMetadataCpuKernel::DoFagBn2SparseBlockInfo()
     return true;
 }
 
+// Consecutive row split across live AIV cores. Remainder goes to the first rem cores
+// so max(rows)-min(rows) <= 1 among participants. Idle slots stay [0,0).
+static inline void FagSplitRows(int64_t totalRows, uint32_t nAiv, FA_METADATA_T *starts, FA_METADATA_T *ends)
+{
+    for (uint32_t i = 0; i < FAG_AIV_SLOT_NUM; i++) {
+        starts[i] = 0;
+        ends[i] = 0;
+    }
+    if (nAiv == 0U || totalRows <= 0) {
+        return;
+    }
+    uint32_t live = (nAiv > FAG_AIV_SLOT_NUM) ? FAG_AIV_SLOT_NUM : nAiv;
+    int64_t base = totalRows / static_cast<int64_t>(live);
+    int64_t rem = totalRows % static_cast<int64_t>(live);
+    int64_t cur = 0;
+    for (uint32_t i = 0; i < live; i++) {
+        int64_t n = base + (static_cast<int64_t>(i) < rem ? 1 : 0);
+        starts[i] = static_cast<FA_METADATA_T>(cur);
+        ends[i] = static_cast<FA_METADATA_T>(cur + n);
+        cur += n;
+    }
+}
+
 // ===== GenFagMetadata: serialize FAG split results to metadata tensor =====
 // FAG data is appended after FA/FD data, core counts are dynamic (read from attrs)
 void FlashAttnMetadataCpuKernel::GenFagMetadata(uint32_t sectionNum)
 {
     auto *basePtr = static_cast<FA_METADATA_T *>(metadata_->GetData());
     // FAG start offset = Head(16) + FA(sectionNum*aicNum*16) + FD(sectionNum*aivNum*16)
-    uint32_t fagOffset = METADATA_STRIDE + sectionNum * (static_cast<uint32_t>(aicCoreNum_) * METADATA_STRIDE +
-                                                         static_cast<uint32_t>(aivCoreNum_) * METADATA_STRIDE);
+    uint32_t fagOffset = METADATA_STRIDE +
+        sectionNum * (static_cast<uint32_t>(aicCoreNum_) * METADATA_STRIDE +
+                      static_cast<uint32_t>(aivCoreNum_) * METADATA_STRIDE);
 
     // Record FAG start offset in head[7]
     basePtr[HEAD_FAG_START_OFFSET_INDEX] = fagOffset;
@@ -1095,6 +1112,24 @@ void FlashAttnMetadataCpuKernel::GenFagMetadata(uint32_t sectionNum)
     fag[FAG_WIN_RIGHT_INDEX] = static_cast<FA_METADATA_T>(winRight_);
     fag[FAG_MAX_SEQLEN_Q_INDEX] = static_cast<FA_METADATA_T>(maxSeqlenQ_);
     fag[FAG_MAX_SEQLEN_KV_INDEX] = static_cast<FA_METADATA_T>(maxSeqlenKv_);
+
+    // pre/post 行区间。与 kernel 展平视图一致：dqRows=B*S1*N1，dkvRows=B*S2*N2。
+    int64_t s1 = (maxSeqlenQ_ > 0) ? static_cast<int64_t>(maxSeqlenQ_) : 0;
+    int64_t s2 = (maxSeqlenKv_ > 0) ? static_cast<int64_t>(maxSeqlenKv_) : 0;
+    int64_t b = (batchSize_ > 0) ? static_cast<int64_t>(batchSize_) : 0;
+    int64_t n1 = (numHeadsQ_ > 0) ? static_cast<int64_t>(numHeadsQ_) : 0;
+    int64_t n2 = (numHeadsKv_ > 0) ? static_cast<int64_t>(numHeadsKv_) : 0;
+    int64_t dqRows = b * s1 * n1;
+    int64_t dkvRows = b * s2 * n2;
+    uint32_t nAiv = fagBlockOuter_ * 2U;
+    if (nAiv > FAG_AIV_SLOT_NUM) {
+        nAiv = FAG_AIV_SLOT_NUM;
+    }
+    fag[FAG_PRE_AIV_NUM_INDEX] = nAiv;
+    fag[FAG_DQ_ROWS_INDEX] = static_cast<FA_METADATA_T>(dqRows);
+    fag[FAG_DKV_ROWS_INDEX] = static_cast<FA_METADATA_T>(dkvRows);
+    FagSplitRows(dqRows, nAiv, fag + FAG_DQ_ROW_STARTS_OFFSET, fag + FAG_DQ_ROW_ENDS_OFFSET);
+    FagSplitRows(dkvRows, nAiv, fag + FAG_DKV_ROW_STARTS_OFFSET, fag + FAG_DKV_ROW_ENDS_OFFSET);
 }
 
 // ===== FAG metadata end =====
