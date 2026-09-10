@@ -141,10 +141,6 @@ public:
         if ASCEND_IS_AIV {
             return;
         }
-        // Hide the independent shared-expert matmul behind the first communication.
-        if (tilingData_->localMatmul != 0U) {
-            RunLocalMatmul();
-        }
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
             const uint32_t slot = expertIdx & 1U;
             hccl_.Wait(scaleHandle_[slot]);
@@ -158,6 +154,14 @@ public:
 
         AscendC::SyncAll();
         hccl_.Finalize();
+        // Hcomm requires the AIC blocks to keep servicing the communication
+        // protocol until Finalize completes. A long local matmul here can starve
+        // the first AlltoAllV and make the MC2 server time out (notably when the
+        // shared-expert weight is transposed). Run the independent local matmul
+        // only after all communication has been drained.
+        if (tilingData_->localMatmul != 0U) {
+            RunLocalMatmul();
+        }
     }
 
 private:
