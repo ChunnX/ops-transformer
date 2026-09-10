@@ -23,39 +23,6 @@ static constexpr Reg::CastTrait castTraitFp16_32_update = {Reg::RegLayout::ZERO,
                                                            Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr uint16_t REDUCE_SIZE = 1;
 
-// Full D64 rows only; other layouts and final normalization use the existing path.
-__simd_vf__ inline void FlashUpdateD64FullVF(__ubuf__ float *dst, __ubuf__ float *cur, __ubuf__ float *pre,
-                                             __ubuf__ float *expMax)
-{
-    MaskReg mask = CreateMask<float, MaskPattern::ALL>();
-    RegTensor<float> e0, p0, c0;
-    RegTensor<float> e1, p1, c1;
-    RegTensor<float> e2, p2, c2;
-    RegTensor<float> e3, p3, c3;
-    for (uint16_t i = 0; i < 16; ++i) {
-        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e0, expMax + i * 4 + 0);
-        LoadAlign(p0, pre + (i * 4 + 0) * 64);
-        LoadAlign(c0, cur + (i * 4 + 0) * 64);
-        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e1, expMax + i * 4 + 1);
-        LoadAlign(p1, pre + (i * 4 + 1) * 64);
-        LoadAlign(c1, cur + (i * 4 + 1) * 64);
-        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e2, expMax + i * 4 + 2);
-        LoadAlign(p2, pre + (i * 4 + 2) * 64);
-        LoadAlign(c2, cur + (i * 4 + 2) * 64);
-        LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(e3, expMax + i * 4 + 3);
-        LoadAlign(p3, pre + (i * 4 + 3) * 64);
-        LoadAlign(c3, cur + (i * 4 + 3) * 64);
-        MulAddDst(c0, p0, e0, mask);
-        MulAddDst(c1, p1, e1, mask);
-        MulAddDst(c2, p2, e2, mask);
-        MulAddDst(c3, p3, e3, mask);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 0) * 64, c0, mask);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 1) * 64, c1, mask);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 2) * 64, c2, mask);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>(dst + (i * 4 + 3) * 64, c3, mask);
-    }
-}
-
 // PV is DN: each vector holds64 query rows for one value column.
 template <bool last>
 __simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor,

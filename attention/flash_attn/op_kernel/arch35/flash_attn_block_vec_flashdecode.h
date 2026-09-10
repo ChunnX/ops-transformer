@@ -173,12 +173,8 @@ public:
             // FD 业务区起始字节偏移（跳过 FA 侧 bmm1/bmm2/mm2In 区域），
             // 以模板参数传入（取值为 FA vec block 的 GetFdBaseOffset()），避免两侧重复推导漂移
             constexpr uint32_t BASE = UB_FD_BASE_OFFSET;
-            // D64 split QK/PV queues occupy 160.5KiB; FD processes at most eight rows.
-            constexpr bool COMPACT_D64_FD = dVBaseSize == 64 && BASE == 160U * 1024U + 512U;
-            constexpr bool COMPACT_D72_FD = dVBaseSize == 128 && BASE == 160U * 1024U + 384U;
-            constexpr uint32_t MATRIX_BYTES =
-                COMPACT_D64_FD ? 8U * 64U * sizeof(T) : (COMPACT_D72_FD ? 8U * 128U * sizeof(T) : BUFFER_SIZE_BYTE_16K);
-            constexpr uint32_t GROUP_PADDING = COMPACT_D64_FD ? 0U : BUFFER_SIZE_BYTE_256B;
+            constexpr uint32_t MATRIX_BYTES = BUFFER_SIZE_BYTE_16K;
+            constexpr uint32_t GROUP_PADDING = BUFFER_SIZE_BYTE_256B;
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes

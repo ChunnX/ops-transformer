@@ -82,11 +82,8 @@ public:
     static constexpr uint32_t L0C_BUFFER_ID0 = 10U;
 
     // UB
-    static constexpr bool SPLIT_MM_QUEUES = Config::SPLIT_MM_QUEUES;
     static constexpr uint32_t UB_MM_RES_BUFCNT = Config::UB_MM_RES_BUFCNT;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES = Config::UB_MM_RES_BUF_BYTES;
-    static constexpr uint32_t UB_MM1_BUF_BYTES = Config::UB_MM1_BUF_BYTES;
-    static constexpr uint32_t UB_MM2_BUF_BYTES = Config::UB_MM2_BUF_BYTES;
     static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = Config::UB_MM_RES_TOTAL_BYTES;
     LocalTensor<uint8_t> ubMmResBuffers_;
     // L1
@@ -124,9 +121,9 @@ public:
     uint32_t l0cBufId_ = 0U;
 
     FaDnMmSlots<Config> mmSlots_;
-    __aicore__ inline uint32_t AcquireMmSlot(bool second)
+    __aicore__ inline uint32_t AcquireMmSlot()
     {
-        return mmSlots_.Acquire(second);
+        return mmSlots_.Acquire();
     }
 
     __aicore__ inline uint32_t MmSlotOffset(uint32_t id)
@@ -294,7 +291,7 @@ public:
 
     __aicore__ inline void IterateBmm1(RunInfo &runInfo)
     {
-        uint32_t mmResUbBufId = AcquireMmSlot(false);
+        uint32_t mmResUbBufId = AcquireMmSlot();
         LocalTensor<MM_T> mm1ResUbTensor = ubMmResBuffers_[MmSlotOffset(mmResUbBufId)].template ReinterpretCast<MM_T>();
         uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
 
@@ -362,11 +359,7 @@ public:
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         constInfo_.dSize, false, true, true, true, 0U, 0, ldK, 0);
-            if constexpr (Config::SINGLE_PV_SLOT) {
-                // K64 bounds a 256-row BF16 A tile to one 32KiB L0A slot.
-                MatmulK<KV_T, Q_T, MM_T, 256, 128, 64, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
-                                                                                   mmL0BPolicy_, l0CSubTensor, param);
-            } else if constexpr (dBaseSize > 128) {
+            if constexpr (dBaseSize > 128) {
                 MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
                                                                                     mmL0BPolicy_, l0CSubTensor, param);
             } else {
@@ -395,7 +388,7 @@ public:
 
     __aicore__ inline void IterateBmm2(RunInfo &runInfo)
     {
-        uint32_t mmResUbBufId = AcquireMmSlot(true);
+        uint32_t mmResUbBufId = AcquireMmSlot();
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
         uint32_t mmSyncIdx = CROSSCORE_MM_0 + mmResUbBufId;
