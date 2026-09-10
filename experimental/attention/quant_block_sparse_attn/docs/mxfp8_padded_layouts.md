@@ -28,7 +28,7 @@ the MX tiling data struct now contains qSeqSize. Existing FP8 template selection
 and TND/TN output conventions are retained.
 
 Validation: the existing InferShape CSV runner includes BSND/BNSD cases, and
-test_mx_query_layout.cpp checks the production address helpers on CPU.
+test_quant_block_sparse_attn_shape_infershape.cpp checks the production address helpers on CPU.
 On an Ascend device, set `QBSA_CHECK_PADDED_LAYOUTS=1` when running the existing
 MXFP8 golden in eager mode. It reuses each TND case's Q/K/V/scales/sparse metadata,
 repackages Q and Q scale, and compares both padded outputs and BNS LSE exactly.

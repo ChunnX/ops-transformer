@@ -66,7 +66,7 @@ LSE 关闭时，新布局返回空 Tensor；开启时固定 BNS。
   batch 间不等长由 pytest STC 覆盖。
 - InferShape CSV 新增 8 条：两种布局的 LSE 开/关、输出布局不匹配、FP8 拒绝新布局。
 - Host tiling CSV 新增 6 条：两种布局正确输入、QScale shape 错误、LSE shape 错误。
-- `test_mx_query_layout.cpp`：直接测试生产 C++ 地址函数，覆盖多个 batch/head、129-token 尾块及超 32 位偏移。
+- `test_quant_block_sparse_attn_shape_infershape.cpp`：直接测试生产 C++ 地址函数，覆盖多个 batch/head、129-token 尾块及超 32 位偏移。
 - `test_padded_layout_helpers.py`：CPU Torch 的打包/还原测试，覆盖数据、scale、LSE、空 batch 和容量错误。
 
 测试文件均位于当前算子目录。运行单个新增 STC 的示例：
