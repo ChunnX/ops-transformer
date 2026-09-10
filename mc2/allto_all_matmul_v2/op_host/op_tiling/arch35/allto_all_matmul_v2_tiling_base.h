@@ -669,7 +669,7 @@ protected:
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
-            tilingEngine.SetBiasInfo(hasBias);
+            tilingEngine.SetOptimizeEnable(false);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         } else {
             QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN,
@@ -678,7 +678,7 @@ protected:
             tilingEngine.SetPlatformInfoPtr(context_->GetPlatformInfo());
             tilingEngine.SetBiasInfo(hasBias);
             tilingEngine.EnableBaseMHalving(true);
-            tilingEngine.SetBiasInfo(hasBias);
+            tilingEngine.SetOptimizeEnable(false);
             tilingEngine.GetTilingData(m_, n_, k_, false, true, td->tileQbmmTilingData);
         }
 
@@ -711,6 +711,32 @@ protected:
             td->commTilingData.nonSplitAxisSize = ka / 2;
         }
 
+        // win 区 buffer 复用深度决策：fullWin ≤ 200M 时不复用(slotNum=totalTiles)，
+        // 否则在 200M 预算内取最大深度(≤64，freeze 安全上限)。
+        // data 复用、scale 恒全量，故预算需扣除 scale 固定占用。
+        constexpr uint64_t WIN_REUSE_THRESHOLD = 200UL * 1024UL * 1024UL;
+        constexpr uint64_t WIN_REUSE_DEPTH_CAP = 64UL;
+        uint64_t totalTiles = td->commTilingData.splitAxisTileCnt + td->commTilingData.splitAxisTailCnt;
+        uint64_t maxTileSize = std::max(td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTailSize);
+        uint64_t x1Bits = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 4UL : 8UL;
+        uint64_t dataSlotSize = worldSize_ * maxTileSize * (ka * x1Bits / 8UL);
+        uint64_t scaleKGroups = (ka + MX_SCALE_ALIGN - 1UL) / MX_SCALE_ALIGN;
+        uint64_t scaleSlotSize = worldSize_ * maxTileSize * scaleKGroups * SCALE_LAST_DIM;
+        uint64_t fullWinBytes = totalTiles * (dataSlotSize + scaleSlotSize);
+
+        uint64_t slotNum;
+        if (fullWinBytes <= WIN_REUSE_THRESHOLD) {
+            slotNum = totalTiles;
+        } else {
+            uint64_t scaleWinFixed = totalTiles * scaleSlotSize;
+            uint64_t dataBudget = (scaleWinFixed >= WIN_REUSE_THRESHOLD) ? 0UL
+                                                                          : WIN_REUSE_THRESHOLD - scaleWinFixed;
+            uint64_t budgetDepth = (dataSlotSize == 0UL) ? totalTiles : dataBudget / dataSlotSize;
+            slotNum = std::min({WIN_REUSE_DEPTH_CAP, budgetDepth, totalTiles});
+        }
+        td->commTilingData.slotNum = slotNum;
+        td->scaleCommTilingData.slotNum = 0;
+
         OP_LOGI(opName, "comm tiling: tileSize=%lu, tileCnt=%lu, tailSize=%lu, tailCnt=%lu, nonSplitSize=%lu",
                 td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
                 td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
@@ -719,6 +745,8 @@ protected:
                 td->scaleCommTilingData.splitAxisTileSize, td->scaleCommTilingData.splitAxisTileCnt,
                 td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
                 td->scaleCommTilingData.nonSplitAxisSize);
+        OP_LOGI(opName, "win reuse: totalTiles=%lu, dataSlotBytes=%lu, scaleSlotBytes=%lu, fullWinBytes=%lu, slotNum=%lu",
+                totalTiles, dataSlotSize, scaleSlotSize, fullWinBytes, slotNum);
 
         td->localMatmul = precisionMode_;
 
