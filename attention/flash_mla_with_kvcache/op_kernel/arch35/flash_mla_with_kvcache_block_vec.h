@@ -217,11 +217,10 @@ public:
         outGmTensor_.gmTensor = attentionOutGm;
         if constexpr (GmLayoutParams<OUT_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             outGmTensor_.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                               constInfo.dSizeV, seqLensTool_.actualSeqLengthsGmQ,
-                                               constInfo.actualSeqLenSize);
+                                               constInfo.dSizeV, seqLensTool_.qActSeqLensParser);
         } else {
             outGmTensor_.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
-                                               seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                               seqLensTool_.qActSeqLensParser);
         }
     }
 
@@ -259,32 +258,12 @@ public:
         Vec1PostProcess(runInfo);
     }
 
-    __aicore__ inline bool IsInitAttentionOutGm()
-    {
-        // TND、NTD场景且不存在无效行,不需要初始化
-        if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND ||
-                      LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD ||
-                      LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::NTD_TND) {
-            /*
-             * tiling中提前算好了是否可能出现无效行, 正常从tiling中提取这个标记位(constInfo.isExistRowInvalid),
-             * 对于FD场景, 有可能整体是没有无效行的,
-             * 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
-             * 就认为可能存在无效行
-             */
-            bool isExistRowInvalid = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid;
-            if (!isExistRowInvalid) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     // FA 协同清零（init_output.h:39-81）：pop-buffer 瞬时别名落在
     // bmm2 CV 槽 [0..64K)（表 1 注 5），安全依赖 c2v2 反向旗标门控；仅在 kernel Init 阶段执行一次，
     // EVENT_ID0/1 为 Mutex ID（PIPE_V/PIPE_MTE3），与后段 vec 核内同步时序不重叠（表 2 注 9）
-    __aicore__ inline void ClearOutput()
+    __aicore__ inline void ClearOutput(bool needInit)
     {
-        if (IsInitAttentionOutGm()) {
+        if (needInit) {
             uint32_t vecCoreNum = 2 * constInfo.coreNum;
             int64_t tSize = constInfo.bSize * constInfo.s1Size;
             if constexpr (LAYOUT_T == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND ||

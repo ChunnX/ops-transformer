@@ -179,8 +179,7 @@ public:
         // query 576 宽单张量（nope 512 + rope 64 合并）——GM stride 按 576 初始化，
         // 供 CopyQueryAndRopeTile 的 rope 段按 dIdx=512 偏移定位
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                    constInfo.dSize + constInfo.dSizeRope, seqLensTool_.actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
-                    queryGm, query);
+                    constInfo.dSize + constInfo.dSizeRope, queryGm, query);
 
         // k_cache 为普通 ND 张量（非 TensorList）：直接取裸指针，
         // 不能用 ListTensorDesc 解码（会把 k_cache 数据首部误解析为 list 描述符 → GM 越界）
@@ -202,16 +201,15 @@ public:
 
     __aicore__ inline void InitQBuffer(
         uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize, uint32_t headDim,
-        GlobalTensor<uint32_t> actualSeqLengthsGmQ, uint32_t actualLenQDims,
         FaGmTensor<Q_T, Q_FORMAT, uint32_t, LAYOUT == FLASH_MLA_WITH_KVCACHE_LAYOUT::TND> &qGmTensor,
         __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
-            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, actualSeqLengthsGmQ,
-                                            actualLenQDims);
+            qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim,
+                                            seqLensTool_.qActSeqLensParser);
         } else if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, actualSeqLengthsGmQ, actualLenQDims);
+            qGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, seqLensTool_.qActSeqLensParser);
         }
     }
 

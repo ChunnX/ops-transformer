@@ -140,7 +140,7 @@ public:
 
         if ASCEND_IS_AIV {
             vecFaBlock_.InitVecBlock(attenMask, softmaxLse, attentionOut, workspace);
-            vecFaBlock_.ClearOutput();
+            vecFaBlock_.ClearOutput(tilingData_->flashMlaWithKvcacheEmptyTensorParams.needInit != 0);
         }
 
         if ASCEND_IS_AIC {
