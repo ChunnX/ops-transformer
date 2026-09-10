@@ -153,7 +153,9 @@ public:
         // KV序列解析: cache_seqlens(B)
         cacheSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)cacheSeqLens, constInfo_.kvSeqUsedSize);
         kvSeqUsedParser_.Init(cacheSeqLensGm_, constInfo_.kvSeqUsedSize, constInfo_.s2Size);
-
+        // FD统一开关: metadata header[1], 由metadata算子按是否存在FD任务写入, 所有核一致
+        constInfo_.enableFlashDecode =
+            static_cast<bool>(((__gm__ uint32_t *)metadata)[QMLA_HEAD_IS_FD_INDEX]);
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
@@ -552,16 +554,25 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        GetFDSectionInfo(sectionIdx);
-        if (!fdParams_.fdCoreEnable) {
+        if (!constInfo_.enableFlashDecode) {
             return;
         }
-        vecFdBlock_.InitBuffers(this->pipe_);
+        GetFDSectionInfo(sectionIdx);
+        // FD buffers为绝对偏移LocalTensor纯标量构造（不触碰TPipe），SyncAll前调用无副作用，
+        // 与flash_attn FD保持一致；FD内部用Mutex轮转双buffer，不占用EventID池
+        vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
-        vecFdBlock_.AllocEventID();
-        SyncAll();
+        // FA→FD切换前排空本核全部在途流水线：FA最后tile的workspace GM写（MTE3）与
+        // brdcst源buffer读（UB区域与FD工作区重叠）必须全部落地，FD的MTE2/V才能安全覆写；
+        // PipeBarrier<PIPE_ALL>等待所有流水线（MTE1/2/3/SCALAR/VECTOR/FIX）在途操作完成，
+        // 不依赖EventID分配，杜绝事件ID错位导致的排空失效；所有AIV均在各自SyncAll前排空
+        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);
-        vecFdBlock_.FreeEventID();
+        // FD→FA(i+1)切换前排空本核全部在途流水线：FD的attenOut/lse GM写与fdOutputBuf_源读
+        // 必须全部完成，FA(i+1)的V/MTE2才能安全覆写FD曾用UB区域
+        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::SyncAll();
     }
 
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)

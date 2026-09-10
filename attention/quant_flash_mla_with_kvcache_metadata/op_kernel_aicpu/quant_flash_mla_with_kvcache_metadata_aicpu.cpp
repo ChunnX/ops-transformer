@@ -195,18 +195,21 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     // KV cache为PA布局, 分核侧统一按BSND处理
     baseInfo.layoutKv = ConvertToLayout("BSND");
-    // MLA量化场景Q/KV为fp8_e4m3/hifloat8, 均按1字节参与分核代价估算
-    baseInfo.queryType = load_balance::DataType::INT8;
-    baseInfo.kvType = load_balance::DataType::INT8;
+    // MLA量化场景: quantMode 1=FP8_E4M3, 0=HIFLOAT8, 按量化模式设置分核代价估算的数据类型(均为1字节)
+    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8
+                                        : (quantMode_ == 0) ? load_balance::DataType::HIFP8
+                                        : load_balance::DataType::INT8;
+    baseInfo.queryType = quantDtype;
+    baseInfo.kvType = quantDtype;
 
     // MLA固定切分: SOuter=32, SInner=128 (与FIA MLA tiling保持一致)
     s2BaseSize_ = NUM_128; // SInner
     mBaseSize_ = NUM_32 * (aivCoreNum_ / aicCoreNum_); // SOuter * cvRatio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 0;
-    param.fdTolerance = 300;
-    param.fdOn = 0;
+    param.l2Byte = 96*1024*1024;
+    // param.fdTolerance = 300;
+    param.fdOn = true;
     // MLA的M轴为GS1合轴(n2=1, g=numHeadsQ), 与FA kernel的M轴遍历方式一致
     param.outputLayout = load_balance::OutputLayout::BN2_S1G;
 

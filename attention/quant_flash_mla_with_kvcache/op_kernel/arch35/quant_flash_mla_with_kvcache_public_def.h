@@ -153,6 +153,9 @@ struct CommonConstInfo {
     /* 输出shape */
     QMLA_LAYOUT outputLayout;
     bool needInitOutput;
+
+    /* FlashDecode: metadata header统一标志, 所有核读取同一值, 决定是否走FD流程 */
+    bool enableFlashDecode;
 };
 
 /* Paged Attention */
