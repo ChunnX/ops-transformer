@@ -1830,7 +1830,7 @@ static ge::graphStatus CheckWeightPairShapeRelations(const gert::TilingContext *
     OP_TILING_CHECK(weightOneColumnCount != weightTwoRowCount || weightOneColumnCount != xColumnCount,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, expertParams.expertTypeName, commonMatrixDimensionsString.c_str(),
-                        "weight1 column count and weight2 row count must equal x column count."),
+                        "weight1 column count and weight2 row count must equal x column count"),
                     return ge::GRAPH_FAILED);
 
     const std::string weightRowColumnDimensionsString =
@@ -1838,7 +1838,7 @@ static ge::graphStatus CheckWeightPairShapeRelations(const gert::TilingContext *
     OP_TILING_CHECK(weightOneRowCount != weightTwoColumnCount * SWIGLU_GATE_UP_SPLIT_FACTOR,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, expertParams.expertTypeName, weightRowColumnDimensionsString.c_str(),
-                        "weight1 row count must equal weight2 column count multiplied by 2."),
+                        "weight1 row count must equal weight2 column count multiplied by 2"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
