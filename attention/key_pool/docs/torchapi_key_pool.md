@@ -154,6 +154,12 @@ torch.ops.cann_ops_transformer.key_pool(
 - `L` 表示 `cache_block_table` 的逻辑 block 数；
 - `Sr = ceil(L * block_size / cmp_ratio)`，表示输出的固定容量。
 
+每个 Batch 的有效输出位于前 `valid_count` 行，
+`valid_count = (start_pos + seq_len) // cmp_ratio - start_pos // cmp_ratio`。
+BSH 的 `seq_len` 为 `S`，TH 的 `seq_len` 为相邻 `cu_seqlens` 的差值。
+其余输出行未初始化，数值未定义，调用者只能使用有效范围；精度验证时可在
+用于比较的副本中将无效行清零，不能将该清零计入算子性能。
+
 `BSH` 表示 Batch-Sequence-Hidden 布局，`hidden_states` 的 shape 为
 `[B,S,H]`。`TH` 表示 Token-Hidden 布局，`hidden_states` 的 shape 为
 `[T,H]`，并通过 shape 为 `[B+1]` 的 `cu_seqlens` 描述各 Batch 的 token
