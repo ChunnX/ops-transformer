@@ -127,6 +127,7 @@ private:
     __aicore__ inline void FillTriple(LocalTensor<XOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k,
                                       bool writeExpertScale);
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
+    __aicore__ inline void PrecomputeDstTokenIdx(uint32_t validTokenNum); // [性能优化修改点1] 新增预计算声明
     __aicore__ inline void TokenToExpertInQuant(GlobalTensor<XOutType> dstWinGMTensor,
                                                 TQue<QuePosition::VECIN, 1> inQueue, uint32_t srcTokenIndex,
                                                 uint32_t toExpertId, uint32_t toExpertIndex, bool writeExpertScale);
@@ -173,6 +174,7 @@ private:
     LocalTensor<float> expertScalesTensor_;
     LocalTensor<float> statusCleanFp32Tensor_;
     LocalTensor<int32_t> sendCntTensor_;
+    LocalTensor<int32_t> dstTokenIdxTensor_; // [性能优化修改点2] 新增成员变量，存储预计算的dstTokenIdx
     LocalTensor<XOutType> outTensor_;
     LocalTensor<XOutType> tempTensor_;
     LocalTensor<float> floatLocalTemp_;
@@ -204,6 +206,7 @@ private:
     TBuf<> performanceFlagBuf_;
     TBuf<> calBeginBuf_;
     TBuf<> calEndBuf_;
+    TBuf<> expertCntBuf_; // [性能优化修改点3] 新增成员变量，预计算时的per-expert计数buffer
     GM_ADDR expandXOutGM_;
     GM_ADDR expandScalesOutGM_;
     GM_ADDR sendCountsOutGM_;
@@ -594,8 +597,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     // 计算目的共享专家卡在其所在共享专家组的id
     uint32_t idInSharedGroup = epRankId_ % rankNumPerSharedExpert_;
     syncFlagId_ = 0;
+    // [性能优化修改点4] flag循环简化: i % sendTokenBufNum_ -> i
     for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(i);
     }
     for (uint32_t virtualTokenIndex = startTokenId; virtualTokenIndex < endTokenId; ++virtualTokenIndex) {
         uint32_t sendTokenIndex = virtualTokenIndex % activeMaskBsCnt_;
@@ -619,8 +623,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             TokenToExpert(dstWinGMTensor, inQueue, srcTokenIndex, axisK_ + toSharedExpertIndex, false);
         }
     }
+    // [性能优化修改点4] flag循环简化: i % sendTokenBufNum_ -> i
     for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i);
     }
 }
 
@@ -634,9 +639,13 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint32_t validTokenNum = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
     syncFlagId_ = 0;
 
+    // [性能优化修改点5] flag循环简化: i % sendTokenBufNum_ -> i
     for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(i);
     }
+
+    // [性能优化修改点5] 新增预计算调用，O(N)预计算替代循环内O(N^2)的CalTokenSendExpertCnt
+    PrecomputeDstTokenIdx(validTokenNum);
 
     // 在循环外区分有无专家权重，避免性能劣化
     if (hasExpertScalesFlag_) {
@@ -646,7 +655,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     }
 
     for (int i = 0; i < sendTokenBufNum_; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i % sendTokenBufNum_);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i);
     }
 }
 
@@ -668,18 +677,21 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
         }
 
-        CalTokenSendExpertCnt(expertId, index, dstTokenIdx);
+        // [性能优化修改点6] 替换CalTokenSendExpertCnt为预计算读取，消除O(N^2)向量操作
+        dstTokenIdx = dstTokenIdxTensor_.GetValue(index);
 
-        dstWinGMTensor.SetGlobalBuffer(
-            (__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
-                                expertPerSizeOnWin_ * ((epRankId_ + toRankId) % epWorldSize_ * moeExpertNumPerRank_ +
-                                                       expertId % moeExpertNumPerRank_) +
-                                dstTokenIdx * hCommuSize_));
+        // [性能优化修改点6] SetGlobalBuffer重构为if-else，避免hasElasticInfoFlag_为true时冗余计算
         if (hasElasticInfoFlag_) {
             dstWinGMTensor.SetGlobalBuffer((__gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
                                                                expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ +
                                                                                       expertId % moeExpertNumPerRank_) +
                                                                dstTokenIdx * hCommuSize_));
+        } else {
+            dstWinGMTensor.SetGlobalBuffer((
+                __gm__ XOutType *)(uint64_t(GetWindAddrByRankId(toRankId)) +
+                                   expertPerSizeOnWin_ * ((epRankId_ + toRankId) % epWorldSize_ * moeExpertNumPerRank_ +
+                                                          expertId % moeExpertNumPerRank_) +
+                                   dstTokenIdx * hCommuSize_));
         }
         if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
             uint32_t quantExpertIdx = expertId + sharedExpertNum_;
@@ -758,6 +770,11 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     }
     tpipe_->InitBuffer(calTempBuf, calTokenIdxBuffSize);
     workLocalTensor_ = calTempBuf.Get<float>();
+    // [性能优化修改点7] 复用calTempBuf作为dstTokenIdxTensor_，并分配expertCntBuf_用于预计算
+    dstTokenIdxTensor_ = calTempBuf.Get<int32_t>();
+    uint32_t expertCntBufSize = Ceil(moeExpertNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(expertCntBuf_, expertCntBufSize);
+    // [性能优化修改点7] end
     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf, dynamicScalesOutGMTensor_);
     ExpIdsCopyAndMaskCal();
     if (activeMaskBsCnt_ == 0) {
@@ -807,6 +824,30 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         curExpertCnt = 0;
     }
 }
+
+// [性能优化修改点8] 新增函数: O(N)预计算所有token的dstTokenIdx，替代循环内O(N^2)的CalTokenSendExpertCnt
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::PrecomputeDstTokenIdx(
+    uint32_t validTokenNum)
+{
+    if (moeExpertNum_ == 0 || validTokenNum == 0) {
+        return;
+    }
+    LocalTensor<int32_t> expertCntTensor = expertCntBuf_.Get<int32_t>();
+    uint32_t expertCntAlign = Ceil(moeExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
+    Duplicate<int32_t>(expertCntTensor, 0, expertCntAlign);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    for (uint32_t i = 0; i < validTokenNum; i++) {
+        int32_t expertId = validExpertIdsTensor_.GetValue(i);
+        if (expertId >= 0 && expertId < static_cast<int32_t>(moeExpertNum_)) {
+            int32_t cnt = expertCntTensor.GetValue(expertId);
+            dstTokenIdxTensor_.SetValue(i, cnt);
+            expertCntTensor.SetValue(expertId, cnt + 1);
+        }
+    }
+    SyncFunc<AscendC::HardEvent::S_V>();
+}
+// [性能优化修改点8] end
 
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline int32_t MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::CalExpertCnt(
