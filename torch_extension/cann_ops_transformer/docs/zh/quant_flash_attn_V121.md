@@ -190,7 +190,7 @@ cann_ops_transformer.quant_flash_attn(
 | KV_T |                                                                 输入k/v tensor所有batch序列长度的累加和                                                                |
 |   D   |                                                        输入q/k/v tensor以及输出attn_out隐藏层最小的单元尺寸headdim                                                        |
 |   Bs  |                                                               Paged Attention场景下的KV cache的块大小                                                              |
-|   Bn  | Paged Attention场景下KV cache的块数。在k/v的shape中Bn为KV cache物理存储的总块数，Bn = Σ ?各batch KV序列长度 / Bs?；在block_table的shape中Bn为单个batch的最大块数，Bn = max ?各batch KV序列长度 / Bs? |
+|   Bn  | Paged Attention场景下KV cache的块数。在k/v的shape中Bn为KV cache物理存储的总块数，Bn = Σ ⌈各batch KV序列长度 / Bs⌉；在block_table的shape中Bn为单个batch的最大块数，Bn = max ⌈各batch KV序列长度 / Bs⌉ |
 
 ## 参数说明
 
@@ -226,8 +226,8 @@ cann_ops_transformer.quant_flash_attn(
 | q                    | Tensor        | 必选    | 公式中的Q                                                | float8_e4m3fn | ND   | (Q_T, Q_N, D)                                                | ×         |
 | k                    | Tensor        | 必选    | 公式中的K                                                | float8_e4m3fn | ND   | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √         |
 | v                    | Tensor        | 必选    | 公式中的V                                                | float8_e4m3fn | ND   | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √         |
-| q_descale           | Tensor        | 必选    | q的反量化scale                                           | float8_e8m0    | ND   | <ul><li>(Q_T, Q_N, ?D/64?, 2)</li><li>(KV_N, Q_T, G, ?D/64?, 2)</li></ul> | ×         |
-| k_descale           | Tensor        | 必选    | k的反量化scale                                           | float8_e8m0    | ND   | <ul><li>(KV_T, KV_N, ?D/64?, 2)</li><li>(Bn, KV_N, Bs, ?D/64?, 2)</li><li>(Bn, KV_N, Bs/16, ?D/64?, 16, 2)</li></ul> | √         |
+| q_descale           | Tensor        | 必选    | q的反量化scale                                           | float8_e8m0    | ND   | <ul><li>(Q_T, Q_N, ⌈D/64⌉, 2)</li><li>(KV_N, Q_T, G, ⌈D/64⌉, 2)</li></ul> | ×         |
+| k_descale           | Tensor        | 必选    | k的反量化scale                                           | float8_e8m0    | ND   | <ul><li>(KV_T, KV_N, ⌈D/64⌉, 2)</li><li>(Bn, KV_N, Bs, ⌈D/64⌉, 2)</li><li>(Bn, KV_N, Bs/16, ⌈D/64⌉, 16, 2)</li></ul> | √         |
 | v_descale           | Tensor        | 必选    | v的反量化scale                                           | float8_e8m0    | ND   | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | √         |
 | quant_mode          | int/QuantMode | 必选    | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」           | int32                   | -    | -                                                                | -         |
 | block_table         | Tensor        | 可选    | 用于分块注意力计算中的块索引映射                                     | int32                   | ND   | (B, Bn)                                                        | ×         |
@@ -630,11 +630,11 @@ q_descale shape匹配关系表：<a name="descale_shape匹配关系表"></a>
             <td rowspan="2">1</td>
             <td rowspan="2">q_descale</td>
             <td>TND</td>
-            <td>(Q_T, Q_N, ?D/64?, 2)<br>用于Prefill场景，推荐G*Q_S > 80时传入</td>
+            <td>(Q_T, Q_N, ⌈D/64⌉, 2)<br>用于Prefill场景，推荐G*Q_S > 80时传入</td>
         </tr>
         <tr>
             <td>N2TGD</td>
-            <td>(KV_N, Q_T, G, ?D/64?, 2)<br>用于Decode场景，推荐G*Q_S <= 80时传入</td>
+            <td>(KV_N, Q_T, G, ⌈D/64⌉, 2)<br>用于Decode场景，推荐G*Q_S <= 80时传入</td>
         </tr>
     </tbody>
 </table>
@@ -661,19 +661,19 @@ k_descale/v_descale shape匹配关系表：
             <td rowspan="8">1</td>
             <td rowspan="4">k_descale</td>
             <td>TND</td>
-            <td>(KV_T, KV_N, ?D/64?, 2)</td>
+            <td>(KV_T, KV_N, ⌈D/64⌉, 2)</td>
         </tr>
         <tr>
             <td>PA_BBND</td>
-            <td>(Bn, Bs, KV_N, ?D/64?, 2)</td>
+            <td>(Bn, Bs, KV_N, ⌈D/64⌉, 2)</td>
         </tr>
         <tr>
             <td>PA_BNBD</td>
-            <td>(Bn, KV_N, Bs, ?D/64?, 2)</td>
+            <td>(Bn, KV_N, Bs, ⌈D/64⌉, 2)</td>
         </tr>
         <tr>
             <td>PA_NZ</td>
-            <td>(Bn, KV_N, Bs/16, ?D/64?, 16, 2)</td>
+            <td>(Bn, KV_N, Bs/16, ⌈D/64⌉, 16, 2)</td>
         </tr>
         <tr>
             <td rowspan="4">v_descale</td>
