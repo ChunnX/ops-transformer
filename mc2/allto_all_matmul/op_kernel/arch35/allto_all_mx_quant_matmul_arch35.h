@@ -105,7 +105,9 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
         rankForComm_ = tilingData_->alltoAllQuantMatmulTilingInfo.rankK;
     }
     // 初始化状态打点并接线给 pipeline，使 pipeline 循环内可写 turn
-    opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, mc2Tiling_.aicCoreNum);
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, mc2Tiling_.aicCoreNum);
+#endif
     pipeLine_->SetOpStateDump(opStateDump_);
     // 初始化流水线
     pipeLine_->Init();

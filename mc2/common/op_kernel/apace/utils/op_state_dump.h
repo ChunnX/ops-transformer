@@ -48,7 +48,7 @@ class OpStateDump {
 public:
     __aicore__ inline OpStateDump() = default;
 
-    __aicore__ inline void Init(GM_ADDR workspaceGM, const Utils::WorkspaceLayoutInfo *wsLayout, uint32_t aicCoreNum)
+    __aicore__ inline void Init(GM_ADDR workspaceGM, const Utils::DfxWorkspaceLayoutInfo *wsLayout, uint32_t aicCoreNum)
     {
         opStateDumpBase_ = nullptr;
         slotIdx_ = 0;
@@ -143,7 +143,7 @@ private:
 class OpStateDump {
 public:
     __aicore__ inline OpStateDump() = default;
-    __aicore__ inline void Init(GM_ADDR, const Utils::WorkspaceLayoutInfo *, uint32_t) {}
+    __aicore__ inline void Init(GM_ADDR, const Utils::DfxWorkspaceLayoutInfo *, uint32_t) {}
     __aicore__ inline void DoDump(uint8_t, uint8_t = 0, uint8_t = 0, uint8_t = 0, uint8_t = 1, uint8_t = 1) {}
 };
 #endif // MC2_DFX_ENABLE

@@ -779,28 +779,29 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
             tilingData->commTile.splitAxisTileSize, tilingData->commTile.splitAxisTileCnt,
             tilingData->commTile.splitAxisTailSize, tilingData->commTile.splitAxisTailCnt);
 
-    uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    tilingData->workspaceLayout.totalSize = libApiSize;
-    tilingData->workspaceLayout.segCount = 1;
-    tilingData->workspaceLayout.segments[0] = {0UL, libApiSize, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
 #if MC2_DFX_ENABLE
-    tilingData->workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
-    tilingData->workspaceLayout.segCount = 2;
-    tilingData->workspaceLayout.segments[1] = {
+    uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    tilingData->dumpInfo.workspaceLayout.totalSize = libApiSize;
+    tilingData->dumpInfo.workspaceLayout.segCount = 1;
+    tilingData->dumpInfo.workspaceLayout.segments[0] = {0UL, libApiSize, static_cast<uint8_t>(Utils::WS_SEG_LIB_API),
+                                                        {}};
+    tilingData->dumpInfo.workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
+    tilingData->dumpInfo.workspaceLayout.segCount = 2;
+    tilingData->dumpInfo.workspaceLayout.segments[1] = {
         libApiSize, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
-#endif
     auto x1Dtype = context->GetInputDesc(IDX_INPUT_X1)->GetDataType();
     double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
     uint64_t scaleKDim = (k + 63) / 64;
     uint64_t dataRegionBytes = rankSize * m * static_cast<uint64_t>(static_cast<double>(k) * typeSize);
     uint64_t scaleRegionBytes = rankSize * m * scaleKDim * 2;
-    tilingData->peermemDataSize = dataRegionBytes + scaleRegionBytes;
-    tilingData->peermemLayout.totalSize = tilingData->peermemDataSize;
-    tilingData->peermemLayout.segCount = 2;
-    tilingData->peermemLayout.segments[0] = {
+    tilingData->dumpInfo.peermemDataSize = dataRegionBytes + scaleRegionBytes;
+    tilingData->dumpInfo.peermemLayout.totalSize = tilingData->dumpInfo.peermemDataSize;
+    tilingData->dumpInfo.peermemLayout.segCount = 2;
+    tilingData->dumpInfo.peermemLayout.segments[0] = {
         0UL, dataRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_DATA), {}};
-    tilingData->peermemLayout.segments[1] = {
+    tilingData->dumpInfo.peermemLayout.segments[1] = {
         dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_SCALE), {}};
+#endif
     return ge::GRAPH_SUCCESS;
 }
 
@@ -887,21 +888,12 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    Mc2Exception::Mc2DumpTilingData(
-        args, "AllGatherMatmulV3",
-        10U,                                                         // tilingGmArgIdx
-        0U,                                                          // argsOffset
-        9U,                                                          // workspaceGmArgIdx
-        0U,                                                          // quantModeOffset
-        offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
-        offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout),  // wsLayoutOffsetQuant
-        offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout)); // wsLayoutOffsetApace
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AllGatherMatmulV3",
+                                            10U, // tilingGmArgIdx
+                                            9U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AllGatherMatmulV3",
                                      0U,  // contextArgIdx
-                                     0U,  // argsOffset
-                                     10U, // tilingGmArgIdx
-                                     offsetof(AllGatherMxMatmulUrmaTilingData, peermemDataSize),
-                                     offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout));
+                                     10U); // tilingGmArgIdx
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV3ExceptionFunc()
