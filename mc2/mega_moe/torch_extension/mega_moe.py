@@ -270,6 +270,14 @@ class _MegaMoeCclBufferSizeParams:
         )
 
 
+def _check_int_type(value, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(
+            f"{name} must be of type int, "
+            f"got {type(value).__name__} (value: {value!r})."
+        )
+
+
 class SymmBuffer:
     def __init__(
         self,
@@ -341,6 +349,7 @@ class SymmBuffer:
     def _check_params(self) -> None:
         intermediate_hidden = self.intermediate_hidden
         if "Ascend950" in torch.npu.get_device_name():
+            _check_int_type(self.dispatch_quant_mode, "dispatch_quant_mode")
             if self.dispatch_quant_mode != 4:
                 raise ValueError(
                     "dispatch_quant_mode only supports 4 (MXFP) on Ascend950, "
@@ -352,25 +361,23 @@ class SymmBuffer:
                     "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
                     f"got {self.dispatch_quant_out_dtype!r} (type: {type(self.dispatch_quant_out_dtype).__name__})."
                 )
+            _check_int_type(self.combine_quant_mode, "combine_quant_mode")
             if self.combine_quant_mode not in (0, 3, 4):
                 raise ValueError(
                     "combine_quant_mode only supports 0, 3 or 4 on Ascend950, "
                     f"got {self.combine_quant_mode!r} (type: {type(self.combine_quant_mode).__name__})."
                 )
+            _check_int_type(self.topk_weights_type, "topk_weights_type")
             if self.topk_weights_type not in (0, 1):
                 raise ValueError(
                     "topk_weights_type only supports 0 or 1 on Ascend950, "
                     f"got {self.topk_weights_type!r} (type: {type(self.topk_weights_type).__name__})."
                 )
             # arch35 checks the full GMM1 output width: 2 * intermediate_hidden.
-            try:
-                valid_intermediate_hidden = (
-                    256 <= intermediate_hidden <= 4096
-                    and intermediate_hidden % 128 == 0
-                )
-            except TypeError:
-                valid_intermediate_hidden = False
-            if not valid_intermediate_hidden:
+            _check_int_type(intermediate_hidden, "intermediate_hidden")
+            if not (
+                256 <= intermediate_hidden <= 4096 and intermediate_hidden % 128 == 0
+            ):
                 raise ValueError(
                     "intermediate_hidden must be in [256, 4096] and a multiple of 128 "
                     f"on Ascend950, got {intermediate_hidden!r} (type: {type(intermediate_hidden).__name__})."
