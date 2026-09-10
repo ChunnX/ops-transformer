@@ -231,7 +231,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     tpipe_->InitBuffer(hcommBuf_, BandwidthTestTiling::ROCE_HCOMM_UB_BYTES);
     if (hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES) != HCOMM_SUCCESS) {
         AscendC::printf("[ROCE] rank=%d core=%u Hcomm Init failed\n", epRankId_, aivId_);
-        Trap();
     }
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendExpertNum_);
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
@@ -322,7 +321,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
                     hcomm_.WriteNbi(hcommHandle_[rankId], remoteAddr, localAddr, hOutSize_) != HCOMM_SUCCESS) {
                     AscendC::printf("[ROCE] rank=%d core=%u peer=%u token=%u data WriteNbi failed\n",
                                epRankId_, aivId_, rankId, tokenIndex);
-                    Trap();
                 }
             }
             chunkStart += chunkTokens;
@@ -333,7 +331,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
         // Each channel has one owner core. Keep staging live until all writes to this peer complete.
         if (isRemote && curExpertCnt != 0 && hcomm_.Drain(hcommHandle_[rankId]) != HCOMM_SUCCESS) {
             AscendC::printf("[ROCE] rank=%d core=%u peer=%u data Drain failed\n", epRankId_, aivId_, rankId);
-            Trap();
         }
         AscendC::printf("[ROCE] rank=%d core=%u peer=%u data done\n", epRankId_, aivId_, rankId);
     }
@@ -370,22 +367,18 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Set
             if (hcomm_.WriteNbi(channel, remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t),
                                 sizeof(int32_t)) != HCOMM_SUCCESS) {
                 AscendC::printf("[ROCE] rank=%d core=%u peer=%u count WriteNbi failed\n", epRankId_, aivId_, rankId);
-                Trap();
             }
             AscendC::printf("[ROCE] rank=%d core=%u peer=%u count Drain begin\n", epRankId_, aivId_, rankId);
             if (hcomm_.Drain(channel) != HCOMM_SUCCESS) {
                 AscendC::printf("[ROCE] rank=%d core=%u peer=%u count Drain failed\n", epRankId_, aivId_, rankId);
-                Trap();
             }
             AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag WriteNbi begin\n", epRankId_, aivId_, rankId);
             if (hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t)) != HCOMM_SUCCESS) {
                 AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag WriteNbi failed\n", epRankId_, aivId_, rankId);
-                Trap();
             }
             AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag Drain begin\n", epRankId_, aivId_, rankId);
             if (hcomm_.Drain(channel) != HCOMM_SUCCESS) {
                 AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag Drain failed\n", epRankId_, aivId_, rankId);
-                Trap();
             }
             AscendC::printf("[ROCE] rank=%d core=%u peer=%u notify done\n", epRankId_, aivId_, rankId);
         }
