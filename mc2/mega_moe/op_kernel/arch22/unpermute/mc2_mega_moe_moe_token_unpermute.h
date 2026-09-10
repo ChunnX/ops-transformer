@@ -296,10 +296,47 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::CalPartOutTok
 
     if (this->shared_expert_num > 0U) {
         const int64_t global_out_token_index = this->out_token_offset + out_token_index;
-        for (uint32_t shared_idx = 0U; shared_idx < this->shared_expert_num; ++shared_idx) {
-            CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
+        if constexpr (!IsSameType<T1, float>::value) {
+            // Match the unfused reference's rounding boundaries:
+            // T1(T1(routed sum) + T1(shared sum)), not T1(routed sum + shared sum).
+            // The distinction matters when the two branches nearly cancel.
+            LocalTensor<T1> roundedMoe = this->outque.template AllocTensor<T1>();
             PipeBarrier<PIPE_V>();
-            CalSharedToken(h_length);
+            Cast(roundedMoe, this->token_tensor0, RoundMode::CAST_RINT, h_length);
+
+            // Start an independent FP32 shared sum without adding it to routed output.
+            CopySharedTokenIn(0, global_out_token_index, h_index, h_length);
+            PipeBarrier<PIPE_V>();
+            CalFirstToken(1.0f, h_length);
+            for (uint32_t shared_idx = 1U; shared_idx < this->shared_expert_num; ++shared_idx) {
+                CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
+                PipeBarrier<PIPE_V>();
+                CalSharedToken(h_length);
+            }
+
+            // Reuse a released input queue slot; no additional UB or GM allocation.
+            LocalTensor<T1> roundedShared = this->tokens_inque.template AllocTensor<T1>();
+            PipeBarrier<PIPE_V>();
+            Cast(roundedShared, this->token_tensor0, RoundMode::CAST_RINT, h_length);
+            this->tokens_inque.template EnQue(roundedShared);
+            roundedShared = this->tokens_inque.template DeQue<T1>();
+            PipeBarrier<PIPE_V>();
+            Cast(this->token_tensor0, roundedShared, RoundMode::CAST_NONE, h_length);
+            this->tokens_inque.FreeTensor(roundedShared);
+
+            this->outque.template EnQue<T1>(roundedMoe);
+            roundedMoe = this->outque.template DeQue<T1>();
+            PipeBarrier<PIPE_V>();
+            Cast(this->token_tensor1, roundedMoe, RoundMode::CAST_NONE, h_length);
+            this->outque.FreeTensor(roundedMoe);
+            PipeBarrier<PIPE_V>();
+            Add(this->token_tensor0, this->token_tensor0, this->token_tensor1, h_length);
+        } else {
+            for (uint32_t shared_idx = 0U; shared_idx < this->shared_expert_num; ++shared_idx) {
+                CopySharedTokenIn(shared_idx, global_out_token_index, h_index, h_length);
+                PipeBarrier<PIPE_V>();
+                CalSharedToken(h_length);
+            }
         }
     }
 

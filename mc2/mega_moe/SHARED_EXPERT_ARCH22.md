@@ -28,7 +28,9 @@ master's complete routing allocation, including per-chunk receive-round tables.
 The shared activation must be published before its GMM1 buffer can be reused.
 INT8/INT4 GMM2 epilogues publish BF16 to a separate result buffer; this preserves
 the rounding point and avoids W4A8 high/low-row in-place aliasing. Unpermute adds
-routed weighted outputs and shared outputs in FP32, then casts once to output.
+routed weighted outputs in FP32 and shared outputs in a separate FP32 sum.
+For BF16/FP16 output, each branch is rounded to the output dtype before their
+final FP32 addition and output cast, matching the unfused reference boundaries.
 
 Token-active masks apply to routed assignments; shared experts still consume
 the original dense X. Rank masks keep master's early-return and communication
@@ -125,3 +127,20 @@ exposed missing test communicator initialization, which has been corrected;
 rerunning it was blocked by execution approval limits. Its full matrix and
 INT8/INT4 device regression **after these routing fixes** remain pending. The
 earlier quantized passes predate these fixes and are not substitutes for reruns.
+
+### Shared reduction rounding fix (2026-09-10)
+
+Restore the branch rounding previously introduced by `4cf085ad7`, removed by
+the FP32 shared-GMM2 experiment `6ea278b14`, and not restored when `6de7312ba`
+returned shared GMM2 to BF16. Non-FP32 outputs now compute
+`T1(float(T1(routed_sum)) + float(T1(shared_sum)))`. Shared experts are summed
+independently in FP32 before their branch cast. Existing queue slots hold the
+rounded branches; neither workspace size nor cross-core scheduling changes.
+Zero-shared and FP32-output paths retain their existing behavior. This also
+applies to quantized paths producing BF16; their device regression is required.
+
+The BF16 regression script now uses ND weights and INT8 active masks, as required
+by the interface. Compilation and tests for this rounding fix were intentionally
+not run at the user's request. The earlier results above predate this fix and
+must not be taken as validation of it. Recheck the supplied EP16 cases with the
+full dual-benchmark criteria, not only cosine similarity.

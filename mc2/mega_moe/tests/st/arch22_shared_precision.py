@@ -83,18 +83,19 @@ def run_case(case, seed, rank, group):
     counts = torch.bincount(ids[active].flatten(), minlength=world * experts)
     expected_counts = counts[rank * experts : (rank + 1) * experts].int()
 
-    def nz(weights):
-        return [torch_npu.npu_format_cast(weight.npu(), 29) for weight in weights]
+    def to_device(weights):
+        # The BF16 MegaMoe interface requires ND, not quantized weights' NZ format.
+        return [weight.npu() for weight in weights]
 
-    local_w1 = nz(w1[rank * experts : (rank + 1) * experts])
-    local_w2 = nz(w2[rank * experts : (rank + 1) * experts])
-    shared_w1, shared_w2 = nz(sw1), nz(sw2)
+    local_w1 = to_device(w1[rank * experts : (rank + 1) * experts])
+    local_w2 = to_device(w2[rank * experts : (rank + 1) * experts])
+    shared_w1, shared_w2 = to_device(sw1), to_device(sw2)
     device_x, device_ids, device_probs = (
         x[rank].npu(),
         ids[rank].int().npu(),
         probs[rank].npu(),
     )
-    device_mask = active[rank].npu() if masked else None
+    device_mask = active[rank].to(torch.int8).npu() if masked else None
     buffer = get_symm_buffer_for_mega_moe(
         group=group,
         num_experts=world * experts,
