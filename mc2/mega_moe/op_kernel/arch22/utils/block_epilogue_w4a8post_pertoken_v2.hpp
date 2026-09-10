@@ -325,6 +325,94 @@ public:
         ubListId = (ubListId + 1 < UB_STAGES) ? (ubListId + 1) : 0;
     }
 
+    // Dense shared-expert GMM2 epilogue. It reconstructs the two MSD rows,
+    // adds the selected shared bias, applies the per-token activation scale and
+    // publishes a local BF16 result instead of dispatching to peer memory.
+    CATLASS_DEVICE
+    void SharedExpert(AscendC::GlobalTensor<ElementC> const &gmC,
+                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale,
+                      AscendC::GlobalTensor<float> const &weightAux, AscendC::GlobalTensor<ElementD> const &gmD,
+                      uint32_t blockM, uint32_t blockN, uint32_t epilogueCoreNum)
+    {
+        InitFlag();
+        constexpr uint32_t ROW_TILE = 32U;
+        const uint32_t rowTiles = (blockM + ROW_TILE - 1U) / ROW_TILE;
+        const uint32_t colTiles = (blockN + static_cast<uint32_t>(n0) - 1U) / static_cast<uint32_t>(n0);
+        const uint32_t taskCount = rowTiles * colTiles;
+        const uint32_t coreIdx = get_block_idx() + get_subblockid() * get_block_num();
+
+        for (uint32_t taskIdx = coreIdx; taskIdx < taskCount; taskIdx += epilogueCoreNum) {
+            const uint32_t rowTileIdx = taskIdx / colTiles;
+            const uint32_t colTileIdx = taskIdx % colTiles;
+            const uint32_t rowStart = rowTileIdx * ROW_TILE;
+            const uint32_t colStart = colTileIdx * static_cast<uint32_t>(n0);
+            const uint32_t actualM = min(ROW_TILE, blockM - rowStart);
+            const uint32_t actualN = min(static_cast<uint32_t>(n0), blockN - colStart);
+
+            auto &ubCH = ubCHList[ubListId];
+            auto &ubCL = ubCLList[ubListId];
+            auto &ubD = ubDList[ubListId];
+            auto &scaleUb = scaleUbList[ubListId];
+            auto &ubweighAux = ubweighAuxList[ubListId];
+            auto gmTileCH = gmC[(static_cast<uint64_t>(rowStart) * 2U) * blockN + colStart];
+            auto gmTileCL = gmTileCH[blockN];
+
+            LayoutC layoutGM{actualM, actualN, blockN * 2U};
+            LayoutC layoutUB{actualM, actualN, static_cast<uint32_t>(n0)};
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[ubListId]);
+            copyGmToUbC(ubCH, gmTileCH, layoutUB, layoutGM);
+            copyGmToUbC(ubCL, gmTileCL, layoutUB, layoutGM);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbTileCMTE2VList[ubListId]);
+
+            DataCopyExtParams copyParamsW{1, static_cast<uint32_t>(actualN * sizeof(float)), 0, 0, 0};
+            DataCopyPadExtParams<float> padParamsW{false, 0, 0, 0};
+            AscendC::DataCopyPad(ubweighAux, weightAux[colStart], copyParamsW, padParamsW);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbTileWMTE2VList[ubListId]);
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbTileCMTE2VList[ubListId]);
+            AscendC::Cast<float, ElementC, false>(ubFp32, ubCH, AscendC::RoundMode::CAST_NONE, -1, repeat,
+                                                  {1, 1, 8, 4});
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Cast<float, ElementC, false>(ubFp32L, ubCL, AscendC::RoundMode::CAST_NONE, -1, repeat,
+                                                  {1, 1, 8, 4});
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Muls(ubFp32, ubFp32, 16.0F, actualM * actualN);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Add(ubFp32, ubFp32, ubFp32L, actualM * actualN);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbTileWMTE2VList[ubListId]);
+            for (uint32_t row = 0U; row < actualM; ++row) {
+                AscendC::Add(ubFp32[row * n0], ubFp32[row * n0], ubweighAux, actualN);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbTileCVMTE2List[ubListId]);
+
+            layout::VectorLayout scaleLayout{actualM};
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);
+            copyScaleGmToUb(scaleUb, gmPerTokenScale[rowStart], scaleLayout, scaleLayout);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+            for (uint32_t row = 0U; row < actualM; ++row) {
+                const float scale = scaleUb(row);
+                AscendC::Muls<float, false>(ubFp32[n0 * row], ubFp32[n0 * row], scale, -1, (actualN + 127U) / 128U * 2U,
+                                            {1, 1, 8, 8});
+            }
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[ubListId]);
+            AscendC::Cast<ElementD, float, false>(ubD, ubFp32, AscendC::RoundMode::CAST_RINT, -1, repeat, {1, 1, 4, 8});
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbTileDMTE3VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbTileDMTE3VList[ubListId]);
+            LayoutD layoutDGM{actualM, actualN, blockN};
+            LayoutD layoutDUB{actualM, actualN, static_cast<uint32_t>(n0)};
+            copyUbToGmD(gmD[static_cast<uint64_t>(rowStart) * blockN + colStart], ubD, layoutDGM, layoutDUB);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbTileDVMTE3List[ubListId]);
+
+            ubListId = (ubListId + 1U < UB_STAGES) ? ubListId + 1U : 0U;
+        }
+        Finalize();
+    }
+
 private:
     Params params;
     AscendC::LocalTensor<ElementC> ubCHList[UB_STAGES];

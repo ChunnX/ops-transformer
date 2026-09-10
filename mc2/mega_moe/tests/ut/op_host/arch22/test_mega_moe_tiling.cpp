@@ -36,6 +36,117 @@ protected:
     }
 };
 
+static void RunQuantSharedExpertCase(ge::DataType weightDtype, bool provideSharedScales, bool provideSharedBiases,
+                                     ge::graphStatus expectedStatus, int64_t sharedScale1Dim = 1024,
+                                     int64_t sharedScale2Dim = 1024)
+{
+    struct MegaMoeCompileInfo {};
+    MegaMoeCompileInfo compileInfo;
+    constexpr uint64_t coreNum = 24;
+    constexpr uint64_t ubSize = 196608;
+    constexpr int64_t kBs = 1;
+    constexpr int64_t kHiddenSize = 1024;
+    constexpr int64_t kN = 1024;
+    constexpr int64_t kIntermediateHidden = kN / 2;
+    constexpr uint32_t kExpertPerRank = 2;
+    constexpr uint32_t kSharedExpertNum = 2;
+    const bool isInt4 = weightDtype == ge::DT_INT4;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.push_back({{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 2}, {kBs, 2}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 2}, {kBs, 2}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kHiddenSize, kN}, {kHiddenSize, kN}}, weightDtype, ge::FORMAT_FRACTAL_NZ});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}},
+                          weightDtype,
+                          ge::FORMAT_FRACTAL_NZ});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kN}, {kN}}, ge::DT_UINT64, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kHiddenSize}, {kHiddenSize}}, ge::DT_UINT64, ge::FORMAT_ND});
+    }
+    if (isInt4) {
+        for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+            inputs.push_back({{{kN}, {kN}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        }
+        for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+            inputs.push_back({{{kHiddenSize}, {kHiddenSize}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        }
+    } else {
+        inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+        inputs.push_back({{{kHiddenSize, kN}, {kHiddenSize, kN}}, weightDtype, ge::FORMAT_FRACTAL_NZ});
+    }
+    for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+        inputs.push_back({{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}},
+                          weightDtype,
+                          ge::FORMAT_FRACTAL_NZ});
+    }
+    if (provideSharedScales) {
+        for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+            inputs.push_back({{{sharedScale1Dim}, {sharedScale1Dim}}, ge::DT_UINT64, ge::FORMAT_ND});
+        }
+        for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+            inputs.push_back({{{sharedScale2Dim}, {sharedScale2Dim}}, ge::DT_UINT64, ge::FORMAT_ND});
+        }
+    } else {
+        inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND});
+        inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND});
+    }
+    if (provideSharedBiases) {
+        for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+            inputs.push_back({{{kN}, {kN}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        }
+        for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+            inputs.push_back({{{kHiddenSize}, {kHiddenSize}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        }
+    } else {
+        inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});
+        inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    }
+
+    const uint32_t routedBiasListLen = isInt4 ? kExpertPerRank : 1U;
+    const uint32_t sharedScaleListLen = provideSharedScales ? kSharedExpertNum : 1U;
+    const uint32_t sharedBiasListLen = provideSharedBiases ? kSharedExpertNum : 1U;
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe", inputs,
+        {
+            {{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{kExpertPerRank}, {kExpertPerRank}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2LL * 1024 * 1024 * 1024)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({})},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, kExpertPerRank, kExpertPerRank, routedBiasListLen,
+         routedBiasListLen, 0, 0, kSharedExpertNum, kSharedExpertNum, sharedScaleListLen, sharedScaleListLen,
+         sharedBiasListLen, sharedBiasListLen},
+        {1, 1}, &compileInfo, "Ascend910_93", coreNum, ubSize);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, UINT64_MAX);
+}
+
 TEST_F(MegaMoeArch22TilingTest, Test0)
 {
     struct MegaMoeCompileInfo {};
@@ -187,6 +298,194 @@ TEST_F(MegaMoeArch22TilingTest, ActivationParamValidationWithLargeIntermediateHi
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, activationCase.expectedStatus, UINT64_MAX);
     }
+}
+
+static void RunBf16SharedExpertCase(int64_t kBs, bool withRankMask = false)
+{
+    struct MegaMoeCompileInfo {};
+    MegaMoeCompileInfo compileInfo;
+    constexpr uint64_t coreNum = 24;
+    constexpr uint64_t ubSize = 196608;
+    constexpr int64_t kHiddenSize = 7168;
+    constexpr int64_t kN = 28672;
+    constexpr int64_t kIntermediateHidden = kN / 2;
+    constexpr uint32_t kExpertPerRank = 8;
+    constexpr uint32_t kSharedExpertNum = 2;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.push_back({{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 8}, {kBs, 8}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 8}, {kBs, 8}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kHiddenSize, kN}, {kHiddenSize, kN}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back(
+            {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // weight_scales1 placeholder
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // weight_scales2 placeholder
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // bias1 placeholder
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // bias2 placeholder
+    for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+        inputs.push_back({{{kHiddenSize, kN}, {kHiddenSize, kN}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kSharedExpertNum; ++i) {
+        inputs.push_back(
+            {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // shared_weight_scales1 placeholder
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // shared_weight_scales2 placeholder
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // shared_bias1 placeholder
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // shared_bias2 placeholder
+    if (withRankMask) {
+        inputs.push_back({{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND});
+    }
+
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe", inputs,
+        {
+            {{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{kExpertPerRank}, {kExpertPerRank}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2LL * 1024 * 1024 * 1024)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({})},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 1, 1, 1, 1, 0, 0, kSharedExpertNum, kSharedExpertNum, 1, 1, 1, 1,
+         withRankMask ? 1U : 0U},
+        {1, 1}, &compileInfo, "Ascend910_93", coreNum, ubSize);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, UINT64_MAX);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Bf16SharedExpertsOnAscend910_93)
+{
+    RunBf16SharedExpertCase(32);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Bf16SharedExpertsAcrossChunksAndRecvRounds)
+{
+    // M > 1024 with a tail; max_recv_token_num=64 forces receive-round workspace.
+    RunBf16SharedExpertCase(1025);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Bf16SharedExpertsWithRankMask)
+{
+    RunBf16SharedExpertCase(1025, true);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Bf16NoSharedExpertsWithAclnnPlaceholdersOnAscend910_93)
+{
+    struct MegaMoeCompileInfo {};
+    MegaMoeCompileInfo compileInfo;
+    constexpr uint64_t coreNum = 24;
+    constexpr uint64_t ubSize = 196608;
+    constexpr int64_t kBs = 32;
+    constexpr int64_t kHiddenSize = 7168;
+    constexpr int64_t kN = 28672;
+    constexpr int64_t kIntermediateHidden = kN / 2;
+    constexpr uint32_t kExpertPerRank = 8;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.push_back({{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 8}, {kBs, 8}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 8}, {kBs, 8}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kHiddenSize, kN}, {kHiddenSize, kN}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back(
+            {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+
+    // aclnn uses one shape={0} tensor for every omitted DynamicInput so the inner op can
+    // preserve the input group and its supported dtype/format.
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // weight_scales1
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // weight_scales2
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // bias1
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // bias2
+    inputs.push_back({{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND});   // shared_weight1
+    inputs.push_back({{{0}, {0}}, ge::DT_BF16, ge::FORMAT_ND});   // shared_weight2
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // shared_weight_scales1
+    inputs.push_back({{{0}, {0}}, ge::DT_UINT64, ge::FORMAT_ND}); // shared_weight_scales2
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // shared_bias1
+    inputs.push_back({{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND});  // shared_bias2
+
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe", inputs,
+        {
+            {{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{kExpertPerRank}, {kExpertPerRank}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2LL * 1024 * 1024 * 1024)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({})},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1}, {1, 1}, &compileInfo,
+        "Ascend910_93", coreNum, ubSize);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, UINT64_MAX);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Int8SharedExpertsOnAscend910_93)
+{
+    RunQuantSharedExpertCase(ge::DT_INT8, true, false, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Int4SharedExpertsOnAscend910_93)
+{
+    RunQuantSharedExpertCase(ge::DT_INT4, true, true, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Int8SharedExpertsRequireScales)
+{
+    RunQuantSharedExpertCase(ge::DT_INT8, false, false, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch22TilingTest, Int4SharedExpertsRequireBiases)
+{
+    RunQuantSharedExpertCase(ge::DT_INT4, true, false, ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch22TilingTest, QuantSharedExpertsRejectWrongScale1Shape)
+{
+    RunQuantSharedExpertCase(ge::DT_INT8, true, false, ge::GRAPH_FAILED, 512, 1024);
+}
+
+TEST_F(MegaMoeArch22TilingTest, QuantSharedExpertsRejectWrongScale2Shape)
+{
+    RunQuantSharedExpertCase(ge::DT_INT8, true, false, ge::GRAPH_FAILED, 1024, 512);
 }
 
 } // namespace MegaMoeUT
