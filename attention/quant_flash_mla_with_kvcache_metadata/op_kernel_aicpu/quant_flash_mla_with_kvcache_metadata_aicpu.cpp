@@ -126,9 +126,9 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     // BaseInfo序列长度为uint32, maxSeqlen未传(-1)时以0初始化, 后续从varlen张量推导
     baseInfo.querySeqSize = (maxSeqlenQ_ > 0) ? static_cast<uint32_t>(maxSeqlenQ_) : 0U;
     baseInfo.kvSeqSize = (maxSeqlenKv_ > 0) ? static_cast<uint32_t>(maxSeqlenKv_) : 0U;
-    // MLA文档约束: layout_q为TND时, q侧按cu_seqlens_q(累积, B+1), cache_seqlens为各batch KV长度的累积值(B个元素, 无前导0)
+    // MLA PA场景: q侧TND时按cu_seqlens_q(累积, B+1), cache_seqlens为每batch KV实际长度(B个元素, BY_BATCH模式)
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND";
-    baseInfo.isCumulativeKvSeq = layoutQ_ == "TND";
+    baseInfo.isCumulativeKvSeq = false; // PA场景下cache_seqlens为每batch实际长度, 非累积
 
     // KV侧: cache_seqlens为必选输入, shape为(batchSize,)
     const bool hasCacheSeqlens = cacheSeqlens_ != nullptr && cacheSeqlens_->GetData() != nullptr;
@@ -137,10 +137,9 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
         auto cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_, batchSize_);
         baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
-            int64_t prev = (i == 0) ? 0 : cacheSeqlens[i - 1];
-            // TND: 累积值直接存入actualKvSeqSize, kvSeqSize取最大差分; 非TND: 值即长度
+            // PA场景: cache_seqlens为每batch实际长度, 直接存入actualKvSeqSize和kvSeqSize
             baseInfo.actualKvSeqSize[i] = cacheSeqlens[i];
-            baseInfo.kvSeqSize = std::max(static_cast<int64_t>(baseInfo.kvSeqSize), cacheSeqlens[i] - prev);
+            baseInfo.kvSeqSize = std::max(static_cast<int64_t>(baseInfo.kvSeqSize), cacheSeqlens[i]);
         }
     } else if (batchSize_ > 0) {
         // 防御性兜底, 正常不会走到(aclnn层已校验cache_seqlens必选)
@@ -269,10 +268,10 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::CheckNeedInitOutput()
         if (qAllocLen > 0 && qUsedLen < qAllocLen) {
             return true;
         }
-        // KV侧: cache_seqlens(TND时取差分)为0 → 该batch无有效kv, 输出应全0
+        // KV侧: cache_seqlens为每batch实际长度(PA场景BY_BATCH模式), 为0 → 该batch无有效kv, 输出应全0
         int64_t kvLen = -1;
         if (hasCacheSeqlens) {
-            kvLen = isTnd ? (cacheSeqlens[bIdx] - (bIdx == 0 ? 0 : cacheSeqlens[bIdx - 1])) : cacheSeqlens[bIdx];
+            kvLen = cacheSeqlens[bIdx];
         }
         if (kvLen == 0) {
             return true;
