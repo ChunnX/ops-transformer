@@ -117,7 +117,7 @@ def quant_sparse_lightning_indexer(
         quant_sparse_lightning_indexer as dsl_quant_sparse_lightning_indexer,
     )
 
-    outputs = dsl_quant_sparse_lightning_indexer(
+    return dsl_quant_sparse_lightning_indexer(
         q,
         k,
         w,
@@ -142,4 +142,3 @@ def quant_sparse_lightning_indexer(
         layout_kv=layout_kv,
         return_value=return_value,
     )
-    return outputs["sparse_indices"], outputs["sparse_values"]

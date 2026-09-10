@@ -137,12 +137,19 @@ def _params_dict(test_data):
             f"QLI V2 parameter count mismatch: got {len(test_data)}, "
             f"expected {len(PARAM_NAMES)}"
         )
-    return dict(zip(PARAM_NAMES, test_data))
+    params = dict(zip(PARAM_NAMES, test_data))
+    if params["k_t_size"] is None:
+        params["k_t_size"] = params["k_seq"]
+    return params
 
 
 def _int_tensor(value, default):
     source = default if value is None else value
     return torch.tensor(source, dtype=torch.int32)
+
+
+def _is_auto(value):
+    return isinstance(value, str) and value.upper() == "AUTO"
 
 
 def _with_axis0_gap(tensor):
@@ -205,37 +212,71 @@ def generate_qliv2_test_data(test_data):
     if storage_layout in ("scale_axis0_noncontiguous", "axis0_noncontiguous"):
         k_descale = _with_axis0_gap(k_descale)
 
-    if p["cu_seqlens_q"] is None and total_q != batch * s1:
+    if p["cu_seqlens_q"] is None and (batch != 1 or total_q != s1):
         raise ValueError(
-            "variable-length TND requires explicit cu_seqlens_q when "
-            "q_t_size != batch_size * q_seq"
+            "cu_seqlens_q=None is only valid for batch_size=1 and q_t_size=q_seq"
         )
     default_cu = [index * s1 for index in range(batch + 1)]
-    cu = _int_tensor(p["cu_seqlens_q"], default_cu)
-    if tuple(cu.shape) != (batch + 1,) or int(cu[0]) != 0 or int(cu[-1]) != total_q:
+    cu_value = p["cu_seqlens_q"]
+    cu = (
+        _int_tensor(default_cu, default_cu)
+        if _is_auto(cu_value)
+        else None if cu_value is None
+        else _int_tensor(cu_value, cu_value)
+    )
+    if cu is not None and (
+        tuple(cu.shape) != (batch + 1,)
+        or int(cu[0]) != 0
+        or int(cu[-1]) != total_q
+    ):
         raise ValueError("cu_seqlens_q must have shape (B+1), start at 0, and end at q_t_size")
-    q_lengths = (cu[1:] - cu[:-1]).tolist()
+    q_lengths = [total_q] if cu is None else (cu[1:] - cu[:-1]).tolist()
     if any(length < 0 or length > s1 for length in q_lengths):
         raise ValueError("each TND query length must be within [0, q_seq]")
-    used_q = _int_tensor(p["seqused_q"], q_lengths)
-    if tuple(used_q.shape) != (batch,) or any(
+    used_q_value = p["seqused_q"]
+    used_q = (
+        _int_tensor(q_lengths, q_lengths)
+        if _is_auto(used_q_value)
+        else None if used_q_value is None
+        else _int_tensor(used_q_value, used_q_value)
+    )
+    if used_q is not None and (tuple(used_q.shape) != (batch,) or any(
         int(value) < 0 or int(value) > int(q_lengths[index])
         for index, value in enumerate(used_q.tolist())
-    ):
+    )):
         raise ValueError("seqused_q must have shape (B,) and fit cu_seqlens_q")
     tails = (0, 1, 7, 9, 31, 63, 95, 127)
     default_used_k = [max(1, s2 - tails[index % len(tails)]) for index in range(batch)]
-    used_k = _int_tensor(p["seqused_k"], default_used_k)
+    used_k_value = p["seqused_k"]
+    used_k = (
+        _int_tensor(default_used_k, default_used_k)
+        if _is_auto(used_k_value)
+        else None if used_k_value is None
+        else _int_tensor(used_k_value, used_k_value)
+    )
+    if used_k is not None and (
+        tuple(used_k.shape) != (batch,)
+        or any(int(value) < 0 or int(value) > s2 for value in used_k.tolist())
+    ):
+        raise ValueError("seqused_k must have shape (B,) and values in [0,k_seq]")
     ratio = int(p["cmp_ratio"])
     residual = p["cmp_residual_k"]
-    if residual is None and ratio != 1:
+    if _is_auto(residual):
         residual = [index % ratio for index in range(batch)]
     residual_tensor = None if residual is None else _int_tensor(residual, residual)
 
     page_ids = torch.arange(pages, dtype=torch.int32)
-    block_table = torch.stack(
-        [torch.roll(page_ids, shifts=index) for index in range(batch)]
+    block_table_value = p["block_table"]
+    block_table = (
+        torch.stack([torch.roll(page_ids, shifts=index) for index in range(batch)])
+        if _is_auto(block_table_value)
+        else None if block_table_value is None
+        else _int_tensor(block_table_value, block_table_value)
     )
+    if block_table is not None and tuple(block_table.shape) != (batch, pages):
+        raise ValueError(
+            f"block_table must have shape ({batch},{pages}), got {tuple(block_table.shape)}"
+        )
     return QliV2InputData(
         q, k, w, q_descale, k_descale, cu, used_q, used_k,
         residual_tensor, block_table, tuple(test_data),
@@ -284,6 +325,10 @@ def run_qliv2_case_data(data, device_id=0):
     cpu_result = quant_lightning_indexer_golden(
         data.q, data.k, data.w, data.q_descale, data.k_descale, **kwargs
     )
+    if kwargs["candidate_topk_blocks"] == -1:
+        # Match the Torch schema's disabled outputs; score references are unchanged.
+        cpu_result["candidate_block_indices"] = cpu_result["candidate_block_indices"].reshape(-1)
+        cpu_result["candidate_block_length"] = cpu_result["candidate_block_length"].reshape(-1)[:0]
     k_npu = _to_npu_preserving_strides(data.k)
     k_scale_npu = _to_npu_preserving_strides(data.k_descale)
     npu_kwargs = {name: _to_npu(value) for name, value in kwargs.items()}

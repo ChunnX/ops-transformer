@@ -133,7 +133,7 @@ def quant_lightning_indexer(
         quant_lightning_indexer as dsl_quant_lightning_indexer,
     )
 
-    outputs = dsl_quant_lightning_indexer(
+    return dsl_quant_lightning_indexer(
         q,
         k,
         w,
@@ -155,10 +155,4 @@ def quant_lightning_indexer(
         return_value=return_value,
         candidate_topk_blocks=candidate_topk_blocks,
         candidate_block_size=candidate_block_size,
-    )
-    return (
-        outputs["sparse_indices"],
-        outputs["sparse_values"],
-        outputs["candidate_block_indices"],
-        outputs["candidate_block_length"],
     )

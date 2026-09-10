@@ -21,13 +21,14 @@ SAVE_PT_DIR = os.environ.get("QSLI_SINGLE_SAVE_PT_DIR", "").strip()
 PARAMS = []
 matched = set()
 for paramset_name, values in ENABLED_PARAMSETS:
-    combinations = itertools.product(*(values[name] for name in PARAM_NAMES))
+    names = PARAM_NAMES + tuple(name for name in values if name not in PARAM_NAMES)
+    combinations = itertools.product(*(values[name] for name in names))
     for index, combination in enumerate(combinations, 1):
         case_name = paramset_name if index == 1 else f"{paramset_name}_{index:03d}"
         if REQUESTED and paramset_name not in REQUESTED and case_name not in REQUESTED:
             continue
         matched.update((paramset_name, case_name))
-        PARAMS.append(pytest.param(dict(zip(PARAM_NAMES, combination)), case_name, id=case_name))
+        PARAMS.append(pytest.param(dict(zip(names, combination)), case_name, id=case_name))
 if REQUESTED - matched:
     raise ValueError(f"unknown case(s): {sorted(REQUESTED - matched)}")
 

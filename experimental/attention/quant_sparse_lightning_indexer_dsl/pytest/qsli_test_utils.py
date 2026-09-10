@@ -105,28 +105,75 @@ def _int_tensor(value, default):
     return torch.tensor(source, dtype=torch.int32)
 
 
+def _is_auto(value):
+    return isinstance(value, str) and value.upper() == "AUTO"
+
+
 def _make_candidate_inputs(p, rows, logical_blocks, generator, cu):
     explicit_indices = p["candidate_block_indices"]
     explicit_lengths = p["candidate_block_length"]
     candidate = torch.full(
         (rows, N2, CANDIDATE_CAPACITY), -1, dtype=torch.int32
     )
-    auto_indices = explicit_indices is None or (
-        isinstance(explicit_indices, str) and explicit_indices.upper() == "AUTO"
-    )
+    auto_indices = _is_auto(explicit_indices)
     if auto_indices:
-        valid_blocks = min(CANDIDATE_CAPACITY, logical_blocks)
-        valid_blocks = (
-            valid_blocks
-            if explicit_lengths is None
-            else min(int(explicit_lengths), valid_blocks)
+        auto_lengths = explicit_lengths is None or _is_auto(explicit_lengths)
+        requested_lengths = None
+        scalar_length = None
+        if not auto_lengths:
+            requested_lengths = torch.tensor(explicit_lengths, dtype=torch.int32)
+            if requested_lengths.ndim == 0:
+                scalar_length = int(requested_lengths)
+                requested_lengths = None
+            elif tuple(requested_lengths.shape) != (rows, N2):
+                raise ValueError(
+                    "candidate_block_length from Excel must have shape "
+                    f"(T1,N2), got {tuple(requested_lengths.shape)}"
+                )
+
+        used_k_value = p["seqused_k"]
+        used_k = _int_tensor(
+            [p["sequence_length"]] * p["batch_size"]
+            if used_k_value is None or _is_auto(used_k_value)
+            else used_k_value,
+            [p["sequence_length"]] * p["batch_size"],
         )
+        if tuple(used_k.shape) != (p["batch_size"],):
+            raise ValueError("seqused_k must have shape (B,)")
+        lengths = torch.empty((rows, N2), dtype=torch.int32)
         for batch_index in range(p["batch_size"]):
-            order = torch.randperm(logical_blocks, generator=generator)[:valid_blocks]
             begin = int(cu[batch_index])
             end = int(cu[batch_index + 1])
-            candidate[begin:end, 0, :valid_blocks] = order.to(torch.int32)
-        lengths = torch.full((rows, N2), valid_blocks, dtype=torch.int32)
+            batch_blocks = min(
+                CANDIDATE_CAPACITY,
+                (int(used_k[batch_index]) + BLOCK_SIZE - 1) // BLOCK_SIZE,
+            )
+            if batch_blocks < 0 or batch_blocks > logical_blocks:
+                raise ValueError("seqused_k must be within [0, k_seq]")
+            if requested_lengths is not None:
+                batch_lengths = requested_lengths[begin:end, 0]
+                if torch.any(batch_lengths < 0) or torch.any(
+                    batch_lengths > batch_blocks
+                ):
+                    raise ValueError(
+                        "candidate_block_length must be within the valid block count "
+                        "of its batch"
+                    )
+            else:
+                requested = batch_blocks if scalar_length is None else scalar_length
+                if requested < 0:
+                    raise ValueError("candidate_block_length must be non-negative")
+                batch_lengths = torch.full(
+                    (end - begin,), min(requested, batch_blocks), dtype=torch.int32
+                )
+            lengths[begin:end, 0] = batch_lengths
+            max_length = int(batch_lengths.max()) if end > begin else 0
+            order = torch.randperm(batch_blocks, generator=generator)[:max_length]
+            for row_index in range(begin, end):
+                row_length = int(lengths[row_index, 0])
+                candidate[row_index, 0, :row_length] = order[:row_length].to(
+                    torch.int32
+                )
         return candidate, lengths
 
     source = torch.tensor(explicit_indices, dtype=torch.int32)
@@ -194,23 +241,38 @@ def generate_qsli_test_data(params):
         raise ValueError("QSLI DSL requires block_size=128")
     generator = torch.Generator(device="cpu").manual_seed(p["seed"])
     rows = p["q_t_size"]
-    if p["cu_seqlens_q"] is None and rows != batch * q_len:
+    if p["cu_seqlens_q"] is None and (batch != 1 or rows != q_len):
         raise ValueError(
-            "variable-length TND requires explicit cu_seqlens_q when "
-            "q_t_size != batch_size * q_seq"
+            "cu_seqlens_q=None is only valid for batch_size=1 and q_t_size=q_seq"
         )
     default_cu = [index * q_len for index in range(batch + 1)]
-    cu = _int_tensor(p["cu_seqlens_q"], default_cu)
-    if tuple(cu.shape) != (batch + 1,) or int(cu[0]) != 0 or int(cu[-1]) != rows:
+    cu_value = p["cu_seqlens_q"]
+    cu = (
+        _int_tensor(default_cu, default_cu)
+        if _is_auto(cu_value)
+        else None if cu_value is None
+        else _int_tensor(cu_value, cu_value)
+    )
+    if cu is not None and (
+        tuple(cu.shape) != (batch + 1,)
+        or int(cu[0]) != 0
+        or int(cu[-1]) != rows
+    ):
         raise ValueError("cu_seqlens_q must have shape (B+1), start at 0, and end at q_t_size")
-    q_lengths = (cu[1:] - cu[:-1]).tolist()
+    q_lengths = [rows] if cu is None else (cu[1:] - cu[:-1]).tolist()
     if any(length < 0 or length > q_len for length in q_lengths):
         raise ValueError("each TND query length must be within [0, q_seq]")
-    used_q = _int_tensor(p["seqused_q"], q_lengths)
-    if tuple(used_q.shape) != (batch,) or any(
+    used_q_value = p["seqused_q"]
+    used_q = (
+        _int_tensor(q_lengths, q_lengths)
+        if _is_auto(used_q_value)
+        else None if used_q_value is None
+        else _int_tensor(used_q_value, used_q_value)
+    )
+    if used_q is not None and (tuple(used_q.shape) != (batch,) or any(
         int(value) < 0 or int(value) > int(q_lengths[index])
         for index, value in enumerate(used_q.tolist())
-    ):
+    )):
         raise ValueError("seqused_q must have shape (B,) and fit cu_seqlens_q")
     pages = (s2 + PAGE_SIZE - 1) // PAGE_SIZE
     if p["block_num"] != pages:
@@ -250,41 +312,57 @@ def generate_qsli_test_data(params):
     elif p["storage_mode"] != "contiguous":
         raise ValueError(f"unsupported storage_mode: {p['storage_mode']}")
 
+    candidate_cu = (
+        _int_tensor(default_cu, default_cu) if cu is None else cu
+    )
     candidate, candidate_length = _make_candidate_inputs(
-        p, rows, logical_blocks, generator, cu
+        p, rows, logical_blocks, generator, candidate_cu
     )
-    auto_block_table = p["block_table"] is None or (
-        isinstance(p["block_table"], str) and p["block_table"].upper() == "AUTO"
-    )
+    auto_block_table = _is_auto(p["block_table"])
     block_table = (
         torch.stack([
             torch.randperm(pages, generator=generator).to(torch.int32)
             for _ in range(batch)
         ])
         if auto_block_table
+        else None if p["block_table"] is None
         else _int_tensor(p["block_table"], p["block_table"])
     )
-    if tuple(block_table.shape) != (batch, pages):
+    if block_table is not None and tuple(block_table.shape) != (batch, pages):
         raise ValueError(
             f"block_table must have shape ({batch},{pages}), got {tuple(block_table.shape)}"
         )
     cu_k = _int_tensor(p["cu_seqlens_k"], list(range(0, batch * s2 + 1, s2)))
     if tuple(cu_k.shape) != (batch + 1,) or int(cu_k[0]) != 0:
         raise ValueError("cu_seqlens_k must have shape (B+1,) and start at zero")
-    used_k = _int_tensor(p["seqused_k"], [s2] * batch)
+    used_k_value = p["seqused_k"]
+    used_k = (
+        _int_tensor([s2] * batch, [s2] * batch)
+        if _is_auto(used_k_value)
+        else None if used_k_value is None
+        else _int_tensor(used_k_value, used_k_value)
+    )
+    if used_k is not None and (
+        tuple(used_k.shape) != (batch,)
+        or any(int(value) < 0 or int(value) > s2 for value in used_k.tolist())
+    ):
+        raise ValueError("seqused_k must have shape (B,) and values in [0,k_seq]")
     residual_value = p["cmp_residual_k"]
-    if residual_value is None and p["cmp_ratio"] != 1:
+    if _is_auto(residual_value):
         residual_value = [index % p["cmp_ratio"] for index in range(batch)]
     residual = (
         None if residual_value is None
         else _int_tensor(residual_value, residual_value)
     )
     offset_value = p["output_idx_offset"]
-    if isinstance(offset_value, bool):
+    auto_offset = _is_auto(offset_value)
+    if isinstance(offset_value, bool) or auto_offset:
         offset = (
             torch.arange(rows, dtype=torch.int32).reshape(rows, 1) * 3 + 37
-            if offset_value else None
+            if auto_offset or offset_value else None
         )
+    elif offset_value is None:
+        offset = None
     else:
         offset = _int_tensor(offset_value, offset_value)
         if tuple(offset.shape) != (rows, N2):
@@ -395,8 +473,21 @@ def compare_qsli_case(case_data, actual):
     actual_idx = _remove_offset(actual["sparse_indices"], offset)
     rows, s2 = actual_idx.shape[0], p["sequence_length"]
     batch = p["batch_size"]
-    cu = case_data["tensors"]["cu"].tolist()
-    used_k = case_data["tensors"]["used_k"].tolist()
+    cu_tensor = case_data["tensors"]["cu"]
+    used_k_tensor = case_data["tensors"]["used_k"]
+    # The operator accepts both tensors as optional inputs.  The golden path
+    # materializes the implicit defaults, while the NPU call must still receive
+    # the original None values so the optional-input profiles are exercised.
+    cu = (
+        golden["_cu_seqlens_q"].tolist()
+        if cu_tensor is None
+        else cu_tensor.tolist()
+    )
+    used_k = (
+        [s2] * batch
+        if used_k_tensor is None
+        else used_k_tensor.tolist()
+    )
     compare_params = (
         batch, p["query_length"],
         s2, rows, batch*s2, N1, N2, 128,
@@ -432,6 +523,26 @@ class QsliCaseSelector:
     def natural_key(path):
         return [int(x) if x.isdigit() else x.lower() for x in re.split(r"(\d+)", Path(path).name)]
 
+    @staticmethod
+    def parse_indexes(expression, total):
+        indexes = []
+        for token in str(expression or "").split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if "-" in token:
+                start_text, end_text = token.split("-", 1)
+                start, end = int(start_text), int(end_text)
+                if end < start:
+                    raise ValueError(f"invalid descending case index range: {token}")
+                indexes.extend(range(start, end + 1))
+            else:
+                indexes.append(int(token))
+        invalid = [index for index in indexes if index < 1 or index > total]
+        if invalid:
+            raise ValueError(f"case indexes out of range 1..{total}: {invalid}")
+        return indexes
+
     @classmethod
     def resolve(cls, pt_dir, explicit_files="", case_names="", case_indexes=""):
         files = [Path(x) for x in explicit_files.split(",") if x] if explicit_files else sorted(Path(pt_dir).glob("*.pt"), key=cls.natural_key)
@@ -440,7 +551,7 @@ class QsliCaseSelector:
             by_name = {x.stem: x for x in files}
             files = [by_name[x] for x in wanted]
         if case_indexes:
-            indexes = [int(x.strip()) for x in case_indexes.split(",") if x.strip()]
+            indexes = cls.parse_indexes(case_indexes, len(files))
             files = [files[x-1] for x in indexes]
         if not files:
             raise ValueError(f"no PT cases found in: {pt_dir}")

@@ -33,10 +33,10 @@ case "$COMMAND" in
   batch)
     if [ -n "$EXCEL" ]; then
       "$PYTHON" "$SCRIPT_DIR/batch/quant_lightning_indexer_v2_pt_save.py" \
-        "$EXCEL" "$PT_PATH" --sheet "$SHEET"
+        "$EXCEL" "$PT_PATH" --sheet "$SHEET" --indexes "$INDEXES"
     fi
     QLIV2_TESTCASE_DIR="$PT_PATH" QLIV2_CASE_NAMES="$CASES" \
-    QLIV2_CASE_INDEXES="$INDEXES" QLIV2_RESULT_PATH="$RESULT" \
+    QLIV2_CASE_INDEXES="" QLIV2_RESULT_PATH="$RESULT" \
       "$PYTHON" -m pytest -rA -s "$SCRIPT_DIR/test_quant_lightning_indexer_v2_batch.py" -v -m ci ;;
   batch_exec)
     [ -n "$EXCEL" ] || { echo "batch_exec必须指定--excel"; exit 2; }

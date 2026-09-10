@@ -21,12 +21,13 @@ def normalize_qsli_params(params):
     k_seq = values.get("k_seq", values.get("sequence_length"))
     if q_seq is None or k_seq is None:
         raise ValueError("QSLI requires q_seq/k_seq (or query_length/sequence_length)")
+    k_t_size = values.get("k_t_size")
     normalized = {
         "batch_size": int(values["batch_size"]),
         "query_length": int(q_seq),
         "sequence_length": int(k_seq),
         "q_t_size": int(values.get("q_t_size", int(values["batch_size"]) * int(q_seq))),
-        "k_t_size": int(values.get("k_t_size", k_seq)),
+        "k_t_size": int(k_seq if k_t_size is None else k_t_size),
         "q_head_num": int(values.get("q_head_num", 32)),
         "k_head_num": int(values.get("k_head_num", 1)),
         "head_dim": int(values.get("head_dim", 128)),
@@ -36,16 +37,16 @@ def normalize_qsli_params(params):
         "storage_mode": str(values.get("storage_layout", values.get("storage_mode", "contiguous"))),
         "mask_mode": int(values.get("sparse_mode", values.get("mask_mode", 3))),
         "topk": int(values.get("sparse_count", values.get("topk", 512))),
-        "candidate_block_indices": values.get("candidate_block_indices"),
+        "candidate_block_indices": values.get("candidate_block_indices", "AUTO"),
         "candidate_block_length": values.get("candidate_block_length"),
         "output_idx_offset": values.get("output_idx_offset", True),
         "seed": int(values.get("seed", 1)),
-        "cu_seqlens_q": values.get("cu_seqlens_q"),
+        "cu_seqlens_q": values.get("cu_seqlens_q", "AUTO"),
         "cu_seqlens_k": values.get("cu_seqlens_k"),
-        "seqused_q": values.get("seqused_q"),
-        "seqused_k": values.get("seqused_k"),
+        "seqused_q": values.get("seqused_q", "AUTO"),
+        "seqused_k": values.get("seqused_k", "AUTO"),
         "cmp_residual_k": values.get("cmp_residual_k"),
-        "block_table": values.get("block_table"),
+        "block_table": values.get("block_table", "AUTO"),
         "quant_mode": int(values.get("quant_mode", 1)),
         "candidate_block_size": int(values.get("candidate_block_size", 8)),
         "max_seqlen_q": int(values.get("max_seqlen_q", q_seq)),

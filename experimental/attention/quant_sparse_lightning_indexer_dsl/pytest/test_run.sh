@@ -34,9 +34,9 @@ case ${MODE} in
     ;;
   batch)
     if [[ -n ${EXCEL} ]]; then
-      "$PYTHON" batch/quant_sparse_lightning_indexer_pt_save.py "${EXCEL}" "${PT_PATH}" --sheet "${SHEET}"
+      "$PYTHON" batch/quant_sparse_lightning_indexer_pt_save.py "${EXCEL}" "${PT_PATH}" --sheet "${SHEET}" --indexes "${INDEXES}"
     fi
-    QSLI_TESTCASE_DIR=${PT_PATH} "$PYTHON" -m pytest -rA -s test_quant_sparse_lightning_indexer_batch.py -v -m ci
+    QSLI_CASE_INDEXES="" QSLI_TESTCASE_DIR=${PT_PATH} "$PYTHON" -m pytest -rA -s test_quant_sparse_lightning_indexer_batch.py -v -m ci
     ;;
   batch_exec)
     [[ -n ${EXCEL} ]] || { echo "batch_exec requires -E" >&2; exit 2; }

@@ -10,7 +10,7 @@ PARAM_NAMES = (
     "q_head_num", "k_head_num", "head_dim", "block_size", "block_num",
     "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype",
     "cu_seqlens_q", "cu_seqlens_k", "seqused_q", "seqused_k",
-    "cmp_residual_k", "max_seqlen_q", "quant_mode", "layout_query",
+    "cmp_residual_k", "block_table", "max_seqlen_q", "quant_mode", "layout_query",
     "layout_key", "sparse_count", "sparse_mode", "query_datarange",
     "key_datarange", "weights_datarange", "q_scale_datarange",
     "k_scale_datarange", "cmp_ratio", "return_value", "output_idx_offset",

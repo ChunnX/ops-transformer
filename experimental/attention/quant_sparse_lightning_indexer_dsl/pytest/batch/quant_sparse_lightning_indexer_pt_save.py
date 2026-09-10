@@ -10,7 +10,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from qsli_test_utils import generate_qsli_test_data
+from qsli_test_utils import QsliCaseSelector, generate_qsli_test_data
 
 
 def _value(value):
@@ -28,6 +28,7 @@ def main():
     parser.add_argument("excel_path")
     parser.add_argument("pt_dir")
     parser.add_argument("--sheet", "-S", default="TestCases")
+    parser.add_argument("--indexes", default="")
     args = parser.parse_args()
     frame = pd.read_excel(args.excel_path, sheet_name=args.sheet)
     required = [
@@ -47,6 +48,9 @@ def main():
         raise ValueError(f"missing required columns: {missing}")
     output = Path(args.pt_dir)
     output.mkdir(parents=True, exist_ok=True)
+    if args.indexes:
+        selected = QsliCaseSelector.parse_indexes(args.indexes, len(frame))
+        frame = frame.iloc[[index - 1 for index in selected]]
     for _, row in frame.iterrows():
         params = {name: _value(row[name]) for name in required if name != "Testcase_Name"}
         target = output / f"{row['Testcase_Name']}.pt"
