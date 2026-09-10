@@ -530,6 +530,12 @@ REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1002312000040021212, FlashAttent
 REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1001311000000001212, FlashAttentionScoreSimplifiedTilingData)
 REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1001311000000021212, FlashAttentionScoreSimplifiedTilingData)
 
+// attenMask使能场景，mask占tilingKey第8位(1e8)，且使能mask时DN(4e7)必然关闭
+REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1002312000100001212, FlashAttentionScoreSimplifiedTilingData)
+REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1002312000100021212, FlashAttentionScoreSimplifiedTilingData)
+REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1001311000100001212, FlashAttentionScoreSimplifiedTilingData)
+REGISTER_TILING_DATA_CLASS(PromptFlashAttention_1001311000100021212, FlashAttentionScoreSimplifiedTilingData)
+
 class BufferNum {
 public:
     // sum and max always use fp32, shape is (S1, 1), inner axis align 32B.
