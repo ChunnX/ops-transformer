@@ -83,11 +83,8 @@ public:
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
-    static constexpr bool SPLIT_MM_QUEUES = Config::SPLIT_MM_QUEUES;
     static constexpr uint32_t UB_MM_RES_BUFCNT = Config::UB_MM_RES_BUFCNT;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES = Config::UB_MM_RES_BUF_BYTES;
-    static constexpr uint32_t UB_MM1_BUF_BYTES = Config::UB_MM1_BUF_BYTES;
-    static constexpr uint32_t UB_MM2_BUF_BYTES = Config::UB_MM2_BUF_BYTES;
     // bmm1/bmm2(mmRes) 区域总字节数：FD block 以此作为 FD 业务区的 UB 起始偏移
     static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = Config::UB_MM_RES_TOTAL_BYTES;
     // FD 业务区在 UB 中的起始字节偏移，供 kernel 传给 FD block 的 InitBuffers
@@ -98,9 +95,9 @@ public:
     LocalTensor<uint8_t> ubMmResBuffers_;
 
     FaDnMmSlots<Config> mmSlots_;
-    __aicore__ inline uint32_t AcquireMmSlot(bool second)
+    __aicore__ inline uint32_t AcquireMmSlot()
     {
-        return mmSlots_.Acquire(second);
+        return mmSlots_.Acquire();
     }
 
     __aicore__ inline uint32_t MmSlotOffset(uint32_t id)
@@ -166,7 +163,7 @@ public:
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                     __gm__ uint8_t *workspace, __gm__ uint8_t *query)
+                                     __gm__ uint8_t *workspace)
     {
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
@@ -291,7 +288,7 @@ public:
 
     __aicore__ inline void ProcessVec1(RunInfo runInfo)
     {
-        uint32_t mmResUbBufId = AcquireMmSlot(false);
+        uint32_t mmResUbBufId = AcquireMmSlot();
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
@@ -612,7 +609,7 @@ public:
 
     __aicore__ inline void ProcessVec2(RunInfo runInfo)
     {
-        uint32_t mmResUbBufId = AcquireMmSlot(true);
+        uint32_t mmResUbBufId = AcquireMmSlot();
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
