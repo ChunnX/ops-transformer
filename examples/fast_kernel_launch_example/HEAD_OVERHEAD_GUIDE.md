@@ -83,13 +83,13 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 - grouped_matmul：bf16 **E=1, M=448, K=16, N=16**（x [448,16] × weight [16,16]；M=448 切满 A5 28 Cube 核 / A3 24 Cube 核，聚焦头开销取小 K/N）
 - incre_flash_attention：bf16 query **[B, 64, 1, 128]**（BNSD，GQA 64:1，B=A5 28 / A3 24 随平台 Cube 核数满核）+ int8 KV cache NZ 布局 **[65B, 1, 4, 128, 32]**（block_size=128，kv_seq=8192）+ bf16 per-channel 反量化 scale [1,1,128]（伪量化场景，key/value int8）
 
-## 参考数据（当前形态：全量执行 + cycleBuf 打点）
-
-三算子统一多拍口径（capture 连发 + 5 拍 replay，各拍独立计算取 median）。IFA 曾以 return 形态采集（T1 打点后提前 return、主体不执行），TaskDur 9.83→96.84us（A3）/ 5.79→138.74us（A5）即两种形态的差异，历史数据见下文专节。
+## 参考数据
 
 ### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz）
 
-主表（add/gmm：B 环境复测，20260909，NPU 0，提交 6e6e2693f，与 PR 描述 §3.2 跨机器一致——add 头开销 0.33/0.79/1.04 精确相同、gmm 差 ≤0.04us、TaskDur 差 ≤0.06us；IFA：全量执行形态，20260910，91T103 软件栈 torch 2.12.0+cpu + torch_npu 2.12.0.dev，提交 `2bc9d4a06`；均为 5 轮独立复测，各轮 min/mean/max 跨轮平均）：
+以 5 轮独立复测平均为准（每轮全量重建 + capture + 5-shot median，各轮 min/mean/max 分别跨轮取平均）。add/grouped_matmul 与 PR 描述 §3.2（B 环境独立复测，20260904，NPU 15，提交 c26563855）跨机器一致：add 头开销 0.33/0.79/1.04 精确相同，gmm 头开销差 ≤0.04us，TaskDur 差 ≤0.06us。
+
+主表（add/gmm：B 环境复测，20260909，NPU 0，提交 6e6e2693f；IFA：20260910，torch 2.12.0+cpu + torch_npu 2.12.0.dev，91T103 软件栈）：
 
 | 指标 (min/mean/max us) | add (Vector, 56核) | grouped_matmul (Cube, 28核) | incre_flash_attention (MIX, 28+56核, AIV 56核打点) |
 |------|-----------|-----------|-----------|
@@ -101,15 +101,12 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 | 硬件尾 pmu_end-T2 | 0.52 ~ 0.86 | 0.49 ~ 0.63 | 0.37 ~ 0.52 |
 | TaskDur 稳态 mean | 8.85 | 4.09 | 138.74 |
 
-软件栈复验（同 CANN 9.1.0T103，同提交 6e6e2693f，5 轮）：
-- grouped_matmul 与主表一致（头开销 1.08/1.79/2.11，max 精确相同，TaskDur 4.11）
-- add 轮间波动加大（软件头 max 0.87~1.54us、TaskDur 8.83~10.26us），头开销均值升至 0.90/1.22，但最优轮 0.32/0.79/1.04 与主表精确一致；T0-stars 全轮恒 0.15/0.16/0.17，是最稳定的参照指标
-- IFA 为 return 形态历史值（头开销 1.35/3.70/5.73，TaskDur 5.42，主体未执行），已废弃；全量执行形态见主表 IFA 列
+软件栈复验（torch 2.12.0+cpu + torch_npu 2.12.0.dev，CANN 9.1.0T103，同提交 6e6e2693f，5 轮）：grouped_matmul 与主表一致（头开销 1.08/1.79/2.11，max 精确相同，TaskDur 4.11）；add 轮间波动加大（软件头 max 0.87~1.54us、TaskDur 8.83~10.26us），头开销均值升至 0.90/1.22，但其最优轮（0.32/0.79/1.04）与主表精确一致。add 的 T0-stars（调度+硬件头）在全部轮次恒为 0.15/0.16/0.17，是最稳定的参照指标。
 
 注：
 - IFA 的 T2 只打 AIV 侧，AIC Cube 计算拖尾计入 TaskDur 而非 T2，解读 IFA 数据时注意是 AIV 视角。
-- **A5 vs A3 IFA 头开销形态差异**：A5 全量执行后头开销与 return 形态同量级（1.35/3.70/5.73 → 2.57/4.29/5.81，mean +0.6us），A3 则涨 ~8us（9.61→17.65）。A5 头开销以参数搬运为主（stars→kick ~0.19us + kick→T0 ~2.1us），无 A3 的 MIX 72-task burst kick 串行化暴露（机制见「深入分析」），主体从 5.79us 变 138us 后头开销基本不变。ffts PMU 全链路与 TaskDur 交叉验证一致（逐轮差 -0.74 ~ +0.84us）；5/5 轮无死锁，每拍 56 核 T0<T1<T2 完整；结果归档仓库根 `ifa_a5_sync_retest_20260910/`。
-- **数值正确性注意**：golden 对拍（CPU float64，GQA 64:1 + per-channel 反量化 + NZ 布局）发现该 demo 分支 IFA 输出数值不正确——attention 质量 0.5（仅每块前 64/128 token 参与 P·V，softmax 分母按全量归一），rel_err ~103%，与 kv 长度/FD 路径/metadata 无关，为既有问题（旧 return 形态主体不执行从未暴露，A3 同源同样不达标）。不影响头开销/耗时测量结论（时序为硬件打点事实），但该 demo 输出不可用作数值正确性依据。
+- A5 IFA 头开销以参数搬运为主（stars→kick ~0.19us + kick→T0 ~2.1us），无 A3 的 MIX 72-task burst kick 串行化暴露，头开销与 kernel 主体时长基本解耦。ffts PMU 全链路与 TaskDur 交叉验证一致（逐轮差 -0.74 ~ +0.84us）；5/5 轮无死锁，每拍 56 核 T0<T1<T2 完整；结果归档 `ifa_a5_sync_retest_20260910/`。
+- **数值正确性注意**：golden 对拍（CPU float64，GQA 64:1 + per-channel 反量化 + NZ 布局）发现该 demo 分支 IFA 输出数值不正确——attention 质量 0.5（仅每块前 64/128 token 参与 P·V，softmax 分母按全量归一），rel_err ~103%，与 kv 长度/FD 路径/metadata 无关，为既有问题（A3 同源同样不达标）。不影响头开销/耗时测量结论（时序为硬件打点事实），但该 demo 输出不可用作数值正确性依据。
 
 ### A3（Ascend910_9392, CANN 9.1.T103, SYS_CNT=50MHz，5 轮跨轮平均）
 
@@ -129,42 +126,11 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 - A3 上 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无 kick 拆分，硬件尾/全链路不输出分布口径（仅单点 max），故表中无对应行。
 - A3 的 IFA 为纯 Vector 48 核形态（A5 为 MIX 28AIC+56AIV，AIC Cube 拖尾计入 TaskDur 而非 T2），两平台 IFA 口径不同，跨平台对比时注意。
 
-## 历史数据（IFA return 形态，已废弃）
-
-IFA 曾以 `IFA_HEAD_TIMING_MODE=2` 编译为头开销模式（T1 打点后提前 return，主体不执行），T2≈T1+ε、TaskDur 仅含头开销，与当前形态不可比；A5 return 形态 IFA 值（主表旧值 1.37/3.90/6.52 / 软件栈复验 1.35/3.70/5.73，TaskDur 5.79/5.42）同已废弃。A3 同期数据（add/gmm 列为常规测量，与当前形态仅轮次不同；IFA 列为 return 形态，5 轮跨轮平均）：
-
-| 指标 (mean/max us) | add (Vector, 48核) | grouped_matmul (Cube, 24核) | incre_flash_attention (Vector, 48核) |
-|------|-----------|-----------|-----------|
-| 调度+硬件头 T0-stars | 0.49 / 0.74 | 1.60 / 2.06 | 2.53 / 3.91 |
-| 软件头 T1-T0 | 0.69 / 1.35 | 1.63 / 2.36 | 7.08 / 9.42 |
-| **头开销 T1-stars** | **1.19 / 1.91** | **3.24 / 4.02** | **9.61 / 12.13** |
-| kernel末指令 T2-stars | 8.62 / 8.97 | 4.40 / 6.22 | 9.63 / 12.15 |
-| TaskDur 稳态 mean | 10.22 | 6.99 | 9.83 |
-
-> 更早的旧版参考表（头开销 add 0.44/0.51、gmm 1.47/1.68、IFA 3.00/4.98 mean/max）经多轮独立复测均无法复现——差距集中在其偏低的软件头（add 0.28/0.36 vs 实测 0.63/0.88）——同样已废弃。
-
-## 深入分析
-
 ### A3 IFA T0-stars 偏大的三层分解（16us）
 
 1. **每核 baseline ~6us（软件，反汇编证实）**：T0（kernel 第一条 `MOV Xn, SYS_CNT`，AIV 函数偏移 0xC0/第 48 条指令）之前是 33 个 GM_ADDR 指针 + **按值传递的大 tiling struct** 的参数搬运（13 条标量 GM 读 + 8 条 ST 写栈）。标量 GM 读 ~100-200 core cycle/条 → ~6us。对比 add 仅 5-6 个参数（0.72us）、gmm（2.02us）。
 2. **逐核 stagger 10.08us（硬件 kick 串行化）**：MIX kernel 24 组 × [1 AIC + 2 AIV] = 72 task，FFTS 逐组 kick ~0.15-0.2us/任务（实测 T0-stars 对 block_id 斜率 155.7ns/blk，B0=6.06 → B47=16.14）。前几组间隔 ~1us、后段压缩至 ~0.1us（kick 管道渐进加速特征）。
 3. **调度基线 ~2-4us**：STARS dispatch 为完成驱动（shot 内 launch 间距 ≈ kernel 时长 102us）。
-
-### return 版本（MODE=2，已删）测的头开销偏小的原因
-
-头开销不是常数，依赖**前驱 kernel 的完成模式**：
-
-- **长 kernel（~100us，真实形态）**：所有块几乎同时完成 → 资源一次性集中释放 → 72 task burst kick 串行化完全暴露 → T1-stars 13.6~19.6us
-- **短 kernel（return 版 ~10us）**：块完成时间分散（启动 stagger + 短执行）→ FFTS **流水式 kick**（某组资源一释放即 kick 下一 kernel 对应组）→ kick 延迟被前 kernel 尾部重叠隐藏 → T1-stars 仅 5.5~11.5us
-
-即 return 版本测到的是"短 kernel 自我复制"的乐观值，kick 开销被流水化隐藏 ~6-8us；真实长 kernel 接续场景以非 return 版本数据为准。
-
-### A3 死锁教训（排查 3 天，两个独立根因）
-
-1. **live pipeline events + early return**：Process 入口的 4 条 SetFlag（V_MTE2/MTE3_V 初始同步）若在提前 return 的路径上执行，kernel 携带 live pipeline events 退出，下一次 graph replay 必死锁（runtime 报 "three minutes timeout"，device 0 整体 hang 连普通 matmul 都超时，只能重启容器恢复）。源码原有注释 "Early return cannot leave pipeline events live across consecutive graph launches" 即此意。
-2. **timing 缓冲越界写**：timing 基址曾用 `attentionOut+4MB`，而 attentionOut 输出仅 ~384KB —— 越界写破坏内存导致死锁/NaN。修复：host 侧持久分配独立 `g_cycle_tensor`（64 blocks × 8 slots int64，对齐 add 的 g_cycle_tensor 方案），kernel 经 `cycleBuf` 参数写入，新增 `torch.ops.ascend_ops.npu_fused_ifa_cycle_tensor()` 回读（无 tensor 入参的 op 需注册 CompositeExplicitAutograd）。
-3. **构建宏陷阱**：IFA 的 CMakeLists 曾以 `-DIFA_HEAD_TIMING_MODE=2`（缓存默认值）传给编译器，**优先级高于源文件 `#ifndef` 默认值** —— 源码改默认 MODE=0 不生效，所有"MODE=0"轮次实际编译为 MODE=2（主体从未执行，T2 恒等于 T1+ε，输出 NaN）。该宏系统已整体删除。
 
 ## 打点前后的反汇编阶段分析
 
@@ -208,11 +174,9 @@ Mapping Symbols：`$x`=MainScalar / `$k`=SIMD / `$t`=SIMT；MIX 混合核有 `_m
 
 | 阶段 (mean us) | add (56核) | gmm (28核) | IFA (28AIC+56AIV) |
 |------|-----------|-----------|-----------|
-| T0-stars 调度+硬件头 | 0.16 | 0.79 | 2.33 |
+| T0-stars 调度+硬件头 | 0.16 | 0.79 | 2.96 |
 | entry 指令数 | 30 | 82 | AIC 37 / AIV 55 |
 | 参数预取量 | 48B (×1) | 2KB (×33) | 1.25KB (×20, 每核) |
-
-> 表中 IFA T0-stars（2.33）为 return 形态时期值；当前全量执行形态实测 0.93/2.96/4.51（mean 增 ~0.6us），entry 段（T0 之前）指令结构两种形态一致。
 
 > **kick 拆分仅 A5 有效**（A5 上 kick=ffts pmu_start，可拆为 stars→kick 调度 ~0.14-0.19us + kick→T0 硬件头：add 0.03 / gmm 0.65 / IFA ~2.1us；20260909 B 环境 5 轮实测 stars→kick：add/gmm 0.135、IFA 0.188，轮间恒定）。A3 的 ffts f[19] 非 kick 时刻（实测恒为 dispatch+20cyc），无拆分意义——故上表只列合并口径 T0-stars（两平台通用），A3 汇总输出也不拆 kick 段，`seg1_pairs_*.csv` 仅 A5 有效。
 
@@ -268,7 +232,7 @@ examples/fast_kernel_launch_example/
 │   ├── add/                       # test_add / cycle_test / compile_kernel / test_tail_return（for 体内 return 死代码与 tail 块开销的历史探索结论）
 │   ├── grouped_matmul/test_groupedmatmul.py
 │   └── incre_flash_attention/     # test.py + run_head_overhead.sh + analyze_head_overhead.py
-├── disasm/                        # 三算子 device 反汇编产物 (A5/A3 两平台, 含 add 关 DCCI 对照版; A3 仅归档 txt, IFA 对应当前全量执行形态)
+├── disasm/                        # 三算子 device 反汇编产物 (A5/A3 两平台, 含 add 关 DCCI 对照版)
 ├── scan_replay.py                 # NPUGraph capture 101 次连发 + 多拍 replay + 逐 block 打点 dump
 ├── parse_stars_log.py             # STARS dispatch 事件解析
 ├── parse_ffts_pmu.py              # ffts_profile PMU 解析（核侧 pmu_start/pmu_end 时戳）
@@ -278,5 +242,3 @@ examples/fast_kernel_launch_example/
 ├── setup.py
 └── build_and_test.sh              # 原始构建+测试脚本
 ```
-
-复测归档（仓库根 `ifa_a5_sync_retest_20260910/`）：A5 IFA 全量执行形态 5 轮——运行日志、summary CSV、逐拍打点明细（PROF 原始数据未入库）。
