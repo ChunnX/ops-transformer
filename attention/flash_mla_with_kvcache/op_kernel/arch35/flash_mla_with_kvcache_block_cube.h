@@ -70,12 +70,8 @@ public:
     static constexpr uint32_t KV_L1_BUFFER_ID0 = 4U;
     static constexpr uint32_t KV_L1_BUFFER_ID1 = 5U;
     static constexpr uint32_t KV_L1_BUFFER_ID2 = 6U;
-    static constexpr uint32_t L0A_BUFFER_ID0 = 7U;
     static constexpr uint32_t L0B_BUFFER_ID0 = 9U;
     static constexpr uint32_t L0B_BUFFER_ID1 = 10U;
-    static constexpr uint32_t Q_L0A_CACHE_ID0 = 11U;
-    static constexpr uint32_t Q_L0A_CACHE_ID1 = 12U;
-    static constexpr uint32_t Q_L0A_CACHE_ID2 = 13U;
 
     // ================== 静态布局常量（表 1，数值 = 现状容量）==================
     // UB CV 区（VECIN，与 vec 侧同一偏移别名）：
@@ -109,6 +105,7 @@ public:
     LocalTensor<uint8_t> l0ABuffers_;
     LocalTensor<uint8_t> l0BBuffers_;
     uint32_t l0bBufId_ = 0U;
+    bool lastMatmulWasPv_ = false;
 
     /* =====================GM变量(with layout)==================== */
     // q/k_cache 为 576 宽单张量（nope 512 + rope 64 合并），无独立 queryRope/keyRope 张量；
@@ -164,6 +161,7 @@ public:
         l0ABuffers_ = LocalTensor<uint8_t>(TPosition::A2, 0U, BUFFER_SIZE_BYTE_64K);
         l0BBuffers_ = LocalTensor<uint8_t>(TPosition::B2, 0U, BUFFER_SIZE_BYTE_64K);
         l0bBufId_ = 0U;
+        lastMatmulWasPv_ = false;
 
         /*--------------------------------------------L0C--------------------------------------------*/
         // 2×128K 静态 + M/FIX Mutex 对（表 2 注 3：bmm2 单次足迹 128K，不得拆 4×64K）
@@ -392,7 +390,9 @@ public:
                                       bool loadQueryCache)
     {
         // 每个 Q 块首轮（包括跨核/section 的首轮）刷新缓存；mm2 仅使用最后一个 L0A 槽。
-        // 缓存槽的 M/MTE1 Mutex 防止下一 Q 的搬运覆盖尚未完成的 Mmad 输入。
+        // A/B 共用 B 槽 Mutex：两槽轮转等待前两条 Mmad 完成。
+        // 临时 Q 在 k=1/3 使用，两次使用相隔两条 Mmad；缓存 Q 同槽相隔至少五条。
+        // 前驱为 PV 时，k=1 的 B 槽等待覆盖前驱最后一条 Mmad 对 P 的读取。
         constexpr uint32_t kLoops = 5;
         const uint64_t alignM = (actM + 15) >> 4 << 4;
         const uint64_t alignN = (actS2 + 15) >> 4 << 4;
@@ -405,24 +405,18 @@ public:
             const uint32_t tileK = cachedQuery ? 128U : 96U;
             const uint32_t qCacheSlot = k / 2U;
             const bool loadL0A = !cachedQuery || loadQueryCache;
-            const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + qCacheSlot : L0A_BUFFER_ID0;
             const uint32_t l0aSlot = cachedQuery ? qCacheSlot : Q_L0A_CACHE_COUNT;
             const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
             LocalTensor<Q_T> l0aTensor =
                 l0ABuffers_[l0aSlot * L0A_SLOT_BYTES].template ReinterpretCast<Q_T>();
             LocalTensor<KV_T> l0bTensor =
                 l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
-            if (loadL0A) {
-                Mutex::Lock<PIPE_MTE1>(l0aMutexId);
-            }
             Mutex::Lock<PIPE_MTE1>(l0bMutexId);
             Mm1LoadL0B(l0bTensor, kvpL1Tensor, l1BOff, tileK, actS2);
             if (loadL0A) {
                 Mm1LoadL0A(l0aTensor, qL1Tensor, l1AOff, tileK, actM);
-                Mutex::Unlock<PIPE_MTE1>(l0aMutexId);
             }
             Mutex::Unlock<PIPE_MTE1>(l0bMutexId);
-            Mutex::Lock<PIPE_M>(l0aMutexId);
             Mutex::Lock<PIPE_M>(l0bMutexId);
 
             MmadParams mmadParams;
@@ -438,10 +432,10 @@ public:
             l1AOff += tileK * alignM;
             l1BOff += tileK * alignN;
 
-            Mutex::Unlock<PIPE_M>(l0aMutexId);
             Mutex::Unlock<PIPE_M>(l0bMutexId);
             l0bBufId_ ^= 1U;
         }
+        lastMatmulWasPv_ = false;
     }
 
     // Full S2 tile: retain 32KiB L0B ping-pong using N=256, K=64.
@@ -451,15 +445,19 @@ public:
     {
         const uint32_t alignM = (realM + 15U) / 16U * 16U;
         LocalTensor<KV_T> l0a = l0ABuffers_[Q_L0A_CACHE_COUNT * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
-        Mutex::Lock<PIPE_MTE1>(L0A_BUFFER_ID0);
-        Mm2LoadL0A(l0a, pL1Tensor, 128U, realM);
-        Mutex::Unlock<PIPE_MTE1>(L0A_BUFFER_ID0);
-        Mutex::Lock<PIPE_M>(L0A_BUFFER_ID0);
+        // QK 的倒数第二条 Mmad 最后读取临时 Q，正常 B 轮转已覆盖该依赖。
+        // 连续 PV 时 P 用至最后一条 Mmad，首槽改用前驱最后的 B 槽再覆盖 P。
+        if (lastMatmulWasPv_) {
+            l0bBufId_ ^= 1U;
+        }
         for (uint32_t n = 0; n < 2U; ++n) {
             for (uint32_t k = 0; k < 2U; ++k) {
                 const uint32_t bId = L0B_BUFFER_ID0 + l0bBufId_;
                 LocalTensor<KV_T> l0b = l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
                 Mutex::Lock<PIPE_MTE1>(bId);
+                if (n == 0U && k == 0U) {
+                    Mm2LoadL0A(l0a, pL1Tensor, 128U, realM);
+                }
                 LoadData2DParamsV2 p;
                 p.mStartPosition = 0;
                 p.kStartPosition = 0;
@@ -483,7 +481,7 @@ public:
                 l0bBufId_ ^= 1U;
             }
         }
-        Mutex::Unlock<PIPE_M>(L0A_BUFFER_ID0);
+        lastMatmulWasPv_ = true;
     }
 
     // ================== 特化 MatmulN（mm2: P·V, N=512 固定, 4×128, M=64, K=actS2）==================
@@ -498,20 +496,21 @@ public:
         const uint64_t l0COffset = ((realM + 15) >> 4 << 4) * 128; // align16(M)*baseN, runtime once
         const uint64_t l1BOffset = ((actS2 + 15) >> 4 << 4) * 128; // align16(K)*baseN, runtime once
 
-        const uint32_t l0aMutexId = L0A_BUFFER_ID0;
         LocalTensor<KV_T> l0aTensor =
             l0ABuffers_[(Q_L0A_CACHE_COUNT) * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
-        Mutex::Lock<PIPE_MTE1>(l0aMutexId);
-        Mm2LoadL0A(l0aTensor, pL1Tensor, actS2, realM);
-        Mutex::Unlock<PIPE_MTE1>(l0aMutexId);
-        // P 在全部 N 分块中复用，最后一次 Mmad 完成后才允许覆盖 L0A。
-        Mutex::Lock<PIPE_M>(l0aMutexId);
+        // 与完整 S2 路径相同，连续 PV 必须先等前驱最后一次读取 P 完成。
+        if (lastMatmulWasPv_) {
+            l0bBufId_ ^= 1U;
+        }
 
         for (uint32_t n = 0; n < nLoops; n++) {
             const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
             LocalTensor<KV_T> l0bTensor =
                 l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
             Mutex::Lock<PIPE_MTE1>(l0bMutexId);
+            if (n == 0U) {
+                Mm2LoadL0A(l0aTensor, pL1Tensor, actS2, realM);
+            }
             Mm2LoadL0B(l0bTensor, kvpL1Tensor, n * l1BOffset, actS2);
 
             Mutex::Unlock<PIPE_MTE1>(l0bMutexId);
@@ -530,7 +529,7 @@ public:
             Mutex::Unlock<PIPE_M>(l0bMutexId);
             l0bBufId_ ^= 1U;
         }
-        Mutex::Unlock<PIPE_M>(l0aMutexId);
+        lastMatmulWasPv_ = true;
     }
 
     // qPreloaded：本任务 Q 已由启动路径（loop==0 IterateQPreload）提前发起 MTE2，跳过重复拷贝
