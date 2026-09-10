@@ -83,7 +83,7 @@ add kernel 以 `KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)` 声明任务类�
 - grouped_matmul：bf16 **E=1, M=448, K=16, N=16**（x [448,16] × weight [16,16]；M=448 切满 A5 28 Cube 核 / A3 24 Cube 核，聚焦头开销取小 K/N）
 - incre_flash_attention：bf16 query **[B, 64, 1, 128]**（BNSD，GQA 64:1，B=A5 28 / A3 24 随平台 Cube 核数满核）+ int8 KV cache NZ 布局 **[65B, 1, 4, 128, 32]**（block_size=128，kv_seq=8192）+ bf16 per-channel 反量化 scale [1,1,128]（伪量化场景，key/value int8）
 
-## 参考数据
+## 测试结果
 
 ### A5（Ascend950PR / dav-3510, CANN 9.1.0T103, 满核 56 AIV + 28 AIC, SYS_CNT=1000MHz）
 
