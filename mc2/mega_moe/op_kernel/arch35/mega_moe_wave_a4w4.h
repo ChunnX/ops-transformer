@@ -279,6 +279,10 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
+    if (GetSubBlockIdx() == 1U) {
+        // Startup has drained the ring; retain its UB layout and use only slots 0/1.
+        tokenDispatchConfig_.bufferConfig.bufferCount = STEADY_DISPATCH_BUFFER_COUNT;
+    }
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
         ExpertTokenRange waveRange = ProcessNextDispatchAndCurrentGmm1(

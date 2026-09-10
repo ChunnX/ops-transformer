@@ -274,6 +274,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim / ACTIVATION_N_HALF, static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
+    if (GetSubBlockIdx() == 1U) {
+        // Startup has drained the ring; retain its UB layout and use only slots 0/1.
+        tokenDispatchConfig_.bufferConfig.bufferCount = STEADY_DISPATCH_BUFFER_COUNT;
+    }
     // GMM2 滞后一拍门控：与 A8W8 的 GMM2_LAG_MIN_TOKEN_NUM(4096) 同门槛；
     // 关闭态与现役"当前 Wave 完成后立即消费"逐字等价。
     const bool gmm2LagActive = commonConfig_.tokenNum >= 4096U;

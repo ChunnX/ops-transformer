@@ -493,6 +493,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 } else {
                     hasPreparedWave = false;
                 }
+                if (gmm1Count == 0U) {
+                    // Startup W0/W1 are fully dispatched using the host-selected ring depth.
+                    tokenDispatchConfig_.bufferConfig.bufferCount = STEADY_DISPATCH_BUFFER_COUNT;
+                }
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
                     AdvanceStartBlockIdxForSkippedGmm1(waveBeginPosition, waveEndPosition);
                 }
