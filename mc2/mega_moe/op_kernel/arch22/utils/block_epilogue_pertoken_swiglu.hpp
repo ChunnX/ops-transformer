@@ -62,7 +62,8 @@ public:
     static_assert(BUFFER_SIZE + Activation::MIN_SHARED_TMP_BYTES <= ArchTag::UB_SIZE,
                   "The tiled activation buffers and workspace exceed UB capacity");
 
-    static_assert((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>) &&
+    static_assert((std::is_same_v<ElementC, float> || std::is_same_v<ElementC, half> ||
+                   std::is_same_v<ElementC, bfloat16_t>) &&
                       (std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
                        std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>),
                   "The element type template parameters of BlockEpilogue are wrong");
@@ -459,7 +460,11 @@ private:
     void CopyDirectTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
-        AscendC::Cast(ubDList[stageId], ubActivationList[stageId], AscendC::RoundMode::CAST_RINT, tileLength);
+        if constexpr (std::is_same_v<ElementD, float>) {
+            AscendC::DataCopy(ubDList[stageId], ubActivationList[stageId], tileLength);
+        } else {
+            AscendC::Cast(ubDList[stageId], ubActivationList[stageId], AscendC::RoundMode::CAST_RINT, tileLength);
+        }
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
         LayoutD tileLayout{1, tileLength};
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);

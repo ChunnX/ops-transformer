@@ -79,7 +79,8 @@ constexpr int64_t PERMUTE_MAX_CORES = 128;
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
-          class BlockEpilogue2_, class BlockEpilogue3_>
+          class BlockEpilogue2_, class BlockEpilogue3_, class SharedBlockMmad_ = BlockMmad_,
+          class SharedBlockEpilogue1_ = BlockEpilogue1_>
 class MegaMoeKernel {
 public:
     using BlockMmad = BlockMmad_;
@@ -100,6 +101,8 @@ public:
     using BlockEpilogue1 = BlockEpilogue1_;
     using BlockEpilogue2 = BlockEpilogue2_;
     using BlockEpilogue3 = BlockEpilogue3_;
+    using SharedBlockMmad = SharedBlockMmad_;
+    using SharedBlockEpilogue1 = SharedBlockEpilogue1_;
     using ElementD1 = typename BlockEpilogue1::ElementD;
     using LayoutD1 = typename BlockEpilogue1::LayoutD;
     using ElementD2 = typename BlockEpilogue2::ElementD;
@@ -370,15 +373,21 @@ private:
         gmC2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrC2));
 
         if (params.sharedExpertNum > 0U) {
-            gmSharedGmmBuffer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrSharedGmmBuffer));
-            gmSharedActivation.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrSharedActivation));
-            gmSharedResult.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(workspaceInfo.ptrSharedResult));
+            gmSharedGmmBuffer.SetGlobalBuffer(
+                reinterpret_cast<__gm__ SharedElementC *>(workspaceInfo.ptrSharedGmmBuffer));
+            gmSharedActivation.SetGlobalBuffer(
+                reinterpret_cast<__gm__ SharedElementD *>(workspaceInfo.ptrSharedActivation));
+            gmSharedResult.SetGlobalBuffer(
+                reinterpret_cast<__gm__ SharedResultElement *>(workspaceInfo.ptrSharedResult));
             if constexpr (kRoutingIsQuant) {
                 gmSharedInput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedInput));
                 gmSharedInputScale.SetGlobalBuffer(
                     reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrSharedInputScale));
                 gmSharedActivationScale.SetGlobalBuffer(
                     reinterpret_cast<__gm__ ElementPerTokenScale *>(workspaceInfo.ptrSharedActivationScale));
+            } else {
+                gmSharedActivationBf16.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ ElementD1 *>(workspaceInfo.ptrSharedActivationBf16));
             }
         }
 
@@ -1046,7 +1055,7 @@ private:
     void SharedGMM1(Params const &params)
     {
         BlockScheduler blockScheduler;
-        BlockMmad blockMmad(resource);
+        SharedGemmMmad blockMmad(resource);
         AscendC::GlobalTensor<ElementA> sharedInput;
         AscendC::GlobalTensor<ElementB> sharedWeight;
         AscendC::GlobalTensor<ElementScale> sharedWeightScale;
@@ -1108,7 +1117,7 @@ private:
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
 
-        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+        if constexpr (SharedGemmMmad::DispatchPolicy::ASYNC) {
             blockMmad.SynchronizeBlock();
         }
         blockMmad.Finalize(0, SYNCFLAG_SHARED_GMM1_C2V);
@@ -1120,16 +1129,19 @@ private:
     void SharedGMM2(Params const &params)
     {
         BlockScheduler blockScheduler;
-        BlockMmad blockMmad(resource);
+        SharedGemmMmad blockMmad(resource);
         AscendC::GlobalTensor<ElementA> sharedActivation;
         AscendC::GlobalTensor<ElementB> sharedWeight;
         AscendC::GlobalTensor<ElementScale> sharedWeightScale;
-        AscendC::GlobalTensor<ElementC> sharedOutput;
-        sharedActivation.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedActivation));
+        AscendC::GlobalTensor<SharedElementC> sharedOutput;
         if constexpr (kRoutingIsQuant) {
-            sharedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrSharedGmmBuffer));
+            sharedActivation.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedActivation));
+            sharedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ SharedElementC *>(workspaceInfo.ptrSharedGmmBuffer));
         } else {
-            sharedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(workspaceInfo.ptrSharedResult));
+            // Non-quant: consume the BF16 copy of the FP32 activation; write the FP32 result directly.
+            sharedActivation.SetGlobalBuffer(
+                reinterpret_cast<__gm__ ElementA *>(workspaceInfo.ptrSharedActivationBf16));
+            sharedOutput.SetGlobalBuffer(reinterpret_cast<__gm__ SharedElementC *>(workspaceInfo.ptrSharedResult));
         }
 
         uint32_t startCoreIdx = 0U;
@@ -1185,7 +1197,7 @@ private:
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
 
-        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+        if constexpr (SharedGemmMmad::DispatchPolicy::ASYNC) {
             blockMmad.SynchronizeBlock();
         }
         blockMmad.Finalize(0, SYNCFLAG_SHARED_GMM2_C2V);
@@ -1890,6 +1902,38 @@ private:
     }
 
     CATLASS_DEVICE
+    void CastSharedActivation(Params const &params)
+    {
+        // Non-quant only: copy the FP32 SwiGLU output into a BF16 buffer that feeds the GMM2 cube MMAD
+        // (cube requires A/B to share the same precision). Sharded across this partition's AIV cores.
+        const uint32_t m = params.problemShape.m();
+        const uint32_t k2 = params.problemShape.n() / 2U;
+        const uint64_t actCount = static_cast<uint64_t>(params.sharedExpertNum) * static_cast<uint64_t>(m) * k2;
+        constexpr uint32_t kCastSlab = 8192U; // floats per slab (32KB)
+        const uint64_t slabCount = (actCount + kCastSlab - 1U) / kCastSlab;
+        auto ubFp32 = resource.ubBuf.template GetBufferByByte<float>(0);
+        auto ubBf16 = resource.ubBuf.template GetBufferByByte<ElementD1>(64 * 1024);
+        for (uint64_t slabIdx = coreIdx; slabIdx < slabCount; slabIdx += coreNum) {
+            const uint64_t start = slabIdx * kCastSlab;
+            const uint32_t len =
+                static_cast<uint32_t>((start + kCastSlab <= actCount) ? kCastSlab : (actCount - start));
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::DataCopyPad(ubFp32, gmSharedActivation[start],
+                                 {1U, static_cast<uint16_t>(len * sizeof(float)), 0U, 0U, 0U}, {});
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+            AscendC::Cast(ubBf16, ubFp32, AscendC::RoundMode::CAST_RINT, len);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::DataCopyPad(gmSharedActivationBf16[start], ubBf16,
+                                 {1U, static_cast<uint16_t>(len * sizeof(ElementD1)), 0U, 0U, 0U}, {});
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    }
+
+    CATLASS_DEVICE
     void SharedGMM1Epilogue(Params const &params)
     {
         AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAG_SHARED_GMM1_C2V);
@@ -1898,7 +1942,7 @@ private:
         const uint32_t n = params.problemShape.n();
         const uint32_t k2 = n / 2U;
         constexpr uint32_t msdFactor = std::is_same_v<ElementB, AscendC::int4b_t> ? 2U : 1U;
-        BlockEpilogue1 sharedEpilogue(resource, n);
+        SharedGemmEpilogue sharedEpilogue(resource, n);
         for (uint32_t sharedIdx = 0U; sharedIdx < params.sharedExpertNum; ++sharedIdx) {
             MatrixCoord shapeC{m, n};
             const int64_t gmOffsetC = static_cast<int64_t>(sharedIdx) * m * n * msdFactor;
@@ -1923,6 +1967,10 @@ private:
             }
         }
         sharedEpilogue.Finalize();
+        if constexpr (!kRoutingIsQuant) {
+            // SwiGLU output is FP32; publish a BF16 copy once so the cube GMM2 can consume it.
+            CastSharedActivation(params);
+        }
         // Each shared expert owns a disjoint GM range. Drain the local
         // epilogue pipeline first, then synchronize once before AIC consumes
         // any of the published activation rows.
@@ -2168,7 +2216,8 @@ private:
                     exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
                     MoeTokenUnpermuteTilingData tilingData;
                     MoeTokenUnpermuteTiling(chunkTokens * topK, n2, topK, tilingData, coreNum / 2);
-                    KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
+                    KernelMoeTokenUnpermute<ElementD2, int32_t, float, true, SharedResultElement>
+                        kernelMoeTokenUnpermuteOp;
                     kernelMoeTokenUnpermuteOp.Init(
                         shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
                         reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
@@ -2186,7 +2235,7 @@ private:
                 exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
                 MoeTokenUnpermuteTilingData tilingData;
                 MoeTokenUnpermuteTiling(chunkTokens * topK, n2, topK, tilingData, coreNum);
-                KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
+                KernelMoeTokenUnpermute<ElementD2, int32_t, float, true, SharedResultElement> kernelMoeTokenUnpermuteOp;
                 kernelMoeTokenUnpermuteOp.Init(
                     shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
                     reinterpret_cast<GM_ADDR>(reinterpret_cast<__gm__ float *>(params.probs) + tokenBase * topK),
@@ -2369,6 +2418,7 @@ private:
         GM_ADDR ptrRoundTables;
         GM_ADDR ptrSharedGmmBuffer;
         GM_ADDR ptrSharedActivation;
+        GM_ADDR ptrSharedActivationBf16;
         GM_ADDR ptrSharedInput;
         GM_ADDR ptrSharedInputScale;
         GM_ADDR ptrSharedActivationScale;
@@ -2457,11 +2507,12 @@ private:
                 constexpr uint64_t sharedBufferAlignment = 512UL;
                 return (size + sharedBufferAlignment - 1UL) / sharedBufferAlignment * sharedBufferAlignment;
             };
-            ptrSharedActivation = ptrSharedGmmBuffer + alignSharedBuffer(sharedGmmElementCount * sizeof(ElementC));
+            ptrSharedActivation =
+                ptrSharedGmmBuffer + alignSharedBuffer(sharedGmmElementCount * sizeof(SharedElementC));
             const uint64_t sharedActivationElementCount =
                 static_cast<uint64_t>(params.sharedExpertNum) * params.problemShape.m() * params.problemShape.n() / 2U;
             GM_ADDR sharedWorkspaceTail =
-                ptrSharedActivation + alignSharedBuffer(sharedActivationElementCount * sizeof(ElementD1));
+                ptrSharedActivation + alignSharedBuffer(sharedActivationElementCount * sizeof(SharedElementD));
 
             if constexpr (kRoutingIsQuant) {
                 ptrSharedInput = sharedWorkspaceTail;
@@ -2475,6 +2526,8 @@ private:
                                                          params.problemShape.m() * sizeof(float));
                 ptrSharedResult = sharedWorkspaceTail;
             } else {
+                // Non-quant: fp32 activation is cast to BF16 once to feed the cube MMAD input.
+                ptrSharedActivationBf16 = sharedWorkspaceTail;
                 ptrSharedInput = nullptr;
                 ptrSharedInputScale = nullptr;
                 ptrSharedActivationScale = nullptr;
@@ -2596,12 +2649,24 @@ private:
 
     AscendC::GlobalTensor<ElementABefore> gmA;
     AscendC::GlobalTensor<ElementD1> gmPermutedToken;
-    AscendC::GlobalTensor<ElementC> gmSharedGmmBuffer;
-    AscendC::GlobalTensor<ElementD1> gmSharedActivation;
+
+    // Shared-FFN element types: the non-quant (BF16) path keeps GMM1/SwiGLU/GMM2 intermediates in FP32 to
+    // match the FP32 golden (no BF16 rounding in front of SwiGLU or the shared result merge). Quantized
+    // paths keep their existing types. The GMM2 MMAD input is still BF16 because the cube requires A/B to
+    // share the same precision; a dedicated BF16 copy of the FP32 activation feeds it.
+    using SharedElementC = std::conditional_t<kRoutingIsQuant, ElementC, float>;
+    using SharedElementD = std::conditional_t<kRoutingIsQuant, ElementD1, float>;
+    using SharedResultElement = std::conditional_t<kRoutingIsQuant, ElementD2, float>;
+    using SharedGemmMmad = std::conditional_t<kRoutingIsQuant, BlockMmad, SharedBlockMmad>;
+    using SharedGemmEpilogue = std::conditional_t<kRoutingIsQuant, BlockEpilogue1, SharedBlockEpilogue1>;
+
+    AscendC::GlobalTensor<SharedElementC> gmSharedGmmBuffer;
+    AscendC::GlobalTensor<SharedElementD> gmSharedActivation;
+    AscendC::GlobalTensor<ElementD1> gmSharedActivationBf16;
     AscendC::GlobalTensor<ElementA> gmSharedInput;
     AscendC::GlobalTensor<ElementPerTokenScale> gmSharedInputScale;
     AscendC::GlobalTensor<ElementPerTokenScale> gmSharedActivationScale;
-    AscendC::GlobalTensor<ElementD2> gmSharedResult;
+    AscendC::GlobalTensor<SharedResultElement> gmSharedResult;
 };
 } // namespace Catlass::Gemm::Kernel
 #endif // MEGA_MOE_KERNEL_HPP

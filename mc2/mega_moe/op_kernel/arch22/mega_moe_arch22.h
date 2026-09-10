@@ -86,7 +86,8 @@ public:
                                 GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
                                 GM_ADDR sharedWeight1GM, GM_ADDR sharedWeight2GM, GM_ADDR sharedWeightScales1GM,
                                 GM_ADDR sharedWeightScales2GM, GM_ADDR sharedBias1GM, GM_ADDR sharedBias2GM,
-                                GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
+                                GM_ADDR maskBufferGM, GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM,
+                                GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
 private:
@@ -143,14 +144,12 @@ private:
 };
 
 template <MegaMoeClass>
-__aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM,
-                                                  GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,
-                                                  GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM,
-                                                  GM_ADDR bias2GM, GM_ADDR xActiveMaskGM, GM_ADDR scalesGM,
-                                                  GM_ADDR sharedWeight1GM, GM_ADDR sharedWeight2GM,
-                                                  GM_ADDR sharedWeightScales1GM, GM_ADDR sharedWeightScales2GM,
-                                                  GM_ADDR sharedBias1GM, GM_ADDR sharedBias2GM, GM_ADDR maskBufferGM, GM_ADDR yGM,
-                                                  GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__aicore__ inline void MegaMoe<MegaMoeFunc>::Init(
+    GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM, GM_ADDR topkWeightsGM, GM_ADDR weight1GM, GM_ADDR weight2GM,
+    GM_ADDR weightScales1GM, GM_ADDR weightScales2GM, GM_ADDR bias1GM, GM_ADDR bias2GM, GM_ADDR xActiveMaskGM,
+    GM_ADDR scalesGM, GM_ADDR sharedWeight1GM, GM_ADDR sharedWeight2GM, GM_ADDR sharedWeightScales1GM,
+    GM_ADDR sharedWeightScales2GM, GM_ADDR sharedBias1GM, GM_ADDR sharedBias2GM, GM_ADDR maskBufferGM, GM_ADDR yGM,
+    GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     constexpr bool kRoutingIsQuant =
         std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t> || std::is_same_v<BType_, int8_t>;
@@ -313,8 +312,19 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
 
-    using MatmulKernel = Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
-                                                     BlockEpilogue2, BlockEpilogue3>;
+    // FP32 shared-FFN path (non-quant): GMM1/GMM2 keep the FP32 accumulator (no BF16 rounding in front of
+    // SwiGLU / result merge), SwiGLU stays FP32, and only the GMM2 MMAD input is cast back to BF16 because the
+    // cube requires A/B to share the same precision. The routed pipeline is unaffected.
+    using SharedCType = Gemm::GemmType<float, layout::RowMajor>;
+    using SharedD1Type = Gemm::GemmType<float, layout::RowMajor>;
+    using SharedBlockMmad = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType, BType, SharedCType>;
+    using SharedTileCopy1 = Epilogue::Tile::TileCopy<ArchTag, SharedCType, ScaleType, PerTokenScaleType, SharedD1Type>;
+    using SharedBlockEpilogue1 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy1, SharedCType, PerTokenScaleType,
+                                                                SharedD1Type, TileElemWiseMuls, SharedTileCopy1>;
+
+    using MatmulKernel =
+        Gemm::Kernel::MegaMoeKernel<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1, BlockEpilogue2,
+                                    BlockEpilogue3, SharedBlockMmad, SharedBlockEpilogue1>;
 
     LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_)};
     LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};
