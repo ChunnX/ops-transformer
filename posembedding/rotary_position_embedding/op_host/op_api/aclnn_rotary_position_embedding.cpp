@@ -30,6 +30,11 @@ namespace {
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT16, DataType::DT_FLOAT,
                                                                        DataType::DT_BF16};
 
+static bool IsAscend950()
+{
+    return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
+
 static aclnnStatus CheckDtype(const aclTensor *x, const aclTensor *cos, const aclTensor *sin, const aclTensor *rotate,
                               const aclTensor *out)
 {
@@ -92,8 +97,11 @@ static aclnnStatus RotaryPositionEmbeddingCommonProcess(const aclTensor *x, cons
                                                         const aclTensor *rotate, int64_t mode, aclTensor *out,
                                                         aclOpExecutor *executor)
 {
-    auto ret = CheckDtype(x, cos, sin, rotate, out);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    aclnnStatus ret = ACLNN_SUCCESS;
+    if (IsAscend950()) {
+        ret = CheckDtype(x, cos, sin, rotate, out);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    }
 
     const aclTensor *xProcessed = x;
     const aclTensor *cosProcessed = cos;
