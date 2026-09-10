@@ -19,30 +19,31 @@ extern "C" {
 #endif
 
 /**
- * @brief The first-stage interface of aclnnMhcPreBackwardV2. Calculates the required workspace size.
+ * @brief aclnnMhcPreBackwardV2GetWorkspaceSize 的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
- * @param [in] x: Input tensor.
- * @param [in] phi: Input projection tensor.
- * @param [in] alpha: Input scaling tensor.
- * @param [in] gradHIn: Input gradient of hIn.
- * @param [in] gradHPost: Input gradient of hPost.
- * @param [in] gradHRes: Input gradient of hRes.
- * @param [in] invRms: Forward intermediate tensor.
- * @param [in] hMix: Forward intermediate tensor.
- * @param [in] hPre: Forward intermediate tensor.
- * @param [in] hPost: Forward output tensor.
- * @param [in] gammaOptional: Optional RMSNorm scale tensor.
- * @param [in] gradXPostOptional: Optional input gradient.
- * @param [in] hcEps: Hyper-connection epsilon.
- * @param [in] opImplMode: Cube precision mode. 0 uses FP32 and 1 uses HF32.
- * @param [out] gradX: Output gradient of x.
- * @param [out] gradPhi: Output gradient of phi.
- * @param [out] gradAlpha: Output gradient of alpha.
- * @param [out] gradBias: Output gradient of bias.
- * @param [out] gradGamma: Optional output gradient of gamma.
- * @param [out] workspaceSize: Required device workspace size.
- * @param [out] executor: Operator executor.
- * @return aclnnStatus: Status code.
+ * 算子功能：MhcPre反向算子
+ * @param [in] x: 输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型支持：BF16/FP16。
+ * @param [in] phi: 输入tensor，shape为[n^2+2n, nD]，数据类型支持：FP32。
+ * @param [in] alpha: 输入tensor，shape为[3]，数据类型支持：FP32。
+ * @param [in] gradHIn: 输入梯度，shape为[B,S,D]或[T,D]，数据类型支持：BF16/FP16。
+ * @param [in] gradHPost: 输入梯度，shape为[B,S,N]或[T,N]，数据类型支持：FP32。
+ * @param [in] gradHRes: 输入梯度，shape为[B,S,N,N]或[T,N,N]，数据类型支持：FP32。
+ * @param [in] invRms: 输入tensor，shape为[B,S]或[T]，数据类型：FP32。
+ * @param [in] hMix: 输入tensor，shape为[B,S,N^2+2N]或[T,N^2+2N]，数据类型：FP32。
+ * @param [in] hPre: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
+ * @param [in] hPost: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
+ * @param [in] gammaOptional: 可选输入tensor，shape为[N,D]，数据类型：FP32。
+ * @param [in] gradXPostOptional: 可选输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型：BF16/FP16。
+ * @param [in] hcEps: 可选属性，默认值为1e-6。
+ * @param [in] opImplMode: Cube计算模式，0表示使用FP32模式，1表示使用HF32模式。
+ * @param [out] gradX: 输出梯度，数据类型支持：BF16/FP16。
+ * @param [out] gradPhi: 输出梯度，数据类型支持：FP32。
+ * @param [out] gradAlpha: 输出梯度，数据类型支持：FP32。
+ * @param [out] gradBias: 输出梯度，数据类型支持：FP32。
+ * @param [out] gradGamma: 可选输出梯度，数据类型支持：FP32。
+ * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
+ * @param [out] executor: 返回op执行器，包含了算子计算流程。
+ * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
@@ -53,13 +54,13 @@ ACLNN_API aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief The second-stage interface of aclnnMhcPreBackwardV2. Executes the operator.
- * @domain aclnn_ops_infer
- * @param [in] workspace: Device workspace address.
- * @param [in] workspaceSize: Workspace size returned by aclnnMhcPreBackwardV2GetWorkspaceSize.
- * @param [in] executor: Operator executor returned by aclnnMhcPreBackwardV2GetWorkspaceSize.
- * @param [in] stream: ACL stream used to execute the operator.
- * @return aclnnStatus: Status code.
+ * @brief aclnnMhcPreBackwardV2 的第二段接口。
+ * @param [in] workspace: 在npu device侧申请的workspace内存起址。
+ * @param [in] workspaceSize: 在npu device侧申请的workspace大小，由第一段接口
+ * aclnnMhcPreBackwardV2GetWorkspaceSize 获取。
+ * @param [in] executor: op执行器，包含了算子计算流程。
+ * @param [in] stream: acl stream流。
+ * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnMhcPreBackwardV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                             aclrtStream stream);
