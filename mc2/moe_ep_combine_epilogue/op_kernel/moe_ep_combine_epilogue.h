@@ -65,16 +65,13 @@ using namespace AscendC;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t STATE_OFFSET = 32U;
+constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2U;
 static constexpr uint32_t RECV_META_FIELDS = 5U;
 static constexpr uint32_t META_TOKEN_IDX_OFFSET = 1U;
 static constexpr uint32_t META_TOPK_IDX_OFFSET = 2U;
 static constexpr uint32_t META_RECV_X_IDX_OFFSET = 4U;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 128U;
-static constexpr uint64_t SYSTEM_WORKSPACE_BYTES = 16UL * 1024UL * 1024UL;
-static constexpr uint64_t WORKSPACE_ALIGN_BYTES = 512UL;
-static constexpr uint32_t LOCAL_INDEX_SLOT_BYTES = 32U;
-static constexpr uint32_t LOCAL_INDEX_SLOT_ELEMENTS = LOCAL_INDEX_SLOT_BYTES / sizeof(int32_t);
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 class MoeEpCombineEpilogue {
@@ -93,6 +90,7 @@ private:
     __aicore__ inline void BuffInit();
     __aicore__ inline uint32_t GetCompletionChannelCount();
     __aicore__ inline void LoadTopkIds();
+    __aicore__ inline void MaskCheck();
     __aicore__ inline bool WaitDispatch(uint32_t completionChannelCount);
     __aicore__ inline void ClearCompletionFlags();
     __aicore__ inline void BuildLocalRecvIndex();
@@ -136,7 +134,8 @@ private:
     uint32_t tEnd_{0};
     uint32_t tPerCore_{0};
     uint32_t maskTokenNum_{0};
-    uint64_t localIndexStrideElems_{0};
+    uint32_t bsKCastCnt_{0};
+    uint32_t activeMaskAlignSize_{0};
 
     GlobalTensor<XType> xGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
@@ -145,12 +144,14 @@ private:
     GlobalTensor<XType> combinedXGm_;
     GlobalTensor<int32_t> topkIdxGm_;
     GlobalTensor<float> combinedTopkWeightsGm_;
-    GlobalTensor<int32_t> localRecvIdxWorkspaceGm_;
 
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
     LocalTensor<int32_t> topkIdsTensor_;
     LocalTensor<int32_t> localRecvIdxTensor_;
+    LocalTensor<bool> maskGenerateTensor_;
+    LocalTensor<bool> maskStrideTensor_;
+    LocalTensor<half> tokenTargetTensor_;
 
     TQue<QuePosition::VECIN, 1> xInQue_;
     TQue<QuePosition::VECOUT, 1> xOutQue_;
@@ -161,11 +162,14 @@ private:
     TBuf<> waitSumBuf_;
     TBuf<> rankOffsetsBuf_;
     TBuf<> metadataBuf_;
-    TBuf<> scatterValueBuf_;
     TBuf<> localRecvIdxBuf_;
     LocalTensor<int32_t> rankOffsetsTensor_;
 
     TBuf<> topkIdsBuf_;
+    TBuf<> compareBuf_;
+    TBuf<> rowTmpFloatBuf_;
+    TBuf<> tokenBuf_;
+    TBuf<> tokenTargetTBuf_;
 
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
 };
@@ -178,6 +182,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 {
     tpipe_ = pipe;
     tilingData_ = tilingData;
+    (void)workspace;
     aivId_ = GetBlockIdx();
     epWorldSize_ = tilingData_->cfg.epWorldSize;
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
@@ -187,11 +192,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     aivNum_ = tilingData->aivNum;
     recvCapacity_ = tilingData->recvCapacity;
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
-    uint64_t maxTokensPerAiv = (static_cast<uint64_t>(numTokens_) + aivNum_ - 1UL) / aivNum_;
-    uint64_t localIndexStrideBytes =
-        Ceil(maxTokensPerAiv * topK_ * LOCAL_INDEX_SLOT_BYTES, WORKSPACE_ALIGN_BYTES) * WORKSPACE_ALIGN_BYTES;
-    localIndexStrideElems_ = localIndexStrideBytes / sizeof(int32_t);
-    localRecvIdxWorkspaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace + SYSTEM_WORKSPACE_BYTES));
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
@@ -250,8 +250,23 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (tStart_ < numTokens_) {
         maskTokenNum_ = tPerCore_ * topK_;
         uint32_t bsKInt32Align = Ceil(maskTokenNum_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+        uint32_t bsKFloatAlign = Ceil(maskTokenNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+        uint32_t bsKHalfAlign = Ceil(maskTokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
+        uint32_t bsHalfAlign = Ceil(tPerCore_ * sizeof(half), UB_ALIGN) * UB_ALIGN;
+
+        bsKCastCnt_ = Ceil(maskTokenNum_ * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+        activeMaskAlignSize_ = tPerCore_ * Ceil(topK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN * sizeof(half);
+        bsKInt32Align = (bsKInt32Align > bsKCastCnt_ ? bsKInt32Align : bsKCastCnt_);
+        bsKHalfAlign = (bsKHalfAlign > activeMaskAlignSize_ ? bsKHalfAlign : activeMaskAlignSize_);
+        bsKFloatAlign = (bsKFloatAlign > bsKCastCnt_ ? bsKFloatAlign : bsKCastCnt_);
+        bsKFloatAlign = (bsKFloatAlign > activeMaskAlignSize_ ? bsKFloatAlign : activeMaskAlignSize_);
+
+        tpipe_->InitBuffer(tokenTargetTBuf_, bsHalfAlign);
         tpipe_->InitBuffer(topkIdsBuf_, bsKInt32Align);
-        tpipe_->InitBuffer(localRecvIdxBuf_, maskTokenNum_ * LOCAL_INDEX_SLOT_BYTES);
+        tpipe_->InitBuffer(compareBuf_, bsKInt32Align);
+        tpipe_->InitBuffer(rowTmpFloatBuf_, bsKFloatAlign);
+        tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
+        tpipe_->InitBuffer(localRecvIdxBuf_, bsKInt32Align);
         topkIdsTensor_ = topkIdsBuf_.Get<int32_t>();
         localRecvIdxTensor_ = localRecvIdxBuf_.Get<int32_t>();
     }
@@ -291,7 +306,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
-    tpipe_->InitBuffer(scatterValueBuf_, metadataChunkTokens_ * LOCAL_INDEX_SLOT_BYTES);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -346,6 +360,32 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
+__aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::MaskCheck()
+{
+    if (tStart_ >= numTokens_) {
+        return;
+    }
+    LocalTensor<half> maskCalcTensor = tokenBuf_.Get<half>();
+    LocalTensor<float> topkIdsFloatTensor = rowTmpFloatBuf_.Get<float>();
+    LocalTensor<uint8_t> maskTensor = compareBuf_.Get<uint8_t>();
+    LocalTensor<half> maskCalcSelectedTensor = rowTmpFloatBuf_.Get<half>();
+    maskGenerateTensor_ = compareBuf_.Get<bool>();
+    LocalTensor<half> tempTensor = rowTmpFloatBuf_.Get<half>();
+    maskStrideTensor_ = tokenBuf_.Get<bool>();
+    tokenTargetTensor_ = tokenTargetTBuf_.Get<half>();
+
+    Duplicate<half>(maskCalcTensor, static_cast<half>(1),
+                    Ceil(maskTokenNum_ * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half));
+    uint32_t calcCnt = bsKCastCnt_ / sizeof(int32_t);
+    Cast(topkIdsFloatTensor, topkIdsTensor_, RoundMode::CAST_NONE, calcCnt);
+    CompareScalar(maskTensor, topkIdsFloatTensor, static_cast<float>(0), AscendC::CMPMODE::GE, calcCnt);
+    Select(maskCalcSelectedTensor, maskTensor, maskCalcTensor, static_cast<half>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE,
+           calcCnt);
+    Cast(maskGenerateTensor_.ReinterpretCast<uint8_t>(), maskCalcSelectedTensor, RoundMode::CAST_NONE, calcCnt);
+    SyncFunc<AscendC::HardEvent::V_S>();
+}
+
+template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ClearCompletionFlags()
 {
     uint64_t flagOffset = static_cast<uint64_t>(numMaxTokensPerRank_) * topK_ * WIN_ADDR_ALIGN;
@@ -367,50 +407,32 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::BuildLocalRecvIndex()
 {
-    if (tStart_ < numTokens_) {
-        uint32_t localIndexElements = maskTokenNum_ * LOCAL_INDEX_SLOT_ELEMENTS;
-        Duplicate<int32_t>(localRecvIdxTensor_, -1, localIndexElements);
-        SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyExtParams initCopyParams{1U, maskTokenNum_ * LOCAL_INDEX_SLOT_BYTES, 0U, 0U, 0U};
-        DataCopyPad(localRecvIdxWorkspaceGm_[static_cast<uint64_t>(aivId_) * localIndexStrideElems_],
-                    localRecvIdxTensor_, initCopyParams);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
+    if (tStart_ >= numTokens_) {
+        return;
     }
-    SyncAll<true>();
+    Duplicate<int32_t>(localRecvIdxTensor_, -1, maskTokenNum_);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    if (localMetadataBegin_ >= localMetadataEnd_) {
+        return;
+    }
 
-    // Split the local-rank interval across AIVs. Each lookup entry occupies one 32-byte workspace slot so every
-    // cross-core MTE3 scatter has an aligned source and destination address.
+    // Metadata is ordered by recvXIdx rather than destination token. Scan it once and build the lookup for this
+    // AIV's disjoint output-token range instead of rescanning the whole local-rank interval for every token.
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
     LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
-    LocalTensor<int32_t> scatterValueLocal = scatterValueBuf_.Get<int32_t>();
     DataCopyPadExtParams<int32_t> metadataPadParams{false, 0U, 0U, 0U};
-    DataCopyExtParams scatterCopyParams{1U, LOCAL_INDEX_SLOT_BYTES, 0U, 0U, 0U};
-    uint32_t localMetadataCount = static_cast<uint32_t>(localMetadataEnd_ - localMetadataBegin_);
-    uint32_t metadataCoreStart = 0U;
-    uint32_t metadataCoreEnd = 0U;
-    uint32_t metadataPerCore = 0U;
-    SplitToCore(localMetadataCount, aivNum_, metadataCoreStart, metadataCoreEnd, metadataPerCore);
-    uint64_t rangeBegin = localMetadataBegin_ + metadataCoreStart;
-    uint64_t rangeEnd = localMetadataBegin_ + metadataCoreEnd;
-    uint32_t baseTokensPerAiv = numTokens_ / aivNum_;
-    uint32_t extraTokenAivCount = numTokens_ % aivNum_;
-    uint32_t extraTokenEnd = (baseTokensPerAiv + 1U) * extraTokenAivCount;
-    for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
-        uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < rangeEnd ? chunkStart + metadataChunkTokens_ : rangeEnd;
+    for (uint64_t chunkStart = localMetadataBegin_; chunkStart < localMetadataEnd_;
+         chunkStart += metadataChunkTokens_) {
+        uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < localMetadataEnd_ ? chunkStart + metadataChunkTokens_ :
+                                                                                    localMetadataEnd_;
         uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
         DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
         DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, metadataPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         for (uint32_t i = 0U; i < chunkCount; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
-            uint32_t scatterOffset = i * LOCAL_INDEX_SLOT_ELEMENTS;
-            scatterValueLocal.SetValue(scatterOffset, metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET));
-        }
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        for (uint32_t i = 0U; i < chunkCount; ++i) {
-            uint32_t metaOffset = i * RECV_META_FIELDS;
             int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
-            if (srcTokenIdx < 0 || srcTokenIdx >= static_cast<int32_t>(numTokens_)) {
+            if (srcTokenIdx < static_cast<int32_t>(tStart_) || srcTokenIdx >= static_cast<int32_t>(tEnd_)) {
                 continue;
             }
             int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
@@ -420,52 +442,31 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
                 continue;
             }
 
-            uint32_t tokenIndex = static_cast<uint32_t>(srcTokenIdx);
-            uint32_t ownerAiv = 0U;
-            uint32_t ownerTokenStart = 0U;
-            if (baseTokensPerAiv == 0U || tokenIndex < extraTokenEnd) {
-                ownerAiv = tokenIndex / (baseTokensPerAiv + 1U);
-                ownerTokenStart = ownerAiv * (baseTokensPerAiv + 1U);
-            } else {
-                ownerAiv = extraTokenAivCount + (tokenIndex - extraTokenEnd) / baseTokensPerAiv;
-                ownerTokenStart = extraTokenEnd + (ownerAiv - extraTokenAivCount) * baseTokensPerAiv;
-            }
-            uint32_t lookupIndex = (tokenIndex - ownerTokenStart) * topK_ + static_cast<uint32_t>(srcTopKIdx);
-            uint64_t dstIndex = static_cast<uint64_t>(ownerAiv) * localIndexStrideElems_ +
-                                static_cast<uint64_t>(lookupIndex) * LOCAL_INDEX_SLOT_ELEMENTS;
-            DataCopyPad(localRecvIdxWorkspaceGm_[dstIndex], scatterValueLocal[i * LOCAL_INDEX_SLOT_ELEMENTS],
-                        scatterCopyParams);
+            uint32_t lookupIndex =
+                (static_cast<uint32_t>(srcTokenIdx) - tStart_) * topK_ + static_cast<uint32_t>(srcTopKIdx);
+            localRecvIdxTensor_.SetValue(lookupIndex, recvXIdx);
         }
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
         SyncFunc<AscendC::HardEvent::S_MTE2>();
-    }
-    SyncAll<true>();
-
-    if (tStart_ < numTokens_) {
-        DataCopyExtParams indexCopyParams{1U, maskTokenNum_ * LOCAL_INDEX_SLOT_BYTES, 0U, 0U, 0U};
-        DataCopyPad(localRecvIdxTensor_,
-                    localRecvIdxWorkspaceGm_[static_cast<uint64_t>(aivId_) * localIndexStrideElems_], indexCopyParams,
-                    metadataPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
     }
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
 __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc>::ProcessTopKToken(uint32_t tokenIndex)
 {
+    Duplicate<float>(ubAccFp32_, (float)0, axisH_);
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
     uint32_t localExpertBegin = rankId_ * tilingData_->cfg.numLocalExperts;
     uint32_t localExpertEnd = localExpertBegin + tilingData_->cfg.numLocalExperts;
-    bool hasAccumulated = false;
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
         uint32_t lookupIndex = (tokenIndex - tStart_) * topK_ + topkId;
-        int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
-        if (expertId < 0) {
+        bool maskExpertFlag = maskGenerateTensor_.GetValue(lookupIndex);
+        if (!maskExpertFlag) {
             continue;
         }
-        int32_t localRecvXIdx = localRecvIdxTensor_.GetValue(lookupIndex * LOCAL_INDEX_SLOT_ELEMENTS);
+        int32_t expertId = topkIdsTensor_.GetValue(lookupIndex);
+        int32_t localRecvXIdx = localRecvIdxTensor_.GetValue(lookupIndex);
         if (localRecvXIdx < 0 && expertId >= static_cast<int32_t>(localExpertBegin) &&
             expertId < static_cast<int32_t>(localExpertEnd)) {
             continue;
@@ -482,13 +483,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         }
         xInQue_.EnQue(xLocal);
         LocalTensor<XType> xIn = xInQue_.DeQue<XType>();
-        if (!hasAccumulated) {
-            Cast(ubAccFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
-            hasAccumulated = true;
-        } else {
-            Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
-            Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
-        }
+        Cast(ubTmpFp32_, xIn, AscendC::RoundMode::CAST_NONE, axisH_);
+        Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
         xInQue_.FreeTensor(xIn);
 
         if constexpr (HasTopkWeight == 1) {
@@ -508,9 +504,6 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             weightQue_.FreeTensor(weightOut);
         }
     }
-    if (!hasAccumulated) {
-        Duplicate<float>(ubAccFp32_, 0.0F, axisH_);
-    }
     LocalTensor<XType> ubResultBf16 = xOutQue_.AllocTensor<XType>();
     Cast(ubResultBf16, ubAccFp32_, RoundMode::CAST_RINT, axisH_);
     xOutQue_.EnQue(ubResultBf16);
@@ -524,9 +517,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t flagBufferBytes = totalFlagCount * STATE_OFFSET;
     tpipe_->InitBuffer(stateBuf_, flagBufferBytes);
     tpipe_->InitBuffer(waitSumBuf_, UB_ALIGN);
-
-    // Build the local lookup while remote channels are transferring.
     BuildLocalRecvIndex();
+
     if (aivId_ == 0U) {
         while (!WaitDispatch(completionChannelCount)) {
         }
@@ -538,6 +530,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     if (tPerCore_ == 0) {
         return;
     }
+
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
@@ -554,6 +547,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
 {
     BuffInit();
     LoadTopkIds();
+    MaskCheck();
     RecvPhaseReduce();
 }
 
