@@ -87,8 +87,8 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     torch._check(1 <= shared_jetty_num <= 56, lambda: "shared_jetty_num must be in [1, 56]")
     torch._check(not shared_jetty or aiv_num == -1 or shared_jetty_num <= aiv_num,
                  lambda: "shared_jetty_num must not exceed aiv_num")
-    torch._check(test_mode != 3 or (world_size > 1 and max_bs >= world_size),
-                 lambda: "mode=3 requires world_size > 1 and max_bs >= world_size")
+    torch._check(test_mode != 3 or world_size > 1,
+                 lambda: "mode=3 requires world_size > 1")
     torch._check(test_mode != 4 or (world_size > 1 and shared_jetty_num == world_size - 1),
                  lambda: "mode=4 requires world_size > 1 and shared_jetty_num=world_size-1")
     # Kernel divides the data window in two and reserves one max_bs block per half.
@@ -98,8 +98,7 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
         required_bytes = 1024 * 1024 + 2 * max_bs * x.size(1) * 2
     elif test_mode == 3:
         source_bytes = max_bs * x.size(1) * 2
-        peer_bytes = (max_bs // world_size) * x.size(1) * 2
-        required_bytes = 1024 * 1024 + source_bytes + world_size * shared_jetty_num * peer_bytes
+        required_bytes = 1024 * 1024 + (1 + world_size * shared_jetty_num) * source_bytes
     elif test_mode == 4:
         required_bytes = 1024 * 1024 + (world_size + 1) * max_bs * x.size(1) * 2
     torch._check(ccl_buffer_size >= required_bytes,
@@ -200,7 +199,7 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         world_size: Group size in [1, 1024], matching sym_buffer.
         max_bs: Positive row count shared by all ranks.
         mode: 0 exchanges and receives rows; 1 sends and waits; 2 keeps the original Win stream;
-            shared mode 3 makes every Jetty send floor(BS/world_size) rows to every remote rank;
+            shared mode 3 makes every Jetty send all BS rows to every remote rank;
             shared mode 4 creates one Jetty per remote rank and sends all BS rows.
         comm_alg: "mte", "", "urma" or "roce" (mode 0 only); must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.

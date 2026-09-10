@@ -11,7 +11,8 @@
 - 单 Jetty 串行和多 Jetty 并行的差异；
 - AIV 数量、eager/aclgraph、profiling 和系统状态造成的测量差异。
 
-主测试使用现有共享 Jetty mode 3，不要求修改算子代码：
+主测试使用共享 Jetty mode 3：每个 Jetty 向每个远端发送完整 BS，本卡跳过。
+本文公式和矩阵均按此语义计算；`BS` 不再按 world size 放大。
 
 ```python
 comm_alg = "urma"
@@ -40,7 +41,7 @@ flag。因此当前测试测量的是：
 | `P = W - 1` | 每个 rank 的远端数量 |
 | `H` | 每个 token 的元素数 |
 | `T = H * 2` | 每个 token 的字节数；FP16/BF16 均为 2 字节 |
-| `n = BS // W` | mode 3 中每个 Jetty 发给每个远端的 token 数 |
+| `n = BS` | mode 3 中每个 Jetty 发给每个远端的 token 数 |
 | `B = min(n, 2048)` | 当前 mode 3 的实际 batch token 数 |
 | `D_peer = n * T` | 每个远端的 payload |
 | `D_rank = P * n * T` | 单 rank 总 payload |
@@ -94,7 +95,7 @@ mode 3 直接从注册 Win 发数据，现阶段应固定 `x_dtype="fp16"`。FP1
 为了保持每个对端的 token 数明确，应设置：
 
 ```text
-BS = n * W
+BS = n
 max_bs = BS
 ```
 
@@ -133,7 +134,7 @@ W = 2, 4, 8
 
 ```text
 固定 n、H
-BS = n * W
+BS = n
 D_rank = (W - 1) * n * T
 ```
 
@@ -144,7 +145,7 @@ D_rank = (W - 1) * n * T
 ```text
 固定 D_rank、H
 n = D_rank / ((W - 1) * T)
-BS = n * W
+BS = n
 ```
 
 该口径主要观察总字节相同时，endpoint 切换、flag 和 Drain 数量增加的代价。应选择可以被
@@ -155,7 +156,7 @@ BS = n * W
 mode 3 忽略 `batch_tokens`，有效值固定为：
 
 ```text
-min(BS // W, 2048)
+min(BS, 2048)
 ```
 
 因此不能在同一个 mode 3 shape 下独立扫描 batch。要保持“单共享 Jetty、多对端”的数据路径并扫描
@@ -167,8 +168,9 @@ shared_jetty_num = 1
 mode = 2
 ```
 
-当 `BS` 能被 W 整除且 Jetty 数为 1 时，shared mode 2 与 mode 3 发给每个远端的数据范围、rank
-遍历顺序、Win 地址和 flag 路径一致；mode 2 允许显式设置 batch。
+Jetty 数为 1 时，用 mode 2 的 `BS=n*W` 对比 mode 3 的 `BS=n`，可保持每个远端的
+payload 相同。两者的 rank 遍历顺序和 flag 路径一致，但源数据范围、Win 布局不同，
+因此该对照不能单独隔离 batch 的影响；mode 2 允许显式设置 batch。
 
 推荐固定：
 
@@ -176,7 +178,7 @@ mode = 2
 W = 8
 H = 2048          # 4 KiB/token
 n = 4096
-BS = 32768
+BS = 32768       # mode 2；mode 3 对照使用 BS = 4096
 ```
 
 分别启动：
@@ -186,7 +188,7 @@ batch_tokens = 1, 4, 16, 64, 256, 512, 1024, 2048
 ```
 
 `batch_tokens` 是全局 ModelConfig 字段，每个值必须单独启动一次，不能在一份 `test_configs` 中逐项
-变化。mode 2 的显式值超过 tiling maximum 会失败。最后用相同 shape 跑 mode 3，与 mode 2 的
+变化。mode 2 的显式值超过 tiling maximum 会失败。最后保持 H 不变，用 `BS=4096` 跑 mode 3，与 mode 2 的
 `batch_tokens=2048` 对照。
 
 ### 3.5 拓扑和通信协议
@@ -226,7 +228,7 @@ shared_jetty_num = 1
 建议增加 mode 4 对照，比较“一个 Jetty 串行多个 peer”和“每个 peer 一个 Jetty”。为保持流量一致：
 
 ```text
-mode 3：shared_jetty_num = 1，BS = n * W
+mode 3：shared_jetty_num = 1，BS = n
 mode 4：Jetty 数自动为 W - 1，BS = n
 ```
 
@@ -244,9 +246,9 @@ D_rank = (W - 1) * n * T
 
 | Jetty 数 J | 每个 Jetty/peer 的 n | mode 3 BS |
 |---:|---:|---:|
-| 1 | 4096 | `4096 * W` |
-| 2 | 2048 | `2048 * W` |
-| 4 | 1024 | `1024 * W` |
+| 1 | 4096 | `4096` |
+| 2 | 2048 | `2048` |
+| 4 | 1024 | `1024` |
 
 该对照会同时改变每个 Jetty 的 batch/Drain 数量，应作为并发扩展性分析，不能代替纯 batch 实验。
 
@@ -296,13 +298,13 @@ D_rank = 56 MiB
 
 | H | T | n/peer | BS | payload batch/peer |
 |---:|---:|---:|---:|---:|
-| 256 | 512 B | 16384 | 131072 | 8 |
-| 512 | 1 KiB | 8192 | 65536 | 4 |
-| 1024 | 2 KiB | 4096 | 32768 | 2 |
-| 2048 | 4 KiB | 2048 | 16384 | 1 |
-| 4096 | 8 KiB | 1024 | 8192 | 1 |
-| 8192 | 16 KiB | 512 | 4096 | 1 |
-| 16384 | 32 KiB | 256 | 2048 | 1 |
+| 256 | 512 B | 16384 | 16384 | 8 |
+| 512 | 1 KiB | 8192 | 8192 | 4 |
+| 1024 | 2 KiB | 4096 | 4096 | 2 |
+| 2048 | 4 KiB | 2048 | 2048 | 1 |
+| 4096 | 8 KiB | 1024 | 1024 | 1 |
+| 8192 | 16 KiB | 512 | 512 | 1 |
+| 16384 | 32 KiB | 256 | 256 | 1 |
 
 该组每个 peer payload、单 rank payload 和 mode 3 Win 需求基本相同，只改变 WQE 数量、每条 WQE
 payload 和 Drain 次数，最适合区分 WQE/CQE 能力与字节带宽。
@@ -314,7 +316,7 @@ payload 和 Drain 次数，最适合区分 WQE/CQE 能力与字节带宽。
 ```text
 W = 8
 n = 2048
-BS = 16384
+BS = 2048
 ```
 
 扫描：
@@ -343,7 +345,7 @@ n = 1, 4, 16, 64, 256, 1024,
     2047, 2048, 2049,
     4095, 4096, 4097,
     8192
-BS = n * 8
+BS = n
 ```
 
 ### 4.4 阶段 D：endpoint 扩展性
@@ -352,10 +354,10 @@ BS = n * 8
 
 | W | BS | 每个 peer payload | 单 rank payload |
 |---:|---:|---:|---:|
-| 2 | 4096 | 8 MiB | 8 MiB |
-| 4 | 8192 | 8 MiB | 24 MiB |
-| 8 | 16384 | 8 MiB | 56 MiB |
-| 16 | 32768 | 8 MiB | 120 MiB |
+| 2 | 2048 | 8 MiB | 8 MiB |
+| 4 | 2048 | 8 MiB | 24 MiB |
+| 8 | 2048 | 8 MiB | 56 MiB |
+| 16 | 2048 | 8 MiB | 120 MiB |
 
 这组测试总注入扩展性。随后再补一组固定 `D_rank`、改变 W 的实验，测试纯 endpoint 切换代价。
 
@@ -419,8 +421,8 @@ x_dtype = "fp16"
 
 ```text
 max_bs = BS
-BS = n * W
-BS >= W
+BS = n
+BS >= 1, W > 1
 ```
 
 一份 `test_configs` 可以同时改变 `bs`、`data_size` 和 `max_bs`。下列参数在一次启动中全局共享，改变
@@ -450,7 +452,7 @@ BS >= W
 - server 数、每 server rank 数、world size；
 - 本地 peer 数和跨域 peer 数；
 - comm level、mode、Jetty 数、AIV 数和 graph type；
-- H、token bytes、BS、`n=BS//W`；
+- H、token bytes、BS、`n=BS`；
 - 实际 batch、每 peer payload、单 rank payload；
 - payload WQE 数、payload Commit/Drain 数和 flag Commit/Drain 数；
 - HCCL_BUFFSIZE；

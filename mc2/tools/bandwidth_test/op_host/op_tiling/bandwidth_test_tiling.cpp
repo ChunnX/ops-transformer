@@ -208,9 +208,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
                     OP_LOGE(nodeName, "shared_jetty requires comm_alg=urma."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tilingData.mode >= 3 && !*shared,
                     OP_LOGE(nodeName, "mode 3/4 requires shared_jetty=true."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(tilingData.mode == 3 &&
-                        (tilingData.worldSize <= 1 || tilingData.maxBs < tilingData.worldSize),
-                    OP_LOGE(nodeName, "mode=3 requires world_size > 1 and max_bs >= world_size."),
+    OP_TILING_CHECK(tilingData.mode == 3 && tilingData.worldSize <= 1,
+                    OP_LOGE(nodeName, "mode=3 requires world_size > 1."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tilingData.mode == 4 &&
                         (tilingData.worldSize <= 1 || *jettyNum != tilingData.worldSize - 1),
@@ -391,9 +390,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
             // One read-only BS block and one disjoint receive block, with compact token rows.
             required = MB_SIZE + 2 * sourceBytes;
         } else if (tilingData->mode == 3) {
-            // Every Jetty sends one peer-sized block; receive slots are disjoint by source rank and Jetty.
-            uint64_t peerBytes = static_cast<uint64_t>(tilingData->maxBs / tilingData->worldSize) * tokenBytes;
-            required = MB_SIZE + sourceBytes + worldSize * tilingData->sharedJettyNum * peerBytes;
+            // Every Jetty sends the full BS block; receive slots are disjoint by source rank and Jetty.
+            required = MB_SIZE + (1 + worldSize * tilingData->sharedJettyNum) * sourceBytes;
         } else if (tilingData->mode == 4) {
             // One source BS block plus one complete BS receive block for every source rank.
             required = MB_SIZE + (worldSize + 1) * sourceBytes;
@@ -546,8 +544,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         maxBatchTokens = std::min(maxBatchTokens, static_cast<uint64_t>(URMA_MAX_BATCH_TOKENS));
         uint64_t batchTokens = 0;
         if (tilingData->mode == 3) {
-            uint64_t peerTokens = static_cast<uint64_t>(tilingData->maxBs / tilingData->worldSize);
-            batchTokens = std::min(peerTokens, maxBatchTokens);
+            batchTokens = std::min(static_cast<uint64_t>(tilingData->maxBs), maxBatchTokens);
         } else if (tilingData->mode == 4) {
             uint64_t requestedBatch = *batchTokensPtr == 0
                 ? static_cast<uint64_t>(tilingData->maxBs)

@@ -145,8 +145,8 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
   接收和输出排列。
 - mode 2：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
   总流量口径不变，各 `(源 rank, 核)` 使用独立 epoch flag，空区间仍通知完成。
-- mode 3：N 个 Jetty 都遍历全部远端，每个 Jetty 向每张卡发送 `floor(BS/world_size)` 个 token。
-  `batch_tokens` 不生效，实际 batch 取 `min(floor(BS/world_size), tiling最大值)`；接收区按
+- mode 3：N 个 Jetty 都遍历全部远端，每个 Jetty 向每张远端卡发送完整 `BS` 个 token。
+  `batch_tokens` 不生效，实际 batch 取 `min(BS, tiling最大值)`；接收区按
   `(源 rank, Jetty)` 分槽，避免并发覆盖。
 - mode 4：实际 Jetty 数固定为 `world_size - 1`，每个 Jetty 绑定一张远端卡并发送完整 BS。
   有效批量为 `min(batch_tokens or BS, BS, tiling最大值)`；接收区按源 rank 分槽。
@@ -255,7 +255,7 @@ hidden 是 16 的倍数且小于 32768，
 `aiv_num=-1` 使用平台默认值，正值不应超过设备 AIV 核数。
 测试脚本在 `config.py` 的 `ModelConfig.batch_tokens` 设置每次提交的 token/WQE 数。
 mode 0/1/2 中 0 自动选择容量，正数由 tiling 校验后按原值提交；mode 3 忽略该值并取
-`min(BS // world_size, maximum)`；mode 4 取 `min(配置或BS, BS, maximum)`。负数始终非法。
+`min(BS, maximum)`；mode 4 取 `min(配置或BS, BS, maximum)`。负数始终非法。
 `batch_tokens` 仅适用于 URMA，MTE 保持 0。每张目标卡的最后一批可以不足指定数，
 状态通知仍分别提交 count 和 ready flag，不受数据批量凑整影响。
 
@@ -353,8 +353,10 @@ flag 位于 Win 的 128 KiB 处（每个来源卡 32B），本核序号位于 16
 普通 URMA mode 2 的尾批未满时将 flag 并入尾批 Commit；满批则先 Commit/Drain 数据，再单独提交 flag。
 合并尾批的先后关系依赖当前 SDK 默认的 `fence=1` 和 CQE 语义。
 
-`mode=3/4` 仅支持共享 Jetty。mode 3 的每个 Jetty 都向全部远端发送 `BS // world_size` 个 token，
+`mode=3/4` 仅支持共享 Jetty。mode 3 的每个 Jetty 都向全部远端发送完整 `BS` 个 token，
 按 tiling 最大容量决定一次提交或分批；mode 4 使用 `world_size - 1` 个 Jetty，一对一向远端发送完整 BS。
+mode 3 允许 `BS >= 1`，要求 `bs == max_bs`、`world_size > 1`；本卡跳过。
+其 Win 最小容量为 `1 MiB + (1 + world_size * shared_jetty_num) * BS * H * 2`。
 mode 3/4 与 mode 2 共用 Win 状态区和公开 Hcomm batch 接口，但采用独立的接收槽布局；脚本、Torch 入参检查
 和 host tiling 使用同一套有效 Jetty 数、批量和 Win 容量公式。
 共享 mode 2/3/4 始终先 Commit/Drain 完整数据批，再单独 Commit/Drain flag，不将 flag 合入 payload 尾批。

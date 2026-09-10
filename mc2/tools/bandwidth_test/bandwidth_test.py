@@ -107,8 +107,8 @@ if CONFIG.model.shared_jetty:
         raise ValueError("shared_jetty_comm_level must be 0, 1 or 2")
     if aiv_num != -1 and effective_shared_jetty_num > aiv_num:
         raise ValueError("shared_jetty_num must not exceed aiv_num")
-if mode == 3 and (world_size <= 1 or any(cfg["max_bs"] < world_size for cfg in test_configs)):
-    raise ValueError("mode=3 requires world_size > 1 and max_bs >= world_size")
+if mode == 3 and world_size <= 1:
+    raise ValueError("mode=3 requires world_size > 1")
 if mode == 4 and world_size <= 1:
     raise ValueError("mode=4 requires world_size > 1")
 if CONFIG.run.is_precision_test and mode != 0:
@@ -124,8 +124,7 @@ def cal_hccl_buffsize(test_max_bs, h, ep_world_size):
     if mode == 2:
         required_bytes = 1024 * 1024 + 2 * source_bytes
     elif mode == 3:
-        peer_bytes = (test_max_bs // ep_world_size) * token_bytes
-        required_bytes = 1024 * 1024 + source_bytes + ep_world_size * effective_shared_jetty_num * peer_bytes
+        required_bytes = 1024 * 1024 + (1 + ep_world_size * effective_shared_jetty_num) * source_bytes
     elif mode == 4:
         required_bytes = 1024 * 1024 + (ep_world_size + 1) * source_bytes
     return str((required_bytes + 2 * 1024 * 1024 - 1) // (2 * 1024 * 1024))
@@ -249,7 +248,7 @@ def win_stream_rank_data_bytes(test_bs, token_bytes, num_world_size):
     if mode == 2:
         return (test_bs // num_world_size) * (num_world_size - 1) * token_bytes
     if mode == 3:
-        return (effective_shared_jetty_num * (test_bs // num_world_size) *
+        return (effective_shared_jetty_num * test_bs *
                 (num_world_size - 1) * token_bytes)
     if mode == 4:
         return test_bs * (num_world_size - 1) * token_bytes
@@ -1033,7 +1032,7 @@ def shared_jetty_batch_tokens(dstrank_id_per_rank, test_bs, ep_world_size, test_
     if test_mode == 2:
         return min(capacity, (test_bs // ep_world_size + shared_jetty_num - 1) // shared_jetty_num)
     if test_mode == 3:
-        return min(test_bs // ep_world_size, URMA_MAX_BATCH_TOKENS)
+        return min(test_bs, URMA_MAX_BATCH_TOKENS)
     if test_mode == 4:
         return min(requested_batch_tokens or test_bs, test_bs, URMA_MAX_BATCH_TOKENS)
     largest = 0
@@ -1180,13 +1179,13 @@ def print_summary_table(results: List[Dict[str, Any]]):
     logger.info("MB = 1024^2 bytes. Mode 0/1 Rank Data includes local destinations.")
     logger.info("Mode 2 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes.")
     logger.info(
-        "Mode 3 Rank Data = shared_jetty_num * floor(BS/world_size) * (world_size-1) * H * dtype bytes.")
+        "Mode 3 Rank Data = shared_jetty_num * BS * (world_size-1) * H * dtype bytes.")
     logger.info("Mode 4 Rank Data = BS * (world_size-1) * H * dtype bytes.")
     logger.info(
         "Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
     logger.info("Shared mode 2 Batch Tokens account for the BS split across shared_jetty_num cores.")
     logger.info(
-        "Mode 3 ignores batch_tokens; Batch Tokens = min(floor(BS/world_size), tiling maximum).")
+        "Mode 3 ignores batch_tokens; Batch Tokens = min(BS, tiling maximum).")
     logger.info(
         "Mode 4 uses world_size-1 Jettys; Batch Tokens = min(requested batch or BS, BS, tiling maximum).")
     logger.info("Ordinary URMA mode 2 Batch Tokens = min(selected batch, floor(BS/world_size)).")

@@ -34,7 +34,7 @@ python bandwidth_test.py
 
 默认使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`，运行多配置带宽测试。
 模式 2 保留原有 Torch context、URMA batch 接口和 Win 直接打流逻辑。共享 Jetty 下还支持模式 3/4：
-模式 3 的每个 Jetty 都向所有远端卡发送 `BS // world_size` 个 token；模式 4 固定建立
+模式 3 的每个 Jetty 都向所有远端卡发送完整 `BS` 个 token；模式 4 固定建立
 `world_size - 1` 个 Jetty，每个 Jetty 负责一张远端卡并发送完整 BS。
 精度模式和带宽模式沿用原配置开关，URMA 的窗口容量和依赖见
 [Torch Extension 说明](torch_extension/README.md)。
@@ -79,7 +79,7 @@ aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单�
 ```
 
 `batch_tokens` 通常表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
-模式 3 不读取该配置，有效值为 `min(BS // world_size, tiling最大值)`；能一次提交完就一次提交，
+模式 3 不读取该配置，有效值为 `min(BS, tiling最大值)`；能一次提交完就一次提交，
 否则按 tiling 最大值分批。模式 4 的有效值为 `min(batch_tokens or BS, BS, tiling最大值)`。
 MTE 使用 `batch_tokens=0`。
 `shared_jetty_comm_level=0` 沿用拓扑自动选择；1 和 2 分别要求所有远端能够在同一层通过
@@ -276,9 +276,11 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 `(BS // world_size) * (world_size - 1) * H * 2`；`Batch Data` 按实际最大单次提交计算，不超过每个目标卡的数据量。
 
 共享 Jetty 模式 3 不再拆分对端数据。前 N 个核各自独占一个 Jetty，每个核都遍历全部远端卡，
-向每张远端卡发送 `BS // world_size` 个 token；`batch_tokens` 被忽略。实际 batch 为
-`min(BS // world_size, tiling最大值)`，因此放得下时一次提交，否则按最大容量分批。
-单 rank 流量为 `N * (BS // world_size) * (world_size - 1) * H * 2`。
+向每张远端卡发送完整 `BS` 个 token；`batch_tokens` 被忽略。实际 batch 为
+`min(BS, tiling最大值)`，因此放得下时一次提交，否则按最大容量分批。
+单 rank 流量为 `N * BS * (world_size - 1) * H * 2`，带宽分子使用该实际发送量，不包含 flag。
+本卡跳过；允许 `BS >= 1`，仍要求 `bs == max_bs` 和 `world_size > 1`。
+接收区按来源 rank 和 Jetty 分配完整 BS 槽位；同一 shape 的 Win 需求会随 Jetty 数增长。
 
 共享 Jetty 模式 4 忽略配置的 `shared_jetty_num`，脚本建立 `world_size - 1` 个 Jetty，并按跳过本卡的
 rank 顺序一一绑定远端卡。每个 Jetty 向负责卡发送完整 BS，单 rank 流量为
@@ -302,7 +304,7 @@ flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 
 `aiv_num`，但仍须满足 `aiv_num >= shared_jetty_num`。
 此模式不校验数据内容，y 和 receive_cnt 不保证有效；脚本不初始化输入内容、不保存或回传无效输出。
 输出 tensor 形状沿用接口约定。模式 2 的窗口最小值为 `1 MiB + 2 * BS * H * 2`；
-模式 3 为 `1 MiB + BS*H*2 + world_size*N*(BS//world_size)*H*2`；
+模式 3 为 `1 MiB + (1 + world_size*N)*BS*H*2`；
 模式 4 为 `1 MiB + (world_size+1)*BS*H*2`。
 Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag 等待。
 普通 URMA 的模式 2 与模式 0/1 共用 `BandwidthTestUrma`，在 `Process()` 的 `mode_ == 2` 分支执行；
