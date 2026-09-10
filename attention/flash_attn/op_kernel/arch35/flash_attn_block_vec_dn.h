@@ -46,7 +46,7 @@ public:
     static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
     // D64 uses one extra preload stage; its P/softmax rings need four slots.
-    static constexpr bool DEEP_PRELOAD = dBaseSize <= 64 && dVBaseSize <= 64;
+    static constexpr uint32_t PRELOAD_N = (dBaseSize <= 64 && dVBaseSize <= 64) ? 3U : 2U;
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
@@ -66,7 +66,7 @@ public:
     static constexpr uint32_t CC_MM_1 = 1U;
     static constexpr uint32_t CC_MM_2 = 2U;
     static constexpr uint32_t CC_MM_3 = 3U;
-    static constexpr uint32_t CC_L1P_0 = DEEP_PRELOAD ? 4U : 5U;
+    static constexpr uint32_t CC_L1P_0 = 8U - (PRELOAD_N + 1U);
     static constexpr uint32_t CC_L1P_1 = 6U;
     static constexpr uint32_t CC_L1P_2 = 7U;
 
@@ -79,15 +79,14 @@ public:
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
 
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = DEEP_PRELOAD ? 4U : 3U;
+    static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
     static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
-        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T) +
-        (DEEP_PRELOAD ? 128U : 0U);
+        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
     // bmm1/bmm2(mmRes) 区域总字节数：FD block 以此作为 FD 业务区的 UB 起始偏移
     static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
     // FD 业务区在 UB 中的起始字节偏移，供 kernel 传给 FD block 的 InitBuffers
@@ -106,15 +105,15 @@ public:
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = DEEP_PRELOAD ? 4U : 3U;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxSumBuf_;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = DEEP_PRELOAD ? 4U : 3U;
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxMaxBuf_;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = DEEP_PRELOAD ? 4U : 3U;
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxExpBuf_;

@@ -34,7 +34,7 @@ public:
     static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
     // D64 uses one extra preload stage; its P/softmax rings need four slots.
-    static constexpr bool DEEP_PRELOAD = dBaseSize <= 64 && dVBaseSize <= 64;
+    static constexpr uint32_t PRELOAD_N = (dBaseSize <= 64 && dVBaseSize <= 64) ? 3U : 2U;
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
@@ -69,7 +69,7 @@ public:
     static constexpr uint32_t CROSSCORE_MM_1 = 1U;
     static constexpr uint32_t CROSSCORE_MM_2 = 2U;
     static constexpr uint32_t CROSSCORE_MM_3 = 3U;
-    static constexpr uint32_t CROSSCORE_L1P_0 = DEEP_PRELOAD ? 4U : 5U;
+    static constexpr uint32_t CROSSCORE_L1P_0 = 8U - (PRELOAD_N + 1U);
     static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
 
@@ -92,11 +92,10 @@ public:
     // UB
     static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
-        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(MM_T) +
-        (DEEP_PRELOAD ? 128U : 0U);
+        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(MM_T);
     LocalTensor<uint8_t> ubMmResBuffers_;
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = DEEP_PRELOAD ? 4U : 3U;
+    static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     static constexpr uint32_t L1_Q_BUFCNT = 2U;
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
@@ -147,10 +146,6 @@ public:
 
     __aicore__ inline void InitBuffers()
     {
-        if constexpr (DEEP_PRELOAD) {
-            set_loop3_para(1);
-            AscendC::PipeBarrier<PIPE_FIX>();
-        }
         static_assert(L1_P_BUFCNT * L1_P_BUF_BYTES + L1_Q_BUFCNT * L1_Q_BUF_BYTES + L1_KV_BUFCNT * L1_KV_BUF_BYTES <=
                           512U * 1024U,
                       "DN buffers exceed L1");
@@ -296,24 +291,6 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mmSyncIdx + AIV0_AIV1_OFFSET);
     }
 
-    template <typename DST_TENSOR_T>
-    __aicore__ inline void CopyMmResult(const DST_TENSOR_T &dstTensor, const LocalTensor<MM_T> &l0C,
-                                        const FixpipeParamsC310<CO2Layout::ROW_MAJOR> &params)
-    {
-        if constexpr (DEEP_PRELOAD) {
-            // Match AscendC FixpipeL0cToUB, with fixed LOOP3_PARA initialized once.
-            // L0C readiness and UB ownership remain protected by the existing flags.
-            copy_matrix_cc_to_ub((__ubuf__ MM_T *)dstTensor.GetPhyAddr(), (__cc__ MM_T *)l0C.GetPhyAddr(), 0,
-                                 params.nSize, params.mSize, params.dstStride, params.srcStride, params.dualDstCtl,
-                                 params.subBlockId, 0, params.unitFlag, static_cast<uint64_t>(params.quantPre),
-                                 static_cast<uint8_t>(params.reluEn), false, true,
-                                 static_cast<uint64_t>(QuantMode_post::NoConv), 0, false, false, 0, false, false, false,
-                                 false, false, false);
-        } else {
-            Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, params);
-        }
-    }
-
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
                                         RunInfo &runInfo)
     {
@@ -326,7 +303,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        CopyMmResult(dstTensor, l0C, fixpipeParams);
+        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm1Dn(LocalTensor<MM_T> &mm1ResUbTensor, RunInfo &runInfo)
@@ -434,7 +411,7 @@ public:
         fix.params.ndNum = 1;
         fix.params.srcNdStride = 0;
         fix.params.dstNdStride = 0;
-        CopyMmResult(dst, accum, fix);
+        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dst, accum, fix);
 
         Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
 
