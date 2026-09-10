@@ -18,9 +18,9 @@
 #include <sstream>
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
-#include "platform/soc_spec.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "log/log.h"
+#include "platform/soc_spec.h"
 #include "platform/soc_spec.h"
 
 #ifdef ASCENDC_OP_TEST
