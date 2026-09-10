@@ -129,6 +129,12 @@ static bool IsMxfp4Quant(int64_t qm)
     return qm == MXFP4_OCP_QUANT || qm == MXFP4_CX_QUANT;
 }
 
+// 判断是否为 FP8 量化(per-tile 或 per-head)
+static bool IsFp8Quant(int64_t qm)
+{
+    return qm == FP8_QUANT || qm == FP8_PERHEAD_QUANT;
+}
+
 static std::string DataTypeToString(ge::DataType dataType)
 {
     static const ::unordered_map<ge::DataType, std::string> DataTypeToStringMap = {
@@ -764,24 +770,38 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
     if (attenMaskTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    // mxfp4 量化下 attenMask(blockEffRows) 已支持; 其余量化模式沿用 FP8 per-tile/per-head 的校验
-    if (!IsMxfp4Quant(quantMode_)) {
-        if (socVer_ != SOC_VER_950_CODE) {
-            OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
+    if (socVer_ != SOC_VER_950_CODE) {
+        OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) is only supported on chip 950.");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (IsFp8Quant(quantMode_)) {
+        // FP8 量化下 attenMask(blockEffRows) 须为 float8_e4m3fn 输入
+        if (dataType_ != ge::DT_FLOAT8_E4M3FN) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "attenMask (blockEffRows) requires float8_e4m3fn input for FP8 quant, "
+                    "but got dtype=%s.",
+                    DataTypeToString(dataType_).c_str());
             return ge::GRAPH_FAILED;
         }
         // FP8 下 attenMask(blockEffRows) 支持两种形态:
         //   - per-tile(quantMode=1): kv tile 不跨量化块;
         //   - per-head(quantMode=20): 跨块 gather(scale 与块无关)。
         bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
-        if (dataType_ != ge::DT_FLOAT8_E4M3FN || (quantMode_ != FP8_QUANT && quantMode_ != FP8_PERHEAD_QUANT) ||
-            (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead)) {
+        if (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead) {
             OP_LOGE(bsaContext->GetNodeName(),
-                    "attenMask (blockEffRows) requires FP8 per-tile (quantMode=1) or per-head (quantMode=20, "
-                    "k/v scale 2D), but got dtype=%s, blockShapeY=%u, perHeadKvScale=%d.",
-                    DataTypeToString(dataType_).c_str(), blockShapeY_, static_cast<int>(kvScalePerHead));
+                    "attenMask (blockEffRows) requires FP8 per-head (quantMode=20, k/v scale 2D), "
+                    "but got perHeadKvScale=%d.",
+                    static_cast<int>(kvScalePerHead));
             return ge::GRAPH_FAILED;
         }
+    } else if (!IsMxfp4Quant(quantMode_)) {
+        // 非 FP8 且非 mxfp4: 不支持 attenMask(blockEffRows)
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) is only supported for mxfp4(quantMode= 2 and 3) "
+                "and FP8(quantMode= 1 and 20), but got quantMode=%ld.",
+                quantMode_);
+        return ge::GRAPH_FAILED;
     }
 
     auto attenMaskDtype = attenMaskTensor->GetDataType();
@@ -811,9 +831,6 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
                 attenMaskBatch, attenMaskNumHeads);
         return ge::GRAPH_FAILED;
     }
-    // GQA/MQA 放开验证: effRows 张量按 qHeads 布局(attenMask dim1 == numHeads), K/V 与 dequantScale
-    // 按 kvHead 索引且只依赖 (kvHead, 原始块号), 与 qHead 无关, 故不再强制 numHeads == kvHeads。
-    // 原校验(FP8 per-tile 路径未验证 GQA)由 generator/golden 侧显式规避, 这里放开后需实测确认。
 
     uint32_t expectedMaxBlockNum = std::max(maxQBlockNum_, maxKvBlockNum_);
     if (attenMaskMaxBlockNum < expectedMaxBlockNum) {
