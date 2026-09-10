@@ -1,0 +1,4 @@
+{
+    "op_type": "AlltoAllMatmul",
+    "op_list": []
+}
