@@ -722,7 +722,6 @@ void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTi
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
     quantBmmMatmulReducescatterTilingData_->workspaceLayout = workspaceLayout_;
-    quantBmmMatmulReducescatterTilingData_->quantMode = 1;
     quantBmmMatmulReducescatterTilingData_->tilingKey = GetTilingKey();
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),

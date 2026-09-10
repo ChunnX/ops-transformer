@@ -20,8 +20,6 @@
 #include "platform/platform_infos_def.h"
 #include "all_gather_matmul_v2_tiling_common.h"
 #include "mc2_exception_dump.h"
-#include "../../op_kernel/all_gather_matmul_tiling_data.h"
-#include "op_host/op_tiling/mc2_tiling_struct.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -49,14 +47,9 @@ inline void AllGatherMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void
     }
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "AllGatherMatmulV2");
 
-    Mc2Exception::Mc2DumpTilingData(
-        args, "AllGatherMatmulV2",
-        11U,                                                                 // tilingGmArgIdx
-        0U,                                                                  // argsOffset
-        10U,                                                                 // workspaceGmArgIdx
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, quantMode),         // quantModeOffset
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, workspaceLayout),   // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, workspaceLayout)); // wsLayoutOffsetQuant
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AllGatherMatmulV2",
+                                            11U, // tilingGmArgIdx
+                                            10U); // workspaceGmArgIdx
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV2ExceptionFunc()

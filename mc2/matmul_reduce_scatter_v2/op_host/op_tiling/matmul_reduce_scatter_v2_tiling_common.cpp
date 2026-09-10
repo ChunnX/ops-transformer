@@ -48,19 +48,11 @@ inline void MatmulReduceScatterV2ExceptionImplWrapper(aclrtExceptionInfo *args, 
         OP_LOGE("MatmulReduceScatterV2", "DFX callback skipped: null exception info or unsupported SoC.");
         return;
     }
-    static_assert(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode) ==
-                      offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, quantMode),
-                  "MMRS quant/non-quant tiling must share the quantMode header offset");
     // Save operator evidence before accessing the potentially-faulting CCU context.
     // The hidden HCCL context is args[0], so workspace/tiling are args[9]/args[10].
-    Mc2Exception::Mc2DumpTilingData(
-        args, "MatmulReduceScatterV2",
-        10U,                                                                              // tilingGmArgIdx
-        0U,                                                                               // argsOffset
-        9U,                                                                               // workspaceGmArgIdx
-        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, quantMode),                  // quantModeOffset
-        offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, workspaceLayout),            // wsLayoutOffsetNonQuant
-        offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, workspaceLayout)); // wsLayoutOffsetQuant
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "MatmulReduceScatterV2",
+                                            10U, // tilingGmArgIdx
+                                            9U); // workspaceGmArgIdx
     Mc2Exception::Mc2ExceptionImplTmp(args, userdata, "MatmulReduceScatterV2");
     OP_LOGE("MatmulReduceScatterV2", "DFX callback end.");
 }

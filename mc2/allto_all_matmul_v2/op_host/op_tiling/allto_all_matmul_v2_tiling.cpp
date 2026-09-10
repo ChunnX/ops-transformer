@@ -67,17 +67,11 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    Mc2Exception::Mc2DumpTilingData(args, "AlltoAllMatmulV2",
-                                    9U,                                                   // tilingGmArgIdx
-                                    0U,                                                   // argsOffset
-                                    8U,                                                   // workspaceGmArgIdx
-                                    0U,                                                   // quantModeOffset
-                                    offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
-                                    offsetof(allToAllMatmulTilingData, workspaceLayout),  // wsLayoutOffsetQuant
-                                    offsetof(allToAllMatmulTilingData, workspaceLayout)); // wsLayoutOffsetApace
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AlltoAllMatmulV2",
+                                            9U, // tilingGmArgIdx
+                                            8U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
                                      0U, // contextArgIdx
-                                     0U, // argsOffset
                                      9U, // tilingGmArgIdx
                                      offsetof(allToAllMatmulTilingData, peermemDataSize),
                                      offsetof(allToAllMatmulTilingData, peermemLayout));

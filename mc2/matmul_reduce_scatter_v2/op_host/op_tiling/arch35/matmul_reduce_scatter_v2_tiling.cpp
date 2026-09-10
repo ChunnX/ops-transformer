@@ -189,7 +189,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
-    matmulReduceScatterV2TilingData_->quantMode = 0;
     matmulReduceScatterV2TilingData_->tilingKey = GetTilingKey();
     matmulReduceScatterV2TilingData_->workspaceLayout = workspaceLayout_;
     auto rawTilingDataPtr = context_->GetRawTilingData();

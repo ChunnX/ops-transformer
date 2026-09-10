@@ -15,6 +15,7 @@
 #ifndef __ALL_GATHER_MATMUL_TILING_DATA_H_
 #define __ALL_GATHER_MATMUL_TILING_DATA_H_
 
+#include <cstddef>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmv3_arch35_tiling_data.h"
@@ -22,33 +23,38 @@
 
 namespace Mc2Tiling {
 
+// DFX 头部约定: workspaceLayout 必须是 tiling 结构的第一个成员(offset 0)，
+// 异常 dump 回调直接从 tiling blob 起始位置解析 workspace 分段布局
 struct AllGatherMatmulTilingDataV2 {
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
-    uint32_t quantMode; // 0=非量化, 1=量化
     Mc2MatMulV3TilingData mc2MmV3LocalTilingData;
     Mc2MatMulV3TilingData mc2MmV3TileTilingData;
     Mc2MatMulV3TilingData mc2MmV3TailTilingData;
-    uint64_t tilingKey;                             // tilingKey，用于确认kernel模板特化路径
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+    uint64_t tilingKey; // tilingKey，用于确认kernel模板特化路径
 };
 
 struct AllGatherMatmulTilingDataFp8 {
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
-    uint32_t quantMode; // 0=非量化, 1=量化
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3LocalTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TailTiling;
-    uint64_t tilingKey;                             // tilingKey，用于确认kernel模板特化路径
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+    uint64_t tilingKey; // tilingKey，用于确认kernel模板特化路径
 };
+
+static_assert(offsetof(AllGatherMatmulTilingDataV2, workspaceLayout) == 0,
+              "workspaceLayout must be the first member (DFX head convention)");
+static_assert(offsetof(AllGatherMatmulTilingDataFp8, workspaceLayout) == 0,
+              "workspaceLayout must be the first member (DFX head convention)");
 
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) || \
      (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \

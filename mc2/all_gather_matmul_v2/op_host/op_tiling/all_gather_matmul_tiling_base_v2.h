@@ -132,7 +132,7 @@ protected:
     bool enableNd2Nz_{false};
     bool castBias_{false};
     uint32_t gatherIndex_{0};
-    Utils::WorkspaceLayoutInfo workspaceLayout_{};
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout_{};
 };
 } // namespace optiling
 

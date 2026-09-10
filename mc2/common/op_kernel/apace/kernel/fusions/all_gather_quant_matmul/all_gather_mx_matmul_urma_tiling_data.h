@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "apace/tiling/comm_tiling_data.h"
@@ -33,12 +34,16 @@ struct CommContext {
 
 #pragma pack(push, 8)
 // 8 means 8 bytes aligned
+// DFX 头部约定: workspaceLayout 必须是第一个成员(offset 0)
 struct alignas(8) AllGatherMxMatmulUrmaTilingData {
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout{};
     QuantMatmulTilingData mmTile;
     CommTilingData commTile;
     uint8_t isBias{0};
-    Utils::WorkspaceLayoutInfo workspaceLayout{};
     uint64_t peermemDataSize{0};
     Utils::PeermemLayoutInfo peermemLayout{};
 };
 #pragma pack(pop)
+
+static_assert(offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout) == 0,
+              "workspaceLayout must be the first member (DFX head convention)");

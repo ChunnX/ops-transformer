@@ -60,7 +60,7 @@ protected:
     uint32_t libApiWorkSpaceSize_{0};
     TilingContextInfo contextInfo_;
     TilingInferredInfo inferredInfo_;
-    Utils::WorkspaceLayoutInfo workspaceLayout_{};
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout_{};
 
 private:
     // 功能后移，基类的GetShapeAttrsInfo在isCapable之前，当前将校验和参数获取放到子类的DoOptiling中

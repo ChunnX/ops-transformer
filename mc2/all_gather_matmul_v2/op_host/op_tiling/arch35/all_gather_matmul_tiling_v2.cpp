@@ -110,7 +110,6 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
     allGatherMatmulTilingDataV2_->workspaceLayout = workspaceLayout_;
-    allGatherMatmulTilingDataV2_->quantMode = 0;
     allGatherMatmulTilingDataV2_->tilingKey = GetTilingKey();
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
             context_->GetRawTilingData()->GetCapacity());

@@ -54,8 +54,8 @@ struct WorkspaceSegInfo {
     uint8_t reserved[7]; // 对齐
 };
 
-// Workspace 布局信息 (208 bytes)
-struct WorkspaceLayoutInfo {
+// Workspace 布局信息 (208 bytes)，用于异常时 DFX dump 解析 workspace 分段
+struct DfxWorkspaceLayoutInfo {
     uint64_t totalSize;                                // workspace 总大小
     uint32_t segCount;                                 // 实际段数
     uint32_t reserved;                                 // 对齐

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../tiling/quant_matmul_tiling_data.h"
@@ -22,15 +23,20 @@
 #include "../../../core/aiv_comm/collective_comm_context.h"
 #include "../../../../mc2_tiling_struct.h"
 
+// DFX 头部约定: workspaceLayout 必须是 tiling 结构的第一个成员(offset 0)，
+// 异常 dump 回调直接从 tiling blob 起始位置解析 workspace 分段布局
 struct allToAllMatmulTilingData {
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout{};
     CommTilingData commTilingData;
     CommTilingData scaleCommTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
-    Utils::WorkspaceLayoutInfo workspaceLayout{};
     uint64_t peermemDataSize{0};
     Utils::PeermemLayoutInfo peermemLayout{};
 };
+
+static_assert(offsetof(allToAllMatmulTilingData, workspaceLayout) == 0,
+              "workspaceLayout must be the first member (DFX head convention)");
 
 struct CommContext {
     Apace::AivComm::CommUdmaContext udmaCtx;
@@ -40,12 +46,15 @@ struct CommContext {
 // Hcomm通信MX量化tiling结构体
 namespace Apace {
 struct hcommAllToAllMatmulTilingData {
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout{};
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0};
     uint32_t quantMode{0}; // 0=非量化, 6=MX量化
-    Utils::WorkspaceLayoutInfo workspaceLayout{};
 };
 } // namespace Apace
+
+static_assert(offsetof(Apace::hcommAllToAllMatmulTilingData, workspaceLayout) == 0,
+              "workspaceLayout must be the first member (DFX head convention)");

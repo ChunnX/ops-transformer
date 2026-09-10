@@ -887,18 +887,11 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    Mc2Exception::Mc2DumpTilingData(
-        args, "AllGatherMatmulV3",
-        10U,                                                         // tilingGmArgIdx
-        0U,                                                          // argsOffset
-        9U,                                                          // workspaceGmArgIdx
-        0U,                                                          // quantModeOffset
-        offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout),  // wsLayoutOffsetNonQuant
-        offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout),  // wsLayoutOffsetQuant
-        offsetof(AllGatherMxMatmulUrmaTilingData, workspaceLayout)); // wsLayoutOffsetApace
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AllGatherMatmulV3",
+                                            10U, // tilingGmArgIdx
+                                            9U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AllGatherMatmulV3",
                                      0U,  // contextArgIdx
-                                     0U,  // argsOffset
                                      10U, // tilingGmArgIdx
                                      offsetof(AllGatherMxMatmulUrmaTilingData, peermemDataSize),
                                      offsetof(AllGatherMxMatmulUrmaTilingData, peermemLayout));

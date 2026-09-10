@@ -778,10 +778,8 @@ inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const 
     }
 }
 
-inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
-                              uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U, uint32_t quantModeOffset = 0U,
-                              uint32_t wsLayoutOffsetNonQuant = 0U, uint32_t wsLayoutOffsetQuant = 0U,
-                              uint32_t wsLayoutOffsetApace = 0U)
+inline void Mc2DumpTilingAndWorkspace(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
+                                      uint32_t workspaceGmArgIdx = 0U)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -801,10 +799,10 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
     }
 
     uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
-    OP_LOGE(OP_NAME, "Tiling dump start: op=%s, devArgsPtr=%p, devArgsLen=%u, tilingGmArgIdx=%u, argsOffset=%u", op,
-            devArgsPtr, devArgsLen, tilingGmArgIdx, argsOffset);
+    OP_LOGE(OP_NAME, "Tiling dump start: op=%s, devArgsPtr=%p, devArgsLen=%u, tilingGmArgIdx=%u", op, devArgsPtr,
+            devArgsLen, tilingGmArgIdx);
 
-    uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
+    uint32_t tilingGmOffset = tilingGmArgIdx * sizeof(uint64_t);
     if (tilingGmOffset + sizeof(uint64_t) > devArgsLen) {
         OP_LOGE(OP_NAME, "tilingGmOffset=%u + 8 > devArgsLen=%u, args too short.", tilingGmOffset, devArgsLen);
         return;
@@ -865,51 +863,21 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         return;
     }
 
-    OP_LOGE(OP_NAME,
-            "Workspace dump start: op=%s, wsGmArgIdx=%u, quantModeOffset=%u, "
-            "wsLayoutOffsetNonQuant=%u, wsLayoutOffsetQuant=%u, wsLayoutOffsetApace=%u",
-            op, workspaceGmArgIdx, quantModeOffset, wsLayoutOffsetNonQuant, wsLayoutOffsetQuant, wsLayoutOffsetApace);
+    OP_LOGE(OP_NAME, "Workspace dump start: op=%s, wsGmArgIdx=%u", op, workspaceGmArgIdx);
 
-    // 1. 选择 wsLayoutOffset
-    uint32_t wsLayoutOffset = wsLayoutOffsetNonQuant;
-    if (wsLayoutOffsetNonQuant != wsLayoutOffsetQuant) {
-        // 量化/非量化结构体不同，通过 x1QuantMode 判断
-        uint32_t x1QuantMode = 0U;
-        if (quantModeOffset + sizeof(uint32_t) <= tilingDumpSize) {
-            memcpy(&x1QuantMode, tilingBuf.data() + quantModeOffset, sizeof(uint32_t));
-        }
-        if (x1QuantMode != 0U) {
-            wsLayoutOffset = wsLayoutOffsetQuant;
-        }
-        OP_LOGE(OP_NAME, "Quant mode detect: x1QuantMode=%u, wsLayoutOffset=%u", x1QuantMode, wsLayoutOffset);
-    }
-
-    // 2. 解析 WorkspaceLayoutInfo，若首选偏移无效则尝试所有提供的偏移
-    constexpr uint32_t wsLayoutInfoSize = sizeof(Utils::WorkspaceLayoutInfo);
-    Utils::WorkspaceLayoutInfo wsLayout;
-    bool wsLayoutValid = false;
-    uint32_t tryOffsets[] = {wsLayoutOffset, wsLayoutOffsetApace, wsLayoutOffsetQuant, wsLayoutOffsetNonQuant};
-    for (uint32_t tryOff : tryOffsets) {
-        if (tryOff == 0U || tryOff + wsLayoutInfoSize > tilingDumpSize) {
-            continue;
-        }
-        memcpy(&wsLayout, tilingBuf.data() + tryOff, wsLayoutInfoSize);
-        if (wsLayout.totalSize != 0 && wsLayout.segCount > 0 &&
-            wsLayout.segCount <= Utils::MAX_WORKSPACE_SEGMENTS) {
-            wsLayoutOffset = tryOff;
-            wsLayoutValid = true;
-            break;
-        }
-    }
-    if (!wsLayoutValid) {
-        OP_LOGE(OP_NAME, "No valid wsLayout found at any provided offset, skip workspace dump.");
+    // 1. 解析 DfxWorkspaceLayoutInfo（DFX 头部约定: workspaceLayout 为 tiling 数据第一个成员）
+    constexpr uint32_t wsLayoutInfoSize = sizeof(Utils::DfxWorkspaceLayoutInfo);
+    static_assert(wsLayoutInfoSize <= tilingDumpSize, "DfxWorkspaceLayoutInfo exceeds tiling dump size");
+    Utils::DfxWorkspaceLayoutInfo wsLayout;
+    memcpy(&wsLayout, tilingBuf.data(), wsLayoutInfoSize);
+    if (wsLayout.totalSize == 0U || wsLayout.segCount == 0U || wsLayout.segCount > Utils::MAX_WORKSPACE_SEGMENTS) {
+        OP_LOGE(OP_NAME, "Invalid DfxWorkspaceLayoutInfo at tiling head, skip workspace dump.");
         return;
     }
-    OP_LOGE(OP_NAME, "wsLayout valid: offset=%u, totalSize=%lu, segCount=%u.", wsLayoutOffset, wsLayout.totalSize,
-            wsLayout.segCount);
+    OP_LOGE(OP_NAME, "wsLayout valid: totalSize=%lu, segCount=%u.", wsLayout.totalSize, wsLayout.segCount);
 
-    // 3. 读取 workspaceGM 指针 (workspaceGmArgIdx = tilingGmArgIdx - 1)
-    uint32_t wsGmOffset = argsOffset + workspaceGmArgIdx * sizeof(uint64_t);
+    // 2. 读取 workspaceGM 指针 (workspaceGmArgIdx = tilingGmArgIdx - 1)
+    uint32_t wsGmOffset = workspaceGmArgIdx * sizeof(uint64_t);
     if (wsGmOffset + sizeof(uint64_t) > devArgsLen) {
         OP_LOGE(OP_NAME, "wsGmOffset=%u + 8 > devArgsLen=%u, args too short.", wsGmOffset, devArgsLen);
         return;
@@ -926,7 +894,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
         return;
     }
 
-    // 4. 逐段 D2H 拷贝并落盘
+    // 3. 逐段 D2H 拷贝并落盘
     for (uint32_t i = 0; i < wsLayout.segCount && i < Utils::MAX_WORKSPACE_SEGMENTS; i++) {
         auto &seg = wsLayout.segments[i];
         if (seg.size == 0) {
@@ -960,7 +928,7 @@ inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t
 }
 
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
-                               uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U, uint32_t peermemSizeOffset = 0U,
+                               uint32_t tilingGmArgIdx = 0U, uint32_t peermemSizeOffset = 0U,
                                uint32_t peermemLayoutOffset = 0U)
 {
     if (args == nullptr || op == nullptr) {
@@ -981,9 +949,9 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     }
 
     uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
-    OP_LOGE(OP_NAME, "UrmaContext dump start: op=%s, contextArgIdx=%u, argsOffset=%u", op, contextArgIdx, argsOffset);
+    OP_LOGE(OP_NAME, "UrmaContext dump start: op=%s, contextArgIdx=%u", op, contextArgIdx);
 
-    uint32_t contextOffset = argsOffset + contextArgIdx * sizeof(uint64_t);
+    uint32_t contextOffset = contextArgIdx * sizeof(uint64_t);
     if (contextOffset + sizeof(uint64_t) > devArgsLen) {
         OP_LOGE(OP_NAME, "contextOffset=%u + 8 > devArgsLen=%u, args too short.", contextOffset, devArgsLen);
         return;
@@ -1045,7 +1013,7 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     uint32_t peermemDumpSize = WIN_SIZE;
     uint64_t tilingGM = 0U;
     if (tilingGmArgIdx != 0U && peermemSizeOffset != 0U) {
-        uint32_t tilingGmOffset = argsOffset + tilingGmArgIdx * sizeof(uint64_t);
+        uint32_t tilingGmOffset = tilingGmArgIdx * sizeof(uint64_t);
         if (tilingGmOffset + sizeof(uint64_t) <= devArgsLen) {
             if (aclrtMemcpy(&tilingGM, sizeof(uint64_t), reinterpret_cast<uint8_t *>(devArgsPtr) + tilingGmOffset,
                             sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS &&
@@ -1130,13 +1098,11 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
 }
 #else  // !MC2_DFX_ENABLE
 inline void Mc2ExceptionImplTmp(aclrtExceptionInfo *args, void *userdata, const char *op) {}
-inline void Mc2DumpTilingData(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
-                              uint32_t argsOffset = 0U, uint32_t workspaceGmArgIdx = 0U, uint32_t quantModeOffset = 0U,
-                              uint32_t wsLayoutOffsetNonQuant = 0U, uint32_t wsLayoutOffsetQuant = 0U,
-                              uint32_t wsLayoutOffsetApace = 0U)
+inline void Mc2DumpTilingAndWorkspace(aclrtExceptionInfo *args, const char *op, uint32_t tilingGmArgIdx,
+                                      uint32_t workspaceGmArgIdx = 0U)
 {}
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
-                               uint32_t argsOffset = 0U, uint32_t tilingGmArgIdx = 0U, uint32_t peermemSizeOffset = 0U,
+                               uint32_t tilingGmArgIdx = 0U, uint32_t peermemSizeOffset = 0U,
                                uint32_t peermemLayoutOffset = 0U)
 {}
 #endif // MC2_DFX_ENABLE
