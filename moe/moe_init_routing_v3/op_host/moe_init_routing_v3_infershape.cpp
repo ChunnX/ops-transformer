@@ -481,7 +481,8 @@ static ge::graphStatus CheckInputScaleShape(const gert::InferShapeContext *conte
                                             const gert::Shape *scaleShape, const int64_t expertStart,
                                             const int64_t expertEnd, const int64_t quantMode)
 {
-    OP_CHECK_IF((nullptr == scaleShape && QuantMode::STATIC_QUANT == quantMode),
+    OP_CHECK_IF((nullptr == scaleShape &&
+                 (QuantMode::STATIC_QUANT == quantMode || QuantMode::HIF8_PERTENSOR == quantMode)),
                 OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "scale"),
                 return ge::GRAPH_FAILED);
 
@@ -947,7 +948,8 @@ static ge::DataType DetermineOutputDtypes(const gert::InferDataTypeContext *cont
     } else if (QuantMode::FP8_GROUP_E4M3FN == quantMode || QuantMode::FP8_GROUP_AMAX_E4M3FN == quantMode) {
         expandedXDtype = ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT;
-    } else if (QuantMode::HIF8_CAST == quantMode) {
+    } else if (QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTENSOR == quantMode ||
+               QuantMode::HIF8_PERTOKEN == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         expandedXDtype = ge::DT_FLOAT4_E2M1;
