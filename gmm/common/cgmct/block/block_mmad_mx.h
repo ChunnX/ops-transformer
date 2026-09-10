@@ -15,9 +15,9 @@
 
 #ifndef MATMUL_BLOCK_MMAD_MX_H
 #define MATMUL_BLOCK_MMAD_MX_H
-#include "../policy/dispatch_policy.h"
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../policy/cgmct_dispatch_policy.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 
 namespace Cgmct {
@@ -742,7 +742,6 @@ public:
         }
     }
 
-
     __aicore__ inline void IterAL1BL1(TileL1L0Param &tileL1L0Param, AscendC::MmadParams &mmadParams, uint64_t l0cOffset,
                                       const AscendC::GlobalTensor<AType> &aGlobal,
                                       const AscendC::GlobalTensor<BType> &bGlobal,
@@ -861,9 +860,8 @@ private:
                                        const AscendC::GlobalTensor<BType> &bGlobal,
                                        const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
                                        const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
-                                       const AscendC::GlobalTensor<BiasType> &biasGlobal,
-                                       const BlockShape &singleShape, AscendC::MmadParams &mmParams,
-                                       uint64_t &l0cOffset)
+                                       const AscendC::GlobalTensor<BiasType> &biasGlobal, const BlockShape &singleShape,
+                                       AscendC::MmadParams &mmParams, uint64_t &l0cOffset)
     {
         TileL1L0Param tileL1L0Param;
         tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);

@@ -23,6 +23,375 @@ using namespace optiling::fag;
 namespace optiling {
 namespace fag {
 
+namespace {
+struct DeterBandScheduleResult {
+    DeterBandScheduleMode mode = DeterBandScheduleMode::DISABLED;
+    int64_t maxRound = 0;
+    int64_t m = 0;
+    int64_t n = 0;
+    int64_t p = 0;
+    int64_t q = 0;
+};
+
+struct BlockScheduleResult {
+    bool isSplitByBlockIdx = false;
+    DeterBandScheduleResult deterBandSchedule;
+};
+
+struct DeterBandScheduleParams {
+    int64_t m = 0;
+    int64_t n = 0;
+    int64_t p = 0;
+    int64_t q = 0;
+};
+
+struct GQADenseScheduleResult {
+    int64_t baseRound = 0;
+    int64_t selectedRound = 0;
+    int64_t basePeriod = 0;
+    int64_t selectedPeriod = 0;
+};
+
+int64_t PositiveCeilDiv(int64_t dividend, int64_t divisor)
+{
+    return dividend / divisor + static_cast<int64_t>(dividend % divisor != 0);
+}
+
+int64_t PositiveGcd(int64_t lhs, int64_t rhs)
+{
+    while (rhs > 0) {
+        const int64_t remainder = lhs % rhs;
+        lhs = rhs;
+        rhs = remainder;
+    }
+    return lhs;
+}
+
+bool IsRoundGrowthWithinLimit(int64_t candidateRound, int64_t legacyRound, int64_t maxGrowthPercent,
+                              int64_t percentBase)
+{
+    return candidateRound > 0 && legacyRound > 0 &&
+           candidateRound * percentBase <= legacyRound * (percentBase + maxGrowthPercent);
+}
+
+GQADenseScheduleResult SelectGQADenseSchedule(int64_t k, int64_t m, int64_t n, int64_t b, int64_t g)
+{
+    GQADenseScheduleResult result;
+    if (k <= 0 || m <= 0 || n <= 0 || b <= 0 || g <= 1) {
+        return result;
+    }
+
+    k = std::min({k, b * g * m, b * n});
+    result.baseRound = std::max({PositiveCeilDiv(b * n * g, k), PositiveCeilDiv(n, m), g});
+    result.selectedRound = result.baseRound;
+    const int64_t batchHeadNum = b * g;
+    result.basePeriod = batchHeadNum / PositiveGcd(batchHeadNum, result.baseRound);
+    result.selectedPeriod = result.basePeriod;
+    if (result.baseRound % g == 0) {
+        return result;
+    }
+
+    const int64_t candidateRound = PositiveCeilDiv(result.baseRound, g) * g;
+    const int64_t candidatePeriod = batchHeadNum / PositiveGcd(batchHeadNum, candidateRound);
+    const int64_t totalId = b * n * g;
+    const int64_t candidateInvalid = k * candidateRound - totalId;
+    // Aligning R to g can shorten the batch/head traversal period. Only accept it when the extra
+    // rounds and invalid IDs are bounded and m has enough row offsets for the new period.
+    const bool roundCostOk = (candidateRound - result.baseRound) * GQA_DENSE_PERCENT_BASE <=
+                             result.baseRound * GQA_DENSE_MAX_ROUND_GROWTH_PERCENT;
+    const bool invalidCostOk =
+        candidateInvalid * GQA_DENSE_PERCENT_BASE <= k * candidateRound * GQA_DENSE_MAX_INVALID_PERCENT;
+    const bool localityBetter = candidatePeriod < result.basePeriod && candidatePeriod < k;
+    const bool rowOffsetEnough = PositiveCeilDiv(k, candidatePeriod) <= m;
+    if (roundCostOk && invalidCostOk && localityBetter && rowOffsetEnough) {
+        result.selectedRound = candidateRound;
+        result.selectedPeriod = candidatePeriod;
+    }
+    return result;
+}
+
+bool IsTndDeterSwizzleScheduleSafe(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (params.aicNum == 0 || params.n1 <= 0) {
+        return false;
+    }
+
+    const int64_t cubeBaseM = static_cast<int64_t>(params.s1Inner) * params.s1CvRatio;
+    const int64_t cubeBaseN = static_cast<int64_t>(params.s2Inner) * params.s2CvRatio;
+    if (cubeBaseM <= 0 || cubeBaseN <= 0 || params.actualSeqQlen.size() != params.actualSeqKvlen.size()) {
+        return false;
+    }
+
+    // Mode 2 assigns consecutive linear IDs to S2 blocks inside each head and rotates S1 by S2 + round.
+    // One head has at most min(k, n) active cores in a round. The same number of S1 blocks is required to
+    // keep their dQ coordinates unique. The Python recommendation m >= n is the k >= n special case.
+    for (size_t bIdx = 0; bIdx < params.actualSeqQlen.size(); ++bIdx) {
+        const int64_t actualSeqQLen = params.actualSeqQlen[bIdx];
+        const int64_t actualSeqKvLen = params.actualSeqKvlen[bIdx];
+        if (actualSeqQLen <= 0 || actualSeqKvLen <= 0) {
+            return false;
+        }
+        const int64_t m = PositiveCeilDiv(actualSeqQLen, cubeBaseM);
+        const int64_t n = PositiveCeilDiv(actualSeqKvLen, cubeBaseN);
+        if (m < std::min(static_cast<int64_t>(params.aicNum), n)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsTndDeterSwizzlePerformanceEnough(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (params.aicNum == 0 || params.n2 <= 0 || params.g <= 0 ||
+        params.actualSeqQlen.size() != params.actualSeqKvlen.size()) {
+        return false;
+    }
+
+    const int64_t aicNum = static_cast<int64_t>(params.aicNum);
+    const int64_t cubeBaseM = static_cast<int64_t>(params.s1Inner) * params.s1CvRatio;
+    const int64_t cubeBaseN = static_cast<int64_t>(params.s2Inner) * params.s2CvRatio;
+    if (cubeBaseM <= 0 || cubeBaseN <= 0) {
+        return false;
+    }
+
+    int64_t validSlotNum = 0;
+    int64_t totalSlotNum = 0;
+    int64_t maxS1Outer = 0;
+    int64_t maxS2Outer = 0;
+    for (size_t bIdx = 0; bIdx < params.actualSeqQlen.size(); ++bIdx) {
+        const int64_t actualSeqQLen = params.actualSeqQlen[bIdx];
+        const int64_t actualSeqKvLen = params.actualSeqKvlen[bIdx];
+        if (actualSeqQLen <= 0 || actualSeqKvLen <= 0) {
+            return false;
+        }
+        const int64_t m = PositiveCeilDiv(actualSeqQLen, cubeBaseM);
+        const int64_t n = PositiveCeilDiv(actualSeqKvLen, cubeBaseN);
+        const int64_t columnNum = n * params.n2 * params.g;
+        const int64_t batchRound = PositiveCeilDiv(columnNum, aicNum) * m;
+        validSlotNum += m * columnNum;
+        totalSlotNum += batchRound * aicNum;
+        maxS1Outer = std::max(maxS1Outer, m);
+        maxS2Outer = std::max(maxS2Outer, n);
+    }
+    const bool slotUtilizationEnough =
+        totalSlotNum > 0 &&
+        validSlotNum * TND_DETER_SWIZZLE_PERCENT_BASE >= totalSlotNum * TND_DETER_SWIZZLE_MIN_SLOT_UTILIZATION_PERCENT;
+    const int64_t candidateMaxRound = totalSlotNum / aicNum;
+    // Keep the legacy bound identical to CalcleTNDDenseDeterParam.
+    const int64_t legacyMaxRound = std::max({PositiveCeilDiv(validSlotNum, aicNum), maxS1Outer * params.g, maxS2Outer});
+    const bool roundGrowthWithinLimit = IsRoundGrowthWithinLimit(
+        candidateMaxRound, legacyMaxRound, TND_DETER_SWIZZLE_MAX_ROUND_GROWTH_PERCENT, TND_DETER_SWIZZLE_PERCENT_BASE);
+    return slotUtilizationEnough && roundGrowthWithinLimit;
+}
+
+bool IsTndDeterSwizzleSupported(const FuzzyBaseInfoParamsRegbase &params)
+{
+    if (!IsTndDeterSwizzleScheduleSafe(params)) {
+        return false;
+    }
+    return IsTndDeterSwizzlePerformanceEnough(params);
+}
+
+void ConfigureTndDeterBn2S2Swizzle(FuzzyBaseInfoParamsRegbase &params, const TndBaseInfo &tndBaseInfo)
+{
+    // Mode 2 keeps every (B, N2, S2) column on one core, so dK/dV never need a cross-core tail merge.
+    std::fill(std::begin(params.deterPrefix2), std::end(params.deterPrefix2), static_cast<int64_t>(-1));
+
+    // Different columns still atomically accumulate dQ. Synchronize consecutive rounds to keep the accumulation
+    // order deterministic, as in the BN2GS1S2 deterministic swizzle path.
+    std::fill(std::begin(params.startNeedSyncRound), std::end(params.startNeedSyncRound), static_cast<uint64_t>(0));
+    std::fill(std::begin(params.endNeedSyncRound), std::end(params.endNeedSyncRound), static_cast<uint64_t>(0));
+    params.startNeedSyncRound[0] = 1;
+    params.endNeedSyncRound[0] = tndBaseInfo.tndS2BlockPrefixSum[params.b];
+}
+
+int64_t CalcCausalSingleBatchRound(int64_t k, int64_t causalSize)
+{
+    if (k <= 0 || causalSize <= 0) {
+        return 0;
+    }
+    // Keep this bound identical to CalCausalSingleBatchDeterIndex. Every complete 2*k-column
+    // group consumes a shrinking rectangle; the remaining at most 2*k columns form one tail.
+    const int64_t groupCount = causalSize / (NUM_TWO * k);
+    const int64_t groupRound = (NUM_TWO * causalSize + 1) * groupCount - NUM_TWO * k * groupCount * groupCount;
+    const int64_t remain = causalSize - NUM_TWO * k * groupCount;
+    if (remain <= k) {
+        return groupRound + remain;
+    }
+    return groupRound + std::max(remain, NUM_TWO * remain - NUM_TWO * k + 1);
+}
+
+DeterBandScheduleParams NormalizeDeterBandScheduleParams(int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    // Keep the clamp and shifted-BAND conversion identical to CalDeterMaxLoopNum on the kernel side.
+    p = std::min(p, m);
+    q = std::min(q, n);
+    if (p < 0) {
+        return {m, n + p, 1, p + q};
+    }
+    if (q < 0) {
+        return {m + q, n, p + q, 1};
+    }
+    return {m, n, p, q};
+}
+
+int64_t CalcLegacyDeterBandMaxRound(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t b,
+                                    int64_t hostMaxRound)
+{
+    // Keep rm2 identical to GenBandInfo and CalDeterMaxLoopNum on the kernel side.
+    const int64_t rm2 =
+        p + q > m ? m * PositiveCeilDiv(n * b, std::min(k, b * m)) : PositiveCeilDiv(n * b, k) * (p + q - 1);
+    return std::max(hostMaxRound, rm2);
+}
+
+DeterBandScheduleResult SelectDeterBandSchedule(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t b,
+                                                int64_t hostMaxRound)
+{
+    DeterBandScheduleResult result;
+    if (k <= 0 || m <= 0 || n <= 0 || p <= 0 || q <= 0 || b <= 0) {
+        return result;
+    }
+
+    // Keep this preprocessing identical to GenBandHybridInfo on the kernel side.
+    p = std::min(p, m);
+    q = std::min(q, n);
+    const int64_t legacyMaxRound = CalcLegacyDeterBandMaxRound(k, m, n, p, q, b, hostMaxRound);
+    m = std::min(m, n + p - 1);
+    n = std::min(n, m + q - 1);
+
+    int64_t l1 = 0;
+    int64_t l2 = 0;
+    int64_t l3 = 0;
+    int64_t bandBlocks = 0;
+    if (p + q <= m) {
+        l1 = q - 1;
+        l2 = std::min(n - q + 1, m + NUM_TWO - p - q);
+        l3 = std::max<int64_t>(0, std::min(p + n - m - 1, p + q - NUM_TWO));
+        bandBlocks = (NUM_TWO * p - NUM_TWO + q) * l1 / NUM_TWO + (p + q - 1) * l2 + (p + q - NUM_TWO) * l3 -
+                     l3 * (l3 - 1) / NUM_TWO;
+    } else {
+        l1 = m - p;
+        l2 = p + q - m;
+        l3 = std::min(n - q, m - 1);
+        bandBlocks = (p + m - 1) * l1 / NUM_TWO + m * l2 + (NUM_TWO * m - 1 - l3) * l3 / NUM_TWO;
+    }
+
+    const int64_t pairCount = std::max<int64_t>(0, std::min(l1, l3 - p + 1));
+    const int64_t colsPerBatch = l1 + l2 + l3 - pairCount;
+    const int64_t bandSlot = p + q - 1;
+    result.mode = DeterBandScheduleMode::BAND;
+    result.maxRound = PositiveCeilDiv(b * colsPerBatch, k) * bandSlot;
+    result.m = m;
+    result.n = n;
+    result.p = p;
+    result.q = q;
+
+    // Dense is a safe superset only when all k cores remain active and the columns issued to one
+    // batch in a round cannot wrap by m and hit the same row. This is less restrictive than m >= k.
+    const int64_t denseK = std::min(k, m * b);
+    if (denseK == k && std::min(denseK, n) <= m) {
+        const int64_t denseRound = PositiveCeilDiv(n * b, denseK) * m;
+        if (denseRound < result.maxRound) {
+            result.mode = DeterBandScheduleMode::DENSE;
+            result.maxRound = denseRound;
+        }
+    }
+
+    // Embed a near-lower BAND into a square causal triangle.  The kernel maps x back by q - 1;
+    // IsValidForDeter removes the padding and the part truncated by p.  Upper embedding is not used
+    // because transposing Mode03 would break the fixed-core-per-original-column requirement.
+    const int64_t lowerCausalSize = m + q - 1;
+    const int64_t upperCausalSize = n + p - 1;
+    const int64_t lowerWaste = lowerCausalSize * (lowerCausalSize + 1) / NUM_TWO - bandBlocks;
+    const int64_t upperWaste = upperCausalSize * (upperCausalSize + 1) / NUM_TWO - bandBlocks;
+    bool useLowerCausal =
+        bandBlocks > 0 && lowerWaste >= 0 && lowerWaste <= upperWaste && lowerWaste <= (bandBlocks - 1) / 10;
+    if (useLowerCausal) {
+        const int64_t causalPairCount = b / NUM_TWO;
+        const int64_t causalK = std::min(k, lowerCausalSize * causalPairCount);
+        // CalCausalSwizzleIndex uses the dense swizzle internally, so do not select it when that
+        // helper would reduce the active-core count below k.
+        if (causalPairCount > 0 && causalK == k && causalK <= lowerCausalSize) {
+            const int64_t pairRound =
+                PositiveCeilDiv((lowerCausalSize + 1) * causalPairCount, causalK) * lowerCausalSize;
+            const int64_t tailRound = (b & 1) == 0 ? 0 : CalcCausalSingleBatchRound(k, lowerCausalSize);
+            const int64_t causalRound = pairRound + tailRound;
+            if (causalRound < result.maxRound) {
+                result.mode = DeterBandScheduleMode::CAUSAL;
+                result.maxRound = causalRound;
+            }
+        }
+    }
+
+    // All hybrid schedules iterate k slots in each round. Reject low-utilization schedules because
+    // invalid coordinates still incur round traversal and index-calculation overhead in the kernel.
+    const int64_t validSlotNum = bandBlocks * b;
+    const int64_t totalSlotNum = k * result.maxRound;
+    const bool slotUtilizationEnough =
+        totalSlotNum > 0 && validSlotNum * DETER_BAND_SWIZZLE_PERCENT_BASE >=
+                                totalSlotNum * DETER_BAND_SWIZZLE_MIN_SLOT_UTILIZATION_PERCENT;
+    const bool roundGrowthWithinLimit = IsRoundGrowthWithinLimit(
+        result.maxRound, legacyMaxRound, DETER_BAND_SWIZZLE_MAX_ROUND_GROWTH_PERCENT, DETER_BAND_SWIZZLE_PERCENT_BASE);
+    if (!slotUtilizationEnough || !roundGrowthWithinLimit) {
+        return {};
+    }
+    return result;
+}
+
+BlockScheduleResult SelectBlockSchedule(const FuzzyBaseInfoParamsRegbase &params)
+{
+    BlockScheduleResult result;
+    const bool canSplitByBlockIdx = params.enableSwizzle && params.layoutType != INPUT_FORMAT_TND &&
+                                    params.splitAxis == SplitAxisEnum::BN2GS1S2 &&
+                                    params.s1Inner * params.s1CvRatio == params.s2Inner * params.s2CvRatio &&
+                                    params.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED);
+    result.isSplitByBlockIdx = canSplitByBlockIdx;
+    if (!params.isDeterministic) {
+        return result;
+    }
+
+    const bool causalCond = params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL);
+    const bool rightDownBandCond = params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+                                   params.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
+    result.isSplitByBlockIdx = canSplitByBlockIdx && (((params.b * params.n2) & 1) == 0) && params.g == 1 &&
+                               params.s1 >= params.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
+                               (params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) ||
+                                causalCond || rightDownBandCond);
+
+    // Preserve the legacy RIGHT_DOWN_CAUSAL swizzle whenever its original entry conditions are met.
+    // With schedule mode DISABLED, the kernel keeps using CalCausalSwizzleIndex and its matching
+    // max-round formula. Re-selecting this path as a hybrid DENSE schedule can increase the rounds.
+    if (rightDownBandCond && result.isSplitByBlockIdx) {
+        return result;
+    }
+
+    const int64_t actualBatch = (params.b - params.tailZeroCount) * params.n2;
+    // DETER_BAND is the scheduling contract here. It covers BAND, compatible NO_MASK, and
+    // unequal RIGHT_DOWN_CAUSAL after their tokens have been normalized to the same band geometry.
+    const bool hybridBandCond = canSplitByBlockIdx &&
+                                params.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+                                params.g == 1 && params.coreNum == params.aicNum * NUM_TWO && actualBatch > 0;
+    if (!hybridBandCond) {
+        return result;
+    }
+
+    const int64_t cubeBase = params.s1Inner * params.s1CvRatio;
+    const int64_t serializedS1Token = std::min<int64_t>(params.s1Token, INT32_MAX);
+    const int64_t serializedS2Token = std::min<int64_t>(params.s2Token, INT32_MAX);
+    const int64_t p = CeilDivideBy(serializedS1Token, cubeBase) + 1;
+    const int64_t q = CeilDivideBy(serializedS2Token, cubeBase) + 1;
+    const DeterBandScheduleParams scheduleParams =
+        NormalizeDeterBandScheduleParams(params.s1Outer, params.s2Outer, p, q);
+    result.deterBandSchedule =
+        SelectDeterBandSchedule(static_cast<int64_t>(params.aicNum), scheduleParams.m, scheduleParams.n,
+                                scheduleParams.p, scheduleParams.q, actualBatch, params.deterMaxRound);
+    if (result.deterBandSchedule.mode != DeterBandScheduleMode::DISABLED) {
+        result.isSplitByBlockIdx = true;
+    }
+    return result;
+}
+} // namespace
+
 bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
 {
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
@@ -75,10 +444,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
     std::string vdyShapesMsg = "{" + Ops::Base::ToString(vShape) + ", " + Ops::Base::ToString(*dyShape) + "}";
 
     if (!IsSameShape(dy, attentionIn)) {
-        std::string shapesMsg = "{" + Ops::Base::ToString(*dyShape) + ", " + Ops::Base::ToString(*attentionInShape) +
-                                "}";
+        std::string shapesMsg =
+            "{" + Ops::Base::ToString(*dyShape) + ", " + Ops::Base::ToString(*attentionInShape) + "}";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy, attentionInOptional", shapesMsg.c_str(),
-            "The shapes of dy and attentionInOptional must be the same");
+                                               "The shapes of dy and attentionInOptional must be the same");
         return ge::GRAPH_PARAM_INVALID;
     }
 
@@ -87,8 +456,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         std::string qrShape = hasQueryRope ? Ops::Base::ToString(*queryRopeShape) : "null";
         std::string krShape = hasKeyRope ? Ops::Base::ToString(*keyRopeShape) : "null";
         std::string shapeMsg = "{" + qrShape + ", " + krShape + "}";
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
-            shapeMsg.c_str(), "queryRopeOptional, keyRopeOptional cannot be empty tensors, if queryRopeOptional is an "
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            "FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional", shapeMsg.c_str(),
+            "queryRopeOptional, keyRopeOptional cannot be empty tensors, if queryRopeOptional is an "
             "empty tensor, keyRopeOptional must also be an empty tensor");
         return ge::GRAPH_PARAM_INVALID;
     }
@@ -111,29 +481,31 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
 
-        std::string hAxisMsg = "When inputLayout is SBH, h axis of dy must be exactly divisible " +
-                               std::to_string(headNum);
+        std::string hAxisMsg =
+            "When inputLayout is SBH, h axis of dy must be exactly divisible " + std::to_string(headNum);
         OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_2) % headNum != 0,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
-                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                                                           Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
-                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
                         "B axis and s axis of dy must be equal to b axis and s axis of query"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
-                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
-                        kvShapesMsg.c_str(), "B axis and s axis of value must be equal to b axis and s axis of keyIn"),
+                        (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "keyIn, value", kvShapesMsg.c_str(),
+                        "B axis and s axis of value must be equal to b axis and s axis of keyIn"),
                     return ge::GRAPH_PARAM_INVALID);
         auto dyDDim = dyShape->GetDim(INPUT_DIM_2) / headNum;
         auto qkDDim = qShape.GetDim(INPUT_DIM_2) / headNum;
         auto vNdim = kShape.GetDim(INPUT_DIM_2) / qkDDim;
         auto vDDim = vShape.GetDim(INPUT_DIM_2) / vNdim;
         OP_CHECK_IF(vDDim != dyDDim,
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
-                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                                                           "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BSH") == 0) {
         OP_LOGD(context_, "inputLayout == BSH queryShape");
@@ -149,30 +521,32 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
-        
-        std::string hAxisMsg = "When inputLayout is BSH, h axis of dy must be exactly divisible " +
-                               std::to_string(headNum);
+
+        std::string hAxisMsg =
+            "When inputLayout is BSH, h axis of dy must be exactly divisible " + std::to_string(headNum);
         OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
-                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
                         "B axis and s axis of dy must be equal to b axis and s axis of query"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_2) % headNum != 0,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
-                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                                                           Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
-                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
-                        kvShapesMsg.c_str(), "B axis and s axis of value must be equal to b axis and s axis of keyIn"),
+                        (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "keyIn, value", kvShapesMsg.c_str(),
+                        "B axis and s axis of value must be equal to b axis and s axis of keyIn"),
                     return ge::GRAPH_PARAM_INVALID);
         auto qkDDim = qShape.GetDim(INPUT_DIM_2) / headNum;
         auto vNdim = kShape.GetDim(INPUT_DIM_2) / qkDDim;
         auto vDDim = vShape.GetDim(INPUT_DIM_2) / vNdim;
         auto dyDDim = dyShape->GetDim(INPUT_DIM_2) / headNum;
         OP_CHECK_IF(vDDim != dyDDim,
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
-                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                                                           "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "BNSD") == 0) {
         OP_LOGD(context_, "inputLayout == BNSD queryShape");
@@ -190,28 +564,29 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         OP_LOGD(context_, "inputLayout == BNSD queryShape", "%ld, %ld, %ld, %ld,",
                 queryShape->GetStorageShape().GetDim(INPUT_DIM_0), queryShape->GetStorageShape().GetDim(INPUT_DIM_1),
                 queryShape->GetStorageShape().GetDim(INPUT_DIM_2), queryShape->GetStorageShape().GetDim(INPUT_DIM_3));
-        
+
         std::string hAxisMsg = "When inputLayout is BNSD, N axis of dy must be equal to " + std::to_string(headNum);
         OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_1) != headNum,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
-                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                                                           Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
-                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)) ||
-                    (qShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)) ||
+                        (qShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
                         "B axis, s axis and n axis of dy must be equal to b axis, s axis and n axis of query"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
-                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)) ||
-                    (kShape.GetDim(INPUT_DIM_2) != vShape.GetDim(INPUT_DIM_2)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
-                        kvShapesMsg.c_str(),
+                        (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)) ||
+                        (kShape.GetDim(INPUT_DIM_2) != vShape.GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "keyIn, value", kvShapesMsg.c_str(),
                         "B axis, s axis and n axis of value must be equal to b axis, s axis and n axis of keyIn"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(vShape.GetDim(INPUT_DIM_3) != dyShape->GetDim(INPUT_DIM_3),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
-                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                                                           "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else if (strcmp(inputLayout, "TND") == 0) {
         OP_LOGD(context_, "inputLayout == TND");
@@ -229,8 +604,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         const size_t kvSeqShapeSize = actualSeqKvlenTensor->GetShapeSize();
         if (seqQShapeSize != kvSeqShapeSize) {
             std::string shapeSizeMsg = std::to_string(seqQShapeSize) + ", " + std::to_string(kvSeqShapeSize);
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON("FlashAttentionScoreGrad",
-                "actualSeqQLenOptional, actualSeqKvLenOptional", shapeSizeMsg.c_str(),
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                "FlashAttentionScoreGrad", "actualSeqQLenOptional, actualSeqKvLenOptional", shapeSizeMsg.c_str(),
                 "The shape sizes of actualSeqQLenOptional and actualSeqKvLenOptional must be same");
             return ge::GRAPH_PARAM_INVALID;
         }
@@ -269,8 +644,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
                     fBaseParams.sValueZeroUnderTND = true;
                 } else if (isEOD && (qValue[i] != 0 || kvValue[i] != 0)) {
                     std::string valuesMsg = "{" + std::to_string(qValue[i]) + ", " + std::to_string(kvValue[i]) + "}";
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("FlashAttentionScoreGrad",
-                        "actualSeqQlenOptional, actualSeqKvlenOptional", valuesMsg.c_str(),
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "actualSeqQlenOptional, actualSeqKvlenOptional", valuesMsg.c_str(),
                         "When inputLayout is TND EOD, the values of last several actualSeqQlenOptional and "
                         "actualSeqKvlenOptional must be 0");
                     return ge::GRAPH_PARAM_INVALID;
@@ -301,21 +676,23 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         std::string hAxisMsg = "When inputLayout is TND, N axis of dy must be equal to " + std::to_string(headNum);
         OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_1) != headNum,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
-                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                                                           Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
-                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
                         "T axis and n axis of dy must be equal to t axis and n axis of query"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
-                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
-                        kvShapesMsg.c_str(), "T axis and n axis of value must be equal to t axis and n axis of keyIn"),
+                        (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "keyIn, value", kvShapesMsg.c_str(),
+                        "T axis and n axis of value must be equal to t axis and n axis of keyIn"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(vShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
-                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                                                           "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
     } else {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
@@ -335,25 +712,32 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         std::string hAxisMsg = "When inputLayout is BSND, N axis of dy must be equal to " + std::to_string(headNum);
         OP_CHECK_IF(dyShape->GetDim(INPUT_DIM_2) != headNum,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "dy",
-                        Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
+                                                           Ops::Base::ToString(*dyShape).c_str(), hAxisMsg.c_str()),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((qShape.GetDim(INPUT_DIM_0) != dyShape->GetDim(INPUT_DIM_0)) ||
-                    (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)) ||
-                    (qShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
+                        (qShape.GetDim(INPUT_DIM_1) != dyShape->GetDim(INPUT_DIM_1)) ||
+                        (qShape.GetDim(INPUT_DIM_2) != dyShape->GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "query, dy", qdyShapesMsg.c_str(),
                         "B axis, s axis and n axis of dy must be equal to b axis, s axis and n axis of query"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF((kShape.GetDim(INPUT_DIM_0) != vShape.GetDim(INPUT_DIM_0)) ||
-                    (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)) ||
-                    (kShape.GetDim(INPUT_DIM_2) != vShape.GetDim(INPUT_DIM_2)),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "keyIn, value",
-                        kvShapesMsg.c_str(),
+                        (kShape.GetDim(INPUT_DIM_1) != vShape.GetDim(INPUT_DIM_1)) ||
+                        (kShape.GetDim(INPUT_DIM_2) != vShape.GetDim(INPUT_DIM_2)),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                        "FlashAttentionScoreGrad", "keyIn, value", kvShapesMsg.c_str(),
                         "B axis, s axis and n axis of value must be equal to b axis, s axis and n axis of keyIn"),
                     return ge::GRAPH_PARAM_INVALID);
         OP_CHECK_IF(vShape.GetDim(INPUT_DIM_3) != dyShape->GetDim(INPUT_DIM_3),
-                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy",
-                        vdyShapesMsg.c_str(), "D axis of dy must be equal to d axis of value"),
+                    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                                                           "D axis of dy must be equal to d axis of value"),
                     return ge::GRAPH_PARAM_INVALID);
+    }
+
+    // For fixed-length layouts, S1/S2 equality comes directly from the Q/K shapes.
+    // TND initializes this flag from every pair of actual sequence lengths above.
+    if (fBaseParams.layoutType != INPUT_FORMAT_TND) {
+        fBaseParams.isS1S2Same = (fBaseParams.s1 == fBaseParams.s2);
     }
 
     // check rope
@@ -361,7 +745,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         if (qRopeD != kRopeD || qRopeD != ROPE_D_64) {
             std::string shapesMsg = Ops::Base::ToString(*queryRopeShape) + ", " + Ops::Base::ToString(*keyRopeShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",
-                shapesMsg.c_str(), "D of queryRopeOptional and keyRopeOptional must be equal to 64");
+                                                   shapesMsg.c_str(),
+                                                   "D of queryRopeOptional and keyRopeOptional must be equal to 64");
             return ge::GRAPH_PARAM_INVALID;
         }
     }
@@ -429,7 +814,7 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsCapable()
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
 {
-    SetSplitAxis(context_, fBaseParams);
+    SetSplitAxis(context_, fBaseParams, tndBaseInfo);
     DoSplit();
     auto ret = DoSparse();
     if (ret != ge::GRAPH_SUCCESS) {
@@ -449,10 +834,16 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
            fBaseParams.queryType == ge::DT_HIFLOAT8 || fBaseParams.queryType == ge::DT_FLOAT) &&
          fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_OLD)) &&
         fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
-    // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
-    bool templateSupportCond =
-        (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
+    // TND场景下，确定性计算+MHA+Dense支持BN2GS1S2/BN2S2模板，非确定性计算支持BN2S2模板。
+    // kernel侧确定性swizzle尚未适配GQA，需通过g == 1将GQA筛除。
+    // Mode 2 pads every batch's (N2, S2) columns to a full AIC group. Reject schedules whose aggregate
+    // valid-slot ratio is too low; otherwise short tail groups serialize batches while most cores stay idle.
+    const bool deterTndSwizzleSupported = !fBaseParams.isDeterministic || IsTndDeterSwizzleSupported(fBaseParams);
+    const bool templateSupportCond =
+        (fBaseParams.isDeterministic &&
+         (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
+         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && fBaseParams.g == 1 &&
+         deterTndSwizzleSupported) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
          (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
           (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
@@ -461,9 +852,15 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
-    OP_LOGI(context_, "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], isTndSwizzle = [%d], isNzOut = [%d].",
+    if (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && tndBaseInfo.isTndSwizzle) {
+        ConfigureTndDeterBn2S2Swizzle(fBaseParams, tndBaseInfo);
+    }
+    OP_LOGI(context_,
+            "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], "
+            "deterTndSwizzleSupported=[%d], isTndSwizzle=[%d], isNzOut=[%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
-            static_cast<int>(fBaseParams.enableSwizzle), tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
+            static_cast<int>(fBaseParams.enableSwizzle), static_cast<int>(deterTndSwizzleSupported),
+            tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
 
     ret = InitTilingData();
     if (ret != ge::GRAPH_SUCCESS) {
@@ -472,7 +869,27 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     DoPreTiling();
     DoPostTiling();
     DetermineMode(fBaseParams);
+    DetermineBlockSchedule();
     return ge::GRAPH_SUCCESS;
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::DetermineBlockSchedule()
+{
+    const BlockScheduleResult result = SelectBlockSchedule(fBaseParams);
+    fBaseParams.isSplitByBlockIdx = result.isSplitByBlockIdx;
+    fBaseParams.deterBandScheduleMode = result.deterBandSchedule.mode;
+    if (result.deterBandSchedule.mode != DeterBandScheduleMode::DISABLED) {
+        fBaseParams.deterMaxRound = result.deterBandSchedule.maxRound;
+        const int64_t actualBatch = (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2;
+        OP_LOGI(context_,
+                "Select deterministic BAND schedule, mode=[%u], maxRound=[%ld], k=[%lu], b=[%ld], "
+                "effective(m,n,p,q)=[%ld,%ld,%ld,%ld]",
+                static_cast<uint32_t>(result.deterBandSchedule.mode), result.deterBandSchedule.maxRound,
+                fBaseParams.aicNum, actualBatch, result.deterBandSchedule.m, result.deterBandSchedule.n,
+                result.deterBandSchedule.p, result.deterBandSchedule.q);
+    }
+    OP_LOGI(context_, "Determine block schedule, isSplitByBlockIdx=[%d], deterBandScheduleMode=[%u]",
+            static_cast<int>(fBaseParams.isSplitByBlockIdx), static_cast<uint32_t>(fBaseParams.deterBandScheduleMode));
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoSplit()
@@ -921,6 +1338,18 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
     } else if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
                fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND)) {
         CalcleBandDeterParam(fBaseParams);
+    } else if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
+               fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
+               fBaseParams.g > 1) {
+        const GQADenseScheduleResult schedule =
+            SelectGQADenseSchedule(static_cast<int64_t>(fBaseParams.aicNum), fBaseParams.s1Outer, fBaseParams.s2Outer,
+                                   fBaseParams.b * fBaseParams.n2, fBaseParams.g);
+        fBaseParams.deterMaxRound = schedule.selectedRound * fBaseParams.s1Outer;
+        OP_LOGI(context_,
+                "Select deterministic GQA DENSE round, baseR=[%ld], selectedR=[%ld], period=[%ld->%ld], "
+                "maxRound=[%ld]",
+                schedule.baseRound, schedule.selectedRound, schedule.basePeriod, schedule.selectedPeriod,
+                fBaseParams.deterMaxRound);
     }
     if (needChangeSplitItemMode1 || needChangeSplitItemMode2) {
         fBaseParams.s1Outer = s1Outer;
@@ -1074,18 +1503,18 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     uint32_t availUbSize = fBaseParams.ubSize - UB_RESERVE_SPACE;
     // valueDAlign * inputSize * sizeof(dtype) * 2 * 2 --  dy, y size is valueDAlign * inputSize
     // first 2 is dy + y total size, second 2 is double buffer, then get max split s1
-    uint32_t sfmgDyBufferLen =
-        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
-                       SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
-        valueDAlign * inputSize;
-    uint32_t sfmgYBufferLen =
-        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
-                       SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
-        valueDAlign * outDtypeSize;
-    uint32_t sfmgOutputBufferLen =
-        availUbSize / (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
-                       SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
-        SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES;
+    uint32_t sfmgDyBufferLen = availUbSize /
+                               (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
+                                SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
+                               valueDAlign * inputSize;
+    uint32_t sfmgYBufferLen = availUbSize /
+                              (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
+                               SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
+                              valueDAlign * outDtypeSize;
+    uint32_t sfmgOutputBufferLen = availUbSize /
+                                   (valueDAlign * (inputSize * NUM_TWO + outDtypeSize * NUM_TWO) +
+                                    SFMG_DOUBLE_BUFFER_NUM * SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES) *
+                                   SFMG_FP32_ACCUMULATOR_SIZE * FP32_BYTES;
 
     // 计算单核的计算量
     uint32_t sfmgUsedCoreNum = fBaseParams.blockOuter * AICV_RATIO_DEFAULT;
@@ -1129,6 +1558,9 @@ uint64_t FlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
 {
+    // reserved2/3 仅为 8 字节对齐占位，后面没有任何 set；不写则 tiling blob 里是未初始化字节
+    preTilingData_->set_reserved();
+
     uint64_t inputBufferLen = PRE_BUFFER_SIZE; // x / 8 + 2 * x + 32 = fBaseParams.ubSize
     uint64_t singleUBProcessNum = static_cast<uint64_t>(CAST_BUFFER_LEN) / 2;
 
@@ -1136,17 +1568,21 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t singleCoreNum = AlignTo(CeilDivideBy(maskSize, static_cast<uint64_t>(fBaseParams.blockOuter)),
                                      static_cast<uint64_t>(BOOL_BLOCK_NUMS));
     uint64_t maskUsedCoreNum = 0;
-    bool presfmgLimit = !(fBaseParams.s2 <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM256) &&
-        fBaseParams.b * fBaseParams.n1 * fBaseParams.s1Outer >= MAX_BASIC_BLOCK_SIZE);
+    bool presfmgLimit = !(fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
+                          fBaseParams.s2 <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM256) &&
+                          fBaseParams.b * fBaseParams.n1 * fBaseParams.s1Outer >= MAX_BASIC_BLOCK_SIZE);
+    bool isNewDeterForPreSfmg = fBaseParams.deterSparseType >= static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
+                                fBaseParams.deterSparseType <= static_cast<uint32_t>(DeterSparseType::DETER_BAND);
+    bool deterSupportPreSfmg = !fBaseParams.isDeterministic || isNewDeterForPreSfmg;
     fBaseParams.enablePreSfmg =
-        (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
-        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&
-         presfmgLimit &&
-         fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
-         fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
-         (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
-         !fBaseParams.isDeterministic && fBaseParams.sinkOptional != NORMAL_TENSOR &&
-         fBaseParams.dropoutIsDivisibleBy8 && !fBaseParams.sValueZeroUnderTND);
+        deterSupportPreSfmg &&
+        ((fBaseParams.queryType == ge::DT_HIFLOAT8) ||
+         ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) && presfmgLimit &&
+          fBaseParams.d > static_cast<uint32_t>(ConstAxisTemplateNum::NUM64) &&
+          fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
+          (fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 || fBaseParams.splitAxis == SplitAxisEnum::BN2S2) &&
+          fBaseParams.sinkOptional != NORMAL_TENSOR && fBaseParams.dropoutIsDivisibleBy8 &&
+          !fBaseParams.sValueZeroUnderTND));
     if (fBaseParams.enablePreSfmg) {
         maskUsedCoreNum = static_cast<uint64_t>(DoPreSfmgTiling());
     } else {
@@ -1201,9 +1637,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
         fBaseParams.s1SinkOuter = fBaseParams.s1Outer * AICV_RATIO_DEFAULT;
         fBaseParams.s2SinkOuter = fBaseParams.s2Outer;
-        fBaseParams.sinkSize =
-            (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2 *
-            fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+        fBaseParams.sinkSize = (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2 * fBaseParams.g *
+                               fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
         uint64_t sinkWorkSpaceSize = (fBaseParams.sinkSize + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
         uint64_t sinkPreBlockFactor = (sinkWorkSpaceSize + maskUsedCoreNum - 1) / maskUsedCoreNum;
         uint64_t sinkPreBlockTotal = (sinkWorkSpaceSize + sinkPreBlockFactor - 1) / sinkPreBlockFactor;
@@ -1381,7 +1816,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
         }
     }
     // mask bool workspace size
-    if (fBaseParams.dropoutIsDivisibleBy8 == 0) {
+    if (fBaseParams.dropoutIsDivisibleBy8 == 0 && fBaseParams.dropMaskOuter) {
         postTilingData_->set_dropMaskGmOffset(workspaceSize);
         workspaceSize =
             (workspaceSize + static_cast<size_t>(fBaseParams.dropMaskSize) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
@@ -1870,26 +2305,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
 
-    bool isSplitByBlockIdx =
-        fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
-        fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-        (fBaseParams.s1Inner * fBaseParams.s1CvRatio == fBaseParams.s2Inner * fBaseParams.s2CvRatio &&
-         fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED));
-    // 确定性计算支持swizzle的一些条件
-    if (fBaseParams.isDeterministic) {
-        bool casualCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
-                           fBaseParams.isS1S2Same);
-        bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
-                         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
-        isSplitByBlockIdx =
-            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
-             fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
-            (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
-             bandCond);
-    }
-    OP_LOGI(context_, "Determine whether to swizzle, get isSplitByBlockIdx=[%d]", static_cast<int>(isSplitByBlockIdx));
-    s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(isSplitByBlockIdx);
-    if (isSplitByBlockIdx) {
+    s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(static_cast<uint8_t>(fBaseParams.isSplitByBlockIdx));
+    s1s2BNGS1S2BaseParams_->set_deterBandScheduleMode(static_cast<uint8_t>(fBaseParams.deterBandScheduleMode));
+    s1s2BNGS1S2BaseParams_->set_reservedPad();
+    s1s2BNGS1S2BaseParams_->set_totalPerBatchNum(0);
+    if (fBaseParams.isSplitByBlockIdx) {
         s1s2BNGS1S2BaseParams_->set_totalPerBatchNum(GetTotalPerBatchNum(fBaseParams, fBaseParams.sparseType));
     }
     s1s2BNGS1S2BaseParams_->set_sparseType(fBaseParams.sparseType);
@@ -1910,9 +2330,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2SplitCoreParams_->set_maxValidBBLen(fBaseParams.maxValidBBLen);
     if (fBaseParams.isDeterministic) {
         baseDeterParam_->set_noNeedDeter(fBaseParams.noNeedDeter);
+        baseDeterParam_->set_reserved1(0);
         baseDeterParam_->set_deterMaxRound(fBaseParams.deterMaxRound);
         if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
-            fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
+             fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
             fBaseParams.layoutType == INPUT_FORMAT_TND) {
             baseDeterParam_->set_dqIsNeedDeter(fBaseParams.startNeedSyncRound);
             baseDeterParam_->set_dkDvIsNeedDeter(fBaseParams.endNeedSyncRound);
@@ -1923,6 +2344,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     }
     if (IsNewDeter(fBaseParams) && deterParam != nullptr) {
         deterParam->set_coreDivide(fBaseParams.coreDivide);
+        deterParam->set_tndLineDeter(fBaseParams.tndLineDeter);
+        deterParam->set_reserved();
         deterParam->set_deterPrefixStep(fBaseParams.deterPrefixStep);
         deterParam->set_deterPrefix(fBaseParams.deterPrefix);
         deterParam->set_deterPrefixAlign(fBaseParams.deterPrefixAlign);

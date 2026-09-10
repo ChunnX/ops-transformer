@@ -24,13 +24,13 @@
 #endif
 #include "block_mmad_multi_block_bias.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tuple_utils.h"
 
-#include "../block/block_mmad.h"
-#include "../policy/dispatch_policy.h"
+#include "../block/cgmct_block_mmad.h"
+#include "../policy/cgmct_dispatch_policy.h"
 
 namespace Cgmct {
 namespace Gemm {
@@ -45,12 +45,11 @@ class BlockGroupedMatmulBuilder {
 
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class BiasType_,
           class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_>
-class BlockGroupedMatmulBuilder<AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_,
-                                L1TileShape_, L0TileShape_, BlockScheduler_, BlockMatmulPolicy_,
-                                AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulMultiBlockWithLayout<>,
-                                                          BlockMatmulPolicy_> ||
-                                                          AscendC::Std::is_base_of_v<MatmulMultiBlockBias<>,
-                                                          BlockMatmulPolicy_>>> {
+class BlockGroupedMatmulBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_, L0TileShape_,
+    BlockScheduler_, BlockMatmulPolicy_,
+    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulMultiBlockWithLayout<>, BlockMatmulPolicy_> ||
+                              AscendC::Std::is_base_of_v<MatmulMultiBlockBias<>, BlockMatmulPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -104,7 +103,6 @@ public:
     __aicore__ inline BlockGroupedMatmulBuilder() {}
 
     __aicore__ inline ~BlockGroupedMatmulBuilder() {}
-
 };
 } // namespace Block
 } // namespace Gemm

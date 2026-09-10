@@ -10,27 +10,27 @@
 import os
 import csv
 import logging
-import hashlib
 import argparse
-from typing import Tuple, Callable, Dict, Type
+from typing import Tuple, Dict
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 import numpy as np
 from ml_dtypes import float8_e5m2, float8_e8m0fnu, bfloat16
 
 # 3. 日志配置（全局初始化）
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
 # ========== 封装精度指标为数据类 ==========
 @dataclass
 class AccuracyMetrics:
     """强相关的精度参数"""
-    mae: float          # 平均绝对误差
-    max_ae: float       # 最大绝对误差
-    mse: float          # 均方误差
-    rmse: float         # 均方根误差
-    cos_sim: float      # 余弦相似度
+
+    mae: float  # 平均绝对误差
+    max_ae: float  # 最大绝对误差
+    mse: float  # 均方误差
+    rmse: float  # 均方根误差
+    cos_sim: float  # 余弦相似度
 
     def round_all(self, decimals: int = 6) -> None:
         """将所有指标四舍五入到指定小数位"""
@@ -46,6 +46,7 @@ class QuantAllReduceAccuracyChecker:
     quant_all_reduce accuracy checker
     对比CPU Golden值与NPU计算值的精度指标, 输出结果并写入CSV
     """
+
     # 类常量：数据类型精度配置（所有实例共享）
     TYPE_CONFIG: Dict[str, Dict] = {
         "int32_t": {"dtype": np.int32, "mae": 1e-3, "cos": 0.9999},
@@ -69,19 +70,20 @@ class QuantAllReduceAccuracyChecker:
         self.output_type = args.output_type
         self.ranksize = args.ranksize
         # 初始化Golden目录
-        self.golden_dir = f"./golden/quantallreduce_{self.case_name}_{self.bs}_{self.hidden_size}"
+        self.golden_dir = (
+            f"./golden/quantallreduce_{self.case_name}_{self.bs}_{self.hidden_size}"
+        )
         # 校验输出类型是否支持
         if self.output_type not in self.TYPE_CONFIG:
-            raise ValueError(f"不支持的输出类型：{self.output_type}，支持类型：{list(self.TYPE_CONFIG.keys())}")
+            raise ValueError(
+                f"不支持的输出类型：{self.output_type}，支持类型：{list(self.TYPE_CONFIG.keys())}"
+            )
         # 获取当前类型的精度配置
         self.type_info = self.TYPE_CONFIG[self.output_type]
         self.target_dtype = self.type_info["dtype"]
 
     def write_to_result_csv(
-        self,
-        metrics: AccuracyMetrics,
-        is_pass: bool,
-        csv_path: str = "./result.csv"
+        self, metrics: AccuracyMetrics, is_pass: bool, csv_path: str = "./result.csv"
     ) -> bool:
         """
         将精度对比结果写入CSV文件
@@ -93,7 +95,16 @@ class QuantAllReduceAccuracyChecker:
         # 对指标四舍五入（避免小数位过长）
         metrics.round_all(decimals=6)
         # 构造数据行
-        header = ["case_name", "mae", "max_ae", "mse", "rmse", "cos_sim", "is_pass", "timestamp"]
+        header = [
+            "case_name",
+            "mae",
+            "max_ae",
+            "mse",
+            "rmse",
+            "cos_sim",
+            "is_pass",
+            "timestamp",
+        ]
         data_row = [
             self.case_name,
             metrics.mae,
@@ -102,23 +113,25 @@ class QuantAllReduceAccuracyChecker:
             metrics.rmse,
             metrics.cos_sim,
             is_pass,
-            self._get_utc8_timestamp()
+            self._get_utc8_timestamp(),
         ]
         # 写入CSV文件
         try:
             file_exists = os.path.exists(csv_path)
-            with open(csv_path, mode='a', newline='', encoding='utf-8') as f:
+            with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 if not file_exists:
                     writer.writerow(header)
                 writer.writerow(data_row)
-            logging.info(f"结果已成功写入CSV文件: {csv_path}")
+            logging.info(f"results written to CSV file: {csv_path}")
             return True
         except Exception as e:
-            logging.error(f"写入CSV文件失败: {str(e)}")
+            logging.error(f"failed to write CSV file: {str(e)}")
             return False
 
-    def calculate_metrics(self, cpu_data: np.ndarray, npu_data: np.ndarray) -> AccuracyMetrics:
+    def calculate_metrics(
+        self, cpu_data: np.ndarray, npu_data: np.ndarray
+    ) -> AccuracyMetrics:
         """
         计算CPU与NPU数据的精度指标
         :param cpu_data: CPU Golden数据
@@ -146,34 +159,42 @@ class QuantAllReduceAccuracyChecker:
             cos_sim = dot_product / (cpu_norm * npu_norm)
             cos_sim = np.clip(cos_sim, -1.0, 1.0)  # 防止数值溢出
         # 返回封装后的精度指标
-        return AccuracyMetrics(mae=mae, max_ae=max_ae, mse=mse, rmse=rmse, cos_sim=cos_sim)
-          
+        return AccuracyMetrics(
+            mae=mae, max_ae=max_ae, mse=mse, rmse=rmse, cos_sim=cos_sim
+        )
+
     def compare(self) -> bool:
         """
         执行所有Rank的精度对比
         :return: 是否所有Rank都通过校验
         """
         logging.info("=" * 50)
-        logging.info("开始进行精度对比")
-        logging.info(f"校验用例：{self.case_name} | 输出类型：{self.output_type} | Rank数: {self.ranksize}")
+        logging.info("start accuracy comparison")
+        logging.info(
+            f"case: {self.case_name} | output type: {self.output_type} | rank count: {self.ranksize}"
+        )
         logging.info("=" * 50)
         # 逐Rank对比NPU数据
         all_pass = True
-        final_metrics = AccuracyMetrics(mae=0.0, max_ae=0.0, mse=0.0, rmse=0.0, cos_sim=0.0)
+        final_metrics = AccuracyMetrics(
+            mae=0.0, max_ae=0.0, mse=0.0, rmse=0.0, cos_sim=0.0
+        )
         for rank in range(self.ranksize):
-            logging.info(f"\n---------- 对比 Rank-{rank} NPU 数据 ----------")
+            logging.info(f"\n---------- compare Rank-{rank} NPU data ----------")
             # 加载数据
-            npu_data, load_success = self._load_data(rank, 'npu')
+            npu_data, load_success = self._load_data(rank, "npu")
             if not load_success:
                 all_pass = False
                 continue
-            cpu_data, load_success = self._load_data(rank, 'cpu')
+            cpu_data, load_success = self._load_data(rank, "cpu")
             if not load_success:
                 all_pass = False
                 continue
             # 校验数据长度
             if len(cpu_data) != len(npu_data):
-                logging.error(f"Rank-{rank} 数据长度不匹配 | CPU: {len(cpu_data)} | NPU: {len(npu_data)}")
+                logging.error(
+                    f"Rank-{rank} data length mismatch | CPU: {len(cpu_data)} | NPU: {len(npu_data)}"
+                )
                 all_pass = False
                 continue
             # 计算精度指标（返回封装后的对象）
@@ -181,25 +202,35 @@ class QuantAllReduceAccuracyChecker:
             # 记录最后一个有效Rank的指标（用于写入CSV）
             final_metrics = metrics
             # 打印精度指标
-            logging.info(f"Rank-{rank} 精度指标：")
-            logging.info(f"  MAE: {metrics.mae:.6f} (阈值：{self.type_info['mae']})")
+            logging.info(f"Rank-{rank} accuracy metrics:")
+            logging.info(
+                f"  MAE: {metrics.mae:.6f} (threshold: {self.type_info['mae']})"
+            )
             logging.info(f"  MaxAE: {metrics.max_ae:.6f}")
             logging.info(f"  MSE: {metrics.mse:.6f}")
             logging.info(f"  RMSE: {metrics.rmse:.6f}")
-            logging.info(f"  余弦相似度：{metrics.cos_sim:.6f} (阈值：{self.type_info['cos']})")
+            logging.info(
+                f"  余弦相似度：{metrics.cos_sim:.6f} (阈值：{self.type_info['cos']})"
+            )
             # 判断当前Rank是否通过
-            rank_pass = (metrics.mae < self.type_info["mae"]) and (metrics.cos_sim > self.type_info["cos"])
+            rank_pass = (metrics.mae < self.type_info["mae"]) and (
+                metrics.cos_sim > self.type_info["cos"]
+            )
             if rank_pass:
-                logging.info(f"[PASS] Rank-{rank} 精度对比通过！")
+                logging.info(f"[PASS] Rank-{rank} accuracy check passed")
             else:
-                logging.error(f"[FAIL] Rank-{rank} 精度对比失败！")
+                logging.error(f"[FAIL] Rank-{rank} accuracy check failed")
                 all_pass = False
         # 输出最终结果
         logging.info("\n" + "=" * 50)
         if all_pass:
-            logging.info(f"[PASS] 所有Rank (类型: {self.output_type}) 精度对比通过！")
+            logging.info(
+                f"[PASS] all ranks (type: {self.output_type}) accuracy check passed"
+            )
         else:
-            logging.error(f"[FAIL] 部分Rank (类型: {self.output_type}) 精度对比失败！")
+            logging.error(
+                f"[FAIL] some ranks (type: {self.output_type}) accuracy check failed"
+            )
         logging.info("=" * 50)
         # 写入CSV文件（传递封装后的指标对象）
         self.write_to_result_csv(final_metrics, all_pass)
@@ -214,15 +245,15 @@ class QuantAllReduceAccuracyChecker:
         file = os.path.join(self.golden_dir, f"output_{name}_{rank}.bin")
         # 1. 检查文件是否存在
         if not os.path.exists(file):
-            logging.error(f"Rank-{rank} {name}数据文件不存在: {file}")
-            return None, False       
+            logging.error(f"Rank-{rank} {name} data file not found: {file}")
+            return None, False
         # 2. 加载NPU数据（带异常处理）
         try:
             data = np.fromfile(file, dtype=self.target_dtype)
-            logging.info(f"Rank-{rank} {name}数据加载成功 | 长度：{len(data)}")
+            logging.info(f"Rank-{rank} {name} data loaded | length: {len(data)}")
             return data, True
         except Exception as e:
-            logging.error(f"加载Rank-{rank} {name}数据失败: {e}")
+            logging.error(f"failed to load Rank-{rank} {name} data: {e}")
             return None, False
 
     def _get_utc8_timestamp(self) -> datetime:
@@ -238,7 +269,7 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="量化AllReduce算子精度对比工具")
     # 必选参数（按顺序）
-    parser.add_argument('case_name', type=str, help="测试用例名称")
+    parser.add_argument("case_name", type=str, help="测试用例名称")
     parser.add_argument("bs", type=int, help="Batch Size")
     parser.add_argument("hidden_size", type=int, help="Hidden Size")
     parser.add_argument("output_type", type=str, help="输出数据类型")
@@ -258,5 +289,5 @@ if __name__ == "__main__":
         # 退出码：0=通过，1=失败
         exit(0 if result else 1)
     except Exception as e:
-        logging.error(f"程序执行失败：{e}")
+        logging.error(f"program execution failed: {e}")
         exit(1)

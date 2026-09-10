@@ -47,7 +47,6 @@ constexpr int32_t DEFAULT_UBMOVENUM = 4;
 constexpr int32_t DEFAULT_COMMNPUSPLIT = 1;
 constexpr int32_t DEFAULT_COMMDATASPLIT = 16;
 
-
 union NodeValue {
     float threshold;  // 内部节点的阈值
     int return_value; // 叶子节点的返回值
@@ -60,13 +59,15 @@ struct DecisionNode {
 
 inline void PrecomputeFeatures(float features[FEATURE_COUNT], int m, int k, int n, int world_size)
 {
+    const int64_t mn = static_cast<int64_t>(m) * n;
+    const int64_t world_k = static_cast<int64_t>(world_size) * k;
     features[static_cast<int>(FeatureType::M_VALUE)] = static_cast<float>(m);
     features[static_cast<int>(FeatureType::K_VALUE)] = static_cast<float>(k);
     features[static_cast<int>(FeatureType::N_VALUE)] = static_cast<float>(n);
     features[static_cast<int>(FeatureType::M_DIV_N)] = (n != 0) ? static_cast<float>(m) / n : 0.0f;
-    features[static_cast<int>(FeatureType::MN_DIV_K)] = (k != 0) ? static_cast<float>(m * n) / k : 0.0f;
-    features[static_cast<int>(FeatureType::WORLD_MUL_K)] = static_cast<float>(world_size * k);
-    features[static_cast<int>(FeatureType::M_MUL_N)] = static_cast<float>(m * n);
+    features[static_cast<int>(FeatureType::MN_DIV_K)] = (k != 0) ? static_cast<float>(mn) / k : 0.0f;
+    features[static_cast<int>(FeatureType::WORLD_MUL_K)] = static_cast<float>(world_k);
+    features[static_cast<int>(FeatureType::M_MUL_N)] = static_cast<float>(mn);
 }
 
 template <size_t N>
@@ -105,7 +106,6 @@ inline int TraverseDecisionTree(const DecisionNode (&decision_rules)[N], int m, 
     }
     return default_value;
 }
-
 
 namespace Tiling_Rank2_A2 {
 const DecisionNode m0Rule[] = {
@@ -691,7 +691,6 @@ inline int GetOptimalUbmovenum(int m, int k, int n)
 }
 
 } // namespace Tiling_Rank2_A2
-
 
 namespace Tiling_Rank4_A2 {
 // m0优化参数的决策树规则（使用特征：）

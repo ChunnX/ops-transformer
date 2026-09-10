@@ -13,12 +13,28 @@
 import pytest
 import random
 import pandas as pd
-from pathlib import Path
 import numpy as np
 import os
 import math
 
-def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mode, block_size1, block_size2, block_num2):
+
+def normalize_topk_mode(value):
+    """Accept the case-insensitive ``fullK`` spelling used by Excel cases."""
+    if isinstance(value, str) and value.casefold() == "fullk":
+        return "fullK"
+    return value
+
+
+def infer_template_run_mode(
+    K,
+    cmp_ratio,
+    ori_kv_type,
+    cmp_kv_type,
+    cmp_mask_mode,
+    block_size1,
+    block_size2,
+    block_num2,
+):
     """
     根据K和cmp_ratio推断template_run_mode并设置默认值
 
@@ -37,8 +53,8 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
     """
     template_run_mode = "SWA"
 
-    if K is None or K == ['None'] or K == 0:
-        if cmp_ratio is None or cmp_ratio == ['None']:
+    if K is None or K == ["None"] or K == 0:
+        if cmp_ratio is None or cmp_ratio == ["None"]:
             template_run_mode = "SWA"
             cmp_ratio = 1
             cmp_kv_type = ori_kv_type
@@ -64,15 +80,14 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
         block_num2 = block_num2  # 后续计算
 
     return {
-        'template_run_mode': template_run_mode,
-        'K': K,
-        'cmp_ratio': cmp_ratio,
-        'cmp_kv_type': cmp_kv_type,
-        'cmp_mask_mode': cmp_mask_mode,
-        'block_size2': block_size2,
-        'block_num2': block_num2,
+        "template_run_mode": template_run_mode,
+        "K": K,
+        "cmp_ratio": cmp_ratio,
+        "cmp_kv_type": cmp_kv_type,
+        "cmp_mask_mode": cmp_mask_mode,
+        "block_size2": block_size2,
+        "block_num2": block_num2,
     }
-
 
 
 def gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio):
@@ -88,23 +103,49 @@ def gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio):
     """
     return [math.floor(s / cmp_ratio) for s in seqused_ori_kv]
 
+
 def parse_list_param(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, (int,)) and not isinstance(value, bool):
+        return [value]
+    if isinstance(value, float) and not pd.isna(value):
+        return [int(value)]
+    if isinstance(value, str):
+        s = value.strip()
+        if s.lower() == "none" or s == "":
+            return None
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        try:
+            return [
+                (int(x.strip()) if "." not in s else float(x.strip()))
+                for x in s.split(",")
+                if x.strip() != ""
+            ]
+        except ValueError:
+            return None
+    return None
+
+
+def parse_datarange_param(value):
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
     if isinstance(value, list):
         return value
     if isinstance(value, str):
         s = value.strip()
-        if s.lower() == 'none' or s == '':
+        if s.lower() == "none" or s == "":
             return None
-        if s.startswith('[') and s.endswith(']'):
+        if s.startswith("[") and s.endswith("]"):
             s = s[1:-1]
         try:
-            return [int(x.strip()) for x in s.split(',') if x.strip() != '']
+            return [float(x.strip()) for x in s.split(",") if x.strip() != ""]
         except ValueError:
             return None
     return None
-
 
 
 def gen_cu_seqlens_from_seqused(seqused):
@@ -121,6 +162,33 @@ def gen_cu_seqlens_from_seqused(seqused):
     for s in seqused:
         cu_seqlens.append(cu_seqlens[-1] + s)
     return cu_seqlens
+
+
+def gen_cu_seqlens_cmp_kv(
+    cu_seqlens_ori_kv, seqused_cmp_kv, cmp_ratio, layout_kv="TND"
+):
+    """Generate compressed prefixes for TND storage or PA actual lengths."""
+    if layout_kv == "PA_BBND":
+        return gen_cu_seqlens_from_seqused(seqused_cmp_kv)
+
+    inferred = [math.floor(value / cmp_ratio) for value in cu_seqlens_ori_kv]
+    capacities = [
+        inferred[index + 1] - inferred[index] for index in range(len(inferred) - 1)
+    ]
+    if all(capacity >= actual for capacity, actual in zip(capacities, seqused_cmp_kv)):
+        return inferred
+
+    required = sum(seqused_cmp_kv)
+    total = inferred[-1]
+    if required > total:
+        raise ValueError(
+            f"compressed actual lengths require {required} elements, "
+            f"but inferred T3 capacity is {total}"
+        )
+    adjusted = list(seqused_cmp_kv)
+    adjusted[-1] += total - required
+    return gen_cu_seqlens_from_seqused(adjusted)
+
 
 def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio):
     """
@@ -149,6 +217,7 @@ def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp
 
     return ori_block_num_sum, cmp_block_num_sum
 
+
 def fill_none_params(params_dict):
     """
     填充None参数的默认值（完整封装）
@@ -159,45 +228,45 @@ def fill_none_params(params_dict):
     返回:
         dict: 填充后的完整参数字典
     """
-    layout_q = params_dict['layout_q']
-    B = params_dict['B']
-    S1 = params_dict['S1']
-    S2 = params_dict['S2']
-    ori_kv_type = params_dict['ori_kv_type']
-    block_size1 = params_dict['block_size1']
-    actlen_mode = params_dict.get('actlen_mode', 'full')
-    S1EQS2 = params_dict.get('S1EQS2', False)
+    layout_q = params_dict["layout_q"]
+    B = params_dict["B"]
+    S1 = params_dict["S1"]
+    S2 = params_dict["S2"]
+    ori_kv_type = params_dict["ori_kv_type"]
+    block_size1 = params_dict["block_size1"]
+    actlen_mode = params_dict.get("actlen_mode", "full")
+    S1EQS2 = params_dict.get("S1EQS2", False)
 
     # 1. 获取template_run_mode（优先从params_dict获取）
-    template_run_mode = params_dict.get('template_run_mode')
+    template_run_mode = params_dict.get("template_run_mode")
 
     if template_run_mode is None:
         # 如果未提供template_run_mode，则推断（向后兼容）
         infer_result = infer_template_run_mode(
-            params_dict.get('K'),
-            params_dict.get('cmp_ratio'),
+            params_dict.get("K"),
+            params_dict.get("cmp_ratio"),
             ori_kv_type,
-            params_dict.get('cmp_kv_type'),
-            params_dict.get('cmp_mask_mode'),
+            params_dict.get("cmp_kv_type"),
+            params_dict.get("cmp_mask_mode"),
             block_size1,
-            params_dict.get('block_size2'),
-            params_dict.get('block_num2')
+            params_dict.get("block_size2"),
+            params_dict.get("block_num2"),
         )
-        K = infer_result['K']
-        cmp_ratio = infer_result['cmp_ratio']
-        cmp_kv_type = infer_result['cmp_kv_type']
-        cmp_mask_mode = infer_result['cmp_mask_mode']
-        block_size2 = infer_result['block_size2']
-        block_num2 = infer_result['block_num2']
-        template_run_mode = infer_result['template_run_mode']
+        K = infer_result["K"]
+        cmp_ratio = infer_result["cmp_ratio"]
+        cmp_kv_type = infer_result["cmp_kv_type"]
+        cmp_mask_mode = infer_result["cmp_mask_mode"]
+        block_size2 = infer_result["block_size2"]
+        block_num2 = infer_result["block_num2"]
+        template_run_mode = infer_result["template_run_mode"]
     else:
         # 如果提供了template_run_mode，直接使用params_dict中的参数
-        K = params_dict.get('K')
-        cmp_ratio = params_dict.get('cmp_ratio')
-        cmp_kv_type = params_dict.get('cmp_kv_type')
-        cmp_mask_mode = params_dict.get('cmp_mask_mode')
-        block_size2 = params_dict.get('block_size2')
-        block_num2 = params_dict.get('block_num2')
+        K = params_dict.get("K")
+        cmp_ratio = params_dict.get("cmp_ratio")
+        cmp_kv_type = params_dict.get("cmp_kv_type")
+        cmp_mask_mode = params_dict.get("cmp_mask_mode")
+        block_size2 = params_dict.get("block_size2")
+        block_num2 = params_dict.get("block_num2")
 
         # 处理None参数的默认值（保持一致性）
         if cmp_ratio is None:
@@ -212,13 +281,13 @@ def fill_none_params(params_dict):
             K = 0
 
     # 2. 获取需要填充的参数
-    seqused_q = params_dict.get('seqused_q')
-    cu_seqlens_q = params_dict.get('cu_seqlens_q')
-    seqused_ori_kv = params_dict.get('seqused_ori_kv')
-    cu_seqlens_ori_kv = params_dict.get('cu_seqlens_ori_kv')
-    seqused_cmp_kv = params_dict.get('seqused_cmp_kv')
-    cu_seqlens_cmp_kv = params_dict.get('cu_seqlens_cmp_kv')
-    cmp_residual_kv = params_dict.get('cmp_residual_kv')
+    seqused_q = params_dict.get("seqused_q")
+    cu_seqlens_q = params_dict.get("cu_seqlens_q")
+    seqused_ori_kv = params_dict.get("seqused_ori_kv")
+    cu_seqlens_ori_kv = params_dict.get("cu_seqlens_ori_kv")
+    seqused_cmp_kv = params_dict.get("seqused_cmp_kv")
+    cu_seqlens_cmp_kv = params_dict.get("cu_seqlens_cmp_kv")
+    cmp_residual_kv = params_dict.get("cmp_residual_kv")
 
     if seqused_q is not None and len(seqused_q) == 1:
         seqused_q = seqused_q * B
@@ -229,14 +298,22 @@ def fill_none_params(params_dict):
     if cmp_residual_kv is not None and len(cmp_residual_kv) == 1:
         cmp_residual_kv = cmp_residual_kv * B
 
-    need_fill_q_ori = any(v is None for v in [seqused_q, cu_seqlens_q, seqused_ori_kv, cu_seqlens_ori_kv])
+    need_fill_q_ori = any(
+        v is None for v in [seqused_q, cu_seqlens_q, seqused_ori_kv, cu_seqlens_ori_kv]
+    )
 
     if need_fill_q_ori:
         # 从cu推导seqused
         if seqused_q is None and cu_seqlens_q is not None:
-            seqused_q = [cu_seqlens_q[i + 1] - cu_seqlens_q[i] for i in range(len(cu_seqlens_q) - 1)]
+            seqused_q = [
+                cu_seqlens_q[i + 1] - cu_seqlens_q[i]
+                for i in range(len(cu_seqlens_q) - 1)
+            ]
         if seqused_ori_kv is None and cu_seqlens_ori_kv is not None:
-            seqused_ori_kv = [cu_seqlens_ori_kv[i + 1] - cu_seqlens_ori_kv[i] for i in range(len(cu_seqlens_ori_kv) - 1)]
+            seqused_ori_kv = [
+                cu_seqlens_ori_kv[i + 1] - cu_seqlens_ori_kv[i]
+                for i in range(len(cu_seqlens_ori_kv) - 1)
+            ]
 
         # S1EQS2联动: seqused_q与seqused_ori_kv
         if S1EQS2:
@@ -283,15 +360,19 @@ def fill_none_params(params_dict):
     for i in range(B):
         slot_len = cu_seqlens_q[i + 1] - cu_seqlens_q[i]
         if slot_len < seqused_q[i]:
-            raise ValueError(f"cu_seqlens_q slot ({slot_len}) at batch {i} must >= seqused_q ({seqused_q[i]})")
+            raise ValueError(
+                f"cu_seqlens_q slot ({slot_len}) at batch {i} must >= seqused_q ({seqused_q[i]})"
+            )
 
     for i in range(B):
         slot_len = cu_seqlens_ori_kv[i + 1] - cu_seqlens_ori_kv[i]
         if slot_len < seqused_ori_kv[i]:
-            raise ValueError(f"cu_seqlens_ori_kv slot ({slot_len}) at batch {i} must >= seqused_ori_kv ({seqused_ori_kv[i]})")
+            raise ValueError(
+                f"cu_seqlens_ori_kv slot ({slot_len}) at batch {i} must >= seqused_ori_kv ({seqused_ori_kv[i]})"
+            )
 
-    # 3. 填充cmp参数 (SWA场景为None, 非SWA场景自动生成)
-    if template_run_mode == "SWA":
+    # 3. 填充cmp参数 (SWA/ORI_SPARSE场景为None, 其他场景自动生成)
+    if template_run_mode in ("SWA", "ORI_SPARSE"):
         seqused_cmp_kv = None
         cu_seqlens_cmp_kv = None
         cmp_residual_kv = None
@@ -299,26 +380,35 @@ def fill_none_params(params_dict):
         if seqused_cmp_kv is None:
             seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
         if cu_seqlens_cmp_kv is None:
-            cu_seqlens_cmp_kv = [math.floor(c / cmp_ratio) for c in cu_seqlens_ori_kv]
+            cu_seqlens_cmp_kv = gen_cu_seqlens_cmp_kv(
+                cu_seqlens_ori_kv, seqused_cmp_kv, cmp_ratio, params_dict["layout_kv"]
+            )
         if cmp_residual_kv is None:
-            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv]
+            cmp_residual_kv = (
+                [s % cmp_ratio for s in seqused_ori_kv] if cmp_mask_mode != 0 else None
+            )
         for i in range(B):
             slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
             if slot_len < seqused_cmp_kv[i]:
-                raise ValueError(f"cu_seqlens_cmp_kv slot ({slot_len}) at batch {i} must >= seqused_cmp_kv ({seqused_cmp_kv[i]})")
+                raise ValueError(
+                    f"cu_seqlens_cmp_kv slot ({slot_len}) at batch {i} must >= seqused_cmp_kv ({seqused_cmp_kv[i]})"
+                )
 
     # 6. 计算block_num
-    block_num1 = params_dict.get('block_num1')
-    block_num2 = params_dict.get('block_num2')
+    block_num1 = params_dict.get("block_num1")
+    block_num2 = params_dict.get("block_num2")
 
     if block_num1 is None:
         ori_block_num, _ = calc_block_num(
-            seqused_ori_kv, seqused_cmp_kv if seqused_cmp_kv is not None else [0] * B,
-            block_size1, block_size2, cmp_ratio
+            seqused_ori_kv,
+            seqused_cmp_kv if seqused_cmp_kv is not None else [0] * B,
+            block_size1,
+            block_size2,
+            cmp_ratio,
         )
         block_num1 = ori_block_num
     if block_num2 is None:
-        if template_run_mode == "SWA":
+        if template_run_mode in ("SWA", "ORI_SPARSE"):
             block_num2 = 0
         else:
             _, cmp_block_num = calc_block_num(
@@ -329,50 +419,82 @@ def fill_none_params(params_dict):
     # 7. 计算T1
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
+    ori_mask_mode = params_dict.get("ori_mask_mode")
+    ori_kv_topk_mode = normalize_topk_mode(params_dict.get("ori_kv_topk_mode"))
+    if ori_kv_topk_mode is None:
+        ori_kv_topk_mode = "fullK" if ori_mask_mode == 0 else "no"
+    cmp_kv_topk_mode = normalize_topk_mode(params_dict.get("cmp_kv_topk_mode"))
+    if cmp_kv_topk_mode is None:
+        cmp_kv_topk_mode = "fullK" if cmp_mask_mode == 0 else "no"
+
     # 构建完整参数字典
     filled_params = {
-        'Testcase_Name': params_dict.get('Testcase_Name'),
-        'layout_q': layout_q,
-        'layout_kv': params_dict['layout_kv'],
-        'q_type': params_dict['q_type'],
-        'ori_kv_type': ori_kv_type,
-        'cmp_kv_type': cmp_kv_type,
-        'B': B,
-        'S1': S1,
-        'S2': S2,
-        'T1': T1,
-        'N1': params_dict['N1'],
-        'N2': params_dict['N2'],
-        'D': params_dict['D'],
-        'K': K,
-        'block_num1': block_num1,
-        'block_num2': block_num2,
-        'block_size1': block_size1,
-        'block_size2': block_size2,
-        'seqused_q': seqused_q,
-        'cu_seqlens_q': cu_seqlens_q,
-        'seqused_ori_kv': seqused_ori_kv,
-        'seqused_cmp_kv': seqused_cmp_kv,
-        'cu_seqlens_ori_kv': cu_seqlens_ori_kv,
-        'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
-        'cmp_residual_kv': cmp_residual_kv,
-        'softmax_scale': params_dict['softmax_scale'],
-        'cmp_ratio': cmp_ratio,
-        'ori_mask_mode': params_dict['ori_mask_mode'],
-        'cmp_mask_mode': cmp_mask_mode,
-        'ori_win_left': params_dict['ori_win_left'],
-        'ori_win_right': params_dict['ori_win_right'],
-        'quant_mode': params_dict['quant_mode'],
-        'tile_size': params_dict['tile_size'],
-        'rope_head_dim': params_dict['rope_head_dim'],
-        'template_run_mode': template_run_mode,
-        'actlen_mode': actlen_mode,
-        'S1EQS2': S1EQS2,
-        'topk_value_mode': params_dict.get('topk_value_mode', 1),
-        'return_softmax_lse': params_dict.get('return_softmax_lse', False),
+        "Testcase_Name": params_dict.get("Testcase_Name"),
+        "layout_q": layout_q,
+        "layout_kv": params_dict["layout_kv"],
+        "q_type": params_dict["q_type"],
+        "ori_kv_type": ori_kv_type,
+        "cmp_kv_type": cmp_kv_type,
+        "B": B,
+        "S1": S1,
+        "S2": S2,
+        "T1": T1,
+        "N1": params_dict["N1"],
+        "N2": params_dict["N2"],
+        "D": params_dict["D"],
+        "K1": params_dict.get("K1"),
+        "K": K,
+        "block_num1": block_num1,
+        "block_num2": block_num2,
+        "block_size1": block_size1,
+        "block_size2": block_size2,
+        "seqused_q": seqused_q,
+        "cu_seqlens_q": cu_seqlens_q,
+        "seqused_ori_kv": seqused_ori_kv,
+        "seqused_cmp_kv": seqused_cmp_kv,
+        "cu_seqlens_ori_kv": cu_seqlens_ori_kv,
+        "cu_seqlens_cmp_kv": cu_seqlens_cmp_kv,
+        "cmp_residual_kv": cmp_residual_kv,
+        "softmax_scale": params_dict["softmax_scale"],
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": params_dict["ori_mask_mode"],
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": params_dict["ori_win_left"],
+        "ori_win_right": params_dict["ori_win_right"],
+        "quant_mode": params_dict["quant_mode"],
+        "tile_size": params_dict["tile_size"],
+        "rope_head_dim": params_dict["rope_head_dim"],
+        "template_run_mode": template_run_mode,
+        "actlen_mode": actlen_mode,
+        "S1EQS2": S1EQS2,
+        "topk_value_mode": params_dict.get("topk_value_mode", 1),
+        "return_softmax_lse": params_dict.get("return_softmax_lse", False),
+        "q_datarange": params_dict.get("q_datarange"),
+        "ori_kv_datarange": params_dict.get("ori_kv_datarange"),
+        "cmp_kv_datarange": params_dict.get("cmp_kv_datarange"),
+        "ori_kv_topk_mode": ori_kv_topk_mode,
+        "cmp_kv_topk_mode": cmp_kv_topk_mode,
+        "ori_sparse_indices_mode": params_dict.get("ori_sparse_indices_mode", "full"),
+        "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
+        "ori_topk_length": params_dict.get("ori_topk_length", None),
+        "cmp_topk_length": params_dict.get("cmp_topk_length", None),
+        "batch_consistency": params_dict.get("batch_consistency"),
+        "batch_consistency_seed": params_dict.get("batch_consistency_seed"),
+        "batch_consistency_order": params_dict.get("batch_consistency_order"),
+        "batch_consistency_batch_split": params_dict.get(
+            "batch_consistency_batch_split"
+        ),
+        "batch_consistency_mode_batch": params_dict.get("batch_consistency_mode_batch"),
+        "batch_consistency_token_split": params_dict.get(
+            "batch_consistency_token_split"
+        ),
+        "batch_consistency_shape_change": params_dict.get(
+            "batch_consistency_shape_change"
+        ),
     }
 
     return filled_params
+
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
     """
@@ -386,7 +508,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         list[]: 测试用例字典列表
     """
     if sheetname is None:
-        sheetname = 'Sheet1'
+        sheetname = "Sheet1"
 
     # 检查文件是否存在
     if not os.path.exists(excel_file_path):
@@ -399,20 +521,68 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
-            "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size",
-            "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
-            "topk_value_mode", "return_softmax_lse",
+            "Testcase_Name",
+            "layout_q",
+            "layout_kv",
+            "q_type",
+            "ori_kv_type",
+            "cmp_kv_type",
+            "B",
+            "S1",
+            "S2",
+            "N1",
+            "N2",
+            "D",
+            "K",
+            "K1",
+            "block_num1",
+            "block_num2",
+            "block_size1",
+            "block_size2",
+            "softmax_scale",
+            "cmp_ratio",
+            "ori_mask_mode",
+            "cmp_mask_mode",
+            "ori_win_left",
+            "ori_win_right",
+            "quant_mode",
+            "tile_size",
+            "rope_head_dim",
+            "template_run_mode",
+            "actlen_mode",
+            "S1EQS2",
+            "topk_value_mode",
+            "ori_kv_topk_mode",
+            "cmp_kv_topk_mode",
+            "ori_sparse_indices_mode",
+            "cmp_sparse_indices_mode",
         ]
         optional_columns = [
-            "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
-            "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
+            "seqused_q",
+            "cu_seqlens_q",
+            "seqused_ori_kv",
+            "seqused_cmp_kv",
+            "cu_seqlens_ori_kv",
+            "cu_seqlens_cmp_kv",
+            "cmp_residual_kv",
+            "ori_topk_length",
+            "cmp_topk_length",
         ]
+        datarange_columns = [
+            "q_datarange",
+            "ori_kv_datarange",
+            "cmp_kv_datarange",
+        ]
+        default_value_columns = {
+            "return_softmax_lse": False,
+        }
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
-            pytest.skip(f"Missing required columns in Excel: {missing_cols}", allow_module_level=True)
+            pytest.skip(
+                f"Missing required columns in Excel: {missing_cols}",
+                allow_module_level=True,
+            )
 
         # 构建测试用例列表
         test_cases = []
@@ -424,6 +594,14 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row_dict[col] = None
                 else:
                     row_dict[col] = parse_list_param(row_dict[col])
+            for col in datarange_columns:
+                if col not in row_dict:
+                    row_dict[col] = None
+                else:
+                    row_dict[col] = parse_datarange_param(row_dict[col])
+            for col, default_val in default_value_columns.items():
+                if col not in row_dict or row_dict[col] is None:
+                    row_dict[col] = default_val
             test_cases.append(row_dict)
             i = i + 1
 
@@ -433,51 +611,61 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
 
+
 def save_result(params, result, fulfill_percent, result_path):
     """
     存储测试结果到表格
     """
     row_data = {
-        "Testcase_Name": params.get('Testcase_Name'),
-        "layout_q": params.get('layout_q'),
-        "layout_kv": params.get('layout_kv'),
-        "q_type": params.get('q_type'),
-        "ori_kv_type": params.get('ori_kv_type'),
-        "cmp_kv_type": params.get('cmp_kv_type'),
-        "B": params.get('B'),
-        "S1": params.get('S1'),
-        "S2": params.get('S2'),
-        "T1": params.get('T1'),
-        "N1": params.get('N1'),
-        "N2": params.get('N2'),
-        "D": params.get('D'),
-        "K": params.get('K'),
-        "block_num1": params.get('block_num1'),
-        "block_num2": params.get('block_num2'),
-        "block_size1": params.get('block_size1'),
-        "block_size2": params.get('block_size2'),
-        "seqused_q": params.get('seqused_q'),
-        "cu_seqlens_q": params.get('cu_seqlens_q'),
-        "seqused_ori_kv": params.get('seqused_ori_kv'),
-        "seqused_cmp_kv": params.get('seqused_cmp_kv'),
-        "cu_seqlens_ori_kv": params.get('cu_seqlens_ori_kv'),
-        "cu_seqlens_cmp_kv": params.get('cu_seqlens_cmp_kv'),
-        "cmp_residual_kv": params.get('cmp_residual_kv'),
-        "softmax_scale": params.get('softmax_scale'),
-        "cmp_ratio": params.get('cmp_ratio'),
-        "ori_mask_mode": params.get('ori_mask_mode'),
-        "cmp_mask_mode": params.get('cmp_mask_mode'),
-        "ori_win_left": params.get('ori_win_left'),
-        'template_run_mode': params.get('template_run_mode'),
-        'actlen_mode': params.get('actlen_mode'),
-        'S1EQS2': params.get('S1EQS2'),
-        'tc_prefix': params.get('tc_prefix', ' '),
-        "ori_win_right": params.get('ori_win_right'),
-        "quant_mode": params.get('quant_mode'),
-        "tile_size": params.get('tile_size'),
-        "rope_head_dim": params.get('rope_head_dim'),
-        "topk_value_mode": params.get('topk_value_mode'),
-        "return_softmax_lse": params.get('return_softmax_lse'),
+        "Testcase_Name": params.get("Testcase_Name"),
+        "layout_q": params.get("layout_q"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": params.get("q_type"),
+        "ori_kv_type": params.get("ori_kv_type"),
+        "cmp_kv_type": params.get("cmp_kv_type"),
+        "B": params.get("B"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2"),
+        "T1": params.get("T1"),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K"),
+        "block_num1": params.get("block_num1"),
+        "block_num2": params.get("block_num2"),
+        "block_size1": params.get("block_size1"),
+        "block_size2": params.get("block_size2"),
+        "seqused_q": params.get("seqused_q"),
+        "cu_seqlens_q": params.get("cu_seqlens_q"),
+        "seqused_ori_kv": params.get("seqused_ori_kv"),
+        "seqused_cmp_kv": params.get("seqused_cmp_kv"),
+        "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv"),
+        "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv"),
+        "cmp_residual_kv": params.get("cmp_residual_kv"),
+        "softmax_scale": params.get("softmax_scale"),
+        "cmp_ratio": params.get("cmp_ratio"),
+        "ori_mask_mode": params.get("ori_mask_mode"),
+        "cmp_mask_mode": params.get("cmp_mask_mode"),
+        "ori_win_left": params.get("ori_win_left"),
+        "template_run_mode": params.get("template_run_mode"),
+        "actlen_mode": params.get("actlen_mode"),
+        "S1EQS2": params.get("S1EQS2"),
+        "tc_prefix": params.get("tc_prefix", " "),
+        "ori_win_right": params.get("ori_win_right"),
+        "quant_mode": params.get("quant_mode"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "topk_value_mode": params.get("topk_value_mode"),
+        "return_softmax_lse": params.get("return_softmax_lse"),
+        "q_datarange": params.get("q_datarange"),
+        "ori_kv_datarange": params.get("ori_kv_datarange"),
+        "cmp_kv_datarange": params.get("cmp_kv_datarange"),
+        "ori_kv_topk_mode": params.get("ori_kv_topk_mode"),
+        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode"),
+        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode"),
+        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode"),
+        "ori_topk_length": str(params.get("ori_topk_length")),
+        "cmp_topk_length": str(params.get("cmp_topk_length")),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }

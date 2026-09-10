@@ -16,10 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class GroupedMatMulAllReduce : public OpDef
-{
+class GroupedMatMulAllReduce : public OpDef {
 public:
-    explicit GroupedMatMulAllReduce(const char* name) : OpDef(name)
+    explicit GroupedMatMulAllReduce(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(DYNAMIC)

@@ -69,6 +69,109 @@ function(add_target_source)
     endforeach()
 endfunction()
 
+# ------------------------------------------------------------------------------------------------------------
+# get_cann_package_version(<OUTPUT_VAR>)
+#   从安装的 CANN 包读取版本号。查找顺序：version.info -> opp/version.info -> compiler/version.info。
+#   结果缓存到全局属性 CANN_PACKAGE_VERSION，避免重复读取。
+# ------------------------------------------------------------------------------------------------------------
+function(get_cann_package_version OUTPUT_VAR)
+    get_property(_cann_pkg_ver GLOBAL PROPERTY CANN_PACKAGE_VERSION)
+    if(_cann_pkg_ver)
+        set(${OUTPUT_VAR} "${_cann_pkg_ver}" PARENT_SCOPE)
+        return()
+    endif()
+
+    set(_cann_ver_file "")
+    foreach(_candidate
+            "${ASCEND_CANN_PACKAGE_PATH}/version.info"
+            "${ASCEND_CANN_PACKAGE_PATH}/opp/version.info"
+            "${ASCEND_CANN_PACKAGE_PATH}/compiler/version.info")
+        if(EXISTS "${_candidate}")
+            set(_cann_ver_file "${_candidate}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT _cann_ver_file)
+        message(WARNING "Cannot find version.info under ${ASCEND_CANN_PACKAGE_PATH}")
+        set(${OUTPUT_VAR} "" PARENT_SCOPE)
+        return()
+    endif()
+
+    file(READ "${_cann_ver_file}" _cann_ver_content)
+    set(_cann_ver "")
+    string(REGEX MATCH "Version=([0-9]+\\.[0-9]+\\.[0-9]+)" _ver_match3 "${_cann_ver_content}")
+    if(_ver_match3)
+        set(_cann_ver "${CMAKE_MATCH_1}")
+    else()
+        string(REGEX MATCH "Version=([0-9]+\\.[0-9]+)" _ver_match2 "${_cann_ver_content}")
+        if(_ver_match2)
+            set(_cann_ver "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+
+    if(_cann_ver)
+        message(STATUS "CANN package version: ${_cann_ver} (from ${_cann_ver_file})")
+    else()
+        message(WARNING "Cannot parse version from ${_cann_ver_file}")
+    endif()
+
+    set_property(GLOBAL PROPERTY CANN_PACKAGE_VERSION "${_cann_ver}")
+    set(${OUTPUT_VAR} "${_cann_ver}" PARENT_SCOPE)
+endfunction()
+
+# ------------------------------------------------------------------------------------------------------------
+# require_cann_version([SOC <soc...>] [MIN_VERSION <x.y.z>])
+#   在算子 op_host/CMakeLists.txt 最开头调用；指定 soc 下 CANN 版本低于 MIN_VERSION 时 return，
+#   跳过整个算子的 host/kernel 编译（依赖编译阶段除外）。
+#   - SOC        : 版本检查适用的 soc 列表（空格分隔），缺省=全部 soc 生效
+#   - MIN_VERSION: 三段式最低 CANN 版本，缺省=不检查（打 WARNING）
+#   注意：必须是 macro（return 从调用者 CMakeLists 返回），与 require_pypto_pro 同理。
+# ------------------------------------------------------------------------------------------------------------
+macro(require_cann_version)
+    cmake_parse_arguments(OP_VER "" "MIN_VERSION" "SOC" ${ARGN})
+
+    get_filename_component(_rcv_parent_dir ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+    get_filename_component(_rcv_op_name ${_rcv_parent_dir} NAME)
+
+    # 依赖编译阶段不做版本检查（被其它算子依赖时仍正常编译）
+    get_property(_rcv_phase GLOBAL PROPERTY _OP_HOST_COMPILE_PHASE)
+    if(_rcv_phase STREQUAL "DEPENDENCY")
+        return()
+    endif()
+
+    set(_rcv_need_check TRUE)
+
+    # SOC 匹配检查：指定 SOC 时，仅当当前编译 soc 命中才做版本检查
+    if(OP_VER_SOC)
+        set(_rcv_soc_hit FALSE)
+        foreach(_rcv_soc IN LISTS OP_VER_SOC)
+            if(_rcv_soc IN_LIST ASCEND_COMPUTE_UNIT)
+                set(_rcv_soc_hit TRUE)
+                break()
+            endif()
+        endforeach()
+        if(NOT _rcv_soc_hit)
+            set(_rcv_need_check FALSE)
+        endif()
+    endif()
+
+    if(NOT OP_VER_MIN_VERSION)
+        message(WARNING "require_cann_version: MIN_VERSION not specified for op ${_rcv_op_name}, skip version check.")
+        set(_rcv_need_check FALSE)
+    endif()
+
+    if(_rcv_need_check)
+        get_cann_package_version(_rcv_cann_ver)
+        if(_rcv_cann_ver AND "${_rcv_cann_ver}" VERSION_LESS "${OP_VER_MIN_VERSION}")
+            message(STATUS "算子${_rcv_op_name}不支持在soc=${ASCEND_COMPUTE_UNIT},cann version=${_rcv_cann_ver}场景下编译（要求>=${OP_VER_MIN_VERSION}）")
+            set_property(GLOBAL PROPERTY ${_rcv_op_name}_CANN_VERSION_SKIPPED TRUE)
+            set_property(GLOBAL APPEND PROPERTY CANN_VERSION_SKIPPED_OPS "${_rcv_op_name}（要求>=${OP_VER_MIN_VERSION}）")
+            return()
+        endif()
+    endif()
+endmacro()
+
 function(op_add_subdirectory OP_LIST OP_DIR_LIST)
     set(_OP_LIST)
     set(_OP_DIR_LIST)
@@ -94,8 +197,8 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )
-        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
             file(GLOB MC2_OP_HOST_CMAKE_FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
@@ -137,8 +240,8 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             if(ADD_CANNDEV_FFN)
                 List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${FFN_CANNDEV_OPS_HOST_CMAKE_FILES})
             endif()
-            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
                 file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
@@ -166,7 +269,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         get_filename_component(OP_NAME "${OP_DIR}" NAME)
 
         if (NOT BUILD_OPEN_PROJECT)
-            if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${OP_NAME})
+            if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${OP_NAME}/op_kernel)
                 continue()
             endif ()
         endif ()
@@ -183,7 +286,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             if (NOT EXISTS "${OP_DIR}/tests/CMakeLists.txt")
                 continue()
             endif()
-            
+
             file(READ "${OP_DIR}/tests/CMakeLists.txt" CML_CONTENT)
             if (CML_CONTENT MATCHES "OpsTest_Level2_AddOp")
                 set(UTEST_FRAMEWORK_OLD TRUE CACHE BOOL "UTEST_FRAMEWORK_OLD" FORCE)
@@ -237,7 +340,7 @@ function(op_add_depend_directory)
 
                 get_filename_component(_depend_op_name "${depend_info}" NAME)
                 if (NOT BUILD_OPEN_PROJECT)
-                    if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${_depend_op_name})
+                    if (EXISTS ${TOP_DIR}/asl/ops/cann/ops/built-in/tbe/impl/ascendc/${_depend_op_name}/op_kernel)
                         continue()
                     endif ()
                 endif ()
@@ -426,6 +529,15 @@ function(add_opc_config)
         list(APPEND _OPC_CONFIG "-fdata-sections")
     endif()
 
+    if(ENABLE_MSSANITIZER)
+        list(APPEND _OPC_CONFIG "-g")
+        list(APPEND _OPC_CONFIG "--cce-enable-sanitizer")
+    endif()
+
+    if(ENABLE_DUMP_CCE)
+        list(APPEND _OPC_CONFIG "--save-temp-files")
+    endif()
+
     if(_OPC_CONFIG)
         add_ops_compile_options(
                 OP_NAME ${OP_COMPILE_OP_NAME}
@@ -443,10 +555,16 @@ function(add_ops_src_copy)
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
             set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
-            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
-                ${OPS_ADV_UTILS_KERNEL_INC}/* 
+            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS
+                ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*
                 ${OPS_GMM_COMMON_KERNEL_INC}/*
+                ${CATLASS}/include/*
+                ${BLAZE}/*
+                ${TENSOR_API}/impl/tensor_api/*
+                ${TENSOR_API}/include/tensor_api/*
+                ${TENSOR_API}/impl/c_api/*
+                ${TENSOR_API}/include/c_api/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
@@ -454,6 +572,12 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${CATLASS}/include ${OPS_UTILS_INC_KERNEL_DIR}/catlass/include
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/tensor_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/tensor_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/c_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/c_api
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
@@ -507,6 +631,42 @@ function(add_ops_src_copy)
 endfunction()
 
 # ------------------------------------------------------------------------------------------------------------
+# require_pypto_pro(<op_name>)
+#   Require pypto_pro for the current operator. Call at the beginning of an operator's CMakeLists.txt, before
+#   registering any host or kernel build rules. If pypto_pro is unavailable in HI_PYTHON, warn and return from
+#   the caller's CMakeLists.txt so the whole operator is skipped.
+# ------------------------------------------------------------------------------------------------------------
+macro(require_pypto_pro op_name)
+    get_property(_pypto_pro_checked GLOBAL PROPERTY PYPTO_PRO_CHECKED)
+    if (NOT _pypto_pro_checked)
+        execute_process(
+            COMMAND ${HI_PYTHON} -c
+                    "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pypto_pro') else 1)"
+            RESULT_VARIABLE _pypto_pro_check_result
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if (_pypto_pro_check_result EQUAL 0)
+            set_property(GLOBAL PROPERTY PYPTO_PRO_AVAILABLE TRUE)
+        else()
+            set_property(GLOBAL PROPERTY PYPTO_PRO_AVAILABLE FALSE)
+        endif()
+        set_property(GLOBAL PROPERTY PYPTO_PRO_CHECKED TRUE)
+    endif()
+
+    get_property(_pypto_pro_available GLOBAL PROPERTY PYPTO_PRO_AVAILABLE)
+    if (NOT _pypto_pro_available)
+        message(WARNING
+                "pypto_pro is unavailable in ${HI_PYTHON}; skip operator ${op_name}.")
+        return()
+    endif()
+
+    unset(_pypto_pro_checked)
+    unset(_pypto_pro_check_result)
+    unset(_pypto_pro_available)
+endmacro()
+
+# ------------------------------------------------------------------------------------------------------------
 # enable_pypto_kernel(<op_file>)
 #   Mark an operator whose kernel is written in PyPTO. Call ONCE from the op's op_host/CMakeLists.txt,
 #   and BEFORE add_modules_sources_with_soc(...) (so the tiling logic can read PYPTO_GEN_DIR).
@@ -515,8 +675,15 @@ endfunction()
 #   to install the generated artifacts into the kernel staging dir.
 # ------------------------------------------------------------------------------------------------------------
 function(enable_pypto_kernel op_file)
-    set(_gen ${ASCEND_BINARY_OUT_DIR}/${ASCEND_COMPUTE_UNIT}/${op_file}_pypto_gen)
-    set(_py  ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/${op_file}.py)
+    set(_compute_units ${ASCEND_COMPUTE_UNIT})
+    list(FILTER _compute_units INCLUDE REGEX ".+")
+    if (NOT _compute_units)
+        message(FATAL_ERROR "enable_pypto_kernel: ASCEND_COMPUTE_UNIT is empty")
+    endif ()
+    list(GET _compute_units 0 _soc_unit)
+
+    set(_gen "${ASCEND_BINARY_OUT_DIR}/${_soc_unit}/${op_file}_pypto_gen")
+    set(_py  "${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/${op_file}.py")
 
     if (NOT EXISTS ${_py})
         message(FATAL_ERROR "enable_pypto_kernel: kernel python file not found: ${_py}")
@@ -524,9 +691,9 @@ function(enable_pypto_kernel op_file)
 
     message(STATUS "pypto codegen: ${op_file} -> ${_gen}")
     execute_process(
-        COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_codegen.py
-                --py-file ${_py} --out-dir ${_gen}
-                --op-file ${op_file} --soc ${ASCEND_COMPUTE_UNIT}
+        COMMAND ${HI_PYTHON} ${OPS_ADV_DIR}/cmake/scripts/pypto_codegen.py
+                --py-file "${_py}" --out-dir "${_gen}"
+                --op-file "${op_file}"
         RESULT_VARIABLE _rc
     )
     if (NOT _rc EQUAL 0)

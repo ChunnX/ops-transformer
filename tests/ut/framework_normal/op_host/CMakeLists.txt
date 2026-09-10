@@ -8,11 +8,25 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18.4)
 
 if(UT_TEST_ALL OR OP_HOST_UT)
   ## set variables
   set(OP_HOST_UT_EXE ${PKG_NAME}_op_host_ut)
+
+  if(NOT TARGET softmax_tiling_ut_stub)
+    set(_SOFTMAX_STUB_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../common)
+    add_library(softmax_tiling_ut_stub STATIC
+        ${_SOFTMAX_STUB_COMMON_DIR}/softmax_tiling_mocker.cpp
+    )
+    target_include_directories(softmax_tiling_ut_stub PRIVATE
+        ${_SOFTMAX_STUB_COMMON_DIR}
+        ${OP_TILING_INCLUDE}
+    )
+    target_link_libraries(softmax_tiling_ut_stub PRIVATE
+        $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+    )
+  endif()
 
   ## add optiling ut cases static lib: libtransformer_op_tiling_ut_cases.a
   add_optiling_ut_modules(${OP_TILING_MODULE_NAME})

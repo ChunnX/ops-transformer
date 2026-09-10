@@ -31,7 +31,7 @@ public:
 public:
     CaseWithSocversion();
     CaseWithSocversion(const char *name, bool enable, const char *dbgInfo,
-         int32_t tilingTemplatePriority = kTilingTemplatePriority_Invalid);
+                       int32_t tilingTemplatePriority = kTilingTemplatePriority_Invalid);
     virtual ~CaseWithSocversion() = default;
     int32_t socVersion;
 

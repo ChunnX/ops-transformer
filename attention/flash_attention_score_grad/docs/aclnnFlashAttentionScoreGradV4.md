@@ -2,20 +2,34 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     x      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：训练场景下计算注意力的反向输出，即[FlashAttentionScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionScoreV4.md)的反向计算。**该接口query、key、value参数支持多个长度相等或者长度不相等的sequence**
   - **该接口合并了[FlashAttentionScoreGradV2](./aclnnFlashAttentionScoreGradV2.md)接口和[FlashAttentionUnpaddingScoreGradV2](./aclnnFlashAttentionUnpaddingScoreGradV2.md)接口，并调整了Dropout功能**：
+
+    <!-- npu="950" id7 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask
+    <!-- end id7 -->
+
 - 计算公式：
 
   - pseType=1时，与[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)计算公式相同
@@ -72,71 +86,71 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreGradV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGradV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFlashAttentionScoreGradV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGradV4”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
   const aclTensor   *query,
-  const aclTensor   *keyIn, 
-  const aclTensor   *value, 
-  const aclTensor   *dy, 
-  const aclTensor   *pseShiftOptional, 
-  const aclTensor   *dropMaskOptional, 
-  const aclTensor   *paddingMaskOptional, 
-  const aclTensor   *attenMaskOptional, 
-  const aclTensor   *softmaxMaxOptional, 
-  const aclTensor   *softmaxSumOptional, 
-  const aclTensor   *softmaxInOptional, 
-  const aclTensor   *attentionInOptional, 
-  const aclTensor   *sinkInOptional, 
-  const aclTensor   *queryRopeOptional, 
-  const aclTensor   *keyRopeOptional, 
-  const aclTensor   *dScaleQOptional, 
-  const aclTensor   *dScaleKOptional, 
-  const aclTensor   *dScaleVOptional, 
-  const aclTensor   *dScaleDyOptional, 
-  const aclTensor   *dScaleOOptional, 
-  const aclIntArray *prefixOptional, 
-  const aclIntArray *actualSeqQLenOptional, 
-  const aclIntArray *actualSeqKvLenOptional, 
-  const aclIntArray *qStartIdxOptional, 
-  const aclIntArray *kvStartIdxOptional, 
-  double             scaleValue, 
-  double             keepProb, 
-  int64_t            preTokens, 
-  int64_t            nextTokens, 
-  int64_t            headNum, 
-  char              *inputLayout, 
-  char              *softmaxInLayout, 
-  int64_t            innerPrecise, 
-  int64_t            sparseMode, 
-  int64_t            pseType,  
-  int64_t            seed, 
-  int64_t            offset, 
-  int64_t            outDtype, 
-  const aclTensor   *dqOut, 
-  const aclTensor   *dkOut, 
-  const aclTensor   *dvOut, 
-  const aclTensor   *dqRopeOut, 
-  const aclTensor   *dkRopeOut, 
-  const aclTensor   *dpseOut, 
+  const aclTensor   *keyIn,
+  const aclTensor   *value,
+  const aclTensor   *dy,
+  const aclTensor   *pseShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *softmaxMaxOptional,
+  const aclTensor   *softmaxSumOptional,
+  const aclTensor   *softmaxInOptional,
+  const aclTensor   *attentionInOptional,
+  const aclTensor   *sinkInOptional,
+  const aclTensor   *queryRopeOptional,
+  const aclTensor   *keyRopeOptional,
+  const aclTensor   *dScaleQOptional,
+  const aclTensor   *dScaleKOptional,
+  const aclTensor   *dScaleVOptional,
+  const aclTensor   *dScaleDyOptional,
+  const aclTensor   *dScaleOOptional,
+  const aclIntArray *prefixOptional,
+  const aclIntArray *actualSeqQLenOptional,
+  const aclIntArray *actualSeqKvLenOptional,
+  const aclIntArray *qStartIdxOptional,
+  const aclIntArray *kvStartIdxOptional,
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  char              *softmaxInLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  int64_t            pseType,
+  int64_t            seed,
+  int64_t            offset,
+  int64_t            outDtype,
+  const aclTensor   *dqOut,
+  const aclTensor   *dkOut,
+  const aclTensor   *dvOut,
+  const aclTensor   *dqRopeOut,
+  const aclTensor   *dkRopeOut,
+  const aclTensor   *dpseOut,
   const aclTensor   *dsinkOut,
-  uint64_t          *workspaceSize, 
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)`
 ```
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradV4(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   aclrtStream       stream)
 ```
 
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -637,10 +651,10 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -677,7 +691,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
   <table style="undefined;table-layout: fixed; width: 1166px"><colgroup>
   <col style="width: 173px">
   <col style="width: 133px">
-  <col style="width: 860px"> 
+  <col style="width: 860px">
   </colgroup>
   <thead>
     <tr>
@@ -711,7 +725,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明<a name="1"></a>
 
@@ -736,17 +750,20 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[N, T, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
+
+<!-- npu="950" id8 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
     - seedOptional和offsetOptional只在keepProbOptional小于1.0时生效，否则不生效。
     - keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
+<!-- end id8 -->
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 - sinkInOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型，sinkInOptional维度为1，长度需要与query的headnum相同。
 - softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```C++
 #include <iostream>
@@ -982,7 +999,7 @@ int main() {
 
   // 调用aclnnFlashAttentionScoreGradV4第一段接口
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
-            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
+            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV,
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
             preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode, pseType, seed, offset, outDtype,
             dq,dk,dv,dqRope,dkRope,dpse, nullptr, &workspaceSize, &executor);

@@ -19,7 +19,7 @@
 
 namespace Mc2MatmulV3 {
 constexpr uint64_t PER_BLOCK_SIZE = 128;
-constexpr uint64_t DEVICE_NUM = 64; // group 内卡数， 目前定义为64，后续根据情况扩展
+constexpr uint64_t DEVICE_NUM = 64;        // group 内卡数， 目前定义为64，后续根据情况扩展
 constexpr uint64_t SLIDING_WINDOW_LEN = 4; // 滑窗m方向大小
 
 struct ASWTilingParam {
@@ -28,7 +28,7 @@ struct ASWTilingParam {
     uint64_t mCnt;
     uint64_t nCnt;
     uint64_t totalCnt;
-    uint64_t mCoreNum; // m方向窗口长度
+    uint64_t mCoreNum;     // m方向窗口长度
     uint64_t mTailCoreNum; // m方向尾块长度
     uint64_t mBaseTail;
     uint64_t nBaseTail;
@@ -78,8 +78,7 @@ public:
     __aicore__ inline void Update();
     template <class scaleType = float>
     __aicore__ inline void UpdateOffset(uint32_t idx, bool isTail);
-    __aicore__ inline void InitForMC2(const Mc2Tiling::RCSTiling& cfg, bool isTail, bool isGather, 
-                                      uint64_t preCoreNum);
+    __aicore__ inline void InitForMC2(const Mc2Tiling::RCSTiling &cfg, bool isTail, bool isGather, uint64_t preCoreNum);
 
 public:
     ASWOffsetParam offset_;
@@ -97,15 +96,15 @@ public:
     Mc2Tiling::RCSTiling cfg_;
     bool isGather_ = false;
     // 以下变量保存部分scalar计算值，避免重复计算
-    uint64_t preCoreNum_ = 0; // 前一轮计算除不尽基本快数
-    uint64_t rankMN_ = 0; // rankMN_ = rankM_ * rankN_
-    uint64_t rankMK_ = 0; // rankMK_ = rankM_ * rankK_
-    uint64_t rankKN_ = 0; // rankKN_ = rankK_ * rankN_
-    uint64_t windowParams1_ = 0; // 主滑窗的m方向基本块数
-    uint64_t windowParams2_ = 0; // 主滑窗的m方向基本块数 * nCnt
+    uint64_t preCoreNum_ = 0;         // 前一轮计算除不尽基本快数
+    uint64_t rankMN_ = 0;             // rankMN_ = rankM_ * rankN_
+    uint64_t rankMK_ = 0;             // rankMK_ = rankM_ * rankK_
+    uint64_t rankKN_ = 0;             // rankKN_ = rankK_ * rankN_
+    uint64_t windowParams1_ = 0;      // 主滑窗的m方向基本块数
+    uint64_t windowParams2_ = 0;      // 主滑窗的m方向基本块数 * nCnt
     uint64_t blockBaseMDotRankK_ = 0; // baseM * rankK_
-    uint64_t totalSplitCnt_ = 1; // tiling要修改
-    bool doTailTile_ = false; // 是否进行尾轮切分
+    uint64_t totalSplitCnt_ = 1;      // tiling要修改
+    bool doTailTile_ = false;         // 是否进行尾轮切分
 
 private:
     const uint64_t WINDOW_LEN = 4;
@@ -113,8 +112,8 @@ private:
     uint32_t taskRation_ = AscendC::GetTaskRation();
 };
 
-__aicore__ inline void QuantBatchMatmulAswBlock::Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, 
-                                                      uint32_t blockIdx)
+__aicore__ inline void QuantBatchMatmulAswBlock::Init(
+    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx)
 {
     params_.mSplitAddrOffset = 0;
     params_.nSplitAddrOffset = 0;
@@ -124,8 +123,8 @@ __aicore__ inline void QuantBatchMatmulAswBlock::Init(const DequantBmm::Mc2Quant
     offset_.offsetBias = 0;
 }
 
-__aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCSTiling& cfg, bool isTail,
-                                                            bool isGather, uint64_t preCoreNum)
+__aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCSTiling &cfg, bool isTail, bool isGather,
+                                                            uint64_t preCoreNum)
 {
     cfg_ = cfg;
     rankM_ = isGather ? cfg.rankM : cfg.rankM / cfg.rankDim;
@@ -137,8 +136,8 @@ __aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCS
     rankKN_ = rankK_ * rankN_;
     preCoreNum_ = preCoreNum;
 
-    headSliceM_ = (rankM_ - cfg.tailM * cfg.tailCnt) / cfg.tileCnt;  // 头快的shapeM
-    curSliceM_ = isTail ? cfg.tailM : headSliceM_;                   // 当前计算的shapeM
+    headSliceM_ = (rankM_ - cfg.tailM * cfg.tailCnt) / cfg.tileCnt; // 头快的shapeM
+    curSliceM_ = isTail ? cfg.tailM : headSliceM_;                  // 当前计算的shapeM
     mSliceCnt_ = MMV3DivCeil(curSliceM_, tilingData_->matmulTiling.baseM);
 
     uint64_t calRankNum = isGather_ ? (cfg.rankDim - 1) : cfg.rankDim;
@@ -147,15 +146,15 @@ __aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCS
     params_.totalCnt = params_.mCnt * params_.nCnt;
 
     // 重新计算
-    params_.mBaseTail = curSliceM_ - (mSliceCnt_ - 1) * tilingData_->matmulTiling.baseM;  // m方向的 base 尾块
-    params_.nBaseTail = tilingData_->matmulTiling.N - (params_.nCnt - 1) *
-                        tilingData_->matmulTiling.baseN; // n方向上的base尾块
+    params_.mBaseTail = curSliceM_ - (mSliceCnt_ - 1) * tilingData_->matmulTiling.baseM; // m方向的 base 尾块
+    params_.nBaseTail =
+        tilingData_->matmulTiling.N - (params_.nCnt - 1) * tilingData_->matmulTiling.baseN; // n方向上的base尾块
 
-    params_.round = (params_.totalCnt + tilingData_->matmulTiling.usedCoreNum - 1) /
-                    tilingData_->matmulTiling.usedCoreNum;
+    params_.round =
+        (params_.totalCnt + tilingData_->matmulTiling.usedCoreNum - 1) / tilingData_->matmulTiling.usedCoreNum;
 
-    params_.mCoreNum = SLIDING_WINDOW_LEN < params_.mCnt ? SLIDING_WINDOW_LEN : params_.mCnt;  // 主滑窗m方向的块个数
-    params_.mainRow = params_.mCnt / params_.mCoreNum - 1;                                     // 主滑窗数量
+    params_.mCoreNum = SLIDING_WINDOW_LEN < params_.mCnt ? SLIDING_WINDOW_LEN : params_.mCnt; // 主滑窗m方向的块个数
+    params_.mainRow = params_.mCnt / params_.mCoreNum - 1;                                    // 主滑窗数量
     windowParams1_ = params_.mainRow * params_.mCoreNum;
     windowParams2_ = windowParams1_ * params_.nCnt;
     params_.mTailCoreNum = params_.mCnt - params_.mCoreNum * params_.mainRow; // 尾滑窗m方向的块个数
@@ -165,8 +164,8 @@ __aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCS
 __aicore__ inline void QuantBatchMatmulAswBlock::Update()
 {
     params_.totalCnt = params_.mCnt * params_.nCnt + preCoreNum_;
-    params_.round = (params_.totalCnt + tilingData_->matmulTiling.usedCoreNum - 1) /
-                    tilingData_->matmulTiling.usedCoreNum;
+    params_.round =
+        (params_.totalCnt + tilingData_->matmulTiling.usedCoreNum - 1) / tilingData_->matmulTiling.usedCoreNum;
 }
 
 template <class scaleType>
@@ -181,8 +180,8 @@ __aicore__ inline void QuantBatchMatmulAswBlock::UpdateOffset(uint32_t idx, bool
     } else {
         offsetHeadSliceM = idx * headSliceM_;
     }
-    uint64_t scaleK = DequantBmm::Align(DequantBmm::CeilDiv(tilingData_->matmulTiling.Ka, MXFP_GROUP_SIZE),
-                                        MXFP_MULTI_BASE_SIZE);
+    uint64_t scaleK =
+        DequantBmm::Align(DequantBmm::CeilDiv(tilingData_->matmulTiling.Ka, MXFP_GROUP_SIZE), MXFP_MULTI_BASE_SIZE);
     uint64_t offsetHeadAndTailK = (offsetHeadSliceM + offsetTailSliceM) * rankK_;
     uint64_t offserHeadAndTailN = (offsetHeadSliceM + offsetTailSliceM) * rankN_;
     uint64_t scaleOffsetHeadAndTailK = (offsetHeadSliceM + offsetTailSliceM) * scaleK;
@@ -227,7 +226,6 @@ __aicore__ inline bool QuantBatchMatmulAswBlock::UpdateBasicIndex(uint64_t round
     return true;
 }
 
-
 __aicore__ inline void QuantBatchMatmulAswBlock::UpdateBlockParams(uint64_t roundIdx, bool isLast)
 {
     params_.mSplitAddrOffset = 0;
@@ -238,8 +236,9 @@ __aicore__ inline void QuantBatchMatmulAswBlock::UpdateBlockParams(uint64_t roun
     params_.singleCoreM = mIndexInGatherBlock != (mSliceCnt_ - 1) ? tilingData_->matmulTiling.baseM : params_.mBaseTail;
     params_.singleCoreN = params_.nIndex != (params_.nCnt - 1) ? tilingData_->matmulTiling.baseN : params_.nBaseTail;
 
-    if ((roundIdx == params_.round - 1) && ((tilingData_->adaptiveSlidingWin.mTailTile != 1) ||
-        (tilingData_->adaptiveSlidingWin.nTailTile != 1)) && isLast && doTailTile_) {
+    if ((roundIdx == params_.round - 1) &&
+        ((tilingData_->adaptiveSlidingWin.mTailTile != 1) || (tilingData_->adaptiveSlidingWin.nTailTile != 1)) &&
+        isLast && doTailTile_) {
         uint64_t singleCoreMSplit = (params_.singleCoreM + tilingData_->adaptiveSlidingWin.mTailTile - 1) /
                                     tilingData_->adaptiveSlidingWin.mTailTile;
         uint64_t singleCoreNSplit = (params_.singleCoreN + tilingData_->adaptiveSlidingWin.nTailTile - 1) /
@@ -296,21 +295,21 @@ __aicore__ inline void QuantBatchMatmulAswBlock::CalcGMOffset()
         offset_.offsetB += offset_.batchBOffset * tilingData_->matmulTiling.N * tilingData_->matmulTiling.Kb;
     }
 
-    uint64_t tmp2 = nOffset + (mc2MRest * tilingData_->matmulTiling.baseM + params_.mSplitAddrOffset)
-                    * tilingData_->matmulTiling.N;
+    uint64_t tmp2 =
+        nOffset + (mc2MRest * tilingData_->matmulTiling.baseM + params_.mSplitAddrOffset) * tilingData_->matmulTiling.N;
     offset_.offsetC = offsetsC_[mc2MIdx] + tmp2;
- 
-    uint64_t scaleK = DequantBmm::Align(DequantBmm::CeilDiv(tilingData_->matmulTiling.Ka, MXFP_GROUP_SIZE),
-                                        MXFP_MULTI_BASE_SIZE);
+
+    uint64_t scaleK =
+        DequantBmm::Align(DequantBmm::CeilDiv(tilingData_->matmulTiling.Ka, MXFP_GROUP_SIZE), MXFP_MULTI_BASE_SIZE);
     uint64_t blockBaseMDotScaleK = tilingData_->matmulTiling.baseM * scaleK;
     if constexpr (DequantBmm::IsMxType<scaleType>()) {
         offset_.offsetPerTokenScale = offsetsScale_[mc2MIdx] + /* scale 在当前 tile块落在 mc2MIdx 卡的起始偏移 */
-                                      mc2MRest * blockBaseMDotScaleK + /* 整块的M偏移 */
+                                      mc2MRest * blockBaseMDotScaleK +   /* 整块的M偏移 */
                                       params_.mSplitAddrOffset * scaleK; /* 最后一次计算的M偏移 */
         if constexpr (bTrans) {
             offset_.offsetScale = nOffset * scaleK;
         } else {
-            offset_.offsetScale = nOffset;
+            offset_.offsetScale = nOffset * MXFP_MULTI_BASE_SIZE;
         }
     } else {
         offset_.offsetPerTokenScale = mOffset;
@@ -320,6 +319,6 @@ __aicore__ inline void QuantBatchMatmulAswBlock::CalcGMOffset()
         offset_.offsetBias = nOffset;
     }
 }
-} // namespace QuantBatchMatmulV3
+} // namespace Mc2MatmulV3
 
 #endif // MC2_QUANT_BMMV3_ASW_BLOCK_H

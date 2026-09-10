@@ -39,14 +39,15 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_TND_B1_S1024_n4_D5120)
     uint32_t n = 4;
     uint32_t D = 5120;
     uint32_t nD = n * D;  // 20480
+    uint32_t phiRows = n * n + 2 * n;  // 24
 
     gert::InfershapeContextPara infershapeContextPara(
         "MhcPre",
         {
             {{{T, n, D}, {T, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},      // x
-            {{{nD, nD}, {nD, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},          // phi
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // alpha
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // bias
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},  // alpha
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                   // gamma (optional)
         },
         {
@@ -69,7 +70,7 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_TND_B1_S1024_n4_D5120)
         {T, n},         // h_post: [T, n]
         {T, n, n},      // h_res: [T, n, n]
         {T},            // inv_rms: [T]
-        {T, nD},        // h_mix: [T, nD]
+        {T, phiRows},   // h_mix: [T, phiRows]
         {T, n}          // h_pre: [T, n]
     };
 
@@ -87,14 +88,15 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_TND_B1_S2048_n4_D2560)
     uint32_t n = 4;
     uint32_t D = 2560;
     uint32_t nD = n * D;  // 10240
+    uint32_t phiRows = n * n + 2 * n;  // 24
 
     gert::InfershapeContextPara infershapeContextPara(
         "MhcPre",
         {
             {{{T, n, D}, {T, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},      // x
-            {{{nD, nD}, {nD, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},          // phi
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // alpha
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // bias
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},  // alpha
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                   // gamma (optional)
         },
         {
@@ -117,7 +119,7 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_TND_B1_S2048_n4_D2560)
         {T, n},         // h_post: [T, n]
         {T, n, n},      // h_res: [T, n, n]
         {T},            // inv_rms: [T]
-        {T, nD},        // h_mix: [T, nD]
+        {T, phiRows},   // h_mix: [T, phiRows]
         {T, n}          // h_pre: [T, n]
     };
 
@@ -135,14 +137,15 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_TND_B1_S4096_n4_D2560)
     uint32_t n = 4;
     uint32_t D = 2560;
     uint32_t nD = n * D;  // 10240
+    uint32_t phiRows = n * n + 2 * n;  // 24
 
     gert::InfershapeContextPara infershapeContextPara(
         "MhcPre",
         {
             {{{T, n, D}, {T, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},      // x
-            {{{nD, nD}, {nD, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},          // phi
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // alpha
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                  // bias
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},  // alpha
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                   // gamma (optional)
         },
         {
@@ -165,7 +168,7 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_TND_B1_S4096_n4_D2560)
         {T, n},         // h_post: [T, n]
         {T, n, n},      // h_res: [T, n, n]
         {T},            // inv_rms: [T]
-        {T, nD},        // h_mix: [T, nD]
+        {T, phiRows},   // h_mix: [T, phiRows]
         {T, n}          // h_pre: [T, n]
     };
 
@@ -184,14 +187,15 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_BSND_Normal)
     uint32_t n = 4;
     uint32_t D = 5120;
     uint32_t nD = n * D;  // 20480
+    uint32_t phiRows = n * n + 2 * n;  // 24
 
     gert::InfershapeContextPara infershapeContextPara(
         "MhcPre",
         {
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // x
-            {{{nD, nD}, {nD, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},            // phi
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // alpha
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // bias
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},  // alpha
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                     // gamma (optional)
         },
         {
@@ -214,7 +218,7 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_BSND_Normal)
         {B, S, n},         // h_post: [B, S, n]
         {B, S, n, n},      // h_res: [B, S, n, n]
         {B, S},            // inv_rms: [B, S]
-        {B, S, nD},        // h_mix: [B, S, nD]
+        {B, S, phiRows},   // h_mix: [B, S, phiRows]
         {B, S, n}          // h_pre: [B, S, n]
     };
 
@@ -233,14 +237,15 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_BSND_DifferentBatch)
     uint32_t n = 4;
     uint32_t D = 2560;
     uint32_t nD = n * D;  // 10240
+    uint32_t phiRows = n * n + 2 * n;  // 24
 
     gert::InfershapeContextPara infershapeContextPara(
         "MhcPre",
         {
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // x
-            {{{nD, nD}, {nD, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},            // phi
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // alpha
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND},                    // bias
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},  // alpha
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},  // bias
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                     // gamma (optional)
         },
         {
@@ -263,9 +268,78 @@ TEST_F(MhcPreProto, Ut_Check_mHCPreProto_BSND_DifferentBatch)
         {B, S, n},         // h_post: [B, S, n]
         {B, S, n, n},      // h_res: [B, S, n, n]
         {B, S},            // inv_rms: [B, S]
-        {B, S, nD},        // h_mix: [B, S, nD]
+        {B, S, phiRows},   // h_mix: [B, S, phiRows]
         {B, S, n}          // h_pre: [B, S, n]
     };
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(MhcPreProto, Ut_Check_mHCPreProto_InvalidAlphaShape)
+{
+    constexpr uint32_t T = 1;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t D = 2560;
+    constexpr uint32_t nD = n * D;
+    constexpr uint32_t phiRows = n * n + 2 * n;
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "MhcPre",
+        {
+            {{{T, n, D}, {T, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{4}, {4}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}
+        });
+
+    std::vector<std::vector<int64_t>> expectOutputShape = {};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
+}
+TEST_F(MhcPreProto, Ut_Check_mHCPreProto_InvalidAlphaRank)
+{
+    constexpr uint32_t T = 1;
+    constexpr uint32_t n = 4;
+    constexpr uint32_t D = 2560;
+    constexpr uint32_t nD = n * D;
+    constexpr uint32_t phiRows = n * n + 2 * n;
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "MhcPre",
+        {
+            {{{T, n, D}, {T, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phiRows, nD}, {phiRows, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3, 1}, {3, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}
+        });
+
+    std::vector<std::vector<int64_t>> expectOutputShape = {};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
 }

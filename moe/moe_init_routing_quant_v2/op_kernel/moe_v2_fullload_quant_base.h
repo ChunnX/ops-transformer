@@ -20,15 +20,14 @@
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
 
-class MoeV2FullLoadQuantBase
-{
+class MoeV2FullLoadQuantBase {
 public:
     __aicore__ inline MoeV2FullLoadQuantBase(){};
 
 protected:
-    __aicore__ inline void InitBase(
-        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
-        GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe);
+    __aicore__ inline void InitBase(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                    GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
+                                    const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void ProcessBase();
     __aicore__ inline void CopyIn();
     __aicore__ inline void SortCompute();
@@ -37,9 +36,9 @@ protected:
     __aicore__ inline void ComputeExpertTokenCountOrCumsum();
 
 protected:
-    const InnerMoeV2GatherOutComputeTilingData* gatherOutTilingData;
+    const InnerMoeV2GatherOutComputeTilingData *gatherOutTilingData;
 
-    TPipe* pipe;
+    TPipe *pipe;
     int64_t tileLength;
     int64_t bufferNum = 1;
     int64_t totalLength;
@@ -83,10 +82,12 @@ protected:
 __aicore__ inline void MoeV2FullLoadQuantBase::CopyIn()
 {
     LocalTensor<int32_t> inLocal = sortDataCopyInQueue.AllocTensor<int32_t>();
-    DataCopyExtParams dataCopyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(this->totalLength * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams dataCopyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(this->totalLength * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     DataCopyPad(inLocal[0], expertIdxGm, dataCopyParams, dataCopyPadParams);
+    SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
     ArithProgression<int32_t>(inLocal[this->sortNum], 0, 1, this->totalLength);
     sortDataCopyInQueue.EnQue(inLocal);
 }
@@ -96,6 +97,9 @@ __aicore__ inline void MoeV2FullLoadQuantBase::SortCompute()
     LocalTensor<int32_t> inLocal = sortDataCopyInQueue.DeQue<int32_t>();
     LocalTensor<int32_t> expertIdxLocal = inLocal[0];
     LocalTensor<float> expertIdxLocalFp32 = expertIdxLocal.ReinterpretCast<float>();
+    PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(EVENT_ID0);
+    WaitFlag<HardEvent::S_V>(EVENT_ID0);
     Cast(expertIdxLocalFp32, expertIdxLocal, RoundMode::CAST_ROUND, this->totalLength);
     PipeBarrier<PIPE_V>();
     Muls(expertIdxLocalFp32, expertIdxLocalFp32, (float)-1, this->totalLength);
@@ -107,38 +111,47 @@ __aicore__ inline void MoeV2FullLoadQuantBase::SortCompute()
         mask0 = mask0 << duplicateNum;
         mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
         uint64_t mask[2] = {mask0, 0};
+        PipeBarrier<PIPE_V>();
         Duplicate(expertIdxLocalFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
         PipeBarrier<PIPE_V>();
     }
     LocalTensor<float> concatLocal;
+    PipeBarrier<PIPE_V>();
     LocalTensor<float> tempTensor = tempBuffer.Get<float>(GetSortLen<float>(this->sortNum));
+    PipeBarrier<PIPE_V>();
     Concat(concatLocal, expertIdxLocalFp32, tempTensor, this->sortNum / ONE_REPEAT_SORT_NUM);
     PipeBarrier<PIPE_V>();
     LocalTensor<uint32_t> rowIdxLocal = inLocal[this->sortNum].template ReinterpretCast<uint32_t>();
+    PipeBarrier<PIPE_V>();
     LocalTensor<float> sortedLocal = sortedBuffer.Get<float>(GetSortLen<float>(this->sortNum));
+    PipeBarrier<PIPE_V>();
     Sort<float, true>(sortedLocal, concatLocal, rowIdxLocal, tempTensor, this->sortNum / ONE_REPEAT_SORT_NUM);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> expandedExpertIdxLocal = expandedExpertIdxCopyOutQueue.AllocTensor<float>();
     LocalTensor<uint32_t> expandDstToSrcRowLocal = expandDstToSrcRowQueue.AllocTensor<uint32_t>();
     LocalTensor<float> expandDstToSrcRowLocalFp32 = expandDstToSrcRowLocal.ReinterpretCast<float>();
+    PipeBarrier<PIPE_V>();
     Extract(expandedExpertIdxLocal, expandDstToSrcRowLocal, sortedLocal, this->sortNum / ONE_REPEAT_SORT_NUM);
     PipeBarrier<PIPE_V>();
-    Cast(
-        expandDstToSrcRowLocalFp32, expandDstToSrcRowLocal.ReinterpretCast<int32_t>(), RoundMode::CAST_ROUND,
-        this->totalLength);
+    Cast(expandDstToSrcRowLocalFp32, expandDstToSrcRowLocal.ReinterpretCast<int32_t>(), RoundMode::CAST_ROUND,
+         this->totalLength);
     PipeBarrier<PIPE_V>();
     Muls(expandedExpertIdxLocal, expandedExpertIdxLocal, (float)-1, this->totalLength);
     PipeBarrier<PIPE_V>();
     LocalTensor<int32_t> expandedExpertIdxLocalInt32;
     expandedExpertIdxLocalInt32 = expandedExpertIdxLocal.ReinterpretCast<int32_t>();
+    PipeBarrier<PIPE_V>();
     Cast(expandedExpertIdxLocalInt32, expandedExpertIdxLocal, RoundMode::CAST_ROUND, this->totalLength);
     PipeBarrier<PIPE_V>();
     expandedExpertIdxCopyOutQueue.EnQue<int32_t>(expandedExpertIdxLocalInt32);
 
     LocalTensor<uint32_t> expandedRowIdx = expandedRowIdxCopyOutQueue.AllocTensor<uint32_t>();
     LocalTensor<uint32_t> expandedRowIdxU32 = expandedRowIdx.ReinterpretCast<uint32_t>();
+    PipeBarrier<PIPE_V>();
     Muls(expandDstToSrcRowLocalFp32, expandDstToSrcRowLocalFp32, (float)-1, this->totalLength);
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
     ArithProgression<int32_t>(inLocal[this->sortNum], 0, 1, this->totalLength);
     PipeBarrier<PIPE_V>();
     if (duplicateNum > 0) {
@@ -147,11 +160,15 @@ __aicore__ inline void MoeV2FullLoadQuantBase::SortCompute()
         mask0 = mask0 << duplicateNum;
         mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
         uint64_t mask[2] = {mask0, 0};
+        PipeBarrier<PIPE_V>();
         Duplicate(expandDstToSrcRowLocalFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
         PipeBarrier<PIPE_V>();
     }
+    PipeBarrier<PIPE_V>();
     Concat(concatLocal, expandDstToSrcRowLocalFp32, tempTensor, this->sortNum / ONE_REPEAT_SORT_NUM);
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::S_V>(EVENT_ID0);
+    WaitFlag<HardEvent::S_V>(EVENT_ID0);
     Sort<float, true>(sortedLocal, concatLocal, rowIdxLocal, tempTensor, this->sortNum / ONE_REPEAT_SORT_NUM);
     PipeBarrier<PIPE_V>();
     Extract(tempTensor, expandedRowIdxU32, sortedLocal, this->sortNum / ONE_REPEAT_SORT_NUM);
@@ -178,12 +195,17 @@ __aicore__ inline void MoeV2FullLoadQuantBase::ComputeExpertTokenCountOrCumsum()
     LocalTensor<int32_t> expertTokensCount = expertTokensCopyOutQueue.AllocTensor<int32_t>();
 
     int64_t expertNumAlign = Align(this->expertNum, sizeof(int32_t));
+    PipeBarrier<PIPE_V>();
     Duplicate(expertTokensCount, 0, expertNumAlign);
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
 
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
     int32_t lastExpertId = expandedExpertIdx.GetValue(0);
     int64_t tokenCount = 0;
     int64_t lastExpertCount = 0;
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
     for (int64_t i = 0; i < this->totalLength; i++) {
         int32_t curExpertId = expandedExpertIdx.GetValue(i);
         tokenCount++;
@@ -195,6 +217,8 @@ __aicore__ inline void MoeV2FullLoadQuantBase::ComputeExpertTokenCountOrCumsum()
             lastExpertId++;
         }
     }
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
     expertTokensCount.SetValue(lastExpertId, tokenCount);
     if (this->expertTokensCountOrCumsumFlag == EXERPT_TOKENS_CUMSUM) {
         lastExpertId++;
@@ -203,9 +227,11 @@ __aicore__ inline void MoeV2FullLoadQuantBase::ComputeExpertTokenCountOrCumsum()
             lastExpertId++;
         }
     }
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(1), static_cast<uint32_t>(this->expertNum * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->expertNum * sizeof(int32_t)), 0,
+                                 0, 0};
     if (this->expertTokensCountOrCumsumFlag > 0) {
+        SetFlag<HardEvent::S_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::S_MTE3>(EVENT_ID0);
         DataCopyPad(expertTokensCountOrCumsumGm, expertTokensCount, copyParams);
     }
     expertTokensCopyOutQueue.FreeTensor(expertTokensCount);
@@ -218,9 +244,10 @@ __aicore__ inline void MoeV2FullLoadQuantBase::CopyOutEmpty()
     expandedExpertIdxCopyOutQueue.FreeTensor(outLocal);
 }
 
-__aicore__ inline void MoeV2FullLoadQuantBase::InitBase(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
-    GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe)
+__aicore__ inline void MoeV2FullLoadQuantBase::InitBase(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX,
+                                                        GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
+                                                        GM_ADDR workspace,
+                                                        const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe)
 {
     this->gatherOutTilingData = &(tilingData->gatherOutComputeParamsOp);
     this->blockIdx = GetBlockIdx();
@@ -244,14 +271,14 @@ __aicore__ inline void MoeV2FullLoadQuantBase::InitBase(
     this->totalLength = tilingData->n * tilingData->k;
     this->pipe = tPipe;
 
-    expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx, this->tileLength);
+    expertIdxGm.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
 
-    expandedXGm.SetGlobalBuffer((__gm__ int8_t*)expandedX);
-    expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx, this->tileLength);
+    expandedXGm.SetGlobalBuffer((__gm__ int8_t *)expandedX);
+    expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength);
     if (this->expertTokensCountOrCumsumFlag > 0) {
         // dropless
-        expertTokensCountOrCumsumGm.SetGlobalBuffer(
-            (__gm__ int32_t*)expertTokensCountOrCumsum, Align(this->expertNum, sizeof(int32_t)));
+        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
+                                                    Align(this->expertNum, sizeof(int32_t)));
     }
 
     int64_t kvFactor = 2;

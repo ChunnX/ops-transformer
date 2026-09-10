@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -24,7 +34,7 @@
 
 - **计算流程图**
 
-![MlaPreprocess图](../../../docs/zh/figures/MlaPreprocess计算过程.png)
+![MlaPreprocess图](../../../docs/zh/figures/mla_preprocess_compute_process.png)
 
 - **计算公式**：
 
@@ -41,7 +51,7 @@
     $$
     RmsNormQuant(x) = ({RmsNorm}(x) + bias) * deqScale
     $$
-  
+
     Query计算公式，包括W^{DQKV}矩阵乘、W^{UK}矩阵乘、RmsNormQuant和ROPE旋转位置编码处理
 
     $$
@@ -62,62 +72,64 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
+    `cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。其他计算、输出形状和Cache布局不变。
+
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPreprocessGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPreprocess”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMlaPreprocessGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPreprocess”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMlaPreprocessGetWorkspaceSize(
-  const aclTensor *input, 
-  const aclTensor *gamma0, 
-  const aclTensor *beta0, 
-  const aclTensor *quantScale0, 
+  const aclTensor *input,
+  const aclTensor *gamma0,
+  const aclTensor *beta0,
+  const aclTensor *quantScale0,
   const aclTensor *quantOffset0,
-  const aclTensor *wdqkv, 
-  const aclTensor *deScale0, 
-  const aclTensor *bias0, 
-  const aclTensor *gamma1, 
-  const aclTensor *beta1, 
-  const aclTensor *quantScale1, 
-  const aclTensor *quantOffset1, 
-  const aclTensor *wuq, 
-  const aclTensor *deScale1, 
-  const aclTensor *bias1, 
-  const aclTensor *gamma2, 
-  const aclTensor *cos, 
-  const aclTensor *sin, 
-  const aclTensor *wuk, 
-  const aclTensor *kvCache, 
-  const aclTensor *kvCacheRope, 
-  const aclTensor *slotMapping, 
-  const aclTensor *ctkvScale, 
-  const aclTensor *qNopeScale, 
-  int64_t          wdqDim, 
-  int64_t          qRopeDim, 
-  int64_t          kRopeDim, 
-  double           epsilon, 
-  int64_t          qRotaryCoeff, 
-  int64_t          kRotaryCoeff, 
-  bool             transposeWdq, 
-  bool             transposeWuq, 
-  bool             transposeWuk, 
-  int64_t          cacheMode, 
-  int64_t          quantMode, 
-  bool             doRmsNorm, 
-  int64_t          wdkvSplitCount, 
-  const aclTensor  *qOut, 
-  const aclTensor  *kvCacheOut, 
-  const aclTensor  *qRopeOut, 
-  const aclTensor  *krCacheOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *wdqkv,
+  const aclTensor *deScale0,
+  const aclTensor *bias0,
+  const aclTensor *gamma1,
+  const aclTensor *beta1,
+  const aclTensor *quantScale1,
+  const aclTensor *quantOffset1,
+  const aclTensor *wuq,
+  const aclTensor *deScale1,
+  const aclTensor *bias1,
+  const aclTensor *gamma2,
+  const aclTensor *cos,
+  const aclTensor *sin,
+  const aclTensor *wuk,
+  const aclTensor *kvCache,
+  const aclTensor *kvCacheRope,
+  const aclTensor *slotMapping,
+  const aclTensor *ctkvScale,
+  const aclTensor *qNopeScale,
+  int64_t          wdqDim,
+  int64_t          qRopeDim,
+  int64_t          kRopeDim,
+  double           epsilon,
+  int64_t          qRotaryCoeff,
+  int64_t          kRotaryCoeff,
+  bool             transposeWdq,
+  bool             transposeWuq,
+  bool             transposeWuk,
+  int64_t          cacheMode,
+  int64_t          quantMode,
+  bool             doRmsNorm,
+  int64_t          wdkvSplitCount,
+  const aclTensor  *qOut,
+  const aclTensor  *kvCacheOut,
+  const aclTensor  *qRopeOut,
+  const aclTensor  *krCacheOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMlaPreprocess(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -161,7 +173,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>gamma0</td>
       <td>输入</td>
       <td>首次RmsNorm计算中的γ参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[hiddenSize]</td>
@@ -171,7 +183,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>beta0</td>
       <td>输入</td>
       <td>首次RmsNorm计算中的β参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[hiddenSize]</td>
@@ -181,7 +193,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>quantScale0</td>
       <td>输入</td>
       <td>首次RmsNorm公式中量化缩放的参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
@@ -191,7 +203,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>quantOffset0</td>
       <td>输入</td>
       <td>首次RmsNorm公式中的量化偏移参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>INT8</td>
       <td>ND</td>
       <td>[1]</td>
@@ -212,7 +224,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>输入</td>
       <td>输入首次做矩阵乘的降维矩阵中的系数。</td>
       <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
-      <td>INT32、FLOAT</td>
+      <td>INT64、FLOAT</td>
       <td>ND</td>
       <td>[qLoraDim + keyTotalDim]</td>
       <td>-</td>
@@ -231,7 +243,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>gamma1</td>
       <td>输入</td>
       <td>第二次RmsNorm计算中的γ参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[qLoraDim]</td>
@@ -241,7 +253,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>beta1</td>
       <td>输入</td>
       <td>第二次RmsNorm计算中的β参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[qLoraDim]</td>
@@ -251,7 +263,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>quantScale1</td>
       <td>输入</td>
       <td>第二次RmsNorm公式中量化缩放的参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
@@ -261,7 +273,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>quantOffset1</td>
       <td>输入</td>
       <td>第二次RmsNorm公式中的量化偏移参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>INT8</td>
       <td>ND</td>
       <td>[1]</td>
@@ -301,7 +313,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>gamma2</td>
       <td>输入</td>
       <td>参与RmsNormAndreshapeAndCache计算的γ参数。</td>
-      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
+      <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/deduction_relationship.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[512]</td>
@@ -310,21 +322,21 @@ aclnnStatus aclnnMlaPreprocess(
     <tr>
       <td>cos</td>
       <td>输入</td>
-      <td>用于计算旋转位置编码的正弦参数矩阵。</td>
-      <td>-</td>
+      <td>用于计算旋转位置编码的余弦参数矩阵。</td>
+      <td>与sin同时传入空指针时关闭RoPE；禁止仅传入一个空指针。启用RoPE时第0维必须等于input的tokenNum。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[tokenNum,64]</td>
+      <td>启用RoPE时为[tokenNum,64]；关闭RoPE时传入空指针，接口内部转换为[0]。</td>
       <td>-</td>
     </tr>
     <tr>
       <td>sin</td>
       <td>输入</td>
-      <td>用于计算旋转位置编码的余弦参数矩阵。</td>
-      <td>-</td>
+      <td>用于计算旋转位置编码的正弦参数矩阵。</td>
+      <td>与cos同时传入空指针时关闭RoPE；禁止仅传入一个空指针。启用RoPE时第0维必须等于input的tokenNum。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[tokenNum,64]</td>
+      <td>启用RoPE时为[tokenNum,64]；关闭RoPE时传入空指针，接口内部转换为[0]。</td>
       <td>-</td>
     </tr>
     <tr>
@@ -342,10 +354,10 @@ aclnnStatus aclnnMlaPreprocess(
       <td>输入</td>
       <td>与输出的kvCacheOut为同一tensor。</td>
       <td>输入格式随cacheMode变化：<ul>
-        <li>cacheMode为0：shape为[blockNum,blockSize,1,576]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为1：shape为[blockNum,blockSize,1,512]，tensor的shape为拆分情况，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[blockNum,16,blockSize,32]，dtype为int8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为0：shape为[blockNum,blockSize,1,576]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为1：shape为[blockNum,blockSize,1,512]，tensor的shape为拆分情况，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[blockNum,16,blockSize,32]，dtype为int8，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
         <li>仅支持首轴非连续</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
@@ -357,10 +369,10 @@ aclnnStatus aclnnMlaPreprocess(
       <td>kvCacheRope</td>
       <td>输入</td>
       <td>与输出的krCacheOut为同一tensor。</td>
-      <td>可选参数，支出传入空指针，输入格式随cacheMode变化：<ul>
+      <td>可选参数，支持传入空指针，输入格式随cacheMode变化：<ul>
         <li>cacheMode为0：不传入。</li>
-        <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
         <li>仅支持首轴非连续</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -546,9 +558,9 @@ aclnnStatus aclnnMlaPreprocess(
       <td>输出</td>
       <td>表示Query的输出tensor，对应计算流图中右侧经过NOPE和矩阵乘后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
-        <li>cacheMode为0：shape为[tokenNum, headNum, 576]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为1或3：shape为[tokenNum, headNum, 512]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[tokenNum, headNum, 512]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND格式。</li></ul>
+        <li>cacheMode为0：shape为[tokenNum, headNum, 576]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为1或3：shape为[tokenNum, headNum, 512]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[tokenNum, headNum, 512]，dtype为INT8，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND格式。</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -560,10 +572,10 @@ aclnnStatus aclnnMlaPreprocess(
       <td>输出</td>
       <td>表示Key经过ReshapeAndCache后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
-        <li>cacheMode为0：shape为[blockNum, blockSize, 1, 576]， dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 512]， dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[blockNum, 16, blockSize, 32]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum, 32, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为0：shape为[blockNum, blockSize, 1, 576]， dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 512]， dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[blockNum, 16, blockSize, 32]，dtype为INT8，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
+        <li>cacheMode为3：shape为[blockNum, 32, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -576,8 +588,8 @@ aclnnStatus aclnnMlaPreprocess(
       <td>表示Query经过旋转编码后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
-        <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li></ul>
+        <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -590,8 +602,8 @@ aclnnStatus aclnnMlaPreprocess(
       <td>表示Key经过ROPE和ReshapeAndCache后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
-        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
+        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -622,7 +634,7 @@ aclnnStatus aclnnMlaPreprocess(
 
 - **返回值**
 
-  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
@@ -684,7 +696,7 @@ aclnnStatus aclnnMlaPreprocess(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnBatchMatMulGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnMlaPreprocessGetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -701,7 +713,7 @@ aclnnStatus aclnnMlaPreprocess(
 
 - **返回值**
 
-  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -722,7 +734,7 @@ aclnnStatus aclnnMlaPreprocess(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 /**
@@ -771,12 +783,12 @@ bool ReadFile(const std::string &filePath, std::vector<int64_t> shape, std::vect
 {
     size_t fileSize = 1;
     for (int64_t i : shape){
-        fileSize *= i; 
+        fileSize *= i;
     }
     std::ifstream file(filePath, std::ios::binary);
     if (!file.is_open()) {
         std::cerr << "无法打开文件" << std::endl;
-        return 1;
+        return false;
     }
     // 获取文件大小
     file.seekg(0, std::ios::end);
@@ -785,7 +797,7 @@ bool ReadFile(const std::string &filePath, std::vector<int64_t> shape, std::vect
     if (file.read(reinterpret_cast<char*>(hostData.data()), fileSize * sizeof(T))) {
     } else {
         std::cerr << "读取文件失败" << std::endl;
-        return 1;
+        return false;
     }
     file.close();
     return true;
@@ -945,9 +957,9 @@ int main() {
   int64_t blockNum = 192;
   int64_t blockSize = 128;
 
-  int64_t wdqDim = 128;
-  int64_t qRopeDim = 0; 
-  int64_t kRopeDim = 0;
+  int64_t wdqDim = 1536;
+  int64_t qRopeDim = 64;
+  int64_t kRopeDim = 64;
   double epsilon = 1e-05;
   int64_t qRotaryCoeff = 2;
   int64_t kRotaryCoeff = 2;
@@ -983,7 +995,7 @@ int main() {
   std::vector<int64_t> kvCacheRopeShape = {blockNum, blockSize, 1, 64};
   std::vector<int64_t> slotmappingShape = {tokenNum};
   std::vector<int64_t> ctkvScaleShape = {1};
-  std::vector<int64_t> qNopeScaleShape = {headNum};
+  std::vector<int64_t> qNopeScaleShape = {1};
 
   std::vector<int64_t> qOutShape = {tokenNum, headNum, 576};
   std::vector<int64_t> kvCacheOutShape = {blockNum, blockSize, 1, 576};
@@ -1148,14 +1160,15 @@ int main() {
   uint64_t workspaceSize = 0;
   aclOpExecutor *executor;
 
-  // 调用acaclnnMlaPreprocess第一段接口
+  // 调用aclnnMlaPreprocess第一段接口
   ret = aclnnMlaPreprocessGetWorkspaceSize(
     input, gamma0, beta0, quantScale0, quantOffset0,
-    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2, cos, sin, wuk, kvCache, kvCacheRope, slotmapping, ctkvScale, qNopeScale,
+    wdqkv, deScale0, bias0, gamma1, beta1, quantScale1, quantOffset1, wuq, deScale1, bias1, gamma2,
+    cos, sin, wuk, kvCache, kvCacheRope, slotmapping, ctkvScale, qNopeScale,
     wdqDim, qRopeDim, kRopeDim, epsilon, qRotaryCoeff, kRotaryCoeff, transposeWdq, transposeWuq, transposeWuk, cacheMode, quantMode, doRmsNorm, wdkvSplitCount, qOut, kvCacheOut, qRopeOut, krCacheOut, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
-      LOG_PRINT("acaclnnMlaPreprocessGetWorkspaceSize failed. ERROR: %d\n", ret);
+      LOG_PRINT("aclnnMlaPreprocessGetWorkspaceSize failed. ERROR: %d\n", ret);
       return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -1167,10 +1180,10 @@ int main() {
               return ret);
   }
 
-  // 调用acaclnnMlaPreprocess第二段接口
+  // 调用aclnnMlaPreprocess第二段接口
   ret = aclnnMlaPreprocess(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("acaclnnMlaPreprocess failed. ERROR: %d\n", ret);
+            LOG_PRINT("aclnnMlaPreprocess failed. ERROR: %d\n", ret);
             return ret);
 
   // 4.（固定写法）同步等待任务执行结束

@@ -2,74 +2,84 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：DenseLightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，从而减少长序列场景下Attention的计算量，加速长序列的网络的推理和训练的性能。稠密场景下的LightningIndexerGrad的输入query、key、query_index、key_index不用做稀疏化处理。
+- 接口功能：DenseLightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，从而减少长序列场景下Attention的计算量，提升长序列的网络的推理和训练的性能。稠密场景下的LightningIndexerGrad的输入query、key、query_index、key_index不用做稀疏化处理。
 
 - 计算公式：
 
   1. Top-k value的计算公式：
 
-  $$
-  I_{t,:}=W_{t,:}@ReLU(\tilde{q}_{t,:}@\tilde{K}_{:t,:}^\top)
-  $$
+     $$
+     I_{t,:}=W_{t,:}@ReLU(\tilde{q}_{t,:}@\tilde{K}_{:t,:}^\top)
+     $$
 
-    - $W_{t,:}$是第$t$个token对应的$weights$；
-    - $\tilde{q}_{t,:}$是$\tilde{q}$矩阵第$t$个token对应的$G$个query头合轴后的结果；
-    - $\tilde{K}_{:t,:}$为$t$行$\tilde{K}$矩阵。
+     - $W_{t,:}$是第$t$个token对应的$weights$；
+     - $\tilde{q}_{t,:}$是$\tilde{q}$矩阵第$t$个token对应的$G$个query头合轴后的结果；
+     - $\tilde{K}_{:t,:}$为$t$行$\tilde{K}$矩阵。
 
   2. 正向的Softmax对应公式：
 
-  $$
-  p_{t,:} = \text{Softmax}(q_{t,:} @ K_{:t,:}^\top/\sqrt{d})
-  $$
+     $$
+     p_{t,:} = \text{Softmax}(q_{t,:} @ K_{:t,:}^\top/\sqrt{d})
+     $$
 
-    - $p_{t,:}$是第$t$个token对应的Softmax结果；
-    - $q_{t,:}$是$q$矩阵第$t$个token对应的$G$个query头合轴后的结果；
-    - ${K}_{:t,:}$为$t$行$K$矩阵。
+     - $p_{t,:}$是第$t$个token对应的Softmax结果；
+     - $q_{t,:}$是$q$矩阵第$t$个token对应的$G$个query头合轴后的结果；
+     - ${K}_{:t,:}$为$t$行$K$矩阵。
 
   3. npu_lightning_indexer会单独训练，对应的loss function为：
 
-  $$
-  Loss{=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
-  $$
+      $$
+      Loss{=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
+      $$
 
-  其中，$p_{t,:}$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
+      其中，$p_{t,:}$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
 
-  $$
-  D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
-  $$
+      $$
+      D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
+      $$
 
   4. 通过求导可得Loss的梯度表达式：
 
-  $$
-  dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
-  $$
+      $$
+      dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
+      $$
 
-  利用链式法则可以进行weights，query和key矩阵的梯度计算：
-  
-  $$
-  dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left) \left) \mathop{{}}\nolimits^{\top}\right. \right. \right. \right.
-  $$
+      利用链式法则可以进行weights，query和key矩阵的梯度计算：
 
-  $$
-  d\mathop{{\tilde{q}}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@\tilde{K}\mathop{{}}\nolimits_{{:t,:}}
-  $$
+      $$
+      dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left) \left) \mathop{{}}\nolimits^{\top}\right. \right. \right. \right.
+      $$
 
-  $$
-  d\tilde{K}\mathop{{}}\nolimits_{{:t,:}}=\left(dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{\top}@\tilde{q}\mathop{{}}\nolimits_{{:t, :}}\right. \right.
-  $$
+      $$
+      d\mathop{{\tilde{q}}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@\tilde{K}\mathop{{}}\nolimits_{{:t,:}}
+      $$
 
-  其中，$S$为$\tilde{q}$和$K$矩阵乘的结果。
+      $$
+      d\tilde{K}\mathop{{}}\nolimits_{{:t,:}}=\left(dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{\top}@\tilde{q}\mathop{{}}\nolimits_{{:t, :}}\right. \right.
+      $$
+
+      其中，$S$为$\tilde{q}$和$K$矩阵乘的结果。
 
 <!-- - **说明**：
 
@@ -78,7 +88,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
@@ -116,7 +126,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
     aclrtStream       stream)
 ```
 
-## aclnnDenseLightningIndexerGradKLLoss
+## aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize
 
 - **参数说明:**
 
@@ -124,9 +134,9 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <colgroup>
           <col style="width: 320px">
           <col style="width: 120px">
-          <col style="width: 200px">  
-          <col style="width: 400px">  
-          <col style="width: 212px">  
+          <col style="width: 200px">
+          <col style="width: 400px">
+          <col style="width: 212px">
           <col style="width: 100px">
           <col style="width: 190px">
           <col style="width: 145px">
@@ -309,7 +319,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td>>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
+        <td>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，默认值2147483647。</td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -319,7 +329,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
+        <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2147483647。</td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -365,7 +375,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
        <td>(1,)</td>
        <td>-</td>
       </tr>
-      <tr> 
+      <tr>
       <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
@@ -390,7 +400,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -464,7 +474,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -561,7 +571,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       </tr>
       <tr>
        <td>S1、S2</td>
-       <td>1~128K</td>
+       <td>1~1M</td>
        <td>S1、S2支持不等长</td>
       </tr>
       <tr>
@@ -636,7 +646,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -766,7 +776,7 @@ int main() {
   void* softmaxSumDeviceAddr = nullptr;
   void* softmaxMaxIndexDeviceAddr = nullptr;
   void* softmaxSumIndexDeviceAddr = nullptr;
-  
+
   void* dQIndexDeviceAddr = nullptr;
   void* dKIndexDeviceAddr = nullptr;
   void* dWeightDeviceAddr = nullptr;
@@ -848,7 +858,7 @@ int main() {
   int64_t sparseMode = 3;
   bool deterministic = false;
 
-  char layOut[5] = {'T', 'N', 'D', 0};
+  char layout[5] = {'T', 'N', 'D', 0};
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -857,32 +867,32 @@ int main() {
   // 调用aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize第一段接口
   ret = aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
             q, k, qIndex, kIndex, weight, softmaxMax, softmaxSum, softmaxMaxIndex, softmaxSumIndex, qRope, kRope,
-            acSeqQLen, acSeqKvLen, scaleValue, layOut, sparseMode, preTokens, nextTokens, dQIndex, dKIndex, dWeight, loss,
+            acSeqQLen, acSeqKvLen, scaleValue, layout, sparseMode, preTokens, nextTokens, dQIndex, dKIndex, dWeight, loss,
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnDenseLightningIndexerGradKLLoss第二段接口
   ret = aclnnDenseLightningIndexerGradKLLoss(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDenseLightningIndexerGradKLLoss failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(dQIndexShape, &dQIndexDeviceAddr);
   PrintOutResult(dKIndexShape, &dKIndexDeviceAddr);
   PrintOutResult(dWeightShape, &dWeightDeviceAddr);
   PrintOutResult(lossShape, &lossDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -900,7 +910,7 @@ int main() {
   aclDestroyTensor(dKIndex);
   aclDestroyTensor(dWeight);
   aclDestroyTensor(loss);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -925,7 +935,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 

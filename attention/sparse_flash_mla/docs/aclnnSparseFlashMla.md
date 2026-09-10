@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                     | 是否支持 |
-| :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -85,7 +95,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnSparseFlashMla`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnSparseFlashMla`执行实际计算。
 
 ```c++
 aclnnStatus aclnnSparseFlashMlaGetWorkspaceSize(
@@ -161,7 +171,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>q（aclTensor*）</td>
       <td>输入</td>
       <td>Query输入张量。</td>
-      <td>不支持空Tensor。N1/N2仅支持[1,128]范围内的2的幂；D仅支持512。N1/N2的平台差异见表格后说明。</td>
+      <td>不支持空Tensor。N1支持1-128；D仅支持512。N1/N2的平台差异见表格后说明。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>
@@ -181,7 +191,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，ori_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，ori_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
@@ -193,12 +203,12 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV输入张量，Key与Value共享同一份数据。</td>
-      <td>CSA、HCA场景必须传入，SWA场景不传入。</td>
+      <td>- </td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，cmp_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，cmp_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
@@ -209,18 +219,8 @@ aclnnStatus aclnnSparseFlashMla(
     <tr>
       <td>oriSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>代表离散取oriKvCache的索引。</td>
-      <td>当前暂不支持，必须传入nullptr。</td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>-</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>cmpSparseIndicesOptional（aclTensor*）</td>
-      <td>输入</td>
-      <td>代表离散取cmpKvCache的TopK索引。</td>
-      <td>CSA场景必须传入，SWA、HCA场景不传入。</td>
+      <td>代表离散取oriKvCache的逻辑索引，-1表示无效或填充slot。</td>
+      <td>ori_kv稀疏场景必须传入，其他场景不传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>
@@ -228,7 +228,23 @@ aclnnStatus aclnnSparseFlashMla(
           <li>layoutQ为BSND时：(B, S1, N2, K)</li>
           <li>layoutQ为TND时：(T1, N2, K)</li>
         </ul>
-        其中K为TopK稀疏选择数，支持512或1024。
+        其中K为oriKv的TopK稀疏选择数。
+      </td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>cmpSparseIndicesOptional（aclTensor*）</td>
+      <td>输入</td>
+      <td>代表离散取cmpKvCache的TopK索引。</td>
+      <td>cmp_kv稀疏场景必须传入，其他场景不传入。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>
+        <ul>
+          <li>layoutQ为BSND时：(B, S1, N2, K2)</li>
+          <li>layoutQ为TND时：(T1, N2, K2)</li>
+        </ul>
+        其中K2为cmpKv的TopK稀疏选择数。
       </td>
       <td>√</td>
     </tr>
@@ -246,7 +262,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpBlockTableOptional（aclTensor*）</td>
       <td>输入</td>
       <td>PageAttention中cmpKvCache存储使用的block映射表。</td>
-      <td>CSA、HCA场景且layoutKv为PA_BBND时必须传入。</td>
+      <td>cmpKv传入且layoutKv为PA_BBND时必须传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, cmp_max_block_num_per_batch)</td>
@@ -306,7 +322,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmpKv实际参与运算的token数。</td>
-      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于cmpKvOptional shape、cuSeqlensCmpKvOptional或PA block table推导；layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，作为每个batch的cmp逻辑有效长度，优先于cmpKvOptional shape、cuSeqlensCmpKvOptional或PA block table推导。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -316,7 +332,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在CSA、HCA、cmpRatio不等于1且cmpMaskMode为3场景必传。该参数是主算子和aclnnSparseFlashMlaMetadata的可选入参，layoutKvOptional为BSND、TND、PA_BBND时均可使用。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；在cmpRatio不等于1且cmpMaskMode为3场景必传。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -325,17 +341,17 @@ aclnnStatus aclnnSparseFlashMla(
     <tr>
       <td>oriTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor。</td>
-      <td>必须传入nullptr或空Tensor；传入非空Tensor会返回参数错误。</td>
+      <td>表示不同q token对应的oriKv关键稀疏token的实际个数。</td>
+      <td>ori_kv稀疏的场景必须传入，其他场景传入nullptr或空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>layoutQ为BSND时：(B, S1, N2)；layoutQ为TND时：(T1, N2)。shape必须与oriSparseIndicesOptional去掉最后一维K后保持一致。</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor。</td>
+      <td>表示不同q token对应的cmpKv关键稀疏token的实际个数。</td>
       <td>必须传入nullptr或空Tensor；传入非空Tensor会返回参数错误。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -376,7 +392,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，CSA场景传4，HCA场景传128。</td>
+      <td>支持1到128；仅传入oriKv时不参与压缩KV计算。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -396,7 +412,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>0: No Mask。<br/>3: RightDownCausal模式。SWA场景下该参数不生效。</td>
+      <td>0: No Mask。<br/>3: RightDownCausal模式。cmpKv未传入时该参数取默认值0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -511,15 +527,21 @@ aclnnStatus aclnnSparseFlashMla(
   </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128。
-  - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
+  <!-- npu="A3,910b" id7 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；SWA稀疏ori_kv场景支持ori_sparse_indices及ori_topk_length，oriWinLeft和oriWinRight支持非负数，cmp_sparse_indices的最后一维K2当前支持512或1024。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1-128，N2只支持1。
+
+  <!-- end id8 -->
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
+  <!-- npu="A3,910b" id9 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
@@ -552,13 +574,13 @@ aclnnStatus aclnnSparseFlashMla(
         <td>D不为512。</td>
       </tr>
       <tr>
-        <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
+        <td>非SWA稀疏ori_kv场景oriMaskMode不为4，SWA稀疏ori_kv场景oriMaskMode不为0，或cmpMaskMode不为3。</td>
       </tr>
       <tr>
         <td>SWA场景cmpRatio不为1，或cmpRatio与CSA、HCA场景不匹配。</td>
       </tr>
       <tr>
-        <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+        <td>非SWA稀疏ori_kv场景oriWinLeft不为127，或oriWinRight不为0；SWA稀疏ori_kv场景oriWinLeft或oriWinRight为负数。</td>
       </tr>
       <tr>
         <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
@@ -566,6 +588,8 @@ aclnnStatus aclnnSparseFlashMla(
     </tbody>
     </table>
 
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
 
     <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
@@ -612,6 +636,8 @@ aclnnStatus aclnnSparseFlashMla(
     </tbody>
     </table>
 
+  <!-- end id10 -->
+
 ## aclnnSparseFlashMla
 
 - **参数说明**
@@ -653,7 +679,7 @@ aclnnStatus aclnnSparseFlashMla(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -663,8 +689,9 @@ aclnnStatus aclnnSparseFlashMla(
 
 - 使用约束
 
-  - 资料支持范围内暂不支持对`oriKvOptional`进行稀疏计算，设置`oriSparseIndicesOptional`无效。
-  - 除`oriTopkLengthOptional`和`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
+  - SWA稀疏ori_kv场景仅支持SWA模板，仅传入`oriKvOptional`，同时传入`oriSparseIndicesOptional`和`oriTopkLengthOptional`；配套Metadata接口的`oriTopk`为oriSparseIndicesOptional最后一维K，`oriMaskMode`为0/3/4，`oriWinLeft`和`oriWinRight`仅在`oriMaskMode`为4时取非负数，且`cmpKvOptional`不传入。
+  - SWA稀疏ori_kv场景下，`oriTopkLengthOptional`的元素表示实际有效索引条目数，取值应在[0, K]范围内。对每个q token和KV head，`oriSparseIndicesOptional`的[0, oriTopkLengthOptional)区间为左对齐的有效索引条目，[oriTopkLengthOptional, K)区间为无效或填充条目，建议填-1；其他场景`oriTopkLengthOptional`传入nullptr或空Tensor。
+  - 除`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
   - `metadataOptional`参数必须传入，由`aclnnSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
   - `cmpResidualKvOptional`为主算子和`aclnnSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
 
@@ -687,7 +714,7 @@ aclnnStatus aclnnSparseFlashMla(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 /*!

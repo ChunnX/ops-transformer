@@ -39,8 +39,7 @@ constexpr static uint8_t FIX_PIPE_UNIT_FLAG = 3;
 template <class OutputType, class DstTrait, class SrcTrait>
 struct Copy<
     Arch::DAV2201, CopyEnUnitFlagWithLayout, OutputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNDOrAlign<OutputType>()>
-> {
+    AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNDOrAlign<OutputType>()>> {
     /**
      * @brief Copy data from source tensor to destination tensor
      *
@@ -53,8 +52,8 @@ struct Copy<
      * @param [in] coord: the coordinates for copying data
      */
     template <class Coord>
-    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait>& dstND, AscendC::LocalTensor<SrcTrait>& src,
-                                      const Coord& coord)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait> &dstND, AscendC::LocalTensor<SrcTrait> &src,
+                                      const Coord &coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
         using SrcT = typename SrcTrait::LiteType;
@@ -99,10 +98,8 @@ struct Copy<
  * @param [in] SrcTrait: the traits of the source tensor
  */
 template <class OutputType, class DstTrait, class SrcTrait>
-struct Copy<
-    Arch::DAV2201, CopyEnUnitFlagWithLayout, OutputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNz<OutputType>()>
-> {
+struct Copy<Arch::DAV2201, CopyEnUnitFlagWithLayout, OutputType, DstTrait, SrcTrait,
+            AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNz<OutputType>()>> {
     /**
      * @brief Copy operator for copying data from source tensor to destination tensor
      * @param [in] Coord: the type of the coordinates
@@ -111,8 +108,8 @@ struct Copy<
      * @param [in] coord: the coordinates for copying data
      */
     template <class Coord>
-    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait>& dst, AscendC::LocalTensor<SrcTrait>& src,
-                                      const Coord& coord)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait> &dst, AscendC::LocalTensor<SrcTrait> &src,
+                                      const Coord &coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
         using DstT = typename DstTrait::LiteType;
@@ -163,8 +160,7 @@ struct Copy<
 template <class OutputType, class DstTrait, class SrcTrait>
 struct Copy<
     Arch::DAV3510, CopyEnUnitFlagWithLayout, OutputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNDOrAlign<OutputType>()>
-> {
+    AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNDOrAlign<OutputType>()>> {
     /**
      * @brief Copy data from source tensor to destination tensor
      * @param [in] Coord: the type of the coordinates
@@ -173,8 +169,8 @@ struct Copy<
      * @param [in] coord: the coordinates for copying data
      */
     template <class Coord>
-    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait>& dstND, AscendC::LocalTensor<SrcTrait>& src,
-                                      const Coord& coord)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait> &dstND, AscendC::LocalTensor<SrcTrait> &src,
+                                      const Coord &coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         using SrcT = typename SrcTrait::LiteType;
@@ -223,10 +219,8 @@ struct Copy<
  * @param [in] SrcTrait: the traits of the source tensor
  */
 template <class OutputType, class DstTrait, class SrcTrait>
-struct Copy<
-    Arch::DAV3510, CopyEnUnitFlagWithLayout, OutputType, DstTrait, SrcTrait,
-    AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNz<OutputType>()>
-> {
+struct Copy<Arch::DAV3510, CopyEnUnitFlagWithLayout, OutputType, DstTrait, SrcTrait,
+            AscendC::Std::enable_if_t<PosIsCO1<SrcTrait::tPos>() && PosIsGM<DstTrait::tPos>() && IsNz<OutputType>()>> {
     /**
      * @brief Copy data from source tensor to destination tensor
      * @param [in] Coord: the type of the coordinates
@@ -235,8 +229,8 @@ struct Copy<
      * @param [in] coord: the coordinates for copying data
      */
     template <class Coord>
-    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait>& dst, AscendC::LocalTensor<SrcTrait>& src,
-                                      const Coord& coord)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<DstTrait> &dst, AscendC::LocalTensor<SrcTrait> &src,
+                                      const Coord &coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         using SrcT = typename SrcTrait::LiteType;

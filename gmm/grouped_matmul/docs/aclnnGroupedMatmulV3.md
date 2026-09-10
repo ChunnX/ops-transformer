@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -20,16 +30,22 @@
   - k轴分组：$k_i$各不相同，但$m_i/n_i$每组相同，此时$x_i/weight_i$可以在$k_i$上拼接。
   - m轴分组：$k_i$各组相同，$weight_i/y_i$可以在$n_i$上拼接。
 
-  相较于[GroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增：**
+  相较于[aclnnGroupedMatmul](aclnnGroupedMatmul.md)接口，**此接口新增：**
+
+    <!-- npu="A3,910b" id7 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
       - 非量化场景，支持weight转置（转置指若shape为[M,K]时，则stride为[1,M],数据排布为[K,M]的场景）。
       - 支持m轴和k轴分组，由groupType表示。
       - x、weight、y都为单tensor，非量化场景下，支持x、weight输入都为float32类型。
       - 量化、伪量化场景，支持weight转置，支持weight为单tensor。
-      - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
+      - 对于[aclnnGroupedMatmul](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
+    <!-- end id7 -->
+    <!-- npu="950" id8 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 伪量化场景，支持weight转置，支持x，weight，y均为单tensor。
-      - 对于[aclnnGroupedMatmulGetWorkspaceSize](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
+      - 对于[aclnnGroupedMatmul](aclnnGroupedMatmul.md)接口支持的特性，该接口不支持x为单tensor，weight/y为多tensor场景。
+
+    <!-- end id8 -->
 
 **说明：**
 
@@ -63,7 +79,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulV3GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulV3GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulV3”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulV3GetWorkspaceSize(
@@ -95,7 +111,7 @@ aclnnStatus aclnnGroupedMatmulV3(
 - **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1483px"><colgroup>
-  <col style="width: 210px">
+  <col style="width: 240px">
   <col style="width: 90px">
   <col style="width: 370px">
   <col style="width: 232px">
@@ -117,7 +133,7 @@ aclnnStatus aclnnGroupedMatmulV3(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x（aclTensorList）</td>
+      <td>x（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -127,7 +143,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight（aclTensorList）</td>
+      <td>weight（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -137,7 +153,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional（aclTensorList）</td>
+      <td>biasOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -147,7 +163,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional（aclTensorList）</td>
+      <td>scaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -157,7 +173,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional（aclTensorList）</td>
+      <td>offsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -167,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional（aclTensorList）</td>
+      <td>antiquantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -177,7 +193,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional（aclTensorList）</td>
+      <td>antiquantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -187,7 +203,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclTensorList）</td>
+      <td>groupListOptional（aclTensor *）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>当输出中TensorList的长度为1时，groupListOptional中的最后一个值约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。</td>
@@ -220,7 +236,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>y（aclTensorList）</td>
+      <td>y（aclTensorList *）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -251,12 +267,15 @@ aclnnStatus aclnnGroupedMatmulV3(
     </tr>
   </tbody></table>
 
+  <!-- npu="A3,910b" id9 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - x支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - weight支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - biasOptional支持FLOAT16、FLOAT32、INT32
     - y支持FLOAT16、BFLOAT16、INT8、FLOAT32
     - 输入参数x、weight，输出参数y支持最多128个tensor。
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - x支持FLOAT16、BFLOAT16、FLOAT32、INT8
     - weight支持FLOAT16、BFLOAT16、FLOAT32、INT8
@@ -266,9 +285,11 @@ aclnnStatus aclnnGroupedMatmulV3(
     - groupType支持m轴分组和不分组，仅非量化支持k轴分组。
     - 输入参数x、weight，输出参数y在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在量化场景支持最多1个tensor。
 
+  <!-- end id10 -->
+
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景时报错：
 
@@ -353,7 +374,7 @@ aclnnStatus aclnnGroupedMatmulV3(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -361,6 +382,8 @@ aclnnStatus aclnnGroupedMatmulV3(
   - aclnnGroupedMatmulV3默认确定性实现。
 - 如果传入groupListOptional，groupListOptional必须为非负递增数列。
 - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
+
+<!-- npu="A3,910b" id11 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - 非量化场景支持的输入类型为：
     - x为FLOAT16、weight为FLOAT16、biasOptional为FLOAT16、scaleOptional为空、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、y为FLOAT16；
@@ -387,6 +410,8 @@ aclnnStatus aclnnGroupedMatmulV3(
 
   - x和weight中每一组tensor的最后一维大小都应小于65536。$x_i$的最后一维指当x不转置时$x_i$的K轴或当x转置时$x_i$的M轴。$weight_i$的最后一维指当weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
 
+<!-- end id11 -->
+<!-- npu="950" id12 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
   <details>
@@ -436,7 +461,7 @@ aclnnStatus aclnnGroupedMatmulV3(
 
   - 不为空的参数支持的数据类型和维度组合要满足下表（其中g为matmul组数即分组数）：
 
-      |groupType| x dtype     | x shape | weight dtype |weight shape| biasOptional dtype |biasOptional shape| scaleOptional dtpye |scaleOptional shape| out dtpye    |out shape|
+      |groupType| x dtype     | x shape | weight dtype |weight shape| biasOptional dtype |biasOptional shape| scaleOptional dtype |scaleOptional shape| out dtype    |out shape|
       |:-------:|:-------:|:-------:|:-------:|:-------:| :------      | :------      |:-------       | :------ |:-------       | :------ |
       |0|INT8     |(M,K)|INT8     |(g,K,N)/(g,N,K)|INT32/null    | (g,N)|UINT64/INT64  |(g,N)/null|INT8|(M,N)|
 
@@ -460,9 +485,11 @@ aclnnStatus aclnnGroupedMatmulV3(
 
   </details>
 
+<!-- end id12 -->
+
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```c++
 #include <iostream>
@@ -627,7 +654,7 @@ int main() {
     }
     // 调用aclnnGroupedMatmulV3第二段接口
     ret = aclnnGroupedMatmulV3(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmul failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV3 failed. ERROR: %d\n", ret); return ret);
 
     // 4.（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);

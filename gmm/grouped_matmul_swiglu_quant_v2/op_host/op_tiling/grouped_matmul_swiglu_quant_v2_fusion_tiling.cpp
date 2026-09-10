@@ -40,10 +40,11 @@ bool GroupedMatmulSwigluQuantV2FusionTiling::IsCapable()
         return false;
     }
 
-    auto wTensor = context_->GetDynamicInputTensor(WEIGHT_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, wTensor);
-    if (!(wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
-          wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
+    auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
+    auto wSShape = wShape->GetStorageShape();
+    if (!(wSShape.GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
+          wSShape.GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
         return false;
     }
     return true;
@@ -51,14 +52,14 @@ bool GroupedMatmulSwigluQuantV2FusionTiling::IsCapable()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
 {
-    auto xTensor = context_->GetDynamicInputTensor(X_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, xTensor);
-    auto wTensor = context_->GetDynamicInputTensor(WEIGHT_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, wTensor);
-    auto groupListTensor = context_->GetDynamicInputTensor(GROUPLIST_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, groupListTensor);
-    groupNum_ = groupListTensor->GetStorageShape().GetDim(0);
-    auto wDimNum = wTensor->GetStorageShape().GetDimNum();
+    auto xShape = context_->GetDynamicInputShape(X_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
+    auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
+    auto groupListShape = context_->GetDynamicInputShape(GROUPLIST_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, groupListShape);
+    groupNum_ = groupListShape->GetStorageShape().GetDim(0);
+    auto wDimNum = wShape->GetStorageShape().GetDimNum();
     if (wDimNum == NZ_WEIGHT_DIM_LIMIT) {
         isSingleTensor_ = 1;
     } else {
@@ -72,13 +73,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
         OP_LOGE(context_->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.", groupListType_),
         return ge::GRAPH_FAILED);
 
-    m_ = xTensor->GetStorageShape().GetDim(0);
-    k_ = xTensor->GetStorageShape().GetDim(1);
+    m_ = xShape->GetStorageShape().GetDim(0);
+    k_ = xShape->GetStorageShape().GetDim(1);
+    auto wSShape = wShape->GetStorageShape();
     if (wDimNum == NZ_WEIGHT_DIM_LIMIT) {
-        n_ = wTensor->GetStorageShape().GetDim(DIM_1) * wTensor->GetStorageShape().GetDim(DIM_4);
+        n_ = wSShape.GetDim(DIM_1) * wSShape.GetDim(DIM_4);
     } else {
         // 4D multi tensor: [N/32, K/16, 16, 32] -> N = dim0 * dim3
-        n_ = wTensor->GetStorageShape().GetDim(0) * wTensor->GetStorageShape().GetDim(3);
+        n_ = wSShape.GetDim(0) * wSShape.GetDim(3);
     }
     if (n_ < MIN_UB_FACTOR_DIM_X_N) {
         ubFactorDimx_ = 0x4;

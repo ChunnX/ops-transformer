@@ -27,9 +27,9 @@ using namespace QuantReduceScatterImpl;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #endif
 
-template<uint32_t quantReduceScatterCommMode>
-__global__ __aicore__ void quant_reduce_scatter(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM,
-                                                           GM_ADDR tilingGM)
+template <uint32_t quantReduceScatterCommMode>
+__global__ __aicore__ void quant_reduce_scatter(GM_ADDR context, GM_ADDR x, GM_ADDR scales, GM_ADDR output,
+                                                GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(QuantReduceScatterTilingData);
@@ -37,7 +37,7 @@ __global__ __aicore__ void quant_reduce_scatter(GM_ADDR x, GM_ADDR scales, GM_AD
     TPipe pipe;
     if constexpr (quantReduceScatterCommMode == MTE_COMM) {
         QuantReduceScatterMte<DTYPE_X, DTYPE_SCALES, DTYPE_OUT_PUT> op;
-        op.Init(x, scales, output, &pipe, &tilingData);
+        op.Init(context, x, scales, output, &pipe, &tilingData);
         op.Process();
     }
 }

@@ -30,44 +30,27 @@ protected:
 TEST_P(AllGatherMatmulArch22TilingTest, param)
 {
     auto param = GetParam();
-    struct AllGatherMatmulCompileInfo {} compileInfo;
+    struct AllGatherMatmulCompileInfo {
+    } compileInfo;
     gert::TilingContextPara tilingContextPara(
-        "AllGatherMatmul",
-        {
-            param.x1,
-            param.x2,
-            param.bias
-        },
-        {
-            param.y,
-            param.gather_out
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
-            {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.topo_type)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)}
-        },
-        param.inputInstance, param.outputInstance,
-        &compileInfo,
-        param.soc, param.coreNum, param.ubsize
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", param.rank_size}, {"topoType", param.topo_type}
-    };
+        "AllGatherMatmul", {param.x1, param.x2, param.bias}, {param.y, param.gather_out},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
+         {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.topo_type)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)}},
+        param.inputInstance, param.outputInstance, &compileInfo, param.soc, param.coreNum, param.ubsize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}, {"topoType", param.topo_type}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
-        param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+                       param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllGatherMatmul,
-    AllGatherMatmulArch22TilingTest,
+    AllGatherMatmul, AllGatherMatmulArch22TilingTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AllGatherMatmulTilingUtParam>
-);
+    PrintCaseInfoString<AllGatherMatmulTilingUtParam>);
 
 } // namespace AllGatherMatmulUT

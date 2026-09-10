@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -66,16 +76,16 @@
   $$
 
   $$
-   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
+   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right.
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
-    const aclTensor     *query, 
+    const aclTensor     *query,
     const aclTensor     *key,
     const aclTensor     *value,
     const aclTensor     *sparseIndices,
@@ -84,7 +94,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor     *softmaxMax,
     const aclTensor     *softmaxSum,
     const aclTensor     *actualSeqLengthsQueryOptional,
-    const aclTensor     *actualSeqLengthskvOptional,
+    const aclTensor     *actualSeqLengthsKvOptional,
     const aclTensor     *queryRopeOptional,
     const aclTensor     *keyRopeOptional,
     double               scaleValue,
@@ -105,9 +115,9 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGrad(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream stream)
 ```
 
@@ -119,9 +129,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 200px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 290px">
             <col style="width: 145px">
@@ -241,7 +251,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             </td>
             <td>√</td>
         </tr>
-  <tr>
+        <tr>
             <td>actualSeqLengthsQueryOptional</td>
             <td>输入</td>
             <td>每个Batch中，Query的有效token数。</td>
@@ -259,7 +269,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>√</td>
         </tr>
         <tr>
-            <td>actualSeqLengthskvOptional</td>
+            <td>actualSeqLengthsKvOptional</td>
             <td>输入</td>
             <td>每个Batch中，Key、value的有效token数。</td>
             <td>
@@ -419,7 +429,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             </td>
             <td>x</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dValue</td>
             <td>输出</td>
             <td>表示value的梯度。</td>
@@ -465,7 +475,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -544,7 +554,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -646,7 +656,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>1~128K</td>
+            <td>S1支持1~128K，S2支持1~1M</td>
             <td>S1、S2支持不等长</td>
         </tr>
         <tr>
@@ -673,7 +683,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>K</td>
-            <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
+            <td>1024、2048、2051、3072、4096、5120、6144、7168、8192</td>
             <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
@@ -686,7 +696,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
 
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -717,12 +727,12 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 
 void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   auto size = GetShapeSize(shape);
-  std::vector<short> resultData(size, 0);
+  std::vector<aclFloat16> resultData(size, 0);
   auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                          *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
   for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %e\n", i, resultData[i]);
+    LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
   }
 }
 
@@ -876,7 +886,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dkRopeHostData, kRopeShape, &dkRopeDeviceAddr, aclDataType::ACL_FLOAT16, &dkRope);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   double scaleValue = 0.044194;
   int64_t sparseBlockSize = 1;
   int64_t sparseMode = 0;
@@ -884,39 +894,39 @@ int main() {
   int64_t nextTokens = 2147483647;
   bool deterministic = false;
   char layout[5] = {'T', 'N', 'D', 0};
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
+
   // 调用aclnnSparseFlashAttentionGrad第一段接口
-  ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum, actSeqQLen, actSeqKvLen,
-            qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope, 
-            &workspaceSize, &executor);
+  ret = aclnnSparseFlashAttentionGradGetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum,
+            actSeqQLen, actSeqKvLen, qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode, preTokens, nextTokens,
+            deterministic, dq, dk, dv, dqRope, dkRope, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnSparseFlashAttentionGrad第二段接口
   ret = aclnnSparseFlashAttentionGrad(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGrad failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(qShape, &dqDeviceAddr);
   PrintOutResult(kShape, &dkDeviceAddr);
   PrintOutResult(vShape, &dvDeviceAddr);
   PrintOutResult(qRopeShape, &dqRopeDeviceAddr);
   PrintOutResult(kRopeShape, &dkRopeDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -935,7 +945,7 @@ int main() {
   aclDestroyTensor(dv);
   aclDestroyTensor(dqRope);
   aclDestroyTensor(dkRope);
-  
+
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
@@ -961,7 +971,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

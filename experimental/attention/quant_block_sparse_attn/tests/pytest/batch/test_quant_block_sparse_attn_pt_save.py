@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import itertools
+import os
 
 import pytest
 import torch
@@ -59,17 +60,22 @@ def _fill_case_name(params, case_id):
     return filled
 
 
-def bsa(param_combinations, case_id):
+def bsa(param_combinations, case_id, force_regenerate=False):
     params = _fill_case_name(param_combinations, case_id)
     try:
         check_valid_param.check_valid_param(params)
     except ValueError as error:
         pytest.skip(f"input param check failed: {error}")
 
+    case_name = params.get("Testcase_Name") or f"case_{case_id:06d}"
+    pt_filepath = os.path.join(SAVE_PATH, f"bsa_case_{case_name}.pt")
+    if not force_regenerate and os.path.isfile(pt_filepath):
+        pytest.skip(f"test case already exists, skip generation: {pt_filepath}")
+
     quant_block_sparse_attn_golden.generate_and_save_testdata(params, save_pt=True, save_path=SAVE_PATH)
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("case_id,param_combinations", list(enumerate(PARAM_COMBINATIONS)))
-def test_quant_block_sparse_attn(case_id, param_combinations):
-    bsa(param_combinations, case_id)
+def test_quant_block_sparse_attn(case_id, param_combinations, force_regenerate):
+    bsa(param_combinations, case_id, force_regenerate=force_regenerate)

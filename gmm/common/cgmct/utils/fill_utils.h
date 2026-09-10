@@ -15,7 +15,7 @@
 
 #ifndef UTILS_FILL_UTILS_H
 #define UTILS_FILL_UTILS_H
-#include "common_utils.h"
+#include "cgmct_common_utils.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -27,8 +27,8 @@ namespace Gemm {
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510 || __NPU_ARCH__ == 3102)
 template <typename T>
-__aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, AscendC::LocalTensor<T>& initLocal,
-                                          uint64_t ySize, int32_t usedCoreNum, bool& isKZeroInit)
+__aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, AscendC::LocalTensor<T> &initLocal,
+                                          uint64_t ySize, int32_t usedCoreNum, bool &isKZeroInit)
 {
     if ASCEND_IS_AIC {
         return;

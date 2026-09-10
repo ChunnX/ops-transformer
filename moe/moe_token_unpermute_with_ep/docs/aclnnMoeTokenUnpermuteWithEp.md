@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -49,7 +59,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEp”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEp”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEpGetWorkspaceSize(
@@ -102,20 +112,20 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>permutedTokens</td>
       <td>输入</td>
       <td>表示经过扩展并排序过的tokens。</td>
-      <td>shape支持2D维度，不支持空tensor。</td>
+      <td>shape支持2D维度，不支持空Tensor。rangeOptional非空时，第0维长度不小于rangeOptional[1]-rangeOptional[0]。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>（（rangeOptional[1] - rangeOptional[0]）*topK_num，hidden_size）</td>
+      <td>（num_permuted_tokens，hidden_size）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>sortedIndices</td>
       <td>输入</td>
       <td>表示需要计算的数据在permutedTokens中的位置。</td>
-      <td>shape支持1D维度，要求元素值大于等于0小于2134372523，num_tokens为原tokens的数目，不支持空Tensor。</td>
+      <td>shape支持1D维度，长度为num_tokens*numTopk，不支持空Tensor。元素值不在rangeOptional表示的范围内时，对应的输出贡献为0。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>（num_tokens * topK_num）</td>
+      <td>（num_tokens*numTopk）</td>
       <td>√</td>
   </tr>
   <tr>
@@ -123,19 +133,19 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>可选输入</td>
       <td>表示输入tokens对应的专家概率。</td>
       <td>
-      shape支持2D维度，num_tokens为原tokens的数目。<br>
+      shape支持2D维度，不支持空Tensor，num_tokens为原tokens的数目，第1维长度必须等于numTopk。<br>
       传入非空并合法的Tensor时，permutedTokens中的输入数据与probsOptional相乘。<br>
-      传入空时，permutedTokens中的输入数据不进行乘法。</td>
+      传入空指针时，permutedTokens中的输入数据不进行乘法。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>（num_tokens，topK_num）</td>
+      <td>（num_tokens，numTopk）</td>
       <td>√</td>
   </tr>
   <tr>
       <td>numTopk</td>
       <td>输入</td>
       <td>被选中的专家个数。</td>
-      <td>-</td>
+      <td>取值必须大于等于1；probsOptional非空时，取值必须小于等于512。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -143,9 +153,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
   </tr>
     <tr>
       <td>rangeOptional</td>
-      <td>输入</td>
-      <td>ep切分的有效范围， size为2。</td>
-      <td>为空时，忽略numTopk，执行逻辑回退到<a href="../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md">aclnnMoeTokenUnpermute</a>。</td>
+      <td>可选输入</td>
+      <td>ep切分的有效范围，size为2。</td>
+      <td>允许传入空指针；传入空指针时使用默认值{0,0}，输出为全0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -163,9 +173,9 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
   </tr>
   <tr>
       <td>restoreShapeOptional</td>
-      <td>输入</td>
+      <td>可选输入</td>
       <td>-</td>
-      <td>paddedMode=true时生效，否则不会对其进行操作，目前仅支持nullptr。</td>
+      <td>预留参数，当前仅支持传入空指针。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -175,14 +185,11 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
       <td>out</td>
       <td>输出</td>
       <td>表示permutedTokens反重排的输出结果。</td>
-      <td>shape支持2D维度。</td>
-      <td>BFLOAT16、FLOAT16、FLOAT32</td>
+      <td>shape支持2D维度，不支持空Tensor。</td>
+      <td>与permutedTokens一致</td>
       <td>ND</td>
-      <td>
-        paddedMode=false时：（num_tokens，hidden_size）<br>
-        paddedMode=true时：与restoreShapeOptional保持一致
-      </td>
-      <td>√</td>
+      <td>（num_tokens，hidden_size）</td>
+      <td>×</td>
   </tr>
   <tr>
       <td>workspaceSize</td>
@@ -209,7 +216,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -229,7 +236,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
           <tr>
           <td> ACLNN_ERR_PARAM_NULLPTR </td>
           <td> 161001 </td>
-          <td>传入的必选输入、必选输出或者必选属性，是空指针。</td>
+          <td>permutedTokens、sortedIndices、out或executor为空指针。</td>
           </tr>
           <tr>
           <td> ACLNN_ERR_PARAM_INVALID </td>
@@ -279,20 +286,22 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEp(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnMoeTokenUnpermuteWithEp默认确定性实现。
 
-- topK_num <= 512。
+- numTopk必须大于等于1；probsOptional非空时，numTopk必须小于等于512。
+- 不支持Broadcast。
+- aclTensor的shape不支持使用-1表示动态维度或使用-2表示动态Rank。
 - 不支持paddedMode为`True`。
-- 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](../../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)。
+- 当rangeOptional为空时，使用默认值{0,0}，输出为全0，不会回退调用其他算子。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+以下示例展示基本调用流程，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 

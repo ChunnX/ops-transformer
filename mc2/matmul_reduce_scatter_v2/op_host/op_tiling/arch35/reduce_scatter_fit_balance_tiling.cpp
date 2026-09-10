@@ -1,12 +1,12 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file reduce_scatter_formulaic_tiling.cpp
@@ -34,18 +34,19 @@ void MMReduceScatterFitBalanceTiling::EstimateMMCommTime()
     }
 
     uint64_t sizeOfComm = mmInfo_.mValue * mmInfo_.nValue * commPerf_.GetCommDTypeSize() * rankDim_ / ONE_MBYTE;
-    OP_LOGD("MatmulReduceScatter", "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
-        "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
-        "rankDim_ %lu, rankTile %lu",
-        mmInfo_.mValue, mmInfo_.nValue, mmInfo_.kValue, matmulPerf_.cubeUtil_, sizeOfComm,
-        totalMatmulTime, totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_,
-        rankDim_, rankTileNum_);
+    OP_LOGD("MatmulReduceScatter",
+            "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
+            "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
+            "rankDim_ %lu, rankTile %lu",
+            mmInfo_.mValue, mmInfo_.nValue, mmInfo_.kValue, matmulPerf_.cubeUtil_, sizeOfComm, totalMatmulTime,
+            totalTpTime, tilingM_.GetMinLen(), tilingM_.GetAlignLength(), commPerf_.commTimeFactor_, rankDim_,
+            rankTileNum_);
 }
 
 void MMReduceScatterFitBalanceTiling::SetShortTileLen()
 {
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
-        mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
+                         mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
     isLargerThanL2Cache_ = l2UseSize > L2_CACHE_SIZE;
     if (isLargerThanL2Cache_ && mmInfo_.mValue > tilingM_.GetMinLen() * FOUR) {
         tilingM_.SetMinLenByMax(tilingM_.GetMinLen() * TWO);
@@ -62,13 +63,11 @@ void MMReduceScatterFitBalanceTiling::SetLongTileLen()
 {
     // balancing the pipeline
     if (tilingM_.cutRes.shortTileAtBack) {
-        double targetTime =
-            matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, rankTileNum_);
+        double targetTime = matmulPerf_.MatmulTime(tilingM_.cutRes.shortTileLen, rankTileNum_);
         tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(targetTime);
     } else {
         double targetTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
-        tilingM_.cutRes.longTileLen =
-            matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
+        tilingM_.cutRes.longTileLen = matmulPerf_.InverseMatmulTime(targetTime, rankTileNum_);
     }
     OP_LOGD("MMReduceScatterFitBalanceTiling", "longTileLen %lu", tilingM_.cutRes.longTileLen);
 
@@ -77,7 +76,7 @@ void MMReduceScatterFitBalanceTiling::SetLongTileLen()
         (mmInfo_.nValue >= TWO * mmInfo_.mValue * rankDim_)) {
         tilingM_.cutRes.longTileLen = tilingM_.cutRes.shortTileLen;
     } else if (isQuantMatmul_ && ratioCalcComm_ > UNBALANCE_RATIO && mmInfo_.kValue < SMALL_K_BOUND &&
-        mmInfo_.mValue % tilingM_.cutRes.shortTileLen == 0) {
+               mmInfo_.mValue % tilingM_.cutRes.shortTileLen == 0) {
         tilingM_.cutRes.longTileLen = tilingM_.cutRes.shortTileLen;
     }
 }

@@ -20,10 +20,10 @@
 #include "log.h"
 #include "ifa_meta_public_define.h"
 
-template <typename T> 
+template <typename T>
 inline auto Align(T num, T rnd) -> T
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
 static int64_t CeilDivision(int64_t num1, int64_t num2)
@@ -42,6 +42,7 @@ public:
     void AcquireParam(aicpu::kernels::IncreFlashAttentionMetadataArgs *args);
     void ParamsInit();
     bool BalanceSchedule();
+
 private:
     // main
     bool GenMetaData(aicpu::kernels::IncreFlashAttentionMetadataArgs *args);
@@ -56,11 +57,12 @@ private:
     void GetEstimatedLoad(int64_t &estimatedLoad) const;
     std::vector<int64_t> InitSparseValidArray(int64_t actualLensDim, const int64_t *actualLens) const;
     bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, int64_t totalSize, int64_t validAivNum,
-        std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx) const;
+                     std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx) const;
     void SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t totalSize, int64_t validAivNum,
-        uint32_t *sparseStartIdx, int64_t splitFactorSize) const;
+                           uint32_t *sparseStartIdx, int64_t splitFactorSize) const;
     void InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t totalSize, int64_t validAivNum,
-        const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue) const;
+                       const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue) const;
+
 public:
     // input
     uint32_t aicCoreNum_ = 24U;
@@ -91,6 +93,7 @@ public:
     uint32_t tailSplitedBatchRange_ = 0U;
     uint32_t kvSplitPart_ = 1U;
     uint32_t startIdxEachCore_[aicpu::kernels::MAX_CORE_NUM] = {};
+
 private:
     static constexpr uint32_t MAX_SPLIT_SIZE = 8192;
 
@@ -156,7 +159,7 @@ void SplitCore::ParamsInit()
     }
 }
 
-bool SplitCore::BalanceSchedule() 
+bool SplitCore::BalanceSchedule()
 {
     constexpr uint32_t gMax = 128U;
 
@@ -276,7 +279,7 @@ bool SplitCore::SplitBN()
         bn = batchSize_ * kvHeadNum_ * gOuter_;
     }
 
-    for (auto& elem : startIdxEachCore_) {
+    for (auto &elem : startIdxEachCore_) {
         elem = bn;
     }
 
@@ -348,7 +351,7 @@ std::vector<int64_t> SplitCore::InitSparseValidArray(int64_t actualLensDim, cons
 
 void SplitCore::GetEstimatedLoad(int64_t &estimatedLoad) const
 {
-    constexpr int64_t MSD_VEC_LOAD = 1024; 
+    constexpr int64_t MSD_VEC_LOAD = 1024;
     if (estimatedLoad < MSD_VEC_LOAD) { // 1024
         estimatedLoad = MSD_VEC_LOAD;
     } else if (estimatedLoad == 0) {
@@ -476,7 +479,8 @@ bool SplitCore::BalanceLoad(const std::vector<int64_t> &sparseValidArray, int64_
 bool SplitCore::GenMetaData(aicpu::kernels::IncreFlashAttentionMetadataArgs *args)
 {
     constexpr uint32_t BYTE_BLOCK = 32UL;
-    aicpu::kernels::IncreFlashAttentionMetadata *metaData = (aicpu::kernels::IncreFlashAttentionMetadata *)args->metaData;
+    aicpu::kernels::IncreFlashAttentionMetadata *metaData =
+        (aicpu::kernels::IncreFlashAttentionMetadata *)args->metaData;
     metaData->usedCoreNum = usedCoreNum_;
     metaData->formerCoreNum = formerCoreNum_;
     metaData->sInnerLoopTimes = sInnerLoopTimes_;
@@ -500,7 +504,7 @@ bool SplitCore::GenMetaData(aicpu::kernels::IncreFlashAttentionMetadataArgs *arg
     if (layoutQuery_ == aicpu::kernels::Layout::TND) {
         metaData->accumOutSize = batchSize_ * qSeqSize_ * qHeadNum_ * kvSplitPart_ * headDimAlign;
         metaData->logSumExpSize = 2U * batchSize_ * qHeadNum_ * kvSplitPart_ * qSeqSize_ * (BYTE_BLOCK / sizeof(float));
-    }  else {
+    } else {
         metaData->accumOutSize = batchSize_ * qHeadNum_ * kvSplitPart_ * headDimAlign;
         metaData->logSumExpSize = 2U * batchSize_ * qHeadNum_ * kvSplitPart_ * (BYTE_BLOCK / sizeof(float));
     }
@@ -508,41 +512,41 @@ bool SplitCore::GenMetaData(aicpu::kernels::IncreFlashAttentionMetadataArgs *arg
     if (!splitKVFlag_) {
         metaData->s2 = 0U;
     }
-    
+
     return true;
 }
 
-bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr)
+bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs *arg_ptr)
 {
-    KERNEL_CHECK_FALSE(arg_ptr->batchSize > 0, false,
-        "batchSize(%ld) must be greater than 0 !!", arg_ptr->batchSize);
+    KERNEL_CHECK_FALSE(arg_ptr->batchSize > 0, false, "batchSize(%ld) must be greater than 0 !!", arg_ptr->batchSize);
     KERNEL_CHECK_FALSE((arg_ptr->querySeqSize >= 1 && arg_ptr->querySeqSize <= 16), false,
-        "querySeqSize(%ld) must be between [1,16] !!", arg_ptr->querySeqSize);
-    KERNEL_CHECK_FALSE(arg_ptr->queryHeadNum > 0, false,
-        "queryHeadNum(%ld) must be greater than 0 !!", arg_ptr->queryHeadNum);
-    KERNEL_CHECK_FALSE(arg_ptr->keyHeadNum > 0, false,
-        "keyHeadNum(%ld) must be greater than 0 !!", arg_ptr->keyHeadNum);
+                       "querySeqSize(%ld) must be between [1,16] !!", arg_ptr->querySeqSize);
+    KERNEL_CHECK_FALSE(arg_ptr->queryHeadNum > 0, false, "queryHeadNum(%ld) must be greater than 0 !!",
+                       arg_ptr->queryHeadNum);
+    KERNEL_CHECK_FALSE(arg_ptr->keyHeadNum > 0, false, "keyHeadNum(%ld) must be greater than 0 !!",
+                       arg_ptr->keyHeadNum);
     KERNEL_CHECK_FALSE((arg_ptr->queryHeadNum % arg_ptr->keyHeadNum == 0), false,
-        "queryHeadNum(%ld) should be a multiple of keyHeadNum(%ld) !!", arg_ptr->queryHeadNum, arg_ptr->keyHeadNum);
-    KERNEL_CHECK_FALSE(arg_ptr->headDim == 128, false,
-        "headDim(%ld) must be 128 !!", arg_ptr->headDim);
+                       "queryHeadNum(%ld) should be a multiple of keyHeadNum(%ld) !!", arg_ptr->queryHeadNum,
+                       arg_ptr->keyHeadNum);
+    KERNEL_CHECK_FALSE(arg_ptr->headDim == 128, false, "headDim(%ld) must be 128 !!", arg_ptr->headDim);
     KERNEL_CHECK_FALSE((arg_ptr->blockSize == 128 || arg_ptr->blockSize == 512), false,
-        "blockSize(%ld) can only be 128 or 512 !!", arg_ptr->blockSize);
-    KERNEL_CHECK_FALSE(arg_ptr->maxBlockNumPerBatch > 0, false,
-        "maxBlockNumPerBatch(%ld) must be greater than 0 !!", arg_ptr->maxBlockNumPerBatch);
+                       "blockSize(%ld) can only be 128 or 512 !!", arg_ptr->blockSize);
+    KERNEL_CHECK_FALSE(arg_ptr->maxBlockNumPerBatch > 0, false, "maxBlockNumPerBatch(%ld) must be greater than 0 !!",
+                       arg_ptr->maxBlockNumPerBatch);
 
     bool layoutCheck = arg_ptr->layoutQuery == aicpu::kernels::Layout::BSND ||
-                        arg_ptr->layoutQuery == aicpu::kernels::Layout::BSH ||
-                        arg_ptr->layoutQuery == aicpu::kernels::Layout::BNSD;
+                       arg_ptr->layoutQuery == aicpu::kernels::Layout::BSH ||
+                       arg_ptr->layoutQuery == aicpu::kernels::Layout::BNSD;
     KERNEL_CHECK_FALSE(layoutCheck, false, "layoutQuery can only be BSND/BNSD/BSH !!");
 
     KERNEL_CHECK_FALSE((arg_ptr->actSeqKvLenDim == 1U || arg_ptr->actSeqKvLenDim >= arg_ptr->batchSize), false,
-        "actSeqKvLen length(%ld) should be either 1 or no less than batchSize(%ld)",
-        arg_ptr->actSeqKvLenDim, arg_ptr->batchSize);
+                       "actSeqKvLen length(%ld) should be either 1 or no less than batchSize(%ld)",
+                       arg_ptr->actSeqKvLenDim, arg_ptr->batchSize);
 
     for (auto i = 0; i < arg_ptr->actSeqKvLenDim; ++i) {
         KERNEL_CHECK_FALSE(arg_ptr->actSeqKvLen[i] >= 0, false,
-            "actSeqKvLen element can't be less than 0, but got %ld at index %d!!", arg_ptr->actSeqKvLen[i], i);
+                           "actSeqKvLen element can't be less than 0, but got %ld at index %d!!",
+                           arg_ptr->actSeqKvLen[i], i);
     }
 
     return true;
@@ -550,12 +554,12 @@ bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr)
 
 extern "C" __global__ __aicpu__ uint32_t IncreFlashAttentionMetadataKernel(void *args)
 {
-    aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr = (aicpu::kernels::IncreFlashAttentionMetadataArgs *)args;
+    aicpu::kernels::IncreFlashAttentionMetadataArgs *arg_ptr = (aicpu::kernels::IncreFlashAttentionMetadataArgs *)args;
     if (!CheckInput(arg_ptr)) {
         return 1;
     }
 
-    SplitCore balancer {};
+    SplitCore balancer{};
     balancer.Compute(arg_ptr);
     return 0;
 }

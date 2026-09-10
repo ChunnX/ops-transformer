@@ -18,7 +18,6 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "../utils/flash_attn_common_def.h"
-#include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "flash_attn_tiling_data.h"
 
 #ifndef ORIG_DTYPE_QUERY
@@ -32,6 +31,11 @@
 #ifndef ORIG_DTYPE_ATTENTION_OUT
 #define ORIG_DTYPE_ATTENTION_OUT (DT_BF16)
 #endif
+
+#define KV_STORAGE_MODE_CONTINUE 0
+#define KV_STORAGE_MODE_PA_BSND 1
+#define KV_STORAGE_MODE_PA_BNSD 2
+#define KV_STORAGE_MODE_PA_NZ 3
 
 ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       // q_out layout (8-bit)
@@ -53,20 +57,38 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    1: true
                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, false, true),
 
-                      // config (3-bit), support D=64/128/256
+                      // templateId (8-bit)
+                      //    0: ND模板
+                      //    1: DN模板
+                      ASCENDC_TPL_UINT_DECL(TemplateId, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 1),
+
+                      // config (4-bit), support D=64/128/256 and (D=192, DV=128)
                       //    config=0: sOuter=64, sInner=128 → D=64,  DV=64
                       //    config=1: sOuter=32, sInner=256 → D=64,  DV=64
                       //    config=2: sOuter=64, sInner=128 → D=128, DV=128
                       //    config=3: sOuter=32, sInner=256 → D=128, DV=128
-                      //    config=4: sOuter=32, sInner=256 → D=256, DV=256
-                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 4),);
+                      //    config=4: sOuter=64, sInner=128 → D=256, DV=256
+                      //    config=5: sOuter=32, sInner=256 → D=256, DV=256
+                      //    config=6: sOuter=64, sInner=128 → D=192, DV=128
+                      //    config=7: sOuter=32, sInner=256 → D=192, DV=128
+                      ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 15), );
 
-ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
-                                                          InOutLayoutType_BNSD, InOutLayoutType_TND,
-                                                          InOutLayoutType_BNSD_BSND),
-                                     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
-                                     ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
-                                     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4),
-                                     ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
+ASCENDC_TPL_SEL(
+    // ND模板（templateId=0）：全组合
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
+                                              InOutLayoutType_BNSD, InOutLayoutType_TND, InOutLayoutType_BNSD_BSND),
+                         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
+                         ASCENDC_TPL_BOOL_SEL(HasAttenMask, false, true),
+                         ASCENDC_TPL_UINT_SEL(TemplateId, ASCENDC_TPL_UI_LIST, 0),
+                         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4, 5, 6, 7),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)),
+    // DN模板（templateId=1）：仅无attenMask且config=0/2/6（sOuter=64, D=64/128, QK D=192/DV=128）
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,
+                                              InOutLayoutType_BNSD, InOutLayoutType_TND, InOutLayoutType_BNSD_BSND),
+                         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
+                         ASCENDC_TPL_BOOL_SEL(HasAttenMask, false),
+                         ASCENDC_TPL_UINT_SEL(TemplateId, ASCENDC_TPL_UI_LIST, 1),
+                         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, 0, 2, 6),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttnTilingData)), );
 
 #endif // TEMPLATE_TILING_KEY_FLASH_ATTN_H_

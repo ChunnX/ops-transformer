@@ -13,22 +13,19 @@
  * \brief
  */
 
-#include "moe_init_routing_quant_v2/moe_init_routing_quant_v2_tiling.h"
-#include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
-
 #ifndef ASCENDC_MEGA_MOE_TILING_H
 #define ASCENDC_MEGA_MOE_TILING_H
+
+#include "moe_permute_prologue/moe_permute_prologue_tiling.h"
 
 using namespace Mc2Tiling;
 
 #define MEGA_MOE_QUANT_MODE_NO_QUANT 0
-#define MEGA_MOE_QUANT_MODE_PER_TENSOR 1
+#define MEGA_MOE_QUANT_MODE_PER_TOKEN 1
 
 #define MEGA_MOE_QUANT_OUT_TYPE_UNDEFINED 0
 #define MEGA_MOE_QUANT_OUT_TYPE_INT8 1
 #define MEGA_MOE_QUANT_OUT_TYPE_INT4 2
-#define MEGA_MOE_QUANT_OUT_TYPE_E5M2 3
-#define MEGA_MOE_QUANT_OUT_TYPE_E4M3FN 4
 
 #define SOC_ASCEND910B 0
 #define SOC_ASCEND910_93 1
@@ -56,6 +53,8 @@ struct MegaMoeA2A3TilingData {
     uint32_t numMaxTokensPerRank;
     uint32_t activationCode;
     float activationClamp;
+    float activationParams1;
+    float activationParams2;
     uint32_t isTransposeW1;
     uint32_t isTransposeW2;
 
@@ -70,16 +69,20 @@ struct MegaMoeA2A3TilingData {
     int32_t activationOutDtype;
     uint32_t weight1Interleave;
 
-    uint64_t initRoutingQuantTilingKey;
+    // A3 接收侧 chunk（轮次切分）：
+    // recvRoundBudget = 单轮接收预算 B（route 行，= min(maxRecvTokenNum, PERMUTE_CHUNK*EP*min(topK,epr))）
+    // recvRoundsMax   = 轮表份数上限 = ceil(PERMUTE_CHUNK*EP*min(topK,epr) / B)，≥1
+    // A2（发送侧 chunk）：recvRoundsMax = 1，B = maxRecvTokenNum（无接收侧轮次切分；
+    //   单 chunk 接收行数 <= 总接收行数 <= maxRecvTokenNum，kernel 的 maxOutputSize 取 B）。
+    uint64_t recvRoundBudget;
+    uint64_t recvRoundsMax;
 };
 
 struct MegaMoeTilingDataQuant {
     MegaMoeA2A3TilingData common;
-    MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
 };
 
 struct MegaMoeTilingDataNonQuant {
     MegaMoeA2A3TilingData common;
-    MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
 };
 #endif

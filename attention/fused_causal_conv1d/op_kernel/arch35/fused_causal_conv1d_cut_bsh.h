@@ -36,9 +36,7 @@ constexpr uint32_t DIM_ALIGN = 64;
 template <typename T>
 class FusedCausalConv1dCutBSH {
 public:
-    __aicore__ inline FusedCausalConv1dCutBSH()
-    {
-    }
+    __aicore__ inline FusedCausalConv1dCutBSH() {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
@@ -334,11 +332,12 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
 }
 
 template <typename T>
-__aicore__ inline void
-FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, GM_ADDR queryStartLoc,
-                                 GM_ADDR cacheIndices, GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
-                                 GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
-                                 GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling)
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates,
+                                                        GM_ADDR queryStartLoc, GM_ADDR cacheIndices,
+                                                        GM_ADDR numAcceptedToken, GM_ADDR numComputedTokens,
+                                                        GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast,
+                                                        GM_ADDR initialStateIdx, GM_ADDR y, GM_ADDR workspace,
+                                                        const FusedCausalConv1dCutBSHTilingData *tiling)
 {
     (void)y; // y may be unused when inplace_==true; suppress warning
     ParseTiling(tiling);
@@ -940,8 +939,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
                 RefreshApcState(curBatch, batchLen);
                 if (apcState_.nBlockToFill > 0) {
                     int32_t B = static_cast<int32_t>(blockSize_);
-                    int32_t firstBdy =
-                        apcState_.lastFull - (apcState_.nBlockToFill - 1) * B;
+                    int32_t firstBdy = apcState_.lastFull - (apcState_.nBlockToFill - 1) * B;
                     deferForPrefix = (firstBdy > 0 && firstBdy < static_cast<int32_t>(K - 1));
                 }
             }
@@ -1027,11 +1025,10 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 }
 
 template <typename T>
-__aicore__ inline void
-FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd,
-                                               uint32_t curBatchLen, uint32_t cachedStateLen, bool hasCacheLocal,
-                                               int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
-                                               uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd)
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteCacheToStates(
+    LocalTensor<T> &cacheLocal, LocalTensor<T> &xLocal, uint32_t chunkEnd, uint32_t curBatchLen,
+    uint32_t cachedStateLen, bool hasCacheLocal, int64_t writeCIdx, uint32_t dimStart, uint32_t dimSize,
+    uint32_t dimBlocks, uint32_t cacheSkipBlocks, uint64_t batchGmEnd)
 {
     // ---- Decompose: how many rows from cache vs from x ----
     uint32_t cFromCache, cFromX;
@@ -1063,7 +1060,7 @@ FusedCausalConv1dCutBSH<T>::WriteCacheToStates(LocalTensor<T> &cacheLocal, Local
     if (cFromCache > 0) {
         uint32_t cacheRowStart = cachedStateLen - cFromCache;
         DataCopyExtParams wcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
-                                cacheSkipBlocks * ALIGN_BYTES, 0};
+                              cacheSkipBlocks * ALIGN_BYTES, 0};
         DataCopyPad(cacheStatesGM_[csBase], cacheLocal[cacheRowStart * dimSize], wcp);
     }
 
@@ -1221,8 +1218,7 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ExecuteDeferredRunningCache()
     if (cFromCache > 0) {
         if (!m.useZeroCache) {
             uint32_t srcRowOff = m.cachedStateLen - cFromCache;
-            uint64_t cacheSrcOff =
-                (uint64_t)writeCIdx * cacheStride0_ + (uint64_t)srcRowOff * cacheStride1_ + dimStart;
+            uint64_t cacheSrcOff = (uint64_t)writeCIdx * cacheStride0_ + (uint64_t)srcRowOff * cacheStride1_ + dimStart;
             DataCopyExtParams rcp{static_cast<uint16_t>(cFromCache), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
                                   cacheSkip * ALIGN_BYTES, 0, 0};
             DataCopyPad(tmpBuf, cacheStatesGM_[cacheSrcOff], rcp, padParams);

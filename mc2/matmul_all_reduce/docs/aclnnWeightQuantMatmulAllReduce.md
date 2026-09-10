@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -27,7 +37,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnWeightQuantMatmulAllReduceGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduce`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnWeightQuantMatmulAllReduceGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnWeightQuantMatmulAllReduce`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
@@ -184,7 +194,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>antiquantGroupSize</td>
           <td>输入</td>
           <td>伪量化pergroup模式下，对x2进行反量化计算的groupSize输入。</td>
-          <td><ul><li>pergroup量化场景下需传入该参数，传入值的范围为[32,min(k-1,INT_MAX)]，且为32的倍数; k取值范围与[mm接口]保持一致，为[1,65535]。</li><li>非pergroup量化场景下仅支持传入0。</li></ul></td>
+          <td><ul><li>pergroup量化场景下需传入该参数，传入值的范围为[32,min(k-1,INT_MAX)]，且为32的倍数; k取值范围与mm接口保持一致，为[1,65535]。</li><li>非pergroup量化场景下仅支持传入0。</li></ul></td>
           <td>INT64</td>
           <td>-</td>
           <td>-</td>
@@ -225,7 +235,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -300,13 +310,19 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
+
+  <!-- npu="910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：`aclnnWeightQuantMatmulAllReduce`默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
   - Ascend 950PR/Ascend 950DT：`aclnnWeightQuantMatmulAllReduce`默认确定性实现。
+  <!-- end id8 -->
+
 - 增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。
 - x2必须是二维。其shape为(k, n)，k轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。
@@ -318,18 +334,29 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 - pergroup场景下，x2转置时，antiquantScale和antiquantOffset需要一起转置，保持连续性。
 - 在长序列场景，随着b/s或者m的增大，可能出现OOM或者计算超时。
 - 仅支持hccs链路all mesh组网。
+
+    <!-- npu="910b" id9 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持1、2、4、8卡。
+    <!-- end id9 -->
+    <!-- npu="950" id10 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：支持1、2、4、8、16、32、64卡。
+    <!-- end id10 -->
+
+<!-- npu="910b" id11 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 一个模型中的通算融合MC2算子，仅支持相同通信域。
   - 输入x2的数据格式支持ND（当前版本仅支持二维输入）和`FRACTAL_NZ`格式（当前版本仅支持四维输入）。当x2的数据格式为`FRACTAL_NZ`时，配合aclnnCalculateMatmulWeightSizeV2和aclnnTransMatmulWeight完成输入ND到NZ的转换，非连续的tensor仅支持transpose场景。
+<!-- end id11 -->
+<!-- npu="950" id12 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - 输入x2的数据格式支持ND（仅支持2D输入）。当前版本，当数据类型为INT8时，要求N、K为32对齐；当数据类型为INT4时，要求N、K为64对齐。
+<!-- end id12 -->
 - 空tensor支持度：
   - 仅支持k为0的场景，输出为bias + x3，不支持bs/m/n为0的空tensor输入。
 
 输入和输出支持以下数据类型组合：
 
+<!-- npu="910b" id13 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
   <table style="undefined;table-layout: fixed; width: 600px">
@@ -347,7 +374,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <th>x2</th>
         <th>bias</th>
          <th>antiquantScale</th>
-        <th>antiquantOffset</th>       
+        <th>antiquantOffset</th>
         <th>x3</th>
         <th>output</th>
         <th>限制</th>
@@ -376,7 +403,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       </tr>
     </tbody>
   </table>
-  
+
+<!-- end id13 -->
 - Ascend 950PR/Ascend 950DT
   <table style="undefined;table-layout: fixed; width: 600px">
     <col style="width: 90px">
@@ -449,6 +477,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
+<!-- npu="950,910b" id14 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 
   ```Cpp
@@ -695,3 +724,5 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       return 0;
   }
   ```
+
+<!-- end id14 -->

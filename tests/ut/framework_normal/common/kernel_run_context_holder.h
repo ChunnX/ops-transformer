@@ -23,7 +23,7 @@ public:
     KernelRunContextHolder() = default;
     ~KernelRunContextHolder() = default;
 
-    KernelRunContextHolder& operator=(KernelRunContextHolder&& holder)
+    KernelRunContextHolder &operator=(KernelRunContextHolder &&holder)
     {
         context_ = holder.context_;
         opType_ = std::move(holder.opType_);
@@ -41,20 +41,20 @@ public:
         inferDataTypeContextHolder_ = std::move(holder.inferDataTypeContextHolder_);
         return *this;
     }
-    KernelRunContextHolder(KernelRunContextHolder&& holder)
+    KernelRunContextHolder(KernelRunContextHolder &&holder)
     {
         KernelRunContextHolder::operator=(std::move(holder));
     }
 
-    void SetContext(void* context)
+    void SetContext(void *context)
     {
         context_ = context;
     }
 
     template <typename T>
-    T* GetContext()
+    T *GetContext()
     {
-        return static_cast<T*>(context_);
+        return static_cast<T *>(context_);
     }
 
 protected:
@@ -75,5 +75,5 @@ protected:
     ContextHolder<InferShapeRangeContext> inferShapeRangeContextHolder_;
     ContextHolder<InferDataTypeContext> inferDataTypeContextHolder_;
 };
-}
-#endif  //TRANSFORMER_TESTS_UT_COMMON_KERNEL_RUN_CONTEXT_HOLDER_H_
+} // namespace gert
+#endif // TRANSFORMER_TESTS_UT_COMMON_KERNEL_RUN_CONTEXT_HOLDER_H_

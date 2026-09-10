@@ -29,9 +29,10 @@ struct TilingValue {
 
     // 添加构造函数
     TilingValue() = default;
-    TilingValue(int32_t v, std::map<int, std::vector<std::vector<int>>> m = {}) : value(v), conditionMap(std::move(m))
-    {
-    }
+    TilingValue(int32_t v, std::map<int, std::vector<std::vector<int>>> m = {})
+        : value(v),
+          conditionMap(std::move(m))
+    {}
 };
 
 inline int ClampValue(int32_t value, int32_t min, int32_t max)
@@ -51,12 +52,12 @@ const std::map<ge::DataType, int64_t> D_TYPE_SIZE_MAP = {
     {ge::DT_BF16, 2}, {ge::DT_FLOAT16, 2}, {ge::DT_FLOAT, 4},
     {ge::DT_INT8, 1}, {ge::DT_INT32, 4},   {ge::DT_INT4, ge::GetSizeByDataType(ge::DT_INT4)},
 };
-template<typename T>
+template <typename T>
 inline T AlignUp(T len, T size)
 {
     return (len + size - 1) & ~(size - 1);
 }
-static bool IsMatrixAligned(const int64_t &m, const int64_t &n, const bool &transpose, int nElemAlign)
+inline bool IsMatrixAligned(uint32_t m, uint32_t n, bool transpose, uint32_t nElemAlign)
 {
     return (transpose ? m : n) % nElemAlign == 0;
 }
@@ -79,7 +80,7 @@ constexpr int32_t LCAL_BUFF_BYTES = 204 * 1024 * 1024;
 constexpr int32_t FLAG_BUFF_BYTES = 5 * 512 * 1024;
 constexpr int32_t INPUT_DTYPE = 2;
 constexpr int32_t MIN_P_VALUE = 1;
-constexpr int32_t MAX_BLOCK_COUNT = 2;
+constexpr uint32_t MAX_BLOCK_COUNT = 2;
 
 // Tiling Code Mask
 constexpr int32_t COMMDATASPLIT_MASK = 0b11111;

@@ -19,7 +19,7 @@
 #include "tiling/platform/platform_ascendc.h"
 
 extern "C" {
-    extern __global__ __aicpu__ uint32_t IncreFlashAttentionMetadataKernel(void *args);
+extern __global__ __aicpu__ uint32_t IncreFlashAttentionMetadataKernel(void *args);
 }
 
 namespace ascend_ops {
@@ -29,39 +29,37 @@ using namespace at_npu::native;
 aicpu::kernels::Layout CovertToLayout(const std::string &str)
 {
     std::unordered_map<std::string, aicpu::kernels::Layout> layoutDict = {
-        {"BSH", aicpu::kernels::Layout::BSH},
-        {"BSND", aicpu::kernels::Layout::BSND},
-        {"BNSD", aicpu::kernels::Layout::BNSD},
-        {"NZ", aicpu::kernels::Layout::NZ},
-        {"TND", aicpu::kernels::Layout::TND},
-        {"NBSD", aicpu::kernels::Layout::NBSD},
-        {"NTD", aicpu::kernels::Layout::NTD}
-    };
+        {"BSH", aicpu::kernels::Layout::BSH},   {"BSND", aicpu::kernels::Layout::BSND},
+        {"BNSD", aicpu::kernels::Layout::BNSD}, {"NZ", aicpu::kernels::Layout::NZ},
+        {"TND", aicpu::kernels::Layout::TND},   {"NBSD", aicpu::kernels::Layout::NBSD},
+        {"NTD", aicpu::kernels::Layout::NTD}};
     auto layoutIter = layoutDict.find(str);
     return (layoutIter == layoutDict.end()) ? aicpu::kernels::Layout::BUTT : layoutIter->second;
 }
 
 // step3, 为META设备实现前向接口
-at::Tensor npu_fused_infer_attention_score_metadata_meta(
-    int64_t batch_size, int64_t query_seq_size, int64_t query_head_num, int64_t key_head_num, int64_t head_dim,
-    int64_t block_size, int64_t max_block_num_per_batch,
-    at::Tensor &actual_seq_lengths_kv, c10::string_view layout_query)
+at::Tensor npu_fused_infer_attention_score_metadata_meta(int64_t batch_size, int64_t query_seq_size,
+                                                         int64_t query_head_num, int64_t key_head_num, int64_t head_dim,
+                                                         int64_t block_size, int64_t max_block_num_per_batch,
+                                                         at::Tensor &actual_seq_lengths_kv,
+                                                         c10::string_view layout_query)
 {
     at::Tensor output = torch::empty({1024}, torch::dtype(torch::kInt32).device(torch::kMeta));
     return output;
 }
 
-at::Tensor npu_fused_infer_attention_score_metadata_npu(
-    int64_t batch_size, int64_t query_seq_size, int64_t query_head_num, int64_t key_head_num, int64_t head_dim,
-    int64_t block_size, int64_t max_block_num_per_batch,
-    at::Tensor &actual_seq_lengths_kv, c10::string_view layout_query)
+at::Tensor npu_fused_infer_attention_score_metadata_npu(int64_t batch_size, int64_t query_seq_size,
+                                                        int64_t query_head_num, int64_t key_head_num, int64_t head_dim,
+                                                        int64_t block_size, int64_t max_block_num_per_batch,
+                                                        at::Tensor &actual_seq_lengths_kv,
+                                                        c10::string_view layout_query)
 {
     at::Tensor output = torch::empty({1024}, torch::dtype(torch::kInt32).device("npu"));
 
     auto aicpu_stream = c10_npu::getCurrentNPUStream().stream(true);
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
 
-    aicpu::kernels::IncreFlashAttentionMetadataArgs args {};
+    aicpu::kernels::IncreFlashAttentionMetadataArgs args{};
     args.aicCoreNum = ascendcPlatform->GetCoreNumAic();
     args.aivCoreNum = ascendcPlatform->GetCoreNumAiv();
     args.batchSize = batch_size;
@@ -78,22 +76,23 @@ at::Tensor npu_fused_infer_attention_score_metadata_npu(
     args.layoutQuery = CovertToLayout(std::string(layout_query));
     args.metaData = static_cast<int8_t *>(const_cast<void *>(output.storage().data()));
 
-    IncreFlashAttentionMetadataKernel<<<1, nullptr, aicpu_stream>>>(&args, sizeof(aicpu::kernels::IncreFlashAttentionMetadataArgs));
+    IncreFlashAttentionMetadataKernel<<<1, nullptr, aicpu_stream>>>(
+        &args, sizeof(aicpu::kernels::IncreFlashAttentionMetadataArgs));
     return output;
 }
 
 // step4, 为NPU设备注册前向实现
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
+{
     m.impl("npu_fused_infer_attention_score_metadata", &custom::npu_fused_infer_attention_score_metadata_npu);
 }
 
 
 // step5, 为META设备注册前向实现
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m) {
+TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
+{
     m.impl("npu_fused_infer_attention_score_metadata", &custom::npu_fused_infer_attention_score_metadata_meta);
 }
 
 } // namespace custom
 } // namespace ascend_ops
-
-

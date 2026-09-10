@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_asw_basic_tiling.h
  * \brief
@@ -33,6 +32,6 @@ protected:
 
     uint64_t GetTilingKey() const override;
 };
-} // namespace mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
 } // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_ASW_BASIC_TILING_H__

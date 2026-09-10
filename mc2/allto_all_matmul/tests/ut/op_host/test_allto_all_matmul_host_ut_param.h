@@ -1,7 +1,7 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -35,7 +35,7 @@ struct AlltoAllMatmulHostUtParamBase {
     bool alltoall_out_flag;
     ge::graphStatus expectResult;
 
-    explicit AlltoAllMatmulHostUtParamBase(const csv_map& csvMap)
+    explicit AlltoAllMatmulHostUtParamBase(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
         this->group = ReadMap(csvMap, "group");
@@ -64,30 +64,28 @@ struct AlltoAllMatmulHostUtParamBase {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const AlltoAllMatmulHostUtParamBase& param)
+inline std::ostream &operator<<(std::ostream &os, const AlltoAllMatmulHostUtParamBase &param)
 {
     return os << param.case_name;
 }
 
-struct AlltoAllMatmulInferShapeUtParam: public AlltoAllMatmulHostUtParamBase {
+struct AlltoAllMatmulInferShapeUtParam : public AlltoAllMatmulHostUtParamBase {
     gert::InfershapeContextPara::TensorDescription x1 = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription x2 = ID_DEFAULT;
     gert::InfershapeContextPara::TensorDescription y = ID_DEFAULT;
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    explicit AlltoAllMatmulInferShapeUtParam(const csv_map& csvMap):
-        AlltoAllMatmulHostUtParamBase(csvMap)
+    explicit AlltoAllMatmulInferShapeUtParam(const csv_map &csvMap)
+        : AlltoAllMatmulHostUtParamBase(csvMap)
     {
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
 
         // Output tensors - use default values, shapes will be inferred
         this->outputInstance.emplace_back(1);
         this->outputInstance.emplace_back(1); // alltoallout output
 
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
             std::string outputShapeStr = ReadMap(csvMap, "expectOutputShape");
             // Parse multiple output shapes separated by |
             std::istringstream iss(outputShapeStr);
@@ -99,7 +97,7 @@ struct AlltoAllMatmulInferShapeUtParam: public AlltoAllMatmulHostUtParamBase {
     }
 };
 
-struct AlltoAllMatmulInferDataTypeUtParam: public AlltoAllMatmulHostUtParamBase {
+struct AlltoAllMatmulInferDataTypeUtParam : public AlltoAllMatmulHostUtParamBase {
     ge::DataType x1 = ge::DT_UNDEFINED;
     ge::DataType x2 = ge::DT_UNDEFINED;
     ge::DataType bias = ge::DT_UNDEFINED;
@@ -111,8 +109,8 @@ struct AlltoAllMatmulInferDataTypeUtParam: public AlltoAllMatmulHostUtParamBase 
     ge::DataType y = ge::DT_UNDEFINED;
     ge::DataType alltoallout = ge::DT_UNDEFINED;
 
-    explicit AlltoAllMatmulInferDataTypeUtParam(const csv_map& csvMap):
-        AlltoAllMatmulHostUtParamBase(csvMap)
+    explicit AlltoAllMatmulInferDataTypeUtParam(const csv_map &csvMap)
+        : AlltoAllMatmulHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x1_dtype", x1));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "x2_dtype", x2));
@@ -126,7 +124,7 @@ struct AlltoAllMatmulInferDataTypeUtParam: public AlltoAllMatmulHostUtParamBase 
         this->outputInstance.emplace_back(1);
         this->outputInstance.emplace_back(1); // alltoallout output
 
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
             this->y = Str2DTypeGE(ReadMap(csvMap, "expect_y_dtype"));
             this->alltoallout = Str2DTypeGE(ReadMap(csvMap, "expect_alltoallout_dtype"));
         }

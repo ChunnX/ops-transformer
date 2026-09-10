@@ -20,13 +20,11 @@
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35 {
 
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    bool hasAntiQuantOffset, Mc2QuantType antiQuantType, bool weightNz = false>
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          bool hasAntiQuantOffset, Mc2QuantType antiQuantType, bool weightNz = false>
 class Mc2WeightQuantBatchMatmulV2RegBaseKernel
-    : public Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<
-          xType, wType, biasType, yType, aTrans, bTrans, hasAntiQuantOffset, antiQuantType, weightNz>
-{
+    : public Mc2WeightQuantBatchMatmulV2RegBaseCommonKernel<xType, wType, biasType, yType, aTrans, bTrans,
+                                                            hasAntiQuantOffset, antiQuantType, weightNz> {
 public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2RegBaseKernel(){};
     __aicore__ inline void Process();
@@ -36,11 +34,10 @@ public:
  * 该函数作用为通过 IterMatmulOut 每次移动一个 baseM 或 baseN，并循环遍历 KL1，
  * 计算好 AL1 和 BL1 的搬运时刻和 index 后，调用 compute 进行计算
  */
-template <
-    typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
-    bool hasAntiQuantOffset, Mc2QuantType antiQuantType, bool weightNz>
-__aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseKernel<
-    xType, wType, biasType, yType, aTrans, bTrans, hasAntiQuantOffset, antiQuantType, weightNz>::Process()
+template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
+          bool hasAntiQuantOffset, Mc2QuantType antiQuantType, bool weightNz>
+__aicore__ inline void Mc2WeightQuantBatchMatmulV2RegBaseKernel<xType, wType, biasType, yType, aTrans, bTrans,
+                                                                hasAntiQuantOffset, antiQuantType, weightNz>::Process()
 {
     uint16_t usedCoreNum = this->tiling_->cubeBlockDimM * this->tiling_->cubeBlockDimN;
     if ((this->curBlockIdx_) >= usedCoreNum) {

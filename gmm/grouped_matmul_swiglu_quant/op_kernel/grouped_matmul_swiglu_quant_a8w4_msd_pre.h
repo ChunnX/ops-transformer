@@ -15,7 +15,7 @@
 
 #ifndef ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_A8W4_MSD_PRE_H
 #define ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_A8W4_MSD_PRE_H
-#include "grouped_matmul_swiglu_quant_utils.h"
+#include "grouped_matmul_swiglu_quant_utils_kernel.h"
 #include "kernel_operator.h"
 #ifdef GMM_SWIGLU_QUANT_A8W4_MSD
 namespace GROUPED_MATMUL_SWIGLU_QUANT {
@@ -101,7 +101,6 @@ __aicore__ inline void GMMA8W4PreProcess::CustomInitBuffer(TPipe *pipe)
     constexpr int BUFFER_SIZE_256B = 128 * sizeof(int16_t);
     pipe->InitBuffer(vecOutQueue0F, BUFFER_NUM_A8W4_PRE, BUFFER_SIZE_256B); // 256B
 }
-
 
 __aicore__ inline void GMMA8W4PreProcess::CalculateTaskInfoEachCore(uint32_t &curCoreTaskNum_,
                                                                     uint32_t &curCoreStartOffset_)

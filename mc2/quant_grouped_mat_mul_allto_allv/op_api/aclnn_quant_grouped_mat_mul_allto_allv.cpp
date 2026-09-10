@@ -44,7 +44,6 @@ enum class QuantModeType : int64_t {
     DYN_PERTOKEN_QUANT = 7
 };
 
-
 enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
     NNOPBASE_HCCL_SERVER_TYPE_MTE,
@@ -54,17 +53,22 @@ enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
 
 static constexpr int64_t DIM_TWO = 2;
 static constexpr int64_t DIM_THREE = 3;
+// 转置检测支持的 tensor 维度数范围：至少 2 维（最后两维），最大支持 6 维
+static constexpr uint64_t TRANSPOSE_DETECT_MIN_DIM_NUM = 2;
+static constexpr uint64_t TRANSPOSE_DETECT_MAX_DIM_NUM = 6;
+// gmmWeight 转置交换的维度索引（4D 布局的 dim1/dim2）
+static constexpr uint64_t GMM_WEIGHT_SWAP_DIM_1 = 1;
+static constexpr uint64_t GMM_WEIGHT_SWAP_DIM_2 = 2;
 
 extern "C" aclnnStatus aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
-    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
-    const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
-    const aclTensor *mmWeightScaleOptional, const aclTensor *commQuantScaleOptional, const char *group,
-    int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts, int64_t gmmXQuantMode,
-    int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, int64_t mmXQuantMode,
-    int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype,
-    int64_t commQuantDtypeOptional, const char *commMode, const aclTensor *yOut, const aclTensor *mmYOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
+    const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
+    const aclTensor *commQuantScaleOptional, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,
+    const aclIntArray *recvCounts, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight,
+    bool transMmWeight, int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t groupSize,
+    int64_t yDtype, int64_t mmDtype, int64_t commQuantDtypeOptional, const char *commMode, const aclTensor *yOut,
+    const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerQuantGroupedMatMulAlltoAllv(void *workspace, uint64_t workspaceSize,
                                                              aclOpExecutor *executor, aclrtStream stream);
@@ -91,26 +95,23 @@ static bool CheckMmOptionalConsistency(const aclTensor *mmXOptional, const aclTe
     const bool allAbsent = !hasMmX && !hasMmWeight && !hasMmY;
     if (!allPresent && !allAbsent) {
         const std::string values = std::string(hasMmX ? "non-empty" : "empty") + "," +
-                                   (hasMmWeight ? "non-empty" : "empty") + "," +
-                                   (hasMmY ? "non-empty" : "empty");
+                                   (hasMmWeight ? "non-empty" : "empty") + "," + (hasMmY ? "non-empty" : "empty");
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "mmXOptional, mmWeightOptional, mmYOptional",
-            values.c_str(),
-            "These optional parameters must be either all present or all absent.");
+                                               "mmXOptional, mmWeightOptional, mmYOptional", values.c_str(),
+                                               "These optional parameters must be either all present or all absent.");
         return false;
     }
     return true;
 }
 
 // check nullptr
-static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
-                            const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
                             const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
-                            const aclTensor *y, const aclTensor *mmYOptional)
+                            const aclTensor *mmYOptional)
 {
     if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "sendCountsTensorOptional/recvCountsTensorOptional",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "sendCountsTensorOptional/recvCountsTensorOptional",
             (sendCountsTensorOptional ? "non-empty" : "empty"),
             "The value of sendCountsTensorOptional/recvCountsTensorOptional must be nullptr.");
         return false;
@@ -151,14 +152,14 @@ static bool CheckRequiredScaleTensor(const aclTensor *xScale, const aclTensor *w
                                      const char *weightName, const char *modeName)
 {
     if (xScale == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            std::string(xName).append("Scale").c_str(), "nullptr",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", std::string(xName).append("Scale").c_str(), "nullptr",
             std::string("must not be null when ").append(modeName).append(" quant mode is used.").c_str());
         return false;
     }
     if (weightScale == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            std::string(weightName).append("Scale").c_str(), "nullptr",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", std::string(weightName).append("Scale").c_str(), "nullptr",
             std::string("must not be null when ").append(modeName).append(" quant mode is used.").c_str());
         return false;
     }
@@ -167,37 +168,39 @@ static bool CheckRequiredScaleTensor(const aclTensor *xScale, const aclTensor *w
 
 static bool CheckUnsupportQuantMode(QuantModeType mode, const char *xName)
 {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-        std::string(xName).append("QuantMode").c_str(),
-        std::to_string(static_cast<int64_t>(mode)).c_str(),
-        "This quantization mode is not supported yet.");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+        "aclnnQuantGroupedMatMulAlltoAllv", std::string(xName).append("QuantMode").c_str(),
+        std::to_string(static_cast<int64_t>(mode)).c_str(), "This quantization mode is not supported yet.");
     return false;
 }
 
 // 检查量化参数是否合法
 static bool CheckQuantMode(int64_t xQuantMode, int64_t weightQuantMode, const aclTensor *xScaleOptional,
-                           const aclTensor *weightScaleOptional, const aclTensor *x, const aclTensor *weight,
-                           const aclTensor *y, const char *xName, const char *weightName)
+                           const aclTensor *weightScaleOptional, const char *xName, const char *weightName)
 {
     QuantModeType xMode = static_cast<QuantModeType>(xQuantMode);
     QuantModeType wMode = static_cast<QuantModeType>(weightQuantMode);
     if (xMode != wMode) {
-        const std::string values = std::to_string(static_cast<int64_t>(xMode)) + "," +
-                                   std::to_string(static_cast<int64_t>(wMode));
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
+        const std::string values =
+            std::to_string(static_cast<int64_t>(xMode)) + "," + std::to_string(static_cast<int64_t>(wMode));
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv",
             std::string(xName).append("QuantMode").append(",").append(weightName).append("QuantMode").c_str(),
-            values.c_str(),
-            "QuantModes of x and weight must be the same.");
+            values.c_str(), "QuantModes of x and weight must be the same.");
         return false;
     }
     // 按量化模式分支校验
     switch (xMode) {
         case QuantModeType::NO_QUANT:
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-                std::string(xName).append("QuantMode").c_str(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                "aclnnQuantGroupedMatMulAlltoAllv", std::string(xName).append("QuantMode").c_str(),
                 std::to_string(static_cast<int64_t>(xMode)).c_str(),
-                std::string("Current quant template does not support NO_QUANT mode for ").append(xName)
-                    .append("/").append(weightName).append(".").c_str());
+                std::string("Current quant template does not support NO_QUANT mode for ")
+                    .append(xName)
+                    .append("/")
+                    .append(weightName)
+                    .append(".")
+                    .c_str());
             return false;
         case QuantModeType::PERTENSOR_QUANT:
             return CheckRequiredScaleTensor(xScaleOptional, weightScaleOptional, xName, weightName, "PerTensor");
@@ -210,24 +213,20 @@ static bool CheckQuantMode(int64_t xQuantMode, int64_t weightQuantMode, const ac
         case QuantModeType::DYN_PERTOKEN_QUANT:
             return CheckUnsupportQuantMode(xMode, xName);
         default:
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-                std::string(xName).append("QuantMode").c_str(),
-                std::to_string(static_cast<int64_t>(xMode)).c_str(),
-                "Unknown QuantMode.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                "aclnnQuantGroupedMatMulAlltoAllv", std::string(xName).append("QuantMode").c_str(),
+                std::to_string(static_cast<int64_t>(xMode)).c_str(), "Unknown QuantMode.");
             return false;
     }
 }
 
-static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, const aclTensor *gmmX,
-                             const aclTensor *gmmWeight, const aclTensor *gmmXScale,
-                             const aclTensor *gmmWeightScale, const aclTensor *y, int64_t mmXQuantMode,
-                             int64_t mmWeightQuantMode, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-                             const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-                             const aclTensor *mmYOptional)
+static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, const aclTensor *gmmXScale,
+                             const aclTensor *gmmWeightScale, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
+                             const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+                             const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional)
 {
     // 1) gmm 一定要有量化模式，且当前只支持 TT(1) / MX(6)
-    if (!CheckQuantMode(gmmXQuantMode, gmmWeightQuantMode, gmmXScale, gmmWeightScale, gmmX, gmmWeight,
-                        y, "gmmX", "gmmWeight")) {
+    if (!CheckQuantMode(gmmXQuantMode, gmmWeightQuantMode, gmmXScale, gmmWeightScale, "gmmX", "gmmWeight")) {
         return false;
     }
     // 2) mm 不存在时，允许没有量化模式
@@ -237,17 +236,15 @@ static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, 
     // 3) mm 存在时，mm 不能是非量化，且必须与 gmm 保持完全一致
     if (mmXQuantMode != gmmXQuantMode || mmWeightQuantMode != gmmWeightQuantMode) {
         const std::string values = "expect(" + std::to_string(gmmXQuantMode) + "," +
-                                   std::to_string(gmmWeightQuantMode) + "),actual(" +
-                                   std::to_string(mmXQuantMode) + "," +
-                                   std::to_string(mmWeightQuantMode) + ")";
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "mmXQuantMode,mmWeightQuantMode",
-            values.c_str(),
-            "When mm inputs are set, the values of mmXQuantMode and mmWeightQuantMode must be the same as gmmXQuantMode and gmmWeightQuantMode.");
+                                   std::to_string(gmmWeightQuantMode) + "),actual(" + std::to_string(mmXQuantMode) +
+                                   "," + std::to_string(mmWeightQuantMode) + ")";
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "mmXQuantMode,mmWeightQuantMode", values.c_str(),
+            "When mm inputs are set, the values of mmXQuantMode and mmWeightQuantMode must be the same as "
+            "gmmXQuantMode and gmmWeightQuantMode.");
         return false;
     }
-    if (!CheckQuantMode(mmXQuantMode, mmWeightQuantMode, mmXScaleOptional, mmWeightScaleOptional, mmXOptional,
-                        mmWeightOptional, mmYOptional, "mmX", "mmWeight")) {
+    if (!CheckQuantMode(mmXQuantMode, mmWeightQuantMode, mmXScaleOptional, mmWeightScaleOptional, "mmX", "mmWeight")) {
         return false;
     }
     return true;
@@ -256,7 +253,8 @@ static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, 
 // 检查tensor最后两维是否转置（stride不连续）
 static bool IsTransposeLastTwoDims(const aclTensor *tensor)
 {
-    if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
+    if (tensor->GetViewShape().GetDimNum() < TRANSPOSE_DETECT_MIN_DIM_NUM ||
+        tensor->GetViewShape().GetDimNum() > TRANSPOSE_DETECT_MAX_DIM_NUM) {
         return false;
     }
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
@@ -279,16 +277,17 @@ static aclnnStatus CheckMxScaleShape(const aclTensor *scale, const char *name)
     uint64_t scaleDimNum = scale->GetViewShape().GetDimNum();
     if (scaleDimNum < DIM_THREE) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv", name,
-            std::to_string(scaleDimNum).c_str(),
-            std::string("In MX quant mode, the shape dim of " + std::string(name) + " must be greater than or equal to 3.").c_str());
+                                                 std::to_string(scaleDimNum).c_str(),
+                                                 std::string("In MX quant mode, the shape dim of " + std::string(name) +
+                                                             " must be greater than or equal to 3.")
+                                                     .c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t lastDim = scale->GetViewShape().GetDim(scaleDimNum - 1);
     if (lastDim != DIM_TWO) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            std::string(name).append(" last dim").c_str(),
-            std::to_string(lastDim).c_str(),
-            "In MX quant mode, the value of the last dim must be 2.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", std::string(name).append(" last dim").c_str(),
+            std::to_string(lastDim).c_str(), "In MX quant mode, the value of the last dim must be 2.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -325,18 +324,18 @@ static aclnnStatus HandleGmmMxTranspose(const aclTensor *&weight, const aclTenso
     bool notContiguous = IsTransposeLastTwoDims(weight);
     OP_LOGD("gmmWeight notContiguous=%d, transWeight(before)=%d", notContiguous, transWeight);
     if (notContiguous && transWeight) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "gmmWeight", "non-contiguous with transposed flag",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "gmmWeight", "non-contiguous with transposed flag",
             "gmmWeight is non-contiguous and transGmmWeight is already set, which is not allowed.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         transWeight = !transWeight;
         OP_LOGD("gmmWeight transposed detected: transWeight flipped to %d", transWeight);
-        weight = SwapTensorDims(weight, 1, 2);
+        weight = SwapTensorDims(weight, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
         CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (scale != nullptr) {
-            scale = SwapTensorDims(scale, 1, 2);
+            scale = SwapTensorDims(scale, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
             CHECK_RET(scale != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
     }
@@ -347,13 +346,13 @@ static aclnnStatus HandleGmmTtTranspose(const aclTensor *&weight, bool &transWei
 {
     bool notContiguous = IsTransposeLastTwoDims(weight);
     if (notContiguous && transWeight) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "gmmWeight", "non-contiguous with transposed flag",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "gmmWeight", "non-contiguous with transposed flag",
             "gmmWeight is non-contiguous and transGmmWeight is already set, which is not allowed.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        weight = SwapTensorDims(weight, 1, 2);
+        weight = SwapTensorDims(weight, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
         CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         transWeight = !transWeight;
         OP_LOGD("gmmWeight transposed detected: transWeight flipped to %d", transWeight);
@@ -367,8 +366,8 @@ static aclnnStatus HandleMmMxTranspose(const aclTensor *&weight, const aclTensor
     bool notContiguous = IsTransposeLastTwoDims(weight);
     OP_LOGD("mmWeight notContiguous=%d, transWeight(before)=%d", notContiguous, transWeight);
     if (notContiguous && transWeight) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "mmWeight", "non-contiguous with transposed flag",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "mmWeight", "non-contiguous with transposed flag",
             "mmWeight is non-contiguous and transMmWeight is already set, which is not allowed.");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -389,8 +388,8 @@ static aclnnStatus HandleMmTtTranspose(const aclTensor *&weight, bool &transWeig
 {
     bool notContiguous = IsTransposeLastTwoDims(weight);
     if (notContiguous && transWeight) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "mmWeight", "non-contiguous with transposed flag",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "mmWeight", "non-contiguous with transposed flag",
             "mmWeight is non-contiguous and transMmWeight is already set, which is not allowed.");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -410,28 +409,25 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
                                const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
                                const aclTensor *mmWeightScaleOptional, int64_t gmmXQuantMode,
                                int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-                               int64_t commQuantMode, const char *group, int64_t epWorldSize,
-                               const aclIntArray *sendCounts, const aclIntArray *recvCounts, bool transGmmWeight,
-                               bool transMmWeight, const aclTensor *y, const aclTensor *mmYOptional,
-                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                               int64_t commQuantMode, const char *group, const aclTensor *y,
+                               const aclTensor *mmYOptional)
 {
     CHECK_RET(CheckNotNull(gmmX, gmmWeight, y), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
-                              mmWeightOptional, group, y, mmYOptional),
+    CHECK_RET(CheckNullStatus(sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, group,
+                              mmYOptional),
               ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckQuantParams(gmmXQuantMode, gmmWeightQuantMode, gmmX, gmmWeight, gmmXScale,
-                               gmmWeightScale, y, mmXQuantMode, mmWeightQuantMode, mmXOptional,
-                               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, mmYOptional),
-              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(
+        CheckQuantParams(gmmXQuantMode, gmmWeightQuantMode, gmmXScale, gmmWeightScale, mmXQuantMode, mmWeightQuantMode,
+                         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional),
+        ACLNN_ERR_PARAM_INVALID);
     if (commQuantMode != 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "commQuantMode", std::to_string(commQuantMode).c_str(),
-            "commQuantMode only supports 0.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv", "commQuantMode",
+                                              std::to_string(commQuantMode).c_str(), "commQuantMode only supports 0.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantGroupedMatMulAlltoAllv",
-            "group", std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantGroupedMatMulAlltoAllv", "group", std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("group name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -440,20 +436,19 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
 }
 
 extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
-    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
-    const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
-    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-    const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional, const aclTensor *commQuantScaleOptional,
-    int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-    int64_t commQuantMode, int64_t commQuantDtypeOptional, int64_t groupSize, const char *group, int64_t epWorldSize,
-    const aclIntArray *sendCounts, const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight,
-    const aclTensor *y, const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
+    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
+    const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
+    const aclTensor *commQuantScaleOptional, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode,
+    int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional, int64_t groupSize,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    bool transGmmWeight, bool transMmWeight, const aclTensor *y, const aclTensor *mmYOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
-    auto retParam = CheckParams(gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional,
-                                recvCountsTensorOptional, mmXOptional, mmWeightOptional, mmXScaleOptional,
-                                mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode, mmXQuantMode,
-                                mmWeightQuantMode, commQuantMode, group, epWorldSize, sendCounts, recvCounts,
-                                transGmmWeight, transMmWeight, y, mmYOptional, workspaceSize, executor);
+    auto retParam =
+        CheckParams(gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
+                    mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode,
+                    gmmWeightQuantMode, mmXQuantMode, mmWeightQuantMode, commQuantMode, group, y, mmYOptional);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     auto retSendAndRecv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(retSendAndRecv == ACLNN_SUCCESS, retSendAndRecv);
@@ -490,11 +485,11 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const char *commMode = "ai_cpu";
     char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
-        gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
-        mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, commQuantScaleOptional,
-        strGroup, epWorldSize, sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight,
-        transMmWeight, mmXQuantMode, mmWeightQuantMode, commQuantMode, groupSize, yDtype, mmDtype,
-        commQuantDtypeOptional, str_commMode, y, mmYOptional, workspaceSize, executor);
+        gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
+        mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, commQuantScaleOptional, strGroup, epWorldSize,
+        sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, mmXQuantMode,
+        mmWeightQuantMode, commQuantMode, groupSize, yDtype, mmDtype, commQuantDtypeOptional, str_commMode, y,
+        mmYOptional, workspaceSize, executor);
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_AICPU));
         NnopbaseSetUserHandle(*executor, args);

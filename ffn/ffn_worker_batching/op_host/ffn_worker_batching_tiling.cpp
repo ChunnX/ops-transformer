@@ -48,7 +48,7 @@ ge::graphStatus FfnWorkerBatchingTiling::SetBatchingWorkspaceSize(int64_t expert
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, currentWorkspace);
 
     // 前128个int32: 总的有效专家数以及recv功能遍历的micro_batch_id
@@ -63,20 +63,17 @@ ge::graphStatus FfnWorkerBatchingTiling::SetBatchingWorkspaceSize(int64_t expert
 ge::graphStatus FfnWorkerBatchingTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr,
-        OP_LOGE(context_->GetNodeName(), "platformInfo is null"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_->GetNodeName(), "platformInfo is null"),
+                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(aivNum == 0,
-        OP_LOGE(context_->GetNodeName(), "Get aivNum:%u failed.", aivNum),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivNum == 0, OP_LOGE(context_->GetNodeName(), "Get aivNum:%u failed.", aivNum),
+                return ge::GRAPH_FAILED);
 
     uint64_t ubSize = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    OP_CHECK_IF(ubSize == 0,
-        OP_LOGE(context_->GetNodeName(), "Get ubSize:%lu failed.", ubSize),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ubSize == 0, OP_LOGE(context_->GetNodeName(), "Get ubSize:%lu failed.", ubSize),
+                return ge::GRAPH_FAILED);
 
     context_->SetBlockDim(aivNum);
     tilingData_.set_coreNum(aivNum);
@@ -91,17 +88,15 @@ ge::graphStatus FfnWorkerBatchingTiling::CheckInputParam()
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputDesc);
     ge::DataType xdtype = inputDesc->GetDataType();
     OP_CHECK_IF(xdtype != ge::DT_INT8,
-        OP_LOGE(
-            context_->GetNodeName(), "Input dtype:%s not int8", Ops::Base::ToString(xdtype).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "Input dtype:%s not int8", Ops::Base::ToString(xdtype).c_str()),
+                return ge::GRAPH_FAILED);
 
     auto inputX = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputX);
     auto xShape = Ops::Transformer::OpTiling::EnsureNotScalar(inputX->GetStorageShape());
     OP_CHECK_IF(xShape.GetDimNum() != 1,
-        OP_LOGE(context_->GetNodeName(), "x shape %s dim num not 1",
-                                        Ops::Base::ToString(xShape).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "x shape %s dim num not 1", Ops::Base::ToString(xShape).c_str()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -110,69 +105,64 @@ ge::graphStatus FfnWorkerBatchingTiling::GetAttrsInfo()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
-    const int64_t* expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
+    const int64_t *expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expertNumPtr);
-    OP_CHECK_IF(*expertNumPtr > EXPERT_IDX_MAX || *expertNumPtr <= 0,
-        OP_LOGE(
-            context_->GetNodeName(), "expert_num:%ld should be in range (0, %ld]", *expertNumPtr, EXPERT_IDX_MAX),
+    OP_CHECK_IF(
+        *expertNumPtr > EXPERT_IDX_MAX || *expertNumPtr <= 0,
+        OP_LOGE(context_->GetNodeName(), "expert_num:%ld should be in range (0, %ld]", *expertNumPtr, EXPERT_IDX_MAX),
         return ge::GRAPH_FAILED);
     tilingData_.set_expertNum(*expertNumPtr);
 
-    const gert::ContinuousVector* maxOutShapePtr = attrs->GetAttrPointer<gert::ContinuousVector>(MAX_OUT_SHAPE_ATTR);
+    const gert::ContinuousVector *maxOutShapePtr = attrs->GetAttrPointer<gert::ContinuousVector>(MAX_OUT_SHAPE_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context_, maxOutShapePtr);
     OP_CHECK_IF(maxOutShapePtr->GetSize() != NUM_FOUR,
-        OP_LOGE(
-            context_->GetNodeName(), "The max_out_shape size:%lu not equal 4.", maxOutShapePtr->GetSize()),
-        return ge::GRAPH_FAILED);
-    const int64_t* maxOutShapeArray = reinterpret_cast<const int64_t*>(maxOutShapePtr->GetData());
+                OP_LOGE(context_->GetNodeName(), "The max_out_shape size:%lu not equal 4.", maxOutShapePtr->GetSize()),
+                return ge::GRAPH_FAILED);
+    const int64_t *maxOutShapeArray = reinterpret_cast<const int64_t *>(maxOutShapePtr->GetData());
     A_ = maxOutShapeArray[INDEX_ZERO];
     BS_ = maxOutShapeArray[INDEX_ONE];
     K_ = maxOutShapeArray[INDEX_TWO];
-    OP_CHECK_IF((A_ > MAX_SESSION_NUM || A_ <= 0),
-        OP_LOGE(context_->GetNodeName(),
-            "max_out_shape[0]:%ld should be in range of (0, %ld]", A_, MAX_SESSION_NUM),
+    OP_CHECK_IF(
+        (A_ > MAX_SESSION_NUM || A_ <= 0),
+        OP_LOGE(context_->GetNodeName(), "max_out_shape[0]:%ld should be in range of (0, %ld]", A_, MAX_SESSION_NUM),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(BS_ <= 0,
-        OP_LOGE(context_->GetNodeName(), "max_out_shape[1]:%ld should be greater than 0", BS_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(BS_ <= 0, OP_LOGE(context_->GetNodeName(), "max_out_shape[1]:%ld should be greater than 0", BS_),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((K_ > MAX_K_NUM || K_ <= 0),
-        OP_LOGE(context_->GetNodeName(),
-            "max_out_shape[2]:%ld should be in range of (0, %ld]", K_, MAX_K_NUM),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "max_out_shape[2]:%ld should be in range of (0, %ld]", K_, MAX_K_NUM),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(maxOutShapeArray[INDEX_THREE] <= 0,
-        OP_LOGE(context_->GetNodeName(),
-            "max_out_shape[3]:%ld should be greater than 0", maxOutShapeArray[INDEX_THREE]),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "max_out_shape[3]:%ld should be greater than 0",
+                        maxOutShapeArray[INDEX_THREE]),
+                return ge::GRAPH_FAILED);
 
     Y_ = A_ * BS_ * K_;
     tilingData_.set_Y(Y_);
     tilingData_.set_H(maxOutShapeArray[INDEX_THREE]);
 
-    const int64_t* tokenDtype = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
+    const int64_t *tokenDtype = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
     if (tokenDtype != nullptr) {
         OP_CHECK_IF((*tokenDtype < 0 || *tokenDtype > NUM_TWO),
-            OP_LOGE(
-                context_->GetNodeName(), "token_dtype:%ld must be one of [0, 1, 2]", *tokenDtype),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "token_dtype:%ld must be one of [0, 1, 2]", *tokenDtype),
+                    return ge::GRAPH_FAILED);
         tilingData_.set_tokenDtype(*tokenDtype);
     } else {
         tilingData_.set_tokenDtype(0);
     }
 
-    const int64_t* needSchedulePtr = attrs->GetAttrPointer<int64_t>(NEED_SCHEDULE_ATTR);
+    const int64_t *needSchedulePtr = attrs->GetAttrPointer<int64_t>(NEED_SCHEDULE_ATTR);
     if (needSchedulePtr != nullptr) {
         OP_CHECK_IF((*needSchedulePtr < 0 || *needSchedulePtr > 1),
-            OP_LOGE(
-                context_->GetNodeName(), "need_schedule:%ld must be one of [0, 1]", *needSchedulePtr),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->GetNodeName(), "need_schedule:%ld must be one of [0, 1]", *needSchedulePtr),
+                    return ge::GRAPH_FAILED);
         needSchedule_ = *needSchedulePtr;
     }
 
-    const int64_t* layNumPtr = attrs->GetAttrPointer<int64_t>(LAY_NUM_ATTR);
+    const int64_t *layNumPtr = attrs->GetAttrPointer<int64_t>(LAY_NUM_ATTR);
     if (layNumPtr != nullptr) {
-        OP_CHECK_IF((*layNumPtr < 0 || *layNumPtr > *expertNumPtr),
-            OP_LOGE(
-                context_->GetNodeName(), "layer_num:%ld must be in range of [0, %ld]", *layNumPtr, *expertNumPtr),
+        OP_CHECK_IF(
+            (*layNumPtr < 0 || *layNumPtr > *expertNumPtr),
+            OP_LOGE(context_->GetNodeName(), "layer_num:%ld must be in range of [0, %ld]", *layNumPtr, *expertNumPtr),
             return ge::GRAPH_FAILED);
         layerNum_ = *layNumPtr;
     }
@@ -219,13 +209,13 @@ ge::graphStatus FfnWorkerBatchingTiling::RunFfnWorkerBatchingTiling()
     }
 
     OP_LOGI(context_->GetNodeName(),
-        "coreNum:%ld ubSize:%ld Y:%ld H:%ld tokenDtype:%ld expertNum:%ld "
-        "sortLoopMaxElement:%ld sortNumWorkSpace:%ld tilingKey:%ld",
-        tilingData_.get_coreNum(), tilingData_.get_ubSize(), tilingData_.get_Y(), tilingData_.get_H(),
-        tilingData_.get_tokenDtype(), tilingData_.get_expertNum(), tilingData_.get_sortLoopMaxElement(),
-        tilingData_.get_sortNumWorkSpace(), context_->GetTilingKey());
+            "coreNum:%ld ubSize:%ld Y:%ld H:%ld tokenDtype:%ld expertNum:%ld "
+            "sortLoopMaxElement:%ld sortNumWorkSpace:%ld tilingKey:%ld",
+            tilingData_.get_coreNum(), tilingData_.get_ubSize(), tilingData_.get_Y(), tilingData_.get_H(),
+            tilingData_.get_tokenDtype(), tilingData_.get_expertNum(), tilingData_.get_sortLoopMaxElement(),
+            tilingData_.get_sortNumWorkSpace(), context_->GetTilingKey());
 
-    gert::TilingData* batchingTilingD = context_->GetRawTilingData();
+    gert::TilingData *batchingTilingD = context_->GetRawTilingData();
     OP_CHECK_NULL_WITH_CONTEXT(context_, batchingTilingD);
     tilingData_.SaveToBuffer(batchingTilingD->GetData(), batchingTilingD->GetCapacity());
     batchingTilingD->SetDataSize(tilingData_.GetDataSize());
@@ -234,13 +224,18 @@ ge::graphStatus FfnWorkerBatchingTiling::RunFfnWorkerBatchingTiling()
     return SetBatchingWorkspaceSize(expertNum);
 }
 
-static ge::graphStatus Tiling4FfnWorkerBatching(gert::TilingContext* context)
+static ge::graphStatus Tiling4FfnWorkerBatching(gert::TilingContext *context)
 {
+    // ascend950(arch35 / DAV_3510) → 走模板注册表（1000 档 Regbase tiling，见 _tiling_arch35.cpp）；
+    // A2/A3 走原 monolithic 路径，逐字不动，零回归。
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
+        return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+    }
     FfnWorkerBatchingTiling tilingObject(context);
     return tilingObject.RunFfnWorkerBatchingTiling();
 }
 
-static ge::graphStatus TilingPrepare4FfnWorkerBatching(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepare4FfnWorkerBatching(gert::TilingParseContext *context)
 {
     auto compileInfo = context->GetCompiledInfo<FfnWorkerBatchingCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);

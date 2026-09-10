@@ -166,6 +166,6 @@ private:
         outputSize_ = static_cast<uint64_t>(batch) * mSize * nSize;
     }
 };
-}  // namespace AscendC
+} // namespace AscendC
 
-#endif  // QUANT_BATCH_MATMUL_V3_INIT_OUTPUT_H
+#endif // QUANT_BATCH_MATMUL_V3_INIT_OUTPUT_H

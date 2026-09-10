@@ -16,8 +16,7 @@
 #ifndef ASCENDC_FFN_ANTI_QUANT_H
 #define ASCENDC_FFN_ANTI_QUANT_H
 
-#include "ffn.h"
-
+#include "ffn_kernel.h"
 
 namespace FFN {
 /*@brief store variables for castWeight configuration
@@ -42,9 +41,10 @@ template <typename T, typename wT, typename mm1Type, typename mm2Type = mm1Type,
           typename biasT = T, bool isPerGroup = false>
 class FFNAntiQuant {
 public:
-    __aicore__ inline FFNAntiQuant(mm1Type &mm1_, mm2Type &mm2_) : mm1(mm1_), mm2(mm2_)
-    {
-    }
+    __aicore__ inline FFNAntiQuant(mm1Type &mm1_, mm2Type &mm2_)
+        : mm1(mm1_),
+          mm2(mm2_)
+    {}
     __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *weight1, __gm__ uint8_t *weight2,
                                 __gm__ uint8_t *expertTokens, __gm__ uint8_t *bias1, __gm__ uint8_t *bias2,
                                 __gm__ uint8_t *antiQuantScale1, __gm__ uint8_t *antiQuantScale2,

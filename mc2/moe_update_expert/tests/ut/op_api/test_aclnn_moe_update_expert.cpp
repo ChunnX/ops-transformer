@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #include <float.h>
 
 #include <array>
@@ -54,7 +54,7 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNoTailor)
                         INPUT(expertIds, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
                         OUTPUT(balancedExpertIds, balancedActiveMask));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -64,8 +64,16 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExpertTailor)
     TensorDesc expertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc eplbTable = TensorDesc({256, 5}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertScales = TensorDesc({50, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc pruningThreshold = TensorDesc({4,}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc activeMask = TensorDesc({50,}, ACL_BOOL, ACL_FORMAT_ND);
+    TensorDesc pruningThreshold = TensorDesc(
+        {
+            4,
+        },
+        ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc activeMask = TensorDesc(
+        {
+            50,
+        },
+        ACL_BOOL, ACL_FORMAT_ND);
 
     int64_t localRankId = 0;
     int64_t worldSize = 8;
@@ -74,12 +82,12 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExpertTailor)
     TensorDesc balancedExpertIds = TensorDesc({50, 4}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc balancedActiveMask = TensorDesc({50, 4}, ACL_BOOL, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeUpdateExpert,
-                        INPUT(expertIds, eplbTable, expertScales, pruningThreshold, activeMask,
-                              localRankId, worldSize, balanceMode),
-                        OUTPUT(balancedExpertIds, balancedActiveMask));
+    auto ut = OP_API_UT(
+        aclnnMoeUpdateExpert,
+        INPUT(expertIds, eplbTable, expertScales, pruningThreshold, activeMask, localRankId, worldSize, balanceMode),
+        OUTPUT(balancedExpertIds, balancedActiveMask));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -104,7 +112,7 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullExpertIds)
                         INPUT(nullptr, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
                         OUTPUT(balancedExpertIds, balancedActiveMask));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -122,7 +130,7 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullEplbTable)
                         INPUT(expertIds, nullptr, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
                         OUTPUT(balancedExpertIds, balancedActiveMask));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -140,7 +148,7 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullBalancedExpertIds)
                         INPUT(expertIds, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
                         OUTPUT(nullptr, balancedActiveMask));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -158,8 +166,8 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertNullBalancedActiveMask)
                         INPUT(expertIds, eplbTable, nullptr, nullptr, nullptr, localRankId, worldSize, balanceMode),
                         OUTPUT(balancedExpertIds, nullptr));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
-} // MoeUpdateExpert
+} // namespace MoeUpdateExpert

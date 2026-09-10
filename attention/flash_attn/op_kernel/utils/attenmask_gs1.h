@@ -86,8 +86,8 @@ __simd_vf__ inline void MergeBand(const uint64_t maskNextUb, const uint64_t mask
 }
 
 template <typename T, uint32_t s2BaseSize>
-__simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16_t midGLoop,
-    uint16_t tailGLoop, uint16_t midS1Count)
+__simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T *maskUb, uint16_t headGLoop, uint16_t midGLoop, uint16_t tailGLoop,
+                                 uint16_t midS1Count)
 {
     constexpr uint32_t repeatStride = s2BaseSize >> 5;
 
@@ -98,31 +98,37 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
     MaskReg preg_all;
     if constexpr (s2BaseSize == 128) {
         preg_all = CreateMask<bool, MaskPattern::VL128>();
-    } else {    // s2BaseSize = 256
+    } else { // s2BaseSize = 256
         preg_all = CreateMask<bool, MaskPattern::ALL>();
     }
 
-    for (uint16_t x = headGLoop; x > 0; x = 0) {    // if (headGLoop > 0) {}
-        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vreg_g_head, maskUb, 1, repeatStride, preg_all);
+    for (uint16_t x = headGLoop; x > 0; x = 0) { // if (headGLoop > 0) {}
+        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_head, maskUb, 1,
+                                                                                        repeatStride, preg_all);
         for (uint16_t i = 1; i < headGLoop; ++i) {
-            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_head, 1, repeatStride, preg_all);
+            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_head, 1,
+                                                                                             repeatStride, preg_all);
         }
     }
 
-    for (uint16_t x = midGLoop; x > 0; x = 0) {    // if (midGLoop > 0) {}
+    for (uint16_t x = midGLoop; x > 0; x = 0) { // if (midGLoop > 0) {}
         for (uint16_t i = 0; i < midS1Count; ++i) {
-            LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vreg_g_mid, maskUb, 1, repeatStride, preg_all);
+            LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_mid, maskUb, 1,
+                                                                                            repeatStride, preg_all);
             for (uint16_t j = 1; j < midGLoop; ++j) {
-                StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_mid, 1, repeatStride, preg_all);
+                StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    maskUb, vreg_g_mid, 1, repeatStride, preg_all);
             }
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
         }
     }
 
-    for (uint16_t x = tailGLoop; x > 0; x = 0) {    // if (tailGLoop > 0) {}
-        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vreg_g_tail, maskUb, 1, repeatStride, preg_all);
+    for (uint16_t x = tailGLoop; x > 0; x = 0) { // if (tailGLoop > 0) {}
+        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_tail, maskUb, 1,
+                                                                                        repeatStride, preg_all);
         for (uint16_t i = 1; i < tailGLoop; ++i) {
-            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_tail, 1, repeatStride, preg_all);
+            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_tail, 1,
+                                                                                             repeatStride, preg_all);
         }
     }
 }
@@ -135,27 +141,27 @@ __aicore__ inline void MergeMask(LocalTensor<T> &maskNext, LocalTensor<T> &maskP
     uint64_t maskNextUb = maskNext.GetPhyAddr();
     uint16_t rowNumEachLoop;
     uint64_t rowNumTimesEachLoop;
-    if (s2BaseSize > regBytes) {
+    if (s2BaseSize > regbaseutil::regBytes) {
         rowNumEachLoop = 1;
-        rowNumTimesEachLoop = static_cast<uint16_t>(s2BaseSize) / regBytes;
+        rowNumTimesEachLoop = static_cast<uint16_t>(s2BaseSize) / regbaseutil::regBytes;
     } else {
-        rowNumEachLoop = regBytes / static_cast<uint16_t>(s2BaseSize);
+        rowNumEachLoop = regbaseutil::regBytes / static_cast<uint16_t>(s2BaseSize);
         rowNumTimesEachLoop = 1;
     }
-    uint16_t halfS1RealSizeLoop = static_cast<uint16_t>(halfS1RealSize) + 1;
-    uint16_t loopCount = (halfS1RealSizeLoop / rowNumEachLoop) * rowNumTimesEachLoop;
+    uint16_t halfS1RealSizeLoop = static_cast<uint16_t>(halfS1RealSize);
+    uint16_t loopCount = (halfS1RealSizeLoop + rowNumEachLoop - 1) / rowNumEachLoop * rowNumTimesEachLoop;
 
     MergeBand(maskNextUb, maskPreUb, loopCount);
 }
 
 template <typename T, uint32_t s2BaseSize>
-__aicore__ inline void MaskUbCopyS1G(const LocalTensor<T>& maskTensor, int32_t headGSize, int32_t gSize,
-    int32_t tailGSize, int32_t midS1Count)
+__aicore__ inline void MaskUbCopyS1G(const LocalTensor<T> &maskTensor, int32_t headGSize, int32_t gSize,
+                                     int32_t tailGSize, int32_t midS1Count)
 {
     if (gSize <= 1) {
         return;
     }
-    __ubuf__ T * maskUb = (__ubuf__ T *)maskTensor.GetPhyAddr();
+    __ubuf__ T *maskUb = (__ubuf__ T *)maskTensor.GetPhyAddr();
     MaskUbCopyS1GVF<T, s2BaseSize>(maskUb, headGSize, gSize, tailGSize, midS1Count);
 }
 
@@ -223,16 +229,17 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
         return true;
     }
 
-    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ?
-        info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
-    if (info.maskFormat == MaskFormat::GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
+    int32_t s1StartIdx =
+        info.maskFormat == MaskFormat::GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    if (info.maskFormat == MaskFormat::GS &&
+        s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
 
     int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) -
                        static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算Token
-    int32_t s1EndIdx = info.maskFormat == MaskFormat::GS ?
-        s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
+    int32_t s1EndIdx = info.maskFormat == MaskFormat::GS ? s1StartIdx + info.gs1dealNum :
+                                                           (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
 
     if (static_cast<int64_t>(info.s2StartIdx) + preToken >= static_cast<int64_t>(s1EndIdx)) {
         return true;
@@ -246,9 +253,10 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
         return false;
     }
 
-    int32_t s1StartIdx = info.maskFormat == MaskFormat::GS ?
-        info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
-    if (info.maskFormat == MaskFormat::GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
+    int32_t s1StartIdx =
+        info.maskFormat == MaskFormat::GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
+    if (info.maskFormat == MaskFormat::GS &&
+        s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
 
@@ -283,12 +291,17 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
 
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
-                                                      MaskInfo &info, bool isPre = false)
+                                                      MaskInfo &info, bool isPre, uint32_t mte2ToVEventId)
 {
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
     uint32_t attenMaskS2Stride = AttentionCommon::Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
-    if (info.gs1dealNum <= info.s1Size) {
+    uint32_t headS1Count = (s1StartIdx == 0) ? 0 : (info.s1Size - s1StartIdx);
+    // midGCount: gs1dealNum 跨 G 边界时，中间完整 s1Size 行的重复次数
+    uint32_t midGCount = (info.gs1dealNum > headS1Count) ? (info.gs1dealNum - headS1Count) / info.s1Size : 0;
+    // 无完整G（midGCount==0）时，模板写入会超出 buffer 边界，改为走 if 分支直接从 GM 拷贝
+    if (info.gs1dealNum <= info.s1Size || midGCount == 0) {
+        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskS2Stride];
@@ -296,24 +309,21 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
     } else {
-        uint32_t headS1Count = info.s1Size - s1StartIdx;
-        uint32_t remainRowCount = info.gs1dealNum - headS1Count;
-        uint32_t midGCount = remainRowCount / info.s1Size;
-        uint32_t tailS1Size = remainRowCount % info.s1Size;
+        // 有完整G：先从GM拷贝一个完整G到UB作为模板，再用UB→UB DataCopy填充head/mid/tail
+        uint32_t tailS1Size = (info.gs1dealNum - headS1Count) % info.s1Size;
 
-        // 第一块完整的mask
+        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskS2Stride];
         AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, info.s1Size, isPre);
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
 
+        Mutex::Lock<PIPE_V>(mte2ToVEventId);
         // head
-        DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
+        if (headS1Count > 0) {
+            DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
+        }
         // mid
         for (uint32_t i = 1; i < midGCount; i++) {
             DataCopy(attenMaskUb[(headS1Count + i * info.s1Size) * attenMaskS2Stride], attenMaskSecUb,
@@ -324,13 +334,14 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
             DataCopy(attenMaskUb[(headS1Count + midGCount * info.s1Size) * attenMaskS2Stride], attenMaskSecUb,
                      tailS1Size * attenMaskS2Stride);
         }
+        Mutex::Unlock<PIPE_V>(mte2ToVEventId);
     }
     PipeBarrier<PIPE_V>();
 }
 
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
-                                                      MaskInfo &info, bool isPre = false)
+                                                      MaskInfo &info, bool isPre, uint32_t mte2ToVEventId)
 {
     uint32_t s1StartIdx = info.gs1StartIdx / info.gSize;
     uint32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) / info.gSize;
@@ -345,6 +356,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
+    Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
     // ub-head
     if (headGSize > 0) {
         AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1StartIdx + 1, isPre);
@@ -363,33 +375,37 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
         DataCopyPad(attenMaskUb[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
+    Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
 
-    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
-
+    Mutex::Lock<PIPE_V>(mte2ToVEventId);
     MaskUbCopyS1G<T, s2BaseSize>(attenMaskUb, headGSize, info.gSize, tailGSize, midS1Count);
+    Mutex::Unlock<PIPE_V>(mte2ToVEventId);
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
-                                            bool isPre = false)
+                                            bool isPre, uint32_t mte2ToVEventId)
 {
     if (info.maskFormat == MaskFormat::GS) {
-        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
+        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
+                                                                         mte2ToVEventId);
     } else if (info.maskFormat == MaskFormat::SG) {
-        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
+        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
+                                                                         mte2ToVEventId);
     }
 }
 
 template <typename T, MaskFormat maskFormat, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
-                                           bool isPre = false)
+                                           bool isPre, uint32_t mte2ToVEventId)
 {
     if constexpr (maskFormat == MaskFormat::GS) {
-        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
+        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
+                                                                         mte2ToVEventId);
     } else if constexpr (maskFormat == MaskFormat::SG) {
-        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
+        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre,
+                                                                         mte2ToVEventId);
     }
 }
 #endif

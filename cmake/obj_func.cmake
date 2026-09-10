@@ -58,7 +58,7 @@ macro(add_modules_sources)
   if((AclnnExtraVersionLen GREATER 1) AND (OpTypeLen GREATER 1))
     message(FATAL_ERROR "There should be only 1 optype if there are more than 1 aclnn extra versions!")
   endif()
-  
+
   # opapi 默认全部编译
   file(GLOB OPAPI_SRCS ${OP_API_SRC_DIR}/*.cpp)
   if (OPAPI_SRCS)
@@ -106,7 +106,7 @@ macro(add_modules_sources)
   endif()
 
   file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
-  file(GLOB OPTILING_SRCS 
+  file(GLOB OPTILING_SRCS
       ${SOURCE_DIR}/*_tiling*.cpp
       ${SOURCE_DIR}/op_tiling/arch35/*.cpp)
   if (OPTILING_SRCS OR SUB_OPTILING_SRC)
@@ -138,14 +138,12 @@ macro(add_modules_sources)
     target_sources(${OPGRAPH_NAME}_fallback_obj PRIVATE ${FALLBACK_SRCS})
   endif()
 
-  if (MODULE_OP_MC2_ENABLE)
-    file(GLOB GENTASK_SRCS
-        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
-    )
-    if(GENTASK_SRCS)
-      add_gentask_modules()
-      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
-    endif()
+  file(GLOB GENTASK_SRCS
+      ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
+  )
+  if(GENTASK_SRCS)
+    add_gentask_modules()
+    target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
   endif()
 
   if (MODULE_OPTYPE)
@@ -260,8 +258,10 @@ macro(add_modules_sources_with_soc)
   endforeach()
   # deduplicate
  	list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
-  
+
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
+  file(GLOB GRAPH_INFER_SRCS ${SOURCE_DIR}/../op_graph/*_graph_infer*.cpp)
+  list(APPEND OPINFER_SRCS ${GRAPH_INFER_SRCS})
   foreach(ARCH ${OP_ARCH_DIRECTORY})
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_infershape*.cpp)
     list(APPEND OPINFER_SRCS ${files})
@@ -327,14 +327,12 @@ macro(add_modules_sources_with_soc)
     target_sources(${OPGRAPH_NAME}_fallback_obj PRIVATE ${FALLBACK_SRCS})
   endif()
 
-  if (MODULE_OP_MC2_ENABLE)
-    file(GLOB GENTASK_SRCS
-        ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
-    )
-    if(GENTASK_SRCS)
-      add_gentask_modules()
-      target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
-    endif()
+  file(GLOB GENTASK_SRCS
+      ${SOURCE_DIR}/../op_graph/*_gen_task*.cpp
+  )
+  if(GENTASK_SRCS)
+    add_gentask_modules()
+    target_sources(${OPGRAPH_NAME}_gentask_obj PRIVATE ${GENTASK_SRCS})
   endif()
 
   file(GLOB AICPU_SRCS ${SOURCE_DIR}/*_aicpu*.cpp)
@@ -388,15 +386,15 @@ function(add_opapi_modules)
     target_include_directories(${OPHOST_NAME}_opapi_obj
       PRIVATE
       ${OPAPI_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       ${OPAPI_UT_DEPEND_INC}
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling>>
       ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -436,10 +434,10 @@ endfunction()
 
 set(INFER_OBJ_INCLUDE
   ${OP_PROTO_INCLUDE}
+  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
   $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
-  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
@@ -569,12 +567,12 @@ function(add_tiling_modules)
     add_dependencies(${OPHOST_NAME}_tiling_obj json)
     target_include_directories(${OPHOST_NAME}_tiling_obj
       PRIVATE ${OP_TILING_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
       $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
-      
+
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
@@ -631,7 +629,7 @@ endfunction()
 function(add_graph_plugin_modules)
   if(NOT TARGET ${GRAPH_PLUGIN_NAME}_obj)
     add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
-    target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
+    target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE
       ${OP_PROTO_INCLUDE}
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
     )
@@ -697,10 +695,10 @@ function(add_fallback_modules)
 
     target_include_directories(${OPGRAPH_NAME}_fallback_obj
       PRIVATE
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -750,7 +748,7 @@ macro(add_graph_plugin_sources)
     endif()
   endif()
 
-  file(GLOB GRAPH_PLUGIN_SRCS 
+  file(GLOB GRAPH_PLUGIN_SRCS
       ${SOURCE_DIR}/*_graph_plugin*.cpp
       ${SOURCE_DIR}/fusion_pass/*fusion_pass*.cpp
   )
@@ -818,7 +816,7 @@ function(protobuf_generate_external comp c_var h_var)
 
     if (_add_target)
       add_custom_target(
-        ${comp} DEPENDS ${${c_var}} ${${h_var}}) 
+        ${comp} DEPENDS ${${c_var}} ${${h_var}})
     endif()
 
     set_source_files_properties(${${c_var}} ${${h_var}} PROPERTIES GENERATED TRUE)
@@ -831,7 +829,7 @@ function(add_onnx_plugin_modules)
   if (NOT TARGET ${ONNX_PLUGIN_NAME}_obj)
     set(ge_onnx_proto_srcs
       ${ASCEND_DIR}/include/proto/ge_onnx.proto)
-    
+
     protobuf_generate_external(onnx ge_onnx_proto_cc ge_onnx_proto_h ${ge_onnx_proto_srcs})
 
     add_library(${ONNX_PLUGIN_NAME}_obj OBJECT ${ge_onnx_proto_h})

@@ -45,8 +45,7 @@ struct TilingParams {
     std::string groupTp{"groupTp"};
 };
 
-class MoeDistributeCombineAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam>
-{
+class MoeDistributeCombineAddRmsNormArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
     static void SetUpTestCase()
     {
@@ -59,16 +58,16 @@ protected:
     }
 };
 
-std::unordered_map<string, std::function<void(TilingParams& tilingParams, const string& valueStr)>>
+std::unordered_map<string, std::function<void(TilingParams &tilingParams, const string &valueStr)>>
     g_tilingParamsStrHandlers = {
-        {"BSK", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BSK = std::stoi(valueStr); }}};
+        {"BSK", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BSK = std::stoi(valueStr); }}};
 
 TEST_P(MoeDistributeCombineAddRmsNormArch22TilingTest, CommonTest)
 {
     auto testParam = GetParam();
     auto tilingParams = TilingParams{};
 
-    for (auto& kv : testParam.tilingParamsStrPair) {
+    for (auto &kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
             g_tilingParamsStrHandlers[kv.first](tilingParams, kv.second);
         }

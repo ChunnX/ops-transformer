@@ -4,11 +4,15 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
 
 ## 功能说明
 
@@ -83,7 +87,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPrologV3WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV3WeightNz”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMlaPrologV3WeightNzGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPrologV3WeightNz”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
@@ -286,7 +290,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>CacheMode="TND": (T,Nkv,Dtile)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
       </tr>
       <tr>
         <td>krCacheRef</td>
@@ -308,7 +312,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>当ckvkrRepoMode=1时: 维度应包含0，支持shape为(0)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>仅支持首轴非连续；除首轴外的其余轴必须连续</td>
       </tr>
       <tr>
         <td>cacheIndexOptional</td>
@@ -386,7 +390,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>dequantScaleWUqQrOptional</td>
         <td>输入</td>
-        <td>用于MatmulQcQr矩阵乘后反量化操作的per-channel参数。</td>
+        <td>用于MatmulQcQr矩阵乘后反量化操作的perchannel参数。</td>
         <td>支持非空Tensor（weightQuantMode=1/2/3/4/5的场景需传）</td>
         <td>FLOAT、FLOAT8_E8M0</td>
         <td>ND</td>
@@ -462,7 +466,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <td>kNopeClipAlphaOptional</td>
         <td>输入</td>
         <td>表示对kvCache做clip操作时的缩放因子。</td>
-        <td>在部分量化per-tile场景和int8全量化per-tile场景下shape为1，其余场景可不填，不支持空Tensor</td>
+        <td>在部分量化pertoken-pergroup场景和int8全量化pertoken-pergroup场景下shape为1，其余场景不支持，不支持空Tensor</td>
         <td>FLOAT</td>
         <td>ND</td>
         <td>(1)</td>
@@ -548,7 +552,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <td>kvCacheQuantMode</td>
         <td>输入</td>
         <td>表示kvCache的量化模式。</td>
-        <td>0表示非量化，1表示per-tensor量化，2表示per-channel量化，3表示per-tile量化，默认值为0</td>
+        <td>0表示非量化，1表示pertensor量化，2表示perchannel量化，3表示pertoken-pergroup量化，默认值为0</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -587,7 +591,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>tileSize</td>
         <td>输入</td>
-        <td>表示per-tile量化时每个tile的大小，仅在kvCacheQuantMode为3时有效。</td>
+        <td>表示pertoken-pergroup量化时每个tile的大小，仅在kvCacheQuantMode为3时有效。</td>
         <td>默认值为128</td>
         <td>INT64</td>
         <td>-</td>
@@ -721,13 +725,15 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       </tr>
   </table>
 
+<!-- npu="A3,910b" id4 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - tokenX、weightDq、weightUqQr、weightDkvKr、kvCacheRef、queryOut、queryNormOutOptional不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
   - dequantScaleXOptional、dequantScaleWDqOptional、dequantScaleWUqQrOptional、dequantScaleWDkvKrOptional、dequantScaleQNormOutOptional不支持FLOAT8_E8M0数据类型。
 
+<!-- end id4 -->
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -809,7 +815,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -823,7 +829,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <col style="width: 625px">
         <col style="width: 360px">
         </colgroup>
-  <table>
     <thead>
       <tr>
         <th>字段名</th>
@@ -909,7 +914,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <td>kvCache的D维度的大小</td>
         <td>
           <ul>
-            <li>Per-tile量化场景下，取值固定为656，即等于512(Hckv) + 64(Dr)*2 + 4(Hckv/tileSize)*4</li>
+            <li>pertoken-pergroup量化场景下，取值固定为656，即等于512(Hckv) + 64(Dr)*2 + 4(Hckv/tileSize)*4</li>
             <li>其他场景下，取值固定为Hckv（512）</li>
           </ul>
         </td>
@@ -929,7 +934,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
     - queryOut的shape为(T, N, Hckv)
     - queryRopeOut的shape为(T, N, Dr)
-    - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
+    - int8/mxfp8/fp8/hif8全量化且kvCache pertensor量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
   - 若tokenX的维度不采用BS合轴，即(B, S, He)
       - ropeSin和ropeCos的shape为(B, S, Dr)
       - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
@@ -937,7 +942,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
       - queryOut的shape为(B, S, N, Hckv)
       - queryRopeOut的shape为(B, S, N, Dr)
-      - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
+      - int8/mxfp8/fp8/hif8全量化且kvCache pertensor量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
   - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
       - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
       - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
@@ -949,16 +954,18 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       - kvCache的维度为(T,Nkv,Dr)
   - 当ckvkrRepoMode=1时
       - krCache的维度应包含0，支持shape为(0)
+
   </details>
 
   <details>
   <summary><a id="specialConstraint"></a>特殊约束</summary>
 
   - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
-  - per-tile量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
-  - per-tile量化模式下，CacheMode只支持PA_BSND, BSND和TND。
+  - pertoken-pergroup量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
+  - pertoken-pergroup量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
-  - kvcache per-tensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
+  - kvcache pertensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
+
   </details>
 
   <details>
@@ -975,8 +982,8 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     <tr>
       <td colspan="2">非量化</td>
       <td>
-          weight_quant_mode=0，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：所有入参皆为非量化数据 <br> 
+          weight_quant_mode=0,kv_cache_quant_mode=0,query_quant_mode=0<br>
+          入参：所有入参皆为非量化数据 <br>
           出参：所有出参皆为非量化数据
       </td>
     </tr>
@@ -984,75 +991,75 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td rowspan="3">部分量化</td>
       <td>kvCache非量化 </td>
       <td>
-          weight_quant_mode=1，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：weightUqQr传入per-token量化数据，其余入参皆为非量化数据。dequantScaleWUqQr字段必须传入，smoothScalesCq字段可选传入 <br>
+          weight_quant_mode=1,kv_cache_quant_mode=0,query_quant_mode=0<br>
+          入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据。dequantScaleWUqQr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：所有出参返回非量化数据
       </td>
     </tr>
     <tr>
-      <td>kvCache per-channel量化 </td>
+      <td>kvCache perchannel量化 </td>
       <td>
-          weight_quant_mode=1，kv_cache_quant_mode=2，query_quant_mode=0<br>
-          入参：weightUqQr传入per-token量化数据，kvCacheRef、krCacheRef传入per-channel量化数据，其余入参皆为非量化数据。dequantScaleWUqQr、quantScaleCkv、quant_scale_ckr字段必须传入，smoothScalesCq字段可选传入 <br>
-          出参：kvCacheRef、krCacheRef返回per-channel量化数据，其余出参返回非量化数据
+          weight_quant_mode=1,kv_cache_quant_mode=2,query_quant_mode=0<br>
+          入参：weightUqQr传入pertoken量化数据，kvCacheRef、krCacheRef传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleWUqQr、quantScaleCkv、quant_scale_ckr字段必须传入，smoothScalesCq字段可选传入 <br>
+          出参：kvCacheRef、krCacheRef返回perchannel量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
-      <td>kvCache per-tile量化 </td>
+      <td>kvCache pertoken-pergroup量化 </td>
       <td>
-          weight_quant_mode=1, kv_cache_quant_mode=3, query_quant_mode=0<br>
-          入参：weightUqQr传入per-token量化数据，其余入参皆为非量化数据。dequantScaleWUqQr字段必须传入，smoothScalesCq字段可选传入 <br>
-          出参：kvCacheRef返回per-tile量化数据，其余出参返回非量化数据
+          weight_quant_mode=1,kv_cache_quant_mode=3,query_quant_mode=0<br>
+          入参：weightUqQr传入pertoken量化数据，其余入参皆为非量化数据。dequantScaleWUqQr字段必须传入，smoothScalesCq字段可选传入 <br>
+          出参：kvCacheRef返回pertoken-pergroup量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td rowspan="3">int8/fp8/hif8全量化</td>
       <td> kvCache非量化</td>
       <td>
-          weight_quant_mode=2/4/5，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：tokenX传入per-token量化数据，weightDq、weightUqQr、weightDkvKr传入per-channel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入，smoothScalesCq字段可选传入 <br>
+          weight_quant_mode=2/4/5,kv_cache_quant_mode=0,query_quant_mode=0<br>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入，smoothScalesCq字段可选传入 <br>
           出参：所有出参返回非量化数据
       </td>
     </tr>
     <tr>
-      <td> kvCache per-tensor量化 </td>
+      <td> kvCache pertensor量化 </td>
       <td>
-          weight_quant_mode=2/4/5，kv_cache_quant_mode=1，query_quant_mode=1<br>
-          入参：tokenX传入per-token量化数据，weightDq、weightUqQr、weightDkvKr传入per-channel量化数据，kvCacheRef传入per-tensor量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr、quantScaleCkv字段必须传入，smoothScalesCq字段可选传入 <br>
-          出参：queryOut返回per-token-head量化数据，kvCacheRef出参返回per-tensor量化数据，其余出参返回非量化数据
+          weight_quant_mode=2/4/5,kv_cache_quant_mode=1,query_quant_mode=1<br>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，kvCacheRef传入pertensor量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr、quantScaleCkv字段必须传入，smoothScalesCq字段可选传入 <br>
+          出参：queryOut返回per-token-head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
-      <td> kvCache per-tile量化 </td>
+      <td> kvCache pertoken-pergroup量化 </td>
       <td>
-          weight_quant_mode=2/4/5，kv_cache_quant_mode=3，query_quant_mode=0<br>
-          入参：tokenX传入per-token量化数据，weightDq、weightUqQr、weightDkvKr传入per-channel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入，smoothScalesCq字段可选传入 <br>
-          出参：kvCacheRef出参返回per-tile量化数据，其余出参返回非量化数据
+          weight_quant_mode=2/4/5,kv_cache_quant_mode=3,query_quant_mode=0<br>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入，smoothScalesCq字段可选传入 <br>
+          出参：kvCacheRef出参返回pertoken-pergroup量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
       <td rowspan="3">mxfp8全量化</td>
       <td> kvCache非量化</td>
       <td>
-          weight_quant_mode=3，kv_cache_quant_mode=0，query_quant_mode=0<br>
-          入参：tokenX传入per-token量化数据，weightDq、weightUqQr、weightDkvKr传入per-channel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入 <br>
+          weight_quant_mode=3,kv_cache_quant_mode=0,query_quant_mode=0<br>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入 <br>
           出参：所有出参返回非量化数据
       </td>
     </tr>
     <tr>
-      <td> kvCache per-tensor量化 </td>
+      <td> kvCache pertensor量化 </td>
       <td>
-          weight_quant_mode=3，kv_cache_quant_mode=1，query_quant_mode=1<br>
-          入参：tokenX传入per-token量化数据，weightDq、weightUqQr、weightDkvKr传入per-channel量化数据，kvCacheRef传入per-tensor量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr、quantScaleCkv字段必须传入 <br>
-          出参：queryOut返回per-token-head量化数据，kvCacheRef出参返回per-tensor量化数据，其余出参返回非量化数据
+          weight_quant_mode=3,kv_cache_quant_mode=1,query_quant_mode=1<br>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，kvCacheRef传入pertensor量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr、quantScaleCkv字段必须传入 <br>
+          出参：queryOut返回per-token-head量化数据，kvCacheRef出参返回pertensor量化数据，其余出参返回非量化数据
       </td>
     </tr>
     <tr>
-      <td> kvCache per-tile量化 </td>
+      <td> kvCache pertoken-pergroup量化 </td>
       <td>
-          weight_quant_mode=3，kv_cache_quant_mode=3，query_quant_mode=0<br>
-          入参：tokenX传入per-token量化数据，weightDq、weightUqQr、weightDkvKr传入per-channel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入 <br>
-          出参：kvCacheRef出参返回per-tile量化数据，其余出参返回非量化数据
+          weight_quant_mode=3,kv_cache_quant_mode=3,query_quant_mode=0<br>
+          入参：tokenX传入pertoken量化数据，weightDq、weightUqQr、weightDkvKr传入perchannel量化数据，其余入参皆为非量化数据。dequantScaleX、dequantScaleWDq、dequantScaleWUqQr、dequantScaleWDkvKr字段必须传入 <br>
+          出参：kvCacheRef出参返回pertoken-pergroup量化数据，其余出参返回非量化数据
       </td>
     </tr>
   </table>
@@ -1074,20 +1081,20 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     </tr>
     <tr>
       <th colspan="1">kvCache非量化</th>
-      <th colspan="1">kvCache per-channel量化</th>
-      <th colspan="1">kvCache per-tile量化</th>
+      <th colspan="1">kvCache perchannel量化</th>
+      <th colspan="1">kvCache pertoken-pergroup量化</th>
       <th colspan="1">kvCache非量化</th>
-      <th colspan="1">kvCache per-tensor量化</th>
-      <th colspan="1">kvCache per-tile量化</th>
+      <th colspan="1">kvCache pertensor量化</th>
+      <th colspan="1">kvCache pertoken-pergroup量化</th>
       <th colspan="1">kvCache非量化</th>
-      <th colspan="1">kvCache per-tensor量化</th>
-      <th colspan="1">kvCache per-tile量化</th>
+      <th colspan="1">kvCache pertensor量化</th>
+      <th colspan="1">kvCache pertoken-pergroup量化</th>
       <th colspan="1">kvCache非量化</th>
-      <th colspan="1">kvCache per-tensor量化</th>
-      <th colspan="1">kvCache per-tile量化</th>
+      <th colspan="1">kvCache pertensor量化</th>
+      <th colspan="1">kvCache pertoken-pergroup量化</th>
       <th colspan="1">kvCache非量化</th>
-      <th colspan="1">kvCache per-tensor量化</th>
-      <th colspan="1">kvCache per-tile量化</th>
+      <th colspan="1">kvCache pertensor量化</th>
+      <th colspan="1">kvCache pertoken-pergroup量化</th>
     </tr>
     <tr>
       <th>dtype</th>
@@ -1482,10 +1489,10 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <td>NULLPTR</td>
       <td>NULLPTR</td>
       <td>NULLPTR</td>
-      <td>FLOAT</td>
       <td>NULLPTR</td>
       <td>NULLPTR</td>
-      <td>FLOAT</td>
+      <td>NULLPTR</td>
+      <td>NULLPTR</td>
     </tr>
     <tr>
       <td> queryOut </td>
@@ -1588,7 +1595,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 ## 调用示例
 
-<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```Cpp
   #include <iostream>

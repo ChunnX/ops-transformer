@@ -63,7 +63,7 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
         auto mVal = x1->GetViewShape().GetDim(0);
         OP_API_CHECK((mVal == ZERO), {
             OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimM",
-                                        std::to_string(mVal).c_str(), "non-zero");
+                                      std::to_string(mVal).c_str(), "non-zero");
             return false;
         });
     }
@@ -71,18 +71,18 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((kVal1 == ZERO), {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimK",
-                                    std::to_string(kVal1).c_str(), "non-zero");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimK", std::to_string(kVal1).c_str(),
+                                  "non-zero");
         return false;
     });
     OP_API_CHECK((kVal2 == ZERO), {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimK",
-                                    std::to_string(kVal2).c_str(), "non-zero");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimK", std::to_string(kVal2).c_str(),
+                                  "non-zero");
         return false;
     });
     OP_API_CHECK((nVal == ZERO), {
-        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimN",
-                                    std::to_string(nVal).c_str(), "non-zero");
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimN", std::to_string(nVal).c_str(),
+                                  "non-zero");
         return false;
     });
     return true;
@@ -111,8 +111,7 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
             OP_LOGE_FOR_INVALID_DTYPE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                        op::ToString(biasOptional->GetDataType()).GetString(),
-                                        "x1 dtype or float32");
+                                      op::ToString(biasOptional->GetDataType()).GetString(), "x1 dtype or float32");
             return false;
         }
     }
@@ -135,8 +134,7 @@ static bool CheckAllDtypesValid910B(const aclTensor *x1, const aclTensor *x2, co
             OP_CHECK_DTYPE_NOT_SAME(x1, biasOptional, return false);
         } else if (biasDtype != op::DataType::DT_FLOAT) {
             OP_LOGE_FOR_INVALID_DTYPE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                        op::ToString(biasDtype).GetString(),
-                                        "DT_FLOAT when x is DT_BFLOAT16");
+                                      op::ToString(biasDtype).GetString(), "DT_FLOAT when x is DT_BFLOAT16");
             return false;
         }
     }
@@ -150,24 +148,24 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1",
-                                     op::ToString(x1->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x1->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                     op::ToString(x2->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x2->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                         op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
+                                       op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "output",
-                                     op::ToString(output->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     return true;
@@ -213,7 +211,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 2. 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 3. 检查shape
-    CHECK_RET(CheckShapeMMAA(x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeMMAA("matmul_allto_all", x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
     // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     // bias的数据类型限制在950和910B上有所区别，这里根据芯片版本做区分
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -226,11 +224,11 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 6. 兼容性处理非ND格式
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
     // 7. 检查alltoallAxes是否为空或者[-1,-2]
-    CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAlltoAllAxes("matmul_allto_all", alltoAllAxesOptional, true), ACLNN_ERR_PARAM_INVALID);
     // 8. 检查transposeX1是否合法, 目前不能为true
-    CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTransposeX1("matmul_allto_all", transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 9. 检查group长度是否小于等于128
-    CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckGroupLength("matmul_allto_all", group), ACLNN_ERR_PARAM_INVALID);
     // 10. 检查commMode非空
     CHECK_RET(commMode != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
@@ -295,7 +293,7 @@ extern "C" aclnnStatus InnerMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
         x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
         str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
         transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
-    OP_LOGD("MatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("MatmulAlltoAll, aclnnInnerGetWorkspaceSize ret %d.", ret);
     return ret;
 }
 
@@ -308,15 +306,15 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
                                                     aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    aclnnStatus checkX2Ret = CheckX2Valid("matmul_allto_all", x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
-            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+            IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
-            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        "non-contiguous and transposed", "contiguous or not transposed");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2", "non-contiguous and transposed",
+                                      "contiguous or not transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous) {
@@ -332,8 +330,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     } else {
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
-            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        "non-contiguous", "contiguous");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x2", "non-contiguous", "contiguous");
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
@@ -346,7 +343,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     }
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode("matmul_allto_all", group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret =
@@ -354,8 +351,9 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
                                             transposeX1, transposeX2, output, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAll, end ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulAlltoAllBaseGetWorkspaceSize",
-                                "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
+        OP_LOGE_LIBOPAPI_REPORT(
+            "aclnnMatmulAlltoAllBaseGetWorkspaceSize",
+            "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
 
     if (ret == ACLNN_SUCCESS && *executor != nullptr) {

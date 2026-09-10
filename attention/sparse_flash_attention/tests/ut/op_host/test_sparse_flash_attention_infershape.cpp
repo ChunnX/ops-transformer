@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <gtest/gtest.h> 
+#include <gtest/gtest.h>
 #include <iostream>
 #include "infer_shape_context_faker.h"
 #include "infer_datatype_context_faker.h"
@@ -37,39 +37,38 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_0)
         "SparseFlashAttention",
         // 输入Tensor
         {
-            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},         // query            input0
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
-            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
-            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},              // sparse_indices   input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                      // block_table      input4
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},          // actual_seq_lengths_query
-            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},         // actual_seq_lengths_kv 
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query_rope       input5
-            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}      // key_rope         input6
+            {{{4, 1, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // query            input0
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // key              input1
+            {{{4, 65536, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // value            input2
+            {{{4, 1, 1, 16}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},          // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                  // block_table      input4
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
+            {{{4}, {4}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query_rope       input5
+            {{{4096, 64, 1, 512}, {4096, 64, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND}  // key_rope         input6
         },
-        {// 输出Tensor
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // softmax_max
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}     // softmax_sum
+        {
+            // 输出Tensor
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},  // attention_out
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}  // softmax_sum
         },
         {// 属性
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-        });
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = { // 预期输出
-        {4, 1, 128, 512},
-        {0},
-        {0}
-    };
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);   // 比对成功返回SUCCESS
+    std::vector<std::vector<int64_t>> expectOutputShape = {// 预期输出
+                                                           {4, 1, 128, 512},
+                                                           {0},
+                                                           {0}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape); // 比对成功返回SUCCESS
 }
 
 // TND_TND
@@ -81,39 +80,38 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_1)
         "SparseFlashAttention",
         // 输入Tensor
         {
-            {{{2, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // query            input0
-            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // key              input1
-            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // value            input2
-            {{{2, 1, 206}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input3
-            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},                  // block_table      input4
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
-            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv 
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},                                 // query_rope       input5
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}                                  // key_rope         input6
+            {{{2, 128, 512}, {4, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND},    // query            input0
+            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},    // key              input1
+            {{{2, 1, 512}, {4, 65536, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},    // value            input2
+            {{{2, 1, 206}, {4, 1, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},        // sparse_indices   input3
+            {{{4, 1024}, {4, 1024}}, ge::DT_INT32, ge::FORMAT_ND},              // block_table      input4
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},  // actual_seq_lengths_query
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist}, // actual_seq_lengths_kv
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},                             // query_rope       input5
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND}                              // key_rope         input6
         },
-        {// 输出Tensor
-            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},     // attention_out
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // softmax_max
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}     // softmax_sum
+        {
+            // 输出Tensor
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},  // attention_out
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}, // softmax_max
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}  // softmax_sum
         },
         {// 属性
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
-        });
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
+         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = { // 预期输出
-        {2, 128, 512},
-        {1, 2, 128},
-        {1, 2, 128}
-    };
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);   // 比对成功返回SUCCESS
+    std::vector<std::vector<int64_t>> expectOutputShape = {// 预期输出
+                                                           {2, 128, 512},
+                                                           {1, 2, 128},
+                                                           {1, 2, 128}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape); // 比对成功返回SUCCESS
 }
 
 // BNSD_BNSD
@@ -125,39 +123,38 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_2)
         "SparseFlashAttention",
         // 输入Tensor
         {
-            {{{3, 13754, 8, 512}, {3, 13754, 8, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // query            input0
-            {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // key              input1
-            {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},        // value            input2
-            {{{3, 13754, 1, 32}, {3, 13754, 1, 32}}, ge::DT_INT32, ge::FORMAT_ND},            // sparse_indices   input3
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                  // block_table      input4
-            {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
-            {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv 
+            {{{3, 13754, 8, 512}, {3, 13754, 8, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // query            input0
+            {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key              input1
+            {{{3, 13754, 1, 512}, {3, 13754, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value            input2
+            {{{3, 13754, 1, 32}, {3, 13754, 1, 32}}, ge::DT_INT32, ge::FORMAT_ND},     // sparse_indices   input3
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                                   // block_table      input4
+            {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},         // actual_seq_lengths_query
+            {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},        // actual_seq_lengths_kv
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                                 // query_rope       input5
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}                                  // key_rope         input6
         },
-        {// 输出Tensor
-            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // attention_out
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},    // softmax_max
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}     // softmax_sum
+        {
+            // 输出Tensor
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // attention_out
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},   // softmax_max
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}    // softmax_sum
         },
         {// 属性
-            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
-            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
-        });
+         {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
+         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = { // 预期输出
-        {3, 13754, 8, 512},
-        {3, 1, 13754, 8},
-        {3, 1, 13754, 8}
-    };
-    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);   // 比对成功返回SUCCESS
+    std::vector<std::vector<int64_t>> expectOutputShape = {// 预期输出
+                                                           {3, 13754, 8, 512},
+                                                           {3, 1, 13754, 8},
+                                                           {3, 1, 13754, 8}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape); // 比对成功返回SUCCESS
 }
 
 // infer dataType
@@ -179,18 +176,17 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_inferdtype)
                 .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                 .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
                 .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-                .InputDataTypes({&input_ref1, &input_ref1, &input_ref1, &input_ref2, &input_ref2, &input_ref2, &input_ref2, &input_ref1, &input_ref1})
-                .NodeAttrs({   
-                    {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
-                    {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-                    {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-                    {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
-                    {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-                    {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-                    {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-                    {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
-                })
+                .InputDataTypes({&input_ref1, &input_ref1, &input_ref1, &input_ref2, &input_ref2, &input_ref2,
+                                 &input_ref2, &input_ref1, &input_ref1})
+                .NodeAttrs({{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04166666666666666)},
+                            {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+                            {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+                            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+                            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+                            {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                            {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}})
                 .Build();
         auto context = context_holder.GetContext<gert::InferDataTypeContext>();
         EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
@@ -199,6 +195,37 @@ TEST_F(SparseFlashAttentionProto, SparseFlashAttention_inferdtype)
         EXPECT_EQ(context->GetOutputDataType(0), output_ref2);
         EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
         EXPECT_EQ(context->GetOutputDataType(1), output_ref1);
-
     }
+}
+
+// TND key with zero head num, expect failure
+TEST_F(SparseFlashAttentionProto, SparseFlashAttention_infershape_3)
+{
+    gert::InfershapeContextPara infershapeContextPara(
+        "SparseFlashAttention",
+        {
+            {{{128, 128, 512}, {128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query TND
+            {{{128, 0, 512}, {128, 0, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key TND, head num is 0
+            {{{128, 0, 512}, {128, 0, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value TND
+            {{{128, 1, 2048}, {128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},  // sparse_indices
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                          // block_table
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                          // actual_seq_lengths_query
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                          // actual_seq_lengths_kv
+            {{{128, 128, 64}, {128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // query_rope
+            {{{128, 0, 64}, {128, 0, 64}}, ge::DT_BF16, ge::FORMAT_ND}        // key_rope
+        },
+        {{{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}});
+
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }

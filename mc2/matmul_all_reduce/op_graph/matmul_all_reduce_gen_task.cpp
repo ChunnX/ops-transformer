@@ -28,7 +28,8 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         const gert::RuntimeAttrs *attrs = context->GetAttrs();
-        OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
+        OP_TILING_CHECK(
+            attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream"));
         const char *commModeStr =
             attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
@@ -50,7 +51,7 @@ ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *conte
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         const gert::RuntimeAttrs *attrs = context->GetAttrs();
         OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
-            return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks););
+                        return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks););
         const char *commModeStr =
             attrs->GetAttrPointer<char>(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_COMM_MODE));
         if (commModeStr == nullptr) {

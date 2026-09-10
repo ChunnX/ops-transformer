@@ -25,7 +25,11 @@ extern "C" {
  * @param [in, out] convStatesRef 卷积状态张量，shape为[numCacheLines, stateLen, D]，数据类型与x相同
  * @param [in] biasOptional 可选偏置张量，shape为[D]，数据类型与x相同
  * @param [in] queryStartLocOptional 可选的变长序列起始位置，shape为[batch+1]，数据类型为INT32
- * @param [in] cacheIndicesOptional 可选的缓存索引，shape为[batch]，数据类型为INT32
+ * @param [in] cacheIndicesOptional 可选的缓存索引，shape为[batch]，数据类型为INT32。
+ *            将每个序列映射到convStatesRef中对应的缓存槽位，取值范围为[0, numCacheLines)。
+ *            cacheIndices[i]等于nullBlockId的序列将被跳过，nullBlockId可被多个序列重复使用。
+ *            除nullBlockId外的值不应重复，否则多个序列读写同一缓存槽位会导致历史状态错误和写入冲突。
+ *            不提供时，序列i直接使用缓存槽位i（恒等映射）。
  * @param [in] initialStateModeOptional 可选的初始状态模式，shape为[batch]，数据类型为INT32
  * @param [in] blockIdxFirstScheduledTokenOptional 可选的首个调度token块索引，shape为[batch]，数据类型为INT32
  * @param [in] blockIdxLastScheduledTokenOptional 可选的最后调度token块索引，shape为[batch]，数据类型为INT32

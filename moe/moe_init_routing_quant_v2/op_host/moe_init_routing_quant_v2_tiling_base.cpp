@@ -64,16 +64,6 @@ const static int64_t SIMT_UB_SIZE_BYTE = 40960;
         }                                   \
     } while (0)
 
-#define CHECK_NULL(context, ptr, ...)                                                                    \
-    do {                                                                                                 \
-        if ((ptr) == nullptr) {                                                                          \
-            const char* name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(); \
-            OP_LOGE_WITHOUT_REPORT(name, "%s is nullptr!", ##__VA_ARGS__);                               \
-            REPORT_INNER_ERR_MSG("EZ9999", "op[%s], %s is nullptr!", name, ##__VA_ARGS__);               \
-            return ge::GRAPH_FAILED;                                                                     \
-        }                                                                                                \
-    } while (0)
-
 inline static int64_t CeilLog4(int64_t x)
 {
     return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
@@ -119,10 +109,10 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetPlatformInfo()
 ge::graphStatus InnerMoeInitRoutingV2TilingBase::CheckTokenCount(int64_t num, const char* tag)
 {
     auto expertTokensShapePtr = context_->GetOutputShape(num);
-    CHECK_NULL(context_, expertTokensShapePtr, tag);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expertTokensShapePtr);
 
     auto expertTokensDesc = context_->GetOutputDesc(num);
-    CHECK_NULL(context_, expertTokensDesc, tag);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expertTokensDesc);
     auto dt = expertTokensDesc->GetDataType();
     CHECK_FAIL(context_, dt != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), tag, Ops::Base::ToString(dt).c_str(), "INT32"));
@@ -144,11 +134,11 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::CheckOutShape()
 {
     // 获取输出shape
     auto expandedXShapePtr = context_->GetOutputShape(OUTOUT_EXPANDED_X);
-    CHECK_NULL(context_, expandedXShapePtr, "expandedX");
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expandedXShapePtr);
     const gert::Shape expandedXShape = expandedXShapePtr->GetStorageShape();
 
     auto expandedRowIdxShapePtr = context_->GetOutputShape(OUTOUT_EXPANDED_ROW_IDX);
-    CHECK_NULL(context_, expandedRowIdxShapePtr, "expandedRowIdx");
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expandedRowIdxShapePtr);
     const gert::Shape expandedRowIdxShape = expandedRowIdxShapePtr->GetStorageShape();
 
     size_t expandedXDimNum = expandedXShape.GetDimNum();
@@ -214,14 +204,14 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
 
     // 获取输入shape
     auto xShapePtr = context_->GetInputShape(INDEX_INPUT_X);
-    CHECK_NULL(context_, xShapePtr, "x");
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     const gert::Shape xShape = xShapePtr->GetStorageShape();
     auto expertIdxShapePtr = context_->GetInputShape(INDEX_INPUT_EXPERT_IDX);
-    CHECK_NULL(context_, expertIdxShapePtr, "expertIdx");
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxShapePtr);
     const gert::Shape expertIdxShape = expertIdxShapePtr->GetStorageShape();
 
     auto attrs = context_->GetAttrs();
-    CHECK_NULL(context_, attrs, "Attrs");
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     const int64_t* activateNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVE_ROWS);
     if (activateNumPtr != nullptr) {
         activateNum = *activateNumPtr;

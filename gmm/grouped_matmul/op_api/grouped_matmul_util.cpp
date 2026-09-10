@@ -9,6 +9,7 @@
  */
 
 #include "grouped_matmul_util.h"
+#include "log/log.h"
 
 using namespace gmm;
 
@@ -55,7 +56,7 @@ bool IsTransposeForMxShape(const aclTensor *tensor)
     return false;
 }
 
-void CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                            aclOpExecutor *executor)
 {
     op::Shape shape;
@@ -73,12 +74,18 @@ void CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std:
         shape.AppendDim(viewShape.GetDim(2)); // 2 is last dim contiguous in k axis in mx typek quant mode
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+        if (tensor == nullptr) {
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "contiguous per-token scale view",
+                                                     "CreateView for contiguous per-token scale failed");
+            return false;
+        }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
         newTensorList.emplace_back(tensor);
     }
+    return true;
 }
 
-void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                                aclOpExecutor *executor)
 {
     op::Shape shape;
@@ -100,12 +107,18 @@ void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, 
         }
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+        if (tensor == nullptr) {
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "contiguous MX scale view",
+                                                     "CreateView for contiguous MX scale failed");
+            return false;
+        }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
         newTensorList.emplace_back(tensor);
     }
+    return true;
 }
 
-void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                 aclOpExecutor *executor)
 {
     op::Shape shape;
@@ -124,13 +137,20 @@ void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<acl
         shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 2)); // 2:the second last dim.
         aclTensor *tensor =
             executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+        if (tensor == nullptr) {
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmul", "contiguous tensor view",
+                                                     "CreateView for contiguous tensor failed");
+            return false;
+        }
         tensor->SetStorageFormat(inputTensor->GetStorageFormat());
         newTensorList.emplace_back(tensor);
     }
+    return true;
 }
 
-std::string dTypeToString(const ge::DataType &dtype) {
-    if(DTYPE_STRING.count(dtype) != 0) {
+std::string dTypeToString(const ge::DataType &dtype)
+{
+    if (DTYPE_STRING.count(dtype) != 0) {
         return DTYPE_STRING.at(dtype);
     } else {
         return std::string(op::ToString(dtype).GetString());

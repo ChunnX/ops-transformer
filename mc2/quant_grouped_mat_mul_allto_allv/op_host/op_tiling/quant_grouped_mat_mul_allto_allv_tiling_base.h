@@ -18,7 +18,6 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace Mc2Tiling {
@@ -62,21 +61,21 @@ enum GmmA2AvAttrIndex : uint32_t {
 };
 
 enum QuantizationMode {
-    QUANT_NONE = 0,          // 不量化
-    QUANT_PERTENSOR = 1,     // pertensor
-    QUANT_PERCHANNEL = 2,    // perchannel
-    QUANT_PERTOKEN = 3,      // pertoken
-    QUANT_PERGROUP = 4,      // pergroup
-    QUANT_PERBLOCK = 5,      // perblock
-    QUANT_MX = 6,            // mx量化
-    QUANT_PERTOKEN_DYNAMIC = 7  // pertoken动态量化
+    QUANT_NONE = 0,            // 不量化
+    QUANT_PERTENSOR = 1,       // pertensor
+    QUANT_PERCHANNEL = 2,      // perchannel
+    QUANT_PERTOKEN = 3,        // pertoken
+    QUANT_PERGROUP = 4,        // pergroup
+    QUANT_PERBLOCK = 5,        // perblock
+    QUANT_MX = 6,              // mx量化
+    QUANT_PERTOKEN_DYNAMIC = 7 // pertoken动态量化
 };
 
 enum QuantModePair {
-    QUANT_PAIR_NONE = 0,   // 不量化
-    QUANT_PAIR_TT = 1,     // pertensor - pertensor
-    QUANT_PAIR_KC = 2,     // pertoken - perchannel
-    QUANT_PAIR_MX = 6,     // mxfp8
+    QUANT_PAIR_NONE = 0, // 不量化
+    QUANT_PAIR_TT = 1,   // pertensor - pertensor
+    QUANT_PAIR_KC = 2,   // pertoken - perchannel
+    QUANT_PAIR_MX = 6,   // mxfp8
     QUANT_PAIR_ERROR = 255
 };
 
@@ -96,7 +95,6 @@ constexpr uint32_t DIM_ONE = 1;
 constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
 constexpr uint32_t DIM_FOUR = 4;
-
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
 constexpr uint32_t HCCL_CMD_ALLTOALLV = 8;
@@ -132,15 +130,15 @@ constexpr uint64_t MIN_K_VALUE = 2;
 constexpr uint64_t MAX_K_VALUE = 8;
 constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
-constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
+constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2); // 2M / sizeof(gmmX)
+constexpr uint32_t MAX_HCCL_HANDLE_NUM = 63;
 inline constexpr int64_t RANK_DEFAULT_NUM = -1;
 inline const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128};
 
-class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
-{
+class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext* context)
-        : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -149,7 +147,7 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     ge::graphStatus PostTiling() override;
-    QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName);
+    QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName) const;
     const char *opName_{nullptr};
 
     NpuArch npuArch_;

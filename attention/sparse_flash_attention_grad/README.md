@@ -60,7 +60,7 @@
   $$
 
   $$
-   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right. 
+   dK \left[ u \left] \mathop{{}}\nolimits_{{:t,:}}=dS\mathop{{}}\nolimits_{{t,:t}}\mathop{{}}\nolimits^{{T}}\text{@}Q/\sqrt{{d\mathop{{}}\nolimits_{{t,:}}}}\right. \right.
   $$
 
 ## 参数说明
@@ -70,7 +70,7 @@
         <col style="width: 170px">
         <col style="width: 120px">
         <col style="width: 300px">
-        <col style="width: 212px">  
+        <col style="width: 212px">
         <col style="width: 100px">
         </colgroup>
     <thead>
@@ -177,7 +177,6 @@
         <td>sparseBlockSize</td>
         <td>属性</td>
         <td>选择的块的大小。</td>
-        </td>
         <td>INT64</td>
         <td>-</td>
     </tr>
@@ -230,7 +229,7 @@
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>dValue</td>
         <td>输出</td>
         <td>表示value的梯度。</td>
@@ -262,14 +261,14 @@
 - 当前仅支持sparseMode=0或3（无mask或以右顶点为划分的下三角场景）
 - 仅支持BSND或TND layout；关于数据shape的约束如下：
   - B：取值范围1~256。
-  - S1、S2：1~128K；S1、S2支持不等长。
+  - S1支持1~128K，S2支持1~1M；S1、S2支持不等长。
   - N1支持1/2/4/8/16/32/64/128。
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 额外还支持48、24、12、6、3。
   - N2：仅支持1。
   - D：仅支持512。
   - Drope：仅支持64。
-  - topk：1024、2048、3072、4096、5120、6144、7168、8192。
+  - topk：1024、2048、2051、3072、4096、5120、6144、7168、8192。
     - <term>不建议topk * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom。</term>
 - 确定性计算：
   - SparseFlashAttentionGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。

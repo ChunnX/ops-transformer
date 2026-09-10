@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                      |     √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -25,7 +35,7 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeFinalizeRoutingV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeFinalizeRoutingV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV3”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
@@ -170,7 +180,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>-</td>
     <td>与expandedX一致。</td>
     <td>ND</td>
-    <td>(Constant_Expert_Range_Num, H)</td>
+    <td>(constantExpertEnd - constantExpertStart, H)</td>
     <td>√</td>
   </tr>
   <tr>
@@ -180,7 +190,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>-</td>
     <td>与expandedX一致。</td>
     <td>ND</td>
-    <td>(Constant_Expert_Range_Num, H)</td>
+    <td>(constantExpertEnd - constantExpertStart, H)</td>
     <td>√</td>
   </tr>
   <tr>
@@ -190,13 +200,13 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>-</td>
     <td>与expandedX一致。</td>
     <td>ND</td>
-    <td>(Constant_Expert_Range_Num, H)</td>
+    <td>(constantExpertEnd - constantExpertStart, H)</td>
     <td>√</td>
   </tr>
   <tr>
     <td>dropPadMode(int64_t)</td>
     <td>输入</td>
-    <td>表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
+    <td>可选参数，默认值为0。表示是否支持丢弃模式，expandedRowIdx的排列方式。</td>
     <td>取值范围为[0, 3]。</td>
     <td>-</td>
     <td>-</td>
@@ -206,7 +216,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   <tr>
     <td>zeroExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示zero expert的范围，数组内的值为[zeroExpertStart, zeroExpertEnd]，左闭右开，要求值大于0，并且zeroExpertEnd大于zeroExpertStart，zeroExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>可选参数。表示zero expert的范围，数组内的值为[zeroExpertStart, zeroExpertEnd]，左闭右开，要求值大于0，并且zeroExpertEnd大于zeroExpertStart，zeroExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
@@ -215,7 +225,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   <tr>
     <td>copyExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示copy expert的范围。数组内的值为[copyExpertStart, copyExpertEnd]，左闭右开，要求值大于0，并且copyExpertEnd大于copyExpertStart，copyExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>可选参数。表示copy expert的范围。数组内的值为[copyExpertStart, copyExpertEnd]，左闭右开，要求值大于0，并且copyExpertEnd大于copyExpertStart，copyExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
@@ -224,7 +234,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <tr>
     <td>constantExpertRange(aclIntArray*)</td>
     <td>输入</td>
-    <td>表示costant expert的范围。数组内的值为[constantExpertStart, constantExpertEnd]，左闭右开，要求值大于0，并且constantExpertEnd大于constantExpertStart，constantExpertEnd不大于expertIdxOptional的最大值。</td>
+    <td>可选参数。表示constant expert的范围。数组内的值为[constantExpertStart, constantExpertEnd]，左闭右开，要求值大于0，并且constantExpertEnd大于constantExpertStart，constantExpertEnd不大于expertIdxOptional的最大值。</td>
     <td>取值范围与expertIdxOptional一致</td>
     <td>-</td>
     <td>2</td>
@@ -262,21 +272,28 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
   </tr>
   </tbody></table>
 
+  <!-- npu="A3,910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
     - scalesOptional：混合精度模式下，支持expandedX为BFLOAT16 时scalesOptional为FLOAT32；非混合精度模式下，数据类型要求与expandedX一致。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - expandedX要求是一个2D/3D的Tensor，支持的数据类型为FLOAT16、BFLOAT16、FLOAT32，支持drop less和drop pad场景。
     - scalesOptional数据类型可以与expandedX不一致。
-  - |<term>Atlas 推理系列产品</term>：
+  <!-- end id8 -->
+  <!-- npu="310p" id9 -->
+  - <term>Atlas 推理系列产品</term>：
     - expandedX要求是一个2D的Tensor，数据类型支持FLOAT16、FLOAT32，shape要求尾轴H为32对齐。
     - x1Optional、x2Optional、biasOptional、expertIdxOptional仅支持传入nullptr
     - 仅支持dropPadMode传入2。
     - scalesOptional数据类型支持FLOAT16、FLOAT32，且需要与expandedX一致。
 
+  <!-- end id9 -->
+
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -301,7 +318,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <tr>
     <td>ACLNN_ERR_PARAM_INVALID</td>
     <td>161002</td>
-    <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
+    <td>输入和输出的数据类型、数据格式或维度不在支持的范围之内。</td>
     </tr>
     <tr>
     <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -354,7 +371,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -385,7 +402,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include "acl/acl.h"

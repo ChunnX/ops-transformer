@@ -27,7 +27,7 @@
 #include "lib/matmul_intf.h"
 #include "../tool.h"
 
-#define LOCAL_TEMPLATE_CLASS_PARAMS                                                                        \
+#define LOCAL_TEMPLATE_CLASS_PARAMS \
     template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans, \
               Mc2QuantType antiQuantType, bool hasAntiQuantOffset, Mc2QuantType quantType>
 #define LOCAL_TEMPLATE_FUNC_PARAMS \
@@ -62,9 +62,7 @@ constexpr MatmulConfig MM_CFG_PRELOAD = GetMDLConfig(false, false, 1, false, fal
 LOCAL_TEMPLATE_CLASS_PARAMS
 class Mc2WeightQuantBatchMatmulV2ASWKernel {
 public:
-    __aicore__ inline Mc2WeightQuantBatchMatmulV2ASWKernel()
-    {
-    }
+    __aicore__ inline Mc2WeightQuantBatchMatmulV2ASWKernel() {}
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
                                 GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
                                 const void *tilingData, TPipe *tPipe);
@@ -114,7 +112,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2ASWKernel<LOCAL_TEMPLATE_FUNC_
 {
     block_.Init(tiling_, blockIdx_);
 
-    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {  // pertensor
+    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) { // pertensor
         block_.offset_.scaleScalar = *((__gm__ uint64_t *)antiquantScale);
     } else {
         scaleGlobal_.SetGlobalBuffer((__gm__ uint64_t *)antiquantScale);
@@ -156,7 +154,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2ASWKernel<LOCAL_TEMPLATE_FUNC_
 LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2ASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMMParaAndCompute()
 {
-    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) {  // pertensor
+    if constexpr (antiQuantType == Mc2QuantType::PER_TENSOR) { // pertensor
         mm_.SetQuantScalar(block_.offset_.scaleScalar);
     } else {
         mm_.SetQuantVector(scaleGlobal_[block_.offset_.offsetScale]);
@@ -166,5 +164,5 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2ASWKernel<LOCAL_TEMPLATE_FUNC_
     mm_.Iterate();
     mm_.GetTensorC(cGlobal_[block_.offset_.offsetC]);
 }
-}  // namespace Mc2WeightQuantBatchMatmulV2::Arch35
-#endif  // WEIGHT_QUANT_BATCH_MATMUL_V2_ADAPTIVE_SLIDING_WINDOW_H
+} // namespace Mc2WeightQuantBatchMatmulV2::Arch35
+#endif // WEIGHT_QUANT_BATCH_MATMUL_V2_ADAPTIVE_SLIDING_WINDOW_H

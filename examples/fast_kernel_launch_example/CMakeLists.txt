@@ -8,9 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.16)
-find_package(ASC REQUIRED) 
-find_package(AICPU REQUIRED) 
+cmake_minimum_required(VERSION 3.18.4)
+find_package(ASC REQUIRED)
+find_package(AICPU REQUIRED)
 set(PKG_NAME AscendOps)
 project(${PKG_NAME} LANGUAGES ASC AICPU CXX VERSION 1.0.0)
 

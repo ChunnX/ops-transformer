@@ -13,14 +13,14 @@
  * \brief
  */
 
-#include "../../../op_kernel/add_example.cpp"  
+#include "../../../op_kernel/add_example.cpp"
 #include "add_example_tiling.h"
 #include <array>
 #include <vector>
 #include <iostream>
 #include <string>
 #include <cstdint>
-#include <cstdlib>  
+#include <cstdlib>
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "data_utils.h"
@@ -41,6 +41,7 @@ protected:
     {
         cout << "AddExampleTest TearDown\n" << endl;
     }
+
 private:
     const static std::string rootPath;
     const static std::string dataPath;
@@ -59,32 +60,26 @@ TEST_F(AddExampleTest, test_case_0)
 
     system("cd ./add_example_data/ && python3 gen_data.py '(32, 4, 4, 4)' 'float32'");
     std::string fileName = "./add_example_data/float32_input_add_example.bin";
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(xByteSize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(xByteSize);
     ReadFile(fileName, xByteSize, x, xByteSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(yByteSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(yByteSize);
     ReadFile(fileName, xByteSize, y, xByteSize);
-    uint8_t* z = (uint8_t*)AscendC::GmAlloc(zByteSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 16);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *z = (uint8_t *)AscendC::GmAlloc(zByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 16);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    AddExampleTilingData* tilingDatafromBin = reinterpret_cast<AddExampleTilingData*>(tiling);
+    AddExampleTilingData *tilingDatafromBin = reinterpret_cast<AddExampleTilingData *>(tiling);
     tilingDatafromBin->totalLength = 32 * 4 * 4 * 4;
     tilingDatafromBin->tileNum = 8;
 
     ICPU_SET_TILING_KEY(0);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
 
-    ICPU_RUN_KF(add_example<0>,
-        numBlocks,
-        x,
-        y,
-        z,
-        workspace,
-        (uint8_t *)(tilingDatafromBin));
-    
+    ICPU_RUN_KF(add_example<0>, numBlocks, x, y, z, workspace, (uint8_t *)(tilingDatafromBin));
+
     fileName = "./add_example_data/float32_output_add_example.bin";
     WriteFile(fileName, z, zByteSize);
 

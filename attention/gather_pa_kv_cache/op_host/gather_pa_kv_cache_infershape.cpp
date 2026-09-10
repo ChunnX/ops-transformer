@@ -50,7 +50,7 @@ static ge::graphStatus CheckCommonPagedCacheLoad(gert::InferShapeContext *contex
 
     auto attrs = context->GetAttrs();
     auto is_seq_lens_cumsum = attrs->GetAttrPointer<bool>(IS_SEQ_LENS_CUMSUM_INDEX);
-    if (*is_seq_lens_cumsum) {
+    if (is_seq_lens_cumsum == nullptr || *is_seq_lens_cumsum) {
         if ((blockTables_shape->GetDim(DIM_0) + 1) != seqLens_shape->GetDim(DIM_0)) {
             OP_LOGE(context, "seqLens's dim_0 %ld must equal blockTables's dim_0+1 %ld.", seqLens_shape->GetDim(DIM_0),
                     blockTables_shape->GetDim(DIM_0) + 1);
@@ -153,7 +153,7 @@ static ge::graphStatus InferShape4GatherPaKvCache(gert::InferShapeContext *conte
 
     auto attrs = context->GetAttrs();
     const char *mode = attrs->GetAttrPointer<char>(CACHE_MODE_INDEX);
-    if (strcmp(mode, "Norm") == 0) {
+    if (mode == nullptr || strcmp(mode, "Norm") == 0) {
         return InferShape4GatherPaKvCacheNd(context);
     } else if (strcmp(mode, "PA_NZ") == 0) {
         return InferShape4GatherPaKvCacheNz(context);

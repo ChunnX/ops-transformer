@@ -13,9 +13,9 @@
 
 ## 功能说明
 
--   算子功能：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- 算子功能：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
 
--   计算公式：
+- 计算公式：
 
     阶段一：根据不同cmp_ratio场景，对输入ori_kv与cmp_kv进行选择
 
@@ -65,7 +65,6 @@
     dSinks = ReduceSum(-P \text{ }\times\text{ } dP \text{ }\times\text{ } SimpleSoftmax(sinks, lse), dim=-1)
     $$
 
-
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1080px">
@@ -73,7 +72,7 @@
         <col style="width: 170px">
         <col style="width: 120px">
         <col style="width: 300px">
-        <col style="width: 212px">  
+        <col style="width: 212px">
         <col style="width: 100px">
         </colgroup>
     <thead>
@@ -288,28 +287,28 @@
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>dCmpKvOptional</td>
         <td>输出</td>
         <td>表示cmpKvOptional的梯度。</td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>dSinksOutOptional</td>
         <td>输出</td>
         <td>表示sinksOptional的梯度。</td>
         <td>FLOAT32</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>oriSoftmaxL1NormOptional</td>
         <td>输出</td>
         <td>表示query与oriKvOptional计算得出的softmax结果。</td>
         <td>FLOAT32</td>
         <td>ND</td>
     </tr>
-    <tr>  
+    <tr>
         <td>cmpSoftmaxL1NormOptional</td>
         <td>输出</td>
         <td>表示query与cmpKvOptional计算得出的softmax结果。</td>
@@ -319,7 +318,7 @@
     </tbody>
 </table>
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
 
 ## 约束说明
 
@@ -351,5 +350,10 @@
     </a>
     接口方式调用算子
     </td>
+  </tr>
+  <tr>
+    <td class="tg-9wq8">PyTorch API</td>
+    <td class="tg-0pky">-</td>
+    <td class="tg-lboi">通过<a href="../../attention/sparse_flash_mla_grad/docs/torchapi_sparse_flash_mla_grad.md">sparse_flash_mla_grad</a>接口调用sparse_flash_mla_grad算子。</td>
   </tr>
 </tbody></table>

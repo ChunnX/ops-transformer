@@ -40,11 +40,11 @@ using AscendC::WaitFlag;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 
-#define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM                                                                \
-    template <typename xType, typename biasType, typename antiQuantScaleType, typename perTokenScaleType,              \
+#define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM \
+    template <typename xType, typename biasType, typename antiQuantScaleType, typename perTokenScaleType, \
               typename yType, bool hasBias, const WqmmConfig &wqmmConfig>
 
-#define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS                                                                         \
+#define GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS \
     GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, yType, hasBias, wqmmConfig>
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -170,7 +170,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64
     }
 }
 
-
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
     __gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias, __gm__ antiQuantScaleType *antiquantScale,
@@ -186,7 +185,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
     mxScaleBGlobal_.SetGlobalBuffer(antiquantScale);
 }
 
-
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitScaleMTE1ToMTE2(uint64_t kbGmOffset)
 {
@@ -196,9 +194,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitScaleMTE1ToMT
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void
-GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetScaleMTE1ToMTE2(uint64_t kbGmOffset,
-                                                           const BasicBlockOffsetParam &offsetParam)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetScaleMTE1ToMTE2(
+    uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam)
 {
     if ((kbGmOffset + offsetParam.kbL1Size) % MX_SCALE_K_L1_SIZE == 0 ||
         kbGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
@@ -239,7 +236,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uin
         aL1BufIdx_++;
     }
 }
-
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBlockOffsetParam &param,
@@ -360,9 +356,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void
-GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
-                                                      const L0CopyAndCalcParams &l0CopyAndCalcParams)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::DoMmadCompute(
+    uint64_t loopId, uint64_t cvLoopIdx, const L0CopyAndCalcParams &l0CopyAndCalcParams)
 {
     if constexpr (hasBias) {
         if (l0CopyAndCalcParams.isFirstKLoop) {
@@ -453,7 +448,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::GetTensorC(LocalT
     fixL0CToDstParams.nL0Size = param.nL1Size; // N方向当前在L0上实际计算的大小
     fixL0CToDstParams.outNSize = 256;          // 输出N方向的总大小，用于dstStride
     fixL0CToDstParams.splitNSize = 0;          // fixp输出多个矩阵时，N方向切分的大小
-    fixL0CToDstParams.dstNdStride = 0;         // fixp输出多个矩阵时，目的相邻DN矩阵起始地址间的偏移
+    fixL0CToDstParams.dstNdStride = 0; // fixp输出多个矩阵时，目的相邻DN矩阵起始地址间的偏移
     FixL0CToDst(yUb, l0c_[l0cOffset_], fixL0CToDstParams);
     l0cOffset_ += Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE)) *
                   CeilAlign(fixL0CToDstParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));

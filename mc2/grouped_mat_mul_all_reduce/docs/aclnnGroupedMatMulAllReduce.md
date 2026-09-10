@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -31,7 +41,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatMulAllReduceGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAllReduce”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatMulAllReduceGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAllReduce”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAllReduceGetWorkspaceSize(
@@ -207,7 +217,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -300,7 +310,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -321,7 +331,7 @@ aclnnStatus aclnnGroupedMatMulAllReduce(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -532,7 +542,7 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
     if (shape[1] % g_ndev != 0) {
       printf("[ERROR] X_k cannot be divided by ndev!\n");
       return -1;
-    } 
+    }
     shape[1] /= g_ndev;
     axis = 1;
     byteBlock = shape[1] * dataTypeSize;
@@ -540,11 +550,11 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
     if (shape[0] % g_ndev != 0) {
       printf("[ERROR] Weight_k cannot be divided by ndev!\n");
       return -1;
-    } 
+    }
     shape[0] /= g_ndev;
     axis = 0;
     byteBlock = shape[0] * dataTypeSize;
-  } 
+  }
   auto size = GetShapeSize(shape) * dataTypeSize;
   // 调用aclrtMalloc申请Device侧内存
   auto ret = aclrtMalloc(&deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -555,7 +565,7 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
   if (int_array) {
     tensor = (void*)aclCreateIntArray((int64_t*)hostData, size / sizeof(int64_t));
     delete[] hostData;
-    return 0; 
+    return 0;
   }
   ret = aclrtMemcpy(deviceAddr, size, hostData, size, ACL_MEMCPY_HOST_TO_DEVICE);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
@@ -660,7 +670,7 @@ int callMatmulAndAicpu(HcclComm hcclComm, void **inputs, void **outputs, int* in
     int64_t split_item = 0;
     inputs[3] = nullptr;
     int64_t comm_turn = 0;
-    
+
     auto aclnnRet = aclnnGroupedMatMulAllReduceGetWorkspaceSize(
         (aclTensorList*)inputs[0], (aclTensorList*)inputs[1], (aclTensorList*)inputs[2], (aclIntArray*)inputs[3], split_item,  hcom_name, "sum", comm_turn, 1, (aclTensorList*)outputs[0], &workspaceSize, &executor);
     CHECK_RET(aclnnRet == ACL_SUCCESS,
@@ -718,7 +728,7 @@ int launchOneThread(Args &args, TensorsInfo& config)
     int checkErr = 0;
     ACL_CHECK(aclrtSetDevice(args.logicDeviceId));
     ACL_CHECK(aclrtSetCurrentContext(args.resources.context));
-    
+
     constexpr int input_num = 4;
     void* inputs[input_num];
     int input_type[input_num];
@@ -803,7 +813,7 @@ int launchMultiThread(Args &input_args, int32_t *devices, HcclComm *comms, Resou
     x1_json.shape = vector<int64_t>{1024,256};
     config.x_array.push_back(x0_json);
     config.x_array.push_back(x1_json);
-    
+
     TensorInfo w0_json;
     w0_json.name = "weight0";
     w0_json.dtype = "float16";
@@ -829,15 +839,15 @@ int launchMultiThread(Args &input_args, int32_t *devices, HcclComm *comms, Resou
     b1_json.shape = vector<int64_t>{1024};
     config.b_array.push_back(b0_json);
     config.b_array.push_back(b1_json);
-    
-    
+
+
     TensorInfo group_list_json;
     group_list_json.name = "group_list";
     group_list_json.dtype = "int64";
     group_list_json.data_file = "";
     group_list_json.shape = vector<int64_t>{};
     config.grouplist_array.push_back(group_list_json);
-    
+
     TensorInfo y0_json;
     y0_json.name = "y0";
     y0_json.dtype = "float16";

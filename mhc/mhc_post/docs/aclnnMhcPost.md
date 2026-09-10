@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -19,13 +29,21 @@
 
 - 计算公式：
 
+  当 hRes 提供时：
+
   $$
   x_{l+1} = (H_{l}^{res})^{T} \times x_l + h_{l}^{out} \otimes H_{t}^{post}
   $$
 
+  当 hRes 缺省时（仅 Ascend 950 支持）：
+
+  $$
+  x_{l+1} = x_l + h_{l}^{out} \otimes H_{t}^{post}
+  $$
+
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMhcPostGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPost"接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnMhcPostGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPost"接口执行计算。
 
 ```c++
 aclnnStatus aclnnMhcPostGetWorkspaceSize(
@@ -84,8 +102,8 @@ aclnnStatus aclnnMhcPost(
     </tr>
     <tr>
       <td>hRes</td>
-      <td>输入</td>
-      <td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。</td>
+      <td>输入（可选）</td>
+      <td>mHC的hRes变换矩阵，是做完sinkhorn变换后的双随机矩阵。传nullptr时退化为直接残差连接（仅 Ascend 950 支持）。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -146,7 +164,7 @@ aclnnStatus aclnnMhcPost(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -164,18 +182,18 @@ aclnnStatus aclnnMhcPost(
           <tr>
               <td>ACLNN_ERR_PARAM_NULLPTR</td>
               <td>161001</td>
-              <td>x、hRes、hOut、hPost、out存在空指针。</td>
+              <td>x、hOut、hPost、out存在空指针。</td>
           </tr>
           <tr>
               <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
               <td rowspan="3">161002</td>
-              <td>x、hRes、hOut、hPost、out的数据类型不在支持的范围内。</td>
+              <td>x、hRes（非空时）、hOut、hPost、out的数据类型不在支持的范围内。</td>
           </tr>
             <tr>
-              <td>x、hRes、hOut、hPost、out的shape维度不在支持的范围内。</td>
+              <td>x、hRes（非空时）、hOut、hPost、out的shape维度不在支持的范围内。</td>
           </tr>
           <tr>
-              <td>x、hRes、hOut、hPost、out的数据类型或shape不匹配。</td>
+              <td>x、hRes（非空时）、hOut、hPost、out的数据类型或shape不匹配。</td>
           </tr>
             <tr>
               <td>ACLNN_ERR_INNER_NULLPTR</td>
@@ -226,21 +244,28 @@ aclnnStatus aclnnMhcPost(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - aclnnMhcPost默认确定性实现。
-- 规格约束（A2/A3）
+
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：hRes 支持传入 nullptr，此时退化为直接残差连接。
+<!-- end id7 -->
+<!-- npu="A3,910b" id8 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：hRes 为必传参数，不支持传入 nullptr。
 
   | 规格项   | 规格               | 规格说明                                |
   | :------- | :----------------- | :------------------------------------- |
-  | n        | 4                  | 目前只支持4                          |
+  | n        | 4                  | 固定为4                              |
   | d        | 范围1到100000       | 128的倍数                             |
+
+<!-- end id8 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

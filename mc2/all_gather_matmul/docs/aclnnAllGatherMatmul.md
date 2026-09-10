@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                                            | 是否支持 |
-| :------------------------------------------------------------------------------ | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                                                | √       |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                          | √       |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √       |
-| <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
-| <term>Atlas 推理系列产品</term>                                                | ×       |
-| <term>Atlas 训练系列产品</term>                                                 | ×       |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -95,7 +105,7 @@ aclnnStatus aclnnAllGatherMatmul(
         <td>x2</td>
         <td>输入</td>
         <td>即计算公式中的x2。</td>
-        <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
+        <td><ul><li>支持空Tensor。</li><li>与x1的数据类型保持一致。</li><li>当前版本仅支持二维输入，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../../docs/zh/context/non_contiguous_tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
@@ -193,15 +203,20 @@ aclnnStatus aclnnAllGatherMatmul(
     </tr>
     </tbody></table>
 
+    <!-- npu="A3,910b" id7 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
         - bias：暂不支持输入为非0的场景。
+    <!-- end id7 -->
+    <!-- npu="950" id8 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - bias：支持输入为非0的场景。
 
+    <!-- end id8 -->
+
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1166px"> <colgroup>
@@ -271,7 +286,7 @@ aclnnStatus aclnnAllGatherMatmul(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -284,19 +299,30 @@ aclnnStatus aclnnAllGatherMatmul(
     - m不为空，k不为空，n为空；
     - m为空，k不为空，n为空。
 - 输出为2维，其shape为(m*rank_size, n), rank_size为卡数。
+
+<!-- npu="910b" id9 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
+<!-- end id9 -->
+<!-- npu="A3" id10 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
+<!-- end id10 -->
+<!-- npu="950" id11 -->
 - <term>Ascend 950PR/Ascend 950DT</term>:
   - 支持2、4、8、16、32、64卡，并且仅支持HCCS链路all mesh组网。
-  - AllGather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - AllGather(x1)集合通信数据总量不能超过63 \* 256MB，集合通信数据总量计算方式为：m \* k \* sizeof(x1_dtype) \* 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+<!-- end id11 -->
+<!-- npu="910b" id12 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:一个模型中的通算融合MC2算子，仅支持相同通信域。
+
+<!-- end id12 -->
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
+<!-- npu="950,A3,910b" id13 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
@@ -514,3 +540,5 @@ aclnnStatus aclnnAllGatherMatmul(
         return 0;
     }
     ```
+
+<!-- end id13 -->

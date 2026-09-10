@@ -74,11 +74,11 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 
 constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
-constexpr uint32_t DOUBLE_BUFFER = 2; // 双Buffer
-constexpr uint32_t M_BASE_SIZE = 512; // m轴基本块大小
-constexpr uint32_t S2_BASE_SIZE = 512; // S2轴基本块大小
-constexpr uint32_t S1_BASE_SIZE = 8; // S1轴基本块大小
-constexpr uint32_t MAX_KEY_SEQ_LENGTH = 128 * 1024;
+constexpr uint32_t DOUBLE_BUFFER = 2;     // 双Buffer
+constexpr uint32_t M_BASE_SIZE = 512;     // m轴基本块大小
+constexpr uint32_t S2_BASE_SIZE = 512;    // S2轴基本块大小
+constexpr uint32_t S1_BASE_SIZE = 8;      // S1轴基本块大小
+constexpr uint32_t MAX_SEQ_LENGTH = 1024 * 1024;
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(DenseLISoftmaxLseTilingData)
@@ -87,6 +87,8 @@ TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint64_t, s1Size)
 TILING_DATA_FIELD_DEF(uint64_t, s2Size)
+TILING_DATA_FIELD_DEF(uint64_t, storageS1Size)
+TILING_DATA_FIELD_DEF(uint64_t, storageS2Size)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
@@ -126,6 +128,8 @@ public:
     uint32_t n2Size = 0;
     uint64_t s1Size = 0;
     uint64_t s2Size = 0;
+    uint64_t storageS1Size = 0;
+    uint64_t storageS2Size = 0;
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
     // Mask
@@ -146,9 +150,9 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class DenseLISoftmaxLseInfoParser {
 public:
-    explicit DenseLISoftmaxLseInfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit DenseLISoftmaxLseInfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~DenseLISoftmaxLseInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -173,6 +177,9 @@ public:
     ge::graphStatus GetAndCheckOptionalInput();
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetS2Size();
+    ge::graphStatus CheckSeqLenLimit();
+    ge::graphStatus GetMaxSeqLenFromTensor(const gert::Tensor *tensor, uint64_t &maxSeqLen, bool isAccumSeq);
+    ge::graphStatus GetStorageSeqSize();
     ge::graphStatus GetQueryKeyAndOutLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetAndCheckN2Size();
@@ -195,6 +202,8 @@ public:
     uint32_t gSize_ = 0;
     uint64_t s1Size_ = 0;
     uint64_t s2Size_ = 0;
+    uint64_t storageS1Size_ = 0;
+    uint64_t storageS2Size_ = 0;
     uint32_t headDim_ = 0;
     // Layout
     DataLayout layout_ = DataLayout::BSND;
@@ -209,13 +218,14 @@ public:
 // ---------------算子Tiling类---------------
 class DenseLightningIndexerSoftmaxLseTiling {
 public:
-    explicit DenseLightningIndexerSoftmaxLseTiling(gert::TilingContext *context) : context_(context){};
+    explicit DenseLightningIndexerSoftmaxLseTiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(DenseLISoftmaxLseTilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
     DenseLISoftmaxLseTilingData tilingData_;
 };
-}
+} // namespace optiling
 
 #endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_TILING_H_

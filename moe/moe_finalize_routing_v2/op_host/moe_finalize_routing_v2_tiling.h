@@ -73,6 +73,7 @@ const int64_t DTYPE_BF16_CUTH_K2_V2_WITHOUT_BIAS_MIX_PRECISION = 20046;
 const int64_t DTYPE_BF16_CUTH_K4_V2_WITHOUT_BIAS_MIX_PRECISION = 20047;
 const int64_t DTYPE_BF16_CUTH_V2_WITHOUT_BIAS_MIX_PRECISION = 20048;
 const int64_t DTYPE_BF16_ALL_BIAS_V2_WITHOUT_BIAS_MIX_PRECISION = 20049;
+const int64_t DTYPE_BF16_UNPERMUTE_FAST_V2 = 20050;
 
 BEGIN_TILING_DATA_DEF(MoeFinalizeRoutingV2TilingData)
 TILING_DATA_FIELD_DEF(int64_t, totalCoreNum);
@@ -110,18 +111,19 @@ struct MoeFinalizeRoutingCompileInfoV2 {
 };
 
 struct ShapeParamsV2 {
-    const gert::StorageShape* expandedXShape = nullptr;
-    const gert::StorageShape* expandedRowIdxShape = nullptr;
-    const gert::StorageShape* x1Shape = nullptr;
-    const gert::StorageShape* x2Shape = nullptr;
-    const gert::StorageShape* biasShape = nullptr;
-    const gert::StorageShape* scalesShape = nullptr;
+    const gert::StorageShape *expandedXShape = nullptr;
+    const gert::StorageShape *expandedRowIdxShape = nullptr;
+    const gert::StorageShape *x1Shape = nullptr;
+    const gert::StorageShape *x2Shape = nullptr;
+    const gert::StorageShape *biasShape = nullptr;
+    const gert::StorageShape *scalesShape = nullptr;
+    const gert::StorageShape *expertForSourceRowShape = nullptr;
 };
 
-class MoeFinalizeRoutingTilingV2 : public Ops::Transformer::OpTiling::TilingBaseClass
-{
+class MoeFinalizeRoutingTilingV2 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeFinalizeRoutingTilingV2(gert::TilingContext* context) : TilingBaseClass(context){};
+    explicit MoeFinalizeRoutingTilingV2(gert::TilingContext *context)
+        : TilingBaseClass(context) {};
 
 protected:
     // 重载TilingBase基类方法

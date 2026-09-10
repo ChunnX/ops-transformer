@@ -14,7 +14,8 @@ namespace ops {
 
 class MoeEpCombine : public OpDef {
 public:
-    explicit MoeEpCombine(const char *name) : OpDef(name)
+    explicit MoeEpCombine(const char *name)
+        : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)
@@ -41,36 +42,19 @@ public:
             .DataType({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("topk_weights_optional")
+        this->Input("topk_weights")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("bias_optional_0")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("bias_optional_1")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-
-        this->Output("combined_x")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND});
-        this->Output("combined_topk_weights_optional")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("num_experts").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(REQUIRED).Int();
         this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
+        this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

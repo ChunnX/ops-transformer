@@ -36,26 +36,24 @@ using namespace op;
 extern "C" {
 #endif
 
-aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
-    double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor* y,
-    const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                           const aclTensor *bias, const aclTensor *residual,
+                                                           const aclTensor *gamma, double epsilon, const char *group,
+                                                           const char *reduceOp, int64_t commTurn, int64_t streamMode,
+                                                           const aclTensor *y, const aclTensor *normOut,
+                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // inplace接口复用非inplace接口 告警内提示两个接口都将被废弃
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "December 2026",
-        "aclnnMatmulAllReduceGetWorkspaceSize",
-        "aclnnAddRmsNormGetWorkspaceSize");
+    DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize",
+                                    "aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize", "December 2026",
+                                    "aclnnMatmulAllReduceGetWorkspaceSize", "aclnnAddRmsNormGetWorkspaceSize");
     // 处理空tensor
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
     if (x1->IsEmpty() || x2->IsEmpty() || residual->IsEmpty() || gamma->IsEmpty()) {
         // 处理k = 0 场景，报错
-        OP_LOGD(
-            "MatmulAllReduceAddRmsNorm, OriginShape: %s; ViewShape %s.",
-            op::ToString(x1->GetOriginalShape()).GetString(), op::ToString(x1->GetViewShape()).GetString());
+        OP_LOGD("MatmulAllReduceAddRmsNorm, OriginShape: %s; ViewShape %s.",
+                op::ToString(x1->GetOriginalShape()).GetString(), op::ToString(x1->GetViewShape()).GetString());
         int64_t kValue = x1->GetViewShape().GetDim(x1->GetViewShape().GetDimNum() - 1);
         OP_LOGD("MatmulAllReduceAddRmsNorm, kValue: %ld.", kValue);
         if (kValue == 0) {
@@ -81,15 +79,11 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+aclnnStatus aclnnMatmulAllReduceAddRmsNorm(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                           const aclrtStream stream)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnMatmulAllReduceAddRmsNorm",
-        "aclnnInplaceMatmulAllReduceAddRmsNorm",
-        "December 2026",
-        "aclnnMatmulAllReduce",
-        "aclnnAddRmsNorm");
+    DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnMatmulAllReduceAddRmsNorm", "aclnnInplaceMatmulAllReduceAddRmsNorm",
+                                    "December 2026", "aclnnMatmulAllReduce", "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;

@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #ifndef __OP_HOST_BATCH_MATMUL_V3_ITERBATCH_TILING_H__
 #define __OP_HOST_BATCH_MATMUL_V3_ITERBATCH_TILING_H__
 
@@ -45,6 +44,6 @@ private:
     uint64_t alignKaValue_{0};
     uint64_t alignKbValue_{0};
 };
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_BATCH_MATMUL_V3_ITERBATCH_TILING_H__

@@ -13,13 +13,16 @@
 #include "mc2_tiling_case_executor.h"
 
 namespace GroupedMatMulAlltoAllvUT {
-    
+
 struct TestParam {
     string testName{};
     std::vector<std::pair<string, string>> tilingParamsStrPair{};
     std::vector<std::pair<string, std::vector<int64_t>>> tilingParamsVecPair{};
     std::vector<std::pair<size_t, ge::DataType>> tilingDTypesPair{};
     ge::graphStatus status;
+    bool omitCommMode{false};
+    std::string socVersion{"Ascend910_93"};
+    std::string commMode{"ai_cpu"};
 };
 
 struct TilingParams {
@@ -42,51 +45,47 @@ struct TilingParams {
     bool transMmWeight{false};
     std::string group{"group"};
     std::vector<int64_t> sendCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-                                     128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
+                                    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
     std::vector<int64_t> recvCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-                                     128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
+                                    128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
 };
 
 std::vector<int64_t> sendCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-                                 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
+                                128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
 std::vector<int64_t> recvCounts{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-                                 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
+                                128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
 
-std::unordered_map<string, std::function<void(TilingParams& tilingParams, const string& valueStr)>> 
-        g_tilingParamsStrHandlers = {
-        {"BSK", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BSK = std::stoi(valueStr); }},
-        {"BS", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BS = std::stoi(valueStr); }},
-        {"K", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.K = std::stoi(valueStr); }},
-        {"H1", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.H1 = std::stoi(valueStr); }},
-        {"H2", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.H2 = std::stoi(valueStr); }},
-        {"A", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.A = std::stoi(valueStr); }},
-        {"N1", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.N1 = std::stoi(valueStr); }},
-        {"N2", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.N2 = std::stoi(valueStr); }},
-        {"epWorldSize", [](TilingParams& tilingParams,
-                             const string& valueStr) { tilingParams.epWorldSize = std::stoi(valueStr); }},
-        {"e", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.e = std::stoi(valueStr); }},
-        {"gmmWeightDim1", [](TilingParams& tilingParams,
-                               const string& valueStr) { tilingParams.gmmWeightDim1 = std::stoi(valueStr); }},
-        {"yDim1",
-         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.yDim1 = std::stoi(valueStr); }},
-        {"mmWeightDim0", [](TilingParams& tilingParams,
-                              const string& valueStr) { tilingParams.mmWeightDim0 = std::stoi(valueStr); }},
-        {"transGmmWeight", [](TilingParams& tilingParams,
-                                const string& valueStr) { tilingParams.transGmmWeight = valueStr == "true"; }},
-        {"transMmWeight", [](TilingParams& tilingParams, const string& valueStr) {
-             tilingParams.transMmWeight = valueStr == "true";
-         }}};
+std::unordered_map<string, std::function<void(TilingParams &tilingParams, const string &valueStr)>>
+    g_tilingParamsStrHandlers = {
+        {"BSK", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BSK = std::stoi(valueStr); }},
+        {"BS", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BS = std::stoi(valueStr); }},
+        {"K", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.K = std::stoi(valueStr); }},
+        {"H1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.H1 = std::stoi(valueStr); }},
+        {"H2", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.H2 = std::stoi(valueStr); }},
+        {"A", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.A = std::stoi(valueStr); }},
+        {"N1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.N1 = std::stoi(valueStr); }},
+        {"N2", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.N2 = std::stoi(valueStr); }},
+        {"epWorldSize",
+         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.epWorldSize = std::stoi(valueStr); }},
+        {"e", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.e = std::stoi(valueStr); }},
+        {"gmmWeightDim1",
+         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.gmmWeightDim1 = std::stoi(valueStr); }},
+        {"yDim1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.yDim1 = std::stoi(valueStr); }},
+        {"mmWeightDim0",
+         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.mmWeightDim0 = std::stoi(valueStr); }},
+        {"transGmmWeight",
+         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.transGmmWeight = valueStr == "true"; }},
+        {"transMmWeight",
+         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.transMmWeight = valueStr == "true"; }}};
 
-std::unordered_map<string, std::function<void(TilingParams& tilingParams, const std::vector<int64_t> valueVec)>>
-        g_tilingParamsVecHandlers = {
-        {"sendCounts", [](TilingParams& tilingParams,
-                           const std::vector<int64_t> valueVec) { tilingParams.sendCounts = valueVec; }},
-        {"recvCounts", [](TilingParams& tilingParams, const std::vector<int64_t> valueVec) {
-             tilingParams.recvCounts = valueVec;
-         }}};
+std::unordered_map<string, std::function<void(TilingParams &tilingParams, const std::vector<int64_t> valueVec)>>
+    g_tilingParamsVecHandlers = {
+        {"sendCounts",
+         [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.sendCounts = valueVec; }},
+        {"recvCounts",
+         [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.recvCounts = valueVec; }}};
 
-class GroupedMatMulAlltoAllvArch22TilingTest : public testing::TestWithParam<TestParam>
-{
+class GroupedMatMulAlltoAllvArch22TilingTest : public testing::TestWithParam<TestParam> {
 protected:
     static void SetUpTestCase()
     {
@@ -104,17 +103,17 @@ TEST_P(GroupedMatMulAlltoAllvArch22TilingTest, ShapeSize)
     auto testParam = GetParam();
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = testParam.socVersion;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
     auto tilingParams = TilingParams{};
-    for (auto& kv : testParam.tilingParamsStrPair) {
+    for (auto &kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
             g_tilingParamsStrHandlers[kv.first](tilingParams, kv.second);
         }
     }
-    for (auto& kv : testParam.tilingParamsVecPair) {
+    for (auto &kv : testParam.tilingParamsVecPair) {
         if (g_tilingParamsVecHandlers.count(kv.first) != 0) {
             g_tilingParamsVecHandlers[kv.first](tilingParams, kv.second);
         }
@@ -122,16 +121,23 @@ TEST_P(GroupedMatMulAlltoAllvArch22TilingTest, ShapeSize)
 
     gert::TilingContextPara tilingContextPara(
         "GroupedMatMulAlltoAllv",
-        {   
+        {
             {{{tilingParams.A, tilingParams.H1}, {tilingParams.A, tilingParams.H1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}, {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1},
+              {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}},
+             ge::DT_FLOAT16,
+             ge::FORMAT_ND},
             {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{tilingParams.mmWeightDim0, tilingParams.N2}, {tilingParams.mmWeightDim0, tilingParams.N2}}, ge::DT_FLOAT16, ge::FORMAT_ND}, 
+            {{{tilingParams.mmWeightDim0, tilingParams.N2}, {tilingParams.mmWeightDim0, tilingParams.N2}},
+             ge::DT_FLOAT16,
+             ge::FORMAT_ND},
         },
         {
-            {{{tilingParams.BSK, tilingParams.yDim1}, {tilingParams.BSK, tilingParams.yDim1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{tilingParams.BSK, tilingParams.yDim1}, {tilingParams.BSK, tilingParams.yDim1}},
+             ge::DT_FLOAT16,
+             ge::FORMAT_ND},
             {{{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {
@@ -141,21 +147,47 @@ TEST_P(GroupedMatMulAlltoAllvArch22TilingTest, ShapeSize)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tilingParams.recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>(testParam.commMode)},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-    if (testParam.status == ge::GRAPH_FAILED){
+    if (testParam.omitCommMode) {
+        tilingContextPara.attrs_.pop_back();
+    }
+    if (testParam.status == ge::GRAPH_FAILED) {
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", tilingParams.epWorldSize}};
-        uint64_t expectTilingKey = 9UL;
+        // Match master: conversion failure is returned as the key, not the outer status.
+        uint64_t expectTilingKey = testParam.omitCommMode ? static_cast<uint64_t>(ge::GRAPH_FAILED) : 9UL;
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }
 
 static TestParam g_testParams[] = {
     {"Test_sample", {}, {}, {}, ge::GRAPH_SUCCESS},
+    {"Test_910b_aicpu_rejected", {}, {}, {}, ge::GRAPH_FAILED, false, "Ascend910B"},
+    {"Test_910b_missing_comm_mode_rejected", {}, {}, {}, ge::GRAPH_FAILED, true, "Ascend910B"},
+    {"Test_910b_default_rejected", {}, {}, {}, ge::GRAPH_FAILED, false, "Ascend910B", "default"},
+    {"Test_910b_ccu_rejected", {}, {}, {}, ge::GRAPH_FAILED, false, "Ascend910B", "ccu"},
+    {"Test_950_aicpu_unchanged", {}, {}, {}, ge::GRAPH_SUCCESS, false, "Ascend950"},
+    {"Test_missing_comm_mode_matches_master_a3", {}, {}, {}, ge::GRAPH_SUCCESS, true, "Ascend910_93"},
+    // 950 validates commMode in SetHcclTiling, before the final key conversion.
+    {"Test_950_missing_comm_mode_rejected", {}, {}, {}, ge::GRAPH_FAILED, true, "Ascend950"},
+    {"Test_a3_aicpu_topk8", {{"BS", "512"}}, {}, {}, ge::GRAPH_SUCCESS},
+    {"Test_a3_aicpu_topk9",
+     {{"BS", "512"}, {"BSK", "4608"}},
+     {{"recvCounts", std::vector<int64_t>(32, 144)}},
+     {},
+     ge::GRAPH_FAILED},
+    {"Test_950_aicpu_topk8", {{"BS", "512"}}, {}, {}, ge::GRAPH_SUCCESS, false, "Ascend950"},
+    {"Test_950_aicpu_topk9",
+     {{"BS", "512"}, {"BSK", "4608"}},
+     {{"recvCounts", std::vector<int64_t>(32, 144)}},
+     {},
+     ge::GRAPH_FAILED,
+     false,
+     "Ascend950"},
     {"Test_BSK_1", {{"BSK", "52428800"}}, {}, {}, ge::GRAPH_FAILED},
     {"Test_BS_1", {{"BS", "52428800"}}, {}, {}, ge::GRAPH_FAILED},
     {"Test_H1", {{"H1", "65536"}}, {}, {}, ge::GRAPH_FAILED},
@@ -191,7 +223,9 @@ static TestParam g_testParams[] = {
      ge::GRAPH_FAILED},
 };
 
-INSTANTIATE_TEST_SUITE_P(GroupedMatMulAlltoAllv, GroupedMatMulAlltoAllvArch22TilingTest, testing::ValuesIn(g_testParams), [](const testing::TestParamInfo<GroupedMatMulAlltoAllvArch22TilingTest::ParamType>& info) {
+INSTANTIATE_TEST_SUITE_P(GroupedMatMulAlltoAllv, GroupedMatMulAlltoAllvArch22TilingTest,
+                         testing::ValuesIn(g_testParams),
+                         [](const testing::TestParamInfo<GroupedMatMulAlltoAllvArch22TilingTest::ParamType> &info) {
                              return info.param.testName;
                          });
 
@@ -199,7 +233,7 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim1)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -226,15 +260,15 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim1)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim2)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -261,15 +295,15 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim2)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim3)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -296,15 +330,15 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim3)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim4)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -332,15 +366,15 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim4)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim5)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -368,15 +402,15 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim5)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim6)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -404,15 +438,15 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim6)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
 TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, TransMmWeightInvalid)
 {
     struct GroupedMatMulAlltoAllvCompileInfo {};
     GroupedMatMulAlltoAllvCompileInfo compileInfo;
-    std::string socVersion = "Ascend910B";
+    std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     uint64_t tilingData = 8192;
@@ -439,7 +473,7 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, TransMmWeightInvalid)
             {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
-        Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
-} // grouped_mat_mul_allto_allv_ut
+} // namespace GroupedMatMulAlltoAllvUT

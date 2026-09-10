@@ -31,38 +31,29 @@ TEST_P(AllGatherMatmulInferShapeTest, param)
 {
     auto param = GetParam();
     std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc;
-    if (param.inputInstance[0] == 1) inputTensorDesc.emplace_back(param.x1);
-    if (param.inputInstance[1] == 1) inputTensorDesc.emplace_back(param.x2);
-    if (param.inputInstance[2] == 1) inputTensorDesc.emplace_back(param.bias);
+    if (param.inputInstance[0] == 1)
+        inputTensorDesc.emplace_back(param.x1);
+    if (param.inputInstance[1] == 1)
+        inputTensorDesc.emplace_back(param.x2);
+    if (param.inputInstance[2] == 1)
+        inputTensorDesc.emplace_back(param.bias);
     gert::InfershapeContextPara inferShapeContextPara(
-        "AllGatherMatmul",
-        inputTensorDesc,
-        {
-            param.y,
-            param.gather_out
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)}
-        },
-        param.inputInstance, param.outputInstance
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", param.rank_size}
-    };
+        "AllGatherMatmul", inputTensorDesc, {param.y, param.gather_out},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)}},
+        param.inputInstance, param.outputInstance);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}};
     Mc2ExecuteTestCase(inferShapeContextPara, hcomTopologyMockValues, param.expectResult, param.expectOutputShape);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllGatherMatmul,
-    AllGatherMatmulInferShapeTest,
+    AllGatherMatmul, AllGatherMatmulInferShapeTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulInferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AllGatherMatmulInferShapeUtParam>
-);
+    PrintCaseInfoString<AllGatherMatmulInferShapeUtParam>);
 
 } // namespace AllGatherMatmulUT

@@ -134,9 +134,9 @@ public:
 
     uint64_t GetTilingKey() const
     {
-        return GET_TILINGKEY(trans_, 0, 0, 0, 9,                  // 9: delimiter
-                             model_, fullLoad_, 0, 0, 9,          // 9: delimiter
-                             aGm2L1_, bGm2L1_, out_, 0, 9,        // 9: delimiter
+        return GET_TILINGKEY(trans_, 0, 0, 0, 9,           // 9: delimiter
+                             model_, fullLoad_, 0, 0, 9,   // 9: delimiter
+                             aGm2L1_, bGm2L1_, out_, 0, 9, // 9: delimiter
                              apiLevel_);
     }
 
@@ -149,7 +149,7 @@ private:
     Mc2MatMulV3GM2L1 bGm2L1_ = Mc2MatMulV3GM2L1::ON_THE_FLY;
     Mc2MatMulV3L0C2Out out_ = Mc2MatMulV3L0C2Out::ON_THE_FLY;
 };
-}
-}
+} // namespace mc2_matmul_v3_advanced
+} // namespace optiling
 
 #endif // __OP_HOST_MATMUL_V3_STREAM_K_TILING_H__

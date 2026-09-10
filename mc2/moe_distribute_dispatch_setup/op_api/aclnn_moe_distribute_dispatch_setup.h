@@ -39,7 +39,8 @@ extern "C" {
  * @param [in] globalBs: 计算可选输入，int。ep通信域全局的batch size大小。
  * @param [in] commType: 计算输入，int。通信方案选择。预留参数，暂未使用，传0即可。
  * @param [in] commAlg: 计算输入，char*。通信亲和内存布局算法。预留参数，暂未使用，传空指针即可。
- * @param [out] yOut: 通信输出，Tensor，必选输出，数据类型支持float16, bfloat16, int8，仅支持2维，数据格式支持ND。本卡待发送的通信数据。
+ * @param [out] yOut: 通信输出，Tensor，必选输出，数据类型支持float16, bfloat16,
+ int8，仅支持2维，数据格式支持ND。本卡待发送的通信数据。
  * @param [out] expandIdxOut:
     计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。给同一专家发送的token个数。
  * @param [out] commCmdInfoOut:
@@ -50,11 +51,11 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
-    const aclTensor* xActiveMaskOptional, const char* groupEp, int64_t epWorldSize, int64_t epRankId,
+    const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
+    const aclTensor *xActiveMaskOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t commType, const char* commAlg, aclTensor* yOut,
-    aclTensor* expandIdxOut, aclTensor* commCmdInfoOut, uint64_t* workspaceSize, aclOpExecutor** executor);
+    int64_t quantMode, int64_t globalBs, int64_t commType, const char *commAlg, aclTensor *yOut,
+    aclTensor *expandIdxOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  *
@@ -63,7 +64,8 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
  * @domain aclnn_ops_infer
  * @param [in] x: 计算输入，Tensor，数据类型float16，bfloat16，必须为2维，数据格式支持ND。输入的token数据。
  * @param [in] expertIds: 计算输入，Tensor，数据类型int32，必须为2维，数据格式支持ND。每个token的topK个专家索引。
- * @param [in] scalesOptional: 计算可选输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。每个专家的量化平滑权重。
+ * @param [in] scalesOptional:
+ 计算可选输入，Tensor，数据类型float32，必须为2维，数据格式支持ND。每个专家的量化平滑权重。
  * @param [in] xActiveMaskOptional:
     表示token是否参与通信，Tensor，数据类型bool，必须为1维，数据格式支持ND。
  * @param [in] groupEp: 计算输入，str。ep通信域名称，专家并行的通信域。
@@ -80,18 +82,19 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
  * @param [in] commAlg: 计算输入，char*。通信亲和内存布局算法。预留参数，暂未使用，传空指针即可。
  * @param [out] tokenMsgSize: 计算输出，int。aclnnMoeDistributeDispatchSetup接口yOut第二维的大小。
  * @param [out] expandIdxOutSize: 计算输出，int。aclnnMoeDistributeDispatchSetup接口ExpandIdXOut的大小。
- * @param [out] assistInfoForCombineOutSize: 计算输出，int。aclnnMoeDistributeDispatchTeardown接口assistInfoForCombineOut的大小。
+ * @param [out] assistInfoForCombineOutSize:
+ 计算输出，int。aclnnMoeDistributeDispatchTeardown接口assistInfoForCombineOut的大小。
  * @param [out] commCmdInfoOutSize: 计算输出，int。aclnnMoeDistributeDispatchSetup接口commCmdInfoOut的大小。
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
-    const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
-    const aclTensor* xActiveMaskOptional, const char* groupEp, int64_t epWorldSize, int64_t epRankId,
+    const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
+    const aclTensor *xActiveMaskOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
     int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, int64_t commType, const char* commAlg,
-    uint64_t& tokenMsgSize, uint64_t& expandIdxOutSize, uint64_t& assistInfoForCombineOutSize,
-    uint64_t& commCmdInfoOutSize);
+    int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, int64_t commType, const char *commAlg,
+    uint64_t &tokenMsgSize, uint64_t &expandIdxOutSize, uint64_t &assistInfoForCombineOutSize,
+    uint64_t &commCmdInfoOutSize);
 
 /**
  * @brief aclnnMoeDistributeDispatchSetup的第二段接口，用于执行计算。
@@ -102,11 +105,11 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetup(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatchSetup(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                       aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_MOE_DISTRIBUTE_DISPATCH_SETUP_
+#endif // OP_API_INC_MOE_DISTRIBUTE_DISPATCH_SETUP_

@@ -24,7 +24,7 @@
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
 #endif
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_quant_perchannel.h"
@@ -44,9 +44,7 @@ template <typename aType, typename bType, typename biasType, typename cType, typ
           bool bTrans>
 class MatmulAllReduceQuantFP16CommInt8 {
 public:
-    __aicore__ inline MatmulAllReduceQuantFP16CommInt8()
-    {
-    }
+    __aicore__ inline MatmulAllReduceQuantFP16CommInt8() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR cGM,
                                 GM_ADDR workspaceGM, Mc2Tiling::QuantMatmulAllReduceTilingData *tilingData,
                                 TPipe *tPipe);
@@ -132,9 +130,9 @@ __aicore__ inline void MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, 
 
 template <typename aType, typename bType, typename biasType, typename cType, typename commType, bool aTrans,
           bool bTrans>
-__aicore__ inline void
-MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans, bTrans>::InitScale(
-    GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM)
+__aicore__ inline void MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans,
+                                                        bTrans>::InitScale(GM_ADDR commQuantScale1GM,
+                                                                           GM_ADDR commQuantScale2GM)
 {
     commQuantScale1GM_ = commQuantScale1GM;
     commQuantScale2GM_ = commQuantScale2GM;
@@ -142,9 +140,8 @@ MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans
 
 template <typename aType, typename bType, typename biasType, typename cType, typename commType, bool aTrans,
           bool bTrans>
-__aicore__ inline uint32_t
-MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans, bTrans>::SendCountCheck(
-    uint32_t prepareIndex)
+__aicore__ inline uint32_t MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans,
+                                                            bTrans>::SendCountCheck(uint32_t prepareIndex)
 {
     uint32_t sendCount = tilePadDataCnt_ / tilingData_->param.rankDim;
     if (prepareIndex >= tilingData_->param.tileCnt) {
@@ -270,12 +267,12 @@ MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans
     // 等待所有的allgather任务
     if (g_coreType == AscendC::AIV) {
         // wait所有的allGather任务 + dequant
-        const uint64_t outGmTileOffset =
-            static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) * \
-            static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) * sizeof(cType);
-        const uint64_t outGmTailOffset =
-            static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) * \
-            static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) * sizeof(cType);
+        const uint64_t outGmTileOffset = static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) *
+                                         static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) *
+                                         sizeof(cType);
+        const uint64_t outGmTailOffset = static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) *
+                                         static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) *
+                                         sizeof(cType);
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
             if (block_idx == 0) {
                 hccl_.Wait(allGatherHandleId_[i]);
@@ -311,9 +308,9 @@ MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans
     uint32_t isAdd, uint32_t tileCnt, Mc2QuantBatchMatmulV3TilingData &quant_tiling, uint32_t padM, uint32_t prePadM,
     bool isTiletoTailFlag)
 {
-    const int64_t aOffset = static_cast<int64_t>(quant_tiling.matmulTiling.M) * \
+    const int64_t aOffset = static_cast<int64_t>(quant_tiling.matmulTiling.M) *
                             static_cast<int64_t>(quant_tiling.matmulTiling.Ka) * sizeof(aType);
-    const int64_t cOffset = static_cast<int64_t>(quant_tiling.matmulTiling.M) * \
+    const int64_t cOffset = static_cast<int64_t>(quant_tiling.matmulTiling.M) *
                             static_cast<int64_t>(quant_tiling.matmulTiling.N) * sizeof(cType);
     int64_t tempOffset = CalcShapeOffset(sizeof(int8_t), padM, quant_tiling.matmulTiling.N);
     BmmDequant<aType, bType, FORMAT_X1, FORMAT_X2, biasType, uint64_t, cType, aTrans, bTrans> op;

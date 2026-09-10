@@ -18,7 +18,7 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "grouped_matmul_swiglu_quant_v2_utils.h"
+#include "grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 
 namespace GroupedMatmulDequantSwigluQuant {
 using namespace AscendC;
@@ -41,27 +41,31 @@ public:
     using matmulType = MMImplType<aType, bType, cType, biasType, matmulCFGUnitFlag>;
     matmulType::MT mm;
 
-    __aicore__ inline GroupedMatmulDequantSwigluQuantFusion(
-        TPipe* pipe, const GMMSwigluQuantV2TilingFusionData* __restrict tiling,
-        const TCubeTiling* __restrict matmulTilingData)
-        : pipe_(pipe), tilingData_(tiling), matmulTilingData_(matmulTilingData) {   
-        }
-    
-    __aicore__ inline int CeilDiv(int a, int b) {
-        return (a + b  - 1) / b;
+    __aicore__ inline GroupedMatmulDequantSwigluQuantFusion(TPipe *pipe,
+                                                            const GMMSwigluQuantV2TilingFusionData *__restrict tiling,
+                                                            const TCubeTiling *__restrict matmulTilingData)
+        : pipe_(pipe),
+          tilingData_(tiling),
+          matmulTilingData_(matmulTilingData)
+    {}
+
+    __aicore__ inline int CeilDiv(int a, int b)
+    {
+        return (a + b - 1) / b;
     }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weight_scale, GM_ADDR activation_scale,
-        GM_ADDR weightAssistanceMatrix, GM_ADDR group_list,
-        GM_ADDR y, GM_ADDR scale, GM_ADDR workspace) {
-        xGm_.SetGlobalBuffer((__gm__ int8_t*)x);
-        groupListGm_.SetGlobalBuffer((__gm__ int64_t*)group_list);
+                                GM_ADDR weightAssistanceMatrix, GM_ADDR group_list, GM_ADDR y, GM_ADDR scale,
+                                GM_ADDR workspace)
+    {
+        xGm_.SetGlobalBuffer((__gm__ int8_t *)x);
+        groupListGm_.SetGlobalBuffer((__gm__ int64_t *)group_list);
         weightGm_.SetGlobalBuffer(GetTensorAddr<int8_t>(0, weight));
         weightScaleGm_.SetGlobalBuffer(GetTensorAddr<float>(0, weight_scale));
-        workspaceGm_.SetGlobalBuffer((__gm__ int32_t*)workspace);
-        activateScaleGm_.SetGlobalBuffer((__gm__ float*)activation_scale);
-        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
-        yGm_.SetGlobalBuffer((__gm__ int8_t*)y);
+        workspaceGm_.SetGlobalBuffer((__gm__ int32_t *)workspace);
+        activateScaleGm_.SetGlobalBuffer((__gm__ float *)activation_scale);
+        scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
+        yGm_.SetGlobalBuffer((__gm__ int8_t *)y);
         weightScaleTensorPtr_ = weight_scale;
         weightTensorPtr_ = weight;
 
@@ -79,16 +83,23 @@ public:
 
         totalSyncTimes = CeilDiv(totalBasicBlocks, static_cast<int64_t>(tilingData_->cubeBlockDim));
         if ASCEND_IS_AIV {
-            pipe_->InitBuffer(xActQueue_, 1, (tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * SWI_FACTOR + tilingData_->ubFactorDimx * BLOCK_ELEM) * sizeof(int32_t));
-            pipe_->InitBuffer(inScaleQueue_, 1, ((tilingData_->N / SPILI_NUM) * SWI_FACTOR + (tilingData_->N / SPILI_NUM)) * sizeof(float));
-            pipe_->InitBuffer(outQueue_, 1, tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * sizeof(int8_t) + tilingData_->ubFactorDimx * sizeof(float) + RESRERVE_MEM_SIZE);
+            pipe_->InitBuffer(xActQueue_, 1,
+                              (tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * SWI_FACTOR +
+                               tilingData_->ubFactorDimx * BLOCK_ELEM) *
+                                  sizeof(int32_t));
+            pipe_->InitBuffer(
+                inScaleQueue_, 1,
+                ((tilingData_->N / SPILI_NUM) * SWI_FACTOR + (tilingData_->N / SPILI_NUM)) * sizeof(float));
+            pipe_->InitBuffer(outQueue_, 1,
+                              tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * sizeof(int8_t) +
+                                  tilingData_->ubFactorDimx * sizeof(float) + RESRERVE_MEM_SIZE);
             pipe_->InitBuffer(tmpBuf1_,
                               tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * SWI_FACTOR * sizeof(float));
         }
     }
 
     __aicore__ inline void FindCurrentGroup(int64_t basicBlockIdxInGlobal, uint32_t &currentGroupId,
-                                            uint32_t &globalMOffset, int64_t &processedBasicBlock)
+                                            uint64_t &globalMOffset, int64_t &processedBasicBlock)
     {
         for (int groupId = currentGroupId; groupId < tilingData_->groupNum; groupId++) {
             int tokens = groupListGm_.GetValue(groupId);
@@ -108,7 +119,8 @@ public:
     }
 
     __aicore__ inline void CalculateBlockSizes(int tokens, int64_t currentBasicBlockMId, int64_t currentBasicBlockNId,
-        int& realMSize, int& realNSize) {
+                                               int &realMSize, int &realNSize)
+    {
         realMSize = matmulTilingData_->baseM;
         if (currentBasicBlockMId * matmulTilingData_->baseM + realMSize > tokens) {
             realMSize = tokens - currentBasicBlockMId * matmulTilingData_->baseM;
@@ -138,7 +150,7 @@ public:
     }
 
     __aicore__ inline void ProcessCubeBlock(int64_t basicBlockIdxInGlobal, uint32_t &currentGroupId,
-                                            uint32_t &globalMOffset, int64_t &processedBasicBlock)
+                                            uint64_t &globalMOffset, int64_t &processedBasicBlock)
     {
         FindCurrentGroup(basicBlockIdxInGlobal, currentGroupId, globalMOffset, processedBasicBlock);
         int tokens = groupListGm_.GetValue(currentGroupId);
@@ -153,7 +165,8 @@ public:
         int realNSize = 0;
         CalculateBlockSizes(tokens, currentBasicBlockMId, currentBasicBlockNId, realMSize, realNSize);
         SetupMatmulShape(tokens, realMSize, realNSize);
-        int64_t tensorAOffset = currentBasicBlockMId * matmulTilingData_->baseM * tilingData_->K + globalMOffset * tilingData_->K;
+        int64_t tensorAOffset =
+            currentBasicBlockMId * matmulTilingData_->baseM * tilingData_->K + globalMOffset * tilingData_->K;
         mm.SetTensorA(xGm_[tensorAOffset]);
         SetupMatmulWeight(currentGroupId, currentBasicBlockNId);
         int64_t workspaceOffset = globalMOffset * tilingData_->N +
@@ -170,14 +183,15 @@ public:
         }
     }
 
-    __aicore__ inline void CubeProcess() {
+    __aicore__ inline void CubeProcess()
+    {
         if ASCEND_IS_AIC {
             int64_t currentBlockId = GetBlockIdx();
             int64_t rsvBlockNum = 0;
             int64_t calcBlockNum = 0;
             int64_t cvTimes = 0;
             int64_t syncId = 0;
-            uint32_t globalMOffset = 0;
+            uint64_t globalMOffset = 0;
             int64_t processedBasicBlock = 0;
             uint32_t currentGroupId = 0;
             uint32_t realSyncId = 0;
@@ -206,7 +220,7 @@ public:
         }
     }
 
-    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, int &endGroupMOffset,
+    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, uint64_t &endGroupMOffset,
                                                  int64_t &basicBlockCountBeforeEndGroup)
     {
         endGroupMOffset = 0;
@@ -226,9 +240,10 @@ public:
         endGroupMOffset += currentBasicBlockMId * matmulTilingData_->baseM;
     }
 
-    __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, int endGroupMOffset,
-        uint32_t& globalMOffset, bool &isSyncAll) {
-        int currentGroupMOffset = 0;
+    __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, uint64_t endGroupMOffset,
+                                             uint64_t &globalMOffset, bool &isSyncAll)
+    {
+        uint64_t currentGroupMOffset = 0;
         for (int gId = 0; gId < startGroupId; gId++) {
             currentGroupMOffset += groupListGm_.GetValue(gId);
         }
@@ -238,7 +253,7 @@ public:
             } else {
                 currentGroupMOffset += groupListGm_.GetValue(groupId);
             }
-            int calcCount = 0;
+            uint64_t calcCount = 0;
             if (currentGroupMOffset <= endGroupMOffset) {
                 calcCount = currentGroupMOffset - globalMOffset;
             } else {
@@ -249,7 +264,7 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessVectorBlock(int64_t syncId, bool &isSyncAll, uint32_t &globalMOffset)
+    __aicore__ inline void ProcessVectorBlock(int64_t syncId, bool &isSyncAll, uint64_t &globalMOffset)
     {
         int64_t startBasicBlockId = syncId * tilingData_->cubeBlockDim;
         int64_t endBasicBlockId = startBasicBlockId + tilingData_->cubeBlockDim;
@@ -258,13 +273,14 @@ public:
         }
         int startGroupId = GetGroupId(startBasicBlockId);
         int endGroupId = GetGroupId(endBasicBlockId);
-        int endGroupMOffset = 0;
+        uint64_t endGroupMOffset = 0;
         int64_t basicBlockCountBeforeEndGroup = 0;
         CalculateEndGroupInfo(endBasicBlockId, endGroupId, endGroupMOffset, basicBlockCountBeforeEndGroup);
         ProcessGroupRange(startGroupId, endGroupId, endGroupMOffset, globalMOffset, isSyncAll);
     }
 
-    __aicore__ inline void VectorProcess() {
+    __aicore__ inline void VectorProcess()
+    {
         if ASCEND_IS_AIV {
             weightCacheGroupId_ = -1;
             int64_t currentBlockId = GetBlockIdx() / 2;
@@ -272,7 +288,7 @@ public:
             int64_t calcBlockNum = 0;
             int64_t cvTimes = 0;
             int64_t syncId = 0;
-            uint32_t globalMOffset = 0;
+            uint64_t globalMOffset = 0;
             int64_t processedBasicBlock = 0;
             uint32_t currentGroupId = 0;
             uint32_t realSyncId = 0;
@@ -307,7 +323,7 @@ public:
     {
         int64_t processedBasicBlock = 0;
         int currentGroupId = 0;
-        int globalMOffset = 0;
+        uint64_t globalMOffset = 0;
         for (int groupId = 0; groupId < tilingData_->groupNum; groupId++) {
             int tokens = groupListGm_.GetValue(groupId);
             if (tilingData_->groupListType == 0 && groupId > 0) {
@@ -324,7 +340,8 @@ public:
         return tilingData_->groupNum - 1;
     }
 
-    __aicore__ inline void ComputeReduceMax(const LocalTensor<float>& tempRes, int32_t calcCount) {
+    __aicore__ inline void ComputeReduceMax(const LocalTensor<float> &tempRes, int32_t calcCount)
+    {
         uint32_t vectorCycles = calcCount / MAX_CALC_NUM;
         uint32_t remainElements = calcCount % MAX_CALC_NUM;
 
@@ -342,14 +359,19 @@ public:
         }
 
         if (vectorCycles > 1) {
-            Max(tempRes,  tempRes[MAX_CALC_NUM], tempRes, MAX_CALC_NUM, vectorCycles - 1, repeatParams);
+            Max(tempRes, tempRes[MAX_CALC_NUM], tempRes, MAX_CALC_NUM, vectorCycles - 1, repeatParams);
             PipeBarrier<PIPE_V>();
         }
     }
 
-    __aicore__ inline void ProcessDSQ(int groupId, int globalOffset, int calcCount, bool &isSyncAll) {
-        int32_t blockDimxFactor = (calcCount + tilingData_->vectorBlockDim - 1) / tilingData_->vectorBlockDim;
-        int32_t realCoreDim = calcCount == 0 ? 0 : (calcCount + blockDimxFactor - 1) / blockDimxFactor;
+    __aicore__ inline void ProcessDSQ(int groupId, uint64_t globalOffset, uint64_t calcCount, bool &isSyncAll)
+    {
+        if (tilingData_->vectorBlockDim == 0 || calcCount == 0) {
+            return;
+        }
+        int32_t blockDimxFactor =
+            static_cast<int32_t>((calcCount + tilingData_->vectorBlockDim - 1) / tilingData_->vectorBlockDim);
+        int32_t realCoreDim = static_cast<int32_t>((calcCount + blockDimxFactor - 1) / blockDimxFactor);
 
         if (GetBlockIdx() >= realCoreDim) {
             if (isSyncAll) {
@@ -373,7 +395,8 @@ public:
                 weightScaleGm_.SetGlobalBuffer(GetTensorAddr<float>(groupId, weightScaleTensorPtr_));
                 DataCopyPad(inScaleLocal, weightScaleGm_, dataCopyWeightScaleParams, padParams);
             } else {
-                DataCopyPad(inScaleLocal, weightScaleGm_[groupId * tilingData_->N], dataCopyWeightScaleParams, padParams);
+                DataCopyPad(inScaleLocal, weightScaleGm_[groupId * tilingData_->N], dataCopyWeightScaleParams,
+                            padParams);
             }
             DataCopyParams dataCopyQuantScaleParams;
             dataCopyQuantScaleParams.blockCount = 1;
@@ -386,7 +409,7 @@ public:
         inScaleQueue_.EnQue(inScaleLocal);
         inScaleLocal = inScaleQueue_.DeQue<float>();
 
-        int32_t blockDimxTailFactor = calcCount - blockDimxFactor * (realCoreDim - 1);
+        int32_t blockDimxTailFactor = static_cast<int32_t>(calcCount - blockDimxFactor * (realCoreDim - 1));
         int32_t DimxCore = GetBlockIdx() == (realCoreDim - 1) ? blockDimxTailFactor : blockDimxFactor;
 
         int32_t ubDimxLoop = (DimxCore + tilingData_->ubFactorDimx - 1) / tilingData_->ubFactorDimx;
@@ -406,7 +429,7 @@ public:
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy * SWI_FACTOR);
             Copy<float, false>(tmpUbF32, weightScaleLocal, MASK_PLACEHOLDER, proDimsx,
-                {1, 1, static_cast<uint16_t>((tilingData_->ubFactorDimy * SWI_FACTOR) / BLOCK_ELEM), 0});
+                               {1, 1, static_cast<uint16_t>((tilingData_->ubFactorDimy * SWI_FACTOR) / BLOCK_ELEM), 0});
             SetMaskNorm();
             ResetMask();
 
@@ -418,7 +441,7 @@ public:
             dataCopyActScaleParams.dstStride = 0;
             LocalTensor<float> xActLocalF32 = xActLocal.template ReinterpretCast<float>();
             DataCopyPad(xActLocalF32[tilingData_->ubFactorDimx * tilingData_->N], activateScaleGm_[xDimxOffset],
-                dataCopyActScaleParams, padParams);
+                        dataCopyActScaleParams, padParams);
 
             if (isSyncAll) {
                 AscendC::CrossCoreWaitFlag(0x8);
@@ -439,7 +462,7 @@ public:
             xActLocalF32 = xActLocal.template ReinterpretCast<float>();
             LocalTensor<float> xLocalF32 = xActLocalF32;
             LocalTensor<float> activationScaleLocal = xActLocalF32[tilingData_->ubFactorDimx * tilingData_->N];
-            
+
             Cast(xLocalF32, xLocal, RoundMode::CAST_NONE, SWI_FACTOR * proDimsx * tilingData_->ubFactorDimy);
             PipeBarrier<PIPE_V>();
 
@@ -449,7 +472,7 @@ public:
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy * SWI_FACTOR);
             Copy<float, false>(tmpUbF32, activationScaleLocal, AscendC::MASK_PLACEHOLDER, proDimsx,
-                {1, 0, static_cast<uint16_t>((tilingData_->ubFactorDimy * SWI_FACTOR) / BLOCK_ELEM), 1});
+                               {1, 0, static_cast<uint16_t>((tilingData_->ubFactorDimy * SWI_FACTOR) / BLOCK_ELEM), 1});
             SetMaskNorm();
             ResetMask();
             PipeBarrier<PIPE_V>();
@@ -462,11 +485,11 @@ public:
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy);
             Copy<float, false>(tmpUbF32Act, xLocalF32[actOffset], AscendC::MASK_PLACEHOLDER, proDimsx,
-                {1, 1, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM),
-                static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM * SWI_FACTOR)});
+                               {1, 1, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM),
+                                static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM * SWI_FACTOR)});
             Copy<float, false>(tmpUbF32Gate, xLocalF32[gateOffset], AscendC::MASK_PLACEHOLDER, proDimsx,
-                {1, 1, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM),
-                static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM * SWI_FACTOR)});
+                               {1, 1, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM),
+                                static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM * SWI_FACTOR)});
             SetMaskNorm();
             ResetMask();
             PipeBarrier<PIPE_V>();
@@ -488,7 +511,8 @@ public:
 
             LocalTensor<float> outLocal = outQueue_.AllocTensor<float>();
 
-            uint64_t scaleOutOffset = tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * sizeof(int8_t) / sizeof(float);
+            uint64_t scaleOutOffset =
+                tilingData_->ubFactorDimx * (tilingData_->N / SPILI_NUM) * sizeof(int8_t) / sizeof(float);
             uint64_t alignScaleOutOffset = Ceil(scaleOutOffset, uint32_t(8)) * 8; // 8: num int32_t in 32B ub block
             LocalTensor<float> scaleOut = outLocal[alignScaleOutOffset];
             LocalTensor<int8_t> yOut = outLocal.template ReinterpretCast<int8_t>();
@@ -503,8 +527,8 @@ public:
                 realReduceMaxCalcNum = tilingData_->ubFactorDimy;
             }
 
-            WholeReduceMax(tmpUbF32Gate, tmpUbF32Gate, realReduceMaxCalcNum,  proDimsx, 1, 1,
-                tilingData_->ubFactorDimy / BLOCK_ELEM, ReduceOrder::ORDER_ONLY_VALUE);
+            WholeReduceMax(tmpUbF32Gate, tmpUbF32Gate, realReduceMaxCalcNum, proDimsx, 1, 1,
+                           tilingData_->ubFactorDimy / BLOCK_ELEM, ReduceOrder::ORDER_ONLY_VALUE);
             PipeBarrier<PIPE_V>();
 
             Muls(scaleOut, tmpUbF32Gate, DYNAMIC_QUANT_FACTOR, proDimsx);
@@ -517,7 +541,7 @@ public:
             SetMaskCount();
             SetVectorMask<float, MaskMode::COUNTER>(tilingData_->ubFactorDimy);
             Copy<float, false>(tmpUbF32Gate, outLocal, AscendC::MASK_PLACEHOLDER, proDimsx,
-                {1, 0, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM), 1});
+                               {1, 0, static_cast<uint16_t>(tilingData_->ubFactorDimy / BLOCK_ELEM), 1});
             SetMaskNorm();
             ResetMask();
             PipeBarrier<PIPE_V>();
@@ -562,8 +586,8 @@ public:
 
 private:
     TPipe *pipe_ = nullptr;
-    const GMMSwigluQuantV2TilingFusionData* __restrict tilingData_;
-    const TCubeTiling* __restrict matmulTilingData_;
+    const GMMSwigluQuantV2TilingFusionData *__restrict tilingData_;
+    const TCubeTiling *__restrict matmulTilingData_;
     GlobalTensor<int8_t> xGm_;
     GlobalTensor<int8_t> weightGm_;
     GlobalTensor<int8_t> yGm_;
@@ -590,6 +614,6 @@ private:
     GM_ADDR weightTensorPtr_;
     GM_ADDR weightScaleTensorPtr_;
 };
-}
+} // namespace GroupedMatmulDequantSwigluQuant
 
 #endif

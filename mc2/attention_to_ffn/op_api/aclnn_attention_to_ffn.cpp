@@ -60,8 +60,8 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, c
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAttentionToFFN", "group",
-            std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnAttentionToFFN", "group", std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
             (std::string("The length of group must be less than ") + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -71,19 +71,18 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, c
 
 aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
     const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId, const aclTensor *layerId,
-    const aclTensor *expertIds, const aclTensor *expertRankTable, const aclTensor *scalesOptional,
-    const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
-    const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
-    const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
-    int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *expertIds, const aclTensor *expertRankTable, const aclTensor *scales, const aclTensor *activeMask,
+    const char *group, int64_t worldSize, const aclIntArray *ffnTokenInfoTableShape,
+    const aclIntArray *ffnTokenDataShape, const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum,
+    int64_t quantMode, int64_t syncFlag, int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor)
 
 {
     auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerAttentionToFFNGetWorkspaceSize(
-        x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,
-        const_cast<char *>(group), worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
-        moeExpertNum, quantMode, syncFlag, ffnStartRankId, workspaceSize, executor);
+        x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask, const_cast<char *>(group),
+        worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape, moeExpertNum, quantMode,
+        syncFlag, ffnStartRankId, workspaceSize, executor);
     return ret;
 }
 

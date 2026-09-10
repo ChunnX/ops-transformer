@@ -72,14 +72,14 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
         CHECK_RET(strnlen(groupTp, HCCL_GROUP_NAME_MAX) == 0, ACL_ERROR_INVALID_PARAM);
     }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupEp",
-            std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMoeDistributeCombine", "groupEp", std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("groupEp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupTp",
-            std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMoeDistributeCombine", "groupTp", std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("groupTp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }

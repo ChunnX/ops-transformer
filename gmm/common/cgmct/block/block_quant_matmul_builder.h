@@ -22,15 +22,15 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tuple_utils.h"
 
 #include "../tile/tile_copy.h"
-#include "./block_mmad.h"
+#include "./cgmct_block_mmad.h"
 #include "./block_quant_mmad_multi_block.h"
-#include "../policy/dispatch_policy.h"
+#include "../policy/cgmct_dispatch_policy.h"
 
 using namespace AscendC;
 
@@ -47,9 +47,10 @@ class BlockQuantMatmulBuilder {
 
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class L1TileShape_,
           class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_>
-class BlockQuantMatmulBuilder<AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, L1TileShape_, L0TileShape_,
-                              BlockScheduler_, BlockMatmulPolicy_,
-                              AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<QuantMatmulMultiBlock<>, BlockMatmulPolicy_>>> {
+class BlockQuantMatmulBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, L1TileShape_, L0TileShape_, BlockScheduler_,
+    BlockMatmulPolicy_,
+    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<QuantMatmulMultiBlock<>, BlockMatmulPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -103,7 +104,6 @@ public:
     __aicore__ inline BlockQuantMatmulBuilder() {}
 
     __aicore__ inline ~BlockQuantMatmulBuilder() {}
-
 };
 } // namespace Block
 } // namespace Gemm

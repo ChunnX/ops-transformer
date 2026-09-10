@@ -22,25 +22,25 @@
 #include "../grouped_matmul_tiling_data_apt.h"
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 
-#define LOCAL_TEMPLATE_CLASS_MIX_PARAMS                                                                                \
-    template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType,               \
+#define LOCAL_TEMPLATE_CLASS_MIX_PARAMS \
+    template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType, \
               CubeFormat wFormat, bool aTrans, bool bTrans, class l0cType>
-#define LOCAL_TEMPLATE_FUNC_MIX_PARAMS                                                                                 \
+#define LOCAL_TEMPLATE_FUNC_MIX_PARAMS \
     xType, wType, biasType, scaleType, ptScaleType, yType, wFormat, aTrans, bTrans, l0cType
 
 namespace AscendC {
 
-constexpr MicroAPI::CastTrait ctInt322Fp32 = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::UNKNOWN,
-                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+constexpr Reg::CastTrait ctInt322Fp32 = {Reg::RegLayout::UNKNOWN, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                         RoundMode::CAST_RINT};
 
-constexpr MicroAPI::CastTrait ctFp322Half = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+constexpr Reg::CastTrait ctFp322Half = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
+                                        RoundMode::CAST_RINT};
 
-constexpr MicroAPI::CastTrait ctHalf2Fp32Zero = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-                                                 MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+constexpr Reg::CastTrait ctHalf2Fp32Zero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                            RoundMode::UNKNOWN};
 
-constexpr MicroAPI::CastTrait ctHalf2Fp32One = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::UNKNOWN,
-                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+constexpr Reg::CastTrait ctHalf2Fp32One = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
+                                           RoundMode::UNKNOWN};
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 class GQmmMixRegbaseKernel {
@@ -80,7 +80,8 @@ protected:
                                                      uint16_t mSize);
     __aicore__ inline void VFDoDequantWithoutAScale(__ubuf__ yType *dequantOutInUbAddr, __ubuf__ l0cType *l0cOutUbAddr,
                                                     uint16_t mSize);
-    template <bool isPertensor, QuantUtils::QuantMode aQuantMode, bool isBiasEpilogue, GROUPED_MATMUL::ActiveType activeType>
+    template <bool isPertensor, QuantUtils::QuantMode aQuantMode, bool isBiasEpilogue,
+              GROUPED_MATMUL::ActiveType activeType>
     __aicore__ inline void VFDoDequant(__ubuf__ yType *dst, __ubuf__ l0cType *l0cOut, __ubuf__ scaleType *scale,
                                        __ubuf__ ptScaleType *perTokenScale, __ubuf__ biasType *bias, uint16_t mSize,
                                        uint16_t nSize);
@@ -170,7 +171,7 @@ __aicore__ inline GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::GQmmMixR
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_1);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(INPUT_BUFFER_FLAG_2);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_0);
-    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_1); 
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(OUTPUT_BUFFER_FLAG_1);
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
@@ -202,14 +203,17 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Ini
 
     uint32_t mForSingleVec = QuantUtils::CeilDiv(mmTilingData_->baseM, GetTaskRation());
     uint64_t offset = 0;
-    l0cOutUb_ = LocalTensor<l0cType>(TPosition::VECIN, offset, mForSingleVec * mmTilingData_->baseN * sizeof(float) / sizeof(l0cType)); 
+    l0cOutUb_ = LocalTensor<l0cType>(TPosition::VECIN, offset,
+                                     mForSingleVec * mmTilingData_->baseN * sizeof(float) / sizeof(l0cType));
     offset += mForSingleVec * mmTilingData_->baseN * sizeof(float);
     if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERCHANNEL_MODE)) {
         scaleUb_ = LocalTensor<scaleType>(TPosition::VECIN, offset, mmTilingData_->baseN);
         offset += mmTilingData_->baseN * sizeof(scaleType);
     }
     if (gmmQuantParams_->aQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTOKEN_MODE)) {
-        ptScaleUb_ = LocalTensor<ptScaleType>(TPosition::VECIN, offset, QuantUtils::Align(mForSingleVec * sizeof(ptScaleType), QuantUtils::UB_ALIGN_SIZE) / sizeof(ptScaleType));
+        ptScaleUb_ = LocalTensor<ptScaleType>(
+            TPosition::VECIN, offset,
+            QuantUtils::Align(mForSingleVec * sizeof(ptScaleType), QuantUtils::UB_ALIGN_SIZE) / sizeof(ptScaleType));
         offset += QuantUtils::Align(mForSingleVec * sizeof(ptScaleType), QuantUtils::UB_ALIGN_SIZE);
     }
     isBiasEpilogue_ = QuantUtils::IsBiasEpilogue<xType, biasType>() && gmmQuantParams_->hasBias == 1;
@@ -219,15 +223,20 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Ini
     }
 
     // fp16/bf16分两次输出，fp32分四次输出
-    dequantOutInUBPing_ = LocalTensor<yType>(TPosition::VECIN, offset, QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN);
+    dequantOutInUBPing_ =
+        LocalTensor<yType>(TPosition::VECIN, offset,
+                           QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN);
     offset += QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN * sizeof(yType);
-    dequantOutInUBPong_ = LocalTensor<yType>(TPosition::VECIN, offset, QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN);
+    dequantOutInUBPong_ =
+        LocalTensor<yType>(TPosition::VECIN, offset,
+                           QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN);
     offset += QuantUtils::CeilDiv(mForSingleVec, QuantUtils::FP32_OUTPUT_TIMES) * mmTilingData_->baseN * sizeof(yType);
 
     // k = 0, init out
     if ASCEND_IS_AIV {
         if (subBlockIdx_ == 0) {
-            initLocal_ = LocalTensor<yType>(TPosition::VECCALC, offset, QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE / sizeof(yType));
+            initLocal_ = LocalTensor<yType>(TPosition::VECCALC, offset,
+                                            QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE / sizeof(yType));
         }
     }
 }
@@ -293,27 +302,24 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Set
     int32_t splitValue =
         QuantUtils::GetSplitValueFromGroupList(loopIdx, preOffset_, groupType_, groupListType_, groupListGlobal_);
     switch (groupType_) {
-        case (QuantUtils::SPLIT_M):
-            {
-                mSize = splitValue;
-                uint32_t valueIdx = gmmQuantParams_->singleW == 1 ? 0 : groupIdx;
-                kSize = kListGm_[valueIdx];
-                nSize = nListGm_[valueIdx];
-                break;
-            }
-        case (QuantUtils::SPLIT_K):
-            {
-                mSize = gmmQuantParams_->singleX == 1 ? mListGm_[0] : mListGm_[groupIdx];
-                kSize = splitValue;
-                nSize = gmmQuantParams_->singleW == 1 ? nListGm_[0] : nListGm_[groupIdx];
-                break;
-            }
-        default:
-            {
-                mSize = mListGm_[groupIdx];
-                kSize = kListGm_[groupIdx];
-                nSize = nListGm_[groupIdx];
-            }
+        case (QuantUtils::SPLIT_M): {
+            mSize = splitValue;
+            uint32_t valueIdx = gmmQuantParams_->singleW == 1 ? 0 : groupIdx;
+            kSize = kListGm_[valueIdx];
+            nSize = nListGm_[valueIdx];
+            break;
+        }
+        case (QuantUtils::SPLIT_K): {
+            mSize = gmmQuantParams_->singleX == 1 ? mListGm_[0] : mListGm_[groupIdx];
+            kSize = splitValue;
+            nSize = gmmQuantParams_->singleW == 1 ? nListGm_[0] : nListGm_[groupIdx];
+            break;
+        }
+        default: {
+            mSize = mListGm_[groupIdx];
+            kSize = kListGm_[groupIdx];
+            nSize = nListGm_[groupIdx];
+        }
     }
     return;
 }
@@ -392,7 +398,7 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Pro
         // 更新group内的输入参数M,N,K
         SetMNK(loopIdx, groupIdx, mSize, nSize, kSize);
         block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx,
-                                                                                    groupType_);
+                                                                                     groupType_);
         if (mSize <= 0 || nSize <= 0) {
             if (groupListType_ == QuantUtils::GROUP_LIST_TYPE_SPARSE && mSize <= 0) {
                 break;
@@ -415,7 +421,7 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Pro
             CalcTailTile(block_.params_.mBaseTail, block_.params_.nBaseTail);
             block_.UpdateTailTile();
         }
-        
+
         UpdateMMGlobalAddr(groupIdx);
         ProcessSingleGroup(groupIdx);
     }
@@ -485,7 +491,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Deq
             break;
         }
         auto mSize = singleMInVec - i * mSizeForOnce >= mSizeForOnce ? mSizeForOnce : singleMInVec - i * mSizeForOnce;
-        LocalTensor<yType>& dequantOutInUB = (dequantOutInUBPingPongID_ == 0) ? dequantOutInUBPing_ : dequantOutInUBPong_;
+        LocalTensor<yType> &dequantOutInUB =
+            (dequantOutInUBPingPongID_ == 0) ? dequantOutInUBPing_ : dequantOutInUBPong_;
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(dequantOutInUBPingPongID_);
 
         __ubuf__ yType *dequantOutInUbAddr = (__ubuf__ yType *)dequantOutInUB.GetPhyAddr();
@@ -493,21 +500,18 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Deq
         l0cOutUbAddr = l0cOutUbAddr + offsetL0c;
 
         switch (gmmQuantParams_->aQuantMode) {
-            case (static_cast<uint32_t>(QuantUtils::QuantMode::PERTOKEN_MODE)):
-                {
-                    uint64_t offsetPtScale = i * mSizeForOnce;
-                    VFDoDequantWithAPertoken(dequantOutInUbAddr, l0cOutUbAddr, offsetPtScale, mSize);
-                    break;
-                }
-            case (static_cast<uint32_t>(QuantUtils::QuantMode::PERTENSOR_MODE)):
-                {
-                    VFDoDequantWithAPertensor(dequantOutInUbAddr, l0cOutUbAddr, mSize);
-                    break;
-                }
-            default:
-                {
-                    VFDoDequantWithoutAScale(dequantOutInUbAddr, l0cOutUbAddr, mSize);
-                }
+            case (static_cast<uint32_t>(QuantUtils::QuantMode::PERTOKEN_MODE)): {
+                uint64_t offsetPtScale = i * mSizeForOnce;
+                VFDoDequantWithAPertoken(dequantOutInUbAddr, l0cOutUbAddr, offsetPtScale, mSize);
+                break;
+            }
+            case (static_cast<uint32_t>(QuantUtils::QuantMode::PERTENSOR_MODE)): {
+                VFDoDequantWithAPertensor(dequantOutInUbAddr, l0cOutUbAddr, mSize);
+                break;
+            }
+            default: {
+                VFDoDequantWithoutAScale(dequantOutInUbAddr, l0cOutUbAddr, mSize);
+            }
         }
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(dequantOutInUBPingPongID_);
         // mmDequant result: UB -> GM
@@ -550,9 +554,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Cop
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void
-GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX1ScaleFromGm2Ub(LocalTensor<ptScaleType> &dst,
-                                                                           uint64_t blockLen, uint64_t offset)
+__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX1ScaleFromGm2Ub(
+    LocalTensor<ptScaleType> &dst, uint64_t blockLen, uint64_t offset)
 {
     DataCopyParams ptScale2UbParams{1, 0, 0, 0};
     DataCopyPadParams padParams;
@@ -561,8 +564,8 @@ GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX1ScaleFromGm2Ub(Local
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void
-GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX2ScaleFromGm2Ub(LocalTensor<scaleType> &dst)
+__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX2ScaleFromGm2Ub(
+    LocalTensor<scaleType> &dst)
 {
     DataCopyParams scale2UbParams{1, 0, 0, 0};
     DataCopyPadParams padParams;
@@ -571,8 +574,8 @@ GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX2ScaleFromGm2Ub(Local
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void
-GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyBiasFromGm2Ub(LocalTensor<biasType> &dst)
+__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyBiasFromGm2Ub(
+    LocalTensor<biasType> &dst)
 {
     DataCopyParams bias2UbParams{1, 0, 0, 0};
     DataCopyPadParams padParams;
@@ -581,9 +584,8 @@ GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyBiasFromGm2Ub(LocalTen
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void
-GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyDequantResFromUb2Gm(uint64_t blockCount, uint64_t offset,
-                                                                              LocalTensor<yType> &src)
+__aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyDequantResFromUb2Gm(
+    uint64_t blockCount, uint64_t offset, LocalTensor<yType> &src)
 {
     DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockLen = block_.params_.singleCoreN * sizeof(yType);
@@ -620,41 +622,39 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
                 dequantOutInUbAddr, l0cOutUbAddr, nullptr, ptScaleUbAddr, nullptr, mSize, block_.params_.singleCoreN);
         } else {
             switch (GROUPED_MATMUL::ActiveType(gmmQuantParams_->activeType)) {
-                case GROUPED_MATMUL::ActiveType::FASTGELU:
-                {
-                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false, GROUPED_MATMUL::ActiveType::FASTGELU>(
-                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr, nullptr,
-                        mSize, block_.params_.singleCoreN);
+                case GROUPED_MATMUL::ActiveType::FASTGELU: {
+                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false,
+                                GROUPED_MATMUL::ActiveType::FASTGELU>(
+                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
+                        nullptr, mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::SILU:
-                {
+                case GROUPED_MATMUL::ActiveType::SILU: {
                     VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false, GROUPED_MATMUL::ActiveType::SILU>(
-                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr, nullptr,
-                        mSize, block_.params_.singleCoreN);
+                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
+                        nullptr, mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::RELU:
-                {
+                case GROUPED_MATMUL::ActiveType::RELU: {
                     VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false, GROUPED_MATMUL::ActiveType::RELU>(
-                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr, nullptr,
-                        mSize, block_.params_.singleCoreN);
+                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
+                        nullptr, mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::GELU_TANH:
-                {
-                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false, GROUPED_MATMUL::ActiveType::GELU_TANH>(
-                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr, nullptr,
-                        mSize, block_.params_.singleCoreN);
+                case GROUPED_MATMUL::ActiveType::GELU_TANH: {
+                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false,
+                                GROUPED_MATMUL::ActiveType::GELU_TANH>(
+                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
+                        nullptr, mSize, block_.params_.singleCoreN);
                     break;
                 }
-                default:
-                {
-                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false, GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
-                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr, nullptr,
-                        mSize, block_.params_.singleCoreN);
+                default: {
+                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, false,
+                                GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
+                        dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
+                        nullptr, mSize, block_.params_.singleCoreN);
                     break;
-                }    
+                }
             }
         }
     } else {
@@ -664,37 +664,35 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
                 mSize, block_.params_.singleCoreN);
         } else {
             switch (GROUPED_MATMUL::ActiveType(gmmQuantParams_->activeType)) {
-                case GROUPED_MATMUL::ActiveType::FASTGELU:
-                {
-                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true, GROUPED_MATMUL::ActiveType::FASTGELU>(
+                case GROUPED_MATMUL::ActiveType::FASTGELU: {
+                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true,
+                                GROUPED_MATMUL::ActiveType::FASTGELU>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::SILU:
-                {
+                case GROUPED_MATMUL::ActiveType::SILU: {
                     VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true, GROUPED_MATMUL::ActiveType::SILU>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::RELU:
-                {
+                case GROUPED_MATMUL::ActiveType::RELU: {
                     VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true, GROUPED_MATMUL::ActiveType::RELU>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::GELU_TANH:
-                {
-                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true, GROUPED_MATMUL::ActiveType::GELU_TANH>(
+                case GROUPED_MATMUL::ActiveType::GELU_TANH: {
+                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true,
+                                GROUPED_MATMUL::ActiveType::GELU_TANH>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                default:
-                {
-                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true, GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
+                default: {
+                    VFDoDequant<false, QuantUtils::QuantMode::PERTOKEN_MODE, true,
+                                GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), ptScaleUbAddr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
@@ -719,36 +717,31 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
 {
     if (!isBiasEpilogue_) {
         switch (GROUPED_MATMUL::ActiveType(gmmQuantParams_->activeType)) {
-            case GROUPED_MATMUL::ActiveType::FASTGELU:
-            {
+            case GROUPED_MATMUL::ActiveType::FASTGELU: {
                 VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, false, GROUPED_MATMUL::ActiveType::FASTGELU>(
                     dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr, nullptr,
                     mSize, block_.params_.singleCoreN);
                 break;
             }
-            case GROUPED_MATMUL::ActiveType::SILU:
-            {
+            case GROUPED_MATMUL::ActiveType::SILU: {
                 VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, false, GROUPED_MATMUL::ActiveType::SILU>(
                     dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr, nullptr,
                     mSize, block_.params_.singleCoreN);
                 break;
             }
-            case GROUPED_MATMUL::ActiveType::RELU:
-            {
+            case GROUPED_MATMUL::ActiveType::RELU: {
                 VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, false, GROUPED_MATMUL::ActiveType::RELU>(
                     dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr, nullptr,
                     mSize, block_.params_.singleCoreN);
                 break;
             }
-            case GROUPED_MATMUL::ActiveType::GELU_TANH:
-            {
+            case GROUPED_MATMUL::ActiveType::GELU_TANH: {
                 VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, false, GROUPED_MATMUL::ActiveType::GELU_TANH>(
                     dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr, nullptr,
                     mSize, block_.params_.singleCoreN);
                 break;
             }
-            default:
-            {
+            default: {
                 VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, false, GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
                     dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr, nullptr,
                     mSize, block_.params_.singleCoreN);
@@ -758,40 +751,35 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
     } else {
         if (gmmQuantParams_->bQuantMode == static_cast<uint32_t>(QuantUtils::QuantMode::PERTENSOR_MODE)) {
             VFDoDequant<true, QuantUtils::QuantMode::DEFAULT, true, GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
-                dequantOutInUbAddr, l0cOutUbAddr, nullptr, nullptr, (__ubuf__ biasType *)biasUb_.GetPhyAddr(), 
-                mSize, block_.params_.singleCoreN);
+                dequantOutInUbAddr, l0cOutUbAddr, nullptr, nullptr, (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize,
+                block_.params_.singleCoreN);
         } else {
             switch (GROUPED_MATMUL::ActiveType(gmmQuantParams_->activeType)) {
-                case GROUPED_MATMUL::ActiveType::FASTGELU:
-                {
+                case GROUPED_MATMUL::ActiveType::FASTGELU: {
                     VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, true, GROUPED_MATMUL::ActiveType::FASTGELU>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::SILU:
-                {
+                case GROUPED_MATMUL::ActiveType::SILU: {
                     VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, true, GROUPED_MATMUL::ActiveType::SILU>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::RELU:
-                {
+                case GROUPED_MATMUL::ActiveType::RELU: {
                     VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, true, GROUPED_MATMUL::ActiveType::RELU>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                case GROUPED_MATMUL::ActiveType::GELU_TANH:
-                {
+                case GROUPED_MATMUL::ActiveType::GELU_TANH: {
                     VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, true, GROUPED_MATMUL::ActiveType::GELU_TANH>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
                     break;
                 }
-                default:
-                {
+                default: {
                     VFDoDequant<false, QuantUtils::QuantMode::DEFAULT, true, GROUPED_MATMUL::ActiveType::INVALID_TYPE>(
                         dequantOutInUbAddr, l0cOutUbAddr, (__ubuf__ scaleType *)scaleUb_.GetPhyAddr(), nullptr,
                         (__ubuf__ biasType *)biasUb_.GetPhyAddr(), mSize, block_.params_.singleCoreN);
@@ -803,7 +791,8 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-template <bool isPertensor, QuantUtils::QuantMode aQuantMode, bool isBiasEpilogue, GROUPED_MATMUL::ActiveType activeType>
+template <bool isPertensor, QuantUtils::QuantMode aQuantMode, bool isBiasEpilogue,
+          GROUPED_MATMUL::ActiveType activeType>
 __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFDoDequant(
     __ubuf__ yType *dst, __ubuf__ l0cType *l0cOut, __ubuf__ scaleType *scale, __ubuf__ ptScaleType *perTokenScale,
     __ubuf__ biasType *bias, uint16_t mSize, uint16_t nSize)
@@ -815,113 +804,110 @@ __aicore__ inline void GQmmMixRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFD
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        MicroAPI::MaskReg maskN4B16 = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::ALL>();
+        Reg::MaskReg maskN4B16 = Reg::CreateMask<bfloat16_t, Reg::MaskPattern::ALL>();
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
-                MicroAPI::RegTensor<l0cType> l0cOutReg;
-                MicroAPI::RegTensor<scaleType> scaleReg;
-                MicroAPI::RegTensor<ptScaleType> perTokenScaleReg;
-                MicroAPI::RegTensor<biasType> biasReg;
-                MicroAPI::RegTensor<float> castSrcOutReg, castScaleReg, castScaleOneReg, mulScaleOutReg,
-                    mulPtScaleOutReg, castBiasReg, castBiasOneReg, addBiasOutReg, actOutReg;
-                MicroAPI::RegTensor<yType> castResultOutReg;
-                MicroAPI::MaskReg maskN = MicroAPI::UpdateMask<l0cType>(elementNum);
+                Reg::RegTensor<l0cType> l0cOutReg;
+                Reg::RegTensor<scaleType> scaleReg;
+                Reg::RegTensor<ptScaleType> perTokenScaleReg;
+                Reg::RegTensor<biasType> biasReg;
+                Reg::RegTensor<float> castSrcOutReg, castScaleReg, castScaleOneReg, mulScaleOutReg, mulPtScaleOutReg,
+                    castBiasReg, castBiasOneReg, addBiasOutReg, actOutReg;
+                Reg::RegTensor<yType> castResultOutReg;
+                Reg::MaskReg maskN = Reg::UpdateMask<l0cType>(elementNum);
                 // copy input from ub to register, addr of ub should align to 32B
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf;
-                MicroAPI::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
+                Reg::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
                 // cast l0cOut from int32 to float
                 if constexpr (IsSameType<l0cType, int32_t>::value) {
-                    MicroAPI::Cast<float, l0cType, ctInt322Fp32>(castSrcOutReg, l0cOutReg, maskN);
+                    Reg::Cast<float, l0cType, ctInt322Fp32>(castSrcOutReg, l0cOutReg, maskN);
                 } else {
                     castSrcOutReg = l0cOutReg;
                 }
                 // l0c_out * scale
                 if constexpr (isPertensor) {
-                    MicroAPI::Muls(mulScaleOutReg, castSrcOutReg, scaleScalar_, maskN);
+                    Reg::Muls(mulScaleOutReg, castSrcOutReg, scaleScalar_, maskN);
                 } else {
-                    MicroAPI::DataCopy(scaleReg, scale + vfBlockIdx * eleNumPerVf);
+                    Reg::DataCopy(scaleReg, scale + vfBlockIdx * eleNumPerVf);
                     if constexpr (!IsSameType<scaleType, float>::value) { // cast scale from bf16 to float
-                        MicroAPI::Cast<float, scaleType, ctHalf2Fp32Zero>(castScaleReg, scaleReg, maskN);
-                        MicroAPI::Cast<float, scaleType, ctHalf2Fp32One>(castScaleOneReg, scaleReg, maskN4B16);
-                        MicroAPI::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
+                        Reg::Cast<float, scaleType, ctHalf2Fp32Zero>(castScaleReg, scaleReg, maskN);
+                        Reg::Cast<float, scaleType, ctHalf2Fp32One>(castScaleOneReg, scaleReg, maskN4B16);
+                        Reg::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                     } else {
                         castScaleReg = scaleReg;
                     }
-                    MicroAPI::Mul(mulScaleOutReg, castSrcOutReg, castScaleReg, maskN);
+                    Reg::Mul(mulScaleOutReg, castSrcOutReg, castScaleReg, maskN);
                 }
                 // out * perTokenScale
                 if constexpr (aQuantMode == QuantUtils::QuantMode::PERTENSOR_MODE) {
-                    AscendC::MicroAPI::Muls(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleScalar_, maskN);
+                    AscendC::Reg::Muls(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleScalar_, maskN);
                 } else if constexpr (aQuantMode == QuantUtils::QuantMode::PERTOKEN_MODE) {
-                    MicroAPI::DataCopy<ptScaleType, MicroAPI::LoadDist::DIST_BRC_B32>(perTokenScaleReg,
-                                                                                      perTokenScale + mIdx);
-                    MicroAPI::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
+                    Reg::DataCopy<ptScaleType, Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg, perTokenScale + mIdx);
+                    Reg::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
                 } else {
                     mulPtScaleOutReg = mulScaleOutReg;
                 }
                 // out + bias
                 if constexpr (isBiasEpilogue) {
-                    MicroAPI::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
+                    Reg::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
                     // cast bias from bf16/fp16 to float
                     if constexpr (IsSameType<biasType, bfloat16_t>::value || IsSameType<biasType, half>::value) {
-                        MicroAPI::Cast<float, biasType, ctHalf2Fp32Zero>(castBiasReg, biasReg, maskN);
+                        Reg::Cast<float, biasType, ctHalf2Fp32Zero>(castBiasReg, biasReg, maskN);
                         // bf16/fp16共用maskN4B16
-                        MicroAPI::Cast<float, biasType, ctHalf2Fp32One>(castBiasOneReg, biasReg, maskN4B16);
-                        MicroAPI::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
+                        Reg::Cast<float, biasType, ctHalf2Fp32One>(castBiasOneReg, biasReg, maskN4B16);
+                        Reg::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
                     } else if constexpr (IsSameType<biasType, float>::value) {
                         castBiasReg = biasReg;
                     }
-                    MicroAPI::Add(addBiasOutReg, mulPtScaleOutReg, castBiasReg, maskN);
+                    Reg::Add(addBiasOutReg, mulPtScaleOutReg, castBiasReg, maskN);
                 } else {
                     addBiasOutReg = mulPtScaleOutReg;
                 }
                 // activation
                 if constexpr (activeType == GROUPED_MATMUL::ActiveType::FASTGELU) {
-                    AscendC::MicroAPI::RegTensor<float, AscendC::MicroAPI::RegTraitNumOne> denominator;
-                    AscendC::MicroAPI::Muls(denominator, addBiasOutReg, (float)-1.702, maskN);
-                    AscendC::MicroAPI::Exp(denominator, denominator, maskN);
-                    AscendC::MicroAPI::Adds(denominator, denominator, (float)1.0, maskN);
+                    AscendC::Reg::RegTensor<float, AscendC::Reg::RegTraitNumOne> denominator;
+                    AscendC::Reg::Muls(denominator, addBiasOutReg, (float)-1.702, maskN);
+                    AscendC::Reg::Exp(denominator, denominator, maskN);
+                    AscendC::Reg::Adds(denominator, denominator, (float)1.0, maskN);
                     // actOutReg = x / (Exp(-1.702 * x) + 1)
-                    AscendC::MicroAPI::Div<float, &QuantUtils::mode>(actOutReg, addBiasOutReg, denominator, maskN);
+                    AscendC::Reg::Div<float, &QuantUtils::mode>(actOutReg, addBiasOutReg, denominator, maskN);
                 } else if constexpr (activeType == GROUPED_MATMUL::ActiveType::SILU) {
-                    AscendC::MicroAPI::RegTensor<float, AscendC::MicroAPI::RegTraitNumOne> denominator;
-                    AscendC::MicroAPI::Muls(denominator, addBiasOutReg, (float)-1.0, maskN);
-                    AscendC::MicroAPI::Exp(denominator, denominator, maskN);
-                    AscendC::MicroAPI::Adds(denominator, denominator, (float)1.0, maskN);
+                    AscendC::Reg::RegTensor<float, AscendC::Reg::RegTraitNumOne> denominator;
+                    AscendC::Reg::Muls(denominator, addBiasOutReg, (float)-1.0, maskN);
+                    AscendC::Reg::Exp(denominator, denominator, maskN);
+                    AscendC::Reg::Adds(denominator, denominator, (float)1.0, maskN);
                     // actOutReg = x / (Exp(-1.0 * x) + 1)
-                    AscendC::MicroAPI::Div<float, &QuantUtils::mode>(actOutReg, addBiasOutReg, denominator, maskN);
+                    AscendC::Reg::Div<float, &QuantUtils::mode>(actOutReg, addBiasOutReg, denominator, maskN);
                 } else if constexpr (activeType == GROUPED_MATMUL::ActiveType::RELU) {
                     // x = (x >= 0) ? x : 0
-                    AscendC::MicroAPI::Relu(actOutReg, addBiasOutReg, maskN);
+                    AscendC::Reg::Relu(actOutReg, addBiasOutReg, maskN);
                 } else if constexpr (activeType == GROUPED_MATMUL::ActiveType::GELU_TANH) {
                     // current realization: x / (1 + e^(-1.5957691*0.044715(x/0.044715 + x^3)))
-                    MicroAPI::RegTensor<float, MicroAPI::RegTraitNumOne> vregInputSqr;
-                    MicroAPI::RegTensor<float, MicroAPI::RegTraitNumOne> vregInputCub;
-                    MicroAPI::Mul(vregInputSqr, addBiasOutReg, addBiasOutReg, maskN);
-                    MicroAPI::Mul(vregInputCub, vregInputSqr, addBiasOutReg, maskN);
-                    MicroAPI::Axpy(vregInputCub, addBiasOutReg, QuantUtils::TANH_APPROX_FACTOR, maskN);
-                    MicroAPI::Muls(vregInputCub, vregInputCub, QuantUtils::NEG_SQRT_EIGHT_OVER_PI, maskN);
-                    MicroAPI::Exp(vregInputCub, vregInputCub, maskN);
-                    MicroAPI::Adds(vregInputCub, vregInputCub, (float)1.0, maskN);
-                    MicroAPI::Div(actOutReg, addBiasOutReg, vregInputCub, maskN);
+                    Reg::RegTensor<float, Reg::RegTraitNumOne> vregInputSqr;
+                    Reg::RegTensor<float, Reg::RegTraitNumOne> vregInputCub;
+                    Reg::Mul(vregInputSqr, addBiasOutReg, addBiasOutReg, maskN);
+                    Reg::Mul(vregInputCub, vregInputSqr, addBiasOutReg, maskN);
+                    Reg::Axpy(vregInputCub, addBiasOutReg, QuantUtils::TANH_APPROX_FACTOR, maskN);
+                    Reg::Muls(vregInputCub, vregInputCub, QuantUtils::NEG_SQRT_EIGHT_OVER_PI, maskN);
+                    Reg::Exp(vregInputCub, vregInputCub, maskN);
+                    Reg::Adds(vregInputCub, vregInputCub, (float)1.0, maskN);
+                    Reg::Div(actOutReg, addBiasOutReg, vregInputCub, maskN);
                 } else {
                     actOutReg = addBiasOutReg;
                 }
                 // cast dequant result from float to fp16/bf16
                 if constexpr (!IsSameType<yType, float>::value) {
-                    MicroAPI::Cast<yType, float, ctFp322Half>(castResultOutReg, actOutReg, maskN);
+                    Reg::Cast<yType, float, ctFp322Half>(castResultOutReg, actOutReg, maskN);
                 } else {
                     castResultOutReg = actOutReg;
                 }
                 // copy out from register to ub
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf;
                 if constexpr (IsSameType<yType, float>::value) {
-                    MicroAPI::DataCopy<yType, MicroAPI::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, castResultOutReg,
-                                                                                  maskN);
+                    Reg::DataCopy<yType, Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset, castResultOutReg, maskN);
                 } else {
-                    MicroAPI::DataCopy<yType, MicroAPI::StoreDist::DIST_PACK_B32>(dst + dstUbOffset, castResultOutReg,
-                                                                                  maskN);
+                    Reg::DataCopy<yType, Reg::StoreDist::DIST_PACK_B32>(dst + dstUbOffset, castResultOutReg, maskN);
                 }
             }
         }

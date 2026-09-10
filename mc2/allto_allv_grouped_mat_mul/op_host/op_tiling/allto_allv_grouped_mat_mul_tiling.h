@@ -27,57 +27,65 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling.h"
+#include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "allto_allv_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
-#include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 
 namespace optiling {
-class AlltoAllvGmmTilingStruct : public AlltoAllvGmmTilingBase
-{
+class AlltoAllvGmmTilingStruct : public AlltoAllvGmmTilingBase {
 public:
-    explicit AlltoAllvGmmTilingStruct(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context){};
+    explicit AlltoAllvGmmTilingStruct(gert::TilingContext *context)
+        : AlltoAllvGmmTilingBase(context) {};
 
 protected:
     uint64_t GetTilingKey() const override;
     bool IsCapable() override;
 };
 
-class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase
-{
+class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase {
     friend class AlltoAllvGmmTilingHelper;
+
 public:
-    explicit AlltoAllvGmmTiling(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context) {}
+    explicit AlltoAllvGmmTiling(gert::TilingContext *context)
+        : AlltoAllvGmmTilingBase(context)
+    {}
 
-    AlltoAllvGmmTilingData* tilingData;
+    AlltoAllvGmmTilingData *tilingData;
 
-    ge::graphStatus Init(gert::TilingContext* context);
-    ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
+    ge::graphStatus Init(gert::TilingContext *context);
+    ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
     virtual std::vector<int64_t> GetEpWorldSizeOptional() const = 0;
     virtual bool NeedToCheckCounts() const = 0;
 
 protected:
-    bool IsCapable() override { return true; }
-    ge::graphStatus DoOpTiling() override { return ge::GRAPH_SUCCESS; }
-    ge::graphStatus GetContextAttr(const gert::TilingContext* context);
-    ge::graphStatus GetShapeAndFormat(const gert::TilingContext* context);
-    ge::graphStatus CheckMKN(const gert::TilingContext* context);
-    ge::graphStatus CheckShapeSize(const gert::TilingContext* context) const;
-    ge::graphStatus CheckAttrsShapeSize(const gert::TilingContext* context) const;
-    ge::graphStatus CheckAttrsShapeRelation(const gert::TilingContext* context) const;
-    ge::graphStatus CheckSendRecvDataVolumn(const gert::TilingContext* context) const;
-    ge::graphStatus CheckShapeRelation(const gert::TilingContext* context) const;
-    ge::graphStatus CheckShapeDims(const gert::TilingContext* context);
-    ge::graphStatus CheckDType(const gert::TilingContext* context) const;
-    ge::graphStatus CheckMmShapeDims(const gert::TilingContext* context) const;
+    bool IsCapable() override
+    {
+        return true;
+    }
+    ge::graphStatus DoOpTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+    ge::graphStatus GetContextAttr(const gert::TilingContext *context);
+    ge::graphStatus GetShapeAndFormat(const gert::TilingContext *context);
+    ge::graphStatus CheckMKN(const gert::TilingContext *context);
+    ge::graphStatus CheckShapeSize(const gert::TilingContext *context) const;
+    ge::graphStatus CheckAttrsShapeSize(const gert::TilingContext *context) const;
+    ge::graphStatus CheckAttrsShapeRelation(const gert::TilingContext *context) const;
+    ge::graphStatus CheckSendRecvDataVolumn(const gert::TilingContext *context) const;
+    ge::graphStatus CheckShapeRelation(const gert::TilingContext *context) const;
+    ge::graphStatus CheckShapeDims(const gert::TilingContext *context);
+    ge::graphStatus CheckDType(const gert::TilingContext *context) const;
+    ge::graphStatus CheckMmShapeDims(const gert::TilingContext *context) const;
     ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
-    ge::graphStatus SetHcclTiling(const gert::TilingContext* context) const;
+    ge::graphStatus SetHcclTiling(const gert::TilingContext *context) const;
 
-    ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
+    ge::graphStatus DoAiCoreTiling(const gert::TilingContext *context);
     uint64_t GetTilingKey() const override;
-    ge::graphStatus setNumBlocks(gert::TilingContext* context);
+    ge::graphStatus setNumBlocks(gert::TilingContext *context);
 
 private:
     int32_t maxM_ = 0;
@@ -98,18 +106,33 @@ private:
 
 class AlltoAllvGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
 public:
-    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling& parent)
-        : Mc2GroupedQbmmTiling(parent.context_), parent_(parent) {}
-    const Mc2GroupedMatmulTilingData::GMMQuantTilingData& GetAlltoAllvQuantHelperData() const { return tilingData_; }
-    bool AnalyzeAttrs() override { return true; }
-    bool AnalyzeDtype() override { return true; }
-    bool AnalyzeInputs() override { return true; }
+    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling &parent)
+        : Mc2GroupedQbmmTiling(parent.context_),
+          parent_(parent)
+    {}
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetAlltoAllvQuantHelperData() const
+    {
+        return tilingData_;
+    }
+    bool AnalyzeAttrs() override
+    {
+        return true;
+    }
+    bool AnalyzeDtype() override
+    {
+        return true;
+    }
+    bool AnalyzeInputs() override
+    {
+        return true;
+    }
     void Reset() override {}
-    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-                                    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype);
+    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB, ge::DataType aDtype,
+                                   ge::DataType bDtype, ge::DataType cDtype, uint32_t groupNum);
     ge::graphStatus Process();
+
 private:
-    AlltoAllvGmmTiling& parent_;
+    AlltoAllvGmmTiling &parent_;
 };
 } // namespace optiling
 #endif

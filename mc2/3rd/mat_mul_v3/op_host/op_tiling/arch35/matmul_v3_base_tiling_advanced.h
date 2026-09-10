@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_base_tiling_advanced.h
  * \brief
@@ -16,7 +15,7 @@
 #ifndef __OP_HOST_MATMUL_V3_BASE_TILING_ADVANCED_H__
 #define __OP_HOST_MATMUL_V3_BASE_TILING_ADVANCED_H__
 
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 #include "matmul_base_tiling.h"
 #include "matmul_v3_common_advanced.h"
 #include "matmul_v3_compile_info_advanced.h"
@@ -44,13 +43,13 @@ protected:
             OP_LOGE_WITH_INVALID_INPUT("Mc2MatMulV3", "context");
             return ge::GRAPH_FAILED;
         }
-        auto isValidDimValue = [](int64_t dim) -> bool {
-            return (dim > 0) && (dim <= INT32_MAX);
-        };
+        auto isValidDimValue = [](int64_t dim) -> bool { return (dim > 0) && (dim <= INT32_MAX); };
         if (!isValidDimValue(args_.mValue) || !isValidDimValue(args_.kValue) || !isValidDimValue(args_.nValue)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args_.opName, "m, k and n",
-                (std::to_string(args_.mValue) + ", " + std::to_string(args_.kValue) + " and " + std::to_string(args_.nValue)).c_str(),
-                "The value of m, k and n must be positive and not exceed INT32_MAX.");
+                                                  (std::to_string(args_.mValue) + ", " + std::to_string(args_.kValue) +
+                                                   " and " + std::to_string(args_.nValue))
+                                                      .c_str(),
+                                                  "The value of m, k and n must be positive and not exceed INT32_MAX.");
             return ge::GRAPH_FAILED;
         }
         if (compileInfo_.aicNum == 0UL) {
@@ -71,7 +70,7 @@ protected:
 
     std::vector<size_t> GetWorkspaceSize() const override
     {
-        std::vector<size_t> workspaceSize{ RPC_WORKSIZE * MB_SIZE };
+        std::vector<size_t> workspaceSize{RPC_WORKSIZE * MB_SIZE};
         return workspaceSize; // 20MB workspace for RPC
     };
 
@@ -139,19 +138,19 @@ protected:
         context_->SetTilingKey(tiling.tilingKey);
         if (tiling.workspaceSize.size() > 0) {
             size_t *workspaces = context_->GetWorkspaceSizes(1); // set workapce
-            OP_TILING_CHECK(workspaces == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"), return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(workspaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"),
+                            return ge::GRAPH_FAILED);
             workspaces[0] = tiling.workspaceSize[0];
         }
         return ge::GRAPH_SUCCESS;
     };
 
-    ge::graphStatus SetTilingData(const Mc2TilingResult& tiling) const
+    ge::graphStatus SetTilingData(const Mc2TilingResult &tiling) const
     {
         if ((strcmp(context_->GetNodeType(), "Mc2MatMulV3") == 0) && (tiling.tilingDataSize <= TILINGDATA_OFFSET) &&
             (!CheckBasicApiTilingKey(tiling.tilingKey)) && (!CheckIterBatchBasicApi(tiling.tilingKey))) {
             for (uint64_t i = 0; i < TILINGDATA_SPLIT_NUM; ++i) {
-                errno_t ret = memcpy_s((uint8_t*)context_->GetRawTilingData()->GetData() + i * TILINGDATA_OFFSET,
+                errno_t ret = memcpy_s((uint8_t *)context_->GetRawTilingData()->GetData() + i * TILINGDATA_OFFSET,
                                        context_->GetRawTilingData()->GetCapacity() - i * TILINGDATA_OFFSET,
                                        tiling.tilingData, tiling.tilingDataSize);
                 if (ret != EOK) {
@@ -192,10 +191,8 @@ protected:
                                dtypeMap_.at(args_.biasType));
             }
         } catch (const std::out_of_range &e) {
-            OP_LOGE(args_.opName, "Mc2MatMulV3 Set Type Failed! %d, %d, %d, %d",
-                    static_cast<int32_t>(args_.aType),
-                    static_cast<int32_t>(args_.bType),
-                    static_cast<int32_t>(args_.cType),
+            OP_LOGE(args_.opName, "Mc2MatMulV3 Set Type Failed! %d, %d, %d, %d", static_cast<int32_t>(args_.aType),
+                    static_cast<int32_t>(args_.bType), static_cast<int32_t>(args_.cType),
                     static_cast<int32_t>(args_.biasType));
             return ge::GRAPH_FAILED;
         }
@@ -332,11 +329,11 @@ protected:
 
 private:
     const std::map<ge::DataType, matmul_tiling::DataType> dtypeMap_ = {
-        { ge::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16 },
-        { ge::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT },
-        { ge::DT_BF16, matmul_tiling::DataType::DT_BF16 },
+        {ge::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16},
+        {ge::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT},
+        {ge::DT_BF16, matmul_tiling::DataType::DT_BF16},
     };
 };
-} // namespace mc2_matmul_v3
-}
+} // namespace mc2_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_BASE_TILING_ADVANCED_H__

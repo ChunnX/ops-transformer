@@ -16,16 +16,18 @@
 #ifndef FLASH_ATTN_TILING_DATA_H_
 #define FLASH_ATTN_TILING_DATA_H_
 
-
 namespace optiling {
-constexpr uint32_t FA_AIC_CORE_NUM = 36;
-constexpr uint32_t FA_AIV_CORE_NUM = 72;
-
 // AICPU metadata format: 16 fields per core (FA and FD both)
-constexpr uint32_t FLASH_ATTN_METADATA_SIZE = 16;
-constexpr uint32_t FA_FD_METADATA_SIZE = 16;
+constexpr uint32_t METADATA_STRIDE = 16U;
+static constexpr uint32_t METADATA_HEADER_OFFSET = METADATA_STRIDE * sizeof(uint32_t);
 
 // FA Metadata Index Definitions (0-based, matching AICPU flash_attn_metadata.h)
+// HEAD
+constexpr uint32_t METADATA_HEADER_SECTION_NUM_INDEX = 0;
+constexpr uint32_t METADATA_HEADER_HAS_FD_INDEX = 1;
+constexpr uint32_t METADATA_HEADER_AIC_NUM_INDEX = 4;
+constexpr uint32_t METADATA_HEADER_AIV_NUM_INDEX = 5;
+
 // No CORE_ENABLE field in AICPU format; inactive cores have all-zero data.
 constexpr uint32_t FLASH_ATTN_BN2_START_INDEX = 0;
 constexpr uint32_t FLASH_ATTN_M_START_INDEX = 1;
@@ -62,11 +64,15 @@ struct FlashAttnBaseParams {
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
-    uint8_t isKvContinuous;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;
     bool needInitOutput;
+    // kvcache non-contiguous strides (valid only for tensor v2 view inputs)
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct FlashAttnAttenMaskParams {
@@ -95,11 +101,6 @@ struct FlashAttnS1OuterSplitCoreParams {
     uint64_t totalSize;
 };
 
-struct FlashAttnMetaData {
-    uint32_t FAMetadata[FA_AIC_CORE_NUM][FLASH_ATTN_METADATA_SIZE];
-    uint32_t FDMetadata[FA_AIV_CORE_NUM][FA_FD_METADATA_SIZE];
-};
-
 class FlashAttnNoQuantTilingArch35 {
 public:
     FlashAttnBaseParams flashAttnBaseParams;
@@ -112,7 +113,6 @@ public:
 class FlashAttnTilingData {
 public:
     FlashAttnNoQuantTilingArch35 baseTiling;
-    FlashAttnMetaData flashAttnMetaData;
 };
 
 } // namespace optiling

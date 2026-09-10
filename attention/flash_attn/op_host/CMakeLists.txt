@@ -9,9 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
-set(FLASH_ATTN_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for this operator")
-set(FLASH_ATTN_INNER_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging inner header for this operator")
-
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         flash_attn_def.cpp
@@ -20,7 +17,7 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(flash_attn_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for flash_attn")
+    set(flash_attn_depends attention/common CACHE INTERNAL "Dependencies for flash_attn")
     add_ops_compile_options(
         OP_NAME FlashAttn
         COMPUTE_UNIT Ascend950PR_9599
@@ -28,7 +25,7 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 endif()
 
-file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES 
+file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
     ../op_host/checkers/*checker*.cpp
 )
 
@@ -50,6 +47,7 @@ else()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ${ARCH35_CHECKER_SRC_FILES}
     flash_attn_tiling_info_parser.cpp
+    ../../common/op_host/fia_tiling_shape.cpp
     )
     add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出

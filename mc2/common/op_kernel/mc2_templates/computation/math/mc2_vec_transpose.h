@@ -36,7 +36,8 @@ struct MC2TransposeContext {
 template <typename transposeDataType>
 class MC2VecTranspose {
 public:
-    __aicore__ inline MC2VecTranspose(TPipe *tPipe) : tPipe_(tPipe){};
+    __aicore__ inline MC2VecTranspose(TPipe *tPipe)
+        : tPipe_(tPipe){};
     __aicore__ inline MC2TransposeContext *GetContextPtr();
     __aicore__ inline void Init() {};
     __aicore__ inline void Process(uint32_t taskIndex);

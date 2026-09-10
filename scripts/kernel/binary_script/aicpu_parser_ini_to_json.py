@@ -54,8 +54,8 @@ def parse_ini_to_obj(ini_file, ops_info):
             op = {}
             ops_info[op_name] = op
             continue
-        key1 = line[:line.index("=")].strip()
-        key2 = line[line.index("=") + 1:].strip()
+        key1 = line[: line.index("=")].strip()
+        key2 = line[line.index("=") + 1 :].strip()
         key1_0, key1_1 = key1.split(".", 1)
         if key1_0 not in op:
             op[key1_0] = {}
@@ -101,11 +101,15 @@ def check_op_info_extend_fields(op_name, op_info):
             is_valid = False
     ops_flag = op_info.get("opsFlag")
     if ops_flag is not None and ops_flag not in VALID_OPS_FLAGS:
-        log.error(f"op: {op_name} opsFlag not valid, valid key:[OPS_FLAG_OPEN, OPS_FLAG_CLOSE]")
+        log.error(
+            f"op: {op_name} opsFlag not valid, valid key:[OPS_FLAG_OPEN, OPS_FLAG_CLOSE]"
+        )
         is_valid = False
     sub_type = op_info.get("subTypeOfInferShape")
     if sub_type is not None and sub_type not in VALID_SUB_TYPES:
-        log.error(f"op: {op_name} subTypeOfInferShape not valid, valid key:[1, 2, 3, 4]")
+        log.error(
+            f"op: {op_name} subTypeOfInferShape not valid, valid key:[1, 2, 3, 4]"
+        )
         is_valid = False
     kernel_so = op_info.get("kernelSo")
     if kernel_so is not None and not kernel_so.endswith(".so"):
@@ -122,9 +126,13 @@ def check_op_info(ops_info):
             continue
         for op_info_key, op_info_value in op.items():
             if is_io_key(op_info_key):
-                is_valid = check_io_info(op_name, op_info_key, op_info_value) and is_valid
+                is_valid = (
+                    check_io_info(op_name, op_info_key, op_info_value) and is_valid
+                )
             if op_info_key == "opInfo":
-                is_valid = check_op_info_extend_fields(op_name, op_info_value) and is_valid
+                is_valid = (
+                    check_op_info_extend_fields(op_name, op_info_value) and is_valid
+                )
     log.info("==============check valid for ops info end================")
     return is_valid
 
@@ -132,8 +140,13 @@ def check_op_info(ops_info):
 def write_json_file(ops_info, json_file_path):
     json_file_real_path = os.path.realpath(json_file_path)
     with open(json_file_real_path, "w", encoding="utf-8") as file_handle:
-        os.chmod(json_file_real_path, stat.S_IWGRP + stat.S_IWUSR + stat.S_IRGRP + stat.S_IRUSR)
-        json.dump(ops_info, file_handle, sort_keys=True, indent=4, separators=(",", ":"))
+        os.chmod(
+            json_file_real_path,
+            stat.S_IWGRP + stat.S_IWUSR + stat.S_IRGRP + stat.S_IRUSR,
+        )
+        json.dump(
+            ops_info, file_handle, sort_keys=True, indent=4, separators=(",", ":")
+        )
     log.info("Compile op info cfg successfully.")
 
 

@@ -20,14 +20,14 @@ namespace Mc2MatmulHelper {
 
 constexpr int32_t BASEM_ALIGN_SIZE = 16;
 
-void Mc2MatmulTilingCfg::SetMatMulV3TilingData(Mc2MatMulV3TilingData& tilingData)
+void Mc2MatmulTilingCfg::SetMatMulV3TilingData(Mc2MatMulV3TilingData &tilingData)
 {
     mc2MmV3TilingData_ = &tilingData;
 }
 
-void Mc2MatmulTilingCfg::Update(const optiling::Mc2TilingResult& result)
+void Mc2MatmulTilingCfg::Update(const optiling::Mc2TilingResult &result)
 {
-    mmv3TilingData_ = static_cast<Mc2MatMulV3TilingData*>(result.tilingData);
+    mmv3TilingData_ = static_cast<Mc2MatMulV3TilingData *>(result.tilingData);
 
     if ((mmv3TilingData_ == nullptr) || (mc2MmV3TilingData_ == nullptr)) {
         OP_LOGE_WITH_INVALID_INPUT("Mc2MatmulTilingCfg", "mc2MmV3TilingData_, mmv3TilingData_");
@@ -92,8 +92,8 @@ void Mc2MatmulTilingCfg::SetTailCntAndType() const
 {
     mc2MmV3TilingData_->kTailCnt = mmv3TilingData_->kTailCnt;
     if (baseMLimit_ < 0) {
-        OP_LOGE_FOR_INVALID_VALUE("Mc2MatmulTilingCfg", "baseMLimit_",
-            std::to_string(baseMLimit_).c_str(), "should be >= 0");
+        OP_LOGE_FOR_INVALID_VALUE("Mc2MatmulTilingCfg", "baseMLimit_", std::to_string(baseMLimit_).c_str(),
+                                  "should be >= 0");
         return;
     } else if (baseMLimit_ == 0) {
         mc2MmV3TilingData_->mTailCnt = mmv3TilingData_->mTailCnt;
@@ -112,13 +112,14 @@ void Mc2MatmulTilingCfg::SetTailCntAndType() const
     int64_t nValue = static_cast<int64_t>(mc2MmV3TilingData_->tCubeTiling.N);
     int64_t coreNum = static_cast<int64_t>(mc2MmV3TilingData_->tCubeTiling.usedCoreNum);
     if ((baseM == 0) || (baseN == 0) || (coreNum == 0)) {
-        OP_LOGE_FOR_INVALID_VALUE("Mc2MatmulTilingCfg", "baseM, baseN, coreNum",
+        OP_LOGE_FOR_INVALID_VALUE(
+            "Mc2MatmulTilingCfg", "baseM, baseN, coreNum",
             (std::to_string(baseM) + ", " + std::to_string(baseN) + ", " + std::to_string(coreNum)).c_str(),
             "all should be non-zero");
         return;
     }
-    int64_t mCnt = static_cast<int64_t>(((static_cast<int64_t>(baseMLimit_) + baseM - 1) / baseM) * 
-                   static_cast<int64_t>(rankDim_) * static_cast<int64_t>(commCnt_));
+    int64_t mCnt = static_cast<int64_t>(((static_cast<int64_t>(baseMLimit_) + baseM - 1) / baseM) *
+                                        static_cast<int64_t>(rankDim_) * static_cast<int64_t>(commCnt_));
     int64_t nCnt = static_cast<int64_t>((nValue + baseN - 1) / baseN);
     int64_t mnCnt = static_cast<int64_t>(mCnt * nCnt);
     int64_t tailCnt = static_cast<int64_t>(mnCnt % coreNum);
@@ -148,8 +149,8 @@ void Mc2MatmulTilingCfg::SetTailCntAndType() const
 void Mc2MatmulTilingCfg::DealBaseBlock() const
 {
     if (baseMLimit_ < 0) {
-        OP_LOGE_FOR_INVALID_VALUE("Mc2MatmulTilingCfg", "baseMLimit_",
-            std::to_string(baseMLimit_).c_str(), "should be >= 0");
+        OP_LOGE_FOR_INVALID_VALUE("Mc2MatmulTilingCfg", "baseMLimit_", std::to_string(baseMLimit_).c_str(),
+                                  "should be >= 0");
         return;
     } else if ((baseMLimit_ > 0) && (mmv3TilingData_->tCubeTiling.baseM > baseMLimit_)) {
         mc2MmV3TilingData_->tCubeTiling.singleCoreM = baseMLimit_;
@@ -175,4 +176,4 @@ void Mc2MatmulTilingCfg::SetCommCnt(uint64_t commCnt)
     commCnt_ = commCnt;
 }
 
-}  // namespace Mc2MatmulHelper
+} // namespace Mc2MatmulHelper

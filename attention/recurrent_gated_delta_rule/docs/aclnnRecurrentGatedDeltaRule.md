@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -35,7 +45,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(
@@ -135,10 +145,10 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>输入&输出</td>
       <td>状态矩阵，公式中的S。</td>
       <td>不支持空Tensor。</td>
-      <td>BFLOAT16</td>
+      <td>BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>(BlockNum, Nv, Dv, Dk)</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>actualSeqLengths</td>
@@ -222,13 +232,13 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
     </tr>
   </tbody>
   </table>
-  
+
   其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key向量的维度，$D_v$ 表示value向量的维度。
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
   <col style="width: 250px">
@@ -303,13 +313,14 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnRecurrentGatedDeltaRule默认确定性实现。
 - 输入shape大小需满足约束：$0 < L_i \le 8$，$0 < N_k \le 256$，$N_k \le N_v \le 256$，$N_v$ % $N_k == 0$，$0 < D_k \le 512$，$0 < D_v \le 512$，$0 < T$，$0 < B$，$T \le BlockNum$。
+- stateRef仅支持0轴、1轴非连续Tensor。
 - 以下约束由于算子无法获取tensor中具体数值，故需用户保证，算子不校验：
   - $ssmStateIndices[i] < BlockNum$
   - $0 < actualSeqLengths[i] \le 8$，且$actualSeqLengths[i]$累加和等于$T$
@@ -322,11 +333,12 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>
 #include <vector>
+#include <cstring>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_recurrent_gated_delta_rule.h"
 
@@ -351,10 +363,10 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
+void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char *name)
 {
     auto size = GetShapeSize(shape);
-    std::vector<aclFloat16> resultData(size, 0);
+    std::vector<uint16_t> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
                            size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
@@ -362,7 +374,10 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
         if (i >= 5) { // print the first five data
             break;
         }
-        LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
+        float result = 0.0f;
+        uint32_t val = static_cast<uint32_t>(resultData[i]) << 16U;
+        std::memcpy(&result, &val, sizeof(result));
+        LOG_PRINT("%s result[%ld] is: %f\n", name, i, result);
     }
 }
 
@@ -415,7 +430,7 @@ int main()
     void *queryDeviceAddr = nullptr;
     void *keyDeviceAddr = nullptr;
     void *valueDeviceAddr = nullptr;
-    void *gamaDeviceAddr = nullptr;
+    void *gDeviceAddr = nullptr;
     void *betaDeviceAddr = nullptr;
     void *stateRefDeviceAddr = nullptr;
     void *actSeqLenDeviceAddr = nullptr;
@@ -426,8 +441,8 @@ int main()
     aclTensor *query = nullptr;
     aclTensor *key = nullptr;
     aclTensor *value = nullptr;
-    aclTensor *gama = nullptr;
-    aclTensor *gamak = nullptr;
+    aclTensor *g = nullptr;
+    aclTensor *gk = nullptr;
     aclTensor *beta = nullptr;
     aclTensor *stateRef = nullptr;
     aclTensor *actSeqLen = nullptr;
@@ -447,15 +462,17 @@ int main()
     std::vector<int64_t> stateShape = {batchSize * mtp, headVNum, dimV, dimK};
     std::vector<int64_t> qkShape = {batchSize * mtp, headKNum, dimK};
     std::vector<int64_t> vShape = {batchSize * mtp, headVNum, dimV};
-    std::vector<int64_t> gamaShape = {batchSize * mtp, headVNum};
+    std::vector<int64_t> gShape = {batchSize * mtp, headVNum};
+    std::vector<int64_t> gkShape = {batchSize * mtp, headVNum, dimK};
     std::vector<int64_t> actSeqLenShape = {batchSize};
     std::vector<int64_t> ssmStaIdShape = {batchSize * mtp};
     std::vector<float> stateRefHostData(GetShapeSize(stateShape));
     std::vector<float> queryHostData(GetShapeSize(qkShape));
     std::vector<float> keyHostData(GetShapeSize(qkShape));
     std::vector<float> valueHostData(GetShapeSize(vShape));
-    std::vector<float> gamaHostData(GetShapeSize(gamaShape));
-    std::vector<float> betaHostData(GetShapeSize(gamaShape));
+    std::vector<float> gHostData(GetShapeSize(gShape));
+    std::vector<float> gkHostData(GetShapeSize(gkShape));
+    std::vector<float> betaHostData(GetShapeSize(gShape));
     std::vector<int32_t> actSeqLenHostData(batchSize, mtp);
     std::vector<int32_t> ssmStaIdHostData(batchSize * mtp);
     std::vector<int32_t> numAccTokHostData(batchSize, 1);
@@ -470,6 +487,12 @@ int main()
     }
     for (int i = 0; i < valueHostData.size(); i++) {
         valueHostData[i] = 0.5;
+    }
+    for (int i = 0; i < gHostData.size(); i++) {
+        gHostData[i] = -0.5;
+    }
+    for (int i = 0; i < gkHostData.size(); i++) {
+        gkHostData[i] = -0.5;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
         betaHostData[i] = 0.5;
@@ -488,9 +511,11 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(valueHostData, vShape, &valueDeviceAddr, aclDataType::ACL_BF16, &value);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gamaHostData, gamaShape, &gamaDeviceAddr, aclDataType::ACL_FLOAT, &gama);
+    ret = CreateAclTensor(gHostData, gShape, &gDeviceAddr, aclDataType::ACL_FLOAT, &g);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(betaHostData, gamaShape, &betaDeviceAddr, aclDataType::ACL_BF16, &beta);
+    ret = CreateAclTensor(gkHostData, gkShape, &gkDeviceAddr, aclDataType::ACL_FLOAT, &gk);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(betaHostData, gShape, &betaDeviceAddr, aclDataType::ACL_BF16, &beta);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(actSeqLenHostData, actSeqLenShape, &actSeqLenDeviceAddr, aclDataType::ACL_INT32, &actSeqLen);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -506,8 +531,8 @@ int main()
     float scale = 1.0;
     aclOpExecutor *executor;
     // 调用aclnnRecurrentGatedDeltaRuleGetWorkspaceSize第一段接口
-    ret = aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, stateRef, actSeqLen, ssmStaId, gama,
-                                                       gamak, numAccTok, scale, attnOut, &workspaceSize, &executor);
+    ret = aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, stateRef, actSeqLen, ssmStaId, g,
+                                                       gk, numAccTok, scale, attnOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRuleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -527,14 +552,15 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    PrintOutResult(stateShape, &stateRefDeviceAddr);
-    PrintOutResult(vShape, &attnOutDeviceAddr);
+    PrintOutResult(stateShape, &stateRefDeviceAddr, "finalState");
+    PrintOutResult(vShape, &attnOutDeviceAddr, "out");
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(query);
     aclDestroyTensor(key);
     aclDestroyTensor(value);
-    aclDestroyTensor(gama);
+    aclDestroyTensor(g);
+    aclDestroyTensor(gk);
     aclDestroyTensor(beta);
     aclDestroyTensor(stateRef);
     aclDestroyTensor(actSeqLen);
@@ -543,16 +569,17 @@ int main()
     aclDestroyTensor(attnOut);
 
     // 7. 释放device资源
-    aclrtFree(query);
-    aclrtFree(key);
-    aclrtFree(value);
-    aclrtFree(gama);
-    aclrtFree(beta);
-    aclrtFree(stateRef);
-    aclrtFree(actSeqLen);
-    aclrtFree(ssmStaId);
-    aclrtFree(numAccTok);
-    aclrtFree(attnOut);
+    aclrtFree(queryDeviceAddr);
+    aclrtFree(keyDeviceAddr);
+    aclrtFree(valueDeviceAddr);
+    aclrtFree(gDeviceAddr);
+    aclrtFree(gkDeviceAddr);
+    aclrtFree(betaDeviceAddr);
+    aclrtFree(stateRefDeviceAddr);
+    aclrtFree(actSeqLenDeviceAddr);
+    aclrtFree(ssmStaIdDeviceAddr);
+    aclrtFree(numAccTokDeviceAddr);
+    aclrtFree(attnOutDeviceAddr);
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }

@@ -45,21 +45,21 @@ constexpr size_t STATE_DIM_NUM = 4;
 
 struct RecurrentGatedDeltaRuleParams {
     // madatory
-    const aclTensor *query {nullptr};
-    const aclTensor *key {nullptr};
-    const aclTensor *value {nullptr};
-    const aclTensor *beta {nullptr};
-    const aclTensor *state {nullptr};
-    const aclTensor *actual_seq_lengths {nullptr};
-    const aclTensor *ssm_state_indices {nullptr};
+    const aclTensor *query{nullptr};
+    const aclTensor *key{nullptr};
+    const aclTensor *value{nullptr};
+    const aclTensor *beta{nullptr};
+    const aclTensor *state{nullptr};
+    const aclTensor *actual_seq_lengths{nullptr};
+    const aclTensor *ssm_state_indices{nullptr};
     // optional
-    const aclTensor *g {nullptr};
-    const aclTensor *gk {nullptr};
-    const aclTensor *num_accepted_tokens {nullptr};
+    const aclTensor *g{nullptr};
+    const aclTensor *gk{nullptr};
+    const aclTensor *num_accepted_tokens{nullptr};
     // attrs
-    float scale {1.0f};
-    //output
-    const aclTensor *out {nullptr};
+    float scale{1.0f};
+    // output
+    const aclTensor *out{nullptr};
 };
 
 // support dtype
@@ -119,7 +119,7 @@ static aclnnStatus CheckParams(RecurrentGatedDeltaRuleParams &params)
     // 检查输入参数是否在支持的数据类型范围内
     CHECK_RET(CheckDtypeVaild(params), ACLNN_ERR_PARAM_INVALID);
 
-    OP_LOGD("RecurrentGatedDeltaRule check params sucess.");
+    OP_LOGD("RecurrentGatedDeltaRule check params success.");
 
     return ACLNN_SUCCESS;
 }
@@ -154,7 +154,9 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    RecurrentGatedDeltaRuleParams params {query, key, value, beta, stateRef, actualSeqLengths, ssmStateIndices, g, gk, numAcceptedTokens,scaleValue, out};
+    RecurrentGatedDeltaRuleParams params{
+        query,      key, value, beta, stateRef, actualSeqLengths, ssmStateIndices, g, gk, numAcceptedTokens,
+        scaleValue, out};
 
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckParams(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -178,13 +180,15 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
     }
 
     // stateRef非连续，使用CreateView将设置gert::TensorV2的stride信息
+    op::Shape stateStorageShape;
+    op::Strides stateViewStrides;
+    bool stateNonContiguous = false;
     if (!IsContiguous(stateRef)) {
-        stateRef = uniqueExecutor.get()->CreateView(
-            stateRef,
-            stateRef->GetViewShape(),
-            stateRef->GetStorageShape(),
-            stateRef->GetViewStrides(),
-            stateRef->GetViewOffset());
+        stateStorageShape = stateRef->GetStorageShape();
+        stateViewStrides = stateRef->GetViewStrides();
+        stateNonContiguous = true;
+        stateRef = uniqueExecutor.get()->CreateView(stateRef, stateRef->GetViewShape(), stateRef->GetStorageShape(),
+                                                    stateRef->GetViewStrides(), stateRef->GetViewOffset());
     }
 
     // 调用l0接口
@@ -193,6 +197,18 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
                                       numAcceptedTokens, scaleValue, uniqueExecutor.get());
     if (outRet == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
+    }
+
+    // l0层InferShape/Launcher链路会按连续布局重置输出tensor的stride与storageShape，对于stateRef这类既作输入又作输出的
+    // 非连续tensor，launch阶段按重置后的描述符上报内存长度(退化为numel*size)，而kernel按真实stride写出，
+    // 会导致mssanitizer等按描述符校验内存边界的工具误报越界。此处恢复原始stride与storageShape，保持描述符与真实存储一致。
+    if (stateNonContiguous) {
+        if (stateRef->GetViewStrides() != stateViewStrides) {
+            stateRef->SetViewStrides(stateViewStrides);
+        }
+        if (stateRef->GetStorageShape() != stateStorageShape) {
+            stateRef->SetStorageShape(stateStorageShape);
+        }
     }
 
     auto ViewCopyResult = l0op::ViewCopy(outRet, out, uniqueExecutor.get());

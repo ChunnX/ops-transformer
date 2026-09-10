@@ -11,11 +11,8 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import torch
-import numpy as np
-import collections
 import torch.distributed as dist
 import torch_npu
-import os
 
 import ctypes
 from atk.configs.dataset_config import InputDataset
@@ -26,6 +23,7 @@ from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 from atk.tasks.dataset.base_dataset import OpsDataset
 from atk.tasks.backends.lib_interface.acl_wrapper import AclTensor
 from atk.tasks.backends.lib_interface.acl_wrapper import AclFormat
+
 
 @register("function_allgather_matmul_v2")
 class AllGatherMatmulV2(BaseApi):
@@ -43,8 +41,8 @@ class AllGatherMatmulV2(BaseApi):
         output_dtype = input_data.kwargs["outputDtype"]
         use_int64 = input_data.kwargs["useInt64"]
         is_format_nz = input_data.kwargs["isFormatNz"]
-        comm_mode = input_data.kwargs['commMode']
-        use_x1_scale = input_data.kwargs['useX1Scale']
+        comm_mode = input_data.kwargs["commMode"]
+        use_x1_scale = input_data.kwargs["useX1Scale"]
 
         if x1.dtype != torch.int8:
             x1_scale = None
@@ -82,9 +80,13 @@ class AllGatherMatmulV2(BaseApi):
                     output = (output * x2_scale).to(torch.float32)
                 elif dequantType == 2:
                     x1_scale = x1_scale.cpu()
-                    x1_all_gather_out = [torch.zeros_like(x1_scale)  for _ in range(world_size)]
+                    x1_all_gather_out = [
+                        torch.zeros_like(x1_scale) for _ in range(world_size)
+                    ]
                     dist.all_gather(x1_all_gather_out, x1_scale)
-                    output = (output * x2_scale * torch.cat(x1_all_gather_out)).to(torch.float32)
+                    output = (output * x2_scale * torch.cat(x1_all_gather_out)).to(
+                        torch.float32
+                    )
             all_gather_out.zero_()
             return output, all_gather_out
 
@@ -100,15 +102,27 @@ class AllGatherMatmulV2(BaseApi):
             if dequantType == 0:
                 output = torch.matmul(allgather_out, x2)
             elif dequantType == 2:
-                x1_scale_all_gather_out = torch.zeros([x1_scale.shape[0] * world_size, x1_scale.shape[1]],
-                                                      dtype=x1_scale.dtype).npu()
+                x1_scale_all_gather_out = torch.zeros(
+                    [x1_scale.shape[0] * world_size, x1_scale.shape[1]],
+                    dtype=x1_scale.dtype,
+                ).npu()
                 dist._all_gather_base(x1_scale_all_gather_out, x1_scale)
-                output = torch_npu.npu_quant_matmul(x1=allgather_out, x2=x2, scale=x2_scale.squeeze(0),
-                                                    output_dtype=output_dtype)
-                output = (output.to(torch.float32) * x1_scale_all_gather_out).to(output_dtype)
+                output = torch_npu.npu_quant_matmul(
+                    x1=allgather_out,
+                    x2=x2,
+                    scale=x2_scale.squeeze(0),
+                    output_dtype=output_dtype,
+                )
+                output = (output.to(torch.float32) * x1_scale_all_gather_out).to(
+                    output_dtype
+                )
             else:
-                output = torch_npu.npu_quant_matmul(x1=allgather_out, x2=x2, scale=x2_scale.squeeze(0),
-                                                    output_dtype=output_dtype)
+                output = torch_npu.npu_quant_matmul(
+                    x1=allgather_out,
+                    x2=x2,
+                    scale=x2_scale.squeeze(0),
+                    output_dtype=output_dtype,
+                )
             allgather_out.zero_()
             return output, allgather_out
 
@@ -117,29 +131,36 @@ class AllGatherMatmulV2(BaseApi):
         rank_id = self.dist_task_info.rank
         device = "npu:" + str(rank_id)
 
-        x1 = input_data.kwargs['x1']
+        x1 = input_data.kwargs["x1"]
         x2 = input_data.kwargs["x2"]
         if x2.shape[0] != x1.shape[1] and x2.shape[1] == x1.shape[1]:
             input_data.kwargs["x2"] = input_data.kwargs["x2"].transpose(0, 1)
 
-        if self.device == 'pyaclnn' and dist.is_available():
+        if self.device == "pyaclnn" and dist.is_available():
             from torch.distributed.distributed_c10d import _get_default_group
+
             default_pg = _get_default_group()
-            if torch.__version__ > '2.0.1':
-                hcomm_info = default_pg._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
+            if torch.__version__ > "2.0.1":
+                hcomm_info = default_pg._get_backend(
+                    torch.device("npu")
+                ).get_hccl_comm_name(rank_id)
             else:
                 hcomm_info = default_pg.get_hccl_comm_name(rank_id)
-            input_data.kwargs['group'] = hcomm_info
+            input_data.kwargs["group"] = hcomm_info
 
     @staticmethod
     def get_hcomm_info(rank_id):
         from torch.distributed.distributed_c10d import _get_default_group
+
         default_pg = _get_default_group()
-        if torch.__version__ > '2.0.1':
-            hcomm_info = default_pg._get_backend(torch.device("npu")).get_hccl_comm_name(rank_id)
+        if torch.__version__ > "2.0.1":
+            hcomm_info = default_pg._get_backend(
+                torch.device("npu")
+            ).get_hccl_comm_name(rank_id)
         else:
             hcomm_info = default_pg.get_hccl_comm_name(rank_id)
         return hcomm_info
+
 
 @register("aclnn_allgather_matmul_v2")
 class AclnnAllGatherMatmulV2(AclnnBaseApi):
@@ -150,12 +171,16 @@ class AclnnAllGatherMatmulV2(AclnnBaseApi):
 
     def init_by_input_data(self, input_data: InputDataset):
         if input_data.kwargs["isFormatNz"]:
-            input_data.kwargs['x2'] = torch_npu.npu_format_cast(input_data.kwargs['x2'], 29)
+            input_data.kwargs["x2"] = torch_npu.npu_format_cast(
+                input_data.kwargs["x2"], 29
+            )
             self.is_format_nz = True
 
         use_int64 = input_data.kwargs["useInt64"]
         if use_int64:
-            input_data.kwargs["x2Scale"] = torch_npu.npu_trans_quant_param(input_data.kwargs["x2Scale"], round_mode=1)
+            input_data.kwargs["x2Scale"] = torch_npu.npu_trans_quant_param(
+                input_data.kwargs["x2Scale"], round_mode=1
+            )
 
         use_x1_scale = input_data.kwargs["useX1Scale"]
 

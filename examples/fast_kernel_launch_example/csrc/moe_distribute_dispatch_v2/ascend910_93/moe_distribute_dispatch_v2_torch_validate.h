@@ -53,7 +53,7 @@ struct MoeDistributeDispatchV2ValidateParams {
     int64_t zero_expert_num;
     int64_t copy_expert_num;
     int64_t const_expert_num;
-    
+
     // 中间变量
     int64_t maxEpWorldSize;
     int64_t maxMoeExpertNum;
@@ -66,7 +66,7 @@ struct MoeDistributeDispatchV2ValidateParams {
     int64_t h;
     int64_t k;
     int64_t maxK;
-    
+
     // 状态标志
     bool isScales;
     bool isFullmeshV2;
@@ -74,14 +74,12 @@ struct MoeDistributeDispatchV2ValidateParams {
     bool isValidShared;
 };
 
-bool ValidateMoeDistributeDispatchV2Input(
-    const at::Tensor& x,
-    const at::Tensor& expert_ids,
-    const c10::optional<at::Tensor>& scales,
-    const c10::optional<at::Tensor>& x_active_mask,
-    const c10::optional<at::Tensor>& expert_scales,
-    const c10::optional<at::Tensor>& performance_info,
-    MoeDistributeDispatchV2ValidateParams& params);
+bool ValidateMoeDistributeDispatchV2Input(const at::Tensor &x, const at::Tensor &expert_ids,
+                                          const c10::optional<at::Tensor> &scales,
+                                          const c10::optional<at::Tensor> &x_active_mask,
+                                          const c10::optional<at::Tensor> &expert_scales,
+                                          const c10::optional<at::Tensor> &performance_info,
+                                          MoeDistributeDispatchV2ValidateParams &params);
 
 } // namespace MoeDistributeDispatchV2
 } // namespace ascend_ops

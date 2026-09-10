@@ -23,9 +23,9 @@
 
 2. [算子定义](#算子定义)：确定算子功能与原型定义。
 
-3. [Tiling实现](#Tiling实现)：实现Host侧算子Tiling函数。
+3. [Tiling实现](#tiling实现)：实现Host侧算子Tiling函数。
 
-4. [Kernel实现](#Kernel实现)：实现Device侧算子核函数。
+4. [Kernel实现](#kernel实现)：实现Device侧算子核函数。
 
 5. [aclnn适配](#aclnn适配)：自定义算子推荐aclnn接口调用，需提前完成二进制发布。**如采用图模式调用算子**，请参考[图模式适配指南](./graph_develop_guide.md)。
 
@@ -54,7 +54,7 @@ Create the initial directory for ${op_name} under ${op_class} success
 
 创建完成后，目录结构如下所示：
 
-```
+```text
 ${op_name}                              # 替换为实际算子名的小写下划线形式
 ├── examples                            # 算子调用示例
 │   ├── test_aclnn_${op_name}.cpp       # 算子aclnn调用示例
@@ -88,7 +88,7 @@ foreach(EXAMPLES_OP_NAME ${ASCEND_OP_NAME})
         list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/mc2/${EXAMPLES_OP_NAME})
     # 在examples目录下新增算子分类时，参考mc2目录增加命令语句如下：
     # elseif(IS_DIRECTORY ${EXAMPLES_${op_class}_DIR})
-    #     add_subdirectory(examples/${op_class}/${EXAMPLES_OP_NAME}")
+    #     add_subdirectory(examples/${op_class}/${EXAMPLES_OP_NAME})
     #     list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/examples/${op_class}/${EXAMPLES_OP_NAME})
     endif()
 endforeach()
@@ -136,7 +136,7 @@ endif()
 Tiling一共需要三个交付件：```${op_name}_tiling.cpp``` ```${op_name}_tiling_key.h``` ```${op_name}_tiling_data.h```
 
 > 说明：
-
+>
 > 1. `${op_name}_tiling.cpp`放在`${op_name}/op_host`目录下；
 > 2. `${op_name}_tiling_key.h`和`${op_name}_tiling_data.h`放在`${op_name}/op_kernel`目录下；
 > 3. 如果`${op_name}_tiling.cpp`中需要引用`${op_name}_tiling_data.h`，请使用相对路径的方式，例如：`#include "../op_kernel/${op_name}_tiling_data.h"`。
@@ -182,7 +182,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context){
     OP_CHECK_IF(
         GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetPlatformInfo error"),
         return ge::GRAPH_FAILED);
-    
+
     // 2.2获取输入信息
     // 获取输入张量shape信息
     auto inputX = context->GetInputShape(0);
@@ -276,7 +276,7 @@ graph LR
 Kernel一共需要两个交付件：```${op_name}.cpp``` ```${op_name}.h```
 
 > 说明：
-
+>
 > 1. `${op_name}.cpp`为kernel的入口函数只能放在`${op_name}/op_kernel`目录下；
 > 2. `${op_name}.h`文件可以按照不同SoC或模板放在对应目录下，例如：`${op_name}/op_kernel/arch22`、`${op_name}/op_kernel/arch35`或`${op_name}/op_kernel/impl`等目录下；
 
@@ -286,7 +286,7 @@ Kernel入口文件，包含主函数和调度逻辑。
 
 如需查看详细实现，请参考[add_example.cpp](../../../examples/add_example/op_kernel/add_example.cpp)。
 
-```CPP
+```cpp
 // 1、核函数定义
 // schMode是一个模板参数，用于支持不同数据类型（如float和int32）的计算路径
 // __global__ __aicore__表示该函数是个全局函数，可以在AI Core上执行
@@ -315,14 +315,14 @@ __global__ __aicore__ void add_example(GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR 
 
 如需查看详细实现，请参考[add_example.h](../../../examples/add_example/op_kernel/add_example.h)。
 
-```C++
+```cpp
 // 2、定义Kernel类
 template <typename T>
 class AddExample
 {
 public:
     // 默认构造函数，__aicore__表示该函数在AI Core上运行
-    __aicore__ inline AddExample(){};     
+    __aicore__ inline AddExample(){};
     // 初始化函数，用于设置输入输出地址和Tiling切分信息计算
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR y, GM_ADDR z, const AddExampleTilingData* tilingData);
     // 主处理函数，执行数据拷贝和计算
@@ -352,7 +352,7 @@ private:
     GlobalTensor<T> inputGMY_;
     // 输入Z的GM地址
     GlobalTensor<T> outputGMZ_;
-    
+
     // 总数据长度
     int64_t blockLength_ = 0;
     // 每个block被划分多少块
@@ -421,7 +421,7 @@ __aicore__ inline void AddExample<T>::Process()
 
     以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example)目录。
 
-    > 说明：编译过程依赖第三方开源软件，联网场景会自动下载，离线编译场景需要自行安装，具体参考[未联网编译](../invocation/quick_op_invocation.md#未联网编译)。
+    > 说明：编译过程依赖第三方开源软件，联网场景会自动下载，离线编译场景需要自行安装，具体参考[未联网编译](../install/compile.md#未联网编译)。
 
     ```bash
     # 编译指定算子，如bash build.sh --pkg --ops=add_example
@@ -456,13 +456,13 @@ __aicore__ inline void AddExample<T>::Process()
 
 算子开发过程中，可通过如下方式进行验证：
 
-1. [UT验证](#UT验证): 验证交付件代码能否正常运行。UT验证无需NPU环境。
+1. [UT验证](#ut验证): 验证交付件代码能否正常运行。UT验证无需NPU环境。
 
 2. [aclnn调用验证](#aclnn调用验证): 验证算子在NPU环境上的功能。aclnn调用验证需要NPU环境。
 
 ### UT验证
 
-主要交付件代码开发过程中，可通过UT验证方式进行快速验证，无需编译部署算子包。
+在主要交付件代码开发过程中，可通过UT验证方式进行快速验证，无需编译部署算子包。
 
 UT目录结构如下，需用户手动创建：
 
@@ -553,7 +553,7 @@ UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_a
 **1. 组织结构与命名建议**
 
 - **头文件**：统一包含`iostream`, `gtest/gtest.h`、`tiling_context_faker.h`、`tiling_case_executor.h`。
-    - 若tiling头文件中已经定义CompileInfo结构体，则也需引入。
+  - 若tiling头文件中已经定义CompileInfo结构体，则也需引入。
 - **测试类**：继承`testing::Test`，实现`SetUpTestCase/TearDownTestCase`统一做数据准备与清理。
 - **命名**：测试类建议`${OpName}TilingTest`，用例名建议`test_case_xxx`，可读性更高。
 
@@ -631,9 +631,9 @@ UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_a
 **1. 组织结构与命名建议**
 
 - **头文件**：建议统一包含`gtest/gtest.h`、`tikicpulib.h`、`data_utils.h`与Tiling头文件。
-    - 直接引用`op_host/${op_name}_tiling.h`
-    - 或在UT目录提供轻量适配头（如`examples/add_example/tests/ut/op_kernel/add_example_tiling.h`）
-    - 若Kernel为模板函数，可在UT中直接`#include "../../../op_kernel/${op_name}.cpp"`触发实例化（参考`AddExample`）
+  - 直接引用`op_host/${op_name}_tiling.h`
+  - 或在UT目录提供轻量适配头（如`examples/add_example/tests/ut/op_kernel/add_example_tiling.h`）
+  - 若Kernel为模板函数，可在UT中直接`#include "../../../op_kernel/${op_name}.cpp"`触发实例化（参考`AddExample`）
 - **测试类**：继承`testing::Test`，实现`SetUpTestCase/TearDownTestCase`统一做数据准备与清理（如拷贝数据目录、chmod、生成bin）。
 - **命名**：测试类建议`${OpName}KernelTest`，用例名建议`test_case_xxx`，可读性更高。
 
@@ -728,7 +728,7 @@ uint32_t blockDim = tilingInfo.blockNum;
   [gen_data.py](../../../examples/add_example/tests/ut/op_kernel/add_example_data/gen_data.py)、
   [compare_data.py](../../../examples/add_example/tests/ut/op_kernel/add_example_data/compare_data.py)。
 - 简单算子可直接在UT中计算期望值并比对。
-    - 浮点比较建议使用`EXPECT_NEAR/ASSERT_NEAR`并设置合理容差。
+  - 浮点比较建议使用`EXPECT_NEAR/ASSERT_NEAR`并设置合理容差。
 
 ### aclnn调用验证
 
@@ -1062,7 +1062,7 @@ template<int D_T_X, int D_T_Y, int D_T_Z, int TILE_NUM, int IS_SPLIT>
 
 保留原有op\_kernel/tiling\_key\_{op\_name}.h中算子的模板参数定义，若不存在op\_kernel/tiling\_key\_{op\_name}.h，请参考[add_example_tiling_key.h](../../../examples/add_example/op_kernel/add_example_tiling_key.h)新增定义模板参数和模板参数组合。
 
-###  算子跨平台迁移
+### 算子跨平台迁移
 
 完成算子代码开发后，如需实现多平台间（如Atlas A2/A3等）的算子代码迁移，需考虑硬件结构差异引发的软件实现变更。
 

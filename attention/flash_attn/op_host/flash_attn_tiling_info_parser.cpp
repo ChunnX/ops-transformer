@@ -19,6 +19,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "flash_attn_tiling_info_parser.h"
+#include "flash_attn_tiling_utils.h"
 
 using std::map;
 using std::pair;
@@ -48,6 +49,7 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
         checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
         checkEmptyTensor(opParamInfo_.attnOut.shape, ATTN_OUT_NAME)) {
         emptyTensorFlag_ = true;
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -123,17 +125,15 @@ ge::graphStatus FaInfoParser::GetOpName()
 ge::graphStatus FaInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
-        OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
+        OP_LOGE(opName_, "NpuArch[%d] is not supported.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -188,6 +188,18 @@ void FaInfoParser::GetInputParaInfo()
     opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INDEX);
     opParamInfo_.value.shape = context_->GetInputShape(VALUE_INDEX);
     GetOptionalInputParaInfo();
+}
+
+ge::graphStatus FaInfoParser::GetStrides()
+{
+    // 用opbase版本判断：老版本opbase的输入非view, 视为tensorv1, key/value必然连续
+    if (context_->InputIsView(KEY_INDEX) == false) {
+        hasViewStride_ = false;
+        return ge::GRAPH_SUCCESS;
+    }
+    keyStrides_ = context_->GetInputStride(KEY_INDEX);
+    valueStrides_ = context_->GetInputStride(VALUE_INDEX);
+    return ge::GRAPH_SUCCESS;
 }
 
 void FaInfoParser::GetOutputParaInfo()
@@ -316,16 +328,63 @@ ge::graphStatus FaInfoParser::GetS1Size()
     return ge::GRAPH_SUCCESS;
 }
 
+void FaInfoParser::GetKvIsContiguous()
+{
+    // 老版本opbase不支持strides, 无法判NC, 放过
+    if (!hasViewStride_) {
+        return;
+    }
+
+    int32_t keyDimIdx = 0;
+    int32_t valDimIdx = 0;
+    bool keyContig = false;
+    bool valContig = false;
+    if (keyStrides_ != nullptr) {
+        const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+        keyContig =
+            (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) == ge::GRAPH_SUCCESS);
+        keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
+    }
+
+    if (valueStrides_ != nullptr) {
+        const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
+        valContig =
+            (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) == ge::GRAPH_SUCCESS);
+        valueNonContigDim_ = valContig ? -1 : valDimIdx;
+    }
+
+    if (layoutKV_ == FaLayout::PA_BBND) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(2);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(2);
+        }
+    } else if (layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(1);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(1);
+        }
+    }
+}
+
 void FaInfoParser::GetKvStorageMode()
 {
-    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
-                       layoutKV_ == FaLayout::PA_NZ);
+    bool isPaLayout =
+        (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ);
 
     if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
+    GetKvIsContiguous();
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
@@ -361,9 +420,10 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
-    OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
+    OP_CHECK_IF(
+        opParamInfo_.blockTable.tensor == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-            "When layout_kv is PA, block_table must be provided but got nullptr."),
+                                              "When layout_kv is PA, block_table must be provided but got nullptr."),
         return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -405,8 +465,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q", opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -414,8 +473,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itKV = layoutMap.find(opParamInfo_.layoutKV);
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv", opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -423,8 +481,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     auto itOut = layoutMap.find(opParamInfo_.layoutOut);
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-            opParamInfo_.layoutOut, reason.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out", opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
@@ -475,9 +532,9 @@ ge::graphStatus FaInfoParser::GetGSize()
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                               ToString(opParamInfo_.key.shape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key", shapeStr.c_str(),
+                                               "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -529,12 +586,22 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     GenerateAxisInfo(faInfo);
     GenerateDtypeInfo(faInfo);
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+    faInfo.kvStorageMode = kvStorageMode_;
     faInfo.emptyTensorFlag = emptyTensorFlag_;
 
     faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
     faInfo.totalBlockNum = blockNum_;
     faInfo.softmaxScale = softmaxScale_;
     faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
+
+    faInfo.keyBnStride = keyBnStride_;
+    faInfo.keyN2Stride = keyN2Stride_;
+    faInfo.valueBnStride = valueBnStride_;
+    faInfo.valueN2Stride = valueN2Stride_;
+
+    faInfo.hasViewStride = hasViewStride_;
+    faInfo.keyNonContigDim = keyNonContigDim_;
+    faInfo.valueNonContigDim = valueNonContigDim_;
 
     GenerateFeatureInfo(faInfo);
     GenerateLayoutInfo(faInfo);
@@ -578,9 +645,12 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
+        return ge::GRAPH_FAILED;
+    }
     GetKvStorageMode();
     if (emptyTensorFlag_) {
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;

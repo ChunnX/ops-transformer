@@ -24,8 +24,7 @@ using namespace op;
 using namespace std;
 
 namespace MoeDistributeCombineAddRmsNorm {
-class L2MoeDistributeCombineAddRmsNormTest : public testing::Test
-{
+class L2MoeDistributeCombineAddRmsNormTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -78,13 +77,13 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm1
     TensorDesc rstdOut = TensorDesc({32, 1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc x = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeCombineAddRmsNorm,
-                        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts,
-                              xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                              groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId,
-                              expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
-                              groupListType, commAlg, normEps),
-                        OUTPUT(y, rstdOut, x));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeCombineAddRmsNorm,
+        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask,
+              activationScale, weightScale, groupList, expandScales, sharedExpertX, groupEp, epWorldSize, epRankId,
+              moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
+              globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
+        OUTPUT(y, rstdOut, x));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -128,13 +127,13 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm2
     TensorDesc rstdOut = TensorDesc({32, 1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc x = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeCombineAddRmsNorm,
-                        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts,
-                              xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                              nullptr, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId,
-                              expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
-                              groupListType, commAlg, normEps),
-                        OUTPUT(y, rstdOut, x));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeCombineAddRmsNorm,
+        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask,
+              activationScale, weightScale, groupList, expandScales, sharedExpertX, nullptr, epWorldSize, epRankId,
+              moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
+              globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
+        OUTPUT(y, rstdOut, x));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -180,13 +179,13 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm3
     TensorDesc rstdOut = TensorDesc({32, 1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc x = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeCombineAddRmsNorm,
-                        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts,
-                              xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                              groupEpLongStr.c_str(), epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize,
-                              tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-                              commQuantMode, groupListType, commAlg, normEps),
-                        OUTPUT(y, rstdOut, x));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeCombineAddRmsNorm,
+        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask,
+              activationScale, weightScale, groupList, expandScales, sharedExpertX, groupEpLongStr.c_str(), epWorldSize,
+              epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
+        OUTPUT(y, rstdOut, x));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -232,13 +231,13 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm4
     TensorDesc rstdOut = TensorDesc({32, 1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc x = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeCombineAddRmsNorm,
-                        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts,
-                              xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                              groupEp, epWorldSize, epRankId, moeExpertNum, groupTpLongStr.c_str(), tpWorldSize,
-                              tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-                              commQuantMode, groupListType, commAlg, normEps),
-                        OUTPUT(y, rstdOut, x));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeCombineAddRmsNorm,
+        INPUT(expandX, expertIds, expandIdx, epSendCounts, expertScales, residualX, gamma, tpSendCounts, xActiveMask,
+              activationScale, weightScale, groupList, expandScales, sharedExpertX, groupEp, epWorldSize, epRankId,
+              moeExpertNum, groupTpLongStr.c_str(), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps),
+        OUTPUT(y, rstdOut, x));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -757,8 +756,7 @@ TEST_F(L2MoeDistributeCombineAddRmsNormTest, TestMoeDistributeCombineAddRmsNorm_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 // 测试执行函数覆盖和 is910B 分支
-class L2MoeDistributeCombineAddRmsNorm910BTest : public testing::Test
-{
+class L2MoeDistributeCombineAddRmsNorm910BTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -795,9 +793,10 @@ TEST_F(L2MoeDistributeCombineAddRmsNorm910BTest, TestCombineArnCheckParams_910B)
     char groupTp[] = "test_moe_distribute_combine_add_rms_norm_tp";
     TensorDesc xOut = TensorDesc({32, 1, 7168}, ACL_BF16, ACL_FORMAT_ND);
 
-    aclnnStatus aclRet = CombineArnCheckParams(DescToAclContainer(expandX), DescToAclContainer(expertIds),
-        DescToAclContainer(expandIdx), DescToAclContainer(epSendCounts), nullptr,
-        DescToAclContainer(expertScales), groupEp, groupTp, DescToAclContainer(xOut), true);
+    aclnnStatus aclRet =
+        CombineArnCheckParams(DescToAclContainer(expandX), DescToAclContainer(expertIds), DescToAclContainer(expandIdx),
+                              DescToAclContainer(epSendCounts), nullptr, DescToAclContainer(expertScales), groupEp,
+                              groupTp, DescToAclContainer(xOut), true);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 

@@ -32,5 +32,4 @@ IMPL_OP_OPTILING(MatmulReduceScatterV2)
     .Tiling(MatmulReduceScatterTilingV2Func)
     .TilingParse<MatmulReduceScatterV2CompileInfo>(TilingParseForMatmulReduceScatterV2);
 
-}  // namespace optiling
-
+} // namespace optiling

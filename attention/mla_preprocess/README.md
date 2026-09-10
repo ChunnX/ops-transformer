@@ -57,6 +57,8 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
+    ACLNN接口的`cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，输出和Cache仍按原布局写入未经旋转的Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1427px"><colgroup>
@@ -190,14 +192,14 @@
   <tr>
     <td>cos</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，启用RoPE时shape为[tokenNum,64]，其中tokenNum等于input的第0维；与sin同时传入空指针时关闭RoPE。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>sin</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示用于计算旋转位置编码的余弦参数矩阵，shape为[tokenNum,64]</td>
+    <td>Device侧的aclTensor，表示用于计算旋转位置编码的正弦参数矩阵，启用RoPE时shape为[tokenNum,64]，其中tokenNum等于input的第0维；与cos同时传入空指针时关闭RoPE。</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
@@ -211,14 +213,14 @@
   <tr>
     <td>kvCache</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，与输出的kvCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：shape为[blockNum,blockSize,1,576]<br>cacheMode为1：shape为[blockNum,blockSize,1,512]<br>cacheMode为2：shape为[blockNum,headNum*512/32,block_size,32]<br>cacheMode为3：shape为[blockNum,headNum*512/16,block_size,16]</td>
+    <td>Device侧的aclTensor，与输出的kvCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：shape为[blockNum,blockSize,1,576]<br>cacheMode为1：shape为[blockNum,blockSize,1,512]<br>cacheMode为2：shape为[blockNum,16,block_size,32]<br>cacheMode为3：shape为[blockNum,32,block_size,16]</td>
     <td>cacheMode为0：与input一致<br>cacheMode为1：与input一致<br>cacheMode为2：INT8<br>cacheMode为3：与input一致</td>
     <td>ND<br>ND<br>NZ<br>NZ</td>
   </tr>
   <tr>
     <td>kvCacheRope</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，可选参数，支出传入空指针。与输出的krCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：不传入。<br>cacheMode为1：shape为[blockNum,blockSize,1,64]<br>cacheMode为2或3：shape为[blockNum, headNum*64 / 16 ,block_size, 16]</td>
+    <td>Device侧的aclTensor，可选参数，支出传入空指针。与输出的krCacheOut为同一tensor，输入格式随cacheMode变化。<br><br>cacheMode为0：不传入。<br>cacheMode为1：shape为[blockNum,blockSize,1,64]<br>cacheMode为2或3：shape为[blockNum, 4 ,block_size, 16]</td>
     <td>与input一致</td>
     <td><br>ND<br>NZ</td>
   </tr>
@@ -344,7 +346,7 @@
   <tr>
     <td>kvCacheOut</td>
     <td>输出</td>
-    <td>表示Key经过ReshapeAndCache后的输出，shape和dtype随cacheMode变化<br><br>cacheMode为0：shape为[blockNum, blockSize, 1, 576]<br>cacheMode为1：shape为[blockNum, blockSize, 1, 512]<br>cacheMode为2：shape为[blockNum, headNum*512/32, block_size, 32]<br>cacheMode为3：shape为[blockNum, headNum*512/16, block_size, 16]</td>
+    <td>表示Key经过ReshapeAndCache后的输出，shape和dtype随cacheMode变化<br><br>cacheMode为0：shape为[blockNum, blockSize, 1, 576]<br>cacheMode为1：shape为[blockNum, blockSize, 1, 512]<br>cacheMode为2：shape为[blockNum, 16, block_size, 32]<br>cacheMode为3：shape为[blockNum, 32, block_size, 16]</td>
     <td>cacheMode为0：与input一致<br>cacheMode为1：与input一致<br>cacheMode为2：INT8<br>cacheMode为3：与input一致</td>
     <td>ND<br>ND<br>NZ<br>NZ</td>
   </tr>
@@ -358,7 +360,7 @@
   <tr>
     <td>krCacheOut</td>
     <td>输出</td>
-    <td>表示Key经过ROPE和ReshapeAndCache后的输出，shape和dtype随cacheMode变化，<br><br>cacheMode为0：不输出<br>cacheMode为1：shape为[blockNum, blockSize, 1, 64]<br>cacheMode为2或3：shape为[blockNum, headNum*64 / 16 ,block_size, 16]</td>
+    <td>表示Key经过ROPE和ReshapeAndCache后的输出，shape和dtype随cacheMode变化，<br><br>cacheMode为0：不输出<br>cacheMode为1：shape为[blockNum, blockSize, 1, 64]<br>cacheMode为2或3：shape为[blockNum, 4 ,block_size, 16]</td>
     <td><br>cacheMode为1：与input一致<br>cacheMode为2或3：与input一致</td>
     <td><br>ND<br>NZ</td>
   </tr>

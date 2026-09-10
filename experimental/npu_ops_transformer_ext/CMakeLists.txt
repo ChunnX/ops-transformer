@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.18.4)
 project(NpuOpsTransformerExt)
 option(BUILD_TORCH_OPS "Build torch ops project (PyTorch extension style)" OFF)
 message(STATUS "Build torch ops: ${BUILD_TORCH_OPS}")
@@ -87,7 +87,7 @@ message(STATUS "Torch_DIR       = ${TORCH_DIR}")
 message(STATUS "Torch_LIBRARIES = ${TORCH_LIBRARIES}")
 message(STATUS "Torch_INCLUDES  = ${TORCH_INCLUDE_DIRS}")
 
-# Torch-NPU 配置
+# TorchNPU 配置
 execute_process(
     COMMAND ${Python3_EXECUTABLE} -c "import torch_npu, os; print(os.path.dirname(torch_npu.__file__))"
     OUTPUT_VARIABLE TORCH_NPU_PATH

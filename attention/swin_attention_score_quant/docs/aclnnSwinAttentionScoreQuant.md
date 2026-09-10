@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>|    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>|    ×     |
-| <term>Atlas 推理系列产品</term>|    √     |
-| <term>Atlas 训练系列产品</term>|    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -24,35 +34,35 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSwinAttentionScoreQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSwinAttentionScoreQuant”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSwinAttentionScoreQuantGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSwinAttentionScoreQuant”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnSwinAttentionScoreQuantGetWorkspaceSize(
-    const aclTensor *query, 
-    const aclTensor *key, 
-    const aclTensor *value, 
-    const aclTensor *scaleQuant, 
-    const aclTensor *scaleDequant1, 
-    const aclTensor *scaleDequant2, 
-    const aclTensor *biasQuantOptional, 
-    const aclTensor *biasDequant1Optional, 
-    const aclTensor *biasDequant2Optional, 
-    const aclTensor *paddingMask1Optional, 
-    const aclTensor *paddingMask2Optional, 
-    bool             queryTranspose, 
-    bool             keyTranspose, 
-    bool             valueTranspose, 
-    int64_t          softmaxAxes, 
-    const aclTensor *out, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *value,
+    const aclTensor *scaleQuant,
+    const aclTensor *scaleDequant1,
+    const aclTensor *scaleDequant2,
+    const aclTensor *biasQuantOptional,
+    const aclTensor *biasDequant1Optional,
+    const aclTensor *biasDequant2Optional,
+    const aclTensor *paddingMask1Optional,
+    const aclTensor *paddingMask2Optional,
+    bool             queryTranspose,
+    bool             keyTranspose,
+    bool             valueTranspose,
+    int64_t          softmaxAxes,
+    const aclTensor *out,
+    uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnSwinAttentionScoreQuant(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -64,9 +74,9 @@ aclnnStatus aclnnSwinAttentionScoreQuant(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 300px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 300px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 190px">
             <col style="width: 145px">
@@ -267,7 +277,7 @@ aclnnStatus aclnnSwinAttentionScoreQuant(
 
 * **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -337,7 +347,7 @@ aclnnStatus aclnnSwinAttentionScoreQuant(
 
 * **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -349,7 +359,7 @@ aclnnStatus aclnnSwinAttentionScoreQuant(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -460,7 +470,7 @@ int main() {
     std::vector<uint16_t> biasQuantHostData(S, 1);
     std::vector<int32_t> biasDequant1HostData(S, 1);
     std::vector<int32_t> biasDequant2HostData(H, 1);
-    std::vector<uint16_t> paddingMask1HostData(1*N*S*H, 1);
+    std::vector<uint16_t> paddingMask1HostData(1*N*S*S, 1);
     std::vector<uint16_t> attentionScoreHostData(B*N*S*H, 0);
     // 创建input aclTensor
     ret = CreateAclTensor(queryHostData, qkvShape, &queryDeviceAddr, aclDataType::ACL_INT8, &query);

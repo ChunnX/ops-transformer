@@ -14,7 +14,7 @@
  */
 #ifndef __QUANT_BMM_REDUCE_SCATTER_TILING_H__
 #define __QUANT_BMM_REDUCE_SCATTER_TILING_H__
-#include "../matmul_reduce_scatter_tiling_base.h"
+#include "../matmul_reduce_scatter_tiling_base_v2.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
@@ -55,7 +55,7 @@ public:
     }
     mc2tiling::Mc2QuantMode GetQuantMode() const
     {
-        return quantMode_ ;
+        return quantMode_;
     }
 
 protected:
@@ -89,14 +89,15 @@ protected:
     bool CheckPerblockM();
     ge::graphStatus CheckGroupSize() const;
     ge::graphStatus CheckScale() const;
-    ge::graphStatus CheckMxScaleDim(const gert::StorageShape *x1ScaleShape, const gert::StorageShape *x2ScaleShape) const;
+    ge::graphStatus CheckMxScaleDim(const gert::StorageShape *x1ScaleShape,
+                                    const gert::StorageShape *x2ScaleShape) const;
 
 private:
     Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData quantBmmMatmulReducescatterTilingDataSelf_;
-    Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* quantBmmMatmulReducescatterTilingData_;
+    Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData *quantBmmMatmulReducescatterTilingData_;
     uint64_t myWorkSpaceSize_{0U};
     mc2tiling::Mc2QuantMode quantMode_{mc2tiling::Mc2QuantMode::DEFAULT};
-    bool isMxfp4_{false};  // MXFP4场景标志位
+    bool isMxfp4_{false}; // MXFP4场景标志位
 };
 
 class QuantBmmReduceScatterHelper : public Mc2AdaptiveSlidingWindowTiling {
@@ -127,6 +128,5 @@ private:
     bool isSerial_{false};
 };
 } // namespace optiling
-
 
 #endif //__QUANT_BMM_REDUCE_SCATTER_TILING_H__

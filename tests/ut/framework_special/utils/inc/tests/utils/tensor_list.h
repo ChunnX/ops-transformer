@@ -34,6 +34,7 @@ public:
     TensorList &operator=(const TensorList &o) = default;
 
     ~TensorList() override;
+
 protected:
     uint8_t *AllocDevDataImpl(int64_t size) override;
     void FreeDevDataImpl(uint8_t *devPtr) override;

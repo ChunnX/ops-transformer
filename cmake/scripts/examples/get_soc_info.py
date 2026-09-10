@@ -14,20 +14,20 @@
 
 Examples 场景下, 用于获取 Soc 相关信息.
 """
+
 import argparse
 import logging
 import ctypes
 
 
 class SocInfoMgr:
-
     @staticmethod
     def get_soc_name() -> str:
         acl_lib = ctypes.cdll.LoadLibrary("libascendcl.so")
         acl_lib.aclrtGetSocName.restype = ctypes.c_char_p
         rst = acl_lib.aclrtGetSocName()
         if rst:
-            rst = str(rst, encoding='utf-8')
+            rst = str(rst, encoding="utf-8")
         else:
             rst = ""
         return rst
@@ -46,10 +46,12 @@ class SocInfoMgr:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(filename)s:%(lineno)d [%(levelname)s] %(message)s', level=logging.INFO)
+    logging.basicConfig(
+        format="%(filename)s:%(lineno)d [%(levelname)s] %(message)s", level=logging.INFO
+    )
     g_rst = ""
     try:
         g_rst = SocInfoMgr.main()
     except Exception as e:
         logging.error(e)
-    print(g_rst, end='')
+    print(g_rst, end="")

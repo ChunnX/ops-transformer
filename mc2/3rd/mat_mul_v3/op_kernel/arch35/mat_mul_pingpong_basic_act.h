@@ -23,10 +23,10 @@
 namespace Mc2MatmulV3Advanced {
 using namespace Act;
 using namespace Act::Gemm;
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class A_LAYOUT,
-          class B_LAYOUT, class C_LAYOUT, uint64_t FULL_LOAD_MODE = 0>
-__aicore__ inline void MatMulActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
-    GM_ADDR cGM, GM_ADDR workspaceGM, const Mc2MatMulV3BasicTilingData& tilingData, int64_t batch = 0)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class A_LAYOUT, class B_LAYOUT, class C_LAYOUT,
+          uint64_t FULL_LOAD_MODE = 0>
+__aicore__ inline void MatMulActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
+                                       const Mc2MatMulV3BasicTilingData &tilingData, int64_t batch = 0)
 {
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
@@ -47,9 +47,8 @@ __aicore__ inline void MatMulActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
 
     // 定义MMAD类型
     using DispatchPolicy = MatmulMultiBlockWithOutQue<AscendC::Shape<_0, _0, _0, _0>, FULL_LOAD_MODE>;
-    using BlockMmad = Block::BlockMmadBuilder<
-        AType, LayoutA, BType, LayoutB, OutType, LayoutC, BiasType, LayoutC, L1TileShape, L0TileShape, BlockScheduler,
-        DispatchPolicy>;
+    using BlockMmad = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, OutType, LayoutC, BiasType, LayoutC,
+                                              L1TileShape, L0TileShape, BlockScheduler, DispatchPolicy>;
 
     // 定义Fusion类型
     using FusionOp = Block::DefaultFusion<OutType, OutType>;
@@ -63,13 +62,12 @@ __aicore__ inline void MatMulActKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
     // 定义Kernel类型
     using MatmulKernel = Kernel::KernelMatmulWithoutQue<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename MatmulKernel::Params;
-    Params params = {
-        {tilingData.m, tilingData.n, tilingData.k, batch}, // shape
-        {aGM, bGM, cGM, biasGM},                           // gm addr
-        {},                                                // epilogue args
-        {&tilingData}};
+    Params params = {{tilingData.m, tilingData.n, tilingData.k, batch}, // shape
+                     {aGM, bGM, cGM, biasGM},                           // gm addr
+                     {},                                                // epilogue args
+                     {&tilingData}};
     MatmulKernel mm;
     mm(params);
 }
-}
+} // namespace Mc2MatmulV3Advanced
 #endif

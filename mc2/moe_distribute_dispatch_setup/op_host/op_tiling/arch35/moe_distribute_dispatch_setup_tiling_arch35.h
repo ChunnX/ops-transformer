@@ -19,14 +19,14 @@
 #include "../moe_distribute_dispatch_setup_tiling_base.h"
 
 namespace optiling {
-class MoeDistributeDispatchSetupTilingA5 : public MoeDistributeDispatchSetupTilingBase
-{
+class MoeDistributeDispatchSetupTilingA5 : public MoeDistributeDispatchSetupTilingBase {
 public:
-    explicit MoeDistributeDispatchSetupTilingA5(gert::TilingContext* context)
+    explicit MoeDistributeDispatchSetupTilingA5(gert::TilingContext *context)
         : MoeDistributeDispatchSetupTilingBase(context)
     {
         socTilingName_ = "MoeDistributeDispatchSetupA5";
     }
+
 private:
     ge::graphStatus DoOpTiling() final;
     bool IsCapable() final;

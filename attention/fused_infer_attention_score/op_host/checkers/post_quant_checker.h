@@ -17,14 +17,15 @@
 #define POST_QUANT_CHECKER_H
 
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "base_checker_fused_infer.h"
 
 namespace optiling {
 
 class PostQuantChecker : public BaseChecker {
 public:
-    PostQuantChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    PostQuantChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~PostQuantChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
@@ -40,10 +41,12 @@ private:
     ge::graphStatus CheckFeatureQueryDType(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureLayout(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureOutputEqual(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckFeatureMLAOutQuant(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeaturePrefix(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckFeatureRowValid(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckAntiquantNotSupport(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMultiParaQuantOffset2(const FiaTilingInfo &fiaInfo) const;
+
 private:
 };
 

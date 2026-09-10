@@ -15,20 +15,12 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_TEARDOWN_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_TEARDOWN_ARCH35_H
 
-#if __has_include("../../common/mc2_kernel_utils.h")
-#include "../../common/mc2_kernel_utils.h"
-#else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_teardown_tiling_data.h"
-#if __has_include("../../moe_distribute_combine_setup/moe_distribute_base.h")
-#include "../../moe_distribute_combine_setup/moe_distribute_base.h"
-#else
-#include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
-#endif
+#include "../../../moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_base.h"
 
 namespace MoeDistributeCombineTeardownImpl {
 
@@ -39,12 +31,12 @@ using namespace AscendC;
 
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineTeardown {
-    constexpr static uint8_t BUFFER_NUM = 2;             // 多buf
-    constexpr static uint64_t STATE_OFFSET = 512U;       // 状态空间偏移地址
-    constexpr static uint32_t STATE_SIZE = 1024U * 1024; // 1M
-    constexpr static uint32_t UB_ALIGN = 32U;            // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
+    constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
+    constexpr static uint32_t STATE_SIZE = 1024U * 1024;  // 1M
+    constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
+    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U; // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -160,7 +152,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(
     axisHFloatSize_ = static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->h) *
                       static_cast<uint64_t>(sizeof(float)); // 一个token占用内存(float)
     axisHExpandXTypeSize_ = static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->h) *
-                            static_cast<uint64_t>(sizeof(ExpandXType));              // 一个token占用内存(输入type)
+                            static_cast<uint64_t>(sizeof(ExpandXType)); // 一个token占用内存(输入type)
     expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * axisHExpandXTypeSize_; // 每个卡的数据在win区占用空间
     sharedExpertDataSizeOffset_ = static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->moeExpertPerRankNum) *
                                   static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->sharedExpertRankNum) *

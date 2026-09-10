@@ -28,11 +28,11 @@
 namespace optiling {
 using namespace mc2_matmul_v3_advanced;
 
-class MatmulAllReduceTilingA5 : public MatmulAllReduceTilingBase
-{
+class MatmulAllReduceTilingA5 : public MatmulAllReduceTilingBase {
 public:
-    explicit MatmulAllReduceTilingA5(gert::TilingContext* context);
-    MatmulAllReduceTilingA5(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, Mc2Tiling::MatmulAllReduce910TilingDataA5* out);
+    explicit MatmulAllReduceTilingA5(gert::TilingContext *context);
+    MatmulAllReduceTilingA5(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
+                            Mc2Tiling::MatmulAllReduce910TilingDataA5 *out);
     ~MatmulAllReduceTilingA5() override = default;
 
 protected:
@@ -50,7 +50,7 @@ protected:
 
     ge::graphStatus Do910Tiling();
 
-    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() override;
 
     ::TCubeTiling &MutableTCubeTileTilingData() override
     {
@@ -75,8 +75,8 @@ protected:
     void PrintExtendMatmulTiling(bool isTail) override;
     void DoEmptyTensorTiling() override;
     ge::graphStatus GetWorkspaceSizeForA2ARSAG();
-    ge::graphStatus SetMc2HcommAllReduce(const char* groupName, const uint32_t reduceType);
-    ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType);
+    ge::graphStatus SetMc2HcommAllReduce(const char *groupName, const uint32_t reduceType);
+    ge::graphStatus SetMc2HcommTwoShot(const char *groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus CheckInput() override;
     CutResult GetTilingResult() override;
@@ -85,7 +85,7 @@ private:
     ge::graphStatus CheckAxisSize();
     ge::graphStatus CheckX1X2();
     Mc2Tiling::MatmulAllReduce910TilingDataA5 matmulAllReduce910TilingDataSelf_{};
-    Mc2Tiling::MatmulAllReduce910TilingDataA5& matmulAllReduce910TilingData_;
+    Mc2Tiling::MatmulAllReduce910TilingDataA5 &matmulAllReduce910TilingData_;
     uint64_t myWorkSpaceSize_{0U};
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;

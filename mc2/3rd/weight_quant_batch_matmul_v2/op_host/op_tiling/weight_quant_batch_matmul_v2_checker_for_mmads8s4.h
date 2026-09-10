@@ -20,9 +20,9 @@ namespace optiling {
 
 class Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4 {
 public:
-    explicit Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4(gert::TilingContext *context)
+        : context_(context)
+    {}
 
     ~Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4() = default;
 
@@ -40,5 +40,5 @@ private:
     gert::TilingContext *context_ = nullptr;
     Mc2WeightQuantBatchMatmulInfo inputParams_;
 };
-}  // namespace optiling
-#endif  // WEIGHT_QUANT_BATCH_MATMUL_V2_CHECKER_FOR_MMADS8S4_H
+} // namespace optiling
+#endif // WEIGHT_QUANT_BATCH_MATMUL_V2_CHECKER_FOR_MMADS8S4_H

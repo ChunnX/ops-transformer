@@ -34,9 +34,8 @@ inline void ApplyTransformerAicpuDefaultCfg(TOpDef &opDef)
     opDef.AICPU().ExtendCfgInfo(OP_INFO_WORKSPACESIZE.c_str(), DEFAULT_WORKSPACE_SIZE.c_str());
     opDef.AICPU().ExtendCfgInfo(OP_INFO_FORMAT_AGNOSTIC.c_str(), FALSE_FORMAT_AGNOSTIC.c_str());
     opDef.AICPU().ExtendCfgInfo(OP_INFO_OPS_FLAG.c_str(), CLOSE_OPS_FLAG.c_str());
-    opDef.AICPU().ExtendCfgInfo(
-        OP_INFO_SUB_TYPE_OF_INFERSHAPE.c_str(), DEFAULT_SUB_TYPE_OF_INFERSHAPE_1.c_str());
+    opDef.AICPU().ExtendCfgInfo(OP_INFO_SUB_TYPE_OF_INFERSHAPE.c_str(), DEFAULT_SUB_TYPE_OF_INFERSHAPE_1.c_str());
 }
-}  // namespace ops
+} // namespace ops
 
 #endif

@@ -14,7 +14,7 @@
  */
 #ifndef MC2_MATMUL_BLOCK_H
 #define MC2_MATMUL_BLOCK_H
-#include "../arch22/unquant_matmul_all_reduce_tiling_data.h"
+#include "../unquant_matmul_all_reduce_tiling_data.h"
 
 namespace AscendC {
 
@@ -28,21 +28,18 @@ struct BlockOffset {
     uint64_t offsetBias;
 };
 
-class MatmulBlock
-{
+class MatmulBlock {
 public:
-    __aicore__ inline MatmulBlock()
-    {}
-    __aicore__ inline void Init(AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg,
-        Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling);
+    __aicore__ inline MatmulBlock() {}
+    __aicore__ inline void Init(AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
+                                Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling);
     __aicore__ inline void UpdateBlockIndex();
     __aicore__ inline void InitBlockIndex();
     __aicore__ inline uint32_t LCM(uint32_t m, uint32_t n); // 计算最小公倍数
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void CalcGMOffset(int32_t mTileIndex = 0, int32_t nTileIndex = 0);
     __aicore__ inline void UpdateBlockCnt(uint32_t index, int32_t mTileIndex = 0, int32_t nTileIndex = 0);
-    __aicore__ inline void UpdateL2cacheTail()
-    {}
+    __aicore__ inline void UpdateL2cacheTail() {}
 
 public:
     BlockOffset offset;
@@ -68,8 +65,8 @@ public:
     uint32_t blockCurN; // 当前block块N轴大小
 };
 
-__aicore__ inline void MatmulBlock::Init(AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg,
-    Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling)
+__aicore__ inline void MatmulBlock::Init(AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
+                                         Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling)
 {
     (void)tileL2cacheTiling;
     this->tiling = tiling;

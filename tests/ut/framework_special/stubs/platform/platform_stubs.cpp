@@ -68,7 +68,8 @@ void PlatFormInfos::GetLocalMemBw(const LocalMemType &mem_type, uint64_t &bw_siz
     }
 }
 
-PlatformInfoManager& PlatformInfoManager::Instance() {
+PlatformInfoManager &PlatformInfoManager::Instance()
+{
     static PlatformInfoManager pf;
     return pf;
 }
@@ -83,14 +84,18 @@ uint32_t PlatformInfoManager::InitializePlatformInfo()
     return 0;
 }
 
-uint32_t PlatformInfoManager::GetPlatformInfoWithOutSocVersion(PlatformInfo &platform_info,
-                                                               OptionalInfo &opti_info) {
+uint32_t PlatformInfoManager::GetPlatformInfoWithOutSocVersion(PlatformInfo &platform_info, OptionalInfo &opti_info)
+{
     opti_info.soc_version = "910B";
     return 0;
 }
 
-PlatformInfoManager::PlatformInfoManager() {}
-PlatformInfoManager::~PlatformInfoManager() {}
+PlatformInfoManager::PlatformInfoManager()
+{
+}
+PlatformInfoManager::~PlatformInfoManager()
+{
+}
 
 } // namespace fe
 
@@ -119,8 +124,7 @@ SocVersion PlatformInfo::GetSocVersion() const
     if (socVersion == "Ascend310P") {
         return SocVersion::ASCEND310P;
     }
-    if (socVersion == "Ascend950")
-    {
+    if (socVersion == "Ascend950") {
         return SocVersion::ASCEND950;
     }
 
@@ -129,11 +133,13 @@ SocVersion PlatformInfo::GetSocVersion() const
 
 static PlatformInfo platformInfo;
 
-const PlatformInfo &GetCurrentPlatformInfo() {
+const PlatformInfo &GetCurrentPlatformInfo()
+{
     return platformInfo;
 }
 
-fe::PlatFormInfos *PlatformInfo::GetPlatformInfos() const {
+fe::PlatFormInfos *PlatformInfo::GetPlatformInfos() const
+{
     fe::PlatFormInfos *platformOriInfo = nullptr;
     return platformOriInfo;
 }

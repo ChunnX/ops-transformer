@@ -18,20 +18,16 @@
 #else
 #include "kernel_operator.h"
 #endif
-#if __has_include("../distribute_barrier/distribute_barrier_tiling.h")
-#include "../distribute_barrier/distribute_barrier_tiling.h"
-#include "../distribute_barrier/distribute_barrier.h"
-#else
 #include "../../distribute_barrier/op_kernel/distribute_barrier_tiling.h"
 #include "../../distribute_barrier/op_kernel/distribute_barrier.h"
-#endif
 
 using namespace AscendC;
 using namespace DistributeBarrierImpl;
 
 extern "C" __global__ __aicore__ void distribute_barrier_extend(GM_ADDR mc2Context, GM_ADDR xRef, GM_ADDR timeOut,
                                                                 GM_ADDR elasticInfo, GM_ADDR xRefOut,
-                                                                GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+                                                                GM_ADDR workspaceGM, GM_ADDR tilingGM)
+{
     REGISTER_TILING_DEFAULT(DistributeBarrierTilingData);
     GET_TILING_DATA_WITH_STRUCT(DistributeBarrierTilingData, tilingData, tilingGM);
     TPipe pipe;

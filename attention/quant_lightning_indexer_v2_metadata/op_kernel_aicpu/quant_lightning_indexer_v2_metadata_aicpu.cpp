@@ -22,7 +22,7 @@ uint32_t QuantLightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx
     if (!success) {
         return KERNEL_STATUS_PARAM_INVALID;
     }
-    SplitResult splitRes {aicCoreNum_, aivCoreNum_};
+    SplitResult splitRes{aicCoreNum_, aivCoreNum_};
     success = BalanceSchedule(splitRes) && GenMetadata(splitRes);
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
@@ -41,10 +41,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     bool requiredAttrs = GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
                          GetAttrValue(ctx, "aiv_core_num", aivCoreNum_) &&
                          GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
-                         GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
-                         GetAttrValue(ctx, "head_dim", headDim_) &&
-                         GetAttrValue(ctx, "topk", topk_);
+                         GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
+                         GetAttrValue(ctx, "head_dim", headDim_) && GetAttrValue(ctx, "topk", topk_);
     if (!requiredAttrs) {
         return false;
     }
@@ -63,7 +61,6 @@ bool QuantLightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
 {
-    // 校验输出 metadata 是否为空
     if (metadata_ == nullptr) {
         KERNEL_LOG_ERROR("Output metadata is nullptr");
         return false;
@@ -71,80 +68,131 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("Output metadata data is nullptr");
         return false;
     }
-    int32_t batchSize = GetQueryBatchSize();
-    // 校验 cu_seqlens_q 元素
-    if (layoutQ_ == "TND") {
-        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            const int32_t *cuSeqlensQPtr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
-            for (int i = 0; i < batchSize + 1; i++) {
-                // 校验 cu_seqlens_q 元素非负
-                if (cuSeqlensQPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q should be >= 0, but got cu_seqlens_q[%d] = %d",
-                        i, cuSeqlensQPtr[i]);
-                    return false;
-                }
-                // 校验 cu_seqlens_q 元素递增
-                if (i > 0 && cuSeqlensQPtr[i - 1] > cuSeqlensQPtr[i]) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_q must be in ascending order, "
-                        "but got cu_seqlens_q[%d] = %d, cu_seqlens_q[%d] = %d",
-                        i - 1, cuSeqlensQPtr[i - 1], i, cuSeqlensQPtr[i]);
-                    return false;
-                }
-            }
+    const int32_t batchSize = GetQueryBatchSize();
+    return CheckCuSeqlensQ(batchSize) && CheckCuSeqlensK(batchSize) && CheckSequsedQ(batchSize) &&
+           CheckSequsedK(batchSize) && CheckCmpResidualK(batchSize);
+}
+
+bool QuantLightningIndexerV2MetadataCpuKernel::CheckCuSeqlensQ(int32_t batchSize) const
+{
+    if (layoutQ_ != "TND" || cuSeqlensQ_ == nullptr || cuSeqlensQ_->GetData() == nullptr) {
+        return true;
+    }
+    const int32_t *cuSeqlensQPtr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
+    if (cuSeqlensQPtr[0] != 0) {
+        KERNEL_LOG_ERROR("The first element of cu_seqlens_q should be 0, but got %d", cuSeqlensQPtr[0]);
+        return false;
+    }
+    for (int32_t i = 1; i < batchSize + 1; ++i) {
+        if (cuSeqlensQPtr[i - 1] > cuSeqlensQPtr[i]) {
+            KERNEL_LOG_ERROR("The elements in cu_seqlens_q must be in ascending order, "
+                             "but got cu_seqlens_q[%d] = %d, cu_seqlens_q[%d] = %d",
+                             i - 1, cuSeqlensQPtr[i - 1], i, cuSeqlensQPtr[i]);
+            return false;
         }
     }
-    // 校验 cu_seqlens_k 元素
-    if (layoutK_ == "TND") {
-        if (cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) {
-            const int32_t *cuSeqlensKPtr = static_cast<const int32_t*>(cuSeqlensK_->GetData());
-            for (int i = 0; i < batchSize + 1; i++) {
-                // 校验 cu_seqlens_k 元素非负
-                if (cuSeqlensKPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_k should be >= 0, but got cu_seqlens_k[%d] = %d",
-                        i, cuSeqlensKPtr[i]);
-                    return false;
-                }
-                // 校验 cu_seqlens_k 元素递增
-                if (i > 0 && cuSeqlensKPtr[i - 1] > cuSeqlensKPtr[i]) {
-                    KERNEL_LOG_ERROR("The elements in cu_seqlens_k must be in ascending order, "
-                        "but got cu_seqlens_k[%d] = %d, cu_seqlens_k[%d] = %d",
-                        i - 1, cuSeqlensKPtr[i - 1], i, cuSeqlensKPtr[i]);
-                    return false;
-                }
-            }
+    return true;
+}
+
+bool QuantLightningIndexerV2MetadataCpuKernel::CheckCuSeqlensK(int32_t batchSize) const
+{
+    if (layoutK_ != "TND" || cuSeqlensK_ == nullptr || cuSeqlensK_->GetData() == nullptr) {
+        return true;
+    }
+    const int32_t *cuSeqlensKPtr = static_cast<const int32_t *>(cuSeqlensK_->GetData());
+    if (cuSeqlensKPtr[0] != 0) {
+        KERNEL_LOG_ERROR("The first element of cu_seqlens_k should be 0, but got %d", cuSeqlensKPtr[0]);
+        return false;
+    }
+    for (int32_t i = 1; i < batchSize + 1; ++i) {
+        if (cuSeqlensKPtr[i - 1] > cuSeqlensKPtr[i]) {
+            KERNEL_LOG_ERROR("The elements in cu_seqlens_k must be in ascending order, "
+                             "but got cu_seqlens_k[%d] = %d, cu_seqlens_k[%d] = %d",
+                             i - 1, cuSeqlensKPtr[i - 1], i, cuSeqlensKPtr[i]);
+            return false;
         }
     }
-    // 校验 seqused_q 元素非负
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *sequsedQPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            if (sequsedQPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d",
-                    i, sequsedQPtr[i]);
+    return true;
+}
+
+bool QuantLightningIndexerV2MetadataCpuKernel::CheckSequsedQ(int32_t batchSize) const
+{
+    if (sequsedQ_ == nullptr || sequsedQ_->GetData() == nullptr) {
+        return true;
+    }
+    const int32_t *sequsedQPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
+    const int32_t *cuSeqlensQPtr = (layoutQ_ == "TND" && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) ?
+                                       static_cast<const int32_t *>(cuSeqlensQ_->GetData()) :
+                                       nullptr;
+    for (int32_t i = 0; i < batchSize; ++i) {
+        if (sequsedQPtr[i] < 0) {
+            KERNEL_LOG_ERROR("The elements in seqused_q should be >= 0, but got seqused_q[%d] = %d", i, sequsedQPtr[i]);
+            return false;
+        }
+        if (layoutQ_ == "BSND" && sequsedQPtr[i] > maxSeqlenQ_) {
+            KERNEL_LOG_ERROR("The elements in seqused_q should not be greater than max_seqlen_q %d, "
+                             "but got seqused_q[%d] = %d",
+                             maxSeqlenQ_, i, sequsedQPtr[i]);
+            return false;
+        }
+        if (cuSeqlensQPtr != nullptr) {
+            const int32_t seqLen = cuSeqlensQPtr[i + 1] - cuSeqlensQPtr[i];
+            if (sequsedQPtr[i] > seqLen) {
+                KERNEL_LOG_ERROR("The elements in seqused_q should not be greater than the sequence length "
+                                 "from cu_seqlens_q %d, but got seqused_q[%d] = %d",
+                                 seqLen, i, sequsedQPtr[i]);
                 return false;
             }
         }
     }
-    // 校验 seqused_k 元素非负
-    if (sequsedK_ != nullptr && sequsedK_->GetData() != nullptr) {
-        const int32_t *sequsedKPtr = static_cast<const int32_t*>(sequsedK_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            if (sequsedKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in seqused_k should be >= 0, but got seqused_k[%d] = %d",
-                    i, sequsedKPtr[i]);
+    return true;
+}
+
+bool QuantLightningIndexerV2MetadataCpuKernel::CheckSequsedK(int32_t batchSize) const
+{
+    if (sequsedK_ == nullptr || sequsedK_->GetData() == nullptr) {
+        return true;
+    }
+    const int32_t *sequsedKPtr = static_cast<const int32_t *>(sequsedK_->GetData());
+    const int32_t *cuSeqlensKPtr = (layoutK_ == "TND" && cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) ?
+                                       static_cast<const int32_t *>(cuSeqlensK_->GetData()) :
+                                       nullptr;
+    for (int32_t i = 0; i < batchSize; ++i) {
+        if (sequsedKPtr[i] < 0) {
+            KERNEL_LOG_ERROR("The elements in seqused_k should be >= 0, but got seqused_k[%d] = %d", i, sequsedKPtr[i]);
+            return false;
+        }
+        if (layoutK_ == "BSND" && sequsedKPtr[i] > maxSeqlenK_) {
+            KERNEL_LOG_ERROR("The elements in seqused_k should not be greater than max_seqlen_k %d, "
+                             "but got seqused_k[%d] = %d",
+                             maxSeqlenK_, i, sequsedKPtr[i]);
+            return false;
+        }
+        if (cuSeqlensKPtr != nullptr) {
+            const int32_t seqLen = cuSeqlensKPtr[i + 1] - cuSeqlensKPtr[i];
+            if (sequsedKPtr[i] > seqLen) {
+                KERNEL_LOG_ERROR("The elements in seqused_k should not be greater than the sequence length "
+                                 "from cu_seqlens_k %d, but got seqused_k[%d] = %d",
+                                 seqLen, i, sequsedKPtr[i]);
                 return false;
             }
         }
     }
-    // 校验 cmp_residual_k 元素非负
-    if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
-        const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
-        for (int i = 0; i < batchSize; i++) {
-            if (cmpResidualKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
-                    i, cmpResidualKPtr[i]);
-                return false;
-            }
+    return true;
+}
+
+bool QuantLightningIndexerV2MetadataCpuKernel::CheckCmpResidualK(int32_t batchSize) const
+{
+    if (cmpResidualK_ == nullptr || cmpResidualK_->GetData() == nullptr) {
+        return true;
+    }
+    const int32_t *cmpResidualKPtr = static_cast<const int32_t *>(cmpResidualK_->GetData());
+    for (int32_t i = 0; i < batchSize; ++i) {
+        if (cmpResidualKPtr[i] < 0 || cmpResidualKPtr[i] >= cmpRatio_) {
+            KERNEL_LOG_ERROR("The elements in cmp_residual_k should be in [0, cmpRatio_(%d)), but got "
+                             "cmp_residual_k[%d] = %d",
+                             cmpRatio_, i, cmpResidualKPtr[i]);
+            return false;
         }
     }
     return true;
@@ -193,12 +241,15 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsInit()
     } else if (mode == SparseMode::BAND) {
         attentionMode_ = 1;
     }
-    groupSize_ = numHeadsQ_ / numHeadsK_;
+    groupSize_ = static_cast<uint32_t>(numHeadsQ_) / static_cast<uint32_t>(numHeadsK_);
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND910B) {
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 2048U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (static_cast<uint32_t>(topk_) > TOPK_6K) {
+            s1BaseSize_ = S1_BASE_SIZE_SMALL;
+        }
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 128U;
     } else {
@@ -212,14 +263,14 @@ uint32_t QuantLightningIndexerV2MetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
     // 1. 如果 sequsedQ_ 传了，直接使用
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
+        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     // 2. sequsedQ_ 没传，判断 Layout
     if (layoutQ_ == "TND") {
         // 如果是 TND，尝试使用 cuSeqlensQ_
         if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-            const int32_t *s1Ptr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
+            const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
             return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
         }
     }
@@ -231,14 +282,14 @@ uint32_t QuantLightningIndexerV2MetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
     // 如果 seqUsedKv_ 传了，直接使用
     if (sequsedK_ != nullptr && sequsedK_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(sequsedK_->GetData());
+        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedK_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
     // seqUsedKv_ 没传，判断 Layout
     if (layoutK_ == "TND") {
         // 如果是 TND，尝试使用 actSeqLenOriKv_
         if (cuSeqlensK_ != nullptr && cuSeqlensK_->GetData() != nullptr) {
-            const int32_t *s2Ptr = static_cast<const int32_t*>(cuSeqlensK_->GetData());
+            const int32_t *s2Ptr = static_cast<const int32_t *>(cuSeqlensK_->GetData());
             return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
@@ -250,8 +301,9 @@ uint64_t QuantLightningIndexerV2MetadataCpuKernel::GetRevertS2Size(uint32_t bIdx
 {
     uint32_t cmpS2Size = GetS2SeqSize(bIdx);
     if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
-        const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
-        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_) + residualPtr[bIdx];
+        const int32_t *residualPtr = static_cast<const int32_t *>(cmpResidualK_->GetData());
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_) +
+               static_cast<uint64_t>(residualPtr[bIdx]);
     } else {
         return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_);
     }
@@ -261,9 +313,10 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
-    for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
+    for (uint32_t bIdx = 0; bIdx < static_cast<uint32_t>(batchSize_); bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
+        maxS2Size_ = std::max(maxS2Size_, s2Size);
         splitInfo.s1GBaseNum[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -272,11 +325,20 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
             splitInfo.isKvSeqAllZero = false;
         }
     }
-    return;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (maxS2Size_ < static_cast<uint32_t>(topk_)) {
+            supportFd_ = false;
+            return;
+        }
+        if (maxS2Size_ > fdToleranceRatio * s2BaseSize_) {
+            supportFd_ = true;
+            return;
+        }
+    }
 }
 
-int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcPreTokenLeftUp(
-    uint32_t s1Size, uint64_t s2Size)
+int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size) const
 {
     auto mode = static_cast<SparseMode>(maskMode_);
     if (mode == SparseMode::BAND) {
@@ -285,8 +347,7 @@ int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcPreTokenLeftUp(
     return preToken_;
 }
 
-int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcNextTokenLeftUp(
-    uint32_t s1Size, uint64_t s2Size)
+int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size) const
 {
     auto mode = static_cast<SparseMode>(maskMode_);
     switch (mode) {
@@ -303,20 +364,20 @@ int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcNextTokenLeftUp(
     }
 }
 
-int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcCost(
-    uint32_t basicM, uint32_t basicS2)
+int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcCost(uint32_t basicM, uint32_t basicS2) const
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
-    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
-    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(COST_WEIGHT_M * alignBasicM + COST_WEIGHT_S2 * alignBasicS2);
 }
 
-BlockCost<int64_t> QuantLightningIndexerV2MetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
-    uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
+BlockCost<int64_t> QuantLightningIndexerV2MetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
+                                                                           uint32_t s1GTailSize,
+                                                                           uint32_t s2TailSize) const
 {
-    BlockCost<int64_t> typeCost {};
+    BlockCost<int64_t> typeCost{};
     typeCost[NORMAL_BLOCK][NORMAL_BLOCK] = CalcCost(s1NormalSize, s2NormalSize);
     typeCost[TAIL_BLOCK][NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2NormalSize);
     typeCost[NORMAL_BLOCK][TAIL_BLOCK] = (s2TailSize == 0U) ? 0U : CalcCost(s1NormalSize, s2TailSize);
@@ -334,7 +395,8 @@ Range<int64_t> QuantLightningIndexerV2MetadataCpuKernel::CalcS2TokenRange(uint32
     // 1. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
     int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(mBaseSize_);
     int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(mBaseSize_),
-        static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(groupSize_)) - 1;
+                                    static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(groupSize_)) -
+                           1;
     int64_t s1FirstToken = 0;
     int64_t s1LastToken = 0;
     if (isS1G_) {
@@ -358,8 +420,8 @@ Range<int64_t> QuantLightningIndexerV2MetadataCpuKernel::CalcS2TokenRange(uint32
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
-void QuantLightningIndexerV2MetadataCpuKernel::CalcBatchCache(
-    uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
+void QuantLightningIndexerV2MetadataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext,
+                                                              BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -370,8 +432,8 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcBatchCache(
     batchCache.nextTokenLeftUp = CalcNextTokenLeftUp(batchCache.s1Size, batchCache.revertS2Size);
 }
 
-void QuantLightningIndexerV2MetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
-    const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
+void QuantLightningIndexerV2MetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext,
+                                                            const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -419,27 +481,26 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     uint32_t curTailS2Num = s2TailSize != 0 ? 1U : 0U;
     uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
 
-    BlockCost<int64_t> typeCost = CalcCostTable(mBaseSize_, s2BaseSize_,
-                                                splitInfo.s1GTailSize[batchCache.bIdx], s2TailSize);
+    BlockCost<int64_t> typeCost =
+        CalcCostTable(mBaseSize_, s2BaseSize_, splitInfo.s1GTailSize[batchCache.bIdx], s2TailSize);
 
-    if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) &&
-               splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
-        s1GCache.s1GCost = typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-                           typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? typeCost[TAIL_BLOCK][TAIL_BLOCK] :
-                                    typeCost[TAIL_BLOCK][NORMAL_BLOCK];
+    if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) && splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
+        s1GCache.s1GCost =
+            typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num + typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
+        s1GCache.s1GLastBlockCost =
+            curTailS2Num > 0U ? typeCost[TAIL_BLOCK][TAIL_BLOCK] : typeCost[TAIL_BLOCK][NORMAL_BLOCK];
         s1GCache.s1GNormalBlockCost = typeCost[TAIL_BLOCK][NORMAL_BLOCK];
     } else {
-        s1GCache.s1GCost = typeCost[NORMAL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-                           typeCost[NORMAL_BLOCK][TAIL_BLOCK] * curTailS2Num;
-        s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? typeCost[NORMAL_BLOCK][TAIL_BLOCK] :
-                                    typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
+        s1GCache.s1GCost =
+            typeCost[NORMAL_BLOCK][NORMAL_BLOCK] * curNormalS2Num + typeCost[NORMAL_BLOCK][TAIL_BLOCK] * curTailS2Num;
+        s1GCache.s1GLastBlockCost =
+            curTailS2Num > 0U ? typeCost[NORMAL_BLOCK][TAIL_BLOCK] : typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
         s1GCache.s1GNormalBlockCost = typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
     }
 }
 
-void QuantLightningIndexerV2MetadataCpuKernel::CalcBatchCost(
-    uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
+void QuantLightningIndexerV2MetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext,
+                                                             CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
 
@@ -481,15 +542,15 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcCostInfo(SplitContext &splitC
     }
 
     // 计算batch的负载并记录，用于按batch分配，需要按行计算起止点，统计块数、负载
-    for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
+    for (uint32_t bIdx = 0; bIdx < static_cast<uint32_t>(batchSize_); bIdx++) {
         CalcBatchCost(bIdx, splitContext, costInfo);
         costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * numHeadsK_;
-        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * numHeadsK_;
+        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * static_cast<uint32_t>(numHeadsK_);
     }
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::UpdateCursor(const SplitContext &splitContext,
-    AssignContext &assignContext)
+                                                            AssignContext &assignContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
@@ -498,7 +559,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::UpdateCursor(const SplitContext &
     bool UpdateBatch = false;
 
     // Update S2
-    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) {    // 边界assignInfo.s2End是取不到的开区间
+    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) { // 边界assignInfo.s2End是取不到的开区间
         assignContext.curS2Idx = 0U;
         assignContext.curS1GIdx++;
         UpdateS1G = true;
@@ -511,15 +572,16 @@ void QuantLightningIndexerV2MetadataCpuKernel::UpdateCursor(const SplitContext &
     }
 
     // Update Batch
-    if (assignContext.curBN2Idx == batchSize_ * numHeadsK_) {  // 所有负载全部分配完，设置最后一个核的右开区间，返回
+    if (assignContext.curBN2Idx ==
+        static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsK_)) { // 所有负载全部分配完
         assignContext.curS1GIdx = 0U;
         assignContext.curS2Idx = 0U;
         assignContext.isFinished = true;
         return;
     }
 
-    if (assignContext.curBN2Idx / numHeadsK_ != assignContext.curBIdx) {
-        assignContext.curBIdx = assignContext.curBN2Idx / numHeadsK_;
+    if (assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsK_) != assignContext.curBIdx) {
+        assignContext.curBIdx = assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsK_);
         assignContext.curS1GIdx = 0U;
         UpdateBatch = true;
         UpdateS1G = true;
@@ -538,21 +600,22 @@ void QuantLightningIndexerV2MetadataCpuKernel::UpdateCursor(const SplitContext &
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::AssignByBatch(const SplitContext &splitContext,
-    AssignContext &assignContext)
+                                                             AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
     }
     const CostInfo &costInfo = splitContext.costInfo;
-    while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
-        costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.bN2Cost)) {
+    while (assignContext.bN2Cost == 0 ||
+           IsWithinTolerance(assignContext.coreCache.costLimit,
+                             costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
+                             assignContext.coreCache.cost + assignContext.bN2Cost)) {
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;
         assignContext.curBN2Idx++;
 
         // to the end
-        if (assignContext.curBN2Idx == batchSize_ * numHeadsK_) {
+        if (assignContext.curBN2Idx == static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsK_)) {
             assignContext.curS1GIdx = 0U;
             assignContext.curS2Idx = 0U;
             assignContext.isFinished = true;
@@ -560,8 +623,8 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignByBatch(const SplitContext 
         }
 
         // next batch
-        if (assignContext.curBN2Idx / numHeadsK_ != assignContext.curBIdx) {
-            assignContext.curBIdx = assignContext.curBN2Idx / numHeadsK_;
+        if (assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsK_) != assignContext.curBIdx) {
+            assignContext.curBIdx = assignContext.curBN2Idx / static_cast<uint32_t>(numHeadsK_);
             CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
         }
 
@@ -574,23 +637,25 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignByBatch(const SplitContext 
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::AssignByRow(const SplitContext &splitContext,
-    AssignContext &assignContext)
+                                                           AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
     }
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit,
-        assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
+                             assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
+                             assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
         assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
         assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
 
         // 当前batch被分配一行出去，更新剩余负载
         assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
-                                assignContext.bN2Cost - assignContext.s1GCache.s1GCost : 0;
+                                    assignContext.bN2Cost - assignContext.s1GCache.s1GCost :
+                                    0;
         assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
-                                 assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
+                                     assignContext.bN2Block - assignContext.s1GCache.s1GBlock :
+                                     0U;
         // 计算新一行的信息
         do {
             assignContext.curS1GIdx++;
@@ -601,7 +666,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignByRow(const SplitContext &s
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::AssignByBlock(const SplitContext &splitContext,
-    AssignContext &assignContext)
+                                                             AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -614,7 +679,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignByBlock(const SplitContext 
 
     // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + curCost)) {
+                             assignContext.coreCache.cost + curCost)) {
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;
@@ -628,7 +693,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignByBlock(const SplitContext 
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::ForceAssign(const SplitContext &splitContext,
-    AssignContext &assignContext)
+                                                           AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -652,7 +717,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::ForceAssign(const SplitContext &s
 }
 
 bool QuantLightningIndexerV2MetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext,
-    const SplitResult &splitRes)
+                                                                  const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -672,40 +737,42 @@ bool QuantLightningIndexerV2MetadataCpuKernel::IsNeedRecordFDInfo(const AssignCo
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext,
-    const AssignContext &assignContext, SplitResult &result)
+                                                            const AssignContext &assignContext, SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
-    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / numHeadsK_;
+    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / static_cast<uint32_t>(numHeadsK_);
     uint32_t splitS1GIdx = result.gS1End[assignContext.curCoreIdx - 1U];
     uint32_t s1Size = GetS1SeqSize(splitBIdx);
 
     // 计算归约数据的FD均衡划分信息
     uint32_t curFdS1gSize =
         (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-            (static_cast<uint64_t>(s1Size) * groupSize_ - static_cast<uint64_t>(splitS1GIdx) * mBaseSize_) : mBaseSize_;
+            (static_cast<uint64_t>(s1Size) * groupSize_ - static_cast<uint64_t>(splitS1GIdx) * mBaseSize_) :
+            mBaseSize_;
     // 记录
     result.maxS2SplitNum = std::max(result.maxS2SplitNum, assignContext.curKvSplitPart);
     // 若存在头归约，则切分点一定为上一个核结束的位置
     result.fdRes.fdBN2Idx[result.numOfFdHead] = result.bN2End[assignContext.curCoreIdx - 1U];
     result.fdRes.fdMIdx[result.numOfFdHead] = result.gS1End[assignContext.curCoreIdx - 1U];
-        result.fdRes.fdWorkspaceIdx[result.numOfFdHead] = assignContext.preFdDataNum;
+    result.fdRes.fdWorkspaceIdx[result.numOfFdHead] = assignContext.preFdDataNum;
     result.fdRes.fdS2SplitNum[result.numOfFdHead] = assignContext.curKvSplitPart;
     result.fdRes.fdMSize[result.numOfFdHead] = curFdS1gSize / groupSize_;
     result.numOfFdHead++;
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::AssignBlockToCore(const SplitContext &splitContext,
-    AssignContext &assignContext, SplitResult &result)
+                                                                 AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
-    result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] = assignContext.preFdDataNum +
-        assignContext.curKvSplitPart - 1U;
+    result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] =
+        assignContext.preFdDataNum + assignContext.curKvSplitPart - 1U;
     assignContext.coreCache = {};
     assignContext.coreCache.costLimit = assignContext.unassignedCost / (aicCoreNum_ - assignContext.curCoreIdx);
     if (!supportFd_) {
         assignContext.coreCache.costLimit = costInfo.maxS1GCost > assignContext.coreCache.costLimit ?
-            costInfo.maxS1GCost : assignContext.coreCache.costLimit;
+                                                costInfo.maxS1GCost :
+                                                assignContext.coreCache.costLimit;
     }
     // 1、按整batch分配
     AssignByBatch(splitContext, assignContext);
@@ -738,7 +805,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignBlockToCore(const SplitCont
 }
 
 void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext,
-    SplitResult &result)
+                                                             SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     if (aicCoreNum_ == 0U) {
@@ -746,7 +813,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitPlan(int64_t costLimit, 
     }
     result.maxCost = 0U;
     result.usedCoreNum = 0U;
-    AssignContext assignContext {};
+    AssignContext assignContext{};
     assignContext.curBIdx = 0U;
     assignContext.curS1GIdx = 0U;
     assignContext.unassignedCost = costInfo.totalCost;
@@ -764,6 +831,13 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitPlan(int64_t costLimit, 
         }
         assignContext.curCoreIdx = i;
         AssignBlockToCore(splitContext, assignContext, result);
+        // Keep trailing zero-cost batches in the last AIC range so their outputs are initialized.
+        if (!assignContext.isFinished && assignContext.unassignedCost <= 0) {
+            result.bN2End[i] = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsK_);
+            result.gS1End[i] = 0U;
+            result.s2End[i] = 0U;
+            assignContext.isFinished = true;
+        }
     }
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
@@ -795,7 +869,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
         curFDVectorNum = std::max(1U, curFDVectorNum);
         // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         uint32_t curAveMSize = (splitRes.fdRes.fdMSize[i] + curFDVectorNum - 1U) / curFDVectorNum;
-        curFDVectorNum = (splitRes.fdRes.fdMSize[i] + curAveMSize -1U)/ curAveMSize;
+        curFDVectorNum = (splitRes.fdRes.fdMSize[i] + curAveMSize - 1U) / curAveMSize;
         // 需要使用的vec核数与当前剩余可用vec核数取最小
         curFDVectorNum = std::min(curFDVectorNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
         // FD负载分配
@@ -820,7 +894,7 @@ bool QuantLightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &spli
     // 全空case
     if (splitContext.splitInfo.isKvSeqAllZero) {
         splitRes.usedCoreNum = 1U;
-        splitRes.bN2End[0] = batchSize_ * numHeadsK_;
+        splitRes.bN2End[0] = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsK_);
         splitRes.gS1End[0] = 0U;
         splitRes.s2End[0] = 0U;
         return true;
@@ -834,13 +908,13 @@ bool QuantLightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &spli
     if (supportFd_ && splitRes.numOfFdHead > 0U) {
         SplitFD(splitRes);
     }
-    splitRes.usedCoreNum = std::max(splitRes.usedCoreNum, 1U);  // 至少使用1个core
+    splitRes.usedCoreNum = std::max(splitRes.usedCoreNum, 1U); // 至少使用1个core
     return true;
 }
 
 bool QuantLightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
-    optiling::detail::QliV2Metadata* metadataPtr = static_cast<optiling::detail::QliV2Metadata*>(metadata_->GetData());
+    optiling::detail::QliV2Metadata *metadataPtr = static_cast<optiling::detail::QliV2Metadata *>(metadata_->GetData());
     *metadataPtr = {};
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
@@ -850,9 +924,9 @@ bool QuantLightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes
         }
         metadataPtr->qliV2Metadata[i][QLI_V2_CORE_ENABLE_INDEX] = 1; // AIC enable
         // FA START
-        metadataPtr->qliV2Metadata[i][QLI_V2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i-1];
-        metadataPtr->qliV2Metadata[i][QLI_V2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i-1];
-        metadataPtr->qliV2Metadata[i][QLI_V2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i-1];
+        metadataPtr->qliV2Metadata[i][QLI_V2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i - 1];
+        metadataPtr->qliV2Metadata[i][QLI_V2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i - 1];
+        metadataPtr->qliV2Metadata[i][QLI_V2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i - 1];
         // FA END
         metadataPtr->qliV2Metadata[i][QLI_V2_BN2_END_INDEX] = splitRes.bN2End[i];
         metadataPtr->qliV2Metadata[i][QLI_V2_M_END_INDEX] = splitRes.gS1End[i];
@@ -880,7 +954,7 @@ bool QuantLightningIndexerV2MetadataCpuKernel::GenMetadata(SplitResult &splitRes
 }
 
 namespace {
-    static const char *kernelType = "QuantLightningIndexerV2Metadata";
-    REGISTER_CPU_KERNEL(kernelType, QuantLightningIndexerV2MetadataCpuKernel);
-}
+static const char *kernelType = "QuantLightningIndexerV2Metadata";
+REGISTER_CPU_KERNEL(kernelType, QuantLightningIndexerV2MetadataCpuKernel);
+} // namespace
 }; // namespace aicpu

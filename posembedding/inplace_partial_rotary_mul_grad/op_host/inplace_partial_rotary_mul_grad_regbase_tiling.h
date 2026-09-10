@@ -94,9 +94,9 @@ enum class InplacePartialRotaryMulGradMode : int64_t {
 
 class InplacePartialRotaryMulGradRegbaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit InplacePartialRotaryMulGradRegbaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit InplacePartialRotaryMulGradRegbaseTiling(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {}
 
     void Reset(gert::TilingContext *context) override
     {
@@ -153,6 +153,9 @@ protected:
     int64_t sliceEnd_{0};
     int64_t sliceLength_{0};
     bool is1snd_ = false;
+    // No-op: empty slice (start == end) or empty dy/cos/sin -> nothing to compute,
+    // kernel goes through TILING_KEY_EMPTY and returns, output dx == dy (in-place).
+    bool isNoOp_{false};
 
 private:
     bool IsInplacePartialRotaryMulGradMode(const int32_t mode) const;

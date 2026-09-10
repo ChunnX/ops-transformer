@@ -14,7 +14,7 @@
  */
 #ifndef _KV_RMS_NORM_ROPE_CACHE_COMM_H_
 #define _KV_RMS_NORM_ROPE_CACHE_COMM_H_
-#include "platform.h"
+#include "kv_rms_norm_rope_cache_platform.h"
 
 namespace KvRmsNormRopeCache {
 using namespace AscendC;
@@ -62,9 +62,9 @@ template <bool isPagedAttention, typename KV_DTYPE, typename K_DTYPE, typename V
 class KernelKvRmsNormRopeCacheBase {
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheBase(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
-        : pipe_(pipe), tilingData_(tiling)
-    {
-    }
+        : pipe_(pipe),
+          tilingData_(tiling)
+    {}
 
     __aicore__ inline int32_t InitSharedData(int32_t methodMode)
     {
@@ -112,8 +112,7 @@ class KernelKvRmsNormRopeCacheMTP : public KernelKvRmsNormRopeCacheBase<isPagedA
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheMTP(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
         : KernelKvRmsNormRopeCacheBase<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
-    {
-    }
+    {}
 
 protected:
     TQue<QuePosition::VECOUT, 1> outQueueK, outQueueV;
@@ -126,8 +125,7 @@ class KernelKvRmsNormRopeCacheMTPQuant
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheMTPQuant(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
         : KernelKvRmsNormRopeCacheMTP<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
-    {
-    }
+    {}
 
 protected:
     TBuf<TPosition::VECCALC> wsBuffer;
@@ -142,8 +140,7 @@ class KernelKvRmsNormRopeCacheCutBS
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheCutBS(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
         : KernelKvRmsNormRopeCacheBase<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
-    {
-    }
+    {}
 
 protected:
     TQue<QuePosition::VECOUT, 1> outQueue;
@@ -160,8 +157,7 @@ class KernelKvRmsNormRopeCacheCutBSScatter
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheCutBSScatter(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
         : KernelKvRmsNormRopeCacheCutBS<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
-    {
-    }
+    {}
 
 protected:
     GlobalTensor<KV_DTYPE> kCacheGmNd, vCacheGmNd;
@@ -173,8 +169,7 @@ class KernelKvRmsNormRopeCacheCutBSQuant
 public:
     __aicore__ inline KernelKvRmsNormRopeCacheCutBSQuant(TPipe *pipe, const KvRmsNormRopeCacheTilingData *tiling)
         : KernelKvRmsNormRopeCacheCutBSScatter<isPagedAttention, KV_DTYPE, K_DTYPE, V_DTYPE>(pipe, tiling)
-    {
-    }
+    {}
 
 protected:
     GlobalTensor<float> kRopeScaleGm, cKvScaleGm;   // SYMMETRIC QUANT

@@ -10,10 +10,10 @@
 #ifndef ARCH35_CATLASS_PIPELINE_PIPELINE_STAGE_SINGLECORE_BASE_H
 #define ARCH35_CATLASS_PIPELINE_PIPELINE_STAGE_SINGLECORE_BASE_H
 
-#include "../utils/device_utils.h"
+#include "../utils/wq_device_utils.h"
 #include "../utils/math_utils.h"
 #include "kernel_operator.h"
-#include "utils.h"
+#include "wq_pipeline_utils.h"
 
 using AscendC::HardEvent;
 using AscendC::Hardware;
@@ -30,29 +30,28 @@ struct PipelineStageSingleCoreBase {
     TEventID backwardEventId[Stages];
 
     DEVICE
-    PipelineStageSingleCoreBase()
-    {}
+    PipelineStageSingleCoreBase() {}
 
     DEVICE
-    void ProducerWait(PipelineState<Stages> const& state) const
+    void ProducerWait(PipelineState<Stages> const &state) const
     {
         ProducerWait(state.index());
     }
 
     DEVICE
-    void ProducerRelease(PipelineState<Stages> const& state) const
+    void ProducerRelease(PipelineState<Stages> const &state) const
     {
-        static_cast<const Derived*>(this)->ProducerRelease(state.index());
+        static_cast<const Derived *>(this)->ProducerRelease(state.index());
     }
 
     DEVICE
-    void ConsumerWait(PipelineState<Stages> const& state) const
+    void ConsumerWait(PipelineState<Stages> const &state) const
     {
-        static_cast<const Derived*>(this)->ConsumerWait(state.index());
+        static_cast<const Derived *>(this)->ConsumerWait(state.index());
     }
 
     DEVICE
-    void ConsumerRelease(PipelineState<Stages> const& state) const
+    void ConsumerRelease(PipelineState<Stages> const &state) const
     {
         ConsumerRelease(state.index());
     }
@@ -71,8 +70,8 @@ struct PipelineStageSingleCoreBase {
 
     DEVICE void Clear() const
     {
-        // 多set需要wait掉
-        #pragma unroll
+// 多set需要wait掉
+#pragma unroll
         for (uint8_t i = 0; i < Stages; ++i) {
             ProducerWait(backwardEventId[i]);
         }

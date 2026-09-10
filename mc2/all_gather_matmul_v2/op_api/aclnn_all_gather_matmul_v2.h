@@ -22,8 +22,10 @@ extern "C" {
  * 算子功能：实现allGather + mm 融合计算
  * @brief aclnnAllGatherMatmulV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
- * @param [in] x1: matmul左矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8, int4, float4_e2m1。
- * @param [in] x2: matmul右矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8, int4, float4_e2m1。
+ * @param [in] x1: matmul左矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8, int4,
+ * float4_e2m1。
+ * @param [in] x2: matmul右矩阵，数据类型支持：float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, int8, int4,
+ * float4_e2m1。
  * @param [in] bias: 偏置，数据类型支持：float16, bfloat16, float32。
  * @param [in] x1Scale: matmul左矩阵量化参数，数据类型支持：float16, bfloat16, float32。
  * @param [in] x2Scale: matmul右矩阵量化参数，数据类型支持：float16, bfloat16, float32。
@@ -42,27 +44,26 @@ extern "C" {
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
-                                                   const aclTensor* x1Scale, const aclTensor* x2Scale,
-                                                   const aclTensor* quantScale, int64_t blockSize, const char* group,
-                                                   int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
-                                                   int64_t groupSize, const char* commMode, aclTensor* output, aclTensor* gatherOut,
-                                                   aclTensor* amaxOut, uint64_t* workspaceSize,
-                                                   aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *x1Scale, const aclTensor *x2Scale,
+    const aclTensor *quantScale, int64_t blockSize, const char *group, int64_t gatherIndex, int64_t commTurn,
+    int64_t streamMode, int64_t groupSize, const char *commMode, aclTensor *output, aclTensor *gatherOut,
+    aclTensor *amaxOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnAllGatherMatmulV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspaceSize: 在npu device侧申请的workspace大小，由第一段接口aclnnAllGatherMatmulV2GetWorkspaceSize获取。
+ * @param [in] workspaceSize: 在npu
+ * device侧申请的workspace大小，由第一段接口aclnnAllGatherMatmulV2GetWorkspaceSize获取。
  * @param [in] exector: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                   aclrtStream stream);
+ACLNN_API aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                             aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_ALL_GATHER_MATMUL_V2_
+#endif // OP_API_INC_ALL_GATHER_MATMUL_V2_

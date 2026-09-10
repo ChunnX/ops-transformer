@@ -20,10 +20,10 @@
 
 namespace AscendC {
 template <const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-class QBmmCustomMatmulPolicy : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE,
-    BIAS_TYPE> {
+class QBmmCustomMatmulPolicy
+    : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE> {
 public:
     using CopyCubeOut = QBmmCustomCopyCubeOut<IMPL, A_TYPE, B_TYPE, C_TYPE, MM_CFG, McgShfMode::DUAL_DST_SPLIT_M>;
 };
-}  // namespace AscendC
-#endif  // QBMM_CUSTOM_MM_POLICY_H
+} // namespace AscendC
+#endif // QBMM_CUSTOM_MM_POLICY_H

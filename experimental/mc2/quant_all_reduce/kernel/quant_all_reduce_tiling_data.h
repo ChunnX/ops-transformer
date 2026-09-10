@@ -23,7 +23,7 @@ struct QuantAllReduceTilingInfo {
     uint64_t hiddenSize;      // x的h轴
     uint64_t scaleHiddenSize; // scales的h轴
     uint64_t aivNum;          // aiv数
-    uint64_t totalWinSize;   // Win区总大小，即HCCL_BUFFER_SIZE
+    uint64_t totalWinSize;    // Win区总大小，即HCCL_BUFFER_SIZE
 };
 
 struct QuantAllReduceTilingData {

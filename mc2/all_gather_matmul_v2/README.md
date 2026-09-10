@@ -15,14 +15,14 @@
 
 - **算子功能**：
   完成AllGather通信与MatMul计算融合。在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，同时也支持低精度数据类型，此时算子在Matmul计算后会做对应的反量化计算，支持的低精度数据类型与量化方式如下：
-      
+
   - <term>Ascend 950PR/Ascend 950DT</term>：
-          
-    新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../docs/zh/context/量化介绍.md)。
-      
+
+    新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8/FLOAT4_E2M1的支持。支持pertensor、perblock、mx[量化方式](../../docs/zh/context/quant_mode_introduction.md)。
+
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-          
-    新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/量化介绍.md)。
+
+    新增了对低精度数据类型INT8/INT4的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/quant_mode_introduction.md)。
 
 - **计算公式**：
     - 情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，入参x1进行AllGather后，对x1、x2进行MatMul计算。
@@ -55,7 +55,7 @@
         gatherOut=AllGather(x1)
         $$
 
-    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2的mx量化场景，x1为(m, k)、x2为(n, k)，且x1Scale为(m, ceilDiv(k, 64), 2)、x2Scale为(n, ceilDiv(k, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
+    - 情形4：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/FLOAT4_E2M1的mx量化场景，x1为(m, k)、x2非转置场景下为(k, n)，转置场景下为(n, k)，且x1Scale为(m, ceilDiv(k, 64), 2)、x2Scale非转置场景时(ceilDiv(k, 64), n, 2)，转置场景为(n, ceilDiv(k, 64), 2)，入参x1和x1Scale进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作；
 
         $$
         output=\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (AllGather(x1)_{pr}@x2_{rq}*(AllGather(x1Scale)_{pr}*x2Scale_{rq}))
@@ -66,6 +66,7 @@
         $$
 
 ## 参数说明
+
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
     <col style="width: 170px">
     <col style="width: 170px">
@@ -86,14 +87,14 @@
         <td>x1 </td>
         <td>输入</td>
         <td>MM左矩阵，即计算公式中的x1。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
+        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT8、INT4</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>x2 </td>
         <td>输入</td>
         <td>MM右矩阵，即计算公式中的x2。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
+        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT8、INT4</td>
         <td>ND</td>
     </tr>
     <tr>
@@ -107,14 +108,14 @@
         <td>x1Scale </td>
         <td>可选输入</td>
         <td>mm左矩阵反量化参数。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT</td>
+        <td>FLOAT、FLOAT8_E8M0</td>
         <td>ND</td>
     </tr>
     <tr>
         <td>x2Scale </td>
         <td>可选输入</td>
         <td>mm右矩阵反量化参数。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT</td>
+        <td>FLOAT、INT64、FLOAT8_E8M0</td>
         <td>ND</td>
     </tr>
     <tr>
@@ -135,7 +136,7 @@
         <td>gatherOut </td>
         <td>输出</td>
         <td>仅输出all_gather通信后的结果。即公式中的gatherOut。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8、INT4</td>
+        <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT8、INT4</td>
         <td>ND</td>
     </tr>
     <tr>
@@ -210,10 +211,11 @@
     - 当x1、x2的数据类型为FLOAT16/BFLOAT16/HIFLOAT8时，x1和x2数据类型需要保持一致。
     - 当x1、x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2时，x1和x2数据类型可以为其中一种。
     - 当x1、x2数据类型为FLOAT16/BFLOAT16/HIFLOAT8/FLOAT8_E4M3FN/FLOAT8_E5M2时，x2矩阵支持转置/不转置场景，x1矩阵只支持不转置场景。
+    - 当x1、x2数据类型为FLOAT4_E2M1时，x2矩阵支持转置/不转置场景，x1矩阵只支持不转置场景，k轴需要为偶数，且当x2矩阵非转置时，n轴也需要为偶数。
     - 当groupSize取值为549764202624，bias必须为空。
     - 支持2、4、8、16、32、64卡。
     - 支持CCU通信引擎和AICPU通信引擎，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
-    - allgather(x1)集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * k * sizeof(x1_dtype) * 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+    - allgather(x1)集合通信数据总量不能超过63*256MB，集合通信数据总量计算方式为：m* k *sizeof(x1_dtype)* 卡数。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。

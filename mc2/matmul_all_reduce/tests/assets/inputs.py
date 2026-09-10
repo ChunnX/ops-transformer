@@ -9,13 +9,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__input__ = {
-    "kernel": {
-        "matmul_all_reduce": "matmul_all_reduce_inputs"
-    }
-}
+__input__ = {"kernel": {"matmul_all_reduce": "matmul_all_reduce_inputs"}}
 
-import numpy as np
 
 def matmul_all_reduce_inputs(
     x1,
@@ -37,8 +32,28 @@ def matmul_all_reduce_inputs(
     group_size: int = 0,
     y_dtype: int = 0,
     comm_quant_mode: int = 0,
-    **kwargs
+    **kwargs,
 ):
     if is_trans_b and "graph" not in kwargs.get("scene", ""):
         x2 = x2.t()
-    return x1, x2, bias, x3, antiquant_scale, antiquant_offset, dequant_scale, pertoken_scale, comm_quant_scale_1, comm_quant_scale_2, group, reduce_op, is_trans_a, is_trans_b, comm_turn, antiquant_group_size, group_size, y_dtype, comm_quant_mode
+    return (
+        x1,
+        x2,
+        bias,
+        x3,
+        antiquant_scale,
+        antiquant_offset,
+        dequant_scale,
+        pertoken_scale,
+        comm_quant_scale_1,
+        comm_quant_scale_2,
+        group,
+        reduce_op,
+        is_trans_a,
+        is_trans_b,
+        comm_turn,
+        antiquant_group_size,
+        group_size,
+        y_dtype,
+        comm_quant_mode,
+    )

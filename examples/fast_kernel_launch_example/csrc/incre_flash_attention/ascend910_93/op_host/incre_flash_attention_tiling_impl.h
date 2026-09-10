@@ -32,33 +32,33 @@
 #define IFA_EXTERN_C
 #endif
 namespace custom {
-    enum class graphStatus {
-        GRAPH_FAILED = 0,
-        GRAPH_SUCCESS = 1
-    };
-}
+enum class graphStatus {
+    GRAPH_FAILED = 0,
+    GRAPH_SUCCESS = 1
+};
+} // namespace custom
 
 namespace optiling {
 
 class IFATiling {
-struct ValidityConfigFD {
-    std::vector<int32_t> validBatchSizes;
-    std::vector<int32_t> validQSeqSizes;
-    int32_t numHeads;
-    int32_t numKvHeads;
-    int32_t headDim;
-    int32_t headDimV;
-    int32_t sparseMode;
-    int64_t expectedActualSeqLength; // -1 表示范围 [4096, 5120]
-}; 
+    struct ValidityConfigFD {
+        std::vector<int32_t> validBatchSizes;
+        std::vector<int32_t> validQSeqSizes;
+        int32_t numHeads;
+        int32_t numKvHeads;
+        int32_t headDim;
+        int32_t headDimV;
+        int32_t sparseMode;
+        int64_t expectedActualSeqLength; // -1 表示范围 [4096, 5120]
+    };
 
 public:
     IFATiling() = default;
     ~IFATiling() = default;
     // bool IsCapable() {return true;}
-    custom::graphStatus DoSubOpTiling(IFAContext& ifaContext);
-    custom::graphStatus RunBigKernelTiling(IFAContext &context,
-        IncreFlashAttentionTilingDataV2* tilingData, bool isWorkspace = false);
+    custom::graphStatus DoSubOpTiling(IFAContext &ifaContext);
+    custom::graphStatus RunBigKernelTiling(IFAContext &context, IncreFlashAttentionTilingDataV2 *tilingData,
+                                           bool isWorkspace = false);
     bool NeedRollBack() const
     {
         return passToOldTiling_;
@@ -69,8 +69,9 @@ public:
         return !atbRunFlag_;
     }
     uint32_t GetAntiquantSeqLength() const;
-    bool CheckCommonConditions(const ValidityConfigFD& config) const;
-    bool CheckBatchAndQSeqSize(const std::vector<int32_t>& validBatchSizes, const std::vector<int32_t>& validQSeqSizes) const;
+    bool CheckCommonConditions(const ValidityConfigFD &config) const;
+    bool CheckBatchAndQSeqSize(const std::vector<int32_t> &validBatchSizes,
+                               const std::vector<int32_t> &validQSeqSizes) const;
     bool CheckHeadDimensions(int32_t numHeads, int32_t numKvHeads, int32_t headDim, int32_t headDimV) const;
     bool CheckQuantizationFlags(int32_t sparseMode) const;
     bool CheckActualSeqLengths(int64_t expectedActualSeqLength) const;
@@ -80,7 +81,8 @@ public:
     bool IsValidFlag560B();
     bool IsValidFlag();
 
-    IncreFlashAttentionTilingDataV2* ifaTilingData;
+    IncreFlashAttentionTilingDataV2 *ifaTilingData;
+
 private:
     custom::graphStatus GetNpuInfo();
     custom::graphStatus PreCheck();
@@ -105,7 +107,8 @@ private:
     custom::graphStatus ProcessDequant2() const;
     custom::graphStatus ProcessAntiQuant();
     custom::graphStatus CheckKeyAndValueAntiquantScaleOffset();
-    custom::graphStatus CheckKeyAndValueAntiquantOffset(const uint32_t keyAntiquantModeKvSep,const uint32_t valueAntiquantModeKvSep);
+    custom::graphStatus CheckKeyAndValueAntiquantOffset(const uint32_t keyAntiquantModeKvSep,
+                                                        const uint32_t valueAntiquantModeKvSep);
     custom::graphStatus CheckKvAntiquant4SplitMode() const;
     custom::graphStatus ProcessAntiQuantMode();
     custom::graphStatus ProcessQuant();
@@ -140,15 +143,19 @@ private:
     // custom::graphStatus CheckBaseInputsNull() const;
     custom::graphStatus InputAttrsPreProcess();
     custom::graphStatus QKVPreProcess();
-    custom::graphStatus GetInOutLayoutAndProcessQInfo(const std::string layout, uint32_t& sOfQuery, uint32_t& sOfHeadnum, const uint32_t kDimNum);
-    custom::graphStatus GetInOutLayout4BSH(const std::string layout, uint32_t& sOfQuery, uint32_t& sOfHeadnum, const uint32_t kDimNum, bool prefixFlag);
-    custom::graphStatus GetRopeAndGqaFlag(const uint32_t sOfQuery,const uint32_t kDimNum, const uint32_t sOfHeadnum,const std::string layout);
+    custom::graphStatus GetInOutLayoutAndProcessQInfo(const std::string layout, uint32_t &sOfQuery,
+                                                      uint32_t &sOfHeadnum, const uint32_t kDimNum);
+    custom::graphStatus GetInOutLayout4BSH(const std::string layout, uint32_t &sOfQuery, uint32_t &sOfHeadnum,
+                                           const uint32_t kDimNum, bool prefixFlag);
+    custom::graphStatus GetRopeAndGqaFlag(const uint32_t sOfQuery, const uint32_t kDimNum, const uint32_t sOfHeadnum,
+                                          const std::string layout);
     custom::graphStatus QKVPreProcess4TND(const std::string layout);
     custom::graphStatus ProcessPageAttentionFlag();
     custom::graphStatus KvShapePostProcess();
     // custom::graphStatus CheckKVHeadNum(const gert::StorageShape *inputShape) const;
-    // custom::graphStatus CheckKVShape(const size_t &size, const gert::StorageShape *keyTensorInList, const gert::StorageShape *valueTensorInList) const;
-    // custom::graphStatus CheckQKOutShapeBsh(size_t dimOfQ, size_t dimOfK, size_t dimOfOut,
+    // custom::graphStatus CheckKVShape(const size_t &size, const gert::StorageShape *keyTensorInList, const
+    // gert::StorageShape *valueTensorInList) const; custom::graphStatus CheckQKOutShapeBsh(size_t dimOfQ, size_t
+    // dimOfK, size_t dimOfOut,
     //     const gert::StorageShape *queryShape, const gert::StorageShape *keyShape) const;
     // custom::graphStatus CheckQKOutShapeTnd(size_t dimOfQ, size_t dimOfK, size_t dimOfOut,
     //     const gert::StorageShape *queryShape, const gert::StorageShape *keyShape) const;
@@ -159,7 +166,8 @@ private:
     custom::graphStatus ZeroTensorProcess();
     custom::graphStatus SharedPrefixTiling();
     custom::graphStatus SharedPrefixCheckBasic();
-    custom::graphStatus SharedPrefixCheckShapes(const at::IntArrayRef &keyShape, const at::IntArrayRef &valueShape) const;
+    custom::graphStatus SharedPrefixCheckShapes(const at::IntArrayRef &keyShape,
+                                                const at::IntArrayRef &valueShape) const;
 
     bool CheckUbSpace();
     custom::graphStatus CheckPABlockSize() const;
@@ -180,11 +188,13 @@ private:
     //     const gert::Tensor *antiquantOffsetTensor, const gert::CompileTimeTensorDesc *antiquantScaleDesc,
     //     const gert::CompileTimeTensorDesc *antiquantOffsetDesc);
     // custom::graphStatus CheckAntiQuantParamKeyType(const gert::Tensor *antiquantOffsetTensor,
-    //     const gert::CompileTimeTensorDesc *antiquantScaleDesc, const gert::CompileTimeTensorDesc *antiquantOffsetDesc) const;
+    //     const gert::CompileTimeTensorDesc *antiquantScaleDesc, const gert::CompileTimeTensorDesc
+    //     *antiquantOffsetDesc) const;
     // custom::graphStatus CheckAntiQuantParamValueType(const gert::Tensor *antiquantOffsetTensor,
-    //     const gert::CompileTimeTensorDesc *antiquantScaleDesc, const gert::CompileTimeTensorDesc *antiquantOffsetDesc) const;
+    //     const gert::CompileTimeTensorDesc *antiquantScaleDesc, const gert::CompileTimeTensorDesc
+    //     *antiquantOffsetDesc) const;
     // custom::graphStatus CheckAntiquantOffsetType(const gert::Tensor *antiquantOffsetTensor,
-    //     const gert::CompileTimeTensorDesc *antiquantOffsetDesc, ge::DataType antiquantScaleType) const;   
+    //     const gert::CompileTimeTensorDesc *antiquantOffsetDesc, ge::DataType antiquantScaleType) const;
     custom::graphStatus CheckSupportKVLeftPadding();
     // custom::graphStatus CheckInputFormatAndLimits();
     // custom::graphStatus CheckInputParameterFormat() const;
@@ -195,8 +205,8 @@ private:
     // custom::graphStatus ProcessCheckATBInput();
     // custom::graphStatus CheckInputQKVTypeMatch() const;
     // bool IsSupportFormat(const ge::Format format) const;
-    bool IsZeroDimTensor(const at::IntArrayRef& shape) const;
-    std::string GetTensorDimString(const at::IntArrayRef& shape) const;
+    bool IsZeroDimTensor(const at::IntArrayRef &shape) const;
+    std::string GetTensorDimString(const at::IntArrayRef &shape) const;
     uint32_t GetTypeSize(at::ScalarType dtype) const;
 
     // custom::graphStatus CheckMlaKeyRope() const;
@@ -226,13 +236,16 @@ private:
     bool ShapeEqual(const at::IntArrayRef &aShape, const at::IntArrayRef &bShape) const;
 
     custom::graphStatus Split();
-    void GetSeqTilingInfo(const at::IntArrayRef& actualSeqKv, const ActualSeqInfo &actualSeqInfo,
-        SeqTilingInfo &seqTilingInfo) const;
+    void GetSeqTilingInfo(const at::IntArrayRef &actualSeqKv, const ActualSeqInfo &actualSeqInfo,
+                          SeqTilingInfo &seqTilingInfo) const;
     void FillBalancedSplitCoreInfo(const TilingIndexes &tilingIdx, BalancedSplitTilingInfo &tilingInfo);
     void EndSplitForCurrentCore(const TilingIndexes &tilingIdx, const SeqTilingInfo &seqTilingInfo,
-        uint32_t &currKvSplitPart, BalancedSplitTilingInfo &tilingInfo);
-    void SplitBalancedForEachHeadFd(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t s1);
-    void SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead, uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo);
+                                uint32_t &currKvSplitPart, BalancedSplitTilingInfo &tilingInfo);
+    void SplitBalancedForEachHeadFd(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo,
+                                    BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead,
+                                    uint32_t s1);
+    void SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead,
+                    uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo);
     custom::graphStatus SplitBalanced();
     custom::graphStatus SplitUnbalanced();
     custom::graphStatus SplitBalancedFd();
@@ -251,18 +264,18 @@ private:
 
     std::vector<int64_t> InitSparseValidArray(const int64_t *actualLens) const;
     bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, int64_t totalSize, int64_t validAivNum,
-        std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx) const;
+                     std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx) const;
     void InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t totalSize, int64_t validAivNum,
-        const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue) const;
+                       const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue) const;
     void SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t totalSize, int64_t validAivNum,
-        uint32_t *sparseStartIdx, int64_t splitFactorSize) const;
+                           uint32_t *sparseStartIdx, int64_t splitFactorSize) const;
 
     bool IsFlashDecode(uint32_t coreNum, IfaPerfMode perfMode);
-    bool CheckCoreOkFlag(uint32_t coreNum,IfaPerfMode perfMode) const;
+    bool CheckCoreOkFlag(uint32_t coreNum, IfaPerfMode perfMode) const;
     bool DealSameSeqEachBatch() const;
     bool HasZeroSeqBatch() const;
     bool IsKvZeroBatchSplit(bool needUpdate, uint32_t lastValidBMoreIdx, uint32_t bSize,
-        const std::vector<uint32_t> &s1OuterNum, const std::vector<uint32_t> &s2OuterNum) const;
+                            const std::vector<uint32_t> &s1OuterNum, const std::vector<uint32_t> &s2OuterNum) const;
     IfaAmlaMode GetAmlaMode() const;
 
     custom::graphStatus SplitBN_V0();
@@ -272,7 +285,7 @@ private:
     // bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType) const;
 
     std::pair<uint32_t, uint32_t> GetPreLoadNumAndActCoreNum() const;
-    void CalcWorkSpaceForBmmAll(const IfaWorkSpaceSizeParams& params, uint32_t preLoadNum, uint32_t actCoreNum);
+    void CalcWorkSpaceForBmmAll(const IfaWorkSpaceSizeParams &params, uint32_t preLoadNum, uint32_t actCoreNum);
     custom::graphStatus CalcWorkSpace();
     custom::graphStatus CalcNumBlocks();
     custom::graphStatus GetKvLayoutInfo(KvLayoutInfo &kvLayoutInfo) const;
@@ -336,17 +349,17 @@ private:
     IfaLayout inputKvLayout_ = IfaLayout::BSH_BSND;
     IfaLayout outputLayout_ = IfaLayout::BSH_BSND;
     uint32_t sMax_ = 0;
-    uint32_t tSeqSize_ = 1; // TND格式T轴长度
-    uint32_t qSeqSize_ = 1; // 默认S1 = 1
+    uint32_t tSeqSize_ = 1;      // TND格式T轴长度
+    uint32_t qSeqSize_ = 1;      // 默认S1 = 1
     uint32_t blockTypeSize_ = 0; // 计算中间量大小
     uint32_t kvSplitPart_ = 1;
 
     uint32_t sMaxPrefix_ = 0;
     uint32_t maxActualPrefixLen_ = 0;
 
-    at::ScalarType inputQType_  = at::ScalarType::Half;   // float16
-    at::ScalarType inputKvType_ = at::ScalarType::Half;   // float16
-    at::ScalarType outputType_  = at::ScalarType::Half;   // float16
+    at::ScalarType inputQType_ = at::ScalarType::Half;  // float16
+    at::ScalarType inputKvType_ = at::ScalarType::Half; // float16
+    at::ScalarType outputType_ = at::ScalarType::Half;  // float16
 
 
     size_t ubSize_ = 0;
@@ -362,7 +375,7 @@ private:
 
     size_t mmResUbSize_ = 0;
     size_t bmm2ResUbSize_ = 0;
-    size_t qPreSizeMla_= 0;
+    size_t qPreSizeMla_ = 0;
 
     size_t softmaxFlashTmpSize_ = 0;
     size_t softmaxTmpSize_ = 0;

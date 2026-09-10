@@ -16,8 +16,8 @@
 #ifndef ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_A8W4_MSD_MID_H
 #define ASCENDC_GROUPED_MATMUL_SWIGLU_QUANT_A8W4_MSD_MID_H
 
-#include "grouped_matmul_swiglu_quant_utils.h"
-#include "grouped_matmul_swiglu_quant.h"
+#include "grouped_matmul_swiglu_quant_utils_kernel.h"
+#include "grouped_matmul_swiglu_quant_kernel.h"
 
 #ifdef GMM_SWIGLU_QUANT_A8W4_MSD
 namespace GROUPED_MATMUL_SWIGLU_QUANT {
@@ -75,9 +75,9 @@ public:
     using bT = typename mmType::BT;
 
 public:
-    __aicore__ inline GMMA8W4MidProcess(typename mmType::MT &matmul) : mm(matmul)
-    {
-    }
+    __aicore__ inline GMMA8W4MidProcess(typename mmType::MT &matmul)
+        : mm(matmul)
+    {}
     __aicore__ inline void Init(const GMAddrParams gmAddrParams,
                                 const GMMSwigluBaseParams *__restrict gmmSwigluBaseParamsIN);
     __aicore__ inline void Process(WorkSpaceSplitConfig &workspaceSplitConfig, int64_t workspaceSplitLoopIdx);

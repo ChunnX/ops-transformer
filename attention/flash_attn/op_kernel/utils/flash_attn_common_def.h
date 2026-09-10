@@ -13,14 +13,11 @@
  * \brief
  */
 
-
 #ifndef FLASH_ATTN_COMMON_DEF_H_
 #define FLASH_ATTN_COMMON_DEF_H_
 
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
-// CUBE与VEC核间同步的模式
-static constexpr uint32_t FIA_SYNC_MODE2 = 2;
 // BUFFER的字节数
 static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
 static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
@@ -32,13 +29,8 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-// FP32的0值和极大值
-static constexpr float FLOAT_ZERO = 0;
-static constexpr float FLOAT_MAX = 3.402823466e+38F;
-static constexpr float FLOAT_INF = 3e+99;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 
-#define ASCENDC_TPL_5_BW 5
-#define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
 
 enum class FA_LAYOUT : uint32_t {
@@ -102,16 +94,6 @@ enum class inferS2TemplateType {
     NotAligned,
 };
 
-enum class inferImplModeEnum {
-    AA_HIGH_PRECISION = 0,
-    AA_HIGH_PERFORMANCE = 1,
-    AA_INVALID_LINE_HIGH_PRECISION = 2
-};
-
-#define ImplMode_AA_HIGH_PRECISION 0
-#define ImplMode_AA_HIGH_PERFORMANCE 1
-#define ImplMode_AA_INVALID_LINE_HIGH_PRECISION 2
-
 // q_out layout → (inputLayout, outputLayout)
 //   0=BSND → (BSND, BSND)
 //   1=BNSD → (BNSD, BNSD)
@@ -142,15 +124,16 @@ static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
 #define InOutLayoutType_BNSD 1
 #define InOutLayoutType_TND 2
 #define InOutLayoutType_BNSD_BSND 3
-#define InOutLayoutType_NTD_NTD 4
-// backward compat
-#define InOutLayoutType_BSH_BSH InOutLayoutType_BSND
 
 // KvLayoutType
 #define KvLayoutType_NO_PA 0
 #define KvLayoutType_PA_BBH 1
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
+
+// templateId
+#define FA_Template_ND 0
+#define FA_Template_DN 1
 
 struct ConfigParams {
     inferS1TemplateType s1;
@@ -159,9 +142,15 @@ struct ConfigParams {
     inferDTemplateType dv;
 };
 
-// config, D=128 fixed
-//   config=0: sOuter=64,sInner=128 → S1=128,S2=128
-//   config=1: sOuter=32,sInner=256 → S1=64,S2=256
+// config:
+//   config=0: sOuter=64, sInner=128 → S1=128, S2=128, D=64
+//   config=1: sOuter=32, sInner=256 → S1=64,  S2=256, D=64
+//   config=2: sOuter=64, sInner=128 → S1=128, S2=128, D=128
+//   config=3: sOuter=32, sInner=256 → S1=64,  S2=256, D=128
+//   config=4: sOuter=64, sInner=128 → S1=128, S2=128, D=256
+//   config=5: sOuter=32, sInner=256 → S1=64,  S2=256, D=256
+//   config=6: sOuter=64, sInner=128 → S1=128, S2=128, D=192, DV=128
+//   config=7: sOuter=32, sInner=256 → S1=64,  S2=256, D=192, DV=128
 static constexpr ConfigParams ConfigValue[] = {
     // D=64 configurations
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64,
@@ -176,8 +165,16 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // config=3
 
     // D=256 configurations
-    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
      inferDTemplateType::Aligned256}, // config=4
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // config=5
+
+    // D=192, DV=128 configurations (MLA qk != v)
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=6
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=7
 };
 
 // Config macro definitions for D=64
@@ -189,8 +186,12 @@ static constexpr ConfigParams ConfigValue[] = {
 #define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128 3
 
 // Config macro definitions for D=256
-#define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 4
+#define Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256 4
+#define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 5
 
+// Config macro definitions for D=192, DV=128 (MLA qk != v)
+#define Config_S1Aligned128_S2Aligned128_DAligned192_DVAligned128 6
+#define Config_S1Aligned64_S2Aligned256_DAligned192_DVAligned128 7
 
 // PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
@@ -201,44 +202,18 @@ static constexpr ConfigParams ConfigValue[] = {
 #define PSE_MODE_PSE_NONE_TYPE 9
 
 // QuantModeEnum
-#define AntiquantMode_PER_CHANNEL 0
-#define AntiquantMode_PER_TOKEN 1
-#define AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN 2
-#define AntiquantMode_PER_TOKEN_HEAD 3
-#define AntiquantMode_PER_TOKEN_PAGE_ATTENTION 4
-#define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
-#define FULLQUANT_MODE_QKV_PERBLOCK 17
-#define FULLQUANT_MODE_Q_PER_TOKEN_HEAD_KV_PER_TENSOR 18
-#define FullQuantMode 30
 #define NoQuantMode 31
-
-// PFAMaskEnum
-#define PFAMask_DISABLE_MASK 0
-#define PFAMask_ENABLE_MASK_NO_BAND 1
-#define PFAMask_ENABLE_MASK_BAND 2
-
-// PFAMatMulTypeEnum
-#define PFAMatMulType_MM_PFA 0
-#define PFAMatMulType_MM_PA 1
-#define PFAMatMulType_MM_IFA_MLA 2
-#define PFAMatMulType_MM_IFA_MLA_PA 3
-#define PFAMatMulType_MM_PA_D512 4
-#define PFAMatMulType_MM_DN 5
-
-// SplitCoreModeEnum
-#define SplitCoreMode_SPLIT_NBS_VECTOR 0
-#define SplitCoreMode_SPLIT_NBS_CUBE 1
-#define SplitCoreMode_SPLIT_ONEN_VECTOR 2
-#define SplitCoreMode_SPLIT_ONEN_CUBE 3
-#define SplitCoreMode_BALANCE_VECTOR 4
-#define SplitCoreMode_BALANCE_CUBE 5
 
 // bool
 #define false 0
 #define true 1
 
-// kernel stream related struct
-struct FDparamsX {
+#define OFFSET_OF_MEMBER(TYPE, MEMBER) ((uint64_t) & ((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER) sizeof(((TYPE *)0)->MEMBER)
+
+namespace FlashAttnKernel {
+
+struct FDparams {
     uint32_t fdCoreEnable;
     uint32_t fdBN2Idx;
     uint32_t fdMIdx;
@@ -248,17 +223,10 @@ struct FDparamsX {
     uint32_t fdWorkspaceIdx;
 };
 
-enum class FiaKernelType : uint8_t {
-    NO_QUANT = 0,
-    ANTI_QUANT,
-    FULL_QUANT
-};
-
-struct RunInfoX {
+struct RunInfo {
     uint32_t loop = 0;
     uint32_t mloop = 0;
     bool isValid = false;
-    bool isChangeBatch = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
 
@@ -280,6 +248,7 @@ struct RunInfoX {
     // uint32_t curS2LoopTimes = 0;
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
+    bool isFirstFdBlock = false;
 
     int64_t preTokensLeftUp = 0;
     int64_t nextTokensLeftUp = 0;
@@ -287,7 +256,6 @@ struct RunInfoX {
     uint64_t qPaddingBeginOffset = 0;
     uint64_t kvPaddingBeginOffset = 0;
 };
-
 
 struct CommonConstInfo {
     /* 轴长度 */
@@ -338,12 +306,18 @@ struct CommonConstInfo {
     /* 输出shape */
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+    bool enableFlashDecode;
 };
 
 struct PAConstInfo {
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
     uint32_t paLayoutType;
+    /* kvcache非连续场景的strides, 0表示连续 */
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct LseConstInfo {
@@ -354,51 +328,8 @@ struct SinkConstInfo {
     bool learnableSinkFlag = false;
 };
 
-struct PseConstInfo {
-    uint32_t pseShiftByBatch;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseStride;
-};
+struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo, SinkConstInfo {};
 
-struct TensorListConstInfo {
-    bool isKvContinuous; /* 是否为tensorlist */
-};
-
-struct PostQuantConstInfo {
-    bool isPostQuantPerChnl;
-    bool isPostQuantBF16;
-    bool isPostQuantOffsetExist;
-    float postQuantScaleValue;
-    float postQuantOffsetValue;
-};
-
-struct LeftPaddingConstInfo {
-    bool isQHasLeftPadding;
-    bool isKVHasLeftPadding;
-    int64_t queryRightPaddingSize;
-    int64_t kvRightPaddingSize;
-};
-
-struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
-};
-
-template <FiaKernelType>
-struct ConstInfo_t;
-
-template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo,
-                                              PseConstInfo,
-                                              TensorListConstInfo,
-                                              PostQuantConstInfo,
-                                              LeftPaddingConstInfo,
-                                              SysPrefixConstInfo {};
+} // namespace FlashAttnKernel
 
 #endif // FLASH_ATTN_COMMON_DEF_H_

@@ -21,14 +21,12 @@ namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
 
 template <typename T>
-class MoeV2FullLoadQuant : public MoeV2FullLoadQuantBase
-{
+class MoeV2FullLoadQuant : public MoeV2FullLoadQuantBase {
 public:
     __aicore__ inline MoeV2FullLoadQuant(){};
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-        GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData* tilingData,
-        TPipe* tPipe);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX,
+                                GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
+                                const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -58,6 +56,7 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::Compute(int64_t xLocalLength)
 
     uint32_t elements = Align(this->cols, sizeof(int8_t)) * xLocalLength;
     if constexpr (IsSameType<T, bfloat16_t>::value) {
+        PipeBarrier<PIPE_V>();
         Cast(floatLocal, inLocal, RoundMode::CAST_NONE, elements);
         PipeBarrier<PIPE_V>();
         Cast(halfLocal, floatLocal, RoundMode::CAST_NONE, elements);
@@ -67,6 +66,7 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::Compute(int64_t xLocalLength)
         Adds(halfLocal, halfLocal, static_cast<half>(this->offset), elements);
         PipeBarrier<PIPE_V>();
         LocalTensor<int32_t> intLocal = floatLocal.ReinterpretCast<int32_t>();
+        PipeBarrier<PIPE_V>();
         Cast(intLocal, halfLocal, RoundMode::CAST_RINT, elements);
         PipeBarrier<PIPE_V>();
         SetDeqScale((half)1.000000e+00f);
@@ -75,6 +75,7 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::Compute(int64_t xLocalLength)
         PipeBarrier<PIPE_V>();
         Cast(outLocal, halfLocal, RoundMode::CAST_RINT, elements);
     } else if constexpr (IsSameType<T, float>::value) {
+        PipeBarrier<PIPE_V>();
         Cast(halfLocal, inLocal, RoundMode::CAST_NONE, elements);
         PipeBarrier<PIPE_V>();
         Muls(halfLocal, halfLocal, static_cast<half>(this->scale), elements);
@@ -83,6 +84,7 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::Compute(int64_t xLocalLength)
         PipeBarrier<PIPE_V>();
         Cast(outLocal, halfLocal, RoundMode::CAST_RINT, elements);
     } else {
+        PipeBarrier<PIPE_V>();
         Muls(inLocal, inLocal, static_cast<T>(this->scale), elements);
         PipeBarrier<PIPE_V>();
         Adds(inLocal, inLocal, static_cast<T>(this->offset), elements);
@@ -106,8 +108,8 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::CopyOutX()
     int64_t endXRow = (curRowsStart + this->coreRows - 1) / this->k;
 
     uint32_t dstStride = (inFactor * sizeof(T) - AlignBytes(this->cols, sizeof(T))) / BLOCK_BYTES;
-    DataCopyExtParams dataXCopyParams{
-        static_cast<uint16_t>(endXRow - startXRow + 1), static_cast<uint32_t>(this->cols * sizeof(T)), 0, dstStride, 0};
+    DataCopyExtParams dataXCopyParams{static_cast<uint16_t>(endXRow - startXRow + 1),
+                                      static_cast<uint32_t>(this->cols * sizeof(T)), 0, dstStride, 0};
     DataCopyPadExtParams<T> dataXCopyPadParams{false, 0, 0, 0};
     DataCopyPad(xLocal, xGm[startXRow * this->cols], dataXCopyParams, dataXCopyPadParams);
     xCopyInQueue.EnQue(xLocal);
@@ -115,6 +117,10 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::CopyOutX()
     LocalTensor<int8_t> outLocal = inputXCopyOutQueue.DeQue<int8_t>();
     int64_t k = 0;
     DataCopyExtParams intriParams{1, static_cast<uint32_t>(this->cols * sizeof(int8_t)), 0, 0, 0};
+    SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
     for (int64_t i = startXRow; i <= endXRow; i++) {
         for (; k < this->perCoreRows && curRowsStart / this->k == i; curRowsStart++, k++) {
             int32_t outIndex = expandedRowIdx.GetValue(curRowsStart);
@@ -128,15 +134,15 @@ __aicore__ inline void MoeV2FullLoadQuant<T>::CopyOutX()
 }
 
 template <typename T>
-__aicore__ inline void MoeV2FullLoadQuant<T>::Init(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
-    GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData* tilingData,
-    TPipe* tPipe)
+__aicore__ inline void MoeV2FullLoadQuant<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset,
+                                                   GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+                                                   GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
+                                                   const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe)
 {
     this->InitBase(x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
-    xGm.SetGlobalBuffer((__gm__ T*)x);
-    scaleGm.SetGlobalBuffer((__gm__ float*)scale, 1);
-    offsetGm.SetGlobalBuffer((__gm__ float*)offset, 1);
+    xGm.SetGlobalBuffer((__gm__ T *)x);
+    scaleGm.SetGlobalBuffer((__gm__ float *)scale, 1);
+    offsetGm.SetGlobalBuffer((__gm__ float *)offset, 1);
     this->scale = scaleGm.GetValue(0);
     this->offset = offsetGm.GetValue(0);
 

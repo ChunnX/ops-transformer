@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|     √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      x     |
-|<term>Atlas 推理系列产品</term>|      x     |
-|<term>Atlas 训练系列产品</term>|      x     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -66,7 +76,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnSparseLightningIndexerKLLossGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnSparseLightningIndexerKLLossGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
@@ -226,7 +236,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedQOptional</td>
                 <td>可选输入</td>
                 <td>表示每个batch实际使用的q长度。</td>
-                <td>长度为B。</td>
+                <td>长度为B。每个值必须大于等于0，且不能超过对应batch的q分配长度；允许多个batch取0，但不支持所有batch均为0。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -236,7 +246,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>seqUsedKOptional</td>
                 <td>可选输入</td>
                 <td>表示每个batch实际使用的k长度。</td>
-                <td>长度为B。</td>
+                <td>长度为B。每个值必须大于等于0，且不能超过对应batch的k分配长度。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(B,)</td>
@@ -254,9 +264,9 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             </tr>
             <tr>
                 <td>metadataOptional</td>
-                <td>可选输入</td>
+                <td>输入</td>
                 <td>由aclnnSparseLightningIndexerKLLossGradMetadata生成的分核信息。</td>
-                <td>传入后kernel将使用metadata中的分核切分。</td>
+                <td>必须传入。传入后kernel将使用metadata中的分核切分。</td>
                 <td>INT32</td>
                 <td>ND</td>
                 <td>(x,)</td>
@@ -270,7 +280,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>layoutK</td>
@@ -280,7 +290,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>maskMode</td>
@@ -290,7 +300,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>cmpRatio</td>
@@ -300,7 +310,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>INT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>dq</td>
@@ -347,29 +357,27 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
                 <td>输出</td>
                 <td>返回用户需要在Device侧申请的workspace大小。</td>
                 <td>-</td>
-                <td>UINT64</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>executor</td>
                 <td>输出</td>
                 <td>op执行器，包含算子计算流程。</td>
                 <td>-</td>
-                <td>aclOpExecutor*</td>
                 <td>-</td>
                 <td>-</td>
-                <td>x</td>
+                <td>-</td>
+                <td>-</td>
             </tr>
         </tbody>
     </table>
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持seqUsedQOptional、seqUsedKOptional字段。
-
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -448,21 +456,20 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
-    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-
+  - aclnnSparseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
   - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
   - 参数sparseIndices、cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
   - layoutQ和layoutK当前支持BSND和TND。
   - 当layoutQ为TND时，需要传入cuSeqLensQOptional；当layoutK为TND时，需要传入cuSeqLensKOptional。
-  - sparseIndices中有效位置必须位于当前batch的key序列范围内；无效位置使用-1填充。
+  - seqUsedQOptional、seqUsedKOptional存在时，每个值必须位于对应batch的分配长度范围内；BSND的分配长度分别为S1、S2，TND的分配长度为对应cuSeqLens相邻元素之差。
+  - sparseIndices中有效位置必须位于当前batch的有效key序列范围内；传入seqUsedKOptional时以seqUsedKOptional对应值为上界，无效位置使用-1填充。
   - attnSoftmaxL1Norm的无效top-k位置建议置零，并与sparseIndices的有效位置保持一致。
 
     <table style="undefined;table-layout: fixed; width: 942px">
@@ -561,21 +568,45 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
     </table>
 
   - 参数B的支持情况:
+
+    <!-- npu="A3,910b" id10 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：B支持1~256。
+    <!-- end id10 -->
+    <!-- npu="950" id11 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
+    <!-- end id11 -->
+
   - 参数S1、S2的支持情况:
+
+    <!-- npu="A3,910b" id12 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
+    <!-- end id12 -->
+    <!-- npu="950" id13 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
+    <!-- end id13 -->
+
   - 参数N1的支持情况:
+
+    <!-- npu="A3,910b" id14 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1支持8、16、32、64。
+    <!-- end id14 -->
+    <!-- npu="950" id15 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
+    <!-- end id15 -->
+
   - 参数K的支持情况:
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持512、1024、2048、4096、8192。
+
+    <!-- npu="A3,910b" id16 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：K支持1~8192。
+    <!-- end id16 -->
+    <!-- npu="950" id17 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：K支持1~2048。
+
+    <!-- end id17 -->
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <algorithm>
@@ -666,7 +697,7 @@ int main() {
   const int64_t headDim = 128;
   const int64_t topk = 512;
   const int64_t maskMode = 3;
-  const int64_t cmpRatio = 4;
+  const int64_t cmpRatio = 1;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};

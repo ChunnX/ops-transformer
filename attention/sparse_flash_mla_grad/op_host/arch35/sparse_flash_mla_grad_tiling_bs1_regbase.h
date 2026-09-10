@@ -42,6 +42,8 @@ struct TempParams {
     int64_t dqWorkspaceLen;
     int64_t doriKVWorkspaceLen;
     int64_t dcmpKVWorkspaceLen;
+    int64_t doriVWorkspaceLen = 0;
+    int64_t dcmpVWorkspaceLen = 0;
     int64_t dsinkWorkspaceLen;
     uint32_t layout;
     uint32_t ori_selected_block_count;
@@ -75,7 +77,8 @@ struct AiCoreParams {
 
 class SparseFlashMlaGradTilingBs1Regbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseFlashMlaGradTilingBs1Regbase(gert::TilingContext *context) : TilingBaseClass(context) {};
+    explicit SparseFlashMlaGradTilingBs1Regbase(gert::TilingContext *context)
+        : TilingBaseClass(context) {};
     SparseFlashMlaGradTilingDataRegbase *tilingData = context_->GetTilingData<SparseFlashMlaGradTilingDataRegbase>();
     SparseFlashMlaGradBaseParamsRegbase *baseParams_ = &tilingData->baseParams;
     PreParamsRegbase *preTilingData_ = &tilingData->preTilingData;

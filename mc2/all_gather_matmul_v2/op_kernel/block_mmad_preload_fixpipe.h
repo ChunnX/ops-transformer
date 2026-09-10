@@ -15,17 +15,17 @@
 #ifndef BLOCK_MMAD_PRELOAD_FIXPIPE_H
 #define BLOCK_MMAD_PRELOAD_FIXPIPE_H
 
-#include "copy_gm_to_l1.h"
+#include "agm_v2_copy_gm_to_l1.h"
 #include "copy_l0c_to_gm.h"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/helper.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_helper.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_copy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_tile_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tla_gemm_copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Block {
 
@@ -236,7 +236,8 @@ public:
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
                 kActualNext = (firstTileIdxNext < kTileCountNext - 1) ?
-                    L1TileShape::K : (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
+                                  L1TileShape::K :
+                                  (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
                 MatrixCoord gmTileAOffset{0, firstTileIdxNext * L1TileShape::K};
                 MatrixCoord gmTileBOffset{firstTileIdxNext * L1TileShape::K, 0};
                 auto gmTileA = gmNextBlockA[layoutA.GetOffset(gmTileAOffset)];

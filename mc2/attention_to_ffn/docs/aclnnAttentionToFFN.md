@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -17,7 +27,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAttentionToFFNGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnAttentionToFFN”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAttentionToFFNGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnAttentionToFFN”接口执行计算。
 
 ```c++
 aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
@@ -57,10 +67,10 @@ aclnnStatus aclnnAttentionToFFN(
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 300px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 300px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -270,14 +280,14 @@ aclnnStatus aclnnAttentionToFFN(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 280px">
     <col style="width: 100px">
-    <col style="width: 900px"> 
+    <col style="width: 900px">
       </colgroup><thead>
       <tr>
         <th>返回值</th>
@@ -313,7 +323,7 @@ aclnnStatus aclnnAttentionToFFN(
   <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 150px">
     <col style="width: 100px">
-    <col style="width: 900px"> 
+    <col style="width: 900px">
     </colgroup>
     <thead>
     <tr>
@@ -346,7 +356,7 @@ aclnnStatus aclnnAttentionToFFN(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -357,7 +367,11 @@ aclnnStatus aclnnAttentionToFFN(
   - 调用接口过程中使用的`group`、`worldSize`、`moeExpertNum`、`ffnTokenInfoTableShape`、`ffnTokenDataShape`、`ffnStartRankId`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和分离场景系列算子对应参数也保持一致。
 
 - **产品特定约束**：
+
+  <!-- npu="A3" id7 -->
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
+
+  <!-- end id7 -->
 
 - **Shape变量约束**：
 
@@ -381,7 +395,7 @@ aclnnStatus aclnnAttentionToFFN(
 
 - **通信域使用约束**：
   - AttentionToFFN算子的通信域中不允许有其他算子。
-  
+
 ## 调用示例
 
 文件准备：
@@ -482,7 +496,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     char hcomName[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed, ret %d\n", ret); return -1);
-    LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFFNStream = %p, context = %p\n", 
+    LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFFNStream = %p, context = %p\n",
               args.rankId, hcomName, args.attentionToFFNStream, args.context);
 
     int64_t X = 1;
@@ -552,10 +566,10 @@ int LaunchOneProcessAttentionToFFN(Args &args)
                 expertIdsHostData.push_back(k_id);
             }
         }
-    } 
+    }
 
-    std::vector<int32_t> expertRankTableHostData = {4, 2, 4, 3, 7, 1, 3, 2, 5, 2, 2, 5, 1, 2, 0, 0, 0, 0, 
-                                                    3, 2, 5, 0, 0, 3, 7, 0, 0, 4, 1, 3, 0, 1, 2, 4, 3, 7, 
+    std::vector<int32_t> expertRankTableHostData = {4, 2, 4, 3, 7, 1, 3, 2, 5, 2, 2, 5, 1, 2, 0, 0, 0, 0,
+                                                    3, 2, 5, 0, 0, 3, 7, 0, 0, 4, 1, 3, 0, 1, 2, 4, 3, 7,
                                                     4, 0, 0, 3, 6, 1, 3, 2, 5, 3, 3, 7, 2, 4, 1, 2, 0, 0,
                                                     2, 2, 5, 0, 0, 0, 0, 0, 0, 3, 3, 6, 2, 5, 3, 7, 0, 0,
                                                     1, 4, 8, 0, 0, 0, 0, 0, 0};
@@ -583,7 +597,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
 
     /**************************************** 调用AttentionToFFN ********************************************/
     // 调用第一阶段接口
-    ret = aclnnAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, (quantMode > 0 ? scales : nullptr), 
+    ret = aclnnAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, (quantMode > 0 ? scales : nullptr),
                                               nullptr, hcomName, WORLD_SIZE, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
                                               moeExpertNum, quantMode, syncFlag, ffnStartRankId, &attentionToFFNWorkspaceSize, &attentionToFFNExecutor);
 
@@ -595,7 +609,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
         ret = aclrtMalloc(&attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
-    
+
     if (args.rankId < FFN_WORKER_NUM) {  // FFN Worker
         // 等待Attention Worker任务执行结束
         LOG_PRINT("[INFO] device_%d is FFN worker, skipping aclnnAttentionToFFN execute.\n", args.rankId);
@@ -647,7 +661,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     }
     if (attnTokenInfoTableShape != nullptr) {
         aclDestroyIntArray(attnTokenInfoTableShape);
-    }  
+    }
 
     if (xDeviceAddr != nullptr) {
         aclrtFree(xDeviceAddr);
@@ -683,7 +697,7 @@ int main(int argc, char *argv[])
 {
     // 本样例基于Atlas A3实现，必须在Atlas A3上运行
     int ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtInit failed, ret = %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed, ret = %d\n", ret); return ret);
 
     aclrtStream attentionToFFNStream[WORLD_SIZE];
     aclrtContext context[WORLD_SIZE];

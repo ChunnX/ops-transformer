@@ -15,11 +15,7 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 
-#if __has_include("../../common/mc2_kernel_utils.h")
-#include "../../common/mc2_kernel_utils.h"
-#else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -27,7 +23,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
-#include "../moe_distribute_base.h"
+#include "../moe_distribute_combine_setup_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
 
 namespace MoeDistributeCombineSetupImpl {
@@ -47,12 +43,12 @@ struct WriteWithNotifySQEInfoParams {
 using namespace AscendC;
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
-    constexpr static uint8_t BUFFER_NUM = 2;                // 多buf
-    constexpr static uint64_t STATE_OFFSET = 512U;          // 状态空间偏移地址
-    constexpr static uint32_t STATE_SIZE = 1024U * 1024U;   // 1M
-    constexpr static uint32_t UB_ALIGN = 32U;               // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
+    constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
+    constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
+    constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
+    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U; // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -282,7 +278,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
             UpdatePICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId);
             AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 防止piCiU32被覆盖
-            AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>(); // 防止sqInfoU8被覆盖
+            AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>();    // 防止sqInfoU8被覆盖
         }
     }
 }
@@ -402,8 +398,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void
-MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const WriteWithNotifySQEInfoParams &params)
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
+    const WriteWithNotifySQEInfoParams &params)
 {
     // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
     GlobalTensor<uint8_t> selfDataSrcTensor;

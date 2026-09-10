@@ -75,10 +75,19 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
+        this->Output("softmax_score")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
+        this->Output("kv")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
         this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
         this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
+        this->Attr("grad_enabled").AttrType(OPTIONAL).Bool(false);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

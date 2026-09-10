@@ -15,7 +15,7 @@
 #ifndef __MATMUL_REDUCE_SCATTER_V2_TILING_H__
 #define __MATMUL_REDUCE_SCATTER_V2_TILING_H__
 
-#include "../matmul_reduce_scatter_tiling_base.h"
+#include "../matmul_reduce_scatter_tiling_base_v2.h"
 #include "mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
@@ -54,13 +54,14 @@ protected:
     {
         return matmulReduceScatterV2TilingData_->mC2Mmv3TailTilingData;
     }
+
 private:
     Mc2Tiling::MatmulReduceScatterV2TilingData matmulReduceScatterV2TilingDataSelf_;
-    Mc2Tiling::MatmulReduceScatterV2TilingData *matmulReduceScatterV2TilingData_; // 用于存储matmulReduceScatter算子的tiling结果
+    Mc2Tiling::MatmulReduceScatterV2TilingData
+        *matmulReduceScatterV2TilingData_; // 用于存储matmulReduceScatter算子的tiling结果
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;
 };
 } // namespace optiling
-
 
 #endif // __MATMUL_REDUCE_SCATTER_V2_TILING_H__

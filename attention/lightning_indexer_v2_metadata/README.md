@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：`LightningIndexerV2Metadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`LightningIndexerV2`算子使用。
+- 算子功能：`LightningIndexerV2Metadata`是`LightningIndexerV2`算子的前置算子，用于生成负载均衡的任务划分方案。本算子不执行实际的LightningIndexer计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
 ## 参数说明
 
@@ -37,49 +37,49 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )，仅layout_q为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中q的有效Sequence Length，shape为(B+1, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )，仅layout_k为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中k的有效Sequence Length，shape为(B+1, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query实际参与运算的Sequence Length，shape为(B, )。</td>
+      <td>表示不同Batch中q实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>seqused_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key实际参与运算的Sequence Length，shape为(B, )。</td>
+      <td>表示不同Batch中k实际参与运算的Sequence Length，shape为(B, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中k压缩后Sequence Length的余数，配合cmp_ratio实现mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前仅支持32/64。</td>
+      <td>表示q的head个数，当前支持[1, 64]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>num_heads_k</td>
       <td>属性</td>
-      <td>表示Key的head个数，当前仅支持1。</td>
+      <td>表示k的head个数，当前仅支持1。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -93,7 +93,7 @@
     <tr>
       <td>topk</td>
       <td>属性</td>
-      <td>表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 2048]</td>
+      <td>表示从q中筛选出的关键稀疏token的个数，当前仅支持[1, 8192]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -107,28 +107,28 @@
     <tr>
       <td>max_seqlen_q</td>
       <td>可选属性</td>
-      <td>表示Query的最长Sequence Length，-1表示任意可能长度，默认值为-1。</td>
+      <td>表示q的最长Sequence Length，-1表示任意可能长度，默认值为-1。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>max_seqlen_k</td>
       <td>可选属性</td>
-      <td>表示Key的最长Sequence Length，-1表示任意可能长度，默认值为-1。</td>
+      <td>表示k的最长Sequence Length，-1表示任意可能长度，默认值为-1。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_q</td>
       <td>可选属性</td>
-      <td>表示Query的排列格式，支持BSND、TND，默认值为BSND。</td>
+      <td>表示q的排列格式，支持BSND、TND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>layout_k</td>
       <td>可选属性</td>
-      <td>表示Key的排列格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
+      <td>表示k的排列格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
@@ -142,14 +142,14 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示Key的压缩率，取值范围[1, 128]，默认值为1，表示无压缩。</td>
+      <td>表示k的压缩率，取值范围[1, 128]，默认值为1，表示无压缩。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]。</td>
+      <td>表示负载均衡结果输出，shape固定为(1024, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -159,15 +159,35 @@
 ## 约束说明
 
 - LightningIndexerV2Metadata算子需要与LightningIndexerV2算子配套使用。
-- B（Batch）表示输入样本批量大小。
-- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
+- B（Batch）表示输入样本批量大小，q、k为配套的LightningIndexerV2算子的入参，S1表示layout_q=BSND时，q shape中的S轴的大小，S2表示layout_k=BSND时，k shape中的S轴的大小。
+- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
-- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode参数说明.md)。
+- mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
+- 非PA场景layout_q、layout_k须相同。
+- layout_q=BSND场景
+  - max_seqlen_q必须传入S1的值。
+- layout_k=BSND场景
+  - max_seqlen_k必须传入S2的值。
+- layout_q=TND场景
+  - cu_seqlens_q必须传入。
+- layout_k=TND场景
+  - cu_seqlens_k必须传入。
+- layout_k=PA_BBND场景
+  - seqused_k必须传入。
+- Batch取值规则
+  - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
+  - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。
+- q Seqlen取值规则
+  - layout_q为BSND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过max_seqlen_q获取seqlen。
+  - layout_q为TND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过cu_seqlens_q中的元素获取seqlen。
+- k Seqlen取值规则
+  - layout_k为BSND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过max_seqlen_k获取seqlen。
+  - layout_k为TND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过cu_seqlens_k中的元素获取seqlen。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_lightning_indexer_v2_metadata](./examples/test_aclnn_lightning_indexer_v2_metadata.cpp) | 通过[aclnnLightningIndexerV2Metadata](./docs/aclnnLightningIndexerV2Metadata.md)接口调用LightningIndexerV2Metadata算子 |
-| PyTorch API | [test_torch_lightning_indexer_v2_metadata](./examples/test_torch_lightning_indexer_v2_metadata.py) | 通过[lightning_indexer_metadata](../../torch_extension/cann_ops_transformer/docs/zh/lightning_indexer.md)接口调用LightningIndexerV2Metadata算子 |
+| PyTorch API | [test_torch_lightning_indexer_v2_metadata](./examples/test_torch_lightning_indexer_v2_metadata.py) | 通过[lightning_indexer_metadata](../../attention/lightning_indexer_v2/docs/torchapi_lightning_indexer.md)接口调用LightningIndexerV2Metadata算子 |

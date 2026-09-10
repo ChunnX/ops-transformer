@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """CPU Golden 后端实现 — 调用 tforward 做参考计算。"""
 
 import torch
@@ -19,11 +29,12 @@ class CPUBackend(Backend):
     def is_available(self) -> bool:
         return True
 
-    def compute(self, inputs: Dict[str, torch.Tensor],
-                params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+    def compute(
+        self, inputs: Dict[str, torch.Tensor], params: Dict[str, Any]
+    ) -> Dict[str, torch.Tensor]:
         from core.backends.cpu_golden import tforward
 
-        layout_q  = params.get("layout_q", params.get("input_layout", "BNSD"))
+        layout_q = params.get("layout_q", params.get("input_layout", "BNSD"))
         layout_kv = params.get("layout_kv", layout_q)
 
         q_cpu = _to_tforward(inputs["q"], layout_q, params)
@@ -32,10 +43,12 @@ class CPUBackend(Backend):
 
         tforward_kwargs = dict(params)
         tforward_kwargs["scale"] = params.get("scale", 1 / (params["D"] ** 0.5))
+        if inputs.get("sinks") is not None:
+            tforward_kwargs["sinks"] = inputs["sinks"]
 
         out_cpu, x_max, x_sum = tforward(q_cpu, k_cpu, v_cpu, **tforward_kwargs)
         lse = torch.log(x_sum) + x_max
-        lse[x_max <= torch.finfo(torch.float32).min + 1.0] = float('inf')
+        lse[x_max <= torch.finfo(torch.float32).min + 1.0] = float("inf")
         return {"out": out_cpu, "lse": lse}
 
 
@@ -57,7 +70,7 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
             offset = 0
             for b in range(B):
                 slen = seq_kv[b] if b < len(seq_kv) else seq_kv[0]
-                result[0, :, offset:offset + slen, :] = bnsd[b, :, :slen, :]
+                result[0, :, offset : offset + slen, :] = bnsd[b, :, :slen, :]
                 offset += slen
             return result
         return bnsd.float()
@@ -66,13 +79,14 @@ def _to_tforward(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
 
 def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
     """PA 格式 → BNSD 重建。"""
-    b   = params.get("actual_b", params["B"])  # TND 时 B=1，用 actual_b
-    n2  = params.get("N2", params["N1"])
-    d   = params["D"]
-    s2  = params["S2"]  # 用 S2，不是 max(seqused_kv)
+    b = params.get("actual_b", params["B"])  # TND 时 B=1，用 actual_b
+    n2 = params.get("N2", params["N1"])
+    # D 维从张量末维推导（qk 维 D 与 v 维 DV 可不同；PA_NZ 分支另行按分形推导）
+    d = t.shape[-1]
+    s2 = params["S2"]  # 用 S2，不是 max(seqused_kv)
     seq_kv = params["seqused_kv"]
-    bs  = params.get("block_size", 128)
-    bt  = params.get("block_table")
+    bs = params.get("block_size", 128)
+    bt = params.get("block_table")
     if bt is None:
         return t.clone()
 
@@ -126,7 +140,8 @@ def _pa_to_bnsd(t: torch.Tensor, layout: str, params: dict) -> torch.Tensor:
                 if cnt > 0:
                     block_data = t[blk_id, :, :, :cnt, :]
                     block_data = block_data.permute(0, 2, 1, 3).reshape(
-                        block_data.shape[0], cnt, -1)
+                        block_data.shape[0], cnt, -1
+                    )
                     result[bi, :, start:end, :] = block_data
 
     else:

@@ -12,7 +12,18 @@
  * \file moe_ep_combine.cpp
  * \brief
  */
- 
+
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
+    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
+#define ENABLE_MOE_EP_COMBINE_KERNEL
+#endif
+
+#endif
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -27,19 +38,19 @@ using namespace MoeEpCombineImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-
 template <uint32_t HasTopkWeight, uint32_t ArchTag>
 __global__ __aicore__ void moe_ep_combine(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR recvSrcMetadata,
-                                          GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1,
-                                          GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional, GM_ADDR workspace,
+                                          GM_ADDR numRecvPerExpert, GM_ADDR topkWeights, GM_ADDR workspace,
                                           GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpCombineTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpCombineTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpCombineTilingData, tilingData, tilingGM);
+#if defined(ENABLE_MOE_EP_COMBINE_KERNEL)
     MoeEpCombine<DTYPE_X, HasTopkWeight> op;
-    op.Init(context, x, topkIdx, recvSrcMetadata, numRecvPerExpert, topkWeights, bias0, bias1, combinedX,
-            combinedTopkWeightsOptional, workspace, tilingGM, &pipe, &tilingData.moeEpCombineInfo);
+    op.Init(context, x, topkIdx, recvSrcMetadata, numRecvPerExpert, topkWeights, workspace, tilingGM, &pipe,
+            &tilingData.moeEpCombineInfo);
     op.Process();
+#endif
 }

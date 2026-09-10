@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -20,7 +30,7 @@
     相较于[aclnnGroupedMatmulV4](../../grouped_matmul/docs/aclnnGroupedMatmulV4.md)接口，**此接口变化：**
     - 输入输出参数类型均为aclTensor。
     - 在GroupedMatMul计算结束后增加了InplaceAdd计算。
-    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../../docs/zh/context/量化介绍.md)。
+    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../../docs/zh/context/quant_mode_introduction.md)。
     - 仅支持x1、x2是FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入。
 
 - 计算公式：
@@ -39,7 +49,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnQuantGroupedMatmulInplaceAdd”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnQuantGroupedMatmulInplaceAdd”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize(
@@ -83,9 +93,9 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <th>描述</th>
       <th>使用说明</th>
       <th>数据类型</th>
-      <th><a href="../../../docs/zh/context/数据格式.md" target="_blank">数据格式</a></th>
+      <th><a href="../../../docs/zh/context/data_format.md" target="_blank">数据格式</a></th>
       <th style="white-space: nowrap">维度(shape)</th>
-      <th><a href="../../../docs/zh/context/非连续的Tensor.md" target="_blank">非连续的Tensor</a></th>
+      <th><a href="../../../docs/zh/context/non_contiguous_tensor.md" target="_blank">非连续的Tensor</a></th>
     </tr>
   </thead>
   <tbody>
@@ -143,8 +153,8 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>表示输入和输出分组轴方向的matmul大小分布，Device侧的aclTensor。</td>
       <td>
         <ul>
-          <li>当groupListType为0时，groupList必须为非负单调非递减数列，当groupListType为1时，groupList必须为非负数列。</li>
-          <li>groupList中的最后一个值约束了输出数据的有效部分，groupList中未指定的部分将不会参与更新。</li>
+          <li>当groupListType为0时，groupList必须为非负单调非递减数列，并且最后一个值不大于x中tensor的第一维；当groupListType为1时，groupList必须为非负数列，并且数值的总和不大于x中tensor的第一维。</li>
+          <li>groupList中的值约束了输出数据的有效部分，groupList中未指定的部分将不会参与更新。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -216,7 +226,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1030px"><colgroup>
@@ -261,7 +271,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -299,7 +309,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

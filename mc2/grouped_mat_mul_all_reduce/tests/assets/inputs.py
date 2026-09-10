@@ -10,14 +10,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 __input__ = {
-    "kernel": {
-        "grouped_mat_mul_all_reduce": "grouped_mat_mul_all_reduce_inputs"
-    }
+    "kernel": {"grouped_mat_mul_all_reduce": "grouped_mat_mul_all_reduce_inputs"}
 }
 
-from typing import List
 import numpy as np
-from ml_dtypes import bfloat16
+
 
 def grouped_mat_mul_all_reduce_inputs(
     x,
@@ -28,11 +25,11 @@ def grouped_mat_mul_all_reduce_inputs(
     group: str = "",
     reduceOp: str = "sum",
     commTurn: int = 0,
-    **kwargs
+    **kwargs,
 ):
     """
     GroupedMatMulAllReduce inputs validation and adjustment
-    
+
     Args:
         x: Input tensor
         weight: Weight tensor
@@ -48,19 +45,22 @@ def grouped_mat_mul_all_reduce_inputs(
         x = np.array(x)
     if not isinstance(weight, np.ndarray):
         weight = np.array(weight)
-    
+
     if group_list is not None:
         if not isinstance(group_list, np.ndarray):
             group_list = np.array(group_list, dtype=np.int64)
-        
+
         group_list_cumsum = np.cumsum(group_list) if splitItem == 0 else group_list
-        
+
         if group_list_cumsum[-1] > x.shape[0]:
-            raise Exception('sum of grouplist: ({}) can not be greater than x[0]: ({})'.format(
-                group_list_cumsum[-1], x.shape[0]))
-    
+            raise Exception(
+                "sum of grouplist: ({}) can not be greater than x[0]: ({})".format(
+                    group_list_cumsum[-1], x.shape[0]
+                )
+            )
+
     if bias is not None:
         if not isinstance(bias, np.ndarray):
             bias = np.array(bias)
-    
+
     return x, weight, bias, group_list, splitItem, group, reduceOp, commTurn

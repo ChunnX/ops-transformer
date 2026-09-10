@@ -21,75 +21,67 @@
 
 namespace MlaProlog {
 
-template <typename O, typename C>
-__simd_vf__ inline void RopeVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb, __ubuf__ C *cosUb,
+template <typename C>
+__simd_vf__ inline void RopeVFImpl(__ubuf__ C *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb, __ubuf__ C *cosUb,
                                    uint32_t row, uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
 {
-    MicroAPI::RegTensor<C> vregX;
-    MicroAPI::RegTensor<C> vregSin;
-    MicroAPI::RegTensor<C> vregCos;
-    MicroAPI::RegTensor<C> vregEven;
-    MicroAPI::RegTensor<C> vregOdd;
-    MicroAPI::RegTensor<C> vregResLow;
-    MicroAPI::RegTensor<C> vregResHigh;
-    MicroAPI::RegTensor<C> vregRes;
-    MicroAPI::RegTensor<O> vregResCast;
+    Reg::RegTensor<C> vregX;
+    Reg::RegTensor<C> vregSin;
+    Reg::RegTensor<C> vregCos;
+    Reg::RegTensor<C> vregEven;
+    Reg::RegTensor<C> vregOdd;
+    Reg::RegTensor<C> vregHigh;
+    Reg::RegTensor<C> vregLow;
+    Reg::RegTensor<C> vregTemp;
+    Reg::RegTensor<C> vregRes;
 
-    uint32_t halfReg = ROPE_VF_COL / 2;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<C, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg maskAllCast = MicroAPI::CreateMask<O, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg maskLowHalf = MicroAPI::CreateMask<C, MicroAPI::MaskPattern::H>();
-    MicroAPI::MaskReg maskHighHalf;
-    MicroAPI::Not(maskHighHalf, maskLowHalf, maskAll);
+    Reg::MaskReg maskAll = Reg::CreateMask<C, Reg::MaskPattern::ALL>();
+    Reg::MaskReg maskLowHalf = Reg::CreateMask<C, Reg::MaskPattern::H>();
+    Reg::MaskReg maskHighHalf;
+    Reg::Not(maskHighHalf, maskLowHalf, maskAll);
 
     for (uint16_t i = 0; i < row; ++i) {
         __ubuf__ C *curXUb = inputUb + i * srcStride;
-        __ubuf__ O *curResUb = outputUb + i * dstStride;
+        __ubuf__ C *curResUb = outputUb + i * dstStride;
         __ubuf__ C *curSinUb = sinUb + i * sinCosStride;
         __ubuf__ C *curCosUb = cosUb + i * sinCosStride;
 
-        MicroAPI::LoadAlign(vregX, curXUb);
-        MicroAPI::LoadAlign(vregSin, curSinUb);
-        MicroAPI::LoadAlign(vregCos, curCosUb);
+        Reg::LoadAlign(vregX, curXUb);
+        Reg::LoadAlign(vregSin, curSinUb);
+        Reg::LoadAlign(vregCos, curCosUb);
 
         // vregEven = [evens(0..31), evens(32..63)]
         // vregOdd = [odds(0..31),  odds(32..63)]
-        MicroAPI::DeInterleave<C>(vregEven, vregOdd, vregX, vregX);
+        Reg::DeInterleave<C>(vregEven, vregOdd, vregX, vregX);
 
         // Part1 low  = cos * evens,        Part1 high preserved
-        MicroAPI::Mul(vregResLow, vregCos, vregEven, maskLowHalf);
+        Reg::Mul(vregRes, vregCos, vregEven, maskLowHalf);
         // Part1 high = sin * evens,         Part1 low  preserved
-        MicroAPI::Mul(vregResHigh, vregSin, vregEven, maskHighHalf);
-        MicroAPI::Add(vregRes, vregResLow, vregResHigh, maskAll);
+        Reg::Mul(vregTemp, vregSin, vregEven, maskHighHalf);
         // Part2 low  = sin(-) * odds,      Part2 high preserved
-        MicroAPI::Mul(vregResLow, vregSin, vregOdd, maskLowHalf);
+        Reg::Mul(vregLow, vregSin, vregOdd, maskLowHalf);
         // Part2 high = cos * odds,          Part2 low  preserved
-        MicroAPI::Mul(vregResHigh, vregCos, vregOdd, maskHighHalf);
+        Reg::Mul(vregHigh, vregCos, vregOdd, maskHighHalf);
 
         // Part1 = [cos_l*even + sin_l*odd, cos_u*odd + sin_u*even] = [y_lower, y_upper]
-        MicroAPI::Add(vregRes, vregRes, vregResHigh, maskAll);
-        MicroAPI::Add(vregRes, vregRes, vregResLow, maskAll);
+        Reg::Add(vregRes, vregRes, vregLow, maskLowHalf);
+        Reg::Add(vregTemp, vregTemp, vregHigh, maskHighHalf);
+        Reg::Move(vregRes, vregTemp, maskHighHalf);
 
-        if constexpr (std::is_same<C, O>::value) {
-            MicroAPI::StoreAlign(curResUb, vregRes, maskAll);
-        } else {
-            MicroAPI::Cast<O, C, castTraitB322B16>(vregResCast, vregRes, maskAllCast);
-            MicroAPI::DataCopy<O, MicroAPI::StoreDist::DIST_PACK_B32>(curResUb, vregResCast, maskAllCast);
-        }
+        Reg::StoreAlign(curResUb, vregRes, maskAll);
     }
 }
 
-
 // col == 64
-template <typename O, typename C>
-__aicore__ inline void RotaryPosEmbVF(const LocalTensor<O> &outputLocal, const LocalTensor<C> &inputLocal,
+template <typename C>
+__aicore__ inline void RotaryPosEmbVF(const LocalTensor<C> &outputLocal, const LocalTensor<C> &inputLocal,
                                       const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal, uint32_t row,
                                       uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
 {
     __ubuf__ C *inputUb = (__ubuf__ C *)inputLocal.GetPhyAddr();
     __ubuf__ C *sinUb = (__ubuf__ C *)sinLocal.GetPhyAddr();
     __ubuf__ C *cosUb = (__ubuf__ C *)cosLocal.GetPhyAddr();
-    __ubuf__ O *outputUb = (__ubuf__ O *)outputLocal.GetPhyAddr();
+    __ubuf__ C *outputUb = (__ubuf__ C *)outputLocal.GetPhyAddr();
 
     RopeVFImpl(outputUb, inputUb, sinUb, cosUb, row, srcStride, dstStride, sinCosStride);
 }

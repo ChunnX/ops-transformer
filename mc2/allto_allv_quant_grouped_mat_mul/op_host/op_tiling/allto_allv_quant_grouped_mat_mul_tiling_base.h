@@ -19,7 +19,6 @@
 #include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "../../op_kernel/allto_allv_quant_grouped_mat_mul_tiling_key.h"
@@ -98,7 +97,7 @@ constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
-        : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
 protected:
     ge::graphStatus GetCommonPlatformInfo();
@@ -140,13 +139,13 @@ protected:
     uint64_t n2_ = 0;
     uint64_t k_ = 0;
     // attr
-    const char* group_;
+    const char *group_;
     uint64_t epWorldSize_ = 0;
     bool transGmmWeight_ = false;
     bool transMmWeight_ = false;
     bool permuteOutFlag_ = false;
-    const int64_t* sendCounts = nullptr;
-    const int64_t* recvCounts = nullptr;
+    const int64_t *sendCounts = nullptr;
+    const int64_t *recvCounts = nullptr;
     // data type
     ge::DataType gmmXDataType_;
     ge::DataType gmmWeightDataType_;
@@ -160,27 +159,27 @@ private:
     ge::graphStatus GetAttrsInfo();
     ge::graphStatus GetGmmXShapeInfo();
     ge::graphStatus GetGmmWeightShapeInfo();
-    ge::graphStatus GetCountsTensorShapeInfo();
+    ge::graphStatus GetCountsTensorShapeInfo() const;
     ge::graphStatus GetMmxShapeInfo();
     ge::graphStatus GetMmWeightShapeInfo();
     ge::graphStatus GetGmmYShapeInfo();
     ge::graphStatus GetMmYShapeInfo();
-    ge::graphStatus GetPermuteOutShapeInfo();
+    ge::graphStatus GetPermuteOutShapeInfo() const;
     // check
     ge::graphStatus CheckAttrsInfo();
     ge::graphStatus CheckShapeInfo();
-    ge::graphStatus CheckGmmXShapeInfo();
-    ge::graphStatus CheckGmmWeightShapeInfo();
+    ge::graphStatus CheckGmmXShapeInfo() const;
+    ge::graphStatus CheckGmmWeightShapeInfo() const;
     ge::graphStatus CheckCountsTensorShapeInfo();
     ge::graphStatus CheckMmxShapeInfo();
-    ge::graphStatus CheckMmWeightShapeInfo();
-    ge::graphStatus CheckGmmYShapeInfo();
+    ge::graphStatus CheckMmWeightShapeInfo() const;
+    ge::graphStatus CheckGmmYShapeInfo() const;
     ge::graphStatus CheckMmYShapeInfo();
-    ge::graphStatus CheckPermuteOutShapeInfo();
+    ge::graphStatus CheckPermuteOutShapeInfo() const;
     ge::graphStatus CheckCommSize();
     ge::graphStatus CheckEpWorldSizeValue();
     ge::graphStatus CheckCommCountsRange();
     ge::graphStatus CheckCommCountsValue();
     ge::graphStatus CheckFormat();
 };
-}  // namespace optiling
+} // namespace optiling

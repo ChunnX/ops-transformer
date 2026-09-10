@@ -22,8 +22,8 @@
 #include "./basic_modules/vec_modules/vec_sfmg.h"
 #include "./basic_modules/vec_modules/vec_post.h"
 #include "./basic_modules/vec_modules/vec_addr.h"
-#include "./basic_modules/cube_op.h"
-#include "./basic_modules/vec_op.h"
+#include "./basic_modules/cube_op_fasg_arch22.h"
+#include "./basic_modules/vec_op_fasg_arch22.h"
 using namespace AscendC;
 
 template <typename TYPE, class TILING_CLASS>
@@ -137,8 +137,9 @@ __aicore__ inline void FlashAttentionScoreGradBasic<TYPE, TILING_CLASS>::CubePro
             if (cube23_mix_flag) {
                 AscendC::WaitEvent(VEC2CUBE);
                 SetFlag();
-                cubeOp.Cube23Process(cubeAddrInfo[(taskId - 1) % 2], (__gm__ TYPE *)mm1WorkSpaceAddr, (__gm__ TYPE *)key,
-                                    (__gm__ TYPE *)query, (__gm__ float *)dqWorkSpaceAddr, (__gm__ float *)dkWorkSpaceAddr);
+                cubeOp.Cube23Process(cubeAddrInfo[(taskId - 1) % 2], (__gm__ TYPE *)mm1WorkSpaceAddr,
+                                     (__gm__ TYPE *)key, (__gm__ TYPE *)query, (__gm__ float *)dqWorkSpaceAddr,
+                                     (__gm__ float *)dkWorkSpaceAddr);
                 WaitFlag();
                 SetFlag();
                 cubeOp.Cube3Process(cube3AddrInfo[(taskId - 1) % 2], (__gm__ TYPE *)mm2WorkSpaceAddr, (__gm__ TYPE *)dy,
@@ -150,8 +151,8 @@ __aicore__ inline void FlashAttentionScoreGradBasic<TYPE, TILING_CLASS>::CubePro
                                     (__gm__ float *)dqWorkSpaceAddr);
                 WaitFlag();
                 SetFlag();
-                cubeOp.Cube3Process(cube3AddrInfo[(taskId - 1) % 2], (__gm__ TYPE *)mm1WorkSpaceAddr, (__gm__ TYPE *)query,
-                                (__gm__ float *)dkWorkSpaceAddr);
+                cubeOp.Cube3Process(cube3AddrInfo[(taskId - 1) % 2], (__gm__ TYPE *)mm1WorkSpaceAddr,
+                                    (__gm__ TYPE *)query, (__gm__ float *)dkWorkSpaceAddr);
                 cubeOp.Cube3Process(cube3AddrInfo[(taskId - 1) % 2], (__gm__ TYPE *)mm2WorkSpaceAddr, (__gm__ TYPE *)dy,
                                     (__gm__ float *)dvWorkSpaceAddr);
                 WaitFlag();

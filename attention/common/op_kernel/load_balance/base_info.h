@@ -36,7 +36,8 @@ public:
     [[nodiscard]] virtual uint32_t GetGroupSize() const = 0;
     [[nodiscard]] virtual uint32_t GetQueryHeadNum() const = 0;
     [[nodiscard]] virtual uint32_t GetKvHeadNum() const = 0;
-    [[nodiscard]] virtual uint32_t GetHeadDim() const = 0;
+    [[nodiscard]] virtual uint32_t GetHeadDimQk() const = 0;
+    [[nodiscard]] virtual uint32_t GetHeadDimV() const = 0;
     [[nodiscard]] virtual uint32_t GetQuerySeqSize() const = 0;
     [[nodiscard]] virtual uint32_t GetQuerySeqSize(uint32_t batchIdx) const = 0;
     [[nodiscard]] virtual uint32_t GetKvSeqSize() const = 0;
@@ -79,9 +80,14 @@ public:
         return kvHeadNum;
     }
 
-    [[nodiscard]] uint32_t GetHeadDim() const override
+    [[nodiscard]] uint32_t GetHeadDimQk() const override
     {
-        return headDim;
+        return headDimQk;
+    }
+
+    [[nodiscard]] uint32_t GetHeadDimV() const override
+    {
+        return headDimV;
     }
 
     [[nodiscard]] uint32_t GetQuerySeqSize() const override
@@ -103,8 +109,9 @@ public:
             return static_cast<uint32_t>(actualQuerySeqSize[batchIdx]);
         }
 
-        return (batchIdx == 0) ? static_cast<uint32_t>(actualQuerySeqSize[batchIdx]) :
-               static_cast<uint32_t>(actualQuerySeqSize[batchIdx] - actualQuerySeqSize[batchIdx - 1U]);
+        return (batchIdx == 0) ?
+                   static_cast<uint32_t>(actualQuerySeqSize[batchIdx]) :
+                   static_cast<uint32_t>(actualQuerySeqSize[batchIdx] - actualQuerySeqSize[batchIdx - 1U]);
     }
 
     [[nodiscard]] uint32_t GetKvSeqSize() const override
@@ -127,7 +134,7 @@ public:
         }
 
         return (batchIdx == 0) ? static_cast<uint32_t>(actualKvSeqSize[batchIdx]) :
-               static_cast<uint32_t>(actualKvSeqSize[batchIdx] - actualKvSeqSize[batchIdx - 1U]);
+                                 static_cast<uint32_t>(actualKvSeqSize[batchIdx] - actualKvSeqSize[batchIdx - 1U]);
     }
 
     [[nodiscard]] SparseMode GetSparseMode() const override
@@ -196,25 +203,26 @@ public:
     }
 
 public:
-    uint32_t batchSize { 0U };
-    uint32_t queryHeadNum { 0U };
-    uint32_t querySeqSize { 0U };
-    uint32_t kvHeadNum { 0U };
-    uint32_t kvSeqSize { 0U };
-    uint32_t headDim { 64U };
-    bool attenMaskFlag { false };
-    uint32_t sparseMode { 0U };
-    uint32_t preToken { 0U };
-    uint32_t nextToken { 0U };
-    bool isCumulativeQuerySeq { false };
-    bool isCumulativeKvSeq { false };
-    std::vector<int64_t> actualQuerySeqSize {};
-    std::vector<int64_t> actualKvSeqSize {};
-    Layout layoutQuery { Layout::BSND };
-    Layout layoutKv { Layout::BSND };
-    DataType queryType { DataType::FP16 };
-    DataType kvType { DataType::FP16 };
+    uint32_t batchSize{0U};
+    uint32_t queryHeadNum{0U};
+    uint32_t querySeqSize{0U};
+    uint32_t kvHeadNum{0U};
+    uint32_t kvSeqSize{0U};
+    uint32_t headDimQk{64U};
+    uint32_t headDimV{64U};
+    bool attenMaskFlag{false};
+    uint32_t sparseMode{0U};
+    uint32_t preToken{0U};
+    uint32_t nextToken{0U};
+    bool isCumulativeQuerySeq{false};
+    bool isCumulativeKvSeq{false};
+    std::vector<int64_t> actualQuerySeqSize{};
+    std::vector<int64_t> actualKvSeqSize{};
+    Layout layoutQuery{Layout::BSND};
+    Layout layoutKv{Layout::BSND};
+    DataType queryType{DataType::FP16};
+    DataType kvType{DataType::FP16};
 };
 
-}
+} // namespace load_balance
 #endif // BASE_INFO_H

@@ -22,7 +22,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "weight_quant_batch_matmul_v2_tiling.h"
 #include "quant_batch_matmul_v3_tiling_def.h"
-#include "../../../op_kernel/arch22/unquant_matmul_all_reduce_tiling_data.h"
+#include "../../../op_kernel/unquant_matmul_all_reduce_tiling_data.h"
 #if __has_include("../../../../common/utils/hccl_stub.h")
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 #endif
@@ -31,13 +31,13 @@
 #include "kernel_operator.h"
 #endif
 
-inline void InitMatmulAllReduceTilingData(uint8_t* tiling, Mc2Tiling::MatmulAllReduceTilingData* const_data)
+inline void InitMatmulAllReduceTilingData(uint8_t *tiling, Mc2Tiling::MatmulAllReduceTilingData *const_data)
 {
     memcpy(const_data, tiling, sizeof(Mc2Tiling::MatmulAllReduceTilingData));
 }
 
-#define GET_TILING_DATA(tiling_data, tiling_arg)                                                        \
-    Mc2Tiling::MatmulAllReduceTilingData tiling_data;                                                 \
+#define GET_TILING_DATA(tiling_data, tiling_arg) \
+    Mc2Tiling::MatmulAllReduceTilingData tiling_data; \
     InitMatmulAllReduceTilingData(tiling_arg, &tiling_data)
 
 #define GET_TILING_DATA_WITH_STRUCT(tiling_struct, tiling_data, tiling_arg) \
@@ -45,8 +45,8 @@ inline void InitMatmulAllReduceTilingData(uint8_t* tiling, Mc2Tiling::MatmulAllR
     InitTilingData<tiling_struct>(tiling_arg, &tiling_data);
 
 #define GET_TILING_DATA_MEMBER(tiling_type, member, var, tiling) \
-    auto var = ((tiling_type *)((uint8_t*)AscendC::GmAlloc(1024)))->member; \
-    size_t offset##var = (size_t)(&((tiling_type*)0)->member);        \
+    auto var = ((tiling_type *)((uint8_t *)AscendC::GmAlloc(1024)))->member; \
+    size_t offset##var = (size_t)(&((tiling_type *)0)->member); \
     InitTilingData<decltype(var)>(tiling + offset##var, &var);
 
-#endif  // FOREACH_MINIMUM_SCALAR_TILING_DEF_H
+#endif // FOREACH_MINIMUM_SCALAR_TILING_DEF_H

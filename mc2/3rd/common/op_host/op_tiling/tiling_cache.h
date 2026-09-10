@@ -24,64 +24,67 @@ constexpr uint32_t kMaxTilingCacheEntryNum = 500;
 
 template <typename HashInput, typename HashItem>
 class TilingCache {
- public:
-  void Add(uint32_t key, const HashInput &hash_input, const HashItem &value) {
-    rwlock_.wrlock();
-    if (size_ >= kMaxTilingCacheEntryNum) {
-      rwlock_.unlock();
-      return;
+public:
+    void Add(uint32_t key, const HashInput &hash_input, const HashItem &value)
+    {
+        rwlock_.wrlock();
+        if (size_ >= kMaxTilingCacheEntryNum) {
+            rwlock_.unlock();
+            return;
+        }
+
+        if (map_.find(key) != map_.end()) {
+            rwlock_.unlock();
+            return;
+        }
+
+        map_.emplace(key, value);
+        size_++;
+        rwlock_.unlock();
+        return;
     }
 
-    if (map_.find(key) != map_.end()) {
-      rwlock_.unlock();
-      return;
+    void Replace(uint32_t key, const HashInput &hash_input, const HashItem &value)
+    {
+        rwlock_.wrlock();
+        if (size_ >= kMaxTilingCacheEntryNum) {
+            rwlock_.unlock();
+            return;
+        }
+
+        if (map_.find(key) == map_.end()) {
+            size_++;
+        }
+        map_.erase(key);
+        map_.emplace(key, value);
+        rwlock_.unlock();
+        return;
     }
 
-    map_.emplace(key, value);
-    size_++;
-    rwlock_.unlock();
-    return;
-  }
+    bool Get(uint32_t key, const HashInput &hash_input, HashItem &value)
+    {
+        rwlock_.rdlock();
+        auto iter = map_.find(key);
+        if (iter == map_.end()) {
+            rwlock_.unlock();
+            return false;
+        }
+        if (!(hash_input == iter->second.input())) {
+            rwlock_.unlock();
+            OP_LOGD("CUBE", "inconsistent input data");
+            return false;
+        }
 
-  void Replace(uint32_t key, const HashInput &hash_input, const HashItem &value) {
-    rwlock_.wrlock();
-    if (size_ >= kMaxTilingCacheEntryNum) {
-      rwlock_.unlock();
-      return;
+        value = iter->second;
+        rwlock_.unlock();
+        return true;
     }
 
-    if (map_.find(key) == map_.end()) {
-      size_++;
-    }
-    map_.erase(key);
-    map_.emplace(key, value);
-    rwlock_.unlock();
-    return;
-  }
-
-  bool Get(uint32_t key, const HashInput &hash_input, HashItem &value) {
-    rwlock_.rdlock();
-    auto iter = map_.find(key);
-    if (iter == map_.end()) {
-      rwlock_.unlock();
-      return false;
-    }
-    if (!(hash_input == iter->second.input())) {
-      rwlock_.unlock();
-      OP_LOGD("CUBE", "inconsistent input data");
-      return false;
-    }
-
-    value = iter->second;
-    rwlock_.unlock();
-    return true;
-  }
-
- private:
-  std::map<uint32_t, HashItem> map_;
-  uint32_t size_ = 0;
-  Ops::Transformer::Optiling::RWLock rwlock_;
+private:
+    std::map<uint32_t, HashItem> map_;
+    uint32_t size_ = 0;
+    Ops::Transformer::Optiling::RWLock rwlock_;
 };
-}  // namespace Transformer
-}  // namespace Ops
-#endif  // OPS_BUILT_IN_OP_TILING_CUBE_ALGORITHM_HASH_TILING_CACHE_H_
+} // namespace Transformer
+} // namespace Ops
+#endif // OPS_BUILT_IN_OP_TILING_CUBE_ALGORITHM_HASH_TILING_CACHE_H_

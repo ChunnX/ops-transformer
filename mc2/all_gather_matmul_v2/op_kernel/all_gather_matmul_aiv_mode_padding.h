@@ -18,22 +18,23 @@
 
 #pragma once
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_padding_matmul.hpp"
 #include "all_gather_matmul_aiv_mode_util.h"
 
 using namespace AscendC;
 using namespace Catlass;
-#define PADDING_ARGS_FUN()                                                                                             \
-    bool transA, bool transB, bool alignedA, bool alignedB, uint32_t matrixAM, uint32_t matrixAK, uint32_t matrixBK,   \
-        uint32_t matrixBN, uint32_t matrixAMAlign, uint32_t matrixAKAlign, uint32_t matrixBKAlign,                     \
+#define PADDING_ARGS_FUN() \
+    bool transA, bool transB, bool alignedA, bool alignedB, uint32_t matrixAM, uint32_t matrixAK, uint32_t matrixBK, \
+        uint32_t matrixBN, uint32_t matrixAMAlign, uint32_t matrixAKAlign, uint32_t matrixBKAlign, \
         uint32_t matrixBNAlign, GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmAAlign, GM_ADDR gmBAlign
-#define PADDING_ARGS_CALL()                                                                                            \
-    transA, transB, alignedA, alignedB, matrixAM, matrixAK, matrixBK, matrixBN, matrixAMAlign, matrixAKAlign,          \
+#define PADDING_ARGS_CALL() \
+    transA, transB, alignedA, alignedB, matrixAM, matrixAK, matrixBK, matrixBN, matrixAMAlign, matrixAKAlign, \
         matrixBKAlign, matrixBNAlign, gmA, gmB, gmAAlign, gmBAlign
 namespace Catlass::Gemm::Kernel {
-template <class ArchTag_, class AType_, class BType_> class TemplatePadder {
+template <class ArchTag_, class AType_, class BType_>
+class TemplatePadder {
 public:
     using ArchTag = ArchTag_;
     using ElementA = typename AType_::Element;
@@ -59,24 +60,29 @@ public:
         bool alignB;      // B矩阵是否padding
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
         CATLASS_HOST_DEVICE
         Params(GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_, GM_ADDR ptrWA_, LayoutA layoutWA_,
                GM_ADDR ptrWB_, LayoutB layoutWB_, bool alignA_, bool alignB_)
-            : ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrWA(ptrWA_), layoutWA(layoutWA_),
-              ptrWB(ptrWB_), layoutWB(layoutWB_), alignA(alignA_), alignB(alignB_)
-        {
-        }
+            : ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrWA(ptrWA_),
+              layoutWA(layoutWA_),
+              ptrWB(ptrWB_),
+              layoutWB(layoutWB_),
+              alignA(alignA_),
+              alignB(alignB_)
+        {}
     };
     // Methods
     CATLASS_DEVICE
-    TemplatePadder()
-    {
-    }
-    template <int32_t CORE_TYPE = g_coreType> CATLASS_DEVICE void operator()(Params const &params);
-    template <> CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    TemplatePadder() {}
+    template <int32_t CORE_TYPE = g_coreType>
+    CATLASS_DEVICE void operator()(Params const &params);
+    template <>
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
     {
         if (params.alignA) {
             AscendC::GlobalTensor<ElementA> gmA;
@@ -105,14 +111,17 @@ private:
     Arch::Resource<ArchTag> resource;
 };
 } // namespace Catlass::Gemm::Kernel
-template <typename InputType, typename WeightType> class PaddingRunner {
+template <typename InputType, typename WeightType>
+class PaddingRunner {
 public:
     __aicore__ explicit PaddingRunner() = default;
     inline __aicore__ void Run(PADDING_ARGS_FUN())
     {
         using ArchTag = Arch::AtlasA2;
-        using ElementA = typename std::conditional<std::is_same<InputType, AscendC::int4b_t>::value, int8_t, InputType>::type;
-        using ElementB = typename std::conditional<std::is_same<WeightType, AscendC::int4b_t>::value, int8_t, WeightType>::type;
+        using ElementA =
+            typename std::conditional<std::is_same<InputType, AscendC::int4b_t>::value, int8_t, InputType>::type;
+        using ElementB =
+            typename std::conditional<std::is_same<WeightType, AscendC::int4b_t>::value, int8_t, WeightType>::type;
         if (!transA && !transB) {
             using LayoutA = layout::RowMajor;
             using LayoutB = layout::RowMajor;

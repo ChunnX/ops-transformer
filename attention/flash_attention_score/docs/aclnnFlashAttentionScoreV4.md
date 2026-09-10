@@ -2,19 +2,29 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     x      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**该接口query、key、value参数支持多个长度相等或者多个长度不相等的sequence**
-  - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV2.md)接口，功能差异如下：**：
+  - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV3.md)接口，功能差异如下：**：
     - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
     -增加了sinkOptional可选输入，数据类型支持FLOAT32。
   - **该接口相较于[FlashAttentionVarLenScoreV5](./aclnnFlashAttentionVarLenScoreV5.md)接口，功能差异如下**：
@@ -32,21 +42,22 @@
      attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
      $$
   其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
-  
+
   $$
   S = Q * K^{T}
   $$
-  
+
   $$
   m = max(sink, max(S))
   $$
-  
+
   $$
   Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
   $$
+
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFlashAttentionScoreV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreV4”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
@@ -91,9 +102,9 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreV4(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 
@@ -487,7 +498,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -555,10 +566,10 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -594,12 +605,12 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 - sinkOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型。
-- sparseMode约束如下: 
+- sparseMode约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode_introduction.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - band场景，preTokens和nextTokens之间必须要有交集。
 - prefixOptional稀疏计算场景，场景包括sequence长度相等的场景下sparseMode=5、sparseMode=6；sequence长度不相等的场景下sparseMode=6。这两种场景下，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]；当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
@@ -608,9 +619,12 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 - TND场景下attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - 支持actualSeqQLenOptional中某个Batch上的S长度为0；如果存在S为0的情况，不支持pse输入，
   假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
+
+<!-- npu="950" id7 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
     - seed和offset只在keepProb小于1.0时生效，否则不生效。
     - keepProb小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
+<!-- end id7 -->
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
 - realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可开启alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
@@ -621,7 +635,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```C++
 #include <iostream>
@@ -659,6 +673,17 @@ void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
   for (int64_t i = 0; i < size; i++) {
     LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+  }
+}
+
+void PrintOutResultFp16(std::vector<int64_t> &shape, void** deviceAddr) {
+  auto size = GetShapeSize(shape);
+  std::vector<aclFloat16> resultData(size, 0);
+  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
+  for (int64_t i = 0; i < size; i++) {
+    LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
   }
 }
 
@@ -759,7 +784,7 @@ int main() {
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
- 
+
   std::vector<op::fp16_t> qHostData(q_size, 1.0);
   std::vector<op::fp16_t> kHostData(kv_size, 1.0);
   std::vector<op::fp16_t> vHostData(kv_size, 1.0);
@@ -795,9 +820,9 @@ int main() {
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);
   aclIntArray *kvStartIdx = aclCreateIntArray(kvStartIdxOp.data(), 1);
-  aclIntArray* actualSeqQLen = aclCreateIntArray(actualSeqQLenOp.data(), 1);  
+  aclIntArray* actualSeqQLen = aclCreateIntArray(actualSeqQLenOp.data(), 1);
   aclIntArray* actualSeqKVLen = aclCreateIntArray(actualSeqKVLenOp.data(), 1);
- 
+
   double scaleValue = 0.088388;
   double keepProb = 1;
   int64_t preTokens = 65536;
@@ -841,7 +866,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintOutResult(attentionOutShape, &attentionOutDeviceAddr);
+  PrintOutResultFp16(attentionOutShape, &attentionOutDeviceAddr);
   PrintOutResult(softmaxMaxShape, &softmaxMaxDeviceAddr);
   PrintOutResult(softmaxSumShape, &softmaxSumDeviceAddr);
 
@@ -873,5 +898,5 @@ int main() {
   aclFinalize();
 
   return 0;
-} 
+}
 ```

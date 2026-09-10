@@ -15,16 +15,19 @@
 
 namespace InplaceMatmulAllReduceAddRmsNormUT {
 
-class InferDataTypeInplaceMatmulAllReduceAddRmsNormTest : public testing::TestWithParam<InplaceMatmulAllReduceAddRmsNormInferDataTypeUtParam> {
+class InferDataTypeInplaceMatmulAllReduceAddRmsNormTest
+    : public testing::TestWithParam<InplaceMatmulAllReduceAddRmsNormInferDataTypeUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "InplaceMatmulAllReduceAddRmsNorm InferDataTypeInplaceMatmulAllReduceAddRmsNormTest SetUp" << std::endl;
+        std::cout << "InplaceMatmulAllReduceAddRmsNorm InferDataTypeInplaceMatmulAllReduceAddRmsNormTest SetUp"
+                  << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "InplaceMatmulAllReduceAddRmsNorm InferDataTypeInplaceMatmulAllReduceAddRmsNormTest TearDown" << std::endl;
+        std::cout << "InplaceMatmulAllReduceAddRmsNorm InferDataTypeInplaceMatmulAllReduceAddRmsNormTest TearDown"
+                  << std::endl;
     }
 };
 

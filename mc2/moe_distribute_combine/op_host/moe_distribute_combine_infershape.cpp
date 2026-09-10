@@ -22,15 +22,13 @@ static constexpr size_t DIM_TWO = 2UL;
 static constexpr int64_t NEG_ONE = -1;
 static constexpr int64_t RANK_NUM_PER_NODE = 8;
 
-
 static constexpr size_t COMBINE_INPUT_EXPERT_X_INDEX = 0;
 static constexpr size_t COMBINE_INPUT_EXPERT_IDX_INDEX = 1;
 static constexpr size_t COMBINE_OUTPUT_X_INDEX = 0;
 
-
 static ge::graphStatus InferShapeMoeDistributeCombine(gert::InferShapeContext *context)
 {
-    if (context == nullptr){
+    if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMoeDistributeCombine.");
@@ -49,8 +47,7 @@ static ge::graphStatus InferShapeMoeDistributeCombine(gert::InferShapeContext *c
     xShape->SetDim(0U, bs);
     xShape->SetDim(1U, h);
 
-    OP_LOGD(context->GetNodeName(), "x shape shape is :%s after infershape.",
-        Ops::Base::ToString(*xShape).c_str());
+    OP_LOGD(context->GetNodeName(), "x shape shape is :%s after infershape.", Ops::Base::ToString(*xShape).c_str());
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMoeDistributeCombine.");
     return ge::GRAPH_SUCCESS;
 }
@@ -68,4 +65,4 @@ IMPL_OP_INFERSHAPE(MoeDistributeCombine)
     .InferShape(InferShapeMoeDistributeCombine)
     .InferDataType(InferDataTypeMoeDistributeCombine);
 
-}  // namespace ops
+} // namespace ops

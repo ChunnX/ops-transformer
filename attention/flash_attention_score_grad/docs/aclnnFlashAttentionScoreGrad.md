@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -52,44 +62,44 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFlashAttentionScoreGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGradGetWorkspaceSize(
-  const aclTensor   *query, 
-  const aclTensor   *keyIn, 
-  const aclTensor   *value, 
-  const aclTensor   *dy, 
-  const aclTensor   *pseShiftOptional, 
-  const aclTensor   *dropMaskOptional, 
-  const aclTensor   *paddingMaskOptional, 
-  const aclTensor   *attenMaskOptional, 
-  const aclTensor   *softmaxMaxOptional, 
-  const aclTensor   *softmaxSumOptional, 
-  const aclTensor   *softmaxInOptional, 
-  const aclTensor   *attentionInOptional, 
-  const aclIntArray *prefixOptional, 
-  double             scaleValue, 
-  double             keepProb, 
-  int64_t            preTokens, 
-  int64_t            nextTokens, 
-  int64_t            headNum, 
-  char              *inputLayout, 
-  int64_t            innerPrecise, 
-  int64_t            sparseMode, 
-  const aclTensor   *dqOut, 
-  const aclTensor   *dkOut, 
-  const aclTensor   *dvOut, 
-  const aclTensor   *dpseOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *query,
+  const aclTensor   *keyIn,
+  const aclTensor   *value,
+  const aclTensor   *dy,
+  const aclTensor   *pseShiftOptional,
+  const aclTensor   *dropMaskOptional,
+  const aclTensor   *paddingMaskOptional,
+  const aclTensor   *attenMaskOptional,
+  const aclTensor   *softmaxMaxOptional,
+  const aclTensor   *softmaxSumOptional,
+  const aclTensor   *softmaxInOptional,
+  const aclTensor   *attentionInOptional,
+  const aclIntArray *prefixOptional,
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  const aclTensor   *dqOut,
+  const aclTensor   *dkOut,
+  const aclTensor   *dvOut,
+  const aclTensor   *dpseOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGrad(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 
@@ -312,7 +322,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
         <td>innerPrecise</td>
         <td>可选输入</td>
         <td>内部计算精度控制。</td>
-        <td>保留参数，暂未使用。</td>
+        <td>预留参数，暂未使用。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -362,7 +372,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
         <td>dpseOut</td>
         <td>输出</td>
         <td>d(pse)梯度。</td>
-        <td>保留参数，暂未使用。</td>
+        <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -393,7 +403,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
@@ -465,7 +475,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -494,7 +504,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode_introduction.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]；TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
@@ -504,7 +514,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

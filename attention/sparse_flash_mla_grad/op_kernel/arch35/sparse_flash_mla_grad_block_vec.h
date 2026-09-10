@@ -17,10 +17,10 @@
 #define SPARSE_FLASH_MLA_GRAD_BLOCK_VEC_H
 
 #include "sparse_flash_mla_grad_common.h"
-#include "vector_api/cast_softmax_grad.h"
-#include "vector_api/pse_atten_mask_muls_simple_softmax.h"
-#include "vector_api/vf_broadcast_sub_mul.h"
-#include "vector_api/vf_cast_transdata_deconflict.h"
+#include "vector_api/cast_softmax_grad_sfmg.h"
+#include "vector_api/pse_atten_mask_muls_simple_softmax_sfmg.h"
+#include "vector_api/vf_broadcast_sub_mul_sfmg.h"
+#include "vector_api/vf_cast_transdata_deconflict_sfmg.h"
 #include "vector_api/vf_cal_dsink.h"
 #include "vector_api/vf_cal_softmax_sink.h"
 namespace SfagBaseApi {
@@ -340,12 +340,13 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
 
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
         int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
-        int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * 4096 * HEAD_DIM_ALIGN * coreNum +
-                                      idx * 4096 * HEAD_DIM_ALIGN +
+        int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * PROCESS_KV_SIZE * HEAD_DIM_ALIGN * coreNum +
+                                      idx * PROCESS_KV_SIZE * HEAD_DIM_ALIGN +
                                       s2SrcOffset * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
-        int64_t currentMm5SrcOffset = runInfo.deterTaskIdMod2 * 4096 * constInfo.commonConstInfo.dSizeV * coreNum +
-                                      idx * 4096 * constInfo.commonConstInfo.dSizeV +
-                                      s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
+        int64_t currentMm5SrcOffset =
+            runInfo.deterTaskIdMod2 * PROCESS_KV_SIZE * constInfo.commonConstInfo.dSizeV * coreNum +
+            idx * PROCESS_KV_SIZE * constInfo.commonConstInfo.dSizeV +
+            s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
         int64_t keyOffsetWithRope = accumS2Len * constInfo.n2Size * constInfo.dTotalSize;
         if (!runInfo.isOriKV) {
             keyOffsetWithRope = accumS3Len * constInfo.n2Size * constInfo.dTotalSize;
@@ -437,12 +438,11 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool
-FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
-                                        int64_t &accumS1Len, int64_t &accumS2Len, int64_t &accumS3Len,
-                                        int64_t &actualSeqLensQ, int64_t &actualSeqOriLensK, int64_t &actualSeqCmpLensK,
-                                        int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount,
-                                        int64_t &winStart, int64_t taskId, FagConstInfo &constInfo)
+__aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(
+    int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index, int64_t &accumS1Len, int64_t &accumS2Len,
+    int64_t &accumS3Len, int64_t &actualSeqLensQ, int64_t &actualSeqOriLensK, int64_t &actualSeqCmpLensK,
+    int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount, int64_t &winStart, int64_t taskId,
+    FagConstInfo &constInfo)
 {
     int64_t t1Offset = 0;
     int64_t t2Offset = 0;
@@ -591,8 +591,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t bIdx, int6
                                                               FagConstInfo &constInfo, int64_t accumS2Len,
                                                               int32_t actualSeqLensQ, int32_t actualSeqLensOriK,
                                                               int32_t actualSeqLensCmpK)
-{
-}
+{}
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline int32_t FAGBlockVec<TEMPLATE_ARGS>::GetActualSeqLens(int64_t bIdx,
@@ -964,18 +963,20 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVecSink(LocalTensor<CA
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(FagRunInfo &runInfo, int32_t s2RealSize)
-{
-}
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(FagRunInfo &runInfo, int32_t s2RealSize) {}
 
 TEMPLATES_DEF_NO_DEFAULT
 template <const bool IS_SPARSE>
-__aicore__ inline void
-FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
-                                       const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
-                                       const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor,
-                                       LocalTensor<CALC_TYPE> &dvInTensor, FagConstInfo &constInfo, FagRunInfo &runInfo)
+__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
+                                                              const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
+                                                              const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm,
+                                                              LocalTensor<CALC_TYPE> &dkInTensor,
+                                                              LocalTensor<CALC_TYPE> &dvInTensor,
+                                                              FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
+    if constexpr (!IS_SPARSE) {
+        return;
+    }
     int64_t UB_ROW_SIZE = 8;
     int64_t s2RealSize = runInfo.commonRunInfo.s2RealSize;
     int64_t firstCoreKSize = s2RealSize / 2;
@@ -1089,10 +1090,11 @@ public:
         return 0;
     };
     template <const bool IS_SPARSE = true>
-    __aicore__ inline void
-    ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
-               const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor,
-               LocalTensor<CALC_TYPE> &dvInTensor, FagConstInfo &constInfo, FagRunInfo &runInfo) {};
+    __aicore__ inline void ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
+                                      const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
+                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor,
+                                      LocalTensor<CALC_TYPE> &dvInTensor, FagConstInfo &constInfo,
+                                      FagRunInfo &runInfo) {};
     __aicore__ inline void ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &dkWorOriKSpaceGm,

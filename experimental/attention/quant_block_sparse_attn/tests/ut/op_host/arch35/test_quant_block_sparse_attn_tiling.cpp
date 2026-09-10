@@ -9,344 +9,175 @@
  */
 
 #include <gtest/gtest.h>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include "../quant_block_sparse_attn_host_ut_param.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
-class QuantBlockSparseAttnTilingArch35 : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "QuantBlockSparseAttnTilingArch35 SetUp" << std::endl;
-    }
+namespace QuantBlockSparseAttnUT {
 
-    static void TearDownTestCase()
-    {
-        std::cout << "QuantBlockSparseAttnTilingArch35 TearDown" << std::endl;
-    }
-};
+static const std::string OP_NAME = "QuantBlockSparseAttn";
 
-namespace {
+struct QuantBlockSparseAttnCompileInfo {
+} compileInfo;
+
 using TensorDesc = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
-struct QuantBlockSparseAttnCompileInfo {};
+const TensorDesc EmptyInput(gert::StorageShape({0}, {0}), ge::DT_INT32, ge::FORMAT_ND);
+const TensorDesc DefaultMetadata(gert::StorageShape({1}, {1}), ge::DT_INT32, ge::FORMAT_ND);
 
-const TensorDesc EmptyInput({{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND});
-
-std::vector<TensorDesc> MakeValidInputs(int64_t t = 256, int64_t n1 = 4, int64_t n2 = 4)
+static TensorDesc NormalizeTd(const TensorDesc &td)
 {
-    return {
-        {{{t, n1, 128}, {t, n1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{n1}, {n1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        {{{1, n1, 2, 4}, {1, n1, 2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1, n1, 2}, {1, n1, 2}}, ge::DT_INT32, ge::FORMAT_ND},
-        EmptyInput,
-        {{{256, 256}, {256, 256}}, ge::DT_UINT8, ge::FORMAT_ND},
-        EmptyInput,
-    };
+    if (td.dtype_ == ge::DT_UNDEFINED) {
+        return EmptyInput;
+    }
+    return td;
 }
 
-std::vector<TensorDesc> MakeValidOutputs(int64_t t = 256, int64_t n1 = 4)
+static void SetStride(TensorDesc &td, uint64_t stride0, uint64_t stride1, uint64_t stride2, uint64_t stride3)
 {
-    return {
-        {{{t, n1, 128}, {t, n1, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-        {{{n1, t}, {n1, t}}, ge::DT_FLOAT, ge::FORMAT_ND},
-    };
+    td.stride_.SetStride(0U, stride0);
+    td.stride_.SetStride(1U, stride1);
+    td.stride_.SetStride(2U, stride2);
+    td.stride_.SetStride(3U, stride3);
+    td.stride_.SetDimNum(4U);
+    td.hasStride_ = true;
 }
 
-std::vector<OpAttr> MakeValidAttrs(int64_t qBlockSize = 128, int64_t kvBlockSize = 128, int64_t maskMode = 3,
-                                   int64_t maxSeqlenKv = 256)
+static bool HasPositiveDims(const gert::Shape &shape)
 {
-    return {
-        {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"max_seqlen_kv", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maxSeqlenKv)},
-        {"softmax_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-        {"sparse_q_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(qBlockSize)},
-        {"sparse_kv_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(kvBlockSize)},
-        {"paBlockStride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-        {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-        {"layout_sparse_indices", Ops::Transformer::AnyValue::CreateFrom<std::string>("B_N_Qb_Kb")},
-        {"layout_out", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maskMode)},
-        {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-    };
+    for (size_t i = 0U; i < shape.GetDimNum(); ++i) {
+        if (shape.GetDim(i) <= 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
-gert::TilingContextPara BuildTilingPara(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
-                                        const std::vector<OpAttr> &attrs)
+static void SetFp8PaStrides(TensorDesc &key, TensorDesc &value, TensorDesc &kDescale)
 {
-    static QuantBlockSparseAttnCompileInfo compileInfo;
-    return gert::TilingContextPara("QuantBlockSparseAttn", inputs, outputs, attrs, &compileInfo, "Ascend950", 64,
-                                   262144, 65536);
+    const gert::Shape &keyShape = key.shape_.GetStorageShape();
+    const gert::Shape &valueShape = value.shape_.GetStorageShape();
+    const gert::Shape &kDescaleShape = kDescale.shape_.GetStorageShape();
+    SetStride(key, 1U, 1U, 1U, 1U);
+    SetStride(value, 1U, 1U, 1U, 1U);
+    SetStride(kDescale, 1U, 1U, 1U, 1U);
+    if (keyShape.GetDimNum() != 4U || valueShape.GetDimNum() != 4U || !HasPositiveDims(keyShape) ||
+        !HasPositiveDims(valueShape)) {
+        return;
+    }
+
+    const uint64_t keyN = static_cast<uint64_t>(keyShape.GetDim(1U));
+    const uint64_t keyBlockSize = static_cast<uint64_t>(keyShape.GetDim(2U));
+    const uint64_t keyD = static_cast<uint64_t>(keyShape.GetDim(3U));
+    const uint64_t valueN = static_cast<uint64_t>(valueShape.GetDim(1U));
+    const uint64_t valueBlockSize = static_cast<uint64_t>(valueShape.GetDim(2U));
+    const uint64_t valueD = static_cast<uint64_t>(valueShape.GetDim(3U));
+    uint64_t paBlockStride = keyN * keyBlockSize * keyD + valueN * valueBlockSize * valueD;
+    if (kDescaleShape.GetDimNum() == 4U && HasPositiveDims(kDescaleShape)) {
+        const uint64_t kDescaleN = static_cast<uint64_t>(kDescaleShape.GetDim(1U));
+        const uint64_t kDescaleBlockSize = static_cast<uint64_t>(kDescaleShape.GetDim(2U));
+        const uint64_t kDescaleD = static_cast<uint64_t>(kDescaleShape.GetDim(3U));
+        paBlockStride += kDescaleN * kDescaleBlockSize * kDescaleD * sizeof(float);
+        SetStride(kDescale, paBlockStride / sizeof(float), kDescaleBlockSize * kDescaleD, kDescaleD, 1U);
+    }
+
+    SetStride(key, paBlockStride, keyBlockSize * keyD, keyD, 1U);
+    SetStride(value, paBlockStride, valueBlockSize * valueD, valueD, 1U);
 }
 
-void ExpectTilingResult(const gert::TilingContextPara &para, bool expectSuccess)
+static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &tilingInfo)
 {
+    TensorDesc key = NormalizeTd(param.key);
+    TensorDesc value = NormalizeTd(param.value);
+    TensorDesc kDescale = NormalizeTd(param.kDescale);
+    TensorDesc metadata = NormalizeTd(param.metadata);
+    if (param.quant_mode == 1) {
+        if (param.provideFp8Strides) {
+            SetFp8PaStrides(key, value, kDescale);
+            if (param.mismatchValueStride) {
+                value.stride_.SetStride(0U, value.stride_.GetStride(0U) + 1U);
+            }
+        }
+    }
+    if (param.provideFp8Metadata && param.metadata.dtype_ == ge::DT_UNDEFINED) {
+        metadata = DefaultMetadata;
+    } else if (!param.provideFp8Metadata) {
+        metadata = param.metadata;
+    }
+    std::vector<TensorDesc> inputTensorDesc({
+        NormalizeTd(param.query),
+        key,
+        value,
+        NormalizeTd(param.qDescale),
+        kDescale,
+        NormalizeTd(param.vDescale),
+        NormalizeTd(param.pScale),
+        NormalizeTd(param.cuSeqlensQ),
+        NormalizeTd(param.cuSeqlensKv),
+        NormalizeTd(param.sequsedQ),
+        NormalizeTd(param.sequsedKv),
+        NormalizeTd(param.sparseIndices),
+        NormalizeTd(param.sparseSeqLen),
+        NormalizeTd(param.blockTable),
+        NormalizeTd(param.attenMask),
+        metadata,
+    });
+
+    std::vector<TensorDesc> outputTensorDesc({
+        NormalizeTd(param.attentionOut),
+        NormalizeTd(param.softmaxLse),
+    });
+
+    std::vector<OpAttr> attrs({
+        {"softmax_scale", Ops::Transformer::AnyValue::CreateFrom<float>(param.softmax_scale)},
+        {"sparse_q_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_q_block_size)},
+        {"sparse_kv_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_kv_block_size)},
+        {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_kv)},
+        {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_q)},
+        {"layout_sparse_indices", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_sparse_indices)},
+        {"layout_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_out)},
+        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.quant_mode)},
+        {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.mask_mode)},
+        {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(param.return_softmax_lse)},
+    });
+
+    gert::TilingContextPara para(OP_NAME, inputTensorDesc, outputTensorDesc, attrs, &compileInfo, "Ascend950", 64,
+                                 262144, 65536);
+    return ExecuteTiling(para, tilingInfo);
+}
+
+class QuantBlockSparseAttnTilingArch35Test : public testing::TestWithParam<QuantBlockSparseAttnTilingUtParam> {
+protected:
+    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test SetUp" << std::endl; }
+
+    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnTilingArch35Test TearDown" << std::endl; }
+};
+
+TEST_P(QuantBlockSparseAttnTilingArch35Test, param)
+{
+    auto param = GetParam();
+    std::cout << "[TEST_CASE] " << param.case_name << std::endl;
     TilingInfo tilingInfo;
-    bool ok = ExecuteTiling(para, tilingInfo);
-    EXPECT_EQ(ok, expectSuccess);
-    if (expectSuccess) {
+    bool ok = ExecuteCase(param, tilingInfo);
+
+    if (param.expectResult == ge::GRAPH_SUCCESS) {
+        EXPECT_EQ(ok, true);
         EXPECT_GT(tilingInfo.blockNum, 0U);
         EXPECT_GT(tilingInfo.tilingDataSize, 0U);
+    } else {
+        EXPECT_EQ(ok, false);
     }
 }
 
-std::vector<OpAttr> MakeAttrsEx(const std::string &layoutQ, int64_t paBlockStride, int64_t maskMode = 3,
-                                int64_t maxSeqlenKv = 256, bool returnLse = false, int64_t qBlockSize = 128,
-                                int64_t kvBlockSize = 128)
-{
-    return {
-        {"max_seqlen_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"max_seqlen_kv", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maxSeqlenKv)},
-        {"softmax_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-        {"sparse_q_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(qBlockSize)},
-        {"sparse_kv_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(kvBlockSize)},
-        {"paBlockStride", Ops::Transformer::AnyValue::CreateFrom<int64_t>(paBlockStride)},
-        {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-        {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQ)},
-        {"layout_sparse_indices", Ops::Transformer::AnyValue::CreateFrom<std::string>("B_N_Qb_Kb")},
-        {"layout_out", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
-        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        {"mask_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(maskMode)},
-        {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(returnLse)},
-    };
-}
+INSTANTIATE_TEST_SUITE_P(
+    QuantBlockSparseAttnTiling, QuantBlockSparseAttnTilingArch35Test,
+    testing::ValuesIn(GetCasesFromCsv<QuantBlockSparseAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<QuantBlockSparseAttnTilingUtParam>);
 
-std::vector<TensorDesc> MakeBSNDInputs(int64_t b = 4, int64_t s = 256, int64_t n1 = 4, int64_t n2 = 4)
-{
-    int64_t qb = (s + 127) / 128;
-    return {
-        {{{b, s, n1, 128}, {b, s, n1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{n1}, {n1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        {{{b, n1, qb, 4}, {b, n1, qb, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{b, n1, qb}, {b, n1, qb}}, ge::DT_INT32, ge::FORMAT_ND},
-        EmptyInput,
-        {{{256, 256}, {256, 256}}, ge::DT_UINT8, ge::FORMAT_ND},
-        EmptyInput,
-    };
-}
-
-std::vector<TensorDesc> MakeNTDInputs(int64_t n1 = 4, int64_t t = 256, int64_t n2 = 4)
-{
-    return {
-        {{{n1, t, 128}, {n1, t, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{n1}, {n1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        {{{1, n1, 2, 4}, {1, n1, 2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1, n1, 2}, {1, n1, 2}}, ge::DT_INT32, ge::FORMAT_ND},
-        EmptyInput,
-        {{{256, 256}, {256, 256}}, ge::DT_UINT8, ge::FORMAT_ND},
-        EmptyInput,
-    };
-}
-
-std::vector<TensorDesc> Make1DKVInputs(int64_t t = 256, int64_t n1 = 4, int64_t n2 = 4, int64_t keyStorageSize = 65536)
-{
-    return {
-        {{{t, n1, 128}, {t, n1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{keyStorageSize}, {keyStorageSize}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{4, n2, 128, 128}, {4, n2, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-        {{{n1}, {n1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        EmptyInput,
-        {{{1, n1, 2, 4}, {1, n1, 2, 4}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{1, n1, 2}, {1, n1, 2}}, ge::DT_INT32, ge::FORMAT_ND},
-        EmptyInput,
-        {{{256, 256}, {256, 256}}, ge::DT_UINT8, ge::FORMAT_ND},
-        EmptyInput,
-    };
-}
-} // namespace
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_basic)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs()), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_gqa)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(256, 8, 2), MakeValidOutputs(256, 8), MakeValidAttrs()), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_0)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(128, 128, 0)), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_query_dtype)
-{
-    auto inputs = MakeValidInputs();
-    inputs[0] = TensorDesc({{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_block_size)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(64, 128, 3)), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_mask_mode)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(128, 128, 5)), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_bsnd_layout)
-{
-    ExpectTilingResult(BuildTilingPara(MakeBSNDInputs(), MakeValidOutputs(), MakeAttrsEx("BSND", 0)), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_ntd_layout)
-{
-    ExpectTilingResult(BuildTilingPara(MakeNTDInputs(), MakeValidOutputs(), MakeAttrsEx("NTD", 0)), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_combined_kv)
-{
-    ExpectTilingResult(BuildTilingPara(Make1DKVInputs(), MakeValidOutputs(), MakeAttrsEx("TND", 16384)), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_kv_dtype)
-{
-    auto inputs = MakeValidInputs();
-    inputs[1] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND);
-    inputs[2] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_with_block_table)
-{
-    auto inputs = MakeValidInputs();
-    inputs[13] = TensorDesc({{1, 8}, {1, 8}}, ge::DT_INT32, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_return_softmax_lse)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeAttrsEx("TND", 0, 3, 256, true)),
-                       true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_hifloat8_dtype)
-{
-    auto inputs = MakeValidInputs();
-    inputs[0] = TensorDesc({{256, 4, 128}, {256, 4, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND);
-    inputs[1] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND);
-    inputs[2] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_HIFLOAT8, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), true);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_query_layout_mismatch)
-{
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeAttrsEx("BSND", 0)), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_key_3d)
-{
-    auto inputs = MakeValidInputs();
-    inputs[1] = TensorDesc({{4, 128, 128}, {4, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-    inputs[2] = TensorDesc({{4, 128, 128}, {4, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_sparse_indices_3d)
-{
-    auto inputs = MakeValidInputs();
-    inputs[11] = TensorDesc({{1, 4, 4}, {1, 4, 4}}, ge::DT_INT32, ge::FORMAT_ND);
-    inputs[12] = TensorDesc({{1, 4}, {1, 4}}, ge::DT_INT32, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_atten_mask_3d)
-{
-    auto inputs = MakeValidInputs();
-    inputs[14] = TensorDesc({{256, 256, 1}, {256, 256, 1}}, ge::DT_UINT8, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_dsize)
-{
-    auto inputs = MakeValidInputs();
-    inputs[0] = TensorDesc({{256, 4, 64}, {256, 4, 64}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_n1_n2_mismatch_4d)
-{
-    auto inputs = MakeValidInputs();
-    inputs[1] = TensorDesc({{4, 3, 128, 128}, {4, 3, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-    inputs[2] = TensorDesc({{4, 3, 128, 128}, {4, 3, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_block_table_b)
-{
-    auto inputs = MakeValidInputs();
-    inputs[13] = TensorDesc({{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_pa_block_stride_zero)
-{
-    ExpectTilingResult(BuildTilingPara(Make1DKVInputs(), MakeValidOutputs(), MakeAttrsEx("TND", 0)), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_invalid_storage_size)
-{
-    auto inputs = Make1DKVInputs(256, 4, 4, 65537);
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeAttrsEx("TND", 16384)), false);
-}
-
-TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_n1_n2_mismatch)
-{
-    auto inputs = Make1DKVInputs();
-    inputs[5] = TensorDesc({{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND);
-
-    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeAttrsEx("TND", 16384)), false);
-}
+} // namespace QuantBlockSparseAttnUT

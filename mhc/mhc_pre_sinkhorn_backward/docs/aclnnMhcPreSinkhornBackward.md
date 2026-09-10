@@ -2,25 +2,35 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - **接口功能**：MhcPreSinkhornBackward是MhcPreSinkhorn的反向算子。计算对应的梯度反向传播。
 
-- **计算公式**：  
+- **计算公式**：
 
     - **第一部分计算H_res_grad**：设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{gradHRes}$（`gradHRes`为输入参数，即正向输出`h_res`的梯度），共进行 $\mathbf{num\_iters}$（Sinkhorn迭代次数，对应`sk_iter_count`，当前仅支持20）次迭代。
-    
+
         - **前 $\mathbf{num\_iters} - 1$ 次迭代**：对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行，其中 $\mathbf{sumOut}$（对应输入参数`sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数`normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）：
-        
+
           $$
           \begin{aligned}
               \mathbf{dotProd}_{2i+1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{2i+1} \right) \\
@@ -32,7 +42,7 @@
               \mathbf{grad}_{\text{curr}} &\gets \frac{\mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{2i}}{\mathbf{sumOut}_{2i}}, \\
           \end{aligned}
           $$
-        
+
         - **最后一次迭代**：
 
           $$
@@ -46,40 +56,40 @@
               \mathbf{HResGrad} &\gets \left( \mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{0} \right) \cdot \mathbf{normOut}_{0}, \\
           \end{aligned}
           $$
-    
+
     - **输入**：$\mathbf{gradHin} \in [B, S, C]$（`gradHin`为输入参数，即输出`h_in`的梯度）
-    
+
     - **输出组合梯度计算**：
-    
-        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（当前仅支持4）。
-        
+
+        - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小。
+
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
         $$
-        
+
         - **反向计算公式**：
-        
+
         $$
         \begin{aligned}
         \mathbf{HPreGrad} &= \text{Reduce}\left(\mathbf{gradHin}.\text{unsqueeze}(-2) \odot \mathbf{x}, \text{dim}=-1\right) \quad ([B,S,N]) \\
         \mathbf{xGradVec3} &= \mathbf{gradHin} \times \mathbf{hPre} \quad ([B,S,N,C])
         \end{aligned}
         $$
-    
+
     - **门控激活层梯度计算**：
-    
+
         - **Sigmoid门控反向（H_pre）**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hPre} = \text{Sigmoid}(\mathbf{alphaPre} \cdot \mathbf{hPre1} + \mathbf{biasPre}) + \mathbf{hcEps}
             $$
-            
+
             其中 $\mathbf{alphaPre}$ 为输入参数`alpha`的第一个元素（对应H_pre的缩放系数），$\mathbf{biasPre}$ 为输入参数`bias`的前N个元素，$\mathbf{hcEps}$ 为输入参数`hcEps`（数值稳定性参数）。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{s} &= \mathbf{hPre} - \mathbf{hcEps} \\
@@ -89,19 +99,19 @@
             \mathbf{biasPreGrad} &= \sum_{b,s}^{B,S} \mathbf{HPre2Grad} \quad ([N])
             \end{aligned}
             $$
-        
+
         - **Sigmoid门控反向（H_post）**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hPost} = \text{Sigmoid}(\mathbf{alphaPost} \cdot \mathbf{hPost1} + \mathbf{biasPost}) \times 2
             $$
-            
+
             其中 $\mathbf{alphaPost}$ 为输入参数`alpha`的第二个元素，$\mathbf{biasPost}$ 为输入参数`bias`的中间N个元素。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{HPost2Grad} &= \mathbf{gradHPost} \odot \left(\mathbf{hPost} \cdot \left(1 - \frac{\mathbf{hPost}}{2}\right)\right) \\
@@ -110,21 +120,21 @@
             \mathbf{biasPostGrad} &= \sum_{b,s}^{B,S} \mathbf{HPost2Grad} \quad ([N])
             \end{aligned}
             $$
-            
+
             其中 $\mathbf{gradHPost}$ 为输入参数（输出`h_post`的梯度）。
-        
+
         - **残差连接反向（H_res）**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hRes} = \mathbf{alphaRes} \cdot \mathbf{hRes1} + \mathbf{biasRes}
             $$
-            
+
             其中 $\mathbf{alphaRes}$ 为输入参数`alpha`的第三个元素，$\mathbf{biasRes}$ 为输入参数`bias`的后 $N^2$ 个元素。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{HRes2Grad} &= \mathbf{HResGrad} \cdot \mathbf{alphaRes} \quad ([B,S,N,N]) \\
@@ -133,21 +143,21 @@
             \mathbf{HRes1Grad} &= \text{Reshape}(\mathbf{HRes2Grad}) \quad ([B,S,N^2])
             \end{aligned}
             $$
-    
+
     - **RMS归一化融合反向**：
-    
+
         - **RMSNorm Fusion反向**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hMixTmp} = \mathbf{hMix} \cdot \mathbf{invRms}
             $$
-            
+
             其中 $\mathbf{hMix}$ 为线性投影层输出，$\mathbf{invRms}$ 为输入参数（前向保存的中间结果inv_rms）。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{hMixTmpGrad} &= \text{Concat}(\mathbf{HPre1Grad}, \mathbf{HPost1Grad}, \mathbf{HRes1Grad}) \quad ([B,S,2N+N^2]) \\
@@ -155,25 +165,25 @@
             \mathbf{invRmsGrad} &= \sum_{\text{last\_dim}} \left(\mathbf{hMixTmpGrad} \cdot \mathbf{hMix}\right) \quad ([B,S,1])
             \end{aligned}
             $$
-    
+
     - **线性投影层梯度计算**：
-    
+
         - **矩阵乘法反向**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hMix} = \mathbf{xRs} @ \mathbf{phi}^T
             $$
-            
+
             $$
             \mathbf{xRs} = \mathbf{x} \cdot \mathbf{gamma}
             $$
-            
+
             其中 $\mathbf{phi}$ 为输入参数（前向参数phi），$\mathbf{gamma}$ 为RMS归一化的缩放参数（由输入 $\mathbf{x}$ 计算得到）。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{xRsGrad} &= \mathbf{hMixGrad} @ \mathbf{phi} \quad ([B,S,N \cdot C]) \\
@@ -182,36 +192,36 @@
             \mathbf{phiGrad} &= \mathbf{G}^T @ \mathbf{X} \quad ([2N+N^2, N \cdot C])
             \end{aligned}
             $$
-        
+
         - **特征缩放反向**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{xRs} = \mathbf{x} \cdot \mathbf{gamma}
             $$
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{xGradMm} &= \mathbf{xRsGrad} \cdot \mathbf{gamma} \\
             \mathbf{gammaGrad} &= \sum_{b=1}^{B}\sum_{s=1}^{S} (\mathbf{x} \cdot \mathbf{xRsGrad}) \quad ([N,C])
             \end{aligned}
             $$
-    
+
     - **RMS归一化梯度计算**：
-    
+
       - 正向公式：
-        
+
         $$
         \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad其中\ n = N \times C
         $$
-        
+
         其中 $\mathbf{eps}$ 为RMS归一化的数值稳定性参数。
-      
+
       - 反向计算：
-        
+
         $$
         \begin{aligned}
         \mathbf{xRsGradInv} &= - \left(\frac{\mathbf{invRmsGrad} \cdot \mathbf{invRms}^3}{N \times C}\right) \cdot \mathbf{xRs} \\
@@ -220,9 +230,9 @@
         \mathbf{xGrad} &= \mathbf{xGradVec3} + \mathbf{xGradVec1}
         \end{aligned}
         $$
-    
+
     - **符号说明**：
-    
+
       | 符号 | 含义 |
       |------|------|
       | $\mathbf{grad}_{\text{curr}}$ | 当前梯度（迭代中间变量） |
@@ -248,7 +258,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
 
 ```cpp
 aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
@@ -289,10 +299,10 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
     <colgroup>
     <col style="width: 265px">
     <col style="width: 120px">
-    <col style="width: 223px">  
-    <col style="width: 391px">  
-    <col style="width: 181px">  
-    <col style="width: 111px"> 
+    <col style="width: 223px">
+    <col style="width: 391px">
+    <col style="width: 181px">
+    <col style="width: 111px">
     <col style="width: 126px">
     <col style="width: 145px">
         </colgroup>
@@ -315,7 +325,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,C)</td>
+        <td>(B,S,C)或(T,C)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -325,7 +335,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N)</td>
+        <td>(B,S,N)或(T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -335,7 +345,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N)或(B,S,N,N)</td>
+        <td>(B,S,N*N)或(B,S,N,N)或(T,N*N)或(T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -345,14 +355,14 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,N,C)</td>
+        <td>(B,S,N,C)或(T,N,C)</td>
         <td>√</td>
     </tr>
     <tr>
         <td>phi(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数phi。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2, N*C)</td>
@@ -362,7 +372,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>alpha(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数alpha。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(3)</td>
@@ -372,7 +382,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>bias(aclTensor *)</td>
         <td>输入</td>
         <td>前向参数bias。</td>
-        <td>支持空Tensor。</td>
+        <td>不支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
         <td>(2N+N^2)</td>
@@ -385,7 +395,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N)</td>
+        <td>(B,S,N)或(T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -395,7 +405,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N+2*N)</td>
+        <td>(B,S,N*N+2*N)或(T,N*N+2*N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -405,7 +415,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,1)</td>
+        <td>(B,S,1)或(T,1)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -415,7 +425,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2*sk_iter_count,B,S,N)</td>
+        <td>(2*sk_iter_count,B,S,N)或(2*sk_iter_count,T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -425,7 +435,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2*sk_iter_count,B,S,N,N)</td>
+        <td>(2*sk_iter_count,B,S,N,N)或(2*sk_iter_count,T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -445,7 +455,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>-</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,N,C)</td>
+        <td>(B,S,N,C)或(T,N,C)</td>
         <td>-</td>
     </tr>
     <tr>
@@ -503,7 +513,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -524,24 +534,27 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
                 <td>必选参数或者输出是空指针。</td>
             </tr>
             <tr>
-                <td>ACLNN_ERR_PARAM_INVALID</td>
-                <td>161002</td>
+                <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
+                <td rowspan="5">161002</td>
+                <td>输入或输出tensor的维度个数(dim)与参数说明不符。</td>
+            </tr>
+            <tr>
+                <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
+            </tr>
+            <tr>
                 <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
-         <tr>
-        <td rowspan="4">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="4">561002</td>
-        <td>N不等于4。</td>
-      </tr>
-      <tr>
-        <td>输入或输出tensor的维度(shape)与参数说明不符。</td>
-      </tr>
-      <tr>
-        <td>sk_iter_count不等于20。</td>
-      </tr>
-      <tr>
-        <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
-      </tr>
+            <tr>
+                <td>N取值不符合约束要求。</td>
+            </tr>
+            <tr>
+                <td>C不符合大于0 小于100000 且可以被128整除的要求。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_NULLPTR</td>
+                <td>561103</td>
+                <td>sk_iter_count不等于20。</td>
+            </tr>
         </tbody>
     </table>
 
@@ -586,25 +599,46 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-- **确定性计算**：
+- **维度格式约束**
 
-  - aclnnMhcPreSinkhornBackward默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  <!-- npu="950" id9 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：输入支持两种维度格式：BSND（4维）和TND（3维）。其中T = B × S，表示所有Batch序列长度的累加和。所有带B/S维度的输入需保持维度格式一致（同为4维BSND或同为3维TND）。
+  <!-- end id9 -->
+
+  <!-- npu="A3,910b" id10 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入仅支持BSND（4维）格式。
+  <!-- end id10 -->
 
 - **规格约束**
 
-  | 规格项 | 规格 | 规格说明 |
-  | :--- | :--- | :--- |
-  | sk_iter_count | 20 | Sinkhorn迭代次数当前仅支持20。 |
-  | N | 4 | 输入Tensor中N维度的大小仅支持4。 |
-  | C | - | 大于0、小于100000且可以被128整除。 |
+  <!-- npu="950" id11 -->
+  - N（针对Ascend 950PR/Ascend 950DT）：N维度支持大于0且不超过8。
+  <!-- end id11 -->
+
+  <!-- npu="A3,910b" id12 -->
+  - N（针对<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>）：N维度仅支持4。
+  <!-- end id12 -->
+
+  - C：大于0、小于100000且可以被128整除。
+  - sk_iter_count：Sinkhorn迭代次数当前仅支持20。
+
+- 确定性计算
+
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：默认采用确定性实现，相同输入多次调用结果一致。
+  <!-- end id7 -->
+
+  <!-- npu="A3,910b" id8 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：默认非确定性实现，支持通过`aclrtSetSysParamOpt`开启确定性。
+  <!-- end id8 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>

@@ -119,7 +119,7 @@ target_compile_options(intf_pub_cxx17 INTERFACE
     $<IF:$<VERSION_GREATER:${CMAKE_C_COMPILER_VERSION},4.8.5>,-fstack-protector-strong,-fstack-protector-all>
     $<$<CONFIG:Debug>:-g>
     $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>
-    $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>  
+    $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>
     $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=address -fsanitize=leak -fsanitize-recover=address,all -fno-stack-protector -fno-omit-frame-pointer -g>
   )
 target_compile_definitions(intf_pub_cxx17 INTERFACE
@@ -134,7 +134,7 @@ target_link_options(intf_pub_cxx17 INTERFACE
     -Wl,-z,noexecstack
     $<$<CONFIG:Release>:-s>
     $<$<CONFIG:Release>:-Wl,--build-id=none>
-    $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>  
+    $<$<BOOL:${ENABLE_GCOV}>:-fprofile-arcs -ftest-coverage>
     $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=address -fsanitize=leak -fsanitize-recover=address>
   )
 target_link_directories(intf_pub_cxx17 INTERFACE)

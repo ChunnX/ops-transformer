@@ -17,14 +17,19 @@
 #define __ALL_GATHER_MATMUL_AIV_MODE_UTIL_H__
 
 #pragma once
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/numeric_size.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_numeric_size.hpp"
 
 using namespace AscendC;
 
 #define FORCE_INLINE_AICORE __attribute__((always_inline)) inline __aicore__
 
 constexpr static int32_t AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID = 12;
-template <typename T, size_t SIZE> struct BaseBlock {
+constexpr static size_t BLOCK_32_BYTES = 32U;
+constexpr static size_t BLOCK_256_BYTES = 256U;
+constexpr static size_t BLOCK_512_BYTES = 512U;
+constexpr static uint64_t AIC_SYNC_MODE = 2U;
+template <typename T, size_t SIZE>
+struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = Catlass::BytesToBits(SIZE) / Catlass::SizeOfBits<T>::value;
 
@@ -49,11 +54,14 @@ template <typename T, size_t SIZE> struct BaseBlock {
     }
 };
 
-template <typename T> using Block32B = BaseBlock<T, 32>;
+template <typename T>
+using Block32B = BaseBlock<T, BLOCK_32_BYTES>;
 
-template <typename T> using Block256B = BaseBlock<T, 256>;
+template <typename T>
+using Block256B = BaseBlock<T, BLOCK_256_BYTES>;
 
-template <typename T> using Block512B = BaseBlock<T, 512>;
+template <typename T>
+using Block512B = BaseBlock<T, BLOCK_512_BYTES>;
 
 inline __aicore__ void AlignJudge(bool trans_a, bool trans_b, int32_t m, int32_t k, int32_t n, int32_t m_align,
                                   int32_t k_align, int32_t n_align, int32_t &aligned_a, int32_t &aligned_b)
@@ -83,7 +91,7 @@ __aicore__ inline void SetAndWaitAivSync(uint64_t flag_idx, int32_t pipe_depth =
 }
 __aicore__ inline void SetAicSync(uint64_t flag_idx)
 {
-    FFTSCrossCoreSync<PIPE_MTE3, 2>(flag_idx);
+    FFTSCrossCoreSync<PIPE_MTE3, AIC_SYNC_MODE>(flag_idx);
 }
 
 template <typename T>
@@ -91,9 +99,9 @@ FORCE_INLINE_AICORE void CopyUbufToGm(__gm__ T *dst, LocalTensor<T> ubTensor, ui
                                       uint16_t srcStride, uint16_t dstStride)
 {
     DataCopyParams dataCopyParams(nBurst,    // blockCount
-                              lenBurst,  // blockLen
-                              srcStride, // srcStride
-                              dstStride  // dstStride
+                                  lenBurst,  // blockLen
+                                  srcStride, // srcStride
+                                  dstStride  // dstStride
     );
     GlobalTensor<T> gmTensor;
     gmTensor.SetGlobalBuffer(dst);

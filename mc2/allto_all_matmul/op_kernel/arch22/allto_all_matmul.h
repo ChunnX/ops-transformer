@@ -23,26 +23,26 @@
 #endif
 #include "allto_all_matmul_tiling.h"
 #include "allto_all_matmul_util.h"
-#include "block_epilogue_dequant.hpp"
-#include "tile_broadcast_add.hpp"
+#include "allto_all_matmul_block_epilogue_dequant.hpp"
+#include "allto_all_matmul_tile_broadcast_add.hpp"
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tla_epilogue_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_mul.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_one_blk.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_copy.hpp"
 
-#include "matmul.hpp"
+#include "allto_all_matmul.hpp"
 
 using namespace AscendC;
 using namespace Catlass;
@@ -50,10 +50,10 @@ using namespace Catlass;
 namespace Mc2Kernel {
 
 // A2AMM : AlltoAllMatmul
-#define TemplateA2AMMClass                                                                                             \
+#define TemplateA2AMMClass \
     typename AType, typename BType, typename BiasType, typename PerTokenScaleType, typename ScaleType, typename CType, \
         typename AllToAllResultType, bool hasBias, bool transB, int32_t QuantType
-#define TemplateA2AMMFunc                                                                                              \
+#define TemplateA2AMMFunc \
     AType, BType, BiasType, PerTokenScaleType, ScaleType, CType, AllToAllResultType, hasBias, transB, QuantType
 
 using namespace AscendC;
@@ -77,9 +77,9 @@ private:
                                          LocalTensor<float> quantScaleTensor, int32_t actualMoveSize,
                                          int32_t actualMoveToken, int32_t tokenPerMove, int32_t moveIdx,
                                          event_t eventId);
-    __aicore__ inline void QuantToken(__gm__ AType *dataSrc, int32_t dataOffset, int32_t coreTokenOffset,
+    __aicore__ inline void QuantToken(__gm__ AType *dataSrc, int64_t dataOffset, int32_t coreTokenOffset,
                                       int32_t dataLen, int32_t commIdx);
-    __aicore__ inline void QuantTokenSegment(__gm__ AType *dataSrc, int32_t dataOffset, int32_t coreTokenOffset,
+    __aicore__ inline void QuantTokenSegment(__gm__ AType *dataSrc, int64_t dataOffset, int32_t coreTokenOffset,
                                              int32_t dataLen, int32_t commIdx);
     __aicore__ inline void SmoothQuantProc(event_t eventId, int32_t dataSegmentOffset, int32_t smoothScaleCastOffset,
                                            int32_t actualMoveSize, LocalTensor<float> copyTensor,
@@ -88,13 +88,13 @@ private:
                                              LocalTensor<float> absTensor0, LocalTensor<float> absTensor1,
                                              LocalTensor<float> smoothScaleTensor0,
                                              LocalTensor<float> smoothScaleTensor1, int32_t castOffset,
-                                             __gm__ AType *dataSrc, int32_t dataTokenOffset,
+                                             __gm__ AType *dataSrc, int64_t dataTokenOffset,
                                              int32_t smoothScaleCastOffset, int32_t sizeScale,
                                              LocalTensor<float> reduceMaxTensor);
     __aicore__ inline void QuantPerSegment(LocalTensor<float> copyTensor0, LocalTensor<float> copyTensor1,
                                            LocalTensor<float> absTensor0, LocalTensor<float> absTensor1,
                                            LocalTensor<float> smoothScaleTensor0, LocalTensor<float> smoothScaleTensor1,
-                                           int32_t castOffset, __gm__ AType *dataSrc, int32_t dataTokenOffset,
+                                           int32_t castOffset, __gm__ AType *dataSrc, int64_t dataTokenOffset,
                                            int32_t smoothScaleCastOffset, int32_t sizeScale, float quantScaleReciproal);
 
 private:
@@ -115,11 +115,11 @@ private:
     Catlass::Arch::Resource<Catlass::Arch::AtlasA2> resource;
 };
 
-
 template <TemplateA2AMMClass>
-__aicore__ inline void
-AlltoAllMatmul<TemplateA2AMMFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR scaleGM,
-                                        GM_ADDR cGM, GM_ADDR allToAllResultGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
+                                                               GM_ADDR x1ScaleGM, GM_ADDR scaleGM, GM_ADDR cGM,
+                                                               GM_ADDR allToAllResultGM, GM_ADDR workspaceGM,
+                                                               GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     auto tiling = (__gm__ AlltoAllMatmulTilingData *)tilingGM;
@@ -347,7 +347,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantPerToken(
 }
 
 template <TemplateA2AMMClass>
-__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ AType *dataSrc, int32_t dataOffset,
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ AType *dataSrc, int64_t dataOffset,
                                                                      int32_t coreTokenOffset, int32_t dataLen,
                                                                      int32_t commIdx)
 {
@@ -438,10 +438,11 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantToken(__gm__ ATyp
 }
 
 template <TemplateA2AMMClass>
-__aicore__ inline void
-AlltoAllMatmul<TemplateA2AMMFunc>::SmoothQuantProc(event_t eventId, int32_t dataSegmentOffset,
-                                                   int32_t smoothScaleCastOffset, int32_t actualMoveSize,
-                                                   LocalTensor<float> copyTensor, LocalTensor<float> smoothScaleTensor)
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::SmoothQuantProc(event_t eventId, int32_t dataSegmentOffset,
+                                                                          int32_t smoothScaleCastOffset,
+                                                                          int32_t actualMoveSize,
+                                                                          LocalTensor<float> copyTensor,
+                                                                          LocalTensor<float> smoothScaleTensor)
 {
     SetFlag<HardEvent::V_MTE2>(eventId);
     WaitFlag<HardEvent::V_MTE2>(eventId);
@@ -461,7 +462,7 @@ template <TemplateA2AMMClass>
 __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CalcTokenMaxValue(
     LocalTensor<float> copyTensor0, LocalTensor<float> copyTensor1, LocalTensor<float> absTensor0,
     LocalTensor<float> absTensor1, LocalTensor<float> smoothScaleTensor0, LocalTensor<float> smoothScaleTensor1,
-    int32_t castOffset, __gm__ AType *dataSrc, int32_t dataTokenOffset, int32_t smoothScaleCastOffset,
+    int32_t castOffset, __gm__ AType *dataSrc, int64_t dataTokenOffset, int32_t smoothScaleCastOffset,
     int32_t sizeScale, LocalTensor<float> reduceMaxTensor)
 {
     int32_t actualMoveSize = copyTensorSize;
@@ -507,7 +508,7 @@ template <TemplateA2AMMClass>
 __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantPerSegment(
     LocalTensor<float> copyTensor0, LocalTensor<float> copyTensor1, LocalTensor<float> absTensor0,
     LocalTensor<float> absTensor1, LocalTensor<float> smoothScaleTensor0, LocalTensor<float> smoothScaleTensor1,
-    int32_t castOffset, __gm__ AType *dataSrc, int32_t dataTokenOffset, int32_t smoothScaleCastOffset,
+    int32_t castOffset, __gm__ AType *dataSrc, int64_t dataTokenOffset, int32_t smoothScaleCastOffset,
     int32_t sizeScale, float quantScaleReciproal)
 {
     int32_t actualMoveSize = copyTensorSize;
@@ -551,16 +552,16 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantPerSegment(
              actualMoveSize);
         SetFlag<HardEvent::V_MTE3>(eventId);
         WaitFlag<HardEvent::V_MTE3>(eventId);
-        CopyUbufToGmAlignB16(reinterpret_cast<__gm__ int8_t *>(quantAGM_) +
-                                 (dataTokenOffset + dataSegmentOffset) / sizeScale,
-                             copyTensor.ReinterpretCast<int8_t>(), 1, actualMoveBytes, 0, 0);
+        CopyUbufToGmAlignB16(
+            reinterpret_cast<__gm__ int8_t *>(quantAGM_) + (dataTokenOffset + dataSegmentOffset) / sizeScale,
+            copyTensor.ReinterpretCast<int8_t>(), 1, actualMoveBytes, 0, 0);
         SetFlag<HardEvent::MTE3_MTE2>(eventId);
         dataSegmentOffset += actualMoveSize;
     }
 }
 
 template <TemplateA2AMMClass>
-__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm__ AType *dataSrc, int32_t dataOffset,
+__aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm__ AType *dataSrc, int64_t dataOffset,
                                                                             int32_t coreTokenOffset, int32_t dataLen,
                                                                             int32_t commIdx)
 {
@@ -596,7 +597,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
 
     for (int32_t tokenLoop = 0; tokenLoop < tokenNum; tokenLoop++) {
-        int32_t dataTokenOffset = dataOffset + tokenLoop * tokenSize;
+        int64_t dataTokenOffset = dataOffset + static_cast<int64_t>(tokenLoop) * tokenSize;
         Duplicate<float>(reduceMaxTensor, static_cast<float>(0), 1);
         PipeBarrier<PIPE_V>();
         /* 获取当前token的max_abs_value */
@@ -648,8 +649,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Quant(uint64_t flagIdx
     if (dataLen <= 0) {
         return;
     }
-    int64_t dataSrcOffset = flagIdx * pingPongBlockSize;
-    int32_t dataOffset = dataSrcOffset + dataSrcCoreOffset;
+    int64_t dataSrcOffset = static_cast<int64_t>(flagIdx) * pingPongBlockSize;
+    int64_t dataOffset = dataSrcOffset + dataSrcCoreOffset;
     if (isSegmentK) {
         // token过大，分段量化
         QuantTokenSegment(dataSrc, dataOffset, coreTokenOffset, dataLen, commIdx);
@@ -825,7 +826,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                                       allToAllSizePerRankPerLoop - coreOffset :
                                       allToAllSizePerCore;
                 uint64_t dataSrc = dstRank * allToAllSizePerRank + src_offset + coreOffset;
-                uint64_t dataDst = flagIdx * pingPongBlockSize + coreOffset * rankSize + rank * k;
+                int64_t dataDst = static_cast<int64_t>(flagIdx) * pingPongBlockSize +
+                                  static_cast<int64_t>(coreOffset) * rankSize + static_cast<int64_t>(rank) * k;
                 uint32_t copyBytes = Catlass::BitsToBytes(dataLen * Catlass::SizeOfBits<AType>::value);
 
                 if (dataLen > 0) {
@@ -836,18 +838,18 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::AlltoAll()
                 src_offset += allToAllSizePerRankPerLoop;
             } else if (isAlltoallOut && aivIdx == 1 && commIdx > 0 && aicIdx >= allToAllSendCoreNum &&
                        aicIdx < usedCoreNum) {
-                uint64_t blockDst = ((commIdx - 1) % MAX_BLOCK_COUNT) * pingPongBlockSize;  // 涉及m轴的全局元素个数、字节数，需要用64位表示
+                int64_t blockDst = static_cast<int64_t>((commIdx - 1) % MAX_BLOCK_COUNT) * pingPongBlockSize;
                 int32_t mThisLoop = commIdx == commCount ? m / rankSize - (commIdx - 1) * mPerLoop : mPerLoop;
                 int32_t mThisLoopPerCore = DivCeil(mThisLoop, allToAllRecvCoreNum);
                 int32_t mSt = (aicIdx - allToAllSendCoreNum) * mThisLoopPerCore;
                 int32_t mThisCoreThisLoop = mSt + mThisLoopPerCore > mThisLoop ? mThisLoop - mSt : mThisLoopPerCore;
-                uint64_t srcSt = blockDst + mSt * tokenSize;
-                uint64_t dstSt = (static_cast<uint64_t>(commIdx - 1) * mPerLoop + mSt) * tokenSize;
+                int64_t srcSt = blockDst + static_cast<int64_t>(mSt) * tokenSize;
+                int64_t dstSt = (static_cast<int64_t>(commIdx - 1) * mPerLoop + mSt) * tokenSize;
                 if (mThisCoreThisLoop > 0) {
-                    CopyTokensFromGMToGM((__gm__ int8_t *)buff[rank] + ElemNumToBytes<AType>(srcSt),
-                                         reinterpret_cast<__gm__ int8_t *>(allToAllResultGM_) +
-                                             ElemNumToBytes<AType>(dstSt),
-                                         mThisCoreThisLoop * tokenBytes, tokenBytes, tokenBytes);
+                    CopyTokensFromGMToGM(
+                        (__gm__ int8_t *)buff[rank] + ElemNumToBytes<AType>(srcSt),
+                        reinterpret_cast<__gm__ int8_t *>(allToAllResultGM_) + ElemNumToBytes<AType>(dstSt),
+                        mThisCoreThisLoop * tokenBytes, tokenBytes, tokenBytes);
                 }
             }
 

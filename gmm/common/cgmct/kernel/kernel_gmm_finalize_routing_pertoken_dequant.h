@@ -19,8 +19,8 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
@@ -75,13 +75,9 @@ class KernelGmmFinalizeRoutingPertokenDequant<
     ProblemShape_, BlockMmadBuilder_, BlockPrologue_, BlockEpilogueDequantFinalizeRouting_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
-    __aicore__ inline KernelGmmFinalizeRoutingPertokenDequant()
-    {
-    }
+    __aicore__ inline KernelGmmFinalizeRoutingPertokenDequant() {}
 
-    __aicore__ inline ~KernelGmmFinalizeRoutingPertokenDequant()
-    {
-    }
+    __aicore__ inline ~KernelGmmFinalizeRoutingPertokenDequant() {}
 
     using BlockPrologue = BlockPrologue_;
     using BlockEpilogueDequantFinalizeRouting = BlockEpilogueDequantFinalizeRouting_;
@@ -143,15 +139,16 @@ public:
         int32_t baseK;
         uint8_t hasBias;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMTiling()
-        {
-        }
+        __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
                              uint8_t hasBias_)
-            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
+            : groupNum(groupNum_),
+              groupListType(groupListType_),
+              baseM(baseM_),
+              baseN(baseN_),
+              baseK(baseK_),
               hasBias(hasBias_)
-        {
-        }
+        {}
     };
 
     struct Arguments {
@@ -245,11 +242,13 @@ public:
         // bBaseOffset += n * k
         if constexpr (formatB == CubeFormat::NZ) {
             if (transB) {
-                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
-                                              CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL) * WEIGHT_TILE_CAPACITY;
+                Get<IDX_B_OFFSETS>(baseOffset_) =
+                    Get<IDX_B_OFFSETS>(baseOffset_) +
+                    CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL) * WEIGHT_TILE_CAPACITY;
             } else {
-                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
-                                              CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
+                Get<IDX_B_OFFSETS>(baseOffset_) =
+                    Get<IDX_B_OFFSETS>(baseOffset_) +
+                    CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
             }
         } else {
             Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) + n * k;

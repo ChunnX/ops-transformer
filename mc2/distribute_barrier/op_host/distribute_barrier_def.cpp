@@ -18,13 +18,13 @@
 namespace ops {
 class DistributeBarrier : public OpDef {
 public:
-    explicit DistributeBarrier(const char* name) : OpDef(name) {
+    explicit DistributeBarrier(const char *name) : OpDef(name)
+    {
         this->Input("x_ref")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BOOL, ge::DT_INT8, ge::DT_INT16,
-                       ge::DT_INT32, ge::DT_INT64, ge::DT_UINT8, ge::DT_UINT16, ge::DT_UINT32, ge::DT_UINT64,
-                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1,
-                       ge::DT_HIFLOAT8, ge::DT_INT4})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BOOL, ge::DT_INT8, ge::DT_INT16, ge::DT_INT32,
+                       ge::DT_INT64, ge::DT_UINT8, ge::DT_UINT16, ge::DT_UINT32, ge::DT_UINT64, ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT8, ge::DT_INT4})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("time_out")
@@ -40,10 +40,9 @@ public:
 
         this->Output("x_ref")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BOOL, ge::DT_INT8, ge::DT_INT16,
-                       ge::DT_INT32, ge::DT_INT64, ge::DT_UINT8, ge::DT_UINT16, ge::DT_UINT32, ge::DT_UINT64,
-                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1,
-                       ge::DT_HIFLOAT8, ge::DT_INT4})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BOOL, ge::DT_INT8, ge::DT_INT16, ge::DT_INT32,
+                       ge::DT_INT64, ge::DT_UINT8, ge::DT_UINT16, ge::DT_UINT32, ge::DT_UINT64, ge::DT_FLOAT8_E5M2,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT8, ge::DT_INT4})
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("group").AttrType(REQUIRED).String();

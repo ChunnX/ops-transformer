@@ -25,20 +25,21 @@
 
 #if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1)
 // 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
-    #define GMM_SWIGLU_QUANT_WEIGHT_QUANT
-    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
-    #include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
-    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
+#define GMM_SWIGLU_QUANT_WEIGHT_QUANT
+#include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
+#include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
+#include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #else
 // 全量化Mx量化
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
+#include "arch35/grouped_matmul_tensor_api_swiglu_quant_v2_mxfp8_kernel.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
-    #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -48,22 +49,24 @@ using namespace matmul;
 
 namespace {
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
-constexpr CubeFormat wFormat = CubeFormat::NZ;
+constexpr CubeFormat weightFormat = CubeFormat::NZ;
 #else
-constexpr CubeFormat wFormat = CubeFormat::ND;
+constexpr CubeFormat weightFormat = CubeFormat::ND;
 #endif
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
-constexpr bool isMxFp4Input = (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value ||
-                               AscendC::IsSameType<DTYPE_X, fp4x2_e1m2_t>::value) &&
-                               (AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e2m1_t>::value ||
-                               AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e1m2_t>::value);
+constexpr bool isMxFp4Input =
+    (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value || AscendC::IsSameType<DTYPE_X, fp4x2_e1m2_t>::value) &&
+    (AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e2m1_t>::value || AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e1m2_t>::value);
+constexpr bool isMxFp8Input =
+    (AscendC::IsSameType<DTYPE_X, fp8_e4m3fn_t>::value || AscendC::IsSameType<DTYPE_X, fp8_e5m2_t>::value) &&
+    (AscendC::IsSameType<DTYPE_WEIGHT, fp8_e4m3fn_t>::value || AscendC::IsSameType<DTYPE_WEIGHT, fp8_e5m2_t>::value);
 #endif
-}
+} // namespace
 
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, bool IS_SINGLE_MULTI_SINGLE>
 #else
-template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
+template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
 #endif
 __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xScale, GM_ADDR groupList, GM_ADDR weight,
                                                           GM_ADDR weightScale, GM_ADDR weightAssistanceMatrix,
@@ -81,8 +84,8 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
 
     GMMSQWeightQuant::GMMSQWeightQuantResplitController<
-        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE,
-        GMMSQWeightQuant::MXA8W4_NZNK, GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC, IS_SINGLE_MULTI_SINGLE>
+        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE, GMMSQWeightQuant::MXA8W4_NZNK,
+        GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC, IS_SINGLE_MULTI_SINGLE>
         controller;
 
     controller.Init(x, weight, weightScale, groupList, xScale, y, yScale, &tilingDataIn);
@@ -95,42 +98,70 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     // enable overflow mode to avoid nan/inf value
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
-    if constexpr (wFormat == CubeFormat::NZ && isMxFp4Input) {
+    if constexpr (weightFormat == CubeFormat::NZ && isMxFp4Input) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         }
-    } else if constexpr (wFormat == CubeFormat::NZ) {
+    } else if constexpr (weightFormat == CubeFormat::NZ) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(x, weight, weightScale, xScale,
-                weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(x, weight, weightScale, xScale,
-                weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         }
     } else {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_TENSOR_LEVEL_KERNEL_TYPE && isMxFp8Input) {
+                GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            } else {
+                GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            }
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_TENSOR_LEVEL_KERNEL_TYPE && isMxFp8Input) {
+                GmmTensorApiSwigluQuantMxFp8Kernel<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            } else {
+                GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            }
         }
     }
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
-    if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS &&
-        QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) { // transX = false, transW = false
-        GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling, &tPipe);
-    } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS &&
-               QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) { // transX = false, transW = true
-        GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling, &tPipe);
+    if constexpr (weightFormat == CubeFormat::NZ) {
+        if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling, &tPipe);
+        } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling, &tPipe);
+        }
+    } else {
+        if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling, &tPipe);
+        } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GmmSwigluAswtPertoken<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling, &tPipe);
+        }
     }
 #endif
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);

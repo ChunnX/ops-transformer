@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | -------- |
-| <term>Ascend 950PR/Ascend 950DT</term>                             | ×        |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     | ×        |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √        |
-| <term>Atlas 200I/500 A2 推理产品</term>                      | ×        |
-| <term>Atlas 推理系列加速卡产品</term>                        | √        |
-| <term>Atlas 训练系列产品</term>                              | ×        |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -45,7 +55,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnIncreFlashAttentionV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttentionV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnIncreFlashAttentionV3GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttentionV3”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnIncreFlashAttentionV3GetWorkspaceSize(
@@ -87,15 +97,15 @@ aclnnStatus aclnnIncreFlashAttentionV3(
 - **参数说明**
 
   <div style="overflow-x: auto;">
-  <table style="undefined;table-layout: fixed; width: 1567px"><colgroup> 
-  <col style="width: 190px"> 
-  <col style="width: 120px"> 
-  <col style="width: 300px"> 
-  <col style="width: 330px"> 
-  <col style="width: 212px"> 
-  <col style="width: 100px">  
-  <col style="width: 170px">  
-  <col style="width: 145px">   
+  <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
+  <col style="width: 190px">
+  <col style="width: 120px">
+  <col style="width: 300px">
+  <col style="width: 330px">
+  <col style="width: 212px">
+  <col style="width: 100px">
+  <col style="width: 170px">
+  <col style="width: 145px">
     </colgroup>
     <thead>
       <tr>
@@ -343,7 +353,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -417,20 +427,23 @@ aclnnStatus aclnnIncreFlashAttentionV3(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnIncreFlashAttentionV3默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
+<!-- npu="910b" id6 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 支持B轴小于等于65536，N轴小于等于256，D轴小于等于512。
   - query数据类型支持FLOAT16、BFLOAT16，attentionOut、key和value数据类型支持FLOAT16、INT8、BFLOAT16。
   - dequantScale1、dequantScale2数据类型支持UINT64、FLOAT32。
   - quantScale1、quantScale2和quantOffset2数据类型支持FLOAT32
   - numKeyValueHeads数据类型支持INT64。
-- <term>Atlas 推理系列加速卡产品</term>：
+<!-- end id6 -->
+- <term>Atlas 推理系列产品</term>：
   - 支持B轴小于等于256，N轴小于等于256，D轴小于等于512。
   - 支持key、value的S轴小于等于65536。
   - query、key、value和attentionOut数据类型仅支持FLOAT16。
@@ -463,7 +476,7 @@ aclnnStatus aclnnIncreFlashAttentionV3(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>

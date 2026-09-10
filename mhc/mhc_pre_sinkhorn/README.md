@@ -17,7 +17,7 @@
 
 - **计算公式**：
 
-  $$ 
+  $$
   \begin{aligned}
   \vec{x^{'}_{l}} &= \frac{1}{\sqrt{\frac{1}{d} \sum_{\dim=-2,\text{keepdim}=\text{True}} x_i^2 + \epsilon}}\\
   H^{pre}_l &= \alpha^{pre}_{l} ·(\vec{x^{'}_{l}}\varphi^{pre}_{l}) + b^{pre}_{l}\\
@@ -105,35 +105,35 @@
       </tr>
       <tr>
         <td>hcMult</td>
-        <td>可选输入</td>
+        <td>可选属性</td>
         <td>残差流数量，HC维度大小，当前仅支持4。</td>
         <td>INT32</td>
         <td>-</td>
       </tr>
       <tr>
         <td>numIters</td>
-        <td>可选输入</td>
+        <td>可选属性</td>
         <td>表示sinkhorn算法迭代次数，当前仅支持20。</td>
         <td>INT32</td>
         <td>-</td>
       </tr>
       <tr>
         <td>hcEps</td>
-        <td>可选输入</td>
+        <td>可选属性</td>
         <td>h_pre的sigmoid后的eps参数。</td>
         <td>DOUBLE</td>
         <td>-</td>
       </tr>
       <tr>
         <td>normEps</td>
-        <td>可选输入</td>
+        <td>可选属性</td>
         <td>RmsNorm的防除零参数。</td>
         <td>DOUBLE</td>
         <td>-</td>
       </tr>
       <tr>
         <td>needBackward</td>
-        <td>可选输入</td>
+        <td>可选属性</td>
         <td>是否需要输出额外属性。</td>
         <td>BOOL</td>
         <td>-</td>
@@ -161,36 +161,36 @@
       </tr>
       <tr>
         <td>hPre</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，做完sigmoid计算之后的hPre矩阵。</td>
+        <td>输出</td>
+        <td>需要反向时输出，做完sigmoid计算之后的hPre矩阵。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>hcBeforeNorm</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，x与phi矩阵乘的结果。</td>
+        <td>输出</td>
+        <td>需要反向时输出，x与phi矩阵乘的结果。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>invRms</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，RmsNorm计算得到的1/r。</td>
+        <td>输出</td>
+        <td>需要反向时输出，RmsNorm计算得到的1/r。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>sumOut</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，每一次迭代的colSum/rowSum结果。</td>
+        <td>输出</td>
+        <td>需要反向时输出，每一次迭代的colSum/rowSum结果。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>normOut</td>
-        <td>可选输出</td>
-        <td>需要反向时输出，每一次colSum/rowSum迭代后的comb结果。</td>
+        <td>输出</td>
+        <td>需要反向时输出，每一次colSum/rowSum迭代后的comb结果。needBackward为false时，输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
@@ -201,13 +201,19 @@
 
 - n目前支持4。
 - numIters目前仅支持20。
-- 输入x的最后一维c的取值约束：
-    - <term>Ascend 950PR/Ascend 950DT</term>：c仅支持4096、7168。
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：c需满足128对齐，且取值范围为[1, 100000]。
+
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - 输入x仅支持4维BSND格式，shape为(bs, seq_len, n, c)。
+  - 输入x的最后一维c需满足128对齐，且取值范围为[1, 100000]。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - 输入x支持4维BSND格式和3维TND格式，shape分别为(bs, seq_len, n, c)和(t, n, c)。
+  - TND格式下，t表示所有Batch序列长度的累加和。
+  - 输入x的最后一维c仅支持4096、7168。
+  - 输入phi的数据范围限定在$\pm \frac{1}{\sqrt{nc}}$范围内，eps限定在1e-6，此范围内具有较好的数值稳定性。
 
 ## 调用说明
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_pre_sinkhorn](examples/test_aclnn_mhc_pre_sinkhorn.cpp) | 通过[aclnnMhcPreSinkhorn](docs/aclnnMhcPreSinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |
-| PyTorch API | - | 通过[cann_ops_transformer.mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |
+| PyTorch API | - | 通过[cann_ops_transformer.mhc_pre_sinkhorn](../../mhc/mhc_pre_sinkhorn/docs/torchapi_mhc_pre_sinkhorn.md)接口方式调用MhcPreSinkhorn算子。 |

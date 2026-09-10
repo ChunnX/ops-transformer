@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18.4)
 project(Ascend_c)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -26,7 +26,7 @@ if(NOT DEFINED ENV{CMAKE_PREFIX_PATH})
     set(CMAKE_PREFIX_PATH ${ASCEND_CANN_PACKAGE_PATH}/tools/tikicpulib/lib/cmake)
 endif()
 
-file(GLOB KERNEL_FILES 
+file(GLOB KERNEL_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/quant_all_reduce.cpp
 )
 
@@ -42,7 +42,7 @@ include(${ASCENDC_CMAKE_DIR}/ascendc.cmake)
 # ascendc_library use to add kernel file to generate ascendc library
 ascendc_library(ascendc_kernels SHARED ${KERNEL_FILES})
 
-add_executable(test_quant_all_reduce 
+add_executable(test_quant_all_reduce
     ${CMAKE_CURRENT_SOURCE_DIR}/test_quant_all_reduce.cpp
 )
 

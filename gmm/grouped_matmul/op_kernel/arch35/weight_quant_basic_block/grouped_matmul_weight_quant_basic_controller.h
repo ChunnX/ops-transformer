@@ -18,7 +18,6 @@
 #include "weight_quant_basic_block.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 
-
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
@@ -92,7 +91,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
         groupListGm_.SetGlobalBuffer((__gm__ int64_t *)groupList);
     }
     wqmmBasicBlock_.Init(gmmBaseTiling_->hasBias, gmmBaseTiling_->groupSize, 0, mmTiling_,
-                         tPipe);  // gmm场景不确定group是否激活，prefetch size设定为0
+                         tPipe); // gmm场景不确定group是否激活，prefetch size设定为0
 }
 
 template <typename xType, typename wType, typename biasType, typename yType, const WqmmConfig &wqmmConfig,
@@ -114,7 +113,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     BasicBlockOffsetParam offsetParam;
     InitOffsetParam(offsetParam);
     for (uint32_t groupIdx = 0, count = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
-        SetMKN(groupIdx, preOffset, offsetParam);  // 每个核都必须知道之前group的信息，在单场景下作为baseOffset
+        SetMKN(groupIdx, preOffset, offsetParam); // 每个核都必须知道之前group的信息，在单场景下作为baseOffset
         SetGmAddr(groupIdx, xBaseOffset, weightBaseOffset, yBaseOffset, antiquantParamsBaseOffset, biasBaseOffset,
                   offsetParam);
         if (offsetParam.mSize == 0 || offsetParam.nSize == 0) {
@@ -126,13 +125,13 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
          * 3.在mSize大于mmTiling_.baseM * 2且小于等于mmTiling_.baseM * 4时，baseM使用mSize / 4向上取整
          */
         uint64_t baseM =
-            offsetParam.mSize <= mmTiling_->baseM || offsetParam.mSize >= mmTiling_->baseM * QUADRUPLE_BUFFER_NUM
-                ? mmTiling_->baseM
-                : (offsetParam.mSize <= DOUBLE_BUFFER_NUM * mmTiling_->baseM
-                       ? CeilDivide(offsetParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM)
-                       : CeilDivide(offsetParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
-        uint64_t baseN = offsetParam.nSize >= mmTiling_->baseN * gmmBaseTiling_->coreNum ? mmTiling_->baseN
-                                                                                         : (mmTiling_->baseN >> 1);
+            offsetParam.mSize <= mmTiling_->baseM || offsetParam.mSize >= mmTiling_->baseM * QUADRUPLE_BUFFER_NUM ?
+                mmTiling_->baseM :
+                (offsetParam.mSize <= DOUBLE_BUFFER_NUM * mmTiling_->baseM ?
+                     CeilDivide(offsetParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM) :
+                     CeilDivide(offsetParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
+        uint64_t baseN = offsetParam.nSize >= mmTiling_->baseN * gmmBaseTiling_->coreNum ? mmTiling_->baseN :
+                                                                                           (mmTiling_->baseN >> 1);
 
         uint32_t mBlockNum = CeilDivide(offsetParam.mSize, baseM);
         uint32_t nBlockNum = CeilDivide(offsetParam.nSize, baseN);
@@ -168,7 +167,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     }
 
     offsetParam.kbL1Size = mmTiling_->baseK * mmTiling_->stepKb;
-    offsetParam.kaL1Size = offsetParam.kbL1Size;  // 当前实现a矩阵切分保持b矩阵一致
+    offsetParam.kaL1Size = offsetParam.kbL1Size; // 当前实现a矩阵切分保持b矩阵一致
 }
 
 template <typename xType, typename wType, typename biasType, typename yType, const WqmmConfig &wqmmConfig,
@@ -228,8 +227,8 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
         antiquantOffsetGm = GetTensorAddr<xType>(0, antiquantOffsetGm_) + antiquantParamsBaseOffset;
         biasGm = GetTensorAddr<biasType>(0, biasGm_) + biasBaseOffset;
     }
-    wqmmBasicBlock_.UpdateGlobalAddr(xGm, weightGm, antiquantScaleGm, antiquantOffsetGm, nullptr, nullptr, biasGm,
-                                     yGm, mmTiling_->isBias, true);
+    wqmmBasicBlock_.UpdateGlobalAddr(xGm, weightGm, antiquantScaleGm, antiquantOffsetGm, nullptr, nullptr, biasGm, yGm,
+                                     mmTiling_->isBias, true);
     xBaseOffset += offsetParam.mSize * offsetParam.kSize;
     if constexpr (IsSameType<wType, int4b_t>::value) {
         weightBaseOffset += (offsetParam.nSize * offsetParam.kSize) >> 1;
@@ -265,6 +264,6 @@ __aicore__ inline uint64_t GMMWeightQuantBasicController<xType, wType, biasType,
     return splitValue;
 }
 
-}  // namespace GROUPED_MATMUL
+} // namespace GROUPED_MATMUL
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_CONTROLLER_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_CONTROLLER_H

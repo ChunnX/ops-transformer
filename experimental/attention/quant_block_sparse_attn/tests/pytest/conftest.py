@@ -40,8 +40,6 @@ def _runtime_library_dirs():
     if conda_prefix:
         candidates.append(Path(conda_prefix) / "lib")
     candidates.extend([
-        Path("/home/wz/miniforge3/envs/torch29/lib"),
-        Path("/home/dyx/miniforge3/envs/torch29/lib"),
         Path(sys.executable).resolve().parents[1] / "lib",
     ])
     deduped = []
@@ -78,7 +76,6 @@ def _custom_opp_roots():
     if build_roots:
         return build_roots
     candidates = [
-        Path("/home/dyx/vendors/custom_transformer"),
         Path("/workspace/vendors/custom_transformer"),
     ]
     return [path for path in candidates if path.exists()]
@@ -101,12 +98,24 @@ def pytest_addoption(parser):
         default=False,
         help="Enable detailed accuracy comparison including cosine similarity and error tables",
     )
+    parser.addoption(
+        "--force-regenerate",
+        action="store_true",
+        default=False,
+        help="Force regenerate .pt test case files even if they already exist",
+    )
 
 
 @pytest.fixture(scope="session")
 def check_accuracy(request):
     """Fixture that returns True when --check-accuracy flag is set."""
     return request.config.getoption("--check-accuracy")
+
+
+@pytest.fixture(scope="session")
+def force_regenerate(request):
+    """Fixture that returns True when --force-regenerate flag is set."""
+    return request.config.getoption("--force-regenerate")
 
 
 def pytest_configure(config):

@@ -29,18 +29,19 @@ public:
     bool SetTiling(gert::TilingContext *context);
 
 protected:
-    bool Init(const gert::TilingContext* context);
-    bool GetAttrs(const gert::TilingContext* context);
-    bool CalMatMulTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
+    bool Init(const gert::TilingContext *context);
+    bool GetAttrs(const gert::TilingContext *context);
+    bool CalMatMulTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     void SetGMMTiling();
     void SetMatMulTiling();
     void PrintTilingResult(const gert::TilingContext *context);
-    void FormulateBasicBlock(const GMMCompileInfo* compileInfoPtr, uint32_t remainCoreNum);
-    void CalAswtL1Tiling(const GMMCompileInfo* compileInfoPtr);
-    void CalcTailBasicBlock(const GMMCompileInfo* compileInfoPtr);
+    void FormulateBasicBlock(const GMMCompileInfo *compileInfoPtr, uint32_t remainCoreNum);
+    void CalAswtL1Tiling(const GMMCompileInfo *compileInfoPtr);
+    void CalcTailBasicBlock(const GMMCompileInfo *compileInfoPtr);
     bool SetCustomParam(gert::TilingContext *context);
     void SetTilingKey(gert::TilingContext *context) const;
-    bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
+    bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext *context, const gert::Shape xShape,
+                                          const gert::Shape wShape);
 
 private:
     bool transposeX_ = false;
@@ -71,6 +72,6 @@ private:
 
     GroupedMatmulAdd::GmmAddTilingDataParams tilingData_;
 };
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // GROUPED_MATMUL_ADD_NO_QUANT_TILING_H
+#endif // GROUPED_MATMUL_ADD_NO_QUANT_TILING_H

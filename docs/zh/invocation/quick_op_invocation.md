@@ -36,7 +36,7 @@
 - 基于**自定义算子包**执行算子样例，命令如下：
 
     ```bash
-    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}] [--soc=${soc_version}]
+    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--example_name=${example_name}] [--vendor_name=${vendor_name}] [--soc=${soc_version}] [--simulator=${simulator}] [--experimental=${experimental}]
     # 以FlashAttentionScore算子example执行为例
     # bash build.sh --run_example flash_attention_score eager cust --vendor_name=custom
     ```
@@ -46,7 +46,7 @@
   - \$\{pkg_mode\}：表示包模式，目前仅支持cust，即自定义算子包。
   - \$\{example_name\}（可选）：表示待执行样例名，名称为各个算子examples文件夹下的文件名称，去掉`test_aclnn_`前缀和`.cpp`后缀。
   - \$\{vendor\_name\}（可选）：与构建的自定义算子包设置一致，默认名为custom。
-  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。
+  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。产品名对应的取值参考[SoC 取值映射表](../../QUICKSTART.md#soc-version-mapping)，请按实际场景传参。
   - \$\{simulator\}（可选）：表示仿真模式，目前仅支持eager（aclnn调用）场景下使用。仿真模式下，会根据soc_version链接对应的仿真库。
   - \$\{experimental\}（可选）：表示执行用户保存在experimental贡献目录下的算子。
 
@@ -60,9 +60,9 @@
     # bash build.sh --run_example flash_attention_score eager
     ```
 
-    - \$\{op\}：表示待执行算子，算子名为小写下划线形式，如flash_attention_score。
-    - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
-    - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。
+  - \$\{op\}：表示待执行算子，算子名为小写下划线形式，如flash_attention_score。
+  - \$\{mode\}：表示算子执行模式，目前支持eager（aclnn调用）、graph（图模式调用）。
+  - \$\{soc_version\}（可选）：表示NPU型号，默认"ascend910b"。当设置为"ascend950"时会运行"arch35"目录下的示例文件。产品名对应的取值参考[SoC 取值映射表](../../QUICKSTART.md#soc-version-mapping)，请按实际场景传参。
 
 - 基于**ops-transformer静态库**执行算子样例：
 
@@ -87,9 +87,9 @@
         else
             _ASCEND_INSTALL_PATH="/usr/local/Ascend/cann"
         fi
-    
+
         source ${_ASCEND_INSTALL_PATH}/bin/setenv.bash
-    
+
         # 编译可执行文件
         g++ test_aclnn_flash_attention_score.cpp \
         -I ${static_lib_path}/include -I ${ASCEND_HOME_PATH}/include -I ${ASCEND_HOME_PATH}/include/aclnnop \
@@ -100,7 +100,7 @@
         -o test_aclnn_flash_attention_score   # 替换为实际算子可执行文件名
 
         # 编译MC2算子可执行文件时，在编译命令的末尾添加如下链接库
-        # -lruntime -lpthread -Wl,--no-as-needed -lhccl -lhccl_fwk -o 
+        # -lruntime -lpthread -Wl,--no-as-needed -lhccl -lhccl_fwk -o
 
         # 执行程序
         ./test_aclnn_flash_attention_score
@@ -125,7 +125,7 @@ mean result[1] is: 256.000000
 mean result[2] is: 256.000000
 mean result[3] is: 256.000000
 mean result[4] is: 256.000000
-mean result[4] is: 256.000000
+mean result[5] is: 256.000000
 ...
 mean result[65532] is: 256.000000
 mean result[65533] is: 256.000000
@@ -151,9 +151,9 @@ mean result[65535] is: 256.000000
 
 #### 调用流程
 
-为方便调用算子，Host侧提供算子对应的C语言API（即以aclnn为前缀的API）实现算子调用，无需提供算子IR（Intermediate Representation）定义。aclnn API调用流程如下
+为方便调用算子，Host侧提供算子对应的C语言API（即以aclnn为前缀的API）实现算子调用，无需提供算子IR（Intermediate Representation）定义。aclnn API调用流程如下：
 
-![原理图](../figures/aclnn调用.png)
+![原理图](../figures/aclnn_call_flow.png)
 
 #### 编译运行
 
@@ -166,7 +166,6 @@ mean result[65535] is: 256.000000
 在环境任意目录下，新建调用cpp脚本，命名自定义（例如`${test_aclnn_op_name}.cpp`）。
 
 为方便理解，以`AddExample`算子为例，调用脚本如下，仅供参考，全量代码参见[test_aclnn_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)。
-
 
 ```Cpp
 int aclnnAddExampleTest(int32_t deviceId, aclrtStream& stream)
@@ -239,7 +238,7 @@ int main()
 {
     int32_t deviceId = 0;
     aclrtStream stream;
-       
+
     auto ret = aclnnAddExampleTest(deviceId, stream);
     // 释放device资源以及acl去初始化
     aclrtDestroyStream(stream);
@@ -252,14 +251,14 @@ int main()
 }
 ```
 
-3. 创建CMakeLists.txt文件。
+1. 创建CMakeLists.txt文件。
 
 在`${test_aclnn_op_name}.cpp`同级目录下创建CMakeLists.txt文件，需注意的是，调用自定义算子（如experimental目录）和标准项目算子（内置算子）时编译脚本有差异。示例如下，仅供参考，请根据实际情况自行修改。
 
 - **调用自定义算子**：依赖自定义算子包
 
-    ```bash
-    cmake_minimum_required(VERSION 3.14)
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.4)
     # 设置工程名
     project(ACLNN_EXAMPLE)
 
@@ -267,18 +266,18 @@ int main()
     add_compile_options(-std=c++11)
 
     # 设置编译输出目录为当前目录下的bin文件夹
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")    
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")
 
     # 设置调试和发布模式的编译选项
     set(CMAKE_CXX_FLAGS_DEBUG "-fPIC -O0 -g -Wall")
     set(CMAKE_CXX_FLAGS_RELEASE "-fPIC -O2 -Wall")
 
     # 添加可执行文件（自定义：替换为实际调用算子的*.cpp文件）
-    add_executable(${test_aclnn_op_name}              
-    ${test_aclnn_op_name}.cpp)         
+    add_executable(${test_aclnn_op_name}
+    ${test_aclnn_op_name}.cpp)
 
     # ASCEND_PATH（如遇CANN包路径有误，请根据实际路径修改）
-    if(NOT "$ENV{ASCEND_HOME_PATH}" STREQUAL "")      
+    if(NOT "$ENV{ASCEND_HOME_PATH}" STREQUAL "")
         set(ASCEND_PATH $ENV{ASCEND_HOME_PATH})
     else()
         set(ASCEND_PATH "/usr/local/Ascend/cann")
@@ -294,7 +293,7 @@ int main()
     endforeach()
 
     if(NOT DEFINED TARGET_SUBDIR)
-        message(FATAL_ERROR "在路径${ASCEND_PATH}中未找到自定义算子包") 
+        message(FATAL_ERROR "在路径${ASCEND_PATH}中未找到自定义算子包")
     endif()
 
     # 设置头文件路径
@@ -308,7 +307,7 @@ int main()
     )
 
     # 链接所需的动态库（自定义：替换为实际算子可执行文件）
-    target_link_libraries(${test_aclnn_op_name} PRIVATE    
+    target_link_libraries(${test_aclnn_op_name} PRIVATE
         ${ASCEND_PATH}/lib64/libascendcl.so
         ${ASCEND_PATH}/lib64/libnnopbase.so
         ${TARGET_SUBDIR}/op_api/lib/libcust_opapi.so      # 链接自定义算子库文件
@@ -317,57 +316,57 @@ int main()
         "-Wl,-rpath,${TARGET_SUBDIR}/op_api/lib"
     )
 
-    # 安装目标文件到bin目录（自定义：替换为实际算子可执行文件）  
+    # 安装目标文件到bin目录（自定义：替换为实际算子可执行文件）
     install(TARGETS ${test_aclnn_op_name} DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
     ```
 
 - **调用标准算子（内置算子）**：依赖ops-transformer整包
 
-    ```bash
-    cmake_minimum_required(VERSION 3.14)
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.4)
     # 设置工程名
     project(ACLNN_EXAMPLE)
-        
+
     # 设置C++编译标准
     add_compile_options(-std=c++11)
-        
-	# 设置编译输出目录为当前目录下的bin文件夹
+
+    # 设置编译输出目录为当前目录下的bin文件夹
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")
-        
-	# 设置调试和发布模式的编译选项
+
+    # 设置调试和发布模式的编译选项
     set(CMAKE_CXX_FLAGS_DEBUG "-fPIC -O0 -g -Wall")
     set(CMAKE_CXX_FLAGS_RELEASE "-fPIC -O2 -Wall")
-        
-	# 添加可执行文件（自定义：替换为实际调用算子的*.cpp文件）
+
+    # 添加可执行文件（自定义：替换为实际调用算子的*.cpp文件）
     add_executable(${test_aclnn_op_name}
     ${test_aclnn_op_name}.cpp)
-        
-	# ASCEND_PATH（如遇CANN包路径有误，请根据实际路径修改）
+
+    # ASCEND_PATH（如遇CANN包路径有误，请根据实际路径修改）
     if(NOT "$ENV{ASCEND_HOME_PATH}" STREQUAL "")
         set(ASCEND_PATH $ENV{ASCEND_HOME_PATH})
     else()
         set(ASCEND_PATH "/usr/local/Ascend/cann")
     endif()
-        
-	# 设置头文件路径
+
+    # 设置头文件路径
     set(INCLUDE_BASE_DIR "${ASCEND_PATH}/include")
     include_directories(
         ${INCLUDE_BASE_DIR}
         ${ASCEND_PATH}/include/aclnnop
     )
-        
-	# 链接所需的动态库（自定义：替换为实际算子可执行文件）
+
+    # 链接所需的动态库（自定义：替换为实际算子可执行文件）
     target_link_libraries(${test_aclnn_op_name} PRIVATE
         ${ASCEND_PATH}/lib64/libascendcl.so
         ${ASCEND_PATH}/lib64/libnnopbase.so
         ${ASCEND_PATH}/lib64/libopapi_transformer.so            # 链接内置算子库文件
     )
-        
-	# 安装目标文件到bin目录（自定义：替换为实际算子可执行文件）  
+
+    # 安装目标文件到bin目录（自定义：替换为实际算子可执行文件）
     install(TARGETS ${test_aclnn_op_name} DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
     ```
-    
-4. 创建run.sh文件。
+
+1. 创建run.sh文件。
 
     在`${test_aclnn_op_name}.cpp`同级目录下创建run.sh文件，以`${test_aclnn_op_name}`算子为例，示例如下，请根据实际情况自行修改。
 
@@ -379,11 +378,11 @@ int main()
     else
         _ASCEND_INSTALL_PATH="/usr/local/Ascend/cann"
     fi
-    
+
     source ${_ASCEND_INSTALL_PATH}/bin/setenv.bash
-    
+
     rm -rf build
-    mkdir -p build 
+    mkdir -p build
     cd build
     cmake ../ -DCMAKE_CXX_COMPILER=g++ -DCMAKE_SKIP_RPATH=TRUE  # 执行构建命令
     make
@@ -391,7 +390,7 @@ int main()
     ./${test_aclnn_op_name}                                     # 替换为实际算子可执行文件名
     ```
 
-5. 运行run.sh文件。
+2. 运行run.sh文件。
    在run.sh文件所在路径执行如下命令：
 
    ```bash
@@ -400,7 +399,7 @@ int main()
 
     默认在当前执行路径`/build/bin`下生成可执行文件${test_aclnn_op_name}。运行结果以test_aclnn_add_example为例：
 
-   ```
+   ```bash
    mean result[2046] is 2.000000
    mean result[2047] is 2.000000
    ```
@@ -411,7 +410,7 @@ int main()
 
 该方式基于算子GE IR（Intermediate Representation）定义，以构图方式调用算子，调用流程如下：
 
-![原理图](../figures/IR调用.png)
+![原理图](../figures/geir_call_flow.png)
 
 #### 编译运行
 
@@ -429,41 +428,41 @@ int main()
    int main() {
        // 1. 创建图对象
        Graph graph(graphName);
-   
+
        // 2. 图全局编译选项初始化
        Status ret = ge::GEInitialize(globalOptions);
-   
+
        // 3. 创建AddExample算子实例
        auto add1 = op::AddExample("add1");
-   
+
        // 4. 定义图输入输出向量
        std::vector<Operator> inputs{};
        std::vector<Operator> outputs{};
-   
+
        // 5. 准备输入数据
        std::vector<int64_t> xShape = {32,4,4,4};
        // 宏展开方式处理变量赋值
        ADD_INPUT(1, x1, inDtype, xShape);
        ADD_INPUT(2, x2, inDtype, xShape);
        ADD_OUTPUT(1, y, inDtype, xShape);
-   
+
        outputs.push_back(add1);
-   
+
        // 6. 设置图对象的输入算子和输出算子
        graph.SetInputs(inputs).SetOutputs(outputs);
-   
+
        // 7. 创建session对象
        ge::Session* session = new Session(buildOptions);
-   
+
        // 8. session添加图
        ret = session->AddGraph(graphId, graph, graphOptions);
-   
+
        // 9. 运行图
        ret = session->RunGraph(graphId, input, output);
-   
+
        // 10. 释放资源
        GEFinalize();
-   
+
        return 0;
    }
    ```
@@ -473,11 +472,11 @@ int main()
    在`${test_geir_op_name}.cpp`同级目录下创建CMakeLists.txt文件，GE图引擎会根据配置好的环境变量自动加载已安装好的算子包（无论是自定义算子包或是标准内置算子包）库文件，无需特意区分。示例如下，仅供参考，请根据实际情况自行修改。
 
     ```bash
-   cmake_minimum_required(VERSION 3.14)
-    
+   cmake_minimum_required(VERSION 3.18.4)
+
    # 设置工程名
    project(GE_IR_EXAMPLE)
-   
+
    if(NOT "$ENV{ASCEND_OPP_PATH}" STREQUAL "")
        get_filename_component(ASCEND_PATH $ENV{ASCEND_OPP_PATH} DIRECTORY)
    elseif(NOT "$ENV{ASCEND_HOME_PATH}" STREQUAL "")
@@ -485,31 +484,31 @@ int main()
    else()
        set(ASCEND_PATH "/usr/local/Ascend/cann")
    endif()
-   
+
    set(FWK_INCLUDE_DIR "${ASCEND_PATH}/compiler/include")
-   
+
    message(STATUS "ASCEND_PATH: ${ASCEND_PATH}")
-   
+
    file(GLOB files CONFIGURE_DEPENDS
-        ${test_geir_op_name}.cpp        
+        ${test_geir_op_name}.cpp
    )
-   
+
    # 添加可执行文件（请替换为实际算子可执行文件）
-   add_executable(${test_geir_op_name} ${files})      
-   
+   add_executable(${test_geir_op_name} ${files})
+
    find_library(GRAPH_LIBRARY_DIR libgraph.so "${ASCEND_PATH}/compiler/lib64/stub")
    find_library(GE_RUNNER_LIBRARY_DIR libge_runner.so "${ASCEND_PATH}/compiler/lib64/stub")
    find_library(GRAPH_BASE_LIBRARY_DIR libgraph_base.so "${ASCEND_PATH}/compiler/lib64")
-   
+
    # 链接所需的动态库
-   target_link_libraries(${test_geir_op_name} PRIVATE   
+   target_link_libraries(${test_geir_op_name} PRIVATE
         ${GRAPH_LIBRARY_DIR}
         ${GE_RUNNER_LIBRARY_DIR}
         ${GRAPH_BASE_LIBRARY_DIR}
    )
-   
+
    # 设置头文件路径
-   target_include_directories(${test_geir_op_name} PRIVATE     
+   target_include_directories(${test_geir_op_name} PRIVATE
         ${FWK_INCLUDE_DIR}/graph/
         ${FWK_INCLUDE_DIR}/ge/
         ${ASCEND_PATH}/opp/built-in/op_proto/inc/
@@ -531,10 +530,10 @@ int main()
         _ASCEND_INSTALL_PATH="/usr/local/Ascend/cann"
     fi
 
-    source ${_ASCEND_INSTALL_PATH}/bin/setenv.bash               
+    source ${_ASCEND_INSTALL_PATH}/bin/setenv.bash
 
-    rm -rf build                 
-    mkdir -p build 
+    rm -rf build
+    mkdir -p build
     cd build
     cmake ../ -DCMAKE_CXX_COMPILER=g++ -DCMAKE_SKIP_RPATH=TRUE  # 执行构建命令
     make
@@ -547,9 +546,9 @@ int main()
     ```bash
     bash run.sh
     ```
-   
+
     默认在当前执行路径`/build/bin`下生成可执行文件${test_geir_op_name}，运行结果如下：
-   
-    ```
+
+    ```bash
     INFO - [XIR]: Finalize ir graph session success
     ```

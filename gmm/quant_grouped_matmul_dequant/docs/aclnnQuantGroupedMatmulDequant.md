@@ -2,33 +2,43 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     ×    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     ×    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     √    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 算子功能：对输入x进行量化，分组矩阵乘以及反量化。
-- 计算公式：  
+- 计算公式：
   1.若输入smoothScaleOptional，则
-  
+
   $$
       x = x\cdot scale_{smooth}
   $$
 
   2.若不输入xScaleOptional，则为动态量化，需要计算x量化系数
-  
+
   $$
       scale_{x}=row\_max(abs(x))/max_{quantDataType}
   $$
 
   3.量化
-  
+
   $$
       x_{quantized}=round(x/scale_{x})
   $$
@@ -66,7 +76,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantGroupedMatmulDequantGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnQuantGroupedMatmulDequant”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantGroupedMatmulDequantGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnQuantGroupedMatmulDequant”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnQuantGroupedMatmulDequantGetWorkspaceSize(
@@ -252,7 +262,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
   </tbody>
   </table>
 
-    - ND格式下，weight的shape支持3维。 
+    - ND格式下，weight的shape支持3维。
       - 在transposeWeight为true情况下各个维度表示：（g，n，k）。
       - 在transposeWeight为false情况下各个维度表示：（g，k，n）。
     - FRACTAL_NZ格式下，weight的shape支持5维。
@@ -262,7 +272,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -337,7 +347,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
 
 - **返回值**
 
-  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -349,7 +359,7 @@ aclnnStatus aclnnQuantGroupedMatmulDequant(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -470,9 +480,9 @@ int main() {
   std::vector<float> weightScaleHostData(GetShapeSize(weightScaleShape));
   std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
   groupListHostData[0] = 7;
-  groupListHostData[0] = 32;
-  groupListHostData[0] = 40;
-  groupListHostData[0] = 64;
+  groupListHostData[1] = 32;
+  groupListHostData[2] = 40;
+  groupListHostData[3] = 64;
   std::vector<float> xScaleHostData(GetShapeSize(xScaleShape));
   std::vector<uint16_t> smoothScaleHostData(GetShapeSize(smoothScaleShape));
   std::vector<uint16_t> outHostData(GetShapeSize(outShape));
@@ -499,7 +509,7 @@ int main() {
   // 调用aclnnQuantGroupedMatmulDequant第一段接口
   ret = aclnnQuantGroupedMatmulDequantGetWorkspaceSize(x, weight, weightScale, groupList,
                                                 bias, xScale, xOffset, smoothScale,
-                                                quantMode, transposeWeight, out, 
+                                                quantMode, transposeWeight, out,
                                                 &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantGroupedMatmulDequantGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

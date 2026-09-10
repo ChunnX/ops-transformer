@@ -22,7 +22,8 @@
 /////////////////////////////////////////////////////
 
 // Partial specialization ZN, half, int32_t
-template <ArchType ArchTag, typename ElementIn, typename ElementOut, bool MatrixMode = true> struct l0c_to_ub {
+template <ArchType ArchTag, typename ElementIn, typename ElementOut, bool MatrixMode = true>
+struct l0c_to_ub {
     __aicore__ l0c_to_ub(AscendC::LocalTensor<ElementOut> ubTensor, AscendC::LocalTensor<ElementIn> l0cTensor,
                          uint16_t nBurst, uint16_t lenBurst, uint16_t srcStride, uint16_t dstStride)
     {
@@ -46,12 +47,8 @@ template <ArchType ArchTag, typename ElementIn, typename ElementOut, bool Matrix
 
 template <ArchType ArchTag>
 struct l0c_to_ub<ArchTag, int32_t, half> {
-    __aicore__ l0c_to_ub(AscendC::LocalTensor<half> ubTensor,
-                         AscendC::LocalTensor<int32_t> l0cTensor,
-                         uint16_t nBurst,
-                         uint16_t lenBurst,
-                         uint16_t srcStride,
-                         uint16_t dstStride)
+    __aicore__ l0c_to_ub(AscendC::LocalTensor<half> ubTensor, AscendC::LocalTensor<int32_t> l0cTensor, uint16_t nBurst,
+                         uint16_t lenBurst, uint16_t srcStride, uint16_t dstStride)
     {
         AscendC::DataCopy(ubTensor, l0cTensor,
                           AscendC::DataCopyParams(nBurst,                                        // count

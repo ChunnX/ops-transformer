@@ -13,8 +13,6 @@
  * \brief
  */
 #include <vector>
-#include <set>
-#include <string>
 
 #include "common/utils/op_mc2.h"
 #include "platform/platform_info.h"
@@ -34,7 +32,7 @@ ge::Status MoeDistributeCombineSetupCalcParamFunc(gert::ExeResGenerationContext 
 }
 
 ge::Status MoeDistributeCombineSetupGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                                std::vector<std::vector<uint8_t>> &tasks)
 {
     OPS_LOG_I(context->GetNodeName(), "Do A3 aicpu GenTask.");
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(context, tasks);

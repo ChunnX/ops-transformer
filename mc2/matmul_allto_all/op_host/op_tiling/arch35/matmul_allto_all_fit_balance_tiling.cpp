@@ -13,7 +13,6 @@
  * \brief arch35 架构的 AllToAll Fit Balance Tiling 实现
  */
 #include <iostream>
-#include "mc2_log.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
 
 namespace MC2Tiling {
@@ -26,6 +25,11 @@ constexpr static double COMPUTE_TIME_SCALE_FACTOR = 1.43;
 constexpr static uint64_t OVERHEAD_AWARE_MAX_TILES = 3;
 constexpr static uint64_t SMALL_M_BAR_FOR_OVERHEAD = 4096;
 constexpr static uint64_t NUM_EIGHT = 8;
+// AICPU(4P/8P)场景下，定义的常量
+constexpr static double AICPU_NO_CUT_TIME_THRESHOLD_US = 80.0;
+constexpr static uint64_t AICPU_MN_RATIO_THRESHOLD = 10U;
+constexpr static uint64_t AICPU_MN_RATIO_MAX_TILE_CNT = 3U;
+constexpr static uint64_t AICPU_UPCAST_MAX_TILE_CNT = 4U;
 
 void MatmulAlltoAllFitBalanceTiling::EstimateMMCommTime()
 {
@@ -56,6 +60,28 @@ void MatmulAlltoAllFitBalanceTiling::EstimateMMCommTime()
 
 void MatmulAlltoAllFitBalanceTiling::SetShortTileLen()
 {
+    // 通过 maxTileCnt==AICPU_MAX_TILE_CNT 识别 AICPU 模式
+    if (tilingM_.tileArgs.maxTileCnt == AICPU_MAX_TILE_CNT) {
+        double mmTime = matmulPerf_.MatmulTime(mmInfo_.mValue, 1);
+        if (quantMode_ == QuantMode::KC_QUANT) {
+            mmTime *= COMPUTE_TIME_SCALE_FACTOR;
+        }
+        if (mmTime < AICPU_NO_CUT_TIME_THRESHOLD_US ||
+            commPerf_.CommTime(mmInfo_.mValue) < AICPU_NO_CUT_TIME_THRESHOLD_US) {
+            // 短块置为总长，使基类 GetTiling 走 NoCutTiling 分支(totalLen < shortTileLen * 2)
+            tilingM_.cutRes.shortTileLen = tilingM_.totalLen;
+            tilingM_.cutRes.numShortTile = 1U;
+            return;
+        }
+        if (isAicpuMode_ && (mmInfo_.inMatrixADtypeSize == 0U) && (mmInfo_.outMatrixCDtypeSize == 4U)) {
+            tilingM_.SetMaxTileCnt(AICPU_UPCAST_MAX_TILE_CNT);
+        }
+        // m/n超过阈值倍，最多切分3份
+        if (mmInfo_.mValue > AICPU_MN_RATIO_THRESHOLD * mmInfo_.nValue) {
+            tilingM_.SetMaxTileCnt(AICPU_MN_RATIO_MAX_TILE_CNT);
+        }
+    }
+
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
                          mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
     isLargerThanL2Cache_ = l2UseSize > L2_CACHE_SIZE;
@@ -93,9 +119,10 @@ void MatmulAlltoAllFitBalanceTiling::SetLongTileLen()
     OP_LOGD("MatmulAlltoAllFitBalanceTiling", "longTileLen %lu", tilingM_.cutRes.longTileLen);
 }
 
-void MatmulAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
+void MatmulAlltoAllFitBalanceTiling::AlignLongTileLen()
 {
-    if (ratioCalcComm_ > CALC_COMM_RATIO_THRESHOLD) {
+    if (ratioCalcComm_ > CALC_COMM_RATIO_THRESHOLD ||
+        (isAicpuMode_ && (mmInfo_.inMatrixADtypeSize == 0U) && (mmInfo_.outMatrixCDtypeSize == 4U))) {
         if (tilingM_.cutRes.longTileLen % LONG_TILE_ALIGN_LEN != 0) {
             uint64_t alignedLongLen = (tilingM_.cutRes.longTileLen / LONG_TILE_ALIGN_LEN) * LONG_TILE_ALIGN_LEN;
             if (alignedLongLen == 0) {
@@ -129,7 +156,7 @@ void MatmulAlltoAllFitBalanceTiling::AdjustLongShortTileLen()
 {
     bool goodLinearityShape = (mmInfo_.kValue * mmInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
     tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
-    AdjustLongShortTileLenWhenCalcBound();
+    AlignLongTileLen();
 
     // When the long and short tiles are equal, the long and short pieces become one.
     if (tilingM_.cutRes.shortTileLen == tilingM_.cutRes.longTileLen) {

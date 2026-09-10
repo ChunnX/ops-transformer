@@ -23,10 +23,9 @@ using namespace std;
 #define ADD_TO_LAUNCHER_LIST_AICORE(KERNEL_NAME, op_args...) ACLNN_SUCCESS
 
 #define ADD_TO_LAUNCHER_LIST_DSA(KERNEL_NAME, op_args...) \
-  do { \
-    op::OpArgContext *opArgCtx = GetOpArgContext(op_args); \
-    CreatDSAKernelLauncher(#KERNEL_NAME, KERNEL_NAME##OpTypeId(), KERNEL_NAME##TaskType,\
-                            executor, opArgCtx); \
-  } while(0)
+    do { \
+        op::OpArgContext *opArgCtx = GetOpArgContext(op_args); \
+        CreatDSAKernelLauncher(#KERNEL_NAME, KERNEL_NAME##OpTypeId(), KERNEL_NAME##TaskType, executor, opArgCtx); \
+    } while (0)
 
 #endif

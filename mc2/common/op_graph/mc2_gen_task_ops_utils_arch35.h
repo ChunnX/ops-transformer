@@ -39,8 +39,6 @@ const std::string QUANT_GROUPED_MM_ALL_TO_ALLV_OP_TYPE = "QuantGroupedMatMulAllt
 const std::string ALL_GATHER_MM_V2_OP_TYPE = "AllGatherMatmulV2";
 const std::string MM_REDUCE_SCATTER_V2_OP_TYPE = "MatmulReduceScatterV2";
 const std::string MM_ALL_REDUCE_OP_TYPE = "MatmulAllReduce";
-const std::string QUANT_ALL_REDUCE_OP_TYPE = "QuantAllReduce";
-const std::string QUANT_REDUCE_SCATTER_OP_TYPE = "QuantReduceScatter";
 const std::string MM_ALLTO_ALL_OP_TYPE = "MatmulAlltoAll";
 const std::string ALLTO_ALL_MATMUL_OP_TYPE = "AlltoAllMatmul";
 const std::string ATTR_NAME_GROUP = "group";
@@ -48,7 +46,7 @@ const std::string ATTR_NAME_GROUP_EP = "group_ep";
 const int32_t MAX_GROUP_CNT = 16;
 
 struct GroupInfo {
-    int32_t groupCnt = -1;                         // 算子通信域数量
+    int32_t groupCnt = -1;                        // 算子通信域数量
     std::vector<std::string> groupAttrNames = {}; // 算子通信域属性名
 };
 
@@ -57,8 +55,6 @@ static const std::map<const std::string, const GroupInfo> GROUP_INFO_MAP_ARCH35{
     {ALL_GATHER_MM_V2_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {MM_REDUCE_SCATTER_V2_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {MM_ALL_REDUCE_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
-    {QUANT_ALL_REDUCE_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
-    {QUANT_REDUCE_SCATTER_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {MM_ALLTO_ALL_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {ALLTO_ALL_MATMUL_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
     {ALL_TO_ALLV_GROUPED_MM_OP_TYPE, {1, {ATTR_NAME_GROUP}}},
@@ -72,7 +68,6 @@ static const std::map<const std::string, const GroupInfo> GROUP_INFO_MAP_ARCH35{
 };
 
 class Mc2Arch35GenTaskOpsUtils {
-
 public:
     static ge::Status CreateCCUFusionTask(const gert::ExeResGenerationContext *context,
                                           std::vector<std::vector<uint8_t>> &tasks);
@@ -104,7 +99,7 @@ public:
             OPS_LOG_E("Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack", "Failed to get context.");
             return ge::GRAPH_FAILED;
         }
-        
+
         if (tasks.size() == 0U) {
             OPS_LOG_E(context->GetNodeName(), "Empty task vector when generating task.");
             return ge::GRAPH_FAILED;
@@ -142,7 +137,6 @@ private:
         OPS_LOG_D(context->GetNodeName(), "Op [%s] get group [%d] success.", opType, cnt);
         return true;
     }
-
 };
 } // namespace ops
 

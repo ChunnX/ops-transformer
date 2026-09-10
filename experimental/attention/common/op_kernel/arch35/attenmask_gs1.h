@@ -65,7 +65,6 @@ struct MaskInfo {
     uint64_t s2LeftPaddingSize = 0;
 };
 
-// TODO，后续放到VF层
 __simd_vf__ inline void MergeBand(const uint64_t maskNextUb, const uint64_t maskPreUb, const uint16_t loopCount)
 {
     RegTensor<uint32_t> vreg_pre;
@@ -120,8 +119,8 @@ __simd_vf__ inline void Flip(const uint64_t maskPreUb, const uint16_t loopCount)
 }
 
 template <typename T, uint32_t s2BaseSize>
-__simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16_t midGLoop,
-    uint16_t tailGLoop, uint16_t midS1Count)
+__simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T *maskUb, uint16_t headGLoop, uint16_t midGLoop, uint16_t tailGLoop,
+                                 uint16_t midS1Count)
 {
     constexpr uint32_t repeatStride = s2BaseSize >> 5;
 
@@ -132,37 +131,37 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16
     MaskReg preg_all;
     if constexpr (s2BaseSize == 128) {
         preg_all = CreateMask<bool, MaskPattern::VL128>();
-    } else {    // s2BaseSize = 256
+    } else { // s2BaseSize = 256
         preg_all = CreateMask<bool, MaskPattern::ALL>();
     }
 
-    for (uint16_t x = headGLoop; x > 0; x = 0) {     // if (headGLoop > 0) {}
-        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            vreg_g_head, maskUb, 1, repeatStride, preg_all);
+    for (uint16_t x = headGLoop; x > 0; x = 0) { // if (headGLoop > 0) {}
+        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_head, maskUb, 1,
+                                                                                        repeatStride, preg_all);
         for (uint16_t i = 1; i < headGLoop; ++i) {
-            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                maskUb, vreg_g_head, 1, repeatStride, preg_all);
+            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_head, 1,
+                                                                                             repeatStride, preg_all);
         }
     }
 
-    for (uint16_t x = midGLoop; x > 0; x = 0) {     // if (midGLoop > 0) {}
+    for (uint16_t x = midGLoop; x > 0; x = 0) { // if (midGLoop > 0) {}
         for (uint16_t i = 0; i < midS1Count; ++i) {
-            LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                vreg_g_mid, maskUb, 1, repeatStride, preg_all);
+            LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_mid, maskUb, 1,
+                                                                                            repeatStride, preg_all);
             for (uint16_t j = 1; j < midGLoop; ++j) {
-                StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     maskUb, vreg_g_mid, 1, repeatStride, preg_all);
             }
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
         }
     }
 
-    for (uint16_t x = tailGLoop; x > 1; x = 0) {     // if (tailGLoop > 1) {}
-        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            vreg_g_tail, maskUb, 1, repeatStride, preg_all);
+    for (uint16_t x = tailGLoop; x > 1; x = 0) { // if (tailGLoop > 1) {}
+        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_tail, maskUb, 1,
+                                                                                        repeatStride, preg_all);
         for (uint16_t i = 1; i < tailGLoop; ++i) {
-            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                maskUb, vreg_g_tail, 1, repeatStride, preg_all);
+            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_tail, 1,
+                                                                                             repeatStride, preg_all);
         }
     }
 }
@@ -199,14 +198,14 @@ __aicore__ inline void MergeMaskDn(LocalTensor<T> &maskNext, LocalTensor<T> &mas
 }
 
 template <typename T, uint32_t s2BaseSize>
-__aicore__ inline void MaskUbCopyS1G(const LocalTensor<T>& maskTensor, int32_t headGSize, int32_t gSize,
-    int32_t tailGSize, int32_t midS1Count)
+__aicore__ inline void MaskUbCopyS1G(const LocalTensor<T> &maskTensor, int32_t headGSize, int32_t gSize,
+                                     int32_t tailGSize, int32_t midS1Count)
 {
     if (gSize <= 1) {
         return;
     }
 
-    __ubuf__ T * maskUb = (__ubuf__ T*)maskTensor.GetPhyAddr();
+    __ubuf__ T *maskUb = (__ubuf__ T *)maskTensor.GetPhyAddr();
     MaskUbCopyS1GVF<T, s2BaseSize>(maskUb, headGSize, gSize, tailGSize, midS1Count);
 }
 
@@ -305,7 +304,7 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
         nextToken =
             static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算Token
-    } else if (info.sparseMode == BAND || info.sparseMode == INIT_SWA) {                                          // 4
+    } else if (info.sparseMode == BAND || info.sparseMode == INIT_SWA) {           // 4
         nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
 
@@ -330,10 +329,9 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
     DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
 }
 
-// TODO，老模板收编完成后删除该函数
 template <typename T>
-__aicore__ inline bool CheckIsSkipAttenMask(LocalTensor<T> &attenMaskUb, MaskInfo &info,
-                                            uint32_t s2BaseSize, bool isPre)
+__aicore__ inline bool CheckIsSkipAttenMask(LocalTensor<T> &attenMaskUb, MaskInfo &info, uint32_t s2BaseSize,
+                                            bool isPre)
 {
     if ((isPre && IsSkipAttentionmaskForPre(info)) || (!isPre && IsSkipAttentionmask(info))) {
         if (isPre) {
@@ -387,7 +385,6 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 
-        // TODO，待优化，后续改成VF
         // head
         DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
         // mid
@@ -453,7 +450,6 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     MaskUbCopyS1G<T, s2BaseSize>(attenMaskUb, headGSize, info.gSize, tailGSize, midS1Count);
 }
 
-// TODO，老模板收编完成后删除该函数
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
                                             bool isPre = false)
@@ -483,8 +479,8 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetByDeltaDn(MaskInfo &info, int64
     if (delta >= 0) {
         offset = (delta < static_cast<int64_t>(info.nBaseSize)) ? delta : info.nBaseSize;
     } else {
-        offset = (-delta < static_cast<int64_t>(attenMaskSizeAlign) ? -delta : attenMaskSizeAlign) *
-                 info.attenMaskS1Stride;
+        offset =
+            (-delta < static_cast<int64_t>(attenMaskSizeAlign) ? -delta : attenMaskSizeAlign) * info.attenMaskS1Stride;
     }
     return offset + 1;
 }
@@ -495,7 +491,7 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info, uint
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
         nextToken =
             static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
-    } else if (info.sparseMode == BAND || info.sparseMode == INIT_SWA) {                                          // 4
+    } else if (info.sparseMode == BAND || info.sparseMode == INIT_SWA) {           // 4
         nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
     uint64_t offset = 0;

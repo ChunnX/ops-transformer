@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如Bus Error等。
 
@@ -106,7 +116,7 @@ aclnnStatus aclnnMatmulReduceScatter(
                 <li>支持空Tensor。</li>
                 <li>与x1的数据类型保持一致。</li>
                 <li>当前版本仅支持二维输入，支持转置/不转置场景。</li>
-                <li>仅支持两根轴转置情况下的<a href="../../../docs/zh/context/非连续的Tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
+                <li>仅支持两根轴转置情况下的<a href="../../../docs/zh/context/non_contiguous_tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
             </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
@@ -213,7 +223,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -286,14 +296,22 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 通信引擎约束：
+
+  <!-- npu="910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持AICPU通信。
+  <!-- end id7 -->
+  <!-- npu="A3" id8 -->
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：仅支持AICPU通信。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持CCU通信。
+  <!-- end id8 -->
+  <!-- npu="950" id9 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持AICPU通信。
+
+  <!-- end id9 -->
 
 - 参数说明中shape涉及的变量说明：
   - m为卡数rank_size的整数倍。
@@ -305,23 +323,32 @@ aclnnStatus aclnnMatmulReduceScatter(
   - rank_size为卡数。
 - x2支持转置/不转置场景，x1只支持不转置场景。
 - x1、x2计算输入的数据类型要和output计算输出的数据类型一致。
+
+<!-- npu="910b" id10 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 支持2、4、8卡，并且仅支持hccs链路all mesh组网。
   - 一个模型中的通算融合MC2算子，仅支持相同通信域。
   - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+<!-- end id10 -->
+<!-- npu="A3" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
   - 支持2、4、8、16、32卡，并且仅支持hccs链路double ring组网。
   - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+<!-- end id11 -->
+<!-- npu="950" id12 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16、32、64卡，并且仅支持hccs链路all mesh组网。
-  - ReduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - ReduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m* n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
   - aclnnMatmulReduceScatter默认为确定性实现。
+
+<!-- end id12 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
+<!-- npu="950,A3,910b" id13 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
@@ -344,7 +371,7 @@ aclnnStatus aclnnMatmulReduceScatter(
     #define LOG_PRINT(message, ...)         \
         do {                                \
             printf(message, ##__VA_ARGS__); \
-        } while(0)
+        } while (0)
 
     constexpr int DEV_NUM = 2;
 
@@ -368,7 +395,7 @@ aclnnStatus aclnnMatmulReduceScatter(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i +1] * strides[i + 1];
+            strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
             shape.data(), shape.size(), *deviceAddr);
@@ -524,3 +551,5 @@ aclnnStatus aclnnMatmulReduceScatter(
         return 0;
     }
     ```
+
+<!-- end id13 -->

@@ -16,15 +16,14 @@
 #pragma once
 
 #include "fa_tiling_info.h"
-#include "fa_tiling_shape.h"
 
 namespace optiling {
 namespace flash_attn {
 class FaInfoParser {
 public:
-    explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit FaInfoParser(const gert::TilingContext *context)
+        : context_(context)
+    {}
     ~FaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -52,6 +51,8 @@ public:
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     void GetKvStorageMode();
+    void GetKvIsContiguous();
+    ge::graphStatus GetStrides();
 
     void SetFaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
@@ -101,6 +102,18 @@ public:
     int64_t keyTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
 
+    // kvcache strides (tensor v2 view inputs)
+    const gert::Stride *keyStrides_ = nullptr;
+    const gert::Stride *valueStrides_ = nullptr;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+
+    bool hasViewStride_ = true;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
+
     // Layout
     FaLayout layoutQ_ = FaLayout::BSND;
     FaLayout layoutKV_ = FaLayout::BSND;
@@ -112,7 +125,7 @@ public:
     int32_t blockNum_ = 0;
 
     // NPU信息
-    NpuArch npuArch_ = NpuArch::DAV_3510;
+    NpuArch npuArch_ = NpuArch::DAV_RESV;
 
     // Dtype信息
     ge::DataType inputQType_ = ge::DT_FLOAT16;

@@ -25,7 +25,7 @@
 #endif
 
 namespace {
-    constexpr size_t CCL_BUFFER_RATIO = 2;
+constexpr size_t CCL_BUFFER_RATIO = 2;
 }
 
 namespace Mc2Hcom {
@@ -49,14 +49,14 @@ static const string GetLibPath()
     const char *ascendPath = std::getenv("ASCEND_HOME_PATH");
     if (ascendPath == nullptr) {
         OP_LOGE("", "Ascend home path doesn't exist.");
-        return nullptr;
+        return "";
     }
 #if defined(__x86_64__)
     std::string hcclPathPostfix = "/x86_64-linux/lib64/libhccl_fwk.so";
 #elif defined(__aarch64__)
     std::string hcclPathPostfix = "/aarch64-linux/lib64/libhccl_fwk.so";
 #else
-    return nullptr;
+    return "";
 #endif
     std::string fullPath = ascendPath + hcclPathPostfix;
     OP_LOGI("", "Loading lib in path %s.", fullPath.c_str());
@@ -105,8 +105,8 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
         return;
     }
 #else
-    if (getCommHandle_ == nullptr || getNetLayers_ == nullptr || getTopoTypeByLayer_ == nullptr
-        || getInstSize_ == nullptr || getHcclBuffer_ == nullptr) {
+    if (getCommHandle_ == nullptr || getNetLayers_ == nullptr || getTopoTypeByLayer_ == nullptr ||
+        getInstSize_ == nullptr || getHcclBuffer_ == nullptr) {
         dlclose(handle_); // Release dlopen handle to prevent resource leak
         handle_ = nullptr;
         OP_LOGE("", "Lib load new topo functions failed.");
@@ -124,8 +124,8 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 
 MC2HcomTopology &MC2HcomTopology::GetInstance()
 {
-    static const char *libPath = GetLibPath().c_str();
-    static MC2HcomTopology loader(libPath);
+    static const std::string libPathStr = GetLibPath();
+    static MC2HcomTopology loader(libPathStr.c_str());
     return loader;
 }
 
@@ -178,7 +178,8 @@ HcclResult MC2HcomTopology::CallCommGetNetLayers(HcclComm comm, uint32_t **netLa
     return static_cast<HcclResult>(getNetLayers_(comm, netLayer, netLayerNum));
 }
 
-HcclResult MC2HcomTopology::CallCommGetInstTopoTypeByNetLayer(HcclComm comm, uint32_t netLayer, uint32_t *topoType) const
+HcclResult MC2HcomTopology::CallCommGetInstTopoTypeByNetLayer(HcclComm comm, uint32_t netLayer,
+                                                              uint32_t *topoType) const
 {
     if (getTopoTypeByLayer_ == nullptr) {
         OP_LOGE("", "Failed to get topo type, func load failed.");
@@ -311,7 +312,7 @@ HcclResult MC2HcomTopology::TryGetGroupTopoType(const char *group, uint32_t *top
     return HCCL_SUCCESS;
 }
 #else
-HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize(const char *group, uint64_t* cclBufferSize)
+HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize(const char *group, uint64_t *cclBufferSize)
 {
     uint32_t ret = ge::HcomTopoInfo::Instance().GetGroupLocalWindowSize(group, *cclBufferSize);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -345,4 +346,4 @@ HcclResult MC2HcomTopology::TryGetGroupTopoType(const char *group, uint32_t *top
     return HCCL_SUCCESS;
 }
 #endif
-}  // namespace Mc2Hcom
+} // namespace Mc2Hcom

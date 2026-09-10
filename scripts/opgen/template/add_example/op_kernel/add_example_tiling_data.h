@@ -15,9 +15,9 @@
 
 #ifndef __ADD_EXAMPLE_TILLING_DATA_H__
 #define __ADD_EXAMPLE_TILLING_DATA_H__
- 
+
 struct AddExampleTilingData {
-    int64_t  totalLength;
-    int64_t  tileNum;
+    int64_t totalLength;
+    int64_t tileNum;
 };
 #endif

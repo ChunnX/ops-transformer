@@ -23,7 +23,7 @@ using namespace op;
 extern "C" {
 #endif
 
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
 
 // 根据API定义，需要列出所能支持的所有dtype
 const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
@@ -40,10 +40,10 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT = {
 
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT_310P = {
-    op::DataType::DT_UINT64, op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT_310P = {op::DataType::DT_UINT64,
+                                                                                    op::DataType::DT_INT64};
 
-bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma)
+bool ArnCheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *residual, const aclTensor *gamma)
 {
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
@@ -52,29 +52,29 @@ bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* 
     return true;
 }
 
-bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual)
+bool ArnCheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *residual)
 {
     const size_t x1_len = x1->GetViewShape().GetDimNum();
     const size_t x2_len = x2->GetViewShape().GetDimNum();
     const size_t residual_len = residual->GetViewShape().GetDimNum();
-    OP_LOGI(
-        "MatmulAllReduceAddRmsNorm, x1 shape: %s, x2 shape: %s, residual shape: %s.",
-        op::ToString(x1->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString(),
-        op::ToString(residual->GetViewShape()).GetString());
+    OP_LOGI("MatmulAllReduceAddRmsNorm, x1 shape: %s, x2 shape: %s, residual shape: %s.",
+            op::ToString(x1->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString(),
+            op::ToString(residual->GetViewShape()).GetString());
     if (x1_len < NUM_ONE || x2_len < NUM_ONE || residual_len < NUM_ONE) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1/x2/residual", "1D or less", "at least 2D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1/x2/residual", "1D or less",
+                                     "at least 2D");
         return false;
     }
     if (x1->GetViewShape().GetDim(x1_len - 1) != x2->GetViewShape().GetDim(0)) {
-        OP_LOGE_FOR_INVALID_SHAPE(
-            "aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1/x2",
-            op::ToString(x1->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1/x2",
+                                  op::ToString(x1->GetViewShape()).GetString(),
+                                  op::ToString(x2->GetViewShape()).GetString());
         return false;
     }
     if (residual->GetViewShape().GetDim(residual_len - 1) != x2->GetViewShape().GetDim(x2_len - 1)) {
-        OP_LOGE_FOR_INVALID_SHAPE(
-            "aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "residual/x2",
-            op::ToString(residual->GetViewShape()).GetString(), op::ToString(x2->GetViewShape()).GetString());
+        OP_LOGE_FOR_INVALID_SHAPE("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize", "residual/x2",
+                                  op::ToString(residual->GetViewShape()).GetString(),
+                                  op::ToString(x2->GetViewShape()).GetString());
         return false;
     }
     return true;
@@ -82,21 +82,20 @@ bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* re
 
 // AddRmsNorm Inner
 aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
-    const aclTensor* antiquantOffset, const aclTensor* dequant, const aclTensor* residual, const aclTensor* gamma,
-    double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t antiquantGroupSize,
-    const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *antiquantScale,
+    const aclTensor *antiquantOffset, const aclTensor *dequant, const aclTensor *residual, const aclTensor *gamma,
+    double epsilon, const char *group, const char *reduceOp, int64_t commTurn, int64_t antiquantGroupSize,
+    const aclTensor *y, const aclTensor *normOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2);
     aclnnStatus ret = aclnnInnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, const_cast<char*>(group),
-        const_cast<char*>(reduceOp), transposeX1,
-        transposeX2, commTurn, antiquantGroupSize, epsilon, y, normOut, workspaceSize, executor);
-    OP_LOGI(
-        "Group %s, reduce op %s, trans flag %u %u, epsilon %lf, ret %d.", group, reduceOp, transposeX1, transposeX2,
-        epsilon, ret);
+        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, const_cast<char *>(group),
+        const_cast<char *>(reduceOp), transposeX1, transposeX2, commTurn, antiquantGroupSize, epsilon, y, normOut,
+        workspaceSize, executor);
+    OP_LOGI("Group %s, reduce op %s, trans flag %u %u, epsilon %lf, ret %d.", group, reduceOp, transposeX1, transposeX2,
+            epsilon, ret);
 #ifdef MC2_UT
     ret = 0;
 #endif

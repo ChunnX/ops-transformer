@@ -18,7 +18,7 @@
 - 输入输出支持以下场景：
   - 场景一：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, head_size]
     value:[batch * seq_len, num_head, head_size]
     key_cache:[num_blocks, num_head, block_size, head_size]
@@ -35,7 +35,7 @@
 
     对于每个token（i ∈ [0, num_tokens)）和每个头（j ∈ [0, num_head)）：
 
-    ```
+    ```python
     block_idx = slot_mapping[i] // block_size
     block_offset = slot_mapping[i] % block_size
 
@@ -143,3 +143,4 @@
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnn_ScatterPaKvCacheWithKScale](./examples/test_aclnn_scatter_pa_kv_cache_with_k_scale.cpp) | 通过[aclnnScatterPaKvCacheWithKScale](./docs/aclnnScatterPaKvCacheWithKScale.md)调用ScatterPaKvCacheWithKScale算子 |
 | 图模式 | [test_geir_ScatterPaKvCacheWithKScale](./examples/test_geir_scatter_pa_kv_cache_with_k_scale.cpp) | 通过[算子IR](./op_graph/scatter_pa_kv_cache_with_k_scale_proto.h)调用ScatterPaKvCacheWithKScale算子 |
+| PyTorch API | - | 通过[scatter_pa_kv_cache_with_k_scale](../../attention/scatter_pa_kv_cache_with_k_scale/docs/torchapi_scatter_pa_kv_cache_with_k_scale.md)接口调用scatter_pa_kv_cache_with_k_scale算子。 |

@@ -4,21 +4,34 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：执行单路旋转位置编码计算。
 - 计算公式：
 
+    <!-- npu="A3,910b" id7 -->
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
+    <!-- end id7 -->
 
     （1）half模式（mode等于0）：
 
@@ -106,7 +119,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbedding”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnRotaryPositionEmbeddingGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbedding”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(
@@ -227,16 +240,62 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   </tbody>
   </table>
 
+  <!-- npu="310p" id8 -->
   - <term>Atlas 推理系列产品</term>：不支持BFLOAT16数据类型
 
+  <!-- end id8 -->
   - 参数mode约束：
+
+    <!-- npu="A3,910b" id9 -->
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：0=half，1=interleave。
-    - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
+    <!-- end id9 -->
+    <!-- npu="950" id10 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：0=half，1=interleave，2=quarter，3=interleave-half。
+    <!-- end id10 -->
+    <!-- npu="310p" id11 -->
     - <term>Atlas 推理系列产品</term>：0=half。
+
+    <!-- end id11 -->
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 288px">
+  <col style="width: 125px">
+  <col style="width: 742px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入的x、cos、sin或out是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>传入的x、cos、sin、out的数据类型和格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td rowspan="2">561002</td>
+      <td>传入的x、cos、sin、out的shape不匹配。</td>
+    </tr>
+    <tr>
+      <td>传入的mode参数不在支持的范围内。 </td>
+    </tr>
+  </tbody>
+  </table>
 
 ## aclnnRotaryPositionEmbedding
 
@@ -279,22 +338,25 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnRotaryPositionEmbedding默认确定性实现。
 
+<!-- npu="950" id12 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
   输入张量x支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播后的shape必须等于x的shape。
   - 当x为TND时，cos、sin支持T1D、TND。
+<!-- end id12 -->
+<!-- npu="A3,910b" id13 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    
+
   输入张量x支持BNSD、BSND、SBND、TND排布。
   输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
   输入张量x和输出张量y的shape必须完全相同。
@@ -302,8 +364,8 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   - half模式：
     - B，N < 1000;
     - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B * N <= S * 8
-      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum或者D >= 80
+      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B *N <= S* 8
+      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B *N* 2 <= (S + coreNum -1) / coreNum或者D >= 80
     - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
     - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
     - 当x为TND时，cos、sin支持T1D、TND
@@ -313,9 +375,11 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     - 当x为BSND时，cos、sin支持1S1D
     - 当x为SBND时，cos、sin支持S11D
     - 当x为TND时，cos、sin支持T1D
-    
+
+<!-- end id13 -->
+<!-- npu="310p" id14 -->
 - <term>Atlas 推理系列产品</term>：
-    
+
   输入张量x支持BNSD、BSND、SBND、TND排布。
   输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<=128，且必须为32的倍数。
   输入张量x和输出张量y的shape必须完全相同。
@@ -323,16 +387,18 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   - 仅支持half模式：
     - B，N < 1000
     - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - B * N <= S * 8
+      - B *N <= S* 8
     - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
-      - (N - 1) * D * BytePerData / 32 < UINT16\_MAX，其中BytePerData当输入数据类型为FLOAT16时，值为2；数据类型为FLOAT32时，值为4
+      - (N - 1) *D* BytePerData / 32 < UINT16\_MAX，其中BytePerData当输入数据类型为FLOAT16时，值为2；数据类型为FLOAT32时，值为4
     - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
-      - (B * N - 1) * D * BytePerData / 32 < UINT16\_MAX，其中BytePerData当输入数据类型为FLOAT16时，值为2；数据类型为FLOAT32时，值为4
+      - (B *N - 1)* D * BytePerData / 32 < UINT16\_MAX，其中BytePerData当输入数据类型为FLOAT16时，值为2；数据类型为FLOAT32时，值为4
     - 当x为TND时，cos、sin支持T1D、TND
+
+<!-- end id14 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -438,7 +504,7 @@ int main() {
                                       100, 20, 97, 119, 10, 4, 53, 13, 46, 82, 103, 119, 124, 80, 23, 67, 78, 56, 119, 122, 40,
                                       58, 128, 27, 30, 52, 71, 42, 123, 69, 4, 5, 116, 97, 38, 107, 8, 4, 65, 120, 40, 22, 60,
                                       44, 48, 66, 68, 125, 4, 93, 112, 112, 113, 90, 94, 23, 104, 39, 85, 84, 64, 128, 96, 119};
-    std::vector<float> outHostData(128, 0);                                      
+    std::vector<float> outHostData(128, 0);
 
     // 创建x aclTensor
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
@@ -451,7 +517,7 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);    
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;

@@ -4,32 +4,41 @@
 
 ## 产品支持情况
 
-| 产品                                                                            | 是否支持 |
-| :------------------------------------------------------------------------------ | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                                                | ×       |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | √       |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √       |
-| <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
-| <term>Atlas 推理系列产品</term>                                                | ×       |
-| <term>Atlas 训练系列产品</term>                                                 | ×       |
-
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- **接口功能**：完成[AllGather](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。
+- **接口功能**：完成[AllGather](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。
 - **计算公式**：
 
     $$
     gatherOut=AllGather(a0, a1)
     $$
-    
+
     $$
     c[i]=gatherOut[i] + b[i]
     $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAllGatherAddGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAllGatherAdd”接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAllGatherAddGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAllGatherAdd”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAllGatherAddGetWorkspaceSize(
@@ -161,8 +170,8 @@ aclnnStatus aclnnAllGatherAdd(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
-    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
+
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1166px"> <colgroup>
@@ -229,7 +238,7 @@ aclnnStatus aclnnAllGatherAdd(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)
 
 ## 约束说明
 
@@ -243,6 +252,7 @@ aclnnStatus aclnnAllGatherAdd(
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
+<!-- npu="A3,910b" id7 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
     ```Cpp
@@ -588,3 +598,5 @@ aclnnStatus aclnnAllGatherAdd(
         return finalRet;
     }
     ```
+
+<!-- end id7 -->

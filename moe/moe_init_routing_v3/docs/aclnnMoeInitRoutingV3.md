@@ -1,17 +1,27 @@
-# aclnnMoeInitRoutingV3	
+# aclnnMoeInitRoutingV3
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_init_routing_v3)
 
-## 产品支持情况	
+## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -28,7 +38,7 @@
       <td>0</td>
       <td>true</td>
       <td>0</td>
-      <td align="left">comsum模式，expertTokensCountOrCumsumOut表示按排序后各专家处理token的计数前缀和直方图。</td>
+      <td align="left">cumsum模式，expertTokensCountOrCumsumOut表示按排序后各专家处理token的计数前缀和直方图。</td>
     </tr>
     <tr align="center">
       <td>0</td>
@@ -56,7 +66,7 @@
     </tr>
   </table>
   </ol>
-- 计算公式：  
+- 计算公式：
 
   1.对输入expertIdx做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
 
@@ -76,7 +86,7 @@
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
       $$
-      
+
   3.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensCountOrCumsumOutOptional：
 
     $$
@@ -89,7 +99,7 @@
      $$
      quantResult=round((x∗scaleOptional)+offsetOptional)
      $$
-     
+
     - 动态quant：
         - 若不输入scale：
 
@@ -112,7 +122,7 @@
             $$
 
         - 当quantMode为13时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
-  
+
   5.若活跃的expert范围为全专家范围时，按照Scatter索引搬运token；反之按照Gather索引搬运token。在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
     - 非量化场景
       - 按照Scatter索引搬运
@@ -140,7 +150,7 @@
       expandedXOut[gatherRowIdx[i]]=quantResult[i // K]
       $$
 
-  6.expandedRowIdxOut的有效元素数量availableIdxNum，计算方式为expertIdx中activeExpertRangeOptional范围内的元素的个数
+  6.expandedRowIdxOut的有效元素数量availableIdxNum，计算方式为expertIdx中activeExpertRangeOptional范围内的元素的个数，-1也不在该范围内，表示无效专家，不参与路由计算：
 
     $$
     availableIdxNum = |\{x\in expertIdx| expert\_start \le x<expert\_end \ \}|
@@ -148,36 +158,36 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
-  const aclTensor   *x, 
-  const aclTensor   *expertIdx, 
-  const aclTensor   *scaleOptional, 
-  const aclTensor   *offsetOptional, 
-  int64_t            activeNum, 
-  int64_t            expertCapacity, 
-  int64_t            expertNum, 
-  int64_t            dropPadMode, 
-  int64_t            expertTokensNumType, 
-  bool               expertTokensNumFlag, 
-  int64_t            quantMode, 
-  const aclIntArray *activeExpertRangeOptional, 
-  int64_t            rowIdxType, 
+  const aclTensor   *x,
+  const aclTensor   *expertIdx,
+  const aclTensor   *scaleOptional,
+  const aclTensor   *offsetOptional,
+  int64_t            activeNum,
+  int64_t            expertCapacity,
+  int64_t            expertNum,
+  int64_t            dropPadMode,
+  int64_t            expertTokensNumType,
+  bool               expertTokensNumFlag,
+  int64_t            quantMode,
+  const aclIntArray *activeExpertRangeOptional,
+  int64_t            rowIdxType,
   const aclTensor   *expandedXOut,
   const aclTensor   *expandedRowIdxOut,
   const aclTensor   *expertTokensCountOrCumsumOut,
-  const aclTensor   *expandedScaleOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *expandedScaleOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -221,7 +231,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
     <tr>
       <td>expertIdx（aclTensor）</td>
       <td>输入</td>
-      <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数</td>
+      <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数，-1表示无效专家（该位置不参与路由，会被过滤）</td>
       <td>shape为(NUM_ROWS, K)</td>
       <td>INT32</td>
       <td>ND</td>
@@ -238,12 +248,12 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
         <li>quantMode为1的INT8动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
-        <li>MXFP8 RoundScale+Amax量化场景下（quantMode为16、17）不输入。</li>
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
         <li>MXFP4量化场景下（quantMode为9）不输入。</li>
         <li>FP8 PerGroup量化场景下（quantMode为4、5、14、15）不输入。</li>
         <li>FP8 PerBlock量化场景下（quantMode为11、12）不输入。</li>
+        <li>MXFP8 RoundScale+Amax量化场景下（quantMode为16、17）不输入。</li>
         </ul></td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
@@ -277,7 +287,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>expertCapacity（int64_t）</td>
       <td>输入</td>
       <td>表示每个专家能够处理的tokens数</td>
-      <td>入参校验大于0小于NUM_ROWS。</td>
+      <td>Dropless场景下，不使用该参数。DropPad场景下，入参必须校验且取值范围为(0, NUM_ROWS]。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -298,7 +308,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>输入</td>
       <td>表示是否为DropPad场景</td>
       <td>取值为0和1
-        <br>0：表示Dropless场景，该场景下不校验expertCapacity；
+        <br>0：表示Dropless场景；
         <br>1：表示DropPad场景；
       </td>
       <td>INT64</td>
@@ -311,7 +321,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>输入</td>
       <td>表示直方图的不同模式</td>
       <td>取值为0、1和2
-        <br>0：表示comsum模式；
+        <br>0：表示cumsum模式；
         <br>1：表示count模式；
         <br>2：表示key_value模式；
       </td>
@@ -334,7 +344,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示不同量化场景</td>
-      <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13、16、17（不同产品支持情况有差异，见表后描述）
+      <td>取值为0、1、-1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17（不同产品支持情况有差异，见表后描述）
         <br>0：表示静态quant场景;
         <br>1：表示动态quant场景，expandedXOut量化到INT8;
         <br>-1：表示不量化场景;
@@ -471,10 +481,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-    
+
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 319px">
   <col style="width: 144px">
@@ -510,21 +520,32 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
+
+    <!-- npu="A3,910b" id7 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9、11、12、13、16、17。
+    <!-- end id7 -->
+    <!-- npu="950" id8 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17。
+    <!-- end id8 -->
+
+  <!-- npu="950" id9 -->
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
-    - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
+    - expertCapacity在Dropless场景下不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
     - dropPadMode支持取值为0和1，DropPad模式（dropPadMode=1）具有如下额外约束：<ul><li>rowIdxType仅支持取值为0（gather索引）。</li><li>activeExpertRangeOptional必须为[0, expertNum]。</li><li>expertTokensNumType仅支持取值为1（count模式）。</li><li>quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。</li></ul>
     - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
   - <term>Ascend 950PR/Ascend 950DT</term>支持quantMode为13的INT4动态量化场景，需同时满足：
     - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
     - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
     - activeNum等于NUM_ROWS*K。
     - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
     - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
-    
+
+  <!-- end id10 -->
+
 ## aclnnMoeInitRoutingV3
 
 - **参数说明：**
@@ -566,7 +587,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -575,8 +596,14 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - 该算子在以下产品型号上支持三种性能模板，需要分别额外满足准入条件，否则进入通用模板：
   - 支持性能模板的产品：
+
+    <!-- npu="910b" id11 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
+    <!-- end id11 -->
+    <!-- npu="A3" id12 -->
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>
+    <!-- end id12 -->
+
   - 性能模板的准入条件：
     <table>
       <tr align="center">
@@ -604,7 +631,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -613,13 +640,13 @@ aclnnStatus aclnnMoeInitRoutingV3(
 #include "aclnnop/aclnn_moe_init_routing_v3.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -643,7 +670,7 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -658,20 +685,13 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
         strides[i] = shape[i + 1] * strides[i + 1];
     }
     // 调用aclCreateTensor接口创建aclTensor
-    *tensor = aclCreateTensor(shape.data(),
-        shape.size(),
-        dataType,
-        strides.data(),
-        0,
-        aclFormat::ACL_FORMAT_ND,
-        shape.data(),
-        shape.size(),
-        *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 int main()
 {
-    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -707,7 +727,7 @@ int main()
     aclTensor *offset = nullptr;
 
     int64_t activeNum = 12;
-    int64_t expertCapacity = 4;
+    int64_t expertCapacity = 0;
     int64_t expertNum = 256;
     int64_t dropPadMode = 0;
     int64_t expertTokensNumType = 1;
@@ -726,7 +746,7 @@ int main()
     std::vector<float> scaleHostData = {0.3423, 0.1652, 0.2652};
     std::vector<float> offsetHostData = {1.8369};
 
-    std::vector<int8_t> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> expandedRowIdxOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalHostData = {0, 0, 0, 0};
     std::vector<float> expandedScaleOutOptionalHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -738,60 +758,37 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT, &scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(offsetHostData, scaleShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
+    ret = CreateAclTensor(offsetHostData, offsetShape, &offsetDeviceAddr, aclDataType::ACL_FLOAT, &offset);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
-    ret = CreateAclTensor(
-        expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_INT8, &expandedXOut);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT,
+                          &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedRowIdxOutHostData,
-        expandedRowIdxOutShape,
-        &expandedRowIdxOutDeviceAddr,
-        aclDataType::ACL_INT32,
-        &expandedRowIdxOut);
+    ret = CreateAclTensor(expandedRowIdxOutHostData, expandedRowIdxOutShape, &expandedRowIdxOutDeviceAddr,
+                          aclDataType::ACL_INT32, &expandedRowIdxOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertTokensCountOrCumsumOutOptionalHostData,
-        expertTokensCountOrCumsumOutOptionalShape,
-        &expertTokensCountOrCumsumOutOptionalDeviceAddr,
-        aclDataType::ACL_INT64,
-        &expertTokensCountOrCumsumOutOptional);
+    ret = CreateAclTensor(expertTokensCountOrCumsumOutOptionalHostData, expertTokensCountOrCumsumOutOptionalShape,
+                          &expertTokensCountOrCumsumOutOptionalDeviceAddr, aclDataType::ACL_INT64,
+                          &expertTokensCountOrCumsumOutOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expandedScaleOutOptionalHostData,
-        expandedScaleOutOptionalShape,
-        &expandedScaleOutOptionalDeviceAddr,
-        aclDataType::ACL_FLOAT,
-        &expandedScaleOutOptional);
+    ret = CreateAclTensor(expandedScaleOutOptionalHostData, expandedScaleOutOptionalShape,
+                          &expandedScaleOutOptionalDeviceAddr, aclDataType::ACL_FLOAT, &expandedScaleOutOptional);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 3. 调用CANN算子库API，需要修改为具体的API
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // 调用aclnnMoeInitRoutingV3第一段接口
-    ret = aclnnMoeInitRoutingV3GetWorkspaceSize(x,
-        expertIdx,
-        scale,
-        offset,
-        activeNum,
-        expertCapacity,
-        expertNum,
-        dropPadMode,
-        expertTokensNumType,
-        expertTokensNumFlag,
-        quantMode,
-        activeExpertRange,
-        rowIdxType,
-        expandedXOut,
-        expandedRowIdxOut,
-        expertTokensCountOrCumsumOutOptional,
-        expandedScaleOutOptional,
-        &workspaceSize,
-        &executor);
+    ret = aclnnMoeInitRoutingV3GetWorkspaceSize(
+        x, expertIdx, scale, offset, activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType,
+        expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType, expandedXOut, expandedRowIdxOut,
+        expertTokensCountOrCumsumOutOptional, expandedScaleOutOptional, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeInitRoutingV3GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
     // 调用aclnnMoeInitRoutingV3第二段接口
     ret = aclnnMoeInitRoutingV3(workspaceAddr, workspaceSize, executor, stream);
@@ -801,46 +798,36 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     auto expandedXSize = GetShapeSize(expandedXOutShape);
-    std::vector<int8_t> expandedXData(expandedXSize, 0);
-    ret = aclrtMemcpy(expandedXData.data(),
-        expandedXData.size() * sizeof(expandedXData[0]),
-        expandedXOutDeviceAddr,
-        expandedXSize * sizeof(int8_t),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    std::vector<float> expandedXData(expandedXSize, 0);
+    ret = aclrtMemcpy(expandedXData.data(), expandedXData.size() * sizeof(expandedXData[0]), expandedXOutDeviceAddr,
+                      expandedXSize * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expandedXSize; i++) {
-        LOG_PRINT("expandedXData[%ld] is: %d\n", i, expandedXData[i]);
+        LOG_PRINT("expandedXData[%ld] is: %f\n", i, expandedXData[i]);
     }
     auto expandedRowIdxSize = GetShapeSize(expandedRowIdxOutShape);
     std::vector<int> expandedRowIdxData(expandedRowIdxSize, 0);
-    ret = aclrtMemcpy(expandedRowIdxData.data(),
-        expandedRowIdxData.size() * sizeof(expandedRowIdxData[0]),
-        expandedRowIdxOutDeviceAddr,
-        expandedRowIdxSize * sizeof(int32_t),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(expandedRowIdxData.data(), expandedRowIdxData.size() * sizeof(expandedRowIdxData[0]),
+                      expandedRowIdxOutDeviceAddr, expandedRowIdxSize * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expandedRowIdxSize; i++) {
         LOG_PRINT("expandedRowIdxData[%ld] is: %d\n", i, expandedRowIdxData[i]);
     }
     auto expertTokensBeforeCapacitySize = GetShapeSize(expertTokensCountOrCumsumOutOptionalShape);
-    std::vector<int> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
-    ret = aclrtMemcpy(expertTokenIdxData.data(),
-        expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]),
-        expertTokensCountOrCumsumOutOptionalDeviceAddr,
-        expertTokensBeforeCapacitySize * sizeof(int32_t),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    std::vector<int64_t> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
+    ret = aclrtMemcpy(expertTokenIdxData.data(), expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]),
+                      expertTokensCountOrCumsumOutOptionalDeviceAddr, expertTokensBeforeCapacitySize * sizeof(int64_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expertTokensBeforeCapacitySize; i++) {
-        LOG_PRINT("expertTokenIdxData[%ld] is: %d\n", i, expertTokenIdxData[i]);
+        LOG_PRINT("expertTokenIdxData[%ld] is: %ld\n", i, expertTokenIdxData[i]);
     }
 
     auto dynamicQuantScaleSize = GetShapeSize(expandedScaleOutOptionalShape);
     std::vector<float> dynamicQuantScaleData(dynamicQuantScaleSize, 0);
-    ret = aclrtMemcpy(dynamicQuantScaleData.data(),
-        dynamicQuantScaleData.size() * sizeof(dynamicQuantScaleData[0]),
-        expandedScaleOutOptionalDeviceAddr,
-        dynamicQuantScaleSize * sizeof(float),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(dynamicQuantScaleData.data(), dynamicQuantScaleData.size() * sizeof(dynamicQuantScaleData[0]),
+                      expandedScaleOutOptionalDeviceAddr, dynamicQuantScaleSize * sizeof(float),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < dynamicQuantScaleSize; i++) {
         LOG_PRINT("dynamicQuantScaleData[%ld] is: %f\n", i, dynamicQuantScaleData[i]);

@@ -16,6 +16,8 @@
 #ifndef DISPATH_POLICY_CUSTOM_W4A8_HPP
 #define DISPATH_POLICY_CUSTOM_W4A8_HPP
 
+#include "gated_activation.hpp"
+
 namespace Catlass::Gemm {
 
 template <bool ENABLE_UNIT_FLAG_ = false, bool ENABLE_SHUFFLE_K_ = false>
@@ -69,18 +71,15 @@ template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_ST
 struct MmadDispatchPolicyFor {
     // For W4A4 we need the WithCallback variant so the per-channel scale
     // can be applied during fixpipe.
-    using type =
-        std::conditional_t<
-            std::is_same_v<BType_, AscendC::int4b_t>,
-            MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                    L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-            std::conditional_t<
-                IS_A2_,
-                MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
-                                                L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
-                MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_,
-                                                    L0B_STAGES_, L0C_STAGES_, ENABLE_UNIT_FLAG_,
-                                                    ENABLE_SHUFFLE_K_>>>;
+    using type = std::conditional_t<
+        std::is_same_v<BType_, AscendC::int4b_t>,
+        MmadAtlasA2W4A4MatmulPerChannelDequant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                               ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+        std::conditional_t<IS_A2_,
+                           MmadAtlasA2PreloadAsyncFixpipe<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
+                                                          L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>,
+                           MmadAtlasA3PreloadAsyncFixpipeQuant<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_,
+                                                               L0C_STAGES_, ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_>>>;
 };
 
 template <typename BType_, bool IS_A2_, uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_,
@@ -107,12 +106,16 @@ struct EpilogueAtlasA2PerTokenDequantQuant {
 template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuant {
     using ArchTag = Arch::AtlasA2;
+    using Activation = Catlass::Epilogue::GatedActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
 template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant {
     using ArchTag = Arch::AtlasA2;
+    using Activation = Catlass::Epilogue::GatedActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
@@ -137,6 +140,8 @@ struct EpilogueAtlasA2PerTokenDequantBF16 {
 template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuantInt8 {
     using ArchTag = Arch::AtlasA2;
+    using Activation = Catlass::Epilogue::GatedActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
@@ -146,6 +151,8 @@ struct EpilogueAtlasA2PerTokenDequantSwigluQuantInt8 {
 template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuantBF16 {
     using ArchTag = Arch::AtlasA2;
+    using Activation = Catlass::Epilogue::GatedActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 

@@ -15,7 +15,7 @@
 #ifndef MOE_V2_GATHER_QUANT_H
 #define MOE_V2_GATHER_QUANT_H
 
-#include "inner/moe_v2_common.h"
+#include "inner/moe_init_routing_quant_v2_inner_common.h"
 #include "kernel_operator.h"
 
 namespace MoeInitRoutingQuantV2 {
@@ -24,13 +24,12 @@ using namespace AscendC;
 constexpr int64_t BUFFER_NUM = 2;
 
 template <typename T>
-class MoeV2GatherQuant
-{
+class MoeV2GatherQuant {
 public:
     __aicore__ inline MoeV2GatherQuant(){};
-    __aicore__ inline void Init(
-        GM_ADDR inputX, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR workspace,
-        const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe);
+    __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedRowIdx,
+                                GM_ADDR expandedX, GM_ADDR workspace, const MoeInitRoutingQuantV2TilingData *tilingData,
+                                TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -39,7 +38,7 @@ private:
     __aicore__ inline void CopyOut(int64_t progress);
 
 private:
-    TPipe* pipe;
+    TPipe *pipe;
     TQue<QuePosition::VECIN, BUFFER_NUM> inputXCopyInQueue;
     TQue<QuePosition::VECIN, BUFFER_NUM> expandRowIdxCopyInQueue;
     TQue<QuePosition::VECOUT, BUFFER_NUM> inputXCopyOutQueue;
@@ -52,7 +51,7 @@ private:
     GlobalTensor<float> scaleGm;
     GlobalTensor<float> offsetGm;
 
-    const InnerMoeV2GatherOutComputeTilingData* gatherOutTilingData;
+    const InnerMoeV2GatherOutComputeTilingData *gatherOutTilingData;
 
     int64_t needCoreNum;
     int64_t blockIdx;
@@ -85,6 +84,8 @@ __aicore__ inline void MoeV2GatherQuant<T>::CopyInIndices(int64_t progress)
     LocalTensor<int32_t> indicesLocal = expandRowIdxCopyInQueue.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(this->currentLoopRows * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
+    SetFlag<HardEvent::S_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
     DataCopyPad(indicesLocal, expandedRowIdxGm[indicesOffset], dataCopyParams, dataCopyPadParams);
     expandRowIdxCopyInQueue.EnQue<int32_t>(indicesLocal);
 }
@@ -98,6 +99,7 @@ __aicore__ inline void MoeV2GatherQuant<T>::Compute()
     LocalTensor<half> halfLocal = halfQueue.AllocTensor<half>();
     uint32_t elements = Align(this->colsTileLength, sizeof(T));
     if constexpr (IsSameType<T, bfloat16_t>::value) {
+        PipeBarrier<PIPE_V>();
         Cast(floatLocal, inLocal, RoundMode::CAST_NONE, elements);
         PipeBarrier<PIPE_V>();
         Cast(halfLocal, floatLocal, RoundMode::CAST_NONE, elements);
@@ -107,6 +109,7 @@ __aicore__ inline void MoeV2GatherQuant<T>::Compute()
         Adds(halfLocal, halfLocal, static_cast<half>(this->offset), elements);
         PipeBarrier<PIPE_V>();
         LocalTensor<int32_t> intLocal = floatLocal.ReinterpretCast<int32_t>();
+        PipeBarrier<PIPE_V>();
         Cast(intLocal, halfLocal, RoundMode::CAST_RINT, elements);
         PipeBarrier<PIPE_V>();
         SetDeqScale((half)1.000000e+00f);
@@ -115,6 +118,7 @@ __aicore__ inline void MoeV2GatherQuant<T>::Compute()
         PipeBarrier<PIPE_V>();
         Cast(outLocal, halfLocal, RoundMode::CAST_RINT, elements);
     } else if constexpr (IsSameType<T, float>::value) {
+        PipeBarrier<PIPE_V>();
         Cast(halfLocal, inLocal, RoundMode::CAST_NONE, elements);
         PipeBarrier<PIPE_V>();
         Muls(halfLocal, halfLocal, static_cast<half>(this->scale), elements);
@@ -123,6 +127,7 @@ __aicore__ inline void MoeV2GatherQuant<T>::Compute()
         PipeBarrier<PIPE_V>();
         Cast(outLocal, halfLocal, RoundMode::CAST_RINT, elements);
     } else {
+        PipeBarrier<PIPE_V>();
         Muls(inLocal, inLocal, static_cast<T>(this->scale), elements);
         PipeBarrier<PIPE_V>();
         Adds(inLocal, inLocal, static_cast<T>(this->offset), elements);
@@ -140,6 +145,8 @@ __aicore__ inline void MoeV2GatherQuant<T>::CopyOut(int64_t progress)
     LocalTensor<int32_t> indicesLocal = expandRowIdxCopyInQueue.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
     colsTileLength = this->perLoopCols;
+    SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
     for (int64_t colsLoop = 0; colsLoop < this->colLoops; colsLoop++) {
         int64_t initialRow = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
         int64_t curLoopRow = 0;
@@ -177,9 +184,9 @@ __aicore__ inline void MoeV2GatherQuant<T>::CopyOut(int64_t progress)
 }
 
 template <typename T>
-__aicore__ inline void MoeV2GatherQuant<T>::Init(
-    GM_ADDR inputX, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR workspace,
-    const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe)
+__aicore__ inline void MoeV2GatherQuant<T>::Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedRowIdx,
+                                                 GM_ADDR expandedX, GM_ADDR workspace,
+                                                 const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe)
 {
     this->pipe = tPipe;
     this->blockIdx = GetBlockIdx();
@@ -207,13 +214,13 @@ __aicore__ inline void MoeV2GatherQuant<T>::Init(
     this->lastLoopCols = this->gatherOutTilingData->lastLoopCols;
     this->colLoops = this->gatherOutTilingData->colLoops;
 
-    inputXGm.SetGlobalBuffer((__gm__ T*)inputX);
-    expandedXGm.SetGlobalBuffer((__gm__ int8_t*)expandedX);
+    inputXGm.SetGlobalBuffer((__gm__ T *)inputX);
+    expandedXGm.SetGlobalBuffer((__gm__ int8_t *)expandedX);
     expandedRowIdxGm.SetGlobalBuffer(
-        (__gm__ int32_t*)expandedRowIdx + this->blockIdx * this->gatherOutTilingData->perCoreRows,
+        (__gm__ int32_t *)expandedRowIdx + this->blockIdx * this->gatherOutTilingData->perCoreRows,
         Align(this->coreRows, sizeof(int32_t)));
-    scaleGm.SetGlobalBuffer((__gm__ float*)scale, 1);
-    offsetGm.SetGlobalBuffer((__gm__ float*)offset, 1);
+    scaleGm.SetGlobalBuffer((__gm__ float *)scale, 1);
+    offsetGm.SetGlobalBuffer((__gm__ float *)offset, 1);
     this->scale = scaleGm.GetValue(0);
     this->offset = offsetGm.GetValue(0);
 

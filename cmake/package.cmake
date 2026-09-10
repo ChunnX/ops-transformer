@@ -13,7 +13,7 @@
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)
 
 function(pack_custom)
-  # download makeself package 
+  # download makeself package
   include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
   message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -152,5 +152,5 @@ function(pack_built_in)
   message(STATUS "current compute_unit is: ${compute_unit}")
 
   # ============= CPack =============
-  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer NO_COMPONENT_INSTALL OUTPUT ${CMAKE_INSTALL_PREFIX})
+  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer PACKAGE_TYPE "${PACKAGE_TYPE}")
 endfunction()

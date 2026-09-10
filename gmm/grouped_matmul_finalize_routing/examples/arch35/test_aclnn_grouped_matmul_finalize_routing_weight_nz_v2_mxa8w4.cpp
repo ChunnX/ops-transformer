@@ -35,24 +35,24 @@
 #include "aclnnop/aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
 #include "aclnnop/aclnn_npu_format_cast.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define CHECK_FREE_RET(cond, return_expr)                                                                              \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            Finalize(deviceId, stream);                                                                                \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_FREE_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            Finalize(deviceId, stream); \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -66,8 +66,10 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 int64_t CeilDiv(int64_t a, int64_t b)
 {
-    if (b == 0) return 0;
-    if (a <= 0) return 0;
+    if (b == 0)
+        return 0;
+    if (a <= 0)
+        return 0;
     return (a - 1) / b + 1;
 }
 
@@ -156,8 +158,10 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     int64_t *dstShape = nullptr;
     uint64_t dstShapeSize = 0;
     int actualFormat;
-    ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, 29, aclFormat::ACL_FORMAT_ND, &dstShape, &dstShapeSize,
-                                                   &actualFormat);
+    // aclnnNpuFormatCast private format code: 29 means FRACTAL_NZ.
+    constexpr int64_t kNpuFormatFractalNz = 29;
+    ret = aclnnNpuFormatCastCalculateSizeAndFormat(srcTensor, kNpuFormatFractalNz, aclFormat::ACL_FORMAT_ND, &dstShape,
+                                                   &dstShapeSize, &actualFormat);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNpuFormatCastCalculateSizeAndFormat failed. ERROR: %d\n", ret);
               return ret);
 
@@ -260,11 +264,11 @@ int RunExample(int32_t deviceId, aclrtStream &stream)
     std::vector<uint8_t> wHostData(GetShapeSize(wShape));
     std::vector<uint8_t> scaleHostData(GetShapeSize(scaleShape));
     std::vector<uint8_t> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
-    std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape), m/e);
+    std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape), m / e);
 
     std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
     std::vector<float> logitHostData(GetShapeSize(logitShape));
-    std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+    std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
     std::vector<float> outHostData(GetShapeSize(outShape));
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x);

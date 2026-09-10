@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -41,9 +51,9 @@
         $$
         hiddenState_q = query
         $$
-        
+
         当`normType = LAYER_NORM`时
-        
+
         $$
         \begin{aligned}
         queryMean_{b,s,n} &= \frac{1}{D}\sum_{i=0}^{D}query_{b,s,n} \\
@@ -95,15 +105,16 @@
         ```
 
     5. RoPE的输入`ropeSin`的shape为`(seqRope, D)`，其中
-    $$
-    seqRope \leq \min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
-    $$
+
+      $$
+      seqRope \leq \min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
+      $$
 
     6. 当场景为训练时，会输出`queryMean, queryRstd，encoderQueryMean, encoderQueryRstd`供后续反向使用。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNormRopeConcatGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnNormRopeConcat”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnNormRopeConcatGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnNormRopeConcat”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnNormRopeConcatGetWorkspaceSize(
@@ -242,7 +253,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>normQueryWeight</td>
         <td>输入</td>
         <td>表示LayerNorm的仿射变换参数，作用在Query上。</td>
-        <td>可选，normType=2或4时需要提供。</td>
+        <td>可选，normType=2时需要提供。</td>
         <td>FLOAT16、BFLOAT16、FLOAT</td>
         <td>ND</td>
         <td>[D]</td>
@@ -512,7 +523,7 @@ aclnnStatus aclnnNormRopeConcat(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1149px"><colgroup>
@@ -598,7 +609,7 @@ aclnnStatus aclnnNormRopeConcat(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -610,7 +621,7 @@ aclnnStatus aclnnNormRopeConcat(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```c++
   #include <algorithm>
@@ -780,9 +791,9 @@ aclnnStatus aclnnNormRopeConcat(
       std::vector<int64_t> ropeSinShape = {ropeSeq, headDim};
       std::vector<int64_t> ropeCosShape = {ropeSeq, headDim};
 
-      std::vector<int64_t> queryOutputShape = {batchSize, headNum, querySeq * 2, headDim};
-      std::vector<int64_t> keyOutputShape = {batchSize, headNum, querySeq * 2, headDim};
-      std::vector<int64_t> valueOutputShape = {batchSize, headNum, querySeq * 2, headDim};
+      std::vector<int64_t> queryOutputShape = {batchSize, headNum, querySeq + encoderQuerySeq, headDim};
+      std::vector<int64_t> keyOutputShape = {batchSize, headNum, keySeq + encoderKeySeq, headDim};
+      std::vector<int64_t> valueOutputShape = {batchSize, headNum, valueSeq + encoderValueSeq, headDim};
 
       std::vector<int64_t> normQueryMeanShape = {batchSize, querySeq, headNum, 1};
       std::vector<int64_t> normQueryRstdShape = {batchSize, querySeq, headNum, 1};
@@ -856,13 +867,13 @@ aclnnStatus aclnnNormRopeConcat(
       aclTensor *keyOutput = nullptr;
       aclTensor *valueOutput = nullptr;
 
-      std::vector<float> queryOutputHostData(batchSize * headNum * (querySeq * 2) + encoderQuerySeq * headDim, 0.0);
-      std::vector<float> keyOutputHostData(batchSize * headNum * keySeq + encoderKeySeq * headDim, 0.0);
-      std::vector<float> valueOutputHostData(batchSize * headNum * valueSeq + encoderValueSeq * headDim, 0.0);
+      std::vector<float> queryOutputHostData(batchSize * headNum * (querySeq + encoderQuerySeq) * headDim, 0.0);
+      std::vector<float> keyOutputHostData(batchSize * headNum * (keySeq + encoderKeySeq) * headDim, 0.0);
+      std::vector<float> valueOutputHostData(batchSize * headNum * (valueSeq + encoderValueSeq) * headDim, 0.0);
 
       std::vector<float> encoderQueryHostData(batchSize * headNum * encoderQuerySeq * headDim, 4.0);
       std::vector<float> encoderKeyHostData(batchSize * headNum * encoderKeySeq * headDim, 5.0);
-      std::vector<float> encoderValueHostData(batchSize * headNum * encoderKeySeq * headDim, 6.0);
+      std::vector<float> encoderValueHostData(batchSize * headNum * encoderValueSeq * headDim, 6.0);
 
       std::vector<float> normQueryWeightHostData(headDim, 1.0);
       std::vector<float> normQueryBiasHostData(headDim, 2.0);
@@ -940,14 +951,12 @@ aclnnStatus aclnnNormRopeConcat(
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(valueOutputHostData, valueOutputShape, &valueOutputDeviceAddr, aclDataType::ACL_FLOAT,
                             &valueOutput);
+      CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(normQueryMeanHostData, normQueryMeanShape, &normQueryMeanDeviceAddr, aclDataType::ACL_FLOAT,
                             &normQueryMean);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(normQueryRstdHostData, normQueryRstdShape, &normQueryRstdDeviceAddr, aclDataType::ACL_FLOAT,
                             &normQueryRstd);
-      CHECK_RET(ret == ACL_SUCCESS, return ret);
-      ret = CreateAclTensor(normKeyWeightHostData, normKeyWeightShape, &normKeyWeightDeviceAddr, aclDataType::ACL_FLOAT,
-                            &normKeyWeight);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(normKeyMeanHostData, normKeyMeanShape, &normKeyMeanDeviceAddr, aclDataType::ACL_FLOAT,
                             &normKeyMean);
@@ -955,17 +964,11 @@ aclnnStatus aclnnNormRopeConcat(
       ret = CreateAclTensor(normKeyRstdHostData, normKeyRstdShape, &normKeyRstdDeviceAddr, aclDataType::ACL_FLOAT,
                             &normKeyRstd);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
-      ret = CreateAclTensor(normAddedQueryWeightHostData, normAddedQueryWeightShape, &normAddedQueryWeightDeviceAddr,
-                            aclDataType::ACL_FLOAT, &normAddedQueryWeight);
-      CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(normAddedQueryMeanHostData, normAddedQueryMeanShape, &normAddedQueryMeanDeviceAddr,
                             aclDataType::ACL_FLOAT, &normAddedQueryMean);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(normAddedQueryRstdHostData, normAddedQueryRstdShape, &normAddedQueryRstdDeviceAddr,
                             aclDataType::ACL_FLOAT, &normAddedQueryRstd);
-      CHECK_RET(ret == ACL_SUCCESS, return ret);
-      ret = CreateAclTensor(normAddedKeyWeightHostData, normAddedKeyWeightShape, &normAddedKeyWeightDeviceAddr,
-                            aclDataType::ACL_FLOAT, &normAddedKeyWeight);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       ret = CreateAclTensor(normAddedKeyMeanHostData, normAddedKeyMeanShape, &normAddedKeyMeanDeviceAddr,
                             aclDataType::ACL_FLOAT, &normAddedKeyMean);
@@ -978,7 +981,7 @@ aclnnStatus aclnnNormRopeConcat(
       uint64_t workspaceSize = 0;
       aclOpExecutor *executor;
       bool isTraining = false;
-      // 调用aclnnGeGluBackward第一段接口
+      // 调用aclnnNormRopeConcat第一段接口
       ret = aclnnNormRopeConcatGetWorkspaceSize(
           query, key, value, encoderQuery, encoderKey, encoderValue, normQueryWeight, normQueryBias, normKeyWeight,
           normKeyBias, normAddedQueryWeight, normAddedQueryBias, normAddedKeyWeight, normAddedKeyBias, ropeSin, ropeCos,
@@ -993,7 +996,7 @@ aclnnStatus aclnnNormRopeConcat(
           ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
           CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
       }
-      // 调用aclnnGeGluBackward第二段接口
+      // 调用aclnnNormRopeConcat第二段接口
       ret = aclnnNormRopeConcat(workspaceAddr, workspaceSize, executor, stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNormRopeConcat failed. ERROR: %d\n", ret); return ret);
 

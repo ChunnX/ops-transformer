@@ -23,11 +23,7 @@
 
 #include "check_winsize.h"
 #include "moe_distribute_v2_constant.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
-#endif
 
 namespace Mc2Kernel {
 
@@ -35,11 +31,11 @@ using namespace AscendC;
 
 class HcclContextHolder {
 public:
-    __aicore__ inline HcclContextHolder() {};
+    __aicore__ inline HcclContextHolder(){};
 
     // 一次完成：保存 EP context + WinSize 越界校验。epWorldSize 仅供 mc2 路径暂存使用，hccl 路径忽略。
-    __aicore__ inline void InitAndCheck(GM_ADDR ctxPtr, uint32_t /* epWorldSize */, uint64_t totalWinSize,
-                                        TPipe *pipe, GM_ADDR exceptionAddr)
+    __aicore__ inline void InitAndCheck(GM_ADDR ctxPtr, uint32_t /* epWorldSize */, uint64_t totalWinSize, TPipe *pipe,
+                                        GM_ADDR exceptionAddr)
     {
         epContext_ = (__gm__ Mc2Kernel::HcclOpParam *)ctxPtr;
         Check(totalWinSize, pipe, exceptionAddr);

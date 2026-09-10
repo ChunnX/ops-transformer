@@ -331,11 +331,11 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN && fiaInfo.inputKvType == ge::DT_FLOAT8_E4M3FN),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the dtype of query and key/value is FP8"),
+            "prefix must be empty when the dtype of query and key/value is FLOAT8_E4M3FN"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType == ge::DT_HIFLOAT8 && fiaInfo.inputKvType == ge::DT_HIFLOAT8),
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "prefix",
-            "prefix must be empty when the dtype of query and key/value is HiF8"),
+            "prefix must be empty when the dtype of query and key/value is HIFLOAT8"),
         return ge::GRAPH_FAILED);
     // 后量化仅支持INT8
     if (fiaInfo.isOutQuantEnable) {

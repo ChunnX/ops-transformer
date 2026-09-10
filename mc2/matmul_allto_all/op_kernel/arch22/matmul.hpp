@@ -16,15 +16,15 @@
 #ifndef CATLASS_GEMM_KERNEL_MATMUL_ALLTOALL_HPP
 #define CATLASS_GEMM_KERNEL_MATMUL_ALLTOALL_HPP
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_ub_to_gm.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/tla_gemm_kernel_padding_matmul.hpp"
 
 namespace Catlass::Gemm::Kernel {
 template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias>
@@ -84,26 +84,30 @@ public:
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
-        {
-        }
+        Params() {}
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, int32_t pValue_, int32_t rankSize_,
                int32_t pipeDepth_, bool transB_)
-            : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
-              ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), pValue(pValue_), rankSize(rankSize_),
-              pipeDepth(pipeDepth_), transB(transB_)
-        {
-        }
+            : problemShape(problemShape_),
+              ptrA(ptrA_),
+              layoutA(layoutA_),
+              ptrB(ptrB_),
+              layoutB(layoutB_),
+              ptrBias(ptrBias_),
+              ptrC(ptrC_),
+              layoutC(layoutC_),
+              pValue(pValue_),
+              rankSize(rankSize_),
+              pipeDepth(pipeDepth_),
+              transB(transB_)
+        {}
     };
 
     // Methods
     CATLASS_DEVICE
-    MatmulAlltoAllKernel()
-    {
-    }
+    MatmulAlltoAllKernel() {}
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
@@ -154,7 +158,7 @@ public:
             if (commIdx >= params.pipeDepth) {
                 WaitEvent(flagIdx);
             }
-            int64_t gmAPingpongSize = L1TileShape::M * params.pValue * params.problemShape.n();
+            int64_t gmAPingpongSize = static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.n();
 
             int32_t actualLoopNum = actualPValue * nLoops;
 
@@ -183,19 +187,22 @@ public:
 
                 MatrixCoord offsetA{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.k() * L1TileShape::K};
                 MatrixCoord offsetC{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N};
-                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) +
-                                    commIdx * L1TileShape::M * params.pValue * params.problemShape.k();
-                int64_t gmOffsetB = ((blockIdxCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.rankSize) +
-                                     (blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) + static_cast<int64_t>(commIdx) * L1TileShape::M *
+                                                                            params.pValue * params.problemShape.k();
+                int64_t gmOffsetB = (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
+                                         (params.problemShape.n() / params.rankSize) +
+                                     static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
                                     (params.transB ? params.problemShape.k() : 1);
 
                 int64_t rankOffset = gmAPingpongSize / params.rankSize;
                 int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
                 int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
-                int64_t gmOffsetC = flagIdx * L1TileShape::M * params.pValue * params.problemShape.n() +
-                                    rankIdx * rankOffset +
-                                    blockIdxCoord.m() * L1TileShape::M * (params.problemShape.n() / params.rankSize) +
-                                    blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
+                int64_t gmOffsetC =
+                    static_cast<int64_t>(flagIdx) * L1TileShape::M * params.pValue * params.problemShape.n() +
+                    rankIdx * rankOffset +
+                    static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
+                        (params.problemShape.n() / params.rankSize) +
+                    blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
 
                 if constexpr (HasBias) {
                     int64_t gmOffsetBias =
@@ -229,11 +236,13 @@ public:
                                             nextBlockIdCoord.k() * L1TileShape::K};
                     MatrixCoord offsetNextB{nextBlockIdCoord.k() * L1TileShape::K,
                                             nextBlockIdCoord.n() * L1TileShape::N};
-                    int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA) +
-                                            commIdx * L1TileShape::M * params.pValue * params.problemShape.k();
+                    int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA) + static_cast<int64_t>(commIdx) *
+                                                                                        L1TileShape::M * params.pValue *
+                                                                                        params.problemShape.k();
                     int64_t gmOffsetNextB =
-                        ((nextBlockIdCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.rankSize) +
-                         (nextBlockIdCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                        (static_cast<int64_t>(nextBlockIdCoord.n() / nLoopPerRank) *
+                             (params.problemShape.n() / params.rankSize) +
+                         static_cast<int64_t>(nextBlockIdCoord.n() % nLoopPerRank) * L1TileShape::N) *
                         (params.transB ? params.problemShape.k() : 1);
 
                     blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC],

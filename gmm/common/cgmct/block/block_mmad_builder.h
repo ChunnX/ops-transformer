@@ -25,15 +25,15 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_common_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tuple_utils.h"
 
 #include "../tile/tile_copy.h"
-#include "./block_mmad.h"
+#include "./cgmct_block_mmad.h"
 #include "./block_mmad_multi_block.h"
-#include "../policy/dispatch_policy.h"
+#include "../policy/cgmct_dispatch_policy.h"
 
 using namespace AscendC;
 
@@ -51,8 +51,9 @@ class BlockMmadBuilder {
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class BiasType_,
           class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_,
           class TileCopyParam_>
-class BlockMmadBuilder<AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_,
-    L0TileShape_, BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
+class BlockMmadBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_, L0TileShape_,
+    BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
     AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulMultiBlockWithLayout<>, BlockMatmulPolicy_> ||
                               AscendC::Std::is_base_of_v<MatmulNaivePipelineWithLayout<>, BlockMatmulPolicy_> ||
                               AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<>, BlockMatmulPolicy_> ||
@@ -109,7 +110,6 @@ public:
     __aicore__ inline BlockMmadBuilder() {}
 
     __aicore__ inline ~BlockMmadBuilder() {}
-
 };
 } // namespace Block
 } // namespace Gemm

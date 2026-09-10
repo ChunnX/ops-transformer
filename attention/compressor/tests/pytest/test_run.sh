@@ -1,4 +1,14 @@
 #!/bin/bash
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 # ====================== 配置区======================
 # 需要读取的用例excel表格路径，如下：
 PATH1="./excel/*"
@@ -26,8 +36,7 @@ run_batch() {
     echo -e "\n===== 第一步：执行compressor_pt_save.py ====="
     python3 $Compressor_PT_SAVE_SCRIPT $PATH1 $PATH2
     if [ $? -ne 0 ]; then
-        echo "compressor_pt_save.py 执行失败，退出"
-        exit 1
+        echo "警告：compressor_pt_save.py 执行失败，将使用已有pt文件继续"
     fi
 
     echo -e "\n===== 第二步：替换test_compressor_batch.py中的路径 ====="
@@ -37,7 +46,18 @@ run_batch() {
         exit 1
     fi
 
-    echo -e "\n===== 第三步：执行pytest命令 ====="
+    # 获取Excel文件路径（取第一个匹配的文件）
+    shopt -s nullglob
+    EXCEL_FILES=( $PATH1 )
+    shopt -u nullglob
+    if [ ${#EXCEL_FILES[@]} -gt 0 ]; then
+        EXCEL_FILE="${EXCEL_FILES[0]}"
+        export TEST_CASE_EXCEL="$EXCEL_FILE"
+    else
+        unset TEST_CASE_EXCEL
+    fi
+
+    echo -e "\n===== 第三步：执行pytest命令 (Excel: $TEST_CASE_EXCEL)====="
     python3 -m pytest -rA -s $TEST_Compressor_BATCH_SCRIPT -v -m ci
     if [ $? -ne 0 ]; then
         echo "pytest执行失败"

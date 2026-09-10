@@ -17,22 +17,20 @@
 #define __ALL_GATHER_QUANT_BMM_TILING_H__
 
 #pragma once
-#include "../all_gather_matmul_tiling_base.h"
+#include "../all_gather_matmul_tiling_base_v2.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
-#include "../../../op_kernel/all_gather_matmul_tiling_arch35.h"
+#include "../../../op_kernel/all_gather_matmul_tiling_data.h"
 
-namespace optiling
-{
+namespace optiling {
 
-class AllGatherQuantBmmTiling : public AllGatherMatmulTilingBase
-{
+class AllGatherQuantBmmTiling : public AllGatherMatmulTilingBase {
     friend class AllGatherQuantBmmHelper;
 
 public:
-    explicit AllGatherQuantBmmTiling(gert::TilingContext* context);
+    explicit AllGatherQuantBmmTiling(gert::TilingContext *context);
     ~AllGatherQuantBmmTiling() override = default;
 
 protected:
@@ -65,6 +63,8 @@ protected:
     void SetTilingKeyParams();
     ge::graphStatus CheckGroupSize();
     ge::graphStatus CheckPerBlockScaleInput();
+    ge::graphStatus CheckScaleShapeValid(const char *scaleName, uint64_t firstDim, uint64_t secondDim,
+                                         uint64_t expectFirstDim, uint64_t expectSecondDim);
     ge::graphStatus CheckMXFPScaleInput();
     ge::graphStatus CheckMXFP4Input();
     ge::graphStatus CheckPerTensorScaleInput();
@@ -85,33 +85,32 @@ private:
     bool isFp4_ = false;
 };
 
-class AllGatherQuantBmmHelper : public Mc2AdaptiveSlidingWindowTiling
-{
+class AllGatherQuantBmmHelper : public Mc2AdaptiveSlidingWindowTiling {
 public:
-    AllGatherQuantBmmHelper(AllGatherQuantBmmTiling& allGatherQuantBmmTiling,
-        DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& out, bool isLocal = false);
+    AllGatherQuantBmmHelper(AllGatherQuantBmmTiling &allGatherQuantBmmTiling,
+                            DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, bool isLocal = false);
     const gert::Shape GetX1Shape(const size_t index) override;
     const gert::Shape GetX2Shape(const size_t index) override;
     const gert::Shape GetOutputShape(const size_t index) override;
-    const gert::Shape& GetScaleShape(const size_t index) override;
-    const gert::StorageShape* GetPertokenShape(const size_t index) override;
-    const gert::StorageShape* GetBiasShape(const size_t index) override;
-    const gert::StorageShape* GetOffsetShape(const size_t index);
+    const gert::Shape &GetScaleShape(const size_t index) override;
+    const gert::StorageShape *GetPertokenShape(const size_t index) override;
+    const gert::StorageShape *GetBiasShape(const size_t index) override;
+    const gert::StorageShape *GetOffsetShape(const size_t index);
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus DoLibApiTiling() override;
-    void PrintTilingInputParam(Mc2QuantBatchMatmulInfo& quantBatchMatmulInfo);
+    void PrintTilingInputParam(Mc2QuantBatchMatmulInfo &quantBatchMatmulInfo);
     void AnalyzeBatchInfo(const gert::Shape &oriShapeA, const gert::Shape &oriShapeB) override;
     ge::graphStatus PostTiling() override;
     void SetBatch();
 
 private:
-    AllGatherQuantBmmTiling& tilingProcesser_;
+    AllGatherQuantBmmTiling &tilingProcesser_;
     uint32_t batch1_{1};
     uint32_t batch2_{1};
     uint32_t batch3_{1};
     uint32_t batch4_{1};
     bool isLocal_ = false;
 };
-}  // namespace optiling
+} // namespace optiling
 
-#endif  //__ALL_GATHER_QUANT_BMM_TILING_H__
+#endif //__ALL_GATHER_QUANT_BMM_TILING_H__

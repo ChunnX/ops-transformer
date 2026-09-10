@@ -5,7 +5,7 @@
 #  THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 #  INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 #  See LICENSE in the root of the software repository for the full text of the License.
-# 
+#
 
 # !
 #  \file dump_analysis.py
@@ -14,18 +14,15 @@
 import os
 import sys
 import csv
-import ast
 import re
 import logging
 from pathlib import Path
-import numpy as np
-import pandas as pd
 
 logging.basicConfig(
     level=logging.NOTSET,
     format="[%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]
-    )
+    handlers=[logging.StreamHandler()],
+)
 
 
 def get_log_path(log_path_func):
@@ -40,7 +37,7 @@ def get_log_path(log_path_func):
 
 def get_graph_path(graph_path_func):
     graph_path_dict_func = {}
-    pattern = re.compile('graph_.*_device(\d+)\.json$', re.I)
+    pattern = re.compile("graph_.*_device(\d+)\.json$", re.I)
     for file in Path(graph_path_func).rglob("graph_*.json"):
         match = pattern.match(file.name)
         if match:
@@ -52,7 +49,7 @@ def get_graph_path(graph_path_func):
 def get_graph_info(graph_path_dict_func):
     graph_info_func = {}
     pattern = re.compile(r'"name"\s*:\s*["\']MoeDistribute(.*?)["\']')
-    
+
     # 遍历每个文件路径
     for idx, file_path in graph_path_dict_func.items():
         current_matches = []
@@ -62,14 +59,14 @@ def get_graph_info(graph_path_dict_func):
             if not file.exists():
                 logging.warning("%s文件不存在", file_path)
                 continue
-                
+
             # 读取文本（不用json.load，避免JSON结构复杂/嵌套深导致漏匹配）
-            content = file.read_text(encoding='utf-8')
-            
+            content = file.read_text(encoding="utf-8")
+
             # 查找所有匹配项
             matches = pattern.findall(content)
             current_matches = matches
-            
+
         except Exception as e:
             logging.error("处理文件%s出错: %s", file_path, str(e))
             graph_info_func[idx] = current_matches
@@ -77,7 +74,7 @@ def get_graph_info(graph_path_dict_func):
 
         # 存入结果
         graph_info_func[idx] = current_matches
-    
+
     return graph_info_func
 
 
@@ -87,27 +84,33 @@ def compare_graph_info(graph_info_func):
 
     for idx_a, card_a in enumerate(card_ids):
         list_a = graph_info_func[card_a]
-        
+
         # 从下一个开始，避免重复对比
-        for _, card_b in enumerate(card_ids[idx_a + 1:], start=idx_a + 1):
+        for _, card_b in enumerate(card_ids[idx_a + 1 :], start=idx_a + 1):
             list_b = graph_info_func[card_b]
-            
+
             logging.info("开始对比 卡%s <-> 卡%s 的算子执行顺序、次数", card_a, card_b)
-            
+
             if list_a == list_b:
-                logging.info("卡%s <-> 卡%s完全一致(顺序+内容+次数相同)", card_a, card_b)
+                logging.info(
+                    "卡%s <-> 卡%s完全一致(顺序+内容+次数相同)", card_a, card_b
+                )
             elif sorted(list_a) == sorted(list_b):
-                logging.error("卡%s <-> 卡%s的算子执行顺序不同,但执行次数相同", card_a, card_b)
+                logging.error(
+                    "卡%s <-> 卡%s的算子执行顺序不同,但执行次数相同", card_a, card_b
+                )
             else:
                 logging.error("卡%s <-> 卡%s的算子执行次数不同", card_a, card_b)
 
 
 def get_plog_error(log_path_list_func):
+    # 新增ras_code存储键
     result = {
         "error1": [],
         "error2": [],
         "error3": [],
-        "error4": []
+        "error4": [],
+        "ras_code_0x81b18603": [],
     }
 
     # 遍历所有日志文件
@@ -131,6 +134,11 @@ def classify_error_lines(lines, result):
         line = line.strip()
         if not line:
             continue
+
+        # 全日志全量检索ras_code，不受ERROR行限制
+        if "ras_code=0x81b18603" in line:
+            result["ras_code_0x81b18603"].append(line)
+
         # 提前过滤非ERROR行，减少嵌套
         if "[ERROR]" not in line:
             continue
@@ -149,16 +157,16 @@ def classify_error_lines(lines, result):
 def print_error_result(result):
     # 正则定义
     patterns_error3 = {
-        "device_id": re.compile(r'device_id=(\w+)'),
-        "stream_id": re.compile(r'stream_id=(\w+)'),
-        "report_stream_id": re.compile(r'report_stream_id=(\w+)'),
-        "task_id": re.compile(r'task_id=(\w+)'),
-        "kernel_name": re.compile(r'fault kernel_name=(\w+)')
+        "device_id": re.compile(r"device_id=(\w+)"),
+        "stream_id": re.compile(r"stream_id=(\w+)"),
+        "report_stream_id": re.compile(r"report_stream_id=(\w+)"),
+        "task_id": re.compile(r"task_id=(\w+)"),
+        "kernel_name": re.compile(r"fault kernel_name=(\w+)"),
     }
     patterns_error4 = {
-        "origin_op_name": re.compile(r'origin_op_name\s+\[([^\]]+)\]'),
-        "task_id": re.compile(r'task_id\s*(\d+)'),
-        "stream_id": re.compile(r'stream_id\s*(\d+)')
+        "origin_op_name": re.compile(r"origin_op_name\s+\[([^\]]+)\]"),
+        "task_id": re.compile(r"task_id\s*(\d+)"),
+        "stream_id": re.compile(r"stream_id\s*(\d+)"),
     }
 
     # error1 处理
@@ -170,13 +178,15 @@ def print_error_result(result):
     error2_count = len(result.get("error2", []))
     if error2_count > 0:
         logging.info(
-             "检测到 GE错误:%d个,请前往该网址,搜索GE Errors查询对应报错信息及解决方法: "
-             "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/index/index.html",
-             error2_count 
+            "检测到 GE错误:%d个,请前往该网址,搜索GE Errors查询对应报错信息及解决方法: "
+            "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/index/index.html",
+            error2_count,
         )
     # error3 / error4 交给子函数处理
     error3_dict_func = handle_error3(result, patterns_error3)
     handle_error4(result, patterns_error4)
+    # 调用ras_code独立打印函数，同级摆放
+    handle_ras_code(result)
 
     return error3_dict_func
 
@@ -187,8 +197,11 @@ def handle_error3(result, patterns_error3):
     error3_dict_func = {}
 
     if error3_count > 0:
-        logging.info("检测到 Aicore kernel execute failed类报错:%d个,下列为前10条报错的具体信息", error3_count)
-        
+        logging.info(
+            "检测到 Aicore kernel execute failed类报错:%d个,下列为前10条报错的具体信息",
+            error3_count,
+        )
+
         for _, line in enumerate(error3_list[:10], 1):
             fields = {}
             for key, pattern in patterns_error3.items():
@@ -201,7 +214,7 @@ def handle_error3(result, patterns_error3):
                 fields.get("stream_id", "NA"),
                 fields.get("report_stream_id", "NA"),
                 fields.get("task_id", "NA"),
-                fields.get("kernel_name", "NA")
+                fields.get("kernel_name", "NA"),
             )
 
             dev_id = fields.get("device_id", "unknown")
@@ -217,8 +230,11 @@ def handle_error4(result, patterns_error4):
     error4_count = len(error4_list)
 
     if error4_count > 0:
-        logging.info("检测到 Error happened, origin_op_name类报错:%d个,下列为前10条报错的具体信息", error4_count)
-        
+        logging.info(
+            "检测到 Error happened, origin_op_name类报错:%d个,下列为前10条报错的具体信息",
+            error4_count,
+        )
+
         for _, line in enumerate(error4_list[:10], 1):
             fields = {}
             for key, pattern in patterns_error4.items():
@@ -229,8 +245,22 @@ def handle_error4(result, patterns_error4):
                 "stream_id=%s,task_id=%s,报错算子及执行次数:%s",
                 fields.get("stream_id", "NA"),
                 fields.get("task_id", "NA"),
-                fields.get("origin_op_name", "NA")
+                fields.get("origin_op_name", "NA"),
             )
+
+
+# 独立ras_code打印函数
+def handle_ras_code(result):
+    ras_list = result.get("ras_code_0x81b18603", [])
+    total_cnt = len(ras_list)
+    if total_cnt > 0:
+        logging.info(
+            "检测到 ras_code=0x81b18603 全日志匹配记录:%d个,该类报错通常为UB链路问题,下列为前10条内容",
+            total_cnt,
+        )
+        # 控制台仅展示前10条
+        for idx, content in enumerate(ras_list[:10], 1):
+            logging.info("[%d] %s", idx, content)
 
 
 def check_error3_kernel(error3_dict_func):
@@ -244,8 +274,12 @@ def check_error3_kernel(error3_dict_func):
                 continue
             # 只要 kernel 包含 白名单任意一个关键字，就合法
             if not any(key in kernel for key in allowed_kernels):
-                logging.error("卡%s没有在 dispatch 或 combine 算子上执行失败，在了%s算子上执行失败", device_id, kernel)
-                has_error = True  
+                logging.error(
+                    "卡%s没有在 dispatch 或 combine 算子上执行失败，在了%s算子上执行失败",
+                    device_id,
+                    kernel,
+                )
+                has_error = True
     if not has_error:
         logging.info("所有卡均在 dispatch or combine 算子上执行失败")
 
@@ -255,7 +289,8 @@ def dict_to_csv(error_dict_func):
         "error1": "总线错误",
         "error2": "GE Errors",
         "error3": "Aicore kernel execute failed类报错",
-        "error4": "Error happened, origin_op_name类报错"
+        "error4": "Error happened, origin_op_name类报错",
+        "ras_code_0x81b18603": "全日志匹配ras_code=0x81b18603记录,通常为UB链路问题",
     }
 
     # 过滤空列表 + 映射名称

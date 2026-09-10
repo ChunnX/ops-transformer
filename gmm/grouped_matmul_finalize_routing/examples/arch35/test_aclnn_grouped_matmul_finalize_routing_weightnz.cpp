@@ -15,24 +15,24 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define CHECK_FREE_RET(cond, return_expr)                                                                              \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            Finalize(deviceId, stream);                                                                                \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_FREE_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            Finalize(deviceId, stream); \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -112,8 +112,8 @@ int CreateAclTensorWeightNz(const std::vector<T> &hostData, const std::vector<in
     }
 
     // 调用aclCreateTensor接口创建NZ格式的aclTensor
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0,
-                              aclFormat::ACL_FORMAT_FRACTAL_NZ, shapeNz.data(), shapeNz.size(), *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
+                              shapeNz.data(), shapeNz.size(), *deviceAddr);
     return 0;
 }
 
@@ -179,8 +179,8 @@ int main()
     groupListHostData[0] = m;
 
     std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
-    std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
-    std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+    std::vector<float> logitHostData(GetShapeSize(logitShape));
+    std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
     std::vector<float> outHostData(GetShapeSize(outShape)); // 实际上是float16半精度方式
 
     // 创建x aclTensor
@@ -236,7 +236,8 @@ int main()
     // 调用aclnnGroupedMatmulFinalizeRoutingWeightNzV2第二段接口
     ret = aclnnGroupedMatmulFinalizeRoutingWeightNzV2(workspaceAddr, workspaceSize, executor, stream);
     CHECK_FREE_RET(ret == ACL_SUCCESS,
-                   LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2 failed. ERROR: %d\n", ret); return ret);
+                   LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzV2 failed. ERROR: %d\n", ret);
+                   return ret);
 
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
@@ -250,7 +251,7 @@ int main()
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                    return ret);
-    for (int64_t i = 0; i < size; i++) {
+    for (int64_t i = 0; i < 10 && i < size; i++) {
         LOG_PRINT("result[%lld] is: %u\n", static_cast<long long>(i), resultData[i]);
     }
 

@@ -31,28 +31,26 @@ using AscendC::HardEvent;
 using AscendC::SetFlag;
 using AscendC::TEventID;
 using AscendC::WaitFlag;
-using Blaze::Gemm::FINAL_ACCUMULATION;
-using Blaze::Gemm::MXFP_DIVISOR_SIZE;
-using Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
-using Blaze::Gemm::NON_FINAL_ACCUMULATION;
 using Blaze::Gemm::DOUBLE_BUFFER;
+using Blaze::Gemm::FINAL_ACCUMULATION;
 using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_256;
 using Blaze::Gemm::MX_FP8FP4_L1_K_CONFIG_512;
 using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD;
 using Blaze::Gemm::MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD;
 using Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE;
+using Blaze::Gemm::MXFP_DIVISOR_SIZE;
+using Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+using Blaze::Gemm::NON_FINAL_ACCUMULATION;
 using Blaze::Gemm::SYNC_MODE4;
 
 // Macro aliases keep the specialization declaration compact for this dispatch-policy binding.
-#define BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS                                                                          \
-    template <                                                                                                        \
-        class ATypeTuple_, class LayoutATuple_, class BTypeTuple_, class LayoutBTuple_, class CType_, class LayoutC_, \
-        class BiasType_, class LayoutBias_>
+#define BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS \
+    template <class ATypeTuple_, class LayoutATuple_, class BTypeTuple_, class LayoutBTuple_, class CType_, \
+              class LayoutC_, class BiasType_, class LayoutBias_>
 
-#define BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION                                                                        \
-    BlockMmad<                                                                                                     \
-        MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, LayoutC_, \
-        BiasType_, LayoutBias_>
+#define BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION \
+    BlockMmad<MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, \
+              LayoutC_, BiasType_, LayoutBias_>
 
 /*!
  * \brief AIC tile-compute unit for one tile inside one group in the weight-quant grouped matmul pipeline.
@@ -113,8 +111,8 @@ public:
         uint64_t scaleKL1;
     };
 
-    __aicore__ inline void Init(
-        const ProblemShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params);
+    __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
+                                const L1Params &l1Params);
 
     __aicore__ inline BlockMmad();
     // When copyUbToV1 is true, L0C->UB copies the result to V1 core instead of V0.
@@ -251,14 +249,13 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyAAndScaleAL1ToL0
     auto tensorAL0 = AscendC::Te::MakeTensor(
         AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0A, AType>(l0BufIdx_ * L0_BUF_OFFSET), layoutAL0);
     auto tensorBlockAL1 = tensorAL1_.Slice(AscendC::Te::MakeCoord(0, (l1KOffset + kbOffset) % param.kaL1Size),
-        AscendC::Te::MakeShape(param.mL1Size, realL0K));
+                                           AscendC::Te::MakeShape(param.mL1Size, realL0K));
     AscendC::Te::Copy(AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{}), tensorAL0, tensorBlockAL1);
 
     auto layoutScaleAL0 = MakeLayoutScaleAL0{}(param.mL1Size, realL0ScaleK);
-    auto tensorScaleAL0 =
-        AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0ScaleA, fp8_e8m0_t>((l0BufIdx_ * L0_BUF_OFFSET) >> 4),
-            layoutScaleAL0);
+    auto tensorScaleAL0 = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0ScaleA, fp8_e8m0_t>((l0BufIdx_ * L0_BUF_OFFSET) >> 4),
+        layoutScaleAL0);
     auto tensorBlockScaleAL1 = tensorScaleAL1_.Slice(
         AscendC::Te::MakeCoord(
             0, CeilDiv(((l1KOffset + kbOffset) % param.scaleKL1Size), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE),
@@ -268,10 +265,11 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyAAndScaleAL1ToL0
 
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 template <typename TensorBL1Type>
-__aicore__ inline void
-BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyBAndScaleBL1ToL0(const TensorBL1Type &tensorBL1, uint64_t l1KOffset,
-                                                          uint64_t kbOffset, uint64_t realL0K, uint64_t realL0ScaleK,
-                                                          const BlockMmadOffsetParam &param)
+__aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyBAndScaleBL1ToL0(const TensorBL1Type &tensorBL1,
+                                                                                 uint64_t l1KOffset, uint64_t kbOffset,
+                                                                                 uint64_t realL0K,
+                                                                                 uint64_t realL0ScaleK,
+                                                                                 const BlockMmadOffsetParam &param)
 {
     auto layoutBL0 = MakeLayoutBL0{}(realL0K, param.nL1Size);
     auto tensorBL0 = AscendC::Te::MakeTensor(
@@ -281,10 +279,9 @@ BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyBAndScaleBL1ToL0(const TensorBL1Type &t
     AscendC::Te::Copy(AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{}), tensorBL0, tensorBlockBL1);
 
     auto layoutScaleBL0 = MakeLayoutScaleBL0{}(realL0ScaleK, param.nL1Size);
-    auto tensorScaleBL0 =
-        AscendC::Te::MakeTensor(
-            AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0ScaleB, fp8_e8m0_t>((l0BufIdx_ * L0_BUF_OFFSET) >> 4),
-            layoutScaleBL0);
+    auto tensorScaleBL0 = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0ScaleB, fp8_e8m0_t>((l0BufIdx_ * L0_BUF_OFFSET) >> 4),
+        layoutScaleBL0);
     auto tensorBlockScaleBL1 = tensorScaleBL1_.Slice(
         AscendC::Te::MakeCoord(
             CeilDiv(((l1KOffset + kbOffset) % param.scaleKL1Size), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, 0),
@@ -335,9 +332,9 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::ProcessTileL1(int64_
         params.unitFlag = (isLastGmK && isLastL1K) ? FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
         params.cmatrixInitVal = isFirstGmK && l1KOffset == 0;
         AscendC::Te::Mmad(
-            AscendC::Te::MmadAtom<
-                AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, Blaze::Gemm::Tile::MmadTraitMX>>{}
-                .with(params), tensorL0C, tensorAL0, tensorBL0);
+            AscendC::Te::MmadAtom<AscendC::Te::MmadTraits<AscendC::Te::MmadOperation, Blaze::Gemm::Tile::MmadTraitMX>>{}
+                .with(params),
+            tensorL0C, tensorAL0, tensorBL0);
 
         SetFlag<HardEvent::M_MTE1>(eventIdMToMte1_ + l0BufIdx_);
         l0BufIdx_ ^= 1;
@@ -426,10 +423,10 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CopyCL0c2GmOrUb(cons
                                                                             bool copyUbToV1)
 {
     constexpr uint64_t FP32_64_AS_UINT64 = 0x42800000;
-    auto layoutL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<L0C_C0>>(
-        param.mL1Size, param.nL1Size);
+    auto layoutL0C =
+        AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<L0C_C0>>(param.mL1Size, param.nL1Size);
     auto tensorL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, float>(0), layoutL0C);
-    if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::UB>) {
+    if constexpr (AscendC::Std::is_same_v<AscendC::Te::GetMemLocation<TensorC>, AscendC::Te::Location::UB>) {
         // C L0C->UB
         auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
         AscendC::Te::Copy(CopyL0C2UB.with(AscendC::Te::FixpipeParams(3, copyUbToV1)), tensorC, tensorL0C,
@@ -489,13 +486,20 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::CalcDynamicKBlock(ui
                                                                               uint64_t &kbL1Size) const
 {
     kbL1Size = configuredKbL1Size != 0 ? configuredKbL1Size :
-                   (mL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD &&
-                    nL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD ?
-                        MX_FP8FP4_L1_K_CONFIG_512 :
-                        MX_FP8FP4_L1_K_CONFIG_256);
+                                         (mL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD &&
+                                                  nL1Size <= MX_FP8FP4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD ?
+                                              MX_FP8FP4_L1_K_CONFIG_512 :
+                                              MX_FP8FP4_L1_K_CONFIG_256);
     if (mL1Size < nL1Size) {
         uint64_t mL1Align = CeilAlign(mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
-        kaL1Size = (A_L1_SINGLE_BUF_SIZE / sizeof(AType)) / (mL1Align * kbL1Size) * kbL1Size;
+        /*
+         * 小 M 时若直接填满 128 KiB A 槽位，首个 MMAD 会等待一个过深的 A 搬运窗口。
+         * 按 N / (2M) 选择 ka 深度，使 A 搬运更细地与连续的 B/prologue 窗口重叠；物理容量仅作为上限。
+         */
+        uint64_t balancedKaDepth = CeilDiv(nL1Size, mL1Align * DOUBLE_BUFFER);
+        uint64_t maxKaDepth = (A_L1_SINGLE_BUF_SIZE / sizeof(AType)) / (mL1Align * kbL1Size);
+        uint64_t kaDepth = balancedKaDepth < maxKaDepth ? balancedKaDepth : maxKaDepth;
+        kaL1Size = kaDepth * kbL1Size;
     } else {
         kaL1Size = kbL1Size;
     }
@@ -525,8 +529,7 @@ __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::operator()(const Ten
             blockParam.kaL1Size = kaL1Size_;
             blockParam.kbL1Size = kbL1Size_;
         } else {
-            CalcDynamicKBlock(
-                blockParam.mL1Size, blockParam.nL1Size, kL1_, blockParam.kaL1Size, blockParam.kbL1Size);
+            CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, kL1_, blockParam.kaL1Size, blockParam.kbL1Size);
         }
     } else {
         blockParam.kSize =

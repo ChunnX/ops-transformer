@@ -21,31 +21,30 @@
 namespace AscendC {
 
 template <typename T>
-__simd_vf__ void VecMulMatVFImpl(__ubuf__ T* outputUb, __ubuf__ T* rowVecUb, __ubuf__ T* matrixUb,
-    const uint32_t floatRepSize, uint16_t dLoops, uint32_t dTail, uint16_t dTailLoop, const uint16_t row, const uint32_t col)
+__simd_vf__ void VecMulMatVFImpl(__ubuf__ T *outputUb, __ubuf__ T *rowVecUb, __ubuf__ T *matrixUb,
+                                 const uint32_t floatRepSize, uint16_t dLoops, uint32_t dTail, uint16_t dTailLoop,
+                                 const uint16_t row, const uint32_t col)
 {
-    MicroAPI::RegTensor<T> vregMatrix;
-    MicroAPI::RegTensor<T> vregRowVec;
-    MicroAPI::RegTensor<T> vregOutput;
-    MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg tailMask;
-    tailMask = MicroAPI::UpdateMask<float>(dTail);
-    constexpr static MicroAPI::CastTrait castTraitPack2 = {
-        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
-    constexpr static MicroAPI::CastTrait castTraitF32ToHalf = {
-        MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
+    Reg::RegTensor<T> vregMatrix;
+    Reg::RegTensor<T> vregRowVec;
+    Reg::RegTensor<T> vregOutput;
+    Reg::MaskReg fullMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+    Reg::MaskReg tailMask;
+    tailMask = Reg::UpdateMask<float>(dTail);
+    constexpr static Reg::CastTrait castTraitPack2 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                      Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    constexpr static Reg::CastTrait castTraitF32ToHalf = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
+                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
 
     uint32_t colOffset = 0;
     uint32_t rowOffset = 0;
     for (uint16_t j = 0; j < dLoops; j++) {
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + colOffset);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + colOffset);
         rowOffset = 0;
         for (uint16_t i = 0; i < row; i++) {
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMatrix, matrixUb + colOffset + rowOffset);
-            MicroAPI::Mul(vregOutput, vregMatrix, vregRowVec, fullMask);
-            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputUb + colOffset + rowOffset, vregOutput, fullMask);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregMatrix, matrixUb + colOffset + rowOffset);
+            Reg::Mul(vregOutput, vregMatrix, vregRowVec, fullMask);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputUb + colOffset + rowOffset, vregOutput, fullMask);
             rowOffset += col;
         }
         colOffset += floatRepSize;
@@ -53,23 +52,24 @@ __simd_vf__ void VecMulMatVFImpl(__ubuf__ T* outputUb, __ubuf__ T* rowVecUb, __u
 
     if (dTailLoop > 0) {
         rowOffset = 0;
-        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + dLoops * floatRepSize);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregRowVec, rowVecUb + dLoops * floatRepSize);
         for (uint16_t i = 0; i < row; i++) {
-            MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregMatrix, matrixUb + dLoops * floatRepSize + rowOffset);
-            MicroAPI::Mul(vregOutput, vregMatrix, vregRowVec, tailMask);
-            MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputUb + dLoops * floatRepSize + rowOffset, vregOutput, tailMask);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregMatrix, matrixUb + dLoops * floatRepSize + rowOffset);
+            Reg::Mul(vregOutput, vregMatrix, vregRowVec, tailMask);
+            Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM>(outputUb + dLoops * floatRepSize + rowOffset, vregOutput,
+                                                          tailMask);
             rowOffset += col;
         }
     }
 }
 
 template <typename T>
-__aicore__ inline void VecMulMatVF(const LocalTensor<T>& matrixOutUb, const LocalTensor<T>& rowVecInUb,
-                                   const LocalTensor<T>& matrixInUb, const uint16_t row, const uint32_t col)
+__aicore__ inline void VecMulMatVF(const LocalTensor<T> &matrixOutUb, const LocalTensor<T> &rowVecInUb,
+                                   const LocalTensor<T> &matrixInUb, const uint16_t row, const uint32_t col)
 {
-    __ubuf__ float * matrixUb = (__ubuf__ float*)matrixInUb.GetPhyAddr();
-    __ubuf__ float * rowVecUb = (__ubuf__ float*)rowVecInUb.GetPhyAddr();
-    __ubuf__ float * outputUb = (__ubuf__ float*)matrixOutUb.GetPhyAddr();
+    __ubuf__ float *matrixUb = (__ubuf__ float *)matrixInUb.GetPhyAddr();
+    __ubuf__ float *rowVecUb = (__ubuf__ float *)rowVecInUb.GetPhyAddr();
+    __ubuf__ float *outputUb = (__ubuf__ float *)matrixOutUb.GetPhyAddr();
 
     constexpr uint16_t floatRepSize = 64; // 一个寄存器能够存放64个FP32
     uint16_t dLoops = col / floatRepSize;
@@ -79,6 +79,6 @@ __aicore__ inline void VecMulMatVF(const LocalTensor<T>& matrixOutUb, const Loca
     VecMulMatVFImpl<T>(outputUb, rowVecUb, matrixUb, floatRepSize, dLoops, dTail, dTailLoop, row, col);
 }
 
-} // namespace
+} // namespace AscendC
 
 #endif // VF_VEC_MUL_MAT_H

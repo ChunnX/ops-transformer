@@ -28,7 +28,7 @@
     $$
     output = Reduce(AllGatherScales * AllGatherData)
     $$
-    
+
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
 
 ## 参数说明
@@ -36,10 +36,10 @@
 <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 330px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 330px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -126,3 +126,4 @@
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 | aclnn接口 | [test_aclnn_quant_all_reduce.cpp](./examples/test_aclnn_quant_all_reduce.cpp) | 通过[aclnnQuantAllReduce](./docs/aclnnQuantAllReduce.md)接口方式调用quant_all_reduce算子。 |
+| PyTorch API | - | 通过[quant_all_reduce](../../mc2/quant_all_reduce/docs/torchapi_quant_all_reduce.md)接口调用quant_all_reduce算子。 |

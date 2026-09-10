@@ -19,11 +19,11 @@
 #include "qbmm_asw_block.h"
 #include "../quant_batch_matmul_v3_base.h"
 
-#define LOCAL_TEMPLATE_CLASS_MIX_PARAMS                                                                                 \
-    template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType,            \
+#define LOCAL_TEMPLATE_CLASS_MIX_PARAMS \
+    template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType, \
               CubeFormat aFormat, CubeFormat bFormat, CubeFormat cFormat, bool aTrans, bool bTrans, class l0cDtype, \
               class blockType, const MatmulConfig &mmCfg>
-#define LOCAL_TEMPLATE_FUNC_MIX_PARAMS                                                                              \
+#define LOCAL_TEMPLATE_FUNC_MIX_PARAMS \
     aType, bType, scaleType, biasType, ptScaleType, cType, aFormat, bFormat, cFormat, aTrans, bTrans, l0cDtype, \
         blockType, mmCfg
 
@@ -41,21 +41,17 @@ using AscendC::TPipe;
 using AscendC::TPosition;
 using AscendC::TQue;
 
-constexpr AscendC::MicroAPI::CastTrait ctInt322Fp32 = {
-    AscendC::MicroAPI::RegLayout::UNKNOWN, AscendC::MicroAPI::SatMode::UNKNOWN,
-    AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait ctInt322Fp32 = {AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN,
+                                                  AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
-constexpr AscendC::MicroAPI::CastTrait ctFp322Half = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait ctFp322Half = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
+                                                 AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
 
-constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32Zero = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+constexpr AscendC::Reg::CastTrait ctHalf2Fp32Zero = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
+                                                     AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
-constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32One = {
-    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+constexpr AscendC::Reg::CastTrait ctHalf2Fp32One = {AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN,
+                                                    AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
 
 template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType, CubeFormat aFormat,
           CubeFormat bFormat, CubeFormat cFormat, bool aTrans, bool bTrans, class l0cDtype,
@@ -75,7 +71,7 @@ public:
     using biasT = AscendC::MatmulType<TPosition::GM, CubeFormat::ND, biasType>;
     using cT = AscendC::MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, l0cDtype>;
     AscendC::MatmulImpl<aT, bT, cT, biasT, mmCfg, AscendC::MatmulCallBackFunc<nullptr, nullptr, nullptr>,
-                       AscendC::QBmmCustomMatmulPolicy>
+                        AscendC::QBmmCustomMatmulPolicy>
         mm;
 
 protected:
@@ -94,7 +90,10 @@ protected:
     __aicore__ inline void VFDoDequant(__ubuf__ cType *dst, __ubuf__ l0cDtype *l0cOut, __ubuf__ scaleType *scale,
                                        __ubuf__ ptScaleType *perTokenScale, __ubuf__ BiasDtype *bias, uint16_t mSize,
                                        uint16_t nSize);
-    __aicore__ inline void NotifyCube() { AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG); }
+    __aicore__ inline void NotifyCube()
+    {
+        AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG);
+    }
     __aicore__ inline void WaitForVector()
     {
         AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG);
@@ -105,7 +104,10 @@ protected:
         AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG);
         AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX);
     }
-    __aicore__ inline void WaitForCube() { AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG); }
+    __aicore__ inline void WaitForCube()
+    {
+        AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG);
+    }
     __aicore__ inline void CopyDataFromGm2Ub();
     __aicore__ inline void CopyX1ScaleFromGm2Ub(LocalTensor<ptScaleType> &dst, uint64_t blockLen, uint64_t offset);
     __aicore__ inline void CopyX2ScaleFromGm2Ub(LocalTensor<scaleType> &dst);
@@ -164,7 +166,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
     isBiasEpilogue_ = IsSameType<aType, int8_t>::value &&
                       (biasDtype_ == DT_BF16 || biasDtype_ == DT_FLOAT16 || biasDtype_ == DT_FLOAT);
     UpdateGlobalAddr(aGM, bGM, scale, bias, ptScale, cGM, workSpace);
-    if ASCEND_IS_AIC{
+    if ASCEND_IS_AIC {
         mm.Init(&tilingData_->matmulTiling, pipe);
     }
     uint32_t mForSingleVec = DequantBmm::CeilDiv(tilingData_->matmulTiling.baseM, CV_RATIO);
@@ -176,8 +178,9 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
             pipe_->InitBuffer(vecQueScale_, 1, tilingData_->matmulTiling.baseN * sizeof(scaleType));
         }
         if (static_cast<bool>(tilingData_->params.isPertoken)) {
-            pipe_->InitBuffer(vecQuePertokenScale_, 1, DequantBmm::Align(mForSingleVec * sizeof(ptScaleType),
-                                                                         static_cast<uint64_t>(DATA_BLOCK)));
+            pipe_->InitBuffer(
+                vecQuePertokenScale_, 1,
+                DequantBmm::Align(mForSingleVec * sizeof(ptScaleType), static_cast<uint64_t>(DATA_BLOCK)));
         }
         if (isBiasEpilogue_) {
             if (biasDtype_ == DT_FLOAT) {
@@ -261,7 +264,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
                 block_.template CalcGMOffset<aTrans, bTrans, aType, scaleType, bFormat>();
                 if ASCEND_IS_AIC {
                     mm.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN,
-                        tilingData_->matmulTiling.singleCoreK);
+                                      tilingData_->matmulTiling.singleCoreK);
                     if (block_.offset_.batchCOffset * block_.params_.round + j > 0) {
                         WaitForVector();
                     }
@@ -341,7 +344,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::DequantCompute()
 {
-    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2));  // 分配给2个AIV计算
+    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2)); // 分配给2个AIV计算
     auto singleMInVec = subBlockIdx_ == 1 ? block_.params_.singleCoreM - halfSingleM : halfSingleM;
     if (singleMInVec == 0) {
         return;
@@ -386,7 +389,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyDataFromGm2Ub()
 {
-    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2));  // 分配给2个AIV计算
+    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2)); // 分配给2个AIV计算
     auto singleMInVec = subBlockIdx_ == 1 ? block_.params_.singleCoreM - halfSingleM : halfSingleM;
     // scale: GM -> UB
     if (!static_cast<bool>(tilingData_->params.isPerTensor)) {
@@ -547,7 +550,8 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFDoDequantWithoutPertokenScale(
+__aicore__ inline void
+Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFDoDequantWithoutPertokenScale(
     __ubuf__ cType *dequantOutInUbAddr, __ubuf__ l0cDtype *l0cOutUbAddr, uint16_t mSize)
 {
     if (!isBiasEpilogue_) {
@@ -591,87 +595,86 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
     uint16_t nLoopCnt = (nSize + eleNumPerVf - 1) / eleNumPerVf;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::MaskReg maskN4B16 =
-            AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskN4B16 = AscendC::Reg::CreateMask<bfloat16_t, AscendC::Reg::MaskPattern::ALL>();
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; vfBlockIdx++) {
-                AscendC::MicroAPI::RegTensor<l0cDtype> l0cOutReg;
-                AscendC::MicroAPI::RegTensor<scaleType> scaleReg;
-                AscendC::MicroAPI::RegTensor<ptScaleType> perTokenScaleReg;
-                AscendC::MicroAPI::RegTensor<BiasDtype> biasReg;
-                AscendC::MicroAPI::RegTensor<float> castSrcOutReg, castScaleReg, castScaleOneReg, mulScaleOutReg,
+                AscendC::Reg::RegTensor<l0cDtype> l0cOutReg;
+                AscendC::Reg::RegTensor<scaleType> scaleReg;
+                AscendC::Reg::RegTensor<ptScaleType> perTokenScaleReg;
+                AscendC::Reg::RegTensor<BiasDtype> biasReg;
+                AscendC::Reg::RegTensor<float> castSrcOutReg, castScaleReg, castScaleOneReg, mulScaleOutReg,
                     mulPtScaleOutReg, castBiasReg, castBiasOneReg, addBiasOutReg;
-                AscendC::MicroAPI::RegTensor<cType> castResultOutReg;
-                AscendC::MicroAPI::MaskReg maskN = AscendC::MicroAPI::UpdateMask<l0cDtype>(elementNum);
+                AscendC::Reg::RegTensor<cType> castResultOutReg;
+                AscendC::Reg::MaskReg maskN = AscendC::Reg::UpdateMask<l0cDtype>(elementNum);
                 // copy input from ub to register, addr of ub should align to 32B
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf;
-                AscendC::MicroAPI::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
+                AscendC::Reg::DataCopy(l0cOutReg, l0cOut + l0cOutOffset);
                 // cast l0cOut from int32 to float
                 if constexpr (IsSameType<l0cDtype, int32_t>::value) {
-                    AscendC::MicroAPI::Cast<float, l0cDtype, ctInt322Fp32>(castSrcOutReg, l0cOutReg, maskN);
+                    AscendC::Reg::Cast<float, l0cDtype, ctInt322Fp32>(castSrcOutReg, l0cOutReg, maskN);
                 } else {
                     castSrcOutReg = l0cOutReg;
                 }
                 // l0c_out * scale
                 if constexpr (isPertensor) {
-                    AscendC::MicroAPI::Muls(mulScaleOutReg, castSrcOutReg, scaleScalar_, maskN);
+                    AscendC::Reg::Muls(mulScaleOutReg, castSrcOutReg, scaleScalar_, maskN);
                 } else {
-                    AscendC::MicroAPI::DataCopy(scaleReg, scale + vfBlockIdx * eleNumPerVf);
-                    if constexpr (!IsSameType<scaleType, float>::value) {  // cast scale from bf16 to float
-                        AscendC::MicroAPI::Cast<float, scaleType, ctHalf2Fp32Zero>(castScaleReg, scaleReg, maskN);
-                        AscendC::MicroAPI::Cast<float, scaleType, ctHalf2Fp32One>(castScaleOneReg, scaleReg, maskN4B16);
-                        AscendC::MicroAPI::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
+                    AscendC::Reg::DataCopy(scaleReg, scale + vfBlockIdx * eleNumPerVf);
+                    if constexpr (!IsSameType<scaleType, float>::value) { // cast scale from bf16 to float
+                        AscendC::Reg::Cast<float, scaleType, ctHalf2Fp32Zero>(castScaleReg, scaleReg, maskN);
+                        AscendC::Reg::Cast<float, scaleType, ctHalf2Fp32One>(castScaleOneReg, scaleReg, maskN4B16);
+                        AscendC::Reg::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                     } else {
                         castScaleReg = scaleReg;
                     }
-                    AscendC::MicroAPI::Mul(mulScaleOutReg, castSrcOutReg, castScaleReg, maskN);
+                    AscendC::Reg::Mul(mulScaleOutReg, castSrcOutReg, castScaleReg, maskN);
                 }
                 // out * perTokenScale
                 if constexpr (x1QuantMode == BasicQuantMode::PERTENSOR_MODE) {
-                    AscendC::MicroAPI::Muls(mulPtScaleOutReg, mulScaleOutReg, pertokenScaleScalar_, maskN);
+                    AscendC::Reg::Muls(mulPtScaleOutReg, mulScaleOutReg, pertokenScaleScalar_, maskN);
                 } else if constexpr (x1QuantMode == BasicQuantMode::PERTOKEN_MODE) {
-                    AscendC::MicroAPI::DataCopy<ptScaleType, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(
-                        perTokenScaleReg, perTokenScale + mIdx);
-                    AscendC::MicroAPI::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
+                    AscendC::Reg::DataCopy<ptScaleType, AscendC::Reg::LoadDist::DIST_BRC_B32>(perTokenScaleReg,
+                                                                                              perTokenScale + mIdx);
+                    AscendC::Reg::Mul(mulPtScaleOutReg, mulScaleOutReg, perTokenScaleReg, maskN);
                 } else {
                     mulPtScaleOutReg = mulScaleOutReg;
                 }
                 // out + bias
                 if constexpr (isBiasEpilogue) {
-                    AscendC::MicroAPI::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
+                    AscendC::Reg::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
                     // cast bias from bf16/fp16 to float
                     if constexpr (IsSameType<BiasDtype, bfloat16_t>::value || IsSameType<BiasDtype, half>::value) {
-                        AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32Zero>(castBiasReg, biasReg, maskN);
-                        AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32One>(castBiasOneReg, biasReg, maskN4B16);
-                        AscendC::MicroAPI::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
+                        AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32Zero>(castBiasReg, biasReg, maskN);
+                        AscendC::Reg::Cast<float, BiasDtype, ctHalf2Fp32One>(castBiasOneReg, biasReg, maskN4B16);
+                        AscendC::Reg::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
                     } else {
                         castBiasReg = biasReg;
                     }
-                    AscendC::MicroAPI::Add(addBiasOutReg, mulPtScaleOutReg, castBiasReg, maskN);
+                    AscendC::Reg::Add(addBiasOutReg, mulPtScaleOutReg, castBiasReg, maskN);
                 } else {
                     addBiasOutReg = mulPtScaleOutReg;
                 }
                 // cast dequant result from float to fp16/bf16
                 if constexpr (!IsSameType<cType, float>::value) {
-                    AscendC::MicroAPI::Cast<cType, float, ctFp322Half>(castResultOutReg, addBiasOutReg, maskN);
+                    AscendC::Reg::Cast<cType, float, ctFp322Half>(castResultOutReg, addBiasOutReg, maskN);
                 } else {
                     castResultOutReg = addBiasOutReg;
                 }
                 // copy out from register to ub
                 uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf;
                 if constexpr (IsSameType<cType, float>::value) {
-                    AscendC::MicroAPI::DataCopy<cType, AscendC::MicroAPI::StoreDist::DIST_NORM_B32>(
-                        dst + dstUbOffset, castResultOutReg, maskN);
+                    AscendC::Reg::DataCopy<cType, AscendC::Reg::StoreDist::DIST_NORM_B32>(dst + dstUbOffset,
+                                                                                          castResultOutReg, maskN);
                 } else {
-                    AscendC::MicroAPI::DataCopy<cType, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                        dst + dstUbOffset, castResultOutReg, maskN);
+                    AscendC::Reg::DataCopy<cType, AscendC::Reg::StoreDist::DIST_PACK_B32>(dst + dstUbOffset,
+                                                                                          castResultOutReg, maskN);
                 }
             }
         }
     }
 }
 
-}  // namespace Mc2QuantBatchMatmulV3
+} // namespace Mc2QuantBatchMatmulV3
 
-#endif  // QBMM_MIX_ONLINE_DYNAMIC_H
+#endif // QBMM_MIX_ONLINE_DYNAMIC_H

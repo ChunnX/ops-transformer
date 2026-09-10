@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "flash_attn_tiling.h"
+#include "flash_attn_tiling_arch35.h"
 #include "../flash_attn_tiling.h"
 #include "../fa_adjust_sinner_souter.h"
 #include <map>
@@ -95,22 +95,21 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
 
 void FlashAttnTilingImpl::InitImplParam()
 {
-    const gert::Tensor *actSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
-    const gert::Tensor *actSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
-    uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
-    actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
-    cuSeqLenKVFlag_ =
-        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+    const gert::Tensor *cuSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
+    const gert::Tensor *cuSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
+    uint32_t cuSeqLenQDims = 0;
+    uint32_t cuSeqLenKVDims = 0;
+    cuSeqLenQDims = (cuSeqLenQ != nullptr) ? cuSeqLenQ->GetShapeSize() : 0;
+    cuSeqLenKVDims = (cuSeqLenKV != nullptr) ? cuSeqLenKV->GetShapeSize() : 0;
+    cuSeqLenQFlag_ = !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr));
+    cuSeqLenKVFlag_ = !((cuSeqLenKVDims == 0) || (cuSeqLenKV == nullptr));
 
     const gert::Tensor *seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
     const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
     uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
-    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
-    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
+    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr));
+    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr));
 }
 
 void FlashAttnTilingImpl::SplitPolicy()
@@ -122,8 +121,14 @@ void FlashAttnTilingImpl::SplitPolicy()
         winLeft = MASK_MODE_INT_MAX;
         winRight = MASK_MODE_INT_MAX;
     }
+    if (winLeft == -1) {
+        winLeft = MASK_MODE_INT_MAX;
+    }
+    if (winRight == -1) {
+        winRight = MASK_MODE_INT_MAX;
+    }
     fa_tiling_util::AdjustSinnerAndSouter(static_cast<uint32_t>(faInfo_->vHeadDim),
-                                          faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+                                          static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
@@ -132,22 +137,29 @@ void FlashAttnTilingImpl::SplitPolicy()
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
-    // config:
-    //   config=0: D=64,  sOuter=64,  sInner=128
-    //   config=1: D=64,  sOuter=32,  sInner=256
-    //   config=2: D=128, sOuter=64,  sInner=128
-    //   config=3: D=128, sOuter=32,  sInner=256
-    //   config=4: D=256, sOuter=32,  sInner=256
-    if (faInfo_->qkHeadDim == 64) {
-        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
-    } else if (faInfo_->qkHeadDim == 128) {
-        tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
-    } else if (faInfo_->qkHeadDim == 256) {
-        tilingKeyInfo_.config = 4;
+    if (faInfo_->qkHeadDim == faInfo_->vHeadDim) {
+        // 等长 (QK D == V DV) 按 D 值映射:
+        //   config=0: Dk=64,  Dv=64,  sOuter=64,  sInner=128
+        //   config=1: Dk=64,  Dv=64,  sOuter=32,  sInner=256
+        //   config=2: Dk=128, Dv=128, sOuter=64,  sInner=128 (Dk=72 复用, kernel 内 pad 到 128)
+        //   config=3: Dk=128, Dv=128, sOuter=32,  sInner=256 (Dk=72 复用, kernel 内 pad 到 128)
+        //   config=4: Dk=256, Dv=256, sOuter=64, sInner=128
+        //   config=5: Dk=256, Dv=256, sOuter=32, sInner=256
+        if (faInfo_->qkHeadDim == 64) {
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
+        } else if (faInfo_->qkHeadDim == 128 || faInfo_->qkHeadDim == 72) {
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 2 : 3;
+        } else if (faInfo_->qkHeadDim == 256) {
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 4 : 5;
+        }
     } else {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
-                                               std::to_string(faInfo_->qkHeadDim).c_str(),
-                                               "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
+        // 不等长 (qkHeadDim != vHeadDim) 按 (QK D, V DV) 组合映射:
+        if (faInfo_->qkHeadDim == 192 && faInfo_->vHeadDim == 128) {
+            // QK D=192 且 V DV=128 (MLA 非吸收形态) 进入此分支:
+            //   config=6: Dk=192, Dv=128, sOuter=64, sInner=128
+            //   config=7: Dk=192, Dv=128, sOuter=32, sInner=256
+            tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
+        }
     }
 }
 
@@ -177,26 +189,37 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     }
 }
 
+void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
+{
+    // templateId: 0=ND模板, 1=DN模板
+    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
+    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
+    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
+              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
+    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
+}
+
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
+    UpdateTilingKeyTemplateId();
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
 {
     UpdateTilingKeyInfo();
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
-                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
+                                    tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.templateId, tilingKeyInfo_.config);
     OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(faInfo_->opName,
-            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu.",
+            "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, templateId: %llu, "
+            "config: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
-            tilingKeyInfo_.config);
+            tilingKeyInfo_.templateId, tilingKeyInfo_.config);
 }
-
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 {
@@ -305,12 +328,12 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize =
+        faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize =
-        faInfo_->kvLayout == FaLayout::TND ? faInfo_->bSize : 0;
+        faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsKVNull = !cuSeqLenKVFlag_;
@@ -331,6 +354,14 @@ void FlashAttnTilingImpl::SetFATilingData()
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
     tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+
+    // kvcache非连续场景: 从tensor stride取偏移值, 连续时stride值即默认值, 不影响
+    if (faInfo_->hasViewStride) {
+        tilingData_.baseTiling.flashAttnBaseParams.keyBnStride = faInfo_->keyBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.keyN2Stride = faInfo_->keyN2Stride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueBnStride = faInfo_->valueBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueN2Stride = faInfo_->valueN2Stride;
+    }
 }
 
 bool FlashAttnTilingImpl::CheckNeedInitOutput() const
@@ -339,9 +370,9 @@ bool FlashAttnTilingImpl::CheckNeedInitOutput() const
     if (seqUsedQFlag_ || seqUsedKvFlag_) {
         return true;
     }
-    // TND变长: 各batch的s1/s2比不同, NO_MASK时每行至少算到actSeqLensKv, 有mask时可能存在空行
-    if (faInfo_->qLayout == FaLayout::TND && faInfo_->kvLayout == FaLayout::TND) {
-        return faInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK);
+    // 传入cuSeqLenKv时默认清零，可能会有空batch
+    if (cuSeqLenKVFlag_) {
+        return true;
     }
     // 非TND固定shape: 按mask模式判断是否存在整行被mask掉的query块
     if (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
@@ -378,7 +409,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     FlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
     FlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
-    FlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
     OP_LOGD(faInfo_->opName, "t1Size:%d", flashAttnBaseParams.t1Size);
@@ -397,7 +427,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);
-    OP_LOGD(faInfo_->opName, "isKvContinuous:%d", flashAttnBaseParams.isKvContinuous);
     OP_LOGD(faInfo_->opName, "isSoftMaxLseEnable:%d", flashAttnBaseParams.isSoftMaxLseEnable);
     OP_LOGD(faInfo_->opName, "coreNum:%d", flashAttnBaseParams.coreNum);
 
@@ -415,22 +444,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashAttnWorkspaceParams.logSumExpSize);
 
     OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
-
-    for (int aicIdx = 0; aicIdx < FA_AIC_CORE_NUM; ++aicIdx) {
-        OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aicIdx, flashAttnMetaData.FAMetadata[aicIdx][0], flashAttnMetaData.FAMetadata[aicIdx][1],
-                flashAttnMetaData.FAMetadata[aicIdx][2], flashAttnMetaData.FAMetadata[aicIdx][3],
-                flashAttnMetaData.FAMetadata[aicIdx][4], flashAttnMetaData.FAMetadata[aicIdx][5],
-                flashAttnMetaData.FAMetadata[aicIdx][6], flashAttnMetaData.FAMetadata[aicIdx][7]);
-    }
-
-    for (int aivIdx = 0; aivIdx < FA_AIV_CORE_NUM; ++aivIdx) {
-        OP_LOGD(faInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aivIdx, flashAttnMetaData.FDMetadata[aivIdx][0], flashAttnMetaData.FDMetadata[aivIdx][1],
-                flashAttnMetaData.FDMetadata[aivIdx][2], flashAttnMetaData.FDMetadata[aivIdx][3],
-                flashAttnMetaData.FDMetadata[aivIdx][4], flashAttnMetaData.FDMetadata[aivIdx][5],
-                flashAttnMetaData.FDMetadata[aivIdx][6], flashAttnMetaData.FDMetadata[aivIdx][7]);
-    }
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
     OP_LOGD(faInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);

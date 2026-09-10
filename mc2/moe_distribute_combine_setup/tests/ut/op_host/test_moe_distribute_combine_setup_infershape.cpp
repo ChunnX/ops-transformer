@@ -220,11 +220,11 @@ TEST_F(MoeDistributeCombineSetupInferShapeTest, InferShapeNormal6)
 TEST_F(MoeDistributeCombineSetupInferShapeTest, InferDataTypeNormal)
 {
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType(OP_NAME)
-        .NodeIoNum(3, 2)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .SetOpType(OP_NAME)
+                             .NodeIoNum(3, 2)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(spaceRegistry, nullptr);

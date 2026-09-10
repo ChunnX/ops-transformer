@@ -18,7 +18,7 @@
 #include "lib/matmul_intf.h"
 #include "../../common/op_kernel/mc2_nd_to_nz.h"
 #include "../../common/op_kernel/mc2_matmul_compute.h"
-#include "all_gather_matmul_tiling.h"
+#include "all_gather_matmul_op_tiling.h"
 
 namespace AscendC {
 constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
@@ -29,7 +29,8 @@ class AllGatherMatmulBase {
 public:
     __aicore__ inline AllGatherMatmulBase() {}
     __aicore__ inline void InitBase(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM,
-        GM_ADDR workspaceGM, GM_ADDR contextGM, Mc2Tiling::AllGatherMatmulTilingData *tilingData, TPipe *tPipe);
+                                    GM_ADDR workspaceGM, GM_ADDR contextGM,
+                                    Mc2Tiling::AllGatherMatmulTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Nd2NzBiasCast();
     __aicore__ inline void MatmulLocalCompute(GM_ADDR aGM, GM_ADDR cGM);
     __aicore__ inline void MatmulLocalComputeL2Cache(GM_ADDR aGM, GM_ADDR cGM);
@@ -44,14 +45,14 @@ protected:
     GM_ADDR workspaceGM_;
     Mc2Tiling::AllGatherMatmulTilingData *tilingData_;
     TPipe *tPipe_;
-    uint32_t rankId_{ 0 };
-    uint32_t rankDim_{ 8 };
-    bool debugOnlyCalc_{ false };
+    uint32_t rankId_{0};
+    uint32_t rankDim_{8};
+    bool debugOnlyCalc_{false};
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
-__aicore__ inline void AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::InitBase(GM_ADDR aGM,
-    GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM, GM_ADDR workspaceGM, GM_ADDR contextGM,
+__aicore__ inline void AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::InitBase(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR gatherGM, GM_ADDR workspaceGM, GM_ADDR contextGM,
     Mc2Tiling::AllGatherMatmulTilingData *tilingData, TPipe *tPipe)
 {
     aGM_ = aGM;
@@ -111,7 +112,7 @@ __aicore__ inline void AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BN
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 __aicore__ inline void
 AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BNd2Nz, Bias2Float>::MatmulLocalComputeL2Cache(GM_ADDR aGM,
-    GM_ADDR cGM)
+                                                                                                      GM_ADDR cGM)
 {
     auto &&tiling = tilingData_->localTiling;
     auto &&cfg = tilingData_->param;
@@ -146,5 +147,5 @@ __aicore__ inline void AllGatherMatmulBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BN
         MatmulLocalCompute(aLocalGM, cGM_);
     }
 }
-}
+} // namespace AscendC
 #endif

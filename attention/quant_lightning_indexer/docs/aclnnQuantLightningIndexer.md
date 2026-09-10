@@ -1,17 +1,27 @@
- # aclnnQuantLightningIndexer
+# aclnnQuantLightningIndexer
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/quant_lightning_indexer)
 
 ## 产品支持情况
 
-| 产品                                                    | 是否支持 |
-| ------------------------------------------------- | :-----------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -24,7 +34,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantLightningIndexer”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantLightningIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantLightningIndexer”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
@@ -58,11 +68,12 @@ aclnnStatus aclnnQuantLightningIndexer(
 ```
 
 ## aclnnQuantLightningIndexerGetWorkspaceSize
- 	 
+
 - **参数说明：**
 
 > [!NOTE]
->- query、key、weights、query_dequant_scale、key_dequant_scale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+>
+>- query、key、weights、queryDequantScale、keyDequantScale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 >- 使用S1和S2分别表示query和key的输入样本序列长度，N1和N2分别表示query和key对应的多头数，k表示最后选取的索引个数。参数query中的D和参数key中的D值相等为128。T1和T2分别表示query和key的输入样本序列长度的累加和。
 
 <table style="undefined;table-layout: fixed; width: 1601px"><colgroup>
@@ -96,8 +107,8 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>ND</td>
     <td>
         <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N1,D)。</li>
-                <li>layout_query为TND时，shape为(T1,N1,D)。</li>
+                <li>layoutQuery为BSND时，shape为(B,S1,N1,D)。</li>
+                <li>layoutQuery为TND时，shape为(T1,N1,D)。</li>
         </ul>
     </td>
     <td>x</td>
@@ -109,16 +120,16 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>
         <ul>
                 <li>不支持空tensor。</li>
-                <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
+                <li>blockNum为PageAttention时block总数，blockSize为一个block的token数。</li>
         </ul>
     </td>
     <td>INT8、FLOAT8_E4M3、HIFLOAT8。</td>
     <td>ND</td>
     <td>
         <ul>
-                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2, D)。</li>
-                <li>layout_key为BSND时，shape为(B, S2, N2, D)。</li>
-                <li>layout_key为TND时，shape为(T2, N2, D)。</li>
+                <li>layoutKey为PA_BSND时，shape为(blockNum, blockSize, N2, D)。</li>
+                <li>layoutKey为BSND时，shape为(B, S2, N2, D)。</li>
+                <li>layoutKey为TND时，shape为(T2, N2, D)。</li>
         </ul>
     </td>
     <td>✓</td>
@@ -132,8 +143,8 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>ND</td>
     <td>
         <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。</li>
-                <li>layout_query为TND时，shape为(T1,N1)。</li>
+                <li>layoutQuery为BSND时，shape为(B,S1,N1)。</li>
+                <li>layoutQuery为TND时，shape为(T1,N1)。</li>
         </ul>
     </td>
     <td>x</td>
@@ -147,8 +158,8 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>ND</td>
     <td>
         <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。</li>
-                <li>layout_query为TND时，shape为(T1,N1)。</li>
+                <li>layoutQuery为BSND时，shape为(B,S1,N1)。</li>
+                <li>layoutQuery为TND时，shape为(T1,N1)。</li>
         </ul>
     </td>
     <td>x</td>
@@ -162,10 +173,10 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>ND</td>
     <td>
         <ul>
-                <li>layout_key为BSND时，shape为(B,S2,N2)。</li>
-                <li>layout_key为TND时，shape为(T2,N2)。</li>
-                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2)。</li>
-                <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
+                <li>layoutKey为BSND时，shape为(B,S2,N2)。</li>
+                <li>layoutKey为TND时，shape为(T2,N2)。</li>
+                <li>layoutKey为PA_BSND时，shape为(blockNum, blockSize, N2)。</li>
+                <li>blockNum为PageAttention时block总数，blockSize为一个block的token数。</li>
         </ul>
     </td>
     <td>✓</td>
@@ -179,7 +190,7 @@ aclnnStatus aclnnQuantLightningIndexer(
                 <li>不支持空tensor。</li>
                 <li>如果不指定seqlen可传入None，表示和query的shape的S长度相同。</li>
                 <li>该入参中每个Batch的有效token数不超过query中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
-                <li>当layout_query为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+                <li>当layoutQuery为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
                 <li>不能出现负值。</li>
         </ul>
     </td>
@@ -197,7 +208,7 @@ aclnnStatus aclnnQuantLightningIndexer(
                 <li>不支持空tensor。</li>
                 <li>如果不指定seqlen可传入None，表示和key的shape的S长度相同。</li>
                 <li> 该参数中每个Batch的有效token数不超过key/value中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
-                <li>当layout_key为TND或PA_BSND时，该入参必须传入，layout_key为TND，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+                <li>当layoutKey为TND或PA_BSND时，该入参必须传入，layoutKey为TND，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
                 <li>不能出现负值。</li>
         </ul>
     </td>
@@ -213,13 +224,13 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>
         <ul>
                 <li>不支持空tensor。</li>
-                <li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual_seq_lengths_key对应的block数量）</li>
-                <li>block_size取值为16的整数倍，最大支持到1024。</li>
+                <li>PageAttention场景下，blockTable必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKey对应的block数量）</li>
+                <li>blockSize取值为16的整数倍，最大支持到1024。</li>
         </ul>
     </td>
     <td>INT32</td>
     <td>ND</td>
-    <td>shape支持(B,S2_max/block_size)</td>
+    <td>shape支持(B,S2_max/blockSize)</td>
     <td>x</td>
     </tr>
     <tr>
@@ -288,8 +299,8 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>表示sparse的模式。</td>
     <td>
         <ul>
-                <li>sparse_mode为0时，代表defaultMask模式。</li>
-                <li>sparse_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
+                <li>sparseMode为0时，代表defaultMask模式。</li>
+                <li>sparseMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
         </ul>
     </td>
     <td>INT64</td>
@@ -326,8 +337,8 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>ND</td>
     <td>
         <ul>
-                <li>layout_query为"BSND"时输出shape为[B, S1, N2, sparseCount]。</li>
-                <li>layout_query为"TND"时输出shape为[T1, N2, sparseCount]。</li>
+                <li>layoutQuery为BSND时输出shape为[B, S1, N2, sparseCount]。</li>
+                <li>layoutQuery为TND时输出shape为[T1, N2, sparseCount]。</li>
         </ul>
     </td>
     <td>x</td>
@@ -357,7 +368,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -427,28 +438,36 @@ aclnnStatus aclnnQuantLightningIndexer(
 
 - **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
- ## 约束说明
- 	 
+## 约束说明
+
 - 确定性说明：aclnnQuantLightningIndexer默认确定性实现。
-- 参数query中的N支持小于等于64/32/24/16，key的N支持1。
-- headdim支持128。
-- block_size取值为16的倍数，最大支持1024。
+- 参数query中的N1支持小于等于64/32/24/16，key的N2支持1。
+- D支持128。
+- blockSize取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
-- Atlas A3训练系列产品/Atlas A3推理系列产品：
+
+<!-- npu="A3" id8 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - query和key的数据类型支持`INT8`。
-  - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+  - 仅支持weights、queryDequantScale、keyDequantScale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+  - key和keyDequantScale在layout_key为PA_BSND时支持0轴非连续，其余轴必须连续。
+<!-- end id8 -->
+
+<!-- npu="950" id7 -->
 - Ascend 950PR/Ascend 950DT：
   - query N1仅支持8、16、24、32、64。
   - query和key的数据类型支持`FLOAT8_E4M3、HIFLOAT8、INT8`。
-  - 当query和key的数据类型为`FLOAT8_E4M3`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`BFLOAT16、FLOAT、FLOAT`或`FLOAT16、FLOAT16、FLOAT16`；
-  - 当query和key的数据类型为`HIFLOAT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`BFLOAT16、FLOAT、FLOAT`；
-  - 当query和key的数据类型为`INT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+  - 当query和key的数据类型为`FLOAT8_E4M3`时，支持weights、queryDequantScale、keyDequantScale的数据类型为`BFLOAT16、FLOAT、FLOAT`或`FLOAT16、FLOAT16、FLOAT16`；
+  - 当query和key的数据类型为`HIFLOAT8`时，仅支持weights、queryDequantScale、keyDequantScale数据类型为`BFLOAT16、FLOAT、FLOAT`；
+  - 当query和key的数据类型为`INT8`时，仅支持weights、queryDequantScale、keyDequantScale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+
+<!-- end id7 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 /**

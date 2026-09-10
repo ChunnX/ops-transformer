@@ -21,9 +21,9 @@
 
 class ReduceScatterAll2AllBMM : public OneCalcTwoCommBase {
 public:
-    explicit ReduceScatterAll2AllBMM(const mc2tiling::TilingArgs& args, uint64_t inputEpDim, uint64_t inputTpDim,
-        uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
-        : OneCalcTwoCommBase (args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
+    explicit ReduceScatterAll2AllBMM(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
+                                     uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+        : OneCalcTwoCommBase(args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
     {
         epCommPerf.SetCommShapeLen(clusterInfo.nValue / tpDim);
         epCommPerf.SetCommDTypeSize(clusterInfo.outMatrixCDtypeSize);
@@ -34,16 +34,17 @@ public:
 
 class ReduceScatterAll2AllBMMShardH : public OneCalcTwoCommShardHBase {
 public:
-    explicit ReduceScatterAll2AllBMMShardH(const mc2tiling::TilingArgs& args, uint64_t inputEpDim, uint64_t inputTpDim,
-        uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
-        : OneCalcTwoCommShardHBase (args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
+    explicit ReduceScatterAll2AllBMMShardH(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
+                                           uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+        : OneCalcTwoCommShardHBase(args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
     {
         epCommPerf.SetCommShapeLen(clusterInfo.nValue);
         epCommPerf.SetCommDTypeSize(clusterInfo.outMatrixCDtypeSize);
         tpCommPerf.SetCommShapeLen(clusterInfo.nValue);
         tpCommPerf.SetCommDTypeSize(clusterInfo.outMatrixCDtypeSize);
     }
-    bool SetShortTilePositionFlag(double totalBmmTime, double totalCommTime) override {
+    bool SetShortTilePositionFlag(double totalBmmTime, double totalCommTime) override
+    {
         // short tile at front when totalBmmTime < totalCommTime
         if (totalBmmTime < totalCommTime) {
             return true;

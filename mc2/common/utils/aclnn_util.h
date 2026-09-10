@@ -17,4 +17,4 @@
 
 #define ACLNN_API __attribute__((visibility("default")))
 
-#endif  // COMMON_NN_ACLNN_UTIL_H
+#endif // COMMON_NN_ACLNN_UTIL_H

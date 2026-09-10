@@ -17,6 +17,7 @@
 #define MLA_PROLOG_TILING_H
 
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <map>
@@ -93,6 +94,7 @@ constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 8;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 9;
 constexpr uint32_t QC_QR_SCALE_ATTR_INDEX = 10;
 constexpr uint32_t KC_SCALE_ATTR_INDEX = 11;
+constexpr uint32_t DO_ROPE_ATTR_INDEX = 12;
 
 constexpr uint32_t MLA_PROLOG_DIM_INDEX_0 = 0;
 constexpr uint32_t MLA_PROLOG_DIM_INDEX_1 = 1;
@@ -118,7 +120,6 @@ constexpr char CACHE_MODE_PA_BLK_NZ[]{"PA_BLK_NZ"};
 constexpr char V1_OP_NAME[]{"MlaProlog"};
 constexpr char V2_OP_NAME[]{"MlaPrologV2"};
 constexpr char V3_OP_NAME[]{"MlaPrologV3"};
-
 
 constexpr uint32_t CACHE_MODE_LEN =
     std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
@@ -374,6 +375,12 @@ struct MlaPrologContext {
     const float *qcQrScale;
     const float *kcScale;
 
+    uint64_t kvCacheStride0 = 0U;
+    uint64_t krCacheStride0 = 0U;
+
+    bool doRopeValue = true; // RoPE 开关：由 do_rope attr 控制，V1/V2 默认开启
+    const bool *doRope = nullptr;
+
     size_t *workSpaces;
     uint64_t tilingKey;
     uint32_t blockDim;
@@ -386,6 +393,7 @@ public:
 
     ge::graphStatus RunBigKernelTiling(MlaPrologContext &context, MlaPrologTilingData *tilingData);
     static ge::graphStatus ConvertContext(gert::TilingContext &context, MlaPrologContext &mlaPrologContext);
+    static ge::graphStatus ConvertContextAttrs(gert::TilingContext &context, MlaPrologContext &mlaPrologContext);
 
 private:
     static void ConvertRequiredParams(gert::TilingContext &context, MlaPrologContext &mlaPrologContext);
@@ -397,6 +405,7 @@ private:
     QUANT_MODE GetQuantizationModeV3() const;
     QUANT_MODE GetQuantizationModeV3Dav() const;
     ge::graphStatus SetShapeInfo();
+    void SetShapeInfoDrSize();
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus FillTiling();
     void FillTilingCoreParams();
@@ -448,6 +457,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
+    bool enableRope_ = true; // rope开关写入 tiling key ENABLE_ROPE；由 do_rope attr 控制，默认 true
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

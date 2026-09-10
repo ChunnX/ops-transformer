@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -61,7 +71,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEpGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEpGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize(
@@ -127,30 +137,30 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>sortedIndices（aclTensor）</td>
       <td>输入</td>
       <td>公式中的sortedIndices。</td>
-      <td>索引取值范围[0, tokens_num * topkNum - 1]。</td>
+      <td>索引取值范围[0, tokens_num * topK - 1]，设置rangeOptional时仅处理range范围内元素。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(tokens_num * topkNum)</td>
+      <td>(tokens_num * topK)</td>
       <td>√</td>
     </tr>
     <tr>
       <td>permutedTokensOptional（aclTensor）</td>
       <td>输入</td>
       <td>公式中的permutedTokensOptional。</td>
-      <td>要求topkNum &lt;= 512。</td>
+      <td>要求shape与sortedIndices和unpermutedTokensGrad匹配。</td>
       <td>与unpermutedTokensGrad一致。</td>
       <td>ND</td>
-      <td>(tokens_num * topkNum, hidden_size)</td>
+      <td>(tokens_num * topK, hidden_size)</td>
       <td>√</td>
     </tr>
     <tr>
       <td>probsOptional（aclTensor）</td>
       <td>输入</td>
       <td>公式中的probsOptional。</td>
-      <td>当probs传时，topkNum等于probs第2维；当probs不传时，topkNum=1。</td>
+      <td>当probsOptional传入时，以probsOptional第2维作为有效topK；当probsOptional不传入时，以topkNum作为有效topK，默认1。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>(tokens_num, topkNum)</td>
+      <td>(tokens_num, topK)</td>
       <td>√</td>
     </tr>
     <tr>
@@ -177,7 +187,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>rangeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>公式中的rangeOptional，ep切分的有效范围。</td>
-      <td>要求rangeOptional[0]代表的起始位置小于rangeOptional[1]代表的结束位置。为空时不生效。</td>
+      <td>支持nullptr或长度为2的aclIntArray。为nullptr或取值为{-1, -1}时不生效；生效时要求归一化后的起始位置不大于结束位置。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -187,7 +197,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>topkNum（int64_t）</td>
       <td>输入</td>
       <td>公式中的topkNum，每个token被选中的专家个数。</td>
-      <td>-</td>
+      <td>probsOptional不传入时作为有效topK；probsOptional传入时调用侧应保证topkNum与probsOptional第2维语义一致。有效topK取值范围为[1, 512]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -200,17 +210,17 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
       <td>-</td>
       <td>与unpermutedTokensGrad一致。</td>
       <td>ND</td>
-      <td>(tokens_num * topkNum, hidden_size)</td>
+      <td>(tokens_num * topK, hidden_size)</td>
       <td>×</td>
     </tr>
     <tr>
       <td>probsGradOut（aclTensor）</td>
       <td>输出</td>
       <td>公式中的probsGradOut，probs的梯度。</td>
-      <td>(tokens_num, topkNum)</td>
+      <td>probsOptional传入时shape与probsOptional一致。</td>
       <td>与probsOptional一致。</td>
       <td>ND</td>
-      <td>(tokens_num, topkNum)</td>
+      <td>(tokens_num, topK)</td>
       <td>×</td>
     </tr>
     <tr>
@@ -238,7 +248,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -319,16 +329,30 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-- 确定性计算：
-  - aclnnMoeTokenUnpermuteWithEpGrad默认确定性实现。
+- 确定性说明：aclnnMoeTokenUnpermuteWithEpGrad默认确定性实现。
+
+- Shape匹配约束：不支持broadcast，各输入、输出shape需显式匹配。permutedTokensOptional传入时其第0维需等于sortedIndices第0维、第1维需等于unpermutedTokensGrad第1维（hidden_size）；probsOptional传入时其第0维需等于unpermutedTokensGrad第0维（tokens_num）；permutedTokensGradOut第0维需等于sortedIndices第0维、第1维需等于hidden_size；probsOptional传入时probsGradOut需与probsOptional一致。
+
+- 有效topK约束：probsOptional传入时有效topK为probsOptional第2维，probsOptional不传入时有效topK为topkNum（默认1），有效topK取值范围为[1, 512]。
+
+- rangeOptional约束：支持nullptr（不生效，全程处理）或长度为2的aclIntArray。传入时支持负值（按tokens_num * topK归一化），会被裁剪到[0, tokens_num * topK]范围内，表示左闭右开区间[start, end)，要求归一化后start <= end，且仅该范围内sortedIndices元素参与写入。
+
+- 空Tensor约束：当tokens_num、hidden_size或有效topK为0时为空Tensor场景。
+
+<!-- npu="950" id7 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持空Tensor，第一段接口快速返回，workspaceSize为0，不进行有效计算。
+<!-- end id7 -->
+<!-- npu="A3,910b" id8 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持空Tensor，第一段接口返回错误。
+<!-- end id8 -->
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

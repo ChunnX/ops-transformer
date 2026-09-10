@@ -31,7 +31,7 @@ static ge::graphStatus TilingParseForMoeDistributeDispatchV3(gert::TilingParseCo
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingContext* context)
+static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingContext *context)
 {
     MoeDistributeDispatchV3TilingFuncA5 impl;
     return impl.MoeDistributeDispatchV3TilingFunc(context);
@@ -39,4 +39,4 @@ static ge::graphStatus MoeDistributeDispatchV3TilingFuncImplA5(gert::TilingConte
 IMPL_OP_OPTILING(MoeDistributeDispatchV3)
     .Tiling(MoeDistributeDispatchV3TilingFuncImplA5)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV3);
-}
+} // namespace optiling

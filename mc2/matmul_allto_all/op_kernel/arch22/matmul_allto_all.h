@@ -25,36 +25,36 @@ using namespace AscendC;
 #endif
 #include "adv_api/hccl/hccl.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "moe_distribute_base.h"
-#include "matmul_allto_all_util.h"
+#include "matmul_allto_all_moe_distribute_base.h"
+#include "matmul_allto_all_util_arch22.h"
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "block_epilogue_dequant.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "tile_broadcast_add.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp"
+#include "matmul_allto_all_block_epilogue_dequant.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tla_epilogue_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_mul.hpp"
+#include "matmul_allto_all_tile_broadcast_add.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_one_blk.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_copy.hpp"
 
-#include "quant_matmul.hpp"
+#include "matmul_allto_all_quant_matmul.hpp"
 #include "matmul.hpp"
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/status.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_status.hpp"
 using namespace Catlass;
 
 namespace Mc2Kernel {
 
 // MMA2A : MatmulAlltoAll
-#define TemplateMMA2AClass                                                                                             \
+#define TemplateMMA2AClass \
     typename AType, typename BType, typename BiasType, typename pertokenScaleType, typename scaleType, typename cType, \
         bool hasBias, bool TB
 #define TemplateMMA2AFunc AType, BType, BiasType, pertokenScaleType, scaleType, cType, hasBias, TB
@@ -100,7 +100,6 @@ private:
     bool TA;
     static constexpr bool has_bias = hasBias;
 };
-
 
 template <TemplateMMA2AClass>
 __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
@@ -407,10 +406,10 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
             for (int32_t commIdx = 0; commIdx < commCount; ++commIdx) {
                 int32_t actual_p_value = commUtil.p_value;
 
-                int64_t token_total =
-                    static_cast<int64_t>(commUtil.p_value) * commUtil.m0 * commUtil.n;
+                int64_t token_total = static_cast<int64_t>(commUtil.p_value) * commUtil.m0 * commUtil.n;
                 if (commIdx == commCount - 1) {
-                    token_total = (commUtil.m - (commIdx * commUtil.m0 * commUtil.p_value)) * commUtil.n;
+                    token_total =
+                        (commUtil.m - static_cast<int64_t>(commIdx) * commUtil.m0 * commUtil.p_value) * commUtil.n;
                 }
                 int64_t token_per_rank = token_total / rank_size;
 
@@ -421,13 +420,13 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
                 commUtil.CrossRankSyncV1(FLAG_ZERO_IDX, commIdx + 1);
                 commUtil.SetAndWaitAivSync(flag_idx);
 
-                int64_t rank_offset =
-                    static_cast<int64_t>(commUtil.m) * commUtil.n / rank_size;
+                int64_t rank_offset = static_cast<int64_t>(commUtil.m) * commUtil.n / rank_size;
                 if (commUtil.aiv_idx == 0 && commUtil.core_idx < rank_size) {
-                    int64_t src_offset =
-                        flag_idx * commUtil.gm_a_pingpong_size + commUtil.gm_a_pingpong_size / rank_size * rank;
-                    int64_t dst_offset = commUtil.core_idx * rank_offset +
-                                         commIdx * commUtil.m0 * commUtil.p_value * (commUtil.n / rank_size);
+                    int64_t src_offset = static_cast<int64_t>(flag_idx) * commUtil.gm_a_pingpong_size +
+                                         commUtil.gm_a_pingpong_size / rank_size * rank;
+                    int64_t dst_offset = commUtil.core_idx * rank_offset + static_cast<int64_t>(commIdx) * commUtil.m0 *
+                                                                               commUtil.p_value *
+                                                                               (commUtil.n / rank_size);
                     commUtil.CopyGMToGM((__gm__ cType *)commUtil.buff[commUtil.core_idx] + src_offset,
                                         reinterpret_cast<__gm__ cType *>(cGM_) + dst_offset, token_per_rank);
                 }

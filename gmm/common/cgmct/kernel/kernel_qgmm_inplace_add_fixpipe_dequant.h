@@ -19,12 +19,12 @@
 #include "../block/block_mmad_fixpipe_dequant.h"
 #include "../block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "../block/block_scheduler_utils.h"
-#include "../epilogue/block_epilogue_empty.h"
-#include "../utils/common_utils.h"
+#include "../epilogue/cgmct_block_epilogue_empty.h"
+#include "../utils/cgmct_common_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/fill_utils.h"
 #include "../utils/grouped_matmul_constant.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tensor_utils.h"
 #include "../utils/tuple_utils.h"
@@ -46,7 +46,7 @@ using namespace Cgmct::Gemm::GroupedMatmul;
 namespace {
 // fixpipe 只能取 32位 dequant scale 的高19位，低13位清零
 constexpr uint32_t DEQSCALE_HIGH19_MASK = 0xFFFFE000U;
-}  // namespace
+} // namespace
 
 QGMM_INPLACE_ADD_FIXPIPE_DEQUANT_TEM_PARAMS
 class KernelQGmmInplaceAddFixpipeDequant {
@@ -104,8 +104,7 @@ public:
               kBL1(kBL1_),
               dbL0C(dbL0C_),
               groupListType(groupListType_)
-        {
-        }
+        {}
     };
 
     struct Params {
@@ -214,7 +213,7 @@ __aicore__ inline void KernelQGmmInplaceAddFixpipeDequant<QGMM_INPLACE_ADD_FIXPI
     TupleShape l0Shape{static_cast<int64_t>(params.gmmParams.baseM), static_cast<int64_t>(params.gmmParams.baseN),
                        static_cast<int64_t>(params.gmmParams.baseK)};
     L1Params l1Params{static_cast<uint64_t>(params.gmmParams.kAL1), static_cast<uint64_t>(params.gmmParams.kBL1),
-                      2UL};  // Enable double buffering by default.
+                      2UL}; // Enable double buffering by default.
     mmadOp_.Init(problemShape_, l0Shape, l1Params, false, params.gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
 }
 
@@ -311,8 +310,8 @@ __aicore__ inline int32_t KernelQGmmInplaceAddFixpipeDequant<
     return splitValue;
 }
 
-}  // namespace Kernel
-}  // namespace Gemm
-}  // namespace Cgmct
+} // namespace Kernel
+} // namespace Gemm
+} // namespace Cgmct
 
 #endif

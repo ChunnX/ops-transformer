@@ -24,10 +24,10 @@
 
 using AscendC::LocalTensor;
 
-enum class UbFormat
-{
+enum class UbFormat {
     GS1 = 0,
     S1G = 1,
+    S1_ONLY,
 };
 
 template <typename OUT_T, bool ROW_PAD = true>

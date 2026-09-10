@@ -22,28 +22,28 @@
 
 namespace optiling {
 class DeviceOpImplRegistry {
- public:
-  static DeviceOpImplRegistry& GetSingleton();
-  void RegisterSinkTiling(std::string &opType, SinkTilingFunc& func);
-  SinkTilingFunc GetSinkTilingFunc(std::string &opType);
+public:
+    static DeviceOpImplRegistry &GetSingleton();
+    void RegisterSinkTiling(std::string &opType, SinkTilingFunc &func);
+    SinkTilingFunc GetSinkTilingFunc(std::string &opType);
 
- private:
-  DeviceOpImplRegistry() = default;
-  ~DeviceOpImplRegistry() = default;
+private:
+    DeviceOpImplRegistry() = default;
+    ~DeviceOpImplRegistry() = default;
 
- private:
-  std::map<std::string, SinkTilingFunc> sinkTilingFuncsMap_;
+private:
+    std::map<std::string, SinkTilingFunc> sinkTilingFuncsMap_;
 };
 
 class DeviceOpImplRegisterImpl {
- public:
-  DeviceOpImplRegisterImpl() = default;
-  ~DeviceOpImplRegisterImpl();
-  std::string& GetOpType();
+public:
+    DeviceOpImplRegisterImpl() = default;
+    ~DeviceOpImplRegisterImpl();
+    std::string &GetOpType();
 
- private:
-  std::string opType_ = "";
+private:
+    std::string opType_ = "";
 };
-}  // namespace optiling
+} // namespace optiling
 
 #endif

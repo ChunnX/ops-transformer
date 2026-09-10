@@ -69,5 +69,5 @@ private:
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;
 };
-}
+} // namespace optiling
 #endif

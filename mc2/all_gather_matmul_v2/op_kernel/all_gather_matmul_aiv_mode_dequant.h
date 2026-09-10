@@ -16,39 +16,42 @@
 #ifndef CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 #define CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/tla_detail_callback.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_matrix_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/tla_block_epilogue.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_mul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_one_blk.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp"
 #include "all_gather_matmul_aiv_mode_block_epilogue_dequant.h"
 
 #define DEQUANT_ARGS_CALL() \
-    rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), \
-    tileM0, tileN0, pValue, swizzlDirect, swizzlCount, blockSt, blockSize, blockStInWorkspace,    \
-    blockSizeInWorkspace, blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
+    rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), tileM0, tileN0, \
+        pValue, swizzlDirect, swizzlCount, blockSt, blockSize, blockStInWorkspace, blockSizeInWorkspace, blockIdx, \
+        coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
 
 #define DEQUANT_ARGS_FUN() \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
-    __gm__ int32_t *workspace, GM_ADDR output,                                                            \
-    uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
-    uint64_t blockSt, uint64_t blockSize, uint64_t blockStInWorkspace, uint64_t blockSizeInWorkspace,     \
-    uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize, Arch::Resource<Arch::AtlasA2> resource,      \
-    bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
+        __gm__ int32_t *workspace, GM_ADDR output, uint32_t tileM0, uint32_t tileN0, uint32_t pValue, \
+        uint32_t swizzlDirect, uint32_t swizzlCount, int64_t blockSt, int64_t blockSize, int64_t blockStInWorkspace, \
+        int64_t blockSizeInWorkspace, uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize, \
+        Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false, \
+                                                     bool isInt4Type = false
 
-template <typename OutputType> 
+template <typename OutputType>
 class DequantRunner {
 public:
+    static constexpr int32_t EPILOGUE_TILE_ROWS = 64;
+    static constexpr int32_t EPILOGUE_TILE_COLUMNS = 128;
+
     using ArchTag = Arch::AtlasA2;
     using ScaleType = Gemm::GemmType<float, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
@@ -58,7 +61,7 @@ public:
     using BroadcastOneBlkType = Gemm::GemmType<float, layout::RowMajor>;
     using OneBlkColumnBroadcastMulType = Gemm::GemmType<float, layout::RowMajor>;
 
-    using EpilogueTileShape = MatrixShape<64, 128>;
+    using EpilogueTileShape = MatrixShape<EPILOGUE_TILE_ROWS, EPILOGUE_TILE_COLUMNS>;
     using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
     using TileBroadcastOneBlk =
         Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
@@ -108,7 +111,7 @@ public:
         uint32_t mLoop = DivCeil(m, m0);
         uint32_t nLoop = DivCeil(n, n0);
         uint32_t blockLoop = mLoop * nLoop;
- 	    uint32_t totalLoop = blockLoop * worldSize;
+        uint32_t totalLoop = blockLoop * worldSize;
 
         if (needPerChannel && !needPerToken) {
             DefaultSwizzleDirect = 0;
@@ -121,27 +124,27 @@ public:
         __gm__ OutputType *gmD = reinterpret_cast<__gm__ OutputType *>(output);
         for (uint32_t loopIdx = blockIdx; loopIdx < totalLoop; loopIdx += coreNum) {
             uint32_t dataBlockIdx = loopIdx / blockLoop;
- 	        uint32_t blockLoopIdx = loopIdx % blockLoop;
- 	        GemmCoord blockIdxCoord = GetBlockIdCoord(blockLoopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
+            uint32_t blockLoopIdx = loopIdx % blockLoop;
+            GemmCoord blockIdxCoord =
+                GetBlockIdCoord(blockLoopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
             GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
             GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoop, m, nLoop, n, 0);
 
             MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-            uint32_t outputDataOffset = dataBlockIdx * blockSize + blockSt + layoutC.GetOffset(offsetC);
-            uint32_t workspaceDataOffset = dataBlockIdx * blockSizeInWorkspace + blockStInWorkspace
-                                            + layoutC.GetOffset(offsetC);
- 	        uint32_t perTokenScaleOffset = (dataBlockIdx * blockSize + blockSt) / n + blockLocCoord.m();
+            int64_t outputDataOffset = dataBlockIdx * blockSize + blockSt + layoutC.GetOffset(offsetC);
+            int64_t workspaceDataOffset =
+                dataBlockIdx * blockSizeInWorkspace + blockStInWorkspace + layoutC.GetOffset(offsetC);
+            int64_t perTokenScaleOffset = (dataBlockIdx * blockSize + blockSt) / n + blockLocCoord.m();
             layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
             layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              perTokenScale + perTokenScaleOffset, layoutPerTokenScale,
-                              workspace + workspaceDataOffset, layoutC, gmD + outputDataOffset,
-                              layoutC, blockSizeCoord, isInt4Type);
+                              perTokenScale + perTokenScaleOffset, layoutPerTokenScale, workspace + workspaceDataOffset,
+                              layoutC, gmD + outputDataOffset, layoutC, blockSizeCoord, isInt4Type);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              workspace + workspaceDataOffset, layoutC, gmD + outputDataOffset, layoutC,
-                              blockSizeCoord, isInt4Type);
+                              workspace + workspaceDataOffset, layoutC, gmD + outputDataOffset, layoutC, blockSizeCoord,
+                              isInt4Type);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + perTokenScaleOffset, layoutPerTokenScale, gmD + outputDataOffset, layoutC,
                               blockSizeCoord, isInt4Type);

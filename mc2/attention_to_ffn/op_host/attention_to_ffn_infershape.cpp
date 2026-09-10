@@ -17,17 +17,15 @@
 
 using namespace ge;
 namespace ops {
-static ge::graphStatus InferShapeAttentionToFFN(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeAttentionToFFN(gert::InferShapeContext *)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeAttentionToFFN(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeAttentionToFFN(gert::InferDataTypeContext *)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(AttentionToFFN)
-    .InferShape(InferShapeAttentionToFFN)
-    .InferDataType(InferDataTypeAttentionToFFN);
-}  // namespace ops
+IMPL_OP_INFERSHAPE(AttentionToFFN).InferShape(InferShapeAttentionToFFN).InferDataType(InferDataTypeAttentionToFFN);
+} // namespace ops

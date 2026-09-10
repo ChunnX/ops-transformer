@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -55,58 +65,58 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNormRopeConcatBackwardGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnNormRopeConcatBackward”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnNormRopeConcatBackwardGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnNormRopeConcatBackward”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnNormRopeConcatBackwardGetWorkspaceSize(
-    const aclTensor *gradQueryOutput, 
-    const aclTensor *gradKeyOutput, 
-    const aclTensor *gradValueOutput, 
-    const aclTensor *query, 
-    const aclTensor *key, 
-    const aclTensor *encoderQuery, 
-    const aclTensor *encoderKey, 
-    const aclTensor *normQueryWeight, 
-    const aclTensor *normQueryMean, 
-    const aclTensor *normQueryRstd, 
-    const aclTensor *normKeyWeight, 
-    const aclTensor *normKeyMean, 
-    const aclTensor *normKeyRstd, 
-    const aclTensor *normAddedQueryWeight, 
-    const aclTensor *normAddedQueryMean, 
-    const aclTensor *normAddedQueryRstd, 
-    const aclTensor *normAddedKeyWeight, 
-    const aclTensor *normAddedKeyMean, 
-    const aclTensor *normAddedKeyRstd, 
-    const aclTensor *ropeSin, 
-    const aclTensor *ropeCos, 
-    int64_t          normType, 
-    int64_t          normAddedType, 
-    int64_t          ropeType, 
-    int64_t          concatOrder, 
-    const aclTensor *gradQuery, 
-    const aclTensor *gradKey, 
-    const aclTensor *gradValue, 
-    const aclTensor *gradEncoderQuery, 
-    const aclTensor *gradEncoderKey, 
-    const aclTensor *gradEncoderValue, 
-    const aclTensor *gradNormQueryWeight, 
-    const aclTensor *gradNormQueryBias, 
-    const aclTensor *gradNormKeyWeight, 
-    const aclTensor *gradNormKeyBias, 
-    const aclTensor *gradNormAddedQueryWeight, 
-    const aclTensor *gradNormAddedQueryBias, 
-    const aclTensor *gradNormAddedKeyWeight, 
-    const aclTensor *gradNormAddedKeyBias, 
-    uint64_t        *workspaceSize, 
+    const aclTensor *gradQueryOutput,
+    const aclTensor *gradKeyOutput,
+    const aclTensor *gradValueOutput,
+    const aclTensor *query,
+    const aclTensor *key,
+    const aclTensor *encoderQuery,
+    const aclTensor *encoderKey,
+    const aclTensor *normQueryWeight,
+    const aclTensor *normQueryMean,
+    const aclTensor *normQueryRstd,
+    const aclTensor *normKeyWeight,
+    const aclTensor *normKeyMean,
+    const aclTensor *normKeyRstd,
+    const aclTensor *normAddedQueryWeight,
+    const aclTensor *normAddedQueryMean,
+    const aclTensor *normAddedQueryRstd,
+    const aclTensor *normAddedKeyWeight,
+    const aclTensor *normAddedKeyMean,
+    const aclTensor *normAddedKeyRstd,
+    const aclTensor *ropeSin,
+    const aclTensor *ropeCos,
+    int64_t          normType,
+    int64_t          normAddedType,
+    int64_t          ropeType,
+    int64_t          concatOrder,
+    const aclTensor *gradQuery,
+    const aclTensor *gradKey,
+    const aclTensor *gradValue,
+    const aclTensor *gradEncoderQuery,
+    const aclTensor *gradEncoderKey,
+    const aclTensor *gradEncoderValue,
+    const aclTensor *gradNormQueryWeight,
+    const aclTensor *gradNormQueryBias,
+    const aclTensor *gradNormKeyWeight,
+    const aclTensor *gradNormKeyBias,
+    const aclTensor *gradNormAddedQueryWeight,
+    const aclTensor *gradNormAddedQueryBias,
+    const aclTensor *gradNormAddedKeyWeight,
+    const aclTensor *gradNormAddedKeyBias,
+    uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnNormRopeConcatBackward(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -551,7 +561,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
@@ -620,7 +630,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -631,7 +641,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
 
 - aclnn单算子调用方式
 
-  通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+  通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
     ```c++
     #include <algorithm>
@@ -1000,10 +1010,10 @@ aclnnStatus aclnnNormRopeConcatBackward(
                 gradQueryOutput, gradKeyOutput, gradValueOutput, query, key, encoderQuery, encoderKey,
                 normQueryWeight, normQueryMean, normQueryRstd, normKeyWeight, normKeyMean, normKeyRstd,
                 normAddedQueryWeight, normAddedQueryMean, normAddedQueryRstd, normAddedKeyWeight, normAddedKeyMean,
-                normAddedKeyRstd, ropeSin, ropeCos, normType, normAddedType, ropeType, 
-                concatOrder, gradQuery, gradKey, gradValue, gradEncoderQuery, gradEncoderKey, 
+                normAddedKeyRstd, ropeSin, ropeCos, normType, normAddedType, ropeType,
+                concatOrder, gradQuery, gradKey, gradValue, gradEncoderQuery, gradEncoderKey,
                 gradEncoderValue, gradNormQueryWeight, gradNormQueryBias, gradNormKeyWeight, gradNormKeyBias,
-                gradNormAddedQueryWeight, gradNormAddedQueryBias, gradNormAddedKeyWeight, gradNormAddedKeyBias, 
+                gradNormAddedQueryWeight, gradNormAddedQueryBias, gradNormAddedKeyWeight, gradNormAddedKeyBias,
                 & workspaceSize, & executor);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNormRopeConcatBackwardGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
         // 根据第一段接口计算出的workspaceSize申请device内存

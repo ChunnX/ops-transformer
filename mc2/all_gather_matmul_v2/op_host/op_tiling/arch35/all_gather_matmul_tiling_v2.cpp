@@ -40,7 +40,6 @@ using namespace AscendC;
 using namespace Mc2Tiling;
 
 namespace optiling {
-static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherMatmulTilingV2::IsCapable()
@@ -50,7 +49,7 @@ bool AllGatherMatmulTilingV2::IsCapable()
         return true;
     }
 
-    OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when inutDatatype is not fp16 or bf16.");
+    OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when input datatype is not fp16 or bf16.");
     return false;
 }
 
@@ -58,7 +57,7 @@ ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
 {
     auto rawTilingData = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingData == nullptr), OP_LOGE(opName_, "Fail to get rawTilingData."),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
     allGatherMatmulTilingDataV2_ = context_->GetTilingData<AllGatherMatmulTilingDataV2>();
     return ge::GRAPH_SUCCESS;
 }
@@ -68,15 +67,14 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
-    OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
+    OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
                     return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
     MC2_CHECK_LOG_RET(opName_, DoVersion2Tiling());
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
-        MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
-        allGatherMatmulTilingDataV2_->dataType);
+                      MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
+                      allGatherMatmulTilingDataV2_->dataType);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -87,8 +85,8 @@ void Mc2PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &ti
     OP_LOGD(opName, " tiling.nTailCnt %d", tiling.nTailCnt);
     OP_LOGD(opName, " tiling.kTailCnt %d", tiling.kTailCnt);
     OP_LOGD(opName, " tiling.isHf32 %d", tiling.isHf32);
-    OP_LOGD(opName, " tiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
-    OP_LOGD(opName, " tiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, " tiling.mBaseTailSplitCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, " tiling.nBaseTailSplitCnt %d", tiling.nBaseTailSplitCnt);
     OP_LOGD(opName, " tiling.mTailMain %d", tiling.mTailMain);
     OP_LOGD(opName, " tiling.nTailMain %d", tiling.nTailMain);
     OP_LOGD(opName, " tiling.aswWindowLen %d", tiling.aswWindowLen);
@@ -112,12 +110,12 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
-        context_->GetRawTilingData()->GetCapacity());
+            context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", sizeof(AllGatherMatmulTilingDataV2)),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", sizeof(AllGatherMatmulTilingDataV2)),
+                    return ge::GRAPH_FAILED);
     PrintAllTilingData();
     context_->SetBlockDim(args_.aicCoreNum);
     // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
@@ -130,13 +128,20 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
     CutResult result = tileFormulate.GetTiling();
 
-    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
+    if (isCcuMode) {
+        CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
+        AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
+    } else {
+        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+    }
 
     return result;
 }
 
 ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
-    Mc2MMRegisterCfg &registerCfg, Mc2MatMulV3TilingData &tilingData)
+                                                          Mc2MMRegisterCfg &registerCfg,
+                                                          Mc2MatMulV3TilingData &tilingData)
 {
     tilingCfg.SetRankDim(args_.rankDim - 1);
     tilingCfg.SetMatMulV3TilingData(tilingData);
@@ -170,19 +175,19 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     std::vector<int32_t> priorities;
     MC2_CHECK_LOG_RET(opName_, mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch, priorities, opName_));
 
-    Mc2MMRegisterCfg registerCfg{ "Mc2MatMulV3", npuArch, priorities };
+    Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch, priorities};
 
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
 
     // 计算 local 块 tiling
-    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
-                                      reinterpret_cast<const void*>(&mmV3Args_));
+    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
+                                                       reinterpret_cast<const void *>(&mmV3Args_));
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(localTilingCfg, registerCfg, MutableMC2MatmulV3LocalTilingData()));
 
     // 计算 tile 块 tiling
     mmV3Args_.mValue = tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tileCnt);
     Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-        reinterpret_cast<const void *>(&mmV3Args_), tileMValue_);
+                                                      reinterpret_cast<const void *>(&mmV3Args_), tileMValue_);
     tileTilingCfg.SetCommCnt(MutableRCSTilingData().tileCnt);
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MatmulV3TileTilingData()));
     MutableMC2MatmulV3TileTilingData().tCubeTiling.M = (tileMValue_ * (args_.rankDim - 1));
@@ -191,7 +196,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
         // 计算 tail 块 tiling
         mmV3Args_.mValue = tailMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tailCnt);
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-            reinterpret_cast<const void *>(&mmV3Args_), tailMValue_);
+                                                          reinterpret_cast<const void *>(&mmV3Args_), tailMValue_);
         tailTilingCfg.SetCommCnt(MutableRCSTilingData().tailCnt);
         MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MatmulV3TailTilingData()));
         MutableMC2MatmulV3TailTilingData().tCubeTiling.M = (tailMValue_ * (args_.rankDim - 1));
@@ -205,8 +210,9 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     int index = 0;
     auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
     std::string algConfig = "AllGather=level0:fullmesh";
-    Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER),
-        algConfig, 0, static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
+    Mc2CcTilingConfig mc2CcTilingConfig(
+        group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER), algConfig, 0,
+        static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
@@ -217,36 +223,40 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataV2_->param.gatherLen == 0) ?
-        static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
-        static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
+                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
+                                       static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
-    OP_TILING_CHECK(x1ScaleShape != nullptr,
+    OP_TILING_CHECK(
+        x1ScaleShape != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Scale", "not nullptr",
-        "If the dtype of x1 and x2 is fp16 or bf16, x1Scale must be nullptr"),
+                                              "If the dtype of x1 and x2 is fp16 or bf16, x1Scale must be nullptr"),
         return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
-    OP_TILING_CHECK(x2ScaleShape != nullptr,
+    OP_TILING_CHECK(
+        x2ScaleShape != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2Scale", "not nullptr",
-        "If the dtype of x1 and x2 is fp16 or bf16, x2Scale must be nullptr"),
+                                              "If the dtype of x1 and x2 is fp16 or bf16, x2Scale must be nullptr"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext *context)
-    : AllGatherMatmulTilingBase(context), allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
+    : AllGatherMatmulTilingBase(context),
+      allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
 {}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2, static_cast<int32_t>(NpuArch::DAV_3510),
-    0);
+                                   0);
 } // namespace optiling

@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                     | 是否支持 |
-| :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -53,13 +63,13 @@
 
   - 最终输出
 
-  $$
-  \mathbf{normOut}[2 \times \mathbf{numIters} - 1]
-  $$
+    $$
+    \mathbf{normOut}[2 \times \mathbf{numIters} - 1]
+    $$
 
-  $$
-  \mathbf{sumOut}[2 \times \mathbf{numIters} - 1]
-  $$
+    $$
+    \mathbf{sumOut}[2 \times \mathbf{numIters} - 1]
+    $$
 
   - 符号说明
 
@@ -75,7 +85,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMhcPreSinkhornGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhorn`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMhcPreSinkhornGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhorn`执行实际计算。
 
 ```c++
 aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
@@ -141,7 +151,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(bs, seq_len, n, c)</td>
+        <td>(bs, seq_len, n, c)<br>(t, n, c)</td>
         <td>√</td>
       </tr>
       <tr>
@@ -231,7 +241,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>-</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(bs, seq_len, c)</td>
+        <td>(bs, seq_len, c)<br>(t, c)</td>
         <td>×</td>
       </tr>
       <tr>
@@ -241,7 +251,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(bs, seq_len, n)</td>
+        <td>(bs, seq_len, n)<br>(t, n)</td>
         <td>×</td>
       </tr>
       <tr>
@@ -251,57 +261,57 @@ aclnnStatus aclnnMhcPreSinkhorn(
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(bs, seq_len, n * n)</td>
+        <td>(bs, seq_len, n * n)<br>(t, n * n)</td>
         <td>×</td>
       </tr>
       <tr>
         <td>hPre（aclTensor*）</td>
-        <td>可选输出</td>
+        <td>输出</td>
         <td>需要反向时输出，做完sigmoid计算之后的hPre矩阵。</td>
-        <td>根据needBackward决定是否输出。</td>
+        <td>当needBackward为false时，此输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(bs, seq_len, n)</td>
+        <td>(bs, seq_len, n)<br>(t, n)</td>
         <td>×</td>
       </tr>
       <tr>
         <td>hcBeforeNorm（aclTensor*）</td>
-        <td>可选输出</td>
+        <td>输出</td>
         <td>需要反向时输出，x与phi矩阵乘的结果。</td>
-        <td>根据needBackward决定是否输出。</td>
+        <td>当needBackward为false时，此输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(bs, seq_len, n*n + 2*n)</td>
+        <td>(bs, seq_len, n*n + 2*n)<br>(t, n*n + 2*n)</td>
         <td>×</td>
       </tr>
       <tr>
         <td>invRms（aclTensor*）</td>
-        <td>可选输出</td>
+        <td>输出</td>
         <td>需要反向时输出，RmsNorm计算得到的1/r。</td>
-        <td>根据needBackward决定是否输出。</td>
+        <td>当needBackward为false时，此输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(bs, seq_len, 1)</td>
+        <td>(bs, seq_len, 1)<br>(t, 1)</td>
         <td>×</td>
       </tr>
       <tr>
         <td>sumOut（aclTensor*）</td>
-        <td>可选输出</td>
+        <td>输出</td>
         <td>需要反向时输出，每一次迭代的colSum/rowSum结果。</td>
-        <td>根据needBackward决定是否输出。</td>
+        <td>当needBackward为false时，此输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(sk_iter_count * 2, bs, seq_len, n)</td>
+        <td>(sk_iter_count * 2, bs, seq_len, n)<br>(sk_iter_count * 2, t, n)</td>
         <td>×</td>
       </tr>
       <tr>
         <td>normOut（aclTensor*）</td>
-        <td>可选输出</td>
+        <td>输出</td>
         <td>需要反向时输出，每一次colSum/rowSum迭代后的comb结果。</td>
-        <td>根据needBackward决定是否输出。</td>
+        <td>当needBackward为false时，此输出无效。</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(sk_iter_count * 2, bs, seq_len, n, n)</td>
+        <td>(sk_iter_count * 2, bs, seq_len, n, n)<br>(sk_iter_count * 2, t, n, n)</td>
         <td>×</td>
       </tr>
       <tr>
@@ -327,12 +337,14 @@ aclnnStatus aclnnMhcPreSinkhorn(
     </tbody>
   </table>
 
+  说明：4维输入为BSND格式，3维输入为TND格式。其中bs表示Batch大小，seq_len表示单Batch序列长度，t表示所有Batch序列长度的累加和，n表示残差流数量，c表示尾轴隐藏维度大小。
+
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
   <col style="width: 262px">
   <col style="width: 121px">
@@ -410,26 +422,47 @@ aclnnStatus aclnnMhcPreSinkhorn(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-- 确定性计算
+- 确定性计算：
 
   - aclnnMhcPreSinkhorn默认采用确定性实现，相同输入多次调用结果一致。
 
+- Batch一致性说明：
+  <!-- npu="A3,910b" id7 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - 默认非Batch一致性实现，不支持通过aclrtSetSysParamOpt开启Batch一致性。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 默认非Batch一致性实现，支持通过aclrtSetSysParamOpt开启Batch一致性。开启Batch一致性后性能可能会有一定程度的劣化。
+  <!-- end id8 -->
+
 - 规格约束
 
-  | 规格项        | 规格                | 规格说明                                                                 |
-  | :------------ | :------------------ | :----------------------------------------------------------------------- |
-  | numIters      | 20                  | 迭代次数超出该范围会返回参数无效错误。                                    |
-  | n             | 4                   | 目前只支持4。                                                            |
-  | c（A5）       | 4096、7168          | <term>Ascend 950PR/Ascend 950DT</term>尾轴c仅支持4096、7168。 |
-  | c（A2/A3）    | 128对齐，[1, 100000] | <term>Atlas A2/A3</term>尾轴c需为128的倍数且取值范围为[1, 100000]。       |
+  | 规格项        | 规格 | 规格说明                              |
+  | :------------ | :--- | :------------------------------------ |
+  | numIters      | 20   | 目前只支持20。                        |
+  | n             | 4    | 目前只支持4。                         |
+
+  <!-- npu="A3,910b" id9 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - 输入x仅支持4维BSND格式，shape为(bs, seq_len, n, c)。
+    - 尾轴c需为128的倍数且取值范围为[1, 100000]。
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 输入x支持4维BSND格式和3维TND格式，shape分别为(bs, seq_len, n, c)和(t, n, c)。
+    - TND格式下，t表示所有Batch序列长度的累加和；对应输出shape按参数说明中的t轴展开。
+    - 尾轴c仅支持4096、7168。
+    - 输入phi的数据范围限定在$\pm \frac{1}{\sqrt{nc}}$范围内，eps限定在1e-6，此范围内具有较好的数值稳定性。
+  <!-- end id10 -->
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -687,7 +720,7 @@ int main()
   aclrtStream stream = nullptr;
   Tensors tensors;
 
-  int64_t bs = 2, seq_len = 128, n = 4, c = 256;
+  int64_t bs = 2, seq_len = 128, n = 4, c = 4096;
   int64_t hc_mult = n;
   int64_t hc_mix = n * n + 2 * n;
   int64_t num_iters = 20;

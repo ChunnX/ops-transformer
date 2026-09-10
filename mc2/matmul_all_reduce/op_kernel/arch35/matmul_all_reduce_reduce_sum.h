@@ -43,7 +43,7 @@ public:
     uint64_t rankDataCnt_ = 0;
     uint64_t coreNum_ = 0;
     uint64_t rankNum_;
-    TPipe* pipe_;
+    TPipe *pipe_;
     GM_ADDR dequantOut_;
     GM_ADDR output_;
     GlobalTensor<float> inputGM_;
@@ -99,8 +99,8 @@ public:
             }
         }
         pipe_->Reset();
-        inputGM_.SetGlobalBuffer((__gm__ float*)dequantOut_, this->totalDataCnt_);
-        outputGM_.SetGlobalBuffer((__gm__ float*)output_, this->rankDataCnt_);
+        inputGM_.SetGlobalBuffer((__gm__ float *)dequantOut_, this->totalDataCnt_);
+        outputGM_.SetGlobalBuffer((__gm__ float *)output_, this->rankDataCnt_);
         pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, this->xUbSize_);
         pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, this->zUbSize_);
         ProcessSum(progress, calCnt);

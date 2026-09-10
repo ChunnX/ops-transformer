@@ -27,17 +27,16 @@ using namespace std;
 // ============================================================
 
 static std::vector<gert::TilingContextPara::OpAttr> MakeAttrs(std::string activationMode = "silu",
-                                                              int64_t nullBlockId = 0, int64_t runMode = 0)
+                                                              int64_t nullBlockId = 0)
 {
     return {
         {"activation_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(activationMode)},
         {"null_block_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(nullBlockId)},
-        {"run_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(runMode)},
     };
 }
 
 // ============================================================
-// FN Mode (run_mode=0)
+// FN Mode (prefill)
 // ============================================================
 
 class CausalConv1dFnTiling : public testing::Test {
@@ -55,7 +54,7 @@ protected:
 TEST_F(CausalConv1dFnTiling, fn_3d_fp16_b2_s16_d8192_w4_bias)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1, 0);
+    auto a = MakeAttrs("none", -1);
     gert::TilingContextPara p("CausalConv1d",
                               {
                                   {{{2, 16, 8192}, {2, 16, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // x
@@ -78,7 +77,7 @@ TEST_F(CausalConv1dFnTiling, fn_3d_fp16_b2_s16_d8192_w4_bias)
 TEST_F(CausalConv1dFnTiling, fn_2d_varlen_fp16_d8192_w4)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1, 0);
+    auto a = MakeAttrs("none", -1);
     gert::TilingContextPara p("CausalConv1d",
                               {
                                   {{{32, 8192}, {32, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND},     // x (2D varlen)
@@ -99,7 +98,7 @@ TEST_F(CausalConv1dFnTiling, fn_2d_varlen_fp16_d8192_w4)
 }
 
 // ============================================================
-// Update Mode (run_mode=1)
+// Update Mode (decode)
 // ============================================================
 
 class CausalConv1dUpdateTiling : public testing::Test {
@@ -117,7 +116,7 @@ protected:
 TEST_F(CausalConv1dUpdateTiling, upd_3d_fp16_b128_s1_d8192_w4_bias)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1, 1);
+    auto a = MakeAttrs("none", -1);
     gert::TilingContextPara p("CausalConv1d",
                               {
                                   {{{128, 1, 8192}, {128, 1, 8192}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // x
@@ -144,7 +143,7 @@ TEST_F(CausalConv1dUpdateTiling, upd_3d_fp16_b128_s1_d8192_w4_bias)
 TEST_F(CausalConv1dUpdateTiling, reject_int32_dtype)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1, 1);
+    auto a = MakeAttrs("none", -1);
     gert::TilingContextPara p("CausalConv1d",
                               {
                                   {{{128, 1, 8192}, {128, 1, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // x (invalid dtype)
@@ -167,7 +166,7 @@ TEST_F(CausalConv1dUpdateTiling, reject_int32_dtype)
 TEST_F(CausalConv1dFnTiling, reject_kernel_width_5)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1, 0);
+    auto a = MakeAttrs("none", -1);
     gert::TilingContextPara p(
         "CausalConv1d",
         {
@@ -191,7 +190,7 @@ TEST_F(CausalConv1dFnTiling, reject_kernel_width_5)
 TEST_F(CausalConv1dFnTiling, reject_state_len_too_small)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1, 0);
+    auto a = MakeAttrs("none", -1);
     gert::TilingContextPara p(
         "CausalConv1d",
         {

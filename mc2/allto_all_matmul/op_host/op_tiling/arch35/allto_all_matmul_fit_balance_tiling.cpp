@@ -43,6 +43,8 @@ const static std::map<uint32_t, double> permuteBMap = {{4, 9.85}, {8, 9.85}};
 const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 88.6523}, {8, 81.9156}};
 const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.6494}, {8, 9.9191}};
 constexpr uint64_t ALIGN_M = 256;
+constexpr uint64_t AICPU_TILING_COST = 100;
+constexpr uint64_t CCU_TILING_COST = 10;
 void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
 {
     totalMatmulTime_ = CalcMatmulTime(mmInfo_.mValue);
@@ -54,6 +56,20 @@ void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
     } else {
         tilingM_.cutRes.shortTileAtBack = false;
     }
+
+    // aicpu所需时间相比ccu的比率
+    const double aicpuTimeRate = 1.5;
+    // 计算最大切分轮次
+    double tempMaxTilingNum = commMode_ == mc2tiling::A5_AICPU_TS_ENGINE ?
+                                  (totalTpTime_ * aicpuTimeRate / static_cast<double>(AICPU_TILING_COST)) :
+                                  (totalTpTime_ / static_cast<double>(CCU_TILING_COST));
+    // 最大切分轮次不少于三次
+    const double maxTiling = 3.0;
+    tempMaxTilingNum = tempMaxTilingNum < maxTiling ? maxTiling : tempMaxTilingNum;
+    alltoallMaxTilingNum_ = static_cast<uint64_t>(tempMaxTilingNum) < alltoallMaxTilingNum_ ?
+                                static_cast<uint64_t>(tempMaxTilingNum) :
+                                alltoallMaxTilingNum_;
+    tilingM_.SetMaxTileCnt(alltoallMaxTilingNum_);
 }
 
 void AlltoAllMatmulFitBalanceTiling::SetShortTileLen()
@@ -205,6 +221,11 @@ void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor()
     uint64_t minFactor;
     for (uint64_t tempAllNumOfLongTile = alignNum - 1; (tempAllNumOfLongTile + tempAllNumOfLongTile) > alignNum;
          tempAllNumOfLongTile--) {
+        // 切分轮次上限太小
+        if (alltoallMaxTilingNum_ <= tilingM_.cutRes.numShortTile) {
+            break;
+        }
+        // 计算最小因数
         minFactor = primeMinFactor(tempAllNumOfLongTile);
         alignRemainder += ALIGN_M;
         maxLongNum = (CalcLongTileLen(alignRemainder) + ALIGN_M - 1) / ALIGN_M;
@@ -215,7 +236,7 @@ void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor()
         // 长块尽量切大减少轮次带来的膨胀
         for (; maxLongNum > alignRemainder / ALIGN_M; maxLongNum--) {
             // 切分轮次限制
-            if (tempAllNumOfLongTile / maxLongNum > MAX_TILE_CNT - tilingM_.cutRes.numShortTile) {
+            if (tempAllNumOfLongTile / maxLongNum > alltoallMaxTilingNum_ - tilingM_.cutRes.numShortTile) {
                 continue;
             }
             if (tempAllNumOfLongTile % maxLongNum == 0) {
@@ -261,7 +282,7 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
             ReTilingByFactor();
         }
     }
-    if (tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile > MAX_TILE_CNT) {
+    if (tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile > alltoallMaxTilingNum_) {
         // 切分轮次过多，重新切分
         ReTilingByFactor();
     }

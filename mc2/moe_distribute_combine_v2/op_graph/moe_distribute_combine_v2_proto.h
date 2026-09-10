@@ -19,16 +19,18 @@
 
 namespace ge {
 
-
 /**
 * @brief MoeDistributeCombineV2 operator interface implementation.
 
 * @par Inputs
 * Ten inputs, including:
-* @li expand_x: A tensor. Support dtype: float16, bfloat16, int32, dimension must be 2, Support Shape: (A * world_size, H), support format: ND.
+* @li expand_x: A tensor. Support dtype: float16, bfloat16, int32, dimension must be 2, Support Shape: (A * world_size,
+H), support format: ND.
 * @li expert_ids: A tensor. Support dtype: int32, dimension must be 2, Support Shape: (BS, K), support format: ND.
-* @li assist_info_for_combine: A tensor. Support dtype: int32, dimension must be 1, Support Shape: (A * 128), support format: ND.
-* @li ep_send_counts: A tensor. Support dtype: int32, Support Shape: (expert_nums + 2 * globalBs * K * server_num, ), support format: ND.
+* @li assist_info_for_combine: A tensor. Support dtype: int32, dimension must be 1, Support Shape: (A * 128), support
+format: ND.
+* @li ep_send_counts: A tensor. Support dtype: int32, Support Shape: (expert_nums + 2 * globalBs * K * server_num, ),
+support format: ND.
 * @li expert_scales: A tensor. Support dtype: float32, Support Shape: (BS, K), support format: ND.
 * @li tp_send_counts: A tensor. Support dtype: int32, support format: ND.
 * @li x_active_mask: An optional tensor. Support dtype: bool, support format: ND.
@@ -100,8 +102,6 @@ REG_OP(MoeDistributeCombineV2)
     .ATTR(const_expert_num, Int, 0)
     .OP_END_FACTORY_REG(MoeDistributeCombineV2)
 
+} // namespace ge
 
-}  // namespace ge
-
-
-#endif  // MOE_DISTRIBUTE_COMBINE_V2_PROTO_H_
+#endif // MOE_DISTRIBUTE_COMBINE_V2_PROTO_H_

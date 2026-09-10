@@ -24,7 +24,6 @@
 
 namespace ops::adv::tests::utils {
 
-
 class TensorIntf {
 public:
     enum class TensorType {
@@ -76,7 +75,8 @@ public:
     virtual uint8_t *AllocDevData(int32_t initVal, int64_t minSize);
     virtual void FreeDevData();
 
-    template <class T> [[maybe_unused]] bool CopyHostToDevData(std::vector<T> &hostData)
+    template <class T>
+    [[maybe_unused]] bool CopyHostToDevData(std::vector<T> &hostData)
     {
         int64_t hostDataSize = hostData.size() * sizeof(T);
         return this->CopyHostToDevData((uint8_t *)hostData.data(), hostDataSize);
@@ -84,7 +84,8 @@ public:
     [[maybe_unused]] virtual bool CopyHostToDevData(uint8_t *hostBuff, int64_t hostBuffSize);
     [[maybe_unused]] virtual bool LoadFileToDevData(std::string &filePath);
 
-    template <class T> [[maybe_unused]] bool CopyDevDataToHost(std::vector<T> &hostData)
+    template <class T>
+    [[maybe_unused]] bool CopyDevDataToHost(std::vector<T> &hostData)
     {
         auto hostEleNum = static_cast<int64_t>(std::ceil(devDataSize_ / sizeof(T)));
         int64_t hostDataSize = hostEleNum * sizeof(T);

@@ -20,24 +20,23 @@
 #include <cstring>
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../op_kernel/arch22/weight_quant_matmul_all_reduce_tiling_data.h"
+#include "../../../op_kernel/weight_quant_matmul_all_reduce_tiling_data.h"
 #ifdef __CCE_KT_TEST__
 #include "kernel_operator.h"
 #endif
 
-#define GET_TILING_DATA(tiling_data, tiling_arg)    \
+#define GET_TILING_DATA(tiling_data, tiling_arg) \
     Mc2Tiling::WeightQuantMatmulAllReduceTilingData tiling_data; \
     InitTilingData<Mc2Tiling::WeightQuantMatmulAllReduceTilingData>(tiling_arg, &tiling_data);
 
 #define GET_TILING_DATA_WITH_STRUCT(tiling_struct, tiling_data, tiling_arg) \
-    tiling_struct tiling_data;                                              \
+    tiling_struct tiling_data; \
     InitTilingData<tiling_struct>(tiling_arg, &tiling_data);
 
-
 #define GET_TILING_DATA_MEMBER(tiling_type, member, var, tiling) \
-    auto typeVar##var = ((tiling_type *)0)->member;              \
-    decltype(typeVar##var) var;                                  \
-    size_t offset##var = (size_t)(&((tiling_type *)0)->member);  \
+    auto typeVar##var = ((tiling_type *)0)->member; \
+    decltype(typeVar##var) var; \
+    size_t offset##var = (size_t)(&((tiling_type *)0)->member); \
     InitTilingData<decltype(typeVar##var)>(tiling + offset##var, &var);
 
 #endif

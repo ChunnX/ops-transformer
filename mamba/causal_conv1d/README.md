@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：完成因果一维卷积（Causal Conv1d）计算，支持前向计算（prefill / chunk-prefill）和状态更新（decode / update）两种运行模式，模式由输入形状自动推断。
@@ -27,7 +26,6 @@
   其中，$W$ 为卷积核宽度（支持2、3、4），$w_j$ 为卷积权重，$b$ 为偏置（可选），$\text{Activation}$ 为激活函数（可选，SiLU）。当 `activation_mode="none"` 时不使用激活函数，`activation_mode="silu"` 时使用 SiLU 激活函数。
 
    算子同时维护卷积状态 `conv_states`，用于在增量推理时缓存历史输入，实现高效的状态更新。
-
 
 ## 参数说明
 
@@ -143,8 +141,8 @@
 </table>
 
 ## 约束说明
-- 输入tensor的shape大小需满足一定约束，具体见 [aclnnCausalConv1dFn](./docs/aclnnCausalConv1dFn.md) 和 [aclnnCausalConv1dUpdate](./docs/aclnnCausalConv1dUpdate.md)。
 
+- 输入tensor的shape大小需满足一定约束，具体见 [aclnnCausalConv1dFn](./docs/aclnnCausalConv1dFn.md) 和 [aclnnCausalConv1dUpdate](./docs/aclnnCausalConv1dUpdate.md)。
 
 ## 调用说明
 
@@ -152,3 +150,5 @@
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 (prefill) | [test_aclnn_causal_conv1d_fn.cpp](./examples/test_aclnn_causal_conv1d_fn.cpp) | 通过 [aclnnCausalConv1dFn](./docs/aclnnCausalConv1dFn.md) 调用 prefill 模式 |
 | aclnn接口 (update) | [test_aclnn_causal_conv1d_update.cpp](./examples/test_aclnn_causal_conv1d_update.cpp) | 通过 [aclnnCausalConv1dUpdate](./docs/aclnnCausalConv1dUpdate.md) 调用 update 模式 |
+| PyTorch API | - | 通过[causal_conv1d_fn](../../mamba/causal_conv1d/docs/torchapi_causal_conv1d_fn.md)接口调用causal_conv1d_fn算子。 |
+| PyTorch API | - | 通过[causal_conv1d_update](../../mamba/causal_conv1d/docs/torchapi_causal_conv1d_update.md)接口调用causal_conv1d_update算子。 |

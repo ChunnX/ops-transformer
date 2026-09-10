@@ -35,20 +35,21 @@ struct MlaPreprocessParam {
     uint64_t headNum = 0;
     uint64_t cacheMode = 0;
     QuantMode quantMode = QuantMode::PER_TENSOR_ASYMM_QUANT;
-    uint64_t qLoraRank = 1536;      // q_lora_rank (支持范围: 0-4096)
-    uint64_t nopeDim = 128;         // nope维度 (支持范围: 0-256)
-    uint64_t headDimMm2 = 192;      // mm2输出每个head的维度 = nopeDim + HEADDIM(64)
+    uint64_t qLoraRank = 1536;     // q_lora_rank (支持范围: 0-4096)
+    uint64_t nopeDim = 128;        // nope维度 (支持范围: 0-256)
+    uint64_t headDimMm2 = 192;     // mm2输出每个head的维度 = nopeDim + HEADDIM(64)
     uint64_t hiddenStateMm = 2112; // hiddenStateMm = qLoraRank + 576
     uint64_t kvCacheBlockSize = 128;
     uint64_t kvCacheStride0 = 0;
     uint64_t kvCacheRopeStride0 = 0;
+    bool enableRope = true;
     bool operator==(const MlaPreprocessParam &other) const
     {
         return N == other.N && headNum == other.headNum && cacheMode == other.cacheMode &&
-               quantMode == other.quantMode && qLoraRank == other.qLoraRank &&
-               nopeDim == other.nopeDim && headDimMm2 == other.headDimMm2 &&
-               hiddenStateMm == other.hiddenStateMm && kvCacheBlockSize == other.kvCacheBlockSize &&
-               kvCacheStride0 == other.kvCacheStride0 && kvCacheRopeStride0 == other.kvCacheRopeStride0;
+               quantMode == other.quantMode && qLoraRank == other.qLoraRank && nopeDim == other.nopeDim &&
+               headDimMm2 == other.headDimMm2 && hiddenStateMm == other.hiddenStateMm &&
+               kvCacheBlockSize == other.kvCacheBlockSize && kvCacheStride0 == other.kvCacheStride0 &&
+               kvCacheRopeStride0 == other.kvCacheRopeStride0 && enableRope == other.enableRope;
     }
 };
 } // namespace OpParam
@@ -64,8 +65,8 @@ public:
     void RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore, const uint64_t hiddtenState,
                             const uint64_t hiddenStateMm);
     void RopeConcatTiling(const OpParam::MlaPreprocessParam &param, const uint64_t &aicNum);
-    void EinSumQuantTiling(const OpParam::MlaPreprocessParam &param, const uint64_t &aicNum,
-                           const ge::DataType inDtype, const bool doRmsQuant);
+    void EinSumQuantTiling(const OpParam::MlaPreprocessParam &param, const uint64_t &aicNum, const ge::DataType inDtype,
+                           const bool doRmsQuant);
     void SetTilingKey(const ge::DataType inDtype, const OpParam::MlaPreprocessParam &param, const bool doRmsQuant,
                       gert::TilingContext *context);
     void SetMlapoWorkSpace(const ge::DataType inDtype, const OpParam::MlaPreprocessParam &param,

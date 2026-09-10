@@ -4,22 +4,32 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>    |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 算子功能：MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。
-- 计算公式：                                                                                                                           
-   
-  **Step 1: 归一化**                                                                                                                 
-                
+- 计算公式：
+
+  **Step 1: 归一化**
+
   根据normType对输入x做归一化：
 
 $$
@@ -27,7 +37,7 @@ normOut =
 \begin{cases}
     \text{SoftMax}(x),      & normType = 0 \\
     \text{Sigmoid}(x),      & normType = 1 \\
-    \sqrt{\text{Softplus}(x)},     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
+    \sqrt{\text{Softplus}(x)},     & normType = 2
 \end{cases}
 $$
 
@@ -89,7 +99,7 @@ $$
   $$
 
   $$
-  \quad yOut = \frac{gathered}{ReduceSum(normOut,\ dim=-1) + eps}
+  \quad yOut = \frac{gathered}{ReduceSum(gathered,\ dim=-1) + eps}
   $$
 
   否则 $yOut = gathered$
@@ -110,29 +120,29 @@ $$
 
 ```Cpp
 aclnnStatus aclnnMoeGatingTopKGetWorkspaceSize(
-  const aclTensor *x, 
-  const aclTensor *biasOptional, 
-  int64_t          k, 
-  int64_t          kGroup, 
-  int64_t          groupCount, 
-  int64_t          groupSelectMode, 
-  int64_t          renorm, 
-  int64_t          normType, 
-  bool             outFlag, 
-  double           routedScalingFactor, 
-  double           eps, 
-  const aclTensor *yOut, 
-  const aclTensor *expertIdxOut, 
-  const aclTensor *outOut, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  const aclTensor *biasOptional,
+  int64_t          k,
+  int64_t          kGroup,
+  int64_t          groupCount,
+  int64_t          groupSelectMode,
+  int64_t          renorm,
+  int64_t          normType,
+  bool             outFlag,
+  double           routedScalingFactor,
+  double           eps,
+  const aclTensor *yOut,
+  const aclTensor *expertIdxOut,
+  const aclTensor *outOut,
+  uint64_t        *workspaceSize,
   aclOpExecutor  **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeGatingTopK(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -323,11 +333,11 @@ aclnnStatus aclnnMoeGatingTopK(
       <td>-</td>
     </tr>
   </tbody>
-  </table>  
+  </table>
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -362,11 +372,11 @@ aclnnStatus aclnnMoeGatingTopK(
       x和biasOptional的shape不匹配。<br />
       k的大小不在1到x_shape[-1] / groupCount * kGroup之间。<br />
       kGroup的大小不在1到groupCount之间。<br />
-      每个group的专家数按32对齐之后<br />
+      每个group的专家数按32对齐之后的总数超过2048。<br />
       计算输入参数的值不满足要求。<br />
       </td>
     </tr>
-  </tbody></table>  
+  </tbody></table>
 
 ## aclnnMoeGatingTopK
 
@@ -409,7 +419,7 @@ aclnnStatus aclnnMoeGatingTopK(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -417,21 +427,24 @@ aclnnStatus aclnnMoeGatingTopK(
   - aclnnMoeGatingTopK默认确定性实现。
 
 * 输入shape限制：
-    * x最后一维（即专家数）要求不大于2048。 
+    * x最后一维（即专家数）要求不大于2048。
 * 输入值域限制：
     * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
     * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
 * 其他限制：
     * groupSelectMode取值0和1，0表示使用最大值对group进行排序， 1表示使用topk2的sum值对group进行排序。
-    * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term> 支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
-    * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
+    * normType取值0、1和2，0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
+    <!-- npu="A3,910b" id7 -->
+    * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>: 参数normType取值为2时要求groupCount为1
+    <!-- end id7 -->
+    * normType取值为1或2时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
     * 输入不支持空Tensor，不支持标量Tensor。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -524,13 +537,13 @@ int main() {
   void* outAddr = nullptr;
   void* expertIdOutAddr = nullptr;
   void* normOutAddr = nullptr;
-  
+
   aclTensor* input = nullptr;
   aclTensor* bias = nullptr;
   aclTensor* out = nullptr;
   aclTensor* expertIdOut = nullptr;
   aclTensor* normOut = nullptr;
-  
+
   std::vector<float> inputHostData = GenerateRandomFloats(GetShapeSize(inputShape));
   std::vector<float> biasHostData = GenerateRandomFloats(GetShapeSize(biasShape));
   std::vector<float> outHostData(GetShapeSize(outShape));

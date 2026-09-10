@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18.4)
 
 project(tiling_sink_project)
 
@@ -20,13 +20,14 @@ set(ATTENTION_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../attention)
 file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
     ${ATTENTION_SRC}/fused_infer_attention_score/op_host/checkers/*checker*.cpp)
 set(src_files
-  ${ATTENTION_SRC}/common/op_host/fia_tiling_info.cpp
-  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_nonquant_mla.cpp
-  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_nonquant.cpp
-  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_empty_tensor.cpp
-  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
-  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_fullquant_mx.cpp
-  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_fullquant_gqa.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fia_tiling_info.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fia_tiling_nonquant_mla.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fia_tiling_nonquant.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fia_tiling_empty_tensor.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_gqa.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fia_tiling_fullquant_mx.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fia_tiling_fullquant_gqa.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fia_tiling_fullquant_mla.cpp
   ${ATTENTION_SRC}/common/op_host/fia_tiling_shape.cpp
   ${ATTENTION_SRC}/common/op_host/split_core.cpp
   ${ATTENTION_SRC}/common/op_host/split_core_v2.cpp
@@ -43,10 +44,8 @@ set(src_files
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch38/fused_infer_attention_score_tiling_arch38.cpp
   ${ARCH35_CHECKER_SRC_FILES}
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp
-  ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
   ${ATTENTION_SRC}/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
-  ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_arch38.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/tiling_sink_registry.cpp
@@ -157,7 +156,7 @@ find_library(DEVICE_REGISTER_EXIST device_register
 if (DEVICE_REGISTER_EXIST STREQUAL "DEVICE_REGISTER_EXIST-NOTFOUND")
     message(WARNING "device_register library not found!")
 else()
-    target_link_libraries(opmaster PRIVATE 
+    target_link_libraries(opmaster PRIVATE
     -Wl,--whole-archive
     device_register
     -Wl,--no-whole-archive

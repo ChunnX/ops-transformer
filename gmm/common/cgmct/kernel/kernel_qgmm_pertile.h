@@ -21,10 +21,10 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #endif
-#include "../utils/common_utils.h"
+#include "../utils/cgmct_common_utils.h"
 #include "../utils/fill_utils.h"
 #include "../utils/grouped_matmul_constant.h"
-#include "../utils/layout_utils.h"
+#include "../utils/cgmct_layout_utils.h"
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
@@ -32,7 +32,7 @@
 namespace Cgmct {
 namespace Gemm {
 namespace Kernel {
-#define QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS                                                                           \
+#define QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS \
     template <class ProblemShape, class BlockMmad, class BlockEpilogue, class BlockScheduler>
 #define QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler
 
@@ -103,9 +103,20 @@ public:
         __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(int32_t m_, int32_t n_, int32_t k_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
                              int32_t stepM_, int32_t stepN_, int32_t stepKa_, int32_t stepKb_, uint32_t groupNum_,
-                             int8_t groupType_, uint8_t groupListType_) :
-            m(m_), n(n_), k(k_), baseM(baseM_), baseN(baseN_), baseK(baseK_), stepM(stepM_), stepN(stepN_),
-            stepKa(stepKa_), stepKb(stepKb_), groupNum(groupNum_), groupType(groupType_), groupListType(groupListType_)
+                             int8_t groupType_, uint8_t groupListType_)
+            : m(m_),
+              n(n_),
+              k(k_),
+              baseM(baseM_),
+              baseN(baseN_),
+              baseK(baseK_),
+              stepM(stepM_),
+              stepN(stepN_),
+              stepKa(stepKa_),
+              stepKb(stepKb_),
+              groupNum(groupNum_),
+              groupType(groupType_),
+              groupListType(groupListType_)
         {}
     };
 
@@ -118,16 +129,16 @@ public:
     };
 
 public:
-    __aicore__ inline void Init(const Params& params);
-    __aicore__ inline void Run(const Params& params);
-    __aicore__ inline void operator()(const Params& params)
+    __aicore__ inline void Init(const Params &params);
+    __aicore__ inline void Run(const Params &params);
+    __aicore__ inline void operator()(const Params &params)
     {
         Run(params);
     }
 
 private:
     __aicore__ inline void SetMNK(uint32_t groupIdx);
-    __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx);
+    __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx);
     __aicore__ inline void UpdateOffset(uint32_t loopIdx, uint32_t groupIdx);
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx);
     __aicore__ inline void UpdateMMGlobalAddr();
@@ -161,7 +172,7 @@ private:
 };
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Run(const Params& params)
+__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Run(const Params &params)
 {
     Init(params);
     bool isKZeroInit = false;
@@ -209,7 +220,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
 }
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Init(const Params& params)
+__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Init(const Params &params)
 {
     xTensorPtr_ = params.mmadParams.aGmAddr;
     wTensorPtr_ = params.mmadParams.bGmAddr;
@@ -226,7 +237,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
     }
 
     if (groupListPtr_ != nullptr) {
-        groupListGlobal_.SetGlobalBuffer((__gm__ int64_t*)groupListPtr_);
+        groupListGlobal_.SetGlobalBuffer((__gm__ int64_t *)groupListPtr_);
     }
     TupleShape l0Shape{static_cast<int64_t>(params.gmmParams.baseM), static_cast<int64_t>(params.gmmParams.baseN),
                        static_cast<int64_t>(params.gmmParams.baseK)};
@@ -252,7 +263,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::UpdateOffset(uint32_t loopIdx,
-                                                                                                 uint32_t groupIdx)
+                                                                                               uint32_t groupIdx)
 {
     // sparse split-M 首轮可能出现 groupIdx != 0。首轮 token 侧(A/C)不前移，
     // 但权重/scale 侧(B/X2Scale)需要直接按真实 groupIdx 跳转。
@@ -264,8 +275,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
         int64_t k = Get<MNK_K>(problemShape_);
         Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
         int64_t scaleK = CeilDiv(k, PER_BLOCK_SIZE);
-        Get<IDX_X2SCALE_OFFSET>(baseOffset_) =
-            static_cast<int64_t>(groupIdx) * CeilDiv(n, PER_BLOCK_SIZE) * scaleK;
+        Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * CeilDiv(n, PER_BLOCK_SIZE) * scaleK;
         return;
     }
     int64_t m = Get<MNK_M>(problemShape_);
@@ -299,9 +309,8 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
 }
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void
-QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::ProcessSingleGroup(const Params& params,
-                                                                              BlockSchedulerOp& bs, uint32_t groupIdx)
+__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::ProcessSingleGroup(
+    const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
 {
     CoordClass coord(Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_),
                      params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
@@ -373,8 +382,8 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
 }
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline int32_t
-QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::GetSplitValueFromGroupList(uint32_t groupIdx)
+__aicore__ inline int32_t QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::GetSplitValueFromGroupList(
+    uint32_t groupIdx)
 {
     int32_t splitValue = 0;
     if (likely(groupType_ != -1)) { // -1: no  need to split

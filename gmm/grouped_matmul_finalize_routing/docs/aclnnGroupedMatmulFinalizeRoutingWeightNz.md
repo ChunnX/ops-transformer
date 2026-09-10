@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                             | 是否支持 |
-| :--------------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                  |    ×    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -19,7 +29,7 @@ GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingWeightNz”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingWeightNz”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(
@@ -102,7 +112,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       <td>输入</td>
       <td>量化参数中的缩放因子，per-channel量化参数。</td>
       <td>-</td>
-      <td>INT64</td>
+      <td>FLOAT32</td>
       <td>ND</td>
       <td>shape是2维(e, n)，n = n1 \* n0，e和w的e一致，n支持2048、7168、7680。</td>
       <td>-</td>
@@ -262,7 +272,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -341,7 +351,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -357,7 +367,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
   #include <iostream>
@@ -482,12 +492,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       int64_t batch = 24;
       int64_t bsdp = 8;
       int64_t dtype = 0;
-      float shareInputWeight = 1.0;
+      float sharedInputWeight = 1.0;
       int64_t sharedInputOffset = 0;
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
-    
+
       std::vector<int64_t> xShape = {m, k};
       std::vector<int64_t> wShape = {e, k, n};
       std::vector<int64_t> scaleShape = {e, n};
@@ -530,8 +540,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       groupListHostData[3] = 64;
 
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
-      std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
-      std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+      std::vector<float> logitHostData(GetShapeSize(logitShape));
+      std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
       std::vector<float> outHostData(GetShapeSize(outShape));
 
       // 创建x aclTensor
@@ -547,7 +557,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       // 创建scale aclTensor
       ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT, &scale);
       std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> scaleTensorPtr(scale, aclDestroyTensor);
-      std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);    
+      std::unique_ptr<void, aclError (*)(void *)> scaleDeviceAddrPtr(scaleDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建pertokenScale aclTensor
       ret = CreateAclTensor(pertokenScaleHostData, pertokenScaleShape, &pertokenScaleDeviceAddr, aclDataType::ACL_FLOAT, &pertokenScale);
@@ -585,6 +595,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
       aclOpExecutor *executor;
       void *workspaceAddr = nullptr;
 
+      // x2需从ND格式转换为算子要求的NZ格式，因此先调用aclnnTransMatmulWeight完成权重格式转换。
       // 调用aclnnTransMatmulWeight第一段接口
       ret = aclnnTransMatmulWeightGetWorkspaceSize(w, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnTransMatmulWeightGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -600,10 +611,15 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(
 
       // 调用aclnnGroupedMatmulFinalizeRoutingWeightNz第一段接口
       workspaceSize = 0;
-      ret = aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(x, w, scale, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, shareInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
+      ret = aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(x, w, scale, nullptr, pertokenScale, groupList, sharedInput, logit, rowIndex, dtype, sharedInputWeight, sharedInputOffset, transposeX, transposeW, groupListType, out, &workspaceSize, &executor);
 
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize failed. ERROR: %d\n", ret);
                 return ret);
+      // 释放权重格式转换阶段申请的workspace，避免第二次分配覆盖指针造成内存泄漏。
+      if (workspaceAddr != nullptr) {
+          aclrtFree(workspaceAddr);
+          workspaceAddr = nullptr;
+      }
       // 根据第一段接口计算出的workspaceSize申请device内存
 
       if (workspaceSize > 0) {

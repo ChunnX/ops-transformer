@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>    |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -22,85 +32,85 @@
 - 计算公式：
 
     **TopK模式：**
-    
+
     **Step 1: 归一化**
-    
+
     根据normType对输入x做归一化：
-    
+
     $$
     normOut =
     \begin{cases}
         \text{SoftMax}(x),      & normType = 0 \\
         \text{Sigmoid}(x),      & normType = 1 \\
-        \sqrt{\text{Softplus}(x)},     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
+        \sqrt{\text{Softplus}(x)},     & normType = 2
     \end{cases}
     $$
-    
+
     **Step 2: 加偏置**
-    
+
     若bias不为空，加偏置得到用于选择的值：
-    
+
     $$
     normValue = normOut + bias
     $$
-    
+
     否则 $normValue = normOut$。
-    
+
     **Step 3: 分组筛选**（仅groupCount > 1 时执行）
-    
+
     将normValue按groupCount分组，根据groupSelectMode计算每组得分：
-    
+
     $$
     groupedValue = Reshape(normValue,\ [batch,\ groupCount,\ -1])
     $$
-    
+
     $$
     groupScore = \begin{cases}
       ReduceMax(groupedValue,\ dim=-1), & groupSelectMode = 0 \\
       ReduceSum(TopK(groupedValue,\ k=2,\ dim=-1),\ dim=-1), & groupSelectMode = 1
     \end{cases}
     $$
-    
+
     选取得分最高的kGroup个组，将未选中组的对应位置置为 $-\infty$：
-    
+
     $$
     groupIdx = TopK(groupScore,\ k=kGroup).indices
     $$
-    
+
     $$
     normValue = Mask(groupedValue,\ groupIdx,\ fillValue=-\infty)
     $$
-    
+
     **Step 4: Top-K专家选择**
-    
+
     对normValue取Top-K得到专家索引，这里只需要expertIdxOut：
-    
+
     $$
     y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
     $$
-    
+
     **Step 5: Renorm与缩放**
-    
+
     根据expertIdxOut从normOut中取出对应的k个专家得分：
-    
+
     $$
     gathered = normOut[\text{expertIdxOut}]
     $$
-    
+
     normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
-    
+
     $$
     if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
     $$
-    
+
     $$
-    \quad yOut = \frac{gathered}{ReduceSum(normOut,\ dim=-1) + eps}
+    \quad yOut = \frac{gathered}{ReduceSum(gathered,\ dim=-1) + eps}
     $$
-    
+
     否则 $yOut = gathered$
-    
+
     最终输出：
-    
+
     $$
     yOut = yOut \times routedScalingFactor
     $$
@@ -122,42 +132,42 @@
     \begin{cases}
         SoftMax(x),      & normType = 0 \\
         Sigmoid(x),      & normType = 1 \\
-        \sqrt{Softplus(x)},     & normType = 2\ (仅<term>Ascend 950PR/Ascend 950DT</term>支持)
+        \sqrt{Softplus(x)},     & normType = 2
     \end{cases}
     $$
 
     **Step 2: Hash索引查找**
-    
+
     根据inputIds从tid2eid映射表获取专家索引：
-    
+
     $$
     expertIdxOut = tid2eid[inputIds, :]
     $$
-    
+
     其中tid2eid的shape为[numKeys, k]，inputIds的shape为[batch]，每个inputIds值对应一行k个专家索引。
-    
+
     **Step 3: Gather与缩放**
-    
+
     根据expertIdxOut从normOut中取出对应的k个专家得分：
-    
+
     $$
     gathered = normOut[expertIdxOut]
     $$
-    
+
     normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
-    
+
     $$
     if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
     $$
-    
+
     $$
-    \quad yOut = \frac{gathered}{ReduceSum(gathered) + eps}
+    \quad yOut = \frac{gathered}{ReduceSum(gathered,\ dim=-1) + eps}
     $$
-    
+
     否则 $yOut = gathered$
-    
+
     最终输出：
-    
+
     $$
     yOut = yOut \times routedScalingFactor
     $$
@@ -407,7 +417,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -493,7 +503,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -508,7 +518,10 @@ aclnnStatus aclnnMoeGatingTopKV2(
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
 * 其他限制：
     * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
-    * normType取值0、1和2（仅<term>Ascend 950PR/Ascend 950DT</term>支持），0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
+    * normType取值0、1和2，0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
+    <!-- npu="A3,910b" id7 -->
+    * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>: 参数normType取值为2时要求groupCount为1
+    <!-- end id7 -->
     * normType取值为1或2时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
 * **Hash模式限制**：
@@ -522,7 +535,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"

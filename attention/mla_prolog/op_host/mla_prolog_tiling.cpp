@@ -54,6 +54,69 @@ inline auto Align(T num, T rnd) -> T
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
+inline bool GetDefaultStride0(const gert::Shape &shape, uint64_t &stride0)
+{
+    stride0 = 1U;
+    for (size_t dim = 1U; dim < shape.GetDimNum(); ++dim) {
+        const int64_t dimSize = shape.GetDim(dim);
+        if (dimSize < 0 || (dimSize != 0 && stride0 > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) /
+                                                          static_cast<uint64_t>(dimSize))) {
+            return false;
+        }
+        stride0 *= static_cast<uint64_t>(dimSize);
+    }
+    return true;
+}
+
+inline ge::graphStatus GetCacheStride0(gert::TilingContext &context, uint32_t inputIndex, const gert::Shape &shape,
+                                       const char *tensorName, uint64_t &stride0)
+{
+    OP_CHECK_IF(shape.GetDimNum() == 0U, OP_LOGE(context.GetNodeName(), "%s rank must be greater than 0.", tensorName),
+                return ge::GRAPH_FAILED);
+    // Empty cache tensors have no addressable elements, so their stride is not
+    // used by the kernel. In particular, krCache is required to be empty when
+    // ckvkrRepoMode is COMBINE, and aclCreateTensor may describe shape (0) with
+    // stride0 == 0. Leave the repo-mode/shape legality check to the existing
+    // MlaPrologTilingCheck and do not reject a valid empty tensor here.
+    if (shape.GetShapeSize() == 0) {
+        stride0 = 0U;
+        OP_LOGD(context.GetNodeName(), "%s is empty, skip stride validation.", tensorName);
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t defaultStride0 = 0U;
+    OP_CHECK_IF(!GetDefaultStride0(shape, defaultStride0),
+                OP_LOGE(context.GetNodeName(), "%s shape cannot be represented by an int64 stride.", tensorName),
+                return ge::GRAPH_FAILED);
+    auto *stride = context.GetInputStride(inputIndex);
+    if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        stride0 = defaultStride0;
+        OP_LOGW(context.GetNodeName(), "%s has no valid stride descriptor, use contiguous stride0=%lu.", tensorName,
+                stride0);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t expectedStride = 1U;
+    for (int64_t dim = static_cast<int64_t>(shape.GetDimNum()) - 1; dim >= 1; --dim) {
+        const uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(static_cast<size_t>(dim)));
+        OP_CHECK_IF(actualStride != expectedStride,
+                    OP_LOGE(context.GetNodeName(),
+                            "%s dim%ld must be contiguous, actual stride is %lu, expected stride is %lu. "
+                            "Only dim0 may be non-contiguous.",
+                            tensorName, dim, actualStride, expectedStride),
+                    return ge::GRAPH_FAILED);
+        expectedStride *= static_cast<uint64_t>(shape.GetDim(static_cast<size_t>(dim)));
+    }
+
+    const int64_t actualStride0 = stride->GetStride(MLA_PROLOG_DIM_INDEX_0);
+    OP_CHECK_IF(actualStride0 < 0 || static_cast<uint64_t>(actualStride0) < defaultStride0,
+                OP_LOGE(context.GetNodeName(), "%s dim0 stride must be at least %lu, but got %ld.", tensorName,
+                        defaultStride0, actualStride0),
+                return ge::GRAPH_FAILED);
+    stride0 = static_cast<uint64_t>(actualStride0);
+    OP_LOGD(context.GetNodeName(), "%s stride0=%lu, contiguous stride0=%lu.", tensorName, stride0, defaultStride0);
+    return ge::GRAPH_SUCCESS;
+}
+
 NpuArch MlaPrologTiling::GetCurNpuArch() const
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
@@ -203,8 +266,7 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
             weightDqAxisSize_ * context_->weightDq.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
     }
     baseShapeInfo_.nSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
-    baseShapeInfo_.drSize =
-        context_->ropeCos.shape->GetStorageShape().GetDim(context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
+    SetShapeInfoDrSize(); // 为DrSize赋值
     baseShapeInfo_.dSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_1);
     baseShapeInfo_.headSizeQc = baseShapeInfo_.dSize * baseShapeInfo_.nSize;
     baseShapeInfo_.headSizeQr = baseShapeInfo_.drSize * baseShapeInfo_.nSize;
@@ -229,6 +291,22 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
     }
     baseShapeInfo_.s2Size = baseShapeInfo_.nkvSize;
     return ge::GRAPH_SUCCESS;
+}
+
+void MlaPrologTiling::SetShapeInfoDrSize()
+{
+    if (context_->doRope != nullptr && !(*(context_->doRope))) {
+        // do_rope=false 时 ropeSin/ropeCos 为空 tensor，dr 由 weightDkvKr 的 (Hckv+Dr) 与 weightUk 的 Hckv 推导
+        const auto &weightDkvKrShape = context_->weightDkvKr.shape->GetStorageShape();
+        uint32_t hckvPlusDr =
+            (weightDkvKrShape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) ?
+                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_0) * weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_3) :
+                weightDkvKrShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
+        baseShapeInfo_.drSize = hckvPlusDr - context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_2);
+    } else {
+        baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
+            context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
+    }
 }
 
 ge::graphStatus MlaPrologTiling::SetScenarioInfo()
@@ -261,8 +339,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "actualSeqLen", "null",
-                                                             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
-                                                             "shape dim num is 2, actualSeqLen should not be null"),
+                                                          "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
+                                                          "shape dim num is 2, actualSeqLen should not be null"),
                     return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
@@ -272,8 +350,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     uint32_t cvRatio = aivNum_ / aicNum_;
     // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && cvRatio == 2 &&
+        baseShapeInfo_.tSize >= 8192) { // 8192：BS >= 8K
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
             baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
             scenarioInfo_.splitMFlag_ = 1U;
@@ -298,6 +376,11 @@ ge::graphStatus MlaPrologTiling::SetAttrInfo()
         tileSize_ = static_cast<uint32_t>(*(context_->tileSize));
         qcQrScale_ = *(context_->qcQrScale);
         kcScale_ = *(context_->kcScale);
+    }
+    // rope 开关由 do_rope attr 控制（V1/V2 无该 attr，默认开启），缺省视为开启
+    enableRope_ = true;
+    if (context_->doRope != nullptr) {
+        enableRope_ = *(context_->doRope);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -469,6 +552,8 @@ ge::graphStatus MlaPrologTiling::FillTiling()
     baseParams_->dimHeadRope = baseShapeInfo_.drSize;
     baseParams_->blockNum = baseShapeInfo_.blockNum;
     baseParams_->blockSize = baseShapeInfo_.blockSize;
+    baseParams_->kvCacheStride0 = context_->kvCacheStride0;
+    baseParams_->krCacheStride0 = context_->krCacheStride0;
     baseParams_->reciprocalCq = reciprocalCq_;
     baseParams_->epsilonCq = epsilonCq_;
     baseParams_->reciprocalCkv = reciprocalCkv_;
@@ -554,10 +639,10 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
                       static_cast<size_t>(NUM_BYTES_INT32);
     workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) *
                       static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
-    // SplitM非pertile量化场景下 mmQcQrResDequant使用两份workspace
+    // SplitM非pertoken-pergroup量化场景下 mmQcQrResDequant使用两份workspace
     if (scenarioInfo_.splitMFlag_ == 1U &&
         (scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) *
                           static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
     }
@@ -603,23 +688,23 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
-        context_->tilingKey = GET_TPL_TILING_KEY(0, 0, 0, false, false,
-                                                 static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode);
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            0, 0, 0, false, false, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, true, cvMode);
     } else {
         uint8_t cacheMode =
             scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
         context_->tilingKey = GET_TPL_TILING_KEY(
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), enableRope_, cvMode);
         OP_LOGI(
             context_->opName,
             "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
-            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
+            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, ENABLE_ROPE:%u, CV_MODE:%u",
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), static_cast<uint8_t>(enableRope_), cvMode);
     }
     OP_LOGI(context_->opName, "MlaProlog tilingKey:%lu", context_->tilingKey);
     return ge::GRAPH_SUCCESS;
@@ -691,6 +776,33 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
     ConvertRequiredParams(context, mlaPrologContext);
     ConvertOptionalParams(context, mlaPrologContext);
 
+    OP_CHECK_IF(mlaPrologContext.kvCache.shape == nullptr || mlaPrologContext.krCache.shape == nullptr,
+                OP_LOGE(context.GetNodeName(), "kvCache or krCache shape is nullptr."), return ge::GRAPH_FAILED);
+    const gert::Shape &kvCacheShape = mlaPrologContext.kvCache.shape->GetStorageShape();
+    const gert::Shape &krCacheShape = mlaPrologContext.krCache.shape->GetStorageShape();
+    const bool isV3 = std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0;
+    const uint32_t kvCacheIndex = isV3 ? KV_CACHE_INPUT_INDEX_V3 : KV_CACHE_INPUT_INDEX;
+    const uint32_t krCacheIndex = isV3 ? KR_CACHE_INPUT_INDEX_V3 : KR_CACHE_INPUT_INDEX;
+    OP_CHECK_IF(GetCacheStride0(context, kvCacheIndex, kvCacheShape, KV_CACHE_NAME, mlaPrologContext.kvCacheStride0) !=
+                    ge::GRAPH_SUCCESS,
+                OP_LOGE(context.GetNodeName(), "Failed to get or validate kvCache strides."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(GetCacheStride0(context, krCacheIndex, krCacheShape, KR_CACHE_NAME, mlaPrologContext.krCacheStride0) !=
+                    ge::GRAPH_SUCCESS,
+                OP_LOGE(context.GetNodeName(), "Failed to get or validate krCache strides."), return ge::GRAPH_FAILED);
+
+    if (ConvertContextAttrs(context, mlaPrologContext) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
+                return ge::GRAPH_FAILED);
+    mlaPrologContext.workSpaces = context.GetWorkspaceSizes(1);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTiling::ConvertContextAttrs(gert::TilingContext &context, MlaPrologContext &mlaPrologContext)
+{
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context.GetNodeName(), "attrs"), return ge::GRAPH_FAILED);
     mlaPrologContext.rmsNormEspilonCq = attrs->GetAttrPointer<float>(RMS_NORM_EPSILON_CQ_ATTR_INDEX);
@@ -706,6 +818,15 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
         mlaPrologContext.qcQrScale = attrs->GetAttrPointer<float>(QC_QR_SCALE_ATTR_INDEX);
         mlaPrologContext.kcScale = attrs->GetAttrPointer<float>(KC_SCALE_ATTR_INDEX);
+        // RoPE 开关：由 do_rope attr 控制（aclnnV3 默认 true，aclnnV4 透传用户开关）；默认开启
+        // 入图场景下旧图不携带 do_rope，attr 数组可能不足 13 个，先判越界再取值，避免 GetAttrPointer 越界报错
+        if (attrs->GetAttrNum() > DO_ROPE_ATTR_INDEX) {
+            mlaPrologContext.doRope = attrs->GetAttrPointer<bool>(DO_ROPE_ATTR_INDEX);
+        }
+        if (mlaPrologContext.doRope == nullptr) {
+            mlaPrologContext.doRopeValue = true;
+            mlaPrologContext.doRope = &mlaPrologContext.doRopeValue;
+        }
     } else {
         mlaPrologContext.queryNormFlag = nullptr;
         mlaPrologContext.weightQuantMode = nullptr;
@@ -716,12 +837,9 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = nullptr;
         mlaPrologContext.qcQrScale = nullptr;
         mlaPrologContext.kcScale = nullptr;
+        mlaPrologContext.doRopeValue = true;
+        mlaPrologContext.doRope = nullptr;
     }
-
-    OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
-                return ge::GRAPH_FAILED);
-    mlaPrologContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;
 }
 

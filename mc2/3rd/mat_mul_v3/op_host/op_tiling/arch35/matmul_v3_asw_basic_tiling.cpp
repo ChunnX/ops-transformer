@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_asw_basic_tiling.cc
  * \brief
@@ -16,7 +15,7 @@
 #include "matmul_v3_asw_basic_tiling.h"
 #include "matmul_v3_tiling_strategy.h"
 #include "./matmul_tiling_registry.h"
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 
 using Ops::Transformer::MathUtil;
 namespace optiling {
@@ -30,7 +29,7 @@ bool Mc2MatMulV3AswBasicApiTiling::IsCapable()
 {
     uint64_t mCore = MathUtil::CeilDivision(args_.mValue, BASIC_BLOCK_SIZE_256);
     uint64_t nCore = MathUtil::CeilDivision(args_.nValue, BASIC_BLOCK_SIZE_256);
-    if (mCore * nCore > compileInfo_.aicNum){
+    if (mCore * nCore > compileInfo_.aicNum) {
         OP_LOGD(args_.opName, "mCnt_[%lu] and nCnt_[%lu] is not enter in Mc2MatMulV3 basic api", mCore, nCore);
         return false;
     }
@@ -48,7 +47,6 @@ bool Mc2MatMulV3AswBasicApiTiling::IsCapable()
     return true;
 }
 
-
 uint64_t Mc2MatMulV3AswBasicApiTiling::GetTilingKey() const
 {
     return Mc2MatMulV3TilingKey()
@@ -57,5 +55,5 @@ uint64_t Mc2MatMulV3AswBasicApiTiling::GetTilingKey() const
         .SetApiLevel(Mc2MatMulV3ApiLevel::BASIC_LEVEL)
         .GetTilingKey();
 }
-} // namespace mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
 } // namespace optiling

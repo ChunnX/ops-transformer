@@ -18,7 +18,8 @@
 namespace ops {
 class FFNToAttention : public OpDef {
 public:
-    explicit FFNToAttention(const char *name) : OpDef(name) {
+    explicit FFNToAttention(const char *name) : OpDef(name)
+    {
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -71,8 +72,8 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->MC2().HcclGroup({"group"});
-  }
+    }
 };
 
 OP_ADD(FFNToAttention);
-}  // namespace ops
+} // namespace ops

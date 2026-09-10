@@ -11,7 +11,7 @@
 #ifndef GMM_EPILOGUE_DISPATCH_POLICY_HPP
 #define GMM_EPILOGUE_DISPATCH_POLICY_HPP
 
-#include "../../gmm_infra/base_defs.hpp"
+#include "../../gmm_infra/gmm_base_defs.hpp"
 #include "../../gmm_infra/arch/gmm_arch.hpp"
 
 namespace Catlass::Epilogue {
@@ -85,7 +85,6 @@ struct EpilogueAtlasA2PerTokenDequant {
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
-
 // For AtlasA2, W4A4 epilogue process
 struct EpilogueAtlasA2W4A4PerTokenPerChannelDequant {
     using ArchTag = Arch::AtlasA2;
@@ -110,6 +109,6 @@ struct EpilogueAtlasA2Gemv {
     using ArchTag = Arch::AtlasA2;
 };
 ///////////////////////////
-}  // namespace Catlass::Epilogue
+} // namespace Catlass::Epilogue
 
-#endif  // GMM_EPILOGUE_DISPATCH_POLICY_HPP
+#endif // GMM_EPILOGUE_DISPATCH_POLICY_HPP

@@ -31,7 +31,7 @@ public:
         Ascend910B3,
         Ascend310P3,
         Ascend910_9591,
-		SocVersionBottom,
+        SocVersionBottom,
     };
     class SocSpec {
     public:

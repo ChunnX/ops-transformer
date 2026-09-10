@@ -24,15 +24,14 @@
 
 namespace optiling {
 
-class Mc2WeightQuantBatchMatmulV2TilingMsdGroup : public Mc2WeightQuantBatchMatmulV2Tiling
-{
+class Mc2WeightQuantBatchMatmulV2TilingMsdGroup : public Mc2WeightQuantBatchMatmulV2Tiling {
 public:
-    explicit Mc2WeightQuantBatchMatmulV2TilingMsdGroup(gert::TilingContext* context)
+    explicit Mc2WeightQuantBatchMatmulV2TilingMsdGroup(gert::TilingContext *context)
         : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     };
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
         Reset();
@@ -87,12 +86,12 @@ protected:
             bool isBiasFp32 = false;
             bool isWeightNz = (tilingKeyConfigure.weightFormat == 1UL) ? true : false;
             uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
-            uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+            uint64_t fullLoadMode = 5UL;  // 5 means FULL_LOAD_MODE_NOT_USED
             uint64_t batch = 0UL;
             uint64_t tilingKey_ = GET_TPL_TILING_KEY(
                 socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
-                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
-                hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType,
+                hasAntiquantOffset, hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
             return tilingKey_;
         } else {
             uint64_t socVersionType = 1UL; // 1 means SUPPORT_L0C_TO_OUT
@@ -113,12 +112,12 @@ protected:
             bool isBiasFp32 = false;
             bool isWeightNz = false;
             uint64_t templateExtra = 3UL; // 3 means TEMPLATE_EXTRA_NOT_USED
-            uint64_t fullLoadMode = 5UL; // 5 means FULL_LOAD_MODE_NOT_USED
+            uint64_t fullLoadMode = 5UL;  // 5 means FULL_LOAD_MODE_NOT_USED
             uint64_t batch = 0UL;
             uint64_t tilingKey_ = GET_TPL_TILING_KEY(
                 socVersionType, subSocVersionType, antiquantScenario, algorithm, subAlgorithm, subAlgorithmCustom,
-                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType, hasAntiquantOffset,
-                hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
+                innerPrecise, templateCustom, apiConstexpr, transA, transB, antiquantType, quantType,
+                hasAntiquantOffset, hasBias, isBiasFp32, isWeightNz, templateExtra, fullLoadMode, batch);
             return tilingKey_;
         }
     }
@@ -126,7 +125,7 @@ protected:
     // 6、计算Workspace 大小
     ge::graphStatus GetWorkspaceSize() override
     {
-        size_t* workspaces = context_->GetWorkspaceSizes(1);
+        size_t *workspaces = context_->GetWorkspaceSizes(1);
         OPS_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
         workspaces[0] = 64 * 1024 * 1024; // workspace 固定使用 64 * 1024 * 1024
         return ge::GRAPH_SUCCESS;

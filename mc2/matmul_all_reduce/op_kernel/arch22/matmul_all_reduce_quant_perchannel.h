@@ -34,9 +34,7 @@ constexpr uint32_t SPLIT_MN_MATMUL_ALLREDUCE_INT8 = 2;
 template <class T>
 class MatmulAllReduceQuantPerchannel {
 public:
-    __aicore__ inline MatmulAllReduceQuantPerchannel()
-    {
-    }
+    __aicore__ inline MatmulAllReduceQuantPerchannel() {}
     __aicore__ inline void Init(TPipe *tPipe, uint32_t quantUbSize)
     {
         pipe = tPipe;
@@ -52,8 +50,8 @@ public:
         }
         pipe->InitBuffer(inQueueX, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(T));       // mmOut
         pipe->InitBuffer(outQueueZ, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(int8_t)); // quant结果
-        pipe->InitBuffer(outHalfLocalTmp, quantUbSize * sizeof(half));                                  // div的中间结果
-        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) { // bf16转换成half做div
+        pipe->InitBuffer(outHalfLocalTmp, quantUbSize * sizeof(half)); // div的中间结果
+        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {     // bf16转换成half做div
             pipe->InitBuffer(xFloatLocalTmp, quantUbSize * sizeof(float));
             pipe->InitBuffer(sFloatLocalTmp, quantUbSize * sizeof(float));
         }
@@ -96,8 +94,8 @@ public:
     {
         uint32_t vectorIndex = GetBlockIdx();             // [0, 23]
         uint32_t singleAivM = quantM_ / quantAivCoreNum_; // 单核要计算的总行数（多次循环累计）
-        uint32_t aivAddOneIndex = quantAivCoreNum_ + 1;   // 要多算一轮的核的下标，如果不均分，使用后面 [aivAddOneIndex,
-                                                          // quantAivCoreNum_ - 1] 核来完成多余一轮的计算
+        uint32_t aivAddOneIndex = quantAivCoreNum_ + 1; // 要多算一轮的核的下标，如果不均分，使用后面 [aivAddOneIndex,
+                                                        // quantAivCoreNum_ - 1] 核来完成多余一轮的计算
         if (quantM_ % quantAivCoreNum_ != 0) {
             aivAddOneIndex = quantAivCoreNum_ - (quantM_ % quantAivCoreNum_);
         }

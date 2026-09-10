@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file indexer_quant_cache_d_full_load.h
+ * \file indexer_quant_cache_single_row_mx_fp8.h
  * \brief
  */
 
@@ -24,34 +24,29 @@ using namespace AscendC;
 template <typename T0, typename T1, typename T2>
 class IndexerQuantCacheSingleRowMxFp8 {
 public:
-    __aicore__ inline IndexerQuantCacheSingleRowMxFp8()
-    {}
+    __aicore__ inline IndexerQuantCacheSingleRowMxFp8() {}
 
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR slotMapping, GM_ADDR cache, GM_ADDR cacheScale,
-        GM_ADDR workspace, const IndexerQuantCacheTilingData* tilingDataPtr, TPipe* pipePtr)
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR slotMapping, GM_ADDR cache, GM_ADDR cacheScale, GM_ADDR workspace,
+                                const IndexerQuantCacheTilingData *tilingDataPtr, TPipe *pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
 
-        xGm.SetGlobalBuffer((__gm__ T0*)x);
-        slotMappingGm.SetGlobalBuffer((__gm__ int32_t*)slotMapping);
-        cacheGm.SetGlobalBuffer((__gm__ T1*)cache);
-        cacheScaleGm.SetGlobalBuffer((__gm__ T2*)cacheScale);
+        xGm.SetGlobalBuffer((__gm__ T0 *)x);
+        slotMappingGm.SetGlobalBuffer((__gm__ int32_t *)slotMapping);
+        cacheGm.SetGlobalBuffer((__gm__ T1 *)cache);
+        cacheScaleGm.SetGlobalBuffer((__gm__ T2 *)cacheScale);
 
         roundScale = (tilingData->roundScale == 1);
 
         // MX-FP8 宽化按 128 元素读 x, x 输入 buffer 必须按 128 对齐以保证 128 宽读不越界 (尾块)
         pipe->InitBuffer(xQue, 2, tilingData->rowFactor * RoundUp<T0>(tilingData->d, 128) * sizeof(T0));
         pipe->InitBuffer(cacheQue, 2, tilingData->rowFactor * RoundUp<T1>(tilingData->d) * sizeof(T1));
-        pipe->InitBuffer(
-            cacheScaleQue, 2,
-            tilingData->rowFactor * RoundUp<T2>(tilingData->scaleCol) * sizeof(T2));
+        pipe->InitBuffer(cacheScaleQue, 2, tilingData->rowFactor * RoundUp<T2>(tilingData->scaleCol) * sizeof(T2));
         pipe->InitBuffer(indexBuf, RoundUp<int32_t>(tilingData->rowFactor) * sizeof(int32_t));
         // MX-FP8 两函数式: fp32 中间 buffer (InvScale 写, Quant 读) + invScale 广播 buffer
         pipe->InitBuffer(yFp32Buf, tilingData->rowFactor * RoundUp<float>(tilingData->d) * sizeof(float));
-        pipe->InitBuffer(
-            invScaleBuf, tilingData->rowFactor * CeilDiv(tilingData->d, 128) * 16 * sizeof(float));
+        pipe->InitBuffer(invScaleBuf, tilingData->rowFactor * CeilDiv(tilingData->d, 128) * 16 * sizeof(float));
         yFp32Local = yFp32Buf.Get<float>();
         mxInvScaleLocal = invScaleBuf.Get<float>();
         AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -72,9 +67,8 @@ public:
             if (slot == -1) {
                 continue;
             }
-            CopyIn(xGm[xGmBaseOffset + rowOuterIdx * tilingData->rowFactor * tilingData->d],
-                xLocal, 1, tilingData->d);
-            
+            CopyIn(xGm[xGmBaseOffset + rowOuterIdx * tilingData->rowFactor * tilingData->d], xLocal, 1, tilingData->d);
+
             xQue.template EnQue(xLocal);
             xLocal = xQue.template DeQue<T0>();
 
@@ -82,27 +76,26 @@ public:
             cacheScaleLocal = cacheScaleQue.AllocTensor<T2>();
 
             // MX-FP8 scale 恒为 e8m0 (2 的幂), InvScale 只有 round 路径
-            VFProcessMxFp8InvScale<T0, T2>(
-                yFp32Local, cacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1, tilingData->d);
+            VFProcessMxFp8InvScale<T0, T2>(yFp32Local, cacheScaleLocal, mxInvScaleLocal, xLocal, maxValue, 1,
+                                           tilingData->d);
             VFProcessMxFp8Quant<T1>(cacheLocal, yFp32Local, mxInvScaleLocal, 1, tilingData->d);
-                
+
             xQue.template FreeTensor(xLocal);
             cacheQue.template EnQue(cacheLocal);
             cacheScaleQue.template EnQue(cacheScaleLocal);
 
             cacheLocal = cacheQue.template DeQue<T1>();
             cacheScaleLocal = cacheScaleQue.template DeQue<T2>();
-            
-            CopyOut(
-                cacheLocal,
-                cacheGm[PagedSlotOffset(slot, tilingData->blockSize,
-                    tilingData->cacheBlockStride, tilingData->cacheRowStride)], 1, tilingData->d);
-            CopyOut(
-                cacheScaleLocal,
-                cacheScaleGm[PagedSlotOffset(slot, tilingData->blockSize,
-                    tilingData->scaleBlockStride, tilingData->scaleRowStride)], 1,
-                tilingData->scaleCol);
-            
+
+            CopyOut(cacheLocal,
+                    cacheGm[PagedSlotOffset(slot, tilingData->blockSize, tilingData->cacheBlockStride,
+                                            tilingData->cacheRowStride)],
+                    1, tilingData->d);
+            CopyOut(cacheScaleLocal,
+                    cacheScaleGm[PagedSlotOffset(slot, tilingData->blockSize, tilingData->scaleBlockStride,
+                                                 tilingData->scaleRowStride)],
+                    1, tilingData->scaleCol);
+
             cacheQue.template FreeTensor(cacheLocal);
             cacheScaleQue.template FreeTensor(cacheScaleLocal);
         }
@@ -122,8 +115,8 @@ public:
     }
 
 private:
-    TPipe* pipe;
-    const IndexerQuantCacheTilingData* tilingData;
+    TPipe *pipe;
+    const IndexerQuantCacheTilingData *tilingData;
     GlobalTensor<T0> xGm;
     GlobalTensor<int32_t> slotMappingGm;
     GlobalTensor<T1> cacheGm;

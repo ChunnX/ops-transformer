@@ -42,62 +42,82 @@ public:
     using MM12_OUT_T = T;
     using MM5_OUT_T = T;
 
-    static constexpr uint32_t topKSize = static_cast<uint32_t>(SLIT::topKRange);
-    static constexpr bool isTopkLess2k = (topKSize <= SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_2K);
+    static constexpr bool isTopkLess2k = (SLIT::topKRange == SLITopKRange::RANGE_0_2K);
     static constexpr uint32_t PSY_SYNC_BLOCK_FLOAT_NUM = 32 / sizeof(T);
-    static constexpr uint32_t PSY_SYNC_SUM_P_OFFSET = topKSize * 2;
-    static constexpr uint32_t PSY_SYNC_STRIDE = PSY_SYNC_SUM_P_OFFSET + PSY_SYNC_BLOCK_FLOAT_NUM;
+    static constexpr int64_t P_OWNER_SY_ROW_BIAS = 1;
+    static constexpr int64_t SY_LB_MIN_G_SIZE = 64;
+    static constexpr int64_t SY_LB_MIN_SERIAL_WORK = 4096;
     static constexpr SLILayout LAYOUT_T = SLIT::inputQLayout;
     static constexpr SLILayout KV_LAYOUT_T = SLIT::inputKLayout;
+    static constexpr bool hasSequsedQ = SLIT::hasSequsedQ;
+    static constexpr bool hasSequsedK = SLIT::hasSequsedK;
     static constexpr UBAllocPolicy<isTopkLess2k> ubAllocPolicy;
+    static constexpr bool deterministic = SLIT::deterministic;
+    static constexpr bool privateScatter = SLIT::privateScatter;
+
+    using scatterAddGmType = typename std::conditional<deterministic, GlobalTensor<T>, int8_t>::type;
 
     __aicore__ inline SLIKLLossVectorService(){};
     __aicore__ inline void InitParams(const SLIKLLossGradConstInfo &vecConstInfo,
-        const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData,
-        GlobalTensor<int32_t> metadataGm, GlobalTensor<int32_t> cmpResidualKeyGm, bool hasMetadata);
+                                      const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData,
+                                      GlobalTensor<int32_t> metadataGm, GlobalTensor<int32_t> cmpResidualKeyGm,
+                                      bool hasMetadata);
+    __aicore__ inline void InitSeqUsedGM(GlobalTensor<int32_t> &seqUsedQ, GlobalTensor<int32_t> &seqUsedK);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
     // =============== vector 0 functions ==============
     __aicore__ inline void InitVector0GM(GlobalTensor<KV_T> &key, GlobalTensor<KV_T> &keyRope,
-        GlobalTensor<KV_T> &keyIndex, GlobalTensor<int32_t> &topK,
-        GlobalTensor<int32_t> &actualSeqLengthsQ, GlobalTensor<int32_t> &actualSeqLengthsKV,
-        GlobalTensor<KV_T> &gatherPRes, GlobalTensor<KV_T> &gatherSYRes);
+                                         GlobalTensor<KV_T> &keyIndex, GlobalTensor<int32_t> &topK,
+                                         GlobalTensor<int32_t> &actualSeqLengthsQ,
+                                         GlobalTensor<int32_t> &actualSeqLengthsKV, GlobalTensor<KV_T> &gatherPRes,
+                                         GlobalTensor<KV_T> &gatherSYRes);
     __aicore__ inline void ProcessVector0(SLIKLLossGradRunInfo &runInfo);
 
     // =============== vector 1 functions ==============
     __aicore__ inline void InitVector1GM(const GlobalTensor<T> &attnSoftmaxL1Norm,
-                                    const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<T> &weight,
-                                    const GlobalTensor<T> psySync, GlobalTensor<T> &softmaxOut,
-                                    GlobalTensor<T> &dWeight, GlobalTensor<T> &reluGm,
-                                    GlobalTensor<KV_T> &reluGradRes, GlobalTensor<int32_t> &actualSeqLengthsQueryGm,
-                                    GlobalTensor<int32_t> &actualSeqLengthsKeyGm);
+                                         const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<T> &weight,
+                                         const GlobalTensor<T> psySync, GlobalTensor<T> &softmaxOut,
+                                         GlobalTensor<T> &dWeight, GlobalTensor<T> &reluGm,
+                                         GlobalTensor<KV_T> &reluGradRes,
+                                         GlobalTensor<int32_t> &actualSeqLengthsQueryGm,
+                                         GlobalTensor<int32_t> &actualSeqLengthsKeyGm);
     __aicore__ inline void ProcessVector1(SLIKLLossGradRunInfo &runInfo);
 
     // =============== vector 2 functions ==============
     __aicore__ inline void ProcessVector2(SLIKLLossGradRunInfo &runInfo);
     __aicore__ inline void InitVector2GM(const GlobalTensor<MM5_OUT_T> &bmm5Res, const GlobalTensor<int32_t> &topK,
-        GlobalTensor<T> &scatterAddRes);
+                                         GlobalTensor<T> &scatterAddRes,
+                                         scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM]);
     __aicore__ inline void ProcessDeterVector2(SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline void ProcessPrivateScatterVector2(SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline void SetCachedValidTotalSize(int64_t validTotalSize);
+    __aicore__ inline void ZeroFp32Gm(GlobalTensor<T> &dst, int64_t offset, int64_t count);
 
 private:
     // =============== vector 0 functions ==============
     template <event_t IdStart, bool gatherRope>
     __aicore__ inline void MergeKv(const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> kvMergeGm_,
-        GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
+                                   GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
     template <bool gatherRope>
     __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-        int64_t keyBNBOffset,int64_t s2IdLimit, const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
+                                          int64_t keyBNBOffset, int64_t s2IdLimit, const SLIKLLossGradRunInfo &runInfo,
+                                          GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
     __aicore__ inline int64_t GetKeyRopeGmOffset(int64_t realS2Idx, const SLIKLLossGradRunInfo &runInfo);
-    __aicore__ inline int64_t GetKeyGmOffset(int64_t realS2Idx, const SLIKLLossGradRunInfo &runInfo, int64_t s2IdLimit, int32_t dValue);
+    __aicore__ inline int64_t GetKeyGmOffset(int64_t realS2Idx, const SLIKLLossGradRunInfo &runInfo, int64_t s2IdLimit,
+                                             int32_t dValue);
     template <bool gatherRope>
     __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
-        int64_t realS2Idx2, const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
+                                    int64_t realS2Idx2, const SLIKLLossGradRunInfo &runInfo,
+                                    GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
     template <event_t IdStart, bool gatherRope>
-    __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset, int64_t s2IdxOffset, int64_t mergeMte3Idx,
-        const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> kvMergeGm_, GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
-    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t s2IdxOffset, int64_t &realS2Idx, const SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset,
+                                             int64_t s2IdxOffset, int64_t mergeMte3Idx,
+                                             const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> kvMergeGm_,
+                                             GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor);
+    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t s2IdxOffset, int64_t &realS2Idx,
+                                        const SLIKLLossGradRunInfo &runInfo);
 
     // =============== vector 1 functions ==============
     // Legacy Q@K/P path is intentionally isolated in this op. P is supplied by attn_softmax_l1_norm.
@@ -107,22 +127,51 @@ private:
 #endif
     __aicore__ inline void CopyPFromInput(SLIKLLossGradRunInfo &runInfo);
     __aicore__ inline void PreloadWeight(SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline bool ShouldEnableSyLoadBalance(const SLIKLLossGradRunInfo &runInfo) const;
     __aicore__ inline void VectorSy(SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline void VectorSyLoadBalance(SLIKLLossGradRunInfo &runInfo);
+    __aicore__ inline void FinalizeVectorSy(SLIKLLossGradRunInfo &runInfo);
     __aicore__ inline void ReLUGrad(LocalTensor<KV_T> &reluGradOutTensor, LocalTensor<T> &subResTensor,
-        LocalTensor<T> &maskUb, int32_t kRealSizeAlign);
-    template <uint32_t range>
+                                    LocalTensor<T> &maskUb, int32_t kRealSizeAlign);
     __aicore__ inline void VectorDwDqDk(SLIKLLossGradRunInfo &runInfo, int32_t kLoopIdx);
+    __aicore__ inline uint32_t GetPsySyncSumPOffset() const;
+    __aicore__ inline uint32_t GetPsySyncStride() const;
+    __aicore__ inline int64_t GetNSplitSize() const;
+    __aicore__ inline void CopyPsyKPad(const LocalTensor<T> &dstUb, const GlobalTensor<T> &srcGm, int32_t kRealSize,
+                                       int32_t kRealSizeAlign16);
+    __aicore__ inline void CopySoftmaxOutTailZeros(int64_t softmaxOutOffset, int32_t realKSize);
+    __aicore__ inline void SoftmaxInplaceRealK(int32_t realKSize, int32_t realKSizeAlign);
+    template <typename DT>
+    __aicore__ inline void CopyRowsGmToUb(const LocalTensor<DT> &dstUb, const GlobalTensor<DT> &srcGm, uint16_t nRows,
+                                          int32_t validLen, int32_t gmStride, int32_t ubStride);
+    template <typename DT>
+    __aicore__ inline void CopyRowsUbToGm(const GlobalTensor<DT> &dstGm, const LocalTensor<DT> &srcUb, uint16_t nRows,
+                                          int32_t validLen, int32_t gmStride, int32_t ubStride);
     __aicore__ inline void VectorDwDqDkMoreThan2k(SLIKLLossGradRunInfo &runInfo, int32_t kLoopIdx);
     __aicore__ inline void VectorDwDqDkLess2k(SLIKLLossGradRunInfo &runInfo);
     // =============== vector 2 functions ==============
-    __aicore__ inline void ScatterAddCopyOutSingle(const LocalTensor<MM5_OUT_T> &srcUb, int64_t keyBNBOffset);
-    __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens, GlobalTensor<int32_t> &actualSeqLensGm,
-        SLILayout layout, int64_t &accumLen);
+    __aicore__ inline void ScatterAddCopyOutSingle(const LocalTensor<MM5_OUT_T> &srcUb, int64_t keyBNBOffset,
+                                                   GlobalTensor<T> &scatterAddGm);
+    __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
+                                               GlobalTensor<int32_t> &actualSeqLensGm, SLILayout layout,
+                                               int64_t &accumLen);
+    __aicore__ inline int32_t GetUsedSeqLens(int32_t bIdx, int32_t defaultLens, GlobalTensor<int32_t> &seqUsedGm);
     __aicore__ inline int32_t GetCmpResidualK(int32_t bIdx);
     __aicore__ inline int64_t GetPreCompressS2Len(int32_t bIdx, int32_t actualSeqLensK);
     __aicore__ inline int32_t GetS2SparseLen(int32_t bIdx, int32_t s1Idx, int32_t actualSeqLensQ,
-        int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode);
-    __aicore__ inline void GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx, SLIKLLossGradRunInfo &runInfo);
+                                             int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode);
+    __aicore__ inline int64_t GetInvalidS1Size(int64_t bIdx, int64_t actualSeqLensQ, int64_t actualSeqLensK);
+    __aicore__ inline void ResetValidIdxMap();
+    __aicore__ inline void LoadAllocatedAndUsedSeqLens(int64_t bIdx, int64_t &accumS1, int64_t &accumS2, int32_t &usedQ,
+                                                       int32_t &usedK);
+    __aicore__ inline bool LoadValidBatchAt(int64_t curB);
+    __aicore__ inline bool MapValidIdxToBS1(int64_t validIdx, int64_t &bIdx, int64_t &s1Idx, int64_t &accumS1Len,
+                                            int64_t &accumS2Len, int32_t &actualSeqLensQ, int32_t &actualSeqLensK);
+    __aicore__ inline void GetRunInfo(int64_t taskId, int64_t bIdx, int64_t s1Idx, SLIKLLossGradRunInfo &runInfo,
+                                      int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ,
+                                      int32_t actualSeqLensK);
+    __aicore__ inline void Vector2ScatterAdd(int32_t vRealKSize, GlobalTensor<MM5_OUT_T> &srcGm, int64_t coreKOffset,
+                                             SLIKLLossGradRunInfo &runInfo, GlobalTensor<T> &scatterAddGm);
     __aicore__ inline int64_t GetMetadataTotalSize();
     __aicore__ inline int64_t GetMetadataBS1Index(uint32_t coreIdx);
 
@@ -132,6 +181,17 @@ private:
     bool hasMetadata = false;
     GlobalTensor<int32_t> metadataGm;
     GlobalTensor<int32_t> cmpResidualKeyGm;
+
+    int64_t cachedValidTotalSize_ = -1;
+    int64_t mapCurB_ = 0;
+    int64_t mapPrefixBeforeCurB_ = 0;
+    int64_t mapValidCntCurB_ = 0;
+    int64_t mapInvalidS1CurB_ = 0;
+    int64_t mapAccumS1CurB_ = 0;
+    int64_t mapAccumS2CurB_ = 0;
+    int32_t mapSeqQCurB_ = 0;
+    int32_t mapSeqKCurB_ = 0;
+    bool mapBatchReady_ = false;
 
     // global tensor
     GlobalTensor<KV_T> keyGm;
@@ -156,10 +216,12 @@ private:
 
     GlobalTensor<int32_t> actualSeqLengthsQueryGm;
     GlobalTensor<int32_t> actualSeqLengthsKeyGm;
+    GlobalTensor<int32_t> seqUsedQueryGm;
+    GlobalTensor<int32_t> seqUsedKeyGm;
 
     // local tensor
     TBuf<> mm1Tbuf;
-    TBuf<> mm2TBuf;         // 复用 -> mm4 scatterAdd reluGrad
+    TBuf<> mm2TBuf; // 复用 -> mm4 scatterAdd reluGrad
     TBuf<> sharedTBuf;
     TBuf<> resPSYTBuf;
     TBuf<> reduceSumDwTBuf;
@@ -205,6 +267,7 @@ private:
 
     // =============== vector2 variable ==============
     GlobalTensor<T> scatterAddResGm;
+    scatterAddGmType scatterAddResGmBanks[SLI_DETER_SCATTER_BANK_NUM];
     LocalTensor<T> scatterAddUb;
     int32_t scatterAddPingpong = 0;
 
@@ -230,6 +293,7 @@ private:
 
     // MTE2_V
     event_t eventIdMte2ToV4SY;
+    event_t eventIdMte2ToVSyPingPong[2];
     event_t eventIdMte2ToVInnerVecP;
     event_t eventIdMte2ToVInnerPreW;
     event_t eventIdMte2ToVInnerDwDqDk;
@@ -239,6 +303,7 @@ private:
     event_t eventIdSToVPsum;
     // V_MTE2
     event_t eventIdVToMte24SY;
+    event_t eventIdVToMte2SyPingPong[2];
     event_t eventIdVToMte2P[2];
     event_t eventIdVToMte2Weight[2];
     event_t eventIdvToMte2DwDqDkPingPong[2];
@@ -250,8 +315,6 @@ private:
     event_t eventVToMte3InnerSy;
     event_t eventIdVToMte3DwDqDk;
     // MTE3_MTE2
-    event_t eventIdVec0Inner0;
-    event_t eventIdVec0Inner1;
     event_t eventIdVec0Inner2;
     event_t eventIdVec0Inner3;
     event_t eventIdmte3ToMte2DwDqDkPingPong[2];
@@ -263,9 +326,10 @@ private:
 };
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::InitParams(const SLIKLLossGradConstInfo &vecConstInfo,
-    const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData,
-    GlobalTensor<int32_t> metadataGm, GlobalTensor<int32_t> cmpResidualKeyGm, bool hasMetadata)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::InitParams(
+    const SLIKLLossGradConstInfo &vecConstInfo,
+    const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData, GlobalTensor<int32_t> metadataGm,
+    GlobalTensor<int32_t> cmpResidualKeyGm, bool hasMetadata)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
@@ -275,10 +339,18 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitParams(const SLIKLLossG
 }
 
 template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::InitSeqUsedGM(GlobalTensor<int32_t> &seqUsedQ,
+                                                                   GlobalTensor<int32_t> &seqUsedK)
+{
+    this->seqUsedQueryGm = seqUsedQ;
+    this->seqUsedKeyGm = seqUsedK;
+}
+
+template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector0GM(
     GlobalTensor<KV_T> &key, GlobalTensor<KV_T> &keyRope, GlobalTensor<KV_T> &keyIndex, GlobalTensor<int32_t> &topK,
-    GlobalTensor<int32_t> &actualSeqLengthsQ, GlobalTensor<int32_t> &actualSeqLengthsKV,
-    GlobalTensor<KV_T> &gatherPRes, GlobalTensor<KV_T> &gatherSYRes)
+    GlobalTensor<int32_t> &actualSeqLengthsQ, GlobalTensor<int32_t> &actualSeqLengthsKV, GlobalTensor<KV_T> &gatherPRes,
+    GlobalTensor<KV_T> &gatherSYRes)
 {
     this->keyGm = key;
     this->keyRopeGm = keyRope;
@@ -290,18 +362,17 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector0GM(
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector1GM(const GlobalTensor<T> &attnSoftmaxL1Norm,
-                                                        const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<T> &weight,
-                                                        const GlobalTensor<T> psySync, GlobalTensor<T> &softmaxOut,
-                                                        GlobalTensor<T> &dWeight, GlobalTensor<T> &reluGm,
-                                                        GlobalTensor<KV_T> &reluGradRes, GlobalTensor<int32_t> &actualSeqLengthsQueryGm,
-                                                        GlobalTensor<int32_t> &actualSeqLengthsKeyGm)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector1GM(
+    const GlobalTensor<T> &attnSoftmaxL1Norm, const GlobalTensor<MM12_OUT_T> &bmm2Res, const GlobalTensor<T> &weight,
+    const GlobalTensor<T> psySync, GlobalTensor<T> &softmaxOut, GlobalTensor<T> &dWeight, GlobalTensor<T> &reluGm,
+    GlobalTensor<KV_T> &reluGradRes, GlobalTensor<int32_t> &actualSeqLengthsQueryGm,
+    GlobalTensor<int32_t> &actualSeqLengthsKeyGm)
 {
     this->attnSoftmaxL1NormGm = attnSoftmaxL1Norm;
     this->bmm2ResGm = bmm2Res;
     this->weightGm = weight;
-    this->psySyncGm = psySync[constInfo.subBlockIdx * PSY_SYNC_STRIDE];
-    this->psySyncOtherGm = psySync[!constInfo.subBlockIdx * PSY_SYNC_STRIDE];
+    this->psySyncGm = psySync[constInfo.subBlockIdx * GetPsySyncStride()];
+    this->psySyncOtherGm = psySync[!constInfo.subBlockIdx * GetPsySyncStride()];
 
     this->softmaxOutGm = softmaxOut;
     this->dWeightGm = dWeight;
@@ -312,12 +383,18 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector1GM(const GlobalT
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector2GM(const GlobalTensor<MM5_OUT_T> &bmm5Res,
-    const GlobalTensor<int32_t> &topK, GlobalTensor<T> &scatterAddRes)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::InitVector2GM(
+    const GlobalTensor<MM5_OUT_T> &bmm5Res, const GlobalTensor<int32_t> &topK, GlobalTensor<T> &scatterAddRes,
+    scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM])
 {
     this->bmm5ResGm = bmm5Res;
     this->topKGm = topK;
     this->scatterAddResGm = scatterAddRes;
+    if constexpr (deterministic) {
+        for (int32_t bank = 0; bank < SLI_DETER_SCATTER_BANK_NUM; ++bank) {
+            this->scatterAddResGmBanks[bank] = scatterAddBanks[bank];
+        }
+    }
 }
 
 template <typename SLIT>
@@ -343,8 +420,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitBuffers(TPipe *pipe)
     weightUb = weightTBuf.Get<T>();
     weightInUb = weightInTBuf.Get<T>();
     reluResUb = mm2TBuf.Get<T>();
-    reduceSumTmpBuffer = sharedTBuf.GetWithOffset<uint8_t>(8*1024, 8*1024);
-    reduceSumYResTmpBuffer = sharedTBuf.GetWithOffset<T>(topKSize, 2*8*1024);
+    reduceSumTmpBuffer = sharedTBuf.GetWithOffset<uint8_t>(8 * 1024, 8 * 1024);
+    constexpr uint32_t reduceTmpLen =
+        isTopkLess2k ? SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_2K : SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_8K;
+    reduceSumYResTmpBuffer = sharedTBuf.GetWithOffset<T>(reduceTmpLen, 2 * 8 * 1024);
     reduceSumYResUb = resPSYTBuf.Get<T>();
     reduceSumPResUb = resPSYTBuf.template Get<T>();
     reduceSumDwResUb = reduceSumDwTBuf.Get<T>();
@@ -361,10 +440,13 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::InitBuffers(TPipe *pipe)
     dwOutTensor = this->dwTBuf.template Get<T>();
 }
 
-template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::AllocEventID()
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::AllocEventID()
 {
     // MTE2_To_V
     eventIdMte2ToV4SY = EVENT_ID0;
+    eventIdMte2ToVSyPingPong[0] = EVENT_ID0;
+    eventIdMte2ToVSyPingPong[1] = EVENT_ID1;
     eventIdMte2ToVInnerVecP = EVENT_ID1;
     eventIdMte2ToVInnerPreW = EVENT_ID2;
     eventIdMte2ToVInnerDwDqDk = EVENT_ID3;
@@ -378,6 +460,8 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Al
     eventIdVToMte2P[0] = EVENT_ID3;
     eventIdVToMte2P[1] = EVENT_ID4;
     eventIdVToMte24SY = EVENT_ID5;
+    eventIdVToMte2SyPingPong[0] = EVENT_ID5;
+    eventIdVToMte2SyPingPong[1] = EVENT_ID2;
     eventIdvToMte2DwDqDkPingPong[0] = EVENT_ID6;
     eventIdvToMte2DwDqDkPingPong[1] = EVENT_ID7;
     // MTE3_To_V
@@ -389,8 +473,6 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Al
     eventVToMte3InnerSy = EVENT_ID1;
     eventIdVToMte3DwDqDk = EVENT_ID2;
     // MTE3_MTE2
-    eventIdVec0Inner0 = EVENT_ID0;
-    eventIdVec0Inner1 = EVENT_ID1;
     eventIdVec0Inner2 = EVENT_ID2;
     eventIdVec0Inner3 = EVENT_ID3;
     eventIdmte3ToMte2DwDqDkPingPong[0] = EVENT_ID4;
@@ -409,7 +491,8 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Al
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[1]);
 }
 
-template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::FreeEventID()
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::FreeEventID()
 {
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdScatterAdd);
@@ -423,25 +506,8 @@ template <typename SLIT> __aicore__ inline void SLIKLLossVectorService<SLIT>::Fr
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector0(SLIKLLossGradRunInfo &runInfo)
 {
-    gatherParams.dValue = constInfo.dSizeQuery;
-    gatherParams.dRopeValue = constInfo.dSizeRope;
-    gatherParams.gatherResGmEleSize = constInfo.gatherKeySize;
-
-    this->kvMergUb_ = gatherKeyUb;
-    this->ropeMergUb_ = gatherKeyUb[UB_ROW_SIZE * gatherParams.dValue * 2];
-
-    SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner0);
-    SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner1);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner2);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner3);
-
-    for (int32_t i = 0; i < runInfo.s2LoopTimes; ++i) {
-        runInfo.s2Idx = i;
-
-        gatherParams.s2ProcessSize = (i >= runInfo.s2LoopTimes - 1) ? runInfo.s2TailSize : constInfo.s2BaseSize;
-        MergeKv<EVENT_ID0, SLIT::hasRope>(runInfo, gatherPResGm, keyGm, keyRopeGm);
-        CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V0_TO_C1_P_FLAG[i & 1]);
-    }
 
     gatherParams.dValue = constInfo.dSizeQueryIndex;
     gatherParams.dRopeValue = 0;
@@ -455,18 +521,18 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector0(SLIKLLossGra
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V0_TO_C1_SY_FLAG[i & 1]);
     }
 
-    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner0);
-    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner1);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner2);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdVec0Inner3);
 }
 
 template <typename SLIT>
 template <bool gatherRope>
-__aicore__ inline void
-SLIKLLossVectorService<SLIT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                       int64_t keyBNBOffset, int64_t s2IdLimit, const SLIKLLossGradRunInfo &runInfo,
-                                       GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
+                                                                    int64_t mergeMte3Idx, int64_t realS2Idx,
+                                                                    int64_t keyBNBOffset, int64_t s2IdLimit,
+                                                                    const SLIKLLossGradRunInfo &runInfo,
+                                                                    GlobalTensor<KV_T> srcTensor,
+                                                                    GlobalTensor<KV_T> srcRopeTensor)
 {
     if (keyBNBOffset < 0) {
         return;
@@ -475,12 +541,14 @@ SLIKLLossVectorService<SLIT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size
         (realS2Idx + constInfo.sparseBlockSize > s2IdLimit ? s2IdLimit - realS2Idx : constInfo.sparseBlockSize);
     DataCopyExtParams intriParams(1, validS2Count * gatherParams.dValue * sizeof(KV_T), 0, 0, 0);
     DataCopyPadExtParams<KV_T> padParams;
-    DataCopyPad(kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dValue + (mte2Size - mte3Size) * gatherParams.dValue],
-                srcTensor[keyBNBOffset * gatherParams.dValue], intriParams, padParams);
+    DataCopyPad(
+        kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dValue + (mte2Size - mte3Size) * gatherParams.dValue],
+        srcTensor[keyBNBOffset * gatherParams.dValue], intriParams, padParams);
 
     if constexpr (gatherRope) {
         intriParams.blockLen = validS2Count * gatherParams.dRopeValue * sizeof(KV_T);
-        DataCopyPad(ropeMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dRopeValue + (mte2Size - mte3Size) * gatherParams.dRopeValue],
+        DataCopyPad(ropeMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dRopeValue +
+                                (mte2Size - mte3Size) * gatherParams.dRopeValue],
                     srcRopeTensor[keyBNBOffset * gatherParams.dRopeValue], intriParams, padParams);
     }
     mte2Size += validS2Count;
@@ -488,7 +556,7 @@ SLIKLLossVectorService<SLIT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size
 
 template <typename SLIT>
 __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetKeyRopeGmOffset(int64_t realS2Idx,
-    const SLIKLLossGradRunInfo &runInfo)
+                                                                           const SLIKLLossGradRunInfo &runInfo)
 {
     int64_t tensorBRopeOffset = runInfo.accumS2Idx * gatherParams.dRopeValue;
     int64_t realKeyRopeGmOffset = (tensorBRopeOffset + realS2Idx * gatherParams.dRopeValue) / gatherParams.dRopeValue;
@@ -497,7 +565,8 @@ __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetKeyRopeGmOffset(int64
 
 template <typename SLIT>
 __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetKeyGmOffset(int64_t realS2Idx,
-    const SLIKLLossGradRunInfo &runInfo, int64_t s2IdLimit, int32_t dValue)
+                                                                       const SLIKLLossGradRunInfo &runInfo,
+                                                                       int64_t s2IdLimit, int32_t dValue)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
         return -1;
@@ -510,7 +579,10 @@ __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetKeyGmOffset(int64_t r
 template <typename SLIT>
 template <bool gatherRope>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
-    int64_t realS2Idx1, int64_t realS2Idx2, const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor)
+                                                              int64_t realS2Idx1, int64_t realS2Idx2,
+                                                              const SLIKLLossGradRunInfo &runInfo,
+                                                              GlobalTensor<KV_T> srcTensor,
+                                                              GlobalTensor<KV_T> srcRopeTensor)
 {
     int64_t s2IdLimit = runInfo.s2SparseLen;
 
@@ -524,43 +596,49 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyInKv(int64_t &mte2Size,
 
     int64_t keySrcStride = 0;
     int64_t keyRopeSrcStride = 0;
-    keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                    (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * gatherParams.dValue * sizeof(KV_T);
+    keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
+                    constInfo.sparseBlockSize) *
+                   gatherParams.dValue * sizeof(KV_T);
     if constexpr (gatherRope) {
         int64_t keyRopeOffset1 = GetKeyRopeGmOffset(realS2Idx1, runInfo);
         int64_t keyRopeOffset2 = GetKeyRopeGmOffset(realS2Idx2, runInfo);
-        keyRopeSrcStride = ((keyRopeOffset1 > keyRopeOffset2 ? (keyRopeOffset1 - keyRopeOffset2) :
-                            (keyRopeOffset2 - keyRopeOffset1)) - constInfo.sparseBlockSize) *
-                                gatherParams.dRopeValue * sizeof(KV_T);
+        keyRopeSrcStride =
+            ((keyRopeOffset1 > keyRopeOffset2 ? (keyRopeOffset1 - keyRopeOffset2) : (keyRopeOffset2 - keyRopeOffset1)) -
+             constInfo.sparseBlockSize) *
+            gatherParams.dRopeValue * sizeof(KV_T);
     }
 
     bool key1LessThankey2 = (realS2Idx1 > realS2Idx2);
-    bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0) ||
-        (keyRopeSrcStride >= INT32_MAX || keyRopeSrcStride < 0);
-    bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
-        realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
+    bool strideInvalid =
+        (keySrcStride >= INT32_MAX) || (keySrcStride < 0) || (keyRopeSrcStride >= INT32_MAX || keyRopeSrcStride < 0);
+    bool copyOutOfRange =
+        (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit || realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
 
     if (key1LessThankey2 || strideInvalid || copyOutOfRange) {
         // stride溢出、stride为负数、s2超长、topK降序等场景，还原成2条搬运指令
-        CopyInSingleKv<gatherRope>(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyOffset1, s2IdLimit, runInfo, srcTensor, srcRopeTensor);
-        CopyInSingleKv<gatherRope>(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyOffset2, s2IdLimit, runInfo, srcTensor, srcRopeTensor);
+        CopyInSingleKv<gatherRope>(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyOffset1, s2IdLimit, runInfo,
+                                   srcTensor, srcRopeTensor);
+        CopyInSingleKv<gatherRope>(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyOffset2, s2IdLimit, runInfo,
+                                   srcTensor, srcRopeTensor);
     } else {
-        DataCopyExtParams intriParams(
-            keyOffset1Pass + keyOffset2Pass, constInfo.sparseBlockSize * gatherParams.dValue * sizeof(KV_T), keySrcStride, 0, 0
-        );
+        DataCopyExtParams intriParams(keyOffset1Pass + keyOffset2Pass,
+                                      constInfo.sparseBlockSize * gatherParams.dValue * sizeof(KV_T), keySrcStride, 0,
+                                      0);
         DataCopyPadExtParams<KV_T> padParams;
 
         int64_t startGmOffset = keyOffset1Pass ? keyOffset1 : keyOffset2;
         if (keyOffset2Pass && keyOffset2 < keyOffset1) {
             startGmOffset = keyOffset2;
         }
-        DataCopyPad(kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dValue + (mte2Size - mte3Size) * gatherParams.dValue],
-                    srcTensor[startGmOffset * gatherParams.dValue], intriParams, padParams);
+        DataCopyPad(
+            kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dValue + (mte2Size - mte3Size) * gatherParams.dValue],
+            srcTensor[startGmOffset * gatherParams.dValue], intriParams, padParams);
 
         if constexpr (gatherRope) {
             intriParams.blockLen = constInfo.sparseBlockSize * gatherParams.dRopeValue * sizeof(KV_T);
             intriParams.srcStride = keyRopeSrcStride;
-            DataCopyPad(ropeMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dRopeValue + (mte2Size - mte3Size) * gatherParams.dRopeValue],
+            DataCopyPad(ropeMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dRopeValue +
+                                    (mte2Size - mte3Size) * gatherParams.dRopeValue],
                         srcRopeTensor[startGmOffset * gatherParams.dRopeValue], intriParams, padParams);
         }
 
@@ -570,9 +648,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyInKv(int64_t &mte2Size,
 
 template <typename SLIT>
 template <event_t IdStart, bool gatherRope>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-    int64_t s2GmStartOffset, int64_t s2IdxOffset, int64_t mergeMte3Idx, const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> kvMergeGm_,
-    GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::CopyOutMrgeResult(
+    int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset, int64_t s2IdxOffset, int64_t mergeMte3Idx,
+    const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> kvMergeGm_, GlobalTensor<KV_T> srcTensor,
+    GlobalTensor<KV_T> srcRopeTensor)
 {
     if (mte2Size <= mte3Size) {
         return;
@@ -583,31 +662,36 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyOutMrgeResult(int64_t m
     DataCopyExtParams dataCopyParams(mte2Size - mte3Size, gatherParams.dValue * sizeof(KV_T), 0, 0, 0);
 
     int64_t gmStartOffset = runInfo.taskIdMod2 * gatherParams.gatherResGmEleSize +
-        s2IdxOffset * (gatherParams.dValue + gatherParams.dRopeValue);
+                            s2IdxOffset * (gatherParams.dValue + gatherParams.dRopeValue);
 
     DataCopyPad(kvMergeGm_[gmStartOffset + (s2GmStartOffset + mte3Size) * gatherParams.dValue],
                 kvMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dValue], dataCopyParams);
 
     if constexpr (gatherRope) {
         dataCopyParams.blockLen = gatherParams.dRopeValue * sizeof(KV_T);
-        DataCopyPad(kvMergeGm_[gmStartOffset + constInfo.s2BaseSize * gatherParams.dValue + (s2GmStartOffset + mte3Size) *
-            gatherParams.dRopeValue], ropeMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dRopeValue], dataCopyParams);
+        DataCopyPad(kvMergeGm_[gmStartOffset + constInfo.s2BaseSize * gatherParams.dValue +
+                               (s2GmStartOffset + mte3Size) * gatherParams.dRopeValue],
+                    ropeMergUb_[mergeMte3Idx * UB_ROW_SIZE * gatherParams.dRopeValue], dataCopyParams);
     }
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::GetRealS2Idx(int64_t s2GmOffset, int64_t s2IdxOffset, int64_t &realS2Idx,
-    const SLIKLLossGradRunInfo &runInfo)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::GetRealS2Idx(int64_t s2GmOffset, int64_t s2IdxOffset,
+                                                                  int64_t &realS2Idx,
+                                                                  const SLIKLLossGradRunInfo &runInfo)
 {
     int64_t topkGmIdx = (s2GmOffset + s2IdxOffset) / constInfo.sparseBlockSize;
-    realS2Idx = topKGm.GetValue(runInfo.topkGmBaseOffset + topkGmIdx) * static_cast<int64_t>(constInfo.sparseBlockSize) +
-                static_cast<int64_t>((s2GmOffset + s2IdxOffset) % constInfo.sparseBlockSize);
+    realS2Idx =
+        topKGm.GetValue(runInfo.topkGmBaseOffset + topkGmIdx) * static_cast<int64_t>(constInfo.sparseBlockSize) +
+        static_cast<int64_t>((s2GmOffset + s2IdxOffset) % constInfo.sparseBlockSize);
 }
 
 template <typename SLIT>
 template <event_t IdStart, bool gatherRope>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::MergeKv(const SLIKLLossGradRunInfo &runInfo, GlobalTensor<KV_T> kvMergeGm_,
-                                                             GlobalTensor<KV_T> srcTensor, GlobalTensor<KV_T> srcRopeTensor)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::MergeKv(const SLIKLLossGradRunInfo &runInfo,
+                                                             GlobalTensor<KV_T> kvMergeGm_,
+                                                             GlobalTensor<KV_T> srcTensor,
+                                                             GlobalTensor<KV_T> srcRopeTensor)
 {
     int64_t s2Pair = CeilDiv(gatherParams.s2ProcessSize, 2L * constInfo.sparseBlockSize);
 
@@ -619,28 +703,32 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::MergeKv(const SLIKLLossGrad
     bool needWaitMte3ToMte2 = true;
     bool subBlockZero = (GetSubBlockIdx() == 0);
     int64_t s2GmStartOffset = subBlockZero ? 0 : CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize;
-    int64_t s2GmLimit = subBlockZero ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize: gatherParams.s2ProcessSize;
+    int64_t s2GmLimit = subBlockZero ? CeilDiv(s2Pair, 2L) * 2 * constInfo.sparseBlockSize : gatherParams.s2ProcessSize;
     if (s2GmLimit > gatherParams.s2ProcessSize) {
         s2GmLimit = gatherParams.s2ProcessSize;
     }
     int64_t s2IdxOffset = static_cast<int64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
-    for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit; s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
+    for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit;
+         s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
         if (needWaitMte3ToMte2) {
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx + IdStart);
             needWaitMte3ToMte2 = false;
         }
         GetRealS2Idx(s2GmOffsetArray, s2IdxOffset, s2IdxArray0, runInfo);
         if (unlikely(s2IdxArray0 < 0)) {
-            CopyOutMrgeResult<IdStart, gatherRope>(mte2Size, mte3Size, s2GmStartOffset, s2IdxOffset, mergeMte3Idx, runInfo, kvMergeGm_, srcTensor, srcRopeTensor);
+            CopyOutMrgeResult<IdStart, gatherRope>(mte2Size, mte3Size, s2GmStartOffset, s2IdxOffset, mergeMte3Idx,
+                                                   runInfo, kvMergeGm_, srcTensor, srcRopeTensor);
             SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx + IdStart);
             mergeMte3Idx = 1 - mergeMte3Idx;
             break;
         }
         GetRealS2Idx(s2GmOffsetArray + constInfo.sparseBlockSize, s2IdxOffset, s2IdxArray1, runInfo);
-        CopyInKv<gatherRope>(mte2Size, mte3Size, mergeMte3Idx, s2IdxArray0, s2IdxArray1, runInfo, srcTensor, srcRopeTensor);
+        CopyInKv<gatherRope>(mte2Size, mte3Size, mergeMte3Idx, s2IdxArray0, s2IdxArray1, runInfo, srcTensor,
+                             srcRopeTensor);
         if ((mte2Size - mte3Size + 2 * constInfo.sparseBlockSize > UB_ROW_SIZE) ||
             s2GmOffsetArray + 2 * constInfo.sparseBlockSize >= s2GmLimit) {
-            CopyOutMrgeResult<IdStart, gatherRope>(mte2Size, mte3Size, s2GmStartOffset, s2IdxOffset, mergeMte3Idx, runInfo, kvMergeGm_, srcTensor, srcRopeTensor);
+            CopyOutMrgeResult<IdStart, gatherRope>(mte2Size, mte3Size, s2GmStartOffset, s2IdxOffset, mergeMte3Idx,
+                                                   runInfo, kvMergeGm_, srcTensor, srcRopeTensor);
             mte3Size = mte2Size;
             SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx + IdStart);
             mergeMte3Idx = 1 - mergeMte3Idx;
@@ -655,18 +743,35 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector1(SLIKLLossGra
 {
     CrossCoreWaitFlag(SYNC_C1_TO_V1_P_FLAG[runInfo.taskIdMod2]);
     CrossCoreWaitFlag(SYNC_C1_TO_V1_SY_FLAG[runInfo.taskIdMod2]);
+    // 空任务只配对 V1→C2，避免 kRealSize==0 的 DataCopy/Sum
+    if (runInfo.kLoopTimes <= 0 || runInfo.kRealSize <= 0) {
+        CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_TO_C2_DW_FLAG[runInfo.taskIdMod2]);
+        return;
+    }
     PreloadWeight(runInfo);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
-    // 保证 reduceN 轴的S'Y在同一个Vec核内 将P和S'Y任务分割
-    if (runInfo.calcP) {
-        CopyPFromInput(runInfo);
+    bool useSyLoadBalance = ShouldEnableSyLoadBalance(runInfo);
+    if (!useSyLoadBalance) {
+        if (runInfo.calcP) {
+            CopyPFromInput(runInfo);
+        } else {
+            VectorSy(runInfo);
+        }
     } else {
-        VectorSy(runInfo); // 计算S'Y部分，一直到Softmax
+        if (runInfo.calcP) {
+            CopyPFromInput(runInfo);
+        }
+        VectorSyLoadBalance(runInfo);
+        AscendC::CrossCoreSetFlag<0x1, PIPE_MTE3>(0x8);
+        AscendC::CrossCoreWaitFlag<0x1, PIPE_MTE2>(0x8);
+        if (!runInfo.calcP) {
+            FinalizeVectorSy(runInfo);
+        }
     }
     AscendC::CrossCoreSetFlag<0x1, PIPE_MTE3>(0x8);
     AscendC::CrossCoreWaitFlag<0x1, PIPE_MTE2>(0x8);
     for (int32_t kLoopIdx = 0; kLoopIdx < runInfo.kLoopTimes; ++kLoopIdx) {
-        VectorDwDqDk<topKSize>(runInfo, kLoopIdx); // Sub + Mul + Mul + ReluGrad
+        VectorDwDqDk(runInfo, kLoopIdx); // Sub + Mul + Mul + ReluGrad
         if (kLoopIdx >= runInfo.kLoopTimes - 1) {
             CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V1_TO_C2_DW_FLAG[runInfo.taskIdMod2]);
         }
@@ -675,14 +780,15 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector1(SLIKLLossGra
 }
 
 template <typename SLIT>
-__aicore__ inline void
-SLIKLLossVectorService<SLIT>::ScatterAddCopyOutSingle(const LocalTensor<MM5_OUT_T> &srcUb, int64_t keyBNBOffset)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::ScatterAddCopyOutSingle(const LocalTensor<MM5_OUT_T> &srcUb,
+                                                                             int64_t keyBNBOffset,
+                                                                             GlobalTensor<T> &scatterAddGm)
 {
     if (keyBNBOffset < 0) {
         return;
     }
     LocalTensor<T> srcTmpUb = srcUb.template ReinterpretCast<T>();
-    DataCopy(scatterAddResGm[keyBNBOffset * constInfo.dSizeQueryIndex], srcTmpUb, constInfo.dSizeQueryIndex);
+    DataCopy(scatterAddGm[keyBNBOffset * constInfo.dSizeQueryIndex], srcTmpUb, constInfo.dSizeQueryIndex);
 }
 
 template <typename SLIT>
@@ -690,12 +796,13 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
 {
     int64_t softmaxOffset = 0;
     if constexpr (LAYOUT_T == SLILayout::BSND) {
-        softmaxOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.n2Size * topKSize;
+        softmaxOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.n2Size * constInfo.kSize;
     } else if constexpr (LAYOUT_T == SLILayout::TND) {
-        softmaxOffset = runInfo.accumS1Idx * constInfo.n2Size * topKSize;
+        softmaxOffset = runInfo.accumS1Idx * constInfo.n2Size * constInfo.kSize;
     }
     int64_t realKSizeAlign8 = CeilDiv(runInfo.kRealSize, 8) * 8;
     DataCopyExtParams copyParams(1, static_cast<uint32_t>(runInfo.kRealSize * sizeof(T)), 0, 0, 0);
+    DataCopyExtParams copyAlignParams(1, static_cast<uint32_t>(realKSizeAlign8 * sizeof(T)), 0, 0, 0);
     DataCopyPadExtParams<T> copyPadParams(true, 0, static_cast<uint8_t>(realKSizeAlign8 - runInfo.kRealSize), 0.0f);
 
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[0]);
@@ -706,16 +813,13 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
 
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
-    AscendC::DataCopyPad(psySyncGm, reduceSumPResUb, copyParams);
+    AscendC::DataCopyPad(psySyncGm, reduceSumPResUb, copyAlignParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
 
     Duplicate(reduceSumDwResUb, static_cast<T>(0.0), PSY_SYNC_BLOCK_FLOAT_NUM);
-    SumParams sumPParams = {
-        static_cast<uint32_t>(1),
-        static_cast<uint32_t>(realKSizeAlign8),
-        static_cast<uint32_t>(runInfo.kRealSize)
-    };
+    SumParams sumPParams = {static_cast<uint32_t>(1), static_cast<uint32_t>(realKSizeAlign8),
+                            static_cast<uint32_t>(runInfo.kRealSize)};
     PipeBarrier<PIPE_V>();
     AscendC::Sum(reduceSumDwResUb, reduceSumPResUb, reduceSumTmpBuffer, sumPParams);
     PipeBarrier<PIPE_V>();
@@ -723,15 +827,16 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPFromInput(SLIKLLossGra
     DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
-    AscendC::DataCopyPad(psySyncGm[PSY_SYNC_SUM_P_OFFSET], reduceSumDwResUb, pSumCopyParams);
+    AscendC::DataCopyPad(psySyncGm[GetPsySyncSumPOffset()], reduceSumDwResUb, pSumCopyParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToVTmp);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[0]);
 }
 
 template <typename SLIT>
-__aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetActualSeqLens(int32_t bIdx,
-    int32_t defaultLens, GlobalTensor<int32_t> &actualSeqLensGm, SLILayout layout, int64_t &accumLen)
+__aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
+                                                                         GlobalTensor<int32_t> &actualSeqLensGm,
+                                                                         SLILayout layout, int64_t &accumLen)
 {
     if (actualSeqLensGm.GetSize() <= 0) {
         return defaultLens;
@@ -746,6 +851,17 @@ __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetActualSeqLens(int32_t
 }
 
 template <typename SLIT>
+__aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetUsedSeqLens(int32_t bIdx, int32_t defaultLens,
+                                                                       GlobalTensor<int32_t> &seqUsedGm)
+{
+    if (seqUsedGm.GetSize() <= 0) {
+        return defaultLens;
+    }
+    int32_t used = seqUsedGm.GetValue(bIdx);
+    return Min(Max(used, 0), defaultLens);
+}
+
+template <typename SLIT>
 __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetCmpResidualK(int32_t bIdx)
 {
     if (cmpResidualKeyGm.GetSize() <= 0) {
@@ -755,8 +871,7 @@ __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetCmpResidualK(int32_t 
 }
 
 template <typename SLIT>
-__aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetPreCompressS2Len(int32_t bIdx,
-    int32_t actualSeqLensK)
+__aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetPreCompressS2Len(int32_t bIdx, int32_t actualSeqLensK)
 {
     int64_t preCompressS2Len = static_cast<int64_t>(actualSeqLensK) * constInfo.cmpRatio + GetCmpResidualK(bIdx);
     return Max(preCompressS2Len, static_cast<int64_t>(0));
@@ -764,7 +879,8 @@ __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetPreCompressS2Len(int3
 
 template <typename SLIT>
 __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetS2SparseLen(int32_t bIdx, int32_t s1Idx,
-    int32_t actualSeqLensQ, int32_t actualSeqLensK, int64_t cmpRatio, SLISparseMode sparseMode)
+                                                                       int32_t actualSeqLensQ, int32_t actualSeqLensK,
+                                                                       int64_t cmpRatio, SLISparseMode sparseMode)
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (cmpRatio != 0) {
@@ -781,7 +897,144 @@ __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetS2SparseLen(int32_t b
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx, SLIKLLossGradRunInfo &runInfo)
+__aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetInvalidS1Size(int64_t bIdx, int64_t actualSeqLensQ,
+                                                                         int64_t actualSeqLensK)
+{
+    int64_t invalidS1Size = 0;
+    if (constInfo.sparseMode == SLISparseMode::RightDown) {
+        if (constInfo.cmpRatio != 0) {
+            invalidS1Size = actualSeqLensQ - GetPreCompressS2Len(bIdx, actualSeqLensK) + constInfo.cmpRatio - 1;
+        } else {
+            invalidS1Size = actualSeqLensQ - actualSeqLensK;
+        }
+    } else if (constInfo.sparseMode == SLISparseMode::NoMask && actualSeqLensK <= 0) {
+        invalidS1Size = actualSeqLensQ;
+    }
+    return Min(Max(invalidS1Size, static_cast<int64_t>(0)), actualSeqLensQ);
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::SetCachedValidTotalSize(int64_t validTotalSize)
+{
+    cachedValidTotalSize_ = validTotalSize;
+    ResetValidIdxMap();
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::ResetValidIdxMap()
+{
+    mapCurB_ = 0;
+    mapPrefixBeforeCurB_ = 0;
+    mapValidCntCurB_ = 0;
+    mapInvalidS1CurB_ = 0;
+    mapAccumS1CurB_ = 0;
+    mapAccumS2CurB_ = 0;
+    mapSeqQCurB_ = 0;
+    mapSeqKCurB_ = 0;
+    mapBatchReady_ = false;
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::LoadAllocatedAndUsedSeqLens(int64_t bIdx, int64_t &accumS1,
+                                                                                 int64_t &accumS2, int32_t &usedQ,
+                                                                                 int32_t &usedK)
+{
+    int32_t allocatedQ = constInfo.s1Size;
+    int32_t allocatedK = constInfo.s2Size;
+    accumS1 = 0;
+    accumS2 = 0;
+    if constexpr (LAYOUT_T == SLILayout::TND) {
+        allocatedQ = GetActualSeqLens(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T, accumS1);
+        if constexpr (KV_LAYOUT_T == SLILayout::TND) {
+            allocatedK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T, accumS2);
+        } else {
+            accumS2 = bIdx * constInfo.s2Size;
+        }
+    }
+    usedQ = hasSequsedQ ? GetUsedSeqLens(bIdx, allocatedQ, seqUsedQueryGm) : allocatedQ;
+    usedK = hasSequsedK ? GetUsedSeqLens(bIdx, allocatedK, seqUsedKeyGm) : allocatedK;
+}
+
+template <typename SLIT>
+__aicore__ inline bool SLIKLLossVectorService<SLIT>::LoadValidBatchAt(int64_t curB)
+{
+    if (curB < 0 || curB >= constInfo.bSize) {
+        mapBatchReady_ = false;
+        return false;
+    }
+    int64_t curAccumS1 = 0;
+    int64_t curAccumS2 = 0;
+    int32_t seqQ = 0;
+    int32_t seqK = 0;
+    LoadAllocatedAndUsedSeqLens(curB, curAccumS1, curAccumS2, seqQ, seqK);
+    mapInvalidS1CurB_ = GetInvalidS1Size(curB, seqQ, seqK);
+    mapValidCntCurB_ = Max(static_cast<int64_t>(seqQ) - mapInvalidS1CurB_, static_cast<int64_t>(0));
+    mapAccumS1CurB_ = curAccumS1;
+    mapAccumS2CurB_ = curAccumS2;
+    mapSeqQCurB_ = seqQ;
+    mapSeqKCurB_ = seqK;
+    mapCurB_ = curB;
+    mapBatchReady_ = true;
+    return true;
+}
+
+template <typename SLIT>
+__aicore__ inline bool SLIKLLossVectorService<SLIT>::MapValidIdxToBS1(int64_t validIdx, int64_t &bIdx, int64_t &s1Idx,
+                                                                      int64_t &accumS1Len, int64_t &accumS2Len,
+                                                                      int32_t &actualSeqLensQ, int32_t &actualSeqLensK)
+{
+    if (validIdx < 0) {
+        return false;
+    }
+    if (cachedValidTotalSize_ < 0 || validIdx >= cachedValidTotalSize_) {
+        return false;
+    }
+
+    if (mapBatchReady_ && validIdx >= mapPrefixBeforeCurB_ && validIdx < mapPrefixBeforeCurB_ + mapValidCntCurB_) {
+        int64_t remain = validIdx - mapPrefixBeforeCurB_;
+        bIdx = mapCurB_;
+        s1Idx = mapInvalidS1CurB_ + remain;
+        accumS1Len = mapAccumS1CurB_;
+        accumS2Len = mapAccumS2CurB_;
+        actualSeqLensQ = mapSeqQCurB_;
+        actualSeqLensK = mapSeqKCurB_;
+        return true;
+    }
+
+    if (!mapBatchReady_ || validIdx < mapPrefixBeforeCurB_) {
+        ResetValidIdxMap();
+        if (!LoadValidBatchAt(0)) {
+            return false;
+        }
+    }
+
+    while (mapBatchReady_ && validIdx >= mapPrefixBeforeCurB_ + mapValidCntCurB_) {
+        mapPrefixBeforeCurB_ += mapValidCntCurB_;
+        int64_t nextB = mapCurB_ + 1;
+        if (!LoadValidBatchAt(nextB)) {
+            return false;
+        }
+    }
+
+    if (!mapBatchReady_ || mapValidCntCurB_ <= 0) {
+        return false;
+    }
+
+    int64_t remain = validIdx - mapPrefixBeforeCurB_;
+    bIdx = mapCurB_;
+    s1Idx = mapInvalidS1CurB_ + remain;
+    accumS1Len = mapAccumS1CurB_;
+    accumS2Len = mapAccumS2CurB_;
+    actualSeqLensQ = mapSeqQCurB_;
+    actualSeqLensK = mapSeqKCurB_;
+    return true;
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, int64_t bIdx, int64_t s1Idx,
+                                                                SLIKLLossGradRunInfo &runInfo, int64_t accumS1Len,
+                                                                int64_t accumS2Len, int32_t actualSeqLensQ,
+                                                                int32_t actualSeqLensK)
 {
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
@@ -789,26 +1042,27 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, 
     runInfo.bIdx = bIdx;
     runInfo.s1Idx = s1Idx;
     if constexpr (LAYOUT_T == SLILayout::TND) {
-        int32_t actualSeqLensQ = GetActualSeqLens(runInfo.bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T, runInfo.accumS1Idx);
-        int32_t actualSeqLensK = GetActualSeqLens(runInfo.bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, KV_LAYOUT_T, runInfo.accumS2Idx);
         runInfo.actS1Size = actualSeqLensQ;
         runInfo.actS2Size = actualSeqLensK;
-        runInfo.accumS1Idx += s1Idx;
+        runInfo.accumS1Idx = accumS1Len + s1Idx;
+        runInfo.accumS2Idx = accumS2Len;
     } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-        runInfo.actS1Size = constInfo.s1Size;
-        runInfo.actS2Size = constInfo.s2Size;
+        runInfo.actS1Size = actualSeqLensQ;
+        runInfo.actS2Size = actualSeqLensK;
         runInfo.accumS1Idx = bIdx * constInfo.s1Size + s1Idx;
         runInfo.accumS2Idx = bIdx * constInfo.s2Size;
     }
-    runInfo.s2SparseLen = GetS2SparseLen(runInfo.bIdx, runInfo.s1Idx, runInfo.actS1Size,
-        runInfo.actS2Size, constInfo.cmpRatio, constInfo.sparseMode);
+    runInfo.s2SparseLen = GetS2SparseLen(runInfo.bIdx, runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size,
+                                         constInfo.cmpRatio, constInfo.sparseMode);
     if (runInfo.s2SparseLen <= 0) {
         runInfo.s2RealSize = 0;
         runInfo.kRealSize = 0;
         runInfo.kRealSizeAlign8 = 0;
+        runInfo.kLoopTimes = 0;
+        runInfo.kTailSize = 0;
         return;
     }
-    runInfo.s2RealSize = Min(topKSize, runInfo.s2SparseLen);
+    runInfo.s2RealSize = Min(constInfo.kSize, runInfo.s2SparseLen);
 
     if (constInfo.cmpRatio != 0) {
         runInfo.s2RealSize = Max(1, runInfo.s2RealSize);
@@ -816,18 +1070,22 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, 
 
     runInfo.kRealSize = runInfo.s2RealSize;
     runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
+    runInfo.kLoopTimes = CeilDiv(runInfo.kRealSize, runInfo.kBaseSize);
+    runInfo.kTailSize =
+        (runInfo.kRealSize % runInfo.kBaseSize == 0) ? runInfo.kBaseSize : (runInfo.kRealSize % runInfo.kBaseSize);
 
     if constexpr (LAYOUT_T == SLILayout::TND) {
-        runInfo.topkGmBaseOffset = runInfo.accumS1Idx * topKSize;
+        runInfo.topkGmBaseOffset = runInfo.accumS1Idx * constInfo.kSize;
     } else {
-        runInfo.topkGmBaseOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * topKSize;
+        runInfo.topkGmBaseOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.kSize;
     }
 }
 
 template <typename SLIT>
 __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetMetadataTotalSize()
 {
-    return hasMetadata ? metadataGm.GetValue(optiling::SLI_META_TOTAL_SIZE_INDEX) : tilingData->multiCoreParams.totalSize;
+    return hasMetadata ? metadataGm.GetValue(optiling::SLI_META_TOTAL_SIZE_INDEX) :
+                         tilingData->multiCoreParams.totalSize;
 }
 
 template <typename SLIT>
@@ -840,176 +1098,166 @@ __aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetMetadataBS1Index(uint
 }
 
 template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::Vector2ScatterAdd(int32_t vRealKSize,
+                                                                       GlobalTensor<MM5_OUT_T> &srcGm,
+                                                                       int64_t coreKOffset,
+                                                                       SLIKLLossGradRunInfo &runInfo,
+                                                                       GlobalTensor<T> &scatterAddGm)
+{
+    LocalTensor<MM5_OUT_T> scatterAddTmpUb;
+    int32_t kSplitSize = ubAllocPolicy.scatterAddUbSize / (2 * sizeof(T) * constInfo.dSizeQueryIndex);
+    int32_t tailSize = vRealKSize % kSplitSize;
+    int32_t kTailSize = tailSize == 0 ? kSplitSize : tailSize;
+    int32_t kProcessSize = kSplitSize;
+    int32_t kLoopTimes = CeilDiv(vRealKSize, kSplitSize);
+    event_t eventIdArr[2] = {eventIdScatterAdd, eventIdScatterAddPong};
+    runInfo.s2Idx = 0;
+    int64_t s2IdxOffset = runInfo.s2Idx * constInfo.s2BaseSize;
+
+    SetAtomicAdd<T>();
+    for (int32_t kLoopIdx = 0; kLoopIdx < kLoopTimes; ++kLoopIdx) {
+        if (kLoopIdx == kLoopTimes - 1) {
+            kProcessSize = kTailSize;
+        }
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
+        scatterAddTmpUb = scatterAddUb[scatterAddPingpong * kSplitSize * constInfo.dSizeQueryIndex]
+                              .template ReinterpretCast<MM5_OUT_T>();
+        DataCopy(scatterAddTmpUb, srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex],
+                 kProcessSize * constInfo.dSizeQueryIndex);
+        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
+        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
+
+        constexpr int32_t topKSplitSize = 2;
+        int32_t topKTail = kProcessSize % topKSplitSize;
+        int32_t topKTailSize = topKTail == 0 ? topKSplitSize : topKTail;
+        int32_t topKProcessSize = topKSplitSize;
+        int32_t topKLoopTimes = CeilDiv(kProcessSize, topKSplitSize);
+        for (int32_t topKIdx = 0; topKIdx < topKLoopTimes; ++topKIdx) {
+            if (topKIdx == topKLoopTimes - 1) {
+                topKProcessSize = topKTailSize;
+            }
+            int64_t s2GmOffset = coreKOffset + kLoopIdx * kSplitSize + topKIdx * topKSplitSize;
+            int64_t realS2Idx1 = -1;
+            int64_t realS2Idx2 = -1;
+            GetRealS2Idx(s2GmOffset, s2IdxOffset, realS2Idx1, runInfo);
+            if (topKProcessSize > 1) {
+                GetRealS2Idx(s2GmOffset + 1, s2IdxOffset, realS2Idx2, runInfo);
+            }
+
+            int64_t s2IdLimit = runInfo.s2SparseLen;
+            int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit, constInfo.dSizeQueryIndex);
+            int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit, constInfo.dSizeQueryIndex);
+            bool keyOffset1Pass = keyOffset1 >= 0;
+            bool keyOffset2Pass = keyOffset2 >= 0;
+            if (!keyOffset1Pass && !keyOffset2Pass) {
+                continue;
+            }
+
+            int64_t keySrcStride = ((keyOffset1 > keyOffset2 ? keyOffset1 - keyOffset2 : keyOffset2 - keyOffset1) -
+                                    static_cast<int64_t>(constInfo.sparseBlockSize)) *
+                                   static_cast<int64_t>(constInfo.dSizeQueryIndex) * sizeof(T);
+            bool strideInvalid = keySrcStride >= INT32_MAX || keySrcStride < 0;
+            bool copyOutOfRange = realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
+                                  realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit;
+            bool key1LessThanKey2 = realS2Idx1 > realS2Idx2;
+            int64_t ub1Offset = topKIdx * topKSplitSize * constInfo.dSizeQueryIndex;
+            int64_t ub2Offset = ub1Offset + constInfo.dSizeQueryIndex;
+
+            if (!keyOffset1Pass || !keyOffset2Pass || strideInvalid || copyOutOfRange || key1LessThanKey2) {
+                // stride溢出、stride为负数、s2超长、topK降序等场景，还原成2条搬运指令
+                if (keyOffset1Pass) {
+                    ScatterAddCopyOutSingle(scatterAddTmpUb[ub1Offset], keyOffset1, scatterAddGm);
+                }
+                if (keyOffset2Pass) {
+                    ScatterAddCopyOutSingle(scatterAddTmpUb[ub2Offset], keyOffset2, scatterAddGm);
+                }
+            } else {
+                DataCopyExtParams dataCopyParams(keyOffset1Pass + keyOffset2Pass, constInfo.dSizeQueryIndex * sizeof(T),
+                                                 0, keySrcStride, 0);
+                int64_t keyStartOffset = keyOffset1Pass ? keyOffset1 : keyOffset2;
+                int64_t ubStartOffset = keyOffset1Pass ? ub1Offset : ub2Offset;
+                LocalTensor<T> srcTmpUb = scatterAddTmpUb.template ReinterpretCast<T>();
+                DataCopyPad(scatterAddGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset],
+                            dataCopyParams);
+            }
+        }
+
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
+        scatterAddPingpong = 1 - scatterAddPingpong;
+    }
+    SetAtomicNone();
+}
+
+template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIKLLossGradRunInfo &runInfo)
 {
     CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C2_TO_V2_SA_FLAG[runInfo.taskIdMod2]);
-    CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_C2_TO_V2_DETER_SA_FLAG_MOD0[runInfo.taskIdMod2]);
-    CrossCoreWaitFlag<0, PIPE_MTE2>(SYNC_C2_TO_V2_DETER_SA_FLAG_MOD0[runInfo.taskIdMod2]);
-
-    CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
+    CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
+    CrossCoreWaitFlag<0, PIPE_MTE2>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
 
     int32_t coreNum = GetBlockNum();
-    for (int32_t idx = 0; idx < coreNum; idx++) {
+    int32_t peerNums = 0;
+    int64_t accumS1Len = 0;
+    int64_t accumS2Len = 0;
+    int32_t actualSeqLensQ = constInfo.s1Size;
+    int32_t actualSeqLensK = constInfo.s2Size;
 
-        //重新获取b和S1的值
-        int64_t bS1StartIndex = GetMetadataBS1Index(idx);
-        int64_t bS1EndIndex = idx + 1 < optiling::MAX_CORE_NUM ?
-            GetMetadataBS1Index(idx + 1) : GetMetadataTotalSize();
-        int64_t bIdx, s1Idx;
-
-        int64_t bS1Index = bS1StartIndex + runInfo.taskId;
-        if (bS1Index >= bS1EndIndex) {
+    for (int32_t idx = 0; idx < coreNum; ++idx) {
+        int64_t bS1Index = runInfo.taskId * coreNum + idx;
+        int64_t bIdx = 0;
+        int64_t s1Idx = 0;
+        if (!MapValidIdxToBS1(bS1Index, bIdx, s1Idx, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK)) {
             continue;
         }
-        int64_t actualSum = 0;
-        int64_t actualLenQ = 0;
-        int64_t seqLenQ = 0;
-        int64_t actualLenK = 0;
-        int64_t seqLenK = 0;
-        if constexpr (LAYOUT_T == SLILayout::TND) {
-            for (int index = 0; index < constInfo.bSize; index++) {
-                int64_t actualLenQ = this->actualSeqLengthsQueryGm.GetValue(index + 1);
-                int64_t actualLenK = this->actualSeqLengthsKeyGm.GetValue(index + 1);
-                if (bS1Index < actualLenQ) {
-                    bIdx = index;
-                    seqLenQ = actualLenQ - this->actualSeqLengthsQueryGm.GetValue(index);
-                    seqLenK = actualLenK - this->actualSeqLengthsKeyGm.GetValue(index);
-                    break;
-                }
-                actualSum = actualLenQ;
-            }
-            s1Idx = bS1Index - actualSum;
-        } else {
-            bIdx = bS1Index / constInfo.s1Size;
-            s1Idx = bS1Index - bIdx * constInfo.s1Size;
-            seqLenQ = constInfo.s1Size;
-            seqLenK = constInfo.s2Size;
-        }
-
-        if (constInfo.cmpRatio != 0) {
-            if (GetS2SparseLen(bIdx, s1Idx, seqLenQ, seqLenK, constInfo.cmpRatio, constInfo.sparseMode) <= 0) {
-                continue;
-            }
-        }
-
-        GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo);
-        if (runInfo.s2SparseLen <= 0) {
+        GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK);
+        if (runInfo.kRealSize <= 0) {
             continue;
         }
 
-        int32_t v0RealKSize, v1RealKSize, vRealKSize;
-        int32_t perCoreKSize, tailCoreKSize, curCoreKSize;
-        int64_t coreKOffset, vCoreKOffset;
-
-        perCoreKSize = CeilDiv(runInfo.kRealSize, coreNum);
+        int32_t perCoreKSize = CeilDiv(static_cast<int32_t>(runInfo.kRealSize), coreNum);
         perCoreKSize = SLIGAlign(perCoreKSize, 4);
-        int32_t usedCoreNum = CeilDiv(runInfo.kRealSize, perCoreKSize);
-        if (constInfo.aicIdx >= usedCoreNum) {
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
-            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
-            continue;
-        }
-        tailCoreKSize = runInfo.kRealSize - (usedCoreNum - 1) * perCoreKSize;
-        curCoreKSize = constInfo.aicIdx == usedCoreNum - 1 ? tailCoreKSize : perCoreKSize;
-        v0RealKSize = CeilDiv(curCoreKSize, 2);
-        v0RealKSize = Min(SLIGAlign(v0RealKSize, 2), curCoreKSize);
-        v1RealKSize = curCoreKSize - v0RealKSize;
+        int32_t usedCoreNum = CeilDiv(static_cast<int32_t>(runInfo.kRealSize), perCoreKSize);
 
-        coreKOffset = constInfo.aicIdx * perCoreKSize;
-        if (constInfo.subBlockIdx == 0) {
-            vRealKSize = v0RealKSize;
-            vCoreKOffset = coreKOffset;
-        } else {
-            vRealKSize = v1RealKSize;
-            vCoreKOffset = coreKOffset + v0RealKSize;
-        }
-        if (vRealKSize <= 0) {
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
-            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
-            continue;
-        }
-
-        int64_t srcOffset = idx * topKSize * constInfo.dSizeQueryIndex * 2;
-        GlobalTensor<MM5_OUT_T> srcGm = bmm5ResGm[srcOffset + (runInfo.taskIdMod2 * topKSize + vCoreKOffset) * constInfo.dSizeQueryIndex];
-        LocalTensor<MM5_OUT_T> scatterAddTmpUb;
-        int32_t kSplitSize = ubAllocPolicy.scatterAddUbSize / (2 * sizeof(T) * constInfo.dSizeQueryIndex);
-        int32_t tailkSize = vRealKSize % kSplitSize;
-        int32_t kTailSize = (!tailkSize) ? kSplitSize : tailkSize;
-        int32_t kProcessSize = kSplitSize;
-        int32_t kLoopTimes = CeilDiv(vRealKSize, kSplitSize);
-        int64_t realS2Idx1, realS2Idx2, s2GmOffset;
-        event_t eventIdArr[2] = {eventIdScatterAdd, eventIdScatterAddPong};
-        runInfo.s2Idx = 0;
-        int64_t s2IdxOffset = static_cast<int64_t>(runInfo.s2Idx) * constInfo.s2BaseSize;
-
-        CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
-        SetAtomicAdd<T>();
-
-        for (int32_t kLoopIdx = 0; kLoopIdx < kLoopTimes; ++kLoopIdx) {
-            if (kLoopIdx >= kLoopTimes - 1) {
-                kProcessSize = kTailSize;
+        int32_t vRealKSize = 0;
+        int64_t vCoreKOffset = 0;
+        if (constInfo.aicIdx < static_cast<uint32_t>(usedCoreNum)) {
+            int32_t tailCoreKSize = runInfo.kRealSize - (usedCoreNum - 1) * perCoreKSize;
+            int32_t curCoreKSize =
+                constInfo.aicIdx == static_cast<uint32_t>(usedCoreNum - 1) ? tailCoreKSize : perCoreKSize;
+            int32_t v0RealKSize = CeilDiv(curCoreKSize, 2);
+            v0RealKSize = Min(SLIGAlign(v0RealKSize, 2), curCoreKSize);
+            int32_t v1RealKSize = curCoreKSize - v0RealKSize;
+            int64_t coreKOffset = static_cast<int64_t>(constInfo.aicIdx) * perCoreKSize;
+            if (constInfo.subBlockIdx == 0) {
+                vRealKSize = v0RealKSize;
+                vCoreKOffset = coreKOffset;
+            } else {
+                vRealKSize = v1RealKSize;
+                vCoreKOffset = coreKOffset + v0RealKSize;
             }
-            WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
-            scatterAddTmpUb = scatterAddUb[scatterAddPingpong * kSplitSize * constInfo.dSizeQueryIndex].template ReinterpretCast<MM5_OUT_T>();
-            DataCopy(scatterAddTmpUb, srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex], kProcessSize * constInfo.dSizeQueryIndex);
-            SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
-            WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
-            constexpr int32_t topKSplitSize = 2;
-            int32_t TailSize = kProcessSize % topKSplitSize;
-            int32_t topKTailSize = ( !TailSize ) ? topKSplitSize : TailSize;
-            int32_t topKProcessSize = topKSplitSize;
-            int32_t topKLoopTimes = CeilDiv(kProcessSize, topKSplitSize);
-            for (int32_t topKIdx = 0; topKIdx < topKLoopTimes; ++topKIdx) {
-                if (topKIdx >= topKLoopTimes - 1) {
-                    topKProcessSize = topKTailSize;
-                }
-                s2GmOffset = vCoreKOffset + kLoopIdx * kSplitSize + topKIdx * topKSplitSize;
-                GetRealS2Idx(s2GmOffset, s2IdxOffset, realS2Idx1, runInfo);
-                realS2Idx2 = -1;
-                if (topKProcessSize > 1) {
-                    GetRealS2Idx(s2GmOffset + 1, s2IdxOffset, realS2Idx2, runInfo);
-                }
-
-                int64_t s2IdLimit = runInfo.s2SparseLen;
-                int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit, constInfo.dSizeQueryIndex);
-                int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit, constInfo.dSizeQueryIndex);
-                bool keyOffset1Pass = (keyOffset1 >= 0);
-                bool keyOffset2Pass = (keyOffset2 >= 0);
-                if (unlikely(keyOffset1 < 0 && keyOffset2 < 0)) {
-                    SetAtomicNone();
-                    break;
-                }
-
-                int64_t keySrcStride = 0;
-                keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                                (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.dSizeQueryIndex * sizeof(T);
-
-                bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0);
-                bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
-                    realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
-                bool key1LessThankey2 = (realS2Idx1 > realS2Idx2);
-
-                int64_t ub1Offset = topKIdx * topKSplitSize * constInfo.dSizeQueryIndex;
-                int64_t ub2Offset = ub1Offset + constInfo.dSizeQueryIndex;
-
-                if (strideInvalid || copyOutOfRange || key1LessThankey2) {
-                    // stride溢出、stride为负数、s2超长、topK降序等场景，还原成2条搬运指令
-                    ScatterAddCopyOutSingle(scatterAddTmpUb[ub1Offset], keyOffset1);
-                    ScatterAddCopyOutSingle(scatterAddTmpUb[ub2Offset], keyOffset2);
-                } else {
-                    DataCopyExtParams dataCopyParams(
-                        keyOffset1Pass + keyOffset2Pass, constInfo.dSizeQueryIndex * sizeof(T), 0, keySrcStride, 0
-                    );
-                    int64_t keyStartOffset = (keyOffset1Pass) ? keyOffset1 : keyOffset2;
-                    int64_t ubStartOffset = (keyOffset1Pass) ? ub1Offset : ub2Offset;
-                    LocalTensor<T> srcTmpUb = scatterAddTmpUb.template ReinterpretCast<T>();
-                    DataCopyPad(scatterAddResGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset], dataCopyParams);
-                }
-            }
-            SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
-            scatterAddPingpong = 1 - scatterAddPingpong;
         }
-        SetAtomicNone();
+
+        int32_t bankIdx = peerNums % SLI_DETER_SCATTER_BANK_NUM;
+        if (bankIdx == 0 && peerNums > 0) {
+            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
+        }
+        if (vRealKSize > 0) {
+            int64_t srcOffset = idx * constInfo.kSize * constInfo.dSizeQueryIndex * 2;
+            GlobalTensor<MM5_OUT_T> srcGm =
+                bmm5ResGm[srcOffset +
+                          (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) * constInfo.dSizeQueryIndex];
+            Vector2ScatterAdd(vRealKSize, srcGm, vCoreKOffset, runInfo, scatterAddResGmBanks[bankIdx]);
+        }
+        ++peerNums;
+        if ((peerNums % SLI_DETER_SCATTER_BANK_NUM) == 0) {
+            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
+        }
+    }
+
+    if (peerNums <= 0) {
+        return;
+    }
+    if ((peerNums % SLI_DETER_SCATTER_BANK_NUM) != 0) {
         CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
     }
     CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_V2_TO_V2_DETER_SA_FLAG_MOD0);
@@ -1036,8 +1284,9 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
         return;
     }
 
-    int srcOffset = constInfo.aicIdx * topKSize * constInfo.dSizeQueryIndex * 2;
-    GlobalTensor<MM5_OUT_T> srcGm = bmm5ResGm[srcOffset + (runInfo.taskIdMod2 * topKSize + coreKOffset) * constInfo.dSizeQueryIndex];
+    int srcOffset = constInfo.aicIdx * constInfo.kSize * constInfo.dSizeQueryIndex * 2;
+    GlobalTensor<MM5_OUT_T> srcGm =
+        bmm5ResGm[srcOffset + (runInfo.taskIdMod2 * constInfo.kSize + coreKOffset) * constInfo.dSizeQueryIndex];
     LocalTensor<MM5_OUT_T> scatterAddTmpUb;
     int32_t kSplitSize = ubAllocPolicy.scatterAddUbSize / (2 * sizeof(T) * constInfo.dSizeQueryIndex);
     int32_t tailSize = vRealKSize % kSplitSize;
@@ -1055,8 +1304,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
             kProcessSize = kTailSize;
         }
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
-        scatterAddTmpUb = scatterAddUb[scatterAddPingpong * kSplitSize * constInfo.dSizeQueryIndex].template ReinterpretCast<MM5_OUT_T>();
-        DataCopy(scatterAddTmpUb, srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex], kProcessSize * constInfo.dSizeQueryIndex);
+        scatterAddTmpUb = scatterAddUb[scatterAddPingpong * kSplitSize * constInfo.dSizeQueryIndex]
+                              .template ReinterpretCast<MM5_OUT_T>();
+        DataCopy(scatterAddTmpUb, srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex],
+                 kProcessSize * constInfo.dSizeQueryIndex);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
         WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
 
@@ -1086,12 +1337,13 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
             }
 
             int64_t keySrcStride = 0;
-            keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
-                            (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.dSizeQueryIndex * sizeof(T);
+            keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
+                            constInfo.sparseBlockSize) *
+                           constInfo.dSizeQueryIndex * sizeof(T);
 
             bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0);
             bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
-                realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
+                                   realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
             bool key1LessThankey2 = (realS2Idx1 > realS2Idx2);
 
             int64_t ub1Offset = topKIdx * topKSplitSize * constInfo.dSizeQueryIndex;
@@ -1099,16 +1351,16 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
 
             if (strideInvalid || copyOutOfRange || key1LessThankey2) {
                 // stride溢出、stride为负数、s2超长、topK降序等场景，还原成2条搬运指令
-                ScatterAddCopyOutSingle(scatterAddTmpUb[ub1Offset], keyOffset1);
-                ScatterAddCopyOutSingle(scatterAddTmpUb[ub2Offset], keyOffset2);
+                ScatterAddCopyOutSingle(scatterAddTmpUb[ub1Offset], keyOffset1, scatterAddResGm);
+                ScatterAddCopyOutSingle(scatterAddTmpUb[ub2Offset], keyOffset2, scatterAddResGm);
             } else {
-                DataCopyExtParams dataCopyParams(
-                    keyOffset1Pass + keyOffset2Pass, constInfo.dSizeQueryIndex * sizeof(T), 0, keySrcStride, 0
-                );
+                DataCopyExtParams dataCopyParams(keyOffset1Pass + keyOffset2Pass, constInfo.dSizeQueryIndex * sizeof(T),
+                                                 0, keySrcStride, 0);
                 int64_t keyStartOffset = (keyOffset1Pass) ? keyOffset1 : keyOffset2;
                 int64_t ubStartOffset = (keyOffset1Pass) ? ub1Offset : ub2Offset;
                 LocalTensor<T> srcTmpUb = scatterAddTmpUb.template ReinterpretCast<T>();
-                DataCopyPad(scatterAddResGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset], dataCopyParams);
+                DataCopyPad(scatterAddResGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset],
+                            dataCopyParams);
             }
         }
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
@@ -1117,11 +1369,41 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessVector2(SLIKLLossGra
     SetAtomicNone();
 }
 
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessPrivateScatterVector2(SLIKLLossGradRunInfo &runInfo)
+{
+    CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C2_TO_V2_SA_FLAG[runInfo.taskIdMod2]);
+    if (!runInfo.isValid) {
+        return;
+    }
+
+    int32_t v0RealKSize = CeilDiv(runInfo.kRealSize, 2);
+    v0RealKSize = Min(SLIGAlign(v0RealKSize, 2), runInfo.kRealSize);
+    int32_t v1RealKSize = runInfo.kRealSize - v0RealKSize;
+    int32_t vRealKSize = 0;
+    int64_t coreKOffset = 0;
+    if (constInfo.subBlockIdx == 0) {
+        vRealKSize = v0RealKSize;
+        coreKOffset = 0;
+    } else {
+        vRealKSize = v1RealKSize;
+        coreKOffset = v0RealKSize;
+    }
+    if (vRealKSize <= 0) {
+        return;
+    }
+
+    int srcOffset = constInfo.aicIdx * constInfo.kSize * constInfo.dSizeQueryIndex * 2;
+    GlobalTensor<MM5_OUT_T> srcGm =
+        bmm5ResGm[srcOffset + (runInfo.taskIdMod2 * constInfo.kSize + coreKOffset) * constInfo.dSizeQueryIndex];
+    Vector2ScatterAdd(vRealKSize, srcGm, coreKOffset, runInfo, scatterAddResGm);
+}
+
 #if 0
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorP(SLIKLLossGradRunInfo &runInfo)
 {
-    int64_t bmm1Offset = runInfo.taskIdMod2 * constInfo.gSizeQuery * topKSize;
+    int64_t bmm1Offset = runInfo.taskIdMod2 * constInfo.gSizeQuery * constInfo.kSize;
     int64_t nLoops = CeilDiv(constInfo.gSizeQuery, runInfo.nBaseSizeP);
     int64_t kLoops = CeilDiv(runInfo.kRealSize, K_BASE_SIZE);
 
@@ -1142,11 +1424,11 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorP(SLIKLLossGradRunInf
             int64_t curKOffset = K_BASE_SIZE * k;
             int64_t curKSize = (k == kLoops - 1) ? runInfo.kRealSize - curKOffset : K_BASE_SIZE;
             int64_t curKSizeAlign8 = CeilDiv(curKSize, 8) * 8;
-            int64_t bmm1NOffset = n * runInfo.nBaseSizeP * topKSize + k * K_BASE_SIZE;
+            int64_t bmm1NOffset = n * runInfo.nBaseSizeP * constInfo.kSize + k * K_BASE_SIZE;
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[pingpong]);
             DataCopyExtParams copyParams(   static_cast<uint16_t>(curNSize),
                                             static_cast<uint32_t>(curKSize * sizeof(T)),
-                                            static_cast<uint32_t>((topKSize - curKSize) * sizeof(T)), 0, 0);
+                                            static_cast<uint32_t>((constInfo.kSize - curKSize) * sizeof(T)), 0, 0);
             DataCopyPadExtParams<T> copyPadParams(false, 0, 0, 0);
             AscendC::DataCopyPad(mulsResUb[pingpong], bmm1ResGm[bmm1Offset + bmm1NOffset], copyParams, copyPadParams);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
@@ -1194,11 +1476,11 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorP(SLIKLLossGradRunInf
     }
     PipeBarrier<PIPE_V>();
     float gRec = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
-    AscendC::Muls(reduceSumPResUb, reduceSumPResUb, gRec, topKSize);
+    AscendC::Muls(reduceSumPResUb, reduceSumPResUb, gRec, constInfo.kSize);
     PipeBarrier<PIPE_V>();
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
-    AscendC::DataCopy(psySyncGm, reduceSumPResUb, topKSize);
+    AscendC::DataCopy(psySyncGm, reduceSumPResUb, constInfo.kSize);
 }
 #endif
 
@@ -1206,7 +1488,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorP(SLIKLLossGradRunInf
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorPWithOutSoftMaxSum(SLIKLLossGradRunInfo &runInfo)
 {
-    int64_t bmm1Offset = runInfo.taskIdMod2 * constInfo.gSizeQuery * topKSize;
+    int64_t bmm1Offset = runInfo.taskIdMod2 * constInfo.gSizeQuery * constInfo.kSize;
     int64_t nLoops = CeilDiv(constInfo.gSizeQuery, runInfo.nBaseSizeP);
     int64_t kLoops = CeilDiv(runInfo.kRealSize, K_BASE_SIZE);
 
@@ -1221,11 +1503,11 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorPWithOutSoftMaxSum(SL
             int64_t curKOffset = K_BASE_SIZE * k;
             int64_t curKSize = (k == kLoops - 1) ? runInfo.kRealSize - curKOffset : K_BASE_SIZE;
             int64_t curKSizeAlign8 = CeilDiv(curKSize, 8) * 8;
-            int64_t bmm1NOffset = n * runInfo.nBaseSizeP * topKSize + k * K_BASE_SIZE;
+            int64_t bmm1NOffset = n * runInfo.nBaseSizeP * constInfo.kSize + k * K_BASE_SIZE;
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2P[pingpong]);
             DataCopyExtParams copyParams(   static_cast<uint16_t>(curNSize),
                                             static_cast<uint32_t>(curKSize * sizeof(T)),
-                                            static_cast<uint32_t>((topKSize - curKSize) * sizeof(T)), 0, 0);
+                                            static_cast<uint32_t>((constInfo.kSize - curKSize) * sizeof(T)), 0, 0);
             DataCopyPadExtParams<T> copyPadParams(false, 0, 0, 0);
             AscendC::DataCopyPad(mulsResUb[pingpong], bmm1ResGm[bmm1Offset + bmm1NOffset], copyParams, copyPadParams);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerVecP);
@@ -1254,11 +1536,11 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorPWithOutSoftMaxSum(SL
     }
     PipeBarrier<PIPE_V>();
     float gRec = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
-    AscendC::Muls(reduceSumPResUb, reduceSumPResUb, gRec, topKSize);
+    AscendC::Muls(reduceSumPResUb, reduceSumPResUb, gRec, constInfo.kSize);
     PipeBarrier<PIPE_V>();
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerVecP);
-    AscendC::DataCopy(psySyncGm, reduceSumPResUb, topKSize);
+    AscendC::DataCopy(psySyncGm, reduceSumPResUb, constInfo.kSize);
 }
 #endif
 
@@ -1278,7 +1560,8 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::PreloadWeight(SLIKLLossGrad
     AscendC::DataCopy(weightInUb[weightDBOffset], weightGm[weightOffset], constInfo.gSizeQueryIndexAlign16);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerPreW);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVInnerPreW);
-    AscendC::Adds(weightUb[weightDBOffset], weightInUb[weightDBOffset], static_cast<T>(0.0), constInfo.gSizeQueryIndexAlign16);
+    AscendC::Adds(weightUb[weightDBOffset], weightInUb[weightDBOffset], static_cast<T>(0.0),
+                  constInfo.gSizeQueryIndexAlign16);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2Weight[runInfo.taskIdMod2]);
     PipeBarrier<PIPE_V>();
 }
@@ -1298,26 +1581,39 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorSy(SLIKLLossGradRunIn
 
     // 切B, S1做循环, bmm2 单次存储 [N1_INDEX, TopK] 大小的数据块
     // 为了softmax K轴尽量不切分, 只能在N1方向上切
-    int64_t bmm2ResSize = constInfo.gSizeQueryIndex * topKSize; //  sizeof(float)
+    int64_t bmm2ResSize = constInfo.gSizeQueryIndex * constInfo.kAlign16; //  sizeof(float)
     int64_t bmm2ResOffset = runInfo.taskIdMod2 * bmm2ResSize;
     // relu无法复用LocalTensor 所以再 8/ 2 = 4行
-    int64_t nSplitSize = ubAllocPolicy.mm2UbSize / (topKSize * sizeof(float));
+    int64_t nSplitSize = GetNSplitSize();
     // 一个Cube 做 G 行, 分给两个Vector, 每个做 G / 2 的大小
     int64_t nLoopSize = CeilDiv(constInfo.gSizeQueryIndex, nSplitSize);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
     for (int64_t n = 0; n < nLoopSize; n++) {
         int64_t curNSize = Min(nSplitSize, static_cast<int64_t>(constInfo.gSizeQueryIndex) - n * nSplitSize);
-        int64_t bmm2Offset = n * nSplitSize * topKSize; // 4 * 2048
-        DataCopyExtParams copyBmm2Params(static_cast<uint16_t>(curNSize), static_cast<uint32_t>(realKSize * sizeof(T)),
-                            static_cast<uint32_t>((topKSize - realKSize) * sizeof(T)), 0, 0);
-        DataCopyPadExtParams<T> copyBmm2PadParams(true, 0, (uint8_t)(realKSizeAlign - realKSize), 0.0);
+        int64_t bmm2Offset = n * nSplitSize * constInfo.kAlign16; // 4 * 2048
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
-        AscendC::DataCopyPad<T>(reluResUb, bmm2ResGm[bmm2ResOffset + bmm2Offset], copyBmm2Params, copyBmm2PadParams);
+        CopyRowsGmToUb<T>(reluResUb, bmm2ResGm[bmm2ResOffset + bmm2Offset], static_cast<uint16_t>(curNSize),
+                          static_cast<int32_t>(realKSizeAlign), static_cast<int32_t>(constInfo.kAlign16),
+                          static_cast<int32_t>(realKSizeAlign));
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
+        if (realKSize < realKSizeAlign) {
+            int32_t tail = static_cast<int32_t>(realKSizeAlign - realKSize);
+            event_t eventVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(eventVToS);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(eventVToS);
+            for (int32_t i = 0; i < curNSize; ++i) {
+                for (int32_t t = 0; t < tail; ++t) {
+                    reluResUb.SetValue(i * realKSizeAlign + realKSize + t, static_cast<T>(0));
+                }
+            }
+            event_t eventSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(eventSToV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(eventSToV);
+        }
         int64_t weightOffset = !constInfo.subBlockIdx * constInfo.gSizeQueryIndexAlign16;
         for (int32_t i = 0; i < curNSize; i++) {
-            float weightValue = weightUb[weightOffset].GetValue(n*nSplitSize + i);
+            float weightValue = weightUb[weightOffset].GetValue(n * nSplitSize + i);
             int64_t mulOffset = i * realKSizeAlign;
             event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
             AscendC::SetFlag<AscendC::HardEvent::S_V>(eventIdSToV);
@@ -1328,10 +1624,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorSy(SLIKLLossGradRunIn
 
         LocalTensor<T> reduceUb = nSplitSize > 1 ? reduceSumYResTmpBuffer : reluResUb;
         if (nSplitSize > 1) {
-            // 使用高阶API做自选维度的reduce 不支持源操作数与目的操作数地址重叠。不支持sharedTmpBuffer与源操作数和目的操作数地址重叠。
-            uint32_t reduceShape[] = { static_cast<uint32_t>(curNSize), static_cast<uint32_t>(realKSizeAlign) };
+            // 使用高阶API做自选维度的reduce
+            // 不支持源操作数与目的操作数地址重叠。不支持sharedTmpBuffer与源操作数和目的操作数地址重叠。
+            uint32_t reduceShape[] = {static_cast<uint32_t>(curNSize), static_cast<uint32_t>(realKSizeAlign)};
             constexpr bool isReuse = true;
-            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, isReuse>(reduceUb, reluResUb, reduceSumTmpBuffer, reduceShape, true);
+            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, isReuse>(reduceUb, reluResUb, reduceSumTmpBuffer,
+                                                                         reduceShape, true);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
             PipeBarrier<PIPE_V>();
         }
@@ -1348,39 +1646,171 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorSy(SLIKLLossGradRunIn
         PipeBarrier<PIPE_V>();
     }
 
-    SoftMaxShapeInfo softmaxShapeInfoData = {
-        static_cast<uint32_t>(1),
-        static_cast<uint32_t>(realKSizeAlign),
-        static_cast<uint32_t>(1),
-        static_cast<uint32_t>(realKSize),
-    };
-    AscendC::SoftMax<T>(reduceSumYResUb, reduceSumYResUb, softmaxTmpBuffer, constInfo.tilingInfo,
-                        {static_cast<uint32_t>(1), static_cast<uint32_t>(realKSizeAlign),
-                         static_cast<uint32_t>(1), static_cast<uint32_t>(realKSize)});
-    PipeBarrier<PIPE_V>();
+    SoftmaxInplaceRealK(static_cast<int32_t>(realKSize), static_cast<int32_t>(realKSizeAlign));
+    DataCopyExtParams copyAlignParams(1, static_cast<uint32_t>(realKSizeAlign * sizeof(float)), 0, 0, 0);
     DataCopyExtParams copyParams(1, static_cast<uint32_t>(realKSize * sizeof(float)), 0, 0, 0);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
-    AscendC::DataCopyPad(psySyncGm[topKSize], reduceSumYResUb, copyParams);
+    AscendC::DataCopyPad(psySyncGm[constInfo.kAlign16], reduceSumYResUb, copyAlignParams);
     int64_t softmaxOutOffset = 0;
     if constexpr (LAYOUT_T == SLILayout::BSND) {
-        softmaxOutOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.n2Size * topKSize;
+        softmaxOutOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.n2Size * constInfo.kSize;
     } else if constexpr (LAYOUT_T == SLILayout::TND) {
-        softmaxOutOffset = runInfo.accumS1Idx * constInfo.n2Size * topKSize;
+        softmaxOutOffset = runInfo.accumS1Idx * constInfo.n2Size * constInfo.kSize;
     }
     AscendC::DataCopyPad(softmaxOutGm[softmaxOutOffset], reduceSumYResUb, copyParams);
-    if (realKSize < topKSize) {
-        AscendC::InitOutput(softmaxOutGm[softmaxOutOffset + realKSize], topKSize - realKSize, static_cast<T>(0));
-    }
+    CopySoftmaxOutTailZeros(softmaxOutOffset, static_cast<int32_t>(realKSize));
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::ReLUGrad(LocalTensor<KV_T> &reluGradOutTensor, LocalTensor<T> &subResTensor,
-                                                              LocalTensor<T> &maskUb, int32_t kRealSizeAlign)
+__aicore__ inline bool SLIKLLossVectorService<SLIT>::ShouldEnableSyLoadBalance(
+    const SLIKLLossGradRunInfo &runInfo) const
+{
+    int64_t gSize = static_cast<int64_t>(constInfo.gSizeQueryIndex);
+    if (gSize < SY_LB_MIN_G_SIZE) {
+        return false;
+    }
+    int64_t rowsPerTile = GetNSplitSize();
+    int64_t serialLoops = CeilDiv(gSize, rowsPerTile);
+    int64_t serialWork = serialLoops * static_cast<int64_t>(runInfo.s2RealSize);
+    return serialWork >= SY_LB_MIN_SERIAL_WORK;
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::VectorSyLoadBalance(SLIKLLossGradRunInfo &runInfo)
+{
+    event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(eventIdVToS);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(eventIdVToS);
+    int64_t realKSize = runInfo.s2RealSize;
+    int64_t realKSizeAlign = CeilDiv(realKSize, 8) * 8;
+    int64_t gHalfSize = constInfo.gSizeQueryIndex / 2;
+    int64_t pOwnerGSize = Max(static_cast<int64_t>(0), gHalfSize - P_OWNER_SY_ROW_BIAS);
+    int64_t gStart = runInfo.calcP ? 0 : pOwnerGSize;
+    int64_t gProcessSize = runInfo.calcP ? pOwnerGSize : constInfo.gSizeQueryIndex - pOwnerGSize;
+    int64_t bmm2ResSize = constInfo.gSizeQueryIndex * constInfo.kAlign16;
+    int64_t bmm2ResOffset = runInfo.taskIdMod2 * bmm2ResSize;
+    int64_t nSplitSize = GetNSplitSize();
+    int64_t nLoopSize = CeilDiv(gProcessSize, nSplitSize);
+    int64_t weightOffset = runInfo.taskIdMod2 * constInfo.gSizeQueryIndexAlign16 + gStart;
+    LocalTensor<T> syInputUb[2] = {pingBuf, pongBuf};
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[0]);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[1]);
+    if (gProcessSize == 0) {
+        AscendC::Duplicate(reduceSumYResUb, static_cast<T>(0), realKSizeAlign);
+        PipeBarrier<PIPE_V>();
+    }
+    if (nLoopSize > 0) {
+        int64_t firstNSize = Min(nSplitSize, gProcessSize);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[0]);
+        CopyRowsGmToUb<T>(syInputUb[0], bmm2ResGm[bmm2ResOffset + gStart * constInfo.kAlign16],
+                          static_cast<uint16_t>(firstNSize), static_cast<int32_t>(realKSizeAlign),
+                          static_cast<int32_t>(constInfo.kAlign16), static_cast<int32_t>(realKSizeAlign));
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVSyPingPong[0]);
+    }
+    for (int64_t n = 0; n < nLoopSize; n++) {
+        int32_t pingPong = n & 1;
+        int64_t curNSize = Min(nSplitSize, gProcessSize - n * nSplitSize);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVSyPingPong[pingPong]);
+        if (realKSize < realKSizeAlign) {
+            int32_t tail = static_cast<int32_t>(realKSizeAlign - realKSize);
+            event_t eventVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(eventVToS);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(eventVToS);
+            for (int32_t i = 0; i < curNSize; ++i) {
+                for (int32_t t = 0; t < tail; ++t) {
+                    syInputUb[pingPong].SetValue(i * realKSizeAlign + realKSize + t, static_cast<T>(0));
+                }
+            }
+            event_t eventSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(eventSToV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(eventSToV);
+        }
+        if (n + 1 < nLoopSize) {
+            int32_t nextPingPong = 1 - pingPong;
+            int64_t nextN = n + 1;
+            int64_t nextNSize = Min(nSplitSize, gProcessSize - nextN * nSplitSize);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[nextPingPong]);
+            CopyRowsGmToUb<T>(syInputUb[nextPingPong],
+                              bmm2ResGm[bmm2ResOffset + (gStart + nextN * nSplitSize) * constInfo.kAlign16],
+                              static_cast<uint16_t>(nextNSize), static_cast<int32_t>(realKSizeAlign),
+                              static_cast<int32_t>(constInfo.kAlign16), static_cast<int32_t>(realKSizeAlign));
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToVSyPingPong[nextPingPong]);
+        }
+        for (int32_t i = 0; i < curNSize; i++) {
+            float weightValue = weightUb[weightOffset].GetValue(n * nSplitSize + i);
+            int64_t mulOffset = i * realKSizeAlign;
+            event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(eventIdSToV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(eventIdSToV);
+            AscendC::Muls<T>(syInputUb[pingPong][mulOffset], syInputUb[pingPong][mulOffset], weightValue,
+                             realKSizeAlign);
+        }
+        PipeBarrier<PIPE_V>();
+        LocalTensor<T> reduceUb = nSplitSize > 1 ? reduceSumYResTmpBuffer : syInputUb[pingPong];
+        if (nSplitSize > 1) {
+            uint32_t reduceShape[] = {static_cast<uint32_t>(curNSize), static_cast<uint32_t>(realKSizeAlign)};
+            constexpr bool isReuse = true;
+            AscendC::ReduceSum<T, AscendC::Pattern::Reduce::RA, isReuse>(reduceUb, syInputUb[pingPong],
+                                                                         reduceSumTmpBuffer, reduceShape, true);
+            PipeBarrier<PIPE_V>();
+        }
+        if (n == 0) {
+            AscendC::DataCopy(reduceSumYResUb, reduceUb, realKSizeAlign);
+        } else {
+            AscendC::Add(reduceSumYResUb, reduceSumYResUb, reduceUb, realKSizeAlign);
+        }
+        PipeBarrier<PIPE_V>();
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[pingPong]);
+    }
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[0]);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte2SyPingPong[1]);
+    DataCopyExtParams copyParams(1, static_cast<uint32_t>(realKSizeAlign * sizeof(T)), 0, 0, 0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
+    AscendC::DataCopyPad(psySyncGm[constInfo.kAlign16], reduceSumYResUb, copyParams);
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::FinalizeVectorSy(SLIKLLossGradRunInfo &runInfo)
+{
+    int64_t realKSize = runInfo.s2RealSize;
+    int64_t realKSizeAlign = CeilDiv(realKSize, 8) * 8;
+    LocalTensor<T> peerYUb = mm2TBuf.Get<T>();
+    DataCopyExtParams copyAlignParams(1, static_cast<uint32_t>(realKSizeAlign * sizeof(T)), 0, 0, 0);
+    DataCopyExtParams copyParams(1, static_cast<uint32_t>(realKSize * sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> copyPadParams(true, 0, static_cast<uint8_t>(realKSizeAlign - realKSize), 0.0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
+    AscendC::DataCopyPad(peerYUb, psySyncOtherGm[constInfo.kAlign16], copyAlignParams, copyPadParams);
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
+    AscendC::Add(reduceSumYResUb, reduceSumYResUb, peerYUb, realKSizeAlign);
+    PipeBarrier<PIPE_V>();
+    SoftmaxInplaceRealK(static_cast<int32_t>(realKSize), static_cast<int32_t>(realKSizeAlign));
+    DataCopyExtParams copyPsyParams(1, static_cast<uint32_t>(realKSizeAlign * sizeof(T)), 0, 0, 0);
+    int64_t softmaxOutOffset = 0;
+    if constexpr (LAYOUT_T == SLILayout::BSND) {
+        softmaxOutOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.n2Size * constInfo.kSize;
+    } else if constexpr (LAYOUT_T == SLILayout::TND) {
+        softmaxOutOffset = runInfo.accumS1Idx * constInfo.n2Size * constInfo.kSize;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
+    AscendC::DataCopyPad(psySyncGm[constInfo.kAlign16], reduceSumYResUb, copyPsyParams);
+    AscendC::DataCopyPad(softmaxOutGm[softmaxOutOffset], reduceSumYResUb, copyParams);
+    CopySoftmaxOutTailZeros(softmaxOutOffset, static_cast<int32_t>(realKSize));
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::ReLUGrad(LocalTensor<KV_T> &reluGradOutTensor,
+                                                              LocalTensor<T> &subResTensor, LocalTensor<T> &maskUb,
+                                                              int32_t kRealSizeAlign)
 {
     // 根据mask选择subResTensor中可用数据
-    Select(subResTensor, maskUb, subResTensor, static_cast<T>(0.0), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, kRealSizeAlign);
+    Select(subResTensor, maskUb, subResTensor, static_cast<T>(0.0), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE,
+           kRealSizeAlign);
     PipeBarrier<PIPE_V>();
     Cast(reluGradOutTensor, subResTensor, AscendC::RoundMode::CAST_ROUND, kRealSizeAlign);
     PipeBarrier<PIPE_V>();
@@ -1403,23 +1833,32 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
     int32_t kRealSizeAlign16 = BlockAlign<KV_T>(kRealSize); // 按照KV_T类型对齐，datacopy才不会有问题
 
     SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
-    if (runInfo.calcP) {
-        reduceSumPUbSingleK = resPSYTBuf.Get<T>();
-        reduceSumYUbSingleK = mm2TBuf.template Get<T>()[6144];
-        WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
-        DataCopy(reduceSumYUbSingleK, psySyncOtherGm[topKSize], kRealSizeAlign16);
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
+    if (!ShouldEnableSyLoadBalance(runInfo)) {
+        if (runInfo.calcP) {
+            reduceSumPUbSingleK = resPSYTBuf.Get<T>();
+            reduceSumYUbSingleK = mm2TBuf.template Get<T>()[6144];
+            WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
+            CopyPsyKPad(reduceSumYUbSingleK, psySyncOtherGm[constInfo.kAlign16], kRealSize, kRealSizeAlign16);
+            DataCopyPad(reduceSumDwResUb, psySyncGm[GetPsySyncSumPOffset()], pSumCopyParams, pSumPadParams);
+        } else {
+            reduceSumPUbSingleK = mm2TBuf.template Get<T>()[6144];
+            reduceSumYUbSingleK = resPSYTBuf.Get<T>();
+            WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
+            CopyPsyKPad(reduceSumPUbSingleK, psySyncOtherGm, kRealSize, kRealSizeAlign16);
+            DataCopyPad(reduceSumDwResUb, psySyncOtherGm[GetPsySyncSumPOffset()], pSumCopyParams, pSumPadParams);
+        }
     } else {
         reduceSumPUbSingleK = mm2TBuf.template Get<T>()[6144];
         reduceSumYUbSingleK = resPSYTBuf.Get<T>();
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
-        DataCopy(reduceSumPUbSingleK, psySyncOtherGm, kRealSizeAlign16);
-    }
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
-    if (runInfo.calcP) {
-        DataCopyPad(reduceSumDwResUb, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    } else {
-        DataCopyPad(reduceSumDwResUb, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+        GlobalTensor<T> &pOwnerSyncGm = runInfo.calcP ? psySyncGm : psySyncOtherGm;
+        CopyPsyKPad(reduceSumPUbSingleK, pOwnerSyncGm, kRealSize, kRealSizeAlign16);
+        if (runInfo.calcP) {
+            CopyPsyKPad(reduceSumYUbSingleK, psySyncOtherGm[constInfo.kAlign16], kRealSize, kRealSizeAlign16);
+        }
+        DataCopyPad(reduceSumDwResUb, pOwnerSyncGm[GetPsySyncSumPOffset()], pSumCopyParams, pSumPadParams);
     }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
@@ -1440,13 +1879,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
     constexpr uint32_t gSizeInner = 4;
     int32_t gLoopTimes = gSizePerVec / gSizeInner;
 
-    SumParams sumParams = {static_cast<uint32_t>(gSizeInner), static_cast<uint32_t>(kRealSizeAlign16), static_cast<uint32_t>(kRealSize)};
-    DataCopyParams dataCopyReluResParams(gSizeInner, kRealSizeAlign16 * sizeof(T), (topKSize - kRealSizeAlign16) * sizeof(T), 0);
-    DataCopyPadParams dataCopyReluResPadParams(false, 0, 0, 0);
-    DataCopyParams dataCopyReluGradParams(gSizeInner, kRealSize * sizeof(KV_T), 0, (topKSize - kRealSize) * sizeof(KV_T));
+    SumParams sumParams = {static_cast<uint32_t>(gSizeInner), static_cast<uint32_t>(kRealSizeAlign16),
+                           static_cast<uint32_t>(kRealSize)};
 
     int64_t subBlockGQueryIndexOffset = constInfo.subBlockIdx * gSizePerVec;
-    int64_t reluGmOffset = (runInfo.taskIdMod2 * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset) * topKSize;
+    int64_t reluGmOffset =
+        (runInfo.taskIdMod2 * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset) * constInfo.kAlign16;
     int64_t weightOffset = runInfo.taskIdMod2 * constInfo.gSizeQueryIndexAlign16 + subBlockGQueryIndexOffset;
 
     SetFlag<HardEvent::MTE3_V>(eventIdMte3ToVDwDqDkPingPong[0]);
@@ -1463,18 +1901,35 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
         WaitFlag<HardEvent::MTE3_MTE2>(eventIdmte3ToMte2DwDqDkPingPong[pingPong]);
 
         // 获取输入的relu数据和weights数据偏差每gSizePerVec中gSizeInner个
-        int64_t reluResOffset = reluGmOffset + nIdx * gSizeInner * topKSize;
+        int64_t reluResOffset = reluGmOffset + nIdx * gSizeInner * constInfo.kAlign16;
         // 每次搬运gSizeInner个kRealSizeAlign16 | reluResUb shape-> (gSizeInner, kRealSizeAlign16)
-        DataCopyPad(reluResUb[pingPong], reluGm[reluResOffset], dataCopyReluResParams, dataCopyReluResPadParams);
+        CopyRowsGmToUb<T>(reluResUb[pingPong], reluGm[reluResOffset], static_cast<uint16_t>(gSizeInner),
+                          kRealSizeAlign16, static_cast<int32_t>(constInfo.kAlign16), kRealSizeAlign16);
         SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+        if (kRealSize < kRealSizeAlign16) {
+            int32_t tail = kRealSizeAlign16 - kRealSize;
+            event_t eventVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+            SetFlag<HardEvent::V_S>(eventVToS);
+            WaitFlag<HardEvent::V_S>(eventVToS);
+            for (uint32_t gInnerIdx = 0; gInnerIdx < gSizeInner; ++gInnerIdx) {
+                for (int32_t t = 0; t < tail; ++t) {
+                    reluResUb[pingPong].SetValue(gInnerIdx * kRealSizeAlign16 + kRealSize + t, static_cast<T>(0));
+                }
+            }
+            event_t eventSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            SetFlag<HardEvent::S_V>(eventSToV);
+            WaitFlag<HardEvent::S_V>(eventSToV);
+        }
 
-        CompareScalar(maskUb, reluResUb[pingPong], static_cast<T>(0.0), AscendC::CMPMODE::GT, gSizeInner * kRealSizeAlign16);
+        CompareScalar(maskUb, reluResUb[pingPong], static_cast<T>(0.0), AscendC::CMPMODE::GT,
+                      gSizeInner * kRealSizeAlign16);
         PipeBarrier<PIPE_V>();
 
         for (size_t gInnerIdx = 0; gInnerIdx < gSizeInner; gInnerIdx++) {
             PipeBarrier<PIPE_V>();
-            Mul(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb, reluResUb[pingPong][gInnerIdx * kRealSizeAlign16], kRealSizeAlign16);
+            Mul(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb,
+                reluResUb[pingPong][gInnerIdx * kRealSizeAlign16], kRealSizeAlign16);
         }
         PipeBarrier<PIPE_V>();
 
@@ -1484,7 +1939,8 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
 
         for (size_t gInnerIdx = 0; gInnerIdx < gSizeInner; gInnerIdx++) {
             PipeBarrier<PIPE_V>();
-            Muls(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb, weightTensor.GetValue(nIdx * gSizeInner + gInnerIdx + weightOffset), kRealSizeAlign16);
+            Muls(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb,
+                 weightTensor.GetValue(nIdx * gSizeInner + gInnerIdx + weightOffset), kRealSizeAlign16);
         }
         PipeBarrier<PIPE_V>();
 
@@ -1494,9 +1950,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
 
         SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
-        DataCopyPad(reluGradResGm[reluResOffset], reluGradUb[pingPong], dataCopyReluGradParams);
+        CopyRowsUbToGm<KV_T>(reluGradResGm[reluResOffset], reluGradUb[pingPong], static_cast<uint16_t>(gSizeInner),
+                             kRealSizeAlign16, static_cast<int32_t>(constInfo.kAlign16), kRealSizeAlign16);
 
-        SetFlag<HardEvent::MTE3_MTE2>(eventIdmte3ToMte2DwDqDkPingPong[pingPong]); // reluGradUb、reluResUb用的同一块buf，reluResUb获取Gm数据前需等待这里mte3搬运完
+        SetFlag<HardEvent::MTE3_MTE2>(
+            eventIdmte3ToMte2DwDqDkPingPong
+                [pingPong]); // reluGradUb、reluResUb用的同一块buf，reluResUb获取Gm数据前需等待这里mte3搬运完
         SetFlag<HardEvent::MTE3_V>(eventIdMte3ToVDwDqDkPingPong[pingPong]);
     }
 
@@ -1522,14 +1981,17 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIKLLos
     DataCopyParams dataCopyParams(1, gSizePerVec * sizeof(T), 0, 1);
     if constexpr (LAYOUT_T == SLILayout::BSND) {
         DataCopyPad(dWeightGm[runInfo.bIdx * (constInfo.s1Size * constInfo.gSizeQueryIndex) +
-            runInfo.s1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor, dataCopyParams);
+                              runInfo.s1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset],
+                    dwOutTensor, dataCopyParams);
     } else if constexpr (LAYOUT_T == SLILayout::TND) {
-        DataCopyPad(dWeightGm[runInfo.accumS1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor, dataCopyParams);
+        DataCopyPad(dWeightGm[runInfo.accumS1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor,
+                    dataCopyParams);
     }
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIKLLossGradRunInfo &runInfo, int32_t kLoopIdx)
+__aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIKLLossGradRunInfo &runInfo,
+                                                                            int32_t kLoopIdx)
 {
     LocalTensor<T> reluResUb[2] = {pingBuf, pongBuf};
     LocalTensor<T> mulLeftUb[2] = {pingBuf, pongBuf};
@@ -1545,23 +2007,34 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
     int32_t kRealSizeAlign16 = BlockAlign<KV_T>(kRealSize); // 按照KV_T类型对齐，datacopy才不会有问题
 
     SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
-    if (runInfo.calcP) {
-        reduceSumPUbSingleK = resPSYTBuf.Get<T>()[kLoopOffset];
-        reduceSumYUbSingleK = mm2TBuf.template Get<T>()[6144];
-        WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
-        DataCopy(reduceSumYUbSingleK, psySyncOtherGm[topKSize + kLoopOffset], kRealSizeAlign16);
+    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
+    if (!ShouldEnableSyLoadBalance(runInfo)) {
+        if (runInfo.calcP) {
+            reduceSumPUbSingleK = resPSYTBuf.Get<T>()[kLoopOffset];
+            reduceSumYUbSingleK = mm2TBuf.template Get<T>()[6144];
+            WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
+            CopyPsyKPad(reduceSumYUbSingleK, psySyncOtherGm[constInfo.kAlign16 + kLoopOffset], kRealSize,
+                        kRealSizeAlign16);
+            DataCopyPad(reduceSumDwResUb, psySyncGm[GetPsySyncSumPOffset()], pSumCopyParams, pSumPadParams);
+        } else {
+            reduceSumPUbSingleK = mm2TBuf.template Get<T>()[6144];
+            reduceSumYUbSingleK = resPSYTBuf.Get<T>()[kLoopOffset];
+            WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
+            CopyPsyKPad(reduceSumPUbSingleK, psySyncOtherGm[kLoopOffset], kRealSize, kRealSizeAlign16);
+            DataCopyPad(reduceSumDwResUb, psySyncOtherGm[GetPsySyncSumPOffset()], pSumCopyParams, pSumPadParams);
+        }
     } else {
         reduceSumPUbSingleK = mm2TBuf.template Get<T>()[6144];
         reduceSumYUbSingleK = resPSYTBuf.Get<T>()[kLoopOffset];
         WaitFlag<HardEvent::V_MTE2>(eventIdVToMte24SY);
-        DataCopy(reduceSumPUbSingleK, psySyncOtherGm[kLoopOffset], kRealSizeAlign16);
-    }
-    DataCopyExtParams pSumCopyParams(1, PSY_SYNC_BLOCK_FLOAT_NUM * static_cast<uint32_t>(sizeof(T)), 0, 0, 0);
-    DataCopyPadExtParams<T> pSumPadParams(false, 0, 0, 0.0f);
-    if (runInfo.calcP) {
-        DataCopyPad(reduceSumDwResUb, psySyncGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
-    } else {
-        DataCopyPad(reduceSumDwResUb, psySyncOtherGm[PSY_SYNC_SUM_P_OFFSET], pSumCopyParams, pSumPadParams);
+        GlobalTensor<T> &pOwnerSyncGm = runInfo.calcP ? psySyncGm : psySyncOtherGm;
+        CopyPsyKPad(reduceSumPUbSingleK, pOwnerSyncGm[kLoopOffset], kRealSize, kRealSizeAlign16);
+        if (runInfo.calcP) {
+            CopyPsyKPad(reduceSumYUbSingleK, psySyncOtherGm[constInfo.kAlign16 + kLoopOffset], kRealSize,
+                        kRealSizeAlign16);
+        }
+        DataCopyPad(reduceSumDwResUb, pOwnerSyncGm[GetPsySyncSumPOffset()], pSumCopyParams, pSumPadParams);
     }
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
@@ -1582,14 +2055,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
     constexpr uint32_t gSizeInner = 4;
     int32_t gLoopTimes = gSizePerVec / gSizeInner;
 
-    SumParams sumParams = {static_cast<uint32_t>(gSizeInner), static_cast<uint32_t>(kRealSizeAlign16), static_cast<uint32_t>(kRealSize)};
-    DataCopyParams dataCopyReluResParams(gSizeInner, kRealSizeAlign16 * sizeof(T), (topKSize - kRealSizeAlign16) * sizeof(T), 0);
-    DataCopyPadParams dataCopyReluResPadParams(false, 0, 0, 0);
-
-    DataCopyParams dataCopyReluGradParams(gSizeInner, kRealSize * sizeof(KV_T), 0, (topKSize - kRealSize) * sizeof(KV_T));
+    SumParams sumParams = {static_cast<uint32_t>(gSizeInner), static_cast<uint32_t>(kRealSizeAlign16),
+                           static_cast<uint32_t>(kRealSize)};
 
     int64_t subBlockGQueryIndexOffset = constInfo.subBlockIdx * gSizePerVec;
-    int64_t reluGmOffset = (runInfo.taskIdMod2 * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset) * topKSize + kLoopOffset;
+    int64_t reluGmOffset =
+        (runInfo.taskIdMod2 * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset) * constInfo.kAlign16 + kLoopOffset;
     int64_t weightOffset = runInfo.taskIdMod2 * constInfo.gSizeQueryIndexAlign16 + subBlockGQueryIndexOffset;
 
     SetFlag<HardEvent::MTE3_V>(eventIdMte3ToVDwDqDkPingPong[0]);
@@ -1606,18 +2077,35 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
         WaitFlag<HardEvent::MTE3_MTE2>(eventIdmte3ToMte2DwDqDkPingPong[pingPong]);
 
         // 获取输入的relu数据和weights数据偏差每gSizePerVec中gSizeInner个
-        int64_t reluResOffset = reluGmOffset + nIdx * gSizeInner * topKSize;
+        int64_t reluResOffset = reluGmOffset + nIdx * gSizeInner * constInfo.kAlign16;
         // 每次搬运gSizeInner个kRealSizeAlign16 | reluResUb shape-> (gSizeInner, kRealSizeAlign16)
-        DataCopyPad(reluResUb[pingPong], reluGm[reluResOffset], dataCopyReluResParams, dataCopyReluResPadParams);
+        CopyRowsGmToUb<T>(reluResUb[pingPong], reluGm[reluResOffset], static_cast<uint16_t>(gSizeInner),
+                          kRealSizeAlign16, static_cast<int32_t>(constInfo.kAlign16), kRealSizeAlign16);
         SetFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
         WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToVInnerDwDqDk);
+        if (kRealSize < kRealSizeAlign16) {
+            int32_t tail = kRealSizeAlign16 - kRealSize;
+            event_t eventVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+            SetFlag<HardEvent::V_S>(eventVToS);
+            WaitFlag<HardEvent::V_S>(eventVToS);
+            for (uint32_t gInnerIdx = 0; gInnerIdx < gSizeInner; ++gInnerIdx) {
+                for (int32_t t = 0; t < tail; ++t) {
+                    reluResUb[pingPong].SetValue(gInnerIdx * kRealSizeAlign16 + kRealSize + t, static_cast<T>(0));
+                }
+            }
+            event_t eventSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            SetFlag<HardEvent::S_V>(eventSToV);
+            WaitFlag<HardEvent::S_V>(eventSToV);
+        }
 
-        CompareScalar(maskUb, reluResUb[pingPong], static_cast<T>(0.0), AscendC::CMPMODE::GT, gSizeInner * kRealSizeAlign16);
+        CompareScalar(maskUb, reluResUb[pingPong], static_cast<T>(0.0), AscendC::CMPMODE::GT,
+                      gSizeInner * kRealSizeAlign16);
         PipeBarrier<PIPE_V>();
 
         for (size_t gInnerIdx = 0; gInnerIdx < gSizeInner; gInnerIdx++) {
             PipeBarrier<PIPE_V>();
-            Mul(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb, reluResUb[pingPong][gInnerIdx * kRealSizeAlign16], kRealSizeAlign16);
+            Mul(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb,
+                reluResUb[pingPong][gInnerIdx * kRealSizeAlign16], kRealSizeAlign16);
         }
         PipeBarrier<PIPE_V>();
 
@@ -1631,7 +2119,8 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
 
         for (size_t gInnerIdx = 0; gInnerIdx < gSizeInner; gInnerIdx++) {
             PipeBarrier<PIPE_V>();
-            Muls(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb, weightTensor.GetValue(nIdx * gSizeInner + gInnerIdx + weightOffset), kRealSizeAlign16);
+            Muls(mulLeftUb[pingPong][gInnerIdx * kRealSizeAlign16], v1TmpUb,
+                 weightTensor.GetValue(nIdx * gSizeInner + gInnerIdx + weightOffset), kRealSizeAlign16);
         }
         PipeBarrier<PIPE_V>();
 
@@ -1641,9 +2130,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
 
         SetFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
         WaitFlag<HardEvent::V_MTE3>(eventIdVToMte3DwDqDk);
-        DataCopyPad(reluGradResGm[reluResOffset], reluGradUb[pingPong], dataCopyReluGradParams);
+        CopyRowsUbToGm<KV_T>(reluGradResGm[reluResOffset], reluGradUb[pingPong], static_cast<uint16_t>(gSizeInner),
+                             kRealSizeAlign16, static_cast<int32_t>(constInfo.kAlign16), kRealSizeAlign16);
 
-        SetFlag<HardEvent::MTE3_MTE2>(eventIdmte3ToMte2DwDqDkPingPong[pingPong]); // reluGradUb、reluResUb用的同一块buf，reluResUb获取Gm数据前需等待这里mte3搬运完
+        SetFlag<HardEvent::MTE3_MTE2>(
+            eventIdmte3ToMte2DwDqDkPingPong
+                [pingPong]); // reluGradUb、reluResUb用的同一块buf，reluResUb获取Gm数据前需等待这里mte3搬运完
         SetFlag<HardEvent::MTE3_V>(eventIdMte3ToVDwDqDkPingPong[pingPong]);
     }
 
@@ -1674,18 +2166,218 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIK
         DataCopyParams dataCopyParams(1, gSizePerVec * sizeof(T), 0, 1);
         if constexpr (LAYOUT_T == SLILayout::BSND) {
             DataCopyPad(dWeightGm[runInfo.bIdx * (constInfo.s1Size * constInfo.gSizeQueryIndex) +
-                runInfo.s1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor, dataCopyParams);
+                                  runInfo.s1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset],
+                        dwOutTensor, dataCopyParams);
         } else if constexpr (LAYOUT_T == SLILayout::TND) {
-            DataCopyPad(dWeightGm[runInfo.accumS1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset], dwOutTensor, dataCopyParams);
+            DataCopyPad(dWeightGm[runInfo.accumS1Idx * constInfo.gSizeQueryIndex + subBlockGQueryIndexOffset],
+                        dwOutTensor, dataCopyParams);
         }
     }
 }
 
 template <typename SLIT>
-template <uint32_t range>
+__aicore__ inline uint32_t SLIKLLossVectorService<SLIT>::GetPsySyncSumPOffset() const
+{
+    return constInfo.kAlign16 * 2;
+}
+
+template <typename SLIT>
+__aicore__ inline uint32_t SLIKLLossVectorService<SLIT>::GetPsySyncStride() const
+{
+    return constInfo.kAlign16 * 2 + PSY_SYNC_BLOCK_FLOAT_NUM;
+}
+
+template <typename SLIT>
+__aicore__ inline int64_t SLIKLLossVectorService<SLIT>::GetNSplitSize() const
+{
+    int64_t nSplitSize = static_cast<int64_t>(ubAllocPolicy.mm2UbSize) /
+                         (static_cast<int64_t>(constInfo.kAlign16) * static_cast<int64_t>(sizeof(T)));
+    return nSplitSize < 1 ? 1 : nSplitSize;
+}
+
+template <typename SLIT>
+template <typename DT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::CopyRowsGmToUb(const LocalTensor<DT> &dstUb,
+                                                                    const GlobalTensor<DT> &srcGm, uint16_t nRows,
+                                                                    int32_t validLen, int32_t gmStride,
+                                                                    int32_t ubStride)
+{
+    if (nRows == 0 || validLen <= 0) {
+        return;
+    }
+    uint32_t blockLen = static_cast<uint32_t>(validLen) * sizeof(DT);
+    uint32_t gmGap = static_cast<uint32_t>(gmStride - validLen) * sizeof(DT);
+    int32_t rightPadCount = ubStride - validLen;
+    if (rightPadCount < 0) {
+        rightPadCount = 0;
+    }
+    DataCopyPadExtParams<DT> padParams(true, 0, static_cast<uint8_t>(rightPadCount), static_cast<DT>(0));
+    bool burstAligned = ((blockLen & 31) == 0) && ((gmGap & 31) == 0);
+    if (nRows >= 1 && burstAligned) {
+        DataCopyExtParams params(nRows, blockLen, gmGap, 0, 0);
+        DataCopyPad(dstUb, srcGm, params, padParams);
+        return;
+    }
+    DataCopyExtParams params(1, blockLen, 0, 0, 0);
+    for (uint16_t i = 0; i < nRows; ++i) {
+        DataCopyPad(dstUb[i * ubStride], srcGm[i * gmStride], params, padParams);
+    }
+}
+
+template <typename SLIT>
+template <typename DT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::CopyRowsUbToGm(const GlobalTensor<DT> &dstGm,
+                                                                    const LocalTensor<DT> &srcUb, uint16_t nRows,
+                                                                    int32_t validLen, int32_t gmStride,
+                                                                    int32_t ubStride)
+{
+    if (nRows == 0 || validLen <= 0) {
+        return;
+    }
+    uint32_t blockLen = static_cast<uint32_t>(validLen) * sizeof(DT);
+    uint32_t gmGap = static_cast<uint32_t>(gmStride - validLen) * sizeof(DT);
+    uint32_t ubGap = static_cast<uint32_t>(ubStride - validLen) * sizeof(DT);
+    bool burstAligned = ((blockLen & 31) == 0) && ((gmGap & 31) == 0) && ((ubGap & 31) == 0);
+    if (nRows >= 1 && burstAligned) {
+        DataCopyExtParams params(nRows, blockLen, ubGap, gmGap, 0);
+        DataCopyPad(dstGm, srcUb, params);
+        return;
+    }
+    DataCopyExtParams params(1, blockLen, 0, 0, 0);
+    for (uint16_t i = 0; i < nRows; ++i) {
+        DataCopyPad(dstGm[i * gmStride], srcUb[i * ubStride], params);
+    }
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::SoftmaxInplaceRealK(int32_t realKSize, int32_t realKSizeAlign)
+{
+    if (realKSize <= 0 || realKSizeAlign <= 0) {
+        return;
+    }
+    if (realKSize < realKSizeAlign) {
+        event_t eventVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventVToS);
+        WaitFlag<HardEvent::V_S>(eventVToS);
+        for (int32_t t = realKSize; t < realKSizeAlign; ++t) {
+            reduceSumYResUb.SetValue(t, static_cast<T>(-3.402823466e+38f));
+        }
+        event_t eventSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventSToV);
+        WaitFlag<HardEvent::S_V>(eventSToV);
+    }
+    LocalTensor<T> maxWork = sharedTBuf.Get<T>();
+    ReduceMax<T>(reduceSumDwResUb, reduceSumYResUb, maxWork, realKSizeAlign, false);
+    PipeBarrier<PIPE_V>();
+    event_t eventVToSMax = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventVToSMax);
+    WaitFlag<HardEvent::V_S>(eventVToSMax);
+    T maxValue = reduceSumDwResUb.GetValue(0);
+    event_t eventSToVMax = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    SetFlag<HardEvent::S_V>(eventSToVMax);
+    WaitFlag<HardEvent::S_V>(eventSToVMax);
+    Adds(reduceSumYResUb, reduceSumYResUb, static_cast<T>(-maxValue), realKSizeAlign);
+    PipeBarrier<PIPE_V>();
+    Exp(reduceSumYResUb, reduceSumYResUb, realKSizeAlign);
+    PipeBarrier<PIPE_V>();
+    Duplicate(reduceSumDwResUb, static_cast<T>(0), PSY_SYNC_BLOCK_FLOAT_NUM);
+    SumParams sumParams = {static_cast<uint32_t>(1), static_cast<uint32_t>(realKSizeAlign),
+                           static_cast<uint32_t>(realKSize)};
+    PipeBarrier<PIPE_V>();
+    Sum(reduceSumDwResUb, reduceSumYResUb, reduceSumTmpBuffer, sumParams);
+    PipeBarrier<PIPE_V>();
+    event_t eventVToSSum = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventVToSSum);
+    WaitFlag<HardEvent::V_S>(eventVToSSum);
+    T sumValue = reduceSumDwResUb.GetValue(0);
+    T invSum = (sumValue == static_cast<T>(0)) ? static_cast<T>(0) : static_cast<T>(1) / sumValue;
+    event_t eventSToVSum = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    SetFlag<HardEvent::S_V>(eventSToVSum);
+    WaitFlag<HardEvent::S_V>(eventSToVSum);
+    Muls(reduceSumYResUb, reduceSumYResUb, invSum, realKSizeAlign);
+    PipeBarrier<PIPE_V>();
+    if (realKSize < realKSizeAlign) {
+        event_t eventVToSPad = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventVToSPad);
+        WaitFlag<HardEvent::V_S>(eventVToSPad);
+        for (int32_t t = realKSize; t < realKSizeAlign; ++t) {
+            reduceSumYResUb.SetValue(t, static_cast<T>(0));
+        }
+        event_t eventSToVPad = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventSToVPad);
+        WaitFlag<HardEvent::S_V>(eventSToVPad);
+    }
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::CopyPsyKPad(const LocalTensor<T> &dstUb,
+                                                                 const GlobalTensor<T> &srcGm, int32_t kRealSize,
+                                                                 int32_t kRealSizeAlign16)
+{
+    if (kRealSize <= 0) {
+        return;
+    }
+    int32_t copyLen = CeilDiv(kRealSize, 8) * 8;
+    if (copyLen > kRealSizeAlign16) {
+        copyLen = kRealSizeAlign16;
+    }
+    DataCopyExtParams copyParams(1, static_cast<uint32_t>(copyLen * sizeof(T)), 0, 0, 0);
+    DataCopyPadExtParams<T> padParams(true, 0, static_cast<uint8_t>(kRealSizeAlign16 - copyLen), 0.0f);
+    DataCopyPad(dstUb, srcGm, copyParams, padParams);
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::CopySoftmaxOutTailZeros(int64_t softmaxOutOffset,
+                                                                             int32_t realKSize)
+{
+    int32_t tailCount = static_cast<int32_t>(constInfo.kSize) - realKSize;
+    if (tailCount <= 0) {
+        return;
+    }
+    int32_t tailAlign = CeilDiv(tailCount, 8) * 8;
+    // dw 立刻把 mm2TBuf 当作 P/Y 中转和 ping/pong，尾部清零不能再占用这块 UB。
+    LocalTensor<T> zeroUb = sharedTBuf.Get<T>();
+    Duplicate(zeroUb, static_cast<T>(0), tailAlign);
+    PipeBarrier<PIPE_V>();
+    DataCopyExtParams tailParams(1, static_cast<uint32_t>(tailCount * sizeof(T)), 0, 0, 0);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3InnerSy);
+    AscendC::DataCopyPad(softmaxOutGm[softmaxOutOffset + realKSize], zeroUb, tailParams);
+    event_t eventMte3ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(eventMte3ToS);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(eventMte3ToS);
+}
+
+template <typename SLIT>
+__aicore__ inline void SLIKLLossVectorService<SLIT>::ZeroFp32Gm(GlobalTensor<T> &dst, int64_t offset, int64_t count)
+{
+    if (count <= 0) {
+        return;
+    }
+    constexpr int32_t chunk = isTopkLess2k ? static_cast<int32_t>(SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_2K) :
+                                             static_cast<int32_t>(SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_8K);
+    Duplicate(reduceSumYResUb, static_cast<T>(0), chunk);
+    PipeBarrier<PIPE_V>();
+    event_t eventVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    int64_t remain = count;
+    int64_t cur = offset;
+    while (remain > 0) {
+        int64_t n = Min(remain, static_cast<int64_t>(chunk));
+        DataCopyExtParams params(1, static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3);
+        AscendC::DataCopyPad(dst[cur], reduceSumYResUb, params);
+        cur += n;
+        remain -= n;
+    }
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventVToMte3);
+}
+
+template <typename SLIT>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDk(SLIKLLossGradRunInfo &runInfo, int32_t kLoopIdx)
 {
-    if constexpr (range <= SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_2K){
+    if constexpr (isTopkLess2k) {
         VectorDwDqDkLess2k(runInfo);
     } else {
         VectorDwDqDkMoreThan2k(runInfo, kLoopIdx);

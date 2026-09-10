@@ -29,7 +29,7 @@
 
 1. 根据产品形态划分的通用能力模板：
 （1）A2/A3场景通用能力模板，支持<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>。
-(2)针对Atlas推理系列加速卡产品，开启通用能力模板。
+(2)针对Atlas 推理系列产品，开启通用能力模板。
 
 2. 根据特定业务场景开发模板：
 （1）针对MLA场景，开发MLA基础API模板。
@@ -40,11 +40,11 @@
 
   由于硬件buffer大小是有限的，而计算的数据量又是巨大的，无法一次计算完，那么就需要进行tiling切分，shape不同会导致算子的切分轴不同，而算子的切分轴，会影响模板的功能及性能。往往需要根据切分轴进行模板拆分，模板拆分时为了达到性能最优，需要考虑如下几个点：
 
-  a. 将核心的数量用满，防止部分核闲置 
+  a. 将核心的数量用满，防止部分核闲置
 
   b. 每一个核心被分配的计算量相对均匀，避免出现某些核计算的数据量过大，其余核空闲的情况。
 
-  c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AIV出现长时间的空闲。 
+  c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AIV出现长时间的空闲。
 
   PromptFlashAttention算子包含B、N2(key和value的N)、G(query_N/kv_N)、S1(query的S)、S2(key和value的S)共5个轴，切分顺序是先核内再核间，核内切分依据基本块大小选择切分轴，核间切分是把核内切分后剩余的轴合并后依据AI Core核数再进行切分。
 
@@ -56,7 +56,7 @@ tiling操作的目的是为了找到一种更高效的NPU执行方式，原始�
 
  根据硬件架构特征，AI Core分成AIC和AIV两个独立的核，AIC和AIV核拥有自己独立的Scalar计算单元，能够独立加载自己的代码段，单独执行。AIC和AIV分离的架构可以使得AIC和AIV并行执行。AIC和AIV之间数据交互的通路是L2和GM（Global Memory，DDR内存），两者之间的交互次数对性能影响是比较大的，同时由于AIC和AIV算力差异，两者需要使用不同的基本块大小，本着尽量减少AIC和AIV通信次数和发挥最大算力的原则，CVtiling分离策略应运而生，可以有效地减少CV通信次数，同时根据不同单元的buffer特征，选择不同的基本块进行计算，从而提升算子性能。
 
- 对于PromptFlashAttention算子，Vector计算涉及多个输入、输出、中间计算结果、double-buffer设计等，需要将buffer分配成多份，最优分配方案中最大一份为32KB，由于Vector计算使用的数据类型是float32，因此Vector的tiling基本块为8 * 1024。为了充分发挥Cube的算力，在CV之间一轮计算的数据量进行了1:16的配比，又由于Cube侧的输入数据类型是float16，输出是float32，Cube的基本块为128 * 128，所以通过nRation=8配比出128 * 1024的数据量。
+ 对于PromptFlashAttention算子，Vector计算涉及多个输入、输出、中间计算结果、double-buffer设计等，需要将buffer分配成多份，最优分配方案中最大一份为32KB，由于Vector计算使用的数据类型是float32，因此Vector的tiling基本块为8 *1024。为了充分发挥Cube的算力，在CV之间一轮计算的数据量进行了1:16的配比，又由于Cube侧的输入数据类型是float16，输出是float32，Cube的基本块为128* 128，所以通过nRation=8配比出128 * 1024的数据量。
 
 ### 2.2 tilingkey设计
 
@@ -65,7 +65,7 @@ tiling操作的目的是为了找到一种更高效的NPU执行方式，原始�
 **tilingKey生成规则**：按十进制位组装tilingkey，初始值为0，每个属性/功能对应不同的魔数，依次累加得到tilingkey。
 
 PFA算子tilingkey设计如下：
-在Atlas推理系列加速卡产品场景：
+在Atlas 推理系列产品场景：
 > **1.** 魔数12288作为当前场景的标识。
 > **2.** 根据输入的query/key/value矩阵的layout区分，BNSD：+10000。
 > **3.** 根据配置的精度模式区分，输入FP16且高精度模式：+600。
@@ -125,9 +125,9 @@ def Vec():
 
   该场景流水特征下，Vector计算节点少，计算速度快，在<term>Atlas A2训练系列产品</term> C:V=1:2的情况下，Cube的搬运时长足以掩盖Vector的计算时长，因此只要关注Cube的MTE2耗时即可，最终达成MTE2 bound。在Cube双发机制下，提前发射两块Cube计算，Cube1、Cube2计算可以衔接，使得Cube利用率最高，达成Cube bound。
 
-  ![FA流水.jpg](../../../docs/zh/figures/FA流水.png)
+  ![FA流水.jpg](../../../docs/zh/figures/fa_pipeline.png)
 
-- C侧总耗时 < V侧总耗时 
+- C侧总耗时 < V侧总耗时
 
   该场景流水特征下，Vector计算节点多，Vector计算是瓶颈，C侧的搬运不足以掩盖V侧的流水，因此需要进行CV流水排布，尽量达到CV并行的效果，最通用的优化手段是C侧提前发射。
 

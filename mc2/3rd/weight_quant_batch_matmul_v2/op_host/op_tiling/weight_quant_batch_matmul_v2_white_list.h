@@ -15,15 +15,14 @@
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_WHITE_LIST_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_WHITE_LIST_H
 
-#include "common/op_host/math_util.h"
+#include "common/op_host/mc2_3rd_math_util.h"
 #include "ops_legacy/op_tiling/op_cache_def_tiling.h"
 
 namespace optiling {
 
-class Mc2WhiteListShape
-{
+class Mc2WhiteListShape {
 public:
-    bool operator<(const Mc2WhiteListShape& right) const
+    bool operator<(const Mc2WhiteListShape &right) const
     {
         return memcmp(this, &right, sizeof(Mc2WhiteListShape)) < 0;
     }
@@ -37,9 +36,9 @@ public:
     uint64_t aicNum_ : 40;
 };
 
-inline void Mc2SetMatmulTilingFromCacheData(
-    WeightQuantBatchMatmulCacheTilingData& cacheTilingData, AscendC::tiling::TCubeTiling& matmulTiling, uint64_t m, uint64_t n,
-    int32_t isBias)
+inline void Mc2SetMatmulTilingFromCacheData(WeightQuantBatchMatmulCacheTilingData &cacheTilingData,
+                                            AscendC::tiling::TCubeTiling &matmulTiling, uint64_t m, uint64_t n,
+                                            int32_t isBias)
 {
     matmulTiling.M = m;
     matmulTiling.N = n;

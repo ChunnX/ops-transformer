@@ -20,7 +20,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../utils/common_utils.h"
+#include "../utils/cgmct_common_utils.h"
 #include "../utils/device_utils.h"
 #include "../utils/status_utils.h"
 #include "../utils/tensor_utils.h"
@@ -37,8 +37,8 @@ constexpr uint32_t ONE_CORE_ALIGN_LEN_SMALL = 32;
 
 } // namespace
 
-static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+static constexpr AscendC::Reg::CastTrait CAST_BF16_FP16_TO_FP32 = {
+    AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
@@ -95,8 +95,8 @@ private:
 };
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(Params const &params)
+__aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::Init(
+    Params const &params)
 {
     if ASCEND_IS_AIC {
         return;
@@ -144,9 +144,8 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(
-    uint64_t outOffset, uint64_t totalLen)
+__aicore__ inline void BlockPrologueFinalizeRouting<
+    BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::InitOutputWithZeros(uint64_t outOffset, uint64_t totalLen)
 {
     // may be sharedInput Offset = 0 or tail = batch
     if (totalLen == 0) {
@@ -193,23 +192,22 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
     constexpr uint32_t vectorRegLen = VECTOR_REG_WIDTH / sizeof(DataTypeOut);
-    uint16_t loopNum =
-        CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
+    uint16_t loopNum = CeilDiv(static_cast<uint64_t>(curCount), static_cast<uint64_t>(vectorRegLen));
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
-        AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
+        AscendC::Reg::RegTensor<DataTypeIn> vSrcReg;
+        AscendC::Reg::RegTensor<DataTypeOut> vRegCast;
+        AscendC::Reg::RegTensor<DataTypeOut> vDstReg;
         uint32_t elementNum = static_cast<uint32_t>(curCount);
-        AscendC::MicroAPI::MaskReg mask;
+        AscendC::Reg::MaskReg mask;
         uint16_t oneRepeatSize = vectorRegLen;
         for (uint16_t i = 0; i < loopNum; ++i) {
-            mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
-            AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+            mask = AscendC::Reg::UpdateMask<DataTypeOut>(elementNum);
+            AscendC::Reg::DataCopy<DataTypeIn, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(
                 vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-            AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
-            AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
-            AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            AscendC::Reg::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+            AscendC::Reg::Muls(vDstReg, vRegCast, sharedWeight, mask);
+            AscendC::Reg::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
         }
     }
 }

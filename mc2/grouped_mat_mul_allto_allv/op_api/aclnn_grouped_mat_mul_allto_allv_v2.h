@@ -34,7 +34,7 @@ extern "C" {
  * @param [in] mmXOptional: 可选入参，计算输入，并行进行的共享专家matmul计算中的左矩阵。*当前暂未支持
  * @param [in] mmWeightOptional: 可选入参，计算输入，并行进行的共享专家matmul计算中的右矩阵。*当前暂未支持
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域
- * @param [in] commMode: 计算输入，str。通信引擎参数，指定当前通信类型，支持输入"default"、"ai_cpu"和"ccu"
+ * @param [in] commMode: 计算输入，str。通信引擎参数，指定当前通信类型
  * @param [in] epWorldSize: 计算输入，int。ep通信域size
  * @param [in] sendCounts: 计算输入，list int。通信发送的数据量
  * @param [in] recvCounts: 计算输入，list int。通信接受的数据量
@@ -61,11 +61,11 @@ extern "C" {
  * A = recvCounts的累加和;
  */
 ACLNN_API aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
-    const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
-    const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-    const char* group, const char* commMode, int64_t epWorldSize, const aclIntArray* sendCounts,
-    const aclIntArray* recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor* y,
-    aclTensor* mmYOptional, uint64_t* workspaceSize, aclOpExecutor** executor);
+    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
+    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
+    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnGroupedMatMulAlltoAllvV2的第二段接口，用于执行计算。
@@ -76,11 +76,11 @@ ACLNN_API aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+ACLNN_API aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                     aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_GROUPED_MATMUL_ALL_TO_ALLV_V2_
+#endif // OP_API_INC_GROUPED_MATMUL_ALL_TO_ALLV_V2_

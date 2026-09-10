@@ -4,21 +4,32 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：完成量化的Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**，支持K-C量化、mx[量化模式](../../../docs/zh/context/量化介绍.md)。
+- 接口功能：完成量化的Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**，支持K-C量化、mx[量化模式](../../../docs/zh/context/quant_mode_introduction.md)。
 
 - 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
 
+  <!-- npu="910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     - K-C量化场景：
@@ -29,6 +40,8 @@
       output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
       $$
 
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
 
     - K-C量化场景：
@@ -47,16 +60,23 @@
       output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
       $$
 
+  <!-- end id8 -->
+
 相较于`aclnnQuantMatmulAlltoAll`接口，该接口变更如下：
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
+  <!-- npu="950" id9 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：`commMode`支持`ai_cpu`和`ccu`。
+  <!-- end id9 -->
+  <!-- npu="910b" id10 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：无新增特性，`commMode`仅支持`aiv`。
+
+  <!-- end id10 -->
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAlltoAllV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantMatmulAlltoAllV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(
@@ -329,7 +349,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     </tr>
     </tbody></table>
 
-  x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
+  x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../../docs/zh/context/quant_mode_introduction.md)关系如下:
   * 0: 不量化
   * 1: pertensor
   * 2: perchannel
@@ -341,7 +361,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -430,22 +450,38 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
 
 * **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 * aclnnQuantMatmulAlltoAllV2默认支持确定性计算。
 * NPU卡数(rankSize)，根据设备型号有不同限制：
+
+  <!-- npu="910b" id11 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持2、4、8卡。
+  <!-- end id11 -->
+  <!-- npu="950" id12 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16卡。
+  <!-- end id12 -->
+
 * 参数说明中shape使用的变量H2必须整除NPU卡数。
 * BS*rankSize和H2的值不得超过2147483647(INT32_MAX)，BS的值不得小于1，H2的值不得小于2。
 * 不支持空tensor。
 * 非连续tensor的支持度根据不同设备型号有不同的限制：
+
+  <!-- npu="910b" id13 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持任何非连续tensor。
+  <!-- end id13 -->
+  <!-- npu="950" id14 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：仅支持x2为非连续tensor，其它非连续tensor均不支持。
+  <!-- end id14 -->
+
 * 传入的x1、x2、x1Scale、x2Scale与output均不为空指针，且
+
+  <!-- npu="910b" id15 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：biasOptional不支持传入空指针。
+  <!-- end id15 -->
+
 * groupSize相关约束:
   - 仅当x1Scale和x2Scale输入都是2维及以上数据时，groupSize取值有效，其他场景需传入0。
   - 传入的groupSize内部会按如下公式分解得到groupSizeM、groupSizeN、groupSizeK，当其中有1个或多个为0，会根据x1/x2/x1Scale/x2Scale输入shape重新设置groupSizeM、groupSizeN、groupSizeK用于计算。原理：假设groupSizeM=0，表示m方向量化分组值由接口推断，推断公式为groupSizeM = m / scaleM（需保证m能被scaleM整除），其中m与x1 shape中的m一致，scaleM与x1Scale shape中的m一致，k和n方向同理。
@@ -466,6 +502,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     | 4295032832 | [1,1,0] | [1,1,32] |
 
 * 该算子输入输出的数据类型、数据维度和量化模式根据不同设备型号有不同的限制：
+
+  <!-- npu="910b" id16 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     * 量化模式：
       * 目前支持：K-C量化，左矩阵perToken量化，x1QuantMode=3，右矩阵perChannel量化，x2QuantMode=2。
@@ -483,6 +521,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
 
     * 维度约束：
       * H1范围仅支持[1, 65535]。
+  <!-- end id16 -->
+  <!-- npu="950" id17 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     * 量化模式：
       * 目前支持：K-C量化，左矩阵perToken量化，x1QuantMode=3，右矩阵perChannel量化，x2QuantMode=2；mx量化，左矩阵mx量化，x1QuantMode=6，右矩阵mx量化，x2QuantMode=6。
@@ -530,24 +570,39 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
       * H1范围仅支持[1, 65535]。
       * mx量化场景下，x2必须转置，shape为(H2, H1)，transposeX2为True。
       * mx量化场景下，且x1和x2输入为FLOAT4_E2M1时，H1必须是偶数，且ceil(H1/32)必须是偶数。
+  <!-- end id17 -->
+
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎参数commMode根据不同设备型号有不同的限制：
+
+   <!-- npu="910b" id18 -->
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持输入`aiv`。
+   <!-- end id18 -->
+   <!-- npu="950" id19 -->
    - <term>Ascend 950PR/Ascend 950DT</term>：支持输入`ai_cpu`和`ccu`。
+   <!-- end id19 -->
+
 * 通信引擎约束：
+
+   <!-- npu="910b" id20 -->
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
+   <!-- end id20 -->
+   <!-- npu="950" id21 -->
    - <term>Ascend 950PR/Ascend 950DT</term>：
       - 支持CCU通信和AI\_CPU通信。
       - CCU仅支持单机UB域内互联，AI_CPU可支持跨机UB域内互联。
       - 通信域约束：同一个通信域内只能使用同一种通信方式。
 
+   <!-- end id21 -->
+
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy，请参考[《HCCL API (C)》](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
+<!-- npu="910b" id22 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
     ```Cpp
@@ -626,7 +681,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         std::vector<int64_t> biasShape = {128};
         std::vector<int64_t> x1ScaleShape = {32};
         std::vector<int64_t> x2ScaleShape = {128};
-        std::vector<int64_t> outShape = {32, 128};
+        std::vector<int64_t> outShape = {32 * ndev, 128 / ndev};
         void *x1DeviceAddr = nullptr;
         void *x2DeviceAddr = nullptr;
         void *biasDeviceAddr = nullptr;
@@ -679,7 +734,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
         ret = aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
-                                                      alltoAllAxesOptional, hcom_name, "default", x1QuantMode, x2QuantMode, 
+                                                      alltoAllAxesOptional, hcom_name, "aiv", x1QuantMode, x2QuantMode,
                                                       commQuantMode, commQuantDtype, groupSize, false, false,
                                                       out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -782,6 +837,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     }
     ```
 
+<!-- end id22 -->
+<!-- npu="950" id23 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
@@ -793,21 +850,21 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
     #include <acl/acl.h>
     #include <hccl/hccl.h>
     #include "aclnnop/aclnn_quant_matmul_allto_all_v2.h"
-  
+
     int ndev = 2;
-  
+
     #define CHECK_RET(cond, return_expr) \
     do {                               \
         if (!(cond)) {                   \
         return_expr;                   \
         }                                \
     } while (0)
-  
+
     #define LOG_PRINT(message, ...)     \
     do {                              \
         printf(message, ##__VA_ARGS__); \
     } while (0)
-  
+
     int64_t GetShapeSize(const std::vector<int64_t> &shape) {
         int64_t shapeSize = 1;
         for (auto i: shape) {
@@ -815,7 +872,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         }
         return shapeSize;
     }
-  
+
     template<typename T>
     int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                         aclDataType dataType, aclTensor **tensor) {
@@ -836,14 +893,14 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
                                 shape.data(), shape.size(), *deviceAddr);
         return 0;
     }
-  
+
     struct Args {
         uint32_t rankId;
         HcclComm hcclComm;
         aclrtStream stream;
         aclrtContext context;
     };
-  
+
     int launchOneThreadQuantMatmulAlltoAllV2(Args &args) {
         int ret;
         ret = aclrtSetCurrentContext(args.context);
@@ -853,7 +910,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
         LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
                 args.context);
-  
+
         std::vector<int64_t> x1Shape = {32, 64};
         std::vector<int64_t> x2Shape = {64, 128};
         std::vector<int64_t> biasShape = {128};
@@ -872,31 +929,31 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         aclTensor *x1Scale = nullptr;
         aclTensor *x2Scale = nullptr;
         aclTensor *out = nullptr;
-  
+
         int64_t x1QuantMode = 3;
         int64_t x2QuantMode = 2;
         int64_t commQuantMode = 0;
         int64_t commQuantDtype = -1;
         int64_t groupSize = 0;
-  
+
         int64_t a2aAxes[2] = {-1, -2};
         aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
-  
+
         long long x1ShapeSize = GetShapeSize(x1Shape);
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
         long long x1ScaleShapeSize = GetShapeSize(x1ScaleShape);
         long long x2ScaleShapeSize = GetShapeSize(x2ScaleShape);
         long long outShapeSize = GetShapeSize(outShape);
-        std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-        std::vector<int16_t> biasHostData(biasShapeSize, 1);
-        std::vector<int16_t> x1ScaleHostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2ScaleHostData(x2ShapeSize, 1);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<int8_t> x1HostData(x1ShapeSize, 1);
+        std::vector<int8_t> x2HostData(x2ShapeSize, 1);
+        std::vector<float> biasHostData(biasShapeSize, 1);
+        std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 1);
+        std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 1);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -912,7 +969,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
         ret = aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
-                                                       alltoAllAxesOptional, hcom_name, "default", x1QuantMode, x2QuantMode, 
+                                                       alltoAllAxesOptional, hcom_name, "ai_cpu", x1QuantMode, x2QuantMode,
                                                        commQuantMode, commQuantDtype, groupSize, false, false,
                                                        out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -969,7 +1026,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         aclrtResetDevice(args.rankId);
         return 0;
     }
-  
+
     int main(int argc, char *argv[]) {
         // 本样例基于<term>Ascend 950PR/Ascend 950DT</term>实现，必须在<term>Ascend 950PR/Ascend 950DT</term>上运行
         int ret;
@@ -1014,4 +1071,5 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
         return 0;
     }
     ```
-  
+
+<!-- end id23 -->

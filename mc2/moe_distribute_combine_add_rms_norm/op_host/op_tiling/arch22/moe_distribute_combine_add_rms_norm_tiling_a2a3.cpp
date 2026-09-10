@@ -27,13 +27,13 @@
 
 namespace optiling {
 ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncA2A3::MoeDistributeCombineV2TilingFunc(
-    gert::TilingContext* context)
+    gert::TilingContext *context)
 {
     MoeDistributeCombineV2TilingFuncA2A3 funcA2A3;
     return funcA2A3.MoeDistributeCombineV2TilingFunc(context);
 }
 
-ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncImplA2A3(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncImplA2A3(gert::TilingContext *context)
 {
     MoeDistributeCombineAddRmsNormTilingFuncA2A3 impl;
     return impl.MoeDistributeCombineAddRmsNormTilingFunc(context);

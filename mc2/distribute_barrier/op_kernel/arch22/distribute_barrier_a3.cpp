@@ -31,8 +31,8 @@ extern "C" __global__ __aicore__ void distribute_barrier(GM_ADDR xRef, GM_ADDR t
     GET_TILING_DATA_WITH_STRUCT(DistributeBarrierTilingData, tilingData, tilingGM);
     TPipe pipe;
 #if ((ORIG_DTYPE_X_REF == DT_BF16) || (ORIG_DTYPE_X_REF == DT_FLOAT16) || (ORIG_DTYPE_X_REF == DT_FLOAT) || \
-     (ORIG_DTYPE_X_REF == DT_BOOL) || (ORIG_DTYPE_X_REF == DT_INT8) || (ORIG_DTYPE_X_REF == DT_INT16) ||      \
-     (ORIG_DTYPE_X_REF == DT_INT32) || (ORIG_DTYPE_X_REF == DT_INT64) || (ORIG_DTYPE_X_REF == DT_UINT8) ||    \
+     (ORIG_DTYPE_X_REF == DT_BOOL) || (ORIG_DTYPE_X_REF == DT_INT8) || (ORIG_DTYPE_X_REF == DT_INT16) || \
+     (ORIG_DTYPE_X_REF == DT_INT32) || (ORIG_DTYPE_X_REF == DT_INT64) || (ORIG_DTYPE_X_REF == DT_UINT8) || \
      (ORIG_DTYPE_X_REF == DT_UINT16) || (ORIG_DTYPE_X_REF == DT_UINT32) || (ORIG_DTYPE_X_REF == DT_UINT64))
     DistributeBarrier<DTYPE_X_REF> op;
     op.Init(nullptr, timeOut, elasticInfo, workspaceGM, &pipe, &tilingData);

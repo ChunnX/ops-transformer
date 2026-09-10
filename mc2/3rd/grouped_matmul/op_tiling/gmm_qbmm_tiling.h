@@ -152,7 +152,8 @@ struct GQmmInputInfo {
 
 class Mc2GroupedQbmmTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit Mc2GroupedQbmmTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit Mc2GroupedQbmmTiling(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         Reset();
     }
@@ -202,15 +203,15 @@ protected:
     uint64_t GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     uint64_t GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const;
     bool SetQuantMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape,
-        const gert::Shape &wShape);
+                      const gert::Shape &wShape);
     void SetPerGroupQuantMode(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
-        const gert::Shape &wShape);
+                              const gert::Shape &wShape);
     bool CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
     bool CheckFp4Shape() const;
     bool CheckBiasDtype() const;
     bool CheckBiasShape(const gert::StorageShape *biasStorageShape) const;
     bool CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape,
-        const gert::Shape &wScaleShape) const;
+                                        const gert::Shape &wScaleShape) const;
     bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape) const;
     bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape) const;
     bool SetMKNList();

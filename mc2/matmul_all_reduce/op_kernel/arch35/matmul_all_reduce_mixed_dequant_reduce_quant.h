@@ -22,7 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "matmul_all_reduce_dynamic_quant_pertile_utils.h"
-#include "../common.h"
+#include "../matmul_all_reduce_common.h"
 
 namespace MatmulAllReduceMixedDequantReduceQuantImpl {
 using namespace AscendC;
@@ -46,7 +46,7 @@ public:
     GlobalTensor<T> quantOutputGM_;
     GlobalTensor<float> scaleInputGM_;
     GlobalTensor<float> scaleOutputGM_;
-    TPipe* pipe_;
+    TPipe *pipe_;
     TQue<QuePosition::VECIN, 1> inTilesQ_;
     TQue<QuePosition::VECOUT, 1> outTilesQ_;
     TQue<QuePosition::VECIN, 1> inScalesQ_;
@@ -56,9 +56,7 @@ public:
     TBuf<TPosition::VECCALC> tempMskBuf_;
     TBuf<TPosition::VECCALC> tempReduceOut_;
 
-    __aicore__ inline MatmulAllReduceMixedDequantReduceQuant() 
-    {
-    }
+    __aicore__ inline MatmulAllReduceMixedDequantReduceQuant() {}
 
     __aicore__ inline void Init(GM_ADDR inputAddr, GM_ADDR outputAddr, uint32_t tileMPerRank, uint32_t tileN,
                                 uint32_t oneLineScaleCnt, uint32_t coreNum, uint32_t maxProcRows, TPipe *tPipe)
@@ -215,7 +213,7 @@ public:
         inTilesQ_.EnQue<T>(curTiles);
         inScalesQ_.EnQue<float>(curScales);
         LocalTensor<T> tilesLocal = inTilesQ_.DeQue<T>();
-        LocalTensor<float> scalesLocal = inScalesQ_.DeQue<float>();  
+        LocalTensor<float> scalesLocal = inScalesQ_.DeQue<float>();
         LocalTensor<float> dequantOut = tempWorkTiles_.Get<float>();
         ComputeDequant(curScaleCnt, padCalCnt, dequantOut, tilesLocal, scalesLocal);
         Add(reduceOut, reduceOut, dequantOut, padCalCnt);

@@ -11,7 +11,7 @@
 /*!
  * \file split_core_v2.h
  * \brief
-*/
+ */
 
 #ifndef SPLIT_CORE_V2_H
 #define SPLIT_CORE_V2_H
@@ -87,15 +87,14 @@ struct BaseInfo {
 
 // 分核功能模块输入：切分属性，预留接口，可作为切分方案的参数入口
 struct SplitParam {
-    uint32_t mBaseSize{ 1U };
-    uint32_t s2BaseSize{ 1U };
-    uint32_t gS1BaseSizeOfFd{ 8U }; // FD阶段分核，m轴切分基本块大小
+    uint32_t mBaseSize{1U};
+    uint32_t s2BaseSize{1U};
+    uint32_t gS1BaseSizeOfFd{8U}; // FD阶段分核，m轴切分基本块大小
     bool streamK = true;
-    int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
-                                            // full_block_cost is costFunc(mBaseSize, s2BaseSize)
-    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
+    int64_t fdTolerance{0U};  // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+                              // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock{0U}; // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
 };
-
 
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
@@ -114,10 +113,15 @@ struct FlashDecodeResult {
     std::vector<uint32_t> mLen{};    // 每个vector处理的归约任务的M轴行数
     // 3、每个core处理的第1个归约任务的数据应存放的workspace位置
     FlashDecodeResult(uint32_t coreNum, uint32_t vecCubeRatio)
-        : fdBN2Idx(coreNum), fdMIdx(coreNum), fdS2SplitNum(coreNum), fdWorkspaceIdx(coreNum), mSize(coreNum),
-          taskIdx(coreNum * vecCubeRatio), mStart(coreNum * vecCubeRatio), mLen(coreNum * vecCubeRatio)
-    {
-    }
+        : fdBN2Idx(coreNum),
+          fdMIdx(coreNum),
+          fdS2SplitNum(coreNum),
+          fdWorkspaceIdx(coreNum),
+          mSize(coreNum),
+          taskIdx(coreNum * vecCubeRatio),
+          mStart(coreNum * vecCubeRatio),
+          mLen(coreNum * vecCubeRatio)
+    {}
 };
 
 // 分核功能模块输出：FA阶段的核间分核信息
@@ -131,22 +135,28 @@ struct FAMetaData {
     std::vector<uint32_t> firstFdDataWorkspaceIdx{}; // 每个core处理的第1个归约任务的数据应存放的workspace位置,绝对偏移
     FlashDecodeResult fdRes{0U, 0U}; // FD信息
     FAMetaData(uint32_t coreNum, uint32_t ratio)
-        : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstFdDataWorkspaceIdx(coreNum),
-          fdRes(coreNum, ratio){};
+        : vecCubeRatio(ratio),
+          bN2End(coreNum),
+          mEnd(coreNum),
+          s2End(coreNum),
+          firstFdDataWorkspaceIdx(coreNum),
+          fdRes(coreNum, ratio) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
 struct SplitInfo {
-    std::vector<uint32_t> mBaseNum{};  // M方向，切了多少个基本块
-    std::vector<uint32_t> s2BaseNum{};   // S2方向，切了多少个基本块
-    std::vector<uint32_t> mTailSize{}; // M方向，尾块size
-    std::vector<uint32_t> s2TailSize{};  // S2方向，尾块size
+    std::vector<uint32_t> mBaseNum{};   // M方向，切了多少个基本块
+    std::vector<uint32_t> s2BaseNum{};  // S2方向，切了多少个基本块
+    std::vector<uint32_t> mTailSize{};  // M方向，尾块size
+    std::vector<uint32_t> s2TailSize{}; // S2方向，尾块size
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : mBaseNum(batchSize), s2BaseNum(batchSize), mTailSize(batchSize), s2TailSize(batchSize)
-    {
-    }
+        : mBaseNum(batchSize),
+          s2BaseNum(batchSize),
+          mTailSize(batchSize),
+          s2TailSize(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch的开销信息
@@ -159,9 +169,10 @@ struct CostInfo {
     int64_t maxMCost{0};
 
     explicit CostInfo(uint32_t batchSize)
-        : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
-    {
-    }
+        : bN2CostOfEachBatch(batchSize),
+          bN2BlockOfEachBatch(batchSize),
+          bN2LastBlockCostOfEachBatch(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：分核过程中，case基本信息的上下文信息，组合以减少接口传参数量
@@ -172,9 +183,11 @@ struct SplitContext {
     CostInfo costInfo{0U};
 
     explicit SplitContext(const BaseInfo &info, SplitParam param)
-        : baseInfo(info), splitParam(param), splitInfo(info.bSize), costInfo(info.bSize)
-    {
-    }
+        : baseInfo(info),
+          splitParam(param),
+          splitInfo(info.bSize),
+          costInfo(info.bSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch相关的临时信息
@@ -234,8 +247,7 @@ int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &ba
 Range<uint32_t> CalcS2Range(uint32_t mIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
                             const BatchCache &batchCache);
 int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
-BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize,
-                                 uint32_t s2TailSize);
+BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize, uint32_t s2TailSize);
 
 // cache calculation
 void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);

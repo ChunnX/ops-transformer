@@ -247,7 +247,7 @@
   <tr>
    <td>global_bs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size或0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank BS一致时，global_bs = BS * ep_world_size或0；各rank BS不一致时，global_bs = max_bs * ep_world_size（max_bs为单卡BS最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -324,8 +324,8 @@
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `BS` * `ep_world_size` * `shared_expert_num` / `shared_expert_num`。
-        - 对于MoE专家，当`global_bs`为0时，要满足`A` >= `BS` * `ep_world_size` * min(`local_expert_num`, `K`)；当`global_bs`非0时，要满足`A` >= `global_bs` * min(`local_expert_num`, `K`)。
+        - 对于共享专家，要满足`A` = `BS` *`ep_world_size`* `shared_expert_num` / `shared_expert_num`。
+        - 对于MoE专家，当`global_bs`为0时，要满足`A` >= `BS` *`ep_world_size`* min(`local_expert_num`, `K`)；当`global_bs`非0时，要满足`A` >= `global_bs` * min(`local_expert_num`, `K`)。
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`。
     - `local_expert_num`：表示本卡专家数量。
         - 对于共享专家卡，`local_expert_num` = 1
@@ -336,8 +336,8 @@
     - `copy_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的copy专家的ID的值是[`moe_expert_num` + `zero_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num`)。
     - `const_expert_num`：取值范围：[0, MAX_INT32)，MAX_INT32 = 2^31 - 1,合法的常量专家的ID的值是[`moe_expert_num` + `zero_expert_num` + `copy_expert_num`, `moe_expert_num` + `zero_expert_num` + `copy_expert_num` + `const_expert_num`)。
     - `ori_x_optional`：可选择传入有效数据或填空指针，当`copy_expert_num`不为0或`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`BS`, `H`)，数据类型需与`expand_x`保持一致。
-    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
-    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, )，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_1_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`,)，数据类型需与`expand_x`保持一致。
+    - `const_expert_alpha_2_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`,)，数据类型需与`expand_x`保持一致。
     - `const_expert_v_optional`：可选择传入有效数据或填空指针，当`const_expert_num`不为0时必须传入有效输入；当传入有效数据时，要求shape为(`const_expert_num`, `H`)，数据类型需与`expand_x`保持一致。
 
 - 本文公式中的"/"表示整除。
@@ -358,10 +358,10 @@
         - `shared_expert_num`：当前取值范围[0, 4]。
         - `comm_quant_mode`：int8量化支持。
         - `performance_info_optional`：预留参数，当前版本不支持，传空指针即可。
-        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/cann_ops_transformer/ops/deep_ep.py)。
+        - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../common/torch_extension/moe_distribute_buffer.py)。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| low_latency_combine接口 | [deepep.py](../../torch_extension/cann_ops_transformer/ops/deep_ep.py) | 通过[low_latency_combine](../../torch_extension/cann_ops_transformer/docs/zh/low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |
+| low_latency_combine接口 | [moe_distribute_buffer.py](../common/torch_extension/moe_distribute_buffer.py) | 通过[low_latency_combine](../common/docs/torchapi_low_latency_combine.md)接口方式调用moe_distribute_combine_v3算子。 |

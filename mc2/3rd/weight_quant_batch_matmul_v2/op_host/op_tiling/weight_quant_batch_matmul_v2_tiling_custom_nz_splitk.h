@@ -20,15 +20,14 @@
 #include "../../op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 namespace optiling {
 
-class Mc2WeightQuantBatchMatmulV2CustomNzSplitK : public Mc2WeightQuantBatchMatmulV2Tiling
-{
+class Mc2WeightQuantBatchMatmulV2CustomNzSplitK : public Mc2WeightQuantBatchMatmulV2Tiling {
 public:
-    explicit Mc2WeightQuantBatchMatmulV2CustomNzSplitK(gert::TilingContext* context)
+    explicit Mc2WeightQuantBatchMatmulV2CustomNzSplitK(gert::TilingContext *context)
         : Mc2WeightQuantBatchMatmulV2Tiling(context)
     {
         Reset();
     }
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
         Reset();

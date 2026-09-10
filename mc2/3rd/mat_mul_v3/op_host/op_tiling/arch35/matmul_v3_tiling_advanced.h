@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 /* !
  * \file matmul_v3_tiling_advanced.h
  * \brief
@@ -23,7 +22,8 @@ namespace optiling {
 namespace mc2_matmul_v3_advanced {
 class Mc2MatMulV3Tiling {
 public:
-    explicit Mc2MatMulV3Tiling(gert::TilingContext *context) : context_(context){};
+    explicit Mc2MatMulV3Tiling(gert::TilingContext *context)
+        : context_(context) {};
     virtual ~Mc2MatMulV3Tiling() = default;
     virtual ge::graphStatus DoTiling();
 
@@ -38,6 +38,6 @@ protected:
     gert::TilingContext *context_ = nullptr;
     Mc2MatMulV3Args args_;
 };
-}
-}
+} // namespace mc2_matmul_v3_advanced
+} // namespace optiling
 #endif // __OP_HOST_MATMUL_V3_ADVANCED_TILING_H__

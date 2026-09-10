@@ -16,7 +16,7 @@
 #ifndef ASCENDC_FFN_NONQUANT_NZ_H
 #define ASCENDC_FFN_NONQUANT_NZ_H
 
-#include "ffn.h"
+#include "ffn_kernel.h"
 
 namespace FFN {
 
@@ -39,9 +39,9 @@ private:
 
 public:
     /** @brief constructor */
-    __aicore__ inline FFNProcess(ComputeType &computeOp_) : computeOp(computeOp_)
-    {
-    }
+    __aicore__ inline FFNProcess(ComputeType &computeOp_)
+        : computeOp(computeOp_)
+    {}
 
     __aicore__ inline void Init(const FFNTilingData *__restrict tiling);
 
@@ -189,9 +189,10 @@ private:
 
 public:
     /** @brief constructor */
-    __aicore__ inline FFNCompute(typename mm1Type::MT &mm1_, typename mm2Type::MT &mm2_) : mm1(mm1_), mm2(mm2_)
-    {
-    }
+    __aicore__ inline FFNCompute(typename mm1Type::MT &mm1_, typename mm2Type::MT &mm2_)
+        : mm1(mm1_),
+          mm2(mm2_)
+    {}
 
     /** Init function before process function
      * @param x: input 2D matrix.
@@ -285,9 +286,10 @@ __aicore__ inline void FFNCompute<T, mm1Type, mm2Type, c1T, c2T, BiasT>::AllCore
 }
 
 template <typename T, class mm1Type, class mm2Type, typename c1T, typename c2T, typename BiasT>
-__aicore__ inline void
-FFNCompute<T, mm1Type, mm2Type, c1T, c2T, BiasT>::CalcOffset(MNConfig &mnConfig, uint32_t &posN, uint64_t &xOffset,
-                                                             uint64_t &wOffset, uint64_t &outOffset)
+__aicore__ inline void FFNCompute<T, mm1Type, mm2Type, c1T, c2T, BiasT>::CalcOffset(MNConfig &mnConfig, uint32_t &posN,
+                                                                                    uint64_t &xOffset,
+                                                                                    uint64_t &wOffset,
+                                                                                    uint64_t &outOffset)
 {
     uint32_t posM = mnConfig.mIdx * mnConfig.baseM;
     posN = mnConfig.nIdx * mnConfig.baseN;
@@ -425,9 +427,8 @@ __aicore__ inline uint32_t FFNCompute<T, mm1Type, mm2Type, c1T, c2T, BiasT>::Cur
 }
 
 template <typename T, class mm1Type, class mm2Type, typename c1T, typename c2T, typename BiasT>
-__aicore__ inline void
-FFNCompute<T, mm1Type, mm2Type, c1T, c2T, BiasT>::ZeroN1WithoutBiasCompute(const MNConfig &mnConfig,
-                                                                           const uint32_t coreIdx)
+__aicore__ inline void FFNCompute<T, mm1Type, mm2Type, c1T, c2T, BiasT>::ZeroN1WithoutBiasCompute(
+    const MNConfig &mnConfig, const uint32_t coreIdx)
 {
     uint32_t offset = mnConfig.singleN * coreIdx;
     uint32_t cursingleN = CursingleMNCompute(mnConfig.singleN, mnConfig.n, offset);

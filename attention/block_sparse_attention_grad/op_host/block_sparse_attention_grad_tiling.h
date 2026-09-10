@@ -56,7 +56,6 @@ TILING_DATA_FIELD_DEF(uint32_t, maskType);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks); // T: 所有batch中Q方向切块的总数
 
-
 // 稀疏分块参数 (blockShapeOptional)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block的x维度(Q方向)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
@@ -82,6 +81,13 @@ TILING_DATA_FIELD_DEF(uint64_t, dPOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dQOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dKOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dVOutSize);
+TILING_DATA_FIELD_DEF(uint64_t, detDkWorkspaceSize);
+TILING_DATA_FIELD_DEF(uint64_t, detDvWorkspaceSize);
+TILING_DATA_FIELD_DEF(uint32_t, aicNumForDet);
+TILING_DATA_FIELD_DEF(uint32_t, groupSizeForDet);
+TILING_DATA_FIELD_DEF(uint8_t, deterministic);
+TILING_DATA_FIELD_DEF(uint32_t, batchSizeForDet);
+TILING_DATA_FIELD_DEF(uint32_t, KForDet);
 
 TILING_DATA_FIELD_DEF(uint32_t, basicQBlockSize);
 TILING_DATA_FIELD_DEF(uint32_t, basicKVBlockSize);
@@ -210,6 +216,7 @@ private:
     int64_t totalTokensT_ = 0; // TND格式Q的第一维（T维度，总token数）
 
     ge::DataType dataType_ = ge::DT_FLOAT16;
+    bool deterministic_ = false;
 
     BlockSparseAttentionGradTilingData *tilingData_ = nullptr;
 };

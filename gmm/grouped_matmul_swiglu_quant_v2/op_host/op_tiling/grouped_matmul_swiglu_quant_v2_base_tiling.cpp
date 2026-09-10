@@ -44,7 +44,6 @@ auto CeilDiv(T1 a, T2 b) -> T1
     return (a + b - 1) / b;
 }
 
-
 static inline uint32_t SixteenAlign(uint32_t a, bool up = false)
 {
     if (up) {
@@ -66,6 +65,12 @@ int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t u
     // A4W4 表达式：4.5 * row * n + 4 * alignUp(row, 8) + 6n + 64 <= ubSize
 
     // 忽略对齐项的初始估计
+    if (n == 0 || ubSize <= CONSTANT_TERM + LINEAR_TERM_FACTOR * n) {
+        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING: invalid n or ubSize, n = %lu, ubSize = %lu\n", n,
+                ubSize);
+        return 0;
+    }
+
     int64_t maxRowEstimate =
         (ubSize - CONSTANT_TERM - LINEAR_TERM_FACTOR * n) / static_cast<int64_t>(WEIGHT_FACTOR * n);
 
@@ -92,6 +97,10 @@ int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUbA8W4(const uint64_t u
 
 int64_t GroupedMatmulSwigluQuantV2BaseTiling::CalMaxRowInUb(const uint64_t ubSize, const uint64_t n) const
 {
+    if (n == 0) {
+        OP_LOGE(context_->GetNodeName(), "GMM_SWIGLU_QUANT TILING: n should not be 0\n");
+        return 0;
+    }
     uint64_t tmpBufSize = (n / SWIGLU_REDUCE_FACTOR) * FP32_DTYPE_SIZE;
     uint64_t perchannleBufSize = n * FP32_DTYPE_SIZE * DOUBLE_BUFFER;
     uint64_t reduceMaxResBufSize = BLOCK_BYTE;
@@ -124,12 +133,11 @@ bool GroupedMatmulSwigluQuantV2BaseTiling::IsCapable()
         return false;
     }
 
-    auto wTensor = context_->GetDynamicInputTensor(WEIGHT_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, wTensor);
-    if (!(wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_DIM_LIMIT ||
-          wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM ||
-          wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
-          wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
+    auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
+    auto wSShape = wShape->GetStorageShape();
+    if (!(wSShape.GetDimNum() == ND_WEIGHT_DIM_LIMIT || wSShape.GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM ||
+          wSShape.GetDimNum() == NZ_WEIGHT_DIM_LIMIT || wSShape.GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
         return false;
     }
 
@@ -142,16 +150,16 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
     auto weightDesc = context_->GetInputDesc(WEIGHT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightDesc);
-    auto wTensor = context_->GetDynamicInputTensor(WEIGHT_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, wTensor);
-    auto xTensor = context_->GetDynamicInputTensor(X_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, xTensor);
-    auto wScaleTensor = context_->GetDynamicInputTensor(WEIGHT_SCALE_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, wScaleTensor);
-    auto groupListTensor = context_->GetDynamicInputTensor(GROUPLIST_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, groupListTensor);
+    auto wShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, wShape);
+    auto xShape = context_->GetDynamicInputShape(X_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
+    auto wScaleShape = context_->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, wScaleShape);
+    auto groupListShape = context_->GetDynamicInputShape(GROUPLIST_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, groupListShape);
 
-    auto wDimNum = wTensor->GetStorageShape().GetDimNum();
+    auto wDimNum = wShape->GetStorageShape().GetDimNum();
     if (wDimNum == ND_WEIGHT_DIM_LIMIT || wDimNum == NZ_WEIGHT_DIM_LIMIT) {
         isSingleTensor_ = 1;
     } else {
@@ -190,44 +198,44 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "CompileInfo is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    m_ = xTensor->GetStorageShape().GetDim(0);
-    k_ = xTensor->GetStorageShape().GetDim(1);
-    auto wScaleDimNum = wScaleTensor->GetStorageShape().GetDimNum();
+    m_ = xShape->GetStorageShape().GetDim(0);
+    k_ = xShape->GetStorageShape().GetDim(1);
+    auto wScaleDimNum = wScaleShape->GetStorageShape().GetDimNum();
     isWeightTrans_ = false;
-    if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT || wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+    if (wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT ||
+        wShape->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
         isNz_ = true;
     }
     const auto tuningConfigPtr = attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
-    tuningConfig_ = tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 1? 
-                    (reinterpret_cast<const int64_t*>(tuningConfigPtr->GetData()))[0] : 0;
+    tuningConfig_ = tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 1 ?
+                        (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] :
+                        0;
 
     if (isA4W4_) {
-        n_ = wScaleTensor->GetStorageShape().GetDim(wScaleDimNum - DIM_1);
+        n_ = wScaleShape->GetStorageShape().GetDim(wScaleDimNum - DIM_1);
     } else {
-        if (wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_DIM_LIMIT) {
-            // ND SingleTensor [E, K, N]
-            n_ = wTensor->GetStorageShape().GetDim(DIM_2);
-        } else if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_DIM_LIMIT) {
-            // NZ SingleTensor [E, N // 64, K // 16, 16, 64]
-            n_ = wTensor->GetStorageShape().GetDim(DIM_1) * wTensor->GetStorageShape().GetDim(DIM_4);
-        } else if (wTensor->GetStorageShape().GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM) {
-            // ND MultiTensor [K, N]
-            n_ = wTensor->GetStorageShape().GetDim(DIM_1);
-        } else if (wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
-            // NZ MultiTensor [N // 64, K // 16, 16, 64]
-            n_ = wTensor->GetStorageShape().GetDim(DIM_0) * wTensor->GetStorageShape().GetDim(DIM_3);
+        auto wSShape = wShape->GetStorageShape();
+        if (wSShape.GetDimNum() == ND_WEIGHT_DIM_LIMIT) {
+            n_ = wSShape.GetDim(DIM_2);
+        } else if (wSShape.GetDimNum() == NZ_WEIGHT_DIM_LIMIT) {
+            n_ = wSShape.GetDim(DIM_1) * wSShape.GetDim(DIM_4);
+        } else if (wSShape.GetDimNum() == ND_WEIGHT_MULTI_TENSOR_DIM) {
+            n_ = wSShape.GetDim(DIM_1);
+        } else if (wSShape.GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM) {
+            n_ = wSShape.GetDim(DIM_0) * wSShape.GetDim(DIM_3);
         }
     }
 
-    isWeightTrans_ = *attr->GetAttrPointer<int64_t>(ATTR_INDEX_TRANSPOSE_WEIGHT);
+    const bool *transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT);
+    isWeightTrans_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
 
     if (dequantMode == 1) { // perGroup量化模式：单tensor场景[E, KGroupCount, N]，多tensor场景[KGroupCount, N]
-        quantGroupNum_ = wScaleTensor->GetStorageShape().GetDim(wScaleDimNum - DIM_2);
+        quantGroupNum_ = wScaleShape->GetStorageShape().GetDim(wScaleDimNum - DIM_2);
     } else { // perChannel量化模式
         quantGroupNum_ = 1;
     }
 
-    groupNum_ = groupListTensor->GetStorageShape().GetDim(0);
+    groupNum_ = groupListShape->GetStorageShape().GetDim(0);
 
     if (isA8W4MSD_ || isA4W4_) {
         maxProcessRowNum_ = CalMaxRowInUbA8W4(compileInfoPtr->ubSize_, n_);
@@ -239,7 +247,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::ParseInputAndAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-int32_t GroupedMatmulSwigluQuantV2BaseTiling::FindBestSingleN(const uint32_t &aicNum, int64_t baseM, int64_t baseN) const
+int32_t GroupedMatmulSwigluQuantV2BaseTiling::FindBestSingleN(const uint32_t &aicNum, int64_t baseM,
+                                                              int64_t baseN) const
 {
     uint64_t quantGroupNum = quantGroupNum_;
     if (n_ < baseN || tuningConfig_ <= 0 || !(quantGroupNum == 1)) {
@@ -293,18 +302,18 @@ bool GroupedMatmulSwigluQuantV2BaseTiling::TryFullLoadA(int32_t baseM, int64_t b
     return false;
 }
 
-
-ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::DynamicTilingSingleN(gert::TilingContext *context, const uint32_t &aicNum,
-                                                int64_t baseM, int64_t baseN, int64_t baseK)
+ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::DynamicTilingSingleN(const gert::TilingContext *context,
+                                                                           const uint32_t &aicNum, int64_t baseM,
+                                                                           int64_t baseN, int64_t baseK)
 {
-    //get info
+    // get info
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     uint64_t l1Size = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
     tilingData_.gmmSwigluQuantV2BaseParams.set_singleN(0);
-  
+
     if (n_ < baseN || tuningConfig_ <= 0 || !isA4W4_) {
         return ge::GRAPH_SUCCESS;
     }
@@ -375,9 +384,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV2BaseTiling::DoOpTiling()
         mLimit_ = ((usrWorkspaceLimit_ / DOUBLE_WORKSPACE_SPLIT) / INT32_DTYPE_SIZE) / n_;
     }
 
-    OP_CHECK_IF(mLimit_ <= 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "mLimit_ is %ld must over then 0.", mLimit_),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        mLimit_ <= 0,
+        OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "mLimit_ is %ld, must be greater than 0.", mLimit_),
+        return ge::GRAPH_FAILED);
     tilingData_.gmmSwigluQuantV2BaseParams.set_mLimit(mLimit_);
 
     DynamicTilingSingleN(context_, blockDim_, A8W4_BASEM, A8W4_BASEN, A8W4_BASEK);

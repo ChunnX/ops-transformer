@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include "allto_all_matmul_base.h"
 
 #include "acl/acl.h"
@@ -94,8 +93,9 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
     OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
-            OP_LOGE_WITH_INVALID_INPUT_DTYPE("aclnnMatmulAlltoAll", "bias",
-                op::ToString(biasOptional->GetDataType()).GetString(), "x1Dtype or float32");
+            OP_LOGE_WITH_INVALID_INPUT_DTYPE("aclnnAlltoAllMatmul", "bias",
+                                             op::ToString(biasOptional->GetDataType()).GetString(),
+                                             "x1Dtype or float32");
             return false;
         }
     }
@@ -112,31 +112,31 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x1",
-            op::ToString(x1->GetStorageFormat()).GetString(), "ND");
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x1", op::ToString(x1->GetStorageFormat()).GetString(),
+                                          "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x2",
-            op::ToString(x2->GetStorageFormat()).GetString(), "ND");
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x2", op::ToString(x2->GetStorageFormat()).GetString(),
+                                          "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "bias",
-                op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
+                                              op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "output",
-            op::ToString(output->GetStorageFormat()).GetString(), "ND");
+                                          op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (alltoAllOutOptional != nullptr) {
         if (IsPrivateFormat(alltoAllOutOptional->GetStorageFormat())) {
             OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "alltoAllOut",
-                op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString(), "ND");
+                                              op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
@@ -191,7 +191,8 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 2. 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 3. 检查shape
-    CHECK_RET(CheckShapeAAMM(x1, x2, biasOptional, transposeX2, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShapeAAMM("allto_all_matmul", x1, x2, biasOptional, transposeX2, output, alltoAllOutOptional),
+              ACLNN_ERR_PARAM_INVALID);
     // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
     // 5. 检查输入的数据格式是否为ND
@@ -199,11 +200,11 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     // 6. 兼容性处理非ND格式
     CHECK_RET(ReFormatNotND(x1, x2, biasOptional, output, alltoAllOutOptional), ACLNN_ERR_PARAM_INVALID);
     // 7. 检查alltoallAxes是否为空或者[-2,-1]
-    CHECK_RET(CheckAlltoAllAxes(alltoAllAxesOptional, false), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAlltoAllAxes("allto_all_matmul", alltoAllAxesOptional, false), ACLNN_ERR_PARAM_INVALID);
     // 8. 检查transposeX1是否合法, 目前不能为true
-    CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckTransposeX1("allto_all_matmul", transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 9. 检查group长度是否小于等于128
-    CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckGroupLength("allto_all_matmul", group), ACLNN_ERR_PARAM_INVALID);
     // 检查commMode非空指针
     if (commMode == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "commMode should not be nullptr.");
@@ -260,10 +261,10 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
     OP_LOGD("AlltoAllMatmul commmode0 is . %s", commMode);
     char *str_commMode = const_cast<char *>(commMode);
     OP_LOGD("AlltoAllMatmul commmode1 is . %s", str_commMode);
-    bool all2AllOutFlag = IsAll2AllOut(alltoAllOutOptional);
+    bool all2AllOutFlag = IsAll2AllOut("allto_all_matmul", alltoAllOutOptional);
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode("allto_all_matmul", group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
     OP_LOGD("AlltoAllMatmul commmode2 is . %s", str_commMode);
 
@@ -272,14 +273,14 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
         str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype,
         commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode, all2AllOutFlag, out, all2AllOutOptional,
         workspaceSize, executor);
-    OP_LOGD("AlltoAllMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
+    OP_LOGD("AlltoAllMatmul, aclnnInnerGetWorkspaceSize ret %d.", ret);
 
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
-                "This is an error in launch aicore, aclnnMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
+                "This is an error in launch aicore, aclnnAlltoAllMatmulBaseGetWorkspaceSize interface call failed.");
     }
 
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, args);
     }
@@ -294,12 +295,12 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    aclnnStatus checkX2Ret = CheckX2Valid("allto_all_matmul", x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
-            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+            IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
             return ACLNN_ERR_PARAM_INVALID;
@@ -330,7 +331,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     }
 
     uint8_t commModeEnum = 0;
-    aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
+    aclnnStatus checkCommModeRet = CheckAndHandleCommMode("allto_all_matmul", group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret = InnerAlltoAllMatmulGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group,
@@ -348,6 +349,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBase(void *workspace, uint64_t workspa
         } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>    |      ×     |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |    ×     |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -21,23 +31,23 @@
 
     1. 接收FFN侧回传的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea、ControlArea、AttentionArea、FfnArea域。本接口从AttentionArea的token_data_buf中读取token数据。
 
-    2. 结合expert_scales对token数据进行加权融合，输出最终注意力结果y。
+    2. 结合expertScales对token数据进行加权融合，输出最终注意力结果y。
 
-    3. 根据输入layer_id计算并输出next_layer_id，指示下一个要处理的层ID。
+    3. 根据输入layerId计算并输出nextLayerId，指示下一个要处理的层ID。
 
 - 计算公式：
 
   $$
-  y[i] = \sum_{k=0}^{K-1} \text{expert\_scales}[i][k] \times \text{token\_data}[i][k]
+  y[i] = \sum_{k=0}^{K-1} \text{expertScales}[i][k] \times \text{token\_data}[i][k]
   $$
 
   $$
-  \text{next\_layer\_id} = \text{layer\_id} + 1
+  \text{nextLayerId} = \text{layerId} + 1
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnAttentionWorkerCombineGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAttentionWorkerCombine”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAttentionWorkerCombineGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnAttentionWorkerCombine”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnAttentionWorkerCombineGetWorkspaceSize(
@@ -90,7 +100,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
     <tr>
       <td>scheduleContext</td>
       <td>输入</td>
-      <td>Attention侧接收的调度上下文，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从AttentionArea的token_data_buf中读取token数据。详细结构参见调用示例。</td>
+      <td>Attention侧接收的调度上下文，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从AttentionArea的token_data_buf中读取token数据。</td>
       <td>不支持空tensor。</td>
       <td>INT8</td>
       <td>ND</td>
@@ -130,7 +140,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
     <tr>
       <td>tokenDtype</td>
       <td>输入</td>
-      <td>指定schedule_context中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16。</td>
+      <td>指定scheduleContext中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16。</td>
       <td>取值为0或1。</td>
       <td>INT64</td>
       <td>-</td>
@@ -192,7 +202,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
 
@@ -261,20 +271,17 @@ aclnnStatus aclnnAttentionWorkerCombine(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
-- schedule_context为1D的Tensor，shape固定为(1024)。
-- expert_scales为2D的Tensor，shape为(BS, K)，其中K ≤ 64。
-- y为2D的Tensor，shape为(BS, hiddenSize)，即第二维由参数hiddenSize确定。
-- layer_id和next_layer_id为1D的Tensor，shape为(1)。
+- expertScales的第二维K ≤ 64。
 - 确定性计算：
   - aclnnAttentionWorkerCombine默认确定性实现。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

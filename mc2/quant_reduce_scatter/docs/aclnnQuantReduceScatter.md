@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                                            | 是否支持 |
-| :------------------------------------------------------------------------------ | :------: |
-| <term>Ascend 950DT</term>                                                | √       | 
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | ×       |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | ×       |
-| <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
-| <term>Atlas 推理系列产品</term>                                                  | ×       |
-| <term>Atlas 训练系列产品</term>                                                 | ×       |
+<!-- npu="950" id1 -->
+- <term>Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
@@ -31,7 +41,7 @@
     $$
 
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
-    
+
 ## 函数原型
 
 该算子分为两段式接口，必须先调用“aclnnQuantReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantReduceScatter”接口执行计算。
@@ -39,19 +49,19 @@
 ```cpp
 aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(
     const aclTensor *x,
-    const aclTensor *scales, 
-    const char      *group, 
+    const aclTensor *scales,
+    const char      *group,
     const char      *reduceOp,
-    aclTensor       *output, 
-    uint64_t        *workspaceSize, 
+    aclTensor       *output,
+    uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnQuantReduceScatter(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     const aclrtStream stream)
 ```
 
@@ -62,10 +72,10 @@ aclnnStatus aclnnQuantReduceScatter(
     <table style="undefined;table-layout: fixed; width: 1556px"><colgroup>
     <col style="width: 161px">
     <col style="width: 141px">
-    <col style="width: 245px">  
-    <col style="width: 408px">  
-    <col style="width: 191px">  
-    <col style="width: 120px"> 
+    <col style="width: 245px">
+    <col style="width: 408px">
+    <col style="width: 191px">
+    <col style="width: 120px">
     <col style="width: 145px">
     <col style="width: 145px">
     </colgroup>
@@ -157,7 +167,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -232,7 +242,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -244,12 +254,12 @@ aclnnStatus aclnnQuantReduceScatter(
   - Ascend950DT: 仅支持UB-Memory通信。
 - 通信域大小支持2、4、8。
 - 通信域使用约束：同一通信域内仅允许连续执行`aclnnQuantAllReduce`和`aclnnQuantReduceScatter`算子，且该通信域中不允许有其他通信算子。
-- `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE`>= 2 * (`xDataSize` + `scalesDataSize + 1`)。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = BS * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = BS * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = BS * H / 32 * 1 (Byte)`。
+- `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求满足`HCCL_BUFFSIZE>= 2 * (xDataSize + scalesDataSize + 1)`。其中`xDataSize`为输入`x`的数据大小，计算公式为：`xDataSize = BS * H * 1 (Byte)`，`scalesDataSize`为`scales`的数据大小，当量化方式为pertoken-pergroup量化时，计算公式为：`scalesDataSize = BS * H / 128 * 4 (Byte)`，当量化方式为mx量化时，计算公式为：`scalesDataSize = BS * H / 32 * 1 (Byte)`。
 - H范围仅支持[1024, 8192]，要求128对齐。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - <term>Atlas A5训练系列产品/Atlas A5推理系列产品</term>：
 
@@ -261,7 +271,7 @@ aclnnStatus aclnnQuantReduceScatter(
     #include <cstring>
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_quant_reduce_scatter.h"
-    
+
     #define CHECK_RET(cond, return_expr) \
         do {                             \
             if (!(cond)) {               \
@@ -298,7 +308,7 @@ aclnnStatus aclnnQuantReduceScatter(
                 return ret);
         std::vector<int64_t> strides(shape.size(), 1);
         for (int64_t i = shape.size() - 2; i >= 0; i--) {
-            strides[i] = shape[i +1] * strides[i + 1];
+            strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
             shape.data(), shape.size(), *deviceAddr);
@@ -399,7 +409,7 @@ aclnnStatus aclnnQuantReduceScatter(
         ret = aclrtDestroyStream(args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyStream failed. ret = %d \n", ret);
                 return ret);
-        
+
         ret = HcclCommDestroy(args.hcclComm);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret);
                 return ret);
@@ -436,7 +446,7 @@ aclnnStatus aclnnQuantReduceScatter(
         HcclComm comms[DEV_NUM];
         ret = HcclCommInitAll(DEV_NUM, devices, comms);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
-        
+
         Args args[DEV_NUM];
         // 启动多线程
         std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);

@@ -284,7 +284,7 @@ main() {
   unsetenv
 
   uninstall_es_whl
-  
+
   remove_ops_transformer
 
   if [ "${UNINSTALL_MODE}" != "upgrade" ]; then

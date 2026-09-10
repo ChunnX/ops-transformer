@@ -23,22 +23,22 @@
 #include "aclnnop/aclnn_trans_matmul_weight.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
 #define CHECK_FREE_RET(cond, return_expr) \
-    do {                                  \
-        if (!(cond)) {                    \
-            Finalize(deviceId, stream);   \
-            return_expr;                  \
-        }                                 \
+    do { \
+        if (!(cond)) { \
+            Finalize(deviceId, stream); \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
@@ -157,7 +157,7 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     void *dstDeviceAddr = nullptr;
 
     uint64_t tensorSize = 1;
-    for (int64_t i = 0; i < dstShape[i]; i++) {
+    for (uint64_t i = 0; i < dstShapeSize; i++) {
         tensorSize *= dstShape[i];
     }
     ret = aclrtMalloc(&dstDeviceAddr, tensorSize * sizeof(T), ACL_MEM_MALLOC_HUGE_FIRST);
@@ -189,6 +189,7 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+        workspaceAddrPtr.reset(workspaceAddr);
     }
 
     // 调用aclnnNpuFormatCastGetWorkspaceSize第二段接口
@@ -198,6 +199,8 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     *tensor = dstTensor;
+    aclDestroyTensor(srcTensor);
+    aclrtFree(srcDeviceAddr);
     return ACL_SUCCESS;
 }
 

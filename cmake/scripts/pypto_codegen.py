@@ -13,55 +13,73 @@
 PyPTO kernel codegen driver.
 
 This script is invoked from CMake configure stage for operators marked with enable_pypto_kernel(<op_file>).
-It imports the kernel python file, runs host-side binary header generation, and copies generated infer
-artifacts into --out-dir.
+It runs host-side binary artifact preparation and copies all generated artifacts into --out-dir.
 """
 
 import argparse
 import importlib.util
 import logging
-import os
 import shutil
 import sys
 from pathlib import Path
-
-# soc (ASCEND_COMPUTE_UNIT, lowercased) -> pypto arch token used by PYPTO_JIT_ARCH.
-_ARCH_MAP = {
-    "ascend910b": "a3",
-    "ascend910c": "a3",
-    "ascend950": "a5",
-}
+from unittest.mock import MagicMock
 
 
-def _load_kernels(py_file: Path):
-    """Import the kernel module and return all @pl.jit kernel objects defined in it."""
-    sys.path.insert(0, str(py_file.parent))
+def _install_build_only_torch_stub():
+    """Stub runtime-only dependencies that binary codegen does not use."""
+    sys.modules["torch"] = MagicMock(name="torch")
+    sys.modules["torch_npu"] = MagicMock(name="torch_npu")
 
-    import pypto_pro.runtime.opc.pypto_compile as pto_compile
+
+def _load_legacy_kernel(py_file: Path):
+    """Load the sole @pl.jit kernel for the legacy header-generation API."""
     from pypto_pro.runtime.jit import _TileJitKernel
 
-    spec = importlib.util.spec_from_file_location(py_file.stem, str(py_file))
+    spec = importlib.util.spec_from_file_location("_pypto_codegen_kernel_mod", py_file)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load kernel module from {py_file}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
 
-    kernels = [v for v in vars(module).values() if isinstance(v, _TileJitKernel)]
-    return pto_compile, kernels
+    kernels = [
+        value for value in vars(module).values() if isinstance(value, _TileJitKernel)
+    ]
+    if len(kernels) != 1:
+        raise RuntimeError(
+            f"kernel module '{py_file}' must define exactly one @pl.jit kernel, found {len(kernels)}"
+        )
+    return kernels[0]
+
+
+def _prepare_binary_headers(py_file: Path) -> Path:
+    try:
+        from pypto_pro.runtime.opc import prepare_binary_headers
+
+        return Path(prepare_binary_headers(str(py_file))).resolve()
+    except Exception as error:
+        logging.warning(
+            "prepare_binary_headers failed, falling back to generate_binary_headers: %s",
+            error,
+        )
+
+    import pypto_pro.runtime.opc.pypto_compile as pto_compile
+
+    return Path(
+        pto_compile.generate_binary_headers(_load_legacy_kernel(py_file))
+    ).resolve()
 
 
 def main():
     parser = argparse.ArgumentParser(description="PyPTO kernel codegen driver")
     parser.add_argument("--py-file", required=True, help="kernel python source file")
-    parser.add_argument("--out-dir", required=True, help="directory to place generated artifacts")
-    parser.add_argument("--op-file", required=True, help="op file stem (e.g. flash_attention_score_apt)")
-    parser.add_argument("--soc", required=True, help="ascend compute unit (e.g. ascend950)")
+    parser.add_argument(
+        "--out-dir", required=True, help="directory to place generated artifacts"
+    )
+    parser.add_argument(
+        "--op-file", required=True, help="op file stem (e.g. flash_attention_score_apt)"
+    )
     args = parser.parse_args()
-
-    soc = args.soc.strip().lower()
-    arch = _ARCH_MAP.get(soc)
-    if arch:
-        os.environ["PYPTO_JIT_ARCH"] = arch  # pypto reads this during compile
-    else:
-        logging.warning("unknown soc '%s', letting pypto auto-detect arch", soc)
 
     py_file = Path(args.py_file).resolve()
     if not py_file.is_file():
@@ -70,24 +88,22 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    pto_compile, kernels = _load_kernels(py_file)
-    if not kernels:
-        raise SystemExit(f"[pypto_codegen] no @pl.jit kernel found in {py_file}")
+    _install_build_only_torch_stub()
+    binary_dir = _prepare_binary_headers(py_file)
+    shutil.copytree(binary_dir, out_dir, dirs_exist_ok=True)
+    copied = sorted(
+        path.relative_to(binary_dir).as_posix()
+        for path in binary_dir.rglob("*")
+        if path.is_file()
+    )
 
-    copied = []
-    for kernel in kernels:
-        # generate_binary_headers() emits host tiling headers plus a self-contained cpp used only for .i infer.
-        # The build-stage opc still produces the real per-tilingkey kernel sources.
-        binary_dir = Path(pto_compile.generate_binary_headers(kernel)).resolve()
-        for pattern in ("*_tiling.h", "*_tilingkey.h", "*_pypto_infer.cpp"):
-            for src in sorted(binary_dir.glob(pattern)):
-                shutil.copy(src, out_dir / src.name)
-                copied.append(src.name)
-
-    logging.info("%s: generated %s into %s", args.op_file, sorted(set(copied)), out_dir)
+    logging.info("%s: generated %s into %s", args.op_file, copied, out_dir)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='[%(asctime)s][%(filename)s:%(lineno)d] %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S', level=logging.INFO)
+    logging.basicConfig(
+        format="[%(asctime)s][%(filename)s:%(lineno)d] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        level=logging.INFO,
+    )
     main()

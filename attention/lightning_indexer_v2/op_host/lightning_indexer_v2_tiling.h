@@ -26,7 +26,7 @@
 #include "op_host/tiling_util.h"
 
 namespace optiling {
-    // ------------------公共定义--------------------------
+// ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
@@ -40,7 +40,7 @@ struct TilingOptionalParaInfo {
 enum class DataLayout : uint32_t {
     BSND = 0,
     TND = 1,
-    BnBsND = 2
+    PA_BBND = 2
 };
 
 // ------------------算子原型索引常量定义----------------
@@ -78,9 +78,10 @@ constexpr uint32_t DIM_NUM_THREE = 3;
 constexpr uint32_t DIM_NUM_FOUR = 4;
 // 入参限制常量
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
-constexpr uint32_t SPARSE_LIMIT = 2048;
+constexpr uint32_t SPARSE_2K = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t TOPK_MAX = 8192;
+constexpr uint32_t TOPK_MULTIPLE = 1024;
 constexpr uint32_t G_SIZE_LIMIT = 64;
 constexpr uint32_t METADATA_LIMIT = 1024;
 
@@ -175,15 +176,15 @@ public:
     ge::DataType outputType = ge::DT_INT32;
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
-    DataLayout inputKLayout = DataLayout::BnBsND;
+    DataLayout inputKLayout = DataLayout::PA_BBND;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIV2InfoParser {
 public:
-    explicit LIV2InfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit LIV2InfoParser(gert::TilingContext *context)
+        : context_(context)
+    {}
     ~LIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -238,7 +239,7 @@ public:
     uint32_t batchSupperFlag_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
-    DataLayout kLayout_ = DataLayout::BnBsND;
+    DataLayout kLayout_ = DataLayout::PA_BBND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
@@ -258,7 +259,8 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerV2Tiling {
 public:
-    explicit LightningIndexerV2Tiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerV2Tiling(gert::TilingContext *context)
+        : context_(context) {};
     ge::graphStatus DoTiling(LIV2TilingInfo *tilingInfo);
 
 private:

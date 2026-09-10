@@ -45,9 +45,7 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
     }
 
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(
-        platformInfo == nullptr, OP_LOGE(opName_, "fail to get platform info"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     matmul_tiling::MultiCoreMatmulTiling mmTile(ascendcPlatform);
     enableL2Cache_ = true;
@@ -76,45 +74,34 @@ uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
 {
     if (isKZero_) {
         const uint64_t emptyTensorKey = GET_TPL_TILING_KEY(
-            static_cast<uint64_t>(ASCEND_310P),
-            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_FP_MM),
-            static_cast<uint64_t>(isKZero_),
-            MATMUL_ALLREDUCE_INT8_COMM_F,
-            static_cast<uint64_t>(SET_NOT_USE_PARAM),
-            static_cast<uint64_t>(SET_NOT_USE_PARAM),
-            SET_NOT_USE_FM_MM_TPL_TILING,
-            SET_NOT_USE_QUANT_MM_TPL_TILING,
+            static_cast<uint64_t>(ASCEND_310P), static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_FP_MM),
+            static_cast<uint64_t>(isKZero_), MATMUL_ALLREDUCE_INT8_COMM_F, static_cast<uint64_t>(SET_NOT_USE_PARAM),
+            static_cast<uint64_t>(SET_NOT_USE_PARAM), SET_NOT_USE_FM_MM_TPL_TILING, SET_NOT_USE_QUANT_MM_TPL_TILING,
             SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING);
         OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu, isKZero_ %lu", emptyTensorKey, isKZero_);
         return emptyTensorKey;
     }
 
-    uint64_t matmulAllReduceType = isWeightQuant_ ?
-        MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL : MATMUL_ALLREDUCE_MM_TYPE_FP_MM;
+    uint64_t matmulAllReduceType =
+        isWeightQuant_ ? MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL : MATMUL_ALLREDUCE_MM_TYPE_FP_MM;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        static_cast<uint64_t>(ASCEND_310P),
-        static_cast<uint64_t>(matmulAllReduceType),
-        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-        MATMUL_ALLREDUCE_INT8_COMM_F,
-        static_cast<uint64_t>(enableL2Cache_),
-        static_cast<uint64_t>(SET_NOT_USE_PARAM),
-        SET_NOT_USE_FM_MM_TPL_TILING,
-        SET_NOT_USE_QUANT_MM_TPL_TILING,
-        static_cast<uint64_t>(SET_NOT_USE_PARAM),
-        static_cast<uint64_t>(hasAntiQuantOffset_),
-        static_cast<uint64_t>(antiQuantT_),
-        1UL,
-        static_cast<uint64_t>(isTransB_),
-        static_cast<uint64_t>(FORMAT_B_ND));
+        static_cast<uint64_t>(ASCEND_310P), static_cast<uint64_t>(matmulAllReduceType), MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+        MATMUL_ALLREDUCE_INT8_COMM_F, static_cast<uint64_t>(enableL2Cache_), static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        SET_NOT_USE_FM_MM_TPL_TILING, SET_NOT_USE_QUANT_MM_TPL_TILING, static_cast<uint64_t>(SET_NOT_USE_PARAM),
+        static_cast<uint64_t>(hasAntiQuantOffset_), static_cast<uint64_t>(antiQuantT_), 1UL,
+        static_cast<uint64_t>(isTransB_), static_cast<uint64_t>(FORMAT_B_ND));
 
-    OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, hasAntiQuantOffset_ %lu, isTransB_ %lu,     \
-        enableL2Cache_ %lu, isWeightQuant_ %lu, isKZero_ %lu", tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_, enableL2Cache_,\
-        isWeightQuant_, isKZero_);
+    OP_LOGI(
+        opName_,
+        "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, hasAntiQuantOffset_ %lu, isTransB_ %lu,     \
+        enableL2Cache_ %lu, isWeightQuant_ %lu, isKZero_ %lu",
+        tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_, enableL2Cache_, isWeightQuant_, isKZero_);
     return tilingKey;
 }
 
-void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
-    AscendC::tiling::TCubeTiling& cubeTiling, Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling)
+void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling &mm1,
+                                                        AscendC::tiling::TCubeTiling &cubeTiling,
+                                                        Mc2Tiling::Mc2L2cacheTilePara &l2cacheTiling)
 {
     DoMatmulTiling(mm1, cubeTiling);
     SetTransLength(mm1, cubeTiling);
@@ -125,8 +112,7 @@ void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCore
 void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
 {
     const auto weight = context_->GetInputDesc(static_cast<size_t>(ops::MC2InputIdx::K_X2));
-    OP_TILING_CHECK(
-        weight == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"), return );
+    OP_TILING_CHECK(weight == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"), return);
     if (weight->GetDataType() != ge::DT_INT8) {
         OP_LOGD(context_->GetNodeName(), "No anti quant for weight data type %u.", weight->GetDataType());
         return;
@@ -149,8 +135,8 @@ void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
     isWeightQuant_ = true;
 }
 
-void MatmulAllReduceTiling310General::GetL2CacheParm(
-    uint64_t& l2CacheSize, uint64_t& singleMatrixSize, uint32_t& tileSize, uint32_t& tileLimit, bool useNewPara)
+void MatmulAllReduceTiling310General::GetL2CacheParm(uint64_t &l2CacheSize, uint64_t &singleMatrixSize,
+                                                     uint32_t &tileSize, uint32_t &tileLimit, bool useNewPara)
 {
     (void)useNewPara;
     constexpr uint64_t L2CACHE_SIZE_310 = 16;
@@ -158,9 +144,7 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     constexpr uint64_t SINGLE_MATRIX_SIZE_310 = 12;
     singleMatrixSize = SINGLE_MATRIX_SIZE_310;
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
-    OP_TILING_CHECK(
-        weightTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
-        return );
+    OP_TILING_CHECK(weightTensor == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"), return);
     if (weightTensor->GetStorageFormat() == ge::Format::FORMAT_FRACTAL_NZ) {
         constexpr uint32_t TILE_SIZE_310_NZ = 5;
         tileSize = TILE_SIZE_310_NZ;
@@ -173,8 +157,8 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     tileLimit = TILE_LIMIT_310;
 }
 
-void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1,
-    AscendC::tiling::TCubeTiling& cubeTiling)
+void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling &mm1,
+                                                     AscendC::tiling::TCubeTiling &cubeTiling)
 {
     (void)mm1;
     // mdy after api supoort vec nd2nz shareub size cal.
@@ -188,12 +172,11 @@ CutResult MatmulAllReduceTiling310General::GetTilingResult()
     CutResult mCutAllreduce;
     SocVersion inputSocVersion = SocVersion::SOC910_B;
     SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
         quantAllReduceTilingHccl.GetTiling();
         mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
     } else {
@@ -204,7 +187,7 @@ CutResult MatmulAllReduceTiling310General::GetTilingResult()
     return mCutAllreduce;
 }
 
-//注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling310General, \
+// 注册Tiling类
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling310General,
                                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P), 3);
 } // namespace optiling

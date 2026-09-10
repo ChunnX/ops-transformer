@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file aclnn_engram_fetch.cpp
-* \brief engram_fetch 算子 aclnn 接口实现
-*/
+ * \file aclnn_engram_fetch.cpp
+ * \brief engram_fetch 算子 aclnn 接口实现
+ */
 
 #include <algorithm>
 #include "aclnn/aclnn_base.h"
@@ -24,7 +24,7 @@
 
 using namespace op;
 
-static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices, aclTensor *fetched)
+static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices, const aclTensor *fetched)
 {
     OP_CHECK_NULL(commContext, return false);
     OP_CHECK_NULL(indices, return false);
@@ -32,7 +32,7 @@ static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices,
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *indices, aclTensor *fetched)
+static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *indices, const aclTensor *fetched)
 {
     CHECK_RET(CheckNotNull(commContext, indices, fetched), ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
@@ -43,15 +43,19 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnEngramFetchGetWorkspaceSize(const aclTensor *commContext, const aclTensor *indices,
-                                             int32_t hiddenSize, int64_t numEntriesPerRank,
-                                             aclTensor *fetched,
+                                             const aclTensor *localStorageAddr, aclTensor *fetched, aclTensor *permOut,
+                                             aclTensor *sendCountsOut, aclTensor *recvCountsOut,
+                                             aclTensor *recvLocalEntryOut, aclTensor *numRecvOut, aclTensor *fetchedSf,
+                                             int32_t hiddenSize, int64_t numEntriesPerRank, int64_t numMaxTokensPerRank,
+                                             int64_t commBufferSize, int64_t withGrad, int64_t sfTableAddr,
                                              uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(commContext, indices, fetched);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGetWorkspaceSize(
-        commContext, indices, hiddenSize, numEntriesPerRank,
-        fetched, workspaceSize, executor);
+        commContext, indices, localStorageAddr, hiddenSize, numEntriesPerRank, numMaxTokensPerRank, commBufferSize,
+        withGrad, sfTableAddr, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut, fetchedSf,
+        workspaceSize, executor);
     return ret;
 }
 

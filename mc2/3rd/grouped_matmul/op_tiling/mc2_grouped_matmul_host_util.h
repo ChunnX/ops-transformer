@@ -133,29 +133,28 @@ constexpr uint64_t RecursiveSum()
     return 0;
 }
 
-template <typename T, typename... Args> constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
+template <typename T, typename... Args>
+constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
 {
     return static_cast<uint64_t>(templateId) + 2U * RecursiveSum(templateIds...);
 }
 
 const std::map<std::array<int64_t, 4>, std::array<int64_t, 2>> A8W8_PRETILING_WHITE_LIST = { // used for A8W8 preTiling,
                                                                                              // by experiment
-    { { 576, 7168, 4096, 0 }, { 128, 512 } },
-    { { 576, 2048, 7168, 1 }, { 96, 1792 } }
-};
+    {{576, 7168, 4096, 0}, {128, 512}},
+    {{576, 2048, 7168, 1}, {96, 1792}}};
 
 const std::map<std::array<int64_t, 5>, int64_t> A8W4_PRETILING_WHITE_LIST = { // used for A8W4 preTiling, by experiment
-    { { 1, 16, 256, 512, 1 }, 1 },
-    { { 256, 1024, 512, 32768, 1 }, 1 }
-};
+    {{1, 16, 256, 512, 1}, 1},
+    {{256, 1024, 512, 32768, 1}, 1}};
 
 const std::map<std::array<int64_t, 2>, int64_t> A16W4_MSD_WHITE_LIST = { // used for A16W4 MSD, by experiment
     // K, N
-    { { 2048, 7168 }, 1 },
-    { { 7168, 4096 }, 1 }
-};
+    {{2048, 7168}, 1},
+    {{7168, 4096}, 1}};
 
-template <typename T1, typename T2> auto CeilDiv(T1 a, T2 b) -> T1
+template <typename T1, typename T2>
+auto CeilDiv(T1 a, T2 b) -> T1
 {
     if (b == 0) {
         return 0;
@@ -163,7 +162,8 @@ template <typename T1, typename T2> auto CeilDiv(T1 a, T2 b) -> T1
     return (a + b - 1) / b;
 }
 
-template <typename T> auto CeilDiv(T a, T b) -> T
+template <typename T>
+auto CeilDiv(T a, T b) -> T
 {
     if (b == 0) {
         return a;
@@ -171,7 +171,8 @@ template <typename T> auto CeilDiv(T a, T b) -> T
     return (a + b - 1) / b;
 }
 
-template <typename T> auto CeilAlign(T a, T b) -> T
+template <typename T>
+auto CeilAlign(T a, T b) -> T
 {
     if (b == 0) {
         return 0;
@@ -182,7 +183,8 @@ template <typename T> auto CeilAlign(T a, T b) -> T
 /* *
  * if align is 0, return 0
  */
-template <typename T> auto FloorAlign(T x, T align) -> typename std::enable_if<std::is_integral<T>::value, T>::type
+template <typename T>
+auto FloorAlign(T x, T align) -> typename std::enable_if<std::is_integral<T>::value, T>::type
 {
     return align == 0 ? 0 : x / align * align;
 }
