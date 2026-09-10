@@ -30,36 +30,39 @@ struct AlltoAllMatmulTilingInfo {
     uint32_t biasLen;            // bias地址大小
     uint32_t rankM;              // M轴大小,此处的rankM是X1的M
     uint32_t rankN;              // N轴大小，此处的rankN是X2的N（非转置）
-    uint32_t rankK;              // K轴大小,此处的rankK是X1的K
+    uint32_t rankK;              // K轴大小，此处的rankK是X1的K
     uint32_t aicCoreNum;         // 核数
-    uint32_t x1QuantMode;        // x1量化模式: 0=非量化, 7=动态pertoken量化(KC), 6=MX量化
-    uint32_t x2QuantMode;        // x2量化模式: 0=非量化, 2=perchannel量化(KC), 6=MX量化
     uint64_t commLen;            // 通信地址大小
     uint64_t permuteLen;         // 重排空间大小
     uint64_t hcclDataType;       // hccl通信枚举值
     uint64_t x1ScaleOptionalLen; // x1Scale所需空间大小
     uint64_t dynamicExtraSpace;  // 动态量化所需的额外空间
     uint64_t x1QuantDtype;       // x1动态量化后的结果
-    uint64_t tilingKey;          // tilingKey，用于确认kernel模板特化路径
 };
 
+// DFX 头部约定: dumpInfo 必须是 tiling 结构的第一个成员(offset 0)，
+// 异常 dump 回调直接从 tiling blob 起始位置解析 DfxDumpInfo
 struct AlltoAllMatmulTilingData {
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
     Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllMatmulTilingInfo;
-    Mc2MatMulV3TilingData mc2MmV3TileTilingData;    // 通算切分头块matmul tiling数据
-    Mc2MatMulV3TilingData mc2MmV3TailTilingData;    // 通算切分尾块matmul tiling数据
-    Utils::WorkspaceLayoutInfo workspaceLayout; // workspace段布局信息
+    Mc2MatMulV3TilingData mc2MmV3TileTilingData; // 通算切分头块matmul tiling数据
+    Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
 };
 
 // MX量化tiling结构体
 struct AlltoAllQuantMatmulTilingData {
-    Mc2InitTiling mc2InitTiling;                            // 初始化通信任务配置
-    Mc2CcTiling mc2CcTiling;                                // 具体每个通信任务的参数配置
+#if MC2_DFX_ENABLE
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
+#endif
+    Mc2InitTiling mc2InitTiling;                   // 初始化通信任务配置
+    Mc2CcTiling mc2CcTiling;                       // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo; // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据
-    Utils::WorkspaceLayoutInfo workspaceLayout;                             // workspace段布局信息
 };
 
 #endif // ALLTO_ALL_MATMUL_TILING_H

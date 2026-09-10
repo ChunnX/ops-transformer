@@ -120,8 +120,9 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     auto &&cfg = tilingData_->param;
     auto &&tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
     if constexpr (IS_MX_DFX) {
-        // 初始化状态打点(写入magicNum+COMM_INIT阶段)，HCCL初始化期间崩溃dump显示INIT
-        opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
+#if MC2_DFX_ENABLE
+        opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, cfg.aicCoreNum);
+#endif
     }
 
     // 初始化 HCCL
@@ -360,9 +361,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Execut
               isTail, false, preCoreNum_);
 
     for (uint32_t i = 0; i < count; i++) {
-        // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
-        opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMP_CUBE_MATMUL_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE),
-                            i + 1 + (isTail ? cfg.tileCnt : 0U));
+        opStateDump_.DoDump(DUMP_FIELD_TURN_INC | DUMP_FIELD_POSITION, POS_COMP_CUBE_MATMUL_BEFORE);
         mmv3.UpdateSlice(i, isTail);                // 更新 slice 偏移
         mmv3.Process(isLast && (i == (count - 1))); // 执行 MatMul
 

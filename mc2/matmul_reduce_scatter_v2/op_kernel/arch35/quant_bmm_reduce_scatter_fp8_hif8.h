@@ -109,7 +109,9 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     auto &&cfg = tilingData_->param;
     if constexpr (IS_MX_DFX) {
         // 初始化状态打点(写入magicNum+COMM_INIT阶段)，HCCL初始化期间崩溃dump显示INIT
-        opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, cfg.aicCoreNum);
+#if MC2_DFX_ENABLE
+        opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, cfg.aicCoreNum);
+#endif
     }
     for (uint32_t j = 0; j < cfg.rankDim; j++) {
         batchWeight_[j] = j;
@@ -126,15 +128,13 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::PostProcess(
     // 等待reducescatter执行完成
     if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
-            opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMM_BEFORE,
-                                static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT), i + 1U);
             hccl_.Wait(handles_[i]);
             opStateDump_.DoDump(DUMP_FIELD_WAIT);
         }
         // 终止hcclserver
         // 仅切commPhase，到达finalize即表示通信全流程成功结束
-        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
         hccl_.Finalize();
+        opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     }
 }
 
@@ -260,18 +260,15 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
               isTail, false, preCoreNum_);
     for (uint32_t i = 0; i < tileCnt; i++) {
         // turn与handle序号对齐: 主块1..tileCnt, 尾块tileCnt+1..tileCnt+tailCnt
-        opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMP_CUBE_MATMUL_BEFORE,
-                            static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE), i + 1 + shift);
         mmv3.UpdateSlice(i, isTail);
+        opStateDump_.DoDump(DUMP_FIELD_TURN_INC | DUMP_FIELD_POSITION, POS_COMP_CUBE_MATMUL_BEFORE);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        opStateDump_.DoDump(DUMP_FIELD_EXEC, POS_COMM_BEFORE,
-                            static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT), i + 1 + shift);
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
-        opStateDump_.DoDump(DUMP_FIELD_COMMIT);
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_POSITION,POS_COMM_BEFORE,0,0,recvCount);
         cWork += cOffset;
         recvBuffer += cOffset;
     }

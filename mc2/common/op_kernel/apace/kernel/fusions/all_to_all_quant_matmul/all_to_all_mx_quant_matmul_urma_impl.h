@@ -44,10 +44,9 @@ using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
 struct UrmaCommWaitPolicy {
-    __aicore__ inline uint32_t WaitTile(uint32_t tileIdx)
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
-        return 0; // AIC flag 等待不计入 commWaitCount(AIV 侧另行计数，保持 commit/wait 两侧对称)
     }
 };
 
@@ -178,7 +177,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
     baseParams_.biasGm = biasGM;
-    opStateDump_.Init(workspaceGM, &tilingData->workspaceLayout, tilingData->tileQbmmTilingData.usedCoreNum);
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, tilingData->tileQbmmTilingData.usedCoreNum);
+#endif
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
