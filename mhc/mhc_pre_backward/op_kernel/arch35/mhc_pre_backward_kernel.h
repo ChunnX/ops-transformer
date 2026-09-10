@@ -948,9 +948,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
     for (uint32_t offsetND = dealStartND_; offsetND < dealEndND_; offsetND += ND_BLOCK_SIZE) {
         currentNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - offsetND);
 
-        // 短序列将最多两个BS块在同一L0C中连续累加并一次写回，避免GM原子累加改变近零dphi的加法顺序。
+        // FP32短序列将最多两个BS块在同一L0C中连续累加并一次写回，避免GM原子累加改变近零dphi的加法顺序。
         // 两个xRs槽按[SINGLE_M, ND_BLOCK_SIZE]连续布局，支持firstK/secondK分段读取。
-        bool mergeC1BsBlock = totalLength_ > SINGLE_M && totalLength_ <= 2 * SINGLE_M;
+        bool mergeC1BsBlock = !enableHf32 && totalLength_ > SINGLE_M && totalLength_ <= 2 * SINGLE_M;
         if (mergeC1BsBlock) {
             uint32_t secondBSBlock = static_cast<uint32_t>(totalLength_ - SINGLE_M);
             // 先消费首块V2信号再发射第二块C0，避免同一flag的两次发布在首次等待前合并。
@@ -1014,7 +1014,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    bool enableB1Reuse = totalLength_ <= SINGLE_M || totalLength_ > 2U * SINGLE_M;
+    bool enableB1Reuse = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32 ||
+                         totalLength_ <= SINGLE_M || totalLength_ > 2U * SINGLE_M;
     c0Basic_.Process(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
                      workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_, enableB1Reuse);
 }
