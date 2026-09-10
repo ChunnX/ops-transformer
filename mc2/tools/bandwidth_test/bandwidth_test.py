@@ -15,6 +15,7 @@ import os
 import socket
 import logging
 import shutil
+from queue import Empty
 from pathlib import Path
 
 from typing import List, Tuple, Dict, Any
@@ -69,6 +70,12 @@ aic_core_num = 32 if CONFIG.parallel.is_full_core else CONFIG.parallel.partial_c
 aiv_core_num = aic_core_num * 2
 aiv_num = aiv_core_num if CONFIG.parallel.aiv_num is None else CONFIG.parallel.aiv_num
 world_size = CONFIG.parallel.server_num * CONFIG.parallel.rank_per_dev
+if CONFIG.parallel.server_num <= 0 or CONFIG.parallel.rank_per_dev <= 0 or world_size > 1024:
+    raise ValueError("server_num and rank_per_dev must be positive, with world_size <= 1024")
+if not 0 <= server_index < CONFIG.parallel.server_num:
+    raise ValueError("server_index must be in [0, server_num)")
+local_ranks = range(server_index * CONFIG.parallel.rank_per_dev,
+                    (server_index + 1) * CONFIG.parallel.rank_per_dev)
 ranks_list = list(range(world_size))
 test_configs = (
     [{"bs": CONFIG.shape.bs, "data_size": CONFIG.shape.data_size, "max_bs": CONFIG.shape.max_bs}]
@@ -79,7 +86,9 @@ input_dtype = torch.bfloat16 if CONFIG.shape.x_dtype == "bf16" else torch.float1
 dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
 mode = CONFIG.model.mode
 if mode is None:
-    mode = 0 if CONFIG.run.is_precision_test else 1
+    mode = 0 if CONFIG.run.is_precision_test or CONFIG.model.comm_alg == "roce" else 1
+if CONFIG.model.comm_alg == "roce" and mode != 0:
+    raise ValueError("roce only supports mode=0")
 if mode not in (0, 1, 2, 3, 4):
     raise ValueError("mode must be in [0, 4]")
 if mode in WIN_STREAM_MODES and CONFIG.model.comm_alg != "urma":
@@ -141,6 +150,7 @@ def print_setting():
     logger.info(f"{CONFIG.parallel.server_num=}")
     logger.info(f"{CONFIG.parallel.rank_per_dev=}")
     logger.info(f"{world_size=}")
+    logger.info("server_index=%d; local global ranks=%s", server_index, list(local_ranks))
     logger.info(f"{mode=}")
     logger.info(f"{CONFIG.model.comm_alg=}")
     logger.info(f"{CONFIG.model.batch_tokens=}")
@@ -292,6 +302,8 @@ def get_bandwidth_performance(
 
     logger.info("=" * 60)
     logger.info("Bandwidth Test Performance Results")
+    logger.info("Sampling scope: server_index=%d, local global ranks=%s; no cross-server aggregation",
+                server_index, list(local_ranks))
     logger.info("=" * 60)
     logger.info(f"Total data per iteration: {total_data_bytes / 1e6:.2f} MB")
     logger.info(f"World size: {num_world_size}")
@@ -306,6 +318,8 @@ def get_bandwidth_performance(
     logger.info("=" * 60)
 
     return {
+        "server_index": server_index,
+        "sampled_ranks": list(local_ranks),
         "mean_time_us": mean_time_us,
         "min_time_us": min_time_us,
         "max_time_us": max_time_us,
@@ -404,6 +418,8 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 
 
 def set_device(rank):
+    if CONFIG.parallel.rank_per_dev > torch_npu.npu.device_count():
+        raise ValueError("rank_per_dev exceeds the number of visible local NPU devices")
     torch_npu.npu.set_device(rank % CONFIG.parallel.rank_per_dev)
     logger.info(f"current device set: {torch_npu.npu.current_device()}")
 
@@ -862,6 +878,44 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
 # region 主测试函数
 
 
+def collect_local_results(processes, result_queue):
+    """Require one successful result for each local worker before reporting this server's results."""
+    try:
+        while True:
+            for rank, process in zip(local_ranks, processes):
+                if process.exitcode not in (None, 0):
+                    raise RuntimeError(f"Rank {rank} worker failed with exit code {process.exitcode}")
+            if all(process.exitcode is not None for process in processes):
+                break
+            # Inspect every worker: a failed later rank must not hide behind an earlier HCCL wait.
+            for process in processes:
+                if process.exitcode is None:
+                    process.join(timeout=0.1)
+    except BaseException:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+        for process in processes:
+            process.join()
+        raise
+    for rank, process in zip(local_ranks, processes):
+        process.join()
+        if process.exitcode != 0:
+            raise RuntimeError(f"Rank {rank} worker failed with exit code {process.exitcode}")
+    outputs = {}
+    for _ in local_ranks:
+        try:
+            rank, output = result_queue.get_nowait()
+        except Empty as exc:
+            raise RuntimeError("Missing local worker results") from exc
+        if rank not in local_ranks or rank in outputs or output is None:
+            raise RuntimeError(f"Invalid or failed local worker result for rank {rank}")
+        outputs[rank] = output
+    if not result_queue.empty():
+        raise RuntimeError("Unexpected extra local worker results")
+    return outputs
+
+
 def run_precision_test(
     x_per_rank: List[torch.Tensor],
     dstrank_id_per_rank: List[torch.Tensor],
@@ -877,7 +931,7 @@ def run_precision_test(
     result_queue = manager.Queue()
 
     processes = []
-    for rank in range(world_size):
+    for rank in local_ranks:
         p = Process(
             target=run_bandwidth_test_npu,
             args=(
@@ -896,29 +950,15 @@ def run_precision_test(
         p.start()
         processes.append(p)
 
-    for p in processes:
-        p.join()
-
-    npu_outputs = {}
-
-    if result_queue.qsize() == world_size:
-        while not result_queue.empty():
-            rank, output = result_queue.get()
-            if output is not None:
-                npu_outputs[rank] = output
-            else:
-                logger.error(f"[ERROR] Rank {rank} 执行失败")
-                return False
-    else:
-        logger.error("Get result_queue Failed")
-        return False
+    npu_outputs = collect_local_results(processes, result_queue)
 
     logger.info("-" * 60)
-    logger.info("Precision Verification:")
+    logger.info("Precision Verification: server_index=%d, local global ranks=%s",
+                server_index, list(local_ranks))
     logger.info("-" * 60)
 
     all_pass = True
-    for rank in range(world_size):
+    for rank in local_ranks:
         logger.info(f"\n[Rank {rank}] 开始精度对比...")
 
         golden_y, golden_receive_cnt = gen_golden_data(
@@ -956,7 +996,7 @@ def run_bandwidth_test(
     result_queue = manager.Queue()
 
     processes = []
-    for rank in range(world_size):
+    for rank in local_ranks:
         p = Process(
             target=run_bandwidth_test_npu_bandwidth,
             args=(
@@ -972,17 +1012,7 @@ def run_bandwidth_test(
         p.start()
         processes.append(p)
 
-    for p in processes:
-        p.join()
-
-    npu_outputs = {}
-    while not result_queue.empty():
-        rank, output = result_queue.get()
-        if output is not None:
-            npu_outputs[rank] = output
-        else:
-            logger.error(f"[ERROR] Rank {rank} 带宽测试执行失败")
-            return None
+    collect_local_results(processes, result_queue)
 
     data_size_bytes = test_data_size * dtype_bytes
     perf_result = get_bandwidth_performance(
@@ -1037,7 +1067,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     result_queue = manager.Queue()
 
     processes = []
-    for rank in range(world_size):
+    for rank in local_ranks:
         rank_configs = [
             (
                 all_inputs[i][0][rank],
@@ -1056,17 +1086,10 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
         p.start()
         processes.append(p)
 
-    for p in processes:
-        p.join()
-
-    npu_all_results = {}
-    while not result_queue.empty():
-        rank, results = result_queue.get()
-        if results is not None:
-            npu_all_results[rank] = results
-        else:
-            logger.error(f"[ERROR] Rank {rank} 多配置测试执行失败")
-            return []
+    npu_all_results = collect_local_results(processes, result_queue)
+    for rank, results in npu_all_results.items():
+        if [result["config_index"] for result in results] != list(range(1, len(test_configs) + 1)):
+            raise RuntimeError(f"Rank {rank} did not complete all test configurations")
 
     for i, cfg in enumerate(test_configs):
         test_data_size = cfg["data_size"]
@@ -1103,6 +1126,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
         logger.warning("[WARN] No valid test results")
         return
 
+    logger.info("Summary scope: server_index=%d, local global ranks=%s", server_index, list(local_ranks))
     logger.info("Communication: %s; mode: %d; requested batch_tokens: %d", CONFIG.model.comm_alg, mode,
                 CONFIG.model.batch_tokens)
     header = (
@@ -1123,7 +1147,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
         if mode in WIN_STREAM_MODES:
             rank_data_bytes = win_stream_rank_data_bytes(cfg["bs"], token_bytes, world_size)
         rank_data_mb = rank_data_bytes / (1024 * 1024)
-        if CONFIG.model.comm_alg != "urma":
+        if CONFIG.model.comm_alg not in ("urma", "roce"):
             batch_tokens_text = batch_data_mb_text = "N/A"
         elif CONFIG.model.shared_jetty:
             batch_tokens = r["shared_jetty_batch_tokens"]

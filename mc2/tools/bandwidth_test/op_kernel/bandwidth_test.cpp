@@ -21,6 +21,7 @@
 #include "bandwidth_test_tiling_key.h"
 #include "bandwidth_test.h"
 #include "bandwidth_test_urma.h"
+#include "bandwidth_test_roce.h"
 #include "bandwidth_test_urma_shared_jetty.h"
 
 using namespace BandwidthTestImpl;
@@ -48,6 +49,10 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
                 op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
                 op.Process();
             }
+        } else if constexpr (CommMode == TILINGKEY_TPL_ROCE) {
+            BandwidthTestRoce<DTYPE_X, DTYPE_Y> op;
+            op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process();
         } else {
             BandwidthTest<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);

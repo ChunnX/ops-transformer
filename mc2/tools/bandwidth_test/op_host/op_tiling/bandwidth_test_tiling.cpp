@@ -85,6 +85,11 @@ static bool IsUrma(const gert::TilingContext *context)
     return std::strcmp(context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX), "urma") == 0;
 }
 
+static bool IsRoce(const gert::TilingContext *context)
+{
+    return std::strcmp(context->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX), "roce") == 0;
+}
+
 static bool IsSharedJetty(const gert::TilingContext *context)
 {
     auto shared = context->GetAttrs()->GetAttrPointer<bool>(ATTR_SHARED_JETTY_INDEX);
@@ -186,8 +191,10 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto commAlg = attrs->GetAttrPointer<char>(ATTR_COMM_ALG_INDEX);
     OP_TILING_CHECK(commAlg == nullptr ||
                         (std::strcmp(commAlg, "") != 0 && std::strcmp(commAlg, "mte") != 0 &&
-                         std::strcmp(commAlg, "urma") != 0),
-                    OP_LOGE(nodeName, "comm_alg must be mte or urma."), return ge::GRAPH_FAILED);
+                         std::strcmp(commAlg, "urma") != 0 && std::strcmp(commAlg, "roce") != 0),
+                    OP_LOGE(nodeName, "comm_alg must be mte, urma or roce."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(IsRoce(context) && tilingData.mode != 0,
+                    OP_LOGE(nodeName, "roce only supports mode=0."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(IsWinStreamMode(tilingData.mode) && std::strcmp(commAlg, "urma") != 0,
                     OP_LOGE(nodeName, "mode 2/3/4 requires comm_alg=urma."), return ge::GRAPH_FAILED);
 
@@ -332,7 +339,8 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 static uint64_t CalTilingKey(const gert::TilingContext *context)
 {
     uint64_t archTag = TILING_KEY_BASE_A5;
-    uint64_t commMode = IsUrma(context) ? TILINGKEY_TPL_URMA : TILINGKEY_TPL_MTE;
+    uint64_t commMode = IsRoce(context) ? TILINGKEY_TPL_ROCE :
+        (IsUrma(context) ? TILINGKEY_TPL_URMA : TILINGKEY_TPL_MTE);
     uint64_t tilingKey = GET_TPL_TILING_KEY(archTag, commMode, IsSharedJetty(context) ? 1 : 0);
     return tilingKey;
 }
@@ -364,7 +372,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, BandwidthTestTilingData *tilingData,
                                     const char *nodeName)
 {
-    if (IsUrma(context)) {
+    if (IsUrma(context) || IsRoce(context)) {
         auto bufferSize = context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
         OP_TILING_CHECK(bufferSize == nullptr || *bufferSize <= 0,
                         OP_LOGE(nodeName, "ccl_buffer_size must describe the context-owned Win."),
@@ -500,7 +508,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                     OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
     tilingData->batchTokens = 0;
     bool directWin = IsWinStreamMode(tilingData->mode);
-    if (IsUrma(context)) {
+    if (IsUrma(context) || IsRoce(context)) {
         // Direct Win streaming only needs WQEs; business modes also stage one row and a chunk of IDs.
         uint64_t countBytes =
             IsSharedJetty(context) ? alignUp(static_cast<uint64_t>(tilingData->worldSize) * 4, 32) : 0;
@@ -545,7 +553,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                 tilingData->mode == 3 ? " (mode 3 ignores the request)" : "");
     } else {
         OP_TILING_CHECK(*batchTokensPtr != 0,
-                        OP_LOGE(nodeName, "batch_tokens is only supported for urma; use 0 for mte."),
+                        OP_LOGE(nodeName, "batch_tokens is only supported for urma or roce; use 0 for mte."),
                         return ge::GRAPH_FAILED);
         uint64_t dstRankBytes = alignUp(static_cast<uint64_t>(tilingData->maxBs) * 4, 32);
         uint64_t dstRankBufferBytes =

@@ -1,5 +1,72 @@
 # Torch Extension
 
+## 多机启动（双机，每机 16P）
+
+两台机器都修改 `mc2/tools/bandwidth_test/config.py`，并分别启动一次脚本：
+
+| 配置 | 机器 0 | 机器 1 |
+| --- | --- | --- |
+| `parallel.server_num` | `2` | `2` |
+| `parallel.rank_per_dev` | `16` | `16` |
+| `parallel.server_index` | `0` | `1` |
+| `parallel.is_cloud` | `False` | `False` |
+| `parallel.master_ip` | 机器 0 可达的 IP 字符串 | 相同 IP |
+| `parallel.master_port` | `50001` | `50001` |
+| `model.comm_alg` | `"roce"` | `"roce"` |
+| `model.mode` | `0` | `0` |
+| `model.shared_jetty` | `False` | `False` |
+
+两台机器使用相同的 shape、测试模式、随机种子、图模式和其他通信配置，且各自可见 16 个 NPU。
+脚本在每台机器自行启动 16 个进程：机器 0 负责全局 rank 0–15，机器 1 负责 16–31，
+本地设备均为 0–15，通信组总大小为 32。脚本没有 SSH 远程拉起功能，不要再用 torchrun 重复启动它。
+
+```bash
+cd mc2/tools/bandwidth_test
+python bandwidth_test.py
+```
+
+精度、单配置带宽、多配置带宽三个入口均支持按本机 rank 启动。精度测试在每台机器生成相同的
+全局输入和 golden，只比较本机输出；两台机器均通过才表示完整测试通过。带宽报告只统计本机
+profiling 样本，并记录服务器编号及本机全局 rank 范围，不自动汇总跨机结果。
+profiling、静态图构建和缓存目录应使用各机独立目录，避免共享文件系统上的并发清理或覆盖。
+云环境仍通过 `VC_TASK_INDEX`、`VC_WORKER_HOSTS` 获取节点编号和主节点地址。
+
+ROCE 会检查全部 rank 对（包括同机卡之间）的 ROCE link，仅跨机链路支持 ROCE 不满足此模式。
+当前算子仍面向 Ascend950；每机 16P 只描述进程数量，不扩展到其他芯片架构。
+
+## ROCE mode 0
+
+在 `config.py` 中设置 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`，脚本会选择
+ROCE context 和独立的 ROCE tiling 分支。`mode=None` 时 ROCE 默认使用 mode 0；显式设置
+其他 mode 会报错。支持 `aiv_num` 和 `batch_tokens`，批量容量计算与普通 URMA 相同。
+
+```python
+sym_buffer = BandwidthTestBuffer(group, comm_alg="roce")
+y, receive_cnt = bandwidth_test(
+    sym_buffer, x, dst_rank_id, sym_buffer.world_size, x.size(0),
+    mode=0, comm_alg="roce", batch_tokens=128)
+```
+
+`HcclChannelContextBuilder` 逐 peer 遍历网络层并确认
+`COMM_PROTOCOL_ROCE` link；缺少任一远端 peer 的 ROCE link 时直接报错，不回退 URMA/UBG。
+ROCE 与 URMA 共用 `aclrtMalloc → HcclCommMemReg` 的窗口申请和注册流程。
+Channel 的 `memHandles=customMemHandle_`、`memHandleNum=1`，远端 Win 通过
+`HcclChannelGetRemoteMems` 按注册 tag 查找。本地 Win 容量为 `2 * HCCL_BUFFSIZE` MiB。
+所有 rank 的窗口容量必须一致，ROCE 建链时校验远端注册地址非空且容量与本地相同。
+需在创建通信组前设置足够大的 `HCCL_BUFFSIZE`，mode 0 每卡至少需要
+`1 MiB + 2 * (world_size + 1) * max_bs * align_up(hidden * 2, 512)` 字节。
+
+`BandwidthTestRoce` 复用 URMA 的 mode 0 数据中转、通知、等待和输出拷贝流程，实例化
+`Hcomm<COMM_PROTOCOL_ROCE>`。网络写入的数据和通知的源地址、目的地址全部位于 HCCL Win；
+输入先经 UB 拷贝到本地 Win，接收完成后再从本地 Win 拷贝到输出 tensor。
+
+窗口由 context manager 分配并持有，复用原有注册、建链和释放流程，context tensor 使用原有布局。
+每个 buffer 使用独立的注册 tag；窗口在首次申请时清零，再注册和建链。所有 rank 都要在图捕获前
+创建 buffer，并持有 buffer 和通信组直到执行结束。同一 buffer 的算子调用和图重放需串行。
+网络收发不使用 tiling 分配的普通 workspace。
+公开 `aclnnBandwidthTestGetWorkspaceSize` 不创建 ROCE context，ROCE 使用 Torch inner ACLNN 路径。
+新增 tiling mode 扩展了 key 的位宽，需同步重新构建安装 host tiling、kernel 和 Torch 扩展。
+
 ## URMA 共享 jetty
 
 在 `config.py` 中设置 `shared_jetty=True`、`shared_jetty_num=N`，保留 `comm_alg="urma"`。

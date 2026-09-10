@@ -65,7 +65,7 @@ class ParallelConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
-    comm_alg: str = "urma"  # 通信算法：mte 或 urma；共享 mode 0/1/2 按 BS 分核
+    comm_alg: str = "urma"  # mte、urma 或 roce；roce 的 mode 只能为 0/None，shared_jetty=False
     shared_jetty: bool = False  # 共享 jetty：仅 comm_alg=urma 时生效
     shared_jetty_num: int = 1  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
     shared_jetty_comm_level: int = 0  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP

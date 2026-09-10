@@ -231,6 +231,10 @@ public:
         CommProtocol protocol;
         if (commAlg == "urma") {
             protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        } else if (commAlg == "roce") {
+            protocol = CommProtocol::COMM_PROTOCOL_ROCE;
+            TORCH_CHECK(customCclBufferSize_ > 1024 * 1024 && customCclBufferSize_ % 1024 == 0,
+                        "ROCE registered Win must exceed 1 MiB and be aligned to 1024 bytes");
         } else {
             protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
         }
@@ -290,12 +294,36 @@ public:
         TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL layers failed, ret: ", ret);
         TORCH_CHECK(layerList != nullptr && layerNum > 0, "Get HCCL layers returned empty layer list");
 
+        if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+            uint32_t rankSize = GetRankSize(commHandle);
+            ResolveRoceLinks(commHandle, GetRankId(commHandle), rankSize, layerList, layerNum);
+            rankNumPerUbDomain_ = rankSize;
+            return;
+        }
+
         if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
             GetRankSizePerServer(commHandle, rankNumPerUbDomain_);
             return;
         }
 
         CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
+    }
+
+    void ResolveRoceLinks(const HcclComm &comm, uint32_t rankId, uint32_t rankSize,
+                          const uint32_t *layers, uint32_t layerNum)
+    {
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            if (peer == rankId) {
+                continue;
+            }
+            for (uint32_t i = 0; i < layerNum; ++i) {
+                if (SupportsProtocol(comm, layers[i], rankId, peer, CommProtocol::COMM_PROTOCOL_ROCE)) {
+                    rankLinkMap_[peer] = {CommProtocol::COMM_PROTOCOL_ROCE, layers[i]};
+                    break;
+                }
+            }
+            TORCH_CHECK(rankLinkMap_.count(peer) != 0, "No ROCE link from rank ", rankId, " to rank ", peer);
+        }
     }
 
     // Protocol discovery may probe layers that do not connect the rank pair; treat those probes as unsupported.
@@ -546,6 +574,9 @@ public:
         TORCH_CHECK(rankDim > 0 && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size: ", rankDim);
         TORCH_CHECK(srcRankId < rankDim, "Invalid local rank ", srcRankId, " for rank size ", rankDim);
         uint32_t channelNum = rankDim - 1;
+        if (channelNum == 0 && protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+            return;
+        }
         std::vector<HcclChannelDesc> channelDesc(channelNum);
 
         InitHcclChannel(commHandle, rankDim, srcRankId, protocol, channelDesc);
@@ -567,7 +598,8 @@ public:
         GetHcclCommChannel(commHandle, rankSize, rankId, protocol, engine, commContextStruct);
         ASCEND_LOGI("Get HCCL communication channel success, channel num is: %u", rankSize - 1);
 
-        GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag);
+        GetRegisteredCommResource(commHandle, commContextStruct, rankSize, targetTag,
+                                  protocol == CommProtocol::COMM_PROTOCOL_ROCE);
         hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
 
         ASCEND_LOGI("Get HCCL CommResource success");
@@ -600,7 +632,7 @@ public:
     }
 
     void GetRegisteredCommResource(const HcclComm &commHandle, CommContext *commContextStruct, uint32_t rankSize,
-                                   const std::string &targetTag)
+                                   const std::string &targetTag, bool validateRoceWindow)
     {
         uint32_t rankId = commContextStruct->epRankId;
         commContextStruct->epHcclBuffer_[rankId] = reinterpret_cast<uint64_t>(*customDeviceBuffer_);
@@ -621,6 +653,12 @@ public:
                     break;
                 }
                 if (memTags[j] != nullptr && targetTag == memTags[j]) {
+                    // Equal capacity keeps the ping-pong offsets identical on both ranks.
+                    TORCH_CHECK(!validateRoceWindow ||
+                                    (remoteMems[j].addr != nullptr &&
+                                     remoteMems[j].size == static_cast<uint64_t>(customCclBufferSize_)),
+                                "ROCE remote registered Win is null or has a different size, peer: ", peer,
+                                ", local size: ", customCclBufferSize_, ", remote size: ", remoteMems[j].size);
                     commContextStruct->epHcclBuffer_[peer] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
                     hasTargetMem = true;
                     break;

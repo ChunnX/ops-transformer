@@ -73,13 +73,14 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
     torch._check(0 < len(group.encode()) < 128 and "\0" not in group,
                  lambda: "group must be a valid HCCL group name")
     torch._check(test_mode in (0, 1, 2, 3, 4), lambda: "test_mode must be in [0, 4]")
-    torch._check(comm_alg in ("", "mte", "urma"), lambda: "comm_alg must be mte or urma")
+    torch._check(comm_alg in ("", "mte", "urma", "roce"), lambda: "comm_alg must be mte, urma or roce")
+    torch._check(comm_alg != "roce" or test_mode == 0, lambda: "roce only supports mode=0")
     torch._check(test_mode not in (2, 3, 4) or comm_alg == "urma",
                  lambda: "mode 2/3/4 requires comm_alg=urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
-    torch._check(comm_alg == "urma" or batch_tokens == 0,
-                 lambda: "batch_tokens is only supported for urma")
+    torch._check(comm_alg in ("urma", "roce") or batch_tokens == 0,
+                 lambda: "batch_tokens is only supported for urma or roce")
     torch._check(not shared_jetty or comm_alg == "urma", lambda: "shared_jetty requires urma")
     torch._check(test_mode not in (3, 4) or shared_jetty,
                  lambda: "mode 3/4 requires shared_jetty=True")
@@ -132,8 +133,8 @@ class BandwidthTestBuffer:
 
     def __init__(self, group, comm_alg="", shared_jetty=False, shared_jetty_num=1,
                  shared_jetty_comm_level=0):
-        if comm_alg not in ("", "mte", "urma"):
-            raise ValueError("comm_alg must be mte or urma")
+        if comm_alg not in ("", "mte", "urma", "roce"):
+            raise ValueError("comm_alg must be mte, urma or roce")
         self.comm_alg = comm_alg or "mte"
         if shared_jetty and self.comm_alg != "urma":
             raise ValueError("shared_jetty requires comm_alg=urma")
@@ -150,7 +151,7 @@ class BandwidthTestBuffer:
             raise ValueError("world_size must be in [1, 1024]")
         rank = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
-        # Match the mainline A5 tiling: twice HCCL_BUFFSIZE (MiB), default 200.
+        # Registered Win uses twice HCCL_BUFFSIZE (MiB) for MTE, URMA and ROCE.
         buffer_config = os.environ.get("HCCL_BUFFSIZE", "200")
         if not buffer_config.isascii() or not buffer_config.isdecimal():
             raise ValueError("HCCL_BUFFSIZE must contain ASCII decimal digits")
@@ -173,7 +174,7 @@ class BandwidthTestBuffer:
             return
         self._ctx_manager = CommContextManager(
             self.group_name, self.world_size, backend={"Ascend950": "channel"},
-            commAlg="urma" if self.comm_alg == "urma" else "ub-mem",
+            commAlg=self.comm_alg if self.comm_alg in ("urma", "roce") else "ub-mem",
             opName=f"bandwidth_test_torch_{self.comm_alg}_{sequence}",
             customCclBufferSize=2 * buffer_mb * 1024 * 1024)
         self.context = self._ctx_manager.create_context()
@@ -201,9 +202,9 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         mode: 0 exchanges and receives rows; 1 sends and waits; 2 keeps the original Win stream;
             shared mode 3 makes every Jetty send floor(BS/world_size) rows to every remote rank;
             shared mode 4 creates one Jetty per remote rank and sends all BS rows.
-        comm_alg: "mte", "" or "urma"; must match the context owner.
+        comm_alg: "mte", "", "urma" or "roce" (mode 0 only); must match the context owner.
         aiv_num: -1 selects platform defaults; otherwise a positive AIV count.
-        batch_tokens: URMA tokens per commit; mode 3 ignores it and uses the largest feasible batch.
+        batch_tokens: URMA/ROCE tokens per commit; mode 3 ignores it and uses the largest feasible batch.
             In mode 4, 0 selects BS and the result is capped by BS and the tiling maximum.
         shared_jetty: Enable the URMA shared jetty kernel and context.
         shared_jetty_num: Number of shared jettys and sending AIVs, in [1, min(aiv_num, 56)].

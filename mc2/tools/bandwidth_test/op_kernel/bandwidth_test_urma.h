@@ -37,10 +37,10 @@ using namespace AscendC;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
 
-#define TemplateBandwidthTestTypeClass typename XType, typename YType
-#define TemplateBandwidthTestTypeFunc XType, YType
+#define TemplateBandwidthTestUrmaTypeClass typename XType, typename YType, auto Protocol
+#define TemplateBandwidthTestUrmaTypeFunc XType, YType, Protocol
 
-template <TemplateBandwidthTestTypeClass>
+template <typename XType, typename YType, auto Protocol = COMM_PROTOCOL_UBC_CTP>
 class BandwidthTestUrma {
 public:
     __aicore__ inline BandwidthTestUrma(){};
@@ -131,7 +131,7 @@ private:
     uint32_t startStatusIndex_{0};    // 起始状态索引
     uint32_t totalUbSize_{0};         // 总UB大小
     uint64_t totalWinSizeEp_{0};      // 总窗口大小
-    Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
+    Hcomm<Protocol> hcomm_;
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
     TBuf<> batchBuf_;
     LocalTensor<uint8_t> batchTensor_;
@@ -148,8 +148,8 @@ private:
     static constexpr uint32_t STREAM_EPOCH_OFFSET = STREAM_FLAGS_OFFSET + HCCL_MAX_RANK_SIZE * STREAM_FLAG_STRIDE;
 };
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId,
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId,
                                                                           GM_ADDR y, GM_ADDR receiveCnt,
                                                                           GM_ADDR workspaceGM, TPipe *pipe,
                                                                           const BandwidthTestTilingData *tilingData)
@@ -269,8 +269,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Init(GM
     }
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SplitToCore(
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
     sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
@@ -286,8 +286,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SplitTo
     endTokenId = startTokenId + sendTokenNum;
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::ProcessToken(GlobalTensor<XType> &outTokenGT,
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::ProcessToken(GlobalTensor<XType> &outTokenGT,
                                                                                   uint32_t tokenIndex)
 {
     // 处理单个token：
@@ -311,19 +311,27 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Process
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BeginBatch(uint32_t rankId)
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::BeginBatch(uint32_t rankId)
 {
     uint64_t channel = hcommHandle_[rankId];
     hcomm_.Lock(channel);
     preparedWrites_ = 0;
-    batchHandle_ = hcomm_.MakeBatchHandle(
-        channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
-        reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
+    if constexpr (Protocol == COMM_PROTOCOL_ROCE) {
+        // Both address bases are registered with HCCL, including payload and notification sources.
+        batchHandle_ = hcomm_.MakeBatchHandle(
+            channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
+            reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]),
+            reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[epRankId_]));
+    } else {
+        batchHandle_ = hcomm_.MakeBatchHandle(
+            channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
+            reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
+    }
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::PrepareWrite(
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::PrepareWrite(
     GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch)
 {
     ++preparedWrites_;
@@ -338,8 +346,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Prepare
     hcomm_.Drain(batchHandle_);
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::SendToMoeExpert()
 {
     // Each destination has one owner core; original token slots keep staging disjoint across cores.
     GM_ADDR stagingGM = windowGM_ - expertPerSizeOnWin_;
@@ -394,8 +402,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendToM
     }
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SetStatus()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::SetStatus()
 {
     // SendToMoeExpert has accumulated counts, including zero-token destinations.
     PipeBarrier<PIPE_ALL>();
@@ -427,8 +435,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SetStat
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BufferInit()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::BufferInit()
 {
     // 重新初始化缓冲区，用于WaitDispatch阶段
     tpipe_->Reset();
@@ -450,8 +458,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::BufferI
     totalUsedUB_ += UB_ALIGN * 2;
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::WaitDispatch()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::WaitDispatch()
 {
     // 等待所有rank完成数据发送
     // 通过轮询状态区，等待所有rank的状态flag变为1.0f
@@ -503,8 +511,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::WaitDis
     SyncAll<true>(); // 等待所有核完成
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::LocalWindowCopy()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::LocalWindowCopy()
 {
     // 从本地窗口读取接收到的数据，拷贝到输出tensor
     // 输出格式: y[rank_id * max_bs * hidden : (rank_id+1) * max_bs * hidden] = 来自该rank的数据
@@ -600,8 +608,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::LocalWi
     totalCnt_ = beginIdx;
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendWindowToRank(
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::SendWindowToRank(
     uint32_t rankId, GM_ADDR epochAddr)
 {
     uint32_t channelIndex = rankId < static_cast<uint32_t>(epRankId_) ? rankId : rankId - 1;
@@ -637,8 +645,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::SendWin
     hcomm_.Unlock(channel);
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::StreamFromWindow()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::StreamFromWindow()
 {
     if (aivId_ >= epWorldSize_ ||
         (aivId_ == static_cast<uint32_t>(epRankId_) && aivId_ + aivNum_ >= epWorldSize_)) {
@@ -666,8 +674,8 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::StreamF
     }
 }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Process()
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Process()
 {
     // 主处理函数
     // mode=0: 完整流程 (发送 + 同步 + 接收)
@@ -688,6 +696,9 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestTypeFunc>::Process
         }
     }
 }
+
+#undef TemplateBandwidthTestUrmaTypeClass
+#undef TemplateBandwidthTestUrmaTypeFunc
 
 } // namespace BandwidthTestImpl
 #endif // BANDWIDTH_TEST_URMA_H

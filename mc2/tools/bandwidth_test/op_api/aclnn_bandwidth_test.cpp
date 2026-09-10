@@ -98,8 +98,8 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTens
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
     auto ret_param = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-    if (commAlg != nullptr && std::strcmp(commAlg, "urma") == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "URMA requires the Torch-owned BandwidthTestBuffer context.");
+    if (commAlg != nullptr && (std::strcmp(commAlg, "urma") == 0 || std::strcmp(commAlg, "roce") == 0)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "URMA/ROCE requires the Torch-owned BandwidthTestBuffer context.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
