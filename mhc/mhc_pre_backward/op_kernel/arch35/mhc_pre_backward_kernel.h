@@ -232,10 +232,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(InitParams initParams)
 {
     xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
-    // x体积大且以顺序流式方式读取，绕过L2以保护phi和流水workspace等高复用数据。
     xGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.phi));
-    // phi体积小且被C0跨T分块重复读取，使用常驻缓存避免被流式大张量挤出L2。
     phiGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_PERSISTENT);
     alphaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.alpha));
     gradHInGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_h_in));
