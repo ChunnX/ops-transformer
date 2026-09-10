@@ -260,7 +260,7 @@ public:
         if (useUnitFlag_) {
             SetFixPipeConfig<MM_T>(l0CBuffers_.template ReinterpretCast<MM_T>(), true);
             SetMMRowMajor(); // Match the NZ2ND reader's N-first order.
-            AscendC::PipeBarrier<PIPE_ALL>();
+            // Both setters issue scalar register configuration; no asynchronous buffer access to drain.
         }
     }
 
