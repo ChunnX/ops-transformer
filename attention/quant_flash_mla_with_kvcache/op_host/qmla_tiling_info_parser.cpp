@@ -216,30 +216,6 @@ ge::graphStatus QmlaInfoParser::GetQuantMode()
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t QmlaInfoParser::CalcMaxSeqFromTensor(const gert::Tensor *tensor, bool isCumulative) const
-{
-    if (tensor == nullptr || tensor->GetData<int32_t>() == nullptr || tensor->GetShapeSize() <= 0) {
-        return -1;
-    }
-    const int32_t *data = tensor->GetData<int32_t>();
-    int64_t size = tensor->GetShapeSize();
-    if (isCumulative) {
-        if (size < 2) {
-            return -1;
-        }
-        int64_t maxDiff = 0;
-        for (int64_t i = 1; i < size; ++i) {
-            maxDiff = std::max(maxDiff, static_cast<int64_t>(data[i]) - static_cast<int64_t>(data[i - 1]));
-        }
-        return maxDiff;
-    }
-    int64_t maxVal = 0;
-    for (int64_t i = 0; i < size; ++i) {
-        maxVal = std::max(maxVal, static_cast<int64_t>(data[i]));
-    }
-    return maxVal;
-}
-
 ge::graphStatus QmlaInfoParser::GetQShapeInfo()
 {
     const auto &qShape = opParamInfo_.query.shape->GetStorageShape();
@@ -261,8 +237,7 @@ ge::graphStatus QmlaInfoParser::GetQShapeInfo()
         int64_t cuSeqLenQSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
         bSize_ = cuSeqLenQSize - 1;
         s1Size_ = (opParamInfo_.maxSeqlenQ != nullptr && *opParamInfo_.maxSeqlenQ > 0)
-                      ? *opParamInfo_.maxSeqlenQ
-                      : CalcMaxSeqFromTensor(opParamInfo_.cuSeqlensQ.tensor, true);
+                      ? *opParamInfo_.maxSeqlenQ : -1;
     } else {
         if (qShape.GetDimNum() != 4) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, QUERY_NAME,
@@ -343,13 +318,7 @@ ge::graphStatus QmlaInfoParser::GetS2Size()
     }
     maxBlockNumPerBatch_ = blockTable->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
-
-    // 优先使用max_seqlen_kv；否则从cache_seqlens推导
-    int64_t attrMaxKv = (opParamInfo_.maxSeqlenKv != nullptr) ? *opParamInfo_.maxSeqlenKv : -1;
-    // cache_seqlens: layout_q为TND时为累积序列长度，否则为per-batch序列长度
-    bool kvCumulative = (layoutQ_ == QmlaLayout::TND);
-    int64_t dataMaxKv = CalcMaxSeqFromTensor(opParamInfo_.cacheSeqlens.tensor, kvCumulative);
-    maxSeqKv_ = (attrMaxKv > 0) ? attrMaxKv : dataMaxKv;
+    maxSeqKv_ = (opParamInfo_.maxSeqlenKv != nullptr) ? *opParamInfo_.maxSeqlenKv : -1;
     if (maxSeqKv_ > 0 && maxSeqKv_ < s2Size_) {
         s2Size_ = maxSeqKv_;
     }

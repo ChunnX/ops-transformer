@@ -56,6 +56,12 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_mla_with_kvcache(
     if (layout_q == "TND") {
         tSize = q.size(0);
         nSize = q.size(1);
+        // TND时bSize从cu_seqlens_q(B+1个元素)或cache_seqlens(B个元素)推导
+        if (cu_seqlens_q.has_value() && cu_seqlens_q->defined()) {
+            bSize = cu_seqlens_q->size(0) - 1;
+        } else if (cache_seqlens.defined()) {
+            bSize = cache_seqlens.size(0);
+        }
     } else if (layout_q == "BSND") {
         bSize = q.size(0);
         sSize = q.size(1);
