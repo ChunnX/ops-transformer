@@ -57,11 +57,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    // 特性禁用: head_dim=72 与 sinks 暂不开放, tiling 层统一拦截
-    OP_CHECK_IF(faInfo.qkHeadDim == 72 || faInfo.vHeadDim == 72,
-                OP_LOGE(faInfo.opName, "head_dim=72 is currently not supported."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.sinksFlag, OP_LOGE(faInfo.opName, "sinks is currently not supported."), return ge::GRAPH_FAILED);
-
     FAChecker faChecker;
     faChecker.Init(faInfo);
     if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
