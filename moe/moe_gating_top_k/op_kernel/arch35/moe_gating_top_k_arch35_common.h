@@ -37,12 +37,19 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 constexpr int64_t NORM_TYPE_SOFTMAX = 0;
 constexpr int64_t NORM_TYPE_SIGMOID = 1;
 constexpr int64_t NORM_TYPE_SOFTPLUS = 2;
+constexpr int64_t NORM_TYPE_SIGMOID_NO_RENORM = 3;
 
-// Softmax and Sigmoid are controlled by renorm. SqrtSoftplus always
-// renormalizes the selected scores.
+__aicore__ inline bool IsSigmoidNormType(int64_t normType)
+{
+    return normType == NORM_TYPE_SIGMOID || normType == NORM_TYPE_SIGMOID_NO_RENORM;
+}
+
+// Keep the legacy behavior for normType 0, 1 and 2. The new normType 3
+// explicitly selects Sigmoid without renormalizing the selected scores.
 __aicore__ inline bool ShouldRenormalize(int64_t normType, int64_t renorm)
 {
-    return normType == NORM_TYPE_SOFTPLUS || renorm == 1;
+    return normType == NORM_TYPE_SIGMOID || normType == NORM_TYPE_SOFTPLUS ||
+           (normType == NORM_TYPE_SOFTMAX && renorm == 1);
 }
 
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)

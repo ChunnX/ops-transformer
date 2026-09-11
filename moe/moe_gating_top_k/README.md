@@ -28,7 +28,7 @@ $$
 normOut =
 \begin{cases}
     \text{SoftMax}(x),      & normType = 0 \\
-    \text{Sigmoid}(x),      & normType = 1 \\
+    \text{Sigmoid}(x),      & normType = 1\ or\ 3 \\
     \sqrt{\text{Softplus}(x)},     & normType = 2
 \end{cases}
 $$
@@ -84,10 +84,10 @@ $$
   gathered = normOut[\text{expertIdxOut}]
   $$
 
-  normType=0或1时由renorm控制是否归一化；normType=2时始终做归一化：
+  normType=1或2时始终做归一化；normType=0时由renorm控制是否归一化；normType=3时不做归一化：
 
   $$
-  if\ (normType = 2)\ or\ (renorm = 1):
+  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
   $$
 
   $$
@@ -118,7 +118,7 @@ $$
 normOut =
 \begin{cases}
     SoftMax(x),      & normType = 0 \\
-    Sigmoid(x),      & normType = 1 \\
+    Sigmoid(x),      & normType = 1\ or\ 3 \\
     \sqrt{Softplus(x)},     & normType = 2
 \end{cases}
 $$
@@ -141,10 +141,10 @@ $$
   gathered = normOut[expertIdxOut]
   $$
 
-  normType=0或1时由renorm控制是否归一化；normType=2时始终做归一化：
+  normType=1或2时始终做归一化；normType=0时由renorm控制是否归一化；normType=3时不做归一化：
 
   $$
-  if\ (normType = 2)\ or\ (renorm = 1):
+  if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
   $$
 
   $$
@@ -300,12 +300,12 @@ $$
       * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
       * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
       * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-      * renorm支持0和1。normType=0或1时，renorm=0表示不做renorm，renorm=1表示做renorm；normType=2时始终做renorm。
+      * renorm支持0和1。normType=0时，renorm=0表示不做renorm，renorm=1表示做renorm；normType=1或2时renorm参数无效，并始终做renorm；normType=3时要求renorm为0，并且不做renorm。
   * 其他限制：
       * groupSelectMode取值0和1，0表示使用最大值对group进行排序，1表示使用topk2的sum值对group进行排序。
-      * normType取值0、1和2，0表示使用Softmax函数，1表示使用Sigmoid函数，2表示使用SqrtSoftplus函数。
+      * normType取值0、1、2和3，0表示使用Softmax函数，1表示使用Sigmoid函数并做renorm，2表示使用SqrtSoftplus函数并做renorm，3表示使用Sigmoid函数但不做renorm。
       * 在Atlas A2/A3系列产品上，normType取值为2时要求groupCount为1（Ascend 950PR/Ascend 950DT无此限制）。
-      * normType取值为0或1时renorm参数生效；normType取值为2时renorm参数无效，并始终做renorm。
+      * normType取值为0时renorm参数生效；normType取值为1或2时renorm参数无效，并始终做renorm；normType取值为3时renorm参数必须为0。
       * outFlag取值true和false，true表示输出，false表示不输出。
   * **Hash模式限制**：
       * Hash模式需同时提供inputIdsOptional和tid2eidOptional，否则为TopK模式。

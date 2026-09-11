@@ -174,7 +174,7 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::ComputeX()
                   (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
         PipeBarrier<PIPE_V>();
     }
-    if (normType_ == 1) { // sigmoid
+    if (IsSigmoidNormType(normType_)) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCountAlign_);
         PipeBarrier<PIPE_V>();

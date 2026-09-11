@@ -41,7 +41,7 @@ def _softmax_numpy(x, axis=-1):
 
 
 def _should_renormalize(norm_type, renorm):
-    return norm_type == 2 or renorm == 1
+    return norm_type in (1, 2) or (norm_type == 0 and renorm == 1)
 
 
 class AclnnMoeGatingTopKTestSpec:
@@ -73,7 +73,7 @@ class AclnnMoeGatingTopKTestSpec:
 
         if normType == 0:
             x = _softmax_torch(x, -1)
-        elif normType == 1:
+        elif normType in (1, 3):
             x = 1 / (1 + numpy.exp(-x.numpy()))
             x = torch.from_numpy(x).to(torch.float32)
         elif normType == 2:
@@ -156,7 +156,7 @@ class AclnnMoeGatingTopKV2TestSpec:
 
         if normType == 0:
             x = _softmax_torch(x, -1)
-        elif normType == 1:
+        elif normType in (1, 3):
             x = 1 / (1 + torch.exp(-x))
         elif normType == 2:
             x = torch.sqrt(torch.nn.functional.softplus(x))
@@ -235,7 +235,7 @@ class MoeGatingTopKTestSpec:
 
         if norm_type == 0:
             x = _softmax_numpy(x, -1)
-        elif norm_type == 1:
+        elif norm_type in (1, 3):
             x = 1 / (1 + numpy.exp(-x))
         elif norm_type == 2:
             x = numpy.sqrt(numpy.log1p(numpy.exp(x)))

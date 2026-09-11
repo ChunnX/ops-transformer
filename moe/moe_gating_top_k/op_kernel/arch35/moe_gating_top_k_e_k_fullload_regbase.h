@@ -316,6 +316,8 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKExpertScore(
     __VEC_SCOPE__
     {
         RegTensor<float> vreg2;
+        RegTensor<float> vreg3;
+        RegTensor<float> vreg4;
         RegTensor<float> vregOutput;
         RegTensor<uint32_t> vreg0;
         RegTensor<uint32_t> vreg1;
@@ -326,9 +328,11 @@ __aicore__ inline void MoeGatingTopKEKFullloadRegbase<T>::SelectTopKExpertScore(
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1, mrgSortAddr);
         Reg::Gather(vreg2, inputAddr, vreg1, preg0);
 
-        // This specialized tiling key is selected only for normType=Sigmoid
-        // and renorm=0. Return the gathered un-biased Sigmoid scores directly.
-        Reg::Muls(vregOutput, vreg2, routedScalingFactor_, preg0);
+        Reg::Reduce<Reg::ReduceType::SUM>(vreg3, vreg2, preg0);
+        Reg::Adds(vreg3, vreg3, eps_, preg0);
+        Reg::Duplicate(vreg4, vreg3, preg0);
+        Reg::Div(vreg4, vreg2, vreg4, preg0);
+        Reg::Muls(vregOutput, vreg4, routedScalingFactor_, preg0);
 
         ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg0, 0);
         Reg::StoreAlign(expertIdxAddr, vreg1, preg0);

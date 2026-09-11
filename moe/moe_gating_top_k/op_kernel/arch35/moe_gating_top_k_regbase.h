@@ -583,7 +583,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ComputeX()
         LocalTensor<float> xInLocalTensor = xInQueue_.DeQue<float>();
         ComputeWithSoftMax(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
         xInQueue_.FreeTensor(xInLocalTensor);
-    } else if (tilingData_->normType == 1) {
+    } else if (IsSigmoidNormType(tilingData_->normType)) {
         LocalTensor<T> xInLocalTensor = xInQueue_.DeQue<T>();
         ComputeWithSigmoid(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
         xInQueue_.FreeTensor(xInLocalTensor);

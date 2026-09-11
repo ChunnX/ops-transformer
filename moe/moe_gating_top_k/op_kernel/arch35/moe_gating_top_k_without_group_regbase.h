@@ -18,6 +18,7 @@
 #include <cmath>
 #include "common.h"
 #include "kernel_operator.h"
+#include "moe_gating_top_k_arch35_common.h"
 #include "op_kernel/math_util.h"
 #include "op_kernel/load_store_utils.h"
 #include "basic_api/kernel_operator_utils_intf.h"
@@ -323,7 +324,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
     __ubuf__ float *xNormWithBiasAddr = (__ubuf__ float *)xNormWithBiasTensor.GetPhyAddr();
     __ubuf__ float *biasAddr = (__ubuf__ float *)biasTensor.GetPhyAddr();
 
-    if (normType_ == 1) {
+    if (IsSigmoidNormType(normType_)) {
         ComputeNormSigmoid(xRowAddr, xNormAddr);
     } else if (normType_ == 0) {
         ComputeNormSoftMax(xRowAddr, xNormAddr, xNormWithBiasAddr, biasAddr, duplicateNum);
@@ -642,7 +643,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 Reg::Exp(vregTmp2, vregTmp1, preg0);
                 Reg::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
                 Reg::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
-                if (renorm_ == 0) {
+                if (noNorm_) {
                     Reg::Muls(vregOut, vregNorm, routedScalingFactor_, preg0);
                 } else {
                     Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregNorm, preg0);
@@ -817,7 +818,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
     int64_t batchSize = Min(batchRows_, curCoreRowCount_);
     int64_t numBatches = CeilDiv(curCoreRowCount_, batchSize);
 
-    if (normType_ == 1) {
+    if (IsSigmoidNormType(normType_)) {
         ProcessSingleExpertSigmoid(batchSize, numBatches);
     } else if (normType_ == 0) {
         if (renorm_ == 0) {

@@ -42,11 +42,13 @@ class MoeGatingTopKMethod(BaseApi):
         if bias is not None:
             bias = bias.numpy()
 
-        # softmax/ sigmoid processing
+        # Activation processing
         if norm_type == 0:
             x, _, _ = self.softmax_func(x, axis=-1)
-        else:
+        elif norm_type in (1, 3):
             x = 1 / (1 + np.exp(-x))
+        elif norm_type == 2:
+            x = np.sqrt(np.log1p(np.exp(x)))
 
         original_x = x
         if bias is not None:
@@ -73,7 +75,7 @@ class MoeGatingTopKMethod(BaseApi):
         y = np.take_along_axis(original_x, indices, axis=1)
 
         # Renorm and scaling
-        if norm_type == 1 or renorm == 1:
+        if norm_type in (1, 2) or (norm_type == 0 and renorm == 1):
             y /= (np.sum(y, axis=-1, keepdims=True) + eps)
         y *= routed_scaling_factor
 

@@ -130,7 +130,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T, U1, U2>::ComputeX()
         PipeBarrier<PIPE_V>();
     }
 
-    if (normType_ == NORM_TYPE_SIGMOID) { // sigmoid
+    if (IsSigmoidNormType(normType_)) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCount_);
         PipeBarrier<PIPE_V>();

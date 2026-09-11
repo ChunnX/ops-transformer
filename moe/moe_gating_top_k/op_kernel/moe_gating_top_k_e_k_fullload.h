@@ -290,8 +290,20 @@ __aicore__ inline void MoeGatingTopKEKFullload<T>::SelectTopKExpertScore()
     Gather(yOutTensor, xSigmoidTensor, expertByteIdxTensor.template ReinterpretCast<uint32_t>(),
            static_cast<uint32_t>(0), k_);
 
+    LocalTensor<float> calTensor = calcTmpBuffer_.Get<float>();
     PipeBarrier<PIPE_V>();
-    // This high-performance key is selected only for Sigmoid with renorm=0.
+    ReduceSum(calTensor, yOutTensor, xSigmoidTensor, k_);
+    event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIdVToS);
+    WaitFlag<HardEvent::V_S>(eventIdVToS);
+    float sumValue = calTensor.GetValue(0) + eps_;
+    event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    SetFlag<HardEvent::S_V>(eventIdSToV);
+    WaitFlag<HardEvent::S_V>(eventIdSToV);
+    Duplicate(calTensor, sumValue, k_);
+    PipeBarrier<PIPE_V>();
+    Div(yOutTensor, yOutTensor, calTensor, k_);
+    PipeBarrier<PIPE_V>();
     Muls(yOutTensor, yOutTensor, routedScalingFactor_, k_);
 
     if constexpr (!IsSameType<T, float>::value) {

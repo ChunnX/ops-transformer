@@ -20,7 +20,7 @@
 namespace ge {
 
 /**
- * @brief Compute renorm(sigmoid) and topk for moe input.
+ * @brief Compute activation, top-k selection, and optional renormalization for moe input.
  *
  * @par Inputs:
  * @li x: A 2D tensor which moe gating topk is applied, The shape is: (B*S, E), format supports ND, and data type
@@ -44,7 +44,7 @@ namespace ge {
  *  The size of the -1 axis must be the same as that of k.
  * @li expert_idx: A 2D tensor which is the topk index result of moe gating topk, format supports ND,
  *  and data type must be int. The shape must be the same as that of y.
- * @li out: A 2D tensor which is the renorm result of moe gating topk, format supports ND,
+ * @li out: A 2D tensor which is the activation result of moe gating topk, format supports ND,
  *  and data type must be float. The shape must be the same as that of x.
  *
  * @par Attributes:
@@ -57,12 +57,14 @@ namespace ge {
  *  The group_count * align_32(expert_num / group_count) can not be greater than 2048. The default value is 1.
  * @li group_select_mode: An optional attribute of type int. 0 indicating that sort group by max values,
  *  1 indicating that sort group by sum of top-2 values. The default value is 0.
- * @li renorm: An optional attribute of type int. It can only be 0 now, indicating that norm firstly and then topk.
- *  The default value is 0.
+ * @li renorm: An optional attribute of type int. 0 indicating no renormalization and 1 indicating L1
+ *  renormalization when norm_type is 0. It must be 0 when norm_type is 3. The default value is 0.
  * @li norm_type: An optional attribute of type int. 0 indicating that the softmax function is used,
- *  1 indicating that the sigmoid function is used. The default value is 0.
- * @li out_flag: An optional attribute of type bool. true indicating that has renorm output,
- *  false indicating that does not have renorm output. The default value is false.
+ *  1 indicating that the sigmoid function is used with renormalization, 2 indicating that the sqrt softplus
+ *  function is used with renormalization, and 3 indicating that the sigmoid function is used without
+ *  renormalization. The default value is 0.
+ * @li out_flag: An optional attribute of type bool. true indicating that the activation result is output,
+ *  false indicating that the activation result is not output. The default value is false.
  * @li routed_scaling_factor: An optional attribute of type float, indicating the routed_scaling_factor coefficient
  *  in use. The default value is 1.0.
  * @li eps: An optional attribute of type float, indicating the eps coefficient in use. The default value is 1e-20.
