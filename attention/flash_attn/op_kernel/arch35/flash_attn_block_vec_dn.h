@@ -85,11 +85,13 @@ public:
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
-    static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
+    static constexpr uint32_t UB_MM_RES_BUFCNT = (s2BaseSize == 256) ? 3U : ((dBaseSize > 128) ? 2U : 4U);
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
         mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
     // bmm1/bmm2(mmRes) 区域总字节数：FD block 以此作为 FD 业务区的 UB 起始偏移
-    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
+    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES =
+        (s2BaseSize == 256) ? 2U * UB_MM_RES_BUF_BYTES + mBaseSize / CV_RATIO * dVBaseSize * sizeof(T) :
+                              UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
     // FD 业务区在 UB 中的起始字节偏移，供 kernel 传给 FD block 的 InitBuffers
     static __aicore__ inline constexpr uint32_t GetFdBaseOffset()
     {
@@ -101,7 +103,7 @@ public:
     static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
-    static constexpr uint32_t UB_VEC1_RES_BUFCNT = 2U;
+    static constexpr uint32_t UB_VEC1_RES_BUFCNT = (s2BaseSize == 256 && dVBaseSize > 64) ? 1U : 2U;
     static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1U) * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
@@ -195,8 +197,8 @@ public:
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
-                                               UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES); // CV通信BUF
-        addrUb = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
+                                               UB_MM_RES_TOTAL_BYTES); // CV通信BUF
+        addrUb = UB_MM_RES_TOTAL_BYTES;
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_VEC2_RES_BUF_BYTES)
                          .template ReinterpretCast<T>(); // 输出BUF: attn_out拷出
         addrUb += UB_VEC2_RES_BUF_BYTES;
@@ -273,11 +275,8 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
-        if constexpr (dBaseSize <= 128) {
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
+        for (uint32_t slot = 0; slot < UB_MM_RES_BUFCNT; ++slot) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0 + slot);
         }
     }
 
@@ -290,7 +289,7 @@ public:
     __aicore__ inline void ProcessVec1(RunInfo runInfo)
     {
         uint32_t mmResUbBufId = mmResBufId_;
-        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        mmResBufId_ = (mmResBufId_ + 1) % ((s2BaseSize == 256) ? 2U : UB_MM_RES_BUFCNT);
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
@@ -541,8 +540,10 @@ public:
 
     __aicore__ inline void ProcessVec2(RunInfo runInfo)
     {
-        uint32_t mmResUbBufId = mmResBufId_;
-        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        uint32_t mmResUbBufId = (s2BaseSize == 256) ? 2U : mmResBufId_;
+        if constexpr (s2BaseSize != 256) {
+            mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        }
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
