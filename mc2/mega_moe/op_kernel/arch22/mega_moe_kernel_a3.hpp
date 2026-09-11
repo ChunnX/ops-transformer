@@ -48,6 +48,7 @@
 #include "moe_permute_prologue/moe_permute_prologue.hpp"
 #include "unpermute/mc2_mega_moe_moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "utils/weight_l2_prefetch.hpp"
 #include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
@@ -277,6 +278,33 @@ public:
                 // rounds>1 时为 BuildRoundTables 完成后的轮表就绪信号
                 AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
                 syncgmmIdx++;
+                // W1 冷启动预热（g0-pull 窗，发射即返回，不阻塞）：flag0 之后、GMM1 组 0 的
+                // flag1 wait 之前入队哑拷贝，MTE2 在 pull g0 全程排空——与专家 0 的 token pull
+                // 共享 MTE2 并发（g0 是唯一无前序组装载的组，AIC 引擎份额空闲）；与窗口 0
+                // （AllGather 自旋窗，flag0 之前）时间错开，后续可两窗同开。残余（pull 窗吸
+                // 不满剂量 ~304KB/核≈6μs 时）顶住组 0 首个真实 B-tile 装载，延迟非死锁。
+                // 多 chunk/多轮仅首轮发射一次（权重静态，后续 chunk 复用 L2 驻留）。scratch 取
+                // 流水线真实 L1 占用之上（GetL1EndOffset 对齐取整）：BlockMmad 探针与 GMM1 内
+                // 真实实例同型同默认参（无软 flag 搬运，flag Set 幂等，作用域结束即析构），偏移
+                // 一致；越界防御（理论不触发）时整体跳过（上界按官方融合场景用户可用口径
+                // L1 总量-256B 预留收紧）。
+                if (chunkIdx == 0 && roundIdx == 0 && WEIGHT_L2_PREFETCH_ENABLE_W1_AIC_COLDSTART) {
+                    // 空专家过滤：flag0 已返回，cumsum 对 AIC 可见；currentM0 与 GMM1 组 0 的计算
+                    // 谓词同源同值（组 0 行区间起点为 0，chunk 级与轮表级判定等价）。
+                    uint32_t currentM0 = cumsumMM.GetValue((params.EP - 1) * params.expertPerRank);
+                    if (currentM0 > 0) {
+                        BlockMmad l1EndProbe(resource);
+                        uint32_t w1ScratchOffset = AlignUp(l1EndProbe.GetL1EndOffset(), WEIGHT_L2_PREFETCH_CHUNK_BYTES);
+                        if (w1ScratchOffset + WEIGHT_L2_PREFETCH_CHUNK_BYTES <=
+                            ArchTag::L1_SIZE - WEIGHT_L2_PREFETCH_ARCH_RESERVED_BYTES) {
+                            WeightL2PrefetchAicColdStartW1(
+                                reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                                PrefetchW1BytesPerExpert(params.problemShape),
+                                static_cast<uint32_t>(params.expertPerRank), coreIdx, coreNum,
+                                resource.l1Buf.template GetBufferByByte<uint8_t>(w1ScratchOffset));
+                        }
+                    }
+                }
                 if (roundIdx == 0) {
                     numRecvRounds = ComputeNumRecvRounds(params);
                 }
@@ -884,8 +912,15 @@ private:
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
 
-            if (currentM <= L1TileShape::M) {
-                gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            // W1 L2 hint：W1 任一预取路径开启（窗口 0 AIV 固定区 / AIC 冷启动）时必须 NORMAL——
+            // DISABLE 读写双向 bypass（实测）会使预取完全无效；全关时保留基线条件 DISABLE
+            // （currentM<=单 M-tile 即权重单次读时 bypass）。if constexpr 编译期裁剪。
+            constexpr bool kGmm1WeightPrefetched =
+                WEIGHT_L2_PREFETCH_ENABLE_WINDOW0 || WEIGHT_L2_PREFETCH_ENABLE_W1_AIC_COLDSTART;
+            if constexpr (!kGmm1WeightPrefetched) {
+                if (currentM <= L1TileShape::M) {
+                    gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                }
             }
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
             LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
@@ -1012,6 +1047,12 @@ private:
                 lastDequantExpertNum = params.expertPerRank - params.epilogueGranularity;
             }
         }
+        // W2 段界预取的 L1 scratch：取流水线真实占用之上（与 GMM1 冷启动同法）；越界防御
+        // （理论不触发）时段界发射整体跳过，上界按官方融合场景用户可用口径（L1 总量-256B
+        // 预留）收紧。
+        uint32_t w2ScratchOffset = AlignUp(blockMmad.GetL1EndOffset(), WEIGHT_L2_PREFETCH_CHUNK_BYTES);
+        const bool w2ScratchFits = w2ScratchOffset + WEIGHT_L2_PREFETCH_CHUNK_BYTES <=
+                                   ArchTag::L1_SIZE - WEIGHT_L2_PREFETCH_ARCH_RESERVED_BYTES;
 
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentM = cumsumMM.GetValue((params.EP - 1) * params.expertPerRank + groupIdx);
@@ -1031,8 +1072,14 @@ private:
                 GetTensorAddr<ElementB>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrB2))));
             gmS2.SetGlobalBuffer(reinterpret_cast<__gm__ ElementScale *>(
                 GetTensorAddr<int64_t>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(params.ptrScale2))));
-            if (currentM <= L1TileShape::M) {
-                gmB2.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            // W2 L2 hint：W2 段界预取开启时必须 NORMAL（DISABLE 双向 bypass 会使预取无效）；全关
+            // 时保留基线条件 DISABLE（currentM<=单 M-tile 即权重单次读时 bypass）。if constexpr
+            // 编译期裁剪。
+            constexpr bool kGmm2WeightPrefetched = WEIGHT_L2_PREFETCH_ENABLE_W2_GMM2_SECTION;
+            if constexpr (!kGmm2WeightPrefetched) {
+                if (currentM <= L1TileShape::M) {
+                    gmB2.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                }
             }
             GemmCoord inGroupProblemShape{currentM, n2, k2}; // M N K
 
@@ -1049,11 +1096,34 @@ private:
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                 if (groupIdx == 0 || IsSyncTask(groupIdx - 1, params.expertPerRank)) {
+                    // 段界 W2 预取：本核 wait 前发射即将消费段的 W2（段区间与 swiglu 分段同源：
+                    // IsSyncTask 步进），排空与 AIV 本段 swiglu 的 gmC 读并行，wait 返回即消费
+                    // （零距离）。首段（groupIdx==0）的 V2C 早已置位、无窗口，不预取保持冷；晚到
+                    // 核窗口小，小 burst 尾部由剂量上限兜底。
+                    if (WEIGHT_L2_PREFETCH_ENABLE_W2_GMM2_SECTION && groupIdx > 0U && w2ScratchFits) {
+                        uint32_t expertPerRank = static_cast<uint32_t>(params.expertPerRank);
+                        uint32_t sectionEnd = groupIdx;
+                        while (sectionEnd < expertPerRank - 1U && !IsSyncTask(sectionEnd, params.expertPerRank)) {
+                            ++sectionEnd;
+                        }
+                        WeightL2PrefetchAicRange(reinterpret_cast<GM_ADDR>(params.ptrB2), params.listLen != 1,
+                                                 PrefetchW2BytesPerExpert(params.problemShape), groupIdx,
+                                                 sectionEnd + 1U, WEIGHT_L2_PREFETCH_W2_GMM2_CHUNKS, coreIdx, coreNum,
+                                                 resource.l1Buf.template GetBufferByByte<uint8_t>(w2ScratchOffset));
+                    }
                     AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C + chunkIdx * PERMUTE_CHUNK_FLAG_STRIDE);
                 }
             } else {
                 if (params.expertPerRank > lastDequantExpertNum &&
                     groupIdx + 1 == params.expertPerRank - lastDequantExpertNum) {
+                    // 第二段（[granularity, epr)）段界，机制同上；首段无窗口不预取。
+                    if (WEIGHT_L2_PREFETCH_ENABLE_W2_GMM2_SECTION && w2ScratchFits) {
+                        WeightL2PrefetchAicRange(reinterpret_cast<GM_ADDR>(params.ptrB2), params.listLen != 1,
+                                                 PrefetchW2BytesPerExpert(params.problemShape), groupIdx,
+                                                 static_cast<uint32_t>(params.expertPerRank),
+                                                 WEIGHT_L2_PREFETCH_W2_GMM2_CHUNKS, coreIdx, coreNum,
+                                                 resource.l1Buf.template GetBufferByByte<uint8_t>(w2ScratchOffset));
+                    }
                     AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C + chunkIdx * PERMUTE_CHUNK_FLAG_STRIDE);
                 }
             }
@@ -1171,6 +1241,17 @@ private:
             copyUbToGm(dstAddress, tmpBuffer, layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        }
+        /*
+         * 窗口 0 预取主发射点：push 与自旋两循环之间的函数级公共路径（push 循环按 coreNum
+         * 步进分摊目的 rank，EP<coreNum 时部分核零迭代，发射不能放进循环体内）。此处一次性
+         * 发完全部配额：本核计数 push（含计数读）已全部入队完成，不被预取压队；随后进入的
+         * 自旋等远端最慢 rank 的计数标记，为跨卡 RTT 级最长空闲窗口（MTE2 完全空闲），预取
+         * 的 HBM 读整段被 RTT 掩盖。在飞块由下方 PipeBarrier<PIPE_ALL> 与函数尾 SyncAll<true>
+         * 的全流水屏障收口，无需独立 Drain。
+         */
+        if constexpr (WEIGHT_L2_PREFETCH_ENABLE_WINDOW0) {
+            WeightL2PrefetchBurstAll(w0PrefetchCursor_);
         }
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             bool rankAvailable = !IsRankMasked(dstEpIdx);
@@ -1293,6 +1374,55 @@ private:
         }
     }
 
+    /*
+     * 权重 L2 预取的每专家字节数（W1=K*N、W2=(N/2)*K 个 element；host 强制 K/N 均 512 对齐，
+     * 除法安全）。int4 两 element 共 1 字节，bf16/fp16 每 element 2 字节。窗口 0 预取 W1
+     * （AIV 游标）、GMM2 段界预取 W2（AIC）。AIV 游标 Init 与 AIC 侧发射（GMM1 冷启动 /
+     * GMM2 段界）共用本组方法，避免两处公式漂移。
+     */
+    static CATLASS_DEVICE uint64_t PrefetchW1BytesPerExpert(GemmCoord const &problemShape)
+    {
+        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            return static_cast<uint64_t>(problemShape.k()) * problemShape.n() / 2U;
+        } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+            return static_cast<uint64_t>(problemShape.k()) * problemShape.n();
+        } else {
+            static_assert(sizeof(ElementB) <= 2, "prefetch byte accounting assumes at most 2 bytes per element");
+            return static_cast<uint64_t>(problemShape.k()) * problemShape.n() * 2U;
+        }
+    }
+
+    static CATLASS_DEVICE uint64_t PrefetchW2BytesPerExpert(GemmCoord const &problemShape)
+    {
+        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            return static_cast<uint64_t>(problemShape.n() / 2) * problemShape.k() / 2U;
+        } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+            return static_cast<uint64_t>(problemShape.n() / 2) * problemShape.k();
+        } else {
+            static_assert(sizeof(ElementB) <= 2, "prefetch byte accounting assumes at most 2 bytes per element");
+            return static_cast<uint64_t>(problemShape.n() / 2) * problemShape.k() * 2U;
+        }
+    }
+
+    /*
+     * AIV 预取 scratch 洞宽（字节）：[WEIGHT_L2_PREFETCH_UB_OFFSET, UB_SIZE - UB 顶部常驻区)
+     * 的可用宽度，钳到 16KB、向下 32B 对齐。顶部常驻区 = [rankMask 保留区][preSumBeforeRank
+     * 缓存][tokenPerExpert 缓存]（镜像 initBuffer 的布局算术——改动 initBuffer 须同步此处）。
+     * 洞不足 AIV_MIN_CHUNK_BYTES 时 WeightL2PrefetchInit 的下限判定使游标 inactive（路径 no-op）。
+     */
+    CATLASS_DEVICE
+    uint32_t ComputeAivPrefetchHoleBytes(Params const &params) const
+    {
+        uint32_t rankMaskReserved = AlignUp(params.EP * sizeof(int32_t), BYTE_PER_BLK);
+        uint32_t routeCacheBytes = AlignUp(params.EP * params.expertPerRank * sizeof(int32_t), BYTE_PER_BLK);
+        uint32_t ubTopReserved = rankMaskReserved + 2U * routeCacheBytes;
+        uint32_t holeBytes = ArchTag::UB_SIZE > ubTopReserved + WEIGHT_L2_PREFETCH_UB_OFFSET ?
+                                 ArchTag::UB_SIZE - ubTopReserved - WEIGHT_L2_PREFETCH_UB_OFFSET :
+                                 0U;
+        holeBytes = holeBytes < WEIGHT_L2_PREFETCH_CHUNK_BYTES ? holeBytes : WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+        return holeBytes & ~31U;
+    }
+
     // 接收轮处理：轮内复用原有 dispatch → swiglu → combine 流水。
     // 前置条件：cumsumMM / preSumBeforeRank / UB 路由缓存已指向本轮数据
     // （rounds==1 时为 chunk 级表，rounds>1 时调用方已切换到轮表并刷新 UB 缓存）。
@@ -1302,6 +1432,9 @@ private:
     void ProcessRecvRound(Params const &params, int64_t chunkIdx)
     {
         int32_t runtimeRank = RuntimeRank(params);
+        // 窗口 0 预取收口说明：发射点在 AllGatherTokenPerExpert 内（push 与自旋两循环之间），
+        // 在飞块由该函数内的 PipeBarrier<PIPE_ALL> 与函数尾 SyncAll<true> 全流水屏障排空——
+        // 到此处时 L2 预热已完成，先于轮就绪信号放行 AIC/GMM1，无需独立 Drain。
         // 轮就绪信号：rounds==1 时即 chunk cumsum/路由就绪信号，rounds>1 时为轮表就绪信号
         uint16_t syncgmm1Idx = 0;
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
@@ -1568,6 +1701,26 @@ private:
             }
         }
         CopyRankMaskToLocal(params);
+
+        /*
+         * 窗口 0（W1 固定区）预取——游标构造：全体 AIV 交错认领，游标固定锁定 W1 头部
+         * [0, W0_EXPERTS) 个专家，与 W0_BUDGET_BYTES 预算双钳、先到先停；不随 GMM1 消费前沿
+         * 推进（固定剂量便于归因；被 rankMask 屏蔽的核已在 operator() 提前返回，不参与认领）。
+         * 权重静态，多 chunk 不重发（后续 chunk 复用 L2 驻留）。发射方式（不在此倾泻）：
+         * AllGatherTokenPerExpert 内 push 与自旋两循环之间一次性发完全部配额——计数 push 已
+         * 入队不被压队，随后的跨卡自旋（等最慢 rank 的计数标记）为最长 RTT 空闲窗口，预取
+         * 的 HBM 读整段被掩盖；在飞块由函数内 PipeBarrier<PIPE_ALL>/SyncAll<true> 全流水
+         * 屏障收口（见该函数注释）。
+         */
+        if constexpr (WEIGHT_L2_PREFETCH_ENABLE_WINDOW0) {
+            uint32_t aivHoleBytes = ComputeAivPrefetchHoleBytes(params);
+            WeightL2PrefetchInit(
+                w0PrefetchCursor_, reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                PrefetchW1BytesPerExpert(params.problemShape), static_cast<uint32_t>(params.expertPerRank), coreIdx,
+                coreNum, WEIGHT_L2_PREFETCH_W0_BUDGET_BYTES,
+                resource.ubBuf.template GetBufferByByte<uint8_t>(WEIGHT_L2_PREFETCH_UB_OFFSET), aivHoleBytes);
+            WeightL2PrefetchRetarget(w0PrefetchCursor_, 0U, WEIGHT_L2_PREFETCH_W0_EXPERTS);
+        }
 
         for (int64_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx) {
             const int64_t tokenBase = chunkIdx * PERMUTE_CHUNK;
@@ -2079,6 +2232,10 @@ private:
     AscendC::LocalTensor<int32_t> ubTokenPerExpertCache;
     AscendC::LocalTensor<int32_t> ubPreSumBeforeRankCache;
     uint32_t routeCacheNum{0};
+    // 权重 L2 预取游标（AIV 侧，仅 AIV 使用；路径关闭或洞不足时不构造/active=false，发射自动
+    // no-op）：w0=窗口 0 固定区（W1，DispatchAndCombine 头部与 sendmask 并发一次性打满）。
+    // W2 预取走 AIC 侧 GMM2 段界路径（GM->L1，无 AIV 游标）。机制见 utils/weight_l2_prefetch.hpp。
+    WeightL2PrefetchCursor w0PrefetchCursor_;
     // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
     // 基址取通信域首地址（shmem()()），根据kRoutingIsQuant选择对应tiling结构体的Policy，
     // ArchTag传入Policy供架构差异扩展。
