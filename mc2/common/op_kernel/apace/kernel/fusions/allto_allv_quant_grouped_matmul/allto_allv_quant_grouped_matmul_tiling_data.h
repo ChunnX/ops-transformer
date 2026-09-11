@@ -230,10 +230,6 @@ constexpr uint32_t A2AV_GMM_MAX_SEG_NUM = 256;
 constexpr uint32_t A2AV_GMM_HCCL_PARAM_RANK_NUM = 128;
 static_assert(A2AV_GMM_MAX_RANK_NUM <= A2AV_GMM_HCCL_PARAM_RANK_NUM,
               "APACE rank capacity must fit the HCCL parameter ABI");
-// Temporary on-device binary-search stage: submit and wait only the first
-// expert's data AlltoAllV, then finalize the normal HCCL lifecycle.
-constexpr bool A2AV_GMM_DIAG_DATA_ONLY = true;
-
 /*!
  * \brief hcomm 版 tiling 数据（host 构建后随 kernel tiling buffer 下发）
  */

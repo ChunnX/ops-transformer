@@ -103,7 +103,6 @@ public:
     using MmKernel = Apace::Kernel::QuantGroupedMatmulKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
 
     static constexpr uint64_t xHcclDataType_ = GetA2avHcclDataType<AType>();
-    static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
 
     /*!
      * \brief 初始化 HCCL；通信任务在所有 MIX 子核初始化完成后下发
@@ -157,10 +156,6 @@ public:
         // Do not let AIV0 submit the first collective while another MIX
         // sub-core is still initializing its HCCL context.
         AscendC::SyncAll<false>();
-        if (A2AV_GMM_DIAG_DATA_ONLY) {
-            RunDataDiagnostic();
-            return;
-        }
         if ASCEND_IS_AIV {
             RunCommunication();
             return;
@@ -225,25 +220,6 @@ private:
         hccl_.Finalize();
     }
 
-    __aicore__ inline void RunDataDiagnostic()
-    {
-        if ASCEND_IS_AIV {
-            if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
-                PrepareExpertCommunication(0U);
-                dataHandle_ = hccl_.template AlltoAllV<true>(
-                    xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
-                    dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
-                hccl_.Wait(dataHandle_);
-            }
-        }
-        // Hold every MIX sub-core until AIV0 either finishes the data
-        // collective or reproduces the hang, then close the normal lifecycle.
-        AscendC::SyncAll<false>();
-        if ASCEND_IS_AIV {
-            hccl_.Finalize();
-        }
-    }
-
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
     {
         const uint32_t previous = (segIdx == 0U) ? 0U : tilingData_->segList[segIdx - 1U];
@@ -253,9 +229,13 @@ private:
     __aicore__ inline void IssueExpertCommunication(uint32_t expertIdx)
     {
         PrepareExpertCommunication(expertIdx);
+        // MX scale is an E8M0 byte payload.  The HCCL server validates each
+        // collective against the data type used to build its CC tiling, so
+        // transport the scale bytes with the same one-byte type as X.  The
+        // collective only copies bytes; the E8M0 bit pattern is unchanged.
         scaleHandle_ = hccl_.template AlltoAllV<true>(
-            xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
-            scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
+            xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), scaleRecvGM_,
+            scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
         dataHandle_ = hccl_.template AlltoAllV<true>(
             xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
             dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
