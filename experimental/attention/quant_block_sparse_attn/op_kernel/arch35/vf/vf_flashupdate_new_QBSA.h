@@ -27,8 +27,8 @@ using FaVectorApi::REDUCE_SIZE;
 // Preserve the QBSA interface while reusing the common basic/general kernels.
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre>
 __aicore__ inline void FlashUpdateNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
-                                     const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
-                                     const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
+                                      const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+                                      const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
 {
     // isMlaFullQuant=false never loads rowMaxTensor. Supply the valid expMaxTensor
     // because the common wrapper still obtains the unused tensor's address.

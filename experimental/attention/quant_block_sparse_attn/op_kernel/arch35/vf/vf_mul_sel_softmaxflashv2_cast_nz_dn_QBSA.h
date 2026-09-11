@@ -1165,9 +1165,7 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        const float pScale = 1.0f)
 {
     __ubuf__ uint32_t *qGatherIdxUb =
-        (__ubuf__ uint32_t *)(vselrIndexesBuf[QSCALE_GATHER_INDEX]
-                                  .template Get<uint32_t>()
-                                  .GetPhyAddr());
+        (__ubuf__ uint32_t *)(vselrIndexesBuf[QSCALE_GATHER_INDEX].template Get<uint32_t>().GetPhyAddr());
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
@@ -2924,7 +2922,6 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(
             pScale, minValue, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor, pScaleSubLoop0Tensor);
     }
 }
-
 
 } // namespace QbsaVectorApi
 

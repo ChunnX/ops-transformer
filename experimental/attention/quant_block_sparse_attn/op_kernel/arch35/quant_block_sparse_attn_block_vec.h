@@ -390,12 +390,12 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 QbsaVectorApi::FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
+                    deSCalePreVValue);
             } else {
                 QbsaVectorApi::FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
+                    deSCalePreVValue);
             }
         } else {
             if (unlikely(runInfo.s2LoopCount == 1)) {

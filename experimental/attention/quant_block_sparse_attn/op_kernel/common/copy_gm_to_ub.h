@@ -76,8 +76,8 @@ private:
     {
         int64_t blockTableOffset = runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx;
         int64_t physicalBlock = blockTableTensor.GetValue(blockTableOffset);
-        byteOffset = physicalBlock * (constInfo.paBlockStride / sizeof(float)) +
-                     runInfo.n2oIdx * constInfo.kvSparseBlockSize;
+        byteOffset =
+            physicalBlock * (constInfo.paBlockStride / sizeof(float)) + runInfo.n2oIdx * constInfo.kvSparseBlockSize;
     }
 };
 
