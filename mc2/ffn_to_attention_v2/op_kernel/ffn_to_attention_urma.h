@@ -517,6 +517,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     ++sqWriteCount;
                     uint32_t drainCount = 0U;
                     if (enableCqe) {
+                        ++drainCount;
                         AscendC::PRINTF("rank=%u, dst=%u, drain=%u, sq=%u\n", rankId_, dstRank, drainCount,
                                         sqWriteCount);
                         CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
