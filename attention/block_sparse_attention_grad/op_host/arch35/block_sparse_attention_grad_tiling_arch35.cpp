@@ -88,7 +88,7 @@ protected:
             return false;
         }
 
-        if (blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
+        if (blockShapeX_ == 0 || blockShapeY_ == 0 || blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
             OP_LOGE(context_->GetNodeName(),
                     "BlockSparseAttentionGrad only supports blockShapeX and blockShapeY that are multiples of 16.");
             return false;
