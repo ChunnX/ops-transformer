@@ -1344,7 +1344,8 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
 static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tilingData,
                                                    uint32_t moeActivationElementsPerByte,
                                                    uint32_t sharedActivationElementsPerByte,
-                                                   bool needsIndependentSharedQuant, uint32_t topkValidIndexCoreNum)
+                                                   bool needsIndependentSharedQuant, uint32_t topkValidIndexCoreNum,
+                                                   bool isPreQuantizedX)
 {
     uint64_t totalFlagElementCount = CalcHostFlagElementCount(tilingData);
     uint32_t resetElementCountPerCore =
@@ -1362,16 +1363,21 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
         quantOutputBufferBytes = std::max(moeQuantOutputBufferBytes, sharedQuantOutputBufferBytes);
     }
 
-    uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按每个 topK 有效下标计算发送核负责的最大专家数分配，与 kernel 地址布局一致。
     uint32_t maxExpertCountPerCore =
         ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, topkValidIndexCoreNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
-    // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
+    // mxTempTensor_ 固定占 2KB；在线量化使用 xOut/xIn 双 buffer，预量化使用 record 环形缓冲。
     constexpr uint32_t mxTempTensorBytes = 2U * 1024U;
-    return resetTensorBytes + mxTempTensorBytes + 2U * quantOutputBufferBytes + 2U * quantInputBufferBytes +
-           sendCountAccumulatorBytes;
+    uint32_t quantInputBufferBytes =
+        ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
+    uint32_t quantScratchBufferBytes = 2U * quantOutputBufferBytes + 2U * quantInputBufferBytes;
+    if (isPreQuantizedX) {
+        uint32_t preQuantRecordRingBytes = PRE_QUANT_RECORD_BUFFER_COUNT * quantOutputBufferBytes;
+        quantScratchBufferBytes = std::max(quantScratchBufferBytes, preQuantRecordRingBytes);
+    }
+    return resetTensorBytes + mxTempTensorBytes + quantScratchBufferBytes + sendCountAccumulatorBytes;
 }
 
 /*
@@ -1381,13 +1387,13 @@ static uint32_t CalcTopkValidIndexFixedBufferBytes(const MegaMoeTilingData *tili
  */
 static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32_t moeActivationElementsPerByte,
                                            uint32_t sharedActivationElementsPerByte, bool needsIndependentSharedQuant,
-                                           uint32_t availableUbBytes)
+                                           bool isPreQuantizedX, uint32_t availableUbBytes)
 {
     const bool sharedMte = tilingData->sharedExpertNum > 0U && tilingData->topoType == TOPO_TYPE_MTE;
     const uint32_t topkValidIndexCoreNum = sharedMte ? tilingData->aicNum : tilingData->blockAivNum;
     uint32_t sendMaskFixedBufferBytes =
         CalcTopkValidIndexFixedBufferBytes(tilingData, moeActivationElementsPerByte, sharedActivationElementsPerByte,
-                                           needsIndependentSharedQuant, topkValidIndexCoreNum);
+                                           needsIndependentSharedQuant, topkValidIndexCoreNum, isPreQuantizedX);
 
     /*
      * 按发送核数均衡分配专家，前 remainder 个发送核多处理一个专家。
@@ -1454,8 +1460,11 @@ static void SetAdaptiveBufferConfigs(const gert::TilingContext *context, const M
     // 该依赖只经 tilingData 传递，调换顺序会静默改变 flag 区尺寸。
     tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
 
+    auto dispatchQuantModePtr = context->GetAttrs()->GetAttrPointer<int64_t>(config.attrDispatchQuantModeIndex);
+    bool isPreQuantizedX = *dispatchQuantModePtr == DISPATCH_QUANT_MODE_NO_QUANT;
     SetTopkValidIndexBufferConfigs(tilingData, activationElementsPerByte, sharedActivationElementsPerByte,
-                                   tilingData->needsIndependentSharedQuant != 0U, availableUbBytes);
+                                   tilingData->needsIndependentSharedQuant != 0U, isPreQuantizedX,
+                                   availableUbBytes);
 
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     SetUnpermuteBufferConfigs(tilingData, topKWeightsDataType, availableUbBytes);
