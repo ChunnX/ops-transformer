@@ -81,7 +81,7 @@ def write_reports(output_dir, rows):
     lines = ["# Bandwidth topology sweep", "",
              f"Server: {first['server_index']}; sampled ranks: {first['sampled_ranks']}; world size: {first['world_size']}.",
              f"URMA comm level: {first['comm_level']} (0=mixed, 1=all UBC_CTP, 2=all UBC_RTP); "
-             f"graph type: {first['graph_type']}; AIVs: {first['aiv_num']}; dtype: {first['dtype']}.",
+             f"graph type: {first['graph_type']}; requested AIVs (-1=platform selection): {first['aiv_num']}; dtype: {first['dtype']}.",
              f"Requested batch: {first['requested_batch_tokens']}; Drain threshold: {first['drain_threshold']}.",
              "", "All reported times subtract 2 us per operator. Bandwidth columns retain the script's GB/s label "
              "but use bytes / 2^30 / seconds (GiB/s). Traffic counts payload only; flags still consume queue budget.",
@@ -105,8 +105,12 @@ def run_sweep(config):
     cases = sweep_cases(world_size)
     aiv_num = config.parallel.aiv_num
     if aiv_num is None:
-        aiv_num = 64 if config.parallel.is_full_core else 2 * config.parallel.partial_core_num
-    if any(jettys > min(aiv_num, 56) for _, _, jettys, _ in cases):
+        aiv_num = -1
+    if aiv_num != -1 and aiv_num <= 0:
+        raise ValueError("aiv_num must be -1/None (platform selection) or positive")
+    # Platform capacity is unknown to this CPU-only launcher; tiling validates automatic selection.
+    jetty_limit = 56 if aiv_num == -1 else min(aiv_num, 56)
+    if any(jettys > jetty_limit for _, _, jettys, _ in cases):
         raise ValueError("Sweep Jetty counts (including mode 4 baseline) must fit selected AIVs and the 56-Jetty limit")
     if not config.shape.test_configs:
         raise ValueError("Sweep requires shape.test_configs")

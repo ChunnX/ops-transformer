@@ -93,3 +93,5 @@ python -m unittest discover -s tests -p test_bandwidth_sweep.py
 ```
 
 测试覆盖矩阵生成、真实子进程配置继承、模拟完整批跑和 CSV/Markdown 输出、失败保留结果。这些检查不依赖 CANN/NPU，也不替代设备编译和多卡验证。
+
+`ParallelConfig.aiv_num` 默认 -1，由 tiling 读取平台实际 AIV 数；None 也按 -1 处理。扫描器仅在显式指定正数时按该核数预检，自动模式由 tiling 校验 Jetty 数是否可用。报告中的 aiv_num 为请求值，-1 不代表实际核数。

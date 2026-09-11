@@ -78,7 +78,7 @@ if CONFIG.parallel.is_cloud:
 
 aic_core_num = 32 if CONFIG.parallel.is_full_core else CONFIG.parallel.partial_core_num
 aiv_core_num = aic_core_num * 2
-aiv_num = aiv_core_num if CONFIG.parallel.aiv_num is None else CONFIG.parallel.aiv_num
+aiv_num = -1 if CONFIG.parallel.aiv_num is None else CONFIG.parallel.aiv_num
 world_size = CONFIG.parallel.server_num * CONFIG.parallel.rank_per_dev
 if CONFIG.parallel.server_num <= 0 or CONFIG.parallel.rank_per_dev <= 0 or world_size > 1024:
     raise ValueError("server_num and rank_per_dev must be positive, with world_size <= 1024")

@@ -74,7 +74,7 @@ class SweepTests(unittest.TestCase):
     def test_orchestration_and_reports(self):
         with tempfile.TemporaryDirectory() as directory:
             config = replace(CONFIG, parallel=replace(CONFIG.parallel, server_num=2, rank_per_dev=8,
-                                                      server_index=0, is_cloud=False, aiv_num=64),
+                                                      server_index=0, is_cloud=False, aiv_num=None),
                              shape=replace(CONFIG.shape, test_configs=[{"bs": 1, "data_size": 1024, "max_bs": 1}]),
                              run=replace(CONFIG.run, sweep_output_path=directory))
             self.seen = []
@@ -98,7 +98,7 @@ class SweepTests(unittest.TestCase):
     def test_failure_preserves_completed_group(self):
         with tempfile.TemporaryDirectory() as directory:
             config = replace(CONFIG, parallel=replace(CONFIG.parallel, server_num=2, rank_per_dev=8,
-                                                      server_index=0, is_cloud=False, aiv_num=64),
+                                                      server_index=0, is_cloud=False, aiv_num=-1),
                              shape=replace(CONFIG.shape, test_configs=[{"bs": 1, "data_size": 1024, "max_bs": 1}]),
                              run=replace(CONFIG.run, sweep_output_path=directory))
             self.seen = []

@@ -61,7 +61,7 @@ class ParallelConfig:
     master_port: int = 50001  # HCCL 初始化使用的 TCP 端口，各参与进程须一致
     is_full_core: bool = True  # True：使用 32 个 AIC / 64 个 AIV；False：使用 partial_core_num
     partial_core_num: int = 16  # 非全核时的 AIC 数量，AIV 数量自动取其两倍
-    aiv_num: Optional[int] = None  # 算子使用的 AIV 核数；None：取 AIC 数量的两倍，可单独覆盖
+    aiv_num: Optional[int] = -1  # -1/None：由 tiling 按平台选择；正数：显式指定 AIV 核数
 
 
 @dataclass(frozen=True)
