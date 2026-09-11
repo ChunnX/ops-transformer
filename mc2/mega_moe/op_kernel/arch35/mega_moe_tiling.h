@@ -115,12 +115,12 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *   mxTempTensor                = 2KB；
  *   在线量化的 2 个 xOutTensor  <= 2 * (8192B token + 256B scale + 128B weight) = 17152B；
  *   在线量化的 2 个 xInTensor   = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
- *   预量化 record ring 当前为 4 * (8192B token + 256B scale + 128B weight) = 34304B，
- *   小于上述在线量化 xOut/xIn 合计，因而优先复用同一片物理空间；
+ *   预量化 record ring 当前为 6 * (8192B token + 256B scale + 128B weight) = 51456B，
+ *   比上述在线量化 xOut/xIn 合计多 1536B，按较大值预留；
  *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
  *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
  *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
- *   合计 176064B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
+ *   预量化最坏合计 177600B，约 174KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
  * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
  * 必须重新验证该前提。
@@ -134,9 +134,9 @@ constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
 
 /*
  * 预量化输入 record 搬运采用固定深度软流水。该常量同时参与 Host UB 预算和 Kernel 地址排布，
- * 两侧必须保持一致；当前性能实验分支使用 4 buffer。
+ * 两侧必须保持一致；当前性能实验分支使用 6 buffer。
  */
-constexpr uint32_t PRE_QUANT_RECORD_BUFFER_COUNT = 4U;
+constexpr uint32_t PRE_QUANT_RECORD_BUFFER_COUNT = 6U;
 
 /*
  * Reset buffer policy
