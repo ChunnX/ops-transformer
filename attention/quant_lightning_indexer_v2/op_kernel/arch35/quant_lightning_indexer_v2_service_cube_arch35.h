@@ -22,10 +22,18 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "quant_lightning_indexer_v2_common_arch35.h"
 
+#if __has_include("../../lightning_indexer_v2/arch35/common/lightning_indexer_v2_service_cube_base_arch35.h")
+#include "../../lightning_indexer_v2/arch35/common/lightning_indexer_v2_service_cube_base_arch35.h"
+#else
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_service_cube_base_arch35.h"
+#endif
+
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 template <typename QLIV2T>
-class QLIV2Matmul {
+class QLIV2Matmul
+    : public LIV2Common::LightningIndexerV2ServiceCubeBase<QLIV2Matmul<QLIV2T>> {
+    friend class LIV2Common::LightningIndexerV2ServiceCubeBase<QLIV2Matmul<QLIV2T>>;
 public:
     using Q_T = typename QLIV2T::queryType;
     using K_T = typename QLIV2T::keyType;
@@ -46,8 +54,6 @@ public:
                                                const GlobalTensor<bfloat16_t> &keyScaleGmBf16 = {},
                                                const GlobalTensor<bfloat16_t> &queryScaleGmBf16 = {});
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
-    __aicore__ inline void AllocEventID();
-    __aicore__ inline void FreeEventID();
     __aicore__ inline void ComputeMm1(const QLIV2Common::RunInfo &runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
@@ -210,9 +216,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitMm1GlobalTensor(const GlobalTens
                                                                 const GlobalTensor<bfloat16_t> &keyScaleGmBf16,
                                                                 const GlobalTensor<bfloat16_t> &queryScaleGmBf16)
 {
-    blkTableGm_ = blkTableGm;
-    keyGm_ = keyGm;
-    queryGm_ = queryGm;
+    this->BindCubeTensors(blkTableGm, keyGm, queryGm);
     if constexpr (IS_MX) {
         mxKeyScaleGmBf16_ = keyScaleGmBf16;
         mxQueryScaleGmBf16_ = queryScaleGmBf16;
@@ -718,40 +722,5 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     }
 }
 
-template <typename QLIV2T>
-__aicore__ inline void QLIV2Matmul<QLIV2T>::AllocEventID()
-{
-    SetMMLayoutTransform(true);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
-
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
-
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
-}
-
-template <typename QLIV2T>
-__aicore__ inline void QLIV2Matmul<QLIV2T>::FreeEventID()
-{
-    SetMMLayoutTransform(false);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
-
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
-
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
-}
 } // namespace QLIV2Kernel
 #endif // QUANT_LIGHTNING_INDEXER_V2_SERVICE_CUBE_H
