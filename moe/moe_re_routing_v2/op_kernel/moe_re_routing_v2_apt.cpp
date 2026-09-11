@@ -12,6 +12,7 @@
  * \file moe_re_routing_v2_apt.cpp
  * \brief
  */
+
 #include "kernel_operator.h"
 #include "../../moe_re_routing/op_kernel/arch35/moe_re_routing_re_regbase.h"
 #include "../../moe_re_routing/op_kernel/arch35/moe_re_routing_r_regbase.h"

@@ -15,6 +15,7 @@
  */
 
 #define MOE_V3_INC(path) <../../moe_init_routing_v3/op_kernel/arch35/path>
+
 #include MOE_V3_INC(moe_v3_mrgsort_out_arch35.h)
 #include MOE_V3_INC(moe_v3_mrgsort_arch35.h)
 #include MOE_V3_INC(moe_v3_sort_one_core_arch35.h)
