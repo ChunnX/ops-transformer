@@ -57,6 +57,9 @@ public:
                                                  uint32_t batchIdx, uint32_t headIdx, uint32_t validXBlocks,
                                                  uint32_t validYBlocks, uint32_t t0, uint32_t k, uint32_t groupsValid,
                                                  bool boundary);
+    // 子带 NZ 读（软件流水用）：槽空闲门(V_MTE2) + NZ 读 + 数据就绪门(MTE2_V)
+    __aicore__ inline void NzReadSubBand(uint64_t tileBase, uint32_t subChunkStart, uint32_t subRows,
+                                         uint32_t kChunkSize, uint32_t kColsAlign, uint32_t slot, event_t ev);
 
     __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize, uint32_t kChunkStart,
                                                        uint32_t kChunkSize, uint32_t validXBlocks,
@@ -278,6 +281,21 @@ __aicore__ inline void BSAVecSmService<BSAT>::RowSumCascade(LocalTensor<T> &dstR
  *          - m = m_new, l = l_new 跨所有 K-Chunk 累积，供二趟归一化
  */
 template <typename BSAT>
+__aicore__ inline void BSAVecSmService<BSAT>::NzReadSubBand(uint64_t tileBase, uint32_t subChunkStart, uint32_t subRows,
+                                                            uint32_t kChunkSize, uint32_t kColsAlign, uint32_t slot,
+                                                            event_t ev)
+{
+    // 槽空闲门：V 队列排空（该槽上轮计算完成）后 MTE2 才可覆写（Set+Wait 配对，无残留态）
+    SetFlag<HardEvent::V_MTE2>(ev);
+    WaitFlag<HardEvent::V_MTE2>(ev);
+    // NZ 重排读：fractal 列块 → 行主序 UB（本子带行 × 全列宽，落入乒乓槽 slot）
+    LocalTensor<T> slotUb = scoreUb[slot * 32 * kColsAlign];
+    NzToNdCopyIn(slotUb, tileBase, subChunkStart, subRows, kChunkSize, kColsAlign);
+    // 数据就绪门：MTE2 队列排空（读完成）后置位，供 V 侧 Wait 消费
+    SetFlag<HardEvent::MTE2_V>(ev);
+}
+
+template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
                                                                           uint32_t kChunkStart, uint32_t kChunkSize,
                                                                           uint32_t validXBlocks, uint32_t validYBlocks)
@@ -324,27 +342,61 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
         const uint32_t bandChunkStart = slices[s].chunkRowStart;
         const uint32_t bandRows = slices[e - 1].localRowStart + slices[e - 1].rowCount - bandLocalStart;
 
-        SetFlag<HardEvent::V_MTE2>(eventSft);
-        WaitFlag<HardEvent::V_MTE2>(eventSft);
-
-        // NZ 重排读：fractal 列块布局 → 行主序 UB（band 整读，列块外层）
-        NzToNdCopyIn(scoreUb, tileBase, bandChunkStart, bandRows, kChunkSize, kChunkSizeAlign);
-
-        SetFlag<HardEvent::MTE2_V>(eventSft);
-        WaitFlag<HardEvent::MTE2_V>(eventSft);
-
-        // 尾块掩码：AIC 侧 nSize 对齐 16 写出的 padding 列是 L0C 残留，必须掩成 NEG_INF
-        if (kChunkSize < kChunkSizeAlign) {
-            for (uint32_t r = 0; r < bandRows; r++) {
-                AscendC::Duplicate(scoreUb[static_cast<uint32_t>(r) * kChunkSizeAlign + kChunkSize],
-                                   float(SOFTMAX_NEG_INF), kChunkSizeAlign - kChunkSize);
+        // —— 子带流水化：scoreUb 按 32 行切 2 乒乓槽（容量不变），MTE2 读子带 j+2 与 V 算子带 j 重叠 ——
+        // 槽事件 4/5：V_MTE2=槽空闲（V 队列排空置位）、MTE2_V=数据就绪（MTE2 排空置位）；
+        // Set/Wait 严格配对无残留态，与 eventSft(3)/eventPost(2)/pool(0/1) 不冲突
+        const event_t evSlot[2] = {(event_t)4, (event_t)5};
+        constexpr uint32_t SUB_ROWS = 32;
+        uint32_t nSub = (bandRows + SUB_ROWS - 1) / SUB_ROWS;
+        if (nSub > 1) {
+            // 32 行切点必须与 slice 边界重合（本 case 全 16 行 slice 恒满足）；
+            // 片元不对齐时整带作单子带（串行等价原路径，保正确性）
+            for (uint32_t b = SUB_ROWS; b < bandRows; b += SUB_ROWS) {
+                bool hit = false;
+                for (uint32_t i2 = s; i2 < e; i2++) {
+                    if (slices[i2].localRowStart + slices[i2].rowCount - bandLocalStart == b) {
+                        hit = true;
+                        break;
+                    }
+                }
+                if (!hit) {
+                    nSub = 1;
+                    break;
+                }
             }
-            AscendC::PipeBarrier<PIPE_V>();
         }
+        // 预读子带 0/1（MTE2 队列串行；子带 1 的读与子带 0 的 V 计算重叠）
+        NzReadSubBand(tileBase, bandChunkStart, BSAMin(SUB_ROWS, bandRows), kChunkSize, kChunkSizeAlign, 0,
+                      evSlot[0]);
+        if (nSub > 1) {
+            NzReadSubBand(tileBase, bandChunkStart + SUB_ROWS, BSAMin(SUB_ROWS, bandRows - SUB_ROWS), kChunkSize,
+                          kChunkSizeAlign, 1, evSlot[1]);
+        }
+        uint32_t sliceIdx = s;
+        for (uint32_t j = 0; j < nSub; j++) {
+            const uint32_t subLocalStart = bandLocalStart + j * SUB_ROWS;
+            const uint32_t subChunkStart = bandChunkStart + j * SUB_ROWS;
+            const uint32_t subRows = BSAMin(SUB_ROWS, bandRows - j * SUB_ROWS);
+            const uint32_t slot = j & 1;
+            LocalTensor<T> subUb = scoreUb[slot * SUB_ROWS * kChunkSizeAlign];
+            WaitFlag<HardEvent::MTE2_V>(evSlot[slot]); // V 门：本子带数据就绪
 
-        for (uint32_t i = s; i < e; i++) {
-            const PostRowSlice &sl = slices[i];
-            LocalTensor<T> tile = scoreUb[(sl.localRowStart - bandLocalStart) * kChunkSizeAlign];
+            // 尾块掩码：AIC 侧 nSize 对齐 16 写出的 padding 列是 L0C 残留，必须掩成 NEG_INF
+            if (kChunkSize < kChunkSizeAlign) {
+                for (uint32_t r = 0; r < subRows; r++) {
+                    AscendC::Duplicate(subUb[static_cast<uint32_t>(r) * kChunkSizeAlign + kChunkSize],
+                                       float(SOFTMAX_NEG_INF), kChunkSizeAlign - kChunkSize);
+                }
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+
+            uint32_t i = sliceIdx;
+            while (i < e) {
+                const PostRowSlice &sl = slices[i];
+                if (sl.localRowStart >= subLocalStart + subRows) {
+                    break; // 本子带的 slice 已处理完
+                }
+                LocalTensor<T> tile = subUb[(sl.localRowStart - subLocalStart) * kChunkSizeAlign];
 
             Muls(tile, tile, (float)(constInfo.scaleValue), sl.rowCount * kChunkSizeAlign);
             AscendC::PipeBarrier<PIPE_V>();
@@ -464,6 +516,15 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                         AscendC::PipeBarrier<PIPE_V>();
                     }
                 }
+            }
+                i++;
+            }
+            sliceIdx = i;
+            // 预读子带 j+2（同槽 j&1；NzReadSubBand 内部 V_MTE2 门保证子带 j 计算排空后才覆写）
+            if (j + 2 < nSub) {
+                NzReadSubBand(tileBase, subChunkStart + 2 * SUB_ROWS,
+                              BSAMin(SUB_ROWS, bandRows - (j + 2) * SUB_ROWS), kChunkSize, kChunkSizeAlign, slot,
+                              evSlot[slot]);
             }
         }
         // band 末批量写出：V→MTE3 一次同步 + partSum（4KB 粒度）+ partMax 各一段 + MTE3→V WAR
