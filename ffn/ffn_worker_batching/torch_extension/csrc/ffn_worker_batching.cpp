@@ -17,31 +17,39 @@ namespace op_api {
 namespace {
 constexpr int64_t CONTEXT_BYTES = 1024;
 constexpr int64_t SHAPE_DIMS = 4;
+constexpr int64_t GROUP_LIST_COLUMNS = 2;
 constexpr int64_t MAX_SESSIONS = 1024;
 constexpr int64_t MAX_EXPERTS = 8192;
 constexpr int64_t MAX_K = 64;
 constexpr int64_t MX_BLOCK_SIZE = 32;
 constexpr int64_t FP4_ELEMENTS_PER_BYTE = 2;
-enum TokenKind : int64_t { FP16, BF16, INT8, FP8_E5M2, FP8_E4M3, FP4_E2M1 };
-using Outputs = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor,
-                           at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
-}
+enum TokenKind : int64_t {
+    FP16,
+    BF16,
+    INT8,
+    FP8_E5M2,
+    FP8_E4M3,
+    FP4_E2M1
+};
+using Outputs =
+    std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
+} // namespace
 
 Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_num,
-                            const std::vector<int64_t> &max_out_shape, int64_t token_dtype,
-                            int64_t need_schedule, int64_t layer_num, int64_t sync_flag, bool mx_output_uint8)
+                            const std::vector<int64_t> &max_out_shape, int64_t token_dtype, int64_t need_schedule,
+                            int64_t layer_num, int64_t sync_flag, bool mx_output_uint8)
 {
     // Inspect metadata only. Copying a noncontiguous context to a temporary
     // would change the object whose polling_index is updated by RECV.
     TORCH_CHECK(schedule_context.device().type() == c10::DeviceType::PrivateUse1,
                 "schedule_context must be on NPU, got ", schedule_context.device());
     TORCH_CHECK(schedule_context.scalar_type() == at::kChar && schedule_context.dim() == 1 &&
-                schedule_context.is_contiguous() && schedule_context.numel() >= CONTEXT_BYTES,
+                    schedule_context.is_contiguous() && schedule_context.numel() >= CONTEXT_BYTES,
                 "schedule_context must be contiguous 1D int8 with at least ", CONTEXT_BYTES, " bytes");
     TORCH_CHECK(max_out_shape.size() == SHAPE_DIMS, "max_out_shape must be [A, BS, K, H]");
     const auto a = max_out_shape[0], bs = max_out_shape[1], k = max_out_shape[2], h = max_out_shape[3];
-    TORCH_CHECK(a > 0 && a <= MAX_SESSIONS && bs > 0 && k > 0 && k <= MAX_K && h > 0,
-                "invalid max_out_shape: A=", a, ", BS=", bs, ", K=", k, ", H=", h);
+    TORCH_CHECK(a > 0 && a <= MAX_SESSIONS && bs > 0 && k > 0 && k <= MAX_K && h > 0, "invalid max_out_shape: A=", a,
+                ", BS=", bs, ", K=", k, ", H=", h);
     TORCH_CHECK(expert_num > 0 && expert_num <= MAX_EXPERTS, "invalid expert_num: ", expert_num);
     TORCH_CHECK(token_dtype >= FP16 && token_dtype <= FP4_E2M1, "invalid token_dtype: ", token_dtype);
     TORCH_CHECK(token_dtype != FP4_E2M1 || h % FP4_ELEMENTS_PER_BYTE == 0, "FP4 requires even H, got ", h);
@@ -57,8 +65,12 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
         const char *soc = aclrtGetSocName();
         TORCH_CHECK(soc != nullptr && std::strncmp(soc, "Ascend950", std::strlen("Ascend950")) == 0,
                     "ffn_worker_batching supports arch35/Ascend950 only, got ", soc == nullptr ? "unknown" : soc);
-        const at::ScalarType token_types[] = {at::kHalf, at::kBFloat16, at::kChar,
-            at::ScalarType::Float8_e5m2, at::ScalarType::Float8_e4m3fn, at::ScalarType::Float4_e2m1fn_x2};
+        const at::ScalarType token_types[] = {at::kHalf,
+                                              at::kBFloat16,
+                                              at::kChar,
+                                              at::ScalarType::Float8_e5m2,
+                                              at::ScalarType::Float8_e4m3fn,
+                                              at::ScalarType::Float4_e2m1fn_x2};
         const int64_t y_rows = a * bs * k;
         const bool mx = token_dtype >= FP8_E5M2;
         const int64_t y_cols = token_dtype == FP4_E2M1 ? h / FP4_ELEMENTS_PER_BYTE : h;
@@ -74,20 +86,19 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
             // packed axis and gives ACLNN the intended logical shape [1,2].
             y = y.as_strided({1, 1}, {FP4_ELEMENTS_PER_BYTE, 1});
         }
-        auto group_list = at::empty({expert_num, 2}, options.dtype(at::kLong));
+        auto group_list = at::empty({expert_num, GROUP_LIST_COLUMNS}, options.dtype(at::kLong));
         auto session_ids = at::empty({y_rows}, options.dtype(at::kInt));
         auto micro_batch_ids = at::empty({y_rows}, options.dtype(at::kInt));
         auto token_ids = at::empty({y_rows}, options.dtype(at::kInt));
         auto expert_offsets = at::empty({y_rows}, options.dtype(at::kInt));
         auto scale_shape = mx ? std::vector<int64_t>{y_rows, scales} : std::vector<int64_t>{y_rows};
-        auto dynamic_scale = at::empty(scale_shape,
-            options.dtype(mx ? at::ScalarType::Float8_e8m0fnu : at::kFloat));
+        auto dynamic_scale = at::empty(scale_shape, options.dtype(mx ? at::ScalarType::Float8_e8m0fnu : at::kFloat));
         auto actual_token_num = at::empty({1}, options.dtype(at::kLong));
         // Attribute order follows the updated ACLNN ABI, including sync_flag.
         at::IntArrayRef shape_attr(max_out_shape);
-        ACLNN_CMD(aclnnFfnWorkerBatching, schedule_context, expert_num, shape_attr,
-                  token_dtype, need_schedule, layer_num, sync_flag, y, group_list, session_ids,
-                  micro_batch_ids, token_ids, expert_offsets, dynamic_scale, actual_token_num);
+        ACLNN_CMD(aclnnFfnWorkerBatching, schedule_context, expert_num, shape_attr, token_dtype, need_schedule,
+                  layer_num, sync_flag, y, group_list, session_ids, micro_batch_ids, token_ids, expert_offsets,
+                  dynamic_scale, actual_token_num);
         // Expose raw storage to graph passes that cannot handle FP4/E8M0.
         // Keep native dtype descriptors above for ACLNN; view does not cast data.
         if (mx_output_uint8 && mx) {
@@ -96,8 +107,8 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
                 y = y.view(at::kByte);
             }
         }
-        outputs = std::make_tuple(y, group_list, session_ids, micro_batch_ids, token_ids,
-                                  expert_offsets, dynamic_scale, actual_token_num);
+        outputs = std::make_tuple(y, group_list, session_ids, micro_batch_ids, token_ids, expert_offsets, dynamic_scale,
+                                  actual_token_num);
     }
     return outputs;
 }

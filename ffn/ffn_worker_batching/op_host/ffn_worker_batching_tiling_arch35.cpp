@@ -22,9 +22,13 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
 #include "log/log.h"
+#include "../../../common/include/op_kernel/attention_ffn_schedule.h"
+#include <limits>
+#include "../op_kernel/arch35/ffn_wb_arch35_constants.h"
 #include "../op_kernel/arch35/ffn_worker_batching_arch35_tiling_def.h"
 
 namespace optiling {
+namespace Arch35Config = FfnWbArch35Config;
 namespace {
 constexpr uint32_t EXPERT_NUM_ATTR = 0;
 constexpr uint32_t MAX_OUT_SHAPE_ATTR = 1;
@@ -40,7 +44,7 @@ constexpr uint32_t INDEX_TWO = 2;
 constexpr uint32_t INDEX_THREE = 3;
 
 constexpr int64_t BATCH_MODE = 1;
-constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
+constexpr int64_t ONE_REPEAT_SORT_NUM = Arch35Config::SORT_PROPOSALS_PER_REPEAT;
 constexpr int64_t MAX_RESERVE_WK_NUM = 128;
 
 constexpr int64_t TILING_KEY_NORM = 100;
@@ -53,7 +57,7 @@ constexpr int64_t GL_ROW_BYTES = static_cast<int64_t>(sizeof(int64_t)) * NUM_TWO
 constexpr int64_t GL_UB_FRACTION = 16;                                            // group_list 拼装区取 UB 的 1/16
 
 // 数据块字节数，与 kernel 侧 AscendC::ONE_BLK_SIZE 同值（host 侧无该符号，故此处按同值定义）。
-constexpr int64_t ONE_BLK_BYTES = 32;
+constexpr int64_t ONE_BLK_BYTES = Arch35Config::UB_BLOCK_BYTES;
 // MrgSort 单轮归并路数：由 MrgSortSrcList 的 4 个入参与 validBit 的 4 个有效位决定。
 constexpr int64_t MRG_LIST_NUM = 4;
 // 被 mask 的 token 由上游置为不小于该值的大数，排序前据此压缩剔除。
@@ -75,6 +79,11 @@ constexpr int64_t EXTRACT_UB_BYTES_PER_ELEM =
 constexpr int64_t EXPERT_IDX_MAX = 8192;
 constexpr int64_t MAX_SESSION_NUM = 1024;
 constexpr int64_t MAX_K_NUM = 64;
+constexpr int64_t CONTEXT_BYTES = sizeof(aicpu::ScheduleContext);
+constexpr int64_t INT32_PER_BLOCK = ONE_BLK_BYTES / sizeof(int32_t);
+constexpr int64_t SORT_FIXED_BYTES = Arch35Config::SORT_BUFFER_COUNT * ONE_BLK_BYTES;
+constexpr int64_t MERGE_FIXED_BYTES = Arch35Config::MERGE_BUFFER_COUNT * ONE_BLK_BYTES;
+constexpr int64_t EXTRACT_FIXED_BYTES = Arch35Config::EXTRACT_BUFFER_COUNT * ONE_BLK_BYTES;
 
 // 本算子的 SIMT(asc_vf_call) 与 VF 计算需要 UB 系统预留区。预留量不自行相减，
 // 而是通过平台接口 ReserveLocalMemory 声明——之后 GetCoreMemSize(UB) 返回的即为可用值。
@@ -85,8 +94,7 @@ class FfnWorkerBatchingTilingArch35 : public Ops::Transformer::OpTiling::TilingB
 public:
     explicit FfnWorkerBatchingTilingArch35(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
-    {
-    }
+    {}
     ~FfnWorkerBatchingTilingArch35() override = default;
 
 protected:
@@ -180,6 +188,11 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::CheckInputParam()
     OP_CHECK_IF(xShape.GetDimNum() != 1,
                 OP_LOGE(context_->GetNodeName(), "x shape %s dim num not 1", Ops::Base::ToString(xShape).c_str()),
                 return ge::GRAPH_FAILED);
+    // 所有公共入口均需保护固定 1024B context 读取；Torch wrapper 的检查不能
+    // 覆盖直接 ACLNN/GE 调用。空输入也必须在下发 kernel 前拒绝。
+    OP_CHECK_IF(xShape.GetDim(0) < CONTEXT_BYTES,
+                OP_LOGE(context_->GetNodeName(), "schedule_context needs at least %ld bytes", CONTEXT_BYTES),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -229,7 +242,17 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseMaxOutShape(const gert::Runt
     OP_CHECK_IF(H_ <= 0, OP_LOGE(context_->GetNodeName(), "max_out_shape[3]:%ld should be greater than 0", H_),
                 return ge::GRAPH_FAILED);
 
-    Y_ = A_ * BS_ * K_;
+    // Check before multiplying: a post-product bound cannot undo signed overflow.
+    OP_CHECK_IF(A_ > std::numeric_limits<int64_t>::max() / BS_,
+                OP_LOGE(context_->GetNodeName(), "A*BS overflows int64"), return ge::GRAPH_FAILED);
+    const int64_t aBs = A_ * BS_;
+    OP_CHECK_IF(aBs > std::numeric_limits<int64_t>::max() / K_,
+                OP_LOGE(context_->GetNodeName(), "A*BS*K overflows int64"), return ge::GRAPH_FAILED);
+    Y_ = aBs * K_;
+    // Indices/counts are int32. This representation bound does not impose the
+    // old 2^22 FP32 limit: large positions still use the integer gather path.
+    OP_CHECK_IF(Y_ > std::numeric_limits<int32_t>::max(),
+                OP_LOGE(context_->GetNodeName(), "Y exceeds int32 index/count capacity"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -239,10 +262,10 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
 {
     const int64_t *tokenDtype = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
     if (tokenDtype != nullptr) {
-        OP_CHECK_IF((*tokenDtype < 0 || *tokenDtype > 5),
+        OP_CHECK_IF((*tokenDtype < Arch35Config::TOKEN_FP16 || *tokenDtype > Arch35Config::TOKEN_FP4_E2M1),
                     OP_LOGE(context_->GetNodeName(), "token_dtype:%ld must be one of [0, 1, 2, 3, 4, 5]", *tokenDtype),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(*tokenDtype == 5 && H_ % NUM_TWO != 0,
+        OP_CHECK_IF(*tokenDtype == Arch35Config::TOKEN_FP4_E2M1 && H_ % Arch35Config::FP4_VALUES_PER_BYTE != 0,
                     OP_LOGE(context_->GetNodeName(), "float4_e2m1 requires even H, got %ld", H_),
                     return ge::GRAPH_FAILED);
         tokenDtype_ = *tokenDtype;
@@ -273,6 +296,27 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
             return ge::GRAPH_FAILED);
         layerNum_ = *layNumPtr;
     }
+    // H is stored as uint32 in the runtime context. Check narrowing before
+    // deriving payload bytes. FP4 stores two values per byte; MX scale follows
+    // the token and uses one byte per 32 logical elements (including tail).
+    OP_CHECK_IF(H_ > std::numeric_limits<uint32_t>::max(),
+                OP_LOGE(context_->GetNodeName(), "H exceeds uint32 context capacity"), return ge::GRAPH_FAILED);
+    const int64_t tokenBytes =
+        tokenDtype_ <= Arch35Config::TOKEN_BF16 ?
+            H_ * sizeof(uint16_t) :
+            (tokenDtype_ == Arch35Config::TOKEN_FP4_E2M1 ? H_ / Arch35Config::FP4_VALUES_PER_BYTE : H_);
+    const int64_t scaleBytes =
+        tokenDtype_ == Arch35Config::TOKEN_INT8 ?
+            sizeof(float) :
+            (tokenDtype_ >= Arch35Config::TOKEN_FP8_E5M2 ?
+                 (H_ + Arch35Config::MX_SCALE_BLOCK_ELEMENTS - 1) / Arch35Config::MX_SCALE_BLOCK_ELEMENTS :
+                 0);
+    constexpr int64_t maxAlignedStride =
+        static_cast<int64_t>(std::numeric_limits<uint32_t>::max() / Arch35Config::TOKEN_STRIDE_ALIGNMENT) *
+        Arch35Config::TOKEN_STRIDE_ALIGNMENT;
+    OP_CHECK_IF(tokenBytes + scaleBytes > maxAlignedStride,
+                OP_LOGE(context_->GetNodeName(), "token payload cannot fit a 512B-aligned uint32 HS"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -309,7 +353,37 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
     bskAlign_ = (K_ * BS_ * static_cast<int64_t>(sizeof(int32_t)) + ONE_BLK_BYTES - 1) / ONE_BLK_BYTES * ONE_BLK_BYTES /
                 static_cast<int64_t>(sizeof(int32_t));
     flatElements_ = (needSchedule_ == 1) ? A_ * bskAlign_ : Y_;
+    // RECV padding contributes to the original index space too.
+    OP_CHECK_IF(flatElements_ > std::numeric_limits<int32_t>::max(),
+                OP_LOGE(context_->GetNodeName(), "aligned flat length exceeds int32 index capacity"),
+                return ge::GRAPH_FAILED);
     tilingDataPtr_->flatElements = flatElements_;
+
+    // Reset separates phases, but each phase must be able to allocate its
+    // smallest legal block. The gather expression mirrors its fixed queues:
+    // two 128-row output/index queues, route IDs, scale scratch and index lanes.
+    // Large H is streamed; only one 32B payload block (+INT8 scale block) is required.
+    const int64_t sessionAlign = (A_ + INT32_PER_BLOCK - 1) / INT32_PER_BLOCK * INT32_PER_BLOCK;
+    const int64_t gatherRows = Arch35Config::GATHER_ROWS_PER_LOOP;
+    const int64_t queueDepth = Arch35Config::GATHER_QUEUE_DEPTH;
+    const int64_t gatherFixed = queueDepth * gatherRows * sizeof(int32_t) * Arch35Config::GATHER_OUTPUT_LANES +
+                                queueDepth * gatherRows * sizeof(int32_t) +
+                                sessionAlign * sizeof(int32_t) * queueDepth + gatherRows * ONE_BLK_BYTES * queueDepth +
+                                gatherRows * (sizeof(float) * Arch35Config::GATHER_FLOAT_INDEX_LANES +
+                                              sizeof(int32_t) * Arch35Config::GATHER_INT_INDEX_LANES);
+    const int64_t minPayloadBlock = ONE_BLK_BYTES + (tokenDtype_ == Arch35Config::TOKEN_INT8 ? ONE_BLK_BYTES : 0);
+    const int64_t minGather = gatherFixed + queueDepth * minPayloadBlock;
+    const int64_t minGroup =
+        Arch35Config::GROUP_VECTOR_BUFFERS * (Arch35Config::COMPARE_FP32_ELEMENTS * sizeof(int32_t) + ONE_BLK_BYTES) +
+        Arch35Config::GROUP_MASK_BUFFERS *
+            (Arch35Config::COMPARE_FP32_ELEMENTS / Arch35Config::BITS_PER_BYTE + ONE_BLK_BYTES) +
+        Arch35Config::GROUP_MIN_ROWS * Arch35Config::GROUP_ROW_FIELDS * sizeof(int64_t) + ONE_BLK_BYTES;
+    const int64_t minWaiter =
+        needSchedule_ == BATCH_MODE ? A_ * ONE_BLK_BYTES * Arch35Config::RECV_WAITER_FLAG_BUFFERS + ONE_BLK_BYTES : 0;
+    const int64_t minUb = std::max<int64_t>(CONTEXT_BYTES, std::max(minGather, std::max(minGroup, minWaiter)));
+    OP_CHECK_IF(static_cast<int64_t>(ubSize_) < minUb,
+                OP_LOGE(context_->GetNodeName(), "available UB cannot hold minimum phase buffers"),
+                return ge::GRAPH_FAILED);
 
     tilingDataPtr_->syncFlag = syncFlag_;
     SplitPrepare();
@@ -335,6 +409,11 @@ void FfnWorkerBatchingTilingArch35::SplitPrepare()
     prepRows = std::max<int64_t>(1, std::min<int64_t>(prepRows, A_));
     preparePerLoopRows_ = prepRows;
     tilingDataPtr_->preparePerLoopRows = preparePerLoopRows_;
+    // 一行可能大于 UB。保留一次一行的调度粒度，但把 ID 缓冲限制为可用容量，
+    // kernel 会在行内分块；不能再把“至少一行”解释为“整行必须驻留”。
+    const int64_t idBudget = static_cast<int64_t>(ubSize_) - selectionBytes - prepRows * ONE_BLK_BYTES;
+    const int64_t idCapacity = idBudget / ONE_BLK_BYTES * ONE_BLK_BYTES / sizeof(int32_t);
+    tilingDataPtr_->preparePerLoopElements = std::min<int64_t>(prepRows * bskAlign_, idCapacity);
 }
 
 // phase1~3:段内排序(VBS)、段间归并(VMS)与归并收尾(Extract)的切分,三者共用同一份 UB 预算。
@@ -345,7 +424,11 @@ void FfnWorkerBatchingTilingArch35::SplitSortAndMerge()
     // 比较掩码（4B）。故每元素占用 SORT_UB_BYTES_PER_ELEM 字节，据此反推单段元素数上限。
     // ubSize_ 在 GetPlatformInfo 中已扣除系统预留，此处直接使用，勿重复扣减。
     const int64_t ubAvail = static_cast<int64_t>(ubSize_);
-    int64_t segCap = ubAvail / SORT_UB_BYTES_PER_ELEM / ONE_REPEAT_SORT_NUM * ONE_REPEAT_SORT_NUM;
+    // 五块缓冲各有额外 32B；输入/掩码按 64 元素对齐，proposal 按 32 对齐。
+    // 上限取 64 的倍数，使实际 12*align64(n)+24*align32(n)+160 不超过预算。
+    constexpr int64_t SORT_COMPARE_ELEMENTS = Arch35Config::COMPARE_FP32_ELEMENTS;
+    int64_t segCap =
+        (ubAvail - SORT_FIXED_BYTES) / SORT_UB_BYTES_PER_ELEM / SORT_COMPARE_ELEMENTS * SORT_COMPARE_ELEMENTS;
     segCap = std::max<int64_t>(ONE_REPEAT_SORT_NUM, segCap);
     // 先按核数均分；单段超 UB 容量时增加段数（段由各核 grid-stride 认领，段数可多于核数）。
     sortSegNum_ = coreNum_;
@@ -374,8 +457,11 @@ void FfnWorkerBatchingTilingArch35::SplitSortAndMerge()
     // 单次驻留：MRG_LIST_NUM 路输入 + 同宽的输出，均为 proposal 对（每元素 8B）。
     // 预算里必须先扣掉同一 TPipe 上的其它缓冲：各段有效数的读回区，以及每个缓冲按块对齐的余量；
     // 否则输入与输出两块相加恰好等于可用 UB，分配越界后输出会压到输入上（表现为归并结果头部被覆盖）。
-    const int64_t mergeOther = sortSegNum_ * ONE_BLK_BYTES + (MRG_LIST_NUM + NUM_TWO) * ONE_BLK_BYTES;
-    const int64_t mergeUb = (ubAvail > mergeOther) ? (ubAvail - mergeOther) : ubAvail;
+    // 大 Y 的段数可能上万，计数不能全部放 UB。只缓存至多 128 个槽，按需换块；
+    // 三个 InitBuffer 的额外 32B 也必须扣除，禁止容量不足时回退到完整 UB。
+    tilingDataPtr_->mergeCountCacheSegments = std::min<int64_t>(sortSegNum_, Arch35Config::MERGE_COUNT_CACHE_SEGMENTS);
+    const int64_t mergeOther = tilingDataPtr_->mergeCountCacheSegments * ONE_BLK_BYTES + MERGE_FIXED_BYTES;
+    const int64_t mergeUb = ubAvail - mergeOther;
     int64_t mergeLoop = mergeUb / (MRG_LIST_NUM * NUM_TWO * SORT_PAIR_FLOATS * static_cast<int64_t>(sizeof(float))) /
                         ONE_REPEAT_SORT_NUM * ONE_REPEAT_SORT_NUM;
     mergeOneLoopElements_ = std::max<int64_t>(ONE_REPEAT_SORT_NUM, mergeLoop);
@@ -384,7 +470,11 @@ void FfnWorkerBatchingTilingArch35::SplitSortAndMerge()
 
     // ---------------- 归并收尾（Extract）的切分 ----------------
     // 单次驻留：proposal 对（8B）+ 拆出的 id 与 idx（各 4B）。
-    int64_t extractLoop = ubAvail / EXTRACT_UB_BYTES_PER_ELEM / ONE_REPEAT_SORT_NUM * ONE_REPEAT_SORT_NUM;
+    // Extract 三块缓冲各多 32B，repeatTime 的 API 上限为 255。
+    // 按此上限分块也兼容启用范围检查的 CPU 调测，不依赖设备关闭检查。
+    int64_t extractLoop =
+        (ubAvail - EXTRACT_FIXED_BYTES) / EXTRACT_UB_BYTES_PER_ELEM / ONE_REPEAT_SORT_NUM * ONE_REPEAT_SORT_NUM;
+    extractLoop = std::min<int64_t>(extractLoop, Arch35Config::EXTRACT_MAX_REPEATS * ONE_REPEAT_SORT_NUM);
     extractPerLoopElements_ = std::max<int64_t>(ONE_REPEAT_SORT_NUM, std::min<int64_t>(extractLoop, Y_));
     tilingDataPtr_->extractPerLoopElements = extractPerLoopElements_;
 }
@@ -396,7 +486,7 @@ void FfnWorkerBatchingTilingArch35::SplitGroupList()
     // 每行 [expert_id, tokenNum] 两个 int64 = GL_ROW_BYTES；拼装区取 UB 的 1/GL_UB_FRACTION，
     // 按 2 行对齐（使块起点落在数据块边界），并以 expertNum 封顶。
     int64_t rows = static_cast<int64_t>(ubSize_) / GL_UB_FRACTION / GL_ROW_BYTES / NUM_TWO * NUM_TWO;
-    glRowsPerLoop_ = std::max<int64_t>(NUM_TWO, std::min<int64_t>(rows, expertNum_));
+    glRowsPerLoop_ = std::max<int64_t>(Arch35Config::GROUP_MIN_ROWS, std::min<int64_t>(rows, expertNum_));
 
     tilingDataPtr_->glRowsPerLoop = glRowsPerLoop_;
 }

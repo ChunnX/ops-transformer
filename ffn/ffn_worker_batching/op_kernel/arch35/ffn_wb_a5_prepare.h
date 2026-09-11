@@ -57,8 +57,7 @@ public:
     // 由 0 号核忙等;其余核在调用方的 SyncAll 处等待。
     __aicore__ inline void Process()
     {
-        const int64_t subNum = GetTaskRation() > 0 ? GetTaskRation() : 1;
-        if (GetBlockIdx() * subNum + GetSubBlockIdx() != 0) {
+        if (GetFlatAivIdx() != 0) {
             return;
         }
         const int64_t flagElems = static_cast<int64_t>(ctx_->A) * (ONE_BLK_SIZE / sizeof(int32_t));
@@ -166,7 +165,7 @@ __aicore__ inline void LoadSelectedMicroBatch(GM_ADDR readyWs, ScheduleContextIn
 
 // ===================== expert_id 归一 + 握手回写 =====================
 // 补位/失效标记:>= sort 的 expertStart_(1000000),排序后落到末尾并被 mask 判据剔除。
-constexpr int32_t MASK_SENTINEL = 2147483647;
+constexpr int32_t MASK_SENTINEL = INT32_MAX;
 
 class FfnWbPrepareArch35 {
 public:
@@ -175,15 +174,16 @@ public:
     // flatIdsWs:归一后的扁平 expert_id 缓冲(长度 totalLen)。
     // rowsPerLoop 由 host 按运行时 UB 容量反推(见 tiling 的 preparePerLoopRows),此处不设任何容量常数。
     __aicore__ inline void Init(GM_ADDR flatIdsWs, const ScheduleContextInfo *contextInfo, TPipe *pipe,
-                                int64_t totalLen, int64_t rowsPerLoop, GM_ADDR readyWs = nullptr)
+                                int64_t totalLen, int64_t rowsPerLoop, int64_t perLoopElements, int64_t activeRows,
+                                GM_ADDR readyWs = nullptr)
     {
         contextInfo_ = contextInfo;
         pipe_ = pipe;
         totalLen_ = totalLen;
-        bsk_ = contextInfo_->BS * contextInfo_->K;
+        bsk_ = static_cast<int64_t>(contextInfo_->BS) * contextInfo_->K;
         F_ = NUM_TWO + bsk_;
         // 每 session 行在扁平缓冲中的跨度(RECV 含补位;NORM 无补位时即为 bsk)
-        rowSpan_ = (contextInfo_->A > 0) ? (totalLen_ / contextInfo_->A) : bsk_;
+        rowSpan_ = (activeRows > 0) ? (totalLen_ / activeRows) : bsk_;
         // 异步 ready session 可不连续，因此每轮处理一行，先查快照再决定是否读取并清理该行。
         // 这里的 1 是选择粒度，不是核数或硬件容量；同步/NORM 仍使用 host 给出的批量行数。
         rowsPerLoop_ = contextInfo_->asyncRecv ? 1 : ((rowsPerLoop > 0) ? rowsPerLoop : 1);
@@ -191,30 +191,32 @@ public:
             readyGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(readyWs));
             pipe_->InitBuffer(readyBuf_, ONE_BLK_SIZE);
         }
-        if (rowsPerLoop_ > contextInfo_->A) {
-            rowsPerLoop_ = contextInfo_->A;
+        if (rowsPerLoop_ > activeRows) {
+            rowsPerLoop_ = activeRows > 0 ? activeRows : 1;
         }
         // 按**运行时实际块数**把 session 行分段,各核只处理自己那段:
         // 各段写入 flatIds 的区间互不重叠,握手回写也按行分离,故无需跨核同步。
-        const int64_t coreNum = GetBlockNum();
-        const int64_t perCore = (contextInfo_->A + coreNum - 1) / coreNum;
-        rowBegin_ = GetBlockIdx() * perCore;
+        const int64_t coreNum = GetFlatAivNum();
+        const int64_t perCore = (activeRows + coreNum - 1) / coreNum;
+        rowBegin_ = GetFlatAivIdx() * perCore;
         rowEnd_ = rowBegin_ + perCore;
-        if (rowEnd_ > contextInfo_->A) {
-            rowEnd_ = contextInfo_->A;
+        if (rowEnd_ > activeRows) {
+            rowEnd_ = activeRows;
         }
-        if (rowBegin_ > contextInfo_->A) {
-            rowBegin_ = contextInfo_->A;
+        if (rowBegin_ > activeRows) {
+            rowBegin_ = activeRows;
         }
         if (rowsPerLoop_ > (rowEnd_ - rowBegin_) && (rowEnd_ - rowBegin_) > 0) {
             rowsPerLoop_ = rowEnd_ - rowBegin_;
         }
-        flatIdsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flatIdsWs), totalLen_);
-        pipe_->InitBuffer(que_, 1, Align(rowsPerLoop_ * rowSpan_ * sizeof(int32_t), BLOCK_BYTES));
+        flatIdsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flatIdsWs), totalLen_ > 0 ? totalLen_ : 1);
+        perLoopElements_ = Min(perLoopElements, rowsPerLoop_ * rowSpan_);
+        pipe_->InitBuffer(que_, 1, Align(perLoopElements_ * sizeof(int32_t), BLOCK_BYTES));
         pipe_->InitBuffer(clrBuf_, Align(rowsPerLoop_ * BLOCK_BYTES, BLOCK_BYTES));
     }
 
-    // NORM:expert_ids_buf 已是扁平布局,整段搬到 flatIds(单核即可,量级为 Y 个 int32)。
+    // NORM: totalLen_ 已按 outNum*BS*K 下发；sort 也只消费这个有效前缀。
+    // 下面保留前缀边界保护，避免此类被复用于更大长度时搬入尾部旧 ID。
     __aicore__ inline void ProcessNorm(GM_ADDR expertIdsBuf)
     {
         if (rowEnd_ <= rowBegin_) {
@@ -222,19 +224,34 @@ public:
         }
         GlobalTensor<int32_t> srcGm;
         srcGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expertIdsBuf), totalLen_);
-        const int64_t perLoopElems = rowsPerLoop_ * rowSpan_;
+        const int64_t perLoopElems = perLoopElements_;
         const int64_t beginElem = rowBegin_ * rowSpan_;
         const int64_t endElem = (rowEnd_ * rowSpan_ > totalLen_) ? totalLen_ : rowEnd_ * rowSpan_;
-        for (int64_t off = beginElem; off < endElem; off += perLoopElems) {
-            const int64_t n = ((endElem - off) > perLoopElems) ? perLoopElems : (endElem - off);
+        const int64_t validEnd = static_cast<int64_t>(contextInfo_->outNum) * bsk_;
+        for (int64_t off = beginElem; off < endElem;) {
+            int64_t n = ((endElem - off) > perLoopElems) ? perLoopElems : (endElem - off);
+            // 在有效前缀的边界拆开循环：每块要么全是输入，要么全是 MASK。
+            // 这样即使 BS*K 不是 8 的倍数，也无需对未对齐的 UB 子地址做 Duplicate，
+            // 且 outNum=0 时完全不读取 expert_ids_buf 中的旧内容。
+            if (off < validEnd && n > validEnd - off) {
+                n = validEnd - off;
+            }
             LocalTensor<int32_t> buf = que_.AllocTensor<int32_t>();
             DataCopyExtParams cp{static_cast<uint16_t>(1), static_cast<uint32_t>(n * sizeof(int32_t)), 0, 0, 0};
-            DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
-            DataCopyPad(buf, srcGm[off], cp, pad);
-            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            if (off < validEnd) {
+                DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
+                DataCopyPad(buf, srcGm[off], cp, pad);
+                SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            } else {
+                Duplicate<int32_t>(buf, MASK_SENTINEL, n);
+                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+            }
             DataCopyPad(flatIdsGm_[off], buf, cp);
+            // 下一块可能由 DMA 或向量写入，两个生产者都必须等当前搬出完成。
             SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+            SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
             que_.FreeTensor(buf);
+            off += n;
         }
     }
 
@@ -247,6 +264,10 @@ public:
     __aicore__ inline void ProcessRecv(GM_ADDR tokenInfoBuf)
     {
         if (rowEnd_ <= rowBegin_) {
+            return;
+        }
+        if (rowSpan_ > perLoopElements_) {
+            ProcessRecvLargeRow(tokenInfoBuf);
             return;
         }
         GlobalTensor<int32_t> tokenInfoGm;
@@ -309,6 +330,54 @@ public:
     }
 
 private:
+    // 大行不能整行驻留 UB。按 Host 给出的元素容量分块，始终保持 workspace 的
+    // 行跨度和原始 token 位置不变；最后一块才填 padding，且不把 padding 写回描述符。
+    __aicore__ inline void ProcessRecvLargeRow(GM_ADDR tokenInfoBuf)
+    {
+        GlobalTensor<int32_t> info;
+        info.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(tokenInfoBuf));
+        const int64_t stride = static_cast<int64_t>(contextInfo_->M) * F_;
+        LocalTensor<int32_t> flag = clrBuf_.Get<int32_t>();
+        for (int64_t row = rowBegin_; row < rowEnd_; ++row) {
+            const bool selected = !contextInfo_->asyncRecv || IsSelected(row);
+            const int64_t base = row * stride + contextInfo_->curMicroBatchID * F_;
+            for (int64_t off = 0; off < rowSpan_; off += perLoopElements_) {
+                const int64_t n = Min(perLoopElements_, rowSpan_ - off);
+                const int64_t take = off < bsk_ ? Min(n, bsk_ - off) : 0;
+                LocalTensor<int32_t> buf = que_.AllocTensor<int32_t>();
+                if (selected && take > 0) {
+                    DataCopyExtParams cp{1, static_cast<uint32_t>(take * sizeof(int32_t)), 0, 0, 0};
+                    DataCopyPadExtParams<int32_t> pad{true, 0, static_cast<uint8_t>(n - take), MASK_SENTINEL};
+                    DataCopyPad(buf, info[base + NUM_TWO + off], cp, pad);
+                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                } else {
+                    Duplicate<int32_t>(buf, MASK_SENTINEL, n);
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                }
+                DataCopyExtParams out{1, static_cast<uint32_t>(n * sizeof(int32_t)), 0, 0, 0};
+                DataCopyPad(flatIdsGm_[row * rowSpan_ + off], buf, out);
+                SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+                if (selected && take > 0) {
+                    Duplicate<int32_t>(buf, MASK_SENTINEL, n);
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                    DataCopyExtParams clear{1, static_cast<uint32_t>(take * sizeof(int32_t)), 0, 0, 0};
+                    DataCopyPad(info[base + NUM_TWO + off], buf, clear);
+                }
+                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+                que_.FreeTensor(buf);
+            }
+            // 仅选中行可清 flag，且必须等所有 ID 分块复制/清理完成；layer 字段不动。
+            if (selected) {
+                Duplicate<int32_t>(flag, 0, BLOCK_BYTES / sizeof(int32_t));
+                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                DataCopyExtParams clearFlag{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+                DataCopyPad(info[base], flag, clearFlag);
+                SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+            }
+        }
+    }
+
     // 从 workspace 快照读取，而不是从 token_info 读取实时 flag。
     // (row + 1) 跳过头块；每个 session 的 flag 独占一个块，与 Waiter 的 DMA padding 一致。
     // MTE2_S 确保 DMA 已完成，随后标量 GetValue(0) 才能用于分支判断。
@@ -333,6 +402,7 @@ private:
     int64_t bsk_ = 0;
     int64_t rowSpan_ = 0;
     int64_t rowsPerLoop_ = 0;
+    int64_t perLoopElements_ = 0;
     int64_t rowBegin_ = 0;
     int64_t rowEnd_ = 0;
     int64_t F_ = 0;

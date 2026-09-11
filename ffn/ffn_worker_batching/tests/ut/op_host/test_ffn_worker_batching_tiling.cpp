@@ -110,11 +110,9 @@ std::vector<gert::TilingContextPara::TensorDescription> MakeA5OutputDesc()
 }
 } // namespace
 
-
 namespace {
-void CheckArch35(int64_t dtype, int64_t mode, int64_t a, int64_t bs, int64_t k,
-                 int64_t experts, int64_t ub, int64_t expectedCores, int64_t expectedSegments,
-                 int64_t expectedPerSegment)
+void CheckArch35(int64_t dtype, int64_t mode, int64_t a, int64_t bs, int64_t k, int64_t experts, int64_t ub,
+                 int64_t expectedCores, int64_t expectedSegments, int64_t expectedPerSegment)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
@@ -252,8 +250,8 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_recv_key101_ub248k_core
 // arch35 使用独立分段排序 ABI，核数随有效工作量变化。
 TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_segment_capacity_runtime_derived)
 {
-    CheckArch35(0, 0, 1024, 8, 64, 8, 253952, 64, 86, 6144);
-    CheckArch35(0, 0, 1024, 8, 64, 8, 262144, 64, 83, 6368);
+    CheckArch35(0, 0, 1024, 8, 64, 8, 253952, 64, 87, 6080);
+    CheckArch35(0, 0, 1024, 8, 64, 8, 262144, 64, 83, 6336);
 }
 
 // arch35 使用独立分段排序 ABI，核数随有效工作量变化。
@@ -415,10 +413,9 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_mx_types)
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (int64_t dtype = 3; dtype <= 5; ++dtype) {
         for (int64_t mode = 0; mode <= 1; ++mode) {
-            gert::TilingContextPara para(
-                "FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
-                MakeArch35Attrs(dtype, mode, 3, 7, 9, 66), &compileInfo,
-                "Ascend950", kAivNum64, kArch35Ub248K);
+            gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}},
+                                         MakeA5OutputDesc(), MakeArch35Attrs(dtype, mode, 3, 7, 9, 66), &compileInfo,
+                                         "Ascend950", kAivNum64, kArch35Ub248K);
             TilingInfo info;
             ASSERT_TRUE(ExecuteTiling(para, info));
             EXPECT_EQ(info.tilingKey, 100 + mode);
@@ -434,9 +431,9 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_fp4_odd_h_fail)
 {
     gert::StorageShape scShape = {{1024}, {1024}};
     FfnWorkerBatchingCompileInfo compileInfo = {};
-    gert::TilingContextPara para(
-        "FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
-        MakeArch35Attrs(5, 0, 1, 1, 1, 33), &compileInfo, "Ascend950", kAivNum64, kArch35Ub248K);
+    gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
+                                 MakeArch35Attrs(5, 0, 1, 1, 1, 33), &compileInfo, "Ascend950", kAivNum64,
+                                 kArch35Ub248K);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
@@ -446,9 +443,8 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_mx_rejected_on_legacy_soc)
     FfnWorkerBatchingCompileInfo compileInfo = {};
     for (const auto *soc : {"Ascend910B", "Ascend910_93"}) {
         for (int64_t dtype = 3; dtype <= 5; ++dtype) {
-            gert::TilingContextPara para(
-                "FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
-                MakeArch35Attrs(dtype, 0, 1, 1, 1, 64), &compileInfo, soc);
+            gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}},
+                                         MakeA5OutputDesc(), MakeArch35Attrs(dtype, 0, 1, 1, 1, 64), &compileInfo, soc);
             ExecuteTestCase(para, ge::GRAPH_FAILED);
         }
     }
@@ -464,9 +460,9 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
         for (int64_t syncFlag : {-1, 0, 1, 2}) {
             auto attrs = MakeArch35Attrs(0, mode, 4, 3, 3, 66);
             attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(syncFlag)});
-            gert::TilingContextPara para(
-                "FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
-                attrs, &compileInfo, "Ascend950", kAivNum64, kArch35Ub248K);
+            gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}},
+                                         MakeA5OutputDesc(), attrs, &compileInfo, "Ascend950", kAivNum64,
+                                         kArch35Ub248K);
             if (syncFlag < 0 || syncFlag > 1) {
                 ExecuteTestCase(para, ge::GRAPH_FAILED);
                 continue;
@@ -482,5 +478,97 @@ TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_sync_flag)
                 EXPECT_GE(info.workspaceSizes[0], (d.wsReady + 5 * 8) * sizeof(int32_t));
             }
         }
+    }
+}
+
+// 根据 kernel 实际同时存活的缓冲验证预算，而不是仅核对某个 tiling 常量。
+// 新字段为零时按旧实现的分配公式核算，可在修复前运行同一组测试记录失败。
+TEST_F(FfnWorkerBatchingTilingTest, arch35_review_ub_capacity_contract)
+{
+    for (const auto &shape :
+         std::vector<std::vector<int64_t>>{{1, 1024, 64, 2}, {1024, 648, 64, 2}, {1024, 257, 64, 2}, {16, 128, 4, 2}}) {
+        for (int64_t mode : {0, 1}) {
+            SCOPED_TRACE(::testing::Message() << "A=" << shape[0] << " BS=" << shape[1] << " mode=" << mode);
+            gert::StorageShape scShape = {{1024}, {1024}};
+            FfnWorkerBatchingCompileInfo compileInfo = {};
+            gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}},
+                                         MakeA5OutputDesc(),
+                                         MakeArch35Attrs(0, mode, shape[0], shape[1], shape[2], shape[3]), &compileInfo,
+                                         "Ascend950", kAivNum64, kArch35Ub248K);
+            TilingInfo info;
+            ASSERT_TRUE(ExecuteTiling(para, info));
+            const auto &d = *reinterpret_cast<const FfnWorkerBatchingArch35TilingData *>(info.tilingData.get());
+            auto align = [](int64_t n, int64_t unit) { return (n + unit - 1) / unit * unit; };
+            const int64_t row = align(shape[1] * shape[2], 8);
+            const int64_t prepareElements =
+                d.preparePerLoopElements > 0 ? d.preparePerLoopElements : d.preparePerLoopRows * row;
+            EXPECT_LE(prepareElements * 4 + d.preparePerLoopRows * 32, d.ubSize) << "prepare";
+            const int64_t seg = d.sortPerSegElements;
+            EXPECT_LE(12 * align(seg, 64) + 24 * align(seg, 32) + 160, d.ubSize) << "sort";
+            const int64_t cache = d.mergeCountCacheSegments > 0 ? d.mergeCountCacheSegments : d.sortSegNum;
+            EXPECT_LE(64 * d.mergeOneLoopElements + 32 * cache + 96, d.ubSize) << "merge";
+            EXPECT_LE(16 * align(d.extractPerLoopElements, 32) + 96, d.ubSize) << "extract";
+            EXPECT_LE(align(d.extractPerLoopElements, 32) / 32, 255) << "Extract API repeatTime";
+        }
+    }
+}
+
+TEST_F(FfnWorkerBatchingTilingTest, arch35_review_context_length_contract)
+{
+    for (int64_t bytes : {0, 1, 1023, 1024, 1056}) {
+        SCOPED_TRACE(bytes);
+        gert::StorageShape scShape = {{bytes}, {bytes}};
+        FfnWorkerBatchingCompileInfo compileInfo = {};
+        gert::TilingContextPara para("FfnWorkerBatching", {{scShape, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
+                                     MakeArch35Attrs(0, 0, 1, 1, 1, 2), &compileInfo, "Ascend950", kAivNum64,
+                                     kArch35Ub248K);
+        TilingInfo info;
+        EXPECT_EQ(ExecuteTiling(para, info), bytes >= 1024);
+    }
+}
+
+// Attribute arithmetic must fail before allocating outputs/workspace. Keep
+// representable large indices legal: there is no artificial 2^22 limit.
+TEST_F(FfnWorkerBatchingTilingTest, arch35_adopt_attribute_boundaries)
+{
+    struct Case {
+        int64_t a, bs, k, h, dtype;
+        bool pass;
+    };
+    const std::vector<Case> cases = {{1024, INT64_MAX, 1, 2, 0, false},
+                                     {1, INT64_MAX, 64, 2, 0, false},
+                                     {1, 2147483648LL, 1, 2, 0, false},
+                                     {1024, 257, 64, 2, 0, true},
+                                     {1, 1, 1, 2147483392LL, 0, true},
+                                     {1, 1, 1, 2147483393LL, 1, false},
+                                     {1, 1, 1, 4294966780LL, 2, true},
+                                     {1, 1, 1, 4294966781LL, 2, false},
+                                     {1, 1, 1, 4294967296LL, 5, false},
+                                     // FP8 token + ceil(H/32) scale bytes exceed uint32 HS at large H.
+                                     {1, 1, 1, 4294966780LL, 3, false},
+                                     {1, 1, 1, 4294966780LL, 4, false},
+                                     // FP4 packs H/2 bytes, so this H is representable for FP4.
+                                     {1, 1, 1, 4294966780LL, 5, true}};
+    for (const auto &c : cases) {
+        SCOPED_TRACE(::testing::Message() << c.a << "," << c.bs << "," << c.k << "," << c.h << "," << c.dtype);
+        gert::StorageShape sc = {{1024}, {1024}};
+        FfnWorkerBatchingCompileInfo ci = {};
+        gert::TilingContextPara para("FfnWorkerBatching", {{sc, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
+                                     MakeArch35Attrs(c.dtype, 0, c.a, c.bs, c.k, c.h), &ci, "Ascend950", kAivNum64,
+                                     kArch35Ub248K);
+        TilingInfo info;
+        EXPECT_EQ(ExecuteTiling(para, info), c.pass);
+    }
+}
+
+TEST_F(FfnWorkerBatchingTilingTest, arch35_adopt_minimum_ub)
+{
+    for (uint64_t rawUb : {uint64_t(32768 + 1024), uint64_t(32768 + 19583)}) {
+        gert::StorageShape sc = {{1024}, {1024}};
+        FfnWorkerBatchingCompileInfo ci = {};
+        gert::TilingContextPara para("FfnWorkerBatching", {{sc, ge::DT_INT8, ge::FORMAT_ND}}, MakeA5OutputDesc(),
+                                     MakeArch35Attrs(0, 0, 1, 1, 1, 2), &ci, "Ascend950", kAivNum64, rawUb);
+        TilingInfo info;
+        EXPECT_FALSE(ExecuteTiling(para, info));
     }
 }
