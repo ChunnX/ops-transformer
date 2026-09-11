@@ -72,7 +72,8 @@ __aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A> &aL1Tensor, const
     LocalTensor<L0ADType> l0aTensor = l0aBuffer.GetTensor<L0ADType>();
 #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(l0aTensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
+        LoadDataToL0AMx<A, L0ADType, baseK>(l0aTensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK,
+                                            param.singleM);
     } else
 #endif
     {

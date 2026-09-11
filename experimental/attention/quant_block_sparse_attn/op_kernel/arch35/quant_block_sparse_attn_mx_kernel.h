@@ -22,7 +22,7 @@
 #include "quant_block_sparse_attn_kvcache.h"
 #include "quant_block_sparse_attn_mx_block_cube.h"
 #include "quant_block_sparse_attn_mx_block_vec.h"
-#include "../common/buffer_manager.h"
+#include "../common/attn_buffer_manager.h"
 #include "../common/buffers_policy.h"
 #include "../common/util_regbase_QBSA.h"
 

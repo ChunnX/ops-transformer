@@ -338,7 +338,6 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
         shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSizeV;
         if constexpr (isFp8) {
             shape.copyRowNumAlign = (actualS2RealSize + 31) >> 5 << 5;
         } else {
@@ -481,7 +480,6 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
         shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSize;
         if constexpr (isFp8) {
             shape.copyRowNumAlign = (actualS2RealSize + 31) >> 5 << 5;
         } else {
@@ -634,7 +632,6 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSize;
         if constexpr (isFp8) {
             shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
         } else {

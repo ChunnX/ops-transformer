@@ -19,12 +19,12 @@
 #include "../quant_block_sparse_attn_mx_tiling_data.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "quant_block_sparse_attn_attenmask.h"
-#include "../common/buffer_manager.h"
+#include "../common/attn_buffer_manager.h"
 #include "../common/buffers_policy.h"
 #include "../common/util_regbase_QBSA.h"
-#include "vf/vf_div_cast.h"
-#include "vf/vf_flashupdate_new_QBSA.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
+#include "../common/vf/vf_div_cast.h"
+#include "../common/vf/vf_flashupdate_new_QBSA.h"
+#include "../common/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;

@@ -20,9 +20,9 @@
 #include "quant_block_sparse_attn_attenmask.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
-#include "vf/vf_flashupdate_new_QBSA.h"
-#include "vf/vf_div_cast.h"
+#include "../common/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
+#include "../common/vf/vf_flashupdate_new_QBSA.h"
+#include "../common/vf/vf_div_cast.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;

@@ -87,11 +87,12 @@ __aicore__ inline void MxGmFlatScaleCopyInToL1PAForDN(LocalTensor<L1Type> &l1Ten
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
         }
 
+        // Flat BNBD scale rows use headDim as their source row stride.
         uint64_t offset = idInBlockTable * shape.pageStride +
-                          static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.rowStride +
-                          static_cast<uint64_t>(remainRowCnt) * shape.rowStride + startPos.dIdx;
+                          static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.headDim +
+                          static_cast<uint64_t>(remainRowCnt) * shape.headDim + startPos.dIdx;
         MxCopyScaleToL1Dn2Nz(l1Tensor[copyFinishRowCnt * shape.actHeadDim], gmTensor[offset], shape.actHeadDim,
-                             copyRowCnt, shape.rowStride);
+                             copyRowCnt, shape.headDim);
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
@@ -119,11 +120,12 @@ __aicore__ inline void MxGmFlatScaleCopyInToL1PAForND(LocalTensor<L1Type> &l1Ten
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
         }
 
+        // Flat BNBD scale rows use headDim as their source row stride.
         uint64_t offset = idInBlockTable * shape.pageStride +
-                          static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.rowStride +
-                          static_cast<uint64_t>(remainRowCnt) * shape.rowStride + startPos.dIdx;
+                          static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.headDim +
+                          static_cast<uint64_t>(remainRowCnt) * shape.headDim + startPos.dIdx;
         MxCopyScaleToL1Nd2Nz(l1Tensor[copyFinishRowCnt * blockElementCnt], gmTensor[offset], copyRowCnt,
-                             shape.actHeadDim, shape.rowStride, shape.copyRowNumAlign);
+                             shape.actHeadDim, shape.headDim, shape.copyRowNumAlign);
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
