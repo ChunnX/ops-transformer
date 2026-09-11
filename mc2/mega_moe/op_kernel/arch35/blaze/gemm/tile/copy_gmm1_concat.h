@@ -27,6 +27,7 @@ struct Gmm1NzWeightView : Tensor {
     template <typename Coord, typename Shape>
     __aicore__ inline auto slice(const Coord &coord, const Shape &shape) const
     {
+        // Delegate indexing to Tensor; preserve the NZ copy tag on the returned view.
         auto slice = Tensor::slice(coord, shape);
         return Gmm1NzWeightView<decltype(slice)>(slice);
     }
@@ -71,8 +72,8 @@ template <typename Dst, typename Src>
 __aicore__ inline void CopyGmm1WeightConcatToUb(const Dst &dst, const Src &src, uint64_t halfN)
 {
     using Pattern = asc::te::get_layout_pattern<typename Src::layout_type>;
-    static_assert(AscendC::Std::is_same_v<Pattern, asc::te::zn_layout_ptn>,
-                  "A8W4 prologue consumes packed C0=32 ZN weights");
+    ASCENDC_ASSERT((AscendC::Std::is_same_v<Pattern, asc::te::zn_layout_ptn>),
+                   { KERNEL_LOG(KERNEL_ERROR, "A8W4 prologue consumes packed C0=32 ZN weights"); });
     const uint64_t c0 = AscendC::Std::get<0>(AscendC::Std::get<0>(src.layout().shape()));
     const uint64_t columnBytes = c0 / 2U;
     const uint32_t blockCount = 2U * ConcatTensorRows(src) / c0;
@@ -87,8 +88,8 @@ template <typename Dst, typename Src>
 __aicore__ inline void CopyGmm1ScaleConcatToL1(const Dst &dst, const Src &src, uint64_t halfN, uint64_t fullK)
 {
     using Pattern = asc::te::get_layout_pattern<typename Src::layout_type>;
-    static_assert(AscendC::Std::is_same_v<Pattern, asc::te::scaleb_dn_layout_ptn>,
-                  "MegaMoe GMM1 scale concat expects ScaleBDN");
+    ASCENDC_ASSERT((AscendC::Std::is_same_v<Pattern, asc::te::scaleb_dn_layout_ptn>),
+                   { KERNEL_LOG(KERNEL_ERROR, "MegaMoe GMM1 scale concat expects ScaleBDN"); });
     const uint64_t singleN = ConcatTensorColumns(src) / 2U;
     const uint64_t scaleSpan = ConcatTensorRows(src);
     auto left = src.slice(asc::te::make_coord(uint64_t(0), uint64_t(0)), asc::te::make_shape(scaleSpan, singleN));

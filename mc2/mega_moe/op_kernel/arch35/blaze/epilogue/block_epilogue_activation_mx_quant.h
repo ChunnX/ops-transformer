@@ -131,7 +131,7 @@ private:
     GlobalTensor<int8_t> quantScaleGlobal_;
 
     // UB tensor views ordered by physical layout
-    LocalTensor<DataTypeIn> l0cOutUbFirst_{TPosition::VECIN, ubFirstOffset, ubInputElementCapacity};
+    LocalTensor<DataTypeIn> gmm1OutputUb_{TPosition::VECIN, ubFirstOffset, ubInputElementCapacity};
     LocalTensor<bfloat16_t> gluRes_;
     LocalTensor<int8_t> quantOutput_;
     LocalTensor<int8_t> quantScaleOutput_;
@@ -230,7 +230,7 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     tileContext.scaleOffset = Get<Y_SCALE_IDX>(blockCoord);
 
     tileContext.buffers = ResolveActivationMxQuantUbPointers<DataTypeIn, MAX_SINGLE_MN>(
-        (__ubuf__ DataTypeIn *)l0cOutUbFirst_.GetPhyAddr(), (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(),
+        (__ubuf__ DataTypeIn *)gmm1OutputUb_.GetPhyAddr(), (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(),
         (__ubuf__ int8_t *)quantOutput_.GetPhyAddr(), (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr(),
         (__ubuf__ uint16_t *)maxExp_.GetPhyAddr(), (__ubuf__ uint16_t *)inverseMxScale_.GetPhyAddr(),
         tileContext.geometry.columnCount, tileContext.pingpongIndex);

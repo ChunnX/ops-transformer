@@ -594,8 +594,8 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
 
         auto gmBlockB = workSet.gmB.slice(asc::te::make_coord(kLoc, nLoc),
                                           asc::te::make_shape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        auto gmBlockScaleB =
-            workSet.gmScaleB.slice(asc::te::make_coord(0, nLoc), asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
+        auto gmBlockScaleB = workSet.gmScaleB.slice(asc::te::make_coord(0, nLoc),
+                                                    asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.slice(asc::te::make_coord(mLoc, nLoc),
                                           asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         if constexpr (NotifyCombineTileReady && !IsShared) {
@@ -779,13 +779,13 @@ __aicore__ inline void Gmm2ExecGeneric(Scheduler &scheduler, const GMMAddrInfo &
 
     if constexpr (g_coreType == AscendC::AIC) {
         if (blockMmadContext != nullptr) {
-            InitBlockMmad<GmmStage::GMM2>(*blockMmadContext, config);
+            blockMmadContext->template Init<GmmStage::GMM2>(config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 blockMmadContext->blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
-            InitBlockMmad<GmmStage::GMM2>(localBlockMmadContext, config);
+            localBlockMmadContext.template Init<GmmStage::GMM2>(config);
             Gmm2AicMmadGeneric<CombineQuantMode, BlockMmad, IsShared, IsLayered, NotifyCombineTileReady>(
                 localBlockMmadContext.blockMmad, workSet, gmmAddrInfo, config, startLoopIdx, tileNum, rowOffsetInExpert,
                 gmTileSequence);

@@ -107,18 +107,13 @@ public:
     constexpr static int32_t SCALE_C0 = 2;
     constexpr static int32_t L0C_C0 = 16;
 
-    __aicore__ inline void SetGmm1ConcatHalfN(uint64_t halfN)
-    {
-        concatHalfN_ = halfN;
-    }
-
     struct L1Params {
         uint64_t kL1;
         uint64_t scaleKL1;
     };
 
     __aicore__ inline void Init(const ProblemShape &problemShape, const BlockShape &l0TileShape,
-                                const L1Params &l1Params);
+                                const L1Params &l1Params, uint64_t concatHalfN = 0U);
 
     __aicore__ inline BlockMmad();
     // When copyUbToV1 is true, L0C->UB copies the result to V1 core instead of V0.
@@ -472,8 +467,9 @@ __aicore__ inline BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::~BlockMmad()
 BLOCK_MMAD_MX_FP8FP4_TEMPLATE_PARAMS
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::Init(const ProblemShape &problemShape,
                                                                  const BlockShape &l0TileShape,
-                                                                 const L1Params &l1Params)
+                                                                 const L1Params &l1Params, uint64_t concatHalfN)
 {
+    concatHalfN_ = concatHalfN;
     k_ = asc::te::get<IDX_K_IDX>(problemShape);
     kL1_ = l1Params.kL1;
     scaleKL1_ = l1Params.scaleKL1;

@@ -136,10 +136,6 @@ struct PrologueMxCastWOffsetParam {
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
 class BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION {
 public:
-    __aicore__ inline void SetGmm1ConcatHalfN(uint64_t halfN)
-    {
-        concatHalfN_ = halfN;
-    }
     using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
     using OutType = OutType_;
     using InType = InType_;
@@ -150,7 +146,7 @@ public:
         __gm__ InType *ptrB;
     };
 
-    __aicore__ inline BlockPrologue();
+    __aicore__ explicit inline BlockPrologue(uint64_t concatHalfN = 0U);
     template <typename GMWeightTensorType>
     __aicore__ inline void operator()(const GMWeightTensorType &gmWeightTensor, uint64_t mL1Size, uint64_t kSize,
                                       uint64_t nL1Size, uint64_t nOffset, uint64_t nAlign,
@@ -259,8 +255,9 @@ protected:
 };
 
 BLOCK_PROLOGUE_MX_FP8FP4_TEMPLATE_PARAMS
-__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue()
+__aicore__ inline BLOCK_PROLOGUE_MX_FP8FP4_SPECIALIZATION::BlockPrologue(uint64_t concatHalfN)
 {
+    concatHalfN_ = concatHalfN;
     for (uint16_t idx = 0; idx < kUbMte2BufferNum; idx++) {
         SetFlag<HardEvent::V_MTE2>(vecEventIdVToMte2_ + idx);
     }

@@ -54,8 +54,6 @@ using namespace AscendC;
 #define FORMAT_FRACTAL_NZ_C0_32 51
 #endif
 
-// GMM1 consumes ordinary gate/up-separated weights and concatenates them during loading.
-
 #ifdef ENABLE_TENSOR_API
 namespace MegaMoeImpl {
 
