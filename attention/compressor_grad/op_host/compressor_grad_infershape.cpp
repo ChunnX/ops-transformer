@@ -42,9 +42,6 @@ constexpr uint32_t D_APE_OUTPUT_INDEX = 3;
 // ATTR RANGE
 constexpr int64_t CMP_RATIO_MIN = 2;
 constexpr int64_t CMP_RATIO_MAX = 128;
-constexpr int64_t COFF_VALUE_1 = 1;
-constexpr int64_t COFF_VALUE_2 = 2;
-constexpr int64_t COFF_DEFAULT = 1;
 constexpr uint32_t DIM_NUM_0 = 0;
 constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
@@ -59,8 +56,7 @@ struct CompressorGradProtoShapeParam {
     int64_t T{0};
     int64_t S{0};
     int64_t H{0};
-    int64_t D{0};
-    int64_t totalDim{0}; // coff * D，即 wkv 的 dim0
+    int64_t totalDim{0}; // wkv 的 dim0
     int64_t cmpRatio{0};
 };
 
@@ -89,12 +85,6 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext *context
                                                       "cmp_ratio should be within [" + std::to_string(CMP_RATIO_MIN) +
                                                           ", " + std::to_string(CMP_RATIO_MAX) + "]"),
                 return ge::GRAPH_FAILED);
-    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
-    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_DEFAULT;
-    OP_CHECK_IF((coff != COFF_VALUE_1 && coff != COFF_VALUE_2),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "coff", std::to_string(coff),
-                                                      "coff should be 1 or 2"),
-                return ge::GRAPH_FAILED);
 
     if (xShape->GetDimNum() == DIM_NUM_3) {
         shapeParam.isBsMerge = false;
@@ -107,12 +97,7 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext *context
         shapeParam.H = xShape->GetDim(DIM_INDEX_1);
     }
 
-    shapeParam.D = wkvShape->GetDim(DIM_INDEX_0) / coff;
-    OP_CHECK_IF((shapeParam.D <= 0),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "headDim (wkv.dim0 / coff)",
-                                                      std::to_string(shapeParam.D), "must be positive"),
-                return ge::GRAPH_FAILED);
-    shapeParam.totalDim = coff * shapeParam.D;
+    shapeParam.totalDim = wkvShape->GetDim(DIM_INDEX_0);
     shapeParam.cmpRatio = cmpRatio;
     return GRAPH_SUCCESS;
 }
