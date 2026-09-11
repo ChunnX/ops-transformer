@@ -827,8 +827,12 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             PipeBarrier<PIPE_MTE3>();
         } else {
             uint64_t channel = GetUrmaCommHandle(ffnIdx);
-            hcomm_.WriteNbi<REMOTE_LAYER_FLAG_WQE_CONFIG>(channel, tableFlagGM, localFlagAddr_,
+            HcommBatchHandle batchHandle =
+                hcomm_.MakeBatchHandle(channel, hcommBatchWqeTensor_, ATTN_FFN_HCOMM_BATCH_UB_BYTES,
+                                       GetWindowAddr(static_cast<int32_t>(ffnIdx)));
+            hcomm_.WriteNbi<REMOTE_LAYER_FLAG_WQE_CONFIG>(batchHandle, tableFlagGM, localFlagAddr_,
                             static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
+            hcomm_.BatchCommit(batchHandle);
         }
     }
 }
