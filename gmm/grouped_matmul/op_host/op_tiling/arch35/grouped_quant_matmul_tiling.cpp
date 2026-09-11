@@ -257,13 +257,12 @@ the dtype of output is FLOAT16, actual is %s.",
                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
                         return false);
         } else if (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_INT32) {
-            OP_CHECK_IF(
-                inputParams_.biasDtype != ge::DT_INT32,
-                OP_LOGE(inputParams_.opName,
-                        "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output \
-is INT8 or INT32, actual is %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
-                return false);
+            OP_CHECK_IF(inputParams_.biasDtype != ge::DT_INT32,
+                        OP_LOGE(inputParams_.opName,
+                                "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output "
+                                "is INT8 or INT32, actual is %s.",
+                                ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
+                        return false);
         } else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                 inputParams_.opType, "y", ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
@@ -566,12 +565,13 @@ actual is %zu",
         inputParams_.transB ? wScaleShape.GetDim(wScaleDimNum - LAST_SECOND_DIM_INDEX) : wScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams_.kSize / MXFP_BASEK_FACTOR + inputParams_.groupNum;
     if (xScaleKDim != 1 && xScaleMDim != 1) {
-        OP_CHECK_IF(
-            !inputParams_.transA || inputParams_.transB,
-            OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected transpose attrs of x and \
-    weight are true and false, but the actual transpose attrs of x and weight are %d and %d.",
-                    inputParams_.transA, inputParams_.transB),
-            return false);
+        OP_CHECK_IF(!inputParams_.transA || inputParams_.transB,
+                    OP_LOGE(inputParams_.opName,
+                            "When split k in mx quant mode, the expected transpose attrs of x and "
+                            "    weight are true and false, but the actual transpose attrs of x and weight "
+                            "are %d and %d.",
+                            inputParams_.transA, inputParams_.transB),
+                    return false);
         OP_CHECK_IF(
             xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue ||
                 xScaleMDim != inputParams_.mSize,
