@@ -170,14 +170,21 @@ public:
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
         if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
-            Cast(sin_, deQue, RoundMode::CAST_NONE, alignedTotalRopeDim_);
-            Cast(cos_, deQue[alignedTotalRopeDim_], RoundMode::CAST_NONE, alignedTotalRopeDim_);
+            Cast(sin_, deQue, RoundMode::CAST_NONE, totalRopeDim_);
+            Cast(cos_, deQue[alignedTotalRopeDim_], RoundMode::CAST_NONE, totalRopeDim_);
         } else {
-            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, alignedTotalRopeDim_);
-            Adds(cos_, deQue[alignedTotalRopeDim_].ReinterpretCast<float>(), 0.f, alignedTotalRopeDim_);
+            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, totalRopeDim_);
+            Adds(cos_, deQue[alignedTotalRopeDim_].ReinterpretCast<float>(), 0.f, totalRopeDim_);
         }
         ropeQueue_.FreeTensor(deQue);
         PipeBarrier<PIPE_V>();
+        // Init padding region: sin_=0 (so MulAddDst is no-op), cos_=1 (so Mul is no-op)
+        // totalRopeDim_ = ropeNum * alignedRopeDim, alignedTotalRopeDim_ = ropeNum * CeilAlign(alignedRopeDim, B32)
+        // Muls repeat accesses CeilAlign(alignedRopeDim, B32) elements per head, need padding initialized
+        if (totalRopeDim_ < alignedTotalRopeDim_) {
+            Duplicate(sin_[totalRopeDim_], 0.f, alignedTotalRopeDim_ - totalRopeDim_);
+            Duplicate(cos_[totalRopeDim_], 1.f, alignedTotalRopeDim_ - totalRopeDim_);
+        }
         if constexpr (ropeType == RopeType::INTERLEAVE) {
             const UnaryRepeatParams params;
             if (sinRepeatTimes_ > 0) {
