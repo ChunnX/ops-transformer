@@ -58,6 +58,7 @@ struct WorkspaceLayout {
     int64_t flagDispatchToGmm1Offset{INVALID_WORKSPACE_OFFSET};
     int64_t flagSendCntCalToUpdParamsOffset{INVALID_WORKSPACE_OFFSET};
     int64_t flagGmmToEpilogueOffset{INVALID_WORKSPACE_OFFSET};
+    int64_t flagTopkValidIndexSyncOffset{INVALID_WORKSPACE_OFFSET}; // 每个 block 的 AIV1 子组同步阶段。
     int64_t gmm2ReadyOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm2CombineSyncCounterOffset{INVALID_WORKSPACE_OFFSET};
     int64_t cumsumInfoOffset{INVALID_WORKSPACE_OFFSET};
@@ -76,6 +77,7 @@ struct WorkspaceLayout {
     int64_t dispatchRelaySendQueueOffset{INVALID_WORKSPACE_OFFSET}; // 按目标 Server 划分的一级中继发送队列
     int64_t dispatchRemoteReadyFlagSnapshotOffset{
         INVALID_WORKSPACE_OFFSET}; // 各逻辑核的固定 256-token 远端就绪标志窗口
+
 
     // 连续 flag 通知区（自 flagActivationToGmm2Offset 起）的 int32 元素总数。
     // 在分配处顺手记账，保证 ResetSyncStatus 的清零范围与分配范围恒同源。
@@ -203,6 +205,10 @@ private:
                 Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs), static_cast<int64_t>(L1_TILE_M_256));
             workspaceSize +=
                 SIZE_INT_32 * tokenGroupCount * static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
+        }
+        if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
+            flagTopkValidIndexSyncOffset = workspaceSize;
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
         flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
 
@@ -335,6 +341,7 @@ struct WorkspaceInfo {
     GM_ADDR flagDispatchToGmm1Ptr{nullptr};
     GM_ADDR flagSendCntCalToUpdParamsPtr{nullptr};
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
+    GM_ADDR flagTopkValidIndexSyncPtr{nullptr};
     GM_ADDR gmm2ReadyPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
     GM_ADDR cumsumInfoPtr{nullptr};
@@ -382,6 +389,7 @@ public:
         flagDispatchToGmm1Ptr = ResolveWorkspaceAddress(base, layout.flagDispatchToGmm1Offset);
         flagSendCntCalToUpdParamsPtr = ResolveWorkspaceAddress(base, layout.flagSendCntCalToUpdParamsOffset);
         flagGmmToEpiloguePtr = ResolveWorkspaceAddress(base, layout.flagGmmToEpilogueOffset);
+        flagTopkValidIndexSyncPtr = ResolveWorkspaceAddress(base, layout.flagTopkValidIndexSyncOffset);
         gmm2ReadyPtr = ResolveWorkspaceAddress(base, layout.gmm2ReadyOffset);
         gmm2CombineSyncCounterPtr = ResolveWorkspaceAddress(base, layout.gmm2CombineSyncCounterOffset);
         cumsumInfoPtr = ResolveWorkspaceAddress(base, layout.cumsumInfoOffset);
