@@ -35,48 +35,48 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", BandwidthTestTilingData);
 
-    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
-        GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        if constexpr (CommMode == TILINGKEY_TPL_URMA) {
-            if (tilingData.mode >= 2 && tilingData.mode <= 4) {
-                // Streaming has no all-core barriers; idle cores need neither a pipe nor communication state.
-                if ASCEND_IS_AIV {
-                    if constexpr (SharedJetty) {
-                        if (GetBlockIdx() >= tilingData.sharedJettyNum) {
-                            return;
-                        }
-                    } else {
-                        if (GetBlockIdx() >= tilingData.worldSize) {
-                            return;
-                        }
-                    }
-                } else {
-                    return;
-                }
-            }
-        }
-        TPipe pipe;
-        if constexpr (CommMode == TILINGKEY_TPL_URMA) {
-            if constexpr (SharedJetty) {
-                BandwidthTestUrmaSharedJetty<DTYPE_X, DTYPE_Y> op;
-                op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-                // op.Process();
-            } else {
-                BandwidthTestUrma<DTYPE_X, DTYPE_Y> op;
-                op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-                op.Process();
-            }
-        } else if constexpr (CommMode == TILINGKEY_TPL_ROCE) {
-            if (GetBlockIdx() != 0) {
-                return;
-            }
-            BandwidthTestRoce<DTYPE_X, DTYPE_Y> op;
-            op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-            op.Process();
-        } else {
-            BandwidthTest<DTYPE_X, DTYPE_Y> op;
-            op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-            op.Process();
-        }
-    }
+    // if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+    //     GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
+    //     if constexpr (CommMode == TILINGKEY_TPL_URMA) {
+    //         if (tilingData.mode >= 2 && tilingData.mode <= 4) {
+    //             // Streaming has no all-core barriers; idle cores need neither a pipe nor communication state.
+    //             if ASCEND_IS_AIV {
+    //                 if constexpr (SharedJetty) {
+    //                     if (GetBlockIdx() >= tilingData.sharedJettyNum) {
+    //                         return;
+    //                     }
+    //                 } else {
+    //                     if (GetBlockIdx() >= tilingData.worldSize) {
+    //                         return;
+    //                     }
+    //                 }
+    //             } else {
+    //                 return;
+    //             }
+    //         }
+    //     }
+    //     TPipe pipe;
+    //     if constexpr (CommMode == TILINGKEY_TPL_URMA) {
+    //         if constexpr (SharedJetty) {
+    //             BandwidthTestUrmaSharedJetty<DTYPE_X, DTYPE_Y> op;
+    //             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+    //             // op.Process();
+    //         } else {
+    //             BandwidthTestUrma<DTYPE_X, DTYPE_Y> op;
+    //             op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+    //             op.Process();
+    //         }
+    //     } else if constexpr (CommMode == TILINGKEY_TPL_ROCE) {
+    //         if (GetBlockIdx() != 0) {
+    //             return;
+    //         }
+    //         BandwidthTestRoce<DTYPE_X, DTYPE_Y> op;
+    //         op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+    //         op.Process();
+    //     } else {
+    //         BandwidthTest<DTYPE_X, DTYPE_Y> op;
+    //         op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+    //         op.Process();
+    //     }
+    // }
 }
