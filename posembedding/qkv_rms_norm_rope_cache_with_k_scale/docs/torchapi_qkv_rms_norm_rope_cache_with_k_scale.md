@@ -294,8 +294,8 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 - M-RoPE场景下，`mrope_section=[t,h,w]`的三项必须非负，H/W范围均为`[0,21]`，T没有独立lane上限，且`t+h+w<=64`；`mrope_position`的shape必须为`[T,3]`，每个位置索引必须满足`0 <= value < MaxSeqLen`。
 - `k_cache`、`v_cache`和`k_scale_cache`的`BlockNum`和`BlockSize`必须一致；`k_cache`和`v_cache`均为4维正stride、最后一维stride为1，且前三维stride必须一致。RoPE/M-RoPE的`k_scale_cache`为4维正stride；M-RoPE MX同样为4维，末轴`ceil(D/32)`连续且stride为1。
 - RoPE场景中，`query_start_loc[0]`应为0、`query_start_loc[-1]`应等于`T`且`query_start_loc`必须单调不减，`seq_lens`长度应等于`query_start_loc.shape[0]-1`。令第`b`个batch本次调用的token数为`L_b=query_start_loc[b+1]-query_start_loc[b]`，则必须满足`0 <= L_b <= MaxSeqLen`以及`L_b <= seq_lens[b] <= MaxSeqLen`，其中`MaxSeqLen=cos_sin.shape[0]`。非空batch的实际序列长度超过表容量时，位置编码将访问表外位置，行为未定义。
-- `slot_mapping`必须为torch.int32一维Tensor且shape为`[T]`，每个元素必须位于`[0,BlockNum*BlockSize-1]`。M-RoPE MX要求同一次调用内的slot互不重复；RoPE和M-RoPE存在重复slot时最终写入顺序和结果未定义。
-- M-RoPE MX要求`1<=T<=262144`。
+- `slot_mapping`必须为torch.int32一维Tensor且shape为`[T]`，每个元素必须位于`[0,BlockNum*BlockSize-1]`。同一次调用内的slot互不重复；RoPE和M-RoPE存在重复slot时最终写入顺序和结果未定义。
+- `1<=T<=262144`。
 
 ## 确定性计算
 
