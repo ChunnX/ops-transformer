@@ -203,6 +203,19 @@ public:
             GetGroupedQmmAttrs(transposeX, transposeWeight, groupType),
             &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
 
+        // Tiling prefers PlatformInfo over CompileInfo; keep the simulated capacities consistent.
+        std::ostringstream socInfo;
+        socInfo << R"({"hardware_info":{"BT_SIZE":0,"load3d_constraints":"1",)"
+                << R"("Intrinsic_fix_pipe_l0c2out":false,"Intrinsic_data_move_l12ub":true,)"
+                << R"("Intrinsic_data_move_l0c2ub":true,"Intrinsic_data_move_out2l1_nd2nz":false,)"
+                << R"("UB_SIZE":)" << compileInfo.ubSize
+                << R"(,"L2_SIZE":33554432,"L1_SIZE":)" << compileInfo.l1Size
+                << R"(,"L0A_SIZE":)" << compileInfo.l0ASize
+                << R"(,"L0B_SIZE":)" << compileInfo.l0BSize
+                << R"(,"L0C_SIZE":)" << compileInfo.l0CSize
+                << R"(,"CORE_NUM":)" << compileInfo.aicNum << R"(,"socVersion":"3510"}})";
+        tilingContextPara.socInfoString_ = socInfo.str();
+
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
         ASSERT_EQ(tilingResult, result) << "prefix=" << prefix << ", case=" << caseName;
@@ -601,6 +614,8 @@ TEST_P(TestGroupedQuantCubeonlyArch35Tiling, generalTest)
     auto oldDevkit = GetParam();
     oldDevkit.devkitVersion = 90000000;
     oldDevkit.expectCubeBasicApi = false;
+    // Preserve the 128 KiB L0C capacity used to generate the legacy CSV expectations.
+    oldDevkit.l0CBytes = 128 * 1024;
     oldDevkit.Test();
 }
 
