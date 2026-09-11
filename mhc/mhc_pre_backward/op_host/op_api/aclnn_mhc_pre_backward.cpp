@@ -647,10 +647,10 @@ bool MhcGradCheckFormat(const AclnnMhcPreBackwardParams &params)
     return MhcGradCheckInputFormat(params);
 }
 
-bool MhcGradCheckOpImplMode(const AclnnMhcPreBackwardParams &params)
+bool MhcGradCheckOpImplMode(int64_t opImplMode)
 {
-    if (params.opImplMode != MHC_PRE_BACKWARD_USE_FP32 && params.opImplMode != MHC_PRE_BACKWARD_USE_HF32) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode", std::to_string(params.opImplMode).c_str(),
+    if (opImplMode != MHC_PRE_BACKWARD_USE_FP32 && opImplMode != MHC_PRE_BACKWARD_USE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode", std::to_string(opImplMode).c_str(),
                                               "must be 0 (FP32) or 1 (HF32)");
         return false;
     }
@@ -674,9 +674,6 @@ aclnnStatus MhcGradCheckParams(const AclnnMhcPreBackwardParams &params)
 
     // 5. 检查数据形状是否支持
     CHECK_RET(MhcGradCheckFormat(params), ACLNN_ERR_PARAM_INVALID);
-
-    // 6. 检查Cube计算模式
-    CHECK_RET(MhcGradCheckOpImplMode(params), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }
@@ -814,6 +811,7 @@ aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
                    DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
                           gradXPostOptional, hcEps, opImplMode),
                    DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    CHECK_RET(MhcGradCheckOpImplMode(opImplMode), ACLNN_ERR_PARAM_INVALID);
     return MhcPreBackwardGetWorkspaceSizeCommon(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost,
                                                 gammaOptional, gradXPostOptional, hcEps, opImplMode, gradX, gradPhi,
                                                 gradAlpha, gradBias, gradGamma, workspaceSize, executor);
