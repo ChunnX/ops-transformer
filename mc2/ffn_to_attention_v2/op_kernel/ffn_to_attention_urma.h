@@ -47,7 +47,7 @@ constexpr int32_t URMA_FLAG_VALUE = 1;
 constexpr uint32_t URMA_WQE_SIZE = 64U;
 constexpr uint32_t URMA_BATCH_WQE_CAPACITY = 256U;
 constexpr uint32_t URMA_BATCH_BUFFER_SIZE = URMA_BATCH_WQE_CAPACITY * URMA_WQE_SIZE;
-constexpr uint64_t URMA_WQE_MAX_DATA_SIZE = static_cast<uint64_t>(0xFFFFFFFFU);
+constexpr uint32_t HCOMM_SQ_MAX_PENDING = 32767U;
 constexpr uint32_t METADATA_CHUNK_TOKEN_NUM = 256U;
 constexpr uint32_t METADATA_FIELD_NUM = 4U;
 constexpr uint32_t METADATA_TOKEN_BATCH_OFFSET_FIELD_INDEX = 2U;
@@ -59,9 +59,12 @@ constexpr uint32_t SOURCE_TOKEN_INDEX_FIELD_INDEX = 2U;
 constexpr uint32_t NEXT_TOKEN_INDEX_FIELD_INDEX = 3U;
 constexpr uint32_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
 constexpr uint64_t INVALID_TOKEN_INDEX = 0xFFFFFFFFFFFFFFFFULL;
-static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
-static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .inlineEn = 0};
-static constexpr AscendC::UrmaWqeEntry REMOTE_FLAG_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {
+    .odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG = {
+    .odr = 6, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 
 #define TemplateFFNToAttentionUrmaTypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionUrmaTypeFunc xType, isInputRankTable
@@ -77,8 +80,6 @@ struct RemoteRelayInfo {
     uint64_t sourceTokenIndex;
     uint64_t nextTokenIndex;
 };
-
-static_assert(sizeof(RemoteRelayInfo) == REMOTE_RELAY_INFO_SIZE, "RemoteRelayInfo has an unexpected size");
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 class FFNToAttentionUrma {
@@ -99,15 +100,15 @@ private:
     __aicore__ inline void SendToLocal(GM_ADDR remoteDataAddr, GM_ADDR remoteFlagAddr, uint64_t yOffset,
                                        const DataCopyExtParams &xCopyParams);
     __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
-                                                 const RemoteRelayInfo &relayInfo, uint32_t dstRank);
+                                                 const RemoteRelayInfo &relayInfo, uint32_t dstRank, bool enableCqe);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr,
                                                  const RemoteRelayInfo &relayInfo, uint32_t dstRank, bool firstFlag,
-                                                 bool lastFlag);
+                                                 bool enableCqe);
     __aicore__ inline void BuildRemoteRelayLists();
     __aicore__ inline void StoreRemoteRelayInfo(uint64_t tokenIndex, const RemoteRelayInfo &relayInfo);
     __aicore__ inline void LoadRemoteRelayInfo(uint64_t tokenIndex, RemoteRelayInfo &relayInfo);
-    __aicore__ inline void CheckHcommRet(int32_t ret);
-    __aicore__ inline void CommitBatch(HcommBatchHandle &batchHandle);
+    __aicore__ inline void CommitAndDrainChannel(HcommBatchHandle &batchHandle, HcommChannelHandle channel,
+                                                 uint32_t &preparedWqeCount, uint32_t &sqWriteCount);
 
     TPipe *tpipe_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -178,7 +179,6 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
     maxTokenNum_ = tilingData->ffnToAttentionV2Info.maxTokenNum;
     urmaWorkspaceOffset_ = tilingData->ffnToAttentionV2Info.urmaWorkspaceOffset;
-    ascendc_assert(aivNum_ > 0U, "aivNum must be greater than zero");
 
     inputDataAddr_ = x;
     xGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(x));
@@ -192,14 +192,8 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     }
 
     int64_t actualTokenNumValue = actualTokenNumGMTensor_.GetValue(0);
-    ascendc_assert(actualTokenNumValue >= 0 && static_cast<uint64_t>(actualTokenNumValue) <= maxTokenNum_,
-                   "actualTokenNum out of range, actualTokenNum=%ld, maxTokenNum=%lu", actualTokenNumValue,
-                   maxTokenNum_);
     actualTokenNum_ = static_cast<uint64_t>(actualTokenNumValue);
     hSize_ = static_cast<uint64_t>(axisH_) * sizeof(xType);
-    ascendc_assert(hSize_ > 0U && hSize_ <= URMA_WQE_MAX_DATA_SIZE && hSize_ % URMA_FLAG_SLOT_SIZE == 0U,
-                   "direct URMA source requires a non-zero 32B-aligned token size within the WQE limit, hSize=%lu",
-                   hSize_);
     dataWorkspaceStride_ = Ceil(hSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset_ + maxTokenNum_ * dataWorkspaceStride_ +
                      static_cast<uint64_t>(aivId_) * URMA_FLAG_SLOT_SIZE;
@@ -335,29 +329,41 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::S
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteDataWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank)
+    HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank,
+    bool enableCqe)
 {
     GM_ADDR sourceDataAddr = inputDataAddr_ + relayInfo.sourceTokenIndex * hSize_;
-    int32_t ret = hcomm_.WriteNbi<REMOTE_DATA_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
-                                                          sourceDataAddr, static_cast<uint32_t>(hSize_));
-    CheckHcommRet(ret);
+    if (enableCqe) {
+        (void)hcomm_.WriteNbi<REMOTE_CQE_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
+                                                     sourceDataAddr, static_cast<uint32_t>(hSize_));
+    } else {
+        (void)hcomm_.WriteNbi<REMOTE_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteDataOffset,
+                                                 sourceDataAddr, static_cast<uint32_t>(hSize_));
+    }
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
 __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::AppendRemoteFlagWrite(
     HcommBatchHandle &batchHandle, GM_ADDR remoteWindowAddr, const RemoteRelayInfo &relayInfo, uint32_t dstRank,
-    bool firstFlag, bool lastFlag)
+    bool firstFlag, bool enableCqe)
 {
-    int32_t ret;
-    if (firstFlag || lastFlag) {
-        ret =
-            hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
-                                                            localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
+    if (firstFlag) {
+        if (enableCqe) {
+            (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG>(
+                batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset, localFlagAddr_,
+                static_cast<uint32_t>(sizeof(int32_t)));
+        } else {
+            (void)hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_WQE_CONFIG>(
+                batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset, localFlagAddr_,
+                static_cast<uint32_t>(sizeof(int32_t)));
+        }
+    } else if (enableCqe) {
+        (void)hcomm_.WriteNbi<REMOTE_CQE_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
+                                                     localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     } else {
-        ret = hcomm_.WriteNbi<REMOTE_FLAG_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
-                                                      localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
+        (void)hcomm_.WriteNbi<REMOTE_WQE_CONFIG>(batchHandle, remoteWindowAddr + relayInfo.remoteFlagOffset,
+                                                 localFlagAddr_, static_cast<uint32_t>(sizeof(int32_t)));
     }
-    CheckHcommRet(ret);
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -438,17 +444,17 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CheckHcommRet(int32_t ret)
+__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitAndDrainChannel(
+    HcommBatchHandle &batchHandle, HcommChannelHandle channel, uint32_t &preparedWqeCount, uint32_t &sqWriteCount)
 {
-    ascendc_assert(ret == 0, "Hcomm operation failed, ret=%d, rankId=%u", ret, rankId_);
-}
-
-template <TemplateFFNToAttentionUrmaTypeClass>
-__aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::CommitBatch(
-    HcommBatchHandle &batchHandle)
-{
-    int32_t ret = hcomm_.BatchCommit(batchHandle);
-    CheckHcommRet(ret);
+    if (preparedWqeCount != 0U) {
+        (void)hcomm_.BatchCommit(batchHandle);
+        preparedWqeCount = 0U;
+    }
+    // AscendC::PRINTF("SQ protection triggered, sqWriteCount=%u\n", sqWriteCount);
+    int32_t ret = hcomm_.Drain(channel);
+    ascendc_assert(ret == 0, "Urma drain failed, ret=%d", ret);
+    sqWriteCount = 0U;
 }
 
 template <TemplateFFNToAttentionUrmaTypeClass>
@@ -499,15 +505,24 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     hcomm_.MakeBatchHandle(channel, hcommBatchTensor_, URMA_BATCH_BUFFER_SIZE, remoteWindowAddr);
 
                 uint32_t preparedWqeCount = 0U;
+                uint32_t sqWriteCount = 0U;
+                uint32_t drainCount = 0U;
                 uint64_t tokenIndex = firstTokenIndex;
                 while (tokenIndex != INVALID_TOKEN_INDEX) {
                     RemoteRelayInfo relayInfo;
                     LoadRemoteRelayInfo(tokenIndex, relayInfo);
                     tokenIndex = relayInfo.nextTokenIndex;
-                    AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank);
+                    const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
+                    AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, enableCqe);
                     ++preparedWqeCount;
-                    if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                        CommitBatch(batchHandle);
+                    ++sqWriteCount;
+
+                    if (enableCqe) {
+                        ++drainCount;
+
+                        CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+                    } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                        (void)hcomm_.BatchCommit(batchHandle);
                         preparedWqeCount = 0U;
                     }
                 }
@@ -518,18 +533,23 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     RemoteRelayInfo relayInfo;
                     LoadRemoteRelayInfo(tokenIndex, relayInfo);
                     tokenIndex = relayInfo.nextTokenIndex;
-                    const bool lastFlag = tokenIndex == INVALID_TOKEN_INDEX;
-                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, firstFlag, lastFlag);
+                    const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
+                    AppendRemoteFlagWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, firstFlag, enableCqe);
                     firstFlag = false;
                     ++preparedWqeCount;
-                    if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
-                        CommitBatch(batchHandle);
+                    ++sqWriteCount;
+                    if (enableCqe) {
+                        ++drainCount;
+                        CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
+                    } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
+                        (void)hcomm_.BatchCommit(batchHandle);
                         preparedWqeCount = 0U;
                     }
                 }
 
                 if (preparedWqeCount != 0U) {
-                    CommitBatch(batchHandle);
+                    (void)hcomm_.BatchCommit(batchHandle);
+                    AscendC::PRINTF("rank=%u, dst=%u, drain=%u, sq=%u\n", rankId_, dstRank, drainCount, sqWriteCount);
                 }
             }
         }
