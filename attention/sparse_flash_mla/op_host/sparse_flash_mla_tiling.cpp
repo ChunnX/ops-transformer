@@ -2324,10 +2324,8 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
     uint32_t oriBlockSize = static_cast<uint32_t>(tilingInfo->oriBlockSize);
     uint32_t cmpBlockSize = static_cast<uint32_t>(tilingInfo->cmpBlockSize);
-    uint32_t oriBlocksizeFlag =
-        static_cast<uint32_t>(oriBlockSize & (oriBlockSize - 1)) == 0;
-    uint32_t cmpBlocksizeFlag =
-        static_cast<uint32_t>(cmpBlockSize & (cmpBlockSize - 1)) == 0;
+    uint32_t oriBlocksizeFlag = static_cast<uint32_t>(oriBlockSize & (oriBlockSize - 1)) == 0;
+    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>(cmpBlockSize & (cmpBlockSize - 1)) == 0;
     uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
                                          oriBlocksizeFlag :
                                          (oriBlocksizeFlag != 0 && cmpBlocksizeFlag != 0)) :

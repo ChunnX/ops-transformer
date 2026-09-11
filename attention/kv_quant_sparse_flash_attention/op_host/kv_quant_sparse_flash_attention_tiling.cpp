@@ -312,8 +312,8 @@ void QSFAMlaTiling::CalcVectorizeFlag()
             Align<uint32_t>(qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t), 512U) +
             Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int32_t), BYTE_BLOCK) +
             alignedSparseBlockCount * sizeof(int64_t);
-        vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag != 0 && sparseBlockCountFlag != 0 &&
-                                               sparseModeFlag != 0);
+        vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag != 0 &&
+                                               sparseBlockCountFlag != 0 && sparseModeFlag != 0);
     }
 }
 
