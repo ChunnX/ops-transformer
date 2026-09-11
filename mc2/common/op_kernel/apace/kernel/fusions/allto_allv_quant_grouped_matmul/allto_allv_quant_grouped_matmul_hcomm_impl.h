@@ -157,8 +157,8 @@ public:
         // Do not let AIV0 submit the first collective while another MIX
         // sub-core is still initializing its HCCL context.
         AscendC::SyncAll<false>();
-        if (A2AV_GMM_DIAG_SCALE_ONLY) {
-            RunScaleDiagnostic();
+        if (A2AV_GMM_DIAG_DATA_ONLY) {
+            RunDataDiagnostic();
             return;
         }
         if ASCEND_IS_AIV {
@@ -225,19 +225,18 @@ private:
         hccl_.Finalize();
     }
 
-    __aicore__ inline void RunScaleDiagnostic()
+    __aicore__ inline void RunDataDiagnostic()
     {
         if ASCEND_IS_AIV {
             if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
                 PrepareExpertCommunication(0U);
-                scaleHandle_ = hccl_.template AlltoAllV<true>(
-                    xScaleGM_, scaleSendCnt_, scaleSendOff_,
-                    static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleRecvGM_, scaleRecvCnt_,
-                    scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
-                hccl_.Wait(scaleHandle_);
+                dataHandle_ = hccl_.template AlltoAllV<true>(
+                    xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
+                    dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+                hccl_.Wait(dataHandle_);
             }
         }
-        // Hold every MIX sub-core until AIV0 either finishes the scale
+        // Hold every MIX sub-core until AIV0 either finishes the data
         // collective or reproduces the hang, then close the normal lifecycle.
         AscendC::SyncAll<false>();
         if ASCEND_IS_AIV {
