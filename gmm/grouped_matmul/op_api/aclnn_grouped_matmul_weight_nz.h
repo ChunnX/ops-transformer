@@ -20,7 +20,7 @@ extern "C" {
  * @domain aclnn_ops_infer
  *
  * @param [in] x:
- * 表示公式中的输入x，数据类型支持FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND，支持的最大长度为1024个。
+ * 表示公式中的输入x，数据类型支持FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND，支持的最大长度为128个。
  * INT32为打包输入，每个INT32承载8个INT4数据。
  * @param [in]
  * weight：表示公式中的weight，数据类型支持FLOAT16、BFLOAT16、INT8、INT4、FLOAT4_E2M1、INT32、FLOAT32、
