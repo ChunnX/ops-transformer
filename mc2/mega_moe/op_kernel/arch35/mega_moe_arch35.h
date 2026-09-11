@@ -715,15 +715,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
 
     // 阶段 1：量化本卡输入、推送 compact route、清零同步状态，并准备共享专家输入。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
-    DebugMegaMoeProgress(rankId_, "input_prepare.begin");
     ProcessInputPreparationStage();
-    DebugMegaMoeProgress(rankId_, "input_prepare.end");
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
     }
-    DebugMegaMoeProgress(rankId_, "input_local_sync.begin");
-    SyncAll<false>();
-    DebugMegaMoeProgress(rankId_, "input_local_sync.end"); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
+    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
     // 等待所有 rank 完成本轮输入准备（quant/mask 发送/本地 workspace flag 清理），再进入
     // MoE stage。该同步置于共享专家 GMM1 之前：共享 GMM1 只依赖本卡输入（SyncAll<false>
@@ -737,9 +733,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     //     到达保证由 count 高 8 位 launch epoch 校验承担（见 token_dispatch.h
     //     PrepareMoeExpertTokenCountTable），与 a8w8 路径一致。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    DebugMegaMoeProgress(rankId_, "cross_rank_input.begin");
     CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-    DebugMegaMoeProgress(rankId_, "cross_rank_input.end");
 
     if (sharedExpertNum_ > 0U) {
         // 阶段 2：可选的共享专家 GMM1 及 Activation。
@@ -756,17 +750,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
-    DebugMegaMoeProgress(rankId_, "moe_stages.begin");
     derived.ProcessMoeExpertStages();
-    DebugMegaMoeProgress(rankId_, "moe_stages.end");
     if constexpr (g_coreType == AIV) {
-        DebugMegaMoeProgress(rankId_, "export_counts.begin");
         ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-        DebugMegaMoeProgress(rankId_, "export_counts.end");
         PipeBarrier<PIPE_ALL>();
-        DebugMegaMoeProgress(rankId_, "output_local_sync.begin");
         SyncAll<true>();
-        DebugMegaMoeProgress(rankId_, "output_local_sync.end");
     }
     if (sharedExpertNum_ > 0U) {
         // 阶段 4：可选的共享专家 GMM2，其结果由输出聚合阶段合并。
@@ -777,21 +765,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     // 阶段 5：所有 rank 完成 Combine 结果发送后，AIV 执行输出聚合。
     if constexpr (g_coreType == AIV) {
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_OUTPUT);
-        DebugMegaMoeProgress(rankId_, "cross_rank_output.begin");
         CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-        DebugMegaMoeProgress(rankId_, "cross_rank_output.end");
         exceptionDump_.UpdateStage(MegaMoeImpl::Stage::UNPERMUTE);
-        DebugMegaMoeProgress(rankId_, "unpermute.begin");
         MegaMoeUnpermuteBufferConfig unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
-        DebugMegaMoeProgress(rankId_, "unpermute.end");
     }
 
     // 恢复入口时的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::COMPLETE);
-    DebugMegaMoeProgress(rankId_, "complete");
 }
 
 } // namespace MegaMoeImpl

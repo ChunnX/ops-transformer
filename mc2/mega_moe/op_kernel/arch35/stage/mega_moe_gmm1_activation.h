@@ -20,6 +20,7 @@
 #include "tensor_api/tensor.h"
 #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "../common/mega_moe_gmm_common.h"
+#include "../common/mega_moe_exception_dump_policy.h"
 
 namespace MegaMoeImpl {
 
@@ -27,6 +28,29 @@ using namespace AscendC;
 
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = 256U * 256U;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = 128U * 256U;
+
+// Device output must be retained separately for each rank; the wave banner carries rank ID.
+__aicore__ inline void DebugGmm1Tile(__gm__ const char *stage, uint32_t expert, uint32_t loop, uint32_t m, uint32_t n,
+                                     uint32_t pingpong, int32_t syncCount = -1, __gm__ int32_t *flag = nullptr,
+                                     uint32_t expected = 0U)
+{
+#if MEGA_MOE_DEBUG_HANG
+    constexpr uint32_t DEBUG_EXPERT_LIMIT = 2U;
+    constexpr uint32_t DEBUG_LOGICAL_TILE_LIMIT = 256U;
+    if (GetBlockIdx() != 0U || expert >= DEBUG_EXPERT_LIMIT || loop >= DEBUG_LOGICAL_TILE_LIMIT) {
+        return;
+    }
+    AscendC::PipeBarrier<PIPE_ALL>();
+    uint32_t role = g_coreType == AIC ? 0U : 1U;
+    AscendC::printf("[MegaMoeHang][GMM1] role=%u stage=%s expert=%u loop=%u m=%u n=%u pingpong=%u sync=%d\n", role,
+                    stage, expert, loop, m, n, pingpong, syncCount);
+    if (flag != nullptr) {
+        int32_t actual = AscendC::ReadGmByPassDCache(flag);
+        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::printf("[MegaMoeHang][GMM1] flag=%p actual=%d expected=%u\n", flag, actual, expected);
+    }
+#endif
+}
 
 // 等待当前 GMM1 tile 对应的 Dispatch 输入就绪。
 template <bool IsShared, typename Config>
@@ -211,10 +235,12 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
 template <typename MmadContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                           uint32_t startLoopIdx, uint32_t tileNum, int32_t &vecSetSyncCom,
-                                          uint16_t &pingpongIdx, MmadContext *blockMmadContext)
+                                          uint16_t &pingpongIdx, MmadContext *blockMmadContext, uint32_t expertIdx)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
+    DebugGmm1Tile("mmad_init.begin", expertIdx, startLoopIdx, 0U, 0U, pingpongIdx, vecSetSyncCom);
     InitBlockMmad(*blockMmadContext, config);
+    DebugGmm1Tile("mmad_init.end", expertIdx, startLoopIdx, 0U, 0U, pingpongIdx, vecSetSyncCom);
     auto &blockMmad = blockMmadContext->blockMmad;
 
     using KernelConfig = typename Config::KernelConfig;
@@ -240,27 +266,44 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
             workSet.gmScaleA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.scaleK));
         uint32_t waveIdx = mLoc / config.tileM;
         if (waveIdx != lastWaveWaited) {
+            if constexpr (!IsShared) {
+                uint32_t expected = (mLoc + config.tileM > config.m) ? config.m - mLoc : config.tileM;
+                DebugGmm1Tile("input_ready.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom,
+                              gmmAddrInfo.dispatchToGmm1Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE,
+                              expected);
+            }
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+            DebugGmm1Tile("input_ready.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             lastWaveWaited = waveIdx;
         }
         if constexpr (IsGmm1Interleaved) {
             if (vecSetSyncCom >= 2) {
+                DebugGmm1Tile("wait_vector.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
                 WaitForVector(pingpongIdx);
+                DebugGmm1Tile("wait_vector.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             }
         } else if (vecSetSyncCom != 0) {
+            DebugGmm1Tile("wait_vector.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             WaitForVector();
+            DebugGmm1Tile("wait_vector.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
         }
 
+        DebugGmm1Tile("mmad.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
         Gmm1AicMmadTileToUbGeneric<BlockMmad, IsGmm1Interleaved>(
             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, actualShape, nLoc, kLoc, gmBlockA,
             gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, pingpongIdx);
+        DebugGmm1Tile("mmad.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
 
         if constexpr (IsGmm1Interleaved) {
+            DebugGmm1Tile("notify_vector.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             NotifyVector(pingpongIdx);
+            DebugGmm1Tile("notify_vector.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             vecSetSyncCom++;
             pingpongIdx = 1U - pingpongIdx;
         } else {
+            DebugGmm1Tile("notify_vector.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             NotifyVector();
+            DebugGmm1Tile("notify_vector.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx, vecSetSyncCom);
             vecSetSyncCom = 1;
         }
     }
@@ -627,7 +670,8 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
 template <bool IsGmm1Interleaved, bool IsWaveFlagGrained, typename WorkSet, typename Config, typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                                uint32_t startLoopIdx, uint32_t tileNum,
-                                               ActivationQuantOp &activationQuantOp, uint16_t &pingpongIdx)
+                                               ActivationQuantOp &activationQuantOp, uint16_t &pingpongIdx,
+                                               uint32_t expertIdx)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
@@ -635,16 +679,28 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         if constexpr (IsGmm1Interleaved) {
+            DebugGmm1Tile("wait_cube.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             WaitForCube(pingpongIdx);
+            DebugGmm1Tile("wait_cube.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
+            DebugGmm1Tile("activation.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             Gmm1Aiv0InterleavedEpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo,
                                                                       actualShape, mLoc, nLoc, pingpongIdx);
+            DebugGmm1Tile("activation.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
+            DebugGmm1Tile("notify_cube.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             NotifyCube(pingpongIdx);
+            DebugGmm1Tile("notify_cube.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             pingpongIdx = 1U - pingpongIdx;
         } else {
+            DebugGmm1Tile("wait_cube.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             WaitForCube();
+            DebugGmm1Tile("wait_cube.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
+            DebugGmm1Tile("activation.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc,
                                                            nLoc);
+            DebugGmm1Tile("activation.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
+            DebugGmm1Tile("notify_cube.begin", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
             NotifyCube();
+            DebugGmm1Tile("notify_cube.end", expertIdx, loopIdx, mLoc, nLoc, pingpongIdx);
         }
     }
 }
@@ -703,7 +759,8 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
                     workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, blockMmadContext);
             } else {
                 Gmm1AicMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
-                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx, blockMmadContext);
+                    workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx, blockMmadContext,
+                    expertIdx);
             }
         } else {
             BlockMmadContext<BlockMmad> localBlockMmadContext;
@@ -713,7 +770,7 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
             } else {
                 Gmm1AicMmadGeneric<BlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
                     workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx,
-                    &localBlockMmadContext);
+                    &localBlockMmadContext, expertIdx);
             }
         }
     } else {
@@ -723,8 +780,8 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
                 workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, expertBeforeCnt,
                 expertIdx);
         } else {
-            Gmm1Aiv0EpilogueGeneric<IsGmm1Interleaved, IsWaveFlagGrained>(workSet, gmmAddrInfo, config, startLoopIdx,
-                                                                          tileNum, activationQuantOp, pingpongIdx);
+            Gmm1Aiv0EpilogueGeneric<IsGmm1Interleaved, IsWaveFlagGrained>(
+                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, activationQuantOp, pingpongIdx, expertIdx);
         }
     }
 }

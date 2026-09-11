@@ -277,8 +277,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             return;
         }
     }
-
-    DebugMegaMoeProgress(commonConfig_.rankId, "gmm2.active", gmm2Position.expertIdx, gmm2Position.tokenIndexInExpert);
     while (!IsSameExpertTokenPosition(gmm2Position, waveEndPosition) && gmm2Position.expertIdx < moeExpertPerRank_) {
         if (gmm2Position.tokenIndexInExpert == 0U) {
             uint32_t expertTokenCount =
@@ -366,7 +364,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     const CombineBufferConfig &bufferConfig, uint32_t allCoreCombineExpertIndex,
     const ExpertLoopState &allCoreCombineExpertState)
 {
-    DebugMegaMoeProgress(commonConfig_.rankId, "combine.enter", expertBegin, expertEnd);
     if constexpr (g_coreType == AIC) {
         return;
     }
@@ -381,9 +378,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         RunWaveCombineStage<CombineQuantMode, true>(commonConfig_, waveCombineJob_, activeBufferConfig,
                                                     waveCombineScratch_, params_, combineAddrInfo,
                                                     allCoreCombineExpertState, allCoreCombineExpertIndex, rowSequence);
-        DebugMegaMoeProgress(commonConfig_.rankId, "combine.drain.begin", expertBegin, expertEnd);
         DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
-        DebugMegaMoeProgress(commonConfig_.rankId, "combine.drain.end", expertBegin, expertEnd);
         return;
     }
 
@@ -410,9 +405,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                                   combineState.expertIdx, rowSequence);
         }
     }
-    DebugMegaMoeProgress(commonConfig_.rankId, "combine.drain.begin", expertBegin, expertEnd);
     DrainCombineRowBuffers(rowSequence, activeBufferConfig.rowBufferCount);
-    DebugMegaMoeProgress(commonConfig_.rankId, "combine.drain.end", expertBegin, expertEnd);
 }
 
 /*
@@ -437,9 +430,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitCombineBuffers();
     }
-    DebugMegaMoeProgress(commonConfig_.rankId, "count_table.begin");
     PrepareMoeExpertTokenCountTable(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
-    DebugMegaMoeProgress(commonConfig_.rankId, "count_table.end");
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
@@ -471,9 +462,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 0U) {
-            DebugMegaMoeProgress(commonConfig_.rankId, "count_ready.begin");
             WaitForMoeExpertTokenCountReady(params_.workspaceInfo.flagSendCntCalToUpdParamsPtr, countWorkspace_, 0U);
-            DebugMegaMoeProgress(commonConfig_.rankId, "count_ready.end");
         }
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             for (uint32_t expertEnd = moeExpertPerRank_; expertEnd > 0U; --expertEnd) {
@@ -500,8 +489,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                              waveEndPosition.tokenIndexInExpert, static_cast<uint32_t>(gmm1Count));
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
-                DebugMegaMoeProgress(commonConfig_.rankId, "dispatch.begin", dispatchPosition.expertIdx,
-                                     dispatchPosition.tokenIndexInExpert, static_cast<uint32_t>(gmm1Count));
                 waveEndPosition = hasPreparedWave ? preparedWaveEndPosition : DispatchNextWave(dispatchPosition);
                 if (waveEndPosition.expertIdx < moeExpertPerRank_) {
                     preparedWaveEndPosition = DispatchNextWave(dispatchPosition);
@@ -509,8 +496,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                 } else {
                     hasPreparedWave = false;
                 }
-                DebugMegaMoeProgress(commonConfig_.rankId, "dispatch.end", waveEndPosition.expertIdx,
-                                     waveEndPosition.tokenIndexInExpert, static_cast<uint32_t>(gmm1Count));
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
                     AdvanceStartBlockIdxForSkippedGmm1(waveBeginPosition, waveEndPosition);
                 }
@@ -532,8 +517,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             if (hasPendingGmm2Wave) {
                 ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
                                 gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
-                DebugMegaMoeProgress(commonConfig_.rankId, "gmm2.end", gmm2Position.expertIdx,
-                                     gmm2Position.tokenIndexInExpert, static_cast<uint32_t>(gmm2Count));
                 UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                     uint32_t combineEndExpertIndex = gmm2PendingWaveEnd.expertIdx;
@@ -546,12 +529,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             gmm2PendingWaveEnd = waveEndPosition;
             hasPendingGmm2Wave = true;
         } else {
-            DebugMegaMoeProgress(commonConfig_.rankId, "gmm2.begin", gmm2Position.expertIdx,
-                                 gmm2Position.tokenIndexInExpert, static_cast<uint32_t>(gmm2Count));
             ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
                             gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
-            DebugMegaMoeProgress(commonConfig_.rankId, "gmm2.end", gmm2Position.expertIdx,
-                                 gmm2Position.tokenIndexInExpert, static_cast<uint32_t>(gmm2Count));
             UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                 uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
@@ -585,10 +564,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
 
     if constexpr (!TopkWeightsPrefetch) {
-        DebugMegaMoeProgress(commonConfig_.rankId, "end_sync.begin", static_cast<uint32_t>(vecSetSyncCom),
-                             gmm1PingPongIdx_);
         EndSync<IsGmm1Interleaved>(vecSetSyncCom, gmm1PingPongIdx_);
-        DebugMegaMoeProgress(commonConfig_.rankId, "end_sync.end");
     }
     gmm1PingPongIdx_ = 0;
 }

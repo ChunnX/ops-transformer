@@ -27,7 +27,7 @@ __aicore__ inline void DebugMegaMoeProgress(uint32_t rank, __gm__ const char *st
 {
 #if MEGA_MOE_DEBUG_HANG
     // Bound per-wave logging; never print inside a polling loop.
-    if (sequence > 8U) {
+    if (GetBlockIdx() != 0U || sequence > 8U) {
         return;
     }
     uint32_t role = 0U; // 0=AIC, 1=AIV0, 2=AIV1
