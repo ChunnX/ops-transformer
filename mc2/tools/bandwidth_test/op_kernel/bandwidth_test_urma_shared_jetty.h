@@ -62,7 +62,8 @@ private:
     __aicore__ inline void SendWindowToRank(uint32_t rankId, GM_ADDR epochAddr);
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void BeginBatch(uint32_t rankId);
-    __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch);
+    __aicore__ inline void DrainPending();
+    __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint32_t len, uint32_t remainingWrites);
     __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void LocalWindowCopy();
@@ -157,6 +158,9 @@ private:
     uint32_t batchCapacity_{0};
     uint32_t batchBufferBytes_{0};
     uint32_t preparedWrites_{0};
+    uint32_t outstandingWrites_{0};
+    uint32_t drainThreshold_{8192};
+    bool batchInitialized_{false};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
     // Win streaming modes use separate slots inside the 1 MiB state area, outside the business fields.
@@ -187,6 +191,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     hOutSize_ = axisH_ * sizeof(XType);
     batchBufferBytes_ = tilingData->batchBufferBytes;
     batchCapacity_ = tilingData->batchTokens;
+    drainThreshold_ = tilingData->drainThreshold;
     // Direct Win streaming only needs communication parameters; its WQE buffer is allocated in Process.
     if (mode_ >= 2 && mode_ <= 4) {
         return;
@@ -329,28 +334,44 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFunc>::BeginBatch(uint32_t rankId)
 {
     batchRankId_ = rankId;
-    preparedWrites_ = 0;
-    // The multi-channel handle keeps one queue cursor for this core-owned Jetty; GetHandleRef selects the peer.
-    batchHandle_ =
-        hcomm_.MakeBatchHandle(static_cast<AscendC::MultiChannelHandle>(context_->sharedJettyHandle_[aivId_]),
-                               batchTensor_, batchBufferBytes_);
+    // Retain the shared queue cursor and outstanding count when selecting another peer.
+    if (!batchInitialized_) {
+        batchHandle_ =
+            hcomm_.MakeBatchHandle(static_cast<AscendC::MultiChannelHandle>(context_->sharedJettyHandle_[aivId_]),
+                                   batchTensor_, batchBufferBytes_);
+        batchInitialized_ = true;
+    }
 }
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFunc>::PrepareWrite(
-    GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch)
+    GM_ADDR dst, GM_ADDR src, uint32_t len, uint32_t remainingWrites)
 {
+    // remainingWrites includes this WQE and ends at the current payload/control boundary.
+    if (preparedWrites_ == 0) {
+        uint32_t nextBatch = remainingWrites < batchCapacity_ ? remainingWrites : batchCapacity_;
+        // Drain before staging WQEs: only previously committed work may be waited on.
+        if (outstandingWrites_ > drainThreshold_ - nextBatch) {
+            DrainPending();
+        }
+    }
     uint32_t channelIndex = batchRankId_ < static_cast<uint32_t>(epRankId_) ? batchRankId_ : batchRankId_ - 1;
     auto &peerHandle = hcomm_.GetHandleRef(batchHandle_, channelIndex, dst);
     hcomm_.WriteNbi(peerHandle, dst, src, len);
     ++preparedWrites_;
-    if (lastInBatch || preparedWrites_ == batchCapacity_) {
+    if (remainingWrites == 1 || preparedWrites_ == batchCapacity_) {
         hcomm_.BatchCommit(batchHandle_);
-        // Temporary diagnostic: stop on a failed Drain instead of continuing the benchmark.
-        if (hcomm_.Drain(batchHandle_) != HCOMM_SUCCESS) {
-            Trap();
-        }
+        outstandingWrites_ += preparedWrites_;
         preparedWrites_ = 0;
+    }
+}
+
+template <TemplateBandwidthTestTypeClass>
+__aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFunc>::DrainPending()
+{
+    if (outstandingWrites_ != 0) {
+        hcomm_.Drain(batchHandle_);
+        outstandingWrites_ = 0;
     }
 }
 
@@ -431,12 +452,13 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
                 ProcessToken(dstWinGMTensor, token);
                 ++sent;
                 if (isRemote) {
-                    PrepareWrite(remote, local, hOutSize_, sent == count);
+                    PrepareWrite(remote, local, hOutSize_, count - sent + 1);
                 }
             }
             start += chunk;
         }
     }
+    DrainPending();
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -469,10 +491,11 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
         if (isRemote) {
             // Rebind the core-owned shared jetty for the status phase.
             BeginBatch(rankId);
-            PrepareWrite(remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t), sizeof(int32_t), true);
-            PrepareWrite(remoteAddr, localAddr, sizeof(int32_t), true);
+            PrepareWrite(remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t), sizeof(int32_t), 1);
+            PrepareWrite(remoteAddr, localAddr, sizeof(int32_t), 1);
         }
     }
+    DrainPending();
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -666,14 +689,14 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     }
     while (remaining != 0) {
         --remaining;
-        PrepareWrite(dst, src, hOutSize_, remaining == 0);
+        PrepareWrite(dst, src, hOutSize_, remaining + 1);
         src += hOutSize_;
         dst += hOutSize_;
     }
     // Each (source rank, core) has a separate epoch flag, including cores with an empty BS range.
     GM_ADDR flag = remoteWin + STREAM_FLAGS_OFFSET +
         (static_cast<uint64_t>(epRankId_) * BandwidthTestTiling::URMA_MAX_SHARED_JETTYS + aivId_) * sizeof(uint32_t);
-    PrepareWrite(flag, epochAddr, sizeof(uint32_t), true);
+    PrepareWrite(flag, epochAddr, sizeof(uint32_t), 1);
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -692,6 +715,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     if (mode_ == 4) {
         uint32_t remoteRank = RemoteRankForJetty(aivId_);
         SendWindowToRank(remoteRank, reinterpret_cast<GM_ADDR>(epochAddr));
+        DrainPending();
         uint32_t senderJetty = static_cast<uint32_t>(epRankId_) < remoteRank
             ? static_cast<uint32_t>(epRankId_)
             : static_cast<uint32_t>(epRankId_ - 1);
@@ -707,6 +731,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
             SendWindowToRank(rankId, reinterpret_cast<GM_ADDR>(epochAddr));
         }
     }
+    DrainPending();
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
         if (rankId != static_cast<uint32_t>(epRankId_)) {
             auto flag = reinterpret_cast<__gm__ uint32_t *>(

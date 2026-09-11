@@ -1,5 +1,11 @@
 # 单共享 Jetty 多对端带宽测试方案
 
+> 执行策略更新：共享 Jetty 已改用 `drain_threshold`（默认 8192）跨批、跨 peer 累计 WQE。
+> 下一批将超过阈值时先 Drain，最终发送完成后再 Drain；flag/count 同样占预算。
+> 下文逐批/逐 peer Drain 次数和由此推导的台阶属于旧基线，不能直接用于新实现；Commit 次数仍按 payload 分批计算。
+> 新实验需固定并记录 drain_threshold，Drain 次数按实际提交序列累计推导，不能直接等同 Commit 次数。
+
+
 ## 1. 目标与适用范围
 
 本文档用于规划和解释“一个共享 Jetty 连接多个远端”的带宽测试，目标是区分以下因素对性能的影响：

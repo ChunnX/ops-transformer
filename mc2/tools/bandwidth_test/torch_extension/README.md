@@ -146,10 +146,10 @@ tiling key 先选择通信算法，再在 URMA 下选择 `SHARED_JETTY`；kernel
 - mode 2：将每个对端的 `floor(BS/world_size)` 个完整 token 分给 N 核；每核遍历全部远端。
   总流量口径不变，各 `(源 rank, 核)` 使用独立 epoch flag，空区间仍通知完成。
 - mode 3：N 个 Jetty 都遍历全部远端，每个 Jetty 向每张远端卡发送完整 `BS` 个 token。
-  `batch_tokens` 不生效，实际 batch 取 `min(BS, tiling最大值)`；所有来源和 Jetty 共用一个 BS 接收区，允许覆盖。
+  `batch_tokens` 不生效，实际 batch 取 `min(BS, tiling最大值, drain_threshold)`；所有来源和 Jetty 共用一个 BS 接收区，允许覆盖。
 - mode 4：实际 Jetty 数固定为 `world_size - 1`，每个 Jetty 绑定一张远端卡并发送完整 BS。
-  有效批量为 `min(batch_tokens or BS, BS, tiling最大值)`；所有来源共用一个 BS 接收区，允许覆盖。
-- 每个发送核只操作自己的共享 jetty，并在切换 peer 前完成上一批 Drain；同一 Jetty 上的 Channel 不并发使用。
+  有效批量为 `min(batch_tokens or BS, BS, tiling最大值, drain_threshold)`；所有来源共用一个 BS 接收区，允许覆盖。
+- 每个发送核独占自己的共享 Jetty，跨 peer 保留 batch handle 和累计在途 WQE；切换 peer 不强制 Drain。
   数据、count、ready 和 epoch 的远端写都使用
   `MakeBatchHandle(MultiChannelHandle) → GetHandleRef(peerIndex) → WriteNbi(batch) → BatchCommit → Drain`。
   `batch_tokens` 是每核向一个目标卡提交的 payload token 数，mode 3 除外，尾批可以不足；
@@ -304,7 +304,7 @@ maximum。合法值会打印 `requested / selected / maximum`。UB 最大值与 
 例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 和
 `max_bs=8192、hidden=8192` 的 tiling 最大提交数均为 **2048 个 token/WQE**。
 设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
-每批经 `BatchCommit` 提交、`Drain` 完成后，再准备下一批。
+普通 URMA 每批 Commit 后 Drain；共享 Jetty 按累计阈值延后 Drain。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置或模板实参。
 WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `cqe`。
 下述已核对 SDK 版本的默认值为 `odr=5、fence=1、cqe=1`，直接调用并不表示把这些字段置零。
@@ -319,7 +319,7 @@ WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `c
 context 与 tiling 的 Jetty 数量，也不检查通信返回值。host 参数、建链和资源检查保留，SDK 内部检查沿用原实现。
 kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还通过公开 `Lock/Unlock` 串行化通道使用。
 两条路径都不读取 channel entity、队列深度、游标或 batch handle 内部字段。
-当前 Batch 接口未提供队列余量查询，也未承诺自动处理多批在途的溢出；因此每批提交后调用 Drain，再复用下一批。
+当前 Batch 接口未提供队列余量查询；共享 Jetty 的 `drain_threshold` 是调用方配置的在途预算，必须不超过实际可用 SQ/CQ 容量。普通 URMA 仍逐批 Drain。
 多批数据的计时包含这些完成等待，不能假定更小的 batch 会降低耗时。
 已核对 [Hcomm 公共接口](https://gitcode.com/cann/asc-comm/blob/1e575b02fb8bb3cf3e8f1e8f617972eac0d2a66e/include/aicore/hcomm/hcomm.h)，asc-comm 提交为
 `1e575b02fb8bb3cf3e8f1e8f617972eac0d2a66e`，部署时须使用兼容版本。
@@ -332,7 +332,7 @@ kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还
 计数和 ready flag 均经 batch 接口提交并分别等待完成，保证先计数后就绪。
 普通 URMA 在阶段间重新绑定，避免复用已解锁、可能被其他核推进过共享 SQ 游标的 handle；
 不会在 token 或 commit 循环里重新获取 handle。共享 Jetty 路径则按上文所述由每个发送核独占一个 Jetty，
-在切换 peer 前完成 Drain，不调用 `Lock/Unlock`。
+跨 peer 累计已提交的 WQE，在下一批将超过阈值及发送结束时 Drain，不调用 `Lock/Unlock`。
 `mode=1` 与现有 MTE 一致，包含发送、状态通知和等待，仅省略接收区到输出的搬运。
 `mode=0` 在相同流程后调用与 MTE 一致的 `LocalWindowCopy`，按源卡和原 token 顺序拼接有效输出。
 同一 context 的调用与图重放应串行下发，避免并发覆盖通信窗口。
@@ -360,7 +360,7 @@ mode 2/3/4 的 Win 最小容量统一为 `1 MiB + 2 * BS * H * 2`，与卡数、
 源 token `i` 对应目标接收区的 token `i`，所有来源和 Jetty 允许覆盖同一位置；完成 flag 保持独立。
 mode 3/4 与 mode 2 共用 Win 布局和公开 Hcomm batch 接口；脚本、Torch 入参检查
 和 host tiling 使用同一套有效 Jetty 数、批量和 Win 容量公式。
-共享 mode 2/3/4 始终先 Commit/Drain 完整数据批，再单独 Commit/Drain flag，不将 flag 合入 payload 尾批。
+共享 mode 2/3/4 先提交数据批，再单独提交 flag；二者都计入在途 WQE，flag 不合入 payload 尾批。所有发送完成后 Drain，再等待远端 flag。
 有远端任务的核每次调用递增本核序号；等待时允许对方序号超前一轮，支持 uint32 回绕。
 不读取 x/dstrank_id 内容，仍保留原 tensor shape/type 接口约定；完整使用和计时口径见主目录 README。
 
@@ -371,3 +371,12 @@ URMA 和 ROCE kernel 均直接调用通信接口，不检查返回值；ROCE 的
 通信失败不再由本算子 kernel 主动报错或 Trap，失败运行可能挂起或产生无效性能结果。
 调用方仍负责保证上述通信前置条件。
 这些修改仍需在目标 SDK 下验证编译和多卡可见性。
+
+### 共享 Jetty 的 Drain 阈值
+
+`config.py` 中 `ModelConfig.drain_threshold = 8192` 通过 eager/图模式、Torch、ACLNN/GE 和 tiling 传到共享 Jetty kernel。
+该值为每个 Jetty 自上次 Drain 后累计提交的 WQE 数上限，跨 batch、跨目标卡累计；每个 token 为一个 WQE，flag/count 也各占一个，但不计入 payload 带宽。
+若累计值加下一批数量大于阈值，先 Drain 已提交请求，再准备并提交下一批；等于阈值允许提交。单批容量同时受阈值限制。
+发送结束再 Drain；mode 0/1 还在发布状态前完成数据阶段的 Drain。临时 Drain 失败 Trap 已移除。
+阈值只影响共享 Jetty；普通 URMA、MTE、ROCE 的提交等待策略不变。阈值范围为 `[1, UINT32_MAX]`，实际值须符合部署 SDK 的 SQ/CQ 可用容量。
+新增可选算子属性后，需重新生成/安装算子包和 Torch 扩展，并重建静态图内核。

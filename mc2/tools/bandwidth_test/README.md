@@ -79,8 +79,8 @@ aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单�
 ```
 
 `batch_tokens` 通常表示每张目标卡每次 BatchCommit 的 token 数，只有最后一批允许不足。
-模式 3 不读取该配置，有效值为 `min(BS, tiling最大值)`；能一次提交完就一次提交，
-否则按 tiling 最大值分批。模式 4 的有效值为 `min(batch_tokens or BS, BS, tiling最大值)`。
+模式 3 不读取该配置，有效值为 `min(BS, tiling最大值, drain_threshold)`；能一次提交完就一次提交，
+否则按 tiling 最大值分批。模式 4 的有效值为 `min(batch_tokens or BS, BS, tiling最大值, drain_threshold)`。
 MTE 使用 `batch_tokens=0`。
 `shared_jetty_comm_level=0` 沿用拓扑自动选择；1 和 2 分别要求所有远端能够在同一层通过
 UB_CTP 或 UB_RTP 建立共享 Jetty。该配置不作为算子属性下发，只用于共享 context 建链。
@@ -278,7 +278,7 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 
 共享 Jetty 模式 3 不再拆分对端数据。前 N 个核各自独占一个 Jetty，每个核都遍历全部远端卡，
 向每张远端卡发送完整 `BS` 个 token；`batch_tokens` 被忽略。实际 batch 为
-`min(BS, tiling最大值)`，因此放得下时一次提交，否则按最大容量分批。
+`min(BS, tiling最大值, drain_threshold)`，因此放得下时一次提交，否则按最大容量分批。
 单 rank 流量为 `N * BS * (world_size - 1) * H * 2`，带宽分子使用该实际发送量，不包含 flag。
 本卡跳过；允许 `BS >= 1`，仍要求 `bs == max_bs` 和 `world_size > 1`。
 接收区由所有来源 rank 和 Jetty 共用，允许覆盖；同一 shape 的 Win 容量不随卡数或 Jetty 数增长。
@@ -286,17 +286,17 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 共享 Jetty 模式 4 忽略配置的 `shared_jetty_num`，脚本建立 `world_size - 1` 个 Jetty，并按跳过本卡的
 rank 顺序一一绑定远端卡。每个 Jetty 向负责卡发送完整 BS，单 rank 流量为
 `BS * (world_size - 1) * H * 2`。有效批量为
-`min(batch_tokens or BS, BS, tiling最大值)`，超过 BS 或最大容量时直接取对应上限。
+`min(batch_tokens or BS, BS, tiling最大值, drain_threshold)`，超过 BS 或最大容量时直接取对应上限。
 
 kernel 直接从已注册 Win 的只读源区向远端公共接收区逐 token 调用 Batch Write，
 只分配 WQE buffer，不读取 x 或目标 ID，不做 token 搬运、统计、输出拷贝或双缓冲初始化。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置，完全使用 SDK 默认值。
 所有 URMA 模式通过公开 Hcomm 接口提交通信，不读取 channel entity、队列深度或 handle 内部字段。
-每次凑够 batch 就 Commit，再通过 Drain 确认该批完成；不根据私有队列信息决定在途批次数。
+每次凑够 batch 就 Commit；共享 Jetty 按 `drain_threshold` 累计在途 WQE，下一批将超过阈值时先 Drain，发送结束再 Drain。
 普通 URMA 模式 2 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量；
 SDK 默认的 fence 保证 flag 在前面的数据完成后到达，最终一次 Drain 收齐尾批数据和 flag 的完成通知。
-数据恰好满批时先完成该批，再单独提交并完成 flag。共享 jetty 模式始终先完成数据批，
-再单独 batch 提交并完成 flag。两条路径的报告都只计算数据 token 和字节，不计 flag。
+数据恰好满批时先完成该批，再单独提交并完成 flag。共享 Jetty 先提交数据批，
+再单独 batch 提交 flag，按阈值及发送结束统一 Drain。两条路径的报告都只计算数据 token 和字节，不计 flag。
 模式 2/3 的每个发送核等待所有来源卡同编号 Jetty 的 flag；模式 4 的每个发送核等待一张配对来源卡的 flag。
 
 flag 使用 Win 中独立的递增序号，避免清零和旧 flag 误判；Win 在通信接口初始化时已清零。
@@ -331,3 +331,12 @@ Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag
 2. **HCCL_BUFFSIZE**：脚本会根据测试配置自动计算并设置 `HCCL_BUFFSIZE` 环境变量
 3. **Profiling 路径**：多配置测试时，每个配置有独立的 profiling 子目录
 4. **内存占用**：大数据量测试时注意 NPU 内存限制
+
+### 共享 Jetty 的 Drain 阈值
+
+`config.py` 中 `ModelConfig.drain_threshold = 8192` 通过 eager/图模式、Torch、ACLNN/GE 和 tiling 传到共享 Jetty kernel。
+该值为每个 Jetty 自上次 Drain 后累计提交的 WQE 数上限，跨 batch、跨目标卡累计；每个 token 为一个 WQE，flag/count 也各占一个，但不计入 payload 带宽。
+若累计值加下一批数量大于阈值，先 Drain 已提交请求，再准备并提交下一批；等于阈值允许提交。单批容量同时受阈值限制。
+发送结束再 Drain；mode 0/1 还在发布状态前完成数据阶段的 Drain。临时 Drain 失败 Trap 已移除。
+阈值只影响共享 Jetty；普通 URMA、MTE、ROCE 的提交等待策略不变。阈值范围为 `[1, UINT32_MAX]`，实际值须符合部署 SDK 的 SQ/CQ 可用容量。
+新增可选算子属性后，需重新生成/安装算子包和 Torch 扩展，并重建静态图内核。

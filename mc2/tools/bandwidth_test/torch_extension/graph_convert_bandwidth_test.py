@@ -23,7 +23,7 @@ if _TORCHAIR_AVAILABLE:
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.bandwidth_test.default)
     def convert_bandwidth_test(context, x, dstrank_id, group, world_size,
                                max_bs, test_mode, ccl_buffer_size, comm_alg="",
-                               aiv_num=-1, batch_tokens=0, shared_jetty=False, shared_jetty_num=1, meta_outputs=None):
+                               aiv_num=-1, batch_tokens=0, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192, meta_outputs=None):
         return ge_op(
             op_type="BandwidthTest",
             inputs={"context": context, "x": x, "dst_rank_id": dstrank_id},
@@ -32,7 +32,8 @@ if _TORCHAIR_AVAILABLE:
                    "ccl_buffer_size": attr.Int(ccl_buffer_size),
                    "comm_alg": attr.Str(comm_alg), "aiv_num": attr.Int(aiv_num),
                    "batch_tokens": attr.Int(batch_tokens),
-                   "shared_jetty": attr.Bool(shared_jetty), "shared_jetty_num": attr.Int(shared_jetty_num)},
+                   "shared_jetty": attr.Bool(shared_jetty), "shared_jetty_num": attr.Int(shared_jetty_num),
+                   "drain_threshold": attr.Int(drain_threshold)},
             outputs=["y", "receive_cnt"],
             ir=IrDef("BandwidthTest")
             .input("context", "DT_INT32")
@@ -48,5 +49,6 @@ if _TORCHAIR_AVAILABLE:
             .attr("batch_tokens", attr.Int(0))
             .attr("shared_jetty", attr.Bool(False))
             .attr("shared_jetty_num", attr.Int(1))
+            .attr("drain_threshold", attr.Int(8192))
             .output("y", "DT_FLOAT16")
             .output("receive_cnt", "DT_INT32"))

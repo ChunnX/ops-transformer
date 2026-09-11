@@ -37,6 +37,7 @@ struct BandwidthTestTilingData {
     uint32_t batchBufferBytes; // URMA WQE bytes; rank-ID capacity is batchBufferBytes / URMA_WQE_BYTES
     uint32_t batchTokens;  // Effective URMA tokens per commit, selected by tiling
     uint64_t totalUbSize;  // 总UB大小，用于内存规划
+    uint32_t drainThreshold; // Maximum outstanding WQEs per shared Jetty, including control writes
     uint64_t totalWinSize; // HCCL通信窗口总大小
 };
 

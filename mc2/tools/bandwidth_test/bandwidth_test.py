@@ -84,6 +84,8 @@ test_configs = (
 )
 input_dtype = torch.bfloat16 if CONFIG.shape.x_dtype == "bf16" else torch.float16
 dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
+if not 0 < CONFIG.model.drain_threshold <= 2**32 - 1:
+    raise ValueError("drain_threshold must be in [1, UINT32_MAX]")
 mode = CONFIG.model.mode
 if mode is None:
     mode = 0 if CONFIG.run.is_precision_test or CONFIG.model.comm_alg == "roce" else 1
@@ -151,6 +153,7 @@ def print_setting():
     logger.info(f"{mode=}")
     logger.info(f"{CONFIG.model.comm_alg=}")
     logger.info(f"{CONFIG.model.batch_tokens=}")
+    logger.info(f"{CONFIG.model.drain_threshold=}")
     logger.info(
         f"{CONFIG.model.shared_jetty=}, configured_shared_jetty_num={CONFIG.model.shared_jetty_num}, "
         f"{effective_shared_jetty_num=}, "
@@ -389,6 +392,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_batch_tokens,
         test_shared_jetty,
         test_shared_jetty_num,
+        test_drain_threshold=8192,
     ):
         local_loop = CONFIG.run.loop if CONFIG.run.is_bandwidth_test else 1
         output = None
@@ -403,6 +407,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
                 comm_alg=test_comm_alg,
                 aiv_num=test_aiv_num,
                 batch_tokens=test_batch_tokens,
+                drain_threshold=test_drain_threshold,
                 shared_jetty=test_shared_jetty,
                 shared_jetty_num=test_shared_jetty_num,
             )
@@ -665,6 +670,7 @@ def run_bandwidth_test_npu(
             "comm_alg": CONFIG.model.comm_alg,
             "aiv_num": aiv_num,
             "batch_tokens": CONFIG.model.batch_tokens,
+            "drain_threshold": CONFIG.model.drain_threshold,
             "shared_jetty": CONFIG.model.shared_jetty,
             "shared_jetty_num": effective_shared_jetty_num,
         }
@@ -694,6 +700,7 @@ def run_bandwidth_test_npu(
             "test_comm_alg": CONFIG.model.comm_alg,
             "test_aiv_num": aiv_num,
             "test_batch_tokens": CONFIG.model.batch_tokens,
+            "test_drain_threshold": CONFIG.model.drain_threshold,
             "test_shared_jetty": CONFIG.model.shared_jetty,
             "test_shared_jetty_num": effective_shared_jetty_num,
         }
@@ -805,6 +812,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "comm_alg": CONFIG.model.comm_alg,
                 "aiv_num": aiv_num,
                 "batch_tokens": CONFIG.model.batch_tokens,
+                "drain_threshold": CONFIG.model.drain_threshold,
                 "shared_jetty": CONFIG.model.shared_jetty,
                 "shared_jetty_num": effective_shared_jetty_num,
             }
@@ -828,6 +836,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_comm_alg": CONFIG.model.comm_alg,
                 "test_aiv_num": aiv_num,
                 "test_batch_tokens": CONFIG.model.batch_tokens,
+                "test_drain_threshold": CONFIG.model.drain_threshold,
                 "test_shared_jetty": CONFIG.model.shared_jetty,
                 "test_shared_jetty_num": effective_shared_jetty_num,
             }
@@ -1020,17 +1029,17 @@ def run_bandwidth_test(
 
 
 def shared_jetty_batch_tokens(dstrank_id_per_rank, test_bs, ep_world_size, test_mode,
-                              shared_jetty_num, requested_batch_tokens):
+                              shared_jetty_num, requested_batch_tokens, drain_threshold=8192):
     """Return the largest payload commit selected by the shared-Jetty mode."""
     if ep_world_size == 1:
         return 0
-    capacity = requested_batch_tokens or URMA_MAX_BATCH_TOKENS
+    capacity = min(requested_batch_tokens or URMA_MAX_BATCH_TOKENS, drain_threshold)
     if test_mode == 2:
         return min(capacity, (test_bs // ep_world_size + shared_jetty_num - 1) // shared_jetty_num)
     if test_mode == 3:
-        return min(test_bs, URMA_MAX_BATCH_TOKENS)
+        return min(test_bs, URMA_MAX_BATCH_TOKENS, drain_threshold)
     if test_mode == 4:
-        return min(requested_batch_tokens or test_bs, test_bs, URMA_MAX_BATCH_TOKENS)
+        return min(requested_batch_tokens or test_bs, test_bs, URMA_MAX_BATCH_TOKENS, drain_threshold)
     largest = 0
     base, remainder = divmod(test_bs, shared_jetty_num)
     for rank, destinations in enumerate(dstrank_id_per_rank):
@@ -1105,7 +1114,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
             if CONFIG.model.shared_jetty:
                 perf_result["shared_jetty_batch_tokens"] = shared_jetty_batch_tokens(
                     all_inputs[i][1], test_bs, world_size, mode,
-                    effective_shared_jetty_num, CONFIG.model.batch_tokens)
+                    effective_shared_jetty_num, CONFIG.model.batch_tokens, CONFIG.model.drain_threshold)
             all_results.append(perf_result)
 
     print_summary_table(all_results)

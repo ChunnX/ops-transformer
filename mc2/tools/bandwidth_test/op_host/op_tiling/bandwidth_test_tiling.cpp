@@ -64,6 +64,7 @@ constexpr uint32_t ATTR_AIV_NUM_INDEX = 6U;    // AIV核数量
 constexpr uint32_t ATTR_BATCH_TOKENS_INDEX = 7U;
 constexpr uint32_t ATTR_SHARED_JETTY_INDEX = 8U;
 constexpr uint32_t ATTR_SHARED_JETTY_NUM_INDEX = 9U;
+constexpr uint32_t ATTR_DRAIN_THRESHOLD_INDEX = 10U;
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -508,6 +509,10 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     auto batchTokensPtr = attrs->GetAttrPointer<int64_t>(ATTR_BATCH_TOKENS_INDEX);
     OP_TILING_CHECK(batchTokensPtr == nullptr || *batchTokensPtr < 0,
                     OP_LOGE(nodeName, "batch_tokens must be 0 (auto) or positive."), return ge::GRAPH_FAILED);
+    auto drainThresholdPtr = attrs->GetAttrPointer<int64_t>(ATTR_DRAIN_THRESHOLD_INDEX);
+    OP_TILING_CHECK(drainThresholdPtr == nullptr || *drainThresholdPtr <= 0 || *drainThresholdPtr > UINT32_MAX,
+                    OP_LOGE(nodeName, "drain_threshold must be in [1, UINT32_MAX]."), return ge::GRAPH_FAILED);
+    tilingData->drainThreshold = static_cast<uint32_t>(*drainThresholdPtr);
     tilingData->batchTokens = 0;
     bool directWin = IsWinStreamMode(tilingData->mode);
     if (IsRoce(context)) {
@@ -551,6 +556,9 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                                     *batchTokensPtr, maxBatchTokens, ubSize, fixedBytes),
                             return ge::GRAPH_FAILED);
             batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
+        }
+        if (IsSharedJetty(context)) {
+            batchTokens = std::min(batchTokens, static_cast<uint64_t>(tilingData->drainThreshold));
         }
         tilingData->batchTokens = static_cast<uint32_t>(batchTokens);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;

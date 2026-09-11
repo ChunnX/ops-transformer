@@ -40,6 +40,7 @@ public:
         this->Attr("batch_tokens").AttrType(OPTIONAL).Int(0);
         this->Attr("shared_jetty").AttrType(OPTIONAL).Bool(false);
         this->Attr("shared_jetty_num").AttrType(OPTIONAL).Int(1);
+        this->Attr("drain_threshold").AttrType(OPTIONAL).Int(8192);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

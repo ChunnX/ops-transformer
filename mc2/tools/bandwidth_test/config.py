@@ -50,12 +50,12 @@ class ShapeConfig:
 
 @dataclass(frozen=True)
 class ParallelConfig:
-    server_num: int = 1  # 参与通信的服务器数量，world_size = server_num * rank_per_dev
+    server_num: int = 2  # 参与通信的服务器数量，world_size = server_num * rank_per_dev
     rank_per_dev: int = 8  # 每台服务器的 NPU 数量，用于 world_size 和本地设备编号取模
     is_cloud: bool = False  # True：从 VC_TASK_INDEX / VC_WORKER_HOSTS 解析服务器信息
-    server_index: int = 0  # 非云环境的服务器编号，范围 [0, server_num)
+    server_index: int = 1  # 非云环境的服务器编号，范围 [0, server_num)
     # 非云环境主节点 IP；None 沿用默认：单机 127.0.0.1，多机 71.20.45.123。
-    master_ip: Optional[str] = None
+    master_ip: Optional[str] = "7.246.125.11"
     master_port: int = 50001  # HCCL 初始化使用的 TCP 端口，各参与进程须一致
     is_full_core: bool = True  # True：使用 32 个 AIC / 64 个 AIV；False：使用 partial_core_num
     partial_core_num: int = 16  # 非全核时的 AIC 数量，AIV 数量自动取其两倍
@@ -66,14 +66,16 @@ class ParallelConfig:
 class ModelConfig:
     graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
     comm_alg: str = "urma"  # mte、urma 或 roce；roce 的 mode 只能为 0/None，shared_jetty=False
-    shared_jetty: bool = False  # 共享 jetty：仅 comm_alg=urma 时生效
-    shared_jetty_num: int = 1  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
-    shared_jetty_comm_level: int = 0  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
-    mode: Optional[int] = 2  # 2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
+    shared_jetty: bool = True  # 共享 jetty：仅 comm_alg=urma 时生效
+    shared_jetty_num: int = 16  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
+    shared_jetty_comm_level: int = 2  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
+    mode: Optional[int] = 3  # 2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
+    # 共享 Jetty 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
     batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
+    drain_threshold: int = 8192  # 每个共享 Jetty 的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 

@@ -102,6 +102,11 @@
                     "name": "shared_jetty_num",
                     "dtype": "int",
                     "value": 1
+                },
+                {
+                    "name": "drain_threshold",
+                    "dtype": "int",
+                    "value": 8192
                 }
             ]
         },
@@ -206,6 +211,11 @@
                     "name": "shared_jetty_num",
                     "dtype": "int",
                     "value": 1
+                },
+                {
+                    "name": "drain_threshold",
+                    "dtype": "int",
+                    "value": 8192
                 }
             ]
         }
