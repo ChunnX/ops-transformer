@@ -35,22 +35,22 @@ class BandwidthTestOpBuilder(OpBuilder):
             "bandwidth_test(Tensor(a!) context, Tensor x, Tensor dstrank_id, str group, "
             "int world_size, int max_bs, int test_mode, int ccl_buffer_size, *, "
             'str comm_alg="", int aiv_num=-1, int batch_tokens=0, '
-            'bool shared_jetty=False, int shared_jetty_num=1, int drain_threshold=8192) -> (Tensor, Tensor)'
+            'bool shared_jetty=False, int shared_jetty_num=1, int drain_threshold=8192, int peers_per_jetty=0) -> (Tensor, Tensor)'
         )
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
         def bandwidth_test_meta(context, x, dstrank_id, group, world_size,
                                 max_bs, test_mode, ccl_buffer_size, comm_alg="", aiv_num=-1,
-                                batch_tokens=0, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192):
+                                batch_tokens=0, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192, peers_per_jetty=0):
             _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                          test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold)
+                          test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold, peers_per_jetty)
             return (x.new_empty((max_bs * world_size, x.size(1))),
                     x.new_empty((world_size,), dtype=torch.int32))
 
 
 def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192):
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192, peers_per_jetty=0):
     torch._check(x.dim() == 2, lambda: "x must have shape [bs, hidden]")
     torch._check(x.dtype == torch.float16, lambda: "BandwidthTest supports only float16")
     torch._check(dstrank_id.dim() == 1 and dstrank_id.dtype == torch.int32,
@@ -79,6 +79,8 @@ def _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
                  lambda: "mode 2/3/4 requires comm_alg=urma")
     torch._check(aiv_num == -1 or aiv_num > 0, lambda: "aiv_num must be -1 or positive")
     torch._check(0 < drain_threshold <= 2**32 - 1, lambda: "drain_threshold must be in [1, UINT32_MAX]")
+    torch._check(peers_per_jetty == 0 or (test_mode == 3 and shared_jetty and comm_alg == "urma" and
+                 1 <= peers_per_jetty < world_size), lambda: "peers_per_jetty requires shared URMA mode 3 and must be below world_size")
     torch._check(batch_tokens >= 0, lambda: "batch_tokens must be 0 (auto) or positive")
     torch._check(comm_alg == "urma" or batch_tokens == 0,
                  lambda: "batch_tokens is only supported for urma; roce requires 0")
@@ -107,12 +109,12 @@ _bandwidth_test_op_builder._ensure_initialized()
 
 @impl(get_as_library(), "bandwidth_test", "PrivateUse1")
 def _bandwidth_test(context, x, dstrank_id, group, world_size, max_bs, test_mode,
-                    ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192):
+                    ccl_buffer_size, comm_alg="", aiv_num=-1, batch_tokens=0, shared_jetty=False, shared_jetty_num=1, drain_threshold=8192, peers_per_jetty=0):
     _check_inputs(context, x, dstrank_id, group, world_size, max_bs,
-                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold)
+                  test_mode, ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold, peers_per_jetty)
     return _bandwidth_test_op_builder.load().bandwidth_test(
         context, x, dstrank_id, group, world_size, max_bs, test_mode,
-        ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold)
+        ccl_buffer_size, comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold, peers_per_jetty)
 
 
 class BandwidthTestBuffer:
@@ -183,7 +185,7 @@ class BandwidthTestBuffer:
 def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
                    dstrank_id: torch.Tensor, world_size: int, max_bs: int,
                    mode: int = 0, comm_alg: str = "", aiv_num: int = -1, batch_tokens: int = 0,
-                   shared_jetty: bool = False, shared_jetty_num: int = 1, drain_threshold: int = 8192
+                   shared_jetty: bool = False, shared_jetty_num: int = 1, drain_threshold: int = 8192, peers_per_jetty: int = 0
                    ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Exchange rows using a BandwidthTestBuffer created before graph capture.
 
@@ -202,6 +204,8 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         batch_tokens: URMA tokens per commit; ROCE requires 0 and uses no batch interface.
             Mode 3 ignores it and uses the largest feasible batch.
             In mode 4, 0 selects BS and the result is capped by BS and the tiling maximum.
+        peers_per_jetty: Mode 3 remote count per Jetty; 0 selects all remotes.
+            Uses cyclic, evenly spaced peer selection; other modes require 0.
         drain_threshold: Maximum outstanding WQEs per URMA Jetty/locked channel, including control writes.
             A batch that would exceed this limit drains prior submissions before preparing its WQEs.
         shared_jetty: Enable the URMA shared jetty kernel and context.
@@ -222,4 +226,4 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         sym_buffer.context, x, dstrank_id, sym_buffer.group_name,
         world_size, max_bs, mode, sym_buffer.ccl_buffer_size,
         comm_alg=comm_alg, aiv_num=aiv_num, batch_tokens=batch_tokens,
-        shared_jetty=shared_jetty, shared_jetty_num=shared_jetty_num, drain_threshold=drain_threshold)
+        shared_jetty=shared_jetty, shared_jetty_num=shared_jetty_num, drain_threshold=drain_threshold, peers_per_jetty=peers_per_jetty)

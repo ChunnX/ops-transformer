@@ -12,7 +12,9 @@
 修改下方各配置类的字段默认值，再运行同目录的 bandwidth_test.py。
 """
 
-from dataclasses import dataclass, field
+import json
+import os
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional
 
 
@@ -68,19 +70,22 @@ class ModelConfig:
     comm_alg: str = "urma"  # mte、urma 或 roce；roce 的 mode 只能为 0/None，shared_jetty=False
     shared_jetty: bool = True  # 共享 jetty：仅 comm_alg=urma 时生效
     shared_jetty_num: int = 16  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
-    shared_jetty_comm_level: int = 2  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
+    shared_jetty_comm_level: int = 1  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
     mode: Optional[int] = 3  # 2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
     # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
     batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
+    peers_per_jetty: int = 0  # mode 3：0=全部远端；正数指定每 Jetty 的轮转发送对端数。
     drain_threshold: int = 8192  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 
 @dataclass(frozen=True)
 class RunConfig:
+    sweep_enabled: bool = True  # 一次运行两组拓扑扫描和 mode 4 基线；False 恢复原来的单拓扑测试。
+    sweep_output_path: str = "./Bandwidth_Sweep_Results"
     is_precision_test: bool = False  # 是否对比 CPU golden；请开启单配置并关闭带宽测试
     is_bandwidth_test: bool = True  # 是否采集执行耗时并计算带宽；与精度测试分别运行
     is_single_test: bool = False  # True：使用 shape 的 bs/H/max_bs；False：使用 test_configs
@@ -116,3 +121,16 @@ class BandwidthTestConfig:
 
 
 CONFIG = BandwidthTestConfig()  # 测试脚本统一读取的配置实例
+
+
+# The sweep launcher uses a fresh process/context per topology. Spawned rank workers inherit this case.
+if os.environ.get("BANDWIDTH_TEST_CASE"):
+    _case = json.loads(os.environ["BANDWIDTH_TEST_CASE"])
+    CONFIG = replace(
+        CONFIG,
+        model=replace(CONFIG.model, comm_alg="urma", shared_jetty=True, mode=_case["mode"],
+                      shared_jetty_num=_case["jettys"], peers_per_jetty=_case["peers_attr"]),
+        parallel=replace(CONFIG.parallel, master_port=_case["master_port"]),
+        run=replace(CONFIG.run, sweep_enabled=False, is_single_test=False, is_precision_test=False,
+                    is_bandwidth_test=True, profiling_path=_case["profiling_path"]),
+    )

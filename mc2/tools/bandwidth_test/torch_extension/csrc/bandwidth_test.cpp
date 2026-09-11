@@ -16,7 +16,7 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &dstrank_id,
     std::string group, int64_t world_size, int64_t max_bs, int64_t mode,
     int64_t ccl_buffer_size, std::string comm_alg, int64_t aiv_num, int64_t batch_tokens,
-    bool shared_jetty, int64_t shared_jetty_num, int64_t drain_threshold)
+    bool shared_jetty, int64_t shared_jetty_num, int64_t drain_threshold, int64_t peers_per_jetty)
 {
     TORCH_CHECK(x.device().type() == c10::DeviceType::PrivateUse1, "x must be on NPU");
     TORCH_CHECK(context.device() == x.device() && dstrank_id.device() == x.device(),
@@ -37,6 +37,8 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
                 "mode=4 requires world_size > 1 and shared_jetty_num=world_size-1");
     TORCH_CHECK(drain_threshold > 0 && drain_threshold <= UINT32_MAX,
                 "drain_threshold must be in [1, UINT32_MAX]");
+    TORCH_CHECK(peers_per_jetty == 0 || (mode == 3 && shared_jetty && comm_alg == "urma" &&
+                peers_per_jetty > 0 && peers_per_jetty < world_size), "invalid peers_per_jetty");
     at::Tensor y;
     at::Tensor receive_cnt;
     {
@@ -45,7 +47,7 @@ std::tuple<at::Tensor, at::Tensor> bandwidth_test(
         receive_cnt = at::empty({world_size}, x.options().dtype(at::kInt));
     }
     ACLNN_CMD(aclnnInnerBandwidthTest, context, x, dstrank_id, group, world_size, max_bs, mode, ccl_buffer_size,
-              comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold, y, receive_cnt);
+              comm_alg, aiv_num, batch_tokens, shared_jetty, shared_jetty_num, drain_threshold, peers_per_jetty, y, receive_cnt);
     return {y, receive_cnt};
 }
 

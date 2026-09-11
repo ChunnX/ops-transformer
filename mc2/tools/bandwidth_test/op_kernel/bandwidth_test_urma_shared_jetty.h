@@ -160,6 +160,7 @@ private:
     uint32_t preparedWrites_{0};
     uint32_t outstandingWrites_{0};
     uint32_t drainThreshold_{8192};
+    uint32_t peersPerJetty_{0};
     bool batchInitialized_{false};
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
@@ -192,6 +193,7 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     batchBufferBytes_ = tilingData->batchBufferBytes;
     batchCapacity_ = tilingData->batchTokens;
     drainThreshold_ = tilingData->drainThreshold;
+    peersPerJetty_ = tilingData->peersPerJetty;
     // Direct Win streaming only needs communication parameters; its WQE buffer is allocated in Process.
     if (mode_ >= 2 && mode_ <= 4) {
         return;
@@ -735,6 +737,24 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
             (static_cast<uint64_t>(remoteRank) * BandwidthTestTiling::URMA_MAX_SHARED_JETTYS + senderJetty) *
                 sizeof(uint32_t));
         while (static_cast<int32_t>(ReadGmByPassDCache(flag) - epoch) < 0) {}
+        return;
+    }
+    if (mode_ == 3) {
+        for (uint32_t k = 0; k < peersPerJetty_; ++k) {
+            uint32_t delta = 1 + (aivId_ + k * (epWorldSize_ - 1) / peersPerJetty_) % (epWorldSize_ - 1);
+            uint32_t peer = (static_cast<uint32_t>(epRankId_) + delta) % epWorldSize_;
+            SendWindowToRank(peer, reinterpret_cast<GM_ADDR>(epochAddr));
+        }
+        DrainPending();
+        // Invert the same cyclic mapping: only these source ranks send to this rank on this Jetty.
+        for (uint32_t k = 0; k < peersPerJetty_; ++k) {
+            uint32_t delta = 1 + (aivId_ + k * (epWorldSize_ - 1) / peersPerJetty_) % (epWorldSize_ - 1);
+            uint32_t source = (static_cast<uint32_t>(epRankId_) + epWorldSize_ - delta) % epWorldSize_;
+            auto flag = reinterpret_cast<__gm__ uint32_t *>(
+                windowGM_ + STREAM_FLAGS_OFFSET +
+                (static_cast<uint64_t>(source) * BandwidthTestTiling::URMA_MAX_SHARED_JETTYS + aivId_) * sizeof(uint32_t));
+            while (static_cast<int32_t>(ReadGmByPassDCache(flag) - epoch) < 0) {}
+        }
         return;
     }
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {

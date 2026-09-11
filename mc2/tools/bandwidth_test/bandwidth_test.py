@@ -25,6 +25,20 @@ cache_dir = os.path.join(script_dir, "torch_extensions_cache")
 os.makedirs(cache_dir, exist_ok=True)
 os.environ["TORCH_EXTENSIONS_DIR"] = cache_dir
 
+if __package__:
+    from .config import CONFIG
+else:
+    from config import CONFIG
+
+# Launch topology sweeps before loading Torch/NPU in the coordinator process.
+if __name__ == "__main__" and CONFIG.run.sweep_enabled:
+    if __package__:
+        from .bandwidth_sweep import run_sweep
+    else:
+        from bandwidth_sweep import run_sweep
+    run_sweep(CONFIG)
+    raise SystemExit(0)
+
 import torch
 import torch_npu
 import torch.distributed as dist
@@ -35,10 +49,6 @@ import numpy as np
 
 from cann_ops_transformer.ops import BandwidthTestBuffer, bandwidth_test
 
-if __package__:
-    from .config import CONFIG
-else:
-    from config import CONFIG
 
 logging.basicConfig(
     level=CONFIG.diagnostics.log_level,
@@ -84,6 +94,9 @@ test_configs = (
 )
 input_dtype = torch.bfloat16 if CONFIG.shape.x_dtype == "bf16" else torch.float16
 dtype_bytes = torch.empty(0, dtype=input_dtype).element_size()
+if CONFIG.model.peers_per_jetty != 0 and not (CONFIG.model.mode == 3 and CONFIG.model.shared_jetty and
+        CONFIG.model.comm_alg == "urma" and 1 <= CONFIG.model.peers_per_jetty < world_size):
+    raise ValueError("peers_per_jetty requires shared URMA mode 3 and must be below world_size")
 if not 0 < CONFIG.model.drain_threshold <= 2**32 - 1:
     raise ValueError("drain_threshold must be in [1, UINT32_MAX]")
 mode = CONFIG.model.mode
@@ -154,6 +167,7 @@ def print_setting():
     logger.info(f"{CONFIG.model.comm_alg=}")
     logger.info(f"{CONFIG.model.batch_tokens=}")
     logger.info(f"{CONFIG.model.drain_threshold=}")
+    logger.info(f"{CONFIG.model.peers_per_jetty=}")
     logger.info(
         f"{CONFIG.model.shared_jetty=}, configured_shared_jetty_num={CONFIG.model.shared_jetty_num}, "
         f"{effective_shared_jetty_num=}, "
@@ -248,7 +262,7 @@ def win_stream_rank_data_bytes(test_bs, token_bytes, num_world_size):
         return (test_bs // num_world_size) * (num_world_size - 1) * token_bytes
     if mode == 3:
         return (effective_shared_jetty_num * test_bs *
-                (num_world_size - 1) * token_bytes)
+                (CONFIG.model.peers_per_jetty or num_world_size - 1) * token_bytes)
     if mode == 4:
         return test_bs * (num_world_size - 1) * token_bytes
     raise ValueError(f"mode={mode} is not a Win streaming mode")
@@ -400,6 +414,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_shared_jetty,
         test_shared_jetty_num,
         test_drain_threshold=8192,
+        test_peers_per_jetty=0,
     ):
         local_loop = CONFIG.run.loop if CONFIG.run.is_bandwidth_test else 1
         output = None
@@ -415,6 +430,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
                 aiv_num=test_aiv_num,
                 batch_tokens=test_batch_tokens,
                 drain_threshold=test_drain_threshold,
+                peers_per_jetty=test_peers_per_jetty,
                 shared_jetty=test_shared_jetty,
                 shared_jetty_num=test_shared_jetty_num,
             )
@@ -678,6 +694,7 @@ def run_bandwidth_test_npu(
             "aiv_num": aiv_num,
             "batch_tokens": CONFIG.model.batch_tokens,
             "drain_threshold": CONFIG.model.drain_threshold,
+            "peers_per_jetty": CONFIG.model.peers_per_jetty,
             "shared_jetty": CONFIG.model.shared_jetty,
             "shared_jetty_num": effective_shared_jetty_num,
         }
@@ -708,6 +725,7 @@ def run_bandwidth_test_npu(
             "test_aiv_num": aiv_num,
             "test_batch_tokens": CONFIG.model.batch_tokens,
             "test_drain_threshold": CONFIG.model.drain_threshold,
+            "test_peers_per_jetty": CONFIG.model.peers_per_jetty,
             "test_shared_jetty": CONFIG.model.shared_jetty,
             "test_shared_jetty_num": effective_shared_jetty_num,
         }
@@ -820,6 +838,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "aiv_num": aiv_num,
                 "batch_tokens": CONFIG.model.batch_tokens,
                 "drain_threshold": CONFIG.model.drain_threshold,
+                "peers_per_jetty": CONFIG.model.peers_per_jetty,
                 "shared_jetty": CONFIG.model.shared_jetty,
                 "shared_jetty_num": effective_shared_jetty_num,
             }
@@ -844,6 +863,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
                 "test_aiv_num": aiv_num,
                 "test_batch_tokens": CONFIG.model.batch_tokens,
                 "test_drain_threshold": CONFIG.model.drain_threshold,
+                "test_peers_per_jetty": CONFIG.model.peers_per_jetty,
                 "test_shared_jetty": CONFIG.model.shared_jetty,
                 "test_shared_jetty_num": effective_shared_jetty_num,
             }
@@ -1125,6 +1145,14 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
             all_results.append(perf_result)
 
     print_summary_table(all_results)
+    if os.environ.get("BANDWIDTH_TEST_CASE"):
+        if len(all_results) != len(test_configs):
+            raise RuntimeError("Sweep case is missing profiler results")
+        if __package__:
+            from .bandwidth_sweep import save_case_results
+        else:
+            from bandwidth_sweep import save_case_results
+        save_case_results(CONFIG, all_results, server_index, world_size, aiv_num)
 
     return all_results
 
@@ -1191,7 +1219,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
     logger.info("MB = 1024^2 bytes. Mode 0/1 Rank Data includes local destinations.")
     logger.info("Mode 2 Rank Data = floor(BS/world_size) * (world_size-1) * H * dtype bytes.")
     logger.info(
-        "Mode 3 Rank Data = shared_jetty_num * BS * (world_size-1) * H * dtype bytes.")
+        "Mode 3 Rank Data = shared_jetty_num * BS * selected peers * H * dtype bytes.")
     logger.info("Mode 4 Rank Data = BS * (world_size-1) * H * dtype bytes.")
     logger.info(
         "Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
@@ -1229,7 +1257,7 @@ def main():
     if CONFIG.run.is_check_setting:
         check_setting()
 
-    if CONFIG.run.is_bandwidth_test and len(test_configs) > 1:
+    if CONFIG.run.is_bandwidth_test and (len(test_configs) > 1 or os.environ.get("BANDWIDTH_TEST_CASE")):
         all_results = run_multi_config_bandwidth_test()
 
         logger.info("=" * 60)

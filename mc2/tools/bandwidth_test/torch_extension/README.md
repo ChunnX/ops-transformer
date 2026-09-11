@@ -384,3 +384,11 @@ URMA 和 ROCE kernel 均直接调用通信接口，不检查返回值；ROCE 的
 普通 URMA 的累计量在持锁期间跨批保留，最终 Drain 后才释放锁并切换通道；共享 Jetty 跨目标卡继续累计。
 普通 mode 0/1 扫描 ID 时才知道尾批大小，因此开始新批时按满批预留预算（已知为单条尾批时按 1）；可能提前 Drain，避免额外扫描。
 普通 mode 2 按实际下一批 WQE 数检查，尾批合入 flag 时预留其 1 个 WQE。所有 URMA 单批容量均受 drain_threshold 限制。
+
+
+### Mode 3 发送对端子集
+
+新增可选属性 `peers_per_jetty=0`：0 保持向全部远端发送；正数仅允许共享 URMA mode 3，范围为 `[1, world_size-1]`。
+使用环形、均匀间隔选择，发送与接收等待互为逆映射；建链范围保持全部远端。
+Torch eager/Meta、TorchAir GE、ACLNN 和 tiling 已贯通此属性，需重新生成并部署算子和扩展，重新构建静态图内核。
+一键扫描及 Markdown/CSV 导出见 [拓扑批跑说明](../docs/topology_sweep.md)。

@@ -344,3 +344,11 @@ Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag
 普通 URMA 的累计量在持锁期间跨批保留，最终 Drain 后才释放锁并切换通道；共享 Jetty 跨目标卡继续累计。
 普通 mode 0/1 扫描 ID 时才知道尾批大小，因此开始新批时按满批预留预算（已知为单条尾批时按 1）；可能提前 Drain，避免额外扫描。
 普通 mode 2 按实际下一批 WQE 数检查，尾批合入 flag 时预留其 1 个 WQE。所有 URMA 单批容量均受 drain_threshold 限制。
+
+
+## 一次批跑 Jetty 数量和发送对端数
+
+默认 `RunConfig.sweep_enabled=True`，执行 `python bandwidth_test.py` 自动完成拓扑扫描。
+操作步骤、轮转公式、报告字段及重建要求见 [拓扑批跑说明](docs/topology_sweep.md)。
+`False` 恢复原单拓扑流程；mode 3 新增 `ModelConfig.peers_per_jetty`，0 表示本文原有的全部远端，正数表示实际发送对端数。
+此时每 rank payload 为 `Jetty数 × peers_per_jetty × BS × H × dtype_bytes`，接收等待仅覆盖对应发送方。

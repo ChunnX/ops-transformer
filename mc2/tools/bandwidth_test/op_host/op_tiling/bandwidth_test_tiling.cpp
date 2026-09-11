@@ -65,6 +65,7 @@ constexpr uint32_t ATTR_BATCH_TOKENS_INDEX = 7U;
 constexpr uint32_t ATTR_SHARED_JETTY_INDEX = 8U;
 constexpr uint32_t ATTR_SHARED_JETTY_NUM_INDEX = 9U;
 constexpr uint32_t ATTR_DRAIN_THRESHOLD_INDEX = 10U;
+constexpr uint32_t ATTR_PEERS_PER_JETTY_INDEX = 11U;
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -513,6 +514,12 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(drainThresholdPtr == nullptr || *drainThresholdPtr <= 0 || *drainThresholdPtr > UINT32_MAX,
                     OP_LOGE(nodeName, "drain_threshold must be in [1, UINT32_MAX]."), return ge::GRAPH_FAILED);
     tilingData->drainThreshold = static_cast<uint32_t>(*drainThresholdPtr);
+    auto peersPtr = attrs->GetAttrPointer<int64_t>(ATTR_PEERS_PER_JETTY_INDEX);
+    OP_TILING_CHECK(peersPtr == nullptr || (*peersPtr != 0 &&
+                    (tilingData->mode != 3 || !IsSharedJetty(context) || !IsUrma(context) ||
+                     *peersPtr < 1 || *peersPtr >= tilingData->worldSize)),
+                    OP_LOGE(nodeName, "invalid peers_per_jetty"), return ge::GRAPH_FAILED);
+    tilingData->peersPerJetty = *peersPtr == 0 ? tilingData->worldSize - 1 : static_cast<uint32_t>(*peersPtr);
     tilingData->batchTokens = 0;
     bool directWin = IsWinStreamMode(tilingData->mode);
     if (IsRoce(context)) {

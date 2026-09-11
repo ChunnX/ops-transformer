@@ -107,6 +107,11 @@
                     "name": "drain_threshold",
                     "dtype": "int",
                     "value": 8192
+                },
+                {
+                    "name": "peers_per_jetty",
+                    "dtype": "int",
+                    "value": 0
                 }
             ]
         },
@@ -216,6 +221,11 @@
                     "name": "drain_threshold",
                     "dtype": "int",
                     "value": 8192
+                },
+                {
+                    "name": "peers_per_jetty",
+                    "dtype": "int",
+                    "value": 0
                 }
             ]
         }
