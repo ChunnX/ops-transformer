@@ -31,6 +31,7 @@ try:
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair.ge._ge_graph import DataType, TensorType
+    from torchair.ge._ge_graph import torch_dtype_value_to_ge_type
     from torchair.ge._ge_graph import (
         _ge_dtype_to_ge_proto_dtype as ge_dtype_to_ge_proto_dtype,
     )
@@ -48,9 +49,42 @@ from .mega_moe import _normalize_activation_params
 
 if _TORCHAIR_AVAILABLE:
 
-    def _restore_fp4_x_descriptor(x: Tensor, scales: Optional[Tensor]) -> Tensor:
-        if scales is None or x.dtype != DataType.DT_UINT8:
+    _GE_DTYPE_UNDEFINED = 28
+
+    def _to_ge_dtype(dtype_value: Optional[int]):
+        # 图重写可能把可选属性 None 物化为 GE 的 DT_UNDEFINED(28)。
+        if dtype_value is None or dtype_value == _GE_DTYPE_UNDEFINED:
+            return _GE_DTYPE_UNDEFINED
+        return torch_dtype_value_to_ge_type(dtype_value)
+
+    def _is_pre_quantized_x(
+        dispatch_quant_mode: int, dispatch_quant_out_dtype: Optional[int]
+    ) -> bool:
+        if (
+            dispatch_quant_mode != 0
+            or dispatch_quant_out_dtype is None
+            or dispatch_quant_out_dtype == _GE_DTYPE_UNDEFINED
+        ):
+            return False
+        dispatch_quant_out_ge_dtype = _to_ge_dtype(dispatch_quant_out_dtype)
+        return dispatch_quant_out_ge_dtype in (
+            DataType.DT_FLOAT8_E5M2,
+            DataType.DT_FLOAT8_E4M3FN,
+            DataType.DT_FLOAT4_E2M1,
+        )
+
+    def _restore_fp4_x_descriptor(
+        x: Tensor,
+        dispatch_quant_mode: int,
+        dispatch_quant_out_dtype: Optional[int],
+    ) -> Tensor:
+        is_pre_quantized_fp4 = (
+            _is_pre_quantized_x(dispatch_quant_mode, dispatch_quant_out_dtype)
+            and _to_ge_dtype(dispatch_quant_out_dtype) == DataType.DT_FLOAT4_E2M1
+        )
+        if not is_pre_quantized_fp4 or x.dtype != DataType.DT_UINT8:
             return x
+        # FP4 的 Torch 输入以 uint8 打包；仅在 mode 和逻辑类型同时命中时恢复为 FP4 descriptor。
         logical_shape = ge.Mul(
             ge.Shape(x), ge.Const([1] * (x.rank - 1) + [2])
         )
@@ -60,8 +94,18 @@ if _TORCHAIR_AVAILABLE:
         x.desc.dtype = ge_dtype_to_ge_proto_dtype(DataType.DT_FLOAT4_E2M1)
         return x
 
-    def _restore_e8m0_scales_dtype(scales: Optional[Tensor]) -> Optional[Tensor]:
-        if scales is None or scales.dtype != DataType.DT_UINT8:
+    def _restore_e8m0_scales_dtype(
+        scales: Optional[Tensor],
+        dispatch_quant_mode: int,
+        dispatch_quant_out_dtype: Optional[int],
+    ) -> Optional[Tensor]:
+        if (
+            not _is_pre_quantized_x(
+                dispatch_quant_mode, dispatch_quant_out_dtype
+            )
+            or scales is None
+            or scales.dtype != DataType.DT_UINT8
+        ):
             return scales
         scales = ge.Bitcast(scales, type=DataType.DT_FLOAT8_E8M0)
         scales.desc.dtype = ge_dtype_to_ge_proto_dtype(DataType.DT_FLOAT8_E8M0)
@@ -353,8 +397,19 @@ if _TORCHAIR_AVAILABLE:
         activation_values = _normalize_activation_params(
             activation, activation_clamp, activation_params
         )
-        x = _restore_fp4_x_descriptor(x, scales)
-        scales = _restore_e8m0_scales_dtype(scales)
+        x = _restore_fp4_x_descriptor(
+            x, dispatch_quant_mode, dispatch_quant_out_dtype
+        )
+        scales = _restore_e8m0_scales_dtype(
+            scales, dispatch_quant_mode, dispatch_quant_out_dtype
+        )
+        dispatch_quant_out_ge_dtype = _to_ge_dtype(dispatch_quant_out_dtype)
+        # 未单独指定共享专家类型时，与 eager 路径一致继承 MoE 专家的逻辑类型。
+        shared_expert_quant_out_ge_dtype = (
+            dispatch_quant_out_ge_dtype
+            if shared_expert_quant_out_dtype in (None, _GE_DTYPE_UNDEFINED)
+            else _to_ge_dtype(shared_expert_quant_out_dtype)
+        )
         return MegaMoe(
             context=context,
             x=x,
@@ -380,16 +435,8 @@ if _TORCHAIR_AVAILABLE:
             ccl_buffer_size=ccl_buffer_size,
             max_recv_token_num=max_recv_token_num,
             dispatch_quant_mode=dispatch_quant_mode,
-            dispatch_quant_out_dtype=(
-                28
-                if dispatch_quant_out_dtype is None
-                else dispatch_quant_out_dtype
-            ),
-            shared_expert_quant_out_dtype=(
-                28
-                if shared_expert_quant_out_dtype is None
-                else shared_expert_quant_out_dtype
-            ),
+            dispatch_quant_out_dtype=dispatch_quant_out_ge_dtype,
+            shared_expert_quant_out_dtype=shared_expert_quant_out_ge_dtype,
             combine_quant_mode=combine_quant_mode,
             comm_alg=comm_alg,
             num_max_tokens_per_rank=num_max_tokens_per_rank,
