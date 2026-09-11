@@ -157,7 +157,7 @@ Ascend 950PR/Ascend 950DT（arch35）支持 `token_dtype=0～5`；Atlas A2/A3 �
 
 - 该接口支持图模式（GEIR）和单算子模式（aclnn）。
 - 参数M（micro batch数量，取自schedule_context.common.micro_batch_num）支持 ≤ 64。
-- 输出token数上限 Y = A × BS × (topK+1)，其中 A、BS、topK+1 分别为 max_out_shape 的第 1、2、3 维；Y 支持泛化，无硬上限（受内存限制）。
+- 输出token数上限 Y = A × BS × (topK+1)，其中 A、BS、topK+1 分别为 max_out_shape 的第 1、2、3 维；arch35 的 Y 及 RECV 对齐后的 flat 长度不得超过 INT32_MAX（索引/计数表示上限），同时受内存限制。
 - 精度口径为二进制一致（非计算类算子：整数索引排序 + 原样字节搬运，无浮点运算）。
 - `y`、索引输出及有效的`dynamic_scale`仅保证前`actual_token_num`行有效，剩余容量不参与结果比较。
 - <term>Ascend 950PR/Ascend 950DT</term>上的`token_dtype=3、4、5`均支持`need_schedule=0、1`。每32个逻辑hidden state元素对应一个E8M0 scale，尾部不足32个元素时仍占一个scale；全部scale紧跟整行token数据。
@@ -238,9 +238,9 @@ struct ScheduleContext {
 
 ## arch35 Torch 接口
 
-`cann_ops_transformer.ffn_worker_batching` 返回 8 个输出，支持六种 token_dtype、NORM、同步/异步 RECV，以及 Meta/FakeTensor 元数据推导。FP4 返回 PyTorch 打包形状 `[Y,H/2]`。六种 dtype 支持固定形状 `torch.compile(backend="npugraph_ex", fullgraph=True, dynamic=False)` 推理图；MX 使用 `mx_output_uint8=True`，以 uint8 传递 E8M0 scale 和 FP4 打包输出。默认 eager 保留原生 dtype；当前不支持 TorchAir GE 后端。
+`cann_ops_transformer.ops.ffn_worker_batching` 返回 8 个输出，支持六种 token_dtype、NORM、同步/异步 RECV，以及 Meta/FakeTensor 元数据推导。FP4 返回 PyTorch 打包形状 `[Y,H/2]`。六种 dtype 支持固定形状 `torch.compile(backend="npugraph_ex", fullgraph=True, dynamic=False)` 推理图；MX 使用 `mx_output_uint8=True`，以 uint8 传递 E8M0 scale 和 FP4 打包输出。默认 eager 保留原生 dtype；当前不支持 TorchAir GE 后端。
 
-- [Torch 接口文档](../../torch_extension/cann_ops_transformer/docs/zh/ffn_worker_batching.md)：安装、参数、设备指针生命周期、流约定与真实地址示例。
+- [Torch 接口文档](docs/torchapi_ffn_worker_batching.md)：安装、参数、设备指针生命周期、流约定与真实地址示例。
 - [Torch 验证报告](docs/arch35_torch_validation.md)、[测试脚本](tests/st/arch35/verify_torch_interface.py)。
 
 - [图模式验证报告](docs/arch35_torch_graph_validation.md)、[图模式测试脚本](tests/st/arch35/verify_torch_graph.py)。

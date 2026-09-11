@@ -31,18 +31,18 @@ namespace FfnWbBatchingArch35 {
 using namespace AscendC;
 
 // 索引换算的向量分道:每个中间量独占一道,不复用、不自我覆盖(PER_LOOP_ROWS=128,每道 512B)。
-constexpr int64_t IDX_LANE_SRC = 0; // gatherIdx(fp32)
-constexpr int64_t IDX_LANE_QA = 1;  // gatherIdx / bskProduct
-constexpr int64_t IDX_LANE_AF = 2;  // float(aIdx)
-constexpr int64_t IDX_LANE_REM = 3; // gatherIdx - aIdx*bskProduct
-constexpr int64_t IDX_LANE_QB = 4;  // rem / K
-constexpr int64_t IDX_LANE_BF = 5;  // float(bsIdx)
-constexpr int64_t IDX_LANE_KF = 6;  // rem - bsIdx*K
-constexpr int64_t IDX_LANE_AI = 0;  // aIdx(int32,独立缓冲)
-constexpr int64_t IDX_LANE_BI = 1;  // bsIdx
-constexpr int64_t IDX_LANE_KI = 2;  // kIdx
-constexpr int64_t IDX_F_LANES = 7;  // srcF/qaF/aF/remF/qbF/bF/kF
-constexpr int64_t IDX_I_LANES = 3;  // aIdx/bsIdx/kIdx
+constexpr int64_t IDX_LANE_SRC = 0;                                     // gatherIdx(fp32)
+constexpr int64_t IDX_LANE_QA = 1;                                      // gatherIdx / bskProduct
+constexpr int64_t IDX_LANE_AF = 2;                                      // float(aIdx)
+constexpr int64_t IDX_LANE_REM = 3;                                     // gatherIdx - aIdx*bskProduct
+constexpr int64_t IDX_LANE_QB = 4;                                      // rem / K
+constexpr int64_t IDX_LANE_BF = 5;                                      // float(bsIdx)
+constexpr int64_t IDX_LANE_KF = 6;                                      // rem - bsIdx*K
+constexpr int64_t IDX_LANE_AI = 0;                                      // aIdx(int32,独立缓冲)
+constexpr int64_t IDX_LANE_BI = 1;                                      // bsIdx
+constexpr int64_t IDX_LANE_KI = 2;                                      // kIdx
+constexpr int64_t IDX_F_LANES = Arch35Config::GATHER_FLOAT_INDEX_LANES; // srcF/qaF/aF/remF/qbF/bF/kF
+constexpr int64_t IDX_I_LANES = Arch35Config::GATHER_INT_INDEX_LANES;   // aIdx/bsIdx/kIdx
 
 // ===================== step 2:gather 搬运(原 A2 ffn_wb_gather_out_all.h) =====================
 template <bool isScanFlag = false>
@@ -444,12 +444,13 @@ private:
     }
 
 private:
-    static constexpr uint32_t BLOCK_SIZE = 32;
-    static constexpr int32_t BUFFER_NUM = 2;      // tensor num for each queue
-    static constexpr int32_t PER_LOOP_ROWS = 128; // tensor num for each queue
+    static constexpr uint32_t BLOCK_SIZE = Arch35Config::UB_BLOCK_BYTES;
+    static constexpr int32_t BUFFER_NUM = Arch35Config::GATHER_QUEUE_DEPTH;      // tensor num for each queue
+    static constexpr int32_t PER_LOOP_ROWS = Arch35Config::GATHER_ROWS_PER_LOOP; // tensor num for each queue
     static constexpr int64_t TOKEN_KIND_TWO = 2;
 
-    static constexpr int32_t VAR_NUM = 5; // session_ids, micro_batch_ids, token_ids, expert_offsets
+    static constexpr int32_t VAR_NUM =
+        Arch35Config::GATHER_OUTPUT_LANES; // session_ids, micro_batch_ids, token_ids, expert_offsets
     static constexpr int32_t VAR_SESSION_IDX = 0;
     static constexpr int32_t VAR_MICRO_BATCH_IDX = 1;
     static constexpr int32_t VAR_TOKEN_IDX = 2;

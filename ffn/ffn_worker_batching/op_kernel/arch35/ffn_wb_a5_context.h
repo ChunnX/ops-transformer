@@ -31,10 +31,13 @@
 #ifndef OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #define OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #include "kernel_operator.h"
+#include "ffn_wb_arch35_constants.h"
 #include "attention_ffn_schedule.h" // 与 Attention 侧约定的 schedule_context 权威定义
 
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
+namespace Arch35Config = FfnWbArch35Config;
+static_assert(Arch35Config::UB_BLOCK_BYTES == AscendC::ONE_BLK_SIZE, "Host/kernel UB block sizes must agree");
 
 // 契约字段在 schedule_context 中的字节偏移:由权威结构体推出,不手写。
 #define FFN_WB_CTX_OFFSET(field) static_cast<int32_t>(__builtin_offsetof(aicpu::ScheduleContext, field))

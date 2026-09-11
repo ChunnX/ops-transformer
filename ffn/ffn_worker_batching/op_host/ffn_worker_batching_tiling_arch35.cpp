@@ -80,7 +80,7 @@ constexpr uint32_t INDEX_TWO = 2;
 constexpr uint32_t INDEX_THREE = 3;
 
 constexpr int64_t BATCH_MODE = 1;
-constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
+constexpr int64_t ONE_REPEAT_SORT_NUM = Arch35Config::SORT_PROPOSALS_PER_REPEAT;
 constexpr int64_t MAX_RESERVE_WK_NUM = 128;
 
 constexpr int64_t TILING_KEY_NORM = 100;
@@ -92,7 +92,7 @@ constexpr int64_t GL_ROW_BYTES = static_cast<int64_t>(sizeof(int64_t)) * NUM_TWO
 constexpr int64_t GL_UB_FRACTION = 16;                                            // group_list 拼装区取 UB 的 1/16
 
 // 数据块字节数，与 kernel 侧 AscendC::ONE_BLK_SIZE 同值（host 侧无该符号，故此处按同值定义）。
-constexpr int64_t ONE_BLK_BYTES = 32;
+constexpr int64_t ONE_BLK_BYTES = Arch35Config::UB_BLOCK_BYTES;
 // MrgSort 单轮归并路数：由 MrgSortSrcList 的 4 个入参与 validBit 的 4 个有效位决定。
 constexpr int64_t MRG_LIST_NUM = 4;
 // 被 mask 的 token 由上游置为不小于该值的大数，排序前据此压缩剔除。

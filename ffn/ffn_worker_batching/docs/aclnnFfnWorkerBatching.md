@@ -666,6 +666,8 @@ int main()
     scheduleContext.ffn.micro_batch_ids_buf_size = idsBufSize;
     scheduleContext.ffn.layer_ids_buf = reinterpret_cast<uint64_t>(layerIdsBuf);
     scheduleContext.ffn.layer_ids_buf_size = idsBufSize;
+    // NORM只消费前out_num个session；本例全部A个session有效。
+    scheduleContext.ffn.out_num = static_cast<uint32_t>(A);
 
     std::vector<int8_t> hostCtxData(1024, 0);
     std::memcpy(hostCtxData.data(), &scheduleContext, sizeof(ScheduleContext));
