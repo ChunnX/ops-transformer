@@ -104,9 +104,9 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext *context, Co
                 return ge::GRAPH_FAILED);
     const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
     int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_DEFAULT;
-    OP_CHECK_IF((coff <= 0),
+    OP_CHECK_IF((coff != 1 && coff != 2),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "coff", std::to_string(coff),
-                                                      "coff must be positive"),
+                                                      "coff should be 1 or 2"),
                 return ge::GRAPH_FAILED);
 
     if (xShape->GetDimNum() == DIM_NUM_3) {
