@@ -214,7 +214,7 @@ private:
     GM_ADDR statusDataSpaceGM_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
-	uint32_t loopIndex_{0};
+    uint32_t loopIndex_{0};
     uint32_t syncFlagId_{0};
     uint8_t sendTokenBufNum_{0};
     uint32_t axisBS_{0};
@@ -420,7 +420,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         dataState_ * (totalWinSize_ / BUFFER_NUM) + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
     // 	loopIndex_ = opCnt 作为收齐的标志，免去flag清零
     LocalTensor<uint64_t> opCntTensor = dataStateBuf.Get<uint64_t>();
-	loopIndex_ = opCntTensor.GetValue(OP_CNT_POSUL);
+    loopIndex_ = opCntTensor.GetValue(OP_CNT_POSUL);
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -567,7 +567,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint32_t newAivId;
     if (isFront) {
         newAivId = aivId_ - aivUsedAllToAll_; // 收发并行, 后面aivUsedLocalCopy_核用来接收
-    } else if (aivId_ >= aivUsedAllToAll_) { // aiv中后面aivUsedCumSum_个核给cusum计算使用
+    } else if (aivId_ >= aivUsedAllToAll_) {  // aiv中后面aivUsedCumSum_个核给cusum计算使用
         newAivId = aivId_ - aivUsedAllToAll_;
     } else {
         newAivId = aivId_ - moeUsedAivNum_; // aivUsedAllToAll_中后面的核发送给共享专家
@@ -1470,7 +1470,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         }
         --maxCopyTokenCnt;
     }
-    maxCopyTokenCnt = (maxCopyTokenCnt > MAX_COPY_TOKEN_NUM) ? MAX_COPY_TOKEN_NUM : maxCopyTokenCnt; // 合适的收齐拷贝粒度能提高效率
+    maxCopyTokenCnt =
+        (maxCopyTokenCnt > MAX_COPY_TOKEN_NUM) ? MAX_COPY_TOKEN_NUM : maxCopyTokenCnt; // 合适的收齐拷贝粒度能提高效率
 
     LocalTensor<XOutType> xTmpPingTensor = tBuf.GetWithOffset<XOutType>(dataBufferSize / sizeof(XOutType), 0);
     LocalTensor<XOutType> xTmpPongTensor =
@@ -1551,7 +1552,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     statusCleanFp32Tensor_ = statusCleanBuf.Get<float>();
     sendCntTensor_ = cumSumBuf.Get<int32_t>();
 
-    SplitToCore(rscvStatusNum_, aivUsedLocalCopy_, startId_, endId_, sendNum_, true); // 收发并行，接收核的个数aivUsedLocalCopy_
+    SplitToCore(rscvStatusNum_, aivUsedLocalCopy_, startId_, endId_, sendNum_,
+                true); // 收发并行，接收核的个数aivUsedLocalCopy_
     // 软同步
     WaitCumSumFlag();
     if (sendNum_ == 0) {
