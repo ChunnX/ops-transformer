@@ -2518,13 +2518,11 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
     // 行为与修复前保持一致。
     const bool isArch22Route = (ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_3510) &&
                                (ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_5102);
-    const bool cacheEnabled =
-        isArch22Route && !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
+    const bool cacheEnabled = isArch22Route && !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
     std::string cacheKey;
     const bool cacheKeyValid =
-        cacheEnabled &&
-        FusedInferAttentionScoreTilingCache::BuildKey(context, static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()),
-                                                     cacheKey);
+        cacheEnabled && FusedInferAttentionScoreTilingCache::BuildKey(
+                            context, static_cast<int32_t>(ascendcPlatform.GetCurNpuArch()), cacheKey);
     if (cacheKeyValid) {
         FusedInferAttentionScoreTilingCache::TilingResult cachedResult;
         if (FusedInferAttentionScoreTilingCache::GetInstance().Get(cacheKey, cachedResult) &&

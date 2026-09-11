@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You should not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_cache.h
@@ -27,8 +27,9 @@
  *   - 输出 shape/dtype
  *   - tiling 过程中会读取内容的 host tensor：actualSeqLengths/actualSeqLengthsKv/actualSharedPrefixLen
  *
- * 生效范围：仅 arch22 路由（else 分支，A3/ascend910_93 场景）启用缓存；arch35（DAV_3510）与
- * arch38（DAV_5102）路径不启用，行为与引入缓存前完全一致。
+ * 生效范围：仅 arch22 路由（else 分支）启用缓存，
+ * arch35（DAV_3510）与 arch38（DAV_5102）路径不启用，
+ * 行为与引入缓存前完全一致。
  *
  * 逃生开关：环境变量 FIA_TILING_CACHE_DISABLE=1 可关闭缓存（退化回原有行为）。
  */
@@ -57,7 +58,7 @@ constexpr uint32_t FIA_TILING_CACHE_ATTR_OUT_DTYPE_INDEX = 15;
 class FusedInferAttentionScoreTilingCache {
 public:
     struct TilingResult {
-        std::string tilingDataBlob;   // 序列化后的 tiling data
+        std::string tilingDataBlob; // 序列化后的 tiling data
         uint64_t tilingKey = 0;
         uint32_t blockDim = 0;
         uint64_t workspaceSize = 0;
