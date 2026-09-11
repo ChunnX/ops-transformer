@@ -48,6 +48,7 @@
 #include "moe_permute_prologue/moe_permute_prologue.hpp"
 #include "unpermute/mc2_mega_moe_moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "utils/weight_l2_prefetch.hpp"
 #include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
@@ -277,6 +278,25 @@ public:
                 // rounds>1 时为 BuildRoundTables 完成后的轮表就绪信号
                 AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
                 syncgmmIdx++;
+                // W1 冷启动：flag0 后、GMM1 组 0 wait 前入队哑拷贝，与 pull g0 并发排空；
+                // 仅首轮发射一次（权重静态）
+                if (chunkIdx == 0 && roundIdx == 0 && WEIGHT_L2_PREFETCH_ENABLE_W1_AIC_COLDSTART &&
+                    params.problemShape.m() <= WEIGHT_L2_PREFETCH_MAX_BS) {
+                    // 空专家过滤
+                    uint32_t currentM0 = cumsumMM.GetValue((params.EP - 1) * params.expertPerRank);
+                    if (currentM0 > 0) {
+                        BlockMmad l1EndProbe(resource);
+                        uint32_t w1ScratchOffset = AlignUp(l1EndProbe.GetL1EndOffset(), WEIGHT_L2_PREFETCH_CHUNK_BYTES);
+                        if (w1ScratchOffset + WEIGHT_L2_PREFETCH_CHUNK_BYTES <=
+                            ArchTag::L1_SIZE - WEIGHT_L2_PREFETCH_ARCH_RESERVED_BYTES) {
+                            WeightL2PrefetchAicColdStartW1(
+                                reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                                PrefetchBytesPerExpert(params.problemShape),
+                                static_cast<uint32_t>(params.expertPerRank),
+                                resource.l1Buf.template GetBufferByByte<uint8_t>(w1ScratchOffset));
+                        }
+                    }
+                }
                 if (roundIdx == 0) {
                     numRecvRounds = ComputeNumRecvRounds(params);
                 }
@@ -884,8 +904,13 @@ private:
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
 
-            if (currentM <= L1TileShape::M) {
-                gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            // W1 预取开启时必须 NORMAL（DISABLE 双向 bypass 使预取无效）
+            constexpr bool kGmm1WeightPrefetched =
+                WEIGHT_L2_PREFETCH_ENABLE_WINDOW0 || WEIGHT_L2_PREFETCH_ENABLE_W1_AIC_COLDSTART;
+            if constexpr (!kGmm1WeightPrefetched) {
+                if (currentM <= L1TileShape::M) {
+                    gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                }
             }
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
             LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
@@ -1172,6 +1197,10 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
+        // 窗口 0 发射点：计数 push 已入队、随后的跨卡自旋为 RTT 空闲窗
+        if constexpr (WEIGHT_L2_PREFETCH_ENABLE_WINDOW0) {
+            WeightL2PrefetchBurstAll(w0PrefetchCursor_);
+        }
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             bool rankAvailable = !IsRankMasked(dstEpIdx);
             if (dstEpIdx != runtimeRank) {
@@ -1291,6 +1320,33 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
+    }
+
+    // 预取每专家字节数（K*N element；int4 两 element 共 1 字节，其余每 element 2 字节），两窗口共用。
+    static CATLASS_DEVICE uint64_t PrefetchBytesPerExpert(GemmCoord const &problemShape)
+    {
+        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            return static_cast<uint64_t>(problemShape.k()) * problemShape.n() / 2U;
+        } else if constexpr (std::is_same_v<ElementB, int8_t>) {
+            return static_cast<uint64_t>(problemShape.k()) * problemShape.n();
+        } else {
+            static_assert(sizeof(ElementB) <= 2, "prefetch byte accounting assumes at most 2 bytes per element");
+            return static_cast<uint64_t>(problemShape.k()) * problemShape.n() * 2U;
+        }
+    }
+
+    // AIV scratch 洞宽：[UB_OFFSET, UB 顶部常驻区) 的宽度，钳到 16KB、32B 对齐；顶部常驻区
+    CATLASS_DEVICE
+    uint32_t ComputeAivPrefetchHoleBytes(Params const &params) const
+    {
+        uint32_t rankMaskReserved = AlignUp(params.EP * sizeof(int32_t), BYTE_PER_BLK);
+        uint32_t routeCacheBytes = AlignUp(params.EP * params.expertPerRank * sizeof(int32_t), BYTE_PER_BLK);
+        uint32_t ubTopReserved = rankMaskReserved + 2U * routeCacheBytes;
+        uint32_t holeBytes = ArchTag::UB_SIZE > ubTopReserved + WEIGHT_L2_PREFETCH_UB_OFFSET ?
+                                 ArchTag::UB_SIZE - ubTopReserved - WEIGHT_L2_PREFETCH_UB_OFFSET :
+                                 0U;
+        holeBytes = holeBytes < WEIGHT_L2_PREFETCH_CHUNK_BYTES ? holeBytes : WEIGHT_L2_PREFETCH_CHUNK_BYTES;
+        return holeBytes & ~31U;
     }
 
     // 接收轮处理：轮内复用原有 dispatch → swiglu → combine 流水。
@@ -1568,6 +1624,21 @@ private:
             }
         }
         CopyRankMaskToLocal(params);
+
+        // 窗口 0 游标：锁定专家 1（与冷启动的专家 0 互补不重叠）
+        if constexpr (WEIGHT_L2_PREFETCH_ENABLE_WINDOW0) {
+            // BS 门限：超限不构造预取游标
+            if (params.problemShape.m() <= WEIGHT_L2_PREFETCH_MAX_BS) {
+                uint32_t aivHoleBytes = ComputeAivPrefetchHoleBytes(params);
+                WeightL2PrefetchInit(w0PrefetchCursor_, reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                                     PrefetchBytesPerExpert(params.problemShape),
+                                     static_cast<uint32_t>(params.expertPerRank), coreIdx, coreNum,
+                                     resource.ubBuf.template GetBufferByByte<uint8_t>(WEIGHT_L2_PREFETCH_UB_OFFSET),
+                                     aivHoleBytes);
+                WeightL2PrefetchRetarget(w0PrefetchCursor_, WEIGHT_L2_PREFETCH_W0_FIRST_EXPERT,
+                                         WEIGHT_L2_PREFETCH_W0_FIRST_EXPERT + WEIGHT_L2_PREFETCH_W0_EXPERTS);
+            }
+        }
 
         for (int64_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx) {
             const int64_t tokenBase = chunkIdx * PERMUTE_CHUNK;
@@ -2079,6 +2150,8 @@ private:
     AscendC::LocalTensor<int32_t> ubTokenPerExpertCache;
     AscendC::LocalTensor<int32_t> ubPreSumBeforeRankCache;
     uint32_t routeCacheNum{0};
+    // 窗口 0 预取游标（仅 AIV；路径关闭/BS 超门限/洞不足时 inactive，发射自动 no-op）
+    WeightL2PrefetchCursor w0PrefetchCursor_;
     // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
     // 基址取通信域首地址（shmem()()），根据kRoutingIsQuant选择对应tiling结构体的Policy，
     // ArchTag传入Policy供架构差异扩展。
