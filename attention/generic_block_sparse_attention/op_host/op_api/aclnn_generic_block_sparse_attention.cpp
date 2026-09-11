@@ -267,8 +267,9 @@ static const aclTensor *CreateStrideAwareView(const aclTensor *tensor, const cha
     return strideView;
 }
 
-// Contiguous KV: Contiguous (normalize descriptor). Dim0-only holes: stride-aware view.
-// Other non-contig: Contiguous fallback (tiling rejects non-dim0 holes for PA_BBND).
+// Contiguous KV: Contiguous (normalize descriptor for InferShape).
+// Dim0-only holes: stride-aware view. Other non-contig: Contiguous fallback
+// (tiling rejects non-dim0 holes for PA_BBND).
 static const aclTensor *NormalizeDim0KvTensor(const aclTensor *tensor, const char *name, aclOpExecutor *executor)
 {
     if (tensor == nullptr) {
