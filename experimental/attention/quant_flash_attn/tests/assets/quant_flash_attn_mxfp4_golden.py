@@ -685,9 +685,7 @@ def generate_data():
     )
 
     # V 按 act_seq_lens_kv 分批量化: padding 区域编码填 0, descale 只覆盖有效区域.
-    # v_descale 的 S 维基于 s2_effective (= max(act_kv)), 与 NPU kernel stride
-    # (基于 maxSeqlenKv) 及 metadata 校验 (ceil(max(seqused_kv)/64)) 对齐.
-    # V scale 的 S 维须与 kernel 对齐: kernel 侧 maxSeqlenKv = max_seqlen_kv(属性,>=0)
+    # v_descale 的 S 维须与 kernel 对齐: kernel 侧 maxSeqlenKv = max_seqlen_kv(属性,>=0)
     # 或物理 S(s2), 而非 max(seqused_kv). 否则当存在 padding (max(seqused) < max_seqlen_kv/物理S)
     # 时 v_descale 会偏短, 导致 kernel 读 v_descale 越界.
     v_scale_s = MAX_SEQLEN_KV if MAX_SEQLEN_KV >= 0 else s2
