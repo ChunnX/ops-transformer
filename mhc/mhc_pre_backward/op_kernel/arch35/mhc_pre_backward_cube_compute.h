@@ -183,7 +183,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTile(
     uint32_t cGmStride, bool transA, bool atomicAdd)
 {
     // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
-    uint32_t cDepth = config.get_l0CDepth();
+    uint32_t cDepth = config.get_dbL0C();
     uint32_t cSlot = cl0PingPongID_ % cDepth;
     LocalTensor<float> currentC = cL0Local_[cSlot * cubeL0CBufferElems_];
     WaitFlag<HardEvent::FIX_M>(cSlot);
@@ -214,8 +214,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
 {
     uint32_t l1K = config.get_l1K();
     uint32_t baseK = config.get_baseK();
-    uint32_t l1Depth = config.get_l1ADepth();
-    uint32_t l0Depth = config.get_l0ADepth();
+    uint32_t l1Depth = config.get_depthA1();
+    uint32_t l0Depth = config.get_dbL0A();
     for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += l1K) {
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < l1K ? remainKL1 : l1K;
@@ -271,7 +271,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::PreloadB1(const MMConfig &conf
     for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += config.get_l1K()) {
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < config.get_l1K() ? remainKL1 : config.get_l1K();
-        uint32_t l1Slot = (offsetKL1 / config.get_l1K()) % config.get_l1BDepth();
+        uint32_t l1Slot = (offsetKL1 / config.get_l1K()) % config.get_depthB1();
         LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1BufferElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);

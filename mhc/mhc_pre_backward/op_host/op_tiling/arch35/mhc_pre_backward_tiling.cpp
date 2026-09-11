@@ -232,16 +232,12 @@ void MhcPreBackwardTiling::SetMmConfig()
         config.set_baseN(128U);
         config.set_baseK(32U);
         config.set_l1K(64U);
-        config.set_l1ADepth(2U);
-        config.set_l1BDepth(2U);
-        config.set_l0ADepth(2U);
-        config.set_l0BDepth(2U);
-        config.set_l0CDepth(2U);
+        config.set_depthA1(2U);
+        config.set_depthB1(2U);
+        config.set_dbL0A(2U);
+        config.set_dbL0B(2U);
+        config.set_dbL0C(2U);
         config.set_b1FullLoad(b1FullLoad);
-        config.set_l1BufferBytes(128U * 1024U);
-        config.set_l0ABufferBytes(32U * 1024U);
-        config.set_l0BBufferBytes(32U * 1024U);
-        config.set_l0CBufferBytes(128U * 1024U);
     };
     setConfig(mmConfigC0_, 1U);
     setConfig(mmConfigC1_, 0U);
@@ -253,73 +249,65 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     constexpr uint64_t elementSize = sizeof(float);
     auto alignUp = [](uint64_t value, uint64_t align) { return (value + align - 1U) / align * align; };
 
-    uint64_t l1ABytes = std::max<uint64_t>(mmConfigC0_.get_l1ADepth() * mmConfigC0_.get_l1BufferBytes(),
-                                 mmConfigC1_.get_l1ADepth() * mmConfigC1_.get_l1BufferBytes());
-    uint64_t l1BBytes = std::max<uint64_t>(mmConfigC0_.get_l1BDepth() * mmConfigC0_.get_l1BufferBytes(),
-                                 mmConfigC1_.get_l1BDepth() * mmConfigC1_.get_l1BufferBytes());
-    uint64_t l1Bytes = l1ABytes + l1BBytes;
-    uint64_t l0ABytes = std::max<uint64_t>(mmConfigC0_.get_l0ADepth() * mmConfigC0_.get_l0ABufferBytes(),
-                                 mmConfigC1_.get_l0ADepth() * mmConfigC1_.get_l0ABufferBytes());
-    uint64_t l0BBytes = std::max<uint64_t>(mmConfigC0_.get_l0BDepth() * mmConfigC0_.get_l0BBufferBytes(),
-                                 mmConfigC1_.get_l0BDepth() * mmConfigC1_.get_l0BBufferBytes());
-    uint64_t l0CBytes = std::max<uint64_t>(mmConfigC0_.get_l0CDepth() * mmConfigC0_.get_l0CBufferBytes(),
-                                 mmConfigC1_.get_l0CDepth() * mmConfigC1_.get_l0CBufferBytes());
-    OP_CHECK_IF(l1Bytes > l1Size_ || l0ABytes > l0ASize_ || l0BBytes > l0BSize_ || l0CBytes > l0CSize_,
-                OP_LOGE(context_->GetNodeName(),
-                        "MM config %u exceeds platform memory: L1=%lu/%lu, L0A=%lu/%lu, L0B=%lu/%lu, "
-                        "L0C=%lu/%lu",
-                        mmConfigKey_, l1Bytes, l1Size_, l0ABytes, l0ASize_, l0BBytes, l0BSize_, l0CBytes,
-                        l0CSize_),
-                return ge::GRAPH_FAILED);
-
-    uint32_t l1BufferBytes = std::max(mmConfigC0_.get_l1BufferBytes(), mmConfigC1_.get_l1BufferBytes());
-    uint32_t l1ADepth = std::max(mmConfigC0_.get_l1ADepth(), mmConfigC1_.get_l1ADepth());
-    uint32_t l1BDepth = std::max(mmConfigC0_.get_l1BDepth(), mmConfigC1_.get_l1BDepth());
-    uint32_t l0BufferBytes = std::max(
-        std::max(mmConfigC0_.get_l0ABufferBytes(), mmConfigC1_.get_l0ABufferBytes()),
-        std::max(mmConfigC0_.get_l0BBufferBytes(), mmConfigC1_.get_l0BBufferBytes()));
-    uint32_t l0Depth = std::max(std::max(mmConfigC0_.get_l0ADepth(), mmConfigC1_.get_l0ADepth()),
-                                std::max(mmConfigC0_.get_l0BDepth(), mmConfigC1_.get_l0BDepth()));
-    uint32_t l0CBufferBytes = std::max(mmConfigC0_.get_l0CBufferBytes(), mmConfigC1_.get_l0CBufferBytes());
-    uint32_t l0CDepth = std::max(mmConfigC0_.get_l0CDepth(), mmConfigC1_.get_l0CDepth());
-    cubeBufferDepth_ = std::max(std::max(l1ADepth, l1BDepth), std::max(l0Depth, l0CDepth));
-    cubeL1BufferBytes_ = (l1ADepth + l1BDepth) * l1BufferBytes;
-    cubeL1BufferElems_ = l1BufferBytes / sizeof(float);
-    cubeL1BOffset_ = l1ADepth * cubeL1BufferElems_;
-    cubeL0BufferBytes_ = l0Depth * l0BufferBytes;
-    cubeL0BufferElems_ = l0BufferBytes / sizeof(float);
-    cubeL0CBufferBytes_ = l0CDepth * l0CBufferBytes;
-    cubeL0CBufferElems_ = l0CBufferBytes / sizeof(float);
-
     bool cubeShapeAligned = mmConfigC0_.get_baseM() % cubeAlign == 0U && mmConfigC0_.get_baseN() % cubeAlign == 0U &&
                             mmConfigC0_.get_baseK() % cubeAlign == 0U && mmConfigC1_.get_baseM() % cubeAlign == 0U &&
                             mmConfigC1_.get_baseN() % cubeAlign == 0U && mmConfigC1_.get_baseK() % cubeAlign == 0U;
     bool kSplitValid = mmConfigC0_.get_l1K() >= mmConfigC0_.get_baseK() && mmConfigC0_.get_l1K() % mmConfigC0_.get_baseK() == 0U &&
                        mmConfigC1_.get_l1K() >= mmConfigC1_.get_baseK() && mmConfigC1_.get_l1K() % mmConfigC1_.get_baseK() == 0U;
-    bool depthValid = mmConfigC0_.get_l1ADepth() == mmConfigC0_.get_l1BDepth() &&
-                      mmConfigC0_.get_l0ADepth() == mmConfigC0_.get_l0BDepth() &&
-                      mmConfigC1_.get_l1ADepth() == mmConfigC1_.get_l1BDepth() &&
-                      mmConfigC1_.get_l0ADepth() == mmConfigC1_.get_l0BDepth();
+    bool depthValid = mmConfigC0_.get_depthA1() == mmConfigC0_.get_depthB1() &&
+                      mmConfigC0_.get_dbL0A() == mmConfigC0_.get_dbL0B() &&
+                      mmConfigC1_.get_depthA1() == mmConfigC1_.get_depthB1() &&
+                      mmConfigC1_.get_dbL0A() == mmConfigC1_.get_dbL0B() &&
+                      mmConfigC0_.get_depthA1() != 0U && mmConfigC1_.get_depthA1() != 0U &&
+                      mmConfigC0_.get_dbL0A() != 0U && mmConfigC1_.get_dbL0A() != 0U &&
+                      mmConfigC0_.get_dbL0C() != 0U && mmConfigC1_.get_dbL0C() != 0U;
     OP_CHECK_IF(!cubeShapeAligned || !kSplitValid || !depthValid,
                 OP_LOGE(context_->GetNodeName(), "MM config %u has invalid alignment, K split or buffer depth",
                         mmConfigKey_),
                 return ge::GRAPH_FAILED);
 
-    auto bufferCapacityValid = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
-        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize <=
-                   config.get_l1BufferBytes() &&
-               alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize <=
-                   config.get_l1BufferBytes() &&
-               alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize <=
-                   config.get_l0ABufferBytes() &&
-               alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize <=
-                   config.get_l0BBufferBytes() &&
-               alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseN(), cubeAlign) * elementSize <=
-                   config.get_l0CBufferBytes();
+    auto a1Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize;
     };
-    OP_CHECK_IF(!bufferCapacityValid(mmConfigC0_) || !bufferCapacityValid(mmConfigC1_),
-                OP_LOGE(context_->GetNodeName(), "MM config %u buffer capacity is insufficient", mmConfigKey_),
+    auto b1Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+        return alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize;
+    };
+    auto a2Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize;
+    };
+    auto b2Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+        return alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize;
+    };
+    auto cBytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseN(), cubeAlign) * elementSize;
+    };
+    uint64_t l1BufferBytes = std::max(std::max(a1Bytes(mmConfigC0_), b1Bytes(mmConfigC0_)),
+                                      std::max(a1Bytes(mmConfigC1_), b1Bytes(mmConfigC1_)));
+    uint64_t l0BufferBytes = std::max(std::max(a2Bytes(mmConfigC0_), b2Bytes(mmConfigC0_)),
+                                      std::max(a2Bytes(mmConfigC1_), b2Bytes(mmConfigC1_)));
+    uint64_t l0CBufferBytes = std::max(cBytes(mmConfigC0_), cBytes(mmConfigC1_));
+    uint64_t depthA1 = std::max(mmConfigC0_.get_depthA1(), mmConfigC1_.get_depthA1());
+    uint64_t depthB1 = std::max(mmConfigC0_.get_depthB1(), mmConfigC1_.get_depthB1());
+    uint64_t dbL0 = std::max(std::max(mmConfigC0_.get_dbL0A(), mmConfigC1_.get_dbL0A()),
+                             std::max(mmConfigC0_.get_dbL0B(), mmConfigC1_.get_dbL0B()));
+    uint64_t dbL0C = std::max(mmConfigC0_.get_dbL0C(), mmConfigC1_.get_dbL0C());
+    uint64_t l1Bytes = (depthA1 + depthB1) * l1BufferBytes;
+    uint64_t l0Bytes = dbL0 * l0BufferBytes;
+    uint64_t l0CBytes = dbL0C * l0CBufferBytes;
+    OP_CHECK_IF(l1Bytes > l1Size_ || l0Bytes > l0ASize_ || l0Bytes > l0BSize_ || l0CBytes > l0CSize_ ||
+                    l1Bytes > UINT32_MAX || l0Bytes > UINT32_MAX || l0CBytes > UINT32_MAX,
+                OP_LOGE(context_->GetNodeName(),
+                        "MM config %u exceeds platform memory: L1=%lu/%lu, L0A/B=%lu/%lu/%lu, L0C=%lu/%lu",
+                        mmConfigKey_, l1Bytes, l1Size_, l0Bytes, l0ASize_, l0BSize_, l0CBytes, l0CSize_),
                 return ge::GRAPH_FAILED);
+    cubeBufferDepth_ = static_cast<uint32_t>(std::max(std::max(depthA1, depthB1), std::max(dbL0, dbL0C)));
+    cubeL1BufferBytes_ = static_cast<uint32_t>(l1Bytes);
+    cubeL1BufferElems_ = static_cast<uint32_t>(l1BufferBytes / elementSize);
+    cubeL1BOffset_ = static_cast<uint32_t>(depthA1 * cubeL1BufferElems_);
+    cubeL0BufferBytes_ = static_cast<uint32_t>(l0Bytes);
+    cubeL0BufferElems_ = static_cast<uint32_t>(l0BufferBytes / elementSize);
+    cubeL0CBufferBytes_ = static_cast<uint32_t>(l0CBytes);
+    cubeL0CBufferElems_ = static_cast<uint32_t>(l0CBufferBytes / elementSize);
 
     uint64_t c0B1ChunkCount = (fusionSize_ + mmConfigC0_.get_l1K() - 1U) / mmConfigC0_.get_l1K();
     uint64_t c0B1Bytes = 0U;
@@ -328,8 +316,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
         currentK = currentK < mmConfigC0_.get_l1K() ? currentK : mmConfigC0_.get_l1K();
         c0B1Bytes += alignUp(currentK, cubeAlign) * alignUp(C0_SET_SHAPE_N, cubeAlign) * elementSize;
     }
-    bool c0B1Valid = mmConfigC0_.get_b1FullLoad() == 1U && c0B1ChunkCount <= mmConfigC0_.get_l1BDepth() &&
-                     c0B1Bytes <= mmConfigC0_.get_l1BDepth() * mmConfigC0_.get_l1BufferBytes();
+    bool c0B1Valid = mmConfigC0_.get_b1FullLoad() == 1U && c0B1ChunkCount <= mmConfigC0_.get_depthB1() &&
+                     c0B1Bytes <= static_cast<uint64_t>(mmConfigC0_.get_depthB1()) * l1BufferBytes;
     bool pipelineValid = C0_TO_V2_ROWS == mmConfigC0_.get_baseM() && V2_TO_C1_ROWS == C1_SET_SHAPE_K &&
                          C1_SET_SHAPE_K == C0_SET_SHAPE_M && C0_SET_SHAPE_M % C0_TO_V2_ROWS == 0U;
     OP_CHECK_IF(!c0B1Valid || !pipelineValid,
@@ -506,9 +494,9 @@ void MhcPreBackwardTiling::PrintTilingData()
             tilingData_.mmConfigC0.get_baseK(), tilingData_.mmConfigC0.get_l1K(),
             tilingData_.mmConfigC1.get_baseM(), tilingData_.mmConfigC1.get_baseN(),
             tilingData_.mmConfigC1.get_baseK(), tilingData_.mmConfigC1.get_l1K(),
-            tilingData_.mmConfigC0.get_l1ADepth(), tilingData_.mmConfigC0.get_l1BDepth(),
-            tilingData_.mmConfigC0.get_l0ADepth(), tilingData_.mmConfigC0.get_l0BDepth(),
-            tilingData_.mmConfigC0.get_l0CDepth(), tilingData_.get_c0MBlock(),
+            tilingData_.mmConfigC0.get_depthA1(), tilingData_.mmConfigC0.get_depthB1(),
+            tilingData_.mmConfigC0.get_dbL0A(), tilingData_.mmConfigC0.get_dbL0B(),
+            tilingData_.mmConfigC0.get_dbL0C(), tilingData_.get_c0MBlock(),
             tilingData_.get_c0NBlock(), tilingData_.get_c1KBlock(), tilingData_.get_c0ToV2Rows(),
             tilingData_.get_v2ToC1Rows());
 }
