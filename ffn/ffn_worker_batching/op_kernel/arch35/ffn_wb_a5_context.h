@@ -31,10 +31,13 @@
 #ifndef OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #define OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #include "kernel_operator.h"
+#include "ffn_wb_arch35_constants.h"
 #include "attention_ffn_schedule.h" // 与 Attention 侧约定的 schedule_context 权威定义
 
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
+namespace Arch35Config = FfnWbArch35Config;
+static_assert(Arch35Config::UB_BLOCK_BYTES == AscendC::ONE_BLK_SIZE, "Host/kernel UB block sizes must agree");
 
 // 契约字段在 schedule_context 中的字节偏移:由权威结构体推出,不手写。
 #define FFN_WB_CTX_OFFSET(field) static_cast<int32_t>(__builtin_offsetof(aicpu::ScheduleContext, field))
@@ -54,11 +57,6 @@ constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
 constexpr int64_t MRG_LIST_NUM = 4;
 
 // schedule_context 内存放的是设备地址(二级指针),真数据需二次解引用后使用。
-// 测试模式下(TEST_MAGIC),存放的是相对 schedule_context 起始的偏移量,
-// kernel 通过 scBase + offset 还原真实地址,与 A2 路径 ffn_wb_get_schedule_context.h 同源。
-constexpr int32_t TEST_MAGIC_OFFSET = 640;
-constexpr int32_t TEST_MAGIC = 0x54455354;
-
 struct BufferInfo {
     uint64_t tokenInfoBuf = 0;
     uint64_t tokenDataBuf = 0;
@@ -132,6 +130,28 @@ __aicore__ inline T Max(T a, T b)
     return (a > b) ? a : b;
 }
 
+// DAV_3510 的公共 AscendC API 已在 AIV 上把 GetBlockIdx() 展平为：
+//
+//   rawBlockIdx * GetTaskRation() + GetSubBlockIdx()
+//
+// 该语义可直接见 CANN 的 dav_3510/kernel_operator_sys_var_impl.h：AIV 分支返回
+// get_block_idx() * get_subblockdim() + get_subblockid()。所以 CV 1:2 时两个 sibling
+// AIV 通过 GetBlockIdx() 已分别得到 0/1；调用点若再乘 taskRatio 并加 subBlockIdx，才会
+// 跳过任务编号并造成重复/遗漏。统一封装为本函数，防止各 phase 对 API 语义作出不同假设。
+__aicore__ inline int64_t GetFlatAivIdx()
+{
+    return GetBlockIdx();
+}
+
+// GetBlockNum() 仍是 launch 的原始 block 数，故总 AIV 数需乘 CV 比率，与上面的已展平索引
+// 位于同一个 [0, flatAivNum) 坐标系。taskRatio 异常为 0 时按 1 防御，合法 DAV_3510 启动
+// 的 taskRatio 始终为正。
+__aicore__ inline int64_t GetFlatAivNum()
+{
+    const int64_t taskRatio = GetTaskRation();
+    return GetBlockNum() * ((taskRatio > 0) ? taskRatio : 1);
+}
+
 // proposal 对表示下,count 个元素占用的 T 元素个数。
 template <typename T>
 __aicore__ inline int64_t GetSortLen(int64_t count)
@@ -170,18 +190,12 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     ctx.coreNum = tilingData->coreNum;
     ctx.ubSize = tilingData->ubSize;
 
-    // 测试模式判定:magic 字段 == TEST_MAGIC 时,各 buffer 字段存放的是相对偏移,
-    // 需加上 schedule_context 基址还原真实地址;否则为绝对设备地址(scBase=0)。
-    LocalTensor<uint32_t> magicField = val[TEST_MAGIC_OFFSET].template ReinterpretCast<uint32_t>();
-    uint32_t magicValue = magicField.GetValue(0);
-    uint64_t scBase = (magicValue == TEST_MAGIC) ? reinterpret_cast<uint64_t>(schedule_context) : 0;
-
     ctx.bufferPtr.tokenDataBuf =
-        scBase + val[FFN_WB_CTX_OFFSET(ffn.token_data_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+        val[FFN_WB_CTX_OFFSET(ffn.token_data_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
 
     if constexpr (isRecv) {
         ctx.bufferPtr.tokenInfoBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.token_info_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.token_info_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.curMicroBatchID =
             val[FFN_WB_CTX_OFFSET(ffn.polling_index)].template ReinterpretCast<uint64_t>().GetValue(0);
         ASSERT_MSG(ctx.curMicroBatchID < ctx.M, "curMicroBatchID:%lu should be less than micro_batch_num:%u",
@@ -190,11 +204,11 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
         ctx.BsKPaddingCount = Align(bsk, sizeof(int32_t)) - bsk;
     } else {
         ctx.bufferPtr.sessionIdsBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.session_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.session_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.bufferPtr.microBatchIdsBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.micro_batch_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.micro_batch_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.bufferPtr.expertIdsBuf =
-            scBase + val[FFN_WB_CTX_OFFSET(ffn.expert_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
+            val[FFN_WB_CTX_OFFSET(ffn.expert_ids_buf)].template ReinterpretCast<uint64_t>().GetValue(0);
         ctx.outNum = val[FFN_WB_CTX_OFFSET(ffn.out_num)].template ReinterpretCast<uint32_t>().GetValue(0);
     }
 }
