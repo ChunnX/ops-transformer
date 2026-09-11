@@ -87,8 +87,14 @@ public:
                                                       LayoutC, BiasType, LayoutBias>;
     using MmKernel = Apace::Kernel::QuantGroupedMatmulKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
 
-    static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
     static constexpr uint64_t xHcclDataType_ = GetA2avHcclDataType<AType>();
+    // mc2CcTiling owns one AlltoAllV descriptor whose send/recv type is built
+    // from gmm_x.  The AICPU server validates every submitted task against that
+    // descriptor, so submitting the scale task as FP8E8M0 (17) while the
+    // descriptor is FP8E4M3 (15), for example, is rejected as "kernel param
+    // invalid".  AlltoAllV performs no arithmetic; use the descriptor's
+    // one-byte transport type for scale and preserve the FP8E8M0 bit pattern.
+    static constexpr uint64_t mxScaleHcclDataType_ = xHcclDataType_;
 
     /*!
      * \brief 初始化并下发通信任务（AIC only）
