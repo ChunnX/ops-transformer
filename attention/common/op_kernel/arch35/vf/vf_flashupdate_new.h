@@ -24,10 +24,14 @@ static constexpr Reg::CastTrait castTraitFp16_32_update = {Reg::RegLayout::ZERO,
 constexpr uint16_t REDUCE_SIZE = 1;
 
 // PV is DN: each vector holds64 query rows for one value column.
+// GetPhyAddr is __aicore__ only; VF uses the UB address carried by LocalTensor.
 template <bool last>
-__simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ float *cur, __ubuf__ float *factor,
-                                              uint16_t columns)
+__simd_vf__ inline void FlashUpdateDnRows64VF(LocalTensor<float> accumUb, LocalTensor<float> curUb,
+                                              LocalTensor<float> factorUb, uint16_t columns)
 {
+    __ubuf__ float *accum = (__ubuf__ float *)static_cast<uint64_t>(accumUb.address_.bufferAddr);
+    __ubuf__ float *cur = (__ubuf__ float *)static_cast<uint64_t>(curUb.address_.bufferAddr);
+    __ubuf__ float *factor = (__ubuf__ float *)static_cast<uint64_t>(factorUb.address_.bufferAddr);
     MaskReg mask = CreateMask<float, MaskPattern::ALL>();
     RegTensor<float> scale, p0, p1, p2, p3, c0, c1, c2, c3;
     LoadAlign(scale, factor);
@@ -73,9 +77,13 @@ __simd_vf__ inline void FlashUpdateDnRows64VF(__ubuf__ float *accum, __ubuf__ fl
     }
 }
 // Split-KV workspace remains FP32 row-major for the existing reduction block.
-__simd_vf__ inline void FlashOutputDnWorkspaceVF(__ubuf__ float *out, __ubuf__ float *accum, __ubuf__ float *sum,
-                                                 uint16_t rows, uint16_t columns, uint16_t stride)
+__simd_vf__ inline void FlashOutputDnWorkspaceVF(LocalTensor<float> outUb, LocalTensor<float> accumUb,
+                                                 LocalTensor<float> sumUb, uint16_t rows, uint16_t columns,
+                                                 uint16_t stride)
 {
+    __ubuf__ float *out = (__ubuf__ float *)static_cast<uint64_t>(outUb.address_.bufferAddr);
+    __ubuf__ float *accum = (__ubuf__ float *)static_cast<uint64_t>(accumUb.address_.bufferAddr);
+    __ubuf__ float *sum = (__ubuf__ float *)static_cast<uint64_t>(sumUb.address_.bufferAddr);
     MaskReg all = CreateMask<float, MaskPattern::ALL>();
     RegTensor<uint32_t> lane, base, index, rowIndex;
     RegTensor<float> value, denominator;
@@ -97,9 +105,12 @@ __simd_vf__ inline void FlashOutputDnWorkspaceVF(__ubuf__ float *out, __ubuf__ f
 static constexpr Reg::CastTrait castDnOutput = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT, Reg::MaskMergeMode::ZEROING,
                                                 RoundMode::CAST_ROUND};
 template <typename OUT_T>
-__simd_vf__ inline void FlashPackOutputDnRows64VF(__ubuf__ OUT_T *out, __ubuf__ float *accum, __ubuf__ float *sum,
-                                                  uint16_t columns)
+__simd_vf__ inline void FlashPackOutputDnRows64VF(LocalTensor<OUT_T> outUb, LocalTensor<float> accumUb,
+                                                  LocalTensor<float> sumUb, uint16_t columns)
 {
+    __ubuf__ OUT_T *out = (__ubuf__ OUT_T *)static_cast<uint64_t>(outUb.address_.bufferAddr);
+    __ubuf__ float *accum = (__ubuf__ float *)static_cast<uint64_t>(accumUb.address_.bufferAddr);
+    __ubuf__ float *sum = (__ubuf__ float *)static_cast<uint64_t>(sumUb.address_.bufferAddr);
     MaskReg mf = CreateMask<float, MaskPattern::ALL>();
     MaskReg half = CreateMask<uint16_t, MaskPattern::VL64>();
     RegTensor<float> denominator, x;

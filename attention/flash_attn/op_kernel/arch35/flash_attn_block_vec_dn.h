@@ -552,9 +552,9 @@ public:
         const uint32_t dSizeV = constInfo_.dSizeV;
         const uint32_t dSizeAligned16 = (dSizeV + 15U) / 16U * 16U;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
-        LocalTensor<T> mm2ResUbTensor =
-            ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
         {
+            LocalTensor<T> mm2ResUbTensor =
+                ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
             Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             if (runInfo.isFirstS2Loop) {
                 DataCopy(ubVec2Res_, mm2ResUbTensor, dSizeV * 64U);
@@ -562,13 +562,11 @@ public:
                 LocalTensor<T> expUb =
                     softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
                 if (runInfo.isLastS2Loop) {
-                    FaVectorApi::FlashUpdateDnRows64VF<true>(
-                        (__ubuf__ float *)ubVec2Res_.GetPhyAddr(), (__ubuf__ float *)mm2ResUbTensor.GetPhyAddr(),
-                        (__ubuf__ float *)expUb.GetPhyAddr(), static_cast<uint16_t>(dSizeV));
+                    FaVectorApi::FlashUpdateDnRows64VF<true>(ubVec2Res_, mm2ResUbTensor, expUb,
+                                                             static_cast<uint16_t>(dSizeV));
                 } else {
-                    FaVectorApi::FlashUpdateDnRows64VF<false>(
-                        (__ubuf__ float *)ubVec2Res_.GetPhyAddr(), (__ubuf__ float *)mm2ResUbTensor.GetPhyAddr(),
-                        (__ubuf__ float *)expUb.GetPhyAddr(), static_cast<uint16_t>(dSizeV));
+                    FaVectorApi::FlashUpdateDnRows64VF<false>(ubVec2Res_, mm2ResUbTensor, expUb,
+                                                              static_cast<uint16_t>(dSizeV));
                 }
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
@@ -594,8 +592,7 @@ public:
                     uint32_t mDealSize = AttentionCommon::Min(rowsPerCopy, runInfo.actVecMSize - mStartVec);
                     Mutex::Lock<PIPE_V>(vec1ResSyncIdx);
                     FaVectorApi::FlashOutputDnWorkspaceVF(
-                        (__ubuf__ float *)vec2TmpUb.GetPhyAddr(), (__ubuf__ float *)ubVec2Res_.GetPhyAddr() + mStartVec,
-                        (__ubuf__ float *)sumUb.GetPhyAddr() + mStartVec, static_cast<uint16_t>(mDealSize),
+                        vec2TmpUb, ubVec2Res_[mStartVec], sumUb[mStartVec], static_cast<uint16_t>(mDealSize),
                         static_cast<uint16_t>(dSizeV), static_cast<uint16_t>(dTemplateAlign64));
                     Mutex::Unlock<PIPE_V>(vec1ResSyncIdx);
                     Mutex::Lock<PIPE_MTE3>(vec1ResSyncIdx);
@@ -607,9 +604,8 @@ public:
                 Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
                 Mutex::Lock<PIPE_V>(vec1ResSyncIdx);
                 LocalTensor<OUTPUT_T> vec2ResUbTensor = vec2TmpUb.template ReinterpretCast<OUTPUT_T>();
-                FaVectorApi::FlashPackOutputDnRows64VF(
-                    (__ubuf__ OUTPUT_T *)vec2ResUbTensor.GetPhyAddr(), (__ubuf__ float *)ubVec2Res_.GetPhyAddr(),
-                    (__ubuf__ float *)sumUb.GetPhyAddr(), static_cast<uint16_t>(dSizeV));
+                FaVectorApi::FlashPackOutputDnRows64VF(vec2ResUbTensor, ubVec2Res_, sumUb,
+                                                       static_cast<uint16_t>(dSizeV));
                 AscendC::PipeBarrier<PIPE_V>();
                 if (dSizeAligned16 > dSizeV) {
                     LocalTensor<uint16_t> paddingUb =
