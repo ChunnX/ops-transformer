@@ -22,7 +22,7 @@
 #   默认         解析 tiling_data_*.bin（AllGatherMxMatmulUrmaTilingData, 536B）
 #   --args       解析 args_info_*.bin（GM 地址指针）
 #   --ws-layout  从 tiling_data_*.bin 中解析 WorkspaceLayoutInfo
-#   --workspace  解析 workspace_seg*_type*_*.bin（type=12 解析 RuntimeInfo）
+#   --workspace  解析 workspace_seg*_type*_*.bin（type=12 解析 StateDump）
 #   --comm-ctx   解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B）
 #   --json       以 JSON 格式输出（默认为人类可读表格）
 
@@ -37,12 +37,13 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 
 # ====== 结构体大小常量（与 apace C++ 定义保持一致）======
 # AllGatherMxMatmulUrmaTilingData 内存布局（536B）:
-#   QuantMatmulTilingData mmTile           offset 0,   64B
-#   CommTilingData        commTile         offset 64,  40B
-#   uint8_t               isBias           offset 104, 1B  (+7B padding)
-#   WorkspaceLayoutInfo   workspaceLayout  offset 112, 208B
-#   uint64_t              peermemDataSize  offset 320, 8B
-#   PeermemLayoutInfo     peermemLayout    offset 328, 208B
+#   DfxDumpInfo           dumpInfo         offset 0,   424B
+#     WorkspaceLayoutInfo workspaceLayout  offset 0,   208B
+#     uint64_t            peermemDataSize  offset 208, 8B
+#     PeermemLayoutInfo   peermemLayout    offset 216, 208B
+#   QuantMatmulTilingData mmTile           offset 424, 64B
+#   CommTilingData        commTile         offset 488, 40B
+#   uint8_t               isBias           offset 528, 1B  (+7B padding)
 ALL_GATHER_MX_MATMUL_URMA_TILING_DATA_SIZE = 536
 TILING_DUMP_SIZE = 2048
 
@@ -62,12 +63,13 @@ RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE  # 
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
 # ====== 偏移量常量 ======
-OFFSET_MM_TILE = 0
-OFFSET_COMM_TILE = QUANT_MATMUL_TILING_DATA_SIZE  # 64
-OFFSET_IS_BIAS = OFFSET_COMM_TILE + COMM_TILING_DATA_SIZE  # 104
-OFFSET_WS_LAYOUT = OFFSET_IS_BIAS + 8  # 112 (isBias 1B + 7B padding, 对齐到 8)
-OFFSET_PEERMEM_DATA_SIZE = OFFSET_WS_LAYOUT + WORKSPACE_LAYOUT_INFO_SIZE  # 320
-OFFSET_PEERMEM_LAYOUT = OFFSET_PEERMEM_DATA_SIZE + 8  # 328
+DFX_DUMP_INFO_SIZE = 424
+OFFSET_WS_LAYOUT = 0
+OFFSET_PEERMEM_DATA_SIZE = WORKSPACE_LAYOUT_INFO_SIZE  # 208
+OFFSET_PEERMEM_LAYOUT = OFFSET_PEERMEM_DATA_SIZE + 8  # 216
+OFFSET_MM_TILE = DFX_DUMP_INFO_SIZE  # 424
+OFFSET_COMM_TILE = OFFSET_MM_TILE + QUANT_MATMUL_TILING_DATA_SIZE  # 488
+OFFSET_IS_BIAS = OFFSET_COMM_TILE + COMM_TILING_DATA_SIZE  # 528
 
 # ====== CommContext 常量（与 Apace::AivComm::CommContext / moe_distribute_comm_ctx.h 镜像保持一致）======
 URMA_MAX_RANK_NUM = 64
@@ -107,7 +109,7 @@ WS_SEG_TYPE_MAP = {
     9: "RECV_BUF",
     10: "COMM_INT8",
     11: "DYNAMIC_QUANT",
-    12: "RUNTIME_INFO",
+    12: "STATE_DUMP",
     13: "MM_WORKSPACE",
     255: "RESERVED",
 }
@@ -498,7 +500,7 @@ def print_workspace_layout_info(ws_layout: dict):
 
 def print_runtime_info_segment(rt_info: dict):
     """人类可读格式打印 RuntimeInfo 段。"""
-    print_section("RuntimeInfo Segment (type=12, 64KB)")
+    print_section("StateDump Segment (type=12, 64KB)")
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
     logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
     if rt_info.get("aicCoreNum") is None:
@@ -598,12 +600,12 @@ def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
     mismatch_count = 0
     first_mismatch_offset = -1
     field_ranges = [
-        (0, QUANT_MATMUL_TILING_DATA_SIZE, "QuantMatmulTilingData"),
-        (QUANT_MATMUL_TILING_DATA_SIZE, QUANT_MATMUL_TILING_DATA_SIZE + COMM_TILING_DATA_SIZE, "CommTilingData"),
-        (OFFSET_IS_BIAS, OFFSET_WS_LAYOUT, "isBias+padding"),
-        (OFFSET_WS_LAYOUT, OFFSET_PEERMEM_DATA_SIZE, "WorkspaceLayoutInfo"),
+        (OFFSET_WS_LAYOUT, OFFSET_PEERMEM_DATA_SIZE, "DfxDumpInfo.workspaceLayout"),
         (OFFSET_PEERMEM_DATA_SIZE, OFFSET_PEERMEM_DATA_SIZE + 8, "peermemDataSize"),
         (OFFSET_PEERMEM_LAYOUT, OFFSET_PEERMEM_LAYOUT + WORKSPACE_LAYOUT_INFO_SIZE, "PeermemLayoutInfo"),
+        (OFFSET_MM_TILE, OFFSET_COMM_TILE, "QuantMatmulTilingData"),
+        (OFFSET_COMM_TILE, OFFSET_IS_BIAS, "CommTilingData"),
+        (OFFSET_IS_BIAS, ALL_GATHER_MX_MATMUL_URMA_TILING_DATA_SIZE, "isBias+padding"),
     ]
 
     for i in range(ref_size):
@@ -695,7 +697,7 @@ def main():
     parser.add_argument("--ws-layout", action="store_true",
                         help="从 tiling_data_*.bin 中解析 WorkspaceLayoutInfo")
     parser.add_argument("--workspace", action="store_true",
-                        help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
+                        help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 StateDump）")
     parser.add_argument("--comm-ctx", action="store_true",
                         help="解析 comm_context_*.bin（CommContext = CommUdmaContext + CommUbmemContext, 1552B, 通信拓扑）")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,

@@ -71,7 +71,7 @@ RUNTIME_PHASE_MAP = {
 WS_SEG_TYPE_MAP = {
     0: "LIB_API", 1: "ND2NZ", 2: "GATHER", 3: "GATHER_SCALE1", 4: "GATHER_SCALE",
     5: "COMM_OUT", 6: "PERMUTE_OUT", 7: "BIAS", 8: "MM_RESULT", 9: "RECV_BUF",
-    10: "COMM_INT8", 11: "DYNAMIC_QUANT", 12: "RUNTIME_INFO", 13: "MM_WORKSPACE", 255: "RESERVED",
+    10: "COMM_INT8", 11: "DYNAMIC_QUANT", 12: "STATE_DUMP", 13: "MM_WORKSPACE", 255: "RESERVED",
 }
 
 WS_SEG_DESCRIPTION_MAP = {
@@ -87,7 +87,7 @@ WS_SEG_DESCRIPTION_MAP = {
     9: "通信接收缓冲区；A2A 路径中供后续 ReduceSum 使用",
     10: "INT8 通信临时缓冲区",
     11: "动态量化临时缓冲区",
-    12: "每核 RuntimeInfo，记录执行位置和通信 commit/wait 情况",
+    12: "每核 StateDump，记录执行位置和通信 commit/wait 情况",
     13: "Matmul 内部临时 Workspace，不是 Matmul 结果，元素类型和逻辑形状不固定",
     255: "对齐或预留空间",
 }
@@ -105,11 +105,9 @@ def get_layout(args):
     for key, name in (("nonQuant", "MatmulReduceScatterV2TilingData"),
                       ("quant", "QuantBatchMatmulV3ReduceScatterTilingData")):
         b = layout[key]
-        logging.info("布局计算: %s: %dB, tilingKey@%d, wsLayout@%d%s",
-                     name, b["opParaSize"] if "opParaSize" in b else b["size"],
-                     b["tilingKeyOffset"], b["wsLayoutOffset"],
-                     " (opParaSize=%d, 段表止于 %d)" % (b["opParaSize"], b["size"])
-                     if "opParaSize" in b else "")
+        logging.info("布局计算: %s: %dB, payload@%d, workspaceLayout@%d",
+                     name, b["size"], layout["offsets"]["mc2InitTiling"],
+                     b["wsLayoutOffset"])
     return layout
 
 
@@ -154,23 +152,22 @@ def parse_rcs_tiling(data, offset, layout):
 
 
 def detect_quant_mode(data, layout):
-    off = layout["offsets"]["quantMode"]
-    if len(data) < off + 4:
-        return False
-    return struct.unpack_from("<I", data, off)[0] != 0
+    """新版结构已移除 quantMode；当前 DFX Workspace 段表由量化实现写入。"""
+    ws = parse_workspace_layout_info(
+        data, layout["workspace"]["layoutOffset"], layout["workspace"])
+    return workspace_layout_is_valid(ws, layout["workspace"])
 
 
 def parse_tiling_data(data, layout, is_quant):
     o = layout["offsets"]
-    b = layout["quant" if is_quant else "nonQuant"]
     return {
-        "mc2InitTiling": parse_mc2_init_tiling(data, o["mc2InitTiling"], o["mc2CcTiling"]),
+        "mc2InitTiling": parse_mc2_init_tiling(
+            data, o["mc2InitTiling"], o["mc2CcTiling"] - o["mc2InitTiling"]),
         "mc2CcTiling": parse_mc2_cc_tiling(data, o["mc2CcTiling"]),
         "param": parse_rcs_tiling(data, o["param"], layout),
         "dataType": struct.unpack_from("<I", data, o["dataType"])[0],
         "debugMode": struct.unpack_from("<I", data, o["debugMode"])[0],
-        "quantMode": struct.unpack_from("<I", data, o["quantMode"])[0],
-        "tilingKey": struct.unpack_from("<Q", data, b["tilingKeyOffset"])[0],
+        "tilingVariant": "FP8/quant" if is_quant else "non-quant",
     }
 
 
@@ -327,7 +324,7 @@ def print_kv(title, d, indent=0):
 
 def print_tiling_data(result, is_quant, layout):
     o = layout["offsets"]
-    print_section("Mc2InitTiling (HCCL Init, %dB)" % o["mc2CcTiling"])
+    print_section("Mc2InitTiling (HCCL Init, %dB)" % (o["mc2CcTiling"] - o["mc2InitTiling"]))
     print_kv("mc2InitTiling", result["mc2InitTiling"])
     print_section("Mc2CcTiling (HCCL CC, 512B)")
     print_kv("mc2CcTiling", result["mc2CcTiling"])
@@ -335,11 +332,11 @@ def print_tiling_data(result, is_quant, layout):
     print_kv("param", result["param"])
     print_section("Extra Fields")
     print_kv("extra", {"dataType": result["dataType"], "debugMode": result["debugMode"],
-                        "quantMode": result["quantMode"], "tilingKey": result["tilingKey"]})
+                        "tilingVariant": result["tilingVariant"]})
 
 
 def print_runtime_info_segment(rt_info):
-    print_section("RuntimeInfo Segment (type=12, 64KB)")
+    print_section("StateDump Segment (type=12, 64KB)")
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
     logging.info("  %-30s: %d", "maxSlots", rt_info["maxSlots"])
     logging.info("  %-30s: %d", "expectedSlots", rt_info["expectedSlots"])
@@ -399,26 +396,15 @@ def print_workspace_segment(result):
 
 
 def select_branch(data, layout):
-    """选择量化/非量化分支: 优先信 quantMode, 其分支 wsLayout 校验不过则尝试另一分支。
-
-    返回 (is_quant, ws_layout 或 None)"""
+    """按新版 offset 0 的 DfxDumpInfo 选择分支并返回 WorkspaceLayout。"""
     is_quant = detect_quant_mode(data, layout)
     ws = layout["workspace"]
-    for q in (is_quant, not is_quant):
-        b = layout["quant" if q else "nonQuant"]
-        off = b["wsLayoutOffset"]
-        if off + ws["layoutInfoSize"] > len(data):
-            continue
-        ws_layout = parse_workspace_layout_info(data, off, ws)
-        if workspace_layout_is_valid(ws_layout, ws):
-            if q != is_quant:
-                logging.warning("quantMode=%s 与 WorkspaceLayoutInfo 合法性校验不符, "
-                                "已自动切换至%s分支解析 (tilingKey/workspaceLayout 偏移已随之切换)",
-                                struct.unpack_from("<I", data, layout["offsets"]["quantMode"])[0],
-                                "量化" if q else "非量化")
-            return q, ws_layout
-    logging.warning("量化/非量化两个分支的 WorkspaceLayoutInfo 均未通过合法性校验, "
-                    "workspace 段布局不可信 (dump 可能来自其他版本环境, 可用 --cann 指定对应 CANN)")
+    off = ws["layoutOffset"]
+    ws_layout = parse_workspace_layout_info(data, off, ws)
+    if workspace_layout_is_valid(ws_layout, ws):
+        return is_quant, ws_layout
+    logging.warning("offset 0 的 WorkspaceLayoutInfo 未通过合法性校验，"
+                    "该 dump 可能不是当前 DfxDumpInfo 前置布局，或段表尚未写入")
     return is_quant, None
 
 
@@ -485,8 +471,8 @@ def main():
         return
 
     is_quant, ws_layout = select_branch(data, layout)
-    logging.info("解析模式: %s (quantMode=%d)", "量化" if is_quant else "非量化",
-                 struct.unpack_from("<I", data, layout["offsets"]["quantMode"])[0])
+    logging.info("解析模式: %s（新版 TilingData 不再保存 quantMode 字段）",
+                 "量化" if is_quant else "非量化")
     result = parse_tiling_data(data, layout, is_quant)
     if ws_layout is not None:
         result["workspaceLayout"] = ws_layout

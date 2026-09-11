@@ -90,7 +90,7 @@ WS_SEG_TYPE_MAP = {
     9: "RECV_BUF",
     10: "COMM_INT8",
     11: "DYNAMIC_QUANT",
-    12: "RUNTIME_INFO",
+    12: "STATE_DUMP",
     13: "MM_WORKSPACE",
     255: "RESERVED",
 }
@@ -108,8 +108,8 @@ def get_layout(args):
     for key, name in (("v2", "AllGatherMatmulTilingDataV2"),
                       ("fp8", "AllGatherMatmulTilingDataFp8")):
         o = layout[key]["offsets"]
-        logging.info("布局计算: %s: %dB, tilingKey@%d, workspaceLayout@%d",
-                     name, layout[key]["size"], o["tilingKey"], o["workspaceLayout"])
+        logging.info("布局计算: %s: %dB, payload@%d, workspaceLayout@%d",
+                     name, layout[key]["size"], o["mc2InitTiling"], o["workspaceLayout"])
     return layout
 
 
@@ -178,8 +178,14 @@ def parse_rcs_tiling(data: bytes, offset: int, rcs: dict) -> dict:
 
 
 def detect_quant_mode(data: bytes, layout: dict) -> bool:
-    quant_mode = _u32(data, layout["v2"]["offsets"]["quantMode"])
-    return bool(quant_mode)
+    """识别当前 DFX 量化通路。
+
+    新版 TilingData 已移除 quantMode 字段。当前源码只有量化 Kernel 构建
+    非空 WorkspaceLayout/StateDump，因此用 offset 0 的合法段表识别该通路。
+    """
+    ws = parse_workspace_layout_info(
+        data, layout["workspace"]["layoutOffset"], layout["workspace"])
+    return validate_ws_layout(ws, layout["workspace"])
 
 
 def parse_tiling_data(data: bytes, layout: dict, is_quant: bool) -> dict:
@@ -192,8 +198,7 @@ def parse_tiling_data(data: bytes, layout: dict, is_quant: bool) -> dict:
         "param": parse_rcs_tiling(data, o["param"], layout["rcs"]),
         "dataType": _u32(data, o["dataType"]),
         "debugMode": _u32(data, o["debugMode"]),
-        "quantMode": _u32(data, o["quantMode"]),
-        "tilingKey": _u64(data, o["tilingKey"]),
+        "tilingVariant": "FP8/quant" if is_quant else "non-quant",
     }
 
 
@@ -249,25 +254,15 @@ def validate_ws_layout(ws: dict, wsinfo: dict) -> bool:
 
 
 def select_branch(data: bytes, layout: dict):
-    """选择量化/非量化分支: 优先信 quantMode, 其分支布局校验不过则尝试另一分支。
-
-    返回 (is_quant, ws_layout 或 None)"""
+    """按新版 offset 0 的 DfxDumpInfo 选择分支并返回 WorkspaceLayout。"""
     is_quant = detect_quant_mode(data, layout)
     wsinfo = layout["workspace"]
-    for q in (is_quant, not is_quant):
-        off = layout["fp8" if q else "v2"]["offsets"]["workspaceLayout"]
-        if off + wsinfo["layoutInfoSize"] > len(data):
-            continue
-        ws = parse_workspace_layout_info(data, off, wsinfo)
-        if validate_ws_layout(ws, wsinfo):
-            if q != is_quant:
-                logging.warning("quantMode=%s 与 WorkspaceLayoutInfo 合法性校验不符, "
-                                "已自动切换至%s分支解析 (tilingKey/workspaceLayout 偏移已随之切换)",
-                                _u32(data, layout["v2"]["offsets"]["quantMode"]),
-                                "量化(Fp8)" if q else "非量化(V2)")
-            return q, ws
-    logging.warning("量化/非量化两个分支的 WorkspaceLayoutInfo 均未通过合法性校验, "
-                    "workspace 段布局不可信 (dump 可能来自其他版本环境, 可用 --cann 指定对应 CANN)")
+    off = wsinfo["layoutOffset"]
+    ws = parse_workspace_layout_info(data, off, wsinfo)
+    if validate_ws_layout(ws, wsinfo):
+        return is_quant, ws
+    logging.warning("offset 0 的 WorkspaceLayoutInfo 未通过合法性校验，"
+                    "该 dump 可能不是当前 DfxDumpInfo 前置布局，或段表尚未写入")
     return is_quant, None
 
 
@@ -387,8 +382,7 @@ def print_tiling_data(result: dict, is_quant: bool, layout: dict):
     print_kv("extra", {
         "dataType": result["dataType"],
         "debugMode": result["debugMode"],
-        "quantMode": result["quantMode"],
-        "tilingKey": result["tilingKey"],
+        "tilingVariant": result["tilingVariant"],
     })
 
 
@@ -424,7 +418,7 @@ def print_workspace_layout_info(ws_layout: dict, layout_info_size: int):
 
 
 def print_runtime_info_segment(rt_info: dict):
-    print_section("RuntimeInfo Segment (type=12, 64KB)")
+    print_section("StateDump Segment (type=12, 64KB)")
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
     logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
     if rt_info.get("aicCoreNum") is None:
@@ -523,7 +517,7 @@ def main():
     if args.ws_layout:
         is_quant, ws_layout = select_branch(data, layout)
         mode_str = "量化" if is_quant else "非量化"
-        ws_offset = layout["fp8" if is_quant else "v2"]["offsets"]["workspaceLayout"]
+        ws_offset = layout["workspace"]["layoutOffset"]
         logging.info("解析 WorkspaceLayoutInfo (%s模式, offset=%d)", mode_str, ws_offset)
         if ws_layout is None:
             logging.error("解析失败: WorkspaceLayoutInfo 未通过合法性校验")
@@ -539,7 +533,7 @@ def main():
     mode_str = "量化" if is_quant else "非量化"
     key = "fp8" if is_quant else "v2"
     struct_name = "AllGatherMatmulTilingDataFp8" if is_quant else "AllGatherMatmulTilingDataV2"
-    logging.info("解析模式: %s (quantMode=%s)", mode_str, _u32(data, layout["v2"]["offsets"]["quantMode"]))
+    logging.info("解析模式: %s（新版 TilingData 不再保存 quantMode 字段）", mode_str)
     logging.info("结构体 %s: %dB", struct_name, layout[key]["size"])
 
     result = parse_tiling_data(data, layout, is_quant)
