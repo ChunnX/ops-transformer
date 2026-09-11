@@ -21,7 +21,7 @@ SUPPORTED_Q_TYPE = {torch.float16, torch.bfloat16}
 SUPPORTED_G = {1, 2, 4, 8, 16, 32, 64, 128}
 
 
-def _check_actual_seq(actual_seq, B, upper_bound, name):
+def check_actual_seq(actual_seq, B, upper_bound, name):
     # TND/动态有效长场景下，需要保证 actual_seq 与 batch 和长度约束一致。
     if actual_seq is None:
         return
@@ -146,12 +146,12 @@ def check_valid_param(params):
         )
 
     if layout_query == "TND" or actual_seq_q is not None:
-        _check_actual_seq(actual_seq_q, B, S1, "actual_seq_q")
+        check_actual_seq(actual_seq_q, B, S1, "actual_seq_q")
     if layout_kv == "TND" or actual_seq_kv is not None:
         if layout_kv == "PA_BSND":
-            _check_actual_seq(actual_seq_kv, B, None, "actual_seq_kv")
+            check_actual_seq(actual_seq_kv, B, None, "actual_seq_kv")
         else:
-            _check_actual_seq(actual_seq_kv, B, S2, "actual_seq_kv")
+            check_actual_seq(actual_seq_kv, B, S2, "actual_seq_kv")
 
     if layout_kv == "PA_BSND":
         if block_size is None or int(block_size) <= 0:
