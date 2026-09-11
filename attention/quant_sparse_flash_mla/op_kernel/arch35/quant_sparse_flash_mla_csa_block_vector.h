@@ -1302,8 +1302,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             AttentionCommon::GetKVPhyAddrVFPa<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, blockSize,
                                                         shiftRightNum, constInfo.sparseBlockSize, dVTemplateTypeInput,
                                                         kvStride);
-            SetFlag<AscendC::HardEvent::V_MTE2>(4); // 4: 同步标志位值
-            SetFlag<AscendC::HardEvent::V_MTE3>(5); // 5: 同步标志位值
+            SetFlag<AscendC::HardEvent::V_MTE2>(4);  // 4: 同步标志位值
+            SetFlag<AscendC::HardEvent::V_MTE3>(5);  // 5: 同步标志位值
             WaitFlag<AscendC::HardEvent::V_MTE3>(5); // 5: 同步标志位值
             AttentionCommon::CopyPhyAddrToGm(kvPhyAddrUb, bS1Idx, s1Idx, curValidS2, s2NumPerLoop, phyAddrGm,
                                              alignedSparseBlockCount);
