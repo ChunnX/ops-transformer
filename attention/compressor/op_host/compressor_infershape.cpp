@@ -73,23 +73,11 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext *context, Co
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     auto wkvShape = context->GetRequiredInputShape(WEIGHT_KV_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, wkvShape);
-    auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, wgateShape);
-    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
-    auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
 
     auto xDim = xShape->GetDimNum();
     OP_CHECK_IF((xDim != DIM_NUM_2 && xDim != DIM_NUM_3),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xDim) + "D", "2D or 3D"),
                 return ge::GRAPH_FAILED);
-
-    // 可选输入：不强制存在
-    auto stateBlockTableShape = context->GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
-    auto seqUsedShape = context->GetOptionalInputShape(SEQ_USED_INPUT_INDEX);
-    auto startPosShape = context->GetOptionalInputShape(START_POS_INPUT_INDEX);
-
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
     const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);

@@ -72,12 +72,6 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     auto wkvShape = context->GetRequiredInputShape(WEIGHT_KV_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, wkvShape);
-    auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, wgateShape);
-    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
-    auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
 
     auto xDim = xShape->GetDimNum();
     OP_CHECK_IF((xDim != DIM_NUM_2 && xDim != DIM_NUM_3),
