@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include "../../../../op_host/arch22/key_pool_tiling.h"
+#include "gmm_csv_ge_parse_utils.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -45,12 +46,7 @@ const char *kA2SocInfo = "{"
 
 TensorDesc Desc(const std::vector<int64_t> &dims, ge::DataType dtype)
 {
-    gert::StorageShape shape;
-    for (const int64_t dim : dims) {
-        shape.MutableOriginShape().AppendDim(dim);
-        shape.MutableStorageShape().AppendDim(dim);
-    }
-    return TensorDesc(shape, dtype, ge::FORMAT_ND);
+    return TensorDesc(ops::ut::MakeGertStorageShape(dims), dtype, ge::FORMAT_ND);
 }
 
 TensorDesc Empty(ge::DataType dtype)

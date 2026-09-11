@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "gmm_csv_ge_parse_utils.h"
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 
@@ -23,12 +24,7 @@ using OpAttr = gert::InfershapeContextPara::OpAttr;
 
 TensorDesc Desc(const std::vector<int64_t> &dims, ge::DataType dtype)
 {
-    gert::StorageShape shape;
-    for (const int64_t dim : dims) {
-        shape.MutableOriginShape().AppendDim(dim);
-        shape.MutableStorageShape().AppendDim(dim);
-    }
-    return TensorDesc(shape, dtype, ge::FORMAT_ND);
+    return TensorDesc(ops::ut::MakeGertStorageShape(dims), dtype, ge::FORMAT_ND);
 }
 
 TensorDesc Empty(ge::DataType dtype)
