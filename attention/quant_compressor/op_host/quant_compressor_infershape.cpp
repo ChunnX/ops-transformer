@@ -44,7 +44,10 @@ constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
 // ATTR RANGE
 constexpr int64_t CMP_RATIO_MIN = 2;
 constexpr int64_t CMP_RATIO_MAX = 128;
+constexpr int64_t COFF_VALUE_1 = 1;
+constexpr int64_t COFF_VALUE_2 = 2;
 constexpr int64_t COFF_DEFAULT = 1;
+constexpr uint32_t DIM_NUM_0 = 0;
 constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;
@@ -100,7 +103,7 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
                 return ge::GRAPH_FAILED);
     const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
     int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_DEFAULT;
-    OP_CHECK_IF((coff != 1 && coff != 2),
+    OP_CHECK_IF((coff != COFF_VALUE_1 && coff != COFF_VALUE_2),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "coff", std::to_string(coff),
                                                       "coff should be 1 or 2"),
                 return ge::GRAPH_FAILED);
@@ -109,14 +112,16 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
         shapeParam.isBsMerge = false;
         shapeParam.B = xShape->GetDim(DIM_INDEX_0);
         shapeParam.S = xShape->GetDim(DIM_INDEX_1);
-        shapeParam.Sr = (xShape->GetDim(DIM_INDEX_1) > 0) ? ((xShape->GetDim(DIM_INDEX_1) - 1) / cmpRatio + 1) : 0;
+        shapeParam.Sr = (xShape->GetDim(DIM_INDEX_1) > DIM_NUM_0) ?
+                            ((xShape->GetDim(DIM_INDEX_1) - DIM_NUM_1) / cmpRatio + DIM_NUM_1) :
+                            DIM_NUM_0;
         shapeParam.H = xShape->GetDim(DIM_INDEX_2);
         shapeParam.T = shapeParam.B * shapeParam.S;
     } else {
         shapeParam.isBsMerge = true;
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);
         shapeParam.H = xShape->GetDim(DIM_INDEX_1);
-        int64_t Bsize = cuSeqlensShape->GetDim(DIM_INDEX_0) - 1;
+        int64_t Bsize = cuSeqlensShape->GetDim(DIM_INDEX_0) - DIM_NUM_1;
         int64_t tDivR = shapeParam.T / cmpRatio;
         // 防止 tDivR + Bsize 溢出（int64 上限约 9e18）
         if (tDivR <= INT64_MAX - Bsize) {

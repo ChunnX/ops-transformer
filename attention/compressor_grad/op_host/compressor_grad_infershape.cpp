@@ -42,8 +42,11 @@ constexpr uint32_t D_APE_OUTPUT_INDEX = 3;
 // ATTR RANGE
 constexpr int64_t CMP_RATIO_MIN = 2;
 constexpr int64_t CMP_RATIO_MAX = 128;
+constexpr int64_t COFF_VALUE_1 = 1;
+constexpr int64_t COFF_VALUE_2 = 2;
 constexpr int64_t COFF_DEFAULT = 1;
 constexpr int64_t CMP_RATIO_DEFAULT = 4;
+constexpr uint32_t DIM_NUM_0 = 0;
 constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
 constexpr uint32_t DIM_NUM_3 = 3;
@@ -89,7 +92,7 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext *context
                 return ge::GRAPH_FAILED);
     const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
     int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_DEFAULT;
-    OP_CHECK_IF((coff != 1 && coff != 2),
+    OP_CHECK_IF((coff != COFF_VALUE_1 && coff != COFF_VALUE_2),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "coff", std::to_string(coff),
                                                       "coff should be 1 or 2"),
                 return ge::GRAPH_FAILED);
