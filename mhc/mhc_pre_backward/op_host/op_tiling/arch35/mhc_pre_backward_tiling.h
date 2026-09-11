@@ -52,10 +52,7 @@ protected:
         return true;
     }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
-    ge::graphStatus GetPlatformInfo() override
-    {
-        return ge::GRAPH_SUCCESS;
-    };
+    ge::graphStatus GetPlatformInfo() override;
     // 2、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override
     {
@@ -106,6 +103,12 @@ private:
     float hcEps_{0.0f};
     uint32_t implMode_{0U};
     uint64_t fusionSize_{0};
+    uint64_t ubSize_{0};
+    uint64_t l1Size_{0};
+    uint64_t l2Size_{0};
+    uint64_t l0ASize_{0};
+    uint64_t l0BSize_{0};
+    uint64_t l0CSize_{0};
 };
 
 } // namespace optiling

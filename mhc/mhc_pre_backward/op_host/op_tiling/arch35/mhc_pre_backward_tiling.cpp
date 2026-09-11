@@ -62,6 +62,50 @@ const constexpr uint32_t C0_SET_SHAPE_N = 128;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
+ge::graphStatus MhcPreBackwardTiling::GetPlatformInfo()
+{
+    const auto *compileInfo = context_->GetCompileInfo<MhcPreBackwardCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(context_->GetNodeName(), "get compile info failed"),
+                return ge::GRAPH_FAILED);
+
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_->GetNodeName(), "get platform info failed"),
+                return ge::GRAPH_FAILED);
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+
+    uint64_t aicNum = compileInfo->aicNum != 0U ? compileInfo->aicNum : ascendcPlatform.GetCoreNumAic();
+    uint64_t aivNum = compileInfo->aivNum != 0U ? compileInfo->aivNum : ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF(aicNum == 0U || aivNum == 0U || aicNum > UINT32_MAX || aivNum > UINT32_MAX,
+                OP_LOGE(context_->GetNodeName(), "invalid core count, aic=%lu, aiv=%lu", aicNum, aivNum),
+                return ge::GRAPH_FAILED);
+    blockDim_ = static_cast<uint32_t>(aicNum);
+    vecCoreNum_ = static_cast<uint32_t>(aivNum);
+
+    auto getMemorySize = [&ascendcPlatform](uint64_t parsedSize, platform_ascendc::CoreMemType type) {
+        if (parsedSize != 0U) {
+            return parsedSize;
+        }
+        uint64_t platformSize = 0U;
+        ascendcPlatform.GetCoreMemSize(type, platformSize);
+        return platformSize;
+    };
+    ubSize_ = getMemorySize(compileInfo->ubSize, platform_ascendc::CoreMemType::UB);
+    l1Size_ = getMemorySize(compileInfo->l1Size, platform_ascendc::CoreMemType::L1);
+    l2Size_ = getMemorySize(compileInfo->l2Size, platform_ascendc::CoreMemType::L2);
+    l0ASize_ = getMemorySize(compileInfo->l0ASize, platform_ascendc::CoreMemType::L0_A);
+    l0BSize_ = getMemorySize(compileInfo->l0BSize, platform_ascendc::CoreMemType::L0_B);
+    l0CSize_ = getMemorySize(compileInfo->l0CSize, platform_ascendc::CoreMemType::L0_C);
+    OP_CHECK_IF(ubSize_ == 0U || l1Size_ == 0U || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U,
+                OP_LOGE(context_->GetNodeName(),
+                        "invalid platform memory, ub=%lu, l1=%lu, l0a=%lu, l0b=%lu, l0c=%lu", ubSize_, l1Size_,
+                        l0ASize_, l0BSize_, l0CSize_),
+                return ge::GRAPH_FAILED);
+    OP_LOGI(context_->GetNodeName(),
+            "platform info: aic=%u, aiv=%u, ub=%lu, l1=%lu, l2=%lu, l0a=%lu, l0b=%lu, l0c=%lu", blockDim_,
+            vecCoreNum_, ubSize_, l1Size_, l2Size_, l0ASize_, l0BSize_, l0CSize_);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MhcPreBackwardTiling::GetInputTensors(const gert::Tensor *&gradHInTensor,
                                                       const gert::Tensor *&gradHPostTensor,
                                                       const gert::Tensor *&gradHResTensor)
@@ -223,15 +267,6 @@ ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
         OP_LOGE(context_->GetNodeName(), "get input shape failed");
         return ge::GRAPH_FAILED;
     }
-
-    auto platformInfo = context_->GetPlatformInfo();
-    if (platformInfo == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "get platform info failed");
-        return ge::GRAPH_FAILED;
-    }
-    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    blockDim_ = ascendcPlatform.GetCoreNumAic();
-    vecCoreNum_ = ascendcPlatform.GetCoreNumAiv();
 
     auto attrs = context_->GetAttrs();
     if (attrs == nullptr) {
