@@ -506,6 +506,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
 
                 uint32_t preparedWqeCount = 0U;
                 uint32_t sqWriteCount = 0U;
+                uint32_t drainCount = 0U;
                 uint64_t tokenIndex = firstTokenIndex;
                 while (tokenIndex != INVALID_TOKEN_INDEX) {
                     RemoteRelayInfo relayInfo;
@@ -515,11 +516,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, enableCqe);
                     ++preparedWqeCount;
                     ++sqWriteCount;
-                    uint32_t drainCount = 0U;
+
                     if (enableCqe) {
                         ++drainCount;
-                        AscendC::PRINTF("rank=%u, dst=%u, drain=%u, sq=%u\n", rankId_, dstRank, drainCount,
-                                        sqWriteCount);
+
                         CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
                     } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
                         (void)hcomm_.BatchCommit(batchHandle);
@@ -539,6 +539,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     ++preparedWqeCount;
                     ++sqWriteCount;
                     if (enableCqe) {
+                        ++drainCount;
                         CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
                     } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
                         (void)hcomm_.BatchCommit(batchHandle);
@@ -548,6 +549,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
 
                 if (preparedWqeCount != 0U) {
                     (void)hcomm_.BatchCommit(batchHandle);
+                    AscendC::PRINTF("rank=%u, dst=%u, drain=%u, sq=%u\n", rankId_, dstRank, drainCount, sqWriteCount);
                 }
             }
         }
