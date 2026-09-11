@@ -17,7 +17,7 @@
 # 模式:
 #   默认         自动识别主线非量化、主线量化或 Apace CCU tiling_data_*.bin
 #   --args       解析 args_info_*.bin（GM 地址指针）
-#   --ws-layout  从 tiling_data_*.bin 起始处的 DfxDumpInfo 解析 WorkspaceLayoutInfo
+#   --ws-layout  从 tiling_data_*.bin 中的 DfxDumpInfo 解析 WorkspaceLayoutInfo
 #   --workspace  解析 workspace_seg*_type*_*.bin（自动识别段类型，type=12 解析 RuntimeInfo）
 #   --json       以 JSON 格式输出（默认为人类可读表格）
 
@@ -61,7 +61,8 @@ RUNTIME_INFO_CORE_MAX = 128
 RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE  # 65536
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
-# WorkspaceLayoutInfo 是 DfxDumpInfo 的首成员，三种格式都固定在 offset 0。
+# WorkspaceLayoutInfo 是 DfxDumpInfo 的首成员；当前三种格式的 dumpInfo
+# 均位于 Mc2InitTiling + Mc2CcTiling 之后（默认 offset 576）。
 OFFSET_WS_LAYOUT_NON_QUANT = _LAYOUT["nonQuant"]["wsLayoutOffset"]
 OFFSET_WS_LAYOUT_QUANT = _LAYOUT["quant"]["wsLayoutOffset"]
 OFFSET_APACE_COMM_TILING = _LAYOUT["apace"]["commOffset"]
@@ -96,6 +97,7 @@ def init_layout(cann=None):
     g["OFFSET_APACE_COMM_TILING"] = layout["apace"]["commOffset"]
     g["OFFSET_APACE_QUANT_MATMUL"] = layout["apace"]["quantMatmulOffset"]
     g["OFFSET_APACE_LOCAL_MATMUL"] = layout["apace"]["localMatmulOffset"]
+    g["OFFSET_DFX_DUMP_INFO"] = layout["offsets"]["dumpInfo"]
     g["OFFSET_MC2_INIT_TILING"] = layout["offsets"]["mc2InitTiling"]
     g["OFFSET_MC2_CC_TILING"] = layout["offsets"]["mc2CcTiling"]
     g["OFFSET_TILING_INFO"] = layout["offsets"]["tilingInfo"]
@@ -129,6 +131,7 @@ X2_QUANT_MODE_MAP = {
 # ====== 偏移量常量 ======
 OFFSET_MC2_INIT_TILING = _LAYOUT["offsets"]["mc2InitTiling"]
 OFFSET_MC2_CC_TILING = _LAYOUT["offsets"]["mc2CcTiling"]
+OFFSET_DFX_DUMP_INFO = _LAYOUT["offsets"]["dumpInfo"]
 OFFSET_TILING_INFO = _LAYOUT["offsets"]["tilingInfo"]
 OFFSET_TILE_MM_TILING = _LAYOUT["nonQuant"]["tileOffset"]
 OFFSET_TAIL_MM_TILING_NON_QUANT = _LAYOUT["nonQuant"]["tailOffset"]
@@ -399,7 +402,7 @@ def parse_mc2_quant_bmm_tiling_data_params(data: bytes, offset: int) -> dict:
 
 
 def parse_non_quant_tiling_data(data: bytes) -> dict:
-    """解析非量化 AlltoAllMatmulTilingData（完整结构 1360B）。"""
+    """解析非量化 AlltoAllMatmulTilingData（结构大小由 TCubeTiling 动态计算）。"""
     return {
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
         "mc2CcTiling": parse_mc2_cc_tiling_inner(data, OFFSET_MC2_CC_TILING),
@@ -410,7 +413,7 @@ def parse_non_quant_tiling_data(data: bytes) -> dict:
 
 
 def parse_quant_tiling_data(data: bytes) -> dict:
-    """解析量化 AlltoAllQuantMatmulTilingData（完整结构 1616B）。"""
+    """解析量化 AlltoAllQuantMatmulTilingData（结构大小由 TCubeTiling 动态计算）。"""
     return {
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
         "mc2CcTiling": parse_mc2_cc_tiling_inner(data, OFFSET_MC2_CC_TILING),
@@ -805,9 +808,9 @@ def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
     mismatch_count = 0
     first_mismatch_offset = -1
     field_ranges = [
-        (0, OFFSET_MC2_INIT_TILING, "DfxDumpInfo"),
         (OFFSET_MC2_INIT_TILING, OFFSET_MC2_CC_TILING, "Mc2InitTiling"),
-        (OFFSET_MC2_CC_TILING, OFFSET_TILING_INFO, "Mc2CcTiling"),
+        (OFFSET_MC2_CC_TILING, OFFSET_DFX_DUMP_INFO, "Mc2CcTiling"),
+        (OFFSET_DFX_DUMP_INFO, OFFSET_TILING_INFO, "DfxDumpInfo"),
         (OFFSET_TILING_INFO, OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE, "AlltoAllMatmulTilingInfo"),
         (OFFSET_TILE_MM_TILING, OFFSET_TILE_MM_TILING + max(MC2_MM_V3_TILING_DATA_SIZE, MC2_QUANT_BMM_TILING_PARAMS_SIZE), "TileMatmulTiling"),
     ]
@@ -892,7 +895,7 @@ def main():
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin（GM 地址指针）")
     parser.add_argument("--ws-layout", action="store_true",
-                        help="从 tiling_data_*.bin 起始处的 DfxDumpInfo 解析 WorkspaceLayoutInfo")
+                        help="从 tiling_data_*.bin 中的 DfxDumpInfo 解析 WorkspaceLayoutInfo")
     parser.add_argument("--workspace", action="store_true",
                         help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
@@ -1031,7 +1034,7 @@ def main():
             struct_size, len(data), len(data) - struct_size,
         )
 
-    # WorkspaceLayoutInfo 固定在 TilingData offset 0。
+    # WorkspaceLayoutInfo 位于 Mc2InitTiling + Mc2CcTiling 之后的 DfxDumpInfo 起点。
     ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
     if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:
         ws_layout = parse_workspace_layout_info(data, ws_offset)

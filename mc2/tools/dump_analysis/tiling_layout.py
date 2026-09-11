@@ -82,21 +82,22 @@ APACE_COMM_TILING_SIZE = 40
 APACE_QUANT_MATMUL_SIZE = 64
 
 # 当前 ops-transformer 源码的 ground truth（TCubeTiling=200），用于公式回归自检。
-# 所有 TilingData 都以 DfxDumpInfo 开头，WorkspaceLayout 固定在 offset 0。
+# AGMMV2/MMRS/A2AMM 的前缀为 [Mc2InitTiling][Mc2CcTiling][DfxDumpInfo]，
+# 因此 DfxDumpInfo/WorkspaceLayout 位于 offset 576；URMA 算子仍把 DfxDumpInfo 放在 offset 0。
 _GROUND_TRUTH = {
-    "v2.offsets.workspaceLayout": 0, "v2.size": 1848,
-    "fp8.offsets.workspaceLayout": 0, "fp8.size": 2232,
+    "v2.offsets.workspaceLayout": 576, "v2.size": 1848,
+    "fp8.offsets.workspaceLayout": 576, "fp8.size": 2232,
 }
 
 _GT_MRSV2 = {
-    "nonQuant.wsLayoutOffset": 0, "nonQuant.size": 1608,
-    "quant.wsLayoutOffset": 0, "quant.size": 1864,
+    "nonQuant.wsLayoutOffset": 576, "nonQuant.size": 1608,
+    "quant.wsLayoutOffset": 576, "quant.size": 1864,
 }
 
 _GT_A2A = {
-    "nonQuant.wsLayoutOffset": 0, "nonQuant.size": 1560,
-    "quant.wsLayoutOffset": 0, "quant.size": 1816,
-    "apace.wsLayoutOffset": 0, "apace.size": 1112,
+    "nonQuant.wsLayoutOffset": 576, "nonQuant.size": 1560,
+    "quant.wsLayoutOffset": 576, "quant.size": 1816,
+    "apace.wsLayoutOffset": 576, "apace.size": 1112,
 }
 
 PRIM_TYPES = {
@@ -364,8 +365,10 @@ def _base_layout(cann):
 
 
 def _self_check(layout, ground_truth):
-    """TCubeTiling=200 时按点路径对拍 ground truth, 不符说明公式/DFX 表有 bug。"""
-    if layout["tcubeTilingSize"] != DEFAULT_TCUBE_TILING_SIZE:
+    """三个 CANN 基础尺寸均为当前默认值时，对拍源码 ground truth。"""
+    if (layout["tcubeTilingSize"] != DEFAULT_TCUBE_TILING_SIZE or
+            layout.get("initSize") != DEFAULT_MC2_INIT_TILING_SIZE or
+            layout.get("ccSize") != DEFAULT_MC2_CC_TILING_SIZE):
         return
     for path, expect in ground_truth.items():
         node = layout
@@ -388,10 +391,11 @@ def compute_layout(cann=None):
     base = _base_layout(cann)
     tcube_size = base["tcubeTilingSize"]
 
-    # [DfxDumpInfo][Mc2InitTiling][Mc2CcTiling][RCSTiling][dataType][debugMode][3×MM tiling]
-    off_init = DFX_DUMP_INFO_SIZE
+    # [Mc2InitTiling][Mc2CcTiling][DfxDumpInfo][RCSTiling][dataType][debugMode][3×MM tiling]
+    off_init = 0
     off_cc = off_init + base["initSize"]
-    off_param = off_cc + base["ccSize"]
+    off_dump_info = off_cc + base["ccSize"]
+    off_param = off_dump_info + DFX_DUMP_INFO_SIZE
     off_data_type = off_param + base["rcs"]["size"]
     off_debug_mode = off_data_type + 4
     off_blocks = off_debug_mode + 4
@@ -403,19 +407,25 @@ def compute_layout(cann=None):
     fp8_size = build(tcube_size + QUANT_FIXED_SIZE)
 
     head_offsets = {
-        "workspaceLayout": DFX_WORKSPACE_LAYOUT_OFFSET,
-        "peermemDataSize": PEERMEM_DATA_SIZE_OFFSET,
-        "peermemLayout": PEERMEM_LAYOUT_OFFSET,
+        "dumpInfo": off_dump_info,
+        "workspaceLayout": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+        "peermemDataSize": off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+        "peermemLayout": off_dump_info + PEERMEM_LAYOUT_OFFSET,
         "mc2InitTiling": off_init, "mc2CcTiling": off_cc, "param": off_param,
         "dataType": off_data_type, "debugMode": off_debug_mode, "blocks": off_blocks,
     }
     layout = {
         "headers": base["headers"],
+        "initSize": base["initSize"],
+        "ccSize": base["ccSize"],
         "tcubeTilingSize": tcube_size,
         "v2": {"size": v2_size, "offsets": dict(head_offsets)},
         "fp8": {"size": fp8_size, "offsets": dict(head_offsets)},
         "rcs": base["rcs"],
-        "workspace": base["workspace"],
+        "workspace": dict(base["workspace"],
+                          layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+                          peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+                          peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET),
     }
     _self_check(layout, _GROUND_TRUTH)
     return layout
@@ -424,14 +434,15 @@ def compute_layout(cann=None):
 def compute_mrs_v2_layout(cann=None):
     """计算 MatmulReduceScatterV2 TilingData 布局。
 
-    结构: [DfxDumpInfo][Mc2InitTiling][Mc2CcTiling][RCSTiling]
+    结构: [Mc2InitTiling][Mc2CcTiling][DfxDumpInfo][RCSTiling]
           [dataType][debugMode][2×tiling 块]。"""
     base = _base_layout(cann)
     tcube_size = base["tcubeTilingSize"]
 
-    off_init = DFX_DUMP_INFO_SIZE
+    off_init = 0
     off_cc = off_init + base["initSize"]
-    off_param = off_cc + base["ccSize"]
+    off_dump_info = off_cc + base["ccSize"]
+    off_param = off_dump_info + DFX_DUMP_INFO_SIZE
     off_data_type = off_param + base["rcs"]["size"]
     off_debug_mode = off_data_type + 4
     off_blocks = off_debug_mode + 4
@@ -444,21 +455,27 @@ def compute_mrs_v2_layout(cann=None):
 
     layout = {
         "headers": base["headers"],
+        "initSize": base["initSize"],
+        "ccSize": base["ccSize"],
         "tcubeTilingSize": tcube_size,
-        "nonQuant": {"size": nq_size, "wsLayoutOffset": DFX_WORKSPACE_LAYOUT_OFFSET,
+        "nonQuant": {"size": nq_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
                      "blockOffset": off_blocks},
-        "quant": {"size": q_size, "wsLayoutOffset": DFX_WORKSPACE_LAYOUT_OFFSET,
+        "quant": {"size": q_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
                   "blockOffset": off_blocks},
         "offsets": {
-            "workspaceLayout": DFX_WORKSPACE_LAYOUT_OFFSET,
-            "peermemDataSize": PEERMEM_DATA_SIZE_OFFSET,
-            "peermemLayout": PEERMEM_LAYOUT_OFFSET,
+            "dumpInfo": off_dump_info,
+            "workspaceLayout": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "peermemDataSize": off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+            "peermemLayout": off_dump_info + PEERMEM_LAYOUT_OFFSET,
             "mc2InitTiling": off_init, "mc2CcTiling": off_cc,
             "param": off_param, "dataType": off_data_type,
             "debugMode": off_debug_mode, "blocks": off_blocks,
         },
         "rcs": base["rcs"],
-        "workspace": base["workspace"],
+        "workspace": dict(base["workspace"],
+                          layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+                          peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+                          peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET),
     }
     _self_check(layout, _GT_MRSV2)
     return layout
@@ -467,17 +484,18 @@ def compute_mrs_v2_layout(cann=None):
 def compute_allto_all_layout(cann=None):
     """计算 AlltoAllMatmul (v1) TilingData 布局 (nonQuant/quant/apace 三分支)。
 
-    主线结构: [DfxDumpInfo][Mc2InitTiling][Mc2CcTiling][AlltoAllMatmulTilingInfo]
+    主线结构: [Mc2InitTiling][Mc2CcTiling][DfxDumpInfo][AlltoAllMatmulTilingInfo]
               [2×tiling 块]
     apace 结构 (无 TCubeTiling, 固定):
-              [DfxDumpInfo][Mc2InitTiling][Mc2CcTiling][CommTiling 40]
+              [Mc2InitTiling][Mc2CcTiling][DfxDumpInfo][CommTiling 40]
               [QuantMatmul 64][localMatmul 4]"""
     base = _base_layout(cann)
     tcube_size = base["tcubeTilingSize"]
 
-    off_init = DFX_DUMP_INFO_SIZE
+    off_init = 0
     off_cc = off_init + base["initSize"]
-    off_info = off_cc + base["ccSize"]
+    off_dump_info = off_cc + base["ccSize"]
+    off_info = off_dump_info + DFX_DUMP_INFO_SIZE
     head = off_info + ALLTO_ALL_TILING_INFO_SIZE
 
     def build(block_size):
@@ -493,25 +511,31 @@ def compute_allto_all_layout(cann=None):
 
     layout = {
         "headers": base["headers"],
+        "initSize": base["initSize"],
+        "ccSize": base["ccSize"],
         "tcubeTilingSize": tcube_size,
-        "nonQuant": {"size": nq_size, "wsLayoutOffset": DFX_WORKSPACE_LAYOUT_OFFSET,
+        "nonQuant": {"size": nq_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
                      "blockSize": tcube_size + MMV3_TAIL_SIZE,
                      "tileOffset": head, "tailOffset": head + tcube_size + MMV3_TAIL_SIZE},
-        "quant": {"size": q_size, "wsLayoutOffset": DFX_WORKSPACE_LAYOUT_OFFSET,
+        "quant": {"size": q_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
                   "blockSize": tcube_size + QUANT_FIXED_SIZE,
                   "tileOffset": head, "tailOffset": head + tcube_size + QUANT_FIXED_SIZE},
         "apace": {"size": _roundup(apace_local + 4, 8),
-                  "wsLayoutOffset": DFX_WORKSPACE_LAYOUT_OFFSET,
+                  "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
                   "commOffset": apace_comm, "quantMatmulOffset": apace_qmm,
                   "localMatmulOffset": apace_local},
         "offsets": {
-            "workspaceLayout": DFX_WORKSPACE_LAYOUT_OFFSET,
-            "peermemDataSize": PEERMEM_DATA_SIZE_OFFSET,
-            "peermemLayout": PEERMEM_LAYOUT_OFFSET,
+            "dumpInfo": off_dump_info,
+            "workspaceLayout": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "peermemDataSize": off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+            "peermemLayout": off_dump_info + PEERMEM_LAYOUT_OFFSET,
             "mc2InitTiling": off_init, "mc2CcTiling": off_cc,
             "tilingInfo": off_info,
         },
-        "workspace": base["workspace"],
+        "workspace": dict(base["workspace"],
+                          layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+                          peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+                          peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET),
     }
     _self_check(layout, _GT_A2A)
     return layout
@@ -541,8 +565,8 @@ def main():
     for key, name in (("v2", "AllGatherMatmulTilingDataV2"),
                       ("fp8", "AllGatherMatmulTilingDataFp8")):
         o = layout[key]["offsets"]
-        print("%s: %dB  payload@%d  workspaceLayout@%d"
-              % (name, layout[key]["size"], o["mc2InitTiling"],
+        print("%s: %dB  dumpInfo@%d  param@%d  workspaceLayout@%d"
+              % (name, layout[key]["size"], o["dumpInfo"], o["param"],
                  o["workspaceLayout"]))
     print("RCSTiling: %dB" % layout["rcs"]["size"])
     ws = layout["workspace"]

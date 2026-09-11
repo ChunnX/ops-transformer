@@ -108,8 +108,8 @@ def get_layout(args):
     for key, name in (("v2", "AllGatherMatmulTilingDataV2"),
                       ("fp8", "AllGatherMatmulTilingDataFp8")):
         o = layout[key]["offsets"]
-        logging.info("布局计算: %s: %dB, payload@%d, workspaceLayout@%d",
-                     name, layout[key]["size"], o["mc2InitTiling"], o["workspaceLayout"])
+        logging.info("布局计算: %s: %dB, dumpInfo@%d, param@%d, workspaceLayout@%d",
+                     name, layout[key]["size"], o["dumpInfo"], o["param"], o["workspaceLayout"])
     return layout
 
 
@@ -181,7 +181,7 @@ def detect_quant_mode(data: bytes, layout: dict) -> bool:
     """识别当前 DFX 量化通路。
 
     新版 TilingData 已移除 quantMode 字段。当前源码只有量化 Kernel 构建
-    非空 WorkspaceLayout/StateDump，因此用 offset 0 的合法段表识别该通路。
+    非空 WorkspaceLayout/StateDump，因此用 dumpInfo 起点的合法段表识别该通路。
     """
     ws = parse_workspace_layout_info(
         data, layout["workspace"]["layoutOffset"], layout["workspace"])
@@ -254,15 +254,15 @@ def validate_ws_layout(ws: dict, wsinfo: dict) -> bool:
 
 
 def select_branch(data: bytes, layout: dict):
-    """按新版 offset 0 的 DfxDumpInfo 选择分支并返回 WorkspaceLayout。"""
+    """按 Mc2InitTiling/Mc2CcTiling 后的 DfxDumpInfo 返回 WorkspaceLayout。"""
     is_quant = detect_quant_mode(data, layout)
     wsinfo = layout["workspace"]
     off = wsinfo["layoutOffset"]
     ws = parse_workspace_layout_info(data, off, wsinfo)
     if validate_ws_layout(ws, wsinfo):
         return is_quant, ws
-    logging.warning("offset 0 的 WorkspaceLayoutInfo 未通过合法性校验，"
-                    "该 dump 可能不是当前 DfxDumpInfo 前置布局，或段表尚未写入")
+    logging.warning("offset %d 的 WorkspaceLayoutInfo 未通过合法性校验，"
+                    "该 dump 可能不是当前 mc2Init/mc2Cc/dumpInfo 布局，或段表尚未写入", off)
     return is_quant, None
 
 

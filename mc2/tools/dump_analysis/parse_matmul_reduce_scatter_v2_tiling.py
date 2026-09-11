@@ -105,9 +105,9 @@ def get_layout(args):
     for key, name in (("nonQuant", "MatmulReduceScatterV2TilingData"),
                       ("quant", "QuantBatchMatmulV3ReduceScatterTilingData")):
         b = layout[key]
-        logging.info("布局计算: %s: %dB, payload@%d, workspaceLayout@%d",
-                     name, b["size"], layout["offsets"]["mc2InitTiling"],
-                     b["wsLayoutOffset"])
+        logging.info("布局计算: %s: %dB, dumpInfo@%d, param@%d, workspaceLayout@%d",
+                     name, b["size"], layout["offsets"]["dumpInfo"],
+                     layout["offsets"]["param"], b["wsLayoutOffset"])
     return layout
 
 
@@ -396,15 +396,15 @@ def print_workspace_segment(result):
 
 
 def select_branch(data, layout):
-    """按新版 offset 0 的 DfxDumpInfo 选择分支并返回 WorkspaceLayout。"""
+    """按 Mc2InitTiling/Mc2CcTiling 后的 DfxDumpInfo 返回 WorkspaceLayout。"""
     is_quant = detect_quant_mode(data, layout)
     ws = layout["workspace"]
     off = ws["layoutOffset"]
     ws_layout = parse_workspace_layout_info(data, off, ws)
     if workspace_layout_is_valid(ws_layout, ws):
         return is_quant, ws_layout
-    logging.warning("offset 0 的 WorkspaceLayoutInfo 未通过合法性校验，"
-                    "该 dump 可能不是当前 DfxDumpInfo 前置布局，或段表尚未写入")
+    logging.warning("offset %d 的 WorkspaceLayoutInfo 未通过合法性校验，"
+                    "该 dump 可能不是当前 mc2Init/mc2Cc/dumpInfo 布局，或段表尚未写入", off)
     return is_quant, None
 
 
