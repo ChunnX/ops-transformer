@@ -65,7 +65,7 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const LightningIndexerV2C
     }
     if (keyShape->GetDim(0) <= 0) {
         const std::string actual = ShapeToString(info.key);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "k", actual.c_str(), "Block_num must be greater than 0");
+        LogInvalidShape(info, "k", actual, "Block_num must be greater than 0");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -93,9 +93,8 @@ ge::graphStatus PagedAttentionChecker::CheckContiguous(const LightningIndexerV2C
         const int64_t dim = shape->GetDim(i);
         if (dim < 0 || (dim != 0 && expected > std::numeric_limits<int64_t>::max() / dim)) {
             const std::string actual = ShapeToString(tensor);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                info.opName, name, actual.c_str(),
-                "Shape dimensions must be non-negative and their product must fit in int64_t");
+            LogInvalidShape(info, name, actual,
+                            "Shape dimensions must be non-negative and their product must fit in int64_t");
             return ge::GRAPH_FAILED;
         }
         expected *= dim;
@@ -109,8 +108,7 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const LightningIndexerV2Ch
         const gert::Shape *blockShape = info.blockTable.GetShape();
         if (blockShape->GetDim(0) != info.batch) {
             const std::string actual = ShapeToString(info.blockTable);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "block_table", actual.c_str(),
-                                                  "Block_table dim 0 must equal the query batch size");
+            LogInvalidShape(info, "block_table", actual, "Block_table dim 0 must equal the query batch size");
             return ge::GRAPH_FAILED;
         }
     }

@@ -41,6 +41,8 @@ protected:
                                       const char *name, int64_t expected) const;
     static std::string DtypesToString(const std::vector<ge::DataType> &dtypes);
     static std::string ShapeToString(const CheckerTensor &tensor);
+    static void LogInvalidShape(const LightningIndexerV2CheckerInfo &info, const char *name, const std::string &actual,
+                                const std::string &reason);
 };
 
 } // namespace lightning_indexer_v2_checker

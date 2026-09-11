@@ -60,6 +60,20 @@ std::string LightningIndexerV2BaseChecker::ShapeToString(const CheckerTensor &te
     return shape == nullptr ? "null" : Ops::Base::ToString(*shape);
 }
 
+void LightningIndexerV2BaseChecker::LogInvalidShape(const LightningIndexerV2CheckerInfo &info, const char *name,
+                                                    const std::string &actual, const std::string &reason)
+{
+    OP_LOGE_LIBOPAPI_REPORT(info.opName, "Parameter %s of %s has incorrect shape %s. Reason: %s.", name, info.opName,
+                            actual.c_str(), reason.c_str());
+    // EZ0009 adds brackets around incorrect_shape; the ordinary log needs the complete shape.
+    const std::string raw = actual.size() >= 2 && actual.front() == '[' && actual.back() == ']' ?
+                                actual.substr(1, actual.size() - 2) :
+                                actual;
+    const std::vector<const char *> msgKey = {"param_name", "op_name", "incorrect_shape", "reason"};
+    const std::vector<const char *> msgValue = {name, info.opName, raw.c_str(), reason.c_str()};
+    REPORT_PREDEFINED_ERR_MSG("EZ0009", msgKey, msgValue);
+}
+
 ge::graphStatus LightningIndexerV2BaseChecker::CheckDtype(const LightningIndexerV2CheckerInfo &info,
                                                           const CheckerTensor &tensor, const char *name,
                                                           const std::vector<ge::DataType> &expected) const
@@ -124,7 +138,7 @@ ge::graphStatus LightningIndexerV2BaseChecker::CheckElementCount(const Lightning
         const std::string actual = ShapeToString(tensor);
         const std::string reason =
             "The tensor shape must be [B], where B is batch size (" + std::to_string(expected) + ")";
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, name, actual.c_str(), reason.c_str());
+        LogInvalidShape(info, name, actual, reason);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
