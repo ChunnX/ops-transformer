@@ -58,7 +58,7 @@ if _TORCHAIR_AVAILABLE:
         num_heads: int,
         num_key_value_heads: int,
         region_size: int = 8,
-        page_size: int = 16,
+        page_size: int = 128,
         scale_value: float = 0.0,
         layout_q: str = "TND",
         layout_kv: str = "TGD",
@@ -79,7 +79,7 @@ if _TORCHAIR_AVAILABLE:
         .REQUIRED_ATTR(num_heads, Int)\n
         .REQUIRED_ATTR(num_key_value_heads, Int)\n
         .ATTR(region_size, Int, 8)\n
-        .ATTR(page_size, Int, 16)\n
+        .ATTR(page_size, Int, 128)\n
         .ATTR(scale_value, Float, 0.0)\n
         .ATTR(layout_q, String, "TND")\n
         .ATTR(layout_kv, String, "TGD")\n
@@ -131,7 +131,7 @@ if _TORCHAIR_AVAILABLE:
             .required_attr("num_heads", attr.Int)
             .required_attr("num_key_value_heads", attr.Int)
             .attr("region_size", attr.Int(8))
-            .attr("page_size", attr.Int(16))
+            .attr("page_size", attr.Int(128))
             .attr("scale_value", attr.Float(0.0))
             .attr("layout_q", attr.Str("TND"))
             .attr("layout_kv", attr.Str("TGD"))
@@ -155,7 +155,7 @@ if _TORCHAIR_AVAILABLE:
         *,
         kv_seqlens: Optional[Tensor] = None,
         region_size: int = 8,
-        page_size: int = 16,
+        page_size: int = 128,
         scale_value: float = 0.0,
         layout_q: str = "TND",
         layout_kv: str = "TGD",

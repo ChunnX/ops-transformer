@@ -12,6 +12,7 @@ namespace NpuArch::Gemm::Block {
 
 static constexpr uint32_t STEP4_PACKED_REGION_ID_MASK = 0x00FFFFFFu;
 static constexpr uint32_t STEP4_PACKED_VALID_SHIFT = 24;
+static constexpr uint32_t STEP4_PACKED_PREFILL_SKIP = 0xFFFFFFFFu;
 static constexpr uint32_t STEP4_DECODE_START_MASK = 0xFFFFFFFFu;
 
 template <bool IS_DECODE, class PackedT>
@@ -31,15 +32,32 @@ __aicore__ inline void ParsePackedSlot(PackedT meta, uint32_t regionSize, int32_
         }
         valid = static_cast<uint32_t>(vis);
     } else {
-        int32_t word = static_cast<int32_t>(meta);
-        if (word < 0) {
+        // Prefill valid sits in bits [31:24]. Skip is only the sentinel 0xFFFFFFFF (-1);
+        // do not treat any negative INT32 as skip (high valid bits share the sign bit).
+        uint32_t word = static_cast<uint32_t>(meta);
+        if (word == STEP4_PACKED_PREFILL_SKIP) {
             phys = 0;
             valid = 0;
             return;
         }
-        phys = static_cast<uint32_t>(word) & STEP4_PACKED_REGION_ID_MASK;
-        valid = static_cast<uint32_t>(word) >> STEP4_PACKED_VALID_SHIFT;
+        phys = word & STEP4_PACKED_REGION_ID_MASK;
+        valid = word >> STEP4_PACKED_VALID_SHIFT;
     }
+}
+
+// TGD GM row of region `phys`'s first token. pageSize is the paged block (blocksize);
+// regionSize stays 8. On a cache flattened in region-id order this equals phys * regionSize:
+//   (phys / rpp) * pageSize + (phys % rpp) * regionSize, rpp = pageSize / regionSize.
+__aicore__ inline uint32_t PackedRegionGmStart(uint32_t phys, uint32_t regionSize, uint32_t pageSize)
+{
+    if (regionSize == 0) {
+        return 0;
+    }
+    if (pageSize == 0 || (pageSize % regionSize) != 0) {
+        return phys * regionSize;
+    }
+    uint32_t rpp = pageSize / regionSize;
+    return (phys / rpp) * pageSize + (phys % rpp) * regionSize;
 }
 
 // Scan out the next segment to copy: skip invalid/out-of-window slots, clip the first hit slot
@@ -49,9 +67,10 @@ __aicore__ inline void ParsePackedSlot(PackedT meta, uint32_t regionSize, int32_
 // outputs the segment's starting GM row.
 template <bool IS_DECODE, class PackedT>
 __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPacked, uint32_t packedRowStart,
-                                              uint32_t packedCount, uint32_t regionSize, uint32_t gatheredStart,
-                                              uint32_t targetEnd, uint32_t remain, int32_t kvSeqlen,
-                                              uint32_t &compactPosRef, uint32_t &slotRef, uint32_t &segOriStart)
+                                              uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
+                                              uint32_t gatheredStart, uint32_t targetEnd, uint32_t remain,
+                                              int32_t kvSeqlen, uint32_t &compactPosRef, uint32_t &slotRef,
+                                              uint32_t &segOriStart)
 {
     while (slotRef < packedCount) {
         PackedT meta = gPacked.GetValue(packedRowStart + slotRef);
@@ -82,7 +101,7 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
             ++slotRef;
             continue;
         }
-        uint32_t oriStart = phys * regionSize + copyStartInSlot;
+        uint32_t oriStart = PackedRegionGmStart(phys, regionSize, pageSize) + copyStartInSlot;
         uint32_t probe = slotRef + 1;
         while (probe < packedCount && segLen < remain) {
             PackedT nextMeta = gPacked.GetValue(packedRowStart + probe);
@@ -93,7 +112,7 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
                 ++probe;
                 continue;
             }
-            if (nextPhys * regionSize != oriStart + segLen) {
+            if (PackedRegionGmStart(nextPhys, regionSize, pageSize) != oriStart + segLen) {
                 break;
             }
             uint32_t take = nextValid;
@@ -117,8 +136,9 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
 }
 
 // Compact live tokens from packed slots into a contiguous L1 tile.
-// Prefill INT32: phys_region | (valid_tokens << 24); meta < 0 skipped.
+// Prefill INT32: phys_region | (valid_tokens << 24); skip sentinel is -1 (0xFFFFFFFF).
 // Decode INT64: start_token | (phys_region << 32); valid = clamp(kv_seqlen - start, 0, regionSize).
+// GM base is PackedRegionGmStart(phys, regionSize, pageSize); pageSize is blocksize (default 128).
 // [mte2 inst halve] When the next segment has the same length and src stride is C0-aligned,
 // two segments are issued in ONE Nd2Nz (ndNum=2): srcNdMatrixStride = GM row gap * row stride
 // (elements); dstNzMatrixStride = segLen * ELE_NUM_PER_C0, because the zN L1 fractal row stride
@@ -128,8 +148,9 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
 template <bool IS_DECODE, class CopyGmToL1, class TensorGM, class TensorL1, class PackedT>
 __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &gTensor, TensorL1 &l1Tensor,
                                               AscendC::GlobalTensor<PackedT> gPacked, uint32_t packedRowStart,
-                                              uint32_t packedCount, uint32_t regionSize, uint32_t gatheredStart,
-                                              uint32_t gatheredLen, uint32_t embed, int32_t kvSeqlen)
+                                              uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
+                                              uint32_t gatheredStart, uint32_t gatheredLen, uint32_t embed,
+                                              int32_t kvSeqlen)
 {
     constexpr bool kSupportPair = tla::detail::isRowMajor<typename TensorGM::Layout>::value &&
                                   !AscendC::IsSameType<typename TensorGM::Element, fp4x2_e2m1_t>::value;
@@ -139,7 +160,7 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
     uint32_t slot = 0;
     while (slot < packedCount && dealtLenAccum < gatheredLen) {
         uint32_t oriStart = 0;
-        uint32_t segLen = PackedNextSegment<IS_DECODE>(gPacked, packedRowStart, packedCount, regionSize,
+        uint32_t segLen = PackedNextSegment<IS_DECODE>(gPacked, packedRowStart, packedCount, regionSize, pageSize,
                                                        gatheredStart, targetEnd, gatheredLen - dealtLenAccum,
                                                        kvSeqlen, compactPos, slot, oriStart);
         if (segLen == 0) {
@@ -156,14 +177,16 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
             uint32_t slot2 = slot;
             uint32_t oriStart2 = 0;
             uint32_t segLen2 = PackedNextSegment<IS_DECODE>(gPacked, packedRowStart, packedCount, regionSize,
-                                                            gatheredStart, targetEnd, gatheredLen - dealtLenAccum - segLen,
-                                                            kvSeqlen, compactPos2, slot2, oriStart2);
+                                                            pageSize, gatheredStart, targetEnd,
+                                                            gatheredLen - dealtLenAccum - segLen, kvSeqlen,
+                                                            compactPos2, slot2, oriStart2);
             if (segLen2 == segLen && oriStart2 > oriStart) {
                 uint64_t srcStride = static_cast<uint64_t>(oriStart2 - oriStart) *
                                      static_cast<uint64_t>(tla::get<0>(gTensor.stride()));
                 const uint32_t eleNumPerC0 = tla::get<0, 0>(l1Tensor.stride());
                 const uint32_t dstStride = segLen * eleNumPerC0;
-                if (srcStride % eleNumPerC0 == 0) {
+                if (srcStride % eleNumPerC0 == 0 &&
+                    dealtLenAccum + segLen + segLen2 <= gatheredLen) {
                     copyGmToL1(l1Tile, gTile, 2, srcStride, dstStride);
                     AscendC::PipeBarrier<PIPE_MTE2>();
                     dealtLenAccum += segLen + segLen2;

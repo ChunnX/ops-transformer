@@ -56,6 +56,7 @@ struct Step4BsaTilingData {
     uint32_t vL1BufNum;
     uint32_t pL1BufNum;
     float scaleValue;
+    uint32_t pageSize;
 };
 
 struct Step4KernelParamsArch35 {

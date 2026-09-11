@@ -153,7 +153,7 @@ public:
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gPacked, packedRowStart, count, regionSize_,
-                                actualBlockShapeQK, gatheredKvSTileIdx, kvBaseTile_, prefixSumL0AStages,
+                                pageSize_, actualBlockShapeQK, gatheredKvSTileIdx, kvBaseTile_, prefixSumL0AStages,
                                 prefixSumL0BStages, mm1ToSmFlag, kvSeqlen);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -189,7 +189,7 @@ public:
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gPacked, packedRowStart, count, regionSize_,
-                                actualBlockShapePV, gatheredKvSTileIdxDe, kvBaseTile_, prefixSumL0AStages,
+                                pageSize_, actualBlockShapePV, gatheredKvSTileIdxDe, kvBaseTile_, prefixSumL0AStages,
                                 prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, kvSeqlen);
 #endif
 #ifdef __DAV_VEC__
@@ -214,6 +214,7 @@ private:
         kvHeads_ = tiling->kvHeads;
         embed_ = tiling->embeddingSize;
         regionSize_ = tiling->regionSize;
+        pageSize_ = tiling->pageSize;
         topK_ = tiling->topK;
         qBaseTile_ = tiling->qBaseTile;
         kvBaseTile_ = tiling->kvBaseTile;
@@ -419,6 +420,7 @@ private:
     uint32_t kvHeads_;
     uint32_t embed_;
     uint32_t regionSize_;
+    uint32_t pageSize_;
     uint32_t topK_;
     uint32_t qBaseTile_;
     uint32_t kvBaseTile_;

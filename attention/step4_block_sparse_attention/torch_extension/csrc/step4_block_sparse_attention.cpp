@@ -22,7 +22,7 @@ constexpr int64_t DIM_N = 1;
 constexpr int64_t DIM_D = 2;
 constexpr int64_t QUERY_DIM_NUM = 3;
 constexpr int64_t MAX_EMBEDDING_SIZE = 256;
-constexpr int64_t DEFAULT_PAGE_SIZE = 16;
+constexpr int64_t DEFAULT_PAGE_SIZE = 128;
 constexpr int64_t LSE_OUT = 1;
 
 std::tuple<at::Tensor, at::Tensor> step4_block_sparse_attention(
@@ -55,7 +55,8 @@ std::tuple<at::Tensor, at::Tensor> step4_block_sparse_attention(
     }
     TORCH_CHECK(numHeads > 0, "num_heads should be greater than 0, got ", numHeads);
     TORCH_CHECK(numKeyValueHeads > 0, "num_key_value_heads should be greater than 0, got ", numKeyValueHeads);
-    TORCH_CHECK(regionSize > 0, "region_size should be greater than 0, got ", regionSize);
+    TORCH_CHECK(regionSize > 0 && regionSize <= 255,
+                "region_size should be in [1, 255] (Prefill valid_tokens is 8 bits), got ", regionSize);
     TORCH_CHECK(numSplits == 1, "num_splits > 1 is not supported yet, got ", numSplits);
 
     at::Tensor attentionOut{nullptr};
@@ -81,6 +82,9 @@ std::tuple<at::Tensor, at::Tensor> step4_block_sparse_attention(
     if (pageSize <= 0) {
         pageSize = DEFAULT_PAGE_SIZE;
     }
+    TORCH_CHECK(pageSize % regionSize == 0,
+                "page_size must be a multiple of region_size, got page_size=", pageSize,
+                " region_size=", regionSize);
 
     ACLNN_CMD(aclnnStep4BlockSparseAttention, query, key, value, packedRegions, regionCounts, kvSeqlens, numHeads,
               numKeyValueHeads, regionSize, pageSize, scaleValue, layoutQStr, layoutKvStr, numSplits,

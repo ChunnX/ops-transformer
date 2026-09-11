@@ -34,6 +34,7 @@ namespace {
 
 constexpr uint32_t REGION_ID_MASK = 0x00FFFFFFu;
 constexpr uint32_t VALID_SHIFT = 24;
+constexpr uint32_t PREFILL_SKIP = 0xFFFFFFFFu;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -190,18 +191,26 @@ void FillBf16Const(std::vector<uint16_t> &dst, float value, uint16_t (*fromFloat
 
 constexpr uint64_t DECODE_TAIL_SENTINEL = 0x7FFFFFFFFFFFFFFFULL;
 
+inline int32_t EncodePrefillSlot(int64_t phys, uint32_t valid)
+{
+    uint32_t word = (static_cast<uint32_t>(phys) & REGION_ID_MASK) | (valid << VALID_SHIFT);
+    int32_t bits = 0;
+    std::memcpy(&bits, &word, sizeof(bits));
+    return bits;
+}
+
 void GatherTokensPrefill(const std::vector<int32_t> &packed, const std::vector<int32_t> &counts, int64_t row,
                          int64_t topK, int64_t regionSize, std::vector<int64_t> &tokens)
 {
     tokens.clear();
     int32_t count = counts[static_cast<size_t>(row)];
     for (int32_t slot = 0; slot < count; ++slot) {
-        int32_t meta = packed[static_cast<size_t>(row * topK + slot)];
-        if (meta < 0) {
+        uint32_t word = static_cast<uint32_t>(packed[static_cast<size_t>(row * topK + slot)]);
+        if (word == PREFILL_SKIP) {
             continue;
         }
-        uint32_t phys = static_cast<uint32_t>(meta) & REGION_ID_MASK;
-        uint32_t valid = static_cast<uint32_t>(meta) >> VALID_SHIFT;
+        uint32_t phys = word & REGION_ID_MASK;
+        uint32_t valid = word >> VALID_SHIFT;
         if (valid == 0) {
             continue;
         }
@@ -415,8 +424,7 @@ int RunCase(aclrtStream stream, const Case &cs)
                     if (cs.partialTail && i == live - 1) {
                         valid = 3;
                     }
-                    packedI32[static_cast<size_t>(row * topK + nSlot)] =
-                        static_cast<int32_t>((r & REGION_ID_MASK) | (valid << VALID_SHIFT));
+                    packedI32[static_cast<size_t>(row * topK + nSlot)] = EncodePrefillSlot(r, valid);
                 }
                 ++nSlot;
             }
@@ -503,7 +511,7 @@ int RunCase(aclrtStream stream, const Case &cs)
     char layoutQ[] = "TND";
     char layoutKv[] = "TGD";
     auto aclRet = aclnnStep4BlockSparseAttentionGetWorkspaceSize(
-        q, k, v, packedT, countT, seqT, n1, g, regionSize, 16, static_cast<double>(scale), layoutQ, layoutKv, 1, 1, o,
+        q, k, v, packedT, countT, seqT, n1, g, regionSize, 128, static_cast<double>(scale), layoutQ, layoutKv, 1, 1, o,
         lse, &workspaceSize, &executor);
     CHECK_RET(aclRet == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ERROR: %d\n", aclRet); return aclRet);
 

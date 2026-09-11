@@ -119,22 +119,23 @@ public:
     template <class TensorK, class TensorL1K, class PackedT>
     __aicore__ inline void SparseKL1TileMLoad(TensorK &gKTensor, TensorL1K &l1KTensorTla,
                                               AscendC::GlobalTensor<PackedT> gPacked, uint32_t packedRowStart,
-                                              uint32_t packedCount, uint32_t regionSize, uint32_t gatheredKvSTileIdx,
-                                              uint32_t kvSBaseTile, uint32_t l1KTileMAct, uint32_t embed,
-                                              uint32_t kvSBaseTileInnerOffset, int32_t kvSeqlen)
+                                              uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
+                                              uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile, uint32_t l1KTileMAct,
+                                              uint32_t embed, uint32_t kvSBaseTileInnerOffset, int32_t kvSeqlen)
     {
         using CopyGmToL1A = typename TileCopy::template CopyGmToL1A<TensorK>;
         CopyGmToL1A copyGmToL1A;
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile + kvSBaseTileInnerOffset;
         PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
-            copyGmToL1A, gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, baseTileStartOffset,
-            l1KTileMAct, embed, kvSeqlen);
+            copyGmToL1A, gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
+            baseTileStartOffset, l1KTileMAct, embed, kvSeqlen);
     }
 
     template <class TensorK, class TensorS, class PackedT>
     __aicore__ inline void operator()(TensorK &gKTensor, TensorS &ubSTensor, AscendC::GlobalTensor<PackedT> gPacked,
                                       uint32_t packedRowStart, uint32_t packedCount, uint32_t regionSize,
-                                      GemmCoord actualOriShape, uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile,
+                                      uint32_t pageSize, GemmCoord actualOriShape, uint32_t gatheredKvSTileIdx,
+                                      uint32_t kvSBaseTile,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                                       Arch::CrossCoreFlag mm1ToSmFlag, int32_t kvSeqlen)
     {
@@ -165,7 +166,7 @@ public:
             auto l1KLayoutTla = tla::MakeLayout<ElementK, LayoutTagL1A>(l1TileMAct, embed);
             auto l1KTensorTla = tla::MakeTensor(l1KTensor[l1KBufId], l1KLayoutTla, Arch::PositionL1{});
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1AEventId);
-            SparseKL1TileMLoad(gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize,
+            SparseKL1TileMLoad(gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
                                gatheredKvSTileIdx, kvSBaseTile, l1TileMAct, embed, mL1Itr * l1ATileM, kvSeqlen);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1AEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1AEventId);

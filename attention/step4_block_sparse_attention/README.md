@@ -34,7 +34,7 @@ $$
 \lambda=\texttt{scale\_value}\ \text{或}\ 1/\sqrt{D}
 $$
 
-\(\mathcal{K}(q)\) 由 `packed_regions` 展开：物理 region ID × `region_size`，再截到该 region 的可见 token 数。cache 地址始终是 `phys * region_size + j`；Decode 的 `start` **只用于算可见长度**，不改 gather 基址。
+\(\mathcal{K}(q)\) 由 `packed_regions` 展开：物理 region ID × `region_size`，再截到该 region 的可见 token 数。TGD 扁平 cache 上地址是 `page * page_size + (phys % regions_per_page) * region_size + j`，其中 `regions_per_page = page_size / region_size`；页按 region-id 顺序排时等价于 `phys * region_size + j`。Decode 的 `start` **只用于算可见长度**，不改 gather 基址。
 
 目标模型几何（测试按此钉死，不是 GBSA 那种随机 shape 扫表）：
 
@@ -42,7 +42,8 @@ $$
 | --- | --- |
 | GQA | 64 / 4 |
 | head dim \(D\) | 192 |
-| region_size | 8 |
+| region_size | 8（Indexer 粒度，不变） |
+| page_size / blocksize | 128（一页 16 个 region；以前是 16，一页 2 个 region） |
 | 选择的 region | topk ≈ 513（约 4104 个实际 attend token） |
 | KV cache / `kv_seqlens` | 32K / 64K |
 
@@ -57,8 +58,8 @@ word = phys_region | (valid_tokens << 24)
 ```
 
 - `phys_region`：低 24 bit（`0x00FFFFFF`）
-- `valid_tokens`：该 region 实际参与 softmax 的 token 数，通常为 `region_size`，尾块可更短
-- 无效槽：`meta < 0`（通常填 `-1`），kernel skip 该槽
+- `valid_tokens`：该 region 实际参与 softmax 的 token 数，通常为 `region_size`，尾块可更短；占 bit[31:24]，范围 1–255
+- 无效槽：只认哨兵 **`-1`（`0xFFFFFFFF`）**。不要用 `meta < 0`：`valid` 高位会把 INT32 符号位置位
 
 ### Decode（INT64）
 
@@ -92,7 +93,7 @@ valid = clamp(kv_seqlen - start_token, 0, region_size)
 | num_heads | 属性 | N1 | int | — |
 | num_key_value_heads | 属性 | G，需整除 `num_heads` | int | — |
 | region_size | 属性 | 每 region 的 token 数，默认 8 | int | — |
-| page_size | 属性 | 预留，TGD 路径不使用，默认 16 | int | — |
+| page_size | 属性 | paged block（blocksize），默认 128，须整除 `region_size` | int | — |
 | scale_value | 属性 | 0.0 表示 `1/sqrt(D)` | float | — |
 | layout_q | 属性 | 当前只用 `"TND"` | string | — |
 | layout_kv | 属性 | 当前只用 `"TGD"` | string | — |
@@ -148,7 +149,8 @@ C++ 示例：`examples/test_aclnn_step4_block_sparse_attention.cpp`。精度以 
 
 - 无 `sparse_mode` 属性；不要按 GBSA 的 metadata 流程调用
 - `num_splits > 1` 未实现
-- `page_size` / 非 TND·TGD layout 未走通
+- PA `[pages, page_size, G, D]` + `block_table` 未支持；当前 KV 仍是 TGD `[T_kv, G, D]`
+- 非 TND·TGD layout 未走通
 - Graph convert 目前按 BF16 IR 注册
 - 空 packed 的 LSE 为 0，不是 `-inf`
 

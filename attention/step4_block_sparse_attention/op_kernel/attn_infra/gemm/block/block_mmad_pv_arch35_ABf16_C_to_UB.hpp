@@ -158,7 +158,7 @@ public:
     template <class TensorB, class TensorL1B, class PackedT>
     __aicore__ inline void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
                                                      AscendC::GlobalTensor<PackedT> gPacked, uint32_t packedRowStart,
-                                                     uint32_t packedCount, uint32_t regionSize,
+                                                     uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
                                                      uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile,
                                                      uint32_t curBaseTileSize, uint32_t embed, int32_t kvSeqlen)
     {
@@ -166,13 +166,14 @@ public:
         CopyGmToL1B copyGmToL1B;
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
-            copyGmToL1B, gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, baseTileStartOffset,
-            curBaseTileSize, embed, kvSeqlen);
+            copyGmToL1B, gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
+            baseTileStartOffset, curBaseTileSize, embed, kvSeqlen);
     }
 
     template <class TensorB, class TensorC, class PackedT>
     __aicore__ inline void operator()(TensorB &gBTensor, TensorC &ubCTensor, AscendC::GlobalTensor<PackedT> gPacked,
                                       uint32_t packedRowStart, uint32_t packedCount, uint32_t regionSize,
+                                      uint32_t pageSize,
                                       GemmCoord actualOriShape, uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                                       Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
@@ -194,7 +195,7 @@ public:
         auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId], l1ALayoutTla, Arch::PositionL1{});
         // load V full base tile to L1 before crossCoreSync
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
-        SparseVBaseTileL1FullLoad(gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize,
+        SparseVBaseTileL1FullLoad(gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
                                   gatheredKvSTileIdx, kvSBaseTile, curBaseTileSize, embed, kvSeqlen);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);

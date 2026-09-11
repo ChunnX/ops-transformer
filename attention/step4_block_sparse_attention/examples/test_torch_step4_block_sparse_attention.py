@@ -16,9 +16,22 @@ import torch_npu  # noqa: F401
 
 REGION_ID_MASK = 0x00FFFFFF
 VALID_SHIFT = 24
+PREFILL_SKIP = 0xFFFFFFFF  # int32 -1; skip is this sentinel only
 DECODE_TAIL_SENTINEL = 0x7FFFFFFFFFFFFFFF
 O_RTOL, O_ATOL = 1e-2, 4e-3
 LSE_RTOL, LSE_ATOL = 1e-3, 1e-3
+
+
+def encode_prefill_i32(phys: int, valid: int) -> int:
+    u = (int(phys) & REGION_ID_MASK) | ((int(valid) & 0xFF) << VALID_SHIFT)
+    return u - (1 << 32) if u >= (1 << 31) else u
+
+
+def parse_prefill_slot(meta: int) -> Tuple[int, int]:
+    u = int(meta) & 0xFFFFFFFF
+    if u == PREFILL_SKIP:
+        return 0, 0
+    return u & REGION_ID_MASK, u >> VALID_SHIFT
 
 
 def _load_op():
@@ -75,6 +88,7 @@ class Case:
     dense_prefix: bool = False
     pack_seed: int = 0
     seqlen_list: Optional[Tuple[int, ...]] = None
+    page_size: int = 128
 
 
 def fill_low_prec(n: int, scale: float, offset: float, dtype: torch.dtype) -> torch.Tensor:
@@ -140,7 +154,7 @@ def _fill_packed_row(cs: Case, packed_i32: torch.Tensor, packed_i64: torch.Tenso
                     valid = cs.prefill_valid
                 else:
                     valid = 3 if (cs.partial_tail and i == live - 1) else cs.region_size
-                packed_i32[row, n_slot] = int((r & REGION_ID_MASK) | (valid << VALID_SHIFT))
+                packed_i32[row, n_slot] = encode_prefill_i32(r, valid)
             n_slot += 1
     if cs.inline_sentinels and is_decode and n_slot + 2 <= cs.top_k:
         packed_i64[row, n_slot] = -1
@@ -220,10 +234,12 @@ def pack_scene(cs: Case, kv_seqlen: int) -> Tuple[torch.Tensor, torch.Tensor, to
         is_last = phys == last_reg[None, :, None]
         valid = torch.where(is_last, rem[None, :, None].expand_as(phys), valid)
     valid = torch.where(slot_ok[None, :, :], valid, torch.zeros_like(valid))
-    meta = (phys & REGION_ID_MASK) | (valid << VALID_SHIFT)
-    meta = torch.where(slot_ok[None, :, :], meta, torch.full_like(meta, -1))
+    word = (phys.to(torch.int64) & REGION_ID_MASK) | (valid.to(torch.int64) << VALID_SHIFT)
+    word = torch.where(slot_ok[None, :, :], word, torch.full_like(word, PREFILL_SKIP))
+    meta_i32 = word & 0xFFFFFFFF
+    meta_i32 = torch.where(meta_i32 >= (1 << 31), meta_i32 - (1 << 32), meta_i32).to(torch.int32)
     for kv_group in range(cs.g):
-        packed[kv_group * cs.q_t:(kv_group + 1) * cs.q_t, :max_live] = meta[kv_group].to(torch.int32)
+        packed[kv_group * cs.q_t:(kv_group + 1) * cs.q_t, :max_live] = meta_i32[kv_group]
     return packed, counts, seqlens
 
 
@@ -281,11 +297,7 @@ def gather_tokens_prefill(packed: torch.Tensor, counts: torch.Tensor, row: int, 
     tokens: List[int] = []
     count = int(counts[row].item())
     for slot in range(count):
-        meta = int(packed[row, slot].item())
-        if meta < 0:
-            continue
-        phys = meta & REGION_ID_MASK
-        valid = meta >> VALID_SHIFT
+        phys, valid = parse_prefill_slot(int(packed[row, slot].item()))
         if valid == 0:
             continue
         tokens.extend(phys * region_size + j for j in range(valid))
@@ -354,9 +366,10 @@ def packed_to_tok_mask(cs: Case, packed: torch.Tensor, counts: torch.Tensor, seq
         seq_rows = seqlens.cpu().to(torch.int64)[None, :].expand(cs.g, cs.q_t).reshape(-1, 1)
         vis = (seq_rows - start).clamp(min=0, max=rs)
     else:
-        invalid = meta < 0
-        phys = meta.to(torch.int64) & REGION_ID_MASK
-        vis = torch.bitwise_right_shift(meta.to(torch.int64), VALID_SHIFT).masked_fill(invalid, 0)
+        word = meta.to(torch.int64) & 0xFFFFFFFF
+        invalid = word == PREFILL_SKIP
+        phys = word & REGION_ID_MASK
+        vis = torch.bitwise_right_shift(word, VALID_SHIFT).masked_fill(invalid, 0)
     vis = vis.masked_fill(~slot_ok, 0)
     j = torch.arange(rs, dtype=torch.int64)
     tok = phys.unsqueeze(-1) * rs + j
@@ -493,6 +506,7 @@ def run_case(device: torch.device, cs: Case, op, verbose: bool,
         num_heads=cs.n1, num_key_value_heads=cs.g,
         kv_seqlens=seqlens_npu,
         region_size=cs.region_size,
+        page_size=cs.page_size,
         scale_value=op_scale,
         return_softmax_lse=cs.return_lse,
     )
@@ -508,7 +522,7 @@ def run_case(device: torch.device, cs: Case, op, verbose: bool,
     return ok_cmp
 
 
-# Model: D=192, GQA 64/4, region_size=8.
+# Model: D=192, GQA 64/4, region_size=8, page_size=128.
 # KV cache / kv_seqlens is long; attention selects topk=513 blocks (~4104 tokens).
 MODEL_N1, MODEL_G, MODEL_RS = 64, 4, 8
 MODEL_TOPK = 513
@@ -600,7 +614,6 @@ def build_cases() -> List[Case]:
     cases.append(mk("fp16/fill/decode_randn", 1, fill_mode=1, **fp16))
 
     # Extra named cases: keep 64/4 D=192 topk=513; vary qT / seqlen / packed table / dtype.
-    # Target: 99 parametrized + test_pd_shared = 100 pytest items.
     cases.append(mk("model/prefill_qt1024", 0, q_t=1024))
     cases.append(mk("model/decode_qt3", 1, q_t=3))
     cases.append(mk("model/decode_qt8", 1, q_t=8))

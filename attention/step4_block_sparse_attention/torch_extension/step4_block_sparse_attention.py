@@ -30,7 +30,7 @@ class Step4BlockSparseAttentionOpBuilder(OpBuilder):
             "*, "
             "Tensor? kv_seqlens=None, "
             "int region_size=8, "
-            "int page_size=16, "
+            "int page_size=128, "
             "float scale_value=0.0, "
             'str layout_q="TND", '
             'str layout_kv="TGD", '
@@ -52,7 +52,7 @@ class Step4BlockSparseAttentionOpBuilder(OpBuilder):
             *,
             kv_seqlens: Optional[torch.Tensor] = None,
             region_size: int = 8,
-            page_size: int = 16,
+            page_size: int = 128,
             scale_value: float = 0.0,
             layout_q: str = "TND",
             layout_kv: str = "TGD",
@@ -103,7 +103,7 @@ def step4_block_sparse_attention(
     *,
     kv_seqlens: Optional[torch.Tensor] = None,
     region_size: int = 8,
-    page_size: int = 16,
+    page_size: int = 128,
     scale_value: float = 0.0,
     layout_q: str = "TND",
     layout_kv: str = "TGD",
@@ -121,7 +121,8 @@ def step4_block_sparse_attention(
         value (Tensor): 值张量，TGD 排布 ``[T_kv, G, D]``，dtype 与 query 一致。
         packed_regions (Tensor): 稀疏区域描述，group-major ``[G * T, K]``，
             ``K = topk + 1``。INT32 表示 Prefill，INT64 表示 Decode。
-            Prefill: ``phys_region | (valid_tokens << 24)``，无效填 -1。
+            Prefill: ``phys_region | (valid_tokens << 24)``，``valid`` 1–255；
+            无效只填 -1，不要把任意负数当 skip。
             Decode: ``start_token | (phys_region << 32)``，无效填 0；
             ``packed == 0`` 是 region-0 合法编码，不要当 skip。
         region_counts (Tensor): INT32 ``[G * T]``，每个 query token 实际使用的 region 数，
@@ -132,7 +133,8 @@ def step4_block_sparse_attention(
             Decode 模式必传，Prefill 传 None。默认 None。
             用于 ``valid = clamp(kv_seqlen - start, 0, region_size)``。
         region_size (int): 每个 region 的 token 数，默认 8。
-        page_size (int): 预留参数，TGD 路径不使用，默认 16。
+        page_size (int): paged block（blocksize），默认 128，须整除 ``region_size``。
+            TGD 扁平 cache 上地址等价于 ``phys * region_size``；PA + block_table 未支持。
         scale_value (float): 缩放系数，默认 0.0（表示 ``1/sqrt(D)``）。
         layout_q (str): query 数据排布，默认 "TND"。
         layout_kv (str): key/value 数据排布，默认 "TGD"。

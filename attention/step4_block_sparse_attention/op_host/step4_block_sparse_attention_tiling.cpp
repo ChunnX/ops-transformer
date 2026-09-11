@@ -109,7 +109,25 @@ ge::graphStatus Step4Tiling::ParseAttrs(gert::TilingContext *context)
     numHeads_ = static_cast<uint32_t>(*numHeadsPtr);
     kvHeads_ = static_cast<uint32_t>(*kvHeadsPtr);
     groupSize_ = (kvHeads_ == 0) ? 0 : (numHeads_ / kvHeads_);
+    OP_CHECK_IF(*regionSizePtr <= 0 || *regionSizePtr > 255,
+                OPS_REPORT_VECTOR_INNER_ERR("Step4BlockSparseAttention",
+                                            "region_size must be in [1, 255] (Prefill valid_tokens is 8 bits), got %ld.",
+                                            *regionSizePtr),
+                return ge::GRAPH_FAILED);
     regionSize_ = static_cast<uint32_t>(*regionSizePtr);
+    const int64_t *pageSizePtr = attrs->GetInt(STEP4_BSA_ATTR_PAGE_SIZE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, pageSizePtr);
+    int64_t pageSizeRaw = *pageSizePtr;
+    if (pageSizeRaw <= 0) {
+        pageSizeRaw = static_cast<int64_t>(STEP4_BSA_DEFAULT_PAGE_SIZE);
+    }
+    OP_CHECK_IF(pageSizeRaw % *regionSizePtr != 0,
+                OPS_REPORT_VECTOR_INNER_ERR("Step4BlockSparseAttention",
+                                            "page_size must be a multiple of region_size, got page_size=%ld "
+                                            "region_size=%ld.",
+                                            pageSizeRaw, *regionSizePtr),
+                return ge::GRAPH_FAILED);
+    pageSize_ = static_cast<uint32_t>(pageSizeRaw);
     scaleValue_ = *scalePtr;
     if (scaleValue_ == 0.0f && embeddingSize_ > 0) {
         scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
@@ -170,6 +188,7 @@ ge::graphStatus Step4Tiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_vL1BufNum(SOLO_BUF);
     tilingData_->set_pL1BufNum(TRIO_BUF);
     tilingData_->set_scaleValue(scaleValue_);
+    tilingData_->set_pageSize(pageSize_);
 
     context->SetTilingKey(GenerateTilingKey());
     return ge::GRAPH_SUCCESS;

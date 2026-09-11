@@ -33,6 +33,7 @@ constexpr uint64_t STEP4_BSA_PREFILL_BF16_TILING_KEY = 0;
 constexpr uint64_t STEP4_BSA_DECODE_BF16_TILING_KEY = 1;
 constexpr uint64_t STEP4_BSA_PREFILL_FP16_TILING_KEY = 2;
 constexpr uint64_t STEP4_BSA_DECODE_FP16_TILING_KEY = 3;
+constexpr uint32_t STEP4_BSA_DEFAULT_PAGE_SIZE = 128;
 
 BEGIN_TILING_DATA_DEF(Step4BlockSparseAttentionTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, qTokens);
@@ -58,6 +59,7 @@ TILING_DATA_FIELD_DEF(uint32_t, kL1BufNum);
 TILING_DATA_FIELD_DEF(uint32_t, vL1BufNum);
 TILING_DATA_FIELD_DEF(uint32_t, pL1BufNum);
 TILING_DATA_FIELD_DEF(float, scaleValue);
+TILING_DATA_FIELD_DEF(uint32_t, pageSize);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(Step4BlockSparseAttention, Step4BlockSparseAttentionTilingData)
 
@@ -93,6 +95,7 @@ private:
     uint32_t kvHeads_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t regionSize_ = 0;
+    uint32_t pageSize_ = 0;
     float scaleValue_ = 0.0f;
 
     // Derived tile info.
