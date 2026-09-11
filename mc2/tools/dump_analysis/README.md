@@ -192,7 +192,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 
 更完整的命令示例、Workspace Segment 说明和矩阵查看方法见 [MC2 Dump 解析脚本使用说明](./MC2_DUMP_USAGE.md)。
 
-`parse_mc2_dump.py` 是统一入口。脚本会根据算子名递归查找 dump 根目录中的文件，并自动解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表以及 URMA 通信上下文。统一入口不读取 `exception_info.*`，也不生成 NPY。
+`parse_mc2_dump.py` 是统一入口。传入一个 Dump 文件时只解析该文件；传入算子名和 Dump 根目录时递归查找并批量解析 `tiling_data`、`args_info`、`workspace`、CCU XN/CKE 地址表以及 URMA 通信上下文。统一入口不读取 `exception_info.*`，也不生成 NPY。
 
 ### 支持的算子和通路
 
@@ -232,15 +232,17 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 | 文件前缀 | 适用通路 | 是否应有 | 解析内容 |
 | :--- | :--- | :--- | :--- |
-| `tiling_data_` | 全部 | 必有 | Tiling 参数、量化模式、WorkspaceLayout 和各段偏移/长度 |
+| `tiling_data_` | 全部 | 必有 | Tiling 参数、通路信息、WorkspaceLayout 和各段偏移/长度 |
 | `args_info_` | 全部 | 必有 | Kernel 参数地址 |
-| `workspace_segN_typeM_` | 全部 | 必有 | Workspace 段编号、类型和大小；`type12` 进一步解析 RuntimeInfo |
+| `workspace_segN_typeM_` | 全部 | 必有 | Workspace 段编号、类型和大小；`type12` 按每核 StateDump 结构解析 |
 | `xn_addr_info_`、`cke_addr_info_` | CCU | 应有 | 小端 `uint64` 地址表 |
 | `comm_context_` | AIV + URMA | 应有 | URMA 通信上下文，并提示使用 `parse_matrix.py` 查看原始字节 |
 
 `tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现，`comm_context_*` 只在 URMA 通路出现。`peermem_window_*`、`peermem_segN_typeM_*`、`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
 
-结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、RuntimeInfo 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。若同一 rank 目录包含多次调用，RuntimeInfo TXT 中的 `associatedTiling` 会标明实际配对的 TilingData。
+当前算子代码把统一的 `DfxDumpInfo` 放在 TilingData 的 offset 0：WorkspaceLayout 位于 offset 0，Peermem 总大小位于 offset 208，PeermemLayout 位于 offset 216，算子自己的 Tiling 参数从 offset 424 开始。后端脚本均按这一版布局读取。
+
+结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、StateDump 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。
 
 `segN` 中的 `N` 只是该次 Tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和 TilingData TXT 中的 `workspaceLayout` 为准。当前 Workspace 类型定义如下：
 
@@ -252,7 +254,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | 6 | PERMUTE_OUT | 7 | BIAS |
 | 8 | MM_RESULT | 9 | RECV_BUF |
 | 10 | COMM_INT8 | 11 | DYNAMIC_QUANT |
-| 12 | RUNTIME_INFO | 13 | MM_WORKSPACE |
+| 12 | STATE_DUMP | 13 | MM_WORKSPACE |
 | 255 | RESERVED |  |  |
 
 其中 `type12` 是每核通信运行状态，不是矩阵结果；对应 TXT 会显示有效核数、commit/wait 总数、未平衡核摘要和逐核状态。数据型 Workspace 不会整段展开为文本；若要查看指定行列或解码特殊数据类型，请对原始 Dump 使用下面的 `parse_matrix.py`。
@@ -281,43 +283,29 @@ python3 parse_matrix.py workspace_seg1_type8_xxx \
 
 矩阵的 `rows`、`cols` 和 `dtype` 不能只根据 `segN` 猜测，应结合用例输入、tiling 中的 M/K/N、量化模式和 WorkspaceLayout 确定。文件字节数应满足：普通类型为 `rows * cols * 每元素字节数`，FP4 为 `ceil(rows * cols / 2)`。
 
-### 单文件高级解析
+### 单文件解析
 
-需要单独排查某个文件或输出 JSON 时，可以直接调用算子后端脚本：
-
-| 脚本 | 对应算子 |
-| :--- | :--- |
-| `parse_all_gather_matmul_v2_tiling.py` | AllGatherMatmulV2 |
-| `parse_all_gather_matmul_v3_tiling.py` | AllGatherMatmulV3 |
-| `parse_allto_all_matmul_tiling.py` | AlltoAllMatmul 主线/Apace |
-| `parse_allto_all_matmul_v2_tiling.py` | AlltoAllMatmulV2 |
-| `parse_matmul_reduce_scatter_v2_tiling.py` | MatmulReduceScatterV2 |
-
-以 MMRS 为例：
+单独排查某个文件时仍使用统一入口，只传入该 Dump 文件。脚本会从文件名自动识别算子和文件类型，不需要选择后端脚本或增加解析模式：
 
 ```bash
-# 默认解析 tiling_data；增加 --json 可输出 JSON
-python3 parse_matmul_reduce_scatter_v2_tiling.py tiling_data_xxx
+# 解析 TilingData
+python3 parse_mc2_dump.py /path/to/tiling_data_MatmulReduceScatterV2.xxx
 
-# 解析 kernel 参数地址
-python3 parse_matmul_reduce_scatter_v2_tiling.py args_info_xxx --args
+# 解析 Kernel 参数地址
+python3 parse_mc2_dump.py /path/to/args_info_MatmulReduceScatterV2.xxx
 
-# 解析 tiling 中的 WorkspaceLayout
-python3 parse_matmul_reduce_scatter_v2_tiling.py tiling_data_xxx --ws-layout
-
-# 解析 RuntimeInfo workspace；N 为 tiling 中的 AIC 核数
-python3 parse_matmul_reduce_scatter_v2_tiling.py workspace_seg2_type12_xxx \
-  --workspace --aic-core-num N
+# 解析 StateDump Workspace
+python3 parse_mc2_dump.py /path/to/workspace_seg2_type12_MatmulReduceScatterV2.xxx
 ```
 
-URMA 算子的后端脚本还支持 `--comm-ctx`。建议日常优先使用统一入口，因为它会从同一次调用的 TilingData 自动推导 AIC 核数，并让每个输入文件单独生成一个易于查看和比较的 TXT。
+解析 `type12/STATE_DUMP` 时，脚本会自动在同目录查找时间戳最接近的同算子 TilingData，用它推导 AIC 核数和通路标签。单文件模式把结果直接打印到终端；需要给目录内每个 Dump 分别生成 TXT 时，使用前面的“算子名 + Dump 目录”批量调用。
 
 ### 常见问题
 
 - 提示“没有找到受支持 dump 文件”：确认传入的是 `data-dump` 根目录，并确认文件名中包含正确的算子名。统一入口按文件名关联同一次算子 dump，不会把其他算子的同名前缀文件混进来。
-- RuntimeInfo 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；RuntimeInfo 字段仍会解析，但无法可靠区分 C 核和 V 核。
+- StateDump 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；状态字段仍会解析，但无法可靠区分 C 核和 V 核。
 - workspace 文件大小和 shape 不一致：先检查 WorkspaceLayout 中该段的 `size` 是否等于 dump 文件大小，再检查量化类型、对齐/padding 和通信 rank 维度。
-- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 RuntimeInfo 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；对应 TXT 会保留逐核原始字段并标记为 `NOT_WRITTEN`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
+- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 StateDump 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；对应 TXT 会保留逐核原始字段并标记为 `NOT_WRITTEN`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
 
 ## 样例代码结果说明
 

@@ -1,6 +1,6 @@
 # MC2 Dump 解析脚本使用说明
 
-本文说明 `mc2/tools/dump_analysis` 下 MC2 DFX Dump 解析脚本的使用方法。日常测试优先使用统一入口 `parse_mc2_dump.py`：传入算子名和 Dump 根目录后，脚本自动识别对应文件，并为每个源文件生成一份独立、可直接查看的 TXT 解析结果。
+本文说明 `mc2/tools/dump_analysis` 下 MC2 DFX Dump 解析脚本的使用方法。日常测试统一使用 `parse_mc2_dump.py`：传入一个 Dump 文件时只解析该文件；传入算子名和 Dump 根目录时批量解析目录，并为每个源文件生成一份独立、可直接查看的 TXT 结果。
 
 统一入口不解析 `exception_info.*`，不生成 NPY，也不生成合并的 `analysis.txt`。
 
@@ -67,11 +67,13 @@ python3 /path/to/ops-transformer_dfx/mc2/tools/dump_analysis/parse_mc2_dump.py m
 
 | 文件 | 是否应有 | 解析内容 |
 | --- | --- | --- |
-| `tiling_data_*` | 必有 | Tiling 参数、量化模式、通信参数、WorkspaceLayout 及各 Segment 的偏移和长度 |
+| `tiling_data_*` | 必有 | Tiling 参数、通信参数、WorkspaceLayout 及各 Segment 的偏移和长度 |
 | `args_info_*` | 必有 | Kernel 参数对应的 GM 地址 |
-| `workspace_segN_typeM_*` | 必有 | 保存实际采集到的 Workspace Segment；每段一个文件，文件序号不一定从 0 开始或连续 |
+| `workspace_segN_typeM_*` | 必有 | 保存实际采集到的 Workspace Segment；`N` 从 0 开始，顺序与本次 TilingData 的 WorkspaceLayout 一致 |
 
 这里的“必有”是指算子已经正确开启 MC2 DFX Dump。若缺少其中一类，应优先检查 DFX 开关、异常回调注册、TilingData 中的 WorkspaceLayout，以及 Dump 目录是否选对。
+
+当前代码中的 TilingData 以统一的 `DfxDumpInfo` 开头：`WorkspaceLayoutInfo` 位于 offset 0，Peermem 总大小位于 offset 208，PeermemLayout 位于 offset 216；算子自己的 Tiling 参数从 offset 424 开始。解析脚本已经按该布局读取，不再从 TilingData 尾部寻找 WorkspaceLayout。
 
 ### 4.2 CCU 通路文件
 
@@ -118,8 +120,8 @@ CCU 通路没有 `comm_context_*` 文件。
         ├── 0/
         │   ├── tiling_data_MatmulReduceScatterV2.xxx.txt
         │   ├── args_info_MatmulReduceScatterV2.xxx.txt
-        │   ├── workspace_seg1_type8_MatmulReduceScatterV2.xxx.txt
-        │   └── workspace_seg2_type12_MatmulReduceScatterV2.xxx.txt
+        │   ├── workspace_seg0_type8_MatmulReduceScatterV2.xxx.txt
+        │   └── workspace_seg1_type12_MatmulReduceScatterV2.xxx.txt
         └── 1/
             └── ...
 ```
@@ -136,10 +138,10 @@ CCU 通路没有 `comm_context_*` 文件。
 
 | 类型 | TXT 内容 |
 | --- | --- |
-| TilingData | 脚本支持的字段化结果、量化/通路信息、WorkspaceLayout、Segment 偏移和大小 |
+| TilingData | 脚本支持的字段化结果、通路信息、WorkspaceLayout、Segment 偏移和大小 |
 | ArgsInfo | Kernel 参数名及对应 GM 地址 |
 | 普通 Workspace Segment | `segIdx`、`segType`、含义、文件大小和前 64 字节十进制预览 |
-| `type12/RUNTIME_INFO` | 显示每个核的核号、是否已写入、当前执行位置、通信阶段、commit 次数和 wait 次数。从 TilingData 读取到 AIC 核数时，还会标明该核是 C 核还是 V 核；MMRS 另外显示未完成通信数和通信状态。 |
+| `type12/STATE_DUMP` | 显示每个核的核号、是否已写入、当前执行位置、通信阶段、commit 次数和 wait 次数。从 TilingData 读取到 AIC 核数时，还会标明该核是 C 核还是 V 核；MMRS 另外显示未完成通信数和通信状态。 |
 | XN/CKE | 地址表的行列数、非零地址数量和逐行十六进制地址 |
 | URMA CommContext | 通信上下文字段，以及使用 `parse_matrix.py` 查看原始字节的命令提示 |
 
@@ -147,86 +149,55 @@ CCU 通路没有 `comm_context_*` 文件。
 
 ## 6. 单独解析某个文件
 
-| 算子 | 后端解析脚本 |
-| --- | --- |
-| AllGatherMatmulV2 | `parse_all_gather_matmul_v2_tiling.py` |
-| AllGatherMatmulV3 | `parse_all_gather_matmul_v3_tiling.py` |
-| AlltoAllMatmul | `parse_allto_all_matmul_tiling.py` |
-| AlltoAllMatmulV2 | `parse_allto_all_matmul_v2_tiling.py` |
-| MatmulReduceScatterV2 | `parse_matmul_reduce_scatter_v2_tiling.py` |
-
-### 6.1 入参说明
-
-基本调用格式：
+单文件解析也使用统一入口，只传入要解析的一个 Dump 文件：
 
 ```bash
-python3 <后端解析脚本> <bin_file>
+python3 parse_mc2_dump.py <dump_file>
 ```
 
-固定入参：
+`<dump_file>` 是实际 Dump 文件路径，文件通常没有 `.bin` 后缀。无需再填写算子名、选择后端脚本或指定 `--args`、`--workspace`、`--comm-ctx` 等解析模式。
 
-| 入参 | 是否必填 | 说明 |
+脚本根据文件名自动完成两层识别：
+
+| 识别内容 | 判断方式 |
 | --- | --- | --- |
-| `<后端解析脚本>` | 是 | 根据算子选择本节开头表格中的后端解析脚本。 |
-| `<bin_file>` | 是 | 要解析的 Dump 文件路径。文件通常没有 `.bin` 后缀，应直接填写实际文件名。 |
+| 算子 | 从文件名中的 `AllGatherMatmulV2`、`AllGatherMatmulV3`、`AlltoAllMatmul`、`AlltoAllMatmulV2` 或 `MatmulReduceScatterV2` 自动识别；MMRS 文件名中的 `MatmulReduceScatter` 也能识别。 |
+| 文件类型 | 根据 `tiling_data_`、`args_info_`、`workspace_segN_typeM_`、`xn_addr_info_`、`cke_addr_info_` 或 `comm_context_` 前缀自动选择解析方式。 |
 
-解析模式用于指定输入文件的解析方式，写在 `<bin_file>` 后面：
-
-```bash
-python3 <后端解析脚本> <bin_file> [解析模式]
-```
-
-| 解析模式 | 输入文件/适用范围 | 说明 |
-| --- | --- | --- |
-| 不加解析模式 | `tiling_data_*` | 默认按完整 TilingData 解析。 |
-| `--args` | `args_info_*`；所有脚本 | 按 Kernel 参数顺序解析各输入、输出、Workspace 和 TilingData 的 GM 地址。 |
-| `--ws-layout` | `tiling_data_*`；所有脚本 | 只解析 TilingData 中的 `WorkspaceLayoutInfo`，查看每个 Segment 的 `offset`、`size` 和 `type`。 |
-| `--workspace` | `workspace_segN_typeM_*`；所有脚本 | 按文件名中的 Segment 类型解析 Workspace；识别到 `type12` 时，直接按每核 RuntimeInfo 结构解析并显示运行状态。 |
-| `--comm-ctx` | `comm_context_*`；仅 AllGatherMatmulV3、AlltoAllMatmulV2 | 将文件按 URMA `CommUdmaContext + CommUbmemContext` 解析，显示 rank、channel 和通信缓冲区地址。 |
-
-上述解析模式一次命令只应选择一个。解析完整 TilingData 时不加解析模式。
-
-辅助参数按需追加在命令末尾：
-
-```bash
-python3 <后端解析脚本> <bin_file> [解析模式] [辅助参数 ...]
-```
-
-| 辅助参数 | 适用范围 | 说明 |
-| --- | --- | --- |
-| `--aic-core-num N` | 配合 `--workspace` 解析 `type12` | 指定实际 AIC 核数，用于区分 AIC/AIV 核；MMRS 还会据此计算预期 slot 数。`N` 取同次 TilingData 中的 `aicCoreNum` 或 `usedCoreNum`。 |
-| `--apace` | 仅 AlltoAllMatmul，配合 `--workspace` | 按 Apace 通路解释 RuntimeInfo 的 position 标签。只影响标签含义，不改变原始数值。 |
-| `--json` | 所有脚本 | 将本次解析结果输出为 JSON，便于其他程序继续处理。 |
-
-### 6.2 MMRS 示例
+### 6.1 示例
 
 ```bash
 # 解析 TilingData
-python3 parse_matmul_reduce_scatter_v2_tiling.py \
+python3 parse_mc2_dump.py \
   /path/to/tiling_data_MatmulReduceScatterV2.xxx
 
-# 只查看 WorkspaceLayout
-python3 parse_matmul_reduce_scatter_v2_tiling.py \
-  /path/to/tiling_data_MatmulReduceScatterV2.xxx --ws-layout
-
 # 解析 ArgsInfo
-python3 parse_matmul_reduce_scatter_v2_tiling.py \
-  /path/to/args_info_MatmulReduceScatterV2.xxx --args
+python3 parse_mc2_dump.py \
+  /path/to/args_info_MatmulReduceScatterV2.xxx
 
-# 解析 type12 RuntimeInfo
-python3 parse_matmul_reduce_scatter_v2_tiling.py \
-  /path/to/workspace_seg2_type12_MatmulReduceScatterV2.xxx \
-  --workspace --aic-core-num 24
+# 解析 type12 StateDump
+python3 parse_mc2_dump.py \
+  /path/to/workspace_seg2_type12_MatmulReduceScatterV2.xxx
+
+# 解析 URMA CommContext
+python3 parse_mc2_dump.py \
+  /path/to/comm_context_AlltoAllMatmulV2.xxx
+
+# 解析 CCU XN 地址表
+python3 parse_mc2_dump.py \
+  /path/to/xn_addr_info_AlltoAllMatmul.xxx
 ```
 
-示例中的 `seg2` 和核数 `24` 都不是固定值：Segment 序号以实际文件名为准，MMRS 的核数应填写该次 TilingData 中的 `aicCoreNum`。使用统一入口时会自动尝试读取核数，一般不需要手工填写。
+示例中的 `seg2` 不是固定值，应以实际生成的文件名为准。
 
-### 6.3 URMA 示例
+### 6.2 单文件模式的处理规则
 
-```bash
-python3 parse_all_gather_matmul_v3_tiling.py \
-  /path/to/comm_context_AllGatherMatmulV3.xxx --comm-ctx
-```
+- 结果直接显示在终端，不生成 NPY，也不要求提供第二个输入文件。
+- 解析 `tiling_data_*` 时会显示完整 TilingData，其中已经包含 WorkspaceLayout，无需单独增加模式参数。
+- 解析普通 `workspace_segN_typeM_*` 时显示 Segment 含义、文件大小和前 64 字节十进制预览；真实矩阵值仍使用第 7 节的 `parse_matrix.py` 查看。
+- 解析 `type12/STATE_DUMP` 时，脚本会在当前文件所在目录自动查找同算子、时间戳最接近的 `tiling_data_*`，读取 AIC 核数并识别 AlltoAllMatmul 主线/Apace 标签。若同目录没有对应 TilingData，StateDump 数值仍可解析，但核类型可能显示为“未知”。
+- 解析 `comm_context_*` 后会给出使用 `parse_matrix.py` 查看原始字节的完整命令。
+- 若文件名中不含算子名，只有在同目录的 `tiling_data_*` 能唯一确定算子时才会继续解析，否则会明确报错。
 
 ## 7. 按行列查看 Workspace 数据或原始字节
 
@@ -291,7 +262,7 @@ python3 parse_matrix.py workspace.bin \
 
 支持的 `--dtype`：`bf16`、`fp16`、`fp32`、`int8`、`uint8`、`fp8_e4m3`、`fp8_e5m2`、`e8m0`、`fp4_e2m1`。
 
-查看 `comm_context_*` 原始字节时，使用 `--dtype uint8 --rows 1 --cols <文件字节数>`；这只是字节视图，结构化字段仍以 `--comm-ctx` 的解析结果为准。
+查看 `comm_context_*` 原始字节时，使用 `--dtype uint8 --rows 1 --cols <文件字节数>`；这只是字节视图，结构化字段仍以 `parse_mc2_dump.py <comm_context文件>` 的解析结果为准。
 
 ## 8. Workspace Segment 含义
 
@@ -313,7 +284,7 @@ python3 parse_matrix.py workspace.bin \
 | 9 | `RECV_BUF`，通信接收区 |
 | 10 | `COMM_INT8` |
 | 11 | `DYNAMIC_QUANT` |
-| 12 | `RUNTIME_INFO`，每核运行和通信状态 |
+| 12 | `STATE_DUMP`，每核运行和通信状态 |
 | 13 | `MM_WORKSPACE`，Matmul 内部临时区，不是结果矩阵 |
 | 255 | `RESERVED`，对齐或预留区域 |
 
@@ -323,9 +294,9 @@ python3 parse_matrix.py workspace.bin \
 2. Tiling 侧 `BuildWorkspaceLayout()` 的 Segment 顺序、offset 和 size。
 3. Kernel 侧 GlobalTensor 的 Workspace 地址偏移和数据类型。
 
-## 9. RuntimeInfo 结果怎么看
+## 9. StateDump 结果怎么看
 
-`type12/RUNTIME_INFO` 是按核划分的运行状态区，不是矩阵数据，不能按普通矩阵的数据类型和行列数解释。当前每个核占用 512 字节，脚本把这 512 字节称为一个 `slot`。
+`type12/STATE_DUMP` 是按核划分的运行状态区，不是矩阵数据，不能按普通矩阵的数据类型和行列数解释。当前每个核占用 512 字节，脚本把这 512 字节称为一个 `slot`。
 
 各算子后端都会解析这些基础字段：
 
@@ -337,11 +308,11 @@ python3 parse_matrix.py workspace.bin \
 - `commit`：该核已提交的通信次数。
 - `wait`：该核已等待完成的通信次数。
 
-多数后端只展开 `magicValid=true` 的 slot；如果 `activeSlots=0`，说明 Dump 中没有找到已初始化的 RuntimeInfo slot，应检查 RuntimeInfo Segment 起始地址、Kernel 初始化是否执行，以及异常 Dump 的采集时机。
+多数后端只展开 `magicValid=true` 的 slot；如果 `activeSlots=0`，说明 Dump 中没有找到已初始化的 StateDump slot，应检查 StateDump Segment 起始地址、Kernel 初始化是否执行，以及异常 Dump 的采集时机。
 
 MMRS 后端还会显示以下汇总和状态字段：
 
-- `expectedSlots`：预计会使用的核记录数量。当前 MMRS 中，若 AIC 核数为 `N`，对应 AIV 核数为 `2N`，所以预计使用 `3N` 个 slot；未传入 `--aic-core-num` 时只能按文件中的最大 slot 数显示。
+- `expectedSlots`：预计会使用的核记录数量。当前 MMRS 中，若 AIC 核数为 `N`，对应 AIV 核数为 `2N`，所以预计使用 `3N` 个 slot；如果同目录没有可匹配的 TilingData，脚本无法取得 `N`，只能按文件中的最大 slot 数显示。
 - `validExpectedSlots`：预期范围内通过 magic 校验的 slot 数。
 - `pending = max(commit - wait, 0)`。
 - `BALANCED`：commit 与 wait 相等。
@@ -371,5 +342,5 @@ MMRS 后端还会显示以下汇总和状态字段：
 - Dump 目录中没有 XN/CKE：先确认当前是否确实为 CCU 通路。
 - Dump 目录中没有 CommContext：先确认当前是否为 AIV + URMA 通路。
 - Workspace 文件大小与 TilingData 中 Segment size 不一致：检查段偏移、对齐/padding 和 Dump 时机。
-- RuntimeInfo 全部无效：检查 Kernel 初始化、Workspace 起始地址以及异常发生阶段。
-- RuntimeInfo 中核类型显示为“未知”：从对应 TilingData 中找到 `aicCoreNum` 或 `usedCoreNum`，再使用后端脚本的 `--aic-core-num N` 重新解析。
+- StateDump 全部无效：检查 Kernel 初始化、Workspace 起始地址以及异常发生阶段。
+- StateDump 中核类型显示为“未知”：确认同一次调用的 `tiling_data_*` 与 StateDump 位于同一目录，且文件名中包含相同算子名；单文件入口会自动读取其中的 `aicCoreNum` 或 `usedCoreNum`。

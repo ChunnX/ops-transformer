@@ -26,14 +26,17 @@ import parse_all_gather_matmul_v3_tiling as common
 
 logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s")
 
+# 当前源码布局:
+# [DfxDumpInfo 424B][CommTilingData 40B][scale CommTilingData 40B]
+# [QuantMatmulTilingData 64B][localMatmul 4B][4B padding]
 TILING_DATA_SIZE = 576
-OFFSET_COMM_TILING = 0
-OFFSET_SCALE_COMM_TILING = 40
-OFFSET_MM_TILING = 80
-OFFSET_LOCAL_MATMUL = 144
-OFFSET_WORKSPACE_LAYOUT = 152
-OFFSET_PEERMEM_DATA_SIZE = 360
-OFFSET_PEERMEM_LAYOUT = 368
+OFFSET_WORKSPACE_LAYOUT = 0
+OFFSET_PEERMEM_DATA_SIZE = common.WORKSPACE_LAYOUT_INFO_SIZE  # 208
+OFFSET_PEERMEM_LAYOUT = OFFSET_PEERMEM_DATA_SIZE + 8  # 216
+OFFSET_COMM_TILING = 424
+OFFSET_SCALE_COMM_TILING = OFFSET_COMM_TILING + 40  # 464
+OFFSET_MM_TILING = OFFSET_SCALE_COMM_TILING + 40  # 504
+OFFSET_LOCAL_MATMUL = OFFSET_MM_TILING + 64  # 568
 
 ARGS_INDEX_NAMES = [
     "context", "x1", "x2", "bias", "x1_scale", "x2_scale", "y",

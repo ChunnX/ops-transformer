@@ -8,11 +8,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 """Unified MC2 DFX dump parser.
 
-Only the operator name is required when this script is run in a dump directory.
-The script discovers and dispatches tiling_data, args_info, workspace segments,
-CCU xn/cke address tables, and URMA context files automatically.  Each
-source dump gets an independent readable text report; no combined report or
-NumPy output is generated.
+Pass one dump file to parse only that file, or pass an operator name and an
+optional dump directory to parse a complete dump directory.  The script
+discovers and dispatches tiling_data, args_info, workspace segments, CCU
+xn/cke address tables, and URMA context files automatically.  Directory mode
+creates an independent readable text report for every source dump; no combined
+report or NumPy output is generated.
 """
 
 import argparse
@@ -94,7 +95,7 @@ WORKSPACE_SEG_TYPE_NAMES = {
     0: "LIB_API", 1: "ND2NZ", 2: "GATHER", 3: "GATHER_SCALE1",
     4: "GATHER_SCALE", 5: "COMM_OUT", 6: "PERMUTE_OUT", 7: "BIAS",
     8: "MM_RESULT", 9: "RECV_BUF", 10: "COMM_INT8", 11: "DYNAMIC_QUANT",
-    12: "RUNTIME_INFO", 13: "MM_WORKSPACE", 255: "RESERVED",
+    12: "STATE_DUMP", 13: "MM_WORKSPACE", 255: "RESERVED",
 }
 
 WORKSPACE_SEG_DESCRIPTIONS = {
@@ -110,7 +111,7 @@ WORKSPACE_SEG_DESCRIPTIONS = {
     9: "通信接收缓冲区",
     10: "INT8 通信临时缓冲区",
     11: "动态量化临时缓冲区",
-    12: "每核 RuntimeInfo，记录执行位置和通信 commit/wait 情况",
+    12: "每核 StateDump，记录执行位置和通信 commit/wait 情况",
     13: "Matmul 内部临时 Workspace，不是 Matmul 结果，元素类型和逻辑形状不固定",
     255: "对齐或预留空间",
 }
@@ -146,6 +147,33 @@ def matches_operator(path, profile_key):
     return profile_key in normalized_name
 
 
+def detect_profile_from_file(path):
+    """Infer the operator profile from one dump filename or sibling TilingData."""
+    matched_keys = [key for key in PROFILES if matches_operator(path, key)]
+    if not matched_keys:
+        normalized_name = normalize(path.name)
+        for alias in sorted(ALIASES, key=len, reverse=True):
+            if alias in normalized_name:
+                matched_keys = [ALIASES[alias]]
+                break
+    if not matched_keys and path.parent.is_dir():
+        sibling_keys = set()
+        for sibling in path.parent.iterdir():
+            if not sibling.is_file() or classify_file(sibling) != "tiling":
+                continue
+            sibling_keys.update(key for key in PROFILES if matches_operator(sibling, key))
+        matched_keys = sorted(sibling_keys)
+    if len(matched_keys) != 1:
+        if matched_keys:
+            names = ", ".join(PROFILES[key]["name"] for key in matched_keys)
+            raise ValueError(f"无法唯一确定 {path.name} 所属的算子，候选: {names}")
+        raise ValueError(
+            f"无法从文件名 {path.name!r} 识别算子；文件名中应包含受支持的标准算子名"
+        )
+    profile_key = matched_keys[0]
+    return profile_key, PROFILES[profile_key]
+
+
 def discover_files(dump_dir, output_dir, profile_key):
     all_files = []
     for path in dump_dir.rglob("*"):
@@ -174,16 +202,17 @@ def read_preview(path, size=256):
         return file_handle.read(size)
 
 
-def emit_decimal_byte_preview(lines, data):
+def emit_decimal_byte_preview(lines, data, echo=True):
     """Print an unambiguous decimal preview when the segment element type is unknown."""
-    emit(lines, "previewType: uint8 raw bytes")
-    emit(lines, f"previewRange: byte[0:{len(data)}]")
-    emit(lines, f"previewAllZero: {not any(data)}")
-    emit(lines, "decimalPreview (each value is one raw uint8 byte):")
+    append = (lambda value: emit(lines, value)) if echo else lines.append
+    append("previewType: uint8 raw bytes")
+    append(f"previewRange: byte[0:{len(data)}]")
+    append(f"previewAllZero: {not any(data)}")
+    append("decimalPreview (each value is one raw uint8 byte):")
     for offset in range(0, len(data), 16):
         row = data[offset:offset + 16]
         values = " ".join(f"{value:3d}" for value in row)
-        emit(lines, f"  byte[{offset:04d}:{offset + len(row):04d}] : {values}")
+        append(f"  byte[{offset:04d}:{offset + len(row):04d}] : {values}")
 
 
 def segment_identity(path, prefix):
@@ -283,6 +312,44 @@ def core_num_for_file(path, profile, core_index):
     return None
 
 
+def trailing_sequence(path):
+    """Return the final numeric sequence used by dump filenames as a call timestamp."""
+    values = re.findall(r"\d+", path.name)
+    return int(values[-1]) if values else None
+
+
+def nearest_tiling_file(path, profile, tiling_files):
+    """Select the same/nearest TilingData file without requiring another CLI argument."""
+    if not tiling_files:
+        return None
+    suffix = operator_suffix(path, profile)
+    for tiling_file in tiling_files:
+        if operator_suffix(tiling_file, profile) == suffix:
+            return tiling_file
+    target_sequence = trailing_sequence(path)
+    if target_sequence is not None:
+        candidates = []
+        for tiling_file in tiling_files:
+            sequence = trailing_sequence(tiling_file)
+            if sequence is not None:
+                candidates.append((abs(sequence - target_sequence), str(tiling_file), tiling_file))
+        if candidates:
+            return min(candidates)[2]
+    return tiling_files[0] if len(tiling_files) == 1 else None
+
+
+def related_tiling_files(path, profile_key):
+    """Find TilingData beside a single input file for automatic StateDump context."""
+    if not path.parent.is_dir():
+        return []
+    return sorted(
+        sibling for sibling in path.parent.iterdir()
+        if sibling.is_file()
+        and classify_file(sibling) == "tiling"
+        and matches_operator(sibling, profile_key)
+    )
+
+
 def parse_address_table(input_path):
     """Parse a little-endian uint64 XN/CKE table into readable text lines."""
     byte_size = input_path.stat().st_size
@@ -358,25 +425,105 @@ def save_text_result(output_path, profile, kind, relative_path, lines):
     output_path.write_text("\n".join(header + lines) + "\n", encoding="utf-8")
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(
-        description="按算子名自动解析 MC2 tiling/workspace/xn/cke/URMA dump，并逐文件输出 TXT",
-        epilog=(
-            "在 dump 目录中只需执行: python3 parse_mc2_dump.py AlltoAllMatmul\n"
-            "也可指定目录: python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/dump"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("operator", help="算子名或别名，例如 AlltoAllMatmul、AllGatherMatmulV3、mmrs")
-    parser.add_argument("dump_dir", nargs="?", default=".", help="dump 根目录，默认当前目录")
-    args = parser.parse_args(argv)
-
+def parse_single_file(input_path, parser):
+    """Parse one dump file using filename-based operator and mode detection."""
+    kind = classify_file(input_path)
+    if kind is None:
+        parser.error(
+            "不支持的文件名；支持 tiling_data_*、args_info_*、workspace_segN_typeM_*、"
+            "xn_addr_info_*、cke_addr_info_* 和 comm_context_*"
+        )
     try:
-        profile_key, profile = resolve_profile(args.operator)
+        profile_key, profile = detect_profile_from_file(input_path)
     except ValueError as error:
         parser.error(str(error))
 
-    dump_dir = Path(args.dump_dir).expanduser().resolve()
+    print("=" * 88)
+    print(f"MC2 single-file analysis: {profile['name']} | kind: {kind}")
+    print(f"source: {input_path}")
+    print("=" * 88)
+
+    if kind in ("xn", "cke"):
+        try:
+            _, _, _, lines = parse_address_table(input_path)
+        except (OSError, RuntimeError, ValueError) as error:
+            parser.error(str(error))
+        print("\n".join(lines))
+        return 0
+
+    if kind == "workspace":
+        identity = segment_identity(input_path, "workspace")
+        if identity is not None and identity[1] != 12:
+            seg_index, seg_type = identity
+            lines = [
+                f"segIdx: {seg_index}",
+                f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})",
+                f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}",
+                f"fileSize: {input_path.stat().st_size} bytes",
+            ]
+            emit_decimal_byte_preview(lines, read_preview(input_path, WORKSPACE_PREVIEW_SIZE), echo=False)
+            lines.append("typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
+            print("\n".join(lines))
+            return 0
+
+    aic_core_num = None
+    use_apace = False
+    if kind == "workspace":
+        tiling_files = related_tiling_files(input_path, profile_key)
+        selected_tiling = nearest_tiling_file(input_path, profile, tiling_files)
+        if selected_tiling is not None:
+            aic_core_num = infer_aic_core_num(profile, selected_tiling)
+            use_apace = selected_tiling.parent in infer_apace_parents(profile, [selected_tiling])
+            print(f"related TilingData: {selected_tiling.name}")
+        else:
+            aic_core_num = core_num_for_file(input_path, profile, build_core_index(profile, tiling_files))
+
+    return_code, output = run_backend(profile, kind, input_path, aic_core_num, use_apace)
+    if output:
+        print(output)
+    if kind == "comm_context":
+        file_size = input_path.stat().st_size
+        print()
+        print("rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：")
+        print(
+            f'python3 "{SCRIPT_DIR / "parse_matrix.py"}" "{input_path}" '
+            f'--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64'
+        )
+    if return_code != 0:
+        print(f"ERROR: backend exited with code {return_code}")
+    return return_code
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="自动解析单个 MC2 Dump 文件，或按算子名批量解析 Dump 目录",
+        epilog=(
+            "单文件: python3 parse_mc2_dump.py /path/to/workspace_seg2_type12_MatmulReduceScatterV2.xxx\n"
+            "批量:   python3 parse_mc2_dump.py AllGatherMatmulV3 /path/to/dump"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "target",
+        help="单个 Dump 文件路径；批量解析时填写算子名或别名，例如 AlltoAllMatmul、mmrs",
+    )
+    parser.add_argument("dump_dir", nargs="?", help="批量解析的 Dump 根目录，省略时为当前目录")
+    args = parser.parse_args(argv)
+
+    target_path = Path(args.target).expanduser()
+    looks_like_dump = classify_file(target_path) is not None
+    if args.dump_dir is None and (target_path.exists() or looks_like_dump):
+        input_path = target_path.resolve()
+        if not input_path.is_file():
+            parser.error(f"Dump 文件不存在: {input_path}")
+        return parse_single_file(input_path, parser)
+
+    try:
+        profile_key, profile = resolve_profile(args.target)
+    except ValueError as error:
+        parser.error(str(error))
+
+    dump_dir = Path(args.dump_dir or ".").expanduser().resolve()
     if not dump_dir.is_dir():
         parser.error(f"dump 目录不存在: {dump_dir}")
     output_dir = dump_dir / "mc2_dump_analysis" / profile["name"]

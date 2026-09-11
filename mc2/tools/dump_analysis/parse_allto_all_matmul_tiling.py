@@ -17,7 +17,7 @@
 # 模式:
 #   默认         自动识别主线非量化、主线量化或 Apace CCU tiling_data_*.bin
 #   --args       解析 args_info_*.bin（GM 地址指针）
-#   --ws-layout  从 tiling_data_*.bin 尾部解析 WorkspaceLayoutInfo
+#   --ws-layout  从 tiling_data_*.bin 起始处的 DfxDumpInfo 解析 WorkspaceLayoutInfo
 #   --workspace  解析 workspace_seg*_type*_*.bin（自动识别段类型，type=12 解析 RuntimeInfo）
 #   --json       以 JSON 格式输出（默认为人类可读表格）
 
@@ -36,7 +36,7 @@ logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", 
 # ====== 固定结构体大小常量（DFX 自有, 不随 CANN 版本漂移）======
 MC2_INIT_TILING_SIZE = 64
 MC2_CC_TILING_SIZE = 512
-ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 104  # 12*u32(48) + 7*u64(56) = 104
+ALLTO_ALL_MATMUL_TILING_INFO_SIZE = 88  # 10*u32(40) + 6*u64(48)
 
 # ====== 以下常量依赖 TCubeTiling (随 CANN 版本漂移), 由 tiling_layout 实时计算 ======
 _LAYOUT = compute_allto_all_layout()
@@ -45,11 +45,11 @@ TCUBE_TILING_SIZE = _LAYOUT["tcubeTilingSize"]
 MC2_MM_V3_TILING_DATA_SIZE = _LAYOUT["nonQuant"]["blockSize"]     # TCubeTiling + 9*u32
 MC2_QUANT_BMM_TILING_PARAMS_SIZE = _LAYOUT["quant"]["blockSize"]  # 128 + TCubeTiling + 24 + 12
 
-ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = _LAYOUT["nonQuant"]["wsLayoutOffset"]    # 1152
-ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = _LAYOUT["quant"]["wsLayoutOffset"]  # 1408
-ALLTO_ALL_MATMUL_TILING_DATA_SIZE = _LAYOUT["nonQuant"]["size"]   # 1360
-ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = _LAYOUT["quant"]["size"]  # 1616
-APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = _LAYOUT["apace"]["size"]  # 896 (无 TCubeTiling, 固定)
+ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE = _LAYOUT["nonQuant"]["tileOffset"]
+ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE = _LAYOUT["quant"]["tileOffset"]
+ALLTO_ALL_MATMUL_TILING_DATA_SIZE = _LAYOUT["nonQuant"]["size"]
+ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE = _LAYOUT["quant"]["size"]
+APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE = _LAYOUT["apace"]["size"]
 TILING_DUMP_SIZE = 2048  # dump 固定大小
 
 # ====== Workspace 结构体大小常量（与 mc2_tiling_struct.h 保持一致）======
@@ -61,14 +61,13 @@ RUNTIME_INFO_CORE_MAX = 128
 RUNTIME_INFO_TOTAL_SIZE = RUNTIME_INFO_CORE_MAX * RUNTIME_INFO_PER_CORE_SIZE  # 65536
 RUNTIME_INFO_MAGIC = 0x5A5A5A5A
 
-# WorkspaceLayoutInfo 在 TilingData 中的偏移（追加在结构体末尾）
-OFFSET_WS_LAYOUT_NON_QUANT = ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE  # 1152
-OFFSET_WS_LAYOUT_QUANT = ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE  # 1408
-OFFSET_APACE_COMM_TILING = _LAYOUT["apace"]["commOffset"]          # 576
-OFFSET_APACE_QUANT_MATMUL = _LAYOUT["apace"]["quantMatmulOffset"]  # 616
-OFFSET_APACE_LOCAL_MATMUL = _LAYOUT["apace"]["localMatmulOffset"]  # 680
-OFFSET_APACE_QUANT_MODE = _LAYOUT["apace"]["quantModeOffset"]      # 684
-OFFSET_WS_LAYOUT_APACE = _LAYOUT["apace"]["wsLayoutOffset"]        # 688
+# WorkspaceLayoutInfo 是 DfxDumpInfo 的首成员，三种格式都固定在 offset 0。
+OFFSET_WS_LAYOUT_NON_QUANT = _LAYOUT["nonQuant"]["wsLayoutOffset"]
+OFFSET_WS_LAYOUT_QUANT = _LAYOUT["quant"]["wsLayoutOffset"]
+OFFSET_APACE_COMM_TILING = _LAYOUT["apace"]["commOffset"]
+OFFSET_APACE_QUANT_MATMUL = _LAYOUT["apace"]["quantMatmulOffset"]
+OFFSET_APACE_LOCAL_MATMUL = _LAYOUT["apace"]["localMatmulOffset"]
+OFFSET_WS_LAYOUT_APACE = _LAYOUT["apace"]["wsLayoutOffset"]
 
 
 def init_layout(cann=None):
@@ -86,8 +85,8 @@ def init_layout(cann=None):
     g["TCUBE_TILING_SIZE"] = layout["tcubeTilingSize"]
     g["MC2_MM_V3_TILING_DATA_SIZE"] = layout["nonQuant"]["blockSize"]
     g["MC2_QUANT_BMM_TILING_PARAMS_SIZE"] = layout["quant"]["blockSize"]
-    g["ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE"] = layout["nonQuant"]["wsLayoutOffset"]
-    g["ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE"] = layout["quant"]["wsLayoutOffset"]
+    g["ALLTO_ALL_MATMUL_TILING_PREFIX_SIZE"] = layout["nonQuant"]["tileOffset"]
+    g["ALLTO_ALL_QUANT_MATMUL_TILING_PREFIX_SIZE"] = layout["quant"]["tileOffset"]
     g["ALLTO_ALL_MATMUL_TILING_DATA_SIZE"] = layout["nonQuant"]["size"]
     g["ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE"] = layout["quant"]["size"]
     g["APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE"] = layout["apace"]["size"]
@@ -97,10 +96,13 @@ def init_layout(cann=None):
     g["OFFSET_APACE_COMM_TILING"] = layout["apace"]["commOffset"]
     g["OFFSET_APACE_QUANT_MATMUL"] = layout["apace"]["quantMatmulOffset"]
     g["OFFSET_APACE_LOCAL_MATMUL"] = layout["apace"]["localMatmulOffset"]
-    g["OFFSET_APACE_QUANT_MODE"] = layout["apace"]["quantModeOffset"]
-    g["OFFSET_TILE_MM_TILING"] = layout["offsets"]["tilingInfo"] + ALLTO_ALL_MATMUL_TILING_INFO_SIZE
+    g["OFFSET_MC2_INIT_TILING"] = layout["offsets"]["mc2InitTiling"]
+    g["OFFSET_MC2_CC_TILING"] = layout["offsets"]["mc2CcTiling"]
+    g["OFFSET_TILING_INFO"] = layout["offsets"]["tilingInfo"]
+    g["OFFSET_TILE_MM_TILING"] = layout["nonQuant"]["tileOffset"]
     g["OFFSET_TAIL_MM_TILING_NON_QUANT"] = g["OFFSET_TILE_MM_TILING"] + layout["nonQuant"]["blockSize"]
-    g["OFFSET_TAIL_QUANT_MM_TILING"] = g["OFFSET_TILE_MM_TILING"] + layout["quant"]["blockSize"]
+    g["OFFSET_TILE_QUANT_MM_TILING"] = layout["quant"]["tileOffset"]
+    g["OFFSET_TAIL_QUANT_MM_TILING"] = layout["quant"]["tailOffset"]
     for h in layout["headers"]:
         logging.info("布局头文件: %s", h)
     for key, name in (("nonQuant", "AlltoAllMatmulTilingData"),
@@ -125,13 +127,13 @@ X2_QUANT_MODE_MAP = {
 }
 
 # ====== 偏移量常量 ======
-OFFSET_MC2_INIT_TILING = 0
-OFFSET_MC2_CC_TILING = MC2_INIT_TILING_SIZE  # 64
-OFFSET_TILING_INFO = MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE  # 576
-OFFSET_TILE_MM_TILING = OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE  # 680
-OFFSET_TAIL_MM_TILING_NON_QUANT = OFFSET_TILE_MM_TILING + MC2_MM_V3_TILING_DATA_SIZE  # 916
-OFFSET_TILE_QUANT_MM_TILING = OFFSET_TILE_MM_TILING  # 680
-OFFSET_TAIL_QUANT_MM_TILING = OFFSET_TILE_MM_TILING + MC2_QUANT_BMM_TILING_PARAMS_SIZE  # 1040
+OFFSET_MC2_INIT_TILING = _LAYOUT["offsets"]["mc2InitTiling"]
+OFFSET_MC2_CC_TILING = _LAYOUT["offsets"]["mc2CcTiling"]
+OFFSET_TILING_INFO = _LAYOUT["offsets"]["tilingInfo"]
+OFFSET_TILE_MM_TILING = _LAYOUT["nonQuant"]["tileOffset"]
+OFFSET_TAIL_MM_TILING_NON_QUANT = _LAYOUT["nonQuant"]["tailOffset"]
+OFFSET_TILE_QUANT_MM_TILING = _LAYOUT["quant"]["tileOffset"]
+OFFSET_TAIL_QUANT_MM_TILING = _LAYOUT["quant"]["tailOffset"]
 
 # args_info_*.bin 中 kernel 参数索引
 ARGS_INDEX_NAMES = [
@@ -188,7 +190,7 @@ WS_SEG_TYPE_MAP = {
     9: "RECV_BUF",
     10: "COMM_INT8",
     11: "DYNAMIC_QUANT",
-    12: "RUNTIME_INFO",
+    12: "STATE_DUMP",
     13: "MM_WORKSPACE",
     255: "RESERVED",
 }
@@ -284,13 +286,11 @@ def parse_mc2_cc_tiling_inner(data: bytes, offset: int) -> dict:
 
 
 def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
-    """解析 AlltoAllMatmulTilingInfo（104B）。"""
+    """解析当前源码的 AlltoAllMatmulTilingInfo（88B）。"""
     if offset + ALLTO_ALL_MATMUL_TILING_INFO_SIZE > len(data):
         return {"error": "data too short for AlltoAllMatmulTilingInfo"}
-    fields = struct.unpack_from("<12I 7Q", data, offset)
-    x1_qm = fields[10]
-    x2_qm = fields[11]
-    hccl_dt = fields[14]
+    fields = struct.unpack_from("<10I6Q", data, offset)
+    hccl_dt = fields[12]
     return {
         "rankDim": fields[0],
         "tileM": fields[1],
@@ -302,18 +302,13 @@ def parse_allto_all_matmul_tiling_info(data: bytes, offset: int) -> dict:
         "rankN": fields[7],
         "rankK": fields[8],
         "aicCoreNum": fields[9],
-        "x1QuantMode": x1_qm,
-        "x1QuantModeName": X1_QUANT_MODE_MAP.get(x1_qm, f"UNKNOWN({x1_qm})"),
-        "x2QuantMode": x2_qm,
-        "x2QuantModeName": X2_QUANT_MODE_MAP.get(x2_qm, f"UNKNOWN({x2_qm})"),
-        "commLen": fields[12],
-        "permuteLen": fields[13],
+        "commLen": fields[10],
+        "permuteLen": fields[11],
         "hcclDataType": hccl_dt,
         "hcclDataTypeName": HCCL_DATA_TYPE_MAP.get(hccl_dt, f"UNKNOWN({hccl_dt})"),
-        "x1ScaleOptionalLen": fields[15],
-        "dynamicExtraSpace": fields[16],
-        "x1QuantDtype": fields[17],
-        "tilingKey": fields[18],
+        "x1ScaleOptionalLen": fields[13],
+        "dynamicExtraSpace": fields[14],
+        "x1QuantDtype": fields[15],
     }
 
 
@@ -467,7 +462,6 @@ def parse_apace_tiling_data(data: bytes) -> dict:
         "commTilingData": parse_apace_comm_tiling(data, OFFSET_APACE_COMM_TILING),
         "tileQbmmTilingData": parse_apace_quant_matmul_tiling(data, OFFSET_APACE_QUANT_MATMUL),
         "localMatmul": struct.unpack_from("<I", data, OFFSET_APACE_LOCAL_MATMUL)[0],
-        "quantMode": struct.unpack_from("<I", data, OFFSET_APACE_QUANT_MODE)[0],
         "workspaceLayout": parse_workspace_layout_info(data, OFFSET_WS_LAYOUT_APACE),
     }
 
@@ -496,43 +490,37 @@ def is_valid_workspace_layout(layout: dict) -> bool:
 def detect_tiling_format(data: bytes) -> str:
     """自动区分主线非量化、主线量化和 usingApaceImpl_ CCU tiling。
 
-    apace 按 quantMode==6 + wsLayout 校验识别; 量化/非量化优先信
-    x1/x2QuantMode, 对应分支 wsLayout 校验不过时自动尝试另一分支。"""
-    apace_layout = parse_workspace_layout_info(data, OFFSET_WS_LAYOUT_APACE)
-    apace_quant_mode = (
-        struct.unpack_from("<I", data, OFFSET_APACE_QUANT_MODE)[0]
-        if len(data) >= OFFSET_APACE_QUANT_MODE + 4 else 0
+    新版结构不再携带 quantMode。Apace 的 CommTilingData 为 5 个小于 2^32
+    的 uint64，主线同位置则是两个相邻 uint32 字段；结合 QMM 尺寸和
+    localMatmul(0/1) 可稳定区分。当前非空 DFX WorkspaceLayout 对应 MX 量化通路。
+    """
+    workspace_layout = parse_workspace_layout_info(data, OFFSET_WS_LAYOUT_APACE)
+    comm = parse_apace_comm_tiling(data, OFFSET_APACE_COMM_TILING)
+    qmm = parse_apace_quant_matmul_tiling(data, OFFSET_APACE_QUANT_MATMUL)
+    local_matmul = (
+        struct.unpack_from("<I", data, OFFSET_APACE_LOCAL_MATMUL)[0]
+        if len(data) >= OFFSET_APACE_LOCAL_MATMUL + 4 else None
     )
-    if apace_quant_mode == 6 and is_valid_workspace_layout(apace_layout):
+    comm_values = list(comm.values()) if "error" not in comm else []
+    apace_plausible = (
+        len(comm_values) == 5
+        and all(0 <= value < (1 << 32) for value in comm_values)
+        and (comm_values[0] > 0 or comm_values[2] > 0)
+        and (comm_values[1] > 0 or comm_values[3] > 0)
+        and comm_values[4] > 0
+        and "error" not in qmm
+        and all(qmm.get(name, 0) > 0 for name in ("m", "n", "k"))
+        and local_matmul in (0, 1)
+    )
+    if apace_plausible and is_valid_workspace_layout(workspace_layout):
         return "apace"
-    is_quant = detect_quant_mode(data)
-    for q in (is_quant, not is_quant):
-        ws_off = OFFSET_WS_LAYOUT_QUANT if q else OFFSET_WS_LAYOUT_NON_QUANT
-        if ws_off + WORKSPACE_LAYOUT_INFO_SIZE > len(data):
-            continue
-        if is_valid_workspace_layout(parse_workspace_layout_info(data, ws_off)):
-            if q != is_quant:
-                logging.warning("x1/x2QuantMode 与 WorkspaceLayoutInfo 合法性校验不符, "
-                                "已自动切换至%s分支解析 (workspaceLayout 偏移已随之切换)",
-                                "量化" if q else "非量化")
-            return "quant" if q else "non_quant"
-    return "quant" if is_quant else "non_quant"
+    return "quant" if detect_quant_mode(data) else "non_quant"
 
 
 def detect_quant_mode(data: bytes) -> bool:
-    """通过 x1QuantMode / x2QuantMode 字段检测量化/非量化模式。
-
-    x1QuantMode / x2QuantMode 位于 AlltoAllMatmulTilingInfo offset=576+40=616, 各 u32:
-      x1QuantMode: 0=非量化, 7=KC动态pertoken量化, 6=MX量化
-      x2QuantMode: 0=非量化, 2=KC perchannel量化, 6=MX量化
-    两者均为 0 时为非量化，否则为量化。
-    """
-    if len(data) < OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE:
-        return False
-    info = parse_allto_all_matmul_tiling_info(data, OFFSET_TILING_INFO)
-    if "error" in info:
-        return False
-    return info.get("x1QuantMode", 0) != 0 or info.get("x2QuantMode", 0) != 0
+    """新版 TilingData 已移除量化模式字段；非空合法段表对应当前 MX DFX 通路。"""
+    return is_valid_workspace_layout(
+        parse_workspace_layout_info(data, OFFSET_WS_LAYOUT_QUANT))
 
 
 def parse_args_info(data: bytes) -> dict:
@@ -749,7 +737,7 @@ def print_workspace_layout_info(ws_layout: dict):
 
 def print_runtime_info_segment(rt_info: dict):
     """人类可读格式打印 RuntimeInfo 段。"""
-    print_section("RuntimeInfo Segment (type=12, 64KB)")
+    print_section("StateDump Segment (type=12, 64KB)")
     logging.info("  %-30s: %d bytes", "segmentSize", rt_info["segmentSize"])
     logging.info("  %-30s: %d / %d", "activeSlots (magic matched)", rt_info["activeSlots"], rt_info["maxSlots"])
     if rt_info.get("aicCoreNum") is None:
@@ -817,8 +805,9 @@ def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
     mismatch_count = 0
     first_mismatch_offset = -1
     field_ranges = [
-        (0, MC2_INIT_TILING_SIZE, "Mc2InitTiling"),
-        (MC2_INIT_TILING_SIZE, MC2_INIT_TILING_SIZE + MC2_CC_TILING_SIZE, "Mc2CcTiling"),
+        (0, OFFSET_MC2_INIT_TILING, "DfxDumpInfo"),
+        (OFFSET_MC2_INIT_TILING, OFFSET_MC2_CC_TILING, "Mc2InitTiling"),
+        (OFFSET_MC2_CC_TILING, OFFSET_TILING_INFO, "Mc2CcTiling"),
         (OFFSET_TILING_INFO, OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE, "AlltoAllMatmulTilingInfo"),
         (OFFSET_TILE_MM_TILING, OFFSET_TILE_MM_TILING + max(MC2_MM_V3_TILING_DATA_SIZE, MC2_QUANT_BMM_TILING_PARAMS_SIZE), "TileMatmulTiling"),
     ]
@@ -903,7 +892,7 @@ def main():
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin（GM 地址指针）")
     parser.add_argument("--ws-layout", action="store_true",
-                        help="从 tiling_data_*.bin 尾部解析 WorkspaceLayoutInfo")
+                        help="从 tiling_data_*.bin 起始处的 DfxDumpInfo 解析 WorkspaceLayoutInfo")
     parser.add_argument("--workspace", action="store_true",
                         help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
@@ -1018,15 +1007,10 @@ def main():
         return
 
     is_quant = tiling_format == "quant"
-    info = parse_allto_all_matmul_tiling_info(data, OFFSET_TILING_INFO)
-    x1_qm = info.get("x1QuantMode", 0) if "error" not in info else 0
-    x2_qm = info.get("x2QuantMode", 0) if "error" not in info else 0
-    x1_qm_name = X1_QUANT_MODE_MAP.get(x1_qm, f"UNKNOWN({x1_qm})")
-    x2_qm_name = X2_QUANT_MODE_MAP.get(x2_qm, f"UNKNOWN({x2_qm})")
     if is_quant:
-        logging.info("解析模式: 量化 (x1QuantMode=%d/%s, x2QuantMode=%d/%s)", x1_qm, x1_qm_name, x2_qm, x2_qm_name)
+        logging.info("解析模式: 主线量化（新版 TilingData 不再保存 x1/x2QuantMode）")
     else:
-        logging.info("解析模式: 非量化 (x1QuantMode=0, x2QuantMode=0)")
+        logging.info("解析模式: 主线非量化")
 
     struct_size = ALLTO_ALL_QUANT_MATMUL_TILING_DATA_SIZE if is_quant else ALLTO_ALL_MATMUL_TILING_DATA_SIZE
     if len(data) < struct_size:
@@ -1047,7 +1031,7 @@ def main():
             struct_size, len(data), len(data) - struct_size,
         )
 
-    # 如果 dump 文件足够大，尝试解析尾部的 WorkspaceLayoutInfo
+    # WorkspaceLayoutInfo 固定在 TilingData offset 0。
     ws_offset = OFFSET_WS_LAYOUT_QUANT if is_quant else OFFSET_WS_LAYOUT_NON_QUANT
     if len(data) >= ws_offset + WORKSPACE_LAYOUT_INFO_SIZE:
         ws_layout = parse_workspace_layout_info(data, ws_offset)
