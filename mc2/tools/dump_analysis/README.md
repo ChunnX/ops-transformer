@@ -240,7 +240,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 `tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现，`comm_context_*` 只在 URMA 通路出现。`peermem_window_*`、`peermem_segN_typeM_*`、`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
 
-当前算子代码把统一的 `DfxDumpInfo` 放在 TilingData 的 offset 0：WorkspaceLayout 位于 offset 0，Peermem 总大小位于 offset 208，PeermemLayout 位于 offset 216，算子自己的 Tiling 参数从 offset 424 开始。后端脚本均按这一版布局读取。
+更新后的算子代码有两种 TilingData 前缀。AllGatherMatmulV2、AlltoAllMatmul 主线/Apace 和 MatmulReduceScatterV2 使用 `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo`，当前默认 WorkspaceLayout offset 为 576；AllGatherMatmulV3、AlltoAllMatmulV2 仍以 `DfxDumpInfo` 开头，WorkspaceLayout offset 为 0。`DfxDumpInfo` 内部的 Peermem 总大小和 PeermemLayout 相对偏移仍为 208、216，解析脚本会按算子选取正确位置。
 
 结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、StateDump 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。
 

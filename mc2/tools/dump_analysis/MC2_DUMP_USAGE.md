@@ -73,7 +73,14 @@ python3 /path/to/ops-transformer_dfx/mc2/tools/dump_analysis/parse_mc2_dump.py m
 
 这里的“必有”是指算子已经正确开启 MC2 DFX Dump。若缺少其中一类，应优先检查 DFX 开关、异常回调注册、TilingData 中的 WorkspaceLayout，以及 Dump 目录是否选对。
 
-当前代码中的 TilingData 以统一的 `DfxDumpInfo` 开头：`WorkspaceLayoutInfo` 位于 offset 0，Peermem 总大小位于 offset 208，PeermemLayout 位于 offset 216；算子自己的 Tiling 参数从 offset 424 开始。解析脚本已经按该布局读取，不再从 TilingData 尾部寻找 WorkspaceLayout。
+更新后的代码存在两种 TilingData 前缀，解析脚本会按算子选择，不再统一假定 WorkspaceLayout 位于 offset 0：
+
+| 算子 | TilingData 前缀 | WorkspaceLayout 位置 |
+| --- | --- | ---: |
+| AllGatherMatmulV2、AlltoAllMatmul 主线/Apace、MatmulReduceScatterV2 | `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo` | 当前默认 offset 576 |
+| AllGatherMatmulV3、AlltoAllMatmulV2 | `DfxDumpInfo` 位于第一个成员 | offset 0 |
+
+`DfxDumpInfo` 内部结构不变：WorkspaceLayout 相对 `DfxDumpInfo` 为 offset 0，Peermem 总大小为相对 offset 208，PeermemLayout 为相对 offset 216，整体大小为 424 字节。
 
 ### 4.2 CCU 通路文件
 
@@ -287,6 +294,20 @@ python3 parse_matrix.py workspace.bin \
 | 12 | `STATE_DUMP`，每核运行和通信状态 |
 | 13 | `MM_WORKSPACE`，Matmul 内部临时区，不是结果矩阵 |
 | 255 | `RESERVED`，对齐或预留区域 |
+
+根据当前 `ops-transformer` 中各算子的 Workspace 构造代码，段顺序如下。带“可选”的段只有长度大于 0 时才出现，因此实际 `segN` 可能变化：
+
+| 算子/通路 | 当前 Workspace Segment 顺序 |
+| --- | --- |
+| AllGatherMatmulV2 | `LIB_API → GATHER_SCALE1(可选) → GATHER(可选) → BIAS(可选) → STATE_DUMP` |
+| AllGatherMatmulV3 | `LIB_API → STATE_DUMP` |
+| AlltoAllMatmul 主线 CCU | `DYNAMIC_QUANT/commX1Scale(可选) → COMM_OUT(可选) → DYNAMIC_QUANT/transX1Scale(可选) → PERMUTE_OUT(可选) → STATE_DUMP` |
+| AlltoAllMatmul Apace CCU | `DYNAMIC_QUANT/commX1Scale(可选) → COMM_OUT(可选) → STATE_DUMP` |
+| AlltoAllMatmulV2 | `LIB_API → STATE_DUMP` |
+| MatmulReduceScatterV2 Direct ReduceScatter | `MM_RESULT → MM_WORKSPACE(可选) → RESERVED/padding(可选) → STATE_DUMP` |
+| MatmulReduceScatterV2 A2A + ReduceSum | `MM_RESULT → RECV_BUF → MM_WORKSPACE(可选) → RESERVED/padding(可选) → STATE_DUMP` |
+
+AlltoAllMatmul 和 MMRS 的当前段表从 Kernel 收到的用户 Workspace 起点开始，不额外登记 `LIB_API` 段；其他三类算子仍在段表中登记 `LIB_API`。解析时以本次 TilingData 中的实际 `segCount/type/offset/size` 为准。
 
 最终含义应同时核对：
 
