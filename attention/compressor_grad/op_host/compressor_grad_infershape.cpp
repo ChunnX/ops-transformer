@@ -45,7 +45,6 @@ constexpr int64_t CMP_RATIO_MAX = 128;
 constexpr int64_t COFF_VALUE_1 = 1;
 constexpr int64_t COFF_VALUE_2 = 2;
 constexpr int64_t COFF_DEFAULT = 1;
-constexpr int64_t CMP_RATIO_DEFAULT = 4;
 constexpr uint32_t DIM_NUM_0 = 0;
 constexpr uint32_t DIM_NUM_1 = 1;
 constexpr uint32_t DIM_NUM_2 = 2;
@@ -61,6 +60,8 @@ struct CompressorGradProtoShapeParam {
     int64_t S{0};
     int64_t H{0};
     int64_t D{0};
+    int64_t totalDim{0}; // coff * D，即 wkv 的 dim0
+    int64_t cmpRatio{0};
 };
 
 ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext *context,
@@ -111,6 +112,8 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext *context
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "headDim (wkv.dim0 / coff)",
                                                       std::to_string(shapeParam.D), "must be positive"),
                 return ge::GRAPH_FAILED);
+    shapeParam.totalDim = coff * shapeParam.D;
+    shapeParam.cmpRatio = cmpRatio;
     return GRAPH_SUCCESS;
 }
 
@@ -126,13 +129,6 @@ ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &s
     auto dApeShape = context->GetOutputShape(D_APE_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dApeShape);
 
-    auto attr = context->GetAttrs();
-    OP_CHECK_NULL_WITH_CONTEXT(context, attr);
-    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
-    int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_DEFAULT;
-    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
-    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_DEFAULT;
-
     if (!shapeParam.isBsMerge) {
         dxShape->SetDimNum(DIM_NUM_3);
         dxShape->SetDim(DIM_INDEX_0, shapeParam.B);
@@ -145,16 +141,16 @@ ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &s
     }
 
     dWkvShape->SetDimNum(DIM_NUM_2);
-    dWkvShape->SetDim(DIM_INDEX_0, coff * shapeParam.D);
+    dWkvShape->SetDim(DIM_INDEX_0, shapeParam.totalDim);
     dWkvShape->SetDim(DIM_INDEX_1, shapeParam.H);
 
     dWgateShape->SetDimNum(DIM_NUM_2);
-    dWgateShape->SetDim(DIM_INDEX_0, coff * shapeParam.D);
+    dWgateShape->SetDim(DIM_INDEX_0, shapeParam.totalDim);
     dWgateShape->SetDim(DIM_INDEX_1, shapeParam.H);
 
     dApeShape->SetDimNum(DIM_NUM_2);
-    dApeShape->SetDim(DIM_INDEX_0, cmpRatio);
-    dApeShape->SetDim(DIM_INDEX_1, coff * shapeParam.D);
+    dApeShape->SetDim(DIM_INDEX_0, shapeParam.cmpRatio);
+    dApeShape->SetDim(DIM_INDEX_1, shapeParam.totalDim);
 
     return GRAPH_SUCCESS;
 }
