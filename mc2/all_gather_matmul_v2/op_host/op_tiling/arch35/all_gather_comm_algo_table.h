@@ -8,6 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file all_gather_comm_algo_table.h
+ * \brief all_gather_matmul / all_gather_matmul_v2 共享的 AllGather 通信算法表。
+ * 宿主在 all_gather_matmul_v2 目录：V1 的 op_api 已依赖 V2（A5 上 aclnnAllGatherMatmul 前转 V2），
+ * V1 tiling 经既有依赖方向跨目录引用本表，避免 mc2/common 引入算子专属数据。
+ */
+
 #ifndef ALL_GATHER_COMM_ALGO_TABLE_H
 #define ALL_GATHER_COMM_ALGO_TABLE_H
 
@@ -16,9 +23,9 @@
 
 namespace Mc2Tiling {
 
-inline constexpr const char *ALLGATHER_MM_DEFAULT_ALGO_NAME = "AllGather=level0:fullmesh";
+inline constexpr const char *ALLGATHER_DEFAULT_ALGO_NAME = "AllGather=level0:fullmesh";
 
-const Mc2Hcom::CommAlgoEntry *GetAllGatherMatmulCommAlgoTable(uint32_t &count);
+const Mc2Hcom::CommAlgoEntry *GetAllGatherCommAlgoTable(uint32_t &count);
 
 } // namespace Mc2Tiling
 

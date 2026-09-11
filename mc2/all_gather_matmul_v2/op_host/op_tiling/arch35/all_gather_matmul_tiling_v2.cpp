@@ -25,7 +25,7 @@
 #include <vector>
 
 #include "all_gather_matmul_tiling_v2.h"
-#include "all_gather_matmul_v2_comm_algo_table.h"
+#include "all_gather_comm_algo_table.h"
 #include "all_gather_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
@@ -223,10 +223,10 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%lu, mValue=%lu, kValue=%lu, rankDim=%u, commEngine=%u",
             commDataBytes, args_.mValue, args_.kValue, args_.rankDim, commEngine);
     uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherV2CommAlgoTable(algoCount);
-    std::string algConfig = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes,
-                                                                         args_.rankDim, algoEntries, algoCount,
-                                                                         Mc2Tiling::ALLGATHER_MM_V2_DEFAULT_ALGO_NAME);
+    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
+    std::string algConfig =
+        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes, args_.rankDim,
+                                                     algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
     OP_LOGI(opName_, "[SetMc2Hcomm] selected algConfig=%s, group=%s", algConfig.c_str(), group);
     Mc2CcTilingConfig mc2CcTilingConfig(
         group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER), algConfig, 0,
