@@ -169,6 +169,8 @@ protected:
     GlobalTensor<T> mm2Res[2];
     GlobalTensor<T> vec2Res[2];
     GlobalTensor<INPUT_T> stage1Res[2];
+    GlobalTensor<INPUT_T> scoreRowAliasRes[2];
+    bool scoreRowAliasEnabled = false;
     GlobalTensor<half> pseAlibiGm;
 
     LocalTensor<float> sinkUb; // sinkUb
@@ -389,6 +391,16 @@ MlaS1s2Bn2gs1SameABBaseApi<TILING_TYPE, implMode, layOutType, hasAtten, INPUT_T,
     // bmm1Result，占用2倍mmNRatioOffset空间
     this->mm1Res[0].SetGlobalBuffer((__gm__ T *)(workspace + this->cubeBlockIdx * totalOffset));
     this->mm1Res[1].SetGlobalBuffer((__gm__ T *)(workspace + this->cubeBlockIdx * totalOffset + mmNRatioOffset));
+    this->scoreRowAliasRes[0].SetGlobalBuffer((__gm__ INPUT_T *)(workspace + this->cubeBlockIdx * totalOffset));
+    this->scoreRowAliasRes[1].SetGlobalBuffer((__gm__ INPUT_T *)(workspace + this->cubeBlockIdx * totalOffset + mmNRatioOffset));
+    if constexpr (layOutType == LayOutTypeEnum::LAYOUT_TND &&
+                  IsSameType<INPUT_T, bfloat16_t>::value && IsSameType<T, float>::value &&
+                  !pageAttention && !hasAtten) {
+        scoreRowAliasEnabled = this->dSize == 128 && this->valueDSize == 128 && this->ropeHeadSize == 0 &&
+            this->tilingData->PFAinputParams.gSize == 1 &&
+            this->tilingData->PFAinputParams.s1Size >= 32768 &&
+            this->tilingData->PFAinputParams.s2Size >= 32768;
+    }
 
     // stage1Result，不占用/占用1倍/占用2倍mmNRatioOffset空间
     this->stage1Res[0].SetGlobalBuffer(
@@ -417,6 +429,7 @@ MlaS1s2Bn2gs1SameABBaseApi<TILING_TYPE, implMode, layOutType, hasAtten, INPUT_T,
     if ASCEND_IS_AIC {
         matmulService.InitMm1GlobalTensor(queryGm, keyGm, qRopeGm, kRopeGm, mm1Res);
         matmulService.InitMm2GlobalTensor(stage1Res, valueGm, mm2Res, attentionOutGm);
+        matmulService.EnableScoreRowAlias(scoreRowAliasEnabled);
         matmulService.InitPageAttentionInfo(blockTableGm, kvCacheBlockSize, maxBlockNumPerBatch);
     }
 }
@@ -1048,10 +1061,19 @@ MlaS1s2Bn2gs1SameABBaseApi<TILING_TYPE, implMode, layOutType, hasAtten, INPUT_T,
                     dataCopyParams.blockLen = extraInfo.vec1S1RealSize * extraInfo.s2AlignedSize / 16;
                     dataCopyParams.srcStride = 0;
                 }
-                DataCopy(
-                    this->stage1Res[extraInfo.taskIdMod2][(extraInfo.vecCoreOffset +
-                        loopIdx * extraInfo.vec1S1BaseSize) * extraInfo.s2AlignedSize],
-                        stage1CastTensor, dataCopyParams);
+                const int64_t row = extraInfo.vecCoreOffset + loopIdx * extraInfo.vec1S1BaseSize;
+                if (scoreRowAliasEnabled && extraInfo.needNz2Nd == 0 &&
+                    extraInfo.s2AlignedSize == extraInfo.s2RealSize) {
+                    dataCopyParams.blockCount = extraInfo.vec1S1RealSize;
+                    dataCopyParams.blockLen = extraInfo.s2AlignedSize / 16;
+                    dataCopyParams.srcStride = (extraInfo.s2RealSizeAlign64 - extraInfo.s2AlignedSize) / 16;
+                    dataCopyParams.dstStride = extraInfo.s2AlignedSize / 16;
+                    DataCopy(this->scoreRowAliasRes[extraInfo.taskIdMod2][row * 2 * extraInfo.s2AlignedSize],
+                             stage1CastTensor, dataCopyParams);
+                } else {
+                    DataCopy(this->stage1Res[extraInfo.taskIdMod2][row * extraInfo.s2AlignedSize],
+                             stage1CastTensor, dataCopyParams);
+                }
             }
         } else {
             SetFlag<HardEvent::V_MTE3>(this->v1VecEndEvent);

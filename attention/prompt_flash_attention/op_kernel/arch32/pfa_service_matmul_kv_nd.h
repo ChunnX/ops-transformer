@@ -37,6 +37,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void UpdateKey(GlobalTensor<INPUT_T> keyGm);
     __aicore__ inline void UpdateValue(GlobalTensor<INPUT_T> valueGm);
+    __aicore__ inline void EnableScoreRowAlias(bool enabled) { scoreRowAliasEnabled = enabled; }
 
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -153,6 +154,7 @@ protected:
     int64_t mm2Kb = 0;
 
 private:
+    bool scoreRowAliasEnabled = false;
     // L1
     static constexpr uint32_t L1_1_SIZE = 192 * 1024; // 192KB
     static constexpr uint32_t L1_2_SIZE = 64 * 1024; // 64KB
@@ -175,6 +177,7 @@ private:
     // m <> mte1
     static constexpr uint32_t L0AB_EVENT0 = EVENT_ID3;
     static constexpr uint32_t L0AB_EVENT1 = EVENT_ID4;
+    static constexpr uint32_t RESIDENT_K_EVENT = EVENT_ID5;
 
     // fix <> m
     static constexpr uint32_t L0C_EVENT0 = EVENT_ID3;
@@ -211,6 +214,10 @@ private:
     uint32_t abL0BufIter = 0;
     uint32_t cL0BufIter = 0;
     uint64_t qL1BufAddr[2] = {(uint64_t)-1, (uint64_t)-1};
+    static constexpr uint32_t RESIDENT_Q_OFFSET_BYTES = 256 * 1024;
+    uint64_t residentQAddr = (uint64_t)-1;
+    uint32_t residentQRows = 0;
+    bool residentQActive = false;
 };
 
 template <typename INPUT_T, typename T, bool pageAttention>
@@ -697,6 +704,15 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::CopyInMm2AToL1(
         auto srcGm = vec1ResGm[info.taskIdMod2][gmStride * subKStart + GetC0Num<INPUT_T>() * subMStart];
         CopyNZGmToL1(aL1Tensor, srcGm, subMSize, subKSize, gmStride);
     } else {
+        if (scoreRowAliasEnabled && info.needNz2Nd == 0 && info.s2AlignedSize == info.s2RealSize) {
+            GlobalTensor<INPUT_T> aliasedP;
+            aliasedP.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(
+                const_cast<__gm__ T *>(mm1ResGm[info.taskIdMod2].GetPhyAddr())));
+            const uint32_t rowStride = 2 * gmStride;
+            auto srcGm = aliasedP[rowStride * subMStart + subKStart];
+            CopyNDGmToL1(aL1Tensor, srcGm, subMSize, subKSize, rowStride);
+            return;
+        }
         auto srcGm = vec1ResGm[info.taskIdMod2][gmStride * subMStart + subKStart];
         CopyNDGmToL1(aL1Tensor, srcGm, subMSize, subKSize, gmStride);
     }
@@ -767,6 +783,28 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ResetLoad3DConf
 template <typename INPUT_T, typename T, bool pageAttention>
 __aicore__ inline LocalTensor<INPUT_T> PfaMatmulKvNd<INPUT_T, T, pageAttention>::CopyQToL1(const SplitSameABExtraInfo &info, uint32_t mL1Size)
 {
+    residentQActive = !pageAttention && IsSameType<INPUT_T, bfloat16_t>::value &&
+        dSize == 128 && valueDSize == 128 && !info.withRope && info.gBaseSize == 1 &&
+        mL1Size <= 512;
+    if (residentQActive) {
+        // Keep Q above the complete 256 KiB V tile, while retaining both
+        // original slot guards for safe transitions to/from generic copies.
+        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
+        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
+        qL1BufIter -= qL1BufIter % 2;
+        auto residentTensor = qL1Tensor[0][RESIDENT_Q_OFFSET_BYTES / sizeof(INPUT_T)];
+        if (residentQAddr != info.qCoreOffset || residentQRows != mL1Size) {
+            CopyInMm1AToL1(residentTensor, info);
+            SetFlag<HardEvent::MTE2_MTE1>(Q_EVENT0);
+            WaitFlag<HardEvent::MTE2_MTE1>(Q_EVENT0);
+            residentQAddr = info.qCoreOffset;
+            residentQRows = mL1Size;
+            qL1BufAddr[0] = (uint64_t)-1;
+            qL1BufAddr[1] = (uint64_t)-1;
+        }
+        return residentTensor;
+    }
+    residentQAddr = (uint64_t)-1;
     uint32_t pingpong = this->qL1BufIter % 2;
     if (qL1BufAddr[0] == info.qCoreOffset) {
         qL1BufIter += pingpong;
@@ -796,6 +834,7 @@ template <typename INPUT_T, typename T, bool pageAttention>
 template <uint32_t KL0_SPLITE_SIZE>
 __aicore__ inline LocalTensor<INPUT_T> PfaMatmulKvNd<INPUT_T, T, pageAttention>::CopyVToL1(const SplitSameABExtraInfo &info, uint32_t subKStart, uint32_t subKSize)
 {
+    residentQAddr = (uint64_t)-1;
     uint32_t pingpong = this->qL1BufIter % 2;
     WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + pingpong);
     this->template CopyInMm2BToL1<KL0_SPLITE_SIZE>(this->qL1Tensor[pingpong], info, subKStart, subKSize);
@@ -809,6 +848,12 @@ template <typename INPUT_T, typename T, bool pageAttention>
 template <CubeFormat OutFormat>
 __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm1(const SplitSameABExtraInfo &info)
 {
+    if (scoreRowAliasEnabled && info.taskId > 1) {
+        // C2(t-2) must finish reading P from this slot before C1(t) writes it.
+        event_t event = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_FIX));
+        SetFlag<HardEvent::MTE2_FIX>(event);
+        WaitFlag<HardEvent::MTE2_FIX>(event);
+    }
     ASCENDC_ASSERT((!info.withRope) || (dSize == BlockAlign<INPUT_T>(dSize)), 
         { KERNEL_LOG(KERNEL_ERROR, "dSize must block aligned if with seprate rope, current value is %u", dSize); });
     constexpr uint32_t mSplitSize = 512;
@@ -832,6 +877,13 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm1(cons
     uint32_t mL0Tail = mSizeAct - (mL0Loops - 1) * mL0SplitSize;
     uint32_t kL0Loops = CeilDiv(kSize, kL0SplitSize);
     uint32_t kL0Tail = kSize - (kL0Loops - 1) * kL0SplitSize;
+    const bool reuseKInL0 = scoreRowAliasEnabled && mSizeAct == 512 &&
+        info.gBaseSize == 1 && nSizeAct == 1024 && info.qkvDSameFlag &&
+        !info.withRope && kL0Loops == 1;
+    if (reuseKInL0) {
+        // All earlier Cube users of L0B must retire before the first resident load.
+        SetFlag<HardEvent::M_MTE1>(RESIDENT_K_EVENT);
+    }
     ResetLoad3DConfig<mSplitSize>();
 
     DEF_LAMBDA_WITHTHIS(CopyKToL1)(const SplitSameABExtraInfo &info, uint32_t subNStart, uint32_t subNSize) -> LocalTensor<INPUT_T> {
@@ -949,6 +1001,11 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm1(cons
         WaitFlag<HardEvent::MTE2_MTE1>(KV_EVENT0 + kvL1BufIter % 2);
         l1BufLoaded[kvL1BufIter % 2] = false;
         auto kTensor = kvL1Tensor[kvL1BufIter % 2];
+        auto residentKTensor = bL0TensorPingPong[abL0BufIter % 2];
+        if (reuseKInL0) {
+            // B stays live across both A slots; this event covers its last Cube user.
+            WaitFlag<HardEvent::M_MTE1>(RESIDENT_K_EVENT);
+        }
 
         uint32_t subML0Size = mL0SplitSize;
         uint32_t subML0SizeAct = mL0SplitSize;
@@ -991,7 +1048,16 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm1(cons
                 }
 
                 WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + abL0BufIter % 2);
-                auto bL0Tensor = LoadBToL0(kTensor, subNSize, 0, subNSize, kL0 * kL0SplitSize, subKL0Size);
+                auto bL0Tensor = residentKTensor;
+                if (reuseKInL0) {
+                    if (mL0 == 0) {
+                        LoadDataBTransposeToL0(bL0Tensor, kTensor, subNSize,
+                                              0, subNSize, 0, subKL0Size);
+                    }
+                } else {
+                    bL0Tensor = LoadBToL0(kTensor, subNSize, 0, subNSize,
+                                         kL0 * kL0SplitSize, subKL0Size);
+                }
                 auto aL0Tensor = LoadAToL0(qTensor, mL1Size, mL0 * mL0SplitSize, subML0Size, kL0 * kL0SplitSize, subKL0Size);
                 SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + abL0BufIter % 2);
                 WaitFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + abL0BufIter % 2);
@@ -1016,10 +1082,20 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm1(cons
             cL0BufIter++;
         }
 
+        if (reuseKInL0) {
+            SetFlag<HardEvent::M_MTE1>(RESIDENT_K_EVENT);
+        }
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvL1BufIter % 2);
         kvL1BufIter++;
     }
 
+    if (reuseKInL0) {
+        // C2 uses paired A/B slots again; retire the last user of shared B first.
+        WaitFlag<HardEvent::M_MTE1>(RESIDENT_K_EVENT);
+    }
+    if (residentQActive) {
+        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
+    }
     SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qL1BufIter % 2);
     qL1BufIter++;
 }
@@ -1132,11 +1208,30 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm2(cons
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + pingpong);
     } DEF_LAMBDA_END(FixpipeCToGM);
 
+    const uint64_t vL1Bytes = static_cast<uint64_t>(kSize) * nSize * sizeof(INPUT_T);
+    const bool mergeVInL1 = !pageAttention && sizeof(INPUT_T) == 2 && nSize == 128 &&
+        vL1Bytes > L1_1_SIZE && vL1Bytes <= 2 * L1_1_SIZE;
+    const bool splitVInL1 = vL1Bytes > L1_1_SIZE && !mergeVInL1;
     LocalTensor<INPUT_T> vTensor;
-    if constexpr (pageAttention) {
-        vTensor = CopyVToL1ForPA(info, 0, kSizeAct, nSize);
-    } else {
-        vTensor = CopyVToL1<kL0SplitSize>(info, 0, kSizeAct);
+    if (mergeVInL1) {
+        // Borrow both released Q slots for V; K/P has a separate L1 allocation.
+        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
+        WaitFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
+        vTensor = qL1Tensor[0];
+        CopyInMm2BToL1<kL0SplitSize>(vTensor, info, 0, kSizeAct);
+        SetFlag<HardEvent::MTE2_MTE1>(Q_EVENT0);
+        WaitFlag<HardEvent::MTE2_MTE1>(Q_EVENT0);
+        qL1BufAddr[0] = (uint64_t)-1;
+        qL1BufAddr[1] = (uint64_t)-1;
+        if (vL1Bytes > RESIDENT_Q_OFFSET_BYTES) {
+            residentQAddr = (uint64_t)-1;
+        }
+    } else if (!splitVInL1) {
+        if constexpr (pageAttention) {
+            vTensor = CopyVToL1ForPA(info, 0, kSizeAct, nSize);
+        } else {
+            vTensor = CopyVToL1<kL0SplitSize>(info, 0, kSizeAct);
+        }
     }
     uint32_t subMSize = mSplitSize;
     uint32_t subMSizeAct = mSplitSize;
@@ -1160,6 +1255,14 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm2(cons
 
             auto pTensor = CopyPToL1(info, (AFormat == CubeFormat::NZ) ? mInputSize : kSize, m * mSplitSize, subMSize, k * kSplitSize, subKSize);
 
+            if (splitVInL1) {
+                if constexpr (pageAttention) {
+                    vTensor = CopyVToL1ForPA(info, k * kSplitSize, subKSizeAct, nSize);
+                } else {
+                    vTensor = CopyVToL1<kL0SplitSize>(info, k * kSplitSize, subKSizeAct);
+                }
+            }
+
             uint32_t kL0Loops = CeilDiv(subKSizeAct, kL0SplitSize);
             uint32_t kL0Tail = subKSizeAct - (kL0Loops - 1) * kL0SplitSize;
             uint32_t subKL0Size = kL0SplitSize;
@@ -1173,7 +1276,8 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm2(cons
 
                 WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + abL0BufIter % 2);
                 auto aL0Tensor = LoadAToL0(pTensor, subMSize, 0, subMSize, kL0 * kL0SplitSize, subKL0Size);
-                auto bL0Tensor = LoadBToL0(nSize, vTensor, kSize, (k * kSplitSize) + (kL0 * kL0SplitSize), subKL0Size, 0, nSize);
+                auto bL0Tensor = LoadBToL0(nSize, vTensor, splitVInL1 ? subKSize : kSize,
+                    (splitVInL1 ? 0 : k * kSplitSize) + kL0 * kL0SplitSize, subKL0Size, 0, nSize);
                 SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + abL0BufIter % 2);
                 WaitFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + abL0BufIter % 2);
 
@@ -1194,6 +1298,10 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm2(cons
 
             SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvL1BufIter % 2);
             kvL1BufIter++;
+            if (splitVInL1) {
+                SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qL1BufIter % 2);
+                qL1BufIter++;
+            }
         }
 
         FixpipeCToGM(info, cL0Tensor, (OutFormat == CubeFormat::NZ) ? mSizeAct : nSizeAct, 
@@ -1201,8 +1309,14 @@ __aicore__ inline void PfaMatmulKvNd<INPUT_T, T, pageAttention>::ComputeMm2(cons
         cL0BufIter++;
     }
 
-    SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qL1BufIter % 2);
-    qL1BufIter++;
+    if (mergeVInL1) {
+        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
+        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT1);
+        qL1BufIter += 2;
+    } else if (!splitVInL1) {
+        SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0 + qL1BufIter % 2);
+        qL1BufIter++;
+    }
 }
 
 #endif //PFA_SERVICE_MATMUL_KV_ND_H

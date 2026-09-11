@@ -3530,6 +3530,15 @@ void PromptFlashAttentionTiling::MatchTemplate(uint32_t valueD)
     s2BasicBlock = std::min(128L, alignedS2);
     s1VecBasicBlock = s1BasicBlock / AIV_AIC_NUM_RATIO;
     nRatio = (InputLayoutIsTNDLike() && (valueD <= D_SIZE_128)) ? 4L : 8L; // TND基本块设为(512, 128*4)
+    // Trial only: pair the long dense BF16 tile with the validated Q-resident
+    // and score-row-alias device implementation. Other cases retain stock tiling.
+    if (inputLayout == InputLayout::TND && bSize == 1 && s1Size >= 32768L && s2Size >= 32768L &&
+        dSize == D_SIZE_128 && valueD == D_SIZE_128 && gSize == 1 && !enablePA &&
+        contextKeyParamsPtr->inputDataType == ge::DT_BF16 &&
+        contextKeyParamsPtr->attentionMaskShape == nullptr && contextKeyParamsPtr->queryRope == nullptr &&
+        contextKeyParamsPtr->learnableSinkShape == nullptr && !contextKeyParamsPtr->isSoftMaxLseEnable) {
+        nRatio = 8L;
+    }
     dBasicBlock = std::min(128L, alignedD);
     CalcUBSize();
 }

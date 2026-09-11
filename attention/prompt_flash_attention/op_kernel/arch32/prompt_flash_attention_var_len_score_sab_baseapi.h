@@ -433,6 +433,27 @@ __aicore__ inline void PromptFlashAttentionVarLenScoreSameABBaseApi<TILING_TYPE,
     }
     // 计算sparse场景下s1的循环范围
     this->GetS1LoopRange(multiCoreInnerOffset, multiCoreInnerLimit);
+    int64_t multiCoreInnerStep = 1;
+    const int64_t vectorCoreCount = this->tilingData->PFAmultiCoreParams.coreNum;
+    if (this->scoreRowAliasEnabled && this->cubeS1BaseSize == 512 &&
+        this->s2BaseNRatioSize == 1024 && this->tilingData->PFAinputParams.bSize == 1 &&
+        this->tilingData->PFAinputParams.gSize == 1 &&
+        this->tilingData->PFAinputParams.n2Size > 1 &&
+        this->tilingData->PFAinputParams.sparseType == 0 &&
+        vectorCoreCount > 0 && vectorCoreCount % 2 == 0) {
+        // Keep each query's KV reduction intact; group contemporaneous work by head.
+        multiCoreInnerOffset = this->cubeBlockIdx;
+        multiCoreInnerLimit = this->tilingData->PFAmultiCoreParams.totalSize;
+        multiCoreInnerStep = vectorCoreCount / 2;
+        if (this->tilingData->PFAinputParams.n2Size % 2 == 0 && vectorCoreCount % 4 == 0) {
+            const int64_t cubesPerGroup = vectorCoreCount / 4;
+            const int64_t tasksPerGroup = this->tilingData->PFAmultiCoreParams.totalSize / 2;
+            const int64_t groupStart = (this->cubeBlockIdx / cubesPerGroup) * tasksPerGroup;
+            multiCoreInnerOffset = groupStart + this->cubeBlockIdx % cubesPerGroup;
+            multiCoreInnerLimit = groupStart + tasksPerGroup;
+            multiCoreInnerStep = cubesPerGroup;
+        }
+    }
     // 初始化AxisIdx
     this->CalS1OuterSize(multiCoreInnerOffset);
 
@@ -444,7 +465,8 @@ __aicore__ inline void PromptFlashAttentionVarLenScoreSameABBaseApi<TILING_TYPE,
 
     SplitSameABExtraInfo extraInfo[3];
     int64_t taskId = 0;
-    for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit; ++multiCoreInnerIdx) {
+    for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit;
+         multiCoreInnerIdx += multiCoreInnerStep) {
         this->softMaxCheckRes = SOFTMAX_CHECK_RES_DEFAULT_VALUE;
         this->ComputeAxisIdx(multiCoreInnerIdx);
         // s2轴循环计数, 支持sparse和非sparse场景
