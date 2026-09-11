@@ -89,7 +89,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
     apaceTilingData_.mc2CcTiling = tilingData->hcclA2avTilingInfo.a2avCcTiling;
     OP_LOGI(opName,
             "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
-            "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u initBarrier=1",
+            "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u initBarrier=1 diag=scale-only",
             epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
             apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
             apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset,

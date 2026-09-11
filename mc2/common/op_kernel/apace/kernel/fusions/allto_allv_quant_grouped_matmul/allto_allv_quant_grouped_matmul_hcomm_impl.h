@@ -157,6 +157,10 @@ public:
         // Do not let AIV0 submit the first collective while another MIX
         // sub-core is still initializing its HCCL context.
         AscendC::SyncAll<false>();
+        if (A2AV_GMM_DIAG_SCALE_ONLY) {
+            RunScaleDiagnostic();
+            return;
+        }
         if ASCEND_IS_AIV {
             RunCommunication();
             return;
@@ -221,6 +225,26 @@ private:
         hccl_.Finalize();
     }
 
+    __aicore__ inline void RunScaleDiagnostic()
+    {
+        if ASCEND_IS_AIV {
+            if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
+                PrepareExpertCommunication(0U);
+                scaleHandle_ = hccl_.template AlltoAllV<true>(
+                    xScaleGM_, scaleSendCnt_, scaleSendOff_,
+                    static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleRecvGM_, scaleRecvCnt_,
+                    scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
+                hccl_.Wait(scaleHandle_);
+            }
+        }
+        // Hold every MIX sub-core until AIV0 either finishes the scale
+        // collective or reproduces the hang, then close the normal lifecycle.
+        AscendC::SyncAll<false>();
+        if ASCEND_IS_AIV {
+            hccl_.Finalize();
+        }
+    }
+
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
     {
         const uint32_t previous = (segIdx == 0U) ? 0U : tilingData_->segList[segIdx - 1U];
@@ -228,6 +252,17 @@ private:
     }
 
     __aicore__ inline void IssueExpertCommunication(uint32_t expertIdx)
+    {
+        PrepareExpertCommunication(expertIdx);
+        scaleHandle_ = hccl_.template AlltoAllV<true>(
+            xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
+            scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
+        dataHandle_ = hccl_.template AlltoAllV<true>(
+            xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
+            dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+    }
+
+    __aicore__ inline void PrepareExpertCommunication(uint32_t expertIdx)
     {
         const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ? (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U
                                                              : static_cast<uint64_t>(tilingData_->k);
@@ -253,12 +288,6 @@ private:
             scaleRecvCnt_[peer] = recvRows * scaleAxis;
             scaleRecvOff_[peer] = recvRowOffset * scaleAxis;
         }
-        scaleHandle_ = hccl_.template AlltoAllV<true>(
-            xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
-            scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
-        dataHandle_ = hccl_.template AlltoAllV<true>(
-            xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
-            dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
     }
 
     __aicore__ inline void RunExpertMatmul(uint32_t expertIdx)
