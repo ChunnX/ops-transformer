@@ -106,7 +106,7 @@ public:
     static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
 
     /*!
-     * \brief 初始化并下发通信任务（AIV only）
+     * \brief 初始化 HCCL，并由 AIV0 下发首个通信任务
      *
      * \param[in] tilingGM tiling buffer 首地址：GET_TILING_DATA_WITH_STRUCT 得到的是本地拷贝，
      *            段表（segList/segAOff/segCOff）以 __gm__ 指针按偏移直接引用 tiling buffer
@@ -137,14 +137,15 @@ public:
         mmGroupListGm_ = reinterpret_cast<__gm__ const uint32_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList));
 
+        // Match the repository-native HcclA2avOp lifecycle: InitV2 and
+        // SetCcTilingV2 run on every MIX sub-core. Only collective launch,
+        // wait and finalize are restricted to AIV; returning before InitV2 on
+        // AIC leaves the MIX task's HCCL context only partially initialized.
+        hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
+        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
         if ASCEND_IS_AIC {
             return;
         }
-        // AlltoAllV is an AIV-side HCCL primitive in the existing A2AV
-        // scheduler. Every AIV initializes/finalizes its HCCL object; AIV0 is
-        // the sole owner of the collective task sequence.
-        hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
-        hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
         if (IsCommunicationCore()) {
             if (tilingData_->expertNum > 0U) {
                 IssueExpertCommunication(0U, 0U);
