@@ -973,8 +973,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
         GroupMatmulWithActivationQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, sharedIdx, vecSetSyncCom,
                                              gmTileSequence);
     }
-    Gmm1UbActivationSync ubSync(vecSetSyncCom, gmm1PingPongIdx_);
-    ubSync.EndSync();
+    Gmm1UbActivationSync::EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     gmm1PingPongIdx_ = 0U;
     startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
@@ -1088,8 +1087,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
         Gmm1GmCompletionSync sync(allDoneAddr, allDoneTag, subBlockIdx_, ENABLE_A8W4 ? 1U : 0U);
         sync.EndSync();
     } else {
-        Gmm1UbActivationSync sync(vecSetSyncCom, gmm1PingPongIdx_);
-        sync.EndSync();
+        Gmm1UbActivationSync::EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     }
     gmm1PingPongIdx_ = 0U;
     if constexpr (g_coreType == AIV) {

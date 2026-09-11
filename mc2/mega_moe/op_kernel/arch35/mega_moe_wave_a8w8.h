@@ -563,8 +563,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
 
     if constexpr (!TopkWeightsPrefetch) {
-        Gmm1UbActivationSync ubSync(vecSetSyncCom, gmm1PingPongIdx_);
-        ubSync.EndSync();
+        Gmm1UbActivationSync::EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     }
     gmm1PingPongIdx_ = 0;
     // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。

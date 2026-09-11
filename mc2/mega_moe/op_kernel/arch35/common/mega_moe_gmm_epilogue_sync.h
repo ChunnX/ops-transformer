@@ -72,21 +72,6 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     AscendC::CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx)
-{
-    if (vecSetSyncCom == 0) {
-        return;
-    }
-    if constexpr (g_coreType == AscendC::AIC) {
-        if (vecSetSyncCom == 1) {
-            WaitForVector(1U - pingpongIdx);
-        } else {
-            WaitForVector(pingpongIdx);
-            WaitForVector(1U - pingpongIdx);
-        }
-    }
-}
-
 // Non-owning view of the caller's UB state. State advances at the same notify
 // sites as before and remains alive across expert/wave calls.
 class Gmm1UbActivationSync {
@@ -125,14 +110,24 @@ public:
         pingpongIdx_ = 1U - pingpongIdx_;
     }
 
-    __aicore__ inline void EndSync()
+    __aicore__ static inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx)
     {
-        MegaMoeImpl::EndSync(*submittedTiles_, pingpongIdx_);
+        if (vecSetSyncCom == 0) {
+            return;
+        }
+        if constexpr (g_coreType == AscendC::AIC) {
+            if (vecSetSyncCom == 1) {
+                WaitForVector(1U - pingpongIdx);
+            } else {
+                WaitForVector(pingpongIdx);
+                WaitForVector(1U - pingpongIdx);
+            }
+        }
     }
 
 private:
     uint16_t &pingpongIdx_;
-    int32_t *submittedTiles_ = nullptr; // Required only for AIC submission and final draining.
+    int32_t *submittedTiles_ = nullptr; // Required only for AIC submission.
 };
 
 // GMM1 -> Activation：A8W8/A4W4 使用 AIV0，A8W4 使用 AIV1。

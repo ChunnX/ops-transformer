@@ -299,8 +299,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     }
 
     if constexpr (!TopkWeightsPrefetch) {
-        Gmm1UbActivationSync ubSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
-        ubSync.EndSync();
+        Gmm1UbActivationSync::EndSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
     }
     // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
     gmm1ActivationSync.EndSync();
