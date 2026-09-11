@@ -451,7 +451,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::C
         (void)hcomm_.BatchCommit(batchHandle);
         preparedWqeCount = 0U;
     }
-    AscendC::PRINTF("SQ protection triggered, sqWriteCount=%u\n", sqWriteCount);
+    // AscendC::PRINTF("SQ protection triggered, sqWriteCount=%u\n", sqWriteCount);
     int32_t ret = hcomm_.Drain(channel);
     ascendc_assert(ret == 0, "Urma drain failed, ret=%d", ret);
     sqWriteCount = 0U;
@@ -515,7 +515,10 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::P
                     AppendRemoteDataWrite(batchHandle, remoteWindowAddr, relayInfo, dstRank, enableCqe);
                     ++preparedWqeCount;
                     ++sqWriteCount;
+                    uint32_t drainCount = 0U;
                     if (enableCqe) {
+                        AscendC::PRINTF("rank=%u, dst=%u, drain=%u, sq=%u\n", rankId_, dstRank, drainCount,
+                                        sqWriteCount);
                         CommitAndDrainChannel(batchHandle, channel, preparedWqeCount, sqWriteCount);
                     } else if (preparedWqeCount == URMA_BATCH_WQE_CAPACITY) {
                         (void)hcomm_.BatchCommit(batchHandle);
