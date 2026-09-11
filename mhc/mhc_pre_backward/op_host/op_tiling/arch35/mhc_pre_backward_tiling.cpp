@@ -287,16 +287,16 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
                 return ge::GRAPH_FAILED);
 
     auto bufferCapacityValid = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
-        return alignUp(config.baseM, cubeAlign) * alignUp(config.l1K, cubeAlign) * elementSize <=
-                   config.l1BufferBytes &&
-               alignUp(config.baseN, cubeAlign) * alignUp(config.l1K, cubeAlign) * elementSize <=
-                   config.l1BufferBytes &&
-               alignUp(config.baseM, cubeAlign) * alignUp(config.baseK, cubeAlign) * elementSize <=
-                   config.l0ABufferBytes &&
-               alignUp(config.baseN, cubeAlign) * alignUp(config.baseK, cubeAlign) * elementSize <=
-                   config.l0BBufferBytes &&
-               alignUp(config.baseM, cubeAlign) * alignUp(config.baseN, cubeAlign) * elementSize <=
-                   config.l0CBufferBytes;
+        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize <=
+                   config.get_l1BufferBytes() &&
+               alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize <=
+                   config.get_l1BufferBytes() &&
+               alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize <=
+                   config.get_l0ABufferBytes() &&
+               alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize <=
+                   config.get_l0BBufferBytes() &&
+               alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseN(), cubeAlign) * elementSize <=
+                   config.get_l0CBufferBytes();
     };
     OP_CHECK_IF(!bufferCapacityValid(mmConfigC0_) || !bufferCapacityValid(mmConfigC1_),
                 OP_LOGE(context_->GetNodeName(), "MM config %u buffer capacity is insufficient", mmConfigKey_),

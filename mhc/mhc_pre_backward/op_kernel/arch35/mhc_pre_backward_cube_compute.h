@@ -102,35 +102,35 @@ private:
     MMConfig mmConfigC0_;
     MMConfig mmConfigC1_;
     uint32_t cubeBufferDepth_{0};
-    uint32_t cubeL1SlotElems_{0};
-    uint32_t cubeL0SlotElems_{0};
-    uint32_t cubeL0CSlotElems_{0};
+    uint32_t cubeL1BufferElems_{0};
+    uint32_t cubeL0BufferElems_{0};
+    uint32_t cubeL0CBufferElems_{0};
 };
 
 __aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling)
 {
     mmConfigC0_ = tiling->mmConfigC0;
     mmConfigC1_ = tiling->mmConfigC1;
-    uint32_t l1SlotBytes = CubeMax(mmConfigC0_.get_l1BufferBytes(), mmConfigC1_.get_l1BufferBytes());
+    uint32_t l1BufferBytes = CubeMax(mmConfigC0_.get_l1BufferBytes(), mmConfigC1_.get_l1BufferBytes());
     uint32_t l1ADepth = CubeMax(mmConfigC0_.get_l1ADepth(), mmConfigC1_.get_l1ADepth());
     uint32_t l1BDepth = CubeMax(mmConfigC0_.get_l1BDepth(), mmConfigC1_.get_l1BDepth());
-    uint32_t l0SlotBytes = CubeMax(CubeMax(mmConfigC0_.get_l0ABufferBytes(), mmConfigC1_.get_l0ABufferBytes()),
+    uint32_t l0BufferBytes = CubeMax(CubeMax(mmConfigC0_.get_l0ABufferBytes(), mmConfigC1_.get_l0ABufferBytes()),
                                    CubeMax(mmConfigC0_.get_l0BBufferBytes(), mmConfigC1_.get_l0BBufferBytes()));
     uint32_t l0Depth = CubeMax(CubeMax(mmConfigC0_.get_l0ADepth(), mmConfigC1_.get_l0ADepth()),
                                CubeMax(mmConfigC0_.get_l0BDepth(), mmConfigC1_.get_l0BDepth()));
-    uint32_t l0CSlotBytes = CubeMax(mmConfigC0_.get_l0CBufferBytes(), mmConfigC1_.get_l0CBufferBytes());
+    uint32_t l0CBufferBytes = CubeMax(mmConfigC0_.get_l0CBufferBytes(), mmConfigC1_.get_l0CBufferBytes());
     uint32_t l0CDepth = CubeMax(mmConfigC0_.get_l0CDepth(), mmConfigC1_.get_l0CDepth());
     cubeBufferDepth_ = CubeMax(CubeMax(l1ADepth, l1BDepth), CubeMax(l0Depth, l0CDepth));
-    cubeL1SlotElems_ = l1SlotBytes / sizeof(float);
-    cubeL0SlotElems_ = l0SlotBytes / sizeof(float);
-    cubeL0CSlotElems_ = l0CSlotBytes / sizeof(float);
+    cubeL1BufferElems_ = l1BufferBytes / sizeof(float);
+    cubeL0BufferElems_ = l0BufferBytes / sizeof(float);
+    cubeL0CBufferElems_ = l0CBufferBytes / sizeof(float);
 
-    pipe->InitBuffer(l1Buf_, (l1ADepth + l1BDepth) * l1SlotBytes);
+    pipe->InitBuffer(l1Buf_, (l1ADepth + l1BDepth) * l1BufferBytes);
     aL1Local_ = l1Buf_.Get<float>();
-    bL1Local_ = aL1Local_[l1ADepth * cubeL1SlotElems_];
-    aL0Local_ = LocalTensor<float>(TPosition::A2, 0, l0Depth * cubeL0SlotElems_);
-    bL0Local_ = LocalTensor<float>(TPosition::B2, 0, l0Depth * cubeL0SlotElems_);
-    cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, l0CDepth * cubeL0CSlotElems_);
+    bL1Local_ = aL1Local_[l1ADepth * cubeL1BufferElems_];
+    aL0Local_ = LocalTensor<float>(TPosition::A2, 0, l0Depth * cubeL0BufferElems_);
+    bL0Local_ = LocalTensor<float>(TPosition::B2, 0, l0Depth * cubeL0BufferElems_);
+    cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, l0CDepth * cubeL0CBufferElems_);
 
     for (uint32_t slot = 0; slot < cubeBufferDepth_; ++slot) {
         // 三组初始令牌分别表示L1、L0A/B和L0C对应半区可写。
@@ -198,7 +198,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTile(
     // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
     uint32_t cDepth = REUSE_B1 ? mmConfigC0_.get_l0CDepth() : mmConfigC1_.get_l0CDepth();
     uint32_t cSlot = cl0PingPongID_ % cDepth;
-    LocalTensor<float> currentC = cL0Local_[cSlot * cubeL0CSlotElems_];
+    LocalTensor<float> currentC = cL0Local_[cSlot * cubeL0CBufferElems_];
     WaitFlag<HardEvent::FIX_M>(cSlot);
 
     ProcessKRange<REUSE_B1>(currentC, a, b, m, n, k, aGmStride, bGmStride, transA, true);
@@ -237,8 +237,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < l1K ? remainKL1 : l1K;
         uint32_t l1Slot = REUSE_B1 ? ((offsetKL1 / l1K) % l1Depth) : (l1PingPongID_ % l1Depth);
-        LocalTensor<float> currentA1 = aL1Local_[l1Slot * cubeL1SlotElems_];
-        LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1SlotElems_];
+        LocalTensor<float> currentA1 = aL1Local_[l1Slot * cubeL1BufferElems_];
+        LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1BufferElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
         if (transA) {
@@ -256,7 +256,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
             uint32_t remainKL0 = currentKL1 - offsetKL0;
             uint32_t currentKL0 = remainKL0 < baseK ? remainKL0 : baseK;
             uint32_t l0Slot = l0PingPongID_ % l0Depth;
-            uint32_t l0Offset = l0Slot * cubeL0SlotElems_;
+            uint32_t l0Offset = l0Slot * cubeL0BufferElems_;
             LocalTensor<float> currentA2 = aL0Local_[l0Offset];
             LocalTensor<float> currentB2 = bL0Local_[l0Offset];
 
@@ -289,7 +289,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::PreloadB1(const GlobalTensor<f
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < mmConfigC0_.get_l1K() ? remainKL1 : mmConfigC0_.get_l1K();
         uint32_t l1Slot = (offsetKL1 / mmConfigC0_.get_l1K()) % mmConfigC0_.get_l1BDepth();
-        LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1SlotElems_];
+        LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1BufferElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
         CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
