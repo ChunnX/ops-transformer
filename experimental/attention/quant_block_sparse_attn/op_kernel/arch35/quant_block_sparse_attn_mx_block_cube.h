@@ -134,16 +134,8 @@ public:
                                              MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         // Both C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
-        if constexpr (D_BASE == 256U) {
-            // Issue both independent GM->L1 copies before consuming the first K tile.
-            auto kBuf0 = PrefetchKey<0U>(runInfo, constInfo);
-            auto kBuf1 = PrefetchKey<1U>(runInfo, constInfo);
-            IterateBmm1Impl<0U, true, false, true>(outputBuf0, runInfo, constInfo, kBuf0);
-            IterateBmm1Impl<1U, false, true, true>(outputBuf1, runInfo, constInfo, kBuf1);
-        } else {
-            IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
-            IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
-        }
+        IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
+        IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
     }
 
     __aicore__ inline void IterateBmm2(MxBmm2Buf &outputBuf,
@@ -152,15 +144,6 @@ public:
     {
         // C2: P[128,S2_BASE] x V[S2_BASE,DV]，P/V 均携带 e8m0 scale。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
-        Buffer<BufferType::L1> prefetchedV[2];
-        if constexpr (D_BASE == 256U) {
-            // V does not depend on Vector's P. Start both copies before waiting for P.
-            const uint32_t count = (runInfo.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
-            for (uint32_t i = 0U; i < count; ++i) {
-                const uint32_t realK = i + 1U == count ? runInfo.actSingleLoopS2Size - i * S2_SPLIT : S2_SPLIT;
-                prefetchedV[i] = PrefetchValue(runInfo, constInfo, realK, i);
-            }
-        }
         pBuf.WaitCrossCore();
         constexpr uint64_t pScaleOffset = static_cast<uint64_t>(M_BASE) * S2_BASE;
         if (runInfo.actSingleLoopS2Size > S2_SPLIT) {
@@ -180,15 +163,18 @@ public:
         const uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1U) / baseK;
         for (uint32_t kIdx = 0U; kIdx < kLoops; ++kIdx) {
             const uint32_t realK = (kIdx == kLoops - 1U) ? runInfo.actSingleLoopS2Size - kIdx * baseK : baseK;
-            Buffer<BufferType::L1> vBuf;
-            if constexpr (D_BASE == 256U) {
-                vBuf = prefetchedV[kIdx];
-            } else {
-                vBuf = PrefetchValue(runInfo, constInfo, realK, kIdx);
-            }
+            Buffer<BufferType::L1> vBuf = l1VBuffers_.Get();
+            vBuf.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<INPUT_T> vTensor = vBuf.GetTensor<INPUT_T>();
+            // V 使用 ND2NZ，tail 补零到 64-token 对齐。
+            InitValuePadding(vTensor, realK, constInfo.dSizeV);
+            CopyValueToL1(vTensor, runInfo, constInfo, realK, kIdx);
+
             const uint64_t vScaleOffset = static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV;
             LocalTensor<SCALE_T> vScaleTensor = vBuf.GetTensor<SCALE_T>(vScaleOffset);
+            // VScale 按 64-token group 寻址。
+            CopyValueScaleToL1(vScaleTensor, runInfo, constInfo, realK, kIdx);
+            vBuf.Set<HardEvent::MTE2_MTE1>();
             vBuf.Wait<HardEvent::MTE2_MTE1>();
 
             // C2: P[M,K] * V[K,DV] -> C2[M,DV]。
@@ -218,44 +204,9 @@ public:
     }
 
 private:
-    template <uint32_t SUB_LOOP>
-    __aicore__ inline Buffer<BufferType::L1> PrefetchKey(MxRunInfo &runInfo, const MxConstInfo &constInfo)
-    {
-        const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
-        Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
-        kBuf.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
-        const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
-        LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
-        // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
-        CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, SUB_LOOP);
-        kBuf.Set<HardEvent::MTE2_MTE1>();
-
-        return kBuf;
-    }
-
-    __aicore__ inline Buffer<BufferType::L1> PrefetchValue(MxRunInfo &runInfo, const MxConstInfo &constInfo,
-                                                         uint32_t realK, uint32_t kIdx)
-    {
-        Buffer<BufferType::L1> vBuf = l1VBuffers_.Get();
-        vBuf.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<INPUT_T> vTensor = vBuf.GetTensor<INPUT_T>();
-        // V 使用 ND2NZ，tail 补零到 64-token 对齐。
-        InitValuePadding(vTensor, realK, constInfo.dSizeV);
-        CopyValueToL1(vTensor, runInfo, constInfo, realK, kIdx);
-
-        const uint64_t vScaleOffset = static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV;
-        LocalTensor<SCALE_T> vScaleTensor = vBuf.GetTensor<SCALE_T>(vScaleOffset);
-        // VScale 按 64-token group 寻址。
-        CopyValueScaleToL1(vScaleTensor, runInfo, constInfo, realK, kIdx);
-        vBuf.Set<HardEvent::MTE2_MTE1>();
-        return vBuf;
-    }
-
-    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B, bool K_PREFETCHED = false>
+    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
     __aicore__ inline void IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                           MxRunInfo &runInfo, const MxConstInfo &constInfo,
-                                           Buffer<BufferType::L1> kBuf = Buffer<BufferType::L1>())
+                                           MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
         // C1: K[S2_SPLIT,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
@@ -285,12 +236,14 @@ private:
             qBuf = l1QBuffers_.GetPre();
         }
 
-        if constexpr (!K_PREFETCHED) {
-            kBuf = PrefetchKey<SUB_LOOP>(runInfo, constInfo);
-        }
+        Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
+        kBuf.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
         const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
         LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
+        // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
+        CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, SUB_LOOP);
+        kBuf.Set<HardEvent::MTE2_MTE1>();
 
         kBuf.Wait<HardEvent::MTE2_MTE1>();
         if constexpr (LOAD_Q_TO_L0B) {
