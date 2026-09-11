@@ -2333,7 +2333,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
 
     __ubuf__ T2 *x_exp_1;
 
-    x_exp_1 = x_exp + (ubN >> 3);
+    // Each packed register writes 32 bytes per block; the second stream
+    // starts in the adjacent block, independently of the S2 tile width.
+    x_exp_1 = x_exp + 32U;
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + mConst;
@@ -2632,7 +2634,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + (ubN >> 3);
+    // Each packed register writes 32 bytes per block; the second stream
+    // starts in the adjacent block, independently of the S2 tile width.
+    x_exp_1 = x_exp + 32U;
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + mConst;
     __ubuf__ float *src_ub2 = src_ub0 + m2Const;

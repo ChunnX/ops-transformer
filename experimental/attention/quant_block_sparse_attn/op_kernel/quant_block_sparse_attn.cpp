@@ -93,16 +93,18 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
-        // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
+        // MX 当前支持 TND + PA BNBD，D256 的 S2 logical tile 为 256，其余为 512。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 ||
                       Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ||
-                      Config == Config_S1Aligned128_S2Aligned512_DAligned256_DVAligned256,
+                      Config == Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256,
                       "MXFullQuantMode requires D=DV in {64,128,256}");
         constexpr DTemplateType mxD = Config == Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 ?
-            DTemplateType::Aligned64 : (Config == Config_S1Aligned128_S2Aligned512_DAligned256_DVAligned256 ?
+            DTemplateType::Aligned64 : (Config == Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 ?
             DTemplateType::Aligned256 : DTemplateType::Aligned128);
+        constexpr S2TemplateType mxS2 = mxD == DTemplateType::Aligned256 ?
+            S2TemplateType::Aligned256 : S2TemplateType::Aligned512;
         QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
-                       S2TemplateType::Aligned512, mxD, mxD, HAS_ATTENTION,
+                       mxS2, mxD, mxD, HAS_ATTENTION,
                        RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,

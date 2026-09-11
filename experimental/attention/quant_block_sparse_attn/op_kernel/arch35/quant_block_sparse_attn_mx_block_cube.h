@@ -46,22 +46,19 @@ public:
     static constexpr QBSALayout KV_LAYOUT = kvLayout;
     static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
     static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
-    static constexpr uint32_t S2_SPLIT = 256U;
+    static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    // Full D=256 C1 K and C2 V tiles each occupy 64 KiB in L0.
-    using L0ABuffers = std::conditional_t<D_BASE == 256U,
-        BuffersPolicySingleBuffer<BufferType::L0A>, BuffersPolicyDB<BufferType::L0A>>;
-    using L0BBuffers = std::conditional_t<D_BASE == 256U,
-        BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
-    using KBuffers = std::conditional_t<D_BASE == 256U,
-        BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicy4buff<BufferType::L1>>;
-    static constexpr uint32_t L0_AB_SLOT_BYTES = D_BASE == 256U ? 64U * 1024U : 32U * 1024U;
+    // D256 uses 128-token subtiles so every L0A/L0B operand fits a 32 KiB slot.
+    using L0ABuffers = BuffersPolicyDB<BufferType::L0A>;
+    using L0BBuffers = BuffersPolicyDB<BufferType::L0B>;
+    using KBuffers = BuffersPolicy4buff<BufferType::L1>;
+    static constexpr uint32_t L0_AB_SLOT_BYTES = 32U * 1024U;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX cube currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == DV_BASE &&
+    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
                   (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
-                  "MX cube requires S1=128, S2=512 and D=DV in {64,128,256}");
+                  "MX cube requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     // V scale 为 [blockNum,N,blockSize/64,DV,2]。
@@ -102,18 +99,20 @@ public:
             constexpr uint32_t pSize = M_BASE * S2_BASE * (sizeof(INPUT_T) * MX_SCALE_GROUP +
                 sizeof(SCALE_T)) / MX_SCALE_GROUP;
             constexpr uint32_t totalL1Size = 3U * pSize + 2U * (qSize + qScaleSize) +
-                (D_BASE == 256U ? 1U : 4U) * (kvSize + kvScaleSize) +
+                4U * (kvSize + kvScaleSize) +
                 2U * (kvSize + valueScaleSize);
             static_assert(totalL1Size <= 512U * 1024U, "MX buffers exceed L1 capacity");
             static_assert(S2_SPLIT * D_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
-                          S2_SPLIT * DV_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES,
+                          S2_SPLIT * DV_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
+                          M_BASE * D_BASE * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES &&
+                          M_BASE * S2_SPLIT * sizeof(INPUT_T) <= L0_AB_SLOT_BYTES,
                           "MX full matmul operands exceed L0 slots");
-            // Q/V use two buffers. D=256 reuses one K slot after MTE1 releases it.
+            // Q/V use two buffers; K uses four slots for the paired C1 subLoops.
             l1QBuffers_.Init(*l1BufferManager_, qSize + qScaleSize);
             l1KVBuffers_.Init(*l1BufferManager_, kvSize + kvScaleSize);
             l1VBuffers_.Init(*l1BufferManager_, kvSize + valueScaleSize);
 
-            // D=256 uses one full-capacity L0A/L0B slot; retain paired Q reuse.
+            // L0A/L0B are double-buffered; retain paired Q reuse.
             // L0C stays double-buffered: both C1 and C2 fit in 128 KiB.
             l0aBufferManager_.Init(tPipe_, 64U * 1024U);
             l0bBufferManager_.Init(tPipe_, 64U * 1024U);
@@ -134,7 +133,7 @@ public:
                                              Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf1,
                                              MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        // Both 256-column C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
+        // Both C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
         IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
         IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
     }
@@ -143,7 +142,7 @@ public:
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        // C2: P[128,512] x V[512,DV]，P/V 均携带 e8m0 scale。
+        // C2: P[128,S2_BASE] x V[S2_BASE,DV]，P/V 均携带 e8m0 scale。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
         pBuf.WaitCrossCore();
         constexpr uint64_t pScaleOffset = static_cast<uint64_t>(M_BASE) * S2_BASE;
@@ -210,7 +209,7 @@ private:
                                            MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
-        // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
+        // C1: K[S2_SPLIT,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
         const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
 
         Buffer<BufferType::L1> qBuf;

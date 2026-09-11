@@ -30,7 +30,7 @@ using namespace AscendC;
 using namespace optiling;
 
 namespace BaseApi {
-// MX 独立 tiling/kernel 路径：两个 256 C1/V1 subLoop 生成 P[128,512]，再执行一次 C2/V2。
+// MX 独立 tiling/kernel 路径：两个 S2_SPLIT C1/V1 subLoop 生成 P[128,S2_BASE]，再执行一次 C2/V2。
 template <typename inputType, typename mmType, typename outputType, QBSALayout layout, QBSALayout kvLayout,
           S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
           DTemplateType dVTemplateType, bool hasAtten, bool hasLse, bool isPa, bool useDn = true>
@@ -47,18 +47,16 @@ public:
     static constexpr QBSALayout KV_LAYOUT = kvLayout;
     static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
     static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
-    static constexpr uint32_t S2_SPLIT = 256U;
+    static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static constexpr uint32_t C1_BUFFER_NUM = D_BASE == 256U ? 1U : 2U;
-    using C1Buffers = std::conditional_t<D_BASE == 256U,
-        BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-        BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
+    static constexpr uint32_t C1_BUFFER_NUM = 2U;
+    using C1Buffers = BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == DV_BASE &&
+    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
                   (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
-                  "MXFullQuantMode requires S1=128, S2=512 and D=DV in {64,128,256}");
+                  "MXFullQuantMode requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
     // C2 延迟两个 task，V2 再延迟一个 task。单 BMM2 UB 作为跨 iteration 的流水寄存器：
     // AIC 执行 C1(i) / C2(i-2)，AIV 执行 V2(i-3) / V1(i)。
     static constexpr uint32_t C2_DELAY = 2U;
@@ -164,7 +162,7 @@ private:
 
     __aicore__ inline void InitMMResBuf()
     {
-        // D=256 serializes C1 Fixpipe/V1 ownership through one 64 KiB slot.
+        // Two C1 slots allow Fixpipe/V1 overlap for every supported D.
         // V2 runs before V1 and consumes C2 from the preceding iteration, so
         // waiting for V1 to release C1 cannot form a cycle with the current C2.
         constexpr uint32_t mm1ResultSize = M_BASE / CV_RATIO * S2_BASE * sizeof(MM_T) / 2U;
@@ -246,7 +244,7 @@ private:
                                        uint32_t s2LoopEnd, uint32_t sparseBlockCount, uint64_t sparseBase,
                                        bool isFirstValidS2Loop)
     {
-        // 构造一个 512-token logical S2 tile 的运行参数。
+        // 构造一个 S2_BASE-token logical S2 tile 的运行参数。
         // 仅清零必要的字段
         runInfo.actSingleLoopS2Size = 0U;
         runInfo.loop = static_cast<uint32_t>(loop);
@@ -384,7 +382,7 @@ private:
         MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
-        // S2_BASE=512, kvSparseBlockSize=64/128(host 侧已拦截), 结果必为 8 或 4。
+        // S2_BASE=256/512, kvSparseBlockSize=64/128，按模板计算每个 task 的稀疏块数。
         const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
         // metadata 可包含多个 section；每个 section 为当前 AIC 提供一段独立的 BN1/S1 边界。
         const uint32_t sectionNum = GetBsaSectionNum(metadataGm);
