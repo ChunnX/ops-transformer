@@ -186,7 +186,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
             max_schedule_size = _calculate_max_schedule_size(b_size, num_heads_kv)
-            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
+            return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
         @impl(get_as_library(), self.name, "Meta")
         def quant_flash_attn_meta(
@@ -282,8 +282,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
                 attention_out_size = (b_size, s_size, n_size, d_size)
 
             return (
-                torch.empty(attention_out_size, dtype=torch.bfloat16, device="meta"),
-                torch.empty(softmax_out_size, dtype=torch.float32, device="meta"),
+                torch.empty(attention_out_size, dtype=torch.bfloat16, device=q.device),
+                torch.empty(softmax_out_size, dtype=torch.float32, device=q.device),
             )
 
 
@@ -490,6 +490,19 @@ def quant_flash_attn(
         v.dim() == kv_expected,
         lambda: f"v with layout {layout_kv} expects {kv_expected} dims, but got {v.dim()} dims",
     )
+
+    # QFA 不支持 k/v/kscale/vscale 的 stride 中含 0
+    for name, tensor in (
+        ("k", k),
+        ("v", v),
+        ("k_descale", k_descale),
+        ("v_descale", v_descale),
+    ):
+        if tensor is not None and 0 in tensor.stride():
+            raise ValueError(
+                f"quant_flash_attn does not support {name} with stride containing 0, "
+                f"got {name}.stride() = {tensor.stride()}"
+            )
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
         if q.dtype != torch.uint8:

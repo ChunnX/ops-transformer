@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -29,6 +29,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "securec.h"
+#include "op_host/util/op_const_def.h"
 
 namespace {
 
@@ -66,9 +67,8 @@ void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2, const aclTe
 }
 
 // 检查必要输入是否为空，必须非空
-static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                         const aclTensor *x1ScaleOptional, const aclTensor *x2Scale, const aclTensor *output,
-                         int64_t x1QuantMode)
+static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1ScaleOptional,
+                         const aclTensor *x2Scale, const aclTensor *output, int64_t x1QuantMode)
 {
     if (x1 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x1 should not be null.");
@@ -79,7 +79,7 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
         return false;
     }
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         if (x1ScaleOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "The current scenario is not pertoken dynamic quantization,"
                                              "input x1ScaleOptional should not be null.");
@@ -184,8 +184,8 @@ static bool Check3DScaleShape(const aclTensor *x2, const aclTensor *x1Scale, con
 }
 
 // 校验输入Scaleshape
-static bool CheckScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
-                            const aclTensor *x2Scale, int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX2)
+static bool CheckScaleShape(const aclTensor *x2, const aclTensor *x1Scale, const aclTensor *x2Scale,
+                            int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX2)
 {
     bool scaleShapeValid = true;
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
@@ -215,9 +215,9 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {op
                                                                               op::DataType::DT_BF16};
 
 // 校验所有输入的参数类型是否正确
-static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                int64_t x1QuantMode, const aclTensor *x1ScaleOptional, const aclTensor *x2Scale,
-                                const aclTensor *output, const aclTensor *alltoAllOutOptional)
+static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, int64_t x1QuantMode,
+                                const aclTensor *x1ScaleOptional, const aclTensor *x2Scale, const aclTensor *output,
+                                const aclTensor *alltoAllOutOptional)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, X1_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, X2_DTYPE_SUPPORT_LIST, return false);
@@ -370,7 +370,7 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
             return false;
         }
     }
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && x1ScaleOptional != nullptr) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 && x1ScaleOptional != nullptr) {
         if (IsPrivateFormat(x1ScaleOptional->GetStorageFormat())) {
             OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllQuantMatmul", "x1Scale",
                                               op::ToString(x1ScaleOptional->GetStorageFormat()).GetString(), "ND");
@@ -420,7 +420,7 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
             CHECK_RET(biasOptional != nullptr, false);
         }
     }
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && x1ScaleOptional != nullptr) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 && x1ScaleOptional != nullptr) {
         if (x1ScaleOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
             OP_LOGW("x1ScaleOptional origin format is %s.",
                     op::ToString(x1ScaleOptional->GetStorageFormat()).GetString());
@@ -457,24 +457,22 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
                                         const aclTensor *alltoAllOutOptional)
 {
     // 检查参数是否为空指针
-    CHECK_RET(CheckNotNull(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, x1QuantMode),
-              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(x1, x2, x1ScaleOptional, x2Scale, output, x1QuantMode), ACLNN_ERR_PARAM_NULLPTR);
     // 检查空tensor
     CHECK_RET(CheckNotEmptyTensor(x1, x2, transposeX2), ACLNN_ERR_PARAM_INVALID);
     // 检查shape
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         CHECK_RET(
             CheckShapeAAMM("allto_all_quant_matmul", x1, x2, biasOptional, transposeX2, output, alltoAllOutOptional),
             ACLNN_ERR_PARAM_INVALID);
-        CHECK_RET(CheckScaleShape(x1, x2, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode, transposeX2),
+        CHECK_RET(CheckScaleShape(x2, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode, transposeX2),
                   ACLNN_ERR_PARAM_INVALID);
     }
     // 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据芯片型号和api定义校验
     if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-        CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, x1QuantMode, x1ScaleOptional, x2Scale, output,
-                                      alltoAllOutOptional),
+        CHECK_RET(CheckAllDtypesValid(x1, x2, x1QuantMode, x1ScaleOptional, x2Scale, output, alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         CHECK_RET(CheckDtypesValid(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode,
                                    x1QuantDtype, output, alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
@@ -524,7 +522,7 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
     int64_t yDtype = output->GetDataType(); // yDtype根据实际output的类型赋值，图模式需要该参数
     bool all2AllOutFlag = IsAll2AllOut("allto_all_quant_matmul", all2AllOutOptional);
     // 部分参数根据芯片型号不同，需要设置不同的默认值
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
         commQuantDtype = op::DataType::DT_UNDEFINED;
     }
@@ -545,7 +543,7 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(
                 "This is an error in launch aicore, aclnnAlltoAllQuantMatmulGetWorkspaceSize interface call failed.");
     }
 
-    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+    if (ret == ACLNN_SUCCESS && executor != nullptr && *executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, args);
     }
@@ -564,9 +562,9 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid("allto_all_quant_matmul", x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                                   // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                  // 复制一个x2
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
@@ -592,7 +590,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
         });
     }
     // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201 && executor != nullptr) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201 && executor != nullptr) {
         auto uniqueExecutor = CREATE_EXECUTOR();
         InputPreProcessInt4(x1, transX2, alltoAllOutOptional, uniqueExecutor.get());
         uniqueExecutor.ReleaseTo(executor);
@@ -617,7 +615,8 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBase(void *workspace, uint64_t wo
                                                     aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+            CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

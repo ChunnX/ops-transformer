@@ -213,6 +213,7 @@ void PrintWorkspaceLayout(const struct WorkspaceLayout *layout, const char *node
     OP_LOGD(nodeName, "expertRevTokenNumsOffset:      %ld\n", layout->expertRevTokenNumsOffset);
     OP_LOGD(nodeName, "metaInfoOffset:                %ld\n", layout->metaInfoOffset);
     OP_LOGD(nodeName, "flagActivationToGmm2Offset:    %ld\n", layout->flagActivationToGmm2Offset);
+    OP_LOGD(nodeName, "sharedActivationToGmm2Offset:  %ld\n", layout->sharedActivationToGmm2Offset);
     OP_LOGD(nodeName, "flagDispatchToGmm1Offset:      %ld\n", layout->flagDispatchToGmm1Offset);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsOffset: %ld\n", layout->flagSendCntCalToUpdParamsOffset);
     OP_LOGD(nodeName, "flagGmmToEpilogueOffset:       %ld\n", layout->flagGmmToEpilogueOffset);
@@ -420,8 +421,8 @@ static ge::graphStatus CheckSwiGluOaiActivationParams(const float *activationPar
 }
 
 /*
- * situglu 的 beta 必填：它要进分母，取 0 或非有限值算出来就是 NaN。
- * linear_beta 选填，给了就切到 LINEAR 子模式。
+ * situglu 的 beta 必填：Ascend 950PR/Ascend 950DT 仅支持大于 0 的有限值。
+ * linear_beta 选填，给了就切到 LINEAR 子模式，同样仅支持大于 0 的有限值。
  * 注意个数校验必须排在取值之前：一个参数都不传时 activationParams 是空指针，
  * 先取 activationParams[0] 会直接段错误，而不是干净地报错返回。
  */
@@ -433,15 +434,15 @@ static ge::graphStatus CheckSituGluActivationParams(const float *activationParam
                                               "should be 1 or 2 for situglu"),
                     return ge::GRAPH_FAILED);
     const float beta = activationParams[0];
-    OP_TILING_CHECK(!std::isfinite(beta) || beta == 0.0f,
+    OP_TILING_CHECK(!std::isfinite(beta) || beta <= 0.0f,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_beta", std::to_string(beta).c_str(),
-                                              "should be finite and non-zero"),
+                                              "should be finite and greater than 0"),
                     return ge::GRAPH_FAILED);
     if (paramCount == 2U) {
         const float linearBeta = activationParams[1];
-        OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta == 0.0f,
+        OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta <= 0.0f,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta", std::to_string(linearBeta).c_str(),
-                                                  "should be finite and non-zero"),
+                                                  "should be finite and greater than 0"),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1296,6 +1297,9 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
         uint64_t tokenGroupCount = ops::CeilDiv<uint64_t>(tilingData->bs, L1_TILE_M_256);
         flagElementCount += tokenGroupCount * tilingData->sharedExpertNum * INT_CACHELINE;
+        flagElementCount +=
+            static_cast<uint64_t>(CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(tilingData->bs))) *
+            tilingData->sharedExpertNum;
     }
     return flagElementCount;
 }
@@ -1941,65 +1945,22 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-/*
- * 校验基础输入张量的维度：context 为 1D，x / topkIds / topkWeights 为 2D，
- * 并校验三者之间的 dim0 / dim1 一致性。
- */
-static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *context, MegaMoeConfig &config,
-                                                const char *nodeName)
+static ge::graphStatus CheckTensorDimNum(const gert::StorageShape *storageShape, uint32_t expectedDimNum,
+                                         const char *tensorName, const char *invalidDimReason, const char *nodeName)
 {
-    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
-    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "context"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            nodeName, "context", (std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-            "The shape dim of context must be 1D."),
-        return ge::GRAPH_FAILED);
-    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
-    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
-
-    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+    OP_TILING_CHECK(storageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, tensorName), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(storageShape->GetStorageShape().GetDimNum() != expectedDimNum,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "x", (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of x must be 2D."),
+                        nodeName, tensorName,
+                        (std::to_string(storageShape->GetStorageShape().GetDimNum()) + "D").c_str(), invalidDimReason),
                     return ge::GRAPH_FAILED);
-    int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "x dim0 = %ld", xDim0);
-    OP_LOGD(nodeName, "x dim1 = %ld", xDim1);
+    return ge::GRAPH_SUCCESS;
+}
 
-    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    OP_TILING_CHECK(topkIdsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "topkIds"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        topkIdsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            nodeName, "topkIds", (std::to_string(topkIdsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-            "The shape dim of topkIds must be 2D."),
-        return ge::GRAPH_FAILED);
-    const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "topkIds dim0 = %ld", topkIdsDim0);
-    OP_LOGD(nodeName, "topkIds dim1 = %ld", topkIdsDim1);
-
-    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(config.topkWeightsIndex);
-    OP_TILING_CHECK(topkWeightsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "topkWeights"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(topkWeightsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "topkWeights",
-                        (std::to_string(topkWeightsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of topkWeights must be 2D."),
-                    return ge::GRAPH_FAILED);
-    const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "topkWeights dim0 = %ld", topkWeightsDim0);
-    OP_LOGD(nodeName, "topkWeights dim1 = %ld", topkWeightsDim1);
-
+static ge::graphStatus CheckBasicInputShapeRelations(int64_t xDim0, int64_t topkIdsDim0, int64_t topkIdsDim1,
+                                                     int64_t topkWeightsDim0, int64_t topkWeightsDim1,
+                                                     const char *nodeName)
+{
     OP_TILING_CHECK(xDim0 != topkIdsDim0 || xDim0 != topkWeightsDim0,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "x, topkIds, topkWeights",
@@ -2016,8 +1977,56 @@ static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *conte
             (std::string("[") + std::to_string(topkIdsDim1) + ", " + std::to_string(topkWeightsDim1) + "]").c_str(),
             "The shape [dim1] of topkIds and topkWeights must be equal."),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
+}
+
+/*
+ * 校验基础输入张量的维度：context 为 1D，x / topkIds / topkWeights 为 2D，
+ *
+ * 并校验三者之间的 dim0 / dim1 一致性。
+ */
+static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *context, MegaMoeConfig &config,
+                                                const char *nodeName)
+{
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
+    if (CheckTensorDimNum(contextStorageShape, ONE_DIM, "context", "The shape dim of context must be 1D.", nodeName) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
+    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
+
+    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
+    if (CheckTensorDimNum(xStorageShape, TWO_DIMS, "x", "The shape dim of x must be 2D.", nodeName) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "x dim0 = %ld", xDim0);
+    OP_LOGD(nodeName, "x dim1 = %ld", xDim1);
+
+    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
+    if (CheckTensorDimNum(topkIdsStorageShape, TWO_DIMS, "topkIds", "The shape dim of topkIds must be 2D.", nodeName) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "topkIds dim0 = %ld", topkIdsDim0);
+    OP_LOGD(nodeName, "topkIds dim1 = %ld", topkIdsDim1);
+
+    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(config.topkWeightsIndex);
+    if (CheckTensorDimNum(topkWeightsStorageShape, TWO_DIMS, "topkWeights", "The shape dim of topkWeights must be 2D.",
+                          nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "topkWeights dim0 = %ld", topkWeightsDim0);
+    OP_LOGD(nodeName, "topkWeights dim1 = %ld", topkWeightsDim1);
+
+    return CheckBasicInputShapeRelations(xDim0, topkIdsDim0, topkIdsDim1, topkWeightsDim0, topkWeightsDim1, nodeName);
 }
 
 /*
