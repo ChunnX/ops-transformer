@@ -68,8 +68,8 @@ constexpr uint32_t FD_M_NUM_INDEX = 5U;
 namespace detail {
 struct FaMetadata {
     uint32_t sectionNum;
-    uint32_t aicCoreNum; // 每 section 的 FA 区核数（硬件平台值，host 透传）
-    uint32_t aivCoreNum; // 每 section 的 FD 区核数（硬件平台值，host 透传）
+    uint32_t aicCoreNum;         // 每 section 的 FA 区核数（硬件平台值，host 透传）
+    uint32_t aivCoreNum;         // 每 section 的 FD 区核数（硬件平台值，host 透传）
     FA_METADATA_T *headMetadata; // [HEAD_METADATA_STRIDE];
     FA_METADATA_T *faMetadata;   // [sectionNum][aicCoreNum][FA_METADATA_STRIDE];
     FA_METADATA_T *fdMetadata;   // [sectionNum][aivCoreNum][FD_METADATA_STRIDE];

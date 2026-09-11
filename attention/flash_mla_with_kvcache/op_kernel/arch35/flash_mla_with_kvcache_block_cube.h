@@ -258,11 +258,11 @@ public:
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.n2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = 0,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = (uint32_t)(constInfo.dSize + constInfo.dSizeRope)};
+                                .n2Idx = runInfo.n2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = 0,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = (uint32_t)(constInfo.dSize + constInfo.dSizeRope)};
         copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
     }
 
@@ -322,7 +322,7 @@ public:
         fixpipeParams.params.dstNdStride = 0;
 
         Fixpipe<T, T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
-}
+    }
 
     // ================== 特化 LoadData (310 分支 LoadData2DParamsV2, 常量折叠) ==================
     // mm1 L0A: MK, isLeftTranspose=false, realM=0; kSplit=tileK, mSplit=actM

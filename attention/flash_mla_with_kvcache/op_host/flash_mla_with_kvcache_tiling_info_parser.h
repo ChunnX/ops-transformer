@@ -23,8 +23,7 @@ class FlashMlaWithKvcacheInfoParser {
 public:
     explicit FlashMlaWithKvcacheInfoParser(const gert::TilingContext *context)
         : context_(context)
-    {
-    }
+    {}
     ~FlashMlaWithKvcacheInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -56,7 +55,8 @@ public:
     ge::graphStatus GetStrides();
 
     void SetFaShape();
-    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FlashMlaWithKvcacheLayout layout, int64_t &maxActualSeqLen);
+    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FlashMlaWithKvcacheLayout layout,
+                                    int64_t &maxActualSeqLen);
     ge::graphStatus GetS2SizeFromCuSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetMaxBlockNumPerBatch();

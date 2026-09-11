@@ -224,9 +224,9 @@ public:
             constexpr uint32_t LSE_SUM_MAX_BYTES = BASE + 5U * STRIDE_6K;
             fdMm2ResBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES, (2U * BUFFER_SIZE_BYTE_16K))
                                 .template ReinterpretCast<T>();
-            fdMm2ResBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + (2U * BUFFER_SIZE_BYTE_16K), (2U * BUFFER_SIZE_BYTE_16K))
-                    .template ReinterpretCast<T>();
+            fdMm2ResBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + (2U * BUFFER_SIZE_BYTE_16K),
+                                                 (2U * BUFFER_SIZE_BYTE_16K))
+                                .template ReinterpretCast<T>();
             fdReduceBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + 2U * (2U * BUFFER_SIZE_BYTE_16K),
                                                 (2U * BUFFER_SIZE_BYTE_16K))
                                .template ReinterpretCast<T>();
@@ -236,15 +236,22 @@ public:
                                .template ReinterpretCast<OUTPUT_T>();
             constexpr uint32_t LSE_SUM_MAX_MM2_BYTES =
                 LSE_SUM_MAX_BYTES + 3U * (2U * BUFFER_SIZE_BYTE_16K) + BUFFER_SIZE_BYTE_16K;
-            fdLseMaxUbBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES, BUFFER_SIZE_BYTE_512B).template ReinterpretCast<T>();
+            fdLseMaxUbBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES, BUFFER_SIZE_BYTE_512B)
+                                  .template ReinterpretCast<T>();
             fdLseMaxUbBuf2_ = fdLseMaxUbBuf1_;
-            fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES + BUFFER_SIZE_BYTE_512B, BUFFER_SIZE_BYTE_512B).template ReinterpretCast<T>();
+            fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES + BUFFER_SIZE_BYTE_512B,
+                                               BUFFER_SIZE_BYTE_512B)
+                              .template ReinterpretCast<T>();
         }
     }
     __aicore__ inline void InitBuffers(uint32_t parts)
     {
         fdRows_ = parts <= 6U ? 16U : 8U;
-        if (parts <= 6U) { InitBuffers16(); } else { InitBuffers8(); }
+        if (parts <= 6U) {
+            InitBuffers16();
+        } else {
+            InitBuffers8();
+        }
     }
 
 protected:
@@ -307,20 +314,19 @@ protected:
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
         bool learnableSinkFlag = false;
         if (dealRowCount <= 8U) {
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
+            ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
+                                    actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
         } else {
             for (uint32_t row = 0U; row < dealRowCount; row += 8U) {
                 uint32_t active = dealRowCount - row < 8U ? dealRowCount - row : 8U;
                 uint32_t offset = row * 8U;
                 auto mx = (__ubuf__ T *)lseMax.GetPhyAddr() + offset;
                 auto sm = (__ubuf__ T *)lseSum.GetPhyAddr() + offset;
-                FaVectorApi::MlaScaleValueChunkVF<T, T>(nullptr, mx, mx, sm, sm,
-                    (__ubuf__ T *)maxLseUb.GetPhyAddr() + offset,
-                    (__ubuf__ T *)lseExp.GetPhyAddr() + offset,
-                    (__ubuf__ T *)lseMaxUb.GetPhyAddr() + offset,
-                    dealRowCount * 8U, active * 8U, 0U, dealRowCount,
-                    actualCombineLoopSize, constInfo_.isSoftmaxLseEnable ? 1U : 0U, 0U);
+                FaVectorApi::MlaScaleValueChunkVF<T, T>(
+                    nullptr, mx, mx, sm, sm, (__ubuf__ T *)maxLseUb.GetPhyAddr() + offset,
+                    (__ubuf__ T *)lseExp.GetPhyAddr() + offset, (__ubuf__ T *)lseMaxUb.GetPhyAddr() + offset,
+                    dealRowCount * 8U, active * 8U, 0U, dealRowCount, actualCombineLoopSize,
+                    constInfo_.isSoftmaxLseEnable ? 1U : 0U, 0U);
             }
         }
     }
@@ -334,11 +340,11 @@ protected:
             .colCount = columnCount,
         };
         GmCoordGs1Merge gmCoord{.bIdx = taskInfo_.bIdx,
-                        .n2Idx = taskInfo_.n2Idx,
-                        .gS1Idx = taskInfo_.gS1Idx + startRow,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
+                                .n2Idx = taskInfo_.n2Idx,
+                                .gS1Idx = taskInfo_.gS1Idx + startRow,
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo_.dSizeV};
         copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }
     __aicore__ inline void ReduceFinalRes(LocalTensor<T> &reduceOut, LocalTensor<T> &mm2Res, LocalTensor<T> &lseLocal,

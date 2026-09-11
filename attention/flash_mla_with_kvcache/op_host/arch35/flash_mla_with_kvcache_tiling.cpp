@@ -180,8 +180,7 @@ void FlashMlaWithKvcacheTilingImpl::CalcNumBlocks(uint32_t aicNum)
     auto aivNum = aicNum * platformInfo_.cvRatio;
 
     numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    OP_LOGI(faInfo_->opName, "FlashMlaWithKvcache block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum,
-            aicNum);
+    OP_LOGI(faInfo_->opName, "FlashMlaWithKvcache block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
 void FlashMlaWithKvcacheTilingImpl::CalcWorkspaceSize()
@@ -319,18 +318,17 @@ void FlashMlaWithKvcacheTilingImpl::PrintAllTilingData()
     const auto &page = tilingData_.baseTiling.flashMlaWithKvcachePageAttentionParams;
     const auto &workspace = tilingData_.baseTiling.flashMlaWithKvcacheWorkspaceParams;
     const auto &output = tilingData_.baseTiling.flashMlaWithKvcacheEmptyTensorParams;
-    OP_LOGD(faInfo_->opName, "B:%u T:%u N2:%u G:%u S1:%u S2:%u D:%u DV:%u Rope:%u",
-            base.bSize, base.t1Size, base.n2Size, base.gSize, base.s1Size, base.s2Size,
-            base.dSize, base.dSizeV, base.dSizeRope);
+    OP_LOGD(faInfo_->opName, "B:%u T:%u N2:%u G:%u S1:%u S2:%u D:%u DV:%u Rope:%u", base.bSize, base.t1Size,
+            base.n2Size, base.gSize, base.s1Size, base.s2Size, base.dSize, base.dSizeV, base.dSizeRope);
     OP_LOGD(faInfo_->opName, "QSeqDims:%u KVSeqDims:%u scale:%f LSE:%u cores:%u outputLayout:%u L2Off:%u",
-            base.actualSeqLengthsQSize, base.actualSeqLengthsKVSize, base.scaleValue,
-            base.isSoftMaxLseEnable, base.coreNum, base.outputLayout, base.l2CacheOffFlag);
-    OP_LOGD(faInfo_->opName, "maskMode:%u maskS1:%u maskS2:%u preTokens:%d nextTokens:%d",
-            mask.sparseMode, mask.attenMaskS1Size, mask.attenMaskS2Size, mask.preTokens, mask.nextTokens);
-    OP_LOGD(faInfo_->opName, "paLayout:%u blockSize:%u maxBlocks:%u",
-            page.paLayoutType, page.blockSize, page.maxBlockNumPerBatch);
-    OP_LOGD(faInfo_->opName, "accumOutSize:%u logSumExpSize:%u needInit:%u",
-            workspace.accumOutSize, workspace.logSumExpSize, output.needInit);
+            base.actualSeqLengthsQSize, base.actualSeqLengthsKVSize, base.scaleValue, base.isSoftMaxLseEnable,
+            base.coreNum, base.outputLayout, base.l2CacheOffFlag);
+    OP_LOGD(faInfo_->opName, "maskMode:%u maskS1:%u maskS2:%u preTokens:%d nextTokens:%d", mask.sparseMode,
+            mask.attenMaskS1Size, mask.attenMaskS2Size, mask.preTokens, mask.nextTokens);
+    OP_LOGD(faInfo_->opName, "paLayout:%u blockSize:%u maxBlocks:%u", page.paLayoutType, page.blockSize,
+            page.maxBlockNumPerBatch);
+    OP_LOGD(faInfo_->opName, "accumOutSize:%u logSumExpSize:%u needInit:%u", workspace.accumOutSize,
+            workspace.logSumExpSize, output.needInit);
 }
 
 } // namespace flash_mla_with_kvcache

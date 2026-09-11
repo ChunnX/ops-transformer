@@ -64,12 +64,12 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
     // (batch = cacheSeqlens.size(0), same source as the Python side), so the kv==1 worst-case bound is computable.
     int64_t batchSize = cacheSeqlens.size(0);
     int64_t requiredBytes = CalculateMlaMetadataSizeBytes(batchSize, aicCoreNum, aivCoreNum);
-    TORCH_CHECK(
-        static_cast<int64_t>(output.nbytes()) >= requiredBytes, "The metadata tensor is too small: ", output.nbytes(),
-        " bytes, required at least ", requiredBytes, " bytes for batch_size=", batchSize, " (capacity = ((aic ",
-        aicCoreNum, " + aiv ", aivCoreNum,
-        ") * batch_size * 1 + 1) * 16 int32 words, "
-        "aligned to 4096 int32 elements; kv head num is 1 for MLA). Use the buffer returned by flash_mla_with_kvcache_metadata.");
+    TORCH_CHECK(static_cast<int64_t>(output.nbytes()) >= requiredBytes,
+                "The metadata tensor is too small: ", output.nbytes(), " bytes, required at least ", requiredBytes,
+                " bytes for batch_size=", batchSize, " (capacity = ((aic ", aicCoreNum, " + aiv ", aivCoreNum,
+                ") * batch_size * 1 + 1) * 16 int32 words, "
+                "aligned to 4096 int32 elements; kv head num is 1 for MLA). Use the buffer returned by "
+                "flash_mla_with_kvcache_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);

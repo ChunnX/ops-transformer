@@ -13,10 +13,11 @@
 namespace FaVectorApi {
 template <typename T, typename SINK_T, SinkInjectStage SINK_INJECT_STAGE = SinkInjectStage::AT_FD_EPILOGUE>
 __simd_vf__ void MlaScaleValueChunkVF(__ubuf__ T *lseSink, __ubuf__ T *lseMax, __ubuf__ T *lseMaxTmp,
-                                           __ubuf__ T *lseSum, __ubuf__ T *lseSumTmp, __ubuf__ T *lseOutUb,
-                                           __ubuf__ T *lseUb, __ubuf__ T *lseMaxReduce, uint32_t dealCount, uint32_t activeCount, uint16_t i,
-                                           uint32_t dealRowCount, uint32_t actualCombineLoopSize,
-                                           uint16_t softmaxLseFlag, uint16_t learnableSinkFlag)
+                                      __ubuf__ T *lseSum, __ubuf__ T *lseSumTmp, __ubuf__ T *lseOutUb,
+                                      __ubuf__ T *lseUb, __ubuf__ T *lseMaxReduce, uint32_t dealCount,
+                                      uint32_t activeCount, uint16_t i, uint32_t dealRowCount,
+                                      uint32_t actualCombineLoopSize, uint16_t softmaxLseFlag,
+                                      uint16_t learnableSinkFlag)
 {
     Reg::RegTensor<T> vregLseMax;
     Reg::RegTensor<T> vregLseMaxTmp;
@@ -86,5 +87,5 @@ __simd_vf__ void MlaScaleValueChunkVF(__ubuf__ T *lseSink, __ubuf__ T *lseMax, _
     }
 }
 
-}
+} // namespace FaVectorApi
 #endif

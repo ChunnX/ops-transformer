@@ -33,10 +33,10 @@ extern "C" {
 class FlashMlaWithKvcacheMetadataCheck {
 public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                          const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
-                                          int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                          int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-                                          const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum);
+                                          const aclTensor *sequsedQOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                          int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+                                          int64_t maskMode, const char *layoutQ, const aclTensor *metadata,
+                                          uint32_t aicCoreNum, uint32_t aivCoreNum);
 
 private:
     static constexpr int64_t NONE_VALUE = -1;
@@ -49,41 +49,35 @@ private:
     static inline bool IsTensorExist(const aclTensor *tensor);
     static inline aclnnStatus CheckSeqLens(const char *name, bool isCu, int64_t batchSize, const aclTensor *seqLens);
 
-    static inline aclnnStatus CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                            int64_t headDimV, const char *layoutQ);
+    static inline aclnnStatus CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                            int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+                                            const char *layoutQ);
 
     static inline aclnnStatus CheckMask(int64_t maskMode);
 
     // cache_seqlens 必传，batch 由其长度推导；存在性规则与主算子 seq_len_checker 一致
     static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, const char *layoutQ,
-                                             const aclTensor *cuSeqlensQOptional,
-                                             const aclTensor *cacheSeqlensOptional,
-                                             const aclTensor *sequsedQOptional,
-                                             const aclTensor *metadata, int64_t &batchSize);
+                                             const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
+                                             const aclTensor *sequsedQOptional, const aclTensor *metadata,
+                                             int64_t &batchSize);
 
-    static inline aclnnStatus CheckConsistency(int64_t batchSize,
-                                               const aclTensor *cuSeqlensQOptional,
+    static inline aclnnStatus CheckConsistency(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
                                                const aclTensor *cacheSeqlensOptional,
                                                const aclTensor *sequsedQOptional);
 
     // metadata buffer 容量上界校验：最坏容量 ((aic+aiv)*batch*1+1)*16 words（kv head==1），
     // 核数为 host 平台信息（硬件）值，与 AICPU producer 的 CheckMetadataCapacity 同公式
-    static inline aclnnStatus CheckMetadataCapacity(const aclTensor *metadata, int64_t batchSize,
-                                                    uint32_t aicCoreNum, uint32_t aivCoreNum);
+    static inline aclnnStatus CheckMetadataCapacity(const aclTensor *metadata, int64_t batchSize, uint32_t aicCoreNum,
+                                                    uint32_t aivCoreNum);
 };
 
-inline aclnnStatus
-FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional,
-                                              const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
-                                              int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                              int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-                                              const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::ParamsCheck(
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+    int64_t maskMode, const char *layoutQ, const aclTensor *metadata, uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
-    CHECK_COND(aicCoreNum > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "aicCoreNum should be larger than 0, but got %u", aicCoreNum);
-    CHECK_COND(aivCoreNum > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "aivCoreNum should be larger than 0, but got %u", aivCoreNum);
+    CHECK_COND(aicCoreNum > 0, ACLNN_ERR_RUNTIME_ERROR, "aicCoreNum should be larger than 0, but got %u", aicCoreNum);
+    CHECK_COND(aivCoreNum > 0, ACLNN_ERR_RUNTIME_ERROR, "aivCoreNum should be larger than 0, but got %u", aivCoreNum);
 
     auto ret = CheckBaseAttr(maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, layoutQ);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -101,10 +95,10 @@ FlashMlaWithKvcacheMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptiona
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                                int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                                int64_t headDimV, const char *layoutQ)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                                                   int64_t numHeadsQ, int64_t numHeadsKv,
+                                                                   int64_t headDimQk, int64_t headDimV,
+                                                                   const char *layoutQ)
 {
     CHECK_COND((maxSeqlenQ == NONE_VALUE || maxSeqlenQ >= 0), ACLNN_ERR_RUNTIME_ERROR,
                "maxSeqlenQ must be %ld or greater than or equal to 0, but got %ld", NONE_VALUE, maxSeqlenQ);
@@ -138,12 +132,11 @@ inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMask(int64_t maskMode)
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t maxSeqlenQ, const char *layoutQ,
-                                                 const aclTensor *cuSeqlensQOptional,
-                                                 const aclTensor *cacheSeqlensOptional,
-                                                 const aclTensor *sequsedQOptional,
-                                                 const aclTensor *metadata, int64_t &batchSize)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t maxSeqlenQ, const char *layoutQ,
+                                                                    const aclTensor *cuSeqlensQOptional,
+                                                                    const aclTensor *cacheSeqlensOptional,
+                                                                    const aclTensor *sequsedQOptional,
+                                                                    const aclTensor *metadata, int64_t &batchSize)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
     CHECK_COND(metadata->GetDataType() == op::DataType::DT_INT32, ACLNN_ERR_RUNTIME_ERROR,
@@ -151,21 +144,19 @@ FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t maxSeqlenQ, const char 
     CHECK_COND(metadata->GetViewShape().GetDimNum() == 1, ACLNN_ERR_RUNTIME_ERROR,
                "metadata must be 1D tensor, but got %ld dims", metadata->GetViewShape().GetDimNum());
     CHECK_COND(metadata->GetViewShape().GetDim(0) > 0, ACLNN_ERR_RUNTIME_ERROR,
-               "metadata shape (max_schedule_size,) must be positive, but got %ld",
-               metadata->GetViewShape().GetDim(0));
+               "metadata shape (max_schedule_size,) must be positive, but got %ld", metadata->GetViewShape().GetDim(0));
 
     // cache_seqlens 为必传输入（batch 由它推导）
     CHECK_COND(IsTensorExist(cacheSeqlensOptional), ACLNN_ERR_RUNTIME_ERROR,
                "cacheSeqlens should be provided, but got null or empty tensor");
     CHECK_COND(cacheSeqlensOptional->GetViewShape().GetDimNum() == 1, ACLNN_ERR_RUNTIME_ERROR,
-               "cacheSeqlens must be 1D tensor, but got %ld dims",
-               cacheSeqlensOptional->GetViewShape().GetDimNum());
+               "cacheSeqlens must be 1D tensor, but got %ld dims", cacheSeqlensOptional->GetViewShape().GetDimNum());
     batchSize = cacheSeqlensOptional->GetViewShape().GetDim(0);
     constexpr int64_t MIN_BATCH = 0;
     constexpr int64_t MAX_BATCH = 65536;
     CHECK_COND((batchSize > MIN_BATCH && batchSize < MAX_BATCH), ACLNN_ERR_RUNTIME_ERROR,
-               "batchSize (derived from cacheSeqlens) must be between (%ld, %ld), but got %ld",
-               MIN_BATCH, MAX_BATCH, batchSize);
+               "batchSize (derived from cacheSeqlens) must be between (%ld, %ld), but got %ld", MIN_BATCH, MAX_BATCH,
+               batchSize);
 
     // cuSeqlensQ：layoutQ 为 TND 时必传，非 TND（BNSD/BSND）时禁传（与主算子 seq_len_checker 判定一致）
     if (strcmp(layoutQ, "TND") == 0) {
@@ -179,24 +170,22 @@ FlashMlaWithKvcacheMetadataCheck::CheckExistency(int64_t maxSeqlenQ, const char 
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-FlashMlaWithKvcacheMetadataCheck::CheckConsistency(int64_t batchSize,
-                                                   const aclTensor *cuSeqlensQOptional,
-                                                   const aclTensor *cacheSeqlensOptional,
-                                                   const aclTensor *sequsedQOptional)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckConsistency(int64_t batchSize,
+                                                                      const aclTensor *cuSeqlensQOptional,
+                                                                      const aclTensor *cacheSeqlensOptional,
+                                                                      const aclTensor *sequsedQOptional)
 {
     CHECK_COND(CheckSeqLens("cuSeqlensQ", true, batchSize, cuSeqlensQOptional) == ACLNN_SUCCESS,
                ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional is not valid!");
     CHECK_COND(CheckSeqLens("cacheSeqlens", false, batchSize, cacheSeqlensOptional) == ACLNN_SUCCESS,
                ACLNN_ERR_RUNTIME_ERROR, "cacheSeqlensOptional is not valid!");
-    CHECK_COND(CheckSeqLens("sequsedQ", false, batchSize, sequsedQOptional) == ACLNN_SUCCESS,
-               ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional is not valid!");
+    CHECK_COND(CheckSeqLens("sequsedQ", false, batchSize, sequsedQOptional) == ACLNN_SUCCESS, ACLNN_ERR_RUNTIME_ERROR,
+               "sequsedQOptional is not valid!");
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus
-FlashMlaWithKvcacheMetadataCheck::CheckMetadataCapacity(const aclTensor *metadata, int64_t batchSize,
-                                                        uint32_t aicCoreNum, uint32_t aivCoreNum)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckMetadataCapacity(const aclTensor *metadata, int64_t batchSize,
+                                                                           uint32_t aicCoreNum, uint32_t aivCoreNum)
 {
     // 最坏容量（kv head==1）：((aic+aiv)*batch*1+1)*16 个 int32 word；torch 侧分配按 4096 个 int32 元素对齐只会更大
     constexpr int64_t WORDS_PER_CORE = 16;
@@ -215,9 +204,8 @@ inline bool FlashMlaWithKvcacheMetadataCheck::IsTensorExist(const aclTensor *ten
            (tensor->GetData() != nullptr);
 }
 
-inline aclnnStatus
-FlashMlaWithKvcacheMetadataCheck::CheckSeqLens(const char *name, bool isCu, int64_t batchSize,
-                                               const aclTensor *seqLens)
+inline aclnnStatus FlashMlaWithKvcacheMetadataCheck::CheckSeqLens(const char *name, bool isCu, int64_t batchSize,
+                                                                  const aclTensor *seqLens)
 {
     if (seqLens == nullptr) {
         return ACLNN_SUCCESS;

@@ -28,20 +28,22 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35MLA;
 
-ge::graphStatus FlashMlaWithKvcacheBaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
+ge::graphStatus FlashMlaWithKvcacheBaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
+                                                                  const std::string &name) const
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
-        OP_CHECK_IF(
-            it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE("FlashMlaWithKvcache", "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
+                    OP_LOGE("FlashMlaWithKvcache", "%s datatype support list should be specify in DTYPE_SUPPORT_MAP",
+                            name.c_str()),
+                    return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
             std::string dtypeStr = DataTypeToSerialString(desc->GetDataType());
             std::string expectedDtypes;
             for (size_t i = 0; i < expectDtypeList.size(); i++) {
-                if (i > 0) expectedDtypes += ", ";
+                if (i > 0)
+                    expectedDtypes += ", ";
                 expectedDtypes += DataTypeToSerialString(expectDtypeList[i]);
             }
             OP_LOGE_FOR_INVALID_DTYPE("FlashMlaWithKvcache", name.c_str(), dtypeStr.c_str(), expectedDtypes.c_str());
@@ -52,13 +54,14 @@ ge::graphStatus FlashMlaWithKvcacheBaseChecker::CheckDtypeSupport(const gert::Co
 }
 
 ge::graphStatus FlashMlaWithKvcacheBaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc *desc,
-                                                  const std::string &name) const
+                                                                   const std::string &name) const
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
-        OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
+        OP_CHECK_IF(
+            (FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
             OP_LOGE_FOR_INVALID_FORMAT("FlashMlaWithKvcache", name.c_str(), Ops::Base::ToString(format).c_str(), "ND"),
-                return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }

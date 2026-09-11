@@ -36,13 +36,12 @@ extern "C" {
 
 aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cacheSeqlensOptional, const aclTensor *sequsedQOptional,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-    int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
-    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+    int64_t maskMode, const char *layoutQ, const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnFlashMlaWithKvcacheMetadata,
-                   DFX_IN(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, maxSeqlenQ,
-                          maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ),
+                   DFX_IN(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, maxSeqlenQ, maxSeqlenKv,
+                          numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -54,10 +53,9 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
-    auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional,
-                                                             maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
-                                                             headDimQk, headDimV, maskMode, layoutQ, metaData,
-                                                             aicCoreNum, aivCoreNum);
+    auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(
+        cuSeqlensQOptional, cacheSeqlensOptional, sequsedQOptional, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
+        headDimQk, headDimV, maskMode, layoutQ, metaData, aicCoreNum, aivCoreNum);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 前置处理：seqlens 输入转连续（AICPU kernel 按连续内存读取原始数据）
@@ -89,10 +87,10 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     // l0 函数输入槽位与 meta.txt 定义的 3 输入契约一致：
     //   slot0=cuSeqlensQ, slot1=cacheSeqlens, slot2=sequsedQ
     // 平台参数 socVersion/aicCoreNum/aivCoreNum 由 GetCurrentPlatformInfo 推导后透传。
-    auto output = l0op::FlashMlaWithKvcacheMetadata(cuSeqlensQContiguous, cacheSeqlensContiguous, sequsedQContiguous,
-                                                    maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
-                                                    headDimV, maskMode, layoutQ, socVersion, aicCoreNum,
-                                                    aivCoreNum, metaData, uniqueExecutor.get());
+    auto output =
+        l0op::FlashMlaWithKvcacheMetadata(cuSeqlensQContiguous, cacheSeqlensContiguous, sequsedQContiguous, maxSeqlenQ,
+                                          maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ,
+                                          socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

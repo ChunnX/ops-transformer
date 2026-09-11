@@ -43,25 +43,12 @@ namespace l0op {
  *         任意元素为nullptr表示对应输出的InferShape或Launch失败。
  */
 const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
-    const aclTensor *q,
-    const aclTensor *kCache,
-    const aclTensor *blockTableOptional,
-    const aclTensor *cacheSeqlensOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int32_t headDimV,
-    double softmaxScale,
-    int32_t maskMode,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutKv,
-    const char *layoutOut,
-    int32_t returnSoftmaxLse,
-    aclOpExecutor *executor);
+    const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
+    const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int32_t headDimV, double softmaxScale,
+    int32_t maskMode, int32_t maxSeqlenQ, int32_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
+    const char *layoutOut, int32_t returnSoftmaxLse, aclOpExecutor *executor);
 
-}  // namespace l0op
+} // namespace l0op
 
-#endif  // OP_API_INC_LEVEL0_FLASH_MLA_WITH_KVCACHE_H_
+#endif // OP_API_INC_LEVEL0_FLASH_MLA_WITH_KVCACHE_H_

@@ -195,8 +195,7 @@ public:
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 1U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * 128U * sizeof(T);
     static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVTemplateAlign64 * sizeof(T); // 96K
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES =
-        (mBaseSize / CV_RATIO + 1) * 128U * sizeof(INPUT_T); // 12.25K
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1) * 128U * sizeof(INPUT_T);  // 12.25K
     static constexpr uint32_t UB_MASK_BUFCNT = DB;
     static constexpr uint32_t UB_MASK_BUF_BYTES = 6144U; // attenMaskInQue[2] 各 6144B
     static constexpr uint32_t UB_SOFTMAX_BUFCNT = PRELOAD_N + 1;
@@ -465,12 +464,12 @@ public:
         // 统一走 Update VF 族（updateFlag=true）：首轮 sum/max 由 ProcessVec1 的
         // ResetSoftmaxBuffer 置 0/-inf，消除 isFirstS2Loop 分支
         if (likely(runInfo.actSingleLoopS2Size == 128)) {
-            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, EQ_128, hasAtten, PSE_MODE, HAS_DROP,
-                          false, false>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
-                                        attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize,
-                                        runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
-                                        constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
-                                        descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, EQ_128, hasAtten, PSE_MODE, HAS_DROP, false,
+                          false>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
+                                 pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize,
+                                 runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                                 constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
+                                 descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size <= 64) {
             ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_0_AND_LTE_64, hasAtten, PSE_MODE,
                           HAS_DROP, false, false>(
@@ -485,11 +484,11 @@ public:
                 constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else {
             if constexpr (s2BaseSize == 256) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_128_AND_LTE_256, hasAtten,
-                              PSE_MODE, HAS_DROP>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
-                                                  attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, expUb,
-                                                  runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes,
-                                                  posShift, constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F);
+                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_128_AND_LTE_256, hasAtten, PSE_MODE,
+                              HAS_DROP>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
+                                        attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize,
+                                        runInfo.actSingleLoopS2Size, pseStride, slopes, posShift, constInfo.scaleValue,
+                                        descaleQK, negativeFloatScalar, 0.0F);
             }
         }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
@@ -670,11 +669,11 @@ public:
                                                 uint32_t dealRowCount)
     {
         GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
-                        .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+                                .n2Idx = info.n2Idx,
+                                .gS1Idx = (info.gS1Idx + info.vecMbaseIdx + vecMIdx),
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
         FaUbTensor<OUTPUT_T, false> ubTensor{
             .tensor = attenOutUb, .rowCount = dealRowCount, .colCount = (uint32_t)(dVTemplateAlign64)};
         CopyAttentionOut(ubTensor, gmCoord);
@@ -753,7 +752,7 @@ public:
             uint8_t lseOutBuf[UB_LSE_OUT_BUF_BYTES];                        // 1.5K，LSE输出
             uint8_t sumBrdcstBuf[UB_BRDCST_BUF_BYTES];                      // 2K，FD sum/max staging
             // FD max/sum 共用 2K staging，并使用同一个 V/MTE3 Mutex。
-            uint8_t tmpBuf[UB_TMP_BUF_BYTES];                               // 0.5K，softmax 中间结果缓存
+            uint8_t tmpBuf[UB_TMP_BUF_BYTES]; // 0.5K，softmax 中间结果缓存
         };
         static_assert(sizeof(UbLayout) <= 248 * 1024, "UB buffer too large");
         ubMm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mm2ResBuffers),
@@ -850,7 +849,7 @@ public:
 
         if (!IsSkipMask) {
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, 128U>(attenMaskUb, attenMaskGmInt, maskInfo, false,
-                                                                        UB_IN_MASK_EVENT0 + maskBufId);
+                                                                  UB_IN_MASK_EVENT0 + maskBufId);
         } else {
             Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * 128U);
@@ -861,7 +860,7 @@ public:
             const uint32_t preBufId = maskBufId ^ 1U;
             LocalTensor<uint8_t> attenMaskUbPre = ubMaskBuffers_[preBufId * UB_MASK_BUF_BYTES];
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, 128U>(attenMaskUbPre, attenMaskGmInt, maskInfo, true,
-                                                                        UB_IN_MASK_EVENT0 + preBufId);
+                                                                  UB_IN_MASK_EVENT0 + preBufId);
             Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, 128U);
             Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
