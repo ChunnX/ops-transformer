@@ -13,39 +13,29 @@
 import operator
 import random
 from functools import reduce
-import numpy as np
 import os
-import json
 import math
-import struct
 import torch
-import tensorflow as tf
-import copy
-from ml_dtypes import float8_e4m3fn
-
 
 INVALID_VALUE = -1
 
 
-def get_np_dtype(type_str):
+def get_torch_dtype_for_gen(type_str):
     type_dict = {
-        "fp32": np.float32,
-        "float32": np.float32,
-        "fp16": np.float16,
-        "float16": np.float16,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
-        "int32": np.int32,
-        "int8": np.int8,
-        "uint8": np.uint8,
-        "hifloat8": np.float32,
+        "fp32": torch.float32,
+        "float32": torch.float32,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+        "int32": torch.int32,
+        "int8": torch.int8,
+        "uint8": torch.uint8,
+        "hifloat8": torch.float32,
     }
     if type_str == "float8_e4m3fn":
-        from ml_dtypes import float8_e4m3fn
-
-        return float8_e4m3fn
-    else:
-        return type_dict[type_str]
+        return torch.float8_e4m3fn
+    return type_dict[type_str]
 
 
 SHAPE_KEY_TO_INDEX = {
@@ -64,90 +54,73 @@ SHAPE_KEY_TO_INDEX = {
 }
 
 
-def _np_to_torch(np_array, gen_dtype):
-    """将 numpy array 转为 torch tensor，处理 bf16/float8 等特殊类型。"""
-    torch_dtype_map = {
-        "fp32": torch.float32,
-        "float32": torch.float32,
-        "fp16": torch.float16,
-        "float16": torch.float16,
-        "int8": torch.int8,
-        "int32": torch.int32,
-        "uint8": torch.uint8,
-        "hifloat8": torch.uint8,
-    }
-    if gen_dtype in ("bf16", "bfloat16"):
-        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(
-            torch.bfloat16
-        )
-    if gen_dtype == "float8_e4m3fn":
-        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(
-            torch.float8_e4m3fn
-        )
-    torch_dtype = torch_dtype_map.get(gen_dtype)
-    if torch_dtype is not None:
-        return torch.from_numpy(np.array(np_array)).to(torch_dtype)
-    # 其他类型（如 fp4、hifloat8 等），保留为 numpy 并包装
-    return torch.from_numpy(np.array(np_array))
-
-
 def gen_tensor_data(params, key):
-    input_i_data = None
     index = SHAPE_KEY_TO_INDEX.get(key, 0)
     shape_input = params["shape_input"][key]
     gen_dtype = params["dtype_input"][key]
-    dtype_input = get_np_dtype(gen_dtype)
+    torch_dtype = get_torch_dtype_for_gen(gen_dtype)
 
     is_fix_value = False
     for param_key in params.keys():
         if f"tensor_data_{index}" in param_key and "required_" not in param_key:
-            input_i_data = (
-                np.array(params[param_key]).reshape(shape_input).astype(gen_dtype)
-            )
+            raw_data = params[param_key]
+            if gen_dtype in ("bf16", "bfloat16"):
+                input_i_data = (
+                    torch.tensor(raw_data, dtype=torch.float32)
+                    .reshape(shape_input)
+                    .to(torch.bfloat16)
+                )
+            elif gen_dtype == "float8_e4m3fn":
+                input_i_data = (
+                    torch.tensor(raw_data, dtype=torch.float32)
+                    .reshape(shape_input)
+                    .to(torch.float8_e4m3fn)
+                )
+            else:
+                input_i_data = torch.tensor(raw_data, dtype=torch_dtype).reshape(
+                    shape_input
+                )
             is_fix_value = True
 
     if not is_fix_value:
-        dtype_input = get_np_dtype(gen_dtype)
-        tensor_duplicate_rat = None
-        real_shape = None
-        diff_data_size = None
-
         if len(params["range_input"][key]) == 1:
             input_i_data = gen_boundary_tensor_data(
                 shape_input,
                 params["range_input"][key],
-                dtype_input,
+                torch_dtype,
                 params["dtype_input"][key],
             )
         else:
             range_input = params["range_input"][key]
-            input_i_data = gen_nonbound_tensor_data(
-                params, shape_input, range_input, dtype_input, index
-            )
-
             if params["dtype_input"][key] == "hifloat8":
-                input_i_data = trans_np_float_tensor_to_hifuint8(
+                input_i_data = gen_nonbound_tensor_data(
+                    params, shape_input, range_input, torch.float32, index
+                )
+                input_i_data = trans_tensor_float_to_hifuint8(
                     in_tensor=input_i_data, round_mode="hybrid", over_mode=True
                 )
+            else:
+                input_i_data = gen_nonbound_tensor_data(
+                    params, shape_input, range_input, torch_dtype, index
+                )
 
-    return _np_to_torch(input_i_data, gen_dtype)
+    if input_i_data is None:
+        return torch.tensor([], dtype=torch_dtype)
+    return input_i_data
 
 
-def trans_np_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True):
+def trans_tensor_float_to_hifuint8(in_tensor, round_mode="round", over_mode=True):
     shape_tensor = in_tensor.shape
-    multi_shape = np.prod(shape_tensor)
-    if multi_shape == 1.0:  # shape为空时，输出multi_shape可能为浮点数 1.0
-        multi_shape = int(multi_shape)
-    out_tensor = np.zeros(multi_shape)
-    in_tensor = in_tensor.reshape(multi_shape)
+    flat = in_tensor.reshape(-1)
+    multi_shape = flat.numel()
+    out_tensor = torch.zeros(multi_shape, dtype=torch.float32)
     for i in range(multi_shape):
-        out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
-    out_tensor = out_tensor.astype(np.uint8)
-    out_tensor = out_tensor.reshape(shape_tensor)
+        out_tensor[i] = cvt_float32_to_hifuint8(flat[i].item(), round_mode, over_mode)
+    out_tensor = out_tensor.to(torch.uint8).reshape(shape_tensor)
     return out_tensor
 
 
-def _get_hif8_fraction_bits_number(exponent):
+def get_hif8_fraction_bits_number(exponent):
     if exponent < -22:
         return -1, 3, 0
     if -22 <= exponent < -15:
@@ -166,7 +139,7 @@ def _get_hif8_fraction_bits_number(exponent):
         return 12, 4, -1
 
 
-def _fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+def fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     t14_mask = 16383  # b11111111111111
     if exponent == -23:
         f14_values = (fraction32_int >> 10) + 8192  # 10 0000 0000 0000
@@ -188,7 +161,7 @@ def _fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
         return False, hif8_value
 
 
-def _fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     if exponent == -23:
         return True, 0
     hif8_value_tmp = fraction32_int >> (23 - (hif8_bits_num + 1))
@@ -212,25 +185,19 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
     if x < 0.0:
         sign = True
         sign_int_value = 128
-    if np.isinf(x) or x_abs >= over_value:
-        # 2^15 = 32768
+    if math.isinf(x) or x_abs >= over_value:
         if sign:
             if over_mode:
-                # b11101111 = 239
                 return 239
             else:
-                # b11101110 = 238
                 return 238
         else:
             if over_mode:
-                # b01101111 = 111
                 return 111
             else:
-                # b01101110 = 110
                 return 110
-    if np.isnan(x):
+    if math.isnan(x):
         if over_mode:
-            # b10000000
             return 128
         else:
             return 0
@@ -250,14 +217,14 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
         cut_bit_type = "TA"
     fraction_int = int(x_abs * pow(2, 23) * pow(2, -exponent) - pow(2, 23))
     dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = (
-        _get_hif8_fraction_bits_number(exponent)
+        get_hif8_fraction_bits_number(exponent)
     )
     if cut_bit_type == "TA":
-        carry_exp_status, hif8_frac_value = _fp32_ta_round_to_hif8(
+        carry_exp_status, hif8_frac_value = fp32_ta_round_to_hif8(
             fraction_int, fraction_hif8_bits, exponent
         )
     elif cut_bit_type == "SSR":
-        carry_exp_status, hif8_frac_value = _fp32_ssr_round_to_hif8(
+        carry_exp_status, hif8_frac_value = fp32_ssr_round_to_hif8(
             fraction_int, fraction_hif8_bits, exponent
         )
     else:
@@ -266,7 +233,7 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
     if carry_exp_status:
         exponent += 1
         dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits_new = (
-            _get_hif8_fraction_bits_number(exponent)
+            get_hif8_fraction_bits_number(exponent)
         )
         fraction_hif8_bits = fraction_hif8_bits_new
     if exponent < -23:
@@ -299,33 +266,46 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
     return hif8_int_value
 
 
-def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw="fp32"):
+def gen_boundary_tensor_data(shape_input, input_range, torch_dtype, dtype_raw="fp32"):
     input_i_data = None
     if input_range[0] == "null":
-        input_i_data = np.array([], dtype=dtype_input)
+        input_i_data = torch.tensor([], dtype=torch_dtype)
     elif input_range[0] == "nan":
         try:
-            input_i_data = np.full(shape_input, np.NaN, dtype=dtype_input)
+            input_i_data = torch.full(shape_input, float("nan"), dtype=torch.float32).to(
+                torch_dtype
+            )
         except Exception:
-            input_i_data = np.full(shape_input, np.nan, dtype=dtype_input)
+            input_i_data = torch.full(shape_input, float("nan"), dtype=torch.float32).to(
+                torch_dtype
+            )
     elif input_range[0] == "inf":
         try:
-            input_i_data = np.full(shape_input, np.Inf, dtype=dtype_input)
+            input_i_data = torch.full(shape_input, float("inf"), dtype=torch.float32).to(
+                torch_dtype
+            )
         except Exception:
-            input_i_data = np.full(shape_input, np.inf, dtype=dtype_input)
+            input_i_data = torch.full(shape_input, float("inf"), dtype=torch.float32).to(
+                torch_dtype
+            )
     elif input_range[0] == "-inf":
         try:
-            input_i_data = np.full(shape_input, -np.Inf, dtype=dtype_input)
+            input_i_data = torch.full(
+                shape_input, float("-inf"), dtype=torch.float32
+            ).to(torch_dtype)
         except Exception:
-            input_i_data = np.full(shape_input, -np.inf, dtype=dtype_input)
+            input_i_data = torch.full(
+                shape_input, float("-inf"), dtype=torch.float32
+            ).to(torch_dtype)
     elif input_range[0] == "default":
         input_i_data = None
     else:
-        input_i_data = np.full(shape_input, input_range[0], dtype=dtype_input)
+        val = float(input_range[0])
+        input_i_data = torch.full(shape_input, val, dtype=torch.float32).to(torch_dtype)
     return input_i_data
 
 
-def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_index):
+def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tensor_index):
     fuzz_value_type = ""
     try:
         if isinstance(range_input, dict):
@@ -337,99 +317,113 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
         hash_seed = -1
         min_value, max_value = range_input
         if min_value == "-inf" and max_value == "inf":
-            if dtype in [np.float32, np.float64, np.float16]:
-                min_value = np.finfo(dtype).min
-                max_value = np.finfo(dtype).max
-            elif dtype in [np.int8, np.int16, np.int32, np.uint8]:
-                min_value = np.iinfo(dtype).min
-                max_value = np.iinfo(dtype).max
+            if torch_dtype in [torch.float32, torch.float64, torch.float16]:
+                info = torch.finfo(torch_dtype)
+                min_value = info.min
+                max_value = info.max
+            elif torch_dtype in [torch.int8, torch.int16, torch.int32, torch.uint8]:
+                info = torch.iinfo(torch_dtype)
+                min_value = info.min
+                max_value = info.max
             else:
                 min_value = False
                 max_value = True
             if hash_seed > 0:
-                np.random.seed(hash_seed)
-            if dtype in [np.float64]:
+                torch.manual_seed(hash_seed)
+            if torch_dtype == torch.float64:
                 input_data = (
-                    np.random.uniform(low=-1, high=1, size=data_shape).astype(
-                        np.float64
-                    )
-                    * max_value
-                )
+                    torch.rand(data_shape, dtype=torch.float64) * 2 - 1
+                ) * max_value
             else:
-                input_data = np.random.uniform(
-                    low=min_value, high=max_value, size=data_shape
-                ).astype(dtype)
-            if data_shape == []:  # shape=[] reduce处理会异常
-                return gen_uniform_data(data_shape, -1, 1, dtype, hash_seed)
+                input_data = (
+                    torch.rand(data_shape, dtype=torch.float32)
+                    * (max_value - min_value)
+                    + min_value
+                ).to(torch_dtype)
+            if data_shape == []:
+                return gen_uniform_data(data_shape, -1, 1, torch_dtype, hash_seed)
             shape_len = reduce(operator.mul, data_shape)
-            if shape_len == 0:  # high不能为0
-                return gen_uniform_data(data_shape, 0, 4, dtype, hash_seed)
+            if shape_len == 0:
+                return gen_uniform_data(data_shape, 0, 4, torch_dtype, hash_seed)
+            flat = input_data.flatten()
             if hash_seed > 0:
-                np.random.seed(hash_seed)
-            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+                torch.manual_seed(hash_seed)
+            num_change = torch.randint(0, min(shape_len, 4) + 1, (1,)).item()
             if hash_seed > 0:
-                np.random.seed(hash_seed + 1)
-            inf_index = np.unravel_index(
-                np.random.choice(shape_len, num_change), data_shape
-            )
-            input_data[inf_index] = min_value
+                torch.manual_seed(hash_seed + 1)
+            indices = torch.randperm(shape_len)[:num_change]
+            coords = torch.unravel_index(indices, data_shape)
+            flat[indices] = min_value
             if hash_seed > 0:
-                np.random.seed(hash_seed + 2)
-            num_change = np.random.randint(low=0, high=min(shape_len, 4))
+                torch.manual_seed(hash_seed + 2)
+            num_change = torch.randint(0, min(shape_len, 4) + 1, (1,)).item()
             if hash_seed > 0:
-                np.random.seed(hash_seed + 3)
-            inf_index = np.unravel_index(
-                np.random.choice(shape_len, num_change), data_shape
-            )
-            input_data[inf_index] = max_value
+                torch.manual_seed(hash_seed + 3)
+            indices = torch.randperm(shape_len)[:num_change]
+            flat[indices] = max_value
             return input_data
         elif min_value == "nan":
             try:
-                return np.full(data_shape, np.NaN, dtype=dtype)
+                return torch.full(
+                    data_shape, float("nan"), dtype=torch.float32
+                ).to(torch_dtype)
             except Exception:
-                return np.full(data_shape, np.nan, dtype=dtype)
+                return torch.full(
+                    data_shape, float("nan"), dtype=torch.float32
+                ).to(torch_dtype)
         elif min_value == "inf":
             try:
-                return np.full(data_shape, np.Inf, dtype=dtype)
+                return torch.full(
+                    data_shape, float("inf"), dtype=torch.float32
+                ).to(torch_dtype)
             except Exception:
-                return np.full(data_shape, np.inf, dtype=dtype)
+                return torch.full(
+                    data_shape, float("inf"), dtype=torch.float32
+                ).to(torch_dtype)
         elif min_value == "-inf":
             try:
-                return np.full(data_shape, -np.Inf, dtype=dtype)
+                return torch.full(
+                    data_shape, float("-inf"), dtype=torch.float32
+                ).to(torch_dtype)
             except Exception:
-                return np.full(data_shape, -np.inf, dtype=dtype)
+                return torch.full(
+                    data_shape, float("-inf"), dtype=torch.float32
+                ).to(torch_dtype)
         elif min_value == "default":
             return None
         elif min_value == "null":
-            return np.array([], dtype=dtype)
+            return torch.tensor([], dtype=torch_dtype)
         else:
-            return gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed)
+            return gen_uniform_data(
+                data_shape, min_value, max_value, torch_dtype, hash_seed
+            )
     except MemoryError:
         print("[ERROR] MemoryError.")
         return INVALID_VALUE
 
 
-def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
+def gen_uniform_data(data_shape, min_value, max_value, torch_dtype, hash_seed):
     if min_value == 0 and max_value == 0:
-        return np.zeros(data_shape, dtype=dtype)
+        return torch.zeros(data_shape, dtype=torch_dtype)
     if hash_seed > 0:
-        np.random.seed(hash_seed)
-    if dtype == np.bool_:
-        return np.random.choice([True, False], size=data_shape)
-    if dtype == np.complex64:
-        real = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(
-            np.float32
-        )
-        real = torch.tensor(real)
+        torch.manual_seed(hash_seed)
+    if torch_dtype == torch.bool:
+        return torch.randint(0, 2, data_shape, dtype=torch.bool)
+    if torch_dtype == torch.complex64:
         if hash_seed > 0:
-            np.random.seed(hash_seed + 1)
-        imag = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(
-            np.float32
+            torch.manual_seed(hash_seed)
+        real = (
+            torch.rand(data_shape, dtype=torch.float32) * (max_value - min_value)
+            + min_value
         )
-        imag = torch.tensor(imag)
-        input_complex64 = torch.complex(real, imag)
-        data = input_complex64.detach().numpy().astype(np.complex64)
-    data = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(
-        dtype
+        if hash_seed > 0:
+            torch.manual_seed(hash_seed + 1)
+        imag = (
+            torch.rand(data_shape, dtype=torch.float32) * (max_value - min_value)
+            + min_value
+        )
+        return torch.complex(real, imag)
+    data = (
+        torch.rand(data_shape, dtype=torch.float32) * (max_value - min_value) + min_value
     )
-    return data
+    return data.to(torch_dtype)

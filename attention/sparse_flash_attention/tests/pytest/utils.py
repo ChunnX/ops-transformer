@@ -36,12 +36,12 @@ STR_MAP_DICT = {
 }
 
 
-def _normalize_numeric_value(value):
+def normalize_numeric_value(value):
     # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
     if isinstance(value, list):
-        return [_normalize_numeric_value(item) for item in value]
+        return [normalize_numeric_value(item) for item in value]
     if isinstance(value, tuple):
-        return tuple(_normalize_numeric_value(item) for item in value)
+        return tuple(normalize_numeric_value(item) for item in value)
     if isinstance(value, np.integer):
         return int(value)
     if isinstance(value, float) and value.is_integer():
@@ -49,22 +49,22 @@ def _normalize_numeric_value(value):
     return value
 
 
-def _parse_excel_cell_value(value):
+def parse_excel_cell_value(value):
     # 将 Excel 单元格内容转换成 pytest 框架需要的 Python 类型。
     if isinstance(value, str):
         stripped = value.strip()
         if stripped in STR_MAP_DICT:
-            return _normalize_numeric_value(STR_MAP_DICT[stripped])
+            return normalize_numeric_value(STR_MAP_DICT[stripped])
         if stripped in ("", "None", "none", "NULL", "null", "NaN", "nan"):
             return None
         if (stripped.startswith("[") and stripped.endswith("]")) or (
             stripped.startswith("(") and stripped.endswith(")")
         ):
             try:
-                return _normalize_numeric_value(ast.literal_eval(stripped))
+                return normalize_numeric_value(ast.literal_eval(stripped))
             except (ValueError, SyntaxError):
                 return value
-    return _normalize_numeric_value(value)
+    return normalize_numeric_value(value)
 
 
 def load_paramset(paramset_file):
@@ -277,7 +277,7 @@ def combin_params(enabled_params, pytest_paramset=True):
         for key, value in params.items():
             if key in base_param_names or key in range_param_names:
                 current_params[key] = (
-                    value if pytest_paramset else [_parse_excel_cell_value(value)]
+                    value if pytest_paramset else [parse_excel_cell_value(value)]
                 )
 
         param_names = base_param_names + range_param_names

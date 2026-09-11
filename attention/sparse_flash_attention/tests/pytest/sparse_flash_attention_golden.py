@@ -17,6 +17,11 @@ import copy
 
 import generate_tensor_data
 
+# 0 不切S2；1 切S2（flash-attention online softmax）
+RUN_MODE = 1
+# S2 分块大小（仅 RUN_MODE == 1 生效）
+S2_BASE_SIZE = 512
+
 
 def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     if len(shape1) != len(shape2):
@@ -59,14 +64,14 @@ def preprocessing(fa_param):
     numHeads = fa_param["numHeads"]
     numKeyValueHeads = fa_param["numKeyValueHeads"]
 
-    def _clone(t):
+    def safe_clone_tensor(t):
         if torch.is_tensor(t):
             return t.clone()
         return copy.deepcopy(t)
 
-    fa_param["q_tensor_old"] = _clone(fa_param["q_tensor"])
+    fa_param["q_tensor_old"] = safe_clone_tensor(fa_param["q_tensor"])
     fa_param["q_shape_old"] = copy.deepcopy(fa_param["q_shape"])
-    fa_param["k_tensor_old"] = _clone(fa_param["k_tensor"])
+    fa_param["k_tensor_old"] = safe_clone_tensor(fa_param["k_tensor"])
     fa_param["k_shape_old"] = copy.deepcopy(fa_param["k_shape"])
 
     q_new_tensor, q_new_shape = concat_tensor(
@@ -100,7 +105,7 @@ def preprocessing(fa_param):
     return fa_param
 
 
-def _n_trans_shape_to_bnsd(
+def n_trans_shape_to_bnsd(
     tensor, shape, layout, headnums=None, act_seq=None, tensor_name=None
 ):
     t = tensor
@@ -354,7 +359,7 @@ def compute_cpu(input_tensor_dict, params, return_bench=False):
         return None, input_tensor_dict, params
 
 
-def _prepare_fa_param(input_tensor_dict, params):
+def prepare_fa_param(input_tensor_dict, params):
     fa_param = get_param_fus(input_tensor_dict, params)
     if not fa_param["normal_flag"]:
         return fa_param
@@ -371,7 +376,7 @@ def _prepare_fa_param(input_tensor_dict, params):
         fa_param["actualSeqLengths_q"] = trans_tnd_actseq(actualSeqLengths_q)
         if fa_param["pa_flag"]:
             fa_param["actualSeqLengths_kv"] = actualSeqLengths_kv
-        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(
+        q_bnsd_tensor, q_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["q_tensor"],
             fa_param["q_shape"],
             layoutQuery,
@@ -379,7 +384,7 @@ def _prepare_fa_param(input_tensor_dict, params):
             fa_param["actualSeqLengths_q"],
         )
     else:
-        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(
+        q_bnsd_tensor, q_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["q_tensor"],
             fa_param["q_shape"],
             layoutQuery,
@@ -388,14 +393,14 @@ def _prepare_fa_param(input_tensor_dict, params):
         )
     if fa_param["kv_tnd_flag"]:
         fa_param["actualSeqLengths_kv"] = trans_tnd_actseq(actualSeqLengths_kv)
-        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(
+        k_bnsd_tensor, k_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["k_tensor"],
             fa_param["k_shape"],
             fa_param["layout_kv"],
             numKeyValueHeads,
             fa_param["actualSeqLengths_kv"],
         )
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(
+        v_bnsd_tensor, v_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["v_tensor"],
             fa_param["v_shape"],
             fa_param["layout_kv"],
@@ -403,14 +408,14 @@ def _prepare_fa_param(input_tensor_dict, params):
             fa_param["actualSeqLengths_kv"],
         )
     else:
-        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(
+        k_bnsd_tensor, k_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["k_tensor"],
             fa_param["k_shape"],
             fa_param["layout_kv"],
             numKeyValueHeads,
             actualSeqLengths_kv,
         )
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(
+        v_bnsd_tensor, v_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["v_tensor"],
             fa_param["v_shape"],
             fa_param["layout_kv"],
@@ -418,7 +423,7 @@ def _prepare_fa_param(input_tensor_dict, params):
             actualSeqLengths_kv,
         )
     if fa_param["tnd_flag"]:
-        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
+        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["sparse_indices_tensor"],
             fa_param["sparse_indices_shape"],
             layoutQuery,
@@ -427,7 +432,7 @@ def _prepare_fa_param(input_tensor_dict, params):
             "sparseIndices",
         )
     else:
-        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
+        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["sparse_indices_tensor"],
             fa_param["sparse_indices_shape"],
             layoutQuery,
@@ -464,7 +469,7 @@ def _prepare_fa_param(input_tensor_dict, params):
     return fa_param
 
 
-def _generate_sparse_indices(
+def generate_sparse_indices(
     input_tensor_dict, fa_param, params, out_shape, layoutQuery
 ):
     sparse_indices_bnsd_shape = fa_param["sparse_indices_bnsd_shape"]
@@ -511,7 +516,7 @@ def _generate_sparse_indices(
     fa_param["sparse_indices_bnsd_tensor"] = sparse_indices_tensor
 
 
-def _generate_block_table_and_cache(
+def generate_block_table_and_cache(
     input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape
 ):
     if fa_param["pa_flag"]:
@@ -555,7 +560,7 @@ def _generate_block_table_and_cache(
 def compute_golden(input_tensor_dict, params, return_bench=False):
     print("cpu执行中...")
 
-    def _to_cpu_float32_tensor(val):
+    def to_cpu_float32_tensor(val):
         if torch.is_tensor(val):
             if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
                 return val.float().cpu()
@@ -563,9 +568,9 @@ def compute_golden(input_tensor_dict, params, return_bench=False):
         return val
 
     cpu_input = {
-        key: _to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()
+        key: to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()
     }
-    fa_param = _prepare_fa_param(cpu_input, params)
+    fa_param = prepare_fa_param(cpu_input, params)
     if not fa_param["normal_flag"]:
         return torch.zeros(fa_param["out_shape"])
 
@@ -573,24 +578,24 @@ def compute_golden(input_tensor_dict, params, return_bench=False):
     layoutQuery = fa_param["layout_query"]
     actualSeqLengths_kv = fa_param["actualSeqLengths_raw"]
 
-    def _to_cpu_raw(val):
+    def to_cpu_raw(val):
         if torch.is_tensor(val):
             return val.cpu()
         return val
 
-    fa_param["_raw_key"] = _to_cpu_raw(input_tensor_dict.get("key"))
-    fa_param["_raw_key_rope"] = _to_cpu_raw(input_tensor_dict.get("key_rope"))
-    fa_param["_raw_query"] = _to_cpu_raw(input_tensor_dict.get("query"))
-    fa_param["_raw_query_rope"] = _to_cpu_raw(input_tensor_dict.get("query_rope"))
+    fa_param["_raw_key"] = to_cpu_raw(input_tensor_dict.get("key"))
+    fa_param["_raw_key_rope"] = to_cpu_raw(input_tensor_dict.get("key_rope"))
+    fa_param["_raw_query"] = to_cpu_raw(input_tensor_dict.get("query"))
+    fa_param["_raw_query_rope"] = to_cpu_raw(input_tensor_dict.get("query_rope"))
 
-    _generate_sparse_indices(
+    generate_sparse_indices(
         input_tensor_dict, fa_param, params, out_shape, layoutQuery
     )
-    _generate_block_table_and_cache(
+    generate_block_table_and_cache(
         input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape
     )
 
-    y_all, softmax_max, softmax_sum = _t_increattention_bnsd(fa_param)
+    y_all, softmax_max, softmax_sum = t_increattention_bnsd(fa_param)
     y_all = trans_bnsd_to_layout(
         y_all, out_shape, layoutQuery, fa_param["actualSeqLengths_q"]
     )
@@ -600,7 +605,7 @@ def compute_golden(input_tensor_dict, params, return_bench=False):
     # 必须在同一次 compute_golden 内完成——sparse_indices/block_table/kv_cache 由
     # 上面的随机生成步骤原地写入,外层重调会用新的随机值,三方就不再对齐同一份数据。
     print("[INFO]:cross_check 开启，计算高精度三方标杆...")
-    y_bench, _, _ = _t_increattention_bnsd(fa_param, quantize_exp=False)
+    y_bench, _, _ = t_increattention_bnsd(fa_param, quantize_exp=False)
     y_bench = trans_bnsd_to_layout(
         y_bench, out_shape, layoutQuery, fa_param["actualSeqLengths_q"]
     )
@@ -694,7 +699,55 @@ def bmm1(q_curr, k_sparse, calc_dtype):
         return cpu_matmul
 
 
-def _t_increattention_bnsd(fa_param, quantize_exp=True):
+def _cast_softmax(softmax_res, q_dtype):
+    if q_dtype == "float16":
+        return softmax_res.to(torch.float16).float()
+    elif q_dtype == "bfloat16":
+        return softmax_res.to(torch.bfloat16).float()
+    return softmax_res.float()
+
+
+def tiled_flash_attention(q_curr, k_sparse, v_sparse, scale_value, cur_sinks, q_dtype):
+    g = q_curr.shape[0]
+    out_dim = v_sparse.shape[-1]
+    k_fp32 = k_sparse.float()
+    v_fp32 = v_sparse.float()
+    s2_len = k_fp32.shape[0]
+    s2_loop_time = math.ceil(s2_len / S2_BASE_SIZE)
+
+    if cur_sinks is not None:
+        row_max = cur_sinks.float()
+        row_sum = torch.ones(g, dtype=torch.float32)
+    else:
+        row_max = torch.full((g,), -float("inf"), dtype=torch.float32)
+        row_sum = torch.zeros(g, dtype=torch.float32)
+
+    cur_attn_out = torch.zeros((g, out_dim), dtype=torch.float32)
+
+    for i_s2 in range(s2_loop_time):
+        start = i_s2 * S2_BASE_SIZE
+        end = min(start + S2_BASE_SIZE, s2_len)
+        k_tile = k_fp32[start:end, :]
+        v_tile = v_fp32[start:end, :]
+
+        #mm1_res = torch.matmul(q_curr.float(), k_tile.float().T)
+        mm1_res = torch.matmul(q_curr.to(torch.float64), k_tile.to(torch.float64).T).float()
+        scale_res = mm1_res * scale_value
+        row_max_old = row_max.clone()
+        row_max = torch.max(row_max, scale_res.max(dim=1)[0])
+        update_mul = torch.exp(row_max_old - row_max)
+        cur_softmax = torch.exp(scale_res - row_max.unsqueeze(1))
+        row_sum = update_mul * row_sum + cur_softmax.sum(dim=1)
+
+        cur_softmax = _cast_softmax(cur_softmax, q_dtype)
+        #cur_o = torch.matmul(cur_softmax.float(), v_tile.float())
+        cur_o = torch.matmul(cur_softmax.to(torch.float64), v_tile.to(torch.float64)).float()
+        cur_attn_out = cur_attn_out * update_mul.unsqueeze(1) + cur_o
+
+    return cur_attn_out / row_sum.unsqueeze(1), row_max, row_sum
+
+
+def t_increattention_bnsd(fa_param, quantize_exp=True):
     batch_size = fa_param["b"]
     numheads = fa_param["numHeads"]
     numKeyValueHeads = fa_param["numKeyValueHeads"]
@@ -774,33 +827,54 @@ def _t_increattention_bnsd(fa_param, quantize_exp=True):
                             torch.ones_like(cur_sinks),
                         )
                     continue
-                bmm1Res = bmm1(
-                    q_curr,
-                    k_sparse,
-                    torch.bfloat16
-                    if fa_param["q_dtype"] == "bfloat16"
-                    else torch.float16,
-                )
-                scaleRes = bmm1Res * scaleValue
-                _, x_max, x_sum = softmax(scaleRes, cur_sinks)
-                # 与算子softmax的数值链对齐: 未归一化 exp(x-max) 先量化为 P 的计算精度,bmm2 用 fp32 累加,最后除以fp32的sum
-                exp_unnorm = torch.exp(scaleRes - x_max)
-                if quantize_exp:
-                    if fa_param["q_dtype"] == "float16":
-                        exp_quantized = exp_unnorm.to(torch.float16).float()
-                    elif fa_param["q_dtype"] == "bfloat16":
-                        exp_quantized = exp_unnorm.to(torch.bfloat16).float()
+                if RUN_MODE == 0:
+                    bmm1Res = bmm1(
+                        q_curr,
+                        k_sparse,
+                        torch.bfloat16
+                        if fa_param["q_dtype"] == "bfloat16"
+                        else torch.float16,
+                    )
+                    scaleRes = bmm1Res * scaleValue
+                    _, x_max, x_sum = softmax(scaleRes, cur_sinks)
+                    # 与算子softmax的数值链对齐: 未归一化 exp(x-max) 先量化为 P 的计算精度,bmm2 用 fp32 累加,最后除以fp32的sum
+                    exp_unnorm = torch.exp(scaleRes - x_max)
+                    if quantize_exp:
+                        if fa_param["q_dtype"] == "float16":
+                            exp_quantized = exp_unnorm.to(torch.float16).float()
+                        elif fa_param["q_dtype"] == "bfloat16":
+                            exp_quantized = exp_unnorm.to(torch.bfloat16).float()
+                        else:
+                            exp_quantized = exp_unnorm
                     else:
+                        # 三方标杆高精度路径: exp(x-max) 保持 fp32 直接参与 bmm2,
+                        # 不量化到算子计算精度(对齐其他测试工具的高精度参考分支)
                         exp_quantized = exp_unnorm
+                    bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
+                    y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
+                    set_softmax_lse(
+                        batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0]
+                    )
+                elif RUN_MODE == 1:
+                    attn_out, row_max, row_sum = tiled_flash_attention(
+                        q_curr,
+                        k_sparse,
+                        v_sparse,
+                        scaleValue,
+                        cur_sinks,
+                        fa_param["q_dtype"],
+                    )
+                    if fa_param["q_dtype"] == "float16":
+                        y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out.to(torch.float16).float()
+                    elif fa_param["q_dtype"] == "bfloat16":
+                        y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out.to(torch.bfloat16).float()
+                    else:
+                        y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = attn_out
+                    set_softmax_lse(
+                        batch, n2Idx, s1Idx, qLastPrefill, row_max, row_sum
+                    )
                 else:
-                    # 三方标杆高精度路径: exp(x-max) 保持 fp32 直接参与 bmm2,
-                    # 不量化到算子计算精度(对齐其他测试工具的高精度参考分支)
-                    exp_quantized = exp_unnorm
-                bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
-                y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-                set_softmax_lse(
-                    batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0]
-                )
+                    raise ValueError(f"unsupported RUN_MODE: {RUN_MODE}")
     return y, softmax_max, softmax_sum
 
 
@@ -949,7 +1023,7 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return q_shape[-1]
 
 
-def _save_test_case(input_data, output_dir):
+def save_test_case(input_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     case_name = input_data["Testcase_Name"]
     filepath = os.path.join(output_dir, f"{case_name}.pt")

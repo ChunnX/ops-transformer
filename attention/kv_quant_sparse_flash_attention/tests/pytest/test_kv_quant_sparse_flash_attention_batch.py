@@ -42,34 +42,42 @@ else:
 def execute_qsfa(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     testcase_name = os.path.basename(testcase_files).replace(".pt", "")
-    result, fulfill_percent = utils.qsfa_run_npu(
-        test_data,
-        testcase_name=testcase_name,
-        device_id=DEVICE_ID,
-        result_path=RESULT_PATH,
-    )
-    return result, fulfill_percent, test_data
+
+    npu_error_msg = None
+    try:
+        result, fulfill_percent = utils.qsfa_run_npu(
+            test_data,
+            testcase_name=testcase_name,
+            device_id=DEVICE_ID,
+            result_path=RESULT_PATH,
+        )
+    except Exception as e:
+        npu_error_msg = str(e)
+        print("NPU ERROR：", npu_error_msg)
+        result = "NPU ERROR"
+        fulfill_percent = 0
+
+    utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
+
+    if result == "Failed":
+        pytest.fail(
+            f"用例精度失败:{testcase_name} 精度:{fulfill_percent:.2f}%",
+            pytrace=False,
+        )
+    if result == "NPU ERROR":
+        pytest.fail(
+            f"用例执行失败:{testcase_name} NPU ERROR: {npu_error_msg}",
+            pytrace=False,
+        )
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_kv_quant_sparse_flash_attention(testcase_files):
-    test_data = None
-    fulfill_percent = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, testcase_files)
         for future in concurrent.futures.as_completed([futures]):
             try:
-                result, fulfill_percent, test_data = future.result()
-                if result == "Failed":
-                    case_name = os.path.basename(testcase_files).replace(".pt", "")
-                    pytest.fail(
-                        f"用例名: {case_name}, 精度: {fulfill_percent:.4f}%",
-                        pytrace=False,
-                    )
-            except Exception as e:
-                params = test_data.get("params") if test_data else None
-                case_name = os.path.basename(testcase_files).replace(".pt", "")
-                if params:
-                    utils.save_result(params, "Failed", "", RESULT_PATH)
-                pytest.fail(f"用例名: {case_name}, 当前用例线程执行失败")
+                future.result()
+            except Exception:
+                pytest.fail("当前用例线程执行失败")

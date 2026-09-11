@@ -14,10 +14,9 @@ import torch
 import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
-import numpy as np
 
 
-def _load_inputs_to_npu(input_dict):
+def load_inputs_to_npu(input_dict):
     def to_npu(value):
         if isinstance(value, torch.Tensor):
             return value.npu()
@@ -74,7 +73,7 @@ def call_npu(input_tensor_dict, params, device_id=0):
         for k in tensor_keys
         if input_tensor_dict.get(k) is not None
     }
-    torch_tensor_dict = _load_inputs_to_npu(filtered_input_dict)
+    torch_tensor_dict = load_inputs_to_npu(filtered_input_dict)
     npu_result = call_npu_eager(torch_tensor_dict, params)
     # 路径3:
     # npu_result = call_npu_graph(torch_tensor_dict, params)

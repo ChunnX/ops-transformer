@@ -43,7 +43,7 @@ def execute_qsfa(param_combination):
         "input": input_dict,
         "cpu_output": cpu_result,
     }
-    kv_quant_sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
+    kv_quant_sparse_flash_attention_golden.save_test_case(test_data, PT_SAVE_PATH)
     case_id += 1
 
 
