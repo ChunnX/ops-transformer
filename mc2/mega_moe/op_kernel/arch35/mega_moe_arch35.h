@@ -564,7 +564,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
             gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm1Activation(gmmAddrInfo, problemShape, sharedGmmConfig, runtimeState, sharedExpertIdx);
     }
-    EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    Gmm1UbActivationSync ubSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    ubSync.EndSync();
     gmm1PingPongIdx_ = 0U;
     startBlockIdx_ = 0U;
 }

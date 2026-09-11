@@ -297,9 +297,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     }
 
     if constexpr (!TopkWeightsPrefetch) {
-        // UB ping/pong uses the two buffer-reuse events; the GM path below uses
-        // counted tile ACKs. Drain the protocol selected by this precision path.
-        EndSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
+        Gmm1UbActivationSync ubSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
+        ubSync.EndSync();
     }
     // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
     gmm1ActivationSync.EndSync();

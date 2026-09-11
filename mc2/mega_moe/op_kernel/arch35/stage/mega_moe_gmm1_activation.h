@@ -68,12 +68,6 @@ __aicore__ inline void NotifyGmm2InputReady(__gm__ int32_t *flagBase, uint32_t f
     AscendC::AtomicAdd(flagBase, 1);
 }
 
-__aicore__ inline void NotifyGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, uint32_t loopIdx)
-{
-    __gm__ int32_t *statusAddr = gmmAddrInfo.gmm1TileStatus + static_cast<uint64_t>(loopIdx) * INT_CACHELINE;
-    AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
-}
-
 // 计算一个 Prefetch GMM1 tile 并直接写入 GM。
 template <typename BlockMmad, typename Config, typename TensorB, typename TensorScaleB, typename ActualShape,
           typename TensorA, typename TensorScaleA, typename TensorC>
@@ -148,6 +142,7 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
                                                   uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertIdx,
                                                   MmadContext *blockMmadContext)
 {
+    Gmm1GmActivationSync<true, GMMAddrInfo> sync(gmmAddrInfo);
     using BlockMmad = decltype(blockMmadContext->blockMmad);
     blockMmadContext->template Init<GmmStage::GMM1>(config);
     auto &blockMmad = blockMmadContext->blockMmad;
@@ -172,18 +167,10 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->WaitForActivation();
-        }
+        sync.WaitForActivation();
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmC,
                                               actualShape, mLoc, nLoc, kLoc, gmBlockA, gmBlockScaleA);
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->NotifyActivation();
-        } else {
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
-        }
+        sync.NotifyActivation(expertIdx, loopIdx);
     }
 }
 
@@ -193,6 +180,7 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
                                           uint32_t startLoopIdx, uint32_t tileNum, int32_t &vecSetSyncCom,
                                           uint16_t &pingpongIdx, MmadContext *blockMmadContext)
 {
+    Gmm1UbActivationSync sync(vecSetSyncCom, pingpongIdx);
     using BlockMmad = decltype(blockMmadContext->blockMmad);
     blockMmadContext->template Init<GmmStage::GMM1>(config);
     auto &blockMmad = blockMmadContext->blockMmad;
@@ -225,16 +213,12 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
-        if (vecSetSyncCom >= 2) {
-            WaitForVector(pingpongIdx);
-        }
+        sync.WaitForActivation();
 
         Gmm1AicMmadTileToUbGeneric<BlockMmad>(blockMmad, config, workSet.gmB, workSet.gmScaleB, actualShape, nLoc, kLoc,
                                               gmBlockA, gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, pingpongIdx);
 
-        NotifyVector(pingpongIdx);
-        vecSetSyncCom++;
-        pingpongIdx = 1U - pingpongIdx;
+        sync.NotifyActivation();
     }
 }
 
@@ -244,6 +228,7 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                        int32_t &gmm1TileReadySequence, uint32_t expertIdx)
 {
+    Gmm1GmActivationSync<TopkWeightsPrefetch, GMMAddrInfo> sync(gmmAddrInfo, &gmm1TileReadySequence);
     BlockMmad blockMmad{};
     typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
                                                0};
@@ -262,26 +247,11 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
             lastWaveWaited = waveIdx;
         }
 
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->WaitForActivation();
-        }
+        sync.WaitForActivation();
         Gmm1AicMmadTileA8W4(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, config,
                             actualShape, mLoc, nLoc);
 
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->NotifyActivation();
-            if constexpr (!TopkWeightsPrefetch) {
-                ++gmm1TileReadySequence;
-            }
-        } else {
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            if constexpr (TopkWeightsPrefetch) {
-                NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
-            } else {
-                AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmm1TileReadySequence);
-            }
-        }
+        sync.NotifyActivation(expertIdx, loopIdx);
     }
 }
 
@@ -416,13 +386,6 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, 
     }
 }
 
-__aicore__ inline void WaitGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx, uint32_t loopIdx)
-{
-    __gm__ int32_t *statusAddr = gmmAddrInfo.gmm1TileStatus + static_cast<uint64_t>(loopIdx) * INT_CACHELINE;
-    int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
-    WaitUntilGmFlagEquals(statusAddr, roundTag);
-}
-
 // Prefetch 路径的 AIV0 通过硬件通知或 GM 状态等待 tile 就绪，再执行 Activation/量化。
 template <typename MakeLayoutC, typename ElementC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
@@ -432,22 +395,17 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
                                                        ActivationQuantOp &activationQuantOp, uint32_t expertBeforeCnt,
                                                        uint32_t expertIdx)
 {
+    Gmm1GmActivationSync<true, GMMAddrInfo> sync(gmmAddrInfo);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->WaitForGmm1();
-        } else {
-            WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
-        }
+        sync.WaitForGmm1(expertIdx, loopIdx);
         Gmm1Aiv0PrefetchEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
             config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape, mLoc,
             nLoc);
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->NotifyGmm1();
-        }
+        sync.NotifyGmm1();
     }
 }
 
@@ -457,16 +415,16 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
                                                uint32_t startLoopIdx, uint32_t tileNum,
                                                ActivationQuantOp &activationQuantOp, uint16_t &pingpongIdx)
 {
+    Gmm1UbActivationSync sync(pingpongIdx);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        WaitForCube(pingpongIdx);
+        sync.WaitForGmm1();
         Gmm1Aiv0EpilogueTileGeneric<IsWaveFlagGrained>(config, activationQuantOp, gmmAddrInfo, actualShape, mLoc, nLoc,
                                                        pingpongIdx);
-        NotifyCube(pingpongIdx);
-        pingpongIdx = 1U - pingpongIdx;
+        sync.NotifyGmm1();
     }
 }
 
@@ -558,22 +516,17 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Para
                                                     ActivationQuantOp &activationQuantOp, uint32_t expertBeforeCnt,
                                                     uint32_t expertIdx)
 {
+    Gmm1GmActivationSync<true, GMMAddrInfo> sync(gmmAddrInfo);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->WaitForGmm1();
-        } else {
-            WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
-        }
+        sync.WaitForGmm1(expertIdx, loopIdx);
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             activationQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->NotifyGmm1();
-        }
+        sync.NotifyGmm1();
     }
 }
 
@@ -584,25 +537,16 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const GMMAddrInfo 
                                             uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmm1TileReadySequence,
                                             ActivationQuantOp &activationQuantOp)
 {
+    Gmm1GmActivationSync<false, GMMAddrInfo> sync(gmmAddrInfo, &gmm1TileReadySequence);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        int32_t expectedReadySequence = gmm1TileReadySequence + 1;
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->WaitForGmm1();
-        } else {
-            // Layered MoE still publishes GM sequence flags; MTE wave and shared
-            // GMM1 use the paired hardware sync object above.
-            WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
-        }
+        sync.WaitForGmm1();
         Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(activationQuantOp, workSet.gmC, gmmAddrInfo,
                                                                            config, actualShape, mLoc, nLoc);
-        gmm1TileReadySequence = expectedReadySequence;
-        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
-            gmmAddrInfo.gmm1ActivationSync->NotifyGmm1();
-        }
+        sync.NotifyGmm1();
     }
 }
 

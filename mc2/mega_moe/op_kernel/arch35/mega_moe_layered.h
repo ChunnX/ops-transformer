@@ -132,7 +132,6 @@ private:
                                                       int32_t &vecSetSyncCom, int32_t &gmTileSequence,
                                                       uint32_t expertIdx);
     __aicore__ inline void RunGmm2ForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
-    __aicore__ inline void PublishOrWaitGmm1AllDone();
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void DispatchPrepareBuffInit();
     __aicore__ inline void SendAndQuantBuffInit();
@@ -974,7 +973,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
         GroupMatmulWithActivationQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, sharedIdx, vecSetSyncCom,
                                              gmTileSequence);
     }
-    EndSync(vecSetSyncCom, gmm1PingPongIdx_);
+    Gmm1UbActivationSync ubSync(vecSetSyncCom, gmm1PingPongIdx_);
+    ubSync.EndSync();
     gmm1PingPongIdx_ = 0U;
     startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
@@ -1017,26 +1017,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm2Fo
     }
     UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmmAddrInfo, state);
     GroupMatmulWithCombine(gmmAddrInfo, state);
-}
-
-template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::PublishOrWaitGmm1AllDone()
-{
-    if constexpr (!TopkWeightsPrefetch) {
-        return;
-    }
-    int32_t allDoneTag = static_cast<int32_t>(moeExpertPerRank_ + 1U);
-    __gm__ int32_t *allDoneAddr =
-        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
-        static_cast<uint64_t>(moeExpertPerRank_) * params_.tilingData->maxTilesPerExpert * INT_CACHELINE;
-    if constexpr (g_coreType == AIV) {
-        constexpr uint32_t epilogueSubIdx = ENABLE_A8W4 ? 1U : 0U;
-        if (subBlockIdx_ == epilogueSubIdx) {
-            AscendC::WriteGmByPassDCache(allDoneAddr, allDoneTag);
-        }
-    } else {
-        WaitUntilGmFlagEquals(allDoneAddr, allDoneTag);
-    }
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -1101,9 +1081,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessMo
     }
 
     if constexpr (TopkWeightsPrefetch) {
-        PublishOrWaitGmm1AllDone();
+        int32_t allDoneTag = static_cast<int32_t>(moeExpertPerRank_ + 1U);
+        __gm__ int32_t *allDoneAddr =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
+            static_cast<uint64_t>(moeExpertPerRank_) * params_.tilingData->maxTilesPerExpert * INT_CACHELINE;
+        Gmm1GmCompletionSync sync(allDoneAddr, allDoneTag, subBlockIdx_, ENABLE_A8W4 ? 1U : 0U);
+        sync.EndSync();
     } else {
-        EndSync(vecSetSyncCom, gmm1PingPongIdx_);
+        Gmm1UbActivationSync sync(vecSetSyncCom, gmm1PingPongIdx_);
+        sync.EndSync();
     }
     gmm1PingPongIdx_ = 0U;
     if constexpr (g_coreType == AIV) {
