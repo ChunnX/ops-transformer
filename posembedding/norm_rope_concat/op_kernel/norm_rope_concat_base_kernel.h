@@ -178,15 +178,12 @@ public:
         }
         ropeQueue_.FreeTensor(deQue);
         PipeBarrier<PIPE_V>();
-        // Init padding region: sin_=0 (so MulAddDst is no-op), cos_=1 (so Mul is no-op)
-        // totalRopeDim_ = ropeNum * alignedRopeDim, alignedTotalRopeDim_ = ropeNum * CeilAlign(alignedRopeDim, B32)
-        // Muls repeat accesses CeilAlign(alignedRopeDim, B32) elements per head, need padding initialized
-        // Two kinds of padding: (1) per-head gap: ropeDim_..alignedRopeDim_ within each head
-        //                       (2) tail gap: extra elements when alignedRopeDim_ is not B32-aligned
         if (ropeDim_ < alignedRopeDim_) {
             for (uint32_t i = 0; i < ropeNum_; ++i) {
-                Duplicate(sin_[i * alignedRopeDim_ + ropeDim_], 0.f, alignedRopeDim_ - ropeDim_);
-                Duplicate(cos_[i * alignedRopeDim_ + ropeDim_], 1.f, alignedRopeDim_ - ropeDim_);
+                for (uint32_t j = ropeDim_; j < alignedRopeDim_; ++j) {
+                    sin_.SetValue(i * alignedRopeDim_ + j, 0.0f);
+                    cos_.SetValue(i * alignedRopeDim_ + j, 1.0f);
+                }
             }
         }
         if (totalRopeDim_ < alignedTotalRopeDim_) {
