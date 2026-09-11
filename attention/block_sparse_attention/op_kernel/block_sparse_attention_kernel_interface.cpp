@@ -511,8 +511,8 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
 
-    // Online softmax: reuse the high-precision transposed-S block. The HIF8
-    // pQuantScale correction is intentionally deferred to the later fusion.
+    // Online softmax: high-precision transposed-S block with HIF8 P scaling,
+    // four-lane Cast packing and QFA DN_INDEX gather.
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa<true>;
     using PType = Gemm::GemmType<ElementP, LayoutPDummy>;
     using SType = Gemm::GemmType<ElementS, LayoutS>;
@@ -529,8 +529,7 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
                                                   ElementOTmp, void, TileCopyPV>;
 
-    // RescaleO: temporarily reuse the existing high-precision block. The
-    // s-(m-ln(pScale)) correction will be fused later.
+    // RescaleO: high-precision output rescale; HIF8 LSE subtracts ln(pScale).
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, true, false>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<ArchTag, ElementO, LayoutO, LayoutOTmp>;
     using EpilogueRescaleO = Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS,
