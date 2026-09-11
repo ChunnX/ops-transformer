@@ -181,6 +181,14 @@ public:
         // Init padding region: sin_=0 (so MulAddDst is no-op), cos_=1 (so Mul is no-op)
         // totalRopeDim_ = ropeNum * alignedRopeDim, alignedTotalRopeDim_ = ropeNum * CeilAlign(alignedRopeDim, B32)
         // Muls repeat accesses CeilAlign(alignedRopeDim, B32) elements per head, need padding initialized
+        // Two kinds of padding: (1) per-head gap: ropeDim_..alignedRopeDim_ within each head
+        //                       (2) tail gap: extra elements when alignedRopeDim_ is not B32-aligned
+        if (ropeDim_ < alignedRopeDim_) {
+            for (uint32_t i = 0; i < ropeNum_; ++i) {
+                Duplicate(sin_[i * alignedRopeDim_ + ropeDim_], 0.f, alignedRopeDim_ - ropeDim_);
+                Duplicate(cos_[i * alignedRopeDim_ + ropeDim_], 1.f, alignedRopeDim_ - ropeDim_);
+            }
+        }
         if (totalRopeDim_ < alignedTotalRopeDim_) {
             Duplicate(sin_[totalRopeDim_], 0.f, alignedTotalRopeDim_ - totalRopeDim_);
             Duplicate(cos_[totalRopeDim_], 1.f, alignedTotalRopeDim_ - totalRopeDim_);
