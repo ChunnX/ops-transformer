@@ -142,8 +142,6 @@ private:
     uint64_t l0BSize_{0};
     uint64_t l0CSize_{0};
     uint32_t mmConfigKey_{MHC_PRE_BACKWARD_MM_CONFIG_0};
-    MMConfig mmConfigC0_{};
-    MMConfig mmConfigC1_{};
     uint32_t cubeBufferDepth_{0};
     uint32_t cubeL1BufferBytes_{0};
     uint32_t cubeL1BOffset_{0};

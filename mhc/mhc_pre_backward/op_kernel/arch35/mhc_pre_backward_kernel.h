@@ -989,8 +989,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    cubeCompute_.Process(mmConfigC0_, workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
-                         workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
+    cubeCompute_.ProcessC0(mmConfigC0_, workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+                           workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
 }
 
 template <class T, class P>

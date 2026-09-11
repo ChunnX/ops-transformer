@@ -239,12 +239,14 @@ void MhcPreBackwardTiling::SetMmConfig()
         config.set_dbL0C(2U);
         config.set_b1FullLoad(b1FullLoad);
     };
-    setConfig(mmConfigC0_, 1U);
-    setConfig(mmConfigC1_, 0U);
+    setConfig(tilingData_.mmConfigC0, 1U);
+    setConfig(tilingData_.mmConfigC1, 0U);
 }
 
 ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
 {
+    MMConfig &mmConfigC0_ = tilingData_.mmConfigC0;
+    MMConfig &mmConfigC1_ = tilingData_.mmConfigC1;
     constexpr uint64_t cubeAlign = 16U;
     constexpr uint64_t elementSize = sizeof(float);
     auto alignUp = [](uint64_t value, uint64_t align) { return (value + align - 1U) / align * align; };
@@ -405,8 +407,6 @@ void MhcPreBackwardTiling::SetCommonTilingParams()
     tilingData_.set_hcEps(hcEps_);
     tilingData_.set_implMode(implMode_);
     tilingData_.set_mmConfigKey(mmConfigKey_);
-    tilingData_.mmConfigC0 = mmConfigC0_;
-    tilingData_.mmConfigC1 = mmConfigC1_;
     tilingData_.set_cubeBufferDepth(cubeBufferDepth_);
     tilingData_.set_cubeL1BufferBytes(cubeL1BufferBytes_);
     tilingData_.set_cubeL1BOffset(cubeL1BOffset_);

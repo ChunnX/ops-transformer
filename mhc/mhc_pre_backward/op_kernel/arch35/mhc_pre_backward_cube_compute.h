@@ -37,9 +37,9 @@ class MhcPreBackwardCubeCompute {
 public:
     __aicore__ inline void Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling);
 
-    __aicore__ inline void Process(const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                   const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
-                                   uint32_t bGmStride);
+    __aicore__ inline void ProcessC0(const MMConfig &config, const GlobalTensor<float> &a,
+                                     const GlobalTensor<float> &b, const GlobalTensor<float> &c, uint32_t m,
+                                     uint32_t n, uint32_t k, uint32_t bGmStride);
 
     __aicore__ inline void ProcessC1(const MMConfig &config, const GlobalTensor<float> &a,
                                      const GlobalTensor<float> &b,
@@ -125,10 +125,10 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPre
     }
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::Process(const MMConfig &config, const GlobalTensor<float> &a,
-                                                          const GlobalTensor<float> &b,
-                                                          const GlobalTensor<float> &c, uint32_t m, uint32_t n,
-                                                          uint32_t k, uint32_t bGmStride)
+__aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &config, const GlobalTensor<float> &a,
+                                                            const GlobalTensor<float> &b,
+                                                            const GlobalTensor<float> &c, uint32_t m, uint32_t n,
+                                                            uint32_t k, uint32_t bGmStride)
 {
     // C0为[M=BS块,K=fusionSize]×[K=fusionSize,N=ND块]；头数4/6/8对应K=24/48/80。
     // C0按tiling给出的B1驻留策略预载，C1仍使用自身的分段搬运路径。
