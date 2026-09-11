@@ -24,7 +24,7 @@
 #include "quant_block_sparse_attn_mx_block_vec.h"
 #include "../common/buffer_manager.h"
 #include "../common/buffers_policy.h"
-#include "../common/util_regbase_mx.h"
+#include "../common/util_regbase_mx_QBSA.h"
 
 using namespace AscendC;
 using namespace optiling;

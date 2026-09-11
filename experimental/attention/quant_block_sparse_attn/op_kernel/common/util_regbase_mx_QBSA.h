@@ -9,14 +9,13 @@
  */
 
 /*!
- * \file util_regbase_mx.h
+ * \file util_regbase_mx_QBSA.h
  * \brief QuantBlockSparseAttn 的 MXFP8 全量化运行期参数。
  */
-#ifndef UTIL_REGBASE_MX_H
-#define UTIL_REGBASE_MX_H
+#ifndef UTIL_REGBASE_MX_QBSA_H
+#define UTIL_REGBASE_MX_QBSA_H
 
 #include <cstdint>
-#include "../quant_block_sparse_attn_common.h"
 
 namespace regbasemx {
 constexpr uint32_t QBSA_MX_SCALE_LAST_DIM = 2U;
@@ -116,4 +115,4 @@ struct MxScaleConstInfo {
 struct MxConstInfo : MxBaseConstInfo, MxPageAttentionConstInfo, MxSparseConstInfo, MxScaleConstInfo {};
 } // namespace regbasemx
 
-#endif // QUANT_BLOCK_SPARSE_ATTN_COMMON_UTIL_REGBASE_MX_H_
+#endif // UTIL_REGBASE_MX_QBSA_H

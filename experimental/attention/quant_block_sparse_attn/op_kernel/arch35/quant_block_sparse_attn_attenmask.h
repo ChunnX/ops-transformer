@@ -16,7 +16,7 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTN_ATTENMASK_H_
 #define QUANT_BLOCK_SPARSE_ATTN_ATTENMASK_H_
 
-#include "../common/util_regbase.h"
+#include "../common/util_regbase_QBSA.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 
 using namespace AscendC;
@@ -56,7 +56,7 @@ struct AttenMaskInfo {
 
 __aicore__ inline void BoolCopyInRegbase(const LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcTensor,
                                          int64_t srcOffset, uint32_t s1Size, uint32_t s2Size, int64_t totalS2Size,
-                                         int64_t s2BaseSize, ConstInfo &constInfo)
+                                         int64_t s2BaseSize, QbsaConstInfo &constInfo)
 {
     if (s1Size == 0 || s2Size == 0) {
         return;
@@ -82,7 +82,7 @@ __aicore__ inline void BoolCopyInRegbase(const LocalTensor<uint8_t> &dstTensor, 
 
 template <bool hasAtten>
 __aicore__ inline void GetAttenMaskComputeMode(int64_t deltaCausalOrNext, int64_t deltaPre, int64_t s1Offset,
-                                               const RunInfo &runInfo, ConstInfo &constInfo,
+                                               const QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten) {
@@ -250,7 +250,7 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 #endif
 
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
-__aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline int64_t ComputeAttenMaskInnerOffset(const QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                       AttenMaskInfo &attenMaskInfo, bool first_block = true,
                                                       const bool useDn = false, const int32_t subLoop = 0)
 {
@@ -281,7 +281,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo &runInfo, Co
 }
 
 template <bool hasAtten, DTemplateType dTemplateType = DTemplateType::Aligned128>
-__aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline int64_t ComputeAttenMaskOffset(const QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                  AttenMaskInfo &attenMaskInfo, const bool first_block = false,
                                                  const bool useDn = true, const int32_t subLoop = 0)
 {
@@ -290,8 +290,8 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo &runInfo, ConstIn
     return result;
 }
 
-__aicore__ inline void GenerateRightDownCausalMaskDn(LocalTensor<uint8_t> &dstTensor, RunInfo &runInfo,
-                                                     ConstInfo &constInfo, int64_t sparseBlkIdx,
+__aicore__ inline void GenerateRightDownCausalMaskDn(LocalTensor<uint8_t> &dstTensor, QbsaRunInfo &runInfo,
+                                                     QbsaConstInfo &constInfo, int64_t sparseBlkIdx,
                                                      uint32_t sparseBlkRealSize)
 {
     uint32_t halfS1BaseSize = constInfo.s1BaseSize >> 1;
@@ -309,7 +309,7 @@ __aicore__ inline void GenerateRightDownCausalMaskDn(LocalTensor<uint8_t> &dstTe
 
 template <bool hasAtten>
 __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
-                                       RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
                                        bool isPre = false)
 {
     if constexpr (hasAtten) {
@@ -324,8 +324,9 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
 
 template <bool hasAtten>
 __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb, GlobalTensor<uint8_t> &srcTensor,
-                                            RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
-                                            bool needAtten, uint64_t offset, int32_t sparseBlkIdx, uint32_t s2Len)
+                                            QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
+                                            AttenMaskInfo &attenMaskInfo, bool needAtten, uint64_t offset,
+                                            int32_t sparseBlkIdx, uint32_t s2Len)
 {
     if constexpr (hasAtten) {
         int64_t maskOffset = 0;
@@ -348,7 +349,7 @@ __aicore__ inline void AttenMaskCopyInDnFun(LocalTensor<uint8_t> attenMaskUb, Gl
 
 template <bool hasAtten>
 __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
-                                         RunInfo &runInfo, ConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
+                                         QbsaRunInfo &runInfo, QbsaConstInfo &constInfo, AttenMaskInfo &attenMaskInfo,
                                          bool needAtten1, bool needAtten2)
 {
     LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();

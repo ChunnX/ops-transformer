@@ -16,6 +16,8 @@
 #define COPY_GM_TO_UB_H
 
 #include "offset_calculator.h"
+#include "util_regbase_QBSA.h"
+#include "../quant_block_sparse_attn_common.h"
 
 // GM->UB
 // antiquant
@@ -24,8 +26,9 @@ template <typename T, QBSALayout GM_FORMAT>
 class CopyAntiquantGmToUb {
 public:
     __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
-                                      const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
-                                      const ConstInfo &constInfo)
+                                      const GlobalTensor<int32_t> &blockTableTensor,
+                                      const regbaseutil::QbsaRunInfo &runInfo,
+                                      const regbaseutil::QbsaConstInfo &constInfo)
     {
         // per per_head + per_token + PA
         ProcessPA(dstTensor, srcTensor, blockTableTensor, runInfo, constInfo);
@@ -33,8 +36,9 @@ public:
 
 private:
     __aicore__ inline void ProcessPA(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
-                                     const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
-                                     const ConstInfo &constInfo)
+                                     const GlobalTensor<int32_t> &blockTableTensor,
+                                     const regbaseutil::QbsaRunInfo &runInfo,
+                                     const regbaseutil::QbsaConstInfo &constInfo)
     {
         int64_t byteOffset1 = 0;
         int64_t byteOffset2 = 0;
@@ -71,8 +75,9 @@ private:
         }
     }
     __aicore__ inline void GetPaKScaleOffset(int64_t &byteOffset, const int64_t sparseBlkIdx,
-                                             const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
-                                             const ConstInfo &constInfo)
+                                             const GlobalTensor<int32_t> &blockTableTensor,
+                                             const regbaseutil::QbsaRunInfo &runInfo,
+                                             const regbaseutil::QbsaConstInfo &constInfo)
     {
         int64_t blockTableOffset = runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx;
         int64_t physicalBlock = blockTableTensor.GetValue(blockTableOffset);
@@ -86,14 +91,16 @@ template <typename T, QBSALayout GM_FORMAT>
 class CopyQueryScaleGmToUb {
 public:
     __aicore__ inline void operator()(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
-                                      const RunInfo &runInfo, const ConstInfo &constInfo)
+                                      const regbaseutil::QbsaRunInfo &runInfo,
+                                      const regbaseutil::QbsaConstInfo &constInfo)
     {
         ProcessGS1(dstTensor, srcTensor, runInfo, constInfo);
     }
 
 private:
     __aicore__ inline void ProcessGS1(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
-                                      const RunInfo &runInfo, const ConstInfo &constInfo)
+                                      const regbaseutil::QbsaRunInfo &runInfo,
+                                      const regbaseutil::QbsaConstInfo &constInfo)
     {
         if constexpr (GM_FORMAT == QBSALayout::TND) {
             DataCopyExtParams dataCopyParams;
