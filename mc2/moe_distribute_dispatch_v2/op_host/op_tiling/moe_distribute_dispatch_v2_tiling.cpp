@@ -1635,6 +1635,9 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     bool isA5 = (mc2tiling::GetSocVersion(context) == "Ascend950");
     if (isA5) {
         aivUsedCumSum = (aivNum > ALLTOALL_FIXED_CORE_NUM) ? (aivNum - ALLTOALL_FIXED_CORE_NUM) : 1U;
+        // 与SetWorkSpace中A5_CUMSUM_WORKSPACE_MAX_CORE_NUM预留上限对齐
+        aivUsedCumSum =
+            (aivUsedCumSum >= A5_CUMSUM_WORKSPACE_MAX_CORE_NUM) ? A5_CUMSUM_WORKSPACE_MAX_CORE_NUM : aivUsedCumSum;
     } else {
         aivUsedCumSum = totalExpertNum / 16; // 单核处理16个专家cnt发送
         aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
