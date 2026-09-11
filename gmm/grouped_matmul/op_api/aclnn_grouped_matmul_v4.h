@@ -31,7 +31,7 @@ typedef enum {
  * @param [in] x:
  * 表示公式中的x，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、INT4数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] weight:
- * 表示公式中的weight，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1数据类型，数据格式支持ND，支持的最大长度为1024个。
+ * 表示公式中的weight，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32、INT4、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] biasOptional:
  * 表示公式中的bias，数据类型支持FLOAT16、FLOAT32、INT32、BFLOAT16数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] scaleOptional:
