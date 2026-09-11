@@ -24,18 +24,18 @@ extern "C" {
  * 表示公式中的weight，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] biasOptional:
  * 表示公式中的bias，数据类型支持BFLOAT16、FLOAT16、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
- * @param [in] scaleOptional: 表示量化参数，数据类型支持UINT64数据类型，数据格式支持ND，支持的最大长度为128个。
+ * @param [in] scaleOptional: 表示量化参数，数据类型支持UINT64，INT64数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] offsetOptional: 表示量化参数，数据类型支持FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] antiquantScaleOptional:
  * 表示伪量化参数，数据类型支持FLOAT16，BFLOAT16数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [in] antiquantOffsetOptional:
  * 表示伪量化参数，数据类型支持FLOAT16，BFLOAT16数据类型，数据格式支持ND，支持的最大长度为128个。
- * @param [in] groupListOptional: 可选参数，代表输入和输出分组轴上的索引情况，数据类型支持INT64，支持的最大长度为128个。
+ * @param [in] groupListOptional: 可选参数，代表输入和输出分组轴上的索引情况，数据类型支持INT64，支持的最大长度为1024个。
  * @param [in] splitItem:
  * 整数型参数，代表输出是否要做tensor切分，0/1代表输出为多tensor；2/3代表输出为单tensor，默认值为0。
  * @param [in] groupType:
  * 整数型参数，代表需要切分的轴，-1代表不需要切分；0代表需要切分M轴；1代表需要切分N轴；2代表需要切分K轴。
- * @param [out] y: 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32数据类型，数据格式支持ND，支持的最大长度为128个。
+ * @param [out] y: 表示公式中的out，数据类型支持FLOAT16、BFLOAT16、INT8、FLOAT32、INT32数据类型，数据格式支持ND，支持的最大长度为128个。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含算子计算流程。
  * @return aclnnStatus: 返回状态码。
