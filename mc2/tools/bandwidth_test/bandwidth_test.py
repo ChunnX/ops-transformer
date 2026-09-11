@@ -278,13 +278,17 @@ def get_bandwidth_performance(
         logger.warning("No performance data found")
         return None
 
-    execution_times_us = np.array(execution_times)
+    # Subtract the measured device-side fixed overhead once per operator sample.
+    overhead_us = 2.0
+    execution_times_us = np.array(execution_times, dtype=float) - overhead_us
     mean_time_us = np.mean(execution_times_us)
     min_time_us = np.min(execution_times_us)
     max_time_us = np.max(execution_times_us)
 
     mean_time_s = mean_time_us / 1e6
     min_time_s = min_time_us / 1e6
+    if min_time_us <= 0:
+        logger.warning("Duration after subtracting %.2f us is non-positive; affected bandwidth is NaN", overhead_us)
 
     single_rank_data_bytes = (
         test_bs * data_size_bytes * ((num_world_size - 1) / num_world_size)
@@ -294,9 +298,11 @@ def get_bandwidth_performance(
     total_data_bytes = single_rank_data_bytes * num_world_size
     mean_bandwidth_gbps = (
         (total_data_bytes / mean_time_s) / 1024 / 1024 / 1024 / num_world_size
+        if mean_time_s > 0 else float("nan")
     )
     max_bandwidth_gbps = (
         (total_data_bytes / min_time_s) / 1024 / 1024 / 1024 / num_world_size
+        if min_time_s > 0 else float("nan")
     )
     single_rank_data_kb = single_rank_data_bytes / 1024
 
@@ -310,6 +316,7 @@ def get_bandwidth_performance(
     logger.info(f"BS per rank: {test_bs}")
     logger.info(f"Data size (H): {data_size_bytes // dtype_bytes}")
     logger.info("-" * 60)
+    logger.info("Time correction: subtract %.2f us per operator; times and bandwidth below are corrected", overhead_us)
     logger.info(f"Mean execution time: {mean_time_us:.2f} us")
     logger.info(f"Min execution time:  {min_time_us:.2f} us")
     logger.info("-" * 60)
