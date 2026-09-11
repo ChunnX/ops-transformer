@@ -1749,6 +1749,8 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
                 return ge::GRAPH_FAILED);
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
+    // 记录 schedule mode 供 tiling 结果缓存快照使用（thread_local，见 fia_tiling_schedule_recorder.h）
+    FiaTilingScheduleRecorder::Record(BATCH_MODE_SCHEDULE);
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     uint32_t aicoreNum = ascendcPlatform.GetCoreNumAic();
@@ -2510,9 +2512,13 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
 
-    // 仅在 A3（DAV_5102 / arch38 路由）启用
-    const bool cacheEnabled = (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_5102) &&
-                              !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
+    // 手写路径 tiling 结果缓存：同一 (shape, attr) 的 tiling 只执行一次，后续直接恢复结果。
+    // 手写框架的 GWS/Run 两阶段各自触发一次 tiling，缓存可消除第二次重复计算（可用环境变量
+    // FIA_TILING_CACHE_DISABLE=1 关闭）。仅 arch22 路由（else 分支）生效，arch35/arch38 路径
+    // 行为与修复前保持一致。
+    const bool isArch22Route = (ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_3510) &&
+                               (ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_5102);
+    const bool cacheEnabled = isArch22Route && !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
     std::string cacheKey;
     const bool cacheKeyValid =
         cacheEnabled && FusedInferAttentionScoreTilingCache::BuildKey(
@@ -2525,6 +2531,7 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
         }
     }
 
+    FiaTilingScheduleRecorder::Reset();
     ge::graphStatus tilingRet = ge::GRAPH_FAILED;
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         tilingRet = TilingFusedInferAttentionScoreV4(context);
