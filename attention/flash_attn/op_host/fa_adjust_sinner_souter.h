@@ -85,6 +85,9 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
             sInnerFactor = SINNER_128;
         }
     }
+    if (vHeadDim <= DSIZE_128 && maskMode == 0 && sOuterFactor == SOUTER_64 && maxSeqKv >= SINNER_256) {
+        sInnerFactor = SINNER_256;
+    }
 }
 
 } // namespace fa_tiling_util

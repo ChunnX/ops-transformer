@@ -161,6 +161,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
             tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 6 : 7;
         }
     }
+    if (sOuterFactor_ == fa_tiling_util::SOUTER_64 && sInnerFactor_ == fa_tiling_util::SINNER_256) {
+        tilingKeyInfo_.config = (tilingKeyInfo_.config == 0) ? 8 : ((tilingKeyInfo_.config == 2) ? 9 : 10);
+    }
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
@@ -192,10 +195,11 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
     // templateId: 0=ND模板, 1=DN模板
-    // DN模板仅支持无attenMask且config=0/2/6（sOuter=64, D=64/128, QK
-    // D=192/DV=128）场景，与kernel侧模板实例化范围保持一致
+    // DN模板支持无attenMask的config=0/2/6（S2=128）和8/9/10（S2=256），
+    // sOuter=64, D=64/128或QK D=192/DV=128，与kernel实例化范围保持一致。
     dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6));
+              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6) ||
+               (tilingKeyInfo_.config >= 8 && tilingKeyInfo_.config <= 10));
     tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
 }
 
