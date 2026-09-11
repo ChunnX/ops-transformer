@@ -593,7 +593,6 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
                     return ge::GRAPH_FAILED);
 
     MC2_CHECK_LOG_RET(opName_, CheckExpertPipeline());
-    MC2_CHECK_LOG_RET(opName_, SetExpertChunkRows(outData.expertChunkRows));
 
     outData.cumsumWorkspaceOffset = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * dtypeSize,
                                                        MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
@@ -641,41 +640,6 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::CheckExpertPipeline() const
                     OP_LOGE(opName_, "Expert-overlap fixed sync layout does not fit its reserved CCL region."),
                     return ge::GRAPH_FAILED);
 
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetExpertChunkRows(uint32_t &expertChunkRows) const
-{
-    using namespace MC2KernelTemplate;
-    expertChunkRows = GMMA2AV_MTE_SINGLE_CHUNK;
-    if (!isA3_ || localParams_.ep < 2UL || localParams_.A <= GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    // Weight each expert's destination fanout by its local GMM rows. Counts
-    // already reside in host tiling attributes; no environment or collective
-    // is needed. Sparse fanout uses one chunk to avoid repeated pipeline drains.
-    uint64_t weightedPeerRows = 0UL;
-    for (uint64_t expert = 0UL; expert < localParams_.ep; ++expert) {
-        uint64_t rows = 0UL;
-        uint64_t peers = 0UL;
-        for (uint64_t rank = 0UL; rank < localParams_.epWorldSize; ++rank) {
-            const int32_t count = sendCounts_[rank * localParams_.ep + expert];
-            if (count > 0) {
-                rows += static_cast<uint64_t>(count);
-                ++peers;
-            }
-        }
-        weightedPeerRows += rows * peers;
-    }
-    // A3 baseline heuristic: use 1536 rows when the weighted fanout exceeds
-    // half the communication domain. Rank-local chunk boundaries may differ;
-    // the kernel exchanges persistent expert-granular readiness, not chunk IDs.
-    if (weightedPeerRows * 2UL > localParams_.A * localParams_.epWorldSize) {
-        expertChunkRows = GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS;
-    }
-    OP_LOGD(opName_, "MTE overlap chunk rows=%u (0=single), weighted peer rows=%lu, A=%lu, W=%lu.", expertChunkRows,
-            weightedPeerRows, localParams_.A, localParams_.epWorldSize);
     return ge::GRAPH_SUCCESS;
 }
 

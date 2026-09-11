@@ -23,10 +23,6 @@ namespace MC2KernelTemplate {
 constexpr uint32_t GMMA2AV_MTE_MAX_COUNT_NUM = 1024U;
 constexpr uint32_t GMMA2AV_MTE_MAX_RANK_SIZE = 128U;
 
-// Zero closes only at the final expert, including any trailing empty experts.
-constexpr uint32_t GMMA2AV_MTE_SINGLE_CHUNK = 0U;
-constexpr uint32_t GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS = 1536U;
-
 // The AIV-driven MTE path only consumes the fields below. Keep this definition
 // local instead of inheriting TaskTilingInfo from the legacy implementation.
 struct GroupedMatMulAlltoAllvMteTaskTilingInfo {
@@ -70,11 +66,6 @@ struct GroupedMatMulAlltoAllvMteTilingData {
     uint32_t isA3;
     // Preserve the serialized size and following member offsets.
     uint32_t reserved;
-    // Expert-overlap pipeline granularity: consecutive experts are batched
-    // into one synchronization stage until their cumulative local GMM rows
-    // reach this threshold (boundary snapped to an expert end). Zero selects
-    // one chunk ending at the final expert. Host tiling derives this from counts.
-    uint32_t expertChunkRows;
     GmmA2avCoCTiling cocTiling;
 };
 
@@ -116,25 +107,19 @@ constexpr uint64_t SYNC_REGION_FROM_TAIL = CCL_TAIL_SAFETY_BYTES;
 constexpr uint64_t SYNC_SLOT_BYTES = 64UL;
 constexpr uint32_t MAX_RANK_SIZE = GMMA2AV_MTE_MAX_RANK_SIZE;
 constexpr uint32_t MAX_COUNT_NUM = GMMA2AV_MTE_MAX_COUNT_NUM;
-// Version 2 keeps the byte offsets but stores an int64_t epoch in each slot.
-constexpr uint32_t FIXED_SYNC_LAYOUT_VERSION = 2U;
-constexpr int64_t MAX_SYNC_EPOCH = 0x7ffffffffffffffeLL;
-
 // Byte offsets within the fixed synchronization region.  Region bases do not
 // depend on the current rank size or expert count, so persistent HCCL windows
 // can safely be reused by cases with different shapes.
-constexpr uint64_t EPOCH_BASE = 0UL;
-constexpr uint64_t COUNT_READY_BASE = EPOCH_BASE + SYNC_SLOT_BYTES;
+// 0/1/2 lifecycle: slot value 1 = data sent, 2 = data consumed. No epoch.
+constexpr uint64_t COUNT_READY_BASE = 0UL;
 constexpr uint64_t EXPERT_READY_BASE = COUNT_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
-constexpr uint64_t COMPLETION_BASE = EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES;
-constexpr uint64_t ACK_BASE = COMPLETION_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
-constexpr uint64_t FIXED_SYNC_BYTES = ACK_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
+constexpr uint64_t RECV_DONE_BASE = EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES;
+constexpr uint64_t FIXED_SYNC_BYTES = RECV_DONE_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
 
 static_assert(SYNC_SLOT_BYTES == 64UL, "Every synchronization slot must occupy one cache line");
 static_assert(COUNT_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Count-ready region must be slot aligned");
 static_assert(EXPERT_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Expert-ready region must be slot aligned");
-static_assert(COMPLETION_BASE % SYNC_SLOT_BYTES == 0UL, "Completion region must be slot aligned");
-static_assert(ACK_BASE % SYNC_SLOT_BYTES == 0UL, "Acknowledgement region must be slot aligned");
+static_assert(RECV_DONE_BASE % SYNC_SLOT_BYTES == 0UL, "Receive-done region must be slot aligned");
 static_assert(FIXED_SYNC_BYTES <= SYNC_REGION_FROM_TAIL,
               "Fixed synchronization layout must fit in the reserved CCL tail region");
 } // namespace Gmma2avMteTiling

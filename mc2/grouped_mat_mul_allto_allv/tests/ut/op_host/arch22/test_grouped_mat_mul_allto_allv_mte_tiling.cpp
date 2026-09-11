@@ -30,7 +30,6 @@ struct TestParam {
     uint64_t cclBufferSize{DEFAULT_CCL_BUFFER_SIZE};
     uint64_t communicatorRankSize{8UL};
     std::string socVersion{"Ascend910B"};
-    uint32_t expectedChunkRows{0U};
     ge::DataType dtype{ge::DT_BF16};
     std::string commMode{"aiv"};
 };
@@ -120,12 +119,10 @@ protected:
 TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, FixedSyncLayout)
 {
     using namespace MC2KernelTemplate::Gmma2avMteTiling;
-    EXPECT_EQ(EPOCH_BASE, 0UL);
-    EXPECT_EQ(COUNT_READY_BASE, SYNC_SLOT_BYTES);
+    EXPECT_EQ(COUNT_READY_BASE, 0UL);
     EXPECT_EQ(EXPERT_READY_BASE, COUNT_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES);
-    EXPECT_EQ(COMPLETION_BASE, EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES);
-    EXPECT_EQ(ACK_BASE, COMPLETION_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES);
-    EXPECT_EQ(FIXED_SYNC_BYTES, (1UL + 3UL * MAX_RANK_SIZE + MAX_COUNT_NUM) * SYNC_SLOT_BYTES);
+    EXPECT_EQ(RECV_DONE_BASE, EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES);
+    EXPECT_EQ(FIXED_SYNC_BYTES, (2UL * MAX_RANK_SIZE + MAX_COUNT_NUM) * SYNC_SLOT_BYTES);
     EXPECT_LE(FIXED_SYNC_BYTES, SYNC_REGION_FROM_TAIL);
 }
 
@@ -204,7 +201,6 @@ TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
         MC2KernelTemplate::GroupedMatMulAlltoAllvMteTilingData actualTiling{};
         std::memcpy(&actualTiling, tilingInfo.tilingData.get(), sizeof(actualTiling));
         EXPECT_EQ(actualTiling.reserved, 0U);
-        EXPECT_EQ(actualTiling.expertChunkRows, testParam.expectedChunkRows);
     }
 }
 
@@ -216,8 +212,7 @@ static TestParam g_testParams[] = {
      ge::GRAPH_SUCCESS,
      DEFAULT_CCL_BUFFER_SIZE,
      128UL,
-     "Ascend910_93",
-     1536U},
+     "Ascend910_93"},
     {"Test_a3_topk_16_local_experts_512",
      {{"BS", "256"}, {"epWorldSize", "2"}, {"e", "512"}},
      {{"sendCounts", MakeCounts(1024, 4096)}, {"recvCounts", MakeCounts(1024, 4096)}},
@@ -225,8 +220,7 @@ static TestParam g_testParams[] = {
      ge::GRAPH_SUCCESS,
      DEFAULT_CCL_BUFFER_SIZE,
      2UL,
-     "Ascend910_93",
-     1536U},
+     "Ascend910_93"},
     {"Test_a3_topk_9",
      {{"BSK", "4608"}, {"BS", "512"}},
      {{"recvCounts", MakeCounts(32, 4608)}},
@@ -234,8 +228,7 @@ static TestParam g_testParams[] = {
      ge::GRAPH_SUCCESS,
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
-     "Ascend910_93",
-     1536U},
+     "Ascend910_93"},
     {"Test_a3_topk_17_rejected",
      {{"BSK", "4352"}, {"BS", "256"}},
      {{"recvCounts", MakeCounts(32, 4352)}},
@@ -278,7 +271,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_BF16,
      "ai_cpu"},
     {"Test_aicpu_experts_1024_rejected",
@@ -289,7 +281,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_BF16,
      "ai_cpu"},
     {"Test_fp16_a3_dense",
@@ -300,7 +291,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     1536U,
      ge::DT_FLOAT16},
     {"Test_fp16_a3_one_expert",
      {{"e", "1"}},
@@ -310,9 +300,8 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT16},
-    {"Test_fp16_a2", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, 8UL, "Ascend910B", 0U, ge::DT_FLOAT16},
+    {"Test_fp16_a2", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, 8UL, "Ascend910B", ge::DT_FLOAT16},
     {"Test_fp16_mixed_gmm_weight",
      {},
      {},
@@ -321,7 +310,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT16},
     {"Test_fp16_mixed_output",
      {},
@@ -331,7 +319,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT16},
     {"Test_fp16_mixed_shared_input",
      {},
@@ -341,7 +328,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT16},
     {"Test_fp16_mixed_shared_weight",
      {},
@@ -351,7 +337,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT16},
     {"Test_fp16_mixed_shared_output",
      {},
@@ -361,7 +346,6 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT16},
     {"Test_float32_rejected",
      {},
@@ -371,13 +355,12 @@ static TestParam g_testParams[] = {
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
      "Ascend910_93",
-     0U,
      ge::DT_FLOAT},
     {"Test_sample", {}, {}, {}, ge::GRAPH_SUCCESS},
     {"Test_ccl_buffer_exact", {}, {}, {}, ge::GRAPH_SUCCESS, SAMPLE_REQUIRED_CCL_BUFFER_SIZE},
     {"Test_ccl_buffer_too_small", {}, {}, {}, ge::GRAPH_FAILED, SAMPLE_REQUIRED_CCL_BUFFER_SIZE - 1ULL},
     {"Test_ccl_buffer_unaligned", {}, {}, {}, ge::GRAPH_FAILED, SAMPLE_REQUIRED_CCL_BUFFER_SIZE + 1ULL},
-    {"Test_overlap_a3_dense", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, 8UL, "Ascend910_93", 1536U},
+    {"Test_overlap_a3_dense", {}, {}, {}, ge::GRAPH_SUCCESS, DEFAULT_CCL_BUFFER_SIZE, 8UL, "Ascend910_93"},
     {"Test_overlap_a2_rank16_rejected",
      {{"epWorldSize", "16"}},
      {{"sendCounts", MakeCounts(64, 4096)}, {"recvCounts", MakeCounts(64, 4096)}},
@@ -392,8 +375,7 @@ static TestParam g_testParams[] = {
      ge::GRAPH_SUCCESS,
      DEFAULT_CCL_BUFFER_SIZE,
      8UL,
-     "Ascend910_93",
-     0U},
+     "Ascend910_93"},
     {"Test_a3_rank_128",
      {{"epWorldSize", "128"}, {"e", "1"}},
      {{"sendCounts", MakeCounts(128, 4096)}, {"recvCounts", MakeCounts(128, 4096)}},
@@ -441,8 +423,7 @@ static TestParam g_testParams[] = {
      ge::GRAPH_SUCCESS,
      DEFAULT_CCL_BUFFER_SIZE,
      128UL,
-     "Ascend910_93",
-     1536U},
+     "Ascend910_93"},
     {"Test_global_expert_too_large",
      {{"epWorldSize", "128"}, {"e", "9"}},
      {{"sendCounts", MakeCounts(1152, 4096)}, {"recvCounts", MakeCounts(1152, 4096)}},

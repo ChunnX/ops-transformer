@@ -47,7 +47,6 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus SetMteWorkspaceInfo();
     ge::graphStatus CheckExpertPipeline() const;
-    ge::graphStatus SetExpertChunkRows(uint32_t &expertChunkRows) const;
     uint64_t GetTilingKey() const override;
     uint32_t GetCommModeIndex() const override;
     ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;

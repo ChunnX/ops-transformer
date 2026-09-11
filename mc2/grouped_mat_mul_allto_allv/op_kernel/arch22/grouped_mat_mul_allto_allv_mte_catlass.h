@@ -59,13 +59,10 @@ public:
     // Process the requested expert range in one CATLASS resource lifetime.
     // The callback runs on every AIC after that AIC has finished issuing the
     // expert's tiles. It is also called for an empty expert, allowing the
-    // caller to keep an identical expert-ready protocol on every rank. The
-    // callback returns whether this expert closes a chunk; only then does the
-    // caller drain the FIX pipe and invoke NotifyChunkReady(). Draining once
-    // per expert would break the MTE1->MAC->FIX pipeline between every pair of
-    // experts and cost a full cold-restart chain per expert, which profiling
-    // showed dominates large-token cases (volume-proportional, independent of
-    // chunk count).
+    // caller to keep an identical expert-ready protocol on every rank. Every
+    // expert is a notification boundary; no FIX drain is needed because the
+    // ready flag is emitted from PIPE_FIX, whose in-order execution makes the
+    // preceding L0C->GM stores visible before the flag reaches the AIV.
     template <typename ExpertCompletion>
     __aicore__ inline void ProcessExperts(uint32_t startExpertIdx, uint32_t expertNum,
                                           ExpertCompletion &&onExpertComplete)
@@ -119,20 +116,6 @@ private:
         return tokens;
     }
 
-    template <typename BlockMmad>
-    __aicore__ inline void DrainExpertOutput(BlockMmad &blockMmad)
-    {
-        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
-            blockMmad.SynchronizeBlock();
-        }
-        // Do not consume BlockMmad's private FIX_M event: the next tile (or
-        // its destructor) owns that event. A FIX-pipe barrier drains this
-        // expert's final GM store while preserving the reusable resource. It
-        // is also a no-op when this AIC has no tile, so empty experts cannot
-        // wait on an event that was never produced.
-        AscendC::PipeBarrier<PIPE_FIX>();
-    }
-
     template <bool CompleteEachExpert, typename ExpertCompletion>
     __aicore__ inline void Run(uint32_t m, uint32_t k, uint32_t n, uint32_t startExpertIdx, uint32_t expertNum,
                                bool isSharedExpert, ExpertCompletion &onExpertComplete)
@@ -179,11 +162,11 @@ private:
                 groupOffsetC += static_cast<uint64_t>(tokens) * n;
                 if (tokens != 0U) {
                     // A sub-range must use the same first-core rotation as a
-                    // full [0, E) invocation. Replaying only the lightweight
-                    // scheduler state avoids recomputing preceding experts.
-                    GemmCoord previousProblemShape{tokens, n, k};
-                    blockScheduler.Update(previousProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
-                    startCoreIdx = (startCoreIdx + blockScheduler.GetCoreLoops()) % aicCoreNum;
+                    // full [0, E) invocation. The rotation advances by the
+                    // expert's M-tile count (loopsM), matching the M-row
+                    // striped ownership below.
+                    const uint32_t loopsM = (tokens + L1TileShape::M - 1U) / L1TileShape::M;
+                    startCoreIdx = (startCoreIdx + loopsM) % aicCoreNum;
                 }
             }
         }
@@ -191,14 +174,15 @@ private:
         for (uint32_t localExpert = 0U; localExpert < expertNum; ++localExpert) {
             uint32_t expertIdx = startExpertIdx + localExpert;
             uint32_t currentM = isSharedExpert ? m : GetExpertTokens(expertIdx);
-            uint32_t coreLoops = 0U;
+            uint32_t loopsM = 0U;
             if (currentM != 0U) {
                 GemmCoord problemShape{currentM, n, k};
                 LayoutA layoutA{currentM, k};
                 LayoutB layoutB{k, n};
                 LayoutC layoutC{currentM, n};
                 blockScheduler.Update(problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
-                coreLoops = blockScheduler.GetCoreLoops();
+                loopsM = blockScheduler.loopsMN.row();
+                const uint32_t loopsN = blockScheduler.loopsMN.column();
                 AscendC::GlobalTensor<T> gmA;
                 AscendC::GlobalTensor<T> gmB;
                 AscendC::GlobalTensor<T> gmC;
@@ -214,36 +198,42 @@ private:
                     gmB.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 }
 
-                // Continue the tile-to-core sequence across expert boundaries.
-                // This is the allocation used by CATLASS GroupedMatmulSliceM;
-                // restarting every small-M expert at core 0 leaves most AICs idle
-                // and does not follow the resource/event progression expected by
-                // the grouped kernel.
-                const uint32_t startLoopIdx =
+                // M-row striped ownership: this AIC computes complete output
+                // rows (all N tiles) of the M tiles whose index satisfies
+                // mIdx === (coreIdx - startCoreIdx) mod aicCoreNum. Unlike a
+                // flat per-tile stripe, no N tile of a row is ever produced
+                // by another AIC, so the paired AIV can stage the row as soon
+                // as this core signals the expert complete. The AIC/AIV pair
+                // derives the same ownership from the same rotation state.
+                const uint32_t startMIdx =
                     coreIdx < startCoreIdx ? coreIdx + aicCoreNum - startCoreIdx : coreIdx - startCoreIdx;
-                for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += aicCoreNum) {
-                    GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
-                    GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
-                    MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, 0};
-                    MatrixCoord offsetB{0, blockCoord.n() * L1TileShape::N};
-                    MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
-                    blockMmad(gmA[layoutA.GetOffset(offsetA)], layoutA, gmB[layoutB.GetOffset(offsetB)], layoutB,
-                              gmC[layoutC.GetOffset(offsetC)], layoutC, actualBlockShape);
+                for (uint32_t mIdx = startMIdx; mIdx < loopsM; mIdx += aicCoreNum) {
+                    for (uint32_t nIdx = 0U; nIdx < loopsN; ++nIdx) {
+                        const uint32_t loopIdx = mIdx * loopsN + nIdx;
+                        GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
+                        GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
+                        MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, 0};
+                        MatrixCoord offsetB{0, blockCoord.n() * L1TileShape::N};
+                        MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
+                        blockMmad(gmA[layoutA.GetOffset(offsetA)], layoutA, gmB[layoutB.GetOffset(offsetB)], layoutB,
+                                  gmC[layoutC.GetOffset(offsetC)], layoutC, actualBlockShape);
+                    }
                 }
             }
 
             groupOffsetA += static_cast<uint64_t>(currentM) * k;
             groupOffsetB += static_cast<uint64_t>(k) * n;
             groupOffsetC += static_cast<uint64_t>(currentM) * n;
-            startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
+            startCoreIdx = (startCoreIdx + loopsM) % aicCoreNum;
 
             if constexpr (CompleteEachExpert) {
-                // Drain the FIX pipe only at chunk boundaries, right before
-                // the paired AIV is notified, so experts inside a chunk keep
-                // uninterrupted CATLASS pipelining inside each chunk.
+                // Per-expert notification with no FIX drain: the flag is set
+                // from PIPE_FIX, so in-order pipe execution guarantees the
+                // L0C->GM stores of this expert are visible to the paired AIV
+                // before the notification arrives. Empty experts still notify
+                // to keep the AIV-side wait count aligned on every core.
                 if (onExpertComplete(expertIdx)) {
-                    DrainExpertOutput(blockMmad);
-                    onExpertComplete.NotifyChunkReady();
+                    onExpertComplete.NotifyExpertReady(expertIdx);
                 }
             }
         }
