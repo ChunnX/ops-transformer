@@ -139,6 +139,11 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
         else
             LoadAlign(rowSum, partialSums + row * 8);
         for (uint16_t col = 0; col < 8; col += 2) {
+            // Load the next NZ pair before computing the current pair so its
+            // probability instructions can overlap the current FP8 packing.
+            RegTensor<half> next0, next1;
+            LoadAlign(next0, scores + (col + 1) * 64 * 32 + row * 16);
+            LoadAlign(next1, scores + (col + 1) * 64 * 32 + 64 * 16 + row * 16);
             {
                 RegTensor<half> x0, x1;
                 RegTensor<float> p0, p1, p2, p3, pair0, pair1;
@@ -165,16 +170,13 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
                 StoreAlign((__ubuf__ uint8_t *)out + (col + 0) * 64 * 32 + row * 32, merged, b);
             }
             {
-                RegTensor<half> x0, x1;
                 RegTensor<float> p0, p1, p2, p3, pair0, pair1;
                 RegTensor<float8_e4m3_t> packed0, packed1, packed2, packed3;
                 RegTensor<uint8_t> merge0, merge1, merged;
-                LoadAlign(x0, scores + (col + 1) * 64 * 32 + row * 16);
-                LoadAlign(x1, scores + (col + 1) * 64 * 32 + 64 * 16 + row * 16);
-                ExpSub<float, half, RegLayout::ZERO>(p0, x0, m, h);
-                ExpSub<float, half, RegLayout::ONE>(p1, x0, m, h);
-                ExpSub<float, half, RegLayout::ZERO>(p2, x1, m, h);
-                ExpSub<float, half, RegLayout::ONE>(p3, x1, m, h);
+                ExpSub<float, half, RegLayout::ZERO>(p0, next0, m, h);
+                ExpSub<float, half, RegLayout::ONE>(p1, next0, m, h);
+                ExpSub<float, half, RegLayout::ZERO>(p2, next1, m, h);
+                ExpSub<float, half, RegLayout::ONE>(p3, next1, m, h);
                 Add(pair0, p0, p1, f);
                 Add(pair1, p2, p3, f);
                 Add(pair0, pair0, pair1, f);

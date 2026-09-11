@@ -10,7 +10,6 @@
 
 import argparse
 import json
-import math
 import os
 import time
 from pathlib import Path
@@ -21,7 +20,7 @@ from cases import ALL_CASES
 from sageattention2 import sageattn
 
 
-# Batch timing follows the task script; warmup is controlled by elapsed time.
+# Timing functions follow the task-provided test_perf.py verbatim.
 def _sync(device: torch.device):
     if str(device).startswith("npu"):
         torch.npu.synchronize()
@@ -29,25 +28,10 @@ def _sync(device: torch.device):
         torch.cuda.synchronize()
 
 
-def _warmup_seconds(fn, seconds: float, device: torch.device) -> float:
-    # Exclude first-call compilation/initialization from the warmup duration.
-    fn()
+def _time_ms(fn, warmup: int = 5, iters: int = 20, device: torch.device = None) -> float:
+    for _ in range(warmup):
+        fn()
     _sync(device)
-    start = time.perf_counter()
-    calls = 1
-    while time.perf_counter() - start < seconds:
-        batch_start = time.perf_counter()
-        for _ in range(calls):
-            fn()
-        _sync(device)
-        elapsed = time.perf_counter() - batch_start
-        # Keep roughly 20 ms queued, bounding memory and deadline overshoot.
-        # This batch size controls queue depth, not the warmup stopping rule.
-        calls = max(1, min(32, int(calls * 0.02 / max(elapsed, 1e-9))))
-    return time.perf_counter() - start
-
-
-def _time_ms(fn, iters: int = 20, device: torch.device = None) -> float:
     if str(device).startswith("npu"):
         starter = torch.npu.Event(enable_timing=True)
         ender = torch.npu.Event(enable_timing=True)
@@ -57,6 +41,8 @@ def _time_ms(fn, iters: int = 20, device: torch.device = None) -> float:
         ender.record()
         _sync(device)
         return starter.elapsed_time(ender) / iters
+
+    import time
 
     t0 = time.perf_counter()
     for _ in range(iters):
@@ -72,17 +58,17 @@ def main():
         "--case", choices=[case[0] for case in ALL_CASES], required=True
     )
     parser.add_argument(
-        "--warmup-seconds", type=float, default=10.0
+        "--warmup", type=int, default=int(os.environ.get("SAGEATTN_PERF_WARMUP", "50"))
     )
     parser.add_argument(
-        "--repeats", type=int, default=int(os.environ.get("SAGEATTN_PERF_ITERS", "20"))
+        "--repeats", type=int, default=int(os.environ.get("SAGEATTN_PERF_ITERS", "100"))
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seq", type=int, help="Override context length")
     parser.add_argument("--smooth-v", action="store_true")
     args = parser.parse_args()
-    if not math.isfinite(args.warmup_seconds) or args.warmup_seconds <= 0 or args.repeats < 1:
-        parser.error("warmup-seconds must be finite and positive; repeats must be positive")
+    if args.warmup < 1 or args.repeats < 1:
+        parser.error("warmup and repeats must be positive")
     _, seq, hk, batch, dtype_name, causal = next(
         c for c in ALL_CASES if c[0] == args.case
     )
@@ -121,15 +107,14 @@ def main():
     event_samples = {}
     # Match the task script: FIA first; one Event pair around the entire batch.
     for operator, fn in (("fia", run_fia), ("sage", run_sage)):
-        warmup_elapsed = _warmup_seconds(fn, args.warmup_seconds, q.device)
-        mean_ms = _time_ms(fn, iters=args.repeats, device=q.device)
-        print(f"MEASURED {args.case} {operator}: {mean_ms:.6f} ms; cooldown 10s", flush=True)
+        mean_ms = _time_ms(fn, warmup=args.warmup, iters=args.repeats, device=q.device)
+        print(f"MEASURED {args.case} {operator}: {mean_ms:.2f} ms; cooldown 10s", flush=True)
         time.sleep(10)
         event_samples[operator] = {
             "mean_us": mean_ms * 1000,
             "batch_total_us": mean_ms * args.repeats * 1000,
             "calls": args.repeats,
-            "warmup_elapsed_seconds": warmup_elapsed,
+            "warmup_calls": args.warmup,
         }
     # Accuracy outputs are obtained outside the timed batches.
     outputs = {"sage": run_sage(), "fia": run_fia()}
@@ -154,7 +139,7 @@ def main():
         "dtype": dtype_name,
         "causal": causal,
         "fia_sparse_mode": 2 if causal else 0,
-        "warmup_seconds": args.warmup_seconds,
+        "warmup_calls": args.warmup,
         "repeats": args.repeats,
         "cooldown_seconds_after_measurement": 10,
         "torch": torch.__version__,

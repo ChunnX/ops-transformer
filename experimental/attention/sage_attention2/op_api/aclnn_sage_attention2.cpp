@@ -89,6 +89,10 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (GetCurrentPlatformInfo().GetSocLongVersion().find("Ascend950") != 0) {
         return ACLNN_ERR_PARAM_INVALID;
     }
+    L2_DFX_PHASE_1(aclnnSageAttention2,
+                   DFX_IN(q, k, v, tensorLayout, isCausal, qkQuantGran, smScale, pvAccumDtype,
+                          smoothK, smoothV, returnLse),
+                   DFX_OUT(out, lse));
     auto owner = CREATE_EXECUTOR();
     if (!owner.get()) {
         return ACLNN_ERR_INNER_CREATE_EXECUTOR;
@@ -139,5 +143,6 @@ extern "C" aclnnStatus aclnnSageAttention2(void *workspace, uint64_t workspaceSi
     if (!executor) {
         return ACLNN_ERR_PARAM_NULLPTR;
     }
+    L2_DFX_PHASE_2(aclnnSageAttention2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }

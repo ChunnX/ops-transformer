@@ -126,15 +126,15 @@ FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 
 
 ## 性能测试
 
-验收计时与任务书配套 `test_perf.py::_time_ms` 一致：每个实现默认按墙钟持续预热 10 秒（排除首次编译/初始化），完成最后一组预热后同步；用一对 Device Event 包住连续 20 次完整算子调用，循环内不主动同步；全部提交后同步，以总耗时除以 20 作为平均耗时。先测 FIA，再测 Sage；每个实现测量完成后间隔 10 秒。统计范围包含 Stats、Quant 和 Attention，不预先缓存量化结果。
+验收计时与任务书配套 `test_perf.py::_time_ms` 一致：每个实现默认先执行 50 次预热（包含首次编译/初始化），预热后同步；用一对 Device Event 包住连续 100 次完整算子调用，循环内不主动同步；全部提交后同步，以总耗时除以 100 作为平均耗时。先测 FIA，再测 Sage；每个实现测量完成后间隔 10 秒。统计范围包含 Stats、Quant 和 Attention，不预先缓存量化结果。
 
-PyTorch 默认预热时长为 10 秒，参数为 `--warmup-seconds`；测量次数使用 `--repeats` 或 `SAGEATTN_PERF_ITERS`。预热按时间结束，内部短批次仅用于限制排队和内存占用。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
+PyTorch 默认预热 50 次，参数为 `--warmup` 或 `SAGEATTN_PERF_WARMUP`；测量次数使用 `--repeats` 或 `SAGEATTN_PERF_ITERS`，默认 100 次。预热次数不按运行时间自动调整。ACLNN 使用等价的批量 ACL Event 计时，每次正常调用 GetWorkspaceSize 和执行接口，workspace/output 复用；两阶段调用均位于批量计时区间内。报告保存总耗时、调用次数和平均耗时，加速比使用 FIA 平均耗时除以 Sage 平均耗时。
 
 ```bash
 python benchmarks/run_validation_performance.py --output build/performance_batch
 bash benchmarks/build_aclnn_benchmark.sh
 mkdir -p build/performance_batch/aclnn
-./build/benchmarks/benchmark_aclnn 4096 1 32 0 0 10 20 build/performance_batch/aclnn/P-01.json
+./build/benchmarks/benchmark_aclnn 4096 1 32 0 0 50 100 build/performance_batch/aclnn/P-01.json
 ```
 
 ### msprof op
@@ -148,7 +148,7 @@ msprof op --kernel-name=FusedInferAttentionScore --output=build/msprof/P-01/fia 
     --application="python benchmarks/profile_single_op.py --case P-01 --operator fia"
 ```
 
-`benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_SECONDS REPEATS OUTPUT_JSON`。性能结果随自测材料提供。
+`benchmark_aclnn` 参数依次为 `SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_CALLS REPEATS OUTPUT_JSON`。性能结果随自测材料提供。
 
 ## 目录说明
 

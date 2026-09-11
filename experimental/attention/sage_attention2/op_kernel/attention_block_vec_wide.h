@@ -144,11 +144,12 @@ public:
             PipeBarrier<PIPE_V>();
         }
     }
-    __aicore__ inline __attribute__((always_inline)) void PrepareStreamOutput(uint32_t b, uint32_t kh)
+    __aicore__ inline __attribute__((always_inline)) void LoadLseMean(uint32_t b, uint32_t kh)
     {
+        if (!Base::params_.returnLse || !Base::params_.smoothK)
+            return;
         Sync<HardEvent::V_MTE2>();
-        if (Base::params_.returnLse && Base::params_.smoothK)
-            DataCopy(Base::mu_, Base::mg_[(uint64_t(b) * Base::params_.hk + kh) * DP], DP);
+        DataCopy(Base::mu_, Base::mg_[(uint64_t(b) * Base::params_.hk + kh) * DP], DP);
         Sync<HardEvent::MTE2_V>();
     }
     __aicore__ inline __attribute__((always_inline)) void UpdateStreamOutput(uint32_t group, bool first, bool last)

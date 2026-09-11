@@ -102,7 +102,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessWideStreamStep(
             if (previous & 1) {
                 bool last = old.part + 1 == old.count * 2;
                 if (last)
-                    vector.PrepareStreamOutput(old.b, old.kh);
+                    vector.LoadLseMean(old.b, old.kh);
                 vector.UpdateStreamOutput(group, old.part == 1, last);
                 if (last)
                     vector.FinishStreamQuery(old.ordinal, old.qstart, old.b, old.h);

@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -132,17 +133,17 @@ static float decode(uint16_t x, bool bf16)
 int main(int argc, char **argv)
 try {
     if (argc != 9) {
-        throw std::runtime_error("usage: benchmark_aclnn SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_SECONDS REPEATS OUTPUT_JSON");
+        throw std::runtime_error("usage: benchmark_aclnn SEQ BATCH KV_HEADS BF16 CAUSAL WARMUP_CALLS REPEATS OUTPUT_JSON");
     }
     int64_t seq = std::stoll(argv[1]), batch = std::stoll(argv[2]), hk = std::stoll(argv[3]);
     bool bf16 = std::stoi(argv[4]) != 0, causal = std::stoi(argv[5]) != 0;
-    double warmupSeconds = std::stod(argv[6]);
+    int warmupCalls = std::stoi(argv[6]);
     int repeats = std::stoi(argv[7]);
     const char *headsEnv = std::getenv("SAGE_BENCH_HEADS");
     const char *dimEnv = std::getenv("SAGE_BENCH_DIM");
     int64_t heads = headsEnv ? std::stoll(headsEnv) : 32;
     int64_t dim = dimEnv ? std::stoll(dimEnv) : 128;
-    if (heads <= 0 || dim <= 0 || dim > 128 || seq <= 0 || batch <= 0 || hk <= 0 || heads % hk || !std::isfinite(warmupSeconds) || warmupSeconds <= 0 ||
+    if (heads <= 0 || dim <= 0 || dim > 128 || seq <= 0 || batch <= 0 || hk <= 0 || heads % hk || warmupCalls < 1 ||
         repeats < 1) {
         throw std::runtime_error("invalid arguments");
     }
@@ -226,7 +227,6 @@ try {
         }
     };
     float sageTotalMs = 0.0f, fiaTotalMs = 0.0f;
-    double sageWarmupSeconds = 0.0, fiaWarmupSeconds = 0.0;
     auto measure = [&](bool sage) {
         Workspace &ws = sage ? sageWs : fiaWs;
         auto run = [&]() {
@@ -238,28 +238,16 @@ try {
                          fiaRun(ws.data, bytes, executor, runtime.stream),
                   "operator run");
         };
-        run();
-        check(aclrtSynchronizeStream(runtime.stream), "initialization sync");
-        using Clock = std::chrono::steady_clock;
-        const auto warmupStart = Clock::now();
-        int calls = 1;
-        while (std::chrono::duration<double>(Clock::now() - warmupStart).count() < warmupSeconds) {
-            const auto batchStart = Clock::now();
-            for (int i = 0; i < calls; ++i) {
-                run();
-            }
-            check(aclrtSynchronizeStream(runtime.stream), "warmup batch sync");
-            const double elapsed = std::chrono::duration<double>(Clock::now() - batchStart).count();
-            // Bound queue depth to about 20 ms; stop warmup by elapsed time.
-            calls = static_cast<int>(std::clamp(calls * 0.02 / std::max(elapsed, 1e-9), 1.0, 32.0));
+        // Match test_perf.py: fixed warmup calls, followed by one synchronization.
+        for (int i = 0; i < warmupCalls; ++i) {
+            run();
         }
-        (sage ? sageWarmupSeconds : fiaWarmupSeconds) =
-            std::chrono::duration<double>(Clock::now() - warmupStart).count();
+        check(aclrtSynchronizeStream(runtime.stream), "warmup sync");
         aclrtEvent begin = nullptr, end = nullptr;
         check(aclrtCreateEvent(&begin), "create event");
         check(aclrtCreateEvent(&end), "create event");
         check(aclrtRecordEvent(begin, runtime.stream), "record begin");
-        // Match the task's batched timer. Prepare a fresh executor per call;
+        // Match the task's batched timer. Call the preparation API on each iteration;
         // both API phases run inside the batch, without per-call synchronization.
         for (int i = 0; i < repeats; ++i) {
             run();
@@ -290,6 +278,7 @@ try {
         sumSq += e * e;
     }
     std::ostringstream report;
+    report << std::setprecision(17);
     report << "{\n  \"path\":\"standalone C++ ACL runtime\",\n  \"sage_api\":\"aclnnSageAttention2\",\n  "
               "\"fia_api\":\"aclnnFusedInferAttentionScoreV5\",\n  \"timing\":\""
            << "ACL device Event batch total / repeats; both API phases inside batch; workspace/output reused"
@@ -302,13 +291,11 @@ try {
            << ",\n  \"smooth_v\":false,\n  \"smooth_v_requested\":" << (smoothV ? "true" : "false")
            << ",\n  \"fia_api_library\":\"" << fiaInfo.dli_fname << "\",\n  \"kv_heads\":" << hk
            << ",\n  \"bf16\":" << (bf16 ? "true" : "false") << ",\n  \"causal\":" << (causal ? "true" : "false")
-           << ",\n  \"warmup_seconds\":" << warmupSeconds << ",\n  \"repeats\":" << repeats;
+           << ",\n  \"warmup_calls\":" << warmupCalls << ",\n  \"repeats\":" << repeats;
     {
         report << ",\n  \"sage_ms\":" << sageMs << ",\n  \"fia_ms\":" << fiaMs << ",\n  \"speedup\":" << fiaMs / sageMs;
         report << ",\n  \"sage_batch_total_ms\":" << sageTotalMs
-               << ",\n  \"fia_batch_total_ms\":" << fiaTotalMs
-               << ",\n  \"sage_warmup_elapsed_seconds\":" << sageWarmupSeconds
-               << ",\n  \"fia_warmup_elapsed_seconds\":" << fiaWarmupSeconds;
+               << ",\n  \"fia_batch_total_ms\":" << fiaTotalMs;
     }
     report << ",\n  \"max_abs_vs_fia\":" << maxAbs
            << ",\n  \"mean_abs_vs_fia\":" << sumAbs / static_cast<double>(result.size())

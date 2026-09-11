@@ -184,9 +184,18 @@ public:
                 WriteRow(og_, ((uint64_t(b) * params_.hq + h) * params_.sq + first + i) * params_.d,
                          qo_[i * params_.dp], params_.d);
         }
+        // WriteRow fences output reuse; LSE owns its additional scalar fences.
+        if (params_.returnLse)
+            StoreTileLse(first, validRows, b, h);
+    }
+
+protected:
+    __aicore__ inline __attribute__((always_inline)) void StoreTileLse(uint32_t first, uint32_t validRows,
+                                                                       uint32_t b, uint32_t h)
+    {
         Sync<HardEvent::MTE3_S>();
         Sync<HardEvent::V_S>();
-        for (uint32_t i = 0; i < validRows && params_.returnLse; i++) {
+        for (uint32_t i = 0; i < validRows; i++) {
             uint32_t pos = first + i;
             Duplicate(red_, denom_.GetValue(i), 8);
             Ln(red_, red_, 8);
@@ -207,8 +216,6 @@ public:
             Sync<HardEvent::MTE3_S>();
         }
     }
-
-protected:
     static constexpr uint32_t ACCUM_UB = Layout::ACCUM_UB;
     static constexpr uint32_t X_UB = Layout::X_UB;
     static constexpr uint32_t RED_UB = Layout::RED_UB;

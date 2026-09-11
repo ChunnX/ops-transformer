@@ -11,7 +11,6 @@
 import argparse
 import csv
 import json
-import math
 import os
 import subprocess
 import sys
@@ -27,24 +26,23 @@ def main():
         "--cases",
         nargs="+",
         choices=[c[0] for c in ALL_CASES],
-        default=[c[0] for c in ALL_CASES if c[0].startswith("P-")],
+        default=[f"P-{index:02d}" for index in range(1, 8)],
     )
     parser.add_argument(
-        "--warmup-seconds", type=float, default=10.0
+        "--warmup", type=int, default=int(os.environ.get("SAGEATTN_PERF_WARMUP", "50"))
     )
     parser.add_argument(
-        "--repeats", type=int, default=int(os.environ.get("SAGEATTN_PERF_ITERS", "20"))
+        "--repeats", type=int, default=int(os.environ.get("SAGEATTN_PERF_ITERS", "100"))
     )
     parser.add_argument("--smooth-v", action="store_true")
     parser.add_argument("--seq", type=int)
     args = parser.parse_args()
     if (
-        not math.isfinite(args.warmup_seconds)
-        or args.warmup_seconds <= 0
+        args.warmup < 1
         or args.repeats < 1
         or (args.seq is not None and args.seq < 1)
     ):
-        parser.error("warmup-seconds must be finite and positive; repeats and context length must be positive")
+        parser.error("warmup, repeats and context length must be positive")
     root = Path(__file__).resolve().parent
     output_root = args.output.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -62,8 +60,8 @@ def main():
             str(root / "profile_performance.py"),
             "--case",
             name,
-            "--warmup-seconds",
-            str(args.warmup_seconds),
+            "--warmup",
+            str(args.warmup),
             "--repeats",
             str(args.repeats),
             "--output",
@@ -97,8 +95,8 @@ def main():
         }
         rows.append(row)
         print(
-            f"{name}: Sage={row['sage_ms']:.3f} ms, FIA={row['fia_ms']:.3f} ms, "
-            f"speedup={row['speedup']:.3f}x",
+            f"{name}: Sage={row['sage_ms']:.2f} ms, FIA={row['fia_ms']:.2f} ms, "
+            f"speedup={row['speedup']:.2f}x",
             flush=True,
         )
         # Save completed cases as we go, including during long-context runs.
@@ -106,7 +104,7 @@ def main():
             json.dumps(
                 {
                     "timing": "torch.npu.Event batch total / repeats; complete public API calls",
-                    "warmup_seconds": args.warmup_seconds,
+                    "warmup_calls": args.warmup,
                     "repeats": args.repeats,
                     "cases": rows,
                 },
