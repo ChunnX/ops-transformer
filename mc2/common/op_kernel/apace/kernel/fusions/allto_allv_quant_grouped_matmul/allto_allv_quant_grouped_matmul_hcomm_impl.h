@@ -156,8 +156,8 @@ public:
         // Do not let AIV0 submit the first collective while another MIX
         // sub-core is still initializing its HCCL context.
         AscendC::SyncAll<false>();
-        if (A2AV_GMM_DIAG_SCALE_X_DTYPE_ONLY) {
-            RunScaleXDataTypeDiagnostic();
+        if (A2AV_GMM_DIAG_FIRST_EXPERT_SERIAL_COMM) {
+            RunFirstExpertSerialCommunicationDiagnostic();
             return;
         }
         if ASCEND_IS_AIV {
@@ -224,7 +224,7 @@ private:
         hccl_.Finalize();
     }
 
-    __aicore__ inline void RunScaleXDataTypeDiagnostic()
+    __aicore__ inline void RunFirstExpertSerialCommunicationDiagnostic()
     {
         if ASCEND_IS_AIV {
             if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
@@ -233,9 +233,13 @@ private:
                     xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_),
                     scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
                 hccl_.Wait(scaleHandle_);
+                dataHandle_ = hccl_.template AlltoAllV<true>(
+                    xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
+                    dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+                hccl_.Wait(dataHandle_);
             }
         }
-        // Keep the MIX task lifecycle balanced while isolating the collective.
+        // Keep the MIX task lifecycle balanced while isolating the two calls.
         AscendC::SyncAll<false>();
         if ASCEND_IS_AIV {
             hccl_.Finalize();
