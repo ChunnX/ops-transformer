@@ -716,7 +716,7 @@ def run_bsa_hif8_case(
 
 
 class TestBsaHif8Golden(unittest.TestCase):
-    """Focused cases for the current BNSD HIF8 kernel path."""
+    """Focused cases for the current BNSD/BSND/TND HIF8 kernel paths."""
 
     def _run(self, **kwargs):
         if not _HAS_NPU:
@@ -787,6 +787,28 @@ class TestBsaHif8Golden(unittest.TestCase):
             seed=117,
             data_ranges=(5.0, 5.0, 5.0),
         )
+
+    def test_layout_and_output_dtype_matrix(self):
+        """Cover all HIF8 layouts with both supported AttentionOut dtypes."""
+        for input_layout in SUPPORTED_LAYOUTS:
+            for attention_out_dtype in SUPPORTED_OUTPUT_DTYPES:
+                with self.subTest(
+                    layout=input_layout,
+                    attention_out_dtype=_dtype_name(attention_out_dtype),
+                ):
+                    self._run(
+                        batch=2 if input_layout == "TND" else 1,
+                        q_heads=2,
+                        kv_heads=1,
+                        q_seq=129,
+                        kv_seq=257,
+                        block_shape=(128, 256),
+                        p_scale=7.0,
+                        seed=121,
+                        data_ranges=(0.83, 0.71, 0.67),
+                        input_layout=input_layout,
+                        attention_out_dtype=attention_out_dtype,
+                    )
 
     def test_batch2_mha_tail_fractional_pscale(self):
         """Batch/head indexing, two-sided tails and fractional P scale."""
@@ -882,11 +904,14 @@ def _generated_210_cases():
             ranges = ((0.91, 0.87, 0.77), (0.63, 0.92, 0.41),
                       (0.52, 0.79, 0.96))[i % 3]
         attention_scale = (128.0 ** -0.5) * (0.75, 1.0, 1.25)[i % 3]
+        input_layout = SUPPORTED_LAYOUTS[i % len(SUPPORTED_LAYOUTS)]
+        attention_out_dtype = SUPPORTED_OUTPUT_DTYPES[(i // len(SUPPORTED_LAYOUTS)) % 2]
         cases.append(dict(batch=batch, q_heads=q_heads, kv_heads=kv_heads,
                           q_seq=q_seq, kv_seq=kv_seq, block_shape=block_shape,
                           mask_kind=mask_kind, p_scale=p_scale,
                           attention_scale=attention_scale, seed=7000 + i,
-                          data_ranges=ranges, device=0))
+                          data_ranges=ranges, input_layout=input_layout,
+                          attention_out_dtype=attention_out_dtype, device=0))
     return cases
 
 
@@ -905,6 +930,12 @@ def main():
     parser.add_argument("--block-y", type=int, default=256)
     parser.add_argument("--mask-kind", choices=("dense", "alternating", "gap_sparse"), default="dense")
     parser.add_argument("--p-scale", type=float, default=32.0)
+    parser.add_argument("--layout", choices=SUPPORTED_LAYOUTS, default="BNSD")
+    parser.add_argument("--out-dtype", choices=("bfloat16", "float16"), default="bfloat16")
+    parser.add_argument(
+        "--data-range", type=float, default=None,
+        help="symmetric Q/K/V amplitude; 5 generates source values in [-5, 5]",
+    )
     parser.add_argument("--seed", type=int, default=54)
     parser.add_argument("--attention-scale", type=float, default=None)
     args = parser.parse_args()
@@ -920,6 +951,9 @@ def main():
         seed=args.seed,
         device=args.device,
         attention_scale=args.attention_scale,
+        data_ranges=(args.data_range,) * 3 if args.data_range is not None else (0.91, 0.87, 0.77),
+        input_layout=args.layout,
+        attention_out_dtype=_resolve_output_dtype(args.out_dtype),
     )
     if result.out_result != "Pass" or result.lse_result != "Pass":
         raise SystemExit(1)
