@@ -45,12 +45,13 @@ constexpr uint32_t DSIZE_256 = 256;
  * @param winLeft    左侧窗口
  * @param winRight   右侧窗口
  * @param qLayout    Q 的 layout（使用 LAYOUT_BSH / LAYOUT_BSND / LAYOUT_TND 等）
+ * @param templateId [out] 模板编号
  * @param sOuterFactor [out] sOuter 切块大小
  * @param sInnerFactor [out] sInner 切块大小
  */
 inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t maxSeqQ, int64_t maxSeqKv,
                                   int32_t maskMode, int64_t winLeft, int64_t winRight, uint32_t qLayout,
-                                  uint32_t &sOuterFactor, uint32_t &sInnerFactor)
+                                  uint32_t &templateId, uint32_t &sOuterFactor, uint32_t &sInnerFactor)
 {
     if (maxSeqQ == -1) {
         maxSeqQ = MAX_SEQ_LEN_DEFAULT;
@@ -58,6 +59,7 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
     if (maxSeqKv == -1) {
         maxSeqKv = MAX_SEQ_LEN_DEFAULT;
     }
+    templateId = 0; // 0: ND模板, 1: DN模板
     sOuterFactor = SOUTER_64;
     sInnerFactor = SINNER_128;
 
@@ -76,6 +78,14 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
             sOuterFactor = SOUTER_32;
             sInnerFactor = SINNER_256;
         }
+
+        if (maskMode == 0 && sOuterFactor == SOUTER_64) {
+            templateId = 1;
+        }
+
+        if (templateId == 1) {
+            sInnerFactor = SINNER_256;
+        }
     }
     if (vHeadDim == DSIZE_256) {
         if (gSize * maxSeqQ < SOUTER_64) {
@@ -85,9 +95,6 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t gSize, int64_t max
             sOuterFactor = SOUTER_64;
             sInnerFactor = SINNER_128;
         }
-    }
-    if (vHeadDim <= DSIZE_128 && maskMode == 0 && sOuterFactor == SOUTER_64) {
-        sInnerFactor = SINNER_256;
     }
 }
 
