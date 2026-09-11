@@ -13,9 +13,15 @@
 """Golden and customize_inputs for aclnnFfnWorkerBatching.
 
 This module combines:
-  - inputs: scheduleContext packing with HBM buffers + test data generation
+  - inputs: real-device-address scheduleContext (HBM buffers + test data)
   - golden: CPU golden reference using cached test data
   - compare: custom comparison (kernel writes only actual_token_num elements)
+
+Auxiliary buffers (token_data / token_info / flat ids) live in dedicated
+aclrtMalloc allocations and the context carries absolute device addresses,
+matching the production double-dereference path (no TEST_MAGIC relative
+offsets). RECV consumes descriptors on device, so its TTK execution count is
+pinned to 1 per case (TTK's default 3 would hang on the second run).
 """
 
 import atexit
@@ -27,6 +33,7 @@ import torch
 __spec__ = {
     "aclnnFfnWorkerBatching": "AclnnFfnWorkerBatchingTestSpec",
     "ffn_worker_batching": "FfnWorkerBatchingKernelTestSpec",
+    "torch.ops.cann_ops_transformer.ffn_worker_batching": "TorchFfnWorkerBatchingTestSpec",
 }
 
 # ==================== Shared cache ====================
@@ -58,8 +65,6 @@ _OFF_MICRO_BATCH_IDS_BUF_SIZE = 552
 _OFF_EXPERT_IDS_BUF = 560
 _OFF_EXPERT_IDS_BUF_SIZE = 568
 _OFF_OUT_NUM = 576
-_OFF_TEST_MAGIC = 640
-_TEST_MAGIC = 0x54455354
 
 # ==================== ACL / HBM helpers ====================
 
@@ -87,6 +92,8 @@ def _load_acl():
     lib.aclrtFree.argtypes = [ctypes.c_void_p]
     lib.aclrtSetDevice.restype = ctypes.c_int32
     lib.aclrtSetDevice.argtypes = [ctypes.c_int32]
+    lib.aclrtGetDevice.restype = ctypes.c_int32
+    lib.aclrtGetDevice.argtypes = [ctypes.POINTER(ctypes.c_int32)]
     lib.aclrtSynchronizeDevice.restype = ctypes.c_int32
     lib.aclrtSynchronizeDevice.argtypes = []
     lib.aclrtMemFlush.restype = ctypes.c_int32
@@ -99,22 +106,34 @@ def _load_acl():
 
 _HBM_BASE = None
 _HBM_OFFSET = 0
+_HBM_CAP = 0
 _HBM_BLOCK_SIZE = 4 * 1024 * 1024
 
 
-def _hbm_alloc(size):
-    global _HBM_BASE, _HBM_OFFSET
-    lib = _load_acl()
+def _ensure_device(lib):
+    # 沿用进程内已设置的当前设备（TTK/torch_npu 可能已初始化），否则落到 0 卡。
+    dev = ctypes.c_int32(-1)
+    if lib.aclrtGetDevice(ctypes.byref(dev)) == 0 and dev.value >= 0:
+        return
     lib.aclrtSetDevice(0)
-    if _HBM_BASE is None or _HBM_OFFSET + size > _HBM_BLOCK_SIZE:
+
+
+def _hbm_alloc(size):
+    global _HBM_BASE, _HBM_OFFSET, _HBM_CAP
+    lib = _load_acl()
+    _ensure_device(lib)
+    aligned_size = (size + 511) & ~511
+    if _HBM_BASE is None or _HBM_OFFSET + aligned_size > _HBM_CAP:
+        # 超过默认块大小的缓冲（如 a4/h8192 的 token_data）整块独立分配
+        cap = max(_HBM_BLOCK_SIZE, aligned_size)
         ptr = ctypes.c_void_p(0)
-        ret = lib.aclrtMalloc(ctypes.byref(ptr), _HBM_BLOCK_SIZE, 0)
+        ret = lib.aclrtMalloc(ctypes.byref(ptr), cap, 0)
         if ret != 0 or ptr.value is None:
-            raise RuntimeError(f"aclrtMalloc failed: ret={ret}, size={_HBM_BLOCK_SIZE}")
+            raise RuntimeError(f"aclrtMalloc failed: ret={ret}, size={cap}")
         _HBM_BASE = ptr.value
         _HBM_OFFSET = 0
+        _HBM_CAP = cap
         _HBM_ALLOCS.append(_HBM_BASE)
-    aligned_size = (size + 511) & ~511
     addr = _HBM_BASE + _HBM_OFFSET
     _HBM_OFFSET += aligned_size
     return addr
@@ -136,7 +155,7 @@ def _hbm_copy(host_data, hbm_ptr):
 
 @atexit.register
 def _cleanup_hbm():
-    global _HBM_BASE, _HBM_OFFSET
+    global _HBM_BASE, _HBM_OFFSET, _HBM_CAP
     lib = _ACL_LIB
     if lib is None:
         return
@@ -148,6 +167,27 @@ def _cleanup_hbm():
     _HBM_ALLOCS.clear()
     _HBM_BASE = None
     _HBM_OFFSET = 0
+    _HBM_CAP = 0
+
+
+_ORIG_RUN_TIME = None
+
+
+def _pin_run_time(need_schedule):
+    """RECV 在设备侧消费描述符（清 flag / ids 置 sentinel），真实地址缓冲不会随
+    TTK 的重复执行刷新：第二次执行面对空表会永久等待。TTK 默认 run_time=3，
+    这里把 RECV 用例钉到单次执行，NORM 恢复原值。依赖 TTK 逐用例
+    “输入生成先于执行器读取 run_time”的时序（aclnn / kernel 两模式均如此）。"""
+    global _ORIG_RUN_TIME
+    try:
+        from ttk.utilities.container_utils import get_global_storage
+
+        storage = get_global_storage()
+        if _ORIG_RUN_TIME is None:
+            _ORIG_RUN_TIME = storage.run_time
+        storage.run_time = 1 if need_schedule == 1 else _ORIG_RUN_TIME
+    except Exception:
+        pass
 
 
 # ==================== Data generation ====================
@@ -193,12 +233,26 @@ def _generate_test_data(
         token_scales = None
     elif tokenDtype >= 3:
         from ttk.utilities.dtypes import (
-            numpy_float8_e5m2, numpy_float8_e4m3fn, numpy_float4_e2m1, numpy_float8_e8m0,
+            numpy_float8_e5m2,
+            numpy_float8_e4m3fn,
+            numpy_float4_e2m1,
+            numpy_float8_e8m0,
         )
-        dtype = {3: numpy_float8_e5m2, 4: numpy_float8_e4m3fn, 5: numpy_float4_e2m1}[tokenDtype]()
+
+        dtype = {3: numpy_float8_e5m2, 4: numpy_float8_e4m3fn, 5: numpy_float4_e2m1}[
+            tokenDtype
+        ]()
         # 原始位模式包含正负零及 FP8 非有限值，搬运不得改变位模式。
-        token_data = rng.randint(0, 16 if tokenDtype == 5 else 256, size=(A, M, BS, K, H)).astype(np.uint8).view(dtype)
-        token_scales = rng.randint(0, 256, size=(A, M, BS, K, (H + 31) // 32)).astype(np.uint8).view(numpy_float8_e8m0())
+        token_data = (
+            rng.randint(0, 16 if tokenDtype == 5 else 256, size=(A, M, BS, K, H))
+            .astype(np.uint8)
+            .view(dtype)
+        )
+        token_scales = (
+            rng.randint(0, 256, size=(A, M, BS, K, (H + 31) // 32))
+            .astype(np.uint8)
+            .view(numpy_float8_e8m0())
+        )
     else:
         token_data = rng.randint(-128, 127, size=(A, M, BS, K, H)).astype(np.int8)
         token_scales = (rng.rand(A, M, BS, K) * 2 + 0.1).astype(np.float32)
@@ -228,7 +282,12 @@ def _generate_test_data(
 def _build_token_data_bytes(token_data, token_scales, tokenDtype, A, M, BS, K, H):
     if tokenDtype >= 3:
         from ttk.utilities.dtypes import pack_4bits
-        raw_tokens = pack_4bits(token_data).reshape(A, M, BS, K, H // 2) if tokenDtype == 5 else token_data.view(np.uint8)
+
+        raw_tokens = (
+            pack_4bits(token_data).reshape(A, M, BS, K, H // 2)
+            if tokenDtype == 5
+            else token_data.view(np.uint8)
+        )
         return np.concatenate((raw_tokens, token_scales.view(np.uint8)), axis=-1)
     if tokenDtype == 1:
         t = torch.from_numpy(np.ascontiguousarray(token_data, dtype=np.float32))
@@ -332,8 +391,13 @@ def _generate_group_list(sorted_expert_ids, valid_count, expert_num):
 def _to_torch(arr, dtype):
     if "float8" in arr.dtype.name or "float4" in arr.dtype.name:
         from ttk.utilities.dtypes import numpy_to_torch_tensor
+
         tensor = numpy_to_torch_tensor(np.ascontiguousarray(arr))
-        return tensor.reshape(*arr.shape[:-1], arr.shape[-1] // 2) if "float4" in arr.dtype.name else tensor
+        return (
+            tensor.reshape(*arr.shape[:-1], arr.shape[-1] // 2)
+            if "float4" in arr.dtype.name
+            else tensor
+        )
     t = torch.from_numpy(np.ascontiguousarray(arr))
     if dtype is not None:
         t = t.to(dtype)
@@ -365,6 +429,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         **kwargs,
     ):
         testcase_name = kwargs.get("testcase_name", "default")
+        _pin_run_time(needSchedule)
         A = int(maxOutShape[0])
         BS = int(maxOutShape[1])
         K = int(maxOutShape[2])
@@ -395,15 +460,21 @@ class AclnnFfnWorkerBatchingTestSpec:
         )
         td_bytes = td_arr.tobytes()
 
+        # 真实地址协议：辅助数据放独立 HBM 缓冲，context 仅保留 1024B 头部并写入
+        # 绝对设备地址（生产二级指针寻址路径）；不写 TEST_MAGIC，偏移 640 保持 0。
+        td_ptr = _hbm_alloc(len(td_bytes))
+        _hbm_copy(td_bytes, td_ptr)
+
         if needSchedule == 0:
             ei_bytes = np.ascontiguousarray(expert_ids).tobytes()
             si_bytes = np.ascontiguousarray(session_ids).tobytes()
             mi_bytes = np.ascontiguousarray(micro_batch_ids).tobytes()
-            aux_data = td_bytes + ei_bytes + si_bytes + mi_bytes
-            td_offset = 1024
-            ei_offset = td_offset + len(td_bytes)
-            si_offset = ei_offset + len(ei_bytes)
-            mi_offset = si_offset + len(si_bytes)
+            ei_ptr = _hbm_alloc(len(ei_bytes))
+            _hbm_copy(ei_bytes, ei_ptr)
+            si_ptr = _hbm_alloc(len(si_bytes))
+            _hbm_copy(si_bytes, si_ptr)
+            mi_ptr = _hbm_alloc(len(mi_bytes))
+            _hbm_copy(mi_bytes, mi_ptr)
         else:
             token_info = _build_token_info_buf(expert_ids, A, M, BS, K)
             # 独立构造“已发布描述符”的集合，不把未就绪行的 expert_ids 预先 mask。
@@ -423,13 +494,13 @@ class AclnnFfnWorkerBatchingTestSpec:
             data["ready"] = ready
             # 静态 ST 的入口 cursor 为 0，至少预置一个 ready；期望选中首个非空 micro batch。
             # 完全无 ready 的等待/延迟发布不能用静态 CSV 表达，由状态脚本单独验证。
+            # RECV 单次执行（run_time 已钉到 1），描述符消费后不复位。
             data["cur_micro_batch_id"] = next(m for m in range(M) if ready[:, m].any())
             ti_bytes = token_info.tobytes()
-            aux_data = td_bytes + ti_bytes
-            td_offset = 1024
-            ti_offset = td_offset + len(td_bytes)
+            ti_ptr = _hbm_alloc(len(ti_bytes))
+            _hbm_copy(ti_bytes, ti_ptr)
 
-        total_size = 1024 + len(aux_data)
+        total_size = 1024
         ctx = bytearray(total_size)
 
         _pack_ctx(ctx, _OFF_SESSION_NUM, "<I", A)
@@ -441,29 +512,28 @@ class AclnnFfnWorkerBatchingTestSpec:
         _pack_ctx(ctx, _OFF_FFN_TO_ATTN_TOKEN_SIZE, "<I", HS)
         _pack_ctx(ctx, _OFF_SCHEDULE_MODE, "<i", 0)
         _pack_ctx(ctx, _OFF_RUN_FLAG, "<i", 1)
-        _pack_ctx(ctx, _OFF_TEST_MAGIC, "<I", _TEST_MAGIC)
-        _pack_ctx(ctx, _OFF_FFN_TOKEN_DATA_BUF, "<Q", td_offset)
+        _pack_ctx(ctx, _OFF_FFN_TOKEN_DATA_BUF, "<Q", td_ptr)
         _pack_ctx(ctx, _OFF_FFN_TOKEN_DATA_BUF_SIZE, "<Q", len(td_bytes))
 
         if needSchedule == 0:
-            _pack_ctx(ctx, _OFF_SESSION_IDS_BUF, "<Q", si_offset)
+            _pack_ctx(ctx, _OFF_SESSION_IDS_BUF, "<Q", si_ptr)
             _pack_ctx(ctx, _OFF_SESSION_IDS_BUF_SIZE, "<Q", len(si_bytes))
-            _pack_ctx(ctx, _OFF_MICRO_BATCH_IDS_BUF, "<Q", mi_offset)
+            _pack_ctx(ctx, _OFF_MICRO_BATCH_IDS_BUF, "<Q", mi_ptr)
             _pack_ctx(ctx, _OFF_MICRO_BATCH_IDS_BUF_SIZE, "<Q", len(mi_bytes))
-            _pack_ctx(ctx, _OFF_EXPERT_IDS_BUF, "<Q", ei_offset)
+            _pack_ctx(ctx, _OFF_EXPERT_IDS_BUF, "<Q", ei_ptr)
             _pack_ctx(ctx, _OFF_EXPERT_IDS_BUF_SIZE, "<Q", len(ei_bytes))
             _pack_ctx(ctx, _OFF_OUT_NUM, "<I", out_num)
         else:
-            _pack_ctx(ctx, _OFF_FFN_TOKEN_INFO_BUF, "<Q", ti_offset)
+            _pack_ctx(ctx, _OFF_FFN_TOKEN_INFO_BUF, "<Q", ti_ptr)
             _pack_ctx(ctx, _OFF_FFN_TOKEN_INFO_BUF_SIZE, "<Q", len(ti_bytes))
             _pack_ctx(ctx, _OFF_POLLING_INDEX, "<Q", 0)
-
-        ctx[1024 : 1024 + len(aux_data)] = aux_data
 
         ctx_arr = np.array(ctx, dtype=np.int8)
         if isinstance(scheduleContext, np.ndarray):
             if scheduleContext.nbytes < total_size:
-                raise ValueError(f"scheduleContext requires {total_size} bytes, got {scheduleContext.nbytes}")
+                raise ValueError(
+                    f"scheduleContext requires {total_size} bytes, got {scheduleContext.nbytes}"
+                )
             scheduleContext.reshape(-1)[:total_size] = ctx_arr
         else:
             cur_storage = scheduleContext.untyped_storage()
@@ -558,7 +628,9 @@ class AclnnFfnWorkerBatchingTestSpec:
             # 只在 CPU 参考副本上屏蔽未选中 session；设备输入仍保留它们的合法 ids。
             ids = expert_ids[:, cur_mb].copy()
             if syncFlag == 1:
-                ids[~data.get("ready", np.ones((A, M), dtype=bool))[:, cur_mb]] = _MASK_VALUE
+                ids[~data.get("ready", np.ones((A, M), dtype=bool))[:, cur_mb]] = (
+                    _MASK_VALUE
+                )
             expert_ids_flat = ids.reshape(-1).astype(np.int32)
         else:
             expert_ids_flat = expert_ids.reshape(-1).astype(np.int32)
@@ -569,8 +641,11 @@ class AclnnFfnWorkerBatchingTestSpec:
         micro_batch_ids_out = np.zeros(Y, dtype=np.int32)
         token_ids_out = np.zeros(Y, dtype=np.int32)
         expert_offsets_out = np.zeros(Y, dtype=np.int32)
-        dynamic_scale_out = (np.zeros((Y, (H + 31) // 32), dtype=token_scales.dtype)
-                             if tokenDtype >= 3 else np.ones(Y, dtype=np.float32))
+        dynamic_scale_out = (
+            np.zeros((Y, (H + 31) // 32), dtype=token_scales.dtype)
+            if tokenDtype >= 3
+            else np.ones(Y, dtype=np.float32)
+        )
 
         bsk = BS * K
         cur_mb = data.get("cur_micro_batch_id", 0)
@@ -602,8 +677,16 @@ class AclnnFfnWorkerBatchingTestSpec:
         actual_token_num_out = np.array([valid_count], dtype=np.int64)
 
         if kwargs.get("use_numpy", False):
-            return [y_out, group_list_out, session_ids_out, micro_batch_ids_out,
-                    token_ids_out, expert_offsets_out, dynamic_scale_out, actual_token_num_out]
+            return [
+                y_out,
+                group_list_out,
+                session_ids_out,
+                micro_batch_ids_out,
+                token_ids_out,
+                expert_offsets_out,
+                dynamic_scale_out,
+                actual_token_num_out,
+            ]
 
         return [
             _to_torch(y_out, out_torch_dtype),
@@ -634,6 +717,7 @@ class AclnnFfnWorkerBatchingTestSpec:
         def to_np(t):
             if isinstance(t, torch.Tensor):
                 from ttk.utilities.dtypes import torch_to_numpy_tensor
+
                 array = torch_to_numpy_tensor(t)
                 if "float4" in str(t.dtype):
                     array = array.reshape(*t.shape[:-1], t.shape[-1] * 2)
@@ -649,7 +733,9 @@ class AclnnFfnWorkerBatchingTestSpec:
                 continue
             npu = to_np(npu_outputs[idx])
             gold = to_np(golden_outputs[idx])
-            if any(kind in gold.dtype.name for kind in ("float8", "float4", "bfloat16")):
+            if any(
+                kind in gold.dtype.name for kind in ("float8", "float4", "bfloat16")
+            ):
                 npu = npu.view(np.uint8)
                 gold = gold.view(np.uint8)
             if idx == 1:
@@ -720,27 +806,137 @@ class AclnnFfnWorkerBatchingTestSpec:
         return results
 
 
+class TorchFfnWorkerBatchingTestSpec:
+    """TTK eager/aclgraph NORM cases with real-device-address context buffers.
+
+    RECV consumes descriptors and cannot safely use TTK's default repeated runs.
+    Its real-pointer publication/replay tests live in verify_torch_*.py.
+    """
+
+    @staticmethod
+    def customize_inputs(
+        schedule_context,
+        expert_num,
+        max_out_shape,
+        *,
+        token_dtype=0,
+        need_schedule=0,
+        layer_num=0,
+        sync_flag=0,
+        mx_output_uint8=False,
+        **kwargs,
+    ):
+        if need_schedule != 0:
+            raise ValueError(
+                "TTK Torch cases require need_schedule=0; use verify_torch_*.py for RECV"
+            )
+        # The complete buffer must be inside the logical shape so H2D and graph
+        # copies preserve auxiliary data, not merely the 1024-byte header.
+        if schedule_context.numel() < 1024:
+            raise ValueError(
+                "schedule_context must include the header and embedded buffers"
+            )
+        AclnnFfnWorkerBatchingTestSpec.customize_inputs(
+            schedule_context.numpy(),
+            expert_num,
+            max_out_shape,
+            token_dtype,
+            need_schedule,
+            layer_num,
+            sync_flag,
+            *([None] * 8),
+            **kwargs,
+        )
+
+    @staticmethod
+    def golden(
+        schedule_context,
+        expert_num,
+        max_out_shape,
+        *,
+        token_dtype=0,
+        need_schedule=0,
+        layer_num=0,
+        sync_flag=0,
+        mx_output_uint8=False,
+        **kwargs,
+    ):
+        outputs = AclnnFfnWorkerBatchingTestSpec.golden(
+            schedule_context,
+            expert_num,
+            max_out_shape,
+            token_dtype,
+            need_schedule,
+            layer_num,
+            sync_flag,
+            *([None] * 8),
+            **kwargs,
+        )
+        if mx_output_uint8 and token_dtype >= 3:
+            outputs[6] = outputs[6].view(torch.uint8)
+            if token_dtype == 5:
+                outputs[0] = outputs[0].view(torch.uint8)
+        return outputs
+
+    compare = staticmethod(AclnnFfnWorkerBatchingTestSpec.compare)
+    tolerance = AclnnFfnWorkerBatchingTestSpec.tolerance
+
+
 class FfnWorkerBatchingKernelTestSpec:
     """Kernel 接口使用 snake_case 属性及 numpy 数据，复用 ACLNN 的输入协议和 golden。"""
 
     @staticmethod
-    def customize_inputs(schedule_context, expert_num, max_out_shape, token_dtype=0,
-                         need_schedule=0, layer_num=0, sync_flag=0, **kwargs):
+    def customize_inputs(
+        schedule_context,
+        expert_num,
+        max_out_shape,
+        token_dtype=0,
+        need_schedule=0,
+        layer_num=0,
+        sync_flag=0,
+        **kwargs,
+    ):
         tensor = torch.from_numpy(schedule_context.copy())
         AclnnFfnWorkerBatchingTestSpec.customize_inputs(
-            tensor, expert_num, max_out_shape, token_dtype, need_schedule, layer_num, sync_flag,
-            *([None] * 8), **kwargs)
-        # 上下文逻辑 shape 为 1024，测试内嵌辅助数据通过完整 storage 提供。
+            tensor,
+            expert_num,
+            max_out_shape,
+            token_dtype,
+            need_schedule,
+            layer_num,
+            sync_flag,
+            *([None] * 8),
+            **kwargs,
+        )
+        # 上下文只需 1024B 头部；CSV 声明的更大 shape 其尾部不再使用
+        # （辅助数据走独立 HBM 真实地址缓冲）。
         raw = torch.empty(0, dtype=torch.int8).set_(tensor.untyped_storage())
         return [raw.numpy()]
 
     @staticmethod
-    def golden(schedule_context, expert_num, max_out_shape, token_dtype=0,
-               need_schedule=0, layer_num=0, sync_flag=0, **kwargs):
+    def golden(
+        schedule_context,
+        expert_num,
+        max_out_shape,
+        token_dtype=0,
+        need_schedule=0,
+        layer_num=0,
+        sync_flag=0,
+        **kwargs,
+    ):
         from ttk.utilities.dtypes import torch_to_numpy_tensor
+
         outputs = AclnnFfnWorkerBatchingTestSpec.golden(
-            schedule_context, expert_num, max_out_shape, token_dtype, need_schedule, layer_num, sync_flag,
-            *([None] * 8), **kwargs)
+            schedule_context,
+            expert_num,
+            max_out_shape,
+            token_dtype,
+            need_schedule,
+            layer_num,
+            sync_flag,
+            *([None] * 8),
+            **kwargs,
+        )
         arrays = [torch_to_numpy_tensor(t) for t in outputs]
         if token_dtype == 5:
             arrays[0] = arrays[0].reshape(-1, max_out_shape[3])
