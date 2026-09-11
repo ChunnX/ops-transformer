@@ -14,8 +14,8 @@
  */
 #ifndef QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
 #define QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
-#include "common/util_regbase.h"
-#include "common/copy_gm_to_ub.h"
+#include "../common/util_regbase.h"
+#include "../common/copy_gm_to_ub.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "quant_block_sparse_attn_attenmask.h"
 #include "kernel_operator_list_tensor_intf.h"

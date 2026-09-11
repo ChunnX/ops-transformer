@@ -25,9 +25,9 @@
 #endif
 #include "quant_block_sparse_attn_attenmask.h"
 
-#include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
+#include "../common/matmul.h"
+#include "../common/FixpipeOut.h"
+#include "../common/CopyInL1.h"
 
 #include "quant_block_sparse_attn_kvcache.h"
 #include "kernel_operator_list_tensor_intf.h"

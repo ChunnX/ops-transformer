@@ -16,7 +16,7 @@
 #define UTIL_REGBASE_MX_H
 
 #include <cstdint>
-#include "../../quant_block_sparse_attn_common.h"
+#include "../quant_block_sparse_attn_common.h"
 
 namespace regbasemx {
 constexpr uint32_t QBSA_MX_SCALE_LAST_DIM = 2U;

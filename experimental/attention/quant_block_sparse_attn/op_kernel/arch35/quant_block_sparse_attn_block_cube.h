@@ -14,18 +14,18 @@
  */
 #ifndef QUANT_BLOCK_SPARSE_ATTN_BLOCK_CUBE_H_
 #define QUANT_BLOCK_SPARSE_ATTN_BLOCK_CUBE_H_
-#include "common/util_regbase.h"
+#include "../common/util_regbase.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-#include "common/offset_calculator.h"
+#include "../common/offset_calculator.h"
 
-#include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
+#include "../common/matmul.h"
+#include "../common/FixpipeOut.h"
+#include "../common/CopyInL1.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "quant_block_sparse_attn_attenmask.h"

@@ -16,7 +16,7 @@
 #ifndef QUANT_BLOCK_SPARSE_ATTN_ATTENMASK_H_
 #define QUANT_BLOCK_SPARSE_ATTN_ATTENMASK_H_
 
-#include "common/util_regbase.h"
+#include "../common/util_regbase.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 
 using namespace AscendC;
