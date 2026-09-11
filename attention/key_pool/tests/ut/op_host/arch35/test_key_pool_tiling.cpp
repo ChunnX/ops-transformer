@@ -45,7 +45,12 @@ const char *kA5SocInfo = "{"
 
 TensorDesc Desc(const std::vector<int64_t> &dims, ge::DataType dtype)
 {
-    return TensorDesc(gert::StorageShape(dims, dims), dtype, ge::FORMAT_ND);
+    gert::StorageShape shape;
+    for (const int64_t dim : dims) {
+        shape.MutableOriginShape().AppendDim(dim);
+        shape.MutableStorageShape().AppendDim(dim);
+    }
+    return TensorDesc(shape, dtype, ge::FORMAT_ND);
 }
 
 TensorDesc Empty(ge::DataType dtype)
@@ -74,8 +79,10 @@ gert::TilingContextPara MakePara(const std::string &layout, ge::DataType dtype, 
     inputs.emplace_back(layout == "TH" ? Desc({batch + 1}, ge::DT_INT32) : Empty(ge::DT_INT32));
     inputs.emplace_back(Empty(ge::DT_INT32));
 
-    const int64_t outputCapacity = (maxBlocks * blockSize + cmpRatio - 1) / cmpRatio;
-    std::vector<TensorDesc> outputs{Desc({batch, outputCapacity, headDim}, dtype)};
+    const int64_t outputCapacity =
+        layout == "BSH" ? (sequence + cmpRatio - 1) / cmpRatio : std::min(tokenCount, tokenCount / cmpRatio + batch);
+    std::vector<TensorDesc> outputs{layout == "BSH" ? Desc({batch, outputCapacity, headDim}, dtype) :
+                                                      Desc({outputCapacity, headDim}, dtype)};
     std::vector<OpAttr> attrs{
         {"cmp_ratio", Ops::Transformer::AnyValue::CreateFrom<int64_t>(cmpRatio)},
         {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6F)},

@@ -224,16 +224,26 @@ def compare_precision(
     """Mask undefined output tails in comparison copies and check valid data."""
     actual = operator_output.detach().cpu().float().clone()
     expected = golden_output.detach().cpu().float().clone()
-    if actual.shape != expected.shape or len(valid_counts) != actual.size(0):
-        raise AssertionError("Output shapes and valid-count batch size must match")
-    valid_mask = torch.zeros(actual.shape[:2], dtype=torch.bool)
-    for batch, count in enumerate(valid_counts):
-        if not 0 <= count <= actual.size(1):
-            raise AssertionError(f"Invalid pooled count for batch {batch}: {count}")
-        # Only comparison copies are cleared; the operator output is unchanged.
-        actual[batch, count:] = 0
-        expected[batch, count:] = 0
-        valid_mask[batch, :count] = True
+    if actual.shape != expected.shape or actual.dim() not in (2, 3):
+        raise AssertionError("Output shapes must match and have rank 2 or 3")
+    if actual.dim() == 3:
+        if len(valid_counts) != actual.size(0):
+            raise AssertionError("Valid-count batch size must match BSH output")
+        valid_mask = torch.zeros(actual.shape[:2], dtype=torch.bool)
+        for batch, count in enumerate(valid_counts):
+            if not 0 <= count <= actual.size(1):
+                raise AssertionError(f"Invalid pooled count for batch {batch}: {count}")
+            # Only comparison copies are cleared; the operator output is unchanged.
+            actual[batch, count:] = 0
+            expected[batch, count:] = 0
+            valid_mask[batch, :count] = True
+    else:
+        count = sum(valid_counts)
+        if any(value < 0 for value in valid_counts) or count > actual.size(0):
+            raise AssertionError("Invalid total pooled count for TH output")
+        valid_mask = torch.arange(actual.size(0)) < count
+        actual[count:] = 0
+        expected[count:] = 0
     actual_cache = operator_state_cache.detach().cpu().float()
     expected_cache = golden_state_cache.detach().cpu().float()
     output_close = torch.isclose(
