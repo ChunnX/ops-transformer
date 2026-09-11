@@ -23,20 +23,39 @@
 
 ## 功能说明
 
-- 接口功能：aclnnGenericBlockSparseAttentionGradMetadata根据sparseBlockIdx、sparseBlockCount、seqlen等信息进行稀疏attention的分核与负载均衡，为aclnnGenericBlockSparseAttentionGrad的前置AICPU算子。Ascend 950PR/Ascend 950DT上，按B → N2 → J → G顺序展开`(b, n2, j, g)`任务列表， Atlas A2/A3上，按B → N2 → J顺序展开`(b, n2, j)`任务列表，并在AIC核间做`[baseM, baseN] = [128, 128]`基本块粒度的贪心负载均衡，输出metadata供主Grad算子消费。
-- 该算子不建议单独使用，建议与aclnnGenericBlockSparseAttentionGrad配合使用，形成完整工作流。
+- 接口功能：
 
-Ascend 950PR/Ascend 950DT:
-$$
-\text{metaSize} = 80 + B \times N1 \times J \times 4
-$$
+  aclnnGenericBlockSparseAttentionGradMetadata根据sparseBlockIdx、sparseBlockCount、seqlen等信息进行稀疏attention的分核与负载均衡，为aclnnGenericBlockSparseAttentionGrad的前置AICPU算子。
 
-其中`J = ceilDiv(maxKvSeqlen, blockShapeY)`。
+  <!-- npu="950" id9 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    按B → N2 → J → G顺序展开`(b, n2, j, g)`任务列表，并在AIC核间做`[baseM, baseN] = [128, 128]`基本块粒度的贪心负载均衡，输出metadata供主Grad算子消费。
+  <!-- end id9 -->
 
-Atlas A2/A3:
-$$
-\text{metaSize} = 198
-$$
+  <!-- npu="A3,910b" id10 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    按B → N2 → J顺序展开`(b, n2, j)`任务列表，并在AIC核间做`[baseM, baseN] = [128, 128]`基本块粒度的贪心负载均衡，输出metadata供主Grad算子消费。
+   <!-- end id10 -->
+
+  - 该算子不建议单独使用，建议与aclnnGenericBlockSparseAttentionGrad配合使用，形成完整工作流。
+- Metadata size计算公式：
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>:
+
+    $$
+    \text{metaSize} = 80 + B \times N1 \times J \times 4
+    $$
+
+    其中`J = ceilDiv(maxKvSeqlen, blockShapeY)`。
+  <!-- end id7 -->
+
+  <!-- npu="A3,910b" id8 -->
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> 以及 <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
+
+    $$
+    \text{metaSize} = 198
+    $$
+  <!-- end id8 -->
 
 ## 函数原型
 
