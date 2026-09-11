@@ -37,8 +37,6 @@ aclnnStatus aclnnMoeDistributeCombineV5GetWorkspaceSize(
     const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, aclTensor *xOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    OP_LOGI("[latent_ep][api] combine V5 -> InnerV3, independent_shared=0, ep_rank=%lld/%lld.",
-            static_cast<long long>(epRankId), static_cast<long long>(epWorldSize));
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
         context, expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
         xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,

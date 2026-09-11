@@ -38,10 +38,6 @@ aclnnStatus aclnnMoeDistributeCombineV6GetWorkspaceSize(
     bool enableIndependentSharedExpert, aclTensor *xOut, aclTensor *sharedExpertOut, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    OP_LOGI("[latent_ep][api] combine V6 -> InnerV3, independent_shared=%d, ep_rank=%lld/%lld, "
-            "comm_quant_mode=%lld.",
-            static_cast<int>(enableIndependentSharedExpert), static_cast<long long>(epRankId),
-            static_cast<long long>(epWorldSize), static_cast<long long>(commQuantMode));
     if (enableIndependentSharedExpert) {
         OP_CHECK_NULL(sharedExpertOut, return ACLNN_ERR_PARAM_NULLPTR);
     }

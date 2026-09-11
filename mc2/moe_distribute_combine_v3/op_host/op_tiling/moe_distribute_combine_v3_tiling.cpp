@@ -39,12 +39,21 @@
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 #include "mc2_exception_dump.h"
 #include "moe_distribute_combine_v3_tiling_base.h"
+#include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_check_win_size.h"
 
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
+namespace {
+constexpr uint32_t SHARED_ENABLE_IDX = 17U;
+constexpr uint32_t SHARED_OUTPUT_IDX = 1U;
+constexpr int64_t COMM_QUANT_NONE = 0;
+constexpr int64_t COMM_QUANT_INT8 = 2;
+constexpr int64_t COMM_QUANT_MX = 4;
+} // namespace
+
 static ge::graphStatus CheckIndependentSharedCombine(gert::TilingContext *context, CombineV2Config &config)
 {
     if (!config.enableIndependentSharedExpert) {
@@ -54,12 +63,12 @@ static ge::graphStatus CheckIndependentSharedCombine(gert::TilingContext *contex
                     OP_LOGE(context->GetNodeName(), "Independent shared experts are only supported on A5."),
                     return ge::GRAPH_FAILED);
     const auto attrs = context->GetAttrs();
-    const auto tp = attrs->GetAttrPointer<int64_t>(4U);
-    const auto tpRank = attrs->GetAttrPointer<int64_t>(5U);
-    const auto shard = attrs->GetAttrPointer<int64_t>(6U);
-    const auto shared = attrs->GetAttrPointer<int64_t>(7U);
-    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
-    const auto ep = attrs->GetAttrPointer<int64_t>(0U);
+    const auto tp = attrs->GetAttrPointer<int64_t>(config.attrTpWorldSizeIndex);
+    const auto tpRank = attrs->GetAttrPointer<int64_t>(config.attrTpRankIdIndex);
+    const auto shard = attrs->GetAttrPointer<int64_t>(config.attrExpertSharedTypeIndex);
+    const auto shared = attrs->GetAttrPointer<int64_t>(config.attrSharedExpertNumIndex);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(config.attrSharedExpertRankNumIndex);
+    const auto ep = attrs->GetAttrPointer<int64_t>(config.attrEpWorldSizeIndex);
     OPS_CHECK_NULL_WITH_CONTEXT(context, tp);
     OPS_CHECK_NULL_WITH_CONTEXT(context, tpRank);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shard);
@@ -84,20 +93,21 @@ static ge::graphStatus CheckIndependentSharedCombine(gert::TilingContext *contex
                     OP_LOGE(name, "Independent shared tokens must be BF16 or FP16."), return ge::GRAPH_FAILED);
     int64_t h = input->GetStorageShape().GetDim(1U);
     if (config.isIndependentSharedRank) {
-        OP_TILING_CHECK(h % 2 != 0, OP_LOGE(name, "Shared H must equal 2*latent H."), return ge::GRAPH_FAILED);
-        h /= 2;
+        OP_TILING_CHECK(h % SHARED_H_RATIO != 0, OP_LOGE(name, "Shared H must equal 2*latent H."),
+                        return ge::GRAPH_FAILED);
+        h /= SHARED_H_RATIO;
     }
     const auto commQuant = attrs->GetAttrPointer<int64_t>(config.attrCommQuantModeIndex);
     OPS_CHECK_NULL_WITH_CONTEXT(context, commQuant);
-    OP_TILING_CHECK(*commQuant != 0 && *commQuant != 2 && *commQuant != 4,
+    OP_TILING_CHECK(*commQuant != COMM_QUANT_NONE && *commQuant != COMM_QUANT_INT8 && *commQuant != COMM_QUANT_MX,
                     OP_LOGE(name, "Independent shared combine supports communication quantization 0, 2, 4."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(context->GetOptionalInputDesc(config.sharedExpertXIndex) != nullptr,
                     OP_LOGE(name, "shared_expert_x must be absent for independent shared experts."),
                     return ge::GRAPH_FAILED);
-    const auto output = context->GetOutputShape(1U);
-    const auto outputDesc = context->GetOutputDesc(1U);
-    const auto moeOutputDesc = context->GetOutputDesc(0U);
+    const auto output = context->GetOutputShape(SHARED_OUTPUT_IDX);
+    const auto outputDesc = context->GetOutputDesc(SHARED_OUTPUT_IDX);
+    const auto moeOutputDesc = context->GetOutputDesc(config.outputXIndex);
     const auto ids = context->GetInputShape(config.expertIdsIndex);
     OPS_CHECK_NULL_WITH_CONTEXT(context, output);
     OPS_CHECK_NULL_WITH_CONTEXT(context, outputDesc);
@@ -107,12 +117,13 @@ static ge::graphStatus CheckIndependentSharedCombine(gert::TilingContext *contex
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(output->GetStorageShape().GetDimNum() != 2U ||
                         output->GetStorageShape().GetDim(0U) != ids->GetStorageShape().GetDim(0U) ||
-                        output->GetStorageShape().GetDim(1U) != h * 2 ||
+                        output->GetStorageShape().GetDim(1U) != h * SHARED_H_RATIO ||
                         outputDesc->GetDataType() != moeOutputDesc->GetDataType() ||
                         outputDesc->GetStorageFormat() != ge::FORMAT_ND,
                     OP_LOGE(name, "shared_expert_out must have shape [BS, 2*H] and the x output dtype."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(h < 1024 || h > 4096, OP_LOGE(name, "Independent shared experts require 1024 <= latent H <= 4096."),
+    OP_TILING_CHECK(h < LATENT_H_MIN || h > LATENT_H_MAX,
+                    OP_LOGE(name, "Independent shared experts require 1024 <= latent H <= 4096."),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -161,10 +172,10 @@ ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3Tili
     {
         const auto attrs = context->GetAttrs();
         OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-        const auto enabled = attrs->GetAttrPointer<bool>(17U);
+        const auto enabled = attrs->GetAttrPointer<bool>(SHARED_ENABLE_IDX);
         config.enableIndependentSharedExpert = enabled != nullptr && *enabled;
-        const auto rank = attrs->GetAttrPointer<int64_t>(1U);
-        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+        const auto rank = attrs->GetAttrPointer<int64_t>(config.attrEpRankIdIndex);
+        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(config.attrSharedExpertRankNumIndex);
         OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
         OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
         config.isIndependentSharedRank = config.enableIndependentSharedExpert && *rank < *sharedRanks;

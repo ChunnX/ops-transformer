@@ -42,6 +42,7 @@ static constexpr int64_t PER_GROUP_SIZE = 128;
 static constexpr int64_t MX_QUANT_SIZE = 32;
 static constexpr int64_t NUM_EVEN = 2;
 static constexpr int64_t SEND_COUNT_MEMORY_SIZE = 2;
+static constexpr size_t SHARED_INPUT_IDX = 8U;
 
 static constexpr size_t DISPATCH_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t DISPATCH_INPUT_X_INDEX = 1;
@@ -418,16 +419,16 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV3(gert::InferShapeContext
     }
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    if (context->GetOptionalInputShape(8U) == nullptr) {
+    if (context->GetOptionalInputShape(SHARED_INPUT_IDX) == nullptr) {
         return status;
     }
-    const auto rank = attrs->GetAttrPointer<int64_t>(1U);
-    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+    const auto rank = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_EP_RANK_ID_INDEX);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
     OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
     auto output = context->GetOutputShape(0U);
     if (*rank < *sharedRanks) {
-        output->SetDim(1U, context->GetOptionalInputShape(8U)->GetDim(1U));
+        output->SetDim(1U, context->GetOptionalInputShape(SHARED_INPUT_IDX)->GetDim(1U));
         auto scales = context->GetOutputShape(1U);
         scales->SetDimNum(1U);
         scales->SetDim(0U, output->GetDim(0U));
@@ -441,18 +442,19 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV3(gert::InferDataTypeC
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    if (context->GetOptionalInputDataType(8U) != ge::DT_UNDEFINED) {
+    if (context->GetOptionalInputDataType(SHARED_INPUT_IDX) != ge::DT_UNDEFINED) {
         const auto attrs = context->GetAttrs();
         OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-        const auto quant = attrs->GetAttrPointer<int64_t>(9U);
-        const auto dtype = attrs->GetAttrPointer<int64_t>(16U);
+        const auto quant = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_QUANT_MODE_INDEX);
+        const auto dtype = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX);
         OPS_CHECK_NULL_WITH_CONTEXT(context, quant);
         OPS_CHECK_NULL_WITH_CONTEXT(context, dtype);
-        if (*dtype == ge::DT_UNDEFINED && (*quant == 4 || *quant == 5)) {
+        if (*dtype == ge::DT_UNDEFINED && (*quant == static_cast<int64_t>(QuantMode::QUANT_MODE_MX) ||
+                                           *quant == static_cast<int64_t>(QuantMode::QUANT_MODE_MX_CLIP))) {
             context->SetOutputDataType(0U, ge::DT_FLOAT8_E4M3FN);
         }
-        const auto rank = attrs->GetAttrPointer<int64_t>(1U);
-        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+        const auto rank = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_EP_RANK_ID_INDEX);
+        const auto sharedRanks = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
         OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
         OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
         if (*rank < *sharedRanks) {

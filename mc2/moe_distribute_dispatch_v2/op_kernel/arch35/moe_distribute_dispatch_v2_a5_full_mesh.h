@@ -40,6 +40,11 @@ constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL; // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
 constexpr int32_t FULL_MESH_MAX_UB_SIZE = 190 * 1024;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
+constexpr uint32_t SHARED_H_RATIO = 2U;
+constexpr uint8_t PACK_BLOCKS = SPLIT_BLOCK_SIZE / Mc2Kernel::UB_ALIGN;
+constexpr uint8_t DATA_BLOCKS = SPLIT_BLOCK_DATA_SIZE / Mc2Kernel::UB_ALIGN;
+constexpr uint32_t PACK_HEAD = Mc2Kernel::NUM_PER_REP_FP32;
+constexpr uint32_t PACK_TAIL = SPLIT_BLOCK_DATA_SIZE / sizeof(float) - PACK_HEAD;
 constexpr uint32_t SPLIT_BLOCK_DATA_COUNT = 120U; // 120 = SPLIT_BLOCK_DATA_SIZE / sizeof(float)
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
@@ -77,14 +82,15 @@ public:
                                 GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
                                 GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
                                 GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchV2TilingData *tilingData);
+                                const MoeDistributeDispatchV2TilingData *tilingData, GM_ADDR sharedInput = nullptr);
     __aicore__ inline void Process();
+
+private:
     __aicore__ inline void InitSharedInput(GM_ADDR sharedInput)
     {
         sharedInputGMTensor_.SetGlobalBuffer((__gm__ XInType *)sharedInput);
     }
 
-private:
     __aicore__ inline void ConfigureSharedToken();
     __aicore__ inline void SendIndependentShared();
     const MoeDistributeDispatchV2TilingData *tilingData_{nullptr};
@@ -426,7 +432,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         dataState_ * (totalWinSize_ / BUFFER_NUM) + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
     if constexpr (IndependentShared) {
         uint64_t sharedCombineBytes =
-            Ceil(axisH_ * 2U * COMBINE_IN_DATA_SIZE, SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
+            Ceil(axisH_ * SHARED_H_RATIO * COMBINE_IN_DATA_SIZE, SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
         winDataSizeOffset_ = dataState_ * (totalWinSize_ / BUFFER_NUM) +
                              axisMaxBS_ * (axisK_ * hSizeAlignCombine + sharedExpertNum_ * sharedCombineBytes);
     }
@@ -437,8 +443,11 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
     GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
     GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchV2TilingData *tilingData)
+    const MoeDistributeDispatchV2TilingData *tilingData, GM_ADDR sharedInput)
 {
+    if constexpr (IndependentShared) {
+        InitSharedInput(sharedInput);
+    }
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     tpipe_ = pipe;
     tilingData_ = tilingData;
@@ -1885,7 +1894,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::ConfigureSharedToken()
 {
-    axisH_ = tilingData_->moeDistributeDispatchV2Info.h * 2U;
+    axisH_ = tilingData_->moeDistributeDispatchV2Info.h * SHARED_H_RATIO;
     copyInAxisH_ = axisH_;
     hOutSize_ = axisH_ * sizeof(XInType);
     copyOutAxisH_ = hOutSize_ / sizeof(XOutType);
@@ -1938,8 +1947,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         uint32_t bufferId = (index - start) % sendTokenBufNum_;
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(bufferId);
         auto output = outTensor_[bufferId * axisHCommu_].template ReinterpretCast<int32_t>();
-        Copy(output, info, uint64_t(64), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
-        Copy(output[64], info[64], uint64_t(56), uint8_t(blockCntPerToken_), {1, 1, 16, 15});
+        Copy(output, info, uint64_t(PACK_HEAD), uint8_t(blockCntPerToken_), {1, 1, PACK_BLOCKS, DATA_BLOCKS});
+        Copy(output[PACK_HEAD], info[PACK_HEAD], uint64_t(PACK_TAIL), uint8_t(blockCntPerToken_),
+             {1, 1, PACK_BLOCKS, DATA_BLOCKS});
         inQueue.FreeTensor(input);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(bufferId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(bufferId);

@@ -37,10 +37,6 @@ aclnnStatus aclnnMoeDistributeDispatchV6GetWorkspaceSize(
     aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut, uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
-    OP_LOGI("[latent_ep][api] dispatch V6 -> InnerV3, independent_shared=%d, ep_rank=%lld/%lld, "
-            "quant_mode=%lld.",
-            static_cast<int>(sharedExpertInputOptional != nullptr), static_cast<long long>(epRankId),
-            static_cast<long long>(epWorldSize), static_cast<long long>(quantMode));
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expandXOut, return ACLNN_ERR_PARAM_NULLPTR);
     if (moeExpertDtype == ge::DT_UNDEFINED) {

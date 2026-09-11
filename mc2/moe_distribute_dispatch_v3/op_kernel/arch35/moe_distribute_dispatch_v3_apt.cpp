@@ -33,10 +33,9 @@ __aicore__ inline void RunIndependentDispatch(GM_ADDR mc2Context, GM_ADDR x, GM_
                                               TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
     MoeDistributeDispatchV2A5FullMesh<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, MoeType, QuantMode, ScaleMode, true> op;
-    op.InitSharedInput(sharedExpertInput);
     op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo, expandXOut,
             dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut, workspaceGM, pipe,
-            tilingData);
+            tilingData, sharedExpertInput);
     op.Process();
 }
 
@@ -66,7 +65,8 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
             } else {
                 switch (tilingData.moeDistributeDispatchV2Info.moeExpertDtype) {
                     case DT_INT8:
-                        if constexpr (QuantMode == 1U || QuantMode == 2U) {
+                        if constexpr (QuantMode == Mc2Kernel::STATIC_QUANT ||
+                                      QuantMode == Mc2Kernel::PERTOKEN_DYNAMIC_QUANT) {
                             RunIndependentDispatch<int8_t, QuantMode, ScaleMode>(
                                 mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
                                 performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
@@ -74,7 +74,7 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                         }
                         break;
                     case DT_HIFLOAT8:
-                        if constexpr (QuantMode == 1U) {
+                        if constexpr (QuantMode == Mc2Kernel::STATIC_QUANT) {
                             RunIndependentDispatch<hifloat8_t, QuantMode, ScaleMode>(
                                 mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
                                 performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
@@ -82,7 +82,8 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                         }
                         break;
                     case DT_FLOAT8_E4M3FN:
-                        if constexpr (QuantMode >= 2U && QuantMode <= 5U) {
+                        if constexpr (QuantMode >= Mc2Kernel::PERTOKEN_DYNAMIC_QUANT &&
+                                      QuantMode <= Mc2Kernel::MX_QUANT_CLIP) {
                             RunIndependentDispatch<fp8_e4m3fn_t, QuantMode, ScaleMode>(
                                 mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
                                 performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,
@@ -90,7 +91,8 @@ __global__ __aicore__ void moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADD
                         }
                         break;
                     case DT_FLOAT8_E5M2:
-                        if constexpr (QuantMode == 2U || QuantMode == 3U) {
+                        if constexpr (QuantMode == Mc2Kernel::PERTOKEN_DYNAMIC_QUANT ||
+                                      QuantMode == Mc2Kernel::PERGROUP_DYNAMIC_QUANT) {
                             RunIndependentDispatch<fp8_e5m2_t, QuantMode, ScaleMode>(
                                 mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo,
                                 performanceInfo, sharedExpertInput, expandXOut, dynamicScalesOut, assistInfoOut,

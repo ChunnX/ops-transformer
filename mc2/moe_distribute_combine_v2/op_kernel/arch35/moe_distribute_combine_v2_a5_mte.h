@@ -43,6 +43,11 @@ using namespace Mc2Aclnn;
 
 constexpr uint32_t SPLIT_BLOCK_SIZE = 512U;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
+constexpr uint32_t SHARED_H_RATIO = 2U;
+constexpr uint8_t PACK_BLOCKS = SPLIT_BLOCK_SIZE / Mc2Kernel::UB_ALIGN;
+constexpr uint8_t DATA_BLOCKS = SPLIT_BLOCK_DATA_SIZE / Mc2Kernel::UB_ALIGN;
+constexpr uint32_t PACK_HEAD = Mc2Kernel::NUM_PER_REP_FP32;
+constexpr uint32_t PACK_TAIL = SPLIT_BLOCK_DATA_SIZE / sizeof(float) - PACK_HEAD;
 constexpr uint32_t SPLIT_BLOCK_FLAG_SIZE = 32U;
 constexpr uint32_t SPLIT_BLOCK_FLAG_COUNT = SPLIT_BLOCK_FLAG_SIZE / sizeof(float);
 
@@ -57,15 +62,17 @@ public:
                                 GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
                                 GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
                                 GM_ADDR performanceInfo, GM_ADDR yOut, GM_ADDR rstdOut, GM_ADDR XOut,
-                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData);
+                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData,
+                                GM_ADDR sharedOutput = nullptr);
     __aicore__ inline void Process();
+
+private:
     __aicore__ inline void InitSharedOutput(GM_ADDR output)
     {
         sharedOutGM_.SetGlobalBuffer((__gm__ XType *)output);
         performanceTimeStart_ = static_cast<uint64_t>(GetSystemCycle());
     }
 
-private:
     __aicore__ inline uint64_t GetTokenOffset(uint32_t token, uint32_t slot) const
     {
         if constexpr (IndependentShared) {
@@ -532,7 +539,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAt
     if constexpr (IndependentShared) {
         // Pack MoE slots by actual communication bytes; the outer window reservation stays unchanged.
         moeCombineBytes_ = hAlignWinSize_;
-        sharedCombineBytes_ = Ceil(axisH_ * 2U * sizeof(ExpandXType), SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
+        sharedCombineBytes_ =
+            Ceil(axisH_ * SHARED_H_RATIO * sizeof(ExpandXType), SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
         tokenBytes_ = axisK_ * moeCombineBytes_ + sharedExpertNum_ * sharedCombineBytes_;
     }
     bsKNum_ = axisBS_ * axisK_;
@@ -547,8 +555,12 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
     GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
     GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
     GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut,
-    GM_ADDR rstdOut, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
+    GM_ADDR rstdOut, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData,
+    GM_ADDR sharedOutput)
 {
+    if constexpr (IndependentShared) {
+        InitSharedOutput(sharedOutput);
+    }
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
     maskCalcWorkspaceGM_ = workspaceGM + coreIdx_ * MASK_CALC_NEED_WORKSPACE;
@@ -732,8 +744,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::AlltoA
     }
     if constexpr (IndependentShared) {
         // Both streams keep their sums; input/cast/output scratch is shared between ready slots.
-        const uint32_t sharedOutputBytes = Ceil(axisH_ * 2U * sizeof(XType), UB_ALIGN) * UB_ALIGN;
-        const uint32_t sharedFloatBytes = Ceil(axisH_ * 2U * sizeof(float), UB_ALIGN) * UB_ALIGN;
+        const uint32_t sharedOutputBytes = Ceil(axisH_ * SHARED_H_RATIO * sizeof(XType), UB_ALIGN) * UB_ALIGN;
+        const uint32_t sharedFloatBytes = Ceil(axisH_ * SHARED_H_RATIO * sizeof(float), UB_ALIGN) * UB_ALIGN;
         maxSizeTokenBuf = (maxSizeTokenBuf > sharedOutputBytes) ? maxSizeTokenBuf : sharedOutputBytes;
         maxSizeRowTmpFloatBuf = (maxSizeRowTmpFloatBuf > sharedFloatBytes) ? maxSizeRowTmpFloatBuf : sharedFloatBytes;
         tpipe_->InitBuffer(sharedSumBuf_, sharedFloatBytes);
@@ -1898,7 +1910,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIn
                                                                                                 uint32_t slot,
                                                                                                 uint32_t index)
 {
-    const uint32_t h = axisH_ * 2U;
+    const uint32_t h = axisH_ * SHARED_H_RATIO;
     const uint32_t blocks = sharedCombineBytes_ / SPLIT_BLOCK_SIZE;
     auto input = expandXInQueue_.AllocTensor<ExpandXType>();
     DataCopyExtParams params{1U, static_cast<uint32_t>(h * sizeof(ExpandXType)), 0U, 0U, 0U};
@@ -1911,8 +1923,9 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIn
     auto original = input.template ReinterpretCast<float>();
     Duplicate(packed, 1.0f, sharedCombineBytes_ / sizeof(float));
     PipeBarrier<PIPE_V>();
-    Copy(packed, original, uint64_t(64), uint8_t(blocks), {1, 1, 16, 15});
-    Copy(packed[64], original[64], uint64_t(56), uint8_t(blocks), {1, 1, 16, 15});
+    Copy(packed, original, uint64_t(PACK_HEAD), uint8_t(blocks), {1, 1, PACK_BLOCKS, DATA_BLOCKS});
+    Copy(packed[PACK_HEAD], original[PACK_HEAD], uint64_t(PACK_TAIL), uint8_t(blocks),
+         {1, 1, PACK_BLOCKS, DATA_BLOCKS});
     xOutPackageQueue_.EnQue(output);
     output = xOutPackageQueue_.DeQue<ExpandXType>();
     GlobalTensor<float> destination;
@@ -1928,7 +1941,7 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     if (sharedTokenIndex_ >= axisBS_) {
         return;
     }
-    const uint32_t h = axisH_ * 2U;
+    const uint32_t h = axisH_ * SHARED_H_RATIO;
     const uint32_t blocks = sharedCombineBytes_ / SPLIT_BLOCK_SIZE;
     GM_ADDR address = epWindowGM_ + GetTokenOffset(sharedTokenIndex_, axisK_ + sharedExpertIndex_);
     const uint32_t flags = blocks * SPLIT_BLOCK_FLAG_COUNT;

@@ -15,7 +15,37 @@ from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
-TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
+_NO_QUANT = 0
+_STATIC_QUANT = 1
+_TOKEN_QUANT = 2
+_GROUP_QUANT = 3
+_MX_QUANT = 4
+_MX_CLIP = 5
+_H_RATIO = 2
+_H_MIN = 1024
+_H_MAX = 4096
+_BS_MAX = 512
+_EP_MAX = 1024
+_K_MAX = 16
+_SHARED_MAX = 4
+_STATE_MAX = 2048
+_ASSIST_NUM = 128
+_FP4_ELEMS = 2
+_TOKEN_BYTES = 2
+_SCALE_BYTES = 4
+_UB_ALIGN = 32
+_GROUP_SIZE = 128
+_MX_GROUP = 32
+_MX_ALIGN = 256
+_SCALE_ALIGN = 2
+_PACK_DATA = 480
+_PACK_BYTES = 512
+_PINGPONG = 2
+_MIB = 1024 * 1024
+_RANK_RESERVE = 1024
+
+
+_DTYPE_MAP = {
     0: torch.uint8,
     1: torch.int8,
     2: torch.int16,
@@ -89,7 +119,7 @@ class LatentEpOpBuilder(OpBuilder):
             return tensor is not None
 
         def get_dtype_from_enum(dtype):
-            return TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP[dtype]
+            return _DTYPE_MAP[dtype]
 
         def is_packed_float4(dtype):
             return dtype in (296, 297)
@@ -98,7 +128,7 @@ class LatentEpOpBuilder(OpBuilder):
             x, scales, x_smooth_scales_dtype, quant_mode
         ):
             dynamic_scales_dtype = torch.float32
-            if quant_mode == 0:
+            if quant_mode == _NO_QUANT:
                 if (
                     x.dtype != torch.bfloat16
                     and x.dtype != torch.float16
@@ -109,24 +139,31 @@ class LatentEpOpBuilder(OpBuilder):
                         if x_smooth_scales_dtype is not None
                         else scales.dtype
                     )
-            elif quant_mode == 4 or quant_mode == 5:
+            elif quant_mode == _MX_QUANT or quant_mode == _MX_CLIP:
                 dynamic_scales_dtype = torch.uint8  # float8_e8m0
             return dynamic_scales_dtype
 
         def get_dispatch_dynamic_shape(scales, quant_mode, a, h):
             shape = tuple([a])
-            if quant_mode == 0 and scales is not None:
+            if quant_mode == _NO_QUANT and scales is not None:
                 if scales.dim() < 2:
                     raise RuntimeError(
                         f"Expected scales to be at least 2-d, but got {scales.dim()}-d."
                     )
                 shape = tuple([a, scales.shape[1]])
-            elif quant_mode == 2:
+            elif quant_mode == _TOKEN_QUANT:
                 shape = tuple([a])
-            elif quant_mode == 3:
-                shape = tuple([a, math.ceil(h / 128)])
-            elif quant_mode == 4 or quant_mode == 5:
-                shape = tuple([a, (math.ceil(h / 32) + 1) // 2 * 2])
+            elif quant_mode == _GROUP_QUANT:
+                shape = tuple([a, math.ceil(h / _GROUP_SIZE)])
+            elif quant_mode == _MX_QUANT or quant_mode == _MX_CLIP:
+                shape = tuple(
+                    [
+                        a,
+                        (math.ceil(h / _MX_GROUP) + _SCALE_ALIGN - 1)
+                        // _SCALE_ALIGN
+                        * _SCALE_ALIGN,
+                    ]
+                )
             return shape
 
         def check_dispatch_meta_args(
@@ -220,7 +257,11 @@ class LatentEpOpBuilder(OpBuilder):
             h = x.size(1)
             k = expert_ids.size(1)
             shared_front = expert_shard_type == 0
-            out_dtype = torch.float8_e4m3fn if quant_mode in (4, 5) else torch.int8
+            out_dtype = (
+                torch.float8_e4m3fn
+                if quant_mode in (_MX_QUANT, _MX_CLIP)
+                else torch.int8
+            )
             local_moe_expert_num = 1
             global_bs_real = 0
             if global_bs == 0:
@@ -278,7 +319,7 @@ class LatentEpOpBuilder(OpBuilder):
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num * tp_world_size
             else:
                 ep_recv_cnt_num = ep_world_size * local_moe_expert_num
-            if quant_mode == 0:
+            if quant_mode == _NO_QUANT:
                 out_dtype = x.dtype
             if y_dtype is not None:
                 out_dtype = get_dtype_from_enum(y_dtype)
@@ -288,9 +329,9 @@ class LatentEpOpBuilder(OpBuilder):
                 shared_expert_input is not None and ep_rank_id < shared_expert_rank_num
             )
             if independent_shared_rank:
-                h *= 2
+                h *= _H_RATIO
                 out_dtype = x.dtype
-            assist_info_for_combine_shape = max(bs * k, a * 128)
+            assist_info_for_combine_shape = max(bs * k, a * _ASSIST_NUM)
             expand_x_shape = tuple([max(a, a * tp_world_size), h])
             if (
                 not independent_shared_rank
@@ -299,10 +340,10 @@ class LatentEpOpBuilder(OpBuilder):
                 and scales is None
             ):
                 torch._check(
-                    (h % 2) == 0,
+                    (h % _FP4_ELEMS) == 0,
                     lambda: "h must be divisible by 2 when y_dtype is packed float4.",
                 )
-                expand_x_shape = tuple([max(a, a * tp_world_size), h // 2])
+                expand_x_shape = tuple([max(a, a * tp_world_size), h // _FP4_ELEMS])
             expand_x = x.new_empty(expand_x_shape, dtype=out_dtype)
             dynamic_scales_dtype = get_dispatch_dynamic_scales_dtype(
                 x, scales, x_smooth_scales_dtype, quant_mode
@@ -369,10 +410,10 @@ class LatentEpOpBuilder(OpBuilder):
         ):
             h = expand_x.size(1)
             if enable_independent_shared_expert and ep_rank_id < shared_expert_rank_num:
-                h //= 2
+                h //= _H_RATIO
             output = expand_x.new_empty((expert_ids.size(0), h))
             shared = expand_x.new_empty(
-                (expert_ids.size(0), h * 2)
+                (expert_ids.size(0), h * _H_RATIO)
                 if enable_independent_shared_expert
                 else (0,)
             )
@@ -547,14 +588,14 @@ def get_ccl_buffer_size(
         return (value + base - 1) // base * base
 
     if not (
-        2 <= ep_world_size <= 1024
-        and 1 <= max_bs <= 512
-        and 1024 <= hidden <= 4096
-        and 1 <= topk <= 16
+        2 <= ep_world_size <= _EP_MAX
+        and 1 <= max_bs <= _BS_MAX
+        and _H_MIN <= hidden <= _H_MAX
+        and 1 <= topk <= _K_MAX
     ):
         raise ValueError("Invalid EP, max_bs, latent H or topk.")
     if not (
-        0 < shared_expert_num <= 4
+        0 < shared_expert_num <= _SHARED_MAX
         and 0 < shared_expert_rank_num < ep_world_size
         and shared_expert_rank_num % shared_expert_num == 0
     ):
@@ -563,48 +604,79 @@ def get_ccl_buffer_size(
     if moe_expert_num <= 0 or moe_expert_num % moe_ranks:
         raise ValueError("moe_expert_num must be divisible by the number of MoE ranks.")
     local_experts = moe_expert_num // moe_ranks
-    if local_experts * ep_world_size > 2048:
+    if local_experts * ep_world_size > _STATE_MAX:
         raise ValueError(
             "local_experts * ep_world_size exceeds the existing state table limit."
         )
-    if quant_mode not in (0, 1, 2, 3, 4, 5):
+    if quant_mode not in (
+        _NO_QUANT,
+        _STATIC_QUANT,
+        _TOKEN_QUANT,
+        _GROUP_QUANT,
+        _MX_QUANT,
+        _MX_CLIP,
+    ):
         raise ValueError("quant_mode must be in [0, 5].")
-    if quant_mode in (1, 2, 3) and y_dtype is None:
+    if quant_mode in (_STATIC_QUANT, _TOKEN_QUANT, _GROUP_QUANT) and y_dtype is None:
         raise ValueError("y_dtype is required for quant_mode 1, 2, 3.")
-    if quant_mode in (4, 5) and y_dtype not in (None, 24, 292):
+    if quant_mode in (_MX_QUANT, _MX_CLIP) and y_dtype not in (None, 24, 292):
         raise ValueError("MX requires E4M3FN.")
     allowed_types = {
-        0: (None, 5, 15),
-        1: (1, 290),
-        2: (1, 23, 24, 291, 292),
-        3: (23, 24, 291, 292),
-        4: (None, 24, 292),
-        5: (None, 24, 292),
+        _NO_QUANT: (None, 5, 15),
+        _STATIC_QUANT: (1, 290),
+        _TOKEN_QUANT: (1, 23, 24, 291, 292),
+        _GROUP_QUANT: (23, 24, 291, 292),
+        _MX_QUANT: (None, 24, 292),
+        _MX_CLIP: (None, 24, 292),
     }
     if y_dtype not in allowed_types[quant_mode]:
         raise ValueError(
             "y_dtype is not supported for this independent dispatch quant_mode."
         )
-    token_bytes = align(hidden * 2 if quant_mode == 0 else hidden, 32)
-    if quant_mode == 2:
-        token_bytes += 4
-    elif quant_mode == 3:
-        token_bytes = align(hidden, 128) + (hidden + 127) // 128 * 4
-    elif quant_mode in (4, 5):
-        token_bytes = align(hidden, 256) + align((hidden + 31) // 32, 2)
-    moe_dispatch = (align(token_bytes, 32) + 32 + 479) // 480 * 512
-    shared_dispatch = (align(hidden * 4, 32) + 32 + 479) // 480 * 512
+    token_bytes = align(
+        hidden * _TOKEN_BYTES if quant_mode == _NO_QUANT else hidden, _UB_ALIGN
+    )
+    if quant_mode == _TOKEN_QUANT:
+        token_bytes += _SCALE_BYTES
+    elif quant_mode == _GROUP_QUANT:
+        token_bytes = (
+            align(hidden, _GROUP_SIZE)
+            + (hidden + _GROUP_SIZE - 1) // _GROUP_SIZE * _SCALE_BYTES
+        )
+    elif quant_mode in (_MX_QUANT, _MX_CLIP):
+        token_bytes = align(hidden, _MX_ALIGN) + align(
+            (hidden + _MX_GROUP - 1) // _MX_GROUP, _SCALE_ALIGN
+        )
+    moe_dispatch = (
+        (align(token_bytes, _UB_ALIGN) + _UB_ALIGN + _PACK_DATA - 1)
+        // _PACK_DATA
+        * _PACK_BYTES
+    )
+    shared_dispatch = (
+        (
+            align(hidden * _H_RATIO * _TOKEN_BYTES, _UB_ALIGN)
+            + _UB_ALIGN
+            + _PACK_DATA
+            - 1
+        )
+        // _PACK_DATA
+        * _PACK_BYTES
+    )
     dispatch_bytes = (
         max_bs * ep_world_size * max(local_experts * moe_dispatch, shared_dispatch)
     )
-    moe_combine = (hidden * 2 + 479) // 480 * 512
-    shared_combine = (hidden * 4 + 479) // 480 * 512
-    combine_bytes = max_bs * (topk * moe_combine + shared_expert_num * shared_combine)
-    mb_conversion = 1024 * 1024
-    minimum_buffer_bytes = (
-        (dispatch_bytes + combine_bytes) * 2 + mb_conversion + ep_world_size * 1024
+    moe_combine = (hidden * _TOKEN_BYTES + _PACK_DATA - 1) // _PACK_DATA * _PACK_BYTES
+    shared_combine = (
+        (hidden * _H_RATIO * _TOKEN_BYTES + _PACK_DATA - 1) // _PACK_DATA * _PACK_BYTES
     )
-    return align(minimum_buffer_bytes, 2 * mb_conversion) // (2 * mb_conversion)
+    combine_bytes = max_bs * (topk * moe_combine + shared_expert_num * shared_combine)
+
+    minimum_buffer_bytes = (
+        (dispatch_bytes + combine_bytes) * _PINGPONG
+        + _MIB
+        + ep_world_size * _RANK_RESERVE
+    )
+    return align(minimum_buffer_bytes, _PINGPONG * _MIB) // (_PINGPONG * _MIB)
 
 
 # Graph converters live beside the eager and Meta implementations.
@@ -665,7 +737,7 @@ if _TORCHAIR_AVAILABLE:
     ):
         if (
             shared_expert_input is not None
-            and quant_mode in (1, 2, 3)
+            and quant_mode in (_STATIC_QUANT, _TOKEN_QUANT, _GROUP_QUANT)
             and y_dtype is None
         ):
             raise ValueError("y_dtype is required for quant_mode 1, 2, 3.")
@@ -684,10 +756,10 @@ if _TORCHAIR_AVAILABLE:
             if y_dtype is not None
             else (
                 x.dtype
-                if quant_mode == 0
+                if quant_mode == _NO_QUANT
                 else (
                     DataType.DT_FLOAT8_E4M3FN
-                    if quant_mode in (4, 5)
+                    if quant_mode in (_MX_QUANT, _MX_CLIP)
                     else DataType.DT_INT8
                 )
             )
@@ -781,15 +853,19 @@ if _TORCHAIR_AVAILABLE:
         outputs[0].desc.dtype = ge_dtype_to_ge_proto_dtype(output_dtype)
         scale_dtype = (
             DataType.DT_FLOAT
-            if shared_rank or quant_mode not in (4, 5)
+            if shared_rank or quant_mode not in (_MX_QUANT, _MX_CLIP)
             else DataType.DT_FLOAT8_E8M0
         )
         outputs[1].desc.dtype = ge_dtype_to_ge_proto_dtype(scale_dtype)
         if not shared_rank and y_dtype in (296, 297):
             shape = ge.Shape(outputs[0])
-            half_shape = ge.Div(shape, ge.Const([1, 2], dtype=DataType.DT_INT32))
+            half_shape = ge.Div(
+                shape, ge.Const([1, _FP4_ELEMS], dtype=DataType.DT_INT32)
+            )
             packed_shape = ge.ConcatV2(
-                [half_shape, ge.Const([2], dtype=DataType.DT_INT32)], concat_dim=0, N=2
+                [half_shape, ge.Const([_FP4_ELEMS], dtype=DataType.DT_INT32)],
+                concat_dim=0,
+                N=2,
             )
             outputs = (
                 ge.Reshape(

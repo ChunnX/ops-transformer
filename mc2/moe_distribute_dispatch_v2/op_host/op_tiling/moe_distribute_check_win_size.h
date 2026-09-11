@@ -34,6 +34,22 @@ constexpr uint32_t EP_RANK_OFFSET_STEP = 1024;
 } // namespace
 
 namespace Mc2Tiling {
+constexpr uint32_t SHARED_H_RATIO = 2U;
+constexpr int64_t LATENT_H_MIN = 1024;
+constexpr int64_t LATENT_H_MAX = 4096;
+constexpr uint64_t A5_UB_BYTES = 248UL * 1024UL;
+constexpr uint64_t GROUP_ELEMS = 128UL;
+constexpr uint64_t MX_ELEMS = 32UL;
+constexpr uint64_t MX_ALIGN = 256UL;
+constexpr uint64_t SCALE_ALIGN = 2UL;
+constexpr uint32_t CCL_SIZE_IDX = 3U;
+constexpr uint32_t DQUANT_NONE = 0U;
+constexpr uint32_t DQUANT_TOKEN = 2U;
+constexpr uint32_t DQUANT_GROUP = 3U;
+constexpr uint32_t DQUANT_MX = 4U;
+constexpr uint32_t DQUANT_MX_CLIP = 5U;
+constexpr uint64_t FP4_ELEMS = 2UL;
+
 struct CheckWinSizeData {
     uint32_t localMoeExpertNum;
     uint32_t sharedExpertNum;
@@ -147,14 +163,14 @@ inline uint64_t LatentAlign(uint64_t bytes, uint64_t alignment)
 inline uint64_t LatentDispatchTokenBytes(uint64_t h, uint32_t quantMode, ge::DataType dtype)
 {
     bool fp4 = dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2;
-    uint64_t bytes = quantMode == 0U ? h * MAX_OUT_DTYPE_SIZE : (fp4 ? (h + 1UL) / 2UL : h);
+    uint64_t bytes = quantMode == DQUANT_NONE ? h * MAX_OUT_DTYPE_SIZE : (fp4 ? (h + FP4_ELEMS - 1UL) / FP4_ELEMS : h);
     bytes = LatentAlign(bytes, UB_ALIGN);
-    if (quantMode == 2U) {
+    if (quantMode == DQUANT_TOKEN) {
         bytes += sizeof(float);
-    } else if (quantMode == 3U) {
-        bytes = LatentAlign(h, 128UL) + (h + 127UL) / 128UL * sizeof(float);
-    } else if (quantMode == 4U || quantMode == 5U) {
-        bytes = LatentAlign(h, 256UL) + LatentAlign((h + 31UL) / 32UL, 2UL);
+    } else if (quantMode == DQUANT_GROUP) {
+        bytes = LatentAlign(h, GROUP_ELEMS) + (h + GROUP_ELEMS - 1UL) / GROUP_ELEMS * sizeof(float);
+    } else if (quantMode == DQUANT_MX || quantMode == DQUANT_MX_CLIP) {
+        bytes = LatentAlign(h, MX_ALIGN) + LatentAlign((h + MX_ELEMS - 1UL) / MX_ELEMS, SCALE_ALIGN);
     }
     return (LatentAlign(bytes, UB_ALIGN) + UB_ALIGN + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN *
            WIN_ADDR_ALIGN;
@@ -163,7 +179,7 @@ inline uint64_t LatentDispatchTokenBytes(uint64_t h, uint32_t quantMode, ge::Dat
 inline ge::graphStatus CheckLatentWinSize(const gert::TilingContext *context, const char *nodeName,
                                           CheckWinSizeData &data)
 {
-    const auto size = context->GetAttrs()->GetAttrPointer<int64_t>(3U);
+    const auto size = context->GetAttrs()->GetAttrPointer<int64_t>(CCL_SIZE_IDX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, size);
     uint64_t reserved = MB_SIZE + data.epWorldSize * EP_RANK_OFFSET_STEP;
     OP_TILING_CHECK(*size < 0 || static_cast<uint64_t>(*size) <= reserved,
@@ -171,15 +187,16 @@ inline ge::graphStatus CheckLatentWinSize(const gert::TilingContext *context, co
     uint64_t maxBs = data.globalBs / data.epWorldSize;
     uint64_t moeCombine =
         (data.h * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN * WIN_ADDR_ALIGN;
-    uint64_t sharedCombine =
-        (data.h * 2UL * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) / FULL_MESH_DATA_ALIGN * WIN_ADDR_ALIGN;
+    uint64_t sharedCombine = (data.h * SHARED_H_RATIO * MAX_OUT_DTYPE_SIZE + FULL_MESH_DATA_ALIGN - 1UL) /
+                             FULL_MESH_DATA_ALIGN * WIN_ADDR_ALIGN;
     uint64_t combineBytes = maxBs * (data.k * moeCombine + data.sharedExpertNum * sharedCombine);
     uint64_t dispatchBytes = 0UL;
     if (data.checkDispatch) {
         uint64_t localExperts = data.moeExpertNum / (data.epWorldSize - data.sharedExpertRankNum);
         uint64_t moeBytes = maxBs * data.epWorldSize * localExperts *
                             LatentDispatchTokenBytes(data.h, data.dispatchQuantMode, data.dispatchDtype);
-        uint64_t sharedBytes = maxBs * data.epWorldSize * LatentDispatchTokenBytes(data.h * 2UL, 0U, ge::DT_BF16);
+        uint64_t sharedBytes =
+            maxBs * data.epWorldSize * LatentDispatchTokenBytes(data.h * SHARED_H_RATIO, DQUANT_NONE, ge::DT_BF16);
         dispatchBytes = std::max(moeBytes, sharedBytes);
     }
     data.totalWinSizeEp = static_cast<uint64_t>(*size) - reserved;

@@ -26,6 +26,11 @@ static constexpr size_t COMBINE_INPUT_CONTEXT_INDEX = 0;
 static constexpr size_t COMBINE_INPUT_EXPAND_X_INDEX = 1;
 static constexpr size_t COMBINE_INPUT_EXPERT_IDS_INDEX = 2;
 static constexpr size_t COMBINE_OUTPUT_X_INDEX = 0;
+static constexpr size_t SHARED_OUTPUT_IDX = 1U;
+static constexpr size_t SHARED_ENABLE_IDX = 17U;
+static constexpr size_t EP_RANK_IDX = 1U;
+static constexpr size_t SHARED_RANKS_IDX = 8U;
+static constexpr int64_t SHARED_H_RATIO = 2;
 
 static ge::graphStatus InferShapeMoeDistributeCombineV3Common(gert::InferShapeContext *context)
 {
@@ -70,8 +75,8 @@ static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext 
     }
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const auto enabled = attrs->GetAttrPointer<bool>(17U);
-    auto shared = context->GetOutputShape(1U);
+    const auto enabled = attrs->GetAttrPointer<bool>(SHARED_ENABLE_IDX);
+    auto shared = context->GetOutputShape(SHARED_OUTPUT_IDX);
     if (enabled == nullptr || !*enabled) {
         if (shared != nullptr) {
             shared->SetDimNum(1U);
@@ -80,18 +85,18 @@ static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext 
         return status;
     }
     OPS_CHECK_NULL_WITH_CONTEXT(context, shared);
-    const auto rank = attrs->GetAttrPointer<int64_t>(1U);
-    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(8U);
+    const auto rank = attrs->GetAttrPointer<int64_t>(EP_RANK_IDX);
+    const auto sharedRanks = attrs->GetAttrPointer<int64_t>(SHARED_RANKS_IDX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, rank);
     OPS_CHECK_NULL_WITH_CONTEXT(context, sharedRanks);
-    auto output = context->GetOutputShape(0U);
+    auto output = context->GetOutputShape(COMBINE_OUTPUT_X_INDEX);
     int64_t h = output->GetDim(1U);
     if (*rank < *sharedRanks && h > 0) {
-        h /= 2;
+        h /= SHARED_H_RATIO;
         output->SetDim(1U, h);
     }
     *shared = *output;
-    shared->SetDim(1U, h > 0 ? h * 2 : h);
+    shared->SetDim(1U, h > 0 ? h * SHARED_H_RATIO : h);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -102,7 +107,7 @@ static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeCo
         return status;
     }
     if (context->GetComputeNodeOutputNum() > 1U) {
-        return context->SetOutputDataType(1U, context->GetInputDataType(COMBINE_INPUT_EXPAND_X_INDEX));
+        return context->SetOutputDataType(SHARED_OUTPUT_IDX, context->GetInputDataType(COMBINE_INPUT_EXPAND_X_INDEX));
     }
     return ge::GRAPH_SUCCESS;
 }

@@ -26,7 +26,15 @@ const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 const int64_t RANK_NUM_PER_NODE = 8;
 const int64_t SEND_COUNT_MEMORY_SIZE = 2;
-const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
+constexpr int64_t FP4_ELEMS = 2;
+constexpr int64_t SHARED_H_RATIO = 2;
+constexpr int64_t LATENT_H_MIN = 1024;
+constexpr int64_t LATENT_H_MAX = 4096;
+constexpr int64_t ASSIST_NUM = 128;
+constexpr int64_t SCALE_ALIGN = 2;
+constexpr int64_t COMM_QUANT_NONE = 0;
+constexpr int64_t COMM_QUANT_INT8 = 2;
+constexpr int64_t COMM_QUANT_MX = 4;
 
 bool HasTensor(const c10::optional<at::Tensor> &tensor)
 {
@@ -63,7 +71,7 @@ std::vector<int64_t> GetDynamicScalesShape(const c10::optional<at::Tensor> &scal
     } else if (quant_mode == QuantMode::QUANT_MODE_PERGROUP) {
         shape = {a, (h + perGroupSize - 1) / perGroupSize};
     } else if (quant_mode == QuantMode::QUANT_MODE_MX || quant_mode == QuantMode::QUANT_MODE_MX_CLIP) {
-        shape = {a, ((h + mxQuantSize - 1) / mxQuantSize + 1) / 2 * 2};
+        shape = {a, ((h + mxQuantSize - 1) / mxQuantSize + SCALE_ALIGN - 1) / SCALE_ALIGN * SCALE_ALIGN};
     }
     return shape;
 }
@@ -153,16 +161,17 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
     const bool independent = HasTensor(sharedExpertInput);
     if (independent) {
         TORCH_CHECK(sharedExpertInput->dim() == DIM_TWO && sharedExpertInput->size(0) == x.size(0) &&
-                        sharedExpertInput->size(1) == x.size(1) * 2 &&
+                        sharedExpertInput->size(1) == x.size(1) * SHARED_H_RATIO &&
                         sharedExpertInput->scalar_type() == x.scalar_type() &&
                         sharedExpertInput->device() == x.device(),
                     "shared_expert_input must be [BS, 2*H] with the same dtype/device as x.");
         TORCH_CHECK(tpWorldSize == 1 && tpRankId == 0 && !HasTensor(elasticInfo) && sharedExpertNum > 0 &&
                         sharedExpertRankNum > 0,
                     "Independent shared experts require TP=1 and shared ranks, without elastic_info.");
-        TORCH_CHECK(x.size(1) >= 1024 && x.size(1) <= 4096 && commAlg == "fullmesh_v2",
+        TORCH_CHECK(x.size(1) >= LATENT_H_MIN && x.size(1) <= LATENT_H_MAX && commAlg == "fullmesh_v2",
                     "Independent shared dispatch requires latent H in [1024,4096] and fullmesh_v2.");
-        TORCH_CHECK(quantMode == 0 || quantMode == 4 || quantMode == 5 || yDtype.has_value(),
+        TORCH_CHECK(quantMode == QuantMode::QUANT_MODE_NO_QUANT || quantMode == QuantMode::QUANT_MODE_MX ||
+                        quantMode == QuantMode::QUANT_MODE_MX_CLIP || yDtype.has_value(),
                     "y_dtype is required for quant_mode 1, 2, 3.");
     }
     auto xSize = x.sizes();
@@ -216,18 +225,19 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
     if (yDtype.has_value()) {
         outputAclDtype = GetAclDataType(yDtype.value());
     }
-    if (!yDtype.has_value() && (quantMode == 4 || quantMode == 5)) {
+    if (!yDtype.has_value() && (quantMode == QuantMode::QUANT_MODE_MX || quantMode == QuantMode::QUANT_MODE_MX_CLIP)) {
         outputAclDtype = ACL_FLOAT8_E4M3FN;
     }
     // All ranks use the same y_dtype for MoE communication, including shared expert ranks.
     // Preserve it before selecting this rank's local expand_x dtype.
     const int64_t moeAclDtype = static_cast<int64_t>(outputAclDtype);
-    TORCH_CHECK(!independent || (quantMode != 4 && quantMode != 5) || outputAclDtype == ACL_FLOAT8_E4M3FN,
+    TORCH_CHECK(!independent || (quantMode != QuantMode::QUANT_MODE_MX && quantMode != QuantMode::QUANT_MODE_MX_CLIP) ||
+                    outputAclDtype == ACL_FLOAT8_E4M3FN,
                 "Independent shared MX quantization requires E4M3FN.");
     const bool independentSharedRank = independent && isSharedExpert;
     if (independentSharedRank) {
         outputAclDtype = ConvertToAclDataType(x.scalar_type());
-        h *= 2;
+        h *= SHARED_H_RATIO;
     }
     auto outputDtype = GetStorageScalarType(outputAclDtype);
     bool hasExpertScales = HasTensor(expertScales);
@@ -244,10 +254,9 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
         expandX = at::empty({std::max(a, a * tpWorldSize), h}, x.options().dtype(outputDtype));
         if (yDtype.has_value() && IsPackedFloat4(outputAclDtype) && !HasTensor(scales)) {
-            TORCH_CHECK(h % PACKED_FLOAT4_ELEMENTS_PER_BYTE == 0,
+            TORCH_CHECK(h % FP4_ELEMS == 0,
                         "The last dim input shape must be divisible by 2 if y dtype is packed float4.");
-            expandX = at::empty({std::max(a, a * tpWorldSize), h / PACKED_FLOAT4_ELEMENTS_PER_BYTE},
-                                x.options().dtype(outputDtype));
+            expandX = at::empty({std::max(a, a * tpWorldSize), h / FP4_ELEMS}, x.options().dtype(outputDtype));
         }
 
         aclDataType dynamicScalesAclDtype =
@@ -271,7 +280,7 @@ tensor_list dispatch(const at::Tensor &context, const at::Tensor &x, const at::T
         }
         epRecvCounts = at::empty({epRecvCntNum}, x.options().dtype(at::kInt));
         tpRecvCounts = at::empty({tpWorldSize}, x.options().dtype(at::kInt));
-        assistInfoForcombine = at::empty({std::max(bs * k, a * 128)}, x.options().dtype(at::kInt));
+        assistInfoForcombine = at::empty({std::max(bs * k, a * ASSIST_NUM)}, x.options().dtype(at::kInt));
         expandScales = at::empty({hasExpertScales ? a : 0}, x.options().dtype(at::kFloat));
     }
 
@@ -333,13 +342,14 @@ std::tuple<at::Tensor, at::Tensor> combine(
             tpWorldSize == 1 && tpRankId == 0 && !HasTensor(elasticInfo) && !HasTensor(sharedExpertX) &&
                 sharedExpertNum > 0 && sharedExpertRankNum > 0 && sharedExpertRankNum < epWorldSize,
             "Independent shared combine requires TP=1 and shared ranks; shared_expert_x/elastic_info must be absent.");
-        TORCH_CHECK(commQuantMode == 0 || commQuantMode == 2 || commQuantMode == 4,
-                    "Independent shared combine supports communication quantization 0, 2, 4.");
+        TORCH_CHECK(
+            commQuantMode == COMM_QUANT_NONE || commQuantMode == COMM_QUANT_INT8 || commQuantMode == COMM_QUANT_MX,
+            "Independent shared combine supports communication quantization 0, 2, 4.");
         if (epRankId < sharedExpertRankNum) {
-            TORCH_CHECK(h % 2 == 0, "Shared H must be even.");
-            h /= 2;
+            TORCH_CHECK(h % SHARED_H_RATIO == 0, "Shared H must be even.");
+            h /= SHARED_H_RATIO;
         }
-        TORCH_CHECK(h >= 1024 && h <= 4096, "Independent shared latent H must be in [1024,4096].");
+        TORCH_CHECK(h >= LATENT_H_MIN && h <= LATENT_H_MAX, "Independent shared latent H must be in [1024,4096].");
     }
     int64_t globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
 
@@ -353,8 +363,8 @@ std::tuple<at::Tensor, at::Tensor> combine(
             output = at::empty({bs, h}, expandX.options().dtype(at::kBFloat16));
         }
     }
-    at::Tensor sharedOutput =
-        enableIndependentSharedExpert ? at::empty({bs, h * 2}, output.options()) : at::empty({0}, output.options());
+    at::Tensor sharedOutput = enableIndependentSharedExpert ? at::empty({bs, h * SHARED_H_RATIO}, output.options()) :
+                                                              at::empty({0}, output.options());
     c10::optional<at::Tensor> nulltensor = c10::nullopt;
     int64_t outDtype = 0;
     int64_t groupListType = 0;

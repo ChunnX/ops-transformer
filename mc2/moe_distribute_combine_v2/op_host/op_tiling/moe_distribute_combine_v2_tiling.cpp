@@ -98,6 +98,8 @@ constexpr int64_t MOE_EXPERT_MAX_NUM = 1024;
 constexpr int64_t MOE_EXPERT_MAX_NUM_LAYERED = 512;
 constexpr int64_t LOCAL_EXPERT_MAX_SIZE = 2048;
 constexpr int64_t K_MAX = 16;
+constexpr uint32_t LEGACY_K_MAX = 12U;
+constexpr uint64_t SHARED_UB_BLOCKS = 4UL;
 constexpr int64_t H_MIN = 1024;
 constexpr int64_t H_MAX = 8192;
 constexpr int64_t H_MAX_LAYERED = 7168;
@@ -1236,7 +1238,7 @@ static bool CheckFromDispatchTensorShape(const gert::TilingContext *context,
                         ("should be in [" + std::to_string(hMin) + ", " + std::to_string(hMax) + "]").c_str()),
                     return false); // 32对齐
     tilingData.moeDistributeCombineV2Info.h =
-        static_cast<uint32_t>(config.isIndependentSharedRank ? expandXDim1 / 2 : expandXDim1);
+        static_cast<uint32_t>(config.isIndependentSharedRank ? expandXDim1 / SHARED_H_RATIO : expandXDim1);
     if (expandXDim1 != 0) {
         tilingData.moeDistributeCombineV2Info.armAvgFactor = 1.0f / expandXDim1;
     }
@@ -1735,8 +1737,8 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     uint64_t sharedSumBytes = 0U;
     if (config.enableIndependentSharedExpert) {
         // Match the interleaved receiver: separate sums, shared input/cast/output scratch.
-        const uint32_t sharedOutputBytes = (hExpandXTypeSize * 2U + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
-        const uint32_t sharedFloatBytes = (hFloatSize * 2U + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
+        const uint32_t sharedOutputBytes = (hExpandXTypeSize * SHARED_H_RATIO + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
+        const uint32_t sharedFloatBytes = (hFloatSize * SHARED_H_RATIO + UB_ALIGN - 1U) / UB_ALIGN * UB_ALIGN;
         maxSizeTokenBuf = std::max(maxSizeTokenBuf, sharedOutputBytes);
         maxSizeRowTmpFloatBuf = std::max(maxSizeRowTmpFloatBuf, sharedFloatBytes);
         sharedSumBytes = sharedFloatBytes;
@@ -1908,7 +1910,8 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     dispatchBufferSize =
         isA5 ? GetDispatchBufferSize(tilingData, moeQueueBytes, commDataBytes, packedDataBytes, quantBufferSize) : 0U;
     if (config.enableIndependentSharedExpert) {
-        const uint32_t sharedBlocks = (hExpandXTypeSize * 2U + SPLIT_BLOCK_DATA_SIZE - 1U) / SPLIT_BLOCK_DATA_SIZE;
+        const uint32_t sharedBlocks =
+            (hExpandXTypeSize * SHARED_H_RATIO + SPLIT_BLOCK_DATA_SIZE - 1U) / SPLIT_BLOCK_DATA_SIZE;
         const uint32_t sharedPackedBytes = sharedBlocks * SPLIT_BLOCK_DATA_SIZE;
         const uint32_t sharedClearBytes = sharedBlocks * SPLIT_BLOCK_FLAG_COUNT * sizeof(float);
         // Only receive queues grow. MoE sender queues still use the original communication format.
@@ -1917,7 +1920,7 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
         if (config.isIndependentSharedRank) {
             // calBegin/fixedEnd/minimum indexCounts/calEnd plus one input/output pair; no quantization scratch.
             dispatchBufferSize =
-                4UL * UB_ALIGN + sharedPackedBytes + static_cast<uint64_t>(sharedBlocks) * WIN_ADDR_ALIGN;
+                SHARED_UB_BLOCKS * UB_ALIGN + sharedPackedBytes + static_cast<uint64_t>(sharedBlocks) * WIN_ADDR_ALIGN;
         }
     }
     return commBufferSize;
@@ -2034,11 +2037,12 @@ static ge::graphStatus CheckCombineOrARN(gert::TilingContext *context, MoeDistri
                         return ge::GRAPH_FAILED);
     } else {
         // 校验combine输出的维数与shape
-        OP_TILING_CHECK(!CheckOutputTensorDim(context, nodeName, config, expertIdsDim0,
-                                              config.isIndependentSharedRank ? expandXDim1 / 2 : expandXDim1),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output tensor", "",
-                                                              "param shape of output tensor is invalid"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            !CheckOutputTensorDim(context, nodeName, config, expertIdsDim0,
+                                  config.isIndependentSharedRank ? expandXDim1 / SHARED_H_RATIO : expandXDim1),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "output tensor", "",
+                                                  "param shape of output tensor is invalid"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -2116,8 +2120,8 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext *context, MoeDistrib
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     if (config.enableIndependentSharedExpert ||
-        (mc2tiling::GetSocVersion(context) == "Ascend950" && tilingData->moeDistributeCombineV2Info.k > 12U)) {
-        ubSize = std::min(ubSize, uint64_t{248U * 1024U});
+        (mc2tiling::GetSocVersion(context) == "Ascend950" && tilingData->moeDistributeCombineV2Info.k > LEGACY_K_MAX)) {
+        ubSize = std::min(ubSize, A5_UB_BYTES);
     }
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
