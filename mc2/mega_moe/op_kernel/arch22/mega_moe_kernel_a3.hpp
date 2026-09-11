@@ -48,6 +48,7 @@
 #include "moe_permute_prologue/moe_permute_prologue.hpp"
 #include "unpermute/mc2_mega_moe_moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "utils/weight_l2_prefetch.hpp"
 #include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
@@ -277,6 +278,24 @@ public:
                 // rounds>1 时为 BuildRoundTables 完成后的轮表就绪信号
                 AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
                 syncgmmIdx++;
+                // W1 冷启动：flag0 后、GMM1 组 0 wait 前入队哑拷贝，与 pull g0 并发排空；
+                // 仅首轮发射一次（权重静态）
+                if (chunkIdx == 0 && roundIdx == 0 && params.problemShape.m() <= WEIGHT_L2_PREFETCH_MAX_BS) {
+                    // 空专家过滤
+                    uint32_t currentM0 = cumsumMM.GetValue((params.EP - 1) * params.expertPerRank);
+                    if (currentM0 > 0) {
+                        BlockMmad l1EndProbe(resource);
+                        uint32_t w1ScratchOffset = AlignUp(l1EndProbe.GetL1EndOffset(), WEIGHT_L2_PREFETCH_CHUNK_BYTES);
+                        if (w1ScratchOffset + WEIGHT_L2_PREFETCH_CHUNK_BYTES <= ArchTag::L1_SIZE) {
+                            WeightL2PrefetchAicColdStartW1(
+                                reinterpret_cast<GM_ADDR>(params.ptrB1), params.listLen != 1,
+                                WeightL2PrefetchBytesPerExpert<ElementB>(params.problemShape.k(),
+                                                                         params.problemShape.n()),
+                                static_cast<uint32_t>(params.expertPerRank),
+                                resource.l1Buf.template GetBufferByByte<uint8_t>(w1ScratchOffset));
+                        }
+                    }
+                }
                 if (roundIdx == 0) {
                     numRecvRounds = ComputeNumRecvRounds(params);
                 }
@@ -884,9 +903,6 @@ private:
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
 
-            if (currentM <= L1TileShape::M) {
-                gmB1.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-            }
             GemmCoord inGroupProblemShape{currentM, params.problemShape.n(), params.problemShape.k()};
             LayoutA layoutA = params.layoutA.GetTileLayout(inGroupProblemShape.GetCoordMK());
             LayoutB layoutB1 = params.layoutB1;
