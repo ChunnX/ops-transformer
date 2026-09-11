@@ -485,8 +485,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             if (localRecvXIdx >= 0) {
                 DataCopyPad(weightLocal, topkWeightsGm_[localRecvXIdx], weightCopyParams, padParams);
             } else {
-                GM_ADDR weightAddr = GetUrmaStateAddrByRankId(rankId_, combineStateWinOffset_) +
-                                     (tokenIndex * topK_ + topkId) * WIN_ADDR_ALIGN;
+                GM_ADDR weightAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset + hAlignSize_;
                 GlobalTensor<float> srcWeightTensor;
                 srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
                 DataCopyPad(weightLocal, srcWeightTensor, weightCopyParams, padParams);

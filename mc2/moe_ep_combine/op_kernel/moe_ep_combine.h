@@ -93,6 +93,8 @@ private:
     __aicore__ inline void InitFlagSource();
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
+    template <auto const &config>
+    __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, const BufDesc *srcDescs, uint32_t sgeNum);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
@@ -290,12 +292,33 @@ template <TemplateMoeEpCombineTypeClass>
 template <auto const &config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
-        // BatchCommit resets the WQE count in the handle; keep using it for this channel as PR 10309 does.
+    // Single-SGE WQE occupies 1 WQEBB (64 bytes).
+    if (preparedWriteCount_ + 1U > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
     (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
     ++preparedWriteCount_;
+    ++sqWriteCount_;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+template <auto const &config>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiSgeWrite(GM_ADDR dst,
+                                                                                        const BufDesc *srcDescs,
+                                                                                        uint32_t sgeNum)
+{
+    // Multi-SGE WQE: SQE header (48B) + sgeNum * SGE (16B each), rounded up to WQEBB boundary (64B).
+    // For 2-SGE: 48 + 2*16 = 80B -> 2 WQEBBs.
+    constexpr uint32_t sqeHeaderBytes = 48U;
+    constexpr uint32_t sgeEntryBytes = 16U;
+    constexpr uint32_t wqebbSize = HCOMM_PLAIN_WRITE_WQE_BYTES;
+    uint32_t wqeBytes = sqeHeaderBytes + sgeNum * sgeEntryBytes;
+    uint32_t wqebbCount = (wqeBytes + wqebbSize - 1U) / wqebbSize;
+    if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
+        FlushPreparedWrites(true);
+    }
+    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, srcDescs, sgeNum);
+    preparedWriteCount_ += wqebbCount;
     ++sqWriteCount_;
 }
 
@@ -362,23 +385,25 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
-    // Keep the SQ protection of the legacy address-table path.  The direct metadata path originally omitted this
-    // completion edge, so an unusually skewed rank range could fill the SQ and silently lose the later flag WQE.
-    constexpr uint32_t writesPerToken = HasTopkWeight == 1 ? 2U : 1U;
-    bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
-    if constexpr (HasTopkWeight == 1) {
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    } else if (drainAfterToken) {
-        PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    } else {
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    }
+    GM_ADDR remoteSlotBase = remoteDataBase + dstSlot * perSlotBytes_;
+    // After multi-SGE merge, each token produces 1 WQE (was 2 when HasTopkWeight==1).
+    constexpr uint32_t wqesPerToken = 1U;
+    bool drainAfterToken = sqWriteCount_ + wqesPerToken > HCOMM_SQ_MAX_PENDING;
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
+        GM_ADDR srcList[2] = {tokenAddr, weightAddr};
+        uint32_t lenList[2] = {static_cast<uint32_t>(tokenBytes), sizeof(float)};
+        const BufDesc srcDescs{srcList, lenList};
         if (drainAfterToken) {
-            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+            PrepareMultiSgeWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
         } else {
-            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+            PrepareMultiSgeWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
+        }
+    } else {
+        if (drainAfterToken) {
+            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
+        } else {
+            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
         }
     }
     if (drainAfterToken) {
