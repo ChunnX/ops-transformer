@@ -582,8 +582,14 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
     Duplicate<int32_t>(statusTensor_, URMA_FLAG_VALUE, flagSlotElementNum);
     SyncFunc<HardEvent::V_MTE3>();
+    // Do NOT write URMA_FLAG_VALUE to localFlagAddr_ here: in this token-indexed layout
+    // localFlagAddr_[0] is TOKEN 0's staged expert-id flag. This init runs on EVERY AIV with
+    // no cross-AIV sync, so a lagging AIV could overwrite token 0's staged value (written by
+    // AIV 0 in Phase 1) back to 1, and the flag WQE then sends 1 instead of the expert id.
+    // Redirect the (idempotent) pre-init to the dedicated layer-flag slot instead, which
+    // SetFlagToFFN fully overwrites after SyncAll.
     GlobalTensor<int32_t> localFlagGMTensor;
-    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
+    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(layerFlagAddr_));
     DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
     PipeBarrier<PIPE_MTE3>();
 }
