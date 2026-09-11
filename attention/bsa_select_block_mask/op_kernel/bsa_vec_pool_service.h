@@ -57,18 +57,18 @@ public:
 private:
     __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset, uint32_t actualLen,
                                                   uint32_t blockSize, GlobalTensor<OUT_T> &dstGm, uint64_t dstOffset,
-                                                  bool isTnd, uint32_t timeStrideElems);
+                                                  bool isTnd, uint32_t timeStrideElems, float outScale);
 
     __aicore__ inline void PoolingLen0Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
                                            uint64_t dstOffset);
 
     __aicore__ inline void PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
                                              uint64_t dstOffset, uint32_t actualLen, bool isTnd,
-                                             uint32_t timeStrideElems);
+                                             uint32_t timeStrideElems, float outScale);
 
     __aicore__ inline void PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
                                              uint64_t dstOffset, uint32_t actualLen, bool isTnd,
-                                             uint32_t timeStrideElems);
+                                             uint32_t timeStrideElems, float outScale);
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
@@ -245,8 +245,9 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingSingleQBlock(uint32_t bat
     // TND [T,N,D] 中 head 的数据逐 timestep 交错，相邻 timestep 间隔 numHeads*dSize 个元素
     constexpr bool isTndQ = (BSAT::layoutQ == BSALayout::TND);
     uint32_t timeStrideElems = isTndQ ? (numHeads * dSize) : 0;
+    // scale 前移：Q 压缩矩阵预乘 scaleValue（matmul 出口即含 scale，AIV softmax 侧删全矩阵 Muls）
     PoolingSingleBlockImpl(queryGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeX), qCmpGm, wrkDstOffset,
-                           isTndQ, timeStrideElems);
+                           isTndQ, timeStrideElems, constInfo.scaleValue);
 }
 
 template <typename BSAT>
@@ -310,14 +311,15 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingSingleKBlock(uint32_t bat
     constexpr bool isTndKV = (BSAT::layoutKV == BSALayout::TND);
     uint32_t timeStrideElems = isTndKV ? (numHeads * dSize) : 0;
     PoolingSingleBlockImpl(keyGm, srcOffset, actualLen, static_cast<uint32_t>(blockShapeY), kCmpGm, wrkDstOffset,
-                           isTndKV, timeStrideElems);
+                           isTndKV, timeStrideElems, 1.0f);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset,
                                                                        uint32_t actualLen, uint32_t blockSize,
                                                                        GlobalTensor<OUT_T> &dstGm, uint64_t dstOffset,
-                                                                       bool isTnd, uint32_t timeStrideElems)
+                                                                       bool isTnd, uint32_t timeStrideElems,
+                                                                       float outScale)
 {
     uint32_t dSize = constInfo.dSize;
     uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / dSize;
@@ -327,10 +329,10 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTen
         PoolingLen0Impl(srcGm, dstGm, srcOffset, dstOffset);
         return;
     } else if (actualLen <= maxLen) {
-        PoolingLen256Impl(srcGm, dstGm, srcOffset, dstOffset, actualLen, isTnd, timeStrideElems);
+        PoolingLen256Impl(srcGm, dstGm, srcOffset, dstOffset, actualLen, isTnd, timeStrideElems, outScale);
         return;
     } else {
-        PoolingLenAllImpl(srcGm, dstGm, srcOffset, dstOffset, actualLen, isTnd, timeStrideElems);
+        PoolingLenAllImpl(srcGm, dstGm, srcOffset, dstOffset, actualLen, isTnd, timeStrideElems, outScale);
         return;
     }
 }
@@ -371,7 +373,8 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingLen0Impl(GlobalTensor<IN_
 template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
-                                           uint64_t dstOffset, uint32_t actualLen, bool isTnd, uint32_t timeStrideElems)
+                                           uint64_t dstOffset, uint32_t actualLen, bool isTnd, uint32_t timeStrideElems,
+                                           float outScale)
 {
     uint32_t dSize = constInfo.dSize;
 
@@ -421,6 +424,12 @@ BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTens
                                                                reduceSharedTemp[bufferId], shape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
+    // Step3.5: scale 前移（Q 侧）：池化均值 × scaleValue（fp32 域，fp16 落盘前一次性预乘）
+    if (outScale != 1.0f) {
+        Muls(poolOut, poolOut, outScale, dSize);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
     // Step4 : cast fp32 to INT
     Cast(poolOutCast, poolOut, RoundMode::CAST_NONE, dSize);
     AscendC::PipeBarrier<PIPE_V>();
@@ -440,7 +449,8 @@ BSAVecPoolService<BSAT>::PoolingLen256Impl(GlobalTensor<IN_T> &srcGm, GlobalTens
 template <typename BSAT>
 __aicore__ inline void
 BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTensor<OUT_T> &dstGm, uint64_t srcOffset,
-                                           uint64_t dstOffset, uint32_t actualLen, bool isTnd, uint32_t timeStrideElems)
+                                           uint64_t dstOffset, uint32_t actualLen, bool isTnd, uint32_t timeStrideElems,
+                                           float outScale)
 {
     uint32_t dSize = constInfo.dSize;
     uint32_t numHeads = constInfo.numHeads;
@@ -589,6 +599,12 @@ BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTens
     AscendC::PipeBarrier<PIPE_V>();
     Div(poolOut, sumTensor, lenFloatUb, static_cast<int32_t>(dSize));
     AscendC::PipeBarrier<PIPE_V>();
+
+    // Step 4.5: scale 前移（Q 侧）：池化均值 × scaleValue（fp32 域预乘）
+    if (outScale != 1.0f) {
+        Muls(poolOut, poolOut, outScale, dSize);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
 
     // Step 5: Cast FP32 -> OUT_T
     Cast(poolOutCast, poolOut, RoundMode::CAST_NONE, dSize);

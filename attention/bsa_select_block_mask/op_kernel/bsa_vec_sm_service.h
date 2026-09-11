@@ -398,8 +398,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
                 }
                 LocalTensor<T> tile = subUb[(sl.localRowStart - subLocalStart) * kChunkSizeAlign];
 
-            Muls(tile, tile, (float)(constInfo.scaleValue), sl.rowCount * kChunkSizeAlign);
-            AscendC::PipeBarrier<PIPE_V>();
+            // scale 已前移 poolQ 出量（qCmp 预乘），此处不再全矩阵 Muls
 
             // 行归约：全 tile(512) 走 BlockReduce 三级级联（快），尾 tile 走 AR 原路径
             uint32_t maxShape[] = {sl.rowCount, kChunkSizeAlign};
@@ -825,9 +824,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t 
             const PostRowSlice &sl = slices[i];
             LocalTensor<T> tile = scoreUb[(sl.localRowStart - bandLocalStart) * kChunkSizeAlign];
 
-            Muls(tile, tile, (float)(constInfo.scaleValue), sl.rowCount * kChunkSizeAlign);
-            AscendC::PipeBarrier<PIPE_V>();
-
+            // scale 已前移 poolQ 出量（qCmp 预乘），此处不再全矩阵 Muls
             BSASubRowBroadcast(tile, tile, globalMaxBroc[sl.localRowStart * FLOAT_DATA_BLOCK_NUM], sl.rowCount,
                                kChunkSizeAlign);
 
