@@ -9,6 +9,7 @@
  */
 
 #include "allto_all_matmul_base.h"
+#include "mc2_a6_utils.h"
 
 #include "acl/acl.h"
 #include "aclnnInner_allto_all_matmul.h"
@@ -298,7 +299,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     aclnnStatus checkX2Ret = CheckX2Valid("allto_all_matmul", x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+    if (mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
@@ -325,14 +326,14 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, commMode,
                                                 transposeX1, transposeX2, output, alltoAllOutOptional);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    // 处理空tensor，目前非量化alltoallmatmul只支持x1第一维度bs为0，空tensor作异常处理
-    if (x1->GetViewShape().GetDim(0) == 0 && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        return DealWithEmptyTensor(workspaceSize, executor);
-    }
-
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode("allto_all_matmul", group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+
+    // 处理空tensor，目前非量化alltoallmatmul只支持x1第一维度bs为0，空tensor作异常处理
+    if (x1->GetViewShape().GetDim(0) == 0 && mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
+        return DealWithEmptyTensor(workspaceSize, executor);
+    }
 
     aclnnStatus ret = InnerAlltoAllMatmulGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group,
                                                           transposeX1, transposeX2, commMode, output,
@@ -344,11 +345,14 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBase(void *workspace, uint64_t workspa
                                                aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+        if (mc2tiling::IsA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
+            CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        } else if (mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
             CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);

@@ -9,6 +9,7 @@
  */
 
 #include "aclnn_allto_all_quant_matmul.h"
+#include "mc2_a6_utils.h"
 
 #include "allto_all_quant_matmul_base.h"
 #include "opdev/op_log.h"
@@ -28,7 +29,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(
     auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
     auto socVersion = op::GetCurrentPlatformInfo().GetSocVersion();
     const char *commMode =
-        (npuArch == NpuArch::DAV_3510 || socVersion == op::SocVersion::ASCEND910_93) ? "ai_cpu" : "aiv";
+        (mc2tiling::IsA5OrA6(npuArch) || socVersion == op::SocVersion::ASCEND910_93) ? "ai_cpu" : "aiv";
 
     return aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group,

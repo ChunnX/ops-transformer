@@ -13,6 +13,7 @@
  * \brief hosttiling
  */
 #include <register/op_def_registry.h>
+#include "mc2_a6_utils.h"
 #include <register/op_impl_registry.h>
 
 #include "allto_all_matmul_tiling_base.h"
@@ -28,7 +29,7 @@ static ge::graphStatus AlltoAllMatmulTilingFunc(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
+    if (mc2tiling::IsA5OrA6(npuArch)) {
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);

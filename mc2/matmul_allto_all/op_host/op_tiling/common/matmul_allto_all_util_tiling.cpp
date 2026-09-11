@@ -13,30 +13,27 @@
  * \brief
  */
 #include "matmul_allto_all_util_tiling.h"
+#include "mc2_a6_utils.h"
 
 namespace MC2Tiling {
 
-/**
- * @brief 工具函数：判断指定value是否存在于list中
- *
- * @param list: 有效值列表
- * @param value: 给定值
- * @return
- */
+// @brief 工具函数：判断指定value是否存在于list中
+//
+// @param list: 有效值列表
+// @param value: 给定值
+// @return
 static bool IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
     return std::count(list.begin(), list.end(), value) > 0;
 }
 
-/**
- * @brief 获取和校验rank数的函数，
- *
- * @param context 上下文信息
- * @param opName 算子名称
- * @param group 通信域名称
- * @param rankDim rank数
- * @return ge::graphStatus
- */
+// @brief 获取和校验rank数的函数，
+//
+// @param context 上下文信息
+// @param opName 算子名称
+// @param group 通信域名称
+// @param rankDim rank数
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::GetAndValidateRankSize(const gert::TilingContext *context, const char *opName,
                                                                  const char *group, int64_t &rankDim)
 {
@@ -55,15 +52,13 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndValidateRankSize(const gert::Til
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 从参数中获取通信引擎
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param contextInfo 存储了tiling的过程信息
- * @param commMode 返回通信引擎模式
- * @return ge::graphStatus
- */
+// @brief 从参数中获取通信引擎
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param contextInfo 存储了tiling的过程信息
+// @param commMode 返回通信引擎模式
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
                                                                 const TilingContextInfo &contextInfo,
                                                                 const OpAttrIndexSchema &indexSchema, uint8_t &commMode)
@@ -75,6 +70,10 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
                     return ge::GRAPH_FAILED);
 
     const size_t maxLength = 7UL;
+    if (mc2tiling::IsA6(mc2tiling::GetNpuArch(context)) && strncmp(commModeStr, "ai_cpu", maxLength) != 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "comm_mode", commModeStr, "960dt only supports 'ai_cpu'");
+        return ge::GRAPH_FAILED;
+    }
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = mc2tiling::A5_AICPU_TS_ENGINE;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
@@ -88,12 +87,10 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 设置二维输入输出的shape信息, 仅支持x1,x2,output都是二维的情况
- *
- * @param context 上下文信息
- * @param shapes shapeinfo,包含x1,x2和output
- */
+// @brief 设置二维输入输出的shape信息, 仅支持x1,x2,output都是二维的情况
+//
+// @param context 上下文信息
+// @param shapes shapeinfo,包含x1,x2和output
 void MatmulAlltoAllTilingUtil::GetMatrix2DShapes(const gert::TilingContext *context, Matrix2DShapes &shapes)
 {
     const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX);
@@ -108,14 +105,12 @@ void MatmulAlltoAllTilingUtil::GetMatrix2DShapes(const gert::TilingContext *cont
     shapes.yDim1 = yShape->GetStorageShape().GetDim(1);
 }
 
-/**
- * @brief 校验attrs信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName  算子名称
- * @param indexSchema 存放输入参数索引差别的结构体
- * @return ge::graphStatus
- */
+// @brief 校验attrs信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName  算子名称
+// @param indexSchema 存放输入参数索引差别的结构体
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingContext *context, const char *opName,
                                                          const OpAttrIndexSchema &indexSchema)
 {
@@ -146,12 +141,10 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验参数的format::是否为私有格式
- *
- * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
- * @return
- */
+// @brief 校验参数的format::是否为私有格式
+//
+// @param context: 框架根据input，output，attrs等信息生成tiling需要的context
+// @return
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckTensorFormat(const gert::TilingContext *context, const char *opName)
 {
     // x1:require
@@ -205,13 +198,11 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckTensorFormat(const gert::TilingCo
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 非量化场景校验参数的DType
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName  算子名称
- * @return ge::graphStatus
- */
+// @brief 非量化场景校验参数的DType
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName  算子名称
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert::TilingContext *context,
                                                                       const char *opName)
 {
@@ -264,14 +255,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckNonQuantTensorDataType(const gert
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 量化场景校验参数的DType
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName  算子名称
- * @param runInfo 过程信息
- * @return ge::graphStatus
- */
+// @brief 量化场景校验参数的DType
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName  算子名称
+// @param runInfo 过程信息
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(const gert::TilingContext *context,
                                                                      const char *opName)
 {
@@ -326,13 +315,11 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantTensorDataType(const gert:
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验tiling inputshape非空
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @return ge::graphStatus
- */
+// @brief 校验tiling inputshape非空
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @return ge::graphStatus
 static ge::graphStatus CheckInputShapesValid(const gert::TilingContext *context, const char *opName)
 {
     const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX);
@@ -342,13 +329,11 @@ static ge::graphStatus CheckInputShapesValid(const gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验量化tiling inputshape非空
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @return ge::graphStatus
- */
+// @brief 校验量化tiling inputshape非空
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @return ge::graphStatus
 static ge::graphStatus CheckKcQuantInputShapesValid(const gert::TilingContext *context, const char *opName)
 {
     const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX);
@@ -362,13 +347,11 @@ static ge::graphStatus CheckKcQuantInputShapesValid(const gert::TilingContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验tiling shape的Dim数量信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @return ge::graphStatus
- */
+// @brief 校验tiling shape的Dim数量信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @return ge::graphStatus
 static ge::graphStatus CheckShapeDimensions(const gert::StorageShape *shape, const char *shapeName, const char *opName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
@@ -378,13 +361,11 @@ static ge::graphStatus CheckShapeDimensions(const gert::StorageShape *shape, con
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验量化tiling scale shape的Dim数量信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @return ge::graphStatus
- */
+// @brief 校验量化tiling scale shape的Dim数量信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @return ge::graphStatus
 static ge::graphStatus CheckScaleShapeDimensions(const gert::StorageShape *shape, const char *shapeName,
                                                  const char *opName)
 {
@@ -395,14 +376,12 @@ static ge::graphStatus CheckScaleShapeDimensions(const gert::StorageShape *shape
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验tiling输入的bias的shape信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param indexSchema 存放算子index差异的结构体
- * @return ge::graphStatus
- */
+// @brief 校验tiling输入的bias的shape信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param indexSchema 存放算子index差异的结构体
+// @return ge::graphStatus
 static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const char *opName,
                                       const OpAttrIndexSchema &indexSchema)
 {
@@ -435,14 +414,12 @@ static ge::graphStatus CheckBiasShape(const gert::TilingContext *context, const 
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验tiling输入Input的Dim范围信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param indexSchema 存放算子index差异的结构体
- * @return ge::graphStatus
- */
+// @brief 校验tiling输入Input的Dim范围信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param indexSchema 存放算子index差异的结构体
+// @return ge::graphStatus
 static ge::graphStatus CheckShapeDimRange(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema)
 {
@@ -490,14 +467,12 @@ static ge::graphStatus CheckShapeDimRange(const gert::TilingContext *context, co
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验tiling输入的shape信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param indexSchema 存放输入参数索引差别的结构体
- * @return ge::graphStatus
- */
+// @brief 校验tiling输入的shape信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param indexSchema 存放输入参数索引差别的结构体
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckShapeInfo(const gert::TilingContext *context, const char *opName,
                                                          const OpAttrIndexSchema &indexSchema)
 {
@@ -537,14 +512,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckShapeInfo(const gert::TilingConte
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 校验量化tiling输入的shape信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param indexSchema 存放输入参数索引差别的结构体
- * @return ge::graphStatus
- */
+// @brief 校验量化tiling输入的shape信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param indexSchema 存放输入参数索引差别的结构体
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName,
                                                                 const OpAttrIndexSchema &indexSchema)
 {
@@ -591,15 +564,13 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckKcQuantShapeInfo(const gert::Tili
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 设置attrs信息，group， rank等
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName  算子名称
- * @param contextInfo 过程信息
- * @param indexSchema 存放输入参数索引差别的结构体
- * @return ge::graphStatus
- */
+// @brief 设置attrs信息，group， rank等
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName  算子名称
+// @param contextInfo 过程信息
+// @param indexSchema 存放输入参数索引差别的结构体
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::SetAttrsInfo(const gert::TilingContext *context, const char *opName,
                                                        TilingContextInfo &contextInfo,
                                                        const OpAttrIndexSchema &indexSchema)
@@ -620,13 +591,11 @@ ge::graphStatus MatmulAlltoAllTilingUtil::SetAttrsInfo(const gert::TilingContext
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 设置算子的shape信息，供MatmulAlltoAll单独使用
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param contextInfo 存储了tiling的过程信息
- * @return ge::graphStatus
- */
+// @brief 设置算子的shape信息，供MatmulAlltoAll单独使用
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param contextInfo 存储了tiling的过程信息
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::SetShapeInfo(const gert::TilingContext *context,
                                                        TilingContextInfo &contextInfo)
 {
@@ -648,14 +617,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::SetShapeInfo(const gert::TilingContext
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 设置算子的数据类型信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param contextInfo 存储了tiling的过程信息
- * @return ge::graphStatus
- */
+// @brief 设置算子的数据类型信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param contextInfo 存储了tiling的过程信息
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::SetDataTypeInfo(const gert::TilingContext *context, const char *opName,
                                                           TilingContextInfo &contextInfo)
 {
@@ -687,14 +654,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::SetDataTypeInfo(const gert::TilingCont
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 设置算子的数据类型信息
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @param contextInfo 存储了tiling的过程信息
- * @return ge::graphStatus
- */
+// @brief 设置算子的数据类型信息
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @param contextInfo 存储了tiling的过程信息
+// @return ge::graphStatus
 ge::graphStatus MatmulAlltoAllTilingUtil::SetKcDataTypeInfo(const gert::TilingContext *context, const char *opName,
                                                             TilingContextInfo &contextInfo)
 {
@@ -725,13 +690,11 @@ ge::graphStatus MatmulAlltoAllTilingUtil::SetKcDataTypeInfo(const gert::TilingCo
     return ge::GRAPH_SUCCESS;
 }
 
-/**
- * @brief 功能函数：获取算子对应的QUANT类型
- *
- * @param context 框架根据input，output，attrs等信息生成tiling需要的context
- * @param opName 算子名称
- * @return QuantMode
- */
+// @brief 功能函数：获取算子对应的QUANT类型
+//
+// @param context 框架根据input，output，attrs等信息生成tiling需要的context
+// @param opName 算子名称
+// @return QuantMode
 QuantMode MatmulAlltoAllTilingUtil::GetQuantMode(const gert::TilingContext *context, const char *opName)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();

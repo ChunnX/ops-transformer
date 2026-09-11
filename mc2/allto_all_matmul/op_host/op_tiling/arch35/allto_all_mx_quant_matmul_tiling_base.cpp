@@ -13,6 +13,7 @@
  * \brief
  */
 #include "allto_all_mx_quant_matmul_tiling_base.h"
+#include "mc2_a6_utils.h"
 
 #include "../allto_all_matmul_tiling_base.h"
 #include "common/utils/mc2_comm_utils.h"
@@ -410,7 +411,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     // 判断是否使用apace实现: all2all_out为空且卡数<=8
     constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
-    usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
+    usingApaceImpl_ = !mc2tiling::IsA6(npuArch_) && (!contextInfo_.allToAllOutFlag) &&
+                      (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1001,6 +1003,8 @@ AllToAllMxQuantMatmulTilingBase::AllToAllMxQuantMatmulTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllMxQuantMatmulTilingBase,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 2);
+                                   std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510),
+                                                         static_cast<int32_t>(NpuArch::DAV_9201)}),
+                                   2);
 
 } // namespace MC2Tiling

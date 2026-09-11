@@ -13,6 +13,7 @@
  * \brief
  */
 #include "matmul_allto_all_base.h"
+#include "mc2_a6_utils.h"
 #include "matmul_allto_all_util.h"
 #include "securec.h"
 #include "common/utils/op_mc2.h"
@@ -59,7 +60,7 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 // 950 非量化场景支持x1的m轴为0，即token提示词为空
 static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2)
 {
-    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+    if (!mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
         auto mVal = x1->GetViewShape().GetDim(0);
         OP_API_CHECK((mVal == ZERO), {
             OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimM",
@@ -214,7 +215,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     CHECK_RET(CheckShapeMMAA("matmul_allto_all", x1, x2, biasOptional, transposeX2, output), ACLNN_ERR_PARAM_INVALID);
     // 4. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     // bias的数据类型限制在950和910B上有所区别，这里根据芯片版本做区分
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
         CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
     } else {
         CHECK_RET(CheckAllDtypesValid910B(x1, x2, biasOptional, output), ACLNN_ERR_PARAM_INVALID);
@@ -309,7 +310,7 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     aclnnStatus checkX2Ret = CheckX2Valid("matmul_allto_all", x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;                                                   // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+    if (mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
@@ -337,14 +338,14 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, commMode,
                                                 transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    // 处理空tensor，目前非量化matmulalltoall只支持x1第一维度bs为0，空tensor作异常处理
-    if (x1->GetViewShape().GetDim(0) == 0 && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        return DealWithEmptyTensor(workspaceSize, executor);
-    }
-
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode("matmul_allto_all", group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
+
+    // 处理空tensor，目前非量化matmulalltoall只支持x1第一维度bs为0，空tensor作异常处理
+    if (x1->GetViewShape().GetDim(0) == 0 && mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
+        return DealWithEmptyTensor(workspaceSize, executor);
+    }
 
     aclnnStatus ret =
         InnerMatmulAlltoAllGetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group, commMode,
@@ -372,7 +373,10 @@ aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, acl
         return ACLNN_ERR_INNER;
     }
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (mc2tiling::IsA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
+            CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else if (mc2tiling::IsA5OrA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

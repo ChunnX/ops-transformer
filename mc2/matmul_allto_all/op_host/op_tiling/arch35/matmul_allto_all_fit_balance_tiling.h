@@ -66,8 +66,9 @@ inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, Kernel
                                        NpuArch npuArch, QuantMode quantMode, uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
 {
     // 标卡4P 与 8P 均走 Fit Balance tiling，仅拓扑类型不同；统一判定并构造，消除重复逻辑
-    const bool isStandardCard4P = mc2tiling::IsStandardCard4P(args.rankDim, npuArch);
-    const bool is8P = mc2tiling::Is8P(args.rankDim, npuArch);
+    const bool isStandardCard4P =
+        mc2tiling::IsStandardCard4P(args.rankDim, npuArch) || (npuArch == NpuArch::DAV_9201 && args.rankDim == 4);
+    const bool is8P = mc2tiling::Is8P(args.rankDim, npuArch) || (npuArch == NpuArch::DAV_9201 && args.rankDim == 8);
     if (isStandardCard4P || is8P) {
         const TopoType topoType = is8P ? TopoType::EIGHT_P : TopoType::STANDARD_CARD;
         OP_LOGD("Arch35TilingResult", "Using fit balance tiling for arch35, topoType=%d", static_cast<int>(topoType));

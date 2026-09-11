@@ -140,6 +140,8 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "allto_all_matmul_apt");
         this->AICore().AddConfig("ascend950", aicoreConfig_950);
+        this->AICore().AddConfig("ascend960dt", aicoreConfig_950);
+        this->MC2().HcclServerType(HcclServerType::AICPU, "ascend960dt");
         // 将group配置为该算子的通信域
         this->MC2().HcclGroup("group");
 

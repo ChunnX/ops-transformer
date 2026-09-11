@@ -34,6 +34,13 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
         )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend960dt")
+        add_ops_compile_options(
+            OP_NAME AlltoAllMatmul
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -DMC2_A6_BUILD=1
+        )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME AlltoAllMatmul

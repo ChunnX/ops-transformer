@@ -526,6 +526,8 @@ KcQuantMatmulAllToAllTilingBase::KcQuantMatmulAllToAllTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, KcQuantMatmulAllToAllTilingBase,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
+                                   std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510),
+                                                         static_cast<int32_t>(NpuArch::DAV_9201)}),
+                                   1);
 
 } // namespace MC2Tiling

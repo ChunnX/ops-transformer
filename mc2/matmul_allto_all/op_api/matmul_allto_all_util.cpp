@@ -9,6 +9,7 @@
  */
 
 #include "matmul_allto_all_util.h"
+#include "mc2_a6_utils.h"
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -233,6 +234,17 @@ aclnnStatus CheckAndHandleCommMode(const char *opName, const char *group, const 
     (void)group;
     const size_t maxLength = 7UL;
     // 获取通信引擎参数
+    if (commModeStr == nullptr) {
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (mc2tiling::IsA6(GetCurrentPlatformInfo().GetCurNpuArch())) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) != 0) {
+            OP_LOGE_FOR_INVALID_VALUE(opName, "commMode", commModeStr, "\"ai_cpu\"");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        return ACLNN_SUCCESS;
+    }
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;

@@ -421,7 +421,8 @@ bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
     }
 
     // 是否ascend950
-    if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
+    if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5) &&
+        !IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A6)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
         return false;
     }

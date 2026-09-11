@@ -34,6 +34,10 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         return ge::GRAPH_FAILED;
     }
 
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A6) && commModeStr != ge::AscendString("ai_cpu")) {
+        OPS_LOG_E(context->GetNodeName(), "A6 only supports ai_cpu communication.");
+        return ge::GRAPH_FAILED;
+    }
     if (commModeStr == ge::AscendString("ccu")) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (commModeStr == ge::AscendString("ai_cpu")) {
@@ -53,7 +57,8 @@ ge::Status AlltoAllMatmulGenTaskCallback(const gert::ExeResGenerationContext *co
 
 static ge::Status AlltoAllMatmulCalcOpParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+    if ((IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5) ||
+         IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A6))) {
         uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
         auto ret = GetCommModeFromAttrs(context, commMode);
         if (ret != ge::GRAPH_SUCCESS) {
@@ -73,7 +78,8 @@ static ge::Status AlltoAllMatmulCalcOpParamFunc(gert::ExeResGenerationContext *c
 static ge::Status AlltoAllMatmulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+    if ((IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5) ||
+         IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A6))) {
         uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
         auto ret = GetCommModeFromAttrs(context, commMode);
         if (ret != ge::GRAPH_SUCCESS) {
