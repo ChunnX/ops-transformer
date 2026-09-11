@@ -14,7 +14,7 @@
  *
  * 面向 AlltoAllvQuantGroupedMatMul 算子的 apace 切换路径（参照 AlltoAllMatmul 的
  * “MX 量化切 apace”模式）：
- *   - 通信：block 0 AIC 按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
+ *   - 通信：AIV0 按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
  *     通信输出按 expert-major / source-rank-minor 布局直接落入接收区；
  *   - 计算：等待当前 expert 通信完成、提交下一 expert 通信后，以“段式分组”消费当前数据，
  *     形成 expert 级通信/计算双缓冲；接收布局无需额外 permute——
@@ -22,8 +22,8 @@
  *     免去通信后的独立 permute；
  *   - 计算 kernel 复用 apace 分组量化 Matmul（Blaze BlockMmad<GroupedMatmulWithScaleMx>）。
  *
- * 本实现为纯 AIC（cube-only）路径：若 kernel 以 MIX 模式启动，Init/Run 内部有
- * AIC 守卫，AIV 核直接返回。
+ * 本实现运行在 MIX kernel：AIV 负责 HCCL AlltoAllV，AIC 负责 Blaze Matmul，
+ * 两侧通过仓内 A2AV scheduler 同款 cross-core flag 协议同步通信完成事件。
  */
 
 #pragma once
@@ -36,6 +36,7 @@
 #include "../../matmul/grouped_matmul/qgmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
 #include "allto_allv_quant_grouped_matmul_tiling_data.h"
+#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
 namespace Apace {
 
@@ -88,16 +89,10 @@ public:
     using MmKernel = Apace::Kernel::QuantGroupedMatmulKernel<ProblemShape, MmBlockMmad, BlockScheduler>;
 
     static constexpr uint64_t xHcclDataType_ = GetA2avHcclDataType<AType>();
-    // mc2CcTiling owns one AlltoAllV descriptor whose send/recv type is built
-    // from gmm_x.  The AICPU server validates every submitted task against that
-    // descriptor, so submitting the scale task as FP8E8M0 (17) while the
-    // descriptor is FP8E4M3 (15), for example, is rejected as "kernel param
-    // invalid".  AlltoAllV performs no arithmetic; use the descriptor's
-    // one-byte transport type for scale and preserve the FP8E8M0 bit pattern.
-    static constexpr uint64_t mxScaleHcclDataType_ = xHcclDataType_;
+    static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
 
     /*!
-     * \brief 初始化并下发通信任务（AIC only）
+     * \brief 初始化并下发通信任务（AIV only）
      *
      * \param[in] tilingGM tiling buffer 首地址：GET_TILING_DATA_WITH_STRUCT 得到的是本地拷贝，
      *            段表（segList/segAOff/segCOff）以 __gm__ 指针按偏移直接引用 tiling buffer
@@ -107,9 +102,6 @@ public:
                                 GM_ADDR mmWeightGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
                                 GM_ADDR permuteOutGM, GM_ADDR userWorkspaceGM, GM_ADDR tilingGM)
     {
-        if ASCEND_IS_AIV {
-            return;
-        }
         xGM_ = gmmxGM;
         xScaleGM_ = gmmxScaleGM;
         weightGM_ = gmmWeightGM;
@@ -131,10 +123,12 @@ public:
         mmGroupListGm_ = reinterpret_cast<__gm__ const uint32_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList));
 
-        // Match the APACE mma2a communicator: every AIC initializes its local
-        // HCCL object, but exactly one AIC owns the task sequence.  Letting
-        // every AIC submit the same collectives duplicates the two ranks'
-        // sequences and leaves the first AlltoAllV waiting forever.
+        if ASCEND_IS_AIC {
+            return;
+        }
+        // AlltoAllV is an AIV-side HCCL primitive in the existing A2AV
+        // scheduler. Every AIV initializes/finalizes its HCCL object; AIV0 is
+        // the sole owner of the collective task sequence.
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
         if (IsCommunicationCore()) {
@@ -150,36 +144,19 @@ public:
     __aicore__ inline void Run()
     {
         if ASCEND_IS_AIV {
+            RunCommunication();
             return;
         }
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
-            const uint32_t slot = expertIdx & 1U;
-            if (IsCommunicationCore()) {
-                hccl_.Wait(scaleHandle_[slot]);
-                hccl_.Wait(dataHandle_[slot]);
-            }
-            // Publish the received GM data to every compute AIC before Blaze
-            // consumes this expert.  All AICs execute the same barrier count.
-            AscendC::SyncAll();
-            const uint32_t nextExpert = expertIdx + 1U;
-            if (IsCommunicationCore() && nextExpert < tilingData_->expertNum) {
-                IssueExpertCommunication(nextExpert, nextExpert & 1U);
-            }
+            WaitCommunicationDone();
             RunExpertMatmul(expertIdx);
+            // Keep every AIC on the same expert before reusing the cross-core
+            // communication-ready event for the next expert.
+            AscendC::CrossCoreSetFlag<MC2KernelTemplate::SYNC_MODE_AIC_BARRIER, PIPE_FIX>(
+                MC2KernelTemplate::SYNC_FLAG_ID_AIC_BARRIER);
+            AscendC::CrossCoreWaitFlag<MC2KernelTemplate::SYNC_MODE_AIC_BARRIER, PIPE_S>(
+                MC2KernelTemplate::SYNC_FLAG_ID_AIC_BARRIER);
         }
-
-        AscendC::SyncAll();
-        if (IsCommunicationCore()) {
-            hccl_.Finalize();
-        }
-        // Do not enter the all-AIC local matmul while block 0 is still
-        // finalizing the communication server.
-        AscendC::SyncAll();
-        // Hcomm requires the AIC blocks to keep servicing the communication
-        // protocol until Finalize completes. A long local matmul here can starve
-        // the first AlltoAllV and make the MC2 server time out (notably when the
-        // shared-expert weight is transposed). Run the independent local matmul
-        // only after all communication has been drained.
         if (tilingData_->localMatmul != 0U) {
             RunLocalMatmul();
         }
@@ -189,6 +166,39 @@ private:
     __aicore__ inline bool IsCommunicationCore() const
     {
         return AscendC::GetBlockIdx() == 0U;
+    }
+
+    __aicore__ inline void WaitCommunicationDone()
+    {
+        AscendC::CrossCoreWaitFlag<MC2KernelTemplate::SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
+            MC2KernelTemplate::SYNC_FLAG_ID_COMM_DONE);
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        AscendC::CrossCoreWaitFlag<MC2KernelTemplate::SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
+            MC2KernelTemplate::SYNC_FLAG_ID_COMM_DONE + MC2KernelTemplate::SYNC_FLAG_AIV1_OFFSET);
+#endif
+    }
+
+    __aicore__ inline void RunCommunication()
+    {
+        for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
+            const uint32_t slot = expertIdx & 1U;
+            if (IsCommunicationCore()) {
+                hccl_.Wait(scaleHandle_[slot]);
+                hccl_.Wait(dataHandle_[slot]);
+                const uint32_t nextExpert = expertIdx + 1U;
+                if (nextExpert < tilingData_->expertNum) {
+                    IssueExpertCommunication(nextExpert, nextExpert & 1U);
+                }
+            }
+            // Match A2avGmmScheduler: first make AIV0's wait visible to all
+            // AIVs, then both vector sub-blocks notify their paired AIC.
+            AscendC::SyncAll<true>();
+            AscendC::CrossCoreSetFlag<MC2KernelTemplate::SYNC_MODE_AIV_TO_AIC, PIPE_V>(
+                MC2KernelTemplate::SYNC_FLAG_ID_COMM_DONE +
+                MC2KernelTemplate::SYNC_FLAG_AIV1_OFFSET * AscendC::GetSubBlockIdx());
+        }
+        AscendC::SyncAll<false>();
+        hccl_.Finalize();
     }
 
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
