@@ -37,11 +37,11 @@ class MhcPreBackwardCubeCompute {
 public:
     __aicore__ inline void Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling);
 
-    __aicore__ inline void Process(const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
+    __aicore__ inline void Process(MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                    uint32_t bGmStride);
 
-    __aicore__ inline void ProcessC1(const MMConfig &config, const GlobalTensor<float> &a,
+    __aicore__ inline void ProcessC1(MMConfig &config, const GlobalTensor<float> &a,
                                      const GlobalTensor<float> &b,
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd);
@@ -50,19 +50,19 @@ public:
 
 private:
     template <bool REUSE_B1>
-    __aicore__ inline void ComputeTile(const MMConfig &config, const GlobalTensor<float> &a,
+    __aicore__ inline void ComputeTile(MMConfig &config, const GlobalTensor<float> &a,
                                        const GlobalTensor<float> &b,
                                        const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                        uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool transA,
                                        bool atomicAdd);
 
     template <bool REUSE_B1>
-    __aicore__ inline void ProcessKRange(const MMConfig &config, const LocalTensor<float> &currentC,
+    __aicore__ inline void ProcessKRange(MMConfig &config, const LocalTensor<float> &currentC,
                                          const GlobalTensor<float> &a,
                                          const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k,
                                          uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst);
 
-    __aicore__ inline void PreloadB1(const MMConfig &config, const GlobalTensor<float> &b, uint32_t n, uint32_t k,
+    __aicore__ inline void PreloadB1(MMConfig &config, const GlobalTensor<float> &b, uint32_t n, uint32_t k,
                                      uint32_t bGmStride);
 
     __aicore__ inline void CopyInA1(const LocalTensor<float> &dst, const GlobalTensor<float> &src, uint32_t m,
@@ -125,7 +125,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPre
     }
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::Process(const MMConfig &config, const GlobalTensor<float> &a,
+__aicore__ inline void MhcPreBackwardCubeCompute::Process(MMConfig &config, const GlobalTensor<float> &a,
                                                           const GlobalTensor<float> &b,
                                                           const GlobalTensor<float> &c, uint32_t m, uint32_t n,
                                                           uint32_t k, uint32_t bGmStride)
@@ -149,7 +149,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Process(const MMConfig &config
     }
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(const MMConfig &config, const GlobalTensor<float> &a,
+__aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(MMConfig &config, const GlobalTensor<float> &a,
                                                             const GlobalTensor<float> &b,
                                                             const GlobalTensor<float> &c, uint32_t m, uint32_t n,
                                                             uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
@@ -178,7 +178,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::End()
 
 template <bool REUSE_B1>
 __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTile(
-    const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
+    MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
     const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
     uint32_t cGmStride, bool transA, bool atomicAdd)
 {
@@ -208,7 +208,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTile(
 
 template <bool REUSE_B1>
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
-    const MMConfig &config, const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
+    MMConfig &config, const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
     const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
     bool transA, bool initFirst)
 {
@@ -265,7 +265,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
     }
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::PreloadB1(const MMConfig &config, const GlobalTensor<float> &b,
+__aicore__ inline void MhcPreBackwardCubeCompute::PreloadB1(MMConfig &config, const GlobalTensor<float> &b,
                                                             uint32_t n, uint32_t k, uint32_t bGmStride)
 {
     for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += config.get_l1K()) {

@@ -266,19 +266,19 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
                         mmConfigKey_),
                 return ge::GRAPH_FAILED);
 
-    auto a1Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+    auto a1Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
         return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize;
     };
-    auto b1Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+    auto b1Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
         return alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize;
     };
-    auto a2Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+    auto a2Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
         return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize;
     };
-    auto b2Bytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+    auto b2Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
         return alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize;
     };
-    auto cBytes = [alignUp, cubeAlign, elementSize](const MMConfig &config) {
+    auto cBytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
         return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseN(), cubeAlign) * elementSize;
     };
     uint64_t l1BufferBytes = std::max(std::max(a1Bytes(mmConfigC0_), b1Bytes(mmConfigC0_)),

@@ -125,6 +125,8 @@ public:
 
 private:
     MhcPreBackwardCubeCompute cubeCompute_;
+    MMConfig mmConfigC0_;
+    MMConfig mmConfigC1_;
     uint32_t coreNum_;
     uint64_t totalLength_;
     uint64_t vecDealBSPeCore_;
@@ -259,6 +261,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
         gammaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_gamma));
     }
     tiling_ = initParams.tilingData;
+    mmConfigC0_ = tiling_->mmConfigC0;
+    mmConfigC1_ = tiling_->mmConfigC1;
     nD_ = static_cast<uint32_t>(tiling_->nD);
     D_ = static_cast<uint32_t>(tiling_->D);
     N_ = static_cast<uint32_t>(tiling_->N);
@@ -985,7 +989,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 {
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
-    cubeCompute_.Process(tiling_->mmConfigC0, workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
+    cubeCompute_.Process(mmConfigC0_, workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)], phiGm_[offsetND],
                          workSpaceGm_[writeOffset], currentBSBlock, currentNDBlock, fusionSize_, nD_);
 }
 
@@ -999,7 +1003,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, 
     buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     bool enAtomic = (offsetBS != 0);
-    cubeCompute_.ProcessC1(tiling_->mmConfigC1, workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)],
+    cubeCompute_.ProcessC1(mmConfigC1_, workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)],
                            workSpaceGm_[offsetXs], gradPhiGm_[offsetND], fusionSize_, currentNDBlock,
                            currentBSBlock, fusionSize_, ND_BLOCK_SIZE, nD_, enAtomic);
 }
