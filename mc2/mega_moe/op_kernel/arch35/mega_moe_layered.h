@@ -187,7 +187,8 @@ private:
     __aicore__ inline uint64_t RelayFlagOffset(uint32_t sourceServer, uint32_t tokenId) const;
     __aicore__ inline void SharedExpertCopyInput();
     __aicore__ inline void ProcessSharedExpertGmm1(const TupleShape &initShape, const BlockOffset &initOffset,
-                                                   int32_t &gmTileSequence, Gmm1SwigluSync &sharedGmm1SwigluSync);
+                                                   int32_t &gmTileSequence,
+                                                   Gmm1ActivationSync &sharedGmm1ActivationSync);
     __aicore__ inline void ProcessSharedExpertGmm2(const TupleShape &initShape, const BlockOffset &initOffset);
     __aicore__ inline void UnpermuteSharedExpert(int32_t tokenIdx);
     __aicore__ inline void LoadTopkWeightsToUb(const LocalTensor<ActivationType> &xOutTensor, int32_t currentOffset,
@@ -949,7 +950,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSharedExpertGmm1(
     const TupleShape &initShape, const BlockOffset &initOffset, int32_t &gmTileSequence,
-    Gmm1SwigluSync &sharedGmm1SwigluSync)
+    Gmm1ActivationSync &sharedGmm1ActivationSync)
 {
     sharedEpilogueOp_.Init({.yGmAddr = params_.workspaceInfo.sharedExpertActivationDataPtr,
                             .yScaleGmAddr = params_.workspaceInfo.sharedExpertActivationScalePtr,
@@ -961,7 +962,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
 
     GMMAddrInfo sharedGmm1AddrInfo{};
     if constexpr (ENABLE_A8W4) {
-        sharedGmm1AddrInfo.gmm1SwigluSync = &sharedGmm1SwigluSync;
+        sharedGmm1AddrInfo.gmm1ActivationSync = &sharedGmm1ActivationSync;
     }
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
     int32_t vecSetSyncCom = 0;
@@ -1134,15 +1135,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     }
     SyncAll<false>(); // AIC 等待同步标志清零完成
 
-    // 共享专家 GMM1+SwiGLU 前移到 MoE 之前执行，复用 MoE 函数。
+    // 共享专家 GMM1+Activation 前移到 MoE 之前执行，复用 MoE 函数。
     TupleShape initShape;
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 GMM1 AIC-AIV1 tile ready sequence.
-    Gmm1SwigluSync sharedGmm1SwigluSync(1U, Gmm1SwigluSync::EventPair::SHARED);
+    Gmm1ActivationSync sharedGmm1ActivationSync(1U, GmmEventPair::SHARED_GMM1);
     if (sharedExpertNum_ > 0) {
-        ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence, sharedGmm1SwigluSync);
+        ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence, sharedGmm1ActivationSync);
         SyncAll<false>();
     }
 
@@ -1159,7 +1160,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 
     // URMA Layered 的 A8W8、A4W4 和 A8W4 共用同一专家 Wave 状态机。
     ProcessMoeExpertWave(initShape, initOffset, gmTileSequence);
-    sharedGmm1SwigluSync.EndSync();
+    // Shared and MoE use independent event pairs, so shared ACK collection does
+    // not block MoE startup. Drain the shared pair here before reusing its IDs.
+    sharedGmm1ActivationSync.EndSync();
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
     if (sharedExpertNum_ > 0) {
