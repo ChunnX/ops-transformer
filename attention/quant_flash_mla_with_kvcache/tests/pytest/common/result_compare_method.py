@@ -118,7 +118,7 @@ def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
 
     len_err = int(err_idx.numel())
     for count, i in enumerate(err_idx.tolist(), 1):
-        if count < 10 or (90 < count < 100):
+        if count <= 200:
             expect_value = float(expect_data[i])
             real_value = float(real_data[i])
             logger.info(
@@ -129,16 +129,16 @@ def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
                 abs(expect_value - real_value),
                 float(relative_diff[count - 1].item()),
             )
-        elif count == 10 or (count == 100 and len_err > 100):
+        elif count == 201:
             logger.info(
                 "%08s \t %07s \t %07s \t %07s \t %07s",
                 "...",
-                "...",
+                "(truncated, total errors: {})".format(len_err),
                 "...",
                 "...",
                 "...",
             )
-        elif count > 100:
+        else:
             break
 
     logger.info(
@@ -278,5 +278,12 @@ def check_result(expect, npu_result):
 
     if result == "Failed":
         display_error_output_torch(real_data, expect_data, err_idx, err_diff)
+        logger.info("Total error count: %d / %d", int(err_idx.numel()), split_count)
+        logger.info("Real NaN count: %d, Inf count: %d",
+                     int(torch.isnan(real_float).sum().item()),
+                     int(torch.isinf(real_float).sum().item()))
+        logger.info("Expect NaN count: %d, Inf count: %d",
+                     int(torch.isnan(expect_float).sum().item()),
+                     int(torch.isinf(expect_float).sum().item()))
 
     return result, fulfill_percent, max_error

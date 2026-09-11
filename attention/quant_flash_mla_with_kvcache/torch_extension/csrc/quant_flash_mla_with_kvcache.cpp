@@ -23,8 +23,8 @@ const int64_t MAX_DIM_SIZE = 8;
 
 at::Tensor quant_flash_mla_with_kvcache_metadata(const at::Tensor &cache_seqlens, int64_t num_heads_q,
                                                 int64_t num_heads_kv, int64_t quant_mode,
-                                                const c10::optional<at::Tensor> &cu_seqlens_q,
-                                                const c10::optional<at::Tensor> &seqused_q, int64_t batch_size,
+                                                const at::Tensor &cu_seqlens_q,
+                                                const at::Tensor &seqused_q, int64_t batch_size,
                                                 int64_t max_seqlen_q, int64_t max_seqlen_kv, int64_t head_dim_qk,
                                                 int64_t head_dim_v, int64_t mask_mode, std::string layout_q,
                                                 const at::Tensor &output)
@@ -94,8 +94,14 @@ std::tuple<at::Tensor, at::Tensor> quant_flash_mla_with_kvcache(
     }
     at::Tensor attentionOutput = at::empty(attentionOutSize, torch::dtype(at::kBFloat16).device(outputDevice));
 
+    // 深拷贝optional tensor规避ACLNN_CMD处理optional tensor时的数据绑定问题
+    at::Tensor cuSeqQ = cu_seqlens_q.has_value() ? cu_seqlens_q->clone() : at::Tensor();
+    at::Tensor seqUsedQ = seqused_q.has_value() ? seqused_q->clone() : at::Tensor();
+    at::Tensor attnMask = attn_mask.has_value() ? attn_mask->clone() : at::Tensor();
+    at::Tensor meta = metadata.has_value() ? metadata->clone() : at::Tensor();
+
     ACLNN_CMD(aclnnQuantFlashMlaWithKvcache, q, k_cache, q_descale, k_descale, block_table, cache_seqlens,
-              cu_seqlens_q, seqused_q, attn_mask, metadata, quant_mode, softmax_scale, mask_mode, max_seqlen_q,
+              cuSeqQ, seqUsedQ, attnMask, meta, quant_mode, softmax_scale, mask_mode, max_seqlen_q,
               max_seqlen_kv, head_dim_v, layout_q, layout_kv, layout_out, return_softmax_lse, attentionOutput,
               softmaxLse);
 

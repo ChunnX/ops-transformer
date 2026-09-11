@@ -151,7 +151,16 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
         }
     }
 
-    // Q侧(TND): cu_seqlens_q, shape为(batchSize+1,), 前导0
+    // Q侧: 与qfa接口metadata一致, 读取cu_seqlens_q/seqused_q tensor数据.
+    // 先用maxSeqlenQ初始化, 再用tensor数据覆盖.
+    if (batchSize_ > 0 && baseInfo.querySeqSize > 0) {
+        baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
+        if (baseInfo.isCumulativeQuerySeq) {
+            for (int64_t i = 1; i < batchSize_; ++i) {
+                baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
+            }
+        }
+    }
     if (baseInfo.isCumulativeQuerySeq && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
@@ -162,7 +171,6 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
                 std::max(static_cast<int64_t>(baseInfo.querySeqSize), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
         }
     }
-    // Q侧: seqused_q, shape为(batchSize,)
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
         auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
@@ -173,15 +181,6 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
                 baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
             }
             baseInfo.querySeqSize = std::max(static_cast<int64_t>(baseInfo.querySeqSize), sequsedQ[i]);
-        }
-    }
-    // Q侧兜底: 无任何Q侧varlen信息时以maxSeqlenQ填充
-    if (baseInfo.actualQuerySeqSize.empty() && batchSize_ > 0) {
-        baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
-        if (baseInfo.isCumulativeQuerySeq) {
-            for (int64_t i = 1; i < batchSize_; ++i) {
-                baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
-            }
         }
     }
 
@@ -227,22 +226,22 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
 
 bool QuantFlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 {
-    return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
+    auto ret = load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
+    return ret;
 }
 
 bool QuantFlashMlaWithKvcacheMetadataCpuKernel::CheckNeedInitOutput()
 {
+    // 与qfa接口metadata一致, 读取Q侧和KV侧tensor数据判断是否需要init输出.
+    // QMLA PA场景: KV侧用cache_seqlens(等价于qfa的seqused_kv).
     const bool hasCuQ = cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr;
     const bool hasSeqQ = sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr;
     const bool hasCacheSeqlens = cacheSeqlens_ != nullptr && cacheSeqlens_->GetData() != nullptr;
     const uint32_t bSize = static_cast<uint32_t>(batchSize_);
     const bool hasVarlen = hasCuQ || hasSeqQ || hasCacheSeqlens;
     if (!hasVarlen || bSize == 0) {
-        // 无 varlen 信息时用全局长度兜底
         return maskMode_ == 3 && baseInfo.querySeqSize > baseInfo.kvSeqSize;
     }
-    // 直接读原始 varlen 数据 (cu_seqlens_q为B+1且首元素为0, seqused_q为B,
-    // cache_seqlens为B, TND时为累积值无前导0), 不使用ParamsInit中被累加覆盖的actualSeqSize
     std::vector<int64_t> cuSeqlensQ;
     std::vector<int64_t> seqUsedQ;
     std::vector<int64_t> cacheSeqlens;
@@ -255,11 +254,9 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::CheckNeedInitOutput()
     if (hasCacheSeqlens) {
         cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_, bSize);
     }
-    const bool isTnd = (layoutQ_ == "TND");
     for (uint32_t bIdx = 0; bIdx < bSize; ++bIdx) {
         // Q侧: cu_seqlens_q差分为0 → 零长batch
-        // TND时分配长度为cu差分; 非TND时以max_seqlen_q为准(-1表示未知)
-        int64_t qAllocLen = hasCuQ ? cuSeqlensQ[bIdx + 1] - cuSeqlensQ[bIdx] : (maxSeqlenQ_ > 0 ? maxSeqlenQ_ : -1);
+        int64_t qAllocLen = hasCuQ ? cuSeqlensQ[bIdx + 1] - cuSeqlensQ[bIdx] : -1;
         if (qAllocLen == 0) {
             return true;
         }
@@ -271,16 +268,10 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::CheckNeedInitOutput()
         if (qAllocLen > 0 && qUsedLen < qAllocLen) {
             return true;
         }
-        // KV侧: cache_seqlens为每batch实际长度(PA场景BY_BATCH模式), 为0 → 该batch无有效kv, 输出应全0
-        int64_t kvLen = -1;
-        if (hasCacheSeqlens) {
-            kvLen = cacheSeqlens[bIdx];
-        }
+        // KV侧: cache_seqlens为每batch实际长度(PA场景), 为0 → 该batch无有效kv, 输出应全0
+        int64_t kvLen = hasCacheSeqlens ? cacheSeqlens[bIdx] : static_cast<int64_t>(baseInfo.kvSeqSize);
         if (kvLen == 0) {
             return true;
-        }
-        if (kvLen < 0) {
-            kvLen = baseInfo.kvSeqSize;
         }
         // CAUSAL下单batch q > kv → 产生全mask行, 输出应为0
         if (maskMode_ == 3 && qUsedLen > kvLen) {
