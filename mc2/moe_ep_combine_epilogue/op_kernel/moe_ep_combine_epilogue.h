@@ -226,6 +226,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
     diagWriter_.Init(context, MOE_EP_CORE_DIAG_COMBINE_EPILOGUE, tpipe_);
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_EPILOGUE_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::COMBINE_EPILOGUE, aivNum_);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
