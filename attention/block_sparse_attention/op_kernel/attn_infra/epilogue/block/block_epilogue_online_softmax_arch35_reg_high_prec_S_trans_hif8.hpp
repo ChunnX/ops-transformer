@@ -21,7 +21,45 @@
 #include "../../../tla/tensor_bsa.hpp"
 #include "../../../tla/layout_bsa.hpp"
 
+// Staged diagnostics for the HIF8 tail-layout investigation.  Keep the switch
+// local to this kernel; production builds do not emit device-side dumps unless
+// Enable temporarily when diagnosing device-side S/P layout issues.
+#ifndef BSA_HIF8_DEBUG_DUMP
+#define BSA_HIF8_DEBUG_DUMP 0
+#endif
+
 namespace NpuArch::Epilogue::Block {
+
+namespace Hif8VF {
+using AscendC::LocalTensor;
+using namespace AscendC;
+using namespace AscendC::Reg;
+
+// Build the exact QFA HIF8 DN_INDEX table with vector instructions:
+// index[i * 64 + j] = i + 4 * j, i in [0, 4), j in [0, 64).
+__simd_vf__ inline void InitDnIndexVF(__ubuf__ uint8_t *indexDn)
+{
+    RegTensor<uint8_t> baseIndexReg;
+    RegTensor<uint8_t> indexReg;
+    RegTensor<uint8_t> indexHighReg;
+    MaskReg mask32 = CreateMask<int8_t, MaskPattern::VL32>();
+
+    Arange((RegTensor<int8_t> &)baseIndexReg, 0);
+    ShiftLefts(baseIndexReg, baseIndexReg, static_cast<int16_t>(2), mask32);
+    for (uint16_t i = 0; i < 4; ++i) {
+        Adds(indexReg, baseIndexReg, i, mask32);
+        StoreAlign(indexDn + i * 64, indexReg, mask32);
+        Adds(indexHighReg, indexReg, static_cast<uint8_t>(128), mask32);
+        StoreAlign(indexDn + i * 64 + 32, indexHighReg, mask32);
+    }
+}
+
+__aicore__ inline void InitDnIndexCallVF(LocalTensor<uint8_t> &indexTensor)
+{
+    __ubuf__ uint8_t *indexDn = (__ubuf__ uint8_t *)indexTensor.GetPhyAddr();
+    InitDnIndexVF(indexDn);
+}
+} // namespace Hif8VF
 
 template <class LayoutP_, class LayoutS_>
 class BlockEpilogue<
@@ -45,11 +83,12 @@ public:
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
     static constexpr ElementInput MIN_VALUE = -3.389531390315715675e+38f;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_,
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_, float pScaleValue_,
                                     UBufTileHelper &uBufTileHelper)
     {
         subBlockIdx_ = AscendC::GetSubBlockIdx();
         scaleValue = static_cast<ElementInput>(scaleValue_);
+        pScaleValue = pScaleValue_;
         uint32_t pExtraElemNum = Max(uBufTileHelper.qBaseTilePerSubCore, uBufTileHelper.kvBaseTilePerSubCore);
         for (uint32_t i = 0; i < UB_S_P_BUF_STAGES; i++) {
             lsUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
@@ -68,6 +107,22 @@ public:
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
         lmUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(uBufTileHelper.lmStartOffset);
         llUbTensor = resource.ubBuf.template GetBufferByByte<ElementInput>(uBufTileHelper.llStartOffset);
+
+        // QFA HIF8 DN_INDEX: gather the four byte lanes produced by ZERO/ONE/TWO/THREE Cast
+        // into the nZ layout consumed by MM2. maskStartOffset is free after Mask2Idx completes.
+        pGatherIndexUbTensor = resource.ubBuf.template GetBufferByByte<uint8_t>(uBufTileHelper.maskStartOffset);
+        Hif8VF::InitDnIndexCallVF(pGatherIndexUbTensor);
+#if BSA_HIF8_DEBUG_DUMP
+        // Temporary layout diagnostic: dump one AIV's complete 256-byte QFA index table.
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+            AscendC::printf("[BSA HIF8] QFA DN index table core=%u sub=%u groups=4 count=64\n",
+                            AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx());
+            for (uint32_t indexGroup = 0; indexGroup < 4; ++indexGroup) {
+                AscendC::printf("[BSA HIF8] QFA DN index group=%u\n", indexGroup);
+                AscendC::DumpTensor(pGatherIndexUbTensor[64 * indexGroup], 3501 + indexGroup, 64);
+            }
+        }
+#endif
     }
 
     __aicore__ inline ~BlockEpilogue() {}
@@ -77,8 +132,14 @@ public:
                                       uint32_t ubSBufId, uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
                                       Arch::CrossCoreFlag smToMm2Flag)
     {
-        uint32_t nCopyOffset = RoundUp(actualBlockShape.m(), 32) / 2;
-        uint32_t n = actualBlockShape.m() < nCopyOffset ? actualBlockShape.m() : nCopyOffset;
+        uint32_t nSplit = RoundUp(actualBlockShape.m(), 32) / 2;
+        // The HIF8 VF always materializes a fixed 64-Q-lane P slot per AIV,
+        // including zero-filled lanes on a Q tail.  Keep the two L1 regions
+        // 64 rows apart exactly as QFA HIF8 does; compacting them with the
+        // active split (for example 32/31 when rowNum=63) makes subcore 1
+        // overwrite the second half of subcore 0's P tile.
+        constexpr uint32_t nCopyOffset = 64;
+        uint32_t n = actualBlockShape.m() < nSplit ? actualBlockShape.m() : nSplit;
         n = subBlockIdx_ == 0 ? n : actualBlockShape.m() - n;
         if (n == 0) {
             WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
@@ -91,7 +152,9 @@ public:
         uint16_t mRound = RoundUp(m, C0_NUM_PER_FRACTAL);
         uint16_t nRound = RoundUp(n, ELE_NUM_PER_C0);
         // alter nd2nz dst stride (typically 64->65) to alleviate bank conflict
-        uint32_t blockStride = mRound / 2 + 1;
+        // HIF8 DN layout stores four FP32 rows in the four byte lanes of one register.
+        // Keep one 32-byte bank-conflict pad after every mRound/4 data blocks, as QFA does.
+        uint32_t blockStride = mRound / 4 + 1;
         constexpr int16_t vlSize = static_cast<int16_t>(AscendC::GetVecLen() / sizeof(ElementInput));
         uint32_t tailN = (n - 1) % vlSize + 1;
         __ubuf__ ElementOutput *pAddr = (__ubuf__ ElementOutput *)lpUbTensor[ubSBufId].GetPhyAddr();
@@ -103,8 +166,19 @@ public:
         __ubuf__ ElementInput *nowMaxStartAddr = (__ubuf__ float *)lmUbTensor.GetPhyAddr();
         __ubuf__ ElementInput *nowSumAddr = (__ubuf__ float *)llUbTensor.GetPhyAddr();
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
+        __ubuf__ uint8_t *pGatherIndexUbAddr = (__ubuf__ uint8_t *)pGatherIndexUbTensor.GetPhyAddr();
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
+#if BSA_HIF8_DEBUG_DUMP
+        // Restrict dumps to a Q tail tile; this isolates the q=191 failure
+        // without flooding every full-tile test with device output.
+        if (actualBlockShape.m() < 128) {
+            AscendC::printf("[BSA HIF8 DBG] S core=%u sub=%u qRows=%u kvRows=%u ubS=%u\n",
+                            AscendC::GetBlockIdx(), subBlockIdx_, actualBlockShape.m(), actualBlockShape.n(), ubSBufId);
+            AscendC::DumpTensor(lsUbTensor[ubSBufId], 3601,
+                                RoundUp(actualBlockShape.n(), C0_NUM_PER_FRACTAL) * 64);
+        }
+#endif
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
         uint32_t mAlignedTile = mRound / 4;
@@ -117,47 +191,60 @@ public:
             if (mAligned16TileNum == 0) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Zero>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
-                    64, blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 1) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::One>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
-                    64, blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 2) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Two>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
-                    64, blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 3) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Three>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
-                    64, blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, false, MAlignedTileNum::Four>(
                     sAddr, lastMaxAddr, lastMaxStartAddr, pAddr, lastSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
-                    64, blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             }
         } else {
             if (mAligned16TileNum == 0) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Zero>(
-                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64,
-                    blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 1) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::One>(
-                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64,
-                    blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 2) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Two>(
-                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64,
-                    blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else if (mAligned16TileNum == 3) {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Three>(
-                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64,
-                    blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             } else {
                 ComputeOnlineSoftmaxDN<ElementInput, ElementOutput, true, MAlignedTileNum::Four>(
-                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue, 64,
-                    blockStride, nRound, expMaxUbAddr, lastSumAddr);
+                    sAddr, nowMaxAddr, lastMaxAddr, pAddr, nowSumAddr, mRound, m, tailN, mFirstTile, scaleValue,
+                    pScaleValue, pGatherIndexUbAddr, 64, blockStride, expMaxUbAddr, lastSumAddr);
             }
         }
+
+#if BSA_HIF8_DEBUG_DUMP
+        // Dump the per-query online-softmax reduction state for a Q-tail tile.
+        // gm/gl hold the reduced max and sum before RescaleO computes
+        // LSE = max + ln(sum) - ln(pScale).  These dumps distinguish a
+        // reduction mismatch from the expected one-ULP Ln/Add rounding.
+        if (actualBlockShape.m() < 128) {
+            AscendC::printf("[BSA HIF8 DBG] softmax-reduce core=%u sub=%u qRows=%u\n",
+                            AscendC::GetBlockIdx(), subBlockIdx_, n);
+            AscendC::DumpTensor(gmUbTensor, 3605, n);
+            AscendC::DumpTensor(glUbTensor, 3606, n);
+        }
+#endif
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -171,13 +258,30 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         AscendC::DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = nRound / ELE_NUM_PER_C0; // 分两次搬运
-        dataCopyParams.blockLen = mRound / 2;
-        dataCopyParams.srcStride = 1;
-        dataCopyParams.dstStride = mRound / 2;
+        // The packed HIF8 register is stored as eight UB stripes.  Each
+        // stripe contains mRound / 4 DataBlocks followed by one padding
+        // DataBlock.  The two copies below gather the four even and four odd
+        // stripes into the two contiguous 32-Q-row portions in L1.
+        //
+        // For a full mRound=256 tile this is the QFA 4/64/66 setting.  Keep
+        // the stripe length dynamic so a KV tail does not copy past its P
+        // region and overwrite the neighbouring subcore/portion in L1.
+        uint32_t pStripeLen = mRound / 4;
+        dataCopyParams.blockCount = 4;
+        dataCopyParams.blockLen = pStripeLen;
+        dataCopyParams.srcStride = pStripeLen + 2;
+        dataCopyParams.dstStride = 0;
         DataCopy(l1PTensorTla.data()[subBlockIdx_ * mRound * nCopyOffset], lpUbTensor[ubSBufId], dataCopyParams);
-        DataCopy(l1PTensorTla.data()[mRound * 8 + subBlockIdx_ * mRound * nCopyOffset],
-                 lpUbTensor[ubSBufId][blockStride * 64], dataCopyParams);
+        DataCopy(l1PTensorTla.data()[mRound * 32 + subBlockIdx_ * mRound * nCopyOffset],
+                 lpUbTensor[ubSBufId][blockStride * 32], dataCopyParams);
+#if BSA_HIF8_DEBUG_DUMP
+        if (actualBlockShape.m() < 128) {
+            AscendC::printf("[BSA HIF8 DBG] P-UB core=%u sub=%u qRows=%u kvRows=%u ubS=%u\n",
+                            AscendC::GetBlockIdx(), subBlockIdx_, actualBlockShape.m(), actualBlockShape.n(), ubSBufId);
+            AscendC::DumpTensor(lpUbTensor[ubSBufId], 3602,
+                                RoundUp(actualBlockShape.n(), C0_NUM_PER_FRACTAL) * RoundUp(actualBlockShape.m(), 32));
+        }
+#endif
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
@@ -186,6 +290,7 @@ public:
 
 private:
     ElementInput scaleValue;
+    float pScaleValue;
     AscendC::LocalTensor<ElementInput> lsUbTensor[UB_S_P_BUF_STAGES];
     AscendC::LocalTensor<ElementOutput> lpUbTensor[UB_S_P_BUF_STAGES];
     AscendC::LocalTensor<float> gmUbTensor;
@@ -193,6 +298,7 @@ private:
     AscendC::LocalTensor<float> dmUbTensor[UB_DM_BUF_MAX_STAGES];
     AscendC::LocalTensor<ElementInput> lmUbTensor;
     AscendC::LocalTensor<ElementInput> llUbTensor;
+    AscendC::LocalTensor<uint8_t> pGatherIndexUbTensor;
     uint32_t subBlockIdx_;
 
     enum class MAlignedTileNum {
@@ -208,7 +314,8 @@ private:
                                                    __ubuf__ ElementS *LastMaxUbStart, __ubuf__ ElementP *expUb,
                                                    __ubuf__ ElementS *expSumUb, uint16_t mRound, uint16_t m,
                                                    uint32_t tailN, uint32_t mFirstTile, ElementInput dScale,
-                                                   uint16_t s2BaseSize, uint32_t blockStride, uint32_t repeatStride,
+                                                   ElementInput pScale, __ubuf__ uint8_t *pGatherIndexUb,
+                                                   uint16_t s2BaseSize, uint32_t blockStride,
                                                    __ubuf__ float *expMaxUb, __ubuf__ ElementS *lastExpSumUb)
     {
         using namespace AscendC::Reg;
@@ -227,6 +334,8 @@ private:
         RegTensor<float> max1Vreg;
         RegTensor<float> max2Vreg;
         RegTensor<float> max3Vreg;
+        RegTensor<float> pScaleVreg;
+        RegTensor<float> lnPScaleVreg;
 
         RegTensor<float> expMaxVreg;
         RegTensor<float> updateExpSumVreg;
@@ -241,24 +350,30 @@ private:
         RegTensor<ElementP> exp1Vreg16;
         RegTensor<ElementP> exp2Vreg16;
         RegTensor<ElementP> exp3Vreg16;
-        RegTensor<ElementP> deInterleave0Vreg;
-        RegTensor<ElementP> deInterleave1Vreg;
-        RegTensor<ElementP> deInterleave2Vreg;
-        RegTensor<ElementP> deInterleave3Vreg;
+        RegTensor<ElementP> merge01Vreg;
+        RegTensor<ElementP> merge23Vreg;
+        RegTensor<ElementP> packedPVreg;
+        RegTensor<uint8_t> pGatherIndexVreg;
 
-        constexpr static CastTrait castTraitZeroROUND = {
-            RegLayout::ZERO,
-            SatMode::SAT,
-            MaskMergeMode::ZEROING,
-            AscendC::RoundMode::CAST_ROUND,
-        };
+        constexpr static CastTrait castTraitZeroRound = {
+            RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitOneRound = {
+            RegLayout::ONE, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitTwoRound = {
+            RegLayout::TWO, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
+        constexpr static CastTrait castTraitThreeRound = {
+            RegLayout::THREE, SatMode::SAT, MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_ROUND};
 
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<float>(tailN);
-        uint32_t twoVecLenCombined = 128;
-        MaskReg pregFp16VL128 = UpdateMask<uint16_t>(twoVecLenCombined);
-        __ubuf__ ElementP *exp0Ub = expUb;
-        __ubuf__ ElementP *exp1Ub = expUb + (mRound * 4);
+        MaskReg pregFullB8 = CreateMask<uint8_t, MaskPattern::ALL>();
+        Duplicate(pScaleVreg, pScale);
+        Ln(lnPScaleVreg, pScaleVreg, pregTailN);
+        LoadAlign(pGatherIndexVreg, pGatherIndexUb);
+        // Each HIF8 packed vector contributes one sequential 32B DataBlock
+        // to the flattened destination stream.  Compute that stream address
+        // directly from the loop index so the VF path has no runtime branch.
+        constexpr uint32_t ELEMENTS_PER_DATABLOCK = 32;
 
         __ubuf__ float *srcUb0 = srcUb;
         __ubuf__ float *srcUb1 = srcUb0 + s2BaseSize;
@@ -299,6 +414,9 @@ private:
         }
 
         StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)newMaxUb, max0Vreg, pregFull);
+        // Keep the persisted online max as the real m. Only the temporary exp baseline uses m-ln(pScale),
+        // so both HIF8 P and the FP32 sum are scaled by the same per-tensor pScale.
+        Sub(max0Vreg, max0Vreg, lnPScaleVreg, pregTailN);
 
         Duplicate<float, AscendC::Reg::MaskMergeMode::ZEROING, float>(sum0Vreg, 0, pregFull);
         Duplicate<float, AscendC::Reg::MaskMergeMode::ZEROING, float>(sum1Vreg, 0, pregFull);
@@ -321,15 +439,20 @@ private:
             FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
             FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
 
-            Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
-            Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
-            DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg16, exp2Vreg16);
-            Cast<ElementP, float, castTraitZeroROUND>(exp1Vreg16, exp1Vreg32, pregFull);
-            Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
-            DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
-            StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY,
-                       AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg,
-                                                                    blockStride, 1, pregFp16VL128);
+            Cast<ElementP, float, castTraitZeroRound>(exp0Vreg16, exp0Vreg32, pregFull);
+            Cast<ElementP, float, castTraitOneRound>(exp1Vreg16, exp1Vreg32, pregFull);
+            Cast<ElementP, float, castTraitTwoRound>(exp2Vreg16, exp2Vreg32, pregFull);
+            Cast<ElementP, float, castTraitThreeRound>(exp3Vreg16, exp3Vreg32, pregFull);
+            Or((RegTensor<uint8_t> &)merge01Vreg, (RegTensor<uint8_t> &)exp0Vreg16,
+               (RegTensor<uint8_t> &)exp1Vreg16, pregFullB8);
+            Or((RegTensor<uint8_t> &)merge23Vreg, (RegTensor<uint8_t> &)exp2Vreg16,
+               (RegTensor<uint8_t> &)exp3Vreg16, pregFullB8);
+            Or((RegTensor<uint8_t> &)packedPVreg, (RegTensor<uint8_t> &)merge01Vreg,
+               (RegTensor<uint8_t> &)merge23Vreg, pregFullB8);
+            Gather(packedPVreg, packedPVreg, pGatherIndexVreg);
+            __ubuf__ ElementP *dstUb = expUb + static_cast<uint32_t>(i) * ELEMENTS_PER_DATABLOCK;
+            StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                dstUb, packedPVreg, blockStride, pregFullB8);
 
             if constexpr (mTileNum >= MAlignedTileNum::Zero) {
                 Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
@@ -337,9 +460,6 @@ private:
             if constexpr (mTileNum >= MAlignedTileNum::Two) {
                 Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
             }
-            StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY,
-                       AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg,
-                                                                    blockStride, 1, pregFp16VL128);
             if constexpr (mTileNum >= MAlignedTileNum::One) {
                 Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
             }
@@ -364,15 +484,20 @@ private:
                 FusedExpSub(exp2Vreg32, src2Vreg, max0Vreg, pregTailN);
                 FusedExpSub(exp3Vreg32, src3Vreg, max0Vreg, pregTailN);
 
-                Cast<ElementP, float, castTraitZeroROUND>(exp0Vreg16, exp0Vreg32, pregFull);
-                Cast<ElementP, float, castTraitZeroROUND>(exp2Vreg16, exp2Vreg32, pregFull);
-                DeInterleave(deInterleave0Vreg, deInterleave1Vreg, exp0Vreg16, exp2Vreg16);
-                Cast<ElementP, float, castTraitZeroROUND>(exp1Vreg16, exp1Vreg32, pregFull);
-                Cast<ElementP, float, castTraitZeroROUND>(exp3Vreg16, exp3Vreg32, pregFull);
-                DeInterleave(deInterleave2Vreg, deInterleave3Vreg, exp1Vreg16, exp3Vreg16);
-                StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY,
-                           AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                    ((__ubuf__ ElementP *&)exp0Ub), deInterleave0Vreg, blockStride, 1, pregFp16VL128);
+                Cast<ElementP, float, castTraitZeroRound>(exp0Vreg16, exp0Vreg32, pregFull);
+                Cast<ElementP, float, castTraitOneRound>(exp1Vreg16, exp1Vreg32, pregFull);
+                Cast<ElementP, float, castTraitTwoRound>(exp2Vreg16, exp2Vreg32, pregFull);
+                Cast<ElementP, float, castTraitThreeRound>(exp3Vreg16, exp3Vreg32, pregFull);
+                Or((RegTensor<uint8_t> &)merge01Vreg, (RegTensor<uint8_t> &)exp0Vreg16,
+                   (RegTensor<uint8_t> &)exp1Vreg16, pregFullB8);
+                Or((RegTensor<uint8_t> &)merge23Vreg, (RegTensor<uint8_t> &)exp2Vreg16,
+                   (RegTensor<uint8_t> &)exp3Vreg16, pregFullB8);
+                Or((RegTensor<uint8_t> &)packedPVreg, (RegTensor<uint8_t> &)merge01Vreg,
+                   (RegTensor<uint8_t> &)merge23Vreg, pregFullB8);
+                Gather(packedPVreg, packedPVreg, pGatherIndexVreg);
+                __ubuf__ ElementP *dstUb = expUb + static_cast<uint32_t>(i) * ELEMENTS_PER_DATABLOCK;
+                StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY>(
+                    dstUb, packedPVreg, blockStride, pregFullB8);
 
                 if constexpr (mTileNum > MAlignedTileNum::Zero) {
                     Add(sum0Vreg, exp0Vreg32, sum0Vreg, pregTailN);
@@ -380,9 +505,6 @@ private:
                 if constexpr (mTileNum > MAlignedTileNum::Two) {
                     Add(sum2Vreg, exp2Vreg32, sum2Vreg, pregTailN);
                 }
-                StoreAlign<ElementP, AscendC::Reg::DataCopyMode::DATA_BLOCK_COPY,
-                           AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
-                    ((__ubuf__ ElementP *&)exp1Ub), deInterleave2Vreg, blockStride, 1, pregFp16VL128);
                 if constexpr (mTileNum > MAlignedTileNum::One) {
                     Add(sum1Vreg, exp1Vreg32, sum1Vreg, pregTailN);
                 }
