@@ -19,6 +19,10 @@
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
 #include "../../../tla/tensor_bsa.hpp"
+
+#ifndef BSA_HIF8_DEBUG_DUMP
+#define BSA_HIF8_DEBUG_DUMP 0
+#endif
 #include "../../../tla/layout_bsa.hpp"
 
 namespace NpuArch::Epilogue::Block {
@@ -46,7 +50,8 @@ public:
 
     using CopyUbToGmO = typename TileCopy::CopyUbToGmO;
 
-    static constexpr uint32_t UB_OTMP_BUF_STAGES = 2;
+    static constexpr bool FULL_QUANT_HIF8 = AscendC::IsSameType<ElementKV, hifloat8_t>::value;
+    static constexpr uint32_t UB_OTMP_BUF_STAGES = FULL_QUANT_HIF8 ? 1 : 2;
     static constexpr uint32_t UB_DM_BUF_MAX_STAGES = 3;
     static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 32768;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
@@ -56,8 +61,10 @@ public:
     static constexpr float MAX_VALUE_RECIPROCAL_FP8 = 1.0f / 448.0f;
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementKV, fp8_e4m3fn_t>::value;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper,
+                                    float pScaleValue_ = 1.0f)
     {
+        pScaleValue = pScaleValue_;
         for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
             loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                 uBufTileHelper.loStartOffset +
@@ -118,6 +125,20 @@ public:
 
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+#if BSA_HIF8_DEBUG_DUMP
+        // Dump the raw MM2 FixPipe tile before RescaleO.  A Q-tail tile with
+        // sub-block 1 is the failing region observed by the golden test.
+        if constexpr (FULL_QUANT_HIF8) {
+            if (rowNumCurSubCore < 64 && AscendC::GetSubBlockIdx() == 1) {
+            AscendC::printf("[BSA HIF8 DBG] OTmp core=%u sub=%u rows=%u cols=%u buf=%u firstKV=%u lastKV=%u\n",
+                            AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
+                            colNumCurSubCore, ubOTmpBufId, static_cast<uint32_t>(isFirstKvSTile),
+                            static_cast<uint32_t>(isLastKvSTile));
+            AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 3603,
+                                RoundUp(rowNumCurSubCore, 16) * RoundUp(colNumCurSubCore, 16));
+            }
+        }
+#endif
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -173,6 +194,17 @@ public:
                 CopyUbToGmLse(gLseTensorTlaTile, ubLseTensorTla);
             }
             AscendC::PipeBarrier<PIPE_V>();
+#if BSA_HIF8_DEBUG_DUMP
+            if constexpr (FULL_QUANT_HIF8) {
+                if (rowNumCurSubCore < 64 && AscendC::GetSubBlockIdx() == 1) {
+                    AscendC::printf("[BSA HIF8 DBG] O-f32-before-cast core=%u sub=%u rows=%u cols=%u\n",
+                                    AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
+                                    colNumCurSubCore);
+                    AscendC::DumpTensor(goUbTensor32, 3607,
+                                        rowNumCurSubCore * colStrideCurSubCore);
+                }
+            }
+#endif
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(goUbTensor16, goUbTensor32, AscendC::RoundMode::CAST_RINT,
                               rowNumCurSubCore * colStrideCurSubCore);
@@ -185,6 +217,17 @@ public:
             auto ubOLayoutTla = tla::MakeLayout(tla::MakeShape(rowNumCurSubCore, colNumCurSubCore),
                                                 tla::MakeStride(colStrideCurSubCore, tla::Int<1>{}));
             auto ubOTensorTla = tla::MakeTensor(goUbTensor16, ubOLayoutTla, Arch::PositionUB{});
+#if BSA_HIF8_DEBUG_DUMP
+            if constexpr (FULL_QUANT_HIF8) {
+                if (rowNumCurSubCore < 64 && AscendC::GetSubBlockIdx() == 1) {
+                    AscendC::printf("[BSA HIF8 DBG] O-final core=%u sub=%u rows=%u cols=%u\n",
+                                    AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
+                                    colNumCurSubCore);
+                    AscendC::DumpTensor(goUbTensor32, 3604,
+                                        rowNumCurSubCore * colStrideCurSubCore);
+                }
+            }
+#endif
             copyUbToGmO(gOTensorTlaTile, ubOTensorTla);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
@@ -398,6 +441,8 @@ public:
         RegTensor<float> glVreg;
         RegTensor<float> logGlVreg;
         RegTensor<float> lseVreg;
+        RegTensor<float> pScaleVreg;
+        RegTensor<float> lnPScaleVreg;
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTail = UpdateMask<float>(row);
         static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, AscendC::LnAlgo::PRECISION_1ULP_FTZ_FALSE};
@@ -406,6 +451,11 @@ public:
         LoadAlign<float, LoadDist::DIST_NORM>(gmVreg, gmUb);
         Ln<float, &mode>(logGlVreg, glVreg, pregTail);
         Add(lseVreg, logGlVreg, gmVreg, pregTail);
+        if constexpr (FULL_QUANT_HIF8) {
+            Duplicate(pScaleVreg, pScaleValue);
+            Ln<float, &mode>(lnPScaleVreg, pScaleVreg, pregTail);
+            Sub(lseVreg, lseVreg, lnPScaleVreg, pregTail);
+        }
         StoreAlign<float, StoreDist::DIST_NORM_B32>(lseUb, lseVreg, pregTail);
     }
 
@@ -423,11 +473,18 @@ public:
         RegTensor<float> logGlRowwiseVreg1;
         RegTensor<float> lseRowwiseVreg0;
         RegTensor<float> lseRowwiseVreg1;
+        RegTensor<float> pScaleVreg;
+        RegTensor<float> lnPScaleVreg;
         UnalignReg rowwiseUreg0;
         UnalignReg rowwiseUreg1;
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, AscendC::LnAlgo::PRECISION_1ULP_FTZ_FALSE};
         static constexpr uint32_t postUpdateStride = 32 / sizeof(float);
+
+        if constexpr (FULL_QUANT_HIF8) {
+            Duplicate(pScaleVreg, pScaleValue);
+            Ln<float, &mode>(lnPScaleVreg, pScaleVreg, pregFull);
+        }
 
         for (uint16_t i = 0; i < row; i += 2) {
             LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(glRowwiseVreg0, glUb + i);
@@ -438,6 +495,10 @@ public:
             Ln<float, &mode>(logGlRowwiseVreg1, glRowwiseVreg1, pregFull);
             Add(lseRowwiseVreg0, logGlRowwiseVreg0, gmRowwiseVreg0, pregFull);
             Add(lseRowwiseVreg1, logGlRowwiseVreg1, gmRowwiseVreg1, pregFull);
+            if constexpr (FULL_QUANT_HIF8) {
+                Sub(lseRowwiseVreg0, lseRowwiseVreg0, lnPScaleVreg, pregFull);
+                Sub(lseRowwiseVreg1, lseRowwiseVreg1, lnPScaleVreg, pregFull);
+            }
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(lseUb, lseRowwiseVreg0, rowwiseUreg0, postUpdateStride);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(lseUb, lseRowwiseVreg1, rowwiseUreg1, postUpdateStride);
         }
@@ -486,6 +547,7 @@ public:
     }
 
 private:
+    float pScaleValue{1.0f};
     AscendC::LocalTensor<ElementOTmp> loUbTensor[UB_OTMP_BUF_STAGES];
     AscendC::LocalTensor<float> gmUbTensor32;
     AscendC::LocalTensor<float> dmUbTensor32[UB_DM_BUF_MAX_STAGES];
