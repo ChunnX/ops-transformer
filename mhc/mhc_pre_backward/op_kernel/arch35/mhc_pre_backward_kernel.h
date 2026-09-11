@@ -283,12 +283,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     gradHPostOffset_ = hPreMaxBufLen_ * sizeof(P);
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
+    pipe_ = initParams.tPipeIn;
     if ASCEND_IS_AIC {
-        pipe_ = initParams.tPipeIn;
         cubeCompute_.Init(pipe_);
     }
     if ASCEND_IS_AIV {
-        pipe_ = initParams.tPipeIn;
         pipe_->InitBuffer(vecInQueue0_, DOUBLE_BUFFER, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecOutQueue1_, DOUBLE_BUFFER, INOUT_QUEUE_SIZE);
         pipe_->InitBuffer(vecInQueue1_, DOUBLE_BUFFER, INOUT_QUEUE_SIZE);
