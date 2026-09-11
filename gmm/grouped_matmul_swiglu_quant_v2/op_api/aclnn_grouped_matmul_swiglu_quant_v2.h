@@ -33,7 +33,8 @@ extern "C" {
  * 表示perToken量化参数，数据类型支持FLOAT8_E8M0、FLOAT32数据类型，数据格式支持ND。
  * @param [in] smoothScale:
  * 表示平滑缩放因子，用于在量化前对SwiGLU计算结果进行缩放，数据类型支持FLOAT32数据类型，数据格式支持ND。
- * @param [in] groupList: 必选参数，表示输入和输出在分组轴方向的matmul大小分布，具体含义由groupListType确定，数据类型支持INT64。
+ * @param [in] groupList:
+ * 必选参数，表示输入和输出在分组轴方向的matmul大小分布，具体含义由groupListType确定，数据类型支持INT64。
  * @param [in] dequantMode: 表示反量化计算类型，用于确定激活矩阵与权重矩阵的反量化方式。
  * @param [in] dequantDtype: 表示中间GroupedMatmul的结果数据类型。
  * @param [in] quantMode: 表示量化计算类型，用于确定swiglu结果的量化模式。
