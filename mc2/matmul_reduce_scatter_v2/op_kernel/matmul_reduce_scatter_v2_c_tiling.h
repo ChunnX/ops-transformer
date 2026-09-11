@@ -31,9 +31,7 @@ constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
 struct MatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
-#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
@@ -44,9 +42,7 @@ struct MatmulReduceScatterV2TilingData {
 struct QuantBatchMatmulV3ReduceScatterTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
-#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;

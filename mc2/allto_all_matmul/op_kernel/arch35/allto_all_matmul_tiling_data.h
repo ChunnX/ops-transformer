@@ -45,9 +45,7 @@ struct AlltoAllMatmulTilingInfo {
 struct AlltoAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
-#endif
     AlltoAllMatmulTilingInfo alltoAllMatmulTilingInfo;
     Mc2MatMulV3TilingData mc2MmV3TileTilingData; // 通算切分头块matmul tiling数据
     Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
@@ -55,11 +53,9 @@ struct AlltoAllMatmulTilingData {
 
 // MX量化tiling结构体
 struct AlltoAllQuantMatmulTilingData {
-    Mc2InitTiling mc2InitTiling;                   // 初始化通信任务配置
-    Mc2CcTiling mc2CcTiling;                       // 具体每个通信任务的参数配置
-#if MC2_DFX_ENABLE
-    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
-#endif
+    Mc2InitTiling mc2InitTiling;                            // 初始化通信任务配置
+    Mc2CcTiling mc2CcTiling;                                // 具体每个通信任务的参数配置
+    Utils::DfxDumpInfo dumpInfo;                            // DFX dump 元数据(workspace/peermem 布局)
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo; // 传递给kernel的tiling info
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据

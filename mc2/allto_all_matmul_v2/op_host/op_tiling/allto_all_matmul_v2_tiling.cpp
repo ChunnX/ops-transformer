@@ -67,10 +67,10 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
         return;
     }
     Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AlltoAllMatmulV2",
-                                            9U, // tilingGmArgIdx
+                                            9U,  // tilingGmArgIdx
                                             8U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
-                                     0U, // contextArgIdx
+                                     0U,  // contextArgIdx
                                      9U); // tilingGmArgIdx
 }
 

@@ -55,9 +55,9 @@ private:
     static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 1U;  // 本地 matmul 前
     static constexpr uint8_t POS_COMP_GATHER_BEFORE = 2U; // 远端 gather matmul 前
     static constexpr uint8_t POS_FINALIZE_BEFORE = 3U;    // Finalize 前
-    __aicore__ inline void AllGatherCommit();         /* allgather通信 */
-    __aicore__ inline void QuantMatmulCompute();      /* 计算入口 */
-    __aicore__ inline void QuantMatmulLocalCompute(); /* 本地块计算 */
+    __aicore__ inline void AllGatherCommit();             /* allgather通信 */
+    __aicore__ inline void QuantMatmulCompute();          /* 计算入口 */
+    __aicore__ inline void QuantMatmulLocalCompute();     /* 本地块计算 */
 
     __aicore__ inline void QuantMatmulGatherCompute(); /* 远端计算 */
     __aicore__ inline void PostProcess();              /* 后处理 */

@@ -276,7 +276,7 @@ __aicore__ inline void QuantBMMReduceScatter<QUANT_RS_TEMPLATE_FUNC_PARAMS>::Mat
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
         handles_[i + shift] = hccl_.template ReduceScatter<true>(cWork, recvBuffer, recvCount, dataType_,
                                                                  HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
-        opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_POSITION,POS_COMM_BEFORE,0,0,recvCount);
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_POSITION, POS_COMM_BEFORE, 0, 0, recvCount);
         cWork += cOffset;
         recvBuffer += cOffset;
     }

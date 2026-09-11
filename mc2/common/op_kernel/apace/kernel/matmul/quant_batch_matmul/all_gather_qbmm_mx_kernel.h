@@ -30,7 +30,7 @@
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
-#include "apace/utils/op_state_dump.h"
+#include "../../../utils/op_state_dump.h"
 
 namespace Apace {
 
@@ -276,7 +276,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(co
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params,
-                                                                      Mc2Kernel::OpStateDump &opStateDump)
+                                                                       Mc2Kernel::OpStateDump &opStateDump)
 {
     Init(params);
 

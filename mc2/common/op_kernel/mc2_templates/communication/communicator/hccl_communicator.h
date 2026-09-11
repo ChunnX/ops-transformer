@@ -135,7 +135,8 @@ __aicore__ inline void HcclCommunicator<AICSync, ServerType, ContextType, Tiling
         for (uint32_t i = 0; i < taskCnt; i++) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
-            opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
+            opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0,
+                                static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
         }
     }
 }
@@ -213,7 +214,8 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
         for (uint32_t i = 0; i < context_.repeat; ++i) {
             hccl_.Commit(hTasks_[startIndex_ + i]);
             taskSuccess_[startIndex_ + i] = false;
-            opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
+            opStateDump_.DoDump(DUMP_FIELD_COMMIT | DUMP_FIELD_PHASE, 0,
+                                static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
         }
     }
 }

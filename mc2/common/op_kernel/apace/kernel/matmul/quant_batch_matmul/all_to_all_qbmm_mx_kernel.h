@@ -28,7 +28,7 @@
 #define WINDOW_LEN 1L // 调度器窗口设置为1，非侵入式修改
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 #undef WINDOW_LEN
-#include "apace/utils/op_state_dump.h"
+#include "../../../utils/op_state_dump.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -307,8 +307,7 @@ __aicore__ inline int32_t AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
-    const Params &params, BlockScheduler &bs, uint64_t restBatch, bool isTailRound,
-    Mc2Kernel::OpStateDump &opStateDump)
+    const Params &params, BlockScheduler &bs, uint64_t restBatch, bool isTailRound, Mc2Kernel::OpStateDump &opStateDump)
 {
     auto rankId = params.localParams.rankId;
     auto rankSize = params.localParams.rankSize;

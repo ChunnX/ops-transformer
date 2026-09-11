@@ -67,10 +67,10 @@ private:
     static constexpr uint8_t POS_SCALE_COMM_BEFORE = 1U;       // scale 通信前
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 2U; // C核 matmul 前
     static constexpr uint8_t POS_COMP_VEC_PERMUTE_BEFORE = 3U; // V核转置前
-    CommunicationType *commStage_;        // 通信节点
-    TransposeType *transStage_;           // 转置计算的计算节点
-    ScaleTransposeType *scaleTransStage_; // 缩放转置的计算节点
-    ComputationType *computeStage_;       // 矩阵乘的计算节点
+    CommunicationType *commStage_;                             // 通信节点
+    TransposeType *transStage_;                                // 转置计算的计算节点
+    ScaleTransposeType *scaleTransStage_;                      // 缩放转置的计算节点
+    ComputationType *computeStage_;                            // 矩阵乘的计算节点
     // 状态打点，由 arch35/kernel_base 通过 SetOpStateDump 注入；未注入时 DoDump 为空操作
     Mc2Kernel::OpStateDump opStateDump_{};
 };
@@ -102,7 +102,7 @@ __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, Transpos
                                                      ComputationType, ContextType>::Process(uint32_t taskCnt)
 {
     opStateDump_.DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_COMM_BEFORE,
-                            static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
+                        static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     commStage_->PrepareAll(taskCnt);
     for (uint32_t index = 0; index < taskCnt; index++) {
         if ASCEND_IS_AIV {
@@ -128,7 +128,8 @@ template <typename CommunicationType, typename TransposeType, typename ScaleTran
 __aicore__ inline void AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,
                                                      ComputationType, ContextType>::ProcessScale()
 {
-    opStateDump_.DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_SCALE_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
+    opStateDump_.DoDump(DUMP_FIELD_POSITION | DUMP_FIELD_PHASE, POS_SCALE_COMM_BEFORE,
+                        static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     if ASCEND_IS_AIV {
         commStage_->PrepareAll(1);
         commStage_->Process(0);
