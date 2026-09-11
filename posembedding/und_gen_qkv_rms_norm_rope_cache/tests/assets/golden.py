@@ -878,7 +878,7 @@ class UndGenQkvRmsNormRopeCacheXpuRef:
         num_heads_k=1,
         num_heads_v=1,
         norm_eps=1e-6,
-        mrope_section=(),
+        mrope_section=None,
         **kwargs,
     ):
         return golden_und_gen_qkv_rms_norm_rope_cache(
@@ -894,12 +894,12 @@ class UndGenQkvRmsNormRopeCacheXpuRef:
             gen_weights_q=gen_weights_q,
             gen_weights_k=gen_weights_k,
             cat_indices=cat_indices,
-            num_heads_q=num_heads_q,
-            num_heads_k=num_heads_k,
-            num_heads_v=num_heads_v,
-            norm_eps=norm_eps,
-            mrope_section=mrope_section,
-            inplace=True,
+            num_heads_q=int(num_heads_q),
+            num_heads_k=int(num_heads_k),
+            num_heads_v=int(num_heads_v),
+            norm_eps=float(norm_eps),
+            mrope_section=(list(mrope_section) if mrope_section is not None else None),
+            inplace=False,
         )
 
 
