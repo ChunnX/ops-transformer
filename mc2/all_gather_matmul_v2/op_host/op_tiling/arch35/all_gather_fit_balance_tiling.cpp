@@ -17,6 +17,7 @@
 
 constexpr static double MM_EXPANSION_TIME = 40;
 constexpr static double COMM_EXPANSION_TIME = 40;
+constexpr static uint64_t SMALL_SHAPE_NO_CUT_FACTOR = 3;
 
 void AllGatherMMFitBalanceTiling::EstimateMMCommTime()
 {
@@ -70,6 +71,19 @@ void AllGatherMMFitBalanceTiling::SetShortTileLen()
     if (isCalcCommBalance && (mmCost > MM_EXPANSION_TIME) && (commCost > COMM_EXPANSION_TIME)) {
         tilingM_.SetAlignLength(cutLen);
         tilingM_.SetMinLenByMin(cutLen);
+    }
+
+    // 每个tile的计算/通信时间必须大于每tile固定开销阈值，否则切分带来的固定开销
+    // (Wait/TPipe重建/核间同步)会吃掉通信-计算重叠收益。fp4等快算场景据此避免被过度切碎。
+    uint64_t minTileLenByCalc = matmulPerf_.InverseMatmulTime(MM_EXPANSION_TIME, rankTileNum_);
+    uint64_t minTileLenByComm = commPerf_.InverseCommTime(COMM_EXPANSION_TIME);
+    tilingM_.SetMinLenByMax(std::max(minTileLenByCalc, minTileLenByComm));
+
+    // 小shape直接不切：通信/计算总量小，tile化收益低于固定开销。放在最后保证优先级最高。
+    uint64_t smallShapeBar =
+        SMALL_SHAPE_NO_CUT_FACTOR * coreNum_ * matmulPerf_.GetBaseM() * matmulPerf_.GetBaseN();
+    if (mmInfo_.mValue * mmInfo_.nValue <= smallShapeBar) {
+        tilingM_.SetMinLenByMax(mmInfo_.mValue);
     }
 
     tilingM_.cutRes.shortTileLen = tilingM_.GetMinLen();
