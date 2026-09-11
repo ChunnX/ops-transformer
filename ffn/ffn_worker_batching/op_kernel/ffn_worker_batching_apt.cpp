@@ -54,8 +54,7 @@ namespace {
 // actual_token_num 由 0 号向量核写出;经 UB 整段搬运,不对 GM 做标量写。
 __aicore__ inline void WriteActualTokenNum(GM_ADDR actualTokenNum, int64_t value, TPipe *pipe)
 {
-    const int64_t subNum = GetTaskRation() > 0 ? GetTaskRation() : 1;
-    if (GetBlockIdx() * subNum + GetSubBlockIdx() != 0) {
+    if (GetFlatAivIdx() != 0) {
         return;
     }
     GlobalTensor<int64_t> outGm;
@@ -106,8 +105,9 @@ __aicore__ inline void RunEmitAndGather(GM_ADDR sortedIdsWs, GM_ADDR gatherIdxWs
 // phase0:把 expert_id 归一到同一个扁平缓冲。NORM 直接取 expert_ids_buf 整段;
 // RECV 按 syncFlag 等待全部/部分 session，并以统一快照驱动本次接收。
 template <bool isRecv>
-__aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, GM_ADDR readyWs, ScheduleContextInfo &ctx,
-                                  const FfnWorkerBatchingTilingData *tilingData, TPipe &pipe)
+__aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, GM_ADDR readyWs,
+                                  ScheduleContextInfo &ctx, const FfnWorkerBatchingTilingData *tilingData,
+                                  int64_t activeElements, TPipe &pipe)
 {
     // ---------------- phase0:expert_id 归一 ----------------
     if constexpr (isRecv) {
@@ -130,12 +130,14 @@ __aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, G
             LoadSelectedMicroBatch(readyWs, ctx, pipe);
         }
         FfnWbPrepareArch35 prep;
-        prep.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows, readyWs);
+        prep.Init(flatIdsWs, &ctx, &pipe, activeElements, tilingData->preparePerLoopRows,
+                  tilingData->preparePerLoopElements, ctx.A, readyWs);
         prep.ProcessRecv(tokenInfoBuf);
         pipe.Reset();
     } else {
         FfnWbPrepareArch35 prep;
-        prep.Init(flatIdsWs, &ctx, &pipe, tilingData->flatElements, tilingData->preparePerLoopRows);
+        prep.Init(flatIdsWs, &ctx, &pipe, activeElements, tilingData->preparePerLoopRows,
+                  tilingData->preparePerLoopElements, ctx.outNum);
         prep.ProcessNorm(reinterpret_cast<GM_ADDR>(ctx.bufferPtr.expertIdsBuf));
         pipe.Reset();
     }
@@ -146,14 +148,15 @@ __aicore__ inline void RunPrepare(GM_ADDR schedule_context, GM_ADDR flatIdsWs, G
 // 返回排序后剔除被 mask 的有效长度,即 actual_token_num。
 __aicore__ inline int64_t RunSortPipeline(GM_ADDR flatIdsWs, GM_ADDR pairAWs, GM_ADDR pairBWs, GM_ADDR segCntWs,
                                           GM_ADDR sortedIdsWs, GM_ADDR gatherIdxWs, ScheduleContextInfo &ctx,
-                                          const FfnWorkerBatchingTilingData *tilingData, TPipe &pipe)
+                                          const FfnWorkerBatchingTilingData *tilingData, int64_t activeElements,
+                                          TPipe &pipe)
 {
     // ---------------- phase1:段内排序 ----------------
     {
         A5SortSegParam sp;
         sp.segNum = tilingData->sortSegNum;
         sp.perSegElements = tilingData->sortPerSegElements;
-        sp.totalElements = tilingData->flatElements;
+        sp.totalElements = activeElements;
         sp.expertStart = tilingData->expertStart;
         sp.sortLenPerSeg = tilingData->sortLenPerSeg;
 
@@ -173,6 +176,7 @@ __aicore__ inline int64_t RunSortPipeline(GM_ADDR flatIdsWs, GM_ADDR pairAWs, GM
         mp.sortLenPerSeg = tilingData->sortLenPerSeg;
         mp.oneLoopMaxElements = tilingData->mergeOneLoopElements;
         mp.rounds = tilingData->mergeRounds;
+        mp.countCacheSegments = tilingData->mergeCountCacheSegments;
 
         FfnWbA5MrgSort merger;
         merger.Init(pairAWs, pairBWs, segCntWs, mp, &pipe);
@@ -210,6 +214,10 @@ __aicore__ inline void FfnWorkerBatchingA5(GM_ADDR schedule_context, GM_ADDR y, 
     TPipe pipe;
     ScheduleContextInfo ctx;
     ScheduleContextParse<isRecv>(schedule_context, tilingData, ctx, &pipe);
+    // max_out_shape 只决定容量；RECV 按实际 A，NORM 按 outNum 处理有效行。
+    // 行跨度取实际 BS*K（RECV 含 padding），不能用静态 flat 除以实际 A。
+    const int64_t rowElements = static_cast<int64_t>(ctx.BS) * ctx.K + (isRecv ? ctx.BsKPaddingCount : 0);
+    const int64_t activeElements = rowElements * (isRecv ? ctx.A : ctx.outNum);
     pipe.Reset();
 
     const int64_t wordSize = static_cast<int64_t>(sizeof(int32_t));
@@ -223,9 +231,9 @@ __aicore__ inline void FfnWorkerBatchingA5(GM_ADDR schedule_context, GM_ADDR y, 
     // host 下发偏移的单位是 int32 word，此处转换成 GM 字节地址。
     // NORM/同步路径不读写快照；仅异步 RECV 为该段分配有效载荷空间。
     GM_ADDR readyWs = userWS + tilingData->wsReady * wordSize;
-    RunPrepare<isRecv>(schedule_context, flatIdsWs, readyWs, ctx, tilingData, pipe);
-    const int64_t totalValid =
-        RunSortPipeline(flatIdsWs, pairAWs, pairBWs, segCntWs, sortedIdsWs, gatherIdxWs, ctx, tilingData, pipe);
+    RunPrepare<isRecv>(schedule_context, flatIdsWs, readyWs, ctx, tilingData, activeElements, pipe);
+    const int64_t totalValid = RunSortPipeline(flatIdsWs, pairAWs, pairBWs, segCntWs, sortedIdsWs, gatherIdxWs, ctx,
+                                               tilingData, activeElements, pipe);
     RunEmitAndGather<isRecv>(sortedIdsWs, gatherIdxWs, group_list, y, session_ids, micro_batch_ids, token_ids,
                              expert_offsets, dynamic_scale, actual_token_num, totalValid, ctx, tilingData, pipe);
 }

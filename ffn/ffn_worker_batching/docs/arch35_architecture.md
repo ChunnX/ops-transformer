@@ -84,7 +84,7 @@ TilingKey 只有两个，由属性 `need_schedule` 决定；`token_dtype` 与 `s
 
 ## 3. 外部契约：schedule_context 与数据布局
 
-`schedule_context` 是唯一输入张量（INT8 一维，1024 字节），权威定义在 `common/include/op_kernel/attention_ffn_schedule.h`（`aicpu::ScheduleContext`，带 `static_assert(sizeof==1024)`）。其中存放的是**设备地址（二级指针）**，kernel 需二次解引用。测试模式下（偏移 640 处的 magic == 0x54455354），各 buffer 字段存的是相对 schedule_context 起始的偏移量，用 `scBase + offset` 还原真实地址（见 `ffn_wb_a5_context.h` 的 `TEST_MAGIC` 处理）。
+`schedule_context` 是唯一输入张量（INT8 一维，1024 字节），权威定义在 `common/include/op_kernel/attention_ffn_schedule.h`（`aicpu::ScheduleContext`，带 `static_assert(sizeof==1024)`）。其中存放的是**设备地址（二级指针）**，kernel 需二次解引用。所有运行路径均使用真实设备地址，kernel 不识别测试魔数或相对偏移。跨进程重放需保存二级缓冲内容，并在新进程分配设备内存、重定位头部指针；仅保存 context 张量不足以重放。
 
 arch35 的原则：**所有字段偏移用 `__builtin_offsetof(aicpu::ScheduleContext, field)` 从权威结构体推出，不手写魔法数**（A2 侧 `valLocal[528]` 式手写偏移是待淘汰写法）。
 
@@ -132,7 +132,7 @@ flowchart TD
 
     subgraph phase0 [phase0 prepare]
         P0{路径?}
-        P0 -- NORM --> N[ProcessNorm:<br/>expert_ids_buf 整段直搬 flatIds]
+        P0 -- NORM --> N[ProcessNorm:<br/>expert_ids_buf 有效前缀搬入 flatIds，尾部填 mask]
         P0 -- RECV --> S0[SyncAll: 入口屏障<br/>所有核先读完入口上下文]
         S0 --> W[0号核 RecvWait:<br/>扫描 flag / 存快照 / 推进 polling_index]
         W --> S1[SyncAll: 发布屏障]
@@ -182,13 +182,13 @@ flowchart TD
 | 相位 | 并行主体 | 切分方式 |
 | --- | --- | --- |
 | RecvWait | 仅 0 号向量核 | 其余核在发布屏障等待 |
-| prepare（读入 + 清理） | 按 block（`GetBlockIdx`） | session 行均分 `perCore = ceil(A/coreNum)`，各区互不重叠，无需核间同步 |
-| SegSort / MrgSort / Extract | 按**向量核编号** `vecId = blockIdx*subNum + subBlockIdx` | grid-stride 认领段/组/块 |
+| prepare（读入 + 清理） | 按 block（`GetBlockIdx`） | 有效 session 行均分 `perCore = ceil(activeRows/flatAivNum)`，各区互不重叠，无需核间同步 |
+| SegSort / MrgSort / Extract | 按**向量核编号** `vecId = GetFlatAivIdx()` | grid-stride 认领段/组/块 |
 | GroupList | 仅 0 号向量核 | 游程编码是串行语义（相邻比较跨块），单核流式 |
 | actual_token_num | 仅 0 号向量核 | — |
 | Gather | 按 block | 有效行均分 `perCoreRows = ceil(totalValid/coreNum)`，超出 `needCoreNum` 的核直接返回 |
 
-**为什么用 vecId 而不是 GetBlockIdx**：A5 上一个 block 可挂多个 AIV 子核（`GetTaskRation()`），同 block 的子核 `GetBlockIdx()` 相同。只用 blockIdx 认领会同一段算两遍、另一段没人算（`ffn_wb_a5_sort.h` 各类的 `Init` 均按 `blockIdx*subNum + subBlockIdx` 编号）。
+**DAV_3510 核编号**：`GetBlockIdx()` 已包含子核编号。`GetFlatAivIdx()` 直接返回它；`GetFlatAivNum()` 返回 `GetBlockNum()*GetTaskRation()`。不能再次对已展平的编号乘比率、加子核号。当前验证包为纯 AIV `taskRation=0:1`，未验证 CV 1:2 启动。
 
 ---
 
@@ -231,7 +231,6 @@ proposal 对（pair）是排序中间表示：`[fp32 key, uint32 idx]` 交错排
 | `SORT_FILL_VALUE` | -FLT_MAX | `__FLT_MAX__` 取反；降序补尾的最小填充 |
 | `ONE_REPEAT_SORT_NUM` | 32 | A5 Sort32 指令单次排序元素数（SDK `singleSortElementCountArch3510`，内部实现头不能直接 include，按同值定义） |
 | `MRG_LIST_NUM` | 4 | MrgSortSrcList 4 入参 + validBit 4 有效位 |
-| `TEST_MAGIC` / `TEST_MAGIC_OFFSET` | 0x54455354 / 640 | 640 = ffn 区末尾（128×3 + 256），落在 reserve6 内 |
 | `BLOCK_BYTES` | 32 | `AscendC::ONE_BLK_SIZE` 别名 |
 
 **工具函数**：
@@ -245,7 +244,7 @@ proposal 对（pair）是排序中间表示：`[fp32 key, uint32 idx]` 交错排
 1. 整段 1024B `DataCopy` 进 UB，`MTE2_S` 等待后标量读取；
 2. 从 common 区取 A/M/BS/K/HS；从 tiling 取 H/Y/tokenDtype/expertNum/coreNum/ubSize；
 3. 派生 `ctx.asyncRecv = isRecv && syncFlag==1`（属性值与路径共同决定，NORM 不进轮询）；
-4. 判定 TEST_MAGIC：是则 buffer 字段按"相对偏移"加 scBase 还原（测试协议），否则为绝对设备地址；
+4. buffer 字段直接解释为绝对设备地址；调用方保证二级缓冲存活至本次计算完成；
 5. `isRecv=true`：取 `tokenInfoBuf`、`polling_index`（断言 < M），并算 `BsKPaddingCount = align32(BS*K) - BS*K`；`isRecv=false`：取 `sessionIdsBuf/microBatchIdsBuf/expertIdsBuf/outNum`。
 
 产出的 `ScheduleContextInfo` 是后续所有相位共享的运行时上下文（含 `validGatherIdxLength`，由 phase2 末尾回填）。
@@ -297,12 +296,12 @@ loop:
 
 - `rowSpan_ = totalLen / A`：每个 session 行在 flatIds 中的跨度。RECV 的 totalLen = A×bskAlign，故 rowSpan = bskAlign（**含补位**）；NORM 的 totalLen = Y，故 rowSpan = BS×K（无补位）。
 - `rowsPerLoop_`：异步固定 1（就绪行可以不连续，1 是**选择粒度**，不是核数/容量）；同步/NORM 用 host 下发的 `preparePerLoopRows`（UB 反推）。
-- 核间切分按 `GetBlockIdx()`：`perCore = ceil(A/coreNum)`，各核写互不重叠的 flatIds 区间、握手的行也按行分离，**无需跨核同步**。
-- UB：`que_`（一轮 `rowsPerLoop*rowSpan` 个 int32）+ `clrBuf_`（每行一个 32B 块的 flag 清零区）；异步额外分配一个 32B `readyBuf_`，用于逐行读取快照 flag。
+- 核间切分按 `GetFlatAivIdx()`：`perCore = ceil(activeRows/GetFlatAivNum())`，各核写互不重叠的 flatIds 区间、握手的行也按行分离，**无需跨核同步**。
+- UB：`que_`（最多 `preparePerLoopElements` 个 int32；大行按块处理）+ `clrBuf_`（每行一个 32B 块的 flag 清零区）；异步额外分配一个 32B `readyBuf_`，用于逐行读取快照 flag。
 
-**ProcessNorm(expertIdsBuf)**（NORM）：`expert_ids_buf` 本就扁平，整段 `GM→UB→GM` 直搬（循环 `rowsPerLoop_*rowSpan` 一轮）。数据量 Y 个 int32，各核分段搬。
+**ProcessNorm(expertIdsBuf)**（NORM）：prepare 和 sort 均只处理前 `out_num*BS*K` 个 ID。未使用的静态 workspace 尾部无需清零，所有空排序段仍显式写入零计数，避免 replay 读到旧计数；`out_num=0` 不读 ID，最终输出空 group_list 和零 token 数。
 
-**ProcessRecv(tokenInfoBuf)**，两种有效组合：
+**ProcessRecv(tokenInfoBuf)**：一行超过 `preparePerLoopElements` 时走 `ProcessRecvLargeRow`，逐块搬入/清理 ID，最后一块补齐 padding，全部 ID 完成后才清 flag；未选中行仅分块填 workspace。小行保留批量 DMA。两种有效组合：
 
 | 组合 | 读原始 ids | 写 flatIds | 清原始 ids/flag |
 | --- | --- | --- | --- |
@@ -358,7 +357,7 @@ ids 一旦复制进 flatIds（workspace），消费者就拥有了本次调用�
 **切分参数**（`A5SortSegParam`，全部 host 下发）：`segNum / perSegElements / totalElements / expertStart / sortLenPerSeg`。
 
 **Init**：
-- `vecId_ = blockIdx*subNum + subBlockIdx`（真实向量核编号），grid-stride 认领段；
+- `vecId_ = GetFlatAivIdx()`（真实向量核编号），grid-stride 认领段；
 - UB 四块：`inQue_`（输入段：`alignSeg*2` 个 int32，前半放 id、后半放下标，按 `ONE_REPEAT_COMPARE_NUM=64` 粒度对齐——CompareScalar 按该粒度处理，多出的部分可能被读写，缓冲必须留足）、`concatBuf_/tmpBuf_/sortedBuf_`（Concat/Sort 要求三块互不重叠）、`maskBuf_`（比较掩码）。
 
 **`SortOneSegBody(inLocal, seg, begin, len)` 逐步注解**：
@@ -402,7 +401,7 @@ ids 一旦复制进 flatIds（workspace），消费者就拥有了本次调用�
 每轮结束 srcIdx 翻转 (读写异区), 轮间由调用方 SyncAll
 ```
 
-各核 grid-stride 认领组。`TotalValid()` = 各段有效数之和（从 cntGm_ 整段读回 UB 后标量累加）——**归并不改变元素个数，只改变顺序**，所以 totalValid 由 segCnt 直接求和得出。
+各核 grid-stride 认领组。`TotalValid()` = 各段有效数之和（从 cntGm_ 分块缓存到 UB 后标量累加）——**归并不改变元素个数，只改变顺序**，所以 totalValid 由 segCnt 直接求和得出。
 
 **`MergeStream` 流式归并主循环**（一组之内）：
 
@@ -417,7 +416,7 @@ while (还有剩余元素):
   DataCopyPad 把 produced 个对写入【另一块】工作区, outOffset 前进
 ```
 
-**UB 预算陷阱**（host 侧对应处理）：输入 4 路 + 输出同宽，若不先扣掉同 TPipe 上其它缓冲（segCnt 读回区 + 各缓冲对齐余量），两块相加恰好等于可用 UB，分配越界后输出压到输入上——表现为归并结果头部被覆盖。host 的 `mergeOther = segNum*32 + 6*32` 就是为这个扣的。
+**UB 预算陷阱**（host 侧对应处理）：输入 4 路 + 输出同宽，若不先扣掉同 TPipe 上其它缓冲（segCnt 读回区 + 各缓冲对齐余量），两块相加恰好等于可用 UB，分配越界后输出压到输入上——表现为归并结果头部被覆盖。host 的 `mergeOther = min(segNum,128)*32 + 96` 就是为这个扣的。
 
 #### 6.3.3 FfnWbA5Extract：拆包收尾
 
@@ -487,7 +486,7 @@ corr = hi - lo                  // ∈ {-1, 0, 1}
 quot += corr; rem -= corr*n;    // 商与余数一起拉回正确值
 ```
 
-gatherIdx < Y ≤ 2^22，fp32 精确表示 2^24 内整数，全程无精度损失。RECV 的 `bskProduct = BS*K + BsKPaddingCount`（**含补位**），与 flatIds 行跨度一致，保证解码出的 (a, bs, k) 与扁平下标一一对应；补位元素已被排序剔除，不会出现在 gatherIdx 里。
+仅当 `A*bskProduct <= 2^24` 时使用上述 FP32 向量路径；容量更大时，在任何位置 Cast 之前用 int64 标量除法分解原始 int32 位置，避免奇数索引丢位。`expertIdxLocal` 是原始位置 payload，并非受 expert_num 上限限制的专家 ID；有效 token 数小也不代表位置小。RECV 的 `bskProduct = BS*K + BsKPaddingCount`（**含补位**），判断阈值和分解都使用同一跨度，不能仅用未补位的 Y。源地址步长的首个操作数先提升为 int64，防止 uint32 连乘后才赋值导致的 4 GiB 回绕。
 
 **`EmitTokens`：逐 token 发射。**
 
@@ -587,6 +586,8 @@ struct FfnWorkerBatchingArch35TilingData {
     int64_t wsGatherIdx;  // Y 个 int32
     int64_t syncFlag;     // 0: wait all; 1: consume ready(仅 RECV 解释; 不增加 tiling key)
     int64_t wsReady;      // (A+1)*8 word 快照段, 仅异步分配; 头块 selectedMb + A 个 flag 块
+    int64_t preparePerLoopElements; // prepare ID 缓冲容量；超长行按此值分块
+    int64_t mergeCountCacheSegments; // merge 计数缓存段数，最多 128 段
 };
 ```
 
@@ -630,6 +631,8 @@ RECV 每轮 `rows` 个 session 行在 UB 同时驻留：本轮 id 区 `rows*bskA
 ```text
 prepBytesPerRow = bskAlign*4 + 32
 prepRows = (ub - [async ? 32 : 0]) / prepBytesPerRow   // 再 clamp 到 [1, A]
+idCapacity = floor32(ub - [async ? 32 : 0] - prepRows*32) / 4
+preparePerLoopElements = min(prepRows*bskAlign, idCapacity) // 大行分块
 ```
 
 #### SplitSortAndMerge（phase1~3，共用同一份 UB 预算）
@@ -642,7 +645,7 @@ SORT_UB_BYTES_PER_ELEM = id(4) + 原下标(4)                    // 输入区
                                                                // 三块互不重叠是 Concat/Sort 的硬要求
                        + 比较掩码(4)
                        = 36 B/元素
-segCap = max(32, ub / 36 / 32 * 32)      // 向下取整到 Sort32 粒度
+segCap = max(32, (ub - 160) / 36 / 64 * 64) // 输入/掩码需64元素对齐
 sortSegNum 先取 coreNum 均分; 单段超 segCap 时改为 segCap 定段、
              sortSegNum = ceil(flatElements / segCap)   // 段数可多于核数
 sortLenPerSeg = align32(perSeg) * 2                  // 每段对区 float 数
@@ -651,7 +654,7 @@ sortLenPerSeg = align32(perSeg) * 2                  // 每段对区 float 数
 **段间归并**——单次驻留 4 路输入 + 同宽输出（每元素 8B）：
 
 ```text
-mergeOther = segNum*32 + 6*32          // segCnt 读回区 + 各缓冲块对齐余量
+mergeOther = min(segNum,128)*32 + 96  // 计数缓存 + 三块额外32B
                                           // 不扣这项: 输入+输出恰好占满 UB, 分配越界后
                                           // 输出压到输入上(归并结果头部被覆盖, 实测)
 mergeOneLoop = max(32, (ub - mergeOther) / 64 / 32 * 32)   // 64 = 4 路×2 区×8B
@@ -660,7 +663,7 @@ mergeOneLoop = max(32, (ub - mergeOther) / 64 / 32 * 32)   // 64 = 4 路×2 区�
 **拆包**——每元素 16B（对 8B + id/idx 各 4B）：
 
 ```text
-extractLoop = ub / 16 / 32 * 32,  封顶 Y,  下限 32
+extractLoop = min((ub - 96) / 16 / 32 * 32, 255*32), 封顶 Y, 下限 32
 ```
 
 #### SplitGroupList（phase4）
@@ -733,7 +736,7 @@ flatIds 每行跨度是 `align32(BS*K)`（RECV），gather_idx 是扁平序列�
 | group_list | 专用核（GROUP_LISTING_*_AIV_NUM）+ 多核直方图 | 0 号核向量游程编码，其余核直接进 gather |
 | gather 与 group_list | 核划分互斥（一部分核 gather、其余 group listing） | 串行相位：先 group_list（0 核）后 gather（全部核） |
 | TilingKey | 100/101/102（含 RECV_GATHER 特化） | 100/101（sync_flag/token_dtype 正交） |
-| 核编号 | GetBlockIdx | `blockIdx*GetTaskRation()+subBlockIdx`（A5 子核） |
+| 核编号 | GetBlockIdx | `GetFlatAivIdx()`（DAV_3510 已展平） |
 | token_dtype | 0~2 | 0~5（FP8/FP4 + E8M0 scale） |
 | 异步接收 | 无 | sync_flag=1：快照 + 读入后即时清理（与同步同构） |
 
@@ -769,3 +772,16 @@ Meta 按该选项返回相同元数据。该选项不进入 tiling，不改变�
 二级指针缓冲仍由调用方持有、同步并保持地址有效。
 验证分为 ctypes ACLNN 状态（9 场景）、Torch eager/Meta（98 项）和完整图/replay（46 项）。
 具体分工与命令见 [三个 verify 命令指南](arch35_verify_guide.md)，当前支持边界见 [图模式报告](arch35_torch_graph_validation.md)。
+
+### 容量边界修复说明
+
+Host 对 context 增加至少1024字节检查。Sort 上限按 `12*align64(n)+24*align32(n)+160` 核算；merge 只缓存至多128个32字节计数槽，超过缓存时按需换块，不再把全部段计数驻留UB；输入/输出/计数缓冲的96字节额外开销也计入预算。Extract 按 `16*align32(n)+96` 核算，且每次最多255个repeat（8160元素）。两项新tiling字段 `preparePerLoopElements`、`mergeCountCacheSegments` 追加在结构尾部，Host与kernel须使用同一构建包。
+
+
+## 选择性采纳 d03ec09ee2 的补充
+
+静态 `max_out_shape` 分配输出和 workspace 上限；运行时 A、BS、K 可以小于对应上限，producer 必须保证它们均为正、未超过上限，且 NORM 满足 `0<=out_num<=A`。prepare 的实际行跨度取运行时 BS*K（RECV 补到 8 个 int32），RECV 处理 A 行，NORM 处理 out_num 行，不能用静态 flat 长度除以运行时 A。动态长度不改变已分配的静态输出 shape。异步仍只消费快照选中的行。
+
+Host 在乘法前防止 int64 溢出，限制静态 Y 及 RECV 补位后的 flat 长度不超过 INT32_MAX，以匹配现有索引和计数表示；这不是 FP32 的 2^22 限制。H 必须可用 uint32 表示，且 token 加 scale 的 payload 能放入最大 512B 对齐 uint32 HS；六种 dtype 分别计算字节数，FP4 要求偶数 H。实际 HS 的分配与 payload 容量由 producer 保证。
+
+sort 比较和 Extract 拆包的对齐尾部显式初始化；group 的 cur/prev/next 与 Sub/Cast 覆盖完整比较范围。它们是输入确定性和维护性补强，不以此宣称旧实现已有可复现的有效输出错误。
