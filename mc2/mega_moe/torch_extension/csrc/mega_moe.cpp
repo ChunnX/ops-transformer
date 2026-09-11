@@ -318,14 +318,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::TensorList sharedBias1Ref = toTensorList(sharedBias1);
     at::TensorList sharedBias2Ref = toTensorList(sharedBias2);
 
+    // Legacy callers omit shared weight types; inherit MoE types, including uint8-packed FP4.
     aclDataType sharedWeight1RefDtype =
-        sharedWeight1Type.has_value() ?
-            GetAclDataType(sharedWeight1Type.value()) :
-            (sharedWeight1Ref.size() > 0 ? ConvertToAclDataType(sharedWeight1Ref[0].scalar_type()) : weight1RefDtype);
+        sharedWeight1Type.has_value() ? GetAclDataType(sharedWeight1Type.value()) : weight1RefDtype;
     aclDataType sharedWeight2RefDtype =
-        sharedWeight2Type.has_value() ?
-            GetAclDataType(sharedWeight2Type.value()) :
-            (sharedWeight2Ref.size() > 0 ? ConvertToAclDataType(sharedWeight2Ref[0].scalar_type()) : weight2RefDtype);
+        sharedWeight2Type.has_value() ? GetAclDataType(sharedWeight2Type.value()) : weight2RefDtype;
     const auto getWeightScaleDtype = [](aclDataType weightDtype) {
         return weightDtype == aclDataType::ACL_FLOAT8_E5M2 || weightDtype == aclDataType::ACL_FLOAT8_E4M3FN ||
                        weightDtype == aclDataType::ACL_FLOAT4_E2M1 ?
