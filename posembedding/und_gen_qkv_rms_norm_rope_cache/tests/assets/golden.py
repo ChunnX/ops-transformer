@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 """UndGenQkvRmsNormRopeCache 的 golden 参考实现，同时是本算子的 TTK TestSpec。
 
-本文件是本算子**唯一的 golden 实现**，自包含、不依赖同目录以外的任何文件，
+本文件是本算子**唯一的 CPU golden 实现**，CPU 比对不依赖其他本地文件，
 供下列使用方共用：
 
   - ``examples/test_torch_und_gen_qkv_rms_norm_rope_cache.py``：torch 接口上板精度比对
@@ -568,10 +568,55 @@ def _isclose_ratio(*outputs):
     return results
 
 
+def _gpu_reference(
+    und_qkv,
+    und_weights_q,
+    und_weights_k,
+    cos_sin_cache,
+    k_cache,
+    v_cache,
+    slot_mapping,
+    positions,
+    gen_qkv=None,
+    gen_weights_q=None,
+    gen_weights_k=None,
+    cat_indices=None,
+    num_heads_q=8,
+    num_heads_k=1,
+    num_heads_v=1,
+    norm_eps=1e-6,
+    mrope_section=None,
+    **kwargs,
+):
+    """TTK remote entry; the server syncs gpu_reference.py on first use."""
+    from gpu_reference import gpu_reference
+
+    return gpu_reference(
+        und_qkv,
+        und_weights_q,
+        und_weights_k,
+        cos_sin_cache,
+        k_cache,
+        v_cache,
+        slot_mapping,
+        positions,
+        gen_qkv,
+        gen_weights_q,
+        gen_weights_k,
+        cat_indices,
+        num_heads_q,
+        num_heads_k,
+        num_heads_v,
+        norm_eps,
+        mrope_section,
+    )
+
+
 class _SpecBase:
     """三条通路共用的判据。"""
 
     tolerance = TOLERANCE
+    third_party = {"torch": _gpu_reference}
 
     def compare(*outputs, **kwargs):
         return _isclose_ratio(*outputs)
