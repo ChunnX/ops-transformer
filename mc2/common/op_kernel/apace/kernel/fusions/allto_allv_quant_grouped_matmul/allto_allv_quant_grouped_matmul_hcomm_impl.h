@@ -14,10 +14,10 @@
  *
  * 面向 AlltoAllvQuantGroupedMatMul 算子的 apace 切换路径（参照 AlltoAllMatmul 的
  * “MX 量化切 apace”模式）：
- *   - 通信：AIC 核内按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
- *     通信输出落在 workspace 的 rank-major 接收区；
+ *   - 通信：block 0 AIC 按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
+ *     通信输出按 expert-major / source-rank-minor 布局直接落入接收区；
  *   - 计算：等待当前 expert 通信完成、提交下一 expert 通信后，以“段式分组”消费当前数据，
- *     形成 expert 级通信/计算双缓冲；rank-major 布局无需额外 permute——
+ *     形成 expert 级通信/计算双缓冲；接收布局无需额外 permute——
  *     每个 (expert, srcRank) 段为独立计算分组（段内 A/scaleA/C 连续），
  *     免去通信后的独立 permute；
  *   - 计算 kernel 复用 apace 分组量化 Matmul（Blaze BlockMmad<GroupedMatmulWithScaleMx>）。
@@ -125,11 +125,16 @@ public:
         mmGroupListGm_ = reinterpret_cast<__gm__ const uint32_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList));
 
+        // Match the APACE mma2a communicator: every AIC initializes its local
+        // HCCL object, but exactly one AIC owns the task sequence.  Letting
+        // every AIC submit the same collectives duplicates the two ranks'
+        // sequences and leaves the first AlltoAllV waiting forever.
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
-
-        if (tilingData_->expertNum > 0U) {
-            IssueExpertCommunication(0U, 0U);
+        if (IsCommunicationCore()) {
+            if (tilingData_->expertNum > 0U) {
+                IssueExpertCommunication(0U, 0U);
+            }
         }
     }
 
@@ -143,17 +148,27 @@ public:
         }
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
             const uint32_t slot = expertIdx & 1U;
-            hccl_.Wait(scaleHandle_[slot]);
-            hccl_.Wait(dataHandle_[slot]);
+            if (IsCommunicationCore()) {
+                hccl_.Wait(scaleHandle_[slot]);
+                hccl_.Wait(dataHandle_[slot]);
+            }
+            // Publish the received GM data to every compute AIC before Blaze
+            // consumes this expert.  All AICs execute the same barrier count.
+            AscendC::SyncAll();
             const uint32_t nextExpert = expertIdx + 1U;
-            if (nextExpert < tilingData_->expertNum) {
+            if (IsCommunicationCore() && nextExpert < tilingData_->expertNum) {
                 IssueExpertCommunication(nextExpert, nextExpert & 1U);
             }
             RunExpertMatmul(expertIdx);
         }
 
         AscendC::SyncAll();
-        hccl_.Finalize();
+        if (IsCommunicationCore()) {
+            hccl_.Finalize();
+        }
+        // Do not enter the all-AIC local matmul while block 0 is still
+        // finalizing the communication server.
+        AscendC::SyncAll();
         // Hcomm requires the AIC blocks to keep servicing the communication
         // protocol until Finalize completes. A long local matmul here can starve
         // the first AlltoAllV and make the MC2 server time out (notably when the
@@ -165,6 +180,11 @@ public:
     }
 
 private:
+    __aicore__ inline bool IsCommunicationCore() const
+    {
+        return AscendC::GetBlockIdx() == 0U;
+    }
+
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
     {
         const uint32_t previous = (segIdx == 0U) ? 0U : tilingData_->segList[segIdx - 1U];
