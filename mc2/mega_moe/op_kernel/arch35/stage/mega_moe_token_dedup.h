@@ -183,6 +183,19 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
     GlobalTensor<int32_t> rowDescGm;
     rowDescGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(dedup.rowDescPtr));
 
+    /*
+     * desc 落盘乒乓（2026-09-11，KTS 细分实测 DESC 段 33us 占 prepass 52.6us 的 63%——每行一次
+     * MTE3_S 全等待暴露 GM 写延迟）：descAsm 区分两半轮转，行 i 的 GM 写与行 i+1 的标量拼装重叠，
+     * MTE3_S 等待推迟到该半区下次复用前。半区 1KB ≥ 最宽 desc 行（topK≤32 → 104 int32 = 416B）。
+     * 事件配平：半区0 用 SYNC_EVENT_ID3、半区1 用 SYNC_EVENT_ID5；函数头武装两半的 MTE3_S，
+     * 每 workItem 尾 drain 两半（AtomicAdd ready 前 desc 必须全落盘——dispatch 靠它）再重新武装，
+     * 全部工作项结束后最终 drain 消费掉武装，不留悬挂 flag。
+     */
+    constexpr uint32_t DESC_ASM_HALF_INT32 = DEDUP_DESC_ASM_UB_BYTES / 2U / sizeof(int32_t);
+    SetFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
+    SetFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
+    uint32_t descHalf = 0U;
+
     MM_KTS_T(ktsPrepassT0);
     for (uint32_t workItem = blockJob.jobIndex; workItem < totalWorkItems; workItem += blockJob.totalJobs) {
         const uint32_t srcRank = workItem / chunkCount;
@@ -198,6 +211,7 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
         Duplicate<int32_t>(countTensor, DEDUP_PACK_INIT, static_cast<int32_t>(chunkTokens));
         SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
+        MM_KTS_T(ktsScanT0);
         for (uint32_t expertIdx = 0U; expertIdx < common.moeExpertPerRank; ++expertIdx) {
             const uint32_t prefixIdx = expertIdx * common.worldSize + srcRank;
             const int32_t rowBase =
@@ -272,6 +286,8 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
             } // 段循环收尾
         }
 
+        MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS_SCAN, 0U, srcRank, chunkIdx, 0U, ktsScanT0);
+        MM_KTS_T(ktsDescT0);
         // 逐 token 落 rowDesc。组成员按扫描序 = 专家升序 = 行号升序，天然满足 FIRST/LAST 语义。
         // fullCount>=2 时即使幸存成员只剩 1 个也按组发（minK 取全量口径），保证发送槽与归属卡
         // canonical 槽一致；fullCount==1 才走 PLAIN。
@@ -286,36 +302,54 @@ __aicore__ inline void BuildDedupRowDescTable(const DedupConfig &dedup, const Mo
             const uint32_t memberBase = static_cast<uint32_t>(localToken) * topK * 3U;
             if (fullCount == 1) {
                 const int32_t row = memberTensor.GetValue(memberBase);
-                descAsmTensor.SetValue(0U, 0);
-                SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-                DataCopy(rowDescGm[static_cast<uint64_t>(row) * strideInt32], descAsmTensor, INT32_PER_256B);
-                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
+                const TEventID evt = static_cast<TEventID>(descHalf == 0U ? SYNC_EVENT_ID3 : SYNC_EVENT_ID5);
+                LocalTensor<int32_t> asmHalf = descAsmTensor[descHalf * DESC_ASM_HALF_INT32];
+                WaitFlag<AscendC::HardEvent::MTE3_S>(evt); // 该半区上次 GM 写已完成，可复写
+                asmHalf.SetValue(0U, 0);
+                SetFlag<AscendC::HardEvent::S_MTE3>(evt);
+                WaitFlag<AscendC::HardEvent::S_MTE3>(evt);
+                DataCopy(rowDescGm[static_cast<uint64_t>(row) * strideInt32], asmHalf, INT32_PER_256B);
+                SetFlag<AscendC::HardEvent::MTE3_S>(evt); // 写完武装，下次复用本半区时消费
+                descHalf ^= 1U;
                 continue;
             }
             for (int32_t m = 0; m < survivorCount; ++m) {
                 int32_t flags = DEDUP_ROW_FLAG_GROUP | survivorCount;
                 flags |= (m == 0 ? DEDUP_ROW_FLAG_FIRST : 0);
                 flags |= (m == survivorCount - 1 ? DEDUP_ROW_FLAG_LAST : 0);
-                descAsmTensor.SetValue(0U, flags);
-                descAsmTensor.SetValue(1U, fullMinK);
+                const TEventID evt = static_cast<TEventID>(descHalf == 0U ? SYNC_EVENT_ID3 : SYNC_EVENT_ID5);
+                LocalTensor<int32_t> asmHalf = descAsmTensor[descHalf * DESC_ASM_HALF_INT32];
+                WaitFlag<AscendC::HardEvent::MTE3_S>(evt);
+                asmHalf.SetValue(0U, flags);
+                asmHalf.SetValue(1U, fullMinK);
                 for (int32_t j = 0; j < survivorCount; ++j) {
                     const uint32_t srcBase = memberBase + static_cast<uint32_t>(j) * 3U;
                     const uint32_t dstBase = DEDUP_ROW_DESC_HEADER_INT32 + static_cast<uint32_t>(j) * 3U;
-                    descAsmTensor.SetValue(dstBase, memberTensor.GetValue(srcBase));
-                    descAsmTensor.SetValue(dstBase + 1U, memberTensor.GetValue(srcBase + 1U));
-                    descAsmTensor.SetValue(dstBase + 2U, memberTensor.GetValue(srcBase + 2U));
+                    asmHalf.SetValue(dstBase, memberTensor.GetValue(srcBase));
+                    asmHalf.SetValue(dstBase + 1U, memberTensor.GetValue(srcBase + 1U));
+                    asmHalf.SetValue(dstBase + 2U, memberTensor.GetValue(srcBase + 2U));
                 }
                 const int32_t row = memberTensor.GetValue(memberBase + static_cast<uint32_t>(m) * 3U);
-                SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
-                DataCopy(rowDescGm[static_cast<uint64_t>(row) * strideInt32], descAsmTensor, strideInt32);
-                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
+                SetFlag<AscendC::HardEvent::S_MTE3>(evt);
+                WaitFlag<AscendC::HardEvent::S_MTE3>(evt);
+                DataCopy(rowDescGm[static_cast<uint64_t>(row) * strideInt32], asmHalf, strideInt32);
+                SetFlag<AscendC::HardEvent::MTE3_S>(evt);
+                descHalf ^= 1U;
             }
         }
 
-        // 本工作项 desc 全部落盘（每次 DataCopy 后均有 MTE3_S），置该项 ready：
-        // dispatch 消费侧按 (srcRank,chunk) 只等自己覆盖的项，不再有全局 barrier。
+        MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS_DESC, 0U, srcRank, chunkIdx, 0U, ktsDescT0);
+        // ready 置位前 drain 两半区（乒乓让末尾 1-2 行的 GM 写还在飞，而 ready 语义=本项 desc
+        // 全部落盘、dispatch 消费侧靠它），随即重新武装供下一工作项。
+        WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
+        WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
+        SetFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
+        SetFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
         AtomicAdd(readyBase + (1U + workItem) * INT_CACHELINE, static_cast<int32_t>(1));
     }
+    // 消费掉最后一次武装，不留悬挂 flag 毒化后续同 id 同步。
+    WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID3));
+    WaitFlag<AscendC::HardEvent::MTE3_S>(static_cast<TEventID>(SYNC_EVENT_ID5));
 
     MM_KTS_SPAN(MgbKts::MM_DEDUP_PREPASS, 0U, 0U, totalWorkItems, chunkTokens, ktsPrepassT0);
     // 槽 0 = 每核 done 计数：combine 消费 desc 前（远晚于 prepass）等其到齐；本核不等任何人。

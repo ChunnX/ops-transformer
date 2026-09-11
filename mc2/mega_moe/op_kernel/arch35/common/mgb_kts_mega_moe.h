@@ -42,6 +42,9 @@ enum MmKtsPoint : uint32_t {
     MM_COMBINE_TILE_WAIT = 20,  // AIV1：等配对 AIC 的 gmmToEpilogueFlag（wait 类）
     MM_DEDUP_MERGE_WAIT = 21,   // AIV1：合并驱动行等成员专家 gmm2Ready（wait 类，去重专属）
     MM_DEDUP_DESC_WAIT = 22,    // AIV1：dispatch 批装载 desc 前等所覆盖 prepass 工作项 ready（wait 类）
+    // prepass 内部细分（2026-09-11 加，为 52.6us 段定优化刀位）：pt6 = pt24 + pt25 + 少量胶水
+    MM_DEDUP_PREPASS_SCAN = 24, // AIV1：一个工作项的 route 槽装载+扫描+member 建表段（含全部 expert 槽）
+    MM_DEDUP_PREPASS_DESC = 25, // AIV1：一个工作项的 rowDesc 逐行落盘段
 };
 
 // 计数器槽位语义（record 头 counters[4]；主要在 AIV1 有效）
