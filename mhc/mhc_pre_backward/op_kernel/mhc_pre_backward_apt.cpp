@@ -32,7 +32,7 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
-    if constexpr (TILING_MODE == MHC_PRE_BACKWARD_DEFAULT) {
+    if constexpr (TILING_MODE == MHC_PRE_BACKWARD_MM_CONFIG_0) {
         InitParams initParams{x,         phi,   alpha, gradHIn,           gradHPost, gradHRes, invRms,    hMix,
                               hPre,      hPost, gamma, gradXPostOptional, gradX,     gradPhi,  gradAlpha, gradBias,
                               gradGamma, user,  &pipe, &tilingData};

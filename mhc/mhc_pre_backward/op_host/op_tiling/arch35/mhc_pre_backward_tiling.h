@@ -21,6 +21,7 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
+#include "../../../op_kernel/arch35/mhc_pre_backward_mm_config.h"
 #include "../mhc_pre_backward_tiling.h"
 
 namespace optiling {
@@ -35,6 +36,26 @@ TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
 TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(uint32_t, implMode);
+TILING_DATA_FIELD_DEF(uint32_t, mmConfigKey);
+TILING_DATA_FIELD_DEF(uint32_t, c0BaseM);
+TILING_DATA_FIELD_DEF(uint32_t, c0BaseN);
+TILING_DATA_FIELD_DEF(uint32_t, c0BaseK);
+TILING_DATA_FIELD_DEF(uint32_t, c1BaseM);
+TILING_DATA_FIELD_DEF(uint32_t, c1BaseN);
+TILING_DATA_FIELD_DEF(uint32_t, c1BaseK);
+TILING_DATA_FIELD_DEF(uint32_t, c0L1K);
+TILING_DATA_FIELD_DEF(uint32_t, c1L1K);
+TILING_DATA_FIELD_DEF(uint32_t, l1ADepth);
+TILING_DATA_FIELD_DEF(uint32_t, l1BDepth);
+TILING_DATA_FIELD_DEF(uint32_t, l0ADepth);
+TILING_DATA_FIELD_DEF(uint32_t, l0BDepth);
+TILING_DATA_FIELD_DEF(uint32_t, l0CDepth);
+TILING_DATA_FIELD_DEF(uint32_t, c0B1FullLoad);
+TILING_DATA_FIELD_DEF(uint32_t, c0MBlock);
+TILING_DATA_FIELD_DEF(uint32_t, c0NBlock);
+TILING_DATA_FIELD_DEF(uint32_t, c1KBlock);
+TILING_DATA_FIELD_DEF(uint32_t, c0ToV2Rows);
+TILING_DATA_FIELD_DEF(uint32_t, v2ToC1Rows);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreBackward, MhcPreBackwardTilingData);
@@ -84,6 +105,7 @@ protected:
     ge::graphStatus ParseTNDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);
     ge::graphStatus ValidateShapeParams();
+    ge::graphStatus ValidateMmConfig();
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
@@ -109,6 +131,7 @@ private:
     uint64_t l0ASize_{0};
     uint64_t l0BSize_{0};
     uint64_t l0CSize_{0};
+    uint32_t mmConfigKey_{MhcPreBackward::MhcPreBackwardMmConfig0::KEY};
 };
 
 } // namespace optiling

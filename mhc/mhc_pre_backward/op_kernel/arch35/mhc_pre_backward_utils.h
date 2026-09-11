@@ -17,6 +17,7 @@
 #define ASCENDC_MHC_PRE_BACKWARD_UTILS_H
 
 #include "kernel_operator.h"
+#include "mhc_pre_backward_mm_config.h"
 
 namespace MhcPreBackwardUtils {
 
@@ -69,9 +70,9 @@ constexpr uint32_t MAIN_QUEUE_COUNT = 3U;
 // 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
 constexpr uint32_t FP32_BUF_SIZE =
     UB_USABLE_SIZE - MAIN_QUEUE_COUNT * DOUBLE_BUFFER * INOUT_QUEUE_SIZE - SMALL_QUEUE_SIZE;
-constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128U; // ProcessV2函数使用的chunk大小
-constexpr uint32_t BS_BLOCK_SIZE = 512;
-constexpr uint32_t ND_BLOCK_SIZE = 128;
+constexpr uint32_t PROCESS_V2_CHUNK_SIZE = MhcPreBackward::MhcPreBackwardMmConfig0::V2_CHUNK_ROWS;
+constexpr uint32_t BS_BLOCK_SIZE = MhcPreBackward::MhcPreBackwardMmConfig0::C0_M_BLOCK;
+constexpr uint32_t ND_BLOCK_SIZE = MhcPreBackward::MhcPreBackwardMmConfig0::C0_N_BLOCK;
 constexpr uint32_t ALPHA_GRAD_LAST_DIM_SIZE = 3;
 constexpr uint32_t ALPHA_GRAD_PADDING = 24;
 constexpr uint32_t ALPHA_GRAD_SHAPE_1_OFFSET = 0;

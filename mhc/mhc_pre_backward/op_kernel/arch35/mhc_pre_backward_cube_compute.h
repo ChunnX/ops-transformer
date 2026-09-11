@@ -21,23 +21,33 @@
 namespace MhcPreBackward {
 using namespace AscendC;
 
-// [RegBase-native][DAV_3510] 以下片上容量取自Ascend 950 AIC硬件规格：
-// L1为512KB，L0A/L0B各64KB，L0C为256KB；双槽大小不得超过对应物理容量。
-// 低阶Cube分块：baseM/baseN/baseK=128/128/32，L1每次组织64个K元素。
-constexpr uint32_t CUBE_BASE_M = 128U;
-constexpr uint32_t CUBE_BASE_N = 128U;
-constexpr uint32_t CUBE_L1_K = 64U;
-constexpr uint32_t CUBE_BASE_K = 32U;
-constexpr uint32_t CUBE_BUFFER_DEPTH = MhcPreBackwardUtils::NUMBER_TWO;
+using MmConfig = MhcPreBackwardMmConfig0;
+static_assert(MmConfig::C0_BASE_M == MmConfig::C1_BASE_M &&
+                  MmConfig::C0_BASE_N == MmConfig::C1_BASE_N &&
+                  MmConfig::C0_BASE_K == MmConfig::C1_BASE_K &&
+                  MmConfig::C0_L1_K == MmConfig::C1_L1_K,
+              "equivalent template requires the current shared C0/C1 low-level path");
+static_assert(MmConfig::L1_A_BUFFER_DEPTH == MmConfig::L1_B_BUFFER_DEPTH &&
+                  MmConfig::L1_A_BUFFER_DEPTH == MmConfig::L0A_BUFFER_DEPTH &&
+                  MmConfig::L0A_BUFFER_DEPTH == MmConfig::L0B_BUFFER_DEPTH &&
+                  MmConfig::L0A_BUFFER_DEPTH == MmConfig::L0C_BUFFER_DEPTH &&
+                  MmConfig::L0A_SLOT_BYTES == MmConfig::L0B_SLOT_BYTES,
+              "equivalent template requires matched ping-pong depths");
+
+constexpr uint32_t CUBE_BASE_M = MmConfig::C0_BASE_M;
+constexpr uint32_t CUBE_BASE_N = MmConfig::C0_BASE_N;
+constexpr uint32_t CUBE_L1_K = MmConfig::C0_L1_K;
+constexpr uint32_t CUBE_BASE_K = MmConfig::C0_BASE_K;
+constexpr uint32_t CUBE_BUFFER_DEPTH = MmConfig::L1_A_BUFFER_DEPTH;
 constexpr uint32_t CUBE_L0_EVENT_BASE = 3U;
-constexpr uint32_t CUBE_L1_BUFFER_BYTES = 512U * 1024U;
-// L1均分为A0/A1/B0/B1四个128KB区域，便于MTE2和MTE1跨块重叠。
-constexpr uint32_t CUBE_L1_SLOT_ELEMS = 128U * 256U;
-constexpr uint32_t CUBE_B_L1_OFFSET = CUBE_BUFFER_DEPTH * CUBE_L1_SLOT_ELEMS;
-constexpr uint32_t CUBE_L0_BUFFER_BYTES = 64U * 1024U;
-constexpr uint32_t CUBE_L0_SLOT_ELEMS = CUBE_L0_BUFFER_BYTES / CUBE_BUFFER_DEPTH / sizeof(float);
-constexpr uint32_t CUBE_L0C_BUFFER_BYTES = 256U * 1024U;
-constexpr uint32_t CUBE_L0C_SLOT_ELEMS = CUBE_L0C_BUFFER_BYTES / CUBE_BUFFER_DEPTH / sizeof(float);
+constexpr uint32_t CUBE_L1_BUFFER_BYTES =
+    (MmConfig::L1_A_BUFFER_DEPTH + MmConfig::L1_B_BUFFER_DEPTH) * MmConfig::L1_SLOT_BYTES;
+constexpr uint32_t CUBE_L1_SLOT_ELEMS = MmConfig::L1_SLOT_BYTES / sizeof(float);
+constexpr uint32_t CUBE_B_L1_OFFSET = MmConfig::L1_A_BUFFER_DEPTH * CUBE_L1_SLOT_ELEMS;
+constexpr uint32_t CUBE_L0_BUFFER_BYTES = MmConfig::L0A_BUFFER_DEPTH * MmConfig::L0A_SLOT_BYTES;
+constexpr uint32_t CUBE_L0_SLOT_ELEMS = MmConfig::L0A_SLOT_BYTES / sizeof(float);
+constexpr uint32_t CUBE_L0C_BUFFER_BYTES = MmConfig::L0C_BUFFER_DEPTH * MmConfig::L0C_SLOT_BYTES;
+constexpr uint32_t CUBE_L0C_SLOT_ELEMS = MmConfig::L0C_SLOT_BYTES / sizeof(float);
 
 __aicore__ inline uint64_t BasicCubeCeilDiv(uint64_t x, uint64_t n)
 {
