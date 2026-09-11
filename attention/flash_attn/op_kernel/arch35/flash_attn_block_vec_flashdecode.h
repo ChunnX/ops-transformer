@@ -26,7 +26,6 @@ struct TaskInfo {
     uint32_t n2Idx;
     uint32_t gIdx;
     uint32_t s1Idx; // 纯 s1 坐标(不合轴)
-    uint32_t gS1Idx; // 兼容保留
     uint32_t actualCombineLoopSize;
 };
 
@@ -370,7 +369,7 @@ protected:
         fa_base_vector::InvalidRowParams params{
             .actS1Size = actSeqLensQ_,
             .gSize = static_cast<uint64_t>(constInfo_.gSize),
-            .gS1Idx = taskInfo_.s1Idx + startRow, // 纯 s1 坐标(单头块, 不跨 G)
+            .gS1Idx = taskInfo_.s1Idx + startRow, // 公共结构字段名; DN 传入纯 s1 坐标(单头块, 不跨G)
             .dealRowCount = dealRowCount,
             .columnCount = columnCount,
             .preTokensPerBatch = preTokensPerBatch_,
@@ -419,7 +418,6 @@ public:
         taskInfo_.n2Idx = taskInfo_.n1Idx / constInfo_.gSize;
         taskInfo_.gIdx = taskInfo_.n1Idx % constInfo_.gSize;
         taskInfo_.s1Idx = fd.fdMIdx * mBaseSize;
-        taskInfo_.gS1Idx = taskInfo_.s1Idx; // 兼容保留
         taskInfo_.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * mBaseSize;

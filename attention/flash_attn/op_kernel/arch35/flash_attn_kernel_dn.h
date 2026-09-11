@@ -488,7 +488,6 @@ public:
         info.n2Idx = info.n1Idx / constInfo_.gSize;
         info.gIdx = info.n1Idx % constInfo_.gSize;
         info.s1Idx = s1Cur;
-        info.gS1Idx = s1Cur; // 兼容保留(下游 cube/vec 已按 n1/s1 寻址, 不再使用合轴语义)
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ_;
         info.actS2Size = actSeqLensKv_;
