@@ -687,11 +687,22 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
         src += tokenOffsetBytes;
         dst += tokenOffsetBytes;
     }
+    uint32_t channelIndex = rankId < static_cast<uint32_t>(epRankId_) ? rankId : rankId - 1;
     while (remaining != 0) {
-        --remaining;
-        PrepareWrite(dst, src, hOutSize_, remaining + 1);
-        src += hOutSize_;
-        dst += hOutSize_;
+        uint32_t count = remaining < batchCapacity_ ? remaining : batchCapacity_;
+        if (outstandingWrites_ > drainThreshold_ - count) {
+            DrainPending();
+        }
+        // Streaming knows the batch length: keep budget checks and commit bookkeeping outside the token loop.
+        for (uint32_t i = 0; i < count; ++i) {
+            auto &peerHandle = hcomm_.GetHandleRef(batchHandle_, channelIndex, dst);
+            hcomm_.WriteNbi(peerHandle, dst, src, hOutSize_);
+            src += hOutSize_;
+            dst += hOutSize_;
+        }
+        hcomm_.BatchCommit(batchHandle_);
+        outstandingWrites_ += count;
+        remaining -= count;
     }
     // Each (source rank, core) has a separate epoch flag, including cores with an empty BS range.
     GM_ADDR flag = remoteWin + STREAM_FLAGS_OFFSET +
