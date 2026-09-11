@@ -21,7 +21,7 @@
 #include "quant_block_sparse_attn_attenmask.h"
 #include "../common/buffer_manager.h"
 #include "../common/buffers_policy.h"
-#include "../common/util_regbase_mx_QBSA.h"
+#include "../common/util_regbase_QBSA.h"
 #include "vf/vf_div_cast.h"
 #include "vf/vf_flashupdate_new_QBSA.h"
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"

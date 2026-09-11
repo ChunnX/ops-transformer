@@ -22,7 +22,7 @@
 #include "../common/buffer_manager.h"
 #include "../common/buffers_policy.h"
 #include "../common/matmul_QBSA.h"
-#include "../common/util_regbase_mx_QBSA.h"
+#include "../common/util_regbase_QBSA.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
