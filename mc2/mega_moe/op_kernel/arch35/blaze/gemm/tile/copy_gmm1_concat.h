@@ -78,10 +78,25 @@ __aicore__ inline void CopyGmm1WeightConcatToUb(const Dst &dst, const Src &src, 
     const uint64_t columnBytes = c0 / 2U;
     const uint32_t blockCount = 2U * ConcatTensorRows(src) / c0;
     const uint32_t blockBytes = ConcatTensorColumns(src) / 2U * columnBytes;
-    // Unlike tensor strides, these intrinsics take byte distances between block starts.
-    asc_copy_gm2ub_align(reinterpret_cast<__ubuf__ uint8_t *>(dst.data().get()),
-                         reinterpret_cast<__gm__ uint8_t *>(src.data().get()), blockCount, blockBytes, 0, 0, false,
-                         src.engine().get_cache_mode(), halfN * columnBytes, blockBytes);
+    // Describe the physical NZ bursts as byte rows; the UB view writes them consecutively.
+    auto shape = asc::te::make_shape(asc::te::make_shape(asc::te::_1{}, blockCount),
+                                     asc::te::make_shape(asc::te::_1{}, blockBytes));
+    auto srcStride = asc::te::make_stride(asc::te::make_stride(asc::te::_0{}, halfN * columnBytes),
+                                          asc::te::make_stride(asc::te::_0{}, asc::te::_1{}));
+    auto dstStride = asc::te::make_stride(asc::te::make_stride(asc::te::_0{}, blockBytes),
+                                          asc::te::make_stride(asc::te::_0{}, asc::te::_1{}));
+    using ByteLayout = decltype(asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(1U, 1U));
+    using ByteLayoutTrait = asc::te::get_layout_trait<ByteLayout>;
+    auto srcLayout = asc::te::make_pattern_layout<asc::te::nd_ext_layout_ptn, ByteLayoutTrait>(shape, srcStride);
+    auto dstLayout = asc::te::make_pattern_layout<asc::te::nd_ext_layout_ptn, ByteLayoutTrait>(shape, dstStride);
+    auto srcBytes = asc::te::make_tensor(
+        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ uint8_t *>(src.data().get())), srcLayout);
+    auto dstBytes = asc::te::make_tensor(
+        asc::te::make_mem_ptr<asc::te::location::ub>(reinterpret_cast<__ubuf__ uint8_t *>(dst.data().get())),
+        dstLayout);
+    srcBytes.set_l2_cache_hint(src.get_cache_mode());
+    asc::te::copy(asc::te::make_copy(asc::te::copy_gm_to_ub{}).with(asc::te::gm_to_ub_params{0, 0, false}), dstBytes,
+                  srcBytes);
 }
 
 template <typename Dst, typename Src>
