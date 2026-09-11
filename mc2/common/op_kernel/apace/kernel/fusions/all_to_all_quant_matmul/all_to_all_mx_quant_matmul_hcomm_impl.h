@@ -24,15 +24,16 @@
  * Run():
  *   AIC: local块前置 — 若 localMatmul != 0，先执行 MatmulProcess(LOCAL) 计算本 rank 数据，
  *        再执行 MatmulProcess(REMOTE) 计算通信收到的远端数据，以 local 计算掩盖通信延迟；
- *        最后 SyncAll<false> 全核同步（isAIVOnly=false 才覆盖 AIC 核；默认 true 仅同步 AIV，
- *        AIC-only kernel 不可用默认形式），所有核 WaitTile 完成后再统一 Finalize，
+ *        最后 CrossCoreSetFlag/CrossCoreWaitFlag<0x0, PIPE_FIX>(0x3) AIC 核间屏障（模式0：
+ *        所有 AIC 核均执行到 SetFlag 后 WaitFlag 才放行；AIC-only kernel 中默认 SyncAll()
+ *        仅同步 AIV 无屏障效果），所有核 WaitTile 完成后再统一 Finalize，
  *        再 commState_.hccl_.Finalize()。
  *        kernel 内逐 tile 通过 commPolicy_.WaitTile() → state_->hccl_.Wait(handle) 等待通信完成，
  *        首次 wait 紧挨 data wait 之前执行 hccl->Wait(scaleHandle_)（每核仅一次，掩盖 matmul 头开销）。
  *
  * AIC side: 通信下发 + 计算 + per-tile wait 均在 AIC 核内完成，无 AIV↔AIC 跨核 flag 同步.
  *
- * \note 本实现仅启动 AIC 核（cube-only）。若需启动 AIV 核，须为 Init/Run 中的通信下发、
+ * \note 本实现仅启动 AIC 核（cv核1:0）。若需启动 AIV 核，须为 Init/Run 中的通信下发、
  *       Wait、Finalize 及核间屏障增加 AIC 守卫（if ASCEND_IS_AIC），否则 AIV 误参与 HCCL
  *       调用将导致 Prepare/Wait 失配或死锁。
  */
@@ -230,7 +231,8 @@ __aicore__ inline void AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, Com
         MatmulProcess(MatmulMode::LOCAL);
     }
     MatmulProcess(MatmulMode::REMOTE);
-    AscendC::SyncAll<false>();
+    AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(0x3);
+    AscendC::CrossCoreWaitFlag<0x0, PIPE_FIX>(0x3);
     commState_.hccl_.Finalize();
 }
 

@@ -29,8 +29,10 @@
  *        GetCommPolicy().state_ = &commState_ 绑定 WaitPolicy。
  *
  * Run():
- *   AIC: 执行 FragmentTensor kernel → SyncAll<false> 全核同步（isAIVOnly=false 才覆盖
- *        AIC 核；默认 true 仅同步 AIV，AIC-only kernel 不可用默认形式）→ hccl_.Finalize。
+ *   AIC: 执行 FragmentTensor kernel → CrossCoreSetFlag/CrossCoreWaitFlag<0x0, PIPE_FIX>(0x3)
+ *        AIC 核间屏障（模式0：所有 AIC 核均执行到 SetFlag 后 WaitFlag 才放行；AIC-only kernel
+ *        中默认 SyncAll() 仅同步 AIV 无屏障效果，硬同步 SyncAll<false> 需 MIX kernel 类型），
+ *        所有核 WaitTile 完成后再统一 Finalize → hccl_.Finalize。
  *        kernel 内逐 tile commPolicy_.WaitTile(dependTileIdx) → state_->hccl_.Wait(handle)。
  */
 
@@ -291,7 +293,8 @@ __aicore__ inline void AllGatherMxQuantMatmulHcommImpl<AType, BType, CType, Serv
     KernelParams params;
     SetupKernelParams(params);
     quantMatmulKernelImpl_(params);
-    AscendC::SyncAll<false>();
+    AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(0x3);
+    AscendC::CrossCoreWaitFlag<0x0, PIPE_FIX>(0x3);
     commState_.hccl_.Finalize();
 }
 
