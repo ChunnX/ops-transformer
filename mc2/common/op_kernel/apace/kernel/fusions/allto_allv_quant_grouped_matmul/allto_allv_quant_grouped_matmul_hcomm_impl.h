@@ -14,7 +14,7 @@
  *
  * 面向 AlltoAllvQuantGroupedMatMul 算子的 apace 切换路径（参照 AlltoAllMatmul 的
  * “MX 量化切 apace”模式）：
- *   - 通信：AIV0 按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
+ *   - 通信：AIC 按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
  *     通信输出按 expert-major / source-rank-minor 布局直接落入接收区；
  *   - 计算：等待当前 expert 通信完成、提交下一 expert 通信后，以“段式分组”消费当前数据，
  *     形成 expert 级通信/计算双缓冲；接收布局无需额外 permute——
@@ -22,8 +22,8 @@
  *     免去通信后的独立 permute；
  *   - 计算 kernel 复用 apace 分组量化 Matmul（Blaze BlockMmad<GroupedMatmulWithScaleMx>）。
  *
- * 本实现运行在 MIX kernel：AIV 负责 HCCL AlltoAllV，AIC 负责 Blaze Matmul，
- * 两侧通过仓内 A2AV scheduler 同款 cross-core flag 协议同步通信完成事件。
+ * 本实现运行在 AIC_ONLY kernel：每个 AIC 执行相同的 HCCL 高阶 API 调用序列，
+ * 通信和 Blaze Matmul 均留在同一个纯 Cube kernel 内。
  */
 
 #pragma once
@@ -39,20 +39,6 @@
 
 namespace Apace {
 
-// Keep the MIX cross-core protocol local to the APACE implementation.  A
-// common/APACE header must not include an operator-private header because the
-// binary packaging step renames the operator source directory with an _apt
-// suffix and does not preserve that source-tree-relative path.
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIV_TO_AIC = 4U;
-static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 16U;
-#else
-static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIV_TO_AIC = 2U;
-static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 0U;
-#endif
-static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIC_BARRIER = 0U;
-static constexpr uint16_t A2AV_GMM_SYNC_FLAG_COMM_DONE = 8U;
-static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIC_BARRIER = 9U;
 template <typename T>
 constexpr uint64_t GetA2avHcclDataType()
 {
@@ -105,7 +91,7 @@ public:
     static constexpr uint64_t xHcclDataType_ = GetA2avHcclDataType<AType>();
 
     /*!
-     * \brief 初始化 HCCL；通信任务在所有 MIX 子核初始化完成后下发
+     * \brief 初始化 HCCL 并下发首个 expert 的通信任务（AIC only）
      *
      * \param[in] tilingGM tiling buffer 首地址：GET_TILING_DATA_WITH_STRUCT 得到的是本地拷贝，
      *            段表（segList/segAOff/segCOff）以 __gm__ 指针按偏移直接引用 tiling buffer
@@ -136,15 +122,16 @@ public:
         mmGroupListGm_ = reinterpret_cast<__gm__ const uint32_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList));
 
-        // Match the repository-native HcclA2avOp lifecycle: InitV2 and
-        // SetCcTilingV2 run on every MIX sub-core. Only collective launch,
-        // wait and finalize are restricted to AIV; returning before InitV2 on
-        // AIC leaves the MIX task's HCCL context only partially initialized.
+        // Match the mature APACE AllToAll MX path: every AIC executes the same
+        // HCCL lifecycle and collective sequence. The HCCL device API performs
+        // its own communication-core selection; gating calls to AIC0 breaks the
+        // per-core protocol used by an AIC_ONLY kernel.
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
         rankDim_ = hccl_.GetRankDim();
-        if ASCEND_IS_AIC {
-            return;
+        if (tilingData_->expertNum > 0U) {
+            PrepareExpertCommunication(0U);
+            IssueScaleCommunication();
         }
     }
 
@@ -153,108 +140,36 @@ public:
      */
     __aicore__ inline void Run()
     {
-        // Do not let AIV0 submit the first collective while another MIX
-        // sub-core is still initializing its HCCL context.
-        AscendC::SyncAll<false>();
-        if (A2AV_GMM_DIAG_FIRST_EXPERT_SERIAL_COMM) {
-            RunFirstExpertSerialCommunicationDiagnostic();
-            return;
+        for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
+            hccl_.Wait(scaleHandle_);
+            IssueDataCommunication();
+            hccl_.Wait(dataHandle_);
+            const uint32_t nextExpert = expertIdx + 1U;
+            if (nextExpert < tilingData_->expertNum) {
+                PrepareExpertCommunication(nextExpert);
+                IssueScaleCommunication();
+            }
+            RunExpertMatmul(expertIdx);
+            // Keep the AICs on the same expert before reusing the parameter
+            // arrays and handles for the next communication round.
+            AscendC::SyncAll();
         }
-        if ASCEND_IS_AIV {
-            RunCommunication();
-            return;
-        }
-        // Match the native scheduler: shared-expert MM runs on AIC while AIV
-        // starts the communication rounds, instead of serializing it after GMM.
+        hccl_.Finalize();
+        AscendC::SyncAll();
         if (tilingData_->localMatmul != 0U) {
             RunLocalMatmul();
-            AicBarrier();
-        }
-        for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
-            WaitCommunicationDone();
-            RunExpertMatmul(expertIdx);
-            // Keep every AIC on the same expert before reusing the cross-core
-            // communication-ready event for the next expert.
-            AicBarrier();
         }
     }
 
 private:
-    __aicore__ inline bool IsCommunicationCore() const
-    {
-        return AscendC::GetBlockIdx() == 0U;
-    }
-
-    __aicore__ inline void WaitCommunicationDone()
-    {
-        AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(A2AV_GMM_SYNC_FLAG_COMM_DONE);
-#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-        AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
-            A2AV_GMM_SYNC_FLAG_COMM_DONE + A2AV_GMM_SYNC_FLAG_AIV1_OFFSET);
-#endif
-    }
-
-    __aicore__ inline void AicBarrier()
-    {
-        AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_FIX>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
-        AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_S>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
-    }
-
-    __aicore__ inline void RunCommunication()
-    {
-        if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
-            IssueExpertCommunication(0U);
-        }
-        for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
-            if (IsCommunicationCore()) {
-                hccl_.Wait(scaleHandle_);
-                hccl_.Wait(dataHandle_);
-                const uint32_t nextExpert = expertIdx + 1U;
-                if (nextExpert < tilingData_->expertNum) {
-                    IssueExpertCommunication(nextExpert);
-                }
-            }
-            // Match A2avGmmScheduler: first make AIV0's wait visible to all
-            // AIVs, then both vector sub-blocks notify their paired AIC.
-            AscendC::SyncAll<true>();
-            AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_V>(
-                A2AV_GMM_SYNC_FLAG_COMM_DONE + A2AV_GMM_SYNC_FLAG_AIV1_OFFSET * AscendC::GetSubBlockIdx());
-        }
-        AscendC::SyncAll<false>();
-        hccl_.Finalize();
-    }
-
-    __aicore__ inline void RunFirstExpertSerialCommunicationDiagnostic()
-    {
-        if ASCEND_IS_AIV {
-            if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
-                PrepareExpertCommunication(0U);
-                scaleHandle_ = hccl_.template AlltoAllV<true>(
-                    xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_),
-                    scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
-                hccl_.Wait(scaleHandle_);
-                dataHandle_ = hccl_.template AlltoAllV<true>(
-                    xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
-                    dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
-                hccl_.Wait(dataHandle_);
-            }
-        }
-        // Keep the MIX task lifecycle balanced while isolating the two calls.
-        AscendC::SyncAll<false>();
-        if ASCEND_IS_AIV {
-            hccl_.Finalize();
-        }
-    }
-
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
     {
         const uint32_t previous = (segIdx == 0U) ? 0U : tilingData_->segList[segIdx - 1U];
         return tilingData_->segList[segIdx] - previous;
     }
 
-    __aicore__ inline void IssueExpertCommunication(uint32_t expertIdx)
+    __aicore__ inline void IssueScaleCommunication()
     {
-        PrepareExpertCommunication(expertIdx);
         // MX scale is an E8M0 byte payload.  The HCCL server validates each
         // collective against the data type used to build its CC tiling, so
         // transport the scale bytes with the same one-byte type as X.  The
@@ -262,6 +177,10 @@ private:
         scaleHandle_ = hccl_.template AlltoAllV<true>(
             xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), scaleRecvGM_,
             scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+    }
+
+    __aicore__ inline void IssueDataCommunication()
+    {
         dataHandle_ = hccl_.template AlltoAllV<true>(
             xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
             dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));

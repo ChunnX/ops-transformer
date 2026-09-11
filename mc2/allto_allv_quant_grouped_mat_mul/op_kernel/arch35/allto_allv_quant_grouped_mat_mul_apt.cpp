@@ -49,7 +49,7 @@ static_assert(sizeof(QuantAlltoAllvGroupedMatmulTilingData) >= sizeof(Apace::hco
 #define A2AV_APACE_DTYPE_SUPPORTED 0
 #endif
 
-// MX 量化 apace 切换路径：AIV0 hcomm 通信 + AIC 段式分组量化 Matmul（MIX）
+// MX 量化 apace 切换路径：hcomm 通信 + 段式分组量化 Matmul（AIC_ONLY）
 #define INVOKE_ALLTOALLV_QUANT_GMM_APACE_IMPL(hcclServerType) \
     do { \
         GET_TILING_DATA_WITH_STRUCT(Apace::hcommA2avQuantGmmTilingData, tilingData, tilingGM); \
@@ -77,7 +77,7 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
         return;
     }
     if constexpr (TILINGKEY_USING_APACE_IMPL && A2AV_APACE_DTYPE_SUPPORTED) {
-        // kernel task type 由 tiling key 的 TPL_KERNEL_TYPE_SEL 指定为 MIX_AIC_1_2
+        // kernel task type 由 tiling key 的 TPL_KERNEL_TYPE_SEL 指定为 AIC_ONLY
         if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_CCU) {
             INVOKE_ALLTOALLV_QUANT_GMM_APACE_IMPL(AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU);
         } else {
