@@ -59,6 +59,8 @@ struct QuantProcessScratch {
     LocalTensor<ActivationType> xOutTensor0;
     LocalTensor<ActivationType> xOutTensor1;
     LocalTensor<uint16_t> mxTempTensor;
+    uint32_t preQuantRecordBaseAddr;
+    uint32_t preQuantRecordStrideBytes;
 };
 
 template <typename TopkWeightsType, typename ActivationType>
@@ -168,6 +170,16 @@ __aicore__ inline void QuantizeLocalTokens(const AivJobContext &job, const MoeSt
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
+template <typename ActivationType>
+__aicore__ inline LocalTensor<ActivationType> GetPreQuantRecordBuffer(
+    const QuantProcessScratch<ActivationType> &scratch, const QuantProcessConfig &config, uint32_t bufferIdx)
+{
+    return LocalTensor<ActivationType>(
+        TPosition::VECCALC,
+        scratch.preQuantRecordBaseAddr + bufferIdx * scratch.preQuantRecordStrideBytes,
+        config.quantTokenScaleAlignBytes / sizeof(ActivationType));
+}
+
 // 将调用方已经量化的 x 和逐 32 元素 scale 拼成现有 dispatch record，不对 x/scales 做数值转换。
 template <typename XType, typename ActivationType, typename TopkWeightsType, bool TopkWeightsPrefetch>
 __aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, const MoeStageCommonConfig &common,
@@ -203,15 +215,15 @@ __aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, con
     DataCopyPadExtParams<uint8_t> copyInPadParams{true, 0U, 0U, 0U};
     DataCopyExtParams recordCopyOutParams{1U, config.quantTokenScaleAlignBytes, 0U, 0U, 0U};
 
-    // xOut 双缓冲已经由 SendAndQuantBuffInit 整段清零；这里只覆盖有效 data/scale/weight，
+    // 预量化 record 环形缓冲已经由 SendAndQuantBuffInit 整段清零；这里只覆盖有效 data/scale/weight，
     // data、scale 以及 optional weight 的各自对齐 padding 因此保持为 0。
-    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-    SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    for (uint32_t bufferIdx = 0U; bufferIdx < PRE_QUANT_RECORD_BUFFER_COUNT; ++bufferIdx) {
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(static_cast<TEventID>(bufferIdx));
+    }
     for (uint32_t index = 0U; index < tokenRange.count; ++index) {
-        bool useFirstBuffer = index % DOUBLE_BUFFER == 0U;
-        TEventID event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<ActivationType> recordTensor =
-            useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
+        uint32_t bufferIdx = index % PRE_QUANT_RECORD_BUFFER_COUNT;
+        TEventID event = static_cast<TEventID>(bufferIdx);
+        LocalTensor<ActivationType> recordTensor = GetPreQuantRecordBuffer(scratch, config, bufferIdx);
         LocalTensor<uint8_t> recordBytesTensor = recordTensor.template ReinterpretCast<uint8_t>();
         uint64_t dataOffset = static_cast<uint64_t>(index) * static_cast<uint64_t>(dataValidBytes);
         uint64_t scaleOffset = static_cast<uint64_t>(index) * static_cast<uint64_t>(scaleValidBytes);
@@ -242,8 +254,9 @@ __aicore__ inline void PackPreQuantizedLocalTokens(const AivJobContext &job, con
         DataCopyPad(recordDstGlobalTensor[recordOffset], recordBytesTensor, recordCopyOutParams);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
-    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    for (uint32_t bufferIdx = 0U; bufferIdx < PRE_QUANT_RECORD_BUFFER_COUNT; ++bufferIdx) {
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(static_cast<TEventID>(bufferIdx));
+    }
 }
 
 // 编译期根据 x 类型选择唯一的 record producer：BF16 沿用在线量化，

@@ -99,15 +99,23 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  * Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。
  * Bsend 表示基准 batch 的 route item 数，N 表示 mask buffer 数：
  *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * (Bsend / 8 + 32)；
- *   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
- *                    + sendCntAccBytes；
+ *   BF16 在线量化：
+ *     sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
+ *                      + sendCntAccBytes；
+ *   预量化输入：
+ *     sendFixedBytes = resetTensorBytes + 2048
+ *                      + max(2 * xOutTensorBytes + 2 * xInTensorBytes,
+ *                            PRE_QUANT_RECORD_BUFFER_COUNT * xOutTensorBytes)
+ *                      + sendCntAccBytes；
  *   sendFixedBytes + sendVariableBytes(Bsend, N) <= availableUbBytes。
  *
  * 12288 的成立前提按最坏合法规格 k=8192、moeExpertNum=2048、N=6 保守验证：
  *   resetTensor                 <= 8KB；
  *   mxTempTensor                = 2KB；
- *   2 个 xOutTensor             <= 2 * (8192B token + 256B scale + 128B weight) = 17152B；
- *   2 个 xInTensor              = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
+ *   在线量化的 2 个 xOutTensor  <= 2 * (8192B token + 256B scale + 128B weight) = 17152B；
+ *   在线量化的 2 个 xInTensor   = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
+ *   预量化 record ring 当前为 4 * (8192B token + 256B scale + 128B weight) = 34304B，
+ *   小于上述在线量化 xOut/xIn 合计，因而优先复用同一片物理空间；
  *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
  *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
  *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
@@ -122,6 +130,12 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
 constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
 constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
 constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
+
+/*
+ * 预量化输入 record 搬运采用固定深度软流水。该常量同时参与 Host UB 预算和 Kernel 地址排布，
+ * 两侧必须保持一致；当前性能实验分支使用 4 buffer。
+ */
+constexpr uint32_t PRE_QUANT_RECORD_BUFFER_COUNT = 4U;
 
 /*
  * Reset buffer policy
