@@ -216,7 +216,7 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     uint32_t gSize = static_cast<uint32_t>(numHeadsQ_ / numHeadsKv_);
     optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(headDimV_, gSize, maxSeqlenQ_, maxSeqlenKv_, maskMode_,
                                                                 baseInfo.preToken, baseInfo.nextToken, qlayout,
-                                                                mBaseSize_, s2BaseSize_);
+                                                                templateId_, mBaseSize_, s2BaseSize_);
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
