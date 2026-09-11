@@ -18,6 +18,9 @@
 constexpr static double MM_EXPANSION_TIME = 40;
 constexpr static double COMM_EXPANSION_TIME = 40;
 constexpr static uint64_t SMALL_SHAPE_NO_CUT_FACTOR = 3;
+// 计算bound场景下，切分块数过少会导致通信-计算流水掩盖率下降。头块长度封顶，
+// 保证至少切出 MIN_CALC_BOUND_TILE_CNT 个主块（再加1个尾块），维持足够的流水级数。
+constexpr static uint64_t MIN_CALC_BOUND_TILE_CNT = 3;
 
 void AllGatherMMFitBalanceTiling::EstimateMMCommTime()
 {
@@ -54,6 +57,14 @@ void AllGatherMMFitBalanceTiling::SetLongTileLen()
     if (tilingM_.cutRes.shortTileAtBack) {
         // 计算bound: long tile通信被local计算隐藏
         tilingM_.cutRes.longTileLen = commPerf_.InverseCommTime(frontMMTime_);
+        // 计算bound下N越大frontMM越大，头块随之变长、块数变少，流水掩盖率下降。
+        // 头块通信只需被local计算掩盖即可，不必与frontMM严格相等，因此封顶保证最小切分块数。
+        uint64_t maxTileLenForMask = mmInfo_.mValue / MIN_CALC_BOUND_TILE_CNT;
+        if (maxTileLenForMask > 0 && tilingM_.cutRes.longTileLen > maxTileLenForMask) {
+            OPS_LOG_D("AllGatherMatmul", "Calc bound long tile len %lu capped to %lu to keep enough tiles.",
+                      tilingM_.cutRes.longTileLen, maxTileLenForMask);
+            tilingM_.cutRes.longTileLen = maxTileLenForMask;
+        }
     } else {
         // 通信bound: 按短块通信时长折算长块可完成的计算量，使通信与计算配平
         double shortTileCommTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
