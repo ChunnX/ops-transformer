@@ -1,0 +1,117 @@
+{
+  "op_type": "LRN",
+  "op_list": [
+    {
+      "bin_filename": "LRN_97387b27c4299190eed64f2eaa2c1550",
+      "inputs": [
+        {
+          "name": "x",
+          "index": 0,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "index": 0,
+          "dtype": "float16",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "depth_radius",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "bias",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "alpha",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "beta",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "norm_region",
+          "dtype": "str",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "bin_filename": "LRN_09c2b7329ed3f8e4ec668e5d1228e1cc",
+      "inputs": [
+        {
+          "name": "x",
+          "index": 0,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "index": 0,
+          "dtype": "float32",
+          "format": "ND",
+          "paramType": "required",
+          "shape": [
+            -2
+          ],
+          "format_match_mode": "FormatAgnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "depth_radius",
+          "dtype": "int",
+          "value": 0
+        },
+        {
+          "name": "bias",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "alpha",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "beta",
+          "dtype": "float",
+          "value": 0.0
+        },
+        {
+          "name": "norm_region",
+          "dtype": "str",
+          "value": ""
+        }
+      ]
+    }
+  ]
+}
