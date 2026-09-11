@@ -81,13 +81,11 @@ public:
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(-1);
         this->Attr("return_value").AttrType(OPTIONAL).Bool(false);
-        // pool_key 0轴非连续 stride(元素单位), 由 torch_extension 层从
-        // at::Tensor::stride(0) 直读传入(参考 compressor 方案); -1 表示未指定
-        // (连续输入), tiling 回退到 shape 推导。
+        // pool_key 0轴非连续 stride(元素单位), 由上层按 stride(0) 直读传入;
+        // -1 表示未指定(连续输入), tiling 回退到 shape 推导
         this->Attr("key_stride0").AttrType(OPTIONAL).Int(-1);
-        // k_descale 0轴非连续 stride(元素单位, 量化场景), 与 key_stride0 同机制:
-        // eager/aclnn 路径 GetDynamicInputStride 返回 nullptr, 属性是唯一来源;
-        // -1 表示未指定(连续输入), tiling 回退到 shape 推导。
+        // k_descale 0轴非连续 stride(量化场景), 与 key_stride0 同机制;
+        // -1 表示未指定(连续输入), tiling 回退到 shape 推导
         this->Attr("k_descale_stride0").AttrType(OPTIONAL).Int(-1);
 
         OpAICoreConfig aicoreConfig;
@@ -101,21 +99,8 @@ public:
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
 
-        // ---- 950 config: override only the inputs that differ from base (FP8 combos) ----
-        //   6 combinations:
-        //   1) FP16  quant_mode=-1 (no quant)     : q/k/weights=FP16,    descale=FLOAT
-        //   2) BF16  quant_mode=-1 (no quant)     : q/k/weights=BF16,    descale=FLOAT
-        //   3) FP8   quant_mode=0  (per-token FP8) : q/k=FP8_E4M3FN, weights=FP16, descale=FLOAT
-        //   4) FP8   quant_mode=0  (per-token FP8) : q/k=FP8_E4M3FN, weights=BF16, descale=FLOAT
-        //   5) FP8   quant_mode=1  (mxFP8)         : q/k=FP8_E4M3FN, weights=FP16, descale=FLOAT8_E8M0
-        //   6) FP8   quant_mode=1  (mxFP8)         : q/k=FP8_E4M3FN, weights=BF16, descale=FLOAT8_E8M0
-        // Note: pool_tail_k / actual_seq_q / actual_seq_k (DT_INT64 + ValueDepend) and
-        //       block_table / outputs inherit from the top-level declaration; not
-        //       re-declared here. INT64 is the canonical host-value dtype required by
-        //       the ValueDepend convention (see fused_infer_attention_score et al.).
-        // Note: 量化场景 weights 规格(文档+tiling)允许 FP16/BF16, kernel entry 按
-        //       ORIG_DTYPE_WEIGHTS 分发 W_T(half/bfloat16_t), 与 quant_lightning_indexer
-        //       的 weights 双 dtype 模式一致。
+        // ---- 950 config: 仅覆盖与 base 不同的输入(FP8 组合, 共 6 种 dtype 组合)。
+        //      其余输入继承顶层声明; 量化场景 weights 允许 FP16/BF16(entry 按 ORIG_DTYPE_WEIGHTS 分发)。
         OpAICoreConfig aicoreConfig950;
         aicoreConfig950.Input("query")
             .ParamType(REQUIRED)
