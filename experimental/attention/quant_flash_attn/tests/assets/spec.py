@@ -16,73 +16,58 @@ from pathlib import Path
 
 ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
+_impl_cache = {}
+
 
 def load_impl_module(stem):
-    path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(
-        f"qfa_mxfp4_assets_impl_{stem}_{abs(hash(path))}", path
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """懒加载 impl 模块.
+
+    与 flash_attn 资产一致: 不在 import spec.py 时 (主进程) 级联 import
+    golden/graph (其中会 import torch_npu), 避免 fork 子进程 re-init NPU 报错。
+    改为在 golden/customize_inputs/compare/npu_preprocess 首次被 ttk 调用时
+    (fork 之后的 worker) 才加载。
+    """
+    if stem not in _impl_cache:
+        path = ASSET_IMPL_DIR / f"{stem}.py"
+        spec = importlib.util.spec_from_file_location(
+            f"qfa_mxfp4_assets_impl_{stem}_{abs(hash(path))}", path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _impl_cache[stem] = module
+    return _impl_cache[stem]
 
 
-golden_module = load_impl_module("golden")
-inputs_module = load_impl_module("inputs")
-compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
+def _golden_dispatch(*args, **kwargs):
+    return load_impl_module("golden").cpu_qfa_mxfp4(*args, **kwargs)
 
 
-class QfaMxfp4Spec:
-    """quant_flash_attn (MXFP4) 测试规范."""
-
-    golden = golden_module.cpu_qfa_mxfp4
-    customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
-    compare = compare_module.compare
-
-    torch_graph = graph_module.QuantFlashAttnMxfp4AclGraph
-
-    tolerance = {
-        "bfloat16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-        "float16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-    }
+def _inputs_dispatch(*args, **kwargs):
+    return load_impl_module("inputs").generate_qfa_mxfp4_inputs(*args, **kwargs)
 
 
-class QfaMxfp4MetadataSpec:
-    golden = golden_module.cpu_qfa_mxfp4
-    customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
-    compare = compare_module.compare
+class QuantFlashAttnMxfp4Spec:
+    """quant_flash_attn (MXFP4, quant_mode=5) 测试规范.
 
-    tolerance = {
-        "bfloat16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.0078125,
-            "ptol": 0.005,
-            "atol": 0.0001,
-        },
-        "float16": {
-            "standard": "stat_rel_err",
-            "rtol": 0.005,
-            "ptol": 0.005,
-            "atol": 0.000025,
-        },
-    }
+    metadata 由 npu_preprocess 在主算子调用前生成并回填 metadata slot,
+    主算子直接由 ttk 调用 torch.ops.cann_ops_transformer.quant_flash_attn。
 
+    golden/customize_inputs/compare/npu_preprocess 均懒加载 impl 模块,
+    避免主进程 fork 前 import torch_npu (与 flash_attn 资产一致)。
+    """
 
-class QfaMxfp4MainSpec:
-    golden = golden_module.cpu_qfa_mxfp4
-    customize_inputs = inputs_module.generate_qfa_mxfp4_inputs
-    compare = compare_module.compare
+    golden = staticmethod(_golden_dispatch)
+    customize_inputs = staticmethod(_inputs_dispatch)
+
+    @staticmethod
+    def compare(*outputs, **kwargs):
+        return load_impl_module("compare").compare(*outputs, **kwargs)
+
+    @staticmethod
+    def npu_preprocess(*args, **kwargs):
+        return load_impl_module("npu_preprocess").run(*args, **kwargs)
+
+    torch_graph = load_impl_module("graph").QuantFlashAttnMxfp4AclGraph
 
     tolerance = {
         "bfloat16": {
@@ -98,10 +83,23 @@ class QfaMxfp4MainSpec:
             "atol": 0.000025,
         },
     }
+
+
+class QuantFlashAttnMxfp4MetadataSpec:
+    """quant_flash_attn_metadata 生成器的 TestSpec.
+
+    与 flash_attn 资产的 FlashAttnMetadataSpec 一致: 只提供 customized inputs
+    (把 cu_seqlens/seqused 描述向量回填进 metadata API 输入), 无独立测试套件。
+    """
+
+    customize_inputs = load_impl_module(
+        "metadata_inputs"
+    ).generate_quant_flash_attn_metadata_inputs
 
 
 __spec__ = {
-    "qfa_mxfp4_wrapper.npu_qfa_mxfp4": "QfaMxfp4Spec",
-    "qfa_mxfp4_metadata_wrapper.run_metadata": "QfaMxfp4MetadataSpec",
-    "qfa_mxfp4_main_wrapper.run_main": "QfaMxfp4MainSpec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn": "QuantFlashAttnMxfp4Spec",
+    "torch.ops.cann_ops_transformer.quant_flash_attn_metadata": (
+        "QuantFlashAttnMxfp4MetadataSpec"
+    ),
 }
