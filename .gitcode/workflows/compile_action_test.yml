@@ -1,0 +1,64 @@
+name: compile_action
+
+on:
+  workflow_call:
+    inputs:
+      task_name:
+        required: true
+        type: string
+      image_version:
+        required: true
+        type: string
+      package_name:
+        required: false
+        type: string
+        default: ''
+      arch:
+        required: false
+        type: string
+        default: 'x64'
+    outputs:
+      arm_run_url:
+        value: ${{jobs.JOB_compile.outputs.primary-url}}
+      arm_run_key:
+        value: ${{jobs.JOB_compile.outputs.primary-key}}
+      package_name:
+        value: ${{jobs.JOB_compile.outputs.package_name}}
+
+jobs:
+  JOB_compile:
+    name: compile
+    steps:
+      -
+        name: Checkout
+        identifier: process_checkout
+        uses: checkout
+        with:
+          ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+          skip-ssl-verify: true
+          token: ${{secrets.GIT_TOKEN}}
+      -
+        name: compile_acc
+        identifier: compile
+        uses: build-accelerate
+        with:
+          command: |
+            export WORKSPACE=${{ steps.process_checkout.outputs.path }}
+            cd ${{ steps.process_checkout.outputs.path }}
+            export task_name=${{ inputs.task_name }}
+            export TARGET_BRANCH=${{ env.TARGET_BRANCH }}
+            unset NB_CACHE
+            unset NB_RDECO_TOOL_PATH
+            unset NB_RDECO_ENABLE
+            export BOOSTER=NextCache
+            env|grep NB
+            env|grep XCACHE
+            BuildAccelerate bash .gitcode/scripts/compile.sh
+          AC_SERVER_IP: 172.27.24.172:172.27.21.11:172.27.16.21:172.27.26.226:172.27.21.217:172.27.25.11:172.27.18.206:172.27.28.19:172.27.31.229:172.27.24.180
+          AC_MODE: dis
+          AC_DIS_IMAGE: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu24.04_x86:lv6_v2.1006
+          AC_REP_CMD: /tmp/codearts/nextbuild/NextBuild /tmp/codearts/nextbuild/NextCache
+    if: "${{ default() }}"
+    runs-on: [self-hosted, arch=x64, spec=xlarge]
+    container:
+      image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu24.04_x86:lv6_v2.1006
