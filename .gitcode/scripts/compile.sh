@@ -169,17 +169,17 @@ else
     elif [[ "${task_name}" =~ monitor ]]; then
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             if [[ "${task_name}" =~ "910c" ]]; then
-                LOG_DO bash build.sh --pkg --jit --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16 --soc=ascend910_93
+                LOG_DO bash build.sh --pkg  --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16 --soc=ascend910_93
                 BUILD_EXIT_CODE=$?
-                DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --pkg --jit -j16 --soc=ascend910_93]"
+                DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --pkg  -j16 --soc=ascend910_93]"
             elif [[ "${task_name}" =~ "950" ]]; then
-                LOG_DO bash build.sh --pkg --jit --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16 --soc=ascend950
+                LOG_DO bash build.sh --pkg  --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16 --soc=ascend950
                 BUILD_EXIT_CODE=$?
-                DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --pkg --jit -j16 --soc=ascend950]"
+                DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --pkg  -j16 --soc=ascend950]"
             else
-                LOG_DO bash build.sh --pkg --jit --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16 --soc=ascend910b
+                LOG_DO bash build.sh --pkg  --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16 --soc=ascend910b
                 BUILD_EXIT_CODE=$?
-                DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --pkg --jit -j16 --soc=ascend910b]"
+                DP_ASSERT_CHECK_SKIP "$?" "0" "exec cmd: [bash build.sh --pkg  -j16 --soc=ascend910b]"
             fi
         else
             echo "not need build monitor"
@@ -188,7 +188,7 @@ else
             exit 0
         fi
     else
-        LOG_DO bash build.sh --pkg --jit --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
+        LOG_DO bash build.sh --pkg  --PR_PKG "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
         BUILD_EXIT_CODE=$?
         DP_ASSERT_CHECK_SKIP "$?" "0" "Build ${REPOSITORY_NAME}"
     fi
