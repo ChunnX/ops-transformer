@@ -80,7 +80,7 @@ constexpr int64_t TMPL_RESERVED_BN2S2 = 3;
 constexpr int64_t LAYOUT_NOT_TND = 0;
 constexpr int64_t LAYOUT_TND = 1;
 
-constexpr int64_t MAX_HEAD_DIM = 192;
+constexpr int64_t MAX_HEAD_DIM = 256;
 
 // ---------------------------------------------------------------------------
 // L2 解析结果。策略层对它只读。

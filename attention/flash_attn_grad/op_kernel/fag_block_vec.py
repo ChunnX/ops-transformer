@@ -6,18 +6,20 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Vector 侧编排。
+"""Vector 侧编排 —— 对应 AscendC arch35 的
+``flash_attention_score_grad_block_vec.h``。
 
-阶段编号与 CV 同步 flag 一致::
+阶段编号同样与 ASC 及 CV 同步 flag 一致::
 
-    V1  sfmg = rowsum(dy * y)
-    V2  P    = softmax(S*scale - lse) [+mask]
-    V3  dS   = (dP - sfmg) * P -> cast -> L1
-    V4  P    -> cast -> L1
-    V5/V6    dQ/dK 的 muls(scale) + cast
+    V1  sfmg = rowsum(dy * y)              ProcessVec1
+    V2  P    = softmax(S*scale - lse) [+mask]  ProcessVec2
+    V3  dS   = (dP - sfmg) * P -> cast -> L1   ProcessVec3
+    V4  P    -> cast -> L1                     ProcessVec4
+    V5/V6    dQ/dK 的 muls(scale) + cast       ProcessMulsAndCast
 
 本文件只做**搬运与编排**：GM->UB 的 load、UB->L1 的 insert、选哪一档 VF；
-真正的寄存器级计算在 :mod:`fag_vector_api` 与 :mod:`attenmask`。
+真正的寄存器级计算在 :mod:`fag_vector_api` 与 :mod:`attenmask`。这和 ASC
+「``block_vec.h`` 拿 TQue 调 ``vf_*``」的两层结构是一一对应的。
 
 pre / post 两个阶段也放在这里：它们同样是纯 vector、同样按 metadata 给的
 行区间切，只是被 ``sync_all`` 与主循环完全隔开。
@@ -42,6 +44,7 @@ from fag_vector_api import (
     fill_zero_vf,
     muls_cast_vf,
     softmax_grad_front_row192_vf,
+    softmax_grad_front_row256_vf,
     softmax_grad_front_row_vf,
 )
 from fag_schedule import (
@@ -54,7 +57,7 @@ from attenmask import copy_in_atten_mask, muls_sel_simple_softmax_vf
 # --- end generated imports ---
 
 # ==================================================================
-#  UB -> CV 共享 L1
+#  UB -> CV 共享 L1  (ASC block_vec.h::CopyUB2L1)
 # ==================================================================
 
 
@@ -99,7 +102,22 @@ def process_vec1(
         order=[1, 3],
     )
     w0 = pl.min(constInfo.dvSize, 128)
-    if dv_align == 192:
+    # d_align=256 且 tilingkey 宽档(dv_align 字段仍是 192)走 256 VF。
+    if d_align == 256 and dv_align == 192:
+        w1 = pl.max(constInfo.dvSize - 128, 0)
+        softmax_grad_front_row256_vf(
+            sfmg_ub,
+            y_ub,
+            dy_ub,
+            runInfo.halfS1RealSize,
+            runInfo.rowShift,
+            rowStride,
+            (w0 + 1) // 2,
+            w0 // 2,
+            (w1 + 1) // 2,
+            w1 // 2,
+        )
+    elif dv_align == 192:
         w1 = pl.max(constInfo.dvSize - 128, 0)
         softmax_grad_front_row192_vf(
             sfmg_ub,
@@ -168,6 +186,7 @@ def process_vec3(constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp
     # nd/nz 不裁剪：列方向的脏数据由 matmul 的 valid_shape 与 store 挡掉。
     # VF 固定写满 VECTOR_BASEM 行：NZ+1 的分形列间距由行数决定，按尾块
     # 缩小会让间距漂移。尾块只在 insert 时用 valid_shape 裁掉。
+    # ASC 同样传常量 VECTOR_BASEM(block_vec.h:624)。
     broadcast_sub_mul_cast_vf(
         nzp_ub, mm1_ub, mm2_ub, sfmg_ub, constInfo.scaleValue, VECTOR_BASEM
     )
@@ -189,12 +208,12 @@ def process_vec4(constInfo, runInfo, subIdx, p_l1, mm2_ub, nzp_ub):
 
 
 # ==================================================================
-#  Pre —— dq/dk/dv 累加区清零
+#  Pre —— dq/dk/dv 累加区清零 (ASC presfmg_regbase.h::InitOutput)
 # ==================================================================
 
 
 def process_pre(tensor_ws, zt, elemStart, nElems):
-    """把一段连续 GM 清零，按一维元素切。
+    """把一段连续 GM 清零。对齐 ASC InitOutput 的一维切法。
 
     tensor_ws 是 [1, totalElems] 的扁平视图（B*S*N*D 紧凑）。本核负责
     [elemStart, elemStart+nElems)。UB 按 PRE_ELEMS 切 full tile；尾块用
@@ -243,12 +262,12 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
 
 
 # ==================================================================
-#  Post —— dQ/dK/dV 的 scale + cast
+#  Post —— dQ/dK/dV 的 scale + cast (ASC post_regbase.h:238-241)
 # ==================================================================
 
 
 def process_post(tensor_ws, tensor_out, f32_ub, f16_ub, scale, elemStart, nElems):
-    """fp32 workspace -> muls(scale) -> cast fp16，按一维元素切。
+    """fp32 workspace -> muls(scale) -> cast fp16。对齐 ASC post 的一维 Muls/Cast。
 
     本核 [elemStart, elemStart+nElems)。full tile 的 VF 段数是编译期常量；
     尾块用 trip count 0/1 的第二个 pl.range。
@@ -318,7 +337,8 @@ def process_vec3_bn2(
 ):
     """dS 与 BN2GS1S2 用同一个 VF：都不乘 scale。
 
-    scale 在 mm3/mm4 之后由 v5/v6 的 Muls+Cast 施加。dV 不经过 dS，不乘 scale。
+    scale 在 mm3/mm4 之后由 v5/v6 的 Muls+Cast 施加，对应 ASC
+    ComputeDqkvBn2 的 ProcessMulsAndCast。dV 不经过 dS，不乘 scale。
     """
     rowOff = subIdx * VECTOR_BASEM
     broadcast_sub_mul_cast_vf(
@@ -376,9 +396,9 @@ def process_muls_cast_dk_bn2(tensor_dk, src_ub, dst_ub, constInfo, runInfo, subI
 def process_dq_multiblk(
     tensor_dq, tensor_dq_ws, src_ub, dst_ub, constInfo, runInfo, subIdx, cBlockIdx
 ):
-    """只在 isLastS1Outer 从 workspace load。
+    """ASC DqkvMulsAndCastFromGM：只在 isLastS1Outer 从 workspace load。
 
-    累加已由 cube 按 needAtomic 写在 GM 上。src_ub 是 load 缓冲。
+    累加已由 cube needAtomic 写在 GM 上。src_ub 对应 ASC inQue。
     """
     rows = runInfo.halfS1RealSize
     rowOff = (

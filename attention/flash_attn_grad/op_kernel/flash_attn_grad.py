@@ -93,7 +93,7 @@ def flash_attn_grad(
     """入口只做编译期分发：template 来自 tilingkey。
 
     0=BN2GS1S2，1=BN2（含 MultiBlk）。3 预留给 BN2S2，本轮 is_valid 裁掉。
-    BN2 不接 GQA / D=192。
+    BN2 不接 GQA / D=192 / D=256。D=256 走 GS1S2 的 1-ahead 分叉。
     """
     if template == 1:
         flash_attn_grad_bn2(

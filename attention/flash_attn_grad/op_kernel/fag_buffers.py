@@ -7,14 +7,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""片上 tile 的声明。
+"""片上 tile 的声明 —— 对应 AscendC arch35 的 ``InitCVCommonBuffer`` /
+``FAGBlockCube::InitCubeBuffer`` / ``FAGBlockVec::InitUbBuffer``。
 
-pypto 的 tile 必须在 ``with pl.section_*()`` 里就地声明，而且 tracer
-不接受自定义 Python 类（``CubeBlock(...)`` 会直接报 Unsupported function
-call），所以这里是**一个 buffer 一个工厂函数**：调用点写
-``q_l1 = buf.make_q_l1()``，声明本身连同它的全部理由留在本文件。
+AscendC 那边这些 ``Init*Buffer`` 是 block 类的成员函数，buffer 随后作为成员
+变量被各阶段直接访问。pypto 的 tile 必须在 ``with pl.section_*()`` 里就地
+声明，而且 tracer 不接受自定义 Python 类（``CubeBlock(...)`` 会直接报
+Unsupported function call），所以这里退化成**一个 buffer 一个工厂函数**：
+调用点写 ``q_l1 = make_q_l1()``，声明本身连同它的全部理由留在本文件。
 
-这样拆的收益：
+收益与 ASC 的 ``Init*Buffer`` 一致：
 
 * shape / layout / 地址 / mutex id 只写一处，BN2 与 BN2GS1S2 共用；
 * ``fag_kernel`` 的主循环里不再出现 ``pl.make_tile_group`` 与任何裸地址；
@@ -37,9 +39,7 @@ BN2 与 BN2GS1S2 共用 CV 共享区、cube L1 与 L0 工作集，连 dK/dV 累�
 
 import pypto_pro.language as pl
 
-# 地址 / mutex 走 fag_mem 别名，避免把整张地址表摊在文件头。
-# shape 常量仍 from-import：工厂里到处写 shape=[CUBE_BASEM, ...]，裸名更干净。
-import fag_mem as mem
+# --- generated imports (fag_fiximports.py) ---
 from fag_common import (
     CUBE_BASEM,
     CUBE_BASEN,
@@ -49,15 +49,86 @@ from fag_common import (
     VECTOR_BASEM,
     VECTOR_BASEN,
 )
+from fag_mem import (
+    ACC_COLS,
+    BN2_CAST_W,
+    BN2_UB_CAST,
+    BN2_UB_DY,
+    BN2_UB_LSE_0,
+    BN2_UB_LSE_1,
+    BN2_UB_NZP,
+    BN2_UB_SFMG,
+    BN2_UB_Y,
+    BN2_V1_ROWS,
+    L0AB_ADDRS,
+    L0C_ACC_ADDRS,
+    L0C_ACC_MUTEX,
+    L0C_DK0_ADDR,
+    L0C_DK1_ADDR,
+    MTX_L0C_DK1,
+    L0C_DV0_ADDR,
+    L0C_DV1_ADDR,
+    MTX_L0C_DV1,
+    L1_DO_ADDRS,
+    L1_DO_MUTEX,
+    L1_DS_ADDR,
+    L1_KND_ADDR,
+    L1_K_ADDR,
+    L1_P_ADDR,
+    L1_Q_ADDRS,
+    L1_Q_MUTEX,
+    L1_V_ADDR,
+    MTX_L0A,
+    MTX_L0B,
+    MTX_L0C_DK0,
+    MTX_L0C_DV0,
+    MTX_L1_DS,
+    MTX_L1_DS_T,
+    MTX_L1_K,
+    MTX_L1_K_ND,
+    MTX_L1_P,
+    MTX_L1_P_T,
+    MTX_L1_V,
+    MTX_MM1_RES,
+    MTX_MM2_RES,
+    MTX_UB_CAST,
+    MTX_UB_DY,
+    MTX_UB_LSE,
+    MTX_UB_NZP,
+    MTX_UB_POST_F16,
+    MTX_UB_POST_F32,
+    MTX_UB_SFMG,
+    MTX_UB_Y,
+    MTX_UB_ZERO,
+    POST_ELEMS,
+    POST_F16_ADDRS,
+    POST_F32_ADDRS,
+    PRE_ELEMS,
+    UB_DY_A,
+    UB_LSE0_A,
+    UB_LSE1_A,
+    UB_MASK_A,
+    UB_MASK_PRE_A,
+    UB_MM1_0,
+    UB_MM1_1,
+    UB_MM2_0,
+    UB_MM2_1,
+    UB_NZP_A,
+    UB_PRE_ZERO,
+    UB_SFMG_A,
+    UB_Y_A,
+)
+# --- end generated imports ---
 
 
 # ==================================================================
 #  CV 共享区 —— 必须声明在两个 section 之外
+#  ASC kernel_base.h::InitCVCommonBuffer
 # ==================================================================
 def make_mm1_res():
     """mm1(dP = dO@V^T) 的结果 UB，双槽按 taskId % 2 ping-pong。
 
-    cube 侧 fixpipe 写、vector 侧读，
+    对应 ASC 的 ``mm1ResBuf[2]``，同名同尺寸。cube 侧 fixpipe 写、vector 侧读，
     故声明在两个 section 之外。
     """
     return pl.make_tile_group(
@@ -66,26 +137,26 @@ def make_mm1_res():
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[mem.UB_MM1_0, mem.UB_MM1_1],
-        mutex_ids=mem.MTX_MM1_RES,
+        addrs=[UB_MM1_0, UB_MM1_1],
+        mutex_ids=MTX_MM1_RES,
     )
 
 
 def make_mm2_res():
-    """mm2(S = Q@K^T) 的结果 UB，双槽 ping-pong。"""
+    """mm2(S = Q@K^T) 的结果 UB。对应 ASC 的 ``mm2ResBuf[2]``。"""
     return pl.make_tile_group(
         type=pl.TileType(
             shape=[VECTOR_BASEM, VECTOR_BASEN],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[mem.UB_MM2_0, mem.UB_MM2_1],
-        mutex_ids=mem.MTX_MM2_RES,
+        addrs=[UB_MM2_0, UB_MM2_1],
+        mutex_ids=MTX_MM2_RES,
     )
 
 
 def make_ds_l1():
-    """dS 的 CV 共享 L1（NZ）：v3 写、mm3/mm4 读。"""
+    """dS 的 CV 共享 L1（NZ）。对应 ASC 的 ``dSL1Buf``：v3 写、mm3/mm4 读。"""
     return pl.make_tile_group(
         type=pl.TileType(
             shape=[CUBE_BASEM, CUBE_BASEN],
@@ -94,13 +165,13 @@ def make_ds_l1():
             layout=pl.NZ,
             compact=1,
         ),
-        addrs=[mem.L1_DS_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_DS,
+        addrs=[L1_DS_ADDR[d_align]],
+        mutex_ids=MTX_L1_DS,
     )
 
 
 def make_p_l1():
-    """P 的 CV 共享 L1（NZ）：v4 写、mm5 读。"""
+    """P 的 CV 共享 L1（NZ）。对应 ASC 的 ``pL1Buf``：v4 写、mm5 读。"""
     return pl.make_tile_group(
         type=pl.TileType(
             shape=[CUBE_BASEM, CUBE_BASEN],
@@ -109,8 +180,8 @@ def make_p_l1():
             layout=pl.NZ,
             compact=1,
         ),
-        addrs=[mem.L1_P_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_P,
+        addrs=[L1_P_ADDR[d_align]],
+        mutex_ids=MTX_L1_P,
     )
 
 
@@ -135,8 +206,8 @@ def make_ds_t_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[mem.L1_DS_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_DS_T,
+        addrs=[L1_DS_ADDR[d_align]],
+        mutex_ids=MTX_L1_DS_T,
     )
 
 
@@ -150,13 +221,13 @@ def make_p_t_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[mem.L1_P_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_P_T,
+        addrs=[L1_P_ADDR[d_align]],
+        mutex_ids=MTX_L1_P_T,
     )
 
 
 # ==================================================================
-#  Cube 侧 L1
+#  Cube 侧 L1 —— ASC FAGBlockCube::InitCubeBuffer
 # ==================================================================
 def make_q_l1():
     """Q 的 L1，多槽 double buffer（mm2 写入，mm4 经延后视图复用）。"""
@@ -167,8 +238,8 @@ def make_q_l1():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=mem.L1_Q_ADDRS[d_align],
-        mutex_ids=mem.L1_Q_MUTEX[d_align],
+        addrs=L1_Q_ADDRS[d_align],
+        mutex_ids=L1_Q_MUTEX[d_align],
     )
 
 
@@ -182,8 +253,8 @@ def make_k_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[mem.L1_K_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_K[d_align],
+        addrs=[L1_K_ADDR[d_align]],
+        mutex_ids=MTX_L1_K[d_align],
     )
 
 
@@ -201,8 +272,8 @@ def make_k_nd_l1():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=[mem.L1_KND_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_K_ND[d_align],
+        addrs=[L1_KND_ADDR[d_align]],
+        mutex_ids=MTX_L1_K_ND[d_align],
     )
 
 
@@ -221,8 +292,8 @@ def make_v_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[mem.L1_V_ADDR[d_align]],
-        mutex_ids=mem.MTX_L1_V[d_align],
+        addrs=[L1_V_ADDR[d_align]],
+        mutex_ids=MTX_L1_V[d_align],
     )
 
 
@@ -235,8 +306,8 @@ def make_do_l1():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=mem.L1_DO_ADDRS[d_align],
-        mutex_ids=mem.L1_DO_MUTEX[d_align],
+        addrs=L1_DO_ADDRS[d_align],
+        mutex_ids=L1_DO_MUTEX[d_align],
     )
 
 
@@ -248,8 +319,9 @@ def make_q_lag_view():
     —— current() 恰好指向 task N-2 载入的槽位，正是 mm4 需要的那一份。
     这样 Q 每个 (b,n,s1) 块只从 GM 读一次。
 
-    mutex_ids 必须与 writer 视图完全相同：同一块 L1 的两个访问器靠同一套
-    id 把「mm2 写」与「mm4 读」排序。
+    mutex_ids 必须与 writer 视图完全相同：这对应 ASC 的 ``qL1Buf.Get()`` /
+    ``qL1Buf.GetPre()`` —— 同一个 MutexBuffer 的两个访问器，靠同一套
+    LockProd/UnlockProd 与 LockCons/UnlockCons 把「mm2 写」与「mm4 读」排序。
     若给 reader 另一套 id，这层互锁就没了，mm2(task N) 会在 mm4 读完前覆写，
     实测 dK/dV 错(0.61/0.57)。
     """
@@ -260,8 +332,8 @@ def make_q_lag_view():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=mem.L1_Q_ADDRS[d_align],
-        mutex_ids=mem.L1_Q_MUTEX[d_align],
+        addrs=L1_Q_ADDRS[d_align],
+        mutex_ids=L1_Q_MUTEX[d_align],
     )
 
 
@@ -274,8 +346,8 @@ def make_do_lag_view():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=mem.L1_DO_ADDRS[d_align],
-        mutex_ids=mem.L1_DO_MUTEX[d_align],
+        addrs=L1_DO_ADDRS[d_align],
+        mutex_ids=L1_DO_MUTEX[d_align],
     )
 
 
@@ -284,19 +356,19 @@ def make_do_lag_view():
 # ==================================================================
 # L0A/L0B 一律按「最宽的一个 D 分块」声明：192 档是 96 列而不是 192，于是每块
 # 24KB、双缓冲 2x24=48KB<=64KB 得以保留 —— 这正是切 D 轴的首要目的。
-# 列宽取 mem.ACC_COLS = max(CUBE_BASEN, 分块宽)：MM2/MM1 的左矩阵是 Q/dO 的 D
+# 列宽取 ACC_COLS = max(CUBE_BASEN, 分块宽)：MM2/MM1 的左矩阵是 Q/dO 的 D
 # 分块，MM3/MM4/MM5 的左矩阵是 dS/P([M,N])。
 def make_l0a():
     """L0A（左矩阵），双缓冲。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[CUBE_BASEM, mem.ACC_COLS[d_align]],
+            shape=[CUBE_BASEM, ACC_COLS[d_align]],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Left,
             compact=1,
         ),
-        addrs=mem.L0AB_ADDRS[d_align],
-        mutex_ids=mem.MTX_L0A[d_align],
+        addrs=L0AB_ADDRS[d_align],
+        mutex_ids=MTX_L0A[d_align],
     )
 
 
@@ -304,13 +376,13 @@ def make_l0b():
     """L0B（右矩阵），双缓冲。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[mem.ACC_COLS[d_align], CUBE_BASEN],
+            shape=[ACC_COLS[d_align], CUBE_BASEN],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Right,
             compact=1,
         ),
-        addrs=mem.L0AB_ADDRS[d_align],
-        mutex_ids=mem.MTX_L0B[d_align],
+        addrs=L0AB_ADDRS[d_align],
+        mutex_ids=MTX_L0B[d_align],
     )
 
 
@@ -323,18 +395,18 @@ def make_l0c_acc():
     """
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[CUBE_BASEM, mem.ACC_COLS[d_align]],
+            shape=[CUBE_BASEM, ACC_COLS[d_align]],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=mem.L0C_ACC_ADDRS[d_align],
-        mutex_ids=mem.L0C_ACC_MUTEX[d_align],
+        addrs=L0C_ACC_ADDRS[d_align],
+        mutex_ids=L0C_ACC_MUTEX[d_align],
     )
 
 
 # ==================================================================
-#  dK / dV 的常驻 L0C
+#  dK / dV 的常驻 L0C（IS_DKV_RESIDENT_L0C）
 # ==================================================================
 # 这些累加器要在同一 s2 块内跨 s1 轮次持续存在，访问方式是 current() 而非
 # next()，故每个 D 分块**各建一个独立的 tile_group**，不做成多槽位 group。
@@ -347,8 +419,8 @@ def make_dk_l0c_chunk0():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[mem.L0C_DK0_ADDR[d_align]],
-        mutex_ids=[mem.MTX_L0C_DK0[d_align]],
+        addrs=[L0C_DK0_ADDR[d_align]],
+        mutex_ids=[MTX_L0C_DK0[d_align]],
     )
 
 
@@ -361,8 +433,8 @@ def make_dv_l0c_chunk0():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[mem.L0C_DV0_ADDR[d_align]],
-        mutex_ids=[mem.MTX_L0C_DV0[d_align]],
+        addrs=[L0C_DV0_ADDR[d_align]],
+        mutex_ids=[MTX_L0C_DV0[d_align]],
     )
 
 
@@ -380,8 +452,8 @@ def make_dk_l0c_chunk1():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[mem.L0C_DK1_ADDR[d_align]],
-        mutex_ids=[mem.MTX_L0C_DK1[d_align]],
+        addrs=[L0C_DK1_ADDR[d_align]],
+        mutex_ids=[MTX_L0C_DK1[d_align]],
     )
 
 
@@ -394,8 +466,8 @@ def make_dv_l0c_chunk1():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[mem.L0C_DV1_ADDR[d_align]],
-        mutex_ids=[mem.MTX_L0C_DV1[d_align]],
+        addrs=[L0C_DV1_ADDR[d_align]],
+        mutex_ids=[MTX_L0C_DV1[d_align]],
     )
 
 
@@ -404,9 +476,9 @@ def make_dv_l0c_chunk1():
 
 
 # ==================================================================
-#  Vector 侧 UB（BN2GS1S2）
+#  Vector 侧 UB（BN2GS1S2）—— ASC FAGBlockVec::InitUbBuffer
 # ==================================================================
-# `v1w` 是 V1 的列宽（d_align=64 档取 64，否则取 dv_align），y/dy 按它分配。
+# `v1w` 是 V1 的列宽：64 档取 64；D=256 宽档取 256；其余取 dv_align。
 def make_y_ub(v1w):
     """前向输出 y 的 UB（V1 的输入之一）。"""
     return pl.make_tile_group(
@@ -415,8 +487,8 @@ def make_y_ub(v1w):
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[mem.UB_Y_A[v1w]],
-        mutex_ids=mem.MTX_UB_Y,
+        addrs=[UB_Y_A[v1w]],
+        mutex_ids=MTX_UB_Y,
     )
 
 
@@ -428,8 +500,8 @@ def make_dy_ub(v1w):
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[mem.UB_DY_A[v1w]],
-        mutex_ids=mem.MTX_UB_DY,
+        addrs=[UB_DY_A[v1w]],
+        mutex_ids=MTX_UB_DY,
     )
 
 
@@ -448,8 +520,8 @@ def make_nzp_ub(v1w):
             valid_shape=[-1, -1],
             compact=2,
         ),
-        addrs=[mem.UB_NZP_A[v1w]],
-        mutex_ids=mem.MTX_UB_NZP,
+        addrs=[UB_NZP_A[v1w]],
+        mutex_ids=MTX_UB_NZP,
     )
 
 
@@ -462,8 +534,8 @@ def make_sfmg_ub(v1w):
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[mem.UB_SFMG_A[v1w]],
-        mutex_ids=mem.MTX_UB_SFMG,
+        addrs=[UB_SFMG_A[v1w]],
+        mutex_ids=MTX_UB_SFMG,
     )
 
 
@@ -476,15 +548,15 @@ def make_lse_ub(v1w):
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[mem.UB_LSE0_A[v1w], mem.UB_LSE1_A[v1w]],
-        mutex_ids=mem.MTX_UB_LSE,
+        addrs=[UB_LSE0_A[v1w], UB_LSE1_A[v1w]],
+        mutex_ids=MTX_UB_LSE,
     )
 
 
 def make_mask_view(v1w):
     """attenmask 的 UB 视图 —— **故意**与 y_ub 同址同 mutex。
 
-    v1 用完 y 之后 v2 才搬 mask，两者复用同一块 UB。
+    v1 用完 y 之后 v2 才搬 mask，与 ASC 的 ``attenMaskOrYInQue`` 队列复用同构。
     """
     return pl.make_tile_group(
         type=pl.TileType(
@@ -493,8 +565,8 @@ def make_mask_view(v1w):
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.UB_MASK_A[v1w]],
-        mutex_ids=mem.MTX_UB_Y,
+        addrs=[UB_MASK_A[v1w]],
+        mutex_ids=MTX_UB_Y,
     )
 
 
@@ -507,8 +579,8 @@ def make_mask_pre_view(v1w):
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.UB_MASK_PRE_A[v1w]],
-        mutex_ids=mem.MTX_UB_DY,
+        addrs=[UB_MASK_PRE_A[v1w]],
+        mutex_ids=MTX_UB_DY,
     )
 
 
@@ -521,13 +593,13 @@ def make_y_ub_bn2():
     """BN2 的 y UB。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[mem.BN2_V1_ROWS, d_align],
+            shape=[BN2_V1_ROWS, d_align],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.BN2_UB_Y],
-        mutex_ids=mem.MTX_UB_Y,
+        addrs=[BN2_UB_Y],
+        mutex_ids=MTX_UB_Y,
     )
 
 
@@ -535,13 +607,13 @@ def make_dy_ub_bn2():
     """BN2 的 dO UB。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[mem.BN2_V1_ROWS, d_align],
+            shape=[BN2_V1_ROWS, d_align],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.BN2_UB_DY],
-        mutex_ids=mem.MTX_UB_DY,
+        addrs=[BN2_UB_DY],
+        mutex_ids=MTX_UB_DY,
     )
 
 
@@ -556,8 +628,8 @@ def make_nzp_ub_bn2():
             valid_shape=[-1, -1],
             compact=2,
         ),
-        addrs=[mem.BN2_UB_NZP],
-        mutex_ids=mem.MTX_UB_NZP,
+        addrs=[BN2_UB_NZP],
+        mutex_ids=MTX_UB_NZP,
     )
 
 
@@ -570,8 +642,8 @@ def make_sfmg_ub_bn2():
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[mem.BN2_UB_SFMG],
-        mutex_ids=mem.MTX_UB_SFMG,
+        addrs=[BN2_UB_SFMG],
+        mutex_ids=MTX_UB_SFMG,
     )
 
 
@@ -584,8 +656,8 @@ def make_lse_ub_bn2():
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[mem.BN2_UB_LSE_0, mem.BN2_UB_LSE_1],
-        mutex_ids=mem.MTX_UB_LSE,
+        addrs=[BN2_UB_LSE_0, BN2_UB_LSE_1],
+        mutex_ids=MTX_UB_LSE,
     )
 
 
@@ -598,8 +670,8 @@ def make_mask_view_bn2():
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.BN2_UB_Y],
-        mutex_ids=mem.MTX_UB_Y,
+        addrs=[BN2_UB_Y],
+        mutex_ids=MTX_UB_Y,
     )
 
 
@@ -612,8 +684,8 @@ def make_mask_pre_view_bn2():
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.BN2_UB_DY],
-        mutex_ids=mem.MTX_UB_DY,
+        addrs=[BN2_UB_DY],
+        mutex_ids=MTX_UB_DY,
     )
 
 
@@ -621,13 +693,13 @@ def make_cast_ub_bn2():
     """BN2 的 v5/v6 Muls+Cast 输出缓冲（fp16，直出 GM）。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[VECTOR_BASEM, mem.BN2_CAST_W],
+            shape=[VECTOR_BASEM, BN2_CAST_W],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.BN2_UB_CAST],
-        mutex_ids=mem.MTX_UB_CAST,
+        addrs=[BN2_UB_CAST],
+        mutex_ids=MTX_UB_CAST,
     )
 
 
@@ -642,13 +714,13 @@ def make_pre_zero_buffer_f32():
     """
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, mem.PRE_ELEMS[d_align]],
+            shape=[1, PRE_ELEMS[d_align]],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.UB_PRE_ZERO],
-        mutex_ids=mem.MTX_UB_ZERO,
+        addrs=[UB_PRE_ZERO],
+        mutex_ids=MTX_UB_ZERO,
     )
 
 
@@ -656,13 +728,13 @@ def make_pre_zero_buffer_f16():
     """BN2 ``bn2_need_zero`` 支的清零缓冲（直接清 fp16 out，无 workspace）。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, mem.PRE_ELEMS[d_align]],
+            shape=[1, PRE_ELEMS[d_align]],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[mem.UB_PRE_ZERO],
-        mutex_ids=mem.MTX_UB_ZERO,
+        addrs=[UB_PRE_ZERO],
+        mutex_ids=MTX_UB_ZERO,
     )
 
 
@@ -675,13 +747,13 @@ def make_post_f32_buffer():
     """
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, mem.POST_ELEMS[d_align]],
+            shape=[1, POST_ELEMS[d_align]],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=mem.POST_F32_ADDRS[d_align],
-        mutex_ids=mem.MTX_UB_POST_F32,
+        addrs=POST_F32_ADDRS[d_align],
+        mutex_ids=MTX_UB_POST_F32,
     )
 
 
@@ -689,11 +761,11 @@ def make_post_f16_buffer():
     """post 的 fp16 输出缓冲，depth 2。见 :func:`make_post_f32_buffer`。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, mem.POST_ELEMS[d_align]],
+            shape=[1, POST_ELEMS[d_align]],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=mem.POST_F16_ADDRS[d_align],
-        mutex_ids=mem.MTX_UB_POST_F16,
+        addrs=POST_F16_ADDRS[d_align],
+        mutex_ids=MTX_UB_POST_F16,
     )

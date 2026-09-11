@@ -89,16 +89,17 @@ class FlashAttnGradTilingKey:
     #
     # 为什么 D 必须占 tilingkey 位，而 layout/GQA 不用：后两者只改索引算术
     # (运行期数值)，而 D 改的是**每块片上 tile 的宽度**，即分配尺寸，
-    # 而 pypto 的 tile shape 是 trace 期常量，所以 D 必须做成编译期分档，
-    # 不能当运行期值。
-    # 且「一律按最大 192 分配 + 运行期裁列」并非只是慢：L0C 会要 288KB，
-    # 超出 256KB 预算(即便 acc 降到单缓冲)，物理上放不下。
+    # 而 pypto 的 tile shape 是 trace 期常量。ASC 同样把 D 做成模板参数
+    # DTemplateType::Aligned128/Aligned192/Aligned256，不是运行期值。
+    # 且「一律按最大档分配 + 运行期裁列」并非只是慢：L0C 会超出 256KB
+    # 预算，物理上放不下。bit 取值 3=256（见 docs/D256设计.md）。
     #
-    # Dv 不占 tilingkey：它只决定已分配 tile 里填多少列，是纯运行期数值。
-    d_align = TilingKeyField(bits=2, values=[64, 128, 192])
-    # Dv 的**分配**宽度分档。Dv 本身是运行期值(填多少列)，但 y/dy/prod/tmp
-    # 这四块 UB 的宽度是 Dv 派生的，而 tile shape 必须是 trace 期常量，
-    # 故同样要分档。(64, 128) 是例外：d_align=64 时 dv_align 强制 128。
+    # Dv 1 bit：0=128，1=宽档。d_align<=192 时宽档是 192；d_align=256
+    # 时宽档在 host 记 256，kernel 侧本字段仍是 192，由 d_align 翻成 256。
+    d_align = TilingKeyField(bits=2, values=[64, 128, 192, 256])
+    # Dv 的**分配**宽度分档。Dv 本身是运行期值(填多少列)，但 y/dy 的 UB
+    # 宽度是 Dv 派生的，而 tile shape 必须是 trace 期常量，故同样要分档。
+    # (64, 128) 是例外：d_align=64 时 dv_align 强制 128。
     dv_align = TilingKeyField(bits=1, values=[128, 192])
     # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit9，不打乱已有 key。
     is_bn2_multiblk = TilingKeyField(bits=1, values=[0, 1])
@@ -122,7 +123,7 @@ class FlashAttnGradTilingKey:
         if template != 0 and template != 1:
             return False
         if template == 1:
-            if d_align == 192 or swizzle != 0 or layout != 0:
+            if d_align == 192 or d_align == 256 or swizzle != 0 or layout != 0:
                 return False
             if d_align == 64 and dv_align != 128:
                 return False
@@ -136,8 +137,8 @@ class FlashAttnGradTilingKey:
             return dv_align == 128
         if dv_align > d_align:
             return False
-        # D=192 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
+        # D=192 / 256 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
         # swizzle+mask 的 Group B 未迁，不编那几份。
-        if d_align == 192:
+        if d_align == 192 or d_align == 256:
             return layout == 0 and (mask_mode == 0 or swizzle == 0)
         return True

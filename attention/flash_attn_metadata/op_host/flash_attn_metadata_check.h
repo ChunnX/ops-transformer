@@ -120,12 +120,19 @@ inline aclnnStatus FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int6
     CHECK_COND(numHeadsKv > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsKv must be greater than 0, but got %ld", numHeadsKv);
 
     if (isGradEnabled) {
-        // FAG scenario: is_grad_enabled=true serves npu_fusion_attention_grad, headDim in (0, 192]
+        // FAG：is_grad_enabled=true 服务 flash_attn_grad，D/Dv ∈ (0, 256] 且 Dv<=D
         constexpr int64_t HEAD_DIM_MIN = 0;
-        constexpr int64_t HEAD_DIM_MAX = 192;
+        constexpr int64_t HEAD_DIM_MAX = 256;
+        const int64_t effectiveHeadDimV = (headDimV == NONE_VALUE) ? headDim : headDimV;
         CHECK_COND((headDim > HEAD_DIM_MIN && headDim <= HEAD_DIM_MAX), ACLNN_ERR_RUNTIME_ERROR,
                    "headDim must be in (%ld, %ld] when isGradEnabled is true, but got %ld", HEAD_DIM_MIN, HEAD_DIM_MAX,
                    headDim);
+        CHECK_COND((effectiveHeadDimV > HEAD_DIM_MIN && effectiveHeadDimV <= HEAD_DIM_MAX), ACLNN_ERR_RUNTIME_ERROR,
+                   "headDimV must be in (%ld, %ld] when isGradEnabled is true, but got %ld", HEAD_DIM_MIN, HEAD_DIM_MAX,
+                   headDimV);
+        CHECK_COND(effectiveHeadDimV <= headDim, ACLNN_ERR_RUNTIME_ERROR,
+                   "headDimV must be <= headDim when isGradEnabled is true, but got headDim=%ld, headDimV=%ld", headDim,
+                   headDimV);
     } else {
         // headDimV 为 NONE_VALUE(-1) 时表示 V 的 head_dim 等于 headDim (QK 维)
         const int64_t effectiveHeadDimV = (headDimV == NONE_VALUE) ? headDim : headDimV;

@@ -173,8 +173,8 @@ cann_ops_transformer.flash_attn_grad(
 - `q`、`k`、`v`、`dout`、`attn_out`的数据类型必须一致。
 - B、S1、S2、N1、N2、D和Dv必须为正数，其中B的取值范围为(0, 65536)。
 - N1必须能被N2整除，支持MHA（N1=N2）和GQA（N1>N2）。
-- Query和Key的head dim均为D；Value、`dout`和`attn_out`的head dim均为Dv，并满足`0 < Dv <= D <= 192`。
-- 与当前仓库中的`flash_attn`联合调用时，前向接口还要求D=Dv且D取64、128或256；结合本接口D不超过192的约束，联合调用当前支持D=Dv=64或128。
+- Query和Key的head dim均为D；Value、`dout`和`attn_out`的head dim均为Dv，并满足`0 < Dv <= D <= 256`。TND布局当前仅支持D<=128；D=192/256仅BSND/BNSD。
+- 与当前仓库中的`flash_attn`联合调用时，前向接口支持的(D, Dv)为(64,64)、(72,72)、(128,128)、(256,256)、(192,128)；本接口覆盖上述组合。
 - `softmax_lse`必须为float32，shape为(B, N1, S1)（BSND/BNSD场景）或(N1, T1)（TND场景）。
 - 所有输入的数据格式均为ND。算子注册了`AutoContiguous`，传入非连续Tensor时由框架转换为连续Tensor。
 - `metadata`必须由`flash_attn_metadata`生成，并设置`is_grad_enabled=True`。生成metadata和调用本接口时，N1、N2、D、B、S1、S2、layout及mask相关参数必须一致，否则行为未定义。

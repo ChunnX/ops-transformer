@@ -6,14 +6,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""VF 微内核。
+"""VF 微内核 —— 对应 AscendC arch35 的 ``vector_api/vf_*.h``。
 
-本文件只放 ``@pl.vector_function`` 的**纯寄存器级**实现，一律「进 UB
-地址、出 UB 地址」，不碰 GM、不碰 L1、不读 runInfo；搬运与编排在上层的
-:mod:`fag_block_vec`。
+和 AscendC 一样分两层：本文件只放 ``@pl.vector_function`` 的**纯寄存器级**
+实现，一律「进 UB 地址、出 UB 地址」，不碰 GM、不碰 L1、不读 runInfo；
+搬运与编排在上层的 :mod:`fag_block_vec`。
 
-VF 可以按 dtype / 列宽分档写多份（如 128 与 192 两档 softmaxGradFront），
-调用方只需在一处选档。
+这样分层的好处和 ASC 一致：VF 可以按 dtype / 列宽分档写多份（如 128 与 192
+两档 softmaxGradFront），而调用方只需在一处选档。
 """
 
 import pypto_pro.language as pl
@@ -32,6 +32,7 @@ from fag_common import (
 # `vf` 由 parser 按语法识别(_call_parser.py: attrs[0] == "vf")，无需 import
 
 # ---- V1: softmaxGradFront  sfmg = rowsum(dy * y) ----
+# ASC vector_api/vf_softmax_grad_front_cast*.h
 
 
 @pl.vector_function
@@ -144,7 +145,76 @@ def softmax_grad_front_row192_vf(
     vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
 
 
+@pl.vector_function
+def softmax_grad_front_row256_vf(
+    sfmg_ub,
+    y_ub,
+    dy_ub,
+    srcM: pl.DT_INT64,
+    rowShift: pl.DT_INT64,
+    rowStride: pl.DT_INT64,
+    evenSize: pl.DT_INT64,
+    oddSize: pl.DT_INT64,
+    evenSize2: pl.DT_INT64,
+    oddSize2: pl.DT_INT64,
+):
+    """sfmg：Dv=256 档。先收前 128 列，再 colOff=128 收剩余，两趟 reduce 相加。
+
+    独立档位函数，不把 128/192/256 写进同一个 VF。
+    """
+    pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    pregEven = vf.update_mask(evenSize, dtype=pl.DT_FP32)
+    pregOdd = vf.update_mask(oddSize, dtype=pl.DT_FP32)
+    pregEven2 = vf.update_mask(evenSize2, dtype=pl.DT_FP32)
+    pregOdd2 = vf.update_mask(oddSize2, dtype=pl.DT_FP32)
+    aregSfmg = vf.unalign_reg_for_store()
+    for m in pl.range(0, srcM):
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregMul = vf.mul(vregDy, vregY, pregEven)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
+        vregRed = vf.reduce_sum(vregMul, pregEven)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd)
+        vregSum = vf.add(vregRed, vregRed2, pregFullExe)
+        vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride + 128)
+        vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride + 128)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregMul = vf.mul(vregDy, vregY, pregEven2)
+        vregMul2 = vf.mul(vregDy1, vregY1, pregOdd2)
+        vregRed = vf.reduce_sum(vregMul, pregEven2)
+        vregRed2 = vf.reduce_sum(vregMul2, pregOdd2)
+        vregSum2 = vf.add(vregRed, vregRed2, pregFullExe)
+        vregSum = vf.add(vregSum, vregSum2, pregFullExe)
+        vf.store_unalign(sfmg_ub, vregSum, aregSfmg, 1, post_update=True)
+    vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
+
+
 # ---- V3: dS = (dP - sfmg) * P，随后 cast + ND2NZ ----
+# ASC vector_api/vf_broadcast_sub_mul.h + vf_cast_transdata_deconflict.h
 
 
 @pl.vector_function
@@ -153,9 +223,10 @@ def broadcast_sub_mul_cast_vf(
 ):
     """dS = (dP - broadcast(sfmg)) * P，并 cast 成 fp16。
 
+    对应 AscendC BroadcastSubMulVF128 + CastTransdataDeconflict 的算术部分：
     sfmg 按行 BRC_B32 广播，128 列拆成两个 64 lane 寄存器；
     两个 fp32 寄存器 cast 后交错写回一个 fp16 行。
-    此处不乘 scale（scale 在 dQ/dK 后处理施加）。
+    注意此处不乘 scale，与 AscendC 一致(scale 在 dQ/dK 后处理施加)。
     """
     pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
@@ -177,7 +248,9 @@ def broadcast_sub_mul_cast_vf(
         # 这里不乘 scale：scale 必须在矩阵乘之后、fp32 结果上施加
         # (post 阶段 muls_cast_dqkv)。虽然 scale*(dS@K)==(scale*dS)@K
         # 数学等价，但先乘会让 fp16 舍入发生在不同量级上，训练中误差会累积。
-        # fp32 -> fp16：Even/Odd 分别 cast 进 b16 寄存器的两个半区再 Or 合并。
+        # ASC 同样放在 post 的 fp32 workspace 上做(post_regbase.h:238)。
+        # fp32 -> fp16：Even/Odd 分别 cast 进 b16 寄存器的两个半区再 Or 合并，
+        # 与 vf_cast_transdata_deconflict.h 一致（probe 验证 MAXDIFF 0.0）
         vregCastEven = vf.astype(
             vregDs0, pregFullExeB16, dtype=pl.DT_FP16, layout=pl.CastLayout.ZERO
         )
@@ -186,7 +259,8 @@ def broadcast_sub_mul_cast_vf(
         )
         vregCastRes = vf.or_(vregCastEven, vregCastOdd, pregFullExeB16)
         # DataBlock 拷贝模式(vsstb)：一条 store 同时完成 ND->NZ 重排，
-        # 省掉独立的 pl.move —— 后者跑在 vector 计算流水上。
+        # 省掉独立的 pl.move —— 后者跑在 vector 计算流水上，正是
+        # 与 ASC 差距最大的那一项(+127us)。
         # block_stride=65 带 +1 把相邻分形列错开到不同 bank。
         vf.store_align(
             nzp_ub,
@@ -200,11 +274,12 @@ def broadcast_sub_mul_cast_vf(
 
 
 # ---- V4: P cast + ND2NZ ----
+# ASC vector_api/vf_cast_transdata_deconflict.h
 
 
 @pl.vector_function
 def cast_p_vf(nzp_ub, mm2_ub, srcM: pl.DT_INT64):
-    """P: fp32 -> fp16，并按 DataBlock 模式写成 NZ。"""
+    """P: fp32 -> fp16，对应 AscendC ProcessVec4 中的 CastTransdataDeconflict。"""
     pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
     for m in pl.range(0, srcM):
         vregPEven, vregPOdd = vf.load_align(
@@ -218,7 +293,8 @@ def cast_p_vf(nzp_ub, mm2_ub, srcM: pl.DT_INT64):
         )
         vregCastRes = vf.or_(vregCastEven, vregCastOdd, pregFullExeB16)
         # DataBlock 拷贝模式(vsstb)：一条 store 同时完成 ND->NZ 重排，
-        # 省掉独立的 pl.move —— 后者跑在 vector 计算流水上。
+        # 省掉独立的 pl.move —— 后者跑在 vector 计算流水上，正是
+        # 与 ASC 差距最大的那一项(+127us)。
         # block_stride=65 带 +1 把相邻分形列错开到不同 bank。
         vf.store_align(
             nzp_ub,
@@ -256,13 +332,15 @@ def fill_zero_fp16_vf(dst_ub, nvecs: pl.DT_INT64):
 
 
 # ---- post / V5 / V6: fp32 -> muls(scale) -> fp16 ----
+# ASC post_regbase.h:238-241
 
 
 @pl.vector_function
 def muls_cast_vf(dst_ub, src_ub, scale: pl.DT_FP32, nsegs: pl.DT_INT64):
     """fp32 -> muls(scale) -> fp16，按 128 个元素一段扁平遍历整块 tile。
 
-    Muls/Cast 直接吃整块元素，完全不看行宽。Vec tile 是紧凑 RowMajor，行距就等于
+    对应 ASC post_regbase.h:238-241：那边 Muls/Cast 直接吃 pingSize 个元素，
+    完全不看行宽。这里同理不按行走 —— Vec tile 是紧凑 RowMajor，行距就等于
     声明宽度 PHYS_W，整块在 UB 里连续，可以当一维数组遍历。
 
     按行走的老写法在 D≤64 时很吃亏：一次 DINTLV_B32 能覆盖 128 个 fp32，
