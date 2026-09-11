@@ -15,6 +15,7 @@
 #include "tensor_api/tensor.h"
 #include "../mega_moe_tiling.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_gmm_epilogue_sync.h"
 #include "mega_moe_workspace.h"
 #if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
 #include "adv_api/hcomm/hcomm.h"
@@ -65,9 +66,6 @@ struct ExpertTokenRange {
 
 using Mc2MoeContext = Mc2Aclnn::Mc2MoeContext;
 
-class Gmm1SwigluSync;
-class Gmm2CombineSync;
-
 struct GMMAddrInfo {
     GM_ADDR aGlobal;
     GM_ADDR bGlobal;
@@ -83,7 +81,7 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmm1TileStatus;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
     uint32_t gmm2CombineLogicalCoreCount = 0U;
-    Gmm1SwigluSync *gmm1SwigluSync = nullptr;
+    Gmm1ActivationSync *gmm1ActivationSync = nullptr;
     Gmm2CombineSync *gmm2CombineSync = nullptr;
 };
 

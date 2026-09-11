@@ -99,7 +99,7 @@ private:
                                                               const ExpertTokenPosition &waveEndPosition);
     __aicore__ inline void ProcessGmm2Wave(ExpertTokenPosition &gmm2Position,
                                            const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
-                                           GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, int32_t &gmmTileSequence,
+                                           GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx,
                                            uint32_t allCoreCombineExpertIndex,
                                            ExpertLoopState &allCoreCombineExpertState);
     __aicore__ inline void ProcessCombineExperts(uint32_t expertBegin, uint32_t expertEnd,
@@ -267,7 +267,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessGmm2Wave(
     ExpertTokenPosition &gmm2Position, const ExpertTokenPosition &waveEndPosition, ExpertLoopState &gmm2ExpertState,
-    GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, int32_t &gmmTileSequence, uint32_t allCoreCombineExpertIndex,
+    GMMAddrInfo &gmm2AddrInfo, uint32_t &startBlockIdx, uint32_t allCoreCombineExpertIndex,
     ExpertLoopState &allCoreCombineExpertState)
 {
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
@@ -321,23 +321,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateMoeExpertGmm2GlobalBuffer<MoeWeightType, ActivationType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2AddrInfo,
             gmm2ExpertState, gmm2Position.tokenIndexInExpert);
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            gmm2AddrInfo.gmmToEpilogueFlag =
-                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
-                static_cast<uint64_t>(gmmExecutionConfig_.blockJob.jobIndex) * INT_CACHELINE;
-        }
         // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
         bool isWholeExpert =
             gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
-        int32_t *tileSequence = nullptr;
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            tileSequence = &gmmTileSequence;
-        }
         RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                        MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true,
                        CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
                                                              gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-                                                             gmm2Position.tokenIndexInExpert, &params_, tileSequence);
+                                                             gmm2Position.tokenIndexInExpert, &params_);
 
         gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm2Position.globalTokenIndex += waveRowCount;
@@ -432,10 +423,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    Gmm1SwigluSync gmm1SwigluSync(0U); // SwiGLU 位于 AIV0。
+    Gmm1ActivationSync gmm1ActivationSync(0U); // Activation 位于 AIV0。
     Gmm2CombineSync gmm2CombineSync;
     if constexpr (TopkWeightsPrefetch) {
-        gmm1AddrInfo.gmm1SwigluSync = &gmm1SwigluSync;
+        gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
@@ -519,7 +510,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         if (gmm2LagActive) {
             if (hasPendingGmm2Wave) {
                 ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
-                                gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                                allCoreCombineExpertIndex, allCoreCombineExpertState);
                 UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                     uint32_t combineEndExpertIndex = gmm2PendingWaveEnd.expertIdx;
@@ -533,7 +524,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             hasPendingGmm2Wave = true;
         } else {
             ProcessGmm2Wave(gmm2Position, waveEndPosition, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
-                            gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                            allCoreCombineExpertIndex, allCoreCombineExpertState);
             UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
                 uint32_t combineEndExpertIndex = waveEndPosition.expertIdx;
@@ -557,7 +548,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     // 滞后流水收尾：三角色共同补跑最后一个 wave 的 GMM2/Combine（与循环内滞后分支同构）。
     if (hasPendingGmm2Wave) {
         ProcessGmm2Wave(gmm2Position, gmm2PendingWaveEnd, gmm2ExpertState, gmm2AddrInfo, startBlockIdx_,
-                        gmmTileSequence_, allCoreCombineExpertIndex, allCoreCombineExpertState);
+                        allCoreCombineExpertIndex, allCoreCombineExpertState);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             ProcessCombineExperts(combineBeginExpertIndex, gmm2PendingWaveEnd.expertIdx, combineExpertState,
@@ -571,7 +562,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
     gmm1PingPongIdx_ = 0;
     // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
-    gmm1SwigluSync.EndSync();
+    gmm1ActivationSync.EndSync();
     gmm2CombineSync.EndSync();
 }
 

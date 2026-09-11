@@ -121,7 +121,7 @@ __aicore__ inline void Gmm1AicMmadTileToUbGeneric(BlockMmad &blockMmad, const Co
     blockMmad(gmBlockA, weightView, gmBlockScaleA, gmBlockScaleB, outputView, singleShape);
 }
 
-// AIC 执行一个 A8W4 GMM1 MMAD tile；不管理 Dispatch/GMM1 或 GMM1/SwiGLU 同步，
+// AIC 执行一个 A8W4 GMM1 MMAD tile；不管理 Dispatch/GMM1 或 GMM1/Activation 同步，
 // AIV0 与 AIC 的 Blaze 内部握手仍由 GMM 实现负责。
 template <typename BlockMmad, typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC,
           typename Config, typename ActualShape>
@@ -172,13 +172,13 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
             WaitForGmm1InputReady<IsShared>(gmmAddrInfo, config, mLoc);
             lastWaveWaited = waveIdx;
         }
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->WaitForSwiglu();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->WaitForActivation();
         }
         Gmm1AicMmadTileToGmGeneric<BlockMmad>(blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmC,
                                               actualShape, mLoc, nLoc, kLoc, gmBlockA, gmBlockScaleA);
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->NotifySwiglu();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->NotifyActivation();
         } else {
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -238,7 +238,7 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
     }
 }
 
-// 执行 A8W4 GMM1 AIC tile 循环，并维持 Dispatch/GMM1 和 GMM1/SwiGLU 的同步关系。
+// 执行 A8W4 GMM1 AIC tile 循环，并维持 Dispatch/GMM1 和 GMM1/Activation 的同步关系。
 template <typename BlockMmad, bool IsShared, bool TopkWeightsPrefetch, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
@@ -248,7 +248,7 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
     typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
                                                0};
     typename BlockMmad::ProblemShape matmulShape{config.m, config.schedulerN, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, config.outputN);
+    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, true);
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -262,14 +262,14 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
             lastWaveWaited = waveIdx;
         }
 
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->WaitForSwiglu();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->WaitForActivation();
         }
         Gmm1AicMmadTileA8W4(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.gmC, config,
                             actualShape, mLoc, nLoc);
 
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->NotifySwiglu();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->NotifyActivation();
             if constexpr (!TopkWeightsPrefetch) {
                 ++gmm1TileReadySequence;
             }
@@ -285,7 +285,7 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
     }
 }
 
-// Prefetch 交错路径从 GM 取回一个子 tile，执行 SwiGLU/量化并通知 GMM2。
+// Prefetch 交错路径从 GM 取回一个子 tile，执行 Activation/量化并通知 GMM2。
 template <typename MakeLayoutC, typename ElementC, bool IsWaveFlagGrained, typename Config, typename TensorC,
           typename TensorMetaInfo, typename ActivationQuantOp, typename ActualShape>
 __aicore__ inline void Gmm1Aiv0PrefetchEpilogueTileGeneric(const Config &config, TensorC &gmC,
@@ -361,7 +361,7 @@ __aicore__ inline void Gmm1Aiv0EpilogueTileGeneric(const Config &config, Activat
     NotifyGmm2InputReady<IsWaveFlagGrained>(gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
 }
 
-// Prefetch 路径的 AIV1 从 GM 取回 A8W4 GMM1 子 tile，执行 SwiGLU/量化并发布完成状态。
+// Prefetch 路径的 AIV1 从 GM 取回 A8W4 GMM1 子 tile，执行 Activation/量化并发布完成状态。
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename TensorC, typename TensorMetaInfo,
           typename ActivationQuantOp, typename Config, typename ActualShape>
 __aicore__ inline void Gmm1Aiv1PrefetchEpilogueTileA8W4(ActivationQuantOp &activationQuantOp, TensorC &l0cOutGm,
@@ -373,7 +373,7 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueTileA8W4(ActivationQuantOp &activ
         config, l0cOutGm, metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape, mLoc, nLoc);
 }
 
-// 非 Prefetch 路径的 AIV1 从 GM 取回完整 A8W4 GMM1 tile 并执行 SwiGLU/量化。
+// 非 Prefetch 路径的 AIV1 从 GM 取回完整 A8W4 GMM1 tile 并执行 Activation/量化。
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename TensorC, typename ActivationQuantOp,
           typename Config, typename ActualShape>
 __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQuantOp, TensorC &l0cOutGm,
@@ -423,7 +423,7 @@ __aicore__ inline void WaitGmm1TileStatus(const GMMAddrInfo &gmmAddrInfo, uint32
     WaitUntilGmFlagEquals(statusAddr, roundTag);
 }
 
-// Prefetch 路径的 AIV0 通过硬件通知或 GM 状态等待 tile 就绪，再执行 SwiGLU/量化。
+// Prefetch 路径的 AIV0 通过硬件通知或 GM 状态等待 tile 就绪，再执行 Activation/量化。
 template <typename MakeLayoutC, typename ElementC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const Params &params,
@@ -437,16 +437,16 @@ __aicore__ inline void Gmm1Aiv0PrefetchEpilogueGeneric(WorkSet &workSet, const P
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->WaitForGmm1();
         } else {
             WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         }
         Gmm1Aiv0PrefetchEpilogueTileGeneric<MakeLayoutC, ElementC, IsWaveFlagGrained>(
             config, workSet.gmC, workSet.metaInfoGm, activationQuantOp, gmmAddrInfo, expertBeforeCnt, actualShape, mLoc,
             nLoc);
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->NotifyGmm1();
         }
     }
 }
@@ -470,7 +470,7 @@ __aicore__ inline void Gmm1Aiv0EpilogueGeneric(WorkSet &workSet, const GMMAddrIn
     }
 }
 
-// 根据 GM 地址建立执行资源，并执行通用 GMM1/SwiGLU 阶段。
+// 根据 GM 地址建立执行资源，并执行通用 GMM1/Activation 阶段。
 template <typename BlockMmad, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch, bool IsShared = false,
           bool IsWaveFlagGrained = false, typename Scheduler, typename Config, typename ActivationQuantOp,
           typename LayoutBundle>
@@ -549,7 +549,7 @@ __aicore__ inline void Gmm1ExecGeneric(Scheduler &scheduler, const Params &param
     }
 }
 
-// Prefetch 路径的 AIV1 通过硬件通知或 GM 状态等待 tile 就绪，再执行 A8W4 SwiGLU/量化。
+// Prefetch 路径的 AIV1 通过硬件通知或 GM 状态等待 tile 就绪，再执行 A8W4 Activation/量化。
 template <typename ElementC, typename MakeLayoutC, bool IsWaveFlagGrained, typename WorkSet, typename Config,
           typename ActivationQuantOp>
 __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Params &params,
@@ -563,16 +563,16 @@ __aicore__ inline void Gmm1Aiv1PrefetchEpilogueA8W4(WorkSet &workSet, const Para
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->WaitForGmm1();
         } else {
             WaitGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
         }
         Gmm1Aiv1PrefetchEpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(
             activationQuantOp, workSet.gmC, workSet.metaInfoGm, gmmAddrInfo, config, actualShape, mLoc, nLoc,
             expertBeforeCnt);
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->NotifyGmm1();
         }
     }
 }
@@ -590,21 +590,23 @@ __aicore__ inline void Gmm1Aiv1EpilogueA8W4(WorkSet &workSet, const GMMAddrInfo 
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         int32_t expectedReadySequence = gmm1TileReadySequence + 1;
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->WaitForGmm1();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->WaitForGmm1();
         } else {
+            // Layered MoE still publishes GM sequence flags; MTE wave and shared
+            // GMM1 use the paired hardware sync object above.
             WaitUntilGmFlagAtLeast(gmmAddrInfo.gmmToEpilogueFlag, expectedReadySequence);
         }
         Gmm1Aiv1EpilogueTileA8W4<ElementC, MakeLayoutC, IsWaveFlagGrained>(activationQuantOp, workSet.gmC, gmmAddrInfo,
                                                                            config, actualShape, mLoc, nLoc);
         gmm1TileReadySequence = expectedReadySequence;
-        if (gmmAddrInfo.gmm1SwigluSync != nullptr) {
-            gmmAddrInfo.gmm1SwigluSync->NotifyGmm1();
+        if (gmmAddrInfo.gmm1ActivationSync != nullptr) {
+            gmmAddrInfo.gmm1ActivationSync->NotifyGmm1();
         }
     }
 }
 
-// 根据 GM 地址建立执行资源，并执行 A8W4 GMM1/SwiGLU 阶段。
+// 根据 GM 地址建立执行资源，并执行 A8W4 GMM1/Activation 阶段。
 template <typename BlockMmad, typename BlockPrologue, typename ElementC, typename MakeLayoutC, bool IsShared,
           typename Scheduler, typename Config, bool TopkWeightsPrefetch, bool IsWaveFlagGrained,
           typename ActivationQuantOp, typename LayoutBundle>
@@ -726,7 +728,7 @@ __aicore__ inline void RunGmm1Generic(BlockEpilogueActivationMxQuant<EpilogueEle
         expertIdx, pingpongIdx, blockMmadContext, allowWeightL2Bypass);
 }
 
-// RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、SwiGLU 和量化。
+// RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、Activation 和量化。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
           bool IsShared = false, bool IsWaveFlagGrained = false, typename... LayoutArgs>
@@ -867,7 +869,7 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     }
 }
 
-// 构造一个共享专家的 GMM1 输入、权重、输出与 SwiGLU 量化输出 GM 视图。
+// 构造一个共享专家的 GMM1 输入、权重、输出与 Activation 量化输出 GM 视图。
 template <typename WeightType, typename ActivationOutType, typename QuantScaleType, bool UseA8W4Gmm1,
           typename BlockEpilogue>
 __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonConfig &commonConfig,

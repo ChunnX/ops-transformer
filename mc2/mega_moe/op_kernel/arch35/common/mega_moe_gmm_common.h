@@ -56,13 +56,6 @@ struct BlockMmadSelector<true, C> {
                                       typename C::ElementCType, typename C::MakeLayoutC, void, void>;
 };
 
-// MegaMoe uses equal A/B K windows; convert to the upstream QGMM Init interface at the call site.
-struct QGmmL1Config {
-    uint64_t kL1;
-    uint64_t scaleKL1;
-    uint64_t l1BufNum;
-};
-
 // 汇总 GMM1/GMM2 在不同量化路径下共用的类型、shape 和 layout 配置。
 template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool TopkWeightsPrefetch = false,
@@ -114,8 +107,7 @@ struct Config {
     using LayoutScaleATrait = Te::get_layout_trait<LayoutScaleAType>;
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
-    using L1Params = Std::conditional_t<Std::is_same_v<DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>,
-                                        QGmmL1Config, typename BlockMmad::L1Params>;
+    using L1Params = typename BlockMmad::L1Params;
     using BlockPrologue =
         Std::conditional_t<IsA8W4, Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>, void>;
 
@@ -124,7 +116,7 @@ struct Config {
         if constexpr (IsA8W4) {
             return L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1};
         } else {
-            return L1Params{.kL1 = kL1, .scaleKL1 = scaleKL1, .l1BufNum = 2};
+            return L1Params{.kAL1 = kL1, .kBL1 = kL1, .scaleKL1 = scaleKL1};
         }
     }
 
@@ -251,7 +243,7 @@ struct Config {
                                          L1Params{.kL1 = 0U, .scaleKL1 = Blaze::Gemm::MX_FP8FP4_SCALE_K_L1_SIZE}};
         }
 
-        if constexpr (g_coreType == AscendC::AIC) {
+        if constexpr (!IsA8W4 && g_coreType == AscendC::AIC) {
             // K<=256 时所有配置都只搬运一轮，保留基线可避免无收益的 Init。
             if (k <= L1_TILE_K) {
                 return baselineConfig;
@@ -259,7 +251,7 @@ struct Config {
 
             BlockMmadTilingConfig adaptiveConfig = MakeAdaptiveBlockMmadTilingConfig(m, k);
             // 512K 一旦可用，必然比 256K 减少 A/B 的 K 搬运轮数。
-            if (adaptiveConfig.l1Params.kL1 > baselineConfig.l1Params.kL1) {
+            if (adaptiveConfig.l1Params.kAL1 > baselineConfig.l1Params.kAL1) {
                 return adaptiveConfig;
             }
 
@@ -369,7 +361,7 @@ struct Config {
 };
 
 // 统一描述一次 BlockMmad::Init 的可变配置，避免 Context 分散保存并逐字段比较。
-// 通用 MX BlockMmad 的 l1BufNum 始终固定为 2，A8W4 L1Params 则没有该字段，因此不纳入运行时状态。
+// QGMM 的 L1 buffer stage 固定为 2；当前 A/B 的 K 窗口相同，因此只缓存一份 K 长度。
 struct BlockMmadInitConfig {
     uint32_t problemK = 0U;
     uint32_t tileM = 0U;
@@ -421,17 +413,15 @@ struct BlockMmadContext<BlockMmad, Blaze::Gemm::GroupedMatmulWithScaleMx<>> {
     __aicore__ inline void Init(const ProblemConfig &config)
     {
         const auto &tiling = config.blockMmadTiling;
-        // Concat takes the gate width; ordinary GMM2 takes the full tile width.
+        // tiling.tileN is the full MMAD output width (gate + up, currently 256).
+        // QGMM concat takes one half (128) and doubles it internally; GMM2 uses the full width.
         const uint32_t tileN = Stage == GmmStage::GMM1 ? tiling.tileN / ACTIVATION_N_HALF : tiling.tileN;
-        const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tileN, tiling.l1Params.kL1,
+        const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tileN, tiling.l1Params.kAL1,
                                                   tiling.l1Params.scaleKL1};
         if (!initialized_ || initConfig_ != requestedConfig) {
             typename BlockMmad::ProblemShape problemShape{config.m, config.n, config.k, 0};
-            typename BlockMmad::MmadParams params{{tiling.tileM, tileN, L0_TILE_K, 0},
-                                                  {tiling.l1Params.kL1, tiling.l1Params.kL1, tiling.l1Params.scaleKL1},
-                                                  false,
-                                                  false,
-                                                  2U};
+            typename BlockMmad::MmadParams params{
+                {tiling.tileM, tileN, L0_TILE_K, 0}, tiling.l1Params, false, false, 2U};
             blockMmad.Init(problemShape, params);
             initConfig_ = requestedConfig;
             initialized_ = true;

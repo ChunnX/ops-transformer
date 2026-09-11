@@ -31,6 +31,11 @@
 #include "activation/swigluoai_activation.h"
 #include "block_epilogue_ub_layout.h"
 
+#define BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS \
+    template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
+#define BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION \
+    BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>
+
 namespace ActivationQuantMsg {
 using ActMode = MegaMoeImpl::MegaMoeActMode;
 using ActSubMode = MegaMoeImpl::MegaMoeActSubMode;
@@ -103,8 +108,6 @@ private:
                                                                        const BlockCoord &blockCoord,
                                                                        uint16_t pingpongIdx);
 
-    __aicore__ static inline uint32_t ComputeGatedActivationInputRowStride(uint16_t validColumnCount);
-
     __aicore__ static inline void ConfigureGatedActivationTail(
         Activation::GatedActivationTileContext<DataTypeIn> &context, uint16_t validColumnCount);
 
@@ -131,7 +134,7 @@ private:
     GlobalTensor<int8_t> quantScaleGlobal_;
 
     // UB tensor views ordered by physical layout
-    LocalTensor<DataTypeIn> gmm1OutputUb_{TPosition::VECIN, ubFirstOffset, ubInputElementCapacity};
+    LocalTensor<DataTypeIn> activationInputUb_{TPosition::VECIN, ubFirstOffset, ubInputElementCapacity};
     LocalTensor<bfloat16_t> gluRes_;
     LocalTensor<int8_t> quantOutput_;
     LocalTensor<int8_t> quantScaleOutput_;
@@ -151,9 +154,8 @@ private:
     float activationBeta_{1.0f};
 };
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::Init(
-    Params const &params)
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::Init(Params const &params)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -184,10 +186,8 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, T
     }
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::UpdateGlobalAddr(
-    const BlockCoord &baseOffset)
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if constexpr (g_coreType == AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
@@ -195,9 +195,8 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     }
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::UpdateNextProblem(
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::UpdateNextProblem(
     const ProblemShape &problemShape)
 {
     intermediateHiddenSize_ = Get<N_VALUE>(problemShape);
@@ -206,18 +205,17 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
         MXFP_MULTI_BASE_SIZE;
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline auto
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::GetTopkWeightTensor()
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline auto BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::GetTopkWeightTensor()
 {
     return weightUb_;
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline typename BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN,
-                                                          TopkWeightsPrefetch>::TileExecutionContext
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::PrepareTileExecutionContext(
-    const BlockShape &blockShape, const BlockCoord &blockCoord, uint16_t pingpongIdx)
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline typename BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::TileExecutionContext
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::PrepareTileExecutionContext(const BlockShape &blockShape,
+                                                                               const BlockCoord &blockCoord,
+                                                                               uint16_t pingpongIdx)
 {
     TileExecutionContext tileContext{};
     tileContext.geometry.rowCount = Get<M_VALUE>(blockShape);
@@ -229,29 +227,20 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     tileContext.outputOffset = Get<Y_IDX>(blockCoord);
     tileContext.scaleOffset = Get<Y_SCALE_IDX>(blockCoord);
 
+    // Ping/pong bases use TileM * TileN capacity; gate/up separation uses this
+    // activation tile's columnCount, so it follows the scheduler's compute width.
     tileContext.buffers = ResolveActivationMxQuantUbPointers<DataTypeIn, MAX_SINGLE_MN>(
-        (__ubuf__ DataTypeIn *)gmm1OutputUb_.GetPhyAddr(), (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(),
+        (__ubuf__ DataTypeIn *)activationInputUb_.GetPhyAddr(), (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr(),
         (__ubuf__ int8_t *)quantOutput_.GetPhyAddr(), (__ubuf__ uint16_t *)quantScaleOutput_.GetPhyAddr(),
         (__ubuf__ uint16_t *)maxExp_.GetPhyAddr(), (__ubuf__ uint16_t *)inverseMxScale_.GetPhyAddr(),
         tileContext.geometry.columnCount, tileContext.pingpongIndex);
     return tileContext;
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline uint32_t
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN,
-                               TopkWeightsPrefetch>::ComputeGatedActivationInputRowStride(uint16_t validColumnCount)
-{
-    // interleaved源布局为[x1, x2]连续存放在同一行，下一行stride是2*validColumnCount。
-    // 注意：2*validColumnCount==实际行距(TileN) 仅在满 tile 成立；tiling 已约束 hiddenDim%256==0，
-    // 交织调度宽度为完整 hiddenDim，故交织路径不会出现尾 tile；若未来放宽须改用 TileN。
-    return static_cast<uint32_t>(validColumnCount) * 2U;
-}
-
 // 保留主循环、尾 Vector 计算和两段补零能力，兼容后续放宽列方向对齐约束。
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::
-    ConfigureGatedActivationTail(Activation::GatedActivationTileContext<DataTypeIn> &context, uint16_t validColumnCount)
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::ConfigureGatedActivationTail(
+    Activation::GatedActivationTileContext<DataTypeIn> &context, uint16_t validColumnCount)
 {
     const uint32_t vectorLength = Activation::VECTOR_LENGTH_FP32;
     context.fullVectorLoopCount = validColumnCount / vectorLength;
@@ -288,10 +277,9 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, T
     context.additionalPaddingOutput = context.outputTail + context.needTailVectorCompute * vectorLength;
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
 __aicore__ inline Activation::GatedActivationTileContext<DataTypeIn>
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::BuildGatedActivationContext(
-    const TileExecutionContext &tileContext)
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::BuildGatedActivationContext(const TileExecutionContext &tileContext)
 {
     const UbPointers &ubPointers = tileContext.buffers;
     const uint16_t validColumnCount = static_cast<uint16_t>(tileContext.geometry.columnCount);
@@ -299,7 +287,9 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     gatedActivationContext.gate = ubPointers.firstInput;
     gatedActivationContext.up = ubPointers.secondInput;
     gatedActivationContext.output = ubPointers.activationOutput;
-    gatedActivationContext.inputRowStrideElements = ComputeGatedActivationInputRowStride(validColumnCount);
+    // Each input row is [gate, up]; validColumnCount is the width of either half.
+    // Current tiling requires complete N tiles (hiddenDim % 256 == 0).
+    gatedActivationContext.inputRowStrideElements = static_cast<uint32_t>(validColumnCount) * ACTIVATION_N_HALF;
     gatedActivationContext.outputRowStrideElements = tileContext.geometry.outputRowStrideElements;
     gatedActivationContext.rowLoopCount = static_cast<uint16_t>(tileContext.geometry.rowCount);
     ConfigureGatedActivationTail(gatedActivationContext, validColumnCount);
@@ -311,9 +301,8 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     return gatedActivationContext;
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::RunGatedActivationTile(
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::RunGatedActivationTile(
     const TileExecutionContext &tileContext)
 {
     Activation::GatedActivationTileContext<DataTypeIn> gatedActivationContext =
@@ -344,9 +333,8 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     }
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::RunMxQuantTile(
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::RunMxQuantTile(
     const TileExecutionContext &tileContext)
 {
     const UbPointers &ubPointers = tileContext.buffers;
@@ -367,9 +355,8 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     }
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::StoreQuantTile(
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::StoreQuantTile(
     const TileExecutionContext &tileContext)
 {
     const TileGeometry &tileGeometry = tileContext.geometry;
@@ -384,9 +371,8 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
                            intermediateHiddenScaleElements_, tileGeometry.columnCount);
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::StoreQuantOutput(
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::StoreQuantOutput(
     AscendC::GlobalTensor<int8_t> &dst, AscendC::LocalTensor<int8_t> &src, uint64_t blockCount, uint64_t offset,
     uint64_t n, uint64_t singleN)
 {
@@ -407,9 +393,8 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     AscendC::DataCopyPad(dst[offset], src, ub2GmParams);
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void
-BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeightsPrefetch>::StoreQuantScaleCompact(
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::StoreQuantScaleCompact(
     AscendC::GlobalTensor<int8_t> &dst, AscendC::LocalTensor<int8_t> &src, uint64_t blockCount, uint64_t offset,
     uint64_t scaleN, uint64_t singleN)
 {
@@ -424,11 +409,10 @@ BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN, TopkWeight
     AscendC::DataCopyPad<int8_t, AscendC::PaddingMode::Compact>(dst[offset], src, ub2GmParams);
 }
 
-template <typename DataTypeOut, typename DataTypeIn, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch>
-__aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, TileM, TileN,
-                                                      TopkWeightsPrefetch>::operator()(const BlockShape &blockShape,
-                                                                                       const BlockCoord &blockCoord,
-                                                                                       uint16_t pingpongIdx)
+BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
+__aicore__ inline void BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION::operator()(const BlockShape &blockShape,
+                                                                                     const BlockCoord &blockCoord,
+                                                                                     uint16_t pingpongIdx)
 {
     if (Get<M_VALUE>(blockShape) == 0) {
         return;
@@ -447,6 +431,9 @@ __aicore__ inline void BlockEpilogueActivationMxQuant<DataTypeOut, DataTypeIn, T
 }
 
 } // namespace MegaMoeImpl
+
+#undef BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_SPECIALIZATION
+#undef BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_TEMPLATE_PARAMS
 
 #endif // defined(__DAV_C310__)
 #endif // BLOCK_EPILOGUE_ACTIVATION_MX_QUANT_H

@@ -230,8 +230,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
                                   sliceGlobalEndIndex >= waveRange.end.globalTokenIndex;
             // W4 的 GMM2/Combine 调度集中在基类，派生模板只负责提供当前专家 slice。
             RunGmm2CombineForExpert(gmm2State, gmm2AddrInfo, startBlockIdx_, sliceTokenStartIndexInExpert,
-                                    sliceTokenCount, combineBufferConfig, combineRowSequence, gmmTileSequence_,
-                                    isFinalCombine);
+                                    sliceTokenCount, combineBufferConfig, combineRowSequence, isFinalCombine);
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
@@ -267,9 +266,9 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    Gmm1SwigluSync gmm1SwigluSync(1U); // SwiGLU 位于 AIV1。
+    Gmm1ActivationSync gmm1ActivationSync(1U); // Activation 位于 AIV1。
     Gmm2CombineSync gmm2CombineSync;
-    gmm1AddrInfo.gmm1SwigluSync = &gmm1SwigluSync;
+    gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
     }
@@ -310,7 +309,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
     // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
-    gmm1SwigluSync.EndSync();
+    gmm1ActivationSync.EndSync();
     gmm2CombineSync.EndSync();
 }
 
