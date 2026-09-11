@@ -451,6 +451,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::C
         (void)hcomm_.BatchCommit(batchHandle);
         preparedWqeCount = 0U;
     }
+    AscendC::PRINTF("SQ protection triggered, sqWriteCount=%u\n", sqWriteCount);
     int32_t ret = hcomm_.Drain(channel);
     ascendc_assert(ret == 0, "Urma drain failed, ret=%d", ret);
     sqWriteCount = 0U;
