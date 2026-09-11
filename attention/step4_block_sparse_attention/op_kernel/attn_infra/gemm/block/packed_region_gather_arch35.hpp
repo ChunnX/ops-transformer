@@ -62,9 +62,11 @@ __aicore__ inline uint32_t PackedRegionGmStart(uint32_t phys, uint32_t regionSiz
 
 // Scan out the next segment to copy: skip invalid/out-of-window slots, clip the first hit slot
 // to the window, then greedily merge following GM-contiguous slots (identical to the original
-// per-segment clip+probe semantics). compactPosRef/slotRef are advanced past the last consumed
-// slot. Returns the segment length (0 = no more segments inside the window); segOriStart
-// outputs the segment's starting GM row.
+// per-segment clip+probe semantics).
+// Cursor invariant: slotRef is the first not-fully-consumed slot; compactPosRef is the compact
+// token index at that slot's start. A tile that ends mid-slot leaves both on that slot so the
+// next tile can resume via copyStartInSlot. Returns the segment length (0 = no more segments
+// inside the window); segOriStart outputs the segment's starting GM row.
 template <bool IS_DECODE, class PackedT>
 __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPacked, uint32_t packedRowStart,
                                               uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
@@ -88,6 +90,7 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
             continue;
         }
         if (slotStart >= targetEnd) {
+            compactPosRef = slotStart;
             break;
         }
         uint32_t copyStartInSlot = (gatheredStart > slotStart) ? (gatheredStart - slotStart) : 0;
@@ -98,10 +101,16 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
         }
         uint32_t segLen = copyEndInSlot - copyStartInSlot;
         if (segLen == 0) {
+            compactPosRef = slotStart;
             ++slotRef;
             continue;
         }
         uint32_t oriStart = PackedRegionGmStart(phys, regionSize, pageSize) + copyStartInSlot;
+        if (copyEndInSlot < valid) {
+            compactPosRef = slotStart;
+            segOriStart = oriStart;
+            return segLen;
+        }
         uint32_t probe = slotRef + 1;
         while (probe < packedCount && segLen < remain) {
             PackedT nextMeta = gPacked.GetValue(packedRowStart + probe);
@@ -121,12 +130,14 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
                 take = left;
             }
             segLen += take;
+            if (take < nextValid) {
+                slotRef = probe;
+                segOriStart = oriStart;
+                return segLen;
+            }
             compactPosRef += nextValid;
             slotRef = probe;
             ++probe;
-            if (take < nextValid) {
-                break;
-            }
         }
         ++slotRef;
         segOriStart = oriStart;
@@ -139,25 +150,19 @@ __aicore__ inline uint32_t PackedNextSegment(AscendC::GlobalTensor<PackedT> &gPa
 // Prefill INT32: phys_region | (valid_tokens << 24); skip sentinel is -1 (0xFFFFFFFF).
 // Decode INT64: start_token | (phys_region << 32); valid = clamp(kv_seqlen - start, 0, regionSize).
 // GM base is PackedRegionGmStart(phys, regionSize, pageSize); pageSize is blocksize (default 128).
-// [mte2 inst halve] When the next segment has the same length and src stride is C0-aligned,
-// two segments are issued in ONE Nd2Nz (ndNum=2): srcNdMatrixStride = GM row gap * row stride
-// (elements); dstNzMatrixStride = segLen * ELE_NUM_PER_C0, because the zN L1 fractal row stride
-// is always ELE_NUM_PER_C0, i.e. compact row r sits exactly at r * ELE_NUM_PER_C0, so nd1 lands
-// precisely on the compact rows right after nd0. Non-RowMajor GM (nZ path) and fp4 (Nd2Nz matrix
-// stride unit for fp4x2 not yet verified on hardware) keep the original one-segment-per-inst path.
+// compactPos/slot are inout cursors (do not reset here). Issue copies without a per-segment
+// PipeBarrier; wait once after the tile's copies so MTE2 can overlap scalar decode.
 template <bool IS_DECODE, class CopyGmToL1, class TensorGM, class TensorL1, class PackedT>
 __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &gTensor, TensorL1 &l1Tensor,
                                               AscendC::GlobalTensor<PackedT> gPacked, uint32_t packedRowStart,
                                               uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
                                               uint32_t gatheredStart, uint32_t gatheredLen, uint32_t embed,
-                                              int32_t kvSeqlen)
+                                              int32_t kvSeqlen, uint32_t &compactPos, uint32_t &slot)
 {
     constexpr bool kSupportPair = tla::detail::isRowMajor<typename TensorGM::Layout>::value &&
                                   !AscendC::IsSameType<typename TensorGM::Element, fp4x2_e2m1_t>::value;
     uint32_t targetEnd = gatheredStart + gatheredLen;
-    uint32_t compactPos = 0;
     uint32_t dealtLenAccum = 0;
-    uint32_t slot = 0;
     while (slot < packedCount && dealtLenAccum < gatheredLen) {
         uint32_t oriStart = 0;
         uint32_t segLen = PackedNextSegment<IS_DECODE>(gPacked, packedRowStart, packedCount, regionSize, pageSize,
@@ -170,9 +175,6 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
         auto gTile = tla::GetTile(gTensor, tla::MakeCoord(oriStart, 0), tla::MakeShape(segLen, embed));
         bool paired = false;
         if constexpr (kSupportPair) {
-            // Look ahead for an equal-length second segment; pair when nd1's src base stays in
-            // the same C0-alignment class as nd0 (stride is a multiple of ELE_NUM_PER_C0).
-            // Arch35 Nd2Nz srcNdMatrixStride is uint64; do not clamp to the old 65536 element limit.
             uint32_t compactPos2 = compactPos;
             uint32_t slot2 = slot;
             uint32_t oriStart2 = 0;
@@ -188,7 +190,6 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
                 if (srcStride % eleNumPerC0 == 0 &&
                     dealtLenAccum + segLen + segLen2 <= gatheredLen) {
                     copyGmToL1(l1Tile, gTile, 2, srcStride, dstStride);
-                    AscendC::PipeBarrier<PIPE_MTE2>();
                     dealtLenAccum += segLen + segLen2;
                     compactPos = compactPos2;
                     slot = slot2;
@@ -198,9 +199,11 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
         }
         if (!paired) {
             copyGmToL1(l1Tile, gTile);
-            AscendC::PipeBarrier<PIPE_MTE2>();
             dealtLenAccum += segLen;
         }
+    }
+    if (dealtLenAccum > 0) {
+        AscendC::PipeBarrier<PIPE_MTE2>();
     }
 }
 

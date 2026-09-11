@@ -92,10 +92,18 @@ public:
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementK>(L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_PINGPONG_BUF_SIZE * i);
         }
+        packedSlot_ = 0;
+        packedCompactPos_ = 0;
     }
 
     /// Destructor
     __aicore__ inline ~BlockMmadTla() {}
+
+    __aicore__ inline void ResetPackedCursor()
+    {
+        packedSlot_ = 0;
+        packedCompactPos_ = 0;
+    }
 
     template <class TensorQ>
     __aicore__ inline void loadQGM(TensorQ &gQTensor, GemmCoord actualOriShape)
@@ -128,7 +136,7 @@ public:
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile + kvSBaseTileInnerOffset;
         PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
             copyGmToL1A, gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
-            baseTileStartOffset, l1KTileMAct, embed, kvSeqlen);
+            baseTileStartOffset, l1KTileMAct, embed, kvSeqlen, packedCompactPos_, packedSlot_);
     }
 
     template <class TensorK, class TensorS, class PackedT>
@@ -280,6 +288,9 @@ protected:
     uint32_t l1BTileK;
     uint32_t l1QBufNum;
     uint32_t l1KBufNum;
+
+    uint32_t packedSlot_ = 0;
+    uint32_t packedCompactPos_ = 0;
 
     uint32_t l1PPingPongFlag = 0;
     uint32_t l0CPingPongFlag = 0;

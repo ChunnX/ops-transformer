@@ -119,10 +119,18 @@ public:
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(L0C_HALF_BUF_SIZE +
                                                                                         L0C_PINGPONG_BUF_SIZE * i);
         }
+        packedSlot_ = 0;
+        packedCompactPos_ = 0;
     }
 
     /// Destructor
     __aicore__ inline ~BlockMmadTla() {}
+
+    __aicore__ inline void ResetPackedCursor()
+    {
+        packedSlot_ = 0;
+        packedCompactPos_ = 0;
+    }
 
     template <uint32_t MODE, pipe_t PIPE>
     __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
@@ -167,7 +175,7 @@ public:
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
             copyGmToL1B, gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
-            baseTileStartOffset, curBaseTileSize, embed, kvSeqlen);
+            baseTileStartOffset, curBaseTileSize, embed, kvSeqlen, packedCompactPos_, packedSlot_);
     }
 
     template <class TensorB, class TensorC, class PackedT>
@@ -338,6 +346,9 @@ protected:
     uint32_t l1BTileK;
     uint32_t l1ABufNum;
     uint32_t l1BBufNum;
+
+    uint32_t packedSlot_ = 0;
+    uint32_t packedCompactPos_ = 0;
 };
 ////////////////////////////////////////////////////////////////////
 

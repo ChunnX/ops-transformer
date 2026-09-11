@@ -101,6 +101,10 @@ public:
             }
             uint32_t gatheredKvSeqlen =
                 CompactedPackedTokenCount<IS_DECODE>(gPacked, packedRowStart, count, regionSize_, kvSeqlen);
+#ifdef __DAV_CUBE__
+            blockMmadQK.ResetPackedCursor();
+            blockMmadPV.ResetPackedCursor();
+#endif
             // GM O/LSE use real GQA groupSize; Cube/softmax/PV N is 16-aligned qBaseTile.
             uint32_t rowNum = groupSize;
             uint32_t rowNumPad = qBaseTile_;
