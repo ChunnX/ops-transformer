@@ -13,8 +13,8 @@
  * \brief L4 策略层：分核方式（线性均分 vs 按 s2 列跨核发放）。
  *
  * 这是一个纯偏好判据 —— 两种分核都算得对，只是快慢不同。判据必须保持
- * 纯整数、无浮点、无平台调用：kernel 侧 decide_swizzle() 是它逐行照抄的
- * 镜像，只有保持这三条，"照抄"才可靠。改判据必须同时改两处。
+ * 纯整数、无浮点、无平台调用。kernel 只消费 tilingkey 里的 swizzle 位，
+ * 不再维护 Python 镜像。
  */
 
 #ifndef FLASH_ATTN_GRAD_TILING_SWIZZLE_H_

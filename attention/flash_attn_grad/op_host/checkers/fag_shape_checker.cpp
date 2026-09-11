@@ -28,8 +28,8 @@ ge::graphStatus CheckDimNum(const char *opName, const char *layout, size_t expec
 {
     for (size_t i = 0; i < num; ++i) {
         OP_CHECK_IF(tensors[i].shape->GetDimNum() != expectDims,
-                    OP_LOGE(opName, "%s must be %zuD when layout is %s, but got %zu dims.", tensors[i].name, expectDims,
-                            layout, tensors[i].shape->GetDimNum()),
+                    OP_LOGE(opName, "%s must be %zuD when layout is %s, but got %zu dims.", tensors[i].name,
+                            expectDims, layout, tensors[i].shape->GetDimNum()),
                     return ge::GRAPH_PARAM_INVALID);
     }
     return ge::GRAPH_SUCCESS;
@@ -37,7 +37,7 @@ ge::graphStatus CheckDimNum(const char *opName, const char *layout, size_t expec
 
 // 一组张量在某个轴上必须与参考张量取值相同。dimTag 只用于错误信息。
 ge::graphStatus CheckDimEqual(const char *opName, const char *dimTag, const char *refName, int64_t refVal,
-                              size_t dimIdx, const TensorRef *tensors, size_t num)
+                             size_t dimIdx, const TensorRef *tensors, size_t num)
 {
     for (size_t i = 0; i < num; ++i) {
         const int64_t got = tensors[i].shape->GetDim(dimIdx);
@@ -84,7 +84,8 @@ ge::graphStatus CheckHeadDim(const char *opName, const AxisIndex &axis, const Te
     // AscendC 参考实现没查这条，我们查，不继承它的漏洞。
     OP_CHECK_IF(vD > qD, OP_LOGE(opName, "D dim of v (%ld) must not exceed D dim of q (%ld).", vD, qD),
                 return ge::GRAPH_PARAM_INVALID);
-    OP_CHECK_IF(vD <= 0 || qD <= 0, OP_LOGE(opName, "D dims must be positive, but got q D=%ld, v D=%ld.", qD, vD),
+    OP_CHECK_IF(vD <= 0 || qD <= 0,
+                OP_LOGE(opName, "D dims must be positive, but got q D=%ld, v D=%ld.", qD, vD),
                 return ge::GRAPH_PARAM_INVALID);
     OP_CHECK_IF(qD > MAX_HEAD_DIM || vD > MAX_HEAD_DIM,
                 OP_LOGE(opName, "D dims must be in (0, %ld], but got q D=%ld, v D=%ld.", MAX_HEAD_DIM, qD, vD),
@@ -105,7 +106,8 @@ ge::graphStatus CheckCuSeqlens(const char *opName, gert::TilingContext *context,
     for (const auto &item : cuSeqlens) {
         const bool exists = IsOptionalTensorExist(context, item.index);
         if (!isTnd) {
-            OP_CHECK_IF(exists, OP_LOGE(opName, "%s must not be provided when layout is not TND.", item.name),
+            OP_CHECK_IF(exists,
+                        OP_LOGE(opName, "%s must not be provided when layout is not TND.", item.name),
                         return ge::GRAPH_PARAM_INVALID);
             continue;
         }
@@ -142,8 +144,8 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
     // softmax_lse 的维度数与其他张量不同（TND 下是 2D 的 (N, T)），单独校验。
     const TensorRef mainTensors[] = {q, k, v, dout, attnOut, dq, dk, dv};
     const size_t expectDims = isTnd ? 3U : 4U;
-    if (CheckDimNum(opName, layout, expectDims, mainTensors, sizeof(mainTensors) / sizeof(mainTensors[0])) !=
-        ge::GRAPH_SUCCESS) {
+    if (CheckDimNum(opName, layout, expectDims, mainTensors,
+                    sizeof(mainTensors) / sizeof(mainTensors[0])) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_PARAM_INVALID;
     }
     if (isTnd) {
@@ -168,7 +170,8 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
     const TensorRef qSide[] = {dout, dq, attnOut};
     const TensorRef kvSide[] = {v, dk, dv};
     if (CheckDimEqual(opName, "N", "q", qN, axis.n, qSide, sizeof(qSide) / sizeof(qSide[0])) != ge::GRAPH_SUCCESS ||
-        CheckDimEqual(opName, "N", "k", kN, axis.n, kvSide, sizeof(kvSide) / sizeof(kvSide[0])) != ge::GRAPH_SUCCESS) {
+        CheckDimEqual(opName, "N", "k", kN, axis.n, kvSide, sizeof(kvSide) / sizeof(kvSide[0])) !=
+            ge::GRAPH_SUCCESS) {
         return ge::GRAPH_PARAM_INVALID;
     }
     OP_CHECK_IF(kN == 0 || qN % kN != 0,
@@ -179,7 +182,8 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
     if (!isTnd) {
         const int64_t qS = q.shape->GetDim(axis.s);
         const int64_t kS = k.shape->GetDim(axis.s);
-        if (CheckDimEqual(opName, "S", "q", qS, axis.s, qSide, sizeof(qSide) / sizeof(qSide[0])) != ge::GRAPH_SUCCESS ||
+        if (CheckDimEqual(opName, "S", "q", qS, axis.s, qSide, sizeof(qSide) / sizeof(qSide[0])) !=
+                ge::GRAPH_SUCCESS ||
             CheckDimEqual(opName, "S", "k", kS, axis.s, kvSide, sizeof(kvSide) / sizeof(kvSide[0])) !=
                 ge::GRAPH_SUCCESS) {
             return ge::GRAPH_PARAM_INVALID;
@@ -187,8 +191,8 @@ ge::graphStatus FagShapeChecker::Check(FagCheckCtx &ctx)
 
         const int64_t bDim = q.shape->GetDim(0);
         const TensorRef bTensors[] = {k, v, dout, dq, dk, dv, attnOut};
-        if (CheckDimEqual(opName, "B", "q", bDim, 0U, bTensors, sizeof(bTensors) / sizeof(bTensors[0])) !=
-            ge::GRAPH_SUCCESS) {
+        if (CheckDimEqual(opName, "B", "q", bDim, 0U, bTensors,
+                          sizeof(bTensors) / sizeof(bTensors[0])) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_PARAM_INVALID;
         }
     }

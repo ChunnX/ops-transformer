@@ -123,7 +123,7 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
     //    确实不同，一个全局阈值服务不了两者。
     //
     // 全部 29 个实测点上：方向无关的旧 2x 规则误判 7 个（累计代价 67.7%），
-    // 本判据误判 2 个（18.0%）。必须与 kernel 的 decide_swizzle() 保持一致。
+    // 本判据误判 2 个（18.0%）。kernel 只消费 tilingkey 的 swizzle 位。
     if (s2Outer > s1Outer) {
         trace.swizzleReject = "s2-dominant";
         return;

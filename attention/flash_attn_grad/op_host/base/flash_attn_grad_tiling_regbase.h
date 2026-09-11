@@ -12,14 +12,14 @@
  * \file flash_attn_grad_tiling_regbase.h
  * \brief 目前唯一的 tiling 模板类：regbase(DAV_3510) 上的全部 layout。
  *
- * 命名取 regbase 而不是 §5.4 举例的 Padded/Varlen，是因为现在 BSND/BNSD/TND
+ * 命名取 regbase 而不是 Padded/Varlen，是因为现在 BSND/BNSD/TND
  * 都由这一个类接（TND 只影响 tilingkey bit2 与分核口径，不换 C++ 类）。等 TND
  * 真要走独立实现时再拆成两个类，那时 IsCapable 分别按 layout 收窄，DoTiling 的
  * GRAPH_PARAM_INVALID 返回值就是为那一步准备的。
  *
  * 能力边界只有一条：SOC 必须是 regbase。其余"接不接"的判断在两个地方 ——
  * 参数合法性在 op_host/checkers/，模板/swizzle/D 分档这类性能路由在
- * plan/flash_attn_grad_tiling_route.cpp 的候选表里（§5.13），都不在这里。
+ * plan/flash_attn_grad_tiling_route.cpp 的候选表里，都不在这里。
  */
 
 #ifndef FLASH_ATTN_GRAD_TILING_REGBASE_H_
@@ -45,7 +45,7 @@ private:
     // 的说明）：那个结构体只在带 force-include 的 *_tiling*.cpp 里可见。
     ge::graphStatus WriteTilingData(const FagParsedInfo &info);
 
-    // 指向入口栈上的解析结果。本类不拥有它，也不回写（§4.1：策略层对 info 只读）。
+    // 指向入口栈上的解析结果。本类不拥有它，也不回写（策略层对 info 只读）。
     const FagParsedInfo *info_ = nullptr;
 };
 

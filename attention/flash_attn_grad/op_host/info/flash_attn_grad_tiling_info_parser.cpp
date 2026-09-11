@@ -196,7 +196,7 @@ ge::graphStatus ParsePlatform(gert::TilingContext *context, FagParsedInfo &info)
     info.libapiWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
 
     // SOC 是否支持不在这里判：那是"哪个模板类能接"的问题，已下沉到
-    // FlashAttnGradTilingRegbase::IsCapable()（D1 / §5.4）。
+    // FlashAttnGradTilingRegbase::IsCapable()（D1）。
     OP_CHECK_IF(context->GetWorkspaceSizes(1) == nullptr,
                 OP_LOGE(context->GetNodeName(), "workSpaceSize got from ge is nullptr."),
                 return ge::GRAPH_PARAM_INVALID);

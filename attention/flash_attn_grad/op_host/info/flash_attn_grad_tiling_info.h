@@ -126,7 +126,7 @@ struct FagParsedInfo {
     bool hasAttenMask = false;
     bool hasSeqused = false;
     // 已解析但**不参与 tilingkey**。D4 暂定：sinks 是否占位要等 pypto 侧实现
-    // 方式确定后再定（§5.11），在那之前它只用于日志与将来的判据输入。
+    // 方式确定后再定，在那之前它只用于日志与将来的判据输入。
     bool hasSinks = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需

@@ -129,13 +129,39 @@ from cann_ops_transformer.ops import flash_attn_grad
 
 | 文件 | 说明 |
 |------|------|
-| `op_kernel/flash_attn_grad.py` | pypto-pro kernel 实现（BN2GS1S2 模板） |
+| `op_kernel/flash_attn_grad.py` | kernel 入口：只按 tilingkey 的 `template` 位做编译期分发 |
 | `op_host/flash_attn_grad_tiling.cpp` | tiling 实现（tilingkey 编码、workspace 布局） |
 | `op_host/flash_attn_grad_def.cpp` | 算子定义（op_proto/输入输出/属性） |
 | `op_host/flash_attn_grad_infershape.cpp` | shape/dtype 推导 |
 | `op_host/config/ascend950/flash_attn_grad_binary.json` | 二进制算子配置 |
 | `torch_extension/flash_attn_grad.py` | PyTorch 算子 schema 与 python 绑定 |
 | `torch_extension/csrc/flash_attn_grad.cpp` | PyTorch C++ 扩展（aclnn 调用层） |
+
+### kernel 侧分层
+
+kernel 按 AscendC `flash_attention_score_grad/op_kernel/arch35` 的 cube/vector
+block 架构分层，同目录下每个 `fag_*.py` 对应 arch35 的一个头文件：
+
+| 模块 | arch35 对应 | 职责 |
+|------|------------|------|
+| `fag_common.py` | `*_common.h` | 基本块尺寸、D 轴分块策略、NZ 分形常量、CV 同步 flag、`FagConstInfo` / `FagRunInfo` |
+| `fag_mem.py` | `cube_api/mutex_buffer*.h` | 按 `d_align` 分档的 L1/L0/UB 地址表与 mutex id 分配表 |
+| `fag_tiling.py` | `*_tiling_data_regbase.h` + `*_template_tiling_key.h` | host 契约：TilingData 字段序、TilingKey 位域 |
+| `fag_schedule.py` | `*_kernel_base.h` | 块有效性、swizzle 映射、metadata 读取、逐 task `RunInfo` |
+| `fag_buffers.py` | `Init*Buffer` | 片上 tile 声明，一个 buffer 一个工厂函数 |
+| `fag_block_cube.py` | `*_block_cube.h` | C1..C5 五个 matmul 阶段 |
+| `fag_block_vec.py` | `*_block_vec.h` | V1..V6 与 pre/post 的搬运编排 |
+| `fag_vector_api.py` | `vector_api/vf_*.h` | 寄存器级 VF 微内核 |
+| `attenmask.py` | `vector_api/pse_atten_mask_*.h` | mask 搬入与 softmax VF |
+| `fag_kernel.py` | `*_kernel.h` | 两个模板的 `Process()` 主循环与 CV 同步编排 |
+
+分层的硬约束：
+
+* `flash_attn_grad.py` 必须有且仅有一个 `@pl.jit` —— codegen
+  (`cmake/scripts/pypto_codegen.py`) 靠这一点定位 kernel；
+* `fag_buffers.py` 的工厂**一个只返回一个 tile_group**，原因见该文件 docstring；
+* 依赖方向单向：`common → mem → tiling → vector_api → schedule → buffers →
+  block_cube/block_vec → kernel → 入口`，不要制造回边。
 
 ## aclnn 接口说明
 

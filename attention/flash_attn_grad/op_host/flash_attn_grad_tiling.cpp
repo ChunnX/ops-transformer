@@ -42,7 +42,7 @@ ge::graphStatus FlashAttnGradTilingFunc(gert::TilingContext *context)
     }
 
     // 只有一个模板类，所以直接构造。将来 TND 拆出独立实现时，这里换成按注册
-    // 优先级依次 DoTiling、遇到 GRAPH_PARAM_INVALID 就试下一个（§5.4）。
+    // 优先级依次 DoTiling、遇到 GRAPH_PARAM_INVALID 就试下一个。
     FlashAttnGradTilingRegbase tiling(context);
     return tiling.DoTiling(info);
 }

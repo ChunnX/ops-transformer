@@ -64,9 +64,10 @@ ge::graphStatus FagAttrRangeChecker::Check(FagCheckCtx &ctx)
         ReadStrAttr(attrs, ATTR_LAYOUT_OUT_INDEX, ctx.layoutOut);
     }
 
-    OP_CHECK_IF(
-        ctx.maskMode != MASK_MODE_NO_MASK && ctx.maskMode != MASK_MODE_CAUSAL && ctx.maskMode != MASK_MODE_WINDOW,
-        OP_LOGE(opName, "mask_mode only supports 0, 3, 4, but got %ld.", ctx.maskMode), return ge::GRAPH_PARAM_INVALID);
+    OP_CHECK_IF(ctx.maskMode != MASK_MODE_NO_MASK && ctx.maskMode != MASK_MODE_CAUSAL &&
+                    ctx.maskMode != MASK_MODE_WINDOW,
+                OP_LOGE(opName, "mask_mode only supports 0, 3, 4, but got %ld.", ctx.maskMode),
+                return ge::GRAPH_PARAM_INVALID);
 
     if (CheckMinusOneOrNonNegative(opName, "win_left", ctx.winLeft) != ge::GRAPH_SUCCESS ||
         CheckMinusOneOrNonNegative(opName, "win_right", ctx.winRight) != ge::GRAPH_SUCCESS ||
@@ -143,14 +144,15 @@ ge::graphStatus FagLayoutChecker::Check(FagCheckCtx &ctx)
 
     for (const auto &item : layouts) {
         OP_CHECK_IF(!IsSupportedLayout(item.value),
-                    OP_LOGE(opName, "%s only supports BSND, TND, BNSD, but got %s.", item.attrName, item.value.c_str()),
+                    OP_LOGE(opName, "%s only supports BSND, TND, BNSD, but got %s.", item.attrName,
+                            item.value.c_str()),
                     return ge::GRAPH_PARAM_INVALID);
     }
 
     // 三者必须相同：kernel 只按一个 layout 推导视图参数，混用会静默读错内存。
     OP_CHECK_IF(ctx.layoutQ != ctx.layoutKv || ctx.layoutQ != ctx.layoutOut,
-                OP_LOGE(opName, "layout_q(%s), layout_kv(%s), layout_out(%s) must be the same.", ctx.layoutQ.c_str(),
-                        ctx.layoutKv.c_str(), ctx.layoutOut.c_str()),
+                OP_LOGE(opName, "layout_q(%s), layout_kv(%s), layout_out(%s) must be the same.",
+                        ctx.layoutQ.c_str(), ctx.layoutKv.c_str(), ctx.layoutOut.c_str()),
                 return ge::GRAPH_PARAM_INVALID);
     return ge::GRAPH_SUCCESS;
 }

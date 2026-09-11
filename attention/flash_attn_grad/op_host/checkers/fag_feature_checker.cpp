@@ -21,9 +21,10 @@ namespace optiling {
 ge::graphStatus FagDeterministicChecker::Check(FagCheckCtx &ctx)
 {
     OP_CHECK_IF(ctx.context->GetDeterministic() == 1,
-                OP_LOGE(ctx.opName, "FlashAttnGrad does not support deterministic computation yet "
-                                    "(dq/dk/dv are accumulated with fp32 atomicAdd). Please disable the deterministic "
-                                    "switch, or use FlashAttentionScoreGrad instead."),
+                OP_LOGE(ctx.opName,
+                        "FlashAttnGrad does not support deterministic computation yet "
+                        "(dq/dk/dv are accumulated with fp32 atomicAdd). Please disable the deterministic "
+                        "switch, or use FlashAttentionScoreGrad instead."),
                 return ge::GRAPH_PARAM_INVALID);
     return ge::GRAPH_SUCCESS;
 }
