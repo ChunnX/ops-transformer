@@ -391,9 +391,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     bool drainAfterToken = sqWriteCount_ + wqesPerToken > HCOMM_SQ_MAX_PENDING;
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
-        GM_ADDR srcList[2] = {tokenAddr, weightAddr};
-        uint32_t lenList[2] = {static_cast<uint32_t>(tokenBytes), sizeof(float)};
-        const BufDesc srcDescs{srcList, lenList};
+        struct BufDesc srcDescs[2] = {{tokenAddr, static_cast<uint32_t>(tokenBytes)}, {weightAddr, sizeof(float)}};
         if (drainAfterToken) {
             PrepareMultiSgeWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
         } else {
