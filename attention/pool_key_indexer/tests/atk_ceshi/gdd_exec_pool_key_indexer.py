@@ -89,12 +89,30 @@ def _prefix_to_counts(prefix):
 
 
 def _topk_desc(scores, k):
-    """降序 TopK; NPU topk 不可用时回退到 sort。"""
-    try:
-        return torch.topk(scores, k, dim=-1, sorted=True)
-    except Exception:
+    """降序 TopK; NPU topk 不可用时回退到 sort。
+
+    NPU 上 torch.topk 插件内部走 NonZero/AICPU 路径, 在亿级 score 上触发
+    aicpu timeout(E30008, 看门狗 ~10min), 且超时为进程级内错无法 try/except
+    捕获, 会级联饿死同 worker 的后续用例(实测 k=1024/84M 与 k=256/446M 均
+    触发) —— NPU 上一律走 sort(AICore 向量路径, 行为稳定)。
+
+    并列取舍: 与 _reference_cpu 金标约定一致, 同分按下标升序选取
+    (金标用 argsort(..., stable=True) 显式实现)。CPU 侧用 stable sort
+    保证该约定 —— oversized 用例的 cpu_benchmark 真值由本函数所在的
+    _reference_npu_blocked 分块路径产生(替代 _reference_cpu), 并列取舍
+    必须与被替代的金标一致, 否则 relu 产生的精确 0 分并列区会使 TopK
+    边界行集合比对大面积翻转(实测 3 用例 23%~59% 行误判失败)。
+    NPU 侧 torch_npu sort 不保证 stable 参数可用, 保持非稳定(仅影响
+    参考性 bm-vs-truth 指标, 不影响 op-vs-truth 精度门禁)。
+    """
+    if getattr(scores, "is_npu", False):
         sorted_vals, sorted_idx = torch.sort(scores, dim=-1, descending=True)
         return sorted_vals[..., :k], sorted_idx[..., :k]
+    # CPU: stable sort —— 同分按下标升序(金标约定), topk 并列顺序未定义不用
+    sorted_vals, sorted_idx = torch.sort(
+        scores, dim=-1, descending=True, stable=True
+    )
+    return sorted_vals[..., :k], sorted_idx[..., :k]
 
 
 def _validate_args(query, pool_key, layout_q, layout_k, topk, pool_size, mask_mode):
@@ -231,8 +249,9 @@ def _split_q_descale_generic(ds, layout_q, q_counts):
     return out
 
 
-def _split_k_descale_generic(ds, layout_k, actual_seq_k, k_counts, block_table=None,
-                             block_size=None):
+def _split_k_descale_generic(
+    ds, layout_k, actual_seq_k, k_counts, block_table=None, block_size=None
+):
     """通用 k_descale 拆分(任意尾维, 已解码 float) -> 逐 batch (Pb, ...) 列表。
 
     支持与 pool_key 相同的三布局(BSND 切批 / TND 前缀切 / PA 经 block_table)。
@@ -262,7 +281,9 @@ def _split_k_descale_generic(ds, layout_k, actual_seq_k, k_counts, block_table=N
             take = min(block_size, need - pos)
             rows.append(ds[blk, :take, 0])
             pos += take
-        out.append(torch.cat(rows, dim=0) if rows else ds.new_zeros((0,) + ds.shape[3:]))
+        out.append(
+            torch.cat(rows, dim=0) if rows else ds.new_zeros((0,) + ds.shape[3:])
+        )
     return out
 
 
@@ -282,7 +303,9 @@ def _split_q_descale(q_descale, layout_q, actual_seq_q, q_counts):
     return out
 
 
-def _split_k_descale(k_descale, layout_k, actual_seq_k, k_counts, block_table=None, block_size=None):
+def _split_k_descale(
+    k_descale, layout_k, actual_seq_k, k_counts, block_table=None, block_size=None
+):
     """k_descale(mode=0) -> 逐 batch (Pb,) float32 列表。
 
     BSND (B,S2,N2) -> [b, :c, 0]; TND (T2,N2) 前缀切;
@@ -321,8 +344,19 @@ def _split_k_descale(k_descale, layout_k, actual_seq_k, k_counts, block_table=No
     return out
 
 
-def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode,
-                   q_scale_b=None, k_scale_b=None, mx_q_scale_b=None, mx_k_scale_b=None):
+def _compute_batch(
+    q_b,
+    w_b,
+    k_b,
+    tail_k,
+    topk,
+    pool_size,
+    mask_mode,
+    q_scale_b=None,
+    k_scale_b=None,
+    mx_q_scale_b=None,
+    mx_k_scale_b=None,
+):
     """单个 batch 的池级 TopK 选择与索引展开。
 
     入参:
@@ -359,8 +393,11 @@ def _compute_batch(q_b, w_b, k_b, tail_k, topk, pool_size, mask_mode,
     if mx_q_scale_b is not None or mx_k_scale_b is not None:
         # mxFP8: 展开 group scale 到 D 维后反量化
         if mx_q_scale_b is not None:
-            mxq = mx_q_scale_b.reshape(mx_q_scale_b.shape[0], -1) if mx_q_scale_b.dim() > 2 \
-                else mx_q_scale_b  # (S, N1*D/32) -> (S, N1, D/32)
+            mxq = (
+                mx_q_scale_b.reshape(mx_q_scale_b.shape[0], -1)
+                if mx_q_scale_b.dim() > 2
+                else mx_q_scale_b
+            )  # (S, N1*D/32) -> (S, N1, D/32)
             mxq = mxq.reshape(mxq.shape[0], -1, d // 32)
             q_b = q_b * mxq.repeat_interleave(32, dim=-1)
         if mx_k_scale_b is not None:
@@ -458,7 +495,7 @@ def _reference_cpu(
     k_scale_list = None
     mx_q_scale_list = None
     mx_k_scale_list = None
-    is_mx = (quant_mode == 1)
+    is_mx = quant_mode == 1
     if q_descale is not None:
         if not is_mx:
             q_scale_list = _split_q_descale(q_descale, layout_q, actual_seq_q, q_counts)
@@ -469,17 +506,25 @@ def _reference_cpu(
         k_counts = [k.shape[0] for k in k_list]
         block_size = pool_key.shape[1] if layout_k == "PA_BBND" else None
         if not is_mx:
-            k_scale_list = _split_k_descale(k_descale, layout_k, actual_seq_k,
-                                             k_counts, block_table, block_size)
+            k_scale_list = _split_k_descale(
+                k_descale, layout_k, actual_seq_k, k_counts, block_table, block_size
+            )
         else:
             mx_k_scale_list = _split_k_descale_generic(
-                k_descale, layout_k, actual_seq_k, k_counts, block_table, block_size)
+                k_descale, layout_k, actual_seq_k, k_counts, block_table, block_size
+            )
 
     # ---- 逐 batch 计算 ----
     idx_rows, val_rows = [], []
     for b in range(batch):
         token_idx, pool_val = _compute_batch(
-            q_list[b], w_list[b], k_list[b], tail_list[b], topk, pool_size, mask_mode,
+            q_list[b],
+            w_list[b],
+            k_list[b],
+            tail_list[b],
+            topk,
+            pool_size,
+            mask_mode,
             q_scale_list[b] if q_scale_list is not None else None,
             k_scale_list[b] if k_scale_list is not None else None,
             mx_q_scale_list[b] if mx_q_scale_list is not None else None,
@@ -749,6 +794,9 @@ def _reference_npu(
             vis = tail[:, None].expand(b, s1m)
         base = (lens - tail)[:, None, None] + t[None, None, :]
         tail_blk = torch.where(t[None, None, :] < vis[:, :, None], base, -1)
+        # 0 池 batch 尾块无意义(lens = 0*ps+tail 时基址 L_orig-tail 无定义),
+        # 清 -1 对齐 _reference_cpu 的 p_len==0 短路语义
+        tail_blk = tail_blk.masked_fill((k_counts_t == 0)[:, None, None], -1)
         token_idx = torch.cat(
             [token_idx[..., :topk], tail_blk.to(token_idx.dtype)], dim=-1
         )
@@ -774,6 +822,243 @@ def _reference_npu(
         token_idx = token_idx[row_valid]
         if return_value:
             values = values[row_valid]
+    return token_idx.to(torch.int32), values
+
+
+def _reference_npu_blocked(
+    query,
+    pool_key,
+    weights,
+    pool_tail_k,
+    *,
+    actual_seq_q=None,
+    actual_seq_k=None,
+    block_table=None,
+    layout_q="BSND",
+    layout_k="BSND",
+    topk=128,
+    pool_size=1,
+    mask_mode=0,
+    return_value=False,
+):
+    """NPU 组合标杆的分块 streaming 实现(与 _reference_npu 数值语义一致)。
+
+    _reference_npu 一次性物化 (B, S1m, Pm) 稠密 scores —— 极端 shape
+    (ps=1 + 池数 11~17 万)下单矩阵 50~500GB, NPU HBM 放不下; 中大 shape
+    虽能放下, 但 worker 长跑后 caching allocator 碎片化, 数 GB 级分配
+    逐步劣化直至 aicpu 看门狗超时(进程级不可捕获, 级联饿死后续用例)。
+
+    本实现峰值内存 = S1m*(N1 逐头中间)*blockW + S1m*k_sel*2:
+      - 逐 batch 处理, pool 维按 blockW 分块;
+      - N1 头维拆为逐头循环(w 可负, 不能提前乘入 q —— relu 作用在
+        dot 之后), 每头仅物化 (S1m, blockW) fp32 中间;
+      - 块内 topk + 与累积缓冲 cat-topk 归并(增量 streaming topk);
+      - TND 反填充用显式行号 index_select(int 索引走 gather), 避免
+        布尔索引触发 torch_npu AdvancedIndex/NonZero 的 AICPU 超时。
+
+    blockW 下限 2*k_sel(保证归并信息不丢失), 上限 16384(控制 sort 规模)。
+    """
+    device = query.device
+    sparse = topk // pool_size
+    out_len = topk + pool_size - 1
+
+    q, w, q_counts_t, row_valid = _normalize_query_npu(
+        query, weights, actual_seq_q, layout_q, device
+    )
+    b, s1m, n1, d = q.shape
+    if layout_q == "TND" and s1m == 0:  # 全空 query: 同 _reference_npu 短路
+        indices = torch.zeros((0, out_len), dtype=torch.int32, device=device)
+        if return_value:
+            values = torch.full(
+                (0, sparse), _NEG_INF, dtype=torch.float32, device=device
+            )
+        else:
+            values = torch.empty(0, dtype=torch.float32, device=device)
+        return indices, values
+
+    k, k_counts_t, pool_valid = _normalize_key_npu(
+        pool_key, actual_seq_k, block_table, layout_k, device
+    )
+    pm = k.shape[1]
+    tail = pool_tail_k.detach().to(device=device, dtype=torch.int64).reshape(b)
+    lens = k_counts_t * pool_size + tail
+    scale = float(d) ** -0.5
+    k_sel = min(sparse, pm)
+
+    block_w = min(16384, max(2 * k_sel if k_sel > 0 else 4096, 4096))
+    col_ar = torch.arange(pm, device=device)
+
+    idx_list, val_list = [], []
+    for bi in range(b):
+        cnt = int(q_counts_t[bi])
+        n_pools = int(k_counts_t[bi])
+        if s1m == 0 or pm == 0 or k_sel == 0 or n_pools == 0:
+            # 0 池 batch 全 -1 短路(对齐 _reference_cpu 的 p_len==0 语义):
+            # 尾块追加也不发生 —— lens = 0*ps + tail 时 "L_orig-tail" 基址
+            # 无意义(池不存在), 尾块 token 不可输出
+            idx_list.append(
+                torch.full((s1m, out_len), -1, dtype=torch.int64, device=device)
+            )
+            val_list.append(
+                torch.full((s1m, sparse), _NEG_INF, dtype=torch.float32, device=device)
+            )
+            continue
+
+        q_b = q[bi].float()  # (S1m, N1, D)
+        w_b = w[bi].float()  # (S1m, N1)
+        k_b = k[bi].float()  # (Pm, D)
+        pv = pool_valid[bi]  # (Pm,)
+        if mask_mode == 3:
+            row_ar = torch.arange(s1m, device=device)
+            valid_row = torch.div(
+                int(lens[bi]) - cnt + row_ar + 1, pool_size, rounding_mode="floor"
+            ).clamp(min=0)  # (S1m,)
+        else:
+            valid_row = None
+
+        cum_v = torch.full((s1m, k_sel), _NEG_INF, dtype=torch.float32, device=device)
+        cum_i = torch.full((s1m, k_sel), -1, dtype=torch.int64, device=device)
+        # 单块(pm <= block_w)时 cat-argsort 归并是纯冗余: 累积缓冲全 -inf,
+        # 白排一遍 2*k_sel 宽(case 633 类 8192x16384 argsort 即来自此处,
+        # 属设备上最大的单 sort 调用), 直接采用本块 topk 结果
+        single_block = pm <= block_w
+        for lo in range(0, pm, block_w):
+            hi = min(lo + block_w, pm)
+            bw = hi - lo
+            kb = k_b[lo:hi]  # (bw, D)
+            s_blk = torch.zeros((s1m, bw), dtype=torch.float32, device=device)
+            for n in range(n1):
+                dot_n = torch.relu(q_b[:, n] @ kb.transpose(0, 1))  # (S1m, bw)
+                s_blk += w_b[:, n : n + 1] * dot_n
+            s_blk *= scale
+            # 布尔 AdvancedIndex setitem 在 torch_npu 上走 NonZero/动态索引
+            # 路径, 大 shape 下有 AICPU 超时/vector core 异常前科(见
+            # _topk_desc 注释), 统一改 masked_fill_(与 _reference_npu 稠密
+            # 路径同款安全算子)
+            s_blk.masked_fill_(~pv[None, lo:hi], _NEG_INF)
+            if valid_row is not None:
+                s_blk.masked_fill_(
+                    col_ar[None, lo:hi] >= valid_row[:, None], _NEG_INF
+                )
+
+            kk = min(k_sel, bw)
+            v_blk, i_blk = _topk_desc(s_blk, kk)  # (S1m, kk)
+            i_blk = i_blk + lo
+            if kk < k_sel:
+                pad_v = torch.full(
+                    (s1m, k_sel - kk), _NEG_INF, dtype=torch.float32, device=device
+                )
+                pad_i = torch.full(
+                    (s1m, k_sel - kk), -1, dtype=torch.int64, device=device
+                )
+                v_blk = torch.cat([v_blk, pad_v], dim=-1)
+                i_blk = torch.cat([i_blk, pad_i], dim=-1)
+            if single_block:
+                cum_v, cum_i = v_blk, i_blk
+                continue
+            # 增量归并: cat 累积缓冲 + 本块 topk, 再取 k_sel。
+            # CPU 侧 stable 归并(同分按下标升序, 金标约定): cum 来自更早的
+            # 块(池下标更小)且内部已按约定有序, v_blk 同块内也已稳定有序,
+            # stable sort 保持 [cum, v_blk] 的原始相对顺序 => 并列分数全局
+            # 按池下标升序, 与 _reference_cpu/_topk_desc(CPU stable) 一致;
+            # NPU 侧 torch_npu sort 不保证 stable 可用, 保持非稳定(仅 bm
+            # 参考指标路径, 不影响 op-vs-truth 精度门禁)
+            cat_v = torch.cat([cum_v, v_blk], dim=-1)
+            cat_i = torch.cat([cum_i, i_blk], dim=-1)
+            if cat_v.device.type == "cpu":
+                order = torch.argsort(
+                    cat_v, dim=-1, descending=True, stable=True
+                )[..., :k_sel]
+            else:
+                order = torch.argsort(cat_v, dim=-1, descending=True)[..., :k_sel]
+            cum_v = cat_v.gather(-1, order)
+            cum_i = cat_i.gather(-1, order)
+
+        # ---- 展开为 token 索引(同 _reference_npu 语义) ----
+        if pool_size > 1:
+            off = torch.arange(pool_size, device=device)
+            expanded = (cum_i.unsqueeze(-1) * pool_size + off).reshape(
+                s1m, k_sel * pool_size
+            )
+            fin = (
+                torch.isfinite(cum_v)
+                .unsqueeze(-1)
+                .expand(s1m, k_sel, pool_size)
+                .reshape(s1m, k_sel * pool_size)
+            )
+        else:
+            expanded = cum_i
+            fin = torch.isfinite(cum_v)
+        token_b = torch.where(fin, expanded, -1)  # (S1m, k_sel*ps)
+        if token_b.shape[-1] < out_len:
+            token_b = torch.nn.functional.pad(
+                token_b, (0, out_len - token_b.shape[-1]), value=-1
+            )
+        elif token_b.shape[-1] > out_len:
+            token_b = token_b[..., :out_len]
+
+        # ---- 尾块追加 ----
+        if pool_size > 1:
+            t = torch.arange(pool_size - 1, device=device)
+            if mask_mode == 3:
+                row_ar = torch.arange(s1m, device=device)
+                gpos = int(lens[bi]) - cnt + row_ar
+                vis = torch.clamp(
+                    torch.minimum(
+                        torch.full_like(gpos, int(tail[bi])), gpos - topk + 1
+                    ),
+                    min=0,
+                )
+            else:
+                vis = torch.full(
+                    (s1m,), int(tail[bi]), dtype=torch.int64, device=device
+                )
+            base = (int(lens[bi]) - int(tail[bi])) + t
+            tail_blk = torch.where(t[None, :] < vis[:, None], base[None, :], -1)
+            token_b = torch.cat(
+                [token_b[..., :topk], tail_blk.to(token_b.dtype)], dim=-1
+            )
+
+        vals_b = cum_v
+        if k_sel < sparse:
+            vals_b = torch.nn.functional.pad(
+                vals_b, (0, sparse - k_sel), value=_NEG_INF
+            )
+        idx_list.append(token_b)
+        val_list.append(vals_b)
+
+    token_idx = torch.stack(idx_list, dim=0)  # (B, S1m, out_len)
+    values = torch.stack(val_list, dim=0)  # (B, S1m, sparse)
+
+    if layout_q == "BSND" and actual_seq_q is not None:
+        token_idx = token_idx.masked_fill(~row_valid.unsqueeze(-1), -1)
+        if return_value:
+            values = values.masked_fill(~row_valid.unsqueeze(-1), _NEG_INF)
+
+    if layout_q == "TND":
+        # 反填充: 显式有效行号 index_select(int 索引走 gather,
+        # 避免布尔索引触发 AdvancedIndex/NonZero 的 AICPU 超时)。
+        # batch b 局部行 j -> 展平索引 b*S1m + j(有效 j < counts[b])
+        rows_per_batch = q_counts_t.tolist()
+        sel_parts = [
+            torch.arange(bi * s1m, bi * s1m + int(c), device=device)
+            for bi, c in enumerate(rows_per_batch)
+        ]
+        sel = (
+            torch.cat(sel_parts)
+            if sel_parts
+            else torch.zeros(0, dtype=torch.int64, device=device)
+        )
+        flat_idx = token_idx.reshape(b * s1m, out_len)
+        token_idx = flat_idx.index_select(0, sel)
+        if return_value:
+            flat_val = values.reshape(b * s1m, sparse)
+            values = flat_val.index_select(0, sel)
+
+    if return_value:
+        values = values.to(torch.float32)
+    else:
+        values = torch.empty(0, dtype=torch.float32, device=device)
     return token_idx.to(torch.int32), values
 
 
@@ -866,7 +1151,9 @@ def pool_key_indexer_reference(
         )
     # NPU 组合标杆暂不支持量化 descale(量化精度验证走 CPU 金标)
     if q_descale is not None or k_descale is not None:
-        raise ValueError("NPU reference does not support quant descale yet; use CPU golden")
+        raise ValueError(
+            "NPU reference does not support quant descale yet; use CPU golden"
+        )
     return _reference_npu(
         query,
         pool_key,
@@ -882,7 +1169,6 @@ def pool_key_indexer_reference(
         mask_mode=mask_mode,
         return_value=return_value,
     )
-
 
 
 #!/usr/bin/python
@@ -925,7 +1211,8 @@ from atk.configs.dataset_config import InputDataset
 from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 
-# pool_key_indexer_reference / _e8m0_decode 已合入本文件上半部分, 直接引用
+# pool_key_indexer_reference / _e8m0_decode / _reference_npu(_blocked)
+# 已合入本文件上半部分, 直接引用
 
 LAYOUT_MAP = {0: "BSND", 1: "TND", 2: "PA_BBND"}
 
@@ -997,6 +1284,7 @@ def _distribute(total, b):
     base = total // b
     rem = total - base * b
     return [base + 1 if i < rem else base for i in range(b)]
+
 
 def _split_batch_lens(b, total, mode="uniform", max_ratio=2.0):
     """将 total 确定性拆分为 b 份逐 batch 长度(与随机 tensor 值解耦)。
@@ -1122,16 +1410,24 @@ def prepare_pki_inputs(input_data: InputDataset, build_non_contig=True):
     # 场景标志(旧 JSON 无字段时回退 False)
     tnd_unequal = _parse_bool(pick_attr(IDX_TND_UNEQUAL, "tnd_unequal", False))
     zero_q_batch = _parse_bool(pick_attr(IDX_ZERO_Q_BATCH, "zero_q_batch", False))
-    zero_pool_batch = _parse_bool(pick_attr(IDX_ZERO_POOL_BATCH, "zero_pool_batch", False))
+    zero_pool_batch = _parse_bool(
+        pick_attr(IDX_ZERO_POOL_BATCH, "zero_pool_batch", False)
+    )
     key_non_contig = _parse_bool(pick_attr(IDX_KEY_NON_CONTIG, "key_non_contig", False))
 
     # TND actualSeq: 按场景标志确定性拆分(不等长/0长度 batch), 前缀和
     if layout_q == "TND" and act_seq_q is not None:
-        mode = "zero_head" if zero_q_batch else ("unequal" if tnd_unequal else "uniform")
+        mode = (
+            "zero_head" if zero_q_batch else ("unequal" if tnd_unequal else "uniform")
+        )
         lens = _split_batch_lens(len(act_seq_q), query.shape[0], mode)
         act_seq_q = torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
     if layout_k == "TND" and act_seq_k is not None:
-        mode = "zero_head" if zero_pool_batch else ("unequal" if tnd_unequal else "uniform")
+        mode = (
+            "zero_head"
+            if zero_pool_batch
+            else ("unequal" if tnd_unequal else "uniform")
+        )
         lens = _split_batch_lens(len(act_seq_k), key.shape[0], mode)
         act_seq_k = torch.tensor(lens, dtype=torch.int64).cumsum(0).to(torch.int64)
 
@@ -1154,7 +1450,12 @@ def prepare_pki_inputs(input_data: InputDataset, build_non_contig=True):
 
     # PA key 0 轴非连续: 在 key 所在设备构造视图
     # (pyaclnn 适配器传 build_non_contig=False, 由其在目标设备自行构造)
-    if build_non_contig and key_non_contig and layout_k == "PA_BBND" and key.is_contiguous():
+    if (
+        build_non_contig
+        and key_non_contig
+        and layout_k == "PA_BBND"
+        and key.is_contiguous()
+    ):
         key = make_pa_key_non_contig(key)
 
     if pool_tail_k is None:
@@ -1259,6 +1560,63 @@ def pki_output_stubs(prep):
     return indices, values
 
 
+def _estimate_npu_golden_load(prep):
+    """估算 NPU 组合标杆稠密化后的峰值元素数。
+
+    _reference_npu 按 (B, S1m, Pm) 稠密化: scores 一份 + sort 工作区 ~2x +
+    展开输出 (B, S1m, topk+ps-1) 多份 —— 极端 shape(zero_q/unequal 使 S1m
+    翻倍、大 topk)下峰值数十 GB, NPU 64GB HBM 放不下: 实测 OOM 或挂死
+    (AdvancedIndex/NonZero aicpu timeout ~10min 且进程级不可捕获, 会级联
+    饿死 worker 内后续用例)。返回 (scores元素数, 展开输出元素数) 供上限判断。
+    """
+    q = prep["query"]
+    ps = prep["pool_size"]
+    topk = prep["topk"]
+    if prep["layout_q"] == "BSND":
+        b, s1m = int(q.shape[0]), int(q.shape[1])
+    else:
+        aq = prep["actual_seq_q"]
+        if aq is not None and len(aq) > 0:
+            lens = [int(aq[0])] + [int(aq[i] - aq[i - 1]) for i in range(1, len(aq))]
+            b, s1m = len(lens), (max(lens) if lens else 0)
+        else:
+            b, s1m = 1, int(q.shape[0])
+    ak = prep["actual_seq_k"]
+    key = prep["pool_key"]
+    if prep["layout_k"] == "BSND":
+        pm = int(key.shape[1])
+    elif ak is not None and len(ak) > 0:
+        if prep["layout_k"] == "TND":
+            lensk = [int(ak[0])] + [int(ak[i] - ak[i - 1]) for i in range(1, len(ak))]
+            pm = max(lensk) if lensk else 0
+        else:  # PA: 每 batch 池数(非前缀和)
+            pm = int(max(int(v) for v in ak))
+    else:
+        pm = int(key.shape[0])
+    return b * s1m * pm, b * s1m * (topk + ps - 1)
+
+
+# NPU 组合标杆稠密化元素上限(超过走分块 streaming 路径 _reference_npu_blocked,
+# 数值语义一致): 原稠密实现一次性物化 (B,S1m,Pm) scores, 极端 shape(ps=1 +
+# 池数 11~17 万)下单矩阵 50~500GB 放不下; 中大 shape 放得下但 worker 长跑后
+# caching allocator 碎片化, 数 GB 级分配劣化直至 aicpu 看门狗超时(进程级
+# 不可捕获, 级联饿死后续用例)。blocked 实现峰值仅 S1m*blockW + S1m*k_sel*2,
+# 实测极端 case(ps=1/11~17 万池)11~39s 完成(稠密版 CPU 降级路径 30~90 分钟
+# 仍超时)。CPU 向量化仅作 blocked 亦 OOM 的兜底。
+_NPU_GOLDEN_MAX_SCORE_ELEMS = 50_000_000
+_NPU_GOLDEN_MAX_TOKEN_ELEMS = 250_000_000
+# oversized 中的"CPU 安全带"上限: NPU 长跑 worker 上大 sort/大张量算子存在
+# 非确定 vector core 异常(ERR 507035)前科 —— 2026-09-10 全量跑中 case 633
+# (67M scores)的 npu_golden 打崩 device 2, 级联秒败后续 124 例(算子侧无责,
+# 该段算子任务从未执行)。golden 仅为参考节点(bm-vs-truth 为 reference-only
+# 指标, 比较器从落盘文件读取且统一 .cpu()), 该量级直接搬 CPU 跑分块标杆
+# (数值语义一致, 256 核主机秒级完成), 设备风险清零; 超过该带(输出/中间
+# 亿级, 主机放不下或分钟级过慢)保留 NPU 分块路径, 前后 empty_cache 释放
+# 长跑碎片化缓存, 大分配走全新块规避碎片相关的设备级异常。
+_NPU_GOLDEN_CPU_SAFE_SCORE_ELEMS = 200_000_000
+_NPU_GOLDEN_CPU_SAFE_TOKEN_ELEMS = 200_000_000
+
+
 @register("pool_key_indexer")
 class PKIApi(BaseApi):
     """PoolKeyIndexer 统一标杆执行器(CPU 金标 / NPU 组合标杆, 按输入设备路由)。"""
@@ -1287,6 +1645,83 @@ class PKIApi(BaseApi):
 
         # 统一标杆(与 pytest 一致):
         #   输入在 CPU(真值任务升精度后) -> CPU 金标; 输入在 NPU -> NPU 组合标杆
+        #   极端 shape(稠密化超限) -> 双侧均走分块 streaming 实现(数值语义
+        #   一致, 峰值内存 S1m*blockW):
+        #     NPU 标杆: 原稠密版放不下/碎片化挂死, blocked 11~39s 完成;
+        #     CPU 真值: _reference_cpu 逐行 Python 循环在 11 万行规格下
+        #     30~90 分钟超时, blocked 向量化(CPU)数分钟内完成。
+        #   NPU 侧 blocked 仍 OOM 时兜底 CPU 向量化。
+        scores_elems, token_elems = _estimate_npu_golden_load(prep)
+        oversized = (
+            scores_elems > _NPU_GOLDEN_MAX_SCORE_ELEMS
+            or token_elems > _NPU_GOLDEN_MAX_TOKEN_ELEMS
+        )
+        if oversized and not quant:
+            if prep["query"].device.type == "npu":
+                if (
+                    scores_elems <= _NPU_GOLDEN_CPU_SAFE_SCORE_ELEMS
+                    and token_elems <= _NPU_GOLDEN_CPU_SAFE_TOKEN_ELEMS
+                ):
+                    # CPU 安全带: 搬 CPU 跑分块标杆(见阈值处注释), 设备零风险
+                    prep = {
+                        k: (v.cpu() if torch.is_tensor(v) else v)
+                        for k, v in prep.items()
+                    }
+                else:
+                    # 巨型带: 保留 NPU 分块(blocked 已加固: masked_fill 替代
+                    # AdvancedIndex setitem、单块免冗余 cat-argsort 归并),
+                    # 前后 empty_cache 释放长跑碎片化缓存
+                    common = dict(
+                        actual_seq_q=prep["actual_seq_q"],
+                        actual_seq_k=prep["actual_seq_k"],
+                        block_table=prep["block_table"],
+                        layout_q=prep["layout_q"],
+                        layout_k=prep["layout_k"],
+                        topk=prep["topk"],
+                        pool_size=prep["pool_size"],
+                        mask_mode=prep["mask_mode"],
+                        return_value=prep["return_value"],
+                    )
+                    torch.npu.empty_cache()
+                    try:
+                        indices, values = _reference_npu_blocked(
+                            prep["query"],
+                            prep["pool_key"],
+                            prep["weights"],
+                            prep["pool_tail_k"],
+                            **common,
+                        )
+                        torch.npu.empty_cache()
+                        return indices, values
+                    except torch.OutOfMemoryError:
+                        torch.npu.empty_cache()
+                        prep = {
+                            k: (v.cpu() if torch.is_tensor(v) else v)
+                            for k, v in prep.items()
+                        }
+            # common 必须在设备路由(可能整体搬 CPU)之后构建: 若提前构建,
+            # block_table/actual_seq_* 留在 NPU 与已搬 CPU 的 query/pool_key
+            # 混用, PA_BBND 场景 index_select 直接跨设备报错(全量跑实测
+            # 20 例 PA+oversized 用例失败, 均为本 bug)
+            common = dict(
+                actual_seq_q=prep["actual_seq_q"],
+                actual_seq_k=prep["actual_seq_k"],
+                block_table=prep["block_table"],
+                layout_q=prep["layout_q"],
+                layout_k=prep["layout_k"],
+                topk=prep["topk"],
+                pool_size=prep["pool_size"],
+                mask_mode=prep["mask_mode"],
+                return_value=prep["return_value"],
+            )
+            indices, values = _reference_npu_blocked(
+                prep["query"],
+                prep["pool_key"],
+                prep["weights"],
+                prep["pool_tail_k"],
+                **common,
+            )
+            return indices, values
         indices, values = pool_key_indexer_reference(
             prep["query"],
             prep["pool_key"],
@@ -1306,6 +1741,7 @@ class PKIApi(BaseApi):
             quant_mode=prep["quant_mode"] if quant else -1,
         )
         return indices, values
+
 
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
@@ -1365,13 +1801,21 @@ from atk.tasks.backends.lib_interface.acl_wrapper import TensorPtr, AclIntArray
 
 # E8M0 dtype 映射补充: atk acl_wrapper 的 TORCH_TO_ACLTYPE 未收录
 # torch.float8_e8m0fnu(仅 e4m3/e5m2), 量化 mxFP8(quant_mode=1) descale 需要
-# ACL_FLOAT8_E8M0 —— 增量补充, 不影响既有映射与场景
+# ACL_FLOAT8_E8M0 —— 增量补充, 不影响既有映射与场景。
+# 兼容性守卫: 部分 atk 版本(如 26.4.30)的 AclDataType 未收录 ACL_FLOAT8_E8M0,
+# 此时跳过补充(该版本不支持 mxFP8 descale, 非量化场景不受影响),
+# 避免模块级 AttributeError 导致整个适配器注册失败。
 from atk.tasks.backends.lib_interface import acl_wrapper as _acl_wrapper
-if (hasattr(_acl_wrapper, "TORCH_TO_ACLTYPE")
-        and "torch.float8_e8m0fnu" not in _acl_wrapper.TORCH_TO_ACLTYPE):
-    _acl_wrapper.TORCH_TO_ACLTYPE["torch.float8_e8m0fnu"] = (
-        _acl_wrapper.AclDataType.ACL_FLOAT8_E8M0
-    )
+
+_ACL_FLOAT8_E8M0 = getattr(
+    getattr(_acl_wrapper, "AclDataType", None), "ACL_FLOAT8_E8M0", None
+)
+if (
+    _ACL_FLOAT8_E8M0 is not None
+    and hasattr(_acl_wrapper, "TORCH_TO_ACLTYPE")
+    and "torch.float8_e8m0fnu" not in _acl_wrapper.TORCH_TO_ACLTYPE
+):
+    _acl_wrapper.TORCH_TO_ACLTYPE["torch.float8_e8m0fnu"] = _ACL_FLOAT8_E8M0
 
 # ValueDepend 可选输入的空指针类型(与 aclIntArray* 签名校验匹配)
 IntAryPtr = ctypes.POINTER(AclIntArray)
@@ -1571,14 +2015,20 @@ class PKIAclnnApi(AclnnBaseApi):
         output_packages = []
         for index in range(len(self.task_result.output_info_list)):
             out = self.task_result.output_info_list[index]
-            out_shape = list(out.shape) if hasattr(out, "shape") else list(out.get("shape", [1]))
+            out_shape = (
+                list(out.shape)
+                if hasattr(out, "shape")
+                else list(out.get("shape", [1]))
+            )
             if index == 0:
                 torch_dtype = torch.int32  # sparseIndicesOut
             elif index == 1:
                 torch_dtype = torch.float32  # sparseValuesOut (固定 FLOAT)
             else:
                 out_dtype = (
-                    out.dtype if hasattr(out, "dtype") else out.get("dtype", "torch.float32")
+                    out.dtype
+                    if hasattr(out, "dtype")
+                    else out.get("dtype", "torch.float32")
                 )
                 torch_dtype = _parse_torch_dtype(out_dtype, torch.float32)
 
@@ -1615,6 +2065,7 @@ class PKIAclnnApi(AclnnBaseApi):
             if hasattr(output_pack, "pytensor"):
                 outputs.append(output_pack.pytensor)
         return outputs
+
 
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
@@ -1766,15 +2217,30 @@ def _indices_set_compare(op_indices, truth_indices, row_pass_ratio, tie_ctx=None
     op = _to_3d(op_indices)
     truth = _to_3d(truth_indices)
     if op.shape != truth.shape:
-        return False, (
-            f"indices shape mismatch: operator {tuple(op.shape)} vs truth {tuple(truth.shape)}"
-        ), ""
+        return (
+            False,
+            (
+                f"indices shape mismatch: operator {tuple(op.shape)} vs truth {tuple(truth.shape)}"
+            ),
+            "",
+        )
 
     # 无效位取值校验: 接口约定无效位置必须精确为 -1
     neg = op[op < 0]
     if neg.numel() > 0 and not bool((neg == -1).all()):
         bad = neg[neg != -1][:8].tolist()
         return False, f"invalid slots must be exactly -1, got {bad}", ""
+
+    # ---- 快速路径: 整批向量化预筛相等行 ----
+    # 逐行 Python 循环(排序+set 构造)在大 rows×topk 下每行毫秒级, 10 万行
+    # ×topk 8192 总耗时可到 10+ 分钟, 撞 celery compare 队列软时限
+    # (SoftTimeLimitExceeded, 与 atk -to 挂钩; 默认 60s 必超)。行内升序排序
+    # 后逐元素全等 <=> 两行多重集合相等(有效 token 唯一, 与集合比较等价;
+    # 无效位已校验全为 -1, 参与排序不引入差异)。相等行直接判 pass, 仅
+    # 差异行走下方逐行差集+仲裁慢路径(差异行通常为 0 或并列翻转少量行)。
+    op_sorted, _ = op.sort(dim=-1)
+    tr_sorted, _ = truth.sort(dim=-1)
+    eq_rows = (op_sorted == tr_sorted).all(dim=-1)  # (B, S1m)
 
     # values 预处理(分数仲裁用): 空输出(rv=False)时仅剩结构仲裁
     tie_ctx = tie_ctx or {}
@@ -1804,11 +2270,18 @@ def _indices_set_compare(op_indices, truth_indices, row_pass_ratio, tie_ctx=None
 
     total_rows = op.shape[0] * op.shape[1]
     pass_rows = 0
-    tie_rows = 0        # 分数仲裁通过的翻转行(严格可信)
-    struct_rows = 0     # 结构仲裁通过的翻转行(启发式, 受比例约束)
+    tie_rows = 0  # 分数仲裁通过的翻转行(严格可信)
+    struct_rows = 0  # 结构仲裁通过的翻转行(启发式, 受比例约束)
     first_diffs = []
+    eq_mask = eq_rows.reshape(-1).tolist()  # 展平行序与下方双循环一致
+    row_iter = 0
     for b in range(op.shape[0]):
         for s in range(op.shape[1]):
+            if eq_mask[row_iter]:
+                pass_rows += 1
+                row_iter += 1
+                continue
+            row_iter += 1
             g_row = truth[b, s]
             n_row = op[b, s]
             g_valid = g_row[g_row >= 0].sort().values
@@ -1822,15 +2295,27 @@ def _indices_set_compare(op_indices, truth_indices, row_pass_ratio, tie_ctx=None
             n_set = set(int(v) // pool_size for v in n_valid.tolist())
             only_g = sorted(g_set - n_set)  # truth-only pools A
             only_n = sorted(n_set - g_set)  # op-only pools B
+            # 仲裁容量: 有分数仲裁(has_values)时不限翻转池数 —— 逐对校验分数差,
+            # 全部并列才容忍, 数学上与大翻转数不矛盾; 随机数据下 relu 产生大量
+            # 精确 0 分, topk 边界落入 0 分并列区时单行翻转可达数十池(测例实测
+            # 中位 17), 按 max_flip_pools=2 封顶会把合法并列翻转误判为失败。
+            # 无分数(rv=False)仅剩结构仲裁, 维持小容量启发式(防选池错误蒙混)。
+            if has_values and tie_rtol > 0:
+                flip_cap = max(len(only_g), len(only_n))
+            else:
+                flip_cap = max_flip_pools
             tolerated = False
-            if len(only_g) == len(only_n) and 0 < len(only_g) <= max_flip_pools:
+            if len(only_g) == len(only_n) and 0 < len(only_g) <= flip_cap:
                 if has_values and tie_rtol > 0:
                     # 分数仲裁: A 取真值分数, B 取算子分数, 排序配对比分数差
                     t_map = _row_pool_val_map(g_row, truth_vals[b, s])
                     o_map = _row_pool_val_map(n_row, op_vals[b, s])
                     scores_a = sorted(t_map.get(p, float("-inf")) for p in only_g)
                     scores_b = sorted(o_map.get(p, float("-inf")) for p in only_n)
-                    if all(math.isfinite(a) and math.isfinite(bb) for a, bb in zip(scores_a, scores_b)):
+                    if all(
+                        math.isfinite(a) and math.isfinite(bb)
+                        for a, bb in zip(scores_a, scores_b)
+                    ):
                         tolerated = all(
                             abs(a - bb) <= tie_rtol * max(abs(a), denom_floor)
                             for a, bb in zip(scores_a, scores_b)
@@ -1863,7 +2348,11 @@ def _indices_set_compare(op_indices, truth_indices, row_pass_ratio, tie_ctx=None
                 f" (mass flips without value arbitration)"
             )
         info += "; first diffs: " + "; ".join(first_diffs)
-    return ok, info, f"rows={total_rows}, matched={pass_rows}, tie={tie_rows}, struct={struct_rows}"
+    return (
+        ok,
+        info,
+        f"rows={total_rows}, matched={pass_rows}, tie={tie_rows}, struct={struct_rows}",
+    )
 
 
 def _values_double_benchmark(
@@ -1948,6 +2437,7 @@ def _values_double_benchmark(
         f"benchmark={len(benchmark_errors)}): " + "; ".join(checks)
     )
     return ok, info
+
 
 @ACCURACY_REGISTRY.register("pki_double_benchmark")
 class PKIDoubleBenchmarkCompare(BaseAccuracyCompare):
