@@ -59,11 +59,14 @@ constexpr uint32_t QUANT_FAG_BATCH_SIZE_INDEX = 2U;       // batch 数, kernel �
 constexpr uint32_t QUANT_FAG_SCHEDULE_VALID_INDEX = 3U;   // swizzle 调度是否安全, 0 表示不支持该 shape
 constexpr uint32_t QUANT_FAG_AIC_CORE_NUM_INDEX = 4U;     // 生成调度时使用的 AIC 核数, kernel 需校验一致
 // 数组区: roundPrefix 有 b+1 项, s1Outer/s2Outer 各 b 项
-constexpr uint32_t QUANT_FAG_ROUND_PREFIX_BASE_INDEX = 16U;
-constexpr uint32_t QUANT_FAG_S1_OUTER_BASE_INDEX = 256U;
-constexpr uint32_t QUANT_FAG_S2_OUTER_BASE_INDEX = 512U;
-// swizzle 调度的 batch 上限, 与 FAG 的 TND_SWIZZLE_PREFIX_NUM 对齐
-constexpr uint32_t QUANT_FAG_MAX_BATCH_SIZE = 128U;
+// 三个 per-batch 数组的起点由 AICPU 按 batch 动态排布后写入下面的标量槽位,
+// kernel 侧直接读起点定位数组, 两侧不重复推导公式, 也就没有固定布局的容量上限。
+constexpr uint32_t QUANT_FAG_ROUND_PREFIX_OFFSET_INDEX = 5U; // roundPrefix 起点, 长度 b+1
+constexpr uint32_t QUANT_FAG_S1_OUTER_OFFSET_INDEX = 6U;     // s1Outer 起点, 长度 b
+constexpr uint32_t QUANT_FAG_S2_OUTER_OFFSET_INDEX = 7U;     // s2Outer 起点, 长度 b
+// 标量区占 [0, QUANT_FAG_ARRAY_BASE_INDEX), 数组区从此处开始紧凑排布
+constexpr uint32_t QUANT_FAG_ARRAY_BASE_INDEX = 16U;
+// batch 数不再有固定上限, 只受 metadata 第二行实际长度约束(见 GenQuantFagGradMetaData 的容量校验)
 // 分核基本块大小, 与 kernel 的 CUBE_BASEM / CUBE_BASEN 保持一致
 constexpr uint32_t QUANT_FAG_CUBE_BASE_M = 512U;
 constexpr uint32_t QUANT_FAG_CUBE_BASE_N = 512U;
@@ -147,34 +150,35 @@ struct FaMetaData {
 
 struct QuantFAGMetaData {
     uint32_t *data;
+    uint32_t rowSize; // 第二行可用长度, 等于 fagOffset(两行等长)
     // metadata shape 为 (2, dim0)，第一维存正向 FA 调度数据，
     // 第二维存反向 QuantFAG 调度数据，偏移 dim0 个元素到达第二维起始。
     // dim0 由 torch 层按 sectionNum 最坏值动态分配，从输出 tensor shape 读取。
     QuantFAGMetaData(void *metadataPtr, uint32_t fagOffset)
-        : data(static_cast<uint32_t *>(metadataPtr) + fagOffset)
+        : data(static_cast<uint32_t *>(metadataPtr) + fagOffset), rowSize(fagOffset)
     {}
 
     void SetDeterMaxRound(uint32_t metaIdx, int64_t val)
     {
-        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        assert(metaIdx < rowSize);
         data[metaIdx] = static_cast<uint32_t>(val);
     }
 
     int64_t GetDeterMaxRound(uint32_t metaIdx)
     {
-        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        assert(metaIdx < rowSize);
         return data[metaIdx];
     }
 
     void SetMetaData(uint32_t metaIdx, int64_t val)
     {
-        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        assert(metaIdx < rowSize);
         data[metaIdx] = static_cast<uint32_t>(val);
     }
 
     int64_t GetMetaData(uint32_t metaIdx)
     {
-        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        assert(metaIdx < rowSize);
         return data[metaIdx];
     }
 };

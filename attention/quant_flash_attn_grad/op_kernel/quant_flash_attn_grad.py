@@ -72,9 +72,11 @@ META_NEED_INIT_OUTPUT_IDX = 1
 META_BATCH_SIZE_IDX = 2
 META_SCHEDULE_VALID_IDX = 3
 META_AIC_CORE_NUM_IDX = 4
-META_ROUND_PREFIX_BASE_IDX = 16
-META_S1_OUTER_BASE_IDX = 256
-META_S2_OUTER_BASE_IDX = 512
+# 三个 per-batch 数组的起点由 metadata 算子按 batch 动态排布后写在这几个标量槽位里,
+# kernel 直接读起点, 不重复推导排布公式(否则两侧公式一旦不同步就是静默错读)。
+META_ROUND_PREFIX_OFFSET_IDX = 5
+META_S1_OUTER_OFFSET_IDX = 6
+META_S2_OUTER_OFFSET_IDX = 7
 
 init_data = [1] * 16
 
@@ -1232,21 +1234,22 @@ def cal_dense_swizzle_deter_index(
     # 因此先把需要的字段取成普通标量, 循环体内只碰 tensor_metadata 和标量。
     meta_base = const_info.metadata_len
     b_size = const_info.b_size
+    prefix_base = meta_base + pl.getval(tensor_metadata, meta_base + META_ROUND_PREFIX_OFFSET_IDX)
+    s1_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S1_OUTER_OFFSET_IDX)
+    s2_outer_base = meta_base + pl.getval(tensor_metadata, meta_base + META_S2_OUTER_OFFSET_IDX)
     found_b = -1
     delta = 0
     prefix_lo = 0
     for b_idx in pl.range(0, b_size, 1):
-        prefix_hi = pl.getval(
-            tensor_metadata, meta_base + META_ROUND_PREFIX_BASE_IDX + b_idx + 1
-        )
+        prefix_hi = pl.getval(tensor_metadata, prefix_base + b_idx + 1)
         if found_b < 0 and round_id < prefix_hi:
             found_b = b_idx
             delta = round_id - prefix_lo
         prefix_lo = prefix_hi
     if found_b < 0:
         return -1
-    m_b = pl.getval(tensor_metadata, meta_base + META_S1_OUTER_BASE_IDX + found_b)
-    n_b = pl.getval(tensor_metadata, meta_base + META_S2_OUTER_BASE_IDX + found_b)
+    m_b = pl.getval(tensor_metadata, s1_outer_base + found_b)
+    n_b = pl.getval(tensor_metadata, s2_outer_base + found_b)
     linear_idx = delta // m_b * k + j
     if linear_idx >= n_b * n1:
         return -1
