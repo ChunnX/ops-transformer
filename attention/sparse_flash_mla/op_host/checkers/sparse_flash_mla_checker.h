@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef SPARSE_FLASH_MLA_CHECKER_H
-#define SPARSE_FLASH_MLA_CHECKER_H
+#ifndef SPARSE_FLASH_MLA_CHECKER_H_TEST
+#define SPARSE_FLASH_MLA_CHECKER_H_TEST
 
 #include "../sparse_flash_mla_tiling.h"
 #include "log/error_code.h"
@@ -29,4 +29,4 @@ private:
 
 } // namespace optiling
 
-#endif // SPARSE_FLASH_MLA_CHECKER_H
+#endif // SPARSE_FLASH_MLA_CHECKER_H_TEST
