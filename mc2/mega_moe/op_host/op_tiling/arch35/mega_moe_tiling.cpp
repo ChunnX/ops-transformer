@@ -644,24 +644,18 @@ static uint8_t ResolveExpertGmmMode(ge::DataType quantOutDtype, ge::DataType wei
 
 /*
  * 校验 dispatch 和 combine 阶段的量化模式，并将 combine 模式写入 tiling data。
- * 预量化 x 已携带 data/scales，dispatch 仅直通，公开属性和 tiling key 均使用非量化模式。
+ * dispatch_quant_mode 为 0 表示预量化直通，为 4 表示算子内部执行 MX 量化。
  */
 static ge::graphStatus CheckAndSetQuantModeAttrs(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                  MegaMoeTilingData *tilingData, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
-    auto xDesc = context->GetInputDesc(config.xIndex);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
-    const bool isPreQuantizedX = IsPreQuantizedXType(xDesc->GetDataType());
-    const int64_t expectedDispatchQuantMode =
-        isPreQuantizedX ? DISPATCH_QUANT_MODE_NO_QUANT : DISPATCH_QUANT_MODE_MXFP;
-    const char *expectedModeReason =
-        isPreQuantizedX ? "default 0 (no quantization) for pre-quantized x" : "4 (MXFP quantization) for BF16 x";
     OP_TILING_CHECK(
-        *dispatchQuantModePtr != expectedDispatchQuantMode,
+        *dispatchQuantModePtr != DISPATCH_QUANT_MODE_NO_QUANT &&
+            *dispatchQuantModePtr != DISPATCH_QUANT_MODE_MXFP,
         OP_LOGE_WITH_INVALID_ATTR(nodeName, "dispatch_quant_mode", std::to_string(*dispatchQuantModePtr).c_str(),
-                                  expectedModeReason),
+                                  "0 (pre-quantized input) or 4 (internal MXFP quantization)"),
         return ge::GRAPH_FAILED);
 
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
@@ -677,7 +671,8 @@ static ge::graphStatus CheckAndSetQuantModeAttrs(const gert::TilingContext *cont
 }
 
 /*
- * 校验并设置 MoE 与共享专家的量化输出类型，同时解析共享专家类型的继承语义。
+ * 校验并设置 MoE 与共享专家使用的量化类型。mode 4 下该属性表示内部量化输出类型，
+ * mode 0 下表示预量化 x 的逻辑类型；同时解析共享专家类型的继承语义。
  */
 static ge::graphStatus CheckAndSetQuantOutDtypes(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                  MegaMoeExpertParams &params, const char *nodeName)
@@ -686,44 +681,60 @@ static ge::graphStatus CheckAndSetQuantOutDtypes(const gert::TilingContext *cont
     auto xDesc = context->GetInputDesc(config.xIndex);
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
 
+    auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutDtypeIndex));
     ge::DataType moeQuantOutDtype = static_cast<ge::DataType>(*dispatchQuantOutDtypePtr);
-    bool isPreQuantizedX = IsPreQuantizedXType(xDesc->GetDataType());
+    const bool isPreQuantizedX = *dispatchQuantModePtr == DISPATCH_QUANT_MODE_NO_QUANT;
+
+    // 两种 dispatch 模式均由 dispatch_quant_out_dtype 指定 GMM 收到的量化数据类型。
+    OP_TILING_CHECK(!IsSupportedExpertQuantDtype(moeQuantOutDtype),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "dispatch_quant_out_dtype",
+                                              std::to_string(*dispatchQuantOutDtypePtr).c_str(),
+                                              "fp8_e5m2, fp8_e4m3fn or fp4_e2m1"),
+                    return ge::GRAPH_FAILED);
+
     if (isPreQuantizedX) {
+        // 预量化输入不再由 x dtype 反推类型，属性与接口补充的逻辑 descriptor 必须严格一致。
         OP_TILING_CHECK(
-            moeQuantOutDtype != ge::DT_UNDEFINED,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "dispatch_quant_out_dtype",
-                                      std::to_string(*dispatchQuantOutDtypePtr).c_str(),
-                                      "DT_UNDEFINED for pre-quantized x; its dtype is inferred from x"),
+            !IsPreQuantizedXType(xDesc->GetDataType()) || xDesc->GetDataType() != moeQuantOutDtype,
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                nodeName, "x, dispatch_quant_out_dtype",
+                (std::string("[") + Ops::Base::ToString(xDesc->GetDataType()) + ", " +
+                 Ops::Base::ToString(moeQuantOutDtype) + "]")
+                    .c_str(),
+                "When dispatch_quant_mode is 0, x must be a supported pre-quantized dtype and match "
+                "dispatch_quant_out_dtype."),
             return ge::GRAPH_FAILED);
         auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
         OP_TILING_CHECK(*topoTypePtr != TOPO_TYPE_MTE,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "topo_type", std::to_string(*topoTypePtr).c_str(),
                                                   "MTE(0) for pre-quantized x"),
                         return ge::GRAPH_FAILED);
-        moeQuantOutDtype = xDesc->GetDataType();
     } else {
-        OP_TILING_CHECK(!IsSupportedExpertQuantDtype(moeQuantOutDtype),
-                        OP_LOGE_WITH_INVALID_ATTR(nodeName, "dispatch_quant_out_dtype",
-                                                  std::to_string(*dispatchQuantOutDtypePtr).c_str(),
-                                                  "fp8_e5m2, fp8_e4m3fn or fp4_e2m1"),
+        OP_TILING_CHECK(xDesc->GetDataType() != ge::DT_BF16,
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            nodeName, "x", Ops::Base::ToString(xDesc->GetDataType()).c_str(),
+                            "When dispatch_quant_mode is 4, the dtype of x must be DT_BF16."),
                         return ge::GRAPH_FAILED);
     }
 
     auto sharedQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrSharedExpertQuantOutDtypeIndex);
     ge::DataType sharedQuantOutDtype = static_cast<ge::DataType>(*sharedQuantOutDtypePtr);
     bool hasExplicitSharedQuantDtype = sharedQuantOutDtype != ge::DT_UNDEFINED;
-    // 预量化 x 只携带一份已定型的 data/scale，不能再为共享专家选择另一种量化类型。
-    OP_TILING_CHECK(isPreQuantizedX && hasExplicitSharedQuantDtype,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_expert_quant_out_dtype",
-                                              std::to_string(*sharedQuantOutDtypePtr).c_str(),
-                                              "DT_UNDEFINED for pre-quantized x; its dtype is inferred from x"),
-                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hasExplicitSharedQuantDtype && !IsSupportedExpertQuantDtype(sharedQuantOutDtype),
                     OP_LOGE_WITH_INVALID_ATTR(nodeName, "shared_expert_quant_out_dtype",
                                               std::to_string(*sharedQuantOutDtypePtr).c_str(),
                                               "DT_UNDEFINED, fp8_e5m2, fp8_e4m3fn or fp4_e2m1"),
                     return ge::GRAPH_FAILED);
+    // 预量化 x 只有一份 data/scales；共享专家显式配置类型时只能与 MoE 专家保持一致。
+    OP_TILING_CHECK(
+        isPreQuantizedX && hasExplicitSharedQuantDtype && sharedQuantOutDtype != moeQuantOutDtype,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_expert_quant_out_dtype",
+                                  std::to_string(*sharedQuantOutDtypePtr).c_str(),
+                                  (std::string("DT_UNDEFINED or the same dtype as dispatch_quant_out_dtype (") +
+                                   std::to_string(*dispatchQuantOutDtypePtr) + ") for pre-quantized x")
+                                      .c_str()),
+        return ge::GRAPH_FAILED);
 
     params.moe.quantOutDtype = moeQuantOutDtype;
     params.shared.quantOutDtype =
@@ -1520,24 +1531,27 @@ static ge::graphStatus CheckRequiredTensorPtrNullptr(const gert::TilingContext *
 }
 
 /*
- * arch35 当前不支持 xActiveMask；scales 仅在 x 为预量化输入时必须传入。
+ * arch35 当前不支持 xActiveMask；scales 是否传入由 dispatch_quant_mode 决定。
  */
 static ge::graphStatus CheckUnsupportedOptionalInputs(const gert::TilingContext *context, const MegaMoeConfig &config,
                                                       const char *nodeName)
 {
-    auto xDesc = context->GetInputDesc(config.xIndex);
     auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
     auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OP_TILING_CHECK(xActiveMaskDesc != nullptr, OP_LOGE_FOR_INVALID_VALUE(nodeName, "xActiveMask", "not null", "null"),
                     return ge::GRAPH_FAILED);
-    if (xDesc->GetDataType() == ge::DT_BF16) {
-        OP_TILING_CHECK(scalesDesc != nullptr,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "not null", "null when x is BF16"),
-                        return ge::GRAPH_FAILED);
-    } else if (IsPreQuantizedXType(xDesc->GetDataType())) {
+
+    auto attrs = context->GetAttrs();
+    auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
+    if (*dispatchQuantModePtr == DISPATCH_QUANT_MODE_NO_QUANT) {
         OP_TILING_CHECK(scalesDesc == nullptr,
-                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "null", "not null for pre-quantized x"),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "null",
+                                                  "not null when dispatch_quant_mode is 0"),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(scalesDesc != nullptr,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "scales", "not null",
+                                                  "null when dispatch_quant_mode is 4"),
                         return ge::GRAPH_FAILED);
     }
 
@@ -2398,8 +2412,7 @@ static ge::graphStatus CheckAndSetTopoType(const gert::TilingContext *context, c
 }
 
 /*
- * 校验并记录不依赖权重元数据或问题规模的算子属性；dispatch_quant_mode 仅根据 x dtype 区分在线量化与
- * 预量化直通。
+ * 校验并记录不依赖权重元数据或问题规模的算子属性；dispatch_quant_mode 区分内部 MX 量化与预量化直通。
  * 直接属性：topo_type、ep_world_size、comm_alg、dispatch_quant_mode、combine_quant_mode、
  * activation、activation_params 和 topk_weights_type。
  * 具体属性的拦截项由各子函数保留，本函数只表达该阶段的执行顺序。
@@ -2425,7 +2438,8 @@ static ge::graphStatus CheckAndSetIndependentAttrs(const gert::TilingContext *co
 
 /*
  * 基于已校验的属性和 tensor 元数据，解析专家 GMM 模式、问题维度和专家数量。
- * 直接属性：dispatch_quant_out_dtype、shared_expert_quant_out_dtype 和 moe_expert_num；
+ * 直接属性：dispatch_quant_out_dtype、shared_expert_quant_out_dtype 和 moe_expert_num；前两个属性在
+ * mode 4 下表示内部量化输出类型，在 mode 0 下表示预量化输入逻辑类型。
  * GMM 模式、token 维度、hiddenDim 及 shared expert 数量由已校验的 tensor 元数据派生。
  */
 static ge::graphStatus CheckAndSetExpertExecutionParams(const gert::TilingContext *context, const MegaMoeConfig &config,
@@ -2509,8 +2523,6 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     OP_TILING_CHECK(CheckRequiredTensorPtrNullptr(context, config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tensor pointer check failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckUnsupportedOptionalInputs(context, config, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "unsupported optional input is present."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckRequiredAttrPtrNullptr(context, config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "attribute pointer check failed."), return ge::GRAPH_FAILED);
 
@@ -2518,6 +2530,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     // activation、activation_params 和 topk_weights_type。
     OP_TILING_CHECK(CheckAndSetIndependentAttrs(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "independent attributes are invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckUnsupportedOptionalInputs(context, config, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "unsupported optional input is present."), return ge::GRAPH_FAILED);
 
     // Tensor 契约：不读取 attr；先确定 weight/scale 组织形式，再校验 dtype、format 和 shape。
     MegaMoeExpertParams expertParams = MakeExpertParams(config);

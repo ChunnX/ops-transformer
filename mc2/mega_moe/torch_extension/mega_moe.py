@@ -20,7 +20,6 @@ from ..common import CommContextManager
 _CLAMP_DEFAULT = 3.4028234663852886e38
 _ALPHA_DEFAULT = 1.702
 _BETA_DEFAULT = 1.0
-_MX_SCALE_GROUP_SIZE = 32
 _ALLOWED_ACTIVATION_KEYS = {
     "swiglu": frozenset(),
     "swiglustep": frozenset(),
@@ -29,93 +28,70 @@ _ALLOWED_ACTIVATION_KEYS = {
 }
 
 
-def _is_packed_fp4_x(x: torch.Tensor) -> bool:
-    float4_dtype = getattr(torch, "float4_e2m1fn_x2", None)
-    return x.dtype == torch.uint8 or (
-        float4_dtype is not None and x.dtype == float4_dtype
+_FLOAT8_E5M2_DTYPE_VALUE = 23
+_FLOAT8_E4M3FN_DTYPE_VALUE = 24
+_FLOAT4_E2M1_DTYPE_VALUE = 296
+_PRE_QUANTIZED_X_DTYPE_VALUES = frozenset(
+    {
+        _FLOAT8_E5M2_DTYPE_VALUE,
+        _FLOAT8_E4M3FN_DTYPE_VALUE,
+        _FLOAT4_E2M1_DTYPE_VALUE,
+    }
+)
+
+
+def _is_pre_quantized_x(
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+) -> bool:
+    # A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 A5 预量化输入。
+    return (
+        dispatch_quant_mode == 0
+        and _dtype_to_int(dispatch_quant_out_dtype)
+        in _PRE_QUANTIZED_X_DTYPE_VALUES
     )
 
 
-def _is_pre_quantized_x(x: torch.Tensor) -> bool:
-    return x.dtype in (torch.float8_e5m2, torch.float8_e4m3fn) or _is_packed_fp4_x(
-        x
+def _is_packed_fp4_x(
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+) -> bool:
+    return (
+        dispatch_quant_mode == 0
+        and _dtype_to_int(dispatch_quant_out_dtype) == _FLOAT4_E2M1_DTYPE_VALUE
     )
 
 
-def _logical_hidden_size(x: torch.Tensor):
-    return x.size(1) * 2 if _is_packed_fp4_x(x) else x.size(1)
+def _logical_hidden_size(
+    x: torch.Tensor,
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+):
+    return (
+        x.size(1) * 2
+        if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype)
+        else x.size(1)
+    )
 
 
 def _check_pre_quantized_x_contract(
     x: torch.Tensor,
-    scales: Optional[torch.Tensor],
     dispatch_quant_mode: int,
     dispatch_quant_out_dtype: Optional[torch.dtype],
-    shared_expert_quant_out_dtype: Optional[torch.dtype],
-    topo_type: Optional[int],
 ) -> None:
     torch._check(x.dim() == 2, lambda: "x must be 2D.")
-    torch._check(x.is_contiguous(), lambda: "x must be contiguous.")
-    is_pre_quantized_x = _is_pre_quantized_x(x)
-    torch._check(
-        (scales is not None) == is_pre_quantized_x,
-        lambda: (
-            "scales is required for pre-quantized x."
-            if is_pre_quantized_x
-            else "scales must be None when x is bfloat16 or float16."
-        ),
+    is_pre_quantized_x = _is_pre_quantized_x(
+        dispatch_quant_mode, dispatch_quant_out_dtype
     )
     if not is_pre_quantized_x:
         return
 
-    torch._check(
-        dispatch_quant_mode == 0,
-        lambda: (
-            "dispatch_quant_mode must be left at its default value 0 for pre-quantized x because dispatch "
-            "only forwards the existing quantized data and scales."
-        ),
-    )
-    torch._check(
-        dispatch_quant_out_dtype is None,
-        lambda: (
-            "dispatch_quant_out_dtype must be None for pre-quantized x; "
-            "the dispatch dtype is inferred from x."
-        ),
-    )
-    torch._check(
-        shared_expert_quant_out_dtype is None,
-        lambda: (
-            "shared_expert_quant_out_dtype must be None for pre-quantized x; "
-            "its dtype is inferred from x."
-        ),
-    )
-    torch._check(
-        topo_type in (None, 0),
-        lambda: "pre-quantized x is supported only by the A5 MTE path (topo_type=0).",
-    )
-    torch._check(
-        scales.dim() == 2,
-        lambda: "scales must be 2D [BS, CeilDiv(H, 32)].",
-    )
-    scale_e8m0_dtype = getattr(torch, "float8_e8m0fnu", None)
-    torch._check(
-        scales.dtype == torch.uint8
-        or (scale_e8m0_dtype is not None and scales.dtype == scale_e8m0_dtype),
-        lambda: "scales only supports torch.uint8 storage or torch.float8_e8m0fnu.",
-    )
-    logical_h = _logical_hidden_size(x)
-    expected_scale_width = (
-        logical_h + _MX_SCALE_GROUP_SIZE - 1
-    ) // _MX_SCALE_GROUP_SIZE
-    torch._check(
-        scales.size(0) == x.size(0) and scales.size(1) == expected_scale_width,
-        lambda: "scales shape must be [BS, CeilDiv(H, 32)].",
-    )
-    torch._check(
-        scales.device == x.device,
-        lambda: "scales must be on the same device as x.",
-    )
-    torch._check(scales.is_contiguous(), lambda: "scales must be contiguous.")
+    # Torch 只校验 descriptor 组装必需的条件；其余类型、shape、拓扑组合由 Tiling 统一拦截。
+    if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype):
+        torch._check(
+            x.dtype == torch.uint8,
+            lambda: "FP4 pre-quantized x must use packed torch.uint8 storage.",
+        )
 
 
 def _normalize_activation_params(
@@ -234,16 +210,21 @@ class _MegaMoeOpBuilder(OpBuilder):
             )
             _check_pre_quantized_x_contract(
                 x,
-                scales,
                 dispatch_quant_mode,
                 dispatch_quant_out_dtype,
-                shared_expert_quant_out_dtype,
-                topo_type,
             )
             bs = x.size(0)
-            h = _logical_hidden_size(x)
+            h = _logical_hidden_size(
+                x, dispatch_quant_mode, dispatch_quant_out_dtype
+            )
             local_moe_expert_num = moe_expert_num // ep_world_size
-            output_dtype = torch.bfloat16 if _is_pre_quantized_x(x) else x.dtype
+            output_dtype = (
+                torch.bfloat16
+                if _is_pre_quantized_x(
+                    dispatch_quant_mode, dispatch_quant_out_dtype
+                )
+                else x.dtype
+            )
             y = x.new_empty(tuple([bs, h]), dtype=output_dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
@@ -577,8 +558,8 @@ class SymmBuffer:
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
-    torch.float8_e5m2: 23,
-    torch.float8_e4m3fn: 24,
+    torch.float8_e5m2: _FLOAT8_E5M2_DTYPE_VALUE,
+    torch.float8_e4m3fn: _FLOAT8_E4M3FN_DTYPE_VALUE,
     torch.int8: 1,
 }
 
@@ -687,15 +668,20 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
+    # 自定义算子 schema 接收 int；统一在入口序列化，FP4 扩展枚举 296 保持不变。
+    dispatch_quant_dtype_int = _dtype_to_int(
+        sym_buffer.dispatch_quant_out_dtype
+    )
     _check_pre_quantized_x_contract(
         x,
-        scales,
         sym_buffer.dispatch_quant_mode,
-        sym_buffer.dispatch_quant_out_dtype,
-        shared_expert_quant_out_dtype,
-        sym_buffer.topo_type,
+        dispatch_quant_dtype_int,
     )
-    logical_h = _logical_hidden_size(x)
+    logical_h = _logical_hidden_size(
+        x,
+        sym_buffer.dispatch_quant_mode,
+        dispatch_quant_dtype_int,
+    )
     torch._check(
         logical_h == sym_buffer.hidden,
         lambda: (
@@ -737,7 +723,7 @@ def mega_moe(
         activation=activation,
         activation_clamp=activation_clamp,
         activation_params=activation_params,
-        dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        dispatch_quant_out_dtype=dispatch_quant_dtype_int,
         shared_expert_quant_out_dtype=shared_quant_dtype_int,
         weight1_type=weight1_type,
         weight2_type=weight2_type,

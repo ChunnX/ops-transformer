@@ -18,7 +18,6 @@
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
-const int64_t MX_SCALE_GROUP_SIZE = 32;
 const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
 constexpr int64_t GE_DTYPE_UNDEFINED = 28;
 
@@ -51,37 +50,32 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
 
     const auto xScalarType = x.scalar_type();
+    const bool hasDispatchQuantOutDtype =
+        dispatchQuantOutDtype.has_value() && dispatchQuantOutDtype.value() != GE_DTYPE_UNDEFINED;
+    aclDataType dispatchQuantAclDtype = hasDispatchQuantOutDtype ?
+                                            GetAclDataType(dispatchQuantOutDtype.value()) :
+                                            ACL_DT_UNDEFINED;
     const bool isFp8X = xScalarType == at::ScalarType::Float8_e5m2 ||
                         xScalarType == at::ScalarType::Float8_e4m3fn;
-    // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；FP4 x 使用 uint8 保存两个 E2M1 元素，
-    // 传入 ACLNN 前再通过 TensorWrapper 将逻辑 dtype 覆盖为 ACL_FLOAT4_E2M1。
-    const bool isPackedFp4X = xScalarType == at::kByte;
-    const bool isPreQuantizedX = isFp8X || isPackedFp4X;
+    const bool isPreQuantizedDtype = dispatchQuantAclDtype == ACL_FLOAT8_E5M2 ||
+                                     dispatchQuantAclDtype == ACL_FLOAT8_E4M3FN ||
+                                     dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
+    // A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 A5 预量化输入。
+    const bool isPreQuantizedX = dispatchQuantMode == 0 && isPreQuantizedDtype;
+    // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；只有协议明确声明 FP4 时，uint8 才承载两个 E2M1 元素。
+    const bool isPackedFp4X = isPreQuantizedX && dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
     TORCH_CHECK(
-        ((xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) || isPreQuantizedX) &&
+        ((xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) || isFp8X || isPackedFp4X) &&
             (topkIds.scalar_type() == at::kInt),
         "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, or uint8/float4_e2m1fn_x2 "
         "for packed FP4; dtype of topk_ids should be int32.");
 
+    if (isPackedFp4X) {
+        // TensorWrapper 会隐藏原始 Torch dtype，因此重解释前必须确认物理存储确实是 uint8。
+        TORCH_CHECK(xScalarType == at::kByte, "FP4 pre-quantized x must use packed torch.uint8 storage.");
+    }
     aclDataType xAclDtype = isPackedFp4X ? ACL_FLOAT4_E2M1 : ConvertToAclDataType(xScalarType);
     const bool hasScales = HasTensor(scales);
-    TORCH_CHECK(isPreQuantizedX ? hasScales : !hasScales,
-                isPreQuantizedX ? "scales is required for pre-quantized x."
-                                : "scales must be None when x is bfloat16 or float16.");
-    if (isPreQuantizedX) {
-        TORCH_CHECK(dispatchQuantMode == 0,
-                    "dispatch_quant_mode must be left at its default value 0 for pre-quantized x because dispatch "
-                    "only forwards the existing quantized data and scales.");
-        TORCH_CHECK(topoType.value_or(0) == 0, "pre-quantized x is supported only by the A5 MTE path (topo_type=0).");
-        TORCH_CHECK(!dispatchQuantOutDtype.has_value(),
-                    "dispatch_quant_out_dtype must be None for pre-quantized x; the dispatch dtype is inferred "
-                    "from x.");
-        TORCH_CHECK(!sharedExpertQuantOutDtype.has_value(),
-                    "shared_expert_quant_out_dtype must be None for pre-quantized x; its dtype is inferred from x.");
-    }
-    aclDataType dispatchQuantAclDtype = dispatchQuantOutDtype.has_value() ?
-                                            GetAclDataType(dispatchQuantOutDtype.value()) :
-                                            ACL_DT_UNDEFINED;
 
     auto xSize = x.sizes();
     int64_t bs = xSize[0];
@@ -95,13 +89,9 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     if (hasScales) {
         const at::Tensor &scaleTensor = scales.value();
         const auto scaleScalarType = scaleTensor.scalar_type();
+        // scales 会被包装为 E8M0 descriptor，以下只保留 Host 无法获知的物理存储约束。
         TORCH_CHECK(scaleScalarType == at::kByte || scaleScalarType == at::ScalarType::Float8_e8m0fnu,
                     "scales only supports torch.uint8 storage or torch.float8_e8m0fnu.");
-        TORCH_CHECK(scaleTensor.dim() == DIM_TWO, "scales must be 2D [BS, CeilDiv(H, 32)].");
-        const int64_t expectedScaleWidth = (h + MX_SCALE_GROUP_SIZE - 1) / MX_SCALE_GROUP_SIZE;
-        TORCH_CHECK(scaleTensor.size(0) == bs && scaleTensor.size(1) == expectedScaleWidth,
-                    "scales shape must be [BS, CeilDiv(H, 32)] = [", bs, ", ", expectedScaleWidth, "], but got ",
-                    scaleTensor.sizes(), ".");
         TORCH_CHECK(scaleTensor.device() == x.device(), "scales must be on the same device as x.");
         TORCH_CHECK(scaleTensor.is_contiguous(), "scales must be contiguous.");
     }
@@ -144,10 +134,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         weightScales2Dtype = aclDataType::ACL_UINT64;
     }
 
-    const bool dispatchQuantOutIsFp4 =
-        dispatchQuantOutDtype.has_value() && dispatchQuantOutDtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1);
-    const bool sharedQuantOutIsFp4 = sharedExpertQuantOutDtype.has_value() ?
-                                         sharedExpertQuantOutDtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1) :
+    const bool dispatchQuantOutIsFp4 = dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
+    const bool hasSharedExpertQuantOutDtype =
+        sharedExpertQuantOutDtype.has_value() && sharedExpertQuantOutDtype.value() != GE_DTYPE_UNDEFINED;
+    const bool sharedQuantOutIsFp4 = hasSharedExpertQuantOutDtype ?
+                                         GetAclDataType(sharedExpertQuantOutDtype.value()) == ACL_FLOAT4_E2M1 :
                                          dispatchQuantOutIsFp4;
     if (dispatchQuantOutIsFp4 || sharedQuantOutIsFp4) {
         TORCH_CHECK(h % 2 == 0, "The last dim input shape must be divisible by 2 if "
@@ -170,10 +161,10 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
     // 这里传给 ACLNN 的是 GE dtype 属性；GE DT_UNDEFINED 为 28，与 ACL_DT_UNDEFINED=-1 不同。
-    int64_t dispatchQuantResultType = dispatchQuantOutDtype.has_value() ?
+    int64_t dispatchQuantResultType = hasDispatchQuantOutDtype ?
                                                   static_cast<int64_t>(dispatchQuantAclDtype) :
                                                   GE_DTYPE_UNDEFINED;
-    int64_t sharedExpertQuantResultType = sharedExpertQuantOutDtype.has_value() ?
+    int64_t sharedExpertQuantResultType = hasSharedExpertQuantOutDtype ?
                                               static_cast<int64_t>(GetAclDataType(sharedExpertQuantOutDtype.value())) :
                                               dispatchQuantResultType;
 
