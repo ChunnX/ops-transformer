@@ -107,8 +107,7 @@ private:
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
     template <auto const &config>
-    __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, GM_ADDR const *srcList, const uint32_t *lenList,
-                                                uint32_t sgeNum);
+    __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
@@ -318,21 +317,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(
 
 template <TemplateMoeEpCombineTypeClass>
 template <auto const &config>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiSgeWrite(GM_ADDR dst,
-                                                                                        GM_ADDR const *srcList,
-                                                                                        const uint32_t *lenList,
-                                                                                        uint32_t sgeNum)
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiSgeWrite(
+    GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum)
 {
-    // Multi-SGE WQE: SQE header (48B) + sgeNum * SGE (16B each), rounded up to WQEBB boundary (64B).
+    // Multi-SGE WQE: SQE header (48B) + srcNum * SGE (16B each), rounded up to WQEBB boundary (64B).
     constexpr uint32_t sqeHeaderBytes = 48U;
     constexpr uint32_t sgeEntryBytes = 16U;
     constexpr uint32_t wqebbSize = HCOMM_PLAIN_WRITE_WQE_BYTES;
-    uint32_t wqeBytes = sqeHeaderBytes + sgeNum * sgeEntryBytes;
+    uint32_t wqeBytes = sqeHeaderBytes + srcNum * sgeEntryBytes;
     uint32_t wqebbCount = (wqeBytes + wqebbSize - 1U) / wqebbSize;
     if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
-    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, srcList, lenList, sgeNum);
+    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, srcDescs, srcNum);
     preparedWriteCount_ += wqebbCount;
     ++sqWriteCount_;
 }
@@ -436,12 +433,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     bool drainAfterToken = sqWriteCount_ + wqesPerToken > HCOMM_SQ_MAX_PENDING;
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
-        GM_ADDR srcList[2] = {tokenAddr, weightAddr};
-        uint32_t lenList[2] = {static_cast<uint32_t>(tokenBytes), sizeof(float)};
+        AscendC::BufDesc srcDescs[2] = {{tokenAddr, static_cast<uint32_t>(tokenBytes)}, {weightAddr, sizeof(float)}};
         if (drainAfterToken) {
-            PrepareMultiSgeWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, srcList, lenList, 2U);
+            PrepareMultiSgeWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
         } else {
-            PrepareMultiSgeWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, srcList, lenList, 2U);
+            PrepareMultiSgeWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
         }
     } else {
         if (drainAfterToken) {
