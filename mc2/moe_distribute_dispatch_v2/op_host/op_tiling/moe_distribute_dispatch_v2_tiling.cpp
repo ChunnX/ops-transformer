@@ -84,7 +84,7 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
 constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 64UL * 1024UL; // 40*40*32=50KB
 constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 40U;
 constexpr uint32_t A3_CUMSUM_MAX_CORE_NUM = 8U;
-constexpr uint32_t ALLTOALL_FIXED_CORE_NUM = 32U;
+constexpr uint32_t ALLTOALL_FIXED_CORE_NUM = 40U;
 constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t RANK_LIST_NUM = 2;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
