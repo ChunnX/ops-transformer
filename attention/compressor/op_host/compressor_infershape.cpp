@@ -80,16 +80,13 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext *context, Co
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
 
+    auto xDim = xShape->GetDimNum();
+    OP_CHECK_IF((xDim != DIM_NUM_2 && xDim != DIM_NUM_3),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xDim) + "D", "2D or 3D"),
+                return ge::GRAPH_FAILED);
+
     // 可选输入：不强制存在
     auto stateBlockTableShape = context->GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
-    gert::Shape *cuSeqlensShape = nullptr;
-    if (xShape->GetDimNum() == DIM_NUM_2) {
-        cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);
-        OP_CHECK_IF((cuSeqlensShape == nullptr),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "cu_seqlens",
-                                                             "is null but required for TH layout"),
-                    return ge::GRAPH_FAILED);
-    }
     auto seqUsedShape = context->GetOptionalInputShape(SEQ_USED_INPUT_INDEX);
     auto startPosShape = context->GetOptionalInputShape(START_POS_INPUT_INDEX);
 
@@ -124,6 +121,11 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext *context, Co
         shapeParam.isBsMerge = true;
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);
         shapeParam.H = xShape->GetDim(DIM_INDEX_1);
+        auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);
+        OP_CHECK_IF((cuSeqlensShape == nullptr),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "cu_seqlens",
+                                                             "is null but required for TH layout"),
+                    return ge::GRAPH_FAILED);
         int64_t Bsize = cuSeqlensShape->GetDim(DIM_INDEX_0) - DIM_NUM_1;
         int64_t tDivR = shapeParam.T / cmpRatio;
         // 防止 tDivR + Bsize 溢出（int64 上限约 9e18）
