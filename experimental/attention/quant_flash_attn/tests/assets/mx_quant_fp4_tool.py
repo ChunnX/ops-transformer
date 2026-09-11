@@ -450,29 +450,27 @@ def mx_dequantize_fp4_full(packed_dict: Dict) -> torch.Tensor:
     return dequant
 
 
-def mxfp4_quantize_pack_last(
+def mxfp4_quantize_last(
     tensor: torch.Tensor, quant_axis: int, block_size: int = 32, mode: str = "baseline"
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    打包轴固定为最后一维, 量化轴任意 (可与打包轴同轴).
+    量化轴可任意 (可与最后维同轴), 返回「未打包」的 FP4 编码与 E8M0 缩放因子.
 
     参数:
-        tensor:     任意形状 FP32 张量, 最后一维必须为偶数 (打包要求)
+        tensor:     任意形状 FP32 张量
         quant_axis: 量化轴 (支持负索引). 若 == 最后一维, 行为等价于标准 OCP MXFP4.
         block_size: MX 分块大小 (规范固定 32)
         mode:       "baseline" (floor) 或 "oas" (ceil)
 
     返回:
-        packed_fp4:  uint8, shape = 输入 shape, 但 last 维 = last // 2
-                     OCP MX nibble 序: low = elem[2k], high = elem[2k+1]
-        e8m0_scales: uint8 (biased, +127), shape = 输入 shape, 但 quant_axis 维
-                     = ceil(quant_dim / block_size)
+        fp4_codes:  uint8 (取值 0-15), shape 与输入一致. 每个元素为 FP4 4-bit 编码,
+                    可 view 成 float4_e2m1 numpy/torch dtype (低 4 位即为编码值).
+        e8m0_scales: uint8 (biased +127), shape = 输入 shape, 但 quant_axis 维
+                     = ceil(quant_dim / block_size). 可 view 成 float8_e8m0.
     """
     nd = tensor.dim()
     qax = quant_axis % nd
-    last_dim = tensor.shape[-1]
     quant_dim = tensor.shape[qax]
-    assert last_dim % 2 == 0, f"最后一维需为偶数 (打包要求), 当前 {last_dim}"
 
     # 量化阶段: qax 搬到 last (若 qax 已是 last, movedim 是 no-op)
     t_q_last = tensor.movedim(qax, -1).contiguous()
@@ -484,9 +482,6 @@ def mxfp4_quantize_pack_last(
     # qax 搬回原位置 (同轴时 no-op)
     fp4_codes = fp4_codes_q_last.movedim(-1, qax).contiguous()
 
-    # 打包阶段: 沿 last 打包 (同轴时, last 就是 quant 轴, 即标准 OCP MXFP4)
-    packed_fp4 = pack_fp4_to_uint8(fp4_codes)
-
     # scales 还原 shape: 1D -> 原 shape 但 qax 维 = n_blk_q
     n_blk_q = (quant_dim + block_size - 1) // block_size
     rest_q_shape = list(t_q_last.shape[:-1])
@@ -497,6 +492,25 @@ def mxfp4_quantize_pack_last(
     scale_exp_int = torch.log2(scales_real).round().long()
     e8m0_scales = (scale_exp_int + E8M0_BIAS).clamp(0, 254).to(torch.uint8)
 
+    return fp4_codes, e8m0_scales
+
+
+def mxfp4_quantize_pack_last(
+    tensor: torch.Tensor, quant_axis: int, block_size: int = 32, mode: str = "baseline"
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    打包轴固定为最后一维, 量化轴任意 (可与打包轴同轴).
+
+    返回:
+        packed_fp4:  uint8, shape = 输入 shape, 但 last 维 = last // 2
+                     OCP MX nibble 序: low = elem[2k], high = elem[2k+1]
+        e8m0_scales: uint8 (biased, +127), shape = 输入 shape, 但 quant_axis 维
+                     = ceil(quant_dim / block_size)
+    """
+    fp4_codes, e8m0_scales = mxfp4_quantize_last(
+        tensor, quant_axis=quant_axis, block_size=block_size, mode=mode
+    )
+    packed_fp4 = pack_fp4_to_uint8(fp4_codes)
     return packed_fp4, e8m0_scales
 
 

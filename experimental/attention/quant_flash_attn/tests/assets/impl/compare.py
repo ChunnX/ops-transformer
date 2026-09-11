@@ -18,10 +18,10 @@ import numpy as np
 import torch
 
 _ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
-_TESTS_DIR = os.path.join(_ASSETS_DIR, "..", "ttk", "qfa_mxfp4_test")
-if _TESTS_DIR not in sys.path:
-    sys.path.insert(0, _TESTS_DIR)
-from common import result_compare_method
+_ASSETS_ROOT = os.path.dirname(_ASSETS_DIR)
+if _ASSETS_ROOT not in sys.path:
+    sys.path.insert(0, _ASSETS_ROOT)
+import result_compare_method
 
 logger = logging.getLogger(__name__)
 
