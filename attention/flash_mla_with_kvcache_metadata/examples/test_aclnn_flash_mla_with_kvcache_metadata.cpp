@@ -191,8 +191,8 @@ int RunMetadataOnce(aclrtStream stream, int64_t batch, int64_t maxSeqQ, int64_t 
         LOG_PRINT("sync failed: %ld\n", r);
         return -1;
     }
-    r = aclrtMemcpy(outWords->data(), outWords->size() * sizeof(int32_t), metaDev,
-                    outWords->size() * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    r = aclrtMemcpy(outWords->data(), outWords->size() * sizeof(int32_t), metaDev, outWords->size() * sizeof(int32_t),
+                    ACL_MEMCPY_DEVICE_TO_HOST);
     if (r != ACL_SUCCESS) {
         LOG_PRINT("copyback failed: %ld\n", r);
         return -1;
@@ -235,8 +235,8 @@ static int RunByteGolden(aclrtStream stream)
     int64_t words = CapacityAlignedWords(batch);
     std::vector<int32_t> mlaOut(words, 0);
 
-    int64_t r = RunMetadataOnce(stream, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv, headDimQk, headDimV, maskMode, layoutQ,
-                                layoutKv, layoutOut, words, &mlaOut, true, aclnnFlashMlaWithKvcacheMetadata);
+    int64_t r = RunMetadataOnce(stream, batch, maxSeqQ, maxSeqKv, nHeadQ, nHeadKv, headDimQk, headDimV, maskMode,
+                                layoutQ, layoutKv, layoutOut, words, &mlaOut, true, aclnnFlashMlaWithKvcacheMetadata);
     if (r != 0) {
         LOG_PRINT("[FAIL] flash_mla_with_kvcache_metadata run failed\n");
         return -1;
@@ -408,8 +408,8 @@ static void DumpMeta(void *data)
             printf("bn2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX));
             printf("m end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_M_END_INDEX));
             printf("s2 end: %d\n", faMetadata.GetFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX));
-            printf("first fd data ws idx: %d\n", faMetadata.GetFaMetadata(sectionId, i,
-                                                                          optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
+            printf("first fd data ws idx: %d\n",
+                   faMetadata.GetFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
         for (size_t i = 0; i < aivCoreNum; ++i) {
             printf("bn2 idx: %d\n", faMetadata.GetFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX));
@@ -454,10 +454,8 @@ static int RunNegativeRuntimeOnly()
         aclOpExecutor *executor = nullptr;
         uint64_t ws = 0;
         if (ret == 0) {
-            ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, 8, 32768,
-                                                                   17, 1, 576, 512,
-                                                                   3, "TND", metaT, &ws,
-                                                                   &executor);
+            ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuT, seqKvT, nullptr, 8, 32768, 17, 1, 576, 512, 3,
+                                                                   "TND", metaT, &ws, &executor);
             printf("[negative-child] GetWorkspaceSize with undersized buffer: aclnnStatus=%ld\n", ret);
             if (ret == 0) {
                 void *wsAddr = nullptr;
@@ -465,7 +463,8 @@ static int RunNegativeRuntimeOnly()
                     aclrtMalloc(&wsAddr, ws, ACL_MEM_MALLOC_HUGE_FIRST);
                 }
                 ret = aclnnFlashMlaWithKvcacheMetadata(wsAddr, ws, executor, stream);
-                printf("[negative-child] aclnnFlashMlaWithKvcacheMetadata with undersized buffer: aclnnStatus=%ld\n", ret);
+                printf("[negative-child] aclnnFlashMlaWithKvcacheMetadata with undersized buffer: aclnnStatus=%ld\n",
+                       ret);
                 ret = aclrtSynchronizeStream(stream);
                 printf("[negative-child] sync: aclnnStatus=%ld\n", ret);
                 if (wsAddr != nullptr) {
@@ -533,10 +532,9 @@ int main()
         aclOpExecutor *executor = nullptr;
         uint64_t workspaceSize = 0;
         void *workspaceAddr = nullptr;
-        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, qS, kvS,
-                                                               numHeads, numKeyValueHeads, 576, headDim,
-                                                               3, "TND",
-                                                               metadataTensor, &workspaceSize, &executor);
+        ret = aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(cuTmk, clTmk, nullptr, qS, kvS, numHeads,
+                                                               numKeyValueHeads, 576, headDim, 3, "TND", metadataTensor,
+                                                               &workspaceSize, &executor);
         if (ret != ACL_SUCCESS) {
             printf("aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize %d\n", ret);
             return -1;

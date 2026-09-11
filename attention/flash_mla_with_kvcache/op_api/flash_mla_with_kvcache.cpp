@@ -19,26 +19,15 @@ namespace l0op {
 OP_TYPE_REGISTER(FlashMlaWithKvcache);
 
 const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
-    const aclTensor *q, const aclTensor *kCache,
-    const aclTensor *blockTableOptional,
-    const aclTensor *cacheSeqlensOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    int32_t headDimV,
-    double softmaxScale,
-    int32_t maskMode,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut,
-    int32_t returnSoftmaxLse,
-    aclOpExecutor *executor)
+    const aclTensor *q, const aclTensor *kCache, const aclTensor *blockTableOptional,
+    const aclTensor *cacheSeqlensOptional, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *attnMaskOptional, const aclTensor *metadataOptional, int32_t headDimV, double softmaxScale,
+    int32_t maskMode, int32_t maxSeqlenQ, int32_t maxSeqlenKV, const char *layoutQ, const char *layoutKv,
+    const char *layoutOut, int32_t returnSoftmaxLse, aclOpExecutor *executor)
 {
     L0_DFX(FlashMlaWithKvcache, q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional,
-           sequsedQOptional, attnMaskOptional, metadataOptional,
-           headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv, layoutOut,
-           returnSoftmaxLse);
+           sequsedQOptional, attnMaskOptional, metadataOptional, headDimV, softmaxScale, maskMode, maxSeqlenQ,
+           maxSeqlenKV, layoutQ, layoutKv, layoutOut, returnSoftmaxLse);
 
     if (blockTableOptional == nullptr) {
         blockTableOptional = executor->AllocTensor(DataType::DT_INT32, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -66,20 +55,19 @@ const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
                            OP_INPUT(q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional,
                                     sequsedQOptional, attnMaskOptional, metadataOptional),
                            OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-                           OP_ATTR(headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV,
-                                   layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
+                           OP_ATTR(headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ, layoutKv,
+                                   layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashMlaWithKvcache InferShape failed.");
         return {nullptr, nullptr};
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        FlashMlaWithKvcache,
-        OP_INPUT(q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional,
-                 sequsedQOptional, attnMaskOptional, metadataOptional),
-        OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
-        OP_ATTR(headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV,
-                layoutQ, layoutKv, layoutOut, returnSoftmaxLse));
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(FlashMlaWithKvcache,
+                                      OP_INPUT(q, kCache, blockTableOptional, cacheSeqlensOptional, cuSeqlensQOptional,
+                                               sequsedQOptional, attnMaskOptional, metadataOptional),
+                                      OP_OUTPUT(attentionOutAlloc, softmaxLseAlloc),
+                                      OP_ATTR(headDimV, softmaxScale, maskMode, maxSeqlenQ, maxSeqlenKV, layoutQ,
+                                              layoutKv, layoutOut, returnSoftmaxLse));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashMlaWithKvcache launch kernel failed.");
         return {nullptr, nullptr};
@@ -88,4 +76,4 @@ const std::array<const aclTensor *, 2> FlashMlaWithKvcache(
     return {attentionOutAlloc, softmaxLseAlloc};
 }
 
-}  // namespace l0op
+} // namespace l0op

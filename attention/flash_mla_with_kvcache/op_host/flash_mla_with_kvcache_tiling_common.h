@@ -20,7 +20,7 @@
 
 namespace optiling {
 namespace flash_mla_with_kvcache {
-//参考训练算子公共info
+// 参考训练算子公共info
 struct FlashMlaWithKvcacheCompileInfo {
     uint32_t aivNum;
     uint32_t aicNum;

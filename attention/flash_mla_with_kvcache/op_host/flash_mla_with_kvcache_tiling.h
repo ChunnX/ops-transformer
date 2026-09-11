@@ -29,6 +29,6 @@ namespace optiling {
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashMlaWithKvcache(gert::TilingContext *context);
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashMlaWithKvcache(gert::TilingParseContext *context);
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // FLASH_MLA_WITH_KVCACHE_TILING_H_
+#endif // FLASH_MLA_WITH_KVCACHE_TILING_H_

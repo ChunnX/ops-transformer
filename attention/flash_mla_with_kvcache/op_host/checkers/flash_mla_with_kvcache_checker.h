@@ -46,7 +46,8 @@ public:
     ge::graphStatus CheckMultiPara(const FlashMlaWithKvcacheTilingInfo &faInfo);
 
 private:
-    using CheckMethod = std::function<ge::graphStatus(FlashMlaWithKvcacheBaseChecker *, const FlashMlaWithKvcacheTilingInfo &)>;
+    using CheckMethod =
+        std::function<ge::graphStatus(FlashMlaWithKvcacheBaseChecker *, const FlashMlaWithKvcacheTilingInfo &)>;
 
     ge::graphStatus RunCheck(const CheckMethod &method, const FlashMlaWithKvcacheTilingInfo &faInfo);
 

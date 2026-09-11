@@ -134,8 +134,7 @@ public:
 
         // seq-lens 全部 INT32（ACTLEN_T=uint32_t），无 int64 GM 物化、无预核 pass；
         // parser 所有权收敛到 kernel 层（FlashMlaSeqLensTool），block 只读引用
-        seqLensTool_.InitQ(cuSeqlensQ, sequsedQ, constInfo_.actualSeqLenSize, constInfo_.s1Size,
-                          constInfo_.bSize);
+        seqLensTool_.InitQ(cuSeqlensQ, sequsedQ, constInfo_.actualSeqLenSize, constInfo_.s1Size, constInfo_.bSize);
         seqLensTool_.InitKv(cacheSeqlens, constInfo_.actualSeqLenKVSize, constInfo_.s2Size);
 
         if ASCEND_IS_AIV {

@@ -51,7 +51,8 @@ ge::graphStatus FlashMlaWithKvcacheChecker::Init(const FlashMlaWithKvcacheTiling
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashMlaWithKvcacheChecker::RunCheck(const CheckMethod &method, const FlashMlaWithKvcacheTilingInfo &faInfo)
+ge::graphStatus FlashMlaWithKvcacheChecker::RunCheck(const CheckMethod &method,
+                                                     const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
     for (const auto &checker : checkers_) {
         if (ge::GRAPH_SUCCESS != method(checker.get(), faInfo)) {
@@ -63,22 +64,30 @@ ge::graphStatus FlashMlaWithKvcacheChecker::RunCheck(const CheckMethod &method, 
 
 ge::graphStatus FlashMlaWithKvcacheChecker::CheckSinglePara(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c, const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckSinglePara(info); }, faInfo);
+    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c,
+                       const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckSinglePara(info); },
+                    faInfo);
 }
 
 ge::graphStatus FlashMlaWithKvcacheChecker::CheckParaExistence(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c, const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckParaExistence(info); }, faInfo);
+    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c,
+                       const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckParaExistence(info); },
+                    faInfo);
 }
 
 ge::graphStatus FlashMlaWithKvcacheChecker::CheckFeature(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c, const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckFeature(info); }, faInfo);
+    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c,
+                       const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckFeature(info); },
+                    faInfo);
 }
 
 ge::graphStatus FlashMlaWithKvcacheChecker::CheckMultiPara(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c, const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckMultiPara(info); }, faInfo);
+    return RunCheck([](FlashMlaWithKvcacheBaseChecker *c,
+                       const FlashMlaWithKvcacheTilingInfo &info) { return c->CheckMultiPara(info); },
+                    faInfo);
 }
 
 ge::graphStatus FlashMlaWithKvcacheChecker::Process(const FlashMlaWithKvcacheTilingInfo &faInfo)

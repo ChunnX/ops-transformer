@@ -258,11 +258,11 @@ public:
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.n2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = 0,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = (uint32_t)(constInfo.dSize + constInfo.dSizeRope)};
+                                .n2Idx = runInfo.n2Idx,
+                                .gS1Idx = runInfo.gS1Idx,
+                                .dIdx = 0,
+                                .gS1DealSize = runInfo.actMSize,
+                                .dDealSize = (uint32_t)(constInfo.dSize + constInfo.dSizeRope)};
         copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
     }
 
@@ -322,7 +322,7 @@ public:
         fixpipeParams.params.dstNdStride = 0;
 
         Fixpipe<T, T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
-}
+    }
 
     // ================== 特化 LoadData (310 分支 LoadData2DParamsV2, 常量折叠) ==================
     // mm1 L0A: MK, isLeftTranspose=false, realM=0; kSplit=tileK, mSplit=actM
@@ -408,8 +408,7 @@ public:
             const uint32_t l0aMutexId = cachedQuery ? Q_L0A_CACHE_ID0 + qCacheSlot : L0A_BUFFER_ID0;
             const uint32_t l0aSlot = cachedQuery ? qCacheSlot : Q_L0A_CACHE_COUNT;
             const uint32_t l0bMutexId = L0B_BUFFER_ID0 + l0bBufId_;
-            LocalTensor<Q_T> l0aTensor =
-                l0ABuffers_[l0aSlot * L0A_SLOT_BYTES].template ReinterpretCast<Q_T>();
+            LocalTensor<Q_T> l0aTensor = l0ABuffers_[l0aSlot * L0A_SLOT_BYTES].template ReinterpretCast<Q_T>();
             LocalTensor<KV_T> l0bTensor =
                 l0BBuffers_[l0bBufId_ * BUFFER_SIZE_BYTE_32K].template ReinterpretCast<KV_T>();
             if (loadL0A) {
@@ -427,7 +426,9 @@ public:
 
             MmadParams mmadParams;
             mmadParams.m = actM;
-            if (mmadParams.m == 1) { mmadParams.m = 16; }
+            if (mmadParams.m == 1) {
+                mmadParams.m = 16;
+            }
             mmadParams.n = actS2;
             mmadParams.k = tileK;
             mmadParams.cmatrixInitVal = (k == 0);
@@ -445,9 +446,8 @@ public:
     }
 
     // Full S2 tile: retain 32KiB L0B ping-pong using N=256, K=64.
-    __aicore__ inline void Mm2MatmulN256K64(const LocalTensor<KV_T> &pL1Tensor,
-                                          const LocalTensor<KV_T> &kvpL1Tensor,
-                                          const LocalTensor<MM_T> &l0CSubTensor, uint32_t realM)
+    __aicore__ inline void Mm2MatmulN256K64(const LocalTensor<KV_T> &pL1Tensor, const LocalTensor<KV_T> &kvpL1Tensor,
+                                            const LocalTensor<MM_T> &l0CSubTensor, uint32_t realM)
     {
         const uint32_t alignM = (realM + 15U) / 16U * 16U;
         LocalTensor<KV_T> l0a = l0ABuffers_[Q_L0A_CACHE_COUNT * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
@@ -464,8 +464,8 @@ public:
                 p.mStartPosition = 0;
                 p.kStartPosition = 0;
                 p.ifTranspose = true;
-                p.mStep = 4; // K=64
-                p.kStep = 16; // N=256
+                p.mStep = 4;     // K=64
+                p.kStep = 16;    // N=256
                 p.srcStride = 8; // L1 physical K=128
                 p.dstStride = 16;
                 LoadData(l0b, kvpL1Tensor[n * 256U * 128U + k * 64U * 16U], p);
@@ -494,13 +494,12 @@ public:
             Mm2MatmulN256K64(pL1Tensor, kvpL1Tensor, l0CSubTensor, realM);
             return;
         }
-        constexpr uint32_t nLoops = 4;   // (512+128-1)/128
+        constexpr uint32_t nLoops = 4;                             // (512+128-1)/128
         const uint64_t l0COffset = ((realM + 15) >> 4 << 4) * 128; // align16(M)*baseN, runtime once
         const uint64_t l1BOffset = ((actS2 + 15) >> 4 << 4) * 128; // align16(K)*baseN, runtime once
 
         const uint32_t l0aMutexId = L0A_BUFFER_ID0;
-        LocalTensor<KV_T> l0aTensor =
-            l0ABuffers_[(Q_L0A_CACHE_COUNT) * L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
+        LocalTensor<KV_T> l0aTensor = l0ABuffers_[(Q_L0A_CACHE_COUNT)*L0A_SLOT_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE1>(l0aMutexId);
         Mm2LoadL0A(l0aTensor, pL1Tensor, actS2, realM);
         Mutex::Unlock<PIPE_MTE1>(l0aMutexId);
@@ -519,7 +518,9 @@ public:
 
             MmadParams mmadParams;
             mmadParams.m = realM;
-            if (mmadParams.m == 1) { mmadParams.m = 16; }
+            if (mmadParams.m == 1) {
+                mmadParams.m = 16;
+            }
             mmadParams.n = 128;
             mmadParams.k = actS2;
             mmadParams.cmatrixInitVal = true;
