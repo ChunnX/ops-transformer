@@ -55,6 +55,14 @@ TILING_DATA_FIELD_DEF(uint32_t, implMode);
 TILING_DATA_FIELD_DEF(uint32_t, mmConfigKey);
 TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC0);
 TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC1);
+TILING_DATA_FIELD_DEF(uint32_t, cubeBufferDepth);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL1BufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL1BOffset);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL1BufferElems);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0BufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0BufferElems);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0CBufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0CBufferElems);
 TILING_DATA_FIELD_DEF(uint32_t, c0MBlock);
 TILING_DATA_FIELD_DEF(uint32_t, c0NBlock);
 TILING_DATA_FIELD_DEF(uint32_t, c1KBlock);
@@ -139,6 +147,14 @@ private:
     uint32_t mmConfigKey_{MHC_PRE_BACKWARD_MM_CONFIG_0};
     MMConfig mmConfigC0_{};
     MMConfig mmConfigC1_{};
+    uint32_t cubeBufferDepth_{0};
+    uint32_t cubeL1BufferBytes_{0};
+    uint32_t cubeL1BOffset_{0};
+    uint32_t cubeL1BufferElems_{0};
+    uint32_t cubeL0BufferBytes_{0};
+    uint32_t cubeL0BufferElems_{0};
+    uint32_t cubeL0CBufferBytes_{0};
+    uint32_t cubeL0CBufferElems_{0};
 };
 
 } // namespace optiling

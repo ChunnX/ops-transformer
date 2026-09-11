@@ -272,6 +272,25 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
                         l0CSize_),
                 return ge::GRAPH_FAILED);
 
+    uint32_t l1BufferBytes = std::max(mmConfigC0_.get_l1BufferBytes(), mmConfigC1_.get_l1BufferBytes());
+    uint32_t l1ADepth = std::max(mmConfigC0_.get_l1ADepth(), mmConfigC1_.get_l1ADepth());
+    uint32_t l1BDepth = std::max(mmConfigC0_.get_l1BDepth(), mmConfigC1_.get_l1BDepth());
+    uint32_t l0BufferBytes = std::max(
+        std::max(mmConfigC0_.get_l0ABufferBytes(), mmConfigC1_.get_l0ABufferBytes()),
+        std::max(mmConfigC0_.get_l0BBufferBytes(), mmConfigC1_.get_l0BBufferBytes()));
+    uint32_t l0Depth = std::max(std::max(mmConfigC0_.get_l0ADepth(), mmConfigC1_.get_l0ADepth()),
+                                std::max(mmConfigC0_.get_l0BDepth(), mmConfigC1_.get_l0BDepth()));
+    uint32_t l0CBufferBytes = std::max(mmConfigC0_.get_l0CBufferBytes(), mmConfigC1_.get_l0CBufferBytes());
+    uint32_t l0CDepth = std::max(mmConfigC0_.get_l0CDepth(), mmConfigC1_.get_l0CDepth());
+    cubeBufferDepth_ = std::max(std::max(l1ADepth, l1BDepth), std::max(l0Depth, l0CDepth));
+    cubeL1BufferBytes_ = (l1ADepth + l1BDepth) * l1BufferBytes;
+    cubeL1BufferElems_ = l1BufferBytes / sizeof(float);
+    cubeL1BOffset_ = l1ADepth * cubeL1BufferElems_;
+    cubeL0BufferBytes_ = l0Depth * l0BufferBytes;
+    cubeL0BufferElems_ = l0BufferBytes / sizeof(float);
+    cubeL0CBufferBytes_ = l0CDepth * l0CBufferBytes;
+    cubeL0CBufferElems_ = l0CBufferBytes / sizeof(float);
+
     bool cubeShapeAligned = mmConfigC0_.get_baseM() % cubeAlign == 0U && mmConfigC0_.get_baseN() % cubeAlign == 0U &&
                             mmConfigC0_.get_baseK() % cubeAlign == 0U && mmConfigC1_.get_baseM() % cubeAlign == 0U &&
                             mmConfigC1_.get_baseN() % cubeAlign == 0U && mmConfigC1_.get_baseK() % cubeAlign == 0U;
@@ -400,6 +419,14 @@ void MhcPreBackwardTiling::SetCommonTilingParams()
     tilingData_.set_mmConfigKey(mmConfigKey_);
     tilingData_.mmConfigC0 = mmConfigC0_;
     tilingData_.mmConfigC1 = mmConfigC1_;
+    tilingData_.set_cubeBufferDepth(cubeBufferDepth_);
+    tilingData_.set_cubeL1BufferBytes(cubeL1BufferBytes_);
+    tilingData_.set_cubeL1BOffset(cubeL1BOffset_);
+    tilingData_.set_cubeL1BufferElems(cubeL1BufferElems_);
+    tilingData_.set_cubeL0BufferBytes(cubeL0BufferBytes_);
+    tilingData_.set_cubeL0BufferElems(cubeL0BufferElems_);
+    tilingData_.set_cubeL0CBufferBytes(cubeL0CBufferBytes_);
+    tilingData_.set_cubeL0CBufferElems(cubeL0CBufferElems_);
     tilingData_.set_c0MBlock(C0_SET_SHAPE_M);
     tilingData_.set_c0NBlock(C0_SET_SHAPE_N);
     tilingData_.set_c1KBlock(C1_SET_SHAPE_K);
