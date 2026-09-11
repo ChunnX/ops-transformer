@@ -16,8 +16,8 @@
 
 namespace optiling {
 
-ge::graphStatus BuildSchedulePlan(gert::TilingContext *context, const FagParsedInfo &info,
-                                  const FagKernelPlan &kernel, FagSchedulePlan &schedule)
+ge::graphStatus BuildSchedulePlan(gert::TilingContext *context, const FagParsedInfo &info, const FagKernelPlan &kernel,
+                                  FagSchedulePlan &schedule)
 {
     const auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -31,9 +31,9 @@ ge::graphStatus BuildSchedulePlan(gert::TilingContext *context, const FagParsedI
     schedule.useActualCores = !info.isTnd && (info.maskMode == MASK_MODE_NO_MASK) && !info.hasSeqused;
     schedule.usedCube = info.aicNum;
     if (schedule.useActualCores) {
-        schedule.usedCube = static_cast<uint32_t>(FagUsedCubeCores(kernel.tmpl == TMPL_BN2, info.b, info.n2, info.g,
-                                                                   schedule.s1Outer, schedule.s2Outer,
-                                                                   static_cast<int64_t>(info.aicNum)));
+        schedule.usedCube =
+            static_cast<uint32_t>(FagUsedCubeCores(kernel.tmpl == TMPL_BN2, info.b, info.n2, info.g, schedule.s1Outer,
+                                                   schedule.s2Outer, static_cast<int64_t>(info.aicNum)));
     }
 
     schedule.blockDim =

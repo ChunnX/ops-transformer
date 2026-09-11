@@ -34,10 +34,18 @@ from fag_common import (
 # ---- V1: softmaxGradFront  sfmg = rowsum(dy * y) ----
 # ASC vector_api/vf_softmax_grad_front_cast*.h
 
+
 @pl.vector_function
-def softmax_grad_front_row_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
-                              rowShift: pl.DT_INT64, rowStride: pl.DT_INT64,
-                              evenSize: pl.DT_INT64, oddSize: pl.DT_INT64):
+def softmax_grad_front_row_vf(
+    sfmg_ub,
+    y_ub,
+    dy_ub,
+    srcM: pl.DT_INT64,
+    rowShift: pl.DT_INT64,
+    rowStride: pl.DT_INT64,
+    evenSize: pl.DT_INT64,
+    oddSize: pl.DT_INT64,
+):
     """sfmg：Dv≤128，整行一次 128-fp16 load，even/odd mask 盖真实宽度。"""
     pregFullExe = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
@@ -47,14 +55,18 @@ def softmax_grad_front_row_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
     for m in pl.range(0, srcM):
         vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
         vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
-        vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                          layout=pl.CastLayout.ZERO)
-        vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ONE)
-        vregDy = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ZERO)
-        vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                            layout=pl.CastLayout.ONE)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
         vregMul = vf.mul(vregDy, vregY, pregEven)
         vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
         vregRed = vf.reduce_sum(vregMul, pregEven)
@@ -64,12 +76,19 @@ def softmax_grad_front_row_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
     vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
 
 
-
 @pl.vector_function
-def softmax_grad_front_row192_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
-                                 rowShift: pl.DT_INT64, rowStride: pl.DT_INT64,
-                                 evenSize: pl.DT_INT64, oddSize: pl.DT_INT64,
-                                 evenSize2: pl.DT_INT64, oddSize2: pl.DT_INT64):
+def softmax_grad_front_row192_vf(
+    sfmg_ub,
+    y_ub,
+    dy_ub,
+    srcM: pl.DT_INT64,
+    rowShift: pl.DT_INT64,
+    rowStride: pl.DT_INT64,
+    evenSize: pl.DT_INT64,
+    oddSize: pl.DT_INT64,
+    evenSize2: pl.DT_INT64,
+    oddSize2: pl.DT_INT64,
+):
     """sfmg：Dv=192 档。先收前 128 列，再 colOff=128 收剩余，两趟 reduce 相加。
 
     对标老 FAG `MySoftmaxGradFrontCast<..., 384, HEAD_DIM_ALIGN>`：独立档位
@@ -85,14 +104,18 @@ def softmax_grad_front_row192_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
     for m in pl.range(0, srcM):
         vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride)
         vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride)
-        vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                          layout=pl.CastLayout.ZERO)
-        vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ONE)
-        vregDy = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ZERO)
-        vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                            layout=pl.CastLayout.ONE)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
         vregMul = vf.mul(vregDy, vregY, pregEven)
         vregMul2 = vf.mul(vregDy1, vregY1, pregOdd)
         vregRed = vf.reduce_sum(vregMul, pregEven)
@@ -100,14 +123,18 @@ def softmax_grad_front_row192_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
         vregSum = vf.add(vregRed, vregRed2, pregFullExe)
         vregYHalf = vf.load_align(y_ub, (m + rowShift) * rowStride + 128)
         vregDyHalf = vf.load_align(dy_ub, (m + rowShift) * rowStride + 128)
-        vregY = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                          layout=pl.CastLayout.ZERO)
-        vregY1 = vf.astype(vregYHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ONE)
-        vregDy = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                           layout=pl.CastLayout.ZERO)
-        vregDy1 = vf.astype(vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32,
-                            layout=pl.CastLayout.ONE)
+        vregY = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregY1 = vf.astype(
+            vregYHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
+        vregDy = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ZERO
+        )
+        vregDy1 = vf.astype(
+            vregDyHalf, pregFullExeB16, dtype=pl.DT_FP32, layout=pl.CastLayout.ONE
+        )
         vregMul = vf.mul(vregDy, vregY, pregEven2)
         vregMul2 = vf.mul(vregDy1, vregY1, pregOdd2)
         vregRed = vf.reduce_sum(vregMul, pregEven2)
@@ -118,13 +145,14 @@ def softmax_grad_front_row192_vf(sfmg_ub, y_ub, dy_ub, srcM: pl.DT_INT64,
     vf.store_unalign_post(sfmg_ub, aregSfmg, 0, post_update=True)
 
 
-
 # ---- V3: dS = (dP - sfmg) * P，随后 cast + ND2NZ ----
 # ASC vector_api/vf_broadcast_sub_mul.h + vf_cast_transdata_deconflict.h
 
+
 @pl.vector_function
-def broadcast_sub_mul_cast_vf(nzp_ub, mm1_ub, mm2_ub, sfmg_ub,
-                              scale: pl.DT_FP32, srcM: pl.DT_INT64):
+def broadcast_sub_mul_cast_vf(
+    nzp_ub, mm1_ub, mm2_ub, sfmg_ub, scale: pl.DT_FP32, srcM: pl.DT_INT64
+):
     """dS = (dP - broadcast(sfmg)) * P，并 cast 成 fp16。
 
     对应 AscendC BroadcastSubMulVF128 + CastTransdataDeconflict 的算术部分：
@@ -139,10 +167,12 @@ def broadcast_sub_mul_cast_vf(nzp_ub, mm1_ub, mm2_ub, sfmg_ub,
         # 用 DINTLV_B32 一次载入 128 个 fp32 并拆成 even/odd，
         # 使后续 Even/Odd cast + Or 的合并顺序正确；
         # sub/mul 为逐元素运算，只要 dP/P 拆分方式一致即可
-        vregDpEven, vregDpOdd = vf.load_align(mm1_ub, m * VECTOR_BASEN,
-                                              dist=pl.LoadDist.DINTLV_B32)
-        vregPEven, vregPOdd = vf.load_align(mm2_ub, m * VECTOR_BASEN,
-                                            dist=pl.LoadDist.DINTLV_B32)
+        vregDpEven, vregDpOdd = vf.load_align(
+            mm1_ub, m * VECTOR_BASEN, dist=pl.LoadDist.DINTLV_B32
+        )
+        vregPEven, vregPOdd = vf.load_align(
+            mm2_ub, m * VECTOR_BASEN, dist=pl.LoadDist.DINTLV_B32
+        )
         vregSub0 = vf.sub(vregDpEven, vregSfmg, pregFullExe)
         vregDs0 = vf.mul(vregSub0, vregPEven, pregFullExe)
         vregSub1 = vf.sub(vregDpOdd, vregSfmg, pregFullExe)
@@ -153,51 +183,64 @@ def broadcast_sub_mul_cast_vf(nzp_ub, mm1_ub, mm2_ub, sfmg_ub,
         # ASC 同样放在 post 的 fp32 workspace 上做(post_regbase.h:238)。
         # fp32 -> fp16：Even/Odd 分别 cast 进 b16 寄存器的两个半区再 Or 合并，
         # 与 vf_cast_transdata_deconflict.h 一致（probe 验证 MAXDIFF 0.0）
-        vregCastEven = vf.astype(vregDs0, pregFullExeB16, dtype=pl.DT_FP16,
-                                 layout=pl.CastLayout.ZERO)
-        vregCastOdd = vf.astype(vregDs1, pregFullExeB16, dtype=pl.DT_FP16,
-                                layout=pl.CastLayout.ONE)
+        vregCastEven = vf.astype(
+            vregDs0, pregFullExeB16, dtype=pl.DT_FP16, layout=pl.CastLayout.ZERO
+        )
+        vregCastOdd = vf.astype(
+            vregDs1, pregFullExeB16, dtype=pl.DT_FP16, layout=pl.CastLayout.ONE
+        )
         vregCastRes = vf.or_(vregCastEven, vregCastOdd, pregFullExeB16)
         # DataBlock 拷贝模式(vsstb)：一条 store 同时完成 ND->NZ 重排，
         # 省掉独立的 pl.move —— 后者跑在 vector 计算流水上，正是
         # 与 ASC 差距最大的那一项(+127us)。
         # block_stride=65 带 +1 把相邻分形列错开到不同 bank。
-        vf.store_align(nzp_ub, vregCastRes, pregFullExeB16,
-                       data_copy_mode=pl.DataCopyMode.DATA_BLOCK_COPY,
-                       block_stride=NZP_BLOCK_STRIDE,
-                       repeat_stride=NZP_REPEAT_STRIDE,
-                       post_update=True)
-
+        vf.store_align(
+            nzp_ub,
+            vregCastRes,
+            pregFullExeB16,
+            data_copy_mode=pl.DataCopyMode.DATA_BLOCK_COPY,
+            block_stride=NZP_BLOCK_STRIDE,
+            repeat_stride=NZP_REPEAT_STRIDE,
+            post_update=True,
+        )
 
 
 # ---- V4: P cast + ND2NZ ----
 # ASC vector_api/vf_cast_transdata_deconflict.h
+
 
 @pl.vector_function
 def cast_p_vf(nzp_ub, mm2_ub, srcM: pl.DT_INT64):
     """P: fp32 -> fp16，对应 AscendC ProcessVec4 中的 CastTransdataDeconflict。"""
     pregFullExeB16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
     for m in pl.range(0, srcM):
-        vregPEven, vregPOdd = vf.load_align(mm2_ub, m * VECTOR_BASEN,
-                                            dist=pl.LoadDist.DINTLV_B32)
-        vregCastEven = vf.astype(vregPEven, pregFullExeB16, dtype=pl.DT_FP16,
-                                 layout=pl.CastLayout.ZERO)
-        vregCastOdd = vf.astype(vregPOdd, pregFullExeB16, dtype=pl.DT_FP16,
-                                layout=pl.CastLayout.ONE)
+        vregPEven, vregPOdd = vf.load_align(
+            mm2_ub, m * VECTOR_BASEN, dist=pl.LoadDist.DINTLV_B32
+        )
+        vregCastEven = vf.astype(
+            vregPEven, pregFullExeB16, dtype=pl.DT_FP16, layout=pl.CastLayout.ZERO
+        )
+        vregCastOdd = vf.astype(
+            vregPOdd, pregFullExeB16, dtype=pl.DT_FP16, layout=pl.CastLayout.ONE
+        )
         vregCastRes = vf.or_(vregCastEven, vregCastOdd, pregFullExeB16)
         # DataBlock 拷贝模式(vsstb)：一条 store 同时完成 ND->NZ 重排，
         # 省掉独立的 pl.move —— 后者跑在 vector 计算流水上，正是
         # 与 ASC 差距最大的那一项(+127us)。
         # block_stride=65 带 +1 把相邻分形列错开到不同 bank。
-        vf.store_align(nzp_ub, vregCastRes, pregFullExeB16,
-                       data_copy_mode=pl.DataCopyMode.DATA_BLOCK_COPY,
-                       block_stride=NZP_BLOCK_STRIDE,
-                       repeat_stride=NZP_REPEAT_STRIDE,
-                       post_update=True)
-
+        vf.store_align(
+            nzp_ub,
+            vregCastRes,
+            pregFullExeB16,
+            data_copy_mode=pl.DataCopyMode.DATA_BLOCK_COPY,
+            block_stride=NZP_BLOCK_STRIDE,
+            repeat_stride=NZP_REPEAT_STRIDE,
+            post_update=True,
+        )
 
 
 # ---- pre: 清零 ----
+
 
 @pl.vector_function
 def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):
@@ -211,7 +254,6 @@ def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):
         vf.store_align(dst_ub + i * VF_LANES, vregZero, pregFullExe)
 
 
-
 @pl.vector_function
 def fill_zero_fp16_vf(dst_ub, nvecs: pl.DT_INT64):
     """把 UB tile 的前 nvecs 个 vreg(每个 VF_LANES_FP16 个 fp16)填 0。"""
@@ -221,9 +263,9 @@ def fill_zero_fp16_vf(dst_ub, nvecs: pl.DT_INT64):
         vf.store_align(dst_ub + i * VF_LANES_FP16, vregZero, pregFullExe)
 
 
-
 # ---- post / V5 / V6: fp32 -> muls(scale) -> fp16 ----
 # ASC post_regbase.h:238-241
+
 
 @pl.vector_function
 def muls_cast_vf(dst_ub, src_ub, scale: pl.DT_FP32, nsegs: pl.DT_INT64):
@@ -246,12 +288,15 @@ def muls_cast_vf(dst_ub, src_ub, scale: pl.DT_FP32, nsegs: pl.DT_INT64):
     pregFull16 = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
     for m in pl.range(0, nsegs):
         vregEven, vregOdd = vf.load_align(
-            src_ub, m * VECTOR_BASEN, dist=pl.LoadDist.DINTLV_B32)
+            src_ub, m * VECTOR_BASEN, dist=pl.LoadDist.DINTLV_B32
+        )
         vregEven = vf.muls(vregEven, scale, pregFull32)
         vregOdd = vf.muls(vregOdd, scale, pregFull32)
-        vregCastEven = vf.astype(vregEven, pregFull16, dtype=pl.DT_FP16,
-                                 layout=pl.CastLayout.ZERO)
-        vregCastOdd = vf.astype(vregOdd, pregFull16, dtype=pl.DT_FP16,
-                                layout=pl.CastLayout.ONE)
+        vregCastEven = vf.astype(
+            vregEven, pregFull16, dtype=pl.DT_FP16, layout=pl.CastLayout.ZERO
+        )
+        vregCastOdd = vf.astype(
+            vregOdd, pregFull16, dtype=pl.DT_FP16, layout=pl.CastLayout.ONE
+        )
         vregRes = vf.or_(vregCastEven, vregCastOdd, pregFull16)
         vf.store_align(dst_ub + m * VECTOR_BASEN, vregRes, pregFull16)

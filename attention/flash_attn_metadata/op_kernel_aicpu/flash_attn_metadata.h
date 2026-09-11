@@ -79,10 +79,10 @@ constexpr uint32_t FAG_MAX_SEQLEN_KV_INDEX = 120U;
 constexpr uint32_t FAG_PRE_AIV_NUM_INDEX = 121U;
 constexpr uint32_t FAG_DQ_ROWS_INDEX = 122U;
 constexpr uint32_t FAG_DKV_ROWS_INDEX = 123U;
-constexpr uint32_t FAG_DQ_ROW_STARTS_OFFSET = 124U;   // [72]
-constexpr uint32_t FAG_DQ_ROW_ENDS_OFFSET = 196U;     // [72]
-constexpr uint32_t FAG_DKV_ROW_STARTS_OFFSET = 268U;  // [72]
-constexpr uint32_t FAG_DKV_ROW_ENDS_OFFSET = 340U;    // [72]  // 340+72=412
+constexpr uint32_t FAG_DQ_ROW_STARTS_OFFSET = 124U;  // [72]
+constexpr uint32_t FAG_DQ_ROW_ENDS_OFFSET = 196U;    // [72]
+constexpr uint32_t FAG_DKV_ROW_STARTS_OFFSET = 268U; // [72]
+constexpr uint32_t FAG_DKV_ROW_ENDS_OFFSET = 340U;   // [72]  // 340+72=412
 
 // FAG internal constants
 constexpr uint32_t FAG_S1CV_RATIO_DEFAULT = 2U;
@@ -93,9 +93,9 @@ constexpr uint32_t FAG_BATCH_MAX_SIZE = 2048U;
 constexpr uint32_t FAG_MAX_S2_OUTER = 1024U;
 
 // FAG layout type values (matching flash_attention_score_grad tiling common_regbase.h)
-constexpr uint32_t FAG_INPUT_FORMAT_BS2N2GD = 1U;   // BSND
-constexpr uint32_t FAG_INPUT_FORMAT_BN2GS2D = 3U;   // BNSD
-constexpr uint32_t FAG_INPUT_FORMAT_TND = 4U;       // TND
+constexpr uint32_t FAG_INPUT_FORMAT_BS2N2GD = 1U; // BSND
+constexpr uint32_t FAG_INPUT_FORMAT_BN2GS2D = 3U; // BNSD
+constexpr uint32_t FAG_INPUT_FORMAT_TND = 4U;     // TND
 
 // FAG sparse mode values (matching flash_attention_score_grad SparseMode enum)
 constexpr uint32_t FAG_SPARSE_NO_MASK = 0U;

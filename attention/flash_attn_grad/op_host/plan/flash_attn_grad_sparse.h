@@ -26,7 +26,7 @@ constexpr int64_t FAG_SPARSE_BAND = 2;
 constexpr int64_t FAG_CUBE_BASE = 128;
 
 inline void FagCorrectSparseTokens(int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t s1, int64_t s2,
-                                  int64_t &s1Token, int64_t &s2Token)
+                                   int64_t &s1Token, int64_t &s2Token)
 {
     // ProcessTokensInfo (non-TND): causal tokens then right-down pad correction.
     if (maskMode == MASK_MODE_CAUSAL) {
@@ -144,9 +144,8 @@ inline void FagFillSparseInfo(FagParsedInfo &info)
     int64_t s1Outer = 0;
     int64_t s2Outer = 0;
     FagS1S2Outer(info.s1, info.s2, s1Outer, s2Outer);
-    info.totalPerBatchNum =
-        FagGetTotalPerBatchNum(info.s1, info.s2, s1Outer, s2Outer, info.sparseType, info.maskMode, info.s1Token,
-                               info.s2Token);
+    info.totalPerBatchNum = FagGetTotalPerBatchNum(info.s1, info.s2, s1Outer, s2Outer, info.sparseType, info.maskMode,
+                                                   info.s1Token, info.s2Token);
     if (info.totalPerBatchNum <= 0) {
         info.totalPerBatchNum = s1Outer * s2Outer;
     }

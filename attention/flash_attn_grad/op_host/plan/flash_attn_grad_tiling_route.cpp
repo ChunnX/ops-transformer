@@ -19,8 +19,8 @@ namespace {
 // ---------------------------------------------------------------------------
 // 能力边界常量：这些数字来自 kernel 实现边界，不是性能标定，改动必须伴随 kernel 改动
 // ---------------------------------------------------------------------------
-constexpr int64_t BN2_MAX_S = 128;   // 单块 BN2 的 S 上限
-constexpr int64_t BN2_MAX_D = 128;   // BN2 一系列模板的 D 上限
+constexpr int64_t BN2_MAX_S = 128;        // 单块 BN2 的 S 上限
+constexpr int64_t BN2_MAX_D = 128;        // BN2 一系列模板的 D 上限
 constexpr int64_t BN2_MULTIBLK_SEQ = 640; // MultiBlk 的 S 上限
 
 // ---------------------------------------------------------------------------
@@ -90,8 +90,7 @@ struct FagRoute {
 constexpr FagRoute kRoutes[] = {
     {"BN2_single", TMPL_BN2, 0, Feasible_Bn2Single, Prefer_Always,
      "S<=128 时不存在多核累加，省掉 pre 清零与 post cast"},
-    {"BN2_multiblk", TMPL_BN2, 1, Feasible_Bn2MultiBlk, Prefer_Bn2BnGate,
-     "BN>=256，或 BN>=128 且 S1/S2 对齐 128"},
+    {"BN2_multiblk", TMPL_BN2, 1, Feasible_Bn2MultiBlk, Prefer_Bn2BnGate, "BN>=256，或 BN>=128 且 S1/S2 对齐 128"},
     {"BN2S2_reserved", TMPL_RESERVED_BN2S2, 0, Feasible_Never, Prefer_Always,
      "D5 保留位：本轮不实现不编译，勿复用该 template 取值"},
     {"GS1S2", TMPL_BN2GS1S2, 0, Feasible_Always, Prefer_Always, "兜底，恒可行"},
@@ -109,8 +108,8 @@ static_assert(kRouteNum <= FAG_TRACE_SLOT_NUM, "trace slots must cover all route
 ge::graphStatus SelectDBucket(gert::TilingContext *context, const FagParsedInfo &p, FagKernelPlan &plan)
 {
     OP_CHECK_IF(p.d > MAX_HEAD_DIM,
-                OP_LOGE(context->GetNodeName(),
-                        "head dim of q (%ld) is not supported; only D <= %ld is implemented.", p.d, MAX_HEAD_DIM),
+                OP_LOGE(context->GetNodeName(), "head dim of q (%ld) is not supported; only D <= %ld is implemented.",
+                        p.d, MAX_HEAD_DIM),
                 return ge::GRAPH_PARAM_INVALID);
 
     plan.dAlign = (p.d <= 64) ? 64 : ((p.d <= 128) ? 128 : 192);
@@ -151,13 +150,11 @@ ge::graphStatus SelectKernelPlan(gert::TilingContext *context, const FagParsedIn
                 return ge::GRAPH_FAILED);
     // D5 兜底：保留取值绝不能流到 tilingkey。
     OP_CHECK_IF(plan.tmpl != TMPL_BN2GS1S2 && plan.tmpl != TMPL_BN2,
-                OP_LOGE(context->GetNodeName(),
-                        "route produced reserved template %ld, only %ld/%ld are implemented.", plan.tmpl,
-                        TMPL_BN2GS1S2, TMPL_BN2),
+                OP_LOGE(context->GetNodeName(), "route produced reserved template %ld, only %ld/%ld are implemented.",
+                        plan.tmpl, TMPL_BN2GS1S2, TMPL_BN2),
                 return ge::GRAPH_FAILED);
 
-    if (plan.isBn2MultiBlk == 1 &&
-        (info.maskMode == MASK_MODE_CAUSAL || info.maskMode == MASK_MODE_WINDOW) &&
+    if (plan.isBn2MultiBlk == 1 && (info.maskMode == MASK_MODE_CAUSAL || info.maskMode == MASK_MODE_WINDOW) &&
         FagBn2HasInvalidOuter(info.s1, info.s2, info.s1Token, info.s2Token)) {
         plan.bn2NeedZero = 1;
     }

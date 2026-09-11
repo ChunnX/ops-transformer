@@ -44,12 +44,9 @@ ge::graphStatus FagDtypeChecker::Check(FagCheckCtx &ctx)
 
     auto qDesc = context->GetInputDesc(Q_INDEX);
     const DescRef others[] = {
-        {"k", context->GetInputDesc(K_INDEX)},
-        {"v", context->GetInputDesc(V_INDEX)},
-        {"dout", context->GetInputDesc(DOUT_INDEX)},
-        {"attn_out", context->GetInputDesc(ATTN_OUT_INDEX)},
-        {"dq", context->GetOutputDesc(DQ_OUT_INDEX)},
-        {"dk", context->GetOutputDesc(DK_OUT_INDEX)},
+        {"k", context->GetInputDesc(K_INDEX)},        {"v", context->GetInputDesc(V_INDEX)},
+        {"dout", context->GetInputDesc(DOUT_INDEX)},  {"attn_out", context->GetInputDesc(ATTN_OUT_INDEX)},
+        {"dq", context->GetOutputDesc(DQ_OUT_INDEX)}, {"dk", context->GetOutputDesc(DK_OUT_INDEX)},
         {"dv", context->GetOutputDesc(DV_OUT_INDEX)},
     };
 

@@ -74,9 +74,9 @@ _UB_BYTES = 256 * 1024
 # 用，所以必须两侧同号。把它们钉在号段最前面，两个池子都从这段之后开始发号，
 # 谁也不会踩到 —— 这样 cube 池和 vector 池就能各自独立编号。
 _CV_SLOTS = {
-    "mm1_res": 2,   # cube FIX 写、vector V 读
+    "mm1_res": 2,  # cube FIX 写、vector V 读
     "mm2_res": 2,
-    "ds": 1,        # vector 写、cube mm3/mm4 读
+    "ds": 1,  # vector 写、cube mm3/mm4 读
     "p": 1,
     # dS^T / P^T 与 ds / p 同址但**另发一个号**：它们是同一块 L1 的 ZN 视图，
     # 有独立游标，读写序由 CV flag(SYNC_V3_TO_C3 等)而不是 mutex 保证。
@@ -122,8 +122,10 @@ class _MutexPool:
 
     def report(self):
         free = sorted(set(range(self.LIMIT)) - set(self.owners))
-        lines = [f"{self._side}({self._tag}): 用了 {len(self.owners)}/{self.LIMIT}，"
-                 f"空闲 {len(free)} 个 -> {free}"]
+        lines = [
+            f"{self._side}({self._tag}): 用了 {len(self.owners)}/{self.LIMIT}，"
+            f"空闲 {len(free)} 个 -> {free}"
+        ]
         for i in sorted(self.owners):
             lines.append(f"   {i:>2}  {self.owners[i]}")
         return "\n".join(lines)
@@ -146,7 +148,7 @@ class _Arena:
         self._cap = capacity
         self._pool = pool
         self._cur = base
-        self.map = []          # [(标签, 地址, 字节数, mutex id)]
+        self.map = []  # [(标签, 地址, 字节数, mutex id)]
 
     def buf(self, label, nbytes, slots=1, align=1, cv=None):
         """声明一块 buffer —— **地址和 buffer-id 在这一处一起发**。
@@ -154,16 +156,16 @@ class _Arena:
         ``cv`` 给出 CV 共享段的名字时用钉死的两侧同号，否则由本侧 pool 发号。
         """
         ids = list(_CV_MTX[cv]) if cv else self._pool.take(label, slots)
-        return {"addrs": self._place(label, nbytes, len(ids), align, ids),
-                "mutex": ids}
+        return {"addrs": self._place(label, nbytes, len(ids), align, ids), "mutex": ids}
 
     def _place(self, label, nbytes, count, align, ids):
         addrs = []
         for i in range(count):
             self._cur = (self._cur + align - 1) & ~(align - 1)
             addrs.append(self._cur)
-            self.map.append((f"{label}[{i}]" if count > 1 else label,
-                             self._cur, nbytes, ids[i]))
+            self.map.append(
+                (f"{label}[{i}]" if count > 1 else label, self._cur, nbytes, ids[i])
+            )
             self._cur += nbytes
         # 越过 capacity 就是片上内存放不下了；余量见 describe_layout()。
         return addrs
@@ -172,9 +174,11 @@ class _Arena:
         def size(n):
             return f"{n // 1024}KB" if n >= 1024 else f"{n}B"
 
-        lines = [f"{self._name}: 用到 0x{self._cur:06X}"
-                 f"（{size(self._cur)} / {size(self._cap)}，"
-                 f"余 {size(self._cap - self._cur)}）"]
+        lines = [
+            f"{self._name}: 用到 0x{self._cur:06X}"
+            f"（{size(self._cur)} / {size(self._cap)}，"
+            f"余 {size(self._cap - self._cur)}）"
+        ]
         for label, addr, nbytes, mid in self.map:
             lock = f"mutex {mid}" if mid is not None else ""
             lines.append(f"  0x{addr:06X}  {size(nbytes):>5}  {label:<12}{lock}")
@@ -218,13 +222,13 @@ def _build_l1(width, pool):
     互相覆写，于是 mm4/mm5 可以直接复用 mm2/mm1 搬好的数据，无需再读 GM。
     """
     ar = _Arena(f"L1 d_align={width}", _L1_BYTES, pool)
-    blk = CUBE_BASEM * D_PHYS_W[width] * 2   # Q/K/V/dO 一块：64/128 档 32KB，192 档 48KB
-    dsp = CUBE_BASEM * CUBE_BASEN * 2        # dS/P 是 [M,N]，与 D 无关，恒 32KB
+    blk = CUBE_BASEM * D_PHYS_W[width] * 2  # Q/K/V/dO 一块：64/128 档 32KB，192 档 48KB
+    dsp = CUBE_BASEM * CUBE_BASEN * 2  # dS/P 是 [M,N]，与 D 无关，恒 32KB
     # 64/128 档 4 槽；192 档每块 48KB，512KB 只放得下 3 槽。
     nq = 4 if width <= HEAD_DIM_ALIGN else 3
 
-    q = ar.buf("q", blk, slots=nq)      # q_lag_view 复用这份记录，同址同号
-    do = ar.buf("do", blk, slots=nq)    # do_lag_view 同理
+    q = ar.buf("q", blk, slots=nq)  # q_lag_view 复用这份记录，同址同号
+    do = ar.buf("do", blk, slots=nq)  # do_lag_view 同理
     k = ar.buf("k", blk)
     # MM3(dQ = dS@K) 的右矩阵要非转置的 K[S2,D]，必须独占一块 L1：同一地址上
     # 叠加 ZN 的 [D,S2] 与 ND 的 [S2,D] 两种视图能编过，但结果静默错误。
@@ -234,8 +238,16 @@ def _build_l1(width, pool):
     ds = ar.buf("ds", dsp, cv="ds")
     p = ar.buf("p", dsp, cv="p")
 
-    return {"q": q, "do": do, "k": k, "k_nd": k_nd, "v": v, "ds": ds, "p": p,
-            "_arenas": [ar]}
+    return {
+        "q": q,
+        "do": do,
+        "k": k,
+        "k_nd": k_nd,
+        "v": v,
+        "ds": ds,
+        "p": p,
+        "_arenas": [ar],
+    }
 
 
 # acc / L0A / L0B 的列宽：MM2/MM1 输出 [M,s2]，MM3 输出 dQ 的一个 D 分块，
@@ -275,8 +287,8 @@ def _build_l0c(width, pool):
     单槽。三档都正好用满 256KB。
     """
     ar = _Arena(f"L0C d_align={width}", _L0C_BYTES, pool)
-    accBlk = CUBE_BASEM * ACC_COLS[width] * 4       # acc 要装 MM2/MM1 的 [M,s2]
-    dkvBlk = CUBE_BASEN * D_CHUNK_MAXW[width] * 4   # dK/dV 只装一个 D 分块
+    accBlk = CUBE_BASEM * ACC_COLS[width] * 4  # acc 要装 MM2/MM1 的 [M,s2]
+    dkvBlk = CUBE_BASEN * D_CHUNK_MAXW[width] * 4  # dK/dV 只装一个 D 分块
     nChunk = D_NCHUNKS[width]
 
     acc = ar.buf("acc", accBlk, slots=2 if width <= HEAD_DIM_ALIGN else 1)
@@ -299,8 +311,8 @@ _UB_ROW_SLOT = 0x200
 # pre/post 按 ASC 一样走一维元素，不按 [行, D] 切。三档都吃满可用 UB，且每档
 # elems 都能被 128 整除，full-tile 的 VF 段数是编译期常量。行区间已由 metadata
 # 按 nAiv 均分，块大不再空核。
-PRE_ELEMS = {64: 63488, 128: 63488, 192: 63360}    # 单槽 fp32
-POST_ELEMS = {64: 20480, 128: 21120, 192: 21120}   # depth-2，fp32 + fp16
+PRE_ELEMS = {64: 63488, 128: 63488, 192: 63360}  # 单槽 fp32
+POST_ELEMS = {64: 20480, 128: 21120, 192: 21120}  # depth-2，fp32 + fp16
 
 
 def _build_ub(width, pool):
@@ -321,8 +333,7 @@ def _build_ub(width, pool):
     cast 只有 BN2 的 v5/v6 用，但三档都留：它排在最后，不占别人的地方，
     留着可以让 BN2 直接复用这张图（见 BN2_UB_*）。
     """
-    main = _Arena(f"UB v1w={width}", _UB_BYTES, pool,
-                  base=UB_HEAD_RESERVE + 0x20000)
+    main = _Arena(f"UB v1w={width}", _UB_BYTES, pool, base=UB_HEAD_RESERVE + 0x20000)
     y = main.buf("y", VECTOR_BASEM * width * 2)
     dy = main.buf("dy", VECTOR_BASEM * width * 2)
     # NZ+1 行：末行是 bank 错开的填充，见 fag_common.NZP_BLOCK_STRIDE。
@@ -332,7 +343,7 @@ def _build_ub(width, pool):
     cast = main.buf("cast", VECTOR_BASEM * VECTOR_BASEN * 2)
 
     shared = _Arena("UB mm1/mm2", _UB_BYTES, pool, base=UB_HEAD_RESERVE)
-    resBlk = VECTOR_BASEM * VECTOR_BASEN * 4     # fp32[64,128] = 32KB
+    resBlk = VECTOR_BASEM * VECTOR_BASEN * 4  # fp32[64,128] = 32KB
     mm1 = shared.buf("mm1_res", resBlk, cv="mm1_res")
     mm2 = shared.buf("mm2_res", resBlk, cv="mm2_res")
 
@@ -347,9 +358,20 @@ def _build_ub(width, pool):
     f32 = post.buf("post_f32", n * 4, slots=2)
     f16 = post.buf("post_f16", n * 2, slots=2)
 
-    return {"y": y, "dy": dy, "nzp": nzp, "sfmg": sfmg, "lse": lse, "cast": cast,
-            "mm1": mm1, "mm2": mm2, "zero": zero, "f32": f32, "f16": f16,
-            "_arenas": [main, shared, pre, post]}
+    return {
+        "y": y,
+        "dy": dy,
+        "nzp": nzp,
+        "sfmg": sfmg,
+        "lse": lse,
+        "cast": cast,
+        "mm1": mm1,
+        "mm2": mm2,
+        "zero": zero,
+        "f32": f32,
+        "f16": f16,
+        "_arenas": [main, shared, pre, post],
+    }
 
 
 # ==================================================================
@@ -380,7 +402,7 @@ L1_P_ADDR = _addr(_L1, "p")
 # CV 共享段的号钉死，三档一致，导出成扁平列表。
 MTX_L1_DS = list(_CV_MTX["ds"])
 MTX_L1_P = list(_CV_MTX["p"])
-MTX_L1_DS_T = list(_CV_MTX["ds_t"])   # 与 ds 同址、另发一号，见 _CV_SLOTS
+MTX_L1_DS_T = list(_CV_MTX["ds_t"])  # 与 ds 同址、另发一号，见 _CV_SLOTS
 MTX_L1_P_T = list(_CV_MTX["p_t"])
 
 # ---- L0A / L0B ----
@@ -424,12 +446,12 @@ UB_LSE1_A = {w: _UB[w]["lse"]["addrs"][1] for w in _TIERS}
 # attenmask 复用 y/dy 的地址与号（vec1 之后 vec2 再用，与 ASC 队列复用同构）。
 UB_MASK_A = UB_Y_A
 UB_MASK_PRE_A = UB_DY_A
-MTX_UB_Y = _flat(_UB, "y")           # attenmask 复用
-MTX_UB_DY = _flat(_UB, "dy")         # attenmask(pre) 复用
+MTX_UB_Y = _flat(_UB, "y")  # attenmask 复用
+MTX_UB_DY = _flat(_UB, "dy")  # attenmask(pre) 复用
 MTX_UB_NZP = _flat(_UB, "nzp")
 MTX_UB_SFMG = _flat(_UB, "sfmg")
 MTX_UB_LSE = _flat(_UB, "lse")
-MTX_UB_CAST = _flat(_UB, "cast")     # 仅 BN2
+MTX_UB_CAST = _flat(_UB, "cast")  # 仅 BN2
 
 UB_PRE_ZERO = _UB[HEAD_DIM_ALIGN]["zero"]["addrs"][0]
 MTX_UB_ZERO = _flat(_UB, "zero")
@@ -470,4 +492,4 @@ def describe_layout(tier=HEAD_DIM_ALIGN):
 
 def audit_mutex(tier=HEAD_DIM_ALIGN):
     """打印一档的 buffer-id 占用：每个号归谁、每侧还剩几个。"""
-    return (_CUBE_POOL[tier].report() + "\n\n" + _VEC_POOL[tier].report())
+    return _CUBE_POOL[tier].report() + "\n\n" + _VEC_POOL[tier].report()

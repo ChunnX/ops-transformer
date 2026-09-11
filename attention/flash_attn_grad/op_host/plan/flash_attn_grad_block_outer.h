@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -56,8 +56,8 @@ inline int64_t FagDenseBlockOuter(int64_t fusedOuter, int64_t aicNum)
 
 // BN2: fusedOuter = b*n2*g (blockOuter counted on BN, not S tiles).
 // BN2GS1S2 dense: fusedOuter = b*n2*g*s1Outer*s2Outer.
-inline int64_t FagUsedCubeCores(bool isBn2, int64_t b, int64_t n2, int64_t g, int64_t s1Outer,
-                                int64_t s2Outer, int64_t aicNum)
+inline int64_t FagUsedCubeCores(bool isBn2, int64_t b, int64_t n2, int64_t g, int64_t s1Outer, int64_t s2Outer,
+                                int64_t aicNum)
 {
     int64_t fusedOuter = isBn2 ? (b * n2 * g) : (b * n2 * g * s1Outer * s2Outer);
     int64_t blockOuter = FagDenseBlockOuter(fusedOuter, aicNum);

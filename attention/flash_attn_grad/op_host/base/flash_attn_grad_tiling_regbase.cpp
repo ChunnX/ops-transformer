@@ -34,7 +34,8 @@ static_assert(sizeof(FlashAttnGradTilingData) == 192,
               "TilingData layout changed; update FlashAttnGradTilingDataTmp in flash_attn_grad_tiling.h too.");
 static_assert(offsetof(FlashAttnGradTilingData, scaleValue) == 56, "scaleValue moved; re-check the 4-byte padding.");
 static_assert(offsetof(FlashAttnGradTilingData, gSize) == 64, "gSize moved; re-check the padding after scaleValue.");
-static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128, "layout-view tail moved; a field was added or removed.");
+static_assert(offsetof(FlashAttnGradTilingData, coefN2) == 128,
+              "layout-view tail moved; a field was added or removed.");
 static_assert(offsetof(FlashAttnGradTilingData, totalPerBatchNum) == 184,
               "trailing mask field moved; a field was added or removed.");
 
@@ -51,12 +52,12 @@ void LogPlan(gert::TilingContext *context, const FagParsedInfo &info, const FagT
             "tilingKey=%llu, workspaceSize=%zu.",
             plan.schedule.usedCube, plan.schedule.blockDim, static_cast<int>(plan.schedule.useActualCores),
             plan.schedule.s1Outer, plan.schedule.s2Outer, info.layoutQ.c_str(), info.layout, info.maskMode,
-            info.winLeft, info.winRight, info.sparseType, info.totalPerBatchNum,
-            static_cast<int>(info.hasAttenMask), static_cast<int>(info.hasSeqused), static_cast<int>(info.hasSinks),
-            static_cast<int>(IsEmptyShape(info)), plan.kernel.tmpl, plan.kernel.isBn2MultiBlk, plan.kernel.bn2NeedZero,
-            plan.schedule.swizzle, plan.kernel.dAlign, plan.kernel.dvAlign, info.b, info.s1, info.s2, info.n1, info.n2,
-            info.g, info.d, info.dv, info.viewD0Q, info.viewD2Q, info.coefB0Q, info.viewD0KV, info.viewD2KV,
-            info.coefB0KV, info.coefN0, info.coefN2, plan.tilingKey, plan.workspace.totalSize);
+            info.winLeft, info.winRight, info.sparseType, info.totalPerBatchNum, static_cast<int>(info.hasAttenMask),
+            static_cast<int>(info.hasSeqused), static_cast<int>(info.hasSinks), static_cast<int>(IsEmptyShape(info)),
+            plan.kernel.tmpl, plan.kernel.isBn2MultiBlk, plan.kernel.bn2NeedZero, plan.schedule.swizzle,
+            plan.kernel.dAlign, plan.kernel.dvAlign, info.b, info.s1, info.s2, info.n1, info.n2, info.g, info.d,
+            info.dv, info.viewD0Q, info.viewD2Q, info.coefB0Q, info.viewD0KV, info.viewD2KV, info.coefB0KV, info.coefN0,
+            info.coefN2, plan.tilingKey, plan.workspace.totalSize);
 
     // 决策追溯：上板发现别的模板更快时，先看这行就知道今天为什么选了它。
     // l2CacheSize 一起打出来：swizzle 的阈值以它为分母，各 ascend950 变体

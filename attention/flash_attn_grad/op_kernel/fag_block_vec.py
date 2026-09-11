@@ -28,7 +28,14 @@ pre / post 两个阶段也放在这里：它们同样是纯 vector、同样按 m
 import pypto_pro.language as pl
 
 # --- generated imports (fag_fiximports.py) ---
-from fag_common import CUBE_BASEM, NZP_ROWS, VECTOR_BASEM, VECTOR_BASEN, VF_LANES, VF_LANES_FP16
+from fag_common import (
+    CUBE_BASEM,
+    NZP_ROWS,
+    VECTOR_BASEM,
+    VECTOR_BASEN,
+    VF_LANES,
+    VF_LANES_FP16,
+)
 from fag_mem import BN2_CAST_W, BN2_V1_ROWS, POST_ELEMS, PRE_ELEMS
 from fag_vector_api import (
     broadcast_sub_mul_cast_vf,
@@ -52,6 +59,7 @@ from attenmask import copy_in_atten_mask, muls_sel_simple_softmax_vf
 #  UB -> CV 共享 L1  (ASC block_vec.h::CopyUB2L1)
 # ==================================================================
 
+
 def copy_ub2l1(l1_tile, nzp_ub, row_offset):
     """把 NZ+1 缓冲搬进 CV 共享 L1，跳过 bank 错开用的填充块。
 
@@ -69,88 +77,124 @@ def copy_ub2l1(l1_tile, nzp_ub, row_offset):
     pl.set_validshape(nzp_ub, [NZP_ROWS, VECTOR_BASEN])
 
 
-
 # ==================================================================
 #  V1 —— sfmg = rowsum(dy * y)
 # ==================================================================
 
-def process_vec1(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
-                 y_ub, dy_ub, sfmg_ub, rowStride):
+
+def process_vec1(
+    constInfo, runInfo, subIdx, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
+):
     """softmaxGradFront: sfmg = rowsum(dy * y)。一趟 VECTOR_BASEM 行。"""
     pl.set_validshape(y_ub, [VECTOR_BASEM, constInfo.dvSize])
     pl.set_validshape(dy_ub, [VECTOR_BASEM, constInfo.dvSize])
-    pl.load(y_ub, tensor_y,
-            [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
-    pl.load(dy_ub, tensor_dy,
-            [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
+    pl.load(
+        y_ub,
+        tensor_y,
+        [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0],
+        order=[1, 3],
+    )
+    pl.load(
+        dy_ub,
+        tensor_dy,
+        [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0],
+        order=[1, 3],
+    )
     w0 = pl.min(constInfo.dvSize, 128)
     if dv_align == 192:
         w1 = pl.max(constInfo.dvSize - 128, 0)
         softmax_grad_front_row192_vf(
-            sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
-            runInfo.rowShift, rowStride,
-            (w0 + 1) // 2, w0 // 2,
-            (w1 + 1) // 2, w1 // 2)
+            sfmg_ub,
+            y_ub,
+            dy_ub,
+            runInfo.halfS1RealSize,
+            runInfo.rowShift,
+            rowStride,
+            (w0 + 1) // 2,
+            w0 // 2,
+            (w1 + 1) // 2,
+            w1 // 2,
+        )
     else:
         softmax_grad_front_row_vf(
-            sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
-            runInfo.rowShift, rowStride,
-            (w0 + 1) // 2, w0 // 2)
-
+            sfmg_ub,
+            y_ub,
+            dy_ub,
+            runInfo.halfS1RealSize,
+            runInfo.rowShift,
+            rowStride,
+            (w0 + 1) // 2,
+            w0 // 2,
+        )
 
 
 # ==================================================================
 #  V2 —— P = simpleSoftmax(S * scale, lse) [+ atten mask]
 # ==================================================================
 
-def process_vec2(constInfo, runInfo, subIdx, tensor_lse, mm2_ub, lse_ub,
-                 tensor_mask, mask_ub, mask_pre_ub):
-    headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
-    pl.load(lse_ub, tensor_lse,
-            [runInfo.boIdx, headQ, runInfo.loadBase], order=[2, 0])
-    if mask_mode != 0:
-        copy_in_atten_mask(constInfo, runInfo, subIdx, tensor_mask, mask_ub,
-                           mask_pre_ub)
-    muls_sel_simple_softmax_vf(mm2_ub, lse_ub, mask_ub, constInfo.scaleValue,
-                               runInfo.halfS1RealSize, runInfo.rowShift)
 
+def process_vec2(
+    constInfo,
+    runInfo,
+    subIdx,
+    tensor_lse,
+    mm2_ub,
+    lse_ub,
+    tensor_mask,
+    mask_ub,
+    mask_pre_ub,
+):
+    headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
+    pl.load(lse_ub, tensor_lse, [runInfo.boIdx, headQ, runInfo.loadBase], order=[2, 0])
+    if mask_mode != 0:
+        copy_in_atten_mask(
+            constInfo, runInfo, subIdx, tensor_mask, mask_ub, mask_pre_ub
+        )
+    muls_sel_simple_softmax_vf(
+        mm2_ub,
+        lse_ub,
+        mask_ub,
+        constInfo.scaleValue,
+        runInfo.halfS1RealSize,
+        runInfo.rowShift,
+    )
 
 
 # ==================================================================
 #  V3 —— dS = (dP - sfmg) * P，cast + ND2NZ 落 L1（mm4 读同址 ZN 视图）
 # ==================================================================
 
-def process_vec3(constInfo, runInfo, subIdx, ds_l1,
-                 mm1_ub, mm2_ub, sfmg_ub, nzp_ub):
+
+def process_vec3(constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp_ub):
     rowOff = subIdx * VECTOR_BASEM
     # nd/nz 不裁剪：列方向的脏数据由 matmul 的 valid_shape 与 store 挡掉。
     # VF 固定写满 VECTOR_BASEM 行：NZ+1 的分形列间距由行数决定，按尾块
     # 缩小会让间距漂移。尾块只在 insert 时用 valid_shape 裁掉。
     # ASC 同样传常量 VECTOR_BASEM(block_vec.h:624)。
-    broadcast_sub_mul_cast_vf(nzp_ub, mm1_ub, mm2_ub, sfmg_ub,
-                              constInfo.scaleValue, VECTOR_BASEM)
+    broadcast_sub_mul_cast_vf(
+        nzp_ub, mm1_ub, mm2_ub, sfmg_ub, constInfo.scaleValue, VECTOR_BASEM
+    )
     # 只写一次 L1：mm4 通过 ds_t_l1(同地址的 ZN 视图)直接读到 dS^T，
     # 无需再做 transpose/insert
     copy_ub2l1(ds_l1, nzp_ub, rowOff)
-
 
 
 # ==================================================================
 #  V4 —— P cast + ND2NZ 落 L1（mm5 读同址 ZN 视图）
 # ==================================================================
 
-def process_vec4(constInfo, runInfo, subIdx, p_l1,
-                 mm2_ub, nzp_ub):
+
+def process_vec4(constInfo, runInfo, subIdx, p_l1, mm2_ub, nzp_ub):
     rowOff = subIdx * VECTOR_BASEM
     cast_p_vf(nzp_ub, mm2_ub, VECTOR_BASEM)
     # 同 process_vec3：mm5 从 p_t_l1(同地址 ZN 视图)读 P^T
     copy_ub2l1(p_l1, nzp_ub, rowOff)
 
 
-
 # ==================================================================
 #  Pre —— dq/dk/dv 累加区清零 (ASC presfmg_regbase.h::InitOutput)
 # ==================================================================
+
 
 def process_pre(tensor_ws, zt, elemStart, nElems):
     """把一段连续 GM 清零。对齐 ASC InitOutput 的一维切法。
@@ -176,9 +220,7 @@ def process_pre(tensor_ws, zt, elemStart, nElems):
         pl.store(tensor_ws, zt, [0, off])
 
 
-
-def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv,
-                          dQ, dV, zt):
+def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV, zt):
     """按 metadata 行区间清 dq/dk/dv。GS1S2 清 fp32 workspace，bn2_need_zero 清 fp16 out。
 
     AICPU FagSplitRows：dqRows=B*S1*N1、dkvRows=B*S2*N2，按 AIV 均分行。
@@ -192,12 +234,10 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv,
     dqNElems = (dqRowEnd - dqRowStart) * dQ
     dkvNElems = (dkvRowEnd - dkvRowStart) * dQ
     dvNElems = (dkvRowEnd - dkvRowStart) * dV
-    preElems = pl.min(PRE_ELEMS[d_align],
-                      pl.max(dqNElems, pl.max(dkvNElems, dvNElems)))
+    preElems = pl.min(PRE_ELEMS[d_align], pl.max(dqNElems, pl.max(dkvNElems, dvNElems)))
     pl.set_validshape(zt, [1, PRE_ELEMS[d_align]])
     if bn2_need_zero == 1:
-        fill_zero_fp16_vf(
-            zt, (preElems + VF_LANES_FP16 - 1) // VF_LANES_FP16)
+        fill_zero_fp16_vf(zt, (preElems + VF_LANES_FP16 - 1) // VF_LANES_FP16)
     else:
         fill_zero_vf(zt, (preElems + VF_LANES - 1) // VF_LANES)
     process_pre(tensor_dq, zt, dqRowStart * dQ, dqNElems)
@@ -205,10 +245,10 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv,
     process_pre(tensor_dv, zt, dkvRowStart * dV, dvNElems)
 
 
-
 # ==================================================================
 #  Post —— dQ/dK/dV 的 scale + cast (ASC post_regbase.h:238-241)
 # ==================================================================
+
 
 def process_post(tensor_ws, tensor_out, f32_ub, f16_ub, scale, elemStart, nElems):
     """fp32 workspace -> muls(scale) -> cast fp16。对齐 ASC post 的一维 Muls/Cast。
@@ -242,37 +282,53 @@ def process_post(tensor_ws, tensor_out, f32_ub, f16_ub, scale, elemStart, nElems
         pl.store(tensor_out, ht, [0, off])
 
 
-
 # ==================================================================
 #  BN2 模板的 vector 阶段
 # ==================================================================
 
-def process_vec1_bn2(constInfo, runInfo, subIdx, tensor_y, tensor_dy,
-                     y_ub, dy_ub, sfmg_ub, rowStride):
+
+def process_vec1_bn2(
+    constInfo, runInfo, subIdx, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
+):
     pl.set_validshape(y_ub, [BN2_V1_ROWS, constInfo.dSize])
     pl.set_validshape(dy_ub, [BN2_V1_ROWS, constInfo.dSize])
-    pl.load(y_ub, tensor_y,
-            [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
-    pl.load(dy_ub, tensor_dy,
-            [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0], order=[1, 3])
-    softmax_grad_front_row_vf(sfmg_ub, y_ub, dy_ub, runInfo.halfS1RealSize,
-                              runInfo.rowShift, rowStride,
-                              constInfo.dEvenSize, constInfo.dOddSize)
+    pl.load(
+        y_ub,
+        tensor_y,
+        [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0],
+        order=[1, 3],
+    )
+    pl.load(
+        dy_ub,
+        tensor_dy,
+        [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0],
+        order=[1, 3],
+    )
+    softmax_grad_front_row_vf(
+        sfmg_ub,
+        y_ub,
+        dy_ub,
+        runInfo.halfS1RealSize,
+        runInfo.rowShift,
+        rowStride,
+        constInfo.dEvenSize,
+        constInfo.dOddSize,
+    )
 
 
-
-def process_vec3_bn2(constInfo, runInfo, subIdx, ds_l1,
-                     mm1_ub, mm2_ub, sfmg_ub, nzp_ub):
+def process_vec3_bn2(
+    constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp_ub
+):
     """dS 与 BN2GS1S2 用同一个 VF：都不乘 scale。
 
     scale 在 mm3/mm4 之后由 v5/v6 的 Muls+Cast 施加，对应 ASC
     ComputeDqkvBn2 的 ProcessMulsAndCast。dV 不经过 dS，不乘 scale。
     """
     rowOff = subIdx * VECTOR_BASEM
-    broadcast_sub_mul_cast_vf(nzp_ub, mm1_ub, mm2_ub, sfmg_ub,
-                              constInfo.scaleValue, VECTOR_BASEM)
+    broadcast_sub_mul_cast_vf(
+        nzp_ub, mm1_ub, mm2_ub, sfmg_ub, constInfo.scaleValue, VECTOR_BASEM
+    )
     copy_ub2l1(ds_l1, nzp_ub, rowOff)
-
 
 
 def process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub, constInfo, runInfo, subIdx):
@@ -283,16 +339,20 @@ def process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub, constInfo, runInfo, subI
     rows = runInfo.halfS1RealSize
     pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
     pl.set_validshape(dst_ub, [VECTOR_BASEM, BN2_CAST_W])
-    muls_cast_vf(dst_ub, src_ub, constInfo.scaleValue,
-                 VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN)
+    muls_cast_vf(
+        dst_ub, src_ub, constInfo.scaleValue, VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN
+    )
     if rows > 0:
         seqOff = runInfo.queryOffset + subIdx * VECTOR_BASEM
         pl.set_validshape(dst_ub, [rows, constInfo.dSize])
-        pl.store(tensor_dq, dst_ub,
-                 [runInfo.idx0Q, seqOff, runInfo.idx2Q, 0],
-                 order=[1, 3], atomic=pl.AtomicType.AtomicNone)
+        pl.store(
+            tensor_dq,
+            dst_ub,
+            [runInfo.idx0Q, seqOff, runInfo.idx2Q, 0],
+            order=[1, 3],
+            atomic=pl.AtomicType.AtomicNone,
+        )
         pl.set_validshape(dst_ub, [VECTOR_BASEM, BN2_CAST_W])
-
 
 
 def process_muls_cast_dk_bn2(tensor_dk, src_ub, dst_ub, constInfo, runInfo, subIdx):
@@ -301,30 +361,36 @@ def process_muls_cast_dk_bn2(tensor_dk, src_ub, dst_ub, constInfo, runInfo, subI
     rows = pl.max(pl.min(runInfo.s2RealSize - rowOff, VECTOR_BASEM), 0)
     pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
     pl.set_validshape(dst_ub, [VECTOR_BASEM, BN2_CAST_W])
-    muls_cast_vf(dst_ub, src_ub, constInfo.scaleValue,
-                 VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN)
+    muls_cast_vf(
+        dst_ub, src_ub, constInfo.scaleValue, VECTOR_BASEM * BN2_CAST_W // VECTOR_BASEN
+    )
     if rows > 0:
         seqOff = runInfo.keyOffset + rowOff
         pl.set_validshape(dst_ub, [rows, constInfo.dSize])
-        pl.store(tensor_dk, dst_ub,
-                 [runInfo.idx0KV, seqOff, runInfo.idx2KV, 0],
-                 order=[1, 3], atomic=pl.AtomicType.AtomicNone)
+        pl.store(
+            tensor_dk,
+            dst_ub,
+            [runInfo.idx0KV, seqOff, runInfo.idx2KV, 0],
+            order=[1, 3],
+            atomic=pl.AtomicType.AtomicNone,
+        )
         pl.set_validshape(dst_ub, [VECTOR_BASEM, BN2_CAST_W])
 
 
-
-def process_dq_multiblk(tensor_dq, tensor_dq_ws, src_ub, dst_ub,
-                        constInfo, runInfo, subIdx, cBlockIdx):
+def process_dq_multiblk(
+    tensor_dq, tensor_dq_ws, src_ub, dst_ub, constInfo, runInfo, subIdx, cBlockIdx
+):
     """ASC DqkvMulsAndCastFromGM：只在 isLastS1Outer 从 workspace load。
 
     累加已由 cube needAtomic 写在 GM 上。src_ub 对应 ASC inQue。
     """
     rows = runInfo.halfS1RealSize
-    rowOff = (cBlockIdx * constInfo.s1Outer + runInfo.s1oIdx) * CUBE_BASEM + subIdx * VECTOR_BASEM
+    rowOff = (
+        cBlockIdx * constInfo.s1Outer + runInfo.s1oIdx
+    ) * CUBE_BASEM + subIdx * VECTOR_BASEM
     pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
     if rows > 0:
         pl.set_validshape(src_ub, [rows, constInfo.dSize])
         pl.load(src_ub, tensor_dq_ws, [rowOff, 0])
         pl.set_validshape(src_ub, [VECTOR_BASEM, BN2_CAST_W])
-    process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub,
-                             constInfo, runInfo, subIdx)
+    process_muls_cast_dq_bn2(tensor_dq, src_ub, dst_ub, constInfo, runInfo, subIdx)

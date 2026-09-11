@@ -42,8 +42,7 @@ ge::graphStatus FagChecker::Process(gert::TilingContext *context)
     for (const auto &checker : checkers_) {
         const ge::graphStatus ret = checker->Check(ctx);
         // 具体原因由 checker 自己打过，这里只补一条定位信息。
-        OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(ctx.opName, "%s check failed.", checker->Name()),
-                    return ret);
+        OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(ctx.opName, "%s check failed.", checker->Name()), return ret);
     }
     return ge::GRAPH_SUCCESS;
 }
