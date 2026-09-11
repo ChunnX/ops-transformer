@@ -11,12 +11,12 @@ add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
-        turbo_quant_sparse_flash_mla_def.cpp
+        kv_quant_sparse_flash_mla_def.cpp
     )
 endif()
 
 add_ops_compile_options(
-    OP_NAME TurboQuantSparseFlashMla
+    OP_NAME KvQuantSparseFlashMla
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -Werror
@@ -25,5 +25,5 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE turbo_quant_sparse_flash_mla ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE kv_quant_sparse_flash_mla ACLNNTYPE aclnn)
 endif()

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_tiling.h
+ * \file kv_quant_sparse_flash_mla_tiling.h
  * \brief
  */
-#ifndef TURBO_QUANT_SPARSE_FLASH_MLA_TILING_H
-#define TURBO_QUANT_SPARSE_FLASH_MLA_TILING_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_TILING_H
+#define KV_QUANT_SPARSE_FLASH_MLA_TILING_H
 
 #include <graph/utils/type_utils.h>
 #include <exe_graph/runtime/tiling_context.h>
@@ -141,7 +141,7 @@ constexpr uint32_t TOPK_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 
 // -----------算子TilingData定义---------------
-BEGIN_TILING_DATA_DEF(TurboQuantSparseFlashMlaSwaParams)
+BEGIN_TILING_DATA_DEF(KvQuantSparseFlashMlaSwaParams)
 TILING_DATA_FIELD_DEF(uint32_t, batchSize)
 TILING_DATA_FIELD_DEF(uint32_t, qSeqSize)
 TILING_DATA_FIELD_DEF(uint32_t, kvSeqSize)
@@ -171,9 +171,9 @@ TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 TILING_DATA_FIELD_DEF(bool, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(uint32_t, kvQuantMode)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(TurboQuantSparseFlashMlaSwaParamsOp, TurboQuantSparseFlashMlaSwaParams)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashMlaSwaParamsOp, KvQuantSparseFlashMlaSwaParams)
 
-BEGIN_TILING_DATA_DEF(TurboQuantSparseFlashMlaCmpParams)
+BEGIN_TILING_DATA_DEF(KvQuantSparseFlashMlaCmpParams)
 
 TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
@@ -181,14 +181,14 @@ TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
 TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(TurboQuantSparseFlashMlaCmpParamsOp, TurboQuantSparseFlashMlaCmpParams)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashMlaCmpParamsOp, KvQuantSparseFlashMlaCmpParams)
 
-BEGIN_TILING_DATA_DEF(TurboQuantSparseFlashMlaTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(TurboQuantSparseFlashMlaSwaParams, baseParams);
-TILING_DATA_FIELD_DEF_STRUCT(TurboQuantSparseFlashMlaCmpParams, cmpParams);
+BEGIN_TILING_DATA_DEF(KvQuantSparseFlashMlaTilingData)
+TILING_DATA_FIELD_DEF_STRUCT(KvQuantSparseFlashMlaSwaParams, baseParams);
+TILING_DATA_FIELD_DEF_STRUCT(KvQuantSparseFlashMlaCmpParams, cmpParams);
 END_TILING_DATA_DEF
 
-REGISTER_TILING_DATA_CLASS(TurboQuantSparseFlashMla, TurboQuantSparseFlashMlaTilingData)
+REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashMla, KvQuantSparseFlashMlaTilingData)
 
 struct SASParaInfo {
     SASTilingRequiredParaInfo q = {nullptr, nullptr};
@@ -549,9 +549,9 @@ public:
 };
 
 // ---------------算子Tiling类---------------
-class TurboQuantSparseFlashMlaTiling {
+class KvQuantSparseFlashMlaTiling {
 public:
-    explicit TurboQuantSparseFlashMlaTiling(gert::TilingContext *context)
+    explicit KvQuantSparseFlashMlaTiling(gert::TilingContext *context)
         : context_(context) {};
     ge::graphStatus DoOpTiling(SASTilingInfo *tilingInfo);
 
@@ -560,7 +560,7 @@ private:
     void CalcUbBmm(SASTilingInfo *tilingInfo);
     gert::TilingContext *context_ = nullptr;
     SASTemplateMode perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
-    TurboQuantSparseFlashMlaTilingData tilingData_;
+    KvQuantSparseFlashMlaTilingData tilingData_;
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};

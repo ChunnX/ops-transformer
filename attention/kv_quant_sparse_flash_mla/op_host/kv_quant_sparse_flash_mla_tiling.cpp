@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_tiling.cpp
+ * \file kv_quant_sparse_flash_mla_tiling.cpp
  * \brief
  */
 
-#include "turbo_quant_sparse_flash_mla_tiling.h"
-#include "../op_kernel/turbo_quant_sparse_flash_mla_template_tiling_key.h"
+#include "kv_quant_sparse_flash_mla_tiling.h"
+#include "../op_kernel/kv_quant_sparse_flash_mla_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -130,7 +130,7 @@ static std::string SASDataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("TurboQuantSparseFlashMla", "datatype %d not support", type);
+        OP_LOGE("KvQuantSparseFlashMla", "datatype %d not support", type);
         return "UNDEFINED";
     }
 }
@@ -161,7 +161,7 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
     };
     for (const auto &required : requiredInputs) {
         OP_CHECK_IF(required.first == nullptr,
-                    OP_LOGE(opName_, "%s is required for TurboQuantSparseFlashMla.", required.second),
+                    OP_LOGE(opName_, "%s is required for KvQuantSparseFlashMla.", required.second),
                     return ge::GRAPH_FAILED);
     }
     const std::pair<const void *, const char *> requiredDescs[] = {
@@ -178,7 +178,7 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
     };
     for (const auto &required : requiredDescs) {
         OP_CHECK_IF(required.first == nullptr,
-                    OP_LOGE(opName_, "%s is required for TurboQuantSparseFlashMla.", required.second),
+                    OP_LOGE(opName_, "%s is required for KvQuantSparseFlashMla.", required.second),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -227,7 +227,7 @@ ge::graphStatus TQSASInfoParser::CheckUnrequiredParaExistence() const
 ge::graphStatus TQSASInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("TurboQuantSparseFlashMla", "opName got from TilingContext is nullptr");
+        OP_LOGE("KvQuantSparseFlashMla", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -1379,13 +1379,13 @@ ge::graphStatus TQSASTilingCheck::CheckFeatureShape() const
     OP_CHECK_IF(kvQuantMode_ != 3, OP_LOGE(opName_, "kv_quant_mode only supports 3, but got %u", kvQuantMode_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(qLayout_ != SASLayout::TND,
-                OP_LOGE(opName_, "TurboQuantSparseFlashMla only supports TND query layout."),
+                OP_LOGE(opName_, "KvQuantSparseFlashMla only supports TND query layout."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kvLayout_ != SASLayout::PA_BSND && kvLayout_ != SASLayout::PA_BNSD,
-                OP_LOGE(opName_, "TurboQuantSparseFlashMla only supports PA_BSND/PA_BNSD KV layout."),
+                OP_LOGE(opName_, "KvQuantSparseFlashMla only supports PA_BSND/PA_BNSD KV layout."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(sasInfo_.perfMode != SASTemplateMode::SCFA_TEMPLATE_MODE,
-                OP_LOGE(opName_, "TurboQuantSparseFlashMla only supports the sparse compressor template."),
+                OP_LOGE(opName_, "KvQuantSparseFlashMla only supports the sparse compressor template."),
                 return ge::GRAPH_FAILED);
     uint64_t minOriKvStride = static_cast<uint64_t>(oriBlockSize_) * n2Size_ * oriKvHeadDim_;
     uint64_t minCmpKvStride = static_cast<uint64_t>(cmpBlockSize_) * n2Size_ * TQ4_SLOT_SIZE;
@@ -1538,12 +1538,12 @@ ge::graphStatus TQSASTilingCheck::Process()
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForTurboQuantSparseFlashMla(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForKvQuantSparseFlashMla(gert::TilingParseContext * /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-void TurboQuantSparseFlashMlaTiling::CalcUbBmm(SASTilingInfo *tilingInfo)
+void KvQuantSparseFlashMlaTiling::CalcUbBmm(SASTilingInfo *tilingInfo)
 {
     uint32_t cubeMSize = tilingInfo->gSize * tilingInfo->s1Size;
     uint32_t maxMSize = mBaseSize_;
@@ -1554,7 +1554,7 @@ void TurboQuantSparseFlashMlaTiling::CalcUbBmm(SASTilingInfo *tilingInfo)
     bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
 }
 
-void TurboQuantSparseFlashMlaTiling::SplitBalanced(SASTilingInfo *tilingInfo)
+void KvQuantSparseFlashMlaTiling::SplitBalanced(SASTilingInfo *tilingInfo)
 {
     uint32_t s2Size = tilingInfo->s2Size;
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
@@ -1570,8 +1570,8 @@ void TurboQuantSparseFlashMlaTiling::SplitBalanced(SASTilingInfo *tilingInfo)
     tilingData_.baseParams.set_bmm2ResUbSize(bmm2ResUbSize_);
 }
 
-// --------------------------TurboQuantSparseFlashMlaTiling类成员函数定义-----------------------
-ge::graphStatus TurboQuantSparseFlashMlaTiling::DoOpTiling(SASTilingInfo *tilingInfo)
+// --------------------------KvQuantSparseFlashMlaTiling类成员函数定义-----------------------
+ge::graphStatus KvQuantSparseFlashMlaTiling::DoOpTiling(SASTilingInfo *tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -1649,10 +1649,10 @@ ge::graphStatus TurboQuantSparseFlashMlaTiling::DoOpTiling(SASTilingInfo *tiling
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingTurboQuantSparseFlashMla(gert::TilingContext *context)
+ge::graphStatus TilingKvQuantSparseFlashMla(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashMla", "Tiling context is null."),
+                OPS_REPORT_VECTOR_INNER_ERR("KvQuantSparseFlashMla", "Tiling context is null."),
                 return ge::GRAPH_FAILED);
     SASTilingInfo sasInfo;
     TQSASInfoParser sasInfoParser(context);
@@ -1663,11 +1663,11 @@ ge::graphStatus TilingTurboQuantSparseFlashMla(gert::TilingContext *context)
     if (sasTilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    TurboQuantSparseFlashMlaTiling tiling(context);
+    KvQuantSparseFlashMlaTiling tiling(context);
     return tiling.DoOpTiling(&sasInfo);
 }
 // --------------------------Tiling函数及TilingPrepare函数注册--------
-IMPL_OP_OPTILING(TurboQuantSparseFlashMla)
-    .Tiling(TilingTurboQuantSparseFlashMla)
-    .TilingParse<SASCompileInfo>(TilingPrepareForTurboQuantSparseFlashMla);
+IMPL_OP_OPTILING(KvQuantSparseFlashMla)
+    .Tiling(TilingKvQuantSparseFlashMla)
+    .TilingParse<SASCompileInfo>(TilingPrepareForKvQuantSparseFlashMla);
 } // namespace optiling

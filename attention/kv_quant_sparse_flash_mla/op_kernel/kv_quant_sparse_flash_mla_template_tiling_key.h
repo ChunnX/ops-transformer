@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_template_tiling_key.h
+ * \file kv_quant_sparse_flash_mla_template_tiling_key.h
  * \brief
  */
 
-#ifndef TURBO_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
-#define TURBO_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
+#define KV_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
@@ -29,7 +29,7 @@
 #define CFA_TEMPLATE 1
 #define SCFA_TEMPLATE 2
 // 模板参数支持的范围定义
-ASCENDC_TPL_ARGS_DECL(TurboQuantSparseFlashMla, // 算子OpType
+ASCENDC_TPL_ARGS_DECL(KvQuantSparseFlashMla, // 算子OpType
                       ASCENDC_TPL_BOOL_DECL(FLASH_DECODE, 0, 1),
                       ASCENDC_TPL_UINT_DECL(LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SAS_LAYOUT_TND),
                       ASCENDC_TPL_UINT_DECL(KV_LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SAS_LAYOUT_PA_BSND,
@@ -44,4 +44,4 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(FLASH_DECODE, 0),
                                                          SAS_LAYOUT_PA_BNSD),
                                      ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST, SCFA_TEMPLATE)));
 
-#endif // TURBO_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
+#endif // KV_QUANT_SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H

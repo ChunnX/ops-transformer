@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_common.h
+ * \file kv_quant_sparse_flash_mla_common.h
  * \brief
  */
 
-#ifndef TURBO_QUANT_SPARSE_FLASH_MLA_COMMON_H
-#define TURBO_QUANT_SPARSE_FLASH_MLA_COMMON_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_COMMON_H
+#define KV_QUANT_SPARSE_FLASH_MLA_COMMON_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -369,4 +369,4 @@ struct MSplitInfo {
     uint32_t vecDealM = 0U;
 };
 } // namespace SASKernel
-#endif // TURBO_QUANT_SPARSE_FLASH_MLA_COMMON_H
+#endif // KV_QUANT_SPARSE_FLASH_MLA_COMMON_H

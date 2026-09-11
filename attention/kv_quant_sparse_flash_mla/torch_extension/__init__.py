@@ -10,6 +10,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-__all__ = ["turbo_quant_sparse_flash_mla"]
+__all__ = ["kv_quant_sparse_flash_mla"]
 
-from .turbo_quant_sparse_flash_mla import turbo_quant_sparse_flash_mla
+from .kv_quant_sparse_flash_mla import kv_quant_sparse_flash_mla

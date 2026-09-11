@@ -35,7 +35,7 @@ std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &q, bool re
 }
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor> TurboQuantSparseFlashMla(
+std::tuple<at::Tensor, at::Tensor> KvQuantSparseFlashMla(
     const at::Tensor &q, const c10::optional<at::Tensor> &oriKv, const c10::optional<at::Tensor> &cmpKv,
     const c10::optional<at::Tensor> &oriSparseIndices, const c10::optional<at::Tensor> &cmpSparseIndices,
     const c10::optional<at::Tensor> &oriBlockTable, const c10::optional<at::Tensor> &cmpBlockTable,
@@ -63,7 +63,7 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseFlashMla(
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
     char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
 
-    ACLNN_CMD(aclnnTurboQuantSparseFlashMla, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
+    ACLNN_CMD(aclnnKvQuantSparseFlashMla, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
               cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv,
               cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, softmaxScale, cmpRatio, oriMaskMode,
               cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr, topkValueMode, returnSoftmaxLse,
@@ -73,6 +73,6 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseFlashMla(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("turbo_quant_sparse_flash_mla", &TurboQuantSparseFlashMla, "turbo_quant_sparse_flash_mla");
+    m.def("kv_quant_sparse_flash_mla", &KvQuantSparseFlashMla, "kv_quant_sparse_flash_mla");
 }
 } // namespace op_api

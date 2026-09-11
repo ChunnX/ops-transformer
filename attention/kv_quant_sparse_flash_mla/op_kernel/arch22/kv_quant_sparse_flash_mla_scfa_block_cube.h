@@ -9,22 +9,22 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_scfa_block_cube.h
+ * \file kv_quant_sparse_flash_mla_scfa_block_cube.h
  * \brief use 7 buffer for matmul l1, better pipeline
  */
-#ifndef TURBO_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
-#define TURBO_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
+#define KV_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../turbo_quant_sparse_flash_mla_common.h"
+#include "../kv_quant_sparse_flash_mla_common.h"
 
 namespace SASKernel {
 template <typename SAST>
-class TurboQuantSparseFlashMlaScfaBlockCube {
+class KvQuantSparseFlashMlaScfaBlockCube {
 public:
     // 中间计算数据类型为float, 高精度模式
     using T = float;
@@ -33,7 +33,7 @@ public:
     using OUT_T = typename SAST::outputType;
     using MM_OUT_T = T;
 
-    __aicore__ inline TurboQuantSparseFlashMlaScfaBlockCube(){};
+    __aicore__ inline KvQuantSparseFlashMlaScfaBlockCube(){};
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
     __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<Q_T> queryGm, GlobalTensor<KV_T> oriKvGm,
                                                GlobalTensor<KV_T> cmpKV, GlobalTensor<MM_OUT_T> mm1ResGm);
@@ -153,13 +153,13 @@ private:
 };
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitParams(const ConstInfo &constInfo)
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::InitParams(const ConstInfo &constInfo)
 {
     this->constInfo = constInfo;
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitMm1GlobalTensor(
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::InitMm1GlobalTensor(
     GlobalTensor<Q_T> queryGm, GlobalTensor<KV_T> oriKvGm, GlobalTensor<KV_T> cmpKvGm, GlobalTensor<MM_OUT_T> mm1ResGm)
 {
     // mm1
@@ -170,7 +170,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitMm1Globa
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitMm2GlobalTensor(
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::InitMm2GlobalTensor(
     GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm)
 {
     // mm2
@@ -180,7 +180,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitMm2Globa
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitPageAttentionInfo(
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::InitPageAttentionInfo(
     GlobalTensor<KV_T> oriKvGm, const GlobalTensor<KV_T> &kvMergeGm, GlobalTensor<int32_t> oriBlockTableGm,
     GlobalTensor<int32_t> cmpBlockTableGm)
 {
@@ -191,7 +191,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitPageAtte
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitBuffers(TPipe *pipe)
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufQPL1, L1_BLOCK_SIZE * 4);
     l1QPTensor = bufQPL1.Get<Q_T>();
@@ -210,7 +210,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::InitBuffers(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::AllocEventID()
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::AllocEventID()
 {
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
@@ -224,7 +224,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::AllocEventID
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::FreeEventID()
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::FreeEventID()
 {
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT0);
     WaitFlag<HardEvent::MTE1_MTE2>(L1_EVENT1);
@@ -238,7 +238,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::FreeEventID(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::CopyGmToL1(LocalTensor<KV_T> &l1Tensor,
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::CopyGmToL1(LocalTensor<KV_T> &l1Tensor,
                                                                                    GlobalTensor<KV_T> &gmSrcTensor,
                                                                                    uint32_t srcN, uint32_t srcD,
                                                                                    uint32_t srcDstride)
@@ -256,7 +256,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::CopyGmToL1(L
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::CopyInMm1AToL1(
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::CopyInMm1AToL1(
     LocalTensor<KV_T> &l1Tensor, const RunInfo &info, uint32_t mSeqIdx, uint32_t mSizeAct, uint32_t headSize,
     uint32_t headOffset)
 {
@@ -265,7 +265,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::CopyInMm1ATo
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::LoadDataMm1A(LocalTensor<KV_T> &aL0Tensor,
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::LoadDataMm1A(LocalTensor<KV_T> &aL0Tensor,
                                                                                      LocalTensor<KV_T> &aL1Tensor,
                                                                                      uint32_t idx, uint32_t kSplitSize,
                                                                                      uint32_t mSize, uint32_t kSize)
@@ -300,7 +300,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::LoadDataMm1A
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::LoadDataMm1B(LocalTensor<KV_T> &l0Tensor,
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::LoadDataMm1B(LocalTensor<KV_T> &l0Tensor,
                                                                                      LocalTensor<KV_T> &l1Tensor,
                                                                                      uint32_t idx, uint32_t kSplitSize,
                                                                                      uint32_t kSize, uint32_t nSize)
@@ -318,7 +318,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::LoadDataMm1B
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor,
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor,
                                                                                        const RunInfo &info,
                                                                                        uint32_t mSeqIdx,
                                                                                        uint32_t subMSizeAct,
@@ -330,7 +330,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::CopyInMm2ATo
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::ComputeMm1(const RunInfo &info,
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::ComputeMm1(const RunInfo &info,
                                                                                    const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
@@ -575,7 +575,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::ComputeMm1(c
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::ComputeMm2(const RunInfo &info,
+__aicore__ inline void KvQuantSparseFlashMlaScfaBlockCube<SAST>::ComputeMm2(const RunInfo &info,
                                                                                    const MSplitInfo mSplitInfo)
 {
     uint32_t mSize = mSplitInfo.nBufferDealM;
@@ -862,4 +862,4 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaBlockCube<SAST>::ComputeMm2(c
     qpL1BufIter += mL1Loops;
 }
 } // namespace SASKernel
-#endif // TURBO_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
+#endif // KV_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H

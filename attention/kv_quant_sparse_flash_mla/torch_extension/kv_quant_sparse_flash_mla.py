@@ -17,17 +17,17 @@ from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 
-class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
+class KvQuantSparseFlashMlaOpBuilder(OpBuilder):
     def __init__(self):
         # Match the distributed torch-extension layout used by the base tree.
-        super().__init__("turbo_quant_sparse_flash_mla", category="attention")
+        super().__init__("kv_quant_sparse_flash_mla", category="attention")
 
     def sources(self):
-        return ["csrc/attention/turbo_quant_sparse_flash_mla.cpp"]
+        return ["csrc/attention/kv_quant_sparse_flash_mla.cpp"]
 
     def schema(self):
         return (
-            "turbo_quant_sparse_flash_mla(Tensor q, *, "
+            "kv_quant_sparse_flash_mla(Tensor q, *, "
             "Tensor? ori_kv=None, Tensor? cmp_kv=None, "
             "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, "
             "Tensor? ori_block_table=None, Tensor? cmp_block_table=None, "
@@ -46,7 +46,7 @@ class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(get_as_library(), self.name, "Meta")
-        def turbo_quant_sparse_flash_mla_meta(
+        def kv_quant_sparse_flash_mla_meta(
             q,
             *,
             ori_kv=None,
@@ -89,11 +89,11 @@ class TurboQuantSparseFlashMlaOpBuilder(OpBuilder):
             return attn_out, softmax_lse
 
 
-turbo_quant_sparse_flash_mla_op_builder = TurboQuantSparseFlashMlaOpBuilder()
+kv_quant_sparse_flash_mla_op_builder = KvQuantSparseFlashMlaOpBuilder()
 
 
-@impl(get_as_library(), turbo_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
-def turbo_quant_sparse_flash_mla(
+@impl(get_as_library(), kv_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
+def kv_quant_sparse_flash_mla(
     q: torch.Tensor,
     *,
     ori_kv: Optional[torch.Tensor] = None,
@@ -127,8 +127,8 @@ def turbo_quant_sparse_flash_mla(
     cmp_kv_stride: int = 0,
     kv_quant_mode: int = 3,
 ):
-    op_module = turbo_quant_sparse_flash_mla_op_builder.load()
-    return op_module.turbo_quant_sparse_flash_mla(
+    op_module = kv_quant_sparse_flash_mla_op_builder.load()
+    return op_module.kv_quant_sparse_flash_mla(
         q,
         ori_kv,
         cmp_kv,

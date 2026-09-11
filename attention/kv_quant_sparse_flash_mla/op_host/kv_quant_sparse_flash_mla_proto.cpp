@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_proto.cpp
+ * \file kv_quant_sparse_flash_mla_proto.cpp
  * \brief
  */
 
@@ -23,9 +23,9 @@ namespace ops {
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t RETURN_SOFTMAX_INDEX = 9;
 
-ge::graphStatus InferShapeTurboQuantSparseFlashMla(gert::InferShapeContext *context)
+ge::graphStatus InferShapeKvQuantSparseFlashMla(gert::InferShapeContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_LOG_E("TurboQuantSparseFlashMla", "InferShapeContext is nullptr"),
+    OPS_ERR_IF(context == nullptr, OPS_LOG_E("KvQuantSparseFlashMla", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED)
@@ -49,9 +49,9 @@ ge::graphStatus InferShapeTurboQuantSparseFlashMla(gert::InferShapeContext *cont
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeTurboQuantSparseFlashMla(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeKvQuantSparseFlashMla(gert::InferDataTypeContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_LOG_E("TurboQuantSparseFlashMla", "InferShapeContext is nullptr"),
+    OPS_ERR_IF(context == nullptr, OPS_LOG_E("KvQuantSparseFlashMla", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
@@ -59,7 +59,7 @@ ge::graphStatus InferDataTypeTurboQuantSparseFlashMla(gert::InferDataTypeContext
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(TurboQuantSparseFlashMla)
-    .InferShape(InferShapeTurboQuantSparseFlashMla)
-    .InferDataType(InferDataTypeTurboQuantSparseFlashMla);
+IMPL_OP(KvQuantSparseFlashMla)
+    .InferShape(InferShapeKvQuantSparseFlashMla)
+    .InferDataType(InferDataTypeKvQuantSparseFlashMla);
 } // namespace ops

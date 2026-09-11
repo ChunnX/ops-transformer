@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla.cpp
+ * \file kv_quant_sparse_flash_mla.cpp
  * \brief
  */
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "turbo_quant_sparse_flash_mla_template_tiling_key.h"
-#include "arch22/turbo_quant_sparse_flash_mla_scfa_kernel.h"
-#include "turbo_quant_sparse_flash_mla_metadata.h"
+#include "kv_quant_sparse_flash_mla_template_tiling_key.h"
+#include "arch22/kv_quant_sparse_flash_mla_scfa_kernel.h"
+#include "kv_quant_sparse_flash_mla_metadata.h"
 
 using namespace AscendC;
 using namespace optiling::detail;
@@ -35,7 +35,7 @@ using namespace SASKernel;
     } while (0)
 
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE>
-__global__ __aicore__ void turbo_quant_sparse_flash_mla(
+__global__ __aicore__ void kv_quant_sparse_flash_mla(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
@@ -51,7 +51,7 @@ __global__ __aicore__ void turbo_quant_sparse_flash_mla(
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_CMP_KV == DT_UINT8 &&
                   ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
-            SAS_OP_IMPL(TurboQuantSparseFlashMlaScfaKernel, TurboQuantSparseFlashMlaTilingData, half, half,
+            SAS_OP_IMPL(KvQuantSparseFlashMlaScfaKernel, KvQuantSparseFlashMlaTilingData, half, half,
                         half, FLASH_DECODE, static_cast<SAS_LAYOUT>(LAYOUT_T), static_cast<SAS_LAYOUT>(KV_LAYOUT_T),
                         TEMPLATE_MODE);
         }
@@ -59,7 +59,7 @@ __global__ __aicore__ void turbo_quant_sparse_flash_mla(
     if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_CMP_KV == DT_UINT8 &&
                   ORIG_DTYPE_ATTN_OUT == DT_BF16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
-            SAS_OP_IMPL(TurboQuantSparseFlashMlaScfaKernel, TurboQuantSparseFlashMlaTilingData, bfloat16_t,
+            SAS_OP_IMPL(KvQuantSparseFlashMlaScfaKernel, KvQuantSparseFlashMlaTilingData, bfloat16_t,
                         bfloat16_t, bfloat16_t, FLASH_DECODE, static_cast<SAS_LAYOUT>(LAYOUT_T),
                         static_cast<SAS_LAYOUT>(KV_LAYOUT_T), TEMPLATE_MODE);
         }

@@ -1,4 +1,4 @@
-# TurboQuantSparseFlashMla
+# KvQuantSparseFlashMla
 
 ## 产品支持情况
 
@@ -15,7 +15,7 @@
 
 - 算子功能：
 
-  `TurboQuantSparseFlashMla`面向DeepSeek DSA的shared-KV稀疏注意力推理场景，在同一个kernel内融合原始窗口KV计算、压缩KV稀疏选取、TurboQuant 4bit（TQ4）反量化和FlashAttention计算。压缩KV的反量化结果不写回GM，从而减少KV cache容量和中间结果访存。
+  `KvQuantSparseFlashMla`面向DeepSeek DSA的shared-KV稀疏注意力推理场景，在同一个kernel内融合原始窗口KV计算、压缩KV稀疏选取、TurboQuant 4bit（TQ4）反量化和FlashAttention计算。压缩KV的反量化结果不写回GM，从而减少KV cache容量和中间结果访存。
 
   当前算子仅支持SCFA（Sparse Compressed Flash Attention）模板。调用时必须同时传入原始窗口KV `ori_kv`、TQ4压缩KV `cmp_kv`以及由`SparseAttnSharedkvMetadata`生成的任务列表`metadata`。
 
@@ -24,7 +24,7 @@
   1. 使用与`q`相同的数据类型准备分页原始窗口KV `ori_kv`。
   2. 使用`TurboQuantCompressLatent(output_mode=1)`生成TQ4 compact格式的分页压缩KV `cmp_kv`。
   3. 准备`cmp_sparse_indices`、两份block table、序列长度和`sinks`，并通过`SparseAttnSharedkvMetadata`生成`metadata`。
-  4. 调用`TurboQuantSparseFlashMla`完成原始窗口与压缩稀疏区域的融合Attention计算。
+  4. 调用`KvQuantSparseFlashMla`完成原始窗口与压缩稀疏区域的融合Attention计算。
 
 - 计算公式：
 
@@ -341,5 +341,5 @@
 
 | 调用方式   | 样例代码 | 说明 |
 | ---------- | -------- | ---- |
-| aclnn API  | `aclnnTurboQuantSparseFlashMla` | 通过两阶段GetWorkspaceSize和异步执行接口调用`TurboQuantSparseFlashMla`算子 |
-| PyTorch API | [turbo_quant_sparse_flash_mla](./torch_extension/turbo_quant_sparse_flash_mla.py) | 通过`cann_ops_transformer.turbo_quant_sparse_flash_mla`调用`TurboQuantSparseFlashMla`算子 |
+| aclnn API  | `aclnnKvQuantSparseFlashMla` | 通过两阶段GetWorkspaceSize和异步执行接口调用`KvQuantSparseFlashMla`算子 |
+| PyTorch API | [kv_quant_sparse_flash_mla](./torch_extension/kv_quant_sparse_flash_mla.py) | 通过`cann_ops_transformer.kv_quant_sparse_flash_mla`调用`KvQuantSparseFlashMla`算子 |

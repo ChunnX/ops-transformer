@@ -66,25 +66,25 @@ std::vector<OpAttr> Attrs(bool returnSoftmaxLse)
 
 } // namespace
 
-TEST(TurboQuantSparseFlashMlaProto, InferShapeWithoutLse)
+TEST(KvQuantSparseFlashMlaProto, InferShapeWithoutLse)
 {
-    gert::InfershapeContextPara para("TurboQuantSparseFlashMla", Inputs(), Outputs(), Attrs(false));
+    gert::InfershapeContextPara para("KvQuantSparseFlashMla", Inputs(), Outputs(), Attrs(false));
     std::vector<std::vector<int64_t>> expected = {{3, 64, 512}, {0}};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
-TEST(TurboQuantSparseFlashMlaProto, InferShapeWithLse)
+TEST(KvQuantSparseFlashMlaProto, InferShapeWithLse)
 {
-    gert::InfershapeContextPara para("TurboQuantSparseFlashMla", Inputs(), Outputs(), Attrs(true));
+    gert::InfershapeContextPara para("KvQuantSparseFlashMla", Inputs(), Outputs(), Attrs(true));
     std::vector<std::vector<int64_t>> expected = {{3, 64, 512}, {3, 64, 1}};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 
-TEST(TurboQuantSparseFlashMlaProto, InferDtypeFp16AndBf16)
+TEST(KvQuantSparseFlashMlaProto, InferDtypeFp16AndBf16)
 {
     auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     ASSERT_NE(registry, nullptr);
-    auto func = registry->GetOpImpl("TurboQuantSparseFlashMla")->infer_datatype;
+    auto func = registry->GetOpImpl("KvQuantSparseFlashMla")->infer_datatype;
     ASSERT_NE(func, nullptr);
     for (ge::DataType queryType : {ge::DT_FLOAT16, ge::DT_BF16}) {
         auto faker = gert::InferDataTypeContextFaker();
@@ -92,7 +92,7 @@ TEST(TurboQuantSparseFlashMlaProto, InferDtypeFp16AndBf16)
                           .NodeInputTd(0, queryType, ge::FORMAT_ND, ge::FORMAT_ND)
                           .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                           .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-                          .SetOpType("TurboQuantSparseFlashMla")
+                          .SetOpType("KvQuantSparseFlashMla")
                           .Build();
         auto context = holder.GetContext<gert::InferDataTypeContext>();
         ASSERT_NE(context, nullptr);

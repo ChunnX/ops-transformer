@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_metadata.h
+ * \file kv_quant_sparse_flash_mla_metadata.h
  * \brief
  */
 
-#ifndef TURBO_QUANT_SPARSE_FLASH_MLA_METADATA_H
-#define TURBO_QUANT_SPARSE_FLASH_MLA_METADATA_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
+#define KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
 
 #include <cstdint>
 

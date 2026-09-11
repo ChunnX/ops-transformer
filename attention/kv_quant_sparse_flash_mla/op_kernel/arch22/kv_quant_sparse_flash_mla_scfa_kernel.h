@@ -9,22 +9,22 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_scfa_kernel.h
+ * \file kv_quant_sparse_flash_mla_scfa_kernel.h
  * \brief
  */
 
-#ifndef TURBO_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
-#define TURBO_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#define KV_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../turbo_quant_sparse_flash_mla_common.h"
-#include "turbo_quant_sparse_flash_mla_scfa_block_cube.h"
-#include "turbo_quant_sparse_flash_mla_scfa_block_vector.h"
-#include "../turbo_quant_sparse_flash_mla_metadata.h"
+#include "../kv_quant_sparse_flash_mla_common.h"
+#include "kv_quant_sparse_flash_mla_scfa_block_cube.h"
+#include "kv_quant_sparse_flash_mla_scfa_block_vector.h"
+#include "../kv_quant_sparse_flash_mla_metadata.h"
 
 namespace SASKernel {
 using namespace matmul;
@@ -70,7 +70,7 @@ struct TempLoopInfo {
 };
 
 template <typename SAST>
-class TurboQuantSparseFlashMlaScfaKernel {
+class KvQuantSparseFlashMlaScfaKernel {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -82,7 +82,7 @@ public:
     using MM1_OUT_T = T;
     using MM2_OUT_T = T;
 
-    __aicore__ inline TurboQuantSparseFlashMlaScfaKernel(){};
+    __aicore__ inline KvQuantSparseFlashMlaScfaKernel(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
                                 __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
                                 __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
@@ -93,7 +93,7 @@ public:
                                 __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
                                 __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                const TurboQuantSparseFlashMlaTilingData *__restrict tiling,
+                                const KvQuantSparseFlashMlaTilingData *__restrict tiling,
                                 __gm__ uint8_t *gmTiling, TPipe *tPipe);
 
     __aicore__ inline void Process();
@@ -119,7 +119,7 @@ private:
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
 
-    const TurboQuantSparseFlashMlaTilingData *__restrict tilingData = nullptr;
+    const KvQuantSparseFlashMlaTilingData *__restrict tilingData = nullptr;
 
     TPipe *pipe = nullptr;
     GlobalTensor<uint32_t> metadataGm;
@@ -135,8 +135,8 @@ private:
     ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
 
-    TurboQuantSparseFlashMlaScfaBlockCube<SAST> cubeBlock;
-    TurboQuantSparseFlashMlaScfaBlockVector<SAST> vectorBlock;
+    KvQuantSparseFlashMlaScfaBlockCube<SAST> cubeBlock;
+    KvQuantSparseFlashMlaScfaBlockVector<SAST> vectorBlock;
 
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<KV_T> oriKvGm;
@@ -193,7 +193,7 @@ private:
 };
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitTilingData()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitTilingData()
 {
     // singleCoreParams
     // singleCoreTensorSize
@@ -242,7 +242,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitTilingData(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitBuffers()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitBuffers()
 {
     if ASCEND_IS_AIV {
         vectorBlock.InitBuffers(pipe);
@@ -252,7 +252,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitBuffers()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitActualSeqLen(
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitActualSeqLen(
     __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV)
 {
     if (constInfo.actualLenDimsKV != 0) {
@@ -264,7 +264,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitActualSeqLe
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitActualSeqLen(
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitActualSeqLen(
     __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *actualSeqLengthsCmpKV)
 {
     if (constInfo.actualLenDimsKV != 0) {
@@ -277,7 +277,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitActualSeqLe
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx,
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx,
                                                                                        uint32_t n2Idx)
 {
     if (constInfo.outputLayout == SAS_LAYOUT::TND) {
@@ -311,7 +311,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitAllZeroOutp
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitOutputSingleCore()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitOutputSingleCore()
 {
     uint32_t coreNum = GetBlockNum();
     if (coreNum != 0) {
@@ -327,7 +327,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitOutputSingl
 }
 
 template <typename SAST>
-__aicore__ inline int32_t TurboQuantSparseFlashMlaScfaKernel<SAST>::GetActualSeqLenQ(uint32_t bIdx)
+__aicore__ inline int32_t KvQuantSparseFlashMlaScfaKernel<SAST>::GetActualSeqLenQ(uint32_t bIdx)
 {
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
         int32_t actualSeqQPrefixSum = actualSeqLengthsQGm.GetValue(bIdx);
@@ -345,7 +345,7 @@ __aicore__ inline int32_t TurboQuantSparseFlashMlaScfaKernel<SAST>::GetActualSeq
 }
 
 template <typename SAST>
-__aicore__ inline int32_t TurboQuantSparseFlashMlaScfaKernel<SAST>::GetActualSeqLenKV(uint32_t bIdx)
+__aicore__ inline int32_t KvQuantSparseFlashMlaScfaKernel<SAST>::GetActualSeqLenKV(uint32_t bIdx)
 {
     if constexpr (PAGE_ATTENTION) {
         tempLoopInfo.actualSeqKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.kvSeqSize);
@@ -365,7 +365,7 @@ __aicore__ inline int32_t TurboQuantSparseFlashMlaScfaKernel<SAST>::GetActualSeq
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::GetSparseActualSeqLen()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::GetSparseActualSeqLen()
 {
     // 行无效通过ori部分判断, ori部分如果有行无效那么ori和cmp都有
     if (static_cast<int32_t>(tempLoopInfo.s1EndIdx) < -(tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size)) {
@@ -380,7 +380,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::GetSparseActual
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::UpdateInnerLoopCond()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::UpdateInnerLoopCond()
 {
     if ((tempLoopInfo.actCmpS2Size == 0 && tempLoopInfo.actOriS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
@@ -393,14 +393,14 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::UpdateInnerLoop
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::Init(
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKV, __gm__ uint8_t *cuSeqlensCmpKV,
     __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
     __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
     __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, const TurboQuantSparseFlashMlaTilingData *__restrict tiling,
+    __gm__ uint8_t *workspace, const KvQuantSparseFlashMlaTilingData *__restrict tiling,
     __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
@@ -506,7 +506,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::Init(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitCalcParamsEach()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::InitCalcParamsEach()
 {
     if (aiCoreIdx != 0) {
         constInfo.bN2Start = metadataGm.GetValue(GetAttrAbsIndex(aiCoreIdx, FA_BN2_START_INDEX, false));
@@ -519,7 +519,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::InitCalcParamsE
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::CalcParams(uint32_t loop, uint32_t cmpLoop,
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::CalcParams(uint32_t loop, uint32_t cmpLoop,
                                                                                 uint64_t s2Start, uint32_t s2LoopIdx,
                                                                                 RunInfo &info)
 {
@@ -609,7 +609,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::CalcParams(uint
     }
 
     info.actualSingleProcessSInnerSizeAlign =
-        SASAlign(info.actualSingleProcessSInnerSize, TurboQuantSparseFlashMlaScfaBlockVector<SAST>::BYTE_BLOCK);
+        SASAlign(info.actualSingleProcessSInnerSize, KvQuantSparseFlashMlaScfaBlockVector<SAST>::BYTE_BLOCK);
     if (info.isOriOnly) {
         info.v0S2Start = 0;
         info.v0S2DealSize = 0;
@@ -623,7 +623,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::CalcParams(uint
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::ComputeMm1(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = CeilDiv(info.actMBaseSize, constInfo.nBufferMBaseSize);
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -637,7 +637,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::ComputeMm1(cons
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::ComputeMm2(const RunInfo &info)
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::ComputeMm2(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -652,7 +652,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::ComputeMm2(cons
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::Process()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::Process()
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aiCoreIdx, FA_CORE_ENABLE_INDEX, false));
     if (hasLoad == 0) {
@@ -673,7 +673,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::Process()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
                                                                                uint32_t &n2Idx)
 {
     bIdx = bN2Idx / kvHeadNum;
@@ -681,7 +681,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::GetBN2Idx(uint3
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::ProcessBalance()
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::ProcessBalance()
 {
     RunInfo extraInfo[SAS_PRELOAD_TASK_CACHE_SIZE];
     uint32_t gloop = 0;
@@ -810,7 +810,7 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::ProcessBalance(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::PreloadPipeline(
+__aicore__ inline void KvQuantSparseFlashMlaScfaKernel<SAST>::PreloadPipeline(
     uint32_t loop, uint32_t cmpLoop, uint64_t s2Start, uint64_t s2LoopIdx,
     RunInfo extraInfo[SAS_PRELOAD_TASK_CACHE_SIZE])
 {
@@ -855,4 +855,4 @@ __aicore__ inline void TurboQuantSparseFlashMlaScfaKernel<SAST>::PreloadPipeline
 }
 
 } // namespace SASKernel
-#endif // TURBO_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H
+#endif // KV_QUANT_SPARSE_FLASH_MLA_SCFA_KERNEL_H

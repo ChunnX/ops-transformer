@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file turbo_quant_sparse_flash_mla_def.cpp
+ * \file kv_quant_sparse_flash_mla_def.cpp
  * \brief
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-class TurboQuantSparseFlashMla : public OpDef {
+class KvQuantSparseFlashMla : public OpDef {
 public:
-    explicit TurboQuantSparseFlashMla(const char *name)
+    explicit KvQuantSparseFlashMla(const char *name)
         : OpDef(name)
     {
         this->Input("q")
@@ -145,5 +145,5 @@ public:
         this->AICore().AddConfig("ascend910_93", aicore_config);
     }
 };
-OP_ADD(TurboQuantSparseFlashMla);
+OP_ADD(KvQuantSparseFlashMla);
 } // namespace ops

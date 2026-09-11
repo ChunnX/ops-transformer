@@ -79,7 +79,7 @@ bool RunTilingCaseWithOutputs(const std::vector<TensorDesc> &inputs, const std::
                               const std::vector<OpAttr> &attrs, TilingInfo &info)
 {
     CompileInfo compileInfo;
-    gert::TilingContextPara para("TurboQuantSparseFlashMla", inputs, outputs, attrs, &compileInfo, "Ascend910B", 64,
+    gert::TilingContextPara para("KvQuantSparseFlashMla", inputs, outputs, attrs, &compileInfo, "Ascend910B", 64,
                                  262144, 16384);
     return ExecuteTiling(para, info);
 }
@@ -90,7 +90,7 @@ bool RunTilingCase(const std::vector<TensorDesc> &inputs, const std::vector<OpAt
 }
 } // namespace
 
-TEST(TurboQuantSparseFlashMlaTiling, AcceptsBf16AndFp16Scfa)
+TEST(KvQuantSparseFlashMlaTiling, AcceptsBf16AndFp16Scfa)
 {
     for (ge::DataType dtype : {ge::DT_BF16, ge::DT_FLOAT16}) {
         TilingInfo info;
@@ -100,7 +100,7 @@ TEST(TurboQuantSparseFlashMlaTiling, AcceptsBf16AndFp16Scfa)
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, AcceptsPagedKvLayouts)
+TEST(KvQuantSparseFlashMlaTiling, AcceptsPagedKvLayouts)
 {
     for (const std::string &layout : {"PA_BSND", "PA_BNSD", "PA_ND"}) {
         auto inputs = Inputs();
@@ -114,7 +114,7 @@ TEST(TurboQuantSparseFlashMlaTiling, AcceptsPagedKvLayouts)
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, AcceptsOriginalFaBlockSizesAndStridedCaches)
+TEST(KvQuantSparseFlashMlaTiling, AcceptsOriginalFaBlockSizesAndStridedCaches)
 {
     for (int64_t blockSize : {16, 128, 1024}) {
         auto inputs = Inputs();
@@ -131,7 +131,7 @@ TEST(TurboQuantSparseFlashMlaTiling, AcceptsOriginalFaBlockSizesAndStridedCaches
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, RejectsInvalidPageBlockSizes)
+TEST(KvQuantSparseFlashMlaTiling, RejectsInvalidPageBlockSizes)
 {
     for (int64_t blockSize : {15, 17, 1040}) {
         auto inputs = Inputs();
@@ -148,7 +148,7 @@ TEST(TurboQuantSparseFlashMlaTiling, RejectsInvalidPageBlockSizes)
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, AcceptsZeroQueryTokens)
+TEST(KvQuantSparseFlashMlaTiling, AcceptsZeroQueryTokens)
 {
     auto inputs = Inputs();
     inputs[0] = {{{0, 64, 512}, {0, 64, 512}}, ge::DT_BF16, ge::FORMAT_ND};
@@ -161,7 +161,7 @@ TEST(TurboQuantSparseFlashMlaTiling, AcceptsZeroQueryTokens)
     EXPECT_TRUE(RunTilingCaseWithOutputs(inputs, outputs, Attrs(), info));
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, AcceptsModelConfiguredSlidingWindow)
+TEST(KvQuantSparseFlashMlaTiling, AcceptsModelConfiguredSlidingWindow)
 {
     for (int64_t oriWinLeft : {0, 127, 255}) {
         TilingInfo info;
@@ -170,7 +170,7 @@ TEST(TurboQuantSparseFlashMlaTiling, AcceptsModelConfiguredSlidingWindow)
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, AcceptsSupportedCompressionRatios)
+TEST(KvQuantSparseFlashMlaTiling, AcceptsSupportedCompressionRatios)
 {
     for (int64_t cmpRatio : {4, 128}) {
         TilingInfo info;
@@ -179,7 +179,7 @@ TEST(TurboQuantSparseFlashMlaTiling, AcceptsSupportedCompressionRatios)
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongTurboQuantContract)
+TEST(KvQuantSparseFlashMlaTiling, RejectsWrongTurboQuantContract)
 {
     for (const auto &entry :
          std::vector<std::pair<std::string, AnyValue>>{{"cmp_ratio", AnyValue::CreateFrom<int64_t>(8)},
@@ -197,7 +197,7 @@ TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongTurboQuantContract)
     }
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongDtype)
+TEST(KvQuantSparseFlashMlaTiling, RejectsWrongDtype)
 {
     auto floatQuery = Inputs();
     floatQuery[0] = {{{1, 64, 512}, {1, 64, 512}}, ge::DT_FLOAT, ge::FORMAT_ND};
@@ -215,7 +215,7 @@ TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongDtype)
     EXPECT_FALSE(RunTilingCase(mismatchedOriKv, Attrs(), mismatchedOriKvInfo));
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongHeadShape)
+TEST(KvQuantSparseFlashMlaTiling, RejectsWrongHeadShape)
 {
     auto wrongHeadDim = Inputs();
     wrongHeadDim[0] = {{{1, 64, 256}, {1, 64, 256}}, ge::DT_BF16, ge::FORMAT_ND};
@@ -233,7 +233,7 @@ TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongHeadShape)
     EXPECT_FALSE(RunTilingCase(wrongKvHeads, Attrs(), wrongKvHeadsInfo));
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongAuxiliaryInput)
+TEST(KvQuantSparseFlashMlaTiling, RejectsWrongAuxiliaryInput)
 {
     auto oriSparseIndices = Inputs();
     oriSparseIndices[3] = {{{1, 1, 512}, {1, 1, 512}}, ge::DT_INT32, ge::FORMAT_ND};
@@ -261,7 +261,7 @@ TEST(TurboQuantSparseFlashMlaTiling, RejectsWrongAuxiliaryInput)
     EXPECT_FALSE(RunTilingCase(emptyOriBlockTable, Attrs(), emptyOriBlockTableInfo));
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, RejectsMissingRequiredTurboQuantInput)
+TEST(KvQuantSparseFlashMlaTiling, RejectsMissingRequiredTurboQuantInput)
 {
     auto missingCmpKv = Inputs();
     missingCmpKv[2] = {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND};
@@ -274,7 +274,7 @@ TEST(TurboQuantSparseFlashMlaTiling, RejectsMissingRequiredTurboQuantInput)
     EXPECT_FALSE(RunTilingCase(missingCmpBlockTable, Attrs(), missingCmpBlockTableInfo));
 }
 
-TEST(TurboQuantSparseFlashMlaTiling, ChecksSlotAndTopkShape)
+TEST(KvQuantSparseFlashMlaTiling, ChecksSlotAndTopkShape)
 {
     auto wrongSlot = Inputs();
     wrongSlot[2] = {{{17, 128, 1, 320}, {17, 128, 1, 320}}, ge::DT_UINT8, ge::FORMAT_ND};
