@@ -53,12 +53,17 @@ public:
         mem_.SetGlobalBuffer((__gm__ uint8_t *)workspace);
     }
 
-    template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
+    template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG,
+              bool initializeSyncFields = false>
     __aicore__ inline Buffer<bufferType, syncType, syncMode> AllocBuffer(uint32_t size)
     {
         TensorType temp = mem_[offset_];
         offset_ += size;
-        return Buffer<bufferType, syncType, syncMode>(temp, size);
+        if constexpr (initializeSyncFields) {
+            return Buffer<bufferType, syncType, syncMode>(temp, size, true);
+        } else {
+            return Buffer<bufferType, syncType, syncMode>(temp, size);
+        }
     }
 
     template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>

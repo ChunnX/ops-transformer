@@ -26,9 +26,10 @@ template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC,
           SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicySingleBuffer {
 public:
+    template <bool initializeSyncFields = false>
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size, uint32_t id = 0U)
     {
-        buffer_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        buffer_ = bufferManager.template AllocBuffer<syncType, syncMode, initializeSyncFields>(size);
         if constexpr (idSource == IdSource::INTERNAL) {
             buffer_.template Init<idSource>();
         } else if constexpr (idSource == IdSource::EXTERNAL) {
@@ -66,11 +67,12 @@ template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC,
           SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicyDB {
 public:
+    template <bool initializeSyncFields = false>
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size, uint32_t pingId = 0U,
                                 uint32_t pongId = 0U)
     {
-        ping_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
-        pong_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        ping_ = bufferManager.template AllocBuffer<syncType, syncMode, initializeSyncFields>(size);
+        pong_ = bufferManager.template AllocBuffer<syncType, syncMode, initializeSyncFields>(size);
 
         if constexpr (idSource == IdSource::INTERNAL) {
             ping_.template Init<idSource>();
@@ -172,12 +174,13 @@ template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC,
           SyncMode syncMode = SyncMode::SET_WAIT_FLAG, IdSource idSource = IdSource::INTERNAL>
 class BuffersPolicy3buff {
 public:
+    template <bool initializeSyncFields = false>
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size, uint32_t aId = 0U,
                                 uint32_t bId = 0U, uint32_t cId = 0U)
     {
-        a_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
-        b_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
-        c_ = bufferManager.template AllocBuffer<syncType, syncMode>(size);
+        a_ = bufferManager.template AllocBuffer<syncType, syncMode, initializeSyncFields>(size);
+        b_ = bufferManager.template AllocBuffer<syncType, syncMode, initializeSyncFields>(size);
+        c_ = bufferManager.template AllocBuffer<syncType, syncMode, initializeSyncFields>(size);
 
         if constexpr (idSource == IdSource::INTERNAL) {
             a_.template Init<idSource>();

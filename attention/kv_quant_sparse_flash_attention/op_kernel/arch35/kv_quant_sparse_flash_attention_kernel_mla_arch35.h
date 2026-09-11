@@ -407,7 +407,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 {
     uint32_t mm1RightSize = constInfo.s2BaseSize * 576 * sizeof(Q_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
-    l1RightBuffers.Init(l1BufferManager, mm1RightSize);
+    l1RightBuffers.template Init<true>(l1BufferManager, mm1RightSize);
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
@@ -429,7 +429,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
 
-    bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+    bmm1Buffers.template Init<true>(ubBufferManager, mm1ResultSize);
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
@@ -439,7 +439,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         bmm1Buffers.Get().SetCrossCore();
     }
 
-    bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+    bmm2Buffers.template Init<true>(ubBufferManager, mm2ResultSize);
     bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
 
@@ -456,7 +456,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
         int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
         gmBufferManager.Init(workspace + totalOffset);
-        v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
+        v0ResGmBuffers.template Init<true>(gmBufferManager, v0ResSize);
         v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
         crossCoreSyncBufId++;
         v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);

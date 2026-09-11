@@ -171,16 +171,16 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
 {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    l1QBuffers.Init((*qsfaL1BufferManagerPtr), mm1LeftSize);
+    l1QBuffers.template Init<true>((*qsfaL1BufferManagerPtr), mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
     l0bBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
     l0cBufferManager.Init(tPipe, L0C_SHARED_SIZE_256K);
 
-    mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
-    mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
-    mmL0CBuffers.Init(l0cBufferManager, BUFFER_SIZE_128K);
+    mmL0ABuffers.template Init<true>(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
+    mmL0BBuffers.template Init<true>(l0bBufferManager, BUFFER_SIZE_32K);
+    mmL0CBuffers.template Init<true>(l0cBufferManager, BUFFER_SIZE_128K);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

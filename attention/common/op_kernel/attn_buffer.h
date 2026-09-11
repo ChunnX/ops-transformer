@@ -172,10 +172,18 @@ class Buffer {
 
 public:
     __aicore__ inline Buffer() {}
-    __aicore__ inline Buffer(TensorType tensor, uint32_t size)
+    __aicore__ inline Buffer(TensorType tensor, uint32_t size, bool initializeSyncFields = false)
     {
         tensor_ = tensor;
         size_ = size;
+        // Initialize before copying the temporary; Init() still allocates actual events.
+        if (initializeSyncFields) {
+            p2cEventId_ = 0;
+            c2pEventId_ = 0;
+#ifdef ATTN_MUTEX_ENABLE
+            mutexId_ = 0;
+#endif
+        }
         if constexpr (syncType == SyncType::CROSS_CORE_SYNC_FORWARD) {
             id0_ = MAKE_ID;
             id1_ = INVALID_CROSS_CORE_EVENT_ID;
