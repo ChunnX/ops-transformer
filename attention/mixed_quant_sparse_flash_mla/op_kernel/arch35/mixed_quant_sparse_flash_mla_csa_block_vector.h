@@ -25,18 +25,53 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#if __has_include("../../../common/op_kernel/init_output.h")
 #include "../../../common/op_kernel/init_output.h"
+#else
+#include "../../common/init_output.h"
+#endif
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 using AscendC::Reg::StoreDist;
+#if __has_include("../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h")
 #include "../../../sparse_flash_mla/op_kernel/arch35/common/flash_decode.h"
-#include "../../../sparse_flash_mla/op_kernel/arch35/common/get_kv_phy_addr_vf.h"
+#else
+#include "../../sparse_flash_mla/arch35/common/flash_decode.h"
+#endif
+
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
+#else
+#include "../common/arch35/vf/vf_flash_decode_arch35.h"
+#endif
+
+#if __has_include("../../common/op_kernel/buffers_policy.h")
 #include "../../common/op_kernel/buffers_policy.h"
+#else
+#include "../common/buffers_policy.h"
+#endif
+#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
 #include "../../common/op_kernel/attn_buffer_manager.h"
+#else
+#include "../common/attn_buffer_manager.h"
+#endif
+#if __has_include("../../common/op_kernel/attn_buffer.h")
 #include "../../common/op_kernel/attn_buffer.h"
+#else
+#include "../common/attn_buffer.h"
+#endif
+
+#if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#else
+#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#endif
+
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
 #include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#else
+#include "../../common/arch35/vf/vf_flashupdate_new.h"
+#endif
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -556,7 +591,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
 {
     int64_t s2IdLimit = runInfo.s2RealSize;
     s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
-    for (uint32_t i = 0; i < 8; i += 2) { // 遍历8个元素的数组/缓冲区，每次处理2个元素
+    for (uint32_t i = 0; i < 8; i += 2) {
         int64_t keyOffset0 = -1;
         int64_t keyOffset1 = -1;
         int64_t scaleOffset0 = -1;
@@ -575,18 +610,20 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
             }
         }
         uint32_t combineBytes;
-        int64_t keySrcStride;
-        int64_t scaleSrcStride;
         if constexpr (QUANT_MODE == SCALE_CONTIGUOUS_MODE::CONTIGUOUS) {
             combineBytes = constInfo.dSizeVInput * sizeof(KV_T);
-            keySrcStride =
-                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - combineBytes;
+        } else {
+            combineBytes = dCombineBytes;
+        }
+        int64_t keySrcStride;
+        if constexpr (IS_BATCH_CONSISTENCY) {
+            // batch一致性场景，token读取顺序只与逻辑顺序有关，为保证确定性不可交换读取顺序
+            keySrcStride = (keyOffset1 - keyOffset0) * sizeof(KV_T) - combineBytes;
+            keySrcStride = -1;
         } else {
             keySrcStride =
-                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - dCombineBytes;
-            scaleSrcStride =
-                (scaleOffset0 > scaleOffset1 ? (scaleOffset0 - scaleOffset1) : (scaleOffset1 - scaleOffset0)) -
-                scaleBytes;
+                (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) * sizeof(KV_T) -
+                combineBytes;
         }
         if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) || constInfo.sparseBlockSize > 1) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
@@ -1924,6 +1961,134 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2ForPhyAddr(
     return 0;
 }
 
+template <typename T>
+__simd_vf__ void GetMixedKVPhyAddrVFImpl(__ubuf__ uint32_t *kvPhyAddrUb, __ubuf__ int32_t *sparseIdxUb,
+                                         __ubuf__ int32_t *blkTableUb, const uint16_t s2Loop, uint32_t s2Tail,
+                                         const uint32_t blockSize, const int16_t shiftRightNum,
+                                         const uint32_t sparseBlockSize, const uint32_t kvDim, const uint32_t kvStride)
+{
+    static const uint16_t s2NumPerLoop = 128;
+    static const uint16_t s2NumPerReg = 64;
+    static const uint16_t outOffsetPerLoop = 256;
+    static const uint16_t outOffsetPerReg = 128;
+    static const uint32_t invalidValue = 0xFFFFFFFF;
+    Reg::MaskReg pregAll = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+    Reg::MaskReg carryLow1;
+    Reg::MaskReg carryHigh1;
+    Reg::MaskReg carryLow2;
+    Reg::MaskReg carryHigh2;
+    Reg::MaskReg tailNeg1;
+    Reg::MaskReg tailNeg2;
+
+    Reg::RegTensor<uint32_t> kvStrideReg;
+    Reg::RegTensor<uint32_t> sparseIdx1;
+    Reg::RegTensor<uint32_t> sparseIdx2;
+    Reg::RegTensor<uint32_t> paBlockIdx1;
+    Reg::RegTensor<uint32_t> paBlockIdx2;
+    Reg::RegTensor<uint32_t> paTmp1;
+    Reg::RegTensor<uint32_t> paTmp2;
+    Reg::RegTensor<uint32_t> paOffset1;
+    Reg::RegTensor<uint32_t> paOffset2;
+    Reg::RegTensor<uint32_t> phyOffset1;
+    Reg::RegTensor<uint32_t> phyOffset2;
+    Reg::RegTensor<uint32_t> phyBlockIdx1;
+    Reg::RegTensor<uint32_t> phyBlockIdx2;
+    Reg::RegTensor<uint32_t> mulLow1;
+    Reg::RegTensor<uint32_t> mulHigh1;
+    Reg::RegTensor<uint32_t> mulLow2;
+    Reg::RegTensor<uint32_t> mulHigh2;
+    Reg::RegTensor<uint32_t> totalLow1;
+    Reg::RegTensor<uint32_t> totalHigh1;
+    Reg::RegTensor<uint32_t> totalLow2;
+    Reg::RegTensor<uint32_t> totalHigh2;
+    Reg::RegTensor<uint32_t> zeroReg;
+    Reg::Duplicate(zeroReg, 0);
+    Reg::Duplicate(kvStrideReg, kvStride);
+
+    // Keep the same loop shape as quant_sparse_flash_mla: the VF compiler requires a statically bounded inner loop.
+    for (; s2Loop > 1;) {
+        for (uint16_t i = 0; i < s2Loop - 1; ++i) {
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx1,
+                                                              sparseIdxUb + i * s2NumPerLoop);
+            Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx2,
+                                                              sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
+            Reg::Muls(sparseIdx1, sparseIdx1, sparseBlockSize, pregAll);
+            Reg::Muls(sparseIdx2, sparseIdx2, sparseBlockSize, pregAll);
+            Reg::ShiftRights(paBlockIdx1, sparseIdx1, shiftRightNum, pregAll);
+            Reg::ShiftRights(paBlockIdx2, sparseIdx2, shiftRightNum, pregAll);
+            Reg::Muls(paTmp1, paBlockIdx1, blockSize, pregAll);
+            Reg::Muls(paTmp2, paBlockIdx2, blockSize, pregAll);
+            Reg::Sub(paOffset1, sparseIdx1, paTmp1, pregAll);
+            Reg::Sub(paOffset2, sparseIdx2, paTmp2, pregAll);
+            Reg::Muls(phyOffset1, paOffset1, kvDim, pregAll);
+            Reg::Muls(phyOffset2, paOffset2, kvDim, pregAll);
+            DataCopyGather(phyBlockIdx1, blkTableUb, paBlockIdx1, pregAll);
+            DataCopyGather(phyBlockIdx2, blkTableUb, paBlockIdx2, pregAll);
+            Reg::Mull(mulLow1, mulHigh1, phyBlockIdx1, kvStrideReg, pregAll);
+            Reg::Mull(mulLow2, mulHigh2, phyBlockIdx2, kvStrideReg, pregAll);
+            Reg::Add(carryLow1, totalLow1, mulLow1, phyOffset1, pregAll);
+            Reg::Add(carryLow2, totalLow2, mulLow2, phyOffset2, pregAll);
+            Reg::AddC(carryHigh1, totalHigh1, mulHigh1, zeroReg, carryLow1, pregAll);
+            Reg::AddC(carryHigh2, totalHigh2, mulHigh2, zeroReg, carryLow2, pregAll);
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + i * outOffsetPerLoop, totalLow1,
+                                                                      totalHigh1, pregAll);
+            Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
+                kvPhyAddrUb + outOffsetPerReg + i * outOffsetPerLoop, totalLow2, totalHigh2, pregAll);
+        }
+        break;
+    }
+
+    for (uint16_t tailLoopIdx = s2Loop - 1; tailLoopIdx < s2Loop; ++tailLoopIdx) {
+        Reg::MaskReg tail1 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::MaskReg tail2 = Reg::UpdateMask<int32_t>(s2Tail);
+        Reg::Not(tailNeg1, tail1, pregAll);
+        Reg::Not(tailNeg2, tail2, pregAll);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx1,
+                                                          sparseIdxUb + tailLoopIdx * s2NumPerLoop);
+        Reg::LoadAlign<int32_t, Reg::LoadDist::DIST_NORM>((Reg::RegTensor<int32_t> &)sparseIdx2,
+                                                          sparseIdxUb + s2NumPerReg + tailLoopIdx * s2NumPerLoop);
+        Reg::Muls(sparseIdx1, sparseIdx1, sparseBlockSize, tail1);
+        Reg::Muls(sparseIdx2, sparseIdx2, sparseBlockSize, tail2);
+        Reg::ShiftRights(paBlockIdx1, sparseIdx1, shiftRightNum, tail1);
+        Reg::ShiftRights(paBlockIdx2, sparseIdx2, shiftRightNum, tail2);
+        Reg::Muls(paTmp1, paBlockIdx1, blockSize, tail1);
+        Reg::Muls(paTmp2, paBlockIdx2, blockSize, tail2);
+        Reg::Sub(paOffset1, sparseIdx1, paTmp1, tail1);
+        Reg::Sub(paOffset2, sparseIdx2, paTmp2, tail2);
+        Reg::Muls(phyOffset1, paOffset1, kvDim, tail1);
+        Reg::Muls(phyOffset2, paOffset2, kvDim, tail2);
+        DataCopyGather(phyBlockIdx1, blkTableUb, paBlockIdx1, tail1);
+        DataCopyGather(phyBlockIdx2, blkTableUb, paBlockIdx2, tail2);
+        Reg::Mull(mulLow1, mulHigh1, phyBlockIdx1, kvStrideReg, tail1);
+        Reg::Mull(mulLow2, mulHigh2, phyBlockIdx2, kvStrideReg, tail2);
+        Reg::Add(carryLow1, totalLow1, mulLow1, phyOffset1, tail1);
+        Reg::Add(carryLow2, totalLow2, mulLow2, phyOffset2, tail2);
+        Reg::AddC(carryHigh1, totalHigh1, mulHigh1, zeroReg, carryLow1, tail1);
+        Reg::AddC(carryHigh2, totalHigh2, mulHigh2, zeroReg, carryLow2, tail2);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalLow1, invalidValue, tailNeg1);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalHigh1, invalidValue, tailNeg1);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalLow2, invalidValue, tailNeg2);
+        Reg::Duplicate<uint32_t, Reg::MaskMergeMode::MERGING>(totalHigh2, invalidValue, tailNeg2);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + tailLoopIdx * outOffsetPerLoop,
+                                                                  totalLow1, totalHigh1, pregAll);
+        Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_INTLV_B32>(
+            kvPhyAddrUb + outOffsetPerReg + tailLoopIdx * outOffsetPerLoop, totalLow2, totalHigh2, pregAll);
+    }
+}
+
+template <typename T>
+__aicore__ inline void GetMixedKVPhyAddrVF(LocalTensor<uint32_t> kvPhyAddrTensor, LocalTensor<int32_t> sparseIdxTensor,
+                                           LocalTensor<int32_t> blkTableTensor, const uint16_t s2Loop,
+                                           const uint32_t s2Tail, const uint32_t blockSize, const int16_t shiftRightNum,
+                                           const uint32_t sparseBlockSize, const uint32_t kvDim,
+                                           const uint32_t kvStride)
+{
+    GetMixedKVPhyAddrVFImpl<uint32_t>((__ubuf__ uint32_t *)kvPhyAddrTensor.GetPhyAddr(),
+                                      (__ubuf__ int32_t *)sparseIdxTensor.GetPhyAddr(),
+                                      (__ubuf__ int32_t *)blkTableTensor.GetPhyAddr(), s2Loop, s2Tail, blockSize,
+                                      shiftRightNum, sparseBlockSize, kvDim, kvStride);
+}
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyPhyAddrToGm(LocalTensor<uint32_t> kvPhyAddrUb, int64_t bS1Idx,
                                                                    int64_t s1Idx, int64_t validS2, int64_t alignNum,
@@ -1991,8 +2156,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
     phyAddrUb = CeilAlign(phyAddrUb + maxBlockNumPerBatch * sizeof(int32_t), BUFFER_SIZE_BYTE_32B);
     LocalTensor<int32_t> sparseIdxUb(TPosition::VECIN, phyAddrUb, alignedSparseBlockCount);
     phyAddrUb += alignedSparseBlockCount * sizeof(int32_t);
-    LocalTensor<uint32_t> kvPhyAddrUb(TPosition::VECIN, phyAddrUb,
-                                      alignedSparseBlockCount * 2); // 2：每个稀疏块需要存储两个物理地址
+    LocalTensor<uint32_t> kvPhyAddrUb(TPosition::VECIN, phyAddrUb, alignedSparseBlockCount * 2);
 
     int64_t totalValidS1 = 0;
     uint32_t tmpGS1Start = gS1StartIdx;
@@ -2093,9 +2257,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             SetFlag<HardEvent::MTE2_V>(INNERCORE_PHYADDR_SPARSEIDX_READY);
             WaitFlag<HardEvent::MTE2_V>(INNERCORE_PHYADDR_SPARSEIDX_READY);
             WaitFlag<HardEvent::MTE3_V>(INNERCORE_PHYADDR_KVADDR_FREE);
-            AttentionCommon::GetKVPhyAddrVFPa<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, blockSize,
-                                                        shiftRightNum, constInfo.sparseBlockSize, constInfo.dSizeVInput,
-                                                        kvStride);
+            GetMixedKVPhyAddrVF<uint32_t>(kvPhyAddrUb, sparseIdxUb, blkTableUb, s2Loop, s2Tail, blockSize,
+                                          shiftRightNum, constInfo.sparseBlockSize, constInfo.dSizeVInput, kvStride);
             SetFlag<HardEvent::V_MTE2>(INNERCORE_PHYADDR_SPARSEIDX_FREE);
             SetFlag<HardEvent::V_MTE3>(INNERCORE_PHYADDR_KVADDR_READY);
             WaitFlag<HardEvent::V_MTE3>(INNERCORE_PHYADDR_KVADDR_READY);
@@ -2243,31 +2406,28 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo<HIG
 {
     uint32_t ubAddr = ubBaseAddr;
 
-    // {64, 16, 2}：每个向量操作单元处理的元素个数为64，每个处理块包含的向量数量为16，需要处理两个不同的数据流或阶段
     dequantScaleUb = {LocalTensor<float>(TPosition::VECIN, ubAddr, 64 * 16 * 2), 0};
-    ubAddr += 64 * 16 * 2 * sizeof(float); // {64, 16, 2}：同上
+    ubAddr += 64 * 16 * 2 * sizeof(float);
 
     SoftmaxInitBuffer(ubAddr);
 
-    commonUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0}; // 512：缓冲区大小，单位是字节
-    ubAddr += 512;                                                             // 512：同上
-    sinksUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0};  // 512：同上
-    ubAddr += 512;                                                             // 512：同上
+    commonUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0};
+    ubAddr += 512;
+    sinksUb = {LocalTensor<T>(TPosition::VECIN, ubAddr, 512 / sizeof(T)), 0};
+    ubAddr += 512;
     if constexpr (!HIGH_PERF) {
         if (constInfo.isSoftmaxLseEnable) {
-            outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)),
-                            0}; // 256：缓冲区大小，单位是字节
+            outLseUbs[0] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)), 0};
             ubAddr += 256U;
-            outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)), 1}; // 256：同上
+            outLseUbs[1] = {LocalTensor<float>(TPosition::VECIN, ubAddr, 256 / sizeof(float)), 1};
             ubAddr += 256U;
         }
     }
 
-    stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16),
-                       0};                       // 16：每个v0缓冲区块中存储的向量数量
-    ubAddr += v0BufferDSize * 16 * sizeof(KV_T); // 16：同上
-    stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16), 1}; // 16：同上
-    ubAddr += v0BufferDSize * 16 * sizeof(KV_T);                                            // 16：同上
+    stage0InBufs[0] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16), 0};
+    ubAddr += v0BufferDSize * 16 * sizeof(KV_T);
+    stage0InBufs[1] = {LocalTensor<KV_T>(TPosition::VECIN, ubAddr, v0BufferDSize * 16), 1};
+    ubAddr += v0BufferDSize * 16 * sizeof(KV_T);
     stage0OutBufs[0] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, v0BufferDSize * (16U + 1)), 0};
     ubAddr += v0BufferDSize * (16U + 1) * sizeof(Q_T);
     stage0OutBufs[1] = {LocalTensor<Q_T>(TPosition::VECIN, ubAddr, v0BufferDSize * (16U + 1)), 1};

@@ -26,18 +26,37 @@ from batch_consistency.pytest_support import (
 )
 
 from sparse_flash_mla_paramset import ENABLED_PARAMS
+from common.fd_performance_runtime import expand_params, run_single
 
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
 pt_save_path = os.environ.get("SMLA_PT_SAVE_PATH", "data")
+perf_mode = os.environ.get("SMLA_PERF_MODE", "0") == "1"
 
 # 处理所有参数组合
 result_path = os.getenv("SMLA_RESULT_SAVE_PATH", "./result/smla_result_all_sparse.xlsx")
-param_combinations = utils.generate_param_combinations(ENABLED_PARAMS)
+param_combinations = (
+    list(expand_params(ENABLED_PARAMS)) if os.environ.get("FD_PERF_MODE") == "1"
+    else utils.generate_param_combinations(ENABLED_PARAMS)
+)
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
+    if os.environ.get("FD_PERF_MODE") == "1":
+        run_single("smla", param_combinations, sparse_flash_mla_golden.gen_data,
+                   sparse_flash_mla_process.call_npu)
+        return
+    unsupported_reason = param_combinations.get("unsupported_reason")
+    if perf_mode and unsupported_reason:
+        utils.save_result(
+            "UNSUPPORTED",
+            None,
+            param_combinations,
+            result_path,
+        )
+        pytest.skip(f"unsupported performance case: {unsupported_reason}")
+
     batch_consistency_policy = os.environ.get("SMLA_BATCH_CONSISTENCY", "auto")
     test_data = utils.generate_case_with_default_param(
         param_combinations, batch_consistency_policy
@@ -45,6 +64,24 @@ def test_example(param_combinations):
     torch_npu.npu.set_device(0)
 
     print("test_data:", test_data)
+    if perf_mode:
+        # Performance runs must not construct CPU golden data or compare results.
+        input_data = sparse_flash_mla_golden.gen_data(
+            test_data, prepare_device_storage=True, generate_golden=False
+        )
+        try:
+            sparse_flash_mla_process.call_npu(input_data)
+        except Exception as error:
+            print("NPU ERROR: ", error)
+            utils.save_result(
+                "NPU ERROR", None, test_data, result_path
+            )
+            pytest.fail(f"用例执行失败:{param_combinations} NPU ERROR: {error}")
+        utils.save_result(
+            "Executed (accuracy skipped)", None, test_data, result_path
+        )
+        return
+
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_flash_mla_golden.gen_data(test_data)
     consistency_config = resolve_consistency_config(

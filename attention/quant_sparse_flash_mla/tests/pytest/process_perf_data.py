@@ -70,7 +70,8 @@ def process_profiler_data(args):
 
     # 读取表格B (result表格)
     try:
-        df_b = pd.read_excel(args.test_result_path)
+        reader = pd.read_csv if Path(args.test_result_path).suffix.lower() == ".csv" else pd.read_excel
+        df_b = reader(args.test_result_path)
 
     except Exception as e:
         logging.warning(f"读取表格B失败: {e}")
@@ -139,7 +140,8 @@ def process_profiler_data(args):
         return
 
     # 保存处理后的表格B
-    new_result_path = args.test_result_path.replace(".xlsx", "_perf.xlsx")
+    result_path = Path(args.test_result_path)
+    new_result_path = result_path.with_name(f"{result_path.stem}_perf{result_path.suffix}")
     if os.path.exists(new_result_path):
         try:
             os.remove(new_result_path)
@@ -147,7 +149,10 @@ def process_profiler_data(args):
         except Exception as e:
             logging.warning(f"历史result_perf文件删除失败: {e}")
     try:
-        df_b.to_excel(new_result_path, index=False)
+        if new_result_path.suffix.lower() == ".csv":
+            df_b.to_csv(new_result_path, index=False)
+        else:
+            df_b.to_excel(new_result_path, index=False)
         logging.info(f"处理后的表格已保存为: {new_result_path}")
 
     except Exception as e:
@@ -181,7 +186,7 @@ def main():
     )
     parser.add_argument(
         "--is_compare",
-        type=bool,
+        type=lambda value: str(value).lower() in ("1", "true", "yes", "on"),
         default=False,
         help="是否与基线表格对比",
         required=False,
@@ -195,7 +200,7 @@ def main():
     )
     parser.add_argument(
         "--delete_perf_file",
-        type=bool,
+        type=lambda value: str(value).lower() in ("1", "true", "yes", "on"),
         default=False,
         help="是否删除PROF文件夹内容",
         required=False,

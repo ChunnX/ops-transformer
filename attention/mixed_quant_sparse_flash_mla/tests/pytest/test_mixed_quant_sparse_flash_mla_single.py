@@ -10,47 +10,30 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import concurrent.futures
 import itertools
+import os
+from pathlib import Path
+
+import pytest
 import torch
-import result_compare_method
+
 import check_valid_param
 import mixed_quant_sparse_flash_mla_golden
-from batch import mixed_quant_sparse_flash_mla_process
-import pytest
-import pandas as pd
-from pathlib import Path
-import numpy as np
-import os
-import multiprocessing as mp
-import concurrent.futures
 import utils
-import sys
-import torch_npu
-
 from mixed_quant_sparse_flash_mla_paramset import ENABLED_PARAMS
+from common.fd_performance_runtime import expand_params, run_single
 
-SMLA_PYTEST_PATH = Path(__file__).resolve().parents[3] / "sparse_flash_mla/tests/pytest"
-if str(SMLA_PYTEST_PATH) not in sys.path:
-    sys.path.append(str(SMLA_PYTEST_PATH))
-
-from batch_consistency.config import (  # noqa: E402
-    prepare_consistency_params,
-    resolve_consistency_config,
-)
-from batch_consistency.model import RunResult  # noqa: E402
-from batch_consistency.pytest_support import (  # noqa: E402
-    consistency_fulfill_percent,
-    format_consistency_summary,
-    run_configured_consistency,
-)
-
-pt_save_path = "mqsmla_testcase"
-device_id = 0
-save_pt = os.environ.get("SAVE_PT", "0") == "1"
+pt_save_path = os.environ.get("MQSMLA_PT_DIR", "mqsmla_testcase")
+inputs_only = os.environ.get("MQSMLA_INPUTS_ONLY", "1") == "1"
+device_id = int(os.environ.get("MQSMLA_DEVICE_ID", "0"))
 result_path = Path(os.environ.get("MQSMLA_RESULT_SAVE_PATH", "result.xlsx"))
 
 param_combinations = []
 for params in ENABLED_PARAMS:
+    if os.environ.get("FD_PERF_MODE") == "1":
+        param_combinations.extend(expand_params([params]))
+        continue
     param_values = {
         "Testcase_Name": params.get("Testcase_Name", [None]),
         "layout_q": params.get("layout_q"),
@@ -124,11 +107,15 @@ case_id = 0
 
 def mqsmla(param_combinations):
     global case_id
+    if os.environ.get("FD_PERF_MODE") == "1":
+        from batch import mixed_quant_sparse_flash_mla_process
+        run_single("mqsmla", param_combinations, mixed_quant_sparse_flash_mla_golden.gen_data,
+                   lambda data: mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
+                       data, device_id=int(os.environ.get("FD_DEVICE_ID", "0"))))
+        return
 
     # 填充None参数的默认值
     params = utils.fill_none_params(param_combinations)
-    batch_consistency_policy = os.environ.get("MQSMLA_BATCH_CONSISTENCY", "auto")
-    prepare_consistency_params(params, batch_consistency_policy)
 
     # 生成测试用例名称
     Testcase_Name = params["Testcase_Name"]
@@ -152,96 +139,27 @@ def mqsmla(param_combinations):
     except ValueError as e:
         pytest.skip(f"输入参数校验失败:{e}")
 
-    # 生成测试数据及golden
-    test_data = mixed_quant_sparse_flash_mla_golden.gen_data(params)
-    consistency_config = resolve_consistency_config(
-        test_data,
-        batch_consistency_policy,
-        persist=save_pt,
+    # Only operator inputs are persisted; CPU golden data is not generated.
+    test_data = mixed_quant_sparse_flash_mla_golden.gen_data(
+        params, generate_golden=False
     )
-    if save_pt:
-        mixed_quant_sparse_flash_mla_golden.save_test_case(test_data, pt_save_path)
-
-    if consistency_config is not None:
-        if params["layout_q"] == "TND" and test_data.get("cpu_lse") is not None:
-            test_data["cpu_lse"] = test_data["cpu_lse"].transpose(0, 1).contiguous()
-
-        def consistency_executor(data):
-            values = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
-                data, device_id=device_id
-            )
-            return RunResult(values[0], values[3])
-
-        report = run_configured_consistency(
-            test_data,
-            consistency_config,
-            consistency_executor,
-            result_compare_method.check_result,
-            lambda: torch_npu.npu.set_device(device_id),
-        )
-        summary = format_consistency_summary(report)
-        print(summary, flush=True)
-        fulfill_percent = consistency_fulfill_percent(report)
-        result = "Pass" if report["pass"] else "Failed"
-        case_id += 1
-        utils.save_result(test_data["params"], result, fulfill_percent, result_path)
-        if not report["relations"]:
-            pytest.skip(f"batch consistency has no applicable relation: {report}")
-        if not report["pass"]:
-            pytest.fail(summary)
-        return
-
-    # 获得cpu结果(真值)和算子结果（测试值）
-    npu_error_msg = None
-    try:
-        npu_result, cpu_quant_result, cpu_lse, npu_lse = (
-            mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
-                test_data, device_id=device_id
-            )
-        )
-        attn_result, attn_percent = result_compare_method.check_result(
-            cpu_quant_result, npu_result
-        )
-        lse_result, lse_percent = None, None
-        fail_info = []
-        min_fulfill = attn_percent
-
-        if test_data["params"].get("return_softmax_lse"):
-            print("return_softmax_lse is true!!!")
-            lse_result, lse_percent = result_compare_method.check_result(
-                cpu_lse, npu_lse
-            )
-            min_fulfill = min(min_fulfill, lse_percent)
-
-        if attn_result != "Pass":
-            fail_info.append(f"MAIN_FAILED:{attn_result}")
-        if lse_result is not None and lse_result != "Pass":
-            fail_info.append(f"LSE_FAILED:{lse_result}")
-
-        if fail_info:
-            result = "; ".join(fail_info)
-            fulfill_percent = min_fulfill
-        else:
-            result = "Pass"
-            fulfill_percent = min_fulfill
-    except Exception as e:
-        npu_error_msg = str(e)
-        print("NPU ERROR：", npu_error_msg)
-        result = "NPU ERROR"
-        fulfill_percent = 0
-
+    for key in ("golden_state", "cpu_output", "cpu_lse"):
+        test_data.pop(key, None)
+    mixed_quant_sparse_flash_mla_golden.save_test_case(test_data, pt_save_path)
     case_id += 1
 
-    utils.save_result(test_data["params"], result, fulfill_percent, result_path)
+    if inputs_only:
+        return
 
-    if result == "NPU ERROR":
-        pytest.fail(
-            f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}"
-        )
-    elif result != "Pass":
-        pytest.fail(
-            f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
-        )
+    # Import NPU dependencies only when execution is requested (e.g. profiling).
+    from batch import mixed_quant_sparse_flash_mla_process
+
+    utils.run_without_accuracy(
+        test_data,
+        mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci,
+        device_id,
+        result_path,
+    )
 
 
 def _gen_testcase_id(params, idx):
@@ -270,4 +188,4 @@ def test_mixed_quant_sparse_flash_mla(param_combinations):
             try:
                 result = future.result()
             except Exception as e:
-                pytest.fail("当前用例线程执行失败")
+                pytest.fail(f"当前用例线程执行失败: {e}")

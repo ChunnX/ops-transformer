@@ -17,6 +17,7 @@ import numpy as np
 import os
 import math
 import logging
+from pathlib import Path
 
 
 def normalize_topk_mode(value):
@@ -614,6 +615,16 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         return None
 
 
+def run_without_accuracy(test_data, executor, device_id, result_path):
+    """Run the NPU path once and record execution status without CPU golden."""
+    try:
+        executor(test_data, device_id=device_id)
+    except Exception as error:
+        save_result(test_data["params"], "NPU ERROR", None, result_path)
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {error}")
+    save_result(test_data["params"], "Executed (accuracy skipped)", None, result_path)
+
+
 def save_result(params, result, fulfill_percent, result_path):
     """
     存储测试结果到表格
@@ -663,9 +674,11 @@ def save_result(params, result, fulfill_percent, result_path):
     }
 
     # 检查文件是否存在
+    result_path = Path(result_path)
     if result_path.exists():
         try:
-            df = pd.read_excel(result_path)
+            reader = pd.read_csv if result_path.suffix.lower() == ".csv" else pd.read_excel
+            df = reader(result_path)
             if set(df.columns) != set(row_data.keys()):
                 logging.warning("警告：变量名与Excel列名不匹配！")
                 logging.warning(f"Excel列名: {list(df.columns)}")
@@ -681,5 +694,8 @@ def save_result(params, result, fulfill_percent, result_path):
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
 
-    # 保存到Excel
-    df.to_excel(result_path, index=False)
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    if result_path.suffix.lower() == ".csv":
+        df.to_csv(result_path, index=False)
+    else:
+        df.to_excel(result_path, index=False)

@@ -25,6 +25,7 @@ import sys
 import torch_npu
 
 from quant_sparse_flash_mla_paramset import ENABLED_PARAMS
+from common.fd_performance_runtime import expand_params, run_single
 
 SMLA_PYTEST_PATH = Path(__file__).resolve().parents[3] / "sparse_flash_mla/tests/pytest"
 if str(SMLA_PYTEST_PATH) not in sys.path:
@@ -44,7 +45,9 @@ from batch_consistency.pytest_support import (  # noqa: E402
 pt_save_path = "qsmla_testcase"
 device_id = 0
 save_pt = os.environ.get("SAVE_PT", "0") == "1"
-result_path = Path(os.environ.get("QSMLA_RESULT_SAVE_PATH", "result.xlsx"))
+perf_mode = os.environ.get("QSMLA_PERF_MODE", "0") == "1"
+default_result = "result.csv" if perf_mode else "result.xlsx"
+result_path = Path(os.environ.get("QSMLA_RESULT_SAVE_PATH", default_result))
 is_run_graph = os.environ.get("RUN_GRAPH", "0") == "1"
 
 # 日志配置
@@ -57,8 +60,14 @@ logging.basicConfig(
 
 param_combinations = []
 for params in ENABLED_PARAMS:
+    if os.environ.get("FD_PERF_MODE") == "1":
+        param_combinations.extend(expand_params([params]))
+        continue
     param_values = {
-        "Testcase_Name": params.get("Testcase_Name", [None]),
+        "Testcase_Name": params.get(
+            "Testcase_Name", params.get("testcase_name", [None])
+        ),
+        "case_id": params.get("case_id", [None]),
         "layout_q": params.get("layout_q"),
         "layout_kv": params.get("layout_kv"),
         "q_type": params.get("q_type"),
@@ -89,8 +98,10 @@ for params in ENABLED_PARAMS:
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
         "quant_mode": params.get("quant_mode"),
-        "template_run_mode": params.get("template_run_mode"),
-        "actlen_mode": params.get("actlen_mode"),
+        "template_run_mode": params.get(
+            "template_run_mode", params.get("template_mode")
+        ),
+        "actlen_mode": params.get("actlen_mode", ["full"]),
         "S1EQS2": params.get("S1EQS2", [False]),
         "isSink": params.get("isSink", [True]),
         "K1": params.get("K1", [None]),
@@ -133,10 +144,17 @@ case_id = 0
 
 def qsmla(param_combinations):
     global case_id
+    if os.environ.get("FD_PERF_MODE") == "1":
+        run_single("qsmla", param_combinations, quant_sparse_flash_mla_golden.gen_data,
+                   lambda data: quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+                       data, device_id=int(os.environ.get("FD_DEVICE_ID", "0"))))
+        return
 
     # 填充None参数的默认值
     params = utils.fill_none_params(param_combinations)
-    batch_consistency_policy = os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto")
+    batch_consistency_policy = (
+        "off" if perf_mode else os.environ.get("QSMLA_BATCH_CONSISTENCY", "auto")
+    )
     prepare_consistency_params(params, batch_consistency_policy)
 
     # 生成测试用例名称
@@ -153,6 +171,22 @@ def qsmla(param_combinations):
         check_valid_param.check_valid_param(params)
     except ValueError as e:
         pytest.skip(f"输入参数校验失败:{e}")
+
+    # Performance mode only builds operator inputs.  It never computes or
+    # compares a CPU golden result.
+    if perf_mode:
+        test_data = quant_sparse_flash_mla_golden.gen_data(
+            params, generate_golden=False
+        )
+        for key in ("golden_state", "cpu_output", "cpu_lse"):
+            test_data.pop(key, None)
+        utils.run_without_accuracy(
+            test_data,
+            quant_sparse_flash_mla_process.test_qsmla_quant_process_ci,
+            device_id,
+            result_path,
+        )
+        return
 
     # 生成测试数据及golden
     test_data = quant_sparse_flash_mla_golden.gen_data(params)

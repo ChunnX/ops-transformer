@@ -28,7 +28,9 @@ BATCH_CONSISTENCY_POLICY="auto"
 # ====================== 执行区 ======================
 
 run_single() {
-    echo "===== 执行单用例算子调测 ====="
+    echo "===== 生成并保存单用例输入（不计算CPU golden、不执行NPU） ====="
+    export MQSMLA_INPUTS_ONLY=1
+    export MQSMLA_PT_DIR="$PT_SAVE_DIR"
     export MQSMLA_BATCH_CONSISTENCY="$BATCH_CONSISTENCY_POLICY"
     python3 -m pytest -rA -s $TEST_QSMLA_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
@@ -140,7 +142,7 @@ show_help() {
     echo "用法: $0 <命令> [选项]"
     echo ""
     echo "命令说明："
-    echo "  single             执行单算子用例调测"
+    echo "  single             生成并保存单用例输入，不计算CPU golden、不执行NPU"
     echo "  batch_save         从excel读取用例，golden计算并保存pt文件"
     echo "  batch_exec         批量读取pt文件并执行NPU测试(CI模式)"
     echo "  batch_exec_graph   批量读取pt文件并执行Graph模式NPU测试"
@@ -158,7 +160,8 @@ show_help() {
     echo "  --batch-consistency <auto|on|off>  batch一致性策略（默认: auto）"
     echo ""
     echo "环境变量（.py文件读取）："
-    echo "  MQSMLA_PT_DIR              pt文件目录（batch_save/batch_exec/batch_exec_graph）"
+    echo "  MQSMLA_PT_DIR              pt文件目录（single/batch_save/batch_exec/batch_exec_graph）"
+    echo "  MQSMLA_SKIP_ACCURACY       默认1，执行时跳过精度及一致性对比；0恢复含golden用例的对比"
     echo "  MQSMLA_EXCEL               excel文件路径（batch_save）"
     echo "  MQSMLA_SHEET               excel sheet名（batch_save）"
     echo "  MQSMLA_EXCEL_PATH          excel文件路径（batch_exec/batch_exec_graph，mode=1时使用）"
@@ -167,7 +170,8 @@ show_help() {
     echo "  MQSMLA_DEVICE_ID           NPU设备ID（batch_exec/batch_exec_graph）"
     echo ""
     echo "示例："
-    echo "  $0 single"
+    echo "  $0 single --pt-dir my_pt"
+    echo "  $0 batch_exec --mode 0 --pt-dir my_pt  # 执行single生成的输入，跳过精度对比"
     echo "  $0 batch_save"
     echo "  $0 batch_save --excel my.xlsx --sheet decode --pt-dir my_pt"
     echo "  $0 batch_exec                                          # 全量批跑"
@@ -268,6 +272,14 @@ fi
 if [ "$COMMAND" = "single" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
+            --pt-dir)
+                if [ $# -lt 2 ]; then
+                    echo "错误：--pt-dir 需要参数值"
+                    exit 1
+                fi
+                PT_SAVE_DIR="$2"
+                shift 2
+                ;;
             --batch-consistency)
                 if [ $# -lt 2 ] || { [ "$2" != "auto" ] && [ "$2" != "on" ] && [ "$2" != "off" ]; }; then
                     echo "错误：--batch-consistency 需要 auto、on 或 off"

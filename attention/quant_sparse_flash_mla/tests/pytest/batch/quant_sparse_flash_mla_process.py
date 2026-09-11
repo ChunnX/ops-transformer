@@ -104,9 +104,12 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     params = test_data["params"]
     metadata_input = test_data["metadata_input"]
     op_input = test_data["op_input"]
-    cpu_output = test_data["cpu_output"]
+    cpu_output = test_data.get("cpu_output")
     cpu_lse = test_data.get("cpu_lse")
     torch_npu.npu.set_device(device_id)
+    torch_npu.npu.set_deterministic_level(
+        3 if params.get("batch_consistency", False) else 0
+    )
 
     # 编译
     torch._dynamo.reset()
@@ -264,10 +267,14 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     params = test_data["params"]
     metadata_input = test_data["metadata_input"]
     op_input = test_data["op_input"]
-    cpu_output = test_data["cpu_output"]
+    # Performance runs intentionally omit CPU golden data.  Keep the return
+    # shape compatible with the functional runner while avoiding any CPU work.
+    cpu_output = test_data.get("cpu_output")
     cpu_lse = test_data.get("cpu_lse")
     torch_npu.npu.set_device(device_id)
-
+    torch_npu.npu.set_deterministic_level(
+        3 if params.get("batch_consistency", False) else 0
+    )
     logging.info(f"test_data:{params}")
     logging.info("quant_sparse_flash_mla_metadata...")
     layout_kv_qsas = metadata_input["layout_kv"]
