@@ -71,8 +71,7 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
     // GQA 下块网格是 b*n2*G*s1Outer*s2Outer，融合后的 batch 维是 b*n2*G，
     // 所以 G 在这里只是把 head 数乘上去（kernel 在 n2 内层走 g）。
     // mask 用 valid tiles（GetTotalPerBatchNum），让 L2 门看到真实工作集。
-    const int64_t perHeadBlocks =
-        info.totalPerBatchNum > 0 ? info.totalPerBatchNum : (s1Outer * s2Outer);
+    const int64_t perHeadBlocks = info.totalPerBatchNum > 0 ? info.totalPerBatchNum : (s1Outer * s2Outer);
     const int64_t fusedHeads = info.b * info.n2 * info.g;
     const int64_t totalBlocks = fusedHeads * perHeadBlocks;
     if (perHeadBlocks <= 0 || info.aicNum == 0) {
@@ -124,7 +123,7 @@ void DecideSwizzle(const FagParsedInfo &info, const FagKernelPlan &kernel, FagSc
     //    确实不同，一个全局阈值服务不了两者。
     //
     // 全部 29 个实测点上：方向无关的旧 2x 规则误判 7 个（累计代价 67.7%），
-    // 本判据误判 2 个（18.0%）。必须与 kernel 的 decide_swizzle() 保持一致。
+    // 本判据误判 2 个（18.0%）。kernel 只消费 tilingkey 的 swizzle 位。
     if (s2Outer > s1Outer) {
         trace.swizzleReject = "s2-dominant";
         return;

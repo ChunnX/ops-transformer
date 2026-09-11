@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from pypto_pro.runtime.tilingkey import TilingKeyField
 
+
 @dataclass
 class FlashAttnGradTilingData:
     """对齐 op_host/flash_attn_grad_tiling.h 的 TILING_DATA_FIELD_DEF 顺序。
@@ -30,6 +31,7 @@ class FlashAttnGradTilingData:
     字段名与顺序必须与 host 侧逐一对应 —— codegen 出的
     FlashAttnGradTilingData_tiling.h 是按这里的声明顺序排布内存的。
     """
+
     b: int
     s1: int
     s2: int
@@ -79,9 +81,9 @@ class FlashAttnGradTilingKey:
     # 0=无 attenmask，3=causal，4=band。host 存 0/1/2 索引。
     mask_mode = TilingKeyField(bits=2, values=[0, 3, 4])
     # 分核方式：0=线性均分，1=swizzle(按 s2 列跨核发放)。
-    # 由 host 的 decide_swizzle() 依输入 shape 判定「同时在跑的核其工作集
+    # 由 host DecideSwizzle() 依输入 shape 判定「同时在跑的核其工作集
     # 是否超 L2」后置位，两种分核各编译一份二进制，运行期零分支开销。
-    # 判据与实测见下方 decide_swizzle()。
+    # 判据与实测见 op_host/plan/flash_attn_grad_tiling_swizzle.cpp。
     swizzle = TilingKeyField(bits=1, values=[0, 1])
     # D 的分配宽度分档。**取值就是实际列数**(不是 0/1 索引)，故可直接当
     # tile 的 shape 用 —— 已实测两档均 bit-exact，且在被内联的 helper 里
@@ -108,8 +110,16 @@ class FlashAttnGradTilingKey:
 
     def is_valid(self, key):
         """剪掉本实现未走到的组合，控制二进制数量。"""
-        (template, layout, mask_mode, swizzle, d_align, dv_align,
-         is_bn2_multiblk, bn2_need_zero) = key
+        (
+            template,
+            layout,
+            mask_mode,
+            swizzle,
+            d_align,
+            dv_align,
+            is_bn2_multiblk,
+            bn2_need_zero,
+        ) = key
         # 2 未用；3 预留给 BN2S2。不剪会当 GS1S2 多编死二进制。
         if template != 0 and template != 1:
             return False

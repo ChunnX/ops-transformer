@@ -27,7 +27,6 @@
 ``fag_vector_api``   ``vector_api/vf_*.h``                         寄存器级 VF 微内核
 ``attenmask``        ``vector_api/pse_atten_mask_*.h``             mask 搬入与 softmax VF
 ``fag_kernel``       ``*_kernel.h``                                两个模板的 Process() 主循环
-``fag_host_mirror``  （无）                                         host 判据的 Python 镜像，不参与 trace
 ===================  ============================================  ==============
 
 改动前请先读 :mod:`fag_kernel` 的模块 docstring —— 数据流、CV 同步成对关系、
@@ -35,8 +34,9 @@
 
 本文件必须保持「有且仅有一个 ``@pl.jit``」：codegen
 (``cmake/scripts/pypto_codegen.py``) 靠这一点在模块里找到 kernel。
-:class:`FlashAttnGradTilingData` / :class:`FlashAttnGradTilingKey` 与
-``decide_*`` 系列在这里 re-export，供 JIT 脚本按老路径 import。
+:class:`FlashAttnGradTilingData` / :class:`FlashAttnGradTilingKey` 在这里
+re-export，供 JIT 脚本按老路径 import。模板 / 对齐 / swizzle 判据只在
+host（``op_host/plan/*``）里实现，不再提供 Python 镜像。
 """
 
 import os
@@ -63,17 +63,8 @@ from fag_common import (
     SYNC_V2_TO_C2_FLAG,
 )
 
-# re-export：kernel 自身不用，但 JIT 脚本(test/prof/bench)按老路径 import。
+# re-export：kernel 自身不用，但 JIT 脚本按老路径 import。
 from fag_common import CUBE_BASEM, CUBE_BASEN, TILE_D, TILE_M, TILE_N
-from fag_host_mirror import (
-    decide_bn2_multiblk,
-    decide_d_align,
-    decide_dv_align,
-    decide_sparse_type,
-    decide_swizzle,
-    decide_template,
-    total_per_batch_num,
-)
 
 
 @pl.jit(
@@ -110,11 +101,43 @@ def flash_attn_grad(
     BN2 不接 GQA / D=192。
     """
     if template == 1:
-        flash_attn_grad_bn2(q, k, v, dout, attn_out, softmax_lse, attn_mask,
-                            metadata, dq, dk, dv, workspace, tiling, d_align)
+        flash_attn_grad_bn2(
+            q,
+            k,
+            v,
+            dout,
+            attn_out,
+            softmax_lse,
+            attn_mask,
+            metadata,
+            dq,
+            dk,
+            dv,
+            workspace,
+            tiling,
+            d_align,
+        )
     else:
-        flash_attn_grad_bn2gs1s2(q, k, v, dout, attn_out, softmax_lse,
-                                 cu_seqlens_q, cu_seqlens_kv, seqused_q,
-                                 seqused_kv, sinks, attn_mask, metadata,
-                                 dq, dk, dv, workspace, tiling,
-                                 d_align, dv_align, swizzle)
+        flash_attn_grad_bn2gs1s2(
+            q,
+            k,
+            v,
+            dout,
+            attn_out,
+            softmax_lse,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            seqused_q,
+            seqused_kv,
+            sinks,
+            attn_mask,
+            metadata,
+            dq,
+            dk,
+            dv,
+            workspace,
+            tiling,
+            d_align,
+            dv_align,
+            swizzle,
+        )

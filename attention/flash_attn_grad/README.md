@@ -154,7 +154,6 @@ block 架构分层，同目录下每个 `fag_*.py` 对应 arch35 的一个头文
 | `fag_vector_api.py` | `vector_api/vf_*.h` | 寄存器级 VF 微内核 |
 | `attenmask.py` | `vector_api/pse_atten_mask_*.h` | mask 搬入与 softmax VF |
 | `fag_kernel.py` | `*_kernel.h` | 两个模板的 `Process()` 主循环与 CV 同步编排 |
-| `fag_host_mirror.py` | （无） | host 判据的 Python 镜像，**不参与 trace**，仅供 JIT 脚本 |
 
 分层的硬约束：
 

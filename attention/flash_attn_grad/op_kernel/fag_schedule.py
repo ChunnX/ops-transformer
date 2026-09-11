@@ -33,6 +33,7 @@ from fag_common import CUBE_BASEM, CUBE_BASEN, VECTOR_BASEM
 #  块级有效性与「下一块」—— ASC IsValid / GetNextValidIdx
 # ==================================================================
 
+
 def is_block_valid_i(constInfo, index):
     """块级 IsValid。mask_mode 是 tilingkey，只编一侧公式。
 
@@ -64,7 +65,6 @@ def is_block_valid_i(constInfo, index):
     return a * b
 
 
-
 def skip_invalid(constInfo, idx, blockEnd):
     """ASC GetNextValidIdx 线性支：while (!IsValid) idx++，越界 -1。
 
@@ -84,9 +84,16 @@ def skip_invalid(constInfo, idx, blockEnd):
     return idx
 
 
-
-def next_work_gidx(constInfo, cBlockIdx, coreNum, blockStart, blockEnd,
-                   localIdx, denseCursor, numBlocks):
+def next_work_gidx(
+    constInfo,
+    cBlockIdx,
+    coreNum,
+    blockStart,
+    blockEnd,
+    localIdx,
+    denseCursor,
+    numBlocks,
+):
     """下一块全局下标；本核没有活块时 -1。线性走 skip_invalid，swizzle 走公式。"""
     if swizzle == 0:
         return skip_invalid(constInfo, denseCursor, blockEnd)
@@ -95,12 +102,12 @@ def next_work_gidx(constInfo, cBlockIdx, coreNum, blockStart, blockEnd,
     return block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
 
 
-
 # ==================================================================
 #  Swizzle 分核 —— 让同时在跑的核落在同一 head 内，命中 L2
-#  判据在 host（fag_host_mirror.decide_swizzle 是它的 Python 镜像），
+#  判据在 host（op_host/plan/flash_attn_grad_tiling_swizzle.cpp），
 #  这里只负责「已经决定开 swizzle」之后的下标映射。
 # ==================================================================
+
 
 def swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx):
     """把本核的局部块序号映射成全局块下标。
@@ -117,10 +124,8 @@ def swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx):
     return head * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
 
 
-
 # Packed 反函数按列扫描的上限。S=8192 -> s2Outer=64；本轮不做 S>32768。
 PACKED_SCAN_MAX = 128
-
 
 
 def packed_g_to_s1s2(constInfo, gDimTail):
@@ -167,7 +172,6 @@ def packed_g_to_s1s2(constInfo, gDimTail):
     return s1Idx, s2Idx
 
 
-
 def packed_to_dense_idx(constInfo, packedIdx):
     total = constInfo.totalPerBatchNum
     if total < 1:
@@ -176,7 +180,6 @@ def packed_to_dense_idx(constInfo, packedIdx):
     gDimTail = packedIdx % total
     s1Idx, s2Idx = packed_g_to_s1s2(constInfo, gDimTail)
     return bIdx * constInfo.s1oS2o + s2Idx * constInfo.s1Outer + s1Idx
-
 
 
 # ==================================================================
@@ -197,13 +200,14 @@ META_FAG_AIV_LIST_NUM = 72
 META_VIEW_LEN = 8192
 
 
-
 def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     """本核负责的块数。线性支读 metadata；swizzle 仍走列跨核公式。
 
     mask+swizzle 按 packed 有效块跨核发，不再用整矩形列跨核。
     """
-    numColTasks = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
+    numColTasks = (
+        constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s2Outer
+    )
     rem = pl.max(numColTasks - cBlockIdx, 0)
     swzDense = ((rem + coreNum - 1) // coreNum) * constInfo.s1Outer
     fused = constInfo.bSize * constInfo.n2Size * constInfo.gSize
@@ -218,7 +222,6 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     return lin
 
 
-
 def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     """局部块序号 -> 全局块下标。线性支起点取自 metadata。"""
     swzDense = swizzle_idx(constInfo, cBlockIdx, coreNum, localIdx)
@@ -231,10 +234,10 @@ def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     return lin
 
 
-
 # ==================================================================
 #  K/V 复用与 dK/dV L0C 驻留的开关
 # ==================================================================
+
 
 def s2_group_of(constInfo, idx):
     """(b, n2, g, s2o) 的组合编号：同一编号内 dK/dV 可在 L0C 上持续累加。
@@ -246,7 +249,6 @@ def s2_group_of(constInfo, idx):
     BN2GS1S2 模板 needAtomic 恒真一致。
     """
     return idx // constInfo.s1Outer
-
 
 
 def need_load_kv(constInfo, gIdx, localIdx):
@@ -266,21 +268,19 @@ def need_load_kv(constInfo, gIdx, localIdx):
     return lin
 
 
-
 def next_s2_same(constInfo, gIdx, localIdx):
     """下一块是否仍落在同一个 s2 块内(1=是，0=否)。"""
     swz = pl.min((localIdx + 1) % constInfo.s1Outer, 1)
-    lin = 1 - pl.min(s2_group_of(constInfo, gIdx + 1)
-                     - s2_group_of(constInfo, gIdx), 1)
+    lin = 1 - pl.min(s2_group_of(constInfo, gIdx + 1) - s2_group_of(constInfo, gIdx), 1)
     if constInfo.enableSwizzle:
         return swz
     return lin
 
 
-
 # ==================================================================
 #  逐 task 的 RunInfo —— ASC SetRunInfo
 # ==================================================================
+
 
 def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     # index -> (boIdx, n2oIdx, goIdx, s2oIdx, s1oIdx)，S1 为最快轴。
@@ -310,7 +310,8 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     # 固定 64 同时天然满足 dS^T/P^T 的 NZ 分形 16 对齐要求。
     # 本子核真实行数：尾块可能不足，甚至为 0(s1Real <= 64 时子核 1 无事可做)
     runInfo.halfS1RealSize = pl.max(
-        pl.min(s1Real - subIdx * VECTOR_BASEM, VECTOR_BASEM), 0)
+        pl.min(s1Real - subIdx * VECTOR_BASEM, VECTOR_BASEM), 0
+    )
 
     # BSND 布局的 GM 偏移
     runInfo.queryOffset = runInfo.s1oIdx * CUBE_BASEM
@@ -322,11 +323,12 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     headQ = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx
     runInfo.idx0Q = runInfo.boIdx * constInfo.coefB0Q + headQ * constInfo.coefN0
     runInfo.idx2Q = headQ * constInfo.coefN2
-    runInfo.idx0KV = runInfo.boIdx * constInfo.coefB0KV + runInfo.n2oIdx * constInfo.coefN0
+    runInfo.idx0KV = (
+        runInfo.boIdx * constInfo.coefB0KV + runInfo.n2oIdx * constInfo.coefN0
+    )
     runInfo.idx2KV = runInfo.n2oIdx * constInfo.coefN2
     rowBase = runInfo.queryOffset + subIdx * VECTOR_BASEM
-    runInfo.loadBase = pl.max(
-        pl.min(rowBase, constInfo.s1Size - VECTOR_BASEM), 0)
+    runInfo.loadBase = pl.max(pl.min(rowBase, constInfo.s1Size - VECTOR_BASEM), 0)
     runInfo.rowShift = rowBase - runInfo.loadBase
 
     runInfo.loadKV = need_load_kv(constInfo, index, localIdx)
@@ -338,7 +340,6 @@ def set_run_info(constInfo, runInfo, taskId, index, subIdx, localIdx):
     runInfo.dqLast = 1
     if is_bn2_multiblk == 1:
         check_s1_range_in_bn2(constInfo, runInfo)
-
 
 
 def check_s1_range_in_bn2(constInfo, runInfo):
@@ -395,7 +396,6 @@ def check_s1_range_in_bn2(constInfo, runInfo):
         runInfo.dqFirst = 1
 
 
-
 def apply_s2_idx_no_change(runInfos, curInfo, taskId, ring):
     """ASC isS2IdxNoChange：与上一有效块比 (s2o, b, n2)，不含 g。"""
     prevR = runInfos[(taskId + ring - 1) % ring]
@@ -404,9 +404,11 @@ def apply_s2_idx_no_change(runInfos, curInfo, taskId, ring):
         curInfo.dkvAcc = 0
         curInfo.flushDkv = 1
         return
-    if (prevR.s2oIdx == curInfo.s2oIdx and
-            prevR.boIdx == curInfo.boIdx and
-            prevR.n2oIdx == curInfo.n2oIdx):
+    if (
+        prevR.s2oIdx == curInfo.s2oIdx
+        and prevR.boIdx == curInfo.boIdx
+        and prevR.n2oIdx == curInfo.n2oIdx
+    ):
         curInfo.loadKV = 0
         curInfo.dkvAcc = 1
         prevR.flushDkv = 0
