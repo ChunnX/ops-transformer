@@ -111,9 +111,17 @@ int64_t GetStrideDimOrZero(const gert::Stride &stride, uint64_t index)
 template <typename DimAt, typename StrideAt>
 bool IsNonOverlappingPositiveStrides(std::size_t rank, DimAt dimAt, StrideAt strideAt)
 {
+    // Check physical order, not logical axis order: a dense head/token
+    // transpose changes strides without introducing overlapping elements.
+    std::vector<std::size_t> axes(rank);
+    for (std::size_t i = 0; i < rank; ++i) {
+        axes[i] = i;
+    }
+    std::sort(axes.begin(), axes.end(),
+              [&](std::size_t lhs, std::size_t rhs) { return strideAt(lhs) < strideAt(rhs); });
     uint64_t innerSpan = 1U;
     for (std::size_t offset = 0U; offset < rank; ++offset) {
-        const std::size_t index = rank - 1U - offset;
+        const std::size_t index = axes[offset];
         const int64_t dim = dimAt(index);
         const int64_t stride = strideAt(index);
         if (dim <= 0 || stride <= 0) {

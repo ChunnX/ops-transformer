@@ -14,12 +14,14 @@
  */
 
 #include <fstream>
+#include <functional>
 #include <algorithm>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "../../../op_host/op_api/aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
+#include "../../../op_host/op_api/qkv_rms_norm_rope_cache_with_k_scale_checker.h"
 #include "gmm_csv_acl_parse_utils.h"
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -140,6 +142,11 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
     string qOutDtype;
     string qScaleShape;
     string qScaleDtype;
+    vector<int64_t> qOutStride;
+    vector<int64_t> qOutStorageShape;
+    vector<int64_t> qScaleStride;
+    vector<int64_t> qScaleStorageShape;
+    bool invalidOutputBuffer = false;
     string mropePositionShape;
     string mropePositionDtype;
     string mropeSectionValue;
@@ -199,14 +206,23 @@ QkvRmsNormRopeCacheWithKScaleAclArgs BuildAclArgs(const QkvRmsNormRopeCacheWithK
     args.mropeSection = BuildIntArray(testCase.mropeSectionValue);
     args.qQuantMode = BuildStringArg(testCase.qQuantMode);
     args.kQuantMode = BuildStringArg(testCase.kQuantMode);
-    args.qOut = BuildTensor(testCase.qOutShape, testCase.qOutDtype, false);
-    args.qScale = BuildTensor(testCase.qScaleShape, testCase.qScaleDtype, false);
+    args.qOut = testCase.qOutStride.empty() ?
+                    BuildTensor(testCase.qOutShape, testCase.qOutDtype, false) :
+                    BuildTensor(testCase.qOutShape, testCase.qOutDtype, testCase.qOutStride, testCase.qOutStorageShape);
+    args.qScale = testCase.qScaleStride.empty() ? BuildTensor(testCase.qScaleShape, testCase.qScaleDtype, false) :
+                                                  BuildTensor(testCase.qScaleShape, testCase.qScaleDtype,
+                                                              testCase.qScaleStride, testCase.qScaleStorageShape);
     return args;
 }
 
-void RunCase(const QkvRmsNormRopeCacheWithKScaleCase &testCase)
+void RunCase(const QkvRmsNormRopeCacheWithKScaleCase &testCase,
+             const std::function<void(QkvRmsNormRopeCacheWithKScaleAclArgs &)> &overrideArgs = {},
+             aclnnStatus descriptorExpectedRet = ACLNN_SUCCESS)
 {
-    const auto args = BuildAclArgs(testCase);
+    auto args = BuildAclArgs(testCase);
+    if (overrideArgs) {
+        overrideArgs(args);
+    }
     uint64_t workspaceSize = 0;
     auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
                         INPUT(args.qkv, args.qGamma, args.kGamma, args.cosSin, args.slotMapping, args.kCache,
@@ -234,6 +250,24 @@ void RunCase(const QkvRmsNormRopeCacheWithKScaleCase &testCase)
         expectedRet = ACLNN_ERR_PARAM_INVALID;
     } else if (expectedRet == ACLNN_SUCCESS && qOutputQuantized && IsNullArg(testCase.qScaleShape)) {
         expectedRet = ACLNN_ERR_PARAM_NULLPTR;
+    }
+    const auto qOutDims = IsNullArg(testCase.qOutShape) ? vector<int64_t>{} : ParseDims(testCase.qOutShape);
+    const auto qScaleDims = IsNullArg(testCase.qScaleShape) ? vector<int64_t>{} : ParseDims(testCase.qScaleShape);
+    const bool emptyOutput = std::find(qOutDims.begin(), qOutDims.end(), 0) != qOutDims.end() ||
+                             std::find(qScaleDims.begin(), qScaleDims.end(), 0) != qScaleDims.end();
+    if (expectedRet == ACLNN_SUCCESS && (testCase.invalidOutputBuffer || emptyOutput)) {
+        expectedRet = ACLNN_ERR_PARAM_INVALID;
+    }
+    for (const auto &cacheShape : {testCase.kCacheShape, testCase.vCacheShape, testCase.kScaleCacheShape}) {
+        if (expectedRet == ACLNN_SUCCESS && !IsNullArg(cacheShape)) {
+            const auto dims = ParseDims(cacheShape);
+            if (std::any_of(dims.begin(), dims.end(), [](int64_t dim) { return dim <= 0; })) {
+                expectedRet = ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+    }
+    if (overrideArgs) {
+        expectedRet = descriptorExpectedRet;
     }
     EXPECT_EQ(ret, expectedRet) << "caseName=" << testCase.caseName
                                 << ", operatorExpectRet=" << testCase.operatorExpectRet;
@@ -378,6 +412,169 @@ QkvRmsNormRopeCacheWithKScaleCase MakeMropeMxTwoKvHeadsCase()
 TEST(QkvRmsNormRopeCacheWithKScaleAclnn, AcceptsMropeMxFiveOutputContract)
 {
     RunCase(MakeMropeMxCase());
+}
+
+aclnnStatus CheckDescriptorArgs(const QkvRmsNormRopeCacheWithKScaleAclArgs &args)
+{
+    using namespace QkvRmsNormRopeCacheWithKScaleCheck;
+    QkvRmsNormRopeCacheWithKScaleParams params;
+    params.qkv = args.qkv;
+    params.qGamma = args.qGamma;
+    params.kGamma = args.kGamma;
+    params.cosSin = args.cosSin;
+    params.slotMapping = args.slotMapping;
+    params.kCache = args.kCache;
+    params.vCache = args.vCache;
+    params.kScaleCache = args.kScaleCache;
+    params.queryStartLoc = args.queryStartLoc;
+    params.seqLens = args.seqLens;
+    params.rotationOptional = args.rotationOptional;
+    params.vScaleOptional = args.vScaleOptional;
+    params.mropePositionOptional = args.mropePosition;
+    params.headNums = args.headNums;
+    params.layoutQkv = args.layoutQkv;
+    params.layoutQOut = args.layoutQOut;
+    params.mropeSectionOptional = args.mropeSection;
+    params.qOut = args.qOut;
+    params.qScale = args.qScale;
+    params.qQuantMode = QQuantMode::MX_QUANT;
+    params.kQuantMode = KQuantMode::MX_QUANT;
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    params.workspaceSize = &workspaceSize;
+    params.executor = &executor;
+    return QkvRmsNormRopeCacheWithKScaleChecker().CheckParams(params);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, ChecksPrivateAndPublicFormatsForEveryTensor)
+{
+    using Args = QkvRmsNormRopeCacheWithKScaleAclArgs;
+    const vector<aclTensor * Args::*> tensors = {&Args::qkv,
+                                                 &Args::qGamma,
+                                                 &Args::kGamma,
+                                                 &Args::cosSin,
+                                                 &Args::slotMapping,
+                                                 &Args::kCache,
+                                                 &Args::vCache,
+                                                 &Args::kScaleCache,
+                                                 &Args::queryStartLoc,
+                                                 &Args::seqLens,
+                                                 &Args::rotationOptional,
+                                                 &Args::vScaleOptional,
+                                                 &Args::mropePosition,
+                                                 &Args::qOut,
+                                                 &Args::qScale};
+    for (size_t index = 0; index < tensors.size(); ++index) {
+        SCOPED_TRACE(index);
+        for (const auto format : {ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_NCHW}) {
+            SCOPED_TRACE(format);
+            auto args = BuildAclArgs(MakeMropeMxCase());
+            args.*tensors[index] = TensorDesc({2}, ACL_FLOAT, format).ToAclTypeRawPtr();
+            EXPECT_EQ(CheckDescriptorArgs(args),
+                      format == ACL_FORMAT_FRACTAL_NZ ? ACLNN_ERR_PARAM_INVALID : ACLNN_SUCCESS);
+        }
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, RejectsNonContiguousInputs)
+{
+    using Args = QkvRmsNormRopeCacheWithKScaleAclArgs;
+    const vector<aclTensor * Args::*> tensors = {
+        &Args::qkv,           &Args::qGamma,  &Args::kGamma,           &Args::cosSin,         &Args::slotMapping,
+        &Args::queryStartLoc, &Args::seqLens, &Args::rotationOptional, &Args::vScaleOptional, &Args::mropePosition};
+    for (size_t index = 0; index < tensors.size(); ++index) {
+        SCOPED_TRACE(index);
+        RunCase(
+            MakeMropeMxCase(),
+            [&](Args &args) {
+                args.*tensors[index] = TensorDesc({2}, ACL_FLOAT, ACL_FORMAT_ND, {2}, 0, {4}).ToAclTypeRawPtr();
+            },
+            ACLNN_ERR_PARAM_INVALID);
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, ChecksCacheStorageSpanIncludingOffsetAndPadding)
+{
+    using Args = QkvRmsNormRopeCacheWithKScaleAclArgs;
+    const vector<aclTensor * Args::*> caches = {&Args::kCache, &Args::vCache, &Args::kScaleCache};
+    for (size_t index = 0; index < caches.size(); ++index) {
+        const int64_t width = index == 2 ? 4 : 128;
+        const auto dtype = index == 2 ? ACL_FLOAT8_E8M0 : ACL_FLOAT8_E4M3FN;
+        for (const int64_t offset : {0, 7}) {
+            const int64_t requiredElements = offset + 7 * (width + 4) + width;
+            for (const int64_t slack : {-1, 0, 8}) {
+                SCOPED_TRACE(std::to_string(index) + ":" + std::to_string(offset) + ":" + std::to_string(slack));
+                RunCase(
+                    MakeMropeMxCase(),
+                    [&](Args &args) {
+                        args.*caches[index] = TensorDesc({1, 1, 8, width}, dtype, ACL_FORMAT_ND,
+                                                         {8 * (width + 4), 8 * (width + 4), width + 4, 1}, offset,
+                                                         {requiredElements + slack})
+                                                  .ToAclTypeRawPtr();
+                    },
+                    slack < 0 ? ACLNN_ERR_PARAM_INVALID : ACLNN_SUCCESS);
+            }
+        }
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, AcceptsSingletonInputWithNonUnitStride)
+{
+    RunCase(MakeMropeMxCase(), [](QkvRmsNormRopeCacheWithKScaleAclArgs &args) {
+        args.seqLens = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND, {2}, 0, {1}).ToAclTypeRawPtr();
+    });
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, RejectsEveryEmptyOutputDimension)
+{
+    for (const bool qScale : {false, true}) {
+        for (const int64_t dim : {0, 1, 2}) {
+            SCOPED_TRACE(std::to_string(qScale) + ":" + std::to_string(dim));
+            auto testCase = MakeMropeMxCase();
+            auto &shape = qScale ? testCase.qScaleShape : testCase.qOutShape;
+            auto dims = ParseDims(shape);
+            dims[dim] = 0;
+            shape = std::to_string(dims[0]) + ":" + std::to_string(dims[1]) + ":" + std::to_string(dims[2]);
+            testCase.invalidOutputBuffer = true;
+            RunCase(testCase);
+        }
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, RejectsNonContiguousOutputBuffers)
+{
+    for (const bool qScale : {false, true}) {
+        SCOPED_TRACE(qScale);
+        auto testCase = MakeMropeMxCase();
+        const int64_t width = qScale ? 4 : 128;
+        auto &stride = qScale ? testCase.qScaleStride : testCase.qOutStride;
+        auto &storage = qScale ? testCase.qScaleStorageShape : testCase.qOutStorageShape;
+        stride = {width, 5 * width, 1};
+        storage = {8, 5, width};
+        testCase.invalidOutputBuffer = true;
+        RunCase(testCase);
+        stride = {16 * width, width, 1};
+        storage = {10, 8, width};
+        RunCase(testCase);
+    }
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleAclnn, ChecksOutputStorageCapacity)
+{
+    for (const bool qScale : {false, true}) {
+        SCOPED_TRACE(qScale);
+        auto testCase = MakeMropeMxCase();
+        const int64_t width = qScale ? 4 : 128;
+        auto &stride = qScale ? testCase.qScaleStride : testCase.qOutStride;
+        auto &storage = qScale ? testCase.qScaleStorageShape : testCase.qOutStorageShape;
+        stride = {8 * width, width, 1};
+        storage = {1, 8, width};
+        testCase.invalidOutputBuffer = true;
+        RunCase(testCase);
+        storage = {10, 8, width};
+        testCase.invalidOutputBuffer = false;
+        RunCase(testCase);
+    }
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleAclnn, AcceptsModifiedV1PerTokenPerHeadContract)
