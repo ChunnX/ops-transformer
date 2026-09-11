@@ -23,8 +23,8 @@
 #include "common/buffers_policy.h"
 #include "common/util_regbase_mx.h"
 #include "vf/vf_div_cast.h"
-#include "vf/vf_flashupdate_new.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
+#include "vf/vf_flashupdate_new_QBSA.h"
+#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -316,13 +316,13 @@ public:
             LocalTensor<MM_T> expUb = softmaxExpBuf_[loopIdx].template Get<MM_T>();
             if (!isLastS2Loop) {
                 // 中间 tile 保留 fp32 累计值。
-                FlashUpdateNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
+                QbsaVectorApi::FlashUpdateNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             } else {
                 // 最后一个 tile 完成 update 与归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
                 // MXFP8 keeps OUT at zero when the accumulated softmax denominator is zero.
-                FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
+                QbsaVectorApi::FlashUpdateLastNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
@@ -331,8 +331,8 @@ public:
             if (unlikely(isFirstS2Loop)) {
                 // 单 tile 场景单独归一化。
                 LocalTensor<float> sumUb = softmaxSumBuf_[mLoopIdx].template Get<float>();
-                LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, vecMSize,
-                                                                      static_cast<uint16_t>(dTemplateAlign64), 1.0f);
+                QbsaVectorApi::LastDivNew<MM_T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
+                    vec2ResUb, vec2ResUb, sumUb, vecMSize, static_cast<uint16_t>(dTemplateAlign64), 1.0f);
             }
             CopyOutAttentionOut(runInfo, constInfo, vec2ResUb);
         }
@@ -359,7 +359,7 @@ private:
                                      const MxConstInfo &constInfo, uint32_t s2CalcSize)
     {
         static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
-        FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, IS_UPDATE, VF_HAS_ATTEN, S2_SPLIT, SUB_LOOP>(
+        QbsaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, IS_UPDATE, VF_HAS_ATTEN, S2_SPLIT, SUB_LOOP>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
             s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), pScaleValue_, negativeFloatScalar_, preLoopMaxUb,
             preLoopSumUb, firstLoopSumUb);
@@ -568,7 +568,7 @@ private:
                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         LocalTensor<float> lseUb = softmaxLseQueue_.template AllocTensor<float>();
-        ComputeLseOutputVF<float, true>(lseUb, sumUb, maxUb, runInfo.actVecMSize);
+        QbsaVectorApi::ComputeLseOutputVF<float, true>(lseUb, sumUb, maxUb, runInfo.actVecMSize);
         softmaxLseQueue_.template EnQue(lseUb);
         lseUb = softmaxLseQueue_.template DeQue<float>();
         DataCopyExtParams dataCopyParams;

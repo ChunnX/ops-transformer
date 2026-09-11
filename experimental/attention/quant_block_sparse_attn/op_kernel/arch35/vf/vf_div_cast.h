@@ -1,5 +1,5 @@
 /**
- * copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /*!
- * \file vf_div_cast.h
+ * \file vf_div_cast_arch35.h
  * \brief
  */
-#ifndef VF_DIV_CAST_INTERFACE_H
-#define VF_DIV_CAST_INTERFACE_H
+#ifndef VF_DIV_CAST_INTERFACE_ARCH35_H
+#define VF_DIV_CAST_INTERFACE_ARCH35_H
 
 #include "kernel_tensor.h"
 
@@ -211,4 +211,4 @@ __aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor, const Loc
 }
 } // namespace FaVectorApi
 
-#endif // VF_DIV_CAST_INTERFACE_H
+#endif // VF_DIV_CAST_INTERFACE_ARCH35_H
