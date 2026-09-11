@@ -38,15 +38,90 @@ __golden__ = {
 
 # SPEC machine contract tolerance: atol = rtol = 1e-3 for both IO dtypes
 # (fp16 error is already contained by the on-chip fp32 accumulation chain).
-# max_abs_error_limit is the mix_tolerance secondary absolute cap: pdist
-# outputs are unbounded in magnitude (p<1 raises sum^(1/p); wide ranges raise
-# |y| to ~1e3-1e4), so the cap must scale with the output ulp, not stay at the
-# small-value default (0.01/0.1). Observed max_abs_error is always output-
-# magnitude * ulp (~6e-6 rel fp32, ~2 ulp fp16 at the exit CAST_RINT).
+# The fixed max_abs_error_limit values here are the SMALL-magnitude backstop of
+# the scaled cap enforced by the pdist_compare hook below (TestSpec `compare`):
+# pdist outputs are unbounded in magnitude (wide ranges raise |y| to ~1e3-1e4+),
+# and the op-vs-golden difference is exit-rounding noise of at most ~2 ulp of
+# the LARGEST output (fp16 CAST_RINT at the exit; fp32 direct write), so a cap
+# that does not scale with the output magnitude would reject a legitimate
+# 1-ulp fp16 difference in the upper fp16 binades (ulp(3.8e4)=32).
 _TOLERANCE = {
     "float16": {"standard": "mix_tolerance", "rtol": 0.001, "atol": 0.001, "max_abs_error_limit": 2.0},
     "float32": {"standard": "mix_tolerance", "rtol": 0.001, "atol": 0.001, "max_abs_error_limit": 1.0},
 }
+
+# pdist_compare hook parameters (element rule mirrors TTK mix_tolerance).
+_COMPARE_RTOL = 0.001
+_COMPARE_ATOL = 0.001
+_COMPARE_REQUIRED_RATIO = 0.99
+_FIXED_ABS_CAP = {"float16": 2.0, "float32": 1.0}
+_MANTISSA_BITS = {"float16": 10, "float32": 23}
+
+
+def _dtype_ulp(dtype_str, value):
+    """One ulp of `value`'s binade in the golden's dtype (0 for non-positive/inf)."""
+    if value <= 0.0 or not np.isfinite(value):
+        return 0.0
+    return 2.0 ** (np.floor(np.log2(value)) - _MANTISSA_BITS.get(dtype_str, 23))
+
+
+def pdist_compare(*tensors, **kwargs):
+    """TestSpec `compare` hook: mix_tolerance with an output-magnitude-scaled cap.
+
+    Same element rule as TTK mix_tolerance (|a-g| <= atol + rtol*|g|, same-NaN /
+    same-Inf counted equal, matched_ratio >= 0.99). The single deviation is the
+    global absolute cap: instead of a fixed max_abs_error_limit it is
+    max(fixed, 2 * ulp(max|golden|)), so the cap tracks the exit-rounding ulp of
+    the largest actual output instead of an assumed small-magnitude output.
+    Shared by the kernel / aclnn / geir pathways (outputs..., goldens...).
+    """
+    half = len(tensors) // 2
+    results = []
+    for output, golden in zip(tensors[:half], tensors[half:]):
+        a = np.asarray(output)
+        g = np.asarray(golden)
+        dtype_str = str(g.dtype)
+        if a.size == 0 or g.size == 0:
+            same_size = a.size == g.size
+            results.append({"pass": same_size, "precision": 100.0 if same_size else 0.0,
+                            "metrics": {"standard": "pdist_scaled_mix", "note": "empty output"}})
+            continue
+        t = np.promote_types(np.dtype(np.float32), np.promote_types(a.dtype, g.dtype))
+        a = a.astype(t)
+        g = g.astype(t)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            err = np.abs(a - g)
+            a_nan, g_nan = np.isnan(a), np.isnan(g)
+            a_inf, g_inf = np.isinf(a), np.isinf(g)
+            same_nan = a_nan & g_nan
+            same_inf = a_inf & g_inf & (np.sign(a) == np.sign(g))
+            finite = np.isfinite(a) & np.isfinite(g)
+            elem_ok = same_nan | same_inf | (finite & (err <= _COMPARE_ATOL + _COMPARE_RTOL * np.abs(g)))
+            matched_ratio = float(elem_ok.sum()) / a.size
+            mismatch = (a_nan | g_nan | a_inf | g_inf) & ~same_nan & ~same_inf
+            if mismatch.any():
+                max_abs_error = float("inf")
+            else:
+                finite_err = err[finite]
+                max_abs_error = float(finite_err.max()) if finite_err.size else 0.0
+            gmax = float(np.abs(g[finite]).max()) if finite.any() else 0.0
+            cap = max(_FIXED_ABS_CAP.get(dtype_str, 1.0), 2.0 * _dtype_ulp(dtype_str, gmax))
+            passed = matched_ratio >= _COMPARE_REQUIRED_RATIO and max_abs_error <= cap
+        item = {
+            "pass": bool(passed),
+            "precision": matched_ratio * 100.0,
+            "metrics": {
+                "standard": "pdist_scaled_mix",
+                "matched_ratio": matched_ratio,
+                "max_abs_error": None if np.isinf(max_abs_error) else max_abs_error,
+                "scaled_max_abs_error_limit": cap,
+                "golden_max_abs": gmax,
+            },
+        }
+        if not passed:
+            item["diff_indices"] = np.where(~elem_ok)[0].tolist()
+        results.append(item)
+    return results
 
 _INF_STRINGS = ("inf", "+inf", "infinity", "+infinity")
 
@@ -73,12 +148,13 @@ def _pdist_fp32_np(x, p):
     with a MagicMock at import time (build-only stub). Any torch call after
     that would silently compute on mocks.
 
-    Semantics follow op_kernel/pdist.py (frozen SPEC contract):
+    Semantics follow op_kernel/pdist.py (frozen SPEC contract, GPU/CUDA aligned):
       - 0 < p < +inf : y[idx] = ( sum_k |x[i,k]-x[j,k]|**p )**(1/p)   Minkowski
       - p == 0       : y[idx] = sum_k (x[i,k] != x[j,k])               Hamming
-                       (NaN dims count as mismatched, no NaN in output)
+                        (NaN dims count as mismatched, no NaN in output)
       - p == +inf    : y[idx] = max_k |x[i,k]-x[j,k]|                  Chebyshev
-                       (NaN propagates per pair via amax)
+                        (NaN dims ignored; all-NaN pair -> 0. CUDA
+                        `if (diff > agg)` comparison-max semantics)
     Output is the upper-triangular row-major vector of length N*(N-1)/2 with
     idx = i*(2*N-i-1)//2 + (j-i-1).
     """
@@ -98,7 +174,8 @@ def _pdist_fp32_np(x, p):
         if p == 0.0:
             dm = np.count_nonzero(diff, axis=-1).astype(np.float32)
         elif math.isinf(p):
-            dm = np.amax(diff, axis=-1)
+            # GPU (CUDA) inf norm: comparison max ignores NaN dims; all-NaN pair -> 0
+            dm = np.where(np.isnan(diff), np.float32(0.0), diff).max(axis=-1)
         else:
             dm = np.power(np.power(diff, p).sum(axis=-1), 1.0 / p)
         # Pairs (r, t) with t > r in row-major order: exactly the global
@@ -122,10 +199,11 @@ def _golden_common(input_x, p):
         output = _pdist_fp32_np(xf, p)
     else:
         # Non-aligned shapes (M tail / pair tail): torch small-op composition
-        # (abs/pow/sum/amax/count_nonzero — NOT F.pdist, whose p=0 NaN
-        # semantics diverge from the kernel contract). Falls back to the numpy
-        # reference only when the real torch module is not recoverable in this
-        # process (pypto stub with no pre-imported torch.* submodule).
+        # (abs/pow/sum/where-amax/count_nonzero — NOT F.pdist: torch CPU p=0
+        # and p=+inf NaN handling diverges from the GPU-aligned contract).
+        # Falls back to the numpy reference only when the real torch module is
+        # not recoverable in this process (pypto stub with no pre-imported
+        # torch.* submodule).
         try:
             output = _pdist_fp32_torch(xf, p)
         except RuntimeError:
@@ -189,10 +267,11 @@ _TORCH = None
 def _pdist_fp32_torch(x, p):
     """Chunked FP32 pairwise p-norm distance on an [N, M] numpy array.
 
-    Torch small-operator composition (per contract branch):
+    Torch small-operator composition (per contract branch, GPU/CUDA aligned):
       - 0 < p < +inf : abs -> pow(p) -> sum(M) -> pow(1/p)
       - p == 0       : abs -> count_nonzero(M)   (NaN != 0, counted, no NaN out)
-      - p == +inf    : abs -> amax(M)            (NaN propagates per pair)
+      - p == +inf    : abs -> where(isnan, 0) -> amax(M)  (NaN dims ignored,
+                       all-NaN pair -> 0 — CUDA comparison-max semantics)
     Same chunking/order as _pdist_fp32_np; same upper-triangular layout.
     """
     torch = _real_torch()
@@ -214,7 +293,8 @@ def _pdist_fp32_torch(x, p):
             if p == 0.0:
                 dm = torch.count_nonzero(diff, dim=-1).to(torch.float32)
             elif math.isinf(p):
-                dm = torch.amax(diff, dim=-1)
+                # GPU-aligned: comparison max ignores NaN dims (all-NaN pair -> 0)
+                dm = torch.where(torch.isnan(diff), torch.zeros((), dtype=diff.dtype), diff).amax(dim=-1)
             else:
                 dm = diff.pow(p).sum(dim=-1).pow(1.0 / p)
             # Pairs (r, t) with t > r in row-major order: exactly the global
@@ -281,6 +361,7 @@ class PdistTestSpec:
         return [pdist_golden(input_x, p=p, **kwargs)]
 
     tolerance = _TOLERANCE
+    compare = staticmethod(pdist_compare)
 
 
 class AclnnPdistTestSpec:
@@ -291,6 +372,7 @@ class AclnnPdistTestSpec:
         return aclnn_pdist_golden(self, p=p, out=out, **kwargs)
 
     tolerance = _TOLERANCE
+    compare = staticmethod(pdist_compare)
 
 
 class AclnnPdistForwardTestSpec:
@@ -301,3 +383,4 @@ class AclnnPdistForwardTestSpec:
         return aclnn_pdist_forward_golden(self, pScalar=pScalar, out=out, **kwargs)
 
     tolerance = _TOLERANCE
+    compare = staticmethod(pdist_compare)

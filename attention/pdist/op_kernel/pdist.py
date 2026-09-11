@@ -23,7 +23,7 @@ verifier PASS 15/15, 16/16 cases) into the ops-transformer AscendC packaging:
     iteration; the anchor row x[i] is broadcast per-m with BRC_B32.
   * M-blocking with ping-pong partial-sum state: M blocks of M_BLK=128 columns
     accumulate into a resident acc tile pair ([2, 64] fp32, row 0 = partial sum,
-    row 1 = NaN counter for PBranch 1/5), rotated with explicit indices and
+    row 1 = NaN counter for PBranch 5), rotated with explicit indices and
     ordered by vf.mem_bar.
   * PBranch folding (TilingKey): PBranch (6 values) compiles a dedicated
     instance per p-class; every variant's inner m loop is branch-free.
@@ -107,10 +107,6 @@ def pdist_accum_init_vf(trans_tile, anchor_tile, acc_out, vc: pl.DT_INT64, p_val
     if PBranch == 0:
         ones_r = vf.full(1.0, preg, dtype=pl.DT_FP32)
         zeros_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
-    elif PBranch == 1:
-        ones_r = vf.full(1.0, preg, dtype=pl.DT_FP32)
-        zeros_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
-        nan_cnt = vf.full(0.0, preg, dtype=pl.DT_FP32)
     elif PBranch == 5:
         one_r = vf.full(1.0, preg, dtype=pl.DT_FP32)
         zeros_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
@@ -125,11 +121,11 @@ def pdist_accum_init_vf(trans_tile, anchor_tile, acc_out, vc: pl.DT_INT64, p_val
             dp = vf.select(ones_r, zeros_r, ne_m)
             acc = vf.add(acc, dp, preg)
         elif PBranch == 1:
-            # Chebyshev max chain + explicit NaN guard chain
-            acc = vf.max(acc, d, preg)
-            nan_m = vf.ne(d, d, preg)
-            nan_f = vf.select(ones_r, zeros_r, nan_m)
-            nan_cnt = vf.add(nan_cnt, nan_f, preg)
+            # Chebyshev comparison max (GPU/CUDA aligned): NaN never wins the
+            # comparison (gt(NaN, acc) is false), so NaN dims are ignored and an
+            # all-NaN pair keeps acc = 0 — identical to CUDA `if (diff > agg)`.
+            gt_m = vf.gt(d, acc, preg)
+            acc = vf.select(d, acc, gt_m)
         elif PBranch == 2:
             dp = vf.mul(d, d, preg)
             acc = vf.add(acc, dp, preg)
@@ -151,8 +147,6 @@ def pdist_accum_init_vf(trans_tile, anchor_tile, acc_out, vc: pl.DT_INT64, p_val
             nan_f = vf.select(one_r, zeros_r, nan_m)
             nan_cnt = vf.add(nan_cnt, nan_f, preg)
     vf.store_align(acc_out, acc, preg)
-    if PBranch == 1:
-        vf.store_align(acc_out + 64, nan_cnt, preg)
     if PBranch == 5:
         vf.store_align(acc_out + 64, nan_cnt, preg)
     # VST_VLD: this block's store -> next block/finalize load (RAW)
@@ -167,32 +161,28 @@ def pdist_accum_acc_vf(trans_tile, anchor_tile, acc_in, acc_out, vc: pl.DT_INT64
     accumulating, writing slot (mblk+1)%2."""
     preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     acc = vf.load_align(acc_in, 0)
-    if PBranch == 1:
-        nan_cnt = vf.load_align(acc_in, 64)
     if PBranch == 5:
         nan_cnt = vf.load_align(acc_in, 64)
     if PBranch == 0:
-        ones_r = vf.full(1.0, preg, dtype=pl.DT_FP32)
-        zeros_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
-    elif PBranch == 1:
         ones_r = vf.full(1.0, preg, dtype=pl.DT_FP32)
         zeros_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
     elif PBranch == 5:
         one_r = vf.full(1.0, preg, dtype=pl.DT_FP32)
         zeros_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
     for m in pl.range(0, vc):
-        bcast = vf.load_align(anchor_tile, m, dist=pl.LoadDist.BRC_B32)
-        rv = vf.load_align(trans_tile, m * LANES)
-        d = vf.abs_sub(bcast, rv, preg)
+        bcast = vf.load_align(anchor_tile, m, dist=pl.LoadDist.BRC_B32)  # x[i, m0+m] -> 64 lanes
+        rv = vf.load_align(trans_tile, m * LANES)                        # lane k = x[j0+k, m0+m]
+        d = vf.abs_sub(bcast, rv, preg)                                  # |x_i - x_jk|
         if PBranch == 0:
             ne_m = vf.ne(d, 0.0, preg)
             dp = vf.select(ones_r, zeros_r, ne_m)
             acc = vf.add(acc, dp, preg)
         elif PBranch == 1:
-            acc = vf.max(acc, d, preg)
-            nan_m = vf.ne(d, d, preg)
-            nan_f = vf.select(ones_r, zeros_r, nan_m)
-            nan_cnt = vf.add(nan_cnt, nan_f, preg)
+            # Chebyshev comparison max (GPU/CUDA aligned): NaN never wins the
+            # comparison (gt(NaN, acc) is false), so NaN dims are ignored and an
+            # all-NaN pair keeps acc = 0 — identical to CUDA `if (diff > agg)`.
+            gt_m = vf.gt(d, acc, preg)
+            acc = vf.select(d, acc, gt_m)
         elif PBranch == 2:
             dp = vf.mul(d, d, preg)
             acc = vf.add(acc, dp, preg)
@@ -213,8 +203,6 @@ def pdist_accum_acc_vf(trans_tile, anchor_tile, acc_in, acc_out, vc: pl.DT_INT64
             nan_f = vf.select(one_r, zeros_r, nan_m)
             nan_cnt = vf.add(nan_cnt, nan_f, preg)
     vf.store_align(acc_out, acc, preg)
-    if PBranch == 1:
-        vf.store_align(acc_out + 64, nan_cnt, preg)
     if PBranch == 5:
         vf.store_align(acc_out + 64, nan_cnt, preg)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
@@ -233,12 +221,8 @@ def pdist_finalize_vf(acc_tile, out_tile, vp: pl.DT_INT64, inv_p: pl.DT_FP32):
     if PBranch == 0:
         y = acc  # identity: count <= M < 2^24, exact in fp32
     elif PBranch == 1:
-        nan_cnt = vf.load_align(acc_tile, 64)
-        bad = vf.ne(nan_cnt, 0.0, preg)
-        zero_r = vf.full(0.0, preg, dtype=pl.DT_FP32)
-        ninf_r = vf.ln(zero_r, preg)               # log(0) = -inf
-        nan_r = vf.abs_sub(ninf_r, ninf_r, preg)   # |-inf - (-inf)| = NaN
-        y = vf.select(nan_r, acc, bad)             # any NaN dim -> NaN output
+        # GPU-aligned comparison max already ignored NaN dims (all-NaN pair -> 0)
+        y = acc
     elif PBranch == 2:
         y = vf.sqrt(acc, preg)
     elif PBranch == 3:

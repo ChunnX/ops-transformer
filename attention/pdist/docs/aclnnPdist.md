@@ -103,7 +103,7 @@ aclnnStatus aclnnPdist(
       <td>p（float）</td>
       <td>输入</td>
       <td>范数阶。</td>
-      <td><ul><li>p≥0或+inf，默认2.0。</li><li>p=0：统计不相等维度数（NaN维度计为不相等）。</li><li>p=+inf：最大绝对差。</li><li>0<p<inf：幂和的1/p次方。</li><li>p<0或NaN报参数错误。</li></ul></td>
+      <td><ul><li>p≥0或+inf，默认2.0。</li><li>p=0：统计不相等维度数（NaN维度计为不相等）。</li><li>p=+inf：最大绝对差（忽略NaN维度）。</li><li>0<p<inf：幂和的1/p次方。</li><li>p<0或NaN报参数错误。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -271,7 +271,7 @@ aclnnStatus aclnnPdist(
 
   - 特殊约束
     - x必须为行主序连续的二维张量。
-    - NaN语义：p=0时NaN维度计为不相等；p=+inf与一般p（非0/0.5/1/2）含NaN维度的行对输出NaN；p∈{0.5, 1, 2}按IEEE算术自然传播。
+    - NaN语义（对齐GPU/CUDA）：p=0时NaN维度计为不相等；p=+inf忽略NaN维度（输出非NaN维度的最大绝对差，全NaN行对输出0）；一般p（非0/0.5/1/2）含NaN维度的行对输出NaN；p∈{0.5, 1, 2}按IEEE算术自然传播。
     - 输出上溢行为与PyTorch对齐：fp16输出超出[0, 65504]时上溢为inf，不属验收范围。
 
 ## 调用示例
