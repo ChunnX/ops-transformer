@@ -230,6 +230,9 @@ constexpr uint32_t A2AV_GMM_MAX_SEG_NUM = 256;
 constexpr uint32_t A2AV_GMM_HCCL_PARAM_RANK_NUM = 128;
 static_assert(A2AV_GMM_MAX_RANK_NUM <= A2AV_GMM_HCCL_PARAM_RANK_NUM,
               "APACE rank capacity must fit the HCCL parameter ABI");
+// On-device binary-search stage: run the first expert's scale and data
+// collectives sequentially, without Blaze compute.
+constexpr bool A2AV_GMM_DIAG_FIRST_EXPERT_SERIAL_COMM = true;
 /*!
  * \brief hcomm 版 tiling 数据（host 构建后随 kernel tiling buffer 下发）
  */

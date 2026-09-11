@@ -56,7 +56,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
     usingApaceImpl_ = CheckApaceImplCapable();
     OP_LOGI(context_->GetNodeName(),
             "AlltoAllvQuantGroupedMatMul MX implementation: %s, rankSize=%lu, sharedExpert=%d, permuteOut=%d.",
-            usingApaceImpl_ ? "Apace(pure-AIC HCCL/Blaze)" : "legacy", epWorldSize_,
+            usingApaceImpl_ ? "Apace(AIV-hcomm/AIC-Blaze)" : "legacy", epWorldSize_,
             static_cast<int>(hasSharedExpertFlag_), static_cast<int>(permuteOutFlag_));
     return ge::GRAPH_SUCCESS;
 }
@@ -89,8 +89,8 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
     apaceTilingData_.mc2CcTiling = tilingData->hcclA2avTilingInfo.a2avCcTiling;
     OP_LOGI(opName,
             "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
-            "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u "
-            "scaleTransport=same-as-data",
+            "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u initBarrier=1 "
+            "scaleTransport=same-as-data diag=first-expert-serial-comm",
             epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
             apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
             apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset,
@@ -107,7 +107,8 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::PostTiling()
     }
     const char *opName = context_->GetNodeName();
     MC2_CHECK_LOG_RET(opName, BuildApaceTiling());
-    // 以 apace 结构体覆写 tiling buffer，并按 AIC_ONLY 调整 blockDim。
+    // 以 apace 结构体覆写 tiling buffer。DoOpTiling 已设置 MIX_AIC_1_2 blockDim，
+    // APACE 的 AIV 负责 HCCL，AIC 负责 Blaze，因此保持该 blockDim。
     auto *rawTiling = context_->GetRawTilingData();
     OP_TILING_CHECK(rawTiling == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "rawTilingData"),
                     return ge::GRAPH_FAILED);
@@ -121,7 +122,6 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::PostTiling()
     OP_TILING_CHECK(ret != EOK, OP_LOGE_WITHOUT_REPORT(opName, "memcpy_s apace tiling data failed, ret=%d.", ret),
                     return ge::GRAPH_FAILED);
     rawTiling->SetDataSize(sizeof(Apace::hcommA2avQuantGmmTilingData));
-    context_->SetBlockDim(aicCoreNum_);
     return ge::GRAPH_SUCCESS;
 }
 
