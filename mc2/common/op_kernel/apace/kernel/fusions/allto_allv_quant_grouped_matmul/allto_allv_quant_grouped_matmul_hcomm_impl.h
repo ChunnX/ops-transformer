@@ -36,9 +36,23 @@
 #include "../../matmul/grouped_matmul/qgmm_mx_kernel.h"
 #include "include/tensor_api/tensor.h"
 #include "allto_allv_quant_grouped_matmul_tiling_data.h"
-#include "../../../../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 
 namespace Apace {
+
+// Keep the MIX cross-core protocol local to the APACE implementation.  A
+// common/APACE header must not include an operator-private header because the
+// binary packaging step renames the operator source directory with an _apt
+// suffix and does not preserve that source-tree-relative path.
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIV_TO_AIC = 4U;
+static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 16U;
+#else
+static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIV_TO_AIC = 2U;
+static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 0U;
+#endif
+static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIC_BARRIER = 0U;
+static constexpr uint16_t A2AV_GMM_SYNC_FLAG_COMM_DONE = 8U;
+static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIC_BARRIER = 9U;
 
 template <typename T>
 constexpr uint64_t GetA2avHcclDataType()
@@ -152,10 +166,8 @@ public:
             RunExpertMatmul(expertIdx);
             // Keep every AIC on the same expert before reusing the cross-core
             // communication-ready event for the next expert.
-            AscendC::CrossCoreSetFlag<MC2KernelTemplate::SYNC_MODE_AIC_BARRIER, PIPE_FIX>(
-                MC2KernelTemplate::SYNC_FLAG_ID_AIC_BARRIER);
-            AscendC::CrossCoreWaitFlag<MC2KernelTemplate::SYNC_MODE_AIC_BARRIER, PIPE_S>(
-                MC2KernelTemplate::SYNC_FLAG_ID_AIC_BARRIER);
+            AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_FIX>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
+            AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_S>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
         }
         if (tilingData_->localMatmul != 0U) {
             RunLocalMatmul();
@@ -170,11 +182,10 @@ private:
 
     __aicore__ inline void WaitCommunicationDone()
     {
-        AscendC::CrossCoreWaitFlag<MC2KernelTemplate::SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
-            MC2KernelTemplate::SYNC_FLAG_ID_COMM_DONE);
+        AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(A2AV_GMM_SYNC_FLAG_COMM_DONE);
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-        AscendC::CrossCoreWaitFlag<MC2KernelTemplate::SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
-            MC2KernelTemplate::SYNC_FLAG_ID_COMM_DONE + MC2KernelTemplate::SYNC_FLAG_AIV1_OFFSET);
+        AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
+            A2AV_GMM_SYNC_FLAG_COMM_DONE + A2AV_GMM_SYNC_FLAG_AIV1_OFFSET);
 #endif
     }
 
@@ -193,9 +204,8 @@ private:
             // Match A2avGmmScheduler: first make AIV0's wait visible to all
             // AIVs, then both vector sub-blocks notify their paired AIC.
             AscendC::SyncAll<true>();
-            AscendC::CrossCoreSetFlag<MC2KernelTemplate::SYNC_MODE_AIV_TO_AIC, PIPE_V>(
-                MC2KernelTemplate::SYNC_FLAG_ID_COMM_DONE +
-                MC2KernelTemplate::SYNC_FLAG_AIV1_OFFSET * AscendC::GetSubBlockIdx());
+            AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_V>(
+                A2AV_GMM_SYNC_FLAG_COMM_DONE + A2AV_GMM_SYNC_FLAG_AIV1_OFFSET * AscendC::GetSubBlockIdx());
         }
         AscendC::SyncAll<false>();
         hccl_.Finalize();
