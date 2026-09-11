@@ -11,10 +11,10 @@
 """
 HIF8 Flash Attention Golden
 
-功能：生成 BNSD 数据 → per-tensor 量化 → CPU golden 计算 → TND layout 转换 → 精度对比
+功能：生成 BNSD 数据 → per-tensor 量化 → CPU golden 计算 → INPUT_LAYOUT 转换 → 精度对比
 HIF8: Q/K/V 各只有一个 per-tensor FP32 scale (shape=(1,))
       descale 直接为 FP32 标量，无需 E8M0 转换
-      仅支持 TND layout，不支持 PA
+      支持 TND/BSND/BNSD layout（由用例 input_layout 指定），不支持 PA
       输出固定 BF16
 """
 
@@ -372,10 +372,10 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
     S_ij = S_ij.masked_fill(mask_j, float("-inf"))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
+    m_block_j = m_block_j - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
-    m_block_j_copy = m_block_j - ln_p_scale
 
-    P_ij_raw = torch.exp(S_ij - m_block_j_copy)
+    P_ij_raw = torch.exp(S_ij - m_block_j)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = hif8_cast_p(P_ij_raw)
 
@@ -759,7 +759,7 @@ def prepare_npu_inputs(
     qr_bf16=None,
     kr_bf16=None,
 ):
-    """准备 NPU 侧入参 (TND layout 转换 / descale 直接用 FP32)
+    """准备 NPU 侧入参 (按 INPUT_LAYOUT 转换 / descale 直接用 FP32)
     HIF8: descale 是 per-tensor FP32 标量 shape (1,), 无需 E8M0 转换
     """
     if torch_npu is not None:
@@ -875,7 +875,7 @@ def npu_hif8_fa(
     qr_bf16=None,
     kr_bf16=None,
 ):
-    """调用 NPU 算子 (HIF8 quant_mode=0, TND layout)"""
+    """调用 NPU 算子 (HIF8 quant_mode=0, layout 由 INPUT_LAYOUT 决定)"""
     inputs = prepare_npu_inputs(
         q_fp8,
         k_fp8,
@@ -896,7 +896,8 @@ def npu_hif8_fa(
     )
 
     logger.info(
-        "[NPU] 调用 HIF8 TND 模式 (GRAPH_PATH=%d)...",
+        "[NPU] 调用 HIF8 %s 模式 (GRAPH_PATH=%d)...",
+        INPUT_LAYOUT,
         GRAPH_PATH,
     )
     atten_out, lse_out = hif8_fa_torch_npu(**inputs)
@@ -1084,7 +1085,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cache-dir", default=None, help="缓存目录路径（默认 golden_cache/）"
     )
+    parser.add_argument(
+        "--softmax-scale", type=float, default=None, help="覆写 softmax_scale (默认 None=1/sqrt(d))"
+    )
     args = parser.parse_args()
+
+    if args.softmax_scale is not None:
+        SOFTMAX_SCALE = args.softmax_scale
 
     raw_parts = {m.strip() for m in args.mode.split(",") if m.strip()}
     invalid = raw_parts - _VALID_MODES
@@ -1099,7 +1106,7 @@ if __name__ == "__main__":
     logger.info("HIF8 Flash Attention Golden  [mode=%s, case=%s]", mode, case_name)
     logger.info("输出: 逐元素表格 + 统计汇总 (PctRlt 通过率)")
     logger.info("=" * 60)
-    logger.info("场景: TND (HIF8 仅支持 TND)")
+    logger.info("场景: %s", INPUT_LAYOUT)
     logger.info("INPUT_LAYOUT=%s, Q_SCALE_LAYOUT=%s", INPUT_LAYOUT, Q_SCALE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
     logger.info(
@@ -1167,8 +1174,9 @@ if __name__ == "__main__":
             p_scale,
             _get_seqused_q(),
             _get_seqused_kv(),
-            qr_bf16,
-            kr_bf16,
+            softmax_scale=SOFTMAX_SCALE,
+            qr_bf16=qr_bf16,
+            kr_bf16=kr_bf16,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
     else:
