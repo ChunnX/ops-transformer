@@ -17,12 +17,12 @@
 
 #include "kernel_operator.h"
 #include "quant_block_sparse_attn_common_arch35.h"
-#include "common/CopyInL1.h"
-#include "common/FixpipeOut.h"
-#include "common/buffer_manager.h"
-#include "common/buffers_policy.h"
-#include "common/matmul.h"
-#include "common/util_regbase_mx.h"
+#include "../common/CopyInL1_QBSA.h"
+#include "../common/FixpipeOut.h"
+#include "../common/attn_buffer_manager.h"
+#include "../common/buffers_policy.h"
+#include "../common/matmul_QBSA.h"
+#include "../common/util_regbase_QBSA.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -331,7 +331,6 @@ private:
         keyShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
         keyShape.copyRowNumAlign = copyRowNumAlign;
         keyShape.pageStride = constInfo.paBlockStride;
-        keyShape.rowStride = constInfo.dSize;
 
         // KScale GM 为 [physicalBlock,kvHeads,blockSize,D/64,2]，单行使用 DN2NZ。
         PAShape keyScaleShape;
@@ -342,7 +341,6 @@ private:
         keyScaleShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
         keyScaleShape.copyRowNumAlign = copyRowNumAlign;
         keyScaleShape.pageStride = constInfo.n2Size * constInfo.kScaleN2D;
-        keyScaleShape.rowStride = keyScaleShape.headDim;
 
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
@@ -391,7 +389,6 @@ private:
         valueShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
         valueShape.copyRowNumAlign = AlignUp64(realK);
         valueShape.pageStride = constInfo.paBlockStride;
-        valueShape.rowStride = constInfo.dSizeV;
 
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
@@ -437,7 +434,6 @@ private:
         valueScaleShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
         valueScaleShape.copyRowNumAlign = totalGroupCount;
         valueScaleShape.pageStride = constInfo.n2Size * constInfo.valueScaleN2D;
-        valueScaleShape.rowStride = valueScaleShape.headDim;
 
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];

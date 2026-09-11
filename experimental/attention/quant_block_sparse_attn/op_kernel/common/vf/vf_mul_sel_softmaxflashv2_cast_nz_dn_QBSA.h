@@ -7,37 +7,36 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 /*!
- * \file vf_mul_sel_softmaxflashv2_cast_nz_dn.h
- * \brief
+ * \file vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h
+ * \brief QBSA sparse-mask and quantization layouts for FP8/MXFP8 softmax.
  */
+#ifndef MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_QBSA_H_
+#define MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_QBSA_H_
 
-#ifndef MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
-#define MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
-#include "kernel_tensor.h"
 #include "vf_basic_block_utils.h"
-namespace FaVectorApi {
-using AscendC::LocalTensor;
-using namespace AscendC;
-using namespace Reg;
+#include "vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 
-#define VMULSCVT false
-#define DROPOUT false
+namespace QbsaVectorApi {
+
+using namespace AscendC;
+using namespace AscendC::Reg;
+using regbaseutil::VselrIndexEnum;
+using FaVectorApi::INV_LN2;
+using FaVectorApi::LN2;
+using FaVectorApi::castTraitNoneZero;
+using FaVectorApi::castTraitRintZero;
+using FaVectorApi::castTraitRintOne;
+using FaVectorApi::castTraitRintTwo;
+using FaVectorApi::castTraitRintThree;
+
+// The first four index-buffer slots retain the attention/common layout.
+// QBSA additionally gathers per-row Q scales from slot 4.
+constexpr uint32_t QSCALE_GATHER_INDEX = 4;
 
 // Empty-row lse sentinel, equivalent to common.h QBSA_EMPTY_LSE_VALUE(-FLT_MAX).
 constexpr float VF_QBSA_EMPTY_LSE_VALUE = -3.4028234663852886e38F;
-
-// Layout selectors for unpacking the four FP8 lanes produced by a B32 -> B8
-// cast.  The unpacked values are accumulated into the softmax denominator so
-// C2's numerator and denominator use exactly the same quantized P.
-constexpr static AscendC::Reg::CastTrait QBSA_CAST_B8_TO_B32_ZERO = {RegLayout::ZERO, SatMode::UNKNOWN,
-                                                                     MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::Reg::CastTrait QBSA_CAST_B8_TO_B32_ONE = {RegLayout::ONE, SatMode::UNKNOWN,
-                                                                    MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::Reg::CastTrait QBSA_CAST_B8_TO_B32_TWO = {RegLayout::TWO, SatMode::UNKNOWN,
-                                                                    MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-constexpr static AscendC::Reg::CastTrait QBSA_CAST_B8_TO_B32_THREE = {RegLayout::THREE, SatMode::UNKNOWN,
-                                                                      MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
 // Safe pre-pad value for AttenTail variants. Must be a large negative finite float
 // so that (pad_value * qScale * kScale) does NOT overflow to -inf/NaN before the
@@ -1166,9 +1165,7 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        const float pScale = 1.0f)
 {
     __ubuf__ uint32_t *qGatherIdxUb =
-        (__ubuf__ uint32_t *)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)]
-                                  .template Get<uint32_t>()
-                                  .GetPhyAddr());
+        (__ubuf__ uint32_t *)(vselrIndexesBuf[QSCALE_GATHER_INDEX].template Get<uint32_t>().GetPhyAddr());
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
@@ -2926,28 +2923,6 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(
     }
 }
 
-template <typename T>
-__simd_vf__ inline void BroadCastMaxSumVF(__ubuf__ float *out_ub, __ubuf__ float *ori_ub, const uint16_t loopM)
-{
-    RegTensor<float> broadcast_reg;
-    MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
-    for (uint16_t i = 0; i < loopM; ++i) {
-        LoadAlign<T, Reg::LoadDist::DIST_E2B_B32>(broadcast_reg, ori_ub + i * 8);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)out_ub + i * 64, broadcast_reg, preg_all);
-    }
-}
+} // namespace QbsaVectorApi
 
-template <typename T>
-__aicore__ inline void BroadcastMaxSum(const LocalTensor<T> &outTensor, const LocalTensor<T> &oriTensor,
-                                       uint32_t vecS1RealSize)
-{
-    __ubuf__ float *out_ub = (__ubuf__ T *)outTensor.GetPhyAddr();
-    __ubuf__ float *ori_ub = (__ubuf__ T *)oriTensor.GetPhyAddr();
-
-    // Align8, broadcast one element to 8 elements, one register can store 64 elements,
-    // so we can handle 64 / 8 = 8 elements per loop.
-    uint16_t loopM = (vecS1RealSize + 7) >> 3;
-    BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
-}
-} // namespace FaVectorApi
-#endif // MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_H_
+#endif // MUL_SEL_SOFTMAXFLASHV2_CAST_NZ_DN_QBSA_H_

@@ -1,5 +1,5 @@
 /**
- * copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 #if (__NPU_ARCH__ == 5102)
 #include "buffer_mix_core.h"
 #else
-#include "buffer.h"
+#include "attn_buffer.h"
 #endif
 
 // L1  TPosition::A1
@@ -27,36 +27,47 @@
 // L0C TPosition::CO1
 // UB  TPosition::VECIN
 namespace fa_base_matmul {
-template<BufferType bufferType>
+template <BufferType bufferType>
 class BufferManager {
     using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
-    using OffsetType = std::conditional_t<bufferType == BufferType::GM, uint64_t, uint32_t>;
+
 public:
-    __aicore__ inline void Init(TPipe *pipe, uint32_t size) {
+    __aicore__ inline void Init(TPipe *pipe, uint32_t size)
+    {
         static_assert(bufferType != BufferType::GM, "GM should use workspace.");
         TBuf<BufferInfo<bufferType>::Position> tbuf;
         pipe->InitBuffer(tbuf, size);
         mem_ = tbuf.template Get<uint8_t>();
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t* workspace) {
-        static_assert(bufferType == BufferType::GM, "BufferType should be GM.");
-        mem_.SetGlobalBuffer((__gm__ uint8_t*)workspace);
+    // 静态Tensor使用这个函数
+    __aicore__ inline void Init(uint32_t size)
+    {
+        static_assert(bufferType != BufferType::GM, "GM should use workspace.");
+        mem_ = LocalTensor<uint8_t>(BufferInfo<bufferType>::Position, 0, size);
     }
 
-    template<SyncType syncType = SyncType::INNER_CORE_SYNC>
-    __aicore__ inline Buffer<bufferType, syncType> AllocBuffer(uint32_t size) {
+    __aicore__ inline void Init(__gm__ uint8_t *workspace)
+    {
+        static_assert(bufferType == BufferType::GM, "BufferType should be GM.");
+        mem_.SetGlobalBuffer((__gm__ uint8_t *)workspace);
+    }
+
+    template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
+    __aicore__ inline Buffer<bufferType, syncType, syncMode> AllocBuffer(uint32_t size)
+    {
         TensorType temp = mem_[offset_];
         offset_ += size;
-        return Buffer<bufferType, syncType>(temp, size);
+        return Buffer<bufferType, syncType, syncMode>(temp, size);
     }
 
-    template<SyncType syncType = SyncType::INNER_CORE_SYNC>
-    __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType> &buffer){
-    }
+    template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
+    __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType, syncMode> &buffer)
+    {}
+
 private:
-    OffsetType offset_ = 0;
+    uint32_t offset_ = 0;
     TensorType mem_;
 };
-}
+} // namespace fa_base_matmul
 #endif

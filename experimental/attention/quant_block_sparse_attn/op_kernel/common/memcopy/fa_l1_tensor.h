@@ -1,5 +1,5 @@
 /**
- * copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,13 +9,35 @@
  */
 
 /*!
- * \file FixpipeOut.h
+ * \file fa_l1_tensor.h
  * \brief
  */
-#ifndef FIXPIPEOUT_H
-#define FIXPIPEOUT_H
+#ifndef FA_L1_TENSOR_H
+#define FA_L1_TENSOR_H
 
-constexpr FixpipeConfig PFA_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
-constexpr FixpipeConfig FA_CFG_NZ_UB = {CO2Layout::NZ, true}; // 不使能NZ2ND，输出数据格式为NZ格式; true: 用于用户指定目的地址的位置是否是UB
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_vec_intf.h"
+#include "kernel_cube_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+
+using AscendC::LocalTensor;
+
+enum class L1Format {
+    NZ = 0
+};
+
+enum class ScaleTrans {
+    NO_TRANS = 0,
+    ND2NZ = 1,
+    DN2NZ = 2
+};
+
+template <typename Q_T, L1Format FORMAT>
+struct FaL1Tensor {
+    LocalTensor<Q_T> tensor;
+    uint32_t rowCount;
+};
 
 #endif

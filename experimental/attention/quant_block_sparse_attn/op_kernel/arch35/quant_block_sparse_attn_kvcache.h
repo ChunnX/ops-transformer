@@ -26,7 +26,7 @@
 using namespace matmul;
 
 TEMPLATE_INTF
-__aicore__ inline int64_t CalculateActualS1Size(RunParamStr &, const ConstInfo &, int32_t bIdx,
+__aicore__ inline int64_t CalculateActualS1Size(QbsaRunParamStr &, const QbsaConstInfo &, int32_t bIdx,
                                                 __gm__ int32_t *cuSeqQlenAddr)
 {
     int64_t actualS1Size = 0;
@@ -38,7 +38,7 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr &, const ConstInfo &
 }
 
 TEMPLATE_INTF
-__aicore__ inline int64_t CalculateActualS2Size(RunParamStr &, const ConstInfo &, int32_t bIdx,
+__aicore__ inline int64_t CalculateActualS2Size(QbsaRunParamStr &, const QbsaConstInfo &, int32_t bIdx,
                                                 __gm__ int32_t *seqUsedKvlenAddr)
 {
     int64_t actualS2Size = 0;
@@ -49,7 +49,7 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr &, const ConstInfo &
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
+__aicore__ inline void ComputeParamBatch(QbsaRunParamStr &runParam, const QbsaConstInfo &constInfo,
                                          const AttenMaskInfo &attenMaskInfo, GlobalTensor<INPUT_T> &keyGm,
                                          __gm__ int32_t *cuSeqQlenAddr, __gm__ int32_t *seqUsedKvlenAddr)
 {
@@ -81,7 +81,7 @@ __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s1StartIdx,
+__aicore__ inline void ComputeS1LoopInfo(QbsaRunParamStr &runParam, const QbsaConstInfo &constInfo, uint32_t s1StartIdx,
                                          uint32_t s1EndIdx, bool firstBN, bool lastBN)
 {
     uint32_t s1OuterSize = CeilDiv(runParam.actualS1Size, constInfo.s1BaseSize);
@@ -97,7 +97,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &runParam, const ConstInfo 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx)
+__aicore__ inline void ComputeSouterParam(QbsaRunParamStr &runParam, const QbsaConstInfo &constInfo,
+                                          uint32_t sOuterLoopIdx)
 {
     int64_t cubeSOuterOffset = sOuterLoopIdx * constInfo.s1BaseSize;
     if (runParam.actualS1Size == 0) {
@@ -122,7 +123,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
 }
 
 TEMPLATE_INTF
-__aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
+__aicore__ inline void LoopSOuterOffsetInit(QbsaRunParamStr &runParam, const QbsaConstInfo &constInfo, int32_t bIdx,
                                             __gm__ int32_t *cuSeqQlenAddr)
 {
     int64_t seqOffset = cuSeqQlenAddr[bIdx];
@@ -157,7 +158,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamS1(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx,
+__aicore__ inline void ComputeParamS1(QbsaRunParamStr &runParam, const QbsaConstInfo &constInfo, uint32_t sOuterLoopIdx,
                                       __gm__ int32_t *cuSeqQlenAddr)
 {
     // 后续的函数依赖 sOuterOffset
@@ -166,7 +167,7 @@ __aicore__ inline void ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo &constInfo,
+__aicore__ inline bool ComputeS2LoopInfo(QbsaRunParamStr &runParam, const QbsaConstInfo &constInfo,
                                          GlobalTensor<int32_t> &sparseSeqLenGm, int64_t s1Index)
 {
     int64_t sparseSeqLenFlatIdx = (runParam.boIdx * constInfo.n1Size + runParam.n1oIdx) * constInfo.maxQb + s1Index;
@@ -176,7 +177,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &runInfo)
+__aicore__ inline void InitTaskParamByRun(const QbsaRunParamStr &runParam, QbsaRunInfo &runInfo)
 {
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
@@ -236,7 +237,7 @@ __aicore__ inline void SwapValues(T &numValue1, T &numValue2)
     numValue2 = tempValue;
 }
 
-__aicore__ inline void SwapSparseBlockSlots(RunInfo &runInfo)
+__aicore__ inline void SwapSparseBlockSlots(QbsaRunInfo &runInfo)
 {
     SwapValues(runInfo.sparseBlkIdx1, runInfo.sparseBlkIdx2);
     SwapValues(runInfo.s2SparseBlk1RealSize, runInfo.s2SparseBlk2RealSize);
@@ -244,7 +245,7 @@ __aicore__ inline void SwapSparseBlockSlots(RunInfo &runInfo)
     SwapValues(runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
 }
 
-__aicore__ inline void IdxSortBySparseIdx(RunInfo &runInfo)
+__aicore__ inline void IdxSortBySparseIdx(QbsaRunInfo &runInfo)
 {
     if (unlikely(runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1)) {
         return;

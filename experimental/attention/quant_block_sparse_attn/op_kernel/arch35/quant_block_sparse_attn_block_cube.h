@@ -14,18 +14,18 @@
  */
 #ifndef QUANT_BLOCK_SPARSE_ATTN_BLOCK_CUBE_H_
 #define QUANT_BLOCK_SPARSE_ATTN_BLOCK_CUBE_H_
-#include "common/util_regbase.h"
+#include "../common/util_regbase_QBSA.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-#include "common/offset_calculator.h"
+#include "../common/offset_calculator.h"
 
-#include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
+#include "../common/matmul.h"
+#include "../common/FixpipeOut.h"
+#include "../common/CopyInL1.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "quant_block_sparse_attn_attenmask.h"
@@ -116,31 +116,31 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
-                                         __gm__ int32_t *actualSeqKvlenAddr);
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output, RunInfo &runInfo,
-                                       ConstInfo &constInfo);
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
+                                         QbsaCVSharedParams<isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
+                                         __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr);
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo);
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV);
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
 private:
     __aicore__ inline void InitLocalBuffer();
-    __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr);
-    __aicore__ inline void CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
+    __aicore__ inline void InitGmTensor(QbsaCVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr);
+    __aicore__ inline void CalcS2Coord(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
+    __aicore__ inline void GetKvByTensorList(QbsaRunInfo &runInfo, const QbsaConstInfo &constInfo,
                                              GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
-    __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
+    __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
 
     __aicore__ inline void IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+                                         QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
     __aicore__ inline void IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+                                         QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
 
     TPipe *tPipe;
     /* =====================GM变量==================== */
@@ -206,10 +206,10 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                                                  CVSharedParams<isPa> *sharedParams,
-                                                                  AttenMaskInfo *attenMaskInfo,
-                                                                  __gm__ int32_t *actualSeqQlenAddr,
-                                                                  __gm__ int32_t *actualSeqKvlenAddr)
+                                                                   QbsaCVSharedParams<isPa> *sharedParams,
+                                                                   AttenMaskInfo *attenMaskInfo,
+                                                                   __gm__ int32_t *actualSeqQlenAddr,
+                                                                   __gm__ int32_t *actualSeqKvlenAddr)
 {
     if ASCEND_IS_AIC {
         if (sharedParams->fromFused) {
@@ -277,8 +277,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
 
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isPa> *sharedParams,
-                                                                 __gm__ int32_t *actualSeqQlenAddr)
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitGmTensor(QbsaCVSharedParams<isPa> *sharedParams,
+                                                                  __gm__ int32_t *actualSeqQlenAddr)
 {
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
         GlobalTensor<int32_t> actualSeqQLen;
@@ -289,7 +289,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     // QBSA sparse: sparse block indices 已在 SetRunInfo 中预计算
     coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] = runInfo.sparseBlkIdx1;
@@ -298,7 +298,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInf
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     CalcS2Coord(runInfo, constInfo);
     if constexpr (isFp8) {
@@ -313,7 +313,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     mm2ResPos &outputBuf, BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-    RunInfo &runInfo, ConstInfo &constInfo)
+    QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
     Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
@@ -338,7 +338,6 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
         shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSizeV;
         if constexpr (isFp8) {
             shape.copyRowNumAlign = (actualS2RealSize + 31) >> 5 << 5;
         } else {
@@ -444,7 +443,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
@@ -481,7 +480,6 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
         shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSize;
         if constexpr (isFp8) {
             shape.copyRowNumAlign = (actualS2RealSize + 31) >> 5 << 5;
         } else {
@@ -549,8 +547,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uint8_t *deqScaleQ,
-                                                                      __gm__ uint8_t *deqScaleK,
-                                                                      __gm__ uint8_t *deqScaleV)
+                                                                       __gm__ uint8_t *deqScaleK,
+                                                                       __gm__ uint8_t *deqScaleV)
 {
     if constexpr (isFp8) {
         deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
@@ -560,7 +558,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ ui
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(QbsaRunInfo &runInfo,
+                                                                       const QbsaConstInfo &constInfo,
                                                                        GlobalTensor<INPUT_T> &keyValueGm,
                                                                        GlobalTensor<INPUT_T> &tempKeyValueGm)
 {
@@ -574,7 +573,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo &
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetKeyGm(QbsaRunInfo &runInfo,
+                                                                               QbsaConstInfo &constInfo)
 {
     GlobalTensor<INPUT_T> tempKeyGm = this->keyGm.gmTensor;
     GetKvByTensorList(runInfo, constInfo, this->keyGm.gmTensor, tempKeyGm);
@@ -582,7 +582,8 @@ __aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetKeyGm(R
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetValueGm(QbsaRunInfo &runInfo,
+                                                                                 QbsaConstInfo &constInfo)
 {
     GlobalTensor<INPUT_T> tempValueGm = this->valueGm.gmTensor;
     GetKvByTensorList(runInfo, constInfo, this->valueGm.gmTensor, tempValueGm);
@@ -591,7 +592,7 @@ __aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetValueGm
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
@@ -631,7 +632,6 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         shape.maxblockNumPerBatch = maxBlockNumPerBatch;
         shape.copyRowNum = runInfo.s2RealSize;
         shape.pageStride = constInfo.paBlockStride;
-        shape.rowStride = constInfo.dSize;
         if constexpr (isFp8) {
             shape.copyRowNumAlign = (runInfo.s2RealSize + 31) >> 5 << 5;
         } else {
@@ -708,19 +708,19 @@ public:
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable)
     {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
-                                         __gm__ int32_t *actualSeqKvlenAddr)
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
+                                         QbsaCVSharedParams<isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
+                                         __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
     {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
     {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
     {}
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV)

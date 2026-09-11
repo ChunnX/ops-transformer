@@ -14,15 +14,15 @@
  */
 #ifndef QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
 #define QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
-#include "common/util_regbase.h"
-#include "common/copy_gm_to_ub.h"
+#include "../common/util_regbase_QBSA.h"
+#include "../common/copy_gm_to_ub.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "quant_block_sparse_attn_attenmask.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/activation/softmax.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "vf/vf_flashupdate_new.h"
-#include "vf/vf_div_cast.h"
+#include "../common/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_QBSA.h"
+#include "../common/vf/vf_flashupdate_new_QBSA.h"
+#include "../common/vf/vf_div_cast.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -69,7 +69,7 @@ public:
 
     __aicore__ inline QBSABlockVec(){};
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
-                                        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo)
     {
         if ASCEND_IS_AIV {
@@ -84,33 +84,35 @@ public:
                                                   __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
                                                   __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
                                                   __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-                                                  ConstInfo &constInfo);
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
+                                                  QbsaConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, QbsaConstInfo &constInfo);
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo, int32_t subLoop = 0);
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo, int32_t subLoop = 0);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
 
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams, int32_t aicIdx,
+    __aicore__ inline void InitCubeVecSharedParams(QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx,
                                                    uint8_t subBlockIdx);
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, ConstInfo &constInfo);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                       QbsaConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                             __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
                                             __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
                                             __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
                                             __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-                                            ConstInfo &constInfo);
-    __aicore__ inline void GenerateDropoutMask(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<uint8_t> &dropMaskUb)
+                                            QbsaConstInfo &constInfo);
+    __aicore__ inline void GenerateDropoutMask(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
+                                               LocalTensor<uint8_t> &dropMaskUb)
     {}
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb,
+    __aicore__ inline void SoftmaxDataCopyOut(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo, LocalTensor<float> &sumUb,
                                               LocalTensor<float> &maxUb);
     template <typename VEC2_RES_T>
-    __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
+    __aicore__ inline void CopyOutAttentionOut(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
                                                int64_t vec2CalcSize);
 
@@ -156,33 +158,34 @@ public:
 
 protected:
     template <typename VEC2_RES_T>
-    __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
-                                           int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
+    __aicore__ inline void Bmm2DataCopyOut(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
+                                           LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+                                           int64_t vec2CalcSize = 0);
 
 private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo);
+                                         QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
     __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
-                                           RunInfo &runInfo, ConstInfo &constInfo);
+                                           QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
 
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar,
                                                    SoftMaxShapeInfo &softmaxShapeInfo);
 
-    __aicore__ inline int64_t ComputeOffsetForSoftmax(RunInfo &runInfo, const int64_t vec2S1Idx);
+    __aicore__ inline int64_t ComputeOffsetForSoftmax(QbsaRunInfo &runInfo, const int64_t vec2S1Idx);
     __aicore__ inline T GetNegativeValue();
-    __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
-    __aicore__ inline void InitLseOutputSingleCore(ConstInfo &constInfo);
+    __aicore__ inline void InitOutputSingleCore(QbsaConstInfo &constInfo);
+    __aicore__ inline void InitLseOutputSingleCore(QbsaConstInfo &constInfo);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
-                                             RunInfo &runInfo, ConstInfo &constInfo);
+                                             QbsaRunInfo &runInfo, QbsaConstInfo &constInfo);
 };
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
     __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-    ConstInfo &constInfo)
+    QbsaConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
@@ -226,7 +229,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo,
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
     int32_t subLoop)
 {
     ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
@@ -259,7 +262,7 @@ __aicore__ inline bool QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(Loca
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     // bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
@@ -296,13 +299,13 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     if constexpr (layout == QBSALayout::NTD) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
-            FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, s2BaseSize>(
+            QbsaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, false, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
                 runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
-            FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
+            QbsaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
@@ -310,13 +313,13 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
         }
     } else {
         if (unlikely(runInfo.s2LoopCount == 0)) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
+            QbsaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
                 runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
+            QbsaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
@@ -355,7 +358,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t QBSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(RunInfo &runInfo,
+__aicore__ inline int64_t QBSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(QbsaRunInfo &runInfo,
                                                                                const int64_t vec2S1Idx)
 {
     return vec2S1Idx * runInfo.vec2S1BaseSize;
@@ -363,7 +366,7 @@ __aicore__ inline int64_t QBSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(R
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     if (unlikely(runInfo.vec2S1BaseSize == 0)) {
         bmm2ResBuf.SetCrossCore();
@@ -389,23 +392,23 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
         float deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
-                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(vec2ResUb, mmRes, vec2ResUb, expUb,
-                                                                             runInfo.vec2S1RealSize, dTemplateAlign64,
-                                                                             deSCaleVValue, deSCalePreVValue);
+                QbsaVectorApi::FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(
+                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
+                    deSCalePreVValue);
             } else {
-                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
-                                                                              runInfo.vec2S1RealSize, dTemplateAlign64,
-                                                                              deSCaleVValue, deSCalePreVValue);
+                QbsaVectorApi::FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
+                    vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
+                    deSCalePreVValue);
             }
         } else {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, true>(
+                QbsaVectorApi::FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
                     deSCalePreVValue);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
+                QbsaVectorApi::FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, true>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
                     deSCalePreVValue);
             }
@@ -415,8 +418,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-            LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize,
-                                                               (uint16_t)dTemplateAlign64, deSCaleVValue);
+            QbsaVectorApi::LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(
+                vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
         }
         CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
@@ -424,8 +427,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
-                                                                ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2ResBuf, QbsaRunInfo &runInfo,
+                                                                QbsaConstInfo &constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
     ProcessVec2OnUb(bmm2ResBuf, runInfo, constInfo);
@@ -434,7 +437,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2R
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::Bmm2DataCopyOut(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                                     LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                     int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
@@ -490,7 +493,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, QbsaConstInfo &constInfo)
 {
     uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
@@ -543,8 +546,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)], 64);
     tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)], 256);
     if constexpr (layout != QBSALayout::NTD) {
-        tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::QSCALE_GATHER_INDEX)],
-                          64 * sizeof(uint32_t));
+        tPipe->InitBuffer(vselrIndexesBuf[QbsaVectorApi::QSCALE_GATHER_INDEX], 64 * sizeof(uint32_t));
     }
     LocalTensor<uint8_t> vselrIndexesTensor =
         vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
@@ -565,7 +567,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     }
     if constexpr (layout != QBSALayout::NTD) {
         LocalTensor<uint32_t> qGatherTensor =
-            vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::QSCALE_GATHER_INDEX)].template Get<uint32_t>();
+            vselrIndexesBuf[QbsaVectorApi::QSCALE_GATHER_INDEX].template Get<uint32_t>();
         for (uint32_t i = 0; i < 64; ++i) {
             qGatherTensor.SetValue(i, i * 8);
         }
@@ -586,7 +588,7 @@ __aicore__ inline T QBSABlockVec<TEMPLATE_ARGS>::GetNegativeValue()
 // ================================= Child-specific functions =================================
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams,
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(QbsaCVSharedParams<isPa> &sharedParams,
                                                                             int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
@@ -631,7 +633,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSh
             auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0);
             auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
 #pragma unroll
-            for (int i = 0; i < sizeof(CVSharedParams<isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
+            for (int i = 0; i < sizeof(QbsaCVSharedParams<isPa>) / sizeof(uint32_t);
+                 ++i, ++tempTilingSSbuf, ++tempTiling) {
                 *tempTilingSSbuf = *tempTiling;
             }
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
@@ -641,7 +644,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSh
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse,
-                                                                __gm__ uint8_t *attentionOut, ConstInfo &constInfo)
+                                                                __gm__ uint8_t *attentionOut, QbsaConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -663,14 +666,14 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
     __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
     __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
-    uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo &constInfo)
+    uint64_t singleCoreOffset, uint32_t aicIdx, QbsaConstInfo &constInfo)
 {
     InitCommonGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable, workspace,
                            constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                                        LocalTensor<float> &sumUb,
                                                                        LocalTensor<float> &maxUb)
 {
@@ -679,7 +682,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(QbsaRunInfo &runInfo, QbsaConstInfo &constInfo,
                                                                         LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                         int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
@@ -689,7 +692,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp,
                                                                       LocalTensor<float> &softmaxMaxTmp,
-                                                                      RunInfo &runInfo, ConstInfo &constInfo)
+                                                                      QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
@@ -702,7 +705,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
     TEventID lseVToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     TEventID lseMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
 
-    ComputeLseOutputVF<float, true>(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
+    QbsaVectorApi::ComputeLseOutputVF<float, true>(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
 
     // Vector 写完 lseUb 后，MTE3 才能读取。
     SetFlag<HardEvent::V_MTE3>(lseVToMte3Id);
@@ -725,7 +728,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(QbsaConstInfo &constInfo)
 {
     auto &initParams = this->tilingData->initOutputParams;
     uint32_t tailSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
@@ -736,7 +739,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstIn
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLseOutputSingleCore(QbsaConstInfo &constInfo)
 {
     int64_t coreNum = GetBlockNum() * GetTaskRation();
     auto &initParams = this->tilingData->initOutputParams;
@@ -758,10 +761,11 @@ public:
     static constexpr TPosition bmm2OutPos = GetC2Position();
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     __aicore__ inline QBSABlockVecDummy(){};
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, ConstInfo &constInfo)
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                       QbsaConstInfo &constInfo)
     {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
-                                        CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        QbsaCVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo) {};
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                             __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
@@ -769,18 +773,18 @@ public:
                                             __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
                                             __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
                                             __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-                                            ConstInfo &constInfo)
+                                            QbsaConstInfo &constInfo)
     {}
 
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, QbsaConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
+                                       QbsaRunInfo &runInfo, QbsaConstInfo &constInfo)
     {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, QbsaRunInfo &runInfo, QbsaConstInfo &constInfo) {}
 };
 } // namespace BaseApi
 #endif // QUANT_BLOCK_SPARSE_ATTN_BLOCK_VEC_H_
