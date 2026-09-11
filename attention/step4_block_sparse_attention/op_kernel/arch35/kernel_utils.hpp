@@ -72,10 +72,18 @@ struct Step4KernelParamsArch35 {
     GM_ADDR tiling;
 };
 
+// Prefill: region_counts is live slot count; each live slot is a full region (valid = regionSize).
+// Skip packed GM GetValue. Decode still sums clamp(kv_seqlen - start, 0, regionSize).
 template <bool IS_DECODE, class PackedT>
 __aicore__ inline uint32_t CompactedPackedTokenCount(AscendC::GlobalTensor<PackedT> gPacked, uint32_t rowStart,
                                                      uint32_t count, uint32_t regionSize, int32_t kvSeqlen)
 {
+    if constexpr (!IS_DECODE) {
+        (void)gPacked;
+        (void)rowStart;
+        (void)kvSeqlen;
+        return count * regionSize;
+    }
     uint32_t tokens = 0;
     for (uint32_t slot = 0; slot < count; ++slot) {
         PackedT meta = gPacked.GetValue(rowStart + slot);
