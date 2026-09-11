@@ -53,7 +53,7 @@ fi
 _OAT_OK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null || echo "missing")
 if [ "$_OAT_OK" != "ok" ]; then
     echo "[OAT] oat-py not found. Installing oat-py>=1.0.1 ..."
-    _LOCK_FILE="/tmp/oat_pip_install.lock"
+    _LOCK_FILE="${TMPDIR:-/tmp}/oat_pip_install_$(id -u).lock"
     # flock ensures only one concurrent invocation runs pip install at a time;
     # re-check inside the lock so processes that waited skip redundant installs
     if command -v flock >/dev/null 2>&1; then
@@ -61,11 +61,13 @@ if [ "$_OAT_OK" != "ok" ]; then
             flock -w 120 9
             _RECHECK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null || echo "missing")
             if [ "$_RECHECK" != "ok" ]; then
-                "$_PYTHON" -m pip install --quiet "oat-py>=1.0.1"
+                "$_PYTHON" -m pip install --quiet "oat-py>=1.0.1" || \
+                    "$_PYTHON" -m pip install --quiet --user "oat-py>=1.0.1" || true
             fi
         ) 9>"$_LOCK_FILE"
     else
-        "$_PYTHON" -m pip install --quiet "oat-py>=1.0.1"
+        "$_PYTHON" -m pip install --quiet "oat-py>=1.0.1" || \
+            "$_PYTHON" -m pip install --quiet --user "oat-py>=1.0.1" || true
     fi
     _OAT_OK=$("$_PYTHON" -c "import importlib.util; print('ok' if importlib.util.find_spec('oat') else 'missing')" 2>/dev/null || echo "missing")
     if [ "$_OAT_OK" != "ok" ]; then
