@@ -78,25 +78,10 @@ __aicore__ inline void CopyGmm1WeightConcatToUb(const Dst &dst, const Src &src, 
     const uint64_t columnBytes = c0 / 2U;
     const uint32_t blockCount = 2U * ConcatTensorRows(src) / c0;
     const uint32_t blockBytes = ConcatTensorColumns(src) / 2U * columnBytes;
-    // Describe the physical NZ bursts as byte rows; the UB view writes them consecutively.
-    auto shape = asc::te::make_shape(asc::te::make_shape(asc::te::_1{}, blockCount),
-                                     asc::te::make_shape(asc::te::_1{}, blockBytes));
-    auto srcStride = asc::te::make_stride(asc::te::make_stride(asc::te::_0{}, halfN * columnBytes),
-                                          asc::te::make_stride(asc::te::_0{}, asc::te::_1{}));
-    auto dstStride = asc::te::make_stride(asc::te::make_stride(asc::te::_0{}, blockBytes),
-                                          asc::te::make_stride(asc::te::_0{}, asc::te::_1{}));
-    using ByteLayout = decltype(asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(1U, 1U));
-    using ByteLayoutTrait = asc::te::get_layout_trait<ByteLayout>;
-    auto srcLayout = asc::te::make_pattern_layout<asc::te::nd_ext_layout_ptn, ByteLayoutTrait>(shape, srcStride);
-    auto dstLayout = asc::te::make_pattern_layout<asc::te::nd_ext_layout_ptn, ByteLayoutTrait>(shape, dstStride);
-    auto srcBytes = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ uint8_t *>(src.data().get())), srcLayout);
-    auto dstBytes = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::ub>(reinterpret_cast<__ubuf__ uint8_t *>(dst.data().get())),
-        dstLayout);
-    srcBytes.set_l2_cache_hint(src.get_cache_mode());
-    asc::te::copy(asc::te::make_copy(asc::te::copy_gm_to_ub{}).with(asc::te::gm_to_ub_params{0, 0, false}), dstBytes,
-                  srcBytes);
+    // Unlike tensor strides, these intrinsics take byte distances between block starts.
+    asc_copy_gm2ub_align(reinterpret_cast<__ubuf__ uint8_t *>(dst.data().get()),
+                         reinterpret_cast<__gm__ uint8_t *>(src.data().get()), blockCount, blockBytes, 0, 0, false,
+                         src.engine().get_cache_mode(), halfN * columnBytes, blockBytes);
 }
 
 template <typename Dst, typename Src>
@@ -121,24 +106,15 @@ template <typename Dst, typename Src>
 __aicore__ inline void copy(const copy_atom<copy_traits<Blaze::Gemm::Tile::CopyConcatGM2L1>> &copy, const Dst &dst,
                             const MegaMoeImpl::Gmm1NzWeightView<Src> &src)
 {
-    // Treat gate/up as twice as many K fractals with half the GM fractal stride.
-    // Keep the native ZN pattern: ordinary ZN->ZN copy emits one align DMA without
-    // the runtime compact-mode selection of an ND byte view. FP4 strides remain
-    // in element units; tensor copy converts them to bytes.
-    auto shape = src.layout().shape();
-    auto srcStride = src.layout().stride();
-    auto dstStride = srcStride;
-    const auto c0 = AscendC::Std::get<0>(AscendC::Std::get<0>(shape));
-    AscendC::Std::get<1>(AscendC::Std::get<0>(shape)) *= 2U;
-    AscendC::Std::get<1>(AscendC::Std::get<0>(srcStride)) = (copy.params.n / 2U) * c0;
-    AscendC::Std::get<1>(AscendC::Std::get<0>(dstStride)) = get_total_column_shape(src.layout()) * c0;
-    using Trait = get_layout_trait<typename Src::layout_type>;
-    auto srcLayout = make_pattern_layout<zn_layout_ptn, Trait>(shape, srcStride);
-    auto dstLayout = make_pattern_layout<zn_layout_ptn, Trait>(shape, dstStride);
-    auto srcConcat = make_tensor(src.data(), srcLayout);
-    auto dstConcat = make_tensor(dst.data(), dstLayout);
-    srcConcat.set_l2_cache_hint(src.get_cache_mode());
-    asc::te::copy(make_copy(copy_gm_to_l1{}), dstConcat, srcConcat);
+    using Element = get_attribute_element_type<typename Src::element_type *>;
+    const uint64_t c0 = AscendC::Std::get<0>(AscendC::Std::get<0>(src.layout().shape()));
+    const uint64_t columnBytes = (Blaze::Gemm::IsFp4<Element>() ? c0 / 2U : c0) * sizeof(Element);
+    const uint64_t singleN = get_total_column_shape(src.layout());
+    const uint64_t curK = get_total_row_shape(src.layout());
+    asc_copy_gm2l1_align(reinterpret_cast<__cbuf__ uint8_t *>(dst.data().get()),
+                         reinterpret_cast<__gm__ uint8_t *>(src.data().get()), static_cast<uint32_t>(2U * curK / c0),
+                         static_cast<uint32_t>(singleN * columnBytes), 0, 0, true, src.engine().get_cache_mode(),
+                         (copy.params.n / 2U) * columnBytes, static_cast<uint32_t>(singleN * columnBytes));
 }
 
 template <typename Atom, typename Dst, typename Src>
