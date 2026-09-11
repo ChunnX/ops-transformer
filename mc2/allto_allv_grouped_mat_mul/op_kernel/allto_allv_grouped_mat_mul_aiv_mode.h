@@ -114,16 +114,6 @@ A2AVGMM_AIV_MODE_HOST_DEVICE bool PartitionElements(uint64_t totalElements, uint
     return true;
 }
 
-A2AVGMM_AIV_MODE_HOST_DEVICE bool IsSourceWorker(uint32_t taskIdx, uint32_t taskRatio, uint32_t subBlockIdx,
-                                                 uint32_t rankSize, uint32_t sourceRank)
-{
-    if (taskRatio == 0U || subBlockIdx != 0U || sourceRank >= rankSize) {
-        return false;
-    }
-    const uint32_t blockIdx = taskIdx / taskRatio;
-    return blockIdx < rankSize && blockIdx == sourceRank;
-}
-
 A2AVGMM_AIV_MODE_HOST_DEVICE bool GetProducerWorkerCount(uint32_t aivCoreNum, uint32_t taskRatio, uint32_t &workerNum)
 {
     workerNum = 0U;
@@ -191,6 +181,8 @@ __aicore__ inline bool ShouldUseExpertOverlap(const __gm__ AlltoAllvGmmAivTiling
         return false;
     }
 
+    // Host 选择工作负载策略。两类核均检查只读前缀，
+    // 确保生产者和消费者使用相同的非空专家通知序列。
     uint32_t nonEmptyExperts = 0U;
     for (uint32_t expertIdx = 0U; expertIdx < tiling.gmmInfo.expertPerRank; ++expertIdx) {
         ExpertMeta expert = {};
@@ -263,7 +255,7 @@ __aicore__ inline bool CopyInitialWindowPayload(GM_ADDR gmmx, const __gm__ Allto
                                                 AscendC::TBuf<AscendC::TPosition::VECCALC> &copyBuffer1,
                                                 AscendC::TBuf<AscendC::TPosition::VECCALC> &countBuffer)
 {
-    if (tiling.countNum == 0U) {
+    if (tiling.countNum == 0U || tiling.countNum > A2AVGMM_MAX_COUNT_NUM) {
         return false;
     }
     const int32_t tokenPrefix = tiling.sendPrefix[tiling.countNum - 1U];
@@ -367,11 +359,9 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
     AscendC::SetAtomicNone();
     AscendC::SetFixpipeNz2ndFlag(1, 0, 0);
 
-    // The shared-expert matmul is independent of the routed receive buffer.
-    // Wait until AIV has staged and published the local payload, matching the
-    // MegaMoE input-preparation boundary.  The shared MM then overlaps peer
-    // publication waiting and routed-expert communication without competing
-    // with the initial local HBM-to-window copy.
+    // 共享专家矩阵乘不依赖路由专家接收缓冲区。
+    // 等待 AIV 完成本地数据暂存和发布，与 MegaMoE 的输入准备边界一致。随后共享专家计算与对端发布等待、
+    // 路由专家通信重叠，避免与初始本地 HBM 到窗口的拷贝争用带宽。
     if (tiling.gmmInfo.hasSharedExpert != 0U) {
         WaitAicSharedExpertReady();
         AlltoAllvGmmInfo mmInfo = {};
@@ -386,6 +376,7 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
         if (mmx == nullptr || mmweight == nullptr || mmy == nullptr ||
             !AlltoAllvGroupedMatMulCatlass::RunSharedExpertGemm<T, MM_TRANSPOSE_B>(mmx, mmweight, mmy, mmInfo,
                                                                                    mmCocTiling)) {
+            // Host 已校验共享专家指针与 tile；异常时停止当前核，避免继续执行错误计算。
             return;
         }
     }
@@ -410,6 +401,7 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
         ExpertMeta expert = {};
         if (!BuildExpertMetaForIndex(tiling.recvPrefix, gmmInfo.rankSize, gmmInfo.expertPerRank, expertIdx,
                                      gmmInfo.maxOutputSize, expert)) {
+            // Host 已校验接收前缀；保留设备侧防御检查，异常时停止当前核。
             return;
         }
         if (expert.tokenCount == 0U) {
@@ -420,9 +412,10 @@ __aicore__ inline void ProcessAic(GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR mmweig
         }
         if (!AlltoAllvGroupedMatMulCatlass::RunExpertGemm<T, GMM_TRANSPOSE_B>(recvBuffer, gmmweight, gmmy, expertIdx,
                                                                               expert, gmmInfo, gmmCocTiling)) {
+            // Host 已选择支持的 tile；设备发现不一致时停止当前核。
             return;
         }
-        // All ready counts in this window have been consumed before reuse.
+        // 复用当前通知窗口前，确保其中所有就绪计数均已消费。
         ++readySequence;
         if (expertOverlap && NeedsExpertEventDrain(readySequence)) {
             AscendC::SyncAll<false>();
@@ -445,6 +438,7 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
     const uint32_t blockIdx = taskRatio == 0U ? 0xffffffffU : taskIdx / taskRatio;
     uint32_t workerNum = 0U;
     if (!GetProducerWorkerCount(tiling.gmmInfo.aivCoreNum, taskRatio, workerNum)) {
+        // 核数来自 Host，任务比例来自运行时；不一致时停止当前核。
         return;
     }
 
@@ -455,8 +449,11 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
     AscendC::SyncAll<true>();
     epoch = LoadInvocationEpoch(context, layout, flagBuffer);
 
-    (void)CopyInitialWindowPayload<T>(gmmx, tiling, context, layout, taskIdx, subBlockIdx, copyBuffer, copyBuffer1,
-                                      flagBuffer);
+    if (!CopyInitialWindowPayload<T>(gmmx, tiling, context, layout, taskIdx, subBlockIdx, copyBuffer, copyBuffer1,
+                                     flagBuffer)) {
+        // 此处包含运行时窗口地址和搬运范围检查；失败后不得继续发布就绪通知。
+        return;
+    }
     AscendC::SyncAll<true>();
     AlltoAllvGroupedMatMulAiv::PublishPeerPhase(context, layout, control.publishSlotsOffset, epoch, blockIdx, workerNum,
                                                 subBlockIdx, flagBuffer);
@@ -476,16 +473,20 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
             ExpertMeta expert = {};
             if (!BuildExpertMetaForIndex(tiling.recvPrefix, tiling.gmmInfo.rankSize, tiling.gmmInfo.expertPerRank,
                                          expertIdx, tiling.gmmInfo.maxOutputSize, expert)) {
+                // Host 已校验接收前缀；异常时停止当前核，不继续使用错误元数据。
                 return;
             }
-            // All local cores inspect the same immutable expert-major prefix.
+            // 所有本地核检查同一份按专家排列的只读前缀。
             if (expert.tokenCount == 0U) {
                 continue;
             }
             if (subBlockIdx == 0U && blockIdx < workerNum) {
                 for (uint32_t rank = blockIdx; rank < context.RankSize(); rank += workerNum) {
-                    (void)CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
-                                                  copyBuffer1);
+                    if (!CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
+                                                 copyBuffer1)) {
+                        // 对端地址与发布的前缀只能在设备侧核实；失败时停止当前核。
+                        return;
+                    }
                 }
             }
             AscendC::SyncAll<true>();
@@ -497,12 +498,15 @@ __aicore__ inline void ProcessAiv(GM_ADDR gmmx, GM_ADDR recvBuffer, const __gm__
         }
     } else {
         for (uint32_t expertIdx = 0U; expertIdx < tiling.gmmInfo.expertPerRank; ++expertIdx) {
-            // One-shot mode has no per-expert barrier to eliminate. Only the
-            // assigned producers inspect source counts; avoid an all-core prefix scan.
+            // 一次性模式没有需要省略的逐专家屏障。仅由分配到任务的
+            // 生产者检查来源计数，避免所有核都扫描前缀。
             if (subBlockIdx == 0U && blockIdx < workerNum) {
                 for (uint32_t rank = blockIdx; rank < context.RankSize(); rank += workerNum) {
-                    (void)CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
-                                                  copyBuffer1);
+                    if (!CopyExpertFromSource<T>(recvBuffer, tiling, context, layout, expertIdx, rank, copyBuffer,
+                                                 copyBuffer1)) {
+                        // 对端地址与发布的前缀只能在设备侧核实；失败时停止当前核。
+                        return;
+                    }
                 }
             }
         }
@@ -528,24 +532,33 @@ __aicore__ inline void Run(GM_ADDR gmmx, GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR
                              permuteOut :
                              userWorkspace + tiling.recvTokenOffset;
 
+    // 异常路径停止当前核，不调用 trap，也不伪造就绪通知。
+    // 其他核或 rank 可能仍在等待，由运行时超时结束；return 不表示算子成功。
+    // 正常输入的静态条件已由 Host 校验，设备侧保留运行时资源与越界防御检查。
     if ASCEND_IS_AIV {
         AlltoAllvGroupedMatMulAiv::PeerWindowContext context;
-        if (!context.Init(tiling.is910C) || context.RankSize() != tiling.gmmInfo.rankSize) {
+        if (!context.Init(tiling.is910C, tiling.actualWindowBytes) || context.RankSize() != tiling.gmmInfo.rankSize) {
+            // HCCL 上下文只能在设备侧取得；初始化失败时停止当前核。
             return;
         }
 
         AlltoAllvGroupedMatMulAiv::A2avWindowLayout layout = {};
         AlltoAllvGroupedMatMulAiv::RuntimeControlLayout control = {};
-        if (tiling.countNum == 0U) {
+        if (tiling.countNum == 0U || tiling.countNum > A2AVGMM_MAX_COUNT_NUM ||
+            AlltoAllvGroupedMatMulAiv::MulU32ToU64(tiling.gmmInfo.rankSize, tiling.gmmInfo.expertPerRank) !=
+                tiling.countNum) {
+            // Host 已校验计数长度；保留防御检查，避免后续前缀访问越界。
             return;
         }
         const int32_t inputTokenPrefix = tiling.sendPrefix[tiling.countNum - 1U];
         if (inputTokenPrefix < 0) {
+            // Host 已校验发送前缀非负；异常时不将负值转换为无符号行数。
             return;
         }
         const uint64_t inputTokens = static_cast<uint32_t>(inputTokenPrefix);
         if (!detail::BuildDeviceWindowLayout<T>(inputTokens, tiling.gmmInfo.K, tiling.countNum, tiling.gmmInfo.rankSize,
                                                 tiling.gmmInfo.expertPerRank, context.WindowBytes(), control, layout)) {
+            // 使用运行时实际窗口重新核实布局，容量不足时停止当前核。
             return;
         }
         AscendC::TPipe pipe;
@@ -555,6 +568,7 @@ __aicore__ inline void Run(GM_ADDR gmmx, GM_ADDR gmmweight, GM_ADDR mmx, GM_ADDR
         AscendC::TBuf<AscendC::TPosition::VECCALC> copyBuffer;
         const uint32_t queueBytes = detail::GetCopyQueueBytes<T>(tiling);
         if (queueBytes == 0U) {
+            // Host 已规划 UB；保留检查以避免使用无效缓冲区大小。
             return;
         }
         pipe.InitBuffer(copyBuffer, queueBytes);

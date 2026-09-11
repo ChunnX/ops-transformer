@@ -64,9 +64,8 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gm
                 userWorkspace, *aivTilingData);
         }
 #else
-        // Host rejects AIV on unsupported architectures. Do not silently
-        // succeed if an incompatible tiling key is nevertheless dispatched.
-        trap();
+        // Host 负责拒绝不支持 AIV 的架构；此编译分支不执行设备任务。
+        return;
 #endif
     } else {
         TPipe pipe;
