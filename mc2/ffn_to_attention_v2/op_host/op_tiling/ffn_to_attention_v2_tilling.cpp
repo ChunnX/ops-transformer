@@ -46,6 +46,9 @@ namespace MC2Tiling {
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t URMA_X_TYPE_SIZE = sizeof(uint16_t);
+constexpr size_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
+constexpr size_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
+constexpr size_t REMOTE_RELAY_LIST_NUM = 2U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 64LL;
 
@@ -95,6 +98,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t aivNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum);
     const size_t maxTokenNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.maxTokenNum);
     const size_t axisH = static_cast<size_t>(tilingData->ffnToAttentionV2Info.H);
+    const size_t worldSize = static_cast<size_t>(tilingData->ffnToAttentionV2Info.worldSize);
     OP_TILING_CHECK(aivNum == 0U, OP_LOGE(context->GetNodeName(), "aivNum must be greater than zero"),
                     return ge::GRAPH_FAILED);
     const size_t tokenBytes = axisH * URMA_X_TYPE_SIZE;
@@ -106,7 +110,18 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
     OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);
-    const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize + RESERVED_WORKSPACE_SIZE;
+    OP_TILING_CHECK(maxTokenNum != 0U && REMOTE_RELAY_INFO_SIZE > std::numeric_limits<size_t>::max() / maxTokenNum,
+                    OP_LOGE(context->GetNodeName(), "metadata relay info workspace size overflow"),
+                    return ge::GRAPH_FAILED);
+    const size_t relayInfoWorkspaceSize = maxTokenNum * REMOTE_RELAY_INFO_SIZE;
+    const size_t relayListWorkspaceSize = worldSize * sizeof(uint64_t) * REMOTE_RELAY_LIST_NUM;
+    OP_TILING_CHECK(relayInfoWorkspaceSize > std::numeric_limits<size_t>::max() - relayListWorkspaceSize,
+                    OP_LOGE(context->GetNodeName(), "metadata workspace size overflow"), return ge::GRAPH_FAILED);
+    const size_t metadataWorkspaceSize = relayInfoWorkspaceSize + relayListWorkspaceSize;
+    const size_t urmaDataWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize + metadataWorkspaceSize;
+    OP_TILING_CHECK(urmaDataWorkspaceSize > std::numeric_limits<size_t>::max() - RESERVED_WORKSPACE_SIZE,
+                    OP_LOGE(context->GetNodeName(), "URMA reserved workspace size overflow"), return ge::GRAPH_FAILED);
+    const size_t urmaWorkspaceSize = urmaDataWorkspaceSize + RESERVED_WORKSPACE_SIZE;
     const size_t urmaWorkspaceOffset =
         (workSpaces[0] + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
     OP_TILING_CHECK(urmaWorkspaceOffset > std::numeric_limits<size_t>::max() - urmaWorkspaceSize,
