@@ -62,11 +62,7 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs128_vf(__ubuf__ T2 *pDest
     MaskReg preg_invalid_max;
 
     // ====================== 全局最大值初始化 ======================
-    // if constexpr (clear_gmax) {
-    //     Duplicate(group_gmax, MIN_VALUE);
-    // } else {
     LoadAlign(group_gmax, global_max);
-    // }
 
     LoadAlign(idx_nd2nz, indexesUb);
 

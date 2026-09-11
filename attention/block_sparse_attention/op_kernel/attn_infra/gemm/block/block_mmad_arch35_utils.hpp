@@ -159,6 +159,12 @@ static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_CNT = 4;
 static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_SIZE = 512;
 static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_OFFSET = 504 * KB_BYTE;
 
+// L1 尾 6KB 常驻 16 行 1.0；Reload 连 LoadData 9 次刷满 144 行（Fill L0A 无效）。
+static constexpr uint32_t L1_ROW_SUM_SEED_SIZE = 2 * KB_BYTE;
+static constexpr uint32_t L1_ROW_SUM_SEED_OFFSET = 506 * KB_BYTE;
+static constexpr uint32_t L1_ROW_SUM_SEED_SCALE_SIZE = 576;
+static constexpr uint32_t L1_ROW_SUM_SEED_SCALE_OFFSET = 508 * KB_BYTE;
+
 static constexpr uint32_t KV_EVENT0 = 4;
 static constexpr uint32_t KV_EVENT1 = 5;
 static constexpr uint32_t KV_EVENT2 = 6;
@@ -167,15 +173,30 @@ static constexpr uint32_t KV_EVENT3 = 7;
 static constexpr bool KV_SHARE_DEBUG = false;
 static constexpr uint32_t KV_TRACE_TILES = 40;
 
-// L0：QK 一拍 128×128。K 单缓 16KB（2×16 会与 Vᵀ 2×18 合计 68>64）；
-// L0C QK 2×64KB + PV 72KB = 200KB < 256KB。Q 仍单缓 16KB（不绑双槽）。
+// P1：偶 tile 一次搬 256 行填满 32KB L1 槽，奇 tile 复用。softmax / P 环仍 128。
+#ifndef BSA_MXFP8_K_PAIR256
+#define BSA_MXFP8_K_PAIR256 1
+#endif
+
+// 0909 步 1：QK 一次 mmad M=256，两次 Fixpipe 128 串行到两核。依赖 PAIR256。
+#ifndef BSA_MXFP8_QK_MMAD256
+#define BSA_MXFP8_QK_MMAD256 1
+#endif
+
+// 等长非连续两块：一条 Nd2Nz/Dn2Nz（ndNum/dnNum=2 + 恒定 stride）。
+#ifndef BSA_MXFP8_NDNUM2
+#define BSA_MXFP8_NDNUM2 1
+#endif
+
+// L0A 分区不 alias：K 32KB@0（256×128，无双缓）+ Vᵀ 18KB@32。delay-PV 可与 QK 并行。
+// L0C 不跟 PV 重叠：QK 一块 128KB 可跨 even/odd 两次 Fixpipe；PV 仍在 128KB 起。
 static constexpr uint32_t L0A_QK_BUF_CNT = 1;
-static constexpr uint32_t L0A_QK_BUF_SIZE = 16 * KB_BYTE; // 128×128×1B K
+static constexpr uint32_t L0A_QK_BUF_SIZE = 32 * KB_BYTE; // 256×128×1B K
 static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;
 
-static constexpr uint32_t L0A_PV_BUF_CNT = 2;
+static constexpr uint32_t L0A_PV_BUF_CNT = 1;
 static constexpr uint32_t L0A_PV_BUF_SIZE = 18 * KB_BYTE; // 144×128×1B Vᵀ
-static constexpr uint32_t L0A_PV_BUF_OFFSET = 16 * KB_BYTE;
+static constexpr uint32_t L0A_PV_BUF_OFFSET = 32 * KB_BYTE;
 
 static constexpr uint32_t L0B_QK_BUF_CNT = 1;
 static constexpr uint32_t L0B_QK_BUF_SIZE = 16 * KB_BYTE; // 128×128×1B Q（单缓冲）
@@ -185,8 +206,8 @@ static constexpr uint32_t L0B_PV_BUF_CNT = 2;
 static constexpr uint32_t L0B_PV_BUF_SIZE = 16 * KB_BYTE; // 128×128×1B Pᵀ
 static constexpr uint32_t L0B_PV_BUF_OFFSET = 16 * KB_BYTE;
 
-static constexpr uint32_t L0C_QK_BUF_CNT = 2;
-static constexpr uint32_t L0C_QK_BUF_SIZE = 64 * KB_BYTE; // 128×128×4B
+static constexpr uint32_t L0C_QK_BUF_CNT = 1;
+static constexpr uint32_t L0C_QK_BUF_SIZE = 128 * KB_BYTE; // 256×128×4B，跨两段 Fixpipe 持有
 static constexpr uint32_t L0C_QK_BUF_OFFSET = 0;
 
 static constexpr uint32_t L0C_PV_BUF_CNT = 1;
@@ -212,40 +233,14 @@ static constexpr uint32_t MX_GROUP_ELEMS = 32;
 
 static constexpr uint32_t PV_MMAD_M_DIM = ROW_SUM_NUM + ROW_SUM_PAD_NUM; // 144
 static constexpr uint32_t S2_BASE_TILE_SIZE = 128;
-static constexpr uint32_t QK_HALF_KVS = 128; // 一拍 QK 打满基块 kvs 128
+static constexpr uint32_t QK_HALF_KVS = 128;
+static constexpr uint32_t QK_MMAD_KVS = 256; // PAIR256 偶 tile 一次 mmad 的 K 行
 
 static constexpr uint16_t SEED_V_DATA_FILL = 0x3838;
 static constexpr uint16_t SEED_V_SCALE_FILL = 0x7F7F;
 static constexpr uint16_t ZERO_FILL_PATTERN = 0x0000;
 
 static constexpr uint32_t GM_MAX_BUFFER_LEN = 0x7FFFFFFFu;
-
-// P1：偶 tile 一次搬 256 行填满 32KB L1 槽，奇 tile 复用。softmax / P 环仍 128。
-#ifndef BSA_MXFP8_K_PAIR256
-#define BSA_MXFP8_K_PAIR256 1
-#endif
-
-// 等长非连续两块：一条 Nd2Nz/Dn2Nz（ndNum/dnNum=2 + 恒定 stride）。
-#ifndef BSA_MXFP8_NDNUM2
-#define BSA_MXFP8_NDNUM2 1
-#endif
-
-// 索引去阻塞：叠在 P1 上 S=118800 scalar/aic 涨 ~0.9 ms，保持 0。
-#ifndef BSA_MXFP8_IDX_PREFETCH
-#define BSA_MXFP8_IDX_PREFETCH 0
-#endif
-
-// P1b：K/V scale 每 4 个 tile 搬一次。整包实测 S≥4096 死锁，保持 0。
-#ifndef BSA_MXFP8_SCALE_BATCH4
-#define BSA_MXFP8_SCALE_BATCH4 0
-#endif
-
-static constexpr uint32_t SCALE_BATCH_TILES = 4;
-
-// 探针：K-scale copy 后再发一条（写同一 L1 槽）。测完必须改回 0。
-#ifndef BSA_MXFP8_MTE2_INSTR_PROBE
-#define BSA_MXFP8_MTE2_INSTR_PROBE 0
-#endif
 
 __aicore__ inline uint32_t Mxfp8Align16(uint32_t x)
 {
@@ -269,30 +264,6 @@ __aicore__ inline uint32_t Mxfp8NextKvsTileRows(uint32_t gatheredKvSTileIdx, uin
     return (rem < kvSBaseTile) ? static_cast<uint32_t>(rem) : kvSBaseTile;
 }
 
-// 下一次真正发 MTE2 的 tile 下标。P1 奇 tile 跳过 gather，故步进 2。
-__aicore__ inline uint32_t Mxfp8NextGatherTileIdx(uint32_t gatheredKvSTileIdx)
-{
-#if BSA_MXFP8_K_PAIR256
-    return gatheredKvSTileIdx + 2u;
-#else
-    return gatheredKvSTileIdx + 1u;
-#endif
-}
-
-// 从 gatheredKvSTileIdx 起连续 nTiles 个基块在 gather 流上的行数（尾部截断）。
-__aicore__ inline uint32_t Mxfp8GatheredTilesRows(uint32_t gatheredKvSTileIdx, uint32_t nTiles, uint32_t kvSBaseTile,
-                                                  uint64_t gatheredKvSeqlen)
-{
-    uint64_t start = static_cast<uint64_t>(gatheredKvSTileIdx) * static_cast<uint64_t>(kvSBaseTile);
-    if (start >= gatheredKvSeqlen) {
-        return 0;
-    }
-    uint64_t rem = gatheredKvSeqlen - start;
-    uint64_t cap = static_cast<uint64_t>(nTiles) * static_cast<uint64_t>(kvSBaseTile);
-    uint64_t rows = (rem < cap) ? rem : cap;
-    return static_cast<uint32_t>(rows);
-}
-
 __aicore__ inline bool Mxfp8U32Delta(int64_t delta, uint32_t &out)
 {
     if (delta <= 0 || delta > static_cast<int64_t>(0xFFFFFFFFu)) {
@@ -302,21 +273,24 @@ __aicore__ inline bool Mxfp8U32Delta(int64_t delta, uint32_t &out)
     return true;
 }
 
-static_assert(SCALE_BATCH_TILES * S2_BASE_TILE_SIZE * (mBaseSize / MX_GROUP_ELEMS) <= L1_KV_DESCALE_BUF_SIZE,
-              "P1b 512-row scale must fit in 2KB KV descale slot (D=128)");
-
 static_assert(L1_P_SCALE_BUF_OFFSET + L1_P_SCALE_BUF_CNT * L1_P_SCALE_BUF_SIZE == L1_Q_BUF_OFFSET,
               "MXFP8 L1 Q must start at P-scale end (320KB+20*768)");
-static_assert(L1_LOCAL_GLOBAL_MAX_BUF_OFFSET + L1_LOCAL_GLOBAL_MAX_BUF_CNT * L1_LOCAL_GLOBAL_MAX_BUF_SIZE <=
-                  512 * KB_BYTE,
-              "MXFP8 L1 exceeds 512KB");
+static_assert(L1_LOCAL_GLOBAL_MAX_BUF_OFFSET + L1_LOCAL_GLOBAL_MAX_BUF_CNT * L1_LOCAL_GLOBAL_MAX_BUF_SIZE ==
+                  L1_ROW_SUM_SEED_OFFSET,
+              "MXFP8 L1 rowsum seed must follow gmax");
+static_assert(L1_ROW_SUM_SEED_OFFSET + L1_ROW_SUM_SEED_SIZE <= L1_ROW_SUM_SEED_SCALE_OFFSET,
+              "MXFP8 L1 rowsum seed data overlaps scale");
+static_assert(L1_ROW_SUM_SEED_SCALE_OFFSET + L1_ROW_SUM_SEED_SCALE_SIZE <= 512 * KB_BYTE, "MXFP8 L1 exceeds 512KB");
 static_assert(L0A_QK_BUF_OFFSET + L0A_QK_BUF_CNT * L0A_QK_BUF_SIZE == L0A_PV_BUF_OFFSET,
-              "MXFP8 L0A QK must end at Vᵀ offset");
+              "MXFP8 L0A: K 32KB must sit immediately before Vᵀ");
 static_assert(L0A_PV_BUF_OFFSET + L0A_PV_BUF_CNT * L0A_PV_BUF_SIZE <= 64 * KB_BYTE, "MXFP8 L0A exceeds 64KB");
 static_assert(L0B_PV_BUF_OFFSET + L0B_PV_BUF_CNT * L0B_PV_BUF_SIZE <= 64 * KB_BYTE, "MXFP8 L0B exceeds 64KB");
 static_assert(L0C_QK_BUF_OFFSET + L0C_QK_BUF_CNT * L0C_QK_BUF_SIZE == L0C_PV_BUF_OFFSET,
               "MXFP8 L0C QK must end at PV offset");
 static_assert(L0C_PV_BUF_OFFSET + L0C_PV_BUF_CNT * L0C_PV_BUF_SIZE <= 256 * KB_BYTE, "MXFP8 L0C exceeds 256KB");
+#if BSA_MXFP8_QK_MMAD256 && !BSA_MXFP8_K_PAIR256
+#error "QK mmad 256 requires BSA_MXFP8_K_PAIR256"
+#endif
 } // namespace MXFP8
 
 } // namespace NpuArch::Gemm::Block

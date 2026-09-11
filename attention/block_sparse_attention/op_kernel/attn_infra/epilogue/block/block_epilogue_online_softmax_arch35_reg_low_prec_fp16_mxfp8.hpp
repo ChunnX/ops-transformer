@@ -167,7 +167,6 @@ public:
         }
 #endif
 
-        // if (tileInfo.isFirstKvsTile) {
         if (actKvsTile == MXFP8::KVS_BASE_SIZE) {
             if (sRowIsQs128) {
                 // qs=128 或 qs=64 pad 到 128：整基块 softmax
@@ -355,27 +354,6 @@ public:
                 AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2],
                                   repeatParams2);
             }
-
-            // AscendC::printf("==== CopyPUBToPL1 ELSE debug ====\n");
-            // AscendC::printf("pUBTlaMSize:%d, pUBTlaNSize:%d, actQsTile:%d, spBuffIdx:%d\n", pUBTlaMSize, pUBTlaNSize,
-            // actQsTile, spBuffIdx); AscendC::printf("tileInfo.kvsActBaseTileAlign32:%d, kvsActBaseTileAlign64:%d,
-            // KVS_BASE_SIZE:%d\n", tileInfo.kvsActBaseTileAlign32, tileInfo.kvsActBaseTileAlign64,
-            // MXFP8::KVS_BASE_SIZE); AscendC::printf("UB_P_QS_MAJOR_BYTE:%d, DATA_BLOCK_BYTE:%d\n",
-            // MXFP8::UB_P_QS_MAJOR_BYTE, MXFP8::DATA_BLOCK_BYTE); AscendC::printf("UB_P_INNER_BUF_ELEMENT_OFFSET:%d\n",
-            // MXFP8::UB_P_INNER_BUF_ELEMENT_OFFSET); AscendC::printf("srcOffset:%d, srcOffset1:%d, srcOffset2:%d,
-            // dstOffset2:%d\n", srcOffset, srcOffset1, srcOffset2, dstOffset2); AscendC::printf("repeatParams1:
-            // blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n", repeatParams1.blockCount,
-            // repeatParams1.blockLen, repeatParams1.srcStride, repeatParams1.dstStride);
-            // AscendC::printf("repeatParams2: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n",
-            // repeatParams2.blockCount, repeatParams2.blockLen, repeatParams2.srcStride, repeatParams2.dstStride);
-            // AscendC::printf("pL1NHalfSize:%d, xL1P:%d, yL1P:%d\n", pL1NHalfSize, xL1P, yL1P);
-            // AscendC::printf("pUBTensorTlaTile1 shape(M,N):(%d,%d)\n", tla::get<0>(pUBTensorTlaTile1.shape()),
-            // tla::get<1>(pUBTensorTlaTile1.shape())); AscendC::printf("pUBTensorTlaTile2 shape(M,N):(%d,%d)\n",
-            // tla::get<0>(pUBTensorTlaTile2.shape()), tla::get<1>(pUBTensorTlaTile2.shape()));
-            // AscendC::printf("pl1TensorTlaTile shape(M,N):(%d,%d)\n", tla::get<0>(pl1TensorTlaTile.shape()),
-            // tla::get<1>(pl1TensorTlaTile.shape())); AscendC::printf("l1PTensorTla shape(M,N):(%d,%d)\n",
-            // tla::get<0>(l1PTensorTla.shape()), tla::get<1>(l1PTensorTla.shape())); AscendC::printf("==== CopyPUBToPL1
-            // ELSE debug end ====\n");
         }
     }
 

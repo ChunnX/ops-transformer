@@ -509,7 +509,6 @@ _op_builder = BlockSparseAttentionOpBuilder()
 _op_module = _op_builder.load()  # JIT-compiles + loads block_sparse_attention.so
 
 
-@impl(get_as_library(), _op_builder.name, "PrivateUse1")
 def block_sparse_attention_v3(
     query,
     key,
@@ -637,3 +636,9 @@ def block_sparse_attention_v3(
         p_quant_scale,
         resolved_out_dtype,
     )
+
+
+try:
+    impl(get_as_library(), _op_builder.name, "PrivateUse1")(block_sparse_attention_v3)
+except RuntimeError:
+    pass

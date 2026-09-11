@@ -165,5 +165,12 @@ if __name__ == "cann_ops_transformer.ops":
             logger.warning("Failed to register legacy module '%s': %s", _old_name, _e)
 
 
-# Centralized operators not yet migrated to distributed structure
-from .block_sparse_attention import block_sparse_attention_v3
+# Centralized operators not yet migrated to distributed structure.
+# cann_ops_transformer_custom may already have registered PrivateUse1; the
+# local module still exposes the Python wrapper for direct calls.
+try:
+    from .block_sparse_attention import block_sparse_attention_v3
+except (ImportError, RuntimeError) as _e:
+    logger.warning("Failed to import block_sparse_attention_v3: %s", _e)
+    if "block_sparse_attention_v3" not in globals():
+        block_sparse_attention_v3 = globals().get("block_sparse_attention")

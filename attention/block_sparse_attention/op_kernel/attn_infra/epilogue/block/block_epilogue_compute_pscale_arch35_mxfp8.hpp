@@ -150,22 +150,6 @@ public:
                     firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
             }
         }
-        // AscendC::printf("localGroupMax: \n");
-        // for (int i =0; i < 8; i++) {
-        //     AscendC::DumpTensor(localGroupMax1[128*i], 128, 128);
-        // }
-        //  AscendC::printf("localGroupMax end : \n \n");
-
-        //          AscendC::printf("pscale1: \n");
-        // for (int i =0; i < 8; i++) {
-        //     AscendC::DumpTensor(pscale1[32*5*i], 128, 32*4);
-        // }
-        //  AscendC::printf("pscale1 end : \n \n");
-
-        //  AscendC::printf("softmaxMaxOld: \n");
-        // for (int i =0; i < 1; i++) {
-        //     AscendC::DumpTensor(softmaxMaxOld[128*i], 128, 128);
-        //         }
 
 #ifndef BSA_MXFP8_DUMP
 #define BSA_MXFP8_DUMP 0
@@ -193,12 +177,6 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP8::SYNC_VEC1_RES_BUF1_FLAG);
-
-        // DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1,
-        // {static_cast<uint16_t>(firstLoop), 40, 0, 40}); if (secondLoop != 0) {
-        //     DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)],
-        //     pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
-        // }
 
         // copy pscale1 ub to l1
         // 与 softmax/pscale VF 一致：pad-to-128 后按 128 宽写 L1，不要用 mxfp4 的 align64。

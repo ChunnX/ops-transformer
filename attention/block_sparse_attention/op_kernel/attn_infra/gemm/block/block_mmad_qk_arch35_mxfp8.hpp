@@ -302,13 +302,6 @@ public:
                     copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, pairLen, scaleK, srcB16Off2, dstB16Off2,
                                            kvHeadMul);
                 }
-#if BSA_MXFP8_MTE2_INSTR_PROBE
-                // 探针 v1：再发一遍相同 K-scale copy。dst 相同。
-                if (scaleBufId < MXFP8::L1_KV_DESCALE_BUF_CNT) {
-                    copyGmToL1MxScaleDn2Nz(l1AScaleTensor[scaleBufId], gKScale, scaleLen, scaleK, srcB16Off, dstB16Off,
-                                           kvHeadMul);
-                }
-#endif
             }
 
             dealtLenAccum += curDealtLen + (fusedNd2 ? pairLen : 0);
@@ -364,12 +357,15 @@ public:
     }
 
     // L0C → UB fixpipe（NO_SPLIT 模式，subBlockId 选目标 AIV）
+    // l0cM / l0cRowStart：256 mmad 后两段 Fixpipe 从同一块 L0C 切 M。
     template <class TensorUB>
     __aicore__ inline void FixpipeMm1(uint32_t qsActBaseTileAlign16, uint32_t n, TensorUB &ubSTensorTla,
-                                      bool subBlockId, uint32_t qkL0cBufId)
+                                      bool subBlockId, uint32_t qkL0cBufId, uint32_t l0cM, uint32_t l0cRowStart)
     {
+        auto l0CFullTla =
+            tla::MakeTensor(l0CTensor[qkL0cBufId], tla::MakeLayoutL0C(l0cM, qsActBaseTileAlign16), Arch::PositionL0C{});
         auto l0CTensorTla =
-            tla::MakeTensor(l0CTensor[qkL0cBufId], tla::MakeLayoutL0C(n, qsActBaseTileAlign16), Arch::PositionL0C{});
+            GetTile(l0CFullTla, tla::MakeCoord(l0cRowStart, 0), tla::MakeShape(n, qsActBaseTileAlign16));
 
         using CopyL0CToUB =
             Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB, Tile::CopyL0CToUBMode::NO_SPLIT,
@@ -378,16 +374,23 @@ public:
         copyL0CToUB(ubSTensorTla, l0CTensorTla, softmaxScale_, subBlockId);
     }
 
-    // 发一次 nSub 的 fixpipe（含 M_FIX / FIX_M）。同 mxfp4：延后一拍，插在下一轮 Wait MTE1_M 前。
     template <class TensorUB>
     __aicore__ inline void EmitFixpipeMm1(uint32_t l0cBufId, uint32_t nSubRowStart, uint32_t nCur, uint32_t qsMmadN,
-                                          TensorUB &ubSTensorTla, uint32_t subBlockIdx)
+                                          TensorUB &ubSTensorTla, uint32_t subBlockIdx, uint32_t l0cM,
+                                          uint32_t l0cRowStart, bool waitMFix, bool setFixM)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(QK_L0C_EVENT0 + l0cBufId);
+        if (waitMFix) {
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(QK_L0C_EVENT0 + l0cBufId);
+        }
         uint32_t nCurEven = (nCur + 1) >> 1 << 1;
+        // ubS 是 256×128 ping-pong 视图、stride 仍 256。GetTile(row=128) 只改 coord，
+        // data() 不动，layout()(coord)=128*256。不要先切成 128 行再 MakeTensor(data()+off)
+        // （会把 ping-pong 的 coord.col 清零）。
         auto ubSSubTla = GetTile(ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsMmadN));
-        FixpipeMm1(qsMmadN, nCur, ubSSubTla, subBlockIdx != 0, l0cBufId);
-        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(QK_L0C_EVENT0 + l0cBufId);
+        FixpipeMm1(qsMmadN, nCur, ubSSubTla, subBlockIdx != 0, l0cBufId, l0cM, l0cRowStart);
+        if (setFixM) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(QK_L0C_EVENT0 + l0cBufId);
+        }
     }
 
     // P0b：只发 GM→L1（Q 首 tile + 每 tile K），不 Wait MTE2、不占 L0、不推进 kBufId。
@@ -434,29 +437,11 @@ public:
         pairKSlot_ = kBufId;
         pairKL1Align16_ = curTileInfo.kvsActBaseTileAlign16;
 #endif
-#if BSA_MXFP8_SCALE_BATCH4
-        uint32_t scaleRows = 0;
-        if ((gatheredKvSTileIdx % MXFP8::SCALE_BATCH_TILES) == 0u) {
-            scaleRows = MXFP8::Mxfp8GatheredTilesRows(gatheredKvSTileIdx, MXFP8::SCALE_BATCH_TILES, kvSBaseTile,
-                                                      curTaskInfo.gatheredKvSeqlen);
-            pairKScaleSlot_ = pairKSlot_;
-        }
-#else
         uint32_t scaleRows = gatherRows;
-        pairKScaleSlot_ = pairKSlot_;
-#endif
         uint32_t l1KEventId = MXFP8::KV_EVENT0 + pairKSlot_;
 
-        // 首个 sparse index 是阻塞式 GM 标量读，读回来之前本拍一条 MTE2 都发不出去。
-        // 这里只取上一拍存下的值；真正的 GetValue 挪到 copy 发出之后（见函数末尾）。
-        // task 切换时 gSparseBlockIdx 基址与 tile 序号一起重置，缓存作废，就地阻塞读一次。
         uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
-#if BSA_MXFP8_IDX_PREFETCH
-        uint32_t firstOriYBlockIdx =
-            isFirstKvsTile ? static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx)) : nextOriYBlockIdx_;
-#else
         uint32_t firstOriYBlockIdx = static_cast<uint32_t>(gSparseBlockIdx.GetValue(firstYBlockIdx));
-#endif
 
         // Q 仍只在 task 首 KV tile 搬；一次 ~16KB，保持 copy 后立刻 Wait，不改 Q 双槽。
         if (isFirstKvsTile) {
@@ -477,19 +462,9 @@ public:
         auto l1KTensorTla = tla::MakeTensor(l1ATensor[pairKSlot_], l1KLayout, Arch::PositionL1{});
         SparseKFusedBaseTileL1FullLoad(gKTensorTla, l1KTensorTla, gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx,
                                        kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd, gatherRows,
-                                       scaleRows, embed, pairKSlot_, pairKScaleSlot_, kvHeadMul, firstYBlockIdx,
+                                       scaleRows, embed, pairKSlot_, pairKSlot_, kvHeadMul, firstYBlockIdx,
                                        firstOriYBlockIdx);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
-#if BSA_MXFP8_IDX_PREFETCH
-        // K 的 copy 已在飞。P1 下次 gather 是下一偶 tile；标量读与 MTE2 重叠，
-        // 剩余延迟压在紧接着的 ComputeQK（LoadQ/LoadK/mmad）底下。
-        uint32_t nextTile = MXFP8::Mxfp8NextGatherTileIdx(gatheredKvSTileIdx);
-        uint64_t nextStart = static_cast<uint64_t>(nextTile) * static_cast<uint64_t>(kvSBaseTile);
-        if (nextStart < static_cast<uint64_t>(curTaskInfo.gatheredKvSeqlen)) {
-            uint32_t nextYBlockIdx = static_cast<uint32_t>(nextStart / static_cast<uint64_t>(blockShapeY));
-            nextOriYBlockIdx_ = static_cast<uint32_t>(gSparseBlockIdx.GetValue(nextYBlockIdx));
-        }
-#endif
 #if BSA_MXFP8_K_PAIR256
         // 槽已占用到奇 tile LoadK 结束；立刻推进 kvBufId，让随后的 PV 用下一槽，避免和跨 softmax 的 K 对撞。
         kBufId = (kBufId + 1) % MXFP8::L1_KV_BUF_CNT;
@@ -523,29 +498,56 @@ public:
         uint32_t l1KAlign16 = curTileInfo.kvsActBaseTileAlign16;
         uint32_t pairRowOff = 0;
 #endif
-#if BSA_MXFP8_SCALE_BATCH4
-        uint32_t scaleSlot = pairKScaleSlot_;
-        uint32_t scaleRowStart = (gatheredKvSTileIdx % MXFP8::SCALE_BATCH_TILES) * MXFP8::QK_HALF_KVS;
-        const bool scaleTail =
-            ((gatheredKvSTileIdx % MXFP8::SCALE_BATCH_TILES) == (MXFP8::SCALE_BATCH_TILES - 1u)) || isLastKvsTile;
-#else
         uint32_t scaleSlot = kSlot;
         uint32_t scaleRowStart = pairRowOff;
-        const bool scaleTail = true;
-#endif
         uint32_t l1KEventId = MXFP8::KV_EVENT0 + kSlot;
 
         if (!pairOdd) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         }
 
-        // 一拍 QK 128×128（L0_TILE_N=128，满块 nLoopNum=1）；尾块 kvs<128 仍一次 mmad。
+        constexpr uint32_t L0B_Q_SLOT = 0;
+
+#if BSA_MXFP8_QK_MMAD256 && BSA_MXFP8_K_PAIR256
+        if (pairOdd) {
+            uint32_t nCur = kvsActBaseTile;
+            EmitFixpipeMm1(qkL0cBufId, 0, nCur, qsMmadN, ubSTensorTla, subBlockIdx, pairL0cM_, MXFP8::QK_HALF_KVS,
+                           false, true);
+            if (unlikely(isLastKvsTile)) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId);
+                qBufId = (qBufId + 1) % MXFP8::L1_Q_BUF_CNT;
+            }
+            return;
+        }
+        if (pairEven) {
+            uint32_t nCur = l1KAlign16;
+            uint32_t l0CEventId = QK_L0C_EVENT0 + qkL0cBufId;
+            uint32_t l0ABEventId = QK_L0AB_EVENT0 + qkL0abBufId;
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, scaleK, qBufId, L0B_Q_SLOT, 0);
+            LoadKToL0A(0, nCur, embed, l1KAlign16, scaleK, kSlot, scaleSlot, 0, qkL0abBufId, 0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+            // 256 已全部进 L0，奇 tile 不再 LoadK，这里放 L1。
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+            MatmulQK(nCur, qsMmadN, embed, qkL0abBufId, L0B_Q_SLOT, qkL0cBufId, true);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+            qkL0abBufId = (qkL0abBufId + 1) % MXFP8::L0A_QK_BUF_CNT;
+            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
+            pairL0cM_ = nCur;
+            uint32_t nFix0 = MinU32(MXFP8::QK_HALF_KVS, nCur);
+            EmitFixpipeMm1(qkL0cBufId, 0, nFix0, qsMmadN, ubSTensorTla, subBlockIdx, nCur, 0, true, false);
+            return;
+        }
+#endif
+
+        // 尾块或未开 MMAD256：一拍 128×128。
         uint32_t nLoopNum = CeilDivision(kvsActBaseTile, L0_TILE_N);
         bool fixPending = false;
         uint32_t pendL0cBufId = 0;
         uint32_t pendNSubRowStart = 0;
         uint32_t pendNCur = 0;
-        constexpr uint32_t L0B_Q_SLOT = 0;
         for (uint32_t nSub = 0; nSub < nLoopNum; ++nSub) {
             uint32_t l0CEventId = QK_L0C_EVENT0 + qkL0cBufId;
             uint32_t nSubRowStart = nSub * L0_TILE_N + pairRowOff;
@@ -557,28 +559,16 @@ public:
             LoadQToL0B(qsMmadN, embed, qsMmadN, qsMmadN, scaleK, qBufId, L0B_Q_SLOT, 0);
             LoadKToL0A(nSubRowStart, nCur, embed, l1KAlign16, scaleK, kSlot, scaleSlot, scaleRowStart, qkL0abBufId, 0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-            // MTE1 队列：LoadK 完成后再放 L1，与 Cube Wait(MTE1_M) 同序，mmad 只用 L0。
-            // P1 偶 tile 不放槽，留给奇 tile 的下半 LoadK。
             if (nSub + 1 == nLoopNum && !pairEven) {
-                bool holdForScale = false;
-#if BSA_MXFP8_SCALE_BATCH4
-                holdForScale = (kSlot == scaleSlot) && !scaleTail;
-#endif
-                if (!holdForScale) {
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
 #if !BSA_MXFP8_K_PAIR256
-                    kBufId = (kBufId + 1) % MXFP8::L1_KV_BUF_CNT;
-#endif
-                }
-#if BSA_MXFP8_SCALE_BATCH4
-                if (scaleTail && scaleSlot != kSlot) {
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP8::KV_EVENT0 + scaleSlot);
-                }
+                kBufId = (kBufId + 1) % MXFP8::L1_KV_BUF_CNT;
 #endif
             }
 
             if (fixPending) {
-                EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur, qsMmadN, ubSTensorTla, subBlockIdx);
+                EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur, qsMmadN, ubSTensorTla, subBlockIdx, pendNCur,
+                               0, true, true);
                 fixPending = false;
             }
 
@@ -595,7 +585,8 @@ public:
             qkL0cBufId = (qkL0cBufId + 1) % MXFP8::L0C_QK_BUF_CNT;
         }
         if (fixPending) {
-            EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur, qsMmadN, ubSTensorTla, subBlockIdx);
+            EmitFixpipeMm1(pendL0cBufId, pendNSubRowStart, pendNCur, qsMmadN, ubSTensorTla, subBlockIdx, pendNCur, 0,
+                           true, true);
         }
 
         if (unlikely(isLastKvsTile)) {
@@ -635,15 +626,13 @@ protected:
 
     uint32_t qBufId = 0;
     uint32_t &kBufId;
-    // 上一拍 PrefetchK 末尾预读的、同 task 内下次 gather 的首个 sparse index
-    uint32_t nextOriYBlockIdx_ = 0;
     uint32_t qkL0abBufId = 0;
     uint32_t qkL0cBufId = 0;
     uint64_t softmaxScale_;
     // P1：偶 tile gather 所用的 L1 槽和整槽行对齐，奇 tile LoadK 复用。
     uint32_t pairKSlot_ = 0;
     uint32_t pairKL1Align16_ = 0;
-    uint32_t pairKScaleSlot_ = 0;
+    uint32_t pairL0cM_ = 0;
 };
 
 } // namespace NpuArch::Gemm::Block

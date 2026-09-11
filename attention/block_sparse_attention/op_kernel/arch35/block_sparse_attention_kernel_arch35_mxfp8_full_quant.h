@@ -182,11 +182,6 @@ public:
         // host 侧已预算: log2Cx_ = -dstTypeMax, log2CxCeil_ = ceil(dstTypeMax)
         half NEG_LOG2_CX = static_cast<half>(-log2Cx_);
         half LOG2_CX_CEIL = static_cast<half>(log2CxCeil_);
-        // if(coreIdx == 0) {
-        //             AscendC::printf("NEG_LOG2_CX = %f, LOG2_CX_CEIL = %f\n",
-        //         static_cast<float>(NEG_LOG2_CX),
-        //         static_cast<float>(LOG2_CX_CEIL));
-        // }
 
         EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, NEG_LOG2_CX);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
@@ -228,7 +223,6 @@ public:
         const uint32_t qHeadMul = (qFormat == Format::BNSD) ? 1u : qHeads_;
 
         while (coreTaskId < coreTaskNum || delay12CoreTaskId < coreTaskNum || delay3CoreTaskId < coreTaskNum) {
-            // AscendC::PRINTF("loop:%llu \n", coreTileLoop);
             curTaskTileIdx = coreTileLoop - preTaskTileSum;
             delay12TaskTileIdx = coreTileLoop - PV_RE_DELAY_N - delay12preTaskTileSum;
             delay3TaskTileIdx = coreTileLoop - DELAY_PSCALE_N - delay3preTaskTileSum;
@@ -364,7 +358,6 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB_BUF0 +
                                                                         delay3TileInfo.tileMaxIdx / 2);
                         epilogueComputePScale(l1PScaleTensorTla, delay3TileInfo, delay3TaskInfo);
-                        // AscendC::DumpTensor(ubPeerGlobalMaxTensor[delay3TileInfo.tileMaxIdx], 168, 128);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2_BUF0 +
                                                                           delay3TileInfo.pscaleNum);
                     }
@@ -478,7 +471,6 @@ public:
                 delay3CoreTaskId++;
             }
             coreTileLoop++;
-            // AscendC::PRINTF("-----------------------\n");
         }
 
         // release reverse sync flags
@@ -487,44 +479,37 @@ public:
 
     __aicore__ inline void ComputeMm1(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("C1 \n");
-        // cubeBlock.ComputeMm1(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void ComputeMm2(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("C2 \n");
-        // cubeBlock.ComputeMm2(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void ComputeVec1(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("V1 \n");
-        // vectorBlock.ComputeVec1(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void CopyGMaxUbToL1(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("CopyGMaxUbToL1 \n");
-        // vectorBlock.CopyGMaxUbToL1(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void CopyGMaxL1ToUb(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("CopyGMaxL1ToUb \n");
-        // cubeBlock.CopyGMaxL1ToUb(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void UpdatePScale(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("UpdatePScale \n");
-        // vectorBlock.UpdatePScale(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void ComputeVec2(TileInfo &runInfo)
     {
-        // AscendC::PRINTF("V2  \n");
-        // vectorBlock.ComputeVec2(runInfo);
+        (void)runInfo;
     }
 
     __aicore__ inline void FetchBaseShapeInfo(__gm__ BlockSparseAttentionTilingData *bsaTilingData)
@@ -830,20 +815,6 @@ public:
                                   qSOffset * static_cast<int64_t>(qHeads_) * qScaleBytesPerTok +
                                   qHeadIdx * qScaleStrideN_;
         }
-        // [PV-VERIFY] 打印本 task 算出的稀疏 gather 偏移，供测试逐行核对（补丁1/2 验证用）
-        // AscendC::printf(
-        //     "[PV-VERIFY] t=%u b=%u qh=%u kvh=%u xb=%u | gmOffV=%llu gmOffVSc=%llu spIdx=%u kvSeq=%llu yAval=%u
-        //     yRsvd=%u\n", (unsigned)coreTaskId, (unsigned)info.batchIdx, (unsigned)info.qHeadIdx,
-        //     (unsigned)info.kvHeadIdx, (unsigned)info.xBlockIdx, (unsigned long long)info.gmOffsetV, (unsigned long
-        //     long)info.gmOffsetVScale, (unsigned)info.gmOffsetSparseIdx, (unsigned long long)info.kvSeqlen,
-        //     (unsigned)info.yBlockNumAval, (unsigned)info.yBlockNumRsvd);
-        // AscendC::printf(
-        //     "[QK-VERIFY] t=%u qsAct=%u qSOff=%lld | gmOffQ=%llu gmOffK=%llu gmOffQSc=%llu gmOffKSc=%llu "
-        //     "gathered=%llu taskTiles=%u\n",
-        //     (unsigned)coreTaskId, (unsigned)info.qsActBaseTile, (long long)qSOffset,
-        //     (unsigned long long)info.gmOffsetQ, (unsigned long long)info.gmOffsetK,
-        //     (unsigned long long)info.gmOffsetQScale, (unsigned long long)info.gmOffsetKScale,
-        //     (unsigned long long)info.gatheredKvSeqlen, (unsigned)info.taskTileNum);
     }
 
     // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo
