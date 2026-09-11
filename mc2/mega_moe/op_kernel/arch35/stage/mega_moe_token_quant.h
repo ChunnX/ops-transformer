@@ -39,7 +39,8 @@ __aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHidd
     uint32_t quantScaleAlignBytes = Ops::Base::CeilAlign(
         quantScaleNumAlignPerToken * static_cast<uint32_t>(sizeof(QuantScaleOutType)), static_cast<uint32_t>(ALIGN_32));
     uint32_t quantTokenScaleAlignBytes = quantTokenAlignBytes + quantScaleAlignBytes;
-    if constexpr (TopkWeightsPrefetch) {
+    // 布局与 host 同式：prefetch 或 tkw=0 的 combine 去重（发送端乘权）都携带权重段。
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK * sizeof(float)),
                                                          static_cast<uint32_t>(ALIGN_32));
         quantTokenScaleAlignBytes += weightAlignBytes;
@@ -62,7 +63,9 @@ __aicore__ inline void LoadTopkWeightsToUb(const Params &params, const QuantProc
                                            const LocalTensor<ActivationType> &xOutTensor, int32_t tokenIndex,
                                            TEventID event)
 {
-    if constexpr (TopkWeightsPrefetch) {
+    // 与 CreateQuantProcessConfig 的布局条件一致：tkw=0 的 combine 去重同样把整 token 权重
+    // 附在记录尾（合并阶段在发送端消费），tkw=1 实例经编译期折叠零开销。
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         GlobalTensor<TopkWeightsType> weightGm;
         weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ TopkWeightsType *>(
             params.probsGmAddr +

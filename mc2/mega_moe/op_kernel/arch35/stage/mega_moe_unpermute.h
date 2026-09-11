@@ -113,12 +113,18 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
     }
     bool accumStarted = false;
     for (int32_t expertIdx = 0; expertIdx < static_cast<int32_t>(common.topK); ++expertIdx) {
+        // dedup 时顺手数同卡命中数：tkw=0 下决定该 canonical 槽是否还需本端乘权
+        // （==1 是 PLAIN 行、发送端未乘；>=2 是合并行、发送端已按成员权重乘加）。
+        int32_t sameRankCount = 1;
         if (dedupCombineActive) {
             bool canonical = true;
-            for (int32_t prevIdx = 0; prevIdx < expertIdx; ++prevIdx) {
-                if (expertRanks[prevIdx] == expertRanks[expertIdx]) {
-                    canonical = false;
-                    break;
+            for (int32_t otherIdx = 0; otherIdx < static_cast<int32_t>(common.topK); ++otherIdx) {
+                if (otherIdx != expertIdx && expertRanks[otherIdx] == expertRanks[expertIdx]) {
+                    if (otherIdx < expertIdx) {
+                        canonical = false;
+                        break;
+                    }
+                    ++sameRankCount;
                 }
             }
             if (!canonical) {
@@ -138,19 +144,28 @@ __aicore__ inline void AccumulateMoeExpertsForToken(const TokenUnpermuteConfig &
         SetFlag<HardEvent::S_V>(event);
         WaitFlag<HardEvent::S_V>(event);
         PipeBarrier<PIPE_V>();
+        // tkw=0 的 dedup canonical 槽按同卡命中数分流：合并行（sameRankCount>=2）发送端已按
+        // 成员权重乘加，本端纯加；PLAIN 行（==1）保持 tkw=0 原语义在本端乘权。非 dedup 恒乘。
+        const bool applyScale = !dedupCombineActive || sameRankCount == 1;
         if (!accumStarted) {
             accumStarted = true;
             if constexpr (TopkWeightsPrefetch) {
                 DataCopy(scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
             } else {
-                float expertScale = scratch.topKWeightsTensor.GetValue(localIdx * common.topK + expertIdx);
-                Muls(scratch.dataResFp32Tensor, dataInFp32, expertScale, common.tokenHiddenDim);
+                if (applyScale) {
+                    float expertScale = scratch.topKWeightsTensor.GetValue(localIdx * common.topK + expertIdx);
+                    Muls(scratch.dataResFp32Tensor, dataInFp32, expertScale, common.tokenHiddenDim);
+                } else {
+                    DataCopy(scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
+                }
             }
         } else {
             if constexpr (!TopkWeightsPrefetch) {
-                float expertScale = scratch.topKWeightsTensor.GetValue(localIdx * common.topK + expertIdx);
-                Muls(dataInFp32, dataInFp32, expertScale, common.tokenHiddenDim);
-                PipeBarrier<PIPE_V>();
+                if (applyScale) {
+                    float expertScale = scratch.topKWeightsTensor.GetValue(localIdx * common.topK + expertIdx);
+                    Muls(dataInFp32, dataInFp32, expertScale, common.tokenHiddenDim);
+                    PipeBarrier<PIPE_V>();
+                }
             }
             Add(scratch.dataResFp32Tensor, scratch.dataResFp32Tensor, dataInFp32, common.tokenHiddenDim);
             PipeBarrier<PIPE_V>();

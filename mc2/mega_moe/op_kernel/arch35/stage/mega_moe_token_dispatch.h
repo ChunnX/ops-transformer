@@ -106,7 +106,9 @@ __aicore__ inline void FetchDispatchTokenAndMetaInfo(const TokenDispatchConfig &
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
     scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(
         TOPK_INDEX, topkIndex % static_cast<int32_t>(params.tilingData->topK));
-    if constexpr (TopkWeightsPrefetch) {
+    // 事件分叉与 Store 侧的消费条件同式：记录带权重段（prefetch 或 tkw=0 combine 去重）时
+    // Store 要标量读权重，走 MTE2_S；否则直接放行 S_MTE3。
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
     } else {
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
@@ -119,15 +121,16 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
                                                      TokenDispatchScratch<ActivationType> &scratch, int32_t bufferIdx,
                                                      GlobalTensor<ActivationType> &tokenRevGlobalTensor,
                                                      GlobalTensor<QuantScaleType> &scaleRevGlobalTensor,
-                                                     GlobalTensor<int32_t> &metaInfoGlobalTensor, int32_t copyStartIdx,
-                                                     int32_t copyIdx)
+                                                     GlobalTensor<int32_t> &metaInfoGlobalTensor,
+                                                     GlobalTensor<int32_t> &revWeightsGlobalTensor,
+                                                     int32_t copyStartIdx, int32_t copyIdx)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
-    if constexpr (TopkWeightsPrefetch) {
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         LocalTensor<int32_t> weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
@@ -136,6 +139,20 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig &
             weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % static_cast<int32_t>(params.tilingData->topK)));
         scratch.metaInfoTensor[bufferIdx * INT32_PER_256B].SetValue(WEIGHT_INDEX, weightBits);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
+        // dc 单开（combine 去重 + dispatch 去重关）时本路径是唯一落地入口：每行把整 token
+        // 权重段落到自己的 revWeights 槽，供 merge 在 LAST 行一次连续读回乘权。
+        if constexpr (!TopkWeightsPrefetch) {
+            if ((params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+                const uint32_t topK = params.tilingData->topK;
+                const uint32_t weightAlignInt32 =
+                    Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)),
+                                         static_cast<uint32_t>(ALIGN_32)) /
+                    static_cast<uint32_t>(sizeof(int32_t));
+                DataCopyPad(revWeightsGlobalTensor[static_cast<uint64_t>(copyIdx) * weightAlignInt32],
+                            weightBitsTensor,
+                            {1U, topK * static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U});
+            }
+        }
     }
     DataCopyPad(tokenRevGlobalTensor[copyIdx * scratch.revTokenElemCnt], tokenScaleBuffer,
                 {1, static_cast<uint16_t>(scratch.revTokenElemCnt * sizeof(ActivationType)), 0U, 0U, 0U});
@@ -162,6 +179,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleType> scaleRevGlobalTensor;
     GlobalTensor<int32_t> metaInfoGlobalTensor;
+    GlobalTensor<int32_t> revWeightsGlobalTensor;
     tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
         params.workspaceInfo.dispatchRevDataPtr + rowDstOffset * scratch.revTokenElemCnt));
     scaleRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleType *>(
@@ -170,6 +188,21 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
         reinterpret_cast<__gm__ ActivationType *>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
     metaInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
         params.workspaceInfo.metaInfoPtr + rowDstOffset * INT32_PER_256B * sizeof(int32_t)));
+    // tkw=0 的 combine 去重且 dispatch 去重未开（dc 单开）：本基线路径是唯一落地入口，每行把
+    // 整 token 权重段写到自己的 revWeights 槽（merge 在 LAST 行上读，LAST 行也经本路径写过）。
+    // full 模式走 DispatchOwnedExpertRowsDedup/StoreDedupEntry，由那边写 LAST 槽，与此互斥。
+    if constexpr (!TopkWeightsPrefetch) {
+        if ((params.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+            uint32_t weightAlignInt32 =
+                Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK) *
+                                         static_cast<uint32_t>(sizeof(float)),
+                                     static_cast<uint32_t>(ALIGN_32)) /
+                static_cast<uint32_t>(sizeof(int32_t));
+            revWeightsGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                params.workspaceInfo.dispatchRevWeightsPtr +
+                static_cast<uint64_t>(rowDstOffset) * weightAlignInt32 * sizeof(int32_t)));
+        }
+    }
 
     // The only caller enters this function for a non-empty match interval, so copyNum is at least one.
     // DispatchRankTokens completes the compact-index MTE2-to-S synchronization before the first scalar read;
@@ -186,7 +219,7 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
                                                                   remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, scratch, copyIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            revWeightsGlobalTensor, copyStartIdx, copyIdx);
     }
 
     for (int32_t issueIdx = bufferCount; issueIdx < copyNum; ++issueIdx) {
@@ -198,12 +231,12 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig &c
                                                                  remoteRankIdx, remoteRankGlobalTensor);
         StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
             context, params, scratch, copyBufferIdx, tokenRevGlobalTensor, scaleRevGlobalTensor, metaInfoGlobalTensor,
-            copyStartIdx, copyIdx);
+            revWeightsGlobalTensor, copyStartIdx, copyIdx);
     }
 
     StoreDispatchTokenAndMetaInfo<ActivationType, QuantScaleType, TopkWeightsPrefetch>(
         context, params, scratch, (copyNum - 1) % bufferCount, tokenRevGlobalTensor, scaleRevGlobalTensor,
-        metaInfoGlobalTensor, copyStartIdx, copyNum - 1);
+        metaInfoGlobalTensor, revWeightsGlobalTensor, copyStartIdx, copyNum - 1);
 
     for (int32_t bufferIdx = 0; bufferIdx < firstUseEnd; ++bufferIdx) {
         TEventID eventId = static_cast<TEventID>(bufferIdx);
@@ -301,13 +334,15 @@ __aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const
     LocalTensor<ActivationType> tokenScaleBuffer = GetDispatchCopyBuffer(context, scratch, bufferIdx);
     LocalTensor<QuantScaleType> scaleBuffer =
         tokenScaleBuffer[context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
+    // 与 Fetch 侧事件分叉同条件：记录带权重段（prefetch 或 tkw=0 combine 去重）走 MTE2_S。
+    const bool recordHasWeights = TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData);
     LocalTensor<int32_t> weightBitsTensor;
-    if constexpr (TopkWeightsPrefetch) {
+    if (recordHasWeights) {
         WaitFlag<AscendC::HardEvent::MTE2_S>(eventId);
         uint32_t weightOffsetInUb = context.quantTokenAlignBytes + context.quantScaleAlignBytes;
         weightBitsTensor = tokenScaleBuffer[weightOffsetInUb].template ReinterpretCast<int32_t>();
     } else {
-        // Fetch 在非 prefetch 下为 ring meta 置了 S_MTE3；本路径不消费 ring meta，在此配平。
+        // Fetch 在无权重段布局下为 ring meta 置了 S_MTE3；本路径不消费 ring meta，在此配平。
         WaitFlag<AscendC::HardEvent::S_MTE3>(eventId);
     }
     const int32_t flags = descBatchTensor.GetValue(static_cast<uint32_t>(descBase));
@@ -335,11 +370,31 @@ __aicore__ inline void StoreDedupEntry(const TokenDispatchConfig &context, const
         fanMetaTensor.SetValue(metaBase + RANK_ID, static_cast<int32_t>(remoteRankIdx));
         fanMetaTensor.SetValue(metaBase + TOKEN_ID, tokenIndex);
         fanMetaTensor.SetValue(metaBase + TOPK_INDEX, topkIndex % topK);
-        if constexpr (TopkWeightsPrefetch) {
+        if (recordHasWeights) {
             fanMetaTensor.SetValue(metaBase + WEIGHT_INDEX,
                                    weightBitsTensor.GetValue(static_cast<uint32_t>(topkIndex % topK)));
         } else {
             fanMetaTensor.SetValue(metaBase + WEIGHT_INDEX, 0);
+        }
+    }
+    // tkw=0 的 combine 去重：FIRST 行扇出时顺手把整 token 的 topK 权重段落到 LAST 成员行的
+    // revWeights 槽（组成员按行号升序、末位即 LAST）。merge 在 LAST 行上驱动，一次连续读回
+    // 全组权重按成员 topkIndex 乘权；tkw=1 合并纯加不需要本区，编译期折叠。
+    // 条件按 GROUP 标志而非 memberCount>1：clamp 裁剪后 survivorCount==1 的单成员组仍按组发、
+    // 仍走 merge 乘权路径，漏写即读到未初始化权重。
+    if constexpr (!TopkWeightsPrefetch) {
+        if (recordHasWeights && (flags & DEDUP_ROW_FLAG_GROUP) != 0) {
+            const uint32_t weightAlignBytes = Ops::Base::CeilAlign(
+                static_cast<uint32_t>(topK) * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+            const int32_t lastRow = descBatchTensor.GetValue(static_cast<uint32_t>(descBase) +
+                                                             DEDUP_ROW_DESC_HEADER_INT32 +
+                                                             static_cast<uint32_t>(memberCount - 1) * 3U);
+            GlobalTensor<int32_t> revWeightsGm;
+            revWeightsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+                params.workspaceInfo.dispatchRevWeightsPtr +
+                static_cast<uint64_t>(static_cast<uint32_t>(lastRow)) * weightAlignBytes));
+            DataCopyPad(revWeightsGm, weightBitsTensor,
+                        {1U, static_cast<uint32_t>(topK) * static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U});
         }
     }
     SetFlag<AscendC::HardEvent::S_MTE3>(eventId);

@@ -1199,6 +1199,9 @@ __aicore__ inline void RunWaveCombineStage(const MoeStageCommonConfig &common, c
 // 成员行/累加按段处理：段长固定，缓冲不随 h 增长，避免整行 fp32 双缓冲挤爆 UB。
 constexpr uint32_t WAVE_COMBINE_DEDUP_SEG_ELEMS = 4096U;
 constexpr uint32_t WAVE_COMBINE_DEDUP_DESC_UB_BYTES = 12U * 1024U;
+// tkw=0 乘权用：LAST 行 revWeights 槽（整 token topK 个 fp32 位型权重）的 UB 装载区，
+// topK ≤ 32（host 校验）→ 128B 定长。
+constexpr uint32_t WAVE_COMBINE_DEDUP_WEIGHT_UB_BYTES = 128U;
 // 成员乒乓装载事件（MTE2_V/V_MTE2）用 6/7，合并发送事件（V_MTE3/MTE3_V）用 6；
 // 与行环 slot 事件（MTE3_MTE2 的 0..5）分属不同 pipe 对或不同 id，互不冲突。
 constexpr int32_t WAVE_COMBINE_DEDUP_MEMBER_EVENT_BASE = 6;
@@ -1210,6 +1213,7 @@ struct WaveCombineDedupScratch {
     LocalTensor<float> memberFp32Tensor;     // 段长 fp32 成员转换暂存
     LocalTensor<float> accumTensor;          // 段长 fp32 累加
     LocalTensor<int32_t> descTensor;         // rowDesc 批装载
+    LocalTensor<int32_t> weightTensor;       // tkw=0：LAST 行整 token 权重段装载（行内自闭环）
 };
 
 // 跨行存活的事件武装状态：armed 的事件必须在排空时消费，否则悬挂标志会毒化后续同 id 同步。
@@ -1240,7 +1244,8 @@ __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffersDedup(const MoeS
     constexpr uint32_t segBf16Bytes = WAVE_COMBINE_DEDUP_SEG_ELEMS * sizeof(bfloat16_t);
     constexpr uint32_t segFp32Bytes = WAVE_COMBINE_DEDUP_SEG_ELEMS * sizeof(float);
     const uint32_t fixedBytes = bufferConfig.rowStrideBytes /* mergeSend */ + 2U * segBf16Bytes /* member 乒乓 */ +
-                                2U * segFp32Bytes /* memberFp32 + accum */ + WAVE_COMBINE_DEDUP_DESC_UB_BYTES;
+                                2U * segFp32Bytes /* memberFp32 + accum */ + WAVE_COMBINE_DEDUP_DESC_UB_BYTES +
+                                WAVE_COMBINE_DEDUP_WEIGHT_UB_BYTES;
     // 纵深防御：host 门失效（h 超界）时无符号减法会回绕成巨大预算→ring 钳到 6→静默写穿
     // ready-scan 区；此处先钳零，让越界表现为固定的 min-ring 布局而非任意写穿。
     constexpr uint32_t totalBudgetBytes = WAVE_COMBINE_UB_LIMIT - WAVE_COMBINE_UB_BASE;
@@ -1270,6 +1275,9 @@ __aicore__ inline WaveCombineBufferConfig InitWaveCombineBuffersDedup(const MoeS
     addr += segFp32Bytes;
     dedupScratch.descTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, addr, WAVE_COMBINE_DEDUP_DESC_UB_BYTES / sizeof(int32_t));
+    addr += WAVE_COMBINE_DEDUP_DESC_UB_BYTES;
+    dedupScratch.weightTensor =
+        LocalTensor<int32_t>(TPosition::VECCALC, addr, WAVE_COMBINE_DEDUP_WEIGHT_UB_BYTES / sizeof(int32_t));
     return bufferConfig;
 }
 
@@ -1300,6 +1308,34 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
         WaitFlag<HardEvent::MTE3_V>(mergeEvent);
         dedupState.mergeSendArmed = false;
     }
+    // tkw=0：合并前按成员权重乘（tkw=1 行在激活层已带权，纯加）。整 token 权重段由 dispatch
+    // 落在 LAST 行（即本行，desc 末位成员）的 revWeights 槽，一次连续读回后按成员 topkIndex
+    // 取权；事件行内自闭环（MTE2_S 读回 + S_MTE2 放行下一次装载），无跨行 armed 状态。
+    const bool mulWeights = params.tilingData->topkWeightsPrefetch == 0;
+    float memberWeights[32]; // topK ≤ 32（host 校验）
+    if (mulWeights) {
+        const uint32_t topK = params.tilingData->topK;
+        const uint32_t weightAlignBytes =
+            Ops::Base::CeilAlign(topK * static_cast<uint32_t>(sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+        const uint64_t lastRow = static_cast<uint64_t>(static_cast<uint32_t>(dedupScratch.descTensor.GetValue(
+            descRowBase + DEDUP_ROW_DESC_HEADER_INT32 + (memberCount - 1U) * 3U)));
+        GlobalTensor<int32_t> revWeightsGm;
+        revWeightsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.dispatchRevWeightsPtr +
+                                                                        lastRow * weightAlignBytes));
+        DataCopyPad(dedupScratch.weightTensor, revWeightsGm,
+                    {1U, topK * static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U}, {false, 0U, 0U, 0U});
+        SetFlag<HardEvent::MTE2_S>(mergeEvent);
+        WaitFlag<HardEvent::MTE2_S>(mergeEvent);
+        for (uint32_t j = 0U; j < memberCount; ++j) {
+            const int32_t memberTopkIdx = dedupScratch.descTensor.GetValue(
+                descRowBase + DEDUP_ROW_DESC_HEADER_INT32 + j * 3U + 1U);
+            const int32_t weightBits =
+                dedupScratch.weightTensor.GetValue(static_cast<uint32_t>(memberTopkIdx) % topK);
+            memberWeights[j] = *reinterpret_cast<const float *>(&weightBits);
+        }
+        SetFlag<HardEvent::S_MTE2>(mergeEvent);
+        WaitFlag<HardEvent::S_MTE2>(mergeEvent);
+    }
     for (uint32_t segBase = 0U; segBase < h; segBase += WAVE_COMBINE_DEDUP_SEG_ELEMS) {
         const uint32_t segLen = h - segBase < WAVE_COMBINE_DEDUP_SEG_ELEMS ? h - segBase : WAVE_COMBINE_DEDUP_SEG_ELEMS;
         DataCopyExtParams segGm2UbParams{1U, segLen * static_cast<uint32_t>(sizeof(bfloat16_t)), 0U, 0U, 0U};
@@ -1319,9 +1355,17 @@ __aicore__ inline void SendWaveCombineTokenDedupMerge(const MoeStageCommonConfig
             WaitFlag<HardEvent::MTE2_V>(memberEvent);
             if (j == 0U) {
                 Cast(dedupScratch.accumTensor, memberUb, RoundMode::CAST_NONE, segLen);
+                if (mulWeights) {
+                    PipeBarrier<PIPE_V>();
+                    Muls(dedupScratch.accumTensor, dedupScratch.accumTensor, memberWeights[0], segLen);
+                }
             } else {
                 Cast(dedupScratch.memberFp32Tensor, memberUb, RoundMode::CAST_NONE, segLen);
                 PipeBarrier<PIPE_V>();
+                if (mulWeights) {
+                    Muls(dedupScratch.memberFp32Tensor, dedupScratch.memberFp32Tensor, memberWeights[j], segLen);
+                    PipeBarrier<PIPE_V>();
+                }
                 Add(dedupScratch.accumTensor, dedupScratch.accumTensor, dedupScratch.memberFp32Tensor, segLen);
             }
             PipeBarrier<PIPE_V>();

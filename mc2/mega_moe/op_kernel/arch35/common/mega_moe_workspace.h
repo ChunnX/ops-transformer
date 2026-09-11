@@ -95,7 +95,11 @@ private:
         workspaceSize +=
             Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * dispatchScaleElementsPerToken, ALIGN_512);
 
-        if (tilingData->topkWeightsPrefetch == 1 && tilingData->topoType == TOPO_TYPE_URMA) {
+        // URMA prefetch 之外，tkw=0 且 combine 去重（仅 MTE）也需要本区：dispatch 侧把 LAST 行
+        // 整 token 的 topK 权重段落在这里，merge 一次连续读取后按成员 topkIndex 乘权。
+        const bool dedupCombineWeights = tilingData->topkWeightsPrefetch == 0 &&
+                                         (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+        if ((tilingData->topkWeightsPrefetch == 1 && tilingData->topoType == TOPO_TYPE_URMA) || dedupCombineWeights) {
             dispatchRevWeightsOffset = workspaceSize;
             uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
                                                              static_cast<uint32_t>(ALIGN_32));
