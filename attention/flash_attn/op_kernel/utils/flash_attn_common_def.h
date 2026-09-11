@@ -175,6 +175,14 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned128}, // config=6
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
      inferDTemplateType::Aligned128}, // config=7
+
+    // DN: QK double buffer and PV single buffer with S2=256.
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64}, // config=8
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128}, // config=9
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned192,
+     inferDTemplateType::Aligned128}, // config=10
 };
 
 // Config macro definitions for D=64
