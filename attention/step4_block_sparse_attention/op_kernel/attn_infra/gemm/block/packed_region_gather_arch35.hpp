@@ -144,14 +144,17 @@ __aicore__ inline void PackedRegionGatherToL1(CopyGmToL1 &copyGmToL1, TensorGM &
             uint32_t segLen2 = PackedNextSlot<IS_DECODE>(gPacked, packedRowStart, packedCount, regionSize, pageSize,
                                                          gatheredStart, targetEnd, kvSeqlen, compactPos2, slot2,
                                                          oriStart2);
-            if (segLen2 == segLen && oriStart2 > oriStart) {
-                uint64_t srcStride = static_cast<uint64_t>(oriStart2 - oriStart) *
+            if (segLen2 == segLen && oriStart2 != oriStart) {
+                uint32_t gmLo = (oriStart < oriStart2) ? oriStart : oriStart2;
+                uint32_t gmHi = (oriStart < oriStart2) ? oriStart2 : oriStart;
+                uint64_t srcStride = static_cast<uint64_t>(gmHi - gmLo) *
                                      static_cast<uint64_t>(tla::get<0>(gTensor.stride()));
                 const uint32_t eleNumPerC0 = tla::get<0, 0>(l1Tensor.stride());
                 const uint32_t dstStride = segLen * eleNumPerC0;
                 if (srcStride % eleNumPerC0 == 0 &&
                     dealtLenAccum + segLen + segLen2 <= gatheredLen) {
-                    copyGmToL1(l1Tile, gTile, 2, srcStride, dstStride);
+                    auto gPair = tla::GetTile(gTensor, tla::MakeCoord(gmLo, 0), tla::MakeShape(segLen, embed));
+                    copyGmToL1(l1Tile, gPair, 2, srcStride, dstStride);
                     dealtLenAccum += segLen + segLen2;
                     compactPos = compactPos2;
                     slot = slot2;
