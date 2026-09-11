@@ -345,7 +345,10 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
         postStagingSize = static_cast<uint64_t>(aivNum) * 2 * postYBlocks * sizeof(float);
     }
 
-    uint64_t scoreFp32Size = Q_CHUNK_SIZE * aicNum * yBlocks * sizeof(float);
+    // scratch tile 环形槽（10 槽：9-tile 背压领先 + 1 正在写；同步 flag 环不变）
+    constexpr uint32_t SCRATCH_RING_TILES = 10;
+    uint64_t scoreFp32Size =
+        static_cast<uint64_t>(SCRATCH_RING_TILES) * aicNum * Q_CHUNK_SIZE * 512 * sizeof(float);
 
     uint64_t sortLen =
         usePostBlockShape ? static_cast<uint64_t>(postXBlocks) * postYBlocks : static_cast<uint64_t>(xBlocks) * yBlocks;

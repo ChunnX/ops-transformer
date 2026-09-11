@@ -313,7 +313,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
 
     // 分块连续布局：当前 kTile 基址（元素）
-    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, kChunkStart, constInfo.yBlocks);
+    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, qChunkStart, kChunkStart, constInfo.yBlocks);
 
     // ---- band 整读 + 逐 slice 计算 ----
     // 连续 slice 合并为 band 一次读入（32 列块 × blockCount=bandRows 连续 run，burst 大），
@@ -781,7 +781,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::SoftmaxSecondPassAndCast(uint32_t 
     WaitFlag<HardEvent::MTE3_MTE2>(eventSft);
 
     // 分块连续布局：当前 kTile 基址（元素）
-    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, kChunkStart, constInfo.yBlocks);
+    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, qChunkStart, kChunkStart, constInfo.yBlocks);
 
     // ---- band 整读 + 逐 slice 计算（与 pass1 同结构）----
     uint32_t bandCap = (Q_CHUNK_SIZE / 2) * K_CHUNK_SIZE * CV_EXEC_RATIO / kChunkSizeAlign;

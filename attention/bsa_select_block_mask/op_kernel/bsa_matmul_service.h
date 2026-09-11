@@ -516,7 +516,7 @@ __aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(uint32_t qChun
     uint32_t dstStride = Q_CHUNK_SIZE * C0_SIZE * sizeof(MM_OUT_T) / 32;
     uint32_t nLoopTimes = (kChunkSize + CUBE_BASE_BLOCK - 1) / CUBE_BASE_BLOCK; // N 方向分块数
     // 当前 kTile 在 AIC 区内的基址（元素，分块连续布局）
-    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, kChunkStart, yBlocks);
+    uint64_t tileBase = BSAScratchTileOffset(constInfo.aicIdx, qChunkStart, kChunkStart, yBlocks);
 
     // ---- Step 1: Q 一次性加载到 L1 ----
     WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q);

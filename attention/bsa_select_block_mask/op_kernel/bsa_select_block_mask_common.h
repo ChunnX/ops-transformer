@@ -151,14 +151,19 @@ struct BSAConstInfo {
     uint32_t postYBlocks;
 };
 
-// score scratch 分块连续布局偏移（元素单位）：
-//   layout = [aicIdx][kTileIdx][chunkRow][K_TILE_COLS]
-//   每 AIC 区大小 = Q_CHUNK_SIZE * yBlocks；每 tile 大小 = Q_CHUNK_SIZE * K_TILE_COLS
-__aicore__ inline uint64_t BSAScratchTileOffset(uint32_t aicIdx, uint32_t kChunkStart, uint32_t yBlocks)
+// score scratch 环形槽偏移（元素单位）：
+//   layout = [aicIdx][ringIdx(10)][chunkRow][K_TILE_COLS]，每 tile = Q_CHUNK_SIZE * K_TILE_COLS
+//   ringIdx = 全局 tile 序号（跨 qChunk 连续）% 10；10 槽 = 9-tile 背压领先 + 1 正在写，
+//   与 SYNC_C1_TO_V1_FLAG_NUMS=9 的 flag 环对齐（scratch 环 ≥ flag 环，无覆写）
+__aicore__ inline uint64_t BSAScratchTileOffset(uint32_t aicIdx, uint32_t qChunkStart, uint32_t kChunkStart,
+                                                uint32_t yBlocks)
 {
-    uint64_t coreBase = static_cast<uint64_t>(aicIdx) * Q_CHUNK_SIZE * yBlocks;
-    uint64_t tileIdx = kChunkStart / K_TILE_COLS;
-    return coreBase + tileIdx * Q_CHUNK_SIZE * K_TILE_COLS;
+    constexpr uint32_t RING_TILES = 10;
+    const uint32_t ktiles = (yBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
+    const uint64_t globalTile = (static_cast<uint64_t>(qChunkStart) / Q_CHUNK_SIZE) * ktiles +
+                                kChunkStart / K_TILE_COLS;
+    const uint64_t tileElems = static_cast<uint64_t>(Q_CHUNK_SIZE) * K_TILE_COLS;
+    return static_cast<uint64_t>(aicIdx) * RING_TILES * tileElems + (globalTile % RING_TILES) * tileElems;
 }
 
 struct BSARunInfo {
