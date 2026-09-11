@@ -506,14 +506,31 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 
 ---
 
-### 6.6 大 shape 用例的抽样比对机制（harness，2026-09-07）
+### 6.6 大 shape 用例的全量比对机制（harness，2026-09-10 起：全行完全匹配，取代 2026-09-07 的抽样比对）
 
-16K/128K/1M 用例并入 pytest 后，CPU 全量 golden（参考真值）不可行（1M 行 × 1M 位置 × 32 头 ≈ 数十 Tflop），采用：
-1. **抽样行官方规则比对**：每 batch 固定行 + 等分行 + 固定 seed 随机行（1M 约 16 行、16K/128K 约 32 行），逐行计算 golden（逐行 matmul：q 行向量 [G,D] × k 段 [S2,D]，秒级/行）并按 §6.2 两级规则比对；抽样覆盖 vl（valid length，行级有效长度）极小（首行）/中间/极大（末行）；
-2. **全行有效性检查**（numpy 向量化）：sparse_indices（稀疏索引输出）∈ [-1, S2)、candidate_topk_index（候选块索引输出）∈ [-1, numBlocks)、mode=2 输出第三元为空；
-3. **pin（强制保留最新 token 所在块）检查**：numBlocks > candidate_topk_blocks 的抽样行必须含最新块；
-4. **双跑确定性**：大 shape 用例二次运行抽样行逐元素一致；
-5. **force_rows 确定性锚点（R10，2026-09-08）**：用例可声明 `force_rows` 行号列表并入抽样集——随机抽样可能漏掉特定 vl（行级有效长度）窗口行（R10 的 stale 窗口：尾 tile cuS2Len∈(64,96]，即 mask_mode=3 下行号 i 满足 (vl mod 2048)∈(64,96]，每 batch 仅约 32 行）；big128k_b2_varlen 锚 [64,73,95]×2 batch，big128k_b4_varlen 锚 12 行覆盖 4 batch。
+16K/128K/1M 用例并入 pytest 后，**2026-09-10 起全行完全匹配（用户要求，无抽样）**；此前（2026-09-07~09）曾用抽样比对（每 batch 固定行+等分行+随机行约 16~32 行 CPU golden），1M 全量 golden 因 CPU 算力不可行（1M 行 × 1M 位置 × 32 头 ≈ 数十 Tflop）。
+
+**现行机制（`_full_match_npu`，NPU 设备侧 golden 两级流水）**：
+1. **fp16 筛选（全行）**：qk 矩阵乘按 2D 展平 GEMM（B 连续化，见陷阱 P6）在 NPU 分行块计算——int8 值域内 fp16 输出**单次舍入**（误差 ≤ 2^-11 相对），r16 = qk/1024 与 golden 链**逐位一致**（2 的幂移位与舍入可交换，已推导+实测）；g-sum 用 fp16 bmm（±2^-11）→ 确定性 topk `_gold_idx_det`（值降序，tie 取小索引，对齐 kernel MrgSort (value,idx) 序；边界元素置行尾，供仲裁定位）→ 多重集合门（排序后整行相等）；
+2. **值域门（sound）**：索引门失配的行，若双方"值多重集"（取自同一 score 张量）逐位相等 **且** 值 > 边界值×(1+thres) 的索引集合相等 → 判 PASS（等值并列交换的精确域差 ≤ 2^-11 < 官方 0.001，判定与官方规则一致；中段等值交换被条件 b 拒绝，不掩盖真实 bug）；
+3. **边界域精确仲裁（残余失配行）**：仅对差异元素 + gold 边界元素用 r16 一维扁平 take（`flat[行·g+块内偏移]`，只读 n×g×m 个元素）计算**精确分数**（int8 值域内 fp32 矩阵乘与 CPU int32 逐位一致，已探测验证），按官方 0.001 相对容差判定（bv=0 时要求差值恰为 0，对齐官方 value_bm==0 特例）——门禁结论不依赖任何精度余量，只有真实差异才 FAIL；
+4. **全行有效性检查**：sparse_indices ∈ [-1, S2)、candidate_topk_index ∈ [-1, numBlocks)；
+5. **pin 向量化全行检查**：vl ≥ 1 的行，pin 块 ((vl−1)/8) 必须在 op 候选输出中。
+
+**候选 arbitration 同构**（`_arb_cand_rows`）：块值 = 块内可达位置精确分 max（pin 块 +inf，全不可达 -inf），差异块 + gold 边界块 8 位置扁平 take，0.001 容差。
+
+**实测（92 用例两轮全绿）**：16K 1~4s、128K m1 190~239s / m2 44~87s、1M m1 575~923s / m2 200~367s / 1M B=2 变长 3489s；仲裁行数最高 138.3 万/例（1M mask0 m1）全部通过——**每行都做了完全匹配，无一行抽样**。
+
+**性能陷阱（NPU 上实测，复用须知）**：
+- P6a：`Tensor.repeat_interleave(dim=1)` 在 NPU 上极慢（[4096,2048]→×8 实测 9.2s），等价 `memb[:, idx8]`（idx8=arange(col)//8）gather 仅 27ms（340×）；
+- P6b：GEMM 的 B 操作数为**大张量切片的转置视图**且 M ≥ 8192 时走慢路径（[20288,128]@[128,65K] 实测 11.3 TFLOPS），B 连续化后 116.7 TFLOPS（10×）；QK 矩阵乘按 2D 展平 + B 连续化；
+- P6c：`r16[js]` 行子集拷贝 / 三维高级索引（含切片+双索引张量）在 NPU 上均等效物化整块（每 chunk 数 GB），改**一维扁平 take**（`flat[行·g+偏移]`，只读 n×g×m 个元素）；
+- P6d：NPU `argmin/argmax` 慢，取最值+索引用 `torch.topk(…, 1, largest=False)`；
+- P6e：`scatter_` 的 **index 有重复**（候选 randint 含重复块 + -1 pad clamp 后撞同列）时为竞态，实测触发 aicpu ScatterElements 异常（errorCode 0x2a，进程 device 损坏、后续用例连锁失败）——改 `scatter_add_`（重复=累加，语义确定）；
+- P6f：**变长 batch 越界索引**：候选 randint 按最大 nb 生成，小 batch 行含块号 ≥ 本批 nb_total → scatter 越界寻址同样 aicpu 异常（B=1 无变长故从不触发，B=2/B=4 变长必现）——index 双向 clamp（越界块号按"非候选"处理，与 golden `valid_blk` 语义一致）；
+- P6g：**跨用例 allocator 碎片**：长套件（54 用例后）碎片累积致后续用例 aclnnCat 507018 OOM 连锁——每用例开头 `torch.npu.empty_cache()` 归还空闲块。
+
+**R10 时代的 force_rows 抽样锚点机制随全量比对自动失效（无需锚点——R10 类 stale 窗口行也被全行覆盖）**；`_sample_rows`/`golden_run_ext(need_rows)` 代码保留未删（可作深检工具）。
 
 ### 7. 风险与开放问题
 
@@ -575,9 +592,12 @@ decode step  (start_pos>0):   每步调用 QLI 1 次 (S1=1)   → mask_mode=0, b
 | P4 | v220 Cast：s32→f32 `CAST_NONE` 合法（vconv_s322f32）；**f32→s32 `CAST_NONE` 为 assert no-op**（仅 RINT/FLOOR/CEIL/ROUND/TRUNC 有指令） | fp32 算术链构造的 idx 经 Cast 后保持浮点位型垃圾（score 位型泄漏进索引字段） | 索引构造全程 int32 域（`ArithProgression` + Sub/Maxs/Mins/Mul 链）；确需 f32→s32 时用 `CAST_RINT` |
 | P5 | kernel `.o` 编译自 `build/binary/ascend910b/src/` 源码副本（cmake configure 时拷贝，make 不刷新），受 `gen/*.done` 门闩控制；且该路径下 `compile_stop.flag` 会阻塞失败后的重试 | 连续三轮"修复无效"实为旧二进制（AGENTS.md 教训复现，部署 .h 源码是新的、编译产物是旧的，标记检查被假象通过） | build_install.sh 流水：rsync 源码副本 → 删 `.done` 门闩 → make → **校验 .o mtime 为本次** → 安装 → `cmp` 部署 .o 与构建 .o 一致 |
 
-## 10. 当前验证状态（2026-09-07）
+## 10. 当前验证状态（2026-09-10）
 
-- pytest **87 用例全绿**（2026-09-08 R10 修复 + B=2/B=4 变长补齐后：24 基础 + 12 m1 大遍历 + 5 m2 大补 + 6 pa_gap 大 + 24 mask0 大遍历 + 4 B=2 变长 + 3 B=4 变长 + 其余 TND/offset/门禁；总时长 ~32 分钟）：
+- pytest **92 用例全绿（2026-09-10，全量比对模式下两轮验证）**：首轮 54 过（含全部 16K/128K/1M 全行匹配，big1m_b2_m2 后 device 损坏连锁终止），重试 35 过（b2/b4/mask0/off 家族）；big128k_b2_tnd_m2 首因 ScatterElements aicpu 异常（P6e/P6f，§6.6）修复后单独复验通过：
+  - **全行完全匹配（无抽样）**：16K/128K/1M × BSND/TND × r1/r2 × m1/m2/m3 + mask0 24 用例 + pa_gap 大 + b2/b4 变长——1M 级单例最长 4836s（mask0_1m m1），仲裁行数最高 138.3 万/例全过
+  - 崩溃根因（§6.6 P6e/P6f）：变长 batch 候选越界块号 + bool scatter 重复 index 竞态 —— index 双向 clamp + scatter_add_ 修复；每用例开头 empty_cache 防碎片连锁
+- pytest 87 用例全绿（2026-09-08 R10 修复 + B=2/B=4 变长补齐后：24 基础 + 12 m1 大遍历 + 5 m2 大补 + 6 pa_gap 大 + 24 mask0 大遍历 + 4 B=2 变长 + 3 B=4 变长 + 其余 TND/offset/门禁；总时长 ~32 分钟）：
   - 22 基础用例（mode 1/2/3 × cmp_ratio 1/2 × g32/64 × decode/prefill/tail/sparse2048/pin64 单/多 tile/B=4 变长/S1 尾块/tiny/cand64×mode2）全过，零 aicore
   - **大 shape 直接入矩阵全过**：big16k_m1 / big128k_m1 / big128k_m1_b2（B=2 变长）/ big1m_m1（131072 块 pin（强制保留最新 token 所在块）抽样验证）/ big1m_m3（回归）——§6.6 抽样行官方两级规则比对 + 全行有效性 + pin 检查，总时长 ~4 分钟
   - 等价回归全过：pa_gap_m3_regress（紧凑场景现网行为不变，R8）、off_zero_regress（零偏移与不传一致）
