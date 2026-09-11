@@ -72,10 +72,10 @@ class ModelConfig:
     mode: Optional[int] = 3  # 2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
-    # 共享 Jetty 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
+    # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
     batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
-    drain_threshold: int = 8192  # 每个共享 Jetty 的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
+    drain_threshold: int = 8192  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 

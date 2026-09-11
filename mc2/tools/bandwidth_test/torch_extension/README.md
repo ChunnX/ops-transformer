@@ -304,7 +304,7 @@ maximum。合法值会打印 `requested / selected / maximum`。UB 最大值与 
 例如 `world_size=8、aiv_num=64` 时，`max_bs=4096、hidden=16384` 和
 `max_bs=8192、hidden=8192` 的 tiling 最大提交数均为 **2048 个 token/WQE**。
 设备端分块扫描 ID，为当前目标卡跨 ID 块累计 WQE；凑够指定数量就 `BatchCommit`。
-普通 URMA 每批 Commit 后 Drain；共享 Jetty 按累计阈值延后 Drain。
+普通 URMA 和共享 Jetty 均按累计阈值延后 Drain；普通 URMA 在释放通道锁前完成最终 Drain。
 所有 URMA 模式直接调用 `hcomm_.WriteNbi(handle, dst, src, len)`，不传 WQE 配置或模板实参。
 WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `cqe`。
 下述已核对 SDK 版本的默认值为 `odr=5、fence=1、cqe=1`，直接调用并不表示把这些字段置零。
@@ -319,7 +319,7 @@ WQE 行为完全由 SDK 默认值决定，算子不覆盖 `odr`、`fence` 或 `c
 context 与 tiling 的 Jetty 数量，也不检查通信返回值。host 参数、建链和资源检查保留，SDK 内部检查沿用原实现。
 kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还通过公开 `Lock/Unlock` 串行化通道使用。
 两条路径都不读取 channel entity、队列深度、游标或 batch handle 内部字段。
-当前 Batch 接口未提供队列余量查询；共享 Jetty 的 `drain_threshold` 是调用方配置的在途预算，必须不超过实际可用 SQ/CQ 容量。普通 URMA 仍逐批 Drain。
+当前 Batch 接口未提供队列余量查询；URMA 的 `drain_threshold` 是调用方配置的在途预算，必须不超过实际可用 SQ/CQ 容量。普通 URMA 以持锁通道为累计范围。
 多批数据的计时包含这些完成等待，不能假定更小的 batch 会降低耗时。
 已核对 [Hcomm 公共接口](https://gitcode.com/cann/asc-comm/blob/1e575b02fb8bb3cf3e8f1e8f617972eac0d2a66e/include/aicore/hcomm/hcomm.h)，asc-comm 提交为
 `1e575b02fb8bb3cf3e8f1e8f617972eac0d2a66e`，部署时须使用兼容版本。
@@ -329,7 +329,7 @@ kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还
 本算子不为此增加 BS 上限、设备侧补丁或强序设置；目标 SDK 未修复前，不能保证触及该边界时的完成语义。
 普通 URMA 数据阶段的通道锁覆盖 batch handle 创建至最终 Drain，避免其他核并发更新共享 SQ 游标。
 普通 URMA 的 `SetStatus` 复用缓存的通道句柄，重新持锁并创建该阶段的 batch handle；
-计数和 ready flag 均经 batch 接口提交并分别等待完成，保证先计数后就绪。
+计数和 ready flag 均经 batch 接口提交，按阈值及通道释放前 Drain，依赖 SDK 默认 fence 保证先计数后就绪。
 普通 URMA 在阶段间重新绑定，避免复用已解锁、可能被其他核推进过共享 SQ 游标的 handle；
 不会在 token 或 commit 循环里重新获取 handle。共享 Jetty 路径则按上文所述由每个发送核独占一个 Jetty，
 跨 peer 累计已提交的 WQE，在下一批将超过阈值及发送结束时 Drain，不调用 `Lock/Unlock`。
@@ -349,7 +349,7 @@ kernel 只通过公开 Hcomm 接口提交和完成通信；普通 URMA 路径还
 `StreamFromWindow()` 只为有远端任务的核分配 `batch_tokens * 64` 字节 UB。
 Win 使用紧凑 H 行，最小容量为 `1 MiB + 2 * BS * H * 2`；该模式不适用上文 mode 0/1 的双缓冲及 ID 预算公式。
 flag 位于 Win 的 128 KiB 处（每个来源卡 32B），本核序号位于 160 KiB 处（每核 32B）。
-普通 URMA mode 2 的尾批未满时将 flag 并入尾批 Commit；满批则先 Commit/Drain 数据，再单独提交 flag。
+普通 URMA mode 2 的尾批未满时将 flag 并入尾批 Commit；满批则先 Commit 数据，再单独提交 flag；按阈值及通道释放前 Drain。
 合并尾批的先后关系依赖当前 SDK 默认的 `fence=1` 和 CQE 语义。
 
 `mode=3/4` 仅支持共享 Jetty。mode 3 的每个 Jetty 都向全部远端发送完整 `BS` 个 token，
@@ -372,11 +372,15 @@ URMA 和 ROCE kernel 均直接调用通信接口，不检查返回值；ROCE 的
 调用方仍负责保证上述通信前置条件。
 这些修改仍需在目标 SDK 下验证编译和多卡可见性。
 
-### 共享 Jetty 的 Drain 阈值
+### URMA 的 Drain 阈值
 
-`config.py` 中 `ModelConfig.drain_threshold = 8192` 通过 eager/图模式、Torch、ACLNN/GE 和 tiling 传到共享 Jetty kernel。
-该值为每个 Jetty 自上次 Drain 后累计提交的 WQE 数上限，跨 batch、跨目标卡累计；每个 token 为一个 WQE，flag/count 也各占一个，但不计入 payload 带宽。
+`config.py` 中 `ModelConfig.drain_threshold = 8192` 通过 eager/图模式、Torch、ACLNN/GE 和 tiling 传到普通 URMA 和共享 Jetty kernel。
+该值为自上次 Drain 后累计提交的 WQE 数上限；普通 URMA 在当前持锁通道内跨 batch 累计，共享 Jetty 还跨目标卡累计；每个 token 为一个 WQE，flag/count 也各占一个，但不计入 payload 带宽。
 若累计值加下一批数量大于阈值，先 Drain 已提交请求，再准备并提交下一批；等于阈值允许提交。单批容量同时受阈值限制。
 发送结束再 Drain；mode 0/1 还在发布状态前完成数据阶段的 Drain。临时 Drain 失败 Trap 已移除。
-阈值只影响共享 Jetty；普通 URMA、MTE、ROCE 的提交等待策略不变。阈值范围为 `[1, UINT32_MAX]`，实际值须符合部署 SDK 的 SQ/CQ 可用容量。
+阈值适用于普通 URMA mode 0/1/2 和共享 Jetty mode 0/1/2/3/4；MTE、ROCE 的提交等待策略不变。阈值范围为 `[1, UINT32_MAX]`，实际值须符合部署 SDK 的 SQ/CQ 可用容量。
 新增可选算子属性后，需重新生成/安装算子包和 Torch 扩展，并重建静态图内核。
+
+普通 URMA 的累计量在持锁期间跨批保留，最终 Drain 后才释放锁并切换通道；共享 Jetty 跨目标卡继续累计。
+普通 mode 0/1 扫描 ID 时才知道尾批大小，因此开始新批时按满批预留预算（已知为单条尾批时按 1）；可能提前 Drain，避免额外扫描。
+普通 mode 2 按实际下一批 WQE 数检查，尾批合入 flag 时预留其 1 个 WQE。所有 URMA 单批容量均受 drain_threshold 限制。

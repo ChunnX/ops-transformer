@@ -1160,7 +1160,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
             batch_tokens_text = str(batch_tokens)
             batch_data_mb_text = f"{batch_tokens * token_bytes / (1024 * 1024):.4f}"
         else:
-            batch_capacity = CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS
+            batch_capacity = min(CONFIG.model.batch_tokens or URMA_MAX_BATCH_TOKENS, CONFIG.model.drain_threshold)
             max_peer_tokens = cfg["bs"] // world_size
             # Business inputs distribute the remainder; mode 2 sends only floor(BS/world_size).
             if mode != 2 and cfg["bs"] % world_size:

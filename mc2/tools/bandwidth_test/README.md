@@ -295,7 +295,7 @@ kernel 直接从已注册 Win 的只读源区向远端公共接收区逐 token �
 每次凑够 batch 就 Commit；共享 Jetty 按 `drain_threshold` 累计在途 WQE，下一批将超过阈值时先 Drain，发送结束再 Drain。
 普通 URMA 模式 2 的尾批未满时，将 flag 接在尾批后一起 Commit，数据与 flag 合计不超过配置批量；
 SDK 默认的 fence 保证 flag 在前面的数据完成后到达，最终一次 Drain 收齐尾批数据和 flag 的完成通知。
-数据恰好满批时先完成该批，再单独提交并完成 flag。共享 Jetty 先提交数据批，
+数据恰好满批时先提交该批，再单独提交 flag，按阈值及通道释放前 Drain。共享 Jetty 先提交数据批，
 再单独 batch 提交 flag，按阈值及发送结束统一 Drain。两条路径的报告都只计算数据 token 和字节，不计 flag。
 模式 2/3 的每个发送核等待所有来源卡同编号 Jetty 的 flag；模式 4 的每个发送核等待一张配对来源卡的 flag。
 
@@ -332,11 +332,15 @@ Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag
 3. **Profiling 路径**：多配置测试时，每个配置有独立的 profiling 子目录
 4. **内存占用**：大数据量测试时注意 NPU 内存限制
 
-### 共享 Jetty 的 Drain 阈值
+### URMA 的 Drain 阈值
 
-`config.py` 中 `ModelConfig.drain_threshold = 8192` 通过 eager/图模式、Torch、ACLNN/GE 和 tiling 传到共享 Jetty kernel。
-该值为每个 Jetty 自上次 Drain 后累计提交的 WQE 数上限，跨 batch、跨目标卡累计；每个 token 为一个 WQE，flag/count 也各占一个，但不计入 payload 带宽。
+`config.py` 中 `ModelConfig.drain_threshold = 8192` 通过 eager/图模式、Torch、ACLNN/GE 和 tiling 传到普通 URMA 和共享 Jetty kernel。
+该值为自上次 Drain 后累计提交的 WQE 数上限；普通 URMA 在当前持锁通道内跨 batch 累计，共享 Jetty 还跨目标卡累计；每个 token 为一个 WQE，flag/count 也各占一个，但不计入 payload 带宽。
 若累计值加下一批数量大于阈值，先 Drain 已提交请求，再准备并提交下一批；等于阈值允许提交。单批容量同时受阈值限制。
 发送结束再 Drain；mode 0/1 还在发布状态前完成数据阶段的 Drain。临时 Drain 失败 Trap 已移除。
-阈值只影响共享 Jetty；普通 URMA、MTE、ROCE 的提交等待策略不变。阈值范围为 `[1, UINT32_MAX]`，实际值须符合部署 SDK 的 SQ/CQ 可用容量。
+阈值适用于普通 URMA mode 0/1/2 和共享 Jetty mode 0/1/2/3/4；MTE、ROCE 的提交等待策略不变。阈值范围为 `[1, UINT32_MAX]`，实际值须符合部署 SDK 的 SQ/CQ 可用容量。
 新增可选算子属性后，需重新生成/安装算子包和 Torch 扩展，并重建静态图内核。
+
+普通 URMA 的累计量在持锁期间跨批保留，最终 Drain 后才释放锁并切换通道；共享 Jetty 跨目标卡继续累计。
+普通 mode 0/1 扫描 ID 时才知道尾批大小，因此开始新批时按满批预留预算（已知为单条尾批时按 1）；可能提前 Drain，避免额外扫描。
+普通 mode 2 按实际下一批 WQE 数检查，尾批合入 flag 时预留其 1 个 WQE。所有 URMA 单批容量均受 drain_threshold 限制。

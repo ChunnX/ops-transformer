@@ -53,6 +53,7 @@ private:
     __aicore__ inline void SendWindowToRank(uint32_t rankId, GM_ADDR epochAddr);
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void BeginBatch(uint32_t rankId);
+    __aicore__ inline void DrainPending();
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch);
     __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
@@ -138,6 +139,8 @@ private:
     HcommBatchHandle batchHandle_{};
     uint64_t hcommHandle_[HCCL_MAX_RANK_SIZE];
     uint32_t batchCapacity_{0};
+    uint32_t drainThreshold_{8192};
+    uint32_t outstandingWrites_{0};
     uint32_t batchBufferBytes_{0};
     uint32_t preparedWrites_{0};
     float sumTarget_;                 // 状态同步目标值 (1.0)
@@ -172,6 +175,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Ini
     hOutSize_ = axisH_ * sizeof(XType);
     batchBufferBytes_ = tilingData->batchBufferBytes;
     batchCapacity_ = tilingData->batchTokens;
+    drainThreshold_ = tilingData->drainThreshold;
     // Direct Win streaming only needs communication parameters; its WQE buffer is allocated in Process.
     if (mode_ == 2) {
         return;
@@ -317,6 +321,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Beg
     uint64_t channel = hcommHandle_[rankId];
     hcomm_.Lock(channel);
     preparedWrites_ = 0;
+    outstandingWrites_ = 0;
     batchHandle_ = hcomm_.MakeBatchHandle(
         channel, batchTensor_, batchCapacity_ * BandwidthTestTiling::URMA_WQE_BYTES,
         reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]));
@@ -326,6 +331,13 @@ template <TemplateBandwidthTestUrmaTypeClass>
 __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::PrepareWrite(
     GM_ADDR dst, GM_ADDR src, uint32_t len, bool lastInBatch)
 {
+    if (preparedWrites_ == 0) {
+        // Business routing discovers the tail while scanning IDs; reserve a full batch until the last WQE is known.
+        uint32_t nextBatch = lastInBatch ? 1U : batchCapacity_;
+        if (outstandingWrites_ > drainThreshold_ - nextBatch) {
+            DrainPending();
+        }
+    }
     ++preparedWrites_;
     hcomm_.WriteNbi(batchHandle_, dst, src, len);
     bool commit = lastInBatch || preparedWrites_ == batchCapacity_;
@@ -333,9 +345,17 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Pre
         return;
     }
     hcomm_.BatchCommit(batchHandle_);
+    outstandingWrites_ += preparedWrites_;
     preparedWrites_ = 0;
-    // Complete each batch through the API without inspecting private queue capacity or cursors.
-    hcomm_.Drain(batchHandle_);
+}
+
+template <TemplateBandwidthTestUrmaTypeClass>
+__aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::DrainPending()
+{
+    if (outstandingWrites_ != 0) {
+        hcomm_.Drain(batchHandle_);
+        outstandingWrites_ = 0;
+    }
 }
 
 template <TemplateBandwidthTestUrmaTypeClass>
@@ -389,6 +409,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Sen
             if (curExpertCnt != 0) {
                 PrepareWrite(lastRemoteAddr, lastLocalAddr, hOutSize_, true);
             }
+            DrainPending();
             hcomm_.Unlock(hcommHandle_[rankId]);
         }
     }
@@ -421,6 +442,7 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Set
             BeginBatch(rankId);
             PrepareWrite(remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t), sizeof(int32_t), true);
             PrepareWrite(remoteAddr, localAddr, sizeof(int32_t), true);
+            DrainPending();
             hcomm_.Unlock(hcommHandle_[rankId]);
         }
     }
@@ -615,19 +637,29 @@ __aicore__ inline void BandwidthTestUrma<TemplateBandwidthTestUrmaTypeFunc>::Sen
     GM_ADDR src = windowGM_ + STATE_SIZE + rankId * peerBytes;
     // All sources overwrite the same receive block at the original token index.
     GM_ADDR dst = remoteWin + STATE_SIZE + sourceBytes + rankId * peerBytes;
+    uint32_t outstanding = 0;
     while (remaining != 0) {
         uint32_t count = remaining < batchCapacity_ ? remaining : batchCapacity_;
+        bool includesFlag = remaining == count && count < batchCapacity_;
+        uint32_t nextBatch = count + (includesFlag ? 1U : 0U);
+        if (outstanding > drainThreshold_ - nextBatch) {
+            hcomm_.Drain(handle);
+            outstanding = 0;
+        }
         remaining -= count;
         for (uint32_t i = 0; i < count; ++i) {
             hcomm_.WriteNbi(handle, dst, src, hOutSize_);
             src += hOutSize_;
             dst += hOutSize_;
         }
-        // Earlier batches are complete; a partial tail has one free WQE slot for the flag.
-        if (remaining == 0 && count < batchCapacity_) {
+        // Reserve the flag with a partial tail before staging either request.
+        if (includesFlag) {
             break;
         }
         hcomm_.BatchCommit(handle);
+        outstanding += count;
+    }
+    if (outstanding == drainThreshold_) {
         hcomm_.Drain(handle);
     }
     // The SDK default fence orders the flag after payload completion; one Drain completes both.

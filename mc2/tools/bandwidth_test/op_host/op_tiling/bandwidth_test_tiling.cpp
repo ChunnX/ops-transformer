@@ -557,9 +557,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
                             return ge::GRAPH_FAILED);
             batchTokens = *batchTokensPtr == 0 ? maxBatchTokens : static_cast<uint64_t>(*batchTokensPtr);
         }
-        if (IsSharedJetty(context)) {
-            batchTokens = std::min(batchTokens, static_cast<uint64_t>(tilingData->drainThreshold));
-        }
+        batchTokens = std::min(batchTokens, static_cast<uint64_t>(tilingData->drainThreshold));
         tilingData->batchTokens = static_cast<uint32_t>(batchTokens);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
         requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * idBytesPerToken, 32);

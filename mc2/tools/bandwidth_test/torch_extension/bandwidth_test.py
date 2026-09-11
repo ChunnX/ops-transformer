@@ -202,7 +202,7 @@ def bandwidth_test(sym_buffer: BandwidthTestBuffer, x: torch.Tensor,
         batch_tokens: URMA tokens per commit; ROCE requires 0 and uses no batch interface.
             Mode 3 ignores it and uses the largest feasible batch.
             In mode 4, 0 selects BS and the result is capped by BS and the tiling maximum.
-        drain_threshold: Maximum outstanding WQEs per shared Jetty, including control writes.
+        drain_threshold: Maximum outstanding WQEs per URMA Jetty/locked channel, including control writes.
             A batch that would exceed this limit drains prior submissions before preparing its WQEs.
         shared_jetty: Enable the URMA shared jetty kernel and context.
         shared_jetty_num: Number of shared jettys and sending AIVs, in [1, min(aiv_num, 56)].
