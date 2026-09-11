@@ -423,46 +423,46 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(uint32
 
             // ---- softmax 单趟化：per-slice 折叠累计到 foldOut（band 末统一写出）----
             // partSum 槽布局（行主序）[aivIdx*KTILES + tileIdx][128 行][32 组]；partMax 槽：[槽][行]
-            // 两步折叠（原语语义全透明，每 slice 2 次调用）：
-            //   Step A 块配对 Add：foldMid[g][j] = tile[16g+j] + tile[16g+8+j]（16 列组 = 2 相邻块）
-            //   Step B BlockReduceSum 8:1：foldOut[r][g] = Σ_j foldMid[r][g][j]（稠密 dst）
             {
                 LocalTensor<T> groupTmp = reduceSharedTemp.ReinterpretCast<T>();
                 // 无效组清零（本 slice 行区）：GM 槽行宽恒 32，收尾仅消费有效组列
                 AscendC::Duplicate(foldOut[sl.localRowStart * 32], float(0.0f), 32 * sl.rowCount);
                 AscendC::PipeBarrier<PIPE_V>();
-                // 尾 tile（行宽 < 128）需先整形成 64 列虚宽行布局（块粒度跨距 DataCopy），
-                // 否则 128 列虚宽假设跨行错位；整形区 32-63 列为残留，只流入无效组（无消费方）
-                LocalTensor<T> foldSrc = tile;
-                uint32_t srcStrideCols = kChunkSizeAlign;
-                LocalTensor<T> foldMid = groupTmp[0]; // 全 tile：[16 行][32 组][8 lane] = 4096 float
-                if (kChunkSizeAlign < 128) {
-                    LocalTensor<T> reshapeDst = groupTmp[0]; // [rows][64]
-                    foldMid = groupTmp[1024];                // [16 行][4 组][8 lane] = 512 float
+                if (kChunkSizeAlign == K_TILE_COLS) {
+                    // 全 tile：复用 RowSumCascade 的 L1 输出（[rows][64] 8 列组和，本 slice 归约完成后
+                    // 仍驻留 reduceSharedTemp[0..rows*64)）——PairReduceSum 相邻对相加得 [rows][32]
+                    // 16 列组部分和（替代全矩阵块配对 Add + BlockReduceSum 两步，元素量 4096 vs 98304）。
+                    // 参数（实测标定）：repeat 数 = rows，每 repeat 消费 64 元素产 32 输出；
+                    // dstRepStride 单位 = repeat 输出宽（32 float），=1 即逐行连续；srcRepStride=8 块
+                    AscendC::ReducePairElem<AscendC::ReduceType::SUM, float, float, true>(
+                        foldOut[sl.localRowStart * 32], groupTmp[0], static_cast<int32_t>(sl.rowCount * 64),
+                        static_cast<int32_t>(sl.rowCount), 1, 1, 8);
+                    AscendC::PipeBarrier<PIPE_V>();
+                } else {
+                    // 尾 tile（AR 行归约路径无 L1 输出）：整形 64 列虚宽行布局 + 块配对 Add + BRS 原路径
+                    // （行宽 < 128 时虚宽假设跨行错位；整形区 32-63 列残留只流入无效组，无消费方）
+                    LocalTensor<T> reshapeDst = groupTmp[0];  // [rows][64]
+                    LocalTensor<T> foldMid = groupTmp[1024];  // [16 行][4 组][8 lane] = 512 float
                     AscendC::DataCopy(reshapeDst, tile, {static_cast<uint16_t>(sl.rowCount), 4, 0, 4});
                     AscendC::PipeBarrier<PIPE_ALL>();
-                    foldSrc = reshapeDst;
-                    srcStrideCols = 64;
-                }
-                const uint32_t kColsVirtual = srcStrideCols;
-                const uint32_t groupsVirtual = kColsVirtual / 16;
-                AscendC::BinaryRepeatParams bp;
-                bp.dstBlkStride = 1;
-                bp.src0BlkStride = 2;
-                bp.src1BlkStride = 2;
-                bp.dstRepStride = 8;
-                bp.src0RepStride = 16;
-                bp.src1RepStride = 16;
-                for (uint32_t rb = 0; rb < sl.rowCount; rb += 16) {
-                    const uint32_t rc = BSAMin(uint32_t(16), sl.rowCount - rb);
-                    const uint32_t repA = rc * groupsVirtual / 8; // 尾 tile 需 rc 为偶数（本 case 恒 16）
-                    AscendC::Add<T, false>(foldMid, foldSrc[rb * kColsVirtual],
-                                           foldSrc[rb * kColsVirtual + 8], static_cast<uint64_t>(0),
-                                           static_cast<uint8_t>(repA), bp);
-                    AscendC::PipeBarrier<PIPE_V>();
-                    AscendC::BlockReduceSum<float, false>(foldOut[(sl.localRowStart + rb) * 32], foldMid,
-                                                           groupsVirtual * rc / 8, 0, 1, 1, 8);
-                    AscendC::PipeBarrier<PIPE_V>();
+                    const uint32_t groupsVirtual = 4; // 64 列虚宽 / 16
+                    AscendC::BinaryRepeatParams bp;
+                    bp.dstBlkStride = 1;
+                    bp.src0BlkStride = 2;
+                    bp.src1BlkStride = 2;
+                    bp.dstRepStride = 8;
+                    bp.src0RepStride = 16;
+                    bp.src1RepStride = 16;
+                    for (uint32_t rb = 0; rb < sl.rowCount; rb += 16) {
+                        const uint32_t rc = BSAMin(uint32_t(16), sl.rowCount - rb);
+                        const uint32_t repA = rc * groupsVirtual / 8; // 需 rc 为偶数（本 case 恒 16）
+                        AscendC::Add<T, false>(foldMid, reshapeDst[rb * 64], reshapeDst[rb * 64 + 8],
+                                               static_cast<uint64_t>(0), static_cast<uint8_t>(repA), bp);
+                        AscendC::PipeBarrier<PIPE_V>();
+                        AscendC::BlockReduceSum<float, false>(foldOut[(sl.localRowStart + rb) * 32], foldMid,
+                                                               groupsVirtual * rc / 8, 0, 1, 1, 8);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
                 }
             }
         }
