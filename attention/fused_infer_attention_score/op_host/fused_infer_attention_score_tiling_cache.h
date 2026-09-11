@@ -27,6 +27,9 @@
  *   - 输出 shape/dtype
  *   - tiling 过程中会读取内容的 host tensor：actualSeqLengths/actualSeqLengthsKv/actualSharedPrefixLen
  *
+ * 生效范围：仅 arch22 路由（else 分支，A3/ascend910_93 场景）启用缓存；arch35（DAV_3510）与
+ * arch38（DAV_5102）路径不启用，行为与引入缓存前完全一致。
+ *
  * 逃生开关：环境变量 FIA_TILING_CACHE_DISABLE=1 可关闭缓存（退化回原有行为）。
  */
 

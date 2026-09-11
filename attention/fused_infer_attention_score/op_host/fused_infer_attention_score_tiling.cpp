@@ -2514,8 +2514,12 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
 
     // 手写路径 tiling 结果缓存：同一 (shape, attr) 的 tiling 只执行一次，后续直接恢复结果。
     // 手写框架的 GWS/Run 两阶段各自触发一次 tiling，缓存可消除第二次重复计算（可用环境变量
-    // FIA_TILING_CACHE_DISABLE=1 关闭）。
-    const bool cacheEnabled = !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
+    // FIA_TILING_CACHE_DISABLE=1 关闭）。仅 arch22 路由（else 分支）生效，arch35/arch38 路径
+    // 行为与修复前保持一致。
+    const bool isArch22Route = (ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_3510) &&
+                               (ascendcPlatform.GetCurNpuArch() != NpuArch::DAV_5102);
+    const bool cacheEnabled =
+        isArch22Route && !FusedInferAttentionScoreTilingCache::IsCacheDisabled();
     std::string cacheKey;
     const bool cacheKeyValid =
         cacheEnabled &&
