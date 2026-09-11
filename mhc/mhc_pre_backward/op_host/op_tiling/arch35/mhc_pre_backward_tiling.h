@@ -21,10 +21,26 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
-#include "../../../op_kernel/arch35/mhc_pre_backward_mm_config.h"
 #include "../mhc_pre_backward_tiling.h"
 
 namespace optiling {
+
+BEGIN_TILING_DATA_DEF(MMConfig)
+TILING_DATA_FIELD_DEF(uint32_t, baseM);
+TILING_DATA_FIELD_DEF(uint32_t, baseN);
+TILING_DATA_FIELD_DEF(uint32_t, baseK);
+TILING_DATA_FIELD_DEF(uint32_t, l1K);
+TILING_DATA_FIELD_DEF(uint32_t, l1ADepth);
+TILING_DATA_FIELD_DEF(uint32_t, l1BDepth);
+TILING_DATA_FIELD_DEF(uint32_t, l0ADepth);
+TILING_DATA_FIELD_DEF(uint32_t, l0BDepth);
+TILING_DATA_FIELD_DEF(uint32_t, l0CDepth);
+TILING_DATA_FIELD_DEF(uint32_t, b1FullLoad);
+TILING_DATA_FIELD_DEF(uint32_t, l1BufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, l0ABufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, l0BBufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, l0CBufferBytes);
+END_TILING_DATA_DEF;
 
 BEGIN_TILING_DATA_DEF(MhcPreBackwardTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
@@ -37,20 +53,8 @@ TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
 TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(uint32_t, implMode);
 TILING_DATA_FIELD_DEF(uint32_t, mmConfigKey);
-TILING_DATA_FIELD_DEF(uint32_t, c0BaseM);
-TILING_DATA_FIELD_DEF(uint32_t, c0BaseN);
-TILING_DATA_FIELD_DEF(uint32_t, c0BaseK);
-TILING_DATA_FIELD_DEF(uint32_t, c1BaseM);
-TILING_DATA_FIELD_DEF(uint32_t, c1BaseN);
-TILING_DATA_FIELD_DEF(uint32_t, c1BaseK);
-TILING_DATA_FIELD_DEF(uint32_t, c0L1K);
-TILING_DATA_FIELD_DEF(uint32_t, c1L1K);
-TILING_DATA_FIELD_DEF(uint32_t, l1ADepth);
-TILING_DATA_FIELD_DEF(uint32_t, l1BDepth);
-TILING_DATA_FIELD_DEF(uint32_t, l0ADepth);
-TILING_DATA_FIELD_DEF(uint32_t, l0BDepth);
-TILING_DATA_FIELD_DEF(uint32_t, l0CDepth);
-TILING_DATA_FIELD_DEF(uint32_t, c0B1FullLoad);
+TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC0);
+TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC1);
 TILING_DATA_FIELD_DEF(uint32_t, c0MBlock);
 TILING_DATA_FIELD_DEF(uint32_t, c0NBlock);
 TILING_DATA_FIELD_DEF(uint32_t, c1KBlock);
@@ -105,6 +109,7 @@ protected:
     ge::graphStatus ParseTNDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);
     ge::graphStatus ValidateShapeParams();
+    void SetMmConfig();
     ge::graphStatus ValidateMmConfig();
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
@@ -131,7 +136,9 @@ private:
     uint64_t l0ASize_{0};
     uint64_t l0BSize_{0};
     uint64_t l0CSize_{0};
-    uint32_t mmConfigKey_{MhcPreBackward::MhcPreBackwardMmConfig0::KEY};
+    uint32_t mmConfigKey_{MHC_PRE_BACKWARD_MM_CONFIG_0};
+    MMConfig mmConfigC0_{};
+    MMConfig mmConfigC1_{};
 };
 
 } // namespace optiling

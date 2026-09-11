@@ -21,33 +21,12 @@
 namespace MhcPreBackward {
 using namespace AscendC;
 
-using MmConfig = MhcPreBackwardMmConfig0;
-static_assert(MmConfig::C0_BASE_M == MmConfig::C1_BASE_M &&
-                  MmConfig::C0_BASE_N == MmConfig::C1_BASE_N &&
-                  MmConfig::C0_BASE_K == MmConfig::C1_BASE_K &&
-                  MmConfig::C0_L1_K == MmConfig::C1_L1_K,
-              "equivalent template requires the current shared C0/C1 low-level path");
-static_assert(MmConfig::L1_A_BUFFER_DEPTH == MmConfig::L1_B_BUFFER_DEPTH &&
-                  MmConfig::L1_A_BUFFER_DEPTH == MmConfig::L0A_BUFFER_DEPTH &&
-                  MmConfig::L0A_BUFFER_DEPTH == MmConfig::L0B_BUFFER_DEPTH &&
-                  MmConfig::L0A_BUFFER_DEPTH == MmConfig::L0C_BUFFER_DEPTH &&
-                  MmConfig::L0A_SLOT_BYTES == MmConfig::L0B_SLOT_BYTES,
-              "equivalent template requires matched ping-pong depths");
+constexpr uint32_t CubeMax(uint32_t lhs, uint32_t rhs)
+{
+    return lhs > rhs ? lhs : rhs;
+}
 
-constexpr uint32_t CUBE_BASE_M = MmConfig::C0_BASE_M;
-constexpr uint32_t CUBE_BASE_N = MmConfig::C0_BASE_N;
-constexpr uint32_t CUBE_L1_K = MmConfig::C0_L1_K;
-constexpr uint32_t CUBE_BASE_K = MmConfig::C0_BASE_K;
-constexpr uint32_t CUBE_BUFFER_DEPTH = MmConfig::L1_A_BUFFER_DEPTH;
 constexpr uint32_t CUBE_L0_EVENT_BASE = 3U;
-constexpr uint32_t CUBE_L1_BUFFER_BYTES =
-    (MmConfig::L1_A_BUFFER_DEPTH + MmConfig::L1_B_BUFFER_DEPTH) * MmConfig::L1_SLOT_BYTES;
-constexpr uint32_t CUBE_L1_SLOT_ELEMS = MmConfig::L1_SLOT_BYTES / sizeof(float);
-constexpr uint32_t CUBE_B_L1_OFFSET = MmConfig::L1_A_BUFFER_DEPTH * CUBE_L1_SLOT_ELEMS;
-constexpr uint32_t CUBE_L0_BUFFER_BYTES = MmConfig::L0A_BUFFER_DEPTH * MmConfig::L0A_SLOT_BYTES;
-constexpr uint32_t CUBE_L0_SLOT_ELEMS = MmConfig::L0A_SLOT_BYTES / sizeof(float);
-constexpr uint32_t CUBE_L0C_BUFFER_BYTES = MmConfig::L0C_BUFFER_DEPTH * MmConfig::L0C_SLOT_BYTES;
-constexpr uint32_t CUBE_L0C_SLOT_ELEMS = MmConfig::L0C_SLOT_BYTES / sizeof(float);
 
 __aicore__ inline uint64_t BasicCubeCeilDiv(uint64_t x, uint64_t n)
 {
@@ -61,7 +40,7 @@ __aicore__ inline uint64_t BasicCubeAlign(uint64_t x, uint64_t n)
 
 class MhcPreBackwardCubeCompute {
 public:
-    __aicore__ inline void Init(TPipe *pipe);
+    __aicore__ inline void Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling);
 
     __aicore__ inline void Process(const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
@@ -120,18 +99,40 @@ private:
     uint32_t l1PingPongID_{0};
     uint32_t l0PingPongID_{0};
     uint32_t cl0PingPongID_{0};
+    MMConfig mmConfigC0_;
+    MMConfig mmConfigC1_;
+    uint32_t cubeBufferDepth_{0};
+    uint32_t cubeL1SlotElems_{0};
+    uint32_t cubeL0SlotElems_{0};
+    uint32_t cubeL0CSlotElems_{0};
 };
 
-__aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe)
+__aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling)
 {
-    pipe->InitBuffer(l1Buf_, CUBE_L1_BUFFER_BYTES);
-    aL1Local_ = l1Buf_.Get<float>();
-    bL1Local_ = aL1Local_[CUBE_B_L1_OFFSET];
-    aL0Local_ = LocalTensor<float>(TPosition::A2, 0, CUBE_L0_BUFFER_BYTES / sizeof(float));
-    bL0Local_ = LocalTensor<float>(TPosition::B2, 0, CUBE_L0_BUFFER_BYTES / sizeof(float));
-    cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, CUBE_L0C_BUFFER_BYTES / sizeof(float));
+    mmConfigC0_ = tiling->mmConfigC0;
+    mmConfigC1_ = tiling->mmConfigC1;
+    uint32_t l1SlotBytes = CubeMax(mmConfigC0_.get_l1BufferBytes(), mmConfigC1_.get_l1BufferBytes());
+    uint32_t l1ADepth = CubeMax(mmConfigC0_.get_l1ADepth(), mmConfigC1_.get_l1ADepth());
+    uint32_t l1BDepth = CubeMax(mmConfigC0_.get_l1BDepth(), mmConfigC1_.get_l1BDepth());
+    uint32_t l0SlotBytes = CubeMax(CubeMax(mmConfigC0_.get_l0ABufferBytes(), mmConfigC1_.get_l0ABufferBytes()),
+                                   CubeMax(mmConfigC0_.get_l0BBufferBytes(), mmConfigC1_.get_l0BBufferBytes()));
+    uint32_t l0Depth = CubeMax(CubeMax(mmConfigC0_.get_l0ADepth(), mmConfigC1_.get_l0ADepth()),
+                               CubeMax(mmConfigC0_.get_l0BDepth(), mmConfigC1_.get_l0BDepth()));
+    uint32_t l0CSlotBytes = CubeMax(mmConfigC0_.get_l0CBufferBytes(), mmConfigC1_.get_l0CBufferBytes());
+    uint32_t l0CDepth = CubeMax(mmConfigC0_.get_l0CDepth(), mmConfigC1_.get_l0CDepth());
+    cubeBufferDepth_ = CubeMax(CubeMax(l1ADepth, l1BDepth), CubeMax(l0Depth, l0CDepth));
+    cubeL1SlotElems_ = l1SlotBytes / sizeof(float);
+    cubeL0SlotElems_ = l0SlotBytes / sizeof(float);
+    cubeL0CSlotElems_ = l0CSlotBytes / sizeof(float);
 
-    for (uint32_t slot = 0; slot < CUBE_BUFFER_DEPTH; ++slot) {
+    pipe->InitBuffer(l1Buf_, (l1ADepth + l1BDepth) * l1SlotBytes);
+    aL1Local_ = l1Buf_.Get<float>();
+    bL1Local_ = aL1Local_[l1ADepth * cubeL1SlotElems_];
+    aL0Local_ = LocalTensor<float>(TPosition::A2, 0, l0Depth * cubeL0SlotElems_);
+    bL0Local_ = LocalTensor<float>(TPosition::B2, 0, l0Depth * cubeL0SlotElems_);
+    cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, l0CDepth * cubeL0CSlotElems_);
+
+    for (uint32_t slot = 0; slot < cubeBufferDepth_; ++slot) {
         // 三组初始令牌分别表示L1、L0A/B和L0C对应半区可写。
         SetFlag<HardEvent::MTE1_MTE2>(slot);
         SetFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + slot);
@@ -147,11 +148,18 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Process(const GlobalTensor<flo
     // B1两槽共256KB（单槽128KB），N最多128时B矩阵对齐后分别占16/24/40KB，均可完整驻留。
     // 因此所有合法C0规格固定预载B1，不再保留运行时开关；C1仍使用自身的分段搬运路径。
     PreloadB1(b, n, k, bGmStride);
-    for (uint32_t offsetM = 0; offsetM < m; offsetM += CUBE_BASE_M) {
+    for (uint32_t offsetM = 0; offsetM < m; offsetM += mmConfigC0_.get_baseM()) {
         uint32_t remainM = m - offsetM;
-        uint32_t currentM = remainM < CUBE_BASE_M ? remainM : CUBE_BASE_M;
-        ComputeTile<true>(a[offsetM * k], b, c[offsetM * CUBE_BASE_N], currentM, n, k, k, bGmStride, CUBE_BASE_N,
-                          false, false, true);
+        uint32_t currentM = remainM < mmConfigC0_.get_baseM() ? remainM : mmConfigC0_.get_baseM();
+        for (uint32_t offsetN = 0; offsetN < n; offsetN += mmConfigC0_.get_baseN()) {
+            uint32_t remainN = n - offsetN;
+            uint32_t currentN = remainN < mmConfigC0_.get_baseN() ? remainN : mmConfigC0_.get_baseN();
+            ComputeTile<true>(a[offsetM * k], b[offsetN], c[offsetM * MhcPreBackwardUtils::ND_BLOCK_SIZE + offsetN],
+                              currentM, currentN, k, k, bGmStride, MhcPreBackwardUtils::ND_BLOCK_SIZE, false, false,
+                              false);
+        }
+        CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
+            MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
     }
 }
 
@@ -160,12 +168,21 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(const GlobalTensor<f
                                                             uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
                                                             uint32_t cGmStride, bool atomicAdd)
 {
-    ComputeTile<false>(a, b, c, m, n, k, aGmStride, bGmStride, cGmStride, true, atomicAdd, false);
+    for (uint32_t offsetM = 0; offsetM < m; offsetM += mmConfigC1_.get_baseM()) {
+        uint32_t remainM = m - offsetM;
+        uint32_t currentM = remainM < mmConfigC1_.get_baseM() ? remainM : mmConfigC1_.get_baseM();
+        for (uint32_t offsetN = 0; offsetN < n; offsetN += mmConfigC1_.get_baseN()) {
+            uint32_t remainN = n - offsetN;
+            uint32_t currentN = remainN < mmConfigC1_.get_baseN() ? remainN : mmConfigC1_.get_baseN();
+            ComputeTile<false>(a[offsetM], b[offsetN], c[offsetM * cGmStride + offsetN], currentM, currentN, k,
+                               aGmStride, bGmStride, cGmStride, true, atomicAdd, false);
+        }
+    }
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::End()
 {
-    for (uint32_t slot = 0; slot < CUBE_BUFFER_DEPTH; ++slot) {
+    for (uint32_t slot = 0; slot < cubeBufferDepth_; ++slot) {
         WaitFlag<HardEvent::MTE1_MTE2>(slot);
         WaitFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + slot);
         WaitFlag<HardEvent::FIX_M>(slot);
@@ -179,8 +196,9 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTile(
     bool publishC0)
 {
     // L0C双槽轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
-    uint32_t cSlot = cl0PingPongID_ & 1U;
-    LocalTensor<float> currentC = cL0Local_[cSlot * CUBE_L0C_SLOT_ELEMS];
+    uint32_t cDepth = REUSE_B1 ? mmConfigC0_.get_l0CDepth() : mmConfigC1_.get_l0CDepth();
+    uint32_t cSlot = cl0PingPongID_ % cDepth;
+    LocalTensor<float> currentC = cL0Local_[cSlot * cubeL0CSlotElems_];
     WaitFlag<HardEvent::FIX_M>(cSlot);
 
     ProcessKRange<REUSE_B1>(currentC, a, b, m, n, k, aGmStride, bGmStride, transA, true);
@@ -211,12 +229,16 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
     const LocalTensor<float> &currentC, const GlobalTensor<float> &a, const GlobalTensor<float> &b, uint32_t m,
     uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride, bool transA, bool initFirst)
 {
-    for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += CUBE_L1_K) {
+    uint32_t l1K = REUSE_B1 ? mmConfigC0_.get_l1K() : mmConfigC1_.get_l1K();
+    uint32_t baseK = REUSE_B1 ? mmConfigC0_.get_baseK() : mmConfigC1_.get_baseK();
+    uint32_t l1Depth = REUSE_B1 ? mmConfigC0_.get_l1ADepth() : mmConfigC1_.get_l1ADepth();
+    uint32_t l0Depth = REUSE_B1 ? mmConfigC0_.get_l0ADepth() : mmConfigC1_.get_l0ADepth();
+    for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += l1K) {
         uint32_t remainKL1 = k - offsetKL1;
-        uint32_t currentKL1 = remainKL1 < CUBE_L1_K ? remainKL1 : CUBE_L1_K;
-        uint32_t l1Slot = REUSE_B1 ? ((offsetKL1 / CUBE_L1_K) & 1U) : (l1PingPongID_ & 1U);
-        LocalTensor<float> currentA1 = aL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
-        LocalTensor<float> currentB1 = bL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
+        uint32_t currentKL1 = remainKL1 < l1K ? remainKL1 : l1K;
+        uint32_t l1Slot = REUSE_B1 ? ((offsetKL1 / l1K) % l1Depth) : (l1PingPongID_ % l1Depth);
+        LocalTensor<float> currentA1 = aL1Local_[l1Slot * cubeL1SlotElems_];
+        LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1SlotElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
         if (transA) {
@@ -230,11 +252,11 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
         SetFlag<HardEvent::MTE2_MTE1>(l1Slot);
         WaitFlag<HardEvent::MTE2_MTE1>(l1Slot);
 
-        for (uint32_t offsetKL0 = 0; offsetKL0 < currentKL1; offsetKL0 += CUBE_BASE_K) {
+        for (uint32_t offsetKL0 = 0; offsetKL0 < currentKL1; offsetKL0 += baseK) {
             uint32_t remainKL0 = currentKL1 - offsetKL0;
-            uint32_t currentKL0 = remainKL0 < CUBE_BASE_K ? remainKL0 : CUBE_BASE_K;
-            uint32_t l0Slot = l0PingPongID_ & 1U;
-            uint32_t l0Offset = l0Slot * CUBE_L0_SLOT_ELEMS;
+            uint32_t currentKL0 = remainKL0 < baseK ? remainKL0 : baseK;
+            uint32_t l0Slot = l0PingPongID_ % l0Depth;
+            uint32_t l0Offset = l0Slot * cubeL0SlotElems_;
             LocalTensor<float> currentA2 = aL0Local_[l0Offset];
             LocalTensor<float> currentB2 = bL0Local_[l0Offset];
 
@@ -263,11 +285,11 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRange(
 __aicore__ inline void MhcPreBackwardCubeCompute::PreloadB1(const GlobalTensor<float> &b, uint32_t n, uint32_t k,
                                                             uint32_t bGmStride)
 {
-    for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += CUBE_L1_K) {
+    for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += mmConfigC0_.get_l1K()) {
         uint32_t remainKL1 = k - offsetKL1;
-        uint32_t currentKL1 = remainKL1 < CUBE_L1_K ? remainKL1 : CUBE_L1_K;
-        uint32_t l1Slot = (offsetKL1 / CUBE_L1_K) & 1U;
-        LocalTensor<float> currentB1 = bL1Local_[l1Slot * CUBE_L1_SLOT_ELEMS];
+        uint32_t currentKL1 = remainKL1 < mmConfigC0_.get_l1K() ? remainKL1 : mmConfigC0_.get_l1K();
+        uint32_t l1Slot = (offsetKL1 / mmConfigC0_.get_l1K()) % mmConfigC0_.get_l1BDepth();
+        LocalTensor<float> currentB1 = bL1Local_[l1Slot * cubeL1SlotElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1Slot);
         CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
