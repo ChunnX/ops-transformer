@@ -163,10 +163,10 @@ static void CheckMegaMoeInputsA5(const MegaMoeTensorInputs &inputs, int64_t epWo
 }
 
 static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorldSize, int64_t moeExpertNum,
-                               const char *socName)
+                               const char *socName, bool isAscend950)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
-    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+    if (isAscend950) {
         CheckMegaMoeInputsA5(inputs, epWorldSize, moeExpertNum, socName);
     }
     TORCH_CHECK((inputs.x.dim() == DIM_TWO) && (inputs.topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
@@ -219,8 +219,9 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                                      xActiveMask,
                                      maskBuffer};
     const char *socName = aclrtGetSocName();
-    CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, socName);
-    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+    const bool isAscend950 = socName != nullptr && std::strstr(socName, "Ascend950") != nullptr;
+    CheckMegaMoeInputs(inputs, epWorldSize, moeExpertNum, socName, isAscend950);
+    if (isAscend950) {
         CheckWeightType(weight1Type, "weight1_type", socName);
         CheckWeightType(weight2Type, "weight2_type", socName);
     }
@@ -289,7 +290,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::Tensor y;
     y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
 
-    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+    if (isAscend950) {
         CheckWeightDtype(weight1Ref, weight1RefDtype, "l1_weights", socName);
         CheckWeightDtype(weight2Ref, weight2RefDtype, "l2_weights", socName);
     }
@@ -308,7 +309,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::TensorList sharedBias1Ref = toTensorList(sharedBias1);
     at::TensorList sharedBias2Ref = toTensorList(sharedBias2);
 
-    if (socName != nullptr && std::strstr(socName, "Ascend950") != nullptr) {
+    if (isAscend950) {
         CheckWeightDtype(sharedWeight1Ref, weight1RefDtype, "shared_l1_weights", socName);
         CheckWeightDtype(sharedWeight2Ref, weight2RefDtype, "shared_l2_weights", socName);
     }
