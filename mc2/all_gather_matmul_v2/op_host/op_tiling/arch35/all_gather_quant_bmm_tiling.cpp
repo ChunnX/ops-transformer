@@ -15,7 +15,7 @@
 #ifndef _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
-#include "all_gather_matmul_v2_comm_algo_table.h"
+#include "all_gather_comm_algo_table.h"
 #include "all_gather_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
@@ -519,10 +519,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%lu, mValue=%lu, commKValue=%lu, rankDim=%u, commEngine=%u",
             commDataBytes, args_.mValue, commKValue, args_.rankDim, commEngine);
     uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherV2CommAlgoTable(algoCount);
-    std::string algConfig = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes,
-                                                                         args_.rankDim, algoEntries, algoCount,
-                                                                         Mc2Tiling::ALLGATHER_MM_V2_DEFAULT_ALGO_NAME);
+    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
+    std::string algConfig =
+        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes, args_.rankDim,
+                                                     algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
     OP_LOGI(opName_, "[SetMc2Hcomm] selected algConfig=%s, group=%s", algConfig.c_str(), group);
     uint32_t hcclDataType;
     if (isFp4_) {

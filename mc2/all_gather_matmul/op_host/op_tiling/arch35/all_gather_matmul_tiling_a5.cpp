@@ -14,7 +14,7 @@
  */
 #include "all_gather_formulaic_tiling_a5.h"
 #include "all_gather_matmul_tiling_a5.h"
-#include "all_gather_matmul_comm_algo_table.h"
+#include "all_gather_matmul_v2/op_host/op_tiling/arch35/all_gather_comm_algo_table.h"
 #include "mc2_comm_algo_selector.h"
 #include "mc2_comm_utils.h"
 
@@ -44,11 +44,11 @@ void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *
 std::string AllGatherMatmulTilingA5::GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData)
 {
     uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherMatmulCommAlgoTable(algoCount);
+    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
     // V1 tiling 侧无 comm_engine 概念，arch35 仅存在 AICPU 引擎路径（op_api 固定以 ai_cpu 转发），故固定传 AICPU
     std::string algConfig = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
         "AllGatherMatmul", group_.c_str(), Mc2Comm::ENGINE_AICPU, commDataBytes_, tilingData->param.rankDim,
-        algoEntries, algoCount, Mc2Tiling::ALLGATHER_MM_DEFAULT_ALGO_NAME);
+        algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
     OP_LOGD("AllGatherMatmul", "GetAlgConfig selected algConfig=%s, commDataBytes=%lu, rankDim=%u", algConfig.c_str(),
             commDataBytes_, tilingData->param.rankDim);
     return algConfig;
