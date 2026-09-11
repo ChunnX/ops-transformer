@@ -411,8 +411,10 @@ public:
             curS2Start_ = s2OStart_;
         }
 
-        if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-            tailS2Split_ = s2OEnd_ != 0U;
+        // fdOn=0时s2OEnd_=0是正常行为(SectionStreamK不推进s2轴).
+        // 仅当s2OEnd_非0时才做tail split, 避免curS2End_被错误设为0导致kernel不执行s2循环.
+        if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_) && (s2OEnd_ != 0U)) {
+            tailS2Split_ = true;
             curS2End_ = s2OEnd_;
         }
     }

@@ -948,17 +948,21 @@ def call_npu_fa_op(
     batch_size = len(seqused_q)
     max_sq = MAX_SEQLEN_Q if MAX_SEQLEN_Q > 0 else max(seqused_q)
     max_skv = MAX_SEQLEN_KV if MAX_SEQLEN_KV > 0 else max(cache_seqlens)
-    cache_seqlens_t = torch.tensor(cache_seqlens, dtype=torch.int32).npu().contiguous()
+    cache_seqlens_t = torch.tensor(cache_seqlens, dtype=torch.int32, device="npu").contiguous()
     # cu_seqlens_q (TND): 累计序列，含前导 0 -> [0, l1, l1+l2, ...]
     cu_q = [0]
     _acc = 0
     for _s in seqused_q:
         _acc += int(_s)
         cu_q.append(_acc)
-    cu_seqlens_q = torch.tensor(cu_q, dtype=torch.int32).npu().contiguous()
+    cu_seqlens_q = torch.tensor(cu_q, dtype=torch.int32, device="npu").contiguous()
     # seqused_q: 每 batch 实际 Q 长度（非累计）
-    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu().contiguous()
-
+    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32, device="npu").contiguous()
+    # 确保device数据同步完成后再传入metadata算子
+    torch.npu.synchronize()
+    print(f"######{cu_seqlens_q=}")
+    print(f"######{seqused_q_t=}")
+    print(f"######{cache_seqlens_t=}")
     # ---- 3) 两段式：先 metadata，再主算子 ----
     metadata = quant_flash_mla_with_kvcache_metadata(
         cache_seqlens=cache_seqlens_t,
@@ -1326,7 +1330,7 @@ def npu_fp8_full_quant_mla(
             q_npu,
             k_pa,
             mask,
-            accum_seq_q,
+            seqused_q,
             cache_seqlens,
             deq_q_npu,
             deq_k_npu,

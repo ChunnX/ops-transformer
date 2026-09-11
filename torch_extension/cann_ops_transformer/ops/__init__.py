@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _discover_ops_from_entry_points():
     ops = {}
+    allowed_ops = frozenset(("quant_flash_mla_with_kvcache",))
     try:
         from importlib.metadata import entry_points
 
@@ -27,6 +28,8 @@ def _discover_ops_from_entry_points():
             else eps.get("cann_ops_transformer.ops", [])
         )
         for ep in eps:
+            if ep.name not in allowed_ops:
+                continue
             ops[ep.name] = ep.value
     except (ImportError, RuntimeError, AttributeError):
         pass
@@ -39,6 +42,7 @@ def _discover_ops_from_dir():
     package_name = __name__
 
     _skip = frozenset(("graph_convert",))
+    allowed_ops = frozenset(("quant_flash_mla_with_kvcache",))
     for entry in sorted(os.listdir(current_dir)):
         if entry in _skip or entry.startswith((".", "_", "__")):
             continue
@@ -47,6 +51,8 @@ def _discover_ops_from_dir():
             continue
         for sub in sorted(os.listdir(entry_path)):
             if sub in _skip or sub.startswith((".", "_", "__")):
+                continue
+            if sub not in allowed_ops:
                 continue
             sub_path = os.path.join(entry_path, sub)
             sub_init = os.path.join(sub_path, "__init__.py")
