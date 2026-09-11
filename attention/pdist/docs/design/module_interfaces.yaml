@@ -1,0 +1,44 @@
+schema_version: 1
+op: pdist
+module_count: 1
+has_cross_core: false                    # DESIGN.md §6：纯 Vector 单 Section，块域均分唯一写者，无跨核依赖（信息记录用）
+is_fusion: false                         # DESIGN.md §0 R0：单 Module 纯 Vector（无 cube section）→ L0 路径
+primary_inputs:                          # 镜像 golden 签名（pdist_golden_cpu(x, p)）
+  - {name: x, shape: [N, M], dtype: float32}   # fp16 为第二 IO dtype（SPEC §5/§12.1；同一公式同一签名，kernel 双实例）
+  - {name: p, shape: scalar, dtype: float32}
+modules:
+  - id: 1
+    name: pdist_pair_distance            # 64-pair 任务块的 pair-lane 距离计算与上三角写出
+    description: >-
+      单一 Vector Module（DESIGN.md §0）：对每个 64-pair 任务块 (i, jseg)，
+      载入锚行 x[i] 与行块 x[j0:j0+64] 的 M 分块（pl.load + pl.transpose 转置布局），
+      在 fp32 寄存器域按 pair-lane 组织（lane k ↔ 行 j0+k）逐 m 计算
+      |x_i - x_jk| 的 p-范数距离（p 三分支由 TilingKey PBranch 编译期折叠：
+      0=Hamming 计数 / 1=Chebyshev max 链 / 2,3,4=Minkowski 精确幂链 /
+      5=exp·ln 近似链），M 分块部分和经 acc ping-pong tile 跨块累加，
+      任务尾 inv-pow 后一次写出 y 的连续段 [base, base+VP)。
+    section: vector
+    golden_steps:                        # 该 Module 的数学步骤（供 mathematician 切分 golden 用；来源 DESIGN.md §0/§1）
+      - 取行对：对每个 0<=i<j<=N-1 的行对 (i,j)，枚举顺序为上三角行优先（每 64 对一个任务块）
+      - 逐维绝对差：d_k = |x[i,k] - x[j,k]|, k=0..M-1（M 分块时为部分和累加，仅改求和顺序）
+      - p 分支预处理：0<p<inf 时 dp_k = d_k^p；p=0 时 dp_k = (x[i,k] != x[j,k])（NaN 维计为不等）；p=inf 时无幂（d_k 直通 max 归约）
+      - 沿 M 归约：s = sum_k dp_k（p=inf 时 s = max_k d_k）；全程 fp32 累加
+      - inv-pow：0<p<inf 时 y_pair = s^(1/p)（p=2 sqrt / p=1 恒等 / p=0.5 s*s / 一般 p exp(ln(s)/p)）；p=0/p=inf 时 y_pair = s
+      - 上三角写出：y[idx] = y_pair，idx = i*(2*N-i-1)//2 + (j-i-1)，覆盖写
+    inputs:
+      - {name: x, source: primary}
+      - {name: p, source: primary}
+    outputs:
+      - {name: y, shape: [N*(N-1)//2], dtype: float32}   # fp16 case 输出 fp16（与 x 同 dtype）
+    golden_stage_fn: pdist_golden_stage1  # module_count=1：累积 golden 即 pdist_golden_cpu 本身（staging 不触发）
+final_outputs:
+  - {name: y, source: module_1}
+composition_verification:
+  atol: 0.001
+  rtol: 0.001
+  seeds: [42, 123, 456]
+  shapes:
+    - {x: [130, 128], p: 2.0}
+    - {x: [200, 150], p: 2.0}
+    - {x: [77, 65], p: 1.0}
+    - {x: [600, 300], p: 2.0}

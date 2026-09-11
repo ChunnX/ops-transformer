@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "golden_source": {
+    "path": "/data/z00954450/zzz/pypto-gym/cannbot-skills/plugins-official/pypto-pro-op-orchestrator/custom/pdist/pdist_golden.py",
+    "sha256": "c0fb165a3942350061e36f88f7e26429860c5691e28aeefa4d58dd3a569d1851",
+    "size_bytes": 27493
+  },
+  "case_manifest_source": {
+    "path": "/data/z00954450/zzz/pypto-gym/cannbot-skills/plugins-official/pypto-pro-op-orchestrator/custom/pdist/PERFORMANCE_CASES.json",
+    "sha256": "755702fbb0ead384697e8e43903ed810a3d630e6afbf82f26c3cfe9846418cd0",
+    "size_bytes": 1566,
+    "schema_version": 1
+  },
+  "device_id": 0,
+  "iterations": 1,
+  "warmup": 3,
+  "repeats": 3,
+  "seed": 42,
+  "timing_scope": "all_golden_npu_kernels",
+  "aggregation": "median_of_repeat_totals",
+  "cases": [
+    {
+      "id": "perf_p0_euclidean",
+      "shape": "[4096,256]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        45527.33099999997,
+        45514.20400000001,
+        45492.54200000002
+      ],
+      "median_total_us": 45514.20400000001,
+      "per_iteration_e2e_us": 45514.20400000001
+    },
+    {
+      "id": "perf_p0_fp16_large",
+      "shape": "[8192,512]",
+      "dtype": "float16",
+      "raw_repeat_e2e_us": [
+        344973.56999999925,
+        344945.95300000004,
+        344981.2429999994
+      ],
+      "median_total_us": 344973.56999999925,
+      "per_iteration_e2e_us": 344973.56999999925
+    },
+    {
+      "id": "func_p0_hamming_p0",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        3351.8989999999994,
+        3365.2850000000003,
+        3350.4759999999983
+      ],
+      "median_total_us": 3351.8989999999994,
+      "per_iteration_e2e_us": 3351.8989999999994
+    },
+    {
+      "id": "func_p0_manhattan_p1",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        3062.745,
+        3056.538,
+        3064.630000000001
+      ],
+      "median_total_us": 3062.745,
+      "per_iteration_e2e_us": 3062.745
+    },
+    {
+      "id": "func_p0_euclidean_p2",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        3073.3190000000004,
+        3070.5980000000013,
+        3282.699
+      ],
+      "median_total_us": 3073.3190000000004,
+      "per_iteration_e2e_us": 3073.3190000000004
+    },
+    {
+      "id": "func_p0_fractional_p05",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        3058.9849999999997,
+        3065.297,
+        3063.9279999999994
+      ],
+      "median_total_us": 3063.9279999999994,
+      "per_iteration_e2e_us": 3063.9279999999994
+    },
+    {
+      "id": "func_p0_chebyshev_pinf",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        2043.355,
+        2039.4110000000005,
+        2044.2359999999996
+      ],
+      "median_total_us": 2043.355,
+      "per_iteration_e2e_us": 2043.355
+    },
+    {
+      "id": "func_p0_min_shape",
+      "shape": "[2,1]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        15.807,
+        16.061,
+        15.402
+      ],
+      "median_total_us": 15.807,
+      "per_iteration_e2e_us": 15.807
+    },
+    {
+      "id": "func_p0_large_m",
+      "shape": "[64,8192]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        696.9570000000001,
+        697.304,
+        696.3210000000001
+      ],
+      "median_total_us": 696.9570000000001,
+      "per_iteration_e2e_us": 696.9570000000001
+    },
+    {
+      "id": "func_p0_partial_block",
+      "shape": "[777,300]",
+      "dtype": "float32",
+      "raw_repeat_e2e_us": [
+        2840.6730000000002,
+        2841.3810000000008,
+        2837.6409999999996
+      ],
+      "median_total_us": 2840.6730000000002,
+      "per_iteration_e2e_us": 2840.6730000000002
+    }
+  ]
+}

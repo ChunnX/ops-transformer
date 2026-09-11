@@ -1,0 +1,421 @@
+{
+  "schema_version": 3,
+  "op": "pdist",
+  "class_id": ".",
+  "invariants": [
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R02\" | [\"Applies when > persistent state, which survives across iterations\", \"Applies when > rotating tiles, whose slots alternate between producer and consumer\", \"Applies when > scratch, which is dead after the current operation or iteration\"]] tile 角色三分并在 DESIGN §2 属性表逐 tile 标注：acc_group=resident（跨 M-块 ping-pong，仅 VF store_align 写入）；rows_group/trans_group/anchor_group=rotating（每 M 块 next() 一次）；out32_group/out16_group=rotating（每任务 next() 一次）；不使用 make_tile scratch。test_pdist.py 的 tile group 声明与该分类一一对应。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R03\" | [\"Safe workflow > 1. Draw each tile's live interval from its first write to its final read\", \"Safe workflow > 2. Give simultaneously live roles non-overlapping address ranges\"]] UB(Vec) 内全部生命周期重叠的 tile（含双缓冲副本）字节范围互不重叠：fp32 实例 [0x00000,0x20A00) 5 组、fp16 实例 [0x00000,0x20D00) 8 组的区间按 §3 地址表排布无交集，总占用 ≤ 52.9% ub_size=253952。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R04\" | [\"Safe workflow > 3. Use a multi-slot tile group only when iterations are intentionally rotated\", \"Safe workflow > 4. Advance a rotating group once per logical iteration\"]] rotating group（rows/trans/anchor/out32/out16）的槽位以 next() 每逻辑迭代（每 M 块/每任务）恰好推进一次，无跨迭代跳槽或条件性跳过；acc_group 用显式下标 mblk%2/(mblk+1)%2（∈[0,2)），不混用 next()。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R05\" | [\"Safe workflow > 5. Keep persistent state outside the loop and do not rotate it\"]] acc_group 的两个槽位仅承担 64-pair 部分和状态：唯一写入者是 VF 内对 acc 部分和的 store_align（无任何其他角色/数据复用该地址）；任务开始由 full(0.0)（PBranch1 同）重新初始化，不经由轮转覆盖语义。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_accum_acc_vf",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R06\" | [\"Safe workflow > 6. Set the valid shape before every operation that consumes a partial tile\"]] 每次 pl.load 前 set_validshape([vp,vc])/([1,vc])/([vc,vp]) 逐块设置；finalize 写出前以 update_mask(vp) 裁剪且 out tile 的 store 写出量受有效数据约束（base+vp ≤ L）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R07\" | [\"Safe workflow > 7. Compile and run the exact schedule on the target SDK; mutex and address behavior is version- and target-sensitive\"]] Stage 4 在检测到的目标（Ascend 950PR_9579、CANN 9.2.0）上编译并运行本设计完整 schedule（含 12 slot/10 mutex 的组态），不得仅以静态推演替代。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "invariant": "[optional_patterns:\"R08\" | [\"Failure signatures > a reduction sees padding or data from a previous iteration\", \"How many slots: a counting law > required slots ≥ (overlapped beats) × (simultaneously live roles)\", \"Budgeting it here > mutex_ids must lie in [0, 31] … 32 is the hard ceiling on simultaneous rotating slots\"]] slots 预算：每 group 2 slots ≥ 1 beat × 1 role（acc 与其行 1 nan_cnt 为同一逻辑状态，live roles=1）；同时轮转槽合计 8（fp32）/16（fp16，含 trans16/trans32/anchor16/anchor32 各 2）≤ 32 上限；mutex ID 8 个（fp32，[0,7]）/ 14 个（fp16，[0,13]）互异且 ∈[0,31]。trans 垃圾 lane（rows 未搬入行的残留）按 lane 独立计算 + finalize update_mask(vp) 裁剪论证不污染有效结果，M 尾由 m 循环上界 vc 排除在归约之外。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "test_pdist_multitile",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R01\" | [\"Rule > Derive every tile from the selected API's documented shape, dtype, memory-space, layout, alignment, and valid-shape contract. Do not carry limits from another platform or SDK version.\"]] 全部 tile 尺寸/对齐仅从当前安装文档推导并逐条引用：M_BLK=128（fp32 列 128×4B=512B、fp16 256×2B=512B，满足 load/store 32B tile 首地址与列宽对齐）、trans 主维×字节 32B 对齐（transpose.md）、BRC_B32 4B/BRC_B16 2B 元素粒度对齐（load_align.md dist 表）；无任何来自其他平台/SDK 的经验值。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R02\" | [\"Checks > 2. For each live tile, record shape, dtype bytes, memory space, layout, address, slot count, and lifetime.\"]] DESIGN §2 属性表与 §3 地址表为每个 tile 记录 shape/dtype/内存空间/layout/地址/大小/槽数/生命周期/end；test_pdist.py 的每个 make_tile_group 均能在两表中找到对应条目。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R03\" | [\"Checks > 3. Sum simultaneous allocations separately for each memory space.\", \"Checks > 4. Compare each sum with the matching platform source/configuration.\"]] 逐空间求和：fp32 实例 133632B（0x20A00）、fp16 实例 134400B（0x20D00），均 ≤ 253952B（52.6%/52.9%）；无其他空间 tile。平台变更时按 §3 引用的 .ini 键重新提取。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R04\" | [\"Checks > 5. Confirm offset units independently for pl.load, pl.load_tile, stores, and vector-function APIs.\"]] offset 单位逐 API 确认并记录：pl.load/pl.store offsets=GM 绝对元素坐标（[row,col]/[idx]，长度=维数，无负索引）；vf.load_align/store_align offset=tile 内元素偏移（NORM 32B 对齐；BRC_B32/B16 分别 4B/2B 元素粒度；trans 行 m*64 元素）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R05\" | [\"Checks > 6. For dynamic tails, keep a legal physical tile and set the runtime valid window on every operation that reads or writes it.\"]] 物理 tile 固定（[64,M_BLK]/[M_BLK,64]/[1,M_BLK]/[1,64]），每个读写尾块的操作经 set_validshape 运行时窗口约束：load 前设 [vp,vc]/[1,vc]/[vc,vp]，store 写出量受有效数据约束。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R06\" | [\"Checks > 7. Re-run correctness for aligned, single-tail, multi-tail, and multi-tile cases.\"]] 四类 shape 的 correctness case 全部在目标设备重跑通过（aligned/single-tail/multi-tail/multi-tile 各至少 1 个 case 在 §8 表内且执行）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "test_pdist_aligned",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R07\" | [\"Two structural ceilings the checks above will not derive > A Tile may have at most two dimensions (TileType.md)\"]] 所有 TileType shape 长度为 2；pair 维、M 维直接映射为 tile 的两轴，无 rank-3 视图。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tiling.md",
+      "invariant": "[required_constraints:\"R08\" | [\"Two structural ceilings the checks above will not derive > mutex_ids must lie in [0, 31] and be mutually distinct. That makes 32 the hard ceiling on simultaneous rotating buffer slots.\"]] mutex_ids 全部 ∈ [0,31] 且互异（fp32 实例用 [0,7] 8 个；fp16 实例用 [0,13] 14 个）；轮转槽总数 fp32 8、fp16 16，均 ≤ 32；acc_group 不配 mutex（depth=2 显式），其槽不计入 mutex 预算但计入 32 槽上限。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/memory-layout.md",
+      "invariant": "[required_constraints:\"R01\" | [\"Rule > Treat Vec, Mat, Left, Right, and Acc as separate address spaces. Within each space, allocate non-overlapping byte ranges for tiles whose lifetimes overlap.\"]] UB 空间内全部生命周期重叠 tile 的字节范围互不重叠（fp32 实例 [0x00000,0x20A00) 5 组、fp16 实例 [0x00000,0x20D00) 8 组，§3 地址表区间两两不相交，含双缓冲副本）；无 Vec 之外的内存空间分配。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/memory-layout.md",
+      "invariant": "[required_constraints:\"R02\" | [\"Lifetime classes > Rotating: multiple slots selected with .next() across iterations.\", \"Lifetime classes > Resident: one slot kept live across an inner loop and accessed through the same handle.\", \"Lifetime classes > Scratch: a temporary whose lifetime ends before an overlapping address is reused.\"]] 生命周期分类逐 tile 记录并驱动分配：rotating group 用 next() 跨迭代选槽；acc resident 用同一 handle（acc_group）的显式下标跨 M-块读写；无 scratch（若有临时量需求必须按 scratch 生命周期判定地址复用后才允许，当前设计不存在）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/memory-layout.md",
+      "invariant": "[required_constraints:\"R03\" | [\"Rule > mutex_ids identify synchronization slots; they do not prove that two byte ranges are safe to alias.\"]] 地址分配不依赖 mutex 关系做别名：每个 tile group 独立字节范围，无两个 group 共享地址区间；不以'source tensor 同 shape'推断角色可别名（KB 原文明示 Alias safety depends on live intervals）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/memory-layout.md",
+      "invariant": "[required_constraints:\"R04\" | [\"Address review > For each memory space, maintain a table with: tile | layout | start | size per slot | slots | lifetime | end\", \"Address review > Reject the design if live ranges overlap, an address violates the documented alignment, or layout conversion is inferred rather than documented.\"]] §3 地址表按 tile|layout|start|size per slot|slots|lifetime|end 全列维护；全部地址 32B 对齐（两实例的 [0x00000..0x20A00)/[0x00000..0x20D00) 均为 32 倍数）；layout 列留空（Vec 无统一默认布局，本设计 API 均不要求显式 layout）而非推断转换。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/memory-layout.md",
+      "invariant": "[required_constraints:\"R05\" | [\"A strided range's size is not the product of its extents > 1 + Σ (span_i − 1) · stride_i\", \"A strided range's size is not the product of its extents > does this view fit inside its parent storage? > the linear extent\", \"A strided range's size is not the product of its extents > A bounds check written against Π spans is not conservative, it is wrong in the unsafe direction.\"]] GM 越界与重叠判断一律用线性 extent：(rows load) extent=(VP−1)·M+vc 且 j0+VP−1 ≤ N−1、m0+vc ≤ M；(anchor load) extent=vc；(out store) base+VP ≤ N(N−1)/2。禁止以 Π spans（VP×vc）作为越界依据；Π spans 仅用于实际搬运量统计。UB tile 为独立分配（非父存储视图），size per slot=物理 shape 乘积。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tail-validshape.md",
+      "invariant": "[required_constraints:\"R01\" | [\"Rule > Keep a compile-time legal physical tile and set a runtime valid window for each partial work item. Apply the valid window to every input, output, reduction result, and workspace whose operation observes the tail.\"]] 合法物理 tile 固定，逐 partial 工作项设运行时窗口并作用于全部观察尾部的对象：输入 rows([vp,vc])/anchor([1,vc])、workspace trans([vc,vp])、输出段（store_align 的 update_mask(vp) + pl.store 写出量）；acc 状态无尾（64 lane 满宽，垃圾 lane 由写出掩码裁剪）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tail-validshape.md",
+      "invariant": "[required_constraints:\"R02\" | [\"Checklist > 1. Compute work-item counts with ceiling division.\"]] n_mblk=(M+M_BLK−1)//M_BLK、segs(i)=ceil((N−1−i)/TP)、B=(N−1)+F(N−2)（闭式，与 ceiling 求和等价，host/kernel 同源）；全部向上取整，无整除漏块。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tail-validshape.md",
+      "invariant": "[required_constraints:\"R03\" | [\"Checklist > 2. Compute each remaining extent from the actual tensor dimension.\", \"Checklist > 3. Clamp the extent to the physical tile size.\"]] vc=pl.min(M−m0, M_BLK)、vp=pl.min(TP, N−1−i−jseg·TP)——先按实际维数算剩余再 clamp 到物理尺寸，两个方向（M 尾/pair 尾）均不越界不漏算。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tail-validshape.md",
+      "invariant": "[required_constraints:\"R04\" | [\"Checklist > 4. Set the valid shape before load, compute, reduction, and store as required by the installed API.\"]] 每个 M-块迭代内 set_validshape(rows/anchor/trans) 位于 pl.load 之前；写出侧有效数据约束（store_align 掩码 + pl.store 写出量）位于 store 之前；set_validshape 有状态、每块重设（不依赖上一块残留）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tail-validshape.md",
+      "invariant": "[required_constraints:\"R05\" | [\"Checklist > 5. Neutralize invalid lanes for reductions when valid shape alone does not define the reduction identity.\"]] 无效 lane 的中和策略成对：①pair 尾——trans 垃圾 lane 参与计算但 lane 独立、其结果在 finalize 由 update_mask(vp) 裁剪不写出（对 max 链亦不回写有效 lane）；②M 尾——m 循环上界 vc 使尾行不进入任何归约；③p=inf 的 NaN 防护链不受垃圾 lane 影响（独立 lane）。无 fillpad 需求（不存在'归约读取 padding 且影响有效结果'的路径）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_finalize_vf",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/tail-validshape.md",
+      "invariant": "[required_constraints:\"R06\" | [\"Checklist > 6. Test dimensions smaller than one tile, exactly one tile, multiple exact tiles, and multiple tiles with a remainder.\"]] 四类 shape 的测试 case 在 §8 表内在场并执行（min_shape/aligned/multitile/large_m+partial_block）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "func_p0_min_shape",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R01\" | [\"Rule > Treat dtype, accumulation type, rounding, saturation, scaling, and tolerance as part of the operator contract. Do not change one for performance without updating the golden and acceptance criteria.\"]] cast 边界链冻结为：fp16 输入在 load_align 后、abs_sub 前 widen 到 fp32；diff/pow/沿 M 累加/inv-pow 全 fp32；出口单点窄化（pl.cast CAST_RINT，NaN 语义验证中）；任何为实现/性能改动该链位置或 rounding/saturate 的提议都构成合同变更，须同步更新 golden 验收与 DESIGN §1 并重新过设计门。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R02\" | [\"Checklist > 1. Record input, intermediate, accumulator, and output dtypes.\"]] dtype 记录完备：input=fp32 或 fp16（原始 dtype 进 kernel）；intermediate/accumulator=fp32（d、dp、acc、y 全链）；output=与输入同 dtype。两 kernel 实例（f32/f16）各自由签名冻结。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R03\" | [\"Checklist > 2. Confirm each cast/quant/dequant API and rounding mode in the installed documentation.\"]] 每个 cast 按安装文档确认（本设计三处 cast 全部为 tile 级 pl.cast）：入口 widen×2（`pl.cast(trans32, trans16)`、`pl.cast(anchor32, anchor16)`，mode=CAST_NONE，16→32 位扩展无舍入）；出口 narrow×1（`pl.cast(out16, out32)`，mode=CAST_RINT）；若出口 fallback 到 vf.astype 则 saturate=OFF（非饱和，astype 表6：NaN→NaN、±inf→±inf）——禁用饱和模式（NaN 输出被映射为 0 破坏 SPEC §7 NaN 语义）。寄存器域不出现任何 fp16↔fp32 转换。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R04\" | [\"Checklist > 3. Keep numerically sensitive reductions and transcendental operations in the contract's required accumulation precision; use FP32 unless a narrower path is explicitly documented and validated.\"]] 沿 M 累加（add 链）与 inv-pow/超越全部在 fp32 域（fp16 输入已 widen）；M=65535 项 fp32 累加的舍入量级 ~√M·2⁻²⁴ 相对误差 ≪ rtol=1e-3；无任何 fp16 精度的归约/超越路径。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_accum_init_vf",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R05\" | [\"Widening a narrow-dtype reduction > The register-level reduce primitives (vf.reduce_*) are same-type … There is no narrow-in / wide-accumulate reduce to lean on. The widening is yours to write.\"]] fp16 路径的 widen 由本设计显式完成且先于任何归约/产生量级增长的操作：本设计归约不用 vf.reduce_*（沿 M 的 add/max 链在 widen 后的 fp32 域），从结构上排除'FP16 直接归约'的可能；禁止任何 FP16 src 的 reduce 调用出现在实现中。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_accum_init_vf",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R06\" | [\"Widening a narrow-dtype reduction > Widen before the operation that overflows, not before the reduce > The order that holds is widen → compute → reduce, with the whole chain in the wide type, narrowing again only at the store\"]] widen 位置在 abs_sub 之前（即产生量级增长的 mul/sqrt/ln 之前），整链 fp32，仅在出口 store 段窄化——不满足'widen 后仍 inf'的等价错误形态（widen inf 仍为 inf）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R07\" | [\"Widening a narrow-dtype reduction > a widening cast changes how many elements fit in a register … Read the API's layout and element-count tables rather than assuming a 1:1 mapping.\"]] widen 元素数问题按 API 表处理并从结构上规避：fp16 reg 128 元素 → fp32 reg 64 元素（reg_tensor.md 表）且一次 astype 仅覆盖一半（layout 交错），本设计把 fp16→fp32 widen 全部放在 tile 级 pl.cast(CAST_NONE)（[128,64]/[1,128] fp16→fp32，物理 shape/valid 一致即可），寄存器域单一 fp32、无 1:1 映射假设、无多次调用拆半。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R08\" | [\"Widening a narrow-dtype reduction > layout selects interleaved lanes, not a contiguous half > ZERO takes the even lanes and ONE the odd ones, and reassembling a full narrow register means interleaving the two results\"]] 按交错语义设计规避而非误用：本设计不在寄存器域做任何 fp16↔fp32 转换——入口 widen 与出口 narrow 均用 tile 级 pl.cast，正是为了规避 ZERO/ONE 的全局偶/奇交错语义（寄存器 widen 拆出的是连续两行的偶位混合而非单行；寄存器 narrow 的结果位于偶数交错 lanes，store NORM 会写出交错数据）；若 Stage 4/5 引入寄存器级窄路径优化，必须按偶/奇交错语义用 interleave 家族重组，不得按'连续半区'假设拼接。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/precision.md",
+      "invariant": "[required_constraints:\"R09\" | [\"Non-finite values are compared before any error arithmetic > NaN positions must match exactly or the case fails outright\", \"Non-finite values are compared before any error arithmetic > A NaN guard that lets Inf through turns Inf into NaN > Scale by zero first … then compare and select\"]] NaN 语义逐分支落实且不依赖未文档化行为：0<p<inf 精确链 IEEE 天然传播；p=0 以 ne(NaN,0)=true 计数（golden 语义）；p=inf 不依赖 vf.max 的未文档化 NaN 行为（max.md 仅记录 ±0），显式 ne(d,d) 检测 + 累积 + select(NaN) 覆写；Inf 经 abs_sub/pow/add IEEE 链传播（不引入 x==x 式会把 Inf 误放/误转 NaN 的 guard——本设计无 NaN guard 吞 Inf 的结构）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "test_pdist_semantics",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/vec-mask-width.md",
+      "invariant": "[required_constraints:\"R01\" | [\"Why it is missed > Both operators audited the functions with mask in the name … That audit was right. The converter is filed under advanced computation, not mask operations: vf.interleave and vf.de_interleave are unified ops whose behaviour changes when their sources are MaskRegs.\"]] mask 宽度策略显式裁定并记录：全部数值计算（含 ne/select/update_mask）在 widen 之后的 fp32 域进行，preg 统一 DT_FP32（b32 粒度），设计内零个 b16↔b32 掩码转换点（fp16 仅在数据 widen 前存在于搬运，其 mask 不跨 widen 边界复用）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_accum_init_vf",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/arch-a5.md",
+      "invariant": "[required_constraints:\"R02\" | [\"Platform gate > 1. Detect the target with get_npu_arch.py or the build configuration.\", \"Platform gate > 2. Record device model, SKU, CANN version, PyPTO version, and the resolved pypto_pro.__file__.\"]] 版本记录在案：device=Ascend 950PR（A5）、SKU=Ascend950PR_9579（950PR_957x.ini）、CANN=9.2.0（运行环境，平台文件树 cann-9.2.0-beta.1）、文档快照=gitcode.com/cann/pypto @ d6e9b83、pypto_pro.__file__=/data/z00954450/zzz/.local/lib/python3.12/site-packages/pypto_pro；Stage 4 运行时若环境偏离须重新提取而非沿用本表。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/arch-a5.md",
+      "invariant": "[required_constraints:\"R03\" | [\"Platform gate > 3. Select the platform file matching that exact installed version and SKU.\", \"Platform gate > 4. Extract only the constants needed for the current design and cite the file and key in EXPLORE_REPORT.md / DESIGN.md.\"]] 设计消费的全部平台常量逐键引用 950PR_957x.ini（cann-9.2.0-beta.1 树）：ub_size=253952（§3 容量分母）、vector_core_cnt=56（§5 核数上限，经 get_platform_info 运行时读取）、ubblock_size=32（§3/§2 对齐）；不在任何文档写死脱离来源的数字。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_wrapper",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/arch-a5.md",
+      "invariant": "[required_constraints:\"R04\" | [\"Platform gate > 5. Fail closed: if the architecture or matching source cannot be confirmed, do not substitute remembered A5 values.\"]] fail-closed：Stage 4/5 运行前若设备探测（SoC/CANN 版本）与 DESIGN 头部记录不一致，停止实现并上报环境异常，不得以记忆中的 A5 值（如 248KB/56 核）替代重新提取。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "_env_preflight",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/arch-a5.md",
+      "invariant": "[required_constraints:\"R05\" | [\"Design checks > Derive each live tile's byte size from shape and dtype.\", \"Design checks > Sum simultaneous allocations separately for Vec, Mat, Left, Right, and Acc.\", \"Design checks > Compare those sums with the detected target's corresponding limits.\", \"Design checks > Read launch width from runtime platform information rather than hard-coding a SKU's core count.\", \"Design checks > Re-run correctness after any dtype, layout, buffering, or tile-size change.\"]] 五项落实：每 tile 字节=shape×dtype×slots（§3 表）；逐空间求和 Vec 133632（fp32）/134400（fp16）≤ 253952；launch 宽度经 get_platform_info().vector_core_num 与 B 取 min；dtype/layout/缓冲/tile 尺寸任何变更后 §8 全量 case 重跑通过才算有效变更。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/arch-a5.md",
+      "invariant": "[required_constraints:\"R07\" | [\"Performance boundary > Platform configuration values are roofline inputs, not measured kernel performance. Use the target profiler to determine the current bottleneck.\"]] 本设计任何性能判断（含 Stage 5 优化决策）以目标 profiler 实测为准；DESIGN 中的流量/指令估算仅作结构对比，不得引用为'已达标'证据。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "perf_p0_euclidean",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/wrapper-boundary.md",
+      "invariant": "[required_constraints:\"R02\" | [\"The rule > Casting, slicing, transposing, padding, concatenating, and any other data shape or dtype processing MUST happen inside the @pl.jit kernel. The wrapper may only validate arguments, read shape/ndim/dim()/size()/stride()/dtype/device/layout/numel()/storage_offset() metadata, derive Python integers, use torch.empty to allocate outputs declared by its current contract, and launch one kernel.\"]] pdist_wrapper 的完整 allowlist：①参数校验（x 为 torch.Tensor、dim==2、N≥2、M≥1、dtype∈{fp32,fp16}、p≥0 或 +inf 否则 raise）；②只读元数据（x.shape/x.dtype/x.device）；③纯 Python 整数/标量推导（p 归一化、branch code、B=(N−1)+F(N−2)、L=N(N−1)//2、num_cores=min(vector_core_num,B)、inv_p）；④torch.empty(L) 分配合同输出 y；⑤一次 kernel 启动（按 dtype 选 f32/f16 实例 + TilingKey dict）。无任何 tensor 数据操作。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_wrapper",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/wrapper-boundary.md",
+      "invariant": "[required_constraints:\"R03\" | [\"There is no exception > torch.empty is the only torch.* function a generated wrapper may call, and only to allocate outputs declared by that wrapper's contract.\"]] wrapper 内唯一 torch.* 调用为 torch.empty(L, dtype=x.dtype, device=x.device)；无 zeros/zeros_like/arange/cat/empty_like 等；fp16 期望派生（golden 侧 cast）不属 wrapper 职责。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_wrapper",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/wrapper-boundary.md",
+      "invariant": "[required_constraints:\"R04\" | [\"How this is checked > Anti-cheat rules still apply in the other direction: the wrapper must not perform the operator's arithmetic either, and there is still exactly one @pl.jit kernel launched once.\"]] wrapper 不承担任何距离计算/张量算术：p 的字符串解释、p<0 拒绝、branch 枚举为标量参数处理；全部 |x_i−x_j| 计算、幂/比较、归约、idx 写出均在 @pl.jit kernel 内；恰好一个 @pl.jit kernel 被启动一次（fp32/fp16 择一）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_wrapper",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/wrapper-boundary.md",
+      "invariant": "[required_constraints:\"R05\" | [\"What to do instead > .to(torch.float32) on input > load the native dtype into UB, then convert on-chip — pl.cast at tile level or vf.astype at register level (there is no vf.cast)\", \"What to do instead > padding to a tile multiple > pl.set_validshape for the tail\", \"What to do instead > torch.npu.synchronize() > delete it\", \"What to do instead > arange / index construction > compute the index arithmetically in the kernel\"]] 映射表逐行落实：输入 dtype 转换在 kernel 内（vf.astype 寄存器级 widen / pl.cast tile 级出口）；尾块用 pl.set_validshape + update_mask（无 host pad）；索引（base=i(2N−i−1)/2+jseg·64、bisect 闭式）全部 kernel 内算术构造；wrapper 无 synchronize 调用（同步属调用方）。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_kernel",
+        "status": "implemented"
+      }
+    },
+    {
+      "reference": "constraints/wrapper-boundary.md",
+      "invariant": "[required_constraints:\"R07\" | [\"There is no exception > Nothing in DESIGN.md can widen that … If a transformation appears impossible to express in the kernel, the design is not deliverable: report a design/capability blocker with evidence. Recording a reason, cost or profile never authorizes the wrapper to absorb the transformation.\"]] DESIGN.md 的 Wrapper 边界外操作正文只有'空'，且不包含任何以 reason/cost/profile 授权 wrapper 吸收变换的条款；实现若遇'kernel 无法表达'的转换，按 design_violation/capability_gap 流程上报而非放宽边界。",
+      "implementation": {
+        "file": "custom/pdist/test_pdist.py",
+        "symbol": "pdist_wrapper",
+        "status": "implemented"
+      }
+    }
+  ]
+}

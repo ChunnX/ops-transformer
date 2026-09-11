@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "perf_p0_euclidean",
+      "shape": "[4096,256]",
+      "dtype": "float32",
+      "test_function": "test_perf_p0_euclidean"
+    },
+    {
+      "id": "perf_p0_fp16_large",
+      "shape": "[8192,512]",
+      "dtype": "float16",
+      "test_function": "test_perf_p0_fp16_large"
+    },
+    {
+      "id": "func_p0_hamming_p0",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_hamming_p0"
+    },
+    {
+      "id": "func_p0_manhattan_p1",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_manhattan_p1"
+    },
+    {
+      "id": "func_p0_euclidean_p2",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_euclidean_p2"
+    },
+    {
+      "id": "func_p0_fractional_p05",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_fractional_p05"
+    },
+    {
+      "id": "func_p0_chebyshev_pinf",
+      "shape": "[1000,200]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_chebyshev_pinf"
+    },
+    {
+      "id": "func_p0_min_shape",
+      "shape": "[2,1]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_min_shape"
+    },
+    {
+      "id": "func_p0_large_m",
+      "shape": "[64,8192]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_large_m"
+    },
+    {
+      "id": "func_p0_partial_block",
+      "shape": "[777,300]",
+      "dtype": "float32",
+      "test_function": "test_func_p0_partial_block"
+    }
+  ]
+}

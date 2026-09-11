@@ -1,0 +1,64 @@
+{
+  "schema_version": 3,
+  "op": "pdist",
+  "class_id": ".",
+  "topologies": [
+    "long-axis"
+  ],
+  "properties": {
+    "dtypes": ["float32", "float16"],
+    "ranks": [2, 1],
+    "unaligned_shapes": true,
+    "tail_blocks": true,
+    "long_axis": true,
+    "mixed_precision": true,
+    "index_dtypes": false,
+    "dynamic_dims": true,
+    "is_list": false
+  },
+  "optional_patterns": [
+    {
+      "path": "patterns/buffer-reuse-lifetime.md",
+      "reason": "long-axis 拓扑路由命中：pdist 的 M 轴动态无上界（合同区间 [1,65535]，P0 case func_p0_large_m M=8192 强制分块），沿 M 的多 tile 遍历携带部分和。该 pattern 直接决定本 class 的三类缓冲设计：输入双行 tile 组的轮转深度（slots >= overlapped beats x simultaneously live roles 的计数法则，同时受 mutex_ids [0,31] 上限约束）、跨分块迭代存活的部分和累加器（persistent，不得参与轮转）、输出攒批 tile（scratch，按 live interval 判定地址不重叠）。其失败特征（'a reduction sees padding or data from a previous iteration'）正是 M 分块规约正确性的核心风险面。",
+      "sha256": "sha256:2949a71b59094c06b54affb260a2d9c49e1163d7c3fa30bafa51ef8454b34a2f"
+    }
+  ],
+  "required_constraints": [
+    {
+      "path": "constraints/tiling.md",
+      "reason": "topology long-axis 与 property long_axis 共同路由：M∈[1,65535] 无上界，M 分块 tile 的 shape/dtype 字节宽/32B 对齐（fp32 列数 8 倍数、fp16 16 倍数）/valid_shape 必须从安装版本文档与平台文件推导（禁止跨平台携带经验值）；P0 case func_p0_min_shape（M=1）与 func_p0_large_m（M=8192）是 tile 合法性检查的两个极端。",
+      "sha256": "sha256:085ae0a7f457e025ca35152acbad4e07a066fe64185e0f31191a532d93f78e93"
+    },
+    {
+      "path": "constraints/memory-layout.md",
+      "reason": "topology long-axis 与 property unaligned_shapes 路由：Vec(UB) 空间内输入双行 tile（rotating）、跨 M 分块存活的部分和（resident）、输出攒批 tile（scratch）的存活区间互不重叠的字节范围分配；UB 248KB 总预算含双缓冲副本。pdist 逐对独立、无跨核共享，地址空间仅 Vec 一类，但同空间生命周期重叠是本 class 的主要布局风险。",
+      "sha256": "sha256:46e131824ff02d3e9256c300b217b882f4c7dc8a79f132cb3f2077dd595b9371"
+    },
+    {
+      "path": "constraints/tail-validshape.md",
+      "reason": "properties tail_blocks / unaligned_shapes / dynamic_dims 三条共同路由：N、M 均为任意值动态轴（P0 case func_p0_partial_block [777,300] 非整块尾部 + 多核不均，func_p0_min_shape [2,1] 极端窄轴）。valid window 须作用于输入行对 tile、逐寄存器规约的尾 lane（vf.update_mask）、规约结果与输出段——SPEC §9 边界（M=1、p=0 相同行输出 0）落在该约束的检查范围。",
+      "sha256": "sha256:089abbb29038670d8036520964964d09ba9cf0f66f0c74f9dfb5637488a07596"
+    },
+    {
+      "path": "constraints/precision.md",
+      "reason": "property mixed_precision 路由：fp16 IO + 中间全 fp32（diff/pow/沿 M 累加/inv-pow）+ 出口单点 narrow 的 cast 边界链是 SPEC kernel 契约的显式条款。目标版本事实：vf.reduce_sum 对 FP16 src 按 FP16 精度累加（reduce_sum.md 表1），故 fp16 路径必须在规约前 astype widen 到 FP32；出口 astype 须用非饱和模式保 NaN/Inf 传播（astype.md 表6）。容差 atol/rtol 1e-3 与该链绑定，改 cast 位置须同步更新 golden 验收。",
+      "sha256": "sha256:481a8131af0670ae06059e114caf54eb0cd478099871a9fcecd96fb6db91dffd"
+    },
+    {
+      "path": "constraints/vec-mask-width.md",
+      "reason": "property mixed_precision 路由：fp16（VL=128 lane）与 fp32（VL=64 lane）路径切换时 mask_reg 元素宽度不同；pdist 的 M 分块尾 lane 掩码（vf.update_mask）与 p=0 分支的 vf.ne 比较掩码在 widen 前后宽度不一致，需要宽度转换时不得走'不存在该 API'的弯路（本页记录了一条指令完成转换的既有能力）。",
+      "sha256": "sha256:b052132ce20843d8b14cad041d3f79f5eb64efc4cfbce84fe967163d120eb68f"
+    },
+    {
+      "path": "constraints/arch-a5.md",
+      "reason": "target 路由：运行时已确认 Ascend 950PR（A5，CANN 9.2.0，TILE_FWK_DEVICE_ID=0），非默认假设。UB 容量 248KB、核数、dtype 相关约束须按该页平台门从安装的平台文件（950PR_957x.ini 等）提取并记录版本；数值上限在确认 SKU 前不得预填。",
+      "sha256": "sha256:afb4f89419b3a29cdadd6375a403f3c13ced11787f7b2bfed3e8388250c7baa0"
+    },
+    {
+      "path": "constraints/wrapper-boundary.md",
+      "reason": "mandatory（applies_to: architect/coder/verifier）对每个 class 生效：pdist 公开 callable 的 host 段只允许标量逻辑（p<0 参数校验、N/M 读取、TilingData 构造），不得在 wrapper 里对 tensor 做 cast/切片/转置等会派发设备 kernel 的操作；p=inf 的表示（'inf' 字符串）到 float('inf') 的解释也属 host 标量域。",
+      "sha256": "sha256:b8757cd9ab8cfb25380b331a31617a1e0ace52f7d19d02fdf56227de5a607179"
+    }
+  ],
+  "no_matching_pattern": false
+}
