@@ -21,6 +21,7 @@
 #include "catlass/layout/layout.hpp"
 #include "catlass/detail/callback.hpp"
 #include "gated_activation.hpp"
+#include "swiglu_epilogue_helpers.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -305,68 +306,46 @@ private:
     CATLASS_DEVICE
     bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx)
     {
-        uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
-        uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
-        if (subblockIdx < moveDataCoreNum) {
-            return false;
-        }
-        uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
-        uint32_t perCoreData = blockM / epilogueCoreNum;
-        uint32_t remainderData = blockM % epilogueCoreNum;
-        tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        loopStartIdx =
-            epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
-        return true;
+        return detail::GetEpilogueTaskRange(blockM, epilogueCoreNum, loopStartIdx, tasksForIdx);
     }
 
     CATLASS_DEVICE
     void FlushScaleBatch(AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, uint32_t gmOffset,
                          uint32_t scaleCount, uint32_t scaleStage)
     {
-        if (scaleCount == 0) {
-            return;
-        }
-        LayoutPerTokenScale scaleLayout{scaleCount};
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(scaleStage);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(scaleStage);
-        copyUbToGmDequantScale(gmPerTokenScale[gmOffset], ubPerTokenScaleOutputList[scaleStage], scaleLayout,
-                               scaleLayout);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(scaleStage);
+        detail::FlushScaleBatch<LayoutPerTokenScale>(copyUbToGmDequantScale, gmPerTokenScale,
+                                                     ubPerTokenScaleOutputList[scaleStage], gmOffset, scaleCount,
+                                                     scaleStage);
     }
 
     CATLASS_DEVICE
     void WaitScaleBuffer(uint32_t scaleStage)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(scaleStage);
+        detail::WaitScaleBuffer(scaleStage);
     }
 
     CATLASS_DEVICE
     void DrainScaleBuffers(uint32_t scaleBatchCount)
     {
-        uint32_t pendingCount = scaleBatchCount < SCALE_BUFFER_COUNT ? scaleBatchCount : SCALE_BUFFER_COUNT;
-        uint32_t firstPendingBatch = scaleBatchCount - pendingCount;
-        for (uint32_t i = 0; i < pendingCount; ++i) {
-            WaitScaleBuffer((firstPendingBatch + i) % SCALE_BUFFER_COUNT);
-        }
+        detail::DrainScaleBuffers(scaleBatchCount, SCALE_BUFFER_COUNT);
     }
 
     CATLASS_DEVICE
     static uint32_t TileCount(uint32_t branchLength)
     {
-        return (branchLength + TILE_LENGTH - 1) / TILE_LENGTH;
+        return detail::SwigluTileCount(branchLength, TILE_LENGTH);
     }
 
     CATLASS_DEVICE
     static uint32_t TileLength(uint32_t branchLength, uint32_t tileOffset)
     {
-        uint32_t remaining = branchLength - tileOffset;
-        return remaining < TILE_LENGTH ? remaining : TILE_LENGTH;
+        return detail::SwigluTileLength(branchLength, tileOffset, TILE_LENGTH);
     }
 
     CATLASS_DEVICE
     static uint32_t NextStage(uint32_t stageId)
     {
-        return stageId + 1 < UB_STAGES ? stageId + 1 : 0;
+        return detail::SwigluNextStage(stageId, UB_STAGES);
     }
 
     CATLASS_DEVICE
