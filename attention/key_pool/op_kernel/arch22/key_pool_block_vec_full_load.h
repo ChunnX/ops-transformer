@@ -970,26 +970,32 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::CopyOutVec1ResToOutput(
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
     outputQue1.EnQue(outputUb);
     outputQue1.DeQue<HIDDEN_STATES_T>();
-    uint32_t outputPoolCapacity = CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
-    uint32_t bIdx = sliceInfo.bIdx;
-    uint32_t sIdx = sliceInfo.sIdx;
-    uint64_t ubOffset = 0;
-    while (compressTcSize > 0) {
-        uint32_t bStartPos = GetStartPos(bIdx);
-        uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
-        uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
-        if (preScSize < totalScSize) {
-            uint32_t curScSize = min(compressTcSize, totalScSize - preScSize);
-            uint64_t outputPoolIdx =
-                static_cast<uint64_t>(bIdx) * outputPoolCapacity + preScSize - bStartPos / cmpRatio_;
-            uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
-            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize, dDealSize,
-                                constInfo_.headDim);
-            compressTcSize -= curScSize;
-            ubOffset += curScSize * dDealSize;
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::BSH) {
+        uint32_t outputPoolCapacity = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
+        uint32_t bIdx = sliceInfo.bIdx;
+        uint32_t sIdx = sliceInfo.sIdx;
+        uint64_t ubOffset = 0;
+        while (compressTcSize > 0) {
+            uint32_t bStartPos = GetStartPos(bIdx);
+            uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
+            uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
+            if (preScSize < totalScSize) {
+                uint32_t curScSize = min(compressTcSize, totalScSize - preScSize);
+                uint64_t outputPoolIdx =
+                    static_cast<uint64_t>(bIdx) * outputPoolCapacity + preScSize - bStartPos / cmpRatio_;
+                uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
+                DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize, dDealSize,
+                                    constInfo_.headDim);
+                compressTcSize -= curScSize;
+                ubOffset += curScSize * dDealSize;
+            }
+            bIdx++;
+            sIdx = 0;
         }
-        bIdx++;
-        sIdx = 0;
+    } else {
+        uint64_t outGmOffset = static_cast<uint64_t>(compressedCnt_) * constInfo_.headDim + dStartIdx;
+        DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
+                            constInfo_.headDim);
     }
     PipeBarrier<PIPE_MTE3>();
     outputQue1.FreeTensor(outputUb);
