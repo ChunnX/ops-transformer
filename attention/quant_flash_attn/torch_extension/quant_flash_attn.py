@@ -570,14 +570,12 @@ def quant_flash_attn(
             )
 
     if quant_mode == int(QuantMode.A4C4_QKV_MXFP4_P_MXFP4_SOFTMAX_FP16):
-        # q/k/v 允许两种形态: 传统 uint8 (已 pack, 每 byte 2 个 fp4) 或原生
-        # float4_e2m1fn_x2 (torch 侧同样按 2 值/byte 存储). 二者 C++ make_wrapper
-        # 都会映射到 ACL_FLOAT4_E2M1, 语义等价.
-        mxfp4_qkv_dtypes = (torch.uint8, torch.float4_e2m1fn_x2)
+        # MxFP4 下 q/k/v 统一走原生 float4_e2m1fn_x2 (2 值/byte), C++ make_wrapper
+        # 映射到 ACL_FLOAT4_E2M1.
         for name, tensor in (("q", q), ("k", k), ("v", v)):
-            if tensor.dtype not in mxfp4_qkv_dtypes:
+            if tensor.dtype != torch.float4_e2m1fn_x2:
                 raise ValueError(
-                    f"In MxFP4 mode (quant_mode=5), {name} must be uint8 or "
+                    f"In MxFP4 mode (quant_mode=5), {name} must be "
                     f"float4_e2m1fn_x2, but got {tensor.dtype}"
                 )
 
