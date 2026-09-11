@@ -81,8 +81,7 @@ ge::graphStatus QLIV2VariantChecker::CheckScaleShape(const LightningIndexerV2Che
     if (info.quantMode == QUANT_MODE_HIFLOAT8) {
         if (scaleShape.GetDimNum() != SCALAR_RANK || scaleShape.GetDim(SCALAR_AXIS) != 1) {
             const std::string actual = ShapeToString(scale);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, scaleName, actual.c_str(),
-                                                  "The scale shape must be [1] when quant_mode is 4");
+            LogInvalidShape(info, scaleName, actual, "The scale shape must be [1] when quant_mode is 4");
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -103,8 +102,8 @@ ge::graphStatus QLIV2VariantChecker::CheckScaleShape(const LightningIndexerV2Che
         if (scaleShape.GetDim(i) != inputShape.GetDim(i)) {
             const std::string names = std::string(inputName) + " and " + scaleName;
             const std::string actual = ShapeToString(input) + " and " + ShapeToString(scale);
-            const std::string reason = std::string("Input ") + inputName + " and " + scaleName +
-                                       " must have equal dimensions before the head_dim axis";
+            const std::string reason = "The size of dimension " + std::to_string(i) + " must be the same for " +
+                                       inputName + " and " + scaleName;
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(info.opName, names.c_str(), actual.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -115,7 +114,7 @@ ge::graphStatus QLIV2VariantChecker::CheckScaleShape(const LightningIndexerV2Che
             scaleShape.GetDim(inputRank - 1U) != scaleD || scaleShape.GetDim(inputRank) != MX_E8M0_SCALE_PACK_NUM) {
             const std::string actual = ShapeToString(scale);
             const std::string reason = "The last two scale dimensions must be [head_dim/64, 2] in MX mode";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, scaleName, actual.c_str(), reason.c_str());
+            LogInvalidShape(info, scaleName, actual, reason);
             return ge::GRAPH_FAILED;
         }
     }
