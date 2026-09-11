@@ -44,7 +44,6 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 9U;
 
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
-constexpr size_t URMA_DOUBLE_BUFFER_NUM = 2U;
 constexpr size_t SCALE_PARAM_PAD_SIZE = 128U;
 constexpr size_t MX_PARAM_PAD_SIZE = 256U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
@@ -148,10 +147,15 @@ ge::graphStatus SetUrmaWorkspace(gert::TilingContext *context, AttentionToFfnV2T
 
     const size_t dataWorkspaceStride =
         (commuBytes + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
-    OP_TILING_CHECK(dataWorkspaceStride > std::numeric_limits<size_t>::max() / aivNum,
+    const size_t totalSendNum = static_cast<size_t>(tilingData->attentionToFfnV2Info.X) *
+                                tilingData->attentionToFfnV2Info.BS *
+                                (static_cast<size_t>(tilingData->attentionToFfnV2Info.K) +
+                                 static_cast<size_t>(tilingData->attentionToFfnV2Info.expertNum) -
+                                 static_cast<size_t>(tilingData->attentionToFfnV2Info.moeExpertNum));
+    OP_TILING_CHECK(dataWorkspaceStride > std::numeric_limits<size_t>::max() / totalSendNum,
                     OP_LOGE(context->GetNodeName(), "URMA data workspace size overflow"), return ge::GRAPH_FAILED);
-    const size_t dataWorkspaceSize = URMA_DOUBLE_BUFFER_NUM * aivNum * dataWorkspaceStride;
-    const size_t flagWorkspaceSize = aivNum * URMA_FLAG_SLOT_SIZE;
+    const size_t dataWorkspaceSize = totalSendNum * dataWorkspaceStride;
+    const size_t flagWorkspaceSize = totalSendNum * URMA_FLAG_SLOT_SIZE;
     OP_TILING_CHECK(dataWorkspaceSize > std::numeric_limits<size_t>::max() - flagWorkspaceSize,
                     OP_LOGE(context->GetNodeName(), "URMA workspace size overflow"), return ge::GRAPH_FAILED);
     const size_t urmaWorkspaceSize = dataWorkspaceSize + flagWorkspaceSize + RESERVED_WORKSPACE_SIZE;
