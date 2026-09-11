@@ -36,15 +36,7 @@ stages:
         name: Compile_X86_ubuntu24_dis
         uses: .gitcode/workflows/compile_action_test.yml
         with:
-          task_name: 'x86_compile_ubuntu24'
-          arch: 'x64'
-          package_name: 'cann-ops-nn_9.1.0_linux-x86_64_ubuntu24.run'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_ubuntu24 }}
-      JOB_x86_compile_ubuntu24_nodis:
-        name: Compile_X86_ubuntu24_nodis
-        uses: .gitcode/workflows/compile_action_without.yml
-        with:
-          task_name: 'x86_compile_ubuntu24'
+          task_name: 'Pre_Compile'
           arch: 'x64'
           package_name: 'cann-ops-nn_9.1.0_linux-x86_64_ubuntu24.run'
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_ubuntu24 }}
