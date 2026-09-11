@@ -262,8 +262,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::GenerateIndexAndCopy(__u
     RegTensor<float> vregSoftmaxResult;
     Reg::MaskReg preg0 = Reg::CreateMask<float>();
 
+    uint32_t sizeRemain = size;
     for (uint16_t i = 0; i < vfLoopNum; i++) {
-        preg0 = Reg::UpdateMask<float>(size);
+        preg0 = Reg::UpdateMask<float>(sizeRemain);
         ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
         Reg::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
         Reg::StoreAlign(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftmaxResult, preg0);
@@ -293,8 +294,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftMaxWithBias(LocalTen
         RegTensor<float> vregBiasResult;
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
             ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasFp32, preg0, i * VL_FLOAT_SIZE);
             Reg::Add(vregBiasResult, vregSoftmaxResult, vregBiasFp32, preg0);
@@ -392,8 +394,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SigmoidWithBias(LocalTen
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
                                            i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
             Reg::Muls(vreg1, vregInFp32, static_cast<float>(-1), preg0);
@@ -437,8 +440,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SigmoidWithoutBias(Local
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
             Reg::Muls(vreg1, vregInFp32, static_cast<float>(-1), preg0);
             Reg::Exp(vreg2, vreg1, preg0);
@@ -491,19 +495,38 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftplusWithBias(LocalTe
         RegTensor<float> vregBiasResult;
         RegTensor<float> vregOne;
         RegTensor<float> vregInFp32;
+        RegTensor<float> vregAbsX;
+        RegTensor<float> vregApprox;
+        RegTensor<float> vregHalfT;
+        RegTensor<float> vregOneMinusHalfT;
+        RegTensor<float> vregZero;
         RegTensor<float> vreg1;
         RegTensor<float> vreg2;
         RegTensor<float> vreg3;
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
+        Reg::MaskReg pregCmp = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+        Reg::Duplicate(vregZero, static_cast<float>(0), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
                                            i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
-            Reg::Exp(vreg1, vregInFp32, preg0);
+            // softplus(x) = max(x, 0) + log1p(exp(-|x|)); t < 2^-8 时用 t - t^2/2 近似,
+            // 避免 exp 溢出与 1+t 吸收
+            Reg::Abs(vregAbsX, vregInFp32, preg0);
+            Reg::Muls(vreg1, vregAbsX, static_cast<float>(-1), preg0);
+            Reg::Exp(vreg1, vreg1, preg0);
+            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vreg1, LOG1P_TAYLOR_THRESHOLD, preg0);
+            Reg::Muls(vregHalfT, vreg1, static_cast<float>(0.5), preg0);
+            Reg::Sub(vregOneMinusHalfT, vregOne, vregHalfT, preg0);
+            Reg::Mul(vregApprox, vreg1, vregOneMinusHalfT, preg0);
             Reg::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
             Reg::Ln(vreg3, vreg2, preg0);
+            Reg::Select<float>(vreg3, vregApprox, vreg3, pregCmp);
+            Reg::Max(vreg1, vregInFp32, vregZero, preg0);
+            Reg::Add(vreg3, vreg1, vreg3, preg0);
             Reg::Sqrt(vregSoftplusResult, vreg3, preg0);
             Reg::Add(vregBiasResult, vregSoftplusResult, vregBiasFp32, preg0);
             Reg::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
@@ -536,18 +559,37 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftplusWithoutBias(Loca
         RegTensor<float> vregSoftplusResult;
         RegTensor<float> vregOne;
         RegTensor<float> vregInFp32;
+        RegTensor<float> vregAbsX;
+        RegTensor<float> vregApprox;
+        RegTensor<float> vregHalfT;
+        RegTensor<float> vregOneMinusHalfT;
+        RegTensor<float> vregZero;
         RegTensor<float> vreg1;
         RegTensor<float> vreg2;
         RegTensor<float> vreg3;
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
+        Reg::MaskReg pregCmp = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+        Reg::Duplicate(vregZero, static_cast<float>(0), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
-            Reg::Exp(vreg1, vregInFp32, preg0);
+            // softplus(x) = max(x, 0) + log1p(exp(-|x|)); t < 2^-8 时用 t - t^2/2 近似,
+            // 避免 exp 溢出与 1+t 吸收
+            Reg::Abs(vregAbsX, vregInFp32, preg0);
+            Reg::Muls(vreg1, vregAbsX, static_cast<float>(-1), preg0);
+            Reg::Exp(vreg1, vreg1, preg0);
+            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vreg1, LOG1P_TAYLOR_THRESHOLD, preg0);
+            Reg::Muls(vregHalfT, vreg1, static_cast<float>(0.5), preg0);
+            Reg::Sub(vregOneMinusHalfT, vregOne, vregHalfT, preg0);
+            Reg::Mul(vregApprox, vreg1, vregOneMinusHalfT, preg0);
             Reg::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
             Reg::Ln(vreg3, vreg2, preg0);
+            Reg::Select<float>(vreg3, vregApprox, vreg3, pregCmp);
+            Reg::Max(vreg1, vregInFp32, vregZero, preg0);
+            Reg::Add(vreg3, vreg1, vreg3, preg0);
             Reg::Sqrt(vregSoftplusResult, vreg3, preg0);
             Reg::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
             Reg::StoreAlign(softplusOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
