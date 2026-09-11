@@ -92,8 +92,9 @@ struct Config {
     using LayoutBias = asc::te::nd_ext_layout_ptn;
     using DispatchPolicy = Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit,
                                               Blaze::Gemm::GroupedMatmulWithScaleMx<>>;
-    using LayoutB = Std::conditional_t<IsA8W4, asc::te::zn_layout_ptn,
-                                       Std::conditional_t<IsWeightNZ, asc::te::zn_layout_ptn, asc::te::dn_ext_layout_ptn>>;
+    using LayoutB =
+        Std::conditional_t<IsA8W4, asc::te::zn_layout_ptn,
+                           Std::conditional_t<IsWeightNZ, asc::te::zn_layout_ptn, asc::te::dn_ext_layout_ptn>>;
 
     using MakeLayoutA = asc::te::frame_layout_format<LayoutA, Std::Int<C0_SIZE_A>>;
     using MakeLayoutB = asc::te::frame_layout_format<LayoutB, Std::Int<C0_SIZE_B>>;
@@ -371,7 +372,6 @@ struct Config {
 // 通用 MX BlockMmad 的 l1BufNum 始终固定为 2，A8W4 L1Params 则没有该字段，因此不纳入运行时状态。
 struct BlockMmadInitConfig {
     uint32_t problemK = 0U;
-    uint32_t problemN = 0U;
     uint32_t tileM = 0U;
     uint32_t tileN = 0U;
     uint64_t kL1 = 0U;
@@ -379,17 +379,9 @@ struct BlockMmadInitConfig {
 
     __aicore__ inline bool operator!=(const BlockMmadInitConfig &other) const
     {
-        return problemK != other.problemK || problemN != other.problemN || tileM != other.tileM ||
-               tileN != other.tileN || kL1 != other.kL1 || scaleKL1 != other.scaleKL1;
+        return problemK != other.problemK || tileM != other.tileM || tileN != other.tileN || kL1 != other.kL1 ||
+               scaleKL1 != other.scaleKL1;
     }
-};
-
-// Wave 流程可持有同一个 BlockMmad；普通路径也复用该结构完成一致的初始化。
-template <typename BlockMmad>
-struct BlockMmadContext {
-    BlockMmad blockMmad;
-    BlockMmadInitConfig initConfig{};
-    bool initialized = false;
 };
 
 enum class GmmStage {
@@ -397,43 +389,60 @@ enum class GmmStage {
     GMM2
 };
 
-// GMM1 uses the concat half-width; GMM2 uses the full ordinary tile width.
-// Cache the effective Init shape so a later shared context also detects stage transitions.
-// QGMM updates the full problem shape separately on every call.
-template <GmmStage Stage, typename MmadContext, typename ProblemConfig>
-__aicore__ inline void InitBlockMmad(MmadContext &context, const ProblemConfig &config)
-{
-    using BlockMmad = decltype(context.blockMmad);
-    const auto &tilingConfig = config.blockMmadTiling;
-    uint32_t tileN = tilingConfig.tileN;
-    if constexpr (Stage == GmmStage::GMM1 &&
-                  Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
-        tileN /= ACTIVATION_N_HALF;
-    }
-    const BlockMmadInitConfig requestedConfig{
-        config.k, config.n, tilingConfig.tileM, tileN, tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1};
-    if (!context.initialized || context.initConfig != requestedConfig) {
-        typename BlockMmad::BlockShape l0TileShape{tilingConfig.tileM, tileN, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-        constexpr bool enableL0CPingPong = false;
-        if constexpr (Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
-            typename BlockMmad::MmadParams params{
-                l0TileShape,
-                {tilingConfig.l1Params.kL1, tilingConfig.l1Params.kL1, tilingConfig.l1Params.scaleKL1},
-                false,
-                enableL0CPingPong,
-                2U};
-            context.blockMmad.Init(matmulShape, params);
-        } else {
-            context.blockMmad.Init(matmulShape, l0TileShape, tilingConfig.l1Params, false, enableL0CPingPong);
+template <typename BlockMmad, typename DispatchPolicy = typename BlockMmad::DispatchPolicy>
+struct BlockMmadContext {
+    BlockMmad blockMmad;
+
+    template <GmmStage Stage, typename ProblemConfig>
+    __aicore__ inline void Init(const ProblemConfig &config)
+    {
+        const auto &tiling = config.blockMmadTiling;
+        const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tiling.tileN, tiling.l1Params.kL1,
+                                                  tiling.l1Params.scaleKL1};
+        if (!initialized_ || initConfig_ != requestedConfig) {
+            typename BlockMmad::BlockShape tileShape{tiling.tileM, tiling.tileN, L0_TILE_K, 0};
+            typename BlockMmad::ProblemShape problemShape{config.m, config.n, config.k, 0};
+            blockMmad.Init(problemShape, tileShape, tiling.l1Params);
+            initConfig_ = requestedConfig;
+            initialized_ = true;
         }
-        context.initConfig = requestedConfig;
-        context.initialized = true;
     }
-    if constexpr (Std::is_same_v<typename BlockMmad::DispatchPolicy, Blaze::Gemm::GroupedMatmulWithScaleMx<>>) {
-        context.blockMmad.UpdateParamsForNextProblem({config.m, config.n, config.k, 0});
+
+private:
+    BlockMmadInitConfig initConfig_{};
+    bool initialized_ = false;
+};
+
+template <typename BlockMmad>
+struct BlockMmadContext<BlockMmad, Blaze::Gemm::GroupedMatmulWithScaleMx<>> {
+    BlockMmad blockMmad;
+
+    template <GmmStage Stage, typename ProblemConfig>
+    __aicore__ inline void Init(const ProblemConfig &config)
+    {
+        const auto &tiling = config.blockMmadTiling;
+        // Concat takes the gate width; ordinary GMM2 takes the full tile width.
+        const uint32_t tileN = Stage == GmmStage::GMM1 ? tiling.tileN / ACTIVATION_N_HALF : tiling.tileN;
+        const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tileN, tiling.l1Params.kL1,
+                                                  tiling.l1Params.scaleKL1};
+        if (!initialized_ || initConfig_ != requestedConfig) {
+            typename BlockMmad::ProblemShape problemShape{config.m, config.n, config.k, 0};
+            typename BlockMmad::MmadParams params{{tiling.tileM, tileN, L0_TILE_K, 0},
+                                                  {tiling.l1Params.kL1, tiling.l1Params.kL1, tiling.l1Params.scaleKL1},
+                                                  false,
+                                                  false,
+                                                  2U};
+            blockMmad.Init(problemShape, params);
+            initConfig_ = requestedConfig;
+            initialized_ = true;
+        }
+        blockMmad.UpdateParamsForNextProblem({config.m, config.n, config.k, 0});
     }
-}
+
+private:
+    BlockMmadInitConfig initConfig_{};
+    bool initialized_ = false;
+};
 
 /*
  * CACHE_MODE_DISABLE 会使读取不填入 L2，仅适用于后续不会复用的数据。

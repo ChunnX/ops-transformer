@@ -90,8 +90,8 @@ __aicore__ inline void Gmm1AicMmadTileToGmGeneric(BlockMmad &blockMmad, const Co
                               asc::te::make_shape(Get<K_VALUE>(actualShape), Get<N_VALUE>(singleShape)));
     auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0, nLoc / ACTIVATION_N_HALF),
                                         asc::te::make_shape(config.scaleK, Get<N_VALUE>(singleShape)));
-    auto tensorBlockGm =
-        gmC.slice(asc::te::make_coord(mLoc, nLoc), asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+    auto tensorBlockGm = gmC.slice(asc::te::make_coord(mLoc, nLoc),
+                                   asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
     auto weightView = MakeGmm1WeightView(gmBlockB);
     Gmm1OutputView<decltype(tensorBlockGm)> outputView{tensorBlockGm};
     blockMmad(gmBlockA, weightView, gmBlockScaleA, gmBlockScaleB, outputView, singleShape);
@@ -114,8 +114,8 @@ __aicore__ inline void Gmm1AicMmadTileToUbGeneric(BlockMmad &blockMmad, const Co
     auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0, nLoc / ACTIVATION_N_HALF),
                                         asc::te::make_shape(config.scaleK, Get<N_VALUE>(singleShape)));
     auto tensorUb = pingpongIdx == 0U ? l0cOutUbFirst : l0cOutUbSecond;
-    auto tensorBlockUb =
-        tensorUb.slice(asc::te::make_coord(0, 0), asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+    auto tensorBlockUb = tensorUb.slice(asc::te::make_coord(0, 0),
+                                        asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
     auto weightView = MakeGmm1WeightView(gmBlockB);
     Gmm1OutputView<decltype(tensorBlockUb)> outputView{tensorBlockUb};
     blockMmad(gmBlockA, weightView, gmBlockScaleA, gmBlockScaleB, outputView, singleShape);
@@ -136,8 +136,8 @@ __aicore__ inline void Gmm1AicMmadTileA8W4(BlockMmad &blockMmad, TensorA &gmA, T
     uint32_t nOffset = nLoc / ACTIVATION_N_HALF;
     auto gmBlockScaleB =
         gmScaleB.slice(asc::te::make_coord(0, nOffset), asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
-    auto tensorBlockGm =
-        l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc), asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+    auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
+                                        asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
     blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
 }
 
@@ -149,7 +149,7 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(WorkSet &workSet, const Params
                                                   MmadContext *blockMmadContext)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
-    InitBlockMmad<GmmStage::GMM1>(*blockMmadContext, config);
+    blockMmadContext->template Init<GmmStage::GMM1>(config);
     auto &blockMmad = blockMmadContext->blockMmad;
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
@@ -194,7 +194,7 @@ __aicore__ inline void Gmm1AicMmadGeneric(WorkSet &workSet, const GMMAddrInfo &g
                                           uint16_t &pingpongIdx, MmadContext *blockMmadContext)
 {
     using BlockMmad = decltype(blockMmadContext->blockMmad);
-    InitBlockMmad<GmmStage::GMM1>(*blockMmadContext, config);
+    blockMmadContext->template Init<GmmStage::GMM1>(config);
     auto &blockMmad = blockMmadContext->blockMmad;
 
     using KernelConfig = typename Config::KernelConfig;
@@ -248,8 +248,7 @@ __aicore__ inline void Gmm1AicMmadA8W4(WorkSet &workSet, const Params &params, c
     typename BlockMmad::BlockShape l0TileShape{config.blockMmadTiling.tileM, config.blockMmadTiling.tileN, L0_TILE_K,
                                                0};
     typename BlockMmad::ProblemShape matmulShape{config.m, config.schedulerN, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params);
-    blockMmad.SetGmm1ConcatHalfN(config.outputN);
+    blockMmad.Init(matmulShape, l0TileShape, config.blockMmadTiling.l1Params, config.outputN);
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -386,8 +385,8 @@ __aicore__ inline void Gmm1Aiv1EpilogueTileA8W4(ActivationQuantOp &activationQua
     }
     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
     AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
-    auto tensorBlockGm =
-        l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc), asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+    auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
+                                        asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
     auto layoutL0cUb = MakeLayoutC{}(config.tileM, L1_TILE_N);
     auto tensorBlockUb = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::ub, ElementC>(0), layoutL0cUb);
     auto copyGm2Ub = asc::te::make_copy(asc::te::copy_gm_to_ub{});
@@ -404,8 +403,7 @@ template <typename BlockPrologue, typename Scheduler, typename TensorB, typename
 __aicore__ inline void Gmm1Aiv0PrologueA8W4(Scheduler &scheduler, TensorB &gmB, const Config &config,
                                             uint32_t startLoopIdx, uint32_t tileNum)
 {
-    BlockPrologue blockPrologue;
-    blockPrologue.SetGmm1ConcatHalfN(config.outputN);
+    BlockPrologue blockPrologue(config.outputN);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -622,17 +620,20 @@ __aicore__ inline void Gmm1ExecA8W4(Scheduler &scheduler, const Params &params, 
     using ElementMxScaleB = typename KernelConfig::ElementMxScaleBType;
 
     auto gmC = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm1OutGlobal)), layouts.c);
+        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementC *>(gmmAddrInfo.gmm1OutGlobal)),
+        layouts.c);
     auto gmA = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementA *>(gmmAddrInfo.aGlobal)), layouts.a);
+        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementA *>(gmmAddrInfo.aGlobal)),
+        layouts.a);
     auto gmB = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementB *>(gmmAddrInfo.bGlobal)), layouts.b);
-    auto gmScaleA = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementMxScaleA *>(gmmAddrInfo.aScaleGlobal)),
-        layouts.scaleA);
-    auto gmScaleB = asc::te::make_tensor(
-        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
-        layouts.scaleB);
+        asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ElementB *>(gmmAddrInfo.bGlobal)),
+        layouts.b);
+    auto gmScaleA = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(
+                                             reinterpret_cast<__gm__ ElementMxScaleA *>(gmmAddrInfo.aScaleGlobal)),
+                                         layouts.scaleA);
+    auto gmScaleB = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(
+                                             reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
+                                         layouts.scaleB);
     AscendC::GlobalTensor<float> metaInfoGm;
     if constexpr (TopkWeightsPrefetch && g_coreType == AscendC::AIV) {
         metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gmmAddrInfo.metaInfoGlobal));
