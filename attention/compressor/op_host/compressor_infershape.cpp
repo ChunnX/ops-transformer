@@ -120,7 +120,6 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext *context, Co
                             ((xShape->GetDim(DIM_INDEX_1) - DIM_NUM_1) / cmpRatio + DIM_NUM_1) :
                             DIM_NUM_0;
         shapeParam.H = xShape->GetDim(DIM_INDEX_2);
-        shapeParam.T = shapeParam.B * shapeParam.S;
     } else {
         shapeParam.isBsMerge = true;
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);
