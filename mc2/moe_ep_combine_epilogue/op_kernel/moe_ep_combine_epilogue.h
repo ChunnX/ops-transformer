@@ -571,6 +571,8 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
                                              MoeEpCombineEpilogueProfileStage::BUFFER_INIT,
                                              MoeEpProfileBoundary::BEGIN));
     BuffInit();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineEpilogueProfileStage::BUFFER_INIT, MoeEpProfileBoundary::END));
     LoadTopkIds();
     MaskCheck();
     RecvPhaseReduce();

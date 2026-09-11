@@ -539,6 +539,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         return;
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::CORE_ASSIGNMENT, MoeEpProfileBoundary::BEGIN));
     uint32_t activeAivNum = aivNum_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0U;
@@ -584,9 +586,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
     MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
                                              MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::END));
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::FLAG_SOURCE_INIT, MoeEpProfileBoundary::BEGIN));
     InitFlagSource();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::FLAG_SOURCE_INIT, MoeEpProfileBoundary::END));
     // Publish AIV0's shared constant-source initialization before any remote flag is submitted.
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineProfileStage::LOCAL_BARRIER, MoeEpProfileBoundary::BEGIN));
     SyncAll<true>();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineProfileStage::LOCAL_BARRIER, MoeEpProfileBoundary::END));
 
     // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
     // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
