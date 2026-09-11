@@ -84,7 +84,11 @@ constexpr uint32_t URMA_BATCH_WQE_CAPACITY = ATTN_FFN_HCOMM_BATCH_UB_BYTES / HCO
 
 static constexpr AscendC::UrmaWqeEntry REMOTE_DATA_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 1, .inlineEn = 0};
-static constexpr AscendC::UrmaWqeEntry REMOTE_LAYER_FLAG_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 1, .inlineEn = 0};
+// odr=6 (ordered write): the ready/layer flag must land at the destination window only after
+// all previously submitted WQEs on the same channel (bulk data writes and ordered token-flag
+// writes) have landed. The FFN side polls this flag as the only completion signal; with odr=5
+// the flag can overtake the in-flight token flags and the receiver reads stale expert ids.
+static constexpr AscendC::UrmaWqeEntry REMOTE_LAYER_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 1, .inlineEn = 0};
 using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
 
 struct AttentionToFfnTokenMetaData {
