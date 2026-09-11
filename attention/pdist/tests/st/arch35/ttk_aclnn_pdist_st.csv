@@ -1,0 +1,68 @@
+testcase_name,api_name,tensor_dtypes,tensor_formats,attributes,tensor_view_shapes,output_tensor_indexes,input_data_ranges,precision_tolerances,absolute_precision,is_enabled,remark
+pdist_p0_0_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.0},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=0.0
+pdist_p0_5_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.5},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=0.5
+pdist_p1_0_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=1.0
+pdist_p2_0_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=2.0
+pdist_p3_0_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 3.0},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=3.0
+pdist_pinf_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': inf},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=inf
+pdist_p15_general_br,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.5},"((200, 64), (19900,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,PBranch p=1.5 general
+pdist_tile_min,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((2, 1), (1,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile min N=2 M=1
+pdist_tile_n3_tiny,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((3, 2), (3,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n3_tiny N=3 M=2
+pdist_tile_n12_ltcores,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((12, 7), (66,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n12_ltcores N=12 M=7
+pdist_tile_n63_jseg1,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((63, 64), (1953,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n63_jseg1 N=63 M=64
+pdist_tile_n65_vptail,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((65, 128), (2080,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n65_vptail N=65 M=128
+pdist_tile_n128_2jseg,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((128, 256), (8128,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n128_2jseg N=128 M=256
+pdist_tile_n129,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((129, 64), (8256,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n129 N=129 M=64
+pdist_tile_n193_3jseg,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((193, 32), (18528,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile n193_3jseg N=193 M=32
+pdist_tile_mall_m127,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((100, 127), (4950,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile mall_m127 N=100 M=127
+pdist_tile_mall_m129,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((100, 129), (4950,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile mall_m129 N=100 M=129
+pdist_tile_mall_m256,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((300, 256), (44850,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile mall_m256 N=300 M=256
+pdist_tile_m1_thin,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((1024, 1), (523776,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile m1_thin N=1024 M=1
+pdist_tile_tail2d,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((77, 65), (2926,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile tail2d N=77 M=65
+pdist_tile_multitile,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((600, 300), (179700,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile multitile N=600 M=300
+pdist_tile_partial,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((777, 300), (301476,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile partial N=777 M=300
+pdist_tile_large_m,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((64, 8192), (2016,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile large_m N=64 M=8192
+pdist_tile_m_upper,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((2, 65535), (1,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile m_upper N=2 M=65535
+pdist_tile_perf_euc,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((4096, 256), (8386560,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile perf_euc N=4096 M=256
+pdist_tile_perf_fp16,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((8192, 512), (33550336,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,tile perf_fp16 N=8192 M=512
+pdist_fp16_p0_0,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 0.0},"((512, 64), (130816,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,fp16 p=0.0
+pdist_fp16_p1_0,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 1.0},"((512, 64), (130816,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,fp16 p=1.0
+pdist_fp16_p2_0,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 2.0},"((512, 64), (130816,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,fp16 p=2.0
+pdist_fp16_p3_0,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 3.0},"((512, 64), (130816,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,fp16 p=3.0
+pdist_fp16_pinf,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': inf},"((512, 64), (130816,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,fp16 p=inf
+pdist_fp16_mid,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 2.0},"((1000, 200), (499500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,fp16 中型
+pdist_fp16_wide,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 2.0},"((300, 128), (44850,))","(1,)","((-50, 50),)","((0.001, 0.001),)",1e-08,True,fp16 宽幅
+pdist_fp16_wide_p1,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 1.0},"((256, 96), (32640,))","(1,)","((-200, 200),)","((0.001, 0.001),)",1e-08,True,fp16 宽幅 p1
+pdist_zero_all,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((64, 32), (2016,))","(1,)","((0, 0),)","((0.001, 0.001),)",1e-08,True,全零→重复行
+pdist_zero_p05,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.5},"((64, 32), (2016,))","(1,)","((0, 0),)","((0.001, 0.001),)",1e-08,True,全零 general s=0 钳位
+pdist_fixed_val,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((32, 16), (496,))","(1,)","((5, 5),)","((0.001, 0.001),)",1e-08,True,固定值
+pdist_zero_dims,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((200, 128), (19900,))","(1,)","((-1, 1, 0),)","((0.001, 0.001),)",1e-08,True,必现 0 diff=0
+pdist_zero_dims_p05,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.5},"((200, 128), (19900,))","(1,)","((-1, 1, 0),)","((0.001, 0.001),)",1e-08,True,general d=0 钳位
+pdist_zero_dims_p3,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 3.0},"((200, 128), (19900,))","(1,)","((-1, 1, 0),)","((0.001, 0.001),)",1e-08,True,general d=0 钳位
+pdist_gval7,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((128, 64), (8128,))","(1,)","((-1, 1, 7),)","((0.001, 0.001),)",1e-08,True,必现值 7
+pdist_neg,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((256, 100), (32640,))","(1,)","((-100, -1),)","((0.001, 0.001),)",1e-08,True,纯负
+pdist_wide,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((256, 100), (32640,))","(1,)","((-1000, 1000),)","((0.001, 0.001),)",1e-08,True,宽幅
+pdist_wide_p0,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.0},"((256, 100), (32640,))","(1,)","((-1000, 1000),)","((0.001, 0.001),)",1e-08,True,Hamming 宽幅
+pdist_wide_pinf,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': inf},"((256, 100), (32640,))","(1,)","((-1000, 1000),)","((0.001, 0.001),)",1e-08,True,Chebyshev 宽幅
+pdist_narrow,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((512, 32), (130816,))","(1,)","((-0.001, 0.001),)","((0.001, 0.001),)",1e-08,True,极窄幅→diff 下溢面
+pdist_tiny_vals,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((200, 150), (19900,))","(1,)","((-1e-6, 1e-6),)","((0.001, 0.001),)",1e-08,True,微小值→sqrt 下溢面
+pdist_nan_p2,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((16, 8), (120,))","(1,)","((float('nan'), float('nan')),)","((0.001, 0.001),)",1e-08,True,NaN p=2 传播
+pdist_nan_p0,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.0},"((16, 8), (120,))","(1,)","((float('nan'), float('nan')),)","((0.001, 0.001),)",1e-08,True,NaN p=0 计数
+pdist_nan_pinf,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': inf},"((16, 8), (120,))","(1,)","((float('nan'), float('nan')),)","((0.001, 0.001),)",1e-08,True,NaN p=inf 覆写
+pdist_nan_p05,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.5},"((16, 8), (120,))","(1,)","((float('nan'), float('nan')),)","((0.001, 0.001),)",1e-08,True,NaN general 链
+pdist_rand_00,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((178, 189), (15753,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=178 M=189 p=2.0 float32
+pdist_rand_01,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((56, 919), (1540,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=56 M=919 p=2.0 float32
+pdist_rand_02,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': 0.0},"((38, 24), (703,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=38 M=24 p=0.0 float16
+pdist_rand_03,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((41, 26), (820,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=41 M=26 p=2.0 float32
+pdist_rand_04,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((895, 890), (400065,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=895 M=890 p=1.0 float32
+pdist_rand_05,aclnnPdist,"('float16', 'float16')","('ND', 'ND')",{'p': inf},"((701, 104), (245350,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=701 M=104 p=inf float16
+pdist_rand_06,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((51, 15), (1275,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=51 M=15 p=2.0 float32
+pdist_rand_07,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 0.5},"((35, 389), (595,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,随机采样 N=35 M=389 p=0.5 float32
+pdist_align_aa,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((129, 256), (8256,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,对齐组合 aa N=129 M=256
+pdist_align_at,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((129, 200), (8256,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,对齐组合 at N=129 M=200
+pdist_align_ta,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((100, 256), (4950,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,对齐组合 ta N=100 M=256
+pdist_align_tt,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((100, 200), (4950,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,对齐组合 tt N=100 M=200
+pdist_bign_midm,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((6000, 64), (17997000,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,大N
+pdist_midn_bigm,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 2.0},"((128, 4096), (8128,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,大M 32 块
+pdist_bign_p1,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': 1.0},"((3000, 16), (4498500,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,大N p1
+pdist_bign_pinf,aclnnPdist,"('float32', 'float32')","('ND', 'ND')",{'p': inf},"((2500, 8), (3123750,))","(1,)","((-1, 1),)","((0.001, 0.001),)",1e-08,True,大N pinf

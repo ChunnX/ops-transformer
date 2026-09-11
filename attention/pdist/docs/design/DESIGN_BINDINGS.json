@@ -1,0 +1,829 @@
+{
+  "schema_version": 1,
+  "bindings": [
+    {
+      "class_id": ".",
+      "selection_field": "optional_patterns",
+      "reference": "patterns/buffer-reuse-lifetime.md",
+      "selection_reason": "long-axis 拓扑路由命中：pdist 的 M 轴动态无上界（合同区间 [1,65535]，P0 case func_p0_large_m M=8192 强制分块），沿 M 的多 tile 遍历携带部分和。该 pattern 直接决定本 class 的三类缓冲设计：输入双行 tile 组的轮转深度（slots >= overlapped beats x simultaneously live roles 的计数法则，同时受 mutex_ids [0,31] 上限约束）、跨分块迭代存活的部分和累加器（persistent，不得参与轮转）、输出攒批 tile（scratch，按 live interval 判定地址不重叠）。其失败特征（'a reduction sees padding or data from a previous iteration'）正是 M 分块规约正确性的核心风险面。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "precondition",
+          "source_anchors": [
+            "Applies when > A tiled kernel overlaps iterations or reuses local storage for multiple roles"
+          ],
+          "status": "met",
+          "class_evidence": "pdist 的 M-块循环（M∈[1,65535]，M_BLK=128/256，P0 case func_p0_large_m M=8192 → 64 块）以双缓冲 tile 组重叠 load 与 VF 计算，并以 acc_group ping-pong 在多个角色/迭代间复用局部存储——前提成立。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "静态核对 DESIGN.md §2/§3 的轮转与复用结构存在。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "Applies when > persistent state, which survives across iterations",
+            "Applies when > rotating tiles, whose slots alternate between producer and consumer",
+            "Applies when > scratch, which is dead after the current operation or iteration"
+          ],
+          "status": "applies",
+          "class_evidence": "本 class 存在全部两类真实角色：acc（跨 M-块存活的部分和，fp32）与 rows/trans/anchor/out（M 块/任务间轮转）；无单次 scratch（全部用 make_tile_group）。",
+          "invariant": "tile 角色三分并在 DESIGN §2 属性表逐 tile 标注：acc_group=resident（跨 M-块 ping-pong，仅 VF store_align 写入）；rows_group/trans_group/anchor_group=rotating（每 M 块 next() 一次）；out32_group/out16_group=rotating（每任务 next() 一次）；不使用 make_tile scratch。test_pdist.py 的 tile group 声明与该分类一一对应。",
+          "planned_location": "DESIGN.md §2 Tile 属性表（lifetime 列）+ §10 全景图；custom/pdist/test_pdist.py: pdist_kernel_f32/pdist_kernel_f16 内 tile group 声明。",
+          "verification_method": "静态：核对 test_pdist.py 每个 make_tile_group 的访问模式与 DESIGN §2 槽位访问表一致。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "Safe workflow > 1. Draw each tile's live interval from its first write to its final read",
+            "Safe workflow > 2. Give simultaneously live roles non-overlapping address ranges"
+          ],
+          "status": "applies",
+          "class_evidence": "rows/trans/anchor/acc/out 在 M-块循环内并存（生命周期重叠），UB 单空间内必须字节范围互斥。",
+          "invariant": "UB(Vec) 内全部生命周期重叠的 tile（含双缓冲副本）字节范围互不重叠：fp32 实例 [0x00000,0x20A00) 5 组、fp16 实例 [0x00000,0x20D00) 8 组的区间按 §3 地址表排布无交集，总占用 ≤ 52.9% ub_size=253952。",
+          "planned_location": "DESIGN.md §3 片上地址映射表（start/size per slot/slots/lifetime/end 列）；custom/pdist/test_pdist.py: make_tile_group 的 addrs 实参。",
+          "verification_method": "静态：对 test_pdist.py 每个 group 的 addrs+slot_size 计算区间并两两断言不相交（线性 extent 口径）。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "Safe workflow > 3. Use a multi-slot tile group only when iterations are intentionally rotated",
+            "Safe workflow > 4. Advance a rotating group once per logical iteration"
+          ],
+          "status": "applies",
+          "class_evidence": "M-块循环与任务循环均为有意轮转（load 块 b+1 与 VF 块 b 重叠；store 任务 t 与 finalize 任务 t+1 重叠）。",
+          "invariant": "rotating group（rows/trans/anchor/out32/out16）的槽位以 next() 每逻辑迭代（每 M 块/每任务）恰好推进一次，无跨迭代跳槽或条件性跳过；acc_group 用显式下标 mblk%2/(mblk+1)%2（∈[0,2)），不混用 next()。",
+          "planned_location": "DESIGN.md §2 TileGroup 槽位访问表 + §4 Section结构伪代码；custom/pdist/test_pdist.py: pdist_kernel_* 任务/M-块循环体内的 group.next()/group[i] 调用。",
+          "verification_method": "静态：核对话义——循环体内每个 rotating group 每 M-块迭代恰一次 next()；acc 仅显式下标。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "Safe workflow > 5. Keep persistent state outside the loop and do not rotate it"
+          ],
+          "status": "applies",
+          "class_evidence": "acc 是跨 M-块迭代的持久归约状态；其 2 槽 ping-pong 是读写分离的存储而非轮转复用（每槽仅被 acc 角色写入）。",
+          "invariant": "acc_group 的两个槽位仅承担 64-pair 部分和状态：唯一写入者是 VF 内对 acc 部分和的 store_align（无任何其他角色/数据复用该地址）；任务开始由 full(0.0)（PBranch1 同）重新初始化，不经由轮转覆盖语义。",
+          "planned_location": "DESIGN.md §2 acc_group 行 + §4 跨Tile状态生命周期；custom/pdist/test_pdist.py: pdist_accum_vf 的 acc load/store 与 pdist_finalize_vf 的消费点。",
+          "verification_method": "静态：grep acc_group 的全部使用点，确认无第二写入者；runtime：§8 multitile case（acc 跨 3 M-块）数值正确。"
+        },
+        {
+          "req_id": "R06",
+          "kind": "obligation",
+          "source_anchors": [
+            "Safe workflow > 6. Set the valid shape before every operation that consumes a partial tile"
+          ],
+          "status": "applies",
+          "class_evidence": "M 尾（vc<M_BLK）与 pair 尾（VP<64）使 rows/anchor/trans 每块为 partial tile，消费前须设有效形状。",
+          "invariant": "每次 pl.load 前 set_validshape([vp,vc])/([1,vc])/([vc,vp]) 逐块设置；finalize 写出前以 update_mask(vp) 裁剪且 out tile 的 store 写出量受有效数据约束（base+vp ≤ L）。",
+          "planned_location": "DESIGN.md §7 尾块处理方案代码块；custom/pdist/test_pdist.py: 任务循环内 set_validshape 调用序列（load 之前）。",
+          "verification_method": "runtime：§8 test_pdist_m_tail / tail2d / partial_block 等 case 对 pdist_golden_cpu 全量比对通过。"
+        },
+        {
+          "req_id": "R07",
+          "kind": "obligation",
+          "source_anchors": [
+            "Safe workflow > 7. Compile and run the exact schedule on the target SDK; mutex and address behavior is version- and target-sensitive"
+          ],
+          "status": "applies",
+          "class_evidence": "本设计的 auto_mutex + 双缓冲 + acc mem_bar 调度依赖目标版本（A5/CANN 9.2.0/d6e9b83）的 mutex/address 行为。",
+          "invariant": "Stage 4 在检测到的目标（Ascend 950PR_9579、CANN 9.2.0）上编译并运行本设计完整 schedule（含 12 slot/10 mutex 的组态），不得仅以静态推演替代。",
+          "planned_location": "custom/pdist/test_pdist.py 全部 test_* case 的 NPU 运行（Stage 4 自验）。",
+          "verification_method": "runtime：test_pdist.py 在 TILE_FWK_DEVICE_ID 指定设备上全 case PASS。"
+        },
+        {
+          "req_id": "R08",
+          "kind": "obligation",
+          "source_anchors": [
+            "Failure signatures > a reduction sees padding or data from a previous iteration",
+            "How many slots: a counting law > required slots ≥ (overlapped beats) × (simultaneously live roles)",
+            "Budgeting it here > mutex_ids must lie in [0, 31] … 32 is the hard ceiling on simultaneous rotating slots"
+          ],
+          "status": "applies",
+          "class_evidence": "acc 依赖链跨 M-块（串行 beat），每 group 同时存活角色数 1；M 尾块与双缓冲轮转使'reduction sees previous data'成为本 class 的核心风险面（KB_SELECTION reason 明示）。",
+          "invariant": "slots 预算：每 group 2 slots ≥ 1 beat × 1 role（acc 与其行 1 nan_cnt 为同一逻辑状态，live roles=1）；同时轮转槽合计 8（fp32）/16（fp16，含 trans16/trans32/anchor16/anchor32 各 2）≤ 32 上限；mutex ID 8 个（fp32，[0,7]）/ 14 个（fp16，[0,13]）互异且 ∈[0,31]。trans 垃圾 lane（rows 未搬入行的残留）按 lane 独立计算 + finalize update_mask(vp) 裁剪论证不污染有效结果，M 尾由 m 循环上界 vc 排除在归约之外。",
+          "planned_location": "DESIGN.md §2 slot 计数法则核算 + §7 无效区域论证；custom/pdist/test_pdist.py: tile group 组态与 §8 test_pdist_multitile（跨块状态）case。",
+          "verification_method": "static + runtime：mutex/slot 数静态核对；multitile/m_tail case 数值验证跨块与尾块无污染。"
+        },
+        {
+          "req_id": "R09",
+          "kind": "obligation",
+          "source_anchors": [
+            "Handoff credits are a different quantity > Credits describe the handoff. Slots describe local role separation.",
+            "Handoff credits are a different quantity > Raise credits only when the handoff also rotates through additional slots."
+          ],
+          "status": "not_triggered",
+          "class_evidence": "本 class 无生产者→消费者跨核/跨阶段 handoff 通道（§6：不涉及 cross_core；无 fwd_ids/bwd_ids、无 pipeline 变换），不存在可调的 handoff credit。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "静态：确认 test_pdist.py 无 fwd_ids/bwd_ids 与 pipeline 配置（保持不触发状态）。"
+        },
+        {
+          "req_id": "R10",
+          "kind": "validation_scope",
+          "source_anchors": [
+            "Validation status > The rotating input, output, scratch, and reduction groups in the retained softmax implementation are a validated skeleton for that row-tiled topology",
+            "Validation status > Loop-carried state for other algorithms remains conceptual until an indexed implementation or an official target-matching example validates it"
+          ],
+          "status": "applies",
+          "class_evidence": "pdist 复用两类结构：①rotating 双缓冲输入/输出组——依据官方指定算子（pro_ops/vf_api/test_layernorm_tile_group_vf.py、pro_ops/element_wise/test_add.py，均在本仓 .devkit 缓存在场）而非 KB examples 分支的 softmax skeleton；②acc 跨迭代 loop-carried 状态（寄存器→UB ping-pong 中转）——属'other algorithms'的 conceptual 范围，无已验证 skeleton 可引。",
+          "invariant": "最窄复用结论：双缓冲 next() 轮转模式按官方指定算子同构复用；acc ping-pong + vf.mem_bar(VST_VLD) 的 loop-carried 状态模式按 conceptual 处理——Stage 4 必须以 §8 全量 case（尤其 multitile 跨 3 块、large_m 跨 64 块）在目标设备上验证后才能视为成立，不得以'KB 已验证'名义跳过。",
+          "planned_location": "DESIGN.md §4 跨Tile状态生命周期 + §9 限制条件；custom/pdist/test_pdist.py: test_pdist_multitile / func_p0_large_m case。",
+          "verification_method": "runtime：跨多 M-块 case 全量数值比对通过后，该状态模式方视为已验证。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/tiling.md",
+      "selection_reason": "topology long-axis 与 property long_axis 共同路由：M∈[1,65535] 无上界，M 分块 tile 的 shape/dtype 字节宽/32B 对齐（fp32 列数 8 倍数、fp16 16 倍数）/valid_shape 必须从安装版本文档与平台文件推导（禁止跨平台携带经验值）；P0 case func_p0_min_shape（M=1）与 func_p0_large_m（M=8192）是 tile 合法性检查的两个极端。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "obligation",
+          "source_anchors": [
+            "Rule > Derive every tile from the selected API's documented shape, dtype, memory-space, layout, alignment, and valid-shape contract. Do not carry limits from another platform or SDK version."
+          ],
+          "status": "applies",
+          "class_evidence": "目标版本为安装的 A5/CANN 9.2.0（文档快照 d6e9b83）；tile 合法性两极端由 P0 case func_p0_min_shape（[2,1]，vc=1）与 func_p0_large_m（[64,8192]，64 M-块）约束（KB_SELECTION reason 明示）。",
+          "invariant": "全部 tile 尺寸/对齐仅从当前安装文档推导并逐条引用：M_BLK=128（fp32 列 128×4B=512B、fp16 256×2B=512B，满足 load/store 32B tile 首地址与列宽对齐）、trans 主维×字节 32B 对齐（transpose.md）、BRC_B32 4B/BRC_B16 2B 元素粒度对齐（load_align.md dist 表）；无任何来自其他平台/SDK 的经验值。",
+          "planned_location": "DESIGN.md §2.1 关键常量 + §1 API 调用序列的对齐标注；custom/pdist/test_pdist.py: 常量块与 TileType 声明。",
+          "verification_method": "static：核对每个 TileType shape/dtype 与 DESIGN §2 一致、常量来源引用在位。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checks > 2. For each live tile, record shape, dtype bytes, memory space, layout, address, slot count, and lifetime."
+          ],
+          "status": "applies",
+          "class_evidence": "本 class 共 5（fp32）/6（fp16）个 live tile group，逐 tile 记录是 §2/§3 的表结构要求。",
+          "invariant": "DESIGN §2 属性表与 §3 地址表为每个 tile 记录 shape/dtype/内存空间/layout/地址/大小/槽数/生命周期/end；test_pdist.py 的每个 make_tile_group 均能在两表中找到对应条目。",
+          "planned_location": "DESIGN.md §2 Tile 属性表 + §3 地址映射表；custom/pdist/test_pdist.py: tile group 声明区。",
+          "verification_method": "static：表-代码双向对照（每个 group ↔ 表行）。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checks > 3. Sum simultaneous allocations separately for each memory space.",
+            "Checks > 4. Compare each sum with the matching platform source/configuration."
+          ],
+          "status": "applies",
+          "class_evidence": "纯 Vector 算子仅 UB 一个空间；容量来源 950PR_957x.ini ub_size=253952（与教程 248KB 一致）。",
+          "invariant": "逐空间求和：fp32 实例 133632B（0x20A00）、fp16 实例 134400B（0x20D00），均 ≤ 253952B（52.6%/52.9%）；无其他空间 tile。平台变更时按 §3 引用的 .ini 键重新提取。",
+          "planned_location": "DESIGN.md §3 各空间总用量；custom/pdist/test_pdist.py: tile group 地址/槽数（隐含同一求和）。",
+          "verification_method": "static：按 slot_bytes×slots 重新求和并断言 ≤ ub_size。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checks > 5. Confirm offset units independently for pl.load, pl.load_tile, stores, and vector-function APIs."
+          ],
+          "status": "applies",
+          "class_evidence": "本 class 同时使用 pl.load/pl.store（GM 绝对元素坐标）与 vf.load_align/vf.store_align（tile 内元素偏移，BRC/dist 模式覆盖对齐约束）。",
+          "invariant": "offset 单位逐 API 确认并记录：pl.load/pl.store offsets=GM 绝对元素坐标（[row,col]/[idx]，长度=维数，无负索引）；vf.load_align/store_align offset=tile 内元素偏移（NORM 32B 对齐；BRC_B32/B16 分别 4B/2B 元素粒度；trans 行 m*64 元素）。",
+          "planned_location": "DESIGN.md §1 调用序列注释 + §7；custom/pdist/test_pdist.py: 各搬运调用的实参单位。",
+          "verification_method": "static：核对每个 load/store 实参的坐标语义与文档一致。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checks > 6. For dynamic tails, keep a legal physical tile and set the runtime valid window on every operation that reads or writes it."
+          ],
+          "status": "applies",
+          "class_evidence": "N、M 双动态轴（N∈[2,65535]、M∈[1,65535]），P0 func_p0_partial_block [777,300] 为非整块尾部 + 多核不均（KB_SELECTION reason 明示）。",
+          "invariant": "物理 tile 固定（[64,M_BLK]/[M_BLK,64]/[1,M_BLK]/[1,64]），每个读写尾块的操作经 set_validshape 运行时窗口约束：load 前设 [vp,vc]/[1,vc]/[vc,vp]，store 写出量受有效数据约束。",
+          "planned_location": "DESIGN.md §7 尾块处理方案；custom/pdist/test_pdist.py: 任务循环内 set_validshape 序列。",
+          "verification_method": "runtime：§8 四类尾块 case 数值全对。"
+        },
+        {
+          "req_id": "R06",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checks > 7. Re-run correctness for aligned, single-tail, multi-tail, and multi-tile cases."
+          ],
+          "status": "applies",
+          "class_evidence": "§8 case 集合恰好覆盖四类：aligned（[130,128]）、单尾（[200,150] M 尾）、双尾（[77,65]）、多 tile（[600,300] 3 M-块 + 3110 任务块、func_p0_large_m 64 M-块）。",
+          "invariant": "四类 shape 的 correctness case 全部在目标设备重跑通过（aligned/single-tail/multi-tail/multi-tile 各至少 1 个 case 在 §8 表内且执行）。",
+          "planned_location": "DESIGN.md §8 目标测试 case 表；custom/pdist/test_pdist.py: test_pdist_aligned/m_tail/tail2d/multitile。",
+          "verification_method": "runtime：四个 case 的执行与 PASS 记录。"
+        },
+        {
+          "req_id": "R07",
+          "kind": "obligation",
+          "source_anchors": [
+            "Two structural ceilings the checks above will not derive > A Tile may have at most two dimensions (TileType.md)"
+          ],
+          "status": "applies",
+          "class_evidence": "本 class 全部 tile 为二维（[64,M_BLK]/[M_BLK,64]/[1,M_BLK]/[1,64]）。",
+          "invariant": "所有 TileType shape 长度为 2；pair 维、M 维直接映射为 tile 的两轴，无 rank-3 视图。",
+          "planned_location": "DESIGN.md §2 Tile 属性表；custom/pdist/test_pdist.py: TileType 声明。",
+          "verification_method": "static：全部 shape 列表长度 == 2。"
+        },
+        {
+          "req_id": "R08",
+          "kind": "obligation",
+          "source_anchors": [
+            "Two structural ceilings the checks above will not derive > mutex_ids must lie in [0, 31] and be mutually distinct. That makes 32 the hard ceiling on simultaneous rotating buffer slots."
+          ],
+          "status": "applies",
+          "class_evidence": "本设计同时轮转槽 10（fp32）/12（fp16，含 acc 2 槽），mutex ID 10 个。",
+          "invariant": "mutex_ids 全部 ∈ [0,31] 且互异（fp32 实例用 [0,7] 8 个；fp16 实例用 [0,13] 14 个）；轮转槽总数 fp32 8、fp16 16，均 ≤ 32；acc_group 不配 mutex（depth=2 显式），其槽不计入 mutex 预算但计入 32 槽上限。",
+          "planned_location": "DESIGN.md §2 TileGroup 槽位访问表 + §3 分配方式；custom/pdist/test_pdist.py: make_tile_group 的 mutex_ids 实参。",
+          "verification_method": "static：汇总全部 mutex_ids 断言值域与互异。"
+        },
+        {
+          "req_id": "R09",
+          "kind": "obligation",
+          "source_anchors": [
+            "Cube-specific check > Obtain dtype-dependent contraction geometry and Left/Right/Acc layout requirements from the installed API and official matmul examples."
+          ],
+          "status": "not_triggered",
+          "class_evidence": "pdist 为纯 Vector 归约算子（EXPLORE §1.2：无 matmul/收缩，Cube 不参与），无 Left/Right/Acc 操作数。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：确认 test_pdist.py 无 section_cube/matmul/move 到 L1/L0 的调用（保持不触发）。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/memory-layout.md",
+      "selection_reason": "topology long-axis 与 property unaligned_shapes 路由：Vec(UB) 空间内输入双行 tile（rotating）、跨 M 分块存活的部分和（resident）、输出攒批 tile（scratch）的存活区间互不重叠的字节范围分配；UB 248KB 总预算含双缓冲副本。pdist 逐对独立、无跨核共享，地址空间仅 Vec 一类，但同空间生命周期重叠是本 class 的主要布局风险。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "obligation",
+          "source_anchors": [
+            "Rule > Treat Vec, Mat, Left, Right, and Acc as separate address spaces. Within each space, allocate non-overlapping byte ranges for tiles whose lifetimes overlap."
+          ],
+          "status": "applies",
+          "class_evidence": "地址空间仅 Vec(UB) 一类（KB_SELECTION reason 明示）；rows/trans/anchor/acc/out 在 M-块循环内生命周期重叠，须在该单一空间内非重叠分配。",
+          "invariant": "UB 空间内全部生命周期重叠 tile 的字节范围互不重叠（fp32 实例 [0x00000,0x20A00) 5 组、fp16 实例 [0x00000,0x20D00) 8 组，§3 地址表区间两两不相交，含双缓冲副本）；无 Vec 之外的内存空间分配。",
+          "planned_location": "DESIGN.md §3 片上地址映射表与总用量；custom/pdist/test_pdist.py: 各 group 的 addrs。",
+          "verification_method": "static：逐 group 计算 [addrs, addrs+slot_size×slots) 并两两断言不相交。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "Lifetime classes > Rotating: multiple slots selected with .next() across iterations.",
+            "Lifetime classes > Resident: one slot kept live across an inner loop and accessed through the same handle.",
+            "Lifetime classes > Scratch: a temporary whose lifetime ends before an overlapping address is reused."
+          ],
+          "status": "applies",
+          "class_evidence": "本 class 含 rotating（rows/trans/anchor/out）与 resident（acc 跨 M-块）两类真实生命周期；无 scratch tile（无 make_tile）。",
+          "invariant": "生命周期分类逐 tile 记录并驱动分配：rotating group 用 next() 跨迭代选槽；acc resident 用同一 handle（acc_group）的显式下标跨 M-块读写；无 scratch（若有临时量需求必须按 scratch 生命周期判定地址复用后才允许，当前设计不存在）。",
+          "planned_location": "DESIGN.md §2 Tile 属性表 lifetime 列 + §3 地址表 lifetime/end 列；custom/pdist/test_pdist.py: group 访问方式。",
+          "verification_method": "static：表-代码对照（访问方式与分类一致）。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "Rule > mutex_ids identify synchronization slots; they do not prove that two byte ranges are safe to alias."
+          ],
+          "status": "applies",
+          "class_evidence": "本设计 8-10 个 mutex ID 用于 auto_mutex 同步；存在同 shape tile（如 fp16 实例的 anchor16/anchor32 不同 shape，但 rows16 与 fp32 实例 rows 同形）不得因 shape/mutex 关系推断可别名。",
+          "invariant": "地址分配不依赖 mutex 关系做别名：每个 tile group 独立字节范围，无两个 group 共享地址区间；不以'source tensor 同 shape'推断角色可别名（KB 原文明示 Alias safety depends on live intervals）。",
+          "planned_location": "DESIGN.md §3 地址表（无重叠区间）；custom/pdist/test_pdist.py: addrs 无共享。",
+          "verification_method": "static：地址区间两两不相交断言（与 R01 同一检查覆盖本条）。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "Address review > For each memory space, maintain a table with: tile | layout | start | size per slot | slots | lifetime | end",
+            "Address review > Reject the design if live ranges overlap, an address violates the documented alignment, or layout conversion is inferred rather than documented."
+          ],
+          "status": "applies",
+          "class_evidence": "UB 单空间需维护完整审查表；对齐要求 32B（ubblock_size=32）。",
+          "invariant": "§3 地址表按 tile|layout|start|size per slot|slots|lifetime|end 全列维护；全部地址 32B 对齐（两实例的 [0x00000..0x20A00)/[0x00000..0x20D00) 均为 32 倍数）；layout 列留空（Vec 无统一默认布局，本设计 API 均不要求显式 layout）而非推断转换。",
+          "planned_location": "DESIGN.md §3 两张地址映射表；custom/pdist/test_pdist.py: addrs 常量。",
+          "verification_method": "static：表列完整 + 地址 % 32 == 0 断言。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "A strided range's size is not the product of its extents > 1 + Σ (span_i − 1) · stride_i",
+            "A strided range's size is not the product of its extents > does this view fit inside its parent storage? > the linear extent",
+            "A strided range's size is not the product of its extents > A bounds check written against Π spans is not conservative, it is wrong in the unsafe direction."
+          ],
+          "status": "applies",
+          "class_evidence": "rows tile 的 GM 搬运是父张量 [N,M]（行 stride M）上的跨步子块 [VP 行 × vc 列]——正是 linear extent 适用场景；pair 尾 VP<64 与 M 尾 vc<M_BLK 同时存在（双尾 case）。",
+          "invariant": "GM 越界与重叠判断一律用线性 extent：(rows load) extent=(VP−1)·M+vc 且 j0+VP−1 ≤ N−1、m0+vc ≤ M；(anchor load) extent=vc；(out store) base+VP ≤ N(N−1)/2。禁止以 Π spans（VP×vc）作为越界依据；Π spans 仅用于实际搬运量统计。UB tile 为独立分配（非父存储视图），size per slot=物理 shape 乘积。",
+          "planned_location": "DESIGN.md §3 GM 侧越界核算段 + §7；custom/pdist/test_pdist.py: 越界保护由 set_validshape 的 [vp,vc] 实参承载（VP/vc 推导式）。",
+          "verification_method": "static + runtime：静态核对 DESIGN §3 的 extent 公式；runtime 以 [77,65]/[200,150]/[777,300] 双尾 case 无越界报错且数值正确验证。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/tail-validshape.md",
+      "selection_reason": "properties tail_blocks / unaligned_shapes / dynamic_dims 三条共同路由：N、M 均为任意值动态轴（P0 case func_p0_partial_block [777,300] 非整块尾部 + 多核不均，func_p0_min_shape [2,1] 极端窄轴）。valid window 须作用于输入行对 tile、逐寄存器规约的尾 lane（vf.update_mask）、规约结果与输出段——SPEC §9 边界（M=1、p=0 相同行输出 0）落在该约束的检查范围。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "obligation",
+          "source_anchors": [
+            "Rule > Keep a compile-time legal physical tile and set a runtime valid window for each partial work item. Apply the valid window to every input, output, reduction result, and workspace whose operation observes the tail."
+          ],
+          "status": "applies",
+          "class_evidence": "每个 64-pair 任务块随 (N-1-i) 收缩产生 pair 尾（VP<64）、M 分块产生 M 尾（vc<M_BLK）；func_p0_partial_block [777,300] 与 func_p0_min_shape [2,1] 是两个极端 case（KB_SELECTION reason 明示）。",
+          "invariant": "合法物理 tile 固定，逐 partial 工作项设运行时窗口并作用于全部观察尾部的对象：输入 rows([vp,vc])/anchor([1,vc])、workspace trans([vc,vp])、输出段（store_align 的 update_mask(vp) + pl.store 写出量）；acc 状态无尾（64 lane 满宽，垃圾 lane 由写出掩码裁剪）。",
+          "planned_location": "DESIGN.md §7 尾块处理方案；custom/pdist/test_pdist.py: 任务循环 set_validshape + finalize update_mask。",
+          "verification_method": "runtime：§8 四类尾块 case 全对。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 1. Compute work-item counts with ceiling division."
+          ],
+          "status": "applies",
+          "class_evidence": "工作项计数三处：M-块数、行块数 segs(i)、总块数 B。",
+          "invariant": "n_mblk=(M+M_BLK−1)//M_BLK、segs(i)=ceil((N−1−i)/TP)、B=(N−1)+F(N−2)（闭式，与 ceiling 求和等价，host/kernel 同源）；全部向上取整，无整除漏块。",
+          "planned_location": "DESIGN.md §4 动态循环上界 + §5 B 闭式；custom/pdist/test_pdist.py: 计数表达式与 host 侧 B。",
+          "verification_method": "static：表达式逐条核对为 ceiling 语义；runtime：与 golden 输出长度一致的隐式验证。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 2. Compute each remaining extent from the actual tensor dimension.",
+            "Checklist > 3. Clamp the extent to the physical tile size."
+          ],
+          "status": "applies",
+          "class_evidence": "vc 与 VP 均为'实际维度剩余量 clamp 到物理 tile'的双输入。",
+          "invariant": "vc=pl.min(M−m0, M_BLK)、vp=pl.min(TP, N−1−i−jseg·TP)——先按实际维数算剩余再 clamp 到物理尺寸，两个方向（M 尾/pair 尾）均不越界不漏算。",
+          "planned_location": "DESIGN.md §7 代码块；custom/pdist/test_pdist.py: vc/vp 表达式。",
+          "verification_method": "static + runtime（尾块 case）。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 4. Set the valid shape before load, compute, reduction, and store as required by the installed API."
+          ],
+          "status": "applies",
+          "class_evidence": "A5 Vec ND load/store 以 valid_shape 控制实际搬运行列（tail_block_handling.md + load.md），set 须先于 load。",
+          "invariant": "每个 M-块迭代内 set_validshape(rows/anchor/trans) 位于 pl.load 之前；写出侧有效数据约束（store_align 掩码 + pl.store 写出量）位于 store 之前；set_validshape 有状态、每块重设（不依赖上一块残留）。",
+          "planned_location": "DESIGN.md §7（含'先 set 再 load'注释）；custom/pdist/test_pdist.py: 循环内调用顺序。",
+          "verification_method": "static：调用顺序核对；runtime：尾块 case。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 5. Neutralize invalid lanes for reductions when valid shape alone does not define the reduction identity."
+          ],
+          "status": "applies",
+          "class_evidence": "M 尾经 m 循环上界裁剪不产生残 lane，但 pair 尾（VP<64）下 trans 的垃圾 lane 会进入 abs_sub/add/max 的归约路径——valid_shape 不能定义这些 lane 的归约恒等值（max 的垃圾值可能大于真值），必须显式中和。",
+          "invariant": "无效 lane 的中和策略成对：①pair 尾——trans 垃圾 lane 参与计算但 lane 独立、其结果在 finalize 由 update_mask(vp) 裁剪不写出（对 max 链亦不回写有效 lane）；②M 尾——m 循环上界 vc 使尾行不进入任何归约；③p=inf 的 NaN 防护链不受垃圾 lane 影响（独立 lane）。无 fillpad 需求（不存在'归约读取 padding 且影响有效结果'的路径）。",
+          "planned_location": "DESIGN.md §7 无效区域论证 + §1 PBranch 1 防护链；custom/pdist/test_pdist.py: finalize 的 update_mask 与 m 循环上界。",
+          "verification_method": "runtime：双尾 case（[77,65]）与 partial_block（[777,300]）数值正确即证明无效 lane 未泄漏。"
+        },
+        {
+          "req_id": "R06",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 6. Test dimensions smaller than one tile, exactly one tile, multiple exact tiles, and multiple tiles with a remainder."
+          ],
+          "status": "applies",
+          "class_evidence": "四类均有 §8 case：小于一块（[2,1]：vp=1,vc=1）、恰一块（[130,128] 行 0 的 64 满块段）、多块整除（[600,300] 的 128+128 段）、多块带余（[64,8192] 64 块、[777,300] 128+128+44）。",
+          "invariant": "四类 shape 的测试 case 在 §8 表内在场并执行（min_shape/aligned/multitile/large_m+partial_block）。",
+          "planned_location": "DESIGN.md §8 目标测试 case 表；custom/pdist/test_pdist.py: 对应 test 函数。",
+          "verification_method": "runtime：四类 case 执行记录。"
+        },
+        {
+          "req_id": "R07",
+          "kind": "obligation",
+          "source_anchors": [
+            "Exception: compact=1 tiles — the window is part of the layout > The discriminant is whether compact is present at all",
+            "Exception: compact=1 tiles — the window is part of the layout > Issue no set_validshape on that tile between matmul and store."
+          ],
+          "status": "not_triggered",
+          "class_evidence": "本 class 无 compact tile：Vec ND load/store 路径按 tail_block_handling.md 不需要 compact；无 Mat→Left/Right、Acc 分形路径（无 Cube）。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：确认 TileType 声明无 compact 参数（保持不触发；若未来引入 compact 路径须按该节固定窗口规则重审）。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/precision.md",
+      "selection_reason": "property mixed_precision 路由：fp16 IO + 中间全 fp32（diff/pow/沿 M 累加/inv-pow）+ 出口单点 narrow 的 cast 边界链是 SPEC kernel 契约的显式条款。目标版本事实：vf.reduce_sum 对 FP16 src 按 FP16 精度累加（reduce_sum.md 表1），故 fp16 路径必须在规约前 astype widen 到 FP32；出口 astype 须用非饱和模式保 NaN/Inf 传播（astype.md 表6）。容差 atol/rtol 1e-3 与该链绑定，改 cast 位置须同步更新 golden 验收。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "obligation",
+          "source_anchors": [
+            "Rule > Treat dtype, accumulation type, rounding, saturation, scaling, and tolerance as part of the operator contract. Do not change one for performance without updating the golden and acceptance criteria."
+          ],
+          "status": "applies",
+          "class_evidence": "SPEC kernel 契约'cast 边界链'把 fp16→fp32→计算→fp16 链与容差 1e-3 绑定（KB_SELECTION reason 明示'改 cast 位置须同步更新 golden 验收'）。",
+          "invariant": "cast 边界链冻结为：fp16 输入在 load_align 后、abs_sub 前 widen 到 fp32；diff/pow/沿 M 累加/inv-pow 全 fp32；出口单点窄化（pl.cast CAST_RINT，NaN 语义验证中）；任何为实现/性能改动该链位置或 rounding/saturate 的提议都构成合同变更，须同步更新 golden 验收与 DESIGN §1 并重新过设计门。",
+          "planned_location": "DESIGN.md §1 fp16 实例差异 + 数值安全边界表；custom/pdist/test_pdist.py: pdist_kernel_f16 的 cast 调用点。",
+          "verification_method": "static：cast 调用位置与 DESIGN §1 逐点一致；runtime：fp16 case（perf_p0_fp16_large 与语义 case）对 fp32-derived 期望 1e-3 通过。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 1. Record input, intermediate, accumulator, and output dtypes."
+          ],
+          "status": "applies",
+          "class_evidence": "双 IO dtype（fp32 规范 + fp16 第二 IO dtype，SPEC §12.1）。",
+          "invariant": "dtype 记录完备：input=fp32 或 fp16（原始 dtype 进 kernel）；intermediate/accumulator=fp32（d、dp、acc、y 全链）；output=与输入同 dtype。两 kernel 实例（f32/f16）各自由签名冻结。",
+          "planned_location": "DESIGN.md §1 + §2（acc/out32 恒为 FP32）；custom/pdist/test_pdist.py: 两 kernel 签名与 tile dtype。",
+          "verification_method": "static：tile dtype 与 VF 变量 dtype 核对。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 2. Confirm each cast/quant/dequant API and rounding mode in the installed documentation."
+          ],
+          "status": "applies",
+          "class_evidence": "cast 点三处（fp16 实例）：入口 widen×2（行块/锚）、出口 narrow×1；均为安装文档（astype.md/cast.md）核对对象。",
+          "invariant": "每个 cast 按安装文档确认（本设计三处 cast 全部为 tile 级 pl.cast）：入口 widen×2（`pl.cast(trans32, trans16)`、`pl.cast(anchor32, anchor16)`，mode=CAST_NONE，16→32 位扩展无舍入）；出口 narrow×1（`pl.cast(out16, out32)`，mode=CAST_RINT）；若出口 fallback 到 vf.astype 则 saturate=OFF（非饱和，astype 表6：NaN→NaN、±inf→±inf）——禁用饱和模式（NaN 输出被映射为 0 破坏 SPEC §7 NaN 语义）。寄存器域不出现任何 fp16↔fp32 转换。",
+          "planned_location": "DESIGN.md §1 fp16 实例差异与验证义务段；custom/pdist/test_pdist.py: cast 调用参数。",
+          "verification_method": "static：rounding/saturate 参数核对；runtime：NaN 语义 case。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 3. Keep numerically sensitive reductions and transcendental operations in the contract's required accumulation precision; use FP32 unless a narrower path is explicitly documented and validated."
+          ],
+          "status": "applies",
+          "class_evidence": "沿 M 长轴归约（M ≤ 65535 项）与 exp/ln 超越（PBranch 5）是数值敏感操作；SPEC §7 '中间规约一律以 fp32 累加'。",
+          "invariant": "沿 M 累加（add 链）与 inv-pow/超越全部在 fp32 域（fp16 输入已 widen）；M=65535 项 fp32 累加的舍入量级 ~√M·2⁻²⁴ 相对误差 ≪ rtol=1e-3；无任何 fp16 精度的归约/超越路径。",
+          "planned_location": "DESIGN.md §1（fp32 全链声明）+ §9 泛化性窄 dtype 行；custom/pdist/test_pdist.py: VF 计算链 dtype。",
+          "verification_method": "static + runtime（fp16 case 精度对 1e-3）。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "Widening a narrow-dtype reduction > The register-level reduce primitives (vf.reduce_*) are same-type … There is no narrow-in / wide-accumulate reduce to lean on. The widening is yours to write."
+          ],
+          "status": "applies",
+          "class_evidence": "目标版本事实：vf.reduce_sum 对 FP16 src 按 FP16 精度累加（reduce_sum.md 表1，KB_SELECTION reason 引用）——若 fp16 数据直接进归约即违反 SPEC 中间 fp32 契约。",
+          "invariant": "fp16 路径的 widen 由本设计显式完成且先于任何归约/产生量级增长的操作：本设计归约不用 vf.reduce_*（沿 M 的 add/max 链在 widen 后的 fp32 域），从结构上排除'FP16 直接归约'的可能；禁止任何 FP16 src 的 reduce 调用出现在实现中。",
+          "planned_location": "DESIGN.md §1（'归约不使用 vf.reduce_sum'的结构决策）；custom/pdist/test_pdist.py: VF 链无 FP16 归约。",
+          "verification_method": "static：grep 确认无 fp16 域 reduce；runtime：fp16 case。"
+        },
+        {
+          "req_id": "R06",
+          "kind": "obligation",
+          "source_anchors": [
+            "Widening a narrow-dtype reduction > Widen before the operation that overflows, not before the reduce > The order that holds is widen → compute → reduce, with the whole chain in the wide type, narrowing again only at the store"
+          ],
+          "status": "applies",
+          "class_evidence": "|diff|^p 的量级增长：|d| ≤ 2·65504=1.31e5，d² ≤ 1.71e10 —— 远超 fp16 最大值 65504，fp16 域的 mul 必然中途 inf（golden 输入值域 ±65504，SPEC §12.2）。",
+          "invariant": "widen 位置在 abs_sub 之前（即产生量级增长的 mul/sqrt/ln 之前），整链 fp32，仅在出口 store 段窄化——不满足'widen 后仍 inf'的等价错误形态（widen inf 仍为 inf）。",
+          "planned_location": "DESIGN.md §1 fp16 实例差异（widen 时机）+ §9 泛化性检查行；custom/pdist/test_pdist.py: widen 调用紧随 load_align。",
+          "verification_method": "static：widen 在 abs_sub 前的顺序核对；runtime：fp16 大幅值 case（值域 ±65504 构造）不出现 spurious inf。"
+        },
+        {
+          "req_id": "R07",
+          "kind": "obligation",
+          "source_anchors": [
+            "Widening a narrow-dtype reduction > a widening cast changes how many elements fit in a register … Read the API's layout and element-count tables rather than assuming a 1:1 mapping."
+          ],
+          "status": "applies",
+          "class_evidence": "fp16 reg 128 元素 → fp32 reg 64 元素（reg_tensor.md 表），widen 后覆盖一个窄寄存器需多次调用。",
+          "invariant": "widen 元素数问题按 API 表处理并从结构上规避：fp16 reg 128 元素 → fp32 reg 64 元素（reg_tensor.md 表）且一次 astype 仅覆盖一半（layout 交错），本设计把 fp16→fp32 widen 全部放在 tile 级 pl.cast(CAST_NONE)（[128,64]/[1,128] fp16→fp32，物理 shape/valid 一致即可），寄存器域单一 fp32、无 1:1 映射假设、无多次调用拆半。",
+          "planned_location": "DESIGN.md §1 fp16 实例差异（双 m 步进与锚单次）；custom/pdist/test_pdist.py: pdist_accum_vf(fp16) 的 astype 调用次数与 m 步进。",
+          "verification_method": "static：astype 配对（ZERO/ONE）核对；runtime：fp16 case（含 vc 奇数尾行）。"
+        },
+        {
+          "req_id": "R08",
+          "kind": "obligation",
+          "source_anchors": [
+            "Widening a narrow-dtype reduction > layout selects interleaved lanes, not a contiguous half > ZERO takes the even lanes and ONE the odd ones, and reassembling a full narrow register means interleaving the two results"
+          ],
+          "status": "applies",
+          "class_evidence": "KB 设备实测纠正（lightning_indexer 样例 ：193-196 佐证）：ZERO/ONE 为偶/奇交错 lanes 而非低/高半区——对本设计两处关键影响。",
+          "invariant": "按交错语义设计规避而非误用：本设计不在寄存器域做任何 fp16↔fp32 转换——入口 widen 与出口 narrow 均用 tile 级 pl.cast，正是为了规避 ZERO/ONE 的全局偶/奇交错语义（寄存器 widen 拆出的是连续两行的偶位混合而非单行；寄存器 narrow 的结果位于偶数交错 lanes，store NORM 会写出交错数据）；若 Stage 4/5 引入寄存器级窄路径优化，必须按偶/奇交错语义用 interleave 家族重组，不得按'连续半区'假设拼接。",
+          "planned_location": "DESIGN.md §1 fp16 实例差异（两处）；custom/pdist/test_pdist.py: widen 的 layout 参数与出口 pl.cast。",
+          "verification_method": "static：无按'连续半区'假设的注释或代码；runtime：fp16 case 数值正确（交错错位会整体错乱，case 必挂）。"
+        },
+        {
+          "req_id": "R09",
+          "kind": "obligation",
+          "source_anchors": [
+            "Non-finite values are compared before any error arithmetic > NaN positions must match exactly or the case fails outright",
+            "Non-finite values are compared before any error arithmetic > A NaN guard that lets Inf through turns Inf into NaN > Scale by zero first … then compare and select"
+          ],
+          "status": "applies",
+          "class_evidence": "SPEC §7/§9 NaN/Inf 逐对传播是显式合同（范数分支 NaN 传播、p=0 按不等计数、p=inf inf 输出 inf）；验收在 NaN 位置精确匹配层面。",
+          "invariant": "NaN 语义逐分支落实且不依赖未文档化行为：0<p<inf 精确链 IEEE 天然传播；p=0 以 ne(NaN,0)=true 计数（golden 语义）；p=inf 不依赖 vf.max 的未文档化 NaN 行为（max.md 仅记录 ±0），显式 ne(d,d) 检测 + 累积 + select(NaN) 覆写；Inf 经 abs_sub/pow/add IEEE 链传播（不引入 x==x 式会把 Inf 误放/误转 NaN 的 guard——本设计无 NaN guard 吞 Inf 的结构）。",
+          "planned_location": "DESIGN.md §1 p 分支表（PBranch 1 防护链）+ §8 语义追加 case；custom/pdist/test_pdist.py: test_pdist_semantics（NaN/Inf/重复行构造）。",
+          "verification_method": "runtime：语义 case 与 golden 的 NaN 位置精确一致 + Inf 输出一致。"
+        },
+        {
+          "req_id": "R10",
+          "kind": "obligation",
+          "source_anchors": [
+            "A scale factor is not a substitute > Pre-scaling shifts the representable window; it cannot widen it. … widening is the only correct option."
+          ],
+          "status": "not_triggered",
+          "class_evidence": "本 class 已直接采用 widen（d² ≤ 1.71e10 vs fp16 窗口 65504：比值 ~2.6e5 超出任何 scale 因子可在 fp16 内同时保住大端与小端的范围），不存在以 scale 替代 widen 的方案空间。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：确认实现无 pre-scale fp16 计算路径（Stage 5 优化亦不得以 fp16 域 scale 替代 widen）。"
+        },
+        {
+          "req_id": "R14",
+          "kind": "obligation",
+          "source_anchors": [
+            "Checklist > 4. For quantization, make scale, rounding, clamp range, and dequantization placement explicit in both kernel and golden."
+          ],
+          "status": "not_triggered",
+          "class_evidence": "pdist 无量化路径：IO dtype 为 fp32/fp16 浮点（SPEC dtype 组合），无 quant/dequant API、无 scale/clamp 语义（SPEC §12.2 的 value_range 是输入值域描述而非量化参数）。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：确认实现无 quant/dequant/scale 参数路径（保持不触发；若未来引入量化变体须回到本条显式化 scale/rounding/clamp/dequant 位置）。"
+        },
+        {
+          "req_id": "R11",
+          "kind": "obligation",
+          "source_anchors": [
+            "Chained matmuls: fp32 intermediates and residual-split operands"
+          ],
+          "status": "not_triggered",
+          "class_evidence": "纯 Vector 算子，无 matmul 链、无 GM 中间量往返（唯一 GM 输出为最终 y）。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：无 matmul/GM intermediate（保持不触发）。"
+        },
+        {
+          "req_id": "R12",
+          "kind": "obligation",
+          "source_anchors": [
+            "Deep K chains: one L0C accumulator is an accuracy defect"
+          ],
+          "status": "not_triggered",
+          "class_evidence": "无 Cube/L0C 累加链；沿 M 累加在 VF 寄存器 fp32 域。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：无 L0C/Acc tile（保持不触发）。"
+        },
+        {
+          "req_id": "R13",
+          "kind": "obligation",
+          "source_anchors": [
+            "Integer outputs are not covered by any of that > Integer outputs take an absolute-difference path: every element must satisfy |out - golden| <= threshold"
+          ],
+          "status": "not_triggered",
+          "class_evidence": "p=0 的输出是 fp32 距离张量中的计数值（≤ M < 2²⁴，fp32 精确），y 的 dtype 恒为 fp32/fp16，无整数输出 dtype 合同。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：输出 dtype 恒浮点（保持不触发）。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/vec-mask-width.md",
+      "selection_reason": "property mixed_precision 路由：fp16（VL=128 lane）与 fp32（VL=64 lane）路径切换时 mask_reg 元素宽度不同；pdist 的 M 分块尾 lane 掩码（vf.update_mask）与 p=0 分支的 vf.ne 比较掩码在 widen 前后宽度不一致，需要宽度转换时不得走'不存在该 API'的弯路（本页记录了一条指令完成转换的既有能力）。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "obligation",
+          "source_anchors": [
+            "Why it is missed > Both operators audited the functions with mask in the name … That audit was right. The converter is filed under advanced computation, not mask operations: vf.interleave and vf.de_interleave are unified ops whose behaviour changes when their sources are MaskRegs."
+          ],
+          "status": "applies",
+          "class_evidence": "本 class 双 dtype 路径（fp16 VL=128 / fp32 VL=64）+ p=0 的 vf.ne mask 与 update_mask 掩码共存——存在宽度不一致的风险面（KB_SELECTION reason 明示）。",
+          "invariant": "mask 宽度策略显式裁定并记录：全部数值计算（含 ne/select/update_mask）在 widen 之后的 fp32 域进行，preg 统一 DT_FP32（b32 粒度），设计内零个 b16↔b32 掩码转换点（fp16 仅在数据 widen 前存在于搬运，其 mask 不跨 widen 边界复用）。",
+          "planned_location": "DESIGN.md §1 fp16 实例差异（计算域统一 fp32）+ §2（preg dtype）；custom/pdist/test_pdist.py: VF 函数内 create_mask/update_mask 的 dtype 参数。",
+          "verification_method": "static：核对全部 mask 相关调用的 dtype 一致性（无跨宽度复用）。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "The conversions > dtype= names the finer of the two widths",
+            "It working does not mean it pays > an estimate inherits the lifetime of the diagnosis it came from"
+          ],
+          "status": "not_triggered",
+          "class_evidence": "按 R01 裁定，本设计无 b16↔b32 掩码转换需求；interleave/de_interleave 转换能力（一条指令，dtype=更细宽度）未在本 class 使用。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：确认实现无掩码宽度转换需求；若 Stage 4/5 引入 fp16 域窄路径产生该需求，使用 vf.interleave/de_interleave（dtype=更细宽度）单指令实现并按'working ≠ pays'规则实测收益后再保留。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/arch-a5.md",
+      "selection_reason": "target 路由：运行时已确认 Ascend 950PR（A5，CANN 9.2.0，TILE_FWK_DEVICE_ID=0），非默认假设。UB 容量 248KB、核数、dtype 相关约束须按该页平台门从安装的平台文件（950PR_957x.ini 等）提取并记录版本；数值上限在确认 SKU 前不得预填。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "precondition",
+          "source_anchors": [
+            "Applies when > An explicit A5 target or the workflow default A5. If runtime/build identifies A2/A3, stop applying this page"
+          ],
+          "status": "met",
+          "class_evidence": "SPEC kernel 契约'目标设备 A5（Ascend 950PR）已确认（运行时实测环境，CANN 9.2.0，TILE_FWK_DEVICE_ID=0）'；平台文件 SoC_version=Ascend950PR_9579，非 A2/A3。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "运行环境与平台文件核对一致（SoC_version=Ascend950PR_9579，CANN 9.2.0-beta.1 树）。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "Platform gate > 1. Detect the target with get_npu_arch.py or the build configuration.",
+            "Platform gate > 2. Record device model, SKU, CANN version, PyPTO version, and the resolved pypto_pro.__file__."
+          ],
+          "status": "applies",
+          "class_evidence": "本设计消费的平台常量（ub_size/核数/对齐）必须锚定到已记录的安装版本。",
+          "invariant": "版本记录在案：device=Ascend 950PR（A5）、SKU=Ascend950PR_9579（950PR_957x.ini）、CANN=9.2.0（运行环境，平台文件树 cann-9.2.0-beta.1）、文档快照=gitcode.com/cann/pypto @ d6e9b83、pypto_pro.__file__=/data/z00954450/zzz/.local/lib/python3.12/site-packages/pypto_pro；Stage 4 运行时若环境偏离须重新提取而非沿用本表。",
+          "planned_location": "DESIGN.md 头部平台常量来源行；custom/pdist/test_pdist.py: 文件头注释记录同一版本锚点。",
+          "verification_method": "static：两文件版本记录一致；runtime：Stage 4 首次运行的设备探测输出与记录一致。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "Platform gate > 3. Select the platform file matching that exact installed version and SKU.",
+            "Platform gate > 4. Extract only the constants needed for the current design and cite the file and key in EXPLORE_REPORT.md / DESIGN.md."
+          ],
+          "status": "applies",
+          "class_evidence": "本设计需要 UB 容量、Vector 核数、UB 对齐量子三个常量（KB_SELECTION reason 明示'数值上限在确认 SKU 前不得预填'——SKU 已确认为 957x）。",
+          "invariant": "设计消费的全部平台常量逐键引用 950PR_957x.ini（cann-9.2.0-beta.1 树）：ub_size=253952（§3 容量分母）、vector_core_cnt=56（§5 核数上限，经 get_platform_info 运行时读取）、ubblock_size=32（§3/§2 对齐）；不在任何文档写死脱离来源的数字。",
+          "planned_location": "DESIGN.md 头部 + §3 总用量 + §5 num_cores；custom/pdist/test_pdist.py: num_cores 经 get_platform_info().vector_core_num 读取（不硬编码 56）。",
+          "verification_method": "static：DESIGN 引用键名齐全；代码无硬编码核数。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "Platform gate > 5. Fail closed: if the architecture or matching source cannot be confirmed, do not substitute remembered A5 values."
+          ],
+          "status": "applies",
+          "class_evidence": "设计交付后环境可能变更（换卡/换 CANN），下游不得凭记忆沿用。",
+          "invariant": "fail-closed：Stage 4/5 运行前若设备探测（SoC/CANN 版本）与 DESIGN 头部记录不一致，停止实现并上报环境异常，不得以记忆中的 A5 值（如 248KB/56 核）替代重新提取。",
+          "planned_location": "custom/pdist/test_pdist.py: 运行前置检查（设备/版本探测与 DESIGN 记录比对，不一致即 fail）。",
+          "verification_method": "runtime：环境不匹配场景的 fail-closed 行为（或 Stage 4 记录探测一致的输出）。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "Design checks > Derive each live tile's byte size from shape and dtype.",
+            "Design checks > Sum simultaneous allocations separately for Vec, Mat, Left, Right, and Acc.",
+            "Design checks > Compare those sums with the detected target's corresponding limits.",
+            "Design checks > Read launch width from runtime platform information rather than hard-coding a SKU's core count.",
+            "Design checks > Re-run correctness after any dtype, layout, buffering, or tile-size change."
+          ],
+          "status": "applies",
+          "class_evidence": "五项检查对应本设计的 §2 字节推导、§3 逐空间求和（Vec only）、§3/§5 容量对比、§5 运行时核数、§8 全量回归。",
+          "invariant": "五项落实：每 tile 字节=shape×dtype×slots（§3 表）；逐空间求和 Vec 133632（fp32）/134400（fp16）≤ 253952；launch 宽度经 get_platform_info().vector_core_num 与 B 取 min；dtype/layout/缓冲/tile 尺寸任何变更后 §8 全量 case 重跑通过才算有效变更。",
+          "planned_location": "DESIGN.md §2/§3/§5/§8；custom/pdist/test_pdist.py: 对应结构与回归 case。",
+          "verification_method": "static（求和/核数读取）+ runtime（全量 case）。"
+        },
+        {
+          "req_id": "R06",
+          "kind": "obligation",
+          "source_anchors": [
+            "Primary source paths > Use these files to obtain core counts, memory budgets, datatype/fractal settings, paths, and compile target for the detected SKU.",
+            "The UB capacity dispute is settled > l0_a_size, l0_b_size, l0_c_size, l1_size … are all keys in the same .ini"
+          ],
+          "status": "not_triggered",
+          "class_evidence": "纯 Vector 算子不消费 L1/L0A/L0B/L0C 容量与 dtype 相关收缩几何（fractal）——这些键存在于 950PR_957x.ini 但本设计不引用。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：DESIGN/test_pdist.py 不含 L1/L0 容量或 fractal 常量（保持不触发；若引入 Cube 路径须回到本节提取）。"
+        },
+        {
+          "req_id": "R07",
+          "kind": "obligation",
+          "source_anchors": [
+            "Performance boundary > Platform configuration values are roofline inputs, not measured kernel performance. Use the target profiler to determine the current bottleneck."
+          ],
+          "status": "applies",
+          "class_evidence": "DESIGN §9/性能预期中的带宽/指令估算均为 roofline 输入（ub_size/vector_core_cnt 是配置值），不可当作实测性能结论。",
+          "invariant": "本设计任何性能判断（含 Stage 5 优化决策）以目标 profiler 实测为准；DESIGN 中的流量/指令估算仅作结构对比，不得引用为'已达标'证据。",
+          "planned_location": "DESIGN.md §9 限制条件；custom/pdist/test_pdist.py（Stage 5 性能阶段的证据链要求由 perf-tune skill 承接）。",
+          "verification_method": "profiling：Stage 5 的 profiler 数据（非本 Stage 产物，记录为下游义务）。"
+        }
+      ]
+    },
+    {
+      "class_id": ".",
+      "selection_field": "required_constraints",
+      "reference": "constraints/wrapper-boundary.md",
+      "selection_reason": "mandatory（applies_to: architect/coder/verifier）对每个 class 生效：pdist 公开 callable 的 host 段只允许标量逻辑（p<0 参数校验、N/M 读取、TilingData 构造），不得在 wrapper 里对 tensor 做 cast/切片/转置等会派发设备 kernel 的操作；p=inf 的表示（'inf' 字符串）到 float('inf') 的解释也属 host 标量域。",
+      "requirements": [
+        {
+          "req_id": "R01",
+          "kind": "precondition",
+          "source_anchors": [
+            "How this is checked > KB_USAGE.json must record the invariant, and the verifier fails any class whose wrapper performs an action outside the allowlist"
+          ],
+          "status": "met",
+          "class_evidence": "本 constraint 为 mandatory（applies_to: architect/coder/verifier），对每个 class 无条件生效；pdist 的公开 callable（pdist_wrapper）在边界治理范围内。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "mandatory 前提成立（本 binding 全部活动 requirement 落实于 wrapper/kernel 设计）。"
+        },
+        {
+          "req_id": "R02",
+          "kind": "obligation",
+          "source_anchors": [
+            "The rule > Casting, slicing, transposing, padding, concatenating, and any other data shape or dtype processing MUST happen inside the @pl.jit kernel. The wrapper may only validate arguments, read shape/ndim/dim()/size()/stride()/dtype/device/layout/numel()/storage_offset() metadata, derive Python integers, use torch.empty to allocate outputs declared by its current contract, and launch one kernel."
+          ],
+          "status": "applies",
+          "class_evidence": "pdist wrapper 的 host 侧职责恰好为标量逻辑集：p<0/NaN 校验（SPEC §9 参数错误）、p='inf' 字符串解释（SPEC §12.4）、N/M 读取、B 闭式整数推导、branch code 分类、TilingData 构造（KB_SELECTION reason 逐项列示）。",
+          "invariant": "pdist_wrapper 的完整 allowlist：①参数校验（x 为 torch.Tensor、dim==2、N≥2、M≥1、dtype∈{fp32,fp16}、p≥0 或 +inf 否则 raise）；②只读元数据（x.shape/x.dtype/x.device）；③纯 Python 整数/标量推导（p 归一化、branch code、B=(N−1)+F(N−2)、L=N(N−1)//2、num_cores=min(vector_core_num,B)、inv_p）；④torch.empty(L) 分配合同输出 y；⑤一次 kernel 启动（按 dtype 选 f32/f16 实例 + TilingKey dict）。无任何 tensor 数据操作。",
+          "planned_location": "DESIGN.md §0 Wrapper 边界外操作=空 + §5 host 侧代码块；custom/pdist/test_pdist.py: pdist_wrapper 函数体。",
+          "verification_method": "static：逐行审计 wrapper 无 .to/.reshape/.contiguous/.view/.movedim/torch.cat/torch.zeros/np.synchronize 等禁用调用；runtime：wrapper 静态审计 + 反作弊检查（verifier）。"
+        },
+        {
+          "req_id": "R03",
+          "kind": "obligation",
+          "source_anchors": [
+            "There is no exception > torch.empty is the only torch.* function a generated wrapper may call, and only to allocate outputs declared by that wrapper's contract."
+          ],
+          "status": "applies",
+          "class_evidence": "wrapper 需分配 y（合同唯一输出）。",
+          "invariant": "wrapper 内唯一 torch.* 调用为 torch.empty(L, dtype=x.dtype, device=x.device)；无 zeros/zeros_like/arange/cat/empty_like 等；fp16 期望派生（golden 侧 cast）不属 wrapper 职责。",
+          "planned_location": "DESIGN.md §5 host 代码；custom/pdist/test_pdist.py: pdist_wrapper 的 torch.empty 调用。",
+          "verification_method": "static：torch.* 调用点枚举仅 1 处且为 empty。"
+        },
+        {
+          "req_id": "R04",
+          "kind": "obligation",
+          "source_anchors": [
+            "How this is checked > Anti-cheat rules still apply in the other direction: the wrapper must not perform the operator's arithmetic either, and there is still exactly one @pl.jit kernel launched once."
+          ],
+          "status": "applies",
+          "class_evidence": "p 归一化（'inf'→float('inf')，数值标量解释）与 branch code 分类是参数语义解释而非算子算术；距离计算全部在 kernel。",
+          "invariant": "wrapper 不承担任何距离计算/张量算术：p 的字符串解释、p<0 拒绝、branch 枚举为标量参数处理；全部 |x_i−x_j| 计算、幂/比较、归约、idx 写出均在 @pl.jit kernel 内；恰好一个 @pl.jit kernel 被启动一次（fp32/fp16 择一）。",
+          "planned_location": "DESIGN.md §5 + §1；custom/pdist/test_pdist.py: pdist_wrapper（无算术）与 kernel（全算术）的职责划分。",
+          "verification_method": "static + runtime：wrapper 行数内无算术；单次 launch 计数。"
+        },
+        {
+          "req_id": "R05",
+          "kind": "obligation",
+          "source_anchors": [
+            "What to do instead > .to(torch.float32) on input > load the native dtype into UB, then convert on-chip — pl.cast at tile level or vf.astype at register level (there is no vf.cast)",
+            "What to do instead > padding to a tile multiple > pl.set_validshape for the tail",
+            "What to do instead > torch.npu.synchronize() > delete it",
+            "What to do instead > arange / index construction > compute the index arithmetically in the kernel"
+          ],
+          "status": "applies",
+          "class_evidence": "pdist 的 dtype 转换（fp16 widen/narrow）、尾块（M/pair 尾）、索引构造（上三角 idx/bisect 定位）全部有 kernel 内落点。",
+          "invariant": "映射表逐行落实：输入 dtype 转换在 kernel 内（vf.astype 寄存器级 widen / pl.cast tile 级出口）；尾块用 pl.set_validshape + update_mask（无 host pad）；索引（base=i(2N−i−1)/2+jseg·64、bisect 闭式）全部 kernel 内算术构造；wrapper 无 synchronize 调用（同步属调用方）。",
+          "planned_location": "DESIGN.md §1/§7/§5；custom/pdist/test_pdist.py: kernel 内对应实现。",
+          "verification_method": "static：四处落点核对。"
+        },
+        {
+          "req_id": "R06",
+          "kind": "obligation",
+          "source_anchors": [
+            "Bit reinterpretation also stays in the kernel > Whatever reinterpretation the kernel needs … happens inside the kernel, and the wrapper needs no .view()."
+          ],
+          "status": "not_triggered",
+          "class_evidence": "本 class 无位重解释需求：fp32/fp16 输入以各自 dtype 的独立 JIT 实例（签名 dtype）直收，x/y 无 .view()/位模式重解释。",
+          "invariant": null,
+          "planned_location": null,
+          "verification_method": "static：wrapper 与 kernel 均无 .view()/bit_cast 调用（保持不触发）。"
+        },
+        {
+          "req_id": "R07",
+          "kind": "obligation",
+          "source_anchors": [
+            "There is no exception > Nothing in DESIGN.md can widen that … If a transformation appears impossible to express in the kernel, the design is not deliverable: report a design/capability blocker with evidence. Recording a reason, cost or profile never authorizes the wrapper to absorb the transformation."
+          ],
+          "status": "applies",
+          "class_evidence": "DESIGN 是边界合同的一部分：本 DESIGN §0 已声明'Wrapper 边界外操作：空'，且 §1 的全部转换（widen/transpose/cast）均落 kernel 内。",
+          "invariant": "DESIGN.md 的 Wrapper 边界外操作正文只有'空'，且不包含任何以 reason/cost/profile 授权 wrapper 吸收变换的条款；实现若遇'kernel 无法表达'的转换，按 design_violation/capability_gap 流程上报而非放宽边界。",
+          "planned_location": "DESIGN.md §0 Wrapper 边界外操作节；custom/pdist/test_pdist.py: 交付形态（wrapper 边界不因实现困难放宽）。",
+          "verification_method": "static：DESIGN 正文检查（verifier 的 stage3/stage4 检查清单）。"
+        }
+      ]
+    }
+  ]
+}
