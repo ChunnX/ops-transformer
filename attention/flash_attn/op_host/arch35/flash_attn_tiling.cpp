@@ -195,11 +195,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
     // templateId: 0=ND模板, 1=DN模板
-    // DN模板支持无attenMask的config=0/2/6（S2=128）和8/9/10（S2=256），
+    // DN模板支持无attenMask的config=8/9/10（S2=256），
     // sOuter=64, D=64/128或QK D=192/DV=128，与kernel实例化范围保持一致。
-    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) &&
-              ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) || (tilingKeyInfo_.config == 6) ||
-               (tilingKeyInfo_.config >= 8 && tilingKeyInfo_.config <= 10));
+    dnFlag_ = (!tilingKeyInfo_.hasAttenMask) && (tilingKeyInfo_.config >= 8 && tilingKeyInfo_.config <= 10);
     tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
 }
 
