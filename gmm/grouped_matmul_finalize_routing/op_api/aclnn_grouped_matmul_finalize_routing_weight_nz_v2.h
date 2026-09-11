@@ -23,13 +23,13 @@ extern "C" {
  * @domain aclnn_ops_infer
  * 算子功能：实现GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作, 当前仅支持w为nz格式。
  * @param [in] x1: matmul左矩阵，数据类型支持：int8、float8_e4m3fn、hifloat8。
- * @param [in] x2: matmul右矩阵，数据类型支持：int8、int4、float8_e4m3fn、hifloat8。
- * @param [in] scale: 量化参数中的缩放因子，数据类型支持：float32、int64、bf16。
+ * @param [in] x2: matmul右矩阵，数据类型支持：int8、int4、int32、float8_e4m3fn、hifloat8、float4_e2m1。
+ * @param [in] scale: 量化参数中的缩放因子，数据类型支持：float32、int64、bf16、float8_e8m0。
  * @param [in] bias: 偏置，数据类型支持：float32、bf16。
  * @param [in] offsetOptional: 量化参数偏移量，数据类型支持：float32。
  * @param [in] antiquantScaleOptional: 伪量化参数中缩放因子，暂不支持。
  * @param [in] antiquantOffsetOptional: 伪量化参数中偏移量，暂不支持。
- * @param [in] pertokenScaleOptional: 反量化参数，数据类型支持：float32。
+ * @param [in] pertokenScaleOptional: 反量化参数，数据类型支持：float32、float8_e8m0。
  * @param [in] groupList: 代表输入和输出分组轴方向的matmul大小分布，数据类型支持：int64。
  * @param [in] sharedInput: 
  * moe计算中共享专家的输出，需要与moe专家的输出进行combine操作，数据类型支持：bfloat16、float16。
@@ -47,7 +47,7 @@ extern "C" {
  * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int64。
  * @param [in] tuningConfigOptional:
  * 调优参数，数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。数组中的第二个元素设置为1，则算子tiling时会根据实际输入尝试使用更适合的算法，性能可能更优。
- * @param [out] out: 计算结果，数据类型：float32，float16, bfloat16。
+ * @param [out] out: 计算结果，数据类型仅支持：float32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
@@ -62,9 +62,9 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSiz
 /**
  * @brief aclnnGroupedMatmulFinalizeRoutingWeightNzV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，
+ * @param [in] workspaceSize: 在npu device侧申请的workspace大小，
  * 由第一段接口aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize获取。
- * @param [in] exector: op执行器，包含了算子计算流程。
+ * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */

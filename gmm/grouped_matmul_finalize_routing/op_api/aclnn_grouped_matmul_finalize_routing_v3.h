@@ -25,7 +25,7 @@ extern "C" {
  * @param [in] x1: matmul左矩阵，数据类型支持：int8、 float8_e5m2、 float8_e4m3fn、 float4_e2m1。
  * @param [in] x2: matmul右矩阵，数据类型支持：int4、 float8_e5m2、 float8_e4m3fn、 float4_e2m1。
  * @param [in] scaleOptional: 量化参数中的缩放因子，数据类型支持：int64、 float8_e8m0。
- * @param [in] biasOptional: 偏置，数据类型支持：float32。
+ * @param [in] biasOptional: 偏置，数据类型支持：float32、bfloat16。
  * @param [in] offsetOptional: 量化参数偏移量，数据类型支持：float32。在MX量化模式中，仅支持为空。
  * @param [in] antiquantScaleOptional: 伪量化参数中缩放因子，暂不支持。
  * @param [in] antiquantOffsetOptional: 伪量化参数中偏移量，暂不支持。
@@ -37,15 +37,16 @@ extern "C" {
  * moe专家对各个token的logit大小，矩阵乘的计算输出与该logit做乘法，然后索引进行combine，数据类型支持：float32。
  * @param [in] rowIndexOptional: 
  * moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引，数据类型支持：int64。
+ * @param [in] dtype: 计算的输出类型，0：FLOAT32；1：FLOAT16；2：BFLOAT16。目前仅支持0。
  * @param [in] sharedInputWeight: 
  * 共享专家与moe专家进行combine的系数，shareInput先于该参数乘，然后在和moe专家结果累加，数据类型支持：float32。
  * @param [in] sharedInputOffset: 共享专家输出的在总输出中的偏移，数据类型支持：int64。
- * @param [in] transposeX: 左矩阵是否转置，默认值：false。
- * @param [in] transposeW: 右矩阵是否转置，默认值：false。
+ * @param [in] transposeX1: 左矩阵是否转置，默认值：false。
+ * @param [in] transposeX2: 右矩阵是否转置，默认值：false。
  * @param [in] groupListType: GroupedMatmul分组类型，默认值：1，count模式，数据类型支持：int64。
  * @param [in] tuningConfigOptional:
  * 调优参数，数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
- * @param [out] y: 计算结果，数据类型：float32。
+ * @param [out] out: 计算结果，数据类型：float32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
@@ -62,7 +63,7 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const 
 /**
  * @brief aclnnGroupedMatmulFinalizeRoutingV3的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize获取。
+ * @param [in] workspaceSize: 在npu device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码

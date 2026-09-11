@@ -183,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulV4(
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
-      <td>INT32、BFLOAT16、FLOAT16、FLOAT32、INT8</td>
+      <td>INT32、BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>-</td>
       <td>-</td>
@@ -741,7 +741,7 @@ aclnnStatus aclnnGroupedMatmulV4(
     - **约束说明**
 
       除[公共约束](#公共约束)外，A4W4场景其余约束如下：
-      - 仅支持GroupType=0（M轴分组），actType=0，groupListType=0/1
+      - 仅支持GroupType=0（M轴分组），actType=0，groupListType=0/1/2
       - 当前仅支持x、weight、out均为长度为1的TensorList
       - x不支持转置，weight不支持转置
       - x仅支持2维Tensor，Shape为（M，K）
