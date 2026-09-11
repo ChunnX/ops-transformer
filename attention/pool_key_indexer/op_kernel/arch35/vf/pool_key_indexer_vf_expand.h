@@ -58,21 +58,21 @@ __aicore__ inline void ExpandPow2PoolIndices(const LocalTensor<int32_t> &tokenIn
 
     __VEC_SCOPE__
     {
-        MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::RegTensor<uint32_t> rIdx;
-        MicroAPI::RegTensor<uint32_t> rOff;
-        MicroAPI::RegTensor<uint32_t> psReg;
-        MicroAPI::RegTensor<uint32_t> poolReg;
-        MicroAPI::RegTensor<uint32_t> gatherIdx;
-        MicroAPI::RegTensor<uint32_t> gathered;
+        Reg::MaskReg maskAll = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
+        Reg::RegTensor<uint32_t> rIdx;
+        Reg::RegTensor<uint32_t> rOff;
+        Reg::RegTensor<uint32_t> psReg;
+        Reg::RegTensor<uint32_t> poolReg;
+        Reg::RegTensor<uint32_t> gatherIdx;
+        Reg::RegTensor<uint32_t> gathered;
 
-        MicroAPI::LoadAlign<uint32_t>(rIdx, rIdxTpl);
-        MicroAPI::LoadAlign<uint32_t>(rOff, rOffTpl);
-        MicroAPI::Duplicate<uint32_t>(psReg, ps, maskAll);
+        Reg::LoadAlign<uint32_t>(rIdx, rIdxTpl);
+        Reg::LoadAlign<uint32_t>(rOff, rOffTpl);
+        Reg::Duplicate<uint32_t>(psReg, ps, maskAll);
 
         for (uint16_t g = 0; g < groupNum; g++) {
             // 本组 64 个池索引装入寄存器(256B 对齐读)
-            MicroAPI::LoadAlign<uint32_t>(poolReg, table + static_cast<uint32_t>(g) * 64U);
+            Reg::LoadAlign<uint32_t>(poolReg, table + static_cast<uint32_t>(g) * 64U);
             // 本组实际输出 chunk 数: 尾组可能不足 ps 个(g < groupNum 保证 > 0)
             uint16_t chunksInGroup = static_cast<uint16_t>(chunkNum - static_cast<uint32_t>(g) * psU16);
             if (chunksInGroup > psU16) {
@@ -84,11 +84,11 @@ __aicore__ inline void ExpandPow2PoolIndices(const LocalTensor<int32_t> &tokenIn
                 // lane 索引 = j*64/ps + r/ps, 恒落在 poolReg 的 64 lane 内;
                 // ps <= 64 时 ps|64, chunkBase%ps==0, lane 偏移恒为 r%ps
                 uint32_t relBase = (static_cast<uint32_t>(j) * 64U) / ps;
-                MicroAPI::Adds(gatherIdx, rIdx, relBase, maskAll);
-                MicroAPI::Gather(gathered, poolReg, gatherIdx);
-                MicroAPI::Mul(gathered, gathered, psReg, maskAll);
-                MicroAPI::Add(gathered, gathered, rOff, maskAll);
-                MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(out + c * 64U, gathered, maskAll);
+                Reg::Adds(gatherIdx, rIdx, relBase, maskAll);
+                Reg::Gather(gathered, poolReg, gatherIdx);
+                Reg::Mul(gathered, gathered, psReg, maskAll);
+                Reg::Add(gathered, gathered, rOff, maskAll);
+                Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(out + c * 64U, gathered, maskAll);
             }
         }
     }
