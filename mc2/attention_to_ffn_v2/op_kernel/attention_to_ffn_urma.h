@@ -151,6 +151,7 @@ private:
 
     GM_ADDR localDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
+    GM_ADDR layerFlagAddr_{nullptr};
     GM_ADDR syncStatusWorkspaceGM_{nullptr};
 
     GlobalTensor<XType> xGMTensor_;
@@ -342,6 +343,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     const uint64_t totalSendNum = static_cast<uint64_t>(axisX_) * axisBS_ * (axisK_ + sharedExpertNum_);
     localDataAddr_ = workspaceGM + urmaWorkspaceOffset;
     localFlagAddr_ = workspaceGM + urmaWorkspaceOffset + totalSendNum * dataWorkspaceStride_;
+    layerFlagAddr_ = localFlagAddr_ + static_cast<uint64_t>(expertIdsCnt_) * URMA_FLAG_SLOT_SIZE;
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -812,7 +814,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
     }
 
     GlobalTensor<int32_t> localFlagGMTensor;
-    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_));
+    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(layerFlagAddr_));
     DataCopyPad(localFlagGMTensor, statusTensor_, statusParams);
     SyncFunc<HardEvent::MTE3_S>();
 
@@ -834,7 +836,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
             HcommBatchHandle batchHandle =
                 hcomm_.MakeBatchHandle(channel, hcommBatchWqeTensor_, ATTN_FFN_HCOMM_BATCH_UB_BYTES,
                                        GetWindowAddr(static_cast<int32_t>(ffnIdx)));
-            hcomm_.WriteNbi<REMOTE_LAYER_FLAG_WQE_CONFIG>(batchHandle, tableFlagGM, localFlagAddr_,
+            hcomm_.WriteNbi<REMOTE_LAYER_FLAG_WQE_CONFIG>(batchHandle, tableFlagGM, layerFlagAddr_,
                             static_cast<int64_t>(sizeof(int32_t) * TOKEN_INFO_TABLE_COPY_BLOCK_CNT));
             hcomm_.BatchCommit(batchHandle);
         }
