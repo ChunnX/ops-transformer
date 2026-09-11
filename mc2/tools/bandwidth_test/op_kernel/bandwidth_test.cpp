@@ -60,7 +60,7 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
             if constexpr (SharedJetty) {
                 BandwidthTestUrmaSharedJetty<DTYPE_X, DTYPE_Y> op;
                 op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-                // op.Process();
+                op.Process();
             } else {
                 BandwidthTestUrma<DTYPE_X, DTYPE_Y> op;
                 op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
