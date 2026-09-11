@@ -156,6 +156,10 @@ public:
         // Do not let AIV0 submit the first collective while another MIX
         // sub-core is still initializing its HCCL context.
         AscendC::SyncAll<false>();
+        if (A2AV_GMM_DIAG_SCALE_X_DTYPE_ONLY) {
+            RunScaleXDataTypeDiagnostic();
+            return;
+        }
         if ASCEND_IS_AIV {
             RunCommunication();
             return;
@@ -218,6 +222,24 @@ private:
         }
         AscendC::SyncAll<false>();
         hccl_.Finalize();
+    }
+
+    __aicore__ inline void RunScaleXDataTypeDiagnostic()
+    {
+        if ASCEND_IS_AIV {
+            if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
+                PrepareExpertCommunication(0U);
+                scaleHandle_ = hccl_.template AlltoAllV<true>(
+                    xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_),
+                    scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+                hccl_.Wait(scaleHandle_);
+            }
+        }
+        // Keep the MIX task lifecycle balanced while isolating the collective.
+        AscendC::SyncAll<false>();
+        if ASCEND_IS_AIV {
+            hccl_.Finalize();
+        }
     }
 
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
