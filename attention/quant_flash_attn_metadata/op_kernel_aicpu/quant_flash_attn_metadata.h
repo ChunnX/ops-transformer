@@ -57,7 +57,9 @@ constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;    // 确定性调度总�
 constexpr uint32_t QUANT_FAG_NEED_INIT_OUTPUT_INDEX = 1U; // dq/dk/dv workspace 是否需要清零
 constexpr uint32_t QUANT_FAG_BATCH_SIZE_INDEX = 2U;       // batch 数, kernel 反查 batch 的循环上界
 constexpr uint32_t QUANT_FAG_SCHEDULE_VALID_INDEX = 3U;   // swizzle 调度是否安全, 0 表示不支持该 shape
-constexpr uint32_t QUANT_FAG_AIC_CORE_NUM_INDEX = 4U;     // 生成调度时使用的 AIC 核数, kernel 需校验一致
+// 生成 roundPrefix 时使用的 AIC 核数。kernel 不读该槽位(统一用 pl.get_block_num()),
+// 仅作排查用记录; 但要求这里的 aicCoreNum_ 与 kernel 的 cube 核数相等, 否则前缀与解码失配。
+constexpr uint32_t QUANT_FAG_AIC_CORE_NUM_INDEX = 4U;
 // 数组区: roundPrefix 有 b+1 项, s1Outer/s2Outer 各 b 项
 // 三个 per-batch 数组的起点由 AICPU 按 batch 动态排布后写入下面的标量槽位,
 // kernel 侧直接读起点定位数组, 两侧不重复推导公式, 也就没有固定布局的容量上限。

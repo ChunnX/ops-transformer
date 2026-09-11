@@ -71,7 +71,7 @@ META_DETER_MAX_NUM_IDX = 0
 META_NEED_INIT_OUTPUT_IDX = 1
 META_BATCH_SIZE_IDX = 2
 META_SCHEDULE_VALID_IDX = 3
-META_AIC_CORE_NUM_IDX = 4
+META_AIC_CORE_NUM_IDX = 4  # metadata 生成调度时用的 AIC 核数; kernel 不读, 仅供排查核对
 # 三个 per-batch 数组的起点由 metadata 算子按 batch 动态排布后写在这几个标量槽位里,
 # kernel 直接读起点, 不重复推导排布公式(否则两侧公式一旦不同步就是静默错读)。
 META_ROUND_PREFIX_OFFSET_IDX = 5
@@ -1223,8 +1223,10 @@ def cal_dense_swizzle_deter_index(
     j = const_info.core_id_cube
     if flag == True:
         j += 1
-    # 必须用 metadata 生成前缀时的核数, 否则前缀与解码不自洽
-    k = meta_get(const_info, tensor_metadata, META_AIC_CORE_NUM_IDX)
+    # 与 loop_max 上界(见主函数)以及非 varlen 的各个分核函数统一用同一个核数来源,
+    # 避免解码与上界取自不同来源时静默失配。前提是 metadata 算 roundPrefix 时用的
+    # aicCoreNum_ 等于这里的 core_num, 两者都是 cube 核数。
+    k = const_info.core_num
     if j >= k:
         return -1
     n1 = const_info.n2_size * const_info.g_size
