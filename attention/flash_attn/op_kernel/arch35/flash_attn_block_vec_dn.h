@@ -607,12 +607,6 @@ public:
                 FaVectorApi::FlashPackOutputDnRows64VF(vec2ResUbTensor, ubVec2Res_, sumUb,
                                                        static_cast<uint16_t>(dSizeV));
                 AscendC::PipeBarrier<PIPE_V>();
-                if (dSizeAligned16 > dSizeV) {
-                    LocalTensor<uint16_t> paddingUb =
-                        vec2ResUbTensor[dSizeV * 64U].template ReinterpretCast<uint16_t>();
-                    Duplicate(paddingUb, static_cast<uint16_t>(0), (dSizeAligned16 - dSizeV) * 64U);
-                    AscendC::PipeBarrier<PIPE_V>();
-                }
                 LocalTensor<OUTPUT_T> attenOut = ubVec2Res_.template ReinterpretCast<OUTPUT_T>();
                 uint64_t srcList[16], dstList[16];
                 for (uint32_t dOffset = 0; dOffset < dSizeAligned16; dOffset += 16) {
