@@ -215,8 +215,8 @@ inline void BuildAllToAllvQuantGmmTiling(uint32_t rankId, uint32_t rankSize, uin
 // =====================================================================================
 // hcomm（HCCL 集合通信）版本：供算子 op_host/op_kernel 集成使用
 //
-// 与 UDMA 直写版本不同，本版本通过 Hccl<>::AlltoAllV 完成变长通信（AIC 核内下发），
-// 通信输出为 rank-major 布局；GMM 计算按“段式分组”直接消费该布局：
+// 与 UDMA 直写版本不同，本版本通过 Hccl<>::AlltoAllV 完成变长通信（AIV0 下发），
+// 通信通过 recv offset 直接输出为 expert-major 布局；GMM 按“段式分组”消费：
 // 每个 (expert, srcRank) 段是一个独立计算分组（段内 A/scaleA/C 连续），
 // 免去通信后的独立 permute 步骤。
 // =====================================================================================
@@ -225,6 +225,11 @@ namespace Apace {
 
 // 段数上限：W*E（与算子侧 MAX_EXPERT_SIZE 对齐）
 constexpr uint32_t A2AV_GMM_MAX_SEG_NUM = 256;
+// HCCL device API rank-parameter ABI capacity.  This is intentionally larger
+// than A2AV_GMM_MAX_RANK_NUM, which is the current fixed tiling-table capacity.
+constexpr uint32_t A2AV_GMM_HCCL_PARAM_RANK_NUM = 128;
+static_assert(A2AV_GMM_MAX_RANK_NUM <= A2AV_GMM_HCCL_PARAM_RANK_NUM,
+              "APACE rank capacity must fit the HCCL parameter ABI");
 
 /*!
  * \brief hcomm 版 tiling 数据（host 构建后随 kernel tiling buffer 下发）

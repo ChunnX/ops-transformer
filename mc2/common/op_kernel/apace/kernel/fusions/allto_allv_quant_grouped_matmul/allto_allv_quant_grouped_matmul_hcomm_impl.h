@@ -53,11 +53,6 @@ static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 0U;
 static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIC_BARRIER = 0U;
 static constexpr uint16_t A2AV_GMM_SYNC_FLAG_COMM_DONE = 8U;
 static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIC_BARRIER = 9U;
-// Temporary binary-search probe for the device-side HCCL hang.  Keep the
-// complete repository-native Init/Finalize lifecycle, but do not submit an
-// AlltoAllV task or enter Blaze/cross-core per-expert synchronization.
-static constexpr bool A2AV_GMM_DIAG_INIT_FINALIZE_ONLY = true;
-
 template <typename T>
 constexpr uint64_t GetA2avHcclDataType()
 {
@@ -96,7 +91,8 @@ public:
 
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
-    using DispatchPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
+    using DispatchPolicy =
+        Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGroupedMmadWithScaleMx>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
     using GmmKernel = Apace::Kernel::QuantGroupedMatmulKernel<ProblemShape, BlockMmad, BlockScheduler>;
@@ -110,7 +106,7 @@ public:
     static constexpr uint64_t mxScaleHcclDataType_ = AscendC::HCCL_DATA_TYPE_FP8E8M0;
 
     /*!
-     * \brief 初始化 HCCL，并由 AIV0 下发首个通信任务
+     * \brief 初始化 HCCL；通信任务在所有 MIX 子核初始化完成后下发
      *
      * \param[in] tilingGM tiling buffer 首地址：GET_TILING_DATA_WITH_STRUCT 得到的是本地拷贝，
      *            段表（segList/segAOff/segCOff）以 __gm__ 指针按偏移直接引用 tiling buffer
@@ -147,13 +143,9 @@ public:
         // AIC leaves the MIX task's HCCL context only partially initialized.
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
+        rankDim_ = hccl_.GetRankDim();
         if ASCEND_IS_AIC {
             return;
-        }
-        if (!A2AV_GMM_DIAG_INIT_FINALIZE_ONLY && IsCommunicationCore()) {
-            if (tilingData_->expertNum > 0U) {
-                IssueExpertCommunication(0U, 0U);
-            }
         }
     }
 
@@ -162,29 +154,25 @@ public:
      */
     __aicore__ inline void Run()
     {
-        if (A2AV_GMM_DIAG_INIT_FINALIZE_ONLY) {
-            // This is deliberately identical to HcclA2avOp::End(): every MIX
-            // sub-core participates in the barrier and only AIV finalizes.
-            AscendC::SyncAll<false>();
-            if ASCEND_IS_AIV {
-                hccl_.Finalize();
-            }
-            return;
-        }
+        // Do not let AIV0 submit the first collective while another MIX
+        // sub-core is still initializing its HCCL context.
+        AscendC::SyncAll<false>();
         if ASCEND_IS_AIV {
             RunCommunication();
             return;
+        }
+        // Match the native scheduler: shared-expert MM runs on AIC while AIV
+        // starts the communication rounds, instead of serializing it after GMM.
+        if (tilingData_->localMatmul != 0U) {
+            RunLocalMatmul();
+            AicBarrier();
         }
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
             WaitCommunicationDone();
             RunExpertMatmul(expertIdx);
             // Keep every AIC on the same expert before reusing the cross-core
             // communication-ready event for the next expert.
-            AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_FIX>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
-            AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_S>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
-        }
-        if (tilingData_->localMatmul != 0U) {
-            RunLocalMatmul();
+            AicBarrier();
         }
     }
 
@@ -203,16 +191,24 @@ private:
 #endif
     }
 
+    __aicore__ inline void AicBarrier()
+    {
+        AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_FIX>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
+        AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_S>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
+    }
+
     __aicore__ inline void RunCommunication()
     {
+        if (IsCommunicationCore() && tilingData_->expertNum > 0U) {
+            IssueExpertCommunication(0U);
+        }
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
-            const uint32_t slot = expertIdx & 1U;
             if (IsCommunicationCore()) {
-                hccl_.Wait(scaleHandle_[slot]);
-                hccl_.Wait(dataHandle_[slot]);
+                hccl_.Wait(scaleHandle_);
+                hccl_.Wait(dataHandle_);
                 const uint32_t nextExpert = expertIdx + 1U;
                 if (nextExpert < tilingData_->expertNum) {
-                    IssueExpertCommunication(nextExpert, nextExpert & 1U);
+                    IssueExpertCommunication(nextExpert);
                 }
             }
             // Match A2avGmmScheduler: first make AIV0's wait visible to all
@@ -231,12 +227,12 @@ private:
         return tilingData_->segList[segIdx] - previous;
     }
 
-    __aicore__ inline void IssueExpertCommunication(uint32_t expertIdx, uint32_t slot)
+    __aicore__ inline void IssueExpertCommunication(uint32_t expertIdx)
     {
         const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ? (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U
                                                              : static_cast<uint64_t>(tilingData_->k);
         const uint64_t scaleAxis = tilingData_->scaleKLen;
-        const uint32_t rankSize = tilingData_->rankSize;
+        const uint32_t rankSize = rankDim_;
         for (uint32_t peer = 0; peer < rankSize; ++peer) {
             const uint32_t segIdx = expertIdx * rankSize + peer;
             uint64_t sendRowOffset = 0U;
@@ -248,22 +244,21 @@ private:
             // Receive each expert directly in expert-major order. This is also the
             // externally visible permute_out layout and removes the former AIV permute.
             const uint64_t recvRowOffset = tilingData_->segCOff[segIdx];
-            dataSendCnt_[slot][peer] = sendRows * dataAxis;
-            dataSendOff_[slot][peer] = tilingData_->dataSendOff[peer] + sendRowOffset * dataAxis;
-            dataRecvCnt_[slot][peer] = recvRows * dataAxis;
-            dataRecvOff_[slot][peer] = recvRowOffset * dataAxis;
-            scaleSendCnt_[slot][peer] = sendRows * scaleAxis;
-            scaleSendOff_[slot][peer] = tilingData_->scaleSendOff[peer] + sendRowOffset * scaleAxis;
-            scaleRecvCnt_[slot][peer] = recvRows * scaleAxis;
-            scaleRecvOff_[slot][peer] = recvRowOffset * scaleAxis;
+            dataSendCnt_[peer] = sendRows * dataAxis;
+            dataSendOff_[peer] = tilingData_->dataSendOff[peer] + sendRowOffset * dataAxis;
+            dataRecvCnt_[peer] = recvRows * dataAxis;
+            dataRecvOff_[peer] = recvRowOffset * dataAxis;
+            scaleSendCnt_[peer] = sendRows * scaleAxis;
+            scaleSendOff_[peer] = tilingData_->scaleSendOff[peer] + sendRowOffset * scaleAxis;
+            scaleRecvCnt_[peer] = recvRows * scaleAxis;
+            scaleRecvOff_[peer] = recvRowOffset * scaleAxis;
         }
-        scaleHandle_[slot] = hccl_.template AlltoAllV<true>(
-            xScaleGM_, scaleSendCnt_[slot], scaleSendOff_[slot],
-            static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_), scaleRecvGM_, scaleRecvCnt_[slot],
-            scaleRecvOff_[slot], static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
-        dataHandle_[slot] = hccl_.template AlltoAllV<true>(
-            xGM_, dataSendCnt_[slot], dataSendOff_[slot], static_cast<AscendC::HcclDataType>(xHcclDataType_),
-            dataRecvGM_, dataRecvCnt_[slot], dataRecvOff_[slot], static_cast<AscendC::HcclDataType>(xHcclDataType_));
+        scaleHandle_ = hccl_.template AlltoAllV<true>(
+            xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
+            scaleRecvGM_, scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_));
+        dataHandle_ = hccl_.template AlltoAllV<true>(
+            xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
+            dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
     }
 
     __aicore__ inline void RunExpertMatmul(uint32_t expertIdx)
@@ -335,8 +330,9 @@ private:
     AscendC::Hccl<ServerType> hccl_;
     GmmKernel gmmKernel_;
     MmKernel mmKernel_;
-    AscendC::HcclHandle scaleHandle_[2] = {0, 0};
-    AscendC::HcclHandle dataHandle_[2] = {0, 0};
+    AscendC::HcclHandle scaleHandle_{0};
+    AscendC::HcclHandle dataHandle_{0};
+    uint32_t rankDim_{0};
 
     GM_ADDR xGM_{nullptr};
     GM_ADDR xScaleGM_{nullptr};
@@ -356,14 +352,14 @@ private:
     __gm__ const uint32_t *mmGroupListGm_{nullptr};
 
     // AlltoAllV 本地参数表（元素计）
-    uint64_t dataSendCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t dataSendOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t dataRecvCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t dataRecvOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t scaleSendCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t scaleSendOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t scaleRecvCnt_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
-    uint64_t scaleRecvOff_[2][A2AV_GMM_MAX_RANK_NUM] = {{0}};
+    uint64_t dataSendCnt_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t dataSendOff_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t dataRecvCnt_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t dataRecvOff_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t scaleSendCnt_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t scaleSendOff_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t scaleRecvCnt_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
+    uint64_t scaleRecvOff_[A2AV_GMM_HCCL_PARAM_RANK_NUM] = {0};
 };
 
 } // namespace Apace
