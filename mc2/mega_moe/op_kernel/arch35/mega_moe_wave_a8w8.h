@@ -277,6 +277,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             return;
         }
     }
+
     while (!IsSameExpertTokenPosition(gmm2Position, waveEndPosition) && gmm2Position.expertIdx < moeExpertPerRank_) {
         if (gmm2Position.tokenIndexInExpert == 0U) {
             uint32_t expertTokenCount =
@@ -481,12 +482,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
         const uint32_t waveStartBlockIndex = startBlockIdx_;
-        DebugMegaMoeProgress(commonConfig_.rankId, "gmm1.begin", gmm1Position.expertIdx,
-                             gmm1Position.tokenIndexInExpert, static_cast<uint32_t>(gmm1Count));
         ExpertTokenPosition waveEndPosition =
             ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
-        DebugMegaMoeProgress(commonConfig_.rankId, "gmm1.end", waveEndPosition.expertIdx,
-                             waveEndPosition.tokenIndexInExpert, static_cast<uint32_t>(gmm1Count));
         if constexpr (g_coreType == AIV) {
             if (GetSubBlockIdx() == 1U) {
                 waveEndPosition = hasPreparedWave ? preparedWaveEndPosition : DispatchNextWave(dispatchPosition);

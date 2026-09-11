@@ -17,29 +17,6 @@
 
 namespace MegaMoeImpl {
 
-// Temporary hang diagnostics. Set to 0 and rebuild to remove device prints.
-#ifndef MEGA_MOE_DEBUG_HANG
-#define MEGA_MOE_DEBUG_HANG 1
-#endif
-
-__aicore__ inline void DebugMegaMoeProgress(uint32_t rank, __gm__ const char *stage, uint32_t expert = 0U,
-                                            uint32_t row = 0U, uint32_t sequence = 0U)
-{
-#if MEGA_MOE_DEBUG_HANG
-    // Bound per-wave logging; never print inside a polling loop.
-    if (GetBlockIdx() != 0U || sequence > 8U) {
-        return;
-    }
-    uint32_t role = 0U; // 0=AIC, 1=AIV0, 2=AIV1
-    if constexpr (g_coreType == AIV) {
-        role = 1U + GetSubBlockIdx();
-    }
-    AscendC::PipeBarrier<PIPE_ALL>();
-    AscendC::printf("[MegaMoeHang] rank=%u block=%u role=%u stage=%s expert=%u row=%u seq=%u\n", rank,
-                    static_cast<uint32_t>(GetBlockIdx()), role, stage, expert, row, sequence);
-#endif
-}
-
 enum class Stage : uint32_t {
     INIT = 0,
     INPUT_PREPARE = 1,
