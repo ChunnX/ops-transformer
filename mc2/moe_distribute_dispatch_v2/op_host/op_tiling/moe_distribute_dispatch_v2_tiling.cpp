@@ -83,7 +83,7 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
 // A5前缀和临时区位于recvCnt工作区之后，分为数据区和同步标记区
 constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 64UL * 1024UL; // 40*40*32=50KB
 constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 40U;
-constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint32_t A3_CUMSUM_MAX_CORE_NUM = 8U;
 constexpr uint32_t ALLTOALL_FIXED_CORE_NUM = 32U;
 constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t RANK_LIST_NUM = 2;
@@ -1642,7 +1642,7 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
         aivUsedCumSum = totalExpertNum / 16; // 单核处理16个专家cnt发送
         aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
         aivUsedCumSum = (aivUsedCumSum >= (aivNum / HALF_NUM)) ? (aivNum / HALF_NUM) : aivUsedCumSum;
-        aivUsedCumSum = (aivUsedCumSum >= A5_CUMSUM_MAX_CORE_NUM) ? A5_CUMSUM_MAX_CORE_NUM : aivUsedCumSum;
+        aivUsedCumSum = (aivUsedCumSum >= A3_CUMSUM_MAX_CORE_NUM) ? A3_CUMSUM_MAX_CORE_NUM : aivUsedCumSum;
     }
     aivUsedCumSum = (aivUsedCumSum >= rscvStatusNum) ? rscvStatusNum : aivUsedCumSum;
     uint32_t aivUsedAllToAll = aivNum - aivUsedCumSum;
