@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include "aclnn_common.h"
 
@@ -201,6 +203,16 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     c10::optional<int64_t> sharedWeight2Type, c10::optional<int64_t> topoType, c10::optional<int64_t> rankNumPerServer,
     int64_t topkWeightsType)
 {
+    const char *debugEnv = std::getenv("MEGA_MOE_DEBUG_HANG");
+    const bool debugHang = debugEnv != nullptr && std::strcmp(debugEnv, "1") == 0;
+    if (debugHang) {
+        std::fprintf(stderr,
+                     "[MegaMoeHang][host] device=%d validation.begin ep=%lld experts=%lld topo=%lld combine=%lld\n",
+                     x.defined() ? static_cast<int>(x.device().index()) : -1, static_cast<long long>(epWorldSize),
+                     static_cast<long long>(moeExpertNum), static_cast<long long>(topoType.value_or(0)),
+                     static_cast<long long>(combineQuantMode));
+        std::fflush(stderr);
+    }
     const MegaMoeTensorInputs inputs{context,
                                      x,
                                      topkIds,
@@ -343,6 +355,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
+    if (debugHang) {
+        std::fprintf(stderr, "[MegaMoeHang][host] device=%d validation.end launch.begin bs=%lld h=%lld\n",
+                     static_cast<int>(x.device().index()), static_cast<long long>(bs), static_cast<long long>(h));
+        std::fflush(stderr);
+    }
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
               weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
               sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
@@ -351,6 +368,12 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
               activationPtr, activationParams, topoTypeValue, rankNumPerServerValue, topkWeightsType, y,
               expertTokenNums);
 
+    if (debugHang) {
+        // ACLNN dispatch is asynchronous; this message does not mean the kernel completed.
+        std::fprintf(stderr, "[MegaMoeHang][host] device=%d launch.returned (asynchronous)\n",
+                     static_cast<int>(x.device().index()));
+        std::fflush(stderr);
+    }
     return std::tie(y, expertTokenNums);
 }
 
