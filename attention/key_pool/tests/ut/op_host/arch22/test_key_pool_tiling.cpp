@@ -89,38 +89,39 @@ gert::TilingContextPara MakePara(const std::string &layout, ge::DataType dtype, 
         {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
         {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize * 2 * headDim)},
     };
-    return gert::TilingContextPara("KeyPool", inputs, outputs, attrs, nullptr, "Ascend910B", kA2SocInfo, 4096);
+    static optiling::KeyPoolCompileInfo compileInfo{};
+    return gert::TilingContextPara("KeyPool", inputs, outputs, attrs, &compileInfo, "Ascend910B", kA2SocInfo, 4096);
 }
 } // namespace
 
 TEST(KeyPoolTilingArch22, BshBf16)
 {
     auto para = MakePara("BSH", ge::DT_BF16, 2, 8, 4096, 512, 4, 4, 2);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 32);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0);
 }
 
 TEST(KeyPoolTilingArch22, BshFp16)
 {
     auto para = MakePara("BSH", ge::DT_FLOAT16, 1, 256, 4096, 512, 128, 128, 2);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 34);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 2);
 }
 
 TEST(KeyPoolTilingArch22, BshLayerNorm)
 {
     auto para = MakePara("BSH", ge::DT_BF16, 2, 16, 2048, 128, 8, 8, 2, true);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 32);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 0);
 }
 
 TEST(KeyPoolTilingArch22, ThUnevenBatch)
 {
     auto para = MakePara("TH", ge::DT_BF16, 3, 17, 4096, 512, 4, 4, 4);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 33);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 1);
 }
 
 TEST(KeyPoolTilingArch22, EmptyBatch)
 {
     auto para = MakePara("BSH", ge::DT_BF16, 0, 8, 4096, 512, 4, 4, 2);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 48);
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, 32);
 }
 
 TEST(KeyPoolTilingArch22, RejectsUnsupportedCompressionRatio)
