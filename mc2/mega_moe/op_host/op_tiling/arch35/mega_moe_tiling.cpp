@@ -239,7 +239,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     params.epWorldSize = static_cast<int64_t>(tilingData->epWorldSize);
     params.yDtypeSize = SIZE_BF_16;
     params.elemsPerByte = isA4Activation ? 2U : 1U;
-    params.topkWeightsPrefetch = tilingData->topkWeightsPrefetch == 1;
+    params.topkWeightsPrefetch = MegaMoeRecordHasTopkWeights(tilingData);
     params.isQuantCombine = tilingData->combineQuantMode != COMBINE_NO_QUANT;
     params.topoType = tilingData->topoType;
     params.serverNum = 1;
@@ -334,7 +334,8 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     if (tilingData->topoType == TOPO_TYPE_URMA) {
         topoType = TILINGKEY_TPL_URMA;
     }
-    // 取落库后的 prefetch 生效值而非原始 attr：combine 去重会在 SetBasicAttrParams 强制拉起 prefetch。
+    // prefetch 位恒等于 attr（不强拉）：tkw=0 的 combine 去重走 tkw0 模板实例 + runtime 分支，
+    // key 无需感知 dedup。
     int64_t topkWeightsType = static_cast<int64_t>(tilingData->topkWeightsPrefetch);
     return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType,
                               topkWeightsType);
@@ -589,14 +590,9 @@ static ge::graphStatus CheckCommDomainAttrs(const gert::TilingContext *context, 
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
                                               "combine dedup requires combineQuantMode=0 (no-quant) for now"),
                     return ge::GRAPH_FAILED);
-    // combine 去重依赖 prefetch 语义（权重在生产卡激活层施加、归属卡纯加），要求 topk_weights_type=1；
-    // 实测对 tkw=0 强拉 prefetch 会偏离该模式的验收 golden 语义，故直接拦截而非静默强拉。
-    auto topkWeightsTypeGatePtr = attrs->GetAttrPointer<int64_t>(config.attrTopkWeightsTypeIndex);
-    OP_TILING_CHECK((dedupMode & DEDUP_MODE_COMBINE) != 0 &&
-                        (topkWeightsTypeGatePtr == nullptr || *topkWeightsTypeGatePtr != 1),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
-                                              "combine dedup requires topk_weights_type=1 (prefetch semantics)"),
-                    return ge::GRAPH_FAILED);
+    // combine 去重同时支持两种权重语义：tkw=1 走 prefetch（激活层乘权、合并纯加）；tkw=0 时
+    // 合并阶段在发送端按成员权重乘加（PLAIN 行保持归属卡乘权），数学同为 Σwᵢyᵢ、golden 不变。
+    // tkw=0 的权重经记录尾段随 token 下发（布局判定统一走 MegaMoeRecordHasTopkWeights）。
 
     auto rankNumPerServerPtr = attrs->GetAttrPointer<int64_t>(config.attrRankNumPerServerIndex);
     int64_t rankNumPerServer = *rankNumPerServerPtr;
@@ -806,8 +802,13 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
                                               "only support 0(disabled) or 1(enabled)"),
                     return ge::GRAPH_FAILED);
 
+    // 记录布局是否带权重段与最终 tilingData 同式（tkw=1 或 combine 去重）；此处门（收益/UB 容量）
+    // 尚未裁决，按 comm_alg 原始转译算下界偏保守（门只会关位、实际需求只小不大），安全。
+    const int64_t dedupModeForLayout = GetDedupModeByCommAlg(context, config);
+    const bool recordHasWeights =
+        topkWeightsType == 1 || (dedupModeForLayout > 0 && (dedupModeForLayout & DEDUP_MODE_COMBINE) != 0);
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(context, config, shape, numMaxTokensPerRank, epWorldSize,
-                                                        moeExpertPerRank, topkWeightsType == 1);
+                                                        moeExpertPerRank, recordHasWeights);
     int64_t cclBufferSize = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex)));
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", std::to_string(cclBufferSize).c_str(),
@@ -890,11 +891,10 @@ static ge::graphStatus SetBasicAttrParams(const gert::TilingContext *context, Me
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->topoType = *topoTypePtr;
     tilingData->topkWeightsPrefetch = static_cast<int32_t>(*topkWeightsTypePtr);
-    // 去重开关经 comm_alg 转译落库；combine 去重复用 prefetch 语义（权重在激活层施加、
-    // unpermute 纯加），tiling 层强制拉起 prefetch，tiling key 与窗口布局随之切换。
-    // combine 去重复用 prefetch 语义（权重在激活层施加、unpermute 纯加），要求 attr
-    // topk_weights_type=1（CheckCommDomainAttrs 已拦截 tkw=0 组合——实测强拉 prefetch 会与
-    // tkw=0 的验收 golden 语义（乘权位置按 attr 分支）冲突，且 python 侧窗口尺寸助手不感知强拉）。
+    // 去重开关经 comm_alg 转译落库。combine 去重两种权重语义并存：tkw=1 沿用 prefetch
+    // （激活层乘权、合并与 unpermute 纯加）；tkw=0 时合并阶段在发送端按成员权重乘加，
+    // 权重经记录尾段下发（布局判定统一走 MegaMoeRecordHasTopkWeights，prefetch 位保持 attr
+    // 原值不强拉——强拉会偏离 tkw=0 golden 的乘权位置语义，历史实翻）。
     tilingData->dedupMode = static_cast<int32_t>(GetDedupModeByCommAlg(context, config));
     // 去重收益自适应门（纯性能决策，先例 GMM2_LAG_MIN_TOKEN_NUM；dispatch 去重 bit 级等价，
     // 关闭不改变任何数值结果）：每卡预期节省字节 = bs*topK*重复率*h，重复率由 4P 均匀路由模型
@@ -924,10 +924,18 @@ static ge::graphStatus SetBasicAttrParams(const gert::TilingContext *context, Me
         constexpr double DEDUP_COMBINE_MIN_SAVED_BYTES = 3.0 * 1024.0 * 1024.0;
         constexpr int32_t DEDUP_SMALL_BS_LIMIT = 1024;
         const bool combineDedupOn = (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+        const bool dispatchDedupOn = (tilingData->dedupMode & DEDUP_MODE_DISPATCH) != 0;
+        /*
+         * 3MB 档只对 full（dispatch+combine 双开）成立：S4(saved=3.56MB) full 实测净赢
+         * （tkw1 -2.6% / tkw0 -3.4%），但 dc 单开在同点亏 +2.9%（2026-09-11 tkw0 矩阵批）——
+         * 没有 dispatch 省发送的叠加时 combine 收益不足以覆盖建表成本。dc 单开沿用 6MB 档
+         * （S2 saved=8.1MB 实测 dc0 -11.9% 保留，S4 关回恒等）。
+         */
+        const bool combineOnly = combineDedupOn && !dispatchDedupOn;
         const double requiredSavedBytes =
             (tilingData->bs > DEDUP_SMALL_BS_LIMIT)
                 ? DEDUP_MID_BS_MIN_SAVED_BYTES
-                : (combineDedupOn ? DEDUP_COMBINE_MIN_SAVED_BYTES : DEDUP_MIN_SAVED_BYTES);
+                : ((combineDedupOn && !combineOnly) ? DEDUP_COMBINE_MIN_SAVED_BYTES : DEDUP_MIN_SAVED_BYTES);
         if (savedBytes < requiredSavedBytes) {
             OP_LOGI(nodeName, "dedup gate: estimated saved bytes %.0f < required %.0f (bs=%d), disable dedup for this shape",
                     savedBytes, requiredSavedBytes, tilingData->bs);
@@ -1093,7 +1101,7 @@ static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData,
         ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32)) * static_cast<uint32_t>(sizeof(int8_t)),
         static_cast<uint32_t>(ALIGN_32));
     uint32_t copyBufferBytes = quantTokenBytes + quantScaleAlignBytes;
-    if (tilingData->topkWeightsPrefetch == 1) {
+    if (MegaMoeRecordHasTopkWeights(tilingData)) {
         uint32_t weightBytes =
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
         copyBufferBytes += weightBytes;
@@ -1429,7 +1437,7 @@ static void SetTopkValidIndexBufferConfigs(MegaMoeTilingData *tilingData, uint32
         static_cast<uint32_t>(ALIGN_32));
     // 与 kernel xOutTensorSize 一致：token 和 scale 分别对齐，prefetch 模式再追加对齐后的 weight。
     uint32_t quantOutputBufferBytes = quantTokenBytes + quantScaleAlignBytes;
-    if (tilingData->topkWeightsPrefetch == 1) {
+    if (MegaMoeRecordHasTopkWeights(tilingData)) {
         quantOutputBufferBytes +=
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     }
