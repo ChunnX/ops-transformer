@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 """UndGenQkvRmsNormRopeCache 的 golden 参考实现，同时是本算子的 TTK TestSpec。
 
-本文件是本算子**唯一的 CPU golden 实现**，CPU 比对不依赖其他本地文件，
+本文件是本算子**唯一的 golden 实现**，自包含、不依赖同目录以外的任何文件，
 供下列使用方共用：
 
   - ``examples/test_torch_und_gen_qkv_rms_norm_rope_cache.py``：torch 接口上板精度比对
@@ -69,6 +69,7 @@ __all__ = [
     "UndGenQkvRmsNormRopeCacheTestSpec",
     "AclnnUndGenQkvRmsNormRopeCacheTestSpec",
     "TorchUndGenQkvRmsNormRopeCacheTestSpec",
+    "UndGenQkvRmsNormRopeCacheXpuRef",
 ]
 
 # 本期支持范围
@@ -568,55 +569,10 @@ def _isclose_ratio(*outputs):
     return results
 
 
-def _gpu_reference(
-    und_qkv,
-    und_weights_q,
-    und_weights_k,
-    cos_sin_cache,
-    k_cache,
-    v_cache,
-    slot_mapping,
-    positions,
-    gen_qkv=None,
-    gen_weights_q=None,
-    gen_weights_k=None,
-    cat_indices=None,
-    num_heads_q=8,
-    num_heads_k=1,
-    num_heads_v=1,
-    norm_eps=1e-6,
-    mrope_section=None,
-    **kwargs,
-):
-    """TTK remote entry; the server syncs gpu_reference.py on first use."""
-    from gpu_reference import gpu_reference
-
-    return gpu_reference(
-        und_qkv,
-        und_weights_q,
-        und_weights_k,
-        cos_sin_cache,
-        k_cache,
-        v_cache,
-        slot_mapping,
-        positions,
-        gen_qkv,
-        gen_weights_q,
-        gen_weights_k,
-        cat_indices,
-        num_heads_q,
-        num_heads_k,
-        num_heads_v,
-        norm_eps,
-        mrope_section,
-    )
-
-
 class _SpecBase:
     """三条通路共用的判据。"""
 
     tolerance = TOLERANCE
-    third_party = {"torch": _gpu_reference}
 
     def compare(*outputs, **kwargs):
         return _isclose_ratio(*outputs)
@@ -892,12 +848,74 @@ class AclnnUndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
         )
 
 
+class UndGenQkvRmsNormRopeCacheXpuRef:
+    """XPU（GPU）端 third_party 参考实现。
+
+    xpu-server 以 spec 模式解析 third_party 时直接实例化本类并调用
+    ``__call__``，因此签名照抄 torch schema：12 个张量按位置，5 个属性
+    keyword-only（与 TorchUndGenQkvRmsNormRopeCacheTestSpec 对齐）。
+
+    入参是已下发到目标设备（GPU）的 torch.Tensor；本算子在 GPU 上无对应
+    API，故用 golden 主入口实现顶替，其内部算子与 device 无关，可直接执行。
+    """
+
+    def __call__(
+        self,
+        und_qkv,
+        und_weights_q,
+        und_weights_k,
+        cos_sin_cache,
+        k_cache,
+        v_cache,
+        slot_mapping,
+        positions,
+        gen_qkv=None,
+        gen_weights_q=None,
+        gen_weights_k=None,
+        cat_indices=None,
+        *,
+        num_heads_q=8,
+        num_heads_k=1,
+        num_heads_v=1,
+        norm_eps=1e-6,
+        mrope_section=(),
+        **kwargs,
+    ):
+        return golden_und_gen_qkv_rms_norm_rope_cache(
+            und_qkv,
+            und_weights_q,
+            und_weights_k,
+            cos_sin_cache,
+            k_cache,
+            v_cache,
+            slot_mapping,
+            positions,
+            gen_qkv=gen_qkv,
+            gen_weights_q=gen_weights_q,
+            gen_weights_k=gen_weights_k,
+            cat_indices=cat_indices,
+            num_heads_q=num_heads_q,
+            num_heads_k=num_heads_k,
+            num_heads_v=num_heads_v,
+            norm_eps=norm_eps,
+            mrope_section=mrope_section,
+            inplace=True,
+        )
+
+
 class TorchUndGenQkvRmsNormRopeCacheTestSpec(_SpecBase):
     """E2E（torch）通路测试规范，入参是设备上的 torch.Tensor。
 
     签名照抄 torch schema：12 个张量按位置，5 个属性在 `*` 之后是 keyword-only。
     输出序 (q, k_cache, v_cache) 由 CSV 的 inplace_input_indexes=(4,5) 保证。
+
+    third_party：本算子是昇腾专有 op（torch.ops.cann_ops_transformer.*），GPU 端
+    无对应 API。--xpu-perf / cross_check 走远程 xpu-server 时，用
+    UndGenQkvRmsNormRopeCacheXpuRef 作为指定 provider 的参考实现，由服务端
+    实例化执行，避免解析不存在的 NPU-only API 路径。
     """
+
+    third_party = {"torch": UndGenQkvRmsNormRopeCacheXpuRef}
 
     def customize_inputs(
         und_qkv,
