@@ -691,11 +691,17 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetTilingKey() const
     uint32_t is_n_equal = 1;
     uint32_t layout = fBaseParams.layoutType;
     uint32_t sparse_type = GetKernelSparseType(fBaseParams.deterSparseType);
+    uint32_t has_seq_used_q = fBaseParams.hasSequsedQ ? 1 : 0;
+    uint32_t has_seq_used_kv = fBaseParams.hasSequsedKV ? 1 : 0;
     uint64_t tilingKey = GET_TPL_TILING_KEY(
         static_cast<uint8_t>(has_attn_mask), static_cast<uint8_t>(has_sink), static_cast<uint16_t>(s1_template_num),
         static_cast<uint16_t>(s2_template_num), static_cast<uint8_t>(d_template_num), static_cast<uint8_t>(is_n_equal),
-        static_cast<uint8_t>(layout), static_cast<uint8_t>(sparse_type));
-    OP_LOGI(context_, "QuantFAGTiling DoTiling success, tiling is %lu, sparse_type is %u.", tilingKey, sparse_type);
+        static_cast<uint8_t>(layout), static_cast<uint8_t>(sparse_type), static_cast<uint8_t>(has_seq_used_q),
+        static_cast<uint8_t>(has_seq_used_kv));
+    OP_LOGI(context_,
+            "QuantFAGTiling DoTiling success, tiling is %lu, sparse_type is %u, has_seq_used_q is %u, "
+            "has_seq_used_kv is %u.",
+            tilingKey, sparse_type, has_seq_used_q, has_seq_used_kv);
     return tilingKey;
 }
 
@@ -919,8 +925,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::SaveToTilingDat
     quantFagTilingData_->s1_tail = fBaseParams.s1CvTail;
     quantFagTilingData_->s2_tail = fBaseParams.s2CvTail;
     quantFagTilingData_->softmax_scale = fBaseParams.scaleValue;
-    quantFagTilingData_->has_seq_used_q = fBaseParams.hasSequsedQ;
-    quantFagTilingData_->has_seq_used_k = fBaseParams.hasSequsedKV;
+    // hasSequsedQ / hasSequsedKV 走编译期 tilingkey (见 GetTilingKey), 不再下发运行时标志
     quantFagTilingData_->metadata_len = fBaseParams.metadataLen;
     quantFagTilingData_->deter_max_round = fBaseParams.deterMaxRound;
     quantFagTilingData_->mask_mode = fBaseParams.sparseMode;

@@ -130,8 +130,10 @@ static ge::graphStatus ValidateRequiredInputs(gert::TilingContext *context, cons
     OP_CHECK_IF(softmaxLseDesc == nullptr, OP_LOGE(opName, "softmaxLse must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(cuSeqlensQDesc != nullptr, OP_LOGE(opName, "cuSeqlensQ not support."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(cuSeqlensKVDesc != nullptr, OP_LOGE(opName, "cuSeqlensKV not support."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sequsedQDesc != nullptr, OP_LOGE(opName, "sequsedQ not support."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sequsedKVDesc != nullptr, OP_LOGE(opName, "sequsedKV not support."), return ge::GRAPH_FAILED);
+    // sequsedQ/sequsedKV 表示每 batch 实际使用的序列长度, layout 仍为定长 padded BSND/BNSD。
+    // 具体的 varlen 分核由 quant_flash_attn_metadata 算子在 device 侧计算后经 metadata 下发。
+    (void)sequsedQDesc;
+    (void)sequsedKVDesc;
     OP_CHECK_IF(sinksDesc != nullptr, OP_LOGE(opName, "sinks not support."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(opName, "metadata must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(dqDesc == nullptr, OP_LOGE(opName, "dq must be provided."), return ge::GRAPH_FAILED);

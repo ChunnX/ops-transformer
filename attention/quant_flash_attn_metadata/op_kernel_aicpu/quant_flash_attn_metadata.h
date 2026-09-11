@@ -50,7 +50,23 @@ constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2U;
 constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3U;
 constexpr uint32_t FD_M_START_INDEX = 4U;
 constexpr uint32_t FD_M_NUM_INDEX = 5U;
-constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;
+
+// ---- QuantFlashAttnGrad 反向调度数据 (metadata 第二维) ----
+// 标量区 [0, 16)
+constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;    // 确定性调度总轮数, 即 kernel 的 loop_max
+constexpr uint32_t QUANT_FAG_NEED_INIT_OUTPUT_INDEX = 1U; // dq/dk/dv workspace 是否需要清零
+constexpr uint32_t QUANT_FAG_BATCH_SIZE_INDEX = 2U;       // batch 数, kernel 反查 batch 的循环上界
+constexpr uint32_t QUANT_FAG_SCHEDULE_VALID_INDEX = 3U;   // swizzle 调度是否安全, 0 表示不支持该 shape
+constexpr uint32_t QUANT_FAG_AIC_CORE_NUM_INDEX = 4U;     // 生成调度时使用的 AIC 核数, kernel 需校验一致
+// 数组区: roundPrefix 有 b+1 项, s1Outer/s2Outer 各 b 项
+constexpr uint32_t QUANT_FAG_ROUND_PREFIX_BASE_INDEX = 16U;
+constexpr uint32_t QUANT_FAG_S1_OUTER_BASE_INDEX = 256U;
+constexpr uint32_t QUANT_FAG_S2_OUTER_BASE_INDEX = 512U;
+// swizzle 调度的 batch 上限, 与 FAG 的 TND_SWIZZLE_PREFIX_NUM 对齐
+constexpr uint32_t QUANT_FAG_MAX_BATCH_SIZE = 128U;
+// 分核基本块大小, 与 kernel 的 CUBE_BASEM / CUBE_BASEN 保持一致
+constexpr uint32_t QUANT_FAG_CUBE_BASE_M = 512U;
+constexpr uint32_t QUANT_FAG_CUBE_BASE_N = 512U;
 
 namespace detail {
 struct FaMetaData {
@@ -145,6 +161,18 @@ struct QuantFAGMetaData {
     }
 
     int64_t GetDeterMaxRound(uint32_t metaIdx)
+    {
+        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        return data[metaIdx];
+    }
+
+    void SetMetaData(uint32_t metaIdx, int64_t val)
+    {
+        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        data[metaIdx] = static_cast<uint32_t>(val);
+    }
+
+    int64_t GetMetaData(uint32_t metaIdx)
     {
         assert(metaIdx < QUANT_FAG_METADATA_SIZE);
         return data[metaIdx];

@@ -62,6 +62,12 @@ private:
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
     int64_t CalDeterMaxRound();
+    bool HasVarlenSeq() const;
+    void GetMetadataRowInfo(int32_t &dimNum, int64_t &rowSize);
+    uint32_t GetFagOffset();
+    bool CalDeterSwizzleSchedule(std::vector<int64_t> &roundPrefix, std::vector<int64_t> &s1OuterList,
+                                 std::vector<int64_t> &s2OuterList);
+    bool GenQuantFagGradMetaData();
 
 private:
     CpuKernelContext *context_ = nullptr;
