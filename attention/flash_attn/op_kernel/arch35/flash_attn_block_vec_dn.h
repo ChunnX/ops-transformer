@@ -20,6 +20,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#include "vf_flashupdate_dn.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 #include "../../../common/op_kernel/const_def.h"
@@ -45,6 +46,8 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)FA_T::s2BaseSize;
     static constexpr uint32_t dBaseSize = (uint32_t)FA_T::dBaseSize;
     static constexpr uint32_t dVBaseSize = (uint32_t)FA_T::dVBaseSize;
+    // D64 uses one extra preload stage; its P/softmax rings need four slots.
+    static constexpr uint32_t PRELOAD_N = (dBaseSize <= 64 && dVBaseSize <= 64) ? 3U : 2U;
     static constexpr FA_LAYOUT LAYOUT_T = FA_T::qLayout;
     static constexpr FA_LAYOUT LAYOUT_KV = FA_T::kvLayout;
     static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
@@ -77,7 +80,7 @@ public:
     static constexpr uint32_t UB_OUT_LSE_OUT_EVENT1 = 5;
 
     // L1
-    static constexpr uint32_t L1_P_BUFCNT = 3U;
+    static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> l1PBuffers_;
 
@@ -103,15 +106,15 @@ public:
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = 3U;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxSumBuf_;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = 3U;
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxMaxBuf_;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = 3U;
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = PRELOAD_N + 1U;
     static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES =
         AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxExpBuf_;
@@ -182,6 +185,13 @@ public:
         uint32_t addrL1 = 0;
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, addrL1, L1_P_BUFCNT * L1_P_BUF_BYTES);
 
+        static_assert(UB_MM_RES_TOTAL_BYTES + UB_VEC2_RES_BUF_BYTES + UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES +
+                              UB_SOFTMAX_MAX_BUFCNT * UB_SOFTMAX_MAX_BUF_BYTES +
+                              UB_SOFTMAX_SUM_BUFCNT * UB_SOFTMAX_SUM_BUF_BYTES +
+                              UB_SOFTMAX_EXP_BUFCNT * UB_SOFTMAX_EXP_BUF_BYTES +
+                              UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES <=
+                          248U * 1024U,
+                      "DN buffers exceed UB");
         /*--------------------------------------------UB--------------------------------------------*/
         uint32_t addrUb = 0;
         ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
@@ -540,62 +550,81 @@ public:
             return;
         }
 
+        const uint32_t dSizeV = constInfo_.dSizeV;
+        const uint32_t dSizeAligned16 = (dSizeV + 15U) / 16U * 16U;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         {
-            Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             LocalTensor<T> mm2ResUbTensor =
                 ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                uint32_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
-                DataCopy(ubVec2Res_, mm2ResUbTensor, vec2CalcSize);
+            Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+            if (runInfo.isFirstS2Loop) {
+                DataCopy(ubVec2Res_, mm2ResUbTensor, dSizeV * 64U);
             } else {
                 LocalTensor<T> expUb =
                     softmaxExpBuf_[(runInfo.loop % UB_SOFTMAX_EXP_BUFCNT) * (UB_SOFTMAX_EXP_BUF_BYTES / sizeof(T))];
-                LocalTensor<T> pScaleUb;
-
-                float deSCalePreVValue = 1.0f;
-                if (!runInfo.isLastS2Loop) {
-                    FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                        ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
-                        1.0, 1.0);
+                if (runInfo.isLastS2Loop) {
+                    FaVectorApi::FlashUpdateDnRows64VF<true>(ubVec2Res_, mm2ResUbTensor, expUb,
+                                                             static_cast<uint16_t>(dSizeV));
                 } else {
-                    LocalTensor<float> sumUb = softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) *
-                                                              (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
-                    FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                        ubVec2Res_, mm2ResUbTensor, ubVec2Res_, expUb, pScaleUb, sumUb, runInfo.actVecMSize,
-                        dTemplateAlign64, 1.0, 1.0);
+                    FaVectorApi::FlashUpdateDnRows64VF<false>(ubVec2Res_, mm2ResUbTensor, expUb,
+                                                              static_cast<uint16_t>(dSizeV));
                 }
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         }
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 通知下个BMM1: Vec2已读完mmRes, slot空闲
+
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
 
         if (runInfo.isLastS2Loop) {
-            if (unlikely(runInfo.isFirstS2Loop)) {
-                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-                LocalTensor<float> sumUb =
-                    softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
-                LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    ubVec2Res_, ubVec2Res_, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, 0.0F);
-                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-            }
-            uint32_t mStartVec = 0;
-            uint32_t mDealSize = runInfo.actVecMSize;
+            // Borrow the next Vec1 UB slot without advancing its ring index.
+            static_assert(UB_VEC1_RES_BUF_BYTES >= 64U * dTemplateAlign64 * sizeof(OUTPUT_T),
+                          "Vec1 slot must hold the packed Vec2 output");
+            uint32_t vec1ResSyncIdx = UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_;
+            LocalTensor<T> vec2TmpUb =
+                ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<T>();
+            AscendC::PipeBarrier<PIPE_V>();
+            LocalTensor<float> sumUb =
+                softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT) * (UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T))];
             if (constInfo_.enableFlashDecode && runInfo.isS2SplitCore) {
-                Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                Bmm2ResForFDCopyOut(runInfo, ubVec2Res_, mStartVec, mDealSize);
-                Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-            } else {
-                LocalTensor<OUTPUT_T> attenOut;
-                int64_t dSizeAligned64 = (int64_t)dVBaseSize;
-
-                attenOut.SetAddr(ubVec2Res_.address_);
+                constexpr uint32_t rowsPerCopy = UB_VEC1_RES_BUF_BYTES / (dTemplateAlign64 * sizeof(T));
+                static_assert(rowsPerCopy > 0, "Vec1 slot must hold one workspace row");
                 Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-                Cast(attenOut, ubVec2Res_, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
+                for (uint32_t mStartVec = 0; mStartVec < runInfo.actVecMSize; mStartVec += rowsPerCopy) {
+                    uint32_t mDealSize = AttentionCommon::Min(rowsPerCopy, runInfo.actVecMSize - mStartVec);
+                    Mutex::Lock<PIPE_V>(vec1ResSyncIdx);
+                    FaVectorApi::FlashOutputDnWorkspaceVF(
+                        vec2TmpUb, ubVec2Res_[mStartVec], sumUb[mStartVec], static_cast<uint16_t>(mDealSize),
+                        static_cast<uint16_t>(dSizeV), static_cast<uint16_t>(dTemplateAlign64));
+                    Mutex::Unlock<PIPE_V>(vec1ResSyncIdx);
+                    Mutex::Lock<PIPE_MTE3>(vec1ResSyncIdx);
+                    Bmm2ResForFDCopyOut(runInfo, vec2TmpUb, mStartVec, mDealSize);
+                    Mutex::Unlock<PIPE_MTE3>(vec1ResSyncIdx);
+                }
                 Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
-
+            } else {
+                Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
+                Mutex::Lock<PIPE_V>(vec1ResSyncIdx);
+                LocalTensor<OUTPUT_T> vec2ResUbTensor = vec2TmpUb.template ReinterpretCast<OUTPUT_T>();
+                FaVectorApi::FlashPackOutputDnRows64VF(vec2ResUbTensor, ubVec2Res_, sumUb,
+                                                       static_cast<uint16_t>(dSizeV));
+                AscendC::PipeBarrier<PIPE_V>();
+                LocalTensor<OUTPUT_T> attenOut = ubVec2Res_.template ReinterpretCast<OUTPUT_T>();
+                uint64_t srcList[16], dstList[16];
+                for (uint32_t dOffset = 0; dOffset < dSizeAligned16; dOffset += 16) {
+                    for (uint32_t i = 0; i < 16; ++i) {
+                        srcList[i] = reinterpret_cast<uint64_t>(vec2ResUbTensor.GetPhyAddr()) +
+                                     ((dOffset + i) * 64U) * sizeof(OUTPUT_T);
+                        dstList[i] = reinterpret_cast<uint64_t>(attenOut.GetPhyAddr()) +
+                                     (i * dTemplateAlign64 + dOffset) * sizeof(OUTPUT_T);
+                    }
+                    TransDataTo5HD<OUTPUT_T>(dstList, srcList, {false, false, 4, dTemplateAlign64, 1});
+                }
+                // The next Vec1 can reuse this slot on PIPE_V without an intervening MTE3.
+                AscendC::PipeBarrier<PIPE_V>();
+                Mutex::Unlock<PIPE_V>(vec1ResSyncIdx);
+                Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
                 Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
-                Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
+                Bmm2DataCopyOutTrans(runInfo, attenOut, 0, runInfo.actVecMSize);
                 Mutex::Unlock<PIPE_MTE3>(UB_OUT_VEC2_RES_EVENT0);
             }
         }

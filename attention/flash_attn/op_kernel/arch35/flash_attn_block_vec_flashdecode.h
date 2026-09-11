@@ -184,6 +184,7 @@ public:
             constexpr uint32_t OFF_BUF1A = OFF_BUF3 + 32768U;
             // SharedBuffer1[1]：stage1OutBuf[1](FA) / fdReduce/Output(FD)，33024 bytes
             constexpr uint32_t OFF_BUF1B = OFF_BUF1A + 33024U;
+            static_assert(OFF_BUF1B + 2U * BUFFER_SIZE_BYTE_16K <= 248U * 1024U, "FD exceeds available UB");
 
             // sharedBuf1a 内：fdMm2ResBuf1_（前16K）、fdMm2ResBuf2_（后16K）
             fdMm2ResBuf1_ =
