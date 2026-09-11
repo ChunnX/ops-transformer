@@ -53,6 +53,10 @@ static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 0U;
 static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIC_BARRIER = 0U;
 static constexpr uint16_t A2AV_GMM_SYNC_FLAG_COMM_DONE = 8U;
 static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIC_BARRIER = 9U;
+// Temporary binary-search probe for the device-side HCCL hang.  Keep the
+// complete repository-native Init/Finalize lifecycle, but do not submit an
+// AlltoAllV task or enter Blaze/cross-core per-expert synchronization.
+static constexpr bool A2AV_GMM_DIAG_INIT_FINALIZE_ONLY = true;
 
 template <typename T>
 constexpr uint64_t GetA2avHcclDataType()
@@ -146,7 +150,7 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        if (IsCommunicationCore()) {
+        if (!A2AV_GMM_DIAG_INIT_FINALIZE_ONLY && IsCommunicationCore()) {
             if (tilingData_->expertNum > 0U) {
                 IssueExpertCommunication(0U, 0U);
             }
@@ -158,6 +162,15 @@ public:
      */
     __aicore__ inline void Run()
     {
+        if (A2AV_GMM_DIAG_INIT_FINALIZE_ONLY) {
+            // This is deliberately identical to HcclA2avOp::End(): every MIX
+            // sub-core participates in the barrier and only AIV finalizes.
+            AscendC::SyncAll<false>();
+            if ASCEND_IS_AIV {
+                hccl_.Finalize();
+            }
+            return;
+        }
         if ASCEND_IS_AIV {
             RunCommunication();
             return;
