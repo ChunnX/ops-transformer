@@ -17,6 +17,7 @@ __spec__ = {
     "moe_gating_top_k": "MoeGatingTopKTestSpec",
     "aclnnMoeGatingTopK": "AclnnMoeGatingTopKTestSpec",
     "aclnnMoeGatingTopKV2": "AclnnMoeGatingTopKV2TestSpec",
+    "torch_npu.npu_moe_gating_top_k": "E2eMoeGatingTopKTestSpec",
 }
 
 
@@ -274,6 +275,93 @@ class MoeGatingTopKTestSpec:
             out = None
 
         return [y.astype(ori_dtype), None, out]
+
+    tolerance = {
+        "float32": {"standard": "stat_rel_err"},
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
+    }
+
+
+class E2eMoeGatingTopKTestSpec:
+    """E2E spec for torch_npu.npu_moe_gating_top_k — snake_case params, torch CPU golden.
+
+    Signature mirrors the torch_npu API: golden(x, k, bias=..., input_ids=...,
+    tid2eid=..., k_group=..., ...). Inputs/outputs are torch tensors; the golden
+    runs the norm -> (group select ->) topk / hash lookup -> gather -> renorm ->
+    scale pipeline in float32 and returns [yOut, expertIdxOut, normOut], where
+    normOut is None when out_flag is False (content not guaranteed by the API).
+    """
+
+    @staticmethod
+    def golden(
+        x,
+        k,
+        bias=None,
+        input_ids=None,
+        tid2eid=None,
+        k_group=1,
+        group_count=1,
+        group_select_mode=0,
+        renorm=0,
+        norm_type=0,
+        out_flag=False,
+        routed_scaling_factor=1.0,
+        eps=1e-20,
+        **kwargs,
+    ):
+        ori_dtype = x.dtype
+        x = x.to(torch.float32)
+        if bias is not None:
+            bias = bias.to(torch.float32)
+
+        if norm_type == 0:
+            x = _softmax_torch(x, -1)
+        elif norm_type == 1:
+            x = 1 / (1 + torch.exp(-x))
+        elif norm_type == 2:
+            x = torch.sqrt(torch.nn.functional.softplus(x))
+
+        original_x = x
+        if bias is not None:
+            x = x + bias
+
+        hash_flag = input_ids is not None and tid2eid is not None
+        if hash_flag:
+            indices = tid2eid[input_ids.to(torch.int64)].to(torch.int64)
+        else:
+            if group_count > 1:
+                x_reshaped = x.reshape(x.shape[0], group_count, -1)
+                if group_select_mode == 0:
+                    group_x = torch.amax(x_reshaped, dim=-1)
+                else:
+                    top2 = torch.topk(x_reshaped, 2, dim=-1).values
+                    group_x = top2.sum(dim=-1)
+                _, group_indices = torch.sort(
+                    group_x, dim=-1, descending=True, stable=True
+                )
+                group_indices = group_indices[:, :k_group]
+
+                mask = torch.ones((x_reshaped.shape[0], group_count), dtype=torch.bool)
+                mask[torch.arange(x_reshaped.shape[0])[:, None], group_indices] = False
+                x = torch.where(mask.unsqueeze(-1), float("-inf"), x_reshaped)
+                x = x.reshape(x.shape[0], -1)
+
+            _, indices = torch.sort(x, dim=-1, stable=True, descending=True)
+            indices = indices[:, :k].to(torch.int64)
+
+        y = torch.gather(original_x, 1, indices)
+
+        if norm_type != 0 or renorm != 0:
+            y = y / (y.sum(dim=-1, keepdim=True) + eps)
+        y = y * routed_scaling_factor
+
+        if out_flag:
+            out = original_x.to(torch.float32)
+        else:
+            out = None
+
+        return [y.to(ori_dtype), indices.to(torch.int32), out]
 
     tolerance = {
         "float32": {"standard": "stat_rel_err"},
