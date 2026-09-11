@@ -1057,8 +1057,8 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
             }
             uint64_t segDumpSize = seg.size;
             void *srcAddr = reinterpret_cast<void *>(selfWinAddr + seg.offset);
-            OP_LOGE(OP_NAME, "peermem seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx", i,
-                    seg.type, seg.offset, seg.size, segDumpSize, static_cast<uint64_t>(selfWinAddr + seg.offset));
+            OP_LOGE(OP_NAME, "peermem seg[%u]: type=%u, offset=%lu, size=%lu, dumpSize=%lu, srcAddr=0x%lx", i, seg.type,
+                    seg.offset, seg.size, segDumpSize, static_cast<uint64_t>(selfWinAddr + seg.offset));
             try {
                 std::vector<uint8_t> segBuf(segDumpSize, 0);
                 if (aclrtMemcpy(segBuf.data(), segDumpSize, srcAddr, segDumpSize, ACL_MEMCPY_DEVICE_TO_HOST) !=

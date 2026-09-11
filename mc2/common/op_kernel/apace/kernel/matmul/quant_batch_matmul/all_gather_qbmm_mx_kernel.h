@@ -276,7 +276,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(co
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params,
-                                                                      Mc2Kernel::OpStateDump &opStateDump)
+                                                                       Mc2Kernel::OpStateDump &opStateDump)
 {
     Init(params);
 

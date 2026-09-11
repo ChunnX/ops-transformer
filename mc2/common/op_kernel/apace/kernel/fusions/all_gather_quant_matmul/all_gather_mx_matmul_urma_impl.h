@@ -242,8 +242,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::MatmulPro
     params.dataBytesPerMRow = dataBytesPerMRow_;
     params.scaleBytesPerMRow = scaleBytesPerMRow_;
     params.cBytesPerM = cBytesPerM_;
-    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMP_CUBE_MATMUL_BEFORE,
-                         static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT));
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMP_CUBE_MATMUL_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT));
     quantMatmulKernelImpl_(params, opStateDump_);
 }
 
@@ -265,8 +264,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
     // 预触发 dependTileIdx=0：自身数据始终就绪，AIC 可直接消费。
     CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
 
-    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE,
-                         static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
     for (uint32_t round = 0; round < commTurn_; ++round) {
         if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
             allGatherScale_.Commit();

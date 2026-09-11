@@ -734,10 +734,8 @@ protected:
             0UL, libApiWorkSpaceSize_, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
         td->dumpInfo.workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
         td->dumpInfo.workspaceLayout.segCount = 2;
-        td->dumpInfo.workspaceLayout.segments[1] = {libApiWorkSpaceSize_,
-                                                    Utils::STATE_DUMP_TOTAL_SIZE,
-                                                    static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP),
-                                                    {}};
+        td->dumpInfo.workspaceLayout.segments[1] = {
+            libApiWorkSpaceSize_, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
         double typeSize = (x1Dtype == ge::DT_FLOAT4_E2M1) ? 0.5 : 1.0;
         uint64_t scaleKDim = (k_ + 63UL) / 64UL;
         uint64_t dataRegionBytes = worldSize_ * m_ * static_cast<uint64_t>(static_cast<double>(k_) * typeSize);
@@ -745,8 +743,8 @@ protected:
         td->dumpInfo.peermemDataSize = dataRegionBytes + scaleRegionBytes;
         td->dumpInfo.peermemLayout.totalSize = td->dumpInfo.peermemDataSize;
         td->dumpInfo.peermemLayout.segCount = 2;
-        td->dumpInfo.peermemLayout.segments[0] = {0UL, dataRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_DATA),
-                                                  {}};
+        td->dumpInfo.peermemLayout.segments[0] = {
+            0UL, dataRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_DATA), {}};
         td->dumpInfo.peermemLayout.segments[1] = {
             dataRegionBytes, scaleRegionBytes, static_cast<uint8_t>(Utils::PEERMEM_SEG_SCALE), {}};
 #endif
@@ -777,7 +775,8 @@ protected:
 #if MC2_DFX_ENABLE
         // DFX: workspace 尾部追加 64KB 状态打点区
         workspaceSize_ += Utils::STATE_DUMP_TOTAL_SIZE;
-        OP_LOGI(context_->GetNodeName(), "AAMV2 workspace: libApiWorkSpaceSize=%lu, stateDumpSize=%lu, workspaceSize=%lu",
+        OP_LOGI(context_->GetNodeName(),
+                "AAMV2 workspace: libApiWorkSpaceSize=%lu, stateDumpSize=%lu, workspaceSize=%lu",
                 workspaceSize_ - Utils::STATE_DUMP_TOTAL_SIZE, Utils::STATE_DUMP_TOTAL_SIZE, workspaceSize_);
 #endif
         auto *wsBuf = context_->GetWorkspaceSizes(1);

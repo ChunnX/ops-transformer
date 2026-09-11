@@ -51,10 +51,9 @@ inline void MatmulReduceScatterV2ExceptionImplWrapper(aclrtExceptionInfo *args, 
 
     Mc2Exception::Mc2DumpTilingAndWorkspace(args, "MatmulReduceScatterV2",
                                             10U, // tilingGmArgIdx
-                                            9U, // workspaceGmArgIdx
-                                            static_cast<uint32_t>(offsetof(
-                                                Mc2Tiling::MatmulReduceScatterV2TilingData,
-                                                dumpInfo))); // dfxInfoOffset
+                                            9U,  // workspaceGmArgIdx
+                                            static_cast<uint32_t>(offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData,
+                                                                           dumpInfo))); // dfxInfoOffset
 }
 
 __attribute__((constructor)) void RegisterMatmulReduceScatterV2ExceptionFunc()

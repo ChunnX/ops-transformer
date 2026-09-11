@@ -25,9 +25,7 @@
 // DFX 头部约定: dumpInfo 必须是 tiling 结构的第一个成员(offset 0)，
 // 异常 dump 回调直接从 tiling blob 起始位置解析 DfxDumpInfo
 struct allToAllMatmulTilingData {
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo{};
-#endif
     CommTilingData commTilingData;
     CommTilingData scaleCommTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
@@ -46,9 +44,7 @@ namespace Apace {
 struct hcommAllToAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo{};
-#endif
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0};

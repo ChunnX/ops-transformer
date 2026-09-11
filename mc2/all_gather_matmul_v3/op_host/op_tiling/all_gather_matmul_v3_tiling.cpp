@@ -788,8 +788,8 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, const ShapeIn
     uint64_t libApiSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     tilingData->dumpInfo.workspaceLayout.totalSize = libApiSize;
     tilingData->dumpInfo.workspaceLayout.segCount = 1;
-    tilingData->dumpInfo.workspaceLayout.segments[0] = {0UL, libApiSize, static_cast<uint8_t>(Utils::WS_SEG_LIB_API),
-                                                        {}};
+    tilingData->dumpInfo.workspaceLayout.segments[0] = {
+        0UL, libApiSize, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
     tilingData->dumpInfo.workspaceLayout.totalSize += Utils::STATE_DUMP_TOTAL_SIZE;
     tilingData->dumpInfo.workspaceLayout.segCount = 2;
     tilingData->dumpInfo.workspaceLayout.segments[1] = {
@@ -826,7 +826,7 @@ static void SetTilingKey(gert::TilingContext *context)
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 {
     platform_ascendc::PlatformAscendC ascendcPlatform(context->GetPlatformInfo());
-    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize(); 
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
 #if MC2_DFX_ENABLE
     workspaceSize += Utils::STATE_DUMP_TOTAL_SIZE;
 #endif
@@ -897,7 +897,7 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
                                             10U, // tilingGmArgIdx
                                             9U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AllGatherMatmulV3",
-                                     0U,  // contextArgIdx
+                                     0U,   // contextArgIdx
                                      10U); // tilingGmArgIdx
 }
 

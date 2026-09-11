@@ -27,11 +27,11 @@
 // DUMP_FIELD_TURN 与 DUMP_FIELD_TURN_INC 互斥，同时指定时 TURN_INC 优先。
 enum DumpField : uint8_t {
     DUMP_FIELD_NONE = 0,
-    DUMP_FIELD_TURN = 1,     // 写 execTurn (显式轮次值)
-    DUMP_FIELD_POSITION = 2, // 写 execPosition
-    DUMP_FIELD_PHASE = 4,    // 写 commPhase
-    DUMP_FIELD_COMMIT = 8,   // 递增 commCommitCount
-    DUMP_FIELD_WAIT = 16,    // 递增 commWaitCount
+    DUMP_FIELD_TURN = 1,      // 写 execTurn (显式轮次值)
+    DUMP_FIELD_POSITION = 2,  // 写 execPosition
+    DUMP_FIELD_PHASE = 4,     // 写 commPhase
+    DUMP_FIELD_COMMIT = 8,    // 递增 commCommitCount
+    DUMP_FIELD_WAIT = 16,     // 递增 commWaitCount
     DUMP_FIELD_TURN_INC = 32, // execTurn 槽内自增1 (轮次推进，调用方无需维护计数)
     // 常用组合: 每轮首个打点——轮次自增+写位置/阶段
     DUMP_FIELD_EXEC_INC = DUMP_FIELD_TURN_INC | DUMP_FIELD_POSITION | DUMP_FIELD_PHASE,

@@ -679,8 +679,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     const uint64_t alignment = Utils::STATE_DUMP_PER_CORE_SIZE;
     const uint64_t padding = (alignment - myWorkSpaceSize_ % alignment) % alignment;
     workspaces[0] += padding + Utils::STATE_DUMP_TOTAL_SIZE;
-    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u", workspaceLayout_.totalSize,
-            workspaceLayout_.segCount);
+    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u", workspaceLayout_.totalSize, workspaceLayout_.segCount);
 #endif
     return ge::GRAPH_SUCCESS;
 }

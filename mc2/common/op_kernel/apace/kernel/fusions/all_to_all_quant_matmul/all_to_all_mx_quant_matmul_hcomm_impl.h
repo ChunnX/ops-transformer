@@ -190,7 +190,8 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
         commOutGM_ = workspaceGM + x1ScaleLen;
     }
 #if MC2_DFX_ENABLE
-    opStateDump_.Init(workspaceGM_, &tilingData_->dumpInfo.workspaceLayout, tilingData_->tileQbmmTilingData.usedCoreNum);
+    opStateDump_.Init(workspaceGM_, &tilingData_->dumpInfo.workspaceLayout,
+                      tilingData_->tileQbmmTilingData.usedCoreNum);
 #endif
     quantMatmulKernelImpl_.GetCommPolicy().state_ = &commState_;
     commState_.hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
@@ -208,8 +209,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
 
     uint64_t dataStrideCount = static_cast<uint64_t>(splitAxisSize_) * rankForComm;
     uint64_t scaleSendCount = static_cast<uint64_t>(splitAxisSize_) * scaleKPerRank;
-    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE,
-                        static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_PREPARE));
     // DoDump不统计scale commit次数
     commState_.scaleHandle_ = commState_.hccl_.template AlltoAll<true>(
         x1Scale_, commX1ScaleGM1_, scaleSendCount, static_cast<AscendC::HcclDataType>(mxScaleHcclDataType_),
@@ -219,7 +219,7 @@ AllToAllMxQuantMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1, AlltoAllMa
         commState_.dataHeadHandle_ = commState_.hccl_.template AlltoAll<true>(
             x1_, commOutGM_, headSendCount, static_cast<AscendC::HcclDataType>(x1HcclDataType_), dataStrideCount,
             static_cast<uint8_t>(commTiling.splitAxisTileCnt));
-        opStateDump_.DoDump(DUMP_FIELD_COMMIT, 0, 0, 0, commTiling.splitAxisTileCnt); 
+        opStateDump_.DoDump(DUMP_FIELD_COMMIT, 0, 0, 0, commTiling.splitAxisTileCnt);
     }
 
     if (commTiling.splitAxisTailCnt > 0) {

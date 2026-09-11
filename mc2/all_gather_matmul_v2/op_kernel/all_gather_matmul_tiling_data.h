@@ -27,9 +27,7 @@ namespace Mc2Tiling {
 struct AllGatherMatmulTilingDataV2 {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
-#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
@@ -41,9 +39,7 @@ struct AllGatherMatmulTilingDataV2 {
 struct AllGatherMatmulTilingDataFp8 {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-#if MC2_DFX_ENABLE
     Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
-#endif
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
