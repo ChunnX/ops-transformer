@@ -11,6 +11,7 @@
 /*!
  * \file grouped_mat_mul_allto_allv.cpp
  */
+// mc2 operator kernel entry
 #include "grouped_mat_mul_allto_allv_tiling.h"
 #include "grouped_mat_mul_allto_allv_tiling_key.h"
 

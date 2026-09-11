@@ -13,6 +13,7 @@
  * \brief Kernel entry for AllGatherMatmulV3 (MX-quant FP8, apace UDMA path)
  */
 
+// mc2 operator kernel entry
 #include <kernel_operator.h>
 #include "all_gather_matmul_v3_tiling_key.h"
 #include "apace/kernel/fusions/all_gather_quant_matmul/all_gather_mx_matmul_urma_tiling_data.h"

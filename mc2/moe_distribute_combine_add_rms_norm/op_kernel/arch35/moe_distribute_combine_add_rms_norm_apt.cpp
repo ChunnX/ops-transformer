@@ -13,6 +13,7 @@
  * \brief A5 (arch35) kernel entry for MoeDistributeCombineAddRmsNorm.
  *        Reuses combine_v2's A5 data-as-flag MTE combine implementation.
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

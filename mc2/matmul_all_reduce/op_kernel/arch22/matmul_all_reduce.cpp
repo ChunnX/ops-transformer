@@ -13,6 +13,7 @@
  * \brief arch22/A2/A3/910b/910_93
  */
 
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

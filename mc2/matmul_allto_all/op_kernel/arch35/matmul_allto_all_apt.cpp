@@ -12,6 +12,7 @@
  * \file matmul_allto_all.cpp
  * \brief
  */
+// mc2 operator kernel entry
 #include <cstring>
 #include <lib/matmul_intf.h>
 #if ASC_DEVKIT_MAJOR >= 9
