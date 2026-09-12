@@ -30,48 +30,26 @@ Torch 接口、context 生命周期和 `aclnn_graph` 示例见
 python bandwidth_test.py
 ```
 
-## 临时复现 UB_RTP J8 / P15 / BS4096 超时
+## 单用例复测 UB_RTP J8 / P15 / BS4096
 
-当前 `config.py` 默认关闭 sweep，单独运行 mode 3、8 Jetty、每 Jetty 15 个对端、
+当前保留单跑配置：16 卡、mode 3、8 Jetty、每 Jetty 15 个对端、
 BS=max_bs=4096、H=16384、全 UB_RTP（comm_level=2）、master_port=50004。
-图模式仍是 105 轮（5 轮预热、100 轮采集），batch_tokens=0、drain_threshold=8192。
-两台服务器分别配置 server_index=0/1，master_ip 填同一个正确的主节点地址。
-从普通 shell 启动，不要继承 sweep 子进程的 `BANDWIDTH_TEST_CASE` 环境变量。
+sweep_enabled=False、is_single_test=True；图模式仍为 105 轮（5 轮预热、100 轮采集），
+batch_tokens=0、drain_threshold=8192。
 
-更新并重新构建、安装算子 kernel 后，在两台服务器上分别运行：
+本次已删除共享 Jetty kernel 的临时 printf、返回值诊断和等待轮询日志，恢复原通信调用及 flag 等待。
+重新构建、安装算子 kernel 后，两台服务器分别设置 server_index=0/1 和正确的共同 master_ip，再执行：
 
 ```bash
-cd mc2/tools/bandwidth_test
-python -u bandwidth_test.py 2>&1 | tee rtp_j8_bs4096_debug.log
+python -u bandwidth_test.py 2>&1 | tee rtp_j8_bs4096_no_printf.log
 ```
 
-只执行 `python bandwidth_test.py` 也可以；上面的命令同时保存日志。
-修改头文件不会自动更新已安装的算子；仅重新运行 Python / 编译 Torch extension 不足以替换旧 kernel。
-本次静态图构建目录改为 `static_kernel_rtp_j8_bs4096_debug`，避免复用原性能测试目录。
-
-设备日志以 `[BWJ]` 开头，带 rank、jetty（AIV 编号）、epoch、peer、stage、detail、pending、ret：
-
-- `MAKE_BATCH_BEGIN/END`：创建 batch handle 的前后。
-- `STAGE_BEGIN/END`：整批 GetHandleRef / WriteNbi 的前后；detail 分别为剩余 token 数、该批 token 数。
-- `PAYLOAD_WRITE_ERROR`：WriteNbi 返回失败，detail 是失败的 token 下标，ret 是实际返回值。成功 token 不逐条打印。
-- `PREPARE_WRITE_BEGIN/END`：当前 mode 3 下 epoch flag 的 WriteNbi 前后。
-- `COMMIT_BEGIN/END`、`DRAIN_BEGIN/END`：实际调用前后；END 的 ret 是实际返回值，pending 是调用时累计已提交 WQE 数。
-- `WAIT_BEGIN/PENDING/END`：等待来自 peer 的 flag；epoch 是期望值，detail 是已读值。PENDING 每约 6700 万次轮询输出一次。
-- `STREAM_BEGIN/END`：该 Jetty 本次算子的开始与完成。
-
-普通阶段和 BEGIN 日志的 ret=0 只是占位，不代表通信成功；以通信调用 END 的实际返回值为准。
-保留原有失败后的执行路径，不加 Trap、不改变超时；先找最早的非零返回值，再按同一 rank/jetty/epoch 对齐日志。
-有 DRAIN_BEGIN 没有 END 提示该调用尚未返回；持续 WAIT_PENDING 表明仍在等对应 peer 的 epoch。
-设备 printf 可能延迟输出或丢失，单条 END 缺失不能独立证明卡点，还需结合 plog。
-
-这是一份诊断版本，设备日志会影响时序和耗时，不能用输出带宽做性能结论。
-该编译开关作用于整个共享 Jetty kernel 的提交/Drain 日志，接收等待日志专门覆盖 mode 3。
-诊断后将 `op_kernel/bandwidth_test_urma_shared_jetty.h` 的 `BANDWIDTH_SHARED_JETTY_DEBUG` 改成 0，
-重新构建、安装 kernel；再恢复所需的 sweep/shape/协议/端口配置和静态图目录。
+仍使用当前配置的静态图构建目录。复测前确保更新已安装算子，并重新生成该目录下的静态内核，
+避免继续执行此前带 printf 的版本；只重新运行 Python 或编译 Torch extension 不足以替换旧 kernel。
 
 ## 配置说明
 
-普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前临时默认配置见上面的 UB_RTP 复现说明。
+普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置见上面的 UB_RTP 单用例复测说明。
 模式 2 保留原有 Torch context、URMA batch 接口和 Win 直接打流逻辑。共享 Jetty 下还支持模式 3/4：
 模式 3 的每个 Jetty 都向所有远端卡发送完整 `BS` 个 token；模式 4 固定建立
 `world_size - 1` 个 Jetty，每个 Jetty 负责一张远端卡并发送完整 BS。

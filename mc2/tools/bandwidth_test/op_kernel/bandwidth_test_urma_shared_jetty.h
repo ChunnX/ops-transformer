@@ -40,25 +40,6 @@ using namespace Mc2Aclnn;
 #define TemplateBandwidthTestTypeClass typename XType, typename YType
 #define TemplateBandwidthTestTypeFunc XType, YType
 
-// Temporary RTP diagnosis. Set to 0 and rebuild the operator before measuring bandwidth.
-#ifndef BANDWIDTH_SHARED_JETTY_DEBUG
-#define BANDWIDTH_SHARED_JETTY_DEBUG 1
-#endif
-#if BANDWIDTH_SHARED_JETTY_DEBUG
-#define BW_JETTY_LOG(stage, detail, ret) \
-    AscendC::printf("[BWJ] rank=%d jetty=%u epoch=%u peer=%u stage=" stage " detail=%u pending=%u ret=%d\n", \
-        epRankId_, aivId_, debugEpoch_, batchRankId_, static_cast<uint32_t>(detail), \
-        outstandingWrites_, static_cast<int32_t>(ret))
-#define BW_JETTY_CALL(stage, call) do { \
-    BW_JETTY_LOG(stage "_BEGIN", preparedWrites_, 0); \
-    int32_t debugRet = (call); \
-    BW_JETTY_LOG(stage "_END", preparedWrites_, debugRet); \
-} while (false)
-#else
-#define BW_JETTY_LOG(stage, detail, ret) ((void)0)
-#define BW_JETTY_CALL(stage, call) do { call; } while (false)
-#endif
-
 // Wire layout matches the operator-local Torch context builder.
 struct SharedJettyContext {
     uint32_t epRankId;
@@ -181,9 +162,6 @@ private:
     uint32_t drainThreshold_{8192};
     uint32_t peersPerJetty_{0};
     bool batchInitialized_{false};
-#if BANDWIDTH_SHARED_JETTY_DEBUG
-    uint32_t debugEpoch_{0};
-#endif
     float sumTarget_;                 // 状态同步目标值 (1.0)
 
     // Win streaming modes use separate slots inside the 1 MiB state area, outside the business fields.
@@ -360,12 +338,10 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     batchRankId_ = rankId;
     // Retain the shared queue cursor and outstanding count when selecting another peer.
     if (!batchInitialized_) {
-        BW_JETTY_LOG("MAKE_BATCH_BEGIN", batchBufferBytes_, 0);
         batchHandle_ =
             hcomm_.MakeBatchHandle(static_cast<AscendC::MultiChannelHandle>(context_->sharedJettyHandle_[aivId_]),
                                    batchTensor_, batchBufferBytes_);
         batchInitialized_ = true;
-        BW_JETTY_LOG("MAKE_BATCH_END", batchCapacity_, 0);
     }
 }
 
@@ -383,10 +359,10 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     }
     uint32_t channelIndex = batchRankId_ < static_cast<uint32_t>(epRankId_) ? batchRankId_ : batchRankId_ - 1;
     auto &peerHandle = hcomm_.GetHandleRef(batchHandle_, channelIndex, dst);
-    BW_JETTY_CALL("PREPARE_WRITE", hcomm_.WriteNbi(peerHandle, dst, src, len));
+    hcomm_.WriteNbi(peerHandle, dst, src, len);
     ++preparedWrites_;
     if (remainingWrites == 1 || preparedWrites_ == batchCapacity_) {
-        BW_JETTY_CALL("COMMIT", hcomm_.BatchCommit(batchHandle_));
+        hcomm_.BatchCommit(batchHandle_);
         outstandingWrites_ += preparedWrites_;
         preparedWrites_ = 0;
     }
@@ -396,7 +372,7 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFunc>::DrainPending()
 {
     if (outstandingWrites_ != 0) {
-        BW_JETTY_CALL("DRAIN", hcomm_.Drain(batchHandle_));
+        hcomm_.Drain(batchHandle_);
         outstandingWrites_ = 0;
     }
 }
@@ -696,7 +672,6 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     uint32_t rankId, GM_ADDR epochAddr)
 {
     BeginBatch(rankId);
-    BW_JETTY_LOG("SEND_BEGIN", axisBS_, 0);
     GM_ADDR remoteWin = reinterpret_cast<GM_ADDR>(context_->epHcclBuffer_[rankId]);
     uint32_t start = 0;
     uint32_t remaining = axisBS_;
@@ -720,23 +695,14 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
         if (outstandingWrites_ > drainThreshold_ - count) {
             DrainPending();
         }
-        BW_JETTY_LOG("STAGE_BEGIN", remaining, 0);
         // Streaming knows the batch length: keep budget checks and commit bookkeeping outside the token loop.
         for (uint32_t i = 0; i < count; ++i) {
             auto &peerHandle = hcomm_.GetHandleRef(batchHandle_, channelIndex, dst);
-#if BANDWIDTH_SHARED_JETTY_DEBUG
-            int32_t writeRet = hcomm_.WriteNbi(peerHandle, dst, src, hOutSize_);
-            if (writeRet != HCOMM_SUCCESS) {
-                BW_JETTY_LOG("PAYLOAD_WRITE_ERROR", axisBS_ - remaining + i, writeRet);
-            }
-#else
             hcomm_.WriteNbi(peerHandle, dst, src, hOutSize_);
-#endif
             src += hOutSize_;
             dst += hOutSize_;
         }
-        BW_JETTY_LOG("STAGE_END", count, 0);
-        BW_JETTY_CALL("COMMIT", hcomm_.BatchCommit(batchHandle_));
+        hcomm_.BatchCommit(batchHandle_);
         outstandingWrites_ += count;
         remaining -= count;
     }
@@ -744,7 +710,6 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     GM_ADDR flag = remoteWin + STREAM_FLAGS_OFFSET +
         (static_cast<uint64_t>(epRankId_) * BandwidthTestTiling::URMA_MAX_SHARED_JETTYS + aivId_) * sizeof(uint32_t);
     PrepareWrite(flag, epochAddr, sizeof(uint32_t), 1);
-    BW_JETTY_LOG("SEND_END", axisBS_, 0);
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -760,10 +725,6 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
         windowGM_ + STREAM_EPOCH_OFFSET + aivId_ * STREAM_FLAG_STRIDE);
     uint32_t epoch = ReadGmByPassDCache(epochAddr) + 1U;
     WriteGmByPassDCache(epochAddr, epoch);
-#if BANDWIDTH_SHARED_JETTY_DEBUG
-    debugEpoch_ = epoch;
-#endif
-    BW_JETTY_LOG("STREAM_BEGIN", batchCapacity_, 0);
     if (mode_ == 4) {
         uint32_t remoteRank = RemoteRankForJetty(aivId_);
         SendWindowToRank(remoteRank, reinterpret_cast<GM_ADDR>(epochAddr));
@@ -792,25 +753,8 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
             auto flag = reinterpret_cast<__gm__ uint32_t *>(
                 windowGM_ + STREAM_FLAGS_OFFSET +
                 (static_cast<uint64_t>(source) * BandwidthTestTiling::URMA_MAX_SHARED_JETTYS + aivId_) * sizeof(uint32_t));
-#if BANDWIDTH_SHARED_JETTY_DEBUG
-            batchRankId_ = source; // No more submissions; label the incoming peer in wait logs.
-            uint32_t observed = ReadGmByPassDCache(flag);
-            BW_JETTY_LOG("WAIT_BEGIN", observed, 0);
-            uint32_t polls = 0;
-            while (static_cast<int32_t>(observed - epoch) < 0) {
-                // Sparse progress messages distinguish polling from a blocking Hcomm call.
-                if (++polls == (1U << 26)) {
-                    BW_JETTY_LOG("WAIT_PENDING", observed, 0);
-                    polls = 0;
-                }
-                observed = ReadGmByPassDCache(flag);
-            }
-            BW_JETTY_LOG("WAIT_END", observed, 0);
-#else
             while (static_cast<int32_t>(ReadGmByPassDCache(flag) - epoch) < 0) {}
-#endif
         }
-        BW_JETTY_LOG("STREAM_END", epoch, 0);
         return;
     }
     for (uint32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
@@ -853,7 +797,5 @@ __aicore__ inline void BandwidthTestUrmaSharedJetty<TemplateBandwidthTestTypeFun
     }
 }
 
-#undef BW_JETTY_LOG
-#undef BW_JETTY_CALL
 } // namespace BandwidthTestImpl
 #endif // BANDWIDTH_TEST_URMA_SHARED_JETTY_H
