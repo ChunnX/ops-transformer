@@ -183,6 +183,12 @@ static constexpr uint32_t KV_TRACE_TILES = 40;
 #define BSA_MXFP8_QK_MMAD256 1
 #endif
 
+// 偶拍：先 mmad 进同一块 128KB L0C S，再 Wait(V1_C1)，再 Fixpipe0。
+// 奇拍没有 mmad，Wait 仍在 Fixpipe1 前（保护 UB ping-pong）。置 0 回到 fused ComputeQK。
+#ifndef BSA_MXFP8_L0C_PRELOAD
+#define BSA_MXFP8_L0C_PRELOAD 1
+#endif
+
 // 等长非连续两块：一条 Nd2Nz/Dn2Nz（ndNum/dnNum=2 + 恒定 stride）。
 #ifndef BSA_MXFP8_NDNUM2
 #define BSA_MXFP8_NDNUM2 1
@@ -190,6 +196,7 @@ static constexpr uint32_t KV_TRACE_TILES = 40;
 
 // L0A 分区不 alias：K 32KB@0（256×128，无双缓）+ Vᵀ 18KB@32。delay-PV 可与 QK 并行。
 // L0C 不跟 PV 重叠：QK 一块 128KB 可跨 even/odd 两次 Fixpipe；PV 仍在 128KB 起。
+// 同槽复用：奇拍 Fixpipe1 Set FIX_M 后，下一偶拍可先 mmad 再 Wait(V1_C1) 再 Fixpipe0。
 static constexpr uint32_t L0A_QK_BUF_CNT = 1;
 static constexpr uint32_t L0A_QK_BUF_SIZE = 32 * KB_BYTE; // 256×128×1B K
 static constexpr uint32_t L0A_QK_BUF_OFFSET = 0;

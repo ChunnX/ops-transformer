@@ -466,11 +466,7 @@ public:
         uint32_t vSlot = l1ABufId;
 #endif
         uint32_t scaleRows = pairOdd ? 0 : pairRows;
-        if (!pairOdd) {
-            pairVScaleSlot_ = vSlot;
-            pairVScaleAlign64_ = pairAlign64;
-        }
-        const bool scaleTail = true;
+        uint32_t vScaleAlign64 = pairAlign64;
 
         uint32_t firstYBlockIdx = (gatheredKvSTileIdx * kvSBaseTile) / blockShapeY;
         uint32_t firstOriYBlockIdx = 0;
@@ -502,13 +498,12 @@ public:
             auto gVScaleTensorTla =
                 tla::MakeTensor(gVScale.ReinterpretCast<AscendC::fp8_e8m0_t>(),
                                 tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(
-                                    kvHeadMul * embedReal, pairVScaleAlign64_ / MX_SCALE_GROUP_NUM),
+                                    kvHeadMul * embedReal, vScaleAlign64 / MX_SCALE_GROUP_NUM),
                                 Arch::PositionGM{});
-            auto l1AScaleTensorTla =
-                tla::MakeTensor(l1AScaleTensor[pairVScaleSlot_].ReinterpretCast<AscendC::fp8_e8m0_t>(),
-                                tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(
-                                    embedReal, pairVScaleAlign64_ / MX_SCALE_GROUP_NUM),
-                                Arch::PositionL1{});
+            auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[vSlot].ReinterpretCast<AscendC::fp8_e8m0_t>(),
+                                                     tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(
+                                                         embedReal, vScaleAlign64 / MX_SCALE_GROUP_NUM),
+                                                     Arch::PositionL1{});
 
             SparseVFusedBaseTileL1FullLoad(gV, l1ATensorTla, gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx,
                                            gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY, yBlockNumAval,
@@ -541,10 +536,7 @@ public:
         uint32_t s2Start = pairOdd ? MXFP8::QK_HALF_KVS : 0;
         bool initC = delay12TileInfo.isTileGoupFirstTile;
         LoadPToL0(pSlot, l0BBufId, s2Full, embedReal, delay12TaskInfo.qsActBaseTileAlign64, 0);
-        uint32_t scaleS2Start = s2Start;
-        uint32_t scaleS2Full = pairAlign64;
-        uint32_t scaleBuf = vSlot;
-        LoadVToL0(vSlot, l0ABufId, embedReal, s2Full, s2Start, pairAlign64, scaleBuf, scaleS2Start, scaleS2Full);
+        LoadVToL0(vSlot, l0ABufId, embedReal, s2Full, s2Start, pairAlign64, vSlot, s2Start, pairAlign64);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
 
@@ -565,10 +557,7 @@ public:
         }
 
         if (!pairEven) {
-            bool holdForScale = false;
-            if (!holdForScale) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
-            }
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + vSlot);
         }
         if (!pairOdd) {
             l1ABufId = (l1ABufId + 1) % MXFP8::L1_KV_BUF_CNT;
@@ -596,13 +585,9 @@ protected:
 
     uint32_t pvL0abBufId = 0;
     uint32_t &l1ABufId;
-    // 上一拍 PV 末尾预读的、同 task 内下次 V gather 的首个 sparse index
-    uint32_t nextOriYBlockIdx_ = 0;
     // P1：偶 tile V gather 所用的 L1 槽和整槽 S2 对齐，奇 tile LoadV 复用。
     uint32_t pairVSlot_ = 0;
     uint32_t pairVL1Align64_ = 0;
-    uint32_t pairVScaleSlot_ = 0;
-    uint32_t pairVScaleAlign64_ = 0;
 };
 
 } // namespace NpuArch::Gemm::Block

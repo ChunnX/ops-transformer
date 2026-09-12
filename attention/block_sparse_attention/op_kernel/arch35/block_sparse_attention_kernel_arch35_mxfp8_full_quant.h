@@ -391,6 +391,26 @@ public:
                                           kvBaseTile_, blockShapeY_, kvHeadMul, qHeadMul);
 #endif
 #endif
+#if BSA_MXFP8_L0C_PRELOAD && BSA_MXFP8_QK_MMAD256 && BSA_MXFP8_K_PAIR256 && BSA_MXFP8_K_PREFETCH
+                    // 偶拍：mmad 只写 L0C S，不占 UB。Wait 挪到 Fixpipe 前，把剩余握手藏进 QK256。
+                    const bool qkPairOdd = (curTileInfo.pvGatheredKvSTileIdx & 1u) != 0u;
+                    const bool qkPairEven = !qkPairOdd && !curTileInfo.isLastKvsTile;
+#ifdef __DAV_CUBE__
+                    if (qkPairEven) {
+                        blockMmadQK.ComputeQKMmad256Even(curTaskInfo, curTileInfo, embed_);
+                    }
+#endif
+                    AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
+                                                                      subBlockIdx * 16);
+                    ComputeMm1(curTileInfo);
+#ifdef __DAV_CUBE__
+                    if (qkPairEven) {
+                        blockMmadQK.EmitFixpipeQK256Even(curUBSTensorTla, curTaskInfo, curTileInfo, subBlockIdx);
+                    } else {
+                        blockMmadQK.ComputeQK(curUBSTensorTla, curTaskInfo, curTileInfo, embed_, subBlockIdx);
+                    }
+#endif
+#else
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
                                                                       subBlockIdx * 16);
                     ComputeMm1(curTileInfo);
@@ -402,6 +422,7 @@ public:
                                 gKDequantScale[curTaskInfo.gmOffsetKScale], gSparseIdx[curTaskInfo.gmOffsetSparseIdx],
                                 curUBSTensorTla, curTaskInfo, curTileInfo, embed_, kvBaseTile_, blockShapeY_,
                                 subBlockIdx, kvHeadMul, qHeadMul);
+#endif
 #endif
 #endif
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] +
