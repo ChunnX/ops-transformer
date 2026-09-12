@@ -39,10 +39,12 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
     const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale, const aclTensor *xScale,
     const aclTensorList *weightAssistanceMatrix, const aclTensor *bias, const aclTensor *smoothScale,
     const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
-    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, aclOpExecutor *executor)
+    bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t activateDim,
+    bool activateLeft, int64_t swigluMode, float clampLimit, float gluAlpha, float gluBias, aclOpExecutor *executor)
 {
     L0_DFX(GroupedMatmulSwigluQuantV2, x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList,
-           dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, tuningConfigOptional);
+           dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, tuningConfigOptional, activateDim,
+           activateLeft, swigluMode, clampLimit, gluAlpha, gluBias);
     if (x == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("GroupedMatmulSwigluQuantV2", "x", "does not support nullptr");
         return std::tuple(nullptr, nullptr);
@@ -115,7 +117,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
                     OP_INPUT(x, xScale, groupList, weight, weightScale, weightAssistanceMatrix, bias, smoothScale),
                     OP_OUTPUT(out, scaleOut),
                     OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType,
-                            tuningConfigOptional));
+                            tuningConfigOptional, activateDim, activateLeft, swigluMode, clampLimit, gluAlpha,
+                            gluBias));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
         return std::tuple(nullptr, nullptr);
@@ -126,7 +129,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(
         OP_INPUT(x, xScale, groupList, weight, weightScale, weightAssistanceMatrix, bias, smoothScale),
         OP_OUTPUT(out, scaleOut),
         OP_ATTR(dequantMode, dequantDtype, quantMode, quantDtype, transposeWeight, groupListType,
-                tuningConfigOptional));
+                tuningConfigOptional, activateDim, activateLeft, swigluMode, clampLimit, gluAlpha, gluBias));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return std::tuple(nullptr, nullptr);

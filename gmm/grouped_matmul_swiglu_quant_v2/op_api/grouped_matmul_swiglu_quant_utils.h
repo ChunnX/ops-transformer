@@ -38,6 +38,15 @@ constexpr char GMM_SWIGLU_QUANT_V2_HANDLER_OP_NAME[] = "grouped_matmul_swiglu_qu
 constexpr size_t WEIGHT_NZ_DIM_LIMIT = 5UL;
 constexpr size_t WEIGHT_ND_DIM_LIMIT = 3UL;
 
+struct GroupedMatmulSwigluQuantV3Attrs {
+    int64_t activateDim = -1L;
+    bool activateLeft = true;
+    int64_t swigluMode = 0L;
+    float clampLimit = 7.0F;
+    float gluAlpha = 1.702F;
+    float gluBias = 1.0F;
+};
+
 template <typename T>
 inline std::string BuildLogValue(const char *name, T value)
 {
@@ -72,6 +81,7 @@ struct GroupedMatmulSwigluQuantParamsBase {
     int64_t quantDtype = 0;
     int64_t groupListType = 0;
     bool transposeWeight = false;
+    GroupedMatmulSwigluQuantV3Attrs swigluV3Attrs;
     bool isA8W4 = false;
     bool isA4W4 = false;
     bool isMxA8W4 = false;
@@ -151,6 +161,12 @@ public:
     GroupedMatmulSwigluQuantParamsBuilder &SetTransposeAttr(bool transposeWeight)
     {
         p_.transposeWeight = transposeWeight;
+        return *this;
+    }
+
+    GroupedMatmulSwigluQuantParamsBuilder &SetSwigluV3Attrs(const GroupedMatmulSwigluQuantV3Attrs &swigluV3Attrs)
+    {
+        p_.swigluV3Attrs = swigluV3Attrs;
         return *this;
     }
 
@@ -430,6 +446,9 @@ public:
             gmmDsqParams_.weightAssistMatrix, gmmDsqParams_.bias, gmmDsqParams_.smoothScale, gmmDsqParams_.groupList,
             gmmDsqParams_.dequantMode, gmmDsqParams_.dequantDtype, gmmDsqParams_.quantMode, gmmDsqParams_.quantDtype,
             gmmDsqParams_.transposeWeight, gmmDsqParams_.groupListType, gmmDsqParams_.tuningConfig,
+            gmmDsqParams_.swigluV3Attrs.activateDim, gmmDsqParams_.swigluV3Attrs.activateLeft,
+            gmmDsqParams_.swigluV3Attrs.swigluMode, gmmDsqParams_.swigluV3Attrs.clampLimit,
+            gmmDsqParams_.swigluV3Attrs.gluAlpha, gmmDsqParams_.swigluV3Attrs.gluBias,
             uniqueExecutor.get());
         CHECK_RET(ret0 != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
