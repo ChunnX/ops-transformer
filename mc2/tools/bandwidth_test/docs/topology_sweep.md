@@ -10,11 +10,11 @@
 python bandwidth_test.py
 ```
 
-在 `config.py` 设置 `RunConfig.sweep_enabled=True`、`sweep_kind="topology"`。所有服务器使用相同 shape、核数、协议、batch、Drain 阈值、master IP 和初始端口；非云环境的 `server_index` 分别设为 0、1。
-`shared_jetty_comm_level=1` 为全 UBC_CTP，2 为全 UB_RTP；按本次实验选择。`batch_tokens`、`drain_threshold`、图模式和采样设置沿用配置。
+`config.py` 默认 `RunConfig.sweep_enabled=True`。所有服务器使用相同 shape、核数、协议、batch、Drain 阈值、master IP 和初始端口；非云环境的 `server_index` 分别设为 0、1。
+当前 `shared_jetty_comm_level=2` 为全 UB_RTP。`batch_tokens`、`drain_threshold`、图模式和采样设置沿用配置。
 
 协调进程为每组拓扑启动新的测试进程和通信 context。组内复用通信域，顺序执行全部 `ShapeConfig.test_configs`。
-16 卡对应 12 组拓扑，用例总数为 12 乘配置中的 shape 数。各组顺序使用同一个 `master_port`，当前默认 5001。
+默认 16 卡、17 个尺寸对应 12 组拓扑、204 个用例，已移除 BS=8192。各组顺序使用同一个 master_port，当前为 5001。
 两台服务器都必须启动；一台失败时，另一台可能等待后端超时。
 
 设置 `sweep_enabled=False` 可恢复原有单拓扑测试；此时 `mode`、`shared_jetty_num`、`peers_per_jetty` 直接来自配置。

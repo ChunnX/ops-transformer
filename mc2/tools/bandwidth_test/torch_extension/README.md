@@ -402,9 +402,3 @@ URMA 和 ROCE kernel 均直接调用通信接口，不检查返回值；ROCE 的
 使用环形、均匀间隔选择，发送与接收等待互为逆映射；建链范围保持全部远端。
 Torch eager/Meta、TorchAir GE、ACLNN 和 tiling 已贯通此属性，需重新生成并部署算子和扩展，重新构建静态图内核。
 一键扫描及 Markdown/CSV 导出见 [拓扑批跑说明](../docs/topology_sweep.md)。
-
-### 共享 mode 3 batch 扫描更新
-
-共享 mode 3 现接受显式 batch_tokens；0 自动选择 min(BS, 248 KiB / 64, drain_threshold)。
-该路径只保留 WQE 缓冲，上限改为 3968；本文此前的统一 2048 上限仍适用于其他模式。
-超过 2048 的目标 SDK 执行能力需实机验证。Torch/ACLNN 参数位置及 context 布局不变。

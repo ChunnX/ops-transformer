@@ -552,12 +552,14 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         if (maxBatchTokens * URMA_WQE_BYTES + alignUp(maxBatchTokens * idBytesPerToken, 32) > availableBytes) {
             --maxBatchTokens;
         }
-        // Shared mode 3 stages only WQEs and may fill the usable UB for the batch sweep.
+        // Shared mode 3 uses the largest WQE batch that fits its direct-Win UB layout.
         if (!(IsSharedJetty(context) && tilingData->mode == 3)) {
             maxBatchTokens = std::min(maxBatchTokens, static_cast<uint64_t>(URMA_MAX_BATCH_TOKENS));
         }
         uint64_t batchTokens = 0;
-        if (tilingData->mode == 3 || tilingData->mode == 4) {
+        if (tilingData->mode == 3) {
+            batchTokens = std::min(static_cast<uint64_t>(tilingData->maxBs), maxBatchTokens);
+        } else if (tilingData->mode == 4) {
             uint64_t requestedBatch = *batchTokensPtr == 0
                 ? static_cast<uint64_t>(tilingData->maxBs)
                 : std::min(static_cast<uint64_t>(*batchTokensPtr), static_cast<uint64_t>(tilingData->maxBs));
@@ -574,8 +576,9 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         tilingData->batchTokens = static_cast<uint32_t>(batchTokens);
         tilingData->batchBufferBytes = batchTokens * URMA_WQE_BYTES;
         requiredUb = fixedBytes + batchTokens * URMA_WQE_BYTES + alignUp(batchTokens * idBytesPerToken, 32);
-        OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu.",
-                *batchTokensPtr, batchTokens, maxBatchTokens);
+        OP_LOGI(nodeName, "URMA batch_tokens: requested=%ld, selected=%lu, maximum=%lu%s.",
+                *batchTokensPtr, batchTokens, maxBatchTokens,
+                tilingData->mode == 3 ? " (mode 3 ignores the request)" : "");
     } else {
         OP_TILING_CHECK(*batchTokensPtr != 0,
                         OP_LOGE(nodeName, "batch_tokens is only supported for urma; use 0 for mte."),

@@ -1060,7 +1060,7 @@ def shared_jetty_batch_tokens(dstrank_id_per_rank, test_bs, ep_world_size, test_
     if test_mode == 2:
         return min(capacity, (test_bs // ep_world_size + shared_jetty_num - 1) // shared_jetty_num)
     if test_mode == 3:
-        return min(requested_batch_tokens or test_bs, test_bs, 248 * 1024 // 64, drain_threshold)
+        return min(test_bs, 248 * 1024 // 64, drain_threshold)
     if test_mode == 4:
         return min(requested_batch_tokens or test_bs, test_bs, URMA_MAX_BATCH_TOKENS, drain_threshold)
     largest = 0
@@ -1221,9 +1221,9 @@ def print_summary_table(results: List[Dict[str, Any]]):
         "Batch Tokens/Data show the largest actual data commit to one remote destination; smaller tails may exist.")
     logger.info("Shared mode 2 Batch Tokens account for the BS split across shared_jetty_num cores.")
     logger.info(
-        "Mode 3/4 Batch Tokens = min(requested or BS, BS, tiling maximum, drain threshold).")
+        "Mode 3 ignores batch_tokens; Batch Tokens = min(BS, tiling maximum).")
     logger.info(
-        "Mode 4 uses world_size-1 Jettys.")
+        "Mode 4 uses world_size-1 Jettys; Batch Tokens = min(requested batch or BS, BS, tiling maximum).")
     logger.info("Ordinary URMA mode 2 Batch Tokens = min(selected batch, floor(BS/world_size)).")
     logger.info(
         "URMA mode 0/1/2 batch_tokens=0 uses the current tiling maximum of 2048; MTE reports N/A.")

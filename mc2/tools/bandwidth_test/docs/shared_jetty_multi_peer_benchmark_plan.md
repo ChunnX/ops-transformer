@@ -1,6 +1,3 @@
-> 当前实现更新：共享 mode 3 已支持显式 batch_tokens；0 自动选择，最高按 248 KiB / 64 = 3968 个 WQE，并受 BS/Drain 阈值限制。
-> 本文原先 mode 3 忽略 batch_tokens、统一上限 2048 的描述为历史实验设计。当前 batch 扫描及部署说明见 ../README.md。
-
 # 单共享 Jetty 多对端带宽测试方案
 
 > 执行策略更新：共享 Jetty 已改用 `drain_threshold`（默认 8192）跨批、跨 peer 累计 WQE。
