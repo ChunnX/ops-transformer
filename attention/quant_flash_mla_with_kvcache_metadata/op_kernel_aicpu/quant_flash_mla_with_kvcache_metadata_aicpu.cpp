@@ -49,7 +49,6 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
         return false;
     }
     GetAttrValueOpt(ctx, "quant_mode", quantMode_);
-    GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_kv", maxSeqlenKv_);
     GetAttrValueOpt(ctx, "head_dim_qk", headDimQk_);

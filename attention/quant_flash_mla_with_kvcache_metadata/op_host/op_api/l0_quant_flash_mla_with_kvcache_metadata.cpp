@@ -27,14 +27,14 @@ namespace l0op {
 OP_TYPE_REGISTER(QuantFlashMlaWithKvcacheMetadata);
 
 const aclTensor *QuantFlashMlaWithKvcacheMetadata(const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional,
-                                                 const aclTensor *sequsedQOptional, int64_t batchSize,
-                                                 int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                                 const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
+                                                 int64_t maxSeqlenKv, int64_t numHeadsQ,
                                                  int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
                                                  int64_t quantMode, int64_t maskMode, const char *layoutQ,
                                                  const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
                                                  const aclTensor *metaData, aclOpExecutor *executor)
 {
-    L0_DFX(QuantFlashMlaWithKvcacheMetadata, cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, batchSize,
+    L0_DFX(QuantFlashMlaWithKvcacheMetadata, cacheSeqlens, cuSeqlensQOptional, sequsedQOptional,
            maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, quantMode, maskMode, layoutQ,
            socVersion, aicCoreNum, aivCoreNum, metaData);
 
@@ -42,11 +42,11 @@ const aclTensor *QuantFlashMlaWithKvcacheMetadata(const aclTensor *cacheSeqlens,
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         QuantFlashMlaWithKvcacheMetadata,
-        OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_kv", "num_heads_q", "num_heads_kv", "head_dim_qk",
+        OP_ATTR_NAMES({"max_seqlen_q", "max_seqlen_kv", "num_heads_q", "num_heads_kv", "head_dim_qk",
                        "head_dim_v", "quant_mode", "mask_mode", "layout_q", "soc_version", "aic_core_num",
                        "aiv_core_num"}),
         OP_INPUT(cacheSeqlens, cuSeqlensQOptional, sequsedQOptional), OP_OUTPUT(metaData),
-        OP_ATTR(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, quantMode, maskMode,
+        OP_ATTR(maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, quantMode, maskMode,
                 layoutQ, socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "QuantFlashMlaWithKvcacheMetadata"

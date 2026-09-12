@@ -64,16 +64,6 @@ def _resolve_mask_mode(mask_mode: Union[str, int, "MaskMode", None]) -> int:
     return int(MaskMode(mask_mode))
 
 
-def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
-    if seqused_q is not None:
-        return seqused_q.size(0)
-    elif cu_seqlens_q is not None and cu_seqlens_q.size(0) > 0:
-        return cu_seqlens_q.size(0) - 1
-    elif batch_size is not None:
-        return batch_size
-    return 0
-
-
 def _calculate_max_schedule_size():
     return 4096
 
@@ -107,7 +97,7 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             "quant_flash_mla_with_kvcache_metadata(Tensor cache_seqlens, int num_heads_q, int num_heads_kv, "
             "int quant_mode, *, "
             "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
-            "int? batch_size=-1, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
+            "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
             "int? head_dim_qk=576, int? head_dim_v=512, int? mask_mode=0, "
             'str? layout_q="BSND") -> Tensor',
             "quant_flash_mla_with_kvcache(Tensor q, Tensor k_cache, Tensor q_descale, Tensor k_descale, "
@@ -134,7 +124,6 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             quant_mode: Union[QuantMode, int],
             cu_seqlens_q: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
-            batch_size: Optional[int] = -1,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
             head_dim_qk: Optional[int] = MLA_HEAD_DIM_QK,
@@ -237,7 +226,6 @@ def quant_flash_mla_with_kvcache_metadata(
     quant_mode: Union[QuantMode, int],
     cu_seqlens_q: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = -1,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
     head_dim_qk: Optional[int] = MLA_HEAD_DIM_QK,
@@ -259,7 +247,6 @@ def quant_flash_mla_with_kvcache_metadata(
         lambda: f"The num_heads_kv of quant_flash_mla_with_kvcache only supports 1 (MLA KV shared), "
         f"but got {num_heads_kv}",
     )
-    batch_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     quant_mode = _resolve_quant_mode(quant_mode)
@@ -279,7 +266,6 @@ def quant_flash_mla_with_kvcache_metadata(
         quant_mode,
         cu_seqlens_q,
         seqused_q,
-        batch_size,
         max_seqlen_q,
         max_seqlen_kv,
         head_dim_qk,
@@ -298,7 +284,6 @@ def quant_flash_mla_with_kvcache_metadata_fallback(
     quant_mode: Union[QuantMode, int],
     cu_seqlens_q: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
-    batch_size: Optional[int] = -1,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
     head_dim_qk: Optional[int] = MLA_HEAD_DIM_QK,
@@ -314,7 +299,6 @@ def quant_flash_mla_with_kvcache_metadata_fallback(
         quant_mode,
         cu_seqlens_q,
         seqused_q,
-        batch_size,
         max_seqlen_q,
         max_seqlen_kv,
         head_dim_qk,

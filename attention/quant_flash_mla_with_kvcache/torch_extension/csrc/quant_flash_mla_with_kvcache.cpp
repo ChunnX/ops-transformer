@@ -24,13 +24,13 @@ const int64_t MAX_DIM_SIZE = 8;
 at::Tensor quant_flash_mla_with_kvcache_metadata(const at::Tensor &cache_seqlens, int64_t num_heads_q,
                                                 int64_t num_heads_kv, int64_t quant_mode,
                                                 const at::Tensor &cu_seqlens_q,
-                                                const at::Tensor &seqused_q, int64_t batch_size,
-                                                int64_t max_seqlen_q, int64_t max_seqlen_kv, int64_t head_dim_qk,
+                                                const at::Tensor &seqused_q, int64_t max_seqlen_q,
+                                                int64_t max_seqlen_kv, int64_t head_dim_qk,
                                                 int64_t head_dim_v, int64_t mask_mode, std::string layout_q,
                                                 const at::Tensor &output)
 {
     ACLNN_CMD(aclnnQuantFlashMlaWithKvcacheMetadata, cache_seqlens, num_heads_q, num_heads_kv, quant_mode,
-              cu_seqlens_q, seqused_q, batch_size, max_seqlen_q, max_seqlen_kv, head_dim_qk, head_dim_v, mask_mode,
+              cu_seqlens_q, seqused_q, max_seqlen_q, max_seqlen_kv, head_dim_qk, head_dim_v, mask_mode,
               layout_q, output);
     return output;
 }

@@ -945,7 +945,6 @@ def call_npu_fa_op(
     )
 
     # cache_seqlens: PA场景下为每batch KV实际长度（BY_BATCH模式, 非累积）
-    batch_size = len(seqused_q)
     max_sq = MAX_SEQLEN_Q if MAX_SEQLEN_Q > 0 else max(seqused_q)
     max_skv = MAX_SEQLEN_KV if MAX_SEQLEN_KV > 0 else max(cache_seqlens)
     cache_seqlens_t = torch.tensor(cache_seqlens, dtype=torch.int32, device="npu").contiguous()
@@ -971,7 +970,6 @@ def call_npu_fa_op(
         quant_mode=QMLA_QUANT_MODE,
         cu_seqlens_q=cu_seqlens_q,
         seqused_q=seqused_q_t,
-        batch_size=batch_size,
         max_seqlen_q=max_sq,
         max_seqlen_kv=max_skv,
         head_dim_qk=QMLA_QK_HEAD_DIM,
