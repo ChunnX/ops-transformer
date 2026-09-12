@@ -50,6 +50,7 @@ struct FusionCase {
     int expectedBitcastCount;
     bool expectedTransposeWeight;
     bool nonUnitWeightReshape = false;
+    bool specialFp4StaticChain = false;
 };
 
 class TestGroupedMatmulFinalizeRoutingTransposeFusionPass
@@ -171,6 +172,38 @@ static void AddBitcast(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Tenso
     bitcastNode.SetAttr("type", bitcastType);
 }
 
+static void AddStaticFp4WeightChain(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input)
+{
+    // This is the static graph emitted by TorchAir for a single-group FP4
+    // transposed weight: carrier Reshape -> 2-D Transpose -> Reshape ->
+    // Bitcast(FP4) -> packing Reshape.  The pass must remove only the three
+    // view nodes before the Bitcast and keep the Bitcast itself.
+    const auto sourceDesc = input.desc;
+    auto topReshapeDesc = MakeTensorDesc({7168, 1024}, sourceDesc.GetDataType());
+    auto topReshape = BuildUnaryNode(graph, "Reshape", "reshape_fp4_top", topReshapeDesc);
+    LinkUnaryNode(graph, graphBuilder, input, topReshape, topReshapeDesc);
+
+    auto transposeDesc = MakeTensorDesc({1024, 7168}, sourceDesc.GetDataType());
+    auto transpose = BuildUnaryNode(graph, "TransposeD", "transpose_fp4", transposeDesc);
+    std::vector<int64_t> transposePerm = {1, 0};
+    transpose.SetAttr("perm", transposePerm);
+    LinkUnaryNode(graph, graphBuilder, input, transpose, transposeDesc);
+
+    auto bottomReshapeDesc = MakeTensorDesc({1, 1024, 7168}, sourceDesc.GetDataType());
+    auto bottomReshape = BuildUnaryNode(graph, "Reshape", "reshape_fp4_bottom", bottomReshapeDesc);
+    LinkUnaryNode(graph, graphBuilder, input, bottomReshape, bottomReshapeDesc);
+
+    auto bitcastDesc = MakeTensorDesc({1, 1024, 7168}, DT_FLOAT4_E2M1);
+    auto bitcast = BuildUnaryNode(graph, "Bitcast", "bitcast_fp4", bitcastDesc);
+    DataType bitcastType = DT_FLOAT4_E2M1;
+    bitcast.SetAttr("type", bitcastType);
+    LinkUnaryNode(graph, graphBuilder, input, bitcast, bitcastDesc);
+
+    auto tailDesc = MakeTensorDesc({1, 1024, 14336}, DT_FLOAT4_E2M1);
+    auto tail = BuildUnaryNode(graph, "Reshape", "reshape_fp4_tail", tailDesc);
+    LinkUnaryNode(graph, graphBuilder, input, tail, tailDesc);
+}
+
 static void LinkGmmInput(Graph *graph, GNode &gmmNode, const TensorWithDesc &input, int64_t inputIndex)
 {
     ge::es::AddEdgeAndUpdatePeerDesc(*graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), gmmNode,
@@ -208,10 +241,10 @@ static GraphPtr BuildGraph(const FusionCase &param)
     auto *graph = graphBuilder.GetCGraphBuilder()->GetGraph();
 
     auto xDesc = MakeTensorDesc({4, 64}, param.xDtype);
-    const auto weightShape = param.useWeightReshape && param.validWeightPattern && !param.nonUnitWeightReshape ?
-                                                                 std::vector<int64_t>{2, 1, 64} :
-                                                                                  std::vector<int64_t>{2, 32, 64};
-    auto weightDesc = MakeTensorDesc(weightShape, param.weightDtype);
+    const auto weightShape = param.specialFp4StaticChain ? std::vector<int64_t>{1, 7168, 1024} :
+        (param.useWeightReshape && param.validWeightPattern && !param.nonUnitWeightReshape ?
+             std::vector<int64_t>{2, 1, 64} : std::vector<int64_t>{2, 32, 64});
+    auto weightDesc = MakeTensorDesc(weightShape, param.specialFp4StaticChain ? DT_INT8 : param.weightDtype);
     const auto weightScaleShape =
         param.weightScaleDtype == DT_FLOAT8_E8M0 ? std::vector<int64_t>{2, 32, 1, 2} : std::vector<int64_t>{2, 1};
     auto weightScaleDesc = MakeTensorDesc(weightScaleShape, param.weightScaleDtype);
@@ -229,7 +262,9 @@ static GraphPtr BuildGraph(const FusionCase &param)
     TensorWithDesc weightInput = {dataWeight, weightDesc};
     TensorWithDesc weightScaleInput = {dataWeightScale, weightScaleDesc};
 
-    if (param.useWeightReshape) {
+    if (param.specialFp4StaticChain) {
+        AddStaticFp4WeightChain(graph, graphBuilder, weightInput);
+    } else if (param.useWeightReshape) {
         AddReshape(graph, graphBuilder, weightInput, "reshape_weight", param.validWeightPattern);
     } else {
         AddTranspose(graph, graphBuilder, weightInput, "transpose_weight", param.validWeightPattern);
@@ -325,6 +360,9 @@ INSTANTIATE_TEST_CASE_P(GroupedMatmulFinalizeRoutingTransposeFusionPass,
                                                    false, false, true, false, GRAPH_NOT_CHANGED, 1, 0, 0, false},
                                         FusionCase{"non_mx_scale", DT_INT8, DT_INT8, DT_FLOAT, false, false, true,
                                                    false, GRAPH_NOT_CHANGED, 1, 0, 0, false},
+                                        FusionCase{"static_fp4_single_group_packed_chain", DT_INT8, DT_INT8,
+                                                   DT_FLOAT8_E8M0, false, false, true, true, SUCCESS, 0, 1, 1, true,
+                                                   false, true},
                                         FusionCase{"unit_axis_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true,
                                                    true, true, SUCCESS, 0, 0, 0, true},
                                         FusionCase{"regular_reshape_without_unit_axis", DT_INT8, DT_INT8, DT_FLOAT8_E8M0,

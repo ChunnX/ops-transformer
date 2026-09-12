@@ -449,6 +449,36 @@ bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int
     return true;
 }
 
+bool IsStaticFp4PackedWeightTranspose(const TensorDesc &sourceDesc, const TensorDesc &targetDesc,
+                                      int64_t inputIndex, bool specialFp4Path)
+{
+    // A static FP4 weight can be represented by an int8/uint8 carrier before
+    // Bitcast.  With a single group, the view optimizer first transposes the
+    // carrier as a 2-D tensor and the FP4 packing doubles the final axis:
+    //   source [1, N, K/2] -> target [1, K/2, 2*N].
+    // Keep this exception deliberately narrow; ordinary Reshape nodes must
+    // still satisfy the normal axis-swap proof below.
+    if (inputIndex != WEIGHT_INDEX || !specialFp4Path) {
+        return false;
+    }
+    if (sourceDesc.GetDataType() != DT_INT8 && sourceDesc.GetDataType() != DT_UINT8) {
+        return false;
+    }
+    if (targetDesc.GetDataType() != DT_FLOAT4_E2M1) {
+        return false;
+    }
+    const auto sourceDims = sourceDesc.GetShape().GetDims();
+    const auto targetDims = targetDesc.GetShape().GetDims();
+    if (sourceDims.size() != 3 || targetDims.size() != 3 || sourceDims[0] != 1 || targetDims[0] != 1) {
+        return false;
+    }
+    if (std::any_of(sourceDims.begin(), sourceDims.end(), [](int64_t dim) { return dim <= 0; }) ||
+        std::any_of(targetDims.begin(), targetDims.end(), [](int64_t dim) { return dim <= 0; })) {
+        return false;
+    }
+    return targetDims[1] == sourceDims[2] && targetDims[2] == sourceDims[1] * DOUBLE_SHAPE;
+}
+
 bool CheckDirectReshape(const GNodePtr &reshapeNode, int64_t inputIndex)
 {
     std::vector<int64_t> inputDims;
@@ -623,7 +653,9 @@ bool TryResolveTwoReshapeChain(const GNode &nodeGmmFr, int64_t inputIndex, Trans
     const bool hasUnknownShape = sourceDims.empty() || targetDims.empty() ||
                                  std::any_of(sourceDims.begin(), sourceDims.end(), IsUnknownDim) ||
                                  std::any_of(targetDims.begin(), targetDims.end(), IsUnknownDim);
-    if (!exactShapeMatch &&
+    const bool staticFp4PackedMatch = IsStaticFp4PackedWeightTranspose(sourceDesc, targetDesc, inputIndex,
+                                                                         chain.specialFp4Path);
+    if (!exactShapeMatch && !staticFp4PackedMatch &&
         (!hasUnknownShape || !IsDynamicTwoReshapeChain(topReshapeNode, bottomNode, sourceNode, srcOutputPort))) {
         return false;
     }
