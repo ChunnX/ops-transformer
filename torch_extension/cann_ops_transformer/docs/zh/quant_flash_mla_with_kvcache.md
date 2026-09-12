@@ -195,7 +195,7 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的Q | float8_e4m3fn/hifloat8 | ND | <ul><li>(B, Q_S, Q_N, D)</li><li>(B, Q_N, Q_S, D)</li><li>(Q_T, Q_N, D)</li></ul> | × |
-| k_cache | Tensor | 必选 | 公式中的K（KV cache）。仅PA场景支持非连续tensor，详细约束见<a href="#Paged Attention参数组">Paged Attention参数组</a>特性交叉校验 | float8_e4m3fn/hifloat8 | ND | <ul><li>(Bn, Bs, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/16, Bs, 16)</li></ul> | √ |
+| k_cache | Tensor | 必选 | 公式中的K（KV cache）。仅PA场景支持非连续tensor，详细约束见<a href="#Paged Attention参数组">Paged Attention参数组</a>特性交叉校验 | float8_e4m3fn/hifloat8 | ND | <ul><li>(Bn, Bs, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | √ |
 | q_descale | Tensor | 必选 | q的反量化scale，per-token-head动态量化 | float32 | ND | <ul><li>(B, Q_S, Q_N)</li><li>(B, Q_N, Q_S)</li><li>(Q_T, Q_N)</li></ul> | × |
 | k_descale | Tensor | 必选 | k的反量化scale，per-tensor静态量化 | float32 | ND | (1,) | × |
 | block_table | Tensor | 必选 | 用于分块注意力计算中的块索引映射 | int32 | ND | (B, Bn) | × |
