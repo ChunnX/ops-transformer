@@ -1043,6 +1043,7 @@ class ElasticBuffer:
 
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
             self._runtime.moe_ep_dispatch_epilogue(
+                args.x,
                 args.topk_idx,
                 num_recv_per_rank,
                 num_recv_per_expert,
