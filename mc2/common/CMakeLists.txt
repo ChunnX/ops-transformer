@@ -32,34 +32,6 @@ if (BUILD_OPEN_PROJECT)
         list(APPEND OPTILING_SRCS op_host/mc2_common_infershape.cpp)
     endif()
 
-    # hcomm dfx shim：CANN 包提供 hcomm_channel_dump.h 时由 bisheng 编译一份并链接进
-    # cust_opmaster；算子侧通过弱符号 Mc2HcommChannelInfoDumpShim 在运行时感知可用性，
-    # 老版本 CANN 未链接 shim 时相关 dump 优雅跳过（见 mc2/common/utils/mc2_hcomm_dfx_dump.h）
-    list(FIND ASCEND_COMPUTE_UNIT "ascend950" _MC2_HCOMM_DFX_SOC_IDX)
-    if ((_MC2_HCOMM_DFX_SOC_IDX GREATER -1) AND
-        (EXISTS ${ASCEND_CANN_PACKAGE_PATH}/asc/include/adv_api/hcomm/dfx/hcomm_channel_dump.h))
-        set(MC2_HCOMM_DFX_SHIM_OBJ ${CMAKE_CURRENT_BINARY_DIR}/hcomm_dfx_shim_dav_c310.o)
-        add_custom_command(
-            OUTPUT ${MC2_HCOMM_DFX_SHIM_OBJ}
-            COMMAND ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/ccec_compiler/bin/bisheng
-                    --asc-aicore-lang --cce-aicore-arch=dav-c310 -std=c++17 -fPIC
-                    -I${ASCEND_CANN_PACKAGE_PATH}/asc/include
-                    -I${ASCEND_CANN_PACKAGE_PATH}/asc/include/adv_api
-                    -I${ASCEND_CANN_PACKAGE_PATH}/include
-                    -I${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
-                    -c ${CMAKE_CURRENT_SOURCE_DIR}/op_host/op_tiling/hcomm_dfx_shim.asc
-                    -o ${MC2_HCOMM_DFX_SHIM_OBJ}
-            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/op_host/op_tiling/hcomm_dfx_shim.asc
-            COMMENT "Compiling hcomm dfx shim with bisheng (dav-c310)"
-        )
-        add_custom_target(mc2_hcomm_dfx_shim DEPENDS ${MC2_HCOMM_DFX_SHIM_OBJ})
-        add_dependencies(cust_opmaster mc2_hcomm_dfx_shim)
-        target_link_libraries(cust_opmaster PRIVATE
-            ${MC2_HCOMM_DFX_SHIM_OBJ}
-            ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/lib64/libascendc_runtime.a
-        )
-    endif()
-
     if(UT_TEST_ALL OR OP_HOST_UT)
         list(FILTER OPTILING_SRCS EXCLUDE REGEX "utils/mc2_hcom_topo_info\\.cpp")
         file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp ${UT_COMMON_INC}/rt_soc_spec_mocker.cpp)

@@ -21,13 +21,9 @@
 #include <thread>
 #include "acl/acl_rt.h"
 #include "mc2_log.h"
+#include "adv_api/hcomm/dfx/hcomm_channel_dump.h"
 
 namespace Mc2Hcomm {
-
-// shim 实现见 mc2/common/op_host/op_tiling/hcomm_dfx_shim.asc，由 CMake 在 CANN 包提供
-// adv_api/hcomm/dfx/hcomm_channel_dump.h 时编译一份并链接进 cust_opmaster；
-// 老版本 CANN 未链接时弱符号为空，触发 dump 时运行时优雅跳过
-extern "C" int32_t Mc2HcommChannelInfoDumpShim(uint64_t channel) __attribute__((weak));
 
 namespace HcommDfxDumpDetail {
 
@@ -60,7 +56,7 @@ inline int32_t DumpChannelInfoOnce(uint64_t channelHandle, const std::string &op
     if (GetHcommDfxState().dumpStarted.exchange(true)) {
         return 0;
     }
-    int32_t dumpRet = Mc2HcommChannelInfoDumpShim(channelHandle);
+    int32_t dumpRet = AscendC::HcommChannelInfoDump(channelHandle);
     OP_LOGE(opName.c_str(), "HcommChannelInfoDump ret=%d (deferred at host safe point, channelHandle=0x%lx)",
             dumpRet, channelHandle);
     return dumpRet;
@@ -101,13 +97,9 @@ inline void DumpWorker(uint64_t channelHandle, aclrtContext capturedCtx, int32_t
 }
 } // namespace HcommDfxDumpDetail
 
-// 在 host 安全点异步触发 hcomm channel dump；shim 未链接（老版本 CANN）时直接跳过
+// 在 host 安全点异步触发 hcomm channel dump。
 inline void TriggerDeferredDump(uint64_t channelHandle, int32_t deviceId, const char *opName)
 {
-    if (Mc2HcommChannelInfoDumpShim == nullptr) {
-        OP_LOGE(opName, "hcomm dfx shim not linked, skip dump");
-        return;
-    }
     OP_LOGE(opName, "Hcomm dump trigger deferred to host safe point, channelHandle=0x%lx", channelHandle);
     aclrtContext currentCtx = nullptr;
     (void)aclrtGetCurrentContext(&currentCtx);
