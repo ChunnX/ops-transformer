@@ -26,6 +26,8 @@
 #include "quant_lightning_indexer_v2_service_cube_arch35.h"
 #include "../quant_lightning_indexer_v2_metadata.h"
 
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_kernel_base_arch35.h"
+
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 using namespace matmul;
@@ -57,7 +59,9 @@ struct TempLoopInfo {
 };
 
 template <typename QLIV2T>
-class QLIV2Preload {
+class QLIV2Preload
+    : public LIV2Common::LightningIndexerV2KernelBase<QLIV2Preload<QLIV2T>> {
+    friend class LIV2Common::LightningIndexerV2KernelBase<QLIV2Preload<QLIV2T>>;
 public:
     __aicore__ inline QLIV2Preload(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
@@ -74,8 +78,8 @@ public:
     using K_T = typename QLIV2T::keyType;
     using OUT_T = typename QLIV2T::outputType;
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
+    static constexpr QLI_V2_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
+    static constexpr QLI_V2_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
     using W_T = typename QLIV2T::weightType;
     using SCORE_T = typename QLIV2T::scoreType;
     using SCALE_T = typename QLIV2T::scaleType;
@@ -154,7 +158,6 @@ protected:
 
     // ================================Init functions==================================
     __aicore__ inline void InitTilingData(const QLIV2TilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                                             __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
                                             __gm__ uint8_t *cmpResidualK);
@@ -170,7 +173,6 @@ protected:
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
-    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
                                                GlobalTensor<uint32_t> &cuSeqlensQGm, GlobalTensor<uint32_t> &sequsedQGm,
                                                uint32_t defaultSeqLen);
@@ -205,10 +207,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.maxSeqlenQ = tilingData->maxSeqlenQ;
     constInfo.quantMode = tilingData->quantMode;
     constInfo.outputLayout = Q_LAYOUT_T; // 输出和输入形状一致
-    if (Q_LAYOUT_T == LI_LAYOUT::TND) {
+    if (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
     }
-    if (K_LAYOUT_T == LI_LAYOUT::TND) {
+    if (K_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS2 = true;
     }
 
@@ -224,16 +226,6 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValue = tilingData->returnValue;
-}
-
-template <typename QLIV2T>
-__aicore__ inline void QLIV2Preload<QLIV2T>::InitBuffers()
-{
-    if ASCEND_IS_AIV {
-        vectorService.InitBuffers(pipe);
-    } else {
-        matmulService.InitBuffers(pipe);
-    }
 }
 
 template <typename QLIV2T>
@@ -269,13 +261,8 @@ __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetActualSeqLen(uint32_t bIdx, 
                                                                  GlobalTensor<uint32_t> &sequsedQGm,
                                                                  uint32_t defaultSeqLen)
 {
-    if (hasSequsedQ) {
-        return sequsedQGm.GetValue(bIdx);
-    } else if (hasCuSeqlensQ) {
-        return cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
-    } else {
-        return defaultSeqLen;
-    }
+    return LIV2Common::GetActualSeqLen(bIdx, hasCuSeqlensQ, hasSequsedQ, cuSeqlensQGm, sequsedQGm,
+                                      defaultSeqLen);
 }
 
 template <typename QLIV2T>
@@ -312,19 +299,8 @@ template <typename QLIV2T>
 __aicore__ inline uint32_t QLIV2Preload<QLIV2T>::GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size,
                                                                          uint32_t actS2SizeOrig)
 {
-    if (actS2SizeOrig / constInfo.cmpRatio == 0) {
-        return 0;
-    }
-    uint32_t s1Offset = constInfo.s1BaseSize * s1gIdx;
-    int32_t validS2LenBase =
-        static_cast<int32_t>(actS2SizeOrig) - static_cast<int32_t>(actS1Size); // 压缩前的validS2LenBase
-    int32_t validS2Len =
-        (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize)) /
-        static_cast<int32_t>(constInfo.cmpRatio);
-    validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig) / constInfo.cmpRatio);
-    validS2Len = Max(validS2Len, 1);
-    tempLoopInfo.validS2Len = validS2Len;
-    return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+    return LIV2Common::GetMaskedS2BaseBlockNum(s1gIdx, actS1Size, actS2SizeOrig, constInfo.s1BaseSize,
+        constInfo.cmpRatio, constInfo.s2BaseSize, &tempLoopInfo.validS2Len);
 }
 
 template <typename QLIV2T>
@@ -429,7 +405,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         ldInfo.mStart = metadataGm.GetValue(ldMstartIndex);
         ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
         uint64_t actualSeqQPrefixSum = 0;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
             actualSeqQPrefixSum = cuSeqlensQGm.GetValue(ldInfo.bIdx);
         } else { // BSND
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : static_cast<uint64_t>(ldInfo.bIdx) * constInfo.qSeqSize;
@@ -445,7 +421,7 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
-        if (constInfo.outputLayout == LI_LAYOUT::TND) {
+        if (constInfo.outputLayout == QLI_V2_LAYOUT::TND) {
             uint32_t tBase = cuSeqlensQGm.GetValue(bIdx);
             uint32_t s1Count = cuSeqlensQGm.GetValue(bIdx + 1) - tBase;
 
@@ -455,7 +431,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
                     static_cast<uint64_t>(n2Idx) * constInfo.sparseCount; // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
-        } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
+        } else if (constInfo.outputLayout == QLI_V2_LAYOUT::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
                 uint64_t indiceOutOffset =
@@ -547,15 +523,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
             matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
         }
     }
-    InitBuffers();
-}
-
-template <typename QLIV2T>
-__aicore__ inline void QLIV2Preload<QLIV2T>::GetBN2Idx(uint32_t bN2Idx)
-{
-    tempLoopInfo.bN2Idx = bN2Idx;
-    tempLoopInfo.bIdx = bN2Idx / constInfo.kHeadNum;
-    tempLoopInfo.n2Idx = bN2Idx % constInfo.kHeadNum;
+    this->InitBuffers();
 }
 
 template <typename QLIV2T>
@@ -587,7 +555,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcS2LoopParams(uint32_t bN2LoopId
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Preload<QLIV2T>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 {
-    GetBN2Idx(bN2LoopIdx);
+    this->GetBN2Idx(bN2LoopIdx);
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size, tempLoopInfo.actS2SizeOrig);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
@@ -603,7 +571,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcGS1LoopParams(uint32_t bN2LoopI
 
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::BSND) {
+    if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::BSND) {
         if (tempLoopInfo.gS1LoopEnd == gS1SplitNum - 1 && constInfo.qSeqSize > tempLoopInfo.actS1Size) {
             tempLoopInfo.needDealActS1LessThanS1 = true;
         }
@@ -658,7 +626,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     }
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
             actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.bIdx);
             if (hasSequsedQ) {
                 uint32_t curSequsedQ = sequsedQGm.GetValue(runInfo.bIdx);
@@ -695,7 +663,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         }
     }
     uint64_t actualSeqKPrefixSum;
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D, cu_seqlens_k
+    if constexpr (K_LAYOUT_T == QLI_V2_LAYOUT::TND) { // T N2 D, cu_seqlens_k
         actualSeqKPrefixSum = cuSeqlensKGm.GetValue(runInfo.bIdx);
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
@@ -854,6 +822,5 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessDecode()
         }
     }
 }
-
 } // namespace QLIV2Kernel
 #endif // QUANT_LIGHTNING_INDEXER_V2_KERNEL_H

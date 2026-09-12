@@ -99,8 +99,8 @@ private:
                                      const MmInfo &mmInfo, const QLIV2Common::RunInfo &runInfo);
     __aicore__ inline void CalcMmInfo(MmInfo &mmInfo, uint64_t loopIdx, uint64_t s1L0LoopCnt, const MmInfo &lastMmInfo,
                                       const QLIV2Common::RunInfo &runInfo);
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
+    static constexpr QLI_V2_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
+    static constexpr QLI_V2_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -204,7 +204,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ProcessQk(uint64_t s1gL0RealSize, ui
 {
     if (mmInfo.s1gL0LoopId == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % DOUBLE_BUF_NUM);
-        if constexpr (K_LAYOUT_T == LI_LAYOUT::PA_BBND) {
+        if constexpr (K_LAYOUT_T == QLI_V2_LAYOUT::PA_BBND) {
             KeyNd2NzForPA(mmInfo.s2L0RealSize, runInfo.s2Idx * constInfo_.s2BaseSize + mmInfo.s2GmOffset, runInfo);
         } else {
             KeyNd2Nz(mmInfo.s2L0RealSize, mmInfo, runInfo);
@@ -340,7 +340,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::KeyNd2Nz(uint64_t s2L1RealSize, cons
                                                      const QLIV2Common::RunInfo &runInfo)
 {
     uint64_t dStride = constInfo_.headDim;
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::BSND || K_LAYOUT_T == LI_LAYOUT::TND) {
+    if constexpr (K_LAYOUT_T == QLI_V2_LAYOUT::BSND || K_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         dStride = constInfo_.headDim * constInfo_.kHeadNum; // constInfo_.kHeadNum
     }
     Nd2NzParams nd2nzPara;
