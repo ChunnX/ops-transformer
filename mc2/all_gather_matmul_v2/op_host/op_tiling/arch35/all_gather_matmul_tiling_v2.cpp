@@ -224,8 +224,8 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
     // 单轮通信量 = 每轮切分的 tileM × K × dtypeSize（对齐 alltoall 口径），异常时回退默认算法
     uint64_t commDataBytes = tileMValue_ * args_.kValue * args_.inputDtypeSize;
-    OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, kValue=%llu, rankDim=%u, commEngine=%u", commDataBytes,
-            tileMValue_, args_.kValue, args_.rankDim, commEngine);
+    OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, kValue=%llu, rankDim=%u, commEngine=%u",
+            commDataBytes, tileMValue_, args_.kValue, args_.rankDim, commEngine);
     uint32_t algoCount = 0;
     const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
     std::string algConfig =
