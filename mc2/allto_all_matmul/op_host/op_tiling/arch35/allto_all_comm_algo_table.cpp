@@ -17,23 +17,29 @@ constexpr uint8_t ENGINE_AICPU = 2;
 constexpr uint8_t ENGINE_CCU = 6;
 constexpr uint64_t MAX_DATA_BYTES = ~0ULL;
 constexpr uint32_t MAX_RANK_SIZE = ~0U;
+constexpr uint32_t LARGE_DATA_BYTES = 256U * 1024U * 1024U;
 
 static constexpr Mc2Hcom::CommAlgoEntry ALLTOALL_COMM_ALGO_TABLE[] = {
-    // AICPU + CUSTOM + 单层 + 卡数[2,MAX] → AicpuAllToAllSoleMeshUBX
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 2, "AicpuAllToAllSoleMeshUBX"},
-    // AICPU + CUSTOM + 单层 + 卡数[2,MAX] → AicpuAllToAllSoleMeshConcurrent
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 1, "AicpuAllToAllSoleMeshConcurrent"},
+    // 高阶api具体算法未明确固定，当前暂时全走默认算法
+    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 3,
+     "AlltoAll=level0:fullmesh;level1:pairwise"},
+    // 高阶api具体算法未明确固定，当前暂时全走默认算法
+    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 3,
+     "AlltoAll=level0:fullmesh;level1:pairwise"},
+    // AICPU + CUSTOM + 单层 + 卡数[2,16] → AicpuAllToAllSoleMeshUBX
+    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 8, 16, 1, "AicpuAllToAllSoleMeshUBX"},
+    // AICPU + CUSTOM + 单层 + 卡数[2,8] → AicpuAllToAllSoleMeshConcurrent
+    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, 8, 2, "AicpuAllToAllSoleMeshConcurrent"},
     // AICPU + CUSTOM + 两层 + 卡数[2,MAX] → AicpuAllToAllSoleMeshSingleChannel
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 2,
+    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 2, 2, 0, LARGE_DATA_BYTES, 2, MAX_RANK_SIZE, 1,
      "AicpuAllToAllSoleMeshSingleChannel"},
     // AICPU + CUSTOM + 两层 + 卡数[2,MAX] → AicpuAllToAllSoleMesh
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 1, "AicpuAllToAllSoleMesh"},
-    // AICPU + CUSTOM + 两层 + 卡数[2,4] → AicpuAllToAllSoleMeshConcurrent
-    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, 4, 3, "AicpuAllToAllSoleMeshConcurrent"},
-    // CCU + CUSTOM + 单层 + 卡数[2,MAX] → CcuSchedAllToAllSoleMeshConcurrent
-    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 3, "CcuSchedAllToAllSoleMeshConcurrent"},
+    {ENGINE_AICPU, COMM_TOPO_CUSTOM, 2, 2, LARGE_DATA_BYTES, MAX_DATA_BYTES, 2, MAX_RANK_SIZE, 1,
+     "AicpuAllToAllSoleMesh"},
+    // CCU + CUSTOM + 单层 + 卡数[2,8] → CcuSchedAllToAllSoleMeshConcurrent
+    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 1, 0, MAX_DATA_BYTES, 2, 8, 1, "CcuSchedAllToAllSoleMeshConcurrent"},
     // CCU + CUSTOM + 两层 + 卡数[2,8] → CcuSchedAllToAllSoleMesh
-    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, 8, 3, "CcuSchedAllToAllSoleMesh"},
+    {ENGINE_CCU, COMM_TOPO_CUSTOM, 1, 2, 0, MAX_DATA_BYTES, 2, 8, 1, "CcuSchedAllToAllSoleMesh"},
 };
 
 const Mc2Hcom::CommAlgoEntry *GetAllToAllCommAlgoTable(uint32_t &count)
