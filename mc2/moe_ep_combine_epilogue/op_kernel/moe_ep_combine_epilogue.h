@@ -169,6 +169,7 @@ private:
     TBuf<> ubEndBuf_;
     TBuf<> rankOffsetsBuf_;
     TBuf<> metadataBuf_;
+    TBuf<> metadataBufB_;
     TBuf<> localRecvIdxBuf_;
     LocalTensor<int32_t> rankOffsetsTensor_;
 
@@ -313,6 +314,7 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
+    tpipe_->InitBuffer(metadataBufB_, metadataChunkBytes);
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
@@ -423,38 +425,75 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
         return;
     }
 
-    // Metadata is ordered by recvXIdx rather than destination token. Scan it once and build the lookup for this
-    // AIV's disjoint output-token range instead of rescanning the whole local-rank interval for every token.
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
-    DataCopyPadExtParams<int32_t> metadataPadParams{false, 0U, 0U, 0U};
-    for (uint64_t chunkStart = localMetadataBegin_; chunkStart < localMetadataEnd_;
-         chunkStart += metadataChunkTokens_) {
-        uint64_t chunkEnd = chunkStart + metadataChunkTokens_ < localMetadataEnd_ ? chunkStart + metadataChunkTokens_ :
-                                                                                    localMetadataEnd_;
-        uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
-        DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
-        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, metadataPadParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
+    const DataCopyPadExtParams<int32_t> metadataPadParams{false, 0U, 0U, 0U};
+
+    LocalTensor<int32_t> metaA = metadataBuf_.Get<int32_t>();
+    LocalTensor<int32_t> metaB = metadataBufB_.Get<int32_t>();
+
+    // Prefetch first chunk into bufA.
+    uint64_t chunkStart = localMetadataBegin_;
+    uint64_t chunkEnd =
+        chunkStart + metadataChunkTokens_ < localMetadataEnd_ ? chunkStart + metadataChunkTokens_ : localMetadataEnd_;
+    uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+    DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
+    DataCopyPad(metaA, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, metadataPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    bool useA = true;
+    while (chunkEnd < localMetadataEnd_) {
+        uint64_t nextStart = chunkEnd;
+        uint64_t nextEnd =
+            nextStart + metadataChunkTokens_ < localMetadataEnd_ ? nextStart + metadataChunkTokens_ : localMetadataEnd_;
+        uint32_t nextCount = static_cast<uint32_t>(nextEnd - nextStart);
+        LocalTensor<int32_t> &curBuf = useA ? metaA : metaB;
+        LocalTensor<int32_t> &prefetchBuf = useA ? metaB : metaA;
+        DataCopyExtParams nextCopy{1U, nextCount * metaBytesPerToken, 0U, 0U, 0U};
+        DataCopyPad(prefetchBuf, recvSrcMetadataGm_[nextStart * RECV_META_FIELDS], nextCopy, metadataPadParams);
+
         for (uint32_t i = 0U; i < chunkCount; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
-            int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            int32_t srcTokenIdx = curBuf.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
             if (srcTokenIdx < static_cast<int32_t>(tStart_) || srcTokenIdx >= static_cast<int32_t>(tEnd_)) {
                 continue;
             }
-            int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
-            int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+            int32_t srcTopKIdx = curBuf.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            int32_t recvXIdx = curBuf.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
             if (srcTopKIdx < 0 || srcTopKIdx >= static_cast<int32_t>(topK_) || recvXIdx < 0 ||
                 static_cast<uint64_t>(recvXIdx) >= actualA_) {
                 continue;
             }
-
             uint32_t lookupIndex =
                 (static_cast<uint32_t>(srcTokenIdx) - tStart_) * topK_ + static_cast<uint32_t>(srcTopKIdx);
             localRecvIdxTensor_.SetValue(lookupIndex, recvXIdx);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        useA = !useA;
+        chunkStart = nextStart;
+        chunkEnd = nextEnd;
+        chunkCount = nextCount;
     }
+
+    LocalTensor<int32_t> &lastBuf = useA ? metaA : metaB;
+    for (uint32_t i = 0U; i < chunkCount; ++i) {
+        uint32_t metaOffset = i * RECV_META_FIELDS;
+        int32_t srcTokenIdx = lastBuf.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+        if (srcTokenIdx < static_cast<int32_t>(tStart_) || srcTokenIdx >= static_cast<int32_t>(tEnd_)) {
+            continue;
+        }
+        int32_t srcTopKIdx = lastBuf.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+        int32_t recvXIdx = lastBuf.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+        if (srcTopKIdx < 0 || srcTopKIdx >= static_cast<int32_t>(topK_) || recvXIdx < 0 ||
+            static_cast<uint64_t>(recvXIdx) >= actualA_) {
+            continue;
+        }
+        uint32_t lookupIndex =
+            (static_cast<uint32_t>(srcTokenIdx) - tStart_) * topK_ + static_cast<uint32_t>(srcTopKIdx);
+        localRecvIdxTensor_.SetValue(lookupIndex, recvXIdx);
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE2>();
 }
 
 template <TemplateMoeEpCombineEpilogueTypeClass>
