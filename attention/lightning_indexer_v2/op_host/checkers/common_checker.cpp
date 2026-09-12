@@ -288,7 +288,7 @@ ge::graphStatus CommonChecker::CheckMainShapes(const LightningIndexerV2CheckerIn
     }
     if (k.GetDim(kN) != K_HEAD_COUNT) {
         const std::string actual = ShapeToString(info.key);
-        LogInvalidShape(info, "k", actual, "The head count of k must be 1");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "k", actual.c_str(), "The head count of k must be 1");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -336,7 +336,7 @@ ge::graphStatus CommonChecker::CheckMultiPara(const LightningIndexerV2CheckerInf
     }
     if (info.metadata.IsPresent() && info.metadata.GetShape()->GetShapeSize() != METADATA_SIZE) {
         const std::string actual = ShapeToString(info.metadata);
-        LogInvalidShape(info, "metadata", actual, "Metadata size must be 1024");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "metadata", actual.c_str(), "Metadata size must be 1024");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

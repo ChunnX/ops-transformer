@@ -81,7 +81,8 @@ ge::graphStatus QLIV2VariantChecker::CheckScaleShape(const LightningIndexerV2Che
     if (info.quantMode == QUANT_MODE_HIFLOAT8) {
         if (scaleShape.GetDimNum() != SCALAR_RANK || scaleShape.GetDim(SCALAR_AXIS) != 1) {
             const std::string actual = ShapeToString(scale);
-            LogInvalidShape(info, scaleName, actual, "The scale shape must be [1] when quant_mode is 4");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, scaleName, actual.c_str(),
+                                                  "The scale shape must be [1] when quant_mode is 4");
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -114,7 +115,7 @@ ge::graphStatus QLIV2VariantChecker::CheckScaleShape(const LightningIndexerV2Che
             scaleShape.GetDim(inputRank - 1U) != scaleD || scaleShape.GetDim(inputRank) != MX_E8M0_SCALE_PACK_NUM) {
             const std::string actual = ShapeToString(scale);
             const std::string reason = "The last two scale dimensions must be [head_dim/64, 2] in MX mode";
-            LogInvalidShape(info, scaleName, actual, reason);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, scaleName, actual.c_str(), reason.c_str());
             return ge::GRAPH_FAILED;
         }
     }
