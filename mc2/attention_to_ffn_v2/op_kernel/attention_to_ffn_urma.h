@@ -100,6 +100,7 @@ struct AttentionToFfnTokenMetaData {
     int32_t localExpId;
     GM_ADDR remoteDataAddr;
     GM_ADDR remoteFlagAddr;
+    GM_ADDR localDataAddr;
 };
 
 #define TemplateAttentionToFfnUrmaTypeClass \
@@ -124,7 +125,6 @@ public:
 
 private:
     __aicore__ inline void HcommInit();
-    __aicore__ inline void InitLocalFlag();
     __aicore__ inline void ReadTokenMetaData(AttentionToFfnTokenMetaData &metaData, uint32_t tokenOffset);
     __aicore__ inline GM_ADDR GetWindowAddr(int32_t rankId);
     __aicore__ inline uint64_t GetUrmaCommHandle(uint32_t dstRank);
@@ -133,7 +133,7 @@ private:
     __aicore__ inline void StageRemoteData(const AttentionToFfnTokenMetaData &metaData,
                                            const DataCopyExtParams &xCopyParams, uint32_t tokenOffset);
     __aicore__ inline void AppendRemoteDataWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteDataAddr,
-                                                 uint32_t sourceTokenOffset, bool enableCqe);
+                                                 GM_ADDR sourceDataAddr, bool enableCqe);
     __aicore__ inline void AppendRemoteFlagWrite(HcommBatchHandle &batchHandle, GM_ADDR remoteFlagAddr,
                                                  uint32_t sourceTokenOffset, bool enableCqe);
     __aicore__ inline void CommitAndDrainChannel(HcommBatchHandle &batchHandle, uint64_t channel,
@@ -152,7 +152,6 @@ private:
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 
-    GM_ADDR localDataAddr_{nullptr};
     GM_ADDR localFlagAddr_{nullptr};
     GM_ADDR layerFlagAddr_{nullptr};
     GM_ADDR syncStatusWorkspaceGM_{nullptr};
@@ -235,7 +234,6 @@ private:
     uint32_t aivWorkspaceOffset_{0};
     uint64_t hSize_{0};
     uint64_t hCommuSize_{0};
-    uint64_t dataWorkspaceStride_{0};
     uint64_t layIdsExpRankTableOffset_{0};
     uint64_t winTokenDataOffset_{0};
     uint64_t winInfoTableOffset_{0};
@@ -341,11 +339,16 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
         (static_cast<uint64_t>(sessionId_) * microBatchNum_ * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_) +
         (static_cast<uint64_t>(microBatchId_) * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_);
 
-    dataWorkspaceStride_ = Ceil(hCommuSize_, static_cast<uint64_t>(URMA_FLAG_SLOT_SIZE)) * URMA_FLAG_SLOT_SIZE;
-    const uint64_t urmaWorkspaceOffset = tilingData->attentionToFfnV2Info.urmaWorkspaceOffset;
-    const uint64_t totalSendNum = static_cast<uint64_t>(axisX_) * axisBS_ * (axisK_ + sharedExpertNum_);
-    localDataAddr_ = workspaceGM + urmaWorkspaceOffset;
-    localFlagAddr_ = workspaceGM + urmaWorkspaceOffset + totalSendNum * dataWorkspaceStride_;
+    // All URMA staging sources live in the rank's own window (persistent across op invocations):
+    // fire-and-forget WQEs may still be in flight after this kernel exits, so the per-call
+    // workspace cannot back them. Token data is mirrored into own-session data slots; token/layer
+    // flags use a dedicated area right after the token-data region, clear of the info-table region
+    // that SetFlagInAttn's die writes touch while WQEs are in flight.
+    const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
+    const uint64_t dataRegionSize = static_cast<uint64_t>(attentionWorkerNum_) * microBatchNum_ * axisBS_ *
+                                    (axisK_ + sharedExpertNum_) * axisHS_ * elementSize;
+    GM_ADDR selfWinAddr = GetWindowAddr(static_cast<int32_t>(rankId_));
+    localFlagAddr_ = selfWinAddr + winOffset_[1] + Ceil(dataRegionSize, static_cast<uint64_t>(WIN_ALIGN)) * WIN_ALIGN;
     layerFlagAddr_ = localFlagAddr_ + static_cast<uint64_t>(expertIdsCnt_) * URMA_FLAG_SLOT_SIZE;
 }
 
@@ -580,18 +583,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::H
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
-__aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::InitLocalFlag()
-{
-    constexpr uint32_t flagSlotElementNum = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
-    Duplicate<int32_t>(statusTensor_, URMA_FLAG_VALUE, flagSlotElementNum);
-    SyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> localFlagGMTensor;
-    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(layerFlagAddr_));
-    DataCopy(localFlagGMTensor, statusTensor_, flagSlotElementNum);
-    PipeBarrier<PIPE_MTE3>();
-}
-
-template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline GM_ADDR AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::GetWindowAddr(int32_t rankId)
 {
     return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
@@ -623,12 +614,14 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
     metaData.localExpId = localExpId_;
 
     GM_ADDR toRankAddr = GetWindowAddr(metaData.toRankId);
+    GM_ADDR selfRankAddr = GetWindowAddr(static_cast<int32_t>(rankId_));
     uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
     uint64_t tokenDataOffset = winTokenDataOffset_ +
                                (static_cast<uint64_t>(metaData.tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
                                (static_cast<uint64_t>(metaData.topkId) * axisHS_);
     metaData.remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
     metaData.remoteFlagAddr = toRankAddr + winInfoTableOffset_ + (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
+    metaData.localDataAddr = selfRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -679,7 +672,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
     DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams hCommuCopyParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
     DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
-    const uint64_t dataBufOffset = static_cast<uint64_t>(tokenOffset) * dataWorkspaceStride_;
     const uint64_t flagBufOffset = static_cast<uint64_t>(tokenOffset) * URMA_FLAG_SLOT_SIZE;
 
     if constexpr (QuantMode == 0) {
@@ -688,7 +680,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         xQueue_.EnQue(xTmpTensor_);
         xTmpTensor_ = xQueue_.DeQue<XType>();
         GlobalTensor<XType> localDataGMTensor;
-        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(localDataAddr_ + dataBufOffset));
+        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(metaData.localDataAddr));
         DataCopyPad(localDataGMTensor, xTmpTensor_, xCopyParams);
         xQueue_.FreeTensor<XType>(xTmpTensor_);
     } else {
@@ -699,7 +691,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         xOutTensor_ = xOutQueue_.AllocTensor<StorageXOutType>();
         QuantProcess(dstExpertId_);
         GlobalTensor<uint8_t> localDataGMTensor;
-        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(localDataAddr_ + dataBufOffset));
+        localDataGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(metaData.localDataAddr));
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<StorageXOutType>();
         auto xOutBytesTensor = xOutTensor_.template ReinterpretCast<uint8_t>();
@@ -718,9 +710,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
 
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::AppendRemoteDataWrite(
-    HcommBatchHandle &batchHandle, GM_ADDR remoteDataAddr, uint32_t sourceTokenOffset, bool enableCqe)
+    HcommBatchHandle &batchHandle, GM_ADDR remoteDataAddr, GM_ADDR sourceDataAddr, bool enableCqe)
 {
-    GM_ADDR sourceDataAddr = localDataAddr_ + static_cast<uint64_t>(sourceTokenOffset) * dataWorkspaceStride_;
     if (enableCqe) {
         hcomm_.WriteNbi<REMOTE_DATA_CQE_WQE_CONFIG>(batchHandle, remoteDataAddr, sourceDataAddr,
                                                     static_cast<int64_t>(hCommuSize_));
@@ -734,8 +725,7 @@ template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::AppendRemoteFlagWrite(
     HcommBatchHandle &batchHandle, GM_ADDR remoteFlagAddr, uint32_t sourceTokenOffset, bool enableCqe)
 {
-    GM_ADDR sourceFlagAddr =
-        localFlagAddr_ + static_cast<uint64_t>(sourceTokenOffset) * URMA_FLAG_SLOT_SIZE;
+    GM_ADDR sourceFlagAddr = localFlagAddr_ + static_cast<uint64_t>(sourceTokenOffset) * URMA_FLAG_SLOT_SIZE;
     if (enableCqe) {
         hcomm_.WriteNbi<REMOTE_ORDERED_FLAG_CQE_WQE_CONFIG>(batchHandle, remoteFlagAddr, sourceFlagAddr,
                                                             static_cast<int64_t>(sizeof(int32_t)));
@@ -874,7 +864,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
 {
     if ASCEND_IS_AIV {
         HcommInit();
-        InitLocalFlag();
 
         if constexpr (isActiveMask) {
             ActiveMaskCalCnt();
@@ -945,7 +934,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                         continue;
                     }
                     const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
-                    AppendRemoteDataWrite(batchHandle, metaData.remoteDataAddr, tokenOffset, enableCqe);
+                    AppendRemoteDataWrite(batchHandle, metaData.remoteDataAddr, metaData.localDataAddr, enableCqe);
                     ++preparedWqeCount;
                     ++sqWriteCount;
                     if (enableCqe) {
