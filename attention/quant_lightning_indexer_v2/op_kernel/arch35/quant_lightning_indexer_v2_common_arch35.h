@@ -83,8 +83,8 @@ struct ConstInfo : LIV2Common::LightningIndexerV2ConstInfoBase<LI_LAYOUT> {
     static constexpr uint32_t QLIV2_SYNC_MODE4 = SYNC_MODE4;
     static constexpr uint16_t NEG_INF_BFLOAT = 0xFF80;
 
-    uint32_t mBaseSizeMax = 1U;
     uint64_t sparseCount;
+    uint32_t mBaseSizeMax = 1U;
     uint32_t cmpRatio = 1U;
     uint32_t keyDequantScaleStride0 = 0U;
     int32_t maxSeqlenQ = -1;
