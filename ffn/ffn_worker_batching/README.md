@@ -237,9 +237,9 @@ struct ScheduleContext {
 
 ## arch35 Torch 接口
 
-`cann_ops_transformer.ffn_worker_batching` 返回 8 个输出，支持六种 token_dtype、NORM、同步/异步 RECV，以及 Meta/FakeTensor 元数据推导。FP4 返回 PyTorch 打包形状 `[Y,H/2]`。六种 dtype 支持固定形状 `torch.compile(backend="npugraph_ex", fullgraph=True, dynamic=False)` 推理图；MX 使用 `mx_output_uint8=True`，以 uint8 传递 E8M0 scale 和 FP4 打包输出。默认 eager 保留原生 dtype；当前不支持 TorchAir GE 后端。
+`cann_ops_transformer.ops.ffn_worker_batching` 返回 8 个输出，支持六种 token_dtype、NORM、同步/异步 RECV，以及 Meta/FakeTensor 元数据推导。FP4 返回 PyTorch 打包形状 `[Y,H/2]`。六种 dtype 支持固定形状 `torch.compile(backend="npugraph_ex", fullgraph=True, dynamic=False)` 推理图；MX 使用 `mx_output_uint8=True`，以 uint8 传递 E8M0 scale 和 FP4 打包输出。默认 eager 保留原生 dtype；当前不支持 TorchAir GE 后端。
 
-- [Torch 接口文档](../../torch_extension/cann_ops_transformer/docs/zh/ffn_worker_batching.md)：安装、参数、设备指针生命周期、流约定与真实地址示例。
+- [Torch 接口文档](docs/torchapi_ffn_worker_batching.md)：安装、参数、设备指针生命周期、流约定与真实地址示例。
 - [Torch 验证报告](docs/arch35_torch_validation.md)、[测试脚本](tests/st/arch35/verify_torch_interface.py)。
 
 - [图模式验证报告](docs/arch35_torch_graph_validation.md)、[图模式测试脚本](tests/st/arch35/verify_torch_graph.py)。
