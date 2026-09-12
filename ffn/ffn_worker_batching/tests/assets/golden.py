@@ -26,6 +26,8 @@ pinned to 1 per case (TTK's default 3 would hang on the second run).
 
 import atexit
 import ctypes
+import json
+import os
 import struct
 import numpy as np
 import torch
@@ -40,8 +42,35 @@ __spec__ = {
 
 _DATA_CACHE = {}
 _HBM_ALLOCS = []
+_HBM_VIEWS = {}  # actual suballocation address -> payload size, for replay validation
 _ACL_LIB = None
 _MASK_VALUE = 1000000
+# ScheduleContext ABI v1, defined by common/include/op_kernel/attention_ffn_schedule.h.
+_SCHEDULE_CONTEXT_BYTES = 1024
+_CONTEXT_ARCHIVE_VERSION = 1
+_TOKEN_STRIDE_ALIGNMENT = 512
+_HBM_ALLOCATION_ALIGNMENT = (
+    512  # Allocation alignment and row stride are separate contracts.
+)
+_ACL_MEMCPY_HOST_TO_DEVICE = 1
+_ACL_MEMCPY_DEVICE_TO_HOST = 2
+_NUM_OUTPUTS = 8
+_OUT_Y = 0
+_OUT_GROUP_LIST = 1
+_OUT_SESSION_IDS = 2
+_OUT_MICRO_BATCH_IDS = 3
+_OUT_TOKEN_IDS = 4
+_OUT_EXPERT_OFFSETS = 5
+_OUT_SCALE = 6
+_OUT_TOKEN_COUNT = 7
+_TOKEN_PREFIX_OUTPUTS = (
+    _OUT_Y,
+    _OUT_SESSION_IDS,
+    _OUT_MICRO_BATCH_IDS,
+    _OUT_TOKEN_IDS,
+    _OUT_EXPERT_OFFSETS,
+    _OUT_SCALE,
+)
 
 # ---- ScheduleContext byte offsets ----
 _OFF_SESSION_NUM = 0
@@ -122,7 +151,9 @@ def _hbm_alloc(size):
     global _HBM_BASE, _HBM_OFFSET, _HBM_CAP
     lib = _load_acl()
     _ensure_device(lib)
-    aligned_size = (size + 511) & ~511
+    aligned_size = (size + (_HBM_ALLOCATION_ALIGNMENT - 1)) & ~(
+        _HBM_ALLOCATION_ALIGNMENT - 1
+    )
     if _HBM_BASE is None or _HBM_OFFSET + aligned_size > _HBM_CAP:
         # 超过默认块大小的缓冲（如 a4/h8192 的 token_data）整块独立分配
         cap = max(_HBM_BLOCK_SIZE, aligned_size)
@@ -136,6 +167,7 @@ def _hbm_alloc(size):
         _HBM_ALLOCS.append(_HBM_BASE)
     addr = _HBM_BASE + _HBM_OFFSET
     _HBM_OFFSET += aligned_size
+    _HBM_VIEWS[addr] = size
     return addr
 
 
@@ -147,7 +179,9 @@ def _hbm_copy(host_data, hbm_ptr):
         buf = bytes(host_data)
     else:
         buf = host_data
-    ret = lib.aclrtMemcpy(hbm_ptr, len(buf), ctypes.c_char_p(buf), len(buf), 1)
+    ret = lib.aclrtMemcpy(
+        hbm_ptr, len(buf), ctypes.c_char_p(buf), len(buf), _ACL_MEMCPY_HOST_TO_DEVICE
+    )
     if ret != 0:
         raise RuntimeError(f"aclrtMemcpy H2D failed: ret={ret}")
     lib.aclrtMemInvalidate(ctypes.c_void_p(hbm_ptr), len(buf))
@@ -165,9 +199,105 @@ def _cleanup_hbm():
         except Exception:
             pass
     _HBM_ALLOCS.clear()
+    _HBM_VIEWS.clear()
     _HBM_BASE = None
     _HBM_OFFSET = 0
     _HBM_CAP = 0
+
+
+def _context_buffer_offsets(need_schedule):
+    return (
+        (_OFF_FFN_TOKEN_DATA_BUF, _OFF_FFN_TOKEN_INFO_BUF)
+        if need_schedule
+        else (
+            _OFF_FFN_TOKEN_DATA_BUF,
+            _OFF_SESSION_IDS_BUF,
+            _OFF_MICRO_BATCH_IDS_BUF,
+            _OFF_EXPERT_IDS_BUF,
+        )
+    )
+
+
+def validate_live_context(header, need_schedule=0):
+    """Reject a plain dump from another process before dereferencing its pointers."""
+    header = np.asarray(header, dtype=np.int8).reshape(-1)
+    if header.size < _SCHEDULE_CONTEXT_BYTES:
+        raise ValueError("schedule_context needs at least 1024 bytes")
+    for offset in _context_buffer_offsets(need_schedule):
+        pointer, size = struct.unpack_from("<QQ", header, offset)
+        if not size or _HBM_VIEWS.get(pointer) != size:
+            raise ValueError(
+                "raw context replay has no live secondary buffers; "
+                "save with FFN_WB_SAVE_ARCHIVE and restore with FFN_WB_REPLAY_ARCHIVE"
+            )
+
+
+def save_context_archive(path, header, attributes):
+    """Save payloads as well as metadata; archived addresses are deliberately zero.
+
+    Only buffers owned by this TestSpec can be saved. This prevents accidentally
+    reading stale addresses from an ordinary input dump. Synchronize before D2H
+    so the archive represents completed input preparation, not queued writes.
+    """
+    header = (
+        np.asarray(header, dtype=np.int8).reshape(-1)[:_SCHEDULE_CONTEXT_BYTES].copy()
+    )
+    mode = attributes["need_schedule"]
+    validate_live_context(header, mode)
+    lib = _load_acl()
+    ret = lib.aclrtSynchronizeDevice()
+    if ret:
+        raise RuntimeError(f"archive synchronize failed: {ret}")
+    records = {
+        "version": np.array([_CONTEXT_ARCHIVE_VERSION], dtype=np.int64),
+        "attributes": np.frombuffer(
+            json.dumps(attributes, sort_keys=True).encode(), dtype=np.uint8
+        ),
+    }
+    for offset in _context_buffer_offsets(mode):
+        pointer, size = struct.unpack_from("<QQ", header, offset)
+        payload = np.empty(size, dtype=np.uint8)
+        ret = lib.aclrtMemcpy(
+            payload.ctypes.data, size, pointer, size, _ACL_MEMCPY_DEVICE_TO_HOST
+        )
+        if ret:
+            raise RuntimeError(f"archive D2H failed: {ret}")
+        records[f"buffer_{offset}"] = payload
+        struct.pack_into("<Q", header, offset, 0)
+    records["header"] = header
+    with open(path, "wb") as stream:
+        np.savez(stream, **records)
+
+
+def restore_context_archive(path, expected_attributes=None):
+    """Allocate fresh HBM and relocate the header; never reuse saved addresses."""
+    with np.load(path, allow_pickle=False) as archive:
+        if archive["version"].tolist() != [_CONTEXT_ARCHIVE_VERSION]:
+            raise ValueError("unsupported FFN context archive version")
+        attributes = json.loads(archive["attributes"].tobytes())
+        if expected_attributes is not None and attributes != expected_attributes:
+            raise ValueError("FFN context archive attributes mismatch")
+        header = archive["header"].copy()
+        if header.dtype != np.int8 or header.shape != (_SCHEDULE_CONTEXT_BYTES,):
+            raise ValueError("invalid FFN context archive header")
+        # Validate every payload before starting any allocation/copy.
+        offsets = _context_buffer_offsets(attributes["need_schedule"])
+        for offset in offsets:
+            pointer, size = struct.unpack_from("<QQ", header, offset)
+            payload = archive[f"buffer_{offset}"]
+            if (
+                pointer != 0
+                or size <= 0
+                or payload.dtype != np.uint8
+                or payload.shape != (size,)
+            ):
+                raise ValueError("invalid FFN context archive buffer")
+        for offset in offsets:
+            payload = archive[f"buffer_{offset}"]
+            pointer = _hbm_alloc(payload.size)
+            _hbm_copy(payload, pointer)
+            struct.pack_into("<Q", header, offset, pointer)
+    return header, attributes
 
 
 _ORIG_RUN_TIME = None
@@ -321,6 +451,32 @@ def _build_token_info_buf(expert_ids, A, M, BS, K):
 # ==================== Golden helpers ====================
 
 EXPERT_MASK_VALUE = 1000000
+# ScheduleContext ABI v1, defined by common/include/op_kernel/attention_ffn_schedule.h.
+_SCHEDULE_CONTEXT_BYTES = 1024
+_CONTEXT_ARCHIVE_VERSION = 1
+_TOKEN_STRIDE_ALIGNMENT = 512
+_HBM_ALLOCATION_ALIGNMENT = (
+    512  # Allocation alignment and row stride are separate contracts.
+)
+_ACL_MEMCPY_HOST_TO_DEVICE = 1
+_ACL_MEMCPY_DEVICE_TO_HOST = 2
+_NUM_OUTPUTS = 8
+_OUT_Y = 0
+_OUT_GROUP_LIST = 1
+_OUT_SESSION_IDS = 2
+_OUT_MICRO_BATCH_IDS = 3
+_OUT_TOKEN_IDS = 4
+_OUT_EXPERT_OFFSETS = 5
+_OUT_SCALE = 6
+_OUT_TOKEN_COUNT = 7
+_TOKEN_PREFIX_OUTPUTS = (
+    _OUT_Y,
+    _OUT_SESSION_IDS,
+    _OUT_MICRO_BATCH_IDS,
+    _OUT_TOKEN_IDS,
+    _OUT_EXPERT_OFFSETS,
+    _OUT_SCALE,
+)
 
 
 def _get_cached_data(testcase_name, **gen_kwargs):
@@ -458,7 +614,17 @@ class AclnnFfnWorkerBatchingTestSpec:
         td_arr = _build_token_data_bytes(
             token_data, token_scales, tokenDtype, A, M, BS, K, H
         )
-        td_bytes = td_arr.tobytes()
+        # Physical token stride follows the producer ABI. Keep scale immediately
+        # after the payload and zero only the remaining 512-byte stride padding.
+        payload = np.ascontiguousarray(td_arr).view(np.uint8).reshape(A, M, BS, K, HS)
+        HS = (
+            (HS + (_TOKEN_STRIDE_ALIGNMENT - 1))
+            // _TOKEN_STRIDE_ALIGNMENT
+            * _TOKEN_STRIDE_ALIGNMENT
+        )
+        padded = np.zeros((A, M, BS, K, HS), dtype=np.uint8)
+        padded[..., : payload.shape[-1]] = payload
+        td_bytes = padded.tobytes()
 
         # 真实地址协议：辅助数据放独立 HBM 缓冲，context 仅保留 1024B 头部并写入
         # 绝对设备地址（生产二级指针寻址路径）；不写 TEST_MAGIC，偏移 640 保持 0。
@@ -584,6 +750,11 @@ class AclnnFfnWorkerBatchingTestSpec:
             HS = (H // 2 if tokenDtype == 5 else H) + (H + 31) // 32
         else:
             HS = H + 4
+        HS = (
+            (HS + (_TOKEN_STRIDE_ALIGNMENT - 1))
+            // _TOKEN_STRIDE_ALIGNMENT
+            * _TOKEN_STRIDE_ALIGNMENT
+        )
         data = _get_cached_data(
             testcase_name,
             A=A,
@@ -710,9 +881,16 @@ class AclnnFfnWorkerBatchingTestSpec:
 
     @staticmethod
     def compare(*outputs, **kwargs):
-        num_outputs = len(outputs) // 2
-        npu_outputs = outputs[:num_outputs]
-        golden_outputs = outputs[num_outputs:]
+        # 接口固定返回八个张量。先验证数量和元数据，不能通过截短到 min(size)
+        # 来比较，否则空输出/缺行输出会因“没有发现不同元素”而被误判为通过。
+        def failure(message):
+            return {"pass": False, "precision": "0%", "error_info": message}
+
+        if len(outputs) != 2 * _NUM_OUTPUTS:
+            return [
+                failure("expected 8 NPU outputs and 8 golden outputs")
+                for _ in range(_NUM_OUTPUTS)
+            ]
 
         def to_np(t):
             if isinstance(t, torch.Tensor):
@@ -724,85 +902,49 @@ class AclnnFfnWorkerBatchingTestSpec:
                 return array
             return np.asarray(t)
 
-        actual_token_num = int(to_np(golden_outputs[7]).flat[0])
-        has_scale = to_np(golden_outputs[0]).dtype.name not in ("float16", "bfloat16")
+        npu_outputs = [to_np(t) for t in outputs[:_NUM_OUTPUTS]]
+        golden_outputs = [to_np(t) for t in outputs[_NUM_OUTPUTS:]]
+        actual_token_num = int(golden_outputs[_OUT_TOKEN_COUNT].flat[0])
+        has_scale = golden_outputs[_OUT_Y].dtype.name not in ("float16", "bfloat16")
         results = []
-        for idx in range(num_outputs):
-            if idx == 6 and not has_scale:
+        for idx, (npu, gold) in enumerate(zip(npu_outputs, golden_outputs)):
+            if npu.shape != gold.shape or npu.dtype != gold.dtype:
+                results.append(
+                    failure(
+                        f"metadata mismatch [idx={idx}]: {npu.shape}/{npu.dtype} "
+                        f"!= {gold.shape}/{gold.dtype}"
+                    )
+                )
+                continue
+            # FP16/BF16 没有 scale 载荷，只有数值内容未定义；张量元数据仍须正确。
+            if idx == _OUT_SCALE and not has_scale:
                 results.append({"pass": True, "precision": "100%", "error_info": None})
                 continue
-            npu = to_np(npu_outputs[idx])
-            gold = to_np(golden_outputs[idx])
+            # y/索引/scale 只保证有效 token 前缀，容量尾部允许未写入。
+            # group_list 则要求所有未使用行清零，尤其全 mask 场景不能直接 PASS。
+            if idx in _TOKEN_PREFIX_OUTPUTS:
+                if not 0 <= actual_token_num <= gold.shape[0]:
+                    results.append(failure(f"invalid golden token count [idx={idx}]"))
+                    continue
+                npu = npu[:actual_token_num]
+                gold = gold[:actual_token_num]
             if any(
                 kind in gold.dtype.name for kind in ("float8", "float4", "bfloat16")
             ):
                 npu = npu.view(np.uint8)
                 gold = gold.view(np.uint8)
-            if idx == 1:
-                npu_arr = npu.reshape(-1, 2)
-                gold_arr = gold.reshape(-1, 2)
-                valid = 0
-                for row in gold_arr:
-                    if row[0] == 0 and row[1] == 0:
-                        break
-                    valid += 1
-                if valid == 0:
-                    passed = True
-                    precision = "100%"
-                else:
-                    match = int(np.sum(npu_arr[:valid] == gold_arr[:valid]))
-                    total = valid * 2
-                    passed = match == total
-                    precision = f"{match / total * 100}%"
-                results.append(
-                    {
-                        "pass": passed,
-                        "precision": precision,
-                        "error_info": None if passed else "group_list mismatch",
-                    }
-                )
-            elif idx in (0, 2, 3, 4, 5, 6):
-                npu_flat = npu.flatten()
-                gold_flat = gold.flatten()
-                n = (
-                    actual_token_num * (npu.shape[-1] if npu.ndim > 1 else 1)
-                    if idx in (0, 6)
-                    else actual_token_num
-                )
-                n = min(n, npu_flat.size)
-                diff = int(np.sum(npu_flat[:n] != gold_flat[:n]))
-                passed = diff == 0
-                precision = f"{(n - diff) / n * 100}%" if n > 0 else "100%"
-                results.append(
-                    {
-                        "pass": passed,
-                        "precision": precision,
-                        "error_info": None
-                        if passed
-                        else f"{diff} mismatches [idx={idx}]",
-                    }
-                )
-            else:
-                npu_flat = npu.flatten()
-                gold_flat = gold.flatten()
-                if npu_flat.size != gold_flat.size:
-                    n = min(npu_flat.size, gold_flat.size)
-                    diff = int(np.sum(npu_flat[:n] != gold_flat[:n]))
-                    total = n
-                else:
-                    diff = int(np.sum(npu_flat != gold_flat))
-                    total = npu_flat.size
-                passed = diff == 0
-                precision = f"{(total - diff) / total * 100}%" if total > 0 else "100%"
-                results.append(
-                    {
-                        "pass": passed,
-                        "precision": precision,
-                        "error_info": None
-                        if passed
-                        else f"{diff} mismatches [idx={idx}]",
-                    }
-                )
+            diff = int(np.count_nonzero(npu != gold))
+            total = gold.size
+            passed = diff == 0
+            results.append(
+                {
+                    "pass": passed,
+                    "precision": f"{(total - diff) / total * 100}%"
+                    if total
+                    else "100%",
+                    "error_info": None if passed else f"{diff} mismatches [idx={idx}]",
+                }
+            )
         return results
 
 
@@ -812,6 +954,49 @@ class TorchFfnWorkerBatchingTestSpec:
     RECV consumes descriptors and cannot safely use TTK's default repeated runs.
     Its real-pointer publication/replay tests live in verify_torch_*.py.
     """
+
+    @staticmethod
+    def npu_preprocess(
+        schedule_context,
+        expert_num,
+        max_out_shape,
+        *,
+        token_dtype=0,
+        need_schedule=0,
+        layer_num=0,
+        sync_flag=0,
+        mx_output_uint8=False,
+        **kwargs,
+    ):
+        # TTK manual input files contain only the context tensor. A fresh worker
+        # must restore an explicit archive before invoking the pointer-bearing
+        # operator; accepting the old process's raw addresses risks invalid DMA.
+        attributes = dict(
+            expert_num=expert_num,
+            max_out_shape=list(max_out_shape),
+            token_dtype=token_dtype,
+            need_schedule=need_schedule,
+            layer_num=layer_num,
+            sync_flag=sync_flag,
+            mx_output_uint8=mx_output_uint8,
+        )
+        archive = os.getenv("FFN_WB_REPLAY_ARCHIVE")
+        if archive:
+            header, _ = restore_context_archive(archive, attributes)
+            schedule_context.reshape(-1)[:_SCHEDULE_CONTEXT_BYTES].copy_(
+                torch.from_numpy(header)
+            )
+        else:
+            header = (
+                schedule_context.reshape(-1)[:_SCHEDULE_CONTEXT_BYTES]
+                .detach()
+                .cpu()
+                .numpy()
+            )
+            validate_live_context(header, need_schedule)
+        archive = os.getenv("FFN_WB_SAVE_ARCHIVE")
+        if archive:
+            save_context_archive(archive, header, attributes)
 
     @staticmethod
     def customize_inputs(
@@ -830,12 +1015,10 @@ class TorchFfnWorkerBatchingTestSpec:
             raise ValueError(
                 "TTK Torch cases require need_schedule=0; use verify_torch_*.py for RECV"
             )
-        # The complete buffer must be inside the logical shape so H2D and graph
-        # copies preserve auxiliary data, not merely the 1024-byte header.
-        if schedule_context.numel() < 1024:
-            raise ValueError(
-                "schedule_context must include the header and embedded buffers"
-            )
+        # Only the 1024-byte header is part of this tensor; secondary buffers
+        # have their own HBM allocations and are archived explicitly for replay.
+        if schedule_context.numel() < _SCHEDULE_CONTEXT_BYTES:
+            raise ValueError("schedule_context must include the 1024-byte header")
         AclnnFfnWorkerBatchingTestSpec.customize_inputs(
             schedule_context.numpy(),
             expert_num,
@@ -847,6 +1030,20 @@ class TorchFfnWorkerBatchingTestSpec:
             *([None] * 8),
             **kwargs,
         )
+        # --no-prof only prepares inputs and never calls npu_preprocess. Save
+        # here as well so TTK's documented prepare/replay workflow is complete.
+        archive = os.getenv("FFN_WB_SAVE_ARCHIVE")
+        if archive:
+            attributes = dict(
+                expert_num=expert_num,
+                max_out_shape=list(max_out_shape),
+                token_dtype=token_dtype,
+                need_schedule=need_schedule,
+                layer_num=layer_num,
+                sync_flag=sync_flag,
+                mx_output_uint8=mx_output_uint8,
+            )
+            save_context_archive(archive, schedule_context.numpy(), attributes)
 
     @staticmethod
     def golden(

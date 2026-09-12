@@ -157,7 +157,7 @@ Ascend 950PR/Ascend 950DT（arch35）支持 `token_dtype=0～5`；Atlas A2/A3 �
 
 - 该接口支持图模式（GEIR）和单算子模式（aclnn）。
 - 参数M（micro batch数量，取自schedule_context.common.micro_batch_num）支持 ≤ 64。
-- 输出token数上限 Y = A × BS × (topK+1)，其中 A、BS、topK+1 分别为 max_out_shape 的第 1、2、3 维；Y 支持泛化，无硬上限（受内存限制）。
+- 输出token数上限 Y = A × BS × (topK+1)，其中 A、BS、topK+1 分别为 max_out_shape 的第 1、2、3 维；arch35 的 Y 及 RECV 对齐后的 flat 长度不得超过 INT32_MAX（索引/计数表示上限），同时受内存限制。
 - 精度口径为二进制一致（非计算类算子：整数索引排序 + 原样字节搬运，无浮点运算）。
 - arch35上的`token_dtype=3、4、5`均支持`need_schedule=0、1`。每32个逻辑hidden state元素对应一个E8M0 scale，尾部不足32个元素时仍占一个scale；全部scale紧跟整行token数据。
 - 令`S=ceil(H/32)`，FP8行的有效数据为`H`字节token加`S`字节scale，FP4行为`H/2`字节token加`S`字节scale。FP4要求H为偶数，每字节低半字节存放前一个元素，高半字节存放后一个元素。`attn_to_ffn_token_size`记录源行的字节步长，可包含行尾padding。

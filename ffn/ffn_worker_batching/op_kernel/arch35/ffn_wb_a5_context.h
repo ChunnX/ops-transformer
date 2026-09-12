@@ -31,10 +31,13 @@
 #ifndef OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #define OP_KERNEL_ARCH35_FFN_WB_A5_CONTEXT_H
 #include "kernel_operator.h"
+#include "ffn_wb_arch35_constants.h"
 #include "attention_ffn_schedule.h" // 与 Attention 侧约定的 schedule_context 权威定义
 
 namespace FfnWbBatchingArch35 {
 using namespace AscendC;
+namespace Arch35Config = FfnWbArch35Config;
+static_assert(Arch35Config::UB_BLOCK_BYTES == AscendC::ONE_BLK_SIZE, "Host/kernel UB block sizes must agree");
 
 // 契约字段在 schedule_context 中的字节偏移:由权威结构体推出,不手写。
 #define FFN_WB_CTX_OFFSET(field) static_cast<int32_t>(__builtin_offsetof(aicpu::ScheduleContext, field))
@@ -125,6 +128,28 @@ template <typename T>
 __aicore__ inline T Max(T a, T b)
 {
     return (a > b) ? a : b;
+}
+
+// DAV_3510 的公共 AscendC API 已在 AIV 上把 GetBlockIdx() 展平为：
+//
+//   rawBlockIdx * GetTaskRation() + GetSubBlockIdx()
+//
+// 该语义可直接见 CANN 的 dav_3510/kernel_operator_sys_var_impl.h：AIV 分支返回
+// get_block_idx() * get_subblockdim() + get_subblockid()。所以 CV 1:2 时两个 sibling
+// AIV 通过 GetBlockIdx() 已分别得到 0/1；调用点若再乘 taskRatio 并加 subBlockIdx，才会
+// 跳过任务编号并造成重复/遗漏。统一封装为本函数，防止各 phase 对 API 语义作出不同假设。
+__aicore__ inline int64_t GetFlatAivIdx()
+{
+    return GetBlockIdx();
+}
+
+// GetBlockNum() 仍是 launch 的原始 block 数，故总 AIV 数需乘 CV 比率，与上面的已展平索引
+// 位于同一个 [0, flatAivNum) 坐标系。taskRatio 异常为 0 时按 1 防御，合法 DAV_3510 启动
+// 的 taskRatio 始终为正。
+__aicore__ inline int64_t GetFlatAivNum()
+{
+    const int64_t taskRatio = GetTaskRation();
+    return GetBlockNum() * ((taskRatio > 0) ? taskRatio : 1);
 }
 
 // proposal 对表示下,count 个元素占用的 T 元素个数。

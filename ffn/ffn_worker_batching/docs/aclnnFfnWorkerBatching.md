@@ -562,8 +562,6 @@ int main()
     scheduleContext.common.micro_batch_size = 8;
     scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
-    scheduleContext.common.attn_to_ffn_token_size = 512;
-    scheduleContext.common.ffn_to_attn_token_size = 512;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
     scheduleContext.ffn.polling_index = 0;
@@ -574,6 +572,9 @@ int main()
     int64_t BS = scheduleContext.common.micro_batch_size;   // micro batch size
     int64_t K = scheduleContext.common.selected_expert_num; // topK + 1
     int64_t H = 4096;                                       // hidden size
+    // 本例为FP16，源行步长必须覆盖H个元素；不能用固定512字节代替载荷长度。
+    scheduleContext.common.attn_to_ffn_token_size = static_cast<uint32_t>(H * sizeof(int16_t));
+    scheduleContext.common.ffn_to_attn_token_size = scheduleContext.common.attn_to_ffn_token_size;
     int64_t Y = A * BS * K;
     std::vector<int64_t> maxOutShapeValue = {A, BS, K, H};
     int64_t tokenDtype = 0;   // FP16
@@ -663,6 +664,8 @@ int main()
     scheduleContext.ffn.micro_batch_ids_buf_size = idsBufSize;
     scheduleContext.ffn.layer_ids_buf = reinterpret_cast<uint64_t>(layerIdsBuf);
     scheduleContext.ffn.layer_ids_buf_size = idsBufSize;
+    // NORM只消费前out_num个session；本例全部A个session有效。
+    scheduleContext.ffn.out_num = static_cast<uint32_t>(A);
 
     std::vector<int8_t> hostCtxData(1024, 0);
     std::memcpy(hostCtxData.data(), &scheduleContext, sizeof(ScheduleContext));

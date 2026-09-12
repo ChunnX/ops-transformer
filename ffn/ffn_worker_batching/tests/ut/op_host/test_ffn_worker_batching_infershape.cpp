@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <iostream>
+#include <limits>
 #include "infer_shape_context_faker.h"
 #include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
@@ -136,8 +137,8 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_inferdtype_arch35)
     auto impl = registry->GetOpImpl("FfnWorkerBatching");
     ASSERT_NE(impl, nullptr);
     ASSERT_NE(impl->infer_datatype, nullptr);
-    const ge::DataType tokenTypes[] = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8,
-                                      ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1};
+    const ge::DataType tokenTypes[] = {ge::DT_FLOAT16,     ge::DT_BF16,          ge::DT_INT8,
+                                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1};
     for (int64_t tokenDtype = 0; tokenDtype < 6; ++tokenDtype) {
         ge::DataType input = ge::DT_INT8;
         ge::DataType outputs[8] = {};
@@ -146,11 +147,11 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_inferdtype_arch35)
                           .NodeIoNum(1, 8)
                           .NodeInputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
                           .InputDataTypes({&input})
-                          .OutputDataTypes({&outputs[0], &outputs[1], &outputs[2], &outputs[3],
-                                            &outputs[4], &outputs[5], &outputs[6], &outputs[7]})
+                          .OutputDataTypes({&outputs[0], &outputs[1], &outputs[2], &outputs[3], &outputs[4],
+                                            &outputs[5], &outputs[6], &outputs[7]})
                           .NodeAttrs({{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-                                      {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
-                                                            {1, 8, 9, 64})},
+                                      {"max_out_shape",
+                                       Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 8, 9, 64})},
                                       {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenDtype)}})
                           .Build();
         auto context = holder.GetContext<gert::InferDataTypeContext>();
@@ -190,8 +191,8 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_3)
          {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
          {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152}, {1152},
-                                                           {1152},       {1152}, {1152, 3}, {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152},    {1152},
+                                                           {1152},     {1152}, {1152, 3}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -219,8 +220,8 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_4)
          {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
          {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152}, {1152},
-                                                           {1152},       {1152}, {1152, 3}, {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152},    {1152},
+                                                           {1152},     {1152}, {1152, 3}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -248,7 +249,31 @@ TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_mx_shape_5)
          {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)},
          {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152}, {1152},
-                                                           {1152},       {1152}, {1152, 3}, {1}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1152, 66}, {8, 2}, {1152},    {1152},
+                                                           {1152},     {1152}, {1152, 3}, {1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(FfnWorkerBatchingInfershapeTest, ffn_worker_batching_infershape_shape_product_overflow_fail)
+{
+    gert::StorageShape schedule_context_shape = {{1024}, {1024}};
+    gert::InfershapeContextPara infershapeContextPara(
+        "FfnWorkerBatching", {{schedule_context_shape, ge::DT_INT8, ge::FORMAT_ND}},
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        },
+        {{"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"max_out_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
+                               {1024, std::numeric_limits<int64_t>::max(), 1, 1})},
+         {"token_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"need_schedule", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
