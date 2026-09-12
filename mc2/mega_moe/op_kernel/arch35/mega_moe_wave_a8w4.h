@@ -84,7 +84,8 @@ private:
                                                       GMMAddrInfo &gmm2AddrInfo,
                                                       WaveCombineBufferConfig &combineBufferConfig,
                                                       uint32_t &combineRowSequence);
-    __aicore__ inline void ProcessMoeExpertStages();
+    __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
+                                                  Gmm2CombineSync &gmm2CombineSync);
 };
 
 // 更新当前专家切片的输入、输出及同步地址，并执行 GMM1 和 Activation。
@@ -249,7 +250,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
  * AIV1 combine 在 GMM2 调用内均有实活，故三角色整调用同序滞后）。
  */
 template <TemplateMegaMoeA8W4WaveTypeClass>
-__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages()
+__aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::ProcessMoeExpertStages(
+    Gmm1ActivationSync &gmm1ActivationSync, Gmm2CombineSync &gmm2CombineSync)
 {
     // GMM1/GMM2 交错流水只记录一次阶段入口，各 Wave 完成轮次由独立计数记录。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
@@ -267,8 +269,6 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    Gmm1ActivationSync gmm1ActivationSync(1U); // Activation 位于 AIV1。
-    Gmm2CombineSync gmm2CombineSync;
     gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
@@ -310,9 +310,6 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
         RunGmm2CombineForWaveRange(pendingWaveRange, gmm2State, gmm2AddrInfo, combineBufferConfig, combineRowSequence);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
     }
-    // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
-    gmm1ActivationSync.EndSync();
-    gmm2CombineSync.EndSync();
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>

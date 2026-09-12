@@ -170,7 +170,7 @@ public:
         AscendC::CrossCoreSetFlag<4, PIPE_MTE3>(activationFinishedFlag_);
     }
 
-    // 完整 MoE 流（包括滞后的 GMM2）结束后排空；共享 GMM1 的 ACK 也延后至此回收。
+    // MTE 主流程末尾统一排空；独立事件允许 ACK 跨过后续共享计算保留。
     __aicore__ inline void EndSync()
     {
         if constexpr (g_coreType == AscendC::AIC) {

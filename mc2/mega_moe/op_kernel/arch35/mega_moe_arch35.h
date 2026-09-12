@@ -782,10 +782,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     }
 
     // 阶段 3：由派生类编排 MoE 专家的 Dispatch、GMM1/Activation 和 GMM2/Combine。
-    derived.ProcessMoeExpertStages();
-    // Shared and MoE use independent event pairs, so shared ACK collection does
-    // not block MoE startup. Drain the shared pair here before reusing its IDs.
-    sharedGmm1ActivationSync.EndSync();
+    Gmm1ActivationSync gmm1ActivationSync(MoeQuantConfig::AXW_MODE == AxWMode::A8W4 ? 1U : 0U);
+    Gmm2CombineSync gmm2CombineSync;
+    derived.ProcessMoeExpertStages(gmm1ActivationSync, gmm2CombineSync);
     if constexpr (g_coreType == AIV) {
         ExportCompactExpertTokenCounts(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
         PipeBarrier<PIPE_ALL>();
@@ -806,6 +805,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, commonConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
     }
+
+    // 三组 GM 硬同步事件独立，末尾统一回收 ACK，避免阻塞后续共享计算。
+    // 各阶段的 UB 复用等待和逐 tile 额度限制仍在原位。
+    sharedGmm1ActivationSync.EndSync();
+    gmm1ActivationSync.EndSync();
+    gmm2CombineSync.EndSync();
 
     // 恢复入口时的溢出模式。
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);

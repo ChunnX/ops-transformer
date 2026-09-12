@@ -85,7 +85,8 @@ private:
                                                   GMMAddrInfo &gmm2AddrInfo,
                                                   WaveCombineBufferConfig &combineBufferConfig,
                                                   uint32_t &combineRowSequence);
-    __aicore__ inline void ProcessMoeExpertStages();
+    __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
+                                                  Gmm2CombineSync &gmm2CombineSync);
 };
 
 // A4W4 的 GMM1 使用 generic kernel，Activation 将中间结果提升为 FP8 后供 GMM2 使用。
@@ -250,7 +251,8 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
  * 完成后执行其 GMM2/Combine，再切换到已经准备好的下一 Wave。
  */
 template <TemplateMegaMoeA4W4WaveTypeClass>
-__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages()
+__aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::ProcessMoeExpertStages(
+    Gmm1ActivationSync &gmm1ActivationSync, Gmm2CombineSync &gmm2CombineSync)
 {
     // GMM1/GMM2 交错流水只记录一次阶段入口，各 Wave 完成轮次由独立计数记录。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::MOE_GMM1_ACTIVATION);
@@ -268,8 +270,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    Gmm1ActivationSync gmm1ActivationSync(0U); // Activation 位于 AIV0。
-    Gmm2CombineSync gmm2CombineSync;
     if constexpr (TopkWeightsPrefetch) {
         gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     }
@@ -301,9 +301,6 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     if constexpr (!TopkWeightsPrefetch) {
         Gmm1UbActivationSync::EndSync(gmm1RuntimeState.vecSetSyncCom, gmm1RuntimeState.pingpongIdx);
     }
-    // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
-    gmm1ActivationSync.EndSync();
-    gmm2CombineSync.EndSync();
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>

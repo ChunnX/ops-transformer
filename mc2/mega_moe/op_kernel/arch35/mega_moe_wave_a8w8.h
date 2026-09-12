@@ -89,7 +89,8 @@ private:
      *   [248, 256 KiB)    硬件保留，不使用。
      */
     __aicore__ inline CombineBufferConfig InitCombineBuffers();
-    __aicore__ inline void ProcessMoeExpertStages();
+    __aicore__ inline void ProcessMoeExpertStages(Gmm1ActivationSync &gmm1ActivationSync,
+                                                  Gmm2CombineSync &gmm2CombineSync);
     __aicore__ inline bool IsSameExpertTokenPosition(const ExpertTokenPosition &currentPosition,
                                                      const ExpertTokenPosition &targetPosition) const;
     __aicore__ inline ExpertTokenPosition DispatchNextWave(ExpertTokenPosition &dispatchPosition);
@@ -405,7 +406,8 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
  * DispatchTokenRange 执行搬运和 ready 发布；GMM1、Activation、GMM2 与 Combine 复用同一 WAVE 终点。
  */
 template <TemplateMegaMoeA8W8WaveTypeClass>
-__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages()
+__aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages(
+    Gmm1ActivationSync &gmm1ActivationSync, Gmm2CombineSync &gmm2CombineSync)
 {
     const uint32_t gmm1SchedulerWidth = commonConfig_.gmm1OutputDim;
     gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, static_cast<uint32_t>(L1_TILE_N));
@@ -424,8 +426,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     GMMAddrInfo gmm1AddrInfo{};
     GMMAddrInfo gmm2AddrInfo{};
-    Gmm1ActivationSync gmm1ActivationSync(0U); // Activation 位于 AIV0。
-    Gmm2CombineSync gmm2CombineSync;
     if constexpr (TopkWeightsPrefetch) {
         gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     }
@@ -566,9 +566,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         Gmm1UbActivationSync::EndSync(vecSetSyncCom, gmm1PingPongIdx_);
     }
     gmm1PingPongIdx_ = 0;
-    // 计数跨 expert/wave 保留，最后一个 GMM2 完成后再统一排空。
-    gmm1ActivationSync.EndSync();
-    gmm2CombineSync.EndSync();
 }
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
