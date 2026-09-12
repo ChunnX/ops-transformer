@@ -27,7 +27,7 @@ using namespace NpuArch;
 
 using namespace GbsaKernelArch22;
 
-template <class InDtype, class SMDtype, class REDtype = SMDtype, Epilogue::LseMode lseMode = Epilogue::LseMode::NONE>
+template <bool PAGED_CACHE_FLAG, class InDtype, class SMDtype, class REDtype = SMDtype, Epilogue::LseMode lseMode = Epilogue::LseMode::NONE>
 __global__ __aicore__ void GbsaInferIntfRegularArch22(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR sparseBlockIdx,
                                                       GM_ADDR sparseBlockCount, GM_ADDR metaData, GM_ADDR cuSeqLengths,
                                                       GM_ADDR cuSeqLengthsKv, GM_ADDR sequsedQ, GM_ADDR sequsedKv,
@@ -82,7 +82,7 @@ __global__ __aicore__ void GbsaInferIntfRegularArch22(GM_ADDR q, GM_ADDR k, GM_A
     using EpilogueRescaleO =
         Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OTmpUpdateType, LseType>;
 
-    using GbsaKernel = GbsaRegularKernelArch22<BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO>;
+    using GbsaKernel = GbsaRegularKernelArch22<BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, PAGED_CACHE_FLAG>;
 
     GbsaKernelParamsArch22 params{
         q,         k,          v, sparseBlockIdx, sparseBlockCount, metaData, cuSeqLengths, cuSeqLengthsKv, sequsedQ,
@@ -96,7 +96,7 @@ __global__ __aicore__ void GbsaInferIntfRegularArch22(GM_ADDR q, GM_ADDR k, GM_A
 
 using namespace GbsaKernelArch35;
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat,
+template <bool PAGED_CACHE_FLAG, class InDtype, class SMDtype, class REDtype, Format qFormat,
           Epilogue::LseMode lseMode = Epilogue::LseMode::NONE, Epilogue::LseFormat lseFormat = Epilogue::LseFormat::TN1>
 __global__ __aicore__ void GbsaInferIntfRegular(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR sparseBlockIdx,
                                                 GM_ADDR sparseBlockCount, GM_ADDR metaData, GM_ADDR cuSeqLengths,
@@ -153,7 +153,7 @@ __global__ __aicore__ void GbsaInferIntfRegular(GM_ADDR q, GM_ADDR k, GM_ADDR v,
                                                             ElementK, TileCopyRescaleO, Arch::PositionL0C>;
 
     using GbsaKernel =
-        GbsaRegularKernelArch35<BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, qFormat>;
+        GbsaRegularKernelArch35<BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, qFormat, PAGED_CACHE_FLAG>;
 
     GbsaKernelParamsArch35 params{
         q,         k,          v, sparseBlockIdx, sparseBlockCount, metaData, cuSeqLengths, cuSeqLengthsKv, sequsedQ,
@@ -162,7 +162,7 @@ __global__ __aicore__ void GbsaInferIntfRegular(GM_ADDR q, GM_ADDR k, GM_ADDR v,
     gbsaKernel(params);
 }
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat,
+template <bool PAGED_CACHE_FLAG, class InDtype, class SMDtype, class REDtype, Format qFormat,
           Epilogue::LseMode lseMode = Epilogue::LseMode::NONE, Epilogue::LseFormat lseFormat = Epilogue::LseFormat::TN1>
 __global__ __aicore__ void GbsaInferInterfaceFullQuant(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR sparseBlockIdx,
                                                        GM_ADDR sparseBlockCount, GM_ADDR metaData, GM_ADDR cuSeqLengths,
@@ -216,7 +216,7 @@ __global__ __aicore__ void GbsaInferInterfaceFullQuant(GM_ADDR q, GM_ADDR k, GM_
                                                             ElementK, TileCopyRescaleO, Arch::PositionL0C>;
 
     using GbsaKernel =
-        GbsaFullQuantKernelArch35<BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, qFormat>;
+        GbsaFullQuantKernelArch35<BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, qFormat, PAGED_CACHE_FLAG>;
 
     GbsaFullQuantKernelParamsArch35 params{q,
                                            k,

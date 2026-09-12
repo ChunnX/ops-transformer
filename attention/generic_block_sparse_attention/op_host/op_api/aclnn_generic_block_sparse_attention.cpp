@@ -99,7 +99,8 @@ static aclnnStatus ParseBlockShape(const aclIntArray *blockShape)
 
 static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, const aclTensor *value,
                                   const aclTensor *sparseBlockIdx, const aclTensor *sparseBlockCount,
-                                  const aclIntArray *blockShape, char *layoutQ, char *layoutKv)
+                                  const aclIntArray *blockShape, char *layoutQ, char *layoutKv,
+                                  const aclTensor *blockTable)
 {
     CHECK_RET(CheckMandatoryTensors(query, key, value, sparseBlockIdx, sparseBlockCount) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
@@ -119,8 +120,15 @@ static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, 
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layoutQ only supports TND, got %s.", layoutQStr.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (layoutKvStr != "PA_BBND") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layoutKv only supports PA_BBND, got %s.", layoutKvStr.c_str());
+    if ((blockTable != nullptr && layoutKvStr != "PA_BBND") || (blockTable == nullptr && layoutKvStr != "TND")) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layoutKv must be PA_BBND with blockTable or TND without it, got %s.",
+                layoutKvStr.c_str());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (blockTable == nullptr && (!IsContiguous(key) || !IsContiguous(value))) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "TND key/value must be contiguous; only PA_BBND supports non-contiguous dim0.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -155,8 +163,8 @@ static std::string ConvertLayoutString(char *layoutStr)
 // Contiguous non-KV inputs for aclnn L0 InferShape (torch_npu often has view=ND, storage=1D;
 // GetInputShape may return storage unless Contiguous/CreateView normalizes the descriptor).
 // Keep Contiguous even when OpDef has AutoContiguous.
-// Do NOT Contiguous key/value here — dim0-strided KV is handled by NormalizeDim0KvTensor
-// (CreateView + SetStorageShape(viewShape)).
+// KV is normalized separately: PA preserves dim0 strides through NormalizeDim0KvTensor;
+// TND requires contiguous inputs and only needs descriptor normalization.
 static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&sparseBlockIdx,
                                   const aclTensor *&sparseBlockCount, const aclTensor *&metadataOptional,
                                   const aclTensor *&attenMaskOptional, const aclTensor *&qDequantScaleOptional,
@@ -296,8 +304,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     double dstTypeMax, int64_t softmaxPrecision, int64_t winLeft, int64_t winRight, int64_t returnSoftmaxlse,
     aclTensor *attentionOut, aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    aclnnStatus ret =
-        ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ, layoutKv);
+    aclnnStatus ret = ValidateParams(query, key, value, sparseBlockIdx, sparseBlockCount, blockShape, layoutQ,
+                                     layoutKv, blockTableOptional);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -330,9 +338,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     std::string layoutQStr = ConvertLayoutString(layoutQ);
     std::string layoutKvStr = ConvertLayoutString(layoutKv);
 
-    const aclTensor *keyFinal = NormalizeDim0KvTensor(key, "key", executorImpl);
+    // TND inputs were validated as contiguous; Contiguous only normalizes their descriptors.
+    const aclTensor *keyFinal = blockTableOptional != nullptr ? NormalizeDim0KvTensor(key, "key", executorImpl) :
+                                                             l0op::Contiguous(key, executorImpl);
     CHECK_RET(keyFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor *valueFinal = NormalizeDim0KvTensor(value, "value", executorImpl);
+    const aclTensor *valueFinal = blockTableOptional != nullptr ? NormalizeDim0KvTensor(value, "value", executorImpl) :
+                                                               l0op::Contiguous(value, executorImpl);
     CHECK_RET(valueFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto outputs = l0op::GenericBlockSparseAttention(

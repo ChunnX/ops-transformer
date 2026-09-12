@@ -120,7 +120,7 @@ TEST_F(generic_block_sparse_attention_infershape_ut, tnd_paged_with_lse)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-TEST_F(generic_block_sparse_attention_infershape_ut, unsupported_layout)
+TEST_F(generic_block_sparse_attention_infershape_ut, tnd_rejects_block_table)
 {
     gert::InfershapeContextPara infershapeContextPara("GenericBlockSparseAttention", MakeInputs(),
                                                       {
@@ -172,4 +172,31 @@ TEST_F(generic_block_sparse_attention_infershape_ut, unknown_rank_query)
         {-2},
     };
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(generic_block_sparse_attention_infershape_ut, tnd_non_paged)
+{
+    auto inputs = MakeInputs();
+    inputs[1] = inputs[2] = {{{259, kN2, kD}, {259, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs.pop_back();
+    std::vector<uint32_t> instances(16, 1);
+    instances[15] = 0;
+    gert::InfershapeContextPara para("GenericBlockSparseAttention", inputs,
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        MakeAttrs(0, "TND", "TND"), instances, {1, 1});
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{kT, kN1, kD}, {0}});
+}
+
+TEST_F(generic_block_sparse_attention_infershape_ut, tnd_rejects_mismatched_kv)
+{
+    auto inputs = MakeInputs();
+    inputs[1] = {{{259, kN2, kD}, {259, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs[2] = {{{258, kN2, kD}, {258, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs.pop_back();
+    std::vector<uint32_t> instances(16, 1);
+    instances[15] = 0;
+    gert::InfershapeContextPara para("GenericBlockSparseAttention", inputs,
+        {{{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
+        MakeAttrs(0, "TND", "TND"), instances, {1, 1});
+    ExecuteTestCase(para, ge::GRAPH_FAILED, {});
 }

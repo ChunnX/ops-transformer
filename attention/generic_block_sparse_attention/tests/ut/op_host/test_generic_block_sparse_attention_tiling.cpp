@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "attention/generic_block_sparse_attention/op_kernel/kernel_common.hpp"
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -193,7 +194,7 @@ TEST_F(generic_block_sparse_attention_tiling_ut, tnd_paged_fp8_out_bf16_950)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, kFp8Bf16Tiling950);
 }
 
-TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_layout)
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_rejects_block_table)
 {
     GenericBlockSparseAttentionCompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara(
@@ -362,4 +363,169 @@ TEST_F(generic_block_sparse_attention_tiling_ut, unsupported_fp8_with_lse_950)
                                               MakeOutputs(ge::DT_FLOAT16, true), MakeAttrs(1, 5, 1, 1), &compileInfo,
                                               "Ascend950", 56, 262144);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+namespace {
+auto MakeTndInputs(ge::DataType dtype, bool hasUsedKv = false)
+{
+    auto inputs = MakeInputs(dtype);
+    inputs[1] = {{{kS2, kN2, kD}, {kS2, kN2, kD}}, dtype, ge::FORMAT_ND};
+    inputs[2] = inputs[1];
+    inputs[12] = {{{kBatch + 1}, {kBatch + 1}}, ge::DT_INT64, ge::FORMAT_ND};
+    if (!hasUsedKv) {
+        inputs[14] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+    }
+    inputs[15] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+    return inputs;
+}
+
+auto MakeTndAttrs(int64_t precision = 0, int64_t quant = 0)
+{
+    return MakeAttrs(1, quant, precision, 0, 0.0f, -1, -1, 1, "TND", "TND");
+}
+} // namespace
+
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_all_supported_keys)
+{
+    const struct {
+        ge::DataType input;
+        ge::DataType output;
+        const char *soc;
+        int64_t precision;
+        int64_t quant;
+        uint64_t key;
+    } cases[] = {
+        {ge::DT_FLOAT16, ge::DT_FLOAT16, "Ascend910B", 0, 0, 9200000030001002ULL},
+        {ge::DT_FLOAT16, ge::DT_FLOAT16, "Ascend910B", 1, 0, 9200000030101002ULL},
+        {ge::DT_BF16, ge::DT_BF16, "Ascend910B", 0, 0, 9200000030023222ULL},
+        {ge::DT_FLOAT16, ge::DT_FLOAT16, "Ascend950", 1, 0, 9250000030001002ULL},
+        {ge::DT_BF16, ge::DT_BF16, "Ascend950", 1, 0, 9250000030023222ULL},
+        {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16, "Ascend950", 1, 5, 9250000030001012ULL},
+        {ge::DT_FLOAT8_E4M3FN, ge::DT_BF16, "Ascend950", 1, 5, 9250000030001022ULL},
+    };
+    for (const auto &test : cases) {
+        for (bool used : {false, true}) {
+            GenericBlockSparseAttentionCompileInfo info;
+            gert::TilingContextPara para("GenericBlockSparseAttention", MakeTndInputs(test.input, used),
+                                        MakeOutputs(test.output, false), MakeTndAttrs(test.precision, test.quant),
+                                        &info, test.soc, 40, 262144);
+            ExecuteTestCase(para, ge::GRAPH_SUCCESS, test.key);
+        }
+    }
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_invalid_lengths_and_kv_shapes)
+{
+    for (int invalid = 0; invalid < 11; ++invalid) {
+        SCOPED_TRACE(invalid);
+        auto inputs = MakeTndInputs(ge::DT_FLOAT16);
+        switch (invalid) {
+            case 0: inputs[12] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND}; break;
+            case 1: inputs[12] = {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND}; break;
+            case 2: inputs[12] = {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND}; break;
+            case 3: inputs[14] = {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND}; break;
+            case 4: inputs[14] = {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND}; break;
+            case 5: inputs[2] = {{{kS2 - 1, kN2, kD}, {kS2 - 1, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND}; break;
+            case 6: inputs[1] = inputs[2] = {{{kS2, 2, kD}, {kS2, 2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND}; break;
+            case 7: inputs[1] = inputs[2] = {{{kS2, kN2, 64}, {kS2, kN2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND}; break;
+            case 8: inputs[1] = inputs[2] = MakeInputs(ge::DT_FLOAT16)[1]; break;
+            case 9: inputs[2].dtype_ = ge::DT_BF16; break;
+            case 10: inputs[12] = {{{1, 2}, {1, 2}}, ge::DT_INT64, ge::FORMAT_ND}; break;
+        }
+        GenericBlockSparseAttentionCompileInfo info;
+        gert::TilingContextPara para("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
+                                    MakeTndAttrs(), &info, "Ascend910B", 40, 196608);
+        ExecuteTestCase(para, ge::GRAPH_FAILED);
+    }
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_rejects_noncontiguous_direct_graph_kv)
+{
+    for (int input : {1, 2}) {
+        for (int axis = 0; axis < 3; ++axis) {
+            auto inputs = MakeTndInputs(ge::DT_FLOAT16);
+            inputs[input].hasStride_ = true;
+            inputs[input].stride_.SetDimNum(3);
+            inputs[input].stride_.SetStride(0, kN2 * kD);
+            inputs[input].stride_.SetStride(1, kD);
+            inputs[input].stride_.SetStride(2, 1);
+            inputs[input].stride_.SetStride(axis, inputs[input].stride_.GetStride(axis) * 2);
+            GenericBlockSparseAttentionCompileInfo info;
+            gert::TilingContextPara para("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
+                                        MakeTndAttrs(), &info, "Ascend910B", 40, 196608);
+            ExecuteTestCase(para, ge::GRAPH_FAILED);
+        }
+    }
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, tnd_multibatch_tail_and_fd_workspace_match_pa)
+{
+    for (int64_t topK : {1, 11, 12, 16}) {
+        auto tnd = MakeTndInputs(ge::DT_FLOAT16, true);
+        tnd[11] = {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND};
+        tnd[12] = tnd[11];
+        tnd[13] = tnd[14] = {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND};
+        tnd[1] = tnd[2] = {{{259, kN2, kD}, {259, kN2, kD}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+        tnd[3] = {{{kN2, kTotalQBlocks, topK}, {kN2, kTotalQBlocks, topK}}, ge::DT_INT32, ge::FORMAT_ND};
+        auto pa = tnd;
+        pa[1] = pa[2] = MakeInputs(ge::DT_FLOAT16)[1];
+        pa[12] = {{}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+        pa[15] = {{{2, kMaxBlocks}, {2, kMaxBlocks}}, ge::DT_INT32, ge::FORMAT_ND};
+        GenericBlockSparseAttentionCompileInfo info;
+        gert::TilingContextPara tndPara("GenericBlockSparseAttention", tnd, MakeOutputs(ge::DT_FLOAT16, false),
+                                       MakeTndAttrs(), &info, "Ascend910B", 40, 196608);
+        gert::TilingContextPara paPara("GenericBlockSparseAttention", pa, MakeOutputs(ge::DT_FLOAT16, false),
+                                      MakeAttrs(1, 0, 0, 0), &info, "Ascend910B", 40, 196608);
+        TilingInfo tndInfo, paInfo;
+        ASSERT_TRUE(ExecuteTiling(tndPara, tndInfo));
+        ASSERT_TRUE(ExecuteTiling(paPara, paInfo));
+        GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData tndData{}, paData{};
+        ASSERT_EQ(tndInfo.tilingDataSize, sizeof(tndData));
+        ASSERT_EQ(paInfo.tilingDataSize, sizeof(paData));
+        std::memcpy(&tndData, tndInfo.tilingData.get(), sizeof(tndData));
+        std::memcpy(&paData, paInfo.tilingData.get(), sizeof(paData));
+        EXPECT_EQ(tndData.workSpaceSize, paData.workSpaceSize);
+        EXPECT_EQ(tndData.batch, 2U);
+        EXPECT_EQ(tndData.kStride0, kN2 * kD);
+        EXPECT_EQ(tndData.vStride0, kN2 * kD);
+        EXPECT_EQ(tndData.maxBlocksPerBatch, 0U);
+        EXPECT_EQ(tndData.blockSize, 0U);
+        EXPECT_EQ(paData.blockSize, 128U);
+        EXPECT_EQ(tndData.blockShapeY, 128U);
+        EXPECT_EQ(tndData.kvBaseTile, 128U);
+        EXPECT_EQ(paData.kvBaseTile, 128U);
+        EXPECT_EQ(tndData.mm1L1TileN, tndData.kvBaseTile);
+        EXPECT_EQ(tndData.mm2L1TileKLeft, tndData.kvBaseTile);
+        EXPECT_EQ(tndData.fdStaticEnabled, topK >= 12 ? 1U : 0U);
+    }
+}
+
+TEST_F(generic_block_sparse_attention_tiling_ut, pa_preserves_dim0_strides_and_rejects_inner_holes)
+{
+    for (bool innerHole : {false, true}) {
+        auto inputs = MakeInputs(ge::DT_FLOAT16);
+        for (int index : {1, 2}) {
+            inputs[index].hasStride_ = true;
+            inputs[index].stride_.SetDimNum(4);
+            inputs[index].stride_.SetStride(0, 2 * kBlockSize * kN2 * kD);
+            inputs[index].stride_.SetStride(1, kN2 * kD);
+            inputs[index].stride_.SetStride(2, kD);
+            inputs[index].stride_.SetStride(3, innerHole ? 2 : 1);
+        }
+        GenericBlockSparseAttentionCompileInfo info;
+        gert::TilingContextPara para("GenericBlockSparseAttention", inputs, MakeOutputs(ge::DT_FLOAT16, false),
+                                    MakeAttrs(1, 0, 0, 0), &info, "Ascend910B", 40, 196608);
+        if (innerHole) {
+            ExecuteTestCase(para, ge::GRAPH_FAILED);
+        } else {
+            TilingInfo result;
+            ASSERT_TRUE(ExecuteTiling(para, result));
+            GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData data{};
+            ASSERT_EQ(result.tilingDataSize, sizeof(data));
+            std::memcpy(&data, result.tilingData.get(), sizeof(data));
+            EXPECT_EQ(data.kStride0, 2U * kBlockSize * kN2 * kD);
+            EXPECT_EQ(data.vStride0, data.kStride0);
+            EXPECT_EQ(result.tilingKey, kFp16Tiling910B);
+        }
+    }
 }

@@ -23,6 +23,9 @@ namespace optiling {
 // Host tiling-key bases (BSA-style bitfields). Full keys live in op_kernel tilingkey.h.
 constexpr uint64_t GBSA_OP_ARCH22_BASE = 9200000000000000ULL; // aicore220
 constexpr uint64_t GBSA_OP_ARCH35_BASE = 9250000000000000ULL; // aicore310
+constexpr uint64_t GBSA_KV_LAYOUT_TND_OFFSET = 30000000ULL;
+constexpr uint64_t GBSA_KV_LAYOUT_PA_BBND_OFFSET = 70000000ULL;
+constexpr uint64_t GBSA_PAGED_CACHE_OFFSET = 1000000ULL;
 constexpr uint64_t GBSA_LSE_OUT_OFFSET = 100000000ULL;
 
 BEGIN_TILING_DATA_DEF(GenericBlockSparseAttentionTilingData)
@@ -59,7 +62,7 @@ TILING_DATA_FIELD_DEF(uint32_t, qL1BufNum);
 TILING_DATA_FIELD_DEF(uint32_t, kL1BufNum);
 TILING_DATA_FIELD_DEF(uint32_t, vL1BufNum);
 TILING_DATA_FIELD_DEF(uint32_t, pL1BufNum);
-// PA_BBND page base stride in elements (dim0). Allows first-axis non-contiguous KV cache.
+// Tensor dim0 stride in elements: physical page stride for PA, token stride Nkv*D for TND.
 TILING_DATA_FIELD_DEF(uint64_t, kStride0);
 TILING_DATA_FIELD_DEF(uint64_t, vStride0);
 TILING_DATA_FIELD_DEF(uint32_t, fdStaticEnabled);
@@ -120,7 +123,7 @@ private:
     // Regular path only supports blockShapeX=1; default must match.
     uint32_t blockShapeX_ = 1;
     uint32_t blockShapeY_ = 128;
-    uint32_t blockSize_ = 128;
+    uint32_t blockSize_ = 0; // PA page size; zero for TND.
     uint32_t topK_ = 16;
     uint32_t qBlockNum_ = 0;
     uint32_t maxBlocksPerBatch_ = 0;
@@ -147,11 +150,11 @@ private:
     ge::DataType attentionOutDtype_ = ge::DT_FLOAT16;
 
     std::string layoutQ_ = "TND";
-    std::string layoutKv_ = "TND";
+    std::string layoutKv_ = "PA_BBND";
     int64_t maskType_ = 0;
     int64_t quantType_ = 0;
 
-    // Default = contiguous PA_BBND page size; overwritten when KV is a dim0-strided view.
+    // Tensor dim0 strides: TND tokens or PA physical pages (possibly strided).
     uint64_t kStride0_ = 0;
     uint64_t vStride0_ = 0;
 

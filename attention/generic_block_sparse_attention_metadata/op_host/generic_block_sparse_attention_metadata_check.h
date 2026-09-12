@@ -210,8 +210,8 @@ aclnnStatus CheckGbsaLayouts(const char *qInputLayout, const char *kvInputLayout
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout currently only supports TND.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (!GbsaIsLayout(kvInputLayout, "PA_BBND")) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout currently only supports PA_BBND.");
+    if (!GbsaIsLayout(kvInputLayout, "PA_BBND") && !GbsaIsLayout(kvInputLayout, "TND")) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout supports PA_BBND or TND.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;

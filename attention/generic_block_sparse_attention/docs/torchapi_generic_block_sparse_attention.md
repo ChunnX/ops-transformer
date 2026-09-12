@@ -1,5 +1,16 @@
 # generic_block_sparse_attention
 
+当前支持 `layout_q="TND"`，`layout_kv` 为 `"PA_BBND"` 或 `"TND"`：
+
+| KV布局 | K/V形状 | block_table | cu_seqlens_kv | seqused_kv |
+| --- | --- | --- | --- | --- |
+| PA_BBND（默认） | [num_blocks, 128, Nkv, 128] | 必选 | 必须为空 | INT32 [B]，必选 |
+| TND | [total_kv_tokens, Nkv, 128] | 必须为空 | INT64 [B+1]，必选 | INT32 [B]，可选 |
+
+TND的KV前缀和须从0开始、单调非递减、末项等于total_kv_tokens。
+seqused_kv省略时使用存储长度，传入时不得超过对应存储长度。
+非PA的TND key/value必须全连续（包括首轴），非连续输入将报错。稀疏索引表示batch内逻辑块号，两种模式语义相同。
+
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
@@ -351,7 +362,7 @@ cann_ops_transformer.generic_block_sparse_attention(
                 <li>tensor_type支持bfloat16、float16、float8_e4m3fn</li>
                 <li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li>
                 <li>当前block_size须等于128且等于block_shape[1]</li>
-                <li>非连续Tensor约束：PA_BBND仅dim0支持非连续</li>
+                <li>非连续Tensor约束：PA_BBND仅dim0支持非连续；TND必须全连续</li>
             </ul>
         </td>
     </tr>
@@ -931,3 +942,30 @@ quant_mode参数解释见「quant_mode 枚举」。
     assert attention_out.shape == q.shape
     assert attention_out.dtype == q.dtype
     ```
+
+### 非 PA 联合调用示例
+
+```python
+import torch
+import torch_npu
+import cann_ops_transformer
+
+ops = cann_ops_transformer.ops
+q = torch.randn(3, 4, 128, device="npu", dtype=torch.float16)
+k = torch.randn(259, 1, 128, device="npu", dtype=torch.float16)
+v = torch.randn_like(k)
+cu_q = torch.tensor([0, 1, 3], device="npu", dtype=torch.int64)
+cu_kv = torch.tensor([0, 130, 259], device="npu", dtype=torch.int64)
+idx = torch.tensor([[[0, 1], [0, 1], [0, 1]]], device="npu", dtype=torch.int32)
+count = torch.full((1, 3), 2, device="npu", dtype=torch.int32)
+# A2高精度使用0；A5使用1。
+precision = 1 if "950" in torch.npu.get_device_name() else 0
+lengths = dict(cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv, layout_kv="TND")
+metadata = ops.generic_block_sparse_attention_metadata(
+    idx, count, 4, 1, 128, [1, 128], softmax_precision=precision, **lengths
+)
+out, _ = ops.generic_block_sparse_attention(
+    q, k, v, idx, count, [1, 128], metadata=metadata,
+    softmax_precision=precision, **lengths
+)
+```
