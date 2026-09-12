@@ -20,9 +20,9 @@ from typing import Dict, List, Optional
 
 @dataclass(frozen=True)
 class ShapeConfig:
-    bs: int = 512  # 单配置时每个 rank 发送的 token 数，须 >= 1
+    bs: int = 4096  # 单配置时每个 rank 发送的 token 数，须 >= 1
     data_size: int = 16384  # 单配置时每个 token 的元素数 H，须 >= 1
-    max_bs: int = 512  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
+    max_bs: int = 4096  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
     # 多配置带宽测试的用例列表；字段含义同上。注释大小为 bs * H * 2 字节。
     test_configs: List[Dict[str, int]] = field(
         default_factory=lambda: [
@@ -52,12 +52,12 @@ class ShapeConfig:
 
 @dataclass(frozen=True)
 class ParallelConfig:
-    server_num: int = 1  # 参与通信的服务器数量，world_size = server_num * rank_per_dev
-    rank_per_dev: int = 2  # 每台服务器的 NPU 数量，用于 world_size 和本地设备编号取模
+    server_num: int = 2  # 参与通信的服务器数量，world_size = server_num * rank_per_dev
+    rank_per_dev: int = 8  # 每台服务器的 NPU 数量，用于 world_size 和本地设备编号取模
     is_cloud: bool = False  # True：从 VC_TASK_INDEX / VC_WORKER_HOSTS 解析服务器信息
-    server_index: int = 0  # 非云环境的服务器编号，范围 [0, server_num)
+    server_index: int = 1  # 非云环境的服务器编号，范围 [0, server_num)
     # 非云环境主节点 IP；None 沿用默认：单机 127.0.0.1，多机 71.20.45.123。
-    master_ip: Optional[str] = "127.0.0.1"
+    master_ip: Optional[str] = "7.246.125.11"
     master_port: int = 50004  # HCCL 初始化使用的 TCP 端口，各参与进程须一致
     is_full_core: bool = True  # True：使用 32 个 AIC / 64 个 AIV；False：使用 partial_core_num
     partial_core_num: int = 16  # 非全核时的 AIC 数量，AIV 数量自动取其两倍
@@ -66,18 +66,18 @@ class ParallelConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    graph_type: int = 0  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
-    comm_alg: str = "roce"  # mte、urma 或 roce；roce 的 mode 只能为 0/None，shared_jetty=False
-    shared_jetty: bool = False  # 共享 jetty：仅 comm_alg=urma 时生效
+    graph_type: int = 3  # 0：单算子；3：aclgraph（当前编译路径仅支持全核）
+    comm_alg: str = "urma"  # mte、urma 或 roce；roce 的 mode 只能为 0/None，shared_jetty=False
+    shared_jetty: bool = True  # 共享 jetty：仅 comm_alg=urma 时生效
     shared_jetty_num: int = 8  # 共享 jetty 数量；mode 4 忽略此项并固定为 world_size - 1
     shared_jetty_comm_level: int = 2  # 共享 jetty 建链：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
-    mode: Optional[int] = 0  # 0=精度模式，2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
+    mode: Optional[int] = 3  # 0=精度模式，2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty；3/4仅共享Jetty
     # 带宽测试由调用方保证通信参数正确：有效 channel、rank ID、Win 容量及各 rank 配置一致。
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
     # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
     batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
-    peers_per_jetty: int = 0  # 非共享 URMA mode 3 必须为 0；mode 3 中 0=全部远端，正数指定轮转对端数。
+    peers_per_jetty: int = 15  # 非共享 URMA mode 3 必须为 0；mode 3 中 0=全部远端，正数指定轮转对端数。
     drain_threshold: int = 8192  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel_rtp_j8_bs4096_debug"  # aclgraph 静态内核构建目录，相对启动目录
 
@@ -86,8 +86,8 @@ class ModelConfig:
 class RunConfig:
     sweep_enabled: bool = False  # 一次运行两组拓扑扫描和 mode 4 基线；False 恢复原来的单拓扑测试。
     sweep_output_path: str = "./Bandwidth_Sweep_Results"
-    is_precision_test: bool = True  # 是否对比 CPU golden；请开启单配置并关闭带宽测试
-    is_bandwidth_test: bool = False  # 是否采集执行耗时并计算带宽；与精度测试分别运行
+    is_precision_test: bool = False  # 是否对比 CPU golden；请开启单配置并关闭带宽测试
+    is_bandwidth_test: bool = True  # 是否采集执行耗时并计算带宽；与精度测试分别运行
     is_single_test: bool = True  # True：使用 shape 的 bs/H/max_bs；False：使用 test_configs
     loop: int = 100  # 单算子性能采集总迭代数；图模式每次 forward 固定调用一次算子
     repeat: int = 1  # 单算子 profiler 采集周期数，须 >= 1，且 loop // repeat > warmup
