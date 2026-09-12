@@ -18,7 +18,8 @@
 namespace ops {
 class MoeDistributeCombineV3 : public OpDef {
 public:
-    explicit MoeDistributeCombineV3(const char *name) : OpDef(name)
+    explicit MoeDistributeCombineV3(const char *name)
+        : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)
