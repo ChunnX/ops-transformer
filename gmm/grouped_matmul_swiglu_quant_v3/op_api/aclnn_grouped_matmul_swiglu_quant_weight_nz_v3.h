@@ -51,7 +51,7 @@ extern "C" {
  * @param [in] roundMode: MX 量化舍入模式预留参数，当前仅支持 "rint"；nullptr 或空字符串按 "rint" 处理。
  * @param [in] scaleAlg: MX 量化 scale 算法预留参数，当前仅支持 0。
  * @param [in] dstTypeMax: MX 量化目标类型最大值预留参数，当前仅支持 0.0。
- * @param [out] output: FLOAT8_E4M3FN 或 FLOAT8_E5M2 量化输出。
+ * @param [out] output: FLOAT8_E4M3FN 量化输出。WeightNZ MXFP8 场景不支持 FLOAT8_E5M2 输出。
  * @param [out] outputScale: FLOAT8_E8M0 输出量化因子。
  * @param [out] workspaceSize: 返回用户需要在 NPU device 侧申请的 workspace 大小。
  * @param [out] executor: 返回 op 执行器，包含算子计算流程。

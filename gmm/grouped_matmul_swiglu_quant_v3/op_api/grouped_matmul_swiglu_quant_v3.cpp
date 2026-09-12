@@ -13,11 +13,9 @@
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
 #include "util/math_util.h"
-#include "grouped_matmul_swiglu_quant_utils.h"
 #include "grouped_matmul_swiglu_quant_v3.h"
 
 using namespace op;
-using namespace gmm_dsq_v3;
 
 namespace l0op {
 OP_TYPE_REGISTER(GroupedMatmulSwigluQuantV3);
