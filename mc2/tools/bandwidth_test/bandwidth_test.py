@@ -416,25 +416,21 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
         test_drain_threshold=8192,
         test_peers_per_jetty=0,
     ):
-        local_loop = CONFIG.run.loop if CONFIG.run.is_bandwidth_test else 1
-        output = None
-        for _ in range(local_loop):
-            output = bandwidth_test(
-                x=x,
-                dstrank_id=dstrank_id,
-                sym_buffer=sym_buffer,
-                world_size=test_world_size,
-                max_bs=test_max_bs,
-                mode=test_mode,
-                comm_alg=test_comm_alg,
-                aiv_num=test_aiv_num,
-                batch_tokens=test_batch_tokens,
-                drain_threshold=test_drain_threshold,
-                peers_per_jetty=test_peers_per_jetty,
-                shared_jetty=test_shared_jetty,
-                shared_jetty_num=test_shared_jetty_num,
-            )
-        return output
+        return bandwidth_test(
+            x=x,
+            dstrank_id=dstrank_id,
+            sym_buffer=sym_buffer,
+            world_size=test_world_size,
+            max_bs=test_max_bs,
+            mode=test_mode,
+            comm_alg=test_comm_alg,
+            aiv_num=test_aiv_num,
+            batch_tokens=test_batch_tokens,
+            drain_threshold=test_drain_threshold,
+            peers_per_jetty=test_peers_per_jetty,
+            shared_jetty=test_shared_jetty,
+            shared_jetty_num=test_shared_jetty_num,
+        )
 
 
 # endregion

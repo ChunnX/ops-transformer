@@ -89,13 +89,13 @@ class RunConfig:
     is_precision_test: bool = False  # 是否对比 CPU golden；请开启单配置并关闭带宽测试
     is_bandwidth_test: bool = True  # 是否采集执行耗时并计算带宽；与精度测试分别运行
     is_single_test: bool = False  # True：使用 shape 的 bs/H/max_bs；False：使用 test_configs
-    loop: int = 100  # 单算子性能采集总迭代数，也是图模式每次 forward 的算子重复次数
+    loop: int = 100  # 单算子性能采集总迭代数；图模式每次 forward 固定调用一次算子
     repeat: int = 1  # 单算子 profiler 采集周期数，须 >= 1，且 loop // repeat > warmup
     warmup: int = 5  # 单算子 profiler 每个周期的预热迭代数，不计入正式采集
-    graph_loop: int = 2  # 图模式 profiler 外层总迭代数，每次执行一次编译后的模型
+    graph_loop: int = 105  # 图模式 profiler 外层总迭代数，每次执行一次编译后的模型
     graph_repeat: int = 1  # 图模式采集周期数，须 >= 1，且 graph_loop // graph_repeat > graph_warmup
-    graph_warmup: int = 1  # 图模式每个周期的预热迭代数，不计入正式采集
-    performance_sample_count: int = 50  # 每份 op_summary 最后多少条算子记录参与带宽统计，须 > 0
+    graph_warmup: int = 5  # 图模式每个周期的预热迭代数，不计入正式采集
+    performance_sample_count: int = 100  # 每份 op_summary 最后多少条算子记录参与带宽统计，须 > 0
     # 专用结果目录，相对启动目录；测试前清空此目录及其 _config_数字 同级目录。
     profiling_path: str = "./Profiling_Result_bandwidth_test"
     is_check_setting: bool = True  # 主流程开始时检查用例尺寸、服务器编号及图模式等已有约束
