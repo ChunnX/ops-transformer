@@ -134,8 +134,12 @@ public:
                                              MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         // Both C1 subLoops share Q/QScale. Keep Q resident in L0B across the paired MMADs.
-        IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
-        IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
+        if constexpr (D_BASE == 256U) {
+            IterateBmm1Prefetch(outputBuf0, outputBuf1, runInfo, constInfo);
+        } else {
+            IterateBmm1Impl<0U, true, false>(outputBuf0, runInfo, constInfo);
+            IterateBmm1Impl<1U, false, true>(outputBuf1, runInfo, constInfo);
+        }
     }
 
     __aicore__ inline void IterateBmm2(MxBmm2Buf &outputBuf,
@@ -157,42 +161,32 @@ public:
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
-        constexpr uint32_t baseK = S2_SPLIT;
-        constexpr uint64_t l1BaseKOffset = static_cast<uint64_t>(baseK) * M_BASE;
-        constexpr uint64_t l1ScaleOffset = l1BaseKOffset / MX_SCALE_GROUP;
-        const uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1U) / baseK;
-        for (uint32_t kIdx = 0U; kIdx < kLoops; ++kIdx) {
-            const uint32_t realK = (kIdx == kLoops - 1U) ? runInfo.actSingleLoopS2Size - kIdx * baseK : baseK;
-            Buffer<BufferType::L1> vBuf = l1VBuffers_.Get();
-            vBuf.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<INPUT_T> vTensor = vBuf.GetTensor<INPUT_T>();
-            // V 使用 ND2NZ，tail 补零到 64-token 对齐。
-            InitValuePadding(vTensor, realK, constInfo.dSizeV);
-            CopyValueToL1(vTensor, runInfo, constInfo, realK, kIdx);
+        if constexpr (D_BASE == 256U) {
+            ComputeBmm2Prefetch(pBuf, mm2ResL0C, runInfo, constInfo);
+        } else {
+            constexpr uint32_t baseK = S2_SPLIT;
+            constexpr uint64_t l1BaseKOffset = static_cast<uint64_t>(baseK) * M_BASE;
+            constexpr uint64_t l1ScaleOffset = l1BaseKOffset / MX_SCALE_GROUP;
+            const uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1U) / baseK;
+            for (uint32_t kIdx = 0U; kIdx < kLoops; ++kIdx) {
+                const uint32_t realK = (kIdx == kLoops - 1U) ? runInfo.actSingleLoopS2Size - kIdx * baseK : baseK;
+                Buffer<BufferType::L1> vBuf = CopyBmm2ToL1(runInfo, constInfo, realK, kIdx);
+                vBuf.Wait<HardEvent::MTE2_MTE1>();
+                const uint64_t vScaleOffset = static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV;
+                LocalTensor<INPUT_T> vTensor = vBuf.GetTensor<INPUT_T>();
+                LocalTensor<SCALE_T> vScaleTensor = vBuf.GetTensor<SCALE_T>(vScaleOffset);
 
-            const uint64_t vScaleOffset = static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV;
-            LocalTensor<SCALE_T> vScaleTensor = vBuf.GetTensor<SCALE_T>(vScaleOffset);
-            // VScale 按 64-token group 寻址。
-            CopyValueScaleToL1(vScaleTensor, runInfo, constInfo, realK, kIdx);
-            vBuf.Set<HardEvent::MTE2_MTE1>();
-            vBuf.Wait<HardEvent::MTE2_MTE1>();
-
-            // C2: P[M,K] * V[K,DV] -> C2[M,DV]。
-            const bool isFirstKLoop = kIdx == 0U;
-            MMParam param = MxMakeMMParam(M_BASE,           // singleM：固定的 Q block 行数。
-                                          constInfo.dSizeV, // singleN：V 的 head dimension。
-                                          AlignUp64(realK), // singleK：当前 K 分块按 64 对齐后的长度。
-                                          true,             // isLeftTranspose：P 按 [M,K] 转置视图加载。
-                                          false,            // isRightTranspose：V 按 [K,DV] 加载，不转置。
-                                          isFirstKLoop,     // cmatrixInitVal：首个 K 分块初始化 C 矩阵。
-                                          isFirstKLoop);    // isOutKFisrt：标记当前是外层 K 循环首块。
-            // P 转置，V 保持 KN。
-            MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
-                         L0ABuffers, L0BBuffers, SCALE_T, SCALE_T,
-                         mx_fp8_e4m3_t, mx_fp8_e4m3_t>(pBuf.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], vTensor,
-                                                       mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(), param,
-                                                       pScaleTensor[kIdx * l1ScaleOffset], vScaleTensor);
-            vBuf.Set<HardEvent::MTE1_MTE2>();
+                // C2: P[M,K] * V[K,DV] -> C2[M,DV]. Accumulate both K subtiles before Fixpipe.
+                const bool isFirstKLoop = kIdx == 0U;
+                MMParam param = MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK),
+                                              true, false, isFirstKLoop, isFirstKLoop);
+                MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
+                             L0ABuffers, L0BBuffers, SCALE_T, SCALE_T,
+                             mx_fp8_e4m3_t, mx_fp8_e4m3_t>(pBuf.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], vTensor,
+                                                           mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(), param,
+                                                           pScaleTensor[kIdx * l1ScaleOffset], vScaleTensor);
+                vBuf.Set<HardEvent::MTE1_MTE2>();
+            }
         }
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
@@ -204,15 +198,176 @@ public:
     }
 
 private:
-    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
-    __aicore__ inline void IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                           MxRunInfo &runInfo, const MxConstInfo &constInfo)
+    // Load and compute are separate so a ready flag for tile 0 precedes all
+    // tile-1 waits on MTE1. Cube can consume tile 0 while tile 1 is being loaded.
+    __aicore__ inline Buffer<BufferType::L0A> LoadMxA(const LocalTensor<INPUT_T> &data,
+                                                     const LocalTensor<SCALE_T> &scale, const MMParam &param)
+    {
+        Buffer<BufferType::L0A> buf = mmL0ABuffers_.Get();
+        buf.Wait<HardEvent::M_MTE1>();
+        LocalTensor<mx_fp8_e4m3_t> tensor = buf.GetTensor<mx_fp8_e4m3_t>();
+        // C2's physical P pitch remains S2_SPLIT, including a shorter K tail.
+        LoadDataToL0AMx<INPUT_T, mx_fp8_e4m3_t, S2_SPLIT>(tensor, data, scale, param, 0U,
+                                                        param.singleK, param.singleM);
+        buf.Set<HardEvent::MTE1_M>();
+        return buf;
+    }
+
+    __aicore__ inline Buffer<BufferType::L0B> LoadMxB(const LocalTensor<INPUT_T> &data,
+                                                     const LocalTensor<SCALE_T> &scale, const MMParam &param)
+    {
+        Buffer<BufferType::L0B> buf = mmL0BBuffers_.Get();
+        buf.Wait<HardEvent::M_MTE1>();
+        LocalTensor<mx_fp8_e4m3_t> tensor = buf.GetTensor<mx_fp8_e4m3_t>();
+        LoadDataToL0BMx<INPUT_T, mx_fp8_e4m3_t>(tensor, data, scale, param, 0U, param.singleK, param.singleN);
+        buf.Set<HardEvent::MTE1_M>();
+        return buf;
+    }
+
+    template <bool WAIT_B, bool RELEASE_B>
+    __aicore__ inline void ComputeMx(Buffer<BufferType::L0A> &a, Buffer<BufferType::L0B> &b,
+                                      const LocalTensor<MM_T> &c, const MMParam &param)
+    {
+        a.Wait<HardEvent::MTE1_M>();
+        if constexpr (WAIT_B) {
+            b.Wait<HardEvent::MTE1_M>();
+        }
+        MmadParams params;
+        params.m = param.realM != 0U ? param.realM : param.singleM;
+        params.n = param.singleN;
+        params.k = param.singleK;
+        params.cmatrixInitVal = param.isOutKFisrt;
+        params.cmatrixSource = false;
+        params.unitFlag = param.unitFlag;
+        if (params.m == 1U) {
+            params.m = ONE_FRACTAL_H_ELEMENT;
+        }
+        Mmad(c, a.GetTensor<mx_fp8_e4m3_t>(), b.GetTensor<mx_fp8_e4m3_t>(), params);
+        a.Set<HardEvent::M_MTE1>();
+        if constexpr (RELEASE_B) {
+            b.Set<HardEvent::M_MTE1>();
+        }
+    }
+
+    template <bool WAIT_Q, bool RELEASE_Q>
+    __aicore__ inline void ComputeBmm1Subtile(MxBmm2Buf &outputBuf, Buffer<BufferType::L0A> &a,
+                                              Buffer<BufferType::L0B> &q, MxRunInfo &runInfo, const MMParam &param)
+    {
+        Buffer<BufferType::L0C> c = mmL0CBuffers_.Get();
+        c.Wait<HardEvent::FIX_M>();
+        ComputeMx<WAIT_Q, RELEASE_Q>(a, q, c.GetTensor<MM_T>(), param);
+        c.Set<HardEvent::M_FIX>();
+        c.Wait<HardEvent::M_FIX>();
+        outputBuf.WaitCrossCore();
+        FixpipeMm1(outputBuf.GetTensor<MM_T>(), c.GetTensor<MM_T>(), runInfo, param.singleM);
+        c.Set<HardEvent::FIX_M>();
+        outputBuf.SetCrossCore();
+    }
+
+    __aicore__ inline void IterateBmm1Prefetch(MxBmm2Buf &outputBuf0, MxBmm2Buf &outputBuf1,
+                                               MxRunInfo &runInfo, const MxConstInfo &constInfo)
+    {
+        Buffer<BufferType::L1> q;
+        Buffer<BufferType::L1> k0;
+        Buffer<BufferType::L1> k1;
+        CopyBmm1ToL1<0U, true>(q, k0, runInfo, constInfo);
+        CopyBmm1ToL1<1U, false>(q, k1, runInfo, constInfo);
+        const uint32_t s2Size0 = GetSubLoopS2Size<0U>(runInfo);
+        const uint32_t s2Size1 = GetSubLoopS2Size<1U>(runInfo);
+        MMParam param0 = MxMakeMMParam(s2Size0, runInfo.actMSize, constInfo.dSize, false, true);
+        MMParam param1 = MxMakeMMParam(s2Size1, runInfo.actMSize, constInfo.dSize, false, true);
+
+        k0.Wait<HardEvent::MTE2_MTE1>();
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            q.Wait<HardEvent::MTE2_MTE1>();
+        }
+        Buffer<BufferType::L0A> a0 = LoadMxA(k0.GetTensor<INPUT_T>(),
+            k0.GetTensor<SCALE_T>(static_cast<uint64_t>(AlignUp32(s2Size0)) * constInfo.dSize), param0);
+        Buffer<BufferType::L0B> b = LoadMxB(q.GetTensor<INPUT_T>(),
+            q.GetTensor<SCALE_T>(static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize), param0);
+        k0.Set<HardEvent::MTE1_MTE2>();
+        k1.Wait<HardEvent::MTE2_MTE1>();
+        Buffer<BufferType::L0A> a1 = LoadMxA(k1.GetTensor<INPUT_T>(),
+            k1.GetTensor<SCALE_T>(static_cast<uint64_t>(AlignUp32(s2Size1)) * constInfo.dSize), param1);
+        k1.Set<HardEvent::MTE1_MTE2>();
+        if (unlikely(runInfo.isLastS2Loop)) {
+            q.Set<HardEvent::MTE1_MTE2>();
+        }
+
+        // Q is loaded once and released only after MMAD1. Keep Fixpipe0 before
+        // Fixpipe1 so V1 can consume the first result using the existing UB flags.
+        ComputeBmm1Subtile<true, false>(outputBuf0, a0, b, runInfo, param0);
+        ComputeBmm1Subtile<false, true>(outputBuf1, a1, b, runInfo, param1);
+    }
+
+    __aicore__ inline Buffer<BufferType::L1> CopyBmm2ToL1(MxRunInfo &runInfo, const MxConstInfo &constInfo,
+                                                          uint32_t realK, uint32_t kIdx)
+    {
+        Buffer<BufferType::L1> v = l1VBuffers_.Get();
+        v.Wait<HardEvent::MTE1_MTE2>();
+        LocalTensor<INPUT_T> data = v.GetTensor<INPUT_T>();
+        InitValuePadding(data, realK, constInfo.dSizeV);
+        CopyValueToL1(data, runInfo, constInfo, realK, kIdx);
+        LocalTensor<SCALE_T> scale = v.GetTensor<SCALE_T>(static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV);
+        CopyValueScaleToL1(scale, runInfo, constInfo, realK, kIdx);
+        v.Set<HardEvent::MTE2_MTE1>();
+        return v;
+    }
+
+    struct Bmm2L0Tile {
+        Buffer<BufferType::L0A> a;
+        Buffer<BufferType::L0B> b;
+        MMParam param;
+    };
+
+    __aicore__ inline Bmm2L0Tile LoadBmm2ToL0(
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &p, Buffer<BufferType::L1> &v,
+        const MxConstInfo &constInfo, uint32_t realK, uint32_t kIdx)
+    {
+        constexpr uint64_t pDataStride = static_cast<uint64_t>(S2_SPLIT) * M_BASE;
+        constexpr uint64_t pScaleOffset = static_cast<uint64_t>(M_BASE) * S2_BASE;
+        Bmm2L0Tile tile;
+        tile.param = MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
+        v.Wait<HardEvent::MTE2_MTE1>();
+        tile.a = LoadMxA(p.GetTensor<INPUT_T>()[kIdx * pDataStride],
+            p.GetTensor<SCALE_T>(pScaleOffset)[kIdx * pDataStride / MX_SCALE_GROUP], tile.param);
+        tile.b = LoadMxB(v.GetTensor<INPUT_T>(),
+            v.GetTensor<SCALE_T>(static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV), tile.param);
+        v.Set<HardEvent::MTE1_MTE2>();
+        return tile;
+    }
+
+    __aicore__ inline void ComputeBmm2Prefetch(
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &p, Buffer<BufferType::L0C> &c,
+        MxRunInfo &runInfo, const MxConstInfo &constInfo)
+    {
+        const uint32_t realK0 = GetSubLoopS2Size<0U>(runInfo);
+        const uint32_t realK1 = GetSubLoopS2Size<1U>(runInfo);
+        Buffer<BufferType::L1> v0 = CopyBmm2ToL1(runInfo, constInfo, realK0, 0U);
+        Buffer<BufferType::L1> v1;
+        if (realK1 != 0U) {
+            v1 = CopyBmm2ToL1(runInfo, constInfo, realK1, 1U);
+        }
+        Bmm2L0Tile tile0 = LoadBmm2ToL0(p, v0, constInfo, realK0, 0U);
+        if (realK1 != 0U) {
+            Bmm2L0Tile tile1 = LoadBmm2ToL0(p, v1, constInfo, realK1, 1U);
+            ComputeMx<true, true>(tile0.a, tile0.b, c.GetTensor<MM_T>(), tile0.param);
+            ComputeMx<true, true>(tile1.a, tile1.b, c.GetTensor<MM_T>(), tile1.param);
+        } else {
+            ComputeMx<true, true>(tile0.a, tile0.b, c.GetTensor<MM_T>(), tile0.param);
+        }
+    }
+
+    // Enqueue GM->L1 independently of the L0 loads, so the next subtile can arrive
+    // while MTE1/Cube consume the current one. The caller owns the ready/free flags.
+    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B>
+    __aicore__ inline void CopyBmm1ToL1(Buffer<BufferType::L1> &qBuf, Buffer<BufferType::L1> &kBuf,
+                                        MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
         static_assert(SUB_LOOP < 2U, "MX C1 only supports subLoop 0/1");
         // C1: K[S2_SPLIT,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
         const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
 
-        Buffer<BufferType::L1> qBuf;
         const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
         if constexpr (LOAD_Q_TO_L0B) {
             if (unlikely(runInfo.isFirstS2Loop)) {
@@ -232,11 +387,11 @@ private:
                 qBuf = l1QBuffers_.GetPre();
             }
         } else {
-            // Paired subLoop1 reuses both the current L1 Q buffer and its already loaded L0B tile.
+            // Paired subLoop1 shares the current L1 Q buffer; the caller retains its L0B tile.
             qBuf = l1QBuffers_.GetPre();
         }
 
-        Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
+        kBuf = l1KVBuffers_.Get();
         kBuf.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
         const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
@@ -244,6 +399,20 @@ private:
         // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
         CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, SUB_LOOP);
         kBuf.Set<HardEvent::MTE2_MTE1>();
+    }
+
+    template <uint32_t SUB_LOOP, bool LOAD_Q_TO_L0B, bool RELEASE_Q_L0B>
+    __aicore__ inline void IterateBmm1Impl(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+                                           MxRunInfo &runInfo, const MxConstInfo &constInfo)
+    {
+        const uint32_t s2CalcSize = GetSubLoopS2Size<SUB_LOOP>(runInfo);
+        Buffer<BufferType::L1> qBuf;
+        Buffer<BufferType::L1> kBuf;
+        CopyBmm1ToL1<SUB_LOOP, LOAD_Q_TO_L0B>(qBuf, kBuf, runInfo, constInfo);
+        const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
+        const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
+        LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
+        LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
 
         kBuf.Wait<HardEvent::MTE2_MTE1>();
         if constexpr (LOAD_Q_TO_L0B) {
