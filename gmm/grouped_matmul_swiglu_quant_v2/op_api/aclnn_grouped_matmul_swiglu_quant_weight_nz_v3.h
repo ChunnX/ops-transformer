@@ -26,7 +26,7 @@ extern "C" {
  * FRACTAL_NZ 格式；其余张量和基础量化参数的约束与 WeightNzV2 相同。
  *
  * @param [in] x: 激活矩阵。
- * @param [in] weight: FRACTAL_NZ 格式的分组权重矩阵。
+ * @param [in] weight: FRACTAL_NZ 格式的权重矩阵，当前仅支持 TensorList 长度为 1。
  * @param [in] weightScale: 权重量化因子。
  * @param [in] weightAssistMatrix: 权重辅助矩阵。
  * @param [in] bias: 偏置。

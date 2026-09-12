@@ -392,22 +392,16 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     if (status != ACLNN_SUCCESS) {
         return status;
     }
+    CHECK_COND(weight->Size() == 1, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], V3 only supports a single weight tensor, but got weight list size [%zu].",
+               ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight->Size());
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV3,
                    DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
                           dequantDtype, quantMode, groupListType, tuningConfigOptional, activateDim, activateLeft,
                           swigluMode, clampLimit, gluAlpha, gluBias, axis, roundMode, scaleAlg, dstTypeMax),
                    DFX_OUT(output, outputScale));
-    size_t wLength = weight->Size();
-    auto firstWeightViewDimNum = (*weight)[0]->GetViewShape().GetDimNum();
-    bool isSingleWeightTensor =
-        wLength == 1 && (firstWeightViewDimNum == WEIGHT_ND_DIM_LIMIT || firstWeightViewDimNum == WEIGHT_NZ_DIM_LIMIT);
-    if (isSingleWeightTensor) {
-        CHECK_RET(ProcessSingleWeightNz(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight) == ACLNN_SUCCESS,
-                  ACLNN_ERR_PARAM_INVALID);
-    } else {
-        CHECK_RET(ProcessMultiWeightNz(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight) == ACLNN_SUCCESS,
-                  ACLNN_ERR_PARAM_INVALID);
-    }
+    CHECK_RET(ProcessSingleWeightNz(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
 
     GroupedMatmulSwigluQuantV3Attrs swigluV3Attrs = {
         activateDim,
