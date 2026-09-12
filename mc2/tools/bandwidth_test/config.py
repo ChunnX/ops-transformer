@@ -20,30 +20,13 @@ from typing import Dict, List, Optional
 
 @dataclass(frozen=True)
 class ShapeConfig:
-    bs: int = 2  # 单配置时每个 rank 发送的 token 数，须 >= 1
-    data_size: int = 8192  # 单配置时每个 token 的元素数 H，须 >= 1
-    max_bs: int = 2  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
+    bs: int = 4096  # 单配置时每个 rank 发送的 token 数，须 >= 1
+    data_size: int = 16384  # 单配置时每个 token 的元素数 H，须 >= 1
+    max_bs: int = 4096  # 与 bs 相等；总 token 数不受 URMA 单批提交容量限制
     # 多配置带宽测试的用例列表；字段含义同上。注释大小为 bs * H * 2 字节。
     test_configs: List[Dict[str, int]] = field(
         default_factory=lambda: [
-            {"bs": 1, "data_size": 1024, "max_bs": 1},  # 2KB
-            {"bs": 2, "data_size": 1024, "max_bs": 2},  # 4KB
-            {"bs": 2, "data_size": 2048, "max_bs": 2},  # 8KB
-            {"bs": 4, "data_size": 2048, "max_bs": 4},  # 16KB
-            {"bs": 4, "data_size": 4096, "max_bs": 4},  # 32KB
-            {"bs": 8, "data_size": 4096, "max_bs": 8},  # 64KB
-            {"bs": 16, "data_size": 4096, "max_bs": 16},  # 128KB
-            {"bs": 32, "data_size": 4096, "max_bs": 32},  # 256KB
-            {"bs": 32, "data_size": 8192, "max_bs": 32},  # 512KB
-            {"bs": 64, "data_size": 8192, "max_bs": 64},  # 1MB
-            {"bs": 128, "data_size": 8192, "max_bs": 128},  # 2MB
-            {"bs": 256, "data_size": 8192, "max_bs": 256},  # 4MB
-            {"bs": 256, "data_size": 16384, "max_bs": 256},  # 8MB
-            {"bs": 512, "data_size": 16384, "max_bs": 512},  # 16MB
-            {"bs": 1024, "data_size": 16384, "max_bs": 1024},  # 32MB
-            {"bs": 2048, "data_size": 16384, "max_bs": 2048},  # 64MB
             {"bs": 4096, "data_size": 16384, "max_bs": 4096},  # 128MB
-            {"bs": 8192, "data_size": 8192, "max_bs": 8192},  # 128MB
         ]
     )
     x_dtype: str = "fp16"  # 算子输入类型：fp16 或 bf16，均为每元素 2 字节
@@ -76,15 +59,17 @@ class ModelConfig:
     # 必须保证实际 batch_tokens 小于每条使用的 SQ 和 CQ 深度；mode 0/1/2 的 0 选最大值（最高 2048）。
     # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
-    batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
+    batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3/4取min(配置或BS, BS, tiling上限, drain_threshold)
     peers_per_jetty: int = 0  # 非共享 URMA mode 3 必须为 0；mode 3 中 0=全部远端，正数指定轮转对端数。
-    drain_threshold: int = 8192  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
+    drain_threshold: int = 7168  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel"  # aclgraph 静态内核构建目录，相对启动目录
 
 
 @dataclass(frozen=True)
 class RunConfig:
-    sweep_enabled: bool = True  # 一次运行两组拓扑扫描和 mode 4 基线；False 恢复原来的单拓扑测试。
+    sweep_enabled: bool = True  # 启用批跑，类型由 sweep_kind 选择；False 使用单拓扑测试。
+    sweep_kind: str = "batch"  # batch：固定拓扑扫描提交数；topology：原 Jetty/对端扫描。
+    batch_token_values: List[int] = field(default_factory=lambda: [1 << i for i in range(12)] + [3968])
     sweep_output_path: str = "./Bandwidth_Sweep_Results"
     is_precision_test: bool = False  # 是否对比 CPU golden；请开启单配置并关闭带宽测试
     is_bandwidth_test: bool = True  # 是否采集执行耗时并计算带宽；与精度测试分别运行
@@ -129,7 +114,8 @@ if os.environ.get("BANDWIDTH_TEST_CASE"):
     CONFIG = replace(
         CONFIG,
         model=replace(CONFIG.model, comm_alg="urma", shared_jetty=True, mode=_case["mode"],
-                      shared_jetty_num=_case["jettys"], peers_per_jetty=_case["peers_attr"]),
+                      shared_jetty_num=_case["jettys"], peers_per_jetty=_case["peers_attr"],
+                      batch_tokens=_case.get("batch_tokens", CONFIG.model.batch_tokens)),
         parallel=replace(CONFIG.parallel, master_port=_case["master_port"]),
         run=replace(CONFIG.run, sweep_enabled=False, is_single_test=False, is_precision_test=False,
                     is_bandwidth_test=True, profiling_path=_case["profiling_path"]),

@@ -47,21 +47,22 @@ class SweepTests(unittest.TestCase):
 
     def test_child_inheritance(self):
         case = {"mode": 3, "jettys": 15, "peers_attr": 4, "master_port": 50123,
-                "profiling_path": "/tmp/sweep_profile"}
+                "profiling_path": "/tmp/sweep_profile", "batch_tokens": 512}
         code = ("from config import CONFIG; import json; "
                 "print(json.dumps([CONFIG.model.mode, CONFIG.model.shared_jetty_num, "
-                "CONFIG.model.peers_per_jetty, CONFIG.run.sweep_enabled, CONFIG.parallel.master_port]))")
+                "CONFIG.model.peers_per_jetty, CONFIG.run.sweep_enabled, CONFIG.parallel.master_port, CONFIG.model.batch_tokens]))")
         env = dict(os.environ, BANDWIDTH_TEST_CASE=json.dumps(case))
         output = subprocess.check_output([sys.executable, "-c", code], env=env,
                                          cwd=Path(sweep.__file__).parent, text=True)
-        self.assertEqual(json.loads(output), [3, 15, 4, False, 50123])
+        self.assertEqual(json.loads(output), [3, 15, 4, False, 50123, 512])
 
     def fake_run(self, command, env, check):
         case = json.loads(env["BANDWIDTH_TEST_CASE"])
         self.assertTrue(check)
         self.assertEqual(Path(command[1]).name, "bandwidth_test.py")
         self.seen.append(case)
-        model = replace(CONFIG.model, mode=case["mode"], shared_jetty_num=case["jettys"])
+        model = replace(CONFIG.model, mode=case["mode"], shared_jetty_num=case["jettys"],
+                        batch_tokens=case.get("batch_tokens", CONFIG.model.batch_tokens))
         rank_bytes = case["jettys"] * case["peers"] * 1024 * 2
         result = {"shared_jetty_batch_tokens": 1, "sampled_ranks": list(range(8)),
                   "config_index": 1, "bs": 1, "data_size": 1024, "single_rank_data_kb": rank_bytes / 1024,
@@ -76,7 +77,7 @@ class SweepTests(unittest.TestCase):
             config = replace(CONFIG, parallel=replace(CONFIG.parallel, server_num=2, rank_per_dev=8,
                                                       server_index=0, is_cloud=False, aiv_num=None),
                              shape=replace(CONFIG.shape, test_configs=[{"bs": 1, "data_size": 1024, "max_bs": 1}]),
-                             run=replace(CONFIG.run, sweep_output_path=directory))
+                             run=replace(CONFIG.run, sweep_kind="topology", sweep_output_path=directory))
             self.seen = []
             with patch.object(sweep.subprocess, "run", side_effect=self.fake_run):
                 sweep.run_sweep(config)
@@ -95,12 +96,46 @@ class SweepTests(unittest.TestCase):
             manifest = json.loads((report.parent / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "complete")
 
+    def test_batch_sweep(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = replace(CONFIG, run=replace(CONFIG.run, sweep_kind="batch", sweep_output_path=directory))
+            self.seen = []
+            with patch.object(sweep.subprocess, "run", side_effect=self.fake_run):
+                sweep.run_sweep(config)
+            self.assertEqual([case["batch_tokens"] for case in self.seen], [1 << i for i in range(12)] + [3968])
+            self.assertEqual({(c["mode"], c["jettys"], c["peers"], c["master_port"]) for c in self.seen},
+                             {(3, 16, 15, 5001)})
+            report = next(Path(directory).rglob("results.csv"))
+            with report.open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual([int(row["requested_batch_tokens"]) for row in rows], config.run.batch_token_values)
+            self.assertIn("requested_batch_tokens", report.with_suffix(".md").read_text(encoding="utf-8"))
+
+    def test_batch_validation(self):
+        for batches in ([], [0], [4096], [1, 1], [1.5]):
+            config = replace(CONFIG, run=replace(CONFIG.run, sweep_kind="batch", batch_token_values=batches))
+            with self.assertRaises(ValueError):
+                sweep.configured_cases(config, 16)
+
+    def test_driver_batch_formula(self):
+        source = Path(sweep.__file__).with_name("bandwidth_test.py").read_text(encoding="utf-8")
+        node = next(n for n in ast.parse(source).body
+                    if isinstance(n, ast.FunctionDef) and n.name == "shared_jetty_batch_tokens")
+        namespace = {"URMA_MAX_BATCH_TOKENS": 2048}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "batch_helper", "exec"), namespace)
+        fn = namespace["shared_jetty_batch_tokens"]
+        for batch in (1, 512, 2048, 3968):
+            self.assertEqual(fn(None, 4096, 16, 3, 16, batch, 7168), batch)
+        self.assertEqual(fn(None, 4096, 16, 3, 16, 0, 7168), 3968)
+        self.assertEqual(fn(None, 4096, 16, 3, 16, 3968, 1024), 1024)
+        self.assertEqual(fn(None, 4096, 16, 4, 15, 0, 7168), 2048)
+
     def test_failure_preserves_completed_group(self):
         with tempfile.TemporaryDirectory() as directory:
             config = replace(CONFIG, parallel=replace(CONFIG.parallel, server_num=2, rank_per_dev=8,
                                                       server_index=0, is_cloud=False, aiv_num=-1),
                              shape=replace(CONFIG.shape, test_configs=[{"bs": 1, "data_size": 1024, "max_bs": 1}]),
-                             run=replace(CONFIG.run, sweep_output_path=directory))
+                             run=replace(CONFIG.run, sweep_kind="topology", sweep_output_path=directory))
             self.seen = []
 
             def fail_second(*args, **kwargs):

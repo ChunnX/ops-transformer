@@ -30,25 +30,42 @@ Torch 接口、context 生命周期和 `aclnn_graph` 示例见
 python bandwidth_test.py
 ```
 
-## 全 UB_RTP 连续批跑
+## 固定拓扑的 batch 批跑
 
-当前默认开启 sweep，按原有拓扑矩阵和全部 shape 连续运行；所有用例统一使用
-`ParallelConfig.master_port=5001`，不按用例递增端口。
-保留全 UB_RTP（comm_level=2）、batch_tokens=0、drain_threshold=8192，
-图模式每个用例 105 轮（5 轮预热、100 轮采集）。临时设备诊断日志已删除。
+当前默认 `sweep_enabled=True`、`sweep_kind="batch"`：固定 mode 3、16 Jetty、全部远端
+（16 卡时为 15 个对端）、BS=max_bs=4096、H=16384、全 UB_RTP、drain_threshold=7168。
+H 是元素数，FP16/BF16 每个 token 为 32 KiB，每个 Jetty 向每个对端发送 128 MiB。
 
-两台服务器分别配置 server_index=0/1，master_ip 填同一个正确的主节点地址，再各自运行：
+`RunConfig.batch_token_values` 默认为：
 
-```bash
-python -u bandwidth_test.py 2>&1 | tee bandwidth_sweep.log
+```python
+[1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 3968]
 ```
 
-静态图目录恢复为 `static_kernel`。如果服务器仍安装带 printf 的诊断 kernel，
-需重新构建安装无日志 kernel，并重新生成对应静态内核。
+共 13 个用例，每个用例新建子进程/context，统一端口 5001；图模式 5 轮预热、100 轮采集。
+mode 3 现在接受显式 batch_tokens，0 表示自动取上限。
+仅共享 mode 3 解除原先 2048 的软件截断，按当前 tiling 的 248 KiB 可用 UB / 64 字节 WQE
+得到 3968 上限，再受 BS 和 Drain 阈值限制；其他模式保留原 2048 上限。
+3968 是源码 WQE 缓冲容量，不是已验证的目标 SDK 队列能力，需实机验证这一档。
+3968 档每个对端提交 3968+128 个 payload token，再单独提交 flag；填满的是 WQE 缓冲，不是 payload 搬进 UB。
+
+mode 3 的参数继续沿现有 Torch → ACLNN → tiling → kernel 路径传递，没有增加算子接口字段。
+需要重新构建安装算子（tiling 有修改），并重新生成对应静态内核；两台服务器配置
+server_index=0/1、同一个正确的 master_ip 后各自运行：
+
+```bash
+python -u bandwidth_test.py 2>&1 | tee bandwidth_batch_sweep.log
+```
+
+每个用例打印性能，结果写入 `Bandwidth_Sweep_Results/server_*/时间戳/` 下的
+`results.csv`、`results.md` 和 `manifest.json`。CSV/Markdown 每行同时记录请求 batch、
+实际 payload batch、batch 字节数、固定 Drain 阈值和减去 2 us 后的耗时/带宽。
+统计中的实际 batch 按当前 tiling 规则推导，部署时须保证 Python 与算子版本一致。
+临时设备日志保持删除。恢复 Jetty/对端扫描时设置 `sweep_kind="topology"`，并配置所需 shape 列表。
 
 ## 配置说明
 
-普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置见上面的全 UB_RTP 连续批跑说明。
+普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置见上面的固定拓扑 batch 批跑说明。
 模式 2 保留原有 Torch context、URMA batch 接口和 Win 直接打流逻辑。共享 Jetty 下还支持模式 3/4：
 模式 3 的每个 Jetty 都向所有远端卡发送完整 `BS` 个 token；模式 4 固定建立
 `world_size - 1` 个 Jetty，每个 Jetty 负责一张远端卡并发送完整 BS。
@@ -88,7 +105,7 @@ shared_jetty = False     # True: URMA 共享 jetty；MTE 不支持
 shared_jetty_num = 1     # 共享 jetty 数量；mode 4 忽略此值并固定使用 world_size - 1
 shared_jetty_comm_level = 0  # 仅共享模式生效：0=域内UB_CTP/域间UB_RTP，1=全UB_CTP，2=全UB_RTP
 mode = 2                # 2=原Win打流，3=每Jetty发所有卡，4=每远端卡一个Jetty
-batch_tokens = 0         # mode 3忽略；mode 4取min(配置或BS, BS, tiling上限)
+batch_tokens = 0         # mode 3/4取min(配置或BS, BS, tiling上限, drain阈值)
 is_full_core = True      # True: 使用全部核心; False: 使用部分核心
 partial_core_num = 16    # 非全核时的 AIC 数量，AIV 数量由脚本自动取其两倍
 aiv_num = None          # 算子 AIV 核数，None 使用自动值，也可单独指定
@@ -293,8 +310,8 @@ profiler 配置恢复到已验证可采集的 `124d318a` 基线：`Level1`、`Pi
 `(BS // world_size) * (world_size - 1) * H * 2`；`Batch Data` 按实际最大单次提交计算，不超过每个目标卡的数据量。
 
 共享 Jetty 模式 3 不再拆分对端数据。前 N 个核各自独占一个 Jetty，每个核都遍历全部远端卡，
-向每张远端卡发送完整 `BS` 个 token；`batch_tokens` 被忽略。实际 batch 为
-`min(BS, tiling最大值, drain_threshold)`，因此放得下时一次提交，否则按最大容量分批。
+向每张远端卡发送完整 `BS` 个 token；`batch_tokens` 为 0 时自动选择，正数指定批量。实际 batch 为
+`min(batch_tokens or BS, BS, tiling最大值, drain_threshold)`，共享 mode 3 的 tiling 最大值为 3968。
 单 rank 流量为 `N * BS * (world_size - 1) * H * 2`，带宽分子使用该实际发送量，不包含 flag。
 本卡跳过；允许 `BS >= 1`，仍要求 `bs == max_bs` 和 `world_size > 1`。
 接收区由所有来源 rank 和 Jetty 共用，允许覆盖；同一 shape 的 Win 容量不随卡数或 Jetty 数增长。
@@ -364,7 +381,7 @@ Batch buffer 复用不代表网络完成；报告时间包含 CQE 回收及 flag
 
 ## 一次批跑 Jetty 数量和发送对端数
 
-默认 `RunConfig.sweep_enabled=True`，执行 `python bandwidth_test.py` 自动完成拓扑扫描。
+`RunConfig.sweep_enabled=True` 且 `sweep_kind="topology"` 时，执行 `python bandwidth_test.py` 完成以下拓扑扫描；当前默认 batch 扫描见文首。
 操作步骤、轮转公式、报告字段及重建要求见 [拓扑批跑说明](docs/topology_sweep.md)。
 `False` 恢复原单拓扑流程；mode 3 新增 `ModelConfig.peers_per_jetty`，0 表示本文原有的全部远端，正数表示实际发送对端数。
 此时每 rank payload 为 `Jetty数 × peers_per_jetty × BS × H × dtype_bytes`，接收等待仅覆盖对应发送方。

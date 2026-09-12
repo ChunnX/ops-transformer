@@ -7,7 +7,7 @@
 #  See LICENSE in the root of the software repository for the full text of the License.
 #
 
-"""Topology sweep coordination and portable reports; no Torch/NPU imports."""
+"""Batch/topology sweep coordination and portable reports; no Torch/NPU imports."""
 
 import csv
 import json
@@ -38,6 +38,30 @@ def sweep_cases(world_size):
     return cases
 
 
+def configured_cases(config, world_size):
+    if config.run.sweep_kind == "topology":
+        return [(experiment, mode, jettys, peers, config.model.batch_tokens)
+                for experiment, mode, jettys, peers in sweep_cases(world_size)]
+    if config.run.sweep_kind != "batch":
+        raise ValueError("sweep_kind must be batch or topology")
+    if world_size < 2 or config.model.comm_alg != "urma" or not config.model.shared_jetty or config.model.mode != 3:
+        raise ValueError("Batch sweep requires shared URMA mode 3 and world_size > 1")
+    shapes = config.shape.test_configs
+    if len(shapes) != 1 or shapes[0]["bs"] != shapes[0]["max_bs"] or shapes[0]["bs"] < 1:
+        raise ValueError("Batch sweep requires one fixed shape with bs=max_bs > 0")
+    # Match the current tiling cap; runtime tiling still validates actual platform UB.
+    limit = min(shapes[0]["bs"], 248 * 1024 // 64, config.model.drain_threshold)
+    batches = config.run.batch_token_values
+    if not batches or any(type(batch) is not int or not 1 <= batch <= limit for batch in batches):
+        raise ValueError(f"batch_token_values must contain positive integers <= {limit}")
+    if len(set(batches)) != len(batches):
+        raise ValueError("batch_token_values must not contain duplicates")
+    peers = config.model.peers_per_jetty or world_size - 1
+    if not 1 <= peers < world_size or not 1 <= config.model.shared_jetty_num <= 56:
+        raise ValueError("Invalid batch sweep Jetty/peer counts")
+    return [("batch_scan", 3, config.model.shared_jetty_num, peers, batch) for batch in batches]
+
+
 def save_case_results(config, results, server_index, world_size, aiv_num):
     case = json.loads(os.environ["BANDWIDTH_TEST_CASE"])
     rows = []
@@ -54,7 +78,7 @@ def save_case_results(config, results, server_index, world_size, aiv_num):
             "config_index": result["config_index"], "bs": result["bs"], "h": result["data_size"],
             "dtype": config.shape.x_dtype,
             "requested_batch_tokens": config.model.batch_tokens, "batch_tokens": batch,
-            "batch_bytes": batch * result["data_size"] * 2,
+            "batch_bytes": batch * result["data_size"] * 2, "batch_wqe_bytes": batch * 64,
             "rank_data_bytes": round(result["single_rank_data_kb"] * 1024),
             "drain_threshold": config.model.drain_threshold, "subtracted_overhead_us": 2.0,
         }
@@ -67,7 +91,7 @@ def save_case_results(config, results, server_index, world_size, aiv_num):
 
 
 def write_reports(output_dir, rows):
-    """Rewrite accumulated reports after each completed topology; preserve earlier results on failure."""
+    """Rewrite accumulated reports after each completed case; preserve earlier results on failure."""
     if not rows:
         return
     with (output_dir / "results.csv").open("w", encoding="utf-8-sig", newline="") as stream:
@@ -75,14 +99,14 @@ def write_reports(output_dir, rows):
         writer.writeheader()
         writer.writerows(rows)
     columns = ["experiment", "mode", "jettys", "peers_per_jetty", "bs", "h", "rank_data_bytes",
-               "batch_tokens", "batch_bytes", "mean_time_us", "min_time_us", "max_time_us",
+               "requested_batch_tokens", "batch_tokens", "batch_bytes", "batch_wqe_bytes", "drain_threshold", "mean_time_us", "min_time_us", "max_time_us",
                "mean_bandwidth_gbps", "max_bandwidth_gbps", "status"]
     first = rows[0]
-    lines = ["# Bandwidth topology sweep", "",
+    lines = ["# Bandwidth sweep", "",
              f"Server: {first['server_index']}; sampled ranks: {first['sampled_ranks']}; world size: {first['world_size']}.",
              f"URMA comm level: {first['comm_level']} (0=mixed, 1=all UBC_CTP, 2=all UBC_RTP); "
              f"graph type: {first['graph_type']}; requested AIVs (-1=platform selection): {first['aiv_num']}; dtype: {first['dtype']}.",
-             f"Requested batch: {first['requested_batch_tokens']}; Drain threshold: {first['drain_threshold']}.",
+             f"Drain threshold: {first['drain_threshold']}; requested and effective batches are listed per row.",
              "", "All reported times subtract 2 us per operator. Bandwidth columns retain the script's GB/s label "
              "but use bytes / 2^30 / seconds (GiB/s). Traffic counts payload only; flags still consume queue budget.",
              "Statistics cover local ranks only, not a cross-server aggregate. Invalid corrected times produce N/A bandwidth.",
@@ -102,7 +126,7 @@ def write_reports(output_dir, rows):
 
 def run_sweep(config):
     world_size = config.parallel.server_num * config.parallel.rank_per_dev
-    cases = sweep_cases(world_size)
+    cases = configured_cases(config, world_size)
     aiv_num = config.parallel.aiv_num
     if aiv_num is None:
         aiv_num = -1
@@ -110,7 +134,7 @@ def run_sweep(config):
         raise ValueError("aiv_num must be -1/None (platform selection) or positive")
     # Platform capacity is unknown to this CPU-only launcher; tiling validates automatic selection.
     jetty_limit = 56 if aiv_num == -1 else min(aiv_num, 56)
-    if any(jettys > jetty_limit for _, _, jettys, _ in cases):
+    if any(jettys > jetty_limit for _, _, jettys, _, _ in cases):
         raise ValueError("Sweep Jetty counts (including mode 4 baseline) must fit selected AIVs and the 56-Jetty limit")
     if not config.shape.test_configs:
         raise ValueError("Sweep requires shape.test_configs")
@@ -125,14 +149,14 @@ def run_sweep(config):
                 "planned_cases": len(cases), "shapes_per_case": len(config.shape.test_configs), "completed_cases": 0}
     manifest_path = output / "manifest.json"
     rows = []
-    print(f"Sweep: {len(cases)} topologies x {len(config.shape.test_configs)} shapes; output: {output}", flush=True)
+    print(f"Sweep: {len(cases)} cases x {len(config.shape.test_configs)} shapes; output: {output}", flush=True)
     try:
-        for index, (experiment, mode, jettys, peers) in enumerate(cases):
-            name = f"{index + 1:02d}_{experiment}_j{jettys}_p{peers}"
+        for index, (experiment, mode, jettys, peers, batch_tokens) in enumerate(cases):
+            name = f"{index + 1:02d}_{experiment}_j{jettys}_p{peers}_b{batch_tokens}"
             case_dir = output / name
             case_dir.mkdir()
             case = {"experiment": experiment, "mode": mode, "jettys": jettys, "peers": peers,
-                    "peers_attr": peers if mode == 3 else 0,
+                    "peers_attr": peers if mode == 3 else 0, "batch_tokens": batch_tokens,
                     "master_port": config.parallel.master_port,
                     "profiling_path": str(case_dir / "Profiling_Result"),
                     "result_path": str(case_dir / "results.json")}
