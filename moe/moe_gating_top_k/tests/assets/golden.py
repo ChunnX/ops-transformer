@@ -35,14 +35,19 @@ def _pre_compare_topk(*arrays):
     """topk 输出顺序对排序键(normValue)ULP 级差异敏感: 两个键在 fp32 下不可区分时,
     kernel 与 golden 的浮点路径微差会使相邻元素交换, 值的相对误差被放大。
     比对前对 yOut / expertIdxOut 逐行按值降序规范化(集合语义), 顺序视为实现自由度;
-    normOut 为按位置对齐的全量输出, 不做处理。"""
+    normOut 为按位置对齐的全量输出, 不做处理。kernel 通路输出为 numpy, aclnn 通路为 torch。"""
+    def _sort_rows_desc(arr):
+        if isinstance(arr, numpy.ndarray):
+            if arr.ndim == 2:
+                arr[:] = numpy.sort(arr, axis=1)[:, ::-1]
+        elif torch.is_tensor(arr):
+            if arr.ndim == 2:
+                arr[:] = torch.sort(arr, dim=1, descending=True).values
+
     half = len(arrays) // 2
     for i in (0, 1):
-        out, gold = arrays[i], arrays[i + half]
-        if isinstance(out, numpy.ndarray) and isinstance(gold, numpy.ndarray):
-            if out.ndim == 2 and gold.ndim == 2:
-                out[:] = numpy.sort(out.astype(numpy.float64), axis=1)[:, ::-1]
-                gold[:] = numpy.sort(gold.astype(numpy.float64), axis=1)[:, ::-1]
+        _sort_rows_desc(arrays[i])
+        _sort_rows_desc(arrays[i + half])
 
 
 def _softmax_numpy(x, axis=-1):

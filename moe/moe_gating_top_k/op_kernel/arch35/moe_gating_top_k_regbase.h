@@ -262,8 +262,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::GenerateIndexAndCopy(__u
     RegTensor<float> vregSoftmaxResult;
     Reg::MaskReg preg0 = Reg::CreateMask<float>();
 
+    uint32_t sizeRemain = size;
     for (uint16_t i = 0; i < vfLoopNum; i++) {
-        preg0 = Reg::UpdateMask<float>(size);
+        preg0 = Reg::UpdateMask<float>(sizeRemain);
         ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
         Reg::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
         Reg::StoreAlign(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftmaxResult, preg0);
@@ -293,8 +294,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftMaxWithBias(LocalTen
         RegTensor<float> vregBiasResult;
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
             ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasFp32, preg0, i * VL_FLOAT_SIZE);
             Reg::Add(vregBiasResult, vregSoftmaxResult, vregBiasFp32, preg0);
@@ -392,8 +394,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SigmoidWithBias(LocalTen
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
                                            i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
             Reg::Muls(vreg1, vregInFp32, static_cast<float>(-1), preg0);
@@ -437,8 +440,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SigmoidWithoutBias(Local
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
             Reg::Muls(vreg1, vregInFp32, static_cast<float>(-1), preg0);
             Reg::Exp(vreg2, vreg1, preg0);
@@ -497,8 +501,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftplusWithBias(LocalTe
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
                                            i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
             Reg::Exp(vreg1, vregInFp32, preg0);
@@ -542,8 +547,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftplusWithoutBias(Loca
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t sizeRemain = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(size);
+            preg0 = Reg::UpdateMask<float>(sizeRemain);
             ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
             Reg::Exp(vreg1, vregInFp32, preg0);
             Reg::Adds(vreg2, vreg1, static_cast<float>(1), preg0);

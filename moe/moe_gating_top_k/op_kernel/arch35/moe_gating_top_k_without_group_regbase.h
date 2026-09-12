@@ -50,7 +50,7 @@ private:
                                               int64_t duplicateNum);
     __aicore__ inline void ComputeNormSoftplus(__ubuf__ float *xRowAddr, __ubuf__ float *xNormAddr);
     __aicore__ inline void ApplyBiasAndPad(LocalTensor<float> xNormWithBiasTensor, LocalTensor<float> xNormTensor,
-                                           LocalTensor<float> biasTensor, int64_t duplicateNum, int64_t duplicateIndex);
+                                           LocalTensor<float> biasTensor);
     __aicore__ inline void CopyOutXNorm(int64_t globalRow);
     __aicore__ inline void SelectTopKAndScore(LocalTensor<T> yOutTensor, LocalTensor<int32_t> expertIdxOut,
                                               int64_t rowInBatch);
@@ -182,8 +182,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSigmoid(_
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
         Reg::Duplicate<float, Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
+        uint32_t expertCountRemain = expertCountU32;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(expertCountU32);
+            preg0 = Reg::UpdateMask<float>(expertCountRemain);
             ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregIn, preg0, i * VL_FLOAT_SIZE);
             Reg::Muls(vregNegInput, vregIn, static_cast<float>(-1), preg0);
             Reg::Exp(vregExpNeg, vregNegInput, preg0);
@@ -220,9 +221,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(_
         Reg::MaskReg preg1 = Reg::CreateMask<float>();
 
         Reg::Duplicate(vregMax, *((float *)&MIN_FP32), preg1);
+        uint32_t remainMax = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            uint32_t count = size;
-            preg0 = Reg::UpdateMask<float>(count);
+            preg0 = Reg::UpdateMask<float>(remainMax);
             Reg::Duplicate(vregX, *((float *)&MIN_FP32), preg1);
             ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
             Reg::Max(vregMax, vregMax, vregX, preg1);
@@ -231,9 +232,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(_
         Reg::Duplicate(vregMaxBcast, vregMax, preg1);
 
         Reg::Duplicate(vregSum, static_cast<float>(0), preg1);
+        uint32_t remainSum = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            uint32_t count = size;
-            preg0 = Reg::UpdateMask<float>(count);
+            preg0 = Reg::UpdateMask<float>(remainSum);
             ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
             Reg::Duplicate(vregExp, static_cast<float>(0), preg1);
             Reg::Sub(vregExp, vregX, vregMaxBcast, preg0);
@@ -243,9 +244,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(_
         Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregSum, preg1);
         Reg::Duplicate(vregSumBcast, vregSum, preg1);
 
+        uint32_t remainDiv = size;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            uint32_t count = size;
-            preg0 = Reg::UpdateMask<float>(count);
+            preg0 = Reg::UpdateMask<float>(remainDiv);
             ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
             Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
             Reg::Exp(vregResult, vregResult, preg0);
@@ -291,8 +292,9 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftplus(
         RegTensor<float> vregLnResult;
         Reg::MaskReg preg0 = Reg::CreateMask<float>();
 
+        uint32_t expertCountRemain = expertCountU32;
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(expertCountU32);
+            preg0 = Reg::UpdateMask<float>(expertCountRemain);
             ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregIn, preg0, i * VL_FLOAT_SIZE);
             Reg::Exp(vregExpInput, vregIn, preg0);
             Reg::Adds(vregExpPlusOne, vregExpInput, static_cast<float>(1), preg0);
@@ -324,12 +326,18 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
 
     int64_t duplicateNum = expertCount_ % ONE_REPEAT_SORT_NUM;
     int64_t duplicateIndex = expertCount_ - duplicateNum;
-    if (duplicateNum > 0) {
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
-        uint64_t mask[2] = {mask0, 0};
-        Duplicate(xRow.ReinterpretCast<int32_t>()[duplicateIndex], MIN_FP32, mask, 1, 1, 1);
+    int64_t padNum = expertCountAlign_ - expertCount_;
+    if (padNum > 0) {
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregPad;
+            Reg::UnalignRegForStore u0;
+            Reg::Duplicate(vregPad, *((float *)&MIN_FP32));
+            auto padAddr = (__ubuf__ float *)xRow.GetPhyAddr() + expertCount_;
+            Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(padAddr, vregPad, u0,
+                                                                         static_cast<uint32_t>(padNum));
+            Reg::StoreUnAlignPost(padAddr, u0, 0);
+        }
         PipeBarrier<PIPE_V>();
     }
 
@@ -347,16 +355,14 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
     }
 
     if (normType_ != 0) {
-        ApplyBiasAndPad(xNormWithBiasTensor, xNormTensor, biasTensor, duplicateNum, duplicateIndex);
+        ApplyBiasAndPad(xNormWithBiasTensor, xNormTensor, biasTensor);
     }
 }
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ApplyBiasAndPad(LocalTensor<float> xNormWithBiasTensor,
                                                                             LocalTensor<float> xNormTensor,
-                                                                            LocalTensor<float> biasTensor,
-                                                                            int64_t duplicateNum,
-                                                                            int64_t duplicateIndex)
+                                                                            LocalTensor<float> biasTensor)
 {
     if (hasBias_) {
         Add(xNormWithBiasTensor, xNormTensor, biasTensor, expertCountAlign_);
@@ -365,12 +371,18 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ApplyBiasAndPad(Loca
     }
     PipeBarrier<PIPE_V>();
 
-    if (duplicateNum > 0) {
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
-        uint64_t mask[2] = {mask0, 0};
-        Duplicate(xNormWithBiasTensor.ReinterpretCast<int32_t>()[duplicateIndex], MIN_FP32, mask, 1, 1, 1);
+    int64_t padNum = expertCountAlign_ - expertCount_;
+    if (padNum > 0) {
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregPad;
+            Reg::UnalignRegForStore u0;
+            Reg::Duplicate(vregPad, *((float *)&MIN_FP32));
+            auto padAddr = (__ubuf__ float *)xNormWithBiasTensor.GetPhyAddr() + expertCount_;
+            Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(padAddr, vregPad, u0,
+                                                                         static_cast<uint32_t>(padNum));
+            Reg::StoreUnAlignPost(padAddr, u0, 0);
+        }
         PipeBarrier<PIPE_V>();
     }
 }
