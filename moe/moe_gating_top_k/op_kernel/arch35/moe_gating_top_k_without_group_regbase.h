@@ -45,8 +45,8 @@ private:
     __aicore__ inline void CopyInXBatch(int64_t batchIdx, int64_t rowsInBatch);
     __aicore__ inline void ComputeNorm(LocalTensor<float> xInTensor, int64_t rowInBatch);
     __aicore__ inline void ComputeNormSigmoid(__ubuf__ float *xRowAddr, __ubuf__ float *xNormAddr);
-    __aicore__ inline void ComputeNormSoftMax(__ubuf__ float *xRowAddr, __ubuf__ float *xNormAddr,
-                                              __ubuf__ float *xNormWithBiasAddr, __ubuf__ float *biasAddr,
+    __aicore__ inline void ComputeNormSoftMax(LocalTensor<float> xRow, LocalTensor<float> xNormTensor,
+                                              LocalTensor<float> xNormWithBiasTensor, LocalTensor<float> biasTensor,
                                               int64_t duplicateNum);
     __aicore__ inline void ComputeNormSoftplus(__ubuf__ float *xRowAddr, __ubuf__ float *xNormAddr);
     __aicore__ inline void ApplyBiasAndPad(LocalTensor<float> xNormWithBiasTensor, LocalTensor<float> xNormTensor,
@@ -196,56 +196,27 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSigmoid(_
 }
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(__ubuf__ float *xRowAddr,
-                                                                               __ubuf__ float *xNormAddr,
-                                                                               __ubuf__ float *xNormWithBiasAddr,
-                                                                               __ubuf__ float *biasAddr,
-                                                                               int64_t duplicateNum)
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(LocalTensor<float> xRow,
+                                                                                LocalTensor<float> xNormTensor,
+                                                                                LocalTensor<float> xNormWithBiasTensor,
+                                                                                LocalTensor<float> biasTensor,
+                                                                                int64_t duplicateNum)
 {
-    uint32_t size = static_cast<uint32_t>(expertCountAlign_);
+    SoftMaxShapeInfo softmaxShapeInfo;
+    softmaxShapeInfo.srcM = 1;
+    softmaxShapeInfo.srcK = expertCountAlign_;
+    softmaxShapeInfo.oriSrcM = 1;
+    softmaxShapeInfo.oriSrcK = expertCountAlign_;
+    SoftMax<float, true, false>(xNormTensor, xRow, tilingData_->softmaxTilingData, softmaxShapeInfo);
+    PipeBarrier<PIPE_V>();
 
-    __VEC_SCOPE__
-    {
-        RegTensor<float> vregX;
-        RegTensor<float> vregMax;
-        RegTensor<float> vregMaxBcast;
-        RegTensor<float> vregExp;
-        RegTensor<float> vregSum;
-        RegTensor<float> vregSumBcast;
-        RegTensor<float> vregResult;
-        Reg::MaskReg preg0 = Reg::UpdateMask<float>(size);
-
-        Reg::LoadAlign(vregX, xRowAddr);
-        Reg::Reduce<Reg::ReduceType::MAX>(vregMax, vregX, preg0);
-        Reg::Duplicate(vregMaxBcast, vregMax, preg0);
-        Reg::Sub(vregExp, vregX, vregMaxBcast, preg0);
-        Reg::Exp(vregExp, vregExp, preg0);
-        Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregExp, preg0);
-        Reg::Duplicate(vregSumBcast, vregSum, preg0);
-        Reg::Div(vregResult, vregExp, vregSumBcast, preg0);
-        Reg::StoreAlign(xNormAddr, vregResult, preg0);
-    }
     if (hasBias_) {
-        __VEC_SCOPE__
-        {
-            RegTensor<float> vregResult;
-            RegTensor<float> vregBias;
-            RegTensor<float> vregBiasResult;
-            Reg::MaskReg preg0 = Reg::UpdateMask<float>(size);
-            Reg::LoadAlign(vregResult, xNormAddr);
-            Reg::LoadAlign(vregBias, biasAddr);
-            Reg::Add(vregBiasResult, vregResult, vregBias, preg0);
-            Reg::StoreAlign(xNormWithBiasAddr, vregBiasResult, preg0);
-        }
+        Add(xNormWithBiasTensor, xNormTensor, biasTensor, expertCountAlign_);
     } else {
-        __VEC_SCOPE__
-        {
-            RegTensor<float> vregResult;
-            Reg::MaskReg preg0 = Reg::UpdateMask<float>(size);
-            Reg::LoadAlign(vregResult, xNormAddr);
-            Reg::StoreAlign(xNormWithBiasAddr, vregResult, preg0);
-        }
+        DataCopy(xNormWithBiasTensor, xNormTensor, expertCountAlign_);
     }
+    PipeBarrier<PIPE_V>();
+
     if (duplicateNum > 0) {
         __VEC_SCOPE__
         {
@@ -253,7 +224,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(_
             Reg::UnalignRegForStore u0;
             Reg::Duplicate(vregPad, *((float *)&MIN_FP32));
             uint32_t padCount = static_cast<uint32_t>(expertCountAlign_ - expertCount_);
-            auto padAddr = xNormWithBiasAddr + expertCount_;
+            auto padAddr = (__ubuf__ float *)xNormWithBiasTensor.GetPhyAddr() + expertCount_;
             Reg::StoreUnAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(padAddr, vregPad, u0, padCount);
             Reg::StoreUnAlignPost(padAddr, u0, 0);
         }
@@ -326,7 +297,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
     if (normType_ == 1) {
         ComputeNormSigmoid(xRowAddr, xNormAddr);
     } else if (normType_ == 0) {
-        ComputeNormSoftMax(xRowAddr, xNormAddr, xNormWithBiasAddr, biasAddr, duplicateNum);
+        ComputeNormSoftMax(xRow, xNormTensor, xNormWithBiasTensor, biasTensor, duplicateNum);
     } else {
         ComputeNormSoftplus(xRowAddr, xNormAddr);
     }
@@ -626,6 +597,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
             RegTensor<float> vregNorm;
             RegTensor<float> vregOut;
             RegTensor<float> vregOne;
+            RegTensor<float> vregSumBcast;
             RegTensor<float> vregTmp1;
             RegTensor<float> vregTmp2;
             RegTensor<float> vregTmp3;
@@ -640,11 +612,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 Reg::Exp(vregTmp2, vregTmp1, preg0);
                 Reg::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
                 Reg::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
-                RegTensor<float> vregSum;
-                Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregNorm, preg0);
-                Reg::Adds(vregSum, vregSum, eps_, preg0);
-                RegTensor<float> vregSumBcast;
-                Reg::Duplicate(vregSumBcast, vregSum, preg0);
+                Reg::Adds(vregSumBcast, vregNorm, eps_, preg0);
                 Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
                 Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
                 Reg::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
@@ -684,6 +652,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
             RegTensor<float> vregIn;
             RegTensor<float> vregNorm;
             RegTensor<float> vregOut;
+            RegTensor<float> vregSumBcast;
             RegTensor<int32_t> vregZeroIdx;
             Reg::MaskReg preg0 = Reg::CreateMask<float>();
 
@@ -691,11 +660,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 preg0 = Reg::UpdateMask<float>(rowsInBatchU32);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregIn, preg0, i * VL_FLOAT_SIZE);
                 Reg::Duplicate(vregNorm, static_cast<float>(1), preg0);
-                RegTensor<float> vregSum;
-                Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregNorm, preg0);
-                Reg::Adds(vregSum, vregSum, eps_, preg0);
-                RegTensor<float> vregSumBcast;
-                Reg::Duplicate(vregSumBcast, vregSum, preg0);
+                Reg::Adds(vregSumBcast, vregNorm, eps_, preg0);
                 Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
                 Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
                 Reg::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
@@ -781,6 +746,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
             RegTensor<float> vregIn;
             RegTensor<float> vregNorm;
             RegTensor<float> vregOut;
+            RegTensor<float> vregSumBcast;
             RegTensor<float> vregTmp1;
             RegTensor<float> vregTmp2;
             RegTensor<float> vregTmp3;
@@ -794,7 +760,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 Reg::Adds(vregTmp2, vregTmp1, static_cast<float>(1), preg0);
                 Reg::Ln(vregTmp3, vregTmp2, preg0);
                 Reg::Sqrt(vregNorm, vregTmp3, preg0);
-                Reg::Muls(vregOut, vregNorm, static_cast<float>(1), preg0);
+                Reg::Adds(vregSumBcast, vregNorm, eps_, preg0);
+                Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
                 Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
                 Reg::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
                 ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * VL_FLOAT_SIZE);

@@ -175,6 +175,7 @@ __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
                                               __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
                                               float eps, float routedScalingFactor)
 {
+    uint32_t k1 = k;
     __VEC_SCOPE__
     {
         RegTensor<uint32_t> vregSortValue;
@@ -202,7 +203,7 @@ __aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
         Reg::Adds(vregSum, vregSum, eps, preg1);
         Reg::Duplicate(vregSumBcast, vregSum, preg1);
         for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg1 = Reg::UpdateMask<uint32_t>(k);
+            preg1 = Reg::UpdateMask<uint32_t>(k1);
             Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_DINTLV_B32>(vregSortValue, vregExpertIdx,
                                                                      mrgSortAddr + i * 2 * VL_FLOAT_SIZE);
             Reg::Gather(vregGathered, inputAddr, vregExpertIdx, preg1);
