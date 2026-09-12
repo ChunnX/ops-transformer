@@ -30,7 +30,6 @@ namespace optiling {
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
-    outputDtype_ = 0;
     OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                          context_->GetRawTilingData()->GetCapacity()) != EOK,
                 OP_LOGE(inputParams_.opName, "Fail to clear tiling data"), return);
@@ -69,7 +68,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
     inputParams_.groupListType = static_cast<uint64_t>(groupListType);
     sharedInputOffset_ = static_cast<uint64_t>(shareInputOffset);
     outputBs_ = static_cast<uint64_t>(outputBS);
-    outputDtype_ = static_cast<uint64_t>(outputDtype);
     OP_CHECK_IF(inputParams_.groupListType != 0 && inputParams_.groupListType != 1,
                 OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "group_list_type",
                                           std::to_string(inputParams_.groupListType), "0 or 1"),
