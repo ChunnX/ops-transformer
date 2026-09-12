@@ -924,7 +924,9 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::GatherOriAndCmpCache(S1GCache &s
 void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext,
                                                              const BatchCache &batchCache, S1GCache &s1GCache)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
+    const SplitInfo &splitInfo = spl
+
+                                     itContext.splitInfo;
     // 如果s1G是空行，则直接返回
     if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
         s1GCache.s1GCost = 0;
