@@ -27,15 +27,7 @@
 
 - 与 V2 的主要区别：V3 增加了可配置的 SwiGLU 参数，包括 `activateDim`、`activateLeft`、`swigluMode`、`clampLimit`、`gluAlpha` 和 `gluBias`。这些参数只作用于 SwiGLU 计算阶段，不改变 GroupedMatmul 和 MXFP8 量化的数据格式约束。
 
-- 输入和输出：
-
-  - `x` 是形状为 `(M, K)` 的 MXFP8 激活矩阵。
-  - `weight` 是 TensorList，长度必须为 1；其中唯一 Tensor 的逻辑 view 形状为 `(E, K, N)`，storage 形状为五维 FRACTAL_NZ。
-  - `weightScale` 是长度为 1 的 TensorList，形状为 `(E, ceil(K / 64), N, 2)`。
-  - `xScale` 的形状为 `(M, ceil(K / 64), 2)`。
-  - `output` 的形状为 `(M, N / 2)`，`outputScale` 的形状为 `(M, ceil((N / 2) / 64), 2)`。
-
-- 计算过程：
+- 计算公式：
 
   1. 根据 `groupList` 和 `groupListType` 将 `x` 划分为不同的分组，并为每个分组选择对应的权重切片。
   2. 执行 grouped matmul，并结合 `xScale` 和 `weightScale` 完成 MXFP8 反量化，得到待进行 SwiGLU 计算的矩阵 `x_i`：
@@ -88,8 +80,6 @@
     $$swigluOut_i = x\_glu * x\_linear$$
 
     此模式忽略 `gluAlpha` 和 `gluBias`，并要求 `axis=-1`。
-
-- `clampLimit` 表示变体 SwiGLU 使用的门限值，具体 clamp 范围由 `swigluMode` 决定：`x_glu` 使用上界 `clampLimit`，`x_linear` 使用对称范围 `[-clampLimit, clampLimit]`；该参数必须大于 0。
 
 ## 函数原型
 
@@ -180,7 +170,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       <tr><td>activateDim</td><td>输入</td><td>SwiGLU 拆分维度。</td><td>当前仅支持 -1，表示最后一维。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>activateLeft</td><td>输入</td><td>激活分支选择。</td><td>true 表示拆分后的左分支作为激活分支，false 表示右分支作为激活分支。</td><td>BOOL</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>swigluMode</td><td>输入</td><td>SwiGLU 计算模式。</td><td>支持 0、1、2、3。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>clampLimit</td><td>输入</td><td>变体 SwiGLU 的 clamp 门限。</td><td>x_glu 的上界为 clampLimit，x_linear 限制在 [-clampLimit, clampLimit]；必须大于 0 且能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>clampLimit</td><td>输入</td><td>用于限定 SwiGLU 中间结果的 clamp 范围：x_glu 的上界为 clampLimit，x_linear 的范围为 [-clampLimit, clampLimit]。</td><td>swigluMode 为 1、2、3 时生效；必须大于 0 且能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>gluAlpha</td><td>输入</td><td>SwiGLU alpha 参数。</td><td>用于带 alpha 的 SwiGLU 模式，必须能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>gluBias</td><td>输入</td><td>SwiGLU bias 参数。</td><td>用于带 bias 的 SwiGLU 模式，必须能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>axis</td><td>输入</td><td>MX 量化轴预留参数。</td><td>当前只校验默认值 -1，不改变量化逻辑。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
