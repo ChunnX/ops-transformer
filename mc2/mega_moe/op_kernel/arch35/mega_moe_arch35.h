@@ -582,7 +582,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
     }
     Gmm1UbActivationSync::EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     gmm1PingPongIdx_ = 0U;
-    startBlockIdx_ = 0U;
+    // Continue MoE assignment after shared GMM1 so its first tiles can use the next cores.
 }
 
 template <TemplateMegaMoeTypeClass>
