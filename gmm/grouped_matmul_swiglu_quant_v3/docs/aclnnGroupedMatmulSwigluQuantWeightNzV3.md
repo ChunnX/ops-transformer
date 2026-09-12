@@ -38,26 +38,58 @@
 - 计算过程：
 
   1. 根据 `groupList` 和 `groupListType` 将 `x` 划分为不同的分组，并为每个分组选择对应的权重切片。
-  2. 执行 grouped matmul，并结合 `xScale` 和 `weightScale` 完成 MXFP8 反量化：
+  2. 执行 grouped matmul，并结合 `xScale` 和 `weightScale` 完成 MXFP8 反量化，得到待进行 SwiGLU 计算的矩阵 `x_i`：
 
-     $$C_i = (X_i \cdot W_i) \odot xScale_i \odot weightScale_i$$
+     $$x_i = (X_i \cdot W_i) \odot xScale_i \odot weightScale_i$$
 
      其中缩放因子按照 MX block 规则在 K 方向对应的 64 元素块上广播。
 
-  3. 按 `activateDim=-1` 将 `C_i` 拆分为激活分支和门控分支，执行 `swigluMode` 对应的 SwiGLU 计算。`activateLeft` 决定使用拆分后的左分支还是右分支作为激活分支。
-  4. 在 SwiGLU 阶段根据模式应用 clamp、alpha 和 bias，得到 `S_i`。
-  5. 对 `S_i` 按 MX block 执行 MXFP8 量化，输出量化结果 `output` 和 E8M0 格式的 `outputScale`。
+  3. 按 `activateDim=-1` 和 `activateLeft` 对 `x_i` 拆分，执行 `swigluMode` 对应的 SwiGLU 计算，得到 `swigluOut_i`。
+  4. 对 `swigluOut_i` 执行 MXFP8 动态量化，输出量化结果 `output` 和 E8M0 格式的 `outputScale`：
 
-- `swigluMode` 取值说明：
+     $$output, outputScale = DynamicMxQuant(swigluOut_i)$$
 
-  | `swigluMode` | 计算方式 |
-  | --- | --- |
-  | 0 | 标准 SwiGLU。将结果拆分为激活分支和门控分支，计算 `Silu(activation) * gate`。 |
-  | 1 | 按奇偶位置交错拆分，应用 `clampLimit`，再执行带 `gluAlpha` 和 `gluBias` 的 SwiGLU。 |
-  | 2 | 按前后两半拆分，先应用 `clampLimit`，再执行带 `gluAlpha` 和 `gluBias` 的 SwiGLU。 |
-  | 3 | 使用固定 `alpha=1` 的 SiLU 计算，随后应用 `clampLimit`，不使用 bias。 |
+- `swigluMode` 取值和计算公式：
 
-- `clampLimit` 表示 SwiGLU 阶段 clamp 的正负对称边界，即将值限制在 `[-clampLimit, clampLimit]` 内，必须大于 0。
+  - `swigluMode=0`：标准 SwiGLU。`A_i` 表示 `x_i` 的前半部分，`B_i` 表示 `x_i` 的后半部分。
+
+    $$swigluOut_i = Swiglu(x_i) = Swish(A_i) * B_i$$
+
+  - `swigluMode=1`：按奇偶位置交错拆分。`x_glu` 表示 `x_i` 的偶数索引部分，`x_linear` 表示 `x_i` 的奇数索引部分。
+
+    $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
+
+    $$x\_linear = x\_linear.clamp(min=-clampLimit, max=clampLimit)$$
+
+    $$out\_glu = x\_glu * sigmoid(gluAlpha * x\_glu)$$
+
+    $$swigluOut_i = out\_glu * (x\_linear + gluBias)$$
+
+  - `swigluMode=2`：沿 `activateDim` 轴前后分半拆分，且不是交错分块。`activateLeft=true` 时 `x_glu` 为前半部分，否则为后半部分。
+
+    $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
+
+    $$x\_linear = x\_linear.clamp(min=-clampLimit, max=clampLimit)$$
+
+    $$out\_glu = x\_glu * sigmoid(gluAlpha * x\_glu)$$
+
+    $$swigluOut_i = out\_glu * (x\_linear + gluBias)$$
+
+    此模式要求 `axis=-1`。
+
+  - `swigluMode=3`：沿 `activateDim` 轴前后分半拆分，且不是交错分块。固定使用 `alpha=1`，不添加 bias。
+
+    $$x\_glu = x\_glu * sigmoid(x\_glu)$$
+
+    $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
+
+    $$x\_linear = x\_linear.clamp(min=-clampLimit, max=clampLimit)$$
+
+    $$swigluOut_i = x\_glu * x\_linear$$
+
+    此模式忽略 `gluAlpha` 和 `gluBias`，并要求 `axis=-1`。
+
+- `clampLimit` 表示变体 SwiGLU 使用的门限值，具体 clamp 范围由 `swigluMode` 决定：`x_glu` 使用上界 `clampLimit`，`x_linear` 使用对称范围 `[-clampLimit, clampLimit]`；该参数必须大于 0。
 
 ## 函数原型
 
@@ -126,7 +158,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 | `activateDim` | 输入 | SwiGLU 拆分维度。 | 当前仅支持 `-1`，表示最后一维。 | `INT64` | - | - |
 | `activateLeft` | 输入 | 激活分支选择。 | `true` 表示拆分后的左分支作为激活分支，`false` 表示右分支作为激活分支。 | `BOOL` | - | - |
 | `swigluMode` | 输入 | SwiGLU 计算模式。 | 支持 `0`、`1`、`2`、`3`。 | `INT64` | - | - |
-| `clampLimit` | 输入 | SwiGLU clamp 边界。 | clamp 到 `[-clampLimit, clampLimit]`，必须大于 0，且能用 `float32` 表示。 | `DOUBLE` | - | - |
+| `clampLimit` | 输入 | 变体 SwiGLU 的 clamp 门限。 | `x_glu` 的上界为 `clampLimit`，`x_linear` 限制在 `[-clampLimit, clampLimit]`，必须大于 0，且能用 `float32` 表示。 | `DOUBLE` | - | - |
 | `gluAlpha` | 输入 | SwiGLU alpha 参数。 | 用于带 alpha 的 SwiGLU 模式，必须能用 `float32` 表示。 | `DOUBLE` | - | - |
 | `gluBias` | 输入 | SwiGLU bias 参数。 | 用于带 bias 的 SwiGLU 模式，必须能用 `float32` 表示。 | `DOUBLE` | - | - |
 | `axis` | 输入 | MX 量化轴预留参数。 | 当前只校验默认值 `-1`，不改变量化逻辑。 | `INT64` | - | - |
