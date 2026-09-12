@@ -243,30 +243,19 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(_
         Reg::Reduce<Reg::ReduceType::SUM>(vregSum, vregSum, preg1);
         Reg::Duplicate(vregSumBcast, vregSum, preg1);
 
-        if (hasBias_) {
-            for (uint16_t i = 0; i < vfLoopNum; i++) {
-                uint32_t count = size;
-                preg0 = Reg::UpdateMask<float>(count);
-                ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
-                Reg::Duplicate(vregResult, static_cast<float>(0), preg1);
-                Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
-                Reg::Exp(vregResult, vregResult, preg0);
-                Reg::Div(vregResult, vregResult, vregSumBcast, preg0);
-                Reg::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
+        for (uint16_t i = 0; i < vfLoopNum; i++) {
+            uint32_t count = size;
+            preg0 = Reg::UpdateMask<float>(count);
+            ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
+            Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
+            Reg::Exp(vregResult, vregResult, preg0);
+            Reg::Div(vregResult, vregResult, vregSumBcast, preg0);
+            Reg::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
+            if (hasBias_) {
                 ops::LoadOneTensorForDtypeT<float>(biasAddr, vregBias, preg0, i * VL_FLOAT_SIZE);
                 Reg::Add(vregBiasResult, vregResult, vregBias, preg0);
                 Reg::StoreAlign(xNormWithBiasAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
-            }
-        } else {
-            for (uint16_t i = 0; i < vfLoopNum; i++) {
-                uint32_t count = size;
-                preg0 = Reg::UpdateMask<float>(count);
-                ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
-                Reg::Duplicate(vregResult, static_cast<float>(0), preg1);
-                Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
-                Reg::Exp(vregResult, vregResult, preg0);
-                Reg::Div(vregResult, vregResult, vregSumBcast, preg0);
-                Reg::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
+            } else {
                 Reg::StoreAlign(xNormWithBiasAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
             }
         }
