@@ -80,11 +80,9 @@ static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence
 
 enum class MoeEpCombineProfileStage : uint32_t {
     KERNEL = 0,
-    ADDRESS_TABLE = 1, // Reserved for flow's historical raw files; the direct path does not emit this stage.
     DATA_WQE = 2,
     FLAG_COMMIT = 3,
     FLAG_SOURCE_INIT = 4,
-    LOCAL_METADATA_COPY = 5,
     LOCAL_BARRIER = 6,
     CORE_ASSIGNMENT = 7,
 };
@@ -145,6 +143,7 @@ private:
     uint32_t numMaxTokensPerRank_{0};
     uint32_t topK_{0};
     uint32_t axisH_{0};
+    uint32_t hAlignSize_{0};
     uint64_t combineStateWinOffset_{0};
     uint64_t combineDataWinOffset_{0};
 
@@ -202,6 +201,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     topK_ = tilingData_->cfg.topK;
     axisH_ = tilingData_->cfg.hidden;
+    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
     recvCapacity_ = tilingData_->recvCapacity;
@@ -215,7 +215,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     rankId_ = mc2Context_->epRankId;
-    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::COMBINE, aivNum_);
     constexpr size_t metadataOffset =
         offsetof(MoeEpCombineTilingData, moeEpCombineInfo) + offsetof(MoeEpCombineInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
@@ -269,6 +268,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::COMBINE, aivNum_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -387,36 +387,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SplitRange(ui
     uint64_t coreCountValue = base + ((static_cast<uint64_t>(coreIndex) < remainder) ? 1U : 0U);
     coreBegin = rangeBegin + prefix;
     coreEnd = coreBegin + coreCountValue;
-}
-
-template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalWeight(uint32_t recvXIdx, GM_ADDR dstAddr)
-{
-    if constexpr (HasTopkWeight == 1) {
-        GlobalTensor<float> outWeight;
-        outWeight.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(dstAddr));
-        LocalTensor<float> weightTensor = weightQueue_.AllocTensor<float>();
-        DataCopyParams copyParams{1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
-        DataCopyPadParams padParams{false, 0U, 0U, 0U};
-        DataCopyPad(weightTensor, topkWeightsGm_[recvXIdx], copyParams, padParams);
-        weightQueue_.EnQue(weightTensor);
-        weightTensor = weightQueue_.DeQue<float>();
-        DataCopyPad(outWeight, weightTensor, copyParams);
-        weightQueue_.FreeTensor<float>(weightTensor);
-    }
-}
-
-template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendLocalMetadataSlot(
-    uint32_t recvXIdx, int32_t srcTokenIdx, int32_t srcTopKIdx, GM_ADDR localDataBase, GM_ADDR localStateBase)
-{
-    uint64_t dstSlot =
-        static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
-    uint64_t slotBase = dstSlot * perSlotBytes_;
-    SendLocalToken(recvXIdx, localDataBase + slotBase);
-    if constexpr (HasTopkWeight == 1) {
-        SendLocalWeight(recvXIdx, localDataBase + slotBase + hAlignSize_);
-    }
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -583,6 +553,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
             }
         }
     }
+
     MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
                                              MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::END));
 

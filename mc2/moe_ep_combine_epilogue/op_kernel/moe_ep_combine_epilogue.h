@@ -476,10 +476,10 @@ __aicore__ inline void MoeEpCombineEpilogue<TemplateMoeEpCombineEpilogueTypeFunc
             continue;
         }
         LocalTensor<XType> xLocal = xInQue_.AllocTensor<XType>();
+        uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
         if (localRecvXIdx >= 0) {
             DataCopyPad(xLocal, xGm_[static_cast<uint64_t>(localRecvXIdx) * axisH_], xCopyParams, padParams);
         } else {
-            uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * tilingData_->cfg.perSlotBytes;
             GM_ADDR tokenAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
             GlobalTensor<XType> srcTokenTensor;
             srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(tokenAddr));
