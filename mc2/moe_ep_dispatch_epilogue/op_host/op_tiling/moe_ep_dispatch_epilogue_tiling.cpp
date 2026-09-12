@@ -10,7 +10,8 @@
 
 /*!
  * \file moe_ep_dispatch_epilogue_tiling.cpp
- * \brief Expert-sorted epilogue tiling — perSlotBytes = ALIGN_UP(hidden*2, 512) + 512,
+ * \brief Expert-sorted epilogue tiling — perSlotBytes = direct: tokenSize + ALIGN_UP(meta, 512);
+ *        hybrid: ALIGN_UP(hAlign + meta, 512),
  *        eAlloc from output shape, workspace for rank+expert prefix sums.
  */
 
@@ -493,13 +494,19 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     ge::DataType recvXDtype = recvXDesc->GetDataType();
     bool isFp8 = (recvXDtype == ge::DT_FLOAT8_E5M2 || recvXDtype == ge::DT_FLOAT8_E4M3FN);
     uint32_t recvXDtypeSize = isFp8 ? FP8_DTYPE_SIZE : MAX_OUT_DTYPE_SIZE;
-    uint32_t hAlign32 = ((info.cfg.hidden * recvXDtypeSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+    uint32_t tokenSize = info.cfg.hidden * recvXDtypeSize;
     uint32_t kAlign32 = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint32_t scalesSizeAlign32 = isFp8 ? ((info.cfg.scalesBytes + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN : 0;
-    info.cfg.perSlotBytes =
-        ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
-         WIN_ADDR_ALIGN) *
-        WIN_ADDR_ALIGN;
+    uint32_t metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
+    info.networkMode = networkMode;
+    if (networkMode == NETWORK_HYBRID) {
+        // hybrid 槽布局(与 dispatch hybrid 一致): [x: ALIGN32(tokenSize)][scales][meta]，整槽 512 对齐
+        uint32_t hAlign32 = ((tokenSize + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
+        info.cfg.perSlotBytes = ((hAlign32 + metaSlotBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    } else {
+        // direct 紧凑槽布局: [x: tokenSize][meta: ALIGN512(metaSlotBytes)]
+        info.cfg.perSlotBytes = tokenSize + (metaSlotBytes + WIN_ADDR_ALIGN - 1UL) / WIN_ADDR_ALIGN * WIN_ADDR_ALIGN;
+    }
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
