@@ -483,7 +483,8 @@ def _get_moe_ep_window_bytes(
 
 @dataclass
 class EPHandle:
-    dst_buffer_slot_idx: torch.Tensor
+    send_src_token_idx: Optional[torch.Tensor]  # direct 模式：[ep, bs] 本卡发往各卡的 tokenid 表，-1 填充
+    dst_buffer_slot_idx: Optional[torch.Tensor]  # hybrid 模式：[bs, topK] 各 token 在目标卡的 slot
     recv_src_metadata: torch.Tensor
     recv_rank_offsets: torch.Tensor
     num_recv_tokens_per_rank: torch.Tensor
@@ -509,11 +510,14 @@ class _DispatchArgs:
     x: torch.Tensor
     scales: Optional[torch.Tensor]
     topk_idx: torch.Tensor
+    cached_src_token_idx: Optional[torch.Tensor]
     cached_dst_slot_idx: Optional[torch.Tensor]
     cached_route_count: Optional[torch.Tensor]
     cached_route_dst_scaleout: Optional[torch.Tensor]
     cached_route_scaleout_slot: Optional[torch.Tensor]
     cached_recv_src_metadata: Optional[torch.Tensor]
+    cached_num_recv_per_rank: Optional[torch.Tensor]
+    cached_num_recv_per_expert: Optional[torch.Tensor]
     num_experts: int
     num_max_tokens_per_rank: int
     expert_alignment: int
@@ -1001,6 +1005,7 @@ class ElasticBuffer:
         (
             num_recv_per_rank,
             num_recv_per_expert,
+            send_src_token_idx,
             dst_slot,
             route_count,
             route_dst_scaleout,
@@ -1010,6 +1015,7 @@ class ElasticBuffer:
             args.topk_idx,
             topk_weights,
             args.scales,
+            args.cached_src_token_idx,
             args.cached_dst_slot_idx,
             args.cached_route_count,
             args.cached_route_dst_scaleout,
@@ -1023,6 +1029,11 @@ class ElasticBuffer:
             hp_addr,
             ccl_buffer_size,
         )
+        if args.cached_output_capacity is not None:
+            # cache 模式，输出直接复用 handle 携带的上一步值
+            num_recv_per_rank = args.cached_num_recv_per_rank
+            num_recv_per_expert = args.cached_num_recv_per_expert
+            send_src_token_idx = args.cached_src_token_idx
 
         actual_a = self._get_dispatch_recv_count(args)
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
@@ -1031,7 +1042,7 @@ class ElasticBuffer:
 
         recv_x, recv_src_meta, recv_topk_weights, recv_scales = (
             self._runtime.moe_ep_dispatch_epilogue(
-                dst_slot,
+                args.topk_idx,
                 num_recv_per_rank,
                 num_recv_per_expert,
                 args.cached_recv_src_metadata,
@@ -1050,6 +1061,7 @@ class ElasticBuffer:
         recv_x = (recv_x, recv_scales) if recv_scales is not None else recv_x
         new_handle = self._make_dispatch_handle(
             args,
+            send_src_token_idx,
             dst_slot,
             recv_src_meta,
             actual_a,
@@ -1324,11 +1336,14 @@ class ElasticBuffer:
                 x,
                 scales,
                 handle.topk_idx,
+                handle.send_src_token_idx,
                 handle.dst_buffer_slot_idx,
                 handle.route_count,
                 handle.route_dst_scaleout,
                 handle.route_scaleout_slot,
                 packed_metadata,
+                handle.num_recv_tokens_per_rank,
+                handle.num_recv_tokens_per_expert,
                 handle.num_experts,
                 handle.num_max_tokens_per_rank,
                 handle.expert_alignment,
@@ -1347,6 +1362,9 @@ class ElasticBuffer:
             x,
             scales,
             topk_idx,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1410,6 +1428,7 @@ class ElasticBuffer:
     def _make_dispatch_handle(
         self,
         args: _DispatchArgs,
+        send_src_token_idx: torch.Tensor,
         dst_slot: torch.Tensor,
         recv_src_meta: torch.Tensor,
         capacity: int,
@@ -1428,6 +1447,7 @@ class ElasticBuffer:
             else args.topk_idx.clone()
         )
         return EPHandle(
+            send_src_token_idx=send_src_token_idx,
             dst_buffer_slot_idx=dst_slot,
             recv_src_metadata=metadata_rows,
             recv_rank_offsets=rank_offsets,

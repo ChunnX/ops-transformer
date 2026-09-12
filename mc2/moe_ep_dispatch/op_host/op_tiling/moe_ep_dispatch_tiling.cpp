@@ -41,17 +41,19 @@ constexpr uint32_t X_INDEX = 1U;
 constexpr uint32_t TOPK_IDX_INDEX = 2U;
 constexpr uint32_t TOPK_WEIGHTS_INDEX = 3U;
 constexpr uint32_t SCALES_INDEX = 4U;
-constexpr uint32_t CACHED_SLOT_IDX_INDEX = 5U;
-constexpr uint32_t CACHED_ROUTE_COUNT_INDEX = 6U;
-constexpr uint32_t CACHED_ROUTE_DST_SCALEOUT_INDEX = 7U;
-constexpr uint32_t CACHED_ROUTE_SCALEOUT_SLOT_INDEX = 8U;
+constexpr uint32_t CACHED_SRC_TOKEN_IDX_INDEX = 5U;
+constexpr uint32_t CACHED_SLOT_IDX_INDEX = 6U;
+constexpr uint32_t CACHED_ROUTE_COUNT_INDEX = 7U;
+constexpr uint32_t CACHED_ROUTE_DST_SCALEOUT_INDEX = 8U;
+constexpr uint32_t CACHED_ROUTE_SCALEOUT_SLOT_INDEX = 9U;
 
 constexpr uint32_t NUM_RECV_PER_RANK_INDEX = 0U;
 constexpr uint32_t NUM_RECV_PER_EXPERT_INDEX = 1U;
-constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 2U;
-constexpr uint32_t ROUTE_COUNT_INDEX = 3U;
-constexpr uint32_t ROUTE_DST_SCALEOUT_INDEX = 4U;
-constexpr uint32_t ROUTE_SCALEOUT_SLOT_INDEX = 5U;
+constexpr uint32_t SEND_SRC_TOKEN_IDX_INDEX = 2U;
+constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 3U;
+constexpr uint32_t ROUTE_COUNT_INDEX = 4U;
+constexpr uint32_t ROUTE_DST_SCALEOUT_INDEX = 5U;
+constexpr uint32_t ROUTE_SCALEOUT_SLOT_INDEX = 6U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -173,46 +175,45 @@ static bool CheckOptionalTensorShape(const gert::TilingContext *context, const c
                                      int64_t topkDim1, const MoeEpDispatchInfo &info)
 {
     const gert::StorageShape *weightsShape = context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX);
-    const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
+    const gert::StorageShape *cachedSrcTokenShape = context->GetOptionalInputShape(CACHED_SRC_TOKEN_IDX_INDEX);
+    const gert::StorageShape *cachedSlotShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
 
     if (weightsShape != nullptr) {
-        OP_TILING_CHECK(
-            weightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_TILING_CHECK(weightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
             OP_LOGE(nodeName, "topk_weights dims must be 2, but got %lu.", weightsShape->GetStorageShape().GetDimNum()),
             return false);
-        OP_TILING_CHECK(
-            weightsShape->GetStorageShape().GetDim(0) != topkDim0,
-            OP_LOGE(nodeName,
-                    "topk_weights dim0 must equal topk_idx dim0, but got topk_weights dim0=%ld, topk_idx dim0=%ld.",
-                    weightsShape->GetStorageShape().GetDim(0), topkDim0),
-            return false);
-        OP_TILING_CHECK(
-            weightsShape->GetStorageShape().GetDim(1) != topkDim1,
-            OP_LOGE(nodeName,
-                    "topk_weights dim1 must equal topk_idx dim1, but got topk_weights dim1=%ld, topk_idx dim1=%ld.",
-                    weightsShape->GetStorageShape().GetDim(1), topkDim1),
-            return false);
+        OP_TILING_CHECK(weightsShape->GetStorageShape().GetDim(0) != topkDim0,
+            OP_LOGE(nodeName,"topk_weights dim0 must equal topk_idx dim0, but got topk_weights dim0=%ld, "
+                    "topk_idx dim0=%ld.", weightsShape->GetStorageShape().GetDim(0), topkDim0), return false);
+        OP_TILING_CHECK(weightsShape->GetStorageShape().GetDim(1) != topkDim1,
+            OP_LOGE(nodeName, "topk_weights dim1 must equal topk_idx dim1, but got topk_weights dim1=%ld, "
+                    "topk_idx dim1=%ld.", weightsShape->GetStorageShape().GetDim(1), topkDim1), return false);
     }
 
-    if (cachedShape != nullptr) {
-        OP_TILING_CHECK(cachedShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "cached_slot_idx dims must be 2, but got %lu.",
-                                cachedShape->GetStorageShape().GetDimNum()),
-                        return false);
-        OP_TILING_CHECK(
-            cachedShape->GetStorageShape().GetDim(0) != topkDim0,
-            OP_LOGE(
-                nodeName,
-                "cached_slot_idx dim0 must equal topk_idx dim0, but got cached_slot_idx dim0=%ld, topk_idx dim0=%ld.",
-                cachedShape->GetStorageShape().GetDim(0), topkDim0),
-            return false);
-        OP_TILING_CHECK(
-            cachedShape->GetStorageShape().GetDim(1) != topkDim1,
-            OP_LOGE(
-                nodeName,
-                "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, topk_idx dim1=%ld.",
-                cachedShape->GetStorageShape().GetDim(1), topkDim1),
-            return false);
+    uint32_t networkMode = info.networkMode;
+    if (networkMode == NETWORK_DIRECT && cachedSrcTokenShape != nullptr) {
+        OP_TILING_CHECK(cachedSrcTokenShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "cached_src_token_idx dims must be 2, but got %lu.",
+                    cachedSrcTokenShape->GetStorageShape().GetDimNum()), return false);
+        OP_TILING_CHECK(cachedSrcTokenShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize),
+            OP_LOGE(nodeName, "cached_src_token_idx dim0 must equal ep_world_size, but got cached_src_token_idx "
+                    "dim0=%ld, ep_world_size=%ld.", static_cast<int64_t>(info.cfg.epWorldSize),
+                    cachedSrcTokenShape->GetStorageShape().GetDim(0)), return false);
+        OP_TILING_CHECK(cachedSrcTokenShape->GetStorageShape().GetDim(1) != topkDim0,
+            OP_LOGE(nodeName, "cached_src_token_idx dim1 must equal topk_idx dim0, but got cached_src_token_idx "
+                    "dim1=%ld, topk_idx dim0=%ld.", cachedSrcTokenShape->GetStorageShape().GetDim(1), topkDim0),
+                    return false);
+    }
+    if (networkMode == NETWORK_HYBRID && cachedSlotShape != nullptr) {
+        OP_TILING_CHECK(cachedSlotShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "cached_slot_idx dims must be 2, but got %lu.",
+                    cachedSlotShape->GetStorageShape().GetDimNum()), return false);
+        OP_TILING_CHECK(cachedSlotShape->GetStorageShape().GetDim(0) != topkDim0,
+            OP_LOGE(nodeName, "cached_slot_idx dim0 must equal topk_idx dim0, but got cached_slot_idx dim0=%ld, "
+                    "topk_idx dim0=%ld.", cachedSlotShape->GetStorageShape().GetDim(0), topkDim0), return false);
+        OP_TILING_CHECK(cachedSlotShape->GetStorageShape().GetDim(1) != topkDim1,
+            OP_LOGE(nodeName, "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, "
+                    "topk_idx dim1=%ld.", cachedSlotShape->GetStorageShape().GetDim(1), topkDim1), return false);
     }
 
     const gert::StorageShape *cachedRouteCountShape = context->GetOptionalInputShape(CACHED_ROUTE_COUNT_INDEX);
@@ -226,7 +227,7 @@ static bool CheckOptionalTensorShape(const gert::TilingContext *context, const c
                           cachedRouteScaleoutSlotShape != nullptr;
     OP_TILING_CHECK(anyCachedRoute && !allCachedRoute,
                     OP_LOGE(nodeName, "cached route tensors must be provided together."), return false);
-    OP_TILING_CHECK(cachedShape != nullptr && info.networkMode == NETWORK_HYBRID && !allCachedRoute,
+    OP_TILING_CHECK(cachedSlotShape != nullptr && networkMode == NETWORK_HYBRID && !allCachedRoute,
                     OP_LOGE(nodeName, "cached route tensors are required in hybrid cached mode."), return false);
     if (allCachedRoute) {
         int64_t routeCapacity = topkDim1;
@@ -306,63 +307,64 @@ static bool CheckOutputTensorShape(const gert::TilingContext *context, const cha
 {
     const gert::StorageShape *recvPerRankShape = context->GetOutputShape(NUM_RECV_PER_RANK_INDEX);
     const gert::StorageShape *recvPerExpertShape = context->GetOutputShape(NUM_RECV_PER_EXPERT_INDEX);
+    const gert::StorageShape *sendSrcTokenIdxShape = context->GetOutputShape(SEND_SRC_TOKEN_IDX_INDEX);
     const gert::StorageShape *dstSlotIdxShape = context->GetOutputShape(DST_BUFFER_SLOT_IDX_INDEX);
     const gert::StorageShape *routeCountShape = context->GetOutputShape(ROUTE_COUNT_INDEX);
     const gert::StorageShape *routeDstScaleoutShape = context->GetOutputShape(ROUTE_DST_SCALEOUT_INDEX);
     const gert::StorageShape *routeScaleoutSlotShape = context->GetOutputShape(ROUTE_SCALEOUT_SLOT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvPerRankShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, recvPerExpertShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sendSrcTokenIdxShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeCountShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeDstScaleoutShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeScaleoutSlotShape);
+    int64_t epWorldSize = static_cast<int64_t>(info.cfg.epWorldSize);
     OP_TILING_CHECK(recvPerRankShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "num_recv_tokens_per_rank dims must be 1, but got %lu.",
-                            recvPerRankShape->GetStorageShape().GetDimNum()),
-                    return false);
-    OP_TILING_CHECK(recvPerRankShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize),
-                    OP_LOGE(nodeName, "num_recv_tokens_per_rank dim0 must equal ep_world_size=%u, but got %ld.",
-                            info.cfg.epWorldSize, recvPerRankShape->GetStorageShape().GetDim(0)),
-                    return false);
+        OP_LOGE(nodeName, "num_recv_tokens_per_rank dims must be 1, but got %lu.",
+                recvPerRankShape->GetStorageShape().GetDimNum()), return false);
+    OP_TILING_CHECK(recvPerRankShape->GetStorageShape().GetDim(0) != epWorldSize,
+        OP_LOGE(nodeName, "num_recv_tokens_per_rank dim0 must equal ep_world_size=%u, but got %ld.",
+                epWorldSize, recvPerRankShape->GetStorageShape().GetDim(0)), return false);
     OP_TILING_CHECK(recvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dims must be 1, but got %lu.",
-                            recvPerExpertShape->GetStorageShape().GetDimNum()),
-                    return false);
+        OP_LOGE(nodeName, "num_recv_tokens_per_expert dims must be 1, but got %lu.",
+                recvPerExpertShape->GetStorageShape().GetDimNum()), return false);
     OP_TILING_CHECK(recvPerExpertShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.numLocalExperts),
-                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dim0 must equal num_local_experts=%u, but got %ld.",
-                            info.cfg.numLocalExperts, recvPerExpertShape->GetStorageShape().GetDim(0)),
-                    return false);
+        OP_LOGE(nodeName, "num_recv_tokens_per_expert dim0 must equal num_local_experts=%u, but got %ld.",
+                info.cfg.numLocalExperts, recvPerExpertShape->GetStorageShape().GetDim(0)), return false);
+
+    OP_TILING_CHECK(sendSrcTokenIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "send_src_token_idx dims must be 2, but got %lu.",
+                sendSrcTokenIdxShape->GetStorageShape().GetDimNum()), return false);
+    OP_TILING_CHECK(sendSrcTokenIdxShape->GetStorageShape().GetDim(0) != epWorldSize,
+        OP_LOGE(nodeName, "send_src_token_idx dim0 must equal ep_world_size=%ld, but got send_src_token_idx dim0=%ld.",
+                epWorldSize, sendSrcTokenIdxShape->GetStorageShape().GetDim(0)), return false);
+    OP_TILING_CHECK(sendSrcTokenIdxShape->GetStorageShape().GetDim(1) != topkDim0,
+        OP_LOGE(nodeName, "send_src_token_idx dim1 must equal topk_idx dim0, but got send_src_token_idx dim1=%ld, "
+                "topk_idx dim0=%ld.", sendSrcTokenIdxShape->GetStorageShape().GetDim(1), topkDim0), return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE(nodeName, "dst_buffer_slot_idx dims must be 2, but got %lu.",
-                            dstSlotIdxShape->GetStorageShape().GetDimNum()),
-                    return false);
+        OP_LOGE(nodeName, "dst_buffer_slot_idx dims must be 2, but got %lu.",
+                dstSlotIdxShape->GetStorageShape().GetDimNum()), return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(0) != topkDim0,
-                    OP_LOGE(nodeName,
-                            "dst_buffer_slot_idx dim0 must equal topk_idx dim0, but got dst_buffer_slot_idx dim0=%ld, "
-                            "topk_idx dim0=%ld.",
-                            dstSlotIdxShape->GetStorageShape().GetDim(0), topkDim0),
-                    return false);
+        OP_LOGE(nodeName, "dst_buffer_slot_idx dim0 must equal topk_idx dim0, but got dst_buffer_slot_idx dim0=%ld, "
+                "topk_idx dim0=%ld.", dstSlotIdxShape->GetStorageShape().GetDim(0), topkDim0), return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(1) != topkDim1,
-                    OP_LOGE(nodeName,
-                            "dst_buffer_slot_idx dim1 must equal topk_idx dim1, but got dst_buffer_slot_idx dim1=%ld, "
-                            "topk_idx dim1=%ld.",
-                            dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim1),
-                    return false);
+        OP_LOGE(nodeName, "dst_buffer_slot_idx dim1 must equal topk_idx dim1, but got dst_buffer_slot_idx dim1=%ld, "
+                "topk_idx dim1=%ld.", dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim1), return false);
     int64_t routeCapacity = topkDim1;
     OP_TILING_CHECK(routeCountShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "route_count dims must be 1."), return false);
+        OP_LOGE(nodeName, "route_count dims must be 1."), return false);
     OP_TILING_CHECK(routeCountShape->GetStorageShape().GetDim(0) != topkDim0,
-                    OP_LOGE(nodeName, "route_count dim0 must equal topk dim0."), return false);
+        OP_LOGE(nodeName, "route_count dim0 must equal topk dim0."), return false);
     const gert::StorageShape *routeTwoDimShapes[] = {routeDstScaleoutShape, routeScaleoutSlotShape};
     const char *routeTwoDimNames[] = {"route_dst_scaleout", "route_scaleout_slot"};
     for (uint32_t routeIndex = 0; routeIndex < 2U; ++routeIndex) {
         OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "%s dims must be 2.", routeTwoDimNames[routeIndex]), return false);
+            OP_LOGE(nodeName, "%s dims must be 2.", routeTwoDimNames[routeIndex]), return false);
         OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "%s dim0 must equal topk dim0.", routeTwoDimNames[routeIndex]), return false);
+            OP_LOGE(nodeName, "%s dim0 must equal topk dim0.", routeTwoDimNames[routeIndex]), return false);
         OP_TILING_CHECK(routeTwoDimShapes[routeIndex]->GetStorageShape().GetDim(1) != routeCapacity,
-                        OP_LOGE(nodeName, "%s dim1 must equal route capacity.", routeTwoDimNames[routeIndex]),
-                        return false);
+            OP_LOGE(nodeName, "%s dim1 must equal route capacity.", routeTwoDimNames[routeIndex]), return false);
     }
     return true;
 }
@@ -373,6 +375,7 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
     auto xDesc = context->GetInputDesc(X_INDEX);
     auto topkIdxDesc = context->GetInputDesc(TOPK_IDX_INDEX);
     auto topkWeightsDesc = context->GetOptionalInputDesc(TOPK_WEIGHTS_INDEX);
+    auto cachedSrcTokenIdxDesc = context->GetOptionalInputDesc(CACHED_SRC_TOKEN_IDX_INDEX);
     auto cachedSlotIdxDesc = context->GetOptionalInputDesc(CACHED_SLOT_IDX_INDEX);
     auto cachedRouteCountDesc = context->GetOptionalInputDesc(CACHED_ROUTE_COUNT_INDEX);
     auto cachedRouteDstScaleoutDesc = context->GetOptionalInputDesc(CACHED_ROUTE_DST_SCALEOUT_INDEX);
@@ -381,17 +384,14 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxDesc);
     OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "context dtype must be DT_INT32, but got %s.",
-                            ge::TypeUtils::DataTypeToSerialString(contextDesc->GetDataType()).c_str()),
-                    return false);
+        OP_LOGE(nodeName, "context dtype must be DT_INT32, but got %s.",
+                ge::TypeUtils::DataTypeToSerialString(contextDesc->GetDataType()).c_str()), return false);
     ge::DataType xDtype = xDesc->GetDataType();
     OP_TILING_CHECK(
         (xDtype != ge::DT_BF16) && (xDtype != ge::DT_FLOAT16) && (xDtype != ge::DT_FLOAT8_E5M2) &&
             (xDtype != ge::DT_FLOAT8_E4M3FN),
-        OP_LOGE(nodeName,
-                "x dtype must be in support list [DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN], but got %s.",
-                ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
-        return false);
+        OP_LOGE(nodeName, "x dtype must be in support list [DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN], "
+                "but got %s.", ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()), return false);
 
     OP_TILING_CHECK(topkIdxDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE(nodeName, "topk_idx dtype must be DT_INT32, but got %s.",
@@ -400,15 +400,18 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
 
     if (topkWeightsDesc != nullptr) {
         OP_TILING_CHECK(topkWeightsDesc->GetDataType() != ge::DT_FLOAT,
-                        OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %s.",
-                                ge::TypeUtils::DataTypeToSerialString(topkWeightsDesc->GetDataType()).c_str()),
-                        return false);
+            OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %s.",
+                    ge::TypeUtils::DataTypeToSerialString(topkWeightsDesc->GetDataType()).c_str()), return false);
+    }
+    if (cachedSrcTokenIdxDesc != nullptr) {
+        OP_TILING_CHECK(cachedSrcTokenIdxDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE(nodeName, "cached_src_token_idx dtype must be DT_INT32, but got %s.",
+                    ge::TypeUtils::DataTypeToSerialString(cachedSrcTokenIdxDesc->GetDataType()).c_str()), return false);
     }
     if (cachedSlotIdxDesc != nullptr) {
         OP_TILING_CHECK(cachedSlotIdxDesc->GetDataType() != ge::DT_INT32,
-                        OP_LOGE(nodeName, "cached_slot_idx dtype must be DT_INT32, but got %s.",
-                                ge::TypeUtils::DataTypeToSerialString(cachedSlotIdxDesc->GetDataType()).c_str()),
-                        return false);
+            OP_LOGE(nodeName, "cached_slot_idx dtype must be DT_INT32, but got %s.",
+                    ge::TypeUtils::DataTypeToSerialString(cachedSlotIdxDesc->GetDataType()).c_str()), return false);
     }
     const gert::CompileTimeTensorDesc *cachedRouteDescs[] = {cachedRouteCountDesc, cachedRouteDstScaleoutDesc,
                                                              cachedRouteScaleoutSlotDesc};
@@ -416,41 +419,44 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
     for (uint32_t routeIndex = 0; routeIndex < 3U; ++routeIndex) {
         if (cachedRouteDescs[routeIndex] != nullptr) {
             OP_TILING_CHECK(cachedRouteDescs[routeIndex]->GetDataType() != ge::DT_INT32,
-                            OP_LOGE(nodeName, "%s dtype must be DT_INT32, but got %d.", cachedRouteNames[routeIndex],
-                                    static_cast<int32_t>(cachedRouteDescs[routeIndex]->GetDataType())),
-                            return false);
+                OP_LOGE(nodeName, "%s dtype must be DT_INT32, but got %d.", cachedRouteNames[routeIndex],
+                        static_cast<int32_t>(cachedRouteDescs[routeIndex]->GetDataType())), return false);
         }
     }
 
     return true;
 }
 
-static bool CheckOutputTensorDtype(const gert::TilingContext *context, const char *nodeName)
+static bool CheckOutputTensorDtype(const gert::TilingContext *context, const char *nodeName,
+                                   const MoeEpDispatchInfo &info)
 {
     auto numRecvPerRankDesc = context->GetOutputDesc(NUM_RECV_PER_RANK_INDEX);
     auto numRecvPerExpertDesc = context->GetOutputDesc(NUM_RECV_PER_EXPERT_INDEX);
+    auto sendSrcTokenIdxDesc = context->GetOutputDesc(SEND_SRC_TOKEN_IDX_INDEX);
     auto dstSlotIdxDesc = context->GetOutputDesc(DST_BUFFER_SLOT_IDX_INDEX);
     auto routeCountDesc = context->GetOutputDesc(ROUTE_COUNT_INDEX);
     auto routeDstScaleoutDesc = context->GetOutputDesc(ROUTE_DST_SCALEOUT_INDEX);
     auto routeScaleoutSlotDesc = context->GetOutputDesc(ROUTE_SCALEOUT_SLOT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sendSrcTokenIdxDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeCountDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeDstScaleoutDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeScaleoutSlotDesc);
     OP_TILING_CHECK(numRecvPerRankDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "num_recv_tokens_per_rank dtype must be DT_INT32, but got %s.",
-                            ge::TypeUtils::DataTypeToSerialString(numRecvPerRankDesc->GetDataType()).c_str()),
-                    return false);
+        OP_LOGE(nodeName, "num_recv_tokens_per_rank dtype must be DT_INT32, but got %s.",
+                ge::TypeUtils::DataTypeToSerialString(numRecvPerRankDesc->GetDataType()).c_str()), return false);
     OP_TILING_CHECK(numRecvPerExpertDesc->GetDataType() != ge::DT_INT64,
-                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dtype must be DT_INT64, but got %s.",
-                            ge::TypeUtils::DataTypeToSerialString(numRecvPerExpertDesc->GetDataType()).c_str()),
-                    return false);
+        OP_LOGE(nodeName, "num_recv_tokens_per_expert dtype must be DT_INT64, but got %s.",
+                ge::TypeUtils::DataTypeToSerialString(numRecvPerExpertDesc->GetDataType()).c_str()), return false);
+    OP_TILING_CHECK(sendSrcTokenIdxDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(nodeName, "send_src_token_idx dtype must be DT_INT32, but got %s.",
+                ge::TypeUtils::DataTypeToSerialString(sendSrcTokenIdxDesc->GetDataType()).c_str()), return false);
     OP_TILING_CHECK(dstSlotIdxDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "dst_buffer_slot_idx dtype must be DT_INT32, but got %s.",
-                            ge::TypeUtils::DataTypeToSerialString(dstSlotIdxDesc->GetDataType()).c_str()),
-                    return false);
+        OP_LOGE(nodeName, "dst_buffer_slot_idx dtype must be DT_INT32, but got %s.",
+                ge::TypeUtils::DataTypeToSerialString(dstSlotIdxDesc->GetDataType()).c_str()), return false);
+
     const gert::CompileTimeTensorDesc *routeDescs[] = {routeCountDesc, routeDstScaleoutDesc, routeScaleoutSlotDesc};
     const char *routeNames[] = {"route_count", "route_dst_scaleout", "route_scaleout_slot"};
     for (uint32_t routeIndex = 0; routeIndex < 3U; ++routeIndex) {
@@ -491,6 +497,12 @@ static ge::graphStatus CheckInputTensorFormat(const gert::TilingContext *context
         OP_TILING_CHECK(static_cast<ge::Format>(scalesFormat) == ge::FORMAT_FRACTAL_NZ,
                         OP_LOGE(nodeName, "scales format is invalid."), return ge::GRAPH_FAILED);
     }
+    auto cachedSrcTokenIdxDesc = context->GetOptionalInputDesc(CACHED_SRC_TOKEN_IDX_INDEX);
+    if (cachedSrcTokenIdxDesc != nullptr) {
+        auto cachedSrcTokenIdxFormat = ge::GetPrimaryFormat(cachedSrcTokenIdxDesc->GetStorageFormat());
+        OP_TILING_CHECK(static_cast<ge::Format>(cachedSrcTokenIdxFormat) == ge::FORMAT_FRACTAL_NZ,
+                        OP_LOGE(nodeName, "cached_src_token_idx format is invalid."), return ge::GRAPH_FAILED);
+    }
     auto cachedSlotIdxDesc = context->GetOptionalInputDesc(CACHED_SLOT_IDX_INDEX);
     if (cachedSlotIdxDesc != nullptr) {
         auto cachedSlotIdxFormat = ge::GetPrimaryFormat(cachedSlotIdxDesc->GetStorageFormat());
@@ -512,22 +524,26 @@ static ge::graphStatus CheckInputTensorFormat(const gert::TilingContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckOutputTensorFormat(const gert::TilingContext *context, const char *nodeName)
+static ge::graphStatus CheckOutputTensorFormat(const gert::TilingContext *context, const char *nodeName,
+                                               const MoeEpDispatchInfo &info)
 {
     auto numRecvPerRankDesc = context->GetOutputDesc(NUM_RECV_PER_RANK_INDEX);
     auto numRecvPerExpertDesc = context->GetOutputDesc(NUM_RECV_PER_EXPERT_INDEX);
+    auto sendSrcTokenIdxDesc = context->GetOutputDesc(SEND_SRC_TOKEN_IDX_INDEX);
     auto dstSlotIdxDesc = context->GetOutputDesc(DST_BUFFER_SLOT_IDX_INDEX);
     auto routeCountDesc = context->GetOutputDesc(ROUTE_COUNT_INDEX);
     auto routeDstScaleoutDesc = context->GetOutputDesc(ROUTE_DST_SCALEOUT_INDEX);
     auto routeScaleoutSlotDesc = context->GetOutputDesc(ROUTE_SCALEOUT_SLOT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sendSrcTokenIdxDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeCountDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeDstScaleoutDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, routeScaleoutSlotDesc);
     auto numRecvPerRankFormat = ge::GetPrimaryFormat(numRecvPerRankDesc->GetStorageFormat());
     auto numRecvPerExpertFormat = ge::GetPrimaryFormat(numRecvPerExpertDesc->GetStorageFormat());
+    auto sendSrcTokenIdxFormat = ge::GetPrimaryFormat(sendSrcTokenIdxDesc->GetStorageFormat());
     auto dstSlotIdxFormat = ge::GetPrimaryFormat(dstSlotIdxDesc->GetStorageFormat());
     auto routeCountFormat = ge::GetPrimaryFormat(routeCountDesc->GetStorageFormat());
     auto routeDstScaleoutFormat = ge::GetPrimaryFormat(routeDstScaleoutDesc->GetStorageFormat());
@@ -536,6 +552,8 @@ static ge::graphStatus CheckOutputTensorFormat(const gert::TilingContext *contex
                     OP_LOGE(nodeName, "num_recv_tokens_per_rank format is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(numRecvPerExpertFormat) == ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE(nodeName, "num_recv_tokens_per_expert format is invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(static_cast<ge::Format>(sendSrcTokenIdxFormat) == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName, "send_src_token_idx format is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(static_cast<ge::Format>(dstSlotIdxFormat) == ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE(nodeName, "dst_buffer_slot_idx format is invalid."), return ge::GRAPH_FAILED);
     const ge::Format routeFormats[] = {static_cast<ge::Format>(routeCountFormat),
@@ -574,9 +592,7 @@ static ge::graphStatus CheckInputTensor(const gert::TilingContext *context, cons
         ((hAlign32 + scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN + WIN_ADDR_ALIGN - 1) /
          WIN_ADDR_ALIGN) *
         WIN_ADDR_ALIGN;
-    // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 hidden）。
-    // 与共享布局 dispatchMetaPerSlotBytes 严格同构（窗口预留=步长基准），
-    // 且 ≤ perSlotBytes - hAlign32（远端槽 meta 区容量），WQE2 整槽搬运贴合不越界
+    // stash 的元数据 slot：scales + topk + topkWeights + pad（不含 x）。
     info.metaSlotBytes = scalesSizeAlign32 + kAlign32 * TOPK_AND_TOPK_WEIGHT_NUMBER + UB_ALIGN;
     info.isTopkWeights = (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr) ? 1 : 0;
     OP_LOGD(nodeName, "perSlotBytes = %u(hidden=%u), metaSlotBytes = %u", info.perSlotBytes, info.cfg.hidden,
@@ -590,9 +606,9 @@ static ge::graphStatus CheckOutputTensor(const gert::TilingContext *context, con
 {
     OP_TILING_CHECK(!CheckOutputTensorShape(context, nodeName, info, info.cfg.numTokens, info.cfg.topK),
                     OP_LOGE(nodeName, "Check output tensor shape failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckOutputTensorDtype(context, nodeName), OP_LOGE(nodeName, "Check output tensor dtype failed."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckOutputTensorFormat(context, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(!CheckOutputTensorDtype(context, nodeName, info), OP_LOGE(nodeName,
+                    "Check output tensor dtype failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckOutputTensorFormat(context, nodeName, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check output tensor format failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -680,7 +696,12 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
                     OP_LOGE(nodeName, "expert_alignment must be 1, but got %ld.", *expertAlignmentPtr),
                     return ge::GRAPH_FAILED);
 
-    bool cached = (context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX) != nullptr);
+    bool cached = false;
+    if (info.networkMode == NETWORK_DIRECT) {
+        cached = (context->GetOptionalInputShape(CACHED_SRC_TOKEN_IDX_INDEX) != nullptr);
+    } else {
+        cached = (context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX) != nullptr);
+    }
     OP_TILING_CHECK(cached && *doCpuSyncPtr,
                     OP_LOGE(nodeName, "do_cpu_sync and cached can't be true at the same time."),
                     return ge::GRAPH_FAILED);
@@ -754,14 +775,8 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     // dstRank 区 [BS][K]
     uint64_t dstRankInfoBytes = AlignUpWin(numTokens * info.cfg.topK * sizeof(int16_t));
 
-    // tokenHit 发送列表区 [ep][bsAlign]：统一存 tokenId(int32)，
-    uint64_t srcTokenListBytes = AlignUpWin(numTokens * sizeof(int32_t));
-    uint64_t srcTokenTableBytes = epWorldSize * srcTokenListBytes;
-
     uint64_t sendCntBytes = counterBytes + sendCntPerRankBytes + sendCntPerExpertBytes;
     info.workspace.dstRankInfoOffset = sendCntBytes;
-    info.workspace.srcTokenTableOffset = sendCntBytes + dstRankInfoBytes;
-    info.workspace.srcTokenListBytes = srcTokenListBytes;
 
     // scaleout counter 与 scaleup counter 一样按每 AIV 一份，SendPhase 用它做 slot prefix。
     uint64_t scaleoutCounterBytes =
@@ -783,7 +798,7 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + srcTokenTableBytes + globalABytes;
+    return SYSTEM_NEED_WORKSPACE + sendCntBytes + dstRankInfoBytes + globalABytes;
 }
 
 static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *context, MoeEpDispatchInfo &info,
