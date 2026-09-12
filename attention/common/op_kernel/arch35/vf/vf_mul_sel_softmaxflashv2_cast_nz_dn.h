@@ -589,6 +589,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_3, 0, preg_134);
     RegTensor<uint8_t> idx_nd2nz;
+    constexpr bool EXP_UNROLL_TWO =
+        (IsSameType<T2, bfloat16_t>::value || IsSameType<T2, half>::value) && (ubN % 8 == 0);
     uint16_t loopNum;
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                   IsSameType<T2, hifloat8_t>::value) {
@@ -599,7 +601,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         LoadAlign(idx_nd2nz, indexesUb);
         loopNum = ubN / 8;
     } else {
-        loopNum = ubN / 4;
+        loopNum = EXP_UNROLL_TWO ? ubN / 8 : ubN / 4;
     }
 
     for (uint16_t i0 = 0; i0 < loopNum; ++i0) {
@@ -615,10 +617,18 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
             LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
             LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
         } else {
-            LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+            uint32_t row = i0 * (EXP_UNROLL_TWO ? 2U : 1U);
+            LoadAlign(vreg_x_f32_0, input_x_local_UB + row * m);
+            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + row * m);
+            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + row * m);
+            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + row * m);
+            if constexpr (EXP_UNROLL_TWO) {
+                // The next iteration uses independent inputs; sum and Store order stay unchanged.
+                LoadAlign(vreg_x_f32_4, input_x_local_UB + (row + 1U) * m);
+                LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + (row + 1U) * m);
+                LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + (row + 1U) * m);
+                LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + (row + 1U) * m);
+            }
         }
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
@@ -626,17 +636,26 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Muls(vreg_x_f32_2, vreg_x_f32_2, dScale, preg_108);
         Muls(vreg_x_f32_3, vreg_x_f32_3, dScale, preg_108);
 
+        if constexpr (EXP_UNROLL_TWO) {
+            Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
+            Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
+            Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
+            Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+        }
+
         FusedExpSub(vreg_x_exp_0, vreg_x_f32_0, max0, preg_134);
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
 
-        if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+        if constexpr (EXP_UNROLL_TWO || IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                       IsSameType<T2, hifloat8_t>::value) {
-            Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
-            Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
-            Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
-            Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+            if constexpr (!EXP_UNROLL_TWO) {
+                Muls(vreg_x_f32_4, vreg_x_f32_4, dScale, preg_108);
+                Muls(vreg_x_f32_5, vreg_x_f32_5, dScale, preg_108);
+                Muls(vreg_x_f32_6, vreg_x_f32_6, dScale, preg_108);
+                Muls(vreg_x_f32_7, vreg_x_f32_7, dScale, preg_108);
+            }
 
             FusedExpSub(vreg_x_exp_4, vreg_x_f32_4, max0, preg_134);
             FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
@@ -662,6 +681,25 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if constexpr (EXP_UNROLL_TWO) {
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_4, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16, vreg_x_exp_6, preg_135);
+                DeInterleave(vreg_x_exp_bf16_pack, vreg_x_exp_bf16_packa, vreg_x_exp_even_bf16, vreg_x_exp_odd_bf16);
+
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16_1, vreg_x_exp_5, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_bf16_1, vreg_x_exp_7, preg_135);
+                DeInterleave(vreg_x_exp_bf16_1_pack, vreg_x_exp_bf16_1_packa, vreg_x_exp_even_bf16_1,
+                             vreg_x_exp_odd_bf16_1);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_0, vreg_x_exp_4, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_6, vreg_x_sum_2, preg_134);
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_1, vreg_x_exp_5, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_7, vreg_x_sum_3, preg_134);
+            }
         } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                              IsSameType<T2, hifloat8_t>::value) {
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
@@ -737,6 +775,27 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                 ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
+            if constexpr (EXP_UNROLL_TWO) {
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16, vreg_x_exp_4, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16, vreg_x_exp_6, preg_135);
+                DeInterleave(vreg_x_exp_f16_pack, vreg_x_exp_f16_packa, vreg_x_exp_even_f16, vreg_x_exp_odd_f16);
+
+                Cast<T2, T, castTraitZero>(vreg_x_exp_even_f16_1, vreg_x_exp_5, preg_135);
+                Cast<T2, T, castTraitZero>(vreg_x_exp_odd_f16_1, vreg_x_exp_7, preg_135);
+
+                DeInterleave(vreg_x_exp_f16_1_pack, vreg_x_exp_f16_1_packa, vreg_x_exp_even_f16_1,
+                             vreg_x_exp_odd_f16_1);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_0, vreg_x_exp_4, vreg_x_sum_0, preg_134);
+                Add(vreg_x_sum_2, vreg_x_exp_6, vreg_x_sum_2, preg_134);
+
+                StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
+                Add(vreg_x_sum_1, vreg_x_exp_5, vreg_x_sum_1, preg_134);
+                Add(vreg_x_sum_3, vreg_x_exp_7, vreg_x_sum_3, preg_134);
+            }
         }
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
