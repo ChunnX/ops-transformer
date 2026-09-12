@@ -365,24 +365,24 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
 {
     // L1: [l1P x2][cube L1], l1P 必须放在最前面保证与 vec 申请地址相同
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize;
-    uint32_t l1PAddr = 0;
-    l1PBuffers[0] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, mm2LeftSize), 0};
-    l1PAddr += (mm2LeftSize * sizeof(Q_T));
-    l1PBuffers[1] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, mm2LeftSize), 1};
-    l1PAddr += (mm2LeftSize * sizeof(Q_T));
-    l1CubeBase = l1PAddr;
+    uint32_t l1PBaseAddr = 0;
+    l1PBuffers[0] = {LocalTensor<Q_T>(TPosition::A1, l1PBaseAddr, mm2LeftSize), 0};
+    l1PBaseAddr += (mm2LeftSize * sizeof(Q_T));
+    l1PBuffers[1] = {LocalTensor<Q_T>(TPosition::A1, l1PBaseAddr, mm2LeftSize), 1};
+    l1PBaseAddr += (mm2LeftSize * sizeof(Q_T));
+    l1CubeBase = l1PBaseAddr;
 
     // UB: [bmm2][bmm1 x2][vec UB]
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize;
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512;
-    uint32_t ubAddr = 0;
-    bmm2Buffers = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm2ResultSize), 0};
-    ubAddr += (mm2ResultSize * sizeof(T));
-    bmm1Buffers[0] = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm1ResultSize), 0};
-    ubAddr += (mm1ResultSize * sizeof(T));
-    bmm1Buffers[1] = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm1ResultSize), 1};
-    ubAddr += (mm1ResultSize * sizeof(T));
-    vUbBase = ubAddr;
+    uint32_t ubBaseAddr = 0;
+    bmm2Buffers = {LocalTensor<T>(TPosition::VECIN, ubBaseAddr, mm2ResultSize), 0};
+    ubBaseAddr += (mm2ResultSize * sizeof(T));
+    bmm1Buffers[0] = {LocalTensor<T>(TPosition::VECIN, ubBaseAddr, mm1ResultSize), 0};
+    ubBaseAddr += (mm1ResultSize * sizeof(T));
+    bmm1Buffers[1] = {LocalTensor<T>(TPosition::VECIN, ubBaseAddr, mm1ResultSize), 1};
+    ubBaseAddr += (mm1ResultSize * sizeof(T));
+    vUbBase = ubBaseAddr;
 
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1(bmm1Buffers[0].idx));

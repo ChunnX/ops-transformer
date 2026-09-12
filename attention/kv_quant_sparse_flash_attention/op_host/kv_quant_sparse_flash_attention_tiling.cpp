@@ -1444,15 +1444,14 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantPa() const
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(blockSize_ <= 0 || blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
+    OP_CHECK_IF((blockSize_ <= 0) || (blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE)),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
                     "When page attention is enabled, block_size(" + std::to_string(blockSize_) +
                         ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        blockSize_ % 16 > 0,
+    OP_CHECK_IF(blockSize_ % 16 > 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
             "When page attention is enabled, block_size(" + std::to_string(blockSize_) + ") should be 16-aligned"),
