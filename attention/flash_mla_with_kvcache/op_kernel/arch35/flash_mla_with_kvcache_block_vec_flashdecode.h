@@ -20,7 +20,6 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
 
 #include "memory_copy_arch35.h"
-#include "mla_fd_scale_chunk.h"
 #include "flash_mla_with_kvcache_public_define_arch35.h"
 #include "../utils/flash_mla_with_kvcache_type.h"
 
@@ -68,8 +67,6 @@ private:
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
     static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
     static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
     static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
@@ -81,7 +78,6 @@ private:
 
     static constexpr float FLOAT_INF = 3e+99;
     uint32_t preLoadNum_ = 2U;
-    uint32_t fdRows_ = 8U;
     uint32_t dSizeV_Align_;
 
 protected:
@@ -119,15 +115,15 @@ protected:
 
 private:
     // ================================FD Local Buffer区====================================
-    LocalTensor<T> fdSumBuf1_;          // 1.5k: 16*24*4
-    LocalTensor<T> fdSumBuf2_;          // 1.5k: 16*24*4
-    LocalTensor<T> fdMaxBuf1_;          // 1.5k: 16*24*4
-    LocalTensor<T> fdMaxBuf2_;          // 1.5k: 16*24*4
-    LocalTensor<T> fdLseExpBuf_;        // 1.5k: 16*24*4
-    LocalTensor<T> fdMm2ResBuf1_;       // 32k: 16*512*4
-    LocalTensor<T> fdMm2ResBuf2_;       // 32k: 16*512*4
-    LocalTensor<T> fdReduceBuf_;        // 32k: 16*512*4
-    LocalTensor<OUTPUT_T> fdOutputBuf_; // 32k: 16*512*4
+    LocalTensor<T> fdSumBuf1_;          // 6 KiB；实际占用 parts*dealRowCount*8*sizeof(float)
+    LocalTensor<T> fdSumBuf2_;          // 6 KiB；实际占用 parts*dealRowCount*8*sizeof(float)
+    LocalTensor<T> fdMaxBuf1_;          // 6 KiB；实际占用 parts*dealRowCount*8*sizeof(float)
+    LocalTensor<T> fdMaxBuf2_;          // 6 KiB；实际占用 parts*dealRowCount*8*sizeof(float)
+    LocalTensor<T> fdLseExpBuf_;        // 6 KiB；实际占用 parts*dealRowCount*8*sizeof(float)
+    LocalTensor<T> fdMm2ResBuf1_;       // 16 KiB：8*512*sizeof(float)
+    LocalTensor<T> fdMm2ResBuf2_;       // 16 KiB：8*512*sizeof(float)
+    LocalTensor<T> fdReduceBuf_;        // 16 KiB：8*512*sizeof(float)
+    LocalTensor<OUTPUT_T> fdOutputBuf_; // 8 KiB：8*512*sizeof(OUTPUT_T)，输出元素 2 字节
 
     LocalTensor<T> fdLseMaxUbBuf1_;
     LocalTensor<T> fdLseMaxUbBuf2_;
@@ -144,8 +140,7 @@ public:
         return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
     }
 
-    __aicore__ inline void InitBlock(__gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
-                                     __gm__ uint8_t *attentionOut)
+    __aicore__ inline void InitBlock(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut)
     {
         this->dSizeV_Align_ = this->Align(constInfo_.dSizeV, FP32_REPEAT_ELEMENT_NUM);
 
@@ -165,7 +160,7 @@ public:
         this->accumOutGm_ = accumOutGm;
     }
 
-    __aicore__ inline void InitBuffers8()
+    __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
             // 跳过 bmm1/bmm2 CV 区后放置 FD 业务区，空间上避免跨 section 时 AIC 的 FA 写 mm2Res 与 FD 使用冲突。
@@ -203,54 +198,6 @@ public:
             fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES + 2U * BUFFER_SIZE_BYTE_256B,
                                                BUFFER_SIZE_BYTE_256B)
                               .template ReinterpretCast<T>();
-        }
-    }
-    __aicore__ inline void InitBuffers16()
-    {
-        if ASCEND_IS_AIV {
-            // 跳过 bmm1/bmm2 CV 区后放置 FD 业务区，空间上避免跨 section 时 AIC 的 FA 写 mm2Res 与 FD 使用冲突。
-            constexpr uint32_t BASE = mBaseSize / 2U * (2U * 256U + 128U) * sizeof(T);
-            static_assert(BASE + 5U * 3072U + 3U * 32768U + 16384U + 2U * 512U <= 248U * 1024U, "FD UB overflow");
-            constexpr uint32_t STRIDE_6K = BUFFER_SIZE_BYTE_2K + BUFFER_SIZE_BYTE_1K; // 6144
-            fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, BASE, STRIDE_6K).template ReinterpretCast<T>();
-            fdSumBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, BASE + STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            fdMaxBuf1_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, BASE + 2U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            fdMaxBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, BASE + 3U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            fdLseExpBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, BASE + 4U * STRIDE_6K, STRIDE_6K).template ReinterpretCast<T>();
-            constexpr uint32_t LSE_SUM_MAX_BYTES = BASE + 5U * STRIDE_6K;
-            fdMm2ResBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES, (2U * BUFFER_SIZE_BYTE_16K))
-                                .template ReinterpretCast<T>();
-            fdMm2ResBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + (2U * BUFFER_SIZE_BYTE_16K),
-                                                 (2U * BUFFER_SIZE_BYTE_16K))
-                                .template ReinterpretCast<T>();
-            fdReduceBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + 2U * (2U * BUFFER_SIZE_BYTE_16K),
-                                                (2U * BUFFER_SIZE_BYTE_16K))
-                               .template ReinterpretCast<T>();
-            // fdOutputBuf_ 只需 8K：dealRowCount(8) × dSizeV_Align_(512) × sizeof(OUTPUT_T=2B)
-            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_BYTES + 3U * (2U * BUFFER_SIZE_BYTE_16K),
-                                                BUFFER_SIZE_BYTE_16K)
-                               .template ReinterpretCast<OUTPUT_T>();
-            constexpr uint32_t LSE_SUM_MAX_MM2_BYTES =
-                LSE_SUM_MAX_BYTES + 3U * (2U * BUFFER_SIZE_BYTE_16K) + BUFFER_SIZE_BYTE_16K;
-            fdLseMaxUbBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES, BUFFER_SIZE_BYTE_512B)
-                                  .template ReinterpretCast<T>();
-            fdLseMaxUbBuf2_ = fdLseMaxUbBuf1_;
-            fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, LSE_SUM_MAX_MM2_BYTES + BUFFER_SIZE_BYTE_512B,
-                                               BUFFER_SIZE_BYTE_512B)
-                              .template ReinterpretCast<T>();
-        }
-    }
-    __aicore__ inline void InitBuffers(uint32_t parts)
-    {
-        fdRows_ = parts <= 6U ? 16U : 8U;
-        if (parts <= 6U) {
-            InitBuffers16();
-        } else {
-            InitBuffers8();
         }
     }
 
@@ -304,7 +251,7 @@ protected:
         }
     }
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
-                                             uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
+                                             uint32_t actualCombineLoopSize, uint32_t cntM)
     {
         LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1_ : fdSumBuf2_;
         LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1_ : fdMaxBuf2_;
@@ -313,22 +260,8 @@ protected:
         LocalTensor<T> sinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
         bool learnableSinkFlag = false;
-        if (dealRowCount <= 8U) {
-            ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                    actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
-        } else {
-            for (uint32_t row = 0U; row < dealRowCount; row += 8U) {
-                uint32_t active = dealRowCount - row < 8U ? dealRowCount - row : 8U;
-                uint32_t offset = row * 8U;
-                auto mx = (__ubuf__ T *)lseMax.GetPhyAddr() + offset;
-                auto sm = (__ubuf__ T *)lseSum.GetPhyAddr() + offset;
-                FaVectorApi::MlaScaleValueChunkVF<T, T>(
-                    nullptr, mx, mx, sm, sm, (__ubuf__ T *)maxLseUb.GetPhyAddr() + offset,
-                    (__ubuf__ T *)lseExp.GetPhyAddr() + offset, (__ubuf__ T *)lseMaxUb.GetPhyAddr() + offset,
-                    dealRowCount * 8U, active * 8U, 0U, dealRowCount, actualCombineLoopSize,
-                    constInfo_.isSoftmaxLseEnable ? 1U : 0U, 0U);
-            }
-        }
+        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
+                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
@@ -446,7 +379,7 @@ public:
         if (!fd.fdCoreEnable) {
             return;
         }
-        uint32_t fdBalanceMBaseSize = fdRows_;
+        uint32_t fdBalanceMBaseSize = 8U;
         uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
         uint32_t fdBalanceMTailSize =
             (fd.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fd.mLen % fdBalanceMBaseSize;
@@ -484,7 +417,7 @@ public:
             }
             Mutex::Lock<PIPE_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             Mutex::Lock<PIPE_V>(SYNC_LSEOUTPUT_BUF_FLAG);
-            ComputeScaleValue(lseExp, actualGSplitSize, taskInfo_.actualCombineLoopSize, reduceMLoop, startRow);
+            ComputeScaleValue(lseExp, actualGSplitSize, taskInfo_.actualCombineLoopSize, reduceMLoop);
             Mutex::Unlock<PIPE_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             Mutex::Unlock<PIPE_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CalcPreNextTokens();

@@ -14,12 +14,12 @@
  * \file test_aclnn_flash_mla_with_kvcache_metadata.cpp
  * \brief aclnn FlashMlaWithKvcacheMetadata byte-golden vs FlashAttnMetadata.
  *
- * Checks (M8/B3/B2/D17):
+ * Checks:
  *  1. identical inputs through flash_attn_metadata and flash_mla_with_kvcache_metadata produce
  *     byte-identical buffers EXCEPT the two intentional head base-size words
- *     (HEAD_M_BASE_SIZE/HEAD_S2_BASE_SIZE): MLA forces 64/128 (D17, kernel template
+ *     (HEAD_M_BASE_SIZE/HEAD_S2_BASE_SIZE): MLA forces 96/112 (kernel template
  *     invariant), flash_attn writes derived values (AdjustSinnerAndSouter * aiv/aic).
- *  2. MLA head fields must be exactly 64/128 (B3).
+ *  2. MLA head fields must be exactly 96/112.
  *  3. >=2 sections case (single latent KV head, long KV): sectionNum >= 2.
  *  4. inactive cores are all-zero (Clear + prefix writes), FA/FD regions.
  *  5. negative capacity: host-side check mirrors flash_mla.cpp TORCH_CHECK
@@ -216,7 +216,7 @@ static int RunByteGolden(aclrtStream stream)
     // 与 MLA checker（kvHeads==1/headDimQk==576/headDimV==512/TND-PA_NZ-TND）不交，跨克隆字节 golden 结构上
     // 不再可比，改为对 flash_mla_with_kvcache_metadata 自身的调度完整性做断言：
     //   1) sectionNum>=2（kvS=32768/headDimQk=576 按 L2 预算逐 batch 切分，实测 8）
-    //   2) 头字段 M_BASE_SIZE==64 / S2_BASE_SIZE==128（D17 强制）
+    //   2) 头字段 M_BASE_SIZE==96 / S2_BASE_SIZE==112（与 MLA kernel 配置一致）
     //   3) 每 section 活跃 FA 核为前辍（不活跃核零后缀）+ 覆盖 bn2 区间连续
     //   4) FD 区全零（fdOn=false：本 kernel 未启用核间 s2 归约调度，不做归约 section）
     LOG_PRINT("\n==== MLA producer structural check (b8/kvS=32768/headDimQk=576) ====\n");
@@ -253,9 +253,9 @@ static int RunByteGolden(aclrtStream stream)
     }
     int32_t mlaM = mlaOut[HEAD_M_BASE_SIZE_INDEX];
     int32_t mlaS2 = mlaOut[HEAD_S2_BASE_SIZE_INDEX];
-    LOG_PRINT("  head M_BASE_SIZE=%d S2_BASE_SIZE=%d (D17 forced 64/128)\n", mlaM, mlaS2);
+    LOG_PRINT("  head M_BASE_SIZE=%d S2_BASE_SIZE=%d (expected 96/112)\n", mlaM, mlaS2);
     if (mlaM != HEAD_M_BASE_SIZE_MLA || mlaS2 != HEAD_S2_BASE_SIZE_MLA) {
-        LOG_PRINT("  [FAIL] MLA head base sizes are not forced to 64/128 (B3)\n");
+        LOG_PRINT("  [FAIL] MLA head base sizes are not forced to 96/112\n");
         return -1;
     }
 
@@ -574,10 +574,10 @@ int main()
         int32_t s2Base = metadataHostData[HEAD_S2_BASE_SIZE_INDEX];
         LOG_PRINT("  sectionNum=%d mBaseSize=%d s2BaseSize=%d\n", sectionNum, mBase, s2Base);
         if (mBase != HEAD_M_BASE_SIZE_MLA || s2Base != HEAD_S2_BASE_SIZE_MLA) {
-            LOG_PRINT("  [FAIL] forced head base sizes are not 64/128 (B3)\n");
+            LOG_PRINT("  [FAIL] forced head base sizes are not 96/112\n");
             return -1;
         }
-        LOG_PRINT("  [PASS] head base sizes forced to 64/128 (B3/D17)\n");
+        LOG_PRINT("  [PASS] head base sizes forced to 96/112\n");
         DumpMeta(&metadataHostData[0]);
         if (workspaceSize > 0U) {
             aclrtFree(workspaceAddr);

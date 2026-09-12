@@ -240,11 +240,8 @@ void FlashMlaWithKvcacheMetadataCpuKernel::InitLoadBalanceParams()
     }
     param.fdTolerance = 10; // 10: tolerance block
     param.fdLeastBlock = 3; // 3: least block
-    // SectionStreamK 的 FD 调度 = 长 KV 的 s2 核间切分 + workspace 归约（decode 提速）。flash_mla
-    // kernel 当前只在上板验证了 FA 单核 s2 迭代路径（fa-portion），FD 归约路径未经历跨 section
-    // 真机校验（isFd 路由修正后 b8/kvS=32768 上板挂起）。暂关闭 FD 调度 → 所有 (bn2,m) 块在单核
-    // 内顺序覆盖全部 s2（cachedS2LoopTimes），无需核间归约，LSE/out 全程在 FA 路径完成；
-    // 正确性优先，性能留待后续按需恢复（与 flash_attn 运行时开关一致后可回退本行）。
+    // 允许 SectionStreamK 沿 KV 轴跨核切分；是否采用 FD 由代价模型与 fdTolerance/fdLeastBlock 决定。
+    // 分片结果写入 workspace，由 AIV 在 section 的 FA 阶段结束后执行 FD 规约。
     param.fdOn = true;
 }
 

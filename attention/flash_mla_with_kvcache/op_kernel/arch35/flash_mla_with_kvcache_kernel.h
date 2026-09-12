@@ -56,7 +56,8 @@ public:
     using OUT_T = typename VecFaBlockType::OUT_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
-    // ---- CV buffers：已静态化至各 block（cube/vec InitBuffers 内表 1 布局），kernel 不再持有 buffer manager ----
+    // ---- CV buffers：已静态化至各 block（cube/vec InitBuffers 中的 MM1/MM2 共用布局），kernel 不再持有 buffer manager
+    // ----
 
     // 多 section AICPU metadata：
     // 字节布局 = [16-word header][sectionNum*aic*16 (FA)][sectionNum*aiv*16 (FD)]，FA/FD 区分别绑定 GM tensor。
@@ -148,9 +149,9 @@ public:
 
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
-                // FA fd（Mutex 版）Init 契约：InitBlock(learnableSink=nullptr, softmaxLse, attentionOut)
+                // FA fd（Mutex 版）Init 契约：InitBlock(softmaxLse, attentionOut)
                 // 建 outGmTensor_/softmaxLseGm_/dSizeV_Align_；InitGlobalTensor 仅接 FD 读的 accum/LSE GM。
-                vecFdBlock_.InitBlock(nullptr, softmaxLse, attentionOut);
+                vecFdBlock_.InitBlock(softmaxLse, attentionOut);
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm, this->vecFaBlock_.softmaxFDSumGm,
                                              this->vecFaBlock_.accumOutGm);
             }
@@ -695,7 +696,7 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock_.InitBuffers(fdParams_.fdS2SplitNum);
+        vecFdBlock_.InitBuffers();
         AscendC::ICachePreLoad(2);
         AscendC::SyncAll();
         vecFdBlock_.FlashDecode(fdParams_);

@@ -11,9 +11,9 @@
 /*!
  * \file flash_mla_with_kvcache_metadata_check.h
  * \brief MLA metadata checker.
- * Base-size convention (D17/B3): mBaseSize=64 / s2BaseSize=128 are FIXED for MLA - the head fields
- * HEAD_M_BASE_SIZE_INDEX / HEAD_S2_BASE_SIZE_INDEX always carry 64/128 (forced in GenMetadata, not
- * derived); flash_mla kernel-side static_assert (flash_mla_block_cube_mla.h) is the invariant.
+ * MLA uses fixed M96/S2=112 tiles. GenMetadata writes HEAD_M_BASE_SIZE_MLA /
+ * HEAD_S2_BASE_SIZE_MLA from op_kernel_aicpu/flash_mla_with_kvcache_metadata.h;
+ * the main kernel checks the same dimensions in its Cube InitBuffers().
  */
 
 #ifndef FLASH_MLA_WITH_KVCACHE_METADATA_CHECK_H

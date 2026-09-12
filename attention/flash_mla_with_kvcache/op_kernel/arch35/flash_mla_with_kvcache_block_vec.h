@@ -12,7 +12,7 @@
  * \file flash_mla_with_kvcache_block_vec.h
  * \brief arch35 flash_mla_with_kvcache MLA vector；
  *        静态 tensor UbLayout + Mutex/cross-core 显式同步 + FA 协同清零
- *        （FD 阶段 buffer 复用见表 1 注 4/注 5）
+ *        （FD 业务 UB 从 120 KiB 起，避开 Cube/Vector 共用的 MM1/MM2 区）
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_VEC_H_
@@ -166,7 +166,6 @@ public:
     // ================== 核间同步 ID（与 cube 侧逐字节一致）==================
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t CROSSCORE_BMM1_0 = 0U;
-    static constexpr uint32_t CROSSCORE_BMM1_1 = 1U;
     static constexpr uint32_t CROSSCORE_BMM2_0 = 2U;
     static constexpr uint32_t CROSSCORE_BMM2_1 = 3U;
     static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
@@ -174,21 +173,20 @@ public:
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
     // AIV0_AIV1_OFFSET 使用全局宏（attention/common/op_kernel/buffer.h:30，=16）
 
-    // ================== 核内 Mutex ID（AIV 核内，表 2 + 注 10 枚举；mask 槽由 common 自同步、6/7 预留同 FA
-    // 排布）==================
+    // ================== AIV 核内 Mutex ID：0–5 用于输出，6/7 用于 mask 槽 ==================
     static constexpr uint32_t UB_OUT_VEC2_RES_EVENT0 = 0U; // vec2Res（96K@120K）V/MTE3
     static constexpr uint32_t EVENT_ID0 = 1U;              // InitOutput atten-out pop 同步（PIPE_V/PIPE_MTE3）
     static constexpr uint32_t UB_OUT_VEC1_RES_EVENT0 = 2U; // stage1/vec1Res（12.25K@216K）V/MTE3
     static constexpr uint32_t EVENT_ID1 = 3U;              // InitOutput LSE pop 同步（PIPE_V/PIPE_MTE3）
-    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4U;  // LSE 1K 输出（V/MTE3）
-    static constexpr uint32_t UB_BRDCST_SUM_EVENT = 5U;    // sumBrdcst 1K（V/MTE3）
-    // mask 槽 2×4K 的 per-slot 双 pipe 生产-消费握手：
+    static constexpr uint32_t UB_OUT_LSE_OUT_EVENT0 = 4U;  // LSE 1.5 KiB 输出（V/MTE3）
+    static constexpr uint32_t UB_BRDCST_SUM_EVENT = 5U;    // sumBrdcst 2 KiB（V/MTE3）
+    // mask 槽 2×6 KiB 的 per-slot 双 pipe 生产-消费握手：
     // MTE2(加载) ↔ V(软max消费) 严格交替，避免跨 S2 轮次槽复用读到上一轮掩码（旧深度1队列的进出队语义）
     static constexpr uint32_t UB_IN_MASK_EVENT0 = 6U;
     static constexpr uint32_t UB_IN_MASK_EVENT1 = 7U;
     static constexpr uint32_t UB_BRDCST_MAX_EVENT = UB_BRDCST_SUM_EVENT; // maxBrdcst 2K（V/MTE3）
 
-    // ================== 静态布局常量（表 1，数值 = 现状容量；UB 合计 246.5K ≤ 248K）==================
+    // ================== 静态布局常量（M96/CV_RATIO=2；UB 合计 246.5 KiB ≤ 248 KiB）==================
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     static constexpr uint32_t UB_MM2_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * 256U * sizeof(T);
@@ -205,8 +203,8 @@ public:
     static constexpr uint32_t UB_TMP_BUF_BYTES = 512U;                                         // commonTBuf 512B
 
     // L1 P（A1）：vec1 写 P 的目标 = cube 的 L1 KVP 区（A1 108K 起、3×133K、每个任务 loop%3 槽）；
-    // P 在槽内 rope 段偏移 = s2BaseSize*dVBaseSize（元素，与 cube CopyKeyAndRopeTile 的 dSize*dstStride 一致，表 2 注
-    // 2）
+    // P 在槽内偏移为 s2BaseSize*dVBaseSize 个元素，即 112*512*2 = 112 KiB；
+    // P 的 96*112*2 = 21 KiB 覆盖 rope 的 14 KiB 与预留的 7 KiB。
     static constexpr uint32_t L1_P_BUFCNT = 3U;
     static constexpr uint32_t L1_P_BUF_BYTES = s2BaseSize * 608 * sizeof(INPUT_T);   // 133K
     static constexpr uint32_t L1_Q_PREFIX_BYTES = mBaseSize * 576 * sizeof(INPUT_T); // 108K（cube Q 区，跳过）
@@ -232,7 +230,7 @@ public:
     FaGmTensorOut outGmTensor_;
     CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
 
-    // ub/l1 静态 tensor（InitBuffers 内按表 1 布局建立）
+    // ub/l1 静态 tensor（按 InitBuffers 中的 UbLayout 和 L1 常量建立）
     LocalTensor<uint8_t> ubMm2ResBuffers_;
     LocalTensor<uint8_t> ubMm1ResBuffers_;
     LocalTensor<uint8_t> ubVec2Res_;
@@ -317,6 +315,14 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
         }
 
+        // Prepare the current mask while QK is running; consume it only after QK is ready.
+        bool useMask = false;
+        if constexpr (hasAtten) {
+            if (runInfo.actVecMSize != 0) {
+                auto maskUb = ubMaskBuffers_[(runInfo.loop % DB) * UB_MASK_BUF_BYTES];
+                useMask = AttenMaskCopyIn(maskUb, 0, runInfo.actVecMSize, runInfo);
+            }
+        }
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx); // 反堵 c1v1：AIC 可覆写本槽
@@ -324,16 +330,16 @@ public:
             return;
         }
 
-        ProcessVec1Nd(pL1Tensor, mm1ResUbTensor, runInfo);
+        ProcessVec1Nd(pL1Tensor, mm1ResUbTensor, runInfo, useMask);
 
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);    // C1 收到后可启动 FIXPIPE 写
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(v1c2CrossCoreSyncIdx); // P 已写 L1，C2 可读
         Vec1PostProcess(runInfo);
     }
 
-    // FA 协同清零（init_output.h:39-81）：pop-buffer 瞬时别名落在
-    // bmm2 CV 槽 [0..48K)（表 1 注 5），安全依赖 c2v2 反向旗标门控；仅在 kernel Init 阶段执行一次，
-    // EVENT_ID0/1 为 Mutex ID（PIPE_V/PIPE_MTE3），与后段 vec 核内同步时序不重叠（表 2 注 9）
+    // 初始化借用 UB：attentionOut 使用 [0,32) KiB，LSE 使用 [32,64) KiB。
+    // 仅在 kernel Init 阶段执行；SyncAll 后才在 Process 中发布 BMM1/BMM2 可用标志。
+    // EVENT_ID0/1 保护各 pop-buffer 的 V/MTE3 搬运，初始化与 FA 业务阶段分离。
     __aicore__ inline void ClearOutput(bool needInit)
     {
         if (needInit) {
@@ -425,8 +431,9 @@ public:
         Mutex::Unlock<PIPE_MTE3>(UB_OUT_LSE_OUT_EVENT0);
     }
 
-    __aicore__ inline void ProcessVec1Nd(LocalTensor<INPUT_T> &pL1Tensor, LocalTensor<T> &mm1ResUbTensor,
-                                         FlashMlaWithKvcacheRunInfoX runInfo)
+    template <bool APPLY_MASK>
+    __aicore__ inline void ProcessSoftmax(LocalTensor<INPUT_T> &stage1CastTensor, LocalTensor<T> &mmRes,
+                                          LocalTensor<uint8_t> &attenMaskUb, const FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         LocalTensor<pseShiftType> pseUb;
         LocalTensor<uint8_t> dropMaskUb;
@@ -435,17 +442,6 @@ public:
         uint32_t pseStride = 0;
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
-
-        LocalTensor<uint8_t> attenMaskUb;
-        LocalTensor<uint8_t> attenMaskUbPre;
-        const uint32_t maskBufId = runInfo.loop % DB;
-        if constexpr (hasAtten) {
-            attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
-            // 生产端锁内置 AttenMaskCopyIn；消费端此处 Lock 等待数据就绪，
-            // 下方软max 在 Lock/Unlock 之间读取 mask
-            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝（含 pre 槽与 MergeMask）
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
-        }
 
         LocalTensor<float> sumUb =
             softmaxSumBuf_[(runInfo.mloop % UB_SOFTMAX_BUFCNT) * (UB_SOFTMAX_BUF_BYTES / sizeof(float))];
@@ -458,43 +454,68 @@ public:
         LocalTensor<uint8_t> apiTmpBuffer;
 
         apiTmpBuffer = this->vec1ApiTmpBuf_;
-        LocalTensor<T> mmRes = mm1ResUbTensor;
-        Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
-        LocalTensor<INPUT_T> stage1CastTensor = ubVec1ResBuffers_.template ReinterpretCast<INPUT_T>();
         // 统一走 Update VF 族（updateFlag=true）：首轮 sum/max 由 ProcessVec1 的
         // ResetSoftmaxBuffer 置 0/-inf，消除 isFirstS2Loop 分支
         if (likely(runInfo.actSingleLoopS2Size == 128)) {
-            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, EQ_128, hasAtten, PSE_MODE, HAS_DROP, false,
-                          false>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
-                                 pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize,
-                                 runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
-                                 constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
-                                 descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, EQ_128, APPLY_MASK, PSE_MODE, HAS_DROP,
+                          false, false>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
+                                        attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, runInfo.actVecMSize,
+                                        runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
+                                        constInfo.scaleValue, // constInfo.scaleValue 已是 T float类型
+                                        descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size <= 64) {
-            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_0_AND_LTE_64, hasAtten, PSE_MODE,
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_0_AND_LTE_64, APPLY_MASK, PSE_MODE,
                           HAS_DROP, false, false>(
                 stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                 apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
                 constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else if (runInfo.actSingleLoopS2Size < 128) {
-            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_64_AND_LTE_128, hasAtten, PSE_MODE,
+            ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_64_AND_LTE_128, APPLY_MASK, PSE_MODE,
                           HAS_DROP, false, false>(
                 stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb, pseUb, dropMaskUb,
                 apiTmpBuffer, pScaleUb, runInfo.actVecMSize, runInfo.actSingleLoopS2Size, pseStride, slopes, posShift,
                 constInfo.scaleValue, descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue);
         } else {
             if constexpr (s2BaseSize == 256) {
-                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_128_AND_LTE_256, hasAtten, PSE_MODE,
+                ProcessVec1Vf<T, INPUT_T, pseShiftType, true, mBaseSize, 128U, GT_128_AND_LTE_256, APPLY_MASK, PSE_MODE,
                               HAS_DROP>(stage1CastTensor, nullptr, sumUb, maxUb, mmRes, expUb, sumUb, maxUb,
                                         attenMaskUb, pseUb, dropMaskUb, apiTmpBuffer, expUb, runInfo.actVecMSize,
                                         runInfo.actSingleLoopS2Size, pseStride, slopes, posShift, constInfo.scaleValue,
                                         descaleQK, negativeFloatScalar, 0.0F);
             }
         }
+    }
+
+    __aicore__ inline void ProcessVec1Nd(LocalTensor<INPUT_T> &pL1Tensor, LocalTensor<T> &mm1ResUbTensor,
+                                         FlashMlaWithKvcacheRunInfoX runInfo, bool useMask)
+    {
+        LocalTensor<uint8_t> attenMaskUb;
+        const uint32_t maskBufId = runInfo.loop % DB;
+        if constexpr (hasAtten) {
+            attenMaskUb = ubMaskBuffers_[maskBufId * UB_MASK_BUF_BYTES];
+            // Mask preparation was issued before the QK wait. Fully visible tiles do not use this slot.
+            if (useMask) {
+                Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
+            }
+        }
+
+        Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
+        LocalTensor<INPUT_T> stage1CastTensor = ubVec1ResBuffers_.template ReinterpretCast<INPUT_T>();
+        if constexpr (hasAtten) {
+            if (useMask) {
+                ProcessSoftmax<true>(stage1CastTensor, mm1ResUbTensor, attenMaskUb, runInfo);
+            } else {
+                ProcessSoftmax<false>(stage1CastTensor, mm1ResUbTensor, attenMaskUb, runInfo);
+            }
+        } else {
+            ProcessSoftmax<false>(stage1CastTensor, mm1ResUbTensor, attenMaskUb, runInfo);
+        }
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0);
         if constexpr (hasAtten) {
             // 软max 已消费完本槽 mask，Unlock 释放供下一轮 MTE2 覆写
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
+            if (useMask) {
+                Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
+            }
         }
 
         // ===================DataCopy to L1 ====================
@@ -735,7 +756,7 @@ public:
     __aicore__ inline void InitBuffers()
     {
         /*--------------------------------------------L1--------------------------------------------*/
-        // l1P 三缓冲：A1 108K 起（跳过 cube Q 区），槽内 P 在 rope 段（表 2 注 2）
+        // l1P 三缓冲：A1 108K 起（跳过 cube Q 区），槽内 P 从 112 KiB 偏移开始，覆盖 rope 与预留区
         l1PBuffers_ = LocalTensor<uint8_t>(TPosition::A1, L1_Q_PREFIX_BYTES, L1_P_BUFCNT * L1_P_BUF_BYTES);
 
         /*--------------------------------------------UB--------------------------------------------*/
@@ -745,10 +766,10 @@ public:
             uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES]; // 1*24K=24K @96K，CV通信BUF
             uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                         // 96K @120K，vec2/输出BUF（单槽）
             uint8_t vec1Res[UB_VEC1_RES_BUF_BYTES];                 // 12.25K @216K，stage1/softmax结果（单槽）
-            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES]; // 2*4K=8K，输入BUF: MASK拷入
-            uint8_t softmaxSumBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 2*256B，sum常驻BUF
-            uint8_t softmaxMaxBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 2*256B，max常驻BUF
-            uint8_t softmaxExpBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 2*256B，exp常驻BUF
+            uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES]; // 2*6144B=12 KiB，MASK 输入双槽
+            uint8_t softmaxSumBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 3*256B，sum 常驻缓冲
+            uint8_t softmaxMaxBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 3*256B，max 常驻缓冲
+            uint8_t softmaxExpBuf[UB_SOFTMAX_BUFCNT][UB_SOFTMAX_BUF_BYTES]; // 3*256B，exp 常驻缓冲
             uint8_t lseOutBuf[UB_LSE_OUT_BUF_BYTES];                        // 1.5K，LSE输出
             uint8_t sumBrdcstBuf[UB_BRDCST_BUF_BYTES];                      // 2K，FD sum/max staging
             // FD max/sum 共用 2K staging，并使用同一个 V/MTE3 Mutex。
@@ -794,24 +815,24 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        // AIV 预置 c1v1+c2v2 四旗标（表 2 注 8）：AIC 首个 bmm1/bmm2 Wait 立即通过；
+        // AIV 预置 BMM1_0、BMM2_0/1 三个可用标志：AIC 首个 bmm1/bmm2 Wait 立即通过；
         // v1c2 三旗标随任务 ping-pong 无需预置（首轮 bmm2 的 Wait 有 AIV 首个 P 写保证）
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM2_0);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM2_1);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CROSSCORE_BMM1_1);
     }
 
     __aicore__ inline void UnInitCrossCoreSync() {}
 
     __aicore__ inline void AllocEventID()
     {
-        // 核内同步已全部静态化为 Mutex（表 2），无动态事件可分配
+        // 核内同步使用上方定义的静态 Mutex ID，无动态事件可分配
     }
 
     __aicore__ inline void FreeEventID() {}
 
-    __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
+    // Return false for a fully visible tile without touching mask buffers or their synchronization.
+    __aicore__ inline bool AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
                                            FlashMlaWithKvcacheRunInfoX &runInfo)
     {
         MaskInfo maskInfo;
@@ -841,10 +862,8 @@ public:
         // 锁全部内置于本函数（各槽 PIPE_V/MTE2 握手在拷贝内完成）
         const uint32_t maskBufId = runInfo.loop % DB;
         if (IsSkipMask && IsSkipMaskForPre) {
-            Mutex::Lock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * 128U);
-            Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + maskBufId);
-            return;
+            // Fully visible tiles use the unmasked VF and do not access the mask slots.
+            return false;
         }
 
         if (!IsSkipMask) {
@@ -865,6 +884,7 @@ public:
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, 128U);
             Mutex::Unlock<PIPE_V>(UB_IN_MASK_EVENT0 + preBufId);
         }
+        return true;
     }
 };
 

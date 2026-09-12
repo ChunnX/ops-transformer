@@ -21,7 +21,7 @@
  *   InOutLayoutType ∈ {BSND, BNSD, TND, TND_NTD}           (4, TND_NTD 为 TND→NTD 输出转置)
  *   KvLayoutType    ∈ {PA_BBND, PA_BNBD, PA_NZ}          (3, 仅 PA 分页)
  *   HasAttenMask    ∈ {false, true}                       (2)
- *   Config          ∈ {0: S1=64/S2=128/D=576/DV=512}      (1, MLA 唯一配置)
+ *   Config          ∈ {0: M=96/S2=112/D=576/DV=512}      (1, MLA 唯一配置)
  *   ⇒ 24 组合/ dtype × {half, bfloat16_t}（ORIG_DTYPE_* 编译宏）= 48 个 kernel 实例。
  */
 
@@ -73,7 +73,7 @@ ASCENDC_TPL_ARGS_DECL(FlashMlaWithKvcache,
                       ASCENDC_TPL_BOOL_DECL(HasAttenMask, FLASH_MLA_WITH_KVCACHE_TPL_BOOL_FALSE,
                                             FLASH_MLA_WITH_KVCACHE_TPL_BOOL_TRUE),
                       // Config（位宽 3-bit，key 位 19-17）：MLA 唯一配置
-                      //    0: Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512
+                      //    0: 保留原 Config 枚举标识；实际 kernel 模板使用 M96/S2=112/D576/DV512
                       ASCENDC_TPL_UINT_DECL(Config, ASCENDC_TPL_3_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 0), );
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BSND,

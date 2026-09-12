@@ -12,7 +12,7 @@
  * \file flash_mla_with_kvcache_block_cube.h
  * \brief arch35 flash_mla_with_kvcache block cube MLA；
  *        静态 tensor buffer + Mutex/cross-core 显式同步。
- *        L0C 例外（表 2 注 3）：bmm2 单次 Mmad 足迹 96K，槽保持 2×128K 静态 + 2 Mutex（不得拆 4×64K）。
+ *        L0C：bmm2 单次 Mmad 足迹 96*256*sizeof(float) = 96 KiB，槽保持 2×128K 静态 + 2 Mutex（不得拆 4×64K）。
  */
 #ifndef FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
 #define FLASH_MLA_WITH_KVCACHE_BLOCK_CUBE_H_
@@ -54,7 +54,6 @@ public:
     // ================== 核间同步 ID（与 vec 侧逐字节一致）==================
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t CROSSCORE_BMM1_0 = 0U;
-    static constexpr uint32_t CROSSCORE_BMM1_1 = 1U;
     static constexpr uint32_t CROSSCORE_BMM2_0 = 2U;
     static constexpr uint32_t CROSSCORE_BMM2_1 = 3U;
     static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
@@ -66,7 +65,7 @@ public:
     // ================== 核内 Mutex ID（AIC 核内 0-26 自洽）==================
     static constexpr uint32_t L0C_BUFFER_ID0 = 0U;
     static constexpr uint32_t L0C_BUFFER_ID1 = 1U;
-    static constexpr uint32_t Q_L1_BUFFER_ID0 = 2U; // Q 单槽（表 1），仅用 base
+    static constexpr uint32_t Q_L1_BUFFER_ID0 = 2U; // Q 单槽，容量 mBaseSize*576*sizeof(Q_T)
     static constexpr uint32_t KV_L1_BUFFER_ID0 = 4U;
     static constexpr uint32_t KV_L1_BUFFER_ID1 = 5U;
     static constexpr uint32_t KV_L1_BUFFER_ID2 = 6U;
@@ -74,7 +73,7 @@ public:
     static constexpr uint32_t L0B_BUFFER_ID0 = 9U;
     static constexpr uint32_t L0B_BUFFER_ID1 = 10U;
 
-    // ================== 静态布局常量（表 1，数值 = 现状容量）==================
+    // ================== 静态布局常量（M96、S2=112、输入元素 2 字节）==================
     // UB CV 区（VECIN，与 vec 侧同一偏移别名）：
     //   mm2Res 2×48K @0、mm1Res 1×24K @96K
     static constexpr uint32_t UB_MM2_RES_BUFCNT = 2U;
@@ -86,15 +85,13 @@ public:
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * 576 * sizeof(Q_T);
     static constexpr uint32_t L1_KVP_BUFCNT = 3U;
     static constexpr uint32_t L1_KVP_BUF_BYTES = s2BaseSize * 608 * sizeof(INPUT_T);
-    // L0C（CO1）：2×128K = 256K 静态（表 2 注 3）
+    // L0C（CO1）：2×128 KiB，每槽容纳 96×256 FP32 结果
     static constexpr uint32_t L0C_BUFCNT = 2U;
     static constexpr uint32_t L0C_BUF_BYTES = 128U * 1024U;
     // L0A：首个 96 宽 Q 分块常驻 18K @0；临时 Q128 使用 24K @18K，Q112/P 使用 21K @42K。
     // L0B：2×32K 双缓冲，独立游标跨 mm1/mm2 轮转。
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-    static constexpr uint32_t L0A_SLOT_BYTES = 16U * 1024U;
-    static constexpr uint32_t Q_L0A_CACHE_COUNT = 3U;
 
     // buffer位置+用途+Buffers；使用时命名: 用途+buffer位置+Tensor
     LocalTensor<uint8_t> ubMm1ResBuffers_;
@@ -153,7 +150,7 @@ public:
         };
         static_assert(sizeof(L1Layout) <= 512 * 1024, "L1 buffer too large");
         l1QBuffers_ = LocalTensor<uint8_t>(TPosition::A1, 0U, SIZE_OF_MEMBER(L1Layout, qBuffers));
-        // KV/P 区从 A1 108K 起；vec 写 P 的目标偏移必须与本布局逐字节一致（表 2 注 2）：
+        // KV/P 区从 A1 108K 起；vec 写 P 的目标偏移必须与本布局逐字节一致：
         //   l1KvpBuffers_[loop%3 * L1_KVP_BUF_BYTES] + s2BaseSize*dVBaseSize（rope 段）
         l1KvpBuffers_ =
             LocalTensor<uint8_t>(TPosition::A1, L1_Q_BUFCNT * L1_Q_BUF_BYTES, SIZE_OF_MEMBER(L1Layout, kvpBuffers));
@@ -166,7 +163,7 @@ public:
         lastMatmulWasPv_ = false;
 
         /*--------------------------------------------L0C--------------------------------------------*/
-        // 2×128K 静态 + M/FIX Mutex 对（表 2 注 3：bmm2 单次足迹 96K，不得拆 4×64K）
+        // 2×128K 静态 + M/FIX Mutex 对（bmm2 单次 96*256*4 = 96 KiB，不得拆成 64 KiB 槽）
         l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_BUF_BYTES);
     }
 
@@ -232,17 +229,15 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        // AIC 侧无需预置（AIV 的 InitCrossCoreSync 预置 c1v1/c2v2 四旗标）
+        // AIC 侧无需预置（AIV 的 InitCrossCoreSync 预置 BMM1 单槽和 BMM2 双槽的三个可用标志）
     }
 
     __aicore__ inline void UnInitCrossCoreSync()
     {
-        // 收尾 drain 8 个 c1v1/c2v2 旗标（4 标志 × {本 AIV0, +AIV_SYNC_OFFSET}），防悬空旗标
+        // 收尾消耗 6 个 c1v1/c2v2 标志（3 个槽 × 2 个 AIV），防悬空旗标
         // 污染下一 kernel 的首次 Wait
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_0 + AIV_SYNC_OFFSET);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_1);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM1_1 + AIV_SYNC_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_0);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_0 + AIV_SYNC_OFFSET);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_BMM2_1);
@@ -415,6 +410,12 @@ public:
             mp.cmatrixSource = false;
             mp.unitFlag = 0;
             Mmad(c, a, b, mp);
+#if (__CCE_AICORE__ != 310) && (!(defined __DAV_310R6__))
+            // 与公共 MatmulKPP 一致：小 M×N 时在释放 L0 槽前同步 M 管线。
+            if ((mp.m / 16U) * (mp.n / 16U) < 10U) {
+                AscendC::PipeBarrier<PIPE_M>();
+            }
+#endif
             Mutex::Unlock<PIPE_M>(bid);
             l0bBufId_ ^= 1U;
             koff += tk;
@@ -530,6 +531,12 @@ public:
                 mp.cmatrixSource = false;
                 mp.unitFlag = 0;
                 Mmad(c, a[k * 64U * am], b, mp);
+#if (__CCE_AICORE__ != 310) && (!(defined __DAV_310R6__))
+                // 与公共 MatmulKPP 一致：小 M×N 时在释放 L0 槽前同步 M 管线。
+                if ((mp.m / 16U) * (mp.n / 16U) < 10U) {
+                    AscendC::PipeBarrier<PIPE_M>();
+                }
+#endif
                 Mutex::Unlock<PIPE_M>(bid);
                 l0bBufId_ ^= 1U;
             }
