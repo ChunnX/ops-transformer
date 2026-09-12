@@ -15,8 +15,8 @@
 
 namespace l0op {
 const aclTensor *QuantFlashMlaWithKvcacheMetadata(const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional,
-                                                 const aclTensor *sequsedQOptional, int64_t batchSize,
-                                                 int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                                 const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
+                                                 int64_t maxSeqlenKv, int64_t numHeadsQ,
                                                  int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
                                                  int64_t quantMode, int64_t maskMode, const char *layoutQ,
                                                  const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,

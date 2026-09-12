@@ -35,13 +35,13 @@ extern "C" {
 
 aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const aclTensor *cacheSeqlens, int64_t numHeadsQ, int64_t numHeadsKv, int64_t quantMode,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional, int64_t batchSize, int64_t maxSeqlenQ,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
     int64_t maxSeqlenKv, int64_t headDimQk, int64_t headDimV, int64_t maskMode, const char *layoutQ,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantFlashMlaWithKvcacheMetadata,
                    DFX_IN(cacheSeqlens, numHeadsQ, numHeadsKv, quantMode, cuSeqlensQOptional, sequsedQOptional,
-                          batchSize, maxSeqlenQ, maxSeqlenKv, headDimQk, headDimV, maskMode, layoutQ),
+                          maxSeqlenQ, maxSeqlenKv, headDimQk, headDimV, maskMode, layoutQ),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -56,7 +56,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     maskMode = (maskMode >= 0) ? maskMode : NO_MASK;
     layoutQ = (layoutQ != nullptr && strlen(layoutQ) > 0) ? layoutQ : "BSND";
 
-    auto ret = QuantFlashMlaMetadataCheck::ParamsCheck(cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, batchSize,
+    auto ret = QuantFlashMlaMetadataCheck::ParamsCheck(cacheSeqlens, cuSeqlensQOptional, sequsedQOptional,
                                                        maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk,
                                                        headDimV, quantMode, maskMode, layoutQ, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -67,7 +67,7 @@ aclnnStatus aclnnQuantFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto output = l0op::QuantFlashMlaWithKvcacheMetadata(
-        cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
+        cacheSeqlens, cuSeqlensQOptional, sequsedQOptional, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv,
         headDimQk, headDimV, quantMode, maskMode, layoutQ, socVersion, aicCoreNum, aivCoreNum, metaData,
         uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
