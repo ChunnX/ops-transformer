@@ -745,8 +745,10 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t epAlignWinBytes = AlignUpWin(epWorldSize * sizeof(int32_t));
     uint64_t counterBytes = aivNum * epAlignWinBytes;
 
-    // sendCntPerRank区
-    uint64_t sendCntPerRankBytes = epAlignWinBytes;
+    // sendCntPerRank 区
+    // hybrid： [ep][512B]， DIRECT [ep]。
+    uint64_t sendCntPerRankBytes = (info.networkMode == NETWORK_HYBRID) ? epWorldSize * WIN_ADDR_ALIGN
+                                                                        : epAlignWinBytes;
 
     // sendCntPerExpert 区: 两边一致
     uint64_t sendCntPerExpertBytes = AlignUpWin(moeExpertNumPerRank * epWorldSize * sizeof(int32_t));
