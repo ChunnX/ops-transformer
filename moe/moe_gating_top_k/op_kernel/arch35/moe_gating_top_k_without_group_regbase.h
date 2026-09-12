@@ -245,18 +245,26 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftMax(_
         Reg::Duplicate(vregSumBcast, vregSum, preg1);
 
         uint32_t remainDiv = size;
-        for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = Reg::UpdateMask<float>(remainDiv);
-            ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
-            Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
-            Reg::Exp(vregResult, vregResult, preg0);
-            Reg::Div(vregResult, vregResult, vregSumBcast, preg0);
-            Reg::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
-            if (hasBias_) {
+        if (hasBias_) {
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = Reg::UpdateMask<float>(remainDiv);
+                ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
+                Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
+                Reg::Exp(vregResult, vregResult, preg0);
+                Reg::Div(vregResult, vregResult, vregSumBcast, preg0);
+                Reg::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
                 ops::LoadOneTensorForDtypeT<float>(biasAddr, vregBias, preg0, i * VL_FLOAT_SIZE);
                 Reg::Add(vregBiasResult, vregResult, vregBias, preg0);
                 Reg::StoreAlign(xNormWithBiasAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
-            } else {
+            }
+        } else {
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = Reg::UpdateMask<float>(remainDiv);
+                ops::LoadOneTensorForDtypeT<float>(xRowAddr, vregX, preg0, i * VL_FLOAT_SIZE);
+                Reg::Sub(vregResult, vregX, vregMaxBcast, preg0);
+                Reg::Exp(vregResult, vregResult, preg0);
+                Reg::Div(vregResult, vregResult, vregSumBcast, preg0);
+                Reg::StoreAlign(xNormAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
                 Reg::StoreAlign(xNormWithBiasAddr + i * VL_FLOAT_SIZE, vregResult, preg0);
             }
         }
