@@ -1,0 +1,320 @@
+[TEST] 2026-09-11 22:00:00  测试程序开始
+david_excel/aclnnMatmulReduceScatterV2.xlsx
+xlsx             :david_excel/aclnnMatmulReduceScatterV2.xlsx
+sheet            :level0_4p
+num              :[200, 200]
+scene            :one_hccl
+world_size       :4
+soc              :910D
+weight_same      :0
+ep               :0
+tp               :0
+master_ip        :127.0.0.1
+master_port      :50001
+server_num       :1
+server_index     :0
+dev_num          :0
+mix              :0
+[ { None: None,
+    'bin_name': 'fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792',
+    'block_size': 0,
+    'case_name': '16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st',
+    'dev_num': 0,
+    'graph_type': 'st',
+    'group_size': 4295032864,
+    'input_tensor_dtype': ['fp8_e4m3fn', 'fp8_e4m3fn'],
+    'input_tensor_range': [(1, 8), (1, 8)],
+    'input_tensor_shape': [[16384, 1792], [5120, 1792]],
+    'is_bias': 0,
+    'is_trans_b': 1,
+    'master_ip': '127.0.0.1',
+    'master_port': '50001',
+    'op_name': 'aclnnMatmulReduceScatterV2',
+    'outdtype': 'bf16',
+    'per_block_flag': False,
+    'rank_list0': [],
+    'reduce_op': 2,
+    'save_rank': 0,
+    'scene': 'one_hccl',
+    'seed': 42,
+    'server_index': 0,
+    'server_num': 1,
+    'sheet_name': 'level0_4p',
+    'soc': '910D',
+    'weight_same': 0,
+    'world_size': 4,
+    'x1scale_dtype': 'fp8_e8m0',
+    'x1scale_range': (1, 8),
+    'x1scale_shape': [16384, 28, 2],
+    'x2scale_dtype': 'fp8_e8m0',
+    'x2scale_range': (1, 8),
+    'x2scale_shape': [5120, 28, 2],
+    '备注': 'ST对比基线用例, 补充自 cases.csv row95'}]
+single_server scene!!!!!
+rank list is:  [0, 1, 2, 3]
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 3
+[INFO] device_3 创建HCCL通信链路 
+rank:3 init_process_group success
+rank3 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-11 22:00:28] [WARNING] [2092697] profiler.py: Profiler won't be using warmup, this can skew profiler results
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 2
+[INFO] device_2 创建HCCL通信链路 
+rank:2 init_process_group success
+rank2 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-11 22:00:28] [WARNING] [2092696] profiler.py: Profiler won't be using warmup, this can skew profiler results
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 1
+[INFO] device_1 创建HCCL通信链路 
+rank:1 init_process_group success
+rank1 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-11 22:00:29] [WARNING] [2092695] profiler.py: Profiler won't be using warmup, this can skew profiler results
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 0
+[INFO] device_0 创建HCCL通信链路 
+rank:0 init_process_group success
+rank0 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-11 22:00:29] [WARNING] [2092694] profiler.py: Profiler won't be using warmup, this can skew profiler results
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+[2026-09-11 22:00:30] [WARNING] [2092695] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:30] [WARNING] [2092694] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:30] [WARNING] [2092696] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:30] [WARNING] [2092697] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:30] [INFO] [2097255] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092697_20260911220028939_ascend_pt
+[2026-09-11 22:00:30] [INFO] [2097259] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092695_20260911220029143_ascend_pt
+[2026-09-11 22:00:30] [INFO] [2097265] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092694_20260911220029188_ascend_pt
+[2026-09-11 22:00:30] [INFO] [2097279] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092696_20260911220028979_ascend_pt
+||||////----[2026-09-11 22:00:32] [INFO] [2097326] profiler.py: CANN profiling data parsed in a total time of 0:00:02.017949
+[2026-09-11 22:00:32] [INFO] [2097297] profiler.py: CANN profiling data parsed in a total time of 0:00:02.067173
+[2026-09-11 22:00:32] [INFO] [2097341] profiler.py: CANN profiling data parsed in a total time of 0:00:02.020118
+[2026-09-11 22:00:32] [INFO] [2097300] profiler.py: CANN profiling data parsed in a total time of 0:00:02.087329
+\\[2026-09-11 22:00:33] [INFO] [2097259] profiler.py: All profiling data parsed in a total time of 0:00:03.071091
+[2026-09-11 22:00:33] [INFO] [2097255] profiler.py: All profiling data parsed in a total time of 0:00:03.101592
+\[2026-09-11 22:00:33] [INFO] [2097265] profiler.py: All profiling data parsed in a total time of 0:00:03.091267
+[2026-09-11 22:00:33] [INFO] [2097279] profiler.py: All profiling data parsed in a total time of 0:00:03.080109
+Profiling采集的内存为：176.00048828125；MC2内存计算需要累加值为： 33.7138671875; tmp_tensor_memory需要累加值为：20.0
+[INFO] 小算子级联 内存为：229.71435546875 M, 通信性能为：1083.0162 us, 计算性能为：410.6103999999999 us, 总性能： 1493.6266us 
+
+[2026-09-11 22:00:33] [WARNING] [2092694] profiler.py: Profiler won't be using warmup, this can skew profiler results
+[2026-09-11 22:00:34] [WARNING] [2092695] profiler.py: Profiler won't be using warmup, this can skew profiler results
+[2026-09-11 22:00:34] [WARNING] [2092697] profiler.py: Profiler won't be using warmup, this can skew profiler results
+[2026-09-11 22:00:34] [WARNING] [2092696] profiler.py: Profiler won't be using warmup, this can skew profiler results
+[2026-09-11 22:00:42] [WARNING] [2092696] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:42] [WARNING] [2092697] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:42] [WARNING] [2092694] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:42] [WARNING] [2092695] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-11 22:00:42] [INFO] [2102238] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_mc2_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092697_20260911220034738_ascend_pt
+|[2026-09-11 22:00:43] [INFO] [2102261] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_mc2_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092696_20260911220034779_ascend_pt
+[2026-09-11 22:00:43] [INFO] [2102265] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_mc2_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092695_20260911220034734_ascend_pt
+[2026-09-11 22:00:43] [WARNING] [2102238] profiler.py: 4 memory record(s) are incomplete.
+|[2026-09-11 22:00:43] [INFO] [2102286] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_mc2_16384_1792_5120_fp8_e4m3fn_e4m3fn_bf16_rank4_rs_st/huawei_2092694_20260911220033796_ascend_pt
+|[2026-09-11 22:00:43] [WARNING] [2102261] profiler.py: 4 memory record(s) are incomplete.
+[2026-09-11 22:00:43] [WARNING] [2102265] profiler.py: 4 memory record(s) are incomplete.
+|[2026-09-11 22:00:43] [WARNING] [2102286] profiler.py: 4 memory record(s) are incomplete.
+////-[2026-09-11 22:00:45] [INFO] [2102251] profiler.py: CANN profiling data parsed in a total time of 0:00:02.080069
+--[2026-09-11 22:00:45] [INFO] [2102303] profiler.py: CANN profiling data parsed in a total time of 0:00:02.020022
+-[2026-09-11 22:00:45] [INFO] [2102298] profiler.py: CANN profiling data parsed in a total time of 0:00:02.077058
+[2026-09-11 22:00:45] [INFO] [2102357] profiler.py: CANN profiling data parsed in a total time of 0:00:02.019598
+\[2026-09-11 22:00:46] [INFO] [2102238] profiler.py: All profiling data parsed in a total time of 0:00:03.085108
+[2026-09-11 22:00:46] [INFO] [2102261] profiler.py: All profiling data parsed in a total time of 0:00:03.061017
+\[2026-09-11 22:00:46] [INFO] [2102265] profiler.py: All profiling data parsed in a total time of 0:00:03.087133
+[2026-09-11 22:00:46] [INFO] [2102286] profiler.py: All profiling data parsed in a total time of 0:00:03.064844
+[INFO] MC2融合算子 内存为：216.0 M，性能为：1628.698 us 
+
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：256.05648804
+ 大值误差总和：5369893888.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.64163208
+ 均衡性偏差计数：5883
+ 均衡性diff总和：-1992185.37500000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：256.05648804
+ 大值误差总和：5369893888.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.64163208
+ 均衡性偏差计数：5883
+ 均衡性diff总和：-1992185.37500000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+comparing result: fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu VS fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npucompare result: ok
+[INFO] device_0 精度结果为：PASS
+[INFO] device_0 精度计算结束：22:00:48 
+[rank0]0 counter is 2
+[rank0]0 end time:2026-09-11-22:00:49.655
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：256.04525757
+ 大值误差总和：5369658368.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.65423584
+ 均衡性偏差计数：2789
+ 均衡性diff总和：-1259811.50000000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：256.04525757
+ 大值误差总和：5369658368.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.65423584
+ 均衡性偏差计数：2789
+ 均衡性diff总和：-1259811.50000000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+comparing result: fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu VS fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npucompare result: ok
+[INFO] device_1 精度结果为：PASS
+[INFO] device_1 精度计算结束：22:00:49 
+[rank1]0 counter is 3
+[rank1]0 end time:2026-09-11-22:00:49.656
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：255.99856567
+ 大值误差总和：5368678912.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.60476685
+ 均衡性偏差计数：5069
+ 均衡性diff总和：-1661388.25000000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：255.99856567
+ 大值误差总和：5368678912.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.60476685
+ 均衡性偏差计数：5069
+ 均衡性diff总和：-1661388.25000000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+comparing result: fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu VS fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npucompare result: ok
+[INFO] device_2 精度结果为：PASS
+[INFO] device_2 精度计算结束：22:00:47 
+[rank2]0 counter is 1
+[rank2]0 end time:2026-09-11-22:00:49.664
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：256.00164795
+ 大值误差总和：5368743936.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.60455322
+ 均衡性偏差计数：1324
+ 均衡性diff总和：641075.62500000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+info：开始计算 fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu 精度。
+处理golden中，超过value表示范围的值，赋值为inf/-inf
+正在打印结果：fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+ 大值总数：20971520
+ 大值占比：100.00%
+ 大值最大误差：512.00000000
+ 大值平均误差：256.00164795
+ 大值误差总和：5368743936.00
+ 小值总数：0
+ 小值占比：0.00%
+ 小值错误数：0，占比nan%
+ 误差均方根（RMSE）：295.60455322
+ 均衡性偏差计数：1324
+ 均衡性diff总和：641075.62500000
+ golden nan总数：0
+ nan误差数：0
+ golden inf总数：0
+ inf误差数：0
+ golden -inf总数：0
+ -inf误差数：0
+comparing result: fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npu VS fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_gpu
+fp8_e4m3fn_fp8_e4m3fn-16384_1792_5120_1792_dq_npucompare result: ok
+[INFO] device_3 精度结果为：PASS
+[INFO] device_3 精度计算结束：22:00:49 
+[rank3]0 counter is 4
+[rank3]0 end time:2026-09-11-22:00:49.684
+[TEST] 2026-09-11 22:00:49  测试程序结束

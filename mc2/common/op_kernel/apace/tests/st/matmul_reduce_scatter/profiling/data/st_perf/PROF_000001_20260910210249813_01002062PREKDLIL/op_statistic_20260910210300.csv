@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,_Z38QuantMatmulReduceScatterKernelE4M3E4M3PN5Apace7AivComm11CommContextEPhS3_S3_S3_S3_S3_34QuantMatmulReduceScatterTilingData,MIX_AIC,10,10642.299,1044.993,1064.229,1141.069,100
