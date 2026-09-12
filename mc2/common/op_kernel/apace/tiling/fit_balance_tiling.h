@@ -257,6 +257,12 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         return c;
     };
     // Critical path estimate for a given head size.
+    // Pipeline: round i's comm C_i can overlap the previous round's compute.
+    // Critical path = C_1 + sum_{i=2..R} max(M_{i-1}, C_i) + M_R.
+    // Rounds 2..headCnt have head-sized comm; the tail round (if any) ships only
+    // `tail` rows, so its comm is tail-sized — charging head-sized comm for the
+    // tail round overestimates multi-round cuts and biases the search towards a
+    // single full-M round (regressed compute-bound small shapes, perf r3 PERF_10).
     auto estTime = [&in](uint64_t head) -> double {
         if (head >= in.m) {
             // Single round: communication and compute serialise.
@@ -264,11 +270,18 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         }
         const uint64_t headCnt = in.m / head;
         const uint64_t tail = in.m % head;
-        const uint64_t rounds = headCnt + ((tail > 0UL) ? 1UL : 0UL);
-        const double commK = in.comm.RoundTimeUs(CalcRoundSizeMb(in, head));
-        const double mmK = in.mm.TimeUs(head, in.n, in.kTotal);
-        const double lastMm = in.mm.TimeUs((tail > 0UL) ? tail : head, in.n, in.kTotal);
-        return commK + static_cast<double>(rounds - 1UL) * std::max(commK, mmK) + lastMm;
+        const double commHead = in.comm.RoundTimeUs(CalcRoundSizeMb(in, head));
+        const double mmHead = in.mm.TimeUs(head, in.n, in.kTotal);
+        if (tail == 0UL) {
+            // Uniform rounds: every transition prices max(mm_head, comm_head).
+            return commHead + static_cast<double>(headCnt - 1UL) * std::max(mmHead, commHead) + mmHead;
+        }
+        const double mmTail = in.mm.TimeUs(tail, in.n, in.kTotal);
+        const double commTail = in.comm.RoundTimeUs(CalcRoundSizeMb(in, tail));
+        // headCnt (>= 1) head rounds + one tail round: the tail round's comm is
+        // tail-sized and overlaps the previous head round's compute.
+        return commHead + static_cast<double>(headCnt - 1UL) * std::max(mmHead, commHead) + std::max(mmHead, commTail) +
+               mmTail;
     };
 
     cut.estTimeUsK1 = estTime(waveM);
@@ -343,7 +356,11 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     // (conservative upper bound). Kernel contract: the merged round still
     // starts at a multiple of headSize, and the fused urma kernel takes the
     // explicit round count, so the AIC wait mapping stays correct.
-    if (in.cfg.enableTailMerge && (cut.tailCnt == 1UL) && (cut.headCnt >= 1UL) &&
+    // headCnt >= 2 is required so that at least one head round survives the
+    // merge — merging a 2-round cut into a single full-M round would destroy
+    // the first-block start latency the estTime search just paid for
+    // (perf r3 PERF_10 interaction).
+    if (in.cfg.enableTailMerge && (cut.tailCnt == 1UL) && (cut.headCnt >= 2UL) &&
         (static_cast<double>(cut.tailSize) <= in.cfg.tinyTailRatio * static_cast<double>(cut.headSize))) {
         cut.headCnt -= 1UL;
         cut.tailSize += cut.headSize; // merged round = head + tail, still prefix-aligned

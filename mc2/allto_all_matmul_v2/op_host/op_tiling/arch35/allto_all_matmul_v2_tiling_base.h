@@ -713,14 +713,27 @@ protected:
                                                 x1Dtype == ge::DT_FLOAT4_E2M1, precisionMode_, mm.baseM, mm.baseN,
                                                 mm.usedCoreNum, fbInput)) {
                 const fit_balance::AllToAllFitBalanceResult fbRes = fit_balance::Schedule(fbInput);
-                fit_balance::FillCommTilingData(fbRes, td->commTilingData, td->scaleCommTilingData);
-                fitBalanceUsed = true;
-                OP_LOGI(opName,
-                        "fit-balance comm tiling: k=%lu, rounds=%lu, head=%lu x%lu, tail=%lu x%lu, merged=%d, "
-                        "ratio=%.3f, est=%.1fus (k=1 est=%.1fus), noCut=%d",
-                        fbRes.cut.chosenK, fbRes.cut.rounds, fbRes.cut.headSize, fbRes.cut.headCnt, fbRes.cut.tailSize,
-                        fbRes.cut.tailCnt, static_cast<int32_t>(fbRes.cut.mergedTail), fbRes.cut.ratioCalcComm,
-                        fbRes.cut.estTimeUs, fbRes.cut.estTimeUsK1, static_cast<int32_t>(fbRes.cut.noCut));
+                // 切分不变量守卫: 总行数必须等于 m, 违反说明决策层产出非法切分
+                // (如尾轮合并字段组装错误), 拦截后回退现状路径而非上板劣化。
+                const uint64_t cutTotalRows =
+                    fbRes.cut.headCnt * fbRes.cut.headSize + fbRes.cut.tailCnt * fbRes.cut.tailSize;
+                if (cutTotalRows != m_) {
+                    OP_LOGE(opName,
+                            "fit-balance produced an invalid cut: head=%lu x%lu + tail=%lu x%lu = %lu != m=%lu, "
+                            "fallback to CoreOccupancyFirstTiling",
+                            fbRes.cut.headSize, fbRes.cut.headCnt, fbRes.cut.tailSize, fbRes.cut.tailCnt, cutTotalRows,
+                            m_);
+                } else {
+                    fit_balance::FillCommTilingData(fbRes, td->commTilingData, td->scaleCommTilingData);
+                    fitBalanceUsed = true;
+                    OP_LOGI(opName,
+                            "fit-balance comm tiling: k=%lu, rounds=%lu, head=%lu x%lu, tail=%lu x%lu, merged=%d, "
+                            "ratio=%.3f, est=%.1fus (k=1 est=%.1fus), noCut=%d",
+                            fbRes.cut.chosenK, fbRes.cut.rounds, fbRes.cut.headSize, fbRes.cut.headCnt,
+                            fbRes.cut.tailSize, fbRes.cut.tailCnt, static_cast<int32_t>(fbRes.cut.mergedTail),
+                            fbRes.cut.ratioCalcComm, fbRes.cut.estTimeUs, fbRes.cut.estTimeUsK1,
+                            static_cast<int32_t>(fbRes.cut.noCut));
+                }
             } else {
                 OP_LOGI(opName,
                         "fit-balance tiling: calibrated data missing (rankDim=%lu, fp4=%d, mode=%u), "
