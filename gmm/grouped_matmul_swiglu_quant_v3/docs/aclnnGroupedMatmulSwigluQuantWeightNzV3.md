@@ -253,104 +253,100 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 
 ## 约束说明
 
-### 平台和量化场景
+  - 确定性计算：
+      - aclnnGroupedMatmulSwigluQuantWeightNzV3默认为确定性实现。
 
-- 仅支持 Ascend 950（arch35）。其他平台均不支持。
-- 仅支持 MXFP8 weightNZ 场景，不支持 per-token、MXFP4、A8W4、A4W4 或其他量化场景。
-- 仅支持单 Tensor：`weight` 和 `weightScale` 的 TensorList 长度必须均为 1；不支持将每个 expert 拆成多个 Tensor 的多 Tensor调用方式。
-- `weight` 的逻辑 view 必须为三维，storage 必须为五维 FRACTAL_NZ；当前不支持 ND weight 和转置 weight。
+  <!-- npu="950" id7 -->
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 仅支持 MXFP8 weightNZ 场景，不支持 per-token、MXFP4、A8W4、A4W4 或其他量化场景。
+    - 仅支持单 Tensor：`weight` 和 `weightScale` 的 TensorList 长度必须均为 1；不支持将每个 expert 拆成多个 Tensor 的多 Tensor调用方式。
+    - `weight` 的逻辑 view 必须为三维，storage 必须为五维 FRACTAL_NZ；当前不支持 ND weight 和转置 weight。
+    - MX量化场景下需满足以下约束条件：
+        - 数据类型需要满足下表：
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <col style="width: 130px">
+          <col style="width: 130px">
+          <col style="width: 300px">
+          <col style="width: 300px">
+          <col style="width: 130px">
+          <col style="width: 130px">
+          <col style="width: 130px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>MX量化场景</th>
+              <th>x</th>
+              <th>weight</th>
+              <th>weightScale</th>
+              <th>xScale</th>
+              <th>output</th>
+              <th>outputScale</th>
+            </tr></thead>
+          <tbody>
+            <tr>
+              <td>MXFP8</td>
+              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+              <td>FLOAT8_E8M0</td>
+              <td>FLOAT8_E8M0</td>
+              <td>FLOAT8_E4M3FN</td>
+              <td>FLOAT8_E8M0</td>
+            </tr>
+          </tbody>
+          </table>
 
-### 数据类型和 shape
+        - shape约束需要满足下表：
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <col style="width: 130px">
+          <col style="width: 130px">
+          <col style="width: 250px">
+          <col style="width: 320px">
+          <col style="width: 180px">
+          <col style="width: 250px">
+          <col style="width: 160px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>MX量化场景</th>
+              <th>x</th>
+              <th>weight</th>
+              <th>weightScale</th>
+              <th>xScale</th>
+              <th>output</th>
+              <th>outputScale</th>
+            </tr></thead>
+          <tbody>
+            <tr>
+              <td>MXFP8</td>
+              <td>(M, K)</td>
+              <td><ul>
+              <li>单 Tensor 非转置 storage shape 形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
+              <li>逻辑 viewShape 形如{(E, K, N)}</li></ul></td>
+              <td>(E, ceil(K / 64), N, 2)</td>
+              <td>(M, ceil(K / 64), 2)</td>
+              <td>(M, N / 2)</td>
+              <td>(M, ceil((N / 2) / 64), 2)</td>
+            </tr>
+          </tbody>
+          </table>
 
-- MX量化场景下需满足以下约束条件：
-  - 数据类型需要满足下表：
-    <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-    <col style="width: 130px">
-    <col style="width: 190px">
-    <col style="width: 190px">
-    <col style="width: 190px">
-    <col style="width: 190px">
-    <col style="width: 190px">
-    <col style="width: 190px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>MX量化场景</th>
-        <th>x</th>
-        <th>weight</th>
-        <th>weightScale</th>
-        <th>xScale</th>
-        <th>output</th>
-        <th>outputScale</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>MXFP8</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-        <td>FLOAT8_E8M0</td>
-        <td>FLOAT8_E8M0</td>
-        <td>FLOAT8_E4M3FN</td>
-        <td>FLOAT8_E8M0</td>
-      </tr>
-    </tbody>
-    </table>
-  - shape约束需要满足下表：
-    <table style="undefined;table-layout: fixed; width: 1340px"><colgroup>
-    <col style="width: 130px">
-    <col style="width: 130px">
-    <col style="width: 350px">
-    <col style="width: 250px">
-    <col style="width: 230px">
-    <col style="width: 230px">
-    <col style="width: 230px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>MX量化场景</th>
-        <th>x</th>
-        <th>weight</th>
-        <th>weightScale</th>
-        <th>xScale</th>
-        <th>output</th>
-        <th>outputScale</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>MXFP8</td>
-        <td>(M, K)</td>
-        <td><ul>
-        <li>单 Tensor storage shape 形如 {(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
-        <li>逻辑 viewShape 形如 {(E, K, N)}</li>
-        </ul></td>
-        <td>(E, ceil(K / 64), N, 2)</td>
-        <td>(M, ceil(K / 64), 2)</td>
-        <td>(M, N / 2)</td>
-        <td>(M, ceil((N / 2) / 64), 2)</td>
-      </tr>
-    </tbody>
-    </table>
-
-- `E` 是 expert/group 数量，必须等于 `groupList` 的长度。
-- `M` 是 token 数量，`K` 是输入特征维度，`N` 是 SwiGLU 拆分前的输出维度。
-- `N` 必须大于 0 且为 64 的整数倍；SwiGLU 输出维度为 `N / 2`。
-- `weightScale` 的最后一维固定为 2，表示每个 MX block 的 scale 数据。
-- 本轮仅支持单 Tensor，`weight` 和 `weightScale` 的 TensorList 长度必须均为 1；不支持多 Tensor 调用方式。
-- 输入 Tensor 可以是非连续 Tensor；接口内部会执行必要的 contiguous 处理，但 Tensor 的 dtype、shape 和 format 元数据必须满足上述约束。
-
-### 属性和可选输入
-
-- `dequantMode=2`、`quantMode=2`，且二者必须匹配。
-- `dequantDtype=0`，表示中间计算使用 `DT_FLOAT`。
-- `groupListType=0` 时，`groupList[i]` 表示累计 token 数，最后一个值不能大于 `M`。
-- `groupListType=1` 时，`groupList[i]` 表示当前 group 的 token 数，所有值之和不能大于 `M`。
-- `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`。
-- `activateDim` 当前仅支持 `-1`。
-- `swigluMode` 当前支持 `[0, 3]`。
-- `clampLimit` 必须为有限值且大于 0；`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
-- `axis`、`roundMode`、`scaleAlg`、`dstTypeMax` 目前仅作为预留参数校验默认值，分别只支持 `-1`、`"rint"`、`0`、`0.0`。
+        - `E` 是 expert/group 数量，必须等于 `groupList` 的长度。
+        - `M` 是 token 数量，`K` 是输入特征维度，`N` 是 SwiGLU 拆分前的输出维度。
+        - `N` 必须大于 0 且为 64 的整数倍；SwiGLU 输出维度为 `N / 2`。
+        - `weightScale` 的最后一维固定为 2，表示每个 MX block 的 scale 数据。
+        - x shape为(M, K)，weight入口view shape为(E, K, N)，storage shape为(E, ceil(N / 32), ceil(K / 16), 16, 32)。
+        - weightScale shape为(E, ceil(K / 64), N, 2)，xScale shape为(M, ceil(K / 64), 2)。
+        - output shape为(M, N / 2)，outputScale shape为(M, ceil((N / 2) / 64), 2)。
+        - 输入 Tensor 可以是非连续 Tensor；接口内部会执行必要的 contiguous 处理，但 Tensor 的 dtype、shape 和 format 元数据必须满足上述约束。
+        - `dequantMode=2`、`quantMode=2`，且二者必须匹配。
+        - `dequantDtype=0`，表示中间计算使用 `DT_FLOAT`。
+        - `groupListType=0` 时，`groupList[i]` 表示累计 token 数，最后一个值不能大于 `M`；`groupListType=1` 时，`groupList[i]` 表示当前 group 的 token 数，所有值之和不能大于 `M`。
+        - `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`。
+        - `activateDim` 当前仅支持 `-1`。
+        - `swigluMode` 当前支持 `[0, 3]`。
+        - `clampLimit` 必须为有限值且大于 0；`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
+        - `axis`、`roundMode`、`scaleAlg`、`dstTypeMax` 目前仅作为预留参数校验默认值，分别只支持 `-1`、`"rint"`、`0`、`0.0`。
+  <!-- end id7 -->
 
 ## 调用示例
 
