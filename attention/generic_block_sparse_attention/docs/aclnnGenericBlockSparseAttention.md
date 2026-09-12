@@ -129,7 +129,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
       <td>[numBlocks, blockSize, numKeyValueHeads, headDim]</td>
-      <td>√</td>
+      <td>仅PA_BBND的dim0支持</td>
     </tr>
     <tr>
       <td>value</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT4_E2M1FN、HIFLOAT8</td>
       <td>ND</td>
       <td>与key一致</td>
-      <td>√</td>
+      <td>仅PA_BBND的dim0支持</td>
     </tr>
     <tr>
       <td>sparseBlockIdx</td>
@@ -1318,5 +1318,5 @@ int main()
 须满足`0 <= sequsedKv[b] <= cuKv[b+1]-cuKv[b]`，padding位于每个batch存储片段尾部。
 前缀和须从0开始、单调非递减，末项等于`totalKvTokens`。
 稀疏索引始终是batch内逻辑KV块号，块起点为`cuKv[b]+logicalBlockId*128`。
-ACLNN会将非连续TND KV转换为连续Tensor；直接图调用要求TND KV全连续。
+非PA的TND key/value必须全连续（包括首轴）；ACLNN与直接图调用均拒绝非连续KV。
 Metadata和主算子须传入一致的layout及长度参数。默认layoutKv仍为PA_BBND。

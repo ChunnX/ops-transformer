@@ -26,13 +26,15 @@ python -m pytest -q attention/generic_block_sparse_attention/tests/st/test_pa_no
 `ASCEND_CUSTOM_OPP_PATH` 应指向本次构建包的 vendor 目录，避免调用其他版本。
 
 设备测试比较同一份逻辑输入的 PA、TND 与 CPU 标杆，覆盖多 batch、MHA/GQA/MQA、
-非对齐的 TND batch 起点、存储 padding、dim0 非连续 KV、尾块、重复/乱序/非法索引、
+非对齐的 TND batch 起点、存储 padding、PA dim0 非连续 KV（TND KV 全连续）、尾块、重复/乱序/非法索引、
 过滤后空任务，以及 FD 阈值 11/12。A5 额外覆盖 FP8 的 FP16/BF16 输出。
 当前接口不支持 `return_softmax_lse=True`，因此设备测试仅比较 attention 输出。
 
 共享设备环境下可用`GBSA_TEST_DEVICE=6`指定空闲卡；默认设备为0。
 
-## 本次验证记录
+ACLNN UT 覆盖非 PA 的 Key/Value 任一维非连续输入被拒绝；Host UT 覆盖直接图调用的相同约束。
+
+## 最新提交原有验证记录
 
 - 环境：conda `hxb_dev`，Python 3.11，PyTorch/torch_npu 2.12，CANN 9.1.0。
 - Ascend950PR（设备6）：16组 PA/TND/CPU 精度对比全部通过，包含 FP8 两种输出类型。

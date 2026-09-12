@@ -238,7 +238,7 @@ D == query.shape[2] == 128
 ### 6.5 连续性和 stride
 
 - PA_BBND 保留现有能力：仅 dim0 可非连续，页内 `[block_size, Nkv, D]` 必须连续；`kStride0_/vStride0_` 取实际 dim0 stride。
-- TND 非 PA 本期要求 Key/Value 全连续；ACLNN 路径调用 `l0op::Contiguous`，直接图调用由 Tiling 校验完整 stride。
+- TND 非 PA 本期要求 Key/Value 全连续（包括首轴）；ACLNN 入口拒绝非连续输入，直接图调用由 Tiling 校验完整 stride。
 - TND 下设置：
 
 ```text
@@ -420,7 +420,7 @@ Metadata 中的 SA/FD 调度由 Q 实际 token 数、KV head 数和每个 task �
 1. `ValidateParams` 放行 `layout_kv in {"TND", "PA_BBND"}`；
 2. 增加 `layout_kv` 与 `block_table` 的组合校验；
 3. PA 模式沿用 `NormalizeDim0KvTensor`；
-4. 非 PA 模式对 Key/Value 调用普通 `l0op::Contiguous`，不创建“仅 dim0 可空洞”的 stride-aware view；
+4. 非 PA 模式先校验 Key/Value 全连续，非连续输入返回参数错误；随后调用 `l0op::Contiguous` 仅规范描述符，不创建“仅 dim0 可空洞”的 stride-aware view；
 5. 保持函数签名和输出构造不变。
 
 建议将 KV 归一化入口改成显式模式参数：
@@ -496,7 +496,7 @@ Metadata 与主算子必须接收完全一致的 `cu_seq_lengths_q/seqused_q` �
 ### 10.2 ACLNN 与 Metadata UT
 
 - 主算子和 Metadata 对同一配置给出一致的通过/拒绝结果；
-- 非 PA Key/Value 被正确 contiguous；
+- 非 PA 连续 Key/Value 正常执行；任一 Key/Value 非连续（包括仅 dim0 非连续）均返回参数错误；
 - PA dim0-strided view 仍保持零拷贝路径；
 - Torch 默认参数仍进入 PA；显式 `layout_kv="TND"` 进入非 PA。
 

@@ -9,7 +9,7 @@
 
 TND的KV前缀和须从0开始、单调非递减、末项等于total_kv_tokens。
 seqused_kv省略时使用存储长度，传入时不得超过对应存储长度。
-TND KV通过ACLNN转为连续Tensor。稀疏索引表示batch内逻辑块号，两种模式语义相同。
+非PA的TND key/value必须全连续（包括首轴），非连续输入将报错。稀疏索引表示batch内逻辑块号，两种模式语义相同。
 
 ## 产品支持情况
 
@@ -362,7 +362,7 @@ cann_ops_transformer.generic_block_sparse_attention(
                 <li>tensor_type支持bfloat16、float16、float8_e4m3fn</li>
                 <li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li>
                 <li>当前block_size须等于128且等于block_shape[1]</li>
-                <li>非连续Tensor约束：PA_BBND仅dim0支持非连续</li>
+                <li>非连续Tensor约束：PA_BBND仅dim0支持非连续；TND必须全连续</li>
             </ul>
         </td>
     </tr>

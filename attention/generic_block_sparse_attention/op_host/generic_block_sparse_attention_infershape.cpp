@@ -110,13 +110,13 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
         OP_LOGE(context->GetNodeName(), "layout_q=TND requires queryDims=3, but got %zu.", queryShape->GetDimNum());
         return ge::GRAPH_FAILED;
     }
-    const uint32_t kvRank = paged ? PA_BBND_DIM_NUM : TND_DIM_NUM;
-    if (keyShape->GetDimNum() != kvRank || valueShape->GetDimNum() != kvRank || *keyShape != *valueShape) {
+    const uint32_t kvDimNum = paged ? PA_BBND_DIM_NUM : TND_DIM_NUM;
+    if (keyShape->GetDimNum() != kvDimNum || valueShape->GetDimNum() != kvDimNum || *keyShape != *valueShape) {
         OP_LOGE(context->GetNodeName(), "key/value must have identical shapes of rank %u for layout_kv=%s.",
-                kvRank, layoutKv.c_str());
+                kvDimNum, layoutKv.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (keyShape->GetDim(kvRank - 1) != queryShape->GetDim(TND_DIM_D)) {
+    if (keyShape->GetDim(kvDimNum - 1) != queryShape->GetDim(TND_DIM_D)) {
         OP_LOGE(context->GetNodeName(), "key/value D must match query D.");
         return ge::GRAPH_FAILED;
     }

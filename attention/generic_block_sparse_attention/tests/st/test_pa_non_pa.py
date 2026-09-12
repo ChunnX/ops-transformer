@@ -116,8 +116,8 @@ def test_pa_tnd_equivalence(dtype_name, out_dtype_name, topk, padded, kv_heads, 
             lengths["cu_seqlens_kv"] = npu(torch.tensor(cu_kv, dtype=torch.int64))
             if padded:
                 lengths["seqused_kv"] = used_kv_npu
-            # ACLNN must make dim0-strided TND views contiguous.
-            kn, vn = with_holes(k), with_holes(v)
+            # Non-PA KV must be fully contiguous; dim0 holes are only supported by PA.
+            kn, vn = npu(k), npu(v)
             block_table = None
         metadata = ops.generic_block_sparse_attention_metadata(
             idx_npu, counts_npu, kv_heads * group, kv_heads, 128, [1, 128], **lengths)

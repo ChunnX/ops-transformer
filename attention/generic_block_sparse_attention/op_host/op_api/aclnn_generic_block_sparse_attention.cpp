@@ -126,6 +126,12 @@ static aclnnStatus ValidateParams(const aclTensor *query, const aclTensor *key, 
         return ACLNN_ERR_PARAM_INVALID;
     }
 
+    if (blockTable == nullptr && (!IsContiguous(key) || !IsContiguous(value))) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "TND key/value must be contiguous; only PA_BBND supports non-contiguous dim0.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     aclnnStatus ret = ParseBlockShape(blockShape);
     if (ret != ACLNN_SUCCESS) {
         return ret;
@@ -157,8 +163,8 @@ static std::string ConvertLayoutString(char *layoutStr)
 // Contiguous non-KV inputs for aclnn L0 InferShape (torch_npu often has view=ND, storage=1D;
 // GetInputShape may return storage unless Contiguous/CreateView normalizes the descriptor).
 // Keep Contiguous even when OpDef has AutoContiguous.
-// Do NOT Contiguous key/value here — dim0-strided KV is handled by NormalizeDim0KvTensor
-// (CreateView + SetStorageShape(viewShape)).
+// KV is normalized separately: PA preserves dim0 strides through NormalizeDim0KvTensor;
+// TND requires contiguous inputs and only needs descriptor normalization.
 static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&sparseBlockIdx,
                                   const aclTensor *&sparseBlockCount, const aclTensor *&metadataOptional,
                                   const aclTensor *&attenMaskOptional, const aclTensor *&qDequantScaleOptional,
@@ -332,6 +338,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     std::string layoutQStr = ConvertLayoutString(layoutQ);
     std::string layoutKvStr = ConvertLayoutString(layoutKv);
 
+    // TND inputs were validated as contiguous; Contiguous only normalizes their descriptors.
     const aclTensor *keyFinal = blockTableOptional != nullptr ? NormalizeDim0KvTensor(key, "key", executorImpl) :
                                                              l0op::Contiguous(key, executorImpl);
     CHECK_RET(keyFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
