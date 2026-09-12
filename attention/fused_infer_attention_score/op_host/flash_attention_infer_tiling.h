@@ -584,6 +584,12 @@ uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingDa
     uint64_t maxCost = 0;
     uint32_t usedCore = 0;
 
+    // 尾部零 KV batch 的输出初始化由最后一个有效核负责，finishBatch 保留其完整范围。
+    uint32_t nonEmptyBatchEnd = static_cast<uint32_t>(faInfo_.batch);
+    while (nonEmptyBatchEnd > 0U && getBatchParams(nonEmptyBatchEnd - 1U, groupSize).curKSBlockNum == 0U) {
+        --nonEmptyBatchEnd;
+    }
+
     auto finalizeCore = [&](uint32_t coreIdx, int64_t costLimit, int64_t resTaskNum) {
         int64_t consumed = costLimit - resTaskNum;
         if (consumed < 0) {
@@ -646,18 +652,18 @@ uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingDa
         }
 
         advanceCounters();
-        if (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum <= 0) {
-            finalizeCore(coreIdx, costLimit, resTaskNum);
-            continue;
-        }
-        if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+        if (nowBIdx >= nonEmptyBatchEnd) {
             finishBatch(coreIdx, costLimit, resTaskNum);
             break;
+        }
+        if (resTaskNum <= 0) {
+            finalizeCore(coreIdx, costLimit, resTaskNum);
+            continue;
         }
 
         // 阶段2：整 batch 跳（带容差）
         ConsumeRemainingBatchesFD(groupSize, resTaskNum, nowBIdx, nowN1Idx, nowS1Idx, nowS2Idx);
-        if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+        if (nowBIdx >= nonEmptyBatchEnd) {
             finishBatch(coreIdx, costLimit, resTaskNum);
             break;
         }
@@ -666,7 +672,7 @@ uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingDa
         // 阶段3：整 N1 块跳（带容差）
         ConsumeRemainingN1GroupsFD(resTaskNum, p, nowN1Idx, nowS1Idx, nowS2Idx);
         advanceCounters();
-        if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+        if (nowBIdx >= nonEmptyBatchEnd) {
             finishBatch(coreIdx, costLimit, resTaskNum);
             break;
         }
@@ -675,7 +681,7 @@ uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingDa
         // 阶段4：整 S1 块（一个 query）跳（带容差）
         ConsumeRemainingS1GroupsFD(resTaskNum, p, nowS1Idx, nowS2Idx);
         advanceCounters();
-        if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
+        if (nowBIdx >= nonEmptyBatchEnd) {
             finishBatch(coreIdx, costLimit, resTaskNum);
             break;
         }
@@ -683,18 +689,18 @@ uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingDa
 
         // 阶段5：逐 S2 块精确落点
         ConsumeS2BlocksFD(groupSize, resTaskNum, nowBIdx, nowS1Idx, nowS2Idx);
-        if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) {
-            finishBatch(coreIdx, costLimit, resTaskNum);
-            break;
-        }
 
         faTilingData.coreInfo.get_endBIdx()[coreIdx] = nowBIdx;
         faTilingData.coreInfo.get_endN1Idx()[coreIdx] = nowN1Idx;
         faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
         faTilingData.coreInfo.get_endS2Idx()[coreIdx] = nowS2Idx;
 
-        finalizeCore(coreIdx, costLimit, resTaskNum);
         advanceCounters();
+        if (nowBIdx >= nonEmptyBatchEnd) {
+            finishBatch(coreIdx, costLimit, resTaskNum);
+            break;
+        }
+        finalizeCore(coreIdx, costLimit, resTaskNum);
     }
 
     faTilingData.set_needCoreNum(usedCore == 0U ? 1U : usedCore);
