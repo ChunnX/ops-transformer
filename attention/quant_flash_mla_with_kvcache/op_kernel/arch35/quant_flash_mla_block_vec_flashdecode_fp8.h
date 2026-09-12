@@ -86,8 +86,9 @@ private:
 
     // ================================UB绝对偏移布局区=================================
     // 跨核bmm通信区位于UB起始（kernel InitMMResBuf最先经ubBufferManager分配）:
-    // bmm2单buffer + bmm1双buffer = (s1BaseSize/2)*(dVBaseSize + 2*s2BaseSize)*sizeof(T) = 96K
-    // FD工作区紧随其后，覆盖FA vec block死区（同核上FA/FD阶段串行，FD前后SyncAll保证流水排空）
+    // bmm2双buffer + bmm1双buffer = (s1BaseSize/2)*(2*dVBaseSize + 2*s2BaseSize)*sizeof(T) = 160K
+    // FD工作区仍自96K起（再后移会超UB上限），与CV通信区[96K,160K)重叠；
+    // FA/FD阶段串行且前后PipeBarrier+SyncAll排空流水，重叠区在FD执行时为死区，可安全复用
     static constexpr uint32_t mm1ResSize = (s1BaseSize / 2U) * s2FdBaseSize * sizeof(T); // 16K
     static constexpr uint32_t mm2ResSize = (s1BaseSize / 2U) * dVFdBaseSize * sizeof(T); // 64K
     static constexpr uint32_t FD_BASE = mm2ResSize + mm1ResSize * 2U;                    // 96K
