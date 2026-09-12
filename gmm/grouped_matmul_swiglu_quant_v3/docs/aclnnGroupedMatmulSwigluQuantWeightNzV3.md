@@ -174,16 +174,18 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 
 `aclnnStatus`：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-第一段接口会在以下情况返回错误：
+第一段接口会完成入参校验，出现以下场景时报错：
 
-- 必选指针为空：`x`、`weight`、`weightScale`、`xScale`、`groupList`、`output`、`outputScale`。
-- 当前设备不是 Ascend 950，或者 `weight` 不是 FRACTAL_NZ。
-- `weight` 或 `weightScale` 的 TensorList 长度不为 1。
-- `x`、`weight`、`output` 不是 MXFP8，或者 `xScale`、`weightScale`、`outputScale` 不是 `FLOAT8_E8M0`。
-- `dequantMode`、`quantMode`、`dequantDtype` 不满足 `2`、`2`、`0` 的约束。
-- `weightAssistMatrix`、`bias`、`smoothScale` 或 `tuningConfigOptional` 传入了不支持的内容。
-- 输入或输出 shape、format 不满足约束。
-- `swigluMode` 不在 `[0, 3]`，`activateDim` 不为 `-1`，或预留参数不是默认值。
+| 返回码 | 错误码 | 描述 |
+| --- | --- | --- |
+| `ACLNN_ERR_PARAM_NULLPTR` | 161001 | `x`、`weight`、`weightScale`、`xScale`、`groupList`、`output`、`outputScale`、`workspaceSize` 或 `executor` 为空指针，或者 TensorList 中包含空 Tensor。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的数据类型不在支持范围内；MXFP8 weightNZ 场景要求 `x`、`weight` 为 MXFP8，scale 为 `FLOAT8_E8M0`，output 为 `FLOAT8_E4M3FN`。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的参数维度、shape 或 format 不满足约束，例如 weight 的逻辑 view 不是三维、storage 不是五维 FRACTAL_NZ，或输出 shape 不匹配。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | 当前设备不是 Ascend 950，或者 `weight`/`weightScale` 的 TensorList 长度不为 1。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | `dequantMode`、`quantMode`、`dequantDtype` 不满足 `2`、`2`、`0` 的约束。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | `weightAssistMatrix`、`bias`、`smoothScale` 或 `tuningConfigOptional` 传入了当前场景不支持的内容。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | `activateDim` 不为 `-1`，`swigluMode` 不在 `[0, 3]`，或 `clampLimit`、`gluAlpha`、`gluBias` 不满足取值约束。 |
+| `ACLNN_ERR_PARAM_INVALID` | 161002 | 预留参数 `axis`、`roundMode`、`scaleAlg`、`dstTypeMax` 不满足默认值约束。 |
 
 ## aclnnGroupedMatmulSwigluQuantWeightNzV3
 
