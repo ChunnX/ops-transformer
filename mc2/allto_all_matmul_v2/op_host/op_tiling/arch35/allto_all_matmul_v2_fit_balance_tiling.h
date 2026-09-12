@@ -103,8 +103,9 @@ inline double FindEffMac(bool isFp4, uint32_t precisionMode)
 }
 
 // ====== 模型与阈值常量 ======
+// 注: 无"总时延下限不切"门控——单轮与多轮由 estTime 竞争决定(首轮通信项即
+// 首块启动延迟), 绝对门限会劣化计算 bound 的小 shape(见 perf 报告 2026-09-12)。
 static const double A5_CYCLE_PER_US = 1689.6;        // A5 频率: 1.65 cycle/ns
-static const double FB_MIN_CUT_TIME_US = 100.0;      // 总时延下限, 低于则不切
 static const double FB_BALANCE_RATIO = 1.2;          // 通算比低于该值不干预(k=1)
 static const double FB_ROUND_COST_DEFAULT_US = 10.0; // roundCost 缺省值
 static const double FB_TINY_TAIL_RATIO = 0.5;        // 尾轮低于 head×该比例时并入最后一个头轮
@@ -235,7 +236,6 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
     out.mm.cyclePerUs = A5_CYCLE_PER_US;
     out.mm.coreNum = usedCoreNum;
     out.cfg.enabled = true;
-    out.cfg.minCutTimeUs = FB_MIN_CUT_TIME_US;
     out.cfg.balanceRatio = FB_BALANCE_RATIO;
     out.cfg.roundCostUs = FindRoundCost(rankDim);
     out.cfg.tinyTailRatio = FB_TINY_TAIL_RATIO;

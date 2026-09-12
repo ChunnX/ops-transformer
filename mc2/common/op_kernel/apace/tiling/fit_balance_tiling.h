@@ -35,7 +35,12 @@
  * Legacy correspondence (mc2 fit-balance v1 -> here):
  *   EstimateMMCommTime / ratioCalcComm_  -> CalcCommCalcRatio + FitBalanceSchedule
  *   maxTilingNum = commTime / roundCost -> CalcMaxRounds
- *   minCutTime total-time gate           -> cfg.minCutTimeUs
+ *   minCutTime total-time gate           -> REMOVED: the single-round cut competes in
+ *        the estTime search instead of being forced by a fixed threshold. estTime's
+ *        leading comm(head) term prices the first-block start latency (V1 AG
+ *        frontMMTime idea); an absolute gate was shown to regress compute-bound
+ *        small shapes (full-M first round delays first compute, see tiling-plan
+ *        perf report 2026-09-12).
  *   short/long tile free-length solving  -> integer wave packing (head = k * waveM)
  *   tiny back-tile merge                 -> cfg.enableTailMerge / cfg.tinyTailRatio:
  *        a sub-threshold tail round is folded into the last head round
@@ -98,7 +103,6 @@ struct MatmulTheoryModel {
  */
 struct FitBalanceConfig {
     bool enabled = false;        // master switch, wired by the op host side
-    double minCutTimeUs = 100.0; // skip splitting when total comm+mm time is below this
     double balanceRatio = 1.2;   // comm/calc ratio below this keeps k = 1 (waves already match)
     double roundCostUs = 10.0;   // fixed cost per extra round when deriving the round cap
     double tinyTailRatio = 0.5;  // tail rounds below this ratio of head are merged into the last head round
@@ -269,8 +273,14 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
 
     cut.estTimeUsK1 = estTime(waveM);
 
-    // No-cut gates: degenerate wave count or total time below the cut threshold.
-    if ((wave.waveCnt < 2UL) || ((totalCommUs + totalMmUs) < in.cfg.minCutTimeUs)) {
+    // Degenerate fast path: a single wave already covers the whole M range, so
+    // the finest cut degenerates to a single round anyway.
+    // Note: there is deliberately NO absolute-time "not worth splitting" gate.
+    // A single round vs. multi-round cut is decided by the estTime competition
+    // below: estTime's leading comm(head) term already prices the first-block
+    // start latency, and a fixed threshold was shown to regress compute-bound
+    // small shapes by forcing a full-M first round (see tiling-plan perf report).
+    if (wave.waveCnt < 2UL) {
         cut = singleCut();
         cut.noCut = true;
         cut.chosenK = 0UL;
@@ -324,6 +334,7 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     cut = makeCut(bestHead);
     cut.chosenK = bestHead / waveM;
     cut.estTimeUs = bestTime;
+    cut.noCut = (cut.rounds <= 1UL); // single round may legitimately win the estTime search
 
     // Tiny-tail merge: fold a sub-threshold tail round into the last head
     // round (headCnt - 1 uniform rounds + one bigger tail round). Only applied
