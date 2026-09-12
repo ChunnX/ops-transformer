@@ -176,16 +176,49 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 
 第一段接口会完成入参校验，出现以下场景时报错：
 
-| 返回码 | 错误码 | 描述 |
-| --- | --- | --- |
-| `ACLNN_ERR_PARAM_NULLPTR` | 161001 | `x`、`weight`、`weightScale`、`xScale`、`groupList`、`output`、`outputScale`、`workspaceSize` 或 `executor` 为空指针，或者 TensorList 中包含空 Tensor。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的数据类型不在支持范围内；MXFP8 weightNZ 场景要求 `x`、`weight` 为 MXFP8，scale 为 `FLOAT8_E8M0`，output 为 `FLOAT8_E4M3FN`。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | 输入或输出的参数维度、shape 或 format 不满足约束，例如 weight 的逻辑 view 不是三维、storage 不是五维 FRACTAL_NZ，或输出 shape 不匹配。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | 当前设备不是 Ascend 950，或者 `weight`/`weightScale` 的 TensorList 长度不为 1。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | `dequantMode`、`quantMode`、`dequantDtype` 不满足 `2`、`2`、`0` 的约束。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | `weightAssistMatrix`、`bias`、`smoothScale` 或 `tuningConfigOptional` 传入了当前场景不支持的内容。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | `activateDim` 不为 `-1`，`swigluMode` 不在 `[0, 3]`，或 `clampLimit`、`gluAlpha`、`gluBias` 不满足取值约束。 |
-| `ACLNN_ERR_PARAM_INVALID` | 161002 | 预留参数 `axis`、`roundMode`、`scaleAlg`、`dstTypeMax` 不满足默认值约束。 |
+<table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
+<col style="width: 220px">
+<col style="width: 120px">
+<col style="width: 810px">
+</colgroup>
+<thead>
+  <tr>
+    <th>返回码</th>
+    <th>错误码</th>
+    <th>描述</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>ACLNN_ERR_PARAM_NULLPTR</td>
+    <td>161001</td>
+    <td>x、weight、weightScale、xScale、groupList、output、outputScale、workspaceSize 或 executor 为空指针，或者 TensorList 中包含空 Tensor。</td>
+  </tr>
+  <tr>
+    <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
+    <td rowspan="7">161002</td>
+    <td>输入或输出的数据类型不在支持范围内；MXFP8 weightNZ 场景要求 x、weight 为 MXFP8，scale 为 FLOAT8_E8M0，output 为 FLOAT8_E4M3FN。</td>
+  </tr>
+  <tr>
+    <td>输入或输出的参数维度、shape 或 format 不满足约束，例如 weight 的逻辑 view 不是三维、storage 不是五维 FRACTAL_NZ，或输出 shape 不匹配。</td>
+  </tr>
+  <tr>
+    <td>当前设备不是 Ascend 950，或者 weight、weightScale 的 TensorList 长度不为 1。</td>
+  </tr>
+  <tr>
+    <td>dequantMode、quantMode、dequantDtype 不满足 2、2、0 的约束。</td>
+  </tr>
+  <tr>
+    <td>weightAssistMatrix、bias、smoothScale 或 tuningConfigOptional 传入了当前场景不支持的内容。</td>
+  </tr>
+  <tr>
+    <td>activateDim 不为 -1，swigluMode 不在 [0, 3]，或 clampLimit、gluAlpha、gluBias 不满足取值约束。</td>
+  </tr>
+  <tr>
+    <td>预留参数 axis、roundMode、scaleAlg、dstTypeMax 不满足默认值约束。</td>
+  </tr>
+</tbody>
+</table>
 
 ## aclnnGroupedMatmulSwigluQuantWeightNzV3
 
