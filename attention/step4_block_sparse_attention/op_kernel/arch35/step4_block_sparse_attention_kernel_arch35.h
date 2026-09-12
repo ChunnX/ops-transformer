@@ -65,6 +65,8 @@ public:
         gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
         AscendC::GlobalTensor<ElementLse> gLse;
         gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
+        AscendC::GlobalTensor<uint32_t> gSegList;
+        gSegList.SetGlobalBuffer((__gm__ uint32_t *)params.workSpace);
 
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
@@ -89,6 +91,28 @@ public:
         int64_t strideKV = static_cast<int64_t>(kvHeads_) * embed_;
         uint32_t embedRound = RoundUp(embed_, 16);
 
+#ifdef __DAV_VEC__
+        {
+            uint32_t packedAlign = ((topK_ + 32) / 32) * 32;
+            if (packedAlign < 64) {
+                packedAlign = 64;
+            }
+            uint32_t packedBytes = packedAlign * sizeof(PackedT);
+            uint32_t i32Bytes = packedAlign * sizeof(int32_t);
+            auto ubPacked = resource.ubBuf.template GetBufferByByte<PackedT>(0);
+            auto ubPhys = resource.ubBuf.template GetBufferByByte<int32_t>(packedBytes);
+            auto ubGm = resource.ubBuf.template GetBufferByByte<int32_t>(packedBytes + i32Bytes);
+            auto ubTmp = resource.ubBuf.template GetBufferByByte<int32_t>(packedBytes + 2 * i32Bytes);
+            auto ubList = resource.ubBuf.template GetBufferByByte<uint32_t>(packedBytes + 3 * i32Bytes);
+            uint32_t eleNumPerC0 = NpuArch::BYTE_PER_C0 / sizeof(ElementQ);
+            uint64_t tokenStride = static_cast<uint64_t>(kvHeads_) * embed_;
+            Gemm::Block::PackedRegionDecodeAllRowsToGm<IS_DECODE>(
+                gPacked, gCounts, gSeqlens, qTokens_, totalTaskNum_, topK_, regionSize_, pageSize_, kvBaseTile_,
+                tokenStride, eleNumPerC0, mm1L1TileN_, maxKvTiles_, packedAlign, ubPacked, ubPhys, ubGm, ubTmp, ubList,
+                (__gm__ uint32_t *)params.workSpace);
+        }
+#endif
+        AscendC::SyncAll<false>();
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum_; taskIdx += coreNum) {
             uint32_t kvGroup = (qTokens_ == 0) ? 0 : (taskIdx / qTokens_);
             uint32_t qIdx = (qTokens_ == 0) ? 0 : (taskIdx - kvGroup * qTokens_);
@@ -121,6 +145,14 @@ public:
 
             uint32_t kvSLoopNum = CeilDiv(gatheredKvSeqlen, kvBaseTile_);
             uint32_t kvSTileSizeAct = kvBaseTile_;
+            uint32_t rowListBase = taskIdx * maxKvTiles_ * Gemm::Block::STEP4_SEG_LIST_WORDS;
+#ifdef __DAV_VEC__
+            // TND one token's GQA group: groupSize heads are contiguous, stride = D (not N1*D).
+            auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(rowNum, embed_);
+            auto gmOTensorTla = tla::MakeTensor(gO[gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
+            auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(rowNum, 1);
+            auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
+#endif
 #ifdef __DAV_CUBE__
             auto gmQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(embed_, rowNum);
             auto gmQTensorTla = tla::MakeTensor(gQ[gmOffsetQ], gmQLayoutTla, Arch::PositionGM{});
@@ -131,13 +163,6 @@ public:
             auto gmKTensorTla = tla::MakeTensor(gK[gmOffsetK], gmKLayoutTla, Arch::PositionGM{});
             auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(kvTokens_, strideKV);
             auto gmVTensorTla = tla::MakeTensor(gV[gmOffsetK], gmVLayoutTla, Arch::PositionGM{});
-#endif
-#ifdef __DAV_VEC__
-            // TND one token's GQA group: groupSize heads are contiguous, stride = D (not N1*D).
-            auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(rowNum, embed_);
-            auto gmOTensorTla = tla::MakeTensor(gO[gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
-            auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(rowNum, 1);
-            auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
             for (uint32_t gatheredKvSTileIdx = 0; gatheredKvSTileIdx < kvSLoopNum + PRE_LAUNCH; gatheredKvSTileIdx++) {
                 if (gatheredKvSTileIdx < kvSLoopNum) {
@@ -156,9 +181,10 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
+                    uint32_t listWordOff = rowListBase + gatheredKvSTileIdx * Gemm::Block::STEP4_SEG_LIST_WORDS;
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gPacked, packedRowStart, count, regionSize_,
                                 pageSize_, actualBlockShapeQK, gatheredKvSTileIdx, kvBaseTile_, prefixSumL0AStages,
-                                prefixSumL0BStages, mm1ToSmFlag, kvSeqlen);
+                                prefixSumL0BStages, mm1ToSmFlag, kvSeqlen, gSegList, listWordOff);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
@@ -192,9 +218,11 @@ public:
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
+                    uint32_t listWordOffDe = rowListBase + gatheredKvSTileIdxDe * Gemm::Block::STEP4_SEG_LIST_WORDS;
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gPacked, packedRowStart, count, regionSize_,
                                 pageSize_, actualBlockShapePV, gatheredKvSTileIdxDe, kvBaseTile_, prefixSumL0AStages,
-                                prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, kvSeqlen);
+                                prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, kvSeqlen, gSegList, listWordOffDe,
+                                mm1L1TileN_);
 #endif
 #ifdef __DAV_VEC__
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
@@ -236,6 +264,10 @@ private:
         kL1BufNum_ = tiling->kL1BufNum;
         vL1BufNum_ = tiling->vL1BufNum;
         pL1BufNum_ = tiling->pL1BufNum;
+        maxKvTiles_ = tiling->maxKvTiles;
+        if (maxKvTiles_ == 0) {
+            maxKvTiles_ = 1;
+        }
     }
 
     __aicore__ inline void CalcOnChipBufTileInfo()
@@ -442,6 +474,7 @@ private:
     uint32_t kL1BufNum_;
     uint32_t vL1BufNum_;
     uint32_t pL1BufNum_;
+    uint32_t maxKvTiles_;
     uint32_t mm1L0ATotalStages_;
     uint32_t mm1L0BTotalStages_;
     uint32_t mm2L0ATotalStages_;

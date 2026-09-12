@@ -60,6 +60,7 @@ TILING_DATA_FIELD_DEF(uint32_t, vL1BufNum);
 TILING_DATA_FIELD_DEF(uint32_t, pL1BufNum);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, pageSize);
+TILING_DATA_FIELD_DEF(uint32_t, maxKvTiles);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(Step4BlockSparseAttention, Step4BlockSparseAttentionTilingData)
 
@@ -107,6 +108,8 @@ private:
 
     // Platform info.
     uint32_t blockDim_ = 0;
+    uint32_t aicCoreNum_ = 0;
+    uint32_t maxKvTiles_ = 0;
     uint64_t libApiWorkSpaceSize_ = 0;
     uint64_t workSpaceSize_ = 0;
 

@@ -128,15 +128,21 @@ public:
     __aicore__ inline void SparseKL1TileMLoad(TensorK &gKTensor, TensorL1K &l1KTensorTla,
                                               AscendC::GlobalTensor<PackedT> gPacked, uint32_t packedRowStart,
                                               uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
-                                              uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile, uint32_t l1KTileMAct,
-                                              uint32_t embed, uint32_t kvSBaseTileInnerOffset, int32_t kvSeqlen)
+                                              uint32_t gatheredStart, uint32_t gatheredLen, uint32_t embed,
+                                              int32_t kvSeqlen, AscendC::GlobalTensor<uint32_t> gSegList,
+                                              uint32_t listWordOff, uint32_t halfIdx)
     {
         using CopyGmToL1A = typename TileCopy::template CopyGmToL1A<TensorK>;
         CopyGmToL1A copyGmToL1A;
-        uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile + kvSBaseTileInnerOffset;
-        PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
-            copyGmToL1A, gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
-            baseTileStartOffset, l1KTileMAct, embed, kvSeqlen, packedCompactPos_, packedSlot_);
+        uint32_t wordOff = listWordOff + halfIdx * STEP4_SEG_HALF_WORDS;
+        if (gSegList.GetValue(wordOff) == 0) {
+            PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
+                copyGmToL1A, gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
+                gatheredStart, gatheredLen, embed, kvSeqlen, packedCompactPos_, packedSlot_);
+            return;
+        }
+        PackedRegionIssueFromGm<std::is_same<PackedT, int64_t>::value>(
+            copyGmToL1A, gKTensor, l1KTensorTla, gSegList, wordOff, embed, 0, regionSize);
     }
 
     template <class TensorK, class TensorS, class PackedT>
@@ -145,7 +151,8 @@ public:
                                       uint32_t pageSize, GemmCoord actualOriShape, uint32_t gatheredKvSTileIdx,
                                       uint32_t kvSBaseTile,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
-                                      Arch::CrossCoreFlag mm1ToSmFlag, int32_t kvSeqlen)
+                                      Arch::CrossCoreFlag mm1ToSmFlag, int32_t kvSeqlen,
+                                      AscendC::GlobalTensor<uint32_t> gSegList, uint32_t listWordOff)
     {
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorS>;
 
@@ -161,6 +168,8 @@ public:
         uint32_t nL0LoopNum = CeilDiv(qSTile, L0_TILE_N);
         uint32_t kL0LoopNum = CeilDiv(embed, L0_TILE_K);
 
+        uint32_t tileStart = gatheredKvSTileIdx * kvSBaseTile;
+
         // while splitting the base tile S to 2 AIVs,
         // the order of the elements in each column is expected to be preserved,
         // which means a column in l0C cannot be chunked and processed by dualMode FixPipe seperately.
@@ -175,7 +184,8 @@ public:
             auto l1KTensorTla = tla::MakeTensor(l1KTensor[l1KBufId], l1KLayoutTla, Arch::PositionL1{});
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1AEventId);
             SparseKL1TileMLoad(gKTensor, l1KTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
-                               gatheredKvSTileIdx, kvSBaseTile, l1TileMAct, embed, mL1Itr * l1ATileM, kvSeqlen);
+                               tileStart + mL1Itr * l1ATileM, l1TileMAct, embed, kvSeqlen, gSegList, listWordOff,
+                               mL1Itr);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1AEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1AEventId);
             uint32_t mL0LoopNum = CeilDiv(l1TileMAct, L0_TILE_M);

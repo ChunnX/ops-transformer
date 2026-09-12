@@ -163,19 +163,36 @@ public:
         return outterLoopItr * curLoopNum + curLoopItr;
     }
 
-    template <class TensorB, class TensorL1B, class PackedT>
+    template <bool IS_DECODE, class TensorB, class TensorL1B, class PackedT>
     __aicore__ inline void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
                                                      AscendC::GlobalTensor<PackedT> gPacked, uint32_t packedRowStart,
                                                      uint32_t packedCount, uint32_t regionSize, uint32_t pageSize,
-                                                     uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile,
-                                                     uint32_t curBaseTileSize, uint32_t embed, int32_t kvSeqlen)
+                                                     int32_t kvSeqlen, AscendC::GlobalTensor<uint32_t> gSegList,
+                                                     uint32_t listWordOff, uint32_t l1Half, uint32_t tileStart,
+                                                     uint32_t curBaseTileSize, uint32_t embed)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
-        uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
-        PackedRegionGatherToL1<std::is_same<PackedT, int64_t>::value>(
-            copyGmToL1B, gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
-            baseTileStartOffset, curBaseTileSize, embed, kvSeqlen, packedCompactPos_, packedSlot_);
+        uint32_t nHalf = (l1Half > 0 && curBaseTileSize > l1Half) ? 2u : 1u;
+        for (uint32_t h = 0; h < nHalf; ++h) {
+            uint32_t halfOff = (nHalf == 2) ? (h * l1Half) : 0;
+            uint32_t halfLen = (h + 1 == nHalf) ? (curBaseTileSize - halfOff) : l1Half;
+            auto l1HalfTla =
+                tla::GetTile(l1BTensorTla, tla::MakeCoord(halfOff, 0), tla::MakeShape(halfLen, embed));
+            uint32_t wordOff = listWordOff + h * STEP4_SEG_HALF_WORDS;
+            if (gSegList.GetValue(wordOff) == 0) {
+                uint32_t compactPos = 0;
+                uint32_t slot = 0;
+                PackedRegionGatherToL1<IS_DECODE>(copyGmToL1B, gBTensor, l1HalfTla, gPacked, packedRowStart,
+                                                  packedCount, regionSize, pageSize, tileStart + halfOff, halfLen,
+                                                  embed, kvSeqlen, compactPos, slot);
+            } else {
+                // Same Prefill8 pair list as K, into the 256-row parent. ndNum=2 is legal
+                // (GatherToL1 pair already uses it); 8 in-flight copies NaN, drain every 4 does not.
+                PackedRegionIssueFromGmPrefill8<4>(copyGmToL1B, gBTensor, l1BTensorTla, gSegList, wordOff, embed,
+                                                   halfOff);
+            }
+        }
     }
 
     template <class TensorB, class TensorC, class PackedT>
@@ -185,7 +202,8 @@ public:
                                       GemmCoord actualOriShape, uint32_t gatheredKvSTileIdx, uint32_t kvSBaseTile,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                                       Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
-                                      int32_t kvSeqlen, uint64_t deqScalar = 0)
+                                      int32_t kvSeqlen, AscendC::GlobalTensor<uint32_t> gSegList, uint32_t listWordOff,
+                                      uint32_t l1Half, uint64_t deqScalar = 0)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 
@@ -201,10 +219,10 @@ public:
         auto l1BTensorTla = tla::MakeTensor(l1BTensor[l1BBufId], l1BLayoutTla, Arch::PositionL1{});
         auto l1ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL1A>(rowNum, curBaseTileSize);
         auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId], l1ALayoutTla, Arch::PositionL1{});
-        // load V full base tile to L1 before crossCoreSync
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
-        SparseVBaseTileL1FullLoad(gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize,
-                                  gatheredKvSTileIdx, kvSBaseTile, curBaseTileSize, embed, kvSeqlen);
+        SparseVBaseTileL1FullLoad<std::is_same<PackedT, int64_t>::value>(
+            gBTensor, l1BTensorTla, gPacked, packedRowStart, packedCount, regionSize, pageSize, kvSeqlen, gSegList,
+            listWordOff, l1Half, gatheredKvSTileIdx * kvSBaseTile, curBaseTileSize, embed);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         // fwd crossCoreSync from online sm to mm2

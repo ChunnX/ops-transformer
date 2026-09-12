@@ -16,6 +16,9 @@ namespace {
 
 constexpr uint32_t TND_DIM_NUM = 3;
 constexpr size_t STEP4_BSA_DEFAULT_WORKSPACE = 16 * 1024 * 1024;
+// Must match STEP4_SEG_LIST_WORDS in packed_region_gather_arch35.hpp.
+constexpr uint32_t STEP4_SEG_LIST_WORDS = 200;
+constexpr uint32_t STEP4_SEG_LIST_BYTES = STEP4_SEG_LIST_WORDS * static_cast<uint32_t>(sizeof(uint32_t));
 constexpr uint32_t TILE_128 = 128;
 constexpr uint32_t TILE_256 = 256;
 constexpr uint32_t Q_BASE_TILE = 16;
@@ -38,6 +41,7 @@ ge::graphStatus Step4Tiling::GetNpuInfo(gert::TilingContext *context)
     const uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     const uint32_t usedAic = (aicNum == 0) ? 1U : aicNum;
     const uint32_t usedAiv = (aivNum == 0) ? usedAic : aivNum;
+    aicCoreNum_ = usedAic;
     blockDim_ = ascendcPlatform.CalcTschBlockDim(usedAiv, usedAic, usedAiv);
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
@@ -150,7 +154,25 @@ ge::graphStatus Step4Tiling::CheckKvSeqlens(gert::TilingContext *context)
 ge::graphStatus Step4Tiling::CalculateWorkSpace(gert::TilingContext *context)
 {
     context->SetBlockDim(blockDim_);
-    workSpaceSize_ = libApiWorkSpaceSize_ + STEP4_BSA_DEFAULT_WORKSPACE;
+    uint64_t tokens = static_cast<uint64_t>(topK_) * static_cast<uint64_t>(regionSize_);
+    uint32_t maxTiles = 1;
+    if (KV_BASE_TILE > 0) {
+        maxTiles = static_cast<uint32_t>((tokens + KV_BASE_TILE - 1) / KV_BASE_TILE);
+    }
+    if (maxTiles == 0) {
+        maxTiles = 1;
+    }
+    maxKvTiles_ = maxTiles;
+    uint64_t nTask = static_cast<uint64_t>(qTokens_) * static_cast<uint64_t>(kvHeads_);
+    if (nTask == 0) {
+        nTask = 1;
+    }
+    uint64_t listBytes = nTask * static_cast<uint64_t>(maxTiles) * STEP4_SEG_LIST_BYTES;
+    uint64_t userBytes = STEP4_BSA_DEFAULT_WORKSPACE;
+    if (listBytes > userBytes) {
+        userBytes = listBytes;
+    }
+    workSpaceSize_ = libApiWorkSpaceSize_ + userBytes;
     size_t *workspaces = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
     workspaces[0] = static_cast<size_t>(workSpaceSize_);
@@ -189,6 +211,7 @@ ge::graphStatus Step4Tiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_pL1BufNum(TRIO_BUF);
     tilingData_->set_scaleValue(scaleValue_);
     tilingData_->set_pageSize(pageSize_);
+    tilingData_->set_maxKvTiles(maxKvTiles_);
 
     context->SetTilingKey(GenerateTilingKey());
     return ge::GRAPH_SUCCESS;
