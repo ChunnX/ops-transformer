@@ -285,33 +285,33 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase,
                                                                    const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t sparseBlockCount = 0;
+    int64_t qsmlaSparseBlockCount = 0;
     int64_t curS2LoopCnt = runInfo.s2LoopCount;
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
-        sparseBlockCount = constInfo.cmpSparseBlockCount;
+        qsmlaSparseBlockCount = constInfo.cmpSparseBlockCount;
         curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
     } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
-        sparseBlockCount = constInfo.oriSparseBlockCount;
+        qsmlaSparseBlockCount = constInfo.oriSparseBlockCount;
     } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (runInfo.isCmp) {
-            sparseBlockCount = constInfo.cmpSparseBlockCount;
+            qsmlaSparseBlockCount = constInfo.cmpSparseBlockCount;
             curS2LoopCnt -= runInfo.oriKvLoopEndIdx;
         } else {
-            sparseBlockCount = constInfo.oriSparseBlockCount;
+            qsmlaSparseBlockCount = constInfo.oriSparseBlockCount;
         }
     }
     uint64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
-        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * sparseBlockCount;
+        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * qsmlaSparseBlockCount;
     } else {
-        topkBS1Idx += runInfo.boIdx * constInfo.s1Size * sparseBlockCount + runInfo.s1oIdx * sparseBlockCount;
+        topkBS1Idx += runInfo.boIdx * constInfo.s1Size * qsmlaSparseBlockCount + runInfo.s1oIdx * qsmlaSparseBlockCount;
     }
 
     uint64_t topkKIdx = s2IdxInBase + curS2LoopCnt * constInfo.s2BaseSize;
     for (uint64_t i = 0; i < 8; ++i) { // 每次处理8个数据块
         uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < processS2End))) {
+        if (likely((topkKIdx + i < qsmlaSparseBlockCount) && (s2IdxInBase + i < processS2End))) {
             tokenData[i] = sparseIndicesGm.GetValue(idx);
         } else {
             break;
@@ -623,20 +623,20 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
             curSequence += copyElmenCnt;
         }
     } else if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
-        int64_t tPrefix =
+        int64_t tPrefixLen =
             runInfo.isCmp ? cuSeqlensCmpKvGm.GetValue(runInfo.boIdx) : cuSeqlensOriKvGm.GetValue(runInfo.boIdx);
-        DataCopyPad(kvMergUb, keyGm[(tPrefix + s2Idx) * constInfo.n2Size * combineDim + runInfo.n2oIdx * combineDim],
+        DataCopyPad(kvMergUb, keyGm[(tPrefixLen + s2Idx) * constInfo.n2Size * combineDim + runInfo.n2oIdx * combineDim],
                     intriParams, padParams);
     } else {
-        int64_t realKeyOffset;
+        int64_t qsmlaRealKeyOffset;
         if (runInfo.isCmp) {
-            realKeyOffset = runInfo.boIdx * constInfo.cmpS2Size * constInfo.n2Size * constInfo.dSizeVInput +
-                            runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
+            qsmlaRealKeyOffset = runInfo.boIdx * constInfo.cmpS2Size * constInfo.n2Size * constInfo.dSizeVInput +
+                                 runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
         } else {
-            realKeyOffset = runInfo.boIdx * constInfo.s2Size * constInfo.n2Size * constInfo.dSizeVInput +
-                            runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
+            qsmlaRealKeyOffset = runInfo.boIdx * constInfo.s2Size * constInfo.n2Size * constInfo.dSizeVInput +
+                                 runInfo.n2oIdx * constInfo.dSizeVInput + s2Idx * constInfo.dSizeVInput;
         }
-        DataCopyPad(kvMergUb, keyGm[realKeyOffset], intriParams, padParams);
+        DataCopyPad(kvMergUb, keyGm[qsmlaRealKeyOffset], intriParams, padParams);
     }
 }
 
@@ -1114,9 +1114,9 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bI
         }
     }
     if (topkMode) {
-        uint64_t topkIdx =
+        uint64_t qsmlaTopkIdx =
             (LAYOUT_T == QSMLA_LAYOUT::TND) ? (cuSeqlensQGm.GetValue(bIdx) + s1Idx) : (bIdx * constInfo.s1Size + s1Idx);
-        int32_t topkLen = hasTopk ? topkLengthGm.GetValue(topkIdx) : sparseBlockCount;
+        int32_t topkLen = hasTopk ? topkLengthGm.GetValue(qsmlaTopkIdx) : sparseBlockCount;
         return Min(topkLen, sparseBlockCount);
     }
 
@@ -1124,15 +1124,15 @@ __aicore__ inline int32_t CSABlockVec<TEMPLATE_ARGS>::CalcCurValidS2(uint32_t bI
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (isOriKv) {
             int64_t thr = validInfo.oriS2Act - actualS1Size + 1 + s1Idx;
-            int64_t leftBound = Max(thr - validInfo.oriLeftBias, 0);
-            int64_t rightBound = Min(thr + validInfo.oriRightBias, static_cast<int64_t>(validInfo.oriS2Act));
-            return Min(static_cast<int32_t>(Max(0, rightBound - leftBound)), sparseBlockCount);
+            int64_t left = Max(thr - validInfo.oriLeftBias, 0);
+            int64_t right = Min(thr + validInfo.oriRightBias, static_cast<int64_t>(validInfo.oriS2Act));
+            return Min(static_cast<int32_t>(Max(0, right - left)), sparseBlockCount);
         }
     }
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
                   TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        int64_t numerator = Max(validInfo.cmpBase + s1Idx, 0);
-        return Min(sparseBlockCount, static_cast<int32_t>(numerator / static_cast<int32_t>(constInfo.cmpRatio)));
+        int64_t validLen = Max(validInfo.cmpBase + s1Idx, 0);
+        return Min(sparseBlockCount, static_cast<int32_t>(validLen / static_cast<int32_t>(constInfo.cmpRatio)));
     }
     return 0;
 }
