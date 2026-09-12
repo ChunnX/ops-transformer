@@ -87,13 +87,6 @@ public:
         this->Attr("transpose_weight").AttrType(OPTIONAL).Bool(0);
         this->Attr("group_list_type").AttrType(OPTIONAL).Int(0);
         this->Attr("tuning_config").AttrType(OPTIONAL).ListInt({0});
-        // V3 SwiGLU attributes. Their defaults reproduce the original V2 SwiGLU calculation.
-        this->Attr("activate_dim").AttrType(OPTIONAL).Int(-1);
-        this->Attr("activate_left").AttrType(OPTIONAL).Bool(1);
-        this->Attr("swiglu_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("clamp_limit").AttrType(OPTIONAL).Float(7.0F);
-        this->Attr("glu_alpha").AttrType(OPTIONAL).Float(1.702F);
-        this->Attr("glu_bias").AttrType(OPTIONAL).Float(1.0F);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

@@ -22,8 +22,8 @@ extern "C" {
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV3 的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  *
- * 此接口为 aclnnGroupedMatmulSwigluQuantWeightNzV2 的 SwiGLU V3 扩展版本。weight 必须为
- * FRACTAL_NZ 格式；其余张量和基础量化参数的约束与 WeightNzV2 相同。
+ * 此接口是带有可配置 SwiGLU 计算参数的 WeightNzV3 版本。weight 必须为 FRACTAL_NZ 格式，
+ * 且当前仅支持单个 weight Tensor。
  *
  * @param [in] x: 激活矩阵。
  * @param [in] weight: FRACTAL_NZ 格式的权重矩阵，当前仅支持 TensorList 长度为 1。

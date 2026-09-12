@@ -1,0 +1,324 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+#include <dlfcn.h>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <new>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include "gmm_dsq_base_v3.h"
+#include "grouped_matmul_swiglu_quant_v3_utils.h"
+#include "grouped_matmul_swiglu_quant_v3.h"
+#include "aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
+
+using namespace op;
+using namespace gmm_dsq_v3;
+using namespace gmm_dsq_base_v3;
+
+namespace {
+constexpr char GMM_SWIGLU_QUANT_V3_OP_NAME[] = "grouped_matmul_swiglu_quant_v3";
+constexpr char ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME[] =
+    "aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize";
+constexpr int64_t DEFAULT_SWIGLU_ACTIVATE_DIM = -1L;
+constexpr int64_t DEFAULT_MX_AXIS = -1L;
+constexpr int64_t DEFAULT_MX_SCALE_ALG = 0L;
+constexpr double DEFAULT_DST_TYPE_MAX = 0.0;
+constexpr char DEFAULT_MX_ROUND_MODE[] = "rint";
+} // namespace
+
+class GmmDsqHandlerFactory {
+private:
+    std::unordered_map<NpuArch, std::unique_ptr<GroupedMatmulSwigluQuantHandler>> handlers_;
+
+public:
+    void registerHandler(NpuArch npuArch, std::unique_ptr<GroupedMatmulSwigluQuantHandler> handler)
+    {
+        handlers_[npuArch] = std::move(handler);
+    }
+
+    GroupedMatmulSwigluQuantHandler *getHandler(NpuArch npuArch)
+    {
+        auto it = handlers_.find(npuArch);
+        return it != handlers_.end() ? it->second.get() : nullptr;
+    }
+};
+
+static aclnnStatus CheckRequiredPointer(const void *pointer, const char *apiName, const char *parameterName)
+{
+    if (pointer != nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(apiName, parameterName, "does not support nullptr");
+    return ACLNN_ERR_PARAM_NULLPTR;
+}
+
+static aclnnStatus CheckRequiredTensorList(const aclTensorList *tensorList, const char *apiName,
+                                           const char *parameterName)
+{
+    auto status = CheckRequiredPointer(tensorList, apiName, parameterName);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    if (tensorList->Size() == 0) {
+        OP_LOGE_FOR_INVALID_TENSORNUM(apiName, parameterName, tensorList->Size(), "at least 1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    for (size_t i = 0; i < tensorList->Size(); ++i) {
+        if ((*tensorList)[i] == nullptr) {
+            const std::string indexedParameterName = std::string(parameterName) + "[" + std::to_string(i) + "]";
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(apiName, indexedParameterName, "does not support nullptr");
+            return ACLNN_ERR_PARAM_NULLPTR;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckRequiredInputs(const char *apiName, const aclTensor *x, const aclTensorList *weight,
+                                       const aclTensorList *weightScale, const aclTensor *xScale,
+                                       const aclTensor *groupList, const aclTensor *output,
+                                       const aclTensor *outputScale)
+{
+    auto status = CheckRequiredPointer(x, apiName, "x");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    status = CheckRequiredTensorList(weight, apiName, "weight");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    status = CheckRequiredTensorList(weightScale, apiName, "weightScale");
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    const struct {
+        const void *pointer;
+        const char *name;
+    } tensorInputs[] = {{xScale, "xScale"}, {groupList, "groupList"}, {output, "output"}, {outputScale, "outputScale"}};
+    for (const auto &input : tensorInputs) {
+        status = CheckRequiredPointer(input.pointer, apiName, input.name);
+        if (status != ACLNN_SUCCESS) {
+            return status;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char *apiName,
+                                                                       GroupedMatmulSwigluQuantParamsBase &params,
+                                                                       uint64_t *workspaceSize,
+                                                                       aclOpExecutor **executor)
+{
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    GmmDsqHandlerFactory factory;
+    auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    factory.registerHandler(NpuArch::DAV_2201, std::make_unique<gmm_dsq_base_v3::GroupedMatmulSwigluQuantBaseHandler>());
+    factory.registerHandler(NpuArch::DAV_3510,
+                            std::make_unique<gmmSwigluQuantV3::GroupedMatmulSwigluQuantBaseHandler>());
+
+    if (auto *handler = factory.getHandler(npuArch)) {
+        handler->Initialize(apiName, params, workspaceSize, executor);
+        return handler->Process();
+    } else {
+        std::ostringstream reason;
+        reason << "SoC version " << static_cast<int32_t>(npuArch) << " is not supported";
+        std::string reasonStr = reason.str();
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", GMM_SWIGLU_QUANT_V3_OP_NAME, reasonStr.c_str());
+    }
+
+    return ACLNN_ERR_PARAM_INVALID;
+}
+
+static aclnnStatus CheckMxfp4WeightNzViewShape(const char *apiName, const aclTensor *weight, const op::Shape &viewShape,
+                                               size_t expectedViewDimNum)
+{
+    if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
+        return ACLNN_SUCCESS;
+    }
+    if (unlikely(!(viewShape.GetDimNum() == expectedViewDimNum))) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            apiName, "weight viewShape", std::to_string(viewShape.GetDimNum()),
+            "when the dtype of weight is DT_FLOAT4, the dim num of weight viewShape is invalid");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    int64_t lastSecondDim = viewShape.GetDim(viewShape.GetDimNum() - 2);
+    int64_t lastDim = viewShape.GetDim(viewShape.GetDimNum() - 1);
+    if (unlikely(!(lastSecondDim != 1 && lastDim != 1))) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            apiName, "weight viewShape", op::ToString(viewShape).GetString(),
+            "when the dtype of weight is DT_FLOAT4, the last two dimensions of weight viewShape can not be 1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+static bool IsRepresentableFloat(double value)
+{
+    return std::isfinite(value) && std::fabs(value) <= static_cast<double>(std::numeric_limits<float>::max());
+}
+
+static aclnnStatus CheckSwigluV3Attrs(const char *apiName, int64_t activateDim, int64_t swigluMode,
+                                      double clampLimit, double gluAlpha, double gluBias, int64_t axis,
+                                      const char *roundMode, int64_t scaleAlg, double dstTypeMax)
+{
+    if (activateDim != DEFAULT_SWIGLU_ACTIVATE_DIM) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "activateDim", std::to_string(activateDim),
+                                              "currently only -1 is supported");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (swigluMode < 0 || swigluMode > 3) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "swigluMode", std::to_string(swigluMode),
+                                              "must be in [0, 3]");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    const struct {
+        const char *name;
+        double value;
+    } floatAttrs[] = {{"clampLimit", clampLimit}, {"gluAlpha", gluAlpha}, {"gluBias", gluBias}};
+    for (const auto &attr : floatAttrs) {
+        if (!IsRepresentableFloat(attr.value)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, attr.name, std::to_string(attr.value),
+                "must be finite and representable by a float32 graph attribute");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    if (clampLimit <= 0.0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "clampLimit", std::to_string(clampLimit),
+                                              "must be greater than 0");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (axis != DEFAULT_MX_AXIS) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "axis", std::to_string(axis),
+                                              "is reserved for V3 MX quantization and currently only supports -1");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (roundMode != nullptr && roundMode[0] != '\0' && std::strcmp(roundMode, DEFAULT_MX_ROUND_MODE) != 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            apiName, "roundMode", roundMode,
+            "is reserved for V3 MX quantization and currently only supports rint");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (scaleAlg != DEFAULT_MX_SCALE_ALG) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "scaleAlg", std::to_string(scaleAlg),
+                                              "is reserved for V3 MX quantization and currently only supports 0");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!std::isfinite(dstTypeMax) || std::fabs(dstTypeMax - DEFAULT_DST_TYPE_MAX) > std::numeric_limits<double>::epsilon()) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            apiName, "dstTypeMax", std::to_string(dstTypeMax),
+            "is reserved for V3 MX quantization and currently only supports 0.0");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static aclnnStatus ProcessSingleWeightNz(const char *apiName, const aclTensorList *weight)
+{
+    auto w = (*weight)[0];
+    auto storgeShape = w->GetStorageShape();
+    auto viewShape = w->GetViewShape();
+    aclTensor *weightNZ = const_cast<aclTensor *>(w);
+    std::ostringstream gotShape;
+    gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
+    std::string gotShapeStr = gotShape.str();
+    CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]", apiName,
+               "weight", gotShapeStr.c_str(), "storage shape dim num must be 5 when weight NZ v3");
+    CHECK_RET(CheckMxfp4WeightNzViewShape(apiName, w, viewShape,
+                                          WEIGHT_ND_DIM_LIMIT) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+    weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
+        weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
+    } else if (viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT) {
+        weightNZ->SetViewFormat(op::Format::FORMAT_ND);
+    }
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
+    const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale,
+    const aclTensorList *weightAssistMatrix, const aclTensor *bias, const aclTensor *xScale,
+    const aclTensor *smoothScale, const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype,
+    int64_t quantMode, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t activateDim,
+    bool activateLeft, int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias, int64_t axis,
+    const char *roundMode, int64_t scaleAlg, double dstTypeMax, aclTensor *output, aclTensor *outputScale,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    auto status = CheckRequiredInputs(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, x, weight, weightScale, xScale,
+                                      groupList, output, outputScale);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    status = CheckSwigluV3Attrs(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, activateDim, swigluMode, clampLimit,
+                                gluAlpha, gluBias, axis, roundMode, scaleAlg, dstTypeMax);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
+    CHECK_COND(weight->Size() == 1, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], V3 only supports a single weight tensor, but got weight list size [%zu].",
+               ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight->Size());
+    L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV3,
+                   DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
+                          dequantDtype, quantMode, groupListType, tuningConfigOptional, activateDim, activateLeft,
+                          swigluMode, clampLimit, gluAlpha, gluBias, axis, roundMode, scaleAlg, dstTypeMax),
+                   DFX_OUT(output, outputScale));
+    CHECK_RET(ProcessSingleWeightNz(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight) == ACLNN_SUCCESS,
+              ACLNN_ERR_PARAM_INVALID);
+
+    GroupedMatmulSwigluQuantV3Attrs swigluV3Attrs = {
+        activateDim,
+        activateLeft,
+        swigluMode,
+        static_cast<float>(clampLimit),
+        static_cast<float>(gluAlpha),
+        static_cast<float>(gluBias),
+    };
+    GroupedMatmulSwigluQuantParamsBase params =
+        GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
+            .SetXScale(xScale)
+            .SetSmoothScale(smoothScale)
+            .SetGroupList(groupList)
+            .SetGroupListType(groupListType)
+            .SetWeightAssistMatrix(weightAssistMatrix)
+            .SetDequantAttr(dequantMode, dequantDtype)
+            .SetQuantAttr(quantMode, static_cast<int64_t>(output->GetDataType()))
+            .SetTransposeAttr(false)
+            .SetBias(bias)
+            .SetScenario()
+            .SetTuningConfig(tuningConfigOptional)
+            .SetSwigluV3Attrs(swigluV3Attrs)
+            .Build();
+
+    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, params,
+                                                               workspaceSize, executor);
+}
+
+aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                    aclrtStream stream)
+{
+    L2_DFX_PHASE_2(aclnnGroupedMatmulSwigluQuantWeightNzV3);
+    CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
+               "This is an error in GroupedMatmulSwigluQuantWeightNzV3 launch aicore");
+    return ACLNN_SUCCESS;
+}
+
+#ifdef __cplusplus
+}
+#endif

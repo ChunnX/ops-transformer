@@ -25,7 +25,6 @@
 
 #include "../../../op_api/aclnn_grouped_matmul_swiglu_quant_v2.h"
 #include "../../../op_api/aclnn_grouped_matmul_swiglu_quant_weight_nz_v2.h"
-#include "../../../op_api/aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
@@ -458,11 +457,6 @@ TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, direct_launch_entry_error_
 {
     EXPECT_NE(aclnnGroupedMatmulSwigluQuantV2(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
     EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV2(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
-    EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV3(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
-    EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-                  nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, nullptr, -1,
-                  true, 0, 7.0, 1.702, 1.0, -1, "rint", 0, 0.0, nullptr, nullptr, nullptr, nullptr),
-              ACL_SUCCESS);
 }
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_case)
