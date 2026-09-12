@@ -22,20 +22,23 @@ extern "C" {
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV3 的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  *
- * 此接口是带有可配置 SwiGLU 计算参数的 WeightNzV3 版本。weight 必须为 FRACTAL_NZ 格式，
- * 且当前仅支持单个 weight Tensor。
+ * 此接口当前仅支持 Ascend 950（arch35）的单 Tensor MXFP8 weightNZ 场景。
+ * x 和 weight 必须为 FLOAT8_E4M3FN 或 FLOAT8_E5M2，weight 必须为 FRACTAL_NZ 格式，
+ * weight 的逻辑 view 为三维、storage 为五维，weight 和 weightScale 的 TensorList 长度必须均为 1。
+ * xScale、weightScale 和 outputScale 必须为 FLOAT8_E8M0，dequantMode 和 quantMode 必须为 2，
+ * dequantDtype 必须为 DT_FLOAT。weightAssistMatrix、bias 和 smoothScale 当前不支持。
  *
  * @param [in] x: 激活矩阵。
- * @param [in] weight: FRACTAL_NZ 格式的权重矩阵，当前仅支持 TensorList 长度为 1。
- * @param [in] weightScale: 权重量化因子。
- * @param [in] weightAssistMatrix: 权重辅助矩阵。
- * @param [in] bias: 偏置。
- * @param [in] xScale: 激活矩阵量化因子。
- * @param [in] smoothScale: 平滑量化因子。
+ * @param [in] weight: FLOAT8_E4M3FN/FLOAT8_E5M2、FRACTAL_NZ 格式的权重矩阵，TensorList 长度为 1。
+ * @param [in] weightScale: FLOAT8_E8M0 权重量化因子，TensorList 长度为 1。
+ * @param [in] weightAssistMatrix: 权重辅助矩阵，当前必须为空。
+ * @param [in] bias: 偏置，当前必须为 nullptr。
+ * @param [in] xScale: FLOAT8_E8M0 激活矩阵量化因子。
+ * @param [in] smoothScale: 平滑量化因子，当前必须为 nullptr。
  * @param [in] groupList: 分组信息。
- * @param [in] dequantMode: 反量化模式。
- * @param [in] dequantDtype: GroupedMatmul 中间结果的数据类型。
- * @param [in] quantMode: 输出量化模式。
+ * @param [in] dequantMode: 反量化模式，当前仅支持 2。
+ * @param [in] dequantDtype: GroupedMatmul 中间结果的数据类型，当前仅支持 DT_FLOAT。
+ * @param [in] quantMode: 输出量化模式，当前仅支持 2。
  * @param [in] groupListType: groupList 的解释方式。
  * @param [in] tuningConfigOptional: 调优参数。
  * @param [in] activateDim: SwiGLU 拆分维度，当前仅支持 -1。
@@ -48,8 +51,8 @@ extern "C" {
  * @param [in] roundMode: MX 量化舍入模式预留参数，当前仅支持 "rint"；nullptr 或空字符串按 "rint" 处理。
  * @param [in] scaleAlg: MX 量化 scale 算法预留参数，当前仅支持 0。
  * @param [in] dstTypeMax: MX 量化目标类型最大值预留参数，当前仅支持 0.0。
- * @param [out] output: 量化输出。
- * @param [out] outputScale: 输出量化因子。
+ * @param [out] output: FLOAT8_E4M3FN 或 FLOAT8_E5M2 量化输出。
+ * @param [out] outputScale: FLOAT8_E8M0 输出量化因子。
  * @param [out] workspaceSize: 返回用户需要在 NPU device 侧申请的 workspace 大小。
  * @param [out] executor: 返回 op 执行器，包含算子计算流程。
  * @return aclnnStatus: 返回状态码。

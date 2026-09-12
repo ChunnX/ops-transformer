@@ -17,14 +17,12 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
-#include "gmm_dsq_base_v3.h"
 #include "grouped_matmul_swiglu_quant_v3_utils.h"
 #include "grouped_matmul_swiglu_quant_v3.h"
 #include "aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
 
 using namespace op;
 using namespace gmm_dsq_v3;
-using namespace gmm_dsq_base_v3;
 
 namespace {
 constexpr char GMM_SWIGLU_QUANT_V3_OP_NAME[] = "grouped_matmul_swiglu_quant_v3";
@@ -114,6 +112,61 @@ static aclnnStatus CheckRequiredInputs(const char *apiName, const aclTensor *x, 
     return ACLNN_SUCCESS;
 }
 
+static bool IsMxfp8(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2;
+}
+
+static aclnnStatus CheckMxfp8WeightNzInputs(const char *apiName, const aclTensor *x, const aclTensorList *weight,
+                                            const aclTensorList *weightScale, const aclTensor *xScale,
+                                            const aclTensorList *weightAssistMatrix, const aclTensor *bias,
+                                            const aclTensor *smoothScale, const aclTensor *output,
+                                            const aclTensor *outputScale, int64_t dequantMode, int64_t dequantDtype,
+                                            int64_t quantMode)
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], only Ascend 950 is supported.", apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (dequantMode != 2 || quantMode != 2 || dequantDtype != static_cast<int64_t>(ge::DT_FLOAT)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [%s], MXFP8 V3 requires dequant_mode=2, quant_mode=2 and dequant_dtype=DT_FLOAT.", apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    const aclTensor *w = (*weight)[0];
+    const aclTensor *wScale = (*weightScale)[0];
+    if (!IsMxfp8(x->GetDataType()) || !IsMxfp8(w->GetDataType())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], x and weight must both be MXFP8.", apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (w->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], weight must use FRACTAL_NZ format.", apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (weight->Size() != 1 || weightScale->Size() != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], only one weight and one weightScale tensor are supported.",
+                apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (xScale->GetDataType() != DataType::DT_FLOAT8_E8M0 ||
+        wScale->GetDataType() != DataType::DT_FLOAT8_E8M0 ||
+        outputScale->GetDataType() != DataType::DT_FLOAT8_E8M0 || !IsMxfp8(output->GetDataType())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [%s], xScale, weightScale and outputScale must be FLOAT8_E8M0, and output must be MXFP8.",
+                apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (weightAssistMatrix != nullptr && weightAssistMatrix->Size() != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], weightAssistMatrix is not supported.", apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (bias != nullptr || smoothScale != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], bias and smoothScale are not supported.", apiName);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char *apiName,
                                                                        GroupedMatmulSwigluQuantParamsBase &params,
                                                                        uint64_t *workspaceSize,
@@ -122,7 +175,6 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     GmmDsqHandlerFactory factory;
     auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
-    factory.registerHandler(NpuArch::DAV_2201, std::make_unique<gmm_dsq_base_v3::GroupedMatmulSwigluQuantBaseHandler>());
     factory.registerHandler(NpuArch::DAV_3510,
                             std::make_unique<gmmSwigluQuantV3::GroupedMatmulSwigluQuantBaseHandler>());
 
@@ -139,24 +191,12 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
     return ACLNN_ERR_PARAM_INVALID;
 }
 
-static aclnnStatus CheckMxfp4WeightNzViewShape(const char *apiName, const aclTensor *weight, const op::Shape &viewShape,
-                                               size_t expectedViewDimNum)
+static aclnnStatus CheckMxfp8WeightNzViewShape(const char *apiName, const op::Shape &viewShape)
 {
-    if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1 && weight->GetDataType() != DataType::DT_FLOAT4_E1M2) {
-        return ACLNN_SUCCESS;
-    }
-    if (unlikely(!(viewShape.GetDimNum() == expectedViewDimNum))) {
+    if (unlikely(viewShape.GetDimNum() != WEIGHT_ND_DIM_LIMIT)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             apiName, "weight viewShape", std::to_string(viewShape.GetDimNum()),
-            "when the dtype of weight is DT_FLOAT4, the dim num of weight viewShape is invalid");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    int64_t lastSecondDim = viewShape.GetDim(viewShape.GetDimNum() - 2);
-    int64_t lastDim = viewShape.GetDim(viewShape.GetDimNum() - 1);
-    if (unlikely(!(lastSecondDim != 1 && lastDim != 1))) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            apiName, "weight viewShape", op::ToString(viewShape).GetString(),
-            "when the dtype of weight is DT_FLOAT4, the last two dimensions of weight viewShape can not be 1");
+            "MXFP8 weight-NZ V3 requires a logical weight view with 3 dimensions");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -239,8 +279,7 @@ static aclnnStatus ProcessSingleWeightNz(const char *apiName, const aclTensorLis
     CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]", apiName,
                "weight", gotShapeStr.c_str(), "storage shape dim num must be 5 when weight NZ v3");
-    CHECK_RET(CheckMxfp4WeightNzViewShape(apiName, w, viewShape,
-                                          WEIGHT_ND_DIM_LIMIT) == ACLNN_SUCCESS,
+    CHECK_RET(CheckMxfp8WeightNzViewShape(apiName, viewShape) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
     if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
@@ -271,9 +310,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     if (status != ACLNN_SUCCESS) {
         return status;
     }
-    CHECK_COND(weight->Size() == 1, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], V3 only supports a single weight tensor, but got weight list size [%zu].",
-               ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, weight->Size());
+    status = CheckMxfp8WeightNzInputs(ACLNN_GMM_SWIGLU_QUANT_WEIGHT_NZ_V3_API_NAME, x, weight, weightScale, xScale,
+                                      weightAssistMatrix, bias, smoothScale, output, outputScale, dequantMode,
+                                      dequantDtype, quantMode);
+    if (status != ACLNN_SUCCESS) {
+        return status;
+    }
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV3,
                    DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList, dequantMode,
                           dequantDtype, quantMode, groupListType, tuningConfigOptional, activateDim, activateLeft,

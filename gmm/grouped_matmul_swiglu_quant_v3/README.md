@@ -2,7 +2,7 @@
 
 ## 功能说明
 
-本目录实现 `aclnnGroupedMatmulSwigluQuantWeightNzV3`。算子融合 grouped matmul、反量化、SwiGLU 和 MXFP8 量化，当前迭代只支持：
+本目录预留 `aclnnGroupedMatmulSwigluQuantWeightNzV3`。本次迭代只面向 Ascend 950（arch35）的 MXFP8 weightNZ 场景，当前只支持：
 
 - 单个 weight Tensor；
 - weight 为 `FRACTAL_NZ` 格式；
@@ -16,11 +16,13 @@
 
 - [aclnnGroupedMatmulSwigluQuantWeightNzV3](docs/aclnnGroupedMatmulSwigluQuantWeightNzV3.md)
 
+tiling 和 kernel 目前各保留一个 arch35 入口，具体实现待 950 环境具备后补充。
+
 ## 目录说明
 
 - `op_api`：aclnn 两段式接口及 L0 调用封装；
-- `op_host`：算子定义、shape inference 和 tiling；
-- `op_kernel`：Device kernel；
+- `op_host`：950 专用算子定义、shape inference 和 tiling 入口；
+- `op_kernel`：950 专用 kernel 入口；
 - `examples`：aclnn 直调示例；
-- `tests`：host、tiling 和 op_api 单元测试；
+- `tests`：op_api 单元测试；
 - `op_graph`：仅保留 proto 头文件，当前不提供图模式 fallback。

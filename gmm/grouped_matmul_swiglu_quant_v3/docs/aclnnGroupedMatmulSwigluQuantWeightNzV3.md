@@ -2,7 +2,15 @@
 
 ## 功能说明
 
-该接口融合 grouped matmul、反量化、SwiGLU 和 MXFP8 量化。当前只支持单个 `weight` Tensor，且 `weight` 强制按 `FRACTAL_NZ` 格式处理；多 Tensor、非 NZ weight 和非 MXFP8 场景暂不支持。
+该接口面向 Ascend 950（arch35），融合 grouped matmul、反量化、SwiGLU 和 MXFP8 量化。当前只支持：
+
+- 一个 `weight` Tensor 和一个 `weightScale` Tensor；
+- `weight` 为 `FRACTAL_NZ`，逻辑 view 为三维、storage 为五维；
+- `x` 和 `weight` 均为 MXFP8（`FLOAT8_E4M3FN` 或 `FLOAT8_E5M2`）；
+- `xScale`、`weightScale`、`outputScale` 为 `FLOAT8_E8M0`；
+- `dequantMode=2`、`quantMode=2`、`dequantDtype=DT_FLOAT`。
+
+多 Tensor、非 NZ weight、非 MXFP8、非 Ascend 950 场景，以及 `weightAssistMatrix`、`bias`、`smoothScale` 暂不支持。
 
 SwiGLU 参数只影响 SwiGLU 计算阶段：
 
@@ -63,3 +71,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 ## 调用顺序
 
 该接口是两段式接口，必须先调用 `GetWorkspaceSize` 获取 workspace 和 executor，再调用 `aclnnGroupedMatmulSwigluQuantWeightNzV3` 执行计算。
+
+## 当前实现边界
+
+ACLNN 参数校验、shape inference 和接口资料已按上述唯一场景收窄；950 tiling/kernel 目前只保留入口，具体计算实现待 950 编译环境具备后补充。

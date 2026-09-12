@@ -23,17 +23,7 @@ namespace l0op {
 OP_TYPE_REGISTER(GroupedMatmulSwigluQuantV3);
 
 constexpr int64_t SWIGLU_SPLIT_SIZE = 64L;
-constexpr int64_t QUANT_MODE_PERTOKEN = 0L;
-constexpr size_t MX_MULTI_WEIGHT_DIM = 2UL;
-constexpr size_t MX_MULTI_WEIGHT_SCALE_N_DIM = 1UL;
 constexpr size_t MX_WEIGHT_SCALE_N_DIM = 2UL;
-
-static bool IsMxWeightNzMultiTensor(const aclTensorList *weight)
-{
-    return weight != nullptr && weight->Size() > 0 && (*weight)[0] != nullptr &&
-           op::IsPrivateFormat((*weight)[0]->GetStorageFormat()) &&
-           (*weight)[0]->GetViewShape().GetDimNum() == MX_MULTI_WEIGHT_DIM;
-}
 
 const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV3(
     const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale, const aclTensor *xScale,
@@ -68,42 +58,15 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV3(
                                                  "does not support nullptr");
         return std::tuple(nullptr, nullptr);
     }
-    int64_t m = xScale->GetViewShape().GetDim(0);
+    int64_t m = x->GetViewShape().GetDim(0);
     auto weightScaleShape = (*weightScale)[0]->GetViewShape();
-    int64_t weightScaleDimNum = static_cast<int64_t>(weightScaleShape.GetDimNum());
-    int64_t n = weightScaleShape.GetDim(weightScaleDimNum - 1);
-    int64_t nAfterHalve = static_cast<int64_t>(n / 2);
+    int64_t n = weightScaleShape.GetDim(MX_WEIGHT_SCALE_N_DIM);
+    int64_t nAfterHalve = n / 2;
+    int64_t nAfterSplit = static_cast<int64_t>(Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE));
     gert::Shape outShape({m, nAfterHalve});
-    gert::Shape scaleOutShape({m});
-    auto out = executor->AllocTensor(outShape, DataType::DT_INT8, ge::FORMAT_ND);
-    auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensor(weight);
-        if (quantMode == QUANT_MODE_PERTOKEN) {
-            // A8W4/A4W4 weightScale is [E, N] for per-channel and [E, KGroup, N] for per-group.
-            // WeightNZ may set transposeWeight, but weightScale remains ND and its last dimension is always N.
-            n = weightScaleShape.GetDim(weightScaleDimNum - 1);
-        } else {
-            n = isMxWeightNzMultiTensor ? (transposeWeight ? weightScaleShape.GetDim(0) :
-                                                             weightScaleShape.GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM)) :
-                                          (transposeWeight ? weightScaleShape.GetDim(MX_MULTI_WEIGHT_SCALE_N_DIM) :
-                                                             weightScaleShape.GetDim(MX_WEIGHT_SCALE_N_DIM));
-        }
-        nAfterHalve = static_cast<int64_t>(n / 2); // outShape需要为[M, N / 2]
-        gert::Shape outShapeV3({m, nAfterHalve});
-        gert::Shape scaleOutShapeV3;
-        // 当quantMode等于2时，out_scale 的形状为三维
-        if (quantMode == 2) {
-            int64_t nAfterSplit = static_cast<int64_t>(Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE));
-            scaleOutShapeV3 = gert::Shape({m, nAfterSplit, 2});
-        } else {
-            scaleOutShapeV3 = gert::Shape({m});
-        }
-        out = executor->AllocTensor(outShapeV3, static_cast<ge::DataType>(quantDtype), ge::FORMAT_ND);
-        // 当quantMode等于2时，outScale的DataType为FLOAT8_E8M0
-        scaleOut = quantMode == 2 ? executor->AllocTensor(scaleOutShapeV3, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND) :
-                                    executor->AllocTensor(scaleOutShapeV3, DataType::DT_FLOAT, ge::FORMAT_ND);
-    }
+    gert::Shape scaleOutShape({m, nAfterSplit, 2});
+    auto out = executor->AllocTensor(outShape, static_cast<ge::DataType>(quantDtype), ge::FORMAT_ND);
+    auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT8_E8M0, ge::FORMAT_ND);
     if (out == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmulSwigluQuantV3 out failed.");
         return std::tuple(nullptr, nullptr);
