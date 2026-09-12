@@ -1056,6 +1056,9 @@ __aicore__ inline void KeyPoolBlockVector<COMP>::OverLapScoreKv(
         uint64_t normalizedOffset =
             normalizedKvDbOffset_ +
             static_cast<uint64_t>(compressedCnt_ - normalizedPoolBase_) * cmpRatio_ * constInfo_.headDim + dStartIdx;
+        event_t eventIdVToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+        SetFlag<HardEvent::V_MTE2>(eventIdVToMte2);
+        WaitFlag<HardEvent::V_MTE2>(eventIdVToMte2);
         DataCopyAlignGmToUb(kvLocal, normalizedKvGm_[normalizedOffset], statisticInfo.key_poolScCnt * cmpRatio_,
                             dDealSize, constInfo_.headDim, dDealSize);
         event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
