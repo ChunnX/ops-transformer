@@ -57,13 +57,14 @@ template <typename ExpandXType, typename XType, typename ExpandIdxType, uint8_t 
 class MoeDistributeCombineV2A5Mte {
 public:
     __aicore__ inline MoeDistributeCombineV2A5Mte(){};
-    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-                                GM_ADDR epSendCount, GM_ADDR residualX, GM_ADDR gamma, GM_ADDR expertScales,
-                                GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
-                                GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV,
-                                GM_ADDR performanceInfo, GM_ADDR yOut, GM_ADDR rstdOut, GM_ADDR XOut,
-                                GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData,
-                                GM_ADDR sharedOutput = nullptr);
+    __aicore__ inline void Init(
+        GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds,
+        GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
+        GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask,
+        GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
+        GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo,
+        GM_ADDR yOut, GM_ADDR rstdOut, GM_ADDR XOut, GM_ADDR sharedOutput,
+        GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -551,12 +552,15 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::InitAt
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
-    GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
-    GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask, GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
-    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo, GM_ADDR yOut,
-    GM_ADDR rstdOut, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData,
-    GM_ADDR sharedOutput)
+__aicore__ inline void
+MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Init(
+    GM_ADDR mc2Context, GM_ADDR expandX, GM_ADDR expertIds,
+    GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR residualX,
+    GM_ADDR gamma, GM_ADDR expertScales, GM_ADDR xActiveMask,
+    GM_ADDR sharedExpertX, GM_ADDR elasticInfo, GM_ADDR oriX,
+    GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR performanceInfo,
+    GM_ADDR yOut, GM_ADDR rstdOut, GM_ADDR XOut, GM_ADDR sharedOutput,
+    GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
 {
     if constexpr (IndependentShared) {
         InitSharedOutput(sharedOutput);
@@ -1891,24 +1895,9 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::LocalW
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Process()
-{
-    if ASCEND_IS_AIV {
-        if (coreIdx_ < sendAivNum_) {
-            BuffInit();
-            SetWaitTpStatusAndDisPatch();
-            PipeBarrier<PIPE_ALL>();
-        }
-        AlltoAllBuffInitAndMaskCal();
-        LocalWindowCopy();
-    }
-}
-
-template <A5MteCombineTypeClass>
-__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIndependentShared(uint32_t rank,
-                                                                                                uint32_t token,
-                                                                                                uint32_t slot,
-                                                                                                uint32_t index)
+__aicore__ inline void
+MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIndependentShared(
+    uint32_t rank, uint32_t token, uint32_t slot, uint32_t index)
 {
     const uint32_t h = axisH_ * SHARED_H_RATIO;
     const uint32_t blocks = sharedCombineBytes_ / SPLIT_BLOCK_SIZE;
@@ -1936,7 +1925,8 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::SendIn
 }
 
 template <A5MteCombineTypeClass>
-__aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessIndependentSharedToken()
+__aicore__ inline void
+MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::ProcessIndependentSharedToken()
 {
     if (sharedTokenIndex_ >= axisBS_) {
         return;
@@ -2000,6 +1990,21 @@ __aicore__ inline void MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Proces
     outputCopyPending_ = true;
     sharedExpertIndex_ = 0U;
     sharedTokenIndex_ += aivNum_;
+}
+
+template <A5MteCombineTypeClass>
+__aicore__ inline void
+MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc>::Process()
+{
+    if ASCEND_IS_AIV {
+        if (coreIdx_ < sendAivNum_) {
+            BuffInit();
+            SetWaitTpStatusAndDisPatch();
+            PipeBarrier<PIPE_ALL>();
+        }
+        AlltoAllBuffInitAndMaskCal();
+        LocalWindowCopy();
+    }
 }
 
 } // namespace MoeDistributeCombineV2A5MteImpl

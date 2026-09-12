@@ -28,11 +28,15 @@ using namespace Mc2Tiling;
 
 template <uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
-    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR epSendCount, GM_ADDR scales,
-    GM_ADDR residualX, GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale,
-    GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
-    GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR YOut,
-    GM_ADDR dynamicScaleOut, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
+    GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR residualX,
+    GM_ADDR gamma, GM_ADDR tpSendCount, GM_ADDR xActiveMask,
+    GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
+    GM_ADDR expandScales, GM_ADDR sharedExpertX, GM_ADDR elasticInfo,
+    GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2,
+    GM_ADDR constExpertV, GM_ADDR YOut,
+    GM_ADDR dynamicScaleOut, GM_ADDR XOut,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeCombineV2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
@@ -40,9 +44,14 @@ __global__ __aicore__ void moe_distribute_combine_add_rms_norm(
 #if (ORIG_DTYPE_EXPAND_X == DT_BF16 || ORIG_DTYPE_EXPAND_X == DT_FLOAT16)
     GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     MoeDistributeCombineV2A5Mte<DTYPE_EXPAND_X, DTYPE_X, int32_t, QuantMode == TILINGKEY_INT8_QUANT, true> op;
-    op.Init(contextGM0, expandX, expertIds, assistInfoForCombine, epSendCount, residualX, gamma, scales, xActiveMask,
-            sharedExpertX, elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr, YOut,
-            dynamicScaleOut, XOut, workspaceGM, &pipe, &tilingData);
+    op.Init(
+        contextGM0, expandX, expertIds,
+        assistInfoForCombine, epSendCount, residualX,
+        gamma, scales, xActiveMask,
+        sharedExpertX, elasticInfo, oriX,
+        constExpertAlpha1, constExpertAlpha2, constExpertV, nullptr,
+        YOut, dynamicScaleOut, XOut, nullptr,
+        workspaceGM, &pipe, &tilingData);
     op.Process();
 #endif
 }

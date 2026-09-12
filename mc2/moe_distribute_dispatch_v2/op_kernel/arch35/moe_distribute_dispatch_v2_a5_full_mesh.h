@@ -78,11 +78,13 @@ public:
                                                    (Std::IsSame<ExpandXOutType, fp4x2_e1m2_t>::value),
                                                uint8_t, ExpandXOutType>::type;
     __aicore__ inline MoeDistributeDispatchV2A5FullMesh(){};
-    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
-                                GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
-                                GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
-                                GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchV2TilingData *tilingData, GM_ADDR sharedInput = nullptr);
+    __aicore__ inline void Init(
+        GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds,
+        GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
+        GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR sharedInput,
+        GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
+        GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
+        GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -439,11 +441,14 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::Init(
-    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
-    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
-    GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchV2TilingData *tilingData, GM_ADDR sharedInput)
+__aicore__ inline void
+MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::Init(
+    GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds,
+    GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR sharedInput,
+    GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
+    GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
+    GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
     if constexpr (IndependentShared) {
         InitSharedInput(sharedInput);
@@ -1861,38 +1866,10 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     }
 }
 
-template <TemplateMC2A5FullMeshTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::Process()
-{
-    if ASCEND_IS_AIV { // 全aiv处理
-        if (aivId_ < aivUsedAllToAll_) {
-            if constexpr (IndependentShared) {
-                if (aivId_ >= moeUsedAivNum_) {
-                    SendIndependentShared();
-                } else {
-                    AllToAllDispatch();
-                }
-            } else {
-                AllToAllDispatch(); // 前面核all2all发送
-            }
-        } else {
-            CalCumSum(); // 后面核计算前缀和，输出epRecvCnt/exportTokenNums
-        }
-        // localWindowCopy中包含reset操作，需确保前面操作完成
-        PipeBarrier<PIPE_ALL>();
-        if constexpr (IndependentShared) {
-            SetTilingDataAndCal(tilingData_);
-            if (isShareExpertRankFlag_) {
-                ConfigureSharedToken();
-            }
-        }
-        LocalWindowCopy(); // 本卡上专家数据连续化，输出expandX/scales/expandIdx
-    }
-}
-
 // Shared send cores do not allocate routing or quantization buffers.
 template <TemplateMC2A5FullMeshTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::ConfigureSharedToken()
+__aicore__ inline void
+MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::ConfigureSharedToken()
 {
     axisH_ = tilingData_->moeDistributeDispatchV2Info.h * SHARED_H_RATIO;
     copyInAxisH_ = axisH_;
@@ -1910,7 +1887,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
-__aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendIndependentShared()
+__aicore__ inline void
+MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SendIndependentShared()
 {
     ConfigureSharedToken();
     TQue<QuePosition::VECIN, 1> inQueue;
@@ -1962,6 +1940,36 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     }
     for (uint32_t i = 0; i < sendTokenBufNum_; ++i) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(i);
+    }
+}
+
+template <TemplateMC2A5FullMeshTypeClass>
+__aicore__ inline void
+MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::Process()
+{
+    if ASCEND_IS_AIV { // 全aiv处理
+        if (aivId_ < aivUsedAllToAll_) {
+            if constexpr (IndependentShared) {
+                if (aivId_ >= moeUsedAivNum_) {
+                    SendIndependentShared();
+                } else {
+                    AllToAllDispatch();
+                }
+            } else {
+                AllToAllDispatch(); // 前面核all2all发送
+            }
+        } else {
+            CalCumSum(); // 后面核计算前缀和，输出epRecvCnt/exportTokenNums
+        }
+        // localWindowCopy中包含reset操作，需确保前面操作完成
+        PipeBarrier<PIPE_ALL>();
+        if constexpr (IndependentShared) {
+            SetTilingDataAndCal(tilingData_);
+            if (isShareExpertRankFlag_) {
+                ConfigureSharedToken();
+            }
+        }
+        LocalWindowCopy(); // 本卡上专家数据连续化，输出expandX/scales/expandIdx
     }
 }
 
