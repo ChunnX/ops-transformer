@@ -36,8 +36,8 @@ template <typename QLIV2T>
 class QLIV2Vector {
 public:
     // =================================类型定义区=================================
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
+    static constexpr QLI_V2_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
+    static constexpr QLI_V2_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;
@@ -468,7 +468,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     }
 
     // BNSD场景无效S1 输出-1
-    if (Q_LAYOUT_T == LI_LAYOUT::BSND) {
+    if (Q_LAYOUT_T == QLI_V2_LAYOUT::BSND) {
         // 最后一个S1的基本块, 需要 >= info.actS1Size
         bool isS1LoopEnd = (cuBaseS1Idx + s1BaseSize_) >= info.actS1Size;
         int32_t invalidS1Num = constInfo_.qSeqSize - info.actS1Size;
