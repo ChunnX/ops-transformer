@@ -18,14 +18,28 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
+namespace BandwidthTestTiling {
+constexpr uint32_t URMA_WQE_BYTES = 64;
+constexpr uint32_t URMA_MAX_BATCH_TOKENS = 2048;
+constexpr uint32_t URMA_MAX_SHARED_JETTYS = 56;
+constexpr uint32_t ROCE_HCOMM_UB_BYTES = 512;
+constexpr uint32_t ROCE_ID_CHUNK_TOKENS = 256;
+constexpr uint32_t ROCE_MAX_PENDING_WRITES = 8192;
+} // namespace BandwidthTestTiling
+
 struct BandwidthTestTilingData {
     // ============ HCCL通信相关Tiling ============
     int32_t dataSize;      // hidden size，即特征维度大小
     int32_t worldSize;     // EP大小，即参与通信的rank总数
     int32_t maxBs;         // batch size，即token数量
-    int32_t mode;          // 执行模式: 0=完整流程(发送+同步+接收), 1=仅发送
+    int32_t mode;          // 0=完整流程, 1=业务发送, 2=原Win打流, 3=每Jetty全对端, 4=每对端一Jetty
     int32_t aivNum;        // AIV核总数，用于任务分发
+    int32_t sharedJettyNum; // 共享jetty数量，也是参与发送的核数量
+    uint32_t batchBufferBytes; // URMA WQE bytes; rank-ID capacity is batchBufferBytes / URMA_WQE_BYTES
+    uint32_t batchTokens;  // Effective URMA tokens per commit, selected by tiling
     uint64_t totalUbSize;  // 总UB大小，用于内存规划
+    uint32_t peersPerJetty; // mode 3: resolved remote count; other modes unused
+    uint32_t drainThreshold; // Maximum outstanding WQEs per URMA Jetty/locked channel, including control writes
     uint64_t totalWinSize; // HCCL通信窗口总大小
 };
 

@@ -15,7 +15,7 @@
                 },
                 {
                     "name": "x",
-                    "index": 0,
+                    "index": 1,
                     "dtype": "float16",
                     "format": "ND",
                     "paramType": "required",
@@ -24,7 +24,7 @@
                 },
                 {
                     "name": "dst_rank_id",
-                    "index": 1,
+                    "index": 2,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -87,6 +87,31 @@
                     "name": "aiv_num",
                     "dtype": "int",
                     "value": -1
+                },
+                {
+                    "name": "batch_tokens",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "shared_jetty",
+                    "dtype": "bool",
+                    "value": false
+                },
+                {
+                    "name": "shared_jetty_num",
+                    "dtype": "int",
+                    "value": 1
+                },
+                {
+                    "name": "drain_threshold",
+                    "dtype": "int",
+                    "value": 8192
+                },
+                {
+                    "name": "peers_per_jetty",
+                    "dtype": "int",
+                    "value": 0
                 }
             ]
         },
@@ -176,6 +201,31 @@
                     "name": "aiv_num",
                     "dtype": "int",
                     "value": -1
+                },
+                {
+                    "name": "batch_tokens",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "shared_jetty",
+                    "dtype": "bool",
+                    "value": false
+                },
+                {
+                    "name": "shared_jetty_num",
+                    "dtype": "int",
+                    "value": 1
+                },
+                {
+                    "name": "drain_threshold",
+                    "dtype": "int",
+                    "value": 8192
+                },
+                {
+                    "name": "peers_per_jetty",
+                    "dtype": "int",
+                    "value": 0
                 }
             ]
         }
