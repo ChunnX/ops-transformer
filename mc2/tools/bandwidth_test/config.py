@@ -77,7 +77,7 @@ class ModelConfig:
     # URMA 还须保证 drain_threshold 不超过实际可用 SQ/CQ 容量；kernel 不查询队列余量。
     # device kernel 直接使用 host tiling 选出的批量；误配会使测试结果无效。
     batch_tokens: int = 0  # roce 必须为0（无Batch）；URMA mode 3忽略，mode 4取min(配置或BS, BS, tiling上限)
-    peers_per_jetty: int = 15  # mode 3：0=全部远端；正数指定每 Jetty 的轮转发送对端数。
+    peers_per_jetty: int = 0  # 非共享 URMA mode 3 必须为 0；mode 3 中 0=全部远端，正数指定轮转对端数。
     drain_threshold: int = 8192  # 每个 URMA Jetty/持锁通道的累计在途 WQE 上限（含 flag/count）；下一批将超过时先 Drain。
     static_kernel_path: str = "./static_kernel_rtp_j8_bs4096_debug"  # aclgraph 静态内核构建目录，相对启动目录
 
