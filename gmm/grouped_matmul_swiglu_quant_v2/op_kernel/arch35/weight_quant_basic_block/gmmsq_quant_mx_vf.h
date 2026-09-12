@@ -65,6 +65,10 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
     const float scalarTwo = 2.0;
     const float situAlpha = 1.0;
     const float situBeta = 1.0;
+    const float neg2OverBeta = -scalarTwo / situBeta;
+    const float negBeta = -situBeta;
+    const float neg2OverAlpha = -scalarTwo / situAlpha;
+    const float negAlpha = -situAlpha;
     const float mulFactor = 64.0; // GMM output is scaled down by 64 and is restored before activation.
     for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
         uint32_t elementNum = nSize;
@@ -79,13 +83,13 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
             AscendC::Reg::LoadAlign(gateInput, firstSrc + l0cOutOffset);
             AscendC::Reg::Muls(gateInput, gateInput, mulFactor, mask);
 
-            AscendC::Reg::Muls(tmp, gateInput, -(scalarTwo / situBeta), mask);
+            AscendC::Reg::Muls(tmp, gateInput, neg2OverBeta, mask);
             AscendC::Reg::Exp(tmp, tmp, mask);
             AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
             AscendC::Reg::Duplicate(gateBranch, situBeta, mask);
             AscendC::Reg::Div<float, &DIV_MODE>(gateBranch, gateBranch, tmp, mask);
             AscendC::Reg::Muls(gateBranch, gateBranch, scalarTwo, mask);
-            AscendC::Reg::Adds(gateBranch, gateBranch, -situBeta, mask);
+            AscendC::Reg::Adds(gateBranch, gateBranch, negBeta, mask);
 
             AscendC::Reg::Muls(tmp, gateInput, -scalarOne, mask);
             AscendC::Reg::Exp(tmp, tmp, mask);
@@ -95,13 +99,13 @@ __simd_vf__ inline void GmmSituVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ DataTy
             AscendC::Reg::LoadAlign(upInput, secondSrc + l0cOutOffset);
             AscendC::Reg::Muls(upInput, upInput, mulFactor, mask);
 
-            AscendC::Reg::Muls(tmp, upInput, -(scalarTwo / situAlpha), mask);
+            AscendC::Reg::Muls(tmp, upInput, neg2OverAlpha, mask);
             AscendC::Reg::Exp(tmp, tmp, mask);
             AscendC::Reg::Adds(tmp, tmp, scalarOne, mask);
             AscendC::Reg::Duplicate(upBranch, situAlpha, mask);
             AscendC::Reg::Div<float, &DIV_MODE>(upBranch, upBranch, tmp, mask);
             AscendC::Reg::Muls(upBranch, upBranch, scalarTwo, mask);
-            AscendC::Reg::Adds(upBranch, upBranch, -situAlpha, mask);
+            AscendC::Reg::Adds(upBranch, upBranch, negAlpha, mask);
 
             AscendC::Reg::Mul(situOutput, gateBranch, upBranch, mask);
             AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(situBf16, situOutput, mask);
