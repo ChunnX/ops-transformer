@@ -162,15 +162,13 @@ __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::InitLocalBuffer(
         l0cBufferManager.Init(tPipe, 262144);
 
         // s1=64, s2=128分核方案，mm1和mm2结果全部在ub上
-        if constexpr (s1BaseSize == 64 && s2BaseSize == 128) {
-            // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-            mm12Bmm2AL1BuffersPtr = mm12Bmm2AL1BuffMgr; // L1P与L1K_rope复用
-            mm1AL1Buffers.Init(*l1BufferManagerPtr, (uint32_t)dTemplateType * s1BaseSize * 2);
-            // L0A B C当前写死，要改成通过计算获取
-            mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
-            mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
-            mmL0CBuffers.Init(l0cBufferManager, 128 * 1024);
-        }
+        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
+        mm12Bmm2AL1BuffersPtr = mm12Bmm2AL1BuffMgr; // L1P与L1K_rope复用
+        mm1AL1Buffers.Init(*l1BufferManagerPtr, (uint32_t)dTemplateType * s1BaseSize * 2);
+        // L0A B C当前写死，要改成通过计算获取
+        mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
+        mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
+        mmL0CBuffers.Init(l0cBufferManager, 128 * 1024);
     }
 }
 
@@ -328,7 +326,7 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncTyp
                                                                       // *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
     fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 //
                                           // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipeParams.dualDstCtl = CV_RATIO == 2 ? 1 : 0; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -453,7 +451,7 @@ FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncTyp
     fixpipeParams.dstStride =
         (fixpipeParams.nSize + 15) >> 4 << 4; // mmResUb上两行之间的间隔，单位：element。 //
                                               // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+    fixpipeParams.dualDstCtl = CV_RATIO == 2 ? 1 : 0; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;

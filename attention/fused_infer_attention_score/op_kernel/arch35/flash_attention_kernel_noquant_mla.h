@@ -115,7 +115,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     constInfo.aivIdx = GetBlockIdx();
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIV {
-        this->aicIdx = constInfo.aivIdx >> 1;
+        this->aicIdx = constInfo.aivIdx / CV_RATIO;
     }
     if ASCEND_IS_AIC {
         this->aicIdx = constInfo.aivIdx;
