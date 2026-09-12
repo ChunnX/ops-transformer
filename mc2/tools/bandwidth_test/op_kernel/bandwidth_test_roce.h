@@ -265,7 +265,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
         bool isRemote = rankId != static_cast<uint32_t>(epRankId_);
         uint32_t curExpertCnt = 0;
         if (isRemote) {
-            hcomm_.Lock(hcommHandle_[rankId]);
+            // hcomm_.Lock(hcommHandle_[rankId]);
         }
         for (uint32_t chunkStart = 0; chunkStart < axisBS_;) {
             uint32_t chunkTokens = axisBS_ - chunkStart;
@@ -305,7 +305,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
         statusTensor_((rankId - startRankId_) * 8 + 1) = curExpertCnt;
         // Unlock publishes counters without waiting; staging remains live across the sender handoff.
         if (isRemote) {
-            hcomm_.Unlock(hcommHandle_[rankId]);
+            // hcomm_.Unlock(hcommHandle_[rankId]);
         }
     }
 }
@@ -333,7 +333,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Set
         SyncFunc<HardEvent::MTE3_S>();
         if (isRemote) {
             ChannelHandle channel = hcommHandle_[rankId];
-            hcomm_.Lock(channel);
+            // hcomm_.Lock(channel);
             // Publish count before flag; both sources are in the registered local Win.
             hcomm_.WriteNbi(channel, remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t),
                                 sizeof(int32_t));
@@ -345,7 +345,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Set
             }
             hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t));
             hcomm_.Drain(channel);
-            hcomm_.Unlock(channel);
+            // hcomm_.Unlock(channel);
         }
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
