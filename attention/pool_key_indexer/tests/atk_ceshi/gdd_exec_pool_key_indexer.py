@@ -840,6 +840,9 @@ def _reference_npu_blocked(
     pool_size=1,
     mask_mode=0,
     return_value=False,
+    q_descale=None,
+    k_descale=None,
+    quant_mode=-1,
 ):
     """NPU 组合标杆的分块 streaming 实现(与 _reference_npu 数值语义一致)。
 
@@ -855,6 +858,15 @@ def _reference_npu_blocked(
       - 块内 topk + 与累积缓冲 cat-topk 归并(增量 streaming topk);
       - TND 反填充用显式行号 index_select(int 索引走 gather), 避免
         布尔索引触发 torch_npu AdvancedIndex/NonZero 的 AICPU 超时。
+
+    量化 descale 与 _compute_batch 数值口径一致:
+      - mode=0: q_scale 乘入 weight(per-token-head)、k_scale 乘入
+        聚合和(每池标量), scale 恒正可从点积提出, 数学等价于先反量化;
+      - mode=1(mxFP8): q/k 先按 per-32-D-group scale 反量化再点积。
+      scale 拆分复用稠密版 _split_*_descale 函数(逻辑池序与
+      _normalize_key_npu 的 block_table gather 序一致), 拆出结果只
+      覆盖有效行/池, 以 1 填充到 s1m/pm 对齐 densify 形状(填充行由
+      掩码/丢弃逻辑处理, 数值无影响)。
 
     blockW 下限 2*k_sel(保证归并信息不丢失), 上限 16384(控制 sort 规模)。
     """
@@ -888,6 +900,42 @@ def _reference_npu_blocked(
     block_w = min(16384, max(2 * k_sel if k_sel > 0 else 4096, 4096))
     col_ar = torch.arange(pm, device=device)
 
+    # 量化 descale 拆分(复用稠密版 _split_*_descale: 逻辑池序与
+    # _normalize_key_npu 的 block_table gather 序一致; q_counts/k_counts
+    # 均为逐 batch 有效数, 与稠密版口径相同)
+    q_scale_list = k_scale_list = mx_q_scale_list = mx_k_scale_list = None
+    if q_descale is not None or k_descale is not None:
+        q_counts_l = [int(v) for v in q_counts_t.tolist()]
+        k_counts_l = [int(v) for v in k_counts_t.tolist()]
+        ds_block_size = pool_key.shape[1] if layout_k == "PA_BBND" else None
+        is_mx = quant_mode == 1
+        if q_descale is not None:
+            if not is_mx:
+                q_scale_list = _split_q_descale(q_descale, layout_q, actual_seq_q, q_counts_l)
+            else:
+                mx_q_scale_list = _split_q_descale_generic(q_descale, layout_q, q_counts_l)
+        if k_descale is not None:
+            if not is_mx:
+                k_scale_list = _split_k_descale(
+                    k_descale, layout_k, actual_seq_k, k_counts_l, block_table, ds_block_size
+                )
+            else:
+                mx_k_scale_list = _split_k_descale_generic(
+                    k_descale, layout_k, actual_seq_k, k_counts_l, block_table, ds_block_size
+                )
+        q_scale_list = (
+            [s.to(device) for s in q_scale_list] if q_scale_list is not None else None
+        )
+        k_scale_list = (
+            [s.to(device) for s in k_scale_list] if k_scale_list is not None else None
+        )
+        mx_q_scale_list = (
+            [s.to(device) for s in mx_q_scale_list] if mx_q_scale_list is not None else None
+        )
+        mx_k_scale_list = (
+            [s.to(device) for s in mx_k_scale_list] if mx_k_scale_list is not None else None
+        )
+
     idx_list, val_list = [], []
     for bi in range(b):
         cnt = int(q_counts_t[bi])
@@ -908,6 +956,41 @@ def _reference_npu_blocked(
         w_b = w[bi].float()  # (S1m, N1)
         k_b = k[bi].float()  # (Pm, D)
         pv = pool_valid[bi]  # (Pm,)
+        # 量化 q 侧: mode=0 scale 乘入 weight; mode=1 整体反量化 q。
+        # scale 只覆盖有效行, 以 1 填充到 s1m(填充行由后续掩码/丢弃处理)
+        if q_scale_list is not None:
+            qs = q_scale_list[bi]  # (Sb, N1)
+            if qs.shape[0] < s1m:
+                qs = torch.cat(
+                    [qs, torch.ones((s1m - qs.shape[0], n1), dtype=qs.dtype, device=device)],
+                    dim=0,
+                )
+            w_b = w_b * qs
+        if mx_q_scale_list is not None:
+            mq = mx_q_scale_list[bi]  # (Sb, N1, D/32) 或 (Sb, D/32)
+            if mq.dim() == 2:
+                mq = mq.unsqueeze(1)
+            if mq.shape[0] < s1m:
+                mq = torch.cat(
+                    [mq, torch.ones((s1m - mq.shape[0],) + tuple(mq.shape[1:]), dtype=mq.dtype, device=device)],
+                    dim=0,
+                )
+            q_b = q_b * mq.repeat_interleave(32, dim=-1)
+        # 量化 k 侧 scale: 同样以 1 填充到 pm, 块内切片应用
+        ks = None
+        if k_scale_list is not None:
+            ks = k_scale_list[bi]  # (Pb,)
+            if ks.shape[0] < pm:
+                ks = torch.cat(
+                    [ks, torch.ones(pm - ks.shape[0], dtype=ks.dtype, device=device)]
+                )
+        mk = None
+        if mx_k_scale_list is not None:
+            mk = mx_k_scale_list[bi].reshape(-1, d // 32)  # (Pb, D/32)
+            if mk.shape[0] < pm:
+                mk = torch.cat(
+                    [mk, torch.ones((pm - mk.shape[0], d // 32), dtype=mk.dtype, device=device)]
+                )
         if mask_mode == 3:
             row_ar = torch.arange(s1m, device=device)
             valid_row = torch.div(
@@ -926,11 +1009,18 @@ def _reference_npu_blocked(
             hi = min(lo + block_w, pm)
             bw = hi - lo
             kb = k_b[lo:hi]  # (bw, D)
+            if mk is not None:
+                # mode=1: k 按 per-32-D-group scale 反量化(块内切片,
+                # 与 _compute_batch 的 repeat_interleave 口径一致)
+                kb = kb * mk[lo:hi].repeat_interleave(32, dim=-1)
             s_blk = torch.zeros((s1m, bw), dtype=torch.float32, device=device)
             for n in range(n1):
                 dot_n = torch.relu(q_b[:, n] @ kb.transpose(0, 1))  # (S1m, bw)
                 s_blk += w_b[:, n : n + 1] * dot_n
             s_blk *= scale
+            if ks is not None:
+                # mode=0: k_scale 乘入聚合和(每池标量, 块内切片)
+                s_blk *= ks[lo:hi]
             # 布尔 AdvancedIndex setitem 在 torch_npu 上走 NonZero/动态索引
             # 路径, 大 shape 下有 AICPU 超时/vector core 异常前科(见
             # _topk_desc 注释), 统一改 masked_fill_(与 _reference_npu 稠密
@@ -1195,7 +1285,10 @@ PoolKeyIndexer ATK 自定义执行方式 (BaseApi) + 三节点共享输入规整
 
 本 Api 按输入所在设备自动路由(与 pytest 的 pool_key_indexer_reference 一致):
   - 输入在 CPU(真值任务, 升精度后)  -> CPU 金标实现(_reference_cpu);
-  - 输入在 NPU(npu_golden 节点)     -> NPU 组合标杆实现(_reference_npu)。
+  - 输入在 NPU(npu_golden 节点)     -> NPU 组合标杆实现(_reference_npu);
+  - 稠密化超限(oversized)          -> 一律搬 CPU 分块标杆(_reference_npu_blocked),
+    NPU 分块路径已废弃(大 sort/topk 有 ERR 507035 打挂设备前科, 见
+    _NPU_GOLDEN_MAX_* 阈值处注释)。
 
 输入规整(prepare_pki_inputs)为全节点共用(算子适配器/标杆/真值):
 ATK 随机生成的 actualSeq / blockTable 需要确定性规整为合法形态,
@@ -1605,16 +1698,20 @@ def _estimate_npu_golden_load(prep):
 # 仍超时)。CPU 向量化仅作 blocked 亦 OOM 的兜底。
 _NPU_GOLDEN_MAX_SCORE_ELEMS = 50_000_000
 _NPU_GOLDEN_MAX_TOKEN_ELEMS = 250_000_000
-# oversized 中的"CPU 安全带"上限: NPU 长跑 worker 上大 sort/大张量算子存在
-# 非确定 vector core 异常(ERR 507035)前科 —— 2026-09-10 全量跑中 case 633
-# (67M scores)的 npu_golden 打崩 device 2, 级联秒败后续 124 例(算子侧无责,
-# 该段算子任务从未执行)。golden 仅为参考节点(bm-vs-truth 为 reference-only
-# 指标, 比较器从落盘文件读取且统一 .cpu()), 该量级直接搬 CPU 跑分块标杆
-# (数值语义一致, 256 核主机秒级完成), 设备风险清零; 超过该带(输出/中间
-# 亿级, 主机放不下或分钟级过慢)保留 NPU 分块路径, 前后 empty_cache 释放
-# 长跑碎片化缓存, 大分配走全新块规避碎片相关的设备级异常。
-_NPU_GOLDEN_CPU_SAFE_SCORE_ELEMS = 200_000_000
-_NPU_GOLDEN_CPU_SAFE_TOKEN_ELEMS = 200_000_000
+# oversized 一律搬 CPU 跑分块标杆(数值语义一致), 不再保留 NPU 分块路径:
+# NPU 长跑 worker 上大 sort/大张量算子存在非确定 vector core 异常(ERR 507035)
+# 前科 —— 2026-09-10 全量跑中 case 633(67M scores, 8192x16384 argsort)的
+# npu_golden 打崩 device 2, 级联秒败后续 124 例(算子侧无责, 该段算子任务
+# 从未执行); 2026-09-12 case 1186(57309x16384 topk/argsort, scores 3.28e9)
+# 在 device 2/3 双双确定性复现并打挂设备, 同批 1187~1199 段被殃及秒败。
+# 且 1186~1399 巨型带用例单块 sort 规模 8e8~1.7e10, 全部不低于 1186 的
+# 确定性崩溃点, 在 NPU 上本就无通过可能, CPU 是其唯一可执行路径。
+# golden 仅为参考节点(bm-vs-truth 为 reference-only 指标, 比较器从落盘
+# 文件读取且统一 .cpu()), 搬 CPU 后 256 核主机秒级~分钟级完成; 极端
+# s1m≈1M 用例小时级、峰值内存 O(s1m*(blockW+3*k_sel)) 达数百 GB, 全量跑
+# 时须避免多例巨型金标并发挤兑主机内存。注: 不通过调小 block_w 省内存
+# —— 归并宽度 2*k_sel 不可缩减, block_w 变小只会增加归并轮数(更慢),
+# 对占大头的归并缓冲(s1m*2*k_sel*12B)无收益。
 
 
 @register("pool_key_indexer")
@@ -1635,7 +1732,9 @@ class PKIApi(BaseApi):
             return pki_output_stubs(prep)
 
         # 量化场景: NPU 组合标杆暂不支持 descale(pool_key_indexer_reference
-        # 约定), 统一搬 CPU 走金标 —— 输入已在 CPU 时无额外搬运
+        # 约定), 统一搬 CPU 走金标 —— 输入已在 CPU 时无额外搬运。
+        # oversized 的量化用例同样走 CPU 分块标杆(descale 已在
+        # _reference_npu_blocked 原生支持, 见下方 oversized 路由)
         quant = prep["quant_mode"] in (0, 1)
         if quant and prep["query"].device.type != "cpu":
             prep = {
@@ -1645,60 +1744,33 @@ class PKIApi(BaseApi):
 
         # 统一标杆(与 pytest 一致):
         #   输入在 CPU(真值任务升精度后) -> CPU 金标; 输入在 NPU -> NPU 组合标杆
-        #   极端 shape(稠密化超限) -> 双侧均走分块 streaming 实现(数值语义
-        #   一致, 峰值内存 S1m*blockW):
-        #     NPU 标杆: 原稠密版放不下/碎片化挂死, blocked 11~39s 完成;
-        #     CPU 真值: _reference_cpu 逐行 Python 循环在 11 万行规格下
-        #     30~90 分钟超时, blocked 向量化(CPU)数分钟内完成。
-        #   NPU 侧 blocked 仍 OOM 时兜底 CPU 向量化。
+        #   极端 shape(稠密化超限) -> 一律搬 CPU 走分块 streaming 实现(数值
+        #     语义一致, 峰值内存 S1m*blockW + S1m*k_sel*2):
+        #     CPU 分块向量化数分钟内完成(原 _reference_cpu 逐行 Python 循环
+        #     在 11 万行规格下 30~90 分钟超时); NPU 分块路径已废弃 —— 其大
+        #     sort/topk 存在 ERR 507035 vector 核异常前科, 会打挂设备(见
+        #     _NPU_GOLDEN_MAX_* 阈值处注释)。
         scores_elems, token_elems = _estimate_npu_golden_load(prep)
         oversized = (
             scores_elems > _NPU_GOLDEN_MAX_SCORE_ELEMS
             or token_elems > _NPU_GOLDEN_MAX_TOKEN_ELEMS
         )
-        if oversized and not quant:
+        if oversized:
             if prep["query"].device.type == "npu":
-                if (
-                    scores_elems <= _NPU_GOLDEN_CPU_SAFE_SCORE_ELEMS
-                    and token_elems <= _NPU_GOLDEN_CPU_SAFE_TOKEN_ELEMS
-                ):
-                    # CPU 安全带: 搬 CPU 跑分块标杆(见阈值处注释), 设备零风险
-                    prep = {
-                        k: (v.cpu() if torch.is_tensor(v) else v)
-                        for k, v in prep.items()
-                    }
-                else:
-                    # 巨型带: 保留 NPU 分块(blocked 已加固: masked_fill 替代
-                    # AdvancedIndex setitem、单块免冗余 cat-argsort 归并),
-                    # 前后 empty_cache 释放长跑碎片化缓存
-                    common = dict(
-                        actual_seq_q=prep["actual_seq_q"],
-                        actual_seq_k=prep["actual_seq_k"],
-                        block_table=prep["block_table"],
-                        layout_q=prep["layout_q"],
-                        layout_k=prep["layout_k"],
-                        topk=prep["topk"],
-                        pool_size=prep["pool_size"],
-                        mask_mode=prep["mask_mode"],
-                        return_value=prep["return_value"],
-                    )
-                    torch.npu.empty_cache()
-                    try:
-                        indices, values = _reference_npu_blocked(
-                            prep["query"],
-                            prep["pool_key"],
-                            prep["weights"],
-                            prep["pool_tail_k"],
-                            **common,
-                        )
-                        torch.npu.empty_cache()
-                        return indices, values
-                    except torch.OutOfMemoryError:
-                        torch.npu.empty_cache()
-                        prep = {
-                            k: (v.cpu() if torch.is_tensor(v) else v)
-                            for k, v in prep.items()
-                        }
+                # oversized 一律搬 CPU 跑分块标杆(含量化场景 —— descale
+                # 已在 _reference_npu_blocked 原生支持, 数值口径与稠密版
+                # _compute_batch 一致), 设备风险彻底清零(见
+                # _NPU_GOLDEN_MAX_* 阈值处注释: NPU 分块的大 sort/topk 有
+                # ERR 507035 vector 核异常前科, case 633 打崩 device 2 级联
+                # 秒败 124 例, case 1186 在 device 2/3 确定性复现打挂设备,
+                # 算子侧无责 —— pyaclnn 任务从未执行)。empty_cache 释放
+                # 搬运后的 NPU 缓存块, 避免碎片化殃及同 case 后续的
+                # pyaclnn 算子任务。
+                prep = {
+                    k: (v.cpu() if torch.is_tensor(v) else v)
+                    for k, v in prep.items()
+                }
+                torch.npu.empty_cache()
             # common 必须在设备路由(可能整体搬 CPU)之后构建: 若提前构建,
             # block_table/actual_seq_* 留在 NPU 与已搬 CPU 的 query/pool_key
             # 混用, PA_BBND 场景 index_select 直接跨设备报错(全量跑实测
@@ -1720,6 +1792,9 @@ class PKIApi(BaseApi):
                 prep["weights"],
                 prep["pool_tail_k"],
                 **common,
+                q_descale=prep["q_descale_scales"] if quant else None,
+                k_descale=prep["k_descale_scales"] if quant else None,
+                quant_mode=prep["quant_mode"] if quant else -1,
             )
             return indices, values
         indices, values = pool_key_indexer_reference(
