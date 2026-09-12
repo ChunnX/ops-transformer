@@ -24,6 +24,8 @@
 #include "../arch35/vf/lightning_indexer_v2_vector1.h"
 #include "../arch35/vf/lightning_indexer_v2_topk.h"
 
+#include "common/lightning_indexer_v2_service_vector_base_arch35.h"
+
 namespace LIV2Kernel {
 using namespace LIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
@@ -35,7 +37,9 @@ constexpr uint32_t TOPK_LEN_7K = 7168;
 constexpr uint32_t TOPK_LEN_5K = 5120;
 
 template <typename LIT>
-class LightningIndexerV2ServiceVector {
+class LightningIndexerV2ServiceVector
+    : public LIV2Common::LightningIndexerV2ServiceVectorBase<LightningIndexerV2ServiceVector<LIT>> {
+    friend class LIV2Common::LightningIndexerV2ServiceVectorBase<LightningIndexerV2ServiceVector<LIT>>;
 public:
     // =================================类型定义区=================================
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
@@ -54,11 +58,9 @@ public:
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct LIV2Common::ConstInfo &constInfo,
-                                      const struct LIV2Common::LdSplitCoreInfo &ldInfo,
+                                      const LIV2Common::LdSplitCoreInfo &ldInfo,
                                       const LIV2TilingData *__restrict tilingData);
-    __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct LIV2Common::LdSplitCoreInfo &ldInfo);
-    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm, GlobalTensor<SCORE_T> ldScoreGm,
-                                                  GlobalTensor<int32_t> ldIndexGm);
+    __aicore__ inline void InitLDBuffers(TPipe *pipe, const LIV2Common::LdSplitCoreInfo &ldInfo);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<W_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
@@ -146,7 +148,7 @@ private:
     bool returnValueFlag = false;
 
     struct LIV2Common::ConstInfo constInfo_;
-    struct LIV2Common::LdSplitCoreInfo ldInfo_;
+    LIV2Common::LdSplitCoreInfo ldInfo_;
     liV2Topk::LIV2Topk<SCORE_T> topkOp_;
 };
 
@@ -188,7 +190,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
 
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(
-    const struct LIV2Common::ConstInfo &constInfo, const struct LIV2Common::LdSplitCoreInfo &ldInfo,
+    const struct LIV2Common::ConstInfo &constInfo, const LIV2Common::LdSplitCoreInfo &ldInfo,
     const LIV2TilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
@@ -216,7 +218,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(
 
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitLDBuffers(
-    TPipe *pipe, const struct LIV2Common::LdSplitCoreInfo &ldInfo)
+    TPipe *pipe, const LIV2Common::LdSplitCoreInfo &ldInfo)
 {
     ldIndexLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
 }
@@ -236,26 +238,13 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVecInputTensor(
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
-                                                                                    GlobalTensor<SCORE_T> ldScoreGm,
-                                                                                    GlobalTensor<int32_t> ldIndexGm)
-{
-    this->scoreGm = scoreGm; // resucesum*k
-    this->ldScoreGm = ldScoreGm;
-    this->ldIndexGm = ldIndexGm;
-}
-
-template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::AllocEventID()
 {
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
-    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
-    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
+    this->AllocVectorOutputEvents();
 
-    SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+    this->AllocTopkEvents();
 }
 
 template <typename LIT>
@@ -263,21 +252,16 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::FreeEventID()
 {
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
-    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
-    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
+    this->FreeVectorOutputEvents();
 
-    WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+    this->FreeTopkEvents();
 }
 
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    uint64_t dealSize = constInfo_.topk;
-    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
-    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
+    this->CleanInvalidIndices(invalidS1Offset, constInfo_.topk);
 
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -299,24 +283,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
 {
-    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
-
-    if (constInfo_.returnValueFlag) {
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-
-        GlobalTensor<uint32_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
-
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_FLOAT);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-    }
+    this->PadTndOutputs(runInfo, constInfo_.topk, constInfo_.returnValueFlag,
+                        constInfo_.NEG_INF_FLOAT);
 }
 
 template <typename LIT>
@@ -910,9 +878,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessLD()
 
             int32_t s2Len = topkCountAlign16_ * ldProWorkspaceNum + ldProcessOffset;
             uint32_t s2LenAlign = LIV2Common::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
-            uint64_t LDGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ +
-                                  topkCountAlign16_ * (ldInfo_.mStart + j) +
-                                  i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入LD处理偏移
+            uint64_t LDGmOffset = this->GetLdGmOffset(j, i, ldWorkspaceNum); // 加入LD处理偏移
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], ldScoreGm[LDGmOffset], ldScoreParams, scorePadParams);
