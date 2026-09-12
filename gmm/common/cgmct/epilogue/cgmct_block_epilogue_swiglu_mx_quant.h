@@ -108,8 +108,14 @@ public:
         GM_ADDR x2ScaleGmAddr{nullptr};
         GM_ADDR x1ScaleGmAddr{nullptr};
         GM_ADDR biasGmAddr{nullptr};
-        uint32_t baseM;
-        uint32_t baseN;
+        uint32_t baseM{0};
+        uint32_t baseN{0};
+        // V3 SwiGLU controls.  The defaults preserve the V2 standard SwiGLU path.
+        int64_t swigluMode{0};
+        bool activateLeft{true};
+        float clampLimit{7.0F};
+        float gluAlpha{1.702F};
+        float gluBias{1.0F};
         Arguments() = default;
     };
 
@@ -198,6 +204,12 @@ private:
     uint16_t elementAfterReduce_ = 0;
     uint16_t fpEmax_ = 0;
 
+    int64_t swigluMode_ = 0;
+    bool activateLeft_ = true;
+    float clampLimit_ = 7.0F;
+    float gluAlpha_ = 1.702F;
+    float gluBias_ = 1.0F;
+
     BlockCoord blockCoord_{0, 0, 0, 0, 0};
 };
 
@@ -209,6 +221,11 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         return;
     }
     params_ = &params;
+    swigluMode_ = params.swigluMode;
+    activateLeft_ = params.activateLeft;
+    clampLimit_ = params.clampLimit;
+    gluAlpha_ = params.gluAlpha;
+    gluBias_ = params.gluBias;
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -550,20 +567,51 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 mask = AscendC::Reg::UpdateMask<DataTypeIn>(elementNum);
                 AscendC::Reg::RegTensor<bfloat16_t> verg7;
                 AscendC::Reg::RegTensor<float> swishInput, gateInput;
-                AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg5, verg6, swishOutput;
+                AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg6, swishOutput;
 
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
                 AscendC::Reg::DataCopy(swishInput, firstSrc + l0cOutOffset);
-                // swish
-                AscendC::Reg::Muls(verg2, swishInput, -(scalarOne), mask);
-                AscendC::Reg::Exp(verg3, verg2, mask);
-                AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
-                AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
-
-                // load gate data to regbase
                 AscendC::Reg::DataCopy(gateInput, secondSrc + l0cOutOffset);
 
-                // swish * gate
+                // V2: standard split SwiGLU.
+                // V3 mode 1 uses the two MMAD results as the even/odd streams;
+                // the mode-1 weight copy packs those streams before this epilogue.
+                // V3 modes 2/3 retain the split-half layout and add clamp/alpha/bias
+                // around the activation as defined by SwigluMxQuant.
+                if (swigluMode_ != 1 && !activateLeft_) {
+                    auto temp = swishInput;
+                    swishInput = gateInput;
+                    gateInput = temp;
+                }
+
+                if (swigluMode_ == 0) {
+                    AscendC::Reg::Muls(verg2, swishInput, -(scalarOne), mask);
+                    AscendC::Reg::Exp(verg3, verg2, mask);
+                    AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
+                    AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
+                } else {
+                    if (swigluMode_ == 3) {
+                        AscendC::Reg::Muls(verg2, swishInput, -(scalarOne), mask);
+                        AscendC::Reg::Exp(verg3, verg2, mask);
+                        AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
+                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
+                        AscendC::Reg::Mins(swishOutput, swishOutput, clampLimit_, mask);
+                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, mask);
+                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, mask);
+                    } else {
+                        AscendC::Reg::Mins(verg1, swishInput, clampLimit_, mask);
+                        AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, mask);
+                        AscendC::Reg::Exp(verg3, verg2, mask);
+                        AscendC::Reg::Adds(verg4, verg3, scalarOne, mask);
+                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, mask);
+                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, mask);
+                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, mask);
+                        if (swigluMode_ == 1 || swigluMode_ == 2) {
+                            AscendC::Reg::Adds(gateInput, gateInput, gluBias_, mask);
+                        }
+                    }
+                }
+
                 AscendC::Reg::Mul(verg6, swishOutput, gateInput, mask);
 
                 AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, mask);
