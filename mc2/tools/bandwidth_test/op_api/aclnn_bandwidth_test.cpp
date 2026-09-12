@@ -9,6 +9,7 @@
  */
 #include "aclnn_bandwidth_test.h"
 #include <algorithm>
+#include <cstring>
 #include "op_mc2.h"
 #include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -91,12 +92,16 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *dstRankId, c
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTensor *dstRankId, char *group,
                                                int64_t worldSize, int64_t maxBs, int64_t mode, char *commAlg,
-                                               int64_t aivNum, aclTensor *y, aclTensor *receiveCnt,
-                                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                                               int64_t aivNum, bool sharedJetty, int64_t sharedJettyNum, aclTensor *y,
+                                               aclTensor *receiveCnt, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
     auto ret_param = CheckParams(x, dstRankId, group, worldSize, maxBs, mode, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+    if (commAlg != nullptr && (std::strcmp(commAlg, "urma") == 0 || std::strcmp(commAlg, "roce") == 0)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "URMA/ROCE requires the Torch-owned BandwidthTestBuffer context.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
 
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -107,12 +112,9 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(const aclTensor *x, const aclTens
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     aclnnRet =
         aclnnInnerBandwidthTestGetWorkspaceSize(mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize,
-                                                commAlg, aivNum, y, receiveCnt, workspaceSize, executor);
+                                                commAlg, aivNum, 0, sharedJetty, sharedJettyNum, 8192, 0, y, receiveCnt,
+                                                workspaceSize, executor);
 #endif
-    if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
-
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
     return aclnnRet;
 }
@@ -121,6 +123,10 @@ aclnnStatus aclnnBandwidthTest(void *workspace, uint64_t workspaceSize, aclOpExe
 {
     OP_LOGD("aclnnBandwidthTest start");
 
+    // Match MoeEpCombine: select AIV communication on the actual executor before launch.
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     aclnnStatus ret = aclnnInnerBandwidthTest(workspace, workspaceSize, executor, stream);
     OP_LOGD("aclnnBandwidthTest end");
     return ret;

@@ -20,24 +20,67 @@
 #endif
 #include "bandwidth_test_tiling_key.h"
 #include "bandwidth_test.h"
+#include "bandwidth_test_urma.h"
+#include "bandwidth_test_roce.h"
+#include "bandwidth_test_urma_shared_jetty.h"
 
 using namespace BandwidthTestImpl;
 using namespace BandwidthTestTiling;
 using namespace AscendC;
 
-template <uint8_t ArchTag>
+template <uint8_t ArchTag, uint8_t CommMode, bool SharedJetty>
 __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
                                           GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", BandwidthTestTilingData);
 
-    TPipe pipe;
-
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        BandwidthTest<DTYPE_X, DTYPE_Y> op;
-        op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-        op.Process();
+        if constexpr (CommMode == TILINGKEY_TPL_URMA) {
+            if (tilingData.mode >= 2 && tilingData.mode <= 4) {
+                // Streaming has no all-core barriers; idle cores need neither a pipe nor communication state.
+                if ASCEND_IS_AIV {
+                    if constexpr (SharedJetty) {
+                        if (GetBlockIdx() >= tilingData.sharedJettyNum) {
+                            return;
+                        }
+                    } else {
+                        if (GetBlockIdx() >= tilingData.worldSize) {
+                            return;
+                        }
+                    }
+                } else {
+                    return;
+                }
+            }
+        }
+        TPipe pipe;
+        if constexpr (CommMode == TILINGKEY_TPL_URMA) {
+            if constexpr (SharedJetty) {
+                BandwidthTestUrmaSharedJetty<DTYPE_X, DTYPE_Y> op;
+                op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            } else {
+                BandwidthTestUrma<DTYPE_X, DTYPE_Y> op;
+                op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            }
+        } else if constexpr (CommMode == TILINGKEY_TPL_ROCE) {
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() >= 2) {
+                    return;
+                }
+            } else {
+                return;
+            }
+            BandwidthTestRoce<DTYPE_X, DTYPE_Y> op;
+            op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process();
+        } else {
+            BandwidthTest<DTYPE_X, DTYPE_Y> op;
+            op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process();
+        }
     }
 }
