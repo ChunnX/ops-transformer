@@ -61,10 +61,10 @@ CutResult AllGatherMatmulTilingA5::GetCutResult(Mc2Tiling::AllGatherMatmulTiling
     tileFormulate.GetTiling();
     CutResult mCutGather = tileFormulate.tilingM_.cutRes;
     // 单轮通信量 = 每轮切分的 tileM(longTileLen) × K × dtypeSize（对齐 alltoall 口径）
-    // 乘法回绕保护：kValue ∈ [256, 65535)、dtypeSize ≥ 1，kBytes 不为 0；超限置 0 走默认算法回退
+    // 乘法回绕保护：kValue ∈ [256, 65535)、dtypeSize ≥ 2，kBytes 理论不为 0，仍显式防御除零；超限置 0 走默认算法回退
     constexpr uint64_t COMM_BYTES_LIMIT = 62UL * mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT;
     uint64_t kBytes = args.kValue * args.inputDtypeSize;
-    if (mCutGather.longTileLen > COMM_BYTES_LIMIT / kBytes) {
+    if (kBytes == 0 || mCutGather.longTileLen > COMM_BYTES_LIMIT / kBytes) {
         commDataBytes_ = 0;
     } else {
         commDataBytes_ = mCutGather.longTileLen * kBytes;
