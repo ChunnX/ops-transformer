@@ -22,10 +22,14 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "lightning_indexer_v2_common_arch35.h"
 
+#include "common/lightning_indexer_v2_service_cube_base_arch35.h"
+
 namespace LIV2Kernel {
 using namespace LIV2Common;
 template <typename LIT>
-class LightningIndexerV2ServiceCube {
+class LightningIndexerV2ServiceCube
+    : public LIV2Common::LightningIndexerV2ServiceCubeBase<LightningIndexerV2ServiceCube<LIT>> {
+    friend class LIV2Common::LightningIndexerV2ServiceCubeBase<LightningIndexerV2ServiceCube<LIT>>;
 public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
@@ -37,8 +41,6 @@ public:
     __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
                                                const GlobalTensor<Q_T> &queryGm);
     __aicore__ inline void InitParams(const ConstInfo &constInfo);
-    __aicore__ inline void AllocEventID();
-    __aicore__ inline void FreeEventID();
     __aicore__ inline void ComputeMm1(const LIV2Common::RunInfo &runInfo);
 
     static constexpr uint64_t KEY_BUF_NUM = 3;
@@ -149,9 +151,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitMm1GlobalTensor(c
                                                                                const GlobalTensor<K_T> &keyGm,
                                                                                const GlobalTensor<Q_T> &queryGm)
 {
-    blkTableGm_ = blkTableGm;
-    keyGm_ = keyGm;
-    queryGm_ = queryGm;
+    this->BindCubeTensors(blkTableGm, keyGm, queryGm);
 }
 
 template <typename LIT>
@@ -395,40 +395,5 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
                                                cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
 }
 
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::AllocEventID()
-{
-    SetMMLayoutTransform(true);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-    SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
-
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
-
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceCube<LIT>::FreeEventID()
-{
-    SetMMLayoutTransform(false);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 1);
-    WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 2);
-
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + 1);
-
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 0);
-    WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
-
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 0);
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + 1);
-}
 } // namespace LIV2Kernel
 #endif

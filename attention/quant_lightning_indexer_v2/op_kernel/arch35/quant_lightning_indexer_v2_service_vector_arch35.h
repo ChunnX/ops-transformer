@@ -24,6 +24,12 @@
 #include "../arch35/vf/quant_lightning_indexer_v2_vector1.h"
 #include "../arch35/vf/quant_lightning_indexer_v2_topk.h"
 
+#if __has_include("../../lightning_indexer_v2/arch35/common/lightning_indexer_v2_service_vector_base_arch35.h")
+#include "../../lightning_indexer_v2/arch35/common/lightning_indexer_v2_service_vector_base_arch35.h"
+#else
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_service_vector_base_arch35.h"
+#endif
+
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
@@ -41,7 +47,9 @@ constexpr uint32_t TOPK_6K = 6144;
 constexpr uint32_t DUPSIZE = 256; // duplicate所需额外地址空间
 
 template <typename QLIV2T>
-class QLIV2Vector {
+class QLIV2Vector
+    : public LIV2Common::LightningIndexerV2ServiceVectorBase<QLIV2Vector<QLIV2T>> {
+    friend class LIV2Common::LightningIndexerV2ServiceVectorBase<QLIV2Vector<QLIV2T>>;
 public:
     // =================================类型定义区=================================
     static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
@@ -61,10 +69,8 @@ public:
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct QLIV2Common::ConstInfo &constInfo,
-                                      const struct QLIV2Common::LdSplitCoreInfo &ldInfo,
+                                      const QLIV2Common::LdSplitCoreInfo &ldInfo,
                                       const QLIV2TilingData *__restrict tilingData);
-    __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm, GlobalTensor<SCORE_T> ldScoreGm,
-                                                  GlobalTensor<int32_t> ldIndexGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<WEIGHT_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm, GlobalTensor<bfloat16_t> valueOutGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm,
@@ -72,7 +78,7 @@ public:
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct QLIV2Common::LdSplitCoreInfo &ldInfo);
+    __aicore__ inline void InitLDBuffers(TPipe *pipe, const QLIV2Common::LdSplitCoreInfo &ldInfo);
     __aicore__ inline void DoTndPadding(const QLIV2Common::RunInfo &runInfo);
 
 protected:
@@ -180,7 +186,7 @@ private:
     bool returnValueFlag = false;
 
     struct QLIV2Common::ConstInfo constInfo_;
-    struct QLIV2Common::LdSplitCoreInfo ldInfo_;
+    QLIV2Common::LdSplitCoreInfo ldInfo_;
     topk::LITopk<SCORE_T> topkOp_;
 };
 
@@ -231,7 +237,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
-                                                          const struct QLIV2Common::LdSplitCoreInfo &ldInfo)
+                                                          const QLIV2Common::LdSplitCoreInfo &ldInfo)
 {
     pipe->Reset();
 
@@ -281,7 +287,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common::ConstInfo &constInfo,
-                                                       const struct QLIV2Common::LdSplitCoreInfo &ldInfo,
+                                                       const QLIV2Common::LdSplitCoreInfo &ldInfo,
                                                        const QLIV2TilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
@@ -336,30 +342,17 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
-                                                                   GlobalTensor<SCORE_T> ldScoreGm,
-                                                                   GlobalTensor<int32_t> ldIndexGm)
-{
-    this->scoreGm = scoreGm; // resucesum*k
-    this->ldScoreGm = ldScoreGm;
-    this->ldIndexGm = ldIndexGm;
-}
-
-template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
 {
     if constexpr (!IS_MX) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
     }
-    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
-    SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
+    this->AllocVectorOutputEvents();
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
 
-    SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+    this->AllocTopkEvents();
 }
 
 template <typename QLIV2T>
@@ -369,23 +362,18 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::FreeEventID()
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
     }
-    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
-    WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
+    this->FreeVectorOutputEvents();
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
 
-    WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+    this->FreeTopkEvents();
 }
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    uint64_t dealSize = constInfo_.sparseCount;
-    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
-    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
+    this->CleanInvalidIndices(invalidS1Offset, constInfo_.sparseCount);
 
     if (returnValueFlag) {
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -408,25 +396,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunInfo &runInfo)
 {
-    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset =
-        runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.sparseCount;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.sparseCount;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
-
-    if (constInfo_.returnValue) {
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-
-        GlobalTensor<uint16_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
-
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-    }
+    this->PadTndOutputs(runInfo, constInfo_.sparseCount, constInfo_.returnValue,
+                        constInfo_.NEG_INF_BFLOAT);
 }
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo,
@@ -1036,9 +1007,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
 
             int32_t s2Len = topkCountAlign16_ * ldProWorkspaceNum + ldProcessOffset;
             uint32_t s2LenAlign = QLIV2Common::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
-            uint64_t LDGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ +
-                                  topkCountAlign16_ * (ldInfo_.mStart + j) +
-                                  i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入LD处理偏移
+            uint64_t LDGmOffset = this->GetLdGmOffset(j, i, ldWorkspaceNum); // 加入LD处理偏移
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], ldScoreGm[LDGmOffset], ldScoreParams, scorePadParams);
