@@ -75,8 +75,8 @@ public:
     using K_T = typename QLIV2T::keyType;
     using OUT_T = typename QLIV2T::outputType;
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
-    static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
-    static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
+    static constexpr QLI_V2_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
+    static constexpr QLI_V2_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
 
     using MM1_OUT_T = float;
 
@@ -178,10 +178,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.cmpRatio = tilingData->cmpRatio;
     constInfo.outputLayout = Q_LAYOUT_T; // 输出和输入形状一致
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+    if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
     }
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) {
+    if constexpr (K_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         constInfo.isAccumSeqS2 = true;
     }
 
@@ -209,7 +209,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
                                                               __gm__ uint8_t *cmpResidualK)
 {
     // Q side: cu_seqlens (TND) or seqused (non-TND)
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+    if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         if (cuSeqlensQ != nullptr) {
             constInfo.actualLenQDims = constInfo.batchSize + 1;
             actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensQ, constInfo.actualLenQDims);
@@ -225,7 +225,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitActualSeqLen(__gm__ uint8_t *cu
         }
     }
     // K side: cu_seqlens (TND) or seqused (non-TND)
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) {
+    if constexpr (K_LAYOUT_T == QLI_V2_LAYOUT::TND) {
         if (cuSeqlensK != nullptr) {
             constInfo.actualLenDims = constInfo.batchSize + 1;
             actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)cuSeqlensK, constInfo.actualLenDims);
@@ -388,7 +388,7 @@ __aicore__ void inline QLIV2Preload<QLIV2T>::SplitCore()
         ldInfo.mStart = metadataGm.GetValue(ldMstartIndex);
         ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
         uint64_t actualSeqQPrefixSum = 0;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(ldInfo.bIdx);
         } else { // BSND
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
@@ -405,7 +405,7 @@ template <typename QLIV2T>
 __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
-        if (constInfo.outputLayout == LI_LAYOUT::TND) {
+        if (constInfo.outputLayout == QLI_V2_LAYOUT::TND) {
             uint32_t tSize = actualSeqLengthsGmQ.GetValue(constInfo.batchSize);
             uint32_t tBase = bIdx == 0 ? 0 : actualSeqLengthsGmQ.GetValue(bIdx);
             uint32_t s1Count = tempLoopInfo.actS1Size;
@@ -416,7 +416,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::DealActSeqLenIsZero(uint32_t bIdx, 
                     n2Idx * constInfo.sparseCount;                                 // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
-        } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
+        } else if (constInfo.outputLayout == QLI_V2_LAYOUT::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
                 uint64_t indiceOutOffset =
@@ -556,7 +556,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcGS1LoopParams(uint32_t bN2LoopI
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd =
         (bN2LoopIdx + 1 == constInfo.bN2End && constInfo.gS1End != 0) ? constInfo.gS1End : gS1SplitNum;
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::BSND) {
+    if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::BSND) {
         if (tempLoopInfo.gS1LoopEnd == gS1SplitNum && constInfo.qSeqSize > tempLoopInfo.actS1Size) {
             tempLoopInfo.needDealActS1LessThanS1 = true;
         }
@@ -601,7 +601,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
 
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
-        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+        if constexpr (Q_LAYOUT_T == QLI_V2_LAYOUT::TND) {
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(runInfo.bIdx);
         } else { // BSND
             actualSeqQPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.qSeqSize;
@@ -616,7 +616,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
             actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + runInfo.n2Idx * constInfo.sparseCount;
     }
     uint64_t actualSeqKPrefixSum;
-    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D, cu_seqlens_k
+    if constexpr (K_LAYOUT_T == QLI_V2_LAYOUT::TND) { // T N2 D, cu_seqlens_k
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx);
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
