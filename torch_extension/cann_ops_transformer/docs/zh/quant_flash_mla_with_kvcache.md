@@ -42,24 +42,28 @@
   2. 调用`quant_flash_mla_with_kvcache_metadata`生成`metadata`。
   3. 调用`quant_flash_mla_with_kvcache`，将上一步得到的`metadata`传入主算子。
 
-- **计算公式**：
+**计算公式**:
 
-  MLA（Multi-head Latent Attention）即多头潜在注意力，通过共享KV并引入潜在向量（latent）来表示Key与Value，从而大幅降低KV-cache的显存占用。本接口对MLA注意力进行量化与KV-cache（Paged Attention）加速。
+  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n \times d$的矩阵。
 
-> [!NOTE]
->
-> MLA中K与V复用同一份数据（KV复用/KV共享），因此主算子`quant_flash_mla_with_kvcache`的输入中只有`k_cache`，不单独接收`v_cache`。算子内部基于这份共用的KV cache同时完成Key与Value的计算，无需（也不支持）额外传入V。对应的量化参数仅需提供K的`k_descale`（per-tensor静态量化，shape为(1,)）。
-
-  MLA的计算公式一般定义如下，其中$Q$为Query，$\tilde{K}$为KV cache中的Key，$\tilde{V}$为对应的Value，$softmax\_scale$为缩放因子（默认取 $\frac{1}{\sqrt{headdim}}$），公式及算子名称中的"Attention"为"Multi-head Latent Attention"的简写：
+  self-attention的计算公式一般定义如下，其中$Q、K、V$为输入样本的重要属性元素，是输入样本经过空间变换得到的矩阵，且可以统一到一个特征空间中。$Q$、$K$、$V$以低精度格式输入，并携带对应的反量化scale。公式及算子名称中的"Attention"为"self-attention"的简写。
 
   $$
-  Attention(Q,\tilde{K},\tilde{V})=Softmax(softmax\_scale \cdot Q\tilde{K}^T)\tilde{V}
+  Attention(Q,K,V)=Score(Q,\ K) V
   $$
+
+  本算子中Score函数采用Softmax函数，self-attention计算公式为:
+
+  $$
+  Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
+  $$
+
+  其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$\sqrt{d}$进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n \times d$的矩阵。
 
   开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑如下所示：
 
   $$
-  S = softmax\_scale \cdot Q\tilde{K}^T
+  S = \frac{QK^T}{\sqrt{d}}
   $$
 
   $$
@@ -72,7 +76,7 @@
 
 > [!NOTE]
 >
-> Q、K数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim。Q_T表示所有Query Batch输入样本序列长度的累加和。
+> Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有K、V Batch输入样本序列长度的累加和。Q_S表示输入q tensor的序列长度，Q_N表示输入q tensor的头数，KV_S表示输入k/v tensor的序列长度，KV_N表示输入k/v tensor的头数。
 
 > [!NOTE]
 >
@@ -91,7 +95,6 @@ cann_ops_transformer.quant_flash_mla_with_kvcache_metadata(
     *,
     cu_seqlens_q=None,
     seqused_q=None,
-    batch_size=None,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
     head_dim_qk=576,
@@ -173,13 +176,12 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| cache_seqlens | Tensor | 必选 | 每个batch的KV序列长度。当layout_q为TND时，为各batch序列长度的累积序列长度（cumulative sequence lengths） | int32 | ND | (batch_size,) | × |
+| cache_seqlens | Tensor | 必选 | 每个batch的KV序列长度 | int32 | ND | (batch_size,) | × |
 | num_heads_q | int | 必选 | Query head数 | int32 | - | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
 | quant_mode | int | 必选 | 量化模式，支持传入枚举或对应 int 值 | int32 | - | - | - |
 | cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (batch_size+1,) | × |
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (batch_size,) | × |
-| batch_size | int | 可选 | batch大小。若未传入，则从cache_seqlens推导。layout_q为TND时建议不传入。默认值为None | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
 | head_dim_qk | int | 可选 | q/k的每个注意力头维度，默认值为576 | int32 | - | - | - |
@@ -231,8 +233,7 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
 
 - 参数cu_seqlens_q、seqused_q、block_table、cache_seqlens及attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 - quant_flash_mla_with_kvcache_metadata和quant_flash_mla_with_kvcache的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
-- 该接口仅支持Paged Attention（PA）场景，不传入block_table将被拦截报警。
-- 不支持左padding、tensorlist、prefix、pse特性。
+- 该接口仅支持Paged Attention（PA）场景，不传入block_table将被拦截。
 
 ### 特性参数组
 
@@ -402,7 +403,7 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
                     <li>q_descale、k_descale的dtype与shape匹配关系见下表</li>
                 </ul>
             </td>
-            <td>
+            <td rowspan="3">
                 <ul>
                     <li>不支持非连续Tensor</li>
                 </ul>
@@ -532,7 +533,7 @@ mask_mode参数解释
                     <li>当mask_mode为3时，必须传入attn_mask矩阵</li>
                 </ul>
             </td>
-            <td>
+            <td rowspan="2">
                 <ul>
                     <li>当前仅支持mask_mode=0/3，不支持其他值</li>
                 </ul>
@@ -694,7 +695,7 @@ mask_mode参数解释
             <td>无</td>
             <td>
                 <ul>
-                    <li>当layout_q为TND时，为各batch序列长度的累积序列长度</li>
+                    <li>-</li>
                 </ul>
             </td>
         </tr>
@@ -711,9 +712,9 @@ mask_mode参数解释
             <td>
                 <ul>
                     <li>layout_kv仅支持PA_BBND/PA_BNBD/PA_NZ</li>
-                    <li>layout_kv=PA_BBND时，k_cache为(N, Bs, N, D)排布</li>
-                    <li>layout_kv=PA_BNBD时，k_cache为(N, N, Bs, D)排布</li>
-                    <li>layout_kv=PA_NZ时，k_cache为(N, N, D/16, Bs, 16)排布</li>
+                    <li>layout_kv=PA_BBND时，k_cache为(Bn, Bs, N, D)排布</li>
+                    <li>layout_kv=PA_BNBD时，k_cache为(Bn, N, Bs, D)排布</li>
+                    <li>layout_kv=PA_NZ时，k_cache为(Bn, N, D/32, Bs, 32)排布</li>
                 </ul>
             </td>
         </tr>
