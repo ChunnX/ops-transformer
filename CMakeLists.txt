@@ -259,6 +259,31 @@ if (BUILD_OPS_RTY_KERNEL)
             c_sec
     )
 
+    # MC2 host DFX APIs are provided by asc-comm as a shared library.
+    set(MC2_CLIENT_DFX_LIBRARY "" CACHE FILEPATH
+            "Path to asc-comm's libmc2_client_dfx.so")
+    if(NOT MC2_CLIENT_DFX_LIBRARY)
+        set(_MC2_CLIENT_DFX_DEFAULT
+                "${ASCEND_CANN_PACKAGE_PATH}/lib64/libmc2_client_dfx.so")
+        if(EXISTS "${_MC2_CLIENT_DFX_DEFAULT}")
+            set(MC2_CLIENT_DFX_LIBRARY "${_MC2_CLIENT_DFX_DEFAULT}")
+        else()
+            find_library(MC2_CLIENT_DFX_LIBRARY
+                    NAMES mc2_client_dfx
+                    PATHS
+                        ${ASCEND_CANN_PACKAGE_PATH}/lib64
+                        ${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/lib64
+                    NO_DEFAULT_PATH
+            )
+        endif()
+    endif()
+    if(NOT MC2_CLIENT_DFX_LIBRARY)
+        message(FATAL_ERROR
+                "libmc2_client_dfx.so is required by MC2 DFX. "
+                "Install it under ${ASCEND_CANN_PACKAGE_PATH}/lib64.")
+    endif()
+    list(APPEND _op_host_aclnn_link ${MC2_CLIENT_DFX_LIBRARY})
+
     find_package(alog MODULE)
 
     if(NOT ${alog_FOUND})
