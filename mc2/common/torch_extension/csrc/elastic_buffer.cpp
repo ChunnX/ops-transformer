@@ -1217,24 +1217,28 @@ public:
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
 
-    using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
+    using DispatchTensorList =
+        std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     using DispatchEpilogueTensorList =
         std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
     using CombineEpilogueTensorList = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
 
     DispatchTensorList MoeEpDispatch(
         const at::Tensor &x, const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights,
-        const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedDstSlotIdx,
-        const c10::optional<at::Tensor> &cachedRouteCount, const c10::optional<at::Tensor> &cachedRouteDstScaleout,
+        const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedSrcTokenIdx,
+        const c10::optional<at::Tensor> &cachedDstSlotIdx, const c10::optional<at::Tensor> &cachedRouteCount,
+        const c10::optional<at::Tensor> &cachedRouteDstScaleout,
         const c10::optional<at::Tensor> &cachedRouteScaleoutSlot, int64_t epWorldSize, int64_t epRankId,
         int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync,
         int64_t hostPinnedCounterAddr, int64_t cclBufferSize);
-    DispatchEpilogueTensorList MoeEpDispatchEpilogue(
-        const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-        const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId,
-        int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX,
-        at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
-        const c10::optional<at::Tensor> &recvScalesOpt);
+    DispatchEpilogueTensorList MoeEpDispatchEpilogue(const at::Tensor &topkIdx, const at::Tensor &numRecvPerRank,
+                                                     const at::Tensor &numRecvPerExpert,
+                                                     const c10::optional<at::Tensor> &cachedRecvSrcMetadata,
+                                                     int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+                                                     int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+                                                     at::Tensor &recvX, at::Tensor &recvSrcMetadata,
+                                                     const c10::optional<at::Tensor> &recvTopkWeightsOpt,
+                                                     const c10::optional<at::Tensor> &recvScalesOpt);
     void MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
                       const at::Tensor &numRecvTokensPerExpert, const c10::optional<at::Tensor> &topkWeights,
                       int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
@@ -1700,11 +1704,11 @@ private:
 
 Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     const at::Tensor &x, const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights,
-    const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedDstSlotIdx,
-    const c10::optional<at::Tensor> &cachedRouteCount, const c10::optional<at::Tensor> &cachedRouteDstScaleout,
-    const c10::optional<at::Tensor> &cachedRouteScaleoutSlot, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-    int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync, int64_t hostPinnedCounterAddr,
-    int64_t cclBufferSize)
+    const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedSrcTokenIdx,
+    const c10::optional<at::Tensor> &cachedDstSlotIdx, const c10::optional<at::Tensor> &cachedRouteCount,
+    const c10::optional<at::Tensor> &cachedRouteDstScaleout, const c10::optional<at::Tensor> &cachedRouteScaleoutSlot,
+    int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
+    bool doCpuSync, int64_t hostPinnedCounterAddr, int64_t cclBufferSize)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
@@ -1712,8 +1716,9 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
+    bool isDirect = (topoType == NETWORK_DIRECT);
 
-    bool anyCached = cachedDstSlotIdx.has_value();
+    bool anyCached = isDirect ? cachedSrcTokenIdx.has_value() : cachedDstSlotIdx.has_value();
     TORCH_CHECK(!(anyCached && doCpuSync), "cached mode is incompatible with do_cpu_sync=True");
     bool anyCachedRoute =
         cachedRouteCount.has_value() || cachedRouteDstScaleout.has_value() || cachedRouteScaleoutSlot.has_value();
@@ -1731,13 +1736,16 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 
     at::Tensor numRecvPerRank = at::empty({epWorldSize}, x.options().dtype(at::kInt));
     at::Tensor numRecvPerExpert = at::empty({numLocalExperts}, x.options().dtype(at::kLong));
+    at::Tensor sendSrcTokenIdx = at::empty({epWorldSize, numTokens}, x.options().dtype(at::kInt));
     at::Tensor dstSlot = at::empty({numTokens, topK}, x.options().dtype(at::kInt));
     at::Tensor routeCount = at::zeros({numTokens}, x.options().dtype(at::kInt));
     at::Tensor routeDstScaleout = at::full({numTokens, routeCapacity}, -1, x.options().dtype(at::kInt));
     at::Tensor routeScaleoutSlot = at::full({numTokens, routeCapacity}, -1, x.options().dtype(at::kInt));
 
     at::Tensor topkWeightsTensor = topkWeights.has_value() ? *topkWeights : at::Tensor();
-    at::Tensor cachedSlotTensor = cachedDstSlotIdx.has_value() ? *cachedDstSlotIdx : at::Tensor();
+    at::Tensor cachedSrcTokenIdxTensor =
+        (isDirect && cachedSrcTokenIdx.has_value()) ? *cachedSrcTokenIdx : at::Tensor();
+    at::Tensor cachedSlotTensor = (hybridCached && cachedDstSlotIdx.has_value()) ? *cachedDstSlotIdx : at::Tensor();
     at::Tensor cachedRouteCountTensor = cachedRouteCount.has_value() ? *cachedRouteCount : at::Tensor();
     at::Tensor cachedRouteDstScaleoutTensor =
         cachedRouteDstScaleout.has_value() ? *cachedRouteDstScaleout : at::Tensor();
@@ -1750,17 +1758,18 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
                                   ConvertToAclDataType(scales.has_value() ? scalesTensor.scalar_type() : at::kFloat);
     TensorWrapper scalesWrapper = TensorWrapper{scalesTensor, scalesDtype};
 
-    ACLNN_CMD(aclnnMoeEpDispatch, moeContextTensor_, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
-              cachedRouteCountTensor, cachedRouteDstScaleoutTensor, cachedRouteScaleoutSlotTensor, epWorldSize,
-              epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, expertAlignment, doCpuSync,
-              hostPinnedCounterAddr, topoType, rankNumPerServer, numRecvPerRank, numRecvPerExpert, dstSlot, routeCount,
-              routeDstScaleout, routeScaleoutSlot);
+    ACLNN_CMD(aclnnMoeEpDispatch, moeContextTensor_, x, topkIdx, topkWeightsTensor, scalesWrapper,
+              cachedSrcTokenIdxTensor, cachedSlotTensor, cachedRouteCountTensor, cachedRouteDstScaleoutTensor,
+              cachedRouteScaleoutSlotTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_,
+              expertAlignment, doCpuSync, hostPinnedCounterAddr, topoType, rankNumPerServer, numRecvPerRank,
+              numRecvPerExpert, sendSrcTokenIdx, dstSlot, routeCount, routeDstScaleout, routeScaleoutSlot);
 
-    return std::make_tuple(numRecvPerRank, numRecvPerExpert, dstSlot, routeCount, routeDstScaleout, routeScaleoutSlot);
+    return std::make_tuple(numRecvPerRank, numRecvPerExpert, sendSrcTokenIdx, dstSlot, routeCount, routeDstScaleout,
+                           routeScaleoutSlot);
 }
 
 Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
-    const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
+    const at::Tensor &topkIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
     const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
     int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
     const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
@@ -1791,7 +1800,7 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
         recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
     bool hasTopkWeights = recvTopkWeightsOpt.has_value();
 
-    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, dstBufferSlotIdx, numRecvPerRank, numRecvPerExpert,
+    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, topkIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_,
               hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
               recvScalesWrapper);
