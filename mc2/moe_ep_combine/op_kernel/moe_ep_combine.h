@@ -44,6 +44,7 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 
 #include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
@@ -76,6 +77,16 @@ static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence 
 // Keep the final flag ordered after payload writes without requesting an unconsumed CQE on every invocation.
 // CQE-enabled payload checkpoints and Drain remain in the SQ high-watermark path.
 static constexpr struct UrmaWqeEntry CHANNEL_FLAG_WQE_CONFIG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
+
+enum class MoeEpCombineProfileStage : uint32_t {
+    KERNEL = 0,
+    DATA_WQE = 2,
+    FLAG_COMMIT = 3,
+    FLAG_SOURCE_INIT = 4,
+    LOCAL_BARRIER = 6,
+    CORE_ASSIGNMENT = 7,
+};
+
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
 public:
@@ -93,6 +104,8 @@ private:
     __aicore__ inline void InitFlagSource();
     template <auto const &config>
     __aicore__ inline void PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len);
+    template <auto const &config>
+    __aicore__ inline void PrepareMultiSgeWrite(GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum);
     __aicore__ inline void FlushPreparedWrites(bool keepHandle = false);
     __aicore__ inline void SplitRange(uint64_t rangeBegin, uint64_t rangeEnd, uint32_t coreCount, uint32_t coreIndex,
                                       uint64_t &coreBegin, uint64_t &coreEnd);
@@ -121,6 +134,7 @@ private:
     const MoeEpCombineInfo *tilingData_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
 
     uint32_t rankId_{0};
     uint32_t epWorldSize_{0};
@@ -129,6 +143,7 @@ private:
     uint32_t numMaxTokensPerRank_{0};
     uint32_t topK_{0};
     uint32_t axisH_{0};
+    uint32_t hAlignSize_{0};
     uint64_t combineStateWinOffset_{0};
     uint64_t combineDataWinOffset_{0};
 
@@ -186,6 +201,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     numMaxTokensPerRank_ = tilingData_->cfg.numMaxTokensPerRank;
     topK_ = tilingData_->cfg.topK;
     axisH_ = tilingData_->cfg.hidden;
+    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     perSlotBytes_ = tilingData_->cfg.perSlotBytes;
     aivNum_ = tilingData_->aivNum;
     recvCapacity_ = tilingData_->recvCapacity;
@@ -252,6 +268,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::COMBINE, aivNum_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -290,12 +307,30 @@ template <TemplateMoeEpCombineTypeClass>
 template <auto const &config>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareWrite(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    if (preparedWriteCount_ == HCOMM_BATCH_CAPACITY) {
-        // BatchCommit resets the WQE count in the handle; keep using it for this channel as PR 10309 does.
+    if (preparedWriteCount_ + 1U > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
     (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, src, len);
     ++preparedWriteCount_;
+    ++sqWriteCount_;
+}
+
+template <TemplateMoeEpCombineTypeClass>
+template <auto const &config>
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiSgeWrite(
+    GM_ADDR dst, const AscendC::BufDesc *srcDescs, uint32_t srcNum)
+{
+    // Multi-SGE WQE: SQE header (48B) + srcNum * SGE (16B each), rounded up to WQEBB boundary (64B).
+    constexpr uint32_t sqeHeaderBytes = 48U;
+    constexpr uint32_t sgeEntryBytes = 16U;
+    constexpr uint32_t wqebbSize = HCOMM_PLAIN_WRITE_WQE_BYTES;
+    uint32_t wqeBytes = sqeHeaderBytes + srcNum * sgeEntryBytes;
+    uint32_t wqebbCount = (wqeBytes + wqebbSize - 1U) / wqebbSize;
+    if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
+        FlushPreparedWrites(true);
+    }
+    (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, srcDescs, srcNum);
+    preparedWriteCount_ += wqebbCount;
     ++sqWriteCount_;
 }
 
@@ -362,23 +397,23 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     uint64_t dstSlot =
         static_cast<uint64_t>(static_cast<uint32_t>(srcTokenIdx)) * topK_ + static_cast<uint32_t>(srcTopKIdx);
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
-    // Keep the SQ protection of the legacy address-table path.  The direct metadata path originally omitted this
-    // completion edge, so an unusually skewed rank range could fill the SQ and silently lose the later flag WQE.
-    constexpr uint32_t writesPerToken = HasTopkWeight == 1 ? 2U : 1U;
-    bool drainAfterToken = sqWriteCount_ + 2U * writesPerToken > HCOMM_SQ_MAX_PENDING;
-    if constexpr (HasTopkWeight == 1) {
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    } else if (drainAfterToken) {
-        PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    } else {
-        PrepareWrite<DEFAULT_WQE_CONFIG>(remoteDataBase + dstSlot * perSlotBytes_, tokenAddr, tokenBytes);
-    }
+    GM_ADDR remoteSlotBase = remoteDataBase + dstSlot * perSlotBytes_;
+    // After multi-SGE merge, each token produces 1 WQE (was 2 when HasTopkWeight==1).
+    constexpr uint32_t wqesPerToken = 1U;
+    bool drainAfterToken = sqWriteCount_ + wqesPerToken > HCOMM_SQ_MAX_PENDING;
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
+        AscendC::BufDesc srcDescs[2] = {{tokenAddr, hAlignSize_}, {weightAddr, sizeof(float)}};
         if (drainAfterToken) {
-            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+            PrepareMultiSgeWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
         } else {
-            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteStateBase + dstSlot * WIN_ADDR_ALIGN, weightAddr, sizeof(float));
+            PrepareMultiSgeWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, srcDescs, 2U);
+        }
+    } else {
+        if (drainAfterToken) {
+            PrepareWrite<DEFAULT_CQE_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
+        } else {
+            PrepareWrite<DEFAULT_WQE_CONFIG>(remoteSlotBase, tokenAddr, tokenBytes);
         }
     }
     if (drainAfterToken) {
@@ -474,6 +509,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         return;
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::CORE_ASSIGNMENT, MoeEpProfileBoundary::BEGIN));
     uint32_t activeAivNum = aivNum_;
     activeBatchHandle_ = {};
     activeBatchChannel_ = 0U;
@@ -490,6 +527,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         GetCoreAssignment(activeAivNum, targetRank, coreIndexInGroup, groupSize);
     }
     bool sendsTokens = actualA_ != 0U && aivId_ < activeAivNum;
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::CORE_ASSIGNMENT, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::BEGIN));
     if (sendsTokens) {
         if (splitRankTokens) {
             // Local payload is consumed directly by combine epilogue; combine only sends remote-rank entries.
@@ -513,12 +554,25 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         }
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::DATA_WQE, MoeEpProfileBoundary::END));
+
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::FLAG_SOURCE_INIT, MoeEpProfileBoundary::BEGIN));
     InitFlagSource();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::MTE3,
+                                             MoeEpCombineProfileStage::FLAG_SOURCE_INIT, MoeEpProfileBoundary::END));
     // Publish AIV0's shared constant-source initialization before any remote flag is submitted.
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineProfileStage::LOCAL_BARRIER, MoeEpProfileBoundary::BEGIN));
     SyncAll<true>();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::WAIT,
+                                             MoeEpCombineProfileStage::LOCAL_BARRIER, MoeEpProfileBoundary::END));
 
     // Match upstream: publish flags after this AIV's payload phase, even for empty rank/channel slices.
     // In the low-AIV branch the same strided rank list is visited again, using channel 0 only.
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::FLAG_COMMIT, MoeEpProfileBoundary::BEGIN));
     bool publishesChannelFlag = aivId_ < activeAivNum && (!splitRankTokens || coreIndexInGroup < combineChannelCount_);
     if (publishesChannelFlag) {
         if (splitRankTokens) {
@@ -535,12 +589,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseDire
         DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
     }
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::URMA,
+                                             MoeEpCombineProfileStage::FLAG_COMMIT, MoeEpProfileBoundary::END));
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
     SendPhaseDirectFromMetadata();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::COMBINE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpCombineProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 #endif

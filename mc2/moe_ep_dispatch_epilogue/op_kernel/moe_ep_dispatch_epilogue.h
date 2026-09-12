@@ -42,6 +42,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/moe_ep_exception_dump_writer.h"
+#include "../../common/op_kernel/moe_ep_profiler.h"
 
 namespace MoeEpDispatchEpilogueImpl {
 
@@ -71,6 +72,19 @@ static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
 static constexpr uint32_t CACHED_META_TILE = 4096U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
+
+enum class MoeEpDispatchEpilogueProfileStage : uint32_t {
+    KERNEL = 0,
+    PREFIX = 1,
+    PAYLOAD_WAIT = 2,
+    WAIT_BARRIER = 3,
+    COUNT_HITS = 4,
+    WINDOW_OUTPUT = 5,
+    COUNT_BARRIER = 6,
+    RANK_ROW_STARTS = 7,
+    CACHED_RANK_OFFSETS = 8,
+    OUTPUT_SYNC = 9,
+};
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -109,6 +123,7 @@ private:
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
     MoeEpExceptionDump::MoeEpCoreDiagWriter diagWriter_;
+    MOE_EP_PROFILE_DECLARE();
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
     GlobalTensor<int32_t> numRecvPerRankGm_;
@@ -233,6 +248,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
+    MOE_EP_PROFILE_INIT(mc2Context_, MoeEpProfileOp::DISPATCH_EPILOGUE, aivNum_);
     constexpr size_t metadataOffset = offsetof(MoeEpDispatchEpilogueTilingData, moeEpDispatchEpilogueInfo) +
                                       offsetof(MoeEpDispatchEpilogueInfo, dumpMetadata);
     MoeEpExceptionDump::WriteMetadata(context, tilingGM + metadataOffset);
@@ -359,17 +375,48 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::BEGIN));
     if constexpr (!IsCached) {
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::PREFIX,
+                                                 MoeEpProfileBoundary::BEGIN));
         ComputePrefixSums();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::PREFIX, MoeEpProfileBoundary::END));
         WaitDispatch();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_HITS,
+                                                 MoeEpProfileBoundary::BEGIN));
         CountHits();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::VECTOR,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_HITS,
+                                                 MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::COUNT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
 
         // Every core builds its own [rank][expert] metadata cursors from the shared joint-count matrix.
         // The starts stay in local UB, so no post-build cross-core synchronization is needed.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::RANK_ROW_STARTS,
+                                                 MoeEpProfileBoundary::BEGIN));
         BuildRankRowStarts();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                                 MoeEpDispatchEpilogueProfileStage::RANK_ROW_STARTS,
+                                                 MoeEpProfileBoundary::END));
 
         uint32_t totalHits = 0;
         for (uint32_t localExpertIdx = 0; localExpertIdx < numLocalExperts_; ++localExpertIdx) {
@@ -377,23 +424,62 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
 
         if (totalHits != 0) {
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                     MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                     MoeEpProfileBoundary::BEGIN));
             CopyFromWindowByExpert();
+            MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                     MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                     MoeEpProfileBoundary::END));
         }
         // recv_x/metadata/weights are consumed immediately by MoeEpCombine in continue mode.  Do not rely on the
         // diagnostic write below (or on kernel-tail draining) to complete preceding MTE3 writes.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     } else {
         WaitDispatch();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncAll<true>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::WAIT_BARRIER,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_WAIT_DONE);
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::CACHED_RANK_OFFSETS,
+                                                 MoeEpProfileBoundary::BEGIN));
         CopyCachedRankOffsets();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::CACHED_RANK_OFFSETS,
+                                                 MoeEpProfileBoundary::END));
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                 MoeEpProfileBoundary::BEGIN));
         CopyFromWindowByCachedMeta();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::MTE2,
+                                                 MoeEpDispatchEpilogueProfileStage::WINDOW_OUTPUT,
+                                                 MoeEpProfileBoundary::END));
         // The cached metadata path ends with MTE3_MTE2 for UB reuse.  Add an explicit producer-completion edge for
         // the following combine kernel, which consumes all five metadata fields and recv_rank_offsets.
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::BEGIN));
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                                 MoeEpDispatchEpilogueProfileStage::OUTPUT_SYNC,
+                                                 MoeEpProfileBoundary::END));
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_EPILOGUE_RUN_POS_OUTPUT_DONE);
     }
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::SCALAR,
+                                             MoeEpDispatchEpilogueProfileStage::KERNEL, MoeEpProfileBoundary::END));
+    MOE_EP_PROFILE_FLUSH();
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -403,6 +489,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         return;
     }
 
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT,
+                                             MoeEpProfileBoundary::BEGIN));
     uint32_t mask = 1;
     int32_t sumOfFlag = 0;
     int32_t commpareFlag = static_cast<int32_t>(totalNotifyCnt_);
@@ -430,6 +519,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     // Dispatch reuses these notification slots in the next continue round.  SyncAll only synchronizes AIVs; it does
     // not replace the MTE3 completion required before a later kernel can publish the next round's notifications.
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+    MOE_EP_PROFILE_MARK(MOE_EP_PROFILE_EVENT(MoeEpProfileOp::DISPATCH_EPILOGUE, MoeEpProfileEngine::WAIT,
+                                             MoeEpDispatchEpilogueProfileStage::PAYLOAD_WAIT,
+                                             MoeEpProfileBoundary::END));
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>

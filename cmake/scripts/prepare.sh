@@ -118,6 +118,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_AICPU_KERNEL="$2"
         shift 2
         ;;
+    --enable_moe_ep_profiling)
+        ENABLE_MOE_EP_PROFILING="$2"
+        shift 2
+        ;;
     --cann_3rd_lib_path)
         CANN_3RD_LIB_PATH="$(realpath $2)"
         shift 2
@@ -184,6 +188,7 @@ function build() {
         -DENABLE_AICPU=${ENABLE_AICPU} \
         -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}  \
         -DENABLE_OOM=${ENABLE_OOM} \
+        -DENABLE_MOE_EP_PROFILING=${ENABLE_MOE_EP_PROFILING} \
         -DASCEND_MODULE_NAME=${ASCEND_MODULE_NAME}
 
     make ${JOB_NUM} prepare_build

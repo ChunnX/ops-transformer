@@ -46,6 +46,7 @@ option(UT_TEST_ALL                "Enable all ut"                   OFF)
 option(ENABLE_OOM                 "Enable kernel oom"               OFF)
 option(ENABLE_MSSANITIZER         "Enable mssanitizer mode"         OFF)
 option(ENABLE_DUMP_CCE            "Enable dump_cce mode"            OFF)
+option(ENABLE_MOE_EP_PROFILING    "Enable MoE EP device cycle profiler" OFF)
 option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc that need to be compiled")
