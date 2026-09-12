@@ -24,6 +24,7 @@ constexpr uint32_t URMA_MAX_BATCH_TOKENS = 2048;
 constexpr uint32_t URMA_MAX_SHARED_JETTYS = 56;
 constexpr uint32_t ROCE_HCOMM_UB_BYTES = 512;
 constexpr uint32_t ROCE_ID_CHUNK_TOKENS = 256;
+constexpr uint32_t ROCE_MAX_PENDING_WRITES = 8192;
 } // namespace BandwidthTestTiling
 
 struct BandwidthTestTilingData {

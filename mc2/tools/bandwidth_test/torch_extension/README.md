@@ -39,10 +39,14 @@ ROCE 会检查全部 rank 对（包括同机卡之间）的 ROCE link，仅跨�
 
 在 `config.py` 中设置 `comm_alg="roce"`、`mode=0`、`shared_jetty=False`，脚本会选择
 ROCE context 和独立的 ROCE tiling 分支。`mode=None` 时 ROCE 默认使用 mode 0；显式设置
-其他 mode 会报错。当前 ROCE 调试路径固定只使用 AIV 0，依次发送全部 peer 的数据和通知、
-等待全部 peer 的通知、搬运接收数据；非 0 核在 `Init()` 前直接返回，不初始化、不打印。
-`aiv_num` 建议设为 `-1`：参数仍需通过原有合法性检查，ROCE tiling 随后固定实际核数为 1。
-`batch_tokens` 必须为 0，ROCE 不支持 Batch 接口。该单核路径用于定位问题，不用于性能对比。
+其他 mode 会报错。当前 ROCE 调试路径固定使用 AIV 0、1：核 0 发送输入前 `ceil(BS/2)` 个
+token，Unlock 后通过核间同步交接，核 1 发送剩余 token 并发布完整接收计数和通知。
+最后由核 0 等待全部 peer 的通知并搬运接收数据，保持原有精度输出顺序。
+核 2 及以上在 `Init()` 前直接返回，不初始化、不打印。
+`aiv_num` 建议设为 `-1`：参数仍需通过原有合法性检查，ROCE tiling 随后固定实际核数为 2，
+平台至少需要两个 AIV。`batch_tokens` 必须为 0，ROCE 不支持 Batch 接口。
+该路径用于测试同一 channel 从核 0 到核 1 的 Lock/Unlock 交接，不用于性能对比。
+BS 为奇数时核 0 多发一条；BS=1 时核 1 不发送 payload，但仍执行远端 channel 的加锁、解锁和通知。
 
 ```python
 sym_buffer = BandwidthTestBuffer(group, comm_alg="roce")
@@ -61,11 +65,17 @@ Channel 的 `memHandles=customMemHandle_`、`memHandleNum=1`，远端 Win 通过
 `1 MiB + 2 * (world_size + 1) * max_bs * align_up(hidden * 2, 512)` 字节。
 
 `bandwidth_test_roce.h` 是独立的 mode 0 模板，使用 `Hcomm<COMM_PROTOCOL_ROCE>` 的
-`Init`、普通 `WriteNbi(ChannelHandle, dst, src, len)` 和 `Drain(ChannelHandle)`，不使用
-`BatchHandle`、`MakeBatchHandle`、`BatchCommit` 或锁接口。全部目标 rank 都由 AIV 0 负责，
-逐 token 写入（默认立即提交），对该 peer 的数据全部发送后 Drain，再依次发布 count、Drain、
-ready flag、Drain。SDK 负责普通写入的队列空间管理；当前调试版本在接口返回失败时仅打印错误，
-继续执行后续流程，不调用 `Trap()`。
+`Init`、`Lock(ChannelHandle)`、普通 `WriteNbi(ChannelHandle, dst, src, len)`、
+`Drain(ChannelHandle)` 和 `Unlock(ChannelHandle)`，不使用 `BatchHandle`、`MakeBatchHandle`、
+`BatchCommit`。需要目标 SDK 已支持 ROCE Lock/Unlock。两核依次对全部远端 channel 执行
+Lock、当前半段的逐 token 写入（默认立即提交）、Unlock；本 rank 的拷贝不调用锁接口。
+核 1 另行加锁后依次发布 count、ready flag、Drain，最后 Unlock。
+每条 channel 的未完成写入上限按 8192 条计算，跨核累计，包含 count 和 flag 两条通知写入。
+不触及容量边界时只在最终 flag 后显式 Drain；payload 累计每满 8192 条，或 count 恰好填满
+剩余容量时，先 Drain 再继续提交，避免超出上限。交接时本地 staging 不复用，保留到最终 Drain。
+每核都扫描完整路由，跳过另一半的发送但保留目标偏移计数，避免覆盖或遗漏接收数据。
+SDK 负责普通写入的队列空间管理；当前 cache 测试版本不调用设备侧 `printf` 或 `Trap()`，
+接口返回值不触发额外错误处理，避免打印干扰 Lock/Unlock 的 cache 行为测试。
 网络写入的数据和通知的源地址、目的地址全部位于 HCCL 注册 Win；输入先经 UB 拷贝到本地 Win，
 接收完成后再从本地 Win 拷贝到输出 tensor。
 

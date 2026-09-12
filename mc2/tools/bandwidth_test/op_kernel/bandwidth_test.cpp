@@ -67,7 +67,11 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
                 op.Process();
             }
         } else if constexpr (CommMode == TILINGKEY_TPL_ROCE) {
-            if (GetBlockIdx() != 0) {
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() >= 2) {
+                    return;
+                }
+            } else {
                 return;
             }
             BandwidthTestRoce<DTYPE_X, DTYPE_Y> op;

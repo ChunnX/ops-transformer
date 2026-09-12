@@ -131,7 +131,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx(); // 获取当前核ID
-    AscendC::printf("[ROCE] core=%u Init enter\n", aivId_);
     epWorldSize_ = tilingData->worldSize;
     context_ = (__gm__ Mc2MoeContext *)context;
 
@@ -139,7 +138,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     axisBS_ = tilingData->maxBs;   // token数量
     axisH_ = tilingData->dataSize; // hidden size
     epRankId_ = context_->epRankId;
-    AscendC::printf("[ROCE] rank=%d core=%u context loaded\n", epRankId_, aivId_);
     hOutSize_ = axisH_ * sizeof(XType);
     totalWinSizeEp_ = tilingData->totalWinSize;
     totalUbSize_ = static_cast<uint32_t>(tilingData->totalUbSize);
@@ -151,15 +149,20 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankId_]);
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     selfDataStatusGMTensor.SetGlobalBuffer(
-        (__gm__ uint32_t *)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
-    // Only the ping-pong bit is needed by this benchmark; omit generic operator DFX bookkeeping.
+        (__gm__ uint32_t *)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET));
+    // Both cores read the same epoch before core 0 advances it for the next invocation.
+    selfDataStatusGMTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     LocalTensor<uint32_t> dataStateTensor = dataStateBuf.Get<uint32_t>();
     DataCopy(dataStateTensor, selfDataStatusGMTensor, UB_ALIGN / sizeof(uint32_t));
     SyncFunc<HardEvent::MTE2_S>();
     dataState_ = dataStateTensor.GetValue(ZERONE_STATE_POS);
-    dataStateTensor.SetValue(ZERONE_STATE_POS, dataState_ == 0 ? 1 : 0);
-    SyncFunc<HardEvent::S_MTE3>();
-    DataCopy(selfDataStatusGMTensor, dataStateTensor, UB_ALIGN / sizeof(uint32_t));
+    SyncAll<true>();
+    if (aivId_ == 0) {
+        dataStateTensor.SetValue(ZERONE_STATE_POS, dataState_ == 0 ? 1 : 0);
+        SyncFunc<HardEvent::S_MTE3>();
+        DataCopy(selfDataStatusGMTensor, dataStateTensor, UB_ALIGN / sizeof(uint32_t));
+        SyncFunc<HardEvent::MTE3_S>();
+    }
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
@@ -183,7 +186,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     // ============ 初始化单核状态等待范围 ============
     stateOffset_ = 32UL; // 32字节
     rscvStatusNum_ = epWorldSize_;
-    // Core 0 sends to and receives from every peer for debugging.
+    // Both senders need all peer counts; core 0 alone consumes the receive window.
     recStatusNumPerCore_ = epWorldSize_;
     startStatusIndex_ = 0;
 
@@ -212,9 +215,7 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
     dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
     tpipe_->InitBuffer(xQueue_, BUFFER_SINGLE, hOutAlignUbSize_);
     tpipe_->InitBuffer(hcommBuf_, BandwidthTestTiling::ROCE_HCOMM_UB_BYTES);
-    if (hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES) != HCOMM_SUCCESS) {
-        AscendC::printf("[ROCE] rank=%d core=%u Hcomm Init failed\n", epRankId_, aivId_);
-    }
+    hcomm_.Init(hcommBuf_.Get<uint8_t>(), BandwidthTestTiling::ROCE_HCOMM_UB_BYTES);
     startRankId_ = 0;
     endRankId_ = epWorldSize_;
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
@@ -223,8 +224,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Ini
             hcommHandle_[rankId] = context_->hcommHandle_[channelIndex];
         }
     }
-    AscendC::printf("[ROCE] rank=%d core=%u Init done state=%u peers=[%u,%u)\n",
-               epRankId_, aivId_, dataState_, startRankId_, endRankId_);
 }
 
 template <TemplateBandwidthTestRoceTypeClass>
@@ -255,14 +254,19 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Pro
 template <TemplateBandwidthTestRoceTypeClass>
 __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::SendToMoeExpert()
 {
-    // Each destination has one owner core; original token slots keep staging disjoint across cores.
+    // Split input rows, not channels: core 1 must reuse channels unlocked by core 0.
+    const uint32_t splitToken = axisBS_ / 2 + axisBS_ % 2;
+    const uint32_t tokenBegin = aivId_ == 0 ? 0 : splitToken;
+    const uint32_t tokenEnd = aivId_ == 0 ? splitToken : axisBS_;
     GM_ADDR stagingGM = windowGM_ - expertPerSizeOnWin_;
     GlobalTensor<XType> dstWinGMTensor;
     SyncFunc<HardEvent::V_S>();
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         bool isRemote = rankId != static_cast<uint32_t>(epRankId_);
         uint32_t curExpertCnt = 0;
-        AscendC::printf("[ROCE] rank=%d core=%u peer=%u data begin\n", epRankId_, aivId_, rankId);
+        if (isRemote) {
+            hcomm_.Lock(hcommHandle_[rankId]);
+        }
         for (uint32_t chunkStart = 0; chunkStart < axisBS_;) {
             uint32_t chunkTokens = axisBS_ - chunkStart;
             chunkTokens = chunkTokens < BandwidthTestTiling::ROCE_ID_CHUNK_TOKENS ?
@@ -277,29 +281,32 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Sen
                     continue;
                 }
                 uint32_t tokenIndex = chunkStart + i;
+                // Count both halves to retain the original compact destination offsets and total counts.
+                uint32_t destinationIndex = curExpertCnt++;
+                if (tokenIndex < tokenBegin || tokenIndex >= tokenEnd) {
+                    continue;
+                }
                 GM_ADDR remoteAddr = GetWindAddrByRankId(rankId) + epRankId_ * expertPerSizeOnWin_ +
-                    static_cast<uint64_t>(curExpertCnt) * hAlignWinSize_;
+                    static_cast<uint64_t>(destinationIndex) * hAlignWinSize_;
                 GM_ADDR localAddr = stagingGM + static_cast<uint64_t>(tokenIndex) * hAlignWinSize_;
                 dstWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(isRemote ? localAddr : remoteAddr));
                 dstWinGMTensor.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
                 ProcessToken(dstWinGMTensor, tokenIndex);
-                ++curExpertCnt;
-                if (isRemote &&
-                    hcomm_.WriteNbi(hcommHandle_[rankId], remoteAddr, localAddr, hOutSize_) != HCOMM_SUCCESS) {
-                    AscendC::printf("[ROCE] rank=%d core=%u peer=%u token=%u data WriteNbi failed\n",
-                               epRankId_, aivId_, rankId, tokenIndex);
+                if (isRemote) {
+                    hcomm_.WriteNbi(hcommHandle_[rankId], remoteAddr, localAddr, hOutSize_);
+                }
+                // The destination index spans both cores, so the capacity count survives Unlock/Lock.
+                if (isRemote && curExpertCnt % BandwidthTestTiling::ROCE_MAX_PENDING_WRITES == 0) {
+                    hcomm_.Drain(hcommHandle_[rankId]);
                 }
             }
             chunkStart += chunkTokens;
         }
         statusTensor_((rankId - startRankId_) * 8 + 1) = curExpertCnt;
-        AscendC::printf("[ROCE] rank=%d core=%u peer=%u data posted tokens=%u\n",
-                   epRankId_, aivId_, rankId, curExpertCnt);
-        // Each channel has one owner core. Keep staging live until all writes to this peer complete.
-        if (isRemote && curExpertCnt != 0 && hcomm_.Drain(hcommHandle_[rankId]) != HCOMM_SUCCESS) {
-            AscendC::printf("[ROCE] rank=%d core=%u peer=%u data Drain failed\n", epRankId_, aivId_, rankId);
+        // Unlock publishes counters without waiting; staging remains live across the sender handoff.
+        if (isRemote) {
+            hcomm_.Unlock(hcommHandle_[rankId]);
         }
-        AscendC::printf("[ROCE] rank=%d core=%u peer=%u data done\n", epRankId_, aivId_, rankId);
     }
 }
 
@@ -326,25 +333,19 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Set
         SyncFunc<HardEvent::MTE3_S>();
         if (isRemote) {
             ChannelHandle channel = hcommHandle_[rankId];
-            AscendC::printf("[ROCE] rank=%d core=%u peer=%u count WriteNbi begin\n", epRankId_, aivId_, rankId);
+            hcomm_.Lock(channel);
             // Publish count before flag; both sources are in the registered local Win.
-            if (hcomm_.WriteNbi(channel, remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t),
-                                sizeof(int32_t)) != HCOMM_SUCCESS) {
-                AscendC::printf("[ROCE] rank=%d core=%u peer=%u count WriteNbi failed\n", epRankId_, aivId_, rankId);
+            hcomm_.WriteNbi(channel, remoteAddr + sizeof(int32_t), localAddr + sizeof(int32_t),
+                                sizeof(int32_t));
+            // Count and flag also consume WQEs. Make room for flag only if count filled the capacity.
+            uint32_t totalTokens = statusTensor_.GetValue((rankId - startRankId_) * 8 + 1);
+            if (totalTokens % BandwidthTestTiling::ROCE_MAX_PENDING_WRITES ==
+                BandwidthTestTiling::ROCE_MAX_PENDING_WRITES - 1) {
+                hcomm_.Drain(channel);
             }
-            AscendC::printf("[ROCE] rank=%d core=%u peer=%u count Drain begin\n", epRankId_, aivId_, rankId);
-            if (hcomm_.Drain(channel) != HCOMM_SUCCESS) {
-                AscendC::printf("[ROCE] rank=%d core=%u peer=%u count Drain failed\n", epRankId_, aivId_, rankId);
-            }
-            AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag WriteNbi begin\n", epRankId_, aivId_, rankId);
-            if (hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t)) != HCOMM_SUCCESS) {
-                AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag WriteNbi failed\n", epRankId_, aivId_, rankId);
-            }
-            AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag Drain begin\n", epRankId_, aivId_, rankId);
-            if (hcomm_.Drain(channel) != HCOMM_SUCCESS) {
-                AscendC::printf("[ROCE] rank=%d core=%u peer=%u flag Drain failed\n", epRankId_, aivId_, rankId);
-            }
-            AscendC::printf("[ROCE] rank=%d core=%u peer=%u notify done\n", epRankId_, aivId_, rankId);
+            hcomm_.WriteNbi(channel, remoteAddr, localAddr, sizeof(int32_t));
+            hcomm_.Drain(channel);
+            hcomm_.Unlock(channel);
         }
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -381,8 +382,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
 
     // ============ 轮询等待状态 ============
     SyncFunc<AscendC::HardEvent::S_V>();
-    AscendC::printf("[ROCE] rank=%d core=%u wait flags begin state=%u peers=[%u,%u)\n",
-               epRankId_, aivId_, dataState_, startRankId_, endRankId_);
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
         SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -395,7 +394,6 @@ __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Wai
             sumOfFlag += statusFp32Tensor_.GetValue(peer * stateOffset_ / sizeof(float));
         }
     }
-    AscendC::printf("[ROCE] rank=%d core=%u wait flags done\n", epRankId_, aivId_);
 
     // ============ 清零状态区，为下一次通信做准备 ============
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
@@ -505,14 +503,21 @@ template <TemplateBandwidthTestRoceTypeClass>
 __aicore__ inline void BandwidthTestRoce<TemplateBandwidthTestRoceTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        AscendC::printf("[ROCE] rank=%d core=%u Process enter\n", epRankId_, aivId_);
-        SendToMoeExpert();
-        SetStatus();
-        AscendC::printf("[ROCE] rank=%d core=%u WaitDispatch enter\n", epRankId_, aivId_);
-        WaitDispatch();
-        AscendC::printf("[ROCE] rank=%d core=%u LocalWindowCopy enter\n", epRankId_, aivId_);
-        LocalWindowCopy();
-        AscendC::printf("[ROCE] rank=%d core=%u Process done\n", epRankId_, aivId_);
+        if (aivId_ == 0) {
+            SendToMoeExpert();
+        }
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+        if (aivId_ == 1) {
+            SendToMoeExpert();
+            SetStatus();
+        }
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+        if (aivId_ == 0) {
+            WaitDispatch();
+            LocalWindowCopy();
+        }
     }
 }
 

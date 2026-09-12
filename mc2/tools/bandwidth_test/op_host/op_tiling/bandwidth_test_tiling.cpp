@@ -483,10 +483,10 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
         aivNum = static_cast<uint32_t>(*aivNumPtr);
     }
     if (IsRoce(context)) {
-        OP_TILING_CHECK(platformAivNum < 1,
-                        OP_LOGE(nodeName, "ROCE debug requires one AIV core."), return ge::GRAPH_FAILED);
-        aivNum = 1;
-        OP_LOGI(nodeName, "ROCE debug: requested aiv_num=%ld, selected=1; core 0 sends and receives.",
+        OP_TILING_CHECK(platformAivNum < 2,
+                        OP_LOGE(nodeName, "ROCE lock handoff requires two AIV cores."), return ge::GRAPH_FAILED);
+        aivNum = 2;
+        OP_LOGI(nodeName, "ROCE debug: requested aiv_num=%ld, selected=2; core 0 then core 1 send, core 0 receives.",
                 *aivNumPtr);
     }
 
@@ -503,6 +503,11 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint64_t statusCoreNum = IsSharedJetty(context) ? tilingData->sharedJettyNum : aivNum;
     uint64_t statusRanksPerCore =
         (static_cast<uint64_t>(tilingData->worldSize) + statusCoreNum - 1) / statusCoreNum;
+    if (IsRoce(context)) {
+        // Both senders scan all peers; core 0 receives every peer after the handoff.
+        waitRanksPerCore = tilingData->worldSize;
+        statusRanksPerCore = tilingData->worldSize;
+    }
     uint64_t statusBytes = alignUp(statusRanksPerCore, 8) * 32;
     uint64_t rowBytes = static_cast<uint64_t>(tilingData->dataSize) * 2;
     uint64_t requiredUb = 0;
