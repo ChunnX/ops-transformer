@@ -516,7 +516,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     uint64_t commKValue = isFp4_ ? (args_.kValue / EVEN_ALIGN) : args_.kValue;
     uint64_t commDtypeSize = isFp4_ ? 1 : args_.inputDtypeSize;
     uint64_t commDataBytes = tileMValue_ * commKValue * commDtypeSize;
-    OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%lu, tileM=%lu, commKValue=%lu, rankDim=%u, commEngine=%u",
+    OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, commKValue=%llu, rankDim=%u, commEngine=%u",
             commDataBytes, tileMValue_, commKValue, args_.rankDim, commEngine);
     uint32_t algoCount = 0;
     const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
