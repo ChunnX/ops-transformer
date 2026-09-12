@@ -46,6 +46,11 @@ public:
             .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("cached_src_token_idx")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("cached_dst_slot_idx")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -74,6 +79,10 @@ public:
         this->Output("num_recv_tokens_per_expert")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+        this->Output("send_src_token_idx")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("dst_buffer_slot_idx")
             .ParamType(REQUIRED)
