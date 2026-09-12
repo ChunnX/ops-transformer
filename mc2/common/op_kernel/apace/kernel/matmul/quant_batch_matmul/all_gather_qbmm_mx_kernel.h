@@ -30,6 +30,7 @@
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
+#include "../../../utils/op_state_dump.h"
 
 namespace Apace {
 
@@ -147,16 +148,16 @@ public:
         uint64_t cBytesPerM{0};
     };
 
-    __aicore__ inline void Run(const Params &params);
-    __aicore__ inline void operator()(const Params &params)
+    __aicore__ inline void Run(const Params &params, Mc2Kernel::OpStateDump &opStateDump);
+    __aicore__ inline void operator()(const Params &params, Mc2Kernel::OpStateDump &opStateDump)
     {
-        Run(params);
+        Run(params, opStateDump);
     }
 
 private:
     __aicore__ inline void Init(const Params &params);
     __aicore__ inline void Process(const Params &params, const ProblemShape &problemShape, BlockScheduler &bs,
-                                   BlockMmadFragC &mmadFrag);
+                                   BlockMmadFragC &mmadFrag, Mc2Kernel::OpStateDump &opStateDump);
 
     // ---- L2 cache optimization ----
     template <typename TensorB, typename TensorScaleB>
@@ -277,7 +278,8 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(co
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params,
+                                                                       Mc2Kernel::OpStateDump &opStateDump)
 {
     Init(params);
 
@@ -318,14 +320,15 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Par
     // 延迟构建 fragment tensor（head 先建，main/tail 在 Process 中按需建）
     BuildFragmentTensors(params);
 
-    Process(params, problemShape, sch, mmadFrag);
+    Process(params, problemShape, sch, mmadFrag, opStateDump);
 }
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const Params &params,
                                                                            const ProblemShape &problemShape,
                                                                            BlockScheduler &sch,
-                                                                           BlockMmadFragC &mmadFrag)
+                                                                           BlockMmadFragC &mmadFrag,
+                                                                           Mc2Kernel::OpStateDump &opStateDump)
 {
     const auto &mmT = *params.mmTile;
     const auto &fp = params.fragParams;
@@ -353,6 +356,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     }
     uint32_t readyTileIdx = 0;
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
+    opStateDump.DoDump(DUMP_FIELD_WAIT);
 
     Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
@@ -366,12 +370,14 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
         if (curMtile <= 0 || curNtile <= 0) {
             break;
         }
+        opStateDump.DoDump(DUMP_FIELD_TURN_INC);
         sch.GetTileCoord(blockIdx, mPos, nPos);
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
         while (readyTileIdx < ctx.dependTileIdx) {
             readyTileIdx++;
             CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+            opStateDump.DoDump(DUMP_FIELD_WAIT);
         }
 
         // Per-tile L2 cache hint
@@ -411,6 +417,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     while (readyTileIdx < fp.commTurn) {
         readyTileIdx++;
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+        opStateDump.DoDump(DUMP_FIELD_WAIT);
     }
 }
 
