@@ -81,7 +81,7 @@ class SweepTests(unittest.TestCase):
             with patch.object(sweep.subprocess, "run", side_effect=self.fake_run):
                 sweep.run_sweep(config)
             self.assertEqual(len(self.seen), 12)
-            self.assertEqual(len({case["master_port"] for case in self.seen}), 12)
+            self.assertEqual({case["master_port"] for case in self.seen}, {config.parallel.master_port})
             report = next(Path(directory).rglob("results.csv"))
             with report.open(encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.DictReader(stream))

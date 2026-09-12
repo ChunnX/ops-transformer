@@ -114,8 +114,8 @@ def run_sweep(config):
         raise ValueError("Sweep Jetty counts (including mode 4 baseline) must fit selected AIVs and the 56-Jetty limit")
     if not config.shape.test_configs:
         raise ValueError("Sweep requires shape.test_configs")
-    if not 1 <= config.parallel.master_port <= 65535 - len(cases) + 1:
-        raise ValueError("Sweep needs one consecutive master port per topology")
+    if not 1 <= config.parallel.master_port <= 65535:
+        raise ValueError("master_port must be in [1, 65535]")
     server_index = int(os.environ["VC_TASK_INDEX"]) if config.parallel.is_cloud else config.parallel.server_index
     if not 0 <= server_index < config.parallel.server_num:
         raise ValueError("Invalid server index")
@@ -133,7 +133,7 @@ def run_sweep(config):
             case_dir.mkdir()
             case = {"experiment": experiment, "mode": mode, "jettys": jettys, "peers": peers,
                     "peers_attr": peers if mode == 3 else 0,
-                    "master_port": config.parallel.master_port + index,
+                    "master_port": config.parallel.master_port,
                     "profiling_path": str(case_dir / "Profiling_Result"),
                     "result_path": str(case_dir / "results.json")}
             manifest["current_case"] = case

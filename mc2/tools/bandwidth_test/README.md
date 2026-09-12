@@ -30,26 +30,25 @@ Torch 接口、context 生命周期和 `aclnn_graph` 示例见
 python bandwidth_test.py
 ```
 
-## 单用例复测 UB_RTP J8 / P15 / BS4096
+## 全 UB_RTP 连续批跑
 
-当前保留单跑配置：16 卡、mode 3、8 Jetty、每 Jetty 15 个对端、
-BS=max_bs=4096、H=16384、全 UB_RTP（comm_level=2）、master_port=50004。
-sweep_enabled=False、is_single_test=True；图模式仍为 105 轮（5 轮预热、100 轮采集），
-batch_tokens=0、drain_threshold=8192。
+当前默认开启 sweep，按原有拓扑矩阵和全部 shape 连续运行；所有用例统一使用
+`ParallelConfig.master_port=5001`，不按用例递增端口。
+保留全 UB_RTP（comm_level=2）、batch_tokens=0、drain_threshold=8192，
+图模式每个用例 105 轮（5 轮预热、100 轮采集）。临时设备诊断日志已删除。
 
-本次已删除共享 Jetty kernel 的临时 printf、返回值诊断和等待轮询日志，恢复原通信调用及 flag 等待。
-重新构建、安装算子 kernel 后，两台服务器分别设置 server_index=0/1 和正确的共同 master_ip，再执行：
+两台服务器分别配置 server_index=0/1，master_ip 填同一个正确的主节点地址，再各自运行：
 
 ```bash
-python -u bandwidth_test.py 2>&1 | tee rtp_j8_bs4096_no_printf.log
+python -u bandwidth_test.py 2>&1 | tee bandwidth_sweep.log
 ```
 
-仍使用当前配置的静态图构建目录。复测前确保更新已安装算子，并重新生成该目录下的静态内核，
-避免继续执行此前带 printf 的版本；只重新运行 Python 或编译 Torch extension 不足以替换旧 kernel。
+静态图目录恢复为 `static_kernel`。如果服务器仍安装带 printf 的诊断 kernel，
+需重新构建安装无日志 kernel，并重新生成对应静态内核。
 
 ## 配置说明
 
-普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置见上面的 UB_RTP 单用例复测说明。
+普通打流可使用 `ModelConfig.comm_alg = "urma"`、`ModelConfig.mode = 2`；当前默认配置见上面的全 UB_RTP 连续批跑说明。
 模式 2 保留原有 Torch context、URMA batch 接口和 Win 直接打流逻辑。共享 Jetty 下还支持模式 3/4：
 模式 3 的每个 Jetty 都向所有远端卡发送完整 `BS` 个 token；模式 4 固定建立
 `world_size - 1` 个 Jetty，每个 Jetty 负责一张远端卡并发送完整 BS。
