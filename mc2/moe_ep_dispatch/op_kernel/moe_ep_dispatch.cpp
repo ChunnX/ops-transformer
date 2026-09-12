@@ -41,9 +41,10 @@ using namespace AscendC;
 
 template <bool DoCpuSync, bool IsCached, bool IsTopkWeights, bool IsMxQuant, uint8_t NetworkMode>
 __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
-                                           GM_ADDR scales, GM_ADDR cachedSlotIdx, GM_ADDR cachedRouteCount,
-                                           GM_ADDR cachedRouteDstScaleout, GM_ADDR cachedRouteScaleoutSlot,
-                                           GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert, GM_ADDR dstBufferSlotIdx,
+                                           GM_ADDR scales, GM_ADDR cachedSrcTokenIdx, GM_ADDR cachedSlotIdx,
+                                           GM_ADDR cachedRouteCount, GM_ADDR cachedRouteDstScaleout,
+                                           GM_ADDR cachedRouteScaleoutSlot, GM_ADDR numRecvPerRank,
+                                           GM_ADDR numRecvPerExpert, GM_ADDR sendSrcTokenIdx, GM_ADDR dstBufferSlotIdx,
                                            GM_ADDR routeCount, GM_ADDR routeDstScaleout, GM_ADDR routeScaleoutSlot,
                                            GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
@@ -65,8 +66,8 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
         op.Process();
     } else {
         MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
-        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
-                dstBufferSlotIdx, workspaceGM, tilingGM, &pipe, &tilingData);
+        op.Init(context, x, topkIdx, topkWeights, scales, cachedSrcTokenIdx, numRecvPerRank, numRecvPerExpert,
+                sendSrcTokenIdx, workspaceGM, tilingGM, &pipe, &tilingData);
         op.Process();
     }
 
