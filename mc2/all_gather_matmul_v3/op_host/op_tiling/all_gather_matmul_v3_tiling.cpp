@@ -894,17 +894,17 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
+    std::vector<uint64_t> channelHandles;
     Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AllGatherMatmulV3",
                                             10U, // tilingGmArgIdx
                                             9U); // workspaceGmArgIdx
-    uint64_t channelHandle = 0U;
     Mc2Exception::Mc2DumpUrmaContext(args, "AllGatherMatmulV3",
                                      0U,  // contextArgIdx
                                      0U,  // argsOffset
                                      10U, // tilingGmArgIdx
-                                     &channelHandle);
-    if (channelHandle != 0U) {
-        Mc2Hcomm::TriggerDeferredDump(channelHandle, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
+                                     &channelHandles);
+    if (!channelHandles.empty()) {
+        Mc2Hcomm::TriggerDeferredDump(channelHandles, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
                                       "AllGatherMatmulV3");
     } else {
         OP_LOGE("AllGatherMatmulV3", "No valid channel handle, skip hcomm dump.");

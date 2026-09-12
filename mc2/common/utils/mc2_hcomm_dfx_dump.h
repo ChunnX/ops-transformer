@@ -19,6 +19,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <vector>
 #include "acl/acl_rt.h"
 #include "mc2_log.h"
 #include "adv_api/hcomm/dfx/hcomm_channel_dump.h"
@@ -39,7 +40,7 @@ constexpr uint32_t HCOMM_DFX_DUMP_DELAY_MS = 20U;
 struct HcommDfxState {
     std::mutex mutex;
     std::atomic<bool> dumpStarted{false};
-    uint64_t channelHandle = 0U;
+    std::vector<uint64_t> channelHandles;
     aclrtContext context = nullptr;
     std::string opName;
     bool atExitRegistered = false;
@@ -51,40 +52,44 @@ inline HcommDfxState &GetHcommDfxState()
     return state;
 }
 
-inline int32_t DumpChannelInfoOnce(uint64_t channelHandle, const std::string &opName)
+inline int32_t DumpChannelInfoOnce(const std::vector<uint64_t> &channelHandles, const std::string &opName)
 {
     if (GetHcommDfxState().dumpStarted.exchange(true)) {
         return 0;
     }
-    int32_t dumpRet = AscendC::HcommChannelInfoDump(channelHandle);
-    OP_LOGE(opName.c_str(), "HcommChannelInfoDump ret=%d (deferred at host safe point, channelHandle=0x%lx)",
-            dumpRet, channelHandle);
+    int32_t dumpRet = 0;
+    for (uint64_t channelHandle : channelHandles) {
+        dumpRet = AscendC::HcommChannelInfoDump(channelHandle);
+        OP_LOGE(opName.c_str(), "HcommChannelInfoDump ret=%d (deferred at host safe point, channelHandle=0x%lx)",
+                dumpRet, channelHandle);
+    }
     return dumpRet;
 }
 
 inline void DumpAtExit()
 {
-    uint64_t handle = 0U;
+    std::vector<uint64_t> handles;
     aclrtContext ctx = nullptr;
     std::string opName;
     {
         std::lock_guard<std::mutex> lock(GetHcommDfxState().mutex);
-        handle = GetHcommDfxState().channelHandle;
+        handles = GetHcommDfxState().channelHandles;
         ctx = GetHcommDfxState().context;
         opName = GetHcommDfxState().opName;
-        GetHcommDfxState().channelHandle = 0U;
+        GetHcommDfxState().channelHandles.clear();
         GetHcommDfxState().context = nullptr;
     }
-    if (handle == 0U) {
+    if (handles.empty()) {
         return;
     }
     if (ctx != nullptr) {
         (void)aclrtSetCurrentContext(ctx);
     }
-    (void)DumpChannelInfoOnce(handle, opName);
+    (void)DumpChannelInfoOnce(handles, opName);
 }
 
-inline void DumpWorker(uint64_t channelHandle, aclrtContext capturedCtx, int32_t deviceId, const std::string &opName)
+inline void DumpWorker(std::vector<uint64_t> channelHandles, aclrtContext capturedCtx, int32_t deviceId,
+                       const std::string &opName)
 {
     if (capturedCtx != nullptr) {
         (void)aclrtSetCurrentContext(capturedCtx);
@@ -93,20 +98,24 @@ inline void DumpWorker(uint64_t channelHandle, aclrtContext capturedCtx, int32_t
     }
     // 等待当前 AIC 异常处理流程结束、设备调度恢复，避免与异常处理线程竞争运行时锁
     std::this_thread::sleep_for(std::chrono::milliseconds(HCOMM_DFX_DUMP_DELAY_MS));
-    (void)DumpChannelInfoOnce(channelHandle, opName);
+    (void)DumpChannelInfoOnce(channelHandles, opName);
 }
 } // namespace HcommDfxDumpDetail
 
 // 在 host 安全点异步触发 hcomm channel dump。
-inline void TriggerDeferredDump(uint64_t channelHandle, int32_t deviceId, const char *opName)
+inline void TriggerDeferredDump(const std::vector<uint64_t> &channelHandles, int32_t deviceId, const char *opName)
 {
-    OP_LOGE(opName, "Hcomm dump trigger deferred to host safe point, channelHandle=0x%lx", channelHandle);
+    if (channelHandles.empty()) {
+        return;
+    }
+    OP_LOGE(opName, "Hcomm dump trigger deferred to host safe point, channelHandleNum=%zu, firstChannelHandle=0x%lx",
+            channelHandles.size(), channelHandles.front());
     aclrtContext currentCtx = nullptr;
     (void)aclrtGetCurrentContext(&currentCtx);
     std::string opStr = (opName == nullptr) ? std::string() : std::string(opName);
     {
         std::lock_guard<std::mutex> lock(HcommDfxDumpDetail::GetHcommDfxState().mutex);
-        HcommDfxDumpDetail::GetHcommDfxState().channelHandle = channelHandle;
+        HcommDfxDumpDetail::GetHcommDfxState().channelHandles = channelHandles;
         HcommDfxDumpDetail::GetHcommDfxState().context = currentCtx;
         HcommDfxDumpDetail::GetHcommDfxState().opName = opStr;
         if (!HcommDfxDumpDetail::GetHcommDfxState().atExitRegistered) {
@@ -115,7 +124,7 @@ inline void TriggerDeferredDump(uint64_t channelHandle, int32_t deviceId, const 
         }
     }
     try {
-        std::thread(HcommDfxDumpDetail::DumpWorker, channelHandle, currentCtx, deviceId, opStr).detach();
+        std::thread(HcommDfxDumpDetail::DumpWorker, channelHandles, currentCtx, deviceId, opStr).detach();
     } catch (const std::system_error &e) {
         OP_LOGE(opName, "spawn deferred hcomm dump thread failed(%s), dump at process exit", e.what());
     }

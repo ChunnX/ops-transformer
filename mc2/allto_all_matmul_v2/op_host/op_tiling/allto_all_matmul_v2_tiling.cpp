@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <string>
 #include <cstring>
+#include <vector>
 #include <register/op_def_registry.h>
 #include <register/op_impl_registry.h>
 #include "graph/types.h"
@@ -68,17 +69,17 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
+    std::vector<uint64_t> channelHandles;
     Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AlltoAllMatmulV2",
                                             9U,  // tilingGmArgIdx
                                             8U); // workspaceGmArgIdx
-    uint64_t channelHandle = 0U;
     Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
                                      0U,  // contextArgIdx
                                      0U,  // argsOffset
                                      9U,  // tilingGmArgIdx
-                                     &channelHandle);
-    if (channelHandle != 0U) {
-        Mc2Hcomm::TriggerDeferredDump(channelHandle, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
+                                     &channelHandles);
+    if (!channelHandles.empty()) {
+        Mc2Hcomm::TriggerDeferredDump(channelHandles, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
                                       "AlltoAllMatmulV2");
     } else {
         OP_LOGE("AlltoAllMatmulV2", "No valid channel handle, skip hcomm dump.");
