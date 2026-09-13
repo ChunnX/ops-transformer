@@ -1,5 +1,6 @@
 #pragma once
 #include "basic_modules/sparse_flash_attention_grad_common_header.h"
+#include "layout.h"
 
 namespace SFAG_KEY_OWNED_FULL_REDUCE {
 
@@ -32,8 +33,9 @@ __aicore__ inline void BuildKeyOwnedMetadata(GM_ADDR indices, GM_ADDR workspace,
     const event_t mte2Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
     const event_t scalarMte3 = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_MTE3>());
     const event_t mte3Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE3_S>());
+    const uint32_t vectorCoreCount = KeyOwnedVectorCoreCount(td);
     SetAtomicNone();
-    for (uint32_t q = GetBlockIdx(); q < 1024; q += 40) {
+    for (uint32_t q = GetBlockIdx(); q < 1024; q += vectorCoreCount) {
         SetFlag<HardEvent::S_V>(scalarVector);
         WaitFlag<HardEvent::S_V>(scalarVector);
         Duplicate<uint32_t>(counts, 0, 4096);
@@ -134,9 +136,10 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
     const event_t mte2Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
     const event_t vectorMte3 = static_cast<event_t>(pipe.AllocEventID<HardEvent::V_MTE3>());
     const event_t mte3Vector = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE3_V>());
+    const uint32_t vectorCoreCount = KeyOwnedVectorCoreCount(td);
     SetAtomicNone();
     SetFlag<HardEvent::V_MTE2>(release);
-    for (uint32_t bucket = GetBlockIdx(); bucket < 2048; bucket += 40) {
+    for (uint32_t bucket = GetBlockIdx(); bucket < 2048; bucket += vectorCoreCount) {
         Duplicate(accumulator, 0.0f, 64 * 576);
         PipeBarrier<PIPE_V>();
         uint32_t batchRows = 0;

@@ -13,9 +13,14 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     std::string soc;
     bool found = platform->GetPlatformRes("version", "SoC_version", soc);
     OP_LOGI(context, "SFAG_KEY_OWNED_FULL_REDUCE platform found=%d SoC_version=%s", found, soc.c_str());
-    if (!found || soc != "Ascend910B3") return;
+    const bool supportedSoc = soc == "Ascend910B1" || soc == "Ascend910B2" ||
+                              soc == "Ascend910B2C" || soc == "Ascend910B3";
+    if (!found || !supportedSoc) return;
     platform_ascendc::PlatformAscendC hw(platform);
-    if (hw.GetCurNpuArch() != NpuArch::DAV_2201 || hw.GetCoreNumAic() != 20 || hw.GetCoreNumAiv() != 40) return;
+    const uint32_t aicNum = hw.GetCoreNumAic();
+    const uint32_t aivNum = hw.GetCoreNumAiv();
+    const bool supportedCoreCount = (aicNum == 20 && aivNum == 40) || (aicNum == 24 && aivNum == 48);
+    if (hw.GetCurNpuArch() != NpuArch::DAV_2201 || !supportedCoreCount) return;
     if (context->GetTilingKey() != 111111 || context->GetDeterministic() != 1) return;
     auto *qdesc = context->GetInputDesc(0);
     if (qdesc == nullptr || qdesc->GetDataType() != ge::DT_FLOAT16) return;
