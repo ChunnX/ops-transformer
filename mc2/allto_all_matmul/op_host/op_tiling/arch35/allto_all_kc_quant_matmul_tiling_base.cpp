@@ -256,12 +256,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
         inferredInfo_.tileM * contextInfo_.args_.kValue * static_cast<uint64_t>(contextInfo_.args_.inputDtypeSize);
     OP_LOGI(opName_, "[SetHcclTiling] commDataBytes=%llu, tileM=%u, kValue=%llu, rankDim=%u, engine=%u", commDataBytes,
             inferredInfo_.tileM, contextInfo_.args_.kValue, contextInfo_.args_.rankDim, hcclServerEngine);
-    uint32_t algoCount = 0;
-    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllToAllCommAlgoTable(algoCount);
-    std::string algoName =
-        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, contextInfo_.group.c_str(), hcclServerEngine,
-                                                     commDataBytes, static_cast<uint32_t>(contextInfo_.args_.rankDim),
-                                                     algoEntries, algoCount, Mc2Tiling::ALLTOALL_DEFAULT_ALGO_NAME);
+    std::string algoName = Mc2Tiling::ALLTOALL_DEFAULT_ALGO_NAME;
     OP_LOGI(opName_, "[SetHcclTiling] selected algoName=%s, group=%s", algoName.c_str(), contextInfo_.group.c_str());
 
     Mc2CcTilingConfigBuilder allToAllBuilder =
