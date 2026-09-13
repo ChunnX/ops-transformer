@@ -1234,6 +1234,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     }
     bsCopyParams.blockLen = currentBsSize * N_ * sizeof(P);
     DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams);
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID3);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID3);
 
     // 当前BS块的invRms系数一次搬入并计算，后续各chunk按行偏移复用已有UB空间。
     ProcessV2ChunkLoadInvRms(bsStart, currentBsSize);
