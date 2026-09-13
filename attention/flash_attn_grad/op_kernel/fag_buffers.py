@@ -50,7 +50,6 @@ from fag_common import (
     VECTOR_BASEN,
 )
 
-
 # ==================================================================
 #  CV 共享区 —— 必须声明在两个 section 之外
 # ==================================================================
@@ -477,6 +476,24 @@ def make_lse_ub(v1w):
         ),
         addrs=[mem.UB_LSE0_A[v1w], mem.UB_LSE1_A[v1w]],
         mutex_ids=mem.MTX_UB_LSE,
+    )
+
+
+def make_sink_part_ub(v1w):
+    """dsink 的单任务部分和缓冲：[1, VECTOR_BASEN] fp32，只写 lane 0。
+
+    存 [1,1]（valid_shape 裁剪）后随路 atomicAdd 进 dsink GM：
+    同一 head 的多个 b/s2 块跨核累加，只能靠原子加。
+    """
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[mem.UB_SINK_PART_A[v1w]],
+        mutex_ids=mem.MTX_UB_SINK_PART,
     )
 
 

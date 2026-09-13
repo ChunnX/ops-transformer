@@ -365,6 +365,8 @@ def _build_ub(width, pool):
     nzp = main.buf("nzp", NZP_ROWS * VECTOR_BASEN * 2)
     sfmg = main.buf("sfmg", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
     lse = main.buf("lse", _UB_ROW_SLOT, slots=2)
+    # sink 反向（dsink）专用：本任务的部分和，[1,1] 取 lane 0 后随路原子加。
+    sink_part = main.buf("sink_part", _UB_ROW_SLOT, align=_UB_ROW_SLOT)
     cast = main.buf("cast", VECTOR_BASEM * VECTOR_BASEN * 2)
 
     shared = _Arena("UB mm1/mm2", _UB_BYTES, pool, base=UB_HEAD_RESERVE)
@@ -389,6 +391,7 @@ def _build_ub(width, pool):
         "nzp": nzp,
         "sfmg": sfmg,
         "lse": lse,
+        "sink_part": sink_part,
         "cast": cast,
         "mm1": mm1,
         "mm2": mm2,
@@ -468,6 +471,8 @@ UB_NZP_A = _addr(_UB, "nzp")
 UB_SFMG_A = _addr(_UB, "sfmg")
 UB_LSE0_A = {w: _UB[w]["lse"]["addrs"][0] for w in _TIERS}
 UB_LSE1_A = {w: _UB[w]["lse"]["addrs"][1] for w in _TIERS}
+# sink 反向专用（BN2 与 GS1S2 共用 HEAD_DIM_ALIGN 那张图，同 BN2_UB_* 的做法）。
+UB_SINK_PART_A = _addr(_UB, "sink_part")
 # attenmask 复用 y/dy 的地址与号（vec1 之后 vec2 再用）。
 UB_MASK_A = UB_Y_A
 UB_MASK_PRE_A = UB_DY_A
@@ -476,6 +481,7 @@ MTX_UB_DY = _flat(_UB, "dy")  # attenmask(pre) 复用
 MTX_UB_NZP = _flat(_UB, "nzp")
 MTX_UB_SFMG = _flat(_UB, "sfmg")
 MTX_UB_LSE = _flat(_UB, "lse")
+MTX_UB_SINK_PART = _flat(_UB, "sink_part")
 MTX_UB_CAST = _flat(_UB, "cast")  # 仅 BN2
 
 UB_PRE_ZERO = _UB[HEAD_DIM_ALIGN]["zero"]["addrs"][0]

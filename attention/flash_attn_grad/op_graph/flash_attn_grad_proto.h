@@ -42,10 +42,13 @@ namespace ge {
 * FlashAttnMetadata with is_grad_enabled=true, required in actual invocation.
 
 * @par Outputs:
-* Three outputs, including:
+* Four outputs, including:
 * @li dq: A tensor. Type is float16, bfloat16. The gradient of query.
 * @li dk: A tensor. Type is float16, bfloat16. The gradient of key.
 * @li dv: A tensor. Type is float16, bfloat16. The gradient of value.
+* @li dsink: A 1D tensor of shape (N1,). Type is float32. The gradient of sinks,
+* accumulated with fp32 atomicAdd, so the caller must zero-initialize it before
+* the kernel runs (or leave it absent together with sinks).
 
 * @par Attributes:
 * Nine attributes, including:
@@ -76,6 +79,7 @@ REG_OP(FlashAttnGrad)
     .OUTPUT(dq, TensorType({DT_FLOAT16, DT_BF16}))
     .OUTPUT(dk, TensorType({DT_FLOAT16, DT_BF16}))
     .OUTPUT(dv, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(dsink, TensorType({DT_FLOAT}))
     .ATTR(softmax_scale, Float, 0.0)
     .ATTR(mask_mode, Int, 0)
     .ATTR(win_left, Int, -1)

@@ -92,6 +92,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
+        // dsink: sink 的梯度，[N1] fp32。kernel 用 fp32 atomicAdd 累加，
+        // 调用方必须先把该输出清零（torch 层用 at::zeros 分配）。
+        this->Output("dsink")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("softmax_scale").AttrType(OPTIONAL).Float(0.0);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("win_left").AttrType(OPTIONAL).Int(-1);
