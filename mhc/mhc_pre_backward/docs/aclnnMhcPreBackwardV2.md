@@ -27,7 +27,9 @@
 
 - 接口功能：MhcPreBackward是MhcPre的反向算子，MhcPre算子基于一系列计算得到mHC（Manifold-Constrained Hyper-Connections）架构中的$H^{res}$和$H^{post}$投影矩阵以及Atten或MLP层的输入矩阵$h^{in}$。
 
-- 相较于[aclnnMhcPreBackward](aclnnMhcPreBackward.md)接口，此接口新增`opImplMode`参数，用于指定MhcPreBackward算子的计算模式。当前仅支持`opImplMode=1`，表示在Cube中使用HF32模式计算；FP32模式请使用[aclnnMhcPreBackward](aclnnMhcPreBackward.md)接口。
+- 相较于[aclnnMhcPreBackward](aclnnMhcPreBackward.md)接口，此接口新增`opImplMode`参数，用于指定MhcPreBackward算子的计算模式：
+  - `opImplMode=0`：在Cube中使用FP32模式计算。
+  - `opImplMode=1`：在Cube中使用HF32模式计算。
 
 - 计算公式：
 
@@ -384,7 +386,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
             <td>opImplMode（int64_t）</td>
             <td>输入</td>
             <td>MhcPreBackward算子的Cube计算模式。</td>
-            <td>仅支持取值1，表示Cube使用HF32模式计算。FP32模式请使用aclnnMhcPreBackward接口。</td>
+            <td><ul><li>取值为0时，Cube使用FP32模式计算。</li><li>取值为1时，Cube使用HF32模式计算。</li><li>其他取值不支持。</li></ul></td>
             <td>INT64</td>
             <td>-</td>
             <td>-</td>
@@ -497,7 +499,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入变量的数据类型、数据格式不在支持范围内，或者opImplMode不为1。</td>
+                <td>输入变量的数据类型、数据格式不在支持范围内，或者opImplMode不为0或1。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>

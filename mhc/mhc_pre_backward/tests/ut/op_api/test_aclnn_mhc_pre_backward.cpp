@@ -134,9 +134,9 @@ TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v1_factorial_grad_h_res_
     EXPECT_NE(RunMhcPreBackward(true), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_rejects_fp32_mode_ascend950)
+TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_fp32_mode_ascend950)
 {
-    EXPECT_NE(RunMhcPreBackwardV2(0), ACLNN_SUCCESS);
+    EXPECT_EQ(RunMhcPreBackwardV2(0), ACLNN_SUCCESS);
 }
 
 TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_hf32_mode_ascend950)
@@ -156,7 +156,7 @@ TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_precedes
     aclOpExecutor *executor = nullptr;
     EXPECT_EQ(aclnnMhcPreBackwardV2GetWorkspaceSize(
                   nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                  nullptr, 1e-6f, 0, nullptr, nullptr, nullptr, nullptr, nullptr, &workspaceSize, &executor),
+                  nullptr, 1e-6f, 2, nullptr, nullptr, nullptr, nullptr, nullptr, &workspaceSize, &executor),
               ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(executor, nullptr);
 }
