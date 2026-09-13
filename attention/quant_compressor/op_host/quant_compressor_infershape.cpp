@@ -114,9 +114,14 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "cu_seqlens",
                                                              "is null but required for TH layout"),
                     return ge::GRAPH_FAILED);
-        int64_t Bsize = cuSeqlensShape->GetDim(DIM_INDEX_0) - DIM_NUM_1;
+        int64_t cuSeqLenDim0 = cuSeqlensShape->GetDim(DIM_INDEX_0);
+        OP_CHECK_IF((cuSeqLenDim0 < DIM_NUM_1),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "cu_seqlens",
+                                                          std::to_string(cuSeqLenDim0), "dim0 must be positive"),
+                    return ge::GRAPH_FAILED);
+        int64_t Bsize = cuSeqLenDim0 - DIM_NUM_1;
         int64_t tDivR = shapeParam.T / cmpRatio;
-        // 防止 tDivR + Bsize 溢出（int64 上限约 9e18）
+        // Bsize 已由上方校验保证非负，此处仅保护 tDivR + Bsize 不发生加法溢出
         if (tDivR <= INT64_MAX - Bsize) {
             shapeParam.Sr = std::min(shapeParam.T, tDivR + Bsize);
         } else {
