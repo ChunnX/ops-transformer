@@ -32,22 +32,94 @@ def _softmax_torch(x, axis=-1):
 
 
 def _pre_compare_topk(*arrays):
-    """topk 输出顺序对排序键(normValue)ULP 级差异敏感: 两个键在 fp32 下不可区分时,
-    kernel 与 golden 的浮点路径微差会使相邻元素交换, 值的相对误差被放大。
-    比对前对 yOut / expertIdxOut 逐行按值降序规范化(集合语义), 顺序视为实现自由度;
-    normOut 为按位置对齐的全量输出, 不做处理。kernel 通路输出为 numpy, aclnn 通路为 torch。"""
-    def _sort_rows_desc(arr):
-        if isinstance(arr, numpy.ndarray):
-            if arr.ndim == 2:
-                arr[:] = numpy.sort(arr, axis=1)[:, ::-1]
-        elif torch.is_tensor(arr):
-            if arr.ndim == 2:
-                arr[:] = torch.sort(arr, dim=1, descending=True).values
+    """topk 输出顺序对排序键(normValue)ULP 级差异敏感: 相邻键不可区分时, kernel 与
+    golden 的浮点路径微差会使相邻元素交换; 并列值(输入量化/下溢产生完全相同的键)时
+    选取的专家集合也可能不同, 属于实现自由度。比对前逐行按 (值降序, 索引升序) 规范
+    化; golden 侧值完全相同的并列段(长度>=2 且输出侧同段值也完全一致)内, 以及值差
+    在输出精度 4 ULP 内的位置, 索引替换为输出侧索引——不可区分值下任意等值选取均
+    合法, 值本身的精度由 out0 的 stat_rel_err 保证(阈值远大于 4 ULP, 不会掩盖真实
+    值错误)。normOut 为按位置对齐的全量输出, 不做处理。kernel 通路输出为 numpy,
+    aclnn/e2e 通路为 torch。"""
+    def _as_numpy(a):
+        if torch.is_tensor(a):
+            if a.dtype == torch.bfloat16:
+                return a.detach().cpu().to(torch.float32).numpy()
+            return a.detach().cpu().numpy()
+        return numpy.asarray(a)
+
+    def _write_back(slot, arr):
+        # 长度为 1 的轴反转后 strides 为负但 numpy 仍视为 C 连续(ascontiguousarray 不拷贝),
+        # torch.from_numpy 却拒绝负 stride, 这里显式拷贝成正 stride
+        if any(stride < 0 for stride in arr.strides):
+            arr = arr.copy()
+        if torch.is_tensor(slot):
+            slot.copy_(torch.from_numpy(arr).to(slot.dtype))
+        else:
+            slot[:] = arr
 
     half = len(arrays) // 2
-    for i in (0, 1):
-        _sort_rows_desc(arrays[i])
-        _sort_rows_desc(arrays[i + half])
+    if half < 2:
+        return
+    y_out = _as_numpy(arrays[0]).copy()
+    y_gold = _as_numpy(arrays[half]).copy()
+    if y_out.ndim != 2 or y_out.shape != y_gold.shape:
+        return
+    # golden 侧 idx 可能为 None(aclnn golden 不建模 expertIdxOut, 该输出比对自动抑制):
+    # 仅对 y 两侧做行降序规范化(消除 topk 顺序敏感性)
+    if arrays[half + 1] is None or arrays[1] is None:
+        y_out = numpy.sort(y_out, axis=1)[:, ::-1].copy()
+        y_gold = numpy.sort(y_gold, axis=1)[:, ::-1].copy()
+        _write_back(arrays[0], y_out)
+        _write_back(arrays[half], y_gold)
+        return
+    idx_out = _as_numpy(arrays[1]).copy()
+    idx_gold = _as_numpy(arrays[half + 1]).copy()
+    if idx_out.shape != idx_gold.shape or idx_out.ndim != 2:
+        return
+    # 输出精度下的不可区分容差(4 ULP): 覆盖 kernel 与 golden 浮点路径微差引起的
+    # 相邻交换与 k 边界并列, 远小于 out0 的 stat_rel_err 阈值, 不掩盖真实值错误
+    # (bfloat16 无原生 numpy finfo, eps 固定为 2^-7; 需在 bf16->fp32 转换前判断)
+    y_raw = arrays[0]
+    y_dtype_str = str(y_raw.dtype if torch.is_tensor(y_raw) else numpy.asarray(y_raw).dtype)
+    if "bfloat16" in y_dtype_str:
+        ulp_tol = 4.0 * (2.0 ** -7)
+    else:
+        ulp_tol = 4.0 * numpy.finfo(y_out.dtype).eps
+
+    for r in range(y_out.shape[0]):
+        yo = y_out[r].astype(numpy.float64)
+        io = idx_out[r]
+        yg = y_gold[r].astype(numpy.float64)
+        ig = idx_gold[r]
+        oo = numpy.lexsort((io, -yo))
+        yo, io = yo[oo], io[oo]
+        og = numpy.lexsort((ig, -yg))
+        yg, ig = yg[og], ig[og]
+        k = yo.shape[0]
+        j = 0
+        while j < k:
+            j2 = j + 1
+            while j2 < k and yg[j2] == yg[j]:
+                j2 += 1
+            if j2 > j + 1 and numpy.all(yo[j:j2] == yo[j]):
+                ig[j:j2] = io[j:j2]
+            j = j2
+        # k 边界并列/相邻交换: 值在输出精度(4 ULP)内不可区分, 或绝对差低于
+        # stat_rel_err 的 FLOOR(1e-7, 如 exp 下溢 denormal 被 FTZ 为 0 的场景)时,
+        # 被选专家视为等价——与 out0 的值判定口径保持一致
+        scale = numpy.maximum(numpy.maximum(numpy.abs(yg), numpy.abs(yo)), 1e-30)
+        diff = numpy.abs(yo - yg)
+        tie = (ig != io) & ((diff <= ulp_tol * scale) | (diff <= 1e-7))
+        ig[tie] = io[tie]
+        y_out[r] = yo
+        idx_out[r] = io
+        y_gold[r] = yg
+        idx_gold[r] = ig
+
+    _write_back(arrays[0], y_out)
+    _write_back(arrays[1], idx_out)
+    _write_back(arrays[half], y_gold)
+    _write_back(arrays[half + 1], idx_gold)
 
 
 def _softmax_numpy(x, axis=-1):
@@ -258,7 +330,8 @@ class MoeGatingTopKTestSpec:
         elif norm_type == 1:
             x = 1 / (1 + numpy.exp(-x))
         elif norm_type == 2:
-            x = numpy.sqrt(numpy.log1p(numpy.exp(x)))
+            # 数值稳定 softplus: sqrt(max(x,0) + log1p(exp(-|x|))), 避免大 |x| 溢出/吸收
+            x = numpy.sqrt(numpy.maximum(x, 0.0) + numpy.log1p(numpy.exp(-numpy.abs(x))))
 
         original_x = x
         if bias is not None:
