@@ -292,7 +292,9 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     uint64_t dbL0 = std::max(std::max(mmConfigC0_.get_dbL0A(), mmConfigC1_.get_dbL0A()),
                              std::max(mmConfigC0_.get_dbL0B(), mmConfigC1_.get_dbL0B()));
     uint64_t dbL0C = std::max(mmConfigC0_.get_dbL0C(), mmConfigC1_.get_dbL0C());
-    uint64_t l1Bytes = (depthA1 + depthB1) * l1BufferBytes;
+    uint64_t cubeWorkingL1Bytes = (depthA1 + depthB1) * l1BufferBytes;
+    uint64_t c1DirectL1Bytes = static_cast<uint64_t>(V2_TO_C1_ROWS) * C0_SET_SHAPE_N * elementSize;
+    uint64_t l1Bytes = cubeWorkingL1Bytes + c1DirectL1Bytes;
     uint64_t l0Bytes = dbL0 * l0BufferBytes;
     uint64_t l0CBytes = dbL0C * l0CBufferBytes;
     OP_CHECK_IF(l1Bytes > l1Size_ || l0Bytes > l0ASize_ || l0Bytes > l0BSize_ || l0CBytes > l0CSize_ ||

@@ -35,46 +35,44 @@ __aicore__ inline uint64_t BasicCubeAlign(uint64_t x, uint64_t n)
 
 class MhcPreBackwardCubeCompute {
 public:
-    __aicore__ inline void Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling);
+    __aicore__ inline void Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling,
+                                const LocalTensor<float> &l1Local);
 
     __aicore__ inline void ProcessC0(const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-                                     const LocalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
+                                     const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t bGmStride);
 
-    __aicore__ inline void ProcessC1(const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
+    __aicore__ inline void ProcessC1(const MMConfig &config, const GlobalTensor<float> &a, const LocalTensor<float> &b,
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
-                                     uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd);
+                                     uint32_t aGmStride, uint32_t cGmStride, bool atomicAdd);
 
     __aicore__ inline void End();
 
 private:
     __aicore__ inline void ComputeTileC0(const MMConfig &config, const GlobalTensor<float> &a,
-                                         const LocalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
-                                         uint32_t aGmStride);
+                                         const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
+                                         uint32_t aGmStride, uint32_t cGmStride);
 
     __aicore__ inline void ComputeTileC1(const MMConfig &config, const GlobalTensor<float> &a,
-                                         const GlobalTensor<float> &b, const GlobalTensor<float> &c, uint32_t m,
-                                         uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
-                                         uint32_t cGmStride, bool atomicAdd);
+                                         const LocalTensor<float> &b, const GlobalTensor<float> &c, uint32_t m,
+                                         uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t cGmStride,
+                                         bool atomicAdd);
 
     __aicore__ inline void ProcessKRangeC0(const MMConfig &config, const LocalTensor<float> &currentC,
                                            const GlobalTensor<float> &a, uint32_t m, uint32_t n, uint32_t k,
                                            uint32_t aGmStride);
 
     __aicore__ inline void ProcessKRangeC1(const MMConfig &config, const LocalTensor<float> &currentC,
-                                           const GlobalTensor<float> &a, const GlobalTensor<float> &b, uint32_t m,
-                                           uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride);
+                                           const GlobalTensor<float> &a, const LocalTensor<float> &b, uint32_t m,
+                                           uint32_t n, uint32_t k, uint32_t aGmStride);
 
     __aicore__ inline void ProcessL0KRange(const MMConfig &config, const LocalTensor<float> &currentC,
                                            const LocalTensor<float> &currentA1, const LocalTensor<float> &currentB1,
-                                           uint32_t m, uint32_t n, uint32_t currentKL1, bool transA, bool initC,
-                                           bool directOutput, bool finalKRange);
+                                           uint32_t m, uint32_t n, uint32_t currentKL1, uint32_t bL1Stride,
+                                           bool transA, bool initC);
 
     __aicore__ inline void FinishTile(const GlobalTensor<float> &c, const LocalTensor<float> &currentC, uint32_t m,
                                       uint32_t n, uint32_t cGmStride, bool atomicAdd, uint32_t cBufferIndex);
-
-    __aicore__ inline void FinishDirectTile(const LocalTensor<float> &c, const LocalTensor<float> &currentC, uint32_t m,
-                                            uint32_t n, uint32_t cBufferIndex);
 
     __aicore__ inline void PreloadB1(const MMConfig &config, const GlobalTensor<float> &b, uint32_t n, uint32_t k,
                                      uint32_t bGmStride);
@@ -98,16 +96,11 @@ private:
                                     uint32_t k, uint32_t kL1);
 
     __aicore__ inline void Compute(const LocalTensor<float> &c, const LocalTensor<float> &a,
-                                   const LocalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, bool initC,
-                                   uint32_t unitFlag);
+                                   const LocalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, bool initC);
 
     __aicore__ inline void CopyOut(const GlobalTensor<float> &dst, const LocalTensor<float> &src, uint32_t m,
                                    uint32_t n, uint32_t dstStride);
 
-    __aicore__ inline void CopyOut(const LocalTensor<float> &dst, const LocalTensor<float> &src, uint32_t m,
-                                   uint32_t n, uint32_t dstStride);
-
-    TBuf<TPosition::A1> l1Buf_;
     LocalTensor<float> aL1Local_;
     LocalTensor<float> bL1Local_;
     LocalTensor<float> aL0Local_;
@@ -120,18 +113,16 @@ private:
     uint32_t cubeL1BufferElems_{0};
     uint32_t cubeL0BufferElems_{0};
     uint32_t cubeL0CBufferElems_{0};
-    uint32_t directProduceCount_{0};
-    uint32_t directReclaimCount_{0};
 };
 
-__aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling)
+__aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling,
+                                                       const LocalTensor<float> &l1Local)
 {
     cubeBufferDepth_ = tiling->cubeBufferDepth;
     cubeL1BufferElems_ = tiling->cubeL1BufferElems;
     cubeL0BufferElems_ = tiling->cubeL0BufferElems;
     cubeL0CBufferElems_ = tiling->cubeL0CBufferElems;
-    pipe->InitBuffer(l1Buf_, tiling->cubeL1BufferBytes);
-    aL1Local_ = l1Buf_.Get<float>();
+    aL1Local_ = l1Local;
     bL1Local_ = aL1Local_[tiling->cubeL1BOffset];
     aL0Local_ = LocalTensor<float>(TPosition::A2, 0, tiling->cubeL0BufferBytes / sizeof(float));
     bL0Local_ = LocalTensor<float>(TPosition::B2, 0, tiling->cubeL0BufferBytes / sizeof(float));
@@ -143,12 +134,10 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPre
         SetFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + bufferIndex);
         SetFlag<HardEvent::FIX_M>(bufferIndex);
     }
-    directProduceCount_ = 0;
-    directReclaimCount_ = 0;
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &config, const GlobalTensor<float> &a,
-                                                            const GlobalTensor<float> &b, const LocalTensor<float> &c,
+                                                            const GlobalTensor<float> &b, const GlobalTensor<float> &c,
                                                             uint32_t m, uint32_t n, uint32_t k, uint32_t bGmStride)
 {
     // C0为[M=BS块,K=fusionSize]×[K=fusionSize,N=ND块]；头数4/6/8对应K=24/48/80。
@@ -160,28 +149,18 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &conf
         for (uint32_t offsetN = 0; offsetN < n; offsetN += config.baseN) {
             uint32_t remainN = n - offsetN;
             uint32_t currentN = remainN < config.baseN ? remainN : config.baseN;
-            uint32_t directSlot = directProduceCount_ & 1U;
-            if (directProduceCount_ >= MhcPreBackwardUtils::DOUBLE_BUFFER) {
-                uint32_t doneFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PING :
-                                                       MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PONG;
-                CrossCoreWaitFlag(doneFlag);
-                ++directReclaimCount_;
-            }
-            LocalTensor<float> currentDirectUb =
-                c[directSlot * MhcPreBackwardUtils::C0_DIRECT_UB_SLOT_ELEMS];
-            ComputeTileC0(config, a[offsetM * k], currentDirectUb, currentM, currentN, k, k);
-            uint32_t readyFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0 :
-                                                    MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_READY_PONG;
-            CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(readyFlag);
-            ++directProduceCount_;
+            ComputeTileC0(config, a[offsetM * k], c[offsetM * MhcPreBackwardUtils::ND_BLOCK_SIZE + offsetN], currentM,
+                          currentN, k, k, MhcPreBackwardUtils::ND_BLOCK_SIZE);
         }
+        CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
+            MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
     }
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(const MMConfig &config, const GlobalTensor<float> &a,
-                                                            const GlobalTensor<float> &b, const GlobalTensor<float> &c,
+                                                            const LocalTensor<float> &b, const GlobalTensor<float> &c,
                                                             uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride,
-                                                            uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd)
+                                                            uint32_t cGmStride, bool atomicAdd)
 {
     for (uint32_t offsetM = 0; offsetM < m; offsetM += config.baseM) {
         uint32_t remainM = m - offsetM;
@@ -189,21 +168,14 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(const MMConfig &conf
         for (uint32_t offsetN = 0; offsetN < n; offsetN += config.baseN) {
             uint32_t remainN = n - offsetN;
             uint32_t currentN = remainN < config.baseN ? remainN : config.baseN;
-            ComputeTileC1(config, a[offsetM], b[offsetN], c[offsetM * cGmStride + offsetN], currentM, currentN, k,
-                          aGmStride, bGmStride, cGmStride, atomicAdd);
+            ComputeTileC1(config, a[offsetM], b, c[offsetM * cGmStride + offsetN], currentM, currentN, k, aGmStride,
+                          cGmStride, atomicAdd);
         }
     }
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::End()
 {
-    while (directReclaimCount_ < directProduceCount_) {
-        uint32_t directSlot = directReclaimCount_ & 1U;
-        uint32_t doneFlag = directSlot == 0U ? MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PING :
-                                               MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0_DONE_PONG;
-        CrossCoreWaitFlag(doneFlag);
-        ++directReclaimCount_;
-    }
     for (uint32_t bufferIndex = 0; bufferIndex < cubeBufferDepth_; ++bufferIndex) {
         WaitFlag<HardEvent::MTE1_MTE2>(bufferIndex);
         WaitFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + bufferIndex);
@@ -212,8 +184,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::End()
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(const MMConfig &config, const GlobalTensor<float> &a,
-                                                                const LocalTensor<float> &c, uint32_t m, uint32_t n,
-                                                                uint32_t k, uint32_t aGmStride)
+                                                                const GlobalTensor<float> &c, uint32_t m, uint32_t n,
+                                                                uint32_t k, uint32_t aGmStride, uint32_t cGmStride)
 {
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
@@ -221,21 +193,21 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(const MMConfig &
     WaitFlag<HardEvent::FIX_M>(cBufferIndex);
 
     ProcessKRangeC0(config, currentC, a, m, n, k, aGmStride);
-    FinishDirectTile(c, currentC, m, n, cBufferIndex);
+    FinishTile(c, currentC, m, n, cGmStride, false, cBufferIndex);
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC1(const MMConfig &config, const GlobalTensor<float> &a,
-                                                                const GlobalTensor<float> &b,
+                                                                const LocalTensor<float> &b,
                                                                 const GlobalTensor<float> &c, uint32_t m, uint32_t n,
-                                                                uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
-                                                                uint32_t cGmStride, bool atomicAdd)
+                                                                uint32_t k, uint32_t aGmStride, uint32_t cGmStride,
+                                                                bool atomicAdd)
 {
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
     LocalTensor<float> currentC = cL0Local_[cBufferIndex * cubeL0CBufferElems_];
     WaitFlag<HardEvent::FIX_M>(cBufferIndex);
 
-    ProcessKRangeC1(config, currentC, a, b, m, n, k, aGmStride, bGmStride);
+    ProcessKRangeC1(config, currentC, a, b, m, n, k, aGmStride);
     FinishTile(c, currentC, m, n, cGmStride, atomicAdd, cBufferIndex);
 }
 
@@ -259,17 +231,6 @@ __aicore__ inline void MhcPreBackwardCubeCompute::FinishTile(const GlobalTensor<
     ++cl0PingPongID_;
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::FinishDirectTile(const LocalTensor<float> &c,
-                                                                   const LocalTensor<float> &currentC, uint32_t m,
-                                                                   uint32_t n, uint32_t cBufferIndex)
-{
-    SetFlag<HardEvent::M_FIX>(cBufferIndex);
-    WaitFlag<HardEvent::M_FIX>(cBufferIndex);
-    CopyOut(c, currentC, m, n, n >> 1U);
-    SetFlag<HardEvent::FIX_M>(cBufferIndex);
-    ++cl0PingPongID_;
-}
-
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(const MMConfig &config,
                                                                   const LocalTensor<float> &currentC,
                                                                   const GlobalTensor<float> &a, uint32_t m, uint32_t n,
@@ -289,9 +250,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(const MMConfig
         SetFlag<HardEvent::MTE2_MTE1>(l1BufferIndex);
         WaitFlag<HardEvent::MTE2_MTE1>(l1BufferIndex);
 
-        bool finalKRange = offsetKL1 + currentKL1 >= k;
-        ProcessL0KRange(config, currentC, currentA1, currentB1, m, n, currentKL1, false, offsetKL1 == 0U, true,
-                        finalKRange);
+        ProcessL0KRange(config, currentC, currentA1, currentB1, m, n, currentKL1, currentKL1, false,
+                        offsetKL1 == 0U);
 
         // MTE1完成该L1半区的最后一次读取后，允许MTE2复用此半区。
         SetFlag<HardEvent::MTE1_MTE2>(l1BufferIndex);
@@ -302,26 +262,26 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(const MMConfig
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC1(const MMConfig &config,
                                                                   const LocalTensor<float> &currentC,
                                                                   const GlobalTensor<float> &a,
-                                                                  const GlobalTensor<float> &b, uint32_t m, uint32_t n,
-                                                                  uint32_t k, uint32_t aGmStride, uint32_t bGmStride)
+                                                                  const LocalTensor<float> &b, uint32_t m, uint32_t n,
+                                                                  uint32_t k, uint32_t aGmStride)
 {
     uint32_t l1K = config.l1K;
     uint32_t l1Depth = config.depthA1;
+    uint32_t directBStride = BasicCubeAlign(k, BLOCK_CUBE);
     for (uint32_t offsetKL1 = 0; offsetKL1 < k; offsetKL1 += l1K) {
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < l1K ? remainKL1 : l1K;
         uint32_t l1BufferIndex = l1PingPongID_ % l1Depth;
         LocalTensor<float> currentA1 = aL1Local_[l1BufferIndex * cubeL1BufferElems_];
-        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * cubeL1BufferElems_];
+        LocalTensor<float> currentB1 = b[offsetKL1 * AuxGetC0Size<float>()];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1BufferIndex);
         CopyInA1Trans(currentA1, a[offsetKL1 * aGmStride], m, currentKL1, aGmStride);
-        CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
         SetFlag<HardEvent::MTE2_MTE1>(l1BufferIndex);
         WaitFlag<HardEvent::MTE2_MTE1>(l1BufferIndex);
 
-        ProcessL0KRange(config, currentC, currentA1, currentB1, m, n, currentKL1, true, offsetKL1 == 0U, false,
-                        false);
+        ProcessL0KRange(config, currentC, currentA1, currentB1, m, n, currentKL1, directBStride, true,
+                        offsetKL1 == 0U);
 
         SetFlag<HardEvent::MTE1_MTE2>(l1BufferIndex);
         ++l1PingPongID_;
@@ -330,8 +290,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC1(const MMConfig
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessL0KRange(
     const MMConfig &config, const LocalTensor<float> &currentC, const LocalTensor<float> &currentA1,
-    const LocalTensor<float> &currentB1, uint32_t m, uint32_t n, uint32_t currentKL1, bool transA, bool initC,
-    bool directOutput, bool finalKRange)
+    const LocalTensor<float> &currentB1, uint32_t m, uint32_t n, uint32_t currentKL1, uint32_t bL1Stride,
+    bool transA, bool initC)
 {
     uint32_t baseK = config.baseK;
     uint32_t l0Depth = config.dbL0A;
@@ -349,13 +309,11 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessL0KRange(
         } else {
             CopyInA2(currentA2, currentA1[offsetKL0 * BasicCubeAlign(m, BLOCK_CUBE)], m, currentKL0);
         }
-        CopyInB2(currentB2, currentB1[offsetKL0 * AuxGetC0Size<float>()], n, currentKL0, currentKL1);
+        CopyInB2(currentB2, currentB1[offsetKL0 * AuxGetC0Size<float>()], n, currentKL0, bL1Stride);
         SetFlag<HardEvent::MTE1_M>(l0BufferIndex);
         WaitFlag<HardEvent::MTE1_M>(l0BufferIndex);
 
-        bool finalAccumulation = finalKRange && (offsetKL0 + currentKL0 >= currentKL1);
-        uint32_t unitFlag = directOutput ? (finalAccumulation ? 3U : 2U) : 0U;
-        Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC && offsetKL0 == 0U, unitFlag);
+        Compute(currentC, currentA2, currentB2, m, n, currentKL0, initC && offsetKL0 == 0U);
         SetFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + l0BufferIndex);
         ++l0PingPongID_;
     }
@@ -470,8 +428,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInB2(const LocalTensor<flo
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::Compute(const LocalTensor<float> &c, const LocalTensor<float> &a,
-                                                           const LocalTensor<float> &b, uint32_t m, uint32_t n,
-                                                           uint32_t k, bool initC, uint32_t unitFlag)
+                                                          const LocalTensor<float> &b, uint32_t m, uint32_t n,
+                                                          uint32_t k, bool initC)
 {
     MmadParams p;
     p.m = m;
@@ -480,7 +438,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Compute(const LocalTensor<floa
     p.disableGemv = true;
     p.cmatrixInitVal = initC;
     p.cmatrixSource = false;
-    p.unitFlag = unitFlag;
+    // unitFlag=0，L0C的生产/消费完全由M_FIX与FIX_M事件管理。
+    p.unitFlag = 0;
     Mmad(c, a, b, p);
 }
 
@@ -497,22 +456,6 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyOut(const GlobalTensor<flo
     p.unitFlag = 0;
     SetFixpipeNz2ndFlag(1, 1, 1);
     DataCopy(dst, src, p);
-}
-
-__aicore__ inline void MhcPreBackwardCubeCompute::CopyOut(const LocalTensor<float> &dst,
-                                                          const LocalTensor<float> &src, uint32_t m, uint32_t n,
-                                                          uint32_t dstStride)
-{
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> p;
-    p.nSize = static_cast<uint16_t>(n);
-    p.mSize = static_cast<uint16_t>(m);
-    p.srcStride = static_cast<uint16_t>(BasicCubeAlign(m, BLOCK_CUBE));
-    p.dstStride = static_cast<uint16_t>(dstStride);
-    p.quantPre = QuantMode_t::NoQuant;
-    p.dualDstCtl = static_cast<uint8_t>(McgShfMode::DUAL_DST_SPLIT_N);
-    p.subBlockId = 0U;
-    p.unitFlag = 3U;
-    Fixpipe<float, float, Impl::CFG_ROW_MAJOR_UB>(dst, src, p);
 }
 } // namespace MhcPreBackward
 #endif
