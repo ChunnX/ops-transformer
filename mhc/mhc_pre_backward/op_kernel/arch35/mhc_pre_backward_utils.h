@@ -64,11 +64,13 @@ constexpr uint32_t DOUBLE_BUFFER = NUMBER_TWO;
 constexpr uint32_t INOUT_QUEUE_SIZE = 32U * KIBIBYTE; // 32KB
 constexpr uint32_t SMALL_QUEUE_SIZE = 1U * KIBIBYTE;  // 1KB
 constexpr uint32_t UB_USABLE_SIZE = 248U * KIBIBYTE;
-constexpr uint32_t MAIN_QUEUE_COUNT = 3U;
-// V0/V1的最大占用约49.5KB；V2统一使用64行chunk后最大占用约42.75KB。
-// 将TBuf压缩到55KB，为后续VECOUT双缓冲预留32KB。
+// q0保留双缓冲，q1和qout使用单缓冲；腾出的64KB放置C0直连ping/pong槽。
+constexpr uint32_t MAIN_QUEUE_BUFFER_COUNT = 4U;
 constexpr uint32_t FP32_BUF_SIZE =
-    UB_USABLE_SIZE - MAIN_QUEUE_COUNT * DOUBLE_BUFFER * INOUT_QUEUE_SIZE - SMALL_QUEUE_SIZE;
+    UB_USABLE_SIZE - MAIN_QUEUE_BUFFER_COUNT * INOUT_QUEUE_SIZE - SMALL_QUEUE_SIZE;
+constexpr uint32_t C0_DIRECT_UB_SLOT_SIZE = 32U * KIBIBYTE;
+constexpr uint32_t C0_DIRECT_UB_SIZE = DOUBLE_BUFFER * C0_DIRECT_UB_SLOT_SIZE;
+constexpr uint32_t C0_DIRECT_UB_SLOT_ELEMS = C0_DIRECT_UB_SLOT_SIZE / sizeof(float);
 constexpr uint32_t PROCESS_V2_CHUNK_SIZE = 128U;
 constexpr uint32_t BS_BLOCK_SIZE = 512U;
 constexpr uint32_t ND_BLOCK_SIZE = 128U;
@@ -94,6 +96,9 @@ constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = NUMBER_TWO;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_READY_PONG = 0xAU;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_DONE_PING = 0xBU;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0_DONE_PONG = 0xCU;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = NUMBER_TWO;
 
 constexpr Reg::CastTrait ctHalf2Fp32Zero = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN, Reg::MaskMergeMode::ZEROING,
