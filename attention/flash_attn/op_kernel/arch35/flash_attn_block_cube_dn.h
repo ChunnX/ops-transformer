@@ -66,7 +66,7 @@ public:
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
     static constexpr uint32_t CROSSCORE_MM1_0 = 0U;
-    static constexpr uint32_t CROSSCORE_MM2 = 2U;
+    static constexpr uint32_t CROSSCORE_MM2_0 = 2U;
     static constexpr uint32_t CROSSCORE_L1P_0 = 5U;
     static constexpr uint32_t CROSSCORE_L1P_1 = 6U;
     static constexpr uint32_t CROSSCORE_L1P_2 = 7U;
@@ -90,9 +90,11 @@ public:
     // UB
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(MM_T);
+    static constexpr uint32_t UB_MM2_RES_BUFCNT = (dVBaseSize <= 64) ? 2U : 1U;
     static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(MM_T);
     LocalTensor<uint8_t> ubMm1ResBuffers_;
-    LocalTensor<MM_T> ubMm2Res_;
+    LocalTensor<uint8_t> ubMm2ResBuffers_;
+    uint32_t mm2ResUbBufId_ = 0U;
     uint32_t mm1ResUbBufId_ = 0U;
     // L1
     static constexpr uint32_t L1_P_BUFCNT = PRELOAD_N + 1U;
@@ -155,8 +157,7 @@ public:
         uint32_t addrUb = 0;
         ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES);
         addrUb += UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES;
-        ubMm2Res_ =
-            LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM2_RES_BUF_BYTES).template ReinterpretCast<MM_T>();
+        ubMm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_MM2_RES_BUFCNT * UB_MM2_RES_BUF_BYTES);
 
         /*--------------------------------------------L1--------------------------------------------*/
         uint32_t addrL1 = 0;
@@ -221,8 +222,10 @@ public:
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM1_0 + slot);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM1_0 + slot + AIV0_AIV1_OFFSET);
         }
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM2);
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM2 + AIV0_AIV1_OFFSET);
+        for (uint32_t slot = 0; slot < UB_MM2_RES_BUFCNT; ++slot) {
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM2_0 + slot);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CROSSCORE_MM2_0 + slot + AIV0_AIV1_OFFSET);
+        }
     }
 
     __aicore__ inline void AllocEventID()
@@ -430,9 +433,12 @@ public:
     {
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
-        uint32_t mm2SyncIdx = CROSSCORE_MM2;
+        uint32_t mm2ResUbBufId = mm2ResUbBufId_;
+        mm2ResUbBufId_ = (mm2ResUbBufId_ + 1) % UB_MM2_RES_BUFCNT;
+        uint32_t mm2SyncIdx = CROSSCORE_MM2_0 + mm2ResUbBufId;
         LocalTensor<Q_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<Q_T>();
-        LocalTensor<MM_T> mm2ResUbTensor = ubMm2Res_;
+        LocalTensor<MM_T> mm2ResUbTensor =
+            ubMm2ResBuffers_[mm2ResUbBufId * UB_MM2_RES_BUF_BYTES].template ReinterpretCast<MM_T>();
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
