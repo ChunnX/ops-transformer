@@ -149,9 +149,9 @@ TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_precedes_te
 {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    EXPECT_EQ(aclnnMhcPreBackwardV2GetWorkspaceSize(
-                  nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                  nullptr, 1e-6f, 2, nullptr, nullptr, nullptr, nullptr, nullptr, &workspaceSize, &executor),
+    EXPECT_EQ(aclnnMhcPreBackwardV2GetWorkspaceSize(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                                                    nullptr, nullptr, nullptr, nullptr, nullptr, 1e-6f, 2, nullptr,
+                                                    nullptr, nullptr, nullptr, nullptr, &workspaceSize, &executor),
               ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(executor, nullptr);
 }

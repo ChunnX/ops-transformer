@@ -119,13 +119,11 @@ ge::graphStatus MhcPreBackwardTiling::GetPlatformInfo()
     l0BSize_ = getMemorySize(compileInfo->l0BSize, platform_ascendc::CoreMemType::L0_B);
     l0CSize_ = getMemorySize(compileInfo->l0CSize, platform_ascendc::CoreMemType::L0_C);
     OP_CHECK_IF(ubSize_ == 0U || l1Size_ == 0U || l0ASize_ == 0U || l0BSize_ == 0U || l0CSize_ == 0U,
-                OP_LOGE(context_->GetNodeName(),
-                        "invalid platform memory, ub=%lu, l1=%lu, l0a=%lu, l0b=%lu, l0c=%lu", ubSize_, l1Size_,
-                        l0ASize_, l0BSize_, l0CSize_),
+                OP_LOGE(context_->GetNodeName(), "invalid platform memory, ub=%lu, l1=%lu, l0a=%lu, l0b=%lu, l0c=%lu",
+                        ubSize_, l1Size_, l0ASize_, l0BSize_, l0CSize_),
                 return ge::GRAPH_FAILED);
-    OP_LOGI(context_->GetNodeName(),
-            "platform info: aic=%u, aiv=%u, ub=%lu, l1=%lu, l2=%lu, l0a=%lu, l0b=%lu, l0c=%lu", blockDim_,
-            vecCoreNum_, ubSize_, l1Size_, l2Size_, l0ASize_, l0BSize_, l0CSize_);
+    OP_LOGI(context_->GetNodeName(), "platform info: aic=%u, aiv=%u, ub=%lu, l1=%lu, l2=%lu, l0a=%lu, l0b=%lu, l0c=%lu",
+            blockDim_, vecCoreNum_, ubSize_, l1Size_, l2Size_, l0ASize_, l0BSize_, l0CSize_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -476,14 +474,12 @@ void MhcPreBackwardTiling::PrintTilingData()
             "mmConfig: key=%u, C0=[%u,%u,%u,L1K=%u], C1=[%u,%u,%u,L1K=%u], depth=[%u,%u,%u,%u,%u], "
             "block=[%u,%u,%u], sync=[%u,%u]",
             tilingData_.get_mmConfigKey(), tilingData_.mmConfigC0.get_baseM(), tilingData_.mmConfigC0.get_baseN(),
-            tilingData_.mmConfigC0.get_baseK(), tilingData_.mmConfigC0.get_l1K(),
-            tilingData_.mmConfigC1.get_baseM(), tilingData_.mmConfigC1.get_baseN(),
-            tilingData_.mmConfigC1.get_baseK(), tilingData_.mmConfigC1.get_l1K(),
+            tilingData_.mmConfigC0.get_baseK(), tilingData_.mmConfigC0.get_l1K(), tilingData_.mmConfigC1.get_baseM(),
+            tilingData_.mmConfigC1.get_baseN(), tilingData_.mmConfigC1.get_baseK(), tilingData_.mmConfigC1.get_l1K(),
             tilingData_.mmConfigC0.get_depthA1(), tilingData_.mmConfigC0.get_depthB1(),
-            tilingData_.mmConfigC0.get_dbL0A(), tilingData_.mmConfigC0.get_dbL0B(),
-            tilingData_.mmConfigC0.get_dbL0C(), tilingData_.get_c0MBlock(),
-            tilingData_.get_c0NBlock(), tilingData_.get_c1KBlock(), tilingData_.get_c0ToV2Rows(),
-            tilingData_.get_v2ToC1Rows());
+            tilingData_.mmConfigC0.get_dbL0A(), tilingData_.mmConfigC0.get_dbL0B(), tilingData_.mmConfigC0.get_dbL0C(),
+            tilingData_.get_c0MBlock(), tilingData_.get_c0NBlock(), tilingData_.get_c1KBlock(),
+            tilingData_.get_c0ToV2Rows(), tilingData_.get_v2ToC1Rows());
 }
 
 uint64_t MhcPreBackwardTiling::GetTilingKey() const

@@ -37,12 +37,11 @@ class MhcPreBackwardCubeCompute {
 public:
     __aicore__ inline void Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling);
 
-    __aicore__ inline void ProcessC0(const MMConfig &config, const GlobalTensor<float> &a,
-                                     const GlobalTensor<float> &b, const GlobalTensor<float> &c, uint32_t m,
-                                     uint32_t n, uint32_t k, uint32_t bGmStride);
+    __aicore__ inline void ProcessC0(const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
+                                     const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
+                                     uint32_t bGmStride);
 
-    __aicore__ inline void ProcessC1(const MMConfig &config, const GlobalTensor<float> &a,
-                                     const GlobalTensor<float> &b,
+    __aicore__ inline void ProcessC1(const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
                                      const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k,
                                      uint32_t aGmStride, uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd);
 
@@ -137,9 +136,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPre
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &config, const GlobalTensor<float> &a,
-                                                            const GlobalTensor<float> &b,
-                                                            const GlobalTensor<float> &c, uint32_t m, uint32_t n,
-                                                            uint32_t k, uint32_t bGmStride)
+                                                            const GlobalTensor<float> &b, const GlobalTensor<float> &c,
+                                                            uint32_t m, uint32_t n, uint32_t k, uint32_t bGmStride)
 {
     // C0为[M=BS块,K=fusionSize]×[K=fusionSize,N=ND块]；头数4/6/8对应K=24/48/80。
     // C0按tiling给出的B1驻留策略预载，C1仍使用自身的分段搬运路径。
@@ -150,9 +148,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &conf
         for (uint32_t offsetN = 0; offsetN < n; offsetN += config.baseN) {
             uint32_t remainN = n - offsetN;
             uint32_t currentN = remainN < config.baseN ? remainN : config.baseN;
-            ComputeTileC0(config, a[offsetM * k],
-                          c[offsetM * MhcPreBackwardUtils::ND_BLOCK_SIZE + offsetN], currentM, currentN, k, k,
-                          MhcPreBackwardUtils::ND_BLOCK_SIZE);
+            ComputeTileC0(config, a[offsetM * k], c[offsetM * MhcPreBackwardUtils::ND_BLOCK_SIZE + offsetN], currentM,
+                          currentN, k, k, MhcPreBackwardUtils::ND_BLOCK_SIZE);
         }
         CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
             MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
@@ -160,10 +157,9 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &conf
 }
 
 __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(const MMConfig &config, const GlobalTensor<float> &a,
-                                                            const GlobalTensor<float> &b,
-                                                            const GlobalTensor<float> &c, uint32_t m, uint32_t n,
-                                                            uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
-                                                            uint32_t cGmStride, bool atomicAdd)
+                                                            const GlobalTensor<float> &b, const GlobalTensor<float> &c,
+                                                            uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride,
+                                                            uint32_t bGmStride, uint32_t cGmStride, bool atomicAdd)
 {
     for (uint32_t offsetM = 0; offsetM < m; offsetM += config.baseM) {
         uint32_t remainM = m - offsetM;
@@ -186,9 +182,9 @@ __aicore__ inline void MhcPreBackwardCubeCompute::End()
     }
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(
-    const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &c, uint32_t m, uint32_t n,
-    uint32_t k, uint32_t aGmStride, uint32_t cGmStride)
+__aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(const MMConfig &config, const GlobalTensor<float> &a,
+                                                                const GlobalTensor<float> &c, uint32_t m, uint32_t n,
+                                                                uint32_t k, uint32_t aGmStride, uint32_t cGmStride)
 {
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
@@ -199,10 +195,11 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(
     FinishTile(c, currentC, m, n, cGmStride, false, cBufferIndex);
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC1(
-    const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &b,
-    const GlobalTensor<float> &c, uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
-    uint32_t cGmStride, bool atomicAdd)
+__aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC1(const MMConfig &config, const GlobalTensor<float> &a,
+                                                                const GlobalTensor<float> &b,
+                                                                const GlobalTensor<float> &c, uint32_t m, uint32_t n,
+                                                                uint32_t k, uint32_t aGmStride, uint32_t bGmStride,
+                                                                uint32_t cGmStride, bool atomicAdd)
 {
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
@@ -213,9 +210,9 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC1(
     FinishTile(c, currentC, m, n, cGmStride, atomicAdd, cBufferIndex);
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::FinishTile(
-    const GlobalTensor<float> &c, const LocalTensor<float> &currentC, uint32_t m, uint32_t n, uint32_t cGmStride,
-    bool atomicAdd, uint32_t cBufferIndex)
+__aicore__ inline void MhcPreBackwardCubeCompute::FinishTile(const GlobalTensor<float> &c,
+                                                             const LocalTensor<float> &currentC, uint32_t m, uint32_t n,
+                                                             uint32_t cGmStride, bool atomicAdd, uint32_t cBufferIndex)
 {
     SetFlag<HardEvent::M_FIX>(cBufferIndex);
     WaitFlag<HardEvent::M_FIX>(cBufferIndex);
@@ -233,9 +230,10 @@ __aicore__ inline void MhcPreBackwardCubeCompute::FinishTile(
     ++cl0PingPongID_;
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(
-    const MMConfig &config, const LocalTensor<float> &currentC, const GlobalTensor<float> &a, uint32_t m, uint32_t n,
-    uint32_t k, uint32_t aGmStride)
+__aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(const MMConfig &config,
+                                                                  const LocalTensor<float> &currentC,
+                                                                  const GlobalTensor<float> &a, uint32_t m, uint32_t n,
+                                                                  uint32_t k, uint32_t aGmStride)
 {
     uint32_t l1K = config.l1K;
     uint32_t l1Depth = config.depthA1;
@@ -259,9 +257,11 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(
     }
 }
 
-__aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC1(
-    const MMConfig &config, const LocalTensor<float> &currentC, const GlobalTensor<float> &a,
-    const GlobalTensor<float> &b, uint32_t m, uint32_t n, uint32_t k, uint32_t aGmStride, uint32_t bGmStride)
+__aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC1(const MMConfig &config,
+                                                                  const LocalTensor<float> &currentC,
+                                                                  const GlobalTensor<float> &a,
+                                                                  const GlobalTensor<float> &b, uint32_t m, uint32_t n,
+                                                                  uint32_t k, uint32_t aGmStride, uint32_t bGmStride)
 {
     uint32_t l1K = config.l1K;
     uint32_t l1Depth = config.depthA1;
