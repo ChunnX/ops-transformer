@@ -22,6 +22,7 @@ namespace MhcPreBackward {
 using namespace AscendC;
 
 constexpr uint32_t CUBE_L0_EVENT_BASE = 3U;
+constexpr uint32_t CUBE_BLOCK_BYTES = 32U;
 
 __aicore__ inline uint64_t BasicCubeCeilDiv(uint64_t x, uint64_t n)
 {
@@ -336,6 +337,13 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInA1(const LocalTensor<flo
                                                            const GlobalTensor<float> &src, uint32_t m, uint32_t k,
                                                            uint32_t gmStride)
 {
+    uint32_t alignedM = BasicCubeAlign(m, BLOCK_CUBE);
+    uint32_t alignedK = BasicCubeAlign(k, AuxGetC0Size<float>());
+    if (alignedM != m || alignedK != k) {
+        uint16_t blockNum = static_cast<uint16_t>(alignedM * alignedK * sizeof(float) / CUBE_BLOCK_BYTES);
+        InitConstValueParams<float> zeroParams(1, blockNum, 0, 0.0f);
+        InitConstValue(dst, zeroParams);
+    }
     Nd2NzParams p;
     p.ndNum = 1;
     p.nValue = m;
@@ -352,6 +360,13 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInA1Trans(const LocalTenso
                                                                 const GlobalTensor<float> &src, uint32_t m, uint32_t k,
                                                                 uint32_t gmStride)
 {
+    uint32_t alignedM = BasicCubeAlign(m, BLOCK_CUBE);
+    uint32_t alignedK = BasicCubeAlign(k, BLOCK_CUBE);
+    if (alignedM != m || alignedK != k) {
+        uint16_t blockNum = static_cast<uint16_t>(alignedM * alignedK * sizeof(float) / CUBE_BLOCK_BYTES);
+        InitConstValueParams<float> zeroParams(1, blockNum, 0, 0.0f);
+        InitConstValue(dst, zeroParams);
+    }
     Nd2NzParams p;
     p.ndNum = 1;
     p.nValue = k;
@@ -368,6 +383,13 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInB1(const LocalTensor<flo
                                                            const GlobalTensor<float> &src, uint32_t n, uint32_t k,
                                                            uint32_t gmStride)
 {
+    uint32_t alignedN = BasicCubeAlign(n, BLOCK_CUBE);
+    uint32_t alignedK = BasicCubeAlign(k, BLOCK_CUBE);
+    if (alignedN != n || alignedK != k) {
+        uint16_t blockNum = static_cast<uint16_t>(alignedN * alignedK * sizeof(float) / CUBE_BLOCK_BYTES);
+        InitConstValueParams<float> zeroParams(1, blockNum, 0, 0.0f);
+        InitConstValue(dst, zeroParams);
+    }
     Nd2NzParams p;
     p.ndNum = 1;
     p.nValue = k;

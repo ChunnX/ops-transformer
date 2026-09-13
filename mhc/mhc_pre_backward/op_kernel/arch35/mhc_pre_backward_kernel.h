@@ -496,6 +496,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainAlphaReduce(LocalTensor<P> &sumBuf, uint32_t coreId)
 {
     AscendC::LocalTensor<P> alphaOutBuf = vecOutQueue1_.AllocTensor<P>();
+    Duplicate(alphaOutBuf, ZERO, ALPHA_GRAD_PADDING);
+    PipeBarrier<PIPE_V>();
     uint32_t srcShape1[] = {1, N_};
     uint32_t srcShape2[] = {1, 2 * N_};
     uint32_t srcShape3[] = {1, fusionSize_};
@@ -751,6 +753,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
 
     AscendC::LocalTensor<P> fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
     AscendC::LocalTensor<P> invRmsGradUb = vecOutQueueSmall_.AllocTensor<P>();
+    Duplicate(fp32OutBuf, ZERO, fusionSize_);
+    Duplicate(invRmsGradUb, ZERO, curBSSize);
+    PipeBarrier<PIPE_V>();
     if (N_ == 8) {
         VFDoV1ProcessBiasGradForN8((__ubuf__ P *)fp32OutBuf.GetPhyAddr(),
                                    (__ubuf__ P *)buffers.gatherFusionOutBuf.GetPhyAddr(), curBSSize);
@@ -776,6 +781,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
 
     auto hMixGradBuf = buffers.calcTmpBuf;
     fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
+    Duplicate(fp32OutBuf, ZERO, curBSSize * fusionSize_);
+    PipeBarrier<PIPE_V>();
     dataCopyParams.blockLen = curBSSize * sizeof(P);
     AscendC::LocalTensor<P> fp32InputBuf = vecInQueue1_.AllocTensor<P>();
     DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams, dataCopyPadParams);
@@ -1034,6 +1041,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
 
         // BS方向切分：与C0保持一致，按BS_BLOCK_SIZE切分
         LocalTensor<P> sumBuf = vecOutQueueSmall_.AllocTensor<P>();
+        if (withGamma_) {
+            Duplicate(sumBuf, ZERO, copySizeND);
+            PipeBarrier<PIPE_V>();
+        }
         for (uint64_t offsetBS = 0; offsetBS < totalLength_; offsetBS += BS_BLOCK_SIZE) {
             uint32_t currentBSBlock =
                 static_cast<uint32_t>(Min(static_cast<uint64_t>(BS_BLOCK_SIZE), totalLength_ - offsetBS));
@@ -1343,6 +1354,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     __ubuf__ T *bf16InputAddr = (__ubuf__ T *)bf16InputBuf_.GetPhyAddr();
     __ubuf__ P *xRsFp32Addr = (__ubuf__ P *)xRsFp32Buf_.GetPhyAddr();
     gammaOutUb_ = vecOutQueue1_.AllocTensor<P>();
+    Duplicate(gammaOutUb_, ZERO, currentChunkSize * copySizeND);
+    PipeBarrier<PIPE_V>();
     __ubuf__ P *gammaOutAddr = (__ubuf__ P *)gammaOutUb_.GetPhyAddr();
     if (withGamma_) {
         __ubuf__ P *gammaInAddr = (__ubuf__ P *)gammaIn_.GetPhyAddr();
@@ -1462,6 +1475,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uin
                                                                              uint32_t chunkNDSize)
 {
     bf16OutputBuf_ = vecOutQueue1_.AllocTensor<T>();
+    Duplicate(bf16OutputBuf_, static_cast<T>(ZERO), chunkNDSize);
+    PipeBarrier<PIPE_V>();
     __ubuf__ T *outputAddr = (__ubuf__ T *)bf16OutputBuf_.GetPhyAddr();
     __ubuf__ P *xGradAddr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     if (withGradXPost_) {
@@ -1544,6 +1559,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3AlphaGrad()
 {
     LocalTensor<P> alphaGradInLocal = vecInQueue1_.AllocTensor<P>();
     LocalTensor<P> alphaGradOutLocal = vecOutQueueSmall_.AllocTensor<P>();
+    Duplicate(alphaGradOutLocal, ZERO, ALPHA_GRAD_PADDING);
+    PipeBarrier<PIPE_V>();
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = usedVecCoreNum_ * ALPHA_GRAD_PADDING * sizeof(P);
@@ -1578,6 +1595,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3BiasGrad()
     constexpr bool isReuse = false;
     LocalTensor<P> biasGradInLocal = vecInQueue1_.AllocTensor<P>();
     LocalTensor<P> biasGradOutLocal = vecOutQueueSmall_.AllocTensor<P>();
+    Duplicate(biasGradOutLocal, ZERO, fusionSize_);
+    PipeBarrier<PIPE_V>();
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = fusionSize_ * usedVecCoreNum_ * sizeof(P);
