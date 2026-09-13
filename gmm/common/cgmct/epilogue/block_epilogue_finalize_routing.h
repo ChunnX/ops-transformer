@@ -35,9 +35,10 @@ constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t LOGIT_INDEX = 4;
 constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
-constexpr uint32_t HALF_DB_MAX_SINGLE_MN = 32 * 256;
+constexpr uint16_t FR_OUTPUT_BUFFER_NUM = 2;
 constexpr uint32_t BLOCK_BYTES = 256;
-constexpr uint64_t MAX_OUTPUT_M_UB = 32;
+// Process the per-AIV GMM result in up to two in-place output chunks.
+constexpr uint64_t MAX_OUTPUT_M_UB = 64;
 constexpr uint64_t BLOCK_ELEMENTS_FP32 = 8;
 } // namespace
 
@@ -77,6 +78,7 @@ public:
     using DataTypeOut = DataTypeOut_;
     using DataTypeIn = DataTypeIn_;
     using DataTypeLogit = DataTypeLogit_;
+    static_assert(sizeof(DataTypeOut) <= sizeof(DataTypeIn), "In-place FR output must fit in the input region");
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>; // blk_m, blk_n, blk_k, _
     using BlockCoord =
@@ -107,8 +109,6 @@ private:
     AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
     AscendC::LocalTensor<DataTypeLogit> logitUbPing_;
     AscendC::LocalTensor<DataTypeLogit> logitUbPong_;
-    AscendC::LocalTensor<DataTypeOut> outUbPing_;
-    AscendC::LocalTensor<DataTypeOut> outUbPong_;
 
     const Params *params_;
     int64_t n_;
@@ -118,7 +118,6 @@ private:
     uint64_t alignN_;
     uint64_t vlForFloatNumber_;
     uint32_t repeatTimesLine_;
-    uint16_t yCrossPingPongID_ = 0;
     uint16_t logitCrossPingPongID_ = 0;
 };
 
@@ -136,10 +135,6 @@ __aicore__ inline void BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_
     logitUbPing_ = AscendC::LocalTensor<DataTypeLogit>(AscendC::TPosition::VECIN, afterFirstIn, BLOCK_BYTES);
     uint32_t afterSecondIn = afterFirstIn + BLOCK_BYTES * sizeof(DataTypeLogit);
     logitUbPong_ = AscendC::LocalTensor<DataTypeLogit>(AscendC::TPosition::VECIN, afterSecondIn, BLOCK_BYTES);
-    uint32_t afterLogit = afterSecondIn + BLOCK_BYTES * sizeof(DataTypeLogit);
-    outUbPing_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT, afterLogit, HALF_DB_MAX_SINGLE_MN);
-    outUbPong_ = AscendC::LocalTensor<DataTypeOut>(
-        AscendC::TPosition::VECOUT, afterLogit + HALF_DB_MAX_SINGLE_MN * sizeof(DataTypeOut), HALF_DB_MAX_SINGLE_MN);
 }
 
 GMM_BLOCK_EPILOGUE_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -283,24 +278,28 @@ __aicore__ inline void BlockEpilogueFinalizeRouting<GMM_BLOCK_EPILOGUE_FINALIZE_
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitCrossPingPongID_);
     logitCrossPingPongID_ = (logitCrossPingPongID_ + 1) & 1;
     uint32_t loopNumY = CeilDiv(singleMInVec, MAX_OUTPUT_M_UB);
-    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
-    for (int32_t i = 0; i < loopNumY; i++) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yCrossPingPongID_);
-        repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UB;
-        __ubuf__ DataTypeOut *outUbAddr = yCrossPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
-                                                                   (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
-        VFDoLogitMuls(i * MAX_OUTPUT_M_UB * alignN_, i * MAX_OUTPUT_M_UB, repeatTimesLine_, repeatTimesRe, outUbAddr,
-                      logitUb);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yCrossPingPongID_);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yCrossPingPongID_);
-        auto yLocal = yCrossPingPongID_ == 0 ? outUbPing_ : outUbPong_;
-        VectorAtomicProcess(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UB, yOffset, yLocal);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yCrossPingPongID_);
-        yCrossPingPongID_ = (yCrossPingPongID_ + 1) & 1;
+    for (uint16_t bufferId = 0; bufferId < FR_OUTPUT_BUFFER_NUM; ++bufferId) {
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(bufferId);
     }
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
+    for (int32_t i = 0; i < loopNumY; i++) {
+        uint16_t bufferId = static_cast<uint16_t>(i);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(bufferId);
+        repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UB;
+        uint32_t inputOffset = i * MAX_OUTPUT_M_UB * alignN_;
+        // FP32 overwrites its source; BF16 packs into the same chunk after each source vector is read.
+        auto yLocal = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT, inputOffset * sizeof(DataTypeIn),
+                                                        repeatTimesLine_ * alignN_);
+        __ubuf__ DataTypeOut *outUbAddr = (__ubuf__ DataTypeOut *)yLocal.GetPhyAddr();
+        VFDoLogitMuls(inputOffset, i * MAX_OUTPUT_M_UB, repeatTimesLine_, repeatTimesRe, outUbAddr, logitUb);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(bufferId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(bufferId);
+        VectorAtomicProcess(singleN_, repeatTimesLine_, logitOffset + i * MAX_OUTPUT_M_UB, yOffset, yLocal);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(bufferId);
+    }
+    // Drain all output copies before NotifyCube allows Fixpipe to overwrite the shared input/output region.
+    for (uint16_t bufferId = 0; bufferId < FR_OUTPUT_BUFFER_NUM; ++bufferId) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(bufferId);
+    }
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(logitCrossPingPongID_);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(logitCrossPingPongID_);
     return;
