@@ -115,7 +115,6 @@ protected:
     ge::graphStatus ValidateShapeParams();
     void SetMmConfig();
     ge::graphStatus ValidateMmConfig();
-    ge::graphStatus ValidatePipelineParams();
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();

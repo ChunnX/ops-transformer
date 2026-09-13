@@ -250,13 +250,17 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     constexpr uint64_t elementSize = sizeof(float);
     auto alignUp = [](uint64_t value, uint64_t align) { return (value + align - 1U) / align * align; };
 
-    auto cubeShapeValid = [cubeAlign](MMConfig &config) {
-        return config.get_baseM() != 0U && config.get_baseN() != 0U && config.get_baseK() != 0U &&
-               config.get_l1K() != 0U && config.get_baseM() % cubeAlign == 0U &&
-               config.get_baseN() % cubeAlign == 0U && config.get_baseK() % cubeAlign == 0U &&
-               config.get_l1K() % cubeAlign == 0U;
-    };
-    bool cubeShapeAligned = cubeShapeValid(mmConfigC0_) && cubeShapeValid(mmConfigC1_);
+    bool c0ShapeValid = mmConfigC0_.get_baseM() != 0U && mmConfigC0_.get_baseN() != 0U &&
+                        mmConfigC0_.get_baseK() != 0U && mmConfigC0_.get_l1K() != 0U &&
+                        mmConfigC0_.get_baseM() % cubeAlign == 0U &&
+                        mmConfigC0_.get_baseN() % cubeAlign == 0U &&
+                        mmConfigC0_.get_baseK() % cubeAlign == 0U && mmConfigC0_.get_l1K() % cubeAlign == 0U;
+    bool c1ShapeValid = mmConfigC1_.get_baseM() != 0U && mmConfigC1_.get_baseN() != 0U &&
+                        mmConfigC1_.get_baseK() != 0U && mmConfigC1_.get_l1K() != 0U &&
+                        mmConfigC1_.get_baseM() % cubeAlign == 0U &&
+                        mmConfigC1_.get_baseN() % cubeAlign == 0U &&
+                        mmConfigC1_.get_baseK() % cubeAlign == 0U && mmConfigC1_.get_l1K() % cubeAlign == 0U;
+    bool cubeShapeAligned = c0ShapeValid && c1ShapeValid;
     bool depthValid = mmConfigC0_.get_depthA1() == mmConfigC0_.get_depthB1() &&
                       mmConfigC0_.get_dbL0A() == mmConfigC0_.get_dbL0B() &&
                       mmConfigC1_.get_depthA1() == mmConfigC1_.get_depthB1() &&
@@ -318,16 +322,6 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
                      c0B1ChunkBytes <= l1BufferBytes;
     OP_CHECK_IF(!c0B1Valid,
                 OP_LOGE(context_->GetNodeName(), "MM config %u cannot keep C0 B1 resident in L1", mmConfigKey_),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MhcPreBackwardTiling::ValidatePipelineParams()
-{
-    bool c0ToV2Valid = C0_TO_V2_ROWS == tilingData_.mmConfigC0.get_baseM() &&
-                       C0_SET_SHAPE_M % C0_TO_V2_ROWS == 0U;
-    OP_CHECK_IF(!c0ToV2Valid,
-                OP_LOGE(context_->GetNodeName(), "C0 to V2 row granularity must match C0 baseM"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -470,10 +464,6 @@ ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
     if (ValidateMmConfig() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ValidatePipelineParams() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (TilingProcess() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
