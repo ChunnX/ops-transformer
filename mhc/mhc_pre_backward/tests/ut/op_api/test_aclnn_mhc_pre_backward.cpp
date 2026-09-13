@@ -35,7 +35,7 @@ protected:
     }
 };
 
-class l2_ai_mhc_pre_backward_a5_test : public testing::Test {
+class l2_mhc_pre_backward_a5_test : public testing::Test {
 protected:
     void SetUp() override
     {
@@ -124,33 +124,33 @@ aclnnStatus RunMhcPreBackwardV2(int64_t opImplMode)
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v1_ascend950)
+TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v1_ascend950)
 {
     EXPECT_EQ(RunMhcPreBackward(), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend950)
+TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v1_factorial_grad_h_res_ascend950)
 {
     EXPECT_NE(RunMhcPreBackward(true), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_fp32_mode_ascend950)
+TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_fp32_mode_ascend950)
 {
     EXPECT_EQ(RunMhcPreBackwardV2(0), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_hf32_mode_ascend950)
+TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_hf32_mode_ascend950)
 {
     EXPECT_EQ(RunMhcPreBackwardV2(1), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_ascend950)
+TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_ascend950)
 {
     EXPECT_NE(RunMhcPreBackwardV2(2), ACLNN_SUCCESS);
     EXPECT_NE(RunMhcPreBackwardV2(-1), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_ai_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_precedes_tensor_validation_ascend950)
+TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_invalid_mode_precedes_tensor_validation_ascend950)
 {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
