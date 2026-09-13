@@ -190,7 +190,6 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(
     const MMConfig &config, const GlobalTensor<float> &a, const GlobalTensor<float> &c, uint32_t m, uint32_t n,
     uint32_t k, uint32_t aGmStride, uint32_t cGmStride)
 {
-    // L0C按tiling深度轮换，使当前tile的MMAD可与前一tile的Fixpipe写回重叠。
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
     LocalTensor<float> currentC = cL0Local_[cBufferIndex * cubeL0CBufferElems_];
