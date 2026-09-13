@@ -246,52 +246,23 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
 {
     MMConfig &mmConfigC0_ = tilingData_.mmConfigC0;
     MMConfig &mmConfigC1_ = tilingData_.mmConfigC1;
-    constexpr uint64_t cubeAlign = 16U;
     constexpr uint64_t elementSize = sizeof(float);
-    auto alignUp = [](uint64_t value, uint64_t align) { return (value + align - 1U) / align * align; };
 
-    bool c0ShapeValid = mmConfigC0_.get_baseM() != 0U && mmConfigC0_.get_baseN() != 0U &&
-                        mmConfigC0_.get_baseK() != 0U && mmConfigC0_.get_l1K() != 0U &&
-                        mmConfigC0_.get_baseM() % cubeAlign == 0U &&
-                        mmConfigC0_.get_baseN() % cubeAlign == 0U &&
-                        mmConfigC0_.get_baseK() % cubeAlign == 0U && mmConfigC0_.get_l1K() % cubeAlign == 0U;
-    bool c1ShapeValid = mmConfigC1_.get_baseM() != 0U && mmConfigC1_.get_baseN() != 0U &&
-                        mmConfigC1_.get_baseK() != 0U && mmConfigC1_.get_l1K() != 0U &&
-                        mmConfigC1_.get_baseM() % cubeAlign == 0U &&
-                        mmConfigC1_.get_baseN() % cubeAlign == 0U &&
-                        mmConfigC1_.get_baseK() % cubeAlign == 0U && mmConfigC1_.get_l1K() % cubeAlign == 0U;
-    bool cubeShapeAligned = c0ShapeValid && c1ShapeValid;
-    bool depthValid = mmConfigC0_.get_depthA1() == mmConfigC0_.get_depthB1() &&
-                      mmConfigC0_.get_dbL0A() == mmConfigC0_.get_dbL0B() &&
-                      mmConfigC1_.get_depthA1() == mmConfigC1_.get_depthB1() &&
-                      mmConfigC1_.get_dbL0A() == mmConfigC1_.get_dbL0B() &&
-                      mmConfigC0_.get_depthA1() != 0U && mmConfigC1_.get_depthA1() != 0U &&
-                      mmConfigC0_.get_dbL0A() != 0U && mmConfigC1_.get_dbL0A() != 0U &&
-                      mmConfigC0_.get_dbL0C() != 0U && mmConfigC1_.get_dbL0C() != 0U;
-    OP_CHECK_IF(!cubeShapeAligned || !depthValid,
-                OP_LOGE(context_->GetNodeName(), "MM config %u has invalid cube shape or buffer depth", mmConfigKey_),
-                return ge::GRAPH_FAILED);
+    uint64_t c0A1Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_l1K() * elementSize;
+    uint64_t c0B1Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseN()) * mmConfigC0_.get_l1K() * elementSize;
+    uint64_t c1A1Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_l1K() * elementSize;
+    uint64_t c1B1Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_l1K() * elementSize;
+    uint64_t l1BufferBytes = std::max(std::max(c0A1Bytes, c0B1Bytes), std::max(c1A1Bytes, c1B1Bytes));
 
-    auto a1Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
-        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize;
-    };
-    auto b1Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
-        return alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_l1K(), cubeAlign) * elementSize;
-    };
-    auto a2Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
-        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize;
-    };
-    auto b2Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
-        return alignUp(config.get_baseN(), cubeAlign) * alignUp(config.get_baseK(), cubeAlign) * elementSize;
-    };
-    auto cBytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
-        return alignUp(config.get_baseM(), cubeAlign) * alignUp(config.get_baseN(), cubeAlign) * elementSize;
-    };
-    uint64_t l1BufferBytes = std::max(std::max(a1Bytes(mmConfigC0_), b1Bytes(mmConfigC0_)),
-                                      std::max(a1Bytes(mmConfigC1_), b1Bytes(mmConfigC1_)));
-    uint64_t l0BufferBytes = std::max(std::max(a2Bytes(mmConfigC0_), b2Bytes(mmConfigC0_)),
-                                      std::max(a2Bytes(mmConfigC1_), b2Bytes(mmConfigC1_)));
-    uint64_t l0CBufferBytes = std::max(cBytes(mmConfigC0_), cBytes(mmConfigC1_));
+    uint64_t c0A2Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseK() * elementSize;
+    uint64_t c0B2Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseN()) * mmConfigC0_.get_baseK() * elementSize;
+    uint64_t c1A2Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseK() * elementSize;
+    uint64_t c1B2Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_baseK() * elementSize;
+    uint64_t l0BufferBytes = std::max(std::max(c0A2Bytes, c0B2Bytes), std::max(c1A2Bytes, c1B2Bytes));
+
+    uint64_t c0L0CBytes = static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseN() * elementSize;
+    uint64_t c1L0CBytes = static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseN() * elementSize;
+    uint64_t l0CBufferBytes = std::max(c0L0CBytes, c1L0CBytes);
     uint64_t depthA1 = std::max(mmConfigC0_.get_depthA1(), mmConfigC1_.get_depthA1());
     uint64_t depthB1 = std::max(mmConfigC0_.get_depthB1(), mmConfigC1_.get_depthB1());
     uint64_t dbL0 = std::max(std::max(mmConfigC0_.get_dbL0A(), mmConfigC1_.get_dbL0A()),
@@ -315,14 +286,6 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     cubeL0CBufferBytes_ = static_cast<uint32_t>(l0CBytes);
     cubeL0CBufferElems_ = static_cast<uint32_t>(l0CBufferBytes / elementSize);
 
-    uint64_t c0B1ChunkCount = (fusionSize_ + mmConfigC0_.get_l1K() - 1U) / mmConfigC0_.get_l1K();
-    uint64_t c0B1ChunkK = std::min(fusionSize_, static_cast<uint64_t>(mmConfigC0_.get_l1K()));
-    uint64_t c0B1ChunkBytes = alignUp(c0B1ChunkK, cubeAlign) * alignUp(C0_SET_SHAPE_N, cubeAlign) * elementSize;
-    bool c0B1Valid = c0B1ChunkCount <= mmConfigC0_.get_depthB1() &&
-                     c0B1ChunkBytes <= l1BufferBytes;
-    OP_CHECK_IF(!c0B1Valid,
-                OP_LOGE(context_->GetNodeName(), "MM config %u cannot keep C0 B1 resident in L1", mmConfigKey_),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
