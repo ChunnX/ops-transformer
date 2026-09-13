@@ -12,21 +12,21 @@
 
 #include "acl/acl.h"
 #include "aclnnInner_allto_all_matmul.h"
-#include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/transdata.h"
+#include "aclnn_kernels/common/op_error_check.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "common/utils/hccl_util.h"
-#include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
+#include "common/utils/op_mc2.h"
 #include "mc2/common/utils/mc2_comm_utils.h"
 #include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 #include "opdev/common_types.h"
+#include "opdev/platform.h"
 #include "opdev/format_utils.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
-#include "opdev/platform.h"
 #include "securec.h"
 #include "op_host/util/op_const_def.h"
 
@@ -301,7 +301,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     auto transX2 = x2;                                  // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
-            IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
             return ACLNN_ERR_PARAM_INVALID;
