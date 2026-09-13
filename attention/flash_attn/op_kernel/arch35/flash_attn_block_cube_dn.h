@@ -174,6 +174,11 @@ public:
 
         /*--------------------------------------------L0C--------------------------------------------*/
         l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_BUF_BYTES);
+        // Reset unit flags before any L0C producer can run; FIX_M is otherwise unused here.
+        SetFixPipeConfig<uint64_t>(l0CBuffers_.template ReinterpretCast<uint64_t>(), true);
+        SetFlag<HardEvent::FIX_M>(EVENT_ID0);
+        WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
+        SetMMRowMajor();
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -292,8 +297,22 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm1SyncIdx + AIV0_AIV1_OFFSET);
     }
 
+    bool l0cUnitFlagMode_ = false;
+
+    __aicore__ inline void SetL0cSyncMode(bool useUnitFlag)
+    {
+        if (useUnitFlag != l0cUnitFlagMode_) {
+            // Drain both sides before changing ownership protocols. Do not reset live unit flags.
+            SetFlag<HardEvent::M_FIX>(EVENT_ID0);
+            WaitFlag<HardEvent::M_FIX>(EVENT_ID0);
+            SetFlag<HardEvent::FIX_M>(EVENT_ID0);
+            WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
+            l0cUnitFlagMode_ = useUnitFlag;
+        }
+    }
+
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
-                                        RunInfo &runInfo, uint32_t s2Size)
+                                        RunInfo &runInfo, uint32_t s2Size, uint32_t unitFlag)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
@@ -301,6 +320,7 @@ public:
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
         fixpipeParams.dualDstCtl = 2;
+        fixpipeParams.unitFlag = unitFlag;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -325,22 +345,33 @@ public:
         for (uint32_t s2Offset = 0; s2Offset < runInfo.actSingleLoopS2Size; s2Offset += MM1_S2_SPLIT_SIZE) {
             uint32_t s2Size =
                 AttentionCommon::Min(MM1_S2_SPLIT_SIZE, static_cast<uint32_t>(runInfo.actSingleLoopS2Size) - s2Offset);
-            Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            // Only publish units that FIXPIPE reads exactly; dual-AIV output requires N32.
+            const bool useUnitFlag = (s2Size % 16U == 0U) && (runInfo.actMSize % 32U == 0U);
+            SetL0cSyncMode(useUnitFlag);
+            if (!useUnitFlag) {
+                Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            }
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
-            MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
-                                        constInfo_.dSize, false, true, true, true, 0, s2Size, ldK, 0);
+            MMParam param =
+                MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize, constInfo_.dSize, false,
+                            true, true, true, useUnitFlag ? UNITFLAG_EN_OUTER_LAST : 0U, s2Size, ldK, 0);
             MatmulK<KV_T, Q_T, MM_T, MM1_S2_SPLIT_SIZE, mBaseSize, MM1_K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
                 kL1Tensor[s2Offset * 16U], qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-            Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-            Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            if (!useUnitFlag) {
+                Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+                Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            }
 
             // singleM keeps the full L1 row stride; realM limits each L0/MMAD tile.
             uint32_t ubRowStride = ((runInfo.actMSize + 31U) >> 5U << 5U) / CV_RATIO;
-            FixpipeMm1Dn(mm1ResUbTensor[s2Offset * ubRowStride], l0CSubTensor, runInfo, s2Size);
+            FixpipeMm1Dn(mm1ResUbTensor[s2Offset * ubRowStride], l0CSubTensor, runInfo, s2Size,
+                         useUnitFlag ? UNITFLAG_EN_OUTER_LAST : 0U);
 
-            Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            if (!useUnitFlag) {
+                Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
+            }
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
@@ -381,16 +412,23 @@ public:
         Mutex::Unlock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
-            Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
+            // Drain the physical NZ extent, including the DV tail padded to 16.
+            SetL0cSyncMode(true);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             uint32_t ldK = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
-            MMParam param = {
-                constInfo_.dSizeV, 128, (uint32_t)runInfo.actSingleLoopS2Size, true, false, true, true, 0, 0, ldK, 0};
+            MMParam param = {constInfo_.dSizeV,
+                             128,
+                             (uint32_t)runInfo.actSingleLoopS2Size,
+                             true,
+                             false,
+                             true,
+                             true,
+                             UNITFLAG_EN_OUTER_LAST,
+                             0,
+                             ldK,
+                             0};
             MatmulK<KV_T, Q_T, MM_T, dVBaseSize, mBaseSize, 128, ABLayout::MK, ABLayout::KN>(
                 vL1Tensor, pL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
-
-            Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-            Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
 
             FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
             fixpipeParams.nSize = 128;
@@ -398,13 +436,12 @@ public:
             fixpipeParams.srcStride = fixpipeParams.mSize;
             fixpipeParams.dstStride = 64;
             fixpipeParams.dualDstCtl = 2;
-            fixpipeParams.unitFlag = 0U;
+            fixpipeParams.unitFlag = UNITFLAG_EN_OUTER_LAST;
             fixpipeParams.params.ndNum = 1;
             fixpipeParams.params.srcNdStride = 0;
             fixpipeParams.params.dstNdStride = 0;
             Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(mm2ResUbTensor, l0CSubTensor, fixpipeParams);
 
-            Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
