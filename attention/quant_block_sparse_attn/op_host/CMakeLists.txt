@@ -9,6 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(quant_block_sparse_attn_depends attention/common CACHE INTERNAL "Dependencies for quant_block_sparse_attn")
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         quant_block_sparse_attn_def.cpp
