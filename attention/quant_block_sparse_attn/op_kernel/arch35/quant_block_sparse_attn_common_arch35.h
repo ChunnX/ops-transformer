@@ -25,7 +25,7 @@
 #include "stdarg.h"
 #include "../../../common/op_kernel/arch35/util_regbase_qbsa.h"
 #include "../quant_block_sparse_attn_common.h"
-#include "quant_block_sparse_attn_metadata_arch35.h"
+#include "quant_block_sparse_attn_tiling_data.h"
 
 using matmul::MatmulType;
 using namespace AscendC;
@@ -52,6 +52,70 @@ constexpr uint64_t L0C_SIZE = 256;
 constexpr uint64_t FLOAT_BYTES = 4;
 
 namespace BaseApi {
+struct BsaFaCoreMetadata {
+    uint32_t coreEnable{0U};
+    uint32_t bn1StartIdx{0U};
+    uint32_t s1StartIdx{0U};
+    uint32_t s2StartIdx{0U};
+    uint32_t bn1EndIdx{0U};
+    uint32_t s1EndIdx{0U};
+    uint32_t s2EndIdx{0U};
+    uint32_t firstFdDataWorkspaceIdx{0U};
+};
+
+__aicore__ inline uint32_t GetBsaSectionNum(AscendC::GlobalTensor<int32_t> &metadataGm)
+{
+    return metadataGm.GetValue(optiling::QBSA_FA_HEAD_SECTION_NUM_INDEX);
+}
+
+__aicore__ inline uint64_t GetBsaCoreMetadataOffset(uint32_t sectionIdx, uint32_t coreIdx)
+{
+    return optiling::QBSA_FA_HEAD_METADATA_SIZE +
+           static_cast<uint64_t>(sectionIdx) * optiling::QBSA_FA_AIC_CORE_NUM * optiling::QBSA_FA_METADATA_SIZE +
+           static_cast<uint64_t>(coreIdx) * optiling::QBSA_FA_METADATA_SIZE;
+}
+
+__aicore__ inline uint32_t GetBsaAttrMetadata(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+                                              uint32_t coreIdx, uint32_t metaIdx)
+{
+    return metadataGm.GetValue(GetBsaCoreMetadataOffset(sectionIdx, coreIdx) + metaIdx);
+}
+
+__aicore__ inline bool IsBsaCoreEnabled(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+                                        uint32_t coreIdx)
+{
+    return GetBsaAttrMetadata(metadataGm, sectionIdx, coreIdx, optiling::QBSA_FA_CORE_ENABLE_INDEX) != 0U;
+}
+
+__aicore__ inline uint32_t GetBsaLastValidSectionIdx(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionNum,
+                                                     uint32_t coreIdx)
+{
+    uint32_t lastValidSectionIdx = sectionNum;
+    for (uint32_t sectionIdx = 0U; sectionIdx < sectionNum; ++sectionIdx) {
+        if (IsBsaCoreEnabled(metadataGm, sectionIdx, coreIdx)) {
+            lastValidSectionIdx = sectionIdx;
+        }
+    }
+    return lastValidSectionIdx;
+}
+
+__aicore__ inline BsaFaCoreMetadata GetBsaCoreMetadata(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+                                                       uint32_t coreIdx)
+{
+    uint64_t baseOffset = GetBsaCoreMetadataOffset(sectionIdx, coreIdx);
+    BsaFaCoreMetadata coreMetadata;
+    coreMetadata.coreEnable = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_CORE_ENABLE_INDEX);
+    coreMetadata.bn1StartIdx = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_BN1_START_INDEX);
+    coreMetadata.s1StartIdx = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_S1_START_INDEX);
+    coreMetadata.s2StartIdx = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_S2_START_INDEX);
+    coreMetadata.bn1EndIdx = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_BN1_END_INDEX);
+    coreMetadata.s1EndIdx = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_S1_END_INDEX);
+    coreMetadata.s2EndIdx = metadataGm.GetValue(baseOffset + optiling::QBSA_FA_S2_END_INDEX);
+    coreMetadata.firstFdDataWorkspaceIdx =
+        metadataGm.GetValue(baseOffset + optiling::QBSA_FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX);
+    return coreMetadata;
+}
+
 struct CubeCoordInfo {
     uint32_t curBIdx;
     uint32_t s1Coord;

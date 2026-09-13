@@ -98,7 +98,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
+        if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= optiling::QBSA_FA_AIC_CORE_NUM) {
             return;
         }
         CrossCoreBufferInit();
@@ -386,13 +386,13 @@ private:
         for (uint32_t sectionIdx = 0U; sectionIdx < sectionNum; ++sectionIdx) {
             // MX 只使用 BN1/S1 边界；先读 enable，禁用 section 不再加载其余 7 个字段。
             const uint64_t metadataBase = GetBsaCoreMetadataOffset(sectionIdx, constInfo.aicIdx);
-            if (unlikely(metadataGm.GetValue(metadataBase + QBSA_FA_CORE_ENABLE_INDEX) == 0U)) {
+            if (unlikely(metadataGm.GetValue(metadataBase + optiling::QBSA_FA_CORE_ENABLE_INDEX) == 0U)) {
                 continue;
             }
-            const uint32_t bn1StartIdx = metadataGm.GetValue(metadataBase + QBSA_FA_BN1_START_INDEX);
-            uint32_t bn1EndIdx = metadataGm.GetValue(metadataBase + QBSA_FA_BN1_END_INDEX);
-            const uint32_t s1StartIdx = metadataGm.GetValue(metadataBase + QBSA_FA_S1_START_INDEX);
-            const uint32_t s1EndIdx = metadataGm.GetValue(metadataBase + QBSA_FA_S1_END_INDEX);
+            const uint32_t bn1StartIdx = metadataGm.GetValue(metadataBase + optiling::QBSA_FA_BN1_START_INDEX);
+            uint32_t bn1EndIdx = metadataGm.GetValue(metadataBase + optiling::QBSA_FA_BN1_END_INDEX);
+            const uint32_t s1StartIdx = metadataGm.GetValue(metadataBase + optiling::QBSA_FA_S1_START_INDEX);
+            const uint32_t s1EndIdx = metadataGm.GetValue(metadataBase + optiling::QBSA_FA_S1_END_INDEX);
             if (s1EndIdx != 0U) {
                 ++bn1EndIdx;
             }
