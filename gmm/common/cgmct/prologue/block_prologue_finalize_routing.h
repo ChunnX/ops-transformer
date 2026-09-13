@@ -299,8 +299,9 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     auto sharedInputOffset = params_->sharedInputOffset;
     auto sharedInputLen = params_->sharedInputLen;
     uint64_t firstZeroSize = params_->n * sharedInputOffset;
-    // Output initialization is handled by the framework atomic-clean task.
+    // sharedInput is None,only do InitOutputWithZeros, all shape(batch,n) ,then finish
     if (sharedInputLen == 0) {
+        InitOutputWithZeros(0, params_->n * params_->batch);
         return;
     }
 
