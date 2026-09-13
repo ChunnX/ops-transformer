@@ -206,7 +206,6 @@ private:
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
 
-    event_t eventVMte3_;
     event_t eventVS_;
     event_t eventSMte3_;
 
@@ -351,7 +350,6 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
 {
     if ASCEND_IS_AIV {
-        eventVMte3_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
         eventSMte3_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         ProcessV0Main();
@@ -519,10 +517,10 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0MainAlphaReduce(Loca
     PipeBarrier<PIPE_V>();
     ReduceSum<float, Pattern::Reduce::AR, true>(alphaOutBuf[16], sumBuf, srcShape3, true);
     PipeBarrier<PIPE_V>();
+    SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+    WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
     vecOutQueue1_.EnQue(alphaOutBuf);
     alphaOutBuf = vecOutQueue1_.DeQue<P>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
     DataCopyParams bsCopyParams;
     bsCopyParams.blockCount = 1;
     bsCopyParams.blockLen = ALPHA_GRAD_PADDING * sizeof(P);
@@ -773,8 +771,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     }
     vecOutQueue1_.EnQue(fp32OutBuf);
     LocalTensor<P> BiasOutBuf = vecOutQueue1_.DeQue<P>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
 
     uint32_t coreId = GetBlockIdx();
     dataCopyParams.blockLen = fusionSize_ * sizeof(P);
@@ -821,8 +817,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
 
     vecOutQueue1_.EnQue(fp32OutBuf);
     LocalTensor<P> hMixGradOutBuf = vecOutQueue1_.DeQue<P>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
     dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
     DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart)], hMixGradOutBuf, dataCopyParams);
     PipeBarrier<PIPE_V>();
@@ -831,8 +825,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint64_t runBSStart
     ReduceSum<float, AscendC::Pattern::Reduce::AR, isReuse>(invRmsGradUb, hMixGradBuf, buffers.brcbTmpBuf, shape, true);
     vecOutQueueSmall_.EnQue(invRmsGradUb);
     LocalTensor<P> invRmsGradUbtBuf = vecOutQueueSmall_.DeQue<P>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
 
     dataCopyParams.blockLen = curBSSize * sizeof(P);
     DataCopyPad(workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(runBSStart)], invRmsGradUbtBuf, dataCopyParams);
@@ -1071,8 +1063,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2Pipeline()
         if (withGamma_) {
             vecOutQueueSmall_.EnQue(sumBuf);
             sumBuf = vecOutQueueSmall_.DeQue<P>();
-            SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-            WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
             DataCopyExtParams fp32ExtCopyParams;
             fp32ExtCopyParams.blockCount = 1;
             fp32ExtCopyParams.blockLen = copySizeND * sizeof(P);
@@ -1385,8 +1375,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     vecInQueue1_.FreeTensor(bf16InputBuf_);
     vecOutQueue1_.EnQue(gammaOutUb_);
     gammaOutUb_ = vecOutQueue1_.DeQue<P>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
 
     // 输出gamma到workspace
     DataCopyExtParams fp32ExtCopyParams;
@@ -1522,8 +1510,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uin
     }
     vecOutQueue1_.EnQue(bf16OutputBuf_);
     bf16OutputBuf_ = vecOutQueue1_.DeQue<T>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
 
     DataCopyExtParams bf16ExtCopyParams;
     bf16ExtCopyParams.blockCount = currentChunkSize;
@@ -1636,8 +1622,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3BiasGrad()
                                                         true);
     vecOutQueueSmall_.EnQue(biasGradOutLocal);
     biasGradOutLocal = vecOutQueueSmall_.DeQue<P>();
-    SetFlag<HardEvent::V_MTE3>(eventVMte3_);
-    WaitFlag<HardEvent::V_MTE3>(eventVMte3_);
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = fusionSize_ * sizeof(P);
     dataCopyParams.srcStride = 0;
