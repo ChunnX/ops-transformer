@@ -327,6 +327,40 @@ public:
         Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
+    __aicore__ inline void MatmulBmm1ReuseQ(const LocalTensor<KV_T> &kL1Tensor, const LocalTensor<MM_T> &l0CTensor,
+                                            const MMParam &param)
+    {
+        static_assert(MM1_S2_SPLIT_SIZE < s2BaseSize && dBaseSize <= MM1_K_SPLIT_SIZE,
+                      "Q reuse requires multiple S2 subtiles and a single K tile");
+        auto l0aBuffer = mmL0APolicy_.Get();
+        l0aBuffer.template Wait<HardEvent::M_MTE1>();
+        LocalTensor<KV_T> l0ATensor = l0aBuffer.template GetTensor<KV_T>();
+        uint32_t loadK = param.loadK != 0 ? ((param.singleK + 15U) >> 4U << 4U) : param.singleK;
+        LoadDataToL0A(l0ATensor, kL1Tensor, param, 0, loadK, param.singleM);
+
+        // The preceding S2 subtile loaded the same Q; no other L0B producer intervenes.
+        auto l0bBuffer = mmL0BPolicy_.GetPre();
+        l0bBuffer.template Wait<HardEvent::M_MTE1>();
+        LocalTensor<Q_T> l0BTensor = l0bBuffer.template GetTensor<Q_T>();
+        // This ready event still protects the new K load into L0A.
+        l0bBuffer.template Set<HardEvent::MTE1_M>();
+        l0bBuffer.template Wait<HardEvent::MTE1_M>();
+
+        MmadParams mmParams;
+        mmParams.m = param.realM != 0 ? param.realM : param.singleM;
+        if (mmParams.m == 1) {
+            mmParams.m = 16;
+        }
+        mmParams.n = param.singleN;
+        mmParams.k = param.singleK;
+        mmParams.cmatrixInitVal = param.isOutKFisrt;
+        mmParams.cmatrixSource = false;
+        mmParams.unitFlag = param.unitFlag;
+        Mmad(l0CTensor, l0ATensor, l0BTensor, mmParams);
+        l0aBuffer.template Set<HardEvent::M_MTE1>();
+        l0bBuffer.template Set<HardEvent::M_MTE1>();
+    }
+
     __aicore__ inline void IterateBmm1Dn(LocalTensor<MM_T> &mm1ResUbTensor, RunInfo &runInfo)
     {
         LocalTensor<Q_T> qL1Tensor = l1QBuffers_[qL1BufId_ * L1_Q_BUF_BYTES].template ReinterpretCast<Q_T>();
@@ -357,8 +391,17 @@ public:
             MMParam param =
                 MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize, constInfo_.dSize, false,
                             true, true, true, useUnitFlag ? UNITFLAG_EN_OUTER_LAST : 0U, s2Size, ldK, 0);
-            MatmulK<KV_T, Q_T, MM_T, MM1_S2_SPLIT_SIZE, mBaseSize, MM1_K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
-                kL1Tensor[s2Offset * 16U], qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+            if constexpr (MM1_S2_SPLIT_SIZE < s2BaseSize && dBaseSize <= MM1_K_SPLIT_SIZE) {
+                if (s2Offset != 0) {
+                    MatmulBmm1ReuseQ(kL1Tensor[s2Offset * 16U], l0CSubTensor, param);
+                } else {
+                    MatmulK<KV_T, Q_T, MM_T, MM1_S2_SPLIT_SIZE, mBaseSize, MM1_K_SPLIT_SIZE, ABLayout::MK,
+                            ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                }
+            } else {
+                MatmulK<KV_T, Q_T, MM_T, MM1_S2_SPLIT_SIZE, mBaseSize, MM1_K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
+                    kL1Tensor[s2Offset * 16U], qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+            }
             if (!useUnitFlag) {
                 Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
                 Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
