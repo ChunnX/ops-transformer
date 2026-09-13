@@ -714,25 +714,25 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::AIV02Process(V0V1Buffers<P> &
             uint32_t dstOffset = bsFusionOffset;
             maskPre = Reg::UpdateMask<P>(curLenPre);
             Reg::Load<P>(gatherReg, hPreBufAddr + srcOffset);
-            Reg::Store<P>(gatherFusionOutBufAddr + dstOffset, gatherReg);
+            Reg::Store<P>(gatherFusionOutBufAddr + dstOffset, gatherReg, blockLenPre);
             Reg::Mul(hMixGradReg, gatherReg, alphaPreReg, maskPre);
-            Reg::Store<P>(hMixGradBufAddr + dstOffset, hMixGradReg);
+            Reg::Store<P>(hMixGradBufAddr + dstOffset, hMixGradReg, blockLenPre);
 
             uint32_t srcOffset1 = bsIdx * blockLenPre;
             uint32_t dstOffset1 = bsFusionOffset;
             maskPost = Reg::UpdateMask<P>(curLenPost);
             Reg::Load<P>(gatherReg, hPostBufAddr + srcOffset1);
-            Reg::Store<P>(gatherFusionOutBufAddr + dstOffset1 + blockLenPre, gatherReg);
+            Reg::Store<P>(gatherFusionOutBufAddr + dstOffset1 + blockLenPre, gatherReg, blockLenPost);
             Reg::Mul(hMixGradReg, gatherReg, alphaPostReg, maskPost);
-            Reg::Store<P>(hMixGradBufAddr + dstOffset1 + blockLenPre, hMixGradReg);
+            Reg::Store<P>(hMixGradBufAddr + dstOffset1 + blockLenPre, hMixGradReg, blockLenPost);
 
             uint32_t srcOffset2 = bsIdx * blockLenComb;
             uint32_t dstOffset2 = bsFusionOffset + blockLenPre + blockLenPost;
             maskComb = Reg::UpdateMask<P>(curLenComb);
             Reg::Load<P>(gatherReg, hResBufAddr + srcOffset2);
-            Reg::Store<P>(gatherFusionOutBufAddr + dstOffset2, gatherReg);
+            Reg::Store<P>(gatherFusionOutBufAddr + dstOffset2, gatherReg, blockLenComb);
             Reg::Mul(hMixGradReg, gatherReg, alphaCombReg, maskComb);
-            Reg::Store<P>(hMixGradBufAddr + dstOffset2, hMixGradReg);
+            Reg::Store<P>(hMixGradBufAddr + dstOffset2, hMixGradReg, blockLenComb);
         }
     }
 }
@@ -1338,7 +1338,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
                                                                                uint32_t buffId)
 {
     DataCopyExtParams xCopyParams;
-    DataCopyPadExtParams<T> xCopyPadParams;
+    DataCopyPadExtParams<T> xCopyPadParams{};
     xCopyParams.blockCount = currentChunkSize;
     xCopyParams.blockLen = copySizeND * sizeof(T);
     xCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
@@ -1481,7 +1481,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkOutputXGrad(uin
     __ubuf__ P *xGradAddr = (__ubuf__ P *)xGradVec3Buf_.GetPhyAddr();
     if (withGradXPost_) {
         DataCopyExtParams gradXPostCopyParams;
-        DataCopyPadExtParams<T> gradXPostPadParams;
+        DataCopyPadExtParams<T> gradXPostPadParams{};
         gradXPostCopyParams.blockCount = currentChunkSize;
         gradXPostCopyParams.blockLen = copySizeND * sizeof(T);
         gradXPostCopyParams.srcStride = (nD_ - copySizeND) * sizeof(T);
