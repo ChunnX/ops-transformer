@@ -15,8 +15,26 @@ namespace Sage {
 // following half MMAD uses the other slot; PV retains its existing partition.
 constexpr uint32_t QK_SECOND_FIX_EVENT = 6;
 template <uint32_t BOffset>
+__aicore__ inline __attribute__((always_inline)) void PrefetchWideK(FixedResource &r, GM_ADDR b, uint32_t parity)
+{
+    using namespace Catlass;
+    using namespace tla;
+    using T = int8_t;
+    using Copy = Catlass::Gemm::Tile::PackedTileCopyTla<Arch, T, layout::RowMajor, T, layout::ColumnMajor, float, layout::RowMajor>;
+    event_t ev = static_cast<event_t>(4 + parity);
+    WaitFlag<HardEvent::MTE1_MTE2>(ev);
+    GlobalTensor<T> bg;
+    bg.SetGlobalBuffer((__gm__ T *)b);
+    auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, layout::ColumnMajor>(128, N), Catlass::Arch::PositionGM{});
+    auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + parity * 65536),
+                             tla::MakeLayout<T, typename Copy::LayoutTagL1B>(128, N), Catlass::Arch::PositionL1{});
+    typename Copy::template CopyGmToL1B<decltype(gb)> copy;
+    copy(lb, gb);
+    SetFlag<HardEvent::MTE2_MTE1>(ev);
+}
+template <uint32_t BOffset>
 __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource &r, GM_ADDR a,
-                                                                  GM_ADDR b, uint32_t ubOffset, bool loadA)
+                                                                  uint32_t ubOffset, bool loadA, uint32_t kParity)
 {
     using namespace Catlass;
     using namespace tla;
@@ -25,22 +43,20 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
     using Copy = Catlass::Gemm::Tile::PackedTileCopyTla<Arch, T, layout::RowMajor, T, layout::ColumnMajor, float,
                                                         layout::RowMajor>;
     WaitFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
-    GlobalTensor<T> ag, bg;
+    GlobalTensor<T> ag;
     ag.SetGlobalBuffer((__gm__ T *)a);
-    bg.SetGlobalBuffer((__gm__ T *)b);
     auto ga = tla::MakeTensor(ag, tla::MakeLayout<T, layout::RowMajor>(M, k), Catlass::Arch::PositionGM{});
-    auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, layout::ColumnMajor>(k, n), Catlass::Arch::PositionGM{});
     auto la = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(0),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1A>(M, k), Catlass::Arch::PositionL1{});
-    auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset),
+    auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + kParity * 65536),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1B>(k, n), Catlass::Arch::PositionL1{});
     if (loadA) {
         typename Copy::template CopyGmToL1A<decltype(ga)> ca;
         ca(la, ga);
     }
-    typename Copy::template CopyGmToL1B<decltype(gb)> cb;
-    cb(lb, gb);
-    Sync<HardEvent::MTE2_MTE1>();
+    if (loadA) Sync<HardEvent::MTE2_MTE1>();
+    event_t kEvent = static_cast<event_t>(4 + kParity);
+    WaitFlag<HardEvent::MTE2_MTE1>(kEvent);
     WaitFlag<HardEvent::M_MTE1>(QK_EVENT);
     auto bb = tla::MakeTensor(r.l0BBuf.template GetBufferByByte<T>(0),
                               tla::MakeLayout<T, typename Copy::LayoutTagL0B>(k, n), Catlass::Arch::PositionL0B{});
@@ -55,6 +71,7 @@ __aicore__ inline __attribute__((always_inline)) void GemmQkSplit(FixedResource 
             c0a(aa, tla::GetTile(la, tla::MakeCoord(sub * HALF, 0), tla::MakeShape(HALF, k)));
         }
     }
+    SetFlag<HardEvent::MTE1_MTE2>(kEvent);
     SetFlag<HardEvent::MTE1_MTE2>(QK_EVENT);
     Sync<HardEvent::MTE1_M>();
     for (uint32_t sub = 0; sub < 2; ++sub) {

@@ -33,7 +33,7 @@ QK 在 Cube 中累加为 INT32，经固定 `2^-11` DEQF16 转为 FP16，再乘�
 
 PV 通过 CATLASS 的 MX scale 布局和搬运接口加载 L0B scale，使用硬件 MXFP8 MMA。P 的单位 scale 在 L0A 初始化一次。V scale 按 KV head 缓存在 L1，容量为 176 KiB；超过容量时按 PV tile 搬运，仍为同一 MXFP8 算法。
 
-通用路径采用 M128/N256 分块、四个 score 槽和两个 P/PV 共享槽。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax/O 更新，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。
+通用路径采用 M128/N256 分块、四个 score 槽和两个 P/PV 共享槽。D padding 为 128、Sq 为 128 的倍数且 Sk 为 512 的倍数并不少于 4096 时，使用 N512 路径：两个 N256 Cube 片段共享一次 softmax/O 更新，流水跨 query 连续执行。O 常驻 UB，P 经 UB→L1 交给 Cube，QK/PV 经 L0C→UB 交给 Vector。 wide 路径的 K/V 各使用两个 L1 缓冲区预取；Cube 按 N256 片段推进，Vector 按 N512 分组推进，延迟输出仅保留两个必要的调度记录。
 
 ## 参数说明
 
@@ -118,7 +118,9 @@ MXFP8 PV 用例采用 CPU 独立量化的端到端对照，使用下述统一标
 
 数值参考是本目录的 per-token QK / MXFP8 PV CPU 算法及独立 FP32 SDPA。CPU 同算法检查采用 FP16 rtol/atol=2^-9、BF16=2^-6、至少 99% 匹配比例；最大绝对误差通常分别限于 0.1/1。SDPA 的 max/mean/RMSE 误差比例门限为 2/1.2/1.2。
 
-MXFP8 回归不沿用旧 per-channel V 量化的最大误差豁免。分组 scale、非对齐尾块和 L1 缓存容量边界另有独立可解析输入测试。
+MXFP8 回归统一检查最大绝对误差上限：FP16 为 0.1，BF16 为 1.0。分组 scale、非对齐尾块和 L1 缓存容量边界另有独立可解析输入测试。
+
+`tests/test_wide_sequence.py` 补充 4K/8K/16K 完整序列的 wide 精度覆盖：12 项双 dtype、causal/non-causal、GQA 和 HND/NHD 用例逐元素对照 CPU 同算法（`block_k=512`），同时检查可选 LSE。另以 P-01～P-07 的完整 B/H/S 尺寸运行两条公开接口，检查全部输出和 LSE 的一致性，并对首尾 query head 的全部 batch/序列做 CPU 对照；这七项 CPU 对照是 head 抽样，不代表全 head 的独立精度验证。
 
 FP16 平移的舍入会改变 P 的实际缩放，因此不保证与原先 `448 * exp(score - max)` 逐位或按旧量化参考一致。零 score、V 全 1 时，FP16 输出为约 0.999512；较大且相等的 score 还可能使 P 超过 448 后饱和。独立 SDPA 检查保留原有标准。
 

@@ -34,13 +34,31 @@ __aicore__ inline void InitMxP(FixedResource &r)
                        M / 16, N / 64, N / 64, N / 64);
     Sync<HardEvent::MTE1_M>();
 }
+template <uint32_t BOffset>
+__aicore__ inline __attribute__((always_inline)) void PrefetchWideV(FixedResource &r, GM_ADDR b, uint32_t parity)
+{
+    using namespace Catlass;
+    using namespace tla;
+    using T = float8_e4m3_t;
+    using Copy = Catlass::Gemm::Tile::PackedTileCopyTla<Arch, T, layout::RowMajor, T, layout::RowMajor, float, layout::RowMajor>;
+    event_t ev = static_cast<event_t>(6 + parity);
+    WaitFlag<HardEvent::MTE1_MTE2>(ev);
+    GlobalTensor<T> bg;
+    bg.SetGlobalBuffer((__gm__ T *)b);
+    auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, layout::RowMajor>(N, 128), Catlass::Arch::PositionGM{});
+    auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + N * 128 + parity * 65536),
+                             tla::MakeLayout<T, typename Copy::LayoutTagL1B>(N, 128), Catlass::Arch::PositionL1{});
+    typename Copy::template CopyGmToL1B<decltype(gb)> copy;
+    copy(lb, gb);
+    SetFlag<HardEvent::MTE2_MTE1>(ev);
+}
 template <class T, class BLayout, bool LocalA = false, uint32_t BOffset = B_L1, bool Emit = true,
-          bool Initialize = true>
+          bool Initialize = true, bool PreloadedB = false>
 __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_ADDR a, GM_ADDR b, uint32_t k,
                                                            uint32_t n, uint32_t ubOffset, uint32_t parity = 0,
                                                            bool loadA = true, GM_ADDR mxScale = nullptr,
                                                            MxScaleCache *mxCache = nullptr, uint32_t mxK = 0,
-                                                           uint32_t mxStart = 0)
+                                                           uint32_t mxStart = 0, uint32_t vParity = 0)
 {
     using namespace Catlass;
     using namespace tla;
@@ -59,7 +77,7 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
     auto gb = tla::MakeTensor(bg, tla::MakeLayout<T, BLayout>(k, n), Catlass::Arch::PositionGM{});
     auto la = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(LocalA ? P_L1 + parity * M * N : 0),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1A>(M, k), Catlass::Arch::PositionL1{});
-    auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + (LocalA ? N * 128 : 0)),
+    auto lb = tla::MakeTensor(r.l1Buf.template GetBufferByByte<T>(BOffset + (LocalA ? N * 128 : 0) + (PreloadedB ? vParity * 65536 : 0)),
                               tla::MakeLayout<T, typename Copy::LayoutTagL1B>(k, n), Catlass::Arch::PositionL1{});
     if constexpr (!LocalA) {
         if (loadA) {
@@ -68,7 +86,7 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
         }
     }
     typename Copy::template CopyGmToL1B<decltype(gb)> cb;
-    cb(lb, gb);
+    if constexpr (!PreloadedB) cb(lb, gb);
     const bool cached = mxCache && uint64_t(mxK) / 32 * n <= MX_P_L1 - MX_V_L1;
     const uint32_t scaleK = cached ? mxK : k;
     const uint32_t scaleStart = cached ? mxStart : 0;
@@ -84,11 +102,15 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
                                       Catlass::Arch::PositionGM{});
             Catlass::Gemm::Tile::TileCopyTla<Arch, decltype(gs), decltype(sb)> copyScale;
             copyScale(sb, gs);
+            if constexpr (PreloadedB) Sync<HardEvent::MTE2_MTE1>();
             if (cached)
                 mxCache->base = scaleBase;
         }
     }
-    Sync<HardEvent::MTE2_MTE1>();
+    if constexpr (PreloadedB)
+        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(6 + vParity));
+    else
+        Sync<HardEvent::MTE2_MTE1>();
     WaitFlag<HardEvent::M_MTE1>(slot);
     auto aa = tla::MakeTensor(r.l0ABuf.template GetBufferByByte<L0T>(l0Offset),
                               tla::MakeLayout<T, typename Copy::LayoutTagL0A>(M, k), Catlass::Arch::PositionL0A{});
@@ -109,6 +131,7 @@ __aicore__ inline __attribute__((always_inline)) void Gemm(FixedResource &r, GM_
             c0a(aa, tla::GetTile(la, tla::MakeCoord(0, 0), tla::MakeShape(M, k)));
         c0b(bb, tla::GetTile(lb, tla::MakeCoord(0, 0), tla::MakeShape(k, n)));
     }
+    if constexpr (PreloadedB) SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(6 + vParity));
     SetFlag<HardEvent::MTE1_MTE2>(slot);
     Sync<HardEvent::MTE1_M>();
     WaitFlag<HardEvent::FIX_M>(slot);
