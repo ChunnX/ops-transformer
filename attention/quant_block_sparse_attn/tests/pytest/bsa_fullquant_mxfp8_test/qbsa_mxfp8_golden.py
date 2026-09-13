@@ -1487,11 +1487,26 @@ def generate_data():
 # 经 FP32 溢出后同样是 -Inf。仅变更空行 LSE 哨兵，attention_out=0 语义不变。
 EMPTY_LSE = float("-inf")
 MASK_VALUE = -10000.0
+E4M3_RINT_NAN_THRESHOLD = 464.0
 # Keep the exact FP32 constants and operation order used by the VF.  For
 # large-magnitude negative scores, ``x / log(2)`` and ``x * INV_LN2`` can
 # round to different FP32 values before ceil.
 LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
+
+
+def _cast_mxfp8_p_to_e4m3(value):
+    """Match the MXFP8 VF RINT conversion at the top of E4M3FN range.
+
+    E4M3FN's largest finite value is 448.  The VF conversion rounds finite
+    values through the next encoding, whose midpoint is 464; values above
+    that midpoint become the NaN encoding instead of saturating to 448.
+    PyTorch's CPU conversion saturates those values, so repair only this
+    backend difference after preserving the normal E4M3 rounding result.
+    """
+    result = value.to(FP8_DTYPE).to(torch.float32)
+    overflow = torch.isfinite(value) & (torch.abs(value) > E4M3_RINT_NAN_THRESHOLD)
+    return result.masked_fill(overflow, float("nan"))
 
 
 def _align_up_to_ln2(value, use_quant_matmul):
@@ -1503,13 +1518,14 @@ def _align_up_to_ln2(value, use_quant_matmul):
 
 
 def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
-    """Accumulate MXFP8 D-groups without materializing each scaled group.
+    """Accumulate ordered MXFP8 groups without materializing each scaled group.
 
-    MX Cube keeps the E8M0 exponent separate while adding consecutive D-group
-    dot products.  An intermediate becomes sticky +/-Inf only when the merged
-    accumulator, not an individual ``group_dot * group_scale``, exceeds FP32.
-    Keeping a finite mantissa plus a shared power-of-two exponent reproduces
-    that behavior with CPU FP32 operations and avoids an FP64 fallback.
+    MX Cube keeps the E8M0 exponent separate while adding consecutive QK
+    D-groups or PV S2-groups.  An intermediate becomes sticky +/-Inf only when
+    the merged accumulator, not an individual ``group_dot * group_scale``,
+    exceeds FP32.  Keeping a finite mantissa plus a shared power-of-two
+    exponent reproduces that behavior with CPU FP32 operations and avoids an
+    FP64 fallback.
     """
     q_mantissa, q_exponent = torch.frexp(q_scale.to(torch.float32))
     k_mantissa, k_exponent = torch.frexp(k_scale.to(torch.float32))
@@ -1553,6 +1569,24 @@ def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
     return torch.where(sticky_overflow, sticky_value, finite_value)
 
 
+def _mxfp8_dot_may_overflow(lhs_grouped, lhs_scale, rhs_grouped, rhs_scale):
+    """Conservatively select output pairs whose ordered group sum may overflow."""
+    lhs_bound = (
+        lhs_grouped.to(torch.float32).abs().amax(dim=-1)
+        * lhs_scale.to(torch.float32).abs()
+    )
+    rhs_bound = (
+        rhs_grouped.to(torch.float32).abs().amax(dim=-1)
+        * rhs_scale.to(torch.float32).abs()
+    )
+    absolute_dot_bound = (
+        torch.matmul(lhs_bound, rhs_bound.transpose(0, 1)) * QUANT_GROUP_SIZE
+    )
+    return (~torch.isfinite(absolute_dot_bound)) | (
+        absolute_dot_bound > torch.finfo(torch.float32).max
+    )
+
+
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
     """CPU torch.matmul path: FP32 dequant + matmul."""
     q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
@@ -1568,22 +1602,11 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
     # finite FP8 payloads in each 32-element group and applies the group
     # descales afterwards.
     #
-    # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial non-finite results.  NaNs present in either
-    # FP8 payload are deliberately excluded from repair and therefore continue
-    # to propagate.  A genuine Cube overflow remains non-finite after the
-    # grouped recomputation, so replacing it is also semantics-preserving.
-    repair_mask = ~torch.isfinite(scores)
-    if not bool(repair_mask.any()):
-        return scores
-
-    payload_has_nan = torch.isnan(q_block).any(dim=-1).view(-1, 1) | torch.isnan(
-        k_mat
-    ).any(dim=-1).view(1, -1)
-    repair_mask &= ~payload_has_nan
-    if not bool(repair_mask.any()):
-        return scores
-
+    # Keep the established dequant + torch.matmul path for normal values.  The
+    # grouped path repairs artificial non-finite results and finite CPU results
+    # whose ordered Cube accumulation becomes sticky +/-Inf.  NaNs present in
+    # either FP8 payload are deliberately excluded from repair and therefore
+    # continue to propagate.
     group_count = math.ceil(head_dim / QUANT_GROUP_SIZE)
     aligned_head_dim = group_count * QUANT_GROUP_SIZE
     q_payload = q_block[..., :head_dim]
@@ -1595,6 +1618,30 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
 
     q_grouped = q_payload.reshape(-1, group_count, QUANT_GROUP_SIZE)
     k_grouped = k_payload.reshape(-1, group_count, QUANT_GROUP_SIZE)
+
+    # A balanced CPU reduction can remain finite after positive and negative
+    # groups cancel even though Cube's ordered accumulator crossed FLT_MAX at
+    # an earlier group and became sticky +/-Inf.  Such rows are invisible to
+    # the original ``~isfinite(scores)`` trigger.  Use a cheap absolute upper
+    # bound over the four D groups to select only pairs that can overflow; the
+    # normal torch.matmul result remains untouched for all other finite pairs.
+    potential_cube_overflow = _mxfp8_dot_may_overflow(
+        q_grouped,
+        q_scale_block[..., :group_count],
+        k_grouped,
+        k_scale_mat[..., :group_count],
+    )
+    repair_candidate = (~torch.isfinite(scores)) | potential_cube_overflow
+    if not bool(repair_candidate.any()):
+        return scores
+
+    payload_has_nan = torch.isnan(q_block).any(dim=-1).view(-1, 1) | torch.isnan(
+        k_mat
+    ).any(dim=-1).view(1, -1)
+    repair_candidate &= ~payload_has_nan
+    if not bool(repair_candidate.any()):
+        return scores
+
     group_dot = torch.matmul(
         q_grouped.permute(1, 0, 2),
         k_grouped.permute(1, 2, 0),
@@ -1609,6 +1656,9 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
         k_scale_mat[..., :group_count],
     )
     cube_order_scores = cube_order_scores * softmax_scale
+    repair_mask = repair_candidate & (
+        (~torch.isfinite(scores)) | (~torch.isfinite(cube_order_scores))
+    )
     return torch.where(repair_mask, cube_order_scores, scores)
 
 
@@ -1818,39 +1868,47 @@ def _pv_matmul_cpu(
         # the opposite order: it accumulates finite P/V payloads in each
         # 32-element group and applies the group descales afterwards.
         #
-        # Preserve the established fast path and repair only non-finite values
-        # introduced by its operation order.  NaNs already present in the P or
-        # V payload must keep propagating and are deliberately not repaired.
-        repair_mask = ~torch.isfinite(pv_subloop)
-        if bool(repair_mask.any()):
+        # Preserve the established fast path for normal finite values.  The
+        # grouped path repairs artificial non-finite results and finite CPU
+        # results whose ordered Cube accumulation becomes sticky +/-Inf.  NaNs
+        # already present in P or V must keep propagating and are not repaired.
+        subloop_k = p_quant_subloop.shape[1]
+        group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
+        aligned_k = group_count * QUANT_GROUP_SIZE
+        p_payload = p_quant_subloop
+        v_payload = v_mat
+        if aligned_k != subloop_k:
+            pad_k = aligned_k - subloop_k
+            p_payload = torch.nn.functional.pad(p_payload, (0, pad_k))
+            v_payload = torch.nn.functional.pad(v_payload, (0, 0, 0, pad_k))
+
+        p_grouped = p_payload.reshape(nq, group_count, QUANT_GROUP_SIZE)
+        v_grouped = v_payload.reshape(group_count, QUANT_GROUP_SIZE, head_dim)
+        p_group_scale = subloop_rescale.view(nq, 1).expand(nq, group_count)
+        v_group_scale = v_scale_mat[::QUANT_GROUP_SIZE].transpose(0, 1)
+        potential_cube_overflow = _mxfp8_dot_may_overflow(
+            p_grouped,
+            p_group_scale,
+            v_grouped.permute(2, 0, 1),
+            v_group_scale,
+        )
+        repair_candidate = (~torch.isfinite(pv_subloop)) | potential_cube_overflow
+        if bool(repair_candidate.any()):
             payload_has_nan = torch.isnan(p_quant_subloop).any(dim=-1).view(
                 nq, 1
             ) | torch.isnan(v_mat).any(dim=0).view(1, head_dim)
-            repair_mask &= ~payload_has_nan
+            repair_candidate &= ~payload_has_nan
 
-            if bool(repair_mask.any()):
-                subloop_k = p_quant_subloop.shape[1]
-                group_count = math.ceil(subloop_k / QUANT_GROUP_SIZE)
-                aligned_k = group_count * QUANT_GROUP_SIZE
-                p_payload = p_quant_subloop
-                v_payload = v_mat
-                if aligned_k != subloop_k:
-                    pad_k = aligned_k - subloop_k
-                    p_payload = torch.nn.functional.pad(p_payload, (0, pad_k))
-                    v_payload = torch.nn.functional.pad(v_payload, (0, 0, 0, pad_k))
-
-                p_grouped = p_payload.reshape(nq, group_count, QUANT_GROUP_SIZE)
-                v_grouped = v_payload.reshape(group_count, QUANT_GROUP_SIZE, head_dim)
+            if bool(repair_candidate.any()):
                 group_dot = torch.matmul(p_grouped.unsqueeze(-2), v_grouped).squeeze(-2)
-                group_scale = subloop_rescale.view(nq, 1, 1) * v_scale_mat[
-                    ::QUANT_GROUP_SIZE
-                ].view(1, group_count, head_dim)
-                scaled_group_dot = torch.where(
-                    group_dot == 0,
-                    torch.zeros_like(group_dot),
-                    group_dot * group_scale,
+                cube_order_pv = _accumulate_mxfp8_groups_cpu(
+                    group_dot.permute(0, 2, 1),
+                    p_group_scale,
+                    v_group_scale,
                 )
-                cube_order_pv = scaled_group_dot.sum(dim=1)
+                repair_mask = repair_candidate & (
+                    (~torch.isfinite(pv_subloop)) | (~torch.isfinite(cube_order_pv))
+                )
                 pv_subloop = torch.where(repair_mask, cube_order_pv, pv_subloop)
 
         pv += pv_subloop
@@ -2109,6 +2167,69 @@ def cpu_mxfp8_golden(
         QUANT_GROUP_SIZE,
     )
 
+    blocks_per_task = max(1, int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE)
+    progress_total = 0
+    for progress_batch_idx, progress_q_len in enumerate(q_lengths):
+        progress_qb_count = math.ceil(int(progress_q_len) / SPARSE_BLOCK_SIZE)
+        block_counts = sparse_seq_len[progress_batch_idx, :, :progress_qb_count].to(
+            torch.int64
+        )
+        progress_total += int(
+            torch.div(
+                block_counts + blocks_per_task - 1,
+                blocks_per_task,
+                rounding_mode="floor",
+            )
+            .sum()
+            .item()
+        )
+
+    progress_done = 0
+    progress_start = time.monotonic()
+    progress_last_log = progress_start
+    progress_last_done = -1
+    progress_next_percent = 0.0
+
+    def log_golden_progress(force=False):
+        nonlocal progress_last_log, progress_last_done, progress_next_percent
+        if force and progress_done == progress_last_done:
+            return
+        now = time.monotonic()
+        percent = (
+            100.0
+            if progress_total == 0
+            else min(100.0, 100.0 * progress_done / progress_total)
+        )
+        if not force and progress_done < progress_total:
+            if percent < progress_next_percent and now - progress_last_log < 30.0:
+                return
+
+        elapsed = now - progress_start
+        if progress_done > 0 and progress_done < progress_total:
+            eta_seconds = elapsed * (progress_total - progress_done) / progress_done
+            eta_text = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
+        elif progress_done >= progress_total:
+            eta_text = "00:00:00"
+        else:
+            eta_text = "--:--:--"
+        elapsed_text = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+        filled = min(20, int(percent / 5.0))
+        logger.info(
+            "[CPU Golden] progress [%s%s] %6.2f%% (%d/%d), elapsed=%s, ETA=%s",
+            "#" * filled,
+            "-" * (20 - filled),
+            percent,
+            progress_done,
+            progress_total,
+            elapsed_text,
+            eta_text,
+        )
+        progress_last_log = now
+        progress_last_done = progress_done
+        progress_next_percent = min(100.0, (math.floor(percent / 5.0) + 1) * 5.0)
+
+    log_golden_progress(force=True)
+
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
         kv_len = int(kv_lengths[batch_idx])
@@ -2260,7 +2381,7 @@ def cpu_mxfp8_golden(
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
-                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            p_quant_subloop = _cast_mxfp8_p_to_e4m3(p_subloop)
                             subloop_results.append(
                                 (
                                     subloop_start,
@@ -2305,6 +2426,9 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
+                    progress_done += 1
+                    log_golden_progress()
+
                 # Match the master kernel's final guards. LastDivNewVF writes
                 # zero when sum == 0, RowInvalidUpdateVF writes zero when max
                 # is the -FLT_MAX sentinel, and ComputeLseOutputVF maps either
@@ -2330,6 +2454,9 @@ def cpu_mxfp8_golden(
                         )
                     if bool(lse_active[local_idx].item()):
                         softmax_lse[out_idx, head_idx] = lse[local_idx]
+
+    progress_done = progress_total
+    log_golden_progress(force=True)
 
     logger.info(
         "[CPU Golden] output(TND)=%s, lse(TN)=%s",
@@ -3049,6 +3176,7 @@ def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
     avoids pre-fix cache files whose key did not encode the backend.
     """
     backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul"
+    backend += "_p_cast_rint_v1"
     cache_prefix = f"{case_name}_{backend}_p_scale"
     if p_scale is None or p_scale.numel() == 0:
         return f"{cache_prefix}_default"
