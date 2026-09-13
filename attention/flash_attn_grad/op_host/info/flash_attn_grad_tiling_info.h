@@ -47,6 +47,7 @@ constexpr size_t METADATA_INDEX = 12;
 constexpr size_t DQ_OUT_INDEX = 0;
 constexpr size_t DK_OUT_INDEX = 1;
 constexpr size_t DV_OUT_INDEX = 2;
+constexpr size_t DSINK_OUT_INDEX = 3;
 
 constexpr size_t ATTR_SOFTMAX_SCALE_INDEX = 0;
 constexpr size_t ATTR_MASK_MODE_INDEX = 1;
@@ -125,8 +126,8 @@ struct FagParsedInfo {
     // 可选输入是否存在
     bool hasAttenMask = false;
     bool hasSeqused = false;
-    // 已解析但**不参与 tilingkey**。D4 暂定：sinks 是否占位要等 pypto 侧实现
-    // 方式确定后再定，在那之前它只用于日志与将来的判据输入。
+    // sinks 是否提供。不占 tilingkey：kernel 只在主循环里多一个标量分支，
+    // 命中时按 head 原子累加 dsink（见 op_kernel/fag_block_vec.py）。
     bool hasSinks = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需

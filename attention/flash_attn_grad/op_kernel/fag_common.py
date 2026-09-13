@@ -179,6 +179,8 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         totalPerBatchNum=tiling.totalPerBatchNum,
         bandP=(pl.max(tiling.s1Token, 0) + CUBE_BASEM - 1) // CUBE_BASEM,
         bandQ=(pl.max(tiling.s2Token, 0) + CUBE_BASEN - 1) // CUBE_BASEN,
+        # 1 = 带 sinks 输入。主循环里多一个标量分支：额外算 dsink（sink 的梯度）。
+        sinkOptional=tiling.sinkOptional,
     )
 
 

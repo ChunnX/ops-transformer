@@ -98,6 +98,7 @@ from fag_mem import (
     MTX_UB_POST_F16,
     MTX_UB_POST_F32,
     MTX_UB_SFMG,
+    MTX_UB_SINK_PART,
     MTX_UB_Y,
     MTX_UB_ZERO,
     POST_ELEMS,
@@ -116,6 +117,7 @@ from fag_mem import (
     UB_NZP_A,
     UB_PRE_ZERO,
     UB_SFMG_A,
+    UB_SINK_PART_A,
     UB_Y_A,
 )
 # --- end generated imports ---
@@ -550,6 +552,24 @@ def make_lse_ub(v1w):
         ),
         addrs=[UB_LSE0_A[v1w], UB_LSE1_A[v1w]],
         mutex_ids=MTX_UB_LSE,
+    )
+
+
+def make_sink_part_ub(v1w):
+    """dsink 的单任务部分和缓冲：[1, VECTOR_BASEN] fp32，只写 lane 0。
+
+    存 [1,1]（valid_shape 裁剪）后随路 atomicAdd 进 dsink GM：
+    同一 head 的多个 b/s2 块跨核累加，只能靠原子加。
+    """
+    return pl.make_tile_group(
+        type=pl.TileType(
+            shape=[1, VECTOR_BASEN],
+            dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec,
+            valid_shape=[-1, -1],
+        ),
+        addrs=[UB_SINK_PART_A[v1w]],
+        mutex_ids=MTX_UB_SINK_PART,
     )
 
 
