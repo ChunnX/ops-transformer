@@ -206,9 +206,6 @@ private:
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
 
-    event_t eventVS_;
-    event_t eventSMte3_;
-
     uint32_t hPreMaxBufLen_;
     uint32_t hPostMaxBufLen_;
     uint32_t gradHResBufLen_;
@@ -350,8 +347,6 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::Process()
 {
     if ASCEND_IS_AIV {
-        eventVS_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-        eventSMte3_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         ProcessV0Main();
     }
 
@@ -1580,8 +1575,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3AlphaGrad()
     vecInQueue1_.EnQue(alphaGradInLocal);
     alphaGradInLocal = vecInQueue1_.DeQue<P>();
     VFDoV3ProcessAlphaGrad((__ubuf__ P *)alphaGradOutLocal.GetPhyAddr(), (__ubuf__ P *)alphaGradInLocal.GetPhyAddr());
-    SetFlag<HardEvent::V_S>(eventVS_);
-    WaitFlag<HardEvent::V_S>(eventVS_);
+    SetFlag<HardEvent::V_S>(EVENT_ID2);
+    WaitFlag<HardEvent::V_S>(EVENT_ID2);
     alphaGradOutLocal.SetValue(1, alphaGradOutLocal.GetValue(ALPHA_GRAD_SHAPE_2_OFFSET));
     alphaGradOutLocal.SetValue(2, alphaGradOutLocal.GetValue(ALPHA_GRAD_SHAPE_3_OFFSET));
     vecOutQueueSmall_.EnQue(alphaGradOutLocal);
@@ -1591,8 +1586,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3AlphaGrad()
     dataCopyParams.blockLen = ALPHA_GRAD_LAST_DIM_SIZE * sizeof(P);
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
-    SetFlag<HardEvent::S_MTE3>(eventSMte3_);
-    WaitFlag<HardEvent::S_MTE3>(eventSMte3_);
     DataCopyPad(alphaGradGm_, alphaGradOutLocal, dataCopyParams);
     vecInQueue1_.FreeTensor(alphaGradInLocal);
     vecOutQueueSmall_.FreeTensor(alphaGradOutLocal);
