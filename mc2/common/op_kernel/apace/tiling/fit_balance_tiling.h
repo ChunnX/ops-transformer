@@ -256,32 +256,29 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         c.rounds = 1UL;
         return c;
     };
+    // Pipeline critical-path estimate for "headCnt head-sized rounds followed by
+    // one last round of lastSize rows" (lastSize == 0 means all rounds uniform):
+    //   T = C_head + (headCnt-1) * max(M_head, C_head) + max(M_head, C_last) + M_last
+    // Round i's comm overlaps the previous round's compute; the last round ships
+    // lastSize rows so its comm is lastSize-sized (tail-aware, perf r3 fix).
+    auto pipelineEst = [&in](uint64_t headCnt, uint64_t head, uint64_t lastSize) -> double {
+        const double commHead = in.comm.RoundTimeUs(CalcRoundSizeMb(in, head));
+        const double mmHead = in.mm.TimeUs(head, in.n, in.kTotal);
+        if (lastSize == 0UL) {
+            return commHead + static_cast<double>(headCnt - 1UL) * std::max(mmHead, commHead) + mmHead;
+        }
+        const double commLast = in.comm.RoundTimeUs(CalcRoundSizeMb(in, lastSize));
+        const double mmLast = in.mm.TimeUs(lastSize, in.n, in.kTotal);
+        return commHead + static_cast<double>(headCnt - 1UL) * std::max(mmHead, commHead) + std::max(mmHead, commLast) +
+               mmLast;
+    };
     // Critical path estimate for a given head size.
-    // Pipeline: round i's comm C_i can overlap the previous round's compute.
-    // Critical path = C_1 + sum_{i=2..R} max(M_{i-1}, C_i) + M_R.
-    // Rounds 2..headCnt have head-sized comm; the tail round (if any) ships only
-    // `tail` rows, so its comm is tail-sized — charging head-sized comm for the
-    // tail round overestimates multi-round cuts and biases the search towards a
-    // single full-M round (regressed compute-bound small shapes, perf r3 PERF_10).
-    auto estTime = [&in](uint64_t head) -> double {
+    auto estTime = [&in, &pipelineEst](uint64_t head) -> double {
         if (head >= in.m) {
             // Single round: communication and compute serialise.
             return in.comm.RoundTimeUs(CalcRoundSizeMb(in, in.m)) + in.mm.TimeUs(in.m, in.n, in.kTotal);
         }
-        const uint64_t headCnt = in.m / head;
-        const uint64_t tail = in.m % head;
-        const double commHead = in.comm.RoundTimeUs(CalcRoundSizeMb(in, head));
-        const double mmHead = in.mm.TimeUs(head, in.n, in.kTotal);
-        if (tail == 0UL) {
-            // Uniform rounds: every transition prices max(mm_head, comm_head).
-            return commHead + static_cast<double>(headCnt - 1UL) * std::max(mmHead, commHead) + mmHead;
-        }
-        const double mmTail = in.mm.TimeUs(tail, in.n, in.kTotal);
-        const double commTail = in.comm.RoundTimeUs(CalcRoundSizeMb(in, tail));
-        // headCnt (>= 1) head rounds + one tail round: the tail round's comm is
-        // tail-sized and overlaps the previous head round's compute.
-        return commHead + static_cast<double>(headCnt - 1UL) * std::max(mmHead, commHead) + std::max(mmHead, commTail) +
-               mmTail;
+        return pipelineEst(in.m / head, head, in.m % head);
     };
 
     cut.estTimeUsK1 = estTime(waveM);
@@ -352,20 +349,32 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     // Tiny-tail merge: fold a sub-threshold tail round into the last head
     // round (headCnt - 1 uniform rounds + one bigger tail round). Only applied
     // on the searched path; noCut / balanced gates stay bit-identical to the
-    // plain CoreOccupancyFirstTiling behaviour. estTimeUs keeps the unmerged estimate
-    // (conservative upper bound). Kernel contract: the merged round still
-    // starts at a multiple of headSize, and the fused urma kernel takes the
-    // explicit round count, so the AIC wait mapping stays correct.
-    // headCnt >= 2 is required so that at least one head round survives the
-    // merge — merging a 2-round cut into a single full-M round would destroy
-    // the first-block start latency the estTime search just paid for
-    // (perf r3 PERF_10 interaction).
+    // plain CoreOccupancyFirstTiling behaviour. Kernel contract: the merged
+    // round still starts at a multiple of headSize, and the fused urma kernel
+    // takes the explicit round count, so the AIC wait mapping stays correct.
+    // Guards learned from perf regressions:
+    //  - headCnt >= 2: at least one head round must survive the merge — folding
+    //    a 2-round cut into a single full-M round destroys the first-block start
+    //    latency the estTime search just paid for (perf r3 PERF_10).
+    //  - merge must be priced-neutral: the merged schedule is re-estimated with
+    //    the same tail-aware pipeline model and may exceed the unmerged estimate
+    //    by at most 2% — the saved round's sync cost is real but small, while
+    //    the model itself carries ~5% error (calib 表E), so a merge priced worse
+    //    than 2% is not trustworthy. A geometrically tiny tail can still merge
+    //    into an oversized last round whose comm delays the compute of the rows
+    //    it absorbed (perf r4 2560_2048_4096 fp4: +6% priced, -3.5% measured;
+    //    perf r3/r4 114172 fp4: +0.3% priced, merge measured fine).
     if (in.cfg.enableTailMerge && (cut.tailCnt == 1UL) && (cut.headCnt >= 2UL) &&
         (static_cast<double>(cut.tailSize) <= in.cfg.tinyTailRatio * static_cast<double>(cut.headSize))) {
-        cut.headCnt -= 1UL;
-        cut.tailSize += cut.headSize; // merged round = head + tail, still prefix-aligned
-        cut.rounds = cut.headCnt + 1UL;
-        cut.mergedTail = true;
+        constexpr double kTailMergeMarginRatio = 0.02;
+        const double mergedEst = pipelineEst(cut.headCnt - 1UL, cut.headSize, cut.headSize + cut.tailSize);
+        if (mergedEst <= (cut.estTimeUs * (1.0 + kTailMergeMarginRatio))) {
+            cut.headCnt -= 1UL;
+            cut.tailSize += cut.headSize; // merged round = head + tail, still prefix-aligned
+            cut.rounds = cut.headCnt + 1UL;
+            cut.mergedTail = true;
+            cut.estTimeUs = mergedEst;
+        }
     }
     return cut;
 }
