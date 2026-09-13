@@ -35,7 +35,7 @@ extern "C" {
  * @param [in] gammaOptional: 可选输入tensor，shape为[N,D]，数据类型：FP32。
  * @param [in] gradXPostOptional: 可选输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型：BF16/FP16。
  * @param [in] hcEps: 可选属性，默认值为1e-6。
- * @param [in] opImplMode: Cube计算模式，0表示使用FP32模式，1表示使用HF32模式。
+ * @param [in] opImplMode: Cube计算模式，仅支持取值1，表示使用HF32模式。
  * @param [out] gradX: 输出梯度，数据类型支持：BF16/FP16。
  * @param [out] gradPhi: 输出梯度，数据类型支持：FP32。
  * @param [out] gradAlpha: 输出梯度，数据类型支持：FP32。
