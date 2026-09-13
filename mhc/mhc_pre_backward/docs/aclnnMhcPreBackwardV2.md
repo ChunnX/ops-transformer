@@ -190,7 +190,7 @@
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMhcPreBackwardV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcPreBackwardV2”接口执行计算。
 
-```Cpp
+```cpp
 aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor     *x,
     const aclTensor     *phi,
@@ -202,7 +202,7 @@ aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     const aclTensor     *hMix,
     const aclTensor     *hPre,
     const aclTensor     *hPost,
-    const aclTensor     *gamma,
+    const aclTensor     *gammaOptional,
     const aclTensor     *gradXPostOptional,
     float               hcEps,
     int64_t             opImplMode,
@@ -215,7 +215,7 @@ aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
     aclOpExecutor       **executor)
 ```
 
-```Cpp
+```cpp
 aclnnStatus aclnnMhcPreBackwardV2(
     void             *workspace,
     uint64_t          workspaceSize,
@@ -351,7 +351,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
             <td>√</td>
         </tr>
         <tr>
-            <td>gamma（aclTensor*）</td>
+            <td>gammaOptional（aclTensor*）</td>
             <td>可选输入</td>
             <td>RmsNorm的缩放系数gamma</td>
             <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全1的tensor。</li><li>shape为(N ,D)。其中，N与`x`的N保持一致；D与`x`的D保持一致。</li></ul></td>
@@ -558,7 +558,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
   - aclnnMhcPreBackwardV2默认采用确定性实现。
 
 - 规格约束
-  <!-- npu="950" id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     <table style="undefined;table-layout: fixed; width: 600px"><colgroup>
         <col style="width: 100px">
@@ -607,13 +607,13 @@ aclnnStatus aclnnMhcPreBackwardV2(
         </tr>
         </tbody>
     </table>
-  <!-- end id7 -->
+  <!-- end id8 -->
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-```Cpp
+```cpp
 #include <iostream>
 #include <vector>
 #include <numeric>

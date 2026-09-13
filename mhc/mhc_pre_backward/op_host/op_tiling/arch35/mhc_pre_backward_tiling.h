@@ -21,8 +21,22 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
+#include "../mhc_pre_backward_tiling.h"
 
 namespace optiling {
+
+BEGIN_TILING_DATA_DEF(MMConfig)
+TILING_DATA_FIELD_DEF(uint32_t, baseM);
+TILING_DATA_FIELD_DEF(uint32_t, baseN);
+TILING_DATA_FIELD_DEF(uint32_t, baseK);
+TILING_DATA_FIELD_DEF(uint32_t, l1K);
+TILING_DATA_FIELD_DEF(uint32_t, depthA1);
+TILING_DATA_FIELD_DEF(uint32_t, depthB1);
+TILING_DATA_FIELD_DEF(uint32_t, dbL0A);
+TILING_DATA_FIELD_DEF(uint32_t, dbL0B);
+TILING_DATA_FIELD_DEF(uint32_t, dbL0C);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(MMConfigOp, MMConfig);
 
 BEGIN_TILING_DATA_DEF(MhcPreBackwardTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
@@ -34,20 +48,25 @@ TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
 TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(uint32_t, implMode);
+TILING_DATA_FIELD_DEF(uint32_t, mmConfigKey);
+TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC0);
+TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC1);
+TILING_DATA_FIELD_DEF(uint32_t, cubeBufferDepth);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL1BufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL1BOffset);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL1BufferElems);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0BufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0BufferElems);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0CBufferBytes);
+TILING_DATA_FIELD_DEF(uint32_t, cubeL0CBufferElems);
+TILING_DATA_FIELD_DEF(uint32_t, c0MBlock);
+TILING_DATA_FIELD_DEF(uint32_t, c0NBlock);
+TILING_DATA_FIELD_DEF(uint32_t, c1KBlock);
+TILING_DATA_FIELD_DEF(uint32_t, c0ToV2Rows);
+TILING_DATA_FIELD_DEF(uint32_t, v2ToC1Rows);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreBackward, MhcPreBackwardTilingData);
-
-struct MhcPreBackwardCompileInfo {
-    uint64_t aicNum{0UL};
-    uint64_t aivNum{0UL};
-    uint64_t ubSize{0UL};
-    uint64_t l1Size{0UL};
-    uint64_t l2Size{0UL};
-    uint64_t l0CSize{0UL};
-    uint64_t l0ASize{0UL};
-    uint64_t l0BSize{0UL};
-};
 
 class MhcPreBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -62,10 +81,7 @@ protected:
         return true;
     }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
-    ge::graphStatus GetPlatformInfo() override
-    {
-        return ge::GRAPH_SUCCESS;
-    };
+    ge::graphStatus GetPlatformInfo() override;
     // 2、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override
     {
@@ -90,13 +106,15 @@ protected:
 
     ge::graphStatus GetInputShape();
     ge::graphStatus GetInputTensors(const gert::Tensor *&gradHInTensor, const gert::Tensor *&gradHPostTensor,
-                                   const gert::Tensor *&gradHResTensor);
+                                    const gert::Tensor *&gradHResTensor);
     ge::graphStatus ValidateInputDims(int64_t gradHInDims, int64_t gradHPostDims, int64_t gradHResDims);
     ge::graphStatus ParseBSDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);
     ge::graphStatus ParseTNDFormat(const gert::Tensor *gradHInTensor, const gert::Tensor *gradHPostTensor,
                                    const gert::Tensor *gradHResTensor);
     ge::graphStatus ValidateShapeParams();
+    void SetMmConfig();
+    ge::graphStatus ValidateMmConfig();
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
@@ -116,6 +134,21 @@ private:
     float hcEps_{0.0f};
     uint32_t implMode_{0U};
     uint64_t fusionSize_{0};
+    uint64_t ubSize_{0};
+    uint64_t l1Size_{0};
+    uint64_t l2Size_{0};
+    uint64_t l0ASize_{0};
+    uint64_t l0BSize_{0};
+    uint64_t l0CSize_{0};
+    uint32_t mmConfigKey_{MHC_PRE_BACKWARD_MM_CONFIG_0};
+    uint32_t cubeBufferDepth_{0};
+    uint32_t cubeL1BufferBytes_{0};
+    uint32_t cubeL1BOffset_{0};
+    uint32_t cubeL1BufferElems_{0};
+    uint32_t cubeL0BufferBytes_{0};
+    uint32_t cubeL0BufferElems_{0};
+    uint32_t cubeL0CBufferBytes_{0};
+    uint32_t cubeL0CBufferElems_{0};
 };
 
 } // namespace optiling

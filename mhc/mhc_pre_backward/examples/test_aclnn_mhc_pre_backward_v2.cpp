@@ -19,17 +19,21 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_mhc_pre_backward_v2.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
+
+constexpr uint32_t NUMBER_TWO = 2U;
+constexpr uint32_t BF16_TO_FP32_SHIFT = 16U;
+constexpr int64_t DISPLAY_ELEMENT_COUNT = 10;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -44,18 +48,18 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char *
 {
     auto size = GetShapeSize(shape);
     size_t copyBytes = size * elemSize;
-    if (elemSize == 2) {
+    if (elemSize == NUMBER_TWO) {
         // BF16: read raw bytes, convert to float for display
         std::vector<uint16_t> rawData(size, 0);
         auto ret = aclrtMemcpy(rawData.data(), copyBytes, *deviceAddr, copyBytes, ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
         LOG_PRINT("%s result (first 10 elements):\n", name);
-        for (int64_t i = 0; i < std::min(size, (int64_t)10); i++) {
+        for (int64_t i = 0; i < std::min(size, DISPLAY_ELEMENT_COUNT); i++) {
             union {
                 uint32_t i;
                 float f;
             } u;
-            u.i = (uint32_t)rawData[i] << 16;
+            u.i = (uint32_t)rawData[i] << BF16_TO_FP32_SHIFT;
             LOG_PRINT("  [%ld] = %f\n", i, u.f);
         }
     } else {
@@ -64,7 +68,7 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char *
         auto ret = aclrtMemcpy(resultData.data(), copyBytes, *deviceAddr, copyBytes, ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
         LOG_PRINT("%s result (first 10 elements):\n", name);
-        for (int64_t i = 0; i < std::min(size, (int64_t)10); i++) {
+        for (int64_t i = 0; i < std::min(size, DISPLAY_ELEMENT_COUNT); i++) {
             LOG_PRINT("  [%ld] = %f\n", i, resultData[i]);
         }
     }
@@ -100,7 +104,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
+    for (int64_t i = shape.size() - NUMBER_TWO; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
 
@@ -233,13 +237,13 @@ int main()
     int64_t opImplMode = 1;
 
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
-    uint64_t workspaceSize = 80 * 1024 * 1024;
+    uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
 
     // 调用aclnnMhcPreBackwardV2第一段接口
     ret = aclnnMhcPreBackwardV2GetWorkspaceSize(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost,
-                                              gamma, gradXPostOptional, hc_eps, opImplMode, gradX, gradPhi, gradAlpha, gradBias,
-                                              gradGamma, &workspaceSize, &executor);
+                                                gamma, gradXPostOptional, hc_eps, opImplMode, gradX, gradPhi, gradAlpha,
+                                                gradBias, gradGamma, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreBackwardV2GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
