@@ -63,25 +63,25 @@ const constexpr uint32_t C1_SET_SHAPE_K = 512U;
 const constexpr uint32_t C0_TO_V2_ROWS = 128U;
 const constexpr uint32_t V2_TO_C1_ROWS = 512U;
 
-const constexpr uint32_t C0_MM_BASE_M = 128U;
-const constexpr uint32_t C0_MM_BASE_N = 128U;
-const constexpr uint32_t C0_MM_BASE_K = 32U;
-const constexpr uint32_t C0_MM_L1_K = 64U;
-const constexpr uint32_t C0_MM_DEPTH_A1 = 2U;
-const constexpr uint32_t C0_MM_DEPTH_B1 = 2U;
-const constexpr uint32_t C0_MM_DB_L0A = 2U;
-const constexpr uint32_t C0_MM_DB_L0B = 2U;
-const constexpr uint32_t C0_MM_DB_L0C = 2U;
+const constexpr uint32_t C0_BASE_M = 128U;
+const constexpr uint32_t C0_BASE_N = 128U;
+const constexpr uint32_t C0_BASE_K = 32U;
+const constexpr uint32_t C0_L1_K = 64U;
+const constexpr uint32_t C0_DEPTH_A1 = 2U;
+const constexpr uint32_t C0_DEPTH_B1 = 2U;
+const constexpr uint32_t C0_DB_L0A = 2U;
+const constexpr uint32_t C0_DB_L0B = 2U;
+const constexpr uint32_t C0_DB_L0C = 2U;
 
-const constexpr uint32_t C1_MM_BASE_M = 128U;
-const constexpr uint32_t C1_MM_BASE_N = 128U;
-const constexpr uint32_t C1_MM_BASE_K = 32U;
-const constexpr uint32_t C1_MM_L1_K = 64U;
-const constexpr uint32_t C1_MM_DEPTH_A1 = 2U;
-const constexpr uint32_t C1_MM_DEPTH_B1 = 2U;
-const constexpr uint32_t C1_MM_DB_L0A = 2U;
-const constexpr uint32_t C1_MM_DB_L0B = 2U;
-const constexpr uint32_t C1_MM_DB_L0C = 2U;
+const constexpr uint32_t C1_BASE_M = 128U;
+const constexpr uint32_t C1_BASE_N = 128U;
+const constexpr uint32_t C1_BASE_K = 32U;
+const constexpr uint32_t C1_L1_K = 64U;
+const constexpr uint32_t C1_DEPTH_A1 = 2U;
+const constexpr uint32_t C1_DEPTH_B1 = 2U;
+const constexpr uint32_t C1_DB_L0A = 2U;
+const constexpr uint32_t C1_DB_L0B = 2U;
+const constexpr uint32_t C1_DB_L0C = 2U;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
@@ -247,25 +247,25 @@ ge::graphStatus MhcPreBackwardTiling::ValidateShapeParams()
 
 void MhcPreBackwardTiling::SetMmConfig()
 {
-    tilingData_.mmConfigC0.set_baseM(C0_MM_BASE_M);
-    tilingData_.mmConfigC0.set_baseN(C0_MM_BASE_N);
-    tilingData_.mmConfigC0.set_baseK(C0_MM_BASE_K);
-    tilingData_.mmConfigC0.set_l1K(C0_MM_L1_K);
-    tilingData_.mmConfigC0.set_depthA1(C0_MM_DEPTH_A1);
-    tilingData_.mmConfigC0.set_depthB1(C0_MM_DEPTH_B1);
-    tilingData_.mmConfigC0.set_dbL0A(C0_MM_DB_L0A);
-    tilingData_.mmConfigC0.set_dbL0B(C0_MM_DB_L0B);
-    tilingData_.mmConfigC0.set_dbL0C(C0_MM_DB_L0C);
+    tilingData_.mmConfigC0.set_baseM(C0_BASE_M);
+    tilingData_.mmConfigC0.set_baseN(C0_BASE_N);
+    tilingData_.mmConfigC0.set_baseK(C0_BASE_K);
+    tilingData_.mmConfigC0.set_l1K(C0_L1_K);
+    tilingData_.mmConfigC0.set_depthA1(C0_DEPTH_A1);
+    tilingData_.mmConfigC0.set_depthB1(C0_DEPTH_B1);
+    tilingData_.mmConfigC0.set_dbL0A(C0_DB_L0A);
+    tilingData_.mmConfigC0.set_dbL0B(C0_DB_L0B);
+    tilingData_.mmConfigC0.set_dbL0C(C0_DB_L0C);
 
-    tilingData_.mmConfigC1.set_baseM(C1_MM_BASE_M);
-    tilingData_.mmConfigC1.set_baseN(C1_MM_BASE_N);
-    tilingData_.mmConfigC1.set_baseK(C1_MM_BASE_K);
-    tilingData_.mmConfigC1.set_l1K(C1_MM_L1_K);
-    tilingData_.mmConfigC1.set_depthA1(C1_MM_DEPTH_A1);
-    tilingData_.mmConfigC1.set_depthB1(C1_MM_DEPTH_B1);
-    tilingData_.mmConfigC1.set_dbL0A(C1_MM_DB_L0A);
-    tilingData_.mmConfigC1.set_dbL0B(C1_MM_DB_L0B);
-    tilingData_.mmConfigC1.set_dbL0C(C1_MM_DB_L0C);
+    tilingData_.mmConfigC1.set_baseM(C1_BASE_M);
+    tilingData_.mmConfigC1.set_baseN(C1_BASE_N);
+    tilingData_.mmConfigC1.set_baseK(C1_BASE_K);
+    tilingData_.mmConfigC1.set_l1K(C1_L1_K);
+    tilingData_.mmConfigC1.set_depthA1(C1_DEPTH_A1);
+    tilingData_.mmConfigC1.set_depthB1(C1_DEPTH_B1);
+    tilingData_.mmConfigC1.set_dbL0A(C1_DB_L0A);
+    tilingData_.mmConfigC1.set_dbL0B(C1_DB_L0B);
+    tilingData_.mmConfigC1.set_dbL0C(C1_DB_L0C);
 }
 
 ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
