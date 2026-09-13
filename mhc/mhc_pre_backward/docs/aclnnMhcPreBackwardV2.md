@@ -558,7 +558,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
   - aclnnMhcPreBackwardV2默认采用确定性实现。
 
 - 规格约束
-  <!-- npu="950" id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     <table style="undefined;table-layout: fixed; width: 600px"><colgroup>
         <col style="width: 100px">
@@ -607,7 +607,7 @@ aclnnStatus aclnnMhcPreBackwardV2(
         </tr>
         </tbody>
     </table>
-  <!-- end id7 -->
+  <!-- end id8 -->
 
 ## 调用示例
 
