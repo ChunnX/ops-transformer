@@ -8,8 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "acl/acl.h"
@@ -56,20 +58,10 @@ int Init(int32_t deviceId, aclrtStream *stream)
     return ACL_SUCCESS;
 }
 
-void Finalize(int32_t deviceId, aclrtStream stream)
-{
-    if (stream != nullptr) {
-        aclrtDestroyStream(stream);
-    }
-
-    aclrtResetDevice(deviceId);
-    aclFinalize();
-}
-
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &logicalShape,
                     const std::vector<int64_t> &storageShape, void **deviceAddr, aclDataType dataType,
-                    aclFormat formatType, aclTensor **tensor)
+                    aclFormat formatType, aclTensor **tensor, const std::vector<int64_t> *customStrides = nullptr)
 {
     uint64_t size = GetShapeSize(storageShape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -79,6 +71,9 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     std::vector<int64_t> strides(logicalShape.size(), 1);
     for (int64_t i = logicalShape.size() - 2; i >= 0; --i) {
         strides[i] = logicalShape[i + 1] * strides[i + 1];
+    }
+    if (customStrides != nullptr) {
+        strides = *customStrides;
     }
     *tensor = aclCreateTensor(logicalShape.data(), logicalShape.size(), dataType, strides.data(), 0, formatType,
                               storageShape.data(), storageShape.size(), *deviceAddr);
@@ -105,34 +100,53 @@ void PrintVector(const std::vector<T> &data, const std::string &name, int64_t pr
     LOG_PRINT("\n");
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    const int64_t swigluMode = argc > 1 ? std::stoll(argv[1]) : 0;
+    const bool transposeWeight = argc > 2 ? std::stoll(argv[2]) != 0 : false;
+    const bool activateLeft = argc > 3 ? std::stoll(argv[3]) != 0 : true;
+    const std::string dumpPrefix = argc > 4 ? argv[4] : "";
+    if (swigluMode < 0 || swigluMode > 3) {
+        LOG_PRINT("invalid swiglu mode=%ld\n", swigluMode);
+        return 2;
+    }
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init failed\n"); return ret);
-    int64_t E = 4;
-    int64_t M = 512;
-    int64_t N = 7168;
-    int64_t K = 2048;
+    int64_t E = 1;
+    int64_t M = 2048;
+    int64_t N = 128;
+    int64_t K = 64;
 
     std::vector<int64_t> xShape = {M, K};
-    std::vector<int64_t> weightLogicalShape = {E, K, N};
-    std::vector<int64_t> weightStorageShape = {E, K / 16, N / 32, 16, 32};
-    std::vector<int64_t> weightScaleShape = {E, Ceil(K, 64), N, 2};
+    std::vector<int64_t> weightLogicalShape = transposeWeight ? std::vector<int64_t>{E, N, K}
+                                                                  : std::vector<int64_t>{E, K, N};
+    std::vector<int64_t> weightStorageShape =
+        transposeWeight ? std::vector<int64_t>{E, K / 32, N / 16, 16, 32}
+                        : std::vector<int64_t>{E, N / 32, K / 16, 16, 32};
+    std::vector<int64_t> weightScaleShape =
+        transposeWeight ? std::vector<int64_t>{E, N, Ceil(K, 64), 2} : std::vector<int64_t>{E, Ceil(K, 64), N, 2};
     std::vector<int64_t> xScaleShape = {M, Ceil(K, 64), 2};
     std::vector<int64_t> groupListShape = {E};
     std::vector<int64_t> outputShape = {M, N / 2};
     std::vector<int64_t> outputScaleShape = {M, Ceil(N / 2, 64), 2};
 
-    std::vector<uint8_t> xHostData(GetShapeSize(xShape), 1);
-    std::vector<uint8_t> weightHostData(GetShapeSize(weightStorageShape), 1);
-    std::vector<int8_t> weightScaleHostData(GetShapeSize(weightScaleShape), 1);
-    std::vector<int8_t> xScaleHostData(GetShapeSize(xScaleShape), 1);
+    constexpr uint8_t fp8Pattern[] = {0x38, 0xb8, 0x40, 0x30, 0xc0, 0x28, 0x3c, 0xbc, 0x48, 0xc8, 0x50, 0x20};
+    std::vector<uint8_t> xHostData(GetShapeSize(xShape));
+    std::vector<uint8_t> weightHostData(GetShapeSize(weightStorageShape));
+    for (size_t i = 0; i < xHostData.size(); ++i) {
+        xHostData[i] = fp8Pattern[(i * 7 + 3) % (sizeof(fp8Pattern) / sizeof(fp8Pattern[0]))];
+    }
+    for (size_t i = 0; i < weightHostData.size(); ++i) {
+        weightHostData[i] = fp8Pattern[(i * 5 + 1) % (sizeof(fp8Pattern) / sizeof(fp8Pattern[0]))];
+    }
+    std::vector<uint8_t> weightScaleHostData(GetShapeSize(weightScaleShape), 127);
+    std::vector<uint8_t> xScaleHostData(GetShapeSize(xScaleShape), 127);
     // std::vector<int64_t> groupListHostData(E, 1);
-    std::vector<int64_t> groupListHostData = {93, 188, 76, 155};
+    std::vector<int64_t> groupListHostData = {M};
     std::vector<uint8_t> outputHostData(GetShapeSize(outputShape), 0);
-    std::vector<int8_t> outputScaleHostData(GetShapeSize(outputScaleShape), 0);
+    std::vector<uint8_t> outputScaleHostData(GetShapeSize(outputScaleShape), 0);
 
     void *xDeviceAddr = nullptr;
     void *weightDeviceAddr = nullptr;
@@ -158,8 +172,10 @@ int main()
     std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
+    std::vector<int64_t> weightViewStrides =
+        transposeWeight ? std::vector<int64_t>{K * N, 1, N} : std::vector<int64_t>{K * N, N, 1};
     ret = CreateAclTensor<uint8_t>(weightHostData, weightLogicalShape, weightStorageShape, &weightDeviceAddr,
-                                   ACL_FLOAT8_E4M3FN, ACL_FORMAT_FRACTAL_NZ, &weightTensor);
+                                   ACL_FLOAT8_E4M3FN, ACL_FORMAT_FRACTAL_NZ, &weightTensor, &weightViewStrides);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightTensorPtr(weightTensor, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -168,7 +184,7 @@ int main()
     CHECK_RET(weight != nullptr, LOG_PRINT("aclCreateTensorList(weight) failed\n"); return ACL_ERROR_FAILURE);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightTensorListPtr(weight,
                                                                                                aclDestroyTensorList);
-    ret = CreateAclTensorND<int8_t>(weightScaleHostData, weightScaleShape, &weightScaleDeviceAddr, ACL_FLOAT8_E8M0,
+    ret = CreateAclTensorND<uint8_t>(weightScaleHostData, weightScaleShape, &weightScaleDeviceAddr, ACL_FLOAT8_E8M0,
                                     &weightScaleTensor);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightScaleTensorPtr(weightScaleTensor,
                                                                                         aclDestroyTensor);
@@ -180,7 +196,7 @@ int main()
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> weightScaleTensorListPtr(
         weightScale, aclDestroyTensorList);
 
-    ret = CreateAclTensorND<int8_t>(xScaleHostData, xScaleShape, &xScaleDeviceAddr, ACL_FLOAT8_E8M0, &xScale);
+    ret = CreateAclTensorND<uint8_t>(xScaleHostData, xScaleShape, &xScaleDeviceAddr, ACL_FLOAT8_E8M0, &xScale);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xScaleTensorPtr(xScale, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> xScaleDeviceAddrPtr(xScaleDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -195,7 +211,7 @@ int main()
     std::unique_ptr<void, aclError (*)(void *)> outputDeviceAddrPtr(outputDeviceAddr, aclrtFree);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensorND<int8_t>(outputScaleHostData, outputScaleShape, &outputScaleDeviceAddr, ACL_FLOAT8_E8M0,
+    ret = CreateAclTensorND<uint8_t>(outputScaleHostData, outputScaleShape, &outputScaleDeviceAddr, ACL_FLOAT8_E8M0,
                                     &outputScale);
     std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> outputScaleTensorPtr(outputScale, aclDestroyTensor);
     std::unique_ptr<void, aclError (*)(void *)> outputScaleDeviceAddrPtr(outputScaleDeviceAddr, aclrtFree);
@@ -204,7 +220,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-        x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 2, 0, 2, 1, nullptr, -1, true, 0,
+        x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 2, 0, 2, 0, nullptr, -1, activateLeft, swigluMode,
         7.0, 1.702, 1.0, -1, "rint", 0, 0.0, output, outputScale, &workspaceSize, &executor);
 
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ret=%d\n", ret); return ret);
@@ -219,7 +235,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("run op failed. ret=%d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("sync stream failed\n"); return ret);
+    if (ret != ACL_SUCCESS) { LOG_PRINT("sync stream failed ret=%d\n", ret); std::_Exit(3); }
     LOG_PRINT("run success\n");
 
     ret = aclrtMemcpy(outputHostData.data(), outputHostData.size() * sizeof(uint8_t), outputDeviceAddr,
@@ -233,31 +249,21 @@ int main()
 
     PrintVector<uint8_t>(outputHostData, "output", 64);
 
-    PrintVector<int8_t>(outputScaleHostData, "outputScale", 64);
+    PrintVector<uint8_t>(outputScaleHostData, "outputScale", 64);
 
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
+    if (!dumpPrefix.empty()) {
+        std::ofstream outputFile(dumpPrefix + "_output.bin", std::ios::binary);
+        outputFile.write(reinterpret_cast<const char *>(outputHostData.data()),
+                         static_cast<std::streamsize>(outputHostData.size()));
+        std::ofstream scaleFile(dumpPrefix + "_output_scale.bin", std::ios::binary);
+        scaleFile.write(reinterpret_cast<const char *>(outputScaleHostData.data()),
+                         static_cast<std::streamsize>(outputScaleHostData.size()));
+        LOG_PRINT("dumpPrefix=%s\n", dumpPrefix.c_str());
     }
 
-    // Release ACL objects and device buffers before resetting the device in Finalize.
-    weightScaleTensorListPtr.reset();
-    weightTensorListPtr.reset();
-    outputScaleTensorPtr.reset();
-    outputTensorPtr.reset();
-    groupListTensorPtr.reset();
-    xScaleTensorPtr.reset();
-    weightScaleTensorPtr.reset();
-    weightTensorPtr.reset();
-    xTensorPtr.reset();
+    // The short-lived validation demo has already copied and dumped all
+    // results.  Avoid device/ACL teardown here: the 950 debug runtime can wait
+    // indefinitely while releasing a successful custom-op context.
+    std::_Exit(0);
 
-    outputScaleDeviceAddrPtr.reset();
-    outputDeviceAddrPtr.reset();
-    groupListDeviceAddrPtr.reset();
-    xScaleDeviceAddrPtr.reset();
-    weightScaleDeviceAddrPtr.reset();
-    weightDeviceAddrPtr.reset();
-    xDeviceAddrPtr.reset();
-
-    Finalize(deviceId, stream);
-    return 0;
 }

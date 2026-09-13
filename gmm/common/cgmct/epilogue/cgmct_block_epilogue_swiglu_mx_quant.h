@@ -567,15 +567,25 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 mask = AscendC::Reg::UpdateMask<DataTypeIn>(elementNum);
                 AscendC::Reg::RegTensor<bfloat16_t> verg7;
                 AscendC::Reg::RegTensor<float> swishInput, gateInput;
+                AscendC::Reg::RegTensor<float> swigluEvenInput, swigluOddInput;
                 AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg6, swishOutput;
 
                 uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
                 AscendC::Reg::DataCopy(swishInput, firstSrc + l0cOutOffset);
                 AscendC::Reg::DataCopy(gateInput, secondSrc + l0cOutOffset);
 
-                // V2: standard split SwiGLU.
-                // V3 mode 1 uses the two MMAD results as the even/odd streams;
-                // the mode-1 weight copy packs those streams before this epilogue.
+                // V2: standard split SwiGLU.  V3 mode 1 consumes the two
+                // ordinary MMAD halves as one concatenated stream and
+                // de-interleaves its even/odd elements here.  Doing this in
+                // the vector epilogue preserves the ordinary NZ copy path;
+                // an NZ GM->L1 strided copy can skip whole C0 blocks but
+                // cannot reorder individual elements inside a C0 block.
+                if (swigluMode_ == 1) {
+                    AscendC::Reg::DeInterleave(swigluEvenInput, swigluOddInput, swishInput, gateInput);
+                    swishInput = swigluEvenInput;
+                    gateInput = swigluOddInput;
+                }
+
                 // V3 modes 2/3 retain the split-half layout and add clamp/alpha/bias
                 // around the activation as defined by SwigluMxQuant.
                 if (swigluMode_ != 1 && !activateLeft_) {

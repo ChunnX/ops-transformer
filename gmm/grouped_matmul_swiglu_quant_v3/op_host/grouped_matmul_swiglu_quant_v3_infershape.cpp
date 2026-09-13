@@ -16,6 +16,7 @@ constexpr int64_t X_INDEX = 0;
 constexpr int64_t WEIGHT_SCALE_INDEX = 4;
 constexpr int64_t QUANT_MODE_INDEX = 2;
 constexpr int64_t QUANT_DTYPE_INDEX = 3;
+constexpr int64_t TRANSPOSE_WEIGHT_INDEX = 4;
 constexpr int64_t MX_QUANT_MODE = 2;
 constexpr int64_t MX_BLOCK_SIZE = 64;
 constexpr int64_t SWIGLU_SPLIT = 2;
@@ -44,7 +45,10 @@ ge::graphStatus InferShape(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, quantDtype);
 
     const int64_t m = xShape->GetDim(0);
-    const int64_t n = weightScaleShape->GetDim(weightScaleShape->GetDimNum() - 2);
+    const bool *transposeWeight = attrs->GetBool(TRANSPOSE_WEIGHT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, transposeWeight);
+    const int64_t n = *transposeWeight ? weightScaleShape->GetDim(1)
+                                       : weightScaleShape->GetDim(weightScaleShape->GetDimNum() - 2);
     const int64_t outputN = n < 0 ? n : n / SWIGLU_SPLIT;
     const int64_t outputScaleN = outputN < 0 ? outputN : Ops::Base::CeilDiv(outputN, MX_BLOCK_SIZE);
 

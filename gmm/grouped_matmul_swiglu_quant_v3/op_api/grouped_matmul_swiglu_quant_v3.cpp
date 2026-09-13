@@ -58,7 +58,7 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV3(
     }
     int64_t m = x->GetViewShape().GetDim(0);
     auto weightScaleShape = (*weightScale)[0]->GetViewShape();
-    int64_t n = weightScaleShape.GetDim(MX_WEIGHT_SCALE_N_DIM);
+    int64_t n = transposeWeight ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(MX_WEIGHT_SCALE_N_DIM);
     int64_t nAfterHalve = n / 2;
     int64_t nAfterSplit = static_cast<int64_t>(Ops::Base::CeilDiv(nAfterHalve, SWIGLU_SPLIT_SIZE));
     gert::Shape outShape({m, nAfterHalve});

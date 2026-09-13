@@ -38,10 +38,23 @@ TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV3Params, gmmSwigluQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
+// The AscendC compiler expects a distinct registered type for the operator
+// name and for each tiling-key name.  Keep this layout identical to the
+// key-specific type while using a different C++ name, as V2 does.
+BEGIN_TILING_DATA_DEF(GMMSwigluQuantV3TilingData)
+TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantV3Params, gmmSwigluQuantParams);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
+END_TILING_DATA_DEF;
+
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_0, GMMSwigluQuantV3TilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_1, GMMSwigluQuantV3TilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_2, GMMSwigluQuantV3TilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_3, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_4, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_5, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_6, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_7, GMMSwigluQuantV3TilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3, GMMSwigluQuantV3TilingData)
 
 namespace GroupedMatmulSwigluQuantV3Tiling {
 constexpr uint32_t X_INDEX = 0;
@@ -132,6 +145,7 @@ private:
     bool GetAttrFloat(const gert::RuntimeAttrs *attrs, uint32_t index, float &value) const;
 
     GMMSwigluQuantV3TilingDataParams tilingData_;
+    bool transposeWeight_ = false;
     int64_t swigluMode_ = 0;
     bool activateLeft_ = true;
     float clampLimit_ = 7.0F;

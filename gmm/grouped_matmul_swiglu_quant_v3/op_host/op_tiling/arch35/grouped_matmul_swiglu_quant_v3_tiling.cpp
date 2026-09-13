@@ -40,6 +40,7 @@ bool IsFinitePositive(float value)
 void GroupedMatmulSwigluQuantV3Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    transposeWeight_ = false;
     swigluMode_ = 0;
     activateLeft_ = true;
     clampLimit_ = 7.0F;
@@ -116,9 +117,6 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     OP_CHECK_IF(dequantMode != MX_QUANT_MODE || quantMode != MX_QUANT_MODE || dequantDtype != FLOAT_DEQUANT_DTYPE,
                 OP_LOGE(context_->GetNodeName(), "V3 only supports dequant_mode=2, dequant_dtype=0 and quant_mode=2"),
                 return false);
-    OP_CHECK_IF(transposeWeight,
-                OP_LOGE(context_->GetNodeName(), "V3 weight-NZ path does not support transpose_weight=true"),
-                return false);
     OP_CHECK_IF(groupListType != 0 && groupListType != 1,
                 OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType),
                 return false);
@@ -136,7 +134,8 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
 
     swigluMode_ = swigluMode;
     inputParams_.transA = false;
-    inputParams_.transB = false;
+    transposeWeight_ = transposeWeight;
+    inputParams_.transB = transposeWeight_;
     inputParams_.groupListType = static_cast<int8_t>(groupListType);
     inputParams_.groupType = GroupedMatmul::SPLIT_M;
     return true;
@@ -207,29 +206,40 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
     const int64_t m = xShape.GetDim(0);
     const int64_t k = xShape.GetDim(1);
     const int64_t e = groupListShape.GetDim(0);
-    const int64_t n = weightShape.GetDim(2);
+    const int64_t n = transposeWeight_ ? weightShape.GetDim(1) : weightShape.GetDim(2);
+    const int64_t weightK = transposeWeight_ ? weightShape.GetDim(2) : weightShape.GetDim(1);
     const int64_t kScale = (k + MX_GROUP_SIZE_V3 - 1) / MX_GROUP_SIZE_V3;
     OP_CHECK_IF(m <= 0 || k <= 0,
                 OP_LOGE(context_->GetNodeName(), "x must be non-empty"), return false);
     OP_CHECK_IF(e <= 0 || e > MAX_GROUP_NUM,
                 OP_LOGE(context_->GetNodeName(), "group_list length must be in [1, 1024]"), return false);
-    OP_CHECK_IF(weightShape.GetDim(0) != e || weightShape.GetDim(1) != k || n <= 0 || n % 64 != 0 ||
+    OP_CHECK_IF(weightShape.GetDim(0) != e || weightK != k || n <= 0 || n % 64 != 0 ||
                     n % SWIGLU_SPLIT != 0,
-                OP_LOGE(context_->GetNodeName(), "weight view must be (E, K, N), with N positive and 64 aligned"),
+                OP_LOGE(context_->GetNodeName(),
+                        "weight view must be (E, K, N) or transposed (E, N, K), with N positive and 64 aligned"),
                 return false);
+    const int64_t expectedStorageN1 = transposeWeight_ ? (k + NZ_C0_SIZE - 1) / NZ_C0_SIZE
+                                                        : (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE;
+    const int64_t expectedStorageK1 = transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE
+                                                        : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
     OP_CHECK_IF(weightStorageShape.GetDimNum() != WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
-                    weightStorageShape.GetDim(1) != (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE ||
-                    weightStorageShape.GetDim(2) != (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE ||
+                    weightStorageShape.GetDim(1) != expectedStorageN1 ||
+                    weightStorageShape.GetDim(2) != expectedStorageK1 ||
                     weightStorageShape.GetDim(3) != NZ_K0_SIZE || weightStorageShape.GetDim(4) != NZ_C0_SIZE,
-                OP_LOGE(context_->GetNodeName(), "weight storage shape is not the non-transposed FRACTAL_NZ shape"),
+                OP_LOGE(context_->GetNodeName(),
+                        "weight storage shape is not the expected FRACTAL_NZ shape for the transpose setting"),
                 return false);
     OP_CHECK_IF(xScaleShape.GetDimNum() != X_SCALE_DIM_NUM || xScaleShape.GetDim(0) != m ||
                     xScaleShape.GetDim(1) != kScale || xScaleShape.GetDim(2) != 2,
                 OP_LOGE(context_->GetNodeName(), "x_scale must be (M, ceil(K/64), 2)"), return false);
+    const int64_t weightScaleN = transposeWeight_ ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(2);
+    const int64_t weightScaleK = transposeWeight_ ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
     OP_CHECK_IF(weightScaleShape.GetDimNum() != WEIGHT_SCALE_DIM_NUM || weightScaleShape.GetDim(0) != e ||
-                    weightScaleShape.GetDim(1) != kScale || weightScaleShape.GetDim(2) != n ||
+                    weightScaleN != n || weightScaleK != kScale ||
                     weightScaleShape.GetDim(3) != 2,
-                OP_LOGE(context_->GetNodeName(), "weight_scale must be (E, ceil(K/64), N, 2)"), return false);
+                OP_LOGE(context_->GetNodeName(),
+                        "weight_scale must be (E, ceil(K/64), N, 2) or transposed (E, N, ceil(K/64), 2)"),
+                return false);
     return true;
 }
 
@@ -250,7 +260,7 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckOutputShape() const
                     yShape.GetDimNum() != OUTPUT_DIM_NUM || yScaleShape.GetDimNum() != OUTPUT_SCALE_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(), "output shape rank is invalid"), return false);
     const int64_t m = xShape.GetDim(0);
-    const int64_t n = weightShape.GetDim(2);
+    const int64_t n = transposeWeight_ ? weightShape.GetDim(1) : weightShape.GetDim(2);
     const int64_t outputN = n / SWIGLU_SPLIT;
     const int64_t outputScaleN = (outputN + MX_GROUP_SIZE_V3 - 1) / MX_GROUP_SIZE_V3;
     OP_CHECK_IF(yShape.GetDimNum() != OUTPUT_DIM_NUM || yShape.GetDim(0) != m || yShape.GetDim(1) != outputN,
@@ -327,7 +337,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     mm.set_baseM(basicTiling_.baseM);
     mm.set_baseN(basicTiling_.baseN);
     mm.set_baseK(basicTiling_.baseK);
-    mm.set_singleCoreM(basicTiling_.singleCoreM);
+    // The NZ CGMCT kernel consumes the per-core M tile selected by the
+    // basic tiler.  Keep this aligned with the V2 NZ path: singleCoreM is
+    // the actual base-M tile, not the generic single-core partition value.
+    mm.set_singleCoreM(basicTiling_.baseM);
     mm.set_singleCoreN(basicTiling_.singleCoreN);
     mm.set_singleCoreK(basicTiling_.singleCoreK);
     mm.set_depthA1(basicTiling_.depthA1);
@@ -349,7 +362,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
 
 uint64_t GroupedMatmulSwigluQuantV3Tiling950::GetTilingKey() const
 {
-    return static_cast<uint64_t>(swigluMode_);
+    constexpr uint64_t TRANSPOSE_KEY_OFFSET = 4;
+    return static_cast<uint64_t>(swigluMode_) + (transposeWeight_ ? TRANSPOSE_KEY_OFFSET : 0);
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetWorkspaceSize()

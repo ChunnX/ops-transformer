@@ -155,8 +155,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     </thead>
     <tbody>
       <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入。</td><td>FLOAT8_E4M3FN、FLOAT8_E5M2</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
-      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList 长度必须为 1；唯一 Tensor 的逻辑 view 为 (E, K, N)，storage 为五维 FRACTAL_NZ。</td><td>FLOAT8_E4M3FN、FLOAT8_E5M2</td><td>FRACTAL_NZ</td><td>view 3 维，storage 5 维</td><td>√</td></tr>
-      <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维，(E, ceil(K / 64), N, 2)</td><td>√</td></tr>
+      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList 长度必须为 1；非转置逻辑 view 为 (E, K, N)，转置逻辑 view 为 (E, N, K)，storage 均为五维 FRACTAL_NZ。</td><td>FLOAT8_E4M3FN、FLOAT8_E5M2</td><td>FRACTAL_NZ</td><td>view 3 维，storage 5 维</td><td>√</td></tr>
+      <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置 shape 为 (E, ceil(K / 64), N, 2)，转置 shape 为 (E, N, ceil(K / 64), 2)。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维</td><td>√</td></tr>
       <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持，必须传 nullptr 或空 TensorList。</td><td>-</td><td>-</td><td>-</td><td>√</td></tr>
       <tr><td>bias</td><td>可选输入</td><td>矩阵乘偏置。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>xScale</td><td>输入</td><td>激活量化因子。</td><td>按 K 方向每 64 个元素对应两个 E8M0 scale。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil(K / 64), 2)</td><td>√</td></tr>
@@ -260,7 +260,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 仅支持 MXFP8 weightNZ 场景，不支持 per-token、MXFP4、A8W4、A4W4 或其他量化场景。
     - 仅支持单 Tensor：`weight` 和 `weightScale` 的 TensorList 长度必须均为 1；不支持将每个 expert 拆成多个 Tensor 的多 Tensor调用方式。
-    - `weight` 的逻辑 view 必须为三维，storage 必须为五维 FRACTAL_NZ；当前不支持 ND weight 和转置 weight。
+    - `weight` 的逻辑 view 必须为三维，storage 必须为五维 FRACTAL_NZ；支持非转置和转置 weight，x 仅支持非转置输入。
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
@@ -320,9 +320,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
               <td>MXFP8</td>
               <td>(M, K)</td>
               <td><ul>
-              <li>单 Tensor 非转置 storage shape 形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
-              <li>逻辑 viewShape 形如{(E, K, N)}</li></ul></td>
-              <td>(E, ceil(K / 64), N, 2)</td>
+              <li>非转置：storage shape 形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}，逻辑 view shape 形如{(E, K, N)}</li>
+              <li>转置：storage shape 形如{(E, ceil(K / 32), ceil(N / 16), 16, 32)}，逻辑 view shape 形如{(E, N, K)}</li></ul></td>
+              <td><ul>
+              <li>非转置：(E, ceil(K / 64), N, 2)</li>
+              <li>转置：(E, N, ceil(K / 64), 2)</li></ul></td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
               <td>(M, ceil((N / 2) / 64), 2)</td>
@@ -417,4 +419,38 @@ ret = aclnnGroupedMatmulSwigluQuantWeightNzV3(workspace, workspaceSize, executor
 aclrtSynchronizeStream(stream);
 ```
 
-当前 V3 的 tiling 和 kernel 仅保留 Ascend 950 的单入口占位实现，具体计算实现和 950 环境上的编译运行验证待后续补充。
+### MXFP8 weightNZ 四种 `swigluMode` 及 weight 转置/非转置示例
+
+示例源码支持以下命令行参数：`swigluMode transposeWeight activateLeft dumpPrefix`。其中 `transposeWeight=0` 表示非转置 weight，`transposeWeight=1` 表示转置 weight；x 始终为非转置输入。四个脚本分别固定一种 `swigluMode`，并在脚本内部依次覆盖两种 weight 形态：
+
+| 示例脚本 | `swigluMode` | 覆盖场景 |
+| --- | ---: | --- |
+| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode0.sh` | 0 | 标准 SwiGLU，非转置/转置 weight |
+| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode1.sh` | 1 | 奇偶交错拆分，非转置/转置 weight |
+| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode2.sh` | 2 | 前后两半拆分，非转置/转置 weight |
+| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode3.sh` | 3 | 固定 alpha=1 的 SiLU，非转置/转置 weight |
+
+在已使用 CANN 9.2 设置环境、并将示例源码编译为 `test_v3_modes_92` 后，可运行以下命令。每个脚本都会调用 ACLNN 两段式接口，导出 NPU 的 `output` 和 `outputScale`，再调用 `cpu_golden_swiglu_quant_v3.py` 做对比：
+
+```bash
+export V3_DEMO_BIN=/path/to/test_v3_modes_92
+export CANN_ROOT=/home/developer/Ascend/cann-9.2.0/cann-9.2.0
+export ASCEND_CUSTOM_OPP_PATH=/path/to/packages/vendors/custom_transformer
+
+bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode0.sh
+bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode1.sh
+bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode2.sh
+bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode3.sh
+```
+
+每个模式都会执行 `transposeWeight=0` 和 `transposeWeight=1` 两次调用，示例固定 `activateDim=-1`、`activateLeft=true`、`clampLimit=7.0`、`gluAlpha=1.702`、`gluBias=1.0`，并使用 MXFP8 的 `dequantMode=2`、`quantMode=2`。CPU golden 校验要求相对误差超过 `1e-3` 的数据点数量不超过总数据点数量的 `1e-3`，同时校验 `outputScale`。
+
+如需单独调试某一种模式或某一种 weight 形态，也可以直接调用 C++ 示例：
+
+```bash
+# 参数依次为：swigluMode、transposeWeight、activateLeft、dumpPrefix
+${V3_DEMO_BIN} 0 0 1 /tmp/gmm_swiglu_v3_mode0_t0
+${V3_DEMO_BIN} 0 1 1 /tmp/gmm_swiglu_v3_mode0_t1
+```
+
+当前 V3 的 tiling 和 kernel 仅支持 Ascend 950 的 MXFP8 weightNZ 单入口。已在 CANN 9.2.0 的 Ascend 950 环境完成非转置/转置 weight 与四种 `swigluMode` 的 ACLNN 示例和 CPU golden 校验。

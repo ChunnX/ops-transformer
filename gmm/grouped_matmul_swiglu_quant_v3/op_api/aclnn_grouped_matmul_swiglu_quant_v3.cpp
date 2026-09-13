@@ -21,6 +21,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "grouped_matmul_swiglu_quant_v3.h"
 #include "grouped_matmul_swiglu_quant_v3_common.h"
+#include "mc2_log_compat.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
 #include "opdev/make_op_executor.h"
@@ -54,6 +55,50 @@ bool IsNzFormat(const aclTensor *tensor)
 {
     return tensor != nullptr &&
            ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ;
+}
+
+bool IsTransposedWeight(const aclTensor *tensor, int64_t k)
+{
+    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() != gmm_swiglu_quant_v3::WEIGHT_VIEW_DIM_NUM ||
+        tensor->GetStorageShape().GetDimNum() != gmm_swiglu_quant_v3::WEIGHT_STORAGE_DIM_NUM) {
+        return false;
+    }
+    const auto &viewShape = tensor->GetViewShape();
+    const int64_t dim1 = viewShape.GetDim(1);
+    const int64_t dim2 = viewShape.GetDim(2);
+
+    // When K and N differ, the logical view itself is unambiguous: K is the
+    // second dimension for a normal (E, K, N) view and the third dimension
+    // for a transposed (E, N, K) view.  This is more reliable than using the
+    // NZ storage shape, whose two outer tile axes are expressed relative to
+    // the view and therefore do not encode the transpose state.
+    if (dim2 == k && dim1 != k) {
+        return true;
+    }
+    if (dim1 == k && dim2 != k) {
+        return false;
+    }
+
+    const auto strides = tensor->GetViewStrides();
+    const int64_t lastDim = static_cast<int64_t>(viewShape.GetDimNum()) - 1;
+    const int64_t penultimateDim = lastDim - 1;
+
+    // FRACTAL_NZ storage shape alone cannot distinguish (E, K, N) from
+    // (E, N, K): both are described by the same two physical tile axes when
+    // expressed in terms of their own view dimensions.  Use the view stride,
+    // which is the same convention used by the V2/NZ APIs, to identify a
+    // transposed view: the penultimate logical dimension is contiguous.
+    if (strides[penultimateDim] != 1 || strides[lastDim] != viewShape.GetDim(penultimateDim)) {
+        return false;
+    }
+    int64_t expectedStride = viewShape.GetDim(lastDim) * viewShape.GetDim(penultimateDim);
+    for (int64_t batchDim = penultimateDim - 1; batchDim >= 0; --batchDim) {
+        if (strides[batchDim] != expectedStride) {
+            return false;
+        }
+        expectedStride *= viewShape.GetDim(batchDim);
+    }
+    return true;
 }
 
 bool IsEmptyTensorList(const aclTensorList *tensorList)
@@ -346,8 +391,10 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
     const aclTensor *weightScaleTensor = (*weightScale)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX];
     const int64_t m = x->GetViewShape().GetDim(0);
     const int64_t k = x->GetViewShape().GetDim(1);
+    const bool transposeWeight = IsTransposedWeight(weightTensor, k);
     const int64_t e = groupList->GetViewShape().GetDim(0);
-    const int64_t n = weightTensor->GetViewShape().GetDim(2);
+    const int64_t n = transposeWeight ? weightTensor->GetViewShape().GetDim(1) : weightTensor->GetViewShape().GetDim(2);
+    const int64_t weightK = transposeWeight ? weightTensor->GetViewShape().GetDim(2) : weightTensor->GetViewShape().GetDim(1);
 
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         e >= 1 && e <= gmm_swiglu_quant_v3::MAX_GROUP_NUM, ACLNN_ERR_PARAM_INVALID,
@@ -370,17 +417,24 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
     const op::Shape xExpected = {m, k};
     const op::Shape xScaleExpected = {m, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::MX_GROUP_SIZE),
                                       gmm_swiglu_quant_v3::MX_SCALE_PAIR};
-    const op::Shape weightExpected = {e, k, n};
-    const op::Shape weightScaleExpected = {e, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::MX_GROUP_SIZE), n,
-                                           gmm_swiglu_quant_v3::MX_SCALE_PAIR};
+    const op::Shape weightExpected = transposeWeight ? op::Shape({e, n, k}) : op::Shape({e, k, n});
+    const op::Shape weightScaleExpected =
+        transposeWeight ? op::Shape({e, n, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::MX_GROUP_SIZE),
+                                     gmm_swiglu_quant_v3::MX_SCALE_PAIR})
+                        : op::Shape({e, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::MX_GROUP_SIZE), n,
+                                     gmm_swiglu_quant_v3::MX_SCALE_PAIR});
     const int64_t nAfterSwiGlu = n / gmm_swiglu_quant_v3::SWIGLU_SPLIT_FACTOR;
     const op::Shape outputExpected = {m, nAfterSwiGlu};
     const op::Shape outputScaleExpected = {m, Ops::Base::CeilDiv(nAfterSwiGlu, gmm_swiglu_quant_v3::MX_GROUP_SIZE),
                                            gmm_swiglu_quant_v3::MX_SCALE_PAIR};
-    const op::Shape weightStorageExpected = {
-        e, Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_C0_SIZE),
-        Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_INNER_SIZE), gmm_swiglu_quant_v3::NZ_INNER_SIZE,
-        gmm_swiglu_quant_v3::NZ_C0_SIZE};
+    const op::Shape weightStorageExpected =
+        transposeWeight
+            ? op::Shape({e, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_C0_SIZE),
+                         Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
+                         gmm_swiglu_quant_v3::NZ_INNER_SIZE, gmm_swiglu_quant_v3::NZ_C0_SIZE})
+            : op::Shape({e, Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_C0_SIZE),
+                         Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
+                         gmm_swiglu_quant_v3::NZ_INNER_SIZE, gmm_swiglu_quant_v3::NZ_C0_SIZE});
 
     const struct {
         const aclTensor *tensor;
@@ -404,6 +458,10 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             API_NAME, "weight storageShape", op::ToString(weightTensor->GetStorageShape()).GetString(),
             (std::string("the storage shape must be ") + op::ToString(weightStorageExpected).GetString()).c_str()));
+    GMM_SWIGLU_V3_CHECK_WITH_LOG(
+        weightK == k, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(API_NAME, "weight", std::to_string(weightK),
+                                              (std::string("the logical K dimension must be ") + std::to_string(k)).c_str()));
     return ACLNN_SUCCESS;
 }
 
@@ -576,15 +634,17 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     CHECK_RET(CreateEmptyWeightAssistTensorList(weightAssistForOp, uniqueExecutor.get()) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
 
+    const bool transposeWeight = IsTransposedWeight((*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX],
+                                                    x->GetViewShape().GetDim(1));
     auto result = l0op::GroupedMatmulSwigluQuantV3(
         xForOp, weightForOp, weightScaleForOp, xScaleForOp, weightAssistForOp, bias, smoothScale, groupListForOp,
-        dequantMode, dequantDtype, quantMode, static_cast<int64_t>(output->GetDataType()), false, groupListType,
+        dequantMode, dequantDtype, quantMode, static_cast<int64_t>(output->GetDataType()), transposeWeight, groupListType,
         nullptr, activateDim, activateLeft, swigluMode, static_cast<float>(clampLimit), static_cast<float>(gluAlpha),
         static_cast<float>(gluBias), uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
-    aclTensor *outputResult = l0op::ViewCopy(std::get<0>(result), output, uniqueExecutor.get());
-    aclTensor *outputScaleResult = l0op::ViewCopy(std::get<1>(result), outputScale, uniqueExecutor.get());
+    const aclTensor *outputResult = l0op::ViewCopy(std::get<0>(result), output, uniqueExecutor.get());
+    const aclTensor *outputScaleResult = l0op::ViewCopy(std::get<1>(result), outputScale, uniqueExecutor.get());
     CHECK_RET(outputResult != nullptr && outputScaleResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
