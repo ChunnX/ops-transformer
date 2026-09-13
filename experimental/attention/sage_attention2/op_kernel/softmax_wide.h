@@ -166,8 +166,10 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
                 Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
                 Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
                 Or(merged, merge0, merge1, b);
-                // V rows use this interleaved key order, so no register Gather is needed.
-                StoreAlign((__ubuf__ uint8_t *)out + (col + 0) * 64 * 32 + row * 32, merged, b);
+                // Overwrite only the first FP16 stripe just loaded for these 8
+                // rows. Other rows and column blocks remain disjoint. MTE3
+                // skips the unused second stripe when copying packed P.
+                StoreAlign((__ubuf__ uint8_t *)out + (col + 0) * 64 * 64 + row * 32, merged, b);
             }
             {
                 RegTensor<float> p0, p1, p2, p3, pair0, pair1;
@@ -188,8 +190,10 @@ __simd_callee__ inline void SoftmaxWideProbCore(__ubuf__ half *scores, __ubuf__ 
                 Or(merge0, (RegTensor<uint8_t> &)packed0, (RegTensor<uint8_t> &)packed1, b);
                 Or(merge1, (RegTensor<uint8_t> &)packed2, (RegTensor<uint8_t> &)packed3, b);
                 Or(merged, merge0, merge1, b);
-                // V rows use this interleaved key order, so no register Gather is needed.
-                StoreAlign((__ubuf__ uint8_t *)out + (col + 1) * 64 * 32 + row * 32, merged, b);
+                // Overwrite only the first FP16 stripe just loaded for these 8
+                // rows. Other rows and column blocks remain disjoint. MTE3
+                // skips the unused second stripe when copying packed P.
+                StoreAlign((__ubuf__ uint8_t *)out + (col + 1) * 64 * 64 + row * 32, merged, b);
             }
         }
         if constexpr (FIRST) {

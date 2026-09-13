@@ -213,4 +213,72 @@ __simd_vf__ inline void FinalizeWideFp32VF(__ubuf__ T *out, __ubuf__ float *accu
         }
     }
 }
+
+// Two consecutive groups of the same query, preserving both FP32 FMA roundings.
+template <class T, uint32_t DP, bool FIRST, bool LAST>
+__simd_vf__ inline void UpdateWidePairVF(__ubuf__ T *out, __ubuf__ float *accum,
+                                         __ubuf__ float *partial0, __ubuf__ float *partial1, __ubuf__ float *alpha0,
+                                         __ubuf__ float *alpha1, __ubuf__ float *denom, __ubuf__ float *scratch)
+{
+    using namespace AscendC::MicroAPI;
+    static_assert(DP == 128, "paired wide update requires DP128");
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    auto f = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> den, a, sum;
+    LoadAlign(sum, alpha0 + 64);
+    if constexpr (FIRST) {
+        den = sum;
+    } else {
+        LoadAlign(den, denom);
+        LoadAlign(a, alpha0);
+        MulDstAdd(den, a, sum, f);
+    }
+    LoadAlign(a, alpha1);
+    LoadAlign(sum, alpha1 + 64);
+    MulDstAdd(den, a, sum, f);
+    StoreAlign(denom, den, f);
+    if constexpr (LAST) {
+        RegTensor<float> one, inv;
+        Duplicate(one, 1.0f);
+        Div(inv, one, den, f);
+        StoreAlign(scratch, inv, f);
+        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    }
+    static constexpr CastTrait cast{RegLayout::ZERO, SatMode::SAT, MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+    for (uint16_t row = 0; row < 64; ++row) {
+        RegTensor<float> x0, x1, z0, z1, a0, a1;
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(a1, alpha1 + row);
+        if constexpr (FIRST) {
+            LoadAlign(x0, partial0 + row * DP);
+            LoadAlign(x1, partial0 + row * DP + 64);
+        } else {
+            RegTensor<float> y0, y1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(a0, alpha0 + row);
+            LoadAlign(x0, accum + row * DP);
+            LoadAlign(x1, accum + row * DP + 64);
+            LoadAlign(y0, partial0 + row * DP);
+            LoadAlign(y1, partial0 + row * DP + 64);
+            MulDstAdd(x0, a0, y0, f);
+            MulDstAdd(x1, a0, y1, f);
+        }
+        LoadAlign(z0, partial1 + row * DP);
+        LoadAlign(z1, partial1 + row * DP + 64);
+        MulDstAdd(x0, a1, z0, f);
+        MulDstAdd(x1, a1, z1, f);
+        if constexpr (LAST) {
+            RegTensor<float> inv;
+            RegTensor<T> p0, p1;
+            LoadAlign<float, LoadDist::DIST_BRC_B32>(inv, scratch + row);
+            Mul(x0, x0, inv, f);
+            Mul(x1, x1, inv, f);
+            Cast<T, float, cast>(p0, x0, f);
+            Cast<T, float, cast>(p1, x1, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP, p0, f);
+            StoreAlign<T, StoreDist::DIST_PACK_B32>(out + row * DP + 64, p1, f);
+        } else {
+            StoreAlign(accum + row * DP, x0, f);
+            StoreAlign(accum + row * DP + 64, x1, f);
+        }
+    }
+}
 } // namespace Sage

@@ -51,8 +51,8 @@ __aicore__ inline __attribute__((always_inline)) uint64_t WideScaleAhead(const S
     }
     return info.kb + group * 512;
 }
-// Only delayed O needs a record. O(g-2) retires before S(g) reuses its slot,
-// including query boundaries, so two output records cover the complete stream.
+// A deferred pair retires after S(g); retain metadata and alpha for all
+// three live groups g-2, g-1 and g. PV itself still uses two slots.
 struct WideOutputInfo {
     uint32_t ordinal, b, h, kh, qstart;
     bool first, last;
@@ -66,6 +66,26 @@ __aicore__ inline __attribute__((always_inline)) void FinishWideOutput(
     vector.UpdateStreamOutput(group, info.first, info.last);
     if (info.last)
         vector.FinishStreamQuery(info.ordinal, info.qstart, info.b, info.h);
+}
+// FIRST_READY means the caller consumed exactly the first PV token before
+// supplying S(g). Tail draining consumes both tokens here.
+template <bool FIRST_READY = false, class T>
+__aicore__ inline __attribute__((always_inline)) void RetireWideOutput(
+    AttentionBlockVecWide<T, 128> &vector, WideOutputInfo *pending, uint64_t &retired, uint64_t produced)
+{
+    const auto first = pending[retired % 3];
+    if (retired + 1 < produced && first.ordinal == pending[(retired + 1) % 3].ordinal) {
+        const auto second = pending[(retired + 1) % 3];
+        if (second.last)
+            vector.LoadLseMean(second.b, second.kh);
+        vector.template UpdateStreamPair<FIRST_READY>(retired, first.first, second.last);
+        if (second.last)
+            vector.FinishStreamQuery(second.ordinal, second.qstart, second.b, second.h);
+        retired += 2;
+    } else {
+        FinishWideOutput(vector, first, retired);
+        ++retired;
+    }
 }
 // Cube retains only the fields consumed by delayed PV and V prefetch.
 struct CubeFragmentInfo {
@@ -151,11 +171,11 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         auto first = DecodeWideQuery<CAUSAL>(p, core, 0);
         vector.BeginStream(first.kb, WideScaleAhead<CAUSAL>(p, first, 1, totalTasks));
     }
-    WideOutputInfo outputPending[2];
+    WideOutputInfo outputPending[3];
     static_assert(sizeof(WideOutputInfo) == 24, "Vector ring stores only delayed output metadata");
     CubeFragmentInfo cubePending[4];
     static_assert(sizeof(CubeFragmentInfo) == 16, "Cube ring stores only K/V base and fragment index");
-    uint64_t fragment = 0;
+    uint64_t fragment = 0, retired = 0;
     uint32_t ordinal = 0;
     for (uint64_t task = core; task < totalTasks; task += p.cores, ++ordinal) {
         auto current = DecodeWideQuery<CAUSAL>(p, task, ordinal);
@@ -175,15 +195,31 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         } else {
             for (uint32_t step = 0; step < current.count; ++step, fragment += 2) {
                 const uint64_t group = fragment / 2;
-                if (group >= 2)
-                    FinishWideOutput(vector, outputPending[group & 1], group - 2);
+                bool deferPair = false;
+                if (group >= 2 && retired <= group - 2) {
+                    const auto &old = outputPending[retired % 3];
+                    deferPair = retired + 1 < group &&
+                                old.ordinal == outputPending[(retired + 1) % 3].ordinal;
+                    if (deferPair) {
+                        // Preserve the baseline guard on L1 P(g-2) reuse, but
+                        // leave both PV slots owned until the pair VF finishes.
+                        vector.AcquireStreamPv();
+                    } else {
+                        // Retire across query boundaries before maxima parity
+                        // can be reused by a third (possibly one-group) query.
+                        FinishWideOutput(vector, old, retired);
+                        ++retired;
+                    }
+                }
                 const bool first = step == 0, last = step + 1 == current.count;
                 vector.SelectStreamQuery(current.ordinal, current.qb, current.qstart, first);
                 const uint64_t nextScale = WideScaleAhead<CAUSAL>(p, current, step + 2, totalTasks);
                 vector.template SoftmaxWide<CAUSAL, true>(step, current.kb, current.count, current.qstart,
                                                           group, nextScale);
-                outputPending[group & 1] = {current.ordinal, current.b, current.h, current.kh,
+                outputPending[group % 3] = {current.ordinal, current.b, current.h, current.kh,
                                             current.qstart, first, last};
+                if (deferPair)
+                    RetireWideOutput<true>(vector, outputPending, retired, group + 1);
             }
         }
     }
@@ -193,8 +229,8 @@ __aicore__ inline __attribute__((always_inline)) void AttentionWideStream(GM_ADD
         ProcessWideCubeStep<0>(r, cubePending, fragment + 2, false, nullptr, k8, v8, mxScale, mxCache, p, 0, false);
     } else {
         const uint64_t groups = fragment / 2;
-        for (uint64_t group = groups - Min(uint64_t(2), groups); group < groups; ++group)
-            FinishWideOutput(vector, outputPending[group & 1], group);
+        while (retired < groups)
+            RetireWideOutput(vector, outputPending, retired, groups);
     }
     if ASCEND_IS_AIC {
         for (uint32_t i = 0; i < Min(uint64_t(2), fragment / 2); ++i) {

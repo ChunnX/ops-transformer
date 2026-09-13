@@ -20,10 +20,11 @@ struct WideVectorLayout {
     static constexpr uint32_t MU_UB = P_UB + P_SLOT_BYTES;
     static constexpr uint32_t KS_UB = MU_UB + 512, QS_UB = KS_UB + 2 * 512 * 2;
     static constexpr uint32_t MAX_UB = QS_UB + 512, DEN_UB = MAX_UB + 512, ALPHA_UB = DEN_UB + 512;
-    static constexpr uint32_t SUM_UB = ALPHA_UB + 2 * 512, END = SUM_UB + HALF * 4;
+    static constexpr uint32_t SUM_UB = ALPHA_UB + 3 * 512;
+    static constexpr uint32_t PARTIAL_SUMS_UB = P_UB, END = SUM_UB + HALF * 4;
     static constexpr uint32_t X_UB = P_UB, RED_UB = P_UB + 1024, WORK_UB = P_UB + 2048, QI_UB = P_UB + 4096;
-    static_assert(PV_SLOT_BYTES >= HALF * 128 * 4, "P/PV slot cannot hold FP32 PV");
-    static_assert(PV_SLOT_BYTES >= 2 * P_PART_BYTES, "P/PV slot cannot hold FP8 P512");
+    static_assert(PV_SLOT_BYTES >= HALF * 128 * 4, "PV slot cannot hold FP32 PV");
+    static_assert(P_SLOT_BYTES >= HALF * 8 * 4, "output scratch cannot hold softmax partial sums");
     static_assert(END <= 248 * 1024, "wide softmax exceeds UB");
 };
 
@@ -50,21 +51,23 @@ public:
     {
         const uint32_t ring = STREAM ? group : step;
         auto scores = resource_->ubBuf.template GetBufferByByte<half>(SCORE_UB + (ring & 1) * 2 * HALF * N * 2);
-        auto p8 = resource_->ubBuf.template GetBufferByByte<float8_e4m3_t>(PV_UB + (ring & 1) * PV_SLOT_BYTES);
-        auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (ring & 1) * 512);
+        // Each FP8 NZ block replaces the consumed first FP16 stripe of its
+        // 32-column score block. Keep the second stripe as a 2048-byte gap.
+        auto p8 = scores.template ReinterpretCast<float8_e4m3_t>();
+        auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (ring % 3) * 512);
         CrossCoreWaitFlag<4, PIPE_V>(QK_READY);
         CrossCoreWaitFlag<4, PIPE_V>(QK_READY);
-        // PV(i-2) was consumed before S(i). P(i) temporarily owns that slot;
-        // its MTE3-ready token prevents Fixpipe from overwriting it early.
+        // P_READY for fragment f follows its MTE3 copy. Cube waits for this
+        // token before PV(f)'s MTE1->M, which precedes QK(f+4)'s M->FIX.
+        // Thus score reuse cannot overwrite P before the copy completes.
         auto ksu = resource_->ubBuf.template GetBufferByByte<half>(KS_UB + (ring & 1) * 512 * 2);
         event_t ev = static_cast<event_t>(SCALE_EVENT_BASE + (ring & 1));
         WaitFlag<HardEvent::MTE2_V>(ev);
         auto scoresNext =
             resource_->ubBuf.template GetBufferByByte<half>(SCORE_UB + ((ring & 1) * 2 + 1) * HALF * N * 2);
         auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
-        // The final output buffer is idle during attention; retain 8 lane sums
-        // for each row until P1, then reduce once across the complete N512.
-        auto partialSums = resource_->ubBuf.template GetBufferByByte<float>(WideVectorLayout::P_UB);
+        // Output scratch is idle until the complete softmax group finishes.
+        auto partialSums = resource_->ubBuf.template GetBufferByByte<float>(WideVectorLayout::PARTIAL_SUMS_UB);
         if (CAUSAL && step * 512 + 512 > qstart + subBlockIdx_ * HALF + 1) {
             SoftmaxWideFirstVF<true>((__ubuf__ half *)scores.GetPhyAddr(), (__ubuf__ half *)scoresNext.GetPhyAddr(),
                                      (__ubuf__ half *)maxima_.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr(),
@@ -93,15 +96,16 @@ public:
         }
         Sync<HardEvent::V_MTE3>();
         auto pl1 = resource_->l1Buf.template GetBufferByByte<float8_e4m3_t>(P_L1 + (ring & 1) * 2 * M * N);
-        DataCopyParams cp{N / 32, HALF, 0, HALF};
+        DataCopyParams cp{N / 32, HALF, HALF, HALF};
         DataCopy(pl1[subBlockIdx_ * HALF * 32], p8, cp);
         CrossCoreSetFlag<4, PIPE_MTE3>(P_READY);
+        auto p8Next = scoresNext.template ReinterpretCast<float8_e4m3_t>();
         SoftmaxWideSecondVF((__ubuf__ half *)scoresNext.GetPhyAddr(), (__ubuf__ half *)maxima_.GetPhyAddr(),
                             (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)alpha.GetPhyAddr(),
-                            (__ubuf__ float8_e4m3_t *)p8[WideVectorLayout::P_PART_BYTES].GetPhyAddr(),
+                            (__ubuf__ float8_e4m3_t *)p8Next.GetPhyAddr(),
                             (__ubuf__ float *)scratch.GetPhyAddr(), (__ubuf__ float *)partialSums.GetPhyAddr());
         Sync<HardEvent::V_MTE3>();
-        DataCopy(pl1[M * N + subBlockIdx_ * HALF * 32], p8[WideVectorLayout::P_PART_BYTES], cp);
+        DataCopy(pl1[M * N + subBlockIdx_ * HALF * 32], p8Next, cp);
         CrossCoreSetFlag<4, PIPE_MTE3>(P_READY);
     }
     __aicore__ inline __attribute__((always_inline)) void UpdateWideOutput(uint32_t step)
@@ -111,7 +115,7 @@ public:
             (__ubuf__ float *)accum_.GetPhyAddr(),
             (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (step & 1) * PV_SLOT_BYTES)
                 .GetPhyAddr(),
-            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (step & 1) * 512)
+            (__ubuf__ float *)resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (step % 3) * 512)
                 .GetPhyAddr(),
             (__ubuf__ float *)denom_.GetPhyAddr());
         CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
@@ -156,7 +160,7 @@ public:
     {
         CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
         auto pv = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
-        auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group & 1) * 512);
+        auto alpha = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
         if (last) {
             auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
             if (first)
@@ -176,6 +180,44 @@ public:
             AccumulateWideFp32VF<DP>((__ubuf__ float *)accum_.GetPhyAddr(), (__ubuf__ float *)pv.GetPhyAddr(),
                                      (__ubuf__ float *)alpha.GetPhyAddr(), (__ubuf__ float *)denom_.GetPhyAddr());
         CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
+    }
+    __aicore__ inline __attribute__((always_inline)) void AcquireStreamPv()
+    {
+        CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+    }
+    template <bool FIRST, bool LAST, bool FIRST_READY>
+    __aicore__ inline __attribute__((always_inline)) void UpdateStreamPairImpl(uint64_t group)
+    {
+        if constexpr (!FIRST_READY)
+            CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+        CrossCoreWaitFlag<4, PIPE_V>(PV_READY);
+        auto pv0 = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + (group & 1) * PV_SLOT_BYTES);
+        auto pv1 = resource_->ubBuf.template GetBufferByByte<float>(PV_UB + ((group + 1) & 1) * PV_SLOT_BYTES);
+        auto a0 = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + (group % 3) * 512);
+        auto a1 = resource_->ubBuf.template GetBufferByByte<float>(ALPHA_UB + ((group + 1) % 3) * 512);
+        auto scratch = resource_->ubBuf.template GetBufferByByte<float>(SUM_UB);
+        UpdateWidePairVF<T, DP, FIRST, LAST>(
+            (__ubuf__ T *)Base::qo_.GetPhyAddr(), (__ubuf__ float *)accum_.GetPhyAddr(),
+            (__ubuf__ float *)pv0.GetPhyAddr(), (__ubuf__ float *)pv1.GetPhyAddr(),
+            (__ubuf__ float *)a0.GetPhyAddr(), (__ubuf__ float *)a1.GetPhyAddr(),
+            (__ubuf__ float *)denom_.GetPhyAddr(), (__ubuf__ float *)scratch.GetPhyAddr());
+        CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
+        CrossCoreSetFlag<4, PIPE_V>(PV_RELEASE);
+    }
+    template <bool FIRST_READY = false>
+    __aicore__ inline __attribute__((always_inline)) void UpdateStreamPair(uint64_t group, bool first, bool last)
+    {
+        if (first) {
+            if (last)
+                UpdateStreamPairImpl<true, true, FIRST_READY>(group);
+            else
+                UpdateStreamPairImpl<true, false, FIRST_READY>(group);
+        } else {
+            if (last)
+                UpdateStreamPairImpl<false, true, FIRST_READY>(group);
+            else
+                UpdateStreamPairImpl<false, false, FIRST_READY>(group);
+        }
     }
     __aicore__ inline __attribute__((always_inline)) void FinishStreamQuery(uint32_t ordinal, uint32_t qstart,
                                                                             uint32_t b, uint32_t h)

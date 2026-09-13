@@ -98,6 +98,21 @@ PERFORMANCE_SHAPES = [
 ]
 
 
+@pytest.mark.parametrize("sq,hq", [(128, 64), (1024, 4)],
+                         ids=["many_heads", "many_query_tiles"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_wide_pair_odd_query_tail(sq, hq, dtype, record_property):
+    # More than 28 query tiles force per-core transitions within/across heads.
+    # Nine groups leave one unpaired output at each query boundary and drain.
+    # Causal fronts use the square shapes in test_wide_full_sequence above.
+    sk = 4608
+    torch.manual_seed(975 + sq + sk)
+    q = torch.randn(1, hq, sq, 128, dtype=dtype)
+    k = torch.randn(1, 1, sk, 128, dtype=dtype)
+    v = torch.randn_like(k)
+    check_wide(q, k, v, False, "HND", False, record_property)
+
+
 @pytest.mark.parametrize("name,seq,b,hk,dtype,causal", PERFORMANCE_SHAPES, ids=[c[0] for c in PERFORMANCE_SHAPES])
 def test_wide_acceptance_shape(name, seq, b, hk, dtype, causal, record_property):
     torch.manual_seed(960 + seq)
