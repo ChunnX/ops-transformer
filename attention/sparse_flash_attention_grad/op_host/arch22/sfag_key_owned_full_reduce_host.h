@@ -53,7 +53,7 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     td.opInfo.set_rsv(marker);
     context->SetScheduleMode(1);
     size_t *workspaces = context->GetWorkspaceSizes(1);
-    workspaces[0] += static_cast<uint64_t>(4932501504ULL);
+    workspaces[0] += static_cast<uint64_t>(4873781248ULL);
     OP_LOGI(context, "SFAG_KEY_OWNED_FULL_REDUCE active host marker=%u", markerValue);
 }
 }}

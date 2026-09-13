@@ -256,10 +256,12 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
     GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope, GM_ADDR workspace,
     const TILING_CLASS *__restrict tilingData)
 {
+    GM_ADDR orderedTopkIndices = workspace + KeyOwnedExtensionByteOffset(tilingData) +
+                                 KeyOwnedEdgeBytes + KeyOwnedHeaderBytes;
     if ASCEND_IS_AIC {
         TPipe pipeCube;
         CubeOp<SFAGT> cubeOp;
-        cubeOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
+        cubeOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, orderedTopkIndices,
                     actual_seq_qlen, actual_seq_kvlen, query_rope, key_rope, dq, dk, dv, workspace, tilingData,
                     &pipeCube);
         AllocEventID();
@@ -297,7 +299,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         }
         TPipe pipeVec;
         VecOp<SFAGT> vecOp;
-        vecOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
+        vecOp.Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, orderedTopkIndices,
                    actual_seq_qlen, actual_seq_kvlen, key_rope, dq, dk, dv, workspace, tilingData, &pipeVec);
         SyncAll();
         processMte2WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());

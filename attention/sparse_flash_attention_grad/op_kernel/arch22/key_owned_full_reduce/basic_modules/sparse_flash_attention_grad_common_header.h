@@ -29,9 +29,9 @@ constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
 constexpr static uint64_t KeyOwnedEdgeBytes = 4831838208ULL;
 constexpr static uint64_t KeyOwnedHeaderBytes = 33554432ULL;
-constexpr static uint64_t KeyOwnedDescriptorBytes = 67108864ULL;
-constexpr static uint64_t KeyOwnedExtensionBytes = 4932501504ULL;
-static_assert(KeyOwnedEdgeBytes + KeyOwnedHeaderBytes + KeyOwnedDescriptorBytes == KeyOwnedExtensionBytes);
+constexpr static uint64_t KeyOwnedSortedIndicesBytes = 8388608ULL;
+constexpr static uint64_t KeyOwnedExtensionBytes = 4873781248ULL;
+static_assert(KeyOwnedEdgeBytes + KeyOwnedHeaderBytes + KeyOwnedSortedIndicesBytes == KeyOwnedExtensionBytes);
 
 template <typename TILING_CLASS>
 __aicore__ inline uint64_t KeyOwnedPostByteOffset(const TILING_CLASS *td)
