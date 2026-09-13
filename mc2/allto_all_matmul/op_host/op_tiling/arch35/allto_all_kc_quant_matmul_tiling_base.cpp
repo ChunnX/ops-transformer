@@ -396,10 +396,10 @@ ge::graphStatus AlltoAllKcQuantMatmulHelper::PostTiling()
  */
 AlltoAllKcQuantMatmulHelper::AlltoAllKcQuantMatmulHelper(
     AllToAllKcQuantMatmulTilingBase &allToAllKcQuantMatmulTilingBase,
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen)
-    : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &out),
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mm_mvalue_len)
+    : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &data),
       tilingProcesser_(allToAllKcQuantMatmulTilingBase),
-      mm_len(mmMvalueLen)
+      mm_len(mm_mvalue_len)
 {}
 
 /**
