@@ -227,7 +227,7 @@ ge::graphStatus MhcPreBackwardTiling::ValidateShapeParams()
 
 void MhcPreBackwardTiling::SetMmConfig()
 {
-    auto setConfig = [](MMConfig &config, uint32_t b1FullLoad) {
+    auto setConfig = [](MMConfig &config) {
         config.set_baseM(128U);
         config.set_baseN(128U);
         config.set_baseK(32U);
@@ -237,10 +237,9 @@ void MhcPreBackwardTiling::SetMmConfig()
         config.set_dbL0A(2U);
         config.set_dbL0B(2U);
         config.set_dbL0C(2U);
-        config.set_b1FullLoad(b1FullLoad);
     };
-    setConfig(tilingData_.mmConfigC0, 1U);
-    setConfig(tilingData_.mmConfigC1, 0U);
+    setConfig(tilingData_.mmConfigC0);
+    setConfig(tilingData_.mmConfigC1);
 }
 
 ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
@@ -251,11 +250,13 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     constexpr uint64_t elementSize = sizeof(float);
     auto alignUp = [](uint64_t value, uint64_t align) { return (value + align - 1U) / align * align; };
 
-    bool cubeShapeAligned = mmConfigC0_.get_baseM() % cubeAlign == 0U && mmConfigC0_.get_baseN() % cubeAlign == 0U &&
-                            mmConfigC0_.get_baseK() % cubeAlign == 0U && mmConfigC1_.get_baseM() % cubeAlign == 0U &&
-                            mmConfigC1_.get_baseN() % cubeAlign == 0U && mmConfigC1_.get_baseK() % cubeAlign == 0U;
-    bool kSplitValid = mmConfigC0_.get_l1K() >= mmConfigC0_.get_baseK() && mmConfigC0_.get_l1K() % mmConfigC0_.get_baseK() == 0U &&
-                       mmConfigC1_.get_l1K() >= mmConfigC1_.get_baseK() && mmConfigC1_.get_l1K() % mmConfigC1_.get_baseK() == 0U;
+    auto cubeShapeValid = [cubeAlign](MMConfig &config) {
+        return config.get_baseM() != 0U && config.get_baseN() != 0U && config.get_baseK() != 0U &&
+               config.get_l1K() != 0U && config.get_baseM() % cubeAlign == 0U &&
+               config.get_baseN() % cubeAlign == 0U && config.get_baseK() % cubeAlign == 0U &&
+               config.get_l1K() % cubeAlign == 0U;
+    };
+    bool cubeShapeAligned = cubeShapeValid(mmConfigC0_) && cubeShapeValid(mmConfigC1_);
     bool depthValid = mmConfigC0_.get_depthA1() == mmConfigC0_.get_depthB1() &&
                       mmConfigC0_.get_dbL0A() == mmConfigC0_.get_dbL0B() &&
                       mmConfigC1_.get_depthA1() == mmConfigC1_.get_depthB1() &&
@@ -263,9 +264,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
                       mmConfigC0_.get_depthA1() != 0U && mmConfigC1_.get_depthA1() != 0U &&
                       mmConfigC0_.get_dbL0A() != 0U && mmConfigC1_.get_dbL0A() != 0U &&
                       mmConfigC0_.get_dbL0C() != 0U && mmConfigC1_.get_dbL0C() != 0U;
-    OP_CHECK_IF(!cubeShapeAligned || !kSplitValid || !depthValid,
-                OP_LOGE(context_->GetNodeName(), "MM config %u has invalid alignment, K split or buffer depth",
-                        mmConfigKey_),
+    OP_CHECK_IF(!cubeShapeAligned || !depthValid,
+                OP_LOGE(context_->GetNodeName(), "MM config %u has invalid cube shape or buffer depth", mmConfigKey_),
                 return ge::GRAPH_FAILED);
 
     auto a1Bytes = [alignUp, cubeAlign, elementSize](MMConfig &config) {
@@ -312,19 +312,22 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     cubeL0CBufferElems_ = static_cast<uint32_t>(l0CBufferBytes / elementSize);
 
     uint64_t c0B1ChunkCount = (fusionSize_ + mmConfigC0_.get_l1K() - 1U) / mmConfigC0_.get_l1K();
-    uint64_t c0B1Bytes = 0U;
-    for (uint64_t offsetK = 0U; offsetK < fusionSize_; offsetK += mmConfigC0_.get_l1K()) {
-        uint64_t currentK = fusionSize_ - offsetK;
-        currentK = currentK < mmConfigC0_.get_l1K() ? currentK : mmConfigC0_.get_l1K();
-        c0B1Bytes += alignUp(currentK, cubeAlign) * alignUp(C0_SET_SHAPE_N, cubeAlign) * elementSize;
-    }
-    bool c0B1Valid = mmConfigC0_.get_b1FullLoad() == 1U && c0B1ChunkCount <= mmConfigC0_.get_depthB1() &&
-                     c0B1Bytes <= static_cast<uint64_t>(mmConfigC0_.get_depthB1()) * l1BufferBytes;
-    bool pipelineValid = C0_TO_V2_ROWS == mmConfigC0_.get_baseM() && V2_TO_C1_ROWS == C1_SET_SHAPE_K &&
-                         C1_SET_SHAPE_K == C0_SET_SHAPE_M && C0_SET_SHAPE_M % C0_TO_V2_ROWS == 0U;
-    OP_CHECK_IF(!c0B1Valid || !pipelineValid,
-                OP_LOGE(context_->GetNodeName(), "MM config %u has invalid C0 B1 residency or pipeline granularity",
-                        mmConfigKey_),
+    uint64_t c0B1ChunkK = std::min(fusionSize_, static_cast<uint64_t>(mmConfigC0_.get_l1K()));
+    uint64_t c0B1ChunkBytes = alignUp(c0B1ChunkK, cubeAlign) * alignUp(C0_SET_SHAPE_N, cubeAlign) * elementSize;
+    bool c0B1Valid = c0B1ChunkCount <= mmConfigC0_.get_depthB1() &&
+                     c0B1ChunkBytes <= l1BufferBytes;
+    OP_CHECK_IF(!c0B1Valid,
+                OP_LOGE(context_->GetNodeName(), "MM config %u cannot keep C0 B1 resident in L1", mmConfigKey_),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcPreBackwardTiling::ValidatePipelineParams()
+{
+    bool c0ToV2Valid = C0_TO_V2_ROWS == tilingData_.mmConfigC0.get_baseM() &&
+                       C0_SET_SHAPE_M % C0_TO_V2_ROWS == 0U;
+    OP_CHECK_IF(!c0ToV2Valid,
+                OP_LOGE(context_->GetNodeName(), "C0 to V2 row granularity must match C0 baseM"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -465,6 +468,9 @@ ge::graphStatus MhcPreBackwardTiling::DoOpTiling()
 
     SetMmConfig();
     if (ValidateMmConfig() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidatePipelineParams() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 

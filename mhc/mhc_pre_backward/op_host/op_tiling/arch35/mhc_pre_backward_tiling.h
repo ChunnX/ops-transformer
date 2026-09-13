@@ -35,7 +35,6 @@ TILING_DATA_FIELD_DEF(uint32_t, depthB1);
 TILING_DATA_FIELD_DEF(uint32_t, dbL0A);
 TILING_DATA_FIELD_DEF(uint32_t, dbL0B);
 TILING_DATA_FIELD_DEF(uint32_t, dbL0C);
-TILING_DATA_FIELD_DEF(uint32_t, b1FullLoad);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MMConfigOp, MMConfig);
 
@@ -116,6 +115,7 @@ protected:
     ge::graphStatus ValidateShapeParams();
     void SetMmConfig();
     ge::graphStatus ValidateMmConfig();
+    ge::graphStatus ValidatePipelineParams();
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
