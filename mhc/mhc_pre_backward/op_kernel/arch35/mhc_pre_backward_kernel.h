@@ -378,6 +378,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
     __VEC_SCOPE__
     {
         Reg::RegTensor<P> sumReg;
+        Reg::MaskReg scalarMask = Reg::CreateMask<P, Reg::MaskPattern::VL1>();
         uint32_t offset = static_cast<uint32_t>((i - runBSStart) * N_ + j);
         for (uint16_t offsetN = 0; offsetN < curLenN; offsetN++) { // x [curLenN, lenD],  hinGrad [1, lenD]
             Reg::Duplicate(sumReg, 0.0f);
@@ -399,7 +400,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::VFDoPreProcessV0(__ubuf__ P *
                 Reg::Mul(mulReg, xFp32Reg, gradHInFp32Reg, mask); // mulReg[1,lenD] 0-63
                 Reg::Reduce<Reg::ReduceType::SUM>(tmpSumPerVfReg, mulReg,
                                                   mask); // 每个vfBlockIdx循环的临时求和，每64个元素的和
-                Reg::Add(sumReg, sumReg, tmpSumPerVfReg, mask); // D方向上的reduceSum
+                Reg::Add(sumReg, sumReg, tmpSumPerVfReg, scalarMask); // D方向上的reduceSum
             }
             uint32_t bufIdx = offset + offsetN;
             Reg::Store(hPreGradAddr + bufIdx, sumReg, 1);
