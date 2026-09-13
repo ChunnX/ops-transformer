@@ -1,0 +1,197 @@
+#pragma once
+#include "basic_modules/sparse_flash_attention_grad_common_header.h"
+
+namespace SFAG_KEY_OWNED_FULL_REDUCE {
+
+__aicore__ inline void KeyOwnedMte3ScalarDrain(event_t event)
+{
+    SetFlag<HardEvent::MTE3_S>(event);
+    WaitFlag<HardEvent::MTE3_S>(event);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline void BuildKeyOwnedMetadata(GM_ADDR indices, GM_ADDR workspace, const TILING_CLASS *td, TPipe &pipe)
+{
+    TBuf<> buffer;
+    pipe.InitBuffer(buffer, 131072);
+    LocalTensor<int32_t> input = buffer.GetWithOffset<int32_t>(2048, 0);
+    LocalTensor<uint32_t> counts = buffer.GetWithOffset<uint32_t>(4096, 8192);
+    LocalTensor<uint32_t> starts = buffer.GetWithOffset<uint32_t>(4096, 24576);
+    LocalTensor<uint32_t> cursors = buffer.GetWithOffset<uint32_t>(4096, 40960);
+    LocalTensor<uint32_t> packed = buffer.GetWithOffset<uint32_t>(16384, 57344);
+    LocalTensor<uint32_t> header = buffer.GetWithOffset<uint32_t>(2048, 122880);
+    GlobalTensor<int32_t> inputGm;
+    GlobalTensor<uint32_t> headersGm, descriptorsGm;
+    inputGm.SetGlobalBuffer((__gm__ int32_t *)indices);
+    __gm__ uint8_t *extension = (__gm__ uint8_t *)workspace + KeyOwnedExtensionByteOffset(td);
+    headersGm.SetGlobalBuffer((__gm__ uint32_t *)(extension + KeyOwnedEdgeBytes));
+    descriptorsGm.SetGlobalBuffer((__gm__ uint32_t *)(extension + KeyOwnedEdgeBytes + KeyOwnedHeaderBytes));
+    const event_t scalarVector = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_V>());
+    const event_t vectorScalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::V_S>());
+    const event_t scalarMte2 = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_MTE2>());
+    const event_t mte2Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
+    const event_t scalarMte3 = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_MTE3>());
+    const event_t mte3Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE3_S>());
+    SetAtomicNone();
+    for (uint32_t q = GetBlockIdx(); q < 1024; q += 40) {
+        SetFlag<HardEvent::S_V>(scalarVector);
+        WaitFlag<HardEvent::S_V>(scalarVector);
+        Duplicate<uint32_t>(counts, 0, 4096);
+        Duplicate<uint32_t>(packed, 0, 16384);
+        SetFlag<HardEvent::V_S>(vectorScalar);
+        WaitFlag<HardEvent::V_S>(vectorScalar);
+        SetFlag<HardEvent::S_MTE2>(scalarMte2);
+        WaitFlag<HardEvent::S_MTE2>(scalarMte2);
+        DataCopy(input, inputGm[static_cast<uint64_t>(q) * 2048], 2048);
+        SetFlag<HardEvent::MTE2_S>(mte2Scalar);
+        WaitFlag<HardEvent::MTE2_S>(mte2Scalar);
+        for (uint32_t t = 0; t < 2048; ++t) {
+            const int32_t key = input.GetValue(t);
+            if (key >= 0 && static_cast<uint32_t>(key) < q + 130049) {
+                const uint32_t bucket = static_cast<uint32_t>(key) >> 6;
+                counts.SetValue(bucket, counts.GetValue(bucket) + 1);
+            }
+        }
+        uint32_t next = 0;
+        for (uint32_t bucket = 0; bucket < 2048; ++bucket) {
+            starts.SetValue(bucket, next);
+            cursors.SetValue(bucket, next);
+            next += (counts.GetValue(bucket) + 7) & ~7U;
+        }
+        for (uint32_t t = 0; t < 2048; ++t) {
+            const int32_t key = input.GetValue(t);
+            if (key >= 0 && static_cast<uint32_t>(key) < q + 130049) {
+                const uint32_t bucket = static_cast<uint32_t>(key) >> 6;
+                const uint32_t cursor = cursors.GetValue(bucket);
+                packed.SetValue(cursor, ((static_cast<uint32_t>(key) & 63U) << 11) | t);
+                cursors.SetValue(bucket, cursor + 1);
+            }
+        }
+        SetFlag<HardEvent::S_MTE3>(scalarMte3);
+        WaitFlag<HardEvent::S_MTE3>(scalarMte3);
+        DataCopyPad(descriptorsGm[static_cast<uint64_t>(q) * 16384], packed,
+                    DataCopyExtParams{1, 65536, 0, 0, 0});
+        for (uint32_t chunk = 0; chunk < 8; ++chunk) {
+            KeyOwnedMte3ScalarDrain(mte3Scalar);
+            for (uint32_t record = 0; record < 256; ++record) {
+                const uint32_t bucket = chunk * 256 + record;
+                const uint32_t start = starts.GetValue(bucket);
+                const uint32_t count = counts.GetValue(bucket);
+                const uint32_t headerOffset = record * 8;
+                header.SetValue(headerOffset, start);
+                header.SetValue(headerOffset + 1, count);
+                for (uint32_t inlineIndex = 0; inlineIndex < 2; ++inlineIndex) {
+                    header.SetValue(headerOffset + inlineIndex + 2,
+                                    inlineIndex < count ? packed.GetValue(start + inlineIndex) : 0);
+                }
+            }
+            SetFlag<HardEvent::S_MTE3>(scalarMte3);
+            WaitFlag<HardEvent::S_MTE3>(scalarMte3);
+            const uint64_t headerWordOffset = (static_cast<uint64_t>(chunk) * 256 * 1024 + q) * 4;
+            DataCopyPad(headersGm[headerWordOffset], header, DataCopyExtParams{256, 16, 0, 16368, 0});
+        }
+        KeyOwnedMte3ScalarDrain(mte3Scalar);
+    }
+    KeyOwnedMte3ScalarDrain(mte3Scalar);
+}
+
+__aicore__ inline void ReduceLoadedKeyOwnedBatch(LocalTensor<float> &accumulator, LocalTensor<float> &gradients,
+                                                 LocalTensor<uint32_t> &batchKeys, uint32_t rows,
+                                                 event_t ready, event_t release)
+{
+    SetFlag<HardEvent::MTE2_V>(ready);
+    WaitFlag<HardEvent::MTE2_V>(ready);
+    for (uint32_t row = 0; row < rows; ++row) {
+        const uint32_t localKey = batchKeys.GetValue(row);
+        Add(accumulator[localKey * 576], accumulator[localKey * 576], gradients[row * 576], 576);
+        // Repeated keys must retain the stable q,t accumulation order.
+        PipeBarrier<PIPE_V>();
+    }
+    SetFlag<HardEvent::V_MTE2>(release);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS *td, TPipe &pipe)
+{
+    TBuf<> buffer;
+    pipe.InitBuffer(buffer, 192608);
+    LocalTensor<float> accumulator = buffer.GetWithOffset<float>(64 * 576, 0);
+    LocalTensor<uint32_t> headers = buffer.GetWithOffset<uint32_t>(512 * 4, 147456);
+    LocalTensor<uint32_t> descriptors = buffer.GetWithOffset<uint32_t>(8, 155648);
+    LocalTensor<float> gradients = buffer.GetWithOffset<float>(16 * 576, 155680);
+    LocalTensor<uint32_t> batchKeys = buffer.GetWithOffset<uint32_t>(16, 192544);
+    GlobalTensor<float> edgeGm, dkGm;
+    GlobalTensor<uint32_t> headersGm, descriptorsGm;
+    __gm__ uint8_t *extension = (__gm__ uint8_t *)workspace + KeyOwnedExtensionByteOffset(td);
+    edgeGm.SetGlobalBuffer((__gm__ float *)extension);
+    headersGm.SetGlobalBuffer((__gm__ uint32_t *)(extension + KeyOwnedEdgeBytes));
+    descriptorsGm.SetGlobalBuffer((__gm__ uint32_t *)(extension + KeyOwnedEdgeBytes + KeyOwnedHeaderBytes));
+    dkGm.SetGlobalBuffer((__gm__ float *)((__gm__ uint8_t *)workspace + KeyOwnedPostByteOffset(td) +
+                                       static_cast<uint64_t>(td->opInfo.dqWorkspaceLen)));
+    const event_t ready = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_V>());
+    const event_t release = static_cast<event_t>(pipe.AllocEventID<HardEvent::V_MTE2>());
+    const event_t scalarMte2 = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_MTE2>());
+    const event_t mte2Scalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
+    const event_t vectorMte3 = static_cast<event_t>(pipe.AllocEventID<HardEvent::V_MTE3>());
+    const event_t mte3Vector = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE3_V>());
+    SetAtomicNone();
+    SetFlag<HardEvent::V_MTE2>(release);
+    for (uint32_t bucket = GetBlockIdx(); bucket < 2048; bucket += 40) {
+        Duplicate(accumulator, 0.0f, 64 * 576);
+        PipeBarrier<PIPE_V>();
+        uint32_t batchRows = 0;
+        for (uint32_t qBase = 0; qBase < 1024; qBase += 512) {
+            SetFlag<HardEvent::S_MTE2>(scalarMte2);
+            WaitFlag<HardEvent::S_MTE2>(scalarMte2);
+            DataCopy(headers, headersGm[static_cast<uint64_t>(bucket) * 1024 * 4 + qBase * 4], 512 * 4);
+            SetFlag<HardEvent::MTE2_S>(mte2Scalar);
+            WaitFlag<HardEvent::MTE2_S>(mte2Scalar);
+            for (uint32_t localQ = 0; localQ < 512; ++localQ) {
+                const uint32_t q = qBase + localQ;
+                const uint32_t start = headers.GetValue(localQ * 4);
+                const uint32_t count = headers.GetValue(localQ * 4 + 1);
+                if (count == 0) {
+                    continue;
+                }
+                for (uint32_t row = 0; row < count; ++row) {
+                    if (count > 2 && (row & 7U) == 0) {
+                        SetFlag<HardEvent::S_MTE2>(scalarMte2);
+                        WaitFlag<HardEvent::S_MTE2>(scalarMte2);
+                        DataCopy(descriptors, descriptorsGm[static_cast<uint64_t>(q) * 16384 + start + row], 8);
+                        SetFlag<HardEvent::MTE2_S>(mte2Scalar);
+                        WaitFlag<HardEvent::MTE2_S>(mte2Scalar);
+                    }
+                    if (batchRows == 0) {
+                        WaitFlag<HardEvent::V_MTE2>(release);
+                    }
+                    const uint32_t packed =
+                        count <= 2 ? headers.GetValue(localQ * 4 + row + 2) : descriptors.GetValue(row & 7U);
+                    const uint32_t position = packed & 2047U;
+                    const uint64_t edgeOffset = (static_cast<uint64_t>(q) * 2048 + position) * 576;
+                    DataCopy(gradients[batchRows * 576], edgeGm[edgeOffset], 576);
+                    batchKeys.SetValue(batchRows, packed >> 11);
+                    ++batchRows;
+                    if (batchRows == 16) {
+                        ReduceLoadedKeyOwnedBatch(accumulator, gradients, batchKeys, batchRows, ready, release);
+                        batchRows = 0;
+                    }
+                }
+            }
+        }
+        if (batchRows != 0) {
+            ReduceLoadedKeyOwnedBatch(accumulator, gradients, batchKeys, batchRows, ready, release);
+        }
+        WaitFlag<HardEvent::V_MTE2>(release);
+        SetFlag<HardEvent::V_MTE3>(vectorMte3);
+        WaitFlag<HardEvent::V_MTE3>(vectorMte3);
+        const uint64_t outputOffset = static_cast<uint64_t>(bucket) * 64 * 576;
+        DataCopy(dkGm[outputOffset], accumulator, 32 * 576);
+        DataCopy(dkGm[outputOffset + 32 * 576], accumulator[32 * 576], 32 * 576);
+        SetFlag<HardEvent::MTE3_V>(mte3Vector);
+        WaitFlag<HardEvent::MTE3_V>(mte3Vector);
+        SetFlag<HardEvent::V_MTE2>(release);
+    }
+    WaitFlag<HardEvent::V_MTE2>(release);
+}
+
+} // namespace SFAG_KEY_OWNED_FULL_REDUCE
