@@ -1201,9 +1201,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     ubOffset =
         MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT));
 
-    uint32_t hPreUbLen = MhcPreBackwardUtils::CeilAlign(uint32_t(currentBsSize * N_ * sizeof(P)),
-                                                        uint32_t(CEIL_ALIGN_DEFAULT)) /
-                         sizeof(P);
+    uint32_t hPreUbLen =
+        MhcPreBackwardUtils::CeilAlign(uint32_t(currentBsSize * N_ * sizeof(P)), uint32_t(CEIL_ALIGN_DEFAULT)) /
+        sizeof(P);
     hPreUb_ = fp32TBuf_.GetWithOffset<P>(hPreUbLen, ubOffset);
     ubOffset = MhcPreBackwardUtils::CeilAlign(uint32_t(ubOffset + currentBsSize * N_ * sizeof(P)),
                                               uint32_t(CEIL_ALIGN_DEFAULT));

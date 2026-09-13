@@ -280,9 +280,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
         static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_l1K() * elementSize;
     uint64_t c1B1SingleBufferBytes =
         static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_l1K() * elementSize;
-    uint64_t l1SingleBufferBytes =
-        std::max(std::max(c0A1SingleBufferBytes, c0B1SingleBufferBytes),
-                 std::max(c1A1SingleBufferBytes, c1B1SingleBufferBytes));
+    uint64_t l1SingleBufferBytes = std::max(std::max(c0A1SingleBufferBytes, c0B1SingleBufferBytes),
+                                            std::max(c1A1SingleBufferBytes, c1B1SingleBufferBytes));
 
     uint64_t c0A2SingleBufferBytes =
         static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseK() * elementSize;
@@ -292,9 +291,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
         static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseK() * elementSize;
     uint64_t c1B2SingleBufferBytes =
         static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_baseK() * elementSize;
-    uint64_t l0ABSingleBufferBytes =
-        std::max(std::max(c0A2SingleBufferBytes, c0B2SingleBufferBytes),
-                 std::max(c1A2SingleBufferBytes, c1B2SingleBufferBytes));
+    uint64_t l0ABSingleBufferBytes = std::max(std::max(c0A2SingleBufferBytes, c0B2SingleBufferBytes),
+                                              std::max(c1A2SingleBufferBytes, c1B2SingleBufferBytes));
 
     uint64_t c0L0CSingleBufferBytes =
         static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseN() * elementSize;
