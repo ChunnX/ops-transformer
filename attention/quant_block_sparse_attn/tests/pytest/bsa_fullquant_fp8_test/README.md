@@ -22,7 +22,7 @@
 
 ## 前置条件
 
-- 从本目录运行命令：`attention/quant_block_sparse_attn/tests/pytest/qbsa_fp8`。
+- 从本目录运行命令：`attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_fp8_test`。
 - Python 环境应具备测试所需的 `pytest`、`torch`、`torch_npu` 和 `torchair`；CPU Golden 需要 PyTorch 提供 `torch.float8_e4m3fn`。
 - 进行 NPU 精度对比时，需要可用的 NPU 设备，以及已注册的 `cann_ops_transformer.quant_block_sparse_attn` 和 `cann_ops_transformer.quant_block_sparse_attn_metadata`。
 - 若仓内扩展尚未构建，可在仓库根目录执行：

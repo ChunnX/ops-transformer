@@ -44,7 +44,7 @@ if PYTEST_DIR not in sys.path:
 
 from common_utils import qbsa_extension
 from common_utils import result_compare_mxfp8 as result_compare_method
-from qbsa_mxfp8.utils import golden_cache
+from bsa_fullquant_mxfp8_test.utils import golden_cache
 
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(message)s")

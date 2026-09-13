@@ -30,7 +30,7 @@ E4M3FN payload 中，并使用该组的合法有限 descale（全 NaN 组使用 
 - `../common_utils/qbsa_extension.py`：与 FP8 共用的扩展加载工具。
 
 CSV 文件名默认在 `case_files/` 内查找，也支持 `case_files/xxx.csv`、绝对路径和从当前工作目录出发的相对路径。
-Python 用例默认从 Golden 同级目录查找。缓存仍写入 `qbsa_mxfp8/golden_cache/`，调试输出仍写入 `qbsa_mxfp8/debug/`。
+Python 用例默认从 Golden 同级目录查找。缓存仍写入 `bsa_fullquant_mxfp8_test/golden_cache/`，调试输出仍写入 `bsa_fullquant_mxfp8_test/debug/`。
 
 ## 前置条件
 
@@ -45,7 +45,7 @@ python -m pip install ./torch_extension --no-build-isolation
 从仓库根目录执行：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --list_cases
 ```
 
@@ -56,7 +56,7 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 不指定数据源和 case 名称时，脚本默认执行 `qbsa_mxfp8_test_cases.py` 中所有 `enable=True` 的 case。
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py
 ```
 
 默认 `--mode all`，等价于依次执行：
@@ -88,7 +88,7 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 通过 `--case_name` 指定 case 名称：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3
 ```
 
@@ -97,7 +97,7 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 也支持用逗号一次指定多个 case：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3,STC_B1_NOMASK_BS128_EQ_TAIL
 ```
 
@@ -107,28 +107,28 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 `qbsa_mxfp8_redline.csv`。CSV 使用 Python 标准库读取，不依赖 `pandas` 或 `openpyxl`。
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv
 ```
 
 此时不指定 `--case_name`，会运行 CSV 中所有 `enable=true` 的 case；指定单个 case 的方式为：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --case_name F_BS64_R5_N3_GT_AA
 ```
 
 指定其他 CSV 或一次加载多个 CSV：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --case_files /path/to/cases_a.csv,/path/to/cases_b.csv
 ```
 
 执行 STC 用例：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --case_files qbsa_mxfp8_stc.csv
 ```
 
@@ -139,7 +139,7 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 调用和精度对比不受影响。
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --rdv
 ```
 
@@ -150,7 +150,7 @@ Debug 模式包含 `gen` 阶段时，新生成的 PT 仍写入 `debug/<case_name
 不带 `--csv` 时，`--case_files` 按 Python testcase 文件解析：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --case_files /path/to/custom_test_cases.py
 ```
 
@@ -193,14 +193,14 @@ S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现
 `--mode all`）执行完整的 `gen/cpu/npu/compare` 流程：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --debug --case_name BASE_01
 ```
 
 CSV case 同样支持 debug：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --debug --case_name F_BS64_R5_N3_GT_AA
 ```
 
@@ -208,7 +208,7 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 CPU golden：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --debug --case_name F_BS64_R5_N3_GT_AA --csv --mode="npu,compare"
 ```
 
@@ -249,11 +249,11 @@ Debug 模式的数据读写位置取决于 `--mode` 是否包含 `gen`：
 
 ```bash
 # 只生成输入
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --mode gen
 
 # 使用已有缓存，只跑 NPU 并比较
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --mode npu,compare
 ```
 
@@ -262,14 +262,14 @@ python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_gold
 默认缓存目录为本目录下的 `golden_cache/`。可以通过 `--cache-dir` 指定：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --cache-dir /tmp/qbsa_mxfp8_cache
 ```
 
 缓存文件名前缀默认使用 case 名称。需要自定义时使用：
 
 ```bash
-python attention/quant_block_sparse_attn/tests/pytest/qbsa_mxfp8/qbsa_mxfp8_golden.py \
+python attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --cache_case_name my_case
 ```
 

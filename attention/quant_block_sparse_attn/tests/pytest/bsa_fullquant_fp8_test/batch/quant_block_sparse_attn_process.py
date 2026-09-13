@@ -25,7 +25,7 @@ else:
 
 from common_utils import qbsa_extension
 from common_utils.qbsa_extension import cann_ops_transformer
-from qbsa_fp8 import combined_kv_cache
+from bsa_fullquant_fp8_test import combined_kv_cache
 
 
 QBSA_METADATA_OUTPUT_SIZE = 2048
