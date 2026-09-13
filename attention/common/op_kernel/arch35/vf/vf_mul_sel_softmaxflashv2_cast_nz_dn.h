@@ -406,16 +406,21 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
+          bool fullM64N256 = false>
 __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                                               __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
                                               __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                                              __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n,
+                                              __ubuf__ uint8_t *indexesUb, const uint32_t runtimeM, const uint32_t n,
                                               const uint32_t originN, const T scale, float deScaleQK, const T minValue,
                                               float keepProb, bool needAtten, const float dScale,
                                               const uint32_t blockStride, const uint32_t repeatStride,
                                               const float pScale = 1.0f, const float sinkValue = 0.0f)
 {
+    static_assert(!fullM64N256 || (ubN == 256 && !hasAtten && !hasSink && IsSameType<T, float>::value &&
+                                   (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+                  "Full DN VF requires an unmasked 64x256 FP16/BF16 tile");
+    const uint32_t m = fullM64N256 ? 64U : runtimeM;
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
     RegTensor<float> vreg_x_sum_2;
@@ -510,10 +515,12 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
     }
-    for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+    if constexpr (!fullM64N256) {
+        for (uint16_t i = originN; i < ubN; ++i) {
+            StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        }
+        mem_bar(VST_VLD);
     }
-    mem_bar(VST_VLD);
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                    IsSameType<T2, hifloat8_t>::value) &&
@@ -818,7 +825,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
+template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
+          bool fullM64N256 = false>
 __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                            const LocalTensor<T> &expMaxTensor,
@@ -850,7 +858,7 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink>(
+    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullM64N256>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, m, n, originN, scale,
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
@@ -1978,7 +1986,7 @@ __aicore__ inline void ProcessVec1DnCausal(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
-          bool hasSink = false>
+          bool hasSink = false, bool fullM64N256 = false>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                        const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
@@ -1987,6 +1995,9 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        float keepProb, bool needAtten, const float pScale = 1.0f,
                                        const float sinkValue = 0.0f)
 {
+    static_assert(!fullM64N256 || (isUpdate && !hasAtten && !hasSink && ubN == 256 && IsSameType<T, float>::value &&
+                                   (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
+                  "Full DN VF requires update and an unmasked 64x256 FP16/BF16 tile");
     if constexpr (!isUpdate) {
         // 索引序列，用于在VF代码中量化cast后的gather指令
         // 在对计算结果进行cast之后，数据从fp32转换成了fp8，可能会得到一个乱序的非紧密排布的结果，需要定义一个索引序列来把结果调整正确
@@ -2004,9 +2015,9 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
-        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
-                                                           indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
-                                                           minValue, keepProb, needAtten, pScale, sinkValue);
+        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink, fullM64N256>(
+            dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
+            scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
     }
 }
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,

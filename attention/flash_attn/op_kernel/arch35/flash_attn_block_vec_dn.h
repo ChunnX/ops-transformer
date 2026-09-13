@@ -434,10 +434,18 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb, runInfo.actMSizeAlign32 >> 1,
-            runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size, static_cast<T>(constInfo_.scaleValue),
-            descaleQK, negativeFloatScalar_, 0.0F, false);
+        if (runInfo.actVecMSize == 64 && (runInfo.actMSizeAlign32 >> 1) == 64 && runInfo.actSingleLoopS2Size == 256 &&
+            runInfo.actSingleLoopS2SizeAlign == 256) {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false, true>(
+                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false, 1.0F);
+        } else {
+            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
+        }
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
