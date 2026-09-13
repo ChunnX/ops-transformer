@@ -407,7 +407,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
-          bool fullM64N256 = false>
+          bool fullM64N256 = false, bool unitPScale = false>
 __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
                                               __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
                                               __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
@@ -417,6 +417,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
                                               const uint32_t blockStride, const uint32_t repeatStride,
                                               const float pScale = 1.0f, const float sinkValue = 0.0f)
 {
+    static_assert(
+        !unitPScale || (IsSameType<T, float>::value &&
+                        (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value) && !hasAtten && !hasSink),
+        "unitPScale requires an unquantized update without VF mask or sink");
     static_assert(!fullM64N256 || (ubN == 256 && !hasAtten && !hasSink && IsSameType<T, float>::value &&
                                    (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
                   "Full DN VF requires an unmasked 64x256 FP16/BF16 tile");
@@ -582,8 +586,12 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
         Max(max0, max0, vreg_sink_input, preg_108);
     }
 
-    Duplicate(vreg_p_scale, pScale);
-    Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    if constexpr (unitPScale) {
+        Duplicate(vreg_ln_p_scale, 0.0f);
+    } else {
+        Duplicate(vreg_p_scale, pScale);
+        Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
+    }
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
@@ -826,7 +834,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false,
-          bool fullM64N256 = false>
+          bool fullM64N256 = false, bool unitPScale = false>
 __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                            const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                            const LocalTensor<T> &expMaxTensor,
@@ -858,7 +866,7 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
         repeatStride = 1;
     }
 
-    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullM64N256>(
+    ProcessVec1DnUpdateVF<T, T2, hasAtten, ubN, hasSink, fullM64N256, unitPScale>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, m, n, originN, scale,
         deScaleQK, minValue, keepProb, needAtten, dScale, blockStride, repeatStride, pScale, sinkValue);
 }
@@ -1986,7 +1994,7 @@ __aicore__ inline void ProcessVec1DnCausal(
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
-          bool hasSink = false, bool fullM64N256 = false>
+          bool hasSink = false, bool fullM64N256 = false, bool unitPScale = false>
 __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
                                        const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
                                        const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
@@ -1995,6 +2003,8 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                                        float keepProb, bool needAtten, const float pScale = 1.0f,
                                        const float sinkValue = 0.0f)
 {
+    // unitPScale is a caller contract: pScale must remain exactly +1.
+    static_assert(!unitPScale || isUpdate, "unitPScale is supported by the update path only");
     static_assert(!fullM64N256 || (isUpdate && !hasAtten && !hasSink && ubN == 256 && IsSameType<T, float>::value &&
                                    (IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value)),
                   "Full DN VF requires update and an unmasked 64x256 FP16/BF16 tile");
@@ -2015,7 +2025,7 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
                       IsSameType<T2, hifloat8_t>::value) {
             indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         }
-        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink, fullM64N256>(
+        ProcessVec1DnUpdate<T, T2, hasAtten, ubN, hasSink, fullM64N256, unitPScale>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor, m, n, originN,
             scale, deScaleQK, minValue, keepProb, needAtten, pScale, sinkValue);
     }
