@@ -78,15 +78,16 @@ profiling/
     │   ├── mc2_..._pro_result.csv     #     融合结果 CSV（97 case）
     │   ├── st_perf_summary.txt        #     ST 时延解析汇总
     │   ├── logs/                      #     基线 NPU 日志（99 个）
-    │   └── raw_profiler/              #     幸存 profiler 原始 CSV（32 个，4 类 × 4 rank × 2 路径）
+    │   └── raw_profiler/              #     97 用例 × 2 路径完整 profiler 原始 CSV（2320 个）
     └── isolation/                     #   隔离测试（12 case × 4 mode）
         ├── isolation_metrics.csv      #     指标汇总
         └── row*/prof_*/PROF_*/       #     op_summary 等
 ```
 
-> **数据口径**: `data/` 保存 msprof 分析级输出（op_summary/op_statistic/task_time/api_statistic CSV +
-> case_info），已剥离 .db/trace/日志等重文件（原始完整目录 4.4G，分析数据 18M）。完整 msprof 原始目录保留在
-> `../prof/`（ST 97 用例）和 `/home/y00845930/dev/apace_perf_probe/run/`（隔离测试）。
+> **数据口径**: `data/` 保存分析级输出（op_summary/op_statistic/task_time/api_statistic CSV +
+> case_info），已剥离 .db/trace/日志等重文件。`data/baseline/raw_profiler/` 已于 2026-09-13 全量补跑，
+> 覆盖 97 用例 × 2 路径（级联/融合）。完整 msprof 原始目录保留在 `../prof/`（ST 97 用例）和
+> `/home/y00845930/dev/apace_perf_probe/run/`（隔离测试）。
 
 ## 数据源清单
 
@@ -98,15 +99,13 @@ profiling/
 | 级联基线 CSV | `data/baseline/hccl_mm_aclnnMatmulReduceScatterV2_pro_result.csv` | 97 case 小算子级联性能（含通信/计算分解） |
 | MC2 融合 CSV | `data/baseline/mc2_aclnnMatmulReduceScatterV2_pro_result.csv` | 97 case ACLNN 融合算子性能 |
 | 基线 NPU 日志 | `data/baseline/logs/`（99 个） | mc2_test 框架逐 case 日志（95 个含完整两级性能打印） |
-| 基线 profiler 原始样本 | `data/baseline/raw_profiler/`（32 CSV） | torch_npu profiler 输出样本（仅 row81 重跑幸存，4 类关键 CSV × 4 rank × 2 路径） |
+| 基线 profiler 原始数据 | `data/baseline/raw_profiler/`（2320 CSV，66M） | torch_npu profiler 输出（97 用例 × 2 路径 × 4 类 CSV，按 rank 组织，与 st_perf 同口径） |
 | 隔离测试分析数据 | `data/isolation/`（12 用例 × 4 模式） | op_summary CSV |
 | 隔离测试指标汇总 | `data/isolation/isolation_metrics.csv` | 12 用例四分量指标（机器可读） |
 | 隔离测试完整目录 | `/home/y00845930/dev/apace_perf_probe/`（仓外，3.9G） | probe 源码 + 完整 msprof 数据 + 核算脚本 |
 | 基线 xlsx | `david_excel/aclnnMatmulReduceScatterV2.xlsx` 行 106-203（仓外） | 97 用例定义（备份 .bak_20260911） |
 
-> **基线原始数据说明**: mc2_test 框架的 torch_npu profiler 原始 trace（`Profiling_Result_*` 目录）在框架
-> 采集后仅保留提取结果（CSV），原始目录已被框架清理。本目录保存的分析级数据为：
-> ① 两份 per-case 结果 CSV（97/97 完整，含 avg_hccl/avg_matmul/通信/内存/performance 六列分解）；
-> ② 99 个 NPU 日志（框架打印的完整性能摘要，95 个完整 + 2 个重试覆盖，数据可从 CSV 恢复）；
-> ③ 2 个幸存的 profiler 原始目录（row81 重跑，32 个分析 CSV）。
-> 如需其余用例的逐 iter 原始 trace，需用 mc2_test 框架重跑（约 2h）。
+> **基线原始数据说明**: `data/baseline/raw_profiler/` 已于 2026-09-13 全量补跑（97 用例 × 2 路径，2320 个
+> 分析 CSV），包含每用例每 rank 的逐 kernel `op_summary`（含 Task Duration）等 4 类关键数据，与 `st_perf/` 同口径。
+> 另有两份 per-case 汇总结果 CSV（97/97 完整，含 avg_hccl/avg_matmul/通信/内存/performance 六列分解）和
+> 99 个 NPU 日志。
