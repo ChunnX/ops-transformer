@@ -19,7 +19,6 @@
 #include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
 #include "../op_kernel/arch35/sparse_flash_attention_grad_template_tiling_key.h"
-#include "arch22/sfag_pipeline_dma16_host.h"
 #include "arch22/sfag_key_owned_full_reduce_host.h"
 
 using namespace ge;

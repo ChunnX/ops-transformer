@@ -12,7 +12,7 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     if (platform == nullptr) return;
     std::string soc;
     bool found = platform->GetPlatformRes("version", "SoC_version", soc);
-    OP_LOGI(context, "SFAG_PIPELINE_DMA16 platform found=%d SoC_version=%s", found, soc.c_str());
+    OP_LOGI(context, "SFAG_KEY_OWNED_FULL_REDUCE platform found=%d SoC_version=%s", found, soc.c_str());
     if (!found || soc != "Ascend910B3") return;
     platform_ascendc::PlatformAscendC hw(platform);
     if (hw.GetCurNpuArch() != NpuArch::DAV_2201 || hw.GetCoreNumAic() != 20 || hw.GetCoreNumAiv() != 40) return;
@@ -49,6 +49,6 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     context->SetScheduleMode(1);
     size_t *workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] += static_cast<uint64_t>(4932501504ULL);
-    OP_LOGI(context, "SFAG_PIPELINE_DMA16 active host marker=%u", markerValue);
+    OP_LOGI(context, "SFAG_KEY_OWNED_FULL_REDUCE active host marker=%u", markerValue);
 }
 }}

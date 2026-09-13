@@ -20,7 +20,6 @@
 #else
 #include "arch22/sparse_flash_attention_grad_bs1_basic.h"
 #include "arch22/sparse_flash_attention_grad_post.h"
-#include "arch22/pipeline_dma16/sparse_flash_attention_grad_bs1_basic.h"
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
 #include "arch22/key_owned_full_reduce/sparse_flash_attention_grad_bs1_basic.h"
 #endif
@@ -119,8 +118,8 @@ extern "C" __global__ __aicore__ void sparse_flash_attention_grad(
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     if (TILING_KEY_IS(111111)) {
         GET_TILING_DATA_WITH_STRUCT(SparseFlashAttentionGradBasicTilingData, td, tiling_data);
-        if (SFAG_PIPELINE_DMA16::MarkerMatches(&td) &&
-            SFAG_PIPELINE_DMA16::SafeIndices(sparse_indices, GetUserWorkspace(workspace), &td)) {
+        if (SFAG_KEY_OWNED_FULL_REDUCE::MarkerMatches(&td) &&
+            SFAG_KEY_OWNED_FULL_REDUCE::SafeIndices(sparse_indices, GetUserWorkspace(workspace), &td)) {
             SFAG_KEY_OWNED_FULL_REDUCE::SelectedAttentionGradBasic<SFAG_KEY_OWNED_FULL_REDUCE::SFAG_TYPE<
                 SparseFlashAttentionGradBasicTilingData,half,3,true,true,true,true,true>> op;
             op.Process(query,key,key,out,d_out,softmax_max,softmax_sum,sparse_indices,actual_seq_qlen,
