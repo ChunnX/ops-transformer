@@ -17,8 +17,8 @@ import random
 
 import torch
 
-import check_valid_param
-import combined_kv_cache
+from qbsa_fp8 import check_valid_param
+from qbsa_fp8 import combined_kv_cache
 
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")

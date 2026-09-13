@@ -10,6 +10,10 @@
 # -----------------------------------------------------------------------------------------------------------
 
 
+# 从任意工作目录启动时，均使用脚本所在目录的测试及输出路径。
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd -- "$SCRIPT_DIR" || exit 1
+
 # 脚本路径
 BSA_PT_SAVE_SCRIPT="./batch/test_quant_block_sparse_attn_pt_save.py"
 TEST_BSA_PT_BATCH_SCRIPT="test_quant_block_sparse_attn_batch.py"

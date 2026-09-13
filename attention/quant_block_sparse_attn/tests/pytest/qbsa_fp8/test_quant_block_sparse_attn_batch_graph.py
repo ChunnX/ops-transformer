@@ -16,10 +16,9 @@ from pathlib import Path
 import pytest
 import torch
 
-import result_compare_method
-import utils
-from batch import quant_block_sparse_attn_process
-from batch.quant_block_sparse_attn_paramset_batch import load_cases_from_csv
+from common_utils import result_compare_fp8 as result_compare_method
+from qbsa_fp8 import utils
+from qbsa_fp8.batch import quant_block_sparse_attn_process
 
 
 TESTCASE_PATH = "bsa_testcase"
@@ -28,27 +27,26 @@ DEVICE_ID = 0
 
 
 def _testcase_files():
-    cases = load_cases_from_csv()
-    if not cases:
-        print("error: no enabled cases found in CSV")
+    if not os.path.isdir(TESTCASE_PATH):
+        print(f"error: testcase dir does not exist: {TESTCASE_PATH}")
         return []
-    files = []
-    for case_name in cases:
-        pt_filepath = os.path.join(TESTCASE_PATH, f"bsa_case_{case_name}.pt")
-        if os.path.isfile(pt_filepath):
-            files.append(pt_filepath)
-        else:
-            print(f"warning: pt file not found for case: {case_name}, skipped")
-    if files:
-        print(f"found {len(files)} testcase files (from {len(cases)} CSV cases)")
+    files = [
+        os.path.join(TESTCASE_PATH, file_name)
+        for file_name in sorted(os.listdir(TESTCASE_PATH))
+        if file_name.endswith(".pt")
+    ]
+    if not files:
+        print(f"error: no .pt testcase files found in {TESTCASE_PATH}")
+    else:
+        print(f"found {len(files)} testcase files")
     return files
 
 
-def bsa(testcase_file):
+def bsa_aclgraph(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
     try:
         npu_result, cpu_result = (
-            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
+            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_graph(
                 test_data, device_id=DEVICE_ID
             )
         )
@@ -68,7 +66,7 @@ def bsa(testcase_file):
         pytest.fail(f"case failed: {test_data['Testcase_Name']}")
 
 
-@pytest.mark.ci
+@pytest.mark.graph
 @pytest.mark.parametrize("testcase_file", _testcase_files())
 def test_quant_block_sparse_attn(testcase_file):
-    bsa(testcase_file)
+    bsa_aclgraph(testcase_file)

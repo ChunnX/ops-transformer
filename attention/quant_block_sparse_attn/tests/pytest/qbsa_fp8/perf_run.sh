@@ -1,3 +1,4 @@
+#!/bin/bash
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -8,29 +9,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Load the installed QBSA frontend for pytest runtime checks."""
 
-import torch
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd -- "$SCRIPT_DIR" || exit 1
 
-_LOAD_ERRORS = []
-try:
-    import cann_ops_transformer
-except (ImportError, RuntimeError) as error:
-    cann_ops_transformer = None
-    _LOAD_ERRORS.append(str(error))
-
-
-def has_quant_block_sparse_attn_op():
-    return cann_ops_transformer is not None and callable(
-        getattr(cann_ops_transformer, "quant_block_sparse_attn", None)
-    )
-
-
-def has_quant_block_sparse_attn_metadata_op():
-    return cann_ops_transformer is not None and callable(
-        getattr(cann_ops_transformer, "quant_block_sparse_attn_metadata", None)
-    )
-
-
-def load_errors():
-    return list(_LOAD_ERRORS)
+# 性能数据分析脚本
+rm result.xlsx
+msprof python3 -m pytest -rA -s test_quant_block_sparse_attn_batch.py -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning 2>&1 | tee res.log
+python process_perf_data.py --test_result_path="result.xlsx" --is_compare True --delete_perf_file True

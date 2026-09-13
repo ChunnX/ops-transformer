@@ -23,9 +23,9 @@ except ImportError as import_error:  # pragma: no cover - depends on NPU environ
 else:
     TORCH_NPU_IMPORT_ERROR = None
 
-import qbsa_extension
-from qbsa_extension import cann_ops_transformer
-import combined_kv_cache
+from common_utils import qbsa_extension
+from common_utils.qbsa_extension import cann_ops_transformer
+from qbsa_fp8 import combined_kv_cache
 
 
 QBSA_METADATA_OUTPUT_SIZE = 2048

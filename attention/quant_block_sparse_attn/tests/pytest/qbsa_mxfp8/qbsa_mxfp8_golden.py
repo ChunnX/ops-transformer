@@ -37,11 +37,14 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
-try:
-    from . import result_compare_method
-except ImportError:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import result_compare_method
+# Support both direct script execution and the TTK file-based loader.
+PYTEST_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PYTEST_DIR not in sys.path:
+    sys.path.insert(0, PYTEST_DIR)
+
+from common_utils import qbsa_extension
+from common_utils import result_compare_mxfp8 as result_compare_method
+from qbsa_mxfp8.utils import golden_cache
 
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -67,11 +70,12 @@ if __name__ == "_qbsa_mxfp8_pytest_golden" and logging.getLogger().handlers:
     logger.propagate = False
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+CASE_FILES_DIR = os.path.join(CURRENT_DIR, "case_files")
 QBSA_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "../../.."))
 cann_ops_transformer = None
 _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
-_DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
+_DEFAULT_CASE_CSV = "qbsa_mxfp8_redline.csv"
 _CASE_LOG_WIDTH = 100
 
 _DTYPE_MAP = {
@@ -154,31 +158,32 @@ def _ensure_qbsa_ops_registered():
     global _CUSTOM_OPS_IMPORTED, cann_ops_transformer
     if _CUSTOM_OPS_IMPORTED:
         return
-    try:
-        import cann_ops_transformer
-    except ImportError as error:
-        raise RuntimeError(
-            "Install the QBSA torch extension from the repository root with "
-            "`python -m pip install ./torch_extension --no-build-isolation`."
-        ) from error
-    for name in ("quant_block_sparse_attn", "quant_block_sparse_attn_metadata"):
-        if not callable(getattr(cann_ops_transformer, name, None)):
-            raise RuntimeError(
-                f"cann_ops_transformer.{name} is unavailable; reinstall the torch extension."
-            )
+    cann_ops_transformer = qbsa_extension.load_qbsa_ops()
     _CUSTOM_OPS_IMPORTED = True
+
+
+def _resolve_case_path(case_file, suffix, default_dir):
+    case_path = case_file.strip()
+    if not case_path.endswith(suffix):
+        case_path = f"{case_path}{suffix}"
+    if os.path.isabs(case_path):
+        candidates = [case_path]
+    else:
+        candidates = [
+            os.path.join(default_dir, case_path),
+            os.path.join(CURRENT_DIR, case_path),
+            os.path.abspath(case_path),
+        ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    raise FileNotFoundError(f"case file not found: {candidates[0]}")
 
 
 def _load_case_file_test_cases(case_file):
     case_file = case_file.strip()
     case_file_no_ext = os.path.splitext(os.path.basename(case_file))[0]
-    case_path = case_file
-    if not case_path.endswith(".py"):
-        case_path = f"{case_path}.py"
-    if not os.path.isabs(case_path):
-        case_path = os.path.join(CURRENT_DIR, case_path)
-    if not os.path.exists(case_path):
-        raise FileNotFoundError(f"case file not found: {case_path}")
+    case_path = _resolve_case_path(case_file, ".py", CURRENT_DIR)
 
     module_name = f"_qbsa_mxfp8_cases_{case_file_no_ext}"
     spec = importlib.util.spec_from_file_location(module_name, case_path)
@@ -255,14 +260,7 @@ def _parse_case_field(field_name, value):
 
 
 def _resolve_case_csv_path(case_csv):
-    case_path = case_csv.strip()
-    if not case_path.endswith(".csv"):
-        case_path = f"{case_path}.csv"
-    if not os.path.isabs(case_path):
-        case_path = os.path.join(CURRENT_DIR, case_path)
-    if not os.path.exists(case_path):
-        raise FileNotFoundError(f"case CSV not found: {case_path}")
-    return case_path
+    return _resolve_case_path(case_csv, ".csv", CASE_FILES_DIR)
 
 
 def _load_case_csv(case_csv):
@@ -3152,10 +3150,6 @@ def npu_mxfp8_fa(
 
 
 def _load_golden_cache():
-    try:
-        from . import golden_cache
-    except ImportError:
-        import golden_cache
     return golden_cache
 
 
@@ -3591,7 +3585,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv",
         action="store_true",
-        help="按 CSV 格式加载 case；不指定 --case_files 时读取 qbsa_mxfp8_test_cases.csv",
+        help="按 CSV 格式加载 case；不指定 --case_files 时读取 case_files/qbsa_mxfp8_redline.csv",
     )
     parser.add_argument(
         "--mode",
