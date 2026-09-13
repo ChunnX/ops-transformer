@@ -272,43 +272,58 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
     MMConfig &mmConfigC1_ = tilingData_.mmConfigC1;
     constexpr uint64_t elementSize = sizeof(float);
 
-    uint64_t c0A1Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_l1K() * elementSize;
-    uint64_t c0B1Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseN()) * mmConfigC0_.get_l1K() * elementSize;
-    uint64_t c1A1Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_l1K() * elementSize;
-    uint64_t c1B1Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_l1K() * elementSize;
-    uint64_t l1BufferBytes = std::max(std::max(c0A1Bytes, c0B1Bytes), std::max(c1A1Bytes, c1B1Bytes));
+    uint64_t c0A1SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_l1K() * elementSize;
+    uint64_t c0B1SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC0_.get_baseN()) * mmConfigC0_.get_l1K() * elementSize;
+    uint64_t c1A1SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_l1K() * elementSize;
+    uint64_t c1B1SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_l1K() * elementSize;
+    uint64_t l1SingleBufferBytes =
+        std::max(std::max(c0A1SingleBufferBytes, c0B1SingleBufferBytes),
+                 std::max(c1A1SingleBufferBytes, c1B1SingleBufferBytes));
 
-    uint64_t c0A2Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseK() * elementSize;
-    uint64_t c0B2Bytes = static_cast<uint64_t>(mmConfigC0_.get_baseN()) * mmConfigC0_.get_baseK() * elementSize;
-    uint64_t c1A2Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseK() * elementSize;
-    uint64_t c1B2Bytes = static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_baseK() * elementSize;
-    uint64_t l0BufferBytes = std::max(std::max(c0A2Bytes, c0B2Bytes), std::max(c1A2Bytes, c1B2Bytes));
+    uint64_t c0A2SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseK() * elementSize;
+    uint64_t c0B2SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC0_.get_baseN()) * mmConfigC0_.get_baseK() * elementSize;
+    uint64_t c1A2SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseK() * elementSize;
+    uint64_t c1B2SingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC1_.get_baseN()) * mmConfigC1_.get_baseK() * elementSize;
+    uint64_t l0ABSingleBufferBytes =
+        std::max(std::max(c0A2SingleBufferBytes, c0B2SingleBufferBytes),
+                 std::max(c1A2SingleBufferBytes, c1B2SingleBufferBytes));
 
-    uint64_t c0L0CBytes = static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseN() * elementSize;
-    uint64_t c1L0CBytes = static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseN() * elementSize;
-    uint64_t l0CBufferBytes = std::max(c0L0CBytes, c1L0CBytes);
+    uint64_t c0L0CSingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC0_.get_baseM()) * mmConfigC0_.get_baseN() * elementSize;
+    uint64_t c1L0CSingleBufferBytes =
+        static_cast<uint64_t>(mmConfigC1_.get_baseM()) * mmConfigC1_.get_baseN() * elementSize;
+    uint64_t l0CSingleBufferBytes = std::max(c0L0CSingleBufferBytes, c1L0CSingleBufferBytes);
     uint64_t depthA1 = std::max(mmConfigC0_.get_depthA1(), mmConfigC1_.get_depthA1());
     uint64_t depthB1 = std::max(mmConfigC0_.get_depthB1(), mmConfigC1_.get_depthB1());
     uint64_t dbL0 = std::max(std::max(mmConfigC0_.get_dbL0A(), mmConfigC1_.get_dbL0A()),
                              std::max(mmConfigC0_.get_dbL0B(), mmConfigC1_.get_dbL0B()));
     uint64_t dbL0C = std::max(mmConfigC0_.get_dbL0C(), mmConfigC1_.get_dbL0C());
-    uint64_t l1Bytes = (depthA1 + depthB1) * l1BufferBytes;
-    uint64_t l0Bytes = dbL0 * l0BufferBytes;
-    uint64_t l0CBytes = dbL0C * l0CBufferBytes;
-    OP_CHECK_IF(l1Bytes > l1Size_ || l0Bytes > l0ASize_ || l0Bytes > l0BSize_ || l0CBytes > l0CSize_ ||
-                    l1Bytes > UINT32_MAX || l0Bytes > UINT32_MAX || l0CBytes > UINT32_MAX,
+    uint64_t l1UsedBytes = (depthA1 + depthB1) * l1SingleBufferBytes;
+    uint64_t l0ABUsedBytes = dbL0 * l0ABSingleBufferBytes;
+    uint64_t l0CUsedBytes = dbL0C * l0CSingleBufferBytes;
+    OP_CHECK_IF(l1UsedBytes > l1Size_ || l0ABUsedBytes > l0ASize_ || l0ABUsedBytes > l0BSize_ ||
+                    l0CUsedBytes > l0CSize_ || l1UsedBytes > UINT32_MAX || l0ABUsedBytes > UINT32_MAX ||
+                    l0CUsedBytes > UINT32_MAX,
                 OP_LOGE(context_->GetNodeName(),
                         "MM config %u exceeds platform memory: L1=%lu/%lu, L0A/B=%lu/%lu/%lu, L0C=%lu/%lu",
-                        mmConfigKey_, l1Bytes, l1Size_, l0Bytes, l0ASize_, l0BSize_, l0CBytes, l0CSize_),
+                        mmConfigKey_, l1UsedBytes, l1Size_, l0ABUsedBytes, l0ASize_, l0BSize_, l0CUsedBytes, l0CSize_),
                 return ge::GRAPH_FAILED);
-    cubeBufferDepth_ = static_cast<uint32_t>(std::max(std::max(depthA1, depthB1), std::max(dbL0, dbL0C)));
-    cubeL1BufferBytes_ = static_cast<uint32_t>(l1Bytes);
-    cubeL1BufferElems_ = static_cast<uint32_t>(l1BufferBytes / elementSize);
-    cubeL1BOffset_ = static_cast<uint32_t>(depthA1 * cubeL1BufferElems_);
-    cubeL0BufferBytes_ = static_cast<uint32_t>(l0Bytes);
-    cubeL0BufferElems_ = static_cast<uint32_t>(l0BufferBytes / elementSize);
-    cubeL0CBufferBytes_ = static_cast<uint32_t>(l0CBytes);
-    cubeL0CBufferElems_ = static_cast<uint32_t>(l0CBufferBytes / elementSize);
+    maxBufferDepth_ = static_cast<uint32_t>(std::max(std::max(depthA1, depthB1), std::max(dbL0, dbL0C)));
+    l1UsedBytes_ = static_cast<uint32_t>(l1UsedBytes);
+    l1SingleBufferElems_ = static_cast<uint32_t>(l1SingleBufferBytes / elementSize);
+    l1BOffsetElems_ = static_cast<uint32_t>(depthA1 * l1SingleBufferElems_);
+    l0ABUsedBytes_ = static_cast<uint32_t>(l0ABUsedBytes);
+    l0ABSingleBufferElems_ = static_cast<uint32_t>(l0ABSingleBufferBytes / elementSize);
+    l0CUsedBytes_ = static_cast<uint32_t>(l0CUsedBytes);
+    l0CSingleBufferElems_ = static_cast<uint32_t>(l0CSingleBufferBytes / elementSize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -391,14 +406,14 @@ void MhcPreBackwardTiling::SetCommonTilingParams()
     tilingData_.set_hcEps(hcEps_);
     tilingData_.set_implMode(implMode_);
     tilingData_.set_mmConfigKey(mmConfigKey_);
-    tilingData_.set_cubeBufferDepth(cubeBufferDepth_);
-    tilingData_.set_cubeL1BufferBytes(cubeL1BufferBytes_);
-    tilingData_.set_cubeL1BOffset(cubeL1BOffset_);
-    tilingData_.set_cubeL1BufferElems(cubeL1BufferElems_);
-    tilingData_.set_cubeL0BufferBytes(cubeL0BufferBytes_);
-    tilingData_.set_cubeL0BufferElems(cubeL0BufferElems_);
-    tilingData_.set_cubeL0CBufferBytes(cubeL0CBufferBytes_);
-    tilingData_.set_cubeL0CBufferElems(cubeL0CBufferElems_);
+    tilingData_.set_maxBufferDepth(maxBufferDepth_);
+    tilingData_.set_l1UsedBytes(l1UsedBytes_);
+    tilingData_.set_l1BOffsetElems(l1BOffsetElems_);
+    tilingData_.set_l1SingleBufferElems(l1SingleBufferElems_);
+    tilingData_.set_l0ABUsedBytes(l0ABUsedBytes_);
+    tilingData_.set_l0ABSingleBufferElems(l0ABSingleBufferElems_);
+    tilingData_.set_l0CUsedBytes(l0CUsedBytes_);
+    tilingData_.set_l0CSingleBufferElems(l0CSingleBufferElems_);
     tilingData_.set_c0MBlock(C0_SET_SHAPE_M);
     tilingData_.set_c0NBlock(C0_SET_SHAPE_N);
     tilingData_.set_c1KBlock(C1_SET_SHAPE_K);

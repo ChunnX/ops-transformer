@@ -109,26 +109,26 @@ private:
     uint32_t l1PingPongID_{0};
     uint32_t l0PingPongID_{0};
     uint32_t cl0PingPongID_{0};
-    uint32_t cubeBufferDepth_{0};
-    uint32_t cubeL1BufferElems_{0};
-    uint32_t cubeL0BufferElems_{0};
-    uint32_t cubeL0CBufferElems_{0};
+    uint32_t maxBufferDepth_{0};
+    uint32_t l1SingleBufferElems_{0};
+    uint32_t l0ABSingleBufferElems_{0};
+    uint32_t l0CSingleBufferElems_{0};
 };
 
 __aicore__ inline void MhcPreBackwardCubeCompute::Init(TPipe *pipe, const MhcPreBackwardTilingData *tiling)
 {
-    cubeBufferDepth_ = tiling->cubeBufferDepth;
-    cubeL1BufferElems_ = tiling->cubeL1BufferElems;
-    cubeL0BufferElems_ = tiling->cubeL0BufferElems;
-    cubeL0CBufferElems_ = tiling->cubeL0CBufferElems;
-    pipe->InitBuffer(l1Buf_, tiling->cubeL1BufferBytes);
+    maxBufferDepth_ = tiling->maxBufferDepth;
+    l1SingleBufferElems_ = tiling->l1SingleBufferElems;
+    l0ABSingleBufferElems_ = tiling->l0ABSingleBufferElems;
+    l0CSingleBufferElems_ = tiling->l0CSingleBufferElems;
+    pipe->InitBuffer(l1Buf_, tiling->l1UsedBytes);
     aL1Local_ = l1Buf_.Get<float>();
-    bL1Local_ = aL1Local_[tiling->cubeL1BOffset];
-    aL0Local_ = LocalTensor<float>(TPosition::A2, 0, tiling->cubeL0BufferBytes / sizeof(float));
-    bL0Local_ = LocalTensor<float>(TPosition::B2, 0, tiling->cubeL0BufferBytes / sizeof(float));
-    cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, tiling->cubeL0CBufferBytes / sizeof(float));
+    bL1Local_ = aL1Local_[tiling->l1BOffsetElems];
+    aL0Local_ = LocalTensor<float>(TPosition::A2, 0, tiling->l0ABUsedBytes / sizeof(float));
+    bL0Local_ = LocalTensor<float>(TPosition::B2, 0, tiling->l0ABUsedBytes / sizeof(float));
+    cL0Local_ = LocalTensor<float>(TPosition::CO1, 0, tiling->l0CUsedBytes / sizeof(float));
 
-    for (uint32_t bufferIndex = 0; bufferIndex < cubeBufferDepth_; ++bufferIndex) {
+    for (uint32_t bufferIndex = 0; bufferIndex < maxBufferDepth_; ++bufferIndex) {
         // 三组初始令牌分别表示L1、L0A/B和L0C对应缓冲区可写。
         SetFlag<HardEvent::MTE1_MTE2>(bufferIndex);
         SetFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + bufferIndex);
@@ -176,7 +176,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC1(const MMConfig &conf
 
 __aicore__ inline void MhcPreBackwardCubeCompute::End()
 {
-    for (uint32_t bufferIndex = 0; bufferIndex < cubeBufferDepth_; ++bufferIndex) {
+    for (uint32_t bufferIndex = 0; bufferIndex < maxBufferDepth_; ++bufferIndex) {
         WaitFlag<HardEvent::MTE1_MTE2>(bufferIndex);
         WaitFlag<HardEvent::M_MTE1>(CUBE_L0_EVENT_BASE + bufferIndex);
         WaitFlag<HardEvent::FIX_M>(bufferIndex);
@@ -189,7 +189,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC0(const MMConfig &
 {
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
-    LocalTensor<float> currentC = cL0Local_[cBufferIndex * cubeL0CBufferElems_];
+    LocalTensor<float> currentC = cL0Local_[cBufferIndex * l0CSingleBufferElems_];
     WaitFlag<HardEvent::FIX_M>(cBufferIndex);
 
     ProcessKRangeC0(config, currentC, a, m, n, k, aGmStride);
@@ -204,7 +204,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ComputeTileC1(const MMConfig &
 {
     uint32_t cDepth = config.dbL0C;
     uint32_t cBufferIndex = cl0PingPongID_ % cDepth;
-    LocalTensor<float> currentC = cL0Local_[cBufferIndex * cubeL0CBufferElems_];
+    LocalTensor<float> currentC = cL0Local_[cBufferIndex * l0CSingleBufferElems_];
     WaitFlag<HardEvent::FIX_M>(cBufferIndex);
 
     ProcessKRangeC1(config, currentC, a, b, m, n, k, aGmStride, bGmStride);
@@ -242,8 +242,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC0(const MMConfig
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < l1K ? remainKL1 : l1K;
         uint32_t l1BufferIndex = (offsetKL1 / l1K) % l1Depth;
-        LocalTensor<float> currentA1 = aL1Local_[l1BufferIndex * cubeL1BufferElems_];
-        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * cubeL1BufferElems_];
+        LocalTensor<float> currentA1 = aL1Local_[l1BufferIndex * l1SingleBufferElems_];
+        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * l1SingleBufferElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1BufferIndex);
         CopyInA1(currentA1, a[offsetKL1], m, currentKL1, aGmStride);
@@ -270,8 +270,8 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessKRangeC1(const MMConfig
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < l1K ? remainKL1 : l1K;
         uint32_t l1BufferIndex = l1PingPongID_ % l1Depth;
-        LocalTensor<float> currentA1 = aL1Local_[l1BufferIndex * cubeL1BufferElems_];
-        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * cubeL1BufferElems_];
+        LocalTensor<float> currentA1 = aL1Local_[l1BufferIndex * l1SingleBufferElems_];
+        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * l1SingleBufferElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1BufferIndex);
         CopyInA1Trans(currentA1, a[offsetKL1 * aGmStride], m, currentKL1, aGmStride);
@@ -296,7 +296,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessL0KRange(
         uint32_t remainKL0 = currentKL1 - offsetKL0;
         uint32_t currentKL0 = remainKL0 < baseK ? remainKL0 : baseK;
         uint32_t l0BufferIndex = l0PingPongID_ % l0Depth;
-        uint32_t l0Offset = l0BufferIndex * cubeL0BufferElems_;
+        uint32_t l0Offset = l0BufferIndex * l0ABSingleBufferElems_;
         LocalTensor<float> currentA2 = aL0Local_[l0Offset];
         LocalTensor<float> currentB2 = bL0Local_[l0Offset];
 
@@ -323,7 +323,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::PreloadB1(const MMConfig &conf
         uint32_t remainKL1 = k - offsetKL1;
         uint32_t currentKL1 = remainKL1 < config.l1K ? remainKL1 : config.l1K;
         uint32_t l1BufferIndex = (offsetKL1 / config.l1K) % config.depthB1;
-        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * cubeL1BufferElems_];
+        LocalTensor<float> currentB1 = bL1Local_[l1BufferIndex * l1SingleBufferElems_];
 
         WaitFlag<HardEvent::MTE1_MTE2>(l1BufferIndex);
         CopyInB1(currentB1, b[offsetKL1 * bGmStride], n, currentKL1, bGmStride);
