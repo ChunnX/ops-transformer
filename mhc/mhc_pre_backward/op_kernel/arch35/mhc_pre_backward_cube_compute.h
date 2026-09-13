@@ -343,6 +343,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInA1(const LocalTensor<flo
         uint16_t blockNum = static_cast<uint16_t>(alignedM * alignedK * sizeof(float) / CUBE_BLOCK_BYTES);
         InitConstValueParams<float> zeroParams(1, blockNum, 0, 0.0f);
         InitConstValue(dst, zeroParams);
+        PipeBarrier<PIPE_MTE2>();
     }
     Nd2NzParams p;
     p.ndNum = 1;
@@ -366,6 +367,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInA1Trans(const LocalTenso
         uint16_t blockNum = static_cast<uint16_t>(alignedM * alignedK * sizeof(float) / CUBE_BLOCK_BYTES);
         InitConstValueParams<float> zeroParams(1, blockNum, 0, 0.0f);
         InitConstValue(dst, zeroParams);
+        PipeBarrier<PIPE_MTE2>();
     }
     Nd2NzParams p;
     p.ndNum = 1;
@@ -389,6 +391,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInB1(const LocalTensor<flo
         uint16_t blockNum = static_cast<uint16_t>(alignedN * alignedK * sizeof(float) / CUBE_BLOCK_BYTES);
         InitConstValueParams<float> zeroParams(1, blockNum, 0, 0.0f);
         InitConstValue(dst, zeroParams);
+        PipeBarrier<PIPE_MTE2>();
     }
     Nd2NzParams p;
     p.ndNum = 1;
