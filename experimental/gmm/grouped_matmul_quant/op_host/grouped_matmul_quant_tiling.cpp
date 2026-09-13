@@ -247,11 +247,11 @@ bool GroupedMatmulQuantTiling::GetCheckAttr(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT_RET(context, attrs, false);
     const int64_t *scale_group_size = attrs->GetAttrPointer<int64_t>(0);
-    OP_TILING_CHECK(
-        *scale_group_size % 32 != 0,
-        VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(),
-                                        "GroupedMatmulQuant get scale_group_size not aligned to 32, please check."),
-        return false);
+    OP_TILING_CHECK(*scale_group_size <= 0 || *scale_group_size % 32 != 0,
+                    VECTOR_INNER_ERR_REPORT_TILIING(
+                        context->GetNodeName(),
+                        "GroupedMatmulQuant scale_group_size must be positive and aligned to 32, please check."),
+                    return false);
     _Params.scaleGroupSize = *scale_group_size;
     return true;
 }
