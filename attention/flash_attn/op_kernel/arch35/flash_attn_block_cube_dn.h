@@ -175,10 +175,8 @@ public:
 
         /*--------------------------------------------L0C--------------------------------------------*/
         l0CBuffers_ = LocalTensor<uint8_t>(TPosition::CO1, 0U, L0C_BUFCNT * L0C_BUF_BYTES);
-        // Reset unit flags before any L0C producer can run; FIX_M is otherwise unused here.
+        // Initialize unit flags through PIPE_S before issuing any L0C transaction.
         SetFixPipeConfig<uint64_t>(l0CBuffers_.template ReinterpretCast<uint64_t>(), true);
-        SetFlag<HardEvent::FIX_M>(EVENT_ID0);
-        WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
         SetMMRowMajor();
     }
 
@@ -300,17 +298,24 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm1SyncIdx + AIV0_AIV1_OFFSET);
     }
 
-    bool l0cUnitFlagMode_ = false;
+    enum class L0cSyncMode : uint8_t {
+        NONE,
+        SOFTWARE,
+        UNIT_FLAG
+    };
+    L0cSyncMode l0cSyncMode_ = L0cSyncMode::NONE;
 
     __aicore__ inline void SetL0cSyncMode(bool useUnitFlag)
     {
-        if (useUnitFlag != l0cUnitFlagMode_) {
-            // Drain both sides before changing ownership protocols. Do not reset live unit flags.
-            SetFlag<HardEvent::M_FIX>(EVENT_ID0);
-            WaitFlag<HardEvent::M_FIX>(EVENT_ID0);
-            SetFlag<HardEvent::FIX_M>(EVENT_ID0);
-            WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
-            l0cUnitFlagMode_ = useUnitFlag;
+        const L0cSyncMode nextMode = useUnitFlag ? L0cSyncMode::UNIT_FLAG : L0cSyncMode::SOFTWARE;
+        if (nextMode != l0cSyncMode_) {
+            if (l0cSyncMode_ != L0cSyncMode::NONE) {
+                // Each preceding FIXPIPE already waits for its MMAD. Complete its reads before
+                // a new producer reuses L0C under a different ownership protocol.
+                SetFlag<HardEvent::FIX_M>(EVENT_ID0);
+                WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
+            }
+            l0cSyncMode_ = nextMode;
         }
     }
 
