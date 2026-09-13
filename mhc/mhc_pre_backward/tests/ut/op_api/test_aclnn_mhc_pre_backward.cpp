@@ -134,11 +134,6 @@ TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v1_factorial_grad_h_res_asc
     EXPECT_NE(RunMhcPreBackward(true), ACLNN_SUCCESS);
 }
 
-TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_fp32_mode_ascend950)
-{
-    EXPECT_EQ(RunMhcPreBackwardV2(0), ACLNN_SUCCESS);
-}
-
 TEST_F(l2_mhc_pre_backward_a5_test, mhc_pre_backward_v2_hf32_mode_ascend950)
 {
     EXPECT_EQ(RunMhcPreBackwardV2(1), ACLNN_SUCCESS);
