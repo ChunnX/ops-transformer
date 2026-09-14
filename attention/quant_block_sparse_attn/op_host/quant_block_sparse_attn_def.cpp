@@ -51,6 +51,16 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("sparse_indices")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("sparse_seq_len")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("p_scale")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
@@ -76,16 +86,6 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("sparse_indices")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("sparse_seq_len")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
@@ -101,9 +101,6 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("attention_out").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
-        this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
-
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
         this->Attr("sparse_q_block_size").AttrType(REQUIRED).Int(128);
         this->Attr("sparse_kv_block_size").AttrType(REQUIRED).Int(128);
@@ -114,6 +111,9 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
+
+        this->Output("attention_out").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("softmax_lse").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

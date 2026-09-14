@@ -190,9 +190,9 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn(
     }
 
     // ACLNN_CMD 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
-    ACLNN_CMD(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, *p_scale_arg, cu_seqlens_q,
-              cu_seqlens_kv, seqused_q, seqused_kv, sparse_indices, sparse_seq_len, block_table, atten_mask, metadata,
-              softmax_scale, sparse_q_block_size, sparse_kv_block_size, layout_kv_ptr, layout_q_ptr,
+    ACLNN_CMD(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, sparse_indices,
+              sparse_seq_len, *p_scale_arg, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, block_table, atten_mask,
+              metadata, softmax_scale, sparse_q_block_size, sparse_kv_block_size, layout_kv_ptr, layout_q_ptr,
               layout_sparse_indices_ptr, layout_out_ptr, quant_mode, mask_mode, return_softmax_lse, attention_out,
               softmax_lse);
 

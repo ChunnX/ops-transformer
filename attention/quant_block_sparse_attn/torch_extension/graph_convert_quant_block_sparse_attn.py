@@ -65,13 +65,13 @@ if _TORCHAIR_AVAILABLE:
                 "q_descale": q_descale,
                 "k_descale": k_descale,
                 "v_descale": v_descale,
+                "sparse_indices": sparse_indices,
+                "sparse_seq_len": sparse_seq_len,
                 "p_scale": p_scale,
                 "cu_seqlens_q": cu_seqlens_q,
                 "cu_seqlens_kv": cu_seqlens_kv,
                 "seqused_q": seqused_q,
                 "seqused_kv": seqused_kv,
-                "sparse_indices": sparse_indices,
-                "sparse_seq_len": sparse_seq_len,
                 "block_table": block_table,
                 "atten_mask": atten_mask,
                 "metadata": metadata,
@@ -96,13 +96,13 @@ if _TORCHAIR_AVAILABLE:
             .input("q_descale", "DT_FLOAT, DT_FLOAT8_E8M0")
             .input("k_descale", "DT_FLOAT, DT_FLOAT8_E8M0")
             .input("v_descale", "DT_FLOAT, DT_FLOAT8_E8M0")
+            .input("sparse_indices", "DT_INT32")
+            .input("sparse_seq_len", "DT_INT32")
             .optional_input("p_scale", "DT_FLOAT, DT_FLOAT8_E8M0")
             .optional_input("cu_seqlens_q", "DT_INT32")
             .optional_input("cu_seqlens_kv", "DT_INT32")
             .optional_input("seqused_q", "DT_INT32")
             .optional_input("seqused_kv", "DT_INT32")
-            .input("sparse_indices", "DT_INT32")
-            .input("sparse_seq_len", "DT_INT32")
             .optional_input("block_table", "DT_INT32")
             .optional_input("atten_mask", "DT_UINT8")
             .optional_input("metadata", "DT_INT32")
