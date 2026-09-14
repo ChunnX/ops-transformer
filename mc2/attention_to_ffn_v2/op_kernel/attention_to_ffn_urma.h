@@ -990,7 +990,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                     if (tokenRankId != static_cast<int32_t>(dstRank)) {
                         continue;
                     }
-                    GM_ADDR remoteDataAddr, localDataAddr, remoteFlagAddr;
+                    GM_ADDR remoteDataAddr; 
+                    GM_ADDR localDataAddr;
+                    GM_ADDR remoteFlagAddr;
                     ComputeTokenAddrs(toRankAddr, tokenOffset, remoteDataAddr, localDataAddr, remoteFlagAddr);
                     const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
                     AppendRemoteDataWrite(batchHandle, remoteDataAddr, localDataAddr, enableCqe);
@@ -1008,7 +1010,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                     if (tokenRankId != static_cast<int32_t>(dstRank)) {
                         continue;
                     }
-                    GM_ADDR remoteDataAddr, localDataAddr, remoteFlagAddr;
+                    GM_ADDR remoteDataAddr;
+                    GM_ADDR localDataAddr;
+                    GM_ADDR remoteFlagAddr;
                     ComputeTokenAddrs(toRankAddr, tokenOffset, remoteDataAddr, localDataAddr, remoteFlagAddr);
                     const bool enableCqe = sqWriteCount + 1U >= HCOMM_SQ_MAX_PENDING;
                     AppendRemoteFlagWrite(batchHandle, remoteFlagAddr, tokenOffset, enableCqe);
