@@ -33,21 +33,29 @@ def _load_inputs_for_rank(input_path, did):
     data = np.load(input_path, allow_pickle=False)
     tensors = {}
     for key in data.files:
-        if key.startswith(f"did{did}_t") and not key.endswith("_dtype"):
-            idx = int(key.split("_t")[1])
-            arr = data[key]
-            dtype_key = f"{key}_dtype"
-            dtype_str = str(data[dtype_key]) if dtype_key in data.files else "float32"
-            if arr.dtype.kind == "V":
-                total_bytes = arr.size * arr.dtype.itemsize
-                arr = np.frombuffer(arr.tobytes(), dtype=np.uint8, count=total_bytes)
-                arr = arr.reshape(arr.shape if arr.ndim > 0 else (1,))
-            t = torch.from_numpy(arr.copy())
-            if dtype_str == "torch.bfloat16":
-                t = t.to(torch.bfloat16)
-            elif dtype_str == "torch.float16":
-                t = t.to(torch.float16)
-            tensors[idx] = t
+        if not key.startswith(f"did{did}_t"):
+            continue
+        suffix = key[len(f"did{did}_t") :]
+        if not suffix.isdigit():
+            continue
+        idx = int(suffix)
+        arr = data[key]
+        dtype_key = f"{key}_dtype"
+        dtype_str = str(data[dtype_key]) if dtype_key in data.files else "float32"
+        if arr.dtype.kind == "V":
+            total_bytes = arr.size * arr.dtype.itemsize
+            arr = np.frombuffer(arr.tobytes(), dtype=np.uint8, count=total_bytes)
+            arr = arr.reshape(arr.shape if arr.ndim > 0 else (1,))
+        t = torch.from_numpy(arr.copy())
+        if dtype_str in ("bfloat16", "torch.bfloat16"):
+            t = t.to(torch.bfloat16)
+        elif dtype_str in ("float16", "torch.float16"):
+            t = t.to(torch.float16)
+        shape = tuple(int(v) for v in data[f"{key}_shape"])
+        stride = tuple(int(v) for v in data[f"{key}_stride"])
+        offset = int(data[f"{key}_offset"])
+        t = torch.as_strided(t, shape, stride, offset)
+        tensors[idx] = t
     return tensors
 
 
@@ -57,11 +65,11 @@ def _activate_npu(x, act_type):
     elif act_type == 1:
         return torch.nn.functional.gelu(x)
     elif act_type == 2:
-        return torch.nn.functional.silu(x)
+        return torch_npu.npu_silu(x)
     elif act_type == 3:
         return torch.relu(x)
     elif act_type == 4:
-        return x / (1.0 + torch.exp(-1.702 * x))
+        return torch_npu.npu_fast_gelu(x)
     return x
 
 
@@ -173,18 +181,18 @@ def main():
             bmm_out = bmm_out + bias
         act_out = _activate_npu(bmm_out, act_type)
 
-        main_cpu = act_out.reshape(-1).contiguous().cpu()
+        main_cpu = act_out.reshape(-1).contiguous().float().cpu()
         np.savez(
             f"{result_path}.did{rank}.npz", **{f"cascade_did{rank}": main_cpu.numpy()}
         )
         if need_ag_out:
-            ag_cpu = gather_output.reshape(-1).contiguous().cpu()
+            ag_cpu = gather_output.reshape(-1).contiguous().float().cpu()
             np.savez(
                 f"{result_path}.a2a_did{rank}.npz",
                 **{f"cascade_a2a_did{rank}": ag_cpu.numpy()},
             )
         if need_act_feat:
-            bmm_cpu = bmm_out.reshape(-1).contiguous().cpu()
+            bmm_cpu = bmm_out.reshape(-1).contiguous().float().cpu()
             np.savez(
                 f"{result_path}.mm_did{rank}.npz",
                 **{f"cascade_mm_did{rank}": bmm_cpu.numpy()},

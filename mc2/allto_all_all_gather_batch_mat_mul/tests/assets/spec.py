@@ -45,6 +45,13 @@ class AclnnAlltoAllAllGatherBatchMatMulSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
+
 
 class AlltoAllAllGatherBatchMatMulE2ESpec:
     """TestSpec for mindspeed.npu_alltoall_allgather_bmm (E2E multi-device path)."""

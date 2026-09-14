@@ -44,6 +44,13 @@ class AclnnAlltoAllvGroupedMatMulSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
+
 
 class AlltoAllvGroupedMatMulE2ESpec:
     """TestSpec for torch_npu.npu_alltoallv_gmm (E2E multi-device path)."""

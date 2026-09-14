@@ -44,9 +44,9 @@ def _load_inputs_for_rank(input_path, did):
                 arr = np.frombuffer(arr.tobytes(), dtype=np.uint8, count=total_bytes)
                 arr = arr.reshape(arr.shape if arr.ndim > 0 else (1,))
             t = torch.from_numpy(arr.copy())
-            if dtype_str == "torch.bfloat16":
+            if dtype_str in ("bfloat16", "torch.bfloat16"):
                 t = t.to(torch.bfloat16)
-            elif dtype_str == "torch.float16":
+            elif dtype_str in ("float16", "torch.float16"):
                 t = t.to(torch.float16)
             tensors[idx] = t
     return tensors
@@ -87,15 +87,15 @@ def main():
         )
         ep_group = None
         tp_group = None
-        # EP groups: strided by tp_ws (matching TTK profiling.py HCCL comm creation)
+        # EP groups: contiguous ranks, matching TTK profiling.py HCCL comm creation.
         for i in range(tp_ws):
-            ep_ranks = [x * tp_ws + i for x in range(ep_ws)]
+            ep_ranks = [x + ep_ws * i for x in range(ep_ws)]
             g = dist.new_group(backend="hccl", ranks=ep_ranks)
             if rank in ep_ranks:
                 ep_group = g
-        # TP groups: contiguous (matching TTK profiling.py HCCL comm creation)
+        # TP groups: strided by ep_ws, matching TTK profiling.py HCCL comm creation.
         for i in range(ep_ws):
-            tp_ranks = [x + tp_ws * i for x in range(tp_ws)]
+            tp_ranks = [x * ep_ws + i for x in range(tp_ws)]
             g = dist.new_group(backend="hccl", ranks=tp_ranks)
             if rank in tp_ranks:
                 tp_group = g
@@ -158,7 +158,7 @@ def main():
         torch.npu.synchronize()
 
         output = a2a_out.reshape(reshape_4)
-        out_cpu = output.reshape(-1).contiguous().cpu()
+        out_cpu = output.reshape(-1).contiguous().float().cpu()
         np.savez(
             f"{result_path}.did{rank}.npz", **{f"cascade_did{rank}": out_cpu.numpy()}
         )

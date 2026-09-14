@@ -86,20 +86,26 @@ def _save_inputs_per_rank(thread_contexts, device_ids, path):
 
     arrays = {}
     dtypes = {}
+    views = {}
     for did in device_ids:
         tc = thread_contexts[did]
+        storages = getattr(tc, "np_storages", None) or []
         for i, t in enumerate(tc.flatten_tensors):
             if t is None:
                 continue
-            if isinstance(t, torch.Tensor):
-                dtype_str = str(t.dtype).replace("torch.", "")
-                if t.dtype in (torch.bfloat16, torch.float16, torch.float32):
-                    arrays[f"did{did}_t{i}"] = t.float().cpu().numpy()
-                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
-                else:
-                    arrays[f"did{did}_t{i}"] = t.cpu().numpy()
-                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
+            if i >= len(storages) or storages[i] is None:
+                continue
+            storage = storages[i]
+            dtype_str = str(t.dtype).replace("torch.", "")
+            if dtype_str == "bfloat16":
+                storage = storage.view(np.uint16)
+            arrays[f"did{did}_t{i}"] = storage
+            dtypes[f"did{did}_t{i}_dtype"] = dtype_str
+            views[f"did{did}_t{i}_shape"] = np.asarray(t.shape, dtype=np.int64)
+            views[f"did{did}_t{i}_stride"] = np.asarray(t.stride(), dtype=np.int64)
+            views[f"did{did}_t{i}_offset"] = np.asarray(t.storage_offset(), dtype=np.int64)
     arrays.update(dtypes)
+    arrays.update(views)
     np.savez(path, **arrays)
 
 
@@ -109,7 +115,8 @@ _next_port_base = [30086]
 def _next_port():
     import threading
 
-    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
+    from ttk.config.loader import get_cascade_config
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", get_cascade_config().hccl_port_range)
     with threading.Lock():
         port = _next_port_base[0]
         _next_port_base[0] += 13
@@ -247,8 +254,6 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
     is_trans = bool(attrs.get("isTrans", False))
     need_ag_out = bool(attrs.get("needAllgatherOut", True))
     need_act_feat = bool(attrs.get("needActivationFeature", False))
-    dtype_map = _dtype_map()
-
     rank_third_parties = None
     try:
         cascade_outs = run_a2a_ag_bmm_cascade(
@@ -342,13 +347,10 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
 
         for did in tp_group_dids:
             tc = thread_contexts[did]
-            in_dtype = tc.flatten_tensors[0].dtype
             weight = to_torch_f32(tc.flatten_tensors[1])
             if is_trans:
-                weight = weight.permute(0, 2, 1).contiguous()
-            # bmm in fp32 then truncate to in_dtype (matching NPU bf16 bmm output)
+                weight = weight.contiguous()
             bmm_out = torch.bmm(gathered.float(), weight)
-            bmm_out = bmm_out.to(in_dtype).float()
             del weight
             if is_bias and len(tc.flatten_tensors) > 2:
                 bias = tc.flatten_tensors[2]
@@ -356,21 +358,17 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
                     bias_f = bias.float()
                     if bias.dim() == 2:
                         bias_f = bias_f.reshape(bias_f.shape[0], 1, bias_f.shape[1])
-                    # NPU: bmm(bf16) -> cast fp32 -> + bias(fp32) -> cast bf16
-                    bmm_out = (bmm_out.float() + bias_f).to(in_dtype).float()
+                    bmm_out = bmm_out.float() + bias_f
                 del bias
-            # activation: compute in fp32 on bf16-truncated input, truncate output to in_dtype
-            activated = _apply_act(bmm_out, act_type).to(in_dtype).float()
-            bmm_out = bmm_out.to(in_dtype).float()
+            activated = _apply_act(bmm_out, act_type)
             goldens = {"main": activated}
             if need_ag_out:
-                goldens["allgather"] = gathered.to(in_dtype).float()
+                goldens["allgather"] = gathered.float()
             if need_act_feat:
                 goldens["bmm"] = bmm_out
             else:
                 del bmm_out
 
-            out_dtypes = tc.flat_output_dtypes if tc.flat_output_dtypes else []
             golden_list = []
             out_keys = ["main", "allgather", "bmm"]
             for oi, out_idx in enumerate(tc.output_tensor_indexes):
@@ -380,15 +378,11 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
                     g = None
                 if g is None:
                     g = torch.zeros(tc.tensor_view_shapes[out_idx])
-                dt_idx = list(tc.output_tensor_indexes).index(out_idx)
-                if dt_idx < len(out_dtypes):
-                    target_dtype = dtype_map.get(out_dtypes[dt_idx], None)
-                    if target_dtype is not None:
-                        g = g.to(target_dtype)
                 golden_list.append(g.contiguous())
             tc.golden_tensors = golden_list
             third_parties_list = None
             if rank_third_parties is not None:
+                out_dtypes = tc.flat_output_dtypes if tc.flat_output_dtypes else []
                 tp_items = rank_third_parties.get(did)
                 if tp_items is not None:
                     third_parties_list = []
@@ -399,13 +393,6 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
                                 out_shape = tc.tensor_view_shapes[out_idx]
                                 if tp.shape != torch.Size(out_shape):
                                     tp = tp.reshape(out_shape)
-                                dt_idx = list(tc.output_tensor_indexes).index(out_idx)
-                                if dt_idx < len(out_dtypes):
-                                    target_dtype = dtype_map.get(
-                                        out_dtypes[dt_idx], None
-                                    )
-                                    if target_dtype is not None:
-                                        tp = tp.to(target_dtype)
                                 third_parties_list.append(tp.contiguous())
                             else:
                                 third_parties_list.append(None)
@@ -415,7 +402,7 @@ def a2a_ag_bmm_multi_device_golden(thread_contexts, device_ids, all_precision):
                 cr = Comparator(tc).compare(third_parties=third_parties_list)
                 msg = f"rank{did}:{cr.passed}({fmt_compare(cr)})"
                 if cr.passed != "PASS":
-                    logging.error(f"A2A_AG_BMM: {msg}")
+                    logging.error(f"A2A_AG_BMM: {msg} metrics={cr.metrics}")
                 else:
                     logging.info(f"A2A_AG_BMM: {msg}")
                 all_precision.append(msg)

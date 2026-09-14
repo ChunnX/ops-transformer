@@ -45,6 +45,13 @@ class AclnnBatchMatMulReduceScatterAlltoAllSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
+
 
 class BatchMatMulReduceScatterAlltoAllE2ESpec:
     """TestSpec for mindspeed.npu_bmm_reducescatter_alltoall (E2E multi-device path)."""
