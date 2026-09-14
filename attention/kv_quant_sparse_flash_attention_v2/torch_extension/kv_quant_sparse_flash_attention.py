@@ -93,8 +93,12 @@ class KvQuantSparseFlashAttentionOpBuilder(OpBuilder):
                 lse_shape = [query.shape[0], kv_head_num, query.shape[1], g]
             else:
                 lse_shape = [kv_head_num, query.shape[0], g]
-            softmax_max = torch.empty(lse_shape, dtype=torch.float32, device=query.device)
-            softmax_sum = torch.empty(lse_shape, dtype=torch.float32, device=query.device)
+            softmax_max = torch.empty(
+                lse_shape, dtype=torch.float32, device=query.device
+            )
+            softmax_sum = torch.empty(
+                lse_shape, dtype=torch.float32, device=query.device
+            )
             return attn_out, softmax_max, softmax_sum
 
 
