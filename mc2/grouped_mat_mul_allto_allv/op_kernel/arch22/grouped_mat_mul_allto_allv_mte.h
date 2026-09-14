@@ -821,7 +821,22 @@ private:
             GmmA2avMteDetail::FLAG_STAGING_ELEMENTS / GmmA2avMteDetail::SYNC_SLOT_ELEMENTS;
         const uint32_t totalSlots = static_cast<uint32_t>(Gmma2avMteTiling::FIXED_SYNC_BYTES /
                                                           Gmma2avMteTiling::SYNC_SLOT_BYTES);
-        for (uint32_t offset = 0U; offset < totalSlots; offset += slotsPerBatch) {
+        // Batch ownership is split round-robin across the Comm workers: the
+        // c-th worker clears batches c, c + rankWorkerCount_, ... (batch b
+        // spans slots [b * slotsPerBatch, min((b+1) * slotsPerBatch,
+        // totalSlots))), so every slot has exactly one writer and the union
+        // still covers the whole fixed region (full-region clear is
+        // mandatory: the CCL window is reused across shapes). Workers
+        // without a batch fall straight through to the common rendezvous.
+        // Ordering: each batch's MTE3 store is drained by WaitFlag + DDR
+        // barrier before this worker reaches PublishAndWaitRankPhase, whose
+        // leading LocalAivSync makes every AIV (including the COUNT_READY
+        // publisher) wait until all workers finished their share; no
+        // new-round flag can be observed before the entire clear is
+        // globally visible.
+        for (uint32_t batch = logicalCoreIdx_; batch * slotsPerBatch < totalSlots;
+             batch += rankWorkerCount_) {
+            const uint32_t offset = batch * slotsPerBatch;
             const uint32_t batchSlots = (totalSlots - offset > slotsPerBatch) ?
                                             slotsPerBatch : (totalSlots - offset);
             const uint32_t batchElements = batchSlots * GmmA2avMteDetail::SYNC_SLOT_ELEMENTS;
