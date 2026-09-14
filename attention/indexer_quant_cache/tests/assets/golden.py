@@ -11,7 +11,7 @@
 indexer_quant_cache kernel (single-op direct-invoke) golden -- SELF-CONTAINED.
 
 Per-block quantize x and scatter into cache[slot] (+ per-block scale). Two in-place outputs
-(cache, scale). quant_mode 0=MXFP8 1=Normal 2=HiFloat8(scale suppressed) 3=MXFP4. Mirrors
+(cache, scale). quant_mode 0=MXFP8 1=Normal 2=HiFloat8(scale unchanged) 3=MXFP4. Mirrors
 the kernel math; reuses no external module (per-mode independent-golden convention of this repo).
 """
 
@@ -425,7 +425,7 @@ def _indexer_core(
         cv = c.view(cache2d.dtype)
         cache2d[slot, : cv.shape[0]] = cv
         if quant_mode == 2:
-            continue  # mode 2 (HiFloat8): kernel does not write the scale output -> leave it suppressed
+            continue  # HiFloat8 uses x_scale; preserve and verify the input cache scale.
         # scale: e8m0 is a raw 1-byte code (bit-reinterpret, NOT numeric astype); float32 is a value
         if s.dtype == scale2d.dtype:
             sv = s
@@ -435,9 +435,7 @@ def _indexer_core(
             sv = s.astype(scale2d.dtype)
         scale2d[slot, : sv.shape[0]] = sv
 
-    # mode 2 scale is never written by the kernel -> None (TTK marks the output SUPPRESSED)
-    scale_ret = None if quant_mode == 2 else scale_arr
-    return cache, scale_ret
+    return cache, scale_arr
 
 
 class IndexerQuantCacheTestSpec:
@@ -468,8 +466,6 @@ class IndexerQuantCacheTestSpec:
             round_scale=int(round_scale),
             scale=float(x_scale),
         )
-        if scale_out is None:
-            return [np.ascontiguousarray(cache_out), None]
         return [np.ascontiguousarray(cache_out), np.ascontiguousarray(scale_out)]
 
     @staticmethod
