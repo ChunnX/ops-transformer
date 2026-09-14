@@ -832,6 +832,36 @@ def MoeInitRoutingV3(*input_arrays, **kwargs):
     return expanded_x, expanded_row_idx, expert_tokens_count, expanded_scale
 
 
+def _drop_rowidx_tail_len(npu_arr, golden_arr, golden0_arr, min_len):
+    """Return a reduced compare length when a golden output is SCATTER 的 expanded_row_idx.
+
+    SCATTER(row_idx_type=1) 场景下 expanded_row_idx 的 golden 返回完整 n*k 置换
+    """
+    if npu_arr is None or golden_arr is None or min_len <= 0:
+        return min_len
+    golden_flat = numpy.asarray(golden_arr).reshape(-1)
+    npu_flat = numpy.asarray(npu_arr).reshape(-1)
+    golden_shape = getattr(golden_arr, "shape", ())
+    golden_dtype = getattr(golden_arr, "dtype", None)
+    if len(golden_shape) != 1 or getattr(golden_dtype, "kind", "?") not in ("i", "u"):
+        return min_len
+    if golden_flat.size != npu_flat.size or golden_flat.size <= 0:
+        return min_len
+    if int(golden_flat.min()) < 0 or int(golden_flat.max()) != golden_flat.size - 1:
+        return min_len
+    if numpy.unique(golden_flat).size != golden_flat.size:
+        return min_len
+    if golden0_arr is None:
+        return min_len
+    golden0 = numpy.asarray(_torch_to_numpy(golden0_arr))
+    if golden0.ndim < 1:
+        return min_len
+    prefix_len = int(golden0.shape[0])
+    if 0 < prefix_len < golden_flat.size:
+        return prefix_len
+    return min_len
+
+
 def _torch_to_numpy(tensor):
     if tensor is None:
         return None
@@ -987,6 +1017,14 @@ class MoeInitRoutingV3KernelSpec:
             npu_flat = numpy.asarray(npu_arr).reshape(-1)
             golden_flat = numpy.asarray(golden_arr).reshape(-1)
             min_len = min(npu_flat.size, golden_flat.size)
+            # SCATTER 的 expanded_row_idx：golden 为完整置换，只比头部有效区
+            prefix_len = _drop_rowidx_tail_len(
+                npu_arr, golden_arr, outputs[half], min_len
+            )
+            if prefix_len < min_len:
+                npu_flat = npu_flat[:prefix_len]
+                golden_flat = golden_flat[:prefix_len]
+                min_len = prefix_len
             npu_cmp = npu_flat[:min_len]
             golden_cmp = golden_flat[:min_len]
             dtype_name = str(golden_arr.dtype).lower()
@@ -1239,6 +1277,14 @@ class E2eMoeInitRoutingV3Spec:
             npu_flat = numpy.asarray(npu_arr).reshape(-1)
             golden_flat = numpy.asarray(golden_arr).reshape(-1)
             min_len = min(npu_flat.size, golden_flat.size)
+            # SCATTER 的 expanded_row_idx：golden 为完整置换，只比头部有效区
+            prefix_len = _drop_rowidx_tail_len(
+                npu_arr, golden_arr, outputs[half], min_len
+            )
+            if prefix_len < min_len:
+                npu_flat = npu_flat[:prefix_len]
+                golden_flat = golden_flat[:prefix_len]
+                min_len = prefix_len
             npu_cmp = npu_flat[:min_len]
             golden_cmp = golden_flat[:min_len]
             dtype_name = str(golden_arr.dtype).lower()
@@ -1499,6 +1545,14 @@ class AclnnMoeInitRoutingV3Spec:
             npu_flat = numpy.asarray(npu_arr).reshape(-1)
             golden_flat = numpy.asarray(golden_arr).reshape(-1)
             min_len = min(npu_flat.size, golden_flat.size)
+            # SCATTER 的 expanded_row_idx：golden 为完整置换，只比头部有效区
+            prefix_len = _drop_rowidx_tail_len(
+                npu_arr, golden_arr, outputs[half], min_len
+            )
+            if prefix_len < min_len:
+                npu_flat = npu_flat[:prefix_len]
+                golden_flat = golden_flat[:prefix_len]
+                min_len = prefix_len
             npu_cmp = npu_flat[:min_len]
             golden_cmp = golden_flat[:min_len]
             dtype_name = str(golden_arr.dtype).lower()
