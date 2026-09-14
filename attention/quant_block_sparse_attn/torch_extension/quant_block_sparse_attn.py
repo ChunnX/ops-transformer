@@ -35,8 +35,8 @@ class _QuantBlockSparseAttnOpBuilder(OpBuilder):
             "Tensor k_descale, Tensor v_descale, Tensor sparse_indices, Tensor sparse_seq_len, *, "
             "Tensor? p_scale=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "
             "Tensor? seqused_kv=None, Tensor? block_table=None, Tensor? atten_mask=None, Tensor? metadata=None, "
-            "float softmax_scale=1.0, int sparse_q_block_size=128, int sparse_kv_block_size=128, str layout_kv='PA_BNBD', "
-            "str layout_q='TND', str layout_sparse_indices='B_N_Qb_Kb', str layout_out='TND', int quant_mode=1, "
+            "float softmax_scale=1.0, int sparse_block_size_q=128, int sparse_block_size_kv=128, str layout_q='TND', "
+            "str layout_kv='PA_BNBD', str layout_sparse_indices='B_N_Qb_Kb', str layout_out='TND', int quant_mode=1, "
             "int mask_mode=3, bool return_softmax_lse=False) -> (Tensor, Tensor)",
             "npu_quant_block_sparse_attn_metadata(Tensor sparse_seq_len, int num_heads_q, "
             "int num_heads_kv, int head_dim, *, Tensor? cu_seqlens_q=None, "
@@ -67,10 +67,10 @@ class _QuantBlockSparseAttnOpBuilder(OpBuilder):
             atten_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
             softmax_scale: float = 1.0,
-            sparse_q_block_size: int = 128,
-            sparse_kv_block_size: int = 128,
-            layout_kv: str = "PA_BNBD",
+            sparse_block_size_q: int = 128,
+            sparse_block_size_kv: int = 128,
             layout_q: str = "TND",
+            layout_kv: str = "PA_BNBD",
             layout_sparse_indices: str = "B_N_Qb_Kb",
             layout_out: str = "TND",
             quant_mode: int = 1,
@@ -155,10 +155,10 @@ def _npu_quant_block_sparse_attn(
     atten_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
     softmax_scale: float = 1.0,
-    sparse_q_block_size: int = 128,
-    sparse_kv_block_size: int = 128,
-    layout_kv: str = "PA_BNBD",
+    sparse_block_size_q: int = 128,
+    sparse_block_size_kv: int = 128,
     layout_q: str = "TND",
+    layout_kv: str = "PA_BNBD",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
     quant_mode: int = 1,
@@ -184,10 +184,10 @@ def _npu_quant_block_sparse_attn(
         atten_mask,
         metadata,
         softmax_scale,
-        sparse_q_block_size,
-        sparse_kv_block_size,
-        layout_kv,
+        sparse_block_size_q,
+        sparse_block_size_kv,
         layout_q,
+        layout_kv,
         layout_sparse_indices,
         layout_out,
         quant_mode,
@@ -259,10 +259,10 @@ def quant_block_sparse_attn(
     metadata: Optional[torch.Tensor] = None,
     # Optional attributes.
     softmax_scale: float = 1.0,
-    sparse_q_block_size: int = 128,
-    sparse_kv_block_size: int = 128,
-    layout_kv: str = "PA_BNBD",
+    sparse_block_size_q: int = 128,
+    sparse_block_size_kv: int = 128,
     layout_q: str = "TND",
+    layout_kv: str = "PA_BNBD",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
     quant_mode: int = 1,
@@ -276,7 +276,7 @@ def quant_block_sparse_attn(
     p_scale may be None, meaning 1. sparse_indices and sparse_seq_len are
     int32 tensors in layout_sparse_indices. atten_mask is optional uint8.
     softmax_scale defaults to 1.0 and scales QK; it is not inferred from D.
-    sparse_q_block_size/sparse_kv_block_size default to 128. Optional int32
+    sparse_block_size_q/sparse_block_size_kv default to 128. Optional int32
     sequence tensors, block_table and metadata describe the packed sequences
     and paged cache. metadata is
     produced by quant_block_sparse_attn_metadata before graph capture.
@@ -304,10 +304,10 @@ def quant_block_sparse_attn(
         atten_mask=atten_mask,
         metadata=metadata,
         softmax_scale=softmax_scale,
-        sparse_q_block_size=sparse_q_block_size,
-        sparse_kv_block_size=sparse_kv_block_size,
-        layout_kv=layout_kv,
+        sparse_block_size_q=sparse_block_size_q,
+        sparse_block_size_kv=sparse_block_size_kv,
         layout_q=layout_q,
+        layout_kv=layout_kv,
         layout_sparse_indices=layout_sparse_indices,
         layout_out=layout_out,
         quant_mode=quant_mode,

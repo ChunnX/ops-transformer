@@ -46,10 +46,10 @@ constexpr uint32_t QBSA_SOFTMAX_LSE_INDEX = 1U;
 
 // Attributes Index
 constexpr uint32_t QBSA_SOFTMAX_SCALE_ATTR_INDEX = 0U;
-constexpr uint32_t QBSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX = 1U;
-constexpr uint32_t QBSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX = 2U;
-constexpr uint32_t QBSA_LAYOUT_KV_ATTR_INDEX = 3U;
-constexpr uint32_t QBSA_LAYOUT_Q_ATTR_INDEX = 4U;
+constexpr uint32_t QBSA_SPARSE_BLOCK_SIZE_Q_ATTR_INDEX = 1U;
+constexpr uint32_t QBSA_SPARSE_BLOCK_SIZE_KV_ATTR_INDEX = 2U;
+constexpr uint32_t QBSA_LAYOUT_Q_ATTR_INDEX = 3U;
+constexpr uint32_t QBSA_LAYOUT_KV_ATTR_INDEX = 4U;
 constexpr uint32_t QBSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX = 5U;
 constexpr uint32_t QBSA_LAYOUT_OUT_ATTR_INDEX = 6U;
 constexpr uint32_t QBSA_QUANT_MODE_ATTR_INDEX = 7U;

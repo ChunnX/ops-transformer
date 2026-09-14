@@ -136,10 +136,10 @@ static bool ExecuteCase(QuantBlockSparseAttnTilingUtParam param, TilingInfo &til
 
     std::vector<OpAttr> attrs({
         {"softmax_scale", Ops::Transformer::AnyValue::CreateFrom<float>(param.softmax_scale)},
-        {"sparse_q_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_q_block_size)},
-        {"sparse_kv_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_kv_block_size)},
-        {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_kv)},
+        {"sparse_block_size_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_q_block_size)},
+        {"sparse_block_size_kv", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.sparse_kv_block_size)},
         {"layout_q", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_q)},
+        {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_kv)},
         {"layout_sparse_indices", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_sparse_indices)},
         {"layout_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.layout_out)},
         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.quant_mode)},

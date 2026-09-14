@@ -45,10 +45,10 @@ if _TORCHAIR_AVAILABLE:
         atten_mask: Optional[Tensor] = None,
         metadata: Optional[Tensor] = None,
         softmax_scale: float = 1.0,
-        sparse_q_block_size: int = 128,
-        sparse_kv_block_size: int = 128,
-        layout_kv: str = "PA_BNBD",
+        sparse_block_size_q: int = 128,
+        sparse_block_size_kv: int = 128,
         layout_q: str = "TND",
+        layout_kv: str = "PA_BNBD",
         layout_sparse_indices: str = "B_N_Qb_Kb",
         layout_out: str = "TND",
         quant_mode: int = 1,
@@ -78,10 +78,10 @@ if _TORCHAIR_AVAILABLE:
             },
             attrs={
                 "softmax_scale": attr.Float(softmax_scale),
-                "sparse_q_block_size": attr.Int(sparse_q_block_size),
-                "sparse_kv_block_size": attr.Int(sparse_kv_block_size),
-                "layout_kv": attr.Str(layout_kv),
+                "sparse_block_size_q": attr.Int(sparse_block_size_q),
+                "sparse_block_size_kv": attr.Int(sparse_block_size_kv),
                 "layout_q": attr.Str(layout_q),
+                "layout_kv": attr.Str(layout_kv),
                 "layout_sparse_indices": attr.Str(layout_sparse_indices),
                 "layout_out": attr.Str(layout_out),
                 "quant_mode": attr.Int(quant_mode),
@@ -107,10 +107,10 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("atten_mask", "DT_UINT8")
             .optional_input("metadata", "DT_INT32")
             .attr("softmax_scale", attr.Float(1.0))
-            .attr("sparse_q_block_size", attr.Int(128))
-            .attr("sparse_kv_block_size", attr.Int(128))
-            .attr("layout_kv", attr.Str("PA_BNBD"))
+            .attr("sparse_block_size_q", attr.Int(128))
+            .attr("sparse_block_size_kv", attr.Int(128))
             .attr("layout_q", attr.Str("TND"))
+            .attr("layout_kv", attr.Str("PA_BNBD"))
             .attr("layout_sparse_indices", attr.Str("B_N_Qb_Kb"))
             .attr("layout_out", attr.Str("TND"))
             .attr("quant_mode", attr.Int(1))
@@ -142,10 +142,10 @@ if _TORCHAIR_AVAILABLE:
         atten_mask: Optional[Tensor] = None,
         metadata: Optional[Tensor] = None,
         softmax_scale: float = 1.0,
-        sparse_q_block_size: int = 128,
-        sparse_kv_block_size: int = 128,
-        layout_kv: str = "PA_BNBD",
+        sparse_block_size_q: int = 128,
+        sparse_block_size_kv: int = 128,
         layout_q: str = "TND",
+        layout_kv: str = "PA_BNBD",
         layout_sparse_indices: str = "B_N_Qb_Kb",
         layout_out: str = "TND",
         quant_mode: int = 1,
@@ -171,10 +171,10 @@ if _TORCHAIR_AVAILABLE:
             atten_mask=atten_mask,
             metadata=metadata,
             softmax_scale=softmax_scale,
-            sparse_q_block_size=sparse_q_block_size,
-            sparse_kv_block_size=sparse_kv_block_size,
-            layout_kv=layout_kv,
+            sparse_block_size_q=sparse_block_size_q,
+            sparse_block_size_kv=sparse_block_size_kv,
             layout_q=layout_q,
+            layout_kv=layout_kv,
             layout_sparse_indices=layout_sparse_indices,
             layout_out=layout_out,
             quant_mode=quant_mode,

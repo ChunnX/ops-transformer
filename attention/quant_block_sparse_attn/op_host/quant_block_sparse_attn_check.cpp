@@ -371,7 +371,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "q_block_size/kv_block_size",
                 std::to_string(tilingInfo_.qBlockSizeVal) + "/" + std::to_string(tilingInfo_.kvBlockSizeVal),
-                "Sparse_q_block_size must equal sparse_kv_block_size in quant_mode=2 MXFP8 full-quant scenario");
+                "Sparse_block_size_q must equal sparse_block_size_kv in quant_mode=2 MXFP8 full-quant scenario");
             return ge::GRAPH_FAILED;
         }
         if (tilingInfo_.paBlockSizeVal == 0U || tilingInfo_.paBlockSizeVal % tilingInfo_.kvBlockSizeVal != 0U ||
@@ -392,7 +392,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
             opParamInfo.kvBlockSize == nullptr ? static_cast<int64_t>(QBSA_BLOCK_SIZE) : *opParamInfo.kvBlockSize;
         if (qBlockSize != static_cast<int64_t>(QBSA_BLOCK_SIZE) ||
             kvBlockSize != static_cast<int64_t>(QBSA_BLOCK_SIZE)) {
-            OP_LOGE_FOR_INVALID_VALUE(kOpName, "sparse_q_block_size/sparse_kv_block_size",
+            OP_LOGE_FOR_INVALID_VALUE(kOpName, "sparse_block_size_q/sparse_block_size_kv",
                                       std::to_string(qBlockSize) + "/" + std::to_string(kvBlockSize),
                                       std::to_string(QBSA_BLOCK_SIZE));
             return ge::GRAPH_FAILED;

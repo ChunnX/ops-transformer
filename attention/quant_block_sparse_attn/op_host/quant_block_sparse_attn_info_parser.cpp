@@ -171,7 +171,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseSparseIndices(QuantBlockSpa
     }
     const uint64_t qSeqUpperBound = static_cast<uint64_t>(tilingInfo.qbMax) * tilingInfo.qBlockSizeVal;
     if (qSeqUpperBound > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "sparse_indices.shape[2] * sparse_q_block_size",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "sparse_indices.shape[2] * sparse_block_size_q",
                                               std::to_string(qSeqUpperBound), "Must be in range [0, UINT32_MAX]");
         return ge::GRAPH_FAILED;
     }
@@ -276,7 +276,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
     }
     const uint64_t kvSeqUpperBound = static_cast<uint64_t>(tilingInfo.maxBlockNumPerBatch) * tilingInfo.kvBlockSizeVal;
     if (kvSeqUpperBound > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table.shape[1] * sparse_kv_block_size",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table.shape[1] * sparse_block_size_kv",
                                               std::to_string(kvSeqUpperBound), "Must be in range [0, UINT32_MAX]");
         return ge::GRAPH_FAILED;
     }
@@ -288,10 +288,10 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
 {
     auto &opParamInfo = tilingInfo.opParamInfo;
 
-    opParamInfo.qBlockSize = attrs->GetAttrPointer<int64_t>(QBSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX);
-    opParamInfo.kvBlockSize = attrs->GetAttrPointer<int64_t>(QBSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX);
-    tilingInfo.qBlockSizeVal = QBSAGetPositiveAttr(attrs, QBSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX, QBSA_BLOCK_SIZE);
-    tilingInfo.kvBlockSizeVal = QBSAGetPositiveAttr(attrs, QBSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX, QBSA_BLOCK_SIZE);
+    opParamInfo.qBlockSize = attrs->GetAttrPointer<int64_t>(QBSA_SPARSE_BLOCK_SIZE_Q_ATTR_INDEX);
+    opParamInfo.kvBlockSize = attrs->GetAttrPointer<int64_t>(QBSA_SPARSE_BLOCK_SIZE_KV_ATTR_INDEX);
+    tilingInfo.qBlockSizeVal = QBSAGetPositiveAttr(attrs, QBSA_SPARSE_BLOCK_SIZE_Q_ATTR_INDEX, QBSA_BLOCK_SIZE);
+    tilingInfo.kvBlockSizeVal = QBSAGetPositiveAttr(attrs, QBSA_SPARSE_BLOCK_SIZE_KV_ATTR_INDEX, QBSA_BLOCK_SIZE);
 
     opParamInfo.maskMode = attrs->GetAttrPointer<int64_t>(QBSA_MASK_MODE_ATTR_INDEX);
     opParamInfo.returnSoftmaxLse = attrs->GetAttrPointer<bool>(QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);

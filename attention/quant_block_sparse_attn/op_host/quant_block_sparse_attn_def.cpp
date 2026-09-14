@@ -102,10 +102,10 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Attr("softmax_scale").AttrType(OPTIONAL).Float(1.0);
-        this->Attr("sparse_q_block_size").AttrType(OPTIONAL).Int(128);
-        this->Attr("sparse_kv_block_size").AttrType(OPTIONAL).Int(128);
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BNBD");
+        this->Attr("sparse_block_size_q").AttrType(OPTIONAL).Int(128);
+        this->Attr("sparse_block_size_kv").AttrType(OPTIONAL).Int(128);
         this->Attr("layout_q").AttrType(OPTIONAL).String("TND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BNBD");
         this->Attr("layout_sparse_indices").AttrType(OPTIONAL).String("B_N_Qb_Kb");
         this->Attr("layout_out").AttrType(OPTIONAL).String("TND");
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
