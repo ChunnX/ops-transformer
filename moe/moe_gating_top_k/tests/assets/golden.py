@@ -40,6 +40,7 @@ def _pre_compare_topk(*arrays):
     合法, 值本身的精度由 out0 的 stat_rel_err 保证(阈值远大于 4 ULP, 不会掩盖真实
     值错误)。normOut 为按位置对齐的全量输出, 不做处理。kernel 通路输出为 numpy,
     aclnn/e2e 通路为 torch。"""
+
     def _as_numpy(a):
         if torch.is_tensor(a):
             if a.dtype == torch.bfloat16:
@@ -80,9 +81,11 @@ def _pre_compare_topk(*arrays):
     # 相邻交换与 k 边界并列, 远小于 out0 的 stat_rel_err 阈值, 不掩盖真实值错误
     # (bfloat16 无原生 numpy finfo, eps 固定为 2^-7; 需在 bf16->fp32 转换前判断)
     y_raw = arrays[0]
-    y_dtype_str = str(y_raw.dtype if torch.is_tensor(y_raw) else numpy.asarray(y_raw).dtype)
+    y_dtype_str = str(
+        y_raw.dtype if torch.is_tensor(y_raw) else numpy.asarray(y_raw).dtype
+    )
     if "bfloat16" in y_dtype_str:
-        ulp_tol = 4.0 * (2.0 ** -7)
+        ulp_tol = 4.0 * (2.0**-7)
     else:
         ulp_tol = 4.0 * numpy.finfo(y_out.dtype).eps
 
@@ -331,7 +334,9 @@ class MoeGatingTopKTestSpec:
             x = 1 / (1 + numpy.exp(-x))
         elif norm_type == 2:
             # 数值稳定 softplus: sqrt(max(x,0) + log1p(exp(-|x|))), 避免大 |x| 溢出/吸收
-            x = numpy.sqrt(numpy.maximum(x, 0.0) + numpy.log1p(numpy.exp(-numpy.abs(x))))
+            x = numpy.sqrt(
+                numpy.maximum(x, 0.0) + numpy.log1p(numpy.exp(-numpy.abs(x)))
+            )
 
         original_x = x
         if bias is not None:
