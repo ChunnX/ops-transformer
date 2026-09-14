@@ -31,25 +31,6 @@ _ALLOWED_ACTIVATION_KEYS = {
 _FLOAT8_E5M2_DTYPE_VALUE = 23
 _FLOAT8_E4M3FN_DTYPE_VALUE = 24
 _FLOAT4_E2M1_DTYPE_VALUE = 296
-_PRE_QUANTIZED_X_DTYPE_VALUES = frozenset(
-    {
-        _FLOAT8_E5M2_DTYPE_VALUE,
-        _FLOAT8_E4M3FN_DTYPE_VALUE,
-        _FLOAT4_E2M1_DTYPE_VALUE,
-    }
-)
-
-
-def _is_pre_quantized_x(
-    dispatch_quant_mode: int,
-    dispatch_quant_out_dtype: Optional[torch.dtype],
-) -> bool:
-    # A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 950 预量化输入。
-    return (
-        dispatch_quant_mode == 0
-        and _dtype_to_int(dispatch_quant_out_dtype)
-        in _PRE_QUANTIZED_X_DTYPE_VALUES
-    )
 
 
 def _is_packed_fp4_x(
@@ -72,26 +53,6 @@ def _logical_hidden_size(
         if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype)
         else x.size(1)
     )
-
-
-def _check_pre_quantized_x_contract(
-    x: torch.Tensor,
-    dispatch_quant_mode: int,
-    dispatch_quant_out_dtype: Optional[torch.dtype],
-) -> None:
-    torch._check(x.dim() == 2, lambda: "x must be 2D.")
-    is_pre_quantized_x = _is_pre_quantized_x(
-        dispatch_quant_mode, dispatch_quant_out_dtype
-    )
-    if not is_pre_quantized_x:
-        return
-
-    # Torch 只校验 descriptor 组装必需的条件；其余类型、shape、拓扑组合由 Tiling 统一拦截。
-    if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype):
-        torch._check(
-            x.dtype == torch.uint8,
-            lambda: "FP4 pre-quantized x must use packed torch.uint8 storage.",
-        )
 
 
 def _normalize_activation_params(
@@ -208,11 +169,7 @@ class _MegaMoeOpBuilder(OpBuilder):
                 ep_world_size != 0,
                 lambda: (f"ep_world_size should not be 0, {ops_error(ErrCode.VALUE)}."),
             )
-            _check_pre_quantized_x_contract(
-                x,
-                dispatch_quant_mode,
-                dispatch_quant_out_dtype,
-            )
+            torch._check(x.dim() == 2, lambda: "x must be 2D.")
             bs = x.size(0)
             h = _logical_hidden_size(
                 x, dispatch_quant_mode, dispatch_quant_out_dtype
@@ -426,19 +383,6 @@ class SymmBuffer:
     def _check_params(self) -> None:
         intermediate_hidden = self.intermediate_hidden
         if "Ascend950" in torch.npu.get_device_name():
-            _check_int_type(self.dispatch_quant_mode, "dispatch_quant_mode")
-            if self.dispatch_quant_mode not in (0, 4):
-                raise ValueError(
-                    "dispatch_quant_mode only supports 0 (pre-quantized passthrough) "
-                    "or 4 (MXFP) on Ascend950, "
-                    f"got {self.dispatch_quant_mode!r} (type: {type(self.dispatch_quant_mode).__name__})."
-                )
-            if _dtype_to_int(self.dispatch_quant_out_dtype) not in (23, 24, 296):
-                raise ValueError(
-                    "dispatch_quant_out_dtype only supports float8_e5m2 (23), "
-                    "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
-                    f"got {self.dispatch_quant_out_dtype!r} (type: {type(self.dispatch_quant_out_dtype).__name__})."
-                )
             _check_int_type(self.combine_quant_mode, "combine_quant_mode")
             if self.combine_quant_mode not in (0, 3, 4):
                 raise ValueError(
@@ -714,11 +658,7 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
-    _check_pre_quantized_x_contract(
-        x,
-        sym_buffer.dispatch_quant_mode,
-        sym_buffer.dispatch_quant_out_dtype,
-    )
+    torch._check(x.dim() == 2, lambda: "x must be 2D.")
     logical_h = _logical_hidden_size(
         x,
         sym_buffer.dispatch_quant_mode,

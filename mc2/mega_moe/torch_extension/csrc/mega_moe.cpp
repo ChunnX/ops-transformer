@@ -21,11 +21,6 @@ const int DIM_TWO = 2;
 const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
 constexpr int64_t GE_DTYPE_UNDEFINED = 28;
 
-bool HasTensor(const c10::optional<at::Tensor> &tensor)
-{
-    return tensor.has_value() && tensor.value().defined();
-}
-
 static void CheckNpuInput(const at::Tensor &tensor, const std::string &name, const char *socName)
 {
     TORCH_CHECK(tensor.defined(), name, " must not be None on ", socName, ".");
@@ -251,42 +246,23 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     aclDataType dispatchQuantAclDtype = hasDispatchQuantOutDtype ?
                                             GetAclDataType(dispatchQuantOutDtype.value()) :
                                             ACL_DT_UNDEFINED;
-    const bool isFp8X = xScalarType == at::ScalarType::Float8_e5m2 ||
-                        xScalarType == at::ScalarType::Float8_e4m3fn;
     const bool isPreQuantizedDtype = dispatchQuantAclDtype == ACL_FLOAT8_E5M2 ||
                                      dispatchQuantAclDtype == ACL_FLOAT8_E4M3FN ||
                                      dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
     const bool isPreQuantizedX = dispatchQuantMode == 0 && isPreQuantizedDtype;
     // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；只有协议明确声明 FP4 时，uint8 才承载两个 E2M1 元素。
     const bool isPackedFp4X = isPreQuantizedX && dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
-    TORCH_CHECK(
-        ((xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) || isFp8X || isPackedFp4X) &&
-            (topkIds.scalar_type() == at::kInt),
-        "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, or uint8/float4_e2m1fn_x2 "
-        "for packed FP4; dtype of topk_ids should be int32.");
-
     if (isPackedFp4X) {
         // TensorWrapper 会隐藏原始 Torch dtype，因此重解释前必须确认物理存储确实是 uint8。
         TORCH_CHECK(xScalarType == at::kByte, "FP4 pre-quantized x must use packed torch.uint8 storage.");
     }
     aclDataType xAclDtype = isPackedFp4X ? ACL_FLOAT4_E2M1 : ConvertToAclDataType(xScalarType);
-    const bool hasScales = HasTensor(scales);
 
     auto xSize = x.sizes();
     int64_t bs = xSize[0];
     int64_t h = xSize[1];
     if (isPackedFp4X) {
         h *= PACKED_FLOAT4_ELEMENTS_PER_BYTE;
-    }
-    TORCH_CHECK(x.is_contiguous(), "x must be contiguous.");
-    if (hasScales) {
-        const at::Tensor &scaleTensor = scales.value();
-        const auto scaleScalarType = scaleTensor.scalar_type();
-        // scales 会被包装为 E8M0 descriptor，以下只保留 Host 无法获知的物理存储约束。
-        TORCH_CHECK(scaleScalarType == at::ScalarType::Float8_e8m0fnu,
-                    "scales only supports torch.float8_e8m0fnu.");
-        TORCH_CHECK(scaleTensor.device() == x.device(), "scales must be on the same device as x.");
-        TORCH_CHECK(scaleTensor.is_contiguous(), "scales must be contiguous.");
     }
 
     at::TensorList weight1Ref = weight1;
@@ -326,7 +302,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const bool sharedQuantOutIsFp4 = hasSharedExpertQuantOutDtype ?
                                          GetAclDataType(sharedExpertQuantOutDtype.value()) == ACL_FLOAT4_E2M1 :
                                          dispatchQuantOutIsFp4;
-    if (dispatchQuantOutIsFp4 || sharedQuantOutIsFp4) {
+    if (!isAscend950 && (dispatchQuantOutIsFp4 || sharedQuantOutIsFp4)) {
         TORCH_CHECK(h % 2 == 0, "The last dim input shape must be divisible by 2 if "
                                 "an expert quant output type is torch_npu.float4_e2m1");
     }
@@ -357,9 +333,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::ScalarType outputScalarType = isPreQuantizedX ? at::kBFloat16 : xScalarType;
     at::Tensor y = at::empty({bs, h}, x.options().dtype(outputScalarType));
 
-    at::Tensor scalesTensor = hasScales ? scales.value() : at::Tensor();
     TensorWrapper xWrapper = {x, xAclDtype};
-    TensorWrapper scalesWrapper = {scalesTensor, hasScales ? ACL_FLOAT8_E8M0 : ACL_DT_UNDEFINED};
 
     if (isAscend950) {
         CheckWeightDtype(weight1Ref, weight1RefDtype, "l1_weights", socName);
@@ -405,7 +379,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
     ACLNN_CMD(aclnnMegaMoe, context, xWrapper, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
-              weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, scalesWrapper,
+              weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, scales,
               sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper, sharedWeightScales2Wrapper,
               sharedBias1Wrapper, sharedBias2Wrapper, maskBuffer, moeExpertNum, epWorldSize, cclBufferSize,
               maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, sharedExpertQuantResultType,
