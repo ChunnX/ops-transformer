@@ -518,7 +518,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftplusWithBias(LocalTe
             Reg::Abs(vregAbsX, vregInFp32, preg0);
             Reg::Muls(vreg1, vregAbsX, static_cast<float>(-1), preg0);
             Reg::Exp(vreg1, vreg1, preg0);
-            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vreg1, static_cast<float>(0.00390625), preg0);
+            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vreg1, LOG1P_TAYLOR_THRESHOLD, preg0);
             Reg::Muls(vregHalfT, vreg1, static_cast<float>(0.5), preg0);
             Reg::Sub(vregOneMinusHalfT, vregOne, vregHalfT, preg0);
             Reg::Mul(vregApprox, vreg1, vregOneMinusHalfT, preg0);
@@ -581,7 +581,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftplusWithoutBias(Loca
             Reg::Abs(vregAbsX, vregInFp32, preg0);
             Reg::Muls(vreg1, vregAbsX, static_cast<float>(-1), preg0);
             Reg::Exp(vreg1, vreg1, preg0);
-            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vreg1, static_cast<float>(0.00390625), preg0);
+            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vreg1, LOG1P_TAYLOR_THRESHOLD, preg0);
             Reg::Muls(vregHalfT, vreg1, static_cast<float>(0.5), preg0);
             Reg::Sub(vregOneMinusHalfT, vregOne, vregHalfT, preg0);
             Reg::Mul(vregApprox, vreg1, vregOneMinusHalfT, preg0);

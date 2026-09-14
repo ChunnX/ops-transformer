@@ -328,7 +328,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNormSoftplus(
             Reg::Abs(vregAbsX, vregIn, preg0);
             Reg::Muls(vregExpNegAbs, vregAbsX, static_cast<float>(-1), preg0);
             Reg::Exp(vregExpNegAbs, vregExpNegAbs, preg0);
-            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vregExpNegAbs, static_cast<float>(0.00390625), preg0);
+            Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vregExpNegAbs, LOG1P_TAYLOR_THRESHOLD, preg0);
             Reg::Muls(vregHalfT, vregExpNegAbs, static_cast<float>(0.5), preg0);
             Reg::Sub(vregOneMinusHalfT, vregOne, vregHalfT, preg0);
             Reg::Mul(vregApprox, vregExpNegAbs, vregOneMinusHalfT, preg0);
@@ -863,7 +863,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 Reg::Abs(vregAbsX, vregIn, preg0);
                 Reg::Muls(vregTmp1, vregAbsX, static_cast<float>(-1), preg0);
                 Reg::Exp(vregTmp1, vregTmp1, preg0);
-                Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vregTmp1, static_cast<float>(0.00390625), preg0);
+                Reg::CompareScalar<float, CMPMODE::LT>(pregCmp, vregTmp1, LOG1P_TAYLOR_THRESHOLD, preg0);
                 Reg::Muls(vregHalfT, vregTmp1, static_cast<float>(0.5), preg0);
                 Reg::Sub(vregOneMinusHalfT, vregOne, vregHalfT, preg0);
                 Reg::Mul(vregApprox, vregTmp1, vregOneMinusHalfT, preg0);
