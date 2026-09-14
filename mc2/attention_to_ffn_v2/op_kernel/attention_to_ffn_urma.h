@@ -157,7 +157,6 @@ private:
     GM_ADDR syncStatusWorkspaceGM_{nullptr};
     GM_ADDR stagingBaseAddr_{nullptr};
     uint64_t stagingStride_{0};
-    GM_ADDR tokenRankScratchGM_{nullptr};
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> sessionIdGMTensor_;
@@ -182,6 +181,7 @@ private:
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<int32_t> flagValueTensor_;
     LocalTensor<uint32_t> flagOffsetTensor_;
+    LocalTensor<int32_t> tokenRankScratchTensor_;
 
     TBuf<> smoothScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -197,6 +197,7 @@ private:
     TBuf<> hcommBatchBuf_;
     TBuf<> flagValueBuf_;
     TBuf<> flagOffsetBuf_;
+    TBuf<> tokenRankScratchBuf_;
     LocalTensor<uint8_t> hcommBatchWqeTensor_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
     TQue<QuePosition::VECIN, 1> xInQueue_;
@@ -326,6 +327,10 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     tpipe_->InitBuffer(flagOffsetBuf_, flagOffsetBufSize);
     flagOffsetTensor_ = flagOffsetBuf_.Get<uint32_t>();
 
+    uint32_t tokenRankScratchBufSize = Ceil(maxTotalSendNum * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(tokenRankScratchBuf_, tokenRankScratchBufSize);
+    tokenRankScratchTensor_ = tokenRankScratchBuf_.Get<int32_t>();
+
     if constexpr (QuantMode != 0) {
         QuantInit(scales);
         castTempBuf_ = receiveDataCastFloatBuf_;
@@ -377,9 +382,12 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     localFlagAddr_ = stagingBaseAddr_ + stagingRegionAlignSize;
     layerFlagAddr_ = localFlagAddr_ + static_cast<uint64_t>(expertIdsCnt_) * URMA_FLAG_SLOT_SIZE;
 
+    // tokenRankScratch lives in the per-call workspace: Phase 1 writes toRankId via SetValue
+    // (S-pipe), Phase 2 reads it via DataCopyPad to UB then GetValue. It is consumed entirely
+    // within this kernel invocation, so workspace is safe. No fire-and-forget WQE reads it.
     const uint64_t tokenRankScratchOffset = static_cast<uint64_t>(aivNum_) * aivWorkspaceOffset_;
-    tokenRankScratchGM_ = workspaceGM + tokenRankScratchOffset;
-    tokenRankScratchGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(tokenRankScratchGM_));
+    tokenRankScratchGMTensor_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(workspaceGM + tokenRankScratchOffset));
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -954,10 +962,15 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         PipeBarrier<PIPE_MTE3>();
 
         // Flush scalar GM writes (toRankId scratch table) from L1 cache to GM so that
-        // the MTE2 DataCopyPad in Phase 2 reads fresh data, not stale cache lines.
-        for (uint32_t flushIdx = 0U; flushIdx < totalSendNum_; flushIdx += 16U) {
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                tokenRankScratchGMTensor_[flushIdx]);
+        // the MTE2 DataCopyPad in Phase 2 reads fresh data. Each AIV only flushes the
+        // slots it wrote (tokenOffset = aivId_ + round * aivNum_).
+        SyncFunc<HardEvent::S_MTE3>();
+        for (uint64_t round = 0; round < roundNum; ++round) {
+            const uint32_t tokOff = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
+            if (tokOff < totalSendNum_) {
+                DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                    tokenRankScratchGMTensor_[tokOff]);
+            }
         }
 
         PipeBarrier<PIPE_ALL>();
@@ -966,7 +979,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         if (aivId_ == 0U) {
             DataCopyExtParams scratchCopyParams = {1U, static_cast<uint32_t>(totalSendNum_ * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPadExtParams<int32_t> scratchCopyPadParams{false, 0U, 0U, 0U};
-            DataCopyPad(expertIdsTensor_, tokenRankScratchGMTensor_, scratchCopyParams, scratchCopyPadParams);
+            DataCopyPad(tokenRankScratchTensor_, tokenRankScratchGMTensor_, scratchCopyParams, scratchCopyPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
 
             const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
@@ -982,7 +995,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                 uint32_t preparedWqeCount = 0U;
                 uint32_t sqWriteCount = 0U;
                 for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-                    int32_t tokenRankId = expertIdsTensor_.GetValue(tokenOffset);
+                    int32_t tokenRankId = tokenRankScratchTensor_.GetValue(tokenOffset);
                     if (tokenRankId != static_cast<int32_t>(dstRank)) {
                         continue;
                     }
@@ -1005,7 +1018,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                     }
                 }
                 for (uint32_t tokenOffset = 0U; tokenOffset < totalSendNum_; ++tokenOffset) {
-                    int32_t tokenRankId = expertIdsTensor_.GetValue(tokenOffset);
+                    int32_t tokenRankId = tokenRankScratchTensor_.GetValue(tokenOffset);
                     if (tokenRankId != static_cast<int32_t>(dstRank)) {
                         continue;
                     }

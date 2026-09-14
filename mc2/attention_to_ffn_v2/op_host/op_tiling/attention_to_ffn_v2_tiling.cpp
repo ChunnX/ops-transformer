@@ -208,9 +208,9 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
 }
 
 // Extend workspace for the per-token toRankId scratch table. Phase 1 (all AIVs) writes
-// toRankId[tokenOffset] to GM; Phase 2 (AIV0 only) block-DataCopies it to UB and scans UB
-// instead of calling ReadTokenMetaData, eliminating all GM scalar reads (FindExpertRank)
-// from the WQE scanning loop.
+// toRankId[tokenOffset] to GM; Phase 2 (AIV0 only) DataCopyPads it to UB and scans UB
+// instead of calling ReadTokenMetaData, eliminating FindExpertRank's 3 GM scalar reads
+// per token from the WQE scanning loop.
 static void ExtendWorkspaceForTokenRankScratch(gert::TilingContext *context,
                                                AttentionToFfnV2TilingData *tilingData)
 {
@@ -299,9 +299,9 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
 ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
 {
     // Deployment marker: grep plog for this tag to verify the rebuilt package is actually
-    // loaded (v8: token data staged in a compact contiguous area, physically separated from the
-    // session-slot receiving area to avoid HBM bank conflicts; token/layer flags after staging).
-    OP_LOGI(context->GetNodeName(), "[AT2FFN_V2_URMA_FIX] v8 (compactStaging + bankConflictAvoid) active");
+    // loaded (v9: tokenRankScratch in workspace + dedicated UB; Phase 2 reads toRankId from
+    // UB instead of FindExpertRank, eliminating 3 GM scalar reads per token from WQE loop).
+    OP_LOGI(context->GetNodeName(), "[AT2FFN_V2_URMA_FIX] v9 (wsScratch + ubRankRead) active");
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
