@@ -287,9 +287,8 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<SFAGT>::cube345Proc
     cube5Process(runInfo.mm345GmOffset, runInfo.dyGmOffset, runInfo.indicesGmOffset, runInfo.mm5OutGmOffset,
                  blkCntOffset, mmPingPongIdx, runInfo);
 
-    // cube4 writes the rope tail (the final D+ropeD loop) after cube5's
-    // merged dK+dV write, so the rope gradient is not left in an undefined
-    // portion of the matrix accumulator.
+    // cube5 writes separate unscaled dK/dV edges. cube4 completes dK's rope
+    // tail; the Vector stage scales the full dK edge before adding dV.
     cube4Process(runInfo.mm345GmOffset, runInfo.queryGmOffset, runInfo.queryRopeGmOffset, runInfo.indicesGmOffset,
                  runInfo.mm4OutGmOffset, blkCntOffset, mmPingPongIdx, runInfo);
     cube3Process(runInfo.mm345GmOffset, runInfo.selectedKGmOffset, runInfo.indicesGmOffset, runInfo.mm3OutGmOffset,
@@ -351,7 +350,7 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     dkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
     dvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dvAddr);
     selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
-    mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)((__gm__ uint8_t *)workspace + static_cast<uint64_t>(usedWorkspaceLen)));
+    mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
 }
 

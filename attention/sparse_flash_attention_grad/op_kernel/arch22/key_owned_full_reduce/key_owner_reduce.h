@@ -26,7 +26,7 @@ __aicore__ inline void BuildKeyOwnedMetadata(GM_ADDR indices, GM_ADDR workspace,
     GlobalTensor<uint32_t> headersGm;
     inputGm.SetGlobalBuffer((__gm__ int32_t *)indices);
     __gm__ uint8_t *extension = (__gm__ uint8_t *)workspace + KeyOwnedExtensionByteOffset(td);
-    headersGm.SetGlobalBuffer((__gm__ uint32_t *)(extension + KeyOwnedEdgeByteSize(td)));
+    headersGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedHeaderByteOffset(td)));
     orderedGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + KeyOwnedSortedIndicesByteOffset(td)));
     const event_t scalarVector = static_cast<event_t>(pipe.AllocEventID<HardEvent::S_V>());
     const event_t vectorScalar = static_cast<event_t>(pipe.AllocEventID<HardEvent::V_S>());
@@ -130,7 +130,7 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
     GlobalTensor<uint32_t> headersGm;
     __gm__ uint8_t *extension = (__gm__ uint8_t *)workspace + KeyOwnedExtensionByteOffset(td);
     edgeGm.SetGlobalBuffer((__gm__ float *)extension);
-    headersGm.SetGlobalBuffer((__gm__ uint32_t *)(extension + KeyOwnedEdgeByteSize(td)));
+    headersGm.SetGlobalBuffer((__gm__ uint32_t *)(workspace + KeyOwnedHeaderByteOffset(td)));
     orderedGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + KeyOwnedSortedIndicesByteOffset(td)));
     dkGm.SetGlobalBuffer((__gm__ float *)((__gm__ uint8_t *)workspace + KeyOwnedPostByteOffset(td) +
                                        static_cast<uint64_t>(td->opInfo.dqWorkspaceLen)));
@@ -198,7 +198,8 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
                     batchRows += rows;
                     row += rows;
                     if (batchRows == 16) {
-                        ReduceLoadedKeyOwnedBatch(accumulator, gradients, batchKeys, batchRows, edgeWidth, ready, release);
+                        ReduceLoadedKeyOwnedBatch(accumulator, gradients, batchKeys, batchRows, edgeWidth,
+                                                 ready, release);
                         batchRows = 0;
                     }
                 }

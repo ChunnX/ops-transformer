@@ -29,9 +29,10 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(
     mmParam.isLeftTranspose = true;
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDTotal * dimN2;
-    const uint64_t queryIndex = static_cast<uint64_t>(runInfo.indicesGmOffset) /
-                                (static_cast<uint64_t>(dimN2) * selectedBlockCount);
-    int64_t mm4ResOutBaseOffset = queryIndex * selectedBlockCount * selectedBlockSizeDtotal;
+    int64_t mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * scatterTokenCapacity * dimDTotal +
+                                  cBlockIdx * scatterTokenCapacity * dimDTotal;
+    int64_t mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * scatterTokenCapacity * dimDv +
+                                  cBlockIdx * scatterTokenCapacity * dimDv;
     const bool reloadDy = !runInfo.noReload && runInfo.isLastBasicBlock;
     uint32_t totalSel = selectedCntOffset * selectedBlockSize;
     if (runInfo.isLastBasicBlock) {
@@ -47,7 +48,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(
         mmParam.singleM = min(selectedBlockSize * blockOffset, totalSel - (mIdx - blkCntOffset) * selectedBlockSize);
         int32_t l1Offset = (mIdx - blkCntOffset) * selectedBlockSize * dimGAlign;
         LocalTensor<T1> current_l1_ds_tensor = l1_ds_tensor[l1Offset];
-        int64_t localMIdx = enableOptimizedScatter ? (mIdx - blkCntOffset) : mIdx;
+        int64_t localMIdx = mIdx - blkCntOffset;
         int64_t mm4ResOutOffset = mm4ResOutBaseOffset + localMIdx * selectedBlockSizeDtotal;
         CopyGmToL1(l1_p_tensor, pWorkspaceGm[currentPGmOffset + (mIdx - blkCntOffset) * selectedBlockSize], dimG,
                    mmParam.singleM, PER_LOOP_BLOCK_SIZE);
@@ -64,7 +65,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(
             }
             int64_t currentOutGmOffset = mm4ResOutOffset + dIdx * perLoopDSize;
             mmParam.isOutKFisrt = true;
-            mmParam.isFixOut = false;
+            mmParam.isFixOut = true;
             MmadInnerWithSync<T1, false, false>(l0cTensor, current_l1_ds_tensor, current_l1_query_tensor,
                 aL0TensorPingPong, bL0TensorPingPong, mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_,
                 ping_pong_flag_l0c_, dIdx == 0, mm4ResWorkspaceGm[currentOutGmOffset]);
@@ -82,11 +83,16 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(
             } else {
                 current_l1_dy_tensor = l1_dy_tensor[dIdx * perLoopDSize * dimGAlign];
             }
-            mmParam.isOutKFisrt = false;
+            // Keep dV separate: scaling a merged L0C result would also scale dV.
+            mmParam.isOutKFisrt = true;
             mmParam.isFixOut = true;
+            mmParam.dstStride = dimDv * dimN2;
+            const int64_t currentDvOutOffset =
+                mm5ResOutBaseOffset + localMIdx * selectedBlockSize * dimDv + dIdx * perLoopDSize;
             MmadInnerWithSync<T1, false, false>(l0cTensor, l1_p_tensor, current_l1_dy_tensor,
                 aL0TensorPingPong, bL0TensorPingPong, mmParam, ping_pong_flag_l0a_, ping_pong_flag_l0b_,
-                ping_pong_flag_l0c_, dIdx == 0, mm4ResWorkspaceGm[currentOutGmOffset]);
+                ping_pong_flag_l0c_, dIdx == 0, mm5ResWorkspaceGm[currentDvOutOffset]);
+            mmParam.dstStride = dimDTotal * dimN2;
             if (unlikely(reloadDy)) {
                 SetFlag<HardEvent::MTE1_MTE2>(MM_L1_COMMON_EVENTS[ping_pong_flag_l1_common_]);
                 UpdatePingPongFlag(ping_pong_flag_l1_common_);

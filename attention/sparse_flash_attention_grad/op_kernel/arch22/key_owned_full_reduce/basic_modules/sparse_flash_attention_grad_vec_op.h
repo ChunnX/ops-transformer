@@ -48,6 +48,7 @@ public:
                                 const TILING_CLASS *__restrict ordTilingData, TPipe *pipe);
     __aicore__ inline void Process(const RunInfo &runInfo);
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
+    __aicore__ inline void MergeKeyOwnedEdge(const RunInfo &runInfo);
     __aicore__ inline void ScatterAddUnDeter(const RunInfo &runInfo);
     __aicore__ inline void ScatterAddDeter(const RunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
@@ -110,6 +111,7 @@ protected:
     GlobalTensor<float> dvWorkspaceGm;
     GlobalTensor<float> mm4ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dk
     GlobalTensor<float> mm5ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dv
+    GlobalTensor<float> keyOwnedEdgeGm;
 
     TBuf<> vecQue;
     TBuf<> indexBuf;
@@ -369,6 +371,7 @@ __aicore__ inline void VecOp<SFAGT>::InitGMBuffer(GM_ADDR key, GM_ADDR value, GM
 
     mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
     mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+    keyOwnedEdgeGm.SetGlobalBuffer((__gm__ float *)(workspace + KeyOwnedExtensionByteOffset(tilingData)));
 }
 
 template <typename SFAGT>
@@ -691,11 +694,8 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmaxGrad(const int32_t loopIdx, const
     Mul(pTensor, pTensor, dPTensor, dataSize);
     PIPE_BARRIER(PIPE_V);
 
-    // The attention scale belongs to dS (and therefore dQ/dK), but not dV.
-    // Applying it before the cube matmuls keeps the merged KV edge as
-    // scale*dK + dV instead of scaling the already merged result.
-    Muls(pTensor, pTensor, scaleValue, dataSize);
-    PIPE_BARRIER(PIPE_V);
+    // Match the original kernel: cast unscaled dS for the Cube matmuls.
+    // Scale dQ in Post and each FP32 dK edge before merging its dV edge.
 
     CalAttenMsk(processM, actualSelS2Align, runInfo);
     auto castS2Loop = CeilDiv(actualSelS2Align, 64);
@@ -813,6 +813,76 @@ __aicore__ inline void VecOp<SFAGT>::Process(const RunInfo &runInfo)
 
 
 
+
+template <typename SFAGT>
+__aicore__ inline void VecOp<SFAGT>::MergeKeyOwnedEdge(const RunInfo &runInfo)
+{
+    const uint32_t totalRows = runInfo.isLastBasicBlock ?
+        (runInfo.actualSelCntOffset - 1) * selectedBlockSize + runInfo.lastBlockSize :
+        runInfo.actualSelCntOffset * selectedBlockSize;
+    const uint32_t firstRows = totalRows / 2;
+    const uint32_t rowBegin = subBlockIdx == 0 ? 0 : firstRows;
+    const uint32_t currentRows = subBlockIdx == 0 ? firstRows : totalRows - firstRows;
+    if (currentRows == 0) {
+        return;
+    }
+
+    const uint64_t queryIndex = static_cast<uint64_t>(runInfo.indicesGmOffset) /
+                                (static_cast<uint64_t>(dimN2) * selectedBlockCount);
+    const uint64_t dkSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * scatterTokenCapacity * dimDAlign +
+                                 cubeBlockIdx * scatterTokenCapacity * dimDAlign + rowBegin * dimDAlign;
+    const uint64_t dvSrcOffset = runInfo.scatterTaskId * MAX_CORE_NUM * scatterTokenCapacity * dimD2Align +
+                                 cubeBlockIdx * scatterTokenCapacity * dimD2Align + rowBegin * dimD2Align;
+    const uint64_t edgeOffset =
+        (queryIndex * selectedBlockCount + runInfo.blkCntOffset * selectedBlockSize + rowBegin) * dimDAlign;
+    GlobalTensor<float> dkSrcGm = mm4ResWorkspaceGm[dkSrcOffset];
+    GlobalTensor<float> dvSrcGm = mm5ResWorkspaceGm[dvSrcOffset];
+    GlobalTensor<float> edgeOutGm = keyOwnedEdgeGm[edgeOffset];
+
+    SetFlag<HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    SetFlag<HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
+    for (uint32_t row = 0; row < currentRows; row += NON_OPT_UB_ROW_SIZE) {
+        const uint32_t rows = Min<uint32_t>(NON_OPT_UB_ROW_SIZE, currentRows - row);
+        const uint32_t dkElements = rows * dimDAlign;
+        const uint32_t dvElements = rows * dimD2Align;
+        const event_t release = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
+        const event_t ready = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
+        WaitFlag<HardEvent::MTE3_MTE2>(release);
+        LocalTensor<float> dkInUb = scatterAddTensorK[pingPongIdx * ubRowSizeDAlign];
+        LocalTensor<float> dvInUb = scatterAddTensorV[pingPongIdx * ubRowSizeD2Align];
+        DataCopy(dkInUb, dkSrcGm[row * dimDAlign], dkElements);
+        SetFlag<HardEvent::MTE2_V>(ready);
+        WaitFlag<HardEvent::MTE2_V>(ready);
+
+        // Preserve the original kernel order: scale FP32 dK after its Cube
+        // result is materialized, then add the unscaled FP32 dV contribution.
+        Muls(dkInUb, dkInUb, static_cast<float>(tilingData->postTilingData.scaleValue), dkElements);
+        DataCopy(dvInUb, dvSrcGm[row * dimD2Align], dvElements);
+        SetFlag<HardEvent::MTE2_V>(ready);
+        WaitFlag<HardEvent::MTE2_V>(ready);
+        PipeBarrier<PIPE_V>();
+        BinaryRepeatParams addRows;
+        addRows.dstBlkStride = 1;
+        addRows.src0BlkStride = 1;
+        addRows.src1BlkStride = 1;
+        addRows.dstRepStride = dimDAlign / BLOCK_FP32;
+        addRows.src0RepStride = dimDAlign / BLOCK_FP32;
+        addRows.src1RepStride = dimD2Align / BLOCK_FP32;
+        for (uint32_t column = 0; column < dimD2Align; column += repeatMaxSize) {
+            const uint32_t columns = Min<uint32_t>(repeatMaxSize, dimD2Align - column);
+            Add(dkInUb[column], dkInUb[column], dvInUb[column], columns, rows, addRows);
+        }
+        SetFlag<HardEvent::V_MTE3>(mte3WaitV);
+        WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
+        DataCopy(edgeOutGm[row * dimDAlign], dkInUb, dkElements);
+        SetFlag<HardEvent::MTE3_MTE2>(release);
+        pingPongIdx = 1 - pingPongIdx;
+    }
+    WaitFlag<HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    WaitFlag<HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
+    SetFlag<HardEvent::MTE3_V>(vWaitMte3);
+    WaitFlag<HardEvent::MTE3_V>(vWaitMte3);
+}
 
 template <typename SFAGT>
 __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)

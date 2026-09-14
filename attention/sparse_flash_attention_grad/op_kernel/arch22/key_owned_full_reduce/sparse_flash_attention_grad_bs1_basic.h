@@ -273,6 +273,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
+                    scatterTaskId = task % PING_PONG_BUFFER;
                     UpdateGmOffset(task, true);
                     CubeCompute(cubeOp);
                     ++task;
@@ -312,6 +313,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
+                    scatterTaskId = task % PING_PONG_BUFFER;
                     UpdateGmOffset(task, true);
                     const int64_t taskMod = runInfo[mmPingPongIdx].task & 1;
                     vecOp.GatherKV(n2Index, t1Offset, runInfo[mmPingPongIdx]);
@@ -322,6 +324,11 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
                         vecOp.Process(runInfo[1 - mmPingPongIdx]);
                         runInfo[1 - mmPingPongIdx].valid = false;
                         CrossCoreSetFlag<2, PIPE_MTE3>(previousMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+                        tmpScatterRunInfo[previousMod] = runInfo[1 - mmPingPongIdx];
+                    }
+                    if (task > 1) {
+                        CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                        vecOp.MergeKeyOwnedEdge(tmpScatterRunInfo[taskMod]);
                     }
                     mmPingPongIdx = 1 - mmPingPongIdx;
                     selectdKPPPidx = (selectdKPPPidx + 1) % 4;
@@ -334,8 +341,18 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
             CrossCoreWaitFlag(lastMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
             vecOp.Process(runInfo[1 - mmPingPongIdx]);
             CrossCoreSetFlag<2, PIPE_MTE3>(lastMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+            tmpScatterRunInfo[lastMod] = runInfo[1 - mmPingPongIdx];
+            if (task > 1) {
+                const int64_t penultimateMod = (task - 2) & 1;
+                CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                vecOp.MergeKeyOwnedEdge(tmpScatterRunInfo[penultimateMod]);
+            }
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+            vecOp.MergeKeyOwnedEdge(tmpScatterRunInfo[lastMod]);
+        } else {
+            // Match the completion signal emitted by an idle Cube core.
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
         }
-        CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
         WAIT_FLAG(V, MTE2, processMte2WaitV);
         SyncAll();
         pipeVec.Destroy();
@@ -381,7 +398,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::CubeCompute(CubeOp<SFA
         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
         CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
-        if constexpr (!IS_DETERMINISTIC) {
+        if constexpr (IS_DETERMINISTIC) {
+            CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+        } else {
             if (enableOptimizedScatter) {
                 CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
             }

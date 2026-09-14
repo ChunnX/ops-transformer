@@ -35,9 +35,8 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube4Process(
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDTotal * dimN2;
 
-    const uint64_t queryIndex = static_cast<uint64_t>(runInfo.indicesGmOffset) /
-                                (static_cast<uint64_t>(dimN2) * selectedBlockCount);
-    int64_t mm4ResOutBaseOffset = queryIndex * selectedBlockCount * selectedBlockSizeDtotal;
+    int64_t mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * scatterTokenCapacity * dimDTotal +
+                                  cBlockIdx * scatterTokenCapacity * dimDTotal;
     const bool reloadQuery = !runInfo.noReload && runInfo.isLastBasicBlock;
 
     LocalTensor<T1> l1_ds_tensor = l1_ds_tensors[ping_pong_flag_l1_ds_];
@@ -55,7 +54,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube4Process(
         LocalTensor<T1> current_l1_ds_tensor, current_l1_query_tensor;
         current_l1_ds_tensor = l1_ds_tensor[l1Offset];
         int64_t currentQueryOffset;
-        int64_t localMIdx = enableOptimizedScatter ? (mIdx - blkCntOffset) : mIdx;
+        int64_t localMIdx = mIdx - blkCntOffset;
         int64_t mm4ResOutOffset = mm4ResOutBaseOffset + localMIdx * selectedBlockSizeDtotal;
 
         mmParam.singleN = tailLoopDSize;

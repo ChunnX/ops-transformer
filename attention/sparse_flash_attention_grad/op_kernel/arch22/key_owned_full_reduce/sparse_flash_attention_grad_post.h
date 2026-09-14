@@ -221,12 +221,14 @@ SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMA
         inQueue.template DeQue<float>();
 
         if constexpr (AscendC::IsSameType<OUT_TYPE, float>::value) {
-            DataCopy(vecOut, vecIn, dataSize);
+            Muls(vecOut, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
             outQueue.EnQue(vecOut);
             outQueue.template DeQue<OUT_TYPE>();
 
             DataCopy(dqGm[i], vecOut, (dataSize + 7) / 8 * 8); // dataSize(fp16) align 32B
         } else {
+            Muls(vecIn, vecIn, (float)tilingData->postTilingData.scaleValue, dataSize);
+            PIPE_BARRIER(PIPE_V);
             Cast(vecOut, vecIn, AscendC::RoundMode::CAST_ROUND, dataSize);
             outQueue.EnQue(vecOut);
             outQueue.template DeQue<OUT_TYPE>();
