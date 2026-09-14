@@ -159,7 +159,8 @@ def execute_test(params, mode, cdir=None):
     if "npu" in mode and "compare" not in mode:
         return None, None
 
-    compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
+    # NPU op 约束: layout_out == layout_q, 故输出排布始终为 INPUT_LAYOUT
+    compare_layout = golden.INPUT_LAYOUT
     act_seqused_q = golden._get_seqused_q()
     if compare_layout == "TND":
         cpu_cmp = golden.convert_q_bnsd_to_layout(
