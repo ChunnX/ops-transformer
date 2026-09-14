@@ -321,7 +321,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupListType：支持0、1、2。
   - groupListType=0：groupList须为非负单调非递减数列（累积和），最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：groupList须为非负数列（各组大小），数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
-  - groupListType=2：仅全量化且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=2：仅全量化且groupType=0场景下支持，groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]`，其中groupSize为分组轴上每组大小，必须为非负数。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - tuningConfigOptional：可选参数，数组中的第一个值表示各个专家处理的token数的预期值。当前仅S8S4场景支持，详见[S8S4场景约束](#ascend950-s8s4场景约束)。如不使用该参数不传即可。
   - `[1]`：是否开启weight亲和格式（先转置再NZ），适用场景：[S8S4](#ascend950-s8s4场景约束)。
 - actType（0~5）：
@@ -624,7 +624,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupListType：
   - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
-  - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=2：groupList须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]`，其中groupSize为分组轴上每组大小，必须为非负数。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - groupType：支持M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持0（M轴分组）。
 - tuningConfigOptional：支持，为Host侧INT64 aclIntArray。
   - `[0]`：预期各专家处理的token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
