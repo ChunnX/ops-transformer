@@ -256,10 +256,12 @@ def quant_flash_mla_with_kvcache_metadata(
     head_dim_v = MLA_HEAD_DIM_V if head_dim_v is None else head_dim_v
 
     max_schedule_size = _calculate_max_schedule_size()
-    output = torch.empty((2, max_schedule_size), dtype=torch.int32, device="npu")
+    # metadata需要zero初始化: AICPU仅写入sectionNum*coreNum范围内的索引,
+    # torch.empty在批跑场景复用前序大shape case内存时残留脏数据, kernel读到垃圾sectionNum引发越界
+    output = torch.zeros((2, max_schedule_size), dtype=torch.int32, device="npu")
 
     op_module = quant_flash_mla_with_kvcache_op_builder.load()
-    return op_module.quant_flash_mla_with_kvcache_metadata(
+    result = op_module.quant_flash_mla_with_kvcache_metadata(
         cache_seqlens,
         num_heads_q,
         num_heads_kv,
@@ -274,6 +276,10 @@ def quant_flash_mla_with_kvcache_metadata(
         layout_q,
         output,
     )
+    # AICPU算子异步下发到stream, 必须同步等待其写完metadata后才能返回给主算子使用,
+    # 否则主算子读到未写完的脏数据(时序竞争), 触发AIV死循环看门狗超时
+    torch.npu.synchronize()
+    return result
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + QMLA_METADATA_OP_NAME, None)
