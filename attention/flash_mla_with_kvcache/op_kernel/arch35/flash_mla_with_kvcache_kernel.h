@@ -280,6 +280,10 @@ public:
         }
 
         GetFASectionInfo(sectionIdx);
+        // Sparse first/last M tiles can be skipped before updating split flags.
+        // Never reuse a previous section's FD workspace-slot state.
+        headS2Split_ = false;
+        tailS2Split_ = false;
 
         FlashMlaWithKvcacheRunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint32_t bN2Cur = constInfo_.bN2Start;
