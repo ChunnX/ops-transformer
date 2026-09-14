@@ -186,12 +186,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
       <td>rotate</td>
       <td>可选输入</td>
       <td>旋转矩阵</td>
-      <!-- npu="A3,910b" id12 -->
-      <td>与x数据类型一致。</td>
-      <!-- end id12 -->
-      <!-- npu="950" id13 -->
-      <td><term>Ascend 950PR/Ascend 950DT</term>不支持该参数，须传nullptr。</td>
-      <!-- end id13 -->
+      <td><ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：与x数据类型一致。</li><li><term>Ascend 950PR/Ascend 950DT</term>：不支持该参数，须传空指针。</li></ul></td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>2</td>
@@ -280,7 +275,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>传入的rotate为有效tensor（该平台不支持rotate参数）。</td>
+      <td>传入的rotate为有效Tensor（该平台不支持rotate参数）。</td>
     </tr>
     <!-- end id16 -->
     <tr>
@@ -365,10 +360,10 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
 <!-- npu="950" id11 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-  输入张量x支持BNSD、BSND、SBND、TND排布，不支持rotate参数，rotate须传nullptr，传入有效rotate将报错。各参数的shape约束可以描述如下：
-  - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
+  输入张量x支持BNSD、BSND、SBND、TND排布，不支持rotate参数，rotate须传空指针，传入有效rotate将报错。各参数的shape约束可以描述如下：
+  - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播的shape必须等于x的shape。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播后的shape必须等于x的shape。
   - 当x为TND时，cos、sin支持T1D、TND。
 
 <!-- end id11 -->
