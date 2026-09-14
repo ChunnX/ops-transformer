@@ -109,3 +109,12 @@ constexpr T GetSizeWithDataType(T shape)
         return shape;
     }
 }
+
+// 量化数据类型位宽（bit）
+constexpr uint64_t MXFP4_BITS = 4UL;
+constexpr uint64_t MXFP8_BITS = 8UL;
+
+// win 区 buffer 复用深度决策常量
+// HCCL_BUFFSIZE 默认 200MB，框架层翻倍分配为 400MB
+constexpr uint64_t WIN_REUSE_BUDGET_CAP = 400UL * 1024UL * 1024UL;
+constexpr uint64_t WIN_REUSE_DEPTH_MIN = 2UL;
