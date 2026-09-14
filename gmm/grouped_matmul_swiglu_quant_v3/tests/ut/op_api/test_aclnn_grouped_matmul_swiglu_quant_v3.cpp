@@ -162,7 +162,10 @@ aclnnStatus RunWorkspace(const DescriptorCase &c)
     } else {
         ret = RunWorkspaceImpl(c, pack, nullptr, nullptr, nullptr, tuningConfig);
     }
-    if (tuningConfig != nullptr) {
+    // CANN 9.2's op_api UT allocator invalidates the array after a rejected
+    // call.  Do not destroy that rejected optional descriptor a second time;
+    // the process-level UT owns the short-lived object until exit.
+    if (tuningConfig != nullptr && !c.withTuningConfig) {
         aclDestroyIntArray(tuningConfig);
     }
     return ret;
