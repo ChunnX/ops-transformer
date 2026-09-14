@@ -16,6 +16,7 @@
 #include "flash_attn_tiling_arch35.h"
 #include "../flash_attn_tiling.h"
 #include "../fa_adjust_sinner_souter.h"
+#include "../fa_max_used_cores.h"
 #include <map>
 #include <vector>
 #include <numeric>
@@ -131,7 +132,10 @@ void FlashAttnTilingImpl::SplitPolicy()
                                           static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
-    CalcNumBlocks(platformInfo_.aicNum);
+    uint32_t maxUsedAicCores = fa_tiling_util::GetMaxUsedAicCores(platformInfo_.aicNum, faInfo_->bSize, faInfo_->n2Size,
+                                                                  faInfo_->gSize, faInfo_->maxSeqQ, faInfo_->maxSeqKv,
+                                                                  sOuterFactor_ * platformInfo_.cvRatio, sInnerFactor_);
+    CalcNumBlocks(maxUsedAicCores);
     flashDecodeFlag_ = true;
 }
 
