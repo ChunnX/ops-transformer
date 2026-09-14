@@ -68,7 +68,7 @@ def run(
     is_causal=False,
     qk_quant_gran="per_token",
     sm_scale=None,
-    pv_accum_dtype="fp32",
+    pv_accum_dtype="fp32+fp32",
     smooth_k=True,
     smooth_v=False,
     return_lse=False,
@@ -92,9 +92,9 @@ def run(
             UserWarning,
             stacklevel=2,
         )
-    if pv_accum_dtype != "fp32":
+    if pv_accum_dtype not in ("fp32+fp32", "fp32"):
         warnings.warn(
-            f"pv_accum_dtype={pv_accum_dtype!r} falls back to fp32 on Ascend 950.",
+            f"pv_accum_dtype={pv_accum_dtype!r} falls back to fp32+fp32 on Ascend 950.",
             UserWarning,
             stacklevel=2,
         )

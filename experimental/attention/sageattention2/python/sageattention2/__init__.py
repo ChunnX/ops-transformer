@@ -63,7 +63,7 @@ def sageattn_qk_int8_pv_fp8_asc(
     is_causal=False,
     qk_quant_gran="per_token",
     sm_scale=None,
-    pv_accum_dtype="fp32",
+    pv_accum_dtype="fp32+fp32",
     smooth_k=True,
     smooth_v=False,
     return_lse=False,

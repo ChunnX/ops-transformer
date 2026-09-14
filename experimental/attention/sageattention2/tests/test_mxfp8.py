@@ -106,8 +106,29 @@ def test_gpu_options_warn_and_fall_back(entry, gran, accum):
         "qk_quant_gran=" in m and "falls back to per_token" in m for m in messages
     )
     assert any(
-        "pv_accum_dtype=" in m and "falls back to fp32" in m for m in messages
-    ) == (accum != "fp32")
+        "pv_accum_dtype=" in m and "falls back to fp32+fp32" in m for m in messages
+    ) == (accum not in ("fp32+fp32", "fp32"))
     expected, expected_lse = sageattn(q, k, v, return_lse=True)
     torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     torch.testing.assert_close(lse, expected_lse, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize("entry", ["sageattn", "sageattn_qk_int8_pv_fp8_asc"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_fp32_two_level_default_and_legacy_alias(entry, dtype):
+    import warnings
+    import sageattention2
+
+    torch.manual_seed(928)
+    q = torch.randn(1, 4, 33, 64, device="npu", dtype=dtype)
+    k = torch.randn(1, 2, 65, 64, device="npu", dtype=dtype)
+    v = torch.randn_like(k)
+    call = getattr(sageattention2, entry)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", UserWarning)
+        expected, expected_lse = call(q, k, v, return_lse=True)
+        for accum in ("fp32+fp32", "fp32"):
+            actual, lse = call(q, k, v, pv_accum_dtype=accum, return_lse=True)
+            torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+            torch.testing.assert_close(lse, expected_lse, atol=0, rtol=0)
+    assert not [w for w in caught if issubclass(w.category, UserWarning)]

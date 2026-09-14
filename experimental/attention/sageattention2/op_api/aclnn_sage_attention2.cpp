@@ -74,11 +74,12 @@ extern "C" aclnnStatus aclnnSageAttention2GetWorkspaceSize(const aclTensor *q, c
     if (!nhd && std::strcmp(tensorLayout, "HND") != 0) {
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // Compatibility argument only: this NPU implementation always accumulates in FP32.
+    // PV partials and the running output both use FP32; fp32 is a legacy alias.
     if (!perToken)
         OP_LOGW("qk_quant_gran=%s falls back to per_token on Ascend 950.", qkQuantGran);
-    if (!pvAccumDtype || std::strcmp(pvAccumDtype, "fp32") != 0)
-        OP_LOGW("pv_accum_dtype=%s falls back to fp32 on Ascend 950.", pvAccumDtype ? pvAccumDtype : "null");
+    if (!pvAccumDtype || (std::strcmp(pvAccumDtype, "fp32+fp32") != 0 &&
+                          std::strcmp(pvAccumDtype, "fp32") != 0))
+        OP_LOGW("pv_accum_dtype=%s falls back to fp32+fp32 on Ascend 950.", pvAccumDtype ? pvAccumDtype : "null");
     if (smoothV)
         OP_LOGW("smooth_v is ignored: SageAttention2 uses MXFP8 PV without value centering.");
     if (!TensorValid(q) || !TensorValid(k) || !TensorValid(v) || !TensorValid(out) ||

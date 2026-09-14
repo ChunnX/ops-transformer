@@ -49,14 +49,14 @@ wide 路径将 FP8 P 原位写入已经消费的 FP16 score 条带，再通过�
 | `is_causal` | bool，`False` | 开启时要求 Sq=Sk |
 | `qk_quant_gran` | str，`per_token` | 实际执行 per-token；per_thread/per_warp 告警后回退 |
 | `sm_scale` | float/None，`None` | 默认 `1/sqrt(D)`，须可表示为有限 FP32 |
-| `pv_accum_dtype` | 兼容参数，`fp32` | 实际执行 FP32；其他值告警后回退 |
+| `pv_accum_dtype` | str，`fp32+fp32` | PV 局部累加与跨块 O 累加均为 FP32；`fp32` 为兼容别名，其他值告警后回退 |
 | `smooth_k` | bool，`True` | 量化前减去 K 沿序列维的均值 |
 | `smooth_v` | 兼容参数，`False` | 不支持 V 平滑；传 `True` 时 warning 并忽略 |
 | `return_lse` | bool，`False` | 返回 `(out, lse)`；LSE 为 FP32、shape `[B,Hq,Sq]` |
 
 本实现按 Ascend 950 的计算和执行模型提供接口：FP8 PV 使用 Cube 原生 FP32 累加，局部结果和持续累加的 O 均保留 FP32。先执行 FP32 MMA 再将局部结果转成 FP16，不能获得 GPU 原生 FP16 输出/累加 MMA 的吞吐收益，还会增加转换和舍入；最终 O 仍按输入 dtype 输出。
 
-Q/K 量化以 token 为独立 scale 单位。CUDA 的 per-thread/per-warp 分组依赖 lane、warp 和 MMA fragment 的映射，不能直接搬到 AscendC 的 AIV、向量寄存器和 Cube tile 上。接口接受 per_thread/per_warp，打印 warning 后回退为 per_token；实际计算不复现 CUDA 的 lane/warp 分组。PV 的非 fp32 累加参数同样 warning 后回退为 fp32，smooth_v=True warning 后忽略。PyTorch 使用 UserWarning，独立 ACLNN 使用 OP_LOGW；原生 per_token/fp32 参数不触发回退告警。
+Q/K 量化以 token 为独立 scale 单位。CUDA 的 per-thread/per-warp 分组依赖 lane、warp 和 MMA fragment 的映射，不能直接搬到 AscendC 的 AIV、向量寄存器和 Cube tile 上。接口接受 per_thread/per_warp，打印 warning 后回退为 per_token；实际计算不复现 CUDA 的 lane/warp 分组。PV 的 `fp32+fp32` 和兼容别名 `fp32` 均执行两级 FP32 累加，其他累加参数 warning 后回退为 `fp32+fp32`，smooth_v=True warning 后忽略。PyTorch 使用 UserWarning，独立 ACLNN 使用 OP_LOGW；原生 `per_token`、`fp32+fp32` 及兼容别名 `fp32` 不触发回退告警。
 
 **不再支持 smooth_v 计算。** V 改用 MXFP8 细粒度量化，每个 channel 沿序列每 32 个 token 独立生成 scale，能够适应局部数值范围，降低整条序列共用 scale 时离群值对其他元素的影响。因此当前路径无需再做 V 均值统计、减均值及输出补偿，省去相应计算与访存。`smooth_v` 仅作为兼容参数保留，传入 `True` 时告警并忽略。这是当前量化方案的取舍，不表示任意输入分布下平滑都不可能改善误差。
 
@@ -76,6 +76,8 @@ out, lse = sageattn(q, k, v, return_lse=True)
 ```
 
 ACLNN 声明见 [aclnn_sage_attention2.h](op_api/aclnn_sage_attention2.h)。先调用 `aclnnSageAttention2GetWorkspaceSize` 获得 workspace 大小和 executor，再调用 `aclnnSageAttention2`。可运行的调用示例见 [benchmark_aclnn.cpp](benchmarks/benchmark_aclnn.cpp)。
+
+CUDA 默认接口、两级累加精度与量化粒度的详细对照见 [与 CUDA 默认接口的差异](docs/CUDA接口差异说明.md)。
 
 ## 编译与安装
 

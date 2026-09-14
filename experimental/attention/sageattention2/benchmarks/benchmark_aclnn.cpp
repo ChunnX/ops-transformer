@@ -212,7 +212,7 @@ try {
     auto prepare = [&](bool sage, uint64_t &bytes, aclOpExecutor *&executor) {
         if (sage) {
             check(aclnnSageAttention2GetWorkspaceSize(q.handle, k.handle, v.handle, "HND", causal, "per_token",
-                                                      1 / std::sqrt(static_cast<double>(dim)), "fp32", true, smoothV,
+                                                      1 / std::sqrt(static_cast<double>(dim)), "fp32+fp32", true, smoothV,
                                                       false, out.handle, nullptr, &bytes, &executor),
                   "Sage GetWorkspaceSize");
         } else {
@@ -287,7 +287,7 @@ try {
            << batch << "," << heads << "," << seq << "," << dim
            << "],\n  \"profile_only\":" << "false"
            << ",\n  \"operator_stages\":[\"Fused\"],\n  \"order\":\"fia-first\",\n  "
-              "\"pv_quantization\":\"mxfp8_e4m3_e8m0\",\n  \"pv_accumulation\":\"fp32\""
+              "\"pv_quantization\":\"mxfp8_e4m3_e8m0\",\n  \"pv_accumulation\":\"fp32+fp32\""
            << ",\n  \"smooth_v\":false,\n  \"smooth_v_requested\":" << (smoothV ? "true" : "false")
            << ",\n  \"fia_api_library\":\"" << fiaInfo.dli_fname << "\",\n  \"kv_heads\":" << hk
            << ",\n  \"bf16\":" << (bf16 ? "true" : "false") << ",\n  \"causal\":" << (causal ? "true" : "false")

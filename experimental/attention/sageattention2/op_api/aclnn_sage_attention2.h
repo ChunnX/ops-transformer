@@ -15,7 +15,8 @@ extern "C" {
 #endif
 // smoothV is retained for ABI compatibility; true logs a warning and is ignored.
 // per_thread/per_warp log a warning and use per_token Q/K quantization.
-// Non-fp32 pvAccumDtype values log a warning and use FP32 accumulation.
+// pvAccumDtype: fp32+fp32 uses FP32 PV partials and FP32 output accumulation.
+// fp32 is a compatible alias; other values warn and fall back to fp32+fp32.
 // PV always uses MXFP8.
 ACL_FUNC_VISIBILITY aclnnStatus aclnnSageAttention2GetWorkspaceSize(
     const aclTensor *q, const aclTensor *k, const aclTensor *v, const char *tensorLayout, bool isCausal,

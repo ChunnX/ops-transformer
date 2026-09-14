@@ -131,7 +131,7 @@ def main():
         "timing": "torch.npu.Event batch total / repeats; synchronize after warmup and timed batch",
         "order": "fia-first",
         "pv_quantization": "mxfp8_e4m3_e8m0",
-        "pv_accumulation": "fp32",
+        "pv_accumulation": "fp32+fp32",
         "smooth_v": False,
         "smooth_v_requested": args.smooth_v,
         "shape": list(q.shape),

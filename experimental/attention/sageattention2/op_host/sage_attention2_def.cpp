@@ -44,7 +44,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .DynamicRankSupportFlag(true)
             .NeedCheckSupportFlag(false)
-            .ExtendCfgInfo("opFile.value", "sage_attention2")
+            .ExtendCfgInfo("opFile.value", "sageattention2")
             .ExtendCfgInfo("opInterface.value", "sage_attention2");
         this->AICore().AddConfig("ascend950", config);
     }
