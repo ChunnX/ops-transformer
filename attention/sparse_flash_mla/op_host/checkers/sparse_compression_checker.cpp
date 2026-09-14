@@ -107,6 +107,11 @@ ge::graphStatus SparseCompressionChecker::CheckParaExistence(const CheckContext 
                     Op(context), "cmp_residual_kv",
                     "Cmp_residual_kv is required when cmp_mask_mode is 3 and cmp_ratio is not 1"),
                 return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.cmpResidualKv.present && (context.cmpMaskMode == 0 || context.cmpRatio == 1),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    Op(context), "cmp_residual_kv",
+                    "Cmp_residual_kv is not supported when cmp_mask_mode is 0 or cmp_ratio is 1"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.oriSparseIndices.present && context.oriMaskMode == 0 && !context.oriTopkLength.present,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                     Op(context), "ori_topk_length",
