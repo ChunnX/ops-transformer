@@ -748,11 +748,10 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::C
     sqWriteCount = 0U;
 }
 
-// Stage 2 for one owned dstRank: scan the UB-cached toRankId table (built from the slot scratch
-// words written in stage 1) instead of re-running ReadTokenMetaData per token, then issue data WQEs,
-// flag WQEs and the layer-flag WQE on this rank's channel. Each dstRank has exactly one owner AIV
-// (dstRank % aivNum_), so channels and 16KB batch buffers stay single-owner, matching the URMA
-// discipline used by moe_ep_combine / mega_moe.
+// Stage 2 for one dstRank, run by AIV0 only (single shared URMA channel: parallel commits from
+// several cores would race on the SQ). It scans the UB-cached toRankId table (built from the slot
+// scratch words written in stage 1) instead of re-running ReadTokenMetaData per token, then issues
+// data WQEs, flag WQEs and the layer-flag WQE on the channel in that order.
 template <TemplateAttentionToFfnUrmaTypeClass>
 __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::IssueRemoteWqesForRank(
     uint32_t dstRank)
@@ -1023,14 +1022,16 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
 
-        // Stage 2: dstRank split across AIVs (dstRank % aivNum_). Each owner scans the UB-cached
-        // toRankId table and drives its own channel, replacing the old single-core
-        // worldSize x totalSendNum x 2 scalar sweep over GM.
-        for (uint32_t dstRank = aivId_; dstRank < worldSize_; dstRank += aivNum_) {
-            if (dstRank == rankId_) {
-                continue;
+        // Stage 2 stays on AIV0: the whole op shares a single URMA channel, so concurrent
+        // BatchCommit from several cores would race on the shared SQ. AIV0 still replaces the old
+        // worldSize x totalSendNum x 2 GM scalar sweep with the UB-cached toRankId table scan.
+        if (aivId_ == 0U) {
+            for (uint32_t dstRank = 0U; dstRank < worldSize_; ++dstRank) {
+                if (dstRank == rankId_) {
+                    continue;
+                }
+                IssueRemoteWqesForRank(dstRank);
             }
-            IssueRemoteWqesForRank(dstRank);
         }
 
         SyncAll<true>();
