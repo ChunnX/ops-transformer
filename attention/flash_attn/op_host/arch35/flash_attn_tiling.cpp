@@ -16,7 +16,6 @@
 #include "flash_attn_tiling_arch35.h"
 #include "../flash_attn_tiling.h"
 #include "../fa_adjust_sinner_souter.h"
-#include "../fa_max_used_cores.h"
 #include <map>
 #include <vector>
 #include <numeric>
