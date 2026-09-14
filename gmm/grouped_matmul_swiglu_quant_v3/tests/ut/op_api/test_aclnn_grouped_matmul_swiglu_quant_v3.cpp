@@ -111,7 +111,7 @@ DescriptorPack MakeDescriptors(const DescriptorCase &c)
                             .ValueRange(-2, 2);
     TensorDesc weightScale = TensorDesc(weightScaleShape, c.weightScaleDtype, ACL_FORMAT_ND).ValueRange(-2, 2);
     TensorDesc xScale = TensorDesc(xScaleShape, c.xScaleDtype, ACL_FORMAT_ND).ValueRange(-2, 2);
-    TensorDesc groupList = TensorDesc({1}, c.groupListDtype, ACL_FORMAT_ND).Value({c.m});
+    TensorDesc groupList = TensorDesc({1}, c.groupListDtype, ACL_FORMAT_ND).Value(vector<int64_t>{c.m});
     TensorDesc output = TensorDesc(outputShape, c.outputDtype, ACL_FORMAT_ND).ValueRange(-2, 2);
     TensorDesc outputScale = TensorDesc(outputScaleShape, c.outputScaleDtype, ACL_FORMAT_ND).ValueRange(-2, 2);
     TensorDesc weightAssist = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2, 2);
