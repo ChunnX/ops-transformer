@@ -1,0 +1,47 @@
+[
+  {
+    "case": "empty_wait_then_one_ready",
+    "status": "PASS",
+    "actual_token_num": 9
+  },
+  {
+    "case": "skip_empty_mb_and_preserve_others",
+    "status": "PASS",
+    "actual_token_num": 9
+  },
+  {
+    "case": "cursor_wrap_and_partial_ready",
+    "status": "PASS",
+    "actual_token_num": 18
+  },
+  {
+    "case": "reuse_consumed_slot",
+    "status": "PASS",
+    "actual_token_num": 9
+  },
+  {
+    "case": "ready_with_no_valid_tokens",
+    "status": "PASS",
+    "actual_token_num": 0
+  },
+  {
+    "case": "sync_waits_for_all",
+    "status": "PASS",
+    "actual_token_num": 36
+  },
+  {
+    "case": "incremental_reuse_preserves_other_ready",
+    "status": "PASS",
+    "actual_token_num": 2
+  },
+  {
+    "case": "consume_preserved_other_ready",
+    "status": "PASS",
+    "actual_token_num": 1
+  },
+  {
+    "case": "reuse_without_id_writes",
+    "status": "PASS",
+    "actual_token_num": 0
+  }
+]

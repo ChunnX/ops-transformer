@@ -16,6 +16,7 @@
 #include "util/shape_util.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
+#include <limits>
 
 using namespace ge;
 namespace ops {
@@ -50,6 +51,10 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     const int64_t *expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertNumPtr);
     auto expertNum = *expertNumPtr;
+    if (expertNum <= 0) {
+        OP_LOGE(context->GetNodeName(), "expert_num must be positive");
+        return ge::GRAPH_FAILED;
+    }
     auto maxOutShapePtr = attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(MAX_OUT_SHAPE_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context, maxOutShapePtr);
     if (maxOutShapePtr->GetSize() != NUM_FOUR) {
@@ -59,8 +64,23 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     }
 
     const int64_t *maxOutShapeArray = reinterpret_cast<const int64_t *>(maxOutShapePtr->GetData());
-    int64_t Y = maxOutShapeArray[INDEX_ZERO] * maxOutShapeArray[INDEX_ONE] * maxOutShapeArray[INDEX_TWO];
-    int64_t H = maxOutShapeArray[INDEX_THREE];
+    const int64_t A = maxOutShapeArray[INDEX_ZERO];
+    const int64_t BS = maxOutShapeArray[INDEX_ONE];
+    const int64_t K = maxOutShapeArray[INDEX_TWO];
+    const int64_t H = maxOutShapeArray[INDEX_THREE];
+    if (A <= 0 || BS <= 0 || K <= 0 || H <= 0) {
+        OP_LOGE(context->GetNodeName(),
+                "attr max_out_shape values must be greater than 0, but are [%ld, %ld, %ld, %ld].", A, BS, K, H);
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(A > std::numeric_limits<int64_t>::max() / BS,
+                OP_LOGE(context->GetNodeName(), "max_out_shape A*BS overflows int64: %ld*%ld", A, BS),
+                return ge::GRAPH_FAILED);
+    const int64_t aBs = A * BS;
+    OP_CHECK_IF(aBs > std::numeric_limits<int64_t>::max() / K,
+                OP_LOGE(context->GetNodeName(), "max_out_shape A*BS*K overflows int64: %ld*%ld*%ld", A, BS, K),
+                return ge::GRAPH_FAILED);
+    const int64_t Y = aBs * K;
 
     gert::Shape *yShape = context->GetOutputShape(Y_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
@@ -92,7 +112,17 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     *microBatchIds = {Y};
     *tokenIds = {Y};
     *expertOffsets = {Y};
-    *dynamicScale = {Y};
+    const int64_t *tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
+    const int64_t tokenDtype = tokenDtypePtr == nullptr ? TOKEN_KIND_ZERO : *tokenDtypePtr;
+    if (tokenDtype == 5 && H % 2 != 0) {
+        OP_LOGE(context->GetNodeName(), "float4_e2m1 requires even H, got %ld", H);
+        return ge::GRAPH_FAILED;
+    }
+    if (tokenDtype >= 3 && tokenDtype <= 5) {
+        *dynamicScale = {Y, (H + 31) / 32};
+    } else {
+        *dynamicScale = {Y};
+    }
     *actualTokenNum = {1};
 
     return GRAPH_SUCCESS;
@@ -112,6 +142,12 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
         context->SetOutputDataType(Y_OUT, ge::DT_FLOAT16);
     } else if (tokenDtype == TOKEN_KIND_ONE) {
         context->SetOutputDataType(Y_OUT, ge::DT_BF16);
+    } else if (tokenDtype == 3) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT8_E5M2);
+    } else if (tokenDtype == 4) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT8_E4M3FN);
+    } else if (tokenDtype == 5) {
+        context->SetOutputDataType(Y_OUT, ge::DT_FLOAT4_E2M1);
     } else {
         context->SetOutputDataType(Y_OUT, ge::DT_INT8);
     }
@@ -121,11 +157,11 @@ static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *c
     context->SetOutputDataType(MICRO_BATCH_IDS_OUT, ge::DT_INT32);
     context->SetOutputDataType(TOKEN_IDS_OUT, ge::DT_INT32);
     context->SetOutputDataType(EXPERT_OFFSETS_OUT, ge::DT_INT32);
-    context->SetOutputDataType(DYNAMIC_SCALE_OUT, ge::DT_FLOAT);
+    context->SetOutputDataType(DYNAMIC_SCALE_OUT,
+                               tokenDtype >= 3 && tokenDtype <= 5 ? ge::DT_FLOAT8_E8M0 : ge::DT_FLOAT);
     context->SetOutputDataType(ACTUAL_TOKEN_NUM_OUT, ge::DT_INT64);
     return ge::GRAPH_SUCCESS;
 }
-
 
 IMPL_OP_INFERSHAPE(FfnWorkerBatching)
     .InferShape(InferShape4FfnWorkerBatching)
