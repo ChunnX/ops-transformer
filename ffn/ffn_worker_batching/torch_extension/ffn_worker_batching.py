@@ -103,6 +103,13 @@ def _validate(
         0 <= layer_num <= expert_num,
         lambda: f"layer_num must be in [0, expert_num], got {layer_num}",
     )
+    if need_schedule == 1 and sync_flag == 1:
+        torch._check(layer_num > 0, lambda: "async RECV requires layer_num > 0")
+        torch._check(
+            expert_num % layer_num == 0,
+            lambda: "async RECV requires expert_num divisible by layer_num",
+        )
+
     torch._check(
         token_dtype != _FP4 or h % _FP4_ELEMENTS_PER_BYTE == 0,
         lambda: f"FP4 requires even H, got {h}",
@@ -249,8 +256,9 @@ def ffn_worker_batching(
         token_dtype: 0 FP16、1 BF16、2 INT8、3 FP8 E5M2、4 FP8 E4M3FN、5 FP4 E2M1。
             FP4 要求 H 为偶数，返回 torch.float4_e2m1fn_x2 打包张量。
         need_schedule: 0 直接 batching，1 接收并 batching，默认 0。
-        layer_num: 层数，0..expert_num，默认 0。
+        layer_num: 层数，0..expert_num，默认 0；异步RECV要求大于0且整除expert_num。
         sync_flag: 默认 0 等待全部 session；1 消费首个非空快照，仅 need_schedule=1 生效。
+            异步按layer_id * (expert_num // layer_num) + 层内expert_id重排及统计。
         mx_output_uint8: 默认 False；MX 图模式设为 True，以 uint8 返回 FP4 y 和 E8M0
             scale 的原始字节，不做数值转换；FP8 y 保留原生 dtype。
 
