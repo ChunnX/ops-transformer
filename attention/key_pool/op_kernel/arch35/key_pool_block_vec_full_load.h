@@ -56,7 +56,6 @@ public:
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
     __aicore__ inline void ComputeVec1();
-    __aicore__ inline void ComputeIncrementalPool();
 
 protected:
     GlobalTensor<T> scoreMm1ResGm_;
@@ -1270,10 +1269,5 @@ __aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ComputeVec1()
     }
 }
 
-template <typename COMP>
-__aicore__ inline void KeyPoolBlockVectorFullLoad<COMP>::ComputeIncrementalPool()
-{
-    return;
-}
 } // namespace KeyPool
 #endif // KEY_POOL_BLOCK_VECTOR_PREF_H

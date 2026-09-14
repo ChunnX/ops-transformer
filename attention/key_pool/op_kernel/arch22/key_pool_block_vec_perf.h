@@ -54,7 +54,6 @@ public:
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
-    __aicore__ inline void ComputeIncrementalPool();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm,
                                                 GlobalTensor<T> normalizedKvGm);
@@ -1293,10 +1292,5 @@ __aicore__ inline void KeyPoolBlockVectorPerf<COMP>::ComputeVec1(const Vec1RunIn
     compressedCnt_ = preCompressedCnt + splitInfo.totalCompressedCnt;
 }
 
-template <typename COMP>
-__aicore__ inline void KeyPoolBlockVectorPerf<COMP>::ComputeIncrementalPool()
-{
-    return;
-}
 } // namespace KeyPool
 #endif // KEY_POOL_BLOCK_VECTOR_PREF_H
