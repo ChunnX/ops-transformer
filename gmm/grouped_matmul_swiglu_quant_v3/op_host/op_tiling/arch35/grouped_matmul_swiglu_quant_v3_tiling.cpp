@@ -415,7 +415,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) +
                       (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                       (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
-    OP_LOGI(context_->GetNodeName(),
+    OP_LOGE(context_->GetNodeName(),
             "V3 debug tiling: M=%lu N=%lu K=%lu baseM=%lu baseN=%lu baseK=%lu stepKa=%lu stepKb=%lu "
             "scaleA=%lu scaleB=%lu kAL1=%u kBL1=%u scaleK=%u mxTypePara=%u tensorApi=%d transB=%d mode=%ld",
             inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, basicTiling_.baseM, basicTiling_.baseN,
