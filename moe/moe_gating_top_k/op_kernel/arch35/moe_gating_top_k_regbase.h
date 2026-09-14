@@ -83,7 +83,6 @@ private:
                                                 int32_t sortedBaseRow, int32_t quotient, int32_t remainder,
                                                 int32_t nextBaseRow);
     __aicore__ inline void SelectTopKExpertScore();
-    __aicore__ inline void TopKCompute();
     __aicore__ inline void HashCompute(int64_t row);
     __aicore__ inline void CopyOut(int64_t progress);
 
@@ -809,45 +808,6 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::HashCompute(int64_t row)
 }
 
 template <typename T, typename U1, typename U2>
-__aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKCompute()
-{
-    LocalTensor<float> xBiasTensor = xBiasBuf_.Get<float>();
-    LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>(); // 组内排序的结果, 后续归并需要
-    LocalTensor<float> tmpLocal = finalSortBuffer_.Get<float>();
-
-    Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
-                      perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
-
-    LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
-    LocalTensor<T> yTensor = yOutQueue_.AllocTensor<T>();
-    LocalTensor<int32_t> expertIdxTensor = expertIdxOutQueue_.AllocTensor<int32_t>();
-
-    LocalTensor<int32_t> sortedInGroupTensorCast = sortedInGroupTensor.template ReinterpretCast<int32_t>();
-
-    int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
-    if (k_ <= VL_FLOAT_SIZE) {
-        if (expertIdxPad != 0) {
-            smallKNotAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                              routedScalingFactor_, expertIdxPad, perGroupExpertCountAlign_);
-        } else {
-            smallKAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                           routedScalingFactor_);
-        }
-    } else {
-        if (expertIdxPad != 0) {
-            largeKNotAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                              routedScalingFactor_, expertIdxPad, perGroupExpertCountAlign_);
-        } else {
-            largeKAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                           routedScalingFactor_);
-        }
-    }
-
-    yOutQueue_.EnQue(yTensor);
-    expertIdxOutQueue_.EnQue<int32_t>(expertIdxTensor);
-}
-
-template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SelectTopKInGroup(LocalTensor<float> sortedInGroupTensor,
                                                                           LocalTensor<float> top2InGroupTensor,
                                                                           uint16_t groupCount0,
@@ -1504,26 +1464,20 @@ template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::Process()
 {
     CopyInBias();
-    if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
+    // 非hash的简化路径(kGroup==groupCount或groupCount==expertCount)由tiling路由到
+    // MoeGatingTopKWithoutGroupRegbase(tiling key 10005), 本kernel的逐行流水分支仅服务hash模式
+    if (hashFlag_) {
         CopyInX(0);
         for (int64_t row = 1; row < curCoreRowCount_; row++) {
             ComputeX();
             CopyOutXNorm(row - 1);
             CopyInX(row);
-            if (hashFlag_) {
-                HashCompute(row - 1 + tilingData_->perCoreRowCount * blockIdx_);
-            } else {
-                TopKCompute();
-            }
+            HashCompute(row - 1 + tilingData_->perCoreRowCount * blockIdx_);
             CopyOut(row - 1);
         }
         ComputeX();
         CopyOutXNorm(curCoreRowCount_ - 1);
-        if (hashFlag_) {
-            HashCompute(curCoreRowCount_ - 1 + tilingData_->perCoreRowCount * blockIdx_);
-        } else {
-            TopKCompute();
-        }
+        HashCompute(curCoreRowCount_ - 1 + tilingData_->perCoreRowCount * blockIdx_);
         CopyOut(curCoreRowCount_ - 1);
         return;
     }
