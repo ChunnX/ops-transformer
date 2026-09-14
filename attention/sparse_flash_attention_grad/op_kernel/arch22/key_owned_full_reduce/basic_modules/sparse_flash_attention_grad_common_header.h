@@ -63,7 +63,7 @@ __aicore__ inline uint64_t KeyOwnedEdgeByteSize(const TILING_CLASS *td)
 template <typename TILING_CLASS>
 __aicore__ inline uint64_t KeyOwnedHeaderByteSize(const TILING_CLASS *td)
 {
-    return KeyOwnedBucketCount(td) * KeyOwnedQueryCount(td) * 4 * sizeof(uint32_t);
+    return KeyOwnedBucketCount(td) * KeyOwnedQueryCount(td) * 8 * sizeof(uint32_t);
 }
 
 template <typename TILING_CLASS>

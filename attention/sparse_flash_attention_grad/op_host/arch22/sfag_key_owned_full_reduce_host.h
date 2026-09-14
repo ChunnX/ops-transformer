@@ -80,7 +80,7 @@ inline void TryKeyOwnedFullReduce(gert::TilingContext *context)
     const uint64_t dAlign = (static_cast<uint64_t>(d) + ropeD + 15) / 16 * 16;
     const uint64_t selectedCount = static_cast<uint64_t>(selected);
     const uint64_t edgeBytes = queryCount * selectedCount * dAlign * sizeof(float);
-    const uint64_t headerBytes = bucketCount * queryCount * 4 * sizeof(uint32_t);
+    const uint64_t headerBytes = bucketCount * queryCount * 8 * sizeof(uint32_t);
     const uint64_t sortedBytes = queryCount * selectedCount * sizeof(int32_t);
     workspaces[0] += edgeBytes + headerBytes + sortedBytes;
     OP_LOGI(context, "SFAG_KEY_OWNED_FULL_REDUCE active host marker=%u", markerValue);

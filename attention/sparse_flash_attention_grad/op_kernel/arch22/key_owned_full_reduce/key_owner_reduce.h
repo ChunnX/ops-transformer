@@ -14,13 +14,11 @@ template <typename TILING_CLASS>
 __aicore__ inline void BuildKeyOwnedMetadata(GM_ADDR indices, GM_ADDR workspace, const TILING_CLASS *td, TPipe &pipe)
 {
     TBuf<> buffer;
-    pipe.InitBuffer(buffer, 49152);
+    pipe.InitBuffer(buffer, 32768);
     LocalTensor<int32_t> input = buffer.GetWithOffset<int32_t>(2048, 0);
     LocalTensor<uint32_t> counts = buffer.GetWithOffset<uint32_t>(2048, 8192);
-    LocalTensor<uint32_t> starts = buffer.GetWithOffset<uint32_t>(2048, 16384);
-    LocalTensor<uint32_t> cursors = buffer.GetWithOffset<uint32_t>(2048, 24576);
-    LocalTensor<int32_t> ordered = buffer.GetWithOffset<int32_t>(2048, 32768);
-    LocalTensor<uint32_t> header = buffer.GetWithOffset<uint32_t>(2048, 40960);
+    LocalTensor<int32_t> ordered = buffer.GetWithOffset<int32_t>(2048, 16384);
+    LocalTensor<uint32_t> header = buffer.GetWithOffset<uint32_t>(2048, 24576);
     GlobalTensor<int32_t> inputGm;
     GlobalTensor<int32_t> orderedGm;
     GlobalTensor<uint32_t> headersGm;
@@ -58,16 +56,16 @@ __aicore__ inline void BuildKeyOwnedMetadata(GM_ADDR indices, GM_ADDR workspace,
         }
         uint32_t next = 0;
         for (uint32_t bucket = 0; bucket < bucketCount; ++bucket) {
-            starts.SetValue(bucket, next);
-            cursors.SetValue(bucket, next);
-            next += counts.GetValue(bucket);
+            const uint32_t count = counts.GetValue(bucket);
+            counts.SetValue(bucket, next);
+            next += count;
         }
         for (uint32_t t = 0; t < selectedCount; ++t) {
             const int32_t key = input.GetValue(t);
             const uint32_t bucket = static_cast<uint32_t>(key) >> 6;
-            const uint32_t cursor = cursors.GetValue(bucket);
+            const uint32_t cursor = counts.GetValue(bucket);
             ordered.SetValue(cursor, key);
-            cursors.SetValue(bucket, cursor + 1);
+            counts.SetValue(bucket, cursor + 1);
         }
         SetFlag<HardEvent::S_MTE3>(scalarMte3);
         WaitFlag<HardEvent::S_MTE3>(scalarMte3);
@@ -78,22 +76,24 @@ __aicore__ inline void BuildKeyOwnedMetadata(GM_ADDR indices, GM_ADDR workspace,
             const uint32_t chunkBuckets = Min<uint32_t>(256, bucketCount - chunk);
             for (uint32_t record = 0; record < chunkBuckets; ++record) {
                 const uint32_t bucket = chunk + record;
-                const uint32_t start = starts.GetValue(bucket);
-                const uint32_t count = counts.GetValue(bucket);
+                const uint32_t end = counts.GetValue(bucket);
+                const uint32_t start = bucket == 0 ? 0 : counts.GetValue(bucket - 1);
+                const uint32_t count = end - start;
                 const uint32_t headerOffset = record * 8;
                 header.SetValue(headerOffset, start);
                 header.SetValue(headerOffset + 1, count);
-                for (uint32_t inlineIndex = 0; inlineIndex < 2; ++inlineIndex) {
+                const uint32_t inlineCount = Min<uint32_t>(count, 4);
+                for (uint32_t inlineIndex = 0; inlineIndex < inlineCount; ++inlineIndex) {
                     header.SetValue(headerOffset + inlineIndex + 2,
-                                    inlineIndex < count ? static_cast<uint32_t>(ordered.GetValue(start + inlineIndex)) : 0);
+                                    static_cast<uint32_t>(ordered.GetValue(start + inlineIndex)));
                 }
             }
             SetFlag<HardEvent::S_MTE3>(scalarMte3);
             WaitFlag<HardEvent::S_MTE3>(scalarMte3);
-            const uint64_t headerWordOffset = (static_cast<uint64_t>(chunk) * queryCount + q) * 4;
+            const uint64_t headerWordOffset = (static_cast<uint64_t>(chunk) * queryCount + q) * 8;
             DataCopyPad(headersGm[headerWordOffset], header,
-                        DataCopyExtParams{static_cast<uint16_t>(chunkBuckets), 16, 0,
-                                          static_cast<uint32_t>(queryCount * 16 - 16), 0});
+                        DataCopyExtParams{static_cast<uint16_t>(chunkBuckets), 32, 0,
+                                          static_cast<uint32_t>(queryCount * 32 - 32), 0});
         }
         KeyOwnedMte3ScalarDrain(mte3Scalar);
     }
@@ -121,7 +121,7 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
     TBuf<> buffer;
     pipe.InitBuffer(buffer, 192640);
     LocalTensor<float> accumulator = buffer.GetWithOffset<float>(64 * 576, 0);
-    LocalTensor<uint32_t> headers = buffer.GetWithOffset<uint32_t>(512 * 4, 147456);
+    LocalTensor<uint32_t> headers = buffer.GetWithOffset<uint32_t>(256 * 8, 147456);
     LocalTensor<int32_t> ordered = buffer.GetWithOffset<int32_t>(16, 155648);
     LocalTensor<float> gradients = buffer.GetWithOffset<float>(16 * 576, 155712);
     LocalTensor<uint32_t> batchKeys = buffer.GetWithOffset<uint32_t>(16, 192576);
@@ -156,19 +156,19 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
         Duplicate(accumulator, 0.0f, KeyOwnedBucketWidth * edgeWidth);
         PipeBarrier<PIPE_V>();
         uint32_t batchRows = 0;
-        for (uint32_t qBase = qBegin; qBase < qEnd; qBase += 512) {
-            const uint32_t qRows = Min<uint32_t>(512, qEnd - qBase);
+        for (uint32_t qBase = qBegin; qBase < qEnd; qBase += 256) {
+            const uint32_t qRows = Min<uint32_t>(256, qEnd - qBase);
             SetFlag<HardEvent::S_MTE2>(scalarMte2);
             WaitFlag<HardEvent::S_MTE2>(scalarMte2);
-            DataCopyPad(headers, headersGm[(static_cast<uint64_t>(bucket) * queryCount + qBase) * 4],
-                        DataCopyExtParams{1, qRows * 4 * sizeof(uint32_t), 0, 0, 0},
+            DataCopyPad(headers, headersGm[(static_cast<uint64_t>(bucket) * queryCount + qBase) * 8],
+                        DataCopyExtParams{1, qRows * 8 * sizeof(uint32_t), 0, 0, 0},
                         DataCopyPadExtParams<uint32_t>{false, 0, 0, 0});
             SetFlag<HardEvent::MTE2_S>(mte2Scalar);
             WaitFlag<HardEvent::MTE2_S>(mte2Scalar);
             for (uint32_t localQ = 0; localQ < qRows; ++localQ) {
                 const uint32_t q = qBase + localQ;
-                const uint32_t start = headers.GetValue(localQ * 4);
-                const uint32_t count = headers.GetValue(localQ * 4 + 1);
+                const uint32_t start = headers.GetValue(localQ * 8);
+                const uint32_t count = headers.GetValue(localQ * 8 + 1);
                 if (count == 0) {
                     continue;
                 }
@@ -179,7 +179,7 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
                     const uint32_t availableRows = 16 - batchRows;
                     const uint32_t remainingRows = count - row;
                     const uint32_t rows = remainingRows < availableRows ? remainingRows : availableRows;
-                    if (count > 2) {
+                    if (count > 4) {
                         SetFlag<HardEvent::S_MTE2>(scalarMte2);
                         WaitFlag<HardEvent::S_MTE2>(scalarMte2);
                         DataCopyPad(ordered, orderedGm[static_cast<uint64_t>(q) * KeyOwnedSelectedCount(td) + start + row],
@@ -189,7 +189,7 @@ __aicore__ inline void ReduceKeyOwnedEdges(GM_ADDR workspace, const TILING_CLASS
                         WaitFlag<HardEvent::MTE2_S>(mte2Scalar);
                     }
                     for (uint32_t i = 0; i < rows; ++i) {
-                        const uint32_t key = count <= 2 ? headers.GetValue(localQ * 4 + row + i + 2) :
+                        const uint32_t key = count <= 4 ? headers.GetValue(localQ * 8 + row + i + 2) :
                                                         static_cast<uint32_t>(ordered.GetValue(i));
                         batchKeys.SetValue(batchRows + i, key & 63U);
                     }
