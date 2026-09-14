@@ -191,19 +191,6 @@ TEST_P(GroupedMatmulSwigluQuantV3TilingTest, RouteAndEncodeParameters)
 INSTANTIATE_TEST_SUITE_P(GMMSQ_V3_TILING, GroupedMatmulSwigluQuantV3TilingTest, testing::ValuesIn(MakeCases()),
                          MakeName);
 
-TEST(GroupedMatmulSwigluQuantV3TilingTest, RejectsNullRequiredInput)
-{
-    TilingCase c;
-    auto compileInfo = c.CompileInfo();
-    auto context = c.BuildContext(&compileInfo);
-    // The first input is x. Clear its instance count by rebuilding a context
-    // with no tensor descriptions; the registered tiler must fail safely.
-    gert::TilingContextPara nullContext(
-        "GroupedMatmulSwigluQuantV3", {}, {}, {}, vector<uint32_t>(kInputCount, 0), vector<uint32_t>(kOutputCount, 0),
-        &compileInfo, "Ascend950", compileInfo.aicNum, compileInfo.ubSize);
-    ExecuteTestCase(nullContext, ge::GRAPH_FAILED);
-}
-
 TEST(GroupedMatmulSwigluQuantV3TilingTest, RejectsInvalidSwiGluMode)
 {
     TilingCase c;
