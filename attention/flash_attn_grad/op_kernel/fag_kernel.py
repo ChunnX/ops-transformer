@@ -463,6 +463,8 @@ def flash_attn_grad_preload3(
                     left,
                     right,
                     acc,
+                    mm1_cur,
+                    cBlockIdx,
                 )
                 iterate_mm_dsq(
                     constInfo,
@@ -706,8 +708,7 @@ def flash_attn_grad_preload2(
     末尾 drain 1。路径按编译期 ``template`` 分支（是否 BN2），不是按 D 档。
 
     ``template!=Tmpl.BN2``（当前即 D=256 GS1S2）：store 到 fp32 workspace；
-    进循环前清 workspace，循环后再 scale+cast。不算 ``iterate_mm_*_bn2`` /
-    v5/v6。
+    进循环前清 workspace，循环后再 scale+cast。不算 BN2 直出 v5/v6。
     ``Tmpl.BN2``：一个核独占整个 (b, n2) head；
     不跑 workspace pre/post（仅 ``bn2_need_zero`` 清 fp16 out）。
 
@@ -805,7 +806,7 @@ def flash_attn_grad_preload2(
             [s2ndKVv, d2dKVv, dV, 1],
             dtype=pl.DT_FP16,
         )
-        # 单块 iterate_mm_dsk_bn2 被 tilingkey 剪掉 store，不能把 UB
+        # 单块 BN2 的 C3 被 tilingkey 剪掉 store，不能把 UB
         # 或 fp16 out 冒充成 fp32 GM 参数。
         alignS1 = constInfo.s1Outer * CUBE_BASEM
         tensor_dq_ws = pl.make_tensor(
@@ -986,65 +987,35 @@ def flash_attn_grad_preload2(
                         pl.system.wait_cross_core(
                             pipe=pl.PipeType.FIX, event_id=SYNC_DETER_FIX_FLAG
                         )
-                    if template == Tmpl.BN2:
-                        iterate_mm_qk_bn2(
-                            constInfo,
-                            curInfo,
-                            tensor_q,
-                            tensor_k,
-                            q_cur,
-                            k_l1,
-                            left,
-                            right,
-                            acc,
-                            mm2_cur,
-                            curInfo.loadKV,
-                        )
-                    else:
-                        iterate_mm_qk(
-                            constInfo,
-                            curInfo,
-                            tensor_q,
-                            tensor_k,
-                            q_cur,
-                            k_l1,
-                            left,
-                            right,
-                            acc,
-                            mm2_cur,
-                            curInfo.loadKV,
-                        )
+                    iterate_mm_qk(
+                        constInfo,
+                        curInfo,
+                        tensor_q,
+                        tensor_k,
+                        q_cur,
+                        k_l1,
+                        left,
+                        right,
+                        acc,
+                        mm2_cur,
+                        curInfo.loadKV,
+                    )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.FIX, event_id=SYNC_C2_TO_V2_FLAG[taskId % 2]
                     )
-                    if template == Tmpl.BN2:
-                        iterate_mm_dyv_bn2(
-                            constInfo,
-                            curInfo,
-                            tensor_dy,
-                            tensor_v,
-                            do_cur,
-                            v_l1,
-                            left,
-                            right,
-                            acc,
-                            mm1_cur,
-                            curInfo.loadKV,
-                        )
-                    else:
-                        iterate_mm_dyv(
-                            constInfo,
-                            curInfo,
-                            tensor_dy,
-                            tensor_v,
-                            do_cur,
-                            v_l1,
-                            left,
-                            right,
-                            acc,
-                            mm1_cur,
-                            curInfo.loadKV,
-                        )
+                    iterate_mm_dyv(
+                        constInfo,
+                        curInfo,
+                        tensor_dy,
+                        tensor_v,
+                        do_cur,
+                        v_l1,
+                        left,
+                        right,
+                        acc,
+                        mm1_cur,
+                        curInfo.loadKV,
+                    )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.FIX, event_id=SYNC_C1_TO_V2_FLAG[taskId % 2]
                     )
@@ -1087,6 +1058,8 @@ def flash_attn_grad_preload2(
                         left,
                         right,
                         acc,
+                        mm1_cur,
+                        cBlockIdx,
                     )
                     iterate_mm_dsq(
                         constInfo,
@@ -1113,32 +1086,33 @@ def flash_attn_grad_preload2(
                     pl.system.wait_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=SYNC_V4_TO_C5_FLAG
                     )
-                    iterate_mm_dsk_bn2(
+                    iterate_mm_dsk(
                         constInfo,
                         prevInfo,
                         tensor_k_nt,
-                        ds_l1,
+                        tensor_dq_ws,
+                        prevInfo.loadKV,
+                        ds_l1.current(),
                         k_l1_n,
                         left,
                         right,
                         acc,
                         mm1_prev,
-                        tensor_dq_ws,
                         cBlockIdx,
-                        prevInfo.loadKV,
                     )
                     if is_bn2_multiblk == 1:
                         if prevInfo.dqLast == 1:
                             pl.system.set_cross_core(
                                 pipe=pl.PipeType.FIX, event_id=SYNC_C3_TO_V5_FLAG
                             )
-                        iterate_mm_dsq_bn2(
+                        iterate_mm_dsq(
                             constInfo,
                             prevInfo,
                             ds_t_l1.current(),
                             q_prev,
                             left,
                             right,
+                            dk_acc,
                             dk_acc,
                             prevInfo.dkvAcc,
                         )
@@ -1152,13 +1126,14 @@ def flash_attn_grad_preload2(
                             pl.system.set_cross_core(
                                 pipe=pl.PipeType.FIX, event_id=SYNC_C4_TO_V6_FLAG
                             )
-                        iterate_mm_pdy_bn2(
+                        iterate_mm_pdy(
                             constInfo,
                             prevInfo,
                             p_t_l1.current(),
                             do_prev,
                             left,
                             right,
+                            dv_acc,
                             dv_acc,
                             prevInfo.dkvAcc,
                         )
@@ -1179,13 +1154,14 @@ def flash_attn_grad_preload2(
                         pl.system.set_cross_core(
                             pipe=pl.PipeType.FIX, event_id=SYNC_C3_TO_V5_FLAG
                         )
-                        iterate_mm_dsq_bn2(
+                        iterate_mm_dsq(
                             constInfo,
                             prevInfo,
                             ds_t_l1.current(),
                             q_prev,
                             left,
                             right,
+                            dk_acc,
                             dk_acc,
                             0,
                         )
@@ -1198,13 +1174,14 @@ def flash_attn_grad_preload2(
                         pl.system.set_cross_core(
                             pipe=pl.PipeType.FIX, event_id=SYNC_C4_TO_V6_FLAG
                         )
-                        iterate_mm_pdy_bn2(
+                        iterate_mm_pdy(
                             constInfo,
                             prevInfo,
                             p_t_l1.current(),
                             do_prev,
                             left,
                             right,
+                            dv_acc,
                             dv_acc,
                             0,
                         )
