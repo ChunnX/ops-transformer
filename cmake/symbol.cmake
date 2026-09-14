@@ -373,6 +373,9 @@ function(gen_cust_aicpu_json_symbol)
   endif()
 
   set(MERGED_JSON ${CMAKE_BINARY_DIR}/cust_aicpu_kernel.json)
+  if(ENABLE_BUILT_IN)
+    set(MERGED_JSON ${CMAKE_BINARY_DIR}/aicpu_transformer.json)
+  endif()
   set(INPUT_JSONS "")
 
   if(ALL_AICPU_OP_DEF_FILES)
@@ -405,7 +408,7 @@ function(gen_cust_aicpu_json_symbol)
   add_custom_target(merge_aicpu_json ALL DEPENDS ${MERGED_JSON})
   install(
     FILES ${MERGED_JSON}
-    DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/config
+    DESTINATION ${AICPU_JSON_CONFIG}
     OPTIONAL
   )
 endfunction()
@@ -458,7 +461,7 @@ function(gen_cust_aicpu_kernel_symbol)
 
   install(
     FILES ${ARM_SO_OUTPUT}
-    DESTINATION packages/vendors/${VENDOR_NAME}_transformer/op_impl/cpu/aicpu_kernel/impl
+    DESTINATION ${AICPU_KERNEL_IMPL}
     OPTIONAL
   )
 endfunction()
@@ -500,6 +503,10 @@ function(gen_norm_symbol)
   gen_opgraph_symbol()
   gen_onnx_plugin_symbol()
   gen_aicpu_const_symbol()
+
+  if(ENABLE_AICPU)
+    gen_cust_aicpu_symbol()
+  endif()
 
 endfunction()
 
