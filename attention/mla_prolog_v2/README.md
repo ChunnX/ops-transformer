@@ -483,7 +483,7 @@
   <tr>
     <td class="tg-9wq8" rowspan="10">aclnn接口</td>
     <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_v2_nq_bsh.cpp">MlaPrologV2非量化（BSH）接口测试用例代码
+    <a href="./examples/test_aclnn_mla_prolog_v2_weight_nz_nq_bsh.cpp">MlaPrologV2非量化（BSH）接口测试用例代码
     </a>
     </td>
     <td class="tg-lboi" rowspan="10">通过
@@ -494,7 +494,7 @@
   </tr>
   <tr>
     <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_fq.cpp">MlaPrologV2全量化KV量化（BSH）接口测试用例代码
+    <a href="./examples/test_aclnn_mla_prolog_v2_weight_nz_fq.cpp">MlaPrologV2全量化KV量化（BSH）接口测试用例代码
     </a>
     </td>
   </tr>

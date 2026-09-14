@@ -270,7 +270,7 @@
   <tr>
     <td class="tg-9wq8" rowspan="6">aclnn接口</td>
     <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_v3.cpp">MlaPrologV3接口测试用例代码
+    <a href="./examples/test_aclnn_mla_prolog_v3_weight_nz.cpp">MlaPrologV3接口测试用例代码
     </a>
     </td>
     <td class="tg-lboi" rowspan="6">
@@ -282,7 +282,7 @@
   </tr>
   <tr>
     <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_v4.cpp">MlaPrologV4WeightNz接口测试用例代码
+    <a href="./examples/test_aclnn_mla_prolog_v4_weight_nz.cpp">MlaPrologV4WeightNz接口测试用例代码
     </a>
     </td>
     <td class="tg-lboi" rowspan="6">
