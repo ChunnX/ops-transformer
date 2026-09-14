@@ -273,6 +273,32 @@ public:
         AscendC::SyncAll<false>();
     }
 
+public:
+    // Mirror of the AIC-side ownership decision: true when the AIC paired
+    // with this AIV logical core owns at least one M tile of the expert.
+    // Reads the same rotation state PublishLocalChunk advances, so it must
+    // be queried before staging the expert it describes. Both subblocks of
+    // a logical core derive the same answer and thus keep their flag waits
+    // aligned.
+    __aicore__ inline bool HasExpertWork(uint32_t expertIdx) const
+    {
+        if (rankWorkerCount_ == 0U) {
+            return false;
+        }
+        const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
+        uint64_t expertRows = 0UL;
+        for (uint32_t dstRank = 0U; dstRank < rankSize_; ++dstRank) {
+            expertRows += static_cast<uint64_t>(taskTilingInfo_->sendCnt[dstRank * expertNum + expertIdx]);
+        }
+        if (expertRows == 0UL) {
+            return false;
+        }
+        const uint32_t tileRows = Gmma2avMteTiling::L1_TILE_M;
+        const uint32_t loopsM = static_cast<uint32_t>((expertRows + tileRows - 1UL) / tileRows);
+        const uint32_t startMIdx = (logicalCoreIdx_ + rankWorkerCount_ - expertStartCoreIdx_) % rankWorkerCount_;
+        return startMIdx < loopsM;
+    }
+
 private:
     __aicore__ inline GM_ADDR GetWindow(uint32_t rank) const
     {
@@ -916,27 +942,34 @@ private:
         // Every expert is a notification boundary: the paired AIV can start
         // staging this expert's output while the AIC keeps computing the
         // next one. The workspace holds the whole grouped-matmul result, so
-        // the AIC never has to wait for the AIV to finish copying.
-        __aicore__ inline bool operator()(uint32_t)
+        // the AIC never has to wait for the AIV to finish copying. Only
+        // experts whose tiles this AIC actually computed produce a
+        // notification; the paired AIV skips the matching wait.
+        __aicore__ inline bool operator()(uint32_t, bool hasWork) const
         {
-            return true;
+            return hasWork;
         }
 
-        // Direct C2V notification with no all-AIC rendezvous. Ping-pong
-        // between two flag IDs so consecutive experts never hit the same
-        // FFTS slot, preventing double-set hardware traps.
-        __aicore__ inline void NotifyExpertReady(uint32_t expertIdx)
+        // Direct C2V notification with no all-AIC rendezvous. Ping-pong by
+        // this core's valid-notification sequence number: after skipping
+        // experts without work, consecutive valid notifications may all come
+        // from even or all from odd expert indices, so expertIdx parity is
+        // not a valid channel selector. Both sides start from zero and
+        // advance only on hasWork, keeping the channel sequence identical.
+        __aicore__ inline void NotifyExpertReady()
         {
-            if (expertIdx & 1U) {
+            if (validNotifyCount_ & 1U) {
                 Catlass::Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(flagOdd_);
             } else {
                 Catlass::Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(flagEven_);
             }
+            ++validNotifyCount_;
         }
 
         ExpertReadyFlag &flagEven_;
         ExpertReadyFlag &flagOdd_;
         const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo_;
+        uint32_t validNotifyCount_{0U};
     };
 
 public:
@@ -965,15 +998,22 @@ public:
             ExpertReadyFlag flagEven(EXPERT_READY_FLAG_EVEN, EXPERT_REVERSE_FLAG_EVEN);
             ExpertReadyFlag flagOdd(EXPERT_READY_FLAG_ODD, EXPERT_REVERSE_FLAG_ODD);
             commOp.BeginExpertPipeline();
-            // Expert-granular pipeline: the AIC notifies once per expert, so
-            // each iteration stages, publishes, waits for and pulls exactly
-            // one expert. Ranks progress independently; the per-expert
-            // ExpertReady flags keep cross-rank skew safe.
+            // Expert-granular pipeline: each iteration stages, publishes,
+            // waits for and pulls exactly one expert. Only experts whose
+            // tiles the paired AIC owns consume a C2V wait; skipped experts
+            // keep every communication phase and the state advance below
+            // (PublishLocalChunk advances the rotation for all experts).
+            // Ranks progress independently; the per-expert ExpertReady flags
+            // keep cross-rank skew safe.
+            uint32_t validNotifyCount = 0U;
             for (uint32_t expertIdx = 0U; expertIdx < expertNum; ++expertIdx) {
-                if (expertIdx & 1U) {
-                    Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagOdd);
-                } else {
-                    Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagEven);
+                if (commOp.HasExpertWork(expertIdx)) {
+                    if (validNotifyCount & 1U) {
+                        Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagOdd);
+                    } else {
+                        Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagEven);
+                    }
+                    ++validNotifyCount;
                 }
                 commOp.StageExpertPayload(expertIdx, expertIdx + 1U);
                 commOp.PublishChunkReady(expertIdx, expertIdx + 1U);

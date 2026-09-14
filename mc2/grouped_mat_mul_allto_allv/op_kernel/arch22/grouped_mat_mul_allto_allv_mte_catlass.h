@@ -58,11 +58,12 @@ public:
 
     // Process the requested expert range in one CATLASS resource lifetime.
     // The callback runs on every AIC after that AIC has finished issuing the
-    // expert's tiles. It is also called for an empty expert, allowing the
-    // caller to keep an identical expert-ready protocol on every rank. Every
-    // expert is a notification boundary; no FIX drain is needed because the
-    // ready flag is emitted from PIPE_FIX, whose in-order execution makes the
-    // preceding L0C->GM stores visible before the flag reaches the AIV.
+    // expert's tiles, with the expert's hasWork ownership bit telling whether
+    // this core computed any tile. Only experts with work produce a
+    // notification. Every notified expert is a notification boundary; no FIX
+    // drain is needed because the ready flag is emitted from PIPE_FIX, whose
+    // in-order execution makes the preceding L0C->GM stores visible before
+    // the flag reaches the AIV.
     template <typename ExpertCompletion>
     __aicore__ inline void ProcessExperts(uint32_t startExpertIdx, uint32_t expertNum,
                                           ExpertCompletion &&onExpertComplete)
@@ -175,6 +176,12 @@ private:
             uint32_t expertIdx = startExpertIdx + localExpert;
             uint32_t currentM = isSharedExpert ? m : GetExpertTokens(expertIdx);
             uint32_t loopsM = 0U;
+            // True when this AIC owns at least one M tile of the expert. Only
+            // experts with work produce a C2V notification, so an AIC that is
+            // idle for this expert neither publishes a ready flag nor enters
+            // the reverse-credit wait, and the notification budget is not
+            // drained by empty experts.
+            bool hasWork = false;
             if (currentM != 0U) {
                 GemmCoord problemShape{currentM, n, k};
                 LayoutA layoutA{currentM, k};
@@ -207,6 +214,7 @@ private:
                 // derives the same ownership from the same rotation state.
                 const uint32_t startMIdx =
                     coreIdx < startCoreIdx ? coreIdx + aicCoreNum - startCoreIdx : coreIdx - startCoreIdx;
+                hasWork = startMIdx < loopsM;
                 for (uint32_t mIdx = startMIdx; mIdx < loopsM; mIdx += aicCoreNum) {
                     for (uint32_t nIdx = 0U; nIdx < loopsN; ++nIdx) {
                         const uint32_t loopIdx = mIdx * loopsN + nIdx;
@@ -230,10 +238,11 @@ private:
                 // Per-expert notification with no FIX drain: the flag is set
                 // from PIPE_FIX, so in-order pipe execution guarantees the
                 // L0C->GM stores of this expert are visible to the paired AIV
-                // before the notification arrives. Empty experts still notify
-                // to keep the AIV-side wait count aligned on every core.
-                if (onExpertComplete(expertIdx)) {
-                    onExpertComplete.NotifyExpertReady(expertIdx);
+                // before the notification arrives. Experts whose tiles are
+                // owned by other cores do not notify; the paired AIV skips
+                // the matching wait, so both counts stay aligned.
+                if (onExpertComplete(expertIdx, hasWork)) {
+                    onExpertComplete.NotifyExpertReady();
                 }
             }
         }
