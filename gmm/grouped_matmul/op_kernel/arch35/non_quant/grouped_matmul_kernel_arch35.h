@@ -15,7 +15,10 @@
 
 #pragma once
 
+#include "blaze/epilogue/block/block_epilogue_empty.h"
+#include "blaze/epilogue/block/block_epilogue_gelu_fixpipe.h"
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
+#include "blaze/gemm/block/block_mmad_matmul_fixpipe_opti.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
 #include "blaze/gemm/kernel/kernel_grouped_matmul.h"
 #include "../grouped_matmul_tiling_data_apt.h"
@@ -24,9 +27,9 @@ using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 
 namespace GROUPED_MATMUL {
 
-template <typename LayoutA, typename LayoutB>
+template <typename LayoutA, typename LayoutB, bool EnableGelu = false>
 __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y,
-                                           GM_ADDR tiling)
+                                            GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData, tiling);
@@ -38,11 +41,20 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using LayoutC = asc::te::nd_ext_layout_ptn;
     using LayoutBias = asc::te::nd_ext_layout_ptn;
     using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
-    using DispatchPolicy = Blaze::Gemm::MatmulMultiBlockBasic<0, 0, Blaze::Gemm::KernelGroupedMmadNoQuant, 0,
-                                                              Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
+    // GELU fusion switches the BlockMmad specialization to the fixpipe-opti one (L0C -> UB output
+    // with in-block AIC/AIV handshake); the plain path keeps the basic GM-direct specialization.
+    using BasicPolicy =
+        Blaze::Gemm::MatmulMultiBlockBasic<0, Blaze::Gemm::OP_TYPE_EMPTY, Blaze::Gemm::KernelGroupedMmadNoQuant,
+                                           0, Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
+    using FixpipePolicy = Blaze::Gemm::MatmulMultiBlockFixpipeOpti<Blaze::Gemm::ON_THE_FLY,
+                                                                   Blaze::Gemm::OP_TYPE_GELU,
+                                                                   Blaze::Gemm::KernelGroupedMmadNoQuant>;
+    using DispatchPolicy = AscendC::Std::conditional_t<EnableGelu, FixpipePolicy, BasicPolicy>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
+    using BlockEpilogue = AscendC::Std::conditional_t<EnableGelu,
+                                                      Blaze::Epilogue::Block::BlockEpilogueGeluFixpipe<CType>,
+                                                      Blaze::Epilogue::Block::BlockEpilogueEmpty>;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
     using GroupedMatmulKernel =
         Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
@@ -80,21 +92,32 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
                                          BlockMmad::WEIGHT_NZ_FORMAT,
                                          static_cast<uint32_t>(sizeof(BType))};
 
-    typename BlockMmad::Params mmParams{x,
-                                        weight,
-                                        y,
-                                        gmmBaseParams.hasBias == 0 ? nullptr : bias,
-                                        groupList,
-                                        nullptr, // workspaceGmAddr
-                                        baseM,
-                                        baseN,
-                                        kL1,
-                                        static_cast<uint32_t>(baseM),
-                                        static_cast<uint32_t>(baseN),
-                                        static_cast<uint32_t>(baseK),
-                                        2U, // l1Stages
-                                        static_cast<uint16_t>(mmTilingData.dbL0C),
-                                        nullptr}; // scaleGmAddr
+    // Field-wise init: the basic and fixpipe-opti Params layouts differ past l0cStages.
+    typename BlockMmad::Params mmParams{};
+    mmParams.aGmAddr = x;
+    mmParams.bGmAddr = weight;
+    mmParams.cGmAddr = y;
+    mmParams.biasGmAddr = gmmBaseParams.hasBias == 0 ? nullptr : bias;
+    mmParams.groupListGmAddr = groupList;
+    mmParams.mL1 = baseM;
+    mmParams.nL1 = baseN;
+    mmParams.kL1 = kL1;
+    mmParams.mL0 = static_cast<uint32_t>(baseM);
+    mmParams.nL0 = static_cast<uint32_t>(baseN);
+    mmParams.kL0 = static_cast<uint32_t>(baseK);
+    mmParams.l1Stages = 2U;
+    mmParams.l0cStages = static_cast<uint16_t>(mmTilingData.dbL0C);
+    if constexpr (EnableGelu) {
+        // splitM=1: the fixpipe dual_dst split_m distributes the M rows across both AIVs;
+        // ubDB=2: UB ping-pong depth (must equal BlockEpilogueGeluFixpipe::FLAG_DEPTH);
+        // ubPitchGran=64: keeps in-place GELU vector repeats inside one row (== epilogue UB_PITCH_GRAN).
+        mmParams.splitM = 1U;
+        mmParams.ubDB = 2U;
+        mmParams.ubPitchGran = static_cast<uint32_t>(
+            Blaze::Gemm::Block::BlockEpilogueGeluFixpipe<CType>::UB_PITCH_GRAN);
+    } else {
+        mmParams.scaleGmAddr = nullptr;
+    }
 
     ProblemShape problemShape{static_cast<int64_t>(mmTilingData.M), static_cast<int64_t>(mmTilingData.N),
                               static_cast<int64_t>(mmTilingData.Ka), static_cast<int64_t>(1)};
