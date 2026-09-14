@@ -736,10 +736,9 @@ protected:
                 }
             } else {
                 OP_LOGI(opName,
-                        "fit-balance tiling: calibrated data missing or env mismatch (rankDim=%lu, fp4=%d, mode=%u, "
-                        "usedCoreNum=%u), fallback to CoreOccupancyFirstTiling",
-                        worldSize_, static_cast<int32_t>(x1Dtype == ge::DT_FLOAT4_E2M1), precisionMode_,
-                        mm.usedCoreNum);
+                        "fit-balance tiling: calibrated data missing (rankDim=%lu, fp4=%d, mode=%u), "
+                        "fallback to CoreOccupancyFirstTiling",
+                        worldSize_, static_cast<int32_t>(x1Dtype == ge::DT_FLOAT4_E2M1), precisionMode_);
             }
         }
         if (!fitBalanceUsed) {
