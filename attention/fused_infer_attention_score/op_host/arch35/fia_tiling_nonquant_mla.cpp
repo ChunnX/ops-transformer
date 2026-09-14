@@ -670,7 +670,7 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaEmptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalOutputSize = outSize;
     tilingData_.baseTiling.fiaEmptyTensorParams.totalSoftMaxLseOutputSize = lseSize;
-    tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit;
+    tilingData_.baseTiling.fiaEmptyTensorParams.needInit = fiaInfo_->needInit || fiaInfo_->isExistRowInvalid;
 
     if (fiaInfo_->hasViewStride) {
         tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyBnStride;
