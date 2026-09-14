@@ -44,18 +44,13 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 }
 
 template <typename T>
-void CopyOutResult(int64_t outIndex, std::vector<int64_t> &shape, void **deviceAddr)
+void CopyOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<T> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
                            size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-    if (outIndex == 2) {
-        for (int64_t i = 0; i < size; i++) {
-            LOG_PRINT("attention out result is: %f\n", i, resultData[i]);
-        }
-    }
 }
 
 int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
@@ -323,9 +318,9 @@ int main()
               return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    CopyOutResult<float>(0, softmaxMaxShape, &softmaxMaxDeviceAddr);
-    CopyOutResult<float>(1, softmaxSumShape, &softmaxSumDeviceAddr);
-    CopyOutResult<aclFloat16>(2, attentionOutShape, &attentionOutDeviceAddr);
+    CopyOutResult<float>(softmaxMaxShape, &softmaxMaxDeviceAddr);
+    CopyOutResult<float>(softmaxSumShape, &softmaxSumDeviceAddr);
+    CopyOutResult<aclFloat16>(attentionOutShape, &attentionOutDeviceAddr);
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改; 释放device资源
     FreeResource(q, k, v, attentionOut, softmaxMax, softmaxSum, qDeviceAddr, kDeviceAddr, vDeviceAddr,
