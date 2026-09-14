@@ -16,7 +16,7 @@
 #ifndef PROMPT_FLASH_ATTENTION_ENTRY_ARCH38_H_
 #define PROMPT_FLASH_ATTENTION_ENTRY_ARCH38_H_
 
-#include "../common/arch38/flash_attention_score_kernel_infer_regbase_v2.h"
+#include "../../../common/op_kernel/arch38/flash_attention_score_kernel_infer_regbase_v2.h"
 #include "prompt_flash_attention_dummy.h"
 namespace optiling {};
 
