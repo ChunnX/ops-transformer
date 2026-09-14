@@ -1,6 +1,6 @@
 # MC2 Dump 解析脚本使用说明
 
-本文说明 `mc2/tools/dump_analysis` 下 MC2 DFX Dump 解析脚本的使用方法。日常测试统一使用 `parse_mc2_dump.py`：传入一个 Dump 文件时只解析该文件；传入算子名和 Dump 根目录时批量解析目录，并为每个源文件生成一份独立、可直接查看的 TXT 结果。
+本文说明 `mc2/tools/dump_analysis` 下 MC2 DFX Dump 解析脚本的使用方法。日常测试统一使用 `parse_mc2_dump.py`：传入一个 Dump 文件时只解析该文件，并生成该文件对应的 TXT；传入算子名和 Dump 根目录时批量解析目录，并为每个源文件生成一份独立、可直接查看的 TXT 结果。
 
 统一入口不解析 `exception_info.*`，不生成 NPY，也不生成合并的 `analysis.txt`。
 
@@ -110,9 +110,9 @@ CCU 通路没有 `comm_context_*` 文件。
 - 算子 `.o`、`*_host.o`、`.json`：不属于本脚本的 MC2 Tiling/Workspace 解析输入，会被忽略。
 - 已生成的 `mc2_dump_analysis` 目录：递归扫描时会跳过，避免重复解析输出文件。
 
-## 5. TXT 输出目录和内容
+## 5. 批量解析的 TXT 输出目录和内容
 
-结果默认输出到：
+使用 `python3 parse_mc2_dump.py <operator> [dump_dir]` 批量解析时，结果默认输出到：
 
 ```text
 <dump_dir>/mc2_dump_analysis/<标准算子名>/
@@ -132,6 +132,8 @@ CCU 通路没有 `comm_context_*` 文件。
         └── 1/
             └── ...
 ```
+
+单文件模式同样生成一一对应的 TXT，但因为命令没有单独提供 Dump 根目录，其输出位置以原文件所在目录为起点，详见第 6 节。
 
 输出规则：
 
@@ -162,7 +164,28 @@ CCU 通路没有 `comm_context_*` 文件。
 python3 parse_mc2_dump.py <dump_file>
 ```
 
-`<dump_file>` 是实际 Dump 文件路径，文件通常没有 `.bin` 后缀。无需再填写算子名、选择后端脚本或指定 `--args`、`--workspace`、`--comm-ctx` 等解析模式。
+`<dump_file>` 是实际 Dump 文件路径，文件通常没有 `.bin` 后缀。命令只接收这一个文件，不需要再填写算子名、输出文件、参考文件，也不需要选择后端脚本或指定 `--args`、`--workspace`、`--comm-ctx` 等解析模式。
+
+解析内容会继续完整显示在终端，同时生成一份对应的 TXT：
+
+```text
+<dump_file所在目录>/mc2_dump_analysis/<标准算子名>/<原始文件完整名称>.txt
+```
+
+例如输入：
+
+```text
+/data/0/workspace_seg2_type12_MatmulReduceScatterV2.xxx
+```
+
+生成：
+
+```text
+/data/0/mc2_dump_analysis/MatmulReduceScatterV2/
+└── workspace_seg2_type12_MatmulReduceScatterV2.xxx.txt
+```
+
+TXT 的解析字段和终端结果保持一致，并在文件开头增加算子名、文件类型和源文件名。脚本只读取原始 Dump，不会覆盖或修改原文件。
 
 脚本根据文件名自动完成两层识别：
 
@@ -199,10 +222,11 @@ python3 parse_mc2_dump.py \
 
 ### 6.2 单文件模式的处理规则
 
-- 结果直接显示在终端，不生成 NPY，也不要求提供第二个输入文件。
+- 一个源文件只生成一个同名 `.txt`，结果同时显示在终端；不生成 NPY，也不生成合并的 `analysis.txt`。
+- 单文件命令始终只传一个 `<dump_file>`。脚本内部自动识别算子和文件类型，生成 TXT 时也不需要额外指定输出路径。
 - 解析 `tiling_data_*` 时会显示完整 TilingData，其中已经包含 WorkspaceLayout，无需单独增加模式参数。
 - 解析普通 `workspace_segN_typeM_*` 时显示 Segment 含义、文件大小和前 64 字节十进制预览；真实矩阵值仍使用第 7 节的 `parse_matrix.py` 查看。
-- 解析 `type12/STATE_DUMP` 时，脚本会在当前文件所在目录自动查找同算子、时间戳最接近的 `tiling_data_*`，读取 AIC 核数并识别 AlltoAllMatmul 主线/Apace 标签。若同目录没有对应 TilingData，StateDump 数值仍可解析，但核类型可能显示为“未知”。
+- 解析 `type12/STATE_DUMP` 时，脚本会在当前文件所在目录自动查找同算子、时间戳最接近的 `tiling_data_*`，读取 AIC 核数并识别 AlltoAllMatmul 主线/Apace 标签。这是脚本内部的自动关联，命令行仍然只需要传入 StateDump 这一个文件。若同目录没有对应 TilingData，StateDump 数值仍可解析，但核类型可能显示为“未知”。
 - 解析 `comm_context_*` 后会给出使用 `parse_matrix.py` 查看原始字节的完整命令。
 - 若文件名中不含算子名，只有在同目录的 `tiling_data_*` 能唯一确定算子时才会继续解析，否则会明确报错。
 
@@ -237,16 +261,15 @@ python3 parse_matrix.py <bin_file> --dtype <type> --rows <M> --cols <N> [显示�
 
 | 参数 | 说明 |
 | --- | --- |
-| `--head N` | 未指定行号或行范围时显示前 `N` 行，默认 16 行。 |
-| `--tail N` | 在 `--head` 选择的前部行之外，再显示最后 `N` 行，默认不显示。 |
 | `--row-range START END` | 显示连续行范围 `[START, END)`。 |
 | `--col-range START END` | 显示连续列范围 `[START, END)`。 |
 | `--row R [R ...]` | 显示一个或多个离散行号。 |
 | `--col C [C ...]` | 显示一个或多个离散列号。 |
 | `--transpose` | 文件按列优先布局时使用，逻辑坐标按 `c × rows + r` 取数。 |
-| `--json` | 将选中的行列输出为 JSON。 |
 
 `--row` 与 `--row-range` 不要同时使用，`--col` 与 `--col-range` 也不要同时使用。
+
+未指定 `--row` 或 `--row-range` 时，脚本固定显示前 16 行，不需要额外传入预览行数参数。需要查看末尾几行时，直接使用 `--row-range START END` 或 `--row R [R ...]` 指定。
 
 查看前 10 行、每行第 0～63 列：
 

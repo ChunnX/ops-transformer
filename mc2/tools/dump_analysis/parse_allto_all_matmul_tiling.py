@@ -12,19 +12,16 @@
 #         解析异常 dump 产生的 tiling_data_*.bin、args_info_*.bin 或 workspace_seg*.bin 文件。
 #
 # 用法:
-#   python parse_allto_all_matmul_tiling.py <bin_file> [--args] [--json] [--ws-layout]
+#   python parse_allto_all_matmul_tiling.py <bin_file> [--args]
 #
 # 模式:
 #   默认         自动识别主线非量化、主线量化或 Apace CCU tiling_data_*.bin
 #   --args       解析 args_info_*.bin（GM 地址指针）
-#   --ws-layout  从 tiling_data_*.bin 中的 DfxDumpInfo 解析 WorkspaceLayoutInfo
 #   --workspace  解析 workspace_seg*_type*_*.bin（自动识别段类型，type=12 解析 RuntimeInfo）
-#   --json       以 JSON 格式输出（默认为人类可读表格）
 
 import sys
 import os
 import struct
-import json
 import argparse
 import logging
 
@@ -72,9 +69,7 @@ OFFSET_WS_LAYOUT_APACE = _LAYOUT["apace"]["wsLayoutOffset"]
 
 
 def init_layout(cann=None):
-    """按指定 CANN 环境重新计算布局常量并打印布局摘要。
-
-    模块加载时已按当前 set_env.sh 环境计算过一次; --cann 指定其他环境时调用本函数。"""
+    """按当前 CANN 环境重新计算布局常量并打印布局摘要。"""
     global _LAYOUT
     try:
         layout = compute_allto_all_layout(cann=cann)
@@ -785,87 +780,6 @@ def print_workspace_segment(result: dict):
         logging.info("  %s", result.get("note", ""))
 
 
-def verify_tiling_data(dump_data: bytes, ref_data: bytes) -> bool:
-    """对比 dump 文件与 host 参考文件，逐字节验证。
-
-    dump 文件固定 2048B（含 padding），参考文件为结构体实际大小。
-    只对比参考文件长度范围内的字节。
-    """
-    ref_size = len(ref_data)
-    dump_size = len(dump_data)
-
-    logging.info("=" * 70)
-    logging.info("  Verify: dump vs host reference")
-    logging.info("=" * 70)
-    logging.info("  dump 文件: %d bytes (含 padding)", dump_size)
-    logging.info("  参考文件: %d bytes (结构体实际大小)", ref_size)
-
-    if dump_size < ref_size:
-        logging.error("dump 文件 %d < 参考文件 %d，dump 数据不完整", dump_size, ref_size)
-        return False
-
-    mismatch_count = 0
-    first_mismatch_offset = -1
-    field_ranges = [
-        (OFFSET_MC2_INIT_TILING, OFFSET_MC2_CC_TILING, "Mc2InitTiling"),
-        (OFFSET_MC2_CC_TILING, OFFSET_DFX_DUMP_INFO, "Mc2CcTiling"),
-        (OFFSET_DFX_DUMP_INFO, OFFSET_TILING_INFO, "DfxDumpInfo"),
-        (OFFSET_TILING_INFO, OFFSET_TILING_INFO + ALLTO_ALL_MATMUL_TILING_INFO_SIZE, "AlltoAllMatmulTilingInfo"),
-        (OFFSET_TILE_MM_TILING, OFFSET_TILE_MM_TILING + max(MC2_MM_V3_TILING_DATA_SIZE, MC2_QUANT_BMM_TILING_PARAMS_SIZE), "TileMatmulTiling"),
-    ]
-
-    for i in range(ref_size):
-        if dump_data[i] != ref_data[i]:
-            mismatch_count += 1
-            if first_mismatch_offset < 0:
-                first_mismatch_offset = i
-
-    if mismatch_count == 0:
-        logging.info("")
-        logging.info("  结果: PASS - 全部 %d 字节完全一致", ref_size)
-        logging.info("  dump 文件尾部 %d 字节为 padding（不在对比范围内）", dump_size - ref_size)
-        return True
-
-    logging.error("")
-    logging.error("  结果: FAIL - %d/%d 字节不一致", mismatch_count, ref_size)
-    logging.error("  首个不一致偏移: %d (0x%x)", first_mismatch_offset, first_mismatch_offset)
-
-    for start, end, name in field_ranges:
-        if start <= first_mismatch_offset < end:
-            logging.error("  所属字段: %s (offset %d-%d)", name, start, end)
-            break
-
-    if mismatch_count <= 20:
-        logging.info("")
-        logging.info("  不一致字节明细:")
-        for i in range(ref_size):
-            if dump_data[i] != ref_data[i]:
-                field_name = "unknown"
-                for start, end, name in field_ranges:
-                    if start <= i < end:
-                        field_name = name
-                        break
-                logging.error("    offset %4d (0x%04x) [%s]: dump=0x%02x, ref=0x%02x",
-                              i, i, field_name, dump_data[i], ref_data[i])
-    else:
-        logging.warning("  不一致字节超过 20 个，仅显示前 20 个:")
-        shown = 0
-        for i in range(ref_size):
-            if dump_data[i] != ref_data[i]:
-                field_name = "unknown"
-                for start, end, name in field_ranges:
-                    if start <= i < end:
-                        field_name = name
-                        break
-                logging.error("    offset %4d (0x%04x) [%s]: dump=0x%02x, ref=0x%02x",
-                              i, i, field_name, dump_data[i], ref_data[i])
-                shown += 1
-                if shown >= 20:
-                    logging.error("    ... (剩余 %d 个省略)", mismatch_count - 20)
-                    break
-    return False
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="AlltoAllMatmul TilingData / Workspace / RuntimeInfo dump 解析脚本",
@@ -878,47 +792,27 @@ def main():
   # 解析 args_info（验证 tilingGM offset）
   python parse_allto_all_matmul_tiling.py args_info_AlltoAllMatmul.0.1.20260819.bin --args
 
-  # 从 tiling_data 中提取 WorkspaceLayoutInfo
-  python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --ws-layout
-
   # 解析 workspace 段文件（自动从文件名识别段类型）
   python parse_allto_all_matmul_tiling.py workspace_seg4_type12_AlltoAllMatmul.0.1.20260819.bin --workspace
 
-  # JSON 格式输出
-  python parse_allto_all_matmul_tiling.py tiling_data_AlltoAllMatmul.0.1.20260819.bin --json
-
-  # 逐字节对比验证
-  python parse_allto_all_matmul_tiling.py tiling_data_*.bin --verify tiling_ref.bin
         """,
     )
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin（GM 地址指针）")
-    parser.add_argument("--ws-layout", action="store_true",
-                        help="从 tiling_data_*.bin 中的 DfxDumpInfo 解析 WorkspaceLayoutInfo")
     parser.add_argument("--workspace", action="store_true",
                         help="解析 workspace_seg*_type*_*.bin（段文件，type=12 自动解析 RuntimeInfo）")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
                         help="AIC 核数，用于 workspace 段解析时区分 C/V 核。"
                              " 从 tiling_data 解析结果的 aicCoreNum 字段获取。"
                              " 未提供时 C/V 核分类不可靠（显示为'未知'）。")
-    parser.add_argument("--cann", default=None, metavar="DIR",
-                        help="CANN 根目录 (默认按 set_env.sh 环境变量 ASCEND_HOME_PATH 等定位;"
-                             " 无 CANN 环境时告警并用默认 TCubeTiling=200)")
     parser.add_argument("--apace", action="store_true",
                         help="workspace 段解析时使用 Apace 路径(usingApaceImpl_)的 position 枚举标签"
                              "(1=COMP_LOCAL_BEFORE, 2=COMP_REMOTE_BEFORE, 3=FINALIZE_BEFORE)")
-    parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
-    parser.add_argument("--verify", metavar="REF_FILE",
-                        help="对比 host 参考文件（由 MC2_TILING_DUMP_REF_PATH 环境变量生成）")
     args = parser.parse_args()
 
     if not os.path.isfile(args.bin_file):
         logging.error("文件不存在: %s", args.bin_file)
         sys.exit(1)
-
-    # --cann 指定其他 CANN 环境时重新计算布局常量 (默认已在模块加载时按当前环境计算)
-    if args.cann is not None:
-        init_layout(args.cann)
 
     with open(args.bin_file, "rb") as f:
         data = f.read()
@@ -930,8 +824,7 @@ def main():
         seg_info = detect_workspace_seg_from_filename(args.bin_file)
         if seg_info is None:
             logging.error("文件名不匹配 workspace_seg{idx}_type{type}_* 模式: %s", args.bin_file)
-            logging.error("请使用 --ws-layout 解析 tiling_data 中的 WorkspaceLayoutInfo，"
-                          "或确保文件名格式为 workspace_segN_typeM_*。")
+            logging.error("请确保文件名格式为 workspace_segN_typeM_*。")
             sys.exit(1)
         seg_idx, seg_type = seg_info
         logging.info("检测到 workspace 段文件: segIdx=%d, segType=%d (%s)",
@@ -943,52 +836,13 @@ def main():
             logging.info("使用 Apace 路径 position 枚举标签")
         result = parse_workspace_segment_file(data, seg_type, args.aic_core_num, pos_tag_map)
         result["segIdx"] = seg_idx
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_workspace_segment(result)
+        print_workspace_segment(result)
         return
 
     # --- args_info 解析 ---
     if args.args:
         result = parse_args_info(data)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        else:
-            print_args_info(result)
-        return
-
-    # --- verify 对比 ---
-    if args.verify:
-        if not os.path.isfile(args.verify):
-            logging.error("参考文件不存在: %s", args.verify)
-            sys.exit(1)
-        with open(args.verify, "rb") as f:
-            ref_data = f.read()
-        ok = verify_tiling_data(data, ref_data)
-        sys.exit(0 if ok else 1)
-
-    # --- WorkspaceLayoutInfo 解析 ---
-    if args.ws_layout:
-        tiling_format = detect_tiling_format(data)
-        ws_offsets = {
-            "non_quant": OFFSET_WS_LAYOUT_NON_QUANT,
-            "quant": OFFSET_WS_LAYOUT_QUANT,
-            "apace": OFFSET_WS_LAYOUT_APACE,
-        }
-        mode_names = {"non_quant": "主线非量化", "quant": "主线量化", "apace": "Apace CCU"}
-        ws_offset = ws_offsets[tiling_format]
-        mode_str = mode_names[tiling_format]
-        logging.info("解析 WorkspaceLayoutInfo (%s模式, offset=%d)", mode_str, ws_offset)
-        ws_layout = parse_workspace_layout_info(data, ws_offset)
-        if "error" in ws_layout:
-            logging.error("解析失败: %s", ws_layout["error"])
-            logging.error("可能原因: dump 文件不含 WorkspaceLayoutInfo（旧版本 dump），或量化模式不匹配。")
-            sys.exit(1)
-        if args.json:
-            print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_workspace_layout_info(ws_layout)
+        print_args_info(result)
         return
 
     # --- 默认: tiling_data 解析 ---
@@ -1000,12 +854,9 @@ def main():
         if "error" in result:
             logging.error("解析失败: %s", result["error"])
             sys.exit(1)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_section("Apace hcommAllToAllMatmulTilingData")
-            print_kv("tilingData", result)
-            print_workspace_layout_info(result["workspaceLayout"])
+        print_section("Apace hcommAllToAllMatmulTilingData")
+        print_kv("tilingData", result)
+        print_workspace_layout_info(result["workspaceLayout"])
         return
 
     is_quant = tiling_format == "quant"
@@ -1042,12 +893,9 @@ def main():
             logging.info("检测到 WorkspaceLayoutInfo (offset=%d, segCount=%d, totalSize=%d)",
                          ws_offset, ws_layout["segCount"], ws_layout["totalSize"])
 
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-    else:
-        print_tiling_data(result, is_quant)
-        if "workspaceLayout" in result:
-            print_workspace_layout_info(result["workspaceLayout"])
+    print_tiling_data(result, is_quant)
+    if "workspaceLayout" in result:
+        print_workspace_layout_info(result["workspaceLayout"])
 
 
 if __name__ == "__main__":

@@ -14,7 +14,6 @@ tiling offsets, kernel arguments and RuntimeInfo position tags here.
 """
 
 import argparse
-import json
 import logging
 import os
 import re
@@ -149,11 +148,9 @@ def main():
     parser = argparse.ArgumentParser(description="AlltoAllMatmulV2 (AIV + URMA) dump 解析脚本")
     parser.add_argument("bin_file")
     parser.add_argument("--args", action="store_true")
-    parser.add_argument("--ws-layout", action="store_true")
     parser.add_argument("--workspace", action="store_true")
     parser.add_argument("--aic-core-num", type=int)
     parser.add_argument("--comm-ctx", action="store_true")
-    parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     if not os.path.isfile(args.bin_file):
@@ -167,9 +164,6 @@ def main():
     if args.args:
         result = parse_args_info(data)
         title += " args_info"
-    elif args.ws_layout:
-        result = common.parse_workspace_layout_info(data, OFFSET_WORKSPACE_LAYOUT)
-        title += " WorkspaceLayoutInfo"
     elif args.workspace:
         seg_info = workspace_segment_info(args.bin_file)
         if seg_info is None:
@@ -194,9 +188,7 @@ def main():
         result = parse_tiling_data(data)
         title += " tiling_data"
 
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-    elif args.comm_ctx:
+    if args.comm_ctx:
         common.print_urma_comm_context(result)
     elif args.workspace and result.get("segmentType") == 12:
         common.print_section(title)

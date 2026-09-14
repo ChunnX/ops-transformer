@@ -242,7 +242,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 更新后的算子代码有两种 TilingData 前缀。AllGatherMatmulV2、AlltoAllMatmul 主线/Apace 和 MatmulReduceScatterV2 使用 `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo`，当前默认 WorkspaceLayout offset 为 576；AllGatherMatmulV3、AlltoAllMatmulV2 仍以 `DfxDumpInfo` 开头，WorkspaceLayout offset 为 0。当前源码始终声明 `dumpInfo` 成员，是否包含 DFX 内容由 `DfxDumpInfo` 内部的 `MC2_DFX_ENABLE` 控制；开启 DFX 时，Peermem 总大小和 PeermemLayout 的相对偏移为 208、216，解析脚本会按算子选取正确位置。
 
-结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、StateDump 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。
+批量解析结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录。单文件解析只需传入一个 Dump 文件，结果保存到 `<该文件所在目录>/mc2_dump_analysis/<标准算子名>/<原始文件名>.txt`。两种模式都不生成 NPY，也不生成合并的 `analysis.txt`；TilingData、ArgsInfo、StateDump 等后端脚本在终端显示的字段级结果会写入对应 TXT。
 
 `segN` 中的 `N` 只是该次 Tiling 中的段序号，不能单独代表数据语义；应以文件名中的 `typeM` 和 TilingData TXT 中的 `workspaceLayout` 为准。当前 Workspace 类型定义如下：
 
@@ -279,7 +279,7 @@ python3 parse_matrix.py workspace_seg1_type8_xxx \
   --row 0 10 100 --col 0 1 2 3
 ```
 
-支持的数据类型为 `fp16`、`bf16`、`fp8_e4m3`、`fp8_e5m2`、`fp4_e2m1`、`e8m0`、`int8`、`uint8` 和 `fp32`。当 dump 按列优先存放时增加 `--transpose`；需要给其他工具消费时增加 `--json`。为避免超大 workspace 被展开成大量 Python 对象，脚本只解码指定的显示范围，统计信息也仅针对该范围。
+支持的数据类型为 `fp16`、`bf16`、`fp8_e4m3`、`fp8_e5m2`、`fp4_e2m1`、`e8m0`、`int8`、`uint8` 和 `fp32`。当 dump 按列优先存放时增加 `--transpose`。为避免超大 workspace 被展开成大量 Python 对象，脚本只解码指定的显示范围，统计信息也仅针对该范围。
 
 矩阵的 `rows`、`cols` 和 `dtype` 不能只根据 `segN` 猜测，应结合用例输入、tiling 中的 M/K/N、量化模式和 WorkspaceLayout 确定。文件字节数应满足：普通类型为 `rows * cols * 每元素字节数`，FP4 为 `ceil(rows * cols / 2)`。
 

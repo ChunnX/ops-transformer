@@ -14,21 +14,12 @@ AllGatherMatmulV2 TilingData / Workspace / RuntimeInfo dump 解析脚本
   # 解析 args_info
   python parse_all_gather_matmul_v2_tiling.py args_info_*.bin --args
 
-  # 解析 WorkspaceLayoutInfo
-  python parse_all_gather_matmul_v2_tiling.py tiling_data_*.bin --ws-layout
-
   # 解析 workspace 段文件
   python parse_all_gather_matmul_v2_tiling.py workspace_seg*_type12_*.bin --workspace --aic-core-num N
 
-  # 指定 CANN 根目录 (默认按 set_env.sh 环境变量定位)
-  python parse_all_gather_matmul_v2_tiling.py tiling_data_*.bin --cann /path/to/cann
-
-  # JSON 输出
-  python parse_all_gather_matmul_v2_tiling.py tiling_data_*.bin --json
 """
 
 import argparse
-import json
 import logging
 import os
 import struct
@@ -96,10 +87,10 @@ WS_SEG_TYPE_MAP = {
 }
 
 
-def get_layout(args):
+def get_layout():
     """实时计算布局 (无 CANN 环境时 tiling_layout 内部告警并使用默认尺寸)。"""
     try:
-        layout = compute_layout(cann=args.cann)
+        layout = compute_layout()
     except LayoutError as e:
         logging.error("布局计算失败: %s", e)
         sys.exit(1)
@@ -464,13 +455,9 @@ def main():
     )
     parser.add_argument("bin_file", help="dump 产生的 bin 文件路径")
     parser.add_argument("--args", action="store_true", help="解析 args_info_*.bin")
-    parser.add_argument("--ws-layout", action="store_true", help="解析 WorkspaceLayoutInfo")
     parser.add_argument("--workspace", action="store_true", help="解析 workspace 段文件")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None,
                         help="AIC 核数，用于区分 C/V 核")
-    parser.add_argument("--cann", default=None, metavar="DIR",
-                        help="CANN 根目录 (默认按 set_env.sh 环境变量 ASCEND_HOME_PATH 等定位)")
-    parser.add_argument("--json", action="store_true", help="JSON 格式输出")
     args = parser.parse_args()
 
     if not os.path.isfile(args.bin_file):
@@ -484,13 +471,10 @@ def main():
 
     if args.args:
         result = parse_args_info(data)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        else:
-            print_args_info(result)
+        print_args_info(result)
         return
 
-    layout = get_layout(args)
+    layout = get_layout()
 
     if args.workspace:
         seg_info = detect_workspace_seg_from_filename(args.bin_file)
@@ -506,24 +490,7 @@ def main():
             data, seg_type, args.aic_core_num,
             layout["workspace"]["runtimeInfoPerCoreSize"])
         result["segIdx"] = seg_idx
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_workspace_segment(result)
-        return
-
-    if args.ws_layout:
-        is_quant, ws_layout = select_branch(data, layout)
-        mode_str = "量化" if is_quant else "非量化"
-        ws_offset = layout["workspace"]["layoutOffset"]
-        logging.info("解析 WorkspaceLayoutInfo (%s模式, offset=%d)", mode_str, ws_offset)
-        if ws_layout is None:
-            logging.error("解析失败: WorkspaceLayoutInfo 未通过合法性校验")
-            sys.exit(1)
-        if args.json:
-            print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_workspace_layout_info(ws_layout, layout["workspace"]["layoutInfoSize"])
+        print_workspace_segment(result)
         return
 
     # 默认: tiling_data 解析
@@ -541,13 +508,10 @@ def main():
         logging.info("检测到 WorkspaceLayoutInfo (offset=%d, segCount=%d)",
                      layout[key]["offsets"]["workspaceLayout"], ws_layout["segCount"])
 
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-    else:
-        print_tiling_data(result, is_quant, layout)
-        if "workspaceLayout" in result:
-            print_workspace_layout_info(result["workspaceLayout"],
-                                        layout["workspace"]["layoutInfoSize"])
+    print_tiling_data(result, is_quant, layout)
+    if "workspaceLayout" in result:
+        print_workspace_layout_info(result["workspaceLayout"],
+                                    layout["workspace"]["layoutInfoSize"])
 
 
 if __name__ == "__main__":

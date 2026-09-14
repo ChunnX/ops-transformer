@@ -11,9 +11,9 @@
 Pass one dump file to parse only that file, or pass an operator name and an
 optional dump directory to parse a complete dump directory.  The script
 discovers and dispatches tiling_data, args_info, workspace segments, CCU
-xn/cke address tables, and URMA context files automatically.  Directory mode
-creates an independent readable text report for every source dump; no combined
-report or NumPy output is generated.
+xn/cke address tables, and URMA context files automatically.  Both modes
+create one independent readable TXT report for every parsed source dump; no
+combined report or NumPy output is generated.
 """
 
 import argparse
@@ -465,7 +465,14 @@ def save_text_result(output_path, profile, kind, relative_path, lines):
 
 
 def parse_single_file(input_path, parser):
-    """Parse one dump file using filename-based operator and mode detection."""
+    """Parse one dump file and save one corresponding TXT report.
+
+    Single-file mode deliberately accepts only one positional file argument.
+    Operator/type detection and optional sibling TilingData lookup are handled
+    internally.  The TXT is placed below the input file's directory so the raw
+    Dump is never overwritten:
+      <input_dir>/mc2_dump_analysis/<Operator>/<input_name>.txt
+    """
     kind = classify_file(input_path)
     if kind is None:
         parser.error(
@@ -477,6 +484,12 @@ def parse_single_file(input_path, parser):
     except ValueError as error:
         parser.error(str(error))
 
+    # Keep single-file output naming identical to directory mode: append
+    # ".txt" to the complete source name, including its original suffix.
+    output_dir = input_path.parent / "mc2_dump_analysis" / profile["name"]
+    output_path = text_output_path(output_dir, Path(input_path.name))
+    result_lines = []
+
     print("=" * 88)
     print(f"MC2 single-file analysis: {profile['name']} | kind: {kind}")
     print(f"source: {input_path}")
@@ -484,25 +497,31 @@ def parse_single_file(input_path, parser):
 
     if kind in ("xn", "cke"):
         try:
-            _, _, _, lines = parse_address_table(input_path)
+            _, _, _, parsed_lines = parse_address_table(input_path)
         except (OSError, RuntimeError, ValueError) as error:
             parser.error(str(error))
-        print("\n".join(lines))
+        for line in parsed_lines:
+            emit(result_lines, line)
+        save_text_result(output_path, profile, kind, Path(input_path.name), result_lines)
+        print(f"saved TXT: {output_path}")
         return 0
 
     if kind == "workspace":
         identity = segment_identity(input_path, "workspace")
         if identity is not None and identity[1] != 12:
             seg_index, seg_type = identity
-            lines = [
+            parsed_lines = [
                 f"segIdx: {seg_index}",
                 f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})",
                 f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}",
                 f"fileSize: {input_path.stat().st_size} bytes",
             ]
-            emit_decimal_byte_preview(lines, read_preview(input_path, WORKSPACE_PREVIEW_SIZE), echo=False)
-            lines.append("typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
-            print("\n".join(lines))
+            emit_decimal_byte_preview(parsed_lines, read_preview(input_path, WORKSPACE_PREVIEW_SIZE), echo=False)
+            parsed_lines.append("typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
+            for line in parsed_lines:
+                emit(result_lines, line)
+            save_text_result(output_path, profile, kind, Path(input_path.name), result_lines)
+            print(f"saved TXT: {output_path}")
             return 0
 
     aic_core_num = None
@@ -515,21 +534,25 @@ def parse_single_file(input_path, parser):
             input_path, profile, tiling_files, core_index, apace_tiling_files
         )
         if selected_tiling is not None:
-            print(f"related TilingData: {selected_tiling.name}")
+            emit(result_lines, f"relatedTilingData: {selected_tiling.name}")
 
     return_code, output = run_backend(profile, kind, input_path, aic_core_num, use_apace)
     if output:
-        print(output)
+        for line in output.splitlines():
+            emit(result_lines, line)
     if kind == "comm_context":
         file_size = input_path.stat().st_size
-        print()
-        print("rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：")
-        print(
+        emit(result_lines, "")
+        emit(result_lines, "rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：")
+        emit(
+            result_lines,
             f'python3 "{SCRIPT_DIR / "parse_matrix.py"}" "{input_path}" '
-            f'--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64'
+            f'--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64',
         )
     if return_code != 0:
-        print(f"ERROR: backend exited with code {return_code}")
+        emit(result_lines, f"ERROR: backend exited with code {return_code}")
+    save_text_result(output_path, profile, kind, Path(input_path.name), result_lines)
+    print(f"saved TXT: {output_path}")
     return return_code
 
 
