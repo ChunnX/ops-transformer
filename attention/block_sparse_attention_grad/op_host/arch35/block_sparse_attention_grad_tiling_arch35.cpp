@@ -13,6 +13,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../block_sparse_attention_grad_tiling.h"
+#include <algorithm>
 
 namespace optiling {
 namespace BSA_ARC35 {
@@ -72,11 +73,6 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (context_->GetDeterministic() == 1) {
-            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad not support Deterministic.");
-            return false;
-        }
-
         if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
             OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support DT_FLOAT16 and DT_BF16.");
             return false;
@@ -98,6 +94,7 @@ protected:
 
     ge::graphStatus GetShapeAttrsInfo() override
     {
+        deterministic_ = (context_->GetDeterministic() == 1);
         int32_t q_batch_num, q_group, q_head_num, q_seq_len, q_head_dim;
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
@@ -246,21 +243,55 @@ protected:
     ge::graphStatus DoOpTiling() override
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-        auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
+        cubeCoreNum_ = ascendcPlatform.GetCoreNumAic();
 
-        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
-        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
-        uint32_t singleM = AlignTo(2048, baseM);
+        baseM_ = blockShapeX_ <= 128 ? blockShapeX_ : 128;
+        baseN_ = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+        uint32_t singleM = AlignTo(2048, baseM_);
         // Keep all Q tiles for the current KV block/head on one cube core when
         // possible so DK/DV can accumulate in L0 and K/V stays cached in L1.
 
         tilingData_.set_BlockX(blockShapeX_);
         tilingData_.set_BlockY(blockShapeY_);
-        tilingData_.set_cubeCoreNum(cubeCoreNum);
-        tilingData_.set_baseM(baseM);
-        tilingData_.set_baseN(baseN);
+        tilingData_.set_cubeCoreNum(cubeCoreNum_);
+        tilingData_.set_baseM(baseM_);
+        tilingData_.set_baseN(baseN_);
         tilingData_.set_singleM(singleM);
-        context_->SetBlockDim(cubeCoreNum);
+        tilingData_.set_deterministic(deterministic_ ? 1 : 0);
+        if (deterministic_ && strcmp(layout_, TND_STR) != 0) {
+            int64_t max_q = q_seq_len_;
+            int64_t max_kv = kv_seq_len_;
+            int64_t m = (max_q + baseM_ - 1) / std::max(baseM_, 1u);
+            int64_t n = (max_kv + baseN_ - 1) / std::max(baseN_, 1u);
+            int64_t aic = cubeCoreNum_;
+            int64_t k = aic;
+            uint32_t latin_max = 0;
+            if (q_group_ <= 1) {
+                int64_t bflat = static_cast<int64_t>(batch_num_) * q_head_num_;
+                k = std::min(aic, bflat * std::max(m, static_cast<int64_t>(1)));
+                k = std::max(k, static_cast<int64_t>(1));
+                int64_t kk = std::min(k, bflat * std::max(m, static_cast<int64_t>(1)));
+                latin_max = static_cast<uint32_t>(m * ((bflat * n + std::max(kk, static_cast<int64_t>(1)) - 1) /
+                                                       std::max(kk, static_cast<int64_t>(1))));
+            } else {
+                int64_t bflat = static_cast<int64_t>(batch_num_) * kv_head_num_;
+                k = std::min(aic, std::min(bflat * q_group_ * std::max(m, static_cast<int64_t>(1)),
+                                           bflat * std::max(n, static_cast<int64_t>(1))));
+                k = std::max(k, static_cast<int64_t>(1));
+                int64_t kk = k;
+                int64_t R = std::max(
+                    std::max((bflat * n * q_group_ + kk - 1) / kk,
+                             (n + std::max(m, static_cast<int64_t>(1)) - 1) / std::max(m, static_cast<int64_t>(1))),
+                    static_cast<int64_t>(q_group_));
+                latin_max = static_cast<uint32_t>(R * m);
+            }
+            cubeCoreNum_ = static_cast<uint32_t>(k);
+            tilingData_.set_cubeCoreNum(cubeCoreNum_);
+            tilingData_.set_deterLatinMax(latin_max);
+        } else {
+            tilingData_.set_deterLatinMax(0);
+        }
+        context_->SetBlockDim(cubeCoreNum_);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
     }
@@ -309,6 +340,20 @@ protected:
         usr_workspace_offset += dk_size * sizeof(float);
         tilingData_.set_dvWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += dv_size * sizeof(float);
+        if (deterministic_) {
+            constexpr uint32_t DB_NUM = 2;
+            uint64_t det_dq_size = static_cast<uint64_t>(cubeCoreNum_) * DB_NUM * baseM_ * head_dim_ * sizeof(float);
+            uint64_t det_dkv_size = static_cast<uint64_t>(cubeCoreNum_) * DB_NUM * baseN_ * head_dim_ * sizeof(float);
+            uint64_t det_offset_size = static_cast<uint64_t>(cubeCoreNum_) * 32 * DB_NUM;
+            tilingData_.set_detOffsetWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_offset_size;
+            tilingData_.set_detDqWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_dq_size;
+            tilingData_.set_detDkWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_dkv_size;
+            tilingData_.set_detDvWorkspaceOffset(usr_workspace_offset);
+            usr_workspace_offset += det_dkv_size;
+        }
 
         context_->GetWorkspaceSizes(1)[0] = sys_workspace_size + usr_workspace_offset;
         return ge::GRAPH_SUCCESS;
@@ -325,12 +370,18 @@ protected:
     {
         uint64_t default_key = 1000;
         /*
-         *  000: BF16 BSND
-         *  001: FP16 BSND
-         *  010: BF16 BNSD
-         *  011: FP16 BNSD
-         *  100: BF16 TND
-         *  101: FP16 TND
+         *  0000: BF16 BSND
+         *  0001: FP16 BSND
+         *  0010: BF16 BNSD
+         *  0011: FP16 BNSD
+         *  0100: BF16 TND
+         *  0101: FP16 TND
+         *  1000: BF16 BSND DET
+         *  1001: FP16 BSND DET
+         *  1010: BF16 BNSD DET
+         *  1011: FP16 BNSD DET
+         *  1100: BF16 TND  DET
+         *  1101: FP16 TND  DET
          */
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
@@ -340,6 +391,10 @@ protected:
             default_key += 0b010;
         } else if (strcmp(layout_, TND_STR) == 0) {
             default_key += 0b100;
+        }
+
+        if (deterministic_) {
+            default_key += 0b1000;
         }
 
         return default_key;
@@ -364,6 +419,10 @@ private:
     int32_t blockShapeY_ = 0;
     int32_t max_q_seq_len_ = 0;
     int32_t max_kv_seq_len_ = 0;
+    bool deterministic_ = false;
+    uint32_t cubeCoreNum_ = 0;
+    uint32_t baseM_ = 0;
+    uint32_t baseN_ = 0;
 };
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockSparseAttentionGrad, BlockSparseAttentionGradArch35Tiling,
