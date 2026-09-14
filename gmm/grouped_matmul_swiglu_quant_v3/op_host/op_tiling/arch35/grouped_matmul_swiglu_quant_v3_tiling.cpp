@@ -378,6 +378,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     CalBasicBlock();
     basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)),
                                                   GmmConstant::CUBE_BLOCK);
+    // The Tensor API accumulates both SwiGLU halves in one L0C tile.  The
+    // common QGMM tiler sizes baseN for a single-N output; cap it here so
+    // baseM * (2 * baseN) remains within the double-buffered L0C capacity.
+    basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, static_cast<uint64_t>(128)),
+                                                  GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed for V3 MXFP8 weight-NZ"),
                 return ge::GRAPH_FAILED);
