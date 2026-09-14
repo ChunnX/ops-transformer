@@ -7,7 +7,7 @@
 ## 使用限制
 
 - 调试开关 `MOE_DISTRIBUTE_DISPATCH_V2_FULL_MESH_PROFILING` 默认 1，在 `op_kernel/arch35/moe_distribute_dispatch_v2_full_mesh_profiler.h` 中设为 0 可关闭。
-- 与参考分支一致，记录覆盖 **expand_x 起始 115264 字节**。这不是独立业务输出，不能交给 combine，也不能用于精度验收。脚本默认只运行 dispatch，导出并分析后跳过 dispatch 输出比对。原测试脚本的其他模式代码保留，但本诊断入口明确拒绝 combine/continue/CPU-only。
+- 与参考分支一致，记录覆盖 **expand_x 起始 115264 字节**。覆盖后的张量不能作为 combine 的业务输入，也不能用于 dispatch 精度验收。脚本默认运行 `is_continue=1`，要求保留 `is_continue_golden_expand_x=True`：图模式与非图模式均保留原始 dispatch 输出用于导出打点，combine 使用 golden expand_x 和实际 dispatch 返回的计数、索引等参数，继续执行原有 combine 结果比对。这种模式用于级联调试，不验证 dispatch payload 的端到端正确性。也可切换为仅 `is_dispatch=1`，导出并分析后跳过 dispatch 输出比对；两种模式择一，不支持单独 combine 或 CPU-only 采集。
 - expand_x 容量不足时内核不写 profiler，脚本会报容量或 magic 错误；不扩大业务输出、不越界写入。实际 AIV 核数支持至 72。
 - 所有测量使用原有流水与等待；没有为了分段计时在测量区域增加 barrier。因此搬运、量化事件是**代码下发区间及其原有等待**，不是独立硬件引擎耗时。量化尾部等待可能体现在后面的 metadata/V_S 区间，异步广播等待可能体现在发布 flag 或后续 drain。
 - `KERNEL` 是 Process 中标记的区间，不含 Init、末尾诊断用全核同步和 Flush；不是 profiler 中的完整算子时延。最后的输出排空、全核同步属于导出保护，置于 KERNEL_END 后。
@@ -27,9 +27,10 @@ bash build.sh --pkg --soc=ascend950 --ops=moe_distribute_dispatch_v2 -j16
 保持顶部编辑参数的格式：
 
 ```python
-is_dispatch = 1
+is_dispatch = 0
 is_combine = 0
-is_continue = 0
+is_continue = 1
+is_continue_golden_expand_x = True  # combine 使用 golden，原始 dispatch 输出留给打点导出
 comm_alg = 'fullmesh_v2'
 rank_per_dev = 8           # 按真实进程/设备映射设置；内部启动 rank，不再外套 torchrun
 profile_cycles_per_us = 1000.0
@@ -104,5 +105,7 @@ WAIT_RECV_COUNTS、GATHER_RECV_COUNTS、GET_CUMSUM、PUBLISH_RECV_COUNTS 等旧�
 ## 本地验证边界
 
 已执行 Python 语法检查、模拟 bin 的解析/前后比较/旧格式/异常输入检查，以及 profiler header 的 C++ host stub 测试（格式、逐核槽位、累计值、复位和 overflow）。去除新增 profiler 语句后，原内核 token 序列保持一致。
+
+continue 路径已用 mock 验证非图执行函数和图模型函数体：combine 接收 golden，导出保留最后一次原始 dispatch 输出，覆盖性能循环、elastic 和 performance_info 分支。此检查不涉及真实图编译或设备执行。
 
 本机 `/usr/local/Ascend/ascend-toolkit/latest` 指向的 CANN 目录不可用，未执行真实 AscendC 编译、8p 采集或精度验证。host stub 测试不证明设备代码编译与缓存可见性；设备侧仍需按上述流程验证。

@@ -95,9 +95,9 @@ from cann_ops_transformer.ops import MoeDistributeBuffer  # noqa: E402
 profile_cycles_per_us = 1000.0
 
 # region 执行哪些测试
-is_dispatch = 1
+is_dispatch = 0
 is_combine = 0
-is_continue = 0
+is_continue = 1
 # endregion
 
 # region CPU模式配置 (用于在没有NPU环境下生成golden数据)
@@ -1281,11 +1281,11 @@ class MOE_LOW_LATENCY_CONTINUE_GRAPH_Model(MOE_GRAPH_Model):
             output_dispatch_npu = call_low_latency_dispatch(self.distribute_buffer, dispatch_kwargs)
 
             expand_x_npu, _, assist_info_for_combine_npu, _, ep_recv_counts_npu, tp_recv_counts_npu, expand_scales = output_dispatch_npu
-            if expand_x_npu.dtype not in (torch.float16, torch.bfloat16):
-                expand_x_npu = convert_expand_x_dtype(expand_x_npu)
+            profiler_expand_x = expand_x_npu  # 保留原始 dispatch 输出，打点不能从 golden 中导出
             if is_continue_golden_expand_x:
                 expand_x_npu = golden_expand_x
-            profiler_expand_x = expand_x_npu
+            elif expand_x_npu.dtype not in (torch.float16, torch.bfloat16):
+                expand_x_npu = convert_expand_x_dtype(expand_x_npu)
 
             combine_kwargs = {
                 'expand_x': expand_x_npu, 'expert_ids': expert_ids,
@@ -2132,6 +2132,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                             if rank in slow_rank:
                                 time.sleep(slow_rank_time)
                         expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                        profiler_expand_x = expand_x
                         print("=========================performance_info=========================")
                         print(f"performance_info after Independent npu_moe_distribute_dispatchv2:{dispatch_performance_info}\n")
 
@@ -2155,6 +2156,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                         print(f"performance_info after Independent npu_moe_distribute_combinev2:{combine_performance_info}\n")
                     else:
                         expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                        profiler_expand_x = expand_x
 
                         if is_continue_golden_expand_x:
                             expand_x = golden_expand_x
@@ -2180,6 +2182,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                             time.sleep(slow_rank_time)
 
                         expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                        profiler_expand_x = expand_x
                         print("=========================performance_info=========================")
                         print(f"rank is :{dispatch_kwargs['ep_rank_id']} ep_recv_counts :{ep_recv_counts}\n")
                         print(f"rank is :{combine_kwargs['ep_rank_id']} expert_ids :{combine_kwargs['expert_ids']}\n")
@@ -2207,6 +2210,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                         print(f"performance_info after Independent npu_moe_distribute_combinev2:{combine_performance_info}\n")
                     else:
                         expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                        profiler_expand_x = expand_x
                         torch.npu.synchronize()
                         if is_continue_golden_expand_x:
                             expand_x = golden_expand_x
@@ -2235,6 +2239,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                             for i in range(loop):
 
                                 expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                                profiler_expand_x = expand_x
 
                                 if is_continue_golden_expand_x:
                                     expand_x = golden_expand_x
@@ -2260,6 +2265,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                             if rank in slow_rank:
                                 time.sleep(slow_rank_time)
                             expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                            profiler_expand_x = expand_x
                             print("=========================performance_info=========================")
                             print(f"performance_info after Independent npu_moe_distribute_dispatchv2:{dispatch_performance_info}\n")
 
@@ -2279,6 +2285,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                             x = call_low_latency_combine(ep_buffer, combine_kwargs)
 
                             expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                            profiler_expand_x = expand_x
 
                             if is_continue_golden_expand_x:
                                 expand_x = golden_expand_x
@@ -2304,6 +2311,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                         for i in range(loop):
 
                             expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                            profiler_expand_x = expand_x
 
                             if is_continue_golden_expand_x:
                                 expand_x = golden_expand_x
@@ -2331,6 +2339,7 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                             time.sleep(slow_rank_time)
 
                         expand_x, _, expand_idx, _, ep_recv_counts, tp_recv_counts, _ = call_low_latency_dispatch(ep_buffer, dispatch_kwargs)
+                        profiler_expand_x = expand_x
                         print("=========================performance_info=========================")
                         print(f"performance_info after Independent npu_moe_distribute_dispatchv2:{dispatch_performance_info}\n")
                         if is_continue_golden_expand_x:
@@ -2454,8 +2463,6 @@ def run_continue_npu(queue, rank, x, expert_ids, x_active_mask, scales, expert_s
                         print("=========================performance_info=========================")
                         print(f"continue_performance_info after Independent npu_moe_distribute_dispatchv2:{dispatch_performance_info}\n")
 
-        if graph_type == 0:
-            profiler_expand_x = combine_kwargs["expand_x"]
         time.sleep(20)
         torch.npu.synchronize()
         if profiler_expand_x is not None:
@@ -4967,8 +4974,10 @@ def parse_fullmesh_v2_profiler():
 if __name__ == "__main__":
     # region 测试前准备工作
 
-    if not is_dispatch or is_combine or is_continue or is_cpu_only:
-        raise RuntimeError("dispatch profiler requires is_dispatch=1, is_combine=is_continue=0, is_cpu_only=False")
+    if is_cpu_only or is_combine or bool(is_dispatch) + bool(is_continue) != 1:
+        raise RuntimeError("dispatch profiler requires either is_dispatch=1 or is_continue=1, with is_combine=0 and is_cpu_only=False")
+    if is_continue and not is_continue_golden_expand_x:
+        raise RuntimeError("continue profiling requires is_continue_golden_expand_x=True: profiler overwrites dispatch expand_x")
     if dispatch_comm_alg != "fullmesh_v2":
         raise RuntimeError("dispatch profiler requires comm_alg=fullmesh_v2 (A5 instrumented path)")
     # Never parse another run's dump when a child rank fails.
