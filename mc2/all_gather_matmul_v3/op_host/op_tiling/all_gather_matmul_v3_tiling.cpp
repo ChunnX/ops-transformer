@@ -44,6 +44,7 @@ constexpr uint32_t IDX_INPUT_BIAS = 3U;
 constexpr uint32_t IDX_INPUT_X1_SCALE = 4U;
 constexpr uint32_t IDX_INPUT_X2_SCALE = 5U;
 constexpr uint32_t IDX_OUTPUT_Y = 0U;
+constexpr uint32_t IDX_OUTPUT_GATHER_OUT = 1U;
 
 // ---- attr indices (must match def order) ----
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;
@@ -95,12 +96,13 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
     auto x1Desc = context->GetInputDesc(IDX_INPUT_X1);
     auto x2Desc = context->GetInputDesc(IDX_INPUT_X2);
     auto yDesc = context->GetOutputDesc(IDX_OUTPUT_Y);
+    auto gatherOutDesc = context->GetOutputDesc(IDX_OUTPUT_GATHER_OUT);
 
     OP_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, x1Desc);
     OP_CHECK_NULL_WITH_CONTEXT(context, x2Desc);
     OP_CHECK_NULL_WITH_CONTEXT(context, yDesc);
-    // gather_out 本次交付不使能，tiling 不做处理
+    OP_CHECK_NULL_WITH_CONTEXT(context, gatherOutDesc);
 
     // scale 在 def 中为 OPTIONAL，但 V3 仅支持 MX 量化，tiling 强制要求必传
     auto x1ScaleDesc = context->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
@@ -161,8 +163,16 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
     // output dtype
     ge::DataType yDtype = yDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(OUT_DTYPE_LIST, yDtype),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "y", Ops::Base::ToString(yDtype).c_str(),
-                                                          "The dtype of y must be DT_BF16 or DT_FLOAT16"),
+                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "y", Ops::Base::ToString(yDtype).c_str(),
+                                                           "The dtype of y must be DT_BF16 or DT_FLOAT16"),
+                     return ge::GRAPH_FAILED);
+
+    // gather_out dtype 与 x1 一致
+    auto gatherOutDesc = context->GetOutputDesc(IDX_OUTPUT_GATHER_OUT);
+    OP_TILING_CHECK(gatherOutDesc->GetDataType() != x1Dtype,
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "gather_out",
+                                                          Ops::Base::ToString(gatherOutDesc->GetDataType()).c_str(),
+                                                          "The dtype of gather_out must be same as x1"),
                     return ge::GRAPH_FAILED);
 
     // bias dtype (optional, 若非空，则必须为 DT_FLOAT)
@@ -207,6 +217,12 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     ge::Format yFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat()));
     OP_TILING_CHECK(yFormat != ge::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "y", Ops::Base::ToString(yFormat).c_str(), "ND"),
+                    return ge::GRAPH_FAILED);
+
+    auto gatherOutDesc = context->GetOutputDesc(IDX_OUTPUT_GATHER_OUT);
+    ge::Format gatherOutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gatherOutDesc->GetStorageFormat()));
+    OP_TILING_CHECK(gatherOutFormat != ge::FORMAT_ND,
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "gather_out", Ops::Base::ToString(gatherOutFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
 
     auto biasDesc = context->GetOptionalInputDesc(IDX_INPUT_BIAS);
@@ -381,6 +397,28 @@ static ge::graphStatus CheckOutputShape(const gert::TilingContext *context, cons
             nodeName, "y", (std::string("[") + std::to_string(yM) + "," + std::to_string(yN) + "]").c_str(),
             (std::string("expected [") + std::to_string(shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize)) +
              "," + std::to_string(shapeInfo.n) + "]")
+                .c_str()),
+        return ge::GRAPH_FAILED);
+
+    // gather_out shape: [M * rankSize, K]
+    const gert::StorageShape *gatherOutShape = context->GetOutputShape(IDX_OUTPUT_GATHER_OUT);
+    OP_TILING_CHECK(gatherOutShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "gather_out"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(gatherOutShape->GetStorageShape().GetDimNum() != DIM_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                        nodeName, "gather_out",
+                        (std::to_string(gatherOutShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
+                    return ge::GRAPH_FAILED);
+    int64_t gatherOutM = gatherOutShape->GetStorageShape().GetDim(0);
+    int64_t gatherOutK = gatherOutShape->GetStorageShape().GetDim(1);
+    OP_TILING_CHECK(
+        gatherOutM != shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize) || gatherOutK != shapeInfo.k,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            nodeName, "gather_out",
+            (std::string("[") + std::to_string(gatherOutM) + "," + std::to_string(gatherOutK) + "]").c_str(),
+            (std::string("expected [") +
+             std::to_string(shapeInfo.mPerRank * static_cast<int64_t>(shapeInfo.rankSize)) + "," +
+             std::to_string(shapeInfo.k) + "]")
                 .c_str()),
         return ge::GRAPH_FAILED);
 
