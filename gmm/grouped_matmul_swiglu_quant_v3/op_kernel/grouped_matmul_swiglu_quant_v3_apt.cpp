@@ -12,6 +12,7 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "arch35/grouped_matmul_swiglu_quant_v3_mxquant.h"
+#include "arch35/grouped_matmul_tensor_api_swiglu_quant_v3_mxfp8_kernel.h"
 #include "arch35/grouped_matmul_swiglu_quant_v3_tiling_key.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -31,7 +32,17 @@ extern "C" __global__ __aicore__ void grouped_matmul_swiglu_quant_v3(
     // BF16/FP32 operations must not raise an overflow exception for values
     // that are intentionally handled by the MX quantization epilogue.
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
-    if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_MODE_0)) {
+    if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2)) {
+        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2, KERNEL_TYPE_MIX_AIC_1_2);
+        GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel<AscendC::Te::NZLayoutPtn>(
+            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+            tiling);
+    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2)) {
+        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2, KERNEL_TYPE_MIX_AIC_1_2);
+        GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel<AscendC::Te::ZNLayoutPtn>(
+            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+            tiling);
+    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_MODE_0)) {
         KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_MODE_0, KERNEL_TYPE_MIX_AIC_1_2);
         GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 0>(
             x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,

@@ -13,5 +13,9 @@
 #define GMM_SWIGLU_QUANT_V3_TRANS_MODE_1 5
 #define GMM_SWIGLU_QUANT_V3_TRANS_MODE_2 6
 #define GMM_SWIGLU_QUANT_V3_TRANS_MODE_3 7
+// Tensor API mode-2 keys deliberately use a distinct tiling ABI from the
+// CGMCT mode-2 keys above.
+#define GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2 8
+#define GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2 9
 
 #endif // GROUPED_MATMUL_SWIGLU_QUANT_V3_TILING_KEY_H

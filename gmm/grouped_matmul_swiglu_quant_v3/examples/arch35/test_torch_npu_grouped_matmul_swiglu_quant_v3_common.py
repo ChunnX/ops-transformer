@@ -9,7 +9,9 @@ import torch_npu
 
 def run_demo(mode, transpose=False, activate_left=True):
     torch.manual_seed(0)
-    e, m, k, n = 1, 64, 64, 128
+    # K=128 is intentional: V3 mode-2 selects the Tensor API path only when
+    # K is aligned to 128.
+    e, m, k, n = 1, 64, 128, 128
     x = torch.randint(-4, 5, (m, k), dtype=torch.int8).to(torch.float8_e4m3fn).npu()
     weight_nd = torch.randint(-4, 5, (e, k, n), dtype=torch.int8).to(torch.float8_e4m3fn).npu()
     weight = torch_npu.npu_format_cast(weight_nd, 29)

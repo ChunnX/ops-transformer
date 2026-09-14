@@ -17,7 +17,9 @@ FP8_PATTERN = np.array(
     [0x38, 0xB8, 0x40, 0x30, 0xC0, 0x28, 0x3C, 0xBC, 0x48, 0xC8, 0x50, 0x20],
     dtype=np.uint8,
 )
-M, N, K = 2048, 128, 64
+# K=128 matches the ACLNN demo and is the alignment condition for the V3
+# Tensor API mode-2 path.
+M, N, K = 2048, 128, 128
 BLOCK_SIZE = 32
 FP8_E4M3_EMAX = 8
 

@@ -151,6 +151,7 @@ private:
     float clampLimit_ = 7.0F;
     float gluAlpha_ = 1.702F;
     float gluBias_ = 1.0F;
+    bool useTensorApi_ = false;
 };
 
 } // namespace GroupedMatmulSwigluQuantV3Tiling

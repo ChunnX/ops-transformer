@@ -117,7 +117,9 @@ int main(int argc, char **argv)
     int64_t E = 1;
     int64_t M = 2048;
     int64_t N = 128;
-    int64_t K = 64;
+    // K=128 intentionally exercises the V3 Tensor API tiling path for
+    // swigluMode=2.
+    int64_t K = 128;
 
     std::vector<int64_t> xShape = {M, K};
     std::vector<int64_t> weightLogicalShape = transposeWeight ? std::vector<int64_t>{E, N, K}

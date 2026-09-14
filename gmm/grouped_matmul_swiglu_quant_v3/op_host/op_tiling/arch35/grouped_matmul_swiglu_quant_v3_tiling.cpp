@@ -46,6 +46,7 @@ void GroupedMatmulSwigluQuantV3Tiling950::Reset()
     clampLimit_ = 7.0F;
     gluAlpha_ = 1.702F;
     gluBias_ = 1.0F;
+    useTensorApi_ = false;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetShapeAttrsInfo()
@@ -296,6 +297,9 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!CheckShapeAndScale(xShape, xScaleShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
                 OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckOutputShape(), OP_LOGE(context_->GetNodeName(), "output shape validation failed"), return false);
+    // Tensor API currently specializes the mode-2 front/back split and
+    // requires an MX-scale-safe K tile.  All other V3 cases retain CGMCT.
+    useTensorApi_ = swigluMode_ == 2 && (inputParams_.kSize % 128U) == 0U;
     return true;
 }
 
@@ -362,6 +366,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
 
 uint64_t GroupedMatmulSwigluQuantV3Tiling950::GetTilingKey() const
 {
+    if (useTensorApi_) {
+        return transposeWeight_ ? GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2
+                                : GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2;
+    }
     constexpr uint64_t TRANSPOSE_KEY_OFFSET = 4;
     return static_cast<uint64_t>(swigluMode_) + (transposeWeight_ ? TRANSPOSE_KEY_OFFSET : 0);
 }

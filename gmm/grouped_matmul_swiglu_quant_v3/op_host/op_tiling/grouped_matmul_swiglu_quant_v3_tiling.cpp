@@ -14,6 +14,7 @@
 
 using namespace ge;
 using namespace Ops::Transformer::OpTiling;
+using namespace optiling::GroupedMatmulSwigluQuantV3Tiling;
 
 namespace optiling {
 namespace {
@@ -48,8 +49,7 @@ ASCENDC_EXTERN_C graphStatus TilingPrepareForGroupedMatmulSwigluQuantV3(gert::Ti
 }
 } // namespace
 
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV3,
-                             GroupedMatmulSwigluQuantV3Tiling::GroupedMatmulSwigluQuantV3Tiling950,
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV3, GroupedMatmulSwigluQuantV3Tiling950,
                              V3_950_TILING_TEMPLATE);
 
 IMPL_OP_OPTILING(GroupedMatmulSwigluQuantV3)
