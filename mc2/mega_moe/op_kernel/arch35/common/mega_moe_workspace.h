@@ -103,7 +103,11 @@ private:
     {
         workspaceSize = 0;
         dispatchRevDataOffset = workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
+        // dispatchRevData 按 GMM1 激活的实际物理字节数分配：FP8 每字节 1 个元素，FP4 每字节 2 个元素。
+        const int64_t dispatchDataElementsPerByte = IsA4W4GmmMode(tilingData->moeGmmMode) ? 2LL : 1LL;
+        const int64_t dispatchDataBytesPerToken = static_cast<int64_t>(tilingData->h) / dispatchDataElementsPerByte;
+        workspaceSize += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->maxOutputSize) * dispatchDataBytesPerToken, ALIGN_512);
         dispatchRevScaleOffset = workspaceSize;
 
         int64_t dispatchScaleElementsPerToken =
@@ -290,7 +294,7 @@ private:
             sharedExpertGmm1OutOffset = workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
-            if (tilingData->topoType == TOPO_TYPE_MTE) {
+            if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->needsIndependentSharedQuant != 0U) {
                 // MTE shared GMM1 统一读取逐 token 交织记录 [Align256(data) | Align32(scale)]。
                 sharedExpertInputOffset = workspaceSize;
                 uint32_t elementsPerByte = IsA4W4GmmMode(tilingData->sharedGmmMode) ? 2U : 1U;
@@ -298,7 +302,7 @@ private:
                     CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elementsPerByte, 0LL, false);
                 workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * recordBytes,
                                                       static_cast<int64_t>(ALIGN_512));
-            } else {
+            } else if (tilingData->topoType != TOPO_TYPE_MTE) {
                 // URMA layered kernel 仍使用连续 data/scale，两块地址契约保持不变。
                 sharedExpertInputDataOffset = workspaceSize;
                 workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);

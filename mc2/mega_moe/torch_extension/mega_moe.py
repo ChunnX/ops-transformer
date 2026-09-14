@@ -28,6 +28,72 @@ _ALLOWED_ACTIVATION_KEYS = {
 }
 
 
+_FLOAT8_E5M2_DTYPE_VALUE = 23
+_FLOAT8_E4M3FN_DTYPE_VALUE = 24
+_FLOAT4_E2M1_DTYPE_VALUE = 296
+_PRE_QUANTIZED_X_DTYPE_VALUES = frozenset(
+    {
+        _FLOAT8_E5M2_DTYPE_VALUE,
+        _FLOAT8_E4M3FN_DTYPE_VALUE,
+        _FLOAT4_E2M1_DTYPE_VALUE,
+    }
+)
+
+
+def _is_pre_quantized_x(
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+) -> bool:
+    # A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 A5 预量化输入。
+    return (
+        dispatch_quant_mode == 0
+        and _dtype_to_int(dispatch_quant_out_dtype)
+        in _PRE_QUANTIZED_X_DTYPE_VALUES
+    )
+
+
+def _is_packed_fp4_x(
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+) -> bool:
+    return (
+        dispatch_quant_mode == 0
+        and _dtype_to_int(dispatch_quant_out_dtype) == _FLOAT4_E2M1_DTYPE_VALUE
+    )
+
+
+def _logical_hidden_size(
+    x: torch.Tensor,
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+):
+    return (
+        x.size(1) * 2
+        if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype)
+        else x.size(1)
+    )
+
+
+def _check_pre_quantized_x_contract(
+    x: torch.Tensor,
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+) -> None:
+    torch._check(x.dim() == 2, lambda: "x must be 2D.")
+    is_pre_quantized_x = _is_pre_quantized_x(
+        dispatch_quant_mode, dispatch_quant_out_dtype
+    )
+    if not is_pre_quantized_x:
+        return
+
+    # Torch 只校验 descriptor 组装必需的条件；其余类型、shape、拓扑组合由 Tiling 统一拦截。
+    if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype):
+        torch._check(
+            x.dtype == torch.uint8,
+            lambda: "FP4 pre-quantized x must use packed torch.uint8 storage.",
+        )
+
+
 def _normalize_activation_params(
     activation: str,
     activation_clamp: Optional[float] = None,
@@ -80,6 +146,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, "
             "Tensor[]? bias1=None, Tensor[]? bias2=None, "
             "Tensor? x_active_mask=None, "
+            "Tensor? scales=None, "
             "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
             "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
             "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
@@ -111,6 +178,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             bias1=None,
             bias2=None,
             x_active_mask=None,
+            scales=None,
             shared_weight1=None,
             shared_weight2=None,
             shared_weight_scales1=None,
@@ -140,10 +208,24 @@ class _MegaMoeOpBuilder(OpBuilder):
                 ep_world_size != 0,
                 lambda: (f"ep_world_size should not be 0, {ops_error(ErrCode.VALUE)}."),
             )
+            _check_pre_quantized_x_contract(
+                x,
+                dispatch_quant_mode,
+                dispatch_quant_out_dtype,
+            )
             bs = x.size(0)
-            h = x.size(1)
+            h = _logical_hidden_size(
+                x, dispatch_quant_mode, dispatch_quant_out_dtype
+            )
             local_moe_expert_num = moe_expert_num // ep_world_size
-            y = x.new_empty(tuple([bs, h]), dtype=x.dtype)
+            output_dtype = (
+                torch.bfloat16
+                if _is_pre_quantized_x(
+                    dispatch_quant_mode, dispatch_quant_out_dtype
+                )
+                else x.dtype
+            )
+            y = x.new_empty(tuple([bs, h]), dtype=output_dtype)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 
@@ -168,6 +250,7 @@ def _npu_mega_moe(
     bias1=None,
     bias2=None,
     x_active_mask=None,
+    scales=None,
     shared_weight1=None,
     shared_weight2=None,
     shared_weight_scales1=None,
@@ -212,6 +295,7 @@ def _npu_mega_moe(
         bias1,
         bias2,
         x_active_mask,
+        scales,
         shared_weight1,
         shared_weight2,
         shared_weight_scales1,
@@ -521,8 +605,8 @@ class SymmBuffer:
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
-    torch.float8_e5m2: 23,
-    torch.float8_e4m3fn: 24,
+    torch.float8_e5m2: _FLOAT8_E5M2_DTYPE_VALUE,
+    torch.float8_e4m3fn: _FLOAT8_E4M3FN_DTYPE_VALUE,
     torch.int8: 1,
 }
 
@@ -620,6 +704,7 @@ def mega_moe(
     l1_bias: Optional[List[torch.Tensor]] = None,
     l2_bias: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
+    scales: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
     activation_params: Optional[Dict[str, float]] = None,
@@ -635,6 +720,27 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
+    # 自定义算子 schema 接收 int；统一在入口序列化，FP4 扩展枚举 296 保持不变。
+    dispatch_quant_dtype_int = _dtype_to_int(
+        sym_buffer.dispatch_quant_out_dtype
+    )
+    _check_pre_quantized_x_contract(
+        x,
+        sym_buffer.dispatch_quant_mode,
+        dispatch_quant_dtype_int,
+    )
+    logical_h = _logical_hidden_size(
+        x,
+        sym_buffer.dispatch_quant_mode,
+        dispatch_quant_dtype_int,
+    )
+    torch._check(
+        logical_h == sym_buffer.hidden,
+        lambda: (
+            f"The logical hidden size of x must equal sym_buffer.hidden "
+            f"({sym_buffer.hidden}).{ops_error(ErrCode.VALUE)}"
+        ),
+    )
     shared_quant_dtype_int = _dtype_to_int(
         shared_expert_quant_out_dtype, "shared_expert_quant_out_dtype"
     )
@@ -653,6 +759,7 @@ def mega_moe(
         bias1=l1_bias,
         bias2=l2_bias,
         x_active_mask=x_active_mask,
+        scales=scales,
         shared_weight1=shared_l1_weights,
         shared_weight2=shared_l2_weights,
         shared_weight_scales1=shared_l1_weights_sf,
@@ -668,7 +775,7 @@ def mega_moe(
         activation=activation,
         activation_clamp=activation_clamp,
         activation_params=activation_params,
-        dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        dispatch_quant_out_dtype=dispatch_quant_dtype_int,
         shared_expert_quant_out_dtype=shared_quant_dtype_int,
         weight1_type=weight1_type,
         weight2_type=weight2_type,

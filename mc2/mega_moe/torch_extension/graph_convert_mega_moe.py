@@ -31,6 +31,10 @@ try:
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair.ge._ge_graph import DataType, TensorType
+    from torchair.ge._ge_graph import torch_dtype_value_to_ge_type
+    from torchair.ge._ge_graph import (
+        _ge_dtype_to_ge_proto_dtype as ge_dtype_to_ge_proto_dtype,
+    )
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
     from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
     from torchair.ge._ge_graph import get_invalid_desc
@@ -45,8 +49,90 @@ from .mega_moe import _normalize_activation_params
 
 if _TORCHAIR_AVAILABLE:
 
+    _GE_DTYPE_UNDEFINED = 28
+
+    def _to_ge_dtype(dtype_value: Optional[int]):
+        # 图重写可能把可选属性 None 物化为 GE 的 DT_UNDEFINED(28)。
+        if dtype_value is None or dtype_value == _GE_DTYPE_UNDEFINED:
+            return _GE_DTYPE_UNDEFINED
+        return torch_dtype_value_to_ge_type(dtype_value)
+
+    def _is_pre_quantized_x(
+        dispatch_quant_mode: int, dispatch_quant_out_dtype: Optional[int]
+    ) -> bool:
+        if (
+            dispatch_quant_mode != 0
+            or dispatch_quant_out_dtype is None
+            or dispatch_quant_out_dtype == _GE_DTYPE_UNDEFINED
+        ):
+            return False
+        dispatch_quant_out_ge_dtype = _to_ge_dtype(dispatch_quant_out_dtype)
+        return dispatch_quant_out_ge_dtype in (
+            DataType.DT_FLOAT8_E5M2,
+            DataType.DT_FLOAT8_E4M3FN,
+            DataType.DT_FLOAT4_E2M1,
+        )
+
+    def _restore_fp4_x_descriptor(
+        x: Tensor,
+        dispatch_quant_mode: int,
+        dispatch_quant_out_dtype: Optional[int],
+    ) -> Tensor:
+        is_pre_quantized_fp4 = (
+            _is_pre_quantized_x(dispatch_quant_mode, dispatch_quant_out_dtype)
+            and _to_ge_dtype(dispatch_quant_out_dtype) == DataType.DT_FLOAT4_E2M1
+        )
+        if not is_pre_quantized_fp4 or x.dtype != DataType.DT_UINT8:
+            return x
+        # FP4 的 Torch 输入以 uint8 打包；仅在 mode 和逻辑类型同时命中时恢复为 FP4 descriptor。
+        logical_shape = ge.Mul(
+            ge.Shape(x), ge.Const([1] * (x.rank - 1) + [2])
+        )
+        x = ge.Reshape(
+            ge.Bitcast(x, type=DataType.DT_FLOAT4_E2M1), logical_shape
+        )
+        x.desc.dtype = ge_dtype_to_ge_proto_dtype(DataType.DT_FLOAT4_E2M1)
+        return x
+
+    def _restore_e8m0_scales_dtype(
+        scales: Optional[Tensor],
+        dispatch_quant_mode: int,
+        dispatch_quant_out_dtype: Optional[int],
+    ) -> Optional[Tensor]:
+        if (
+            not _is_pre_quantized_x(
+                dispatch_quant_mode, dispatch_quant_out_dtype
+            )
+            or scales is None
+            or scales.dtype != DataType.DT_UINT8
+        ):
+            return scales
+        scales = ge.Bitcast(scales, type=DataType.DT_FLOAT8_E8M0)
+        scales.desc.dtype = ge_dtype_to_ge_proto_dtype(DataType.DT_FLOAT8_E8M0)
+        return scales
+
     @auto_convert_to_tensor(
-        [False, False, False, False, True, True, True, True, True, True, False, False],
+        [
+            False,
+            False,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            False,
+        ],
         [
             False,
             False,
@@ -59,6 +145,13 @@ if _TORCHAIR_AVAILABLE:
             False,
             False,
             True,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
             True,
         ],
     )
@@ -75,6 +168,13 @@ if _TORCHAIR_AVAILABLE:
         bias2: List[Tensor],
         x_active_mask: Optional[Tensor],
         scales: Optional[Tensor],
+        shared_weight1: Optional[List[Tensor]],
+        shared_weight2: Optional[List[Tensor]],
+        shared_weight_scales1: Optional[List[Tensor]],
+        shared_weight_scales2: Optional[List[Tensor]],
+        shared_bias1: Optional[List[Tensor]],
+        shared_bias2: Optional[List[Tensor]],
+        mask_buffer: Optional[Tensor],
         *,
         moe_expert_num: int,
         ep_world_size: int,
@@ -82,11 +182,14 @@ if _TORCHAIR_AVAILABLE:
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_dtype: int = 28,
+        shared_expert_quant_out_dtype: int = 28,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
         activation_params: Optional[List[float]] = None,
+        topo_type: int = 0,
+        rank_num_per_server: int = 2,
         topk_weights_type: int = 0,
         dependencies=[],
         node_name=None,
@@ -107,6 +210,15 @@ if _TORCHAIR_AVAILABLE:
         .DYNAMIC_INPUT(bias2, TensorType({DT_FLOAT}))\n
         .OPTIONAL_INPUT(x_active_mask, TensorType({DT_INT8}))\n
         .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
+        .DYNAMIC_INPUT(shared_weight1, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2,\n
+            DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .DYNAMIC_INPUT(shared_weight2, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2,\n
+            DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .DYNAMIC_INPUT(shared_weight_scales1, TensorType({DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64}))\n
+        .DYNAMIC_INPUT(shared_weight_scales2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64}))\n
+        .DYNAMIC_INPUT(shared_bias1, TensorType({DT_FLOAT}))\n
+        .DYNAMIC_INPUT(shared_bias2, TensorType({DT_FLOAT}))\n
+        .OPTIONAL_INPUT(mask_buffer, TensorType({DT_INT32}))\n
         .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))\n
         .OUTPUT(expert_token_nums, TensorType({DT_INT32}))\n
         .REQUIRED_ATTR(moe_expert_num, Int)\n
@@ -115,11 +227,15 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(max_recv_token_num, Int, 0)\n
         .ATTR(dispatch_quant_mode, Int, 0)\n
         .ATTR(dispatch_quant_out_dtype, Int, 28)\n
+        .ATTR(shared_expert_quant_out_dtype, Int, 28)\n
         .ATTR(combine_quant_mode, Int, 0)\n
         .ATTR(comm_alg, String, "")\n
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_params, ListFloat, {})\n
+        .ATTR(topo_type, Int, 0)\n
+        .ATTR(rank_num_per_server, Int, 2)\n
+        .ATTR(topk_weights_type, Int, 0)\n
         """
         if activation_params is None:
             activation_params = []
@@ -137,6 +253,13 @@ if _TORCHAIR_AVAILABLE:
             "bias2": bias2,
             "x_active_mask": x_active_mask,
             "scales": scales,
+            "shared_weight1": shared_weight1,
+            "shared_weight2": shared_weight2,
+            "shared_weight_scales1": shared_weight_scales1,
+            "shared_weight_scales2": shared_weight_scales2,
+            "shared_bias1": shared_bias1,
+            "shared_bias2": shared_bias2,
+            "mask_buffer": mask_buffer,
         }
 
         attrs = {
@@ -146,11 +269,14 @@ if _TORCHAIR_AVAILABLE:
             "max_recv_token_num": attr.Int(max_recv_token_num),
             "dispatch_quant_mode": attr.Int(dispatch_quant_mode),
             "dispatch_quant_out_dtype": attr.Int(dispatch_quant_out_dtype),
+            "shared_expert_quant_out_dtype": attr.Int(shared_expert_quant_out_dtype),
             "combine_quant_mode": attr.Int(combine_quant_mode),
             "comm_alg": attr.Str(comm_alg),
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
             "activation_params": attr.ListFloat(activation_params),
+            "topo_type": attr.Int(topo_type),
+            "rank_num_per_server": attr.Int(rank_num_per_server),
             "topk_weights_type": attr.Int(topk_weights_type),
         }
 
@@ -189,17 +315,36 @@ if _TORCHAIR_AVAILABLE:
             .dynamic_input("bias1", "DT_FLOAT")
             .dynamic_input("bias2", "DT_FLOAT")
             .optional_input("x_active_mask", "DT_INT8")
+            .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0")
+            .dynamic_input(
+                "shared_weight1",
+                "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .dynamic_input(
+                "shared_weight2",
+                "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .dynamic_input("shared_weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64")
+            .dynamic_input("shared_weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64")
+            .dynamic_input("shared_bias1", "DT_FLOAT")
+            .dynamic_input("shared_bias2", "DT_FLOAT")
+            .optional_input("mask_buffer", "DT_INT32")
             .required_attr("moe_expert_num", attr.Int)
             .required_attr("ep_world_size", attr.Int)
             .required_attr("ccl_buffer_size", attr.Int)
             .attr("max_recv_token_num", attr.Int(0))
             .attr("dispatch_quant_mode", attr.Int(0))
             .attr("dispatch_quant_out_dtype", attr.Int(28))
+            .attr("shared_expert_quant_out_dtype", attr.Int(28))
             .attr("combine_quant_mode", attr.Int(0))
             .attr("comm_alg", attr.Str(""))
             .attr("num_max_tokens_per_rank", attr.Int(0))
             .attr("activation", attr.Str("swiglu"))
             .attr("activation_params", attr.ListFloat([]))
+            .attr("topo_type", attr.Int(0))
+            .attr("rank_num_per_server", attr.Int(2))
             .attr("topk_weights_type", attr.Int(0))
             .output("y", "DT_BF16, DT_FLOAT16")
             .output("expert_token_nums", "DT_INT32"),
@@ -222,6 +367,14 @@ if _TORCHAIR_AVAILABLE:
         bias1: Optional[List[Tensor]] = None,
         bias2: Optional[List[Tensor]] = None,
         x_active_mask: Optional[Tensor] = None,
+        scales: Optional[Tensor] = None,
+        shared_weight1: Optional[List[Tensor]] = None,
+        shared_weight2: Optional[List[Tensor]] = None,
+        shared_weight_scales1: Optional[List[Tensor]] = None,
+        shared_weight_scales2: Optional[List[Tensor]] = None,
+        shared_bias1: Optional[List[Tensor]] = None,
+        shared_bias2: Optional[List[Tensor]] = None,
+        mask_buffer: Optional[Tensor] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         combine_quant_mode: int = 0,
@@ -230,14 +383,32 @@ if _TORCHAIR_AVAILABLE:
         activation: str = "swiglu",
         activation_clamp: Optional[float] = None,
         activation_params: Optional[Dict[str, float]] = None,
-        dispatch_quant_out_dtype: int = 28,
+        dispatch_quant_out_dtype: Optional[int] = None,
+        shared_expert_quant_out_dtype: Optional[int] = None,
         weight1_type: int = 28,
         weight2_type: int = 28,
+        shared_weight1_type: int = 28,
+        shared_weight2_type: int = 28,
+        topo_type: Optional[int] = None,
+        rank_num_per_server: Optional[int] = None,
         topk_weights_type: int = 0,
         meta_outputs: TensorSpec = None,
     ):
         activation_values = _normalize_activation_params(
             activation, activation_clamp, activation_params
+        )
+        x = _restore_fp4_x_descriptor(
+            x, dispatch_quant_mode, dispatch_quant_out_dtype
+        )
+        scales = _restore_e8m0_scales_dtype(
+            scales, dispatch_quant_mode, dispatch_quant_out_dtype
+        )
+        dispatch_quant_out_ge_dtype = _to_ge_dtype(dispatch_quant_out_dtype)
+        # 未单独指定共享专家类型时，与 eager 路径一致继承 MoE 专家的逻辑类型。
+        shared_expert_quant_out_ge_dtype = (
+            dispatch_quant_out_ge_dtype
+            if shared_expert_quant_out_dtype in (None, _GE_DTYPE_UNDEFINED)
+            else _to_ge_dtype(shared_expert_quant_out_dtype)
         )
         return MegaMoe(
             context=context,
@@ -251,16 +422,29 @@ if _TORCHAIR_AVAILABLE:
             bias1=bias1,
             bias2=bias2,
             x_active_mask=x_active_mask,
+            scales=scales,
+            shared_weight1=shared_weight1,
+            shared_weight2=shared_weight2,
+            shared_weight_scales1=shared_weight_scales1,
+            shared_weight_scales2=shared_weight_scales2,
+            shared_bias1=shared_bias1,
+            shared_bias2=shared_bias2,
+            mask_buffer=mask_buffer,
             moe_expert_num=moe_expert_num,
             ep_world_size=ep_world_size,
             ccl_buffer_size=ccl_buffer_size,
             max_recv_token_num=max_recv_token_num,
             dispatch_quant_mode=dispatch_quant_mode,
-            dispatch_quant_out_dtype=dispatch_quant_out_dtype,
+            dispatch_quant_out_dtype=dispatch_quant_out_ge_dtype,
+            shared_expert_quant_out_dtype=shared_expert_quant_out_ge_dtype,
             combine_quant_mode=combine_quant_mode,
             comm_alg=comm_alg,
             num_max_tokens_per_rank=num_max_tokens_per_rank,
             activation=activation,
             activation_params=activation_values,
+            topo_type=0 if topo_type is None else topo_type,
+            rank_num_per_server=(
+                2 if rank_num_per_server is None else rank_num_per_server
+            ),
             topk_weights_type=topk_weights_type,
         )

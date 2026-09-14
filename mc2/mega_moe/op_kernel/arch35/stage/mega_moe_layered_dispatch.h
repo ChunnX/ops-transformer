@@ -1356,7 +1356,7 @@ __aicore__ inline auto MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::InitShare
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutAddr, xOutSize / sizeof(ActivationType));
     LocalTensor<ActivationType> xOutBuf1 =
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutAddr + xOutSize, xOutSize / sizeof(ActivationType));
-    return {xInBuf0, xInBuf1, xOutBuf0, xOutBuf1, mxTempBuf};
+    return {xInBuf0, xInBuf1, xOutBuf0, xOutBuf1, mxTempBuf, 0U, 0U};
 }
 
 // ===============================================================

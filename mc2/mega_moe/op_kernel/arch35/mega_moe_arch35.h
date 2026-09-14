@@ -264,6 +264,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         g_winRankAddr_[i] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer_[i]) + EXCEPTION_DUMP_REGION_SIZE;
     }
     params_.aGmAddr = x;
+    params_.xScaleGmAddr = scales;
     params_.expertIdxGmAddr = topkIds;
     moeWeightTensorListAddrs_ = {
         .weight1 = weight1, .weightScales1 = weightScales1, .weight2 = weight2, .weightScales2 = weightScales2};
@@ -385,8 +386,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantTokenBufferCon
 }
 
 // ======================================================================================
-// InitQuantScratchTensors：量化 scratch（mxTemp、xOut 双 buffer、xIn 双 buffer）的地址排布；
-//   MoE/shared 量化分时复用同一组 buffer；返回量化区之后的空闲地址。
+// InitQuantScratchTensors：量化 scratch 的地址排布；BF16 在线量化使用 xOut/xIn 双 buffer，
+//   预量化输入使用固定深度 record 环形缓冲；MoE/shared 分时复用同一片 UB。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTensors(uint32_t mxTempTensorAddr)
@@ -404,6 +405,8 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
     quantScratch_.mxTempTensor =
         LocalTensor<uint16_t>(TPosition::VECCALC, mxTempTensorAddr, mxTempTensorSize / sizeof(uint16_t));
     uint32_t xOutTensorAddr1 = mxTempTensorAddr + mxTempTensorSize;
+    quantScratch_.preQuantRecordBaseAddr = xOutTensorAddr1;
+    quantScratch_.preQuantRecordStrideBytes = xOutTensorSize;
     quantScratch_.xOutTensor0 =
         LocalTensor<ActivationType>(TPosition::VECCALC, xOutTensorAddr1, xOutTensorSize / sizeof(ActivationType));
     uint32_t xOutTensorAddr2 = xOutTensorAddr1 + xOutTensorSize;
@@ -412,6 +415,8 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
     if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
         if (sharedExpertNum_ > 0U) {
             sharedQuantScratch_.mxTempTensor = quantScratch_.mxTempTensor;
+            sharedQuantScratch_.preQuantRecordBaseAddr = xOutTensorAddr1;
+            sharedQuantScratch_.preQuantRecordStrideBytes = xOutTensorSize;
             sharedQuantScratch_.xOutTensor0 = LocalTensor<SharedActivationType>(
                 TPosition::VECCALC, xOutTensorAddr1, xOutTensorSize / sizeof(SharedActivationType));
             sharedQuantScratch_.xOutTensor1 = LocalTensor<SharedActivationType>(
@@ -432,15 +437,23 @@ __aicore__ inline uint32_t MegaMoe<TemplateMegaMoeTypeFunc>::InitQuantScratchTen
     }
 
     uint32_t routeRingAddr = xInAlignAddr2 + xInAlignSize;
+    if constexpr (!Std::IsSame<XType, bfloat16_t>::value) {
+        uint32_t preQuantRecordRingEnd =
+            xOutTensorAddr1 + PRE_QUANT_RECORD_BUFFER_COUNT * xOutTensorSize;
+        routeRingAddr = routeRingAddr > preQuantRecordRingEnd ? routeRingAddr : preQuantRecordRingEnd;
+    }
+
     /*
-     * h%64==32（scale 组数为奇数）时，量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
+     * h%64==32（scale 组数为奇数）时，在线量化链路存在三处"计算不覆盖、却进入定长通信记录或参与
      * 计算"的跨 launch UB 残留：xIn 尾部（进 ComputeMaxExp 尾块 mask 内 lane）、xOut 记录的
      * scale 偶数补齐槽（ComputeScale 掩码写不到）、mxTemp 的 halfScale 补偶槽（被
      * ComputeFp8Data 尾块 E2B 广播进乘法，0×NaN 仍为 NaN）。残留呈 NaN/大指数位型时整行
      * GMM 输出被污染为 NaN，最终 combine 输出成块清零（首轮 UB 干净故仅多轮调用时显形）。
-     * 此处对 [mxTempTensorAddr, routeRingAddr) 连续 span（mxTemp/xOut0/xOut1/xIn0/xIn1 五段
-     * 量化 scratch）一次性清零：span 边界取 routeRingAddr、与本函数的地址推进公式同源，
-     * 中间插入新 buffer 时范围自动跟随；有效区随后每 token 均被完整覆写，残留位恒为良性 0。
+     * 此处对 [mxTempTensorAddr, routeRingAddr) 连续量化 scratch 一次性清零：span 边界取
+     * routeRingAddr、与本函数的地址推进公式同源。预量化 record ring 优先复用在线量化不再访问的
+     * xIn 区域，只有固定槽位所需空间更大时才延后 routeRingAddr。在线量化路径由计算覆写有效区；
+     * 预量化路径由 MTE2 覆写 record 环形缓冲中的 data/scale/weight 有效区，未覆盖的 padding 在连续
+     * 多轮调用中仍保持为 0。
      * h%64==0 时不存在上述缝隙，本清零不改变任何可观测行为。
      */
     LocalTensor<int16_t> quantScratchSpan(TPosition::VECCALC, mxTempTensorAddr,
@@ -703,14 +716,14 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparationStage()
 {
     SendAndQuantBuffInit();
-    QuantizeLocalTokens<MoeQuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
+    PrepareLocalTokenRecords<XType, MoeQuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
     if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
         if (sharedExpertNum_ > 0U) {
-            QuantizeLocalTokens<SharedQuantMode, typename SharedQuantConfig::QuantOutType, SharedActivationType,
-                                TopkWeightsType, false>(aivJob_, commonConfig_, params_, sharedQuantProcessConfig_,
-                                                        params_.workspaceInfo.sharedExpertInputPtr,
-                                                        sharedQuantScratch_);
+            PrepareLocalTokenRecords<XType, SharedQuantMode, typename SharedQuantConfig::QuantOutType,
+                                     SharedActivationType, TopkWeightsType, false>(
+                aivJob_, commonConfig_, params_, sharedQuantProcessConfig_, params_.workspaceInfo.sharedExpertInputPtr,
+                sharedQuantScratch_);
         }
     }
     if (sharedExpertNum_ == 0U) {
@@ -750,7 +763,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 
-    // 阶段 1：全 AIV 量化、清零并准备共享输入；无共享专家时仍在此发送 route。
+    // 阶段 1：生成本卡输入 record（BF16 在线量化或 FP8/FP4 预量化直通），
+    // 清零同步状态并准备共享专家输入；无共享专家时在此发送 compact route。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     ProcessInputPreparationStage();
     if constexpr (g_coreType == AIV) {

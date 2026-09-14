@@ -18,6 +18,13 @@
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
+const int64_t PACKED_FLOAT4_ELEMENTS_PER_BYTE = 2;
+constexpr int64_t GE_DTYPE_UNDEFINED = 28;
+
+bool HasTensor(const c10::optional<at::Tensor> &tensor)
+{
+    return tensor.has_value() && tensor.value().defined();
+}
 
 static void CheckNpuInput(const at::Tensor &tensor, const std::string &name, const char *socName)
 {
@@ -112,6 +119,7 @@ struct MegaMoeTensorInputs {
     const c10::optional<std::vector<at::Tensor>> &sharedBias1;
     const c10::optional<std::vector<at::Tensor>> &sharedBias2;
     const c10::optional<at::Tensor> &xActiveMask;
+    const c10::optional<at::Tensor> &scales;
     const c10::optional<at::Tensor> &maskBuffer;
 };
 
@@ -144,6 +152,7 @@ static void CheckMegaMoeInputsA5(const MegaMoeTensorInputs &inputs, int64_t epWo
     CheckNpuInput(inputs.sharedWeight2, "shared_l2_weights", socName);
     CheckNpuInput(inputs.sharedWeightScales1, "shared_l1_weights_sf", socName);
     CheckNpuInput(inputs.sharedWeightScales2, "shared_l2_weights_sf", socName);
+    CheckNpuInput(inputs.scales, "scales", socName);
     CheckNpuInput(inputs.maskBuffer, "mask_buffer", socName);
     // Check the original dtype before TensorListWrapper overrides the ACL dtype.
     const auto checkScaleDtype = [socName](const c10::optional<std::vector<at::Tensor>> &scales, const char *name) {
@@ -170,9 +179,14 @@ static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorl
         CheckMegaMoeInputsA5(inputs, epWorldSize, moeExpertNum, socName);
     }
     TORCH_CHECK((inputs.x.dim() == DIM_TWO) && (inputs.topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
-    TORCH_CHECK(((inputs.x.scalar_type() == at::kBFloat16) || (inputs.x.scalar_type() == at::kHalf)) &&
-                    (inputs.topkIds.scalar_type() == at::kInt),
-                "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+    const auto xScalarType = inputs.x.scalar_type();
+    const bool isPreQuantizedStorage = xScalarType == at::ScalarType::Float8_e5m2 ||
+                                       xScalarType == at::ScalarType::Float8_e4m3fn || xScalarType == at::kByte;
+    const bool isSupportedX = (xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) ||
+                              (isAscend950 && isPreQuantizedStorage);
+    TORCH_CHECK(isSupportedX && (inputs.topkIds.scalar_type() == at::kInt),
+                "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn or uint8 on Ascend950, "
+                "dtype of topk_ids should be int.");
     if (inputs.maskBuffer.has_value()) {
         const at::Tensor &mask = inputs.maskBuffer.value();
         TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");
@@ -188,6 +202,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
     const c10::optional<std::vector<at::Tensor>> &weightScales2, const c10::optional<std::vector<at::Tensor>> &bias1,
     const c10::optional<std::vector<at::Tensor>> &bias2, const c10::optional<at::Tensor> &xActiveMask,
+    const c10::optional<at::Tensor> &scales,
     const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
     const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
     const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
@@ -218,6 +233,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
                                      sharedBias1,
                                      sharedBias2,
                                      xActiveMask,
+                                     scales,
                                      maskBuffer};
     const char *socName = aclrtGetSocName();
     const bool isAscend950 = socName != nullptr && std::strstr(socName, "Ascend950") != nullptr;
@@ -227,6 +243,53 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         CheckWeightType(weight2Type, "weight2_type", socName);
         CheckWeightType(sharedWeight1Type, "shared_weight1_type", socName);
         CheckWeightType(sharedWeight2Type, "shared_weight2_type", socName);
+    }
+
+    const auto xScalarType = x.scalar_type();
+    const bool hasDispatchQuantOutDtype =
+        dispatchQuantOutDtype.has_value() && dispatchQuantOutDtype.value() != GE_DTYPE_UNDEFINED;
+    aclDataType dispatchQuantAclDtype = hasDispatchQuantOutDtype ?
+                                            GetAclDataType(dispatchQuantOutDtype.value()) :
+                                            ACL_DT_UNDEFINED;
+    const bool isFp8X = xScalarType == at::ScalarType::Float8_e5m2 ||
+                        xScalarType == at::ScalarType::Float8_e4m3fn;
+    const bool isPreQuantizedDtype = dispatchQuantAclDtype == ACL_FLOAT8_E5M2 ||
+                                     dispatchQuantAclDtype == ACL_FLOAT8_E4M3FN ||
+                                     dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
+    // A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 A5 预量化输入。
+    const bool isPreQuantizedX = dispatchQuantMode == 0 && isPreQuantizedDtype;
+    // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；只有协议明确声明 FP4 时，uint8 才承载两个 E2M1 元素。
+    const bool isPackedFp4X = isPreQuantizedX && dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
+    TORCH_CHECK(
+        ((xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) || isFp8X || isPackedFp4X) &&
+            (topkIds.scalar_type() == at::kInt),
+        "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn, or uint8/float4_e2m1fn_x2 "
+        "for packed FP4; dtype of topk_ids should be int32.");
+
+    if (isPackedFp4X) {
+        // TensorWrapper 会隐藏原始 Torch dtype，因此重解释前必须确认物理存储确实是 uint8。
+        TORCH_CHECK(xScalarType == at::kByte, "FP4 pre-quantized x must use packed torch.uint8 storage.");
+    }
+    aclDataType xAclDtype = isPackedFp4X ? ACL_FLOAT4_E2M1 : ConvertToAclDataType(xScalarType);
+    const bool hasScales = HasTensor(scales);
+
+    auto xSize = x.sizes();
+    int64_t bs = xSize[0];
+    int64_t h = xSize[1];
+    if (isPackedFp4X) {
+        TORCH_CHECK(h <= std::numeric_limits<int64_t>::max() / PACKED_FLOAT4_ELEMENTS_PER_BYTE,
+                    "The packed FP4 hidden dimension is too large.");
+        h *= PACKED_FLOAT4_ELEMENTS_PER_BYTE;
+    }
+    TORCH_CHECK(x.is_contiguous(), "x must be contiguous.");
+    if (hasScales) {
+        const at::Tensor &scaleTensor = scales.value();
+        const auto scaleScalarType = scaleTensor.scalar_type();
+        // scales 会被包装为 E8M0 descriptor，以下只保留 Host 无法获知的物理存储约束。
+        TORCH_CHECK(scaleScalarType == at::kByte || scaleScalarType == at::ScalarType::Float8_e8m0fnu,
+                    "scales only supports torch.uint8 storage or torch.float8_e8m0fnu.");
+        TORCH_CHECK(scaleTensor.device() == x.device(), "scales must be on the same device as x.");
+        TORCH_CHECK(scaleTensor.is_contiguous(), "scales must be contiguous.");
     }
 
     at::TensorList weight1Ref = weight1;
@@ -260,16 +323,11 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         weightScales2Dtype = aclDataType::ACL_UINT64;
     }
 
-    auto xSize = x.sizes();
-    auto topkIdsSize = topkIds.sizes();
-    int64_t bs = xSize[0];
-    int64_t h = xSize[1];
-    int64_t k = topkIdsSize[1];
-
-    const bool dispatchQuantOutIsFp4 =
-        dispatchQuantOutDtype.has_value() && dispatchQuantOutDtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1);
-    const bool sharedQuantOutIsFp4 = sharedExpertQuantOutDtype.has_value() ?
-                                         sharedExpertQuantOutDtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1) :
+    const bool dispatchQuantOutIsFp4 = dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
+    const bool hasSharedExpertQuantOutDtype =
+        sharedExpertQuantOutDtype.has_value() && sharedExpertQuantOutDtype.value() != GE_DTYPE_UNDEFINED;
+    const bool sharedQuantOutIsFp4 = hasSharedExpertQuantOutDtype ?
+                                         GetAclDataType(sharedExpertQuantOutDtype.value()) == ACL_FLOAT4_E2M1 :
                                          dispatchQuantOutIsFp4;
     if (dispatchQuantOutIsFp4 || sharedQuantOutIsFp4) {
         TORCH_CHECK(h % 2 == 0, "The last dim input shape must be divisible by 2 if "
@@ -291,14 +349,20 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t topoTypeValue = topoType.value_or(0);
     int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
-    int64_t dispatchQuantResultType =
-        dispatchQuantOutDtype.has_value() ? static_cast<int64_t>(GetAclDataType(dispatchQuantOutDtype.value())) : 28;
-    int64_t sharedExpertQuantResultType = sharedExpertQuantOutDtype.has_value() ?
+    // 这里传给 ACLNN 的是 GE dtype 属性；GE DT_UNDEFINED 为 28，与 ACL_DT_UNDEFINED=-1 不同。
+    int64_t dispatchQuantResultType = hasDispatchQuantOutDtype ?
+                                                  static_cast<int64_t>(dispatchQuantAclDtype) :
+                                                  GE_DTYPE_UNDEFINED;
+    int64_t sharedExpertQuantResultType = hasSharedExpertQuantOutDtype ?
                                               static_cast<int64_t>(GetAclDataType(sharedExpertQuantOutDtype.value())) :
                                               dispatchQuantResultType;
 
-    at::Tensor y;
-    y = at::empty({bs, h}, topkIds.options().dtype(x.scalar_type()));
+    at::ScalarType outputScalarType = isPreQuantizedX ? at::kBFloat16 : xScalarType;
+    at::Tensor y = at::empty({bs, h}, x.options().dtype(outputScalarType));
+
+    at::Tensor scalesTensor = hasScales ? scales.value() : at::Tensor();
+    TensorWrapper xWrapper = {x, xAclDtype};
+    TensorWrapper scalesWrapper = {scalesTensor, hasScales ? ACL_FLOAT8_E8M0 : ACL_DT_UNDEFINED};
 
     if (isAscend950) {
         CheckWeightDtype(weight1Ref, weight1RefDtype, "l1_weights", socName);
@@ -343,13 +407,13 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
-    ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
-              sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              maskBuffer, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
-              dispatchQuantResultType, sharedExpertQuantResultType, combineQuantMode, commAlgPtr, numMaxTokensPerRank,
-              activationPtr, activationParams, topoTypeValue, rankNumPerServerValue, topkWeightsType, y,
-              expertTokenNums);
+    ACLNN_CMD(aclnnMegaMoe, context, xWrapper, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
+              weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, scalesWrapper,
+              sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper, sharedWeightScales2Wrapper,
+              sharedBias1Wrapper, sharedBias2Wrapper, maskBuffer, moeExpertNum, epWorldSize, cclBufferSize,
+              maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, sharedExpertQuantResultType,
+              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationParams, topoTypeValue,
+              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
