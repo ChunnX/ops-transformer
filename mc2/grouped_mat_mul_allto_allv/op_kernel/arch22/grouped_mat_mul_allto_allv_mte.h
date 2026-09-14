@@ -113,6 +113,14 @@ public:
         if (cocTiling != nullptr && cocTiling->ubMoveNum > 0) {
             ubMoveElements_ = static_cast<uint32_t>(cocTiling->ubMoveNum);
         }
+        // A segment can never exceed one payload ping/pong region, whatever
+        // the host passed: DataCopyPad's blockLen ceiling (2 MiB) is far
+        // above the 64 KiB region, so UB capacity is the only hard bound.
+        const uint32_t payloadRegionElements =
+            static_cast<uint32_t>(Gmma2avMteTiling::PAYLOAD_UB_REGION_BYTES / sizeof(T));
+        if (ubMoveElements_ > payloadRegionElements) {
+            ubMoveElements_ = payloadRegionElements;
+        }
 
         // The first 64 KiB is the payload ping buffer. Count-table scratch is
         // staged at 64 KiB, destination offsets at 72 KiB, source offsets at
@@ -1014,6 +1022,12 @@ private:
         AscendC::LocalTensor<T> ping = local;
         AscendC::LocalTensor<T> pong = local[GmmA2avMteDetail::PONG_UB_OFFSET_BYTES / sizeof(T)];
         uint64_t copied = 0UL;
+        // Segmentation stays inside the caller's contiguous [source,
+        // source + elementCount) range. Interior boundaries are multiples of
+        // ubMoveElements_; only the final segment may carry a non-32B-aligned
+        // tail length, which DataCopyPad supports (GM addresses have no
+        // alignment constraint, blockLen must merely be sizeof(T) multiples).
+        // Zero-length ranges never enter the loop.
         while (copied < elementCount) {
             const uint32_t current = static_cast<uint32_t>(
                 elementCount - copied > ubMoveElements_ ? ubMoveElements_ : elementCount - copied);

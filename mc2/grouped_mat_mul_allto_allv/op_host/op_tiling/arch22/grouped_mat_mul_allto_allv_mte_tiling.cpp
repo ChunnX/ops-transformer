@@ -605,7 +605,16 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     outData.cocTiling.m0 = MC2KernelTemplate::Gmma2avMteTiling::L1_TILE_M;
     outData.cocTiling.k0 = MC2KernelTemplate::Gmma2avMteTiling::L1_TILE_K;
     outData.cocTiling.n0 = MC2KernelTemplate::Gmma2avMteTiling::L1_TILE_N;
-    outData.cocTiling.ubMoveNum = static_cast<int32_t>(localParams_.N1);
+    // ubMoveNum is in elements. A3: raise the per-segment GM<->GM move size
+    // from one output row (N1 elements) to a full payload ping/pong region so
+    // contiguous multi-row ranges move in a few large DataCopyPad bursts
+    // instead of one row at a time. The capacity bound is the 64 KiB region
+    // expressed in elements (dtype-aware), never raw bytes. A2 keeps the
+    // original one-row fallback: its CCE intrinsic burst-length parameter
+    // width cannot be proven locally, so compatibility is not guaranteed.
+    outData.cocTiling.ubMoveNum =
+        isA3_ ? static_cast<int32_t>(MC2KernelTemplate::Gmma2avMteTiling::PAYLOAD_UB_REGION_BYTES / dtypeSize)
+              : static_cast<int32_t>(localParams_.N1);
     outData.cocTiling.swizzlCount = MC2KernelTemplate::Gmma2avMteTiling::SWIZZLE_COUNT;
     outData.cocTiling.swizzlDirect = MC2KernelTemplate::Gmma2avMteTiling::SWIZZLE_DIRECTION;
 
