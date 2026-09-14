@@ -23,7 +23,7 @@
 
 ## 功能说明
 
-- 接口功能：融合 GroupedMatmul、MXFP8 反量化、SwiGLU 和 MXFP8 量化。该接口是 `aclnnGroupedMatmulSwigluQuantV3` 的 weightNZ 特化接口，当前仅支持 Ascend 950（arch35）的单 Tensor MXFP8 weightNZ 场景。
+- 接口功能：融合 GroupedMatmul、MXFP8 反量化、SwiGLU 和 MXFP8 量化。该接口是内部 `GroupedMatmulSwigluQuantV3` 算子的 weightNZ 专用 ACLNN 封装，当前仅支持 Ascend 950（arch35）的单 Tensor MXFP8 weightNZ 场景。
 
 - 与 V2 的主要区别：V3 增加了可配置的 SwiGLU 参数，包括 `activateDim`、`activateLeft`、`swigluMode`、`clampLimit`、`gluAlpha` 和 `gluBias`。这些参数只作用于 SwiGLU 计算阶段，不改变 GroupedMatmul 和 MXFP8 量化的数据格式约束。
 
@@ -43,11 +43,11 @@
 
 - `swigluMode` 取值和计算公式：
 
-  - `swigluMode=0`：标准 SwiGLU。`A_i` 表示 `x_i` 的前半部分，`B_i` 表示 `x_i` 的后半部分。
+  - `swigluMode=0`：标准 SwiGLU。沿最后一维将 `x_i` 前后等分；当 `activateLeft=true` 时，`A_i` 为前半部分、`B_i` 为后半部分，当 `activateLeft=false` 时两者互换。
 
     $$swigluOut_i = Swiglu(x_i) = Swish(A_i) * B_i$$
 
-  - `swigluMode=1`：按奇偶位置交错拆分。`x_glu` 表示 `x_i` 的偶数索引部分，`x_linear` 表示 `x_i` 的奇数索引部分。
+  - `swigluMode=1`：按奇偶位置交错拆分。`x_glu` 表示 `x_i` 的偶数索引部分，`x_linear` 表示 `x_i` 的奇数索引部分；`activateLeft` 在此模式下不生效。
 
     $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
 
@@ -67,9 +67,7 @@
 
     $$swigluOut_i = out\_glu * (x\_linear + gluBias)$$
 
-    此模式要求 `axis=-1`。
-
-  - `swigluMode=3`：沿 `activateDim` 轴前后分半拆分，且不是交错分块。固定使用 `alpha=1`，不添加 bias。
+  - `swigluMode=3`：沿 `activateDim` 轴前后分半拆分，且不是交错分块。`activateLeft=true` 时激活前半部分，否则激活后半部分；固定使用 `alpha=1`，不添加 bias。
 
     $$x\_glu = x\_glu * sigmoid(x\_glu)$$
 
@@ -79,7 +77,9 @@
 
     $$swigluOut_i = x\_glu * x\_linear$$
 
-    此模式忽略 `gluAlpha` 和 `gluBias`，并要求 `axis=-1`。
+    此模式忽略 `gluAlpha` 和 `gluBias`。
+
+  本接口当前固定 `activateDim=-1`、`axis=-1`，具体约束见“约束说明”。
 
 ## 函数原型
 
@@ -154,8 +154,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       </tr>
     </thead>
     <tbody>
-      <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入。</td><td>FLOAT8_E4M3FN、FLOAT8_E5M2</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
-      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList 长度必须为 1；非转置逻辑 view 为 (E, K, N)，转置逻辑 view 为 (E, N, K)，storage 均为五维 FRACTAL_NZ。</td><td>FLOAT8_E4M3FN、FLOAT8_E5M2</td><td>FRACTAL_NZ</td><td>view 3 维，storage 5 维</td><td>√</td></tr>
+      <tr><td>x</td><td>输入</td><td>激活矩阵。</td><td>MXFP8 输入；当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, K)</td><td>√</td></tr>
+      <tr><td>weight</td><td>输入</td><td>分组权重矩阵。</td><td>TensorList 长度必须为 1；非转置逻辑 view 为 (E, K, N)，转置逻辑 view 为 (E, N, K)，storage 均为五维 FRACTAL_NZ。</td><td>FLOAT8_E4M3FN</td><td>FRACTAL_NZ</td><td>view 3 维，storage 5 维</td><td>√</td></tr>
       <tr><td>weightScale</td><td>输入</td><td>权重量化因子。</td><td>TensorList 长度必须为 1，与 weight 的唯一 Tensor 对应；非转置 shape 为 (E, ceil(K / 64), N, 2)，转置 shape 为 (E, N, ceil(K / 64), 2)。</td><td>FLOAT8_E8M0</td><td>ND</td><td>4 维</td><td>√</td></tr>
       <tr><td>weightAssistMatrix</td><td>可选输入</td><td>权重辅助矩阵。</td><td>当前不支持，必须传 nullptr 或空 TensorList。</td><td>-</td><td>-</td><td>-</td><td>√</td></tr>
       <tr><td>bias</td><td>可选输入</td><td>矩阵乘偏置。</td><td>当前不支持，必须传 nullptr。</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
@@ -166,16 +166,16 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       <tr><td>dequantDtype</td><td>输入</td><td>GroupedMatmul 中间结果类型。</td><td>当前仅支持 0，即 DT_FLOAT。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>quantMode</td><td>输入</td><td>输出量化模式。</td><td>当前仅支持 2，表示 MX 量化。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>groupListType</td><td>输入</td><td>分组列表解释方式。</td><td>0 表示 cumsum，1 表示 count。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>tuningConfigOptional</td><td>可选输入</td><td>tiling 调优配置。</td><td>当前不支持，必须传 nullptr。</td><td>aclIntArray</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>tuningConfigOptional</td><td>可选输入</td><td>tiling 调优配置。</td><td>当前不支持，必须传 nullptr 或空数组。</td><td>aclIntArray</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>activateDim</td><td>输入</td><td>SwiGLU 拆分维度。</td><td>当前仅支持 -1，表示最后一维。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>activateLeft</td><td>输入</td><td>激活分支选择。</td><td>true 表示拆分后的左分支作为激活分支，false 表示右分支作为激活分支。</td><td>BOOL</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>activateLeft</td><td>输入</td><td>激活分支选择。</td><td>在 swigluMode 为 0、2、3 时，true 表示拆分后的左分支作为激活分支，false 表示右分支作为激活分支；mode 1 按奇偶位置拆分，此参数不生效。</td><td>BOOL</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>swigluMode</td><td>输入</td><td>SwiGLU 计算模式。</td><td>支持 0、1、2、3。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>clampLimit</td><td>输入</td><td>用于限定 SwiGLU 中间结果的 clamp 范围：x_glu 的上界为 clampLimit，x_linear 的范围为 [-clampLimit, clampLimit]。</td><td>swigluMode 为 1、2、3 时生效；必须大于 0 且能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>gluAlpha</td><td>输入</td><td>SwiGLU alpha 参数。</td><td>用于带 alpha 的 SwiGLU 模式，必须能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>gluBias</td><td>输入</td><td>SwiGLU bias 参数。</td><td>用于带 bias 的 SwiGLU 模式，必须能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>clampLimit</td><td>输入</td><td>用于限定 SwiGLU 中间结果的 clamp 范围：x_glu 的上界为 clampLimit，x_linear 的范围为 [-clampLimit, clampLimit]。</td><td>必须为有限且可用 float32 表示的值；swigluMode 为 1、2、3 时还必须大于 0，mode 0 不使用该参数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>gluAlpha</td><td>输入</td><td>SwiGLU alpha 参数。</td><td>用于 swigluMode 为 1、2 的 Sigmoid 输入缩放；必须为有限且可用 float32 表示的值，mode 0、3 不使用该参数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>gluBias</td><td>输入</td><td>SwiGLU bias 参数。</td><td>用于 swigluMode 为 1、2 的线性分支偏置；必须为有限且可用 float32 表示的值，mode 0、3 不使用该参数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>axis</td><td>输入</td><td>MX 量化轴。</td><td>当前仅支持 -1，沿最后一维量化。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>roundMode</td><td>输入</td><td>MX 量化舍入模式。</td><td>当前仅支持 "rint"；传 nullptr 或空字符串时按默认值处理。</td><td>const char *</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>MXFP8 输出支持 0（OCP）和 1（cuBLAS）；2 仅支持 FLOAT4_E2M1，当前 MXFP8 场景传入 2 会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>当前接口支持 0（OCP）和 1（cuBLAS）；其他值（包括 2）会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>dstTypeMax</td><td>输入</td><td>MX 量化目标类型最大值。</td><td>当前 MXFP8 输出仅支持 0.0。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>output</td><td>输出</td><td>MXFP8 量化结果。</td><td>调用方创建并传入，当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, N / 2)</td><td>√</td></tr>
       <tr><td>outputScale</td><td>输出</td><td>MXFP8 输出 scale。</td><td>调用方创建并传入。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil((N / 2) / 64), 2)</td><td>√</td></tr>
@@ -211,7 +211,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
   <tr>
     <td rowspan="7">ACLNN_ERR_PARAM_INVALID</td>
     <td rowspan="7">161002</td>
-    <td>输入或输出的数据类型不在支持范围内；MXFP8 weightNZ 场景要求 x、weight 为 MXFP8，scale 为 FLOAT8_E8M0，output 为 FLOAT8_E4M3FN。</td>
+    <td>输入或输出的数据类型不在支持范围内；当前 MXFP8 weightNZ 场景要求 x、weight 和 output 为 FLOAT8_E4M3FN，xScale、weightScale 和 outputScale 为 FLOAT8_E8M0，groupList 为 INT64。</td>
   </tr>
   <tr>
     <td>输入或输出的参数维度、shape 或 format 不满足约束，例如 weight 的逻辑 view 不是三维、storage 不是五维 FRACTAL_NZ，或输出 shape 不匹配。</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     <td>weightAssistMatrix、bias、smoothScale 或 tuningConfigOptional 传入了当前场景不支持的内容。</td>
   </tr>
   <tr>
-    <td>activateDim 不为 -1，swigluMode 不在 [0, 3]，或 clampLimit、gluAlpha、gluBias 不满足取值约束。</td>
+    <td>activateDim 不为 -1，swigluMode 不在 [0, 3]，或 clampLimit、gluAlpha、gluBias 不满足有限性及 float32 可表示性约束；其中 swigluMode 为 1、2、3 时 clampLimit 还必须大于 0。</td>
   </tr>
   <tr>
     <td>axis、roundMode、scaleAlg、dstTypeMax 不满足 MXFP8 场景约束。</td>
@@ -285,8 +285,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
           <tbody>
             <tr>
               <td>MXFP8</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+              <td>FLOAT8_E4M3FN</td>
+              <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
               <td>FLOAT8_E8M0</td>
               <td>FLOAT8_E4M3FN</td>
@@ -320,7 +320,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
               <td>MXFP8</td>
               <td>(M, K)</td>
               <td><ul>
-              <li>非转置：storage shape 形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}，逻辑 view shape 形如{(E, K, N)}</li>
+              <li>非转置：storage shape 形如{(E, ceil(K / 16), ceil(N / 32), 16, 32)}，逻辑 view shape 形如{(E, K, N)}</li>
               <li>转置：storage shape 形如{(E, ceil(K / 32), ceil(N / 16), 16, 32)}，逻辑 view shape 形如{(E, N, K)}</li></ul></td>
               <td><ul>
               <li>非转置：(E, ceil(K / 64), N, 2)</li>
@@ -332,25 +332,26 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
           </tbody>
           </table>
 
-        - `E` 是 expert/group 数量，必须等于 `groupList` 的长度。
-        - `M` 是 token 数量，`K` 是输入特征维度，`N` 是 SwiGLU 拆分前的输出维度。
+        - 当前接口要求 `weight` 和 `weightScale` 的 TensorList 长度均为 1，并要求 `groupList` 长度等于 weight TensorList 长度；因此当前可用场景为 `E=1`。weight Tensor 的逻辑首维、`groupList` 长度和唯一 weight Tensor 的分组数必须一致。
+        - `M` 是 token 数量，`K` 是输入特征维度，`N` 是 SwiGLU 拆分前的输出维度；当前 `M`、`K` 必须大于 0。
         - `N` 必须大于 0 且为 64 的整数倍；SwiGLU 输出维度为 `N / 2`。
         - `weightScale` 的最后一维固定为 2，表示每个 MX block 的 scale 数据。
-        - x shape为(M, K)，weight入口view shape为(E, K, N)，storage shape为(E, ceil(N / 32), ceil(K / 16), 16, 32)。
+        - x shape为(M, K)，非转置 weight 入口 view shape 为(E, K, N)，storage shape 为(E, ceil(K / 16), ceil(N / 32), 16, 32)；转置 weight 的 view shape 为(E, N, K)，storage shape 为(E, ceil(K / 32), ceil(N / 16), 16, 32)。
         - weightScale shape为(E, ceil(K / 64), N, 2)，xScale shape为(M, ceil(K / 64), 2)。
         - output shape为(M, N / 2)，outputScale shape为(M, ceil((N / 2) / 64), 2)。
-        - 输入 Tensor 可以是非连续 Tensor；接口内部会执行必要的 contiguous 处理，但 Tensor 的 dtype、shape 和 format 元数据必须满足上述约束。
+        - 输入 Tensor 可以是非连续 Tensor；接口内部会对 x、xScale、groupList 和 weightScale 执行必要的 contiguous 处理，并为 weight 创建 FRACTAL_NZ view，但 Tensor 的 dtype、shape 和 format 元数据必须满足上述约束。
         - `dequantMode=2`、`quantMode=2`，且二者必须匹配。
         - `dequantDtype=0`，表示中间计算使用 `DT_FLOAT`。
         - `groupListType=0` 时，`groupList[i]` 表示累计 token 数，最后一个值不能大于 `M`；`groupListType=1` 时，`groupList[i]` 表示当前 group 的 token 数，所有值之和不能大于 `M`。
-        - `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`。
+        - `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`；其中 `weightAssistMatrix` 允许传空 TensorList，`tuningConfigOptional` 允许传空数组。
         - `activateDim` 当前仅支持 `-1`。
         - `swigluMode` 当前支持 `[0, 3]`。
-        - `clampLimit` 必须为有限值且大于 0；`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
+        - `clampLimit` 必须为有限且可表示为 `float32` 的值；当 `swigluMode` 为 1、2 或 3 时还必须大于 0，mode 0 不使用该参数。`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
         - `axis` 仅支持 `-1`，`roundMode` 仅支持 `"rint"`。
-        - `scaleAlg=0` 表示 OCP MX 量化，`scaleAlg=1` 表示 cuBLAS MX 量化；MXFP8 输出传入 `scaleAlg=2` 会报错，因为该算法仅支持 FLOAT4_E2M1 输出。
+        - `scaleAlg=0` 表示 OCP MX 量化，`scaleAlg=1` 表示 cuBLAS MX 量化；本接口不支持 `scaleAlg=2` 或其他值，传入会报错。
         - 对于本接口固定的 MXFP8 输出，`scaleAlg` 只能取 `0` 或 `1`；`dstTypeMax` 只能取 `0.0`。
-        - `dstTypeMax` 当前仅支持 `0.0`。
+        - `dstTypeMax` 必须为有限值，当前仅支持 `0.0`。
+        - 执行路径由 `K` 和 `swigluMode` 决定：`swigluMode=1` 始终使用 CGMCT；`swigluMode=0`、`2`、`3` 且 `K` 为 128 对齐时使用 Tensor API；这些模式在 `K` 不满足 128 对齐时使用 CGMCT 兼容路径。非转置 weight 对应 NZ 路径，转置 weight 对应 ZN 路径。
   <!-- end id7 -->
 
 ## 调用示例
@@ -361,7 +362,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
 
-// 示例场景：E=4，M=512，K=2048，N=7168。
+// 示例场景：E=1，M=512，K=2048，N=7168。
 // x:            [M, K]，FLOAT8_E4M3FN，ND
 // weight:       TensorList{[E, K, N]}，FLOAT8_E4M3FN，FRACTAL_NZ storage
 // weightScale:  TensorList{[E, ceil(K/64), N, 2]}，FLOAT8_E8M0，ND
@@ -378,11 +379,11 @@ aclTensor *output = nullptr;           // 创建 FLOAT8_E4M3FN、ND、[M, N/2]
 aclTensor *outputScale = nullptr;      // 创建 FLOAT8_E8M0、ND、[M, ceil((N/2)/64), 2]
 aclrtStream stream = nullptr;
 
-// groupListType=1 表示 count；示例中四个 group 的 token 数之和为 M。
+// groupListType=0 表示 cumsum；E=1 时 groupList[0]=M。
 int64_t dequantMode = 2;
 int64_t dequantDtype = 0;  // DT_FLOAT
 int64_t quantMode = 2;
-int64_t groupListType = 1;
+int64_t groupListType = 0;
 
 int64_t activateDim = -1;
 bool activateLeft = true;
