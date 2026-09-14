@@ -27,7 +27,6 @@ public:
     std::string GetAlgConfig(Mc2Tiling::AllGatherMatmulTilingData *tilingData) override;
 
 private:
-    std::string group_;          // SetSocParam 时缓存，供 GetAlgConfig 查询拓扑使用
     uint64_t commDataBytes_ = 0; // GetCutResult 时缓存单轮通信量 tileM * kValue * dtypeSize
 };
 } // namespace optiling
