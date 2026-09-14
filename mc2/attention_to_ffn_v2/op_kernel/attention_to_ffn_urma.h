@@ -148,6 +148,7 @@ private:
     __aicore__ inline void ReduceMaxInplace(const LocalTensor<float> &srcLocal, uint32_t count);
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &sendTokenNum);
+    __aicore__ inline void PublishLayerFlagPayload();
     __aicore__ inline void SetFlagToFFN();
     __aicore__ inline void SetFlagInAttn();
     __aicore__ inline void ActiveMaskCalCnt();
@@ -685,8 +686,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::F
         localFlagAddr_ + static_cast<uint64_t>(startTokenOffset) * URMA_FLAG_SLOT_SIZE));
     DataCopyExtParams slotCopyParams = {static_cast<uint16_t>(recordCount), sizeof(int32_t) * 2U, 0U,
                                         URMA_FLAG_SLOT_SIZE - sizeof(int32_t) * 2U, 0U};
-    DataCopyPadExtParams<int32_t> slotCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(slotGMTensor, tokenSlotRecordTensor_, slotCopyParams, slotCopyPadParams);
+    DataCopyPad(slotGMTensor, tokenSlotRecordTensor_, slotCopyParams);
 
     // Self-routed tokens keep the old SendToLocal contract: the flag lands in the own-window info
     // table only after the token data MTE3 copy has completed. One PipeBarrier per chunk replaces
