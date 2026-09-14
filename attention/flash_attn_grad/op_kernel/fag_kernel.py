@@ -1044,15 +1044,15 @@ def flash_attn_grad_preload2(
                     pl.system.wait_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=SYNC_V3_TO_C3_FLAG
                     )
-                    iterate_mm_pdy_store(
+                    iterate_mm_pdy(
                         constInfo,
                         prevInfo,
                         p_t_l1.current(),
                         do_prev,
-                        tensor_dv_ws,
                         left,
                         right,
                         acc,
+                        tensor_out=tensor_dv_ws,
                     )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG
@@ -1069,15 +1069,15 @@ def flash_attn_grad_preload2(
                         right,
                         acc,
                     )
-                    iterate_mm_dsq_store(
+                    iterate_mm_dsq(
                         constInfo,
                         prevInfo,
                         ds_t_l1.current(),
                         q_prev,
-                        tensor_dk_ws,
                         left,
                         right,
                         acc,
+                        tensor_out=tensor_dk_ws,
                     )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=SYNC_C4_TO_V3_FLAG

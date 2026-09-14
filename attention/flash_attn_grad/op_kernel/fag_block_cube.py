@@ -20,7 +20,8 @@
 同步全部由 :mod:`fag_kernel` 的主循环在阶段之间插入。
 
 D 轴分块：``d_align=192`` 是 96+96 驻留 L0C；``d_align=256`` 是 128+128，
-C4/C5 走 ``iterate_mm_*_store`` 每块 atomic 出 GM。三种分块形态：
+C4/C5 同一套 ``iterate_mm_dsq`` / ``iterate_mm_pdy``，传 ``tensor_out``
+则每块 atomic 出 GM。三种分块形态：
 
 * ``_mm_k_chunk``        D 在 K 轴，各块累加到同一 acc（C1/C2）
 * ``_mm_n_chunk``        D 在 N 轴，各块写不相交的输出列（C3，及 256 的 C4/C5）
@@ -326,112 +327,90 @@ def _mm_resident_chunk(left, right, at, srcL, srcR, mReal, kReal, dOff, dW, isAc
         pl.matmul(at, lt, rt)
 
 
-def iterate_mm_dsq_store(
-    constInfo, runInfo, ds_t_l1, q_t, tensor_dk_ws, left, right, acc
+def iterate_mm_dsq(
+    constInfo,
+    runInfo,
+    ds_t_l1,
+    q_t,
+    left,
+    right,
+    acc0,
+    acc1=None,
+    isAcc=0,
+    tensor_out=None,
 ):
-    """D=256：dK 不驻留 L0C，每块算完 atomic 出 workspace（与 C3 同款）。"""
-    _mm_n_chunk(
-        left,
-        right,
-        acc,
-        ds_t_l1,
-        q_t,
-        tensor_dk_ws,
-        [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
-        runInfo.s2RealSize,
-        runInfo.s1RealSize,
-        D_CHUNK_OFF0[d_align],
-        pl.min(D_CHUNK_W0[d_align], constInfo.dSize),
-    )
-    if D_NCHUNKS[d_align] > 1:
-        dRem = constInfo.dSize - D_CHUNK_OFF1[d_align]
-        dW1 = pl.max(pl.min(D_CHUNK_W1[d_align], dRem), 0)
-        if dW1 > 0:
-            _mm_n_chunk(
-                left,
-                right,
-                acc,
-                ds_t_l1,
-                q_t,
-                tensor_dk_ws,
-                [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
-                runInfo.s2RealSize,
-                runInfo.s1RealSize,
-                D_CHUNK_OFF1[d_align],
-                dW1,
-            )
+    """C4: dK = dS^T @ Q.
 
+    q_t 来自 q_l1_dk（延后两个 task 的游标视图），即 mm2 在 task N-2
+    已经载入好的那一份 Q，无需再读 GM。
+    dS^T[s2Real, s1Real] @ Q[s1Real, D] -> dK[s2Real, D]。
 
-def iterate_mm_pdy_store(
-    constInfo, runInfo, p_t_l1, do_t, tensor_dv_ws, left, right, acc
-):
-    """D=256：dV 不驻留 L0C，每块算完 atomic 出 workspace。"""
-    w0 = dv_chunk_w(constInfo, 0)
-    if w0 > 0:
+    ``tensor_out is None``：按 D 分块累加进常驻 L0C（acc0/acc1）。
+    否则每块算完 atomic 出 workspace（D=256）；acc0 是 ping-pong acc。
+    """
+    outIdx = [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV]
+    mReal = runInfo.s2RealSize
+    kReal = runInfo.s1RealSize
+    w0 = pl.min(D_CHUNK_W0[d_align], constInfo.dSize)
+    store = tensor_out is not None
+    if store:
         _mm_n_chunk(
             left,
             right,
-            acc,
-            p_t_l1,
-            do_t,
-            tensor_dv_ws,
-            [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
-            runInfo.s2RealSize,
-            runInfo.s1RealSize,
+            acc0,
+            ds_t_l1,
+            q_t,
+            tensor_out,
+            outIdx,
+            mReal,
+            kReal,
             D_CHUNK_OFF0[d_align],
             w0,
         )
-    if D_NCHUNKS[d_align] > 1:
-        w1 = dv_chunk_w(constInfo, 1)
-        if w1 > 0:
-            _mm_n_chunk(
-                left,
-                right,
-                acc,
-                p_t_l1,
-                do_t,
-                tensor_dv_ws,
-                [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
-                runInfo.s2RealSize,
-                runInfo.s1RealSize,
-                D_CHUNK_OFF1[d_align],
-                w1,
-            )
-
-
-def iterate_mm_dsq(constInfo, runInfo, ds_t_l1, q_t, left, right, acc0, acc1, isAcc):
-    # q_t 来自 q_l1_dk(延后两个 task 的游标视图)，即 mm2 在 task N-2
-    # already 载入好的那一份 Q，无需再读 GM
-    # dS^T[s2Real, s1Real] @ Q[s1Real, D] -> dK[s2Real, D]
-    # dK 的宽度是 D(与 Q 同宽)，按 D 分块，每块累加进自己的常驻 L0C。
-    _mm_resident_chunk(
-        left,
-        right,
-        acc0.current(),
-        ds_t_l1,
-        q_t,
-        runInfo.s2RealSize,
-        runInfo.s1RealSize,
-        D_CHUNK_OFF0[d_align],
-        pl.min(D_CHUNK_W0[d_align], constInfo.dSize),
-        isAcc,
-    )
+    else:
+        _mm_resident_chunk(
+            left,
+            right,
+            acc0.current(),
+            ds_t_l1,
+            q_t,
+            mReal,
+            kReal,
+            D_CHUNK_OFF0[d_align],
+            w0,
+            isAcc,
+        )
     if D_NCHUNKS[d_align] > 1:
         dRem = constInfo.dSize - D_CHUNK_OFF1[d_align]
-        dW1 = pl.max(pl.min(D_CHUNK_W1[d_align], dRem), 0)
-        if dW1 > 0:
-            _mm_resident_chunk(
-                left,
-                right,
-                acc1.current(),
-                ds_t_l1,
-                q_t,
-                runInfo.s2RealSize,
-                runInfo.s1RealSize,
-                D_CHUNK_OFF1[d_align],
-                dW1,
-                isAcc,
-            )
+        w1 = pl.max(pl.min(D_CHUNK_W1[d_align], dRem), 0)
+        if w1 > 0:
+            if store:
+                _mm_n_chunk(
+                    left,
+                    right,
+                    acc0,
+                    ds_t_l1,
+                    q_t,
+                    tensor_out,
+                    outIdx,
+                    mReal,
+                    kReal,
+                    D_CHUNK_OFF1[d_align],
+                    w1,
+                )
+            else:
+                _mm_resident_chunk(
+                    left,
+                    right,
+                    acc1.current(),
+                    ds_t_l1,
+                    q_t,
+                    mReal,
+                    kReal,
+                    D_CHUNK_OFF1[d_align],
+                    w1,
+                    isAcc,
+                )
 
 
 # ==================================================================
@@ -452,40 +431,90 @@ def dv_chunk_w(constInfo, chunkIdx):
     )
 
 
-def iterate_mm_pdy(constInfo, runInfo, p_t_l1, do_t, left, right, acc0, acc1, isAcc):
-    # do_t 同理来自 do_l1_dv，复用 mm1 在 task N-2 载入的 dO
-    # P^T[s2Real, s1Real] @ dO[s1Real, Dv] -> dV[s2Real, Dv]
-    # 注意 dV 的宽度是 **Dv**，按 D 的分块表切但每块宽度要按 Dv 截断；
-    # 某块整块落在 Dv 之外时宽度为 0，跳过(见 dv_chunk_w)。
+def iterate_mm_pdy(
+    constInfo,
+    runInfo,
+    p_t_l1,
+    do_t,
+    left,
+    right,
+    acc0,
+    acc1=None,
+    isAcc=0,
+    tensor_out=None,
+):
+    """C5: dV = P^T @ dO.
+
+    do_t 来自 do_l1_dv，复用 mm1 在 task N-2 载入的 dO。
+    P^T[s2Real, s1Real] @ dO[s1Real, Dv] -> dV[s2Real, Dv]。
+    宽度按 Dv 截断，整块落在 Dv 之外则跳过。
+
+    ``tensor_out is None``：累加进常驻 L0C（acc0/acc1）。
+    否则每块 atomic 出 workspace（D=256）；acc0 是 ping-pong acc。
+    """
+    outIdx = [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV]
+    mReal = runInfo.s2RealSize
+    kReal = runInfo.s1RealSize
+    store = tensor_out is not None
     w0 = dv_chunk_w(constInfo, 0)
     if w0 > 0:
-        _mm_resident_chunk(
-            left,
-            right,
-            acc0.current(),
-            p_t_l1,
-            do_t,
-            runInfo.s2RealSize,
-            runInfo.s1RealSize,
-            D_CHUNK_OFF0[d_align],
-            w0,
-            isAcc,
-        )
-    if D_NCHUNKS[d_align] > 1:
-        w1 = dv_chunk_w(constInfo, 1)
-        if w1 > 0:
+        if store:
+            _mm_n_chunk(
+                left,
+                right,
+                acc0,
+                p_t_l1,
+                do_t,
+                tensor_out,
+                outIdx,
+                mReal,
+                kReal,
+                D_CHUNK_OFF0[d_align],
+                w0,
+            )
+        else:
             _mm_resident_chunk(
                 left,
                 right,
-                acc1.current(),
+                acc0.current(),
                 p_t_l1,
                 do_t,
-                runInfo.s2RealSize,
-                runInfo.s1RealSize,
-                D_CHUNK_OFF1[d_align],
-                w1,
+                mReal,
+                kReal,
+                D_CHUNK_OFF0[d_align],
+                w0,
                 isAcc,
             )
+    if D_NCHUNKS[d_align] > 1:
+        w1 = dv_chunk_w(constInfo, 1)
+        if w1 > 0:
+            if store:
+                _mm_n_chunk(
+                    left,
+                    right,
+                    acc0,
+                    p_t_l1,
+                    do_t,
+                    tensor_out,
+                    outIdx,
+                    mReal,
+                    kReal,
+                    D_CHUNK_OFF1[d_align],
+                    w1,
+                )
+            else:
+                _mm_resident_chunk(
+                    left,
+                    right,
+                    acc1.current(),
+                    p_t_l1,
+                    do_t,
+                    mReal,
+                    kReal,
+                    D_CHUNK_OFF1[d_align],
+                    w1,
+                    isAcc,
+                )
 
 
 def flush_dkv(
