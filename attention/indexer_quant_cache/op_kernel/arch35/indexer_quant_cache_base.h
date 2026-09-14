@@ -146,10 +146,12 @@ __simd_callee__ inline void StoreOutputData(__ubuf__ T *dst, RegTensor<float> &s
         RegTensor<T> tmp;
         Cast<T, float, castTraitF32toFp8Even>(tmp, src, pregLoop);
         StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
-    } else if constexpr (IsSameType<T, hifloat8_t>::value) {
-        RegTensor<T> tmp;
-        Cast<T, float, castTraitF32toh8>(tmp, src, pregLoop);
-        StoreAlign<T, AscendC::Reg::StoreDist::DIST_PACK4_B32>(dst + dstOffset, tmp, pregLoop);
+    } else if constexpr (IsSameType<T, hifloat8_t>::value || IsSameType<T, uint8_t>::value) {
+        // ACL stores HiFloat8 as uint8 bytes, not numerically converted integers.
+        RegTensor<hifloat8_t> tmp;
+        Cast<hifloat8_t, float, castTraitF32toh8>(tmp, src, pregLoop);
+        StoreAlign<hifloat8_t, AscendC::Reg::StoreDist::DIST_PACK4_B32>(
+            reinterpret_cast<__ubuf__ hifloat8_t *>(dst + dstOffset), tmp, pregLoop);
     }
 }
 
@@ -359,9 +361,9 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(__ubuf__ T0 *yLocalAddr, __
         RegTensor<float> x0;
         RegTensor<float> x1;
         RegTensor<float> scale;
-        RegTensor<float> one;
         RegTensor<float> invScale;
-        RegTensor<float> dupInvScale;
+        RegTensor<float> quantScale;
+        RegTensor<float> inputScale;
         RegTensor<float> inf;
         RegTensor<float> zero;
         RegTensor<uint32_t> coeffReg;
@@ -380,9 +382,9 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(__ubuf__ T0 *yLocalAddr, __
         MaskReg cmpScalar;
         MaskReg cmpQ;
         MaskReg rsCmp;
+        MaskReg tinyScale;
         Duplicate(coeffReg, maxValueInt, pregMain);
         Duplicate(zero, 0.0f, pregMain);
-        Duplicate(one, 1.0f, pregMain);
         Duplicate(inf, 1.0f, pregMain);
         Div<float, &mode>(inf, inf, zero, pregMain);
         if constexpr (roundScale) {
@@ -392,7 +394,7 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(__ubuf__ T0 *yLocalAddr, __
             Duplicate(rsMantMask, FAST_LOG_AND_VALUE2, preg1);
         }
         for (uint16_t i = 0; i < curRowNum; i++) {
-            // pass 1: 整行 amax (排除 NaN)
+            // pass 1: whole-row amax over finite values only.
             Duplicate(rowMax, 0.0f, preg1);
             uint32_t sreg = curColNum;
             for (uint16_t j = 0; j < loopCount; j++) {
@@ -408,9 +410,7 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(__ubuf__ T0 *yLocalAddr, __
             Compares<float, CMPMODE::NE>(cmpScalar, rowMax, (float)0.0, preg1);
             Mul(scale, rowMax, (RegTensor<float> &)coeffReg, cmpScalar);
             Min(scale, scale, inf, preg1);
-            if constexpr (!roundScale) {
-                Div<float, &mode>(invScale, one, scale, preg1);
-            } else {
+            if constexpr (roundScale) {
                 ShiftRights(rsExp, (RegTensor<uint32_t> &)scale, static_cast<int16_t>(FAST_LOG_SHIFT_BITS), preg1);
                 And(rsMant, (RegTensor<uint32_t> &)scale, rsMantMask, preg1);
                 Compare<uint32_t, AscendC::CMPMODE::NE>(rsCmp, rsMant, rsZeroU, preg1);
@@ -423,12 +423,28 @@ __simd_vf__ inline void VFProcessDynamicBlockQuantVF(__ubuf__ T0 *yLocalAddr, __
             }
             StoreAlign<float, AscendC::Reg::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleLocalAddr + i * scaleRowAlign,
                                                                                scale, preg1);
-            Duplicate(dupInvScale, invScale, pregMain);
+            if constexpr (!roundScale) {
+                // Lift subnormal divisors into the normal range before taking
+                // the reciprocal. Apply the same exact power of two to x.
+                Compares<float, CMPMODE::LT>(tinyScale, scale, 0x1p-126f, preg1);
+                Duplicate(x0, 0x1p24f, preg1);
+                Duplicate(x1, 1.0f, preg1);
+                Select(x0, x0, x1, tinyScale);
+                Duplicate(inputScale, x0, pregMain);
+                Mul(invScale, scale, x0, preg1);
+                Div<float, &mode>(invScale, x1, invScale, preg1);
+            }
+            Duplicate(quantScale, invScale, pregMain);
             sreg = curColNum;
             for (uint16_t j = 0; j < loopCount; j++) {
                 pm = UpdateMask<float>(sreg);
                 LoadInputData<T1>(x, xLocalAddr, pm, j * VL_FP32 + i * curColNumAlign);
-                Mul(x0, x, dupInvScale, pm);
+                if constexpr (roundScale) {
+                    Mul(x0, x, quantScale, pm);
+                } else {
+                    Mul(x0, x, inputScale, pm);
+                    Mul(x0, x0, quantScale, pm);
+                }
                 Muls(x1, x0, 0.0f, pm);
                 Compare<float, CMPMODE::NE>(cmpQ, x1, x1, pm);
                 Select(x, x, x0, cmpQ);
@@ -456,7 +472,7 @@ __aicore__ inline void VFProcessDynamicBlockQuant(const LocalTensor<T0> &yLocal,
         maxValueInt = INV_FP8_E5M2_MAX_VALUE;
     } else if constexpr (IsSameType<T0, fp8_e4m3fn_t>::value) {
         maxValueInt = INV_FP8_E4M3_MAX_VALUE;
-    } else if constexpr (IsSameType<T0, hifloat8_t>::value) {
+    } else if constexpr (IsSameType<T0, hifloat8_t>::value || IsSameType<T0, uint8_t>::value) {
         maxValueInt = INV_HIFP8_MAX_VALUE;
     }
 
