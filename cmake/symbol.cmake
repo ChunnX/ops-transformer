@@ -138,11 +138,13 @@ function(gen_opgraph_symbol)
     if(GRAPH_SOURCE)
       add_dependencies(${GRAPH_PLUGIN_NAME}_obj
         build_es_math
+        build_es_nn
         build_es_transformer
       )
       target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
         PRIVATE
         es_math
+        es_nn
         es_transformer
       )
     endif()
@@ -150,6 +152,7 @@ function(gen_opgraph_symbol)
       PRIVATE
       -Wl,--no-as-needed
       es_math
+      es_nn
       es_transformer
       -Wl,--as-needed
     )
