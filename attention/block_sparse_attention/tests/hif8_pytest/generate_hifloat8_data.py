@@ -490,8 +490,11 @@ def trans_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True
     x_norm = x_abs[mask_normal]
     sign_norm = sign_int_value[mask_normal]
 
-    # 计算基本指数
-    exponent = torch.floor(torch.log2(x_norm)).to(torch.int32)
+    # Extract the binary exponent exactly. FP32 log2 can round a value just
+    # below a power of two up to that power's exponent, changing HIF8 rounding
+    # (e.g. nextafter(2**-23, 0) must encode as zero, not the minimum value).
+    mantissa, binary_exponent = torch.frexp(x_norm)
+    exponent = binary_exponent.to(torch.int32) - 1
 
     # 确定截断模式 (TA / SSR)
     if round_mode == "hybrid":
@@ -504,10 +507,7 @@ def trans_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True
         cut_bit_is_ta = torch.ones_like(exponent, dtype=torch.bool)
 
     # 计算 fraction_int
-    fraction_int = (
-        x_norm * (2.0**FP32_FRACTION_BITS) * torch.pow(2.0, -exponent.float())
-        - (2.0**FP32_FRACTION_BITS)
-    ).to(torch.int32)
+    fraction_int = ((mantissa * 2.0 - 1.0) * (2.0**FP32_FRACTION_BITS)).to(torch.int32)
 
     # 批量获取档位属性 (根据 exponent 映射)
     abs_exp = torch.abs(exponent)
