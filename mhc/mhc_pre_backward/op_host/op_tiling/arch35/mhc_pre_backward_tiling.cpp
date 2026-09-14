@@ -13,6 +13,7 @@
  * \brief
  */
 #include "mhc_pre_backward_tiling.h"
+#include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
@@ -311,8 +312,8 @@ ge::graphStatus MhcPreBackwardTiling::ValidateMmConfig()
                     l0CUsedBytes > l0CSize_ || l1UsedBytes > UINT32_MAX || l0ABUsedBytes > UINT32_MAX ||
                     l0CUsedBytes > UINT32_MAX,
                 OP_LOGE(context_->GetNodeName(),
-                        "MM config %u exceeds platform memory: L1=%lu/%lu, L0A/B=%lu/%lu/%lu, L0C=%lu/%lu",
-                        mmConfigKey_, l1UsedBytes, l1Size_, l0ABUsedBytes, l0ASize_, l0BSize_, l0CUsedBytes, l0CSize_),
+                        "MM config exceeds platform memory: L1=%lu/%lu, L0A/B=%lu/%lu/%lu, L0C=%lu/%lu", l1UsedBytes,
+                        l1Size_, l0ABUsedBytes, l0ASize_, l0BSize_, l0CUsedBytes, l0CSize_),
                 return ge::GRAPH_FAILED);
     maxBufferDepth_ = static_cast<uint32_t>(std::max(std::max(depthA1, depthB1), std::max(dbL0, dbL0C)));
     l1UsedBytes_ = static_cast<uint32_t>(l1UsedBytes);
@@ -403,7 +404,6 @@ void MhcPreBackwardTiling::SetCommonTilingParams()
     tilingData_.set_D(D_);
     tilingData_.set_hcEps(hcEps_);
     tilingData_.set_implMode(implMode_);
-    tilingData_.set_mmConfigKey(mmConfigKey_);
     tilingData_.set_maxBufferDepth(maxBufferDepth_);
     tilingData_.set_l1UsedBytes(l1UsedBytes_);
     tilingData_.set_l1BOffsetElems(l1BOffsetElems_);
@@ -484,20 +484,20 @@ void MhcPreBackwardTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "hcEps: [%f]", tilingData_.get_hcEps());
     OP_LOGD(context_->GetNodeName(), "implMode: [%u]", tilingData_.get_implMode());
     OP_LOGD(context_->GetNodeName(),
-            "mmConfig: key=%u, C0=[%u,%u,%u,L1K=%u], C1=[%u,%u,%u,L1K=%u], depth=[%u,%u,%u,%u,%u], "
+            "mmConfig: C0=[%u,%u,%u,L1K=%u], C1=[%u,%u,%u,L1K=%u], depth=[%u,%u,%u,%u,%u], "
             "block=[%u,%u,%u], sync=[%u,%u]",
-            tilingData_.get_mmConfigKey(), tilingData_.mmConfigC0.get_baseM(), tilingData_.mmConfigC0.get_baseN(),
-            tilingData_.mmConfigC0.get_baseK(), tilingData_.mmConfigC0.get_l1K(), tilingData_.mmConfigC1.get_baseM(),
-            tilingData_.mmConfigC1.get_baseN(), tilingData_.mmConfigC1.get_baseK(), tilingData_.mmConfigC1.get_l1K(),
-            tilingData_.mmConfigC0.get_depthA1(), tilingData_.mmConfigC0.get_depthB1(),
-            tilingData_.mmConfigC0.get_dbL0A(), tilingData_.mmConfigC0.get_dbL0B(), tilingData_.mmConfigC0.get_dbL0C(),
-            tilingData_.get_c0MBlock(), tilingData_.get_c0NBlock(), tilingData_.get_c1KBlock(),
-            tilingData_.get_c0ToV2Rows(), tilingData_.get_v2ToC1Rows());
+            tilingData_.mmConfigC0.get_baseM(), tilingData_.mmConfigC0.get_baseN(), tilingData_.mmConfigC0.get_baseK(),
+            tilingData_.mmConfigC0.get_l1K(), tilingData_.mmConfigC1.get_baseM(), tilingData_.mmConfigC1.get_baseN(),
+            tilingData_.mmConfigC1.get_baseK(), tilingData_.mmConfigC1.get_l1K(), tilingData_.mmConfigC0.get_depthA1(),
+            tilingData_.mmConfigC0.get_depthB1(), tilingData_.mmConfigC0.get_dbL0A(),
+            tilingData_.mmConfigC0.get_dbL0B(), tilingData_.mmConfigC0.get_dbL0C(), tilingData_.get_c0MBlock(),
+            tilingData_.get_c0NBlock(), tilingData_.get_c1KBlock(), tilingData_.get_c0ToV2Rows(),
+            tilingData_.get_v2ToC1Rows());
 }
 
 uint64_t MhcPreBackwardTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(mmConfigKey_));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(MHC_PRE_BACKWARD_DEFAULT));
 }
 
 ge::graphStatus MhcPreBackwardTiling::PostTiling()

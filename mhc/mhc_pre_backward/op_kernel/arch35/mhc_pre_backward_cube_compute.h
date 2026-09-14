@@ -20,6 +20,7 @@
 
 namespace MhcPreBackward {
 using namespace AscendC;
+using namespace MhcPreBackwardUtils;
 
 constexpr uint32_t CUBE_L0_EVENT_BASE = 3U;
 constexpr uint32_t CUBE_BLOCK_BYTES = 32U;
@@ -149,11 +150,10 @@ __aicore__ inline void MhcPreBackwardCubeCompute::ProcessC0(const MMConfig &conf
         for (uint32_t offsetN = 0; offsetN < n; offsetN += config.baseN) {
             uint32_t remainN = n - offsetN;
             uint32_t currentN = remainN < config.baseN ? remainN : config.baseN;
-            ComputeTileC0(config, a[offsetM * k], c[offsetM * MhcPreBackwardUtils::ND_BLOCK_SIZE + offsetN], currentM,
-                          currentN, k, k, MhcPreBackwardUtils::ND_BLOCK_SIZE);
+            ComputeTileC0(config, a[offsetM * k], c[offsetM * ND_BLOCK_SIZE + offsetN], currentM, currentN, k, k,
+                          ND_BLOCK_SIZE);
         }
-        CrossCoreSetFlag<MhcPreBackwardUtils::CROSS_CORE_FLAG_INDEX, PIPE_FIX>(
-            MhcPreBackwardUtils::CROSS_CORE_WAIT_FLAG_C0);
+        CrossCoreSetFlag<CROSS_CORE_FLAG_INDEX, PIPE_FIX>(CROSS_CORE_WAIT_FLAG_C0);
     }
 }
 
@@ -427,7 +427,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInA2Trans(const LocalTenso
     p.mStartPosition = 0;
     p.kStartPosition = 0;
     p.mStep = BasicCubeCeilDiv(k, BLOCK_CUBE);
-    p.kStep = BasicCubeCeilDiv(m, BLOCK_CUBE) * MhcPreBackwardUtils::NUMBER_TWO;
+    p.kStep = BasicCubeCeilDiv(m, BLOCK_CUBE) * NUMBER_TWO;
     p.dstStride = p.kStep >> 1U;
     p.srcStride = BasicCubeCeilDiv(kL1, BLOCK_CUBE);
     p.ifTranspose = true;
@@ -441,7 +441,7 @@ __aicore__ inline void MhcPreBackwardCubeCompute::CopyInB2(const LocalTensor<flo
     p.mStartPosition = 0;
     p.kStartPosition = 0;
     p.mStep = BasicCubeCeilDiv(k, BLOCK_CUBE);
-    p.kStep = BasicCubeCeilDiv(n, BLOCK_CUBE) * MhcPreBackwardUtils::NUMBER_TWO;
+    p.kStep = BasicCubeCeilDiv(n, BLOCK_CUBE) * NUMBER_TWO;
     p.dstStride = p.kStep >> 1U;
     p.srcStride = BasicCubeCeilDiv(kL1, BLOCK_CUBE);
     p.ifTranspose = true;

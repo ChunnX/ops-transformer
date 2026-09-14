@@ -20,7 +20,6 @@
 #include "op_host/tiling_base.h"
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
-#include "../../../op_kernel/arch35/mhc_pre_backward_tiling_key.h"
 #include "../mhc_pre_backward_tiling.h"
 
 namespace optiling {
@@ -48,7 +47,6 @@ TILING_DATA_FIELD_DEF(uint64_t, D);
 TILING_DATA_FIELD_DEF(uint64_t, fusionSize); // N ^ 2 + 2 * N
 TILING_DATA_FIELD_DEF(float, hcEps);
 TILING_DATA_FIELD_DEF(uint32_t, implMode);
-TILING_DATA_FIELD_DEF(uint32_t, mmConfigKey);
 TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC0);
 TILING_DATA_FIELD_DEF_STRUCT(MMConfig, mmConfigC1);
 TILING_DATA_FIELD_DEF(uint32_t, maxBufferDepth);
@@ -140,7 +138,6 @@ private:
     uint64_t l0ASize_{0};
     uint64_t l0BSize_{0};
     uint64_t l0CSize_{0};
-    uint32_t mmConfigKey_{MHC_PRE_BACKWARD_MM_CONFIG_0};
     uint32_t maxBufferDepth_{0};
     uint32_t l1UsedBytes_{0};
     uint32_t l1BOffsetElems_{0};

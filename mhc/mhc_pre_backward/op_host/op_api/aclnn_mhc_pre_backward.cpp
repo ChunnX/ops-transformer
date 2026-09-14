@@ -675,6 +675,13 @@ aclnnStatus MhcGradCheckParams(const AclnnMhcPreBackwardParams &params)
     // 5. 检查数据形状是否支持
     CHECK_RET(MhcGradCheckFormat(params), ACLNN_ERR_PARAM_INVALID);
 
+    // 6. 校验算子实现模式
+    if (params.opImplMode != MHC_PRE_BACKWARD_USE_FP32 && params.opImplMode != MHC_PRE_BACKWARD_USE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode", std::to_string(params.opImplMode).c_str(),
+                                              "must be 0 (FP32) or 1 (HF32)");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     return ACLNN_SUCCESS;
 }
 
