@@ -8,7 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import json
+import logging
 import os
+import socket
 from abc import ABC, abstractmethod
 from typing import List, Union
 import torch
@@ -17,6 +20,8 @@ from torch.library import Library
 
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
 _as_library = None
+
+logger = logging.getLogger(__name__)
 
 
 def get_as_library():
@@ -172,6 +177,8 @@ class OpBuilder(ABC):
         if self.name in OpBuilder._loaded_ops:
             return OpBuilder._loaded_ops[self.name]
 
+        self._clear_stale_build_lock()
+
         op_module = load(
             name=self.name,
             sources=self.get_absolute_paths(self.sources()),
@@ -183,3 +190,43 @@ class OpBuilder(ABC):
         OpBuilder._loaded_ops[self.name] = op_module
 
         return op_module
+
+    def _build_directory(self):
+        """Return torch's JIT build directory for this op, or None."""
+        if os.environ.get("CANN_OPS_LOCK_CLEAN", "1") == "0":
+            return None
+        try:
+            from torch.utils.cpp_extension import _get_build_directory
+
+            return _get_build_directory(self.name, False)
+        except Exception:
+            return None
+
+    def _clear_stale_build_lock(self):
+        """Remove the build lock left by a killed JIT compile process.
+
+        torch guards each JIT build dir with a FileBaton lock. If the owning
+        process is killed, the lock file stays and blocks later builds until
+        torch's own deadlock detection (minutes) kicks in. Only delete the
+        lock when we are sure the owner is gone; otherwise leave it untouched
+        and let torch take over.
+        """
+        build_dir = self._build_directory()
+        if not build_dir or not os.path.isdir(build_dir):
+            return
+        lock_path = os.path.join(build_dir, "lock")
+        try:
+            with open(lock_path, "r") as f:
+                data = json.load(f)
+            if data.get("host") != socket.gethostname():
+                return
+            pid = int(data.get("pid") or 0)
+            if pid <= 0 or os.path.exists("/proc/%d" % pid):
+                return
+        except (OSError, ValueError, TypeError, AttributeError):
+            return
+        try:
+            os.remove(lock_path)
+            logger.info("Removed stale build lock: %s", lock_path)
+        except OSError:
+            pass
