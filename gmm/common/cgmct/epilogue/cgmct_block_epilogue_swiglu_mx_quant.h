@@ -514,7 +514,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 
         uint32_t remainingScale = totalScaleInUB;
         for (uint16_t i = 0; i < loopNumScale; ++i) {
-            const uint32_t processedScale =
+            uint32_t processedScale =
                 remainingScale < vlForHalfNumber_ / 2 ? remainingScale : vlForHalfNumber_ / 2;
             maskB16 = AscendC::Reg::UpdateMask<uint16_t>(processedScale);
             maskFloat = AscendC::Reg::UpdateMask<uint32_t>(processedScale);
