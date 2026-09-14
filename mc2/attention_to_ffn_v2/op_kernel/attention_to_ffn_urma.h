@@ -314,7 +314,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
 
     uint32_t maxTotalSendNum = axisX_ * axisBS_ * (axisK_ + sharedExpertNum_);
     uint32_t maxTokensPerAiv = Ceil(maxTotalSendNum, aivNum_);
-    uint32_t flagValueBufSize = Ceil(maxTokensPerAiv * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    constexpr uint32_t flagElemStride = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
+    uint32_t flagValueBufSize = Ceil(maxTokensPerAiv * URMA_FLAG_SLOT_SIZE, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(flagValueBuf_, flagValueBufSize);
     flagValueTensor_ = flagValueBuf_.Get<int32_t>();
     uint32_t flagOffsetBufSize = Ceil(maxTokensPerAiv * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
@@ -710,7 +711,8 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         DataCopyPad(localDataGMTensor, xOutBytesTensor, hCommuCopyParams);
         xOutQueue_.FreeTensor<StorageXOutType>(xOutTensor_);
     }
-    flagValueTensor_.SetValue(remoteFlagCnt_, metaData.localExpId);
+    constexpr uint32_t flagElemStride = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
+    flagValueTensor_.SetValue(remoteFlagCnt_ * flagElemStride, metaData.localExpId);
     flagOffsetTensor_.SetValue(remoteFlagCnt_, tokenOffset);
     ++remoteFlagCnt_;
 }
@@ -923,6 +925,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
 
         SyncFunc<HardEvent::S_MTE3>();
         {
+            constexpr uint32_t flagElemStride = URMA_FLAG_SLOT_SIZE / sizeof(int32_t);
             DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
             for (uint32_t i = 0; i < remoteFlagCnt_; ++i) {
                 uint32_t tokOffset = flagOffsetTensor_.GetValue(i);
@@ -930,7 +933,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
                 GlobalTensor<int32_t> localFlagGMTensor;
                 localFlagGMTensor.SetGlobalBuffer(
                     reinterpret_cast<__gm__ int32_t *>(localFlagAddr_ + flagBufOffset));
-                DataCopyPad(localFlagGMTensor, flagValueTensor_[i], flagCopyParams);
+                DataCopyPad(localFlagGMTensor, flagValueTensor_[i * flagElemStride], flagCopyParams);
             }
         }
         PipeBarrier<PIPE_MTE3>();
