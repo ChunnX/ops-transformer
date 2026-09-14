@@ -155,6 +155,8 @@ private:
     GM_ADDR localFlagAddr_{nullptr};
     GM_ADDR layerFlagAddr_{nullptr};
     GM_ADDR syncStatusWorkspaceGM_{nullptr};
+    GM_ADDR stagingBaseAddr_{nullptr};
+    uint64_t stagingStride_{0};
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> sessionIdGMTensor_;
@@ -356,14 +358,21 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
 
     // All URMA staging sources live in the rank's own window (persistent across op invocations):
     // fire-and-forget WQEs may still be in flight after this kernel exits, so the per-call
-    // workspace cannot back them. Token data is mirrored into own-session data slots; token/layer
-    // flags use a dedicated area right after the token-data region, clear of the info-table region
-    // that SetFlagInAttn's die writes touch while WQEs are in flight.
+    // workspace cannot back them. Token data is staged into a compact contiguous area, physically
+    // separated from the session-slot receiving area to avoid HBM bank conflicts between local
+    // URMA reads (staging) and remote URMA writes (receiving). Token/layer flags use a dedicated
+    // area after the staging region, clear of the info-table region that SetFlagInAttn's die
+    // writes touch while WQEs are in flight.
     const uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
     const uint64_t dataRegionSize = static_cast<uint64_t>(attentionWorkerNum_) * microBatchNum_ * axisBS_ *
                                     (axisK_ + sharedExpertNum_) * axisHS_ * elementSize;
     GM_ADDR selfWinAddr = GetWindowAddr(static_cast<int32_t>(rankId_));
-    localFlagAddr_ = selfWinAddr + winOffset_[1] + Ceil(dataRegionSize, static_cast<uint64_t>(WIN_ALIGN)) * WIN_ALIGN;
+    const uint64_t dataRegionAlignSize = Ceil(dataRegionSize, static_cast<uint64_t>(WIN_ALIGN)) * WIN_ALIGN;
+    stagingStride_ = Ceil(hCommuSize_, static_cast<uint64_t>(UB_ALIGN)) * UB_ALIGN;
+    const uint64_t stagingRegionSize = static_cast<uint64_t>(maxTotalSendNum) * stagingStride_;
+    const uint64_t stagingRegionAlignSize = Ceil(stagingRegionSize, static_cast<uint64_t>(WIN_ALIGN)) * WIN_ALIGN;
+    stagingBaseAddr_ = selfWinAddr + winOffset_[1] + dataRegionAlignSize;
+    localFlagAddr_ = stagingBaseAddr_ + stagingRegionAlignSize;
     layerFlagAddr_ = localFlagAddr_ + static_cast<uint64_t>(expertIdsCnt_) * URMA_FLAG_SLOT_SIZE;
 }
 
@@ -629,14 +638,13 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::R
     metaData.localExpId = localExpId_;
 
     GM_ADDR toRankAddr = GetWindowAddr(metaData.toRankId);
-    GM_ADDR selfRankAddr = GetWindowAddr(static_cast<int32_t>(rankId_));
     uint64_t elementSize = (QuantMode != 0) ? sizeof(XOutType) : sizeof(XType);
     uint64_t tokenDataOffset = winTokenDataOffset_ +
                                (static_cast<uint64_t>(metaData.tokenId) * (axisK_ + sharedExpertNum_) * axisHS_) +
                                (static_cast<uint64_t>(metaData.topkId) * axisHS_);
     metaData.remoteDataAddr = toRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
     metaData.remoteFlagAddr = toRankAddr + winInfoTableOffset_ + (TOKEN_INFO_TABLE_RS + tokenOffset) * sizeof(int32_t);
-    metaData.localDataAddr = selfRankAddr + winOffset_[1] + tokenDataOffset * elementSize;
+    metaData.localDataAddr = stagingBaseAddr_ + static_cast<uint64_t>(tokenOffset) * stagingStride_;
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>

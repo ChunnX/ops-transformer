@@ -106,11 +106,16 @@ int64_t GetAttentionToFfnCclBufferSize(const std::vector<int64_t> &ffnTokenInfoT
     int64_t tokenInfoSize = attentionWorkerNum * microBatchNum * infoTableLastDim * BYTES_PER_INT32;
     int64_t bytesPerElem = (quantMode == NO_QUANT_MODE) ? BYTES_PER_FP16 : BYTES_PER_QUANT_ELEM;
     int64_t tokenDataSize = attentionWorkerNum * microBatchNum * bs * kPlusShared * hs * bytesPerElem;
-    // Persistent URMA staging area appended after the token-data region in every rank's window:
-    // one 32B flag slot per token plus one layer-flag slot (X is always 1).
+    // Compact contiguous staging area appended after the token-data region: one slot per token
+    // (stride = ceil(hs * elemSize, 32B)), physically separated from the session-slot receiving
+    // area to avoid HBM bank conflicts between local URMA reads and remote URMA writes.
+    int64_t stagingStride = CeilAlign(hs * bytesPerElem, FLAG_SLOT_BYTES);
+    int64_t maxTotalSendNum = bs * kPlusShared; // X is always 1
+    int64_t stagingSize = maxTotalSendNum * stagingStride;
+    // Persistent URMA flag staging area: one 32B flag slot per token plus one layer-flag slot.
     int64_t flagStagingSize = (bs * kPlusShared + 1) * FLAG_SLOT_BYTES;
     int64_t needed = CeilAlign(tokenInfoSize, WIN_REGION_ALIGN) + CeilAlign(tokenDataSize, WIN_REGION_ALIGN) +
-                     flagStagingSize;
+                     CeilAlign(stagingSize, WIN_REGION_ALIGN) + flagStagingSize;
     return CeilAlign(needed, MB_ALIGN);
 }
 

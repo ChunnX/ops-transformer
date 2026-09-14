@@ -44,6 +44,7 @@ constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 9U;
 
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WIN_REGION_ALIGN = 512U;
+constexpr size_t UB_ALIGN_SIZE = 32U;
 constexpr size_t SCALE_PARAM_PAD_SIZE = 128U;
 constexpr size_t MX_PARAM_PAD_SIZE = 256U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
@@ -156,7 +157,8 @@ ge::graphStatus CheckUrmaWinSlotCapacity(gert::TilingContext *context, const Att
 }
 
 // All URMA staging sources live in the rank's own window (persistent across op calls): token data
-// in own-session mirror slots and token/layer flags in a dedicated area right after the token-data
+// is staged in a compact contiguous area, physically separated from the session-slot receiving
+// area to avoid HBM bank conflicts. Token/layer flags use a dedicated area after the staging
 // region. Nothing is staged in the per-call workspace because fire-and-forget WQEs may outlive the
 // op. Only layout validations remain here.
 ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV2TilingData *tilingData,
@@ -177,9 +179,13 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
     const size_t dataRegionSize = CeilAlignSize(static_cast<size_t>(info.attentionWorkerNum) * info.microBatchNum *
                                                     info.BS * expertNumPerToken * info.HS * elemSize,
                                                 URMA_WIN_REGION_ALIGN);
+    const size_t commuBytes = GetUrmaCommuBytes(tilingKeyQuantMode, outDtype, static_cast<size_t>(info.H));
+    const size_t stagingStride = CeilAlignSize(commuBytes, UB_ALIGN_SIZE);
+    const size_t maxTotalSendNum = static_cast<size_t>(info.X) * info.BS * expertNumPerToken;
+    const size_t stagingRegionSize = CeilAlignSize(maxTotalSendNum * stagingStride, URMA_WIN_REGION_ALIGN);
     const size_t flagRegionSize =
         (static_cast<size_t>(info.X) * info.BS * expertNumPerToken + 1U) * URMA_FLAG_SLOT_SIZE;
-    const size_t requiredWinBytes = infoRegionSize + dataRegionSize + flagRegionSize;
+    const size_t requiredWinBytes = infoRegionSize + dataRegionSize + stagingRegionSize + flagRegionSize;
 
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
@@ -191,7 +197,7 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         context->GetNodeName(), "ccl_buffer_size", std::to_string(*cclBufferSizePtr).c_str(),
                         (std::string("should >= ") + std::to_string(requiredWinBytes) +
-                         " bytes (token info + token data + URMA flag staging area); use "
+                         " bytes (token info + token data + compact staging + URMA flag staging area); use "
                          "get_buffer_for_attention_to_ffn to compute it")
                             .c_str()),
                     return ge::GRAPH_FAILED);
@@ -266,10 +272,9 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
 ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
 {
     // Deployment marker: grep plog for this tag to verify the rebuilt package is actually
-    // loaded (v7: all URMA staging persistent in own window — token data in mirror slots,
-    // token/layer flags in a dedicated area after the token-data region; workspace no longer
-    // backs any WQE source; HS slot capacity + ccl_buffer_size coverage checks added).
-    OP_LOGI(context->GetNodeName(), "[AT2FFN_V2_URMA_FIX] v7 (winStagingAll + hsCheck) active");
+    // loaded (v8: token data staged in a compact contiguous area, physically separated from the
+    // session-slot receiving area to avoid HBM bank conflicts; token/layer flags after staging).
+    OP_LOGI(context->GetNodeName(), "[AT2FFN_V2_URMA_FIX] v8 (compactStaging + bankConflictAvoid) active");
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
