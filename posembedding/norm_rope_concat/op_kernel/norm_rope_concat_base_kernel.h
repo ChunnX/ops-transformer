@@ -169,20 +169,12 @@ public:
         DataCopyPad(rope[alignedTotalRopeDim_], cosGm_[curSeq * ropeDim_], copyParams, padParams);
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
-        PipeBarrier<PIPE_V>();
-        // Step 1: Bulk-init sin_=0, cos_=1. Base address and count are B32-aligned.
-        Duplicate(sin_, 0.f, alignedTotalRopeDim_);
-        Duplicate(cos_, 1.f, alignedTotalRopeDim_);
-        PipeBarrier<PIPE_V>();
-        // Step 2: Copy valid ropeDim_ elements for head 0 only from deQue.
-        // deQue has valid data only at [0] (sin) and [alignedTotalRopeDim_] (cos);
-        // other heads propagate via the per-head Adds loop below.
-        if constexpr (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
-            Cast(sin_, deQue, RoundMode::CAST_NONE, ropeDim_);
-            Cast(cos_, deQue[alignedTotalRopeDim_], RoundMode::CAST_NONE, ropeDim_);
+        if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
+            Cast(sin_, deQue, RoundMode::CAST_NONE, totalRopeDim_);
+            Cast(cos_, deQue[alignedTotalRopeDim_], RoundMode::CAST_NONE, totalRopeDim_);
         } else {
-            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, ropeDim_);
-            Adds(cos_, deQue[alignedTotalRopeDim_].ReinterpretCast<float>(), 0.f, ropeDim_);
+            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, totalRopeDim_);
+            Adds(cos_, deQue[alignedTotalRopeDim_].ReinterpretCast<float>(), 0.f, totalRopeDim_);
         }
         ropeQueue_.FreeTensor(deQue);
         PipeBarrier<PIPE_V>();
