@@ -44,6 +44,34 @@ class AclnnGroupedMatMulAlltoAllvSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
+    @staticmethod
+    def customize_inputs(*args, **kwargs):
+        import importlib.util
+
+        path = Path(__file__).with_name("inputs.py")
+        spec = importlib.util.spec_from_file_location(
+            f"grouped_mat_mul_allto_allv_assets_inputs_{abs(hash(path))}", path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.grouped_mat_mul_allto_allv_inputs(
+            *args[:6],
+            group=args[6],
+            ep_world_size=args[7],
+            send_counts=args[8],
+            recv_counts=args[9],
+            trans_gmm_weight=args[10],
+            trans_mm_weight=args[11],
+            **kwargs,
+        )
+
+
 
 class GroupedMatMulAlltoAllvE2ESpec:
     """TestSpec for torch_npu.npu_gmm_alltoallv (E2E multi-device path)."""

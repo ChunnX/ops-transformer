@@ -17,5 +17,8 @@ __all__ = [
 
 from .comm_context import CommContextManager
 from .moe_distribute_buffer import MoeDistributeBuffer
-from .elastic_buffer import ElasticBuffer, EPHandle
+from .elastic_buffer import EPHandle
 from .comm_channel_builder_manager import CommChannelBuilderManager
+from ...moe_distribute_combine.torch_extension.moe_distribute_combine import (
+    moe_distribute_combine_op_builder,
+)

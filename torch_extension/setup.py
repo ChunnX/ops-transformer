@@ -32,6 +32,9 @@ BASE_PACKAGE_NAME = "cann_ops_transformer"
 HERE = os.path.dirname(os.path.abspath(__file__))
 OPS_TRANSFORMER_ROOT = os.path.normpath(os.path.join(HERE, ".."))
 _src_path = os.path.join(HERE, BASE_PACKAGE_NAME)
+_mc2_common_torch_extension = os.path.normpath(
+    os.path.join(OPS_TRANSFORMER_ROOT, "mc2", "common", "torch_extension")
+)
 
 _ops_env = os.environ.get("TORCH_EXTENSION_OPS", "").strip()
 _selected_ops = (
@@ -98,6 +101,23 @@ for _subdir in ("csrc", "common"):
 _op_category_inits = {}
 _op_py_files = []
 _op_cpp_files = []
+_mc2_common_torch_extension_files = []
+
+
+def _collect_torch_extension_files(root_dir):
+    files = []
+    for current_dir, dirs, filenames in os.walk(root_dir):
+        dirs[:] = [dirname for dirname in dirs if dirname != "__pycache__"]
+        for filename in filenames:
+            if filename.endswith((".py", ".cpp")):
+                source = os.path.join(current_dir, filename)
+                files.append(
+                    (
+                        os.path.relpath(source, root_dir),
+                        source,
+                    )
+                )
+    return files
 
 
 def _collect_op(op_cat, op_dir, te_dir):
@@ -115,6 +135,42 @@ def _collect_op(op_cat, op_dir, te_dir):
                 _op_cpp_files.append(
                     (os.path.join("csrc", op_cat, cpp), os.path.join(csrc_dir, cpp))
                 )
+
+
+_mc2_common_torch_extension_files.extend(
+    _collect_torch_extension_files(_mc2_common_torch_extension)
+)
+
+_selected_op_packages = []
+_selected_op_package_dirs = {
+    "ops/%s/%s" % (op_cat, op_dir)
+    for _, op_cat, op_dir in _selected_op_categories
+}
+_selected_op_package_dirs.add("ops/mc2/common")
+for _package_dir in _selected_op_package_dirs:
+    _package_path = os.path.join(_src_path, _package_dir)
+    os.makedirs(_package_path, exist_ok=True)
+    _package_init = os.path.join(_package_path, "__init__.py")
+    if not os.path.exists(_package_init):
+        open(_package_init, "w").close()
+_selected_op_packages.extend(
+    "%s.ops.%s.%s" % (PACKAGE_NAME, op_cat, op_dir)
+    for _, op_cat, op_dir in _selected_op_categories
+)
+_selected_op_packages.append("%s.ops.mc2.common" % PACKAGE_NAME)
+_selected_op_package_dirs = {
+    os.path.dirname(path).replace(os.sep, ".")
+    for path, _ in _op_py_files + _mc2_common_torch_extension_files
+}
+_selected_op_package_dirs.discard("")
+_selected_op_packages.extend(
+    "%s.%s"
+    % (
+        PACKAGE_NAME,
+        relative_dir.replace(os.sep, "."),
+    )
+    for relative_dir in _selected_op_package_dirs
+)
 
 
 for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
@@ -149,6 +205,8 @@ for cat in sorted(os.listdir(OPS_TRANSFORMER_ROOT)):
 
 
 _sorted_selected_op_categories = sorted(set(_selected_op_categories))
+_sorted_selected_op_categories.append(("mc2", "common"))
+_sorted_selected_op_categories = sorted(set(_sorted_selected_op_categories))
 
 _entry_points = []
 if _selected_ops is not None:
@@ -174,15 +232,17 @@ class Clean(Command):
                 if os.path.isdir(path):
                     shutil.rmtree(path)
                     logger.info("removing %s", path)
-        if PACKAGE_NAME != BASE_PACKAGE_NAME:
-            link = os.path.join(HERE, PACKAGE_NAME)
-            if os.path.islink(link):
-                os.remove(link)
 
 
 class BuildPyWithOps(_build_py):
     def run(self):
         _clean_build_artifacts()
+        for package_name in _selected_op_packages:
+            package_dir = os.path.join(self.build_lib, *package_name.split("."))
+            os.makedirs(package_dir, exist_ok=True)
+            package_init = os.path.join(package_dir, "__init__.py")
+            if not os.path.exists(package_init):
+                open(package_init, "w").close()
         super().run()
         build_pkg = os.path.join(self.build_lib, PACKAGE_NAME)
         if _selected_ops is not None:
@@ -207,15 +267,16 @@ class BuildPyWithOps(_build_py):
                                 )
             ops_cat_inits = {}
             for sel_cat, sel_op in _sorted_selected_op_categories:
-                if sel_cat not in ops_cat_inits:
-                    ops_cat_inits[sel_cat] = []
-                ops_cat_inits[sel_cat].append(sel_op)
+                export_name = sel_op
+                if sel_op == "common":
+                    export_name = "MoeDistributeBuffer"
+                ops_cat_inits.setdefault(sel_cat, []).append((sel_op, export_name))
             for sel_cat, sel_ops in ops_cat_inits.items():
                 dst = os.path.join(build_pkg, "ops", sel_cat, "__init__.py")
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "w") as f:
-                    for sel_op in sel_ops:
-                        f.write("from .%s import %s\n" % (sel_op, sel_op))
+                    for sel_op, export_name in sel_ops:
+                        f.write("from .%s import %s\n" % (sel_op, export_name))
         else:
             for category, init_src in _op_category_inits.items():
                 dst = os.path.join(build_pkg, "ops", category, "__init__.py")
@@ -243,9 +304,43 @@ class BuildPyWithOps(_build_py):
             dst = os.path.join(build_pkg, rel_path)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src_abs, dst)
+        for rel_path, src_abs in _mc2_common_torch_extension_files:
+            if rel_path.endswith(".cpp"):
+                dst = os.path.join(
+                    build_pkg, "csrc", "mc2", os.path.basename(rel_path)
+                )
+            else:
+                dst = os.path.join(build_pkg, "ops", "mc2", "common", rel_path)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            if rel_path.endswith(".cpp"):
+                shutil.copy2(src_abs, dst)
+                continue
+            with open(src_abs, "r") as src_file:
+                content = src_file.read()
+                content = content.replace(
+                    "from cann_ops_transformer.op_builder",
+                    "from %s.op_builder" % PACKAGE_NAME,
+                )
+                content = content.replace(
+                    "from cann_ops_transformer.op_builder import OpBuilder, get_as_library",
+                    "from %s.op_builder import OpBuilder, get_as_library" % PACKAGE_NAME,
+                )
+                content = content.replace(
+                    "import cann_ops_transformer.op_builder",
+                    "import %s.op_builder" % PACKAGE_NAME,
+                )
+            with open(dst, "w") as dst_file:
+                dst_file.write(content)
+        for _header in ("aclnn_common.h", "hccl_common.h"):
+            _header_src = os.path.join(_src_path, "common", _header)
+            if os.path.isfile(_header_src):
+                _header_dst = os.path.join(build_pkg, "common", _header)
+                os.makedirs(os.path.dirname(_header_dst), exist_ok=True)
+                shutil.copy2(_header_src, _header_dst)
         common_src_dir = os.path.join(_src_path, "common")
-        if os.path.isdir(common_src_dir):
-            for root_dir, _, filenames in os.walk(common_src_dir):
+        if _selected_ops is None and os.path.isdir(common_src_dir):
+            for root_dir, dirs, filenames in os.walk(common_src_dir):
+                dirs[:] = [d for d in dirs if d != "__pycache__"]
                 for filename in filenames:
                     src_abs = os.path.join(root_dir, filename)
                     rel_path = os.path.relpath(src_abs, _src_path)
@@ -254,7 +349,9 @@ class BuildPyWithOps(_build_py):
                     shutil.copy2(src_abs, dst)
 
 
-_all_packages = find_packages() + _extra_packages
+_all_packages = (
+    find_packages() + _extra_packages + _selected_op_packages
+)
 if _selected_ops is not None:
     _prefix = BASE_PACKAGE_NAME + "."
     _all_packages = [
@@ -290,7 +387,6 @@ if _bdist_wheel is not None:
 
     class BdistWheelWithClean(_bdist_wheel):
         def run(self):
-            _clean_build_artifacts()
             super().run()
             _clean_symlink()
 else:

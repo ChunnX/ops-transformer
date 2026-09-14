@@ -63,6 +63,8 @@ def _load_op(name, target):
             _mod = importlib.import_module(module_path)
             if hasattr(_mod, attr_name):
                 globals()[name] = getattr(_mod, attr_name)
+                if attr_name != name:
+                    globals()[attr_name] = getattr(_mod, attr_name)
             elif hasattr(_mod, name):
                 globals()[name] = getattr(_mod, name)
             else:
@@ -98,6 +100,15 @@ _all_ops.update(_ep_ops)
 
 for _name, _target in _all_ops.items():
     _load_op(_name, _target)
+
+if "common" in _all_ops:
+    from .mc2.common import (
+        CommContextManager,
+        CommChannelBuilderManager,
+        MoeDistributeBuffer,
+        ElasticBuffer,
+        EPHandle,
+    )
 
 try:
     del _discover_ops_from_entry_points, _discover_ops_from_dir, _load_op

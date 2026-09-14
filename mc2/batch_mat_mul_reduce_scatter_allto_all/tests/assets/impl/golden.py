@@ -102,7 +102,8 @@ _next_port_base = [30073]
 def _next_port():
     import threading
 
-    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
+    from ttk.config.loader import get_cascade_config
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", get_cascade_config().hccl_port_range)
     with threading.Lock():
         port = _next_port_base[0]
         _next_port_base[0] += 13
@@ -214,8 +215,7 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
     rs_per_rank = {}
     n_ep_groups = world_size // ep_ws
     n_tp_groups = world_size // tp_ws
-    # TP groups: contiguous (matching TTK profiling.py HCCL comm creation)
-    # TP groups: [[0,1,2,3],[4,5,6,7]] for ep=2,tp=4,world=8
+    # TP groups are strided by ep_ws, matching TTK profiling.py HCCL comm creation.
     for g in range(n_tp_groups):
         group_dids = [g * tp_ws + t for t in range(tp_ws)]
         all_parts = []
@@ -268,9 +268,9 @@ def bmm_rs_a2a_cpu_golden(thread_contexts, device_ids, ep_ws, tp_ws, world_size)
 
     n_ep_groups = world_size // ep_ws
     rank_goldens = {}
-    # EP groups: strided by tp_ws (matching TTK profiling.py HCCL comm creation)
+    # EP groups are contiguous, matching TTK profiling.py HCCL comm creation.
     for g in range(n_ep_groups):
-        group_dids = [g + e * tp_ws for e in range(ep_ws)]
+        group_dids = [g * ep_ws + e for e in range(ep_ws)]
         for target_local, target_did in enumerate(group_dids):
             if shard_type == 0:
                 all_chunks = []

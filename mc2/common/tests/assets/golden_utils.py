@@ -90,6 +90,8 @@ def fmt_compare_result(cr):
     _m = cr.metrics.get(0, {}) if cr.metrics else {}
     if _m and "mere" in _m:
         return f" mere={_m.get('mere'):.4e} mare={_m.get('mare'):.4e} th={_m.get('threshold'):.4e}"
+    if isinstance(cr.precision, str) and cr.precision.startswith("diff_big_avg="):
+        return f" {cr.precision}"
     return f" prec={cr.precision}"
 
 
@@ -166,7 +168,10 @@ def apply_goldens_and_compare(
             ]
         else:
             converted_goldens = []
-            for output_position, output_golden in enumerate(multi_output_goldens):
+            output_count = len(tc.output_tensor_indexes)
+            for output_position, output_golden in enumerate(
+                multi_output_goldens[:output_count]
+            ):
                 if output_golden is None:
                     output_golden = _torch.zeros(
                         tc.tensor_view_shapes[tc.output_tensor_indexes[output_position]]
@@ -254,9 +259,12 @@ def apply_a2a_goldens_and_compare(
                 third_party if isinstance(third_party, (list, tuple)) else [third_party]
             )
             third_parties_list = []
+            tp_items = list(tp_items)
             for oi_idx, out_idx in enumerate(tc.output_tensor_indexes):
                 if oi_idx < len(tp_items):
                     tp = tp_items[oi_idx]
+                    if isinstance(tp, list):
+                        tp = tp[0] if tp else None
                     third_parties_list.append(
                         tp.contiguous() if isinstance(tp, _torch.Tensor) else tp
                     )

@@ -32,33 +32,42 @@ def _load_inputs_for_rank(input_path, did):
     tensors = {}
     for key in data.files:
         if key.startswith(f"did{did}_t") and not key.endswith("_dtype"):
+            if key.endswith("_shape") or key.endswith("_stride"):
+                continue
             idx = int(key.split("_t")[1])
             arr = data[key]
             dtype_key = f"{key}_dtype"
-            dtype_str = str(data[dtype_key]) if dtype_key in data.files else "float32"
+            dtype_value = data[dtype_key] if dtype_key in data.files else "float32"
+            dtype_str = str(dtype_value.item() if dtype_value.shape == () else dtype_value)
             if arr.dtype.kind == "V":
                 total_bytes = arr.size * arr.dtype.itemsize
                 arr = np.frombuffer(arr.tobytes(), dtype=np.uint8, count=total_bytes)
                 arr = arr.reshape(arr.shape if arr.ndim > 0 else (1,))
             t = torch.from_numpy(arr.copy())
-            if dtype_str == "torch.bfloat16":
-                t = t.to(torch.bfloat16)
+            if dtype_str in ("torch.bfloat16", "bfloat16"):
+                t = t.view(torch.uint16).view(torch.bfloat16)
             elif dtype_str == "torch.float16":
                 t = t.to(torch.float16)
             elif "float8_e4m3" in dtype_str:
                 t = (
-                    t.view(torch.uint8).to(torch.float8_e4m3fn)
+                    t.view(torch.float8_e4m3fn)
                     if hasattr(torch, "float8_e4m3fn")
                     else t
                 )
             elif "float8_e5m2" in dtype_str:
                 t = (
-                    t.view(torch.uint8).to(torch.float8_e5m2)
+                    t.view(torch.float8_e5m2)
                     if hasattr(torch, "float8_e5m2")
                     else t
                 )
             elif "hifloat8" in dtype_str:
                 t = t.view(torch.uint8)
+            shape_key = f"{key}_shape"
+            stride_key = f"{key}_stride"
+            if shape_key in data.files and stride_key in data.files:
+                shape = tuple(int(v) for v in data[shape_key])
+                stride = tuple(int(v) for v in data[stride_key])
+                t = torch.as_strided(t, shape, stride)
             tensors[idx] = t
     return tensors
 
@@ -115,11 +124,11 @@ def main():
             mm_out = torch.matmul(gathered, x2)
         if bias is not None and bias.numel() > 0:
             mm_out = mm_out + bias
-        mm_cpu = mm_out.reshape(-1).contiguous().cpu()
+        mm_cpu = mm_out.reshape(-1).contiguous().float().cpu()
         rank_file = f"{result_path}.did{rank}.npz"
         np.savez(rank_file, **{f"cascade_did{rank}": mm_cpu.numpy()})
         if is_gather_output:
-            gathered_cpu = gathered.reshape(-1).contiguous().cpu()
+            gathered_cpu = gathered.reshape(-1).contiguous().float().cpu()
             a2a_file = f"{result_path}.a2a_did{rank}.npz"
             np.savez(a2a_file, **{f"cascade_a2a_did{rank}": gathered_cpu.numpy()})
         dist.destroy_process_group()

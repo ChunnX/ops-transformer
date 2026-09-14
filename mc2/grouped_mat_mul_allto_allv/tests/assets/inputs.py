@@ -9,10 +9,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__input__ = {
-    "kernel": {"grouped_mat_mul_allto_allv": "grouped_mat_mul_allto_allv_inputs"}
-}
-
 from typing import List
 
 
@@ -98,10 +94,4 @@ def grouped_mat_mul_allto_allv_inputs(
         recv_counts_tensor,
         mm_x,
         mm_weight,
-        group,
-        ep_world_size,
-        send_counts,
-        recv_counts,
-        trans_gmm_weight,
-        trans_mm_weight,
     )

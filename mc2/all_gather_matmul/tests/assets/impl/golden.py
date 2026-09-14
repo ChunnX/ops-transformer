@@ -53,17 +53,21 @@ def _save_inputs_per_rank(thread_contexts, device_ids, path):
         for i, t in enumerate(tc.flatten_tensors):
             if t is None:
                 continue
+            if i in (tc.pure_output_indexes or ()):
+                continue
             if isinstance(t, torch.Tensor):
                 dtype_str = str(t.dtype).replace("torch.", "")
-                if t.dtype in (torch.bfloat16, torch.float16, torch.float32):
-                    arrays[f"did{did}_t{i}"] = t.float().cpu().numpy()
-                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
-                elif "float8" in dtype_str or "hifloat8" in dtype_str:
-                    arrays[f"did{did}_t{i}"] = t.view(torch.uint8).cpu().numpy()
-                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
+                saved = t.detach().cpu().contiguous()
+                if t.dtype == torch.bfloat16:
+                    arrays[f"did{did}_t{i}"] = saved.view(torch.uint16).numpy()
                 else:
-                    arrays[f"did{did}_t{i}"] = t.cpu().numpy()
-                    dtypes[f"did{did}_t{i}_dtype"] = dtype_str
+                    try:
+                        arrays[f"did{did}_t{i}"] = saved.numpy()
+                    except (TypeError, RuntimeError):
+                        arrays[f"did{did}_t{i}"] = saved.view(torch.uint8).numpy()
+                dtypes[f"did{did}_t{i}_dtype"] = dtype_str
+                arrays[f"did{did}_t{i}_shape"] = np.asarray(t.shape, dtype=np.int64)
+                arrays[f"did{did}_t{i}_stride"] = np.asarray(t.stride(), dtype=np.int64)
             else:
                 arrays[f"did{did}_t{i}"] = np.asarray(t)
                 dtypes[f"did{did}_t{i}_dtype"] = "numpy"
@@ -77,7 +81,8 @@ _next_port_base = [30039]
 def _next_port():
     import threading
 
-    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
+    from ttk.config.loader import get_cascade_config
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", get_cascade_config().hccl_port_range)
     with threading.Lock():
         port = _next_port_base[0]
         _next_port_base[0] += 13
@@ -117,6 +122,8 @@ def all_gather_matmul_cpu_golden(thread_contexts, device_ids, world_size):
     for did in device_ids:
         tc = thread_contexts[did]
         x2 = to_torch_f32(tc.flatten_tensors[1])
+        if tc.flat_view_stride(1) == (tc.flatten_tensors[1].shape[0], 1):
+            x2 = x2.transpose(0, 1)
         bias = tc.flatten_tensors[2] if len(tc.flatten_tensors) > 2 else None
         if bias is not None and isinstance(bias, torch.Tensor) and bias.numel() == 0:
             bias = None
@@ -150,6 +157,8 @@ def run_allgather_matmul_cascade(
     first_ctx = thread_contexts[device_ids[0]]
     x1 = first_ctx.flatten_tensors[0]
     x2 = first_ctx.flatten_tensors[1]
+    if is_trans_b:
+        x2 = x2.transpose(0, 1)
     m_dim = x1.shape[0]
     k_dim = x1.shape[1]
     n_dim = x2.shape[1]
@@ -229,26 +238,24 @@ def all_gather_matmul_multi_device_golden(thread_contexts, device_ids, all_preci
             elif kv[0].strip() == "gather_output":
                 gather_output = kv[1].strip() == "1"
 
-    rank_goldens = all_gather_matmul_cpu_golden(thread_contexts, device_ids, world_size)
+    rank_goldens = run_allgather_matmul_cascade(
+        thread_contexts,
+        device_ids,
+        is_trans_b=is_trans_b,
+        is_gather_output=gather_output,
+    )
+    for did in device_ids:
+        if rank_goldens.get(did, {}).get("main") is None:
+            raise RuntimeError(f"AllGatherMatmul cascade main golden unavailable on rank {did}")
+        if gather_output and rank_goldens[did].get("gather") is None:
+            raise RuntimeError(f"AllGatherMatmul cascade gather golden unavailable on rank {did}")
+    logging.info("AllGatherMatmul: HCCL cascade golden generated")
 
-    rank_third_parties = None
-    try:
-        cascade_outs = run_allgather_matmul_cascade(
-            thread_contexts,
-            device_ids,
-            is_trans_b=is_trans_b,
-            is_gather_output=gather_output,
-        )
-        rank_third_parties = {}
-        for did in device_ids:
-            tp_list = [cascade_outs[did]["main"]]
-            if gather_output and cascade_outs[did].get("gather") is not None:
-                tp_list.append(cascade_outs[did]["gather"])
-            rank_third_parties[did] = tp_list
-        logging.info("AllGatherMatmul: real HCCL cascade succeeded")
-    except Exception:
-        logging.exception("AllGatherMatmul: real HCCL cascade failed, no third_party")
-        rank_third_parties = None
+    if not gather_output:
+        rank_goldens = {
+            did: {"main": outputs["main"], "gather": None}
+            for did, outputs in rank_goldens.items()
+        }
 
     _, apply_goldens = _load_framework()
     apply_goldens(
@@ -256,7 +263,7 @@ def all_gather_matmul_multi_device_golden(thread_contexts, device_ids, all_preci
         device_ids,
         rank_goldens,
         all_precision,
-        rank_third_parties=rank_third_parties,
+        rank_third_parties=None,
     )
 
 

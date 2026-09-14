@@ -44,6 +44,94 @@ class AclnnMoeDistributeDispatchSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, **kwargs):
+        return _load_impl_module("compare").compare(*outputs, **kwargs)
+
+    @staticmethod
+    def customize_inputs(*args, **kwargs):
+        from ttk.core_modules.aclnn.op_api_info_keeper import OpApiInfoKeeper
+
+        api_name = kwargs.get("api_name", "aclnnMoeDistributeDispatchV3")
+        op_api_info = OpApiInfoKeeper().info_of(api_name)
+        if op_api_info is None:
+            raise RuntimeError(f"{api_name} is unavailable in the current CANN package")
+        tensor_count = op_api_info.tensors.index("expandXOut")
+        param_names = tuple(op_api_info.params)
+        args = list(args)
+        scalar_args = args[tensor_count:]
+        if len(args) > tensor_count:
+            args = args[:tensor_count]
+        deepep_enabled = False
+        remarks = {
+            item.split("=", 1)[0].strip(): item.split("=", 1)[1].strip()
+            for item in (kwargs.get("remark") or "").split(",")
+            if "=" in item
+        }
+        if kwargs.get("isDeepep") or remarks.get("isDeepep") == "1":
+            deepep_enabled = True
+        if deepep_enabled and args and args[1] is not None and args[1].dim() > 1 and args[1].shape[1] > 1:
+            kwargs["_moeDeepepOriginalTopK"] = int(args[1].shape[1])
+            args[1] = args[1][:, :1]
+        args.extend(None for _ in range(tensor_count - len(args)))
+        extras = {key: value for key, value in kwargs.items() if key != "commAlg"}
+        attrs = {
+            name: extras.pop(name, None)
+            for name in param_names
+            if name not in op_api_info.tensors and extras.get(name) is not None
+        }
+        scalar_param_names = tuple(
+            name for name in param_names if name not in op_api_info.tensors
+        )
+        for name, value in zip(scalar_param_names, scalar_args):
+            if value is not None and name not in attrs:
+                attrs[name] = value
+        if "isElastic" in extras:
+            attrs["isElastic"] = int(extras.pop("isElastic") or 0)
+        if "elasticMoeRankNum" in extras:
+            attrs["elasticMoeRankNum"] = int(extras.pop("elasticMoeRankNum") or 0)
+        if "isDeepep" in extras:
+            attrs["_moeDeepep"] = int(extras.pop("isDeepep") or 0)
+        elif remarks.get("isDeepep") == "1":
+            attrs["_moeDeepep"] = 1
+        if "isExpand" in extras:
+            attrs["isExpand"] = int(extras.pop("isExpand") or 0)
+        elif remarks.get("isExpand") == "1":
+            attrs["isExpand"] = 1
+        if "_moeDeepep" in attrs and "_moeDeepep" in extras:
+            extras.pop("_moeDeepep")
+        if "_ttk_context" in extras:
+            attrs["_ttk_context"] = extras.pop("_ttk_context")
+        return _load_impl_module("inputs").moe_distribute_dispatch_inputs(
+            *args,
+            **attrs,
+            **({"api_name": api_name} if "api_name" not in kwargs else {}),
+            **extras,
+        )
+
+    @staticmethod
+    def before_execute(thread_contexts, device_ids, main_device, stream_value, plugin_path):
+        import logging
+
+        logging.info("MoeDistributeDispatch before_execute entered")
+        return _load_impl_module("elastic_dispatch_executor").run_elastic_dispatch_warmup(
+            thread_contexts, device_ids, main_device, stream_value, plugin_path
+        )
+
+    @staticmethod
+    def prepare_execute(thread_contexts, device_ids):
+        return _load_impl_module("elastic_dispatch_executor").prepare_elastic_dispatch(
+            thread_contexts, device_ids
+        )
+
+    @staticmethod
+    def execute(thread_context, device, stream_value):
+        if thread_context.api_name != "aclnnMoeDistributeDispatchV3":
+            return None
+        return _load_impl_module("elastic_dispatch_executor").execute_elastic_dispatch(
+            thread_context, device, stream_value
+        )
+
 
 class MoeDistributeDispatchE2ESpec:
     """TestSpec for torch_npu.npu_moe_distribute_dispatch (E2E multi-device path)."""
@@ -57,5 +145,8 @@ class MoeDistributeDispatchE2ESpec:
 
 __spec__ = {
     "aclnnMoeDistributeDispatch": "AclnnMoeDistributeDispatchSpec",
+    "aclnnMoeDistributeDispatchV2": "AclnnMoeDistributeDispatchSpec",
+    "aclnnMoeDistributeDispatchV3": "AclnnMoeDistributeDispatchSpec",
+    "aclnnMoeDistributeDispatchV4": "AclnnMoeDistributeDispatchSpec",
     "torch_npu.npu_moe_distribute_dispatch": "MoeDistributeDispatchE2ESpec",
 }
