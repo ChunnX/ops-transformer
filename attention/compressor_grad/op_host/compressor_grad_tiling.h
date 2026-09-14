@@ -72,6 +72,12 @@ constexpr uint32_t MAX_CMP_RATIO = 128;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 const uint32_t CMP_MAX_AIC_CORE_NUM = 36;
 
+// TILING BLOCK SIZE
+constexpr uint32_t D_BASE_SIZE = 128; // D 方向分块基大小（UB/L1 物理行宽）
+constexpr uint32_t M_BASE_SIZE = 128; // M 方向分块基大小
+constexpr uint32_t DB_RATIO = 2;      // workspace 双缓冲倍数
+constexpr uint32_t COFF_MAX = 2;      // coff 上限
+
 static const std::string X_NAME = "query";
 static const std::string WKV_NAME = "wkv";
 static const std::string WGATE_NAME = "wgate";
@@ -88,39 +94,35 @@ static const std::string D_WKV_NAME = "d_wkv";
 static const std::string D_WGATE_NAME = "d_wgate";
 static const std::string D_APE_NAME = "d_ape";
 
-static std::string DataTypeToSerialString(ge::DataType type);
-
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {X_NAME,                  {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WKV_NAME,                {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WGATE_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
-    {D_CMP_KV_NAME,           {ge::DT_BF16, ge::DT_FLOAT16}},
-    {SOFTMAX_SCORE_NAME,      {ge::DT_FLOAT}},
-    {KV_NAME,                 {ge::DT_FLOAT}},
-    {CU_SEQLENS_NAME,         {ge::DT_INT32}},
-    {SEQUSED_NAME,            {ge::DT_INT32}},
-    {START_POS_NAME,          {ge::DT_INT32}},
-    {D_X_NAME,                {ge::DT_BF16, ge::DT_FLOAT16}},
-    {D_WKV_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
-    {D_WGATE_NAME,            {ge::DT_BF16, ge::DT_FLOAT16}},
-    {D_APE_NAME,              {ge::DT_FLOAT}}
-};
+    {X_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WKV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WGATE_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_CMP_KV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {SOFTMAX_SCORE_NAME, {ge::DT_FLOAT}},
+    {KV_NAME, {ge::DT_FLOAT}},
+    {CU_SEQLENS_NAME, {ge::DT_INT32}},
+    {SEQUSED_NAME, {ge::DT_INT32}},
+    {START_POS_NAME, {ge::DT_INT32}},
+    {D_X_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_WKV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_WGATE_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_APE_NAME, {ge::DT_FLOAT}}};
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
-    {X_NAME,                  {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
-    {WKV_NAME,                {COMPRESSOR_GRAD_DIM_NUM_2}},
-    {WGATE_NAME,              {COMPRESSOR_GRAD_DIM_NUM_2}},
-    {D_CMP_KV_NAME,           {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
-    {SOFTMAX_SCORE_NAME,      {COMPRESSOR_GRAD_DIM_NUM_3, COMPRESSOR_GRAD_DIM_NUM_4}},
-    {KV_NAME,                 {COMPRESSOR_GRAD_DIM_NUM_3, COMPRESSOR_GRAD_DIM_NUM_4}},
-    {CU_SEQLENS_NAME,         {COMPRESSOR_GRAD_DIM_NUM_1}},
-    {SEQUSED_NAME,            {COMPRESSOR_GRAD_DIM_NUM_1}},
-    {START_POS_NAME,          {COMPRESSOR_GRAD_DIM_NUM_1}},
-    {D_X_NAME,                {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
-    {D_WKV_NAME,              {COMPRESSOR_GRAD_DIM_NUM_2}},
-    {D_WGATE_NAME,            {COMPRESSOR_GRAD_DIM_NUM_2}},
-    {D_APE_NAME,              {COMPRESSOR_GRAD_DIM_NUM_2}}
-};
+    {X_NAME, {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {WKV_NAME, {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {WGATE_NAME, {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {D_CMP_KV_NAME, {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {SOFTMAX_SCORE_NAME, {COMPRESSOR_GRAD_DIM_NUM_3, COMPRESSOR_GRAD_DIM_NUM_4}},
+    {KV_NAME, {COMPRESSOR_GRAD_DIM_NUM_3, COMPRESSOR_GRAD_DIM_NUM_4}},
+    {CU_SEQLENS_NAME, {COMPRESSOR_GRAD_DIM_NUM_1}},
+    {SEQUSED_NAME, {COMPRESSOR_GRAD_DIM_NUM_1}},
+    {START_POS_NAME, {COMPRESSOR_GRAD_DIM_NUM_1}},
+    {D_X_NAME, {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {D_WKV_NAME, {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {D_WGATE_NAME, {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {D_APE_NAME, {COMPRESSOR_GRAD_DIM_NUM_2}}};
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
     {"BSH", COMPRESSOR_GRAD_DIM_NUM_3},
@@ -174,15 +176,15 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-const std::vector<uint32_t> COFF {1, 2};
-const std::vector<uint32_t> HEAD_DIM {128, 512};
+const std::vector<uint32_t> COFF{1, 2};
+const std::vector<uint32_t> HEAD_DIM{128, 512};
 
 enum class LayoutType {
     LAYOUT_BSH,
     LAYOUT_TH
 };
 
-enum class TemplateId:uint8_t {
+enum class TemplateId : uint8_t {
     NORMAL = 0,
     EMPTY_X = 1,
     FULL_LOAD = 2
@@ -192,7 +194,7 @@ struct CompressorGradContext {
     const char *opName;
     const char *opType;
     fe::PlatFormInfos *platformInfo;
-    
+
     RequiredParaInfo x;
     RequiredParaInfo wkv;
     RequiredParaInfo wgate;
@@ -220,27 +222,27 @@ struct CompressorGradContext {
 };
 
 struct CompressorGradSplitCoreParams {
-        uint32_t mStart;
-        uint32_t mEnd;
-        uint32_t nStart;
-        uint32_t nEnd;
-        uint32_t kStart;
-        uint32_t kEnd;
-    };
+    uint32_t mStart;
+    uint32_t mEnd;
+    uint32_t nStart;
+    uint32_t nEnd;
+    uint32_t kStart;
+    uint32_t kEnd;
+};
 
 // 1. 基础参数结构体
 struct CompressorGradBaseParams {
-    uint32_t batchSize = 0;             // bastch size（批大小）
-    uint32_t seqSize = 0;               // sequence size（kvs大小）
-    uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
-    uint32_t tokenSize = 0;             // token size = batchSize * seqSize(token总数：批大小x序列1长度)
-    uint32_t headDim = 0;               // head size of kv
-    uint32_t featureDim = 0;               // head size of kv
-    uint32_t csSize = 0;                // Compress sequence len
-    uint32_t cmpRatio = 4;              // Compress ratio
-    uint32_t usedCoreNum = 0;           // 使用核数
-    uint32_t nSize = 0;                 // 预留字段（当前未参与 tiling 决策）
-    uint64_t stateCacheStrideDim0 = 0;  // stateCache第0维的stride
+    uint32_t batchSize = 0;            // bastch size（批大小）
+    uint32_t seqSize = 0;              // sequence size（kvs大小）
+    uint32_t hiddenSize = 0;           // hidden size（隐藏层大小）
+    uint32_t tokenSize = 0;            // token size = batchSize * seqSize(token总数：批大小x序列1长度)
+    uint32_t headDim = 0;              // head size of kv
+    uint32_t featureDim = 0;           // head size of kv
+    uint32_t csSize = 0;               // Compress sequence len
+    uint32_t cmpRatio = 4;             // Compress ratio
+    uint32_t usedCoreNum = 0;          // 使用核数
+    uint32_t nSize = 0;                // 预留字段（当前未参与 tiling 决策）
+    uint64_t stateCacheStrideDim0 = 0; // stateCache第0维的stride
     uint32_t kBaseNum = 0;
     uint32_t kBaseSize = 0;
     uint32_t coreGroupNum = 0;
@@ -297,6 +299,79 @@ REGISTER_TILING_DATA_CLASS(CompressorGrad, CompressorGradTilingData)
 
 struct CompressorGradCompileInfo {
     int64_t core_num;
+};
+
+// 类名不可用 CompressorGradTiling，与 pypto codegen 生成的 tiling data 类重名，
+// C++ injected-class-name 会遮蔽外部同名类型，导致 tilingData 成员类型错误。
+class CompressorGradTilingImpl {
+public:
+    explicit CompressorGradTilingImpl(CompressorGradContext *context)
+        : context_(context)
+    {}
+    ~CompressorGradTilingImpl() = default;
+
+    static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    ge::graphStatus RunBigKernelTiling();
+    CompressorGradTiling *tilingData = nullptr;
+
+private:
+    static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
+                                                 CompressorGradContext &compressorGradContext);
+    static void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    ge::graphStatus GetNpuInfo();
+    ge::graphStatus SetBaseInfo();
+    ge::graphStatus SetTilingData();
+    ge::graphStatus CalcWorkSpace();
+    ge::graphStatus CheckSinglePara() const;
+    ge::graphStatus GenTilingKey() const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
+                                               const std::string &name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::string &name) const;
+    ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
+                                             const uint32_t &dimNum, const std::string &subName,
+                                             const uint32_t &expectNum) const;
+    ge::graphStatus CheckSingleParaX() const;
+    ge::graphStatus CheckSingleParaWkv() const;
+    ge::graphStatus CheckSingleParaWgate() const;
+    ge::graphStatus CheckSingleParaDCmpKv() const;
+    ge::graphStatus CheckSingleParaSoftmaxScore() const;
+    ge::graphStatus CheckSingleParaKV() const;
+    ge::graphStatus CheckSingleParaCuSeqlens() const;
+    ge::graphStatus CheckSingleParaSeqused() const;
+    ge::graphStatus CheckSingleParaStartPos() const;
+    ge::graphStatus CheckSingleParaDX() const;
+    ge::graphStatus CheckSingleParaDWkv() const;
+    ge::graphStatus CheckSingleParaDWgate() const;
+    ge::graphStatus CheckSingleParaDApe() const;
+    ge::graphStatus CheckSingleParaCmpRatio() const;
+    ge::graphStatus CheckSingleParaCoff() const;
+    ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckRequiredAttrExistence() const;
+    ge::graphStatus CheckFeature() const;
+    ge::graphStatus CheckShapeConsistency() const;
+    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistency() const;
+    ge::graphStatus CheckMultiParaConsistency() const;
+    ge::graphStatus CheckDimNumConsistency() const;
+    ge::graphStatus CheckEmptyTensor() const;
+    ge::graphStatus CheckBlockDimConstrain() const;
+
+    size_t ubSize_ = 0;
+    size_t l1Size_ = 0;
+    size_t l0cSize_ = 0;
+    size_t l0bSize_ = 0;
+    uint32_t coreNum_ = 0;
+    uint32_t aicNum_ = 0;
+    uint32_t aivNum_ = 0;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
+    size_t libapiSize_ = 0;
+    size_t workspaceSize_ = 0;
+    uint8_t coff_ = 1;
+    CompressorGradBaseParams baseParams_;
+    CompressorGradWorkspaceParams workspaceParams_;
+    CompressorGradContext *context_ = nullptr;
 };
 
 } // namespace optiling

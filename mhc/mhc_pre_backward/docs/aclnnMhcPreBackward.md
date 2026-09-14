@@ -198,7 +198,7 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     const aclTensor     *hMix,
     const aclTensor     *hPre,
     const aclTensor     *hPost,
-    const aclTensor     *gamma,
+    const aclTensor     *gammaOptional,
     const aclTensor     *gradXPostOptional,
     float               hcEps,
     const aclTensor     *gradX,
@@ -346,7 +346,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>√</td>
         </tr>
         <tr>
-            <td>gamma（aclTensor*）</td>
+            <td>gammaOptional（aclTensor*）</td>
             <td>可选输入</td>
             <td>RmsNorm的缩放系数gamma</td>
             <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全1的tensor。</li><li>shape为(N ,D)。其中，N与`x`的N保持一致；D与`x`的D保持一致。</li></ul></td>
@@ -646,7 +646,7 @@ aclnnStatus aclnnMhcPreBackward(
         </tr>
         <tr>
             <td>D</td>
-            <td>D支持1~16384范围以内，要求128元素对齐。</td>
+            <td>D支持100000范围以内，要求128元素对齐。</td>
         </tr>
         <tr>
             <td>fusionSize</td>

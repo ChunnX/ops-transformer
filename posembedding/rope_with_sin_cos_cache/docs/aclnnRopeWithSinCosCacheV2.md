@@ -5,7 +5,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：x
+- <term>Ascend 950PR/Ascend 950DT</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
@@ -465,7 +465,7 @@ aclnnStatus aclnnRopeWithSinCosCacheV2(
         <tr>
         <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
         <td rowspan="2"> 361001 </td>
-        <td>query或者key非64B对齐。</td>
+        <td>query或者key非64 Byte对齐。</td>
         </tr>
         <tr>
         <td>rotaryDim>headSize。</td>

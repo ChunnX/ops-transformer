@@ -115,10 +115,15 @@ bool GroupedQmmTiling::IsWeightNzMultiTensorLayout() const
            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && IsMultiTensorWeight();
 }
 
-uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
+uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index, uint16_t maxCount) const
 {
     uint16_t count = 0U;
-    while (count < GroupedMatmul::MAX_TENSOR_CONT && context_->GetDynamicInputShape(index, count) != nullptr) {
+    while (count < maxCount && context_->GetDynamicInputShape(index, count) != nullptr) {
+        ++count;
+    }
+    // Probe one extra tensor only for the extended limit to reject oversized lists.
+    if (maxCount == GMM_MAX_GROUP_LIST_SIZE && count == maxCount &&
+        context_->GetDynamicInputShape(index, count) != nullptr) {
         ++count;
     }
     return count;
@@ -133,8 +138,10 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     if (!IsWeightNzMultiTensorLayout()) {
         return true;
     }
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
-    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX);
+    const uint16_t maxCount =
+        IsWeightNzMultiTensorLayout() && IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
+    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX, maxCount);
     OP_CHECK_IF(weightTensorNum == 0,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "weight", "0", "positive integer"), return false);
     OP_CHECK_IF(weightTensorNum != inputParams_.groupNum,
@@ -252,8 +259,8 @@ the dtype of output is FLOAT16, actual is %s.",
         } else if (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_INT32) {
             OP_CHECK_IF(inputParams_.biasDtype != ge::DT_INT32,
                         OP_LOGE(inputParams_.opName,
-                                "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output \
-is INT8 or INT32, actual is %s.",
+                                "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output "
+                                "is INT8 or INT32, actual is %s.",
                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
                         return false);
         } else {
@@ -403,7 +410,17 @@ bool GroupedQmmTiling::AnalyzeDtype()
     if (scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32) {
         inputParams_.scaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scaleDesc->GetStorageFormat()));
         const bool scaleNzFormat = inputParams_.scaleFormat == ge::FORMAT_FRACTAL_NZ;
-        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+        auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
+        const bool singleScaleNzStorage =
+            scaleStorageShape != nullptr &&
+            scaleStorageShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM &&
+            scaleStorageShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NZ_DIM_NUM;
+        const bool listScaleNzStorage =
+            scaleStorageShape != nullptr &&
+            scaleStorageShape->GetOriginShape().GetDimNum() == MXFP_TYPE_M_SCALE_DIM_NUM - 1 &&
+            scaleStorageShape->GetStorageShape().GetDimNum() == MXFP_SCALE_NZ_DIM_NUM - 1;
+        inputParams_.scaleNzFlag = IsMicroScaling() && scaleNzFormat && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
+                                   (singleScaleNzStorage || listScaleNzStorage);
     }
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
@@ -549,8 +566,10 @@ actual is %zu",
     auto expectedKDimValue = inputParams_.kSize / MXFP_BASEK_FACTOR + inputParams_.groupNum;
     if (xScaleKDim != 1 && xScaleMDim != 1) {
         OP_CHECK_IF(!inputParams_.transA || inputParams_.transB,
-                    OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected transpose attrs of x and \
-    weight are true and false, but the actual transpose attrs of x and weight are %d and %d.",
+                    OP_LOGE(inputParams_.opName,
+                            "When split k in mx quant mode, the expected transpose attrs of x and "
+                            "    weight are true and false, but the actual transpose attrs of x and weight "
+                            "are %d and %d.",
                             inputParams_.transA, inputParams_.transB),
                     return false);
         OP_CHECK_IF(
@@ -616,16 +635,11 @@ should be 1 or 2, but the actual dim num is %zu.",
 
 bool GroupedQmmTiling::CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const
 {
-    OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
+    OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0 || inputParams_.kSize <= EVEN_FACTOR,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
                                                        ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
-                                                       "when the dtype of x is FLOAT4, k size must be even number"),
-                return false);
-    // 2: mxfp4场景下不支持K轴为2
-    OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(inputParams_.opType, "x, weight",
-                                                       ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
-                                                       "when the dtype of x is FLOAT4, k size cannot be 2"),
+                                                       "when the dtype of x is FLOAT4, k size must be even and greater "
+                                                       "than 2"),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(inputParams_.nSize % EVEN_FACTOR != 0,
@@ -870,7 +884,9 @@ bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScale
         return true;
     }
 
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
+    const uint16_t maxCount =
+        IsWeightNzMultiTensorLayout() && IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
     const auto *firstWeightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, FIRST_TENSOR_INDEX);
     OP_CHECK_IF(firstWeightShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "In WeightNz single-multi-single mode, current weight[0] is "

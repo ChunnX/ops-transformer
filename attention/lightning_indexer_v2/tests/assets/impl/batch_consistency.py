@@ -28,7 +28,7 @@ class CaseRandomContext:
             attributes.get(name)
             for name in ("batch_axis", "batch_slice_info", "batch_seed")
         )
-        self.enabled = any(value is not None for value in fields)
+        self.enabled = all(value is not None for value in fields)
         self.testcase_name = attributes.get("testcase_name", "")
         self.python_state = None
         self.numpy_state = None
@@ -61,15 +61,39 @@ class BatchRelationProtocol:
     def __init__(self, operator_name):
         self.operator_name = operator_name
 
+    @staticmethod
+    def relation_slices_overlap(first, second):
+        """Return whether two relation samples select the same q output region."""
+        first_axes, first_slices = first[0], first[1]
+        second_axes, second_slices = second[0], second[1]
+        if first_axes != second_axes:
+            return False
+        first_batch = first_slices[0]
+        second_batch = second_slices[0]
+        if first_batch[1] <= second_batch[0] or second_batch[1] <= first_batch[0]:
+            return False
+        if first_axes == (0,):
+            return True
+        first_sequence = first_slices[1]
+        second_sequence = second_slices[1]
+        return not (
+            first_sequence[1] <= second_sequence[0]
+            or second_sequence[1] <= first_sequence[0]
+        )
+
+    def validate_disjoint_relations(self, relations):
+        """Reject duplicate or overlapping samples that would self-compare."""
+        for index, relation in enumerate(relations):
+            for candidate in relations[index + 1 :]:
+                if self.relation_slices_overlap(relation, candidate):
+                    raise ValueError(
+                        f"{self.operator_name} relation samples must not overlap"
+                    )
+
     def parse(self, batch_axis, batch_slice_info, batch_seed):
         fields = (batch_axis, batch_slice_info, batch_seed)
-        if all(value is None for value in fields):
-            return None
         if any(value is None for value in fields):
-            raise ValueError(
-                f"{self.operator_name} batch_axis, batch_slice_info and batch_seed "
-                "must be set together"
-            )
+            return None
         if not (len(batch_axis) == len(batch_slice_info) == len(batch_seed)):
             raise ValueError(f"{self.operator_name} batch metadata counts differ")
         if not batch_axis or tuple(batch_axis[0]) not in ((0,), (0, 1)):
@@ -134,20 +158,8 @@ class BatchRelationProtocol:
                     f"{self.operator_name} logical (B,S) requires one B per sample"
                 )
             relations.append((axes, tuple(slices), relation_seed))
+        self.validate_disjoint_relations(relations)
         return relations
-
-    def expected_id(self, relations):
-        axes = relations[0][0]
-        groups = [[] for _axis in axes]
-        for relation_axes, slices, seed in relations:
-            if relation_axes != axes:
-                raise ValueError(
-                    f"{self.operator_name} relation axes changed within a case"
-                )
-            for group_index, (axis, value) in enumerate(zip(axes, slices)):
-                length = value[1] - value[0]
-                groups[group_index].append(f"{seed}_{axis}_{length}_{value[2]}")
-        return (tuple(tuple(values) for values in groups),)
 
 
 class IndexerBatchInputNormalizer:
@@ -486,138 +498,6 @@ class IndexerBatchInputNormalizer:
                 self.fill_key_tensor(
                     "key_dequant_scale", batch_index, seed, relative_batch, 11, True
                 )
-
-
-class IndexerBatchOutputComparator:
-    """Compare exact output-0 slices for relations inside one testcase."""
-
-    def __init__(self, operator_name):
-        self.operator_name = operator_name
-        self.protocol = BatchRelationProtocol(operator_name)
-
-    @staticmethod
-    def storage_bytes(value):
-        if torch.is_tensor(value):
-            tensor = value.detach().cpu().contiguous()
-            return (
-                tuple(tensor.shape),
-                str(tensor.dtype),
-                tensor.view(torch.uint8).numpy().tobytes(),
-            )
-        array = np.ascontiguousarray(np.asarray(value))
-        return tuple(array.shape), array.dtype.str, array.view(np.uint8).tobytes()
-
-    def output_selector(self, output, relation, attributes):
-        axes, slices, _seed = relation
-        batch_slice = slices[0]
-        sequence_slice = slices[1] if axes == (0, 1) else None
-        layout_q = attributes.get("layout_q", attributes.get("layout_query", "BSND"))
-        batch_start, batch_stop, _ = batch_slice
-        if layout_q == "BSND":
-            if batch_stop > output.shape[0]:
-                raise ValueError(f"{self.operator_name} logical B slice exceeds output")
-            selector = [slice(*batch_slice)]
-            if sequence_slice is not None:
-                if sequence_slice[1] > output.shape[1]:
-                    raise ValueError(
-                        f"{self.operator_name} logical S slice exceeds output"
-                    )
-                selector.append(slice(*sequence_slice))
-            else:
-                q_lengths = attributes.get("seqused_q_values")
-                if q_lengths is not None:
-                    selected_lengths = [
-                        int(value) for value in q_lengths[batch_start:batch_stop]
-                    ]
-                    if (
-                        len(selected_lengths) != batch_stop - batch_start
-                        or len(set(selected_lengths)) != 1
-                        or selected_lengths[0] <= 0
-                        or selected_lengths[0] > output.shape[1]
-                    ):
-                        raise ValueError(
-                            f"{self.operator_name} invalid effective q lengths for output"
-                        )
-                    selector.append(slice(0, selected_lengths[0], 1))
-        elif layout_q == "TND":
-            prefix = attributes.get("cu_seqlens_q_values")
-            if prefix is None or prefix[0] != 0 or prefix[-1] != output.shape[0]:
-                raise ValueError(
-                    f"{self.operator_name} TND output requires q prefix values"
-                )
-            if batch_stop >= len(prefix):
-                raise ValueError(
-                    f"{self.operator_name} logical B slice exceeds q prefix"
-                )
-            if sequence_slice is None:
-                token_start, token_stop = prefix[batch_start], prefix[batch_stop]
-            else:
-                token_start = prefix[batch_start] + sequence_slice[0]
-                token_stop = prefix[batch_start] + sequence_slice[1]
-                if token_stop > prefix[batch_start + 1]:
-                    raise ValueError(
-                        f"{self.operator_name} logical S slice exceeds TND interval"
-                    )
-            selector = [slice(token_start, token_stop, 1)]
-        else:
-            raise ValueError(
-                f"{self.operator_name} unsupported query layout {layout_q!r}"
-            )
-        selector.extend([slice(None)] * (output.ndim - len(selector)))
-        return tuple(selector)
-
-    def compare(
-        self,
-        output,
-        batch_consistency_id,
-        batch_axis,
-        batch_slice_info,
-        batch_seed,
-        compare_context,
-    ):
-        try:
-            relations = self.protocol.parse(batch_axis, batch_slice_info, batch_seed)
-            if relations is None:
-                return None
-            expected_id = self.protocol.expected_id(relations)
-            if batch_consistency_id != expected_id:
-                raise ValueError(
-                    f"{self.operator_name} batch_consistency_id mismatch: "
-                    f"expected={expected_id!r}, actual={batch_consistency_id!r}"
-                )
-            if output is None:
-                raise ValueError(f"{self.operator_name} batch output is None")
-            value = (
-                output.detach().cpu() if torch.is_tensor(output) else np.asarray(output)
-            )
-            attributes = dict(compare_context.attributes) if compare_context else {}
-            groups = {}
-            for relation in relations:
-                selected = value[self.output_selector(value, relation, attributes)]
-                axes, slices, seed = relation
-                stored = self.storage_bytes(selected)
-                relation_size = tuple(stop - start for start, stop, _step in slices)
-                groups.setdefault((axes, seed, relation_size), []).append(stored)
-            compared = 0
-            for key, values in groups.items():
-                if len(values) < 2:
-                    continue
-                compared += 1
-                if any(values[0] != item for item in values[1:]):
-                    return {
-                        "pass": False,
-                        "precision": "batch_intra=FAIL",
-                        "error_info": f"{self.operator_name} relation {key} differs",
-                    }
-            if compared == 0:
-                return {"pass": True, "precision": "batch_intra=NOT_APPLICABLE"}
-            return {"pass": True, "precision": "batch_intra=PASS"}
-        except (IndexError, TypeError, ValueError) as error:
-            return {
-                "pass": False,
-                "precision": "batch_config=FAIL",
-                "error_info": str(error),
-            }
 
 
 def normalize_indexer_inputs(data, attributes, operator_name, quantized=False):

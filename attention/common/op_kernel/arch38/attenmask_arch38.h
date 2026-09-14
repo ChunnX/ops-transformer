@@ -20,7 +20,7 @@
 #include "flash_attention_score_common_regbase_arch38.h"
 
 using namespace AscendC;
-using namespace AscendC::MicroAPI;
+using namespace AscendC::Reg;
 namespace regbaseutil {
 enum class AttenMaskCompressMode {
     NO_COMPRESS_MODE = 0,
@@ -284,14 +284,12 @@ __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalT
 template <bool hasAtten>
 __aicore__ inline void MergeBandModeMask(LocalTensor<uint8_t> &maskPre, LocalTensor<uint8_t> &maskNext,
                                          int32_t &halfS1RealSize, int64_t s2BaseSize)
-{
-}
+{}
 
 template <bool hasAtten>
 __aicore__ inline void MergePrefixModeMask(LocalTensor<uint8_t> &maskPre, LocalTensor<uint8_t> &maskNext,
                                            int32_t &halfS1RealSize, int64_t s2BaseSize)
-{
-}
+{}
 #endif
 
 template <bool hasAtten, bool hasRope = false, bool isInfer = false,

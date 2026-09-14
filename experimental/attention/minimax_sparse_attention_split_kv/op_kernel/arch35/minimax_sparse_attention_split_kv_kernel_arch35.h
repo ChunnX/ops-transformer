@@ -12,8 +12,8 @@
 #define MINIMAX_SPARSE_ATTENTION_SPLIT_KV_KERNEL_ARCH35_H
 
 #include <type_traits>
-#include "kernel_utils.hpp"
-#include "../kernel_common.hpp"
+#include "msa_split_kv_kernel_utils_arch35.hpp"
+#include "../msa_split_kv_kernel_common.hpp"
 
 using namespace NpuArch;
 using namespace tla;
@@ -30,7 +30,7 @@ public:
     using ElementS = typename BlockMmadQK::ElementS;
     using ElementP = typename BlockMmadPV::ElementP;
     using ElementV = typename BlockMmadPV::ElementV;
-    using ElementO = typename BlockMmadQK::ElementQ;
+    using ElementO = typename EpilogueRescaleO::ElementO;
     using ElementOTmp = float;
     // O_partial (workspace accumOut) dtype follows the PV block's ElementO (= REDtype):
     // float for the fp32 path, bfloat16_t for the innerPrecise==1 bf16 path.
@@ -698,7 +698,8 @@ private:
 
         uint32_t qkL1Used = blockSize_ * embed_ * sizeof(ElementK) + BlockMmadQK::L0_TILE_M * embed_ * sizeof(ElementQ);
         uint32_t vBufBytes = blockSize_ * embed_ * sizeof(ElementV);
-        uint32_t l1PStageBytes = RoundUp(BlockMmadQK::L0_TILE_M, 16U) * RoundUp(blockSize_, 16U) * sizeof(ElementP);
+        uint32_t l1PStageBytes = RoundUp(BlockMmadQK::L0_TILE_M, 16U) *
+                                 RoundUp(blockSize_, BYTE_PER_C0 / sizeof(ElementP)) * sizeof(ElementP);
         AscendC::LocalTensor<ElementP> l1PBuf[P_L1_BUF_NUM];
         for (uint32_t i = 0; i < P_L1_BUF_NUM; i++) {
             l1PBuf[i] = resource.l1Buf.template GetBufferByByte<ElementP>(qkL1Used + vBufBytes + l1PStageBytes * i);

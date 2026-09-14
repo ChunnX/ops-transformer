@@ -11,7 +11,7 @@
 #ifndef GMM_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
 #define GMM_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 #include "../../../gmm_infra/detail/gmm_alignment.hpp"
 #include "../../../gmm_infra/gmm_gemm_coord.hpp"
 #include "../../../gmm_infra/gmm_matrix_coord.hpp"
@@ -32,22 +32,22 @@ struct GemmIdentityBlockSwizzle {
     /// Methods
 
     CATLASS_DEVICE
-    GemmIdentityBlockSwizzle()
-    {
-    }
+    GemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
-        : problemShape(problemShape_), tileMN(tileMN_)
+        : problemShape(problemShape_),
+          tileMN(tileMN_)
     {
         loopsMN = CeilDiv(MatrixCoord(problemShape.GetCoordMN()), tileMN);
     }
 
     CATLASS_DEVICE
     GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
-        : problemShape(problemShape_), tileMN(tileMN_), loopsMN(loopsMN_)
-    {
-    }
+        : problemShape(problemShape_),
+          tileMN(tileMN_),
+          loopsMN(loopsMN_)
+    {}
 
     CATLASS_DEVICE
     void Update(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
@@ -137,18 +137,17 @@ struct SplitkGemmIdentityBlockSwizzle {
     GemmCoord loopsMNK;
     uint32_t splitkFactor = 1; // splite k dim into virtual cores
 
-
     /// Methods
 
     CATLASS_DEVICE
-    SplitkGemmIdentityBlockSwizzle()
-    {
-    }
+    SplitkGemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
     SplitkGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
                                    uint32_t splitkFactor_ = 1)
-        : problemShape(problemShape_), tileShape(tileShape_), splitkFactor(splitkFactor_)
+        : problemShape(problemShape_),
+          tileShape(tileShape_),
+          splitkFactor(splitkFactor_)
     {
         loopsMNK = CeilDiv(problemShape, tileShape);
     }
@@ -265,17 +264,17 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     uint32_t blockIdexList[MAX_TILE_NUM];
     uint32_t blockCnt = 0;
     uint32_t beginBlockIdex = 0;
-    
+
     /// Methods
     CATLASS_DEVICE
-    SplitkInOneCoreGemmIdentityBlockSwizzle()
-    {
-    }
+    SplitkInOneCoreGemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
     SplitkInOneCoreGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
                                             uint32_t splitkFactor_ = 1)
-        : problemShape(problemShape_), tileShape(tileShape_), splitkFactor(splitkFactor_)
+        : problemShape(problemShape_),
+          tileShape(tileShape_),
+          splitkFactor(splitkFactor_)
     {
         loopsMNK = CeilDiv(problemShape, tileShape);
     }

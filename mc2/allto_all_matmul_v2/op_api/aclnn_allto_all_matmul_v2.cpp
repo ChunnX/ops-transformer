@@ -21,6 +21,7 @@
 #include "opdev/platform.h"
 #include "opdev/op_executor.h"
 #include "mc2_log_compat.h"
+#include "op_host/util/op_const_def.h"
 
 #include "aclnnInner_allto_all_matmul_v2.h"
 
@@ -117,7 +118,7 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
 
     bool transposeX2 = true; // required by tiling
     auto transX2 = x2;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         bool notContiguous = IsTransposeLastTwoDims(x2);
         if (notContiguous) {
             transX2 = TransX2Tensor(x2);
@@ -128,9 +129,9 @@ extern "C" aclnnStatus AlltoAllMatmulV2GetWorkspaceSize(
         }
     }
 
-    const char *effectiveCommMode = commMode != nullptr ? commMode : "urma";
-    if (strcmp(effectiveCommMode, "urma") != 0) {
-        OP_LOGE_WITH_INVALID_ATTR("AlltoAllMatmulV2", "commMode", effectiveCommMode, "'urma'");
+    const char *effectiveCommMode = commMode != nullptr ? commMode : "aiv_urma";
+    if (strcmp(effectiveCommMode, "aiv_urma") != 0) {
+        OP_LOGE_WITH_INVALID_ATTR("AlltoAllMatmulV2", "commMode", effectiveCommMode, "'aiv_urma'");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

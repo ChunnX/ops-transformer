@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -205,13 +206,13 @@ def _vf_scatter_backward(
                 offset = sc_offset + t_idx * d_deal_size + d_offset
                 vreg_softmax_score = vf.load_align(softmax_score_tile, offset)
                 vreg_kv = vf.load_align(kv_tile, offset)
-                # TwoSum(kv, -w): s=fl(kv-w); z=fl(s-kv); e=(kv-(s-z)) - (w+z)
-                vreg_s = vf.sub(vreg_kv, vreg_w, mask)
-                vreg_z = vf.sub(vreg_s, vreg_kv, mask)
-                vreg_a = vf.sub(vreg_s, vreg_z, mask)
-                vreg_b = vf.sub(vreg_kv, vreg_a, mask)
-                vreg_c = vf.add(vreg_w, vreg_z, mask)
-                vreg_e = vf.sub(vreg_b, vreg_c, mask)
+                # TwoSum 精确分解 kv − w = s + e
+                vreg_s = vf.sub(vreg_kv, vreg_w, mask)  # s = fl(kv − w)
+                vreg_z = vf.sub(vreg_s, vreg_kv, mask)  # z = fl(s − kv)
+                vreg_a = vf.sub(vreg_s, vreg_z, mask)  # a = fl(s − z)
+                vreg_b = vf.sub(vreg_kv, vreg_a, mask)  # b = fl(kv − a)
+                vreg_c = vf.add(vreg_w, vreg_z, mask)  # c = fl(w + z)
+                vreg_e = vf.sub(vreg_b, vreg_c, mask)  # e = fl(b − c) 补偿项
                 # d_score = sm * (dC*s + dC*e)（两项乘积分别舍入，保留低半）
                 vreg_p1 = vf.mul(vreg_d_cmp_kv, vreg_s, mask)
                 vreg_p2 = vf.mul(vreg_d_cmp_kv, vreg_e, mask)
@@ -336,13 +337,13 @@ def _vf_reduce_dscore_to_ape(
                 block_off = k * block_stride
                 row_off = block_off + m * row_stride + half_off
                 vreg_d_score = vf.load_align(d_score_tile + row_off, 0)
-                # Kahan: y = x - c; t = s + y; c = (t - s) - y; s = t
-                vreg_y = vf.sub(vreg_d_score, ape_comp, mask)
-                vreg_t = vf.add(ape_reg, vreg_y, mask)
-                vreg_c = vf.sub(vreg_t, ape_reg, mask)
-                vreg_c = vf.sub(vreg_c, vreg_y, mask)
-                ape_reg = vf.move(vreg_t, mask)
-                ape_comp = vf.move(vreg_c, mask)
+                # Kahan 补偿累加（s 累加和，c 补偿项）
+                vreg_y = vf.sub(vreg_d_score, ape_comp, mask)  # y = x − c
+                vreg_t = vf.add(ape_reg, vreg_y, mask)  # t = s + y
+                vreg_c = vf.sub(vreg_t, ape_reg, mask)  # c = (t − s) − y
+                vreg_c = vf.sub(vreg_c, vreg_y, mask)  # c = c − y
+                ape_reg = vf.move(vreg_t, mask)  # s = t
+                ape_comp = vf.move(vreg_c, mask)  # c 更新
             vf.store_align(ape_tile + ape_off, ape_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
@@ -382,7 +383,7 @@ def _vf_kahan_accumulate(
 def _get_start_pos(b_idx, start_pos, ctx):
     result = 0
     if start_pos is not None:
-        result = pl.getval(
+        result = 0 + pl.getval(
             pl.make_tensor(start_pos, [ctx.batch_size], [1], dtype=pl.DT_INT32), b_idx
         )
     return result
@@ -391,19 +392,27 @@ def _get_start_pos(b_idx, start_pos, ctx):
 def _get_seq_length(b_idx, cu_seqlens, ctx):
     result = ctx.seq_size
     if ctx.layout == 1:  # TH (1=TH)
-        result = pl.getval(
-            pl.make_tensor(cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32),
-            b_idx + 1,
-        ) - pl.getval(
-            pl.make_tensor(cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32),
-            b_idx,
+        result = (
+            0
+            + pl.getval(
+                pl.make_tensor(
+                    cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32
+                ),
+                b_idx + 1,
+            )
+            - pl.getval(
+                pl.make_tensor(
+                    cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32
+                ),
+                b_idx,
+            )
         )
     return result
 
 
 def _get_seq_used(b_idx, seq_used, cu_seqlens, ctx):
     if seq_used is not None:
-        result = pl.getval(
+        result = 0 + pl.getval(
             pl.make_tensor(seq_used, [ctx.batch_size], [1], dtype=pl.DT_INT32), b_idx
         )
     else:
@@ -418,7 +427,8 @@ def _get_token_idx(b_idx, s_idx, cu_seqlens, ctx):
     result = b_idx * ctx.seq_size + s_idx
     if ctx.layout == 1:
         result = (
-            pl.getval(
+            0
+            + pl.getval(
                 pl.make_tensor(
                     cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32
                 ),
@@ -2787,7 +2797,7 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
     )
 
     nz_md_tile_type = pl.TileType(
-        shape=[M_BASE_SIZE, D_BASE_SIZE // Coff],
+        shape=[M_BASE_SIZE // 2 * Coff, D_BASE_SIZE // Coff],
         dtype=io_d_type,
         target_memory=pl.MemorySpace.Vec,
         valid_shape=[-1, -1],

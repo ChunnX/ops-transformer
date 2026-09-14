@@ -11,7 +11,7 @@
 #ifndef GMM_LAYOUT_VECTOR_HPP
 #define GMM_LAYOUT_VECTOR_HPP
 
-#include "../../gmm_infra/base_defs.hpp"
+#include "../../gmm_infra/gmm_base_defs.hpp"
 #include "../../gmm_infra/gmm_coord.hpp"
 #include "../../gmm_infra/gmm_numeric_size.hpp"
 
@@ -41,17 +41,22 @@ public:
     // Methods
 
     CATLASS_HOST_DEVICE
-    VectorLayout(Index size = 0) : shape_(MakeCoord(size)), stride_(MakeCoord(LongIndex(1))) {}
+    VectorLayout(Index size = 0)
+        : shape_(MakeCoord(size)),
+          stride_(MakeCoord(LongIndex(1)))
+    {}
 
     CATLASS_HOST_DEVICE
-    VectorLayout(Shape shape, Stride stride) : shape_(shape), stride_(stride) {}
+    VectorLayout(Shape shape, Stride stride)
+        : shape_(shape),
+          stride_(stride)
+    {}
 
     template <class Element>
-    CATLASS_HOST_DEVICE
-    static VectorLayout MakeLayoutInUb(TensorCoord const &tileShape)
+    CATLASS_HOST_DEVICE static VectorLayout MakeLayoutInUb(TensorCoord const &tileShape)
     {
         constexpr uint32_t ELE_NUM_PER_BLK = BytesToBits(BYTE_PER_BLK) / SizeOfBits<Element>::value;
-        return VectorLayout{ELE_NUM_PER_BLK>(tileShape[0])};
+        return VectorLayout{ELE_NUM_PER_BLK > (tileShape[0])};
     }
 
     CATLASS_HOST_DEVICE
@@ -131,4 +136,4 @@ private:
 
 } // namespace Catlass::layout
 
-#endif  // GMM_LAYOUT_VECTOR_HPP
+#endif // GMM_LAYOUT_VECTOR_HPP

@@ -614,7 +614,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 在全量化场景下，当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，actType支持传入0、1、2、4、5。其余全量化场景actType仅支持0。
   - 当前支持非量化场景、伪量化场景与全量化场景
   - 非量化场景支持的数据类型为：
-    - 输入weight矩阵的n轴与k轴需要满足32B对齐
+    - 输入weight矩阵的n轴与k轴需要满足32 Byte对齐
     - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
 
@@ -720,6 +720,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:-------:|:-------:|:-------:| :------      |:-------    | :------   | :------ |
       |0|INT8  |INT8| INT32/BFLOAT16/FLOAT32/null     |BFLOAT16/FLOAT32    | FLOAT32   | BFLOAT16 |
       |0|INT8  |INT8| INT32/FLOAT16/FLOAT32/null     |FLOAT32    | FLOAT32   | FLOAT16 |
+      |0|INT4  |INT4| null     |UINT64    | FLOAT32/null   | FLOAT16/BFLOAT16 |
 
     - scaleOptional要满足下表（其中g为matmul组数即分组数）
 
@@ -732,6 +733,31 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       | groupType | 使用场景 | shape限制 |
       |:---------:|:---------:| :------ |
       |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
+
+
+  - K-G（pertoken-pergroup）量化场景支持的输入类型与shape为：
+    - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
+    - 不为空的参数支持的数据类型组合要满足下表：
+    |groupType| x       | weight  | scaleOptional | perTokenScaleOptional |out     |
+      |:-------:|:-------:|:-------:| :------      |:-------    | :------   | :------ |
+      |0|INT4  |INT4     |UINT64    | FLOAT32/null   | FLOAT16/BFLOAT16 |
+
+    - scaleOptional要满足下表（其中g为matmul组数即分组数）
+
+      | groupType | 使用场景 | shape限制 |
+      |:---------:|:---------:| :------ |
+      |0|weight单tensor|每个tensor 3维，shape为（E, G, N），$G$必须要能整除$K$，且$k/G$需为偶数|
+
+    - perTokenScaleOptional要满足下表：
+
+      | groupType | 使用场景 | shape限制 |
+      |:---------:|:---------:| :------ |
+      |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
+
+    - 约束说明：
+
+      - S4S4的weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
+
 
   - 动态量化（mx量化）场景支持的输入类型与shape为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
@@ -766,26 +792,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
-
-  - S4S4（全量化INT4×INT4）场景支持的输入类型为：
-    - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
-    - 不为空的参数支持的数据类型组合要满足下表：
-
-      |groupType| x | weight | scaleOptional | perTokenScaleOptional | out |
-      |:---:|:---:|:---:|:---:|:---:|:---:|
-      |0|INT4|INT4|UINT64|FLOAT32/null|FLOAT16/BFLOAT16|
-
-    - scaleOptional要满足下表：
-
-      |groupType| 使用场景 | shape限制 | 其他限制 |
-      |:---:|:---:|:---:| :------ |
-      |0|perchannel|每个tensor 2维，shape为（E, N）| |
-      |0|pergroup|每个tensor 3维，shape为（E, G, N）| $G$必须要能整除$K$，且$k/G$需为偶数 |
-
-    - 约束说明：
-
-      - 仅支持x、weight、out均为长度为1的TensorList。
-      - weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
 
   - 不同groupType支持场景:
 
@@ -1143,6 +1149,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 伪量化调用示例
 
 ```c++
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
@@ -1159,6 +1167,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   do {                              \
     printf(message, ##__VA_ARGS__); \
   } while (0)
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
@@ -1408,7 +1424,7 @@ int main() {
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < 20; j++) {
-      LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+      LOG_PRINT("result[%ld] is: %g\n", j, Bf16ToFloat(resultData[j]));
     }
     LOG_PRINT("......\n");
   }
@@ -1441,6 +1457,8 @@ int main() {
 全量化调用示例
 
 ```c++
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -1469,6 +1487,14 @@ int main() {
     do {                                \
         printf(message, ##__VA_ARGS__); \
     } while (0)
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -1585,17 +1611,10 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     void *dstDeviceAddr = nullptr;
 
     uint64_t tensorSize = 1;
-    for (int64_t i = 0; i < dstShape[i]; i++) {
+    for (uint64_t i = 0; i < dstShapeSize; ++i) {
         tensorSize *= dstShape[i];
     }
-    ret = aclrtMalloc(&dstDeviceAddr, tensorSize * sizeof(T), ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-    int64_t weightLen = shape.size();
-    for (int64_t i = 0; i < weightLen + 2; i++) {
-        tensorSize = tensorSize * dstShape[i];
-    }
-    std::vector<uint16_t> dstTensorHostData(tensorSize, 0);
+    std::vector<T> dstTensorHostData(tensorSize, 0);
 
     ret = CreateAclTensorWithFormat(dstTensorHostData, shape, &dstShape, &dstShapeSize, &dstDeviceAddr, dataType,
                                     &dstTensor, static_cast<aclFormat>(actualFormat));
@@ -1625,6 +1644,7 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
+    *deviceAddr = dstDeviceAddr;
     *tensor = dstTensor;
     return ACL_SUCCESS;
 }
@@ -1774,7 +1794,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                   return ret);
         for (int64_t j = 0; j < size; j++) {
-            LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+            LOG_PRINT("result[%ld] is: %g\n", j, Bf16ToFloat(resultData[j]));
         }
     }
     return ACL_SUCCESS;
@@ -1798,6 +1818,8 @@ int main()
   MxA8W4伪量化（单多单场景）调用示例
 
 ```c++
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -1825,6 +1847,14 @@ int main()
     do {                                                                                                               \
         printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -2113,7 +2143,7 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < std::min<int64_t>(size, 10); j++) {
-        LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+        LOG_PRINT("result[%ld] is: %g\n", j, Bf16ToFloat(resultData[j]));
     }
 
     // 释放 device 资源

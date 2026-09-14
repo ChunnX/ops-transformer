@@ -31,7 +31,7 @@ class TestAclnnAllGatherMatmulV3 : public testing::TestWithParam<AllGatherMatmul
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "TestAclnnAllGatherMatmulV3 SetUp" << endl;
     }
 
@@ -87,7 +87,7 @@ TEST_F(TestAclnnAllGatherMatmulV3, NullGroupTest)
     TensorDesc gatherOutDesc = TensorDesc({8192, 4096}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnAllGatherQuantMatmulV3,
                         INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc, (const char *)nullptr, 4,
-                              200, 4295032864L, "urma"),
+                              200, 4295032864L, "aiv_urma"),
                         OUTPUT(outputDesc, gatherOutDesc));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -106,7 +106,7 @@ TEST_F(TestAclnnAllGatherMatmulV3, EmptyGroupTest)
     TensorDesc gatherOutDesc = TensorDesc({8192, 4096}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     auto ut = OP_API_UT(
         aclnnAllGatherQuantMatmulV3,
-        INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc, "", 4, 200, 4295032864L, "urma"),
+        INPUT(contextDesc, x1Desc, x2Desc, nullptr, x1ScaleDesc, x2ScaleDesc, "", 4, 200, 4295032864L, "aiv_urma"),
         OUTPUT(outputDesc, gatherOutDesc));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
