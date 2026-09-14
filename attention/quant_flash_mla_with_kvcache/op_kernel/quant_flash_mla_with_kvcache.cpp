@@ -84,10 +84,12 @@ inline __aicore__ void quant_flash_mla_with_kvcache_fp8(
     const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict tilingData =
         (const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict)tiling;
 
+    // TPipe仅用于初始化全局g_tPipePtr，使vec block的GetTPipePtr()->InitBuffer(vselrIndexesBuf_)可用
+    // 不传递给kernel Init，所有主buffer使用静态LocalTensor
     TPipe tPipe;
     Kernel op;
     op.Init(query, key, qDescale, kDescale, blockTable, cacheSeqLens, cuSeqLensQ, sequsedQ, attnMask, metadata,
-            attnOut, softmaxLse, workspace, tilingData, &tPipe);
+            attnOut, softmaxLse, workspace, tilingData);
     op.Process();
 }
 

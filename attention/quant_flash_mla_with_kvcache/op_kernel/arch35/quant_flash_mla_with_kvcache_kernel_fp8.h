@@ -63,13 +63,6 @@ public:
     using OUT_T = typename VecFaBlockType::OUT_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
-    // CV buffers
-    BufferManager<BufferType::UB> ubBufferManager_;
-    BufferManager<BufferType::L1> l1BufferManager_;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers_;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers_;
-
     GlobalTensor<int32_t> cacheSeqLensGm_;
     GlobalTensor<uint32_t> faMetaDataGm_;
     GlobalTensor<uint32_t> fdMetaDataGm_;
@@ -78,7 +71,6 @@ public:
     ConstInfoX constInfo_;
 
     const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict tilingData_ = nullptr;
-    TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
     VecFdBlockType vecFdBlock_;
@@ -128,9 +120,8 @@ public:
                                 __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *attnMask,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *workspace,
-                                const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict tiling, TPipe *tPipe)
+                                const __gm__ QuantFlashMlaWithKvcacheTilingData *__restrict tiling)
     {
-        this->pipe_ = tPipe;
         this->tilingData_ = tiling;
 
         InitConstInfo();
@@ -156,18 +147,18 @@ public:
         // FD统一开关: metadata header[1], 由metadata算子按是否存在FD任务写入, 所有核一致
         constInfo_.enableFlashDecode =
             static_cast<bool>(((__gm__ uint32_t *)metadata)[QMLA_HEAD_IS_FD_INDEX]);
-        InitMMResBuf(workspace);
+        workspace = GetUserWorkspace(workspace);
 
         if ASCEND_IS_AIV {
             // MLA: V=K_nope, descale共用k_descale
-            vecFaBlock_.InitVecBlock(tPipe, qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace,
+            vecFaBlock_.InitVecBlock(qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace,
                                      qCuSeqLensParser_, attnMask);
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             // MLA: 无独立v_cache, value复用key指针
-            cubeBlock_.InitCubeBlock(tPipe, &l1BufferManager_, query, key, key, blockTable, qDescale, kDescale, kDescale,
+            cubeBlock_.InitCubeBlock(query, key, key, blockTable, qDescale, kDescale, kDescale,
                                       qCuSeqLensParser_, kvSeqUsedParser_);
         }
         if constexpr (FLASH_DECODE) {
@@ -183,21 +174,6 @@ public:
             }
         }
         (void)attnMask;
-    }
-
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
-    {
-        uint32_t mm1OutDtype = sizeof(T);
-
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
-        l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
-        ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
-        bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
-        bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
-        workspace = GetUserWorkspace(workspace);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -275,18 +251,18 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            bmm2Buffers_.Get().SetCrossCore();
-            bmm1Buffers_.Get().SetCrossCore();
-            bmm1Buffers_.Get().SetCrossCore();
+            vecFaBlock_.InitCrossCoreSync();
+        } else {
+            cubeBlock_.InitCrossCoreSync();
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm1Buffers_.Get().WaitCrossCore();
-            bmm2Buffers_.Get().WaitCrossCore();
+            cubeBlock_.UnInitCrossCoreSync();
+        } else {
+            vecFaBlock_.UnInitCrossCoreSync();
         }
     }
 
@@ -445,22 +421,22 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), runInfo);
+        cubeBlock_.IterateBmm1(runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1PBuffers_, runInfo);
+        cubeBlock_.IterateBmm2(runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock_.ProcessVec1(this->l1PBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo);
+        vecFaBlock_.ProcessVec1(runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        this->vecFaBlock_.ProcessVec2(this->bmm2Buffers_.Get(), runInfo);
+        this->vecFaBlock_.ProcessVec2(runInfo);
     }
 
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
