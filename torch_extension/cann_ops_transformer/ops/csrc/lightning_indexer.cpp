@@ -26,7 +26,7 @@ const int DIM_1 = 1;
 const int DIM_2 = 2;
 const int DIM_3 = 3;
 
-constexpr int64_t LI_V2_METADATA_SIZE = 1024;
+constexpr int64_t LI_V2_METADATA_SIZE = 2048;
 
 at::Tensor LightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk,
                                     const c10::optional<at::Tensor> &cuSeqlensQ,
@@ -138,7 +138,7 @@ LightningIndexer(const at::Tensor &q, const at::Tensor &k, const at::Tensor &w, 
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("lightning_indexer_metadata", &LightningIndexerMetadata, "lightning_indexer_metadata");
-    m.def("lightning_indexer", &LightningIndexer, "lightning_indexer");
+    m.def("npu_lightning_indexer_metadata", &LightningIndexerMetadata, "npu_lightning_indexer_metadata");
+    m.def("npu_lightning_indexer", &LightningIndexer, "npu_lightning_indexer");
 }
 } // namespace op_api
