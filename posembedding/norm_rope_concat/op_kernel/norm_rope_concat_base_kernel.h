@@ -169,27 +169,25 @@ public:
         DataCopyPad(rope[alignedTotalRopeDim_], cosGm_[curSeq * ropeDim_], copyParams, padParams);
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
-        if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
-            Cast(sin_, deQue, RoundMode::CAST_NONE, totalRopeDim_);
-            Cast(cos_, deQue[alignedTotalRopeDim_], RoundMode::CAST_NONE, totalRopeDim_);
-        } else {
-            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, totalRopeDim_);
-            Adds(cos_, deQue[alignedTotalRopeDim_].ReinterpretCast<float>(), 0.f, totalRopeDim_);
+        PipeBarrier<PIPE_V>();
+        // Step 1: Bulk-init sin_=0, cos_=1. Base address and count are B32-aligned.
+        Duplicate(sin_, 0.f, alignedTotalRopeDim_);
+        Duplicate(cos_, 1.f, alignedTotalRopeDim_);
+        PipeBarrier<PIPE_V>();
+        // Step 2: Copy valid ropeDim_ elements per head from deQue to sin_/cos_.
+        // Per-head base (i * alignedRopeDim_) is B32-aligned; padding stays 0/1 from step 1.
+        for (uint32_t i = 0; i < ropeNum_; ++i) {
+            uint32_t offset = i * alignedRopeDim_;
+            if constexpr (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
+                Cast(sin_[offset], deQue[offset], RoundMode::CAST_NONE, ropeDim_);
+                Cast(cos_[offset], deQue[alignedTotalRopeDim_ + offset], RoundMode::CAST_NONE, ropeDim_);
+            } else {
+                Adds(sin_[offset], deQue[offset].ReinterpretCast<float>(), 0.f, ropeDim_);
+                Adds(cos_[offset], deQue[alignedTotalRopeDim_ + offset].ReinterpretCast<float>(), 0.f, ropeDim_);
+            }
         }
         ropeQueue_.FreeTensor(deQue);
         PipeBarrier<PIPE_V>();
-        if (ropeDim_ < alignedRopeDim_) {
-            for (uint32_t i = 0; i < ropeNum_; ++i) {
-                for (uint32_t j = ropeDim_; j < alignedRopeDim_; ++j) {
-                    sin_.SetValue(i * alignedRopeDim_ + j, 0.0f);
-                    cos_.SetValue(i * alignedRopeDim_ + j, 1.0f);
-                }
-            }
-        }
-        if (totalRopeDim_ < alignedTotalRopeDim_) {
-            Duplicate(sin_[totalRopeDim_], 0.f, alignedTotalRopeDim_ - totalRopeDim_);
-            Duplicate(cos_[totalRopeDim_], 1.f, alignedTotalRopeDim_ - totalRopeDim_);
-        }
         if constexpr (ropeType == RopeType::INTERLEAVE) {
             const UnaryRepeatParams params;
             if (sinRepeatTimes_ > 0) {
