@@ -95,6 +95,7 @@ __aicore__ inline void VToSSync()
 __aicore__ inline void SToVSync()
 {
     event_t eventIDSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+
     SetFlag<HardEvent::S_V>(eventIDSToV);
     WaitFlag<HardEvent::S_V>(eventIDSToV);
 }
