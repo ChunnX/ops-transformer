@@ -131,6 +131,8 @@ void FlashAttnTilingImpl::SplitPolicy()
                                           static_cast<uint32_t>(faInfo_->gSize), faInfo_->maxSeqQ, faInfo_->maxSeqKv,
                                           static_cast<int32_t>(faInfo_->maskMode), winLeft, winRight,
                                           static_cast<uint32_t>(faInfo_->qLayout), sOuterFactor_, sInnerFactor_);
+    // 模板判定需在 CalcWorkspaceSize 之前完成(dnFlag_ 影响 workspace 分配), 逻辑仅依赖 D/DV 维度
+    UpdateTilingKeyTemplateId();
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = true;
 }
@@ -192,14 +194,12 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
     // templateId: 0=ND模板, 1=DN模板(不合轴 BN1_S1 分核)
-    // 判定与 flash_attn_metadata 的 outputLayout 选择共享 fa_tiling_util::IsDnTemplateRouted, 两侧严格一致
-    uint32_t qLayoutCode = static_cast<uint32_t>(faInfo_->qLayout);
-    bool dnRouted = fa_tiling_util::IsDnTemplateRouted(
-        faInfo_->maskMode, qLayoutCode,
-        (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? fa_tiling_util::SOUTER_64 : fa_tiling_util::SOUTER_32);
-    dnFlag_ = dnRouted && ((tilingKeyInfo_.config == 0) || (tilingKeyInfo_.config == 2) ||
-                           (tilingKeyInfo_.config == 6));
-    tilingKeyInfo_.templateId = dnFlag_ ? 1 : 0;
+    // 判定与 flash_attn_metadata 的 outputLayout 选择共享 fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致;
+    // maxSeqQ 取 uint32(-1 会被转为大数, 未知长度时不因短Q回退), mBase = sOuter * cvRatio
+    tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(
+        static_cast<uint32_t>(faInfo_->qkHeadDim), static_cast<uint32_t>(faInfo_->vHeadDim),
+        static_cast<uint32_t>(faInfo_->maxSeqQ), sOuterFactor_ * platformInfo_.cvRatio);
+    dnFlag_ = tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyInfo()
@@ -208,7 +208,6 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
-    UpdateTilingKeyTemplateId();
 }
 
 void FlashAttnTilingImpl::GenTilingKey()

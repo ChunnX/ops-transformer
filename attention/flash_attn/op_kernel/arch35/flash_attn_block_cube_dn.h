@@ -97,8 +97,12 @@ public:
     static constexpr uint32_t L1_P_BUF_BYTES = mBaseSize * s2BaseSize * sizeof(INPUT_T);
     static constexpr uint32_t L1_Q_BUFCNT = 2U;
     static constexpr uint32_t L1_Q_BUF_BYTES = mBaseSize * dBaseSize * sizeof(Q_T);
-    static constexpr uint32_t L1_KV_BUFCNT = 4U;
-    static constexpr uint32_t L1_KV_BUF_BYTES = 64U * 1024U;
+    static constexpr uint32_t L1_KV_BUFCNT = (s2BaseSize == 256 && dBaseSize > 128) ? 2U : 4U;
+    static constexpr uint32_t L1_KV_BUF_BYTES =
+        (s2BaseSize == 256 && dBaseSize > 128) ? s2BaseSize * dBaseSize * sizeof(KV_T) : 64U * 1024U;
+    static_assert(L1_P_BUFCNT * L1_P_BUF_BYTES + L1_Q_BUFCNT * L1_Q_BUF_BYTES + L1_KV_BUFCNT * L1_KV_BUF_BYTES <=
+                      512U * 1024U,
+                  "DN L1 buffers exceed device capacity");
     // buffer位置+用途+Buffers, 例如l1PBuffers; 使用时命名: 用途+buffer位置+Tensor, 例如pL1Tensor
     LocalTensor<uint8_t> l1PBuffers_;
     LocalTensor<uint8_t> l1QBuffers_;
@@ -325,7 +329,11 @@ public:
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
             MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
                                         constInfo_.dSize, false, true, true, true, 0, 0, ldK, 0);
-            if constexpr (dBaseSize > 128) {
+            if constexpr (s2BaseSize == 256) {
+                // L0A 双缓冲单槽 32KiB: 256 行 S2 时 K 分块收缩到 64, 保证单分形不越槽
+                MatmulK<KV_T, Q_T, MM_T, 256, 64, 64, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
+                                                                                  mmL0BPolicy_, l0CSubTensor, param);
+            } else if constexpr (dBaseSize > 128) {
                 MatmulK<KV_T, Q_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(kL1Tensor, qL1Tensor, mmL0APolicy_,
                                                                                     mmL0BPolicy_, l0CSubTensor, param);
             } else {
