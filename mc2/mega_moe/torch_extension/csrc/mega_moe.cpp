@@ -256,7 +256,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     const bool isPreQuantizedDtype = dispatchQuantAclDtype == ACL_FLOAT8_E5M2 ||
                                      dispatchQuantAclDtype == ACL_FLOAT8_E4M3FN ||
                                      dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
-    // A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 950 预量化输入。
     const bool isPreQuantizedX = dispatchQuantMode == 0 && isPreQuantizedDtype;
     // 当前 Torch C++ ScalarType 未统一提供 FP4 枚举；只有协议明确声明 FP4 时，uint8 才承载两个 E2M1 元素。
     const bool isPackedFp4X = isPreQuantizedX && dispatchQuantAclDtype == ACL_FLOAT4_E2M1;
@@ -277,8 +276,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     int64_t bs = xSize[0];
     int64_t h = xSize[1];
     if (isPackedFp4X) {
-        TORCH_CHECK(h <= std::numeric_limits<int64_t>::max() / PACKED_FLOAT4_ELEMENTS_PER_BYTE,
-                    "The packed FP4 hidden dimension is too large.");
         h *= PACKED_FLOAT4_ELEMENTS_PER_BYTE;
     }
     TORCH_CHECK(x.is_contiguous(), "x must be contiguous.");
@@ -286,8 +283,8 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
         const at::Tensor &scaleTensor = scales.value();
         const auto scaleScalarType = scaleTensor.scalar_type();
         // scales 会被包装为 E8M0 descriptor，以下只保留 Host 无法获知的物理存储约束。
-        TORCH_CHECK(scaleScalarType == at::kByte || scaleScalarType == at::ScalarType::Float8_e8m0fnu,
-                    "scales only supports torch.uint8 storage or torch.float8_e8m0fnu.");
+        TORCH_CHECK(scaleScalarType == at::ScalarType::Float8_e8m0fnu,
+                    "scales only supports torch.float8_e8m0fnu.");
         TORCH_CHECK(scaleTensor.device() == x.device(), "scales must be on the same device as x.");
         TORCH_CHECK(scaleTensor.is_contiguous(), "scales must be contiguous.");
     }

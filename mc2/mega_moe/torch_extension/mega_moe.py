@@ -218,14 +218,7 @@ class _MegaMoeOpBuilder(OpBuilder):
                 x, dispatch_quant_mode, dispatch_quant_out_dtype
             )
             local_moe_expert_num = moe_expert_num // ep_world_size
-            output_dtype = (
-                torch.bfloat16
-                if _is_pre_quantized_x(
-                    dispatch_quant_mode, dispatch_quant_out_dtype
-                )
-                else x.dtype
-            )
-            y = x.new_empty(tuple([bs, h]), dtype=output_dtype)
+            y = x.new_empty((bs, h), dtype=torch.bfloat16)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 
@@ -721,19 +714,15 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
-    # 自定义算子 schema 接收 int；统一在入口序列化，FP4 扩展枚举 296 保持不变。
-    dispatch_quant_dtype_int = _dtype_to_int(
-        sym_buffer.dispatch_quant_out_dtype
-    )
     _check_pre_quantized_x_contract(
         x,
         sym_buffer.dispatch_quant_mode,
-        dispatch_quant_dtype_int,
+        sym_buffer.dispatch_quant_out_dtype,
     )
     logical_h = _logical_hidden_size(
         x,
         sym_buffer.dispatch_quant_mode,
-        dispatch_quant_dtype_int,
+        sym_buffer.dispatch_quant_out_dtype,
     )
     expected_hidden = sym_buffer.hidden
     torch._check(
@@ -777,7 +766,7 @@ def mega_moe(
         activation=activation,
         activation_clamp=activation_clamp,
         activation_params=activation_params,
-        dispatch_quant_out_dtype=dispatch_quant_dtype_int,
+        dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         shared_expert_quant_out_dtype=shared_quant_dtype_int,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
