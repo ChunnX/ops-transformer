@@ -32,54 +32,24 @@ extern "C" __global__ __aicore__ void grouped_matmul_swiglu_quant_v3(
     // BF16/FP32 operations must not raise an overflow exception for values
     // that are intentionally handled by the MX quantization epilogue.
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
-    if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel<AscendC::Te::NZLayoutPtn>(
+    if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TENSOR_API_NZ)) {
+        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TENSOR_API_NZ, KERNEL_TYPE_MIX_AIC_1_2);
+        GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3MxFp8Kernel<AscendC::Te::NZLayoutPtn>(
             x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
             tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel<AscendC::Te::ZNLayoutPtn>(
+    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TENSOR_API_ZN)) {
+        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TENSOR_API_ZN, KERNEL_TYPE_MIX_AIC_1_2);
+        GroupedMatmulSwigluQuantV3::GmmTensorApiSwigluQuantV3MxFp8Kernel<AscendC::Te::ZNLayoutPtn>(
             x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
             tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_MODE_0)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_MODE_0, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 0>(
+    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_CGMCT_NZ)) {
+        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_CGMCT_NZ, KERNEL_TYPE_MIX_AIC_1_2);
+        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
             x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
             tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_MODE_1)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_MODE_1, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 1>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_MODE_2)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_MODE_2, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 2>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_MODE_3)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_MODE_3, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz, 3>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TRANS_MODE_0)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TRANS_MODE_0, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 0>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TRANS_MODE_1)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TRANS_MODE_1, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 1>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TRANS_MODE_2)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TRANS_MODE_2, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 2>(
-            x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
-            tiling);
-    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_TRANS_MODE_3)) {
-        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_TRANS_MODE_3, KERNEL_TYPE_MIX_AIC_1_2);
-        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn, 3>(
+    } else if (TILING_KEY_IS(GMM_SWIGLU_QUANT_V3_CGMCT_ZN)) {
+        KERNEL_TASK_TYPE(GMM_SWIGLU_QUANT_V3_CGMCT_ZN, KERNEL_TYPE_MIX_AIC_1_2);
+        GroupedMatmulSwigluQuantV3::GmmSwigluAswtV3<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
             x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
             tiling);
     }

@@ -34,6 +34,10 @@ TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
 TILING_DATA_FIELD_DEF(uint8_t, reserved2);
 TILING_DATA_FIELD_DEF(uint16_t, reserved3);
 TILING_DATA_FIELD_DEF(float, dstTypeMax);
+TILING_DATA_FIELD_DEF(int64_t, axis);
+TILING_DATA_FIELD_DEF(uint8_t, roundMode);
+TILING_DATA_FIELD_DEF(uint8_t, reserved4);
+TILING_DATA_FIELD_DEF(uint16_t, reserved5);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV3ParamsOp, GMMSwigluQuantV3Params)
 
@@ -54,10 +58,6 @@ REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_0, GMMSwigluQuantV3TilingD
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_1, GMMSwigluQuantV3TilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_2, GMMSwigluQuantV3TilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_3, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_4, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_5, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_6, GMMSwigluQuantV3TilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3_7, GMMSwigluQuantV3TilingDataParams)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV3, GMMSwigluQuantV3TilingData)
 
 namespace GroupedMatmulSwigluQuantV3Tiling {
@@ -152,7 +152,6 @@ private:
                             const gert::Shape &weightScaleShape, const gert::Shape &groupListShape) const;
     bool CheckOutputShape() const;
     bool CheckCoreNum() const;
-    bool IsFp8(ge::DataType dtype) const;
     bool GetAttrInt(const gert::RuntimeAttrs *attrs, uint32_t index, int64_t &value) const;
     bool GetAttrBool(const gert::RuntimeAttrs *attrs, uint32_t index, bool &value) const;
     bool GetAttrFloat(const gert::RuntimeAttrs *attrs, uint32_t index, float &value) const;
@@ -167,6 +166,8 @@ private:
     float gluBias_ = 1.0F;
     uint8_t scaleAlg_ = SCALE_ALG_OCP;
     float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
+    int64_t axis_ = DEFAULT_AXIS;
+    uint8_t roundMode_ = 0;
     bool useTensorApi_ = false;
 };
 

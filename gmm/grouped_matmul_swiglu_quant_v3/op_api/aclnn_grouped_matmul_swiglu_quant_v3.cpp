@@ -48,7 +48,7 @@ constexpr char API_NAME[] = "aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspace
 
 bool IsMxfp8(DataType dtype)
 {
-    return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2;
+    return dtype == DataType::DT_FLOAT8_E4M3FN;
 }
 
 bool IsNzFormat(const aclTensor *tensor)
@@ -323,12 +323,12 @@ aclnnStatus CheckDtype(const aclTensor *x, const aclTensorList *weight, const ac
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         IsMxfp8(x->GetDataType()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "x", op::ToString(x->GetDataType()).GetString(),
-                                              "x must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+                                              "x must be FLOAT8_E4M3FN"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         IsMxfp8(weightTensor->GetDataType()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "weight",
                                               op::ToString(weightTensor->GetDataType()).GetString(),
-                                              "weight must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+                                              "weight must be FLOAT8_E4M3FN"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         xScale->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(API_NAME, "xScale", op::ToString(xScale->GetDataType()).GetString(),

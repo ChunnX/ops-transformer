@@ -24,7 +24,7 @@ namespace Tile {
 
 namespace GroupedMatmulSwigluQuantV3 {
 
-template <typename layoutA, typename layoutB, int64_t SWIGLU_MODE>
+template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmSwigluAswtV3(
     GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
     GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)

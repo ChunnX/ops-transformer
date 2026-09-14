@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  *
- * Tensor API entry point for the Ascend 950 WeightNZ MXFP8 V3 mode-2 path.
+ * Tensor API entry point for the Ascend 950 WeightNZ MXFP8 V3 aligned-K path.
  */
 
 #ifndef GROUPED_MATMUL_SWIGLU_QUANT_V3_MXFP8_TENSOR_API_KERNEL_H
@@ -25,7 +25,7 @@ __aicore__ inline __gm__ T* GetFirstTensorAddr(GM_ADDR tensorListAddr)
 }
 
 template <typename LayoutB_>
-__aicore__ inline void GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel(
+__aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
     GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
     GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {

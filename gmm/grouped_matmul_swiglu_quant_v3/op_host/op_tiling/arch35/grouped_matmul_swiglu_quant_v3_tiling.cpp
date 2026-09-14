@@ -48,6 +48,8 @@ void GroupedMatmulSwigluQuantV3Tiling950::Reset()
     gluBias_ = 1.0F;
     scaleAlg_ = SCALE_ALG_OCP;
     dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
+    axis_ = DEFAULT_AXIS;
+    roundMode_ = 0;
     useTensorApi_ = false;
 }
 
@@ -167,6 +169,11 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(), "dst_type_max must be 0.0 for the MXFP8 output path"), return false);
 
     swigluMode_ = swigluMode;
+    axis_ = axis;
+    // roundMode is validated above and the only supported value is rint.
+    // Encode it explicitly so the V3 tiling payload carries the effective
+    // quantization attributes even though the current kernel has one mode.
+    roundMode_ = 0;
     scaleAlg_ = static_cast<uint8_t>(scaleAlg);
     dstTypeMax_ = dstTypeMax;
     inputParams_.transA = false;
@@ -175,11 +182,6 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     inputParams_.groupListType = static_cast<int8_t>(groupListType);
     inputParams_.groupType = GroupedMatmul::SPLIT_M;
     return true;
-}
-
-bool GroupedMatmulSwigluQuantV3Tiling950::IsFp8(ge::DataType dtype) const
-{
-    return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
 
 bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeDtype()
@@ -214,8 +216,8 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeDtype()
     inputParams_.aQuantMode = QuantMode::MX_PERGROUP_MODE;
     inputParams_.bQuantMode = QuantMode::MX_PERGROUP_MODE;
 
-    OP_CHECK_IF(!IsFp8(inputParams_.aDtype) || !IsFp8(inputParams_.bDtype),
-                OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN or FLOAT8_E5M2"), return false);
+    OP_CHECK_IF(inputParams_.aDtype != ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN,
+                OP_LOGE(context_->GetNodeName(), "x and weight must be FLOAT8_E4M3FN"), return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(), "x_scale and weight_scale must be FLOAT8_E8M0"), return false);
     OP_CHECK_IF(inputParams_.outDataDtype != ge::DT_FLOAT8_E4M3FN ||
@@ -336,9 +338,10 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!CheckShapeAndScale(xShape, xScaleShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
                 OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckOutputShape(), OP_LOGE(context_->GetNodeName(), "output shape validation failed"), return false);
-    // Tensor API currently specializes the mode-2 front/back split and
-    // requires an MX-scale-safe K tile.  All other V3 cases retain CGMCT.
-    useTensorApi_ = swigluMode_ == 2 && (inputParams_.kSize % 128U) == 0U;
+    // Modes 0/2/3 share the Tensor API movement/layout path.  Mode 1 needs
+    // the common CGMCT path because its even/odd de-interleave is performed
+    // in the CGMCT vector epilogue.  Unaligned K also stays on CGMCT.
+    useTensorApi_ = swigluMode_ != 1 && (inputParams_.kSize % 128U) == 0U;
     return true;
 }
 
@@ -365,6 +368,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
     tilingData_.gmmSwigluQuantParams.set_gluBias(gluBias_);
     tilingData_.gmmSwigluQuantParams.set_scaleAlg(scaleAlg_);
     tilingData_.gmmSwigluQuantParams.set_dstTypeMax(dstTypeMax_);
+    tilingData_.gmmSwigluQuantParams.set_axis(axis_);
+    tilingData_.gmmSwigluQuantParams.set_roundMode(roundMode_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -412,11 +417,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
 uint64_t GroupedMatmulSwigluQuantV3Tiling950::GetTilingKey() const
 {
     if (useTensorApi_) {
-        return transposeWeight_ ? GMM_SWIGLU_QUANT_V3_TENSOR_API_TRANS_MODE_2
-                                : GMM_SWIGLU_QUANT_V3_TENSOR_API_MODE_2;
+        return transposeWeight_ ? GMM_SWIGLU_QUANT_V3_TENSOR_API_ZN : GMM_SWIGLU_QUANT_V3_TENSOR_API_NZ;
     }
-    constexpr uint64_t TRANSPOSE_KEY_OFFSET = 4;
-    return static_cast<uint64_t>(swigluMode_) + (transposeWeight_ ? TRANSPOSE_KEY_OFFSET : 0);
+    return transposeWeight_ ? GMM_SWIGLU_QUANT_V3_CGMCT_ZN : GMM_SWIGLU_QUANT_V3_CGMCT_NZ;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::GetWorkspaceSize()

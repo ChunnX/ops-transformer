@@ -14,7 +14,7 @@ public:
     {
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
+            .DataType({ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("x_scale")
             .ParamType(REQUIRED)
@@ -26,7 +26,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("weight")
             .ParamType(DYNAMIC)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
+            .DataType({ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ});
         this->Input("weight_scale")
             .ParamType(DYNAMIC)
@@ -47,7 +47,7 @@ public:
 
         this->Output("y")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
+            .DataType({ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("y_scale")
             .ParamType(REQUIRED)
