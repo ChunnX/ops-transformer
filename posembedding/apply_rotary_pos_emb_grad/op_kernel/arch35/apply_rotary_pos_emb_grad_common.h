@@ -72,12 +72,19 @@ __aicore__ inline void HalfGradAlignVF(const LocalTensor<T> &sinTensor, const Lo
                     ops::LoadTwoTensorForDtypeT<T>(currCosUb, currCosUb, vregCos, vregHalfCos, preg, preg, offset,
                                                    halfOffset);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+                    Mul(vregOut, vregCos, vregIn, preg);
+                    MulAddDst(vregOut, vregHalfSin, vregHalfIn, preg);
+                    Mul(vregHalfOut, vregSin, vregIn, preg);
+                    FusedNegMulSubDst(vregHalfOut, vregHalfCos, vregHalfIn, preg);
+#else
                     Mul(vregOut, vregCos, vregIn, preg);
                     Mul(vregHalfSin, vregHalfSin, vregHalfIn, preg);
                     Add(vregOut, vregOut, vregHalfSin, preg);
                     Mul(vregSin, vregSin, vregIn, preg);
                     Mul(vregHalfCos, vregHalfCos, vregHalfIn, preg);
                     Sub(vregHalfOut, vregHalfCos, vregSin, preg);
+#endif
 
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregOut, preg, offset);
                     ops::StoreOneTensorForDtypeT<T>(currOutUb, vregHalfOut, preg, halfOffset);
@@ -145,6 +152,14 @@ __aicore__ inline void HalfGradCosSinPartialVF(const LocalTensor<T> &sinTensor, 
                                                    halfOffset);
                     ops::LoadTwoTensorForDtypeT<T>(currXUb, currXUb, vregX1, vregX2, preg, preg, offset, halfOffset);
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+                    // dx[0:d/2] = grad[0:d/2]*cos[0:d/2] + grad[d/2:d]*sin[d/2:d]
+                    Mul(vregTmp1, vregCos1, vregGrad1, preg);
+                    MulAddDst(vregTmp1, vregSin2, vregGrad2, preg);
+                    // dx[d/2:d] = grad[d/2:d]*cos[d/2:d] - grad[0:d/2]*sin[0:d/2]
+                    Mul(vregTmp3, vregSin1, vregGrad1, preg);
+                    FusedNegMulSubDst(vregTmp3, vregCos2, vregGrad2, preg);
+#else
                     // dx[0:d/2] = grad[0:d/2]*cos[0:d/2] + grad[d/2:d]*sin[d/2:d]
                     Mul(vregTmp1, vregCos1, vregGrad1, preg);
                     Mul(vregTmp2, vregSin2, vregGrad2, preg);
@@ -153,6 +168,7 @@ __aicore__ inline void HalfGradCosSinPartialVF(const LocalTensor<T> &sinTensor, 
                     Mul(vregTmp3, vregCos2, vregGrad2, preg);
                     Mul(vregTmp4, vregSin1, vregGrad1, preg);
                     Sub(vregTmp3, vregTmp3, vregTmp4, preg);
+#endif
 
                     // grad_cos = grad*x (前/后半)
                     Mul(vregTmp5, vregGrad1, vregX1, preg);
@@ -296,12 +312,19 @@ __aicore__ inline void BatchHalfGradContiguousVF(__ubuf__ T *in, __ubuf__ T *cos
                         ops::LoadOneTensorForDtypeT<T>(currSinUb, sinPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::LoadOneTensorForDtypeT<T>(currSinUb, sinPart2Reg, pregLoop,
                                                        i * VL_FLOAT32_SIZE + dHalfOffset);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+                        Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
+                        MulAddDst(cosPart1Reg, sinPart2Reg, inPart2Reg, pregLoop);
+                        Mul(cosPart2Reg, inPart2Reg, cosPart2Reg, pregLoop);
+                        FusedMulSubDst(cosPart2Reg, sinPart1Reg, inPart1Reg, pregLoop);
+#else
                         Mul(cosPart1Reg, inPart1Reg, cosPart1Reg, pregLoop);
                         Mul(sinPart2Reg, sinPart2Reg, inPart2Reg, pregLoop);
                         Add(cosPart1Reg, cosPart1Reg, sinPart2Reg, pregLoop);
                         Mul(cosPart2Reg, inPart2Reg, cosPart2Reg, pregLoop);
                         Mul(sinPart1Reg, inPart1Reg, sinPart1Reg, pregLoop);
                         Sub(cosPart2Reg, cosPart2Reg, sinPart1Reg, pregLoop);
+#endif
                         ops::StoreOneTensorForDtypeT<T>(currOutUb, cosPart1Reg, pregLoop, i * VL_FLOAT32_SIZE);
                         ops::StoreOneTensorForDtypeT<T>(currOutUb, cosPart2Reg, pregLoop,
                                                         i * VL_FLOAT32_SIZE + dHalfOffset);
