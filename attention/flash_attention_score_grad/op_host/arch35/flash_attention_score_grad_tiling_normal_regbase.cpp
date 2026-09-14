@@ -463,6 +463,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         return ge::GRAPH_PARAM_INVALID;
     }
     fBaseParams.hasRope = hasQueryRope && hasKeyRope;
+    int64_t qHeadDim = 0;
+    int64_t kHeadDim = 0;
     int64_t qRopeD = 0;
     int64_t kRopeD = 0;
 
@@ -478,6 +480,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
             fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum; // H=N*D
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2;                // H=N2*D1
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_0);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
 
@@ -519,6 +523,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
             fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum; // H=N*D
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2;                // H=N2*D1
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_2) / headNum : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) / headNum : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) / fBaseParams.n2 : 0;
 
@@ -559,6 +565,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d = fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_3) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_3) : 0;
         OP_LOGD(context_, "inputLayout == BNSD queryShape", "%ld, %ld, %ld, %ld,",
@@ -670,6 +678,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
             queryShape->GetStorageShape().GetDim(INPUT_DIM_1) / keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
         fBaseParams.d = fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_2);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_2) : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_2) : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) : 0;
 
@@ -706,6 +716,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d = fBaseParams.hasRope ? ROPE_D_192 : queryShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_3);
         fBaseParams.s2 = keyShape->GetStorageShape().GetDim(INPUT_DIM_1);
+        qHeadDim = fBaseParams.hasRope ? queryShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
+        kHeadDim = fBaseParams.hasRope ? keyShape->GetStorageShape().GetDim(INPUT_DIM_3) : 0;
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_3) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_3) : 0;
 
@@ -742,6 +754,19 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
 
     // check rope
     if (fBaseParams.hasRope) {
+        if (qHeadDim != ROPE_D_128 || kHeadDim != ROPE_D_128) {
+            std::string shapesMsg = Ops::Base::ToString(qShape) + ", " + Ops::Base::ToString(kShape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                "FlashAttentionScoreGrad", "query, keyIn", shapesMsg.c_str(),
+                "D of query and keyIn must both be equal to 128 when rope inputs exist");
+            return ge::GRAPH_PARAM_INVALID;
+        }
+        if (fBaseParams.d1 != ROPE_D_128) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                "FlashAttentionScoreGrad", "value, dy", vdyShapesMsg.c_str(),
+                "D of value and dy must both be equal to 128 when rope inputs exist");
+            return ge::GRAPH_PARAM_INVALID;
+        }
         if (qRopeD != kRopeD || qRopeD != ROPE_D_64) {
             std::string shapesMsg = Ops::Base::ToString(*queryRopeShape) + ", " + Ops::Base::ToString(*keyRopeShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("FlashAttentionScoreGrad", "queryRopeOptional, keyRopeOptional",

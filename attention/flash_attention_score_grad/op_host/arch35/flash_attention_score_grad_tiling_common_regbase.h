@@ -115,6 +115,7 @@ constexpr int64_t BN2_MULTIBLK_BN_256 = 256;
 constexpr int64_t BN2_MAX_D = 512;
 constexpr int64_t BN2S2_WRITE_UB_D = 128;
 constexpr int64_t ROPE_D_192 = 192;
+constexpr int64_t ROPE_D_128 = 128;
 constexpr int64_t ROPE_D_64 = 64;
 constexpr int64_t NEGATIVE_128 = -128;
 
