@@ -19,7 +19,8 @@
 namespace ops {
 class AttentionWorkerCombine : public OpDef {
 public:
-    explicit AttentionWorkerCombine(const char *name) : OpDef(name)
+    explicit AttentionWorkerCombine(const char *name)
+        : OpDef(name)
     {
         this->Input("schedule_context")
             .ParamType(REQUIRED)
@@ -55,8 +56,15 @@ public:
 
         this->AICore().AddConfig("ascend910_93");
         this->AICore().AddConfig("ascend910b");
+
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "attention_worker_combine_apt");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 
 OP_ADD(AttentionWorkerCombine);
-}  // namespace ops
+} // namespace ops
