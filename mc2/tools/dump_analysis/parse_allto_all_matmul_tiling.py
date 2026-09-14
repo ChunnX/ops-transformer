@@ -459,7 +459,6 @@ def parse_apace_tiling_data(data: bytes) -> dict:
                      f"{len(data)} < {APACE_ALLTO_ALL_MATMUL_TILING_DATA_SIZE}"
         }
     return {
-        "format": "APACE_CCU",
         "mc2InitTiling": parse_mc2_init_tiling_inner(data, OFFSET_MC2_INIT_TILING),
         "mc2CcTiling": parse_mc2_cc_tiling_inner(data, OFFSET_MC2_CC_TILING),
         "commTilingData": parse_apace_comm_tiling(data, OFFSET_APACE_COMM_TILING),
@@ -579,9 +578,9 @@ def parse_workspace_layout_info(data: bytes, offset: int) -> dict:
 
 def parse_runtime_info_per_core(data: bytes, offset: int,
                                 pos_tag_map=POS_TAG_MAP_ALLTO_ALL) -> dict:
-    """解析单个 RuntimeInfoPerCore（512B）。"""
+    """解析单个 StateDumpPerCore（512B）。"""
     if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
-        return {"error": "data too short for RuntimeInfoPerCore"}
+        return {"error": "data too short for StateDumpPerCore"}
     magic_num, core_id = struct.unpack_from("<IH", data, offset)
     exec_turn, exec_position, comm_phase, commit_count, wait_count = struct.unpack_from("<5B", data, offset + 6)
     return {

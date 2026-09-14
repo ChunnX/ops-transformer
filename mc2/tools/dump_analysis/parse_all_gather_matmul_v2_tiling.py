@@ -198,7 +198,6 @@ def parse_tiling_data(data: bytes, layout: dict, is_quant: bool) -> dict:
         "param": parse_rcs_tiling(data, o["param"], layout["rcs"]),
         "dataType": _u32(data, o["dataType"]),
         "debugMode": _u32(data, o["debugMode"]),
-        "tilingVariant": "FP8/quant" if is_quant else "non-quant",
     }
 
 
@@ -382,7 +381,6 @@ def print_tiling_data(result: dict, is_quant: bool, layout: dict):
     print_kv("extra", {
         "dataType": result["dataType"],
         "debugMode": result["debugMode"],
-        "tilingVariant": result["tilingVariant"],
     })
 
 

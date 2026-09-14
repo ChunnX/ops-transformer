@@ -61,6 +61,7 @@ MMV3_TAIL_SIZE = 36
 QUANT_FIXED_SIZE = 164
 
 # DFX 统一头部 — mc2/common/op_kernel/apace/utils/op_state_dump_struct.h
+# 当前解析的是 MC2_DFX_ENABLE=1 的 Dump；关闭时 DfxDumpInfo 为空且不会生成这类 DFX Dump。
 WS_SEG_INFO_SIZE = 24             # u64 offset + u64 size + u8 type + u8[7] reserved
 WS_MAX_SEGMENTS = 8
 WS_LAYOUT_INFO_SIZE = 208         # u64 + 2×u32 + 8×24
@@ -68,7 +69,7 @@ PEERMEM_DATA_SIZE_OFFSET = WS_LAYOUT_INFO_SIZE
 PEERMEM_LAYOUT_OFFSET = PEERMEM_DATA_SIZE_OFFSET + 8
 DFX_DUMP_INFO_SIZE = PEERMEM_LAYOUT_OFFSET + WS_LAYOUT_INFO_SIZE  # 424B
 DFX_WORKSPACE_LAYOUT_OFFSET = 0
-RUNTIME_INFO_PER_CORE_SIZE = 512  # struct alignas(512) RuntimeInfoPerCore
+RUNTIME_INFO_PER_CORE_SIZE = 512  # struct alignas(512) StateDumpPerCore
 RUNTIME_INFO_CORE_MAX = 128
 
 # AlltoAllMatmulTilingInfo — mc2/allto_all_matmul/op_kernel/arch35/allto_all_matmul_tiling_data.h
@@ -330,11 +331,12 @@ def _base_layout(cann):
         init_size = DEFAULT_MC2_INIT_TILING_SIZE
         cc_size = DEFAULT_MC2_CC_TILING_SIZE
         tcube_size = DEFAULT_TCUBE_TILING_SIZE
-        logging.warning("无法从 CANN 环境获取 kernel_tiling.h (%s)", e)
-        logging.warning("使用默认尺寸继续: Mc2InitTiling=%d, Mc2CcTiling=%d, TCubeTiling=%d "
-                        "(9.1.0/9.2.0 实测值; 若 dump 来自其他版本 CANN, 偏移可能不准, "
-                        "请 source 对应 set_env.sh 或用 --cann 指定)",
-                        init_size, cc_size, tcube_size)
+        if os.environ.get("MC2_LAYOUT_QUIET_FALLBACK") != "1":
+            logging.warning("无法从 CANN 环境获取 kernel_tiling.h (%s)", e)
+            logging.warning("使用默认尺寸继续: Mc2InitTiling=%d, Mc2CcTiling=%d, TCubeTiling=%d "
+                            "(9.1.0/9.2.0 实测值; 若 dump 来自其他版本 CANN, 偏移可能不准, "
+                            "请 source 对应 set_env.sh)",
+                            init_size, cc_size, tcube_size)
         headers = ["<默认值 (未找到 CANN 头文件)>"]
 
     rcs_offsets = {}
