@@ -163,6 +163,26 @@ def _cublas_scale_bytes(block):
     return scale_bytes.astype(np.uint8)
 
 
+def _dynamic_dtype_range_scale_bytes(block):
+    """Return the MXFP8 scale bytes for GMMAQ ``scale_alg=1``.
+
+    This path first finds the maximum absolute BF16 bit pattern in each
+    32-element MX block, rounds its BF16 exponent to the nearest E4M3 range,
+    and clamps values below the E4M3 minimum exponent to the E4M3 maximum
+    exponent used by the scale calculation.
+    """
+    # The BF16 payload is the high 16 bits of the FP32 representation.
+    bf16_bits = block.astype(np.float32).view(np.uint32) >> 16
+    abs_max_bits = np.max(bf16_bits & np.uint32(0x7FFF), axis=1).astype(np.uint32)
+    max_exp = abs_max_bits & np.uint32(0x7F80)
+    rounded_exp = (abs_max_bits + np.uint32(0x003F)) & np.uint32(0x7F80)
+    rounded_exp = np.where(max_exp < np.uint32(0x0400), np.uint32(0x0400), rounded_exp)
+    shared_exp = rounded_exp.astype(np.int32) - 0x0400
+    scale_bytes = np.clip(shared_exp >> 7, 0, 254).astype(np.uint8)
+    scale_bytes = np.where(max_exp == np.uint32(0x7F80), np.uint8(255), scale_bytes)
+    return scale_bytes
+
+
 def _quantize_mxfp8(values, scale_alg=0):
     values = np.asarray(values, dtype=np.float32)
     output = np.empty_like(values, dtype=np.float32)
@@ -177,7 +197,7 @@ def _quantize_mxfp8(values, scale_alg=0):
             shared_exp = np.clip(shared_exp, -127, 127)
             scale_bytes[:, block_index] = np.clip(shared_exp + 127, 0, 254).astype(np.uint8)
         elif scale_alg == 1:
-            scale_bytes[:, block_index] = _cublas_scale_bytes(block)
+            scale_bytes[:, block_index] = _dynamic_dtype_range_scale_bytes(block)
         else:
             raise ValueError(f"unsupported scale_alg: {scale_alg}")
         scale = np.exp2(scale_bytes[:, block_index].astype(np.int16) - 127).astype(np.float32)
