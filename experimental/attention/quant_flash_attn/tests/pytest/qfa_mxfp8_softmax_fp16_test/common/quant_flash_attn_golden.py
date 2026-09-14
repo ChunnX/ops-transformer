@@ -23,13 +23,20 @@ import logging
 import math
 
 import torch
-import torch_npu
 
-try:
-    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
-    _HAS_NPU = True
-except ImportError as _e:  # noqa: F841
-    _HAS_NPU = False
+_HAS_NPU = None
+
+
+def _ensure_npu_imports():
+    global _HAS_NPU
+    if _HAS_NPU is None:
+        import torch_npu  # noqa: F401
+        try:
+            from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
+            _HAS_NPU = True
+        except ImportError:
+            _HAS_NPU = False
+    return _HAS_NPU
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger(__name__)
@@ -262,11 +269,13 @@ def npu_mxfp8_fa(
     qr_bf16=None,
     kr_bf16=None,
 ):
-    if not _HAS_NPU:
+    if not _ensure_npu_imports():
         raise ImportError(
             "cann_ops_transformer.ops.quant_flash_attn is not available. "
             "Please check that cann_ops_transformer is installed and all .so are compiled."
         )
+
+    from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
 
     seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu() if seqused_q is not None else None
     seqused_kv_t = torch.tensor(seqused_kv, dtype=torch.int32).npu() if seqused_kv is not None else None
