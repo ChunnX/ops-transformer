@@ -70,18 +70,6 @@ REG_OP(AttentionScore)
     .OP_END_FACTORY_REG(AttentionScore)
 #endif
 
-#ifndef OPS_PROTO_DEF_MASKEDSOFTMAXWITHRELPOSBIAS
-#define OPS_PROTO_DEF_MASKEDSOFTMAXWITHRELPOSBIAS
-REG_OP(MaskedSoftmaxWithRelPosBias)
-    .INPUT(x, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))
-    .OPTIONAL_INPUT(atten_mask, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))
-    .INPUT(relative_pos_bias, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))
-    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BFLOAT16, DT_FLOAT}))
-    .ATTR(scale_value, Float, 1.0)
-    .ATTR(inner_precision_mode, Int, 0)
-    .OP_END_FACTORY_REG(MaskedSoftmaxWithRelPosBias)
-#endif
-
     /**
      * @brief Tutel dispatch function in moe.
      *
