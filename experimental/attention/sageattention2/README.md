@@ -81,7 +81,7 @@ ACLNN 声明见 [aclnn_sage_attention2.h](op_api/aclnn_sage_attention2.h)。先�
 
 已验证环境：CANN Toolkit/950 ops **9.2.0-beta.1**、PyTorch **2.9.0**、torch_npu **2.9.0.post8**，CATLASS commit `337cc89254d46f5d6041d117aca64edf7197027a`。构建和测试依赖见 [requirements.txt](requirements.txt)。
 
-本目录 `experimental/attention/sage_attention2` 由 ops-transformer 顶层工程构建（`--ops=sage_attention2`），包含唯一的 `SageAttention2` 注册入口，无额外的同级阶段算子目录。
+本目录 `experimental/attention/sageattention2` 由 ops-transformer 顶层工程构建（`--ops=sageattention2`），包含唯一的 `SageAttention2` 注册入口，无额外的同级阶段算子目录。
 
 在本目录执行；CANN 和 CATLASS 路径按实际环境设置：
 

@@ -16,4 +16,4 @@ set -u
 repo_dir=$(cd "$op_dir/../../.." && pwd)
 export CATLASS_ROOT=${CATLASS_ROOT:-$repo_dir/../catlass}
 cd "$op_dir/../../.."
-bash build.sh --pkg --experimental --soc=ascend950 --ops=sage_attention2 "$@"
+bash build.sh --pkg --experimental --soc=ascend950 --ops=sageattention2 "$@"
