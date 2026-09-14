@@ -1169,7 +1169,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
                 int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                  cuSeqlensKvGm, constInfo.cmpS2Size);
-                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+                int32_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
+                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + residual;
             }
         }
         int32_t actualOriS2Size = 0;
@@ -1235,7 +1236,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetKVPhyAddrForKvType(
             if (!isOriKv && constInfo.cmpMaskMode != 0) {
                 int32_t actualKvSize = GetSeqLen(bIdx, hasActualSeqKvlen, hasCuSeqlensKv, actualSeqKvlenGm,
                                                  cuSeqlensKvGm, constInfo.cmpS2Size);
-                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + cmpResidualKvGm.GetValue(bIdx);
+                int32_t residual = (constInfo.cmpRatio != 1) ? cmpResidualKvGm.GetValue(bIdx) : 0;
+                restoredSize = actualKvSize * static_cast<int32_t>(constInfo.cmpRatio) + residual;
             }
         }
         int32_t actualOriS2Size = 0;
