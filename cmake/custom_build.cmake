@@ -596,7 +596,7 @@ if (BUILD_OPEN_PROJECT)
                 message(STATUS "Update proto header path: ${proto_header}")
                 set(TARGET_PROTO_DIR ${generate_proto_dir}/updateproto/)
                 file(MAKE_DIRECTORY ${TARGET_PROTO_DIR})
-
+                
                 get_filename_component(proto_header_filename ${proto_header} NAME)
                 string(REPLACE ".h" ".cpp" proto_cpp_filename ${proto_header_filename})
                 set(proto_cpp ${TARGET_PROTO_DIR}${proto_cpp_filename})
@@ -960,11 +960,13 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
             message(STATUS "custom Graph Plugin Source to add es to obj")
             add_dependencies(${GRAPH_PLUGIN_NAME}_obj
                 build_es_math
+                build_es_nn
                 build_es_transformer_cust
             )
             target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
                 PRIVATE
                 es_math
+                es_nn
                 es_transformer_cust
             )
         endif()
@@ -972,12 +974,14 @@ if(generate_proto_srcs AND TARGET cust_proto AND NOT ENABLE_BUILT_IN AND NOT ENA
     # directly link es to opsproto
     add_dependencies(cust_proto
         build_es_math
+        build_es_nn
         build_es_transformer_cust
     )
     target_link_libraries(cust_proto
         PRIVATE
         -Wl,--no-as-needed
         es_math
+        es_nn
         es_transformer_cust
         -Wl,--as-needed
     )
