@@ -8,7 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import logging
 import os
+import shutil
 from abc import ABC, abstractmethod
 from typing import List, Union
 import torch
@@ -17,6 +19,8 @@ from torch.library import Library
 
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
 _as_library = None
+
+logger = logging.getLogger(__name__)
 
 
 def get_as_library():
@@ -172,6 +176,8 @@ class OpBuilder(ABC):
         if self.name in OpBuilder._loaded_ops:
             return OpBuilder._loaded_ops[self.name]
 
+        self._clear_stale_build_lock()
+
         # Lazy import avoids pulling arg_check into every builder import path.
         from cann_ops_transformer.utils.arg_check import wrap_op_module
 
@@ -188,3 +194,68 @@ class OpBuilder(ABC):
         OpBuilder._loaded_ops[self.name] = op_module
 
         return op_module
+
+    def _build_directory(self):
+        """Return torch's JIT build directory for this op, or None."""
+        if os.environ.get("CANN_OPS_LOCK_CLEAN", "1") == "0":
+            return None
+        try:
+            from torch.utils.cpp_extension import _get_build_directory
+
+            build_dir = _get_build_directory(self.name, False)
+        except Exception as e:
+            logger.debug("torch _get_build_directory unavailable: %s", e)
+            build_dir = None
+        if build_dir:
+            return build_dir
+        root = os.environ.get("TORCH_EXTENSIONS_DIR") or os.path.join(
+            os.path.expanduser("~"), ".cache", "torch_extensions"
+        )
+        try:
+            from torch.utils.cpp_extension import _get_impl_name
+
+            prefix = _get_impl_name()
+        except Exception as e:
+            logger.debug("torch _get_impl_name unavailable: %s", e)
+            return None
+        return os.path.join(root, prefix, self.name)
+
+    @staticmethod
+    def _pid_alive(pid):
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            return False
+        return pid > 0 and os.path.exists("/proc/%d" % pid)
+
+    def _clear_stale_build_lock(self):
+        """Remove the build lock dir left by a killed JIT compile process.
+
+        torch guards each JIT build dir with a FileBaton lock directory. If
+        the owning process is killed, the lock dir stays and blocks later
+        builds until torch's own deadlock detection (minutes) kicks in. The
+        lock dir usually comes with a '<lock>.pid' file holding the owner
+        pid; only remove the lock when that owner is gone.
+        """
+        build_dir = self._build_directory()
+        if not build_dir or not os.path.isdir(build_dir):
+            return
+        lock_path = os.path.join(build_dir, "lock")
+        if not os.path.isdir(lock_path):
+            return
+        pid_file = lock_path + ".pid"
+        if os.path.isfile(pid_file):
+            try:
+                with open(pid_file, "r") as f:
+                    pid = f.read().strip()
+            except OSError:
+                return
+            if self._pid_alive(pid):
+                return
+        shutil.rmtree(lock_path, ignore_errors=True)
+        if os.path.isfile(pid_file):
+            try:
+                os.remove(pid_file)
+            except OSError:
+                pass
+        logger.info("Removed stale build lock: %s", lock_path)
