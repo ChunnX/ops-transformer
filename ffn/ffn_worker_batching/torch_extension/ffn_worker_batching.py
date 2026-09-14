@@ -238,7 +238,7 @@ def ffn_worker_batching(
     sync_flag: int = 0,
     mx_output_uint8: bool = False,
 ) -> _Outputs:
-    """在 Ascend950 上按专家重排 token，桥接 aclnnFfnWorkerBatching。
+    """在 Ascend950 上按专家重排 token，桥接 aclnnFfnWorkerBatchingV2。
 
     Args:
         schedule_context: 连续一维 NPU int8 张量，至少 1024 字节，包含真实设备指针。
