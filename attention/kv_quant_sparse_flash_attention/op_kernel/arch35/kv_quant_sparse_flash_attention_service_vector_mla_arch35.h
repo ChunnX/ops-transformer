@@ -21,6 +21,11 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "lib/matmul_intf.h"
+#if __has_include("../../common/op_kernel/init_output.h")
+#include "../../common/op_kernel/init_output.h"
+#else
+#include "init_output.h"
+#endif
 #if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #else
@@ -804,6 +809,59 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(Run
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, qsfaVec2CalcSize);
 }
 
+// InitOutput 专用同步事件 id (与 mixed_quant_sparse_flash_mla 的 initOutputEventId=0 一致).
+// 使用时机在 SoftmaxInitBuffer 的 AllocEventID 之前(CleanOutput 阶段), 且所有 Set/Wait 成对消耗, 无残留冲突.
+// [FIX-aicore] 三个填充各用独立事件 id (参照 flash_attn 的 EVENT_ID0/EVENT_ID1 用法):
+// softmaxSum/softmaxMax 连续两次 InitOutput 复用同一 id+同一 popBuffer 时, 存在
+// 前一填充的 MTE3_V 排空失效导致 popBuffer 被后一填充的 Duplicate 提前覆写的竞态
+// (300119 崩溃 dump 实证: sum/max 前 36 个元素初始值互换), 独立 id 消除该旗标链.
+constexpr uint32_t FILL_SYNC_EVENT_ID = 0U;
+constexpr uint32_t FILL_SYNC_EVENT_ID_LSE_SUM = 1U;
+constexpr uint32_t FILL_SYNC_EVENT_ID_LSE_MAX = 2U;
+
+template <typename T>
+__aicore__ inline void QSFAFillGmSafe(GlobalTensor<T> &gmDst, uint64_t size, T value, TEventID drainEvt)
+{
+    // (已弃用, 保留备用) 自实现分块 Fill: 每 16 块用独占 MTE3_V 事件排空.
+    // 现已改用 AttentionCommon::InitOutput(含越界钳位, 防 300037 垃圾值 OOB).
+    if ASCEND_IS_AIC {
+        return;
+    }
+    LocalTensor<T> fillBuffer;
+    bool ret = PopStackBuffer<T, TPosition::LCM>(fillBuffer);
+    ASCENDC_ASSERT(ret, { KERNEL_LOG(KERNEL_ERROR, "PopStackBuffer failed"); });
+    constexpr uint32_t maxBurstSize = (MAX_REPEAT_TIMES * 256) / sizeof(T);
+    uint64_t popSize = fillBuffer.GetSize();
+    if (popSize > maxBurstSize) {
+        popSize = maxBurstSize;
+    }
+    ASCENDC_ASSERT((popSize > 0), { KERNEL_LOG(KERNEL_ERROR, "popSize must be > 0"); });
+    Duplicate<T>(fillBuffer, value, popSize);
+    event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+    DataCopyExtParams fillParams;
+    fillParams.blockCount = 1;
+    fillParams.srcStride = 0;
+    fillParams.dstStride = 0;
+    uint64_t comOffset = 0;
+    constexpr uint64_t FILL_DRAIN_INTERVAL = 16;
+    uint64_t sinceDrain = 0;
+    while (comOffset < size) {
+        uint64_t remain = size - comOffset;
+        uint64_t curCount = remain < popSize ? remain : popSize;
+        fillParams.blockLen = static_cast<uint32_t>(curCount * sizeof(T));
+        DataCopyPad(gmDst[comOffset], fillBuffer, fillParams);
+        comOffset += curCount;
+        ++sinceDrain;
+        if (sinceDrain >= FILL_DRAIN_INTERVAL || comOffset >= size) {
+            SetFlag<HardEvent::MTE3_V>(drainEvt);
+            WaitFlag<HardEvent::MTE3_V>(drainEvt);
+            sinceDrain = 0;
+        }
+    }
+}
+
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
 {
@@ -817,14 +875,20 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(Co
         totalOutputSize = constInfo.s1Size * constInfo.gSize * constInfo.dSizeV;
     }
 
-    if (coreNum != 0) {
-        uint64_t singleCoreSize = (totalOutputSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
-        uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
-        uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-        if (constInfo.aivIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
-            GlobalTensor<OUTPUT_T> attentionOutEodGm = this->attentionOutGm[constInfo.aivIdx * singleCoreSize];
-            AscendC::Fill<OUTPUT_T>(attentionOutEodGm, singleInitOutputSize, static_cast<OUTPUT_T>(0));
-        }
+    if (coreNum != 0 && totalOutputSize > 0) {
+        // 改用 AttentionCommon::InitOutput (mixed_quant_sparse_flash_mla 同款):
+        //  - 内部含越界双重钳位 (gmOffset >= total 跳过 / 尾片钳到张量边界),
+        //    即使 share 被垃圾值污染也不会越界写 GM (300037 间歇 aicore 止血);
+        //  - 固定地址 VECIN pop buffer (184KB/216KB, 32KB), 不依赖 TPipe 栈态;
+        //  - 首尾 SetFlag/WaitFlag<MTE3_V> 全量排空, Duplicate 后 V_MTE3 握手.
+        //  - vecCoreNum 传 coreNum(32) 保留 MIX_AIC_1_2 分片修复: block0..31 全为 AIV 必认领,
+        //    block32..63 经内部 gmOffset < total 检查自动跳过 (此前 64 份分片在 block63=AIC 时有空洞).
+        // 注意: 其循环内无中间同步, 大输出(>~205块/核)存在尾丢风险, 需 300166 类 case 回归验证.
+        static constexpr uint32_t ATTEN_OUT_POP_BUF_START_ADDR = 184U * 1024U;
+        static constexpr uint32_t ATTEN_OUT_POP_BUF_ELE_SIZE = (32U * 1024U) / sizeof(OUTPUT_T);
+        AttentionCommon::InitOutput<OUTPUT_T, FILL_SYNC_EVENT_ID, ATTEN_OUT_POP_BUF_START_ADDR,
+                                    ATTEN_OUT_POP_BUF_ELE_SIZE, false>(this->attentionOutGm, totalOutputSize, coreNum,
+                                                                       static_cast<OUTPUT_T>(0));
     }
 #if KVQSFA_VERSION >= 2
     if (constInfo.returnSoftmaxLse) {
@@ -835,19 +899,19 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(Co
             totalLseSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
         }
         if (coreNum != 0 && totalLseSize > 0) {
-            uint64_t singleCoreLseSize = (totalLseSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
-            uint64_t tailLseSize = totalLseSize - constInfo.aivIdx * singleCoreLseSize;
-            uint64_t singleInitLseSize = tailLseSize < singleCoreLseSize ? tailLseSize : singleCoreLseSize;
-            if (constInfo.aivIdx * singleCoreLseSize < totalLseSize && singleInitLseSize > 0) {
-                GlobalTensor<float> softmaxSumEodGm = this->softmaxSumGm[constInfo.aivIdx * singleCoreLseSize];
-                GlobalTensor<float> softmaxMaxEodGm = this->softmaxMaxGm[constInfo.aivIdx * singleCoreLseSize];
-                AscendC::Fill<float>(softmaxSumEodGm, singleInitLseSize, static_cast<float>(0.0));
-                AscendC::Fill<float>(softmaxMaxEodGm, singleInitLseSize,
-                                     static_cast<float>(-std::numeric_limits<float>::infinity()));
-            }
+            // 同 attentionOut: InitOutput + coreNum 份分片(钳位+跳过逻辑内置)
+            static constexpr uint32_t LSE_POP_BUF_START_ADDR = 216U * 1024U;
+            static constexpr uint32_t LSE_POP_BUF_ELE_SIZE = (32U * 1024U) / sizeof(float);
+            AttentionCommon::InitOutput<float, FILL_SYNC_EVENT_ID_LSE_SUM, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE,
+                                        false>(this->softmaxSumGm, totalLseSize, coreNum, static_cast<float>(0.0));
+            AttentionCommon::InitOutput<float, FILL_SYNC_EVENT_ID_LSE_MAX, LSE_POP_BUF_START_ADDR, LSE_POP_BUF_ELE_SIZE,
+                                        false>(this->softmaxMaxGm, totalLseSize, coreNum,
+                                               static_cast<float>(-std::numeric_limits<float>::infinity()));
         }
     }
 #endif
+    // 末尾 AIV-only SyncAll() 必须保留: 实证移除后 pad-0 语义丢失 (空闲核提前过
+    // Process 屏障, 填充与主管线竞争 mmRes 尾部泳道, 300119 output[1] 100%->92%).
     SyncAll();
 }
 
