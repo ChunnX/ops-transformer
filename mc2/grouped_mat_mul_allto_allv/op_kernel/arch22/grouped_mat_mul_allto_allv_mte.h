@@ -76,9 +76,6 @@ public:
         taskTilingInfo_ = taskTilingInfo;
         sendBuffer_ = reinterpret_cast<__gm__ T *>(sendBuffer);
         recvBuffer_ = reinterpret_cast<__gm__ T *>(recvBuffer);
-        // Kept in the common MTE Init signature for serialized-tiling ABI
-        // compatibility. Expert-overlap offsets are owner-local in UB.
-        (void)cumsumBuffer;
         if ASCEND_IS_AIC {
             return;
         }
@@ -100,6 +97,14 @@ public:
             rankSize_ = a2WinContext_->rankNum;
             winSize_ = a2WinContext_->winSize == 0UL ? commBufferSize : a2WinContext_->winSize;
         }
+        // The serialized layout places the (unused) cumsum region directly
+        // after the GMM output; the local stage-progress slots are appended
+        // after it. Host allocation and this derivation share
+        // CumsumRegionBytes(), so the two can never drift.
+        stageProgressBase_ = reinterpret_cast<__gm__ int64_t *>(
+            cumsumBuffer +
+            MC2KernelTemplate::Gmma2avMteTiling::CumsumRegionBytes(
+                rankSize_, static_cast<uint64_t>(taskTilingInfo_->e)));
         coreIdx_ = AscendC::GetBlockIdx();
         subBlockIdx_ = AscendC::GetSubBlockIdx();
         logicalCoreIdx_ = coreIdx_ / AscendC::GetTaskRation();
@@ -120,76 +125,124 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        // 0/1/2 protocol, step 1: clear every sync slot in this rank's own
-        // window before any peer can observe a new-round value. The previous
-        // End's RECV_DONE rendezvous guarantees every peer finished reading
-        // this window last round, so the clear cannot race a peer's read.
-        // Starting from 0 makes each round's value-1 publish unambiguous
-        // (no stale 1/2 can be mistaken for this round's 1) and also
-        // sanitises uninitialised window memory on the first round.
-        ResetSyncRegion();
-        // No epoch/ACK admission. Cross-invocation safety comes from the
-        // clear above plus the previous End's RECV_DONE rendezvous.
-        PublishLocalCountTable();
+        // Role split: subblock 0 stages workspace→window and publishes a
+        // local GM progress slot; subblock 1 owns the cross-rank protocol.
+        // Both roles enter the common-init rendezvous below, which orders
+        // every progress-slot clear before the first Comm-side progress
+        // read in the expert loop and the count-table publication before
+        // the COUNT_READY phase.
+        if (IsStageAiv()) {
+            // Clear this producer's stage-progress slot (slot value is
+            // expertIdx + 1, monotonic within the invocation). Clearing it
+            // before the common-init barrier below guarantees the Comm role
+            // cannot satisfy an early wait with a stale value from a
+            // previous invocation.
+            StoreSyncFlag(GetStageProgressSlot(logicalCoreIdx_), 0);
+        } else {
+            // 0/1/2 protocol, step 1: clear every sync slot in this rank's
+            // own window before any peer can observe a new-round value. The
+            // previous End's RECV_DONE rendezvous guarantees every peer
+            // finished reading this window last round, so the clear cannot
+            // race a peer's read. Starting from 0 makes each round's value-1
+            // publish unambiguous (no stale 1/2 can be mistaken for this
+            // round's 1) and also sanitises uninitialised window memory on
+            // the first round.
+            ResetSyncRegion();
+            PublishLocalCountTable();
+        }
         // Write COUNT_READY = 1 to all peers (send done), wait for all peers' 1.
         // A slot's 1 is never overwritten within the round: writing the
         // consume-done 2 into the same slot would let a slow peer miss the
         // transient 1 and spin forever.
         PublishAndWaitRankPhase(Gmma2avMteTiling::COUNT_READY_BASE, 1);
-        BuildDestinationOffsets();
+        if (!IsStageAiv()) {
+            BuildDestinationOffsets();
+        }
         LocalAivSync();
         localExpertBaseRows_ = 0UL;
         // Mirror the AIC scheduler's initial cross-expert rotation state.
         expertStartCoreIdx_ = 0U;
     }
 
+    // Stage path: copy one expert's locally owned M tiles from the GMM
+    // workspace into this rank's window. The C2V notification for this
+    // expert has already been consumed by the scheduler, so every row read
+    // here is visible. This path never waits on a peer, pulls payload, or
+    // joins any rendezvous that requires the Comm subblock.
     __aicore__ inline void StageExpertPayload(uint32_t startExpertIdx, uint32_t endExpertIdx)
     {
         if ASCEND_IS_AIC {
             return;
         }
-
-        // Each AIV waits only on its paired AIC, which notifies once per
-        // expert, and copies only the M-row tiles that paired AIC computed,
-        // so every row it reads is already visible after the paired wait.
-        // No all-AIV rendezvous is needed before the copy; the completion
-        // rendezvous that guards the ready-flag publication stays at the
-        // start of PublishChunkReady.
         PublishLocalChunk(startExpertIdx, endExpertIdx);
+    }
+
+    // Publish the Stage→Comm completion progress for this producer core.
+    // Called only for experts whose M tiles this core actually staged
+    // (scheduler-gated on HasExpertWork). Release ordering: CopyGmToGm
+    // completes the payload MTE3 writes with a DDR barrier before returning,
+    // and StoreSyncFlag ends with its own DDR barrier, so the payload is
+    // globally visible before the progress value is.
+    __aicore__ inline void PublishStageProgress(uint32_t expertIdx)
+    {
+        if (!IsStageAiv()) {
+            return;
+        }
+        StoreSyncFlag(GetStageProgressSlot(logicalCoreIdx_), static_cast<int64_t>(expertIdx) + 1);
+    }
+
+    // Cross-rank protocol for one expert, executed by the Comm subblocks
+    // only. Order per expert: wait every local producer's stage progress,
+    // publish ExpertReady to all owned destinations, then wait owned
+    // sources and pull. Every wait has an independent publisher:
+    // ExpertReady publication depends only on the publisher rank's local
+    // stage progress, so worker progress skew cannot form a publish/wait
+    // cycle. No all-AIV rendezvous exists in this path.
+    __aicore__ inline void CommExpertChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if (IsStageAiv() || rankWorkerCount_ == 0U) {
+            return;
+        }
+        WaitLocalStageProgress(startExpertIdx, endExpertIdx);
+        PublishChunkReady(startExpertIdx, endExpertIdx);
+        WaitChunkReady(startExpertIdx, endExpertIdx);
+        PullExpertChunk(startExpertIdx, endExpertIdx);
     }
 
     __aicore__ inline void PublishChunkReady(uint32_t startExpertIdx, uint32_t endExpertIdx)
     {
-        // Match mega_moe/combine A3's destination-local mailbox protocol. All
-        // payload writers drain before the leading barrier, then source rank
-        // S writes ExpertReady(D, S, E) into every destination D's local
-        // window. A destination only polls its own window through the valid
-        // L2-bypass alias; it never polls an encoded peer VA.
-        LocalAivSync();
-        if (subBlockIdx_ == 0U && rankWorkerCount_ != 0U) {
-            for (uint32_t dstRank = logicalCoreIdx_; dstRank < rankSize_; dstRank += rankWorkerCount_) {
-                if (PublishExpertReadyRange(dstRank, startExpertIdx, endExpertIdx, 1)) {
-                    continue;
-                }
-                PublishExpertReadyPerFlag(dstRank, startExpertIdx, endExpertIdx, 1);
+        // Comm role only. The old all-AIV drain barrier is replaced by the
+        // per-expert stage-progress wait in CommExpertChunk: ExpertReady for
+        // expert e is published only after every producer of e's M tiles
+        // has made its payload visible, at expert granularity.
+        if (rankWorkerCount_ == 0U) {
+            return;
+        }
+        for (uint32_t dstRank = logicalCoreIdx_; dstRank < rankSize_; dstRank += rankWorkerCount_) {
+            if (PublishExpertReadyRange(dstRank, startExpertIdx, endExpertIdx, 1)) {
+                continue;
             }
+            PublishExpertReadyPerFlag(dstRank, startExpertIdx, endExpertIdx, 1);
         }
     }
 
     __aicore__ inline void WaitChunkReady(uint32_t startExpertIdx, uint32_t endExpertIdx)
     {
-        // Finish every outbound publication before allowing any worker to
-        // wait, preventing a rank-level publish/wait cycle.
-        LocalAivSync();
-        if (subBlockIdx_ == 0U && rankWorkerCount_ != 0U) {
-            for (uint32_t srcRank = logicalCoreIdx_; srcRank < rankSize_; srcRank += rankWorkerCount_) {
-                if (WaitExpertReadyRange(srcRank, startExpertIdx, endExpertIdx, 1)) {
-                    continue;
-                }
-                WaitExpertReadyPerFlag(srcRank, startExpertIdx, endExpertIdx, 1);
-            }
+        // Comm role only. CommExpertChunk orders this after the worker's own
+        // outbound publication for the same expert, so a worker never waits
+        // on a slot whose publisher is itself blocked on a waiter.
+        if (rankWorkerCount_ == 0U) {
+            return;
         }
-        LocalAivSync();
+        for (uint32_t srcRank = logicalCoreIdx_; srcRank < rankSize_; srcRank += rankWorkerCount_) {
+            if (WaitExpertReadyRange(srcRank, startExpertIdx, endExpertIdx, 1)) {
+                continue;
+            }
+            WaitExpertReadyPerFlag(srcRank, startExpertIdx, endExpertIdx, 1);
+        }
     }
 
     __aicore__ inline void PullExpertChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
@@ -201,12 +254,11 @@ public:
             // The same worker that acquired each source's ready flag loads
             // that source's count table and remains its payload-pull owner.
             BuildPeerSourceOffsets();
-            LocalAivSync();
         }
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
         AscendC::LocalTensor<uint32_t> destinationOffsets = GetDestinationOffsetTensor();
         AscendC::LocalTensor<uint32_t> sourceOffsets = GetSourceOffsetTensor();
-        for (uint32_t srcRank = logicalCoreIdx_; subBlockIdx_ == 0U && rankWorkerCount_ != 0U && srcRank < rankSize_;
+        for (uint32_t srcRank = logicalCoreIdx_; rankWorkerCount_ != 0U && srcRank < rankSize_;
              srcRank += rankWorkerCount_) {
             // Source rows are expert-major/destination-major, whereas output
             // rows are source-major/expert-major. Other destinations can
@@ -244,14 +296,14 @@ public:
                 PullPeerExpertFromSource(srcRank, expertIdx);
             }
         }
-        // Non-copying subblocks must join the same barrier before any AIV
-        // advances to the next expert or the End completion protocol.
-        LocalAivSync();
         // No consume-done write-back here: overwriting the source's 1 with 2
         // in the source's window would let a slow source miss the transient
         // 1 and spin forever. Consumption is confirmed once for the whole
         // round by End's RECV_DONE rendezvous instead, which every peer
         // waits for before the next invocation reuses any window data.
+        // End's leading all-AIV barrier is also what orders this rank's last
+        // pull before the RECV_DONE publication, so no per-expert trailing
+        // rendezvous is needed.
     }
 
     __aicore__ inline void Wait(uint32_t startExpertIdx)
@@ -274,6 +326,21 @@ public:
     }
 
 public:
+    // Role split inside the 1:2 AIC:AIV pairing. mode=0x2 C2V
+    // notifications are delivered to BOTH AIV subblocks of the AI core, so
+    // both must consume every notification to keep the FFTS counters
+    // aligned; the split therefore happens in the work performed after the
+    // notification, not in the notification itself.
+    __aicore__ inline bool IsStageAiv() const
+    {
+        return subBlockIdx_ == 0U;
+    }
+
+    __aicore__ inline bool IsCommAiv() const
+    {
+        return subBlockIdx_ != 0U;
+    }
+
     // Mirror of the AIC-side ownership decision: true when the AIC paired
     // with this AIV logical core owns at least one M tile of the expert.
     // Reads the same rotation state PublishLocalChunk advances, so it must
@@ -365,7 +432,7 @@ private:
                 expertRows += static_cast<uint64_t>(taskTilingInfo_->sendCnt[dstRank * expertNum + expertIdx]);
             }
             const uint32_t loopsM = static_cast<uint32_t>((expertRows + tileRows - 1UL) / tileRows);
-            if (subBlockIdx_ == 0U && aicCoreNum != 0U && expertRows > 0UL) {
+            if (aicCoreNum != 0U && expertRows > 0UL) {
                 const uint32_t startMIdx = (logicalCoreIdx_ + aicCoreNum - expertStartCoreIdx_) % aicCoreNum;
                 for (uint32_t mIdx = startMIdx; mIdx < loopsM; mIdx += aicCoreNum) {
                     const uint64_t tileRowStart = static_cast<uint64_t>(mIdx) * tileRows;
@@ -384,7 +451,7 @@ private:
 
     __aicore__ inline void BuildDestinationOffsets()
     {
-        if (subBlockIdx_ != 0U) {
+        if (IsStageAiv()) {
             return;
         }
         AscendC::LocalTensor<uint32_t> offsets = GetDestinationOffsetTensor();
@@ -409,7 +476,7 @@ private:
 
     __aicore__ inline void BuildPeerSourceOffsets()
     {
-        if (subBlockIdx_ != 0U || rankWorkerCount_ == 0U) {
+        if (IsStageAiv() || rankWorkerCount_ == 0U) {
             return;
         }
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
@@ -477,6 +544,76 @@ private:
             }
         }
         AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
+    }
+
+    // Local (non-CCL) stage-progress protocol. Slot c is written ONLY by
+    // the Stage subblock of logical core c through a 32-byte MTE3
+    // transaction that ends with a DDR barrier; readers use 32-byte MTE2
+    // transactions with the L2 bypass hint (see WaitStageProgress). Both
+    // widths are naturally aligned inside one 64-byte cache line, and the
+    // producer's DDR barrier after the payload copy plus the reader's DDR
+    // barrier after observing the value provide the release/acquire
+    // ordering.
+    __aicore__ inline __gm__ int64_t *GetStageProgressSlot(uint32_t producerCore) const
+    {
+        return stageProgressBase_ +
+               static_cast<uint64_t>(producerCore) *
+                   (Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES / sizeof(int64_t));
+    }
+
+    __aicore__ inline void WaitStageProgress(uint32_t producerCore, int64_t boundary)
+    {
+        AscendC::LocalTensor<int64_t> local = GetSyncTensor();
+        AscendC::GlobalTensor<int64_t> global;
+        global.SetGlobalBuffer(GetStageProgressSlot(producerCore));
+        // The slot is local GM written by the Stage subblock of another core
+        // (possibly on another die). A plain MTE2 poll can keep hitting a
+        // stale line in this die's L2 that the producer's DDR-barriered write
+        // never invalidates, hanging the Comm role intermittently. Use the
+        // same L2-bypass policy as every other local-slot poll in this file
+        // (valid for local GM VAs only, never for encoded peer VAs).
+        global.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        while (true) {
+            AscendC::DataCopy(local, global, GmmA2avMteDetail::SYNC_MTE_ELEMENTS);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID3);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID3);
+            // >= rather than ==: the producer publishes monotonic boundaries,
+            // so a later expert's value can legitimately overwrite the one
+            // being waited for and still proves this expert is staged.
+            if (local.GetValue(0U) >= boundary) {
+                AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
+                break;
+            }
+        }
+    }
+
+    // Wait until every producer that owns M tiles of the expert range has
+    // staged them, replaying the same cross-expert rotation the AIC
+    // scheduler and PublishLocalChunk use. Cores without tiles for an
+    // expert never write progress for it and are never waited on. The
+    // rotation advance below keeps this instance's HasExpertWork answers
+    // identical to the Stage subblock's.
+    __aicore__ inline void WaitLocalStageProgress(uint32_t startExpertIdx, uint32_t endExpertIdx)
+    {
+        const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
+        const uint32_t aicCoreNum = rankWorkerCount_;
+        const uint32_t tileRows = Gmma2avMteTiling::L1_TILE_M;
+        for (uint32_t expertIdx = startExpertIdx; expertIdx < endExpertIdx; ++expertIdx) {
+            uint64_t expertRows = 0UL;
+            for (uint32_t dstRank = 0U; dstRank < rankSize_; ++dstRank) {
+                expertRows += static_cast<uint64_t>(taskTilingInfo_->sendCnt[dstRank * expertNum + expertIdx]);
+            }
+            const uint32_t loopsM = static_cast<uint32_t>((expertRows + tileRows - 1UL) / tileRows);
+            if (aicCoreNum != 0U && expertRows > 0UL) {
+                const uint32_t producerCount = loopsM < aicCoreNum ? loopsM : aicCoreNum;
+                for (uint32_t mIdx = 0U; mIdx < producerCount; ++mIdx) {
+                    WaitStageProgress((expertStartCoreIdx_ + mIdx) % aicCoreNum, static_cast<int64_t>(expertIdx) + 1);
+                }
+            }
+            expertStartCoreIdx_ = (expertStartCoreIdx_ + loopsM) % aicCoreNum;
+        }
     }
 
     __aicore__ inline void PullPeerExpertFromSource(uint32_t srcRank, uint32_t expertIdx)
@@ -580,8 +717,10 @@ private:
     __aicore__ inline void LocalAivSync()
     {
         // On arch22 SyncAll<true> drains local pipelines and performs an
-        // AIV-only inter-core rendezvous. Every AIV, including non-primary
-        // subblocks, enters every protocol phase in the same order.
+        // AIV-only inter-core rendezvous. After the Stage/Comm role split
+        // this is used ONLY at common initialization (BeginExpertPipeline)
+        // and common exit (End), which both roles reach; the per-expert
+        // loops contain no all-AIV rendezvous.
         AscendC::SyncAll<true>();
     }
 
@@ -594,13 +733,13 @@ private:
     __aicore__ inline void PublishAndWaitRankPhase(uint64_t phaseBase, int64_t flag)
     {
         LocalAivSync();
-        if (subBlockIdx_ == 0U && logicalCoreIdx_ == 0U) {
+        if (IsCommAiv() && logicalCoreIdx_ == 0U) {
             StoreSyncFlag(GetFixedSyncSlot(rank_, phaseBase, 0UL), flag);
         }
         // Do not allow a worker to wait until this rank's own state is
         // published; the slot must be visible before anyone polls peers.
         LocalAivSync();
-        if (subBlockIdx_ == 0U && rankWorkerCount_ != 0U) {
+        if (IsCommAiv() && rankWorkerCount_ != 0U) {
             for (uint32_t srcRank = logicalCoreIdx_; srcRank < rankSize_; srcRank += rankWorkerCount_) {
                 // Peer windows must be polled without the L2-bypass alias:
                 // the alias is only valid for local GM addresses.
@@ -658,7 +797,7 @@ private:
     // that may have been dirtied by previous rounds with different shapes.
     __aicore__ inline void ResetSyncRegion()
     {
-        if (subBlockIdx_ != 0U || rankWorkerCount_ == 0U) {
+        if (IsStageAiv() || rankWorkerCount_ == 0U) {
             return;
         }
         AscendC::LocalTensor<int64_t> staging = GetSyncTensor();
@@ -817,7 +956,9 @@ private:
 
     __aicore__ inline bool IsPrimaryAiv() const
     {
-        return logicalCoreIdx_ == 0U && subBlockIdx_ == 0U;
+        // The Comm subblock of logical core 0 publishes this rank's count
+        // table and the rank-level phase flags.
+        return logicalCoreIdx_ == 0U && IsCommAiv();
     }
 
     __aicore__ inline void WaitSyncFlag(__gm__ int64_t *source, int64_t expected, bool bypassL2)
@@ -908,6 +1049,10 @@ private:
     __gm__ AscendC::HcclCombineOpParam *a2WinContext_{nullptr};
     __gm__ T *sendBuffer_{nullptr};
     __gm__ T *recvBuffer_{nullptr};
+    // Base of the local stage-progress region (one 64-byte slot per AIC
+    // logical core, appended after the cumsum region in user workspace).
+    // Never overlaps the cross-card sync mailbox in the CCL window.
+    __gm__ int64_t *stageProgressBase_{nullptr};
     uint64_t winSize_{0UL};
     uint64_t localExpertBaseRows_{0UL};
     // AIV-side replay of the AIC scheduler's cross-expert first-core
@@ -998,16 +1143,21 @@ public:
             ExpertReadyFlag flagEven(EXPERT_READY_FLAG_EVEN, EXPERT_REVERSE_FLAG_EVEN);
             ExpertReadyFlag flagOdd(EXPERT_READY_FLAG_ODD, EXPERT_REVERSE_FLAG_ODD);
             commOp.BeginExpertPipeline();
-            // Expert-granular pipeline: each iteration stages, publishes,
-            // waits for and pulls exactly one expert. Only experts whose
-            // tiles the paired AIC owns consume a C2V wait; skipped experts
-            // keep every communication phase and the state advance below
-            // (PublishLocalChunk advances the rotation for all experts).
-            // Ranks progress independently; the per-expert ExpertReady flags
-            // keep cross-rank skew safe.
+            // Stage/Comm role split. mode=0x2 delivers every AIC notification
+            // to BOTH AIV subblocks of the AI core, so both consume the same
+            // notification sequence (skipping either side's wait would
+            // desynchronise the FFTS counters and stall the AIC). The split
+            // is in the work after the notification: subblock 0 (Stage)
+            // consumes the notification, copies its M tiles into the window
+            // and publishes its local progress — its path never waits on a
+            // peer. Subblock 1 (Comm) consumes the notification and drives
+            // the cross-rank protocol from that local progress. HasExpertWork
+            // is derived from the same rotation state on both subblocks, so
+            // the wait sequences stay identical.
             uint32_t validNotifyCount = 0U;
             for (uint32_t expertIdx = 0U; expertIdx < expertNum; ++expertIdx) {
-                if (commOp.HasExpertWork(expertIdx)) {
+                const bool hasWork = commOp.HasExpertWork(expertIdx);
+                if (hasWork) {
                     if (validNotifyCount & 1U) {
                         Catlass::Arch::CrossCoreWaitFlagWithReverse<0x2, PIPE_MTE3>(flagOdd);
                     } else {
@@ -1015,10 +1165,14 @@ public:
                     }
                     ++validNotifyCount;
                 }
-                commOp.StageExpertPayload(expertIdx, expertIdx + 1U);
-                commOp.PublishChunkReady(expertIdx, expertIdx + 1U);
-                commOp.WaitChunkReady(expertIdx, expertIdx + 1U);
-                commOp.PullExpertChunk(expertIdx, expertIdx + 1U);
+                if (commOp.IsStageAiv()) {
+                    commOp.StageExpertPayload(expertIdx, expertIdx + 1U);
+                    if (hasWork) {
+                        commOp.PublishStageProgress(expertIdx);
+                    }
+                } else {
+                    commOp.CommExpertChunk(expertIdx, expertIdx + 1U);
+                }
             }
 
             commOp.End();

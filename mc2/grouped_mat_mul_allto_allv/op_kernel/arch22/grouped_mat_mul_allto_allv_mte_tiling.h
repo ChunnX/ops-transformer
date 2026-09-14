@@ -107,6 +107,29 @@ constexpr uint64_t SYNC_REGION_FROM_TAIL = CCL_TAIL_SAFETY_BYTES;
 constexpr uint64_t SYNC_SLOT_BYTES = 64UL;
 constexpr uint32_t MAX_RANK_SIZE = GMMA2AV_MTE_MAX_RANK_SIZE;
 constexpr uint32_t MAX_COUNT_NUM = GMMA2AV_MTE_MAX_COUNT_NUM;
+
+// Local (non-CCL) stage-progress region appended after the cumsum region in
+// the operator workspace. One cache-line slot per AIC logical core: the Stage
+// subblock of core c is the single writer of slot c, every Comm subblock is a
+// reader. The value is the last staged expert index + 1 (monotonic).
+constexpr uint64_t STAGE_PROGRESS_SLOT_BYTES = SYNC_SLOT_BYTES;
+
+// Byte size of the serialized cumsum region. Shared by the host workspace
+// allocation and the device-side address derivation so the appended
+// stage-progress region cannot drift between them. [host, aicore] dual
+// target: plain helpers called from __aicore__ code are emitted as
+// host-only symbols and fail the device link (undefined symbol).
+#if defined(__CCE__)
+#define GMMA2AV_MTE_HOST_DEVICE __forceinline__ [host, aicore]
+#else
+#define GMMA2AV_MTE_HOST_DEVICE
+#endif
+GMMA2AV_MTE_HOST_DEVICE constexpr uint64_t CumsumRegionBytes(uint64_t rankSize, uint64_t expertNum)
+{
+    const uint64_t countBytes = rankSize * expertNum * sizeof(int32_t);
+    return (countBytes + COUNT_TABLE_ALIGNMENT_BYTES - 1UL) / COUNT_TABLE_ALIGNMENT_BYTES *
+           COUNT_TABLE_ALIGNMENT_BYTES;
+}
 // Byte offsets within the fixed synchronization region.  Region bases do not
 // depend on the current rank size or expert count, so persistent HCCL windows
 // can safely be reused by cases with different shapes.

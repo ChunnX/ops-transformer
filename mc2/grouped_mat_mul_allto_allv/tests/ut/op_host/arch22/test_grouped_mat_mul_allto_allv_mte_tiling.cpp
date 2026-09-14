@@ -126,6 +126,21 @@ TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, FixedSyncLayout)
     EXPECT_LE(FIXED_SYNC_BYTES, SYNC_REGION_FROM_TAIL);
 }
 
+// The local stage-progress region is appended after the aligned cumsum region
+// in the operator workspace: one cache-line slot per AIC logical core. The
+// host allocation and the device address derivation share CumsumRegionBytes,
+// so the two layouts cannot drift.
+TEST_F(GroupedMatMulAlltoAllvMteArch22TilingTest, StageProgressLayout)
+{
+    using namespace MC2KernelTemplate::Gmma2avMteTiling;
+    EXPECT_EQ(STAGE_PROGRESS_SLOT_BYTES, SYNC_SLOT_BYTES);
+    // Region size is count-table bytes aligned up to the workspace alignment.
+    EXPECT_EQ(CumsumRegionBytes(8UL, 4UL), 512UL);
+    EXPECT_EQ(CumsumRegionBytes(2UL, 513UL), 4608UL);
+    EXPECT_EQ(CumsumRegionBytes(8UL, 4UL) % COUNT_TABLE_ALIGNMENT_BYTES, 0UL);
+    EXPECT_EQ(CumsumRegionBytes(2UL, 513UL) % COUNT_TABLE_ALIGNMENT_BYTES, 0UL);
+}
+
 TEST_P(GroupedMatMulAlltoAllvMteArch22TilingTest, ShapeSize)
 {
     auto testParam = GetParam();

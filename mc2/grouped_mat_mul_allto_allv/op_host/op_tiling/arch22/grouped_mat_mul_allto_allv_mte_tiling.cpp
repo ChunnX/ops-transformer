@@ -91,12 +91,17 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetMteWorkspaceInfo()
                     return ge::GRAPH_FAILED);
     const uint64_t gmmOutputWorkspaceSize = mc2tiling::AlignUp(
         localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
-    const uint64_t countStorageBytes =
-        mc2tiling::AlignUp(localParams_.epWorldSize * localParams_.ep * sizeof(int32_t),
-                           MC2KernelTemplate::Gmma2avMteTiling::COUNT_TABLE_ALIGNMENT_BYTES);
     const uint64_t cumsumWorkspaceSize =
-        mc2tiling::AlignUp(countStorageBytes, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
-    mteWorkspaceSize_ = static_cast<uint64_t>(libApiWorkSpaceSize_) + gmmOutputWorkspaceSize + cumsumWorkspaceSize;
+        mc2tiling::AlignUp(MC2KernelTemplate::Gmma2avMteTiling::CumsumRegionBytes(localParams_.epWorldSize,
+                                                                                  localParams_.ep),
+                           MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
+    // Local stage-progress slots appended after the cumsum region; the device
+    // derives the same base from cumsumWorkspaceOffset + CumsumRegionBytes().
+    const uint64_t stageProgressWorkspaceSize =
+        mc2tiling::AlignUp(localParams_.aicCoreNum * MC2KernelTemplate::Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES,
+                           MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
+    mteWorkspaceSize_ = static_cast<uint64_t>(libApiWorkSpaceSize_) + gmmOutputWorkspaceSize + cumsumWorkspaceSize +
+                        stageProgressWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }
 
