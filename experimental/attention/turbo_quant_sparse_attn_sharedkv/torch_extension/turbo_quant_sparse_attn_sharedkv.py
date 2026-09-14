@@ -90,6 +90,7 @@ class TurboQuantSparseAttnSharedkvOpBuilder(OpBuilder):
 
 
 turbo_quant_sparse_attn_sharedkv_op_builder = TurboQuantSparseAttnSharedkvOpBuilder()
+turbo_quant_sparse_attn_sharedkv_op_builder._ensure_initialized()
 
 
 @impl(get_as_library(), turbo_quant_sparse_attn_sharedkv_op_builder.name, "PrivateUse1")
