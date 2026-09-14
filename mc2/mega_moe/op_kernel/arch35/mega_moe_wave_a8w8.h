@@ -240,12 +240,10 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
                                     PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, false, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
         gmm1AddrInfo, gmm1ExpertState, gmm1Position.tokenIndexInExpert, gmm1TilesPerMGroup_);
-    // clang-format off
     /*
      * 只有该 problem 从第 0 行覆盖到专家尾，后续 Wave 才不会再次读取同一份 GMM1 权重。
      * 热点专家的任一 Wave problem 都为 false，即使本次不足 256 行也保留正常 L2 cache。
      */
-    // clang-format on
     bool isWholeExpert =
         gmm1Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
     uint32_t waveTokenStartIndex =
@@ -551,13 +549,11 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     }
 }
 
-// clang-format off
 /*
  * 按动态 WAVE 边界滚动执行 A8W8 MoE 流水。AIV1 启动时连续准备 W0/W1，稳态消费已准备 WAVE 的同时
  * Dispatch 下一 WAVE，始终保持一轮 lookahead。每次先规划完整 WAVE 的 [begin, end) 范围，再通过统一的
  * DispatchTokenRange 执行搬运和 ready 发布；GMM1、Activation、GMM2 与 Combine 复用同一 WAVE 终点。
  */
-// clang-format on
 
 template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages()
@@ -601,7 +597,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
-        // clang-format off
         /*
          * GMM2/Combine 三角色整体滞后一拍（大 bs 门控）：wave w 的 GMM2/Combine 延至 GMM1(w+1)
          * 之后执行，用下一 wave 的 GMM1 覆盖 AIC 等激活发布的自旋（AIV0 epilogue 在末批 MMAD
@@ -611,7 +606,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
          * W4 wave-ahead 路径同款模式）。此前的 AIC 单方滞后在逐 wave dispatch 交错的新调度下
          * 与 AIV 侧 tile 序号错拍（实测 aic_scalar 0.30->0.54 净劣化），已废弃。
          */
-        // clang-format on
         ProcessGmm2WithWaveLag(waveEndPosition, gmm2PendingWaveEnd, hasPendingGmm2Wave, gmm2State, combineBufferConfig,
                                gmm2LagActive);
 
