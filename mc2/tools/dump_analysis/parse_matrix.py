@@ -34,6 +34,8 @@ import math
 
 logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
 
+DEFAULT_PREVIEW_ROWS = 16
+
 DTYPE_INFO = {
     "fp16":     {"size": 2, "name": "FP16 (IEEE half)"},
     "bf16":     {"size": 2, "name": "BF16 (bfloat16)"},
@@ -234,7 +236,7 @@ def main():
                 epilog="""\
 示例:
   # 解析 COMM_OUT 段 (fp8_e4m3, shape 57086x1536, 只看前 8 行)
-  python parse_matrix.py workspace_seg1_type5_*.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --head 8
+  python parse_matrix.py workspace_seg1_type5_*.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --row-range 0 8
 
   # 看行 5:10 列 5:10 的数据（空格分隔）
   python parse_matrix.py seg.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --row-range 5 10 --col-range 5 10
@@ -243,10 +245,8 @@ def main():
   python parse_matrix.py seg.bin --dtype fp16 --rows 4096 --cols 1024 --row 0 100 200 --col 0 63 1023
 
   # 解析 scale 通信段 (e8m0, shape 57086x48, 48=24*2)
-  python parse_matrix.py workspace_seg4_type11_*.bin --dtype e8m0 --rows 57086 --cols 48 --head 8
+  python parse_matrix.py workspace_seg4_type11_*.bin --dtype e8m0 --rows 57086 --cols 48 --row-range 0 8
 
-  # JSON 输出
-  python parse_matrix.py seg.bin --dtype fp8_e4m3 --rows 100 --cols 50 --json
         """,
     )
     parser.add_argument("bin_file", help="workspace_seg*_type*_*.bin 文件路径")
@@ -254,8 +254,6 @@ def main():
                         help="数据类型")
     parser.add_argument("--rows", type=int, required=True, help="矩阵行数 M")
     parser.add_argument("--cols", type=int, required=True, help="矩阵列数 K")
-    parser.add_argument("--head", type=int, default=16, help="只显示前 N 行（默认 16）")
-    parser.add_argument("--tail", type=int, default=0, help="同时显示后 N 行（默认不显示）")
     parser.add_argument("--row-range", metavar=("START", "END"), type=int, nargs=2, default=None,
                         help="显示指定行范围 [start, end)，如 --row-range 5 10")
     parser.add_argument("--col-range", metavar=("START", "END"), type=int, nargs=2, default=None,
@@ -264,7 +262,6 @@ def main():
                         help="只显示指定行号（可指定多个，如 --row 0 100 57085）")
     parser.add_argument("--col", type=int, nargs="+", default=None,
                         help="只显示指定列号（可指定多个，如 --col 0 63 1535）")
-    parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     parser.add_argument("--transpose", action="store_true", help="按列优先顺序解析（AlltoAll 通信结果布局）")
     args = parser.parse_args()
 
@@ -303,9 +300,8 @@ def main():
     elif args.row_range:
         display_rows = list(range(max(args.row_range[0], 0), min(args.row_range[1], args.rows)))
     else:
-        display_rows = list(range(min(args.head, args.rows)))
-        if args.tail > 0 and args.rows > args.head:
-            display_rows += list(range(max(args.head, args.rows - args.tail), args.rows))
+        # 未指定行时固定预览前 16 行，不再通过额外命令行参数控制。
+        display_rows = list(range(min(DEFAULT_PREVIEW_ROWS, args.rows)))
 
     if args.col:
         display_cols = sorted(set(c for c in args.col if 0 <= c < args.cols))
@@ -333,22 +329,6 @@ def main():
             selected_values.append(value)
         matrix[row_index] = row
 
-    if args.json:
-        import json
-        selected = {str(r): {str(c): matrix[r][c] for c in display_cols if c in matrix[r]}
-                    for r in display_rows}
-        output = {
-            "dtype": dtype,
-            "rows": args.rows,
-            "cols": args.cols,
-            "fileSize": len(data),
-            "displayRows": display_rows,
-            "displayCols": display_cols,
-            "data": selected,
-        }
-        print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
-        return
-
     # 人类可读输出
     print()
     print("=" * 80)
@@ -359,7 +339,7 @@ def main():
     elif args.row_range:
         print(f"  Rows: [{args.row_range[0]}, {args.row_range[1]})")
     else:
-        print(f"  Rows: head {args.head}" + (f" + tail {args.tail}" if args.tail > 0 else ""))
+        print(f"  Rows: [0, {min(DEFAULT_PREVIEW_ROWS, args.rows)}) (default)")
     if args.col:
         print(f"  Cols: {display_cols}")
     elif args.col_range:

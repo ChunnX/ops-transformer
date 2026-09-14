@@ -9,14 +9,10 @@ MatmulReduceScatterV2 TilingData / Workspace / RuntimeInfo dump 解析脚本
 用法:
   python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin
   python parse_matmul_reduce_scatter_v2_tiling.py args_info_*.bin --args
-  python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin --ws-layout
   python parse_matmul_reduce_scatter_v2_tiling.py workspace_seg*_type12_*.bin --workspace --aic-core-num N
-  python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin --cann /path/to/cann
-  python parse_matmul_reduce_scatter_v2_tiling.py tiling_data_*.bin --json
 """
 
 import argparse
-import json
 import logging
 import os
 import struct
@@ -93,10 +89,10 @@ WS_SEG_DESCRIPTION_MAP = {
 }
 
 
-def get_layout(args):
+def get_layout():
     """实时计算布局 (无 CANN 环境时 tiling_layout 内部告警并使用默认尺寸)。"""
     try:
-        layout = compute_mrs_v2_layout(cann=args.cann)
+        layout = compute_mrs_v2_layout()
     except LayoutError as e:
         logging.error("布局计算失败: %s", e)
         sys.exit(1)
@@ -396,12 +392,8 @@ def main():
     parser = argparse.ArgumentParser(description="MatmulReduceScatterV2 dump 解析脚本")
     parser.add_argument("bin_file", help="bin 文件路径")
     parser.add_argument("--args", action="store_true")
-    parser.add_argument("--ws-layout", action="store_true")
     parser.add_argument("--workspace", action="store_true")
     parser.add_argument("--aic-core-num", type=int, metavar="N", default=None)
-    parser.add_argument("--cann", default=None, metavar="DIR",
-                        help="CANN 根目录 (默认按 set_env.sh 环境变量 ASCEND_HOME_PATH 等定位)")
-    parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     if not os.path.isfile(args.bin_file):
@@ -413,7 +405,7 @@ def main():
     logging.info("读取文件: %s (%d bytes)", args.bin_file, len(data))
 
     if args.workspace:
-        layout = get_layout(args)
+        layout = get_layout()
         seg_info = detect_workspace_seg_from_filename(args.bin_file)
         if seg_info is None:
             logging.error("文件名不匹配 workspace_seg{idx}_type{type}_* 模式")
@@ -423,36 +415,18 @@ def main():
             data, seg_type, args.aic_core_num,
             layout["workspace"]["runtimeInfoPerCoreSize"])
         result["segIdx"] = seg_idx
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_workspace_segment(result)
+        print_workspace_segment(result)
         return
 
     if args.args:
         result = parse_args_info(data)
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        else:
-            print_section("Args Info")
-            for k, v in result.items():
-                if not k.startswith("_"):
-                    logging.info("  %-30s: %s", k, v)
+        print_section("Args Info")
+        for k, v in result.items():
+            if not k.startswith("_"):
+                logging.info("  %-30s: %s", k, v)
         return
 
-    layout = get_layout(args)
-
-    if args.ws_layout:
-        is_quant, ws_layout = select_branch(data, layout)
-        if ws_layout is None:
-            logging.error("解析失败: WorkspaceLayoutInfo 未通过合法性校验")
-            sys.exit(1)
-        if args.json:
-            print(json.dumps(ws_layout, indent=2, ensure_ascii=False, default=str))
-        else:
-            print_section("WorkspaceLayoutInfo")
-            print_kv("layout", ws_layout)
-        return
+    layout = get_layout()
 
     is_quant, ws_layout = select_branch(data, layout)
     logging.info("解析模式: %s（新版 TilingData 不再保存 quantMode 字段）",
@@ -460,13 +434,10 @@ def main():
     result = parse_tiling_data(data, layout, is_quant)
     if ws_layout is not None:
         result["workspaceLayout"] = ws_layout
-    if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
-    else:
-        print_tiling_data(result, is_quant, layout)
-        if "workspaceLayout" in result:
-            print_section("WorkspaceLayoutInfo")
-            print_kv("layout", result["workspaceLayout"])
+    print_tiling_data(result, is_quant, layout)
+    if "workspaceLayout" in result:
+        print_section("WorkspaceLayoutInfo")
+        print_kv("layout", result["workspaceLayout"])
 
 
 if __name__ == "__main__":

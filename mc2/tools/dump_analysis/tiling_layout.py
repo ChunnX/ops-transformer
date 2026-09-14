@@ -11,17 +11,12 @@ MC2 (DFX) TilingData 布局计算器 (混合模式)。
   需同步更新本文件中的 DFX 表。
 
 CANN 头文件定位顺序:
-  --cann 参数 > $ASCEND_CANN_PACKAGE_PATH > $ASCEND_HOME_PATH
-  > $ASCEND_TOOLKIT_HOME > $ASCEND_AICPU_PATH (即 source set_env.sh 后的环境变量)
+  $ASCEND_CANN_PACKAGE_PATH > $ASCEND_HOME_PATH > $ASCEND_TOOLKIT_HOME
+  > $ASCEND_AICPU_PATH (即 source set_env.sh 后的环境变量)
 找不到 CANN 头文件时: 告警并使用默认尺寸 (TCubeTiling=200 等) 继续。
-
-独立调试:
-  python3 tiling_layout.py [--cann DIR] [--json]
 """
 
-import argparse
 import glob
-import json
 import logging
 import os
 import re
@@ -541,42 +536,3 @@ def compute_allto_all_layout(cann=None):
     }
     _self_check(layout, _GT_A2A)
     return layout
-
-
-def main():
-    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-    ap = argparse.ArgumentParser(
-        description="AllGatherMatmulV2 DFX Tiling 布局计算器 (混合模式)")
-    ap.add_argument("--cann", default=None, metavar="DIR",
-                    help="CANN 根目录 (默认按 set_env.sh 环境变量定位)")
-    ap.add_argument("--json", action="store_true", help="JSON 输出")
-    args = ap.parse_args()
-    try:
-        layout = compute_layout(cann=args.cann)
-    except LayoutError as e:
-        print("布局计算失败: %s" % e)
-        raise SystemExit(1)
-    if args.json:
-        print(json.dumps(layout, indent=2, ensure_ascii=False, default=str))
-        return
-    for h in layout["headers"]:
-        print("布局头文件: %s" % h)
-    print("TCubeTiling: %dB (%s)" % (
-        layout["tcubeTilingSize"],
-        "动态解析" if not layout["headers"][0].startswith("<默认值") else "默认值兜底"))
-    for key, name in (("v2", "AllGatherMatmulTilingDataV2"),
-                      ("fp8", "AllGatherMatmulTilingDataFp8")):
-        o = layout[key]["offsets"]
-        print("%s: %dB  dumpInfo@%d  param@%d  workspaceLayout@%d"
-              % (name, layout[key]["size"], o["dumpInfo"], o["param"],
-                 o["workspaceLayout"]))
-    print("RCSTiling: %dB" % layout["rcs"]["size"])
-    ws = layout["workspace"]
-    print("Workspace: SegInfo=%dB LayoutInfo=%dB maxSegments=%d "
-          "RuntimeInfo/core=%dB coreMax=%d"
-          % (ws["segInfoSize"], ws["layoutInfoSize"], ws["maxSegments"],
-             ws["runtimeInfoPerCoreSize"], ws["runtimeInfoCoreMax"]))
-
-
-if __name__ == "__main__":
-    main()
