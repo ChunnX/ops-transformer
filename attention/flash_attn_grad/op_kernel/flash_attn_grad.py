@@ -95,7 +95,7 @@ def flash_attn_grad(
     """入口只做编译期分发：template / d_align 来自 tilingkey。
 
     preload3：仅 ``Tmpl.BN2GS1S2`` 且 D<=192，``runInfos[3]``。
-    preload2：其余（``Tmpl.BN2`` 与 D=256 GS1S2），1-ahead，``runInfos[2]``。
+    preload2：其余（``Tmpl.BN2`` 与 D=256/768 GS1S2），1-ahead，``runInfos[2]``。
     """
     if template == Tmpl.BN2GS1S2 and d_align <= 192:
         flash_attn_grad_preload3(

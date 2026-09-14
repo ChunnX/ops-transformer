@@ -54,7 +54,7 @@ from fag_common import (
 
 
 # d_align 的分档。所有地址表与 id 表都以它为键。
-_TIERS = (64, 128, 192, 256)
+_TIERS = (64, 128, 192, 256, 768)
 
 _L1_BYTES = 512 * 1024
 _L0AB_BYTES = 64 * 1024
@@ -230,9 +230,11 @@ def _build_l1(width, pool):
     互相覆写，于是 mm4/mm5 可以直接复用 mm2/mm1 搬好的数据，无需再读 GM。
     """
     ar = _Arena(f"L1 d_align={width}", _L1_BYTES, pool)
-    blk = CUBE_BASEM * D_PHYS_W[width] * 2  # 64/128 档 32KB，192 档 48KB，256 档 64KB
+    blk = (
+        CUBE_BASEM * D_PHYS_W[width] * 2
+    )  # 64/128 档 32KB，192 档 48KB，256/768 档 64KB
     dsp = CUBE_BASEM * CUBE_BASEN * 2  # dS/P 是 [M,N]，与 D 无关，恒 32KB
-    # 64/128 档 4 槽；192 档 3 槽；256 档 1-ahead 只要 2 槽（整宽 64KB，2+2+K+Knd+V+dS+P=512KB）。
+    # 64/128 档 4 槽；192 档 3 槽；256/768 档 1-ahead 只要 2 槽（物理宽 256）。
     if width <= HEAD_DIM_ALIGN:
         nq = 4
     elif width == 192:
@@ -304,10 +306,10 @@ def _build_l0c(width, pool):
     dkvBlk = CUBE_BASEN * D_CHUNK_MAXW[width] * 4  # dK/dV 只装一个 D 分块
     nChunk = D_NCHUNKS[width]
 
-    # 256 档 C4/C5 不驻留：每 task atomic 出 GM，只要 acc 双缓冲。仍留 1 块
-    # dk/dv scratch 填表，256 主循环不引用。
+    # 256/768 档 C4/C5 不驻留：每 task atomic 出 GM，只要 acc 双缓冲。仍留 1 块
+    # dk/dv scratch 填表，主循环不引用。
     accSlots = 1 if width == 192 else 2
-    nPhys = 1 if width == 256 else nChunk
+    nPhys = 1 if width >= 256 else nChunk
     acc = ar.buf("acc", accBlk, slots=accSlots)
     dk = ar.buf("dk", dkvBlk, slots=nPhys)
     dv = ar.buf("dv", dkvBlk, slots=nPhys)
@@ -326,8 +328,14 @@ _UB_ROW_SLOT = 0x200
 # pre/post 走一维元素，不按 [行, D] 切。三档都吃满可用 UB，且每档
 # elems 都能被 128 整除，full-tile 的 VF 段数是编译期常量。行区间已由 metadata
 # 按 nAiv 均分，块大不再空核。
-PRE_ELEMS = {64: 63488, 128: 63488, 192: 63360, 256: 63360}  # 单槽 fp32
-POST_ELEMS = {64: 20480, 128: 21120, 192: 21120, 256: 21120}  # depth-2，fp32 + fp16
+PRE_ELEMS = {64: 63488, 128: 63488, 192: 63360, 256: 63360, 768: 63360}  # 单槽 fp32
+POST_ELEMS = {
+    64: 20480,
+    128: 21120,
+    192: 21120,
+    256: 21120,
+    768: 21120,
+}  # depth-2，fp32 + fp16
 
 
 def _build_ub(width, pool):
@@ -341,6 +349,7 @@ def _build_ub(width, pool):
 
     V1 一趟 VECTOR_BASEM 行、按行 reduce，不再开 prod/tmp。列宽
     ``v1w`` 就是 ``dv_align``（与 ``d_align`` 相同，仅 D=192 且 Dv=128 时为 128）。
+    768 档 y/dy 仍按 256 列分配，V1 三趟 VF256。
     attenmask 复用 y/dy 这两条记录：uint8[64,128]=8KB，而 y/dy 在 v1w>=64
     时至少 8KB，装得下。
     复用的是**同一条记录**，所以「同址必须同号」是结构保证，不靠人守。
@@ -349,8 +358,9 @@ def _build_ub(width, pool):
     留着可以让 BN2 直接复用这张图（见 BN2_UB_*）。
     """
     main = _Arena(f"UB v1w={width}", _UB_BYTES, pool, base=UB_HEAD_RESERVE + 0x20000)
-    y = main.buf("y", VECTOR_BASEM * width * 2)
-    dy = main.buf("dy", VECTOR_BASEM * width * 2)
+    v1Alloc = 256 if width == 768 else width
+    y = main.buf("y", VECTOR_BASEM * v1Alloc * 2)
+    dy = main.buf("dy", VECTOR_BASEM * v1Alloc * 2)
     # NZ+1 行：末行是 bank 错开的填充，见 fag_common.NZP_BLOCK_STRIDE。
     nzp = main.buf("nzp", NZP_ROWS * VECTOR_BASEN * 2)
     sfmg = main.buf("sfmg", _UB_ROW_SLOT, align=_UB_ROW_SLOT)

@@ -119,8 +119,10 @@ ge::graphStatus SelectDBucket(gert::TilingContext *context, const FagParsedInfo 
         plan.dAlign = 128;
     } else if (p.d <= 192) {
         plan.dAlign = 192;
-    } else {
+    } else if (p.d <= 256) {
         plan.dAlign = 256;
+    } else {
+        plan.dAlign = 768;
     }
     plan.dvAlign = (p.d == 192 && p.dv == 128) ? 128 : plan.dAlign;
     return ge::GRAPH_SUCCESS;

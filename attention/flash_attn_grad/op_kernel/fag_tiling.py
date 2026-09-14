@@ -106,11 +106,11 @@ class FlashAttnGradTilingKey:
     # (运行期数值)，而 D 改的是**每块片上 tile 的宽度**，即分配尺寸，
     # 而 pypto 的 tile shape 是 trace 期常量，不是运行期值。
     # 且「一律按最大档分配 + 运行期裁列」并非只是慢：L0C 会超出 256KB
-    # 预算，物理上放不下。bit 取值 3=256（见 docs/D256设计.md）。
-    d_align = TilingKeyField(bits=2, values=[64, 128, 192, 256])
+    # 预算，物理上放不下。bit 取值 3=256、4=768（见 docs/D256设计.md）。
+    d_align = TilingKeyField(bits=3, values=[64, 128, 192, 256, 768])
     # Dv 的**分配**宽度，取值与 d_align 相同。一般 d_align==dv_align；
     # 唯一分叉是 D=192 且 Dv=128 → 128。其余 D!=Dv 由 host 拦截。
-    dv_align = TilingKeyField(bits=2, values=[64, 128, 192, 256])
+    dv_align = TilingKeyField(bits=3, values=[64, 128, 192, 256, 768])
     # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit10。
     is_bn2_multiblk = TilingKeyField(bits=1, values=[0, 1])
     # BN2 MultiBlk 且存在整行或整列无效 tile：pre 把 dq/dk/dv out 清零。
@@ -133,7 +133,13 @@ class FlashAttnGradTilingKey:
         if template != Tmpl.BN2GS1S2 and template != Tmpl.BN2:
             return False
         if template == Tmpl.BN2:
-            if d_align == 192 or d_align == 256 or swizzle != 0 or layout != 0:
+            if (
+                d_align == 192
+                or d_align == 256
+                or d_align == 768
+                or swizzle != 0
+                or layout != 0
+            ):
                 return False
             if d_align != dv_align:
                 return False
@@ -145,8 +151,8 @@ class FlashAttnGradTilingKey:
         # 一般 d_align==dv_align；仅 D=192 且 Dv=128 允许 dv_align=128。
         if d_align != dv_align and not (d_align == 192 and dv_align == 128):
             return False
-        # D=192 / 256 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
+        # D=192 / 256 / 768 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
         # swizzle+mask 的 Group B 未迁，不编那几份。
-        if d_align == 192 or d_align == 256:
+        if d_align == 192 or d_align == 256 or d_align == 768:
             return layout == 0 and (mask_mode == 0 or swizzle == 0)
         return True

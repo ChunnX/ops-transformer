@@ -17,9 +17,9 @@ constexpr uint64_t KEY_SHIFT_LAYOUT = 2;
 constexpr uint64_t KEY_SHIFT_MASK_MODE = 3;
 constexpr uint64_t KEY_SHIFT_SWIZZLE = 5;
 constexpr uint64_t KEY_SHIFT_D_ALIGN = 6;
-constexpr uint64_t KEY_SHIFT_DV_ALIGN = 8;
-constexpr uint64_t KEY_SHIFT_BN2_MULTIBLK = 10;
-constexpr uint64_t KEY_SHIFT_BN2_NEED_ZERO = 11;
+constexpr uint64_t KEY_SHIFT_DV_ALIGN = 9;
+constexpr uint64_t KEY_SHIFT_BN2_MULTIBLK = 12;
+constexpr uint64_t KEY_SHIFT_BN2_NEED_ZERO = 13;
 
 uint64_t AlignBits(int64_t align)
 {
@@ -29,7 +29,13 @@ uint64_t AlignBits(int64_t align)
     if (align == 128) {
         return 1ULL;
     }
-    return (align == 192) ? 2ULL : 3ULL;
+    if (align == 192) {
+        return 2ULL;
+    }
+    if (align == 256) {
+        return 3ULL;
+    }
+    return 4ULL; // 768
 }
 
 } // namespace

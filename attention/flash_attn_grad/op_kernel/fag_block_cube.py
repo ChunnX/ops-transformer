@@ -20,6 +20,7 @@
 同步全部由 :mod:`fag_kernel` 的主循环在阶段之间插入。
 
 D 轴分块：``d_align=192`` 是 96+96 驻留 L0C；``d_align=256`` 是 128+128，
+``d_align=768`` 是 3 窗 × 128+128（物理宽 256，每窗重装 GM）。
 C4/C5 同一套 ``iterate_mm_dsq`` / ``iterate_mm_pdy``，传 ``tensor_out``
 则每块 atomic 出 GM。三种分块形态：
 
@@ -43,6 +44,18 @@ from fag_common import (
     VECTOR_BASEN,
 )
 # --- end generated imports ---
+
+# 768 档：物理窗 256、窗内 128+128，编译期展开 6 块。
+_D768_N = 6
+_D768_STEP = 128
+_D768_PHYS = 256
+
+
+def _d768_parts(i):
+    dOff = i * _D768_STEP
+    winOff = (i // 2) * _D768_PHYS
+    localOff = (i % 2) * _D768_STEP
+    return dOff, winOff, localOff
 
 
 # ==================================================================
@@ -68,6 +81,20 @@ def _mm_k_chunk(lt, rt, at, srcL, srcR, dOff, dW, s2Real, isFirst):
 def iterate_mm_qk(
     constInfo, runInfo, tensor_q, tensor_k, q_t, k_l1, left, right, acc, mm2_ub, loadKV
 ):
+    if d_align == 768:
+        _iterate_mm_qk_d768(
+            constInfo,
+            runInfo,
+            tensor_q,
+            tensor_k,
+            q_t,
+            k_l1,
+            left,
+            right,
+            acc,
+            mm2_ub,
+        )
+        return
     k_t = k_l1.current()
     # 尾块：load 允许 offset+shape 越过 tensor 边界，但必须用 valid_shape
     # 把真实行列数告知硬件，否则读到界外触发 507015
@@ -136,6 +163,49 @@ def iterate_mm_qk(
     pl.move(mm2_ub, at, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
 
 
+def _iterate_mm_qk_d768(
+    constInfo, runInfo, tensor_q, tensor_k, q_t, k_l1, left, right, acc, mm2_ub
+):
+    """768 档 C2：3 窗 × 128+128，跨窗 matmul_acc。每窗从 GM 再装 Q/K。"""
+    k_t = k_l1.current()
+    at = acc.next()
+    for i in pl.range(0, _D768_N):
+        dOff, winOff, localOff = _d768_parts(i)
+        dW = pl.max(pl.min(_D768_STEP, constInfo.dSize - dOff), 0)
+        if i % 2 == 0:
+            winW = pl.max(pl.min(_D768_PHYS, constInfo.dSize - winOff), 0)
+            pl.set_validshape(q_t, [runInfo.s1RealSize, winW])
+            pl.set_validshape(k_t, [winW, runInfo.s2RealSize])
+            if winW > 0:
+                pl.load(
+                    q_t,
+                    tensor_q,
+                    [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q, winOff],
+                    order=[1, 3],
+                )
+                pl.load(
+                    k_t,
+                    tensor_k,
+                    [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, winOff],
+                    order=[3, 1],
+                )
+        lt = left.next()
+        rt = right.next()
+        if dW > 0:
+            _mm_k_chunk(
+                lt,
+                rt,
+                at,
+                q_t,
+                k_t,
+                localOff,
+                dW,
+                runInfo.s2RealSize,
+                i == 0,
+            )
+    pl.move(mm2_ub, at, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+
+
 # ==================================================================
 #  C1 —— mm1: dP = dO @ V^T
 # ==================================================================
@@ -152,6 +222,20 @@ def iterate_mm_dyv(
     mm1_ub,
     loadKV,
 ):
+    if d_align == 768:
+        _iterate_mm_dyv_d768(
+            constInfo,
+            runInfo,
+            tensor_dy,
+            tensor_v,
+            do_t,
+            v_l1,
+            left,
+            right,
+            acc,
+            mm1_ub,
+        )
+        return
     v_t = v_l1.current()
     # 这里的 K 轴是 **Dv** 而不是 D：dO/V 都是 Dv 宽。
     pl.set_validshape(do_t, [runInfo.s1RealSize, constInfo.dvSize])
@@ -225,11 +309,12 @@ def iterate_mm_dyv(
 #  IS_DQ_WRITE_UB=false -> fixpipe 直出 GM，needAtomic=true(BN2GS1S2)
 # ==================================================================
 def _mm_n_chunk(
-    left, right, acc, srcL, srcR, tensor_out, outIdx, mReal, kReal, dOff, dW
+    left, right, acc, srcL, srcR, tensor_out, outIdx, mReal, kReal, dOff, dW, l1Off
 ):
     """MM3 的一个输出列分块：D 在 N 轴，各块列区间不相交，无需跨块累加。
 
     outIdx 是统一四维视图上的前三个索引；第 4 维(D 轴)用 dOff 定位本块。
+    l1Off 是 L1 tile 内的列偏移（整头在 L1 时等于 dOff；768 窗载入后是窗内偏移）。
     """
     lt = left.next()
     rt = right.next()
@@ -238,7 +323,7 @@ def _mm_n_chunk(
     pl.set_validshape(rt, [kReal, dW])
     pl.set_validshape(at, [mReal, dW])
     pl.move(lt, srcL)
-    pl.move(rt, srcR, [0, dOff])  # K[S2,D] 的列子块
+    pl.move(rt, srcR, [0, l1Off])
     pl.matmul(at, lt, rt)
     pl.store(
         tensor_out,
@@ -249,9 +334,124 @@ def _mm_n_chunk(
     )
 
 
+def _mm_n_chunk_maybe(
+    left, right, acc, srcL, srcR, tensor_out, outIdx, mReal, kReal, dOff, dW, l1Off
+):
+    """768 空块：next() 仍推进，dW==0 时不算。"""
+    lt = left.next()
+    rt = right.next()
+    at = acc.next()
+    if dW > 0:
+        pl.set_validshape(lt, [mReal, kReal])
+        pl.set_validshape(rt, [kReal, dW])
+        pl.set_validshape(at, [mReal, dW])
+        pl.move(lt, srcL)
+        pl.move(rt, srcR, [0, l1Off])
+        pl.matmul(at, lt, rt)
+        pl.store(
+            tensor_out,
+            at,
+            [outIdx[0], outIdx[1], outIdx[2], dOff],
+            order=[1, 3],
+            atomic=pl.AtomicType.AtomicAdd,
+        )
+
+
+def _iterate_mm_dyv_d768(
+    constInfo,
+    runInfo,
+    tensor_dy,
+    tensor_v,
+    do_t,
+    v_l1,
+    left,
+    right,
+    acc,
+    mm1_ub,
+):
+    """768 档 C1：与 C2 相同的 6 块 K 轴累加，宽度按 Dv。"""
+    v_t = v_l1.current()
+    at = acc.next()
+    for i in pl.range(0, _D768_N):
+        dOff, winOff, localOff = _d768_parts(i)
+        dW = pl.max(pl.min(_D768_STEP, constInfo.dvSize - dOff), 0)
+        if i % 2 == 0:
+            winW = pl.max(pl.min(_D768_PHYS, constInfo.dvSize - winOff), 0)
+            pl.set_validshape(do_t, [runInfo.s1RealSize, winW])
+            pl.set_validshape(v_t, [winW, runInfo.s2RealSize])
+            if winW > 0:
+                pl.load(
+                    do_t,
+                    tensor_dy,
+                    [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q, winOff],
+                    order=[1, 3],
+                )
+                pl.load(
+                    v_t,
+                    tensor_v,
+                    [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, winOff],
+                    order=[3, 1],
+                )
+        lt = left.next()
+        rt = right.next()
+        if dW > 0:
+            _mm_k_chunk(
+                lt,
+                rt,
+                at,
+                do_t,
+                v_t,
+                localOff,
+                dW,
+                runInfo.s2RealSize,
+                i == 0,
+            )
+    pl.move(mm1_ub, at, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
+
+
+def _iterate_mm_dsk_d768(
+    constInfo, runInfo, tensor_k, tensor_dq_ws, ds_l1, k_l1, left, right, acc
+):
+    """768 档 C3：每窗重装 K，各块 atomic 出不相交的 dq 列。"""
+    k_t = k_l1.current()
+    outIdx = [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q]
+    for i in pl.range(0, _D768_N):
+        dOff, winOff, localOff = _d768_parts(i)
+        dW = pl.max(pl.min(_D768_STEP, constInfo.dSize - dOff), 0)
+        if i % 2 == 0:
+            winW = pl.max(pl.min(_D768_PHYS, constInfo.dSize - winOff), 0)
+            pl.set_validshape(k_t, [runInfo.s2RealSize, winW])
+            if winW > 0:
+                pl.load(
+                    k_t,
+                    tensor_k,
+                    [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, winOff],
+                    order=[1, 3],
+                )
+        _mm_n_chunk_maybe(
+            left,
+            right,
+            acc,
+            ds_l1,
+            k_t,
+            tensor_dq_ws,
+            outIdx,
+            runInfo.s1RealSize,
+            runInfo.s2RealSize,
+            dOff,
+            dW,
+            localOff,
+        )
+
+
 def iterate_mm_dsk(
     constInfo, runInfo, tensor_k, tensor_dq_ws, loadKV, ds_l1, k_l1, left, right, acc
 ):
+    if d_align == 768:
+        _iterate_mm_dsk_d768(
+            constInfo, runInfo, tensor_k, tensor_dq_ws, ds_l1, k_l1, left, right, acc
+        )
+        return
     k_t = k_l1.current()
     # 右矩阵不转置(isRightTranspose=false)：K 以 [S2,D] 载入。
     # order 仍取 (S,D) 两轴；此前 dQ 算成 dS@K^T 的根因是 k_l1_n 的 layout
@@ -283,6 +483,7 @@ def iterate_mm_dsk(
         runInfo.s2RealSize,
         D_CHUNK_OFF0[d_align],
         pl.min(D_CHUNK_W0[d_align], constInfo.dSize),
+        D_CHUNK_OFF0[d_align],
     )
     if D_NCHUNKS[d_align] > 1:
         dRem = constInfo.dSize - D_CHUNK_OFF1[d_align]
@@ -300,6 +501,7 @@ def iterate_mm_dsk(
                 runInfo.s2RealSize,
                 D_CHUNK_OFF1[d_align],
                 dW1,
+                D_CHUNK_OFF1[d_align],
             )
 
 
@@ -327,6 +529,50 @@ def _mm_resident_chunk(left, right, at, srcL, srcR, mReal, kReal, dOff, dW, isAc
         pl.matmul(at, lt, rt)
 
 
+def _iterate_mm_n_d768(
+    constInfo,
+    runInfo,
+    srcL,
+    srcR,
+    left,
+    right,
+    acc,
+    tensor_out,
+    tensor_src,
+    dimSize,
+    srcIdx,
+    outIdx,
+):
+    """768 档 C4/C5：每窗从 GM 重装右矩阵，各块 atomic 出不相交列。"""
+    for i in pl.range(0, _D768_N):
+        dOff, winOff, localOff = _d768_parts(i)
+        dW = pl.max(pl.min(_D768_STEP, dimSize - dOff), 0)
+        if i % 2 == 0:
+            winW = pl.max(pl.min(_D768_PHYS, dimSize - winOff), 0)
+            pl.set_validshape(srcR, [runInfo.s1RealSize, winW])
+            if winW > 0:
+                pl.load(
+                    srcR,
+                    tensor_src,
+                    [srcIdx[0], srcIdx[1], srcIdx[2], winOff],
+                    order=[1, 3],
+                )
+        _mm_n_chunk_maybe(
+            left,
+            right,
+            acc,
+            srcL,
+            srcR,
+            tensor_out,
+            outIdx,
+            runInfo.s2RealSize,
+            runInfo.s1RealSize,
+            dOff,
+            dW,
+            localOff,
+        )
+
+
 def iterate_mm_dsq(
     constInfo,
     runInfo,
@@ -338,6 +584,7 @@ def iterate_mm_dsq(
     acc1=None,
     isAcc=0,
     tensor_out=None,
+    tensor_src=None,
 ):
     """C4: dK = dS^T @ Q.
 
@@ -347,12 +594,31 @@ def iterate_mm_dsq(
 
     ``tensor_out is None``：按 D 分块累加进常驻 L0C（acc0/acc1）。
     否则每块算完 atomic 出 workspace（D=256）；acc0 是 ping-pong acc。
+    D=768 时 ``tensor_src`` 是 Q 的 GM，每窗重装。
     """
+    if d_align == 768:
+        _iterate_mm_n_d768(
+            constInfo,
+            runInfo,
+            ds_t_l1,
+            q_t,
+            left,
+            right,
+            acc0,
+            tensor_out,
+            tensor_src,
+            constInfo.dSize,
+            [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q],
+            [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
+        )
+        return
     outIdx = [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV]
     mReal = runInfo.s2RealSize
     kReal = runInfo.s1RealSize
     w0 = pl.min(D_CHUNK_W0[d_align], constInfo.dSize)
-    store = tensor_out is not None
+    # tilingkey 常量：D<=192 驻留 L0C；D>=256 每块 atomic 出 GM。
+    # 不能写 tensor_out is not None（Tensor 参数上 PyPTO 拒 is None）。
+    store = d_align > 192
     if store:
         _mm_n_chunk(
             left,
@@ -366,6 +632,7 @@ def iterate_mm_dsq(
             kReal,
             D_CHUNK_OFF0[d_align],
             w0,
+            D_CHUNK_OFF0[d_align],
         )
     else:
         _mm_resident_chunk(
@@ -397,6 +664,7 @@ def iterate_mm_dsq(
                     kReal,
                     D_CHUNK_OFF1[d_align],
                     w1,
+                    D_CHUNK_OFF1[d_align],
                 )
             else:
                 _mm_resident_chunk(
@@ -442,6 +710,7 @@ def iterate_mm_pdy(
     acc1=None,
     isAcc=0,
     tensor_out=None,
+    tensor_src=None,
 ):
     """C5: dV = P^T @ dO.
 
@@ -451,11 +720,28 @@ def iterate_mm_pdy(
 
     ``tensor_out is None``：累加进常驻 L0C（acc0/acc1）。
     否则每块 atomic 出 workspace（D=256）；acc0 是 ping-pong acc。
+    D=768 时 ``tensor_src`` 是 dO 的 GM，每窗重装。
     """
+    if d_align == 768:
+        _iterate_mm_n_d768(
+            constInfo,
+            runInfo,
+            p_t_l1,
+            do_t,
+            left,
+            right,
+            acc0,
+            tensor_out,
+            tensor_src,
+            constInfo.dvSize,
+            [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q],
+            [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
+        )
+        return
     outIdx = [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV]
     mReal = runInfo.s2RealSize
     kReal = runInfo.s1RealSize
-    store = tensor_out is not None
+    store = d_align > 192
     w0 = dv_chunk_w(constInfo, 0)
     if w0 > 0:
         if store:
@@ -471,6 +757,7 @@ def iterate_mm_pdy(
                 kReal,
                 D_CHUNK_OFF0[d_align],
                 w0,
+                D_CHUNK_OFF0[d_align],
             )
         else:
             _mm_resident_chunk(
@@ -501,6 +788,7 @@ def iterate_mm_pdy(
                     kReal,
                     D_CHUNK_OFF1[d_align],
                     w1,
+                    D_CHUNK_OFF1[d_align],
                 )
             else:
                 _mm_resident_chunk(

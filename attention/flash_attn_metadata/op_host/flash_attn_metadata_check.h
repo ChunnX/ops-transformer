@@ -120,10 +120,10 @@ inline aclnnStatus FlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int6
     CHECK_COND(numHeadsKv > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsKv must be greater than 0, but got %ld", numHeadsKv);
 
     if (isGradEnabled) {
-        // FAG：is_grad_enabled=true 服务 flash_attn_grad。D/Dv ∈ (0, 256]，
+        // FAG：is_grad_enabled=true 服务 flash_attn_grad。D/Dv ∈ (0, 768]，
         // 必须 D==Dv，唯一例外 D=192 且 Dv=128。
         constexpr int64_t HEAD_DIM_MIN = 0;
-        constexpr int64_t HEAD_DIM_MAX = 256;
+        constexpr int64_t HEAD_DIM_MAX = 768;
         const int64_t effectiveHeadDimV = (headDimV == NONE_VALUE) ? headDim : headDimV;
         CHECK_COND((headDim > HEAD_DIM_MIN && headDim <= HEAD_DIM_MAX), ACLNN_ERR_RUNTIME_ERROR,
                    "headDim must be in (%ld, %ld] when isGradEnabled is true, but got %ld", HEAD_DIM_MIN, HEAD_DIM_MAX,

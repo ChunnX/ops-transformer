@@ -18,7 +18,7 @@ cross-core set/wait、决定谁在哪一拍消费谁的产出。真正的计算�
 * :func:`flash_attn_grad_preload3` —— ``Tmpl.BN2GS1S2`` 且 D≤192：
   cube 领先 vector 两个 task（``PRELOAD_TIMES=3``），自带 pre/post。
 * :func:`flash_attn_grad_preload2` —— 1-ahead。``Tmpl.BN2`` 与 GS1S2
-  （当前即 D=256）共用同一套 while，路径按 ``template`` 分支。
+  （D=256/768）共用同一套 while，路径按 ``template`` 分支。
   pre/post：非 BN2 清 workspace + scale/cast；BN2 不跑这套（仅 ``bn2_need_zero``）。
 
 CV 通信全部使用手动 set/wait cross-core，且正反向成对：
@@ -42,7 +42,7 @@ dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加。dK/dV 的 L0C
 块有效，4=band 区间；线性路径 skip 无效块。
 
 Tmpl.BN2GS1S2 且 d_align<=192 走 flash_attn_grad_preload3 的
-PRELOAD_TIMES=3（+2）。其余（Tmpl.BN2、D=256 GS1S2）走
+PRELOAD_TIMES=3（+2）。其余（Tmpl.BN2、D=256/768 GS1S2）走
 flash_attn_grad_preload2 的 1-ahead，同函数内按场景跑 pre/post。
 反向 V2_TO_C 只给 +2 用。
 
@@ -839,8 +839,8 @@ def flash_attn_grad_preload2(
         tensor_dq_out = pl.make_tensor(dq, [1, dqElems], [dqElems, 1], dtype=pl.DT_FP16)
         tensor_dk_out = pl.make_tensor(dk, [1, dkElems], [dkElems, 1], dtype=pl.DT_FP16)
         tensor_dv_out = pl.make_tensor(dv, [1, dvElems], [dvElems, 1], dtype=pl.DT_FP16)
-        # V1 列宽就是 dv_align（D=256 时为 256；BN2 与 d_align 相同）。
-        v1w = dv_align
+        # V1 列宽：768 档工作 tile 仍是 256，其余等于 dv_align。
+        v1w = 256 if dv_align == 768 else dv_align
 
     if mask_mode != 0:
         tensor_mask = pl.make_tensor(
@@ -1052,7 +1052,10 @@ def flash_attn_grad_preload2(
                         left,
                         right,
                         acc,
-                        tensor_out=tensor_dv_ws,
+                        acc,
+                        0,
+                        tensor_dv_ws,
+                        tensor_dy,
                     )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=SYNC_C5_TO_V4_FLAG
@@ -1077,7 +1080,10 @@ def flash_attn_grad_preload2(
                         left,
                         right,
                         acc,
-                        tensor_out=tensor_dk_ws,
+                        acc,
+                        0,
+                        tensor_dk_ws,
+                        tensor_q,
                     )
                     pl.system.set_cross_core(
                         pipe=pl.PipeType.MTE1, event_id=SYNC_C4_TO_V3_FLAG

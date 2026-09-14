@@ -42,6 +42,7 @@ from fag_vector_api import (
     fill_zero_vf,
     muls_cast_vf,
     softmax_grad_front_row192_vf,
+    softmax_grad_front_row256_acc_vf,
     softmax_grad_front_row256_vf,
     softmax_grad_front_row_vf,
 )
@@ -85,6 +86,11 @@ def process_vec1(
     constInfo, runInfo, subIdx, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
 ):
     """softmaxGradFront: sfmg = rowsum(dy * y)。一趟 VECTOR_BASEM 行。"""
+    if dv_align == 768:
+        _process_vec1_d768(
+            constInfo, runInfo, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
+        )
+        return
     pl.set_validshape(y_ub, [VECTOR_BASEM, constInfo.dvSize])
     pl.set_validshape(dy_ub, [VECTOR_BASEM, constInfo.dvSize])
     pl.load(
@@ -142,6 +148,63 @@ def process_vec1(
             constInfo.dvEvenSize,
             constInfo.dvOddSize,
         )
+
+
+def _process_vec1_d768(
+    constInfo, runInfo, tensor_y, tensor_dy, y_ub, dy_ub, sfmg_ub, rowStride
+):
+    """768 档 V1：3 趟 VF256，后两趟累加到同一 sfmg。工作列宽 256。"""
+    for k in pl.range(0, 3):
+        colOff = k * 256
+        rem = pl.max(constInfo.dvSize - colOff, 0)
+        winW = pl.min(256, rem)
+        if rem > 0:
+            pl.set_validshape(y_ub, [VECTOR_BASEM, winW])
+            pl.set_validshape(dy_ub, [VECTOR_BASEM, winW])
+            pl.load(
+                y_ub,
+                tensor_y,
+                [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, colOff],
+                order=[1, 3],
+            )
+            pl.load(
+                dy_ub,
+                tensor_dy,
+                [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, colOff],
+                order=[1, 3],
+            )
+            w0 = pl.min(rem, 128)
+            w1 = pl.max(rem - 128, 0)
+            even0 = (w0 + 1) // 2
+            odd0 = w0 // 2
+            even1 = (w1 + 1) // 2
+            odd1 = w1 // 2
+            if k == 0:
+                softmax_grad_front_row256_vf(
+                    sfmg_ub,
+                    y_ub,
+                    dy_ub,
+                    runInfo.halfS1RealSize,
+                    runInfo.rowShift,
+                    rowStride,
+                    even0,
+                    odd0,
+                    even1,
+                    odd1,
+                )
+            else:
+                softmax_grad_front_row256_acc_vf(
+                    sfmg_ub,
+                    y_ub,
+                    dy_ub,
+                    runInfo.halfS1RealSize,
+                    runInfo.rowShift,
+                    rowStride,
+                    even0,
+                    odd0,
+                    even1,
+                    odd1,
+                )
 
 
 # ==================================================================
