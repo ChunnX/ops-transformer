@@ -17,6 +17,7 @@
 
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
+#include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
 
