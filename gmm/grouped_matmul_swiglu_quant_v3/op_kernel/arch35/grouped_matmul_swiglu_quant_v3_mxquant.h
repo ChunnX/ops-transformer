@@ -79,10 +79,10 @@ __aicore__ inline void GmmSwigluAswtV3(
     epilogueArgs.clampLimit = gmmSwigluQuantParams_.clampLimit;
     epilogueArgs.gluAlpha = gmmSwigluQuantParams_.gluAlpha;
     epilogueArgs.gluBias = gmmSwigluQuantParams_.gluBias;
-    // Keep the kernel compatible with the legacy CANN 9.2 tiling view.  The
-    // host stores scaleAlg in the legacy reserved byte; dstTypeMax is fixed
-    // to zero by the V3 MXFP8 validation.
-    epilogueArgs.scaleAlg = gmmSwigluQuantParams_.reserved0;
+    // scaleAlg is part of the V3 tiling payload.  Read the named field here
+    // so scale_alg=1 reaches the cuBLAS MX quantization path; reserved0 is
+    // retained only for compatibility with older payloads.
+    epilogueArgs.scaleAlg = gmmSwigluQuantParams_.scaleAlg;
     epilogueArgs.dstTypeMax = 0.0F;
     Params params = {{1, 1, 1, 1},
                      {x, weight, weightScale, xScale, y, groupList},
