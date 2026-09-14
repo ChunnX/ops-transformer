@@ -213,8 +213,6 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 
 ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
 {
-    int index = 0;
-    auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
@@ -229,11 +227,11 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
     uint32_t algoCount = 0;
     const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
     std::string algConfig =
-        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes, args_.rankDim,
+        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group_, commEngine, commDataBytes, args_.rankDim,
                                                      algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
-    OP_LOGI(opName_, "[SetMc2Hcomm] selected algConfig=%s, group=%s", algConfig.c_str(), group);
+    OP_LOGI(opName_, "[SetMc2Hcomm] selected algConfig=%s, group=%s", algConfig.c_str(), group_);
     Mc2CcTilingConfig mc2CcTilingConfig(
-        group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER), algConfig, 0,
+        group_, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER), algConfig, 0,
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     mc2CcTilingConfig.SetCommEngine(commEngine);

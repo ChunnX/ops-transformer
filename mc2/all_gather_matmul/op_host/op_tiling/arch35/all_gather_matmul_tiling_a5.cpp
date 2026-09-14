@@ -33,9 +33,9 @@ ge::graphStatus AllGatherMatmulTilingA5::CheckValidRank(Mc2Tiling::AllGatherMatm
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData, const char *group)
+void AllGatherMatmulTilingA5::SetSocParam(Mc2Tiling::AllGatherMatmulTilingData *tilingData,
+                                          [[maybe_unused]] const char *group)
 {
-    group_ = (group != nullptr) ? group : "";
     tilingData->socParam.isA3 = 0U;
     tilingData->socParam.isStep = 0U;
     tilingData->socParam.isND2NZ = 1U;
@@ -47,8 +47,8 @@ std::string AllGatherMatmulTilingA5::GetAlgConfig(Mc2Tiling::AllGatherMatmulTili
     const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
     // V1 tiling 侧无 comm_engine 概念，arch35 仅存在 AICPU 引擎路径（op_api 固定以 ai_cpu 转发），故固定传 AICPU
     std::string algConfig = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
-        "AllGatherMatmul", group_.c_str(), Mc2Comm::ENGINE_AICPU, commDataBytes_, tilingData->param.rankDim,
-        algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
+        "AllGatherMatmul", group_, Mc2Comm::ENGINE_AICPU, commDataBytes_, tilingData->param.rankDim, algoEntries,
+        algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
     OP_LOGD("AllGatherMatmul", "GetAlgConfig selected algConfig=%s, commDataBytes=%llu, rankDim=%u", algConfig.c_str(),
             commDataBytes_, tilingData->param.rankDim);
     return algConfig;
@@ -60,9 +60,10 @@ CutResult AllGatherMatmulTilingA5::GetCutResult(Mc2Tiling::AllGatherMatmulTiling
     AllGatherPlusMMA5 tileFormulate(args, args.rankDim, KernelType::ALL_GATHER, SocVersion::SOC950);
     tileFormulate.GetTiling();
     CutResult mCutGather = tileFormulate.tilingM_.cutRes;
-    // 单轮通信量 = 每轮切分的 tileM(longTileLen) × K × dtypeSize（对齐 alltoall 口径）
-    // 乘法回绕保护：kValue ∈ [256, 65535)、dtypeSize ≥ 2，kBytes 理论不为 0，仍显式防御除零；超限置 0 走默认算法回退
-    constexpr uint64_t COMM_BYTES_LIMIT = 62UL * mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT;
+    // 单轮通信量 = 每轮切分的 tileM(longTileLen) × K × dtypeSize（per-rank send，对齐 alltoall 口径）
+    // 乘法回绕保护：kValue ∈ [256, 65535)、dtypeSize ≥ 2，kBytes 理论不为 0，仍显式防御除零；
+    // 回退阈值取 CCU 单次通信上限 256MB（对齐 V2 CheckHCCLSize 的单次通信约束），超限置 0 走默认算法回退
+    constexpr uint64_t COMM_BYTES_LIMIT = mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT;
     uint64_t kBytes = args.kValue * args.inputDtypeSize;
     if (kBytes == 0 || mCutGather.longTileLen > COMM_BYTES_LIMIT / kBytes) {
         commDataBytes_ = 0;
