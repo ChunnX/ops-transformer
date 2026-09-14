@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import fcntl
 import os
 from abc import ABC, abstractmethod
 from typing import List, Union
@@ -172,19 +173,31 @@ class OpBuilder(ABC):
         if self.name in OpBuilder._loaded_ops:
             return OpBuilder._loaded_ops[self.name]
 
-        # Lazy import avoids pulling arg_check into every builder import path.
-        from cann_ops_transformer.utils.arg_check import wrap_op_module
-
-        op_module = load(
-            name=self.name,
-            sources=self.get_absolute_paths(self.sources()),
-            extra_include_paths=self.get_absolute_paths(self.include_paths()),
-            extra_cflags=self.cxx_args(),
-            extra_ldflags=self.extra_ldflags(),
-            verbose=verbose,
+        ext_dir = os.path.expanduser(
+            os.environ.get(
+                "TORCH_EXTENSIONS_DIR", os.path.join("~", ".cache", "torch_extensions")
+            )
         )
-        # Arg type-check proxy; ops can call through load() unchanged.
-        op_module = wrap_op_module(op_module)
-        OpBuilder._loaded_ops[self.name] = op_module
+        os.makedirs(ext_dir, exist_ok=True)
+        lock_path = os.path.join(ext_dir, "%s.compile.lock" % self.name)
 
-        return op_module
+        with open(lock_path, "w") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            if self.name in OpBuilder._loaded_ops:
+                return OpBuilder._loaded_ops[self.name]
+
+            # Lazy import avoids pulling arg_check into every builder import path.
+            from cann_ops_transformer.utils.arg_check import wrap_op_module
+
+            op_module = load(
+                name=self.name,
+                sources=self.get_absolute_paths(self.sources()),
+                extra_include_paths=self.get_absolute_paths(self.include_paths()),
+                extra_cflags=self.cxx_args(),
+                extra_ldflags=self.extra_ldflags(),
+                verbose=verbose,
+            )
+            # Arg type-check proxy; ops can call through load() unchanged.
+            op_module = wrap_op_module(op_module)
+            OpBuilder._loaded_ops[self.name] = op_module
+            return op_module
