@@ -294,9 +294,9 @@ def flash_attn_grad_bn2gs1s2(
 
     # 分核区间取自 metadata。swizzle 支仍走公式，原因见 block_range_of。
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
-    fagOff = pl.getval(meta, META_HEAD_FAG_START_INDEX)
-    blockStart = pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx)
-    blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx)
+    fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
+    blockStart = pl.astype(pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx), pl.DT_INT64)
+    blockEnd = pl.astype(pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64)
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
     # ---- CV 共享区：mm1/mm2 结果 UB + dS/P 的 L1 及其 ZN 转置视图 ----
@@ -677,10 +677,10 @@ def flash_attn_grad_bn2gs1s2(
 
     with pl.section_vector():
         vBlockIdxP = pl.get_block_idx()
-        dqRowStartP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP)
-        dqRowEndP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP)
-        dkvRowStartP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP)
-        dkvRowEndP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP)
+        dqRowStartP = pl.astype(pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP), pl.DT_INT64)
+        dqRowEndP = pl.astype(pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP), pl.DT_INT64)
+        dkvRowStartP = pl.astype(pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP), pl.DT_INT64)
+        dkvRowEndP = pl.astype(pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP), pl.DT_INT64)
         post_f32 = make_post_f32_buffer()
         post_f16 = make_post_f16_buffer()
         process_post(
@@ -835,9 +835,9 @@ def flash_attn_grad_bn2(
     # 多启的核，拿到 start==end 则 numBlocks=0，安全空转。
     # cube/vector 两侧读的是同一块 GM，故 numBlocks 天然一致(set/wait 才配得上)。
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
-    fagOff = pl.getval(meta, META_HEAD_FAG_START_INDEX)
-    blockStart = pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx)
-    blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx)
+    fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
+    blockStart = pl.astype(pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx), pl.DT_INT64)
+    blockEnd = pl.astype(pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64)
     numBlocks = pl.max(blockEnd - blockStart, 0)
 
     # BN2 只编 d_align 64/128 两档，这两档在 fag_mem 里共用同一张 L1 图，

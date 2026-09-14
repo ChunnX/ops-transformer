@@ -224,10 +224,10 @@ def process_pre_from_meta(meta, fagOff, tensor_dq, tensor_dk, tensor_dv, dQ, dV,
     元素起点 = rowStart * 行宽。填零 VF 跟 tilingkey：bn2_need_zero==1 走 fp16。
     """
     vBlockIdx = pl.get_block_idx()
-    dqRowStart = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx)
-    dqRowEnd = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx)
-    dkvRowStart = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx)
-    dkvRowEnd = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx)
+    dqRowStart = pl.astype(pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdx), pl.DT_INT64)
+    dqRowEnd = pl.astype(pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdx), pl.DT_INT64)
+    dkvRowStart = pl.astype(pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdx), pl.DT_INT64)
+    dkvRowEnd = pl.astype(pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdx), pl.DT_INT64)
     dqNElems = (dqRowEnd - dqRowStart) * dQ
     dkvNElems = (dkvRowEnd - dkvRowStart) * dQ
     dvNElems = (dkvRowEnd - dkvRowStart) * dV
