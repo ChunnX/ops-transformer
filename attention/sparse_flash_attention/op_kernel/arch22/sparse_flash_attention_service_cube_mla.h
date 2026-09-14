@@ -389,6 +389,9 @@ template <typename SFAT>
 __aicore__ inline void SFAMatmulService<SFAT>::CopyInMm1ARopeToL1(LocalTensor<KV_T> &l1Tensor, const RunInfo &info,
                                                                   uint32_t mSeqIdx, uint32_t mSizeAct)
 {
+    if (constInfo.headDimRope == 0) {
+        return;
+    }
     auto srcGm = qRopeGm[info.tensorARopeOffset + mSeqIdx * constInfo.headDimRope];
     CopyGmToL1(l1Tensor, srcGm, mSizeAct, constInfo.headDimRope, constInfo.headDimRope);
 }
@@ -425,6 +428,9 @@ __aicore__ inline void SFAMatmulService<SFAT>::CopyInMm1BRopeToL1(LocalTensor<KV
                                                                   uint32_t copyStartRowCnt, uint32_t nActCopyRowCount,
                                                                   uint32_t headSize)
 {
+    if (constInfo.headDimRope == 0) {
+        return;
+    }
     uint64_t dStride = constInfo.headDimRope;
     if constexpr (KV_LAYOUT_T == SFA_LAYOUT::BSND || KV_LAYOUT_T == SFA_LAYOUT::TND) {
         dStride = constInfo.headDimRope * constInfo.kvHeadNum;
@@ -583,12 +589,12 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
     uint32_t nL1SizeAlign = SFAAlign(N_SPLIT_SIZE, 16U);
     uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
 
-    uint32_t kSize = 576;
-    uint32_t kL1Size = 288;
-    uint32_t kL1Loops = 2; // 2 : 576/288, mla专用 这里不考虑d泛化
+    uint32_t kSize = constInfo.headDim + constInfo.headDimRope;
+    uint32_t kL1Size = (constInfo.headDimRope == 0) ? 256 : 288;
+    uint32_t kL1Loops = 2; // 2 : (D+Dr)/kL1Size
 
-    uint32_t kL0Size = 96;
-    uint32_t kL0Loops = (kL1Size + kL0Size - 1) / kL0Size; // 288 / 96 = 3 kloops
+    uint32_t kL0Size = (constInfo.headDimRope == 0) ? 128 : 96;
+    uint32_t kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
 
     LocalTensor<KV_T> bL1Tensor;
     LocalTensor<KV_T> kRopeTensor;
@@ -633,49 +639,46 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
             copyRowCnt = copyRowCntTmp;
             idInTopK = idInTopKTmp;
             if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
-                if (kL1 == 0) {
-                    Nd2NzParams nd2nzPara;
-                    nd2nzPara.ndNum = 1;
-                    nd2nzPara.nValue = nL1Size;                // 行数
-                    nd2nzPara.dValue = constInfo.headDim >> 1; // constInfo.headDim;
-                    nd2nzPara.srcDValue = constInfo.headDim;
-                    nd2nzPara.dstNzC0Stride = nL1SizeAlign;
-                    nd2nzPara.dstNzNStride = 1;
-                    nd2nzPara.srcNdMatrixStride = 0;
-                    nd2nzPara.dstNzMatrixStride = 0;
-                    DataCopy(
-                        bL1Tensor,
-                        kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * kSize + nL1 * N_SPLIT_SIZE * constInfo.headDim],
-                        nd2nzPara);
-                    nd2nzPara.dValue = constInfo.headDimRope >> 1;
-                    nd2nzPara.srcDValue = constInfo.headDimRope;
-                    DataCopy(
-                        bL1Tensor[nL1SizeAlign * (constInfo.headDim >> 1)],
-                        kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * kSize + N_WORKSPACE_SIZE * constInfo.headDim +
-                                   nL1 * N_SPLIT_SIZE * constInfo.headDimRope],
-                        nd2nzPara);
-                } else {
-                    LocalTensor<Q_T> kTmpTensor = bL1Tensor[(constInfo.headDimRope >> 1) * nL1SizeAlign];
-                    Nd2NzParams nd2nzPara;
-                    nd2nzPara.ndNum = 1;
-                    nd2nzPara.nValue = nL1Size;                // 行数
-                    nd2nzPara.dValue = constInfo.headDim >> 1; // constInfo.headDim;
-                    nd2nzPara.srcDValue = constInfo.headDim;
-                    nd2nzPara.dstNzC0Stride = nL1SizeAlign;
-                    nd2nzPara.dstNzNStride = 1;
-                    nd2nzPara.srcNdMatrixStride = 0;
-                    nd2nzPara.dstNzMatrixStride = 0;
-                    DataCopy(kTmpTensor,
-                             kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * kSize + (constInfo.headDim >> 1) +
+                Nd2NzParams nd2nzPara;
+                nd2nzPara.ndNum = 1;
+                nd2nzPara.nValue = nL1Size;
+                nd2nzPara.dValue = constInfo.headDim >> 1;
+                nd2nzPara.srcDValue = constInfo.headDim;
+                nd2nzPara.dstNzC0Stride = nL1SizeAlign;
+                nd2nzPara.dstNzNStride = 1;
+                nd2nzPara.srcNdMatrixStride = 0;
+                nd2nzPara.dstNzMatrixStride = 0;
+                constexpr uint32_t MERGE_K_PITCH = 576;
+                if (constInfo.headDimRope == 0) {
+                    DataCopy(bL1Tensor,
+                             kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH +
+                                        kL1 * (constInfo.headDim >> 1) + nL1 * N_SPLIT_SIZE * constInfo.headDim],
+                             nd2nzPara);
+                } else if (kL1 == 0) {
+                    DataCopy(bL1Tensor,
+                             kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH +
                                         nL1 * N_SPLIT_SIZE * constInfo.headDim],
                              nd2nzPara);
                     nd2nzPara.dValue = constInfo.headDimRope >> 1;
                     nd2nzPara.srcDValue = constInfo.headDimRope;
                     DataCopy(
-                        bL1Tensor,
-                        kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * kSize + N_WORKSPACE_SIZE * constInfo.headDim +
-                                   (constInfo.headDimRope >> 1) + nL1 * N_SPLIT_SIZE * constInfo.headDimRope],
+                        bL1Tensor[nL1SizeAlign * (constInfo.headDim >> 1)],
+                        kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH +
+                                   N_WORKSPACE_SIZE * constInfo.headDim + nL1 * N_SPLIT_SIZE * constInfo.headDimRope],
                         nd2nzPara);
+                } else {
+                    LocalTensor<Q_T> kTmpTensor = bL1Tensor[(constInfo.headDimRope >> 1) * nL1SizeAlign];
+                    DataCopy(kTmpTensor,
+                             kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH + (constInfo.headDim >> 1) +
+                                        nL1 * N_SPLIT_SIZE * constInfo.headDim],
+                             nd2nzPara);
+                    nd2nzPara.dValue = constInfo.headDimRope >> 1;
+                    nd2nzPara.srcDValue = constInfo.headDimRope;
+                    DataCopy(bL1Tensor,
+                             kvMergeGm_[info.loop % 4 * N_WORKSPACE_SIZE * MERGE_K_PITCH +
+                                        N_WORKSPACE_SIZE * constInfo.headDim + (constInfo.headDimRope >> 1) +
+                                        nL1 * N_SPLIT_SIZE * constInfo.headDimRope],
+                             nd2nzPara);
                 }
             } else {
                 while (copyFinishRowCnt < nL1Size) {
@@ -705,7 +708,10 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                         PAShape ropeShape = shape;
                         ropeShape.headDim = constInfo.headDimRope;
                         ropeShape.actHeadDim = 32;
-                        if (kL1 == 0) {
+                        if (constInfo.headDimRope == 0) {
+                            kTensor = bL1Tensor[copyFinishRowCnt * 16];
+                            DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, keyGm, blockTableGm, shape, startPos);
+                        } else if (kL1 == 0) {
                             kTensor = bL1Tensor[copyFinishRowCnt * 16];
                             DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, keyGm, blockTableGm, shape, startPos);
                             kRopeTensor = bL1Tensor[(nL1SizeAlign * (BlockAlign<KV_T>(constInfo.headDim) >> 1)) +
@@ -732,7 +738,10 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                                 (idInTopK * constInfo.sparseBlockSize + curOffsetInSparseBlock) * constInfo.headDimRope;
                         }
 
-                        if (kL1 == 0) {
+                        if (constInfo.headDimRope == 0) {
+                            CopyInMm1BToL1(bL1Tensor, keyOffset + kL1 * 256, nL1SizeAlign, copyFinishRowCnt, copyRowCnt,
+                                           256);
+                        } else if (kL1 == 0) {
                             CopyInMm1BToL1(bL1Tensor, keyOffset, nL1SizeAlign, copyFinishRowCnt, copyRowCnt, 256);
                             kRopeTensor = bL1Tensor[nL1SizeAlign * (BlockAlign<KV_T>(constInfo.headDim) >> 1)];
                             CopyInMm1BRopeToL1(kRopeTensor, kRopeOffset, nL1SizeAlign, copyFinishRowCnt, copyRowCnt,
@@ -764,7 +773,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                     mL1Size = mSize - (mL1Loops - 1) * M_SPLIT_SIZE;
                     mL1SizeAlign = SFAAlign(mL1Size, 16U);
                     // mL1SizeAlign<128 kL1=0时需要偏移, 确保qRope能一半拷贝到当前tensor, 一半拷贝到下一个tensor
-                    aL1PaddingSize = (M_SPLIT_SIZE - mL1SizeAlign) * 288;
+                    aL1PaddingSize = (M_SPLIT_SIZE - mL1SizeAlign) * kL1Size;
                 }
 
                 // 左矩阵L1选择12块还是34块的index, 由m l1 index决定
@@ -778,11 +787,15 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka]);
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka + 1]);
                         CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256, 0);
-                        // 由于L1里面是NZ, 这里q rope的偏移为整块q nope切k的后大小, 256为headDim的一半
-                        LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
-                        CopyInMm1ARopeToL1(qRopeTensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size);
+                        if (constInfo.headDimRope != 0) {
+                            LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
+                            CopyInMm1ARopeToL1(qRopeTensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE,
+                                               mL1Size);
+                        }
+                    } else if (constInfo.headDimRope == 0) {
+                        CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256,
+                                       256);
                     } else {
-                        // 32为rope headDim的一半
                         LocalTensor<Q_T> qTmpTensor = aL1Tensor[mL1SizeAlign * 32];
                         CopyInMm1AToL1(qTmpTensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256,
                                        256);
@@ -811,8 +824,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                     mmadParams.k = kL0Size;
                     mmadParams.cmatrixInitVal = (kL1 == 0 && kL0 == 0);
                     mmadParams.cmatrixSource = false;
-                    mmadParams.unitFlag =
-                        (kL1 == 1 && kL0 == (kL0Loops - 1)) ? 0b11 : 0b10; // 累加最后一次翻转flag, 表示可以搬出
+                    mmadParams.unitFlag = (kL1 == (kL1Loops - 1) && kL0 == (kL0Loops - 1)) ? 0b11 : 0b10;
                     Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
 
                     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
@@ -826,7 +838,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                     SetFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka]); // 反向同步, 表示L1中的A已经被mte1消费完
                 }
 
-                if (kL1 == 1) { // 最后一轮kL1循环
+                if (kL1 == (kL1Loops - 1)) { // 最后一轮kL1循环
                     FixpipeParamsV220 fixParams;
                     fixParams.srcStride = mL1SizeAlign;
                     fixParams.nSize = nL1SizeAlign;
