@@ -37,6 +37,7 @@ private:
     GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_, attention_out_gm_;
     GlobalTensor<INPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
     GlobalTensor<float> dq_workspace_, dk_workspace_, dv_workspace_, sftg_workspace_;
+    GlobalTensor<uint8_t> det_finish_workspace_;
     TBuf<TPosition::VECCALC> ub_buffer_;
     TBuf<TPosition::A1> l1_buffer_;
     LocalTensor<float> mm1_res_ub_tensor_ping_, mm1_res_ub_tensor_pong_;
@@ -79,7 +80,6 @@ public:
         dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
         dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
-
         addr_.Init(tilingData, actualQseqlen, actualKvseqlen, blockSparseMask);
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
@@ -103,16 +103,12 @@ public:
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
 
         if ASCEND_IS_AIC {
-            // printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                         actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
-            // printf("====================================================\n\n");
         }
         if ASCEND_IS_AIV {
-            // printf("=====================vectorIdx=%d=====================\n", GetBlockIdx());
             VectorProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                           actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
-            // printf("====================================================\n\n");
         }
     }
 
@@ -123,8 +119,9 @@ public:
                                        TPipe *tPipe)
     {
         CubeOp<BSA_TYPE> cubeOp;
-        cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_);
+        cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_, workspace);
         CrossCoreWaitFlag(FLAG_CUBE_POST);
+        this->SetEventFlag();
 
         while (true) {
             ping_pong_idx = taskId % 2;
@@ -136,7 +133,6 @@ public:
             addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
 
             if (runTimeInfo_[ping_pong_idx].need_compute) {
-                // mm12
                 cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
                 CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
                 cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
@@ -144,7 +140,6 @@ public:
             }
 
             if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
-                // mm345
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
                 cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
                 CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
@@ -153,13 +148,23 @@ public:
                 SET_FLAG(MTE1, MTE2, EVENT_ID0);
                 WAIT_FLAG(MTE1, MTE2, EVENT_ID0);
             }
-
-            if (runTimeInfo_[ping_pong_idx].need_compute == false) {
+            if constexpr (DETERMINISTIC_ENABLE) {
+                if (taskId > 0) {
+                    CrossCoreSetFlag<0, PIPE_FIX>(FLAG_DETER_FIX);
+                    CrossCoreWaitFlag<0, PIPE_FIX>(FLAG_DETER_FIX);
+                }
+            }
+            if constexpr (DETERMINISTIC_ENABLE) {
+                if (taskId >= addr_.GetDeterMaxRound()) {
+                    break;
+                }
+            } else if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
             taskId++;
         }
-        cubeOp.Destroy();
+
+        this->WaitEventFlag();
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
     }
 
@@ -181,8 +186,8 @@ public:
         PipeBarrier<PIPE_ALL>();
         SyncAll();
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
+        this->SetEventFlag();
 
-        vecOp.SetFlag();
         while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
@@ -204,16 +209,47 @@ public:
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
             }
 
-            if (runTimeInfo_[ping_pong_idx].need_compute == false) {
+            if constexpr (DETERMINISTIC_ENABLE) {
+                if (taskId >= addr_.GetDeterMaxRound()) {
+                    break;
+                }
+            } else if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
             taskId++;
         }
-        vecOp.WaitFlag();
+
+        this->WaitEventFlag();
         PipeBarrier<PIPE_ALL>();
         CrossCoreWaitFlag(FLAG_CUBE_POST);
         SyncAll();
         vecOp.SendVecPost(dq_gm_, dk_gm_, dv_gm_, dq_workspace_, dk_workspace_, dv_workspace_, tilingData, ub_buffer_);
+    }
+
+    __aicore__ inline void SetEventFlag()
+    {
+        if ASCEND_IS_AIC {
+            SET_FLAG(M, MTE1, EVENT_ID3);
+            SET_FLAG(M, MTE1, EVENT_ID4);
+            SET_FLAG(FIX, M, EVENT_ID3);
+            SET_FLAG(FIX, M, EVENT_ID4);
+        } else {
+            SET_FLAG(V, MTE2, EVENT_ID3);
+            SET_FLAG(V, MTE2, EVENT_ID4);
+        }
+    }
+
+    __aicore__ inline void WaitEventFlag()
+    {
+        if ASCEND_IS_AIC {
+            WAIT_FLAG(M, MTE1, EVENT_ID3);
+            WAIT_FLAG(M, MTE1, EVENT_ID4);
+            WAIT_FLAG(FIX, M, EVENT_ID3);
+            WAIT_FLAG(FIX, M, EVENT_ID4);
+        } else {
+            WAIT_FLAG(V, MTE2, EVENT_ID3);
+            WAIT_FLAG(V, MTE2, EVENT_ID4);
+        }
     }
 };
 
