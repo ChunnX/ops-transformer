@@ -953,6 +953,13 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         }
         PipeBarrier<PIPE_MTE3>();
 
+        // Flush scalar GM writes (toRankId scratch table) from L1 cache to GM so that
+        // the MTE2 DataCopyPad in Phase 2 reads fresh data, not stale cache lines.
+        for (uint32_t flushIdx = 0U; flushIdx < totalSendNum_; flushIdx += 16U) {
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                tokenRankScratchGMTensor_[flushIdx]);
+        }
+
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
 
