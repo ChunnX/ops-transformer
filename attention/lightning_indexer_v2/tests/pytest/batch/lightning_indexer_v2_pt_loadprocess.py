@@ -19,8 +19,7 @@ import pytest
 import random
 import math
 import ast
-from npu_ops_transformer.ops import npu_lightning_indexer, npu_lightning_indexer_metadata
-from lightning_indexer_v2_golden import _load_metadata_from_cpu, IS_NPU_NOW
+from cann_ops_transformer.ops import lightning_indexer, lightning_indexer_metadata
 
 def test_liv2_process(filepath, device_id=0):
     # 加载测试数据
@@ -88,72 +87,27 @@ def test_liv2_process(filepath, device_id=0):
     max_seqlen_q_meta = test_data['max_seqlen_q_meta']
     max_seqlen_k_meta = test_data['max_seqlen_k_meta']
 
-    if not IS_NPU_NOW:
-        # ======================== 仿真模式：先在 CPU 上生成 metadata ========================
-        # 从 .pt 中存的 tensor 还原 _load_metadata_from_cpu 所需的 list 参数
-        cu_seqlens_q_list = cu_seqlens_q.cpu().tolist() if cu_seqlens_q is not None else None
-        cu_seqlens_k_list = cu_seqlens_k.cpu().tolist() if cu_seqlens_k is not None else None
+    metadata = lightning_indexer_metadata(
+                    num_heads_q = q_head_num,
+                    num_heads_k = k_head_num,
+                    head_dim = head_dim,
+                    topk = topk,
+                    cu_seqlens_q = cu_seqlens_q,
+                    cu_seqlens_k = cu_seqlens_k,
+                    seqused_q = seqused_q,
+                    seqused_k = seqused_k,
+                    cmp_residual_k = cmp_residual_k,
+                    batch_size = batch_size,
+                    max_seqlen_q = max_seqlen_q_meta,
+                    max_seqlen_k = max_seqlen_k_meta,
+                    layout_q = layout_query,
+                    layout_k = layout_key,
+                    mask_mode = mask_mode,
+                    cmp_ratio = cmp_ratio)
 
-        if seqused_q is not None:
-            lengths_q_list = seqused_q.cpu().tolist()
-        elif cu_seqlens_q_list is not None:
-            lengths_q_list = [cu_seqlens_q_list[i+1] - cu_seqlens_q_list[i] for i in range(len(cu_seqlens_q_list) - 1)]
-        else:
-            lengths_q_list = [int(params[1])] * batch_size
-
-        if seqused_k is not None:
-            lengths_k_list = seqused_k.cpu().tolist()
-        elif cu_seqlens_k_list is not None:
-            lengths_k_list = [cu_seqlens_k_list[i+1] - cu_seqlens_k_list[i] for i in range(len(cu_seqlens_k_list) - 1)]
-        else:
-            lengths_k_list = [int(params[2])] * batch_size
-
-        if cmp_residual_k is not None:
-            cmp_residual_k_list = cmp_residual_k.cpu().tolist()
-        else:
-            cmp_residual_k_list = [0] * batch_size
-
-        metadata = _load_metadata_from_cpu(
-            batch_size=batch_size,
-            cu_seqlens_q=cu_seqlens_q_list,
-            cu_seqlens_k=cu_seqlens_k_list,
-            seqused_q_list=lengths_q_list,
-            seqused_k_list=lengths_k_list,
-            cmp_residual_k_list=cmp_residual_k_list,
-            max_seqlen_q=max_seqlen_q_meta,
-            max_seqlen_k=max_seqlen_k_meta,
-            q_head_num=q_head_num,
-            k_head_num=k_head_num,
-            head_dim=head_dim,
-            topk=topk,
-            layout_query=layout_query,
-            layout_key=layout_key,
-            sparse_mode=mask_mode,
-            cmp_ratio=cmp_ratio,
-        )
-        metadata = metadata.npu()
-    else:
-        # ======================== 上板模式：调用真正的 NPU metadata 算子 ========================
-        metadata = npu_lightning_indexer_metadata(
-                        num_heads_q = q_head_num,
-                        num_heads_k = k_head_num,
-                        head_dim = head_dim,
-                        topk = topk,
-                        cu_seqlens_q = cu_seqlens_q,
-                        cu_seqlens_k = cu_seqlens_k,
-                        seqused_q = seqused_q,
-                        seqused_k = seqused_k,
-                        cmp_residual_k = cmp_residual_k,
-                        batch_size = batch_size,
-                        max_seqlen_q = max_seqlen_q_meta,
-                        max_seqlen_k = max_seqlen_k_meta,
-                        layout_q = layout_query,
-                        layout_k = layout_key,
-                        mask_mode = mask_mode,
-                        cmp_ratio = cmp_ratio)
-        metadata = metadata.npu()
+    metadata = metadata.npu()
     #调用li算子
-    npu_result, npu_topk_value = npu_lightning_indexer(query, key, weights,
+    npu_result, npu_topk_value = lightning_indexer(query, key, weights,
                                              cu_seqlens_q = cu_seqlens_q,
                                              cu_seqlens_k = cu_seqlens_k,
                                              seqused_q = seqused_q,
@@ -171,9 +125,6 @@ def test_liv2_process(filepath, device_id=0):
                                              return_value = return_value)
     torch.npu.synchronize()
     npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
-    npu_result = npu_result.cpu()
-    # 注意：不要对索引做预排序，check_result 内部已做排序集合比较，
-    # 第二步逐位配对依赖原始位置顺序。
     return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params
 
 def test_liv2_process_graph(filepath, device_id=0):

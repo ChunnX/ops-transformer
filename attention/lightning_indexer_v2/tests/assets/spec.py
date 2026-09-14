@@ -79,7 +79,7 @@ class LightningIndexerV2Spec:
 class AclnnLightningIndexerV2Spec(LightningIndexerV2Spec):
     golden = golden_module.cpu_aclnn_li_v2
     customize_inputs = inputs_module.generate_aclnn_li_v2_inputs
-    npu_preprocess = npu_preprocess_module.run_aclnn
+    npu_preprocess = None
 
 
 class LightningIndexerMetadataSpec:
@@ -87,8 +87,8 @@ class LightningIndexerMetadataSpec:
 
 
 __spec__ = {
-    "torch.ops.npu_ops_transformer.npu_lightning_indexer": "LightningIndexerV2Spec",
-    "torch.ops.npu_ops_transformer.npu_lightning_indexer_metadata": (
+    "torch.ops.cann_ops_transformer.lightning_indexer": "LightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.lightning_indexer_metadata": (
         "LightningIndexerMetadataSpec"
     ),
     "aclnnLightningIndexerV2": "AclnnLightningIndexerV2Spec",
