@@ -170,7 +170,7 @@ def mixed_quant_sparse_flash_mla_metadata(
     has_cmp_kv: bool = True,
 ):
     """Generate the core task table through the net wheel DSL host interface."""
-    from ops.mqsmla import mixed_quant_sparse_flash_mla_metadata as dsl_metadata
+    from ops.mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla_metadata as dsl_metadata
 
     return dsl_metadata(
         win_topk_length,
@@ -266,7 +266,7 @@ def mixed_quant_sparse_flash_mla(
     return_softmax_lse=False,
 ):
     """Allocate outputs and pass the original inputs to the net wheel DSL."""
-    from ops.mqsmla import mixed_quant_sparse_flash_mla as dsl_attention
+    from ops.mixed_quant_sparse_flash_mla import mixed_quant_sparse_flash_mla as dsl_attention
     attn_out = torch.empty(q.shape, dtype=torch.bfloat16, device=q.device)
     if return_softmax_lse:
         n2 = win_kv.shape[2]

@@ -173,7 +173,7 @@ mixed_quant_sparse_flash_mla_metadata(
 | `has_cmp_kv` | bool | True | 控制是否计入cmp侧固定负载 |
 | 返回 `metadata` | int32 Tensor `(x,)` | — | x=2*blocks；前半段起点、后半段数量 |
 
-上述取值检查与分核逻辑属于DSL单文件实现；torch_extension直接转发给 net wheel 中的 `ops.mqsmla` 实现，得到真实分核结果。DSL在两个topk_length所在NPU生成metadata；两者必须同形状、同设备。query长度信息若传入，派生T1必须与topk_length首维一致；未传时直接使用其首维。其他预留字段当前不解析、不校验内容，不参与分核。
+上述取值检查与分核逻辑属于DSL单文件实现；torch_extension直接转发给 net wheel 中的 `ops.mixed_quant_sparse_flash_mla` 实现，得到真实分核结果。DSL在两个topk_length所在NPU生成metadata；两者必须同形状、同设备。query长度信息若传入，派生T1必须与topk_length首维一致；未传时直接使用其首维。其他预留字段当前不解析、不校验内容，不参与分核。
 
 `blocks`为设备Cube核数，通过`torch.npu.get_device_properties(...).cube_core_num`获取；metadata生成使用topk_length所在NPU，tiling使用`q.device`，调用方须使它们位于同一NPU。workspace容量和kernel发射核数均使用tiling查询结果。
 
@@ -182,12 +182,12 @@ query token总数依次由`cu_seqlens_q[-1]`、`seqused_q.sum()`或`batch_size *
 
 ### KV 量化与分页布局
 
-每个 token 逻辑顺序为 `rope[64] + nope[448]`，win 每连续 32 个元素共享一个 BF16 scale，共 16 个 scale；cmp 每连续 16 个元素共享一个 BF16 scale，共 32 个 scale。输入均为 uint8 字节视图，token 内没有额外 padding。
+每个 token 数据的物理和逻辑顺序均为 `nope[448] + rope[64]`，其后紧接 scale，win 每连续 32 个元素共享一个 BF16 scale，共 16 个 scale；cmp 每连续 16 个元素共享一个 BF16 scale，共 32 个 scale。输入均为 uint8 字节视图，token 内没有额外 padding。
 
 | 输入 | 数据字节范围 | scale 字节范围 | 每 token 字节数 |
 | :--- | :--- | :--- | :--- |
-| win_kv | `[0,512)`，512 个 FP8 E4M3 元素 | `[512,544)`，16 个 BF16 scale | 544 |
-| cmp_kv | `[0,256)`，512 个 FP4 E2M1 元素 | `[256,320)`，32 个 BF16 scale | 320 |
+| win_kv | nope `[0,448)`，rope `[448,512)`；FP8 E4M3 | `[512,544)`，16 个 BF16 scale | 544 |
+| cmp_kv | nope `[0,224)`，rope `[224,256)`；FP4 E2M1 | `[256,320)`，32 个 BF16 scale | 320 |
 
 FP4 偶数位置元素存于低 4 bit，奇数位置元素存于高 4 bit。第 i 个 scale 覆盖物理顺序中的元素 `[g*i,g*(i+1))`，win 的 g=32，cmp 的 g=16。
 
@@ -228,7 +228,11 @@ byte_offset = physical_page * kv.stride(0) + (p % block_size) * row_bytes
 | :--- | :--- | :--- |
 | PyTorch API | `cann_ops_transformer.ops.ds41` | 分配输出，调用 DSL，返回 `(attn_out,softmax_lse)` |
 | torch.ops | `torch.ops.cann_ops_transformer.ds41` | 导入扩展完成注册后调用同名接口 |
-| DSL 直调 | net wheel 的 `ops.mqsmla` | 同序参数末尾增加必传 keyword `out`、`lse`；写入缓冲区，返回 None |
+| DSL 直调 | net wheel 的 `ops.mixed_quant_sparse_flash_mla` | 同序参数末尾增加必传 keyword `out`、`lse`；写入缓冲区，返回 None |
+
+DSL 文件更名后，需同时重新构建并安装 net native wheel 和本仓 PyTorch wheel。
+版本号不变时使用 `python -m pip install --no-deps --force-reinstall` 安装两个新包，
+确保 metadata 和 attention 均通过 `ops.mixed_quant_sparse_flash_mla` 导入。
 
 `ds41` 为与 compressor_v2 共用的实际模块名。MQSMLA 的 torch 调用为 `torch.ops.cann_ops_transformer.ds41.mixed_quant_sparse_flash_mla(...)`，metadata 同层；底层 schema 使用 `ds41.mixed_quant_sparse_flash_mla` 与 `ds41.mixed_quant_sparse_flash_mla_metadata`，与主线注册名互不冲突。下面的函数接收已按上述格式打包并置于 NPU 的输入，可用于 win-only 或 win+cmp；两侧 attention 长度均省略，使用全部 K 列：
 
@@ -303,7 +307,7 @@ python3 -m pytest --collect-only -q experimental/attention/mixed_quant_sparse_fl
 ```
 
 - 支持 `.xlsx`，默认 sheet 为 `decode`，第一行为列名；必需列和值为 `Testcase_Name`（唯一非空文本）和 `template_run_mode`（`ORI_SPARSE` / `ORI_CMP_SPARSE`）。空行忽略，空单元格、文本 `None` / `null` 使用测试默认值。
-- 可添加 `备注` 列描述泛化目标；读取器忽略备注内容，不传入测试参数。精简白盒表位于 `tests/whitebox/mqsmla_whitebox_cases.xlsx`，使用默认 `decode` sheet，当前启用的典型参数集场景位于表格前部，其后为B、S1、S2、block_size等形状参数代表值。
+- 可添加 `备注` 列描述泛化目标；读取器忽略备注内容，不传入测试参数。精简白盒表位于 `tests/excel/mqsmla_whitebox_cases.xlsx`，使用默认 `decode` sheet，当前启用的典型参数集场景位于表格前部，其后为B、S1、S2、block_size等形状参数代表值。
 - 形状列：`B`、`S1`、`S2`、`S2C`、`K1`、`K2`、`block_size1`、`block_size2`。`S1/S2/S2C` 可填整数或 `[1, 3]` 这样的 B 元素列表，列表表示每个 batch 的长度，不做笛卡尔积。
 - `cu_seqlens_q` / `seqused_q`：可填一维整数列表，分别为 B+1 个累积偏移（从0开始）和 B 个实际query长度。例如 `B=3`、`cu_seqlens_q=[0,1,4,6]`、`seqused_q=[1,3,2]` 生成 `q.shape=(6,64,512)`。可只传其中一项；只传 `seqused_q` 时测试框架生成 `cu_seqlens_q`。两者都传必须满足相邻差分等于 `seqused_q`，每个batch长度须为正，不支持padding。任一字段传入时忽略 `S1`；均未传时才使用 `S1`（标量表示每个batch等长，也兼容B元素列表）。参数集中写成 `"cu_seqlens_q": [[0,1,4,6]]` / `"seqused_q": [[1,3,2]]`，也接受整数Tensor候选值；保存/回放保留这些输入。
 - `win_topk_length` / `cmp_topk_length`：手动指定的有效前缀长度，优先于对应fullK/random模式。可填长度为T的列表`[17,32,64]` / `[[17],[32],[64]]`（按TND顺序，每个query一个长度，T1由query长度字段决定）。每项必须在`[0,K1]` / `[0,K2]`内；K1/K2仍是indices容量，不会随有效长度改变。活动侧长度同时为0的空query不支持。两侧独立处理，只有空单元格/None/null才使用该侧fullK/random生成默认长度。
@@ -315,9 +319,9 @@ python3 -m pytest --collect-only -q experimental/attention/mixed_quant_sparse_fl
 
 所有结果仍由 pytest 汇总，可用 `--junitxml=/absolute/path/results.xml` 保存报告。
 
-### test.sh 与输入/golden保存回放
+### test_run.sh 与输入/golden保存回放
 
-`tests/test.sh` 参考主线封装以下命令，复用 `tests/test_mqsmla.py`。请先加载上文CANN/Python环境；执行NPU测试前构建安装wheel。`PYTHON`可指定Python可执行文件。
+`tests/test_run.sh` 参考主线封装以下命令，复用 `tests/test_mqsmla.py`。请先加载上文CANN/Python环境；执行NPU测试前构建安装wheel。`PYTHON`可指定Python可执行文件。
 
 | 命令 | 行为 |
 | --- | --- |
@@ -328,17 +332,17 @@ python3 -m pytest --collect-only -q experimental/attention/mixed_quant_sparse_fl
 
 ```bash
 # 在仓库根目录执行；可将目录改为需要长期保存数据的位置。
-bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test.sh batch_save \
+bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_run.sh batch_save \
   --pt-dir /tmp/mqsmla_data
-bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test.sh batch_exec \
+bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_run.sh batch_exec \
   --pt-dir /tmp/mqsmla_data --device-id 0
 # 按Excel生成、保存并运行
-bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test.sh batch \
-  --excel experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/whitebox/mqsmla_whitebox_cases.xlsx \
+bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_run.sh batch \
+  --excel experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/excel/mqsmla_whitebox_cases.xlsx \
   --sheet decode --pt-dir /tmp/mqsmla_data
 # 参数集运行；-- 后可传pytest筛选、收集或报告参数
-bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test.sh single -- -k ori_cmp_sparse_8k_decode
-bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test.sh batch_exec \
+bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_run.sh single -- -k ori_cmp_sparse_8k_decode
+bash experimental/attention/mixed_quant_sparse_flash_mla_dsl/tests/test_run.sh batch_exec \
   --pt-dir /tmp/mqsmla_data -- --junitxml=/tmp/mqsmla_replay.xml
 ```
 
@@ -406,3 +410,5 @@ N1=64、N2=1、head_dim=512 固定。改变 K1/K2、开启 LSE，需要通过 `C
 metadata 接口仍要求长度 Tensor，调用方可单独传全 K 长度，无 cmp 侧传零长度。
 测试参数 omit_win_topk_length / omit_cmp_topk_length 支持参数集及 Excel；
 测试先按完整长度计算 metadata，再省略对应 attention keyword。默认仍关闭 LSE。
+
+保存用例格式为 `mqsmla-dsl-input-golden-v2`，布局标记 `nope448-rope64-scale`。旧 rope/nope 格式不能直接回放，需用 `batch_save` 重新生成输入与独立 CPU golden。白盒工作簿为 `tests/excel/mqsmla_whitebox_cases.xlsx`，保存目录为 `tests/mqsmla_whitebox_cases/`。

@@ -12,7 +12,8 @@ import torch
 from test_constants import D, N1, KV_PAGE_PADDING_BYTES
 
 
-FORMAT = 'mqsmla-dsl-input-golden-v1'
+FORMAT = 'mqsmla-dsl-input-golden-v2'
+KV_LAYOUT = 'nope448-rope64-scale'
 
 
 def case_path(directory, name, index, params):
@@ -27,7 +28,7 @@ def case_path(directory, name, index, params):
 
 def save_case(path, prepared):
     params, case, golden, golden_lse = prepared
-    payload = dict(format=FORMAT, params=params, case=case,
+    payload = dict(format=FORMAT, kv_layout=KV_LAYOUT, params=params, case=case,
                    golden=golden, golden_lse=golden_lse,
                    page_padding_bytes=KV_PAGE_PADDING_BYTES)
     path = Path(path)
@@ -56,7 +57,9 @@ def load_case(path):
     try:
         data = torch.load(path, map_location='cpu', weights_only=True)
         if not isinstance(data, dict) or data.get('format') != FORMAT:
-            raise ValueError(f'expected format {FORMAT}')
+            raise ValueError(f'expected format {FORMAT}; regenerate old data with batch_save')
+        if data.get('kv_layout') != KV_LAYOUT:
+            raise ValueError(f'expected KV layout {KV_LAYOUT}; regenerate with batch_save')
         params, case = data['params'], data['case']
         golden, lse = data['golden'], data['golden_lse']
         if data['page_padding_bytes'] != KV_PAGE_PADDING_BYTES:

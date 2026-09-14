@@ -77,7 +77,7 @@ def unpack_uint8_to_fp4(packed):
 
 
 def quantize_group(vec_f32, side):
-    """按侧分组量化整行 512 元素（物理序 rope[64]‖nope[448]）。
+    """按侧分组量化整行 512 元素（物理序 nope[448]‖rope[64]）。
 
     side="win" → group32 FP8 E4M3：返回 (fp8 张量 [S,512], scale bf16 [S,16])。
     side="cmp" → group16 FP4 E2M1（x2 打包）：返回 (packed uint8 [S,256], scale bf16 [S,32])。
@@ -103,7 +103,7 @@ def quantize_group(vec_f32, side):
 
 
 def dequant_group(data, scale, side):
-    """win group32 / cmp group16 反量化 → bf16 [rows,512]（物理序 rope‖nope）。
+    """win group32 / cmp group16 反量化 → bf16 [rows,512]（物理序 nope‖rope）。
 
     kernel 侧数值流：win 走 fp8→f32→bf16（cast 精确/RN）→ vmul bf16；cmp 走 LUT 查表
     （e2m1 值在 bf16 精确）→ vmul bf16。两者等价于 bf16(码值) × bf16(scale) → RN bf16。"""
@@ -122,10 +122,8 @@ def dequant_group(data, scale, side):
 
 
 def kv_dequant(kv):
-    """整行 512 元素反量化后重排为计算序 [nope448 ‖ rope64]（bf16 输出）。"""
-    torch = _torch()
-    phys = dequant_group(kv["data"], kv["scale"], kv["side"])   # [rows,512] 物理序
-    return torch.cat([phys[:, C.D_ROPE:], phys[:, :C.D_ROPE]], dim=-1)
+    """直接反量化为计算序 [nope448 ‖ rope64]，物理与逻辑顺序一致。"""
+    return dequant_group(kv["data"], kv["scale"], kv["side"])
 
 
 def _topk_lengths(total_queries, width, topk_length):
@@ -289,7 +287,16 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         """使用固定seed的正态分布生成输入。"""
         return torch.randn(*shape, generator=g)
 
-    q = (_rand(T1, n1, D) * 0.5).to(torch.bfloat16)
+    # Generate directly into the final BF16 storage in bounded query chunks.
+    # The largest white-box cases have 262144 queries; a full-size FP32 randn
+    # temporary alongside q and its golden exceeds host memory during batch_save.
+    q = torch.empty((T1, n1, D), dtype=torch.bfloat16)
+    for q_start in range(0, T1, 8192):
+        q_stop = min(q_start + 8192, T1)
+        q_f32 = _rand(q_stop - q_start, n1, D)
+        q_f32.mul_(0.5)
+        q[q_start:q_stop] = q_f32
+    del q_f32
     sinks = _rand(n1).float()
     ref = {
         "scenario": scenario, "quant_mode": quant_mode,
@@ -302,7 +309,11 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
         if topk_length is None and variant not in ("fullK", "random"):
             raise ValueError("topk mode must be fullK or random")
         offsets = pool_lengths.cumsum(0) - pool_lengths
-        vec = _rand(int(pool_lengths.sum()), D) * 0.5
+        vec = _rand(int(pool_lengths.sum()), D)
+        vec.mul_(0.5)
+        # 保持既有seed对应的逻辑KV值：历史随机流先生成rope，再生成nope。
+        # 量化前整理为公共nope/rope顺序，scale也按此顺序生成。
+        vec = torch.cat((vec[:, C.D_ROPE:], vec[:, :C.D_ROPE]), dim=-1)
         data, scale = quantize_group(vec, "win" if side == "ori" else "cmp")
         ref[side] = {"side": "win" if side == "ori" else "cmp", "data": data, "scale": scale}
         ref[f"{side}_seqlens"] = pool_lengths
@@ -343,9 +354,9 @@ def make_inputs(scenario=C.Scenario.ORI_SPARSE, quant_mode=C.QuantMode.CONTIGUOU
 # 于是 PA 寻址 = W6 行索引 + 一次 blockTable 标量查表。逻辑 K̃（dequant 值）与布局无关。
 #
 # ★ 新量化 v2（quant_mode=1 唯一编码，两池行宽**分家**）：
-#   win_kv (FP8 E4M3)    544 B/token = rope[64]+nope[448] 全 fp8 @0..512 ‖ scale 16×bf16 @512
-#   cmp_kv (FP4 E2M1 x2) 320 B/token = rope[64]+nope[448] 全 fp4x2 @0..256 ‖ scale 32×bf16 @256
-#   物理字节序 = rope[64] ‖ nope[448]；scale i 覆盖物理序元素 [g*i, g*(i+1))，无 pad 字段。
+#   win_kv (FP8 E4M3)    544 B/token = nope[448]+rope[64] 全 fp8 @0..512 ‖ scale 16×bf16 @512
+#   cmp_kv (FP4 E2M1 x2) 320 B/token = nope[448]+rope[64] 全 fp4x2 @0..256 ‖ scale 32×bf16 @256
+#   物理字节序 = nope[448] ‖ rope[64]；scale i 覆盖物理序元素 [g*i, g*(i+1))，无 pad 字段。
 #   win 的 g=32，cmp 的 g=16。
 
 

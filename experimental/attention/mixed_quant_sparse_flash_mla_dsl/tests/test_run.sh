@@ -9,7 +9,7 @@ if [[ $# -gt 0 ]]; then shift; fi
 
 usage() {
     cat <<'EOF'
-Usage: bash test.sh <command> [options] [-- pytest-options]
+Usage: bash test_run.sh <command> [options] [-- pytest-options]
   single       Generate inputs/golden and run current paramset (or --excel).
   batch_save   Save CPU inputs/golden only; no NPU or installed wheel required.
   batch_exec   Replay saved .pt files without Excel, input generation or golden.
@@ -64,7 +64,7 @@ if [[ ! "$device_id" =~ ^[0-9]+$ ]]; then
     echo '--device-id must be a non-negative integer' >&2; exit 2
 fi
 if [[ "$command" == batch_save || "$command" == batch ]]; then
-    excel="${excel:-$TEST_DIR/whitebox/mqsmla_whitebox_cases.xlsx}"
+    excel="${excel:-$TEST_DIR/excel/mqsmla_whitebox_cases.xlsx}"
 fi
 args=(-q -s --rootdir "$TEST_DIR" "$TEST_DIR/test_mqsmla.py" --data-mode "$data_mode"
       --pt-dir "$pt_dir" --device-id "$device_id")
