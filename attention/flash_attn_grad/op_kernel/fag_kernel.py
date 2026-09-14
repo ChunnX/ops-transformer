@@ -298,9 +298,13 @@ def flash_attn_grad_preload3(
 
     # 分核区间取自 metadata。swizzle 支仍走公式，原因见 block_range_of。
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
-    fagOff = pl.getval(meta, META_HEAD_FAG_START_INDEX)
-    blockStart = pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx)
-    blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx)
+    fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
+    blockStart = pl.astype(
+        pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx), pl.DT_INT64
+    )
+    blockEnd = pl.astype(
+        pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64
+    )
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
     # ---- CV 共享区：mm1/mm2 结果 UB + dS/P 的 L1 及其 ZN 转置视图 ----
@@ -635,10 +639,18 @@ def flash_attn_grad_preload3(
 
     with pl.section_vector():
         vBlockIdxP = pl.get_block_idx()
-        dqRowStartP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP)
-        dqRowEndP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP)
-        dkvRowStartP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP)
-        dkvRowEndP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP)
+        dqRowStartP = pl.astype(
+            pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP), pl.DT_INT64
+        )
+        dqRowEndP = pl.astype(
+            pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP), pl.DT_INT64
+        )
+        dkvRowStartP = pl.astype(
+            pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP), pl.DT_INT64
+        )
+        dkvRowEndP = pl.astype(
+            pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP), pl.DT_INT64
+        )
         post_f32 = make_post_f32_buffer()
         post_f16 = make_post_f16_buffer()
         process_post(
@@ -855,9 +867,13 @@ def flash_attn_grad_preload2(
     cBlockIdx = pl.get_block_idx() // pl.get_subblock_num()
     coreNum = constInfo.coreNum
     meta = pl.make_tensor(metadata, [META_VIEW_LEN], [1], dtype=pl.DT_INT32)
-    fagOff = pl.getval(meta, META_HEAD_FAG_START_INDEX)
-    blockStart = pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx)
-    blockEnd = pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx)
+    fagOff = pl.astype(pl.getval(meta, META_HEAD_FAG_START_INDEX), pl.DT_INT64)
+    blockStart = pl.astype(
+        pl.getval(meta, fagOff + META_FAG_BLOCK_STARTS_OFFSET + cBlockIdx), pl.DT_INT64
+    )
+    blockEnd = pl.astype(
+        pl.getval(meta, fagOff + META_FAG_BLOCK_ENDS_OFFSET + cBlockIdx), pl.DT_INT64
+    )
     # enableSwizzle==0（含 BN2）时就是 max(end-start, 0)。
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
@@ -1460,12 +1476,21 @@ def flash_attn_grad_preload2(
         pl.system.sync_all()
         with pl.section_vector():
             vBlockIdxP = pl.get_block_idx()
-            dqRowStartP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP)
-            dqRowEndP = pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP)
-            dkvRowStartP = pl.getval(
-                meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP
+            dqRowStartP = pl.astype(
+                pl.getval(meta, fagOff + META_FAG_DQ_ROW_STARTS + vBlockIdxP),
+                pl.DT_INT64,
             )
-            dkvRowEndP = pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP)
+            dqRowEndP = pl.astype(
+                pl.getval(meta, fagOff + META_FAG_DQ_ROW_ENDS + vBlockIdxP), pl.DT_INT64
+            )
+            dkvRowStartP = pl.astype(
+                pl.getval(meta, fagOff + META_FAG_DKV_ROW_STARTS + vBlockIdxP),
+                pl.DT_INT64,
+            )
+            dkvRowEndP = pl.astype(
+                pl.getval(meta, fagOff + META_FAG_DKV_ROW_ENDS + vBlockIdxP),
+                pl.DT_INT64,
+            )
             post_f32 = make_post_f32_buffer()
             post_f16 = make_post_f16_buffer()
             process_post(
