@@ -176,6 +176,8 @@ private:
     LocalTensor<float> smoothScalesTensor_;
     LocalTensor<int32_t> expertIdsTensor_;
     LocalTensor<uint8_t> hcommTensor_;
+    LocalTensor<int32_t> flagValueTensor_;
+    LocalTensor<uint32_t> flagOffsetTensor_;
 
     TBuf<> smoothScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -189,6 +191,8 @@ private:
     TBuf<> syncStatusWorkspaceBuf_;
     TBuf<> hcommBuf_;
     TBuf<> hcommBatchBuf_;
+    TBuf<> flagValueBuf_;
+    TBuf<> flagOffsetBuf_;
     LocalTensor<uint8_t> hcommBatchWqeTensor_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
     TQue<QuePosition::VECIN, 1> xInQueue_;
@@ -224,6 +228,7 @@ private:
     uint32_t expertRankTableCnt_{0};
     uint32_t totalSendNum_{0};
     uint32_t sendNum_{0};
+    uint32_t remoteFlagCnt_{0};
     uint32_t quantMode_{0};
     uint32_t scaleParamPad_{0};
     uint32_t hOutSizeAlign_{0};
@@ -306,6 +311,15 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     ffnFlagTensor_ = ffnFlagBuf_.Get<int32_t>();
     tpipe_->InitBuffer(statusBuf_, UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
+
+    uint32_t maxTotalSendNum = axisX_ * axisBS_ * (axisK_ + sharedExpertNum_);
+    uint32_t maxTokensPerAiv = Ceil(maxTotalSendNum, aivNum_);
+    uint32_t flagValueBufSize = Ceil(maxTokensPerAiv * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(flagValueBuf_, flagValueBufSize);
+    flagValueTensor_ = flagValueBuf_.Get<int32_t>();
+    uint32_t flagOffsetBufSize = Ceil(maxTokensPerAiv * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(flagOffsetBuf_, flagOffsetBufSize);
+    flagOffsetTensor_ = flagOffsetBuf_.Get<uint32_t>();
 
     if constexpr (QuantMode != 0) {
         QuantInit(scales);
@@ -671,8 +685,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
 {
     DataCopyPadExtParams<XType> copyPadExtParams{false, 0U, 0U, 0U};
     DataCopyExtParams hCommuCopyParams = {1U, static_cast<uint32_t>(hCommuSize_), 0U, 0U, 0U};
-    DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
-    const uint64_t flagBufOffset = static_cast<uint64_t>(tokenOffset) * URMA_FLAG_SLOT_SIZE;
 
     if constexpr (QuantMode == 0) {
         xTmpTensor_ = xQueue_.AllocTensor<XType>();
@@ -698,14 +710,9 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::S
         DataCopyPad(localDataGMTensor, xOutBytesTensor, hCommuCopyParams);
         xOutQueue_.FreeTensor<StorageXOutType>(xOutTensor_);
     }
-    SyncFunc<HardEvent::MTE3_S>();
-
-    statusTensor_.SetValue(0, metaData.localExpId);
-    SyncFunc<HardEvent::S_MTE3>();
-    GlobalTensor<int32_t> localFlagGMTensor;
-    localFlagGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(localFlagAddr_ + flagBufOffset));
-    DataCopyPad(localFlagGMTensor, statusTensor_, flagCopyParams);
-    PipeBarrier<PIPE_MTE3>();
+    flagValueTensor_.SetValue(remoteFlagCnt_, metaData.localExpId);
+    flagOffsetTensor_.SetValue(remoteFlagCnt_, tokenOffset);
+    ++remoteFlagCnt_;
 }
 
 template <TemplateAttentionToFfnUrmaTypeClass>
@@ -881,6 +888,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
 
         const uint64_t roundNum = Ceil(static_cast<uint64_t>(totalSendNum_), static_cast<uint64_t>(aivNum_));
         DataCopyExtParams xCopyParams = {1U, static_cast<uint32_t>(hSize_), 0U, 0U, 0U};
+        remoteFlagCnt_ = 0;
 
         for (uint64_t round = 0; round < roundNum; ++round) {
             const uint32_t tokenOffset = static_cast<uint32_t>(static_cast<uint64_t>(aivId_) + round * aivNum_);
@@ -912,6 +920,20 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             uint32_t aivWorkspaceStride = aivWorkspaceOffset_ / sizeof(int32_t);
             DataCopy(syncStatusGMTensor_[aivId_ * aivWorkspaceStride], ffnStatusTensor_, ffnNumAlignCnt_);
         }
+
+        SyncFunc<HardEvent::S_MTE3>();
+        {
+            DataCopyExtParams flagCopyParams = {1U, sizeof(int32_t), 0U, 0U, 0U};
+            for (uint32_t i = 0; i < remoteFlagCnt_; ++i) {
+                uint32_t tokOffset = flagOffsetTensor_.GetValue(i);
+                const uint64_t flagBufOffset = static_cast<uint64_t>(tokOffset) * URMA_FLAG_SLOT_SIZE;
+                GlobalTensor<int32_t> localFlagGMTensor;
+                localFlagGMTensor.SetGlobalBuffer(
+                    reinterpret_cast<__gm__ int32_t *>(localFlagAddr_ + flagBufOffset));
+                DataCopyPad(localFlagGMTensor, flagValueTensor_[i], flagCopyParams);
+            }
+        }
+        PipeBarrier<PIPE_MTE3>();
 
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
