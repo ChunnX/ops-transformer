@@ -113,6 +113,8 @@ TEST(GroupedMatmulSwigluQuantV3InferDataType, InfersOutputTypes)
     ge::DataType weightScale = DT_FLOAT8_E8M0;
     ge::DataType optional = DT_FLOAT;
     vector<void *> inputTypes = {&x, &xScale, &groupList, &weight, &weightScale, &optional, &optional, &optional};
+    // quant_dtype carries the output ge::DataType for this operator, rather
+    // than the enum used by quant_mode.
     auto holder = gert::InferDataTypeContextFaker()
                       .SetOpType("GroupedMatmulSwigluQuantV3")
                       .NodeIoNum(8, 2)
@@ -123,7 +125,7 @@ TEST(GroupedMatmulSwigluQuantV3InferDataType, InfersOutputTypes)
                           {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
                           {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                           {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                          {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                          {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(DT_FLOAT8_E4M3FN)},
                       })
                       .Build();
     auto context = holder.GetContext<gert::InferDataTypeContext>();
