@@ -131,7 +131,7 @@ int main(int argc, char **argv)
                                                                   : std::vector<int64_t>{E, K, N};
     std::vector<int64_t> weightStorageShape =
         transposeWeight ? std::vector<int64_t>{E, K / 32, N / 16, 16, 32}
-                        : std::vector<int64_t>{E, N / 32, K / 16, 16, 32};
+                        : std::vector<int64_t>{E, K / 16, N / 32, 16, 32};
     std::vector<int64_t> weightScaleShape =
         transposeWeight ? std::vector<int64_t>{E, N, Ceil(K, 64), 2} : std::vector<int64_t>{E, Ceil(K, 64), N, 2};
     std::vector<int64_t> xScaleShape = {M, Ceil(K, 64), 2};

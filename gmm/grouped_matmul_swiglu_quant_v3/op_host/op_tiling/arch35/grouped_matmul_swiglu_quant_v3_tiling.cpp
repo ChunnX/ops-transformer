@@ -254,13 +254,17 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
                 OP_LOGE(context_->GetNodeName(),
                         "weight view must be (E, K, N) or transposed (E, N, K), with N positive and 64 aligned"),
                 return false);
-    const int64_t expectedStorageN1 = transposeWeight_ ? (k + NZ_C0_SIZE - 1) / NZ_C0_SIZE
-                                                        : (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE;
-    const int64_t expectedStorageK1 = transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE
-                                                        : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
+    // FRACTAL_NZ keeps the logical K block in storage dimension 1 and the
+    // logical N block in storage dimension 2 for the non-transposed view.
+    // For the transposed view the corresponding block sizes are K/32 and
+    // N/16, matching the V2 MXFP8 weight-NZ contract.
+    const int64_t expectedStorageDim1 = transposeWeight_ ? (k + NZ_C0_SIZE - 1) / NZ_C0_SIZE
+                                                         : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
+    const int64_t expectedStorageDim2 = transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE
+                                                         : (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE;
     OP_CHECK_IF(weightStorageShape.GetDimNum() != WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
-                    weightStorageShape.GetDim(1) != expectedStorageN1 ||
-                    weightStorageShape.GetDim(2) != expectedStorageK1 ||
+                    weightStorageShape.GetDim(1) != expectedStorageDim1 ||
+                    weightStorageShape.GetDim(2) != expectedStorageDim2 ||
                     weightStorageShape.GetDim(3) != NZ_K0_SIZE || weightStorageShape.GetDim(4) != NZ_C0_SIZE,
                 OP_LOGE(context_->GetNodeName(),
                         "weight storage shape is not the expected FRACTAL_NZ shape for the transpose setting"),
