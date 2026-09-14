@@ -178,6 +178,14 @@ public:
         // Initialize unit flags through PIPE_S before issuing any L0C transaction.
         SetFixPipeConfig<uint64_t>(l0CBuffers_.template ReinterpretCast<uint64_t>(), true);
         SetMMRowMajor();
+        if ASCEND_IS_AIC {
+            // Both DN matmuls own the same single-matrix LOOP3 configuration for this invocation.
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> loopParams;
+            loopParams.params.ndNum = 1;
+            loopParams.params.srcNdStride = 0;
+            loopParams.params.dstNdStride = 0;
+            AscendC::SetLoop3Para<FIXPIPE_ROW_MAJOR_UB>(loopParams);
+        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
@@ -319,6 +327,21 @@ public:
         }
     }
 
+    // CANN 9.1/3510 internal lowering, restricted to the two non-quantized DN calls below.
+    // Retain the SDK FIX barrier and parameter validation; only LOOP3 writes are hoisted.
+    __aicore__ inline void FixpipeDnFixedLoop(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &srcTensor,
+                                              const FixpipeParamsC310<CO2Layout::ROW_MAJOR> &params)
+    {
+        if ASCEND_IS_AIC {
+            __ubuf__ MM_T *dst = (__ubuf__ MM_T *)dstTensor.GetPhyAddr();
+            __cc__ MM_T *src = (__cc__ MM_T *)srcTensor.GetPhyAddr();
+            AscendC::CheckFixpipeL0C2UBParam<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dst, src, params);
+            PipeBarrier<PIPE_FIX>();
+            AscendC::FixpipeTiling tiling;
+            AscendC::FixpipeL0cToUB<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dst, src, params, tiling, params.nSize);
+        }
+    }
+
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
                                         RunInfo &runInfo, uint32_t s2Size, uint32_t unitFlag)
     {
@@ -332,7 +355,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        FixpipeDnFixedLoop(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void MatmulBmm1ReuseQ(const LocalTensor<KV_T> &kL1Tensor, const LocalTensor<MM_T> &l0CTensor,
@@ -494,7 +517,7 @@ public:
             fixpipeParams.params.ndNum = 1;
             fixpipeParams.params.srcNdStride = 0;
             fixpipeParams.params.dstNdStride = 0;
-            Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(mm2ResUbTensor, l0CSubTensor, fixpipeParams);
+            FixpipeDnFixedLoop(mm2ResUbTensor, l0CSubTensor, fixpipeParams);
 
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
