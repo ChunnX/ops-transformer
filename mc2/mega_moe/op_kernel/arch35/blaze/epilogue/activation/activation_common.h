@@ -19,6 +19,7 @@
 #if defined(__DAV_C310__)
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
+#include "basic_api/reg_compute/kernel_reg_compute_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
@@ -31,20 +32,20 @@ namespace Activation {
 constexpr uint32_t VECTOR_LENGTH_FP32 = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 
 // 输入统一转换为 FP32，供各激活的寄存器计算流程使用。
-constexpr AscendC::MicroAPI::CastTrait CAST_INPUT_TO_FP32 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
+constexpr AscendC::Reg::CastTrait CAST_INPUT_TO_FP32 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
+                                                        AscendC::Reg::MaskMergeMode::ZEROING,
+                                                        AscendC::RoundMode::UNKNOWN};
 
 // 当前激活结果统一写入 BF16 UB；量化流程在激活之后独立执行。
-constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
+constexpr AscendC::Reg::CastTrait CAST_FP32_TO_BF16 = {AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT,
+                                                       AscendC::Reg::MaskMergeMode::ZEROING,
+                                                       AscendC::RoundMode::CAST_RINT};
 
 /*
  * 单个门控激活 tile 的完整执行上下文。
  *
  * Block Epilogue 在分派激活前直接计算地址、物理行距、循环次数和尾部 Mask，具体激活仅消费这些
- * 已物化的数据。此结构不保存 RegTensor、MaskReg、AddrReg 等 VecScope 内对象。
+ * 已物化的数据。此结构不保存 RegTensor、MaskReg 等 VF 内对象。
  */
 template <typename InputType>
 struct GatedActivationTileContext {
@@ -62,9 +63,9 @@ struct GatedActivationTileContext {
     uint32_t outputRowStrideElements;
     uint16_t rowLoopCount;
     uint16_t fullVectorLoopCount;
-    // 0/1 标志：为保持原 VecScope for-loop 形态，直接作为尾 Vector 计算循环上界。
+    // 0/1 标志：直接作为尾 Vector 计算的 VF 循环上界。
     uint16_t needTailVectorCompute;
-    // 0/1 标志：为保持原 VecScope for-loop 形态，直接作为额外补零写回循环上界。
+    // 0/1 标志：直接作为额外补零写回的 VF 循环上界。
     uint16_t needAdditionalPaddingStore;
 
     // UpdateMask 接收可写引用，具体激活需将以下计数复制到局部变量后再调用。

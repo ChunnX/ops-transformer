@@ -75,6 +75,8 @@ const static int64_t DEFAULT_WORKSPACE_SIZE = static_cast<int64_t>(16 * 1024 * 1
 const static int64_t DEFAULT_BATCH_ROWS = 4;
 const static int64_t MAX_BATCH_ROWS = 128;
 const static int64_t MAX_SINGLE_EXPERT_BATCH_ROWS = 4096;
+const static int64_t USABLE_UB_PERCENT = 80; // reserve 20% UB for pipe/event overhead
+const static int64_t PERCENT_BASE = 100;     // percentage denominator
 
 class MoeGatingTopKTilingRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -419,12 +421,12 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtypes()
                 return ge::GRAPH_FAILED);
 
     auto outDesc = context_->GetOutputDesc(OUT_OUTPUT_INDEX);
-    if (outFlag_ && outDesc != nullptr) {
+    if (outDesc != nullptr) {
         auto outDtype = outDesc->GetDataType();
-        OP_CHECK_IF((outDtype != ge::DataType::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "outDtype",
-                                              Ops::Base::ToString(outDtype).c_str(), "float32"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            (outDtype != ge::DataType::DT_FLOAT),
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "out", Ops::Base::ToString(outDtype).c_str(), "float32"),
+            return ge::GRAPH_FAILED);
     }
 
     if (hashFlag_ && CheckDtype4Hash() != ge::GRAPH_SUCCESS) {
@@ -664,8 +666,7 @@ void MoeGatingTopKTilingRegbase::SplitRows()
         // all queues use double buffer
         int64_t perRowUbSize = (inputDtypeSize_ + inputDtypeSize_ + sizeof(int32_t) + sizeof(float)) * 2;
         int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / perRowUbSize;
-        // reserve 20% UB for pipe/event overhead
-        maxBatchByUb = maxBatchByUb * 4 / 5;
+        maxBatchByUb = maxBatchByUb * USABLE_UB_PERCENT / PERCENT_BASE;
         batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SINGLE_EXPERT_BATCH_ROWS);
     } else {
         bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);

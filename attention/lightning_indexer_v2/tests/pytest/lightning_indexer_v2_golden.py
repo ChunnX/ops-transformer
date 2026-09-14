@@ -898,7 +898,7 @@ def liv2_output_single(
     ) = params
 
     if is_batch:
-        if qk_dtype == "FP16":
+        if qk_dtype == "FP16" or qk_dtype == torch.float16:
             qk_dtype = torch.float16
         else:
             qk_dtype = torch.bfloat16
@@ -1252,21 +1252,19 @@ def liv2_output_single(
         cpu_block_table = block_table
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
 
+    max_seqlen_q_meta = q_seq if layout_query == "BSND" else max_seqlen_q
     if layout_key == "TND":
         if seqused_k is not None:
             max_seqlen_k = max(seqused_k).item()
         else:
             seqlen = []
             for b_idx in range(batch_size):
-                seqlen.append(cu_seqlens_q[b_idx + 1] - cu_seqlens_k[b_idx])
+                seqlen.append(cu_seqlens_k[b_idx + 1] - cu_seqlens_k[b_idx])
             max_seqlen_k = max(seqlen).item()
     elif layout_key == "PA_BBND":
         max_seqlen_k = max(seqused_k).item()
     else:
-        if seqused_k is not None:
-            max_seqlen_k = max(seqused_k).item()
-        else:
-            max_seqlen_k = k_seq
+        max_seqlen_k = k_seq
 
     if is_batch:
         query = query.to(qk_dtype)
@@ -1290,7 +1288,7 @@ def liv2_output_single(
             "cmp_residual_k_for_npu": cmp_residual_k_for_npu,
             "block_table": block_table,
             "cpu_block_table": cpu_block_table,
-            "max_seqlen_q_meta": max_seqlen_q,
+            "max_seqlen_q_meta": max_seqlen_q_meta,
             "max_seqlen_k_meta": max_seqlen_k,
             "layout_query": layout_query,
             "layout_key": layout_key,
@@ -1316,7 +1314,7 @@ def liv2_output_single(
             seqused_k=seqused_k.npu() if seqused_k is not None else None,
             cmp_residual_k=cmp_residual_k.npu() if cmp_residual_k is not None else None,
             batch_size=batch_size,
-            max_seqlen_q=max_seqlen_q,
+            max_seqlen_q=max_seqlen_q_meta,
             max_seqlen_k=max_seqlen_k,
             layout_q=layout_query,
             layout_k=layout_key,

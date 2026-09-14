@@ -224,7 +224,7 @@ public:
             .colCount = dRealSize,
         };
 
-        GmCoord gmCoord{
+        GmCoordGs1Merge gmCoord{
             .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.realN2Idx,
             .gS1Idx = runInfo.gS1Idx + runInfo.vecMbaseIdx,
@@ -791,6 +791,24 @@ public:
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
 
+    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX &runInfo, int64_t s1FirstValidToken,
+                                                   int64_t s1LastValidToken)
+    {
+        int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        int32_t vecMEndIdx = vecMStartIdx + runInfo.actVecMSize - 1;
+        int32_t s1StartTdx;
+        int32_t s1EndTdx;
+        bool ret = false;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_SBH ||
+                      layout == LayOutTypeEnum::LAYOUT_TND) {
+            // S1G layout
+            s1StartTdx = vecMStartIdx / constInfo.realGSize;
+            s1EndTdx = vecMEndIdx / constInfo.realGSize;
+            ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+        }
+        return ret;
+    }
+
     template <typename VEC2_RES_T>
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t mStartVec, int64_t mDealSize,
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
@@ -806,6 +824,18 @@ public:
                 constInfo.isRowInvalidOpen || ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) && hasValidRow);
             if (!batchNeedRowInvalid) {
                 return;
+            }
+
+            bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
+            blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
+
+            if (blockNeedRowInvalid) {
+                LocalTensor<float> maxTensor =
+                    softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
+                if constexpr (!POST_QUANT) {
+                    RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
+                                              static_cast<uint32_t>(dSizeAligned64));
+                }
             }
         }
     }
@@ -833,16 +863,16 @@ public:
         FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
                                       .rowCount = dealRowCount,
                                       .colCount = (uint32_t)(splitD ? constInfo.dBasicBlock : dTemplateAlign64)};
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.realN2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
+                                .n2Idx = info.realN2Idx,
+                                .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo.dSizeV};
         CopyAttentionOut(ubTensor, gmCoord);
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoordGs1Merge &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;

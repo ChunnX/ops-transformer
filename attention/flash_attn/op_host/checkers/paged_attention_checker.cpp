@@ -98,14 +98,33 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FaTilingInfo &fa
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus PagedAttentionChecker::CheckFeature(const FaTilingInfo &faInfo)
+{
+    if (!faInfo.pageAttentionFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // 特性交叉校验: PA_NZ 的 D 轴分形粒度为 16 元素, head_dim 非 16 倍数时
+    // kernel 内 d1 = headDim/16 截断会静默算错
+    OP_CHECK_IF((faInfo.kvLayout == FaLayout::PA_NZ) && (faInfo.qkHeadDim % 16 != 0),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    faInfo.opName, "axis D of query and key", std::to_string(faInfo.qkHeadDim).c_str(),
+                    "When layout_kv is PA_NZ, axis D must be 16-aligned (D axis fractal of NZ is 16 elements)"),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     if (!faInfo.pageAttentionFlag) {
         OP_CHECK_IF(faInfo.keyNonContigDim != -1,
-                    OP_LOGE(faInfo.opName, "In non-PA scenarios, key tensors must be contiguous."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "key",
+                                                             "In non-PA scenarios, key tensors must be contiguous"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(faInfo.valueNonContigDim != -1,
-                    OP_LOGE(faInfo.opName, "In non-PA scenarios, value tensors must be contiguous."),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "value",
+                                                             "In non-PA scenarios, value tensors must be contiguous"),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }

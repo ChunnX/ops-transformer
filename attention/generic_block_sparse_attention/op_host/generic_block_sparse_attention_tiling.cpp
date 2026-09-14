@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include "log/log.h"
 #include "err/ops_err.h"
@@ -33,6 +34,7 @@ constexpr int V_DEQUANT_SCALE_INDEX = 9;
 constexpr int P_QUANT_SCALE_INDEX = 10;
 constexpr int CU_SEQ_LENGTHS_Q_INDEX = 11;
 constexpr int CU_SEQ_LENGTHS_KV_INDEX = 12;
+constexpr int SEQUSED_KV_INDEX = 14;
 constexpr int BLOCK_TABLE_INDEX = 15;
 
 // Must match METADATA_TOTAL_SIZE in the AICPU / kernel metadata protocol.
@@ -82,6 +84,18 @@ constexpr int64_t GBSA_QUANT_TYPE_NONE = 0;
 constexpr int64_t GBSA_QUANT_TYPE_FULL = 5;
 constexpr int64_t GBSA_WIN_DISABLED = -1;
 constexpr float GBSA_DST_TYPE_MAX_DISABLED = 0.0f;
+constexpr uint32_t GSA_FD_MAX_ACTIVE_CORE_NUM = 32U;        // Maximum AIC cores used by FD.
+constexpr uint32_t GSA_FD_MAX_COMBINE_TASK_NUM = 32U;       // Maximum FD combine tasks.
+constexpr uint32_t GSA_FD_BASE_TASK_GATE_NUMERATOR = 3U;    // Numerator of the FD base-task gate ratio.
+constexpr uint32_t GSA_FD_BASE_TASK_GATE_DENOMINATOR = 10U; // Denominator of the FD base-task gate ratio.
+constexpr uint64_t GSA_FD_WORKSPACE_ALIGNMENT = 512U;       // FD workspace alignment in bytes.
+
+namespace {
+uint64_t AlignUp(uint64_t value, uint64_t alignment)
+{
+    return (value + alignment - 1U) / alignment * alignment;
+}
+} // namespace
 
 namespace optiling {
 
@@ -275,8 +289,8 @@ ge::graphStatus GBSATiling::GetInputLayout(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "layoutQ only supports TND, got %s.", layoutQ_.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (layoutKv_ != "PAGED_BBND") {
-        OP_LOGE(context->GetNodeName(), "layoutKv only supports PAGED_BBND, got %s.", layoutKv_.c_str());
+    if (layoutKv_ != "PA_BBND") {
+        OP_LOGE(context->GetNodeName(), "layoutKv only supports PA_BBND, got %s.", layoutKv_.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -303,7 +317,7 @@ ge::graphStatus GBSATiling::CheckAttentionOutDtype(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate PAGED_BBND key/value: only dim0 may be non-contiguous.
+// Validate PA_BBND key/value: only dim0 may be non-contiguous.
 static ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *context, uint64_t inputIndex,
                                                           const gert::Shape &shape, const char *tensorName)
 {
@@ -318,7 +332,7 @@ static ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *c
         if (actualStride != expectedStride) {
             OP_LOGE(context->GetNodeName(),
                     "Tensor %s dim%zu is non-contiguous: actual stride=%llu, expected=%llu. "
-                    "Only the first axis (dim0) may be non-contiguous for PAGED_BBND.",
+                    "Only the first axis (dim0) may be non-contiguous for PA_BBND.",
                     tensorName, i, static_cast<unsigned long long>(actualStride),
                     static_cast<unsigned long long>(expectedStride));
             return ge::GRAPH_FAILED;
@@ -364,7 +378,7 @@ ge::graphStatus GBSATiling::ParseKvCacheStride0(gert::TilingContext *context)
     const uint64_t rowElems = static_cast<uint64_t>(kvHeads_) * static_cast<uint64_t>(embeddingSize_);
     if (kStride0_ < pageElems || (rowElems > 0 && (kStride0_ % rowElems) != 0)) {
         OP_LOGE(context->GetNodeName(),
-                "key dim0 stride (%llu) invalid for PAGED_BBND: expect >= pageElems=%llu and "
+                "key dim0 stride (%llu) invalid for PA_BBND: expect >= pageElems=%llu and "
                 "aligned to Nkv*D=%llu.",
                 static_cast<unsigned long long>(kStride0_), static_cast<unsigned long long>(pageElems),
                 static_cast<unsigned long long>(rowElems));
@@ -372,7 +386,7 @@ ge::graphStatus GBSATiling::ParseKvCacheStride0(gert::TilingContext *context)
     }
     if (vStride0_ < pageElems || (rowElems > 0 && (vStride0_ % rowElems) != 0)) {
         OP_LOGE(context->GetNodeName(),
-                "value dim0 stride (%llu) invalid for PAGED_BBND: expect >= pageElems=%llu and "
+                "value dim0 stride (%llu) invalid for PA_BBND: expect >= pageElems=%llu and "
                 "aligned to Nkv*D=%llu.",
                 static_cast<unsigned long long>(vStride0_), static_cast<unsigned long long>(pageElems),
                 static_cast<unsigned long long>(rowElems));
@@ -439,12 +453,12 @@ ge::graphStatus GBSATiling::ParseSparseTensors(gert::TilingContext *context)
                 kvHeads_);
         return ge::GRAPH_FAILED;
     }
-    const uint32_t groupSize = numHeads_ / kvHeads_;
-    if (groupSize > GBSA_MAX_GROUP_SIZE) {
+    groupSize_ = numHeads_ / kvHeads_;
+    if (groupSize_ > GBSA_MAX_GROUP_SIZE) {
         OP_LOGE(context->GetNodeName(),
                 "Unsupported groupSize=%u (numHeads=%u, kvHeads=%u), currently only groupSize <= %u is supported to "
                 "avoid kernel L0C/UB overflow.",
-                groupSize, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
+                groupSize_, numHeads_, kvHeads_, GBSA_MAX_GROUP_SIZE);
         return ge::GRAPH_FAILED;
     }
     constexpr uint32_t GBSA_MAX_TOPK = 256U;
@@ -487,7 +501,7 @@ ge::graphStatus GBSATiling::ParseBlockTable(gert::TilingContext *context)
     if (blockTableShape == nullptr) {
         blockTablePresent_ = false;
         OP_LOGE(context->GetNodeName(),
-                "Stage 1 requires blockTable for PAGED_BBND layout, but blockTableOptional is nullptr.");
+                "Stage 1 requires blockTable for PA_BBND layout, but blockTableOptional is nullptr.");
         return ge::GRAPH_FAILED;
     }
     blockTablePresent_ = true;
@@ -541,6 +555,7 @@ ge::graphStatus GBSATiling::ParseInputTensors(gert::TilingContext *context)
 
 ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
 {
+    uint64_t pipelineWorkspaceSize = 0;
     if (socVer_ != SOC_VER_950_CODE) {
         constexpr uint32_t WORKSPACE_BLOCK_SIZE_DB = 131072;
         constexpr uint32_t NUM3 = 3;
@@ -550,13 +565,47 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
         mm2OutSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
         updateSize_ = static_cast<uint64_t>(blockDim_) * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
         uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
-        workSpaceSize_ = libapiSize_ + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + identityIdxSize;
+        pipelineWorkspaceSize = mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + identityIdxSize;
     } else {
         uint32_t dtypeSize = (dataType_ == ge::DT_FLOAT8_E4M3FN) ? 1 : 2;
         uint64_t perTaskWorkspace = static_cast<uint64_t>(topK_) * blockShapeY_ * embeddingSize_ * dtypeSize * 2;
         uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
-        workSpaceSize_ = libapiSize_ + identityIdxSize + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
+        pipelineWorkspaceSize = identityIdxSize + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
     }
+
+    uint64_t userWorkspaceSize = pipelineWorkspaceSize;
+    if (fdStaticEnabled_) {
+        // saTotalTaskNum * 10 < physicalAicNum * 3.
+        const uint32_t maxNonEmptyBaseTaskNum =
+            aicNum_ == 0U ? 0U :
+                            std::min(GSA_FD_MAX_COMBINE_TASK_NUM, (aicNum_ * GSA_FD_BASE_TASK_GATE_NUMERATOR - 1U) /
+                                                                      GSA_FD_BASE_TASK_GATE_DENOMINATOR);
+        const uint32_t maxActiveCoreNum = std::min(aicNum_, GSA_FD_MAX_ACTIVE_CORE_NUM);
+        // The base-task intervals and active-core intervals are two continuous
+        // partitions of the same flat task range, count is bounded by Bmax + Cmax - 1.
+        fdPartialCapacity_ = maxNonEmptyBaseTaskNum == 0U || maxActiveCoreNum == 0U ?
+                                 0U :
+                                 maxNonEmptyBaseTaskNum + maxActiveCoreNum - 1U;
+        // Each FD partial task is split across two Vector sub-blocks. Reserve the larger half of groupSize and
+        // align each sub-block's FP32 LSE slice to 8 elements (32 bytes) for GM DataCopy alignment.
+        fdLseSubStride_ = ((groupSize_ + 1U) / 2U + 7U) / 8U * 8U;
+        fdPartialLseOffset_ = AlignUp(pipelineWorkspaceSize, GSA_FD_WORKSPACE_ALIGNMENT);
+        const uint64_t partialLseSize =
+            static_cast<uint64_t>(fdPartialCapacity_) * 2U * fdLseSubStride_ * sizeof(float);
+        fdPartialOOffset_ = AlignUp(fdPartialLseOffset_ + partialLseSize, GSA_FD_WORKSPACE_ALIGNMENT);
+        const uint64_t partialOSize =
+            static_cast<uint64_t>(fdPartialCapacity_) * groupSize_ * embeddingSize_ * sizeof(float);
+        if (fdPartialOOffset_ > std::numeric_limits<uint64_t>::max() - partialOSize) {
+            OP_LOGE(context->GetNodeName(), "Flash Decoding workspace size overflow.");
+            return ge::GRAPH_FAILED;
+        }
+        userWorkspaceSize = fdPartialOOffset_ + partialOSize;
+    }
+    if (userWorkspaceSize > std::numeric_limits<size_t>::max() - libapiSize_) {
+        OP_LOGE(context->GetNodeName(), "GenericBlockSparseAttention workspace size overflow.");
+        return ge::GRAPH_FAILED;
+    }
+    workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
     context->SetBlockDim(blockDim_);
     size_t *workspaceArray = context->GetWorkspaceSizes(1);
@@ -622,14 +671,19 @@ ge::graphStatus GBSATiling::CheckReservedOptionalInputs(gert::TilingContext *con
 
 ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext *context)
 {
-    // layoutQ is fixed to TND and layoutKv is fixed to PAGED_BBND (validated in GetInputLayout),
-    // so cuSeqLengthsQ/Kv are required to locate per-batch token ranges on device.
+    // layoutQ is fixed to TND and layoutKv is fixed to PA_BBND (validated in GetInputLayout).
+    // Q uses cuSeqLengthsQ; PA KV uses sequsedKv (FA-style: cuSeqLengthsKv only for TND).
     if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_Q_INDEX) == nullptr) {
         OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ cannot be empty when layoutQ is TND.");
         return ge::GRAPH_FAILED;
     }
-    if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_KV_INDEX) == nullptr) {
-        OP_LOGE(context->GetNodeName(), "cuSeqLengthsKv cannot be empty when layoutKv is PAGED_BBND.");
+    if (context->GetOptionalInputTensor(SEQUSED_KV_INDEX) == nullptr) {
+        OP_LOGE(context->GetNodeName(), "sequsedKv cannot be empty when layoutKv is PA_BBND.");
+        return ge::GRAPH_FAILED;
+    }
+    if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_KV_INDEX) != nullptr) {
+        OP_LOGE(context->GetNodeName(),
+                "cuSeqLengthsKv must be empty when layoutKv is PA_BBND, only supported in TND layout.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -673,6 +727,7 @@ ge::graphStatus GBSATiling::CheckQuantConfig(gert::TilingContext *context)
         OP_LOGE(context->GetNodeName(), "returnSoftmaxlse=1 is not supported for FP8 full-quant path.");
         return ge::GRAPH_FAILED;
     }
+    fdStaticEnabled_ = topK_ >= 12U;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -684,7 +739,7 @@ uint64_t GBSATiling::GenerateTilingKey()
      * - [2-4]   Mask Type          maskType_ * 1000 (current path: 1)
      * - [5-7]   Softmax Precision  0=Float, 1=Half (*100000); arch35 keys keep 0
      * - [8-10]  PagedCache         1=WithCache (*1000000)
-     * - [11-13] KV Layout          70=PAGED_BBND (*1000000 → 70000000)
+     * - [11-13] KV Layout          70=PA_BBND (*1000000 → 70000000)
      * - dtype                    FP16=+0, BF16=+22220, FP8 out FP16=+10 / BF16=+20
      * - LSE                      +100000000
      * - op+arch                  920=aicore220, 925=aicore310
@@ -705,7 +760,7 @@ uint64_t GBSATiling::GenerateTilingKey()
         }
     }
 
-    // KV layout: PAGED_BBND = 70
+    // KV layout: PA_BBND = 70
     tilingKey += 70000000ULL;
     // Paged cache required on current path
     tilingKey += 1000000ULL;
@@ -745,8 +800,7 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_mm2OutSize(mm2OutSize_);
     tilingData_->set_updateSize(updateSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
-    uint32_t groupSize = numHeads_ / kvHeads_;
-    tilingData_->set_groupSize(groupSize);
+    tilingData_->set_groupSize(groupSize_);
     uint64_t tilingKey = GenerateTilingKey();
     tilingData_->set_tilingKey(tilingKey);
     context->SetTilingKey(tilingKey);
@@ -774,6 +828,11 @@ ge::graphStatus GBSATiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_pL1BufNum(3); // PRE_LAUNCH + 1
     tilingData_->set_kStride0(kStride0_);
     tilingData_->set_vStride0(vStride0_);
+    tilingData_->set_fdStaticEnabled(fdStaticEnabled_ ? 1U : 0U);
+    tilingData_->set_fdLseSubStride(fdLseSubStride_);
+    tilingData_->set_fdPartialCapacity(fdPartialCapacity_);
+    tilingData_->set_fdPartialLseOffset(fdPartialLseOffset_);
+    tilingData_->set_fdPartialOOffset(fdPartialOOffset_);
 
     return ge::GRAPH_SUCCESS;
 }
