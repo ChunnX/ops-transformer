@@ -1447,7 +1447,6 @@ def gen_data(params, generate_golden=True):
         )
 
     # D维度固定512，已对齐128，无需padding
-    block_num = block_num1 if block_num1 >= block_num2 else block_num2
 
     # generate sinks tensor (only when isSink=True)
     if isSink:
@@ -1473,7 +1472,7 @@ def gen_data(params, generate_golden=True):
         T1,
         N2,
         D,
-        block_num,
+        block_num1,
         block_size1,
         ori_max_s2,
         ori_max_block_num_per_batch,
@@ -1513,7 +1512,7 @@ def gen_data(params, generate_golden=True):
             N2,
             D,
             K,
-            block_num,
+            block_num2,
             block_size2,
             cmp_max_s2,
             cmp_max_block_num_per_batch,
@@ -1542,30 +1541,6 @@ def gen_data(params, generate_golden=True):
 
     if cmp_k_bnsd is None:  # 如果cmp_k_bnsd为None
         cmp_mask_mode = 0  # cmp_mask_mode 设置为0，防止拦截
-    if (
-        layout_kv == "PA_BBND"
-        and (template_run_mode in ("HCA", "CSA", "ORI_CMP_SPARSE"))
-        and cmp_k_in_pa_shape is not None
-    ):
-        total_block = block_size1 + block_size2
-        fusion_base = torch.zeros((block_num, total_block, N2, D), dtype=ori_kv_type)
-        fusion_base[:, :block_size1, :, :] = ori_k_in_pa_shape
-        fusion_base[:, block_size1:, :, :] = cmp_k_in_pa_shape
-        stride_n = total_block * N2 * D
-        stride_bs = N2 * D
-        stride_n2 = D
-        stride_d = 1
-        ori_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size1, N2, D],
-            stride=[stride_n, stride_bs, stride_n2, stride_d],
-        )
-        cmp_k_in_pa_shape = torch.as_strided(
-            fusion_base,
-            size=[block_num, block_size2, N2, D],
-            stride=[stride_n, stride_bs, stride_n2, stride_d],
-            storage_offset=block_size1 * N2 * D,
-        )
 
     golden_state = {
         "layout_q": layout_q,
