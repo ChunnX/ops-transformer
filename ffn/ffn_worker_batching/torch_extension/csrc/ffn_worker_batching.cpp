@@ -55,6 +55,10 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
     TORCH_CHECK(token_dtype != FP4_E2M1 || h % FP4_ELEMENTS_PER_BYTE == 0, "FP4 requires even H, got ", h);
     TORCH_CHECK(need_schedule == 0 || need_schedule == 1, "invalid need_schedule: ", need_schedule);
     TORCH_CHECK(sync_flag == 0 || sync_flag == 1, "invalid sync_flag: ", sync_flag);
+    if (need_schedule == 1 && sync_flag == 1) {
+        TORCH_CHECK(layer_num > 0 && expert_num % layer_num == 0,
+                    "async RECV requires layer_num > 0 and expert_num divisible by layer_num");
+    }
     TORCH_CHECK(layer_num >= 0 && layer_num <= expert_num, "invalid layer_num: ", layer_num);
 
     Outputs outputs;

@@ -77,6 +77,8 @@ struct ScheduleContextInfo {
     uint32_t outNum = 0;          // NORM:FfnArea 中有效的 session 数
     uint32_t tokenDtype = 0;      // 0:FP16 1:BF16 2:int8 3:E5M2 4:E4M3 5:E2M1；scale 紧跟 token
     uint32_t expertNum = 0;
+    uint32_t layerNum = 0;
+    uint32_t expertsPerLayer = 0;
     bool asyncRecv = false; // 本次是否启用快照接收；只有 RECV 且 syncFlag=1 才为 true
     int64_t coreNum = 0;
     int64_t ubSize = 0;
@@ -187,6 +189,11 @@ __aicore__ inline void ScheduleContextParse(GM_ADDR schedule_context, const Tili
     ctx.expertNum = tilingData->expertNum;
     // 属性值与执行路径共同决定开关，确保 NORM 即使传 sync_flag=1 也不进入 flag 轮询。
     ctx.asyncRecv = isRecv && tilingData->syncFlag == 1;
+    if (ctx.asyncRecv) {
+        // Host has validated nonzero layer count and exact divisibility.
+        ctx.layerNum = static_cast<uint32_t>(tilingData->layerNum);
+        ctx.expertsPerLayer = ctx.expertNum / ctx.layerNum;
+    }
     ctx.coreNum = tilingData->coreNum;
     ctx.ubSize = tilingData->ubSize;
 
