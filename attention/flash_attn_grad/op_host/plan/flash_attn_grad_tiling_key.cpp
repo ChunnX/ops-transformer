@@ -18,18 +18,18 @@ constexpr uint64_t KEY_SHIFT_MASK_MODE = 3;
 constexpr uint64_t KEY_SHIFT_SWIZZLE = 5;
 constexpr uint64_t KEY_SHIFT_D_ALIGN = 6;
 constexpr uint64_t KEY_SHIFT_DV_ALIGN = 8;
-constexpr uint64_t KEY_SHIFT_BN2_MULTIBLK = 9;
-constexpr uint64_t KEY_SHIFT_BN2_NEED_ZERO = 10;
+constexpr uint64_t KEY_SHIFT_BN2_MULTIBLK = 10;
+constexpr uint64_t KEY_SHIFT_BN2_NEED_ZERO = 11;
 
-uint64_t DAlignBits(int64_t dAlign)
+uint64_t AlignBits(int64_t align)
 {
-    if (dAlign == 64) {
+    if (align == 64) {
         return 0ULL;
     }
-    if (dAlign == 128) {
+    if (align == 128) {
         return 1ULL;
     }
-    return (dAlign == 192) ? 2ULL : 3ULL;
+    return (align == 192) ? 2ULL : 3ULL;
 }
 
 } // namespace
@@ -42,10 +42,9 @@ uint64_t EncodeTilingKey(const FagParsedInfo &info, const FagKernelPlan &kernel,
     } else if (info.hasAttenMask && info.maskMode == MASK_MODE_WINDOW) {
         maskModeBits = 2ULL;
     }
-    const uint64_t dvAlignBit = (kernel.dvAlign > 128) ? 1ULL : 0ULL;
     return static_cast<uint64_t>(kernel.tmpl) | (static_cast<uint64_t>(info.layout) << KEY_SHIFT_LAYOUT) |
            (maskModeBits << KEY_SHIFT_MASK_MODE) | (static_cast<uint64_t>(schedule.swizzle) << KEY_SHIFT_SWIZZLE) |
-           (DAlignBits(kernel.dAlign) << KEY_SHIFT_D_ALIGN) | (dvAlignBit << KEY_SHIFT_DV_ALIGN) |
+           (AlignBits(kernel.dAlign) << KEY_SHIFT_D_ALIGN) | (AlignBits(kernel.dvAlign) << KEY_SHIFT_DV_ALIGN) |
            (static_cast<uint64_t>(kernel.isBn2MultiBlk) << KEY_SHIFT_BN2_MULTIBLK) |
            (static_cast<uint64_t>(kernel.bn2NeedZero) << KEY_SHIFT_BN2_NEED_ZERO);
 }

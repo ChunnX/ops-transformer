@@ -22,6 +22,19 @@ from dataclasses import dataclass
 from pypto_pro.runtime.tilingkey import TilingKeyField
 
 
+class Tmpl:
+    """tilingkey bit[1:0]，对齐 op_host ``TMPL_*``。
+
+    必须是普通 int 常量：PyPTO 解析 ``template == Tmpl.BN2`` 时
+    IntEnum 过不了 ``eq(Expr, Expr)``。
+    """
+
+    BN2GS1S2 = 0
+    BN2 = 1
+    RESERVED_UNUSED = 2
+    RESERVED_BN2S2 = 3
+
+
 @dataclass
 class FlashAttnGradTilingData:
     """对齐 op_host/flash_attn_grad_tiling.h 的 TILING_DATA_FIELD_DEF 顺序。
@@ -72,9 +85,11 @@ class FlashAttnGradTilingData:
 
 # 与 op_kernel/flash_attn_grad.py 的 FlashAttnGradTilingKey 一致
 class FlashAttnGradTilingKey:
-    # bit[1:0]：0=BN2GS1S2，1=BN2（含 MultiBlk，bit9 区分），
-    # 2=未用，3=BN2S2 预留（本轮不编、不进入口）。
-    template = TilingKeyField(bits=2, values=[0, 1, 2, 3])
+    # bit[1:0]：见 :class:`Tmpl`。2/3 保留，本轮不编、不进入口。
+    template = TilingKeyField(
+        bits=2,
+        values=[Tmpl.BN2GS1S2, Tmpl.BN2, Tmpl.RESERVED_UNUSED, Tmpl.RESERVED_BN2S2],
+    )
     layout = TilingKeyField(bits=1, values=[0, 1])
     # 0=无 attenmask，3=causal，4=band。host 存 0/1/2 索引。
     mask_mode = TilingKeyField(bits=2, values=[0, 3, 4])
@@ -93,15 +108,11 @@ class FlashAttnGradTilingKey:
     # DTemplateType::Aligned128/Aligned192/Aligned256，不是运行期值。
     # 且「一律按最大档分配 + 运行期裁列」并非只是慢：L0C 会超出 256KB
     # 预算，物理上放不下。bit 取值 3=256（见 docs/D256设计.md）。
-    #
-    # Dv 1 bit：0=128，1=宽档。d_align<=192 时宽档是 192；d_align=256
-    # 时宽档在 host 记 256，kernel 侧本字段仍是 192，由 d_align 翻成 256。
     d_align = TilingKeyField(bits=2, values=[64, 128, 192, 256])
-    # Dv 的**分配**宽度分档。Dv 本身是运行期值(填多少列)，但 y/dy 的 UB
-    # 宽度是 Dv 派生的，而 tile shape 必须是 trace 期常量，故同样要分档。
-    # (64, 128) 是例外：d_align=64 时 dv_align 强制 128。
-    dv_align = TilingKeyField(bits=1, values=[128, 192])
-    # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit9，不打乱已有 key。
+    # Dv 的**分配**宽度，取值与 d_align 相同。一般 d_align==dv_align；
+    # 唯一分叉是 D=192 且 Dv=128 → 128。其余 D!=Dv 由 host 拦截。
+    dv_align = TilingKeyField(bits=2, values=[64, 128, 192, 256])
+    # BN2 MultiBlk：S 在 (128, 640] 仍走 BN2 函数。bit10。
     is_bn2_multiblk = TilingKeyField(bits=1, values=[0, 1])
     # BN2 MultiBlk 且存在整行或整列无效 tile：pre 把 dq/dk/dv out 清零。
     # 一行/一列共用这一位，kernel 不区分。
@@ -119,23 +130,21 @@ class FlashAttnGradTilingKey:
             is_bn2_multiblk,
             bn2_need_zero,
         ) = key
-        # 2 未用；3 预留给 BN2S2。不剪会当 GS1S2 多编死二进制。
-        if template != 0 and template != 1:
+        # 2/3 保留。不剪会当 GS1S2 多编死二进制。
+        if template != Tmpl.BN2GS1S2 and template != Tmpl.BN2:
             return False
-        if template == 1:
+        if template == Tmpl.BN2:
             if d_align == 192 or d_align == 256 or swizzle != 0 or layout != 0:
                 return False
-            if d_align == 64 and dv_align != 128:
+            if d_align != dv_align:
                 return False
             if bn2_need_zero == 1:
                 return is_bn2_multiblk == 1 and mask_mode != 0
             return True
         if is_bn2_multiblk == 1 or bn2_need_zero == 1:
             return False
-        # GS1S2 + d_align=64：tilingkey 的 dv_align 没有 64 档，host 仍发 128。
-        if d_align == 64:
-            return dv_align == 128
-        if dv_align > d_align:
+        # 一般 d_align==dv_align；仅 D=192 且 Dv=128 允许 dv_align=128。
+        if d_align != dv_align and not (d_align == 192 and dv_align == 128):
             return False
         # D=192 / 256 只编非 TND。mask 3/4 与 dense 共用 GS1S2 D-split；
         # swizzle+mask 的 Group B 未迁，不编那几份。

@@ -101,9 +101,10 @@ def process_vec1(
         [runInfo.idx0Q, runInfo.loadBase, runInfo.idx2Q, 0],
         order=[1, 3],
     )
-    w0 = pl.min(constInfo.dvSize, 128)
-    # d_align=256 且 tilingkey 宽档(dv_align 字段仍是 192)走 256 VF。
-    if d_align == 256 and dv_align == 192:
+    # 列宽跟 dv_align：256/192 各一档 VF；64 与 128（含 D=192,Dv=128）共用
+    # 一次 128-lane load，用 even/odd mask 收真实 Dv。
+    if dv_align == 256:
+        w0 = pl.min(constInfo.dvSize, 128)
         w1 = pl.max(constInfo.dvSize - 128, 0)
         softmax_grad_front_row256_vf(
             sfmg_ub,
@@ -118,6 +119,7 @@ def process_vec1(
             w1 // 2,
         )
     elif dv_align == 192:
+        w0 = pl.min(constInfo.dvSize, 128)
         w1 = pl.max(constInfo.dvSize - 128, 0)
         softmax_grad_front_row192_vf(
             sfmg_ub,
@@ -139,8 +141,8 @@ def process_vec1(
             runInfo.halfS1RealSize,
             runInfo.rowShift,
             rowStride,
-            (w0 + 1) // 2,
-            w0 // 2,
+            constInfo.dvEvenSize,
+            constInfo.dvOddSize,
         )
 
 
@@ -327,8 +329,8 @@ def process_vec1_bn2(
         runInfo.halfS1RealSize,
         runInfo.rowShift,
         rowStride,
-        constInfo.dEvenSize,
-        constInfo.dOddSize,
+        constInfo.dvEvenSize,
+        constInfo.dvOddSize,
     )
 
 

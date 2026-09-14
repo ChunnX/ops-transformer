@@ -341,7 +341,7 @@ def _build_ub(width, pool):
     * pre/post —— 与主循环被 sync_all 完全隔开，整块借用头部。
 
     V1 一趟 VECTOR_BASEM 行、按行 reduce，不再开 prod/tmp。列宽
-    ``v1w``：64 档取 64，D=256 宽档取 256，其余跟 dv_align（y/dy 是 Dv 宽）。
+    ``v1w`` 就是 ``dv_align``（与 ``d_align`` 相同，仅 D=192 且 Dv=128 时为 128）。
     attenmask 复用 y/dy 这两条记录（对应 ASC 的 attenMaskOrYInQue /
     pseOrDyInQue）：uint8[64,128]=8KB，而 y/dy 在 v1w>=64 时至少 8KB，装得下。
     复用的是**同一条记录**，所以「同址必须同号」是结构保证，不靠人守。

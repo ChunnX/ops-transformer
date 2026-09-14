@@ -478,7 +478,7 @@ def make_dv_l0c_chunk1():
 # ==================================================================
 #  Vector 侧 UB（BN2GS1S2）—— ASC FAGBlockVec::InitUbBuffer
 # ==================================================================
-# `v1w` 是 V1 的列宽：64 档取 64；D=256 宽档取 256；其余取 dv_align。
+# `v1w` 是 V1 的列宽，等于 `dv_align`。
 def make_y_ub(v1w):
     """前向输出 y 的 UB（V1 的输入之一）。"""
     return pl.make_tile_group(

@@ -226,7 +226,7 @@ def make_run_infos():
 
 
 def make_run_infos_2():
-    """D=256 GS1S2 的 1-ahead：runInfos[2]，对齐 ASC Process()。"""
+    """1-ahead：runInfos[2]，对齐 ASC Process()（BN2 与 D=256 共用）。"""
     return pl.struct_array(
         2,
         "FagRunInfo",
