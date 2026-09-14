@@ -16,10 +16,10 @@
 #pragma once
 #include "lib/matmul_intf.h"
 #include "kernel_operator.h"
+#include "basic_modules/sparse_flash_attention_grad_common_header.h"
 #include "layout.h"
 #include "basic_modules/sparse_flash_attention_grad_cube_op.h"
 #include "basic_modules/sparse_flash_attention_grad_vec_op.h"
-#include "basic_modules/sparse_flash_attention_grad_common_header.h"
 #include "sparse_flash_attention_grad_post.h"
 #include "key_owner_reduce.h"
 
@@ -256,8 +256,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
     GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope, GM_ADDR workspace,
     const TILING_CLASS *__restrict tilingData)
 {
-    GM_ADDR orderedTopkIndices = workspace + KeyOwnedExtensionByteOffset(tilingData) +
-                                 KeyOwnedEdgeBytes + KeyOwnedHeaderBytes;
+    GM_ADDR orderedTopkIndices = workspace + KeyOwnedSortedIndicesByteOffset(tilingData);
     if ASCEND_IS_AIC {
         TPipe pipeCube;
         CubeOp<SFAGT> cubeOp;

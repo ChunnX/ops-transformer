@@ -29,7 +29,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube5Process(
     mmParam.isLeftTranspose = true;
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDTotal * dimN2;
-    int64_t mm4ResOutBaseOffset = static_cast<uint64_t>(runInfo.indicesGmOffset / 2048) * 2048 * 576;
+    const uint64_t queryIndex = static_cast<uint64_t>(runInfo.indicesGmOffset) /
+                                (static_cast<uint64_t>(dimN2) * selectedBlockCount);
+    int64_t mm4ResOutBaseOffset = queryIndex * selectedBlockCount * selectedBlockSizeDtotal;
     const bool reloadDy = !runInfo.noReload && runInfo.isLastBasicBlock;
     uint32_t totalSel = selectedCntOffset * selectedBlockSize;
     if (runInfo.isLastBasicBlock) {

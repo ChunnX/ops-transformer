@@ -22,10 +22,17 @@ template<class T> __aicore__ inline bool MarkerMatches(const T *t)
     const auto &o = t->opInfo;
     const bool supportedCoreCount = (o.usedCoreNum == 20 || o.usedCoreNum == 24) &&
         KeyOwnedVectorCoreCount(t) == o.usedCoreNum * KeyOwnedAivPerAic;
-    return o.rsv[0] && splitK == 21 && o.B == 1 && o.S1 == 1024 && o.S2 == 131072 &&
-        o.N2 == 1 && o.G == 64 && o.D == 512 && o.D2 == 512 && o.ropeD == 64 &&
-        o.layout == 3 && o.selectedBlockCount == 2048 && o.selectedBlockSize == 1 &&
-        o.deterministic && o.kvMerge == 1 && !o.enableOptimizedScatter && o.scaleValue == 1.0f &&
+    const uint64_t queryCount = static_cast<uint64_t>(o.B) * o.S1;
+    const uint64_t selectedCount = static_cast<uint64_t>(o.selectedBlockCount) * o.selectedBlockSize;
+    const uint64_t bucketCount = (static_cast<uint64_t>(o.S2) + KeyOwnedBucketWidth - 1) / KeyOwnedBucketWidth;
+    const uint64_t dTotal = static_cast<uint64_t>(o.D) + o.ropeD;
+    return o.rsv[0] && splitK == 21 && o.B > 0 && o.S1 > 0 && o.S2 > 0 &&
+        o.N2 == 1 && o.G > 0 && o.G <= KeyOwnedMaxG && o.D > 0 && dTotal <= KeyOwnedMaxDTotal &&
+        o.D2 > 0 && o.D2 <= KeyOwnedMaxDv && o.ropeD > 0 && o.layout == 3 &&
+        o.selectedBlockCount > 0 && o.selectedBlockSize == 1 && selectedCount <= KeyOwnedMaxSelected &&
+        queryCount <= KeyOwnedMaxQueryCount && bucketCount > 0 && bucketCount <= KeyOwnedMaxBuckets &&
+        (dTotal & 15U) == 0 && (static_cast<uint64_t>(o.D2) & 15U) == 0 &&
+        o.deterministic && o.kvMerge == 1 && !o.enableOptimizedScatter &&
         supportedCoreCount;
 }
 
@@ -45,22 +52,26 @@ template<class T> __aicore__ inline bool SafeIndices(GM_ADDR indices, GM_ADDR wo
     bool unsafe = false;
     if ASCEND_IS_AIV {
         prePipe.InitBuffer(preBuf, 20480);
+        const uint32_t selectedCount = static_cast<uint32_t>(KeyOwnedSelectedCount(t));
+        const uint32_t queryCount = static_cast<uint32_t>(KeyOwnedQueryCount(t));
         ix = preBuf.GetWithOffset<int32_t>(2048, 0);
         auto fp = preBuf.GetWithOffset<float>(2048, 8192);
         auto tmp = preBuf.GetWithOffset<float>(64, 16384);
         auto lo = preBuf.GetWithOffset<float>(8, 16640);
         auto hi = preBuf.GetWithOffset<float>(8, 16672);
         status = preBuf.GetWithOffset<int32_t>(KeyOwnedMaxAivCoreCount * 8, 16704);
-        for (uint32_t q = GetBlockIdx(); q < 1024; q += vectorCoreCount) {
-            DataCopy(ix, indexGm[q * 2048], 2048);
+        for (uint32_t q = GetBlockIdx(); q < queryCount; q += vectorCoreCount) {
+            DataCopyPad(ix, indexGm[static_cast<uint64_t>(q) * selectedCount],
+                        DataCopyExtParams{1, selectedCount * sizeof(int32_t), 0, 0, 0},
+                        DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0); WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-            Cast<float, int32_t>(fp, ix, RoundMode::CAST_NONE, 2048);
+            Cast<float, int32_t>(fp, ix, RoundMode::CAST_NONE, selectedCount);
             PipeBarrier<PIPE_V>();
-            ReduceMin<float>(lo, fp, tmp, 2048, false);
+            ReduceMin<float>(lo, fp, tmp, selectedCount, false);
             PipeBarrier<PIPE_V>();
-            ReduceMax<float>(hi, fp, tmp, 2048, false);
+            ReduceMax<float>(hi, fp, tmp, selectedCount, false);
             SetFlag<HardEvent::V_S>(EVENT_ID0); WaitFlag<HardEvent::V_S>(EVENT_ID0);
-            unsafe |= lo.GetValue(0) < 0.0f || hi.GetValue(0) >= 131072.0f;
+            unsafe |= lo.GetValue(0) < 0.0f || hi.GetValue(0) >= static_cast<float>(t->opInfo.S2);
             SetFlag<HardEvent::V_MTE2>(EVENT_ID0); WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
             SetFlag<HardEvent::S_V>(EVENT_ID0); WaitFlag<HardEvent::S_V>(EVENT_ID0);
         }

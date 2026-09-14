@@ -691,6 +691,12 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmaxGrad(const int32_t loopIdx, const
     Mul(pTensor, pTensor, dPTensor, dataSize);
     PIPE_BARRIER(PIPE_V);
 
+    // The attention scale belongs to dS (and therefore dQ/dK), but not dV.
+    // Applying it before the cube matmuls keeps the merged KV edge as
+    // scale*dK + dV instead of scaling the already merged result.
+    Muls(pTensor, pTensor, scaleValue, dataSize);
+    PIPE_BARRIER(PIPE_V);
+
     CalAttenMsk(processM, actualSelS2Align, runInfo);
     auto castS2Loop = CeilDiv(actualSelS2Align, 64);
     for (int i = 0; i < castS2Loop; ++i) {
@@ -729,24 +735,33 @@ __aicore__ inline void VecOp<SFAGT>::GatherKVNonOptimized(const int64_t n2Index,
     (void)n2Index; (void)currentS1Offset;
     // Scalar masks outlive this index buffer: Scatter may overwrite indices before Process(t-1).
     SetFlag<HardEvent::S_MTE2>(EVENT_ID0); WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
-    DataCopy(indexTensor, topkIndicesGm[runInfo.indicesGmOffset + runInfo.blkCntOffset], 128);
+    const uint32_t selectedRows = static_cast<uint32_t>(runInfo.actualSelCntOffset * selectedBlockSize);
+    const uint32_t subBlockBegin = subBlockIdx * 64;
+    const uint32_t gatherRows = selectedRows > subBlockBegin ? Min<uint32_t>(64, selectedRows - subBlockBegin) : 0;
+    DataCopyPad(indexTensor, topkIndicesGm[runInfo.indicesGmOffset + runInfo.blkCntOffset * selectedBlockSize],
+                DataCopyExtParams{1, selectedRows * sizeof(int32_t), 0, 0, 0},
+                DataCopyPadExtParams<int32_t>{false, 0, 0, 0});
     SET_FLAG(MTE2, S, sWaitMte2); WAIT_FLAG(MTE2, S, sWaitMte2);
     const uint32_t generation = runInfo.task & 1;
     invalidMasks[generation][0] = 0;
     invalidMasks[generation][1] = 0;
     const int64_t causalEnd = runInfo.s1Index + runInfo.curS2 - runInfo.curS1;
-    for (uint32_t i = 0; i < 128; ++i) {
+    for (uint32_t i = 0; i < selectedRows; ++i) {
         if (indexTensor.GetValue(i) > causalEnd) invalidMasks[generation][i / 64] |= 1ULL << (i % 64);
     }
     SET_FLAG(MTE3, MTE2, mte2WaitMte3); WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
-    for (uint32_t i = 0; i < 64; ++i) {
-        const int64_t index = indexTensor.GetValue(subBlockIdx * 64 + i);
-        DataCopy(gatherTensorPing[i * 512], keyGm[runInfo.keyGmOffset + index * 512], 512);
-        DataCopy(gatherRopePing[i * 64], keyRopeGm[runInfo.keyRopeGmOffset + index * 64], 64);
+    for (uint32_t i = 0; i < gatherRows; ++i) {
+        const int64_t index = indexTensor.GetValue(subBlockBegin + i);
+        DataCopy(gatherTensorPing[i * dimDqk], keyGm[runInfo.keyGmOffset + index * dimDqk], dimDqk);
+        DataCopy(gatherRopePing[i * dimRope], keyRopeGm[runInfo.keyRopeGmOffset + index * dimRope], dimRope);
     }
     SET_FLAG(MTE2, MTE3, mte3WaitMte2); WAIT_FLAG(MTE2, MTE3, mte3WaitMte2);
-    DataCopy(selectedKWorkspaceGm[runInfo.selectedKGmOffset + subBlockIdx * 64 * 512], gatherTensorPing, 64 * 512);
-    DataCopy(selectedKWorkspaceGm[runInfo.selectedKGmOffset + 128 * 512 + subBlockIdx * 64 * 64], gatherRopePing, 64 * 64);
+    if (gatherRows > 0) {
+        DataCopy(selectedKWorkspaceGm[runInfo.selectedKGmOffset + subBlockBegin * dimDqk], gatherTensorPing,
+                gatherRows * dimDqk);
+        DataCopy(selectedKWorkspaceGm[runInfo.selectedKGmOffset + 128 * dimDqk + subBlockBegin * dimRope],
+                gatherRopePing, gatherRows * dimRope);
+    }
     SET_FLAG(MTE3, MTE2, mte2WaitMte3); WAIT_FLAG(MTE3, MTE2, mte2WaitMte3);
     SET_FLAG(MTE3, V, vWaitMte3); WAIT_FLAG(MTE3, V, vWaitMte3);
 }
@@ -856,8 +871,6 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
         event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        Muls(dkInUb, dkInUb, (float)tilingData->postTilingData.scaleValue, ubRowSizeDAlign);
-
         SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
         WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
 
@@ -888,8 +901,6 @@ __aicore__ inline void VecOp<SFAGT>::ScatterAddDeter(const RunInfo &runInfo)
     event_t event = pingPongIdx == 0 ? vWaitMte2 : vWaitMte2Pong;
     SetFlag<AscendC::HardEvent::MTE2_V>(event);
     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-    Muls(dkInUb, dkInUb, (float)tilingData->postTilingData.scaleValue, tailRows * dimDAlign);
-
     SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
     WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
 

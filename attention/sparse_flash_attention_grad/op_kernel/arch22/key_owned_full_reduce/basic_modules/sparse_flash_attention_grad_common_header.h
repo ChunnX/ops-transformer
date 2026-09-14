@@ -27,11 +27,56 @@ constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
 constexpr static uint64_t PING_PONG_BUFFER = 2;
 constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
-constexpr static uint64_t KeyOwnedEdgeBytes = 4831838208ULL;
-constexpr static uint64_t KeyOwnedHeaderBytes = 33554432ULL;
-constexpr static uint64_t KeyOwnedSortedIndicesBytes = 8388608ULL;
-constexpr static uint64_t KeyOwnedExtensionBytes = 4873781248ULL;
-static_assert(KeyOwnedEdgeBytes + KeyOwnedHeaderBytes + KeyOwnedSortedIndicesBytes == KeyOwnedExtensionBytes);
+constexpr static uint64_t KeyOwnedBucketWidth = 64;
+constexpr static uint64_t KeyOwnedMaxBuckets = 2048;
+constexpr static uint64_t KeyOwnedMaxSelected = 2048;
+constexpr static uint64_t KeyOwnedMaxQueryCount = 65536;
+constexpr static uint64_t KeyOwnedMaxG = 64;
+constexpr static uint64_t KeyOwnedMaxDTotal = 576;
+constexpr static uint64_t KeyOwnedMaxDv = 512;
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedQueryCount(const TILING_CLASS *td)
+{
+    return static_cast<uint64_t>(td->opInfo.B) * td->opInfo.S1;
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedSelectedCount(const TILING_CLASS *td)
+{
+    return static_cast<uint64_t>(td->opInfo.selectedBlockCount) * td->opInfo.selectedBlockSize;
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedBucketCount(const TILING_CLASS *td)
+{
+    return (static_cast<uint64_t>(td->opInfo.S2) + KeyOwnedBucketWidth - 1) / KeyOwnedBucketWidth;
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedEdgeByteSize(const TILING_CLASS *td)
+{
+    const uint64_t dAlign = (static_cast<uint64_t>(td->opInfo.D) + td->opInfo.ropeD + 15) / 16 * 16;
+    return KeyOwnedQueryCount(td) * KeyOwnedSelectedCount(td) * dAlign * sizeof(float);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedHeaderByteSize(const TILING_CLASS *td)
+{
+    return KeyOwnedBucketCount(td) * KeyOwnedQueryCount(td) * 4 * sizeof(uint32_t);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedSortedIndicesByteSize(const TILING_CLASS *td)
+{
+    return KeyOwnedQueryCount(td) * KeyOwnedSelectedCount(td) * sizeof(int32_t);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedExtensionByteSize(const TILING_CLASS *td)
+{
+    return KeyOwnedEdgeByteSize(td) + KeyOwnedHeaderByteSize(td) + KeyOwnedSortedIndicesByteSize(td);
+}
 
 template <typename TILING_CLASS>
 __aicore__ inline uint64_t KeyOwnedPostByteOffset(const TILING_CLASS *td)
@@ -47,8 +92,20 @@ __aicore__ inline uint64_t KeyOwnedExtensionByteOffset(const TILING_CLASS *td)
     const uint64_t d2Align = (static_cast<uint64_t>(td->opInfo.D2) + 15) / 16 * 16;
     return KeyOwnedPostByteOffset(td) + static_cast<uint64_t>(td->opInfo.dqWorkspaceLen) +
            td->opInfo.dkWorkspaceLen + td->opInfo.dvWorkspaceLen +
-           static_cast<uint64_t>(24) * 2 * td->opInfo.selectedBlockCount * td->opInfo.selectedBlockSize *
+           static_cast<uint64_t>(MAX_CORE_NUM) * PING_PONG_BUFFER * KeyOwnedSelectedCount(td) *
                (dAlign + d2Align) * sizeof(float);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedHeaderByteOffset(const TILING_CLASS *td)
+{
+    return KeyOwnedExtensionByteOffset(td) + KeyOwnedEdgeByteSize(td);
+}
+
+template <typename TILING_CLASS>
+__aicore__ inline uint64_t KeyOwnedSortedIndicesByteOffset(const TILING_CLASS *td)
+{
+    return KeyOwnedHeaderByteOffset(td) + KeyOwnedHeaderByteSize(td);
 }
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))

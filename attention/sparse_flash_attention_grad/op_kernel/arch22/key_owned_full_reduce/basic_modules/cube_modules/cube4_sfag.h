@@ -35,7 +35,9 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube4Process(
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDTotal * dimN2;
 
-    int64_t mm4ResOutBaseOffset = static_cast<uint64_t>(runInfo.indicesGmOffset / 2048) * 2048 * 576;
+    const uint64_t queryIndex = static_cast<uint64_t>(runInfo.indicesGmOffset) /
+                                (static_cast<uint64_t>(dimN2) * selectedBlockCount);
+    int64_t mm4ResOutBaseOffset = queryIndex * selectedBlockCount * selectedBlockSizeDtotal;
     const bool reloadQuery = !runInfo.noReload && runInfo.isLastBasicBlock;
 
     LocalTensor<T1> l1_ds_tensor = l1_ds_tensors[ping_pong_flag_l1_ds_];
