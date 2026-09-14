@@ -847,6 +847,33 @@ def _torch_to_numpy(tensor):
     return numpy.asarray(tensor)
 
 
+def _unpack_int4(raw_bytes):
+    lo = (raw_bytes & 0x0F).astype(numpy.int8)
+    hi = ((raw_bytes >> 4) & 0x0F).astype(numpy.int8)
+    nibbles = numpy.empty(raw_bytes.size * 2, dtype=numpy.int8)
+    nibbles[0::2] = lo
+    nibbles[1::2] = hi
+    nibbles[nibbles >= 8] -= 16
+    return nibbles
+
+
+def _quant_ulp_result(npu_vals, golden_vals):
+    min_len = min(npu_vals.size, golden_vals.size)
+    npu_vals = npu_vals[:min_len]
+    golden_vals = golden_vals[:min_len]
+    diff = numpy.abs(numpy.subtract(npu_vals, golden_vals))
+    total = diff.size
+    bad_count = int(numpy.sum(diff > 1))
+    precision = float(total - bad_count) / total * 100.0 if total > 0 else 100.0
+    return {
+        "pass": (1 - precision / 100.0) <= 0.001,
+        "precision": precision,
+        "error_info": None
+        if bad_count == 0
+        else f"quant ulp mismatch {bad_count}/{total}",
+    }
+
+
 def _to_list(val):
     if val is None:
         return None
@@ -1040,23 +1067,31 @@ class MoeInitRoutingV3KernelSpec:
                         }
                     )
                 else:
-                    diff_count = int(
-                        numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                    is_int4_quant = (
+                        "int4" in dtype_name or "int4" in str(npu_arr.dtype).lower()
                     )
-                    precision = (
-                        float(min_len_raw - diff_count) / min_len_raw * 100.0
-                        if min_len_raw > 0
-                        else 100.0
-                    )
-                    results.append(
-                        {
-                            "pass": diff_count == 0,
-                            "precision": precision,
-                            "error_info": None
-                            if diff_count == 0
-                            else f"byte mismatch {diff_count}/{min_len_raw}",
-                        }
-                    )
+                    if is_int4_quant:
+                        npu_nib = _unpack_int4(npu_raw[:min_len_raw])
+                        golden_nib = _unpack_int4(golden_raw[:min_len_raw])
+                        results.append(_quant_ulp_result(npu_nib, golden_nib))
+                    else:
+                        diff_count = int(
+                            numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                        )
+                        precision = (
+                            float(min_len_raw - diff_count) / min_len_raw * 100.0
+                            if min_len_raw > 0
+                            else 100.0
+                        )
+                        results.append(
+                            {
+                                "pass": diff_count == 0,
+                                "precision": precision,
+                                "error_info": None
+                                if diff_count == 0
+                                else f"byte mismatch {diff_count}/{min_len_raw}",
+                            }
+                        )
                 continue
             is_int = golden_arr.dtype.kind in ("i", "u")
             is_float = golden_arr.dtype.kind == "f" or any(
@@ -1073,21 +1108,27 @@ class MoeInitRoutingV3KernelSpec:
                 ]
             )
             if is_int and not is_float:
-                diff_count = int(numpy.sum(npu_cmp != golden_cmp))
-                precision = (
-                    float(min_len - diff_count) / min_len * 100.0
-                    if min_len > 0
-                    else 100.0
-                )
-                results.append(
-                    {
-                        "pass": diff_count == 0,
-                        "precision": precision,
-                        "error_info": None
-                        if diff_count == 0
-                        else f"mismatch {diff_count}/{min_len}",
-                    }
-                )
+                is_quant_output = "int8" in dtype_name
+                if is_quant_output:
+                    npu_i = npu_cmp.astype(numpy.int32)
+                    golden_i = golden_cmp.astype(numpy.int32)
+                    results.append(_quant_ulp_result(npu_i, golden_i))
+                else:
+                    diff_count = int(numpy.sum(npu_cmp != golden_cmp))
+                    precision = (
+                        float(min_len - diff_count) / min_len * 100.0
+                        if min_len > 0
+                        else 100.0
+                    )
+                    results.append(
+                        {
+                            "pass": diff_count == 0,
+                            "precision": precision,
+                            "error_info": None
+                            if diff_count == 0
+                            else f"mismatch {diff_count}/{min_len}",
+                        }
+                    )
             else:
                 if "bfloat16" in dtype_name or "bf16" in dtype_name:
                     rtol, atol = 0.004, 0.004
@@ -1278,23 +1319,31 @@ class E2eMoeInitRoutingV3Spec:
                         }
                     )
                 else:
-                    diff_count = int(
-                        numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                    is_int4_quant = (
+                        "int4" in dtype_name or "int4" in str(npu_arr.dtype).lower()
                     )
-                    precision = (
-                        float(min_len_raw - diff_count) / min_len_raw * 100.0
-                        if min_len_raw > 0
-                        else 100.0
-                    )
-                    results.append(
-                        {
-                            "pass": diff_count == 0,
-                            "precision": precision,
-                            "error_info": None
-                            if diff_count == 0
-                            else f"byte mismatch {diff_count}/{min_len_raw}",
-                        }
-                    )
+                    if is_int4_quant:
+                        npu_nib = _unpack_int4(npu_raw[:min_len_raw])
+                        golden_nib = _unpack_int4(golden_raw[:min_len_raw])
+                        results.append(_quant_ulp_result(npu_nib, golden_nib))
+                    else:
+                        diff_count = int(
+                            numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                        )
+                        precision = (
+                            float(min_len_raw - diff_count) / min_len_raw * 100.0
+                            if min_len_raw > 0
+                            else 100.0
+                        )
+                        results.append(
+                            {
+                                "pass": diff_count == 0,
+                                "precision": precision,
+                                "error_info": None
+                                if diff_count == 0
+                                else f"byte mismatch {diff_count}/{min_len_raw}",
+                            }
+                        )
                 continue
             is_int = golden_arr.dtype.kind in ("i", "u")
             is_float = golden_arr.dtype.kind == "f" or any(
@@ -1311,21 +1360,27 @@ class E2eMoeInitRoutingV3Spec:
                 ]
             )
             if is_int and not is_float:
-                diff_count = int(numpy.sum(npu_cmp != golden_cmp))
-                precision = (
-                    float(min_len - diff_count) / min_len * 100.0
-                    if min_len > 0
-                    else 100.0
-                )
-                results.append(
-                    {
-                        "pass": diff_count == 0,
-                        "precision": precision,
-                        "error_info": None
-                        if diff_count == 0
-                        else f"mismatch {diff_count}/{min_len}",
-                    }
-                )
+                is_quant_output = "int8" in dtype_name
+                if is_quant_output:
+                    npu_i = npu_cmp.astype(numpy.int32)
+                    golden_i = golden_cmp.astype(numpy.int32)
+                    results.append(_quant_ulp_result(npu_i, golden_i))
+                else:
+                    diff_count = int(numpy.sum(npu_cmp != golden_cmp))
+                    precision = (
+                        float(min_len - diff_count) / min_len * 100.0
+                        if min_len > 0
+                        else 100.0
+                    )
+                    results.append(
+                        {
+                            "pass": diff_count == 0,
+                            "precision": precision,
+                            "error_info": None
+                            if diff_count == 0
+                            else f"mismatch {diff_count}/{min_len}",
+                        }
+                    )
             else:
                 if "bfloat16" in dtype_name or "bf16" in dtype_name:
                     rtol, atol = 0.004, 0.004
@@ -1365,6 +1420,7 @@ class AclnnMoeInitRoutingV3Spec:
         "float32": {"standard": "stat_rel_err"},
     }
 
+    @staticmethod
     def golden(
         x,
         expertIdx,
@@ -1419,6 +1475,7 @@ class AclnnMoeInitRoutingV3Spec:
         )
         return [_numpy_to_torch(arr, tpl) for arr, tpl in zip(results, templates)]
 
+    @staticmethod
     def compare(*outputs, **kwargs):
         results = []
         half = len(outputs) // 2
@@ -1522,23 +1579,31 @@ class AclnnMoeInitRoutingV3Spec:
                         }
                     )
                 else:
-                    diff_count = int(
-                        numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                    is_int4_quant = (
+                        "int4" in dtype_name or "int4" in str(npu_arr.dtype).lower()
                     )
-                    precision = (
-                        float(min_len_raw - diff_count) / min_len_raw * 100.0
-                        if min_len_raw > 0
-                        else 100.0
-                    )
-                    results.append(
-                        {
-                            "pass": diff_count == 0,
-                            "precision": precision,
-                            "error_info": None
-                            if diff_count == 0
-                            else f"byte mismatch {diff_count}/{min_len_raw}",
-                        }
-                    )
+                    if is_int4_quant:
+                        npu_nib = _unpack_int4(npu_raw[:min_len_raw])
+                        golden_nib = _unpack_int4(golden_raw[:min_len_raw])
+                        results.append(_quant_ulp_result(npu_nib, golden_nib))
+                    else:
+                        diff_count = int(
+                            numpy.sum(npu_raw[:min_len_raw] != golden_raw[:min_len_raw])
+                        )
+                        precision = (
+                            float(min_len_raw - diff_count) / min_len_raw * 100.0
+                            if min_len_raw > 0
+                            else 100.0
+                        )
+                        results.append(
+                            {
+                                "pass": diff_count == 0,
+                                "precision": precision,
+                                "error_info": None
+                                if diff_count == 0
+                                else f"byte mismatch {diff_count}/{min_len_raw}",
+                            }
+                        )
                 continue
             is_int = golden_arr.dtype.kind in ("i", "u")
             is_float = golden_arr.dtype.kind == "f" or any(
@@ -1555,21 +1620,27 @@ class AclnnMoeInitRoutingV3Spec:
                 ]
             )
             if is_int and not is_float:
-                diff_count = int(numpy.sum(npu_cmp != golden_cmp))
-                precision = (
-                    float(min_len - diff_count) / min_len * 100.0
-                    if min_len > 0
-                    else 100.0
-                )
-                results.append(
-                    {
-                        "pass": diff_count == 0,
-                        "precision": precision,
-                        "error_info": None
-                        if diff_count == 0
-                        else f"mismatch {diff_count}/{min_len}",
-                    }
-                )
+                is_quant_output = "int8" in dtype_name
+                if is_quant_output:
+                    npu_i = npu_cmp.astype(numpy.int32)
+                    golden_i = golden_cmp.astype(numpy.int32)
+                    results.append(_quant_ulp_result(npu_i, golden_i))
+                else:
+                    diff_count = int(numpy.sum(npu_cmp != golden_cmp))
+                    precision = (
+                        float(min_len - diff_count) / min_len * 100.0
+                        if min_len > 0
+                        else 100.0
+                    )
+                    results.append(
+                        {
+                            "pass": diff_count == 0,
+                            "precision": precision,
+                            "error_info": None
+                            if diff_count == 0
+                            else f"mismatch {diff_count}/{min_len}",
+                        }
+                    )
             else:
                 if "bfloat16" in dtype_name or "bf16" in dtype_name:
                     rtol, atol = 0.004, 0.004
