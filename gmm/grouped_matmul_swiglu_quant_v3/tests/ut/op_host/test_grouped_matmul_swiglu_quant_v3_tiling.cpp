@@ -140,12 +140,15 @@ struct TilingCase {
         TilingInfo info;
         ASSERT_TRUE(ExecuteTiling(context, info));
         EXPECT_EQ(info.tilingKey, expectedKey);
-        ASSERT_GE(info.tilingDataSize, sizeof(optiling::GMMSwigluQuantV3TilingDataParams));
-        auto *data = reinterpret_cast<optiling::GMMSwigluQuantV3TilingDataParams *>(info.tilingData.get());
+        // The framework reserves a compact raw buffer for this UT.  The
+        // generated TCubeTiling host wrapper contains implementation-only
+        // metadata and is therefore larger than the serialized payload.
+        ASSERT_GE(info.tilingDataSize, sizeof(optiling::GMMSwigluQuantV3Params));
+        auto *data = reinterpret_cast<optiling::GMMSwigluQuantV3Params *>(info.tilingData.get());
         ASSERT_NE(data, nullptr);
-        EXPECT_EQ(data->gmmSwigluQuantParams.get_swigluMode(), mode);
-        EXPECT_EQ(data->gmmSwigluQuantParams.get_scaleAlg(), static_cast<uint8_t>(scaleAlg));
-        EXPECT_EQ(data->gmmSwigluQuantParams.get_axis(), -1);
+        EXPECT_EQ(data->get_swigluMode(), mode);
+        EXPECT_EQ(data->get_scaleAlg(), static_cast<uint8_t>(scaleAlg));
+        EXPECT_EQ(data->get_axis(), -1);
     }
 };
 
