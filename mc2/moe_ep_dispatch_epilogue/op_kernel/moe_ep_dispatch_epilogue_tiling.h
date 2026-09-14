@@ -37,6 +37,7 @@ struct MoeEpDispatchEpilogueInfo {
     uint64_t slotWinStateOffset = 0;        // slot state offset
     uint32_t cached = 0;                    // 0 = non-cached path, 1 = cached path
     uint32_t isMxQuant = 0;                 // 0 = float scales, 1 = fp8_e8m0 scales (MX quant)
+    uint32_t networkMode = 0;               // 0 = direct(紧拼槽布局 meta@tokenSize), 1 = hybrid(对齐槽布局 meta@hAlign)
     uint64_t rankExpertHitCountOffset = 0;  // per-core [rank][expert] count matrix offset in workspace
     uint64_t metadataRankOffsetsOffset = 0; // byte offset of the aligned tail in packed metadata
 };
