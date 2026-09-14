@@ -769,6 +769,11 @@ static bool IsKvScalePerHeadShape(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ParseA2A3AttenMask(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
                                               uint32_t &attenMaskMaxBlockNum)
 {
+    if (quantMode_ != NO_QUANT) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) only supports no quant on non-950 chips, but got quantMode=%ld.", quantMode_);
+        return ge::GRAPH_FAILED;
+    }
     auto &attenMaskShape = attenMaskTensor->GetStorageShape();
     // A2/A3 use one shared [maxBlockNum, 2] table: [effective Q rows, effective KV rows].
     if (attenMaskShape.GetDimNum() != DIM_NUM_2) {
@@ -789,6 +794,33 @@ ge::graphStatus BSATiling::ParseA2A3AttenMask(gert::TilingContext *bsaContext, c
 ge::graphStatus BSATiling::ParseA5AttenMask(gert::TilingContext *bsaContext, const gert::Tensor *attenMaskTensor,
                                             uint32_t &attenMaskMaxBlockNum)
 {
+    if (IsFp8Quant(quantMode_)) {
+        // FP8 量化下 attenMask(blockEffRows) 须为 float8_e4m3fn 输入
+        if (dataType_ != ge::DT_FLOAT8_E4M3FN) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "attenMask (blockEffRows) requires float8_e4m3fn input for FP8 quant, "
+                    "but got dtype=%s.",
+                    DataTypeToString(dataType_).c_str());
+            return ge::GRAPH_FAILED;
+        }
+        // FP8 下 attenMask(blockEffRows) 支持两种形态:
+        //   - per-tile(quantMode=1): kv tile 不跨量化块;
+        //   - per-head(quantMode=20): 跨块 gather(scale 与块无关)。
+        bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
+        if (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "attenMask (blockEffRows) requires FP8 per-head (quantMode=20, k/v scale 2D), "
+                    "but got perHeadKvScale=%d.",
+                    static_cast<int>(kvScalePerHead));
+            return ge::GRAPH_FAILED;
+        }
+    } else if (!IsMxfp4Quant(quantMode_)) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "attenMask (blockEffRows) is only supported for mxfp4(quantMode=2 and 3) "
+                "and FP8(quantMode=1 and 20) on chip 950, but got quantMode=%ld.",
+                quantMode_);
+        return ge::GRAPH_FAILED;
+    }
     auto &attenMaskShape = attenMaskTensor->GetStorageShape();
     if (attenMaskShape.GetDimNum() != DIM_NUM_4) {
         OP_LOGE(bsaContext->GetNodeName(), "A5 attenMask (blockEffRows) must be 4D, but got dimNum %zu.",
@@ -821,41 +853,6 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
     const bool isAtlasA5 = (socVer_ == SOC_VER_950_CODE);
     const bool isAtlasA2 = (socVer_ == SOC_VER_910B_CODE);
     const bool isAtlasA3 = (socVer_ == SOC_VER_910_93_CODE);
-    if (isAtlasA5 && IsFp8Quant(quantMode_)) {
-        // FP8 量化下 attenMask(blockEffRows) 须为 float8_e4m3fn 输入
-        if (dataType_ != ge::DT_FLOAT8_E4M3FN) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "attenMask (blockEffRows) requires float8_e4m3fn input for FP8 quant, "
-                    "but got dtype=%s.",
-                    DataTypeToString(dataType_).c_str());
-            return ge::GRAPH_FAILED;
-        }
-        // FP8 下 attenMask(blockEffRows) 支持两种形态:
-        //   - per-tile(quantMode=1): kv tile 不跨量化块;
-        //   - per-head(quantMode=20): 跨块 gather(scale 与块无关)。
-        bool kvScalePerHead = IsKvScalePerHeadShape(bsaContext);
-        if (quantMode_ == FP8_PERHEAD_QUANT && !kvScalePerHead) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "attenMask (blockEffRows) requires FP8 per-head (quantMode=20, k/v scale 2D), "
-                    "but got perHeadKvScale=%d.",
-                    static_cast<int>(kvScalePerHead));
-            return ge::GRAPH_FAILED;
-        }
-    } else if (isAtlasA5 && !IsMxfp4Quant(quantMode_)) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "attenMask (blockEffRows) is only supported for mxfp4(quantMode=2 and 3) "
-                "and FP8(quantMode=1 and 20) on chip 950, but got quantMode=%ld.",
-                quantMode_);
-        return ge::GRAPH_FAILED;
-    } else if (isAtlasA2 || isAtlasA3) {
-        if (quantMode_ != NO_QUANT) {
-            OP_LOGE(bsaContext->GetNodeName(),
-                    "attenMask (blockEffRows) only supports no quant on non-950 chips, but got quantMode=%ld.",
-                    quantMode_);
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     auto attenMaskDtype = attenMaskTensor->GetDataType();
     if (attenMaskDtype != ge::DT_INT32) {
         OP_LOGE(bsaContext->GetNodeName(), "attenMask (blockEffRows) must be INT32, but got %s.",
