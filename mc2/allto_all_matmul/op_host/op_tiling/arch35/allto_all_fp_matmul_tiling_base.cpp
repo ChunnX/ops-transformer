@@ -357,6 +357,7 @@ void AllToAllFpMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingI
     tilingInfo.permuteLen = inferredInfo_.permuteLen;
     tilingInfo.biasLen = inferredInfo_.biasLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
+    tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
     tilingInfo.hcclDataType = (static_cast<uint64_t>(
         mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geAType))); // hccl数据类型
 }
@@ -426,6 +427,6 @@ AllToAllFpMatmulTilingBase::AllToAllFpMatmulTilingBase(gert::TilingContext *cont
 {}
 
 // 注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase, static_cast<int32_t>(NpuArch::DAV_3510),
-                                   0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase,
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace MC2Tiling

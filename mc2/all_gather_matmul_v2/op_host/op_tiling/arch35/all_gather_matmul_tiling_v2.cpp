@@ -44,7 +44,7 @@ static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherMatmulTilingV2::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) && inputIsBf16Fp16_) {
+    if ((npuArch_ == Ops::Base::DAV_3510) && inputIsBf16Fp16_) {
         OP_LOGI(opName_, "Start with AllGatherMatmulTilingV2 tiling.");
         return true;
     }
@@ -109,6 +109,9 @@ void AllGatherMatmulTilingV2::PrintAllTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    allGatherMatmulTilingDataV2_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AllGatherMatmulTilingDataV2),
             context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
@@ -257,6 +260,6 @@ AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext *context)
       allGatherMatmulTilingDataV2_(&allGatherMatmulTilingDataV2Self_)
 {}
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2, static_cast<int32_t>(NpuArch::DAV_3510),
-                                   0);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2,
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace optiling

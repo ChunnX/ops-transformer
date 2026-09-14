@@ -328,7 +328,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
 
     OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
                     return ge::GRAPH_FAILED);
-    isLayered = strcmp(commAlgPtr, "hierarchy") == 0;
+    isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0);
     if (config.isMc2Context) {
         OP_TILING_CHECK(
             isLayered, OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "does not support comm with context"),
@@ -343,7 +343,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
         OP_LOGI(nodeName, "epWorldSize is %ld in single supernode, degrade hierarchy to fullmesh.", *epWorldSizePtr);
     }
 
-    if (mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510) {
+    if (mc2tiling::GetNpuArch(context) != Ops::Base::DAV_3510) {
         OP_TILING_CHECK((*commQuantModePtr != 0) && (*commQuantModePtr != INT8_COMM_QUANT),
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "commQuantMode", std::to_string(*commQuantModePtr).c_str(),
                                                   "should be 0 or 2"),
@@ -507,9 +507,9 @@ static bool CheckOptionalScalesTensorDim(const gert::TilingContext *context, con
 {
     if (isLayered) {
         const gert::StorageShape *expandScaleStorageShape = context->GetOptionalInputShape(EXPAND_SCALES_INDEX);
-        const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(expandScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
                         return false);
+        const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             expandScaleDim != ONE_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expandScales", std::to_string(expandScaleDim).c_str(),
@@ -1250,6 +1250,8 @@ static bool CheckFromDispatchTensorShape(const gert::TilingContext *context,
     // 校验expandScales的维度
     if (isLayered) {
         const gert::StorageShape *expandScaleStorageShape = context->GetOptionalInputShape(EXPAND_SCALES_INDEX);
+        OP_TILING_CHECK(expandScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
+                        return false);
         int64_t expandScalesDim0 = expandScaleStorageShape->GetStorageShape().GetDim(0);
         int64_t minexpandScalesDim0 = static_cast<int64_t>(A);
         OP_TILING_CHECK(expandScalesDim0 < minexpandScalesDim0,
@@ -1707,7 +1709,7 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
     bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
                         (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
-    bool isA5FusedQuant = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510 && (isInt8Quant || isMxFp8Quant);
+    bool isA5FusedQuant = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 && (isInt8Quant || isMxFp8Quant);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
     uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
@@ -1859,7 +1861,7 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
     bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
                         (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
-    bool isA5 = mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510;
+    bool isA5 = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510;
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
     uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
@@ -1929,7 +1931,7 @@ static void SetA3BufferNum(const uint64_t ubSize, const gert::TilingContext *con
 static bool UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
                       MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
 {
-    if (mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510) {
+    if (mc2tiling::GetNpuArch(context) != Ops::Base::DAV_3510) {
         SetA3BufferNum(ubSize, context, tilingData, config);
         return true;
     }

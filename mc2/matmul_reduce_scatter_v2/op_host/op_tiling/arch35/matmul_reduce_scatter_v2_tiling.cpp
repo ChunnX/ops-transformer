@@ -47,10 +47,11 @@ constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
 constexpr uint32_t X1SCALE_INDEX = 3;
 constexpr uint32_t X2SCALE_INDEX = 4;
 constexpr uint32_t COMMMODE_INDEX = 10;
+constexpr uint32_t ALG_CONFIG_RANK_SIZE = 16U;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) && ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
+    if ((npuArch_ == Ops::Base::DAV_3510) && ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
         OP_LOGI(opName_, "start with MatmulReduceScatterV2Tiling tiling.");
         return true;
     }
@@ -117,6 +118,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     if (commMode_ == TPL_AICPU_COMM_MODE) {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for matmul_reduce_scatter_v2_tiling.");
+        // 16p跨机场景，根据通信api benchmark，使用InsReduceScatterParallelMesh1DNHR算法速度更快
+        if (args_.rankDim == ALG_CONFIG_RANK_SIZE) {
+            mc2CcTilingConfig.SetAlgConfig("InsReduceScatterParallelMesh1DNHR");
+            OP_LOGD(opName_, "[SetAlgConfig] Set AlgConfig to InsReduceScatterParallelMesh1DNHR.");
+        }
     } else {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
@@ -202,6 +208,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    matmulReduceScatterV2TilingData_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
@@ -223,7 +232,8 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 {
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                      TopoType::STANDARD_CARD);
+                                                      TopoType::STANDARD_CARD, SocVersion::SOC950,
+                                                      (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
@@ -231,7 +241,7 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
                                                       (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
-        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        SocVersion inputSocVersion = (npuArch_ == Ops::Base::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
         MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion, false,
                                           (commMode_ == TPL_AICPU_COMM_MODE));
         scatterTiling.GetTiling();
@@ -241,6 +251,6 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 
 } // namespace optiling

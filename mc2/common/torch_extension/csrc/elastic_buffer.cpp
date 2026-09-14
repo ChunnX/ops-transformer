@@ -1195,7 +1195,8 @@ public:
     }
 
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                  int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr);
+                                  int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
+                                  at::Tensor &fetchedSf);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
@@ -1229,16 +1230,17 @@ public:
         int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync,
         int64_t hostPinnedCounterAddr, int64_t cclBufferSize);
     DispatchEpilogueTensorList MoeEpDispatchEpilogue(
-        const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-        const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId,
-        int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX,
+        const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &numRecvPerRank,
+        const at::Tensor &numRecvPerExpert, const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize,
+        int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX,
         at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
         const c10::optional<at::Tensor> &recvScalesOpt);
     void MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
                       const at::Tensor &numRecvTokensPerExpert, const c10::optional<at::Tensor> &topkWeights,
                       int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
                       int64_t cclBufferSize);
-    CombineEpilogueTensorList MoeEpCombineEpilogue(const at::Tensor &topkIdx,
+    CombineEpilogueTensorList MoeEpCombineEpilogue(const at::Tensor &x, const at::Tensor &topkIdx,
+                                                   const at::Tensor &recvSrcMetadata,
                                                    const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize,
                                                    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
                                                    int64_t cclBufferSize, at::Tensor &combinedX,
@@ -1451,7 +1453,8 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage, const c10::optional<a
 
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
 at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                      int64_t numEntries, int64_t dtypeEnum, at::Tensor &fetchedSf, int64_t sfTableAddr)
+                                      int64_t numEntries, int64_t dtypeEnum, const at::Tensor &sfTable,
+                                      at::Tensor &fetchedSf)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1461,8 +1464,8 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     }
     aclTensor *nullTensor = nullptr;
     int64_t zero = 0;
-    ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, fetched, nullTensor, nullTensor, nullTensor, nullTensor,
-              nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero, sfTableAddr);
+    ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, sfTable, fetched, nullTensor, nullTensor, nullTensor,
+              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero);
     return fetched;
 }
 
@@ -1490,9 +1493,9 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
         constexpr int64_t withGrad = 1;
         aclTensor *nullTensor = nullptr;
         int64_t zero = 0;
-        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, fetched, perm, sendCounts, recvCounts,
-                  recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize,
-                  withGrad, zero);
+        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, nullTensor, fetched, perm, sendCounts,
+                  recvCounts, recvLocalEntry, numRecv, nullTensor, hiddenSize, numEntries, numMaxTokensPerRank,
+                  commBufferSize, withGrad);
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
@@ -1757,11 +1760,13 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 }
 
 Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
-    const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-    const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-    int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
-    const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
+    const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &numRecvPerRank,
+    const at::Tensor &numRecvPerExpert, const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize,
+    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &recvX,
+    at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
+    const c10::optional<at::Tensor> &recvScalesOpt)
 {
+    TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(recvX.dim() == DIM_TWO, "recv_x dims must be 2, but got ", recvX.dim());
     CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), epWorldSize, recvX.device());
     if (cachedRecvSrcMetadata.has_value()) {
@@ -1788,7 +1793,7 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
         recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
     bool hasTopkWeights = recvTopkWeightsOpt.has_value();
 
-    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, dstBufferSlotIdx, numRecvPerRank, numRecvPerExpert,
+    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, x, topkIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_,
               hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
               recvScalesWrapper);
@@ -1824,10 +1829,14 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
 }
 
 Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCombineEpilogue(
-    const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &combinedX,
+    const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
+    const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+    int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor &combinedX,
     const c10::optional<at::Tensor> &combinedTopkWeightsOpt)
 {
+    TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
+    TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, x.device());
     EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
@@ -1837,9 +1846,9 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
                                                *combinedTopkWeightsOpt :
                                                at::empty({1}, combinedX.options().dtype(at::kFloat));
 
-    ACLNN_CMD(aclnnMoeEpCombineEpilogue, moeContextTensor_, topkIdx, epWorldSize, epRankId, numExperts,
-              numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer, combinedX,
-              combinedTopkWeightsTensor);
+    ACLNN_CMD(aclnnMoeEpCombineEpilogue, moeContextTensor_, x, topkIdx, recvSrcMetadata, topkWeights, epWorldSize,
+              epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer,
+              combinedX, combinedTopkWeightsTensor);
 
     c10::optional<at::Tensor> combinedTopkWeightsOutput;
     if (hasTopkWeights) {
@@ -1866,10 +1875,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              pybind11::arg("sf") = pybind11::none())
         .def_static("engram_fetch",
                     static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t,
-                                               at::Tensor &, int64_t)>(&Mc2Api::ElasticBuffer::EngramFetch),
+                                               const at::Tensor &, at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetch),
                     pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("fetched_sf"),
-                    pybind11::arg("sf_table_addr"))
+                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
+                    pybind11::arg("fetched_sf"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
                     pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),

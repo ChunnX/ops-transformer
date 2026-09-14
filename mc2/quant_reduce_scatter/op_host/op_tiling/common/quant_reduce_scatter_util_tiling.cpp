@@ -30,11 +30,11 @@ static bool IsContains(const std::vector<uint32_t> &list, uint32_t value)
 }
 
 /**
- * @brief 校验attrs，并设置group
+ * @brief 校验attrs
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @return
  */
-static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, TilingRunInfo &runInfo)
+static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -691,7 +691,7 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckNpuArch(const gert::TilingCon
                     return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    OP_TILING_CHECK(npuArch != NpuArch::DAV_3510,
+    OP_TILING_CHECK(npuArch != Ops::Base::DAV_3510,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "npuArch", "non-DAV_3510",
                                                           "The value of npuArch must be DAV_3510"),
                     return ge::GRAPH_FAILED);
@@ -709,7 +709,7 @@ ge::graphStatus QuantReduceScatterUtilTiling::CheckTilingFunc(gert::TilingContex
                                                               const OpType opType)
 {
     const char *nodeName = context->GetNodeName();
-    if (CheckAttrsInfo(context, runInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckAttrsInfo(context) != ge::GRAPH_SUCCESS) {
         OP_LOGE(nodeName, "CheckAttrsInfo failed");
         return ge::GRAPH_FAILED;
     }

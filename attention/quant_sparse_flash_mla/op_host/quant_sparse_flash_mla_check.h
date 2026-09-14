@@ -15,82 +15,21 @@
 #ifndef QUANT_SPARSE_FLASH_MLA_CHECK_H
 #define QUANT_SPARSE_FLASH_MLA_CHECK_H
 
-#include <graph/utils/type_utils.h>
-#include <exe_graph/runtime/tiling_context.h>
-#include <tiling/platform/platform_ascendc.h>
-#include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "log/log.h"
-#include "log/error_code.h"
-#include "err/ops_err.h"
-#include "platform/platform_info.h"
-#include "op_host/tiling_util.h"
+#include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
 
 const std::string ORI_BLOCK_TABLE_NAME = "ori_block_table";
 const std::string CMP_BLOCK_TABLE_NAME = "cmp_block_table";
-const std::string SINKS_NAME = "sinks";
-
-const std::string QUERY_NAME = "query";
-const std::string KEY_NAME = "key";
-const std::string VALUE_NAME = "value";
-
-const std::string ORI_KV_NAME = "ori_kv";
-const std::string CMP_KV_NAME = "cmp_kv";
-const std::string ORI_SPARSE_INDICES_NAME = "ori_sparse_indices";
-const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
-const std::string ATTEN_OUT_NAME = "attention_out";
-const std::string SOFTMAX_LSE_NAME = "softmax_lse";
-
-const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
-const std::string CU_SEQLENS_CMP_KV_NAME = "cu_seqlens_cmp_kv";
-const std::string SEQUSED_Q_NAME = "seqused_q";
-const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
-const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
-const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
-const std::string ORI_TOPK_LENGTH_NAME = "ori_topk_length";
-const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
-const std::string METADATA_NAME = "metadata";
 
 // // ------------------公共定义--------------------------
-struct QSMLATilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-};
-
-struct QSMLATilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
-    const gert::StorageShape *shape;
-};
-
-enum class QSMLALayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    PA_BBND = 2
-};
-
-enum class QSMLAAxis : uint32_t {
-    B = 0,
-    S = 1,
-    N = 2,
-    D = 3,
-    K = 3, // sparse_indices的K和key的D枚举值相同，表达相同位置, 最后一维
-    T = 5,
-    Bn = 6, // block number
-    Bs = 7  // block size
-};
-
-enum class QSMLATemplateMode : uint32_t {
-    SWA_TEMPLATE_MODE = 0,
-    HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2,
-    ORI_SPARSE_TEMPLATE_MODE = 3,
-    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
-};
+using QSMLATilingRequiredParaInfo = SMLATilingRequiredParaInfo;
+using QSMLATilingOptionalParaInfo = SMLATilingOptionalParaInfo;
+using QSMLALayout = SMLALayout;
+using QSMLAAxis = SMLAAxis;
+using QSMLATemplateMode = SMLATemplateMode;
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -115,9 +54,6 @@ constexpr uint32_t ORI_TOPK_LENGTH_INDEX = 17;
 constexpr uint32_t CMP_TOPK_LENGTH_INDEX = 18;
 constexpr uint32_t SINKS_INDEX = 19;
 constexpr uint32_t METADATA_INDEX = 20;
-// Outputs Index
-constexpr uint32_t ATTN_OUT_INDEX = 0;
-constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 0;
@@ -131,19 +67,6 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 8;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 9;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 10;
-
-// Dim Index
-constexpr uint32_t DIM_IDX_ZERO = 0;
-constexpr uint32_t DIM_IDX_ONE = 1;
-constexpr uint32_t DIM_IDX_TWO = 2;
-constexpr uint32_t DIM_IDX_THREE = 3;
-constexpr uint32_t DIM_IDX_FOUR = 4;
-
-// Dim Num
-constexpr uint32_t DIM_NUM_ONE = 1;
-constexpr uint32_t DIM_NUM_TWO = 2;
-constexpr uint32_t DIM_NUM_THREE = 3;
-constexpr uint32_t DIM_NUM_FOUR = 4;
 
 const std::map<QSMLALayout, std::vector<QSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
     {QSMLALayout::BSND, {QSMLAAxis::B, QSMLAAxis::S, QSMLAAxis::N, QSMLAAxis::D}},
@@ -289,29 +212,29 @@ public:
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
-    void GetInputParaInfo();
     void GetOutputParaInfo();
+    void GetInputParaInfo();
     ge::graphStatus GetAttrParaInfo();
 
     ge::graphStatus GetOpParaInfo();
 
+    void SetQSMLAShape();
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetKvLayout();
-    void SetQSMLAShape();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
     ge::graphStatus GetS1Size();
-    ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
+    ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
-    ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
+    ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
@@ -326,7 +249,7 @@ public:
 
     bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    int64_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams

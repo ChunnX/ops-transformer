@@ -14,10 +14,9 @@
  */
 #include "./allto_all_matmul_fit_balance_tiling.h"
 
+#include <cmath>
 #include <iostream>
 #include <vector>
-
-#include "mc2_log.h"
 
 namespace MC2Tiling {
 using QuantType = MC2Tiling::AlltoAllMatmulFitBalanceTiling::QuantType;
@@ -43,7 +42,7 @@ const static std::map<uint32_t, double> permuteBMap = {{4, 9.85}, {8, 9.85}};
 const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 88.6523}, {8, 81.9156}};
 const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.6494}, {8, 9.9191}};
 constexpr uint64_t ALIGN_M = 256;
-constexpr uint64_t AICPU_TILING_COST = 100;
+constexpr uint64_t AICPU_TILING_COST = 30;
 constexpr uint64_t CCU_TILING_COST = 10;
 void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
 {
@@ -190,7 +189,8 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2()
     double all2allB = all2allBMap.at(GetRank());
     double dtypeSize = all2allDtypeSizeMap.at(matmulQuantType_);
     double denominator = all2allK * static_cast<double>(coreNum_) * dtypeSize - matmulK * mmInfo_.nValue;
-    if (denominator == 0.0 || mmInfo_.kValue == 0) {
+    const double denominatorTolerance = 1e-9;
+    if (std::fabs(denominator) <= denominatorTolerance || mmInfo_.kValue == 0) {
         return static_cast<uint64_t>(0);
     }
     double mValue = (matmulB - all2allB) * static_cast<double>(ONE_MBYTE) * static_cast<double>(coreNum_) /
@@ -198,7 +198,7 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2()
     return mValue > 0 ? static_cast<uint64_t>(mValue) : static_cast<uint64_t>(0);
 }
 
-uint64_t AlltoAllMatmulFitBalanceTiling::primeMinFactor(uint64_t num)
+uint64_t AlltoAllMatmulFitBalanceTiling::primeMinFactor(uint64_t num) const
 {
     const uint64_t FACTOR_TWO = 2;
     const uint64_t FACTOR_THREE = 3;
@@ -288,7 +288,7 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
     }
 }
 
-uint32_t AlltoAllMatmulFitBalanceTiling::GetRank()
+uint32_t AlltoAllMatmulFitBalanceTiling::GetRank() const
 {
     const uint32_t STANDARD_CARD = 4;
     const uint32_t EIGHT_P = 8;

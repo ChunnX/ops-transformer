@@ -808,7 +808,7 @@ uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(uint32_t commQuantMode
 
 bool MoeDistributeCombineTilingA5::IsCapable()
 {
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         const char *nodeName = context_->GetNodeName();
         OP_LOGD(nodeName, "Do MoeDistributeCombineTilingA5 tiling.");
         return true;
@@ -824,7 +824,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFu
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
     // 检查 commAlg 参数合法性校验
     bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
-    bool isCcu = std::strcmp(commAlgPtr, "ccu") == 0;
+    bool isCcu = !isNullOrEmpty && (std::strcmp(commAlgPtr, "ccu") == 0);
     OP_TILING_CHECK(
         !(isNullOrEmpty || isCcu),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr != nullptr ? commAlgPtr : "null",
