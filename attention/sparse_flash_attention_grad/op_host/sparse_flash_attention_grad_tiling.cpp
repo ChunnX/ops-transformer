@@ -19,6 +19,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
 #include "../op_kernel/arch35/sparse_flash_attention_grad_template_tiling_key.h"
+#include "arch22/sfag_key_owned_full_reduce_host.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -35,7 +36,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingCont
     } else {
         OP_LOGW(context, "Current npu arch is not dav-3510.");
     }
-    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    auto result = Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    if (result == ge::GRAPH_SUCCESS) TryKeyOwnedFullReduce(context);
+    return result;
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContext *context)
