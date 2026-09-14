@@ -96,7 +96,8 @@ DP_ASSERT_EQUAL()
 
 LOG_HEAD "Build ${REPOSITORY_NAME}."
 cd "${WORKSPACE}/" || exit 1
-
+echo "==========file list====="
+cat ${WORKSPACE}/pr_filelist.txt
 non_skip_count=$(grep -vE '(\.md$|^tests/)' "${WORKSPACE}/pr_filelist.txt" | grep -cv '^$')
 if [ "${non_skip_count}" -eq 0 ]; then
     LOG_HEAD "pr_filelist.txt only contains .md or tests/ files, skip build"
