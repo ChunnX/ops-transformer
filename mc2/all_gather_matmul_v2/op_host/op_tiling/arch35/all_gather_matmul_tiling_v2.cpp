@@ -26,6 +26,7 @@
 
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "all_gather_fit_balance_tiling_apace.h"
 #include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -125,8 +126,10 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
-    AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTiling();
+    // fit-balance 引擎已切换 apace 孪生类(逐字段等价, 162 用例 bit 级验证);
+    // 回退方式: 将下面两处 Apace 后缀/方法名还原为老类即可, 老类全程保留。
+    AllGatherMMFitBalanceTilingApace tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
+    CutResult result = tileFormulate.GetTilingResult();
 
     bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
     if (isCcuMode) {
