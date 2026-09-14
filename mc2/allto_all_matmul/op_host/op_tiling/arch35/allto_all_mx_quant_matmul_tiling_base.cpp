@@ -1075,8 +1075,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::GetWorkspaceSize()
     workspaceSize += Utils::STATE_DUMP_TOTAL_SIZE;
 #endif
     workspaces[0] = workspaceSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], inferredInfo_.commLen,
-            inferredInfo_.permuteLen);
+    OP_LOGD(opName_, "Workspaces[0] size=%zu, libApiWorkSpaceSize_=%zu, commlen=%zu, permuteLen=%zu", workspaces[0], libApiWorkSpaceSize_,
+        inferredInfo_.commLen, inferredInfo_.permuteLen);
     return ge::GRAPH_SUCCESS;
 }
 
