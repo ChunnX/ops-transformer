@@ -174,17 +174,15 @@ public:
         Duplicate(sin_, 0.f, alignedTotalRopeDim_);
         Duplicate(cos_, 1.f, alignedTotalRopeDim_);
         PipeBarrier<PIPE_V>();
-        // Step 2: Copy valid ropeDim_ elements per head from deQue to sin_/cos_.
-        // Per-head base (i * alignedRopeDim_) is B32-aligned; padding stays 0/1 from step 1.
-        for (uint32_t i = 0; i < ropeNum_; ++i) {
-            uint32_t offset = i * alignedRopeDim_;
-            if constexpr (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
-                Cast(sin_[offset], deQue[offset], RoundMode::CAST_NONE, ropeDim_);
-                Cast(cos_[offset], deQue[alignedTotalRopeDim_ + offset], RoundMode::CAST_NONE, ropeDim_);
-            } else {
-                Adds(sin_[offset], deQue[offset].ReinterpretCast<float>(), 0.f, ropeDim_);
-                Adds(cos_[offset], deQue[alignedTotalRopeDim_ + offset].ReinterpretCast<float>(), 0.f, ropeDim_);
-            }
+        // Step 2: Copy valid ropeDim_ elements for head 0 only from deQue.
+        // deQue has valid data only at [0] (sin) and [alignedTotalRopeDim_] (cos);
+        // other heads propagate via the per-head Adds loop below.
+        if constexpr (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
+            Cast(sin_, deQue, RoundMode::CAST_NONE, ropeDim_);
+            Cast(cos_, deQue[alignedTotalRopeDim_], RoundMode::CAST_NONE, ropeDim_);
+        } else {
+            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, ropeDim_);
+            Adds(cos_, deQue[alignedTotalRopeDim_].ReinterpretCast<float>(), 0.f, ropeDim_);
         }
         ropeQueue_.FreeTensor(deQue);
         PipeBarrier<PIPE_V>();
