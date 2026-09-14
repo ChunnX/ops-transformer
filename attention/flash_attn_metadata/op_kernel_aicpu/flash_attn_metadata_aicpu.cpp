@@ -23,7 +23,6 @@
 #include "flash_attn_grad_metadata_split.h"
 #include "../../common/op_kernel/aicpu_common.h"
 #include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
-#include "../../flash_attn/op_host/fa_max_used_cores.h"
 
 constexpr uint32_t FA_KERNEL_STATUS_OK = 0;
 constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID = 1;
