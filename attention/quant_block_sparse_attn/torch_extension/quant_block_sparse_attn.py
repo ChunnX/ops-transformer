@@ -31,15 +31,13 @@ class _QuantBlockSparseAttnOpBuilder(OpBuilder):
 
     def schema(self):
         return [
-            "npu_quant_block_sparse_attn(Tensor query, Tensor key, Tensor value, "
-            "Tensor q_descale, Tensor k_descale, Tensor v_descale, Tensor? p_scale, "
-            "Tensor sparse_indices, Tensor sparse_seq_len, Tensor? atten_mask, "
-            "float softmax_scale, int sparse_q_block_size, int sparse_kv_block_size, *, "
-            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "
-            "Tensor? seqused_kv=None, Tensor? block_table=None, Tensor? metadata=None, "
-            "str layout_kv='PA_BNBD', str layout_q='TND', str layout_sparse_indices='B_N_Qb_Kb', "
-            "str layout_out='TND', int quant_mode=1, int mask_mode=3, "
-            "bool return_softmax_lse=False) -> (Tensor, Tensor)",
+            "npu_quant_block_sparse_attn(Tensor query, Tensor key, Tensor value, Tensor q_descale, "
+            "Tensor k_descale, Tensor v_descale, Tensor sparse_indices, Tensor sparse_seq_len, *, "
+            "Tensor? p_scale=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "
+            "Tensor? seqused_kv=None, Tensor? block_table=None, Tensor? atten_mask=None, Tensor? metadata=None, "
+            "float softmax_scale, int sparse_q_block_size, int sparse_kv_block_size, str layout_kv='PA_BNBD', "
+            "str layout_q='TND', str layout_sparse_indices='B_N_Qb_Kb', str layout_out='TND', int quant_mode=1, "
+            "int mask_mode=3, bool return_softmax_lse=False) -> (Tensor, Tensor)",
             "npu_quant_block_sparse_attn_metadata(Tensor sparse_seq_len, int num_heads_q, "
             "int num_heads_kv, int head_dim, *, Tensor? cu_seqlens_q=None, "
             "Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None, "
@@ -57,20 +55,20 @@ class _QuantBlockSparseAttnOpBuilder(OpBuilder):
             q_descale: torch.Tensor,
             k_descale: torch.Tensor,
             v_descale: torch.Tensor,
-            p_scale: Optional[torch.Tensor],
             sparse_indices: torch.Tensor,
             sparse_seq_len: torch.Tensor,
-            atten_mask: Optional[torch.Tensor],
-            softmax_scale: float,
-            sparse_q_block_size: int,
-            sparse_kv_block_size: int,
             *,
+            p_scale: Optional[torch.Tensor] = None,
             cu_seqlens_q: Optional[torch.Tensor] = None,
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
             block_table: Optional[torch.Tensor] = None,
+            atten_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
+            softmax_scale: float,
+            sparse_q_block_size: int,
+            sparse_kv_block_size: int,
             layout_kv: str = "PA_BNBD",
             layout_q: str = "TND",
             layout_sparse_indices: str = "B_N_Qb_Kb",
@@ -145,20 +143,20 @@ def _npu_quant_block_sparse_attn(
     q_descale: torch.Tensor,
     k_descale: torch.Tensor,
     v_descale: torch.Tensor,
-    p_scale: Optional[torch.Tensor],
     sparse_indices: torch.Tensor,
     sparse_seq_len: torch.Tensor,
-    atten_mask: Optional[torch.Tensor],
-    softmax_scale: float,
-    sparse_q_block_size: int,
-    sparse_kv_block_size: int,
     *,
+    p_scale: Optional[torch.Tensor] = None,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
+    atten_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
+    softmax_scale: float,
+    sparse_q_block_size: int,
+    sparse_kv_block_size: int,
     layout_kv: str = "PA_BNBD",
     layout_q: str = "TND",
     layout_sparse_indices: str = "B_N_Qb_Kb",
@@ -175,19 +173,19 @@ def _npu_quant_block_sparse_attn(
         q_descale,
         k_descale,
         v_descale,
-        p_scale,
         sparse_indices,
         sparse_seq_len,
-        atten_mask,
-        softmax_scale,
-        sparse_q_block_size,
-        sparse_kv_block_size,
+        p_scale,
         cu_seqlens_q,
         cu_seqlens_kv,
         seqused_q,
         seqused_kv,
         block_table,
+        atten_mask,
         metadata,
+        softmax_scale,
+        sparse_q_block_size,
+        sparse_kv_block_size,
         layout_kv,
         layout_q,
         layout_sparse_indices,
@@ -240,30 +238,34 @@ def _npu_quant_block_sparse_attn_metadata(
 
 
 def quant_block_sparse_attn(
+    # Required tensor inputs.
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
     q_descale: torch.Tensor,
     k_descale: torch.Tensor,
     v_descale: torch.Tensor,
-    p_scale: Optional[torch.Tensor],
     sparse_indices: torch.Tensor,
     sparse_seq_len: torch.Tensor,
-    atten_mask: Optional[torch.Tensor],
-    softmax_scale: float,
-    sparse_q_block_size: int,
-    sparse_kv_block_size: int,
     *,
+    # Optional tensor inputs.
+    p_scale: Optional[torch.Tensor] = None,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
+    atten_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
+    # Required IR attributes; layouts have Python defaults.
+    softmax_scale: float,
+    sparse_q_block_size: int,
+    sparse_kv_block_size: int,
     layout_kv: str = "PA_BNBD",
     layout_q: str = "TND",
     layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
+    # Optional IR attributes.
     quant_mode: int = 1,
     mask_mode: int = 3,
     return_softmax_lse: bool = False,
@@ -291,19 +293,19 @@ def quant_block_sparse_attn(
         q_descale,
         k_descale,
         v_descale,
-        p_scale,
         sparse_indices,
         sparse_seq_len,
-        atten_mask,
-        softmax_scale,
-        sparse_q_block_size,
-        sparse_kv_block_size,
+        p_scale=p_scale,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         seqused_q=seqused_q,
         seqused_kv=seqused_kv,
         block_table=block_table,
+        atten_mask=atten_mask,
         metadata=metadata,
+        softmax_scale=softmax_scale,
+        sparse_q_block_size=sparse_q_block_size,
+        sparse_kv_block_size=sparse_kv_block_size,
         layout_kv=layout_kv,
         layout_q=layout_q,
         layout_sparse_indices=layout_sparse_indices,
