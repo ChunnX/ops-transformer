@@ -29,7 +29,7 @@ constexpr int32_t NUM_TWO = 2;
 constexpr int32_t NUM_THREE = 3;
 constexpr int32_t NUM_FOUR = 4;
 constexpr int32_t SIZE_OF_FLOAT = 4;
-constexpr size_t MIN_SHARE_BUFFER = 256;
+constexpr size_t MIN_SHARE_BUFFER = 4096;
 
 enum class NormType : uint8_t {
     NONE = 0,

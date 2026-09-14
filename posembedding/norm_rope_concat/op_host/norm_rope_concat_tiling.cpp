@@ -274,35 +274,61 @@ ge::graphStatus NormRopeConcatTiling::ComputeUBTilingStrategy()
     int64_t trainingCoef = *(context_.isTraining) ? 1 : 0;
     constexpr int64_t B32_DATA_NUM = 32 / sizeof(float);
     int64_t alignedRopeDimForRepeat = CeilAlign(alignedRopeDim_, B32_DATA_NUM);
-    int64_t ropeUsedUbSize =
-        SINGLE_BUFFER * alignedRopeDimForRepeat * 2 * sizeof(float) + // ropeQueue_ (sin/cos as float)
+
+    // Rope cost per head of ropeNum: all rope buffers (ropeQueue_, buf_, outQue_)
+    // are allocated with alignedTotalRopeDim_ = ropeNum * alignedRopeDimForRepeat,
+    // so they scale linearly with avgHeads_. Treat as per-head cost in the formula.
+    int64_t ropePerHeadUbSize =
+        SINGLE_BUFFER * alignedRopeDimForRepeat * 2 * sizeof(float) + // ropeQueue_ (sin/cos)
         alignedRopeDimForRepeat * sizeof(int32_t) +                   // mask_
         alignedRopeDimForRepeat * 2 * sizeof(float) +                 // sin_, cos_
-        DOUBLE_BUFFER * alignedRopeDim_ * dataTypeSize;               // outQue_ per head
-    int64_t normUsedUbSize = SINGLE_BUFFER * alignedNormDim_ * 2 * dataTypeSize + alignedNormDim_ * 2 * sizeof(float) +
-                             MIN_SHARE_BUFFER; // weight, bias, max(16384)
-    int64_t oneHeadUbSize =
-        2 * alignedNormDim_ * sizeof(float) + 2 * DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize +
-        ropeCoef * ropeUsedUbSize +
-        normCoef * (alignedNormDim_ * sizeof(float) + (trainingCoef * 2 * DOUBLE_BUFFER + 1) * sizeof(float));
-    avgHeads_ = (compileInfo_.ubSize - ropeCoef * ropeUsedUbSize - normCoef * normUsedUbSize) / oneHeadUbSize;
+        DOUBLE_BUFFER * alignedRopeDim_ * dataTypeSize;               // outQue_
+
+    // Norm static overhead (normQue_ + weight/bias buffers, independent of avgHeads)
+    int64_t normStaticUbSize = SINGLE_BUFFER * alignedNormDim_ * 2 * dataTypeSize +
+                               alignedNormDim_ * 2 * sizeof(float) +
+                               MIN_SHARE_BUFFER;
+
+    // Norm per-head cost: main buf_ + inQue_ + meanQue_/rstdQue_ + norm buf_
+    int64_t normPerHeadUbSize =
+        2 * alignedNormDim_ * sizeof(float) +                        // main buf_ (norm output / rope input)
+        2 * DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize +         // inQue_ + main buf_ second half
+        normCoef * (alignedNormDim_ * sizeof(float) +                // norm buf_ scratch per head
+                    (trainingCoef * 2 * DOUBLE_BUFFER + 1) * sizeof(float)); // meanQue_/rstdQue_ per head
+
+    // Safety margin: reserve 8KB for TPipe allocator alignment overhead across 9 InitBuffer calls
+    constexpr int64_t UB_SAFETY_MARGIN = 8192;
+    int64_t availableUb = compileInfo_.ubSize - UB_SAFETY_MARGIN;
+
+    // Total UB = normStatic + avgHeads * (ropePerHead + normPerHead)
+    // avgHeads = (availableUb - normStatic) / (ropePerHead + normPerHead)
+    int64_t perHeadTotalUb = ropeCoef * ropePerHeadUbSize + normPerHeadUbSize;
+    avgHeads_ = (availableUb - normCoef * normStaticUbSize) / perHeadTotalUb;
 
     OP_LOGD(context_.opName, "=== UB TILING DEBUG ===");
-    OP_LOGD(context_.opName, "ubSize=%ld, dataTypeSize=%ld, alignNum=%ld", (int64_t)compileInfo_.ubSize, (int64_t)dataTypeSize, (int64_t)alignNum);
-    OP_LOGD(context_.opName, "ropeDim=%ld, alignedRopeDim=%ld, alignedRopeDimForRepeat=%ld", (int64_t)ropeDim_, (int64_t)alignedRopeDim_, (int64_t)alignedRopeDimForRepeat);
+    OP_LOGD(context_.opName, "ubSize=%ld, dataTypeSize=%ld, alignNum=%ld",
+            (int64_t)compileInfo_.ubSize, (int64_t)dataTypeSize, (int64_t)alignNum);
+    OP_LOGD(context_.opName, "ropeDim=%ld, alignedRopeDim=%ld, alignedRopeDimForRepeat=%ld",
+            (int64_t)ropeDim_, (int64_t)alignedRopeDim_, (int64_t)alignedRopeDimForRepeat);
     OP_LOGD(context_.opName, "normDim=%ld, alignedNormDim=%ld", (int64_t)normDim_, (int64_t)alignedNormDim_);
-    OP_LOGD(context_.opName, "ropeUsedUbSize=%ld, normUsedUbSize=%ld", (int64_t)ropeUsedUbSize, (int64_t)normUsedUbSize);
-    OP_LOGD(context_.opName, "ropeCoef=%ld, normCoef=%ld, trainingCoef=%ld", (int64_t)ropeCoef, (int64_t)normCoef, (int64_t)trainingCoef);
-    OP_LOGD(context_.opName, "oneHeadUbSize=%ld (P1=%ld + ropeCoef*R=%ld + normCoef*B=%ld)", (int64_t)oneHeadUbSize,
-            (int64_t)(2 * alignedNormDim_ * (int64_t)sizeof(float) + 2 * DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize),
-            (int64_t)(ropeCoef * ropeUsedUbSize),
-            (int64_t)(normCoef * (alignedNormDim_ * (int64_t)sizeof(float) + (trainingCoef * 2 * DOUBLE_BUFFER + 1) * (int64_t)sizeof(float))));
-    OP_LOGD(context_.opName, "avgHeads=%ld, headNum=%ld, splitHeadNum=%ld, tailHeads=%ld",
-            (int64_t)avgHeads_, (int64_t)headNum_, (int64_t)CeilDiv(headNum_, avgHeads_),
-            (int64_t)(headNum_ - (CeilDiv(headNum_, avgHeads_) - 1) * avgHeads_));
+    OP_LOGD(context_.opName, "ropePerHeadUbSize=%ld, normStaticUbSize=%ld, normPerHeadUbSize=%ld",
+            (int64_t)ropePerHeadUbSize, (int64_t)normStaticUbSize, (int64_t)normPerHeadUbSize);
+    OP_LOGD(context_.opName, "ropeCoef=%ld, normCoef=%ld, trainingCoef=%ld",
+            (int64_t)ropeCoef, (int64_t)normCoef, (int64_t)trainingCoef);
+    OP_LOGD(context_.opName, "availableUb=%ld (ubSize-%ld), perHeadTotalUb=%ld",
+            availableUb, (int64_t)UB_SAFETY_MARGIN, perHeadTotalUb);
+    OP_LOGD(context_.opName, "avgHeads(calc)=%ld, headNum=%ld, splitHeadNum=%ld, tailHeads=%ld",
+            (int64_t)avgHeads_, (int64_t)headNum_, (int64_t)CeilDiv(headNum_, std::max(avgHeads_, (int64_t)1)),
+            (int64_t)(headNum_ - (CeilDiv(headNum_, std::max(avgHeads_, (int64_t)1)) - 1) * avgHeads_));
 
     avgHeads_ = std::min(avgHeads_, static_cast<int64_t>(AVGHEAD_MAX_NUM));
     avgHeads_ = std::min(avgHeads_, headNum_);
+
+    int64_t totalEstimatedUb = normCoef * normStaticUbSize + avgHeads_ * perHeadTotalUb;
+    OP_LOGD(context_.opName, "totalEstimatedUb=%ld, ubSize=%ld, free=%ld, safetyMargin=%ld",
+            totalEstimatedUb, (int64_t)compileInfo_.ubSize,
+            (int64_t)(compileInfo_.ubSize - totalEstimatedUb), (int64_t)UB_SAFETY_MARGIN);
+
     OP_CHECK_IF(avgHeads_ == 0, OP_LOGE(context_.opName, "input dim is too large"), return ge::GRAPH_FAILED);
     splitHeadNum_ = CeilDiv(headNum_, avgHeads_);
     tailHeads_ = headNum_ - (splitHeadNum_ - 1) * avgHeads_;

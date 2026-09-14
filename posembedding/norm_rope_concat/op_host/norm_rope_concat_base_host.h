@@ -37,7 +37,7 @@ constexpr size_t TOTAL_NORM_NUM = 8;
 constexpr size_t NUM_TWO = 2;
 constexpr size_t NUM_THREE = 3;
 constexpr size_t AVGHEAD_MAX_NUM = 4096;
-constexpr size_t MIN_SHARE_BUFFER = 256;
+constexpr size_t MIN_SHARE_BUFFER = 4096;
 constexpr size_t RES_UB_BUFFER = 1024;
 
 enum class NormType : int64_t {
