@@ -46,6 +46,8 @@ void GroupedMatmulSwigluQuantV3Tiling950::Reset()
     clampLimit_ = 7.0F;
     gluAlpha_ = 1.702F;
     gluBias_ = 1.0F;
+    scaleAlg_ = SCALE_ALG_OCP;
+    dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     useTensorApi_ = false;
 }
 
@@ -90,6 +92,18 @@ bool GroupedMatmulSwigluQuantV3Tiling950::GetAttrFloat(const gert::RuntimeAttrs 
     return true;
 }
 
+bool GroupedMatmulSwigluQuantV3Tiling950::GetAttrString(const gert::RuntimeAttrs *attrs, uint32_t index,
+                                                        std::string &value) const
+{
+    const char *ptr = attrs == nullptr ? nullptr : attrs->GetAttrPointer<char>(index);
+    if (ptr == nullptr) {
+        OP_LOGE(context_->GetNodeName(), "attribute[%u] is nullptr", index);
+        return false;
+    }
+    value = ptr;
+    return true;
+}
+
 bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
@@ -102,6 +116,10 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     int64_t groupListType = 0;
     int64_t activateDim = 0;
     int64_t swigluMode = 0;
+    int64_t axis = DEFAULT_AXIS;
+    int64_t scaleAlg = SCALE_ALG_OCP;
+    float dstTypeMax = DEFAULT_DST_TYPE_MAX;
+    std::string roundMode;
     OP_CHECK_IF(!GetAttrInt(attrs, ATTR_INDEX_DEQUANT_MODE, dequantMode) ||
                     !GetAttrInt(attrs, ATTR_INDEX_DEQUANT_DTYPE, dequantDtype) ||
                     !GetAttrInt(attrs, ATTR_INDEX_QUANT_MODE, quantMode) ||
@@ -112,7 +130,11 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
                     !GetAttrBool(attrs, ATTR_INDEX_ACTIVATE_LEFT, activateLeft_) ||
                     !GetAttrFloat(attrs, ATTR_INDEX_CLAMP_LIMIT, clampLimit_) ||
                     !GetAttrFloat(attrs, ATTR_INDEX_GLU_ALPHA, gluAlpha_) ||
-                    !GetAttrFloat(attrs, ATTR_INDEX_GLU_BIAS, gluBias_),
+                    !GetAttrFloat(attrs, ATTR_INDEX_GLU_BIAS, gluBias_) ||
+                    !GetAttrInt(attrs, ATTR_INDEX_AXIS, axis) ||
+                    !GetAttrString(attrs, ATTR_INDEX_ROUND_MODE, roundMode) ||
+                    !GetAttrInt(attrs, ATTR_INDEX_SCALE_ALG, scaleAlg) ||
+                    !GetAttrFloat(attrs, ATTR_INDEX_DST_TYPE_MAX, dstTypeMax),
                 OP_LOGE(context_->GetNodeName(), "failed to read V3 attributes"), return false);
 
     OP_CHECK_IF(dequantMode != MX_QUANT_MODE || quantMode != MX_QUANT_MODE || dequantDtype != FLOAT_DEQUANT_DTYPE,
@@ -132,8 +154,21 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(), "clamp_limit must be finite and positive for swiglu_mode %ld",
                         swigluMode),
                 return false);
+    OP_CHECK_IF(axis != DEFAULT_AXIS,
+                OP_LOGE(context_->GetNodeName(), "axis must be -1, but got %ld", axis), return false);
+    OP_CHECK_IF(roundMode != DEFAULT_ROUND_MODE,
+                OP_LOGE(context_->GetNodeName(), "round_mode must be rint, but got %s", roundMode.c_str()),
+                return false);
+    OP_CHECK_IF(scaleAlg != SCALE_ALG_OCP && scaleAlg != SCALE_ALG_CUBLAS,
+                OP_LOGE(context_->GetNodeName(),
+                        "scale_alg must be 0 or 1 for the MXFP8 output path, but got %ld", scaleAlg),
+                return false);
+    OP_CHECK_IF(!std::isfinite(dstTypeMax) || dstTypeMax != DEFAULT_DST_TYPE_MAX,
+                OP_LOGE(context_->GetNodeName(), "dst_type_max must be 0.0 for the MXFP8 output path"), return false);
 
     swigluMode_ = swigluMode;
+    scaleAlg_ = static_cast<uint8_t>(scaleAlg);
+    dstTypeMax_ = dstTypeMax;
     inputParams_.transA = false;
     transposeWeight_ = transposeWeight;
     inputParams_.transB = transposeWeight_;
@@ -320,6 +355,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
     tilingData_.gmmSwigluQuantParams.set_clampLimit(clampLimit_);
     tilingData_.gmmSwigluQuantParams.set_gluAlpha(gluAlpha_);
     tilingData_.gmmSwigluQuantParams.set_gluBias(gluBias_);
+    tilingData_.gmmSwigluQuantParams.set_scaleAlg(scaleAlg_);
+    tilingData_.gmmSwigluQuantParams.set_dstTypeMax(dstTypeMax_);
     return ge::GRAPH_SUCCESS;
 }
 

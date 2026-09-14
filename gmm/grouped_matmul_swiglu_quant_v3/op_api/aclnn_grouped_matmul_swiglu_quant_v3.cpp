@@ -233,14 +233,15 @@ aclnnStatus CheckSwigluAttrs(int64_t activateDim, int64_t swigluMode, double cla
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "roundMode", roundMode == nullptr ? "nullptr" : roundMode,
                                               "is reserved and currently only supports rint"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        scaleAlg == gmm_swiglu_quant_v3::DEFAULT_SCALE_ALG, ACLNN_ERR_PARAM_INVALID,
+        scaleAlg == gmm_swiglu_quant_v3::SCALE_ALG_OCP || scaleAlg == gmm_swiglu_quant_v3::SCALE_ALG_CUBLAS,
+        ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "scaleAlg", std::to_string(scaleAlg),
-                                              "is reserved and currently only supports 0"));
+                                              "MXFP8 only supports scaleAlg 0 or 1; scaleAlg 2 is only supported for FLOAT4_E2M1"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         std::isfinite(dstTypeMax) && dstTypeMax == gmm_swiglu_quant_v3::DEFAULT_DST_TYPE_MAX,
         ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "dstTypeMax", std::to_string(dstTypeMax),
-                                              "is reserved and currently only supports 0.0"));
+                                              "MXFP8 only supports dstTypeMax 0.0"));
     return ACLNN_SUCCESS;
 }
 
@@ -636,11 +637,15 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
 
     const bool transposeWeight = IsTransposedWeight((*weight)[gmm_swiglu_quant_v3::FIRST_TENSOR_INDEX],
                                                     x->GetViewShape().GetDim(1));
+    const char *effectiveRoundMode = (roundMode == nullptr || roundMode[0] == '\0') ?
+                                          gmm_swiglu_quant_v3::DEFAULT_ROUND_MODE :
+                                          roundMode;
     auto result = l0op::GroupedMatmulSwigluQuantV3(
         xForOp, weightForOp, weightScaleForOp, xScaleForOp, weightAssistForOp, bias, smoothScale, groupListForOp,
         dequantMode, dequantDtype, quantMode, static_cast<int64_t>(output->GetDataType()), transposeWeight, groupListType,
         nullptr, activateDim, activateLeft, swigluMode, static_cast<float>(clampLimit), static_cast<float>(gluAlpha),
-        static_cast<float>(gluBias), uniqueExecutor.get());
+        static_cast<float>(gluBias), axis, effectiveRoundMode, scaleAlg, static_cast<float>(dstTypeMax),
+        uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *outputResult = l0op::ViewCopy(std::get<0>(result), output, uniqueExecutor.get());

@@ -67,6 +67,16 @@ constexpr uint16_t FP8_E4M3_MAX_EXP = 0x0400; // elem_emax右移7位(BF16E8M7)
 constexpr uint16_t FP8_E5M2_MAX_EXP = 0x0780;
 constexpr uint16_t FP4_E2M1_MAX_EXP = 0x0100;
 constexpr uint16_t FP4_E1M2_MAX_EXP = 0x0000;
+constexpr uint32_t FP32_EXP_BIAS_CUBLAS = 0x00007f00;
+constexpr uint32_t MAX_EXP_FOR_FP32 = 0x7f800000;
+constexpr uint32_t MAX_EXP_FOR_FP8_IN_FP32 = 0x000000ff;
+constexpr uint32_t NAN_CUSTOMIZATION_PACK = 0x00007f81;
+constexpr uint32_t MAN_MASK_FLOAT = 0x007fffff;
+constexpr uint32_t NUMBER_ZERO = 0x00000000;
+constexpr uint32_t NUMBER_TWO_FIVE_FOUR = 0x000000fe;
+constexpr uint32_t NUMBER_HALF = 0x00400000;
+constexpr float FP8_E4M3_MAX_VALUE = 448.0F;
+constexpr float FP8_E5M2_MAX_VALUE = 57344.0F;
 } // namespace
 
 constexpr AscendC::Reg::CastTrait ctInt322Fp32 = {AscendC::Reg::RegLayout::UNKNOWN, AscendC::Reg::SatMode::UNKNOWN,
@@ -116,6 +126,8 @@ public:
         float clampLimit{7.0F};
         float gluAlpha{1.702F};
         float gluBias{1.0F};
+        uint32_t scaleAlg{0};
+        float dstTypeMax{0.0F};
         Arguments() = default;
     };
 
@@ -160,6 +172,13 @@ private:
 
     __aicore__ inline void ComputeMaxExp(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr,
                                          uint32_t totalCountInUB, uint16_t loopNum);
+
+    __aicore__ inline void ComputeMaxExpCublas(__ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr,
+                                               uint32_t totalCountInUB, uint16_t loopNum);
+
+    __aicore__ inline void ComputeScaleCublas(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr,
+                                              __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
+                                              uint16_t loopNumScale);
 
     __aicore__ inline void ComputeDataForQuantTargetFp8(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
@@ -209,6 +228,7 @@ private:
     float clampLimit_ = 7.0F;
     float gluAlpha_ = 1.702F;
     float gluBias_ = 1.0F;
+    float invDstTypeMax_ = 1.0F / FP8_E4M3_MAX_VALUE;
 
     BlockCoord blockCoord_{0, 0, 0, 0, 0};
 };
@@ -230,6 +250,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         fpEmax_ = FP8_E5M2_MAX_EXP;
+        invDstTypeMax_ = 1.0F / FP8_E5M2_MAX_VALUE;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value) {
         fpEmax_ = FP4_E2M1_MAX_EXP;
     } else {
@@ -410,6 +431,132 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         }
     }
     return;
+}
+
+QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeMaxExpCublas(
+    __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *maxExpAddr, uint32_t totalCountInUB, uint16_t loopNum)
+{
+    __VEC_SCOPE__
+    {
+        AscendC::Reg::RegTensor<bfloat16_t> value0;
+        AscendC::Reg::RegTensor<bfloat16_t> value1;
+        AscendC::Reg::RegTensor<uint16_t> absMask;
+        AscendC::Reg::RegTensor<uint16_t> maxValue;
+        AscendC::Reg::MaskReg mask0;
+        AscendC::Reg::MaskReg mask1;
+        AscendC::Reg::MaskReg maskEven;
+        AscendC::Reg::MaskReg maskOdd;
+        AscendC::Reg::UnalignReg unalign;
+        AscendC::Reg::Duplicate(absMask, 0x7fff);
+        for (uint16_t i = 0; i < loopNum; ++i) {
+            mask0 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
+            mask1 = AscendC::Reg::UpdateMask<bfloat16_t>(totalCountInUB);
+            AscendC::Reg::MaskDeInterleave<bfloat16_t>(maskEven, maskOdd, mask0, mask1);
+            AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
+                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
+                value0, value1, srcAddr, vlForHalfNumber_ * 2);
+            AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value0),
+                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value0), absMask, maskEven);
+            AscendC::Reg::And(reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value1),
+                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value1), absMask, maskOdd);
+            AscendC::Reg::Max(maxValue, reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value0),
+                              reinterpret_cast<AscendC::Reg::RegTensor<uint16_t>&>(value1), mask0);
+            AscendC::Reg::ReduceMaxWithDataBlock(maxValue, maxValue, mask0);
+            AscendC::Reg::DataCopyUnAlign<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+                maxExpAddr, maxValue, unalign, elementAfterReduce_);
+        }
+        AscendC::Reg::DataCopyUnAlignPost(maxExpAddr, unalign, 0);
+    }
+}
+
+QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScaleCublas(
+    __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
+    uint32_t totalScaleInUB, uint16_t loopNumScale)
+{
+    __VEC_SCOPE__
+    {
+        AscendC::Reg::RegTensor<uint16_t> max16;
+        AscendC::Reg::RegTensor<uint32_t> max32;
+        AscendC::Reg::RegTensor<uint32_t> exp32;
+        AscendC::Reg::RegTensor<uint32_t> mantissa32;
+        AscendC::Reg::RegTensor<uint32_t> expAddOne32;
+        AscendC::Reg::RegTensor<uint32_t> extractExp;
+        AscendC::Reg::RegTensor<uint16_t> expOut;
+        AscendC::Reg::RegTensor<uint32_t> halfScale;
+        AscendC::Reg::RegTensor<uint16_t> reciprocalExpOut;
+        AscendC::Reg::RegTensor<float> invMax;
+        AscendC::Reg::RegTensor<uint32_t> mantissaMask;
+        AscendC::Reg::RegTensor<uint32_t> expMask;
+        AscendC::Reg::RegTensor<uint32_t> zero;
+        AscendC::Reg::RegTensor<uint32_t> scaleBias;
+        AscendC::Reg::RegTensor<uint32_t> nan;
+        AscendC::Reg::RegTensor<uint32_t> fp8Nan;
+        AscendC::Reg::MaskReg finiteMask;
+        AscendC::Reg::MaskReg nonzeroMask;
+        AscendC::Reg::MaskReg predicate0;
+        AscendC::Reg::MaskReg predicate1;
+        AscendC::Reg::MaskReg predicate2;
+        AscendC::Reg::MaskReg maskB16;
+        AscendC::Reg::MaskReg maskFloat;
+        static constexpr AscendC::Reg::CastTrait castBf16ToFloat = {
+            AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN,
+            AscendC::Reg::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+
+        AscendC::Reg::Duplicate(invMax, invDstTypeMax_);
+        AscendC::Reg::Duplicate(mantissaMask, MAN_MASK_FLOAT);
+        AscendC::Reg::Duplicate(expMask, MAX_EXP_FOR_FP32);
+        AscendC::Reg::Duplicate(zero, NUMBER_ZERO);
+        AscendC::Reg::Duplicate(scaleBias, FP32_EXP_BIAS_CUBLAS);
+        AscendC::Reg::Duplicate(nan, NAN_CUSTOMIZATION_PACK);
+        AscendC::Reg::Duplicate(fp8Nan, MAX_EXP_FOR_FP8_IN_FP32);
+
+        uint32_t remainingScale = totalScaleInUB;
+        for (uint16_t i = 0; i < loopNumScale; ++i) {
+            const uint32_t processedScale =
+                remainingScale < vlForHalfNumber_ / 2 ? remainingScale : vlForHalfNumber_ / 2;
+            maskB16 = AscendC::Reg::UpdateMask<uint16_t>(processedScale);
+            maskFloat = AscendC::Reg::UpdateMask<uint32_t>(processedScale);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
+                                   AscendC::Reg::LoadDist::DIST_UNPACK_B16>(max16, maxExpAddr,
+                                                                            vlForHalfNumber_ / 2);
+            AscendC::Reg::Cast<float, bfloat16_t, castBf16ToFloat>(
+                reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32),
+                reinterpret_cast<AscendC::Reg::RegTensor<bfloat16_t>&>(max16), maskFloat);
+            AscendC::Reg::Compare<uint32_t, AscendC::CMPMODE::LT>(finiteMask, max32, expMask, maskFloat);
+            AscendC::Reg::Compare<uint32_t, AscendC::CMPMODE::NE>(nonzeroMask, max32, zero, maskFloat);
+            AscendC::Reg::Mul(reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32),
+                              reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32), invMax, maskFloat);
+            AscendC::Reg::ShiftRights(exp32, max32, 23, maskFloat);
+            AscendC::Reg::And(mantissa32, max32, mantissaMask, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate0, exp32, NUMBER_ZERO, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::LT>(predicate1, exp32,
+                                                                         NUMBER_TWO_FIVE_FOUR, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate2, mantissa32, NUMBER_ZERO, maskFloat);
+            AscendC::Reg::MaskAnd(predicate0, predicate0, predicate1, maskFloat);
+            AscendC::Reg::MaskAnd(predicate0, predicate0, predicate2, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::EQ>(predicate1, exp32, NUMBER_ZERO, maskFloat);
+            AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate2, mantissa32, NUMBER_HALF, maskFloat);
+            AscendC::Reg::MaskAnd(predicate1, predicate1, predicate2, maskFloat);
+            AscendC::Reg::MaskOr(predicate0, predicate0, predicate1, maskFloat);
+            AscendC::Reg::Adds(expAddOne32, exp32, 1, maskFloat);
+            AscendC::Reg::Select(extractExp, expAddOne32, exp32, predicate0);
+            AscendC::Reg::Select<uint32_t>(extractExp, extractExp, fp8Nan, finiteMask);
+            AscendC::Reg::Select<uint32_t>(extractExp, extractExp, zero, nonzeroMask);
+            AscendC::Reg::Pack<uint16_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(expOut, extractExp);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::StoreDist::DIST_PACK_B16>(
+                mxScaleLocalAddr + i * vlForHalfNumber_ / 2 / 2, expOut, maskB16);
+            AscendC::Reg::ShiftLefts(extractExp, extractExp, 7, maskFloat);
+            AscendC::Reg::Sub(halfScale, scaleBias, extractExp, maskFloat);
+            AscendC::Reg::Select<uint32_t>(halfScale, halfScale, nan, finiteMask);
+            AscendC::Reg::Select<uint32_t>(halfScale, halfScale, zero, nonzeroMask);
+            AscendC::Reg::Pack<uint16_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(reciprocalExpOut, halfScale);
+            AscendC::Reg::DataCopy<uint16_t>(halfScaleLocalAddr + i * vlForHalfNumber_ / 2, reciprocalExpOut,
+                                              maskB16);
+            remainingScale = remainingScale > processedScale ? remainingScale - processedScale : 0;
+        }
+    }
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -638,9 +785,16 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2);
     uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;
     __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxExp_.GetPhyAddr();
-    ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr();
-    ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);
+    if (params_->scaleAlg == 0) {
+        ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
+        ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);
+    } else {
+        ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
+        const uint16_t cublasLoopScaleNum =
+            static_cast<uint16_t>((totalScaleInUb + vlForHalfNumber_ / 2 - 1) / (vlForHalfNumber_ / 2));
+        ComputeScaleCublas(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, cublasLoopScaleNum);
+    }
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value ||
                   AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
         ComputeDataForQuantTargetFp8(gluResAddr, halfScaleLocalAddr, outputDst, totalDataInUb, loopDataNum);

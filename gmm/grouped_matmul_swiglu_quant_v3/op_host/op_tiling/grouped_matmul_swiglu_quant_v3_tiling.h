@@ -30,6 +30,10 @@ TILING_DATA_FIELD_DEF(uint16_t, reserved1);
 TILING_DATA_FIELD_DEF(float, clampLimit);
 TILING_DATA_FIELD_DEF(float, gluAlpha);
 TILING_DATA_FIELD_DEF(float, gluBias);
+TILING_DATA_FIELD_DEF(uint8_t, scaleAlg);
+TILING_DATA_FIELD_DEF(uint8_t, reserved2);
+TILING_DATA_FIELD_DEF(uint16_t, reserved3);
+TILING_DATA_FIELD_DEF(float, dstTypeMax);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV3ParamsOp, GMMSwigluQuantV3Params)
 
@@ -81,6 +85,10 @@ constexpr uint32_t ATTR_INDEX_SWIGLU_MODE = 9;
 constexpr uint32_t ATTR_INDEX_CLAMP_LIMIT = 10;
 constexpr uint32_t ATTR_INDEX_GLU_ALPHA = 11;
 constexpr uint32_t ATTR_INDEX_GLU_BIAS = 12;
+constexpr uint32_t ATTR_INDEX_AXIS = 13;
+constexpr uint32_t ATTR_INDEX_ROUND_MODE = 14;
+constexpr uint32_t ATTR_INDEX_SCALE_ALG = 15;
+constexpr uint32_t ATTR_INDEX_DST_TYPE_MAX = 16;
 
 constexpr int64_t MX_QUANT_MODE = 2;
 constexpr int64_t FLOAT_DEQUANT_DTYPE = 0;
@@ -90,6 +98,11 @@ constexpr int64_t NZ_K0_SIZE = 16;
 constexpr int64_t SWIGLU_SPLIT = 2;
 constexpr int64_t SWIGLU_MODE_MIN = 0;
 constexpr int64_t SWIGLU_MODE_MAX = 3;
+constexpr int64_t DEFAULT_AXIS = -1;
+constexpr uint8_t SCALE_ALG_OCP = 0;
+constexpr uint8_t SCALE_ALG_CUBLAS = 1;
+constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
+constexpr char DEFAULT_ROUND_MODE[] = "rint";
 constexpr int64_t MAX_GROUP_NUM = 1024;
 constexpr size_t SINGLE_TENSOR_COUNT = 1;
 constexpr size_t X_DIM_NUM = 2;
@@ -143,6 +156,7 @@ private:
     bool GetAttrInt(const gert::RuntimeAttrs *attrs, uint32_t index, int64_t &value) const;
     bool GetAttrBool(const gert::RuntimeAttrs *attrs, uint32_t index, bool &value) const;
     bool GetAttrFloat(const gert::RuntimeAttrs *attrs, uint32_t index, float &value) const;
+    bool GetAttrString(const gert::RuntimeAttrs *attrs, uint32_t index, std::string &value) const;
 
     GMMSwigluQuantV3TilingDataParams tilingData_;
     bool transposeWeight_ = false;
@@ -151,6 +165,8 @@ private:
     float clampLimit_ = 7.0F;
     float gluAlpha_ = 1.702F;
     float gluBias_ = 1.0F;
+    uint8_t scaleAlg_ = SCALE_ALG_OCP;
+    float dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
     bool useTensorApi_ = false;
 };
 

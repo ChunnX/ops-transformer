@@ -38,6 +38,9 @@ constexpr int64_t DEQUANT_DTYPE_FLOAT = 0L;
 constexpr int64_t DEFAULT_ACTIVATE_DIM = -1L;
 constexpr int64_t DEFAULT_AXIS = -1L;
 constexpr int64_t DEFAULT_SCALE_ALG = 0L;
+constexpr int64_t SCALE_ALG_OCP = 0L;
+constexpr int64_t SCALE_ALG_CUBLAS = 1L;
+constexpr int64_t SCALE_ALG_DYNAMIC_DTYPE_RANGE = 2L;
 constexpr double DEFAULT_DST_TYPE_MAX = 0.0;
 constexpr char DEFAULT_ROUND_MODE[] = "rint";
 } // namespace gmm_swiglu_quant_v3

@@ -130,47 +130,89 @@ def _nearest_fp8_code(values):
     return FP8_FINITE_CODES[best].reshape(values.shape)
 
 
-def _quantize_mxfp8(values):
+def _cublas_scale_bytes(block):
+    """Return the scale bytes produced by the GMMAQ cuBLAS algorithm.
+
+    The device path first finds the maximum absolute BF16 bit pattern, converts
+    it to FP32, divides by the target FP8 maximum, and rounds the resulting
+    FP32 exponent to the nearest E8M0 exponent.  For ratios >= 1, any non-zero
+    mantissa rounds upward; for the sub-unit exponent (exp==0), only a mantissa
+    greater than 0.5 rounds upward.  This mirrors ComputeScaleCublas in the
+    AscendC epilogue and is intentionally bit based rather than log based.
+    """
+    bf16 = _to_bfloat16(block)
+    bits = bf16.view(np.uint32)
+    abs_bits = bits & np.uint32(0x7FFF0000)
+    max_bits = np.max(abs_bits, axis=1)
+    max_fp32 = (max_bits.astype(np.uint32)).view(np.float32)
+    ratio = (max_fp32 * np.float32(1.0 / 448.0)).astype(np.float32)
+    ratio_bits = ratio.view(np.uint32)
+
+    exponent = ratio_bits >> np.uint32(23)
+    mantissa = ratio_bits & np.uint32(0x007FFFFF)
+    round_up = ((exponent > 0) & (exponent < 254) & (mantissa > 0)) | (
+        (exponent == 0) & (mantissa > np.uint32(0x00400000))
+    )
+    scale_bytes = exponent + round_up.astype(np.uint32)
+    scale_bytes = np.where(
+        ratio_bits >= np.uint32(0x7F800000),
+        np.uint32(0xFF),
+        scale_bytes,
+    )
+    scale_bytes = np.where(ratio_bits == 0, np.uint32(0), scale_bytes)
+    return scale_bytes.astype(np.uint8)
+
+
+def _quantize_mxfp8(values, scale_alg=0):
     values = np.asarray(values, dtype=np.float32)
     output = np.empty_like(values, dtype=np.float32)
     scale_bytes = np.empty((values.shape[0], values.shape[1] // BLOCK_SIZE), dtype=np.uint8)
     for block_index, begin in enumerate(range(0, values.shape[1], BLOCK_SIZE)):
         end = begin + BLOCK_SIZE
         block = values[:, begin:end]
-        abs_max = np.max(np.abs(block), axis=1)
-        safe_max = np.where(abs_max == 0.0, 1.0, abs_max)
-        shared_exp = np.floor(np.log2(safe_max)).astype(np.int32) - FP8_E4M3_EMAX
-        shared_exp = np.clip(shared_exp, -127, 127)
-        scale = np.exp2(shared_exp.astype(np.float32))
+        if scale_alg == 0:
+            abs_max = np.max(np.abs(block), axis=1)
+            safe_max = np.where(abs_max == 0.0, 1.0, abs_max)
+            shared_exp = np.floor(np.log2(safe_max)).astype(np.int32) - FP8_E4M3_EMAX
+            shared_exp = np.clip(shared_exp, -127, 127)
+            scale_bytes[:, block_index] = np.clip(shared_exp + 127, 0, 254).astype(np.uint8)
+        elif scale_alg == 1:
+            scale_bytes[:, block_index] = _cublas_scale_bytes(block)
+        else:
+            raise ValueError(f"unsupported scale_alg: {scale_alg}")
+        scale = np.exp2(scale_bytes[:, block_index].astype(np.int16) - 127).astype(np.float32)
         # CGMCT applies CAST_RINT directly from the scaled BF16 value to E4M3;
         # it does not first round the scaled value to an integer.
         quantized_code = _nearest_fp8_code(block / scale[:, None])
         output[:, begin:end] = FP8_E4M3_LUT[quantized_code] * scale[:, None]
-        scale_bytes[:, block_index] = np.clip(shared_exp + 127, 0, 254).astype(np.uint8)
     return output, scale_bytes
 
 
-def _cpu_golden(mode, transpose, activate_left):
+def _cpu_golden(mode, transpose, activate_left, scale_alg):
     x, weight = _make_inputs(transpose)
     # The MXFP8 CGMCT epilogue consumes BF16 MM results and stores the
     # SwiGLU result to BF16 before dynamic MX quantization.
     mm_result = _to_bfloat16(x @ weight)
     swiglu = _to_bfloat16(_swiglu(mm_result, mode, activate_left))
-    return _quantize_mxfp8(swiglu)
+    return _quantize_mxfp8(swiglu, scale_alg)
 
 
 def main(argv):
-    if len(argv) != 6:
+    if len(argv) not in (6, 7):
         print(
             f"usage: {argv[0]} <mode 0..3> <transpose 0|1> <activate_left 0|1> "
-            "<output.bin> <output_scale.bin>",
+            "<output.bin> <output_scale.bin> [scale_alg 0|1]",
             file=sys.stderr,
         )
         return 2
     mode, transpose, activate_left = (int(value) for value in argv[1:4])
     output_path = Path(argv[4])
     scale_path = Path(argv[5])
-    expected, expected_scale = _cpu_golden(mode, bool(transpose), bool(activate_left))
+    scale_alg = int(argv[6]) if len(argv) == 7 else 0
+    if scale_alg not in (0, 1):
+        print(f"unsupported scale_alg={scale_alg}; MXFP8 only supports 0 or 1", file=sys.stderr)
+        return 2
+    expected, expected_scale = _cpu_golden(mode, bool(transpose), bool(activate_left), scale_alg)
     actual_code = np.fromfile(output_path, dtype=np.uint8)
     actual_scale_code = np.fromfile(scale_path, dtype=np.uint8)
     if actual_code.size != M * (N // 2) or actual_scale_code.size != M * 2:
@@ -190,7 +232,7 @@ def main(argv):
     scale_bad = np.count_nonzero(actual_scale_code != expected_scale)
     max_relative = float(np.max(difference / np.maximum(1.0, np.abs(expected))))
     print(
-        f"golden mode={mode} transpose={transpose} activate_left={activate_left}: "
+        f"golden mode={mode} transpose={transpose} activate_left={activate_left} scale_alg={scale_alg}: "
         f"bad={bad}/{expected.size} allowed={allowed}, scale_bad={scale_bad}, "
         f"max_relative_error={max_relative:.6g}"
     )

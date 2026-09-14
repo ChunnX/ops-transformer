@@ -10,7 +10,10 @@
 - 通过 aclnn 直调或上层 Torch 接口调用；
 - SwiGLU 参数 `activate_dim`、`activate_left`、`swiglu_mode`、`clamp_limit`、`glu_alpha`、`glu_bias`。
 
-`axis`、`round_mode`、`scale_alg` 和 `dst_type_max` 目前只做默认值校验，暂不改变 MX 量化逻辑。多 weight Tensor、非 MXFP8 和非 NZ weight 暂不支持。
+`axis` 和 `round_mode` 目前只做默认值校验（分别为 `-1` 和 `"rint"`）。MXFP8
+支持 `scale_alg=0`（OCP）和 `scale_alg=1`（cuBLAS）；`scale_alg=2` 仅适用于
+FLOAT4 输出，因此在本接口的 FP8 输出场景会报错。`dst_type_max` 当前只支持 `0.0`。
+多 weight Tensor、非 MXFP8 和非 NZ weight 暂不支持。
 
 ## 接口资料
 

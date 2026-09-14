@@ -19,7 +19,8 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV3(
     const aclTensorList *weightAssistanceMatrix, const aclTensor *bias, const aclTensor *smoothScale,
     const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype, int64_t quantMode, int64_t quantDtype,
     bool transposeWeight, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t activateDim,
-    bool activateLeft, int64_t swigluMode, float clampLimit, float gluAlpha, float gluBias, aclOpExecutor *executor);
+    bool activateLeft, int64_t swigluMode, float clampLimit, float gluAlpha, float gluBias, int64_t axis,
+    const char *roundMode, int64_t scaleAlg, float dstTypeMax, aclOpExecutor *executor);
 }
 
 #endif

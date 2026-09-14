@@ -79,6 +79,8 @@ __aicore__ inline void GmmSwigluAswtV3(
     epilogueArgs.clampLimit = gmmSwigluQuantParams_.clampLimit;
     epilogueArgs.gluAlpha = gmmSwigluQuantParams_.gluAlpha;
     epilogueArgs.gluBias = gmmSwigluQuantParams_.gluBias;
+    epilogueArgs.scaleAlg = gmmSwigluQuantParams_.scaleAlg;
+    epilogueArgs.dstTypeMax = gmmSwigluQuantParams_.dstTypeMax;
     Params params = {{1, 1, 1, 1},
                      {x, weight, weightScale, xScale, y, groupList},
                      epilogueArgs,

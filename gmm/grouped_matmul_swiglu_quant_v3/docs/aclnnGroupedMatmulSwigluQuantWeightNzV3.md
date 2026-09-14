@@ -173,10 +173,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       <tr><td>clampLimit</td><td>输入</td><td>用于限定 SwiGLU 中间结果的 clamp 范围：x_glu 的上界为 clampLimit，x_linear 的范围为 [-clampLimit, clampLimit]。</td><td>swigluMode 为 1、2、3 时生效；必须大于 0 且能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>gluAlpha</td><td>输入</td><td>SwiGLU alpha 参数。</td><td>用于带 alpha 的 SwiGLU 模式，必须能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>gluBias</td><td>输入</td><td>SwiGLU bias 参数。</td><td>用于带 bias 的 SwiGLU 模式，必须能用 float32 表示。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>axis</td><td>输入</td><td>MX 量化轴预留参数。</td><td>当前只校验默认值 -1，不改变量化逻辑。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>roundMode</td><td>输入</td><td>MX 量化舍入模式预留参数。</td><td>当前只支持 "rint"；传 nullptr 或空字符串时按默认值处理。</td><td>const char *</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法预留参数。</td><td>当前只校验默认值 0，不改变量化逻辑。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>dstTypeMax</td><td>输入</td><td>目标类型最大值预留参数。</td><td>当前只校验默认值 0.0，不改变量化逻辑。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>axis</td><td>输入</td><td>MX 量化轴。</td><td>当前仅支持 -1，沿最后一维量化。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>roundMode</td><td>输入</td><td>MX 量化舍入模式。</td><td>当前仅支持 "rint"；传 nullptr 或空字符串时按默认值处理。</td><td>const char *</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>MXFP8 输出支持 0（OCP）和 1（cuBLAS）；2 仅支持 FLOAT4_E2M1，当前 MXFP8 场景传入 2 会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>dstTypeMax</td><td>输入</td><td>MX 量化目标类型最大值。</td><td>当前 MXFP8 输出仅支持 0.0。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>output</td><td>输出</td><td>MXFP8 量化结果。</td><td>调用方创建并传入，当前仅支持 FLOAT8_E4M3FN。</td><td>FLOAT8_E4M3FN</td><td>ND</td><td>2 维，(M, N / 2)</td><td>√</td></tr>
       <tr><td>outputScale</td><td>输出</td><td>MXFP8 输出 scale。</td><td>调用方创建并传入。</td><td>FLOAT8_E8M0</td><td>ND</td><td>3 维，(M, ceil((N / 2) / 64), 2)</td><td>√</td></tr>
       <tr><td>workspaceSize</td><td>输出</td><td>Device 侧 workspace 大小。</td><td>返回值。</td><td>uint64_t *</td><td>-</td><td>-</td><td>-</td></tr>
@@ -229,7 +229,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     <td>activateDim 不为 -1，swigluMode 不在 [0, 3]，或 clampLimit、gluAlpha、gluBias 不满足取值约束。</td>
   </tr>
   <tr>
-    <td>预留参数 axis、roundMode、scaleAlg、dstTypeMax 不满足默认值约束。</td>
+    <td>axis、roundMode、scaleAlg、dstTypeMax 不满足 MXFP8 场景约束。</td>
   </tr>
 </tbody>
 </table>
@@ -347,7 +347,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
         - `activateDim` 当前仅支持 `-1`。
         - `swigluMode` 当前支持 `[0, 3]`。
         - `clampLimit` 必须为有限值且大于 0；`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
-        - `axis`、`roundMode`、`scaleAlg`、`dstTypeMax` 目前仅作为预留参数校验默认值，分别只支持 `-1`、`"rint"`、`0`、`0.0`。
+        - `axis` 仅支持 `-1`，`roundMode` 仅支持 `"rint"`。
+        - `scaleAlg=0` 表示 OCP MX 量化，`scaleAlg=1` 表示 cuBLAS MX 量化；MXFP8 输出传入 `scaleAlg=2` 会报错，因为该算法仅支持 FLOAT4_E2M1 输出。
+        - 对于本接口固定的 MXFP8 输出，`scaleAlg` 只能取 `0` 或 `1`；`dstTypeMax` 只能取 `0.0`。
+        - `dstTypeMax` 当前仅支持 `0.0`。
   <!-- end id7 -->
 
 ## 调用示例

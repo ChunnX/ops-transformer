@@ -97,6 +97,8 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel(
     epilogueParams.clampLimit = gmmParams_.clampLimit;
     epilogueParams.gluAlpha = gmmParams_.gluAlpha;
     epilogueParams.gluBias = gmmParams_.gluBias;
+    epilogueParams.scaleAlg = gmmParams_.scaleAlg;
+    epilogueParams.dstTypeMax = gmmParams_.dstTypeMax;
 
     Params params = {{gmmTiling.m, gmmTiling.n, gmmTiling.k, 1}, blockMmadAddrs, epilogueParams, groupList, gmmTiling};
     SwigluKernel op;

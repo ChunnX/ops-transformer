@@ -67,6 +67,10 @@ public:
         this->Attr("clamp_limit").AttrType(OPTIONAL).Float(7.0F);
         this->Attr("glu_alpha").AttrType(OPTIONAL).Float(1.702F);
         this->Attr("glu_bias").AttrType(OPTIONAL).Float(1.0F);
+        this->Attr("axis").AttrType(OPTIONAL).Int(-1);
+        this->Attr("round_mode").AttrType(OPTIONAL).String("rint");
+        this->Attr("scale_alg").AttrType(OPTIONAL).Int(0);
+        this->Attr("dst_type_max").AttrType(OPTIONAL).Float(0.0F);
 
         OpAICoreConfig config;
         config.DynamicCompileStaticFlag(true)

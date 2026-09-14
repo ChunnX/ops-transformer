@@ -47,10 +47,10 @@ extern "C" {
  * @param [in] clampLimit: SwiGLU clamp 上界，必须大于 0。
  * @param [in] gluAlpha: SwiGLU 的 alpha 参数。
  * @param [in] gluBias: SwiGLU 的 bias 参数。
- * @param [in] axis: MX 量化轴预留参数，当前仅支持 -1。
- * @param [in] roundMode: MX 量化舍入模式预留参数，当前仅支持 "rint"；nullptr 或空字符串按 "rint" 处理。
- * @param [in] scaleAlg: MX 量化 scale 算法预留参数，当前仅支持 0。
- * @param [in] dstTypeMax: MX 量化目标类型最大值预留参数，当前仅支持 0.0。
+ * @param [in] axis: MX 量化轴，当前仅支持 -1，表示沿最后一维量化。
+ * @param [in] roundMode: MX 量化舍入模式，当前仅支持 "rint"；nullptr 或空字符串按 "rint" 处理。
+ * @param [in] scaleAlg: MX 量化 scale 算法，MXFP8 输出支持 0（OCP）和 1（cuBLAS）；2 仅支持 FLOAT4_E2M1，因此本接口传入 2 会报错。
+ * @param [in] dstTypeMax: MX 量化目标类型最大值，MXFP8 输出当前仅支持 0.0。
  * @param [out] output: FLOAT8_E4M3FN 量化输出。WeightNZ MXFP8 场景不支持 FLOAT8_E5M2 输出。
  * @param [out] outputScale: FLOAT8_E8M0 输出量化因子。
  * @param [out] workspaceSize: 返回用户需要在 NPU device 侧申请的 workspace 大小。

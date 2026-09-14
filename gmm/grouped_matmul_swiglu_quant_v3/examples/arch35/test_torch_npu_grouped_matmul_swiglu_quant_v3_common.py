@@ -7,7 +7,7 @@ import torch
 import torch_npu
 
 
-def run_demo(mode, transpose=False, activate_left=True):
+def run_demo(mode, transpose=False, activate_left=True, scale_alg=0):
     torch.manual_seed(0)
     # K=128 is intentional: V3 mode-2 selects the Tensor API path only when
     # K is aligned to 128.
@@ -41,12 +41,13 @@ def run_demo(mode, transpose=False, activate_left=True):
         glu_bias=1.0,
         axis=-1,
         round_mode="rint",
-        scale_alg=0,
+        scale_alg=scale_alg,
         dst_type_max=0.0,
     )
     torch.npu.synchronize()
     print(
         f"torch demo mode={mode} transpose={int(transpose)} activate_left={int(activate_left)} "
+        f"scale_alg={scale_alg} "
         f"output.shape={tuple(output.shape)} output_scale.shape={tuple(output_scale.shape)}"
     )
     return output, output_scale
@@ -56,5 +57,6 @@ def main(mode):
     parser = argparse.ArgumentParser()
     parser.add_argument("--transpose", action="store_true")
     parser.add_argument("--activate-left", type=int, default=1, choices=(0, 1))
+    parser.add_argument("--scale-alg", type=int, default=0, choices=(0, 1, 2))
     args = parser.parse_args()
-    run_demo(mode, args.transpose, bool(args.activate_left))
+    run_demo(mode, args.transpose, bool(args.activate_left), args.scale_alg)
