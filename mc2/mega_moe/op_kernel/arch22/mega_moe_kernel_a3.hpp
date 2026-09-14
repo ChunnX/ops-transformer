@@ -21,7 +21,6 @@
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_HPP
 #include <limits>
 #include "kernel_operator.h"
-
 #include "utils/copy_l0c_to_gm_custom.hpp"
 
 #include "catlass/catlass.hpp"

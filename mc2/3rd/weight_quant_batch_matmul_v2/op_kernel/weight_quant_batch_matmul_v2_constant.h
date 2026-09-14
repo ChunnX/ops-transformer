@@ -12,6 +12,7 @@
  * \file weight_quant_batch_matmul_v2_constant.h
  * \brief
  */
+ 
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_CONSTANT_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_CONSTANT_H
 
