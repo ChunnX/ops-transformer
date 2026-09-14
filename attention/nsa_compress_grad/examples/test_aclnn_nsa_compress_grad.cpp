@@ -132,6 +132,59 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
+void FreeResource(aclTensor *outputGrad, aclTensor *inputKV, aclTensor *weight, aclTensor *inputGradOut,
+                  aclTensor *weightGradOut, aclIntArray *actSeqLen, void *outputGradDeviceAddr, void *inputKVDeviceAddr,
+                  void *weightDeviceAddr, void *inputGradOutDeviceAddr, void *weightGradOutDeviceAddr,
+                  uint64_t workspaceSize, void *workspaceAddr, int32_t deviceId, aclrtContext context,
+                  aclrtStream stream)
+{
+    if (outputGrad != nullptr) {
+        aclDestroyTensor(outputGrad);
+    }
+    if (inputKV != nullptr) {
+        aclDestroyTensor(inputKV);
+    }
+    if (weight != nullptr) {
+        aclDestroyTensor(weight);
+    }
+    if (inputGradOut != nullptr) {
+        aclDestroyTensor(inputGradOut);
+    }
+    if (weightGradOut != nullptr) {
+        aclDestroyTensor(weightGradOut);
+    }
+    if (actSeqLen != nullptr) {
+        aclDestroyIntArray(actSeqLen);
+    }
+
+    if (outputGradDeviceAddr != nullptr) {
+        aclrtFree(outputGradDeviceAddr);
+    }
+    if (inputKVDeviceAddr != nullptr) {
+        aclrtFree(inputKVDeviceAddr);
+    }
+    if (weightDeviceAddr != nullptr) {
+        aclrtFree(weightDeviceAddr);
+    }
+    if (inputGradOutDeviceAddr != nullptr) {
+        aclrtFree(inputGradOutDeviceAddr);
+    }
+    if (weightGradOutDeviceAddr != nullptr) {
+        aclrtFree(weightGradOutDeviceAddr);
+    }
+    if (workspaceSize > 0 && workspaceAddr != nullptr) {
+        aclrtFree(workspaceAddr);
+    }
+    if (stream != nullptr) {
+        aclrtDestroyStream(stream);
+    }
+    if (context != nullptr) {
+        aclrtDestroyContext(context);
+    }
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+}
+
 int main()
 {
     // 1. （固定写法）device/context/stream初始化，参考acl对外接口列表
@@ -180,79 +233,70 @@ int main()
 
     aclIntArray *actSeqLenOptional =
         aclCreateIntArray(actSeqLenOptionalHostData.data(), actSeqLenOptionalHostData.size());
+    uint64_t workspaceSize = 0;
+    void *workspaceAddr = nullptr;
+
+    auto freeResource = [&]() {
+        FreeResource(outputGrad, inputKV, weight, inputGradOut, weightGradOut, actSeqLenOptional, outputGradDeviceAddr,
+                     inputKVDeviceAddr, weightDeviceAddr, inputGradOutDeviceAddr, weightGradOutDeviceAddr,
+                     workspaceSize, workspaceAddr, deviceId, context, stream);
+    };
 
     // 创建dy aclTensor
     ret = CreateAclTensor(outputGradHostData, outputGradShape, &outputGradDeviceAddr, aclDataType::ACL_FLOAT16,
                           &outputGrad);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, freeResource(); return ret);
     // 创建x aclTensor
     ret = CreateAclTensor(inputKVHostData, inputKVShape, &inputKVDeviceAddr, aclDataType::ACL_FLOAT16, &inputKV);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, freeResource(); return ret);
     // 创建gelu aclTensor
     ret = CreateAclTensor(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, freeResource(); return ret);
 
     ret = CreateAclTensor(inputGradOutHostData, inputGradOutShape, &inputGradOutDeviceAddr, aclDataType::ACL_FLOAT16,
                           &inputGradOut);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, freeResource(); return ret);
 
     ret = CreateAclTensor(weightGradOutHostData, weightGradOutShape, &weightGradOutDeviceAddr, aclDataType::ACL_FLOAT16,
                           &weightGradOut);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, freeResource(); return ret);
 
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
-    uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // 调用aclnnNsaCompressGrad第一段接口
     ret = aclnnNsaCompressGradGetWorkspaceSize(outputGrad, inputKV, weight, actSeqLenOptional, blockSize, blockStride,
                                                SeqLenType, layOut, inputGradOut, weightGradOut, &workspaceSize,
                                                &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressGradGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
+              freeResource(); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); freeResource();
+                  return ret);
     }
     // 调用aclnnNsaCompressGrad第二段接口
     ret = aclnnNsaCompressGrad(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressGrad failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressGrad failed. ERROR: %d\n", ret); freeResource();
+              return ret);
 
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); freeResource();
+              return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
     auto size = GetShapeSize(inputGradOutShape);
     std::vector<float> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), inputGradOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); freeResource();
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
     }
 
-    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-    aclDestroyTensor(outputGrad);
-    aclDestroyTensor(inputKV);
-    aclDestroyTensor(weight);
-    aclDestroyTensor(inputGradOut);
-    aclDestroyTensor(weightGradOut);
-    aclDestroyIntArray(actSeqLenOptional);
-
-    // 7. 释放device资源，需要根据具体API的接口定义修改
-    aclrtFree(outputGradDeviceAddr);
-    aclrtFree(inputKVDeviceAddr);
-    aclrtFree(weightDeviceAddr);
-    aclrtFree(inputGradOutDeviceAddr);
-    aclrtFree(weightGradOutDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    aclrtDestroyStream(stream);
-    aclrtDestroyContext(context);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
+    // 6. 释放aclTensor、aclIntArray和device资源
+    freeResource();
     return 0;
 }
