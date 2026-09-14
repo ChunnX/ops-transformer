@@ -9,12 +9,10 @@
 
 """FlashAttnGrad kernel 入口 (PyPTO Pro)。
 
-本文件对应 AscendC arch35 的 ``flash_attention_score_grad_entry_regbase.h``：
 只做**编译期分发**：``Tmpl.BN2GS1S2`` 且 ``d_align<=192`` 走
 ``flash_attn_grad_preload3``（``runInfos[3]``），其余走
 ``flash_attn_grad_preload2``（``runInfos[2]``）。
-所有实现分散在同目录的 ``fag_*`` 模块中，分层与 arch35 的 op_kernel/arch35
-一一对应：
+实现按职责拆在同目录的 ``fag_*`` 模块：
 
 ===================  ============================================
 模块                  职责
@@ -96,8 +94,8 @@ def flash_attn_grad(
 ):
     """入口只做编译期分发：template / d_align 来自 tilingkey。
 
-    preload3：仅 ``Tmpl.BN2GS1S2`` 且 D<=192，ASC ProcessPreloadTwoTimes。
-    preload2：其余（``Tmpl.BN2`` 与 D=256 GS1S2），1-ahead，对标 Process else。
+    preload3：仅 ``Tmpl.BN2GS1S2`` 且 D<=192，``runInfos[3]``。
+    preload2：其余（``Tmpl.BN2`` 与 D=256 GS1S2），1-ahead，``runInfos[2]``。
     """
     if template == Tmpl.BN2GS1S2 and d_align <= 192:
         flash_attn_grad_preload3(

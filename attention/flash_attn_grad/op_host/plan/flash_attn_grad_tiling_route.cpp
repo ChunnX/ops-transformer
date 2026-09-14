@@ -101,7 +101,7 @@ static_assert(kRouteNum <= FAG_TRACE_SLOT_NUM, "trace slots must cover all route
 
 // ===== D / Dv 分档 ==========================================================
 // D 决定每块片上 tile 的宽度，而 tile shape 在 pypto 是 trace 期常量，所以必须
-// 做成编译期分档（与 AscendC 把它做成模板参数同理）。一律按最大档分配不只是
+// 做成编译期分档。一律按最大档分配不只是
 // 慢：L0C 会超出 256KB 预算，物理上放不下。
 // Dv 只决定已分配 tile 里填多少列，是纯运行期数值；但 y/dy 的 UB 宽度由 Dv
 // 派生，故仍需一个分配档次。dAlign 与 dvAlign 取值相同；唯一分叉是

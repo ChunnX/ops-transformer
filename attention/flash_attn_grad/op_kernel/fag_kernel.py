@@ -6,8 +6,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""两个分核模板的主循环 —— 对应 AscendC arch35 的
-``flash_attention_score_grad_kernel.h``。
+"""两个分核模板的主循环。
 
 本文件只负责**编排**：取下一个有效块、推进 CV ping-pong、在阶段之间插
 cross-core set/wait、决定谁在哪一拍消费谁的产出。真正的计算全部在
@@ -16,12 +15,11 @@ cross-core set/wait、决定谁在哪一拍消费谁的产出。真正的计算�
 
 两个模板：
 
-* :func:`flash_attn_grad_preload3` —— 小 D 的 ``ProcessPreloadTwoTimes``
-  （``PRELOAD_TIMES=3``），自带 pre/post。
-* :func:`flash_attn_grad_preload2` —— 1-ahead 主循环，后续对标 ASC ``Process()``
-  else。``Tmpl.BN2`` 与 GS1S2（当前即 D=256）共用同一套 while，路径按
-  ``template`` 分支。pre/post：非 BN2 清 workspace + scale/cast；BN2
-  不跑这套（仅 ``bn2_need_zero``）。
+* :func:`flash_attn_grad_preload3` —— ``Tmpl.BN2GS1S2`` 且 D≤192：
+  cube 领先 vector 两个 task（``PRELOAD_TIMES=3``），自带 pre/post。
+* :func:`flash_attn_grad_preload2` —— 1-ahead。``Tmpl.BN2`` 与 GS1S2
+  （当前即 D=256）共用同一套 while，路径按 ``template`` 分支。
+  pre/post：非 BN2 清 workspace + scale/cast；BN2 不跑这套（仅 ``bn2_need_zero``）。
 
 CV 通信全部使用手动 set/wait cross-core，且正反向成对：
 
@@ -30,48 +28,31 @@ CV 通信全部使用手动 set/wait cross-core，且正反向成对：
   反向 C->V : SYNC_C4_TO_V3_FLAG / SYNC_C5_TO_V4_FLAG        (L1 已被 cube 读完)
   反向 V->C : SYNC_V2_TO_C1_FLAG[2] / SYNC_V2_TO_C2_FLAG[2]  (mm1/mm2 UB 已读完)
 
-AscendC 中 AIC 侧对每个 V->C flag 额外等待 ``16 + flag``（两个 vector 子核各
-发一次），在 pypto 中等价于 ``sync_mode=INTRA_BLOCK`` 的单次 wait。
+AIC 侧对每个 V->C flag 用 ``sync_mode=INTRA_BLOCK`` 等一次，覆盖两个
+vector 子核各自发来的信号。
 
 以下是这两个模板共同的设计约束，改动前务必读完。
 
-一比一复刻 AscendC 实现 arch35/flash_attention_score_grad_kernel.h，
-本文件对应 SPLIT_AXIS == BN2GS1S2 模板，且为下述场景裁剪：
+当前裁剪范围：非 TND（BSND/BNSD）、FP16。mask_mode 0=dense，3=causal，
+4=band。tilingkey ``swizzle`` 区分线性 skip 无效块与 packed 有效块分核。
+BN2 支持 mask，禁止 BN2+swizzle。
 
-  非 TND(layoutType == BSNGD)、FP16。mask_mode 0=dense，3=causal，4=band。
-  tilingkey `mask_mode` 取值 0/3/4（无 mask / causal / band），`swizzle`
-  区分线性 IsValid skip 与 packed 有效块分核。BN2 支持 mask，禁止 BN2+swizzle。
+dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加。dK/dV 的 L0C
+驻留累加作为后续优化单独叠加。mask_mode 静态分支：0 恒有效，3=causal
+块有效，4=band 区间；线性路径 skip 无效块。
 
-在该配置下 AscendC 的编译期谓词取值为：
-  IS_DQ_WRITE_UB = IS_DK_WRITE_UB = IS_DV_WRITE_UB = false
-      -> dQ/dK/dV 均由 fixpipe 经 GM workspace 做 atomicAdd 累加
-  IS_DKV_RESIDENT_L0C = true (mm4+mm5=131072，max(mm1..3)=65536，
-      合计 196608 <= 262144 字节 L0C)
-      -> AscendC 下 dK/dV 可驻留 L0C 累加。本文件当前仍走
-         「fixpipe 直出 GM + atomicAdd」，L0C 驻留作为后续优化单独叠加
-  IS_DROP = false
-      -> ComputeDqkvBn2gs1s2 走 ProcessBn2gs1s2LastVec 的 else 分支
-  IsValid() 按 tilingkey mask_mode 静态分支：0 恒真，3=CheckIsValidBlock，
-      4=band 区间。GetNextValidIdx 线性路径 skip 无效块。
 Tmpl.BN2GS1S2 且 d_align<=192 走 flash_attn_grad_preload3 的
 PRELOAD_TIMES=3（+2）。其余（Tmpl.BN2、D=256 GS1S2）走
 flash_attn_grad_preload2 的 1-ahead，同函数内按场景跑 pre/post。
 反向 V2_TO_C 只给 +2 用。
 
-CV 通信全部使用手动 set/wait cross-core，且正反向成对：
-  正向 C->V : SYNC_C2_TO_V2_FLAG[2] / SYNC_C1_TO_V2_FLAG[2]  (mm2/mm1 结果就绪)
-  正向 V->C : SYNC_V3_TO_C3_FLAG / SYNC_V4_TO_C5_FLAG        (dS/P 已落 L1)
-  反向 C->V : SYNC_C4_TO_V3_FLAG / SYNC_C5_TO_V4_FLAG        (L1 已被 cube 读完，可覆写)
 反向同步由 needSyncDkMM 控制：首轮 L1 尚无人读，无需等待。
-AscendC 中 AIC 侧对每个 V->C flag 额外等待 `16 + flag`(两个 vector 子核各发一次)，
-在 pypto 中等价于 sync_mode=INTRA_BLOCK 的单次 wait。
 
-数据流与 AscendC 对齐：
+数据流：
   MM2(Q@K^T)->UB -> V2(softmax->P) -> V4(P cast+ND2NZ->L1)
   MM1(dO@V^T)->UB -> V3(dS=(dP-sfmg)*P cast+ND2NZ->L1)
   -> MM5(P^T@dO->dV) -> MM3(dS@K->dQ) -> MM4(dS^T@Q->dK)
-V1 计算 softmaxGradFront sfmg = rowsum(dy * y)，取自前向输出 y，
-对应 vector_api/cast_softmax_grad.h 的 CopyInSoftmaxGrad + MySoftmaxGradFrontCast。
+V1 计算 softmaxGradFront sfmg = rowsum(dy * y)，取自前向输出 y。
 
 每个 GM tensor 只推导出一种 Layout：tensor_k 因 MM2 的转置读(order=[3,1])
 被定为 Layout::DN，MM3 需要非转置的 K，若共用同一 tensor，plain 读会被按 DN
@@ -79,9 +60,8 @@ V1 计算 softmaxGradFront sfmg = rowsum(dy * y)，取自前向输出 y，
 指向同一 buffer，各自推导 layout。平台仅支持
 ND2NZ/DN2NZ/ND2ND/DN2DN/NZ2NZ/DN2ZN，不支持 ND2ZN。
 
-MM4/MM5 的左矩阵需要转置(dS^T / P^T)。AscendC 通过 L1->L0A 载入时置
-isLeftTranspose=true 免费得到；pypto 无此能力(NZ 版本静默算错、ZZ 版本
-无法编译，L0A 要求非 row-major fractal)，因此显式走
+MM4/MM5 的左矩阵需要转置(dS^T / P^T)。L1->L0A 不能随路转置（NZ 版本静默
+算错、ZZ 版本无法编译，L0A 要求非 row-major fractal），因此显式走
 transpose(UB) -> ND2NZ -> insert 到 [N,M] NZ 的 L1，再常规载入 L0A。
 """
 
@@ -250,7 +230,7 @@ def flash_attn_grad_preload3(
     )
     # softmax_lse : [B,N1,S1] —— 按 Q 的 head 数(n1 = n2*G)存，因为每个 Q head
     # 的 softmax 归一化因子不同，G 个 Q head 不能共享同一份 lse。
-    # 对齐 ASC 的 softmax_max/sum：offset = ((b*n2 + n2o)*G + g)*S1。
+    # lse offset = ((b*n2 + n2o)*G + g)*S1。
     n1Size = constInfo.n2Size * constInfo.gSize
     tensor_lse = pl.make_tensor(
         softmax_lse,
@@ -286,7 +266,7 @@ def flash_attn_grad_preload3(
         dtype=pl.DT_FP32,
     )
 
-    # ---- pre/post：ASC 同款一维视图 ----
+    # ---- pre/post：一维视图 ----
     # InitOutput / Muls+Cast 都按 B*S*N*D 个元素线性切，不看行宽。
     # dq 侧 head 数是 n1(=n2*G)，dk/dv 侧是 n2。
     dqRows = constInfo.bSize * constInfo.s1Size * n1Size
@@ -324,8 +304,7 @@ def flash_attn_grad_preload3(
     numBlocks = block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd)
 
     # ---- CV 共享区：mm1/mm2 结果 UB + dS/P 的 L1 及其 ZN 转置视图 ----
-    # 对应 kernel_base.h 的「CV核间共享Buffer」，vector 侧写、cube 侧读，
-    # 故必须声明在两个 section 之外。
+    # vector 侧写、cube 侧读，故必须声明在两个 section 之外。
     mm1_res = make_mm1_res()
     mm2_res = make_mm2_res()
     ds_l1 = make_ds_l1()
@@ -335,7 +314,6 @@ def flash_attn_grad_preload3(
 
     # ==== Pre 阶段：清零 dq/dk/dv workspace ====
     # 三个 workspace 都用 atomicAdd 累加，进主循环前必须为 0。
-    # 对应 ASC presfmg_regbase.h:258 的 InitOutput / Duplicate。
     # 清完用 sync_all 隔开：主循环的 atomicAdd 必须看到已清零的 GM。
     with pl.section_vector():
         zero_ub = make_pre_zero_buffer_f32()
@@ -651,8 +629,7 @@ def flash_attn_grad_preload3(
     # ==== Post 阶段：dQ/dK/dV 的 scale + cast fp32->fp16 ====
     # scale 在矩阵乘之后、fp32 结果上施加(而非提前乘进 dS)：先乘会让
     # fp16 舍入发生在不同量级上，网络训练中误差会累积。
-    # 只有 dQ/dK 乘 scale，dV 不乘 —— 对应 ASC 的 `qkvIdx < 2`
-    # (post_regbase.h:238)。dV 传 1.0，fp32 乘 1.0 精确。
+    # 只有 dQ/dK 乘 scale，dV 不乘（传 1.0，fp32 乘 1.0 精确）。
     # 进 post 前必须 sync_all：要等所有核的 atomicAdd 都落盘。
     pl.system.sync_all()
 
@@ -711,7 +688,7 @@ def flash_attn_grad_preload2(
     dv_align,
     swizzle,
 ):
-    """1-ahead 主循环（后续对标 ASC Process() else）。
+    """1-ahead 主循环。
 
     同一套 cube/vector while：取块 → MM2/MM1 → 上一拍 MM5/3/4 与 V1…V4，
     末尾 drain 1。路径按编译期 ``template`` 分支（是否 BN2），不是按 D 档。
@@ -719,11 +696,11 @@ def flash_attn_grad_preload2(
     ``template!=Tmpl.BN2``（当前即 D=256 GS1S2）：store 到 fp32 workspace；
     进循环前清 workspace，循环后再 scale+cast。不算 ``iterate_mm_*_bn2`` /
     v5/v6。
-    ``Tmpl.BN2``：一个核独占整个 (b, n2) head，对齐 ComputeDqkvBn2；
+    ``Tmpl.BN2``：一个核独占整个 (b, n2) head；
     不跑 workspace pre/post（仅 ``bn2_need_zero`` 清 fp16 out）。
 
-    MultiBlk（is_bn2_multiblk）：dQ 对齐 ASC IterateMmDsKFixpout；dK/dV
-    在 L0C 累加到换 s2 再写回。
+    MultiBlk（is_bn2_multiblk）：dQ 首有效 s2 覆盖 workspace，其余 AtomicAdd，
+    vector 只在 isLastS1Outer 从 GM Muls+Cast；dK/dV 在 L0C 累加到换 s2 再写回。
     """
     coreNum = pl.get_block_num()
     # swizzle 来自 tilingkey。BN2 is_valid 保证为 0，与原先写死 0 等价。

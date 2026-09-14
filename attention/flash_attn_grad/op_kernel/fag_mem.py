@@ -6,11 +6,10 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""片上内存布局与 buffer-id 分配 —— 对应 AscendC arch35 的 ``cube_api/mutex_buffer*.h``。
+"""片上内存布局与 buffer-id 分配。
 
-AscendC 侧用 ``MutexBufferManager`` 在运行期从一个 pool 里 bump 分配，再由
-``MutexBuffersPolicy*`` 决定几路 buffer 轮转；pypto 的 tile 地址与 mutex id 都
-必须是 trace 期常量，所以同样的职责在这里前移到 **import 期**。
+pypto 的 tile 地址与 mutex id 都必须是 trace 期常量，所以布局在
+**import 期**一次算完，导出平表给 :mod:`fag_buffers`。
 
 **一块 buffer 只声明一次。** ``arena.buf(名字, 字节数, 槽位数)`` 同时给出地址
 和 buffer-id —— arena 持有本侧的 :class:`_MutexPool`，两者不可能对不上，也不
@@ -141,7 +140,7 @@ class _MutexPool:
 #  片上内存的 bump 分配器
 # ==================================================================
 class _Arena:
-    """一块片上内存的顺序铺排，对应 ASC 运行期的 ``MutexBufferManager``。
+    """一块片上内存的顺序铺排。
 
     只在 import 期执行，绝不进 trace：导出的永远是 int / list[int] 的平表，
     因为 tile 的 ``addrs=`` / ``mutex_ids=`` 只接受 trace 期常量。
@@ -225,8 +224,8 @@ def _build_l1(width, pool):
     """铺排一档的 L1，返回 ``{名字: buffer}``。
 
     Q/dO 是多槽 double buffer：tile_group 填多个 addrs + 多个 mutex_id 后，
-    框架会自动插核内同步，使下一轮 load 与本轮 matmul 重叠（对应 AscendC 的
-    IS_L1_PRELOAD）。槽位数不是 2 而是 3+：cube 领先 vector 两个 task，mm2 在
+    框架会自动插核内同步，使下一轮 load 与本轮 matmul 重叠。
+    槽位数不是 2 而是 3+：cube 领先 vector 两个 task，mm2 在
     task N 载入 Q_N，而 mm4 要的是 Q_{N-2}；3 槽时 N%3 != (N-2)%3，两者不会
     互相覆写，于是 mm4/mm5 可以直接复用 mm2/mm1 搬好的数据，无需再读 GM。
     """
@@ -273,7 +272,7 @@ def _build_l0ab(width, pool):
     """L0A 与 L0B —— 两块独立的 64KB，各开双缓冲，布局相同但各有一套号。
 
     5 个 matmul 串行复用同一块 L0A/L0B 时，pl.move 填充期间 mac 只能干等
-    （实测 mte1 占用率 0.309 vs ASC 0.584）；双缓冲让下一个 matmul 的
+    （实测单缓冲 mte1 占用率 0.309）；双缓冲让下一个 matmul 的
     L1->L0 搬运与当前 matmul 的计算重叠。
 
     间距必须按 **tile 实际声明的宽度** ACC_COLS 算，而不是 D 分块宽度：
@@ -324,7 +323,7 @@ UB_HEAD_RESERVE = 0x1000
 # [64,1] fp32 只有 256B，但按 512B 一格排，保证后面的槽位对齐。
 _UB_ROW_SLOT = 0x200
 
-# pre/post 按 ASC 一样走一维元素，不按 [行, D] 切。三档都吃满可用 UB，且每档
+# pre/post 走一维元素，不按 [行, D] 切。三档都吃满可用 UB，且每档
 # elems 都能被 128 整除，full-tile 的 VF 段数是编译期常量。行区间已由 metadata
 # 按 nAiv 均分，块大不再空核。
 PRE_ELEMS = {64: 63488, 128: 63488, 192: 63360, 256: 63360}  # 单槽 fp32
@@ -342,8 +341,8 @@ def _build_ub(width, pool):
 
     V1 一趟 VECTOR_BASEM 行、按行 reduce，不再开 prod/tmp。列宽
     ``v1w`` 就是 ``dv_align``（与 ``d_align`` 相同，仅 D=192 且 Dv=128 时为 128）。
-    attenmask 复用 y/dy 这两条记录（对应 ASC 的 attenMaskOrYInQue /
-    pseOrDyInQue）：uint8[64,128]=8KB，而 y/dy 在 v1w>=64 时至少 8KB，装得下。
+    attenmask 复用 y/dy 这两条记录：uint8[64,128]=8KB，而 y/dy 在 v1w>=64
+    时至少 8KB，装得下。
     复用的是**同一条记录**，所以「同址必须同号」是结构保证，不靠人守。
 
     cast 只有 BN2 的 v5/v6 用，但三档都留：它排在最后，不占别人的地方，
@@ -459,7 +458,7 @@ UB_NZP_A = _addr(_UB, "nzp")
 UB_SFMG_A = _addr(_UB, "sfmg")
 UB_LSE0_A = {w: _UB[w]["lse"]["addrs"][0] for w in _TIERS}
 UB_LSE1_A = {w: _UB[w]["lse"]["addrs"][1] for w in _TIERS}
-# attenmask 复用 y/dy 的地址与号（vec1 之后 vec2 再用，与 ASC 队列复用同构）。
+# attenmask 复用 y/dy 的地址与号（vec1 之后 vec2 再用）。
 UB_MASK_A = UB_Y_A
 UB_MASK_PRE_A = UB_DY_A
 MTX_UB_Y = _flat(_UB, "y")  # attenmask 复用

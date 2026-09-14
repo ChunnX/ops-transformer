@@ -104,8 +104,7 @@ class FlashAttnGradTilingKey:
     #
     # 为什么 D 必须占 tilingkey 位，而 layout/GQA 不用：后两者只改索引算术
     # (运行期数值)，而 D 改的是**每块片上 tile 的宽度**，即分配尺寸，
-    # 而 pypto 的 tile shape 是 trace 期常量。ASC 同样把 D 做成模板参数
-    # DTemplateType::Aligned128/Aligned192/Aligned256，不是运行期值。
+    # 而 pypto 的 tile shape 是 trace 期常量，不是运行期值。
     # 且「一律按最大档分配 + 运行期裁列」并非只是慢：L0C 会超出 256KB
     # 预算，物理上放不下。bit 取值 3=256（见 docs/D256设计.md）。
     d_align = TilingKeyField(bits=2, values=[64, 128, 192, 256])

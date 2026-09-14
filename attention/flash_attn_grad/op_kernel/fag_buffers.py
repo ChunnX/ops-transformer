@@ -7,16 +7,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""片上 tile 的声明 —— 对应 AscendC arch35 的 ``InitCVCommonBuffer`` /
-``FAGBlockCube::InitCubeBuffer`` / ``FAGBlockVec::InitUbBuffer``。
+"""片上 tile 的声明。
 
-AscendC 那边这些 ``Init*Buffer`` 是 block 类的成员函数，buffer 随后作为成员
-变量被各阶段直接访问。pypto 的 tile 必须在 ``with pl.section_*()`` 里就地
-声明，而且 tracer 不接受自定义 Python 类（``CubeBlock(...)`` 会直接报
-Unsupported function call），所以这里退化成**一个 buffer 一个工厂函数**：
-调用点写 ``q_l1 = make_q_l1()``，声明本身连同它的全部理由留在本文件。
+pypto 的 tile 必须在 ``with pl.section_*()`` 里就地声明，而且 tracer
+不接受自定义 Python 类（``CubeBlock(...)`` 会直接报 Unsupported function
+call），所以这里是**一个 buffer 一个工厂函数**：调用点写
+``q_l1 = make_q_l1()``，声明本身连同它的全部理由留在本文件。
 
-收益与 ASC 的 ``Init*Buffer`` 一致：
+这样拆的收益：
 
 * shape / layout / 地址 / mutex id 只写一处，BN2 与 BN2GS1S2 共用；
 * ``fag_kernel`` 的主循环里不再出现 ``pl.make_tile_group`` 与任何裸地址；
@@ -123,13 +121,11 @@ from fag_mem import (
 
 # ==================================================================
 #  CV 共享区 —— 必须声明在两个 section 之外
-#  ASC kernel_base.h::InitCVCommonBuffer
 # ==================================================================
 def make_mm1_res():
     """mm1(dP = dO@V^T) 的结果 UB，双槽按 taskId % 2 ping-pong。
 
-    对应 ASC 的 ``mm1ResBuf[2]``，同名同尺寸。cube 侧 fixpipe 写、vector 侧读，
-    故声明在两个 section 之外。
+    cube 侧 fixpipe 写、vector 侧读，故声明在两个 section 之外。
     """
     return pl.make_tile_group(
         type=pl.TileType(
@@ -143,7 +139,7 @@ def make_mm1_res():
 
 
 def make_mm2_res():
-    """mm2(S = Q@K^T) 的结果 UB。对应 ASC 的 ``mm2ResBuf[2]``。"""
+    """mm2(S = Q@K^T) 的结果 UB，双槽 ping-pong。"""
     return pl.make_tile_group(
         type=pl.TileType(
             shape=[VECTOR_BASEM, VECTOR_BASEN],
@@ -156,7 +152,7 @@ def make_mm2_res():
 
 
 def make_ds_l1():
-    """dS 的 CV 共享 L1（NZ）。对应 ASC 的 ``dSL1Buf``：v3 写、mm3/mm4 读。"""
+    """dS 的 CV 共享 L1（NZ）：v3 写、mm3/mm4 读。"""
     return pl.make_tile_group(
         type=pl.TileType(
             shape=[CUBE_BASEM, CUBE_BASEN],
@@ -171,7 +167,7 @@ def make_ds_l1():
 
 
 def make_p_l1():
-    """P 的 CV 共享 L1（NZ）。对应 ASC 的 ``pL1Buf``：v4 写、mm5 读。"""
+    """P 的 CV 共享 L1（NZ）：v4 写、mm5 读。"""
     return pl.make_tile_group(
         type=pl.TileType(
             shape=[CUBE_BASEM, CUBE_BASEN],
@@ -227,7 +223,7 @@ def make_p_t_l1():
 
 
 # ==================================================================
-#  Cube 侧 L1 —— ASC FAGBlockCube::InitCubeBuffer
+#  Cube 侧 L1
 # ==================================================================
 def make_q_l1():
     """Q 的 L1，多槽 double buffer（mm2 写入，mm4 经延后视图复用）。"""
@@ -319,9 +315,8 @@ def make_q_lag_view():
     —— current() 恰好指向 task N-2 载入的槽位，正是 mm4 需要的那一份。
     这样 Q 每个 (b,n,s1) 块只从 GM 读一次。
 
-    mutex_ids 必须与 writer 视图完全相同：这对应 ASC 的 ``qL1Buf.Get()`` /
-    ``qL1Buf.GetPre()`` —— 同一个 MutexBuffer 的两个访问器，靠同一套
-    LockProd/UnlockProd 与 LockCons/UnlockCons 把「mm2 写」与「mm4 读」排序。
+    mutex_ids 必须与 writer 视图完全相同：同一块 L1 的两个访问器靠同一套
+    id 把「mm2 写」与「mm4 读」排序。
     若给 reader 另一套 id，这层互锁就没了，mm2(task N) 会在 mm4 读完前覆写，
     实测 dK/dV 错(0.61/0.57)。
     """
@@ -476,7 +471,7 @@ def make_dv_l0c_chunk1():
 
 
 # ==================================================================
-#  Vector 侧 UB（BN2GS1S2）—— ASC FAGBlockVec::InitUbBuffer
+#  Vector 侧 UB（BN2GS1S2）
 # ==================================================================
 # `v1w` 是 V1 的列宽，等于 `dv_align`。
 def make_y_ub(v1w):
@@ -556,7 +551,7 @@ def make_lse_ub(v1w):
 def make_mask_view(v1w):
     """attenmask 的 UB 视图 —— **故意**与 y_ub 同址同 mutex。
 
-    v1 用完 y 之后 v2 才搬 mask，与 ASC 的 ``attenMaskOrYInQue`` 队列复用同构。
+    v1 用完 y 之后 v2 才搬 mask，两者复用同一块 UB。
     """
     return pl.make_tile_group(
         type=pl.TileType(

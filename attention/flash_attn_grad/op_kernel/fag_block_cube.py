@@ -6,20 +6,18 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Cube 侧计算 —— 对应 AscendC arch35 的
-``flash_attention_score_grad_block_cube.h``。
+"""Cube 侧计算。
 
-五个 matmul 阶段，编号与 ASC 及 CV 同步 flag 完全一致::
+五个 matmul 阶段，编号与 CV 同步 flag 一致::
 
-    C1  mm1 : dP = dO @ V^T      IterateMmDyV
-    C2  mm2 : S  = Q  @ K^T      IterateMmQK
-    C3  mm3 : dQ = dS @ K        IterateMmDsK
-    C4  mm4 : dK = dS^T @ Q      IterateMmDsQ
-    C5  mm5 : dV = P^T  @ dO     IterateMmPDy
+    C1  mm1 : dP = dO @ V^T
+    C2  mm2 : S  = Q  @ K^T
+    C3  mm3 : dQ = dS @ K
+    C4  mm4 : dK = dS^T @ Q
+    C5  mm5 : dV = P^T  @ dO
 
 每个阶段只做「载入 -> matmul -> 输出」，不含分核逻辑、不含跨核同步 ——
-同步全部由 :mod:`fag_kernel` 的主循环在阶段之间插入，和 ASC 里
-``Kernel::Process`` 与 ``FAGBlockCube`` 的分工一致。
+同步全部由 :mod:`fag_kernel` 的主循环在阶段之间插入。
 
 D 轴分块：``d_align=192`` 是 96+96 驻留 L0C；``d_align=256`` 是 128+128，
 C4/C5 走 ``iterate_mm_*_store`` 每块 atomic 出 GM。三种分块形态：
@@ -47,7 +45,7 @@ from fag_common import (
 
 
 # ==================================================================
-#  C2 / IterateMmQK —— mm2: S = Q @ K^T
+#  C2 —— mm2: S = Q @ K^T
 # ==================================================================
 def _mm_k_chunk(lt, rt, at, srcL, srcR, dOff, dW, s2Real, isFirst):
     """MM2/MM1 的一个 K 分块：D 落在 K 轴，故各块要累加到同一个 acc。
@@ -85,7 +83,7 @@ def iterate_mm_qk(
     )
     # 右矩阵转置(isRightTranspose=true)：K[S2,D] 以 [D,S2] 载入。
     # 仅在 s2 组切换时重载：S1 是最快轴，同组内连续 s1Outer 个 task 的 K
-    # 完全相同(对应 ASC isCopyRight = !isS2IdxNoChange)。
+    # 完全相同。
     if loadKV == 1:
         pl.load(
             k_t,
@@ -138,7 +136,7 @@ def iterate_mm_qk(
 
 
 # ==================================================================
-#  C1 / IterateMmDyV —— mm1: dP = dO @ V^T
+#  C1 —— mm1: dP = dO @ V^T
 # ==================================================================
 def iterate_mm_dyv(
     constInfo,
@@ -222,7 +220,7 @@ def iterate_mm_dyv(
 
 
 # ==================================================================
-#  C3 / IterateMmDsK —— mm3: dQ = dS @ K
+#  C3 —— mm3: dQ = dS @ K
 #  IS_DQ_WRITE_UB=false -> fixpipe 直出 GM，needAtomic=true(BN2GS1S2)
 # ==================================================================
 def _mm_n_chunk(
@@ -305,7 +303,7 @@ def iterate_mm_dsk(
 
 
 # ==================================================================
-#  C4 / IterateMmDsQ —— mm4: dK = dS^T @ Q
+#  C4 —— mm4: dK = dS^T @ Q
 #  左矩阵取已在 vector 侧转置好的 dS^T L1
 # ==================================================================
 def _mm_resident_chunk(left, right, at, srcL, srcR, mReal, kReal, dOff, dW, isAcc):
@@ -437,7 +435,7 @@ def iterate_mm_dsq(constInfo, runInfo, ds_t_l1, q_t, left, right, acc0, acc1, is
 
 
 # ==================================================================
-#  C5 / IterateMmPDy —— mm5: dV = P^T @ dO
+#  C5 —— mm5: dV = P^T @ dO
 # ==================================================================
 def dv_chunk_w(constInfo, chunkIdx):
     """dV 第 chunkIdx 块的有效列宽(按 Dv 截断，可能为 0)。
@@ -634,7 +632,7 @@ def iterate_mm_dsk_bn2(
     cBlockIdx,
     loadKV,
 ):
-    """MM3：dQ = dS @ K。对齐 ASC IterateMmDsK，IS_WRITE_UB 由 is_bn2_multiblk 切。
+    """MM3：dQ = dS @ K。写 UB 还是写 workspace 由 is_bn2_multiblk 切。
 
     单块：Fixpipe DualModeSplitM 进 mm1 UB。
     MultiBlk：Fixpipe 到 workspace；needAtomic = !dqFirst。
@@ -665,8 +663,7 @@ def iterate_mm_dsk_bn2(
         # L0C srcStride = AlignTo16(M)=128；valid_shape 改成 s1Real 后
         # srcStride 变成 AlignTo16(s1Real)，尾块（64/72/1）和 L0C 错位。
         # S=255 尾块 127 能过是因为 AlignTo16(127)=128 碰巧一致。
-        # ASC IterateMmDsK 的 singleM 就是 s1Real，因为那边 L1 nValue 也是
-        # s1Real。PTO 的 copy_ub2l1 / DualMode 固定切在 64，L1 恒 128 行，
+        # copy_ub2l1 / DualMode 固定切在 64，L1 恒 128 行，
         # 所以 store 跟 L0C 走 128；输出行数由 last FromGM 的 halfS1RealSize 裁。
         if runInfo.dqFirst == 1:
             pl.store(tensor_dq_ws, at3, [rowOff, 0], atomic=pl.AtomicType.AtomicNone)
