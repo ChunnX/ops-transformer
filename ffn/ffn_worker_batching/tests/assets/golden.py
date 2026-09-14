@@ -33,7 +33,8 @@ import numpy as np
 import torch
 
 __spec__ = {
-    "aclnnFfnWorkerBatching": "AclnnFfnWorkerBatchingTestSpec",
+    "aclnnFfnWorkerBatching": "AclnnFfnWorkerBatchingLegacyTestSpec",
+    "aclnnFfnWorkerBatchingV2": "AclnnFfnWorkerBatchingTestSpec",
     "ffn_worker_batching": "FfnWorkerBatchingKernelTestSpec",
     "torch.ops.cann_ops_transformer.ffn_worker_batching": "TorchFfnWorkerBatchingTestSpec",
 }
@@ -1141,3 +1142,85 @@ class FfnWorkerBatchingKernelTestSpec:
 
     compare = staticmethod(AclnnFfnWorkerBatchingTestSpec.compare)
     tolerance = AclnnFfnWorkerBatchingTestSpec.tolerance
+
+
+class AclnnFfnWorkerBatchingLegacyTestSpec(AclnnFfnWorkerBatchingTestSpec):
+    """V1 has no syncFlag argument; keep its positional contract separate from V2."""
+
+    @staticmethod
+    def customize_inputs(
+        scheduleContext,
+        expertNum,
+        maxOutShape,
+        tokenDtype,
+        needSchedule,
+        layerNum,
+        y,
+        groupList,
+        sessionIds,
+        microBatchIds,
+        tokenIds,
+        expertOffsets,
+        dynamicScale,
+        actualTokenNum,
+        *args,
+        **kwargs,
+    ):
+        return AclnnFfnWorkerBatchingTestSpec.customize_inputs(
+            scheduleContext,
+            expertNum,
+            maxOutShape,
+            tokenDtype,
+            needSchedule,
+            layerNum,
+            0,
+            y,
+            groupList,
+            sessionIds,
+            microBatchIds,
+            tokenIds,
+            expertOffsets,
+            dynamicScale,
+            actualTokenNum,
+            *args,
+            **kwargs,
+        )
+
+    @staticmethod
+    def golden(
+        scheduleContext,
+        expertNum,
+        maxOutShape,
+        tokenDtype,
+        needSchedule,
+        layerNum,
+        y,
+        groupList,
+        sessionIds,
+        microBatchIds,
+        tokenIds,
+        expertOffsets,
+        dynamicScale,
+        actualTokenNum,
+        *args,
+        **kwargs,
+    ):
+        return AclnnFfnWorkerBatchingTestSpec.golden(
+            scheduleContext,
+            expertNum,
+            maxOutShape,
+            tokenDtype,
+            needSchedule,
+            layerNum,
+            0,
+            y,
+            groupList,
+            sessionIds,
+            microBatchIds,
+            tokenIds,
+            expertOffsets,
+            dynamicScale,
+            actualTokenNum,
+            *args,
+            **kwargs,
+        )
