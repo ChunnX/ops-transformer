@@ -214,7 +214,7 @@ private:
     GM_ADDR statusDataSpaceGM_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
-    uint32_t loopIndex_{0};
+    uint64_t loopIndex_{0};
     uint32_t syncFlagId_{0};
     uint8_t sendTokenBufNum_{0};
     uint32_t axisBS_{0};
