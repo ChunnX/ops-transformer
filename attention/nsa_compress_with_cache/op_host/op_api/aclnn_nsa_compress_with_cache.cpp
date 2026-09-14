@@ -157,8 +157,8 @@ aclnnNsaCompressWithCacheGetWorkspaceSize(const aclTensor *input, const aclTenso
 {
     // L2接口阶段1
     L2_DFX_PHASE_1(aclnnNsaCompressWithCache,
-                   DFX_IN(input, weight, slotMapping, outputCache, actSeqLenOptional, blockTableOptional,
-                          layoutOptional, compressBlockSize, compressStride, actSeqLenType, pageBlockSize),
+                   DFX_IN(input, weight, slotMapping, actSeqLenOptional, blockTableOptional,
+                          layoutOptional, compressBlockSize, compressStride, actSeqLenType, pageBlockSize, outputCache),
                    DFX_OUT(outputCache));
     // 检查入参
     CHECK_RET(CheckNsaCompressWithCacheParam(input, weight, slotMapping, outputCache, workspaceSize, executor) ==
