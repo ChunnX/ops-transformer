@@ -341,12 +341,11 @@ public:
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
         // MatMul: Q[64,576] @ K[576,128], K维含rope(方案A单次matmul)
-        // K维576=256+64+256, 尾块64提前到中间执行, 缓解小尾块收尾导致的cube断流
         MMParam param =
             MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, (uint32_t)constInfo_.dSize, false, true);
         MatmulK<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
             mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
-            mm1ResL0C.GetTensor<T>(), param, LocalTensor<fp8_e8m0_t>(), LocalTensor<fp8_e8m0_t>(), true);
+            mm1ResL0C.GetTensor<T>(), param);
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();

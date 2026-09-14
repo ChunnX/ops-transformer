@@ -148,6 +148,7 @@ try:
         quant_mode=1,
         cu_seqlens_q=cu_seqlens_q,
         seqused_q=seqused_q_t,
+        batch_size=B,
         max_seqlen_q=MAX_SQ,
         max_seqlen_kv=MAX_SKV,
         head_dim_qk=DQK,
