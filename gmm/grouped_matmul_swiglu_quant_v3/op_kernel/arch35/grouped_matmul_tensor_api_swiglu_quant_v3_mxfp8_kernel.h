@@ -97,8 +97,11 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3Mode2MxFp8Kernel(
     epilogueParams.clampLimit = gmmParams_.clampLimit;
     epilogueParams.gluAlpha = gmmParams_.gluAlpha;
     epilogueParams.gluBias = gmmParams_.gluBias;
-    epilogueParams.scaleAlg = gmmParams_.scaleAlg;
-    epilogueParams.dstTypeMax = gmmParams_.dstTypeMax;
+    // Keep the kernel compatible with the legacy CANN 9.2 tiling view.  The
+    // host stores scaleAlg in the legacy reserved byte; dstTypeMax is fixed
+    // to zero by the V3 MXFP8 validation.
+    epilogueParams.scaleAlg = gmmParams_.reserved0;
+    epilogueParams.dstTypeMax = 0.0F;
 
     Params params = {{gmmTiling.m, gmmTiling.n, gmmTiling.k, 1}, blockMmadAddrs, epilogueParams, groupList, gmmTiling};
     SwigluKernel op;

@@ -352,6 +352,10 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
     tilingData_.gmmSwigluQuantParams.set_dequantDtype(static_cast<uint8_t>(FLOAT_DEQUANT_DTYPE));
     tilingData_.gmmSwigluQuantParams.set_swigluMode(swigluMode_);
     tilingData_.gmmSwigluQuantParams.set_activateLeft(static_cast<uint8_t>(activateLeft_));
+    // CANN 9.2's AscendC kernel tiling view is based on the legacy V3
+    // prefix. Carry the MX scale algorithm through the legacy reserved byte
+    // so the kernel remains compatible with both legacy and extended layouts.
+    tilingData_.gmmSwigluQuantParams.set_reserved0(static_cast<uint8_t>(scaleAlg_));
     tilingData_.gmmSwigluQuantParams.set_clampLimit(clampLimit_);
     tilingData_.gmmSwigluQuantParams.set_gluAlpha(gluAlpha_);
     tilingData_.gmmSwigluQuantParams.set_gluBias(gluBias_);
