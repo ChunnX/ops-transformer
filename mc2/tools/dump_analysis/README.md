@@ -240,7 +240,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 
 `tiling_data_*`、`args_info_*` 和 `workspace_segN_typeM_*` 是已开启 MC2 DFX Dump 后的核心文件。XN/CKE 只在 CCU 通路出现，`comm_context_*` 只在 URMA 通路出现。`peermem_window_*`、`peermem_segN_typeM_*`、`exception_info.*`、算子 `.json`、`.o` 和 `*_host.o` 不参与统一解析。
 
-更新后的算子代码有两种 TilingData 前缀。AllGatherMatmulV2、AlltoAllMatmul 主线/Apace 和 MatmulReduceScatterV2 使用 `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo`，当前默认 WorkspaceLayout offset 为 576；AllGatherMatmulV3、AlltoAllMatmulV2 仍以 `DfxDumpInfo` 开头，WorkspaceLayout offset 为 0。`DfxDumpInfo` 内部的 Peermem 总大小和 PeermemLayout 相对偏移仍为 208、216，解析脚本会按算子选取正确位置。
+更新后的算子代码有两种 TilingData 前缀。AllGatherMatmulV2、AlltoAllMatmul 主线/Apace 和 MatmulReduceScatterV2 使用 `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo`，当前默认 WorkspaceLayout offset 为 576；AllGatherMatmulV3、AlltoAllMatmulV2 仍以 `DfxDumpInfo` 开头，WorkspaceLayout offset 为 0。当前源码始终声明 `dumpInfo` 成员，是否包含 DFX 内容由 `DfxDumpInfo` 内部的 `MC2_DFX_ENABLE` 控制；开启 DFX 时，Peermem 总大小和 PeermemLayout 的相对偏移为 208、216，解析脚本会按算子选取正确位置。
 
 结果输出到 `<dump根目录>/mc2_dump_analysis/<标准算子名>/`。每个源文件分别生成一个同名 `.txt`，并保留原 rank 子目录；不生成 NPY，也不生成合并的 `analysis.txt`。TilingData、ArgsInfo、StateDump 等后端脚本在终端显示的字段级结果会原样写入对应 TXT。
 
@@ -257,7 +257,7 @@ python3 parse_mc2_dump.py MatmulReduceScatterV2 /path/to/data-dump
 | 12 | STATE_DUMP | 13 | MM_WORKSPACE |
 | 255 | RESERVED |  |  |
 
-其中 `type12` 是每核通信运行状态，不是矩阵结果；对应 TXT 会显示有效核数、commit/wait 总数、未平衡核摘要和逐核状态。数据型 Workspace 不会整段展开为文本；若要查看指定行列或解码特殊数据类型，请对原始 Dump 使用下面的 `parse_matrix.py`。
+其中 `type12` 是每核通信运行状态，不是矩阵结果；对应 TXT 会显示有效核数、commit/wait 总数，以及源码 `StateDumpPerCore` 中的逐核字段。数据型 Workspace 不会整段展开为文本；若要查看指定行列或解码特殊数据类型，请对原始 Dump 使用下面的 `parse_matrix.py`。
 
 `type13/MM_WORKSPACE` 是 Matmul helper 使用的内部临时区，不是 Matmul 结果。它没有固定元素类型或逻辑 shape，因此统一入口只按原始 `uint8` 字节显示；MMRS 的 Matmul 结果应查看 `type8/MM_RESULT`。
 
@@ -305,7 +305,7 @@ python3 parse_mc2_dump.py /path/to/workspace_seg2_type12_MatmulReduceScatterV2.x
 - 提示“没有找到受支持 dump 文件”：确认传入的是 `data-dump` 根目录，并确认文件名中包含正确的算子名。统一入口按文件名关联同一次算子 dump，不会把其他算子的同名前缀文件混进来。
 - StateDump 中核类型显示“未知”：一般是同次调用的 `tiling_data` 缺失、损坏，或文件名后缀无法关联；状态字段仍会解析，但无法可靠区分 C 核和 V 核。
 - workspace 文件大小和 shape 不一致：先检查 WorkspaceLayout 中该段的 `size` 是否等于 dump 文件大小，再检查量化类型、对齐/padding 和通信 rank 维度。
-- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 StateDump 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；对应 TXT 会保留逐核原始字段并标记为 `NOT_WRITTEN`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
+- `type12` 中所有预期 slot 的 magic 都无效：这不是 commit/wait 字段偏移问题，而是该 StateDump 段没有被 Kernel 初始化，或 Dump 的段起始地址/时机不正确。统一入口会给出明确警告；对应 TXT 中这些 slot 会显示 `magicValid=false`。如果 magic 出现在非 512B 对齐位置，还会提示可能的段起点错位。
 
 ## 样例代码结果说明
 

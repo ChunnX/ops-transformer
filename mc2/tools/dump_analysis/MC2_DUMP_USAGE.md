@@ -80,7 +80,7 @@ python3 /path/to/ops-transformer_dfx/mc2/tools/dump_analysis/parse_mc2_dump.py m
 | AllGatherMatmulV2、AlltoAllMatmul 主线/Apace、MatmulReduceScatterV2 | `Mc2InitTiling → Mc2CcTiling → DfxDumpInfo` | 当前默认 offset 576 |
 | AllGatherMatmulV3、AlltoAllMatmulV2 | `DfxDumpInfo` 位于第一个成员 | offset 0 |
 
-`DfxDumpInfo` 内部结构不变：WorkspaceLayout 相对 `DfxDumpInfo` 为 offset 0，Peermem 总大小为相对 offset 208，PeermemLayout 为相对 offset 216，整体大小为 424 字节。
+当前源码始终在各 TilingData 中声明 `dumpInfo` 成员，是否包含 DFX 内容由 `DfxDumpInfo` 内部的 `MC2_DFX_ENABLE` 控制。开启 DFX 时，WorkspaceLayout 相对 `DfxDumpInfo` 为 offset 0，Peermem 总大小为相对 offset 208，PeermemLayout 为相对 offset 216，`DfxDumpInfo` 整体大小为 424 字节；解析脚本按开启 DFX 的 Dump 布局读取。
 
 ### 4.2 CCU 通路文件
 
@@ -148,7 +148,7 @@ CCU 通路没有 `comm_context_*` 文件。
 | TilingData | 脚本支持的字段化结果、通路信息、WorkspaceLayout、Segment 偏移和大小 |
 | ArgsInfo | Kernel 参数名及对应 GM 地址 |
 | 普通 Workspace Segment | `segIdx`、`segType`、含义、文件大小和前 64 字节十进制预览 |
-| `type12/STATE_DUMP` | 显示每个核的核号、是否已写入、当前执行位置、通信阶段、commit 次数和 wait 次数。从 TilingData 读取到 AIC 核数时，还会标明该核是 C 核还是 V 核；MMRS 另外显示未完成通信数和通信状态。 |
+| `type12/STATE_DUMP` | 显示每个核的核号、是否已写入、当前执行位置、通信阶段、commit 次数和 wait 次数。从 TilingData 读取到 AIC 核数时，还会标明该核是 C 核还是 V 核。 |
 | XN/CKE | 地址表的行列数、非零地址数量和逐行十六进制地址 |
 | URMA CommContext | 通信上下文字段，以及使用 `parse_matrix.py` 查看原始字节的命令提示 |
 
@@ -331,15 +331,12 @@ AlltoAllMatmul 和 MMRS 的当前段表从 Kernel 收到的用户 Workspace 起�
 
 多数后端只展开 `magicValid=true` 的 slot；如果 `activeSlots=0`，说明 Dump 中没有找到已初始化的 StateDump slot，应检查 StateDump Segment 起始地址、Kernel 初始化是否执行，以及异常 Dump 的采集时机。
 
-MMRS 后端还会显示以下汇总和状态字段：
+MMRS 后端还会显示以下解析辅助信息：
 
 - `expectedSlots`：预计会使用的核记录数量。当前 MMRS 中，若 AIC 核数为 `N`，对应 AIV 核数为 `2N`，所以预计使用 `3N` 个 slot；如果同目录没有可匹配的 TilingData，脚本无法取得 `N`，只能按文件中的最大 slot 数显示。
 - `validExpectedSlots`：预期范围内通过 magic 校验的 slot 数。
-- `pending = max(commit - wait, 0)`。
-- `BALANCED`：commit 与 wait 相等。
-- `PENDING`：commit 大于 wait，仍有通信未完成。
-- `COUNT_ERROR`：wait 大于 commit，计数关系异常。
-- `NOT_WRITTEN`：magic 无效，该 slot 没有被 Kernel 初始化。
+
+以上两项用于控制和说明展示范围，不是 `StateDumpPerCore` 结构中的字段。脚本不再自行生成 `pending`、`state` 等推导字段；通信情况直接以源码中的 `commCommitCount` 和 `commWaitCount` 为准。
 
 ## 10. 推荐排查流程
 

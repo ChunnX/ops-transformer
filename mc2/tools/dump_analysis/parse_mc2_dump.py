@@ -118,6 +118,11 @@ WORKSPACE_SEG_DESCRIPTIONS = {
 
 WORKSPACE_PREVIEW_SIZE = 64
 
+# Directory mode may contain several calls from the same rank. Cache the
+# TilingData layout result by file so RuntimeInfo parsing does not repeatedly
+# scan the same binary or emit the same fallback warning.
+_AIC_CORE_NUM_CACHE = {}
+
 def normalize(value):
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
@@ -221,50 +226,56 @@ def segment_identity(path, prefix):
 
 
 def infer_aic_core_num(profile, tiling_file):
+    cache_key = (profile["name"], tiling_file.resolve())
+    if cache_key in _AIC_CORE_NUM_CACHE:
+        return _AIC_CORE_NUM_CACHE[cache_key]
+
+    core_num = None
     sys.path.insert(0, str(SCRIPT_DIR))
     try:
         module = importlib.import_module(profile["module"])
         data = read_data(tiling_file)
         name = profile["name"]
         if name == "AllGatherMatmulV3":
-            return module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
-        if name == "AlltoAllMatmulV2":
-            return module.parse_tiling_data(data).get("tileQbmmTilingData", {}).get("usedCoreNum")
-        if name == "AlltoAllMatmul":
+            core_num = module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
+        elif name == "AlltoAllMatmulV2":
+            core_num = module.parse_tiling_data(data).get("tileQbmmTilingData", {}).get("usedCoreNum")
+        elif name == "AlltoAllMatmul":
             tiling_format = module.detect_tiling_format(data)
             if tiling_format == "apace":
                 result = module.parse_apace_tiling_data(data)
-                return result.get("tileQbmmTilingData", {}).get("usedCoreNum")
-            info = module.parse_allto_all_matmul_tiling_info(data, module.OFFSET_TILING_INFO)
-            return info.get("aicCoreNum")
-        if name == "AllGatherMatmulV2":
-            layout = module.compute_layout()
+                core_num = result.get("tileQbmmTilingData", {}).get("usedCoreNum")
+            else:
+                info = module.parse_allto_all_matmul_tiling_info(data, module.OFFSET_TILING_INFO)
+                core_num = info.get("aicCoreNum")
         else:
-            layout = module.compute_mrs_v2_layout()
-        is_quant = module.detect_quant_mode(data, layout)
-        return module.parse_tiling_data(data, layout, is_quant).get("param", {}).get("aicCoreNum")
+            layout = module.compute_layout() if name == "AllGatherMatmulV2" else module.compute_mrs_v2_layout()
+            is_quant = module.detect_quant_mode(data, layout)
+            core_num = module.parse_tiling_data(data, layout, is_quant).get("param", {}).get("aicCoreNum")
     except Exception:
-        return None
+        core_num = None
     finally:
         if sys.path and sys.path[0] == str(SCRIPT_DIR):
             sys.path.pop(0)
+    _AIC_CORE_NUM_CACHE[cache_key] = core_num
+    return core_num
 
 
-def infer_apace_parents(profile, tiling_files):
-    """alltoallmatmul: 返回 tiling 为 Apace CCU 格式的 rank 目录集合，用于 --apace 标签。"""
+def infer_apace_tiling_files(profile, tiling_files):
+    """Return the exact AlltoAllMatmul TilingData files using Apace CCU."""
     if profile["name"] != "AlltoAllMatmul":
         return set()
     sys.path.insert(0, str(SCRIPT_DIR))
     try:
         module = importlib.import_module(profile["module"])
-        parents = set()
+        apace_files = set()
         for tiling_file in tiling_files:
             try:
                 if module.detect_tiling_format(read_data(tiling_file)) == "apace":
-                    parents.add(tiling_file.parent)
+                    apace_files.add(tiling_file)
             except (OSError, struct.error, ValueError, KeyError):
                 continue
-        return parents
+        return apace_files
     except ImportError:
         return set()
     finally:
@@ -289,18 +300,20 @@ def build_core_index(profile, tiling_files):
     exact = {}
     per_parent = {}
     values = set()
+    by_file = {}
     for tiling_file in tiling_files:
         core_num = infer_aic_core_num(profile, tiling_file)
         if core_num is None:
             continue
+        by_file[tiling_file] = core_num
         exact[(tiling_file.parent, operator_suffix(tiling_file, profile))] = core_num
         per_parent.setdefault(tiling_file.parent, set()).add(core_num)
         values.add(core_num)
-    return exact, per_parent, values
+    return exact, per_parent, values, by_file
 
 
 def core_num_for_file(path, profile, core_index):
-    exact, per_parent, values = core_index
+    exact, per_parent, values = core_index[:3]
     core_num = exact.get((path.parent, operator_suffix(path, profile)))
     if core_num is not None:
         return core_num
@@ -350,6 +363,28 @@ def related_tiling_files(path, profile_key):
     )
 
 
+def group_tiling_files_by_parent(tiling_files):
+    """Index TilingData by rank directory for per-invocation matching."""
+    grouped = {}
+    for tiling_file in tiling_files:
+        grouped.setdefault(tiling_file.parent, []).append(tiling_file)
+    for values in grouped.values():
+        values.sort()
+    return grouped
+
+
+def workspace_runtime_context(path, profile, tiling_files, core_index, apace_tiling_files):
+    """Match one StateDump segment to its nearest sibling TilingData."""
+    selected_tiling = nearest_tiling_file(path, profile, tiling_files)
+    if selected_tiling is not None:
+        by_file = core_index[3] if len(core_index) > 3 else {}
+        core_num = by_file.get(selected_tiling)
+        if core_num is None:
+            core_num = infer_aic_core_num(profile, selected_tiling)
+        return core_num, selected_tiling in apace_tiling_files, selected_tiling
+    return core_num_for_file(path, profile, core_index), False, None
+
+
 def parse_address_table(input_path):
     """Parse a little-endian uint64 XN/CKE table into readable text lines."""
     byte_size = input_path.stat().st_size
@@ -389,6 +424,10 @@ def backend_command(profile, kind, path, aic_core_num, use_apace=False):
 def run_backend(profile, kind, path, aic_core_num, use_apace=False):
     child_env = os.environ.copy()
     child_env["PYTHONIOENCODING"] = "utf-8"
+    if kind != "tiling":
+        # Args/Workspace parsing does not use TilingData offsets. Avoid an
+        # unrelated CANN-layout fallback warning in those per-file reports.
+        child_env["MC2_LAYOUT_QUIET_FALLBACK"] = "1"
     process = subprocess.run(
         backend_command(profile, kind, path, aic_core_num, use_apace),
         stdout=subprocess.PIPE,
@@ -470,13 +509,13 @@ def parse_single_file(input_path, parser):
     use_apace = False
     if kind == "workspace":
         tiling_files = related_tiling_files(input_path, profile_key)
-        selected_tiling = nearest_tiling_file(input_path, profile, tiling_files)
+        core_index = build_core_index(profile, tiling_files)
+        apace_tiling_files = infer_apace_tiling_files(profile, tiling_files)
+        aic_core_num, use_apace, selected_tiling = workspace_runtime_context(
+            input_path, profile, tiling_files, core_index, apace_tiling_files
+        )
         if selected_tiling is not None:
-            aic_core_num = infer_aic_core_num(profile, selected_tiling)
-            use_apace = selected_tiling.parent in infer_apace_parents(profile, [selected_tiling])
             print(f"related TilingData: {selected_tiling.name}")
-        else:
-            aic_core_num = core_num_for_file(input_path, profile, build_core_index(profile, tiling_files))
 
     return_code, output = run_backend(profile, kind, input_path, aic_core_num, use_apace)
     if output:
@@ -538,7 +577,8 @@ def main(argv=None):
 
     tiling_files = [path for kind, path in files if kind == "tiling"]
     core_index = build_core_index(profile, tiling_files)
-    apace_parents = infer_apace_parents(profile, tiling_files)
+    tiling_files_by_parent = group_tiling_files_by_parent(tiling_files)
+    apace_tiling_files = infer_apace_tiling_files(profile, tiling_files)
     core_values = sorted(core_index[2])
     core_summary = core_values[0] if len(core_values) == 1 else (core_values or "unknown")
     console_lines = []
@@ -589,8 +629,15 @@ def main(argv=None):
                 emit(console_lines, f"saved TXT: {output_path}")
                 continue
 
-        aic_core_num = core_num_for_file(path, profile, core_index) if kind == "workspace" else None
-        use_apace = kind == "workspace" and path.parent in apace_parents
+        aic_core_num = None
+        use_apace = False
+        if kind == "workspace":
+            sibling_tilings = tiling_files_by_parent.get(path.parent, [])
+            aic_core_num, use_apace, selected_tiling = workspace_runtime_context(
+                path, profile, sibling_tilings, core_index, apace_tiling_files
+            )
+            if selected_tiling is not None:
+                emit(result_lines, f"relatedTilingData: {selected_tiling.name}")
         return_code, output = run_backend(profile, kind, path, aic_core_num, use_apace)
         if output:
             for line in output.splitlines():

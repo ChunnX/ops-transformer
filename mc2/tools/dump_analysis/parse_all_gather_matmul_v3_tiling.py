@@ -283,9 +283,9 @@ def parse_args_info(data: bytes) -> dict:
 
 
 def parse_runtime_info_per_core(data: bytes, offset: int) -> dict:
-    """解析单个 RuntimeInfoPerCore（512B）。"""
+    """解析单个 StateDumpPerCore（512B）。"""
     if offset + RUNTIME_INFO_PER_CORE_SIZE > len(data):
-        return {"error": "data too short for RuntimeInfoPerCore"}
+        return {"error": "data too short for StateDumpPerCore"}
     magic_num, core_id = struct.unpack_from("<IH", data, offset)
     exec_turn, exec_position, comm_phase, commit_count, wait_count = struct.unpack_from("<5B", data, offset + 6)
     return {
@@ -306,7 +306,7 @@ def parse_runtime_info_segment(data: bytes, aic_core_num=None) -> dict:
     """解析 workspace_segN_type12_*.bin（RuntimeInfo 段，64KB = 128 * 512B）。
 
     aic_core_num: tiling data 中的 mmTile.usedCoreNum，用于区分 C/V 核。
-                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 3*aicCoreNum-1
+                  AIC coreId 范围 0 ~ aicCoreNum-1; AIV coreId 范围 aicCoreNum ~ 2*aicCoreNum-1
                   (MIX_AIC_1_1 模式下 AIV slotIdx = aicCoreNum + GetBlockIdx())。
                   为 None 时 coreType 标记为 "未知"。
     """

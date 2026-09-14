@@ -167,7 +167,6 @@ def parse_tiling_data(data, layout, is_quant):
         "param": parse_rcs_tiling(data, o["param"], layout),
         "dataType": struct.unpack_from("<I", data, o["dataType"])[0],
         "debugMode": struct.unpack_from("<I", data, o["debugMode"])[0],
-        "tilingVariant": "FP8/quant" if is_quant else "non-quant",
     }
 
 
@@ -233,17 +232,6 @@ def parse_runtime_info_segment(data, aic_core_num=None, per_core_size=512):
             slot["coreType"] = "未使用"
         if slot.get("magicValid", False):
             active_count += 1
-        commit_count = slot.get("commCommitCount", 0)
-        wait_count = slot.get("commWaitCount", 0)
-        slot["outstandingComm"] = max(commit_count - wait_count, 0)
-        if not slot.get("magicValid", False):
-            slot["commState"] = "NOT_WRITTEN"
-        elif wait_count > commit_count:
-            slot["commState"] = "COUNT_ERROR"
-        elif commit_count > wait_count:
-            slot["commState"] = "PENDING"
-        else:
-            slot["commState"] = "BALANCED"
         slots.append(slot)
 
     if aic_core_num is None:
@@ -271,7 +259,6 @@ def parse_runtime_info_segment(data, aic_core_num=None, per_core_size=512):
             "aicCoreNum": aic_core_num, "aivCoreNum": aiv_core_num,
             "commitTotal": sum(slot["commCommitCount"] for slot in valid_expected),
             "waitTotal": sum(slot["commWaitCount"] for slot in valid_expected),
-            "pendingCoreCount": sum(slot["outstandingComm"] > 0 for slot in valid_expected),
             "unalignedMagicOffsets": unaligned_magic_offsets[:16], "slots": slots}
 
 
@@ -331,8 +318,7 @@ def print_tiling_data(result, is_quant, layout):
     print_section(f"RCSTiling ({layout['rcs']['size']}B)  [{'QUANT' if is_quant else 'NON-QUANT'}]")
     print_kv("param", result["param"])
     print_section("Extra Fields")
-    print_kv("extra", {"dataType": result["dataType"], "debugMode": result["debugMode"],
-                        "tilingVariant": result["tilingVariant"]})
+    print_kv("extra", {"dataType": result["dataType"], "debugMode": result["debugMode"]})
 
 
 def print_runtime_info_segment(rt_info):
@@ -349,31 +335,29 @@ def print_runtime_info_segment(rt_info):
         logging.info("  %-30s: %d", "aivCoreNum", rt_info["aivCoreNum"])
     logging.info("  %-30s: %d", "commitTotal(valid slots)", rt_info["commitTotal"])
     logging.info("  %-30s: %d", "waitTotal(valid slots)", rt_info["waitTotal"])
-    logging.info("  %-30s: %d", "pendingCoreCount", rt_info["pendingCoreCount"])
     logging.info("")
     if rt_info["validExpectedSlots"] == 0:
         logging.warning("  预期核对应的 slot 均未发现 magic 0x%08X。", RUNTIME_INFO_MAGIC)
-        logging.warning("  这表示 RuntimeInfo 未被 Kernel 写入，或 Dump 的 RuntimeInfo 起始地址/时机不正确；"
+        logging.warning("  这表示 StateDump 未被 Kernel 写入，或 Dump 的 StateDump 起始地址/时机不正确；"
                         "下表仍显示每个 slot 的原始 commit/wait 字节。")
     if rt_info["unalignedMagicOffsets"]:
         logging.warning("  在非 512B 对齐位置发现 magic，可能存在段起点错位: %s",
                         rt_info["unalignedMagicOffsets"])
 
     logging.info("  --- 每核通信计数（valid=no 时数值只是未初始化的原始字节） ---")
-    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s %-7s %s",
+    logging.info("  %-5s %-4s %-5s %-10s %-5s %-22s %-14s %-6s %-6s",
                  "slot", "核型", "valid", "storedCore", "turn", "position", "phase",
-                 "commit", "wait", "pending", "state")
+                 "commit", "wait")
     for slot in rt_info["slots"][:rt_info["expectedSlots"]]:
         is_valid = slot["magicValid"]
         stored_core = str(slot["coreId"]) if is_valid else "-"
         turn = str(slot["execTurn"]) if is_valid else "-"
         position = f"{slot['execPosition']}/{slot['execPositionName']}" if is_valid else "-"
         phase = slot["commPhaseName"] if is_valid else "-"
-        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d %-7d %s",
+        logging.info("  %-5d %-4s %-5s %-10s %-5s %-22s %-14s %-6d %-6d",
                      slot["slotIdx"], slot["coreType"], "yes" if is_valid else "no",
                      stored_core, turn, position, phase,
-                     slot["commCommitCount"], slot["commWaitCount"],
-                     slot["outstandingComm"], slot["commState"])
+                     slot["commCommitCount"], slot["commWaitCount"])
 
 
 def print_workspace_segment(result):
