@@ -771,12 +771,15 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
                 blockShapeY_);
         return ge::GRAPH_FAILED;
     }
+    // HIF8 keeps a fixed 128x256 internal base tile, but sparse X/Y block
+    // boundaries may be smaller and are handled through the existing Q/KV
+    // tail and cross-block gather paths.  Require the Cube minimum alignment
+    // for both logical sparse block dimensions.
     if (IsHif8Quant(quantMode_) &&
-        (blockShapeX_ < TILE_SIZE_128 || blockShapeX_ % TILE_SIZE_128 != 0 || blockShapeY_ < TILE_SIZE_256 ||
-         blockShapeY_ % TILE_SIZE_256 != 0)) {
+        (blockShapeX_ % MIN_BLOCK_ALIGN != 0 || blockShapeY_ % MIN_BLOCK_ALIGN != 0)) {
         OP_LOGE(bsaContext->GetNodeName(),
-                "quantMode 5 requires blockShapeX >= 128 and divisible by 128, and blockShapeY >= 256 and "
-                "divisible by 256, but got [%ld, %ld].",
+                "quantMode 5 requires blockShapeX and blockShapeY to be divisible by %ld, but got [%ld, %ld].",
+                MIN_BLOCK_ALIGN,
                 blockShapeX_, blockShapeY_);
         return ge::GRAPH_FAILED;
     }
