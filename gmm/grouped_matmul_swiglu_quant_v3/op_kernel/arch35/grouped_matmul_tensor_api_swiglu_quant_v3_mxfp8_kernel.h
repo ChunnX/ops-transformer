@@ -63,10 +63,21 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
     using GMMTiling = typename SwigluKernel::GMMTiling;
     using BlockMmadAddressParams = typename SwigluBlockMmad::Params;
 
-    // The Tensor API path uses a conservative 128-wide K L1 window.  The
-    // host only selects this key when K is 128 aligned, so no MX scale tail
-    // is introduced by this choice.
-    constexpr uint32_t kL1 = 128U;
+    // Keep the Tensor API's GMM tiling contract identical to V2: the Blaze
+    // kernel consumes kAL1/kBL1 and scaleKAL1/scaleKBL1, while the common
+    // host tiler stores the corresponding values in TCubeTiling as
+    // stepKa/stepKb/baseK and mxTypePara.  K alignment selects this path,
+    // but must not be confused with a fixed 128-wide L1 window.
+    const uint32_t kAL1 = static_cast<uint32_t>(mmTiling_.stepKa * mmTiling_.baseK);
+    const uint32_t kBL1 = static_cast<uint32_t>(mmTiling_.stepKb * mmTiling_.baseK);
+    const uint32_t scaleFactorA = static_cast<uint32_t>(mmTiling_.mxTypePara & 0xffU);
+    const uint32_t scaleFactorB = static_cast<uint32_t>((mmTiling_.mxTypePara >> 8) & 0xffU);
+    const uint32_t scaleKAL1 = static_cast<uint32_t>(
+        AscendC::Std::min(static_cast<uint64_t>(AscendC::Std::max(scaleFactorA * mmTiling_.stepKa,
+                                                                  scaleFactorB * mmTiling_.stepKb) *
+                                                       mmTiling_.baseK),
+                          static_cast<uint64_t>(mmTiling_.Ka)));
+    const uint32_t scaleKBL1 = scaleKAL1;
     GMMTiling gmmTiling{gmmParams_.groupNum,
                         static_cast<int64_t>(mmTiling_.M),
                         static_cast<int64_t>(mmTiling_.N),
@@ -74,10 +85,10 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
                         static_cast<uint32_t>(mmTiling_.baseM),
                         static_cast<uint32_t>(mmTiling_.baseN),
                         static_cast<uint32_t>(mmTiling_.baseK),
-                        kL1,
-                        kL1,
-                        kL1,
-                        kL1,
+                        kAL1,
+                        kBL1,
+                        scaleKAL1,
+                        scaleKBL1,
                         static_cast<uint8_t>(mmTiling_.dbL0C),
                         0, // GroupedMatmul::SPLIT_M
                         gmmParams_.groupListType,
