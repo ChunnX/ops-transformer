@@ -394,6 +394,7 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
     const int64_t k = x->GetViewShape().GetDim(1);
     const bool transposeWeight = IsTransposedWeight(weightTensor, k);
     const int64_t e = groupList->GetViewShape().GetDim(0);
+    const int64_t weightE = weightTensor->GetViewShape().GetDim(0);
     const int64_t n = transposeWeight ? weightTensor->GetViewShape().GetDim(1) : weightTensor->GetViewShape().GetDim(2);
     const int64_t weightK = transposeWeight ? weightTensor->GetViewShape().GetDim(2) : weightTensor->GetViewShape().GetDim(1);
 
@@ -411,9 +412,11 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "N", std::to_string(n),
                                               "N must be greater than 0 and divisible by 64"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        groupList->GetViewShape().GetDim(0) == static_cast<int64_t>(weight->Size()), ACLNN_ERR_PARAM_INVALID,
+        weightE == e, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "groupList length", std::to_string(e),
-                                              "must be equal to the number of weight tensors"));
+                                              (std::string("must be equal to the first dimension of the single weight tensor, got ") +
+                                               std::to_string(weightE))
+                                                  .c_str()));
 
     const op::Shape xExpected = {m, k};
     const op::Shape xScaleExpected = {m, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::MX_GROUP_SIZE),
