@@ -8,7 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import logging
 import os
+import shutil
+import time
 from abc import ABC, abstractmethod
 from typing import List, Union
 import torch
@@ -17,6 +20,8 @@ from torch.library import Library
 
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
 _as_library = None
+
+logger = logging.getLogger(__name__)
 
 
 def get_as_library():
@@ -172,6 +177,8 @@ class OpBuilder(ABC):
         if self.name in OpBuilder._loaded_ops:
             return OpBuilder._loaded_ops[self.name]
 
+        self._clear_stale_build_lock()
+
         # Lazy import avoids pulling arg_check into every builder import path.
         from cann_ops_transformer.utils.arg_check import wrap_op_module
 
@@ -188,3 +195,64 @@ class OpBuilder(ABC):
         OpBuilder._loaded_ops[self.name] = op_module
 
         return op_module
+
+    def _build_directory(self):
+        """Return torch's JIT build directory for this op, or None."""
+        if os.environ.get("CANN_OPS_LOCK_CLEAN", "1") == "0":
+            return None
+        try:
+            from torch.utils.cpp_extension import _get_build_directory
+
+            return _get_build_directory(self.name, False)
+        except Exception:
+            return None
+
+    _DEADLOCK_DETECT_SECONDS = 300
+
+    @staticmethod
+    def _pid_alive(pid):
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            return False
+        return pid > 0 and os.path.exists("/proc/%d" % pid)
+
+    def _clear_stale_build_lock(self):
+        """Remove the build lock left by a killed JIT compile process.
+
+        torch guards each JIT build dir with a FileBaton lock directory. If
+        the owning process is killed, the lock dir stays and blocks later
+        builds until torch's own deadlock detection (minutes) kicks in. Only
+        delete the lock when we are sure the owner is gone; otherwise leave
+        it untouched and let torch take over.
+        """
+        build_dir = self._build_directory()
+        if not build_dir or not os.path.isdir(build_dir):
+            return
+        lock_path = os.path.join(build_dir, "lock")
+        if not os.path.isdir(lock_path):
+            return
+        pid_file = lock_path + ".pid"
+        pid = None
+        if os.path.isfile(pid_file):
+            try:
+                with open(pid_file, "r") as f:
+                    pid = f.read().strip()
+            except OSError:
+                return
+        if pid is not None:
+            if self._pid_alive(pid):
+                return
+        elif (
+            os.environ.get("CANN_OPS_LOCK_CLEAN_FORCE", "0") != "1"
+            and time.time() - os.path.getmtime(lock_path)
+            < self._DEADLOCK_DETECT_SECONDS
+        ):
+            return
+        shutil.rmtree(lock_path, ignore_errors=True)
+        if os.path.isfile(pid_file):
+            try:
+                os.remove(pid_file)
+            except OSError:
+                pass
+        logger.info("Removed stale build lock: %s", lock_path)
