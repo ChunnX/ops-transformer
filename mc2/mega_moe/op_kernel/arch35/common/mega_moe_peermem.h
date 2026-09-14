@@ -78,37 +78,24 @@ HOST_DEVICE int64_t CalcDispatchMaskAlignSize(const MegaMoeTilingData *tilingDat
 }
 
 // 所有 Rank 使用一致的 numMaxTokensPerRank，因此可据此统一选择 int16 或 int32 编码。
-HOST_DEVICE bool UseCompactRouteIndexBy(int64_t numMaxTokensPerRank, int64_t topK)
+HOST_DEVICE bool UseCompactRouteIndex(int64_t numMaxTokensPerRank, int64_t topK)
 {
-    return topK > 0 && numMaxTokensPerRank >= 0 &&
-           numMaxTokensPerRank <= MAX_COMPACT_ROUTE_ITEM_COUNT / topK;
+    return topK > 0 && numMaxTokensPerRank >= 0 && numMaxTokensPerRank * topK <= MAX_COMPACT_ROUTE_ITEM_COUNT;
 }
 
-HOST_DEVICE bool UseCompactRouteIndex(const MegaMoeTilingData *tilingData)
+HOST_DEVICE int64_t CalcRouteIndexTypeBytes(int64_t numMaxTokensPerRank, int64_t topK)
 {
-    return UseCompactRouteIndexBy(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
-                                  static_cast<int64_t>(tilingData->topK));
-}
-
-HOST_DEVICE int64_t CalcRouteIndexTypeBytesBy(int64_t numMaxTokensPerRank, int64_t topK)
-{
-    return UseCompactRouteIndexBy(numMaxTokensPerRank, topK) ? static_cast<int64_t>(sizeof(CompactRouteIndexType)) :
-                                                               static_cast<int64_t>(sizeof(WideRouteIndexType));
-}
-
-HOST_DEVICE int64_t CalcRouteIndexTypeBytes(const MegaMoeTilingData *tilingData)
-{
-    return CalcRouteIndexTypeBytesBy(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
-                                     static_cast<int64_t>(tilingData->topK));
+    return UseCompactRouteIndex(numMaxTokensPerRank, topK) ? static_cast<int64_t>(sizeof(CompactRouteIndexType)) :
+                                                             static_cast<int64_t>(sizeof(WideRouteIndexType));
 }
 
 // 每个 (localExpert, srcRank) 槽直接保存有序 topkIndex。
 // 同一 token 的 topK expert id 不重复，因此单专家从一张源卡最多接收 numMaxTokensPerRank 个 index。
 HOST_DEVICE int64_t CalcDispatchRouteIndexAlignSize(const MegaMoeTilingData *tilingData)
 {
-    return Ops::Base::CeilAlign(
-        static_cast<int64_t>(tilingData->numMaxTokensPerRank) * CalcRouteIndexTypeBytes(tilingData),
-        ALIGN_32);
+    return Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->numMaxTokensPerRank) *
+                                    CalcRouteIndexTypeBytes(tilingData->numMaxTokensPerRank, tilingData->topK),
+                                ALIGN_32);
 }
 
 // compact route 接收区不再携带槽尾 count；count 继续使用下方独立连续表。
@@ -194,8 +181,7 @@ HOST_DEVICE PeermemLayoutSizes CalcPeermemLayoutSizes(const PeermemSizeParams &p
     sizes.maskAlignSize = CalcDispatchMaskAlignSizeBy(params.numMaxTokensPerRank, params.topK);
     if (params.topoType == TOPO_TYPE_MTE) {
         int64_t routeIndexAlignSize = Ops::Base::CeilAlign(
-            params.numMaxTokensPerRank * CalcRouteIndexTypeBytesBy(params.numMaxTokensPerRank, params.topK),
-            ALIGN_32);
+            params.numMaxTokensPerRank * CalcRouteIndexTypeBytes(params.numMaxTokensPerRank, params.topK), ALIGN_32);
         sizes.maskRecvSize = CalcRouteIndexRecvSize(routeIndexAlignSize, params.moeExpertPerRank, params.epWorldSize);
     } else {
         sizes.maskRecvSize = CalcMaskRecvSize(sizes.maskAlignSize, params.moeExpertPerRank, params.epWorldSize);

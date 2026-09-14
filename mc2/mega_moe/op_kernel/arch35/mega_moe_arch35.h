@@ -346,7 +346,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // compact route 已消除 mask 扫描，只保留一份接收 index batch。
     // Tensor 用途：接收 compact topkIndex 的当前 batch。
     uint32_t validTopkIndexTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t routeIndexTypeBytes = static_cast<uint32_t>(CalcRouteIndexTypeBytes(params_.tilingData));
+    uint32_t routeIndexTypeBytes = static_cast<uint32_t>(
+        CalcRouteIndexTypeBytes(params_.tilingData->numMaxTokensPerRank, params_.tilingData->topK));
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(bufferConfig.routeItemsPerBatch) * routeIndexTypeBytes, static_cast<int64_t>(ALIGN_32));
     scratch.validTopkIndexTensor =
@@ -490,8 +491,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
     uint32_t topkIndexTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
-    uint32_t topkIndexTensorSize =
-        static_cast<uint32_t>(routeItemsPerBatch) * static_cast<uint32_t>(CalcRouteIndexTypeBytes(params_.tilingData));
+    uint32_t topkIndexTensorSize = static_cast<uint32_t>(routeItemsPerBatch) *
+                                   static_cast<uint32_t>(CalcRouteIndexTypeBytes(
+                                       params_.tilingData->numMaxTokensPerRank, params_.tilingData->topK));
     sendMaskScratch_.topkIndexTensor =
         LocalTensor<uint8_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize);
 

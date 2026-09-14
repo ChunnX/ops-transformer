@@ -58,14 +58,15 @@ __aicore__ inline TokenDispatchConfig CreateTokenDispatchConfig(const Params &pa
 {
     uint64_t quantWinOffset =
         static_cast<uint64_t>(params.peermemInfo.quantTokenScalePtr - params.peermemInfo.rankSyncInWorldPtr);
-    return {.maxOutputSize = params.tilingData->maxOutputSize,
-            .bufferConfig = params.tilingData->dispatchBufferConfig,
-            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
-            .useCompactRouteIndex = UseCompactRouteIndex(params.tilingData),
-            .quantWinOffset = quantWinOffset,
-            .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
-            .quantScaleAlignBytes = quantProcessConfig.quantScaleAlignBytes,
-            .quantTokenScaleAlignBytes = quantProcessConfig.quantTokenScaleAlignBytes};
+    return {
+        .maxOutputSize = params.tilingData->maxOutputSize,
+        .bufferConfig = params.tilingData->dispatchBufferConfig,
+        .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+        .useCompactRouteIndex = UseCompactRouteIndex(params.tilingData->numMaxTokensPerRank, params.tilingData->topK),
+        .quantWinOffset = quantWinOffset,
+        .quantTokenAlignBytes = quantProcessConfig.quantTokenAlignBytes,
+        .quantScaleAlignBytes = quantProcessConfig.quantScaleAlignBytes,
+        .quantTokenScaleAlignBytes = quantProcessConfig.quantTokenScaleAlignBytes};
 }
 
 template <typename ActivationType>
@@ -263,11 +264,11 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig &context,
         // 直接定位当前专家、source rank 的 compact ordinal，不再扫描完整 topK mask。
         uint64_t slotOffset =
             (static_cast<uint64_t>(localExpertId) * common.worldSize + remoteRankIdx) * context.routeIndexAlignSize;
-        remoteRouteIndexGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ RouteIndexType *>(
-            params.peermemInfo.maskRecvPtr + slotOffset +
-            static_cast<uint64_t>(routeOrdinal) * sizeof(RouteIndexType)));
-        DataCopyExtParams routeCopyParams{
-            1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(RouteIndexType)), 0U, 0U, 0U};
+        remoteRouteIndexGlobal.SetGlobalBuffer(
+            reinterpret_cast<__gm__ RouteIndexType *>(params.peermemInfo.maskRecvPtr + slotOffset +
+                                                      static_cast<uint64_t>(routeOrdinal) * sizeof(RouteIndexType)));
+        DataCopyExtParams routeCopyParams{1U, static_cast<uint32_t>(batchDispatchRowCount * sizeof(RouteIndexType)), 0U,
+                                          0U, 0U};
         DataCopyPadExtParams<RouteIndexType> routeCopyPad{false, 0U, 0U, 0U};
         DataCopyPad(validTopkIndexTensor, remoteRouteIndexGlobal, routeCopyParams, routeCopyPad);
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();

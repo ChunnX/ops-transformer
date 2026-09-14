@@ -35,11 +35,12 @@ __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint
     const MegaMoeSendMaskBufferConfig &bufferConfig = aivCoreIdx < params.tilingData->sendMaskCoreCountWithExtraExpert ?
                                                           params.tilingData->sendMaskConfigForCoreWithExtraExpert :
                                                           params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
-    return {.expertCountWinOffset = expertCountWinOffset,
-            .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
-            .routeIndexWinOffset = routeIndexWinOffset,
-            .useCompactRouteIndex = UseCompactRouteIndex(params.tilingData),
-            .bufferConfig = bufferConfig};
+    return {
+        .expertCountWinOffset = expertCountWinOffset,
+        .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+        .routeIndexWinOffset = routeIndexWinOffset,
+        .useCompactRouteIndex = UseCompactRouteIndex(params.tilingData->numMaxTokensPerRank, params.tilingData->topK),
+        .bufferConfig = bufferConfig};
 }
 
 struct SendMaskScratch {
@@ -90,13 +91,11 @@ __aicore__ inline void GatherAndSendExpertCompactRoute(const MoeStageCommonConfi
         CompareScalar(compareMaskTensor, scratch.topkIdsTensor, routeInfo.globalExpertId, AscendC::CMPMODE::EQ,
                       validLen);
         if constexpr (sizeof(RouteIndexType) == sizeof(int16_t)) {
-            LocalTensor<uint16_t> compareMaskPatternTensor =
-                compareMaskTensor.template ReinterpretCast<uint16_t>();
+            LocalTensor<uint16_t> compareMaskPatternTensor = compareMaskTensor.template ReinterpretCast<uint16_t>();
             GatherMask(tokValidIndexTensor, topkIndexTensor, compareMaskPatternTensor, true,
                        static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
         } else {
-            LocalTensor<uint32_t> compareMaskPatternTensor =
-                compareMaskTensor.template ReinterpretCast<uint32_t>();
+            LocalTensor<uint32_t> compareMaskPatternTensor = compareMaskTensor.template ReinterpretCast<uint32_t>();
             GatherMask(tokValidIndexTensor, topkIndexTensor, compareMaskPatternTensor, true,
                        static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
         }

@@ -479,9 +479,9 @@ int64_t CalcMteCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     // All ranks choose one route-index width from the shared max-token capacity.
     constexpr int64_t maxInt16RouteItems = 1LL << 15;
     bool useInt16RouteIndex =
-        numTopk > 0 && numMaxTokensPerRank >= 0 && numMaxTokensPerRank <= maxInt16RouteItems / numTopk;
-    int64_t routeIndexTypeBytes = useInt16RouteIndex ? static_cast<int64_t>(sizeof(int16_t)) :
-                                                      static_cast<int64_t>(sizeof(int32_t));
+        numTopk > 0 && numMaxTokensPerRank >= 0 && numMaxTokensPerRank * numTopk <= maxInt16RouteItems;
+    int64_t routeIndexTypeBytes =
+        useInt16RouteIndex ? static_cast<int64_t>(sizeof(int16_t)) : static_cast<int64_t>(sizeof(int32_t));
     int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * routeIndexTypeBytes, ALIGN_32);
     int64_t routeRecvSize = CeilAlign(expertPerRank * epWorldSize * routeIndexAlignSize, ALIGN_512);
 
