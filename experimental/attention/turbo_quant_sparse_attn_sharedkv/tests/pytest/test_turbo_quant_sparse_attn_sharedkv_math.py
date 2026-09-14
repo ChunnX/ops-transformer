@@ -18,6 +18,8 @@ import numpy as np
 HEAD_DIM = 512
 PACKED_BYTES = HEAD_DIM // 2
 SLOT_BYTES = PACKED_BYTES + 2
+SLOT_ROW_BYTES = 288
+BF16_DEQUANT_BATCH_ROWS = 16
 CENTROIDS = np.array(
     [
         0.00547294,
@@ -41,6 +43,37 @@ CENTROIDS = np.array(
 )
 
 
+def _float32_to_bf16_bits(values):
+    values = np.asarray(values, dtype=np.float32)
+    bits = values.view(np.uint32)
+    return (
+        (bits + np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1)))
+        >> np.uint32(16)
+    ).astype(np.uint16)
+
+
+def _bf16_bits_to_float32(values):
+    bits = np.asarray(values, dtype=np.uint16).astype(np.uint32) << np.uint32(16)
+    return bits.view(np.float32)
+
+
+def _make_tq4_byte_lut():
+    physical_centroids = CENTROIDS[np.arange(16) ^ 8]
+    centroid_bits = _float32_to_bf16_bits(physical_centroids).astype(np.uint32)
+    packed_bytes = np.arange(256, dtype=np.uint32)
+    low_bits = centroid_bits[packed_bytes & 0xF]
+    high_bits = centroid_bits[packed_bytes >> 4]
+    return (high_bits << np.uint32(16)) | low_bits
+
+
+def _dequant_byte_lut(slots, scales):
+    byte_lut = _make_tq4_byte_lut()
+    packed_pairs = byte_lut[slots[:, :PACKED_BYTES]].view(np.uint16)
+    centroids = _bf16_bits_to_float32(packed_pairs.reshape(slots.shape[0], HEAD_DIM))
+    scaled = centroids * np.asarray(scales, dtype=np.float16).astype(np.float32)[:, None]
+    return _float32_to_bf16_bits(scaled)
+
+
 def _hadamard(order):
     matrix = np.ones((1, 1), dtype=np.float64)
     while matrix.shape[0] < order:
@@ -60,6 +93,56 @@ def test_signed_nibble_centroid_order():
     gather_indices = signed_codes + 8
     np.testing.assert_array_equal(gather_indices, np.r_[8:16, 0:8])
     assert np.all(np.diff(CENTROIDS[gather_indices]) > 0)
+
+
+def test_byte_lut_exhaustively_matches_two_bf16_centroid_lookups():
+    byte_lut = _make_tq4_byte_lut()
+    packed_bytes = np.arange(256, dtype=np.uint32)
+    physical_centroid_bits = _float32_to_bf16_bits(CENTROIDS[np.arange(16) ^ 8])
+
+    np.testing.assert_array_equal(
+        (byte_lut & np.uint32(0xFFFF)).astype(np.uint16),
+        physical_centroid_bits[packed_bytes & 0xF],
+    )
+    np.testing.assert_array_equal(
+        (byte_lut >> np.uint32(16)).astype(np.uint16),
+        physical_centroid_bits[packed_bytes >> 4],
+    )
+
+
+def test_byte_lut_dequant_handles_every_batch_tail():
+    rng = np.random.default_rng(6)
+    for row_count in range(1, BF16_DEQUANT_BATCH_ROWS + 1):
+        slots = np.zeros((row_count, SLOT_ROW_BYTES), dtype=np.uint8)
+        slots[:, :PACKED_BYTES] = rng.integers(
+            0, 256, size=(row_count, PACKED_BYTES), dtype=np.uint8
+        )
+        scales = rng.uniform(0.125, 8.0, row_count).astype(np.float16)
+        actual = _dequant_byte_lut(slots, scales)
+
+        low_codes = slots[:, :PACKED_BYTES] & np.uint8(0xF)
+        high_codes = slots[:, :PACKED_BYTES] >> np.uint8(4)
+        codes = np.empty((row_count, HEAD_DIM), dtype=np.uint8)
+        codes[:, 0::2] = low_codes
+        codes[:, 1::2] = high_codes
+        centroid_values = _bf16_bits_to_float32(
+            _float32_to_bf16_bits(CENTROIDS[codes ^ np.uint8(8)])
+        )
+        expected = _float32_to_bf16_bits(
+            centroid_values * scales.astype(np.float32)[:, None]
+        )
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_byte_lut_scale_rounding_is_within_one_bf16_ulp_of_float_lut():
+    finite_fp16 = np.arange(1 << 16, dtype=np.uint16).view(np.float16)
+    scales = finite_fp16[np.isfinite(finite_fp16)].astype(np.float32)
+    bf16_centroids = _bf16_bits_to_float32(_float32_to_bf16_bits(CENTROIDS))
+
+    for centroid, bf16_centroid in zip(CENTROIDS, bf16_centroids):
+        old_bits = _float32_to_bf16_bits(centroid * scales).astype(np.int32)
+        optimized_bits = _float32_to_bf16_bits(bf16_centroid * scales).astype(np.int32)
+        assert np.max(np.abs(old_bits - optimized_bits)) <= 1
 
 
 def test_corrected_scale_preserves_quantized_row_norm():

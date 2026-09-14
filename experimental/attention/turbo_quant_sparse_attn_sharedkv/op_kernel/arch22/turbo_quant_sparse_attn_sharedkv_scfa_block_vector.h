@@ -143,25 +143,37 @@ private:
     static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T); // 32768/4=8096
     static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T);                               // 32/4=8
     static constexpr uint32_t MAX_N1_SIZE = 128U;
-    // tmpBuff1: batched work/codes/indices followed by two aligned raw-slot regions.
+    // tmpBuff1: dtype-specific dequant scratch followed by two aligned raw-slot regions.
     static constexpr uint32_t TQ4_MAX_STAGED_ROWS = INPUT2_BUFFER_OFFSET / (TQ4_HEAD_DIM * sizeof(KV_T));
     static constexpr uint32_t TQ4_RAW_REGION_BYTES = TQ4_MAX_STAGED_ROWS * TQ4_SLOT_ROW_BYTES;
     static constexpr uint32_t TQ4_RAW_BUFFER_BYTES = 2U * TQ4_RAW_REGION_BYTES;
-    static constexpr uint32_t TQ4_DEQUANT_BYTES_PER_ROW =
+    static constexpr bool TQ4_FAST_BF16 = IsSameType<KV_T, bfloat16_t>::value;
+    static constexpr uint32_t TQ4_SLOW_DEQUANT_BYTES_PER_ROW =
         TQ4_HEAD_DIM * (sizeof(float) + sizeof(half) + sizeof(int32_t));
+    // BF16 lookup uses outputBuff1 for indices, then reuses it as FP32 scale work after Gather.
+    static constexpr uint32_t TQ4_FAST_DEQUANT_BATCH_ROWS = 16U;
     static constexpr uint32_t TQ4_DEQUANT_BATCH_ROWS =
-        (ConstInfo::BUFFER_SIZE_BYTE_32K - TQ4_RAW_BUFFER_BYTES) / TQ4_DEQUANT_BYTES_PER_ROW;
-    static constexpr uint32_t TQ4_WORK_BYTES = TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(float);
-    static constexpr uint32_t TQ4_SIGNED_BYTES = TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(half);
-    static constexpr uint32_t TQ4_INDEX_BYTES = TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(int32_t);
-    static constexpr uint32_t TQ4_SIGNED_OFFSET = TQ4_WORK_BYTES;
+        TQ4_FAST_BF16 ? TQ4_FAST_DEQUANT_BATCH_ROWS :
+                        (ConstInfo::BUFFER_SIZE_BYTE_32K - TQ4_RAW_BUFFER_BYTES) / TQ4_SLOW_DEQUANT_BYTES_PER_ROW;
+    static constexpr uint32_t TQ4_PACKED_BATCH_BYTES =
+        TQ4_FAST_BF16 ? TQ4_DEQUANT_BATCH_ROWS * TQ4_PACKED_BYTES : 0U;
+    static constexpr uint32_t TQ4_WORK_BYTES =
+        TQ4_FAST_BF16 ? 0U : TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(float);
+    static constexpr uint32_t TQ4_LOOKUP_ELEMENT_COUNT =
+        TQ4_FAST_BF16 ? TQ4_DEQUANT_BATCH_ROWS * TQ4_PACKED_BYTES :
+                        TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM;
+    static constexpr uint32_t TQ4_SIGNED_BYTES = TQ4_LOOKUP_ELEMENT_COUNT * sizeof(half);
+    static constexpr uint32_t TQ4_INDEX_BYTES =
+        TQ4_FAST_BF16 ? 0U : TQ4_LOOKUP_ELEMENT_COUNT * sizeof(int32_t);
+    static constexpr uint32_t TQ4_SIGNED_OFFSET = TQ4_PACKED_BATCH_BYTES + TQ4_WORK_BYTES;
     static constexpr uint32_t TQ4_INDEX_OFFSET = TQ4_SIGNED_OFFSET + TQ4_SIGNED_BYTES;
     static constexpr uint32_t TQ4_RAW_OFFSET = TQ4_INDEX_OFFSET + TQ4_INDEX_BYTES;
     static constexpr uint32_t TQ4_CENTROID_COUNT = 16U;
     static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_OFFSET = TQ4_CENTROID_COUNT * sizeof(float);
     static constexpr uint32_t TQ4_SCALE_GATHER_INDEX_BYTES = TQ4_DEQUANT_BATCH_ROWS * sizeof(uint32_t);
     static constexpr uint32_t TQ4_SCALE_CARRIER_BYTES = TQ4_DEQUANT_BATCH_ROWS * BYTE_BLOCK;
-    static constexpr uint32_t TQ4_SCALE_BROADCAST_OFFSET = BYTE_BLOCK;
+    static constexpr uint32_t TQ4_SCALE_BROADCAST_OFFSET =
+        (TQ4_DEQUANT_BATCH_ROWS * sizeof(float) + BYTE_BLOCK - 1U) / BYTE_BLOCK * BYTE_BLOCK;
     static constexpr uint32_t TQ4_SCALE_BROADCAST_BYTES = (TQ4_DEQUANT_BATCH_ROWS + FP32_BLOCK_ELEMENT_NUM - 1U) /
                                                           FP32_BLOCK_ELEMENT_NUM * FP32_BLOCK_ELEMENT_NUM *
                                                           FP32_BLOCK_ELEMENT_NUM * sizeof(float);
@@ -175,13 +187,23 @@ private:
     static constexpr uint32_t TQ4_TOPK_CACHE_CAPACITY = TQ4_TOPK_CACHE_BYTES / sizeof(int32_t);
     static constexpr uint32_t TQ4_BLOCK_TABLE_CACHE_CAPACITY = TQ4_BLOCK_TABLE_CACHE_BYTES / sizeof(int32_t);
     static_assert(TQ4_DEQUANT_BATCH_ROWS > 0U, "TQ4 dequant scratch cannot hold one row");
+    static_assert(TQ4_DEQUANT_BATCH_ROWS <= TQ4_MAX_STAGED_ROWS, "TQ4 dequant batch exceeds staged rows");
     static_assert(TQ4_RAW_OFFSET + TQ4_RAW_BUFFER_BYTES <= ConstInfo::BUFFER_SIZE_BYTE_32K,
                   "TQ4 batched dequant scratch exceeds tmpBuff1");
+    static_assert(!TQ4_FAST_BF16 ||
+                      TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(float) <= ConstInfo::BUFFER_SIZE_BYTE_32K,
+                  "TQ4 BF16 scale work exceeds outputBuff1");
+    static_assert(!TQ4_FAST_BF16 ||
+                      TQ4_LOOKUP_ELEMENT_COUNT * sizeof(int32_t) <= ConstInfo::BUFFER_SIZE_BYTE_32K,
+                  "TQ4 BF16 indices exceed outputBuff1");
     static_assert(TQ4_SCALE_GATHER_INDEX_OFFSET + TQ4_SCALE_GATHER_INDEX_BYTES <= ConstInfo::BUFFER_SIZE_BYTE_256B,
                   "TQ4 scale gather indices overlap tqCentBuff");
     static_assert(TQ4_SCALE_CARRIER_BYTES + TQ4_DEQUANT_BATCH_ROWS * sizeof(half) <= TQ4_SIGNED_BYTES,
                   "TQ4 scale extraction exceeds signed-code scratch");
-    static_assert(TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_INDEX_BYTES,
+    static_assert((TQ4_FAST_BF16 &&
+                   TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_PACKED_BATCH_BYTES) ||
+                      (!TQ4_FAST_BF16 &&
+                       TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_INDEX_BYTES),
                   "TQ4 scale broadcast exceeds index scratch");
     static_assert(TQ4_TOPK_CACHE_BYTES <= TQ4_BLOCK_TABLE_CACHE_OFFSET, "TQ4 index caches overlap in v0ValidSizeBuff");
     static constexpr T SOFTMAX_MIN_NUM = -2e38;
@@ -225,6 +247,7 @@ private:
     TBuf<> tmpBuff1;        // 32K
     TBuf<> v0ValidSizeBuff; // 8K
     TBuf<> tqCentBuff;      // 256B
+    TBuf<> tqByteLutBuff;   // 1K
 
     TBuf<> sinksBuff;     // 1K
     TBuf<> sinksBrcbBuff; // 12K
@@ -264,6 +287,31 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitBu
     if (constInfo.kvQuantMode == 3) {
         pipe->InitBuffer(tqCentBuff, ConstInfo::BUFFER_SIZE_BYTE_256B);
         LoadTq4Centroids(tqCentBuff.Get<float>());
+        if constexpr (TQ4_FAST_BF16) {
+            pipe->InitBuffer(tqByteLutBuff, ConstInfo::BUFFER_SIZE_BYTE_1K);
+            LocalTensor<float> centroids = tqCentBuff.Get<float>();
+            LocalTensor<uint32_t> byteLut = tqByteLutBuff.Get<uint32_t>();
+            // Physical nibble n maps to signed-code centroid n^8. Low 16 bits preserve low-nibble-first storage.
+            for (uint32_t high = 0; high < 16U; ++high) {
+                union {
+                    float value;
+                    uint32_t bits;
+                } highCentroid;
+                highCentroid.value = centroids.GetValue(high ^ 8U);
+                uint32_t highBits =
+                    (highCentroid.bits + 0x7FFFU + ((highCentroid.bits >> 16U) & 1U)) >> 16U;
+                for (uint32_t low = 0; low < 16U; ++low) {
+                    union {
+                        float value;
+                        uint32_t bits;
+                    } lowCentroid;
+                    lowCentroid.value = centroids.GetValue(low ^ 8U);
+                    uint32_t lowBits =
+                        (lowCentroid.bits + 0x7FFFU + ((lowCentroid.bits >> 16U) & 1U)) >> 16U;
+                    byteLut.SetValue(high * 16U + low, (highBits << 16U) | lowBits);
+                }
+            }
+        }
         LocalTensor<uint32_t> scaleGatherIndices =
             tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];
         for (uint32_t row = 0; row < TQ4_DEQUANT_BATCH_ROWS; ++row) {
@@ -696,16 +744,19 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Dequan
                                                                                          LocalTensor<KV_T> output,
                                                                                          int64_t rowCount)
 {
-    LocalTensor<float> work = tmpBuff1.Get<float>();
+    LocalTensor<float> work =
+        TQ4_FAST_BF16 ? outputBuff1.Get<float>() : tmpBuff1.Get<float>()[TQ4_PACKED_BATCH_BYTES / sizeof(float)];
     LocalTensor<half> signedCodes = tmpBuff1.Get<half>()[TQ4_SIGNED_OFFSET / sizeof(half)];
-    LocalTensor<int32_t> indices = tmpBuff1.Get<int32_t>()[TQ4_INDEX_OFFSET / sizeof(int32_t)];
+    LocalTensor<int32_t> indices =
+        TQ4_FAST_BF16 ? outputBuff1.Get<int32_t>() : tmpBuff1.Get<int32_t>()[TQ4_INDEX_OFFSET / sizeof(int32_t)];
     LocalTensor<uint32_t> unsignedIndices = indices.template ReinterpretCast<uint32_t>();
     LocalTensor<float> centroids = tqCentBuff.Get<float>();
     LocalTensor<int4b_t> packedCodes = slots.template ReinterpretCast<int4b_t>();
     LocalTensor<half> slotHalf = slots.template ReinterpretCast<half>();
     LocalTensor<half> scaleCarriers = signedCodes;
     LocalTensor<half> scalesFp16 = signedCodes[TQ4_SCALE_CARRIER_BYTES / sizeof(half)];
-    LocalTensor<float> scalesFp32 = indices.template ReinterpretCast<float>();
+    LocalTensor<float> scalesFp32 =
+        TQ4_FAST_BF16 ? tmpBuff1.Get<float>() : indices.template ReinterpretCast<float>();
     LocalTensor<float> scalesBrcb = scalesFp32[TQ4_SCALE_BROADCAST_OFFSET / sizeof(float)];
     LocalTensor<uint32_t> scaleGatherIndices =
         tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];
@@ -714,20 +765,45 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Dequan
         uint32_t currentRows =
             static_cast<uint32_t>(base + TQ4_DEQUANT_BATCH_ROWS <= rowCount ? TQ4_DEQUANT_BATCH_ROWS : rowCount - base);
         uint32_t elementCount = currentRows * TQ4_HEAD_DIM;
-        for (uint32_t row = 0; row < currentRows; ++row) {
-            uint32_t sourceRow = static_cast<uint32_t>(base) + row;
-            Cast(signedCodes[row * TQ4_HEAD_DIM], packedCodes[sourceRow * TQ4_SLOT_ROW_BYTES * 2U],
-                 RoundMode::CAST_NONE, TQ4_HEAD_DIM);
+        if constexpr (TQ4_FAST_BF16) {
+            LocalTensor<uint8_t> compactCodes = tmpBuff1.Get<uint8_t>();
+            DataCopyParams compactParams;
+            compactParams.blockCount = static_cast<uint16_t>(currentRows);
+            compactParams.blockLen = static_cast<uint16_t>(TQ4_PACKED_BYTES / BYTE_BLOCK);
+            compactParams.srcStride = static_cast<uint16_t>((TQ4_SLOT_ROW_BYTES - TQ4_PACKED_BYTES) / BYTE_BLOCK);
+            compactParams.dstStride = 0;
+            DataCopy(compactCodes, slots[base * TQ4_SLOT_ROW_BYTES], compactParams);
+            PipeBarrier<PIPE_V>();
+            uint32_t packedElementCount = currentRows * TQ4_PACKED_BYTES;
+            Cast(signedCodes, compactCodes, RoundMode::CAST_NONE, packedElementCount);
+            PipeBarrier<PIPE_V>();
+            Cast(indices, signedCodes, RoundMode::CAST_ROUND, packedElementCount);
+            PipeBarrier<PIPE_V>();
+            ShiftLeft(indices, indices, static_cast<int32_t>(2), packedElementCount);
+            PipeBarrier<PIPE_V>();
+            LocalTensor<uint32_t> outputPairs = output.template ReinterpretCast<uint32_t>();
+            // Gather consumes the indices before outputBuff1 is reused below as the FP32 scale workspace.
+            Gather(outputPairs[base * TQ4_PACKED_BYTES], tqByteLutBuff.Get<uint32_t>(), unsignedIndices, 0,
+                   packedElementCount);
+            PipeBarrier<PIPE_V>();
+            Cast(work, output[base * TQ4_HEAD_DIM], RoundMode::CAST_NONE, elementCount);
+            PipeBarrier<PIPE_V>();
+        } else {
+            for (uint32_t row = 0; row < currentRows; ++row) {
+                uint32_t sourceRow = static_cast<uint32_t>(base) + row;
+                Cast(signedCodes[row * TQ4_HEAD_DIM], packedCodes[sourceRow * TQ4_SLOT_ROW_BYTES * 2U],
+                     RoundMode::CAST_NONE, TQ4_HEAD_DIM);
+            }
+            PipeBarrier<PIPE_V>();
+            Adds(signedCodes, signedCodes, static_cast<half>(8.0f), elementCount);
+            PipeBarrier<PIPE_V>();
+            Muls(signedCodes, signedCodes, static_cast<half>(TQ4_CENTROID_BYTE_STRIDE), elementCount);
+            PipeBarrier<PIPE_V>();
+            Cast(indices, signedCodes, RoundMode::CAST_ROUND, elementCount);
+            PipeBarrier<PIPE_V>();
+            Gather(work, centroids, unsignedIndices, 0, elementCount);
+            PipeBarrier<PIPE_V>();
         }
-        PipeBarrier<PIPE_V>();
-        Adds(signedCodes, signedCodes, static_cast<half>(8.0f), elementCount);
-        PipeBarrier<PIPE_V>();
-        Muls(signedCodes, signedCodes, static_cast<half>(TQ4_CENTROID_BYTE_STRIDE), elementCount);
-        PipeBarrier<PIPE_V>();
-        Cast(indices, signedCodes, RoundMode::CAST_ROUND, elementCount);
-        PipeBarrier<PIPE_V>();
-        Gather(work, centroids, unsignedIndices, 0, elementCount);
-        PipeBarrier<PIPE_V>();
 
         // Extract one aligned carrier per staged row, then broadcast its leading FP16 scale.
         DataCopyParams scaleCopyParams;
