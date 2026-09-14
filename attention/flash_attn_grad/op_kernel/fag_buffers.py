@@ -37,7 +37,9 @@ BN2 与 BN2GS1S2 共用 CV 共享区、cube L1 与 L0 工作集，连 dK/dV 累�
 
 import pypto_pro.language as pl
 
-# --- generated imports (fag_fiximports.py) ---
+# 地址 / mutex 走 fag_mem 别名，避免把整张地址表摊在文件头。
+# shape 常量仍 from-import：工厂里到处写 shape=[CUBE_BASEM, ...]，裸名更干净。
+import fag_mem as mem
 from fag_common import (
     CUBE_BASEM,
     CUBE_BASEN,
@@ -47,76 +49,6 @@ from fag_common import (
     VECTOR_BASEM,
     VECTOR_BASEN,
 )
-from fag_mem import (
-    ACC_COLS,
-    BN2_CAST_W,
-    BN2_UB_CAST,
-    BN2_UB_DY,
-    BN2_UB_LSE_0,
-    BN2_UB_LSE_1,
-    BN2_UB_NZP,
-    BN2_UB_SFMG,
-    BN2_UB_Y,
-    BN2_V1_ROWS,
-    L0AB_ADDRS,
-    L0C_ACC_ADDRS,
-    L0C_ACC_MUTEX,
-    L0C_DK0_ADDR,
-    L0C_DK1_ADDR,
-    MTX_L0C_DK1,
-    L0C_DV0_ADDR,
-    L0C_DV1_ADDR,
-    MTX_L0C_DV1,
-    L1_DO_ADDRS,
-    L1_DO_MUTEX,
-    L1_DS_ADDR,
-    L1_KND_ADDR,
-    L1_K_ADDR,
-    L1_P_ADDR,
-    L1_Q_ADDRS,
-    L1_Q_MUTEX,
-    L1_V_ADDR,
-    MTX_L0A,
-    MTX_L0B,
-    MTX_L0C_DK0,
-    MTX_L0C_DV0,
-    MTX_L1_DS,
-    MTX_L1_DS_T,
-    MTX_L1_K,
-    MTX_L1_K_ND,
-    MTX_L1_P,
-    MTX_L1_P_T,
-    MTX_L1_V,
-    MTX_MM1_RES,
-    MTX_MM2_RES,
-    MTX_UB_CAST,
-    MTX_UB_DY,
-    MTX_UB_LSE,
-    MTX_UB_NZP,
-    MTX_UB_POST_F16,
-    MTX_UB_POST_F32,
-    MTX_UB_SFMG,
-    MTX_UB_Y,
-    MTX_UB_ZERO,
-    POST_ELEMS,
-    POST_F16_ADDRS,
-    POST_F32_ADDRS,
-    PRE_ELEMS,
-    UB_DY_A,
-    UB_LSE0_A,
-    UB_LSE1_A,
-    UB_MASK_A,
-    UB_MASK_PRE_A,
-    UB_MM1_0,
-    UB_MM1_1,
-    UB_MM2_0,
-    UB_MM2_1,
-    UB_NZP_A,
-    UB_PRE_ZERO,
-    UB_SFMG_A,
-    UB_Y_A,
-)
-# --- end generated imports ---
 
 
 # ==================================================================
@@ -133,8 +65,8 @@ def make_mm1_res():
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[UB_MM1_0, UB_MM1_1],
-        mutex_ids=MTX_MM1_RES,
+        addrs=[mem.UB_MM1_0, mem.UB_MM1_1],
+        mutex_ids=mem.MTX_MM1_RES,
     )
 
 
@@ -146,8 +78,8 @@ def make_mm2_res():
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[UB_MM2_0, UB_MM2_1],
-        mutex_ids=MTX_MM2_RES,
+        addrs=[mem.UB_MM2_0, mem.UB_MM2_1],
+        mutex_ids=mem.MTX_MM2_RES,
     )
 
 
@@ -161,8 +93,8 @@ def make_ds_l1():
             layout=pl.NZ,
             compact=1,
         ),
-        addrs=[L1_DS_ADDR[d_align]],
-        mutex_ids=MTX_L1_DS,
+        addrs=[mem.L1_DS_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_DS,
     )
 
 
@@ -176,8 +108,8 @@ def make_p_l1():
             layout=pl.NZ,
             compact=1,
         ),
-        addrs=[L1_P_ADDR[d_align]],
-        mutex_ids=MTX_L1_P,
+        addrs=[mem.L1_P_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_P,
     )
 
 
@@ -202,8 +134,8 @@ def make_ds_t_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[L1_DS_ADDR[d_align]],
-        mutex_ids=MTX_L1_DS_T,
+        addrs=[mem.L1_DS_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_DS_T,
     )
 
 
@@ -217,8 +149,8 @@ def make_p_t_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[L1_P_ADDR[d_align]],
-        mutex_ids=MTX_L1_P_T,
+        addrs=[mem.L1_P_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_P_T,
     )
 
 
@@ -234,8 +166,8 @@ def make_q_l1():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=L1_Q_ADDRS[d_align],
-        mutex_ids=L1_Q_MUTEX[d_align],
+        addrs=mem.L1_Q_ADDRS[d_align],
+        mutex_ids=mem.L1_Q_MUTEX[d_align],
     )
 
 
@@ -249,8 +181,8 @@ def make_k_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[L1_K_ADDR[d_align]],
-        mutex_ids=MTX_L1_K[d_align],
+        addrs=[mem.L1_K_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_K[d_align],
     )
 
 
@@ -268,8 +200,8 @@ def make_k_nd_l1():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=[L1_KND_ADDR[d_align]],
-        mutex_ids=MTX_L1_K_ND[d_align],
+        addrs=[mem.L1_KND_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_K_ND[d_align],
     )
 
 
@@ -288,8 +220,8 @@ def make_v_l1():
             layout=pl.ZN,
             compact=1,
         ),
-        addrs=[L1_V_ADDR[d_align]],
-        mutex_ids=MTX_L1_V[d_align],
+        addrs=[mem.L1_V_ADDR[d_align]],
+        mutex_ids=mem.MTX_L1_V[d_align],
     )
 
 
@@ -302,8 +234,8 @@ def make_do_l1():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=L1_DO_ADDRS[d_align],
-        mutex_ids=L1_DO_MUTEX[d_align],
+        addrs=mem.L1_DO_ADDRS[d_align],
+        mutex_ids=mem.L1_DO_MUTEX[d_align],
     )
 
 
@@ -327,8 +259,8 @@ def make_q_lag_view():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=L1_Q_ADDRS[d_align],
-        mutex_ids=L1_Q_MUTEX[d_align],
+        addrs=mem.L1_Q_ADDRS[d_align],
+        mutex_ids=mem.L1_Q_MUTEX[d_align],
     )
 
 
@@ -341,8 +273,8 @@ def make_do_lag_view():
             target_memory=pl.MemorySpace.Mat,
             compact=1,
         ),
-        addrs=L1_DO_ADDRS[d_align],
-        mutex_ids=L1_DO_MUTEX[d_align],
+        addrs=mem.L1_DO_ADDRS[d_align],
+        mutex_ids=mem.L1_DO_MUTEX[d_align],
     )
 
 
@@ -351,19 +283,19 @@ def make_do_lag_view():
 # ==================================================================
 # L0A/L0B 一律按「最宽的一个 D 分块」声明：192 档是 96 列而不是 192，于是每块
 # 24KB、双缓冲 2x24=48KB<=64KB 得以保留 —— 这正是切 D 轴的首要目的。
-# 列宽取 ACC_COLS = max(CUBE_BASEN, 分块宽)：MM2/MM1 的左矩阵是 Q/dO 的 D
+# 列宽取 mem.ACC_COLS = max(CUBE_BASEN, 分块宽)：MM2/MM1 的左矩阵是 Q/dO 的 D
 # 分块，MM3/MM4/MM5 的左矩阵是 dS/P([M,N])。
 def make_l0a():
     """L0A（左矩阵），双缓冲。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[CUBE_BASEM, ACC_COLS[d_align]],
+            shape=[CUBE_BASEM, mem.ACC_COLS[d_align]],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Left,
             compact=1,
         ),
-        addrs=L0AB_ADDRS[d_align],
-        mutex_ids=MTX_L0A[d_align],
+        addrs=mem.L0AB_ADDRS[d_align],
+        mutex_ids=mem.MTX_L0A[d_align],
     )
 
 
@@ -371,13 +303,13 @@ def make_l0b():
     """L0B（右矩阵），双缓冲。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[ACC_COLS[d_align], CUBE_BASEN],
+            shape=[mem.ACC_COLS[d_align], CUBE_BASEN],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Right,
             compact=1,
         ),
-        addrs=L0AB_ADDRS[d_align],
-        mutex_ids=MTX_L0B[d_align],
+        addrs=mem.L0AB_ADDRS[d_align],
+        mutex_ids=mem.MTX_L0B[d_align],
     )
 
 
@@ -390,13 +322,13 @@ def make_l0c_acc():
     """
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[CUBE_BASEM, ACC_COLS[d_align]],
+            shape=[CUBE_BASEM, mem.ACC_COLS[d_align]],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=L0C_ACC_ADDRS[d_align],
-        mutex_ids=L0C_ACC_MUTEX[d_align],
+        addrs=mem.L0C_ACC_ADDRS[d_align],
+        mutex_ids=mem.L0C_ACC_MUTEX[d_align],
     )
 
 
@@ -414,8 +346,8 @@ def make_dk_l0c_chunk0():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[L0C_DK0_ADDR[d_align]],
-        mutex_ids=[MTX_L0C_DK0[d_align]],
+        addrs=[mem.L0C_DK0_ADDR[d_align]],
+        mutex_ids=[mem.MTX_L0C_DK0[d_align]],
     )
 
 
@@ -428,8 +360,8 @@ def make_dv_l0c_chunk0():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[L0C_DV0_ADDR[d_align]],
-        mutex_ids=[MTX_L0C_DV0[d_align]],
+        addrs=[mem.L0C_DV0_ADDR[d_align]],
+        mutex_ids=[mem.MTX_L0C_DV0[d_align]],
     )
 
 
@@ -447,8 +379,8 @@ def make_dk_l0c_chunk1():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[L0C_DK1_ADDR[d_align]],
-        mutex_ids=[MTX_L0C_DK1[d_align]],
+        addrs=[mem.L0C_DK1_ADDR[d_align]],
+        mutex_ids=[mem.MTX_L0C_DK1[d_align]],
     )
 
 
@@ -461,8 +393,8 @@ def make_dv_l0c_chunk1():
             target_memory=pl.MemorySpace.Acc,
             compact=1,
         ),
-        addrs=[L0C_DV1_ADDR[d_align]],
-        mutex_ids=[MTX_L0C_DV1[d_align]],
+        addrs=[mem.L0C_DV1_ADDR[d_align]],
+        mutex_ids=[mem.MTX_L0C_DV1[d_align]],
     )
 
 
@@ -482,8 +414,8 @@ def make_y_ub(v1w):
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[UB_Y_A[v1w]],
-        mutex_ids=MTX_UB_Y,
+        addrs=[mem.UB_Y_A[v1w]],
+        mutex_ids=mem.MTX_UB_Y,
     )
 
 
@@ -495,8 +427,8 @@ def make_dy_ub(v1w):
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
         ),
-        addrs=[UB_DY_A[v1w]],
-        mutex_ids=MTX_UB_DY,
+        addrs=[mem.UB_DY_A[v1w]],
+        mutex_ids=mem.MTX_UB_DY,
     )
 
 
@@ -515,8 +447,8 @@ def make_nzp_ub(v1w):
             valid_shape=[-1, -1],
             compact=2,
         ),
-        addrs=[UB_NZP_A[v1w]],
-        mutex_ids=MTX_UB_NZP,
+        addrs=[mem.UB_NZP_A[v1w]],
+        mutex_ids=mem.MTX_UB_NZP,
     )
 
 
@@ -529,8 +461,8 @@ def make_sfmg_ub(v1w):
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[UB_SFMG_A[v1w]],
-        mutex_ids=MTX_UB_SFMG,
+        addrs=[mem.UB_SFMG_A[v1w]],
+        mutex_ids=mem.MTX_UB_SFMG,
     )
 
 
@@ -543,8 +475,8 @@ def make_lse_ub(v1w):
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[UB_LSE0_A[v1w], UB_LSE1_A[v1w]],
-        mutex_ids=MTX_UB_LSE,
+        addrs=[mem.UB_LSE0_A[v1w], mem.UB_LSE1_A[v1w]],
+        mutex_ids=mem.MTX_UB_LSE,
     )
 
 
@@ -560,8 +492,8 @@ def make_mask_view(v1w):
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[UB_MASK_A[v1w]],
-        mutex_ids=MTX_UB_Y,
+        addrs=[mem.UB_MASK_A[v1w]],
+        mutex_ids=mem.MTX_UB_Y,
     )
 
 
@@ -574,8 +506,8 @@ def make_mask_pre_view(v1w):
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[UB_MASK_PRE_A[v1w]],
-        mutex_ids=MTX_UB_DY,
+        addrs=[mem.UB_MASK_PRE_A[v1w]],
+        mutex_ids=mem.MTX_UB_DY,
     )
 
 
@@ -588,13 +520,13 @@ def make_y_ub_bn2():
     """BN2 的 y UB。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[BN2_V1_ROWS, d_align],
+            shape=[mem.BN2_V1_ROWS, d_align],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[BN2_UB_Y],
-        mutex_ids=MTX_UB_Y,
+        addrs=[mem.BN2_UB_Y],
+        mutex_ids=mem.MTX_UB_Y,
     )
 
 
@@ -602,13 +534,13 @@ def make_dy_ub_bn2():
     """BN2 的 dO UB。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[BN2_V1_ROWS, d_align],
+            shape=[mem.BN2_V1_ROWS, d_align],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[BN2_UB_DY],
-        mutex_ids=MTX_UB_DY,
+        addrs=[mem.BN2_UB_DY],
+        mutex_ids=mem.MTX_UB_DY,
     )
 
 
@@ -623,8 +555,8 @@ def make_nzp_ub_bn2():
             valid_shape=[-1, -1],
             compact=2,
         ),
-        addrs=[BN2_UB_NZP],
-        mutex_ids=MTX_UB_NZP,
+        addrs=[mem.BN2_UB_NZP],
+        mutex_ids=mem.MTX_UB_NZP,
     )
 
 
@@ -637,8 +569,8 @@ def make_sfmg_ub_bn2():
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[BN2_UB_SFMG],
-        mutex_ids=MTX_UB_SFMG,
+        addrs=[mem.BN2_UB_SFMG],
+        mutex_ids=mem.MTX_UB_SFMG,
     )
 
 
@@ -651,8 +583,8 @@ def make_lse_ub_bn2():
             target_memory=pl.MemorySpace.Vec,
             layout=pl.DN,
         ),
-        addrs=[BN2_UB_LSE_0, BN2_UB_LSE_1],
-        mutex_ids=MTX_UB_LSE,
+        addrs=[mem.BN2_UB_LSE_0, mem.BN2_UB_LSE_1],
+        mutex_ids=mem.MTX_UB_LSE,
     )
 
 
@@ -665,8 +597,8 @@ def make_mask_view_bn2():
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[BN2_UB_Y],
-        mutex_ids=MTX_UB_Y,
+        addrs=[mem.BN2_UB_Y],
+        mutex_ids=mem.MTX_UB_Y,
     )
 
 
@@ -679,8 +611,8 @@ def make_mask_pre_view_bn2():
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[BN2_UB_DY],
-        mutex_ids=MTX_UB_DY,
+        addrs=[mem.BN2_UB_DY],
+        mutex_ids=mem.MTX_UB_DY,
     )
 
 
@@ -688,13 +620,13 @@ def make_cast_ub_bn2():
     """BN2 的 v5/v6 Muls+Cast 输出缓冲（fp16，直出 GM）。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[VECTOR_BASEM, BN2_CAST_W],
+            shape=[VECTOR_BASEM, mem.BN2_CAST_W],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[BN2_UB_CAST],
-        mutex_ids=MTX_UB_CAST,
+        addrs=[mem.BN2_UB_CAST],
+        mutex_ids=mem.MTX_UB_CAST,
     )
 
 
@@ -709,13 +641,13 @@ def make_pre_zero_buffer_f32():
     """
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, PRE_ELEMS[d_align]],
+            shape=[1, mem.PRE_ELEMS[d_align]],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[UB_PRE_ZERO],
-        mutex_ids=MTX_UB_ZERO,
+        addrs=[mem.UB_PRE_ZERO],
+        mutex_ids=mem.MTX_UB_ZERO,
     )
 
 
@@ -723,13 +655,13 @@ def make_pre_zero_buffer_f16():
     """BN2 ``bn2_need_zero`` 支的清零缓冲（直接清 fp16 out，无 workspace）。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, PRE_ELEMS[d_align]],
+            shape=[1, mem.PRE_ELEMS[d_align]],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=[UB_PRE_ZERO],
-        mutex_ids=MTX_UB_ZERO,
+        addrs=[mem.UB_PRE_ZERO],
+        mutex_ids=mem.MTX_UB_ZERO,
     )
 
 
@@ -742,13 +674,13 @@ def make_post_f32_buffer():
     """
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, POST_ELEMS[d_align]],
+            shape=[1, mem.POST_ELEMS[d_align]],
             dtype=pl.DT_FP32,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=POST_F32_ADDRS[d_align],
-        mutex_ids=MTX_UB_POST_F32,
+        addrs=mem.POST_F32_ADDRS[d_align],
+        mutex_ids=mem.MTX_UB_POST_F32,
     )
 
 
@@ -756,11 +688,11 @@ def make_post_f16_buffer():
     """post 的 fp16 输出缓冲，depth 2。见 :func:`make_post_f32_buffer`。"""
     return pl.make_tile_group(
         type=pl.TileType(
-            shape=[1, POST_ELEMS[d_align]],
+            shape=[1, mem.POST_ELEMS[d_align]],
             dtype=pl.DT_FP16,
             target_memory=pl.MemorySpace.Vec,
             valid_shape=[-1, -1],
         ),
-        addrs=POST_F16_ADDRS[d_align],
-        mutex_ids=MTX_UB_POST_F16,
+        addrs=mem.POST_F16_ADDRS[d_align],
+        mutex_ids=mem.MTX_UB_POST_F16,
     )
