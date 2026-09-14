@@ -78,8 +78,8 @@ def skip_invalid(constInfo, idx, blockEnd):
         over = pl.min(pl.max(idx + 1 - blockEnd, 0), 1)
         v = pl.min(cur + over, 1)
     if idx >= blockEnd:
-        return -1
-    return idx
+        return pl.astype(-1, pl.DT_INT64)
+    return pl.astype(idx, pl.DT_INT64)
 
 
 def next_work_gidx(
@@ -96,7 +96,7 @@ def next_work_gidx(
     if swizzle == 0:
         return skip_invalid(constInfo, denseCursor, blockEnd)
     if localIdx >= numBlocks:
-        return -1
+        return pl.astype(-1, pl.DT_INT64)
     return block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
 
 
@@ -215,8 +215,8 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     lin = pl.max(blockEnd - blockStart, 0)
     if constInfo.enableSwizzle:
         if mask_mode == 0:
-            return swzDense
-        return swzPacked
+            return pl.astype(swzDense, pl.DT_INT64)
+        return pl.astype(swzPacked, pl.DT_INT64)
     return lin
 
 
@@ -227,8 +227,8 @@ def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     lin = blockStart + localIdx
     if constInfo.enableSwizzle:
         if mask_mode == 0:
-            return swzDense
-        return swzPacked
+            return pl.astype(swzDense, pl.DT_INT64)
+        return pl.astype(swzPacked, pl.DT_INT64)
     return lin
 
 
@@ -261,8 +261,8 @@ def need_load_kv(constInfo, gIdx, localIdx):
     gPrev = s2_group_of(constInfo, pl.max(gIdx - 1, 0))
     lin = pl.max(isFirst, pl.min(gCur - gPrev, 1))
     if constInfo.enableSwizzle:
-        return swz
-    return lin
+        return pl.astype(swz, pl.DT_INT32)
+    return pl.astype(lin, pl.DT_INT32)
 
 
 def next_s2_same(constInfo, gIdx, localIdx):
@@ -270,8 +270,8 @@ def next_s2_same(constInfo, gIdx, localIdx):
     swz = pl.min((localIdx + 1) % constInfo.s1Outer, 1)
     lin = 1 - pl.min(s2_group_of(constInfo, gIdx + 1) - s2_group_of(constInfo, gIdx), 1)
     if constInfo.enableSwizzle:
-        return swz
-    return lin
+        return pl.astype(swz, pl.DT_INT32)
+    return pl.astype(lin, pl.DT_INT32)
 
 
 # ==================================================================
