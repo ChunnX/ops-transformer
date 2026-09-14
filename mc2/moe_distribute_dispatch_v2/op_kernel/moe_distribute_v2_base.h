@@ -42,7 +42,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
     dataStateLocalTensor.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
     dataStateLocalTensor.SetValue(GLOBALBS_POS, globalBS);
     uint64_t opCnt = dataStateLocalTensor64.GetValue(OP_CNT_POSUL);
-    opCnt = opCnt + 1;
+    opCnt = opCnt + 1UL;
     dataStateLocalTensor64.SetValue(OP_CNT_POSUL, opCnt);
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy(selfDataStatusGMTensor, dataStateLocalTensor, UB_ALIGN / sizeof(uint32_t));
