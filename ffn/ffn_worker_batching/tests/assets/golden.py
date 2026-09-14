@@ -644,6 +644,15 @@ class AclnnFfnWorkerBatchingTestSpec:
             _hbm_copy(mi_bytes, mi_ptr)
         else:
             token_info = _build_token_info_buf(expert_ids, A, M, BS, K)
+            layer_ids = np.zeros((A, M), dtype=np.int32)
+            if syncFlag == 1 and "async_layers" in testcase_name:
+                per_layer = expertNum // layerNum
+                valid = (expert_ids >= 0) & (expert_ids < _MASK_VALUE)
+                expert_ids[valid] %= per_layer
+                token_info[:, :, 2:] = expert_ids.reshape(A, M, BS * K)
+                layer_ids[:] = (np.arange(A, dtype=np.int32)[::-1] % layerNum)[:, None]
+                token_info[:, :, 1] = layer_ids
+            data["layer_ids"] = layer_ids
             # 独立构造“已发布描述符”的集合，不把未就绪行的 expert_ids 预先 mask。
             # 这样错误读取未就绪行的 kernel 会产生额外 token，能够被 golden 检出。
             ready = np.ones((A, M), dtype=bool)
@@ -800,6 +809,19 @@ class AclnnFfnWorkerBatchingTestSpec:
             # 只在 CPU 参考副本上屏蔽未选中 session；设备输入仍保留它们的合法 ids。
             ids = expert_ids[:, cur_mb].copy()
             if syncFlag == 1:
+                per_layer = expertNum // layerNum
+                layer_ids = data.get("layer_ids", np.zeros((A, M), np.int32))[:, cur_mb]
+                valid = (
+                    (ids >= 0)
+                    & (ids < per_layer)
+                    & (layer_ids[:, None, None] >= 0)
+                    & (layer_ids[:, None, None] < layerNum)
+                )
+                ids = np.where(
+                    valid,
+                    ids.astype(np.int64) + layer_ids[:, None, None] * per_layer,
+                    _MASK_VALUE,
+                ).astype(np.int32)
                 ids[~data.get("ready", np.ones((A, M), dtype=bool))[:, cur_mb]] = (
                     _MASK_VALUE
                 )

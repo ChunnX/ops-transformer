@@ -294,6 +294,9 @@ public:
                 continue;
             }
 
+            // 异步快照每次处理一个session；只读取已选中行的层号，未选中行已跳过。
+            const int32_t layerOffset =
+                contextInfo_->asyncRecv ? ReadLayerOffset(tokenInfoGm, base + r0 * rowStride) : 0;
             // 取 ids:每块 bsk 个 int32,块间跳过 flag/layer 与其余 micro batch;
             // 右侧补位由 DataCopyPad 按 BsKPaddingCount 填 MASK_SENTINEL,使每行在 UB 中占 rowSpan_
             DataCopyExtParams inParams{static_cast<uint16_t>(rows), static_cast<uint32_t>(bsk_ * sizeof(int32_t)),
@@ -301,7 +304,11 @@ public:
             DataCopyPadExtParams<int32_t> inPad{true, 0, static_cast<uint8_t>(contextInfo_->BsKPaddingCount),
                                                 MASK_SENTINEL};
             DataCopyPad(buf, tokenInfoGm[base + r0 * rowStride + NUM_TWO], inParams, inPad);
-            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            if (contextInfo_->asyncRecv) {
+                EncodeLayerExperts(buf, rows * rowSpan_, layerOffset);
+            } else {
+                SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            }
 
             DataCopyExtParams outParams{static_cast<uint16_t>(1),
                                         static_cast<uint32_t>(rows * rowSpan_ * sizeof(int32_t)), 0, 0, 0};
@@ -330,6 +337,54 @@ public:
     }
 
 private:
+    // layer_id is the second descriptor word. Reuse the snapshot scratch block:
+    // IsSelected has already consumed its scalar before this DMA overwrites it.
+    __aicore__ inline int32_t ReadLayerOffset(GlobalTensor<int32_t> &info, int64_t descriptorBase)
+    {
+        constexpr int64_t LAYER_WORD = offsetof(aicpu::FfnDataDesc, layer_id) / sizeof(int32_t);
+        LocalTensor<int32_t> layer = readyBuf_.Get<int32_t>();
+        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+        DataCopyExtParams cp{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+        DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
+        DataCopyPad(layer, info[descriptorBase + LAYER_WORD], cp, pad);
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+        const int32_t id = layer.GetValue(0);
+        // Invalid layer IDs cannot address an expert on this worker. Mask that
+        // descriptor's tokens rather than overflowing or merging it into another layer.
+        return static_cast<uint32_t>(id) < contextInfo_->layerNum ?
+                   id * static_cast<int32_t>(contextInfo_->expertsPerLayer) :
+                   -1;
+    }
+
+    __aicore__ inline void EncodeLayerExperts(const LocalTensor<int32_t> &buf, int64_t count, int32_t offset)
+    {
+        // Transform only the private sort key, never the original gather position.
+        // Unsigned comparison rejects negative IDs, >=1000000 masks and padding
+        // before addition. INT32_MAX must not be added to a layer offset.
+        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+        constexpr uint32_t LANES = GetVecLen() / sizeof(uint32_t);
+        const uint32_t limit = offset >= 0 ? contextInfo_->expertsPerLayer : 0;
+        const uint32_t bias = offset >= 0 ? static_cast<uint32_t>(offset) : 0;
+        uint32_t remain = static_cast<uint32_t>(count);
+        const uint16_t repeats = static_cast<uint16_t>((count + LANES - 1) / LANES);
+        __local_mem__ uint32_t *addr = reinterpret_cast<__local_mem__ uint32_t *>(buf.GetPhyAddr());
+        __VEC_SCOPE__
+        {
+            Reg::RegTensor<uint32_t> ids, encoded, masked, result;
+            Reg::MaskReg active, valid;
+            for (uint16_t i = 0; i < repeats; ++i) {
+                active = Reg::UpdateMask<uint32_t>(remain);
+                Reg::DataCopy(ids, addr + i * LANES);
+                Reg::Compares<uint32_t, CMPMODE::LT>(valid, ids, limit, active);
+                Reg::Adds(encoded, ids, bias, valid);
+                Reg::Duplicate(masked, static_cast<uint32_t>(MASK_SENTINEL), active);
+                Reg::Select(result, encoded, masked, valid);
+                Reg::DataCopy(addr + i * LANES, result, active);
+            }
+        }
+        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+    }
+
     // 大行不能整行驻留 UB。按 Host 给出的元素容量分块，始终保持 workspace 的
     // 行跨度和原始 token 位置不变；最后一块才填 padding，且不把 padding 写回描述符。
     __aicore__ inline void ProcessRecvLargeRow(GM_ADDR tokenInfoBuf)
@@ -341,6 +396,8 @@ private:
         for (int64_t row = rowBegin_; row < rowEnd_; ++row) {
             const bool selected = !contextInfo_->asyncRecv || IsSelected(row);
             const int64_t base = row * stride + contextInfo_->curMicroBatchID * F_;
+            // 大行的所有ID分块共用同一个层偏移，不按块重新读取生产者描述符。
+            const int32_t layerOffset = selected && contextInfo_->asyncRecv ? ReadLayerOffset(info, base) : 0;
             for (int64_t off = 0; off < rowSpan_; off += perLoopElements_) {
                 const int64_t n = Min(perLoopElements_, rowSpan_ - off);
                 const int64_t take = off < bsk_ ? Min(n, bsk_ - off) : 0;
@@ -349,7 +406,11 @@ private:
                     DataCopyExtParams cp{1, static_cast<uint32_t>(take * sizeof(int32_t)), 0, 0, 0};
                     DataCopyPadExtParams<int32_t> pad{true, 0, static_cast<uint8_t>(n - take), MASK_SENTINEL};
                     DataCopyPad(buf, info[base + NUM_TWO + off], cp, pad);
-                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                    if (contextInfo_->asyncRecv) {
+                        EncodeLayerExperts(buf, n, layerOffset);
+                    } else {
+                        SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                    }
                 } else {
                     Duplicate<int32_t>(buf, MASK_SENTINEL, n);
                     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);

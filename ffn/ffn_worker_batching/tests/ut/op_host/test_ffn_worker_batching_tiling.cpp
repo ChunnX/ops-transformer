@@ -572,3 +572,31 @@ TEST_F(FfnWorkerBatchingTilingTest, arch35_adopt_minimum_ub)
         EXPECT_FALSE(ExecuteTiling(para, info));
     }
 }
+
+// Layer-derived expert IDs are exclusively an asynchronous RECV contract.
+TEST_F(FfnWorkerBatchingTilingTest, ffn_wb_tiling_arch35_async_layer_contract)
+{
+    gert::StorageShape shape = {{1024}, {1024}};
+    FfnWorkerBatchingCompileInfo compileInfo = {};
+    for (int64_t mode : {0, 1}) {
+        for (int64_t sync : {0, 1}) {
+            for (int64_t layers : {0, 1, 2, 3, 8}) {
+                auto attrs = MakeArch35Attrs(0, mode, 3, 7, 1, 32);
+                attrs.back() = {"layer_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(layers)};
+                attrs.push_back({"sync_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sync)});
+                gert::TilingContextPara para("FfnWorkerBatching", {{shape, ge::DT_INT8, ge::FORMAT_ND}},
+                                             MakeA5OutputDesc(), attrs, &compileInfo, "Ascend950", kAivNum64,
+                                             kArch35Ub248K);
+                if (mode == 1 && sync == 1 && (layers == 0 || 8 % layers != 0)) {
+                    ExecuteTestCase(para, ge::GRAPH_FAILED);
+                } else {
+                    TilingInfo info;
+                    ASSERT_TRUE(ExecuteTiling(para, info));
+                    const auto &data =
+                        *reinterpret_cast<const FfnWorkerBatchingArch35TilingData *>(info.tilingData.get());
+                    EXPECT_EQ(data.layerNum, mode == 1 && sync == 1 ? layers : 0);
+                }
+            }
+        }
+    }
+}
