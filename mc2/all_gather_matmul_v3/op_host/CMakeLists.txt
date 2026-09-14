@@ -41,6 +41,12 @@ if (BUILD_OPEN_PROJECT)
     target_include_directories(op_host_aclnnInner PRIVATE
         ${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
         ${CMAKE_SOURCE_DIR}/mc2
+        ${ASCEND_CANN_PACKAGE_PATH}/asc/include
+    )
+    target_include_directories(ophost_transformer_tiling_obj PRIVATE
+        ${ASCEND_CANN_PACKAGE_PATH}/asc/include
+        ${ASCEND_CANN_PACKAGE_PATH}/asc/include/basic_api
+        ${ASCEND_CANN_PACKAGE_PATH}/asc
     )
 else()
     add_mc2_modules_sources(OPTYPE all_gather_matmul_v3 all_gather_matmul_v3 ACLNNTYPE aclnn aclnn_inner)
