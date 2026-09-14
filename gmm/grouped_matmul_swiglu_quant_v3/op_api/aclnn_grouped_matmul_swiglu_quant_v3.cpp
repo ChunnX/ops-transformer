@@ -433,8 +433,8 @@ aclnnStatus CheckShape(const aclTensor *x, const aclTensorList *weight, const ac
             ? op::Shape({e, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_C0_SIZE),
                          Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
                          gmm_swiglu_quant_v3::NZ_INNER_SIZE, gmm_swiglu_quant_v3::NZ_C0_SIZE})
-            : op::Shape({e, Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_C0_SIZE),
-                         Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
+            : op::Shape({e, Ops::Base::CeilDiv(k, gmm_swiglu_quant_v3::NZ_INNER_SIZE),
+                         Ops::Base::CeilDiv(n, gmm_swiglu_quant_v3::NZ_C0_SIZE),
                          gmm_swiglu_quant_v3::NZ_INNER_SIZE, gmm_swiglu_quant_v3::NZ_C0_SIZE});
 
     const struct {
