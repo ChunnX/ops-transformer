@@ -42,7 +42,7 @@ struct AttentionToFfnV2Info {
     uint8_t windowType;
     // A5 V2 URMA reuses the V1-only fields without changing the shared tiling layout.
     uint64_t totalUbSize;
-    uint64_t urmaWorkspaceOffset;
+    uint64_t tokenRankScratchOffset; // repurposed from V1's totalWinSize slot (same offset/size)
 };
 
 struct AttentionToFfnV2TilingData {

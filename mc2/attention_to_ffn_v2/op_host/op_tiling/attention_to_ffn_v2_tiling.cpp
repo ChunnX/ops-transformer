@@ -46,6 +46,7 @@ constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WIN_REGION_ALIGN = 512U;
 constexpr size_t SCALE_PARAM_PAD_SIZE = 128U;
 constexpr size_t MX_PARAM_PAD_SIZE = 256U;
+constexpr size_t WORKSPACE_ELEMENT_OFFSET = 128U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 
 // User-facing quant_mode values that select the MX/MX_CLIP algorithm.
@@ -196,8 +197,35 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
                             .c_str()),
                     return ge::GRAPH_FAILED);
 
-    tilingData->attentionToFfnV2Info.urmaWorkspaceOffset = 0U;
+    tilingData->attentionToFfnV2Info.tokenRankScratchOffset = 0U;
     return ge::GRAPH_SUCCESS;
+}
+
+// Extend the per-call workspace to hold a per-token toRankId scratch table.
+// Phase 1 (all AIVs) writes toRankId[tokenOffset]; phase 2 (AIV0 only) block-DataCopies it to UB
+// and scans UB instead of calling ReadTokenMetaData, eliminating all GM scalar reads in the WQE
+// scanning loop. The scratch table is sized for the maximum token count (activeMask may reduce the
+// actual count at runtime) and placed after the sync-status region.
+static void ExtendWorkspaceForTokenRankScratch(gert::TilingContext *context, AttentionToFfnV2TilingData *tilingData)
+{
+    size_t *workSpaces = context->GetWorkspaceSizes(1);
+    if (workSpaces == nullptr) {
+        return;
+    }
+    const auto &info = tilingData->attentionToFfnV2Info;
+    const size_t expertNumPerToken =
+        static_cast<size_t>(info.K) + (static_cast<size_t>(info.expertNum) - info.moeExpertNum);
+    const size_t maxTotalSendNum = static_cast<size_t>(info.X) * info.BS * expertNumPerToken;
+    const size_t scratchTableBytes = maxTotalSendNum * sizeof(int32_t);
+    const auto CeilAlignSize = [](size_t val, size_t align) { return (val + align - 1U) / align * align; };
+    const size_t aivNum = static_cast<size_t>(info.aivNum);
+    const size_t ffnNum = static_cast<size_t>(info.worldSize) - info.attentionWorkerNum;
+    const size_t ffnNumAlignSize = CeilAlignSize(ffnNum * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET);
+    const size_t syncStatusRegionBytes = ffnNumAlignSize * aivNum;
+    const size_t scratchTableOffset = CeilAlignSize(syncStatusRegionBytes, WORKSPACE_ELEMENT_OFFSET);
+    tilingData->attentionToFfnV2Info.tokenRankScratchOffset = scratchTableOffset;
+    const size_t scratchTableAlignBytes = CeilAlignSize(scratchTableBytes, WORKSPACE_ELEMENT_OFFSET);
+    workSpaces[0] += scratchTableAlignBytes;
 }
 
 ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantMode)
@@ -259,6 +287,7 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
                     OP_LOGE(nodeName, "failed to enable batch schedule mode"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckUrmaWinLayout(context, tilingData, tilingKeyQuantMode, outDtype) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "failed to check URMA win layout"), return ge::GRAPH_FAILED);
+    ExtendWorkspaceForTokenRankScratch(context, tilingData);
     return SetV2TilingKey(context, tilingKeyQuantMode, outDtype, info.isScales, info.syncFlag == 1U, info.isActiveMask);
 }
 } // namespace
@@ -324,6 +353,7 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(
         CheckUrmaWinLayout(context, tilingData, info.quantMode, ATTN_FFN_TILINGKEY_OUT_INT8) != ge::GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "failed to check URMA win layout"), return ge::GRAPH_FAILED);
+    ExtendWorkspaceForTokenRankScratch(context, tilingData);
     return SetV2TilingKey(context, info.quantMode, ATTN_FFN_TILINGKEY_OUT_INT8, info.isScales, info.syncFlag == 1U,
                           info.isActiveMask);
 }
