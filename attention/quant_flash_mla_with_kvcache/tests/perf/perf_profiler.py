@@ -54,3 +54,42 @@ def run_msprof(script: str, output_dir: Path, label: str = "case",
     shutil.copy(csv_files[0], dst)
     print(f"[msprof] {label} -> {dst}")
     return dst
+
+
+def run_msopprof_pipe(script: str, output_dir: Path, label: str = "case",
+                      kernel_name: str = "QuantFlashMlaWithKvcache",
+                      launch_count: int = 1,
+                      total_timeout: int = 7200) -> Path:
+    """msprof op --aic-metrics=PipeTimeline 采集 pipe 时间线。
+
+    采集 PMU 硬件计数级别的 Cube/Vector/MTE pipe 时间线, 产物为 OPPROF_* 目录,
+    其中 visualize_data.bin 用 MindStudio Insight 打开可视化。
+    返回最新的 OPPROF_* 目录路径。
+    """
+    pipe_dir = output_dir / "pipe_timeline"
+    pipe_dir.mkdir(parents=True, exist_ok=True)
+    script_path = pipe_dir / f"{label}_pipe.py"
+    script_path.write_text(script)
+
+    cmd = [
+        "msprof", "op",
+        f"--output={pipe_dir}",
+        "--aic-metrics=PipeTimeline",
+        f"--launch-count={launch_count}",
+        f"--kernel-name={kernel_name}",
+        sys.executable,
+        str(script_path),
+    ]
+    log_path = pipe_dir / f"{label}.msopprof.log"
+    print(f"[msopprof] {' '.join(cmd)}")
+    with open(log_path, "w") as log_file:
+        subprocess.run(
+            cmd, cwd=pipe_dir, stdout=log_file, stderr=subprocess.STDOUT,
+            timeout=total_timeout, check=False,
+        )
+
+    opprof_dirs = sorted(pipe_dir.glob("OPPROF_*"), reverse=True)
+    if not opprof_dirs:
+        raise FileNotFoundError(f"No OPPROF_* in {pipe_dir}, see {log_path}")
+    print(f"[msopprof] {label} -> {opprof_dirs[0]}")
+    return opprof_dirs[0]

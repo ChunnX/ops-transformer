@@ -10,7 +10,7 @@
 | `run_perf.py` | CLI 入口：逐 case 独立 msprof 进程，汇总 `perf.csv` |
 | `perf_cases.py` | 用例集（由 `../pytest/case.py` 的 TEST_PARAMS 自动转换，共 105 个） |
 | `perf_codegen.py` | 生成单 case 自包含性能脚本（数据构造 + 热循环调用） |
-| `perf_profiler.py` | `msprof --aic-mode=task-based` 采集，拷出 `op_summary.csv` |
+| `perf_profiler.py` | `msprof --aic-mode=task-based` 采集 + `msprof op --aic-metrics=PipeTimeline` pipe 时间线采集 |
 | `perf_parser.py` | 按 `OP Type=QuantFlashMlaWithKvcache` 过滤，热启动统计（丢首条取均值） |
 
 ## 快速开始
@@ -35,6 +35,10 @@ nohup python3 run_perf.py --runs 5 > full_run.log 2>&1 &
 # 5. 按子串过滤（逗号分隔，任一子串命中即选中）
 python3 run_perf.py --runs 5 --case-filter Decode,NZ
 python3 run_perf.py --runs 5 --case-filter PA_BnNBsD
+
+# 6. 性能 + PipeTimeline（对命中子串的用例额外采集 pipe 时间线）
+python3 run_perf.py --runs 5 --pipe-timeline _000000
+python3 run_perf.py --runs 5 --case-filter Decode --pipe-timeline _000000,_000004
 ```
 
 ## CLI 参数
@@ -44,17 +48,22 @@ python3 run_perf.py --runs 5 --case-filter PA_BnNBsD
 | `--runs` | 5 | 每 case 迭代次数；第 1 次为预热丢弃，需 ≥ 2 |
 | `--case-filter` | 无 | 逗号分隔的用例名子串过滤 |
 | `--output` | `results/<时间戳>` | 输出目录 |
+| `--pipe-timeline` | 无 | 逗号分隔子串；命中的用例在性能采集后额外跑一次 `msprof op --aic-metrics=PipeTimeline` |
 | `--list` | - | 只列出用例名，不运行 |
 
 ## 输出结构
 
 ```
 results/<时间戳>/          （或 --output 指定目录）
-├── perf.csv               # 汇总: case_name, duration_us, samples, status, message
+├── perf.csv               # 汇总: case_name, duration_us, samples, status, message, pipe_visualize_bin
 └── <case_name>/
     ├── <case_name>.py     # 生成的性能脚本（可直接单独调试）
     ├── <case_name>.msprof.log
-    └── op_summary.csv     # msprof 采集的原始算子条目
+    ├── op_summary.csv     # msprof 采集的原始算子条目
+    └── pipe_timeline/     # --pipe-timeline 命中时才有
+        ├── <case_name>_pipe.py
+        ├── <case_name>.msopprof.log
+        └── OPPROF_*/      # PipeUtilization.csv + visualize_data.bin 等
 ```
 
 终端同时打印摘要：
@@ -95,8 +104,26 @@ results/<时间戳>/          （或 --output 指定目录）
   不计入 kernel 时长。若要测含 metadata 的端到端开销，把生成脚本里的 metadata 调用
   挪进循环即可（脚本在输出目录 `<case_name>.py` 中，可手动改后单跑）。
 
+## PipeTimeline
+
+`--pipe-timeline <子串>` 对命中的用例，在性能采集完成后**单独再跑一次**
+`msprof op --aic-metrics=PipeTimeline --launch-count=1 --kernel-name=QuantFlashMlaWithKvcache`：
+
+- 采集的是 PMU 硬件计数级的 Cube/Vector/MTE pipe 时间线（与非量化框架
+  `core/msopprof.py` 的 Phase 2 相同的采集方式）。
+- 产物在 `<case>/pipe_timeline/OPPROF_*/`：
+  - `visualize_data.bin`：用 **MindStudio Insight** 打开看 pipe 时间线可视化；
+  - `PipeUtilization.csv` 等：各 pipe 占比的 CSV。
+- `perf.csv` 新增 `pipe_visualize_bin` 列记录 bin 路径，未采集为空。
+- 与性能采集分开跑的原因：PipeTimeline 的 visualize_data.bin 较大，且 msprof 采集
+  模式互斥。
+
 ## 已知说明
 
+- **torch 扩展缓存隔离**：`run_perf.py` 自动设置 `TORCH_EXTENSIONS_DIR=perf/.torch_ext/`。
+  共享的 `~/.cache/torch_extensions/` 可能被其它 conda 环境的旧版
+  `cann_ops_transformer` 污染（`.so` 与 wrapper 参数签名不一致，metadata 报
+  TypeError），独立缓存目录保证 `.so` 始终从当前环境的 csrc 编译。
 - 数据构造对齐 `tests/pytest/common/qmla_with_kvcache_golden.py` 的 NPU 路径：
   Q per-token-head 量化 → TND `(T, N_q, 576)`；K per-tensor 量化 → PA cache；
   V 由算子内部从 K 前 512 维复用。
