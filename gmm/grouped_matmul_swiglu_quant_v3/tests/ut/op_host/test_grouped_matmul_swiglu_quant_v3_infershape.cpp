@@ -58,16 +58,20 @@ gert::InfershapeContextPara MakeShapeContext(int64_t k, bool transpose, int64_t 
         transpose ? vector<int64_t>{1, (k + 31) / 32, (kN + 15) / 16, 16, 32}
                   : vector<int64_t>{1, (k + 15) / 16, (kN + 31) / 32, 16, 32};
 
+    const vector<int64_t> xShape = {kM, k};
+    const vector<int64_t> xScaleShape = {kM, kScale, 2};
+    const vector<int64_t> groupListShape = {1};
     vector<gert::InfershapeContextPara::TensorDescription> inputs = {
-        {ops::ut::MakeGertStorageShape({kM, k}), DT_FLOAT8_E4M3FN, FORMAT_ND},
-        {ops::ut::MakeGertStorageShape({kM, kScale, 2}), DT_FLOAT8_E8M0, FORMAT_ND},
-        {ops::ut::MakeGertStorageShape({1}), DT_INT64, FORMAT_ND},
+        {ops::ut::MakeGertStorageShape(xShape), DT_FLOAT8_E4M3FN, FORMAT_ND},
+        {ops::ut::MakeGertStorageShape(xScaleShape), DT_FLOAT8_E8M0, FORMAT_ND},
+        {ops::ut::MakeGertStorageShape(groupListShape), DT_INT64, FORMAT_ND},
         {ops::ut::MakeGertStorageShape(weight, weightStorage), DT_FLOAT8_E4M3FN, FORMAT_FRACTAL_NZ},
         {ops::ut::MakeGertStorageShape(weightScale), DT_FLOAT8_E8M0, FORMAT_ND},
     };
+    const vector<int64_t> emptyOutputShape = {0};
     vector<gert::InfershapeContextPara::TensorDescription> outputs = {
-        {ops::ut::MakeGertStorageShape({0}), DT_FLOAT8_E4M3FN, FORMAT_ND},
-        {ops::ut::MakeGertStorageShape({0}), DT_FLOAT8_E8M0, FORMAT_ND},
+        {ops::ut::MakeGertStorageShape(emptyOutputShape), DT_FLOAT8_E4M3FN, FORMAT_ND},
+        {ops::ut::MakeGertStorageShape(emptyOutputShape), DT_FLOAT8_E8M0, FORMAT_ND},
     };
     return gert::InfershapeContextPara("GroupedMatmulSwigluQuantV3", inputs, outputs,
                                        MakeAttrs(quantMode, quantDtype, transpose),
