@@ -205,13 +205,14 @@ ge::graphStatus InferShapeCompressor(gert::InferShapeContext *context)
 
     CompressorProtoShapeParam shapeParam{};
     auto apiRet = GetCompressorShapeDim(context, shapeParam);
-    if (apiRet != GRAPH_SUCCESS) {
-        return GRAPH_FAILED;
-    }
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "context", "get input shape failed"),
+                return ge::GRAPH_FAILED);
+
     apiRet = SetCompressorShapeDim(shapeParam, context);
-    if (apiRet != GRAPH_SUCCESS) {
-        return GRAPH_FAILED;
-    }
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "context", "set output shape failed"),
+                return ge::GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
