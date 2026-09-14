@@ -647,16 +647,6 @@ bool MhcGradCheckFormat(const AclnnMhcPreBackwardParams &params)
     return MhcGradCheckInputFormat(params);
 }
 
-bool MhcGradCheckV2ImplMode(int64_t opImplMode)
-{
-    if (opImplMode != MHC_PRE_BACKWARD_USE_HF32) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode", std::to_string(opImplMode).c_str(),
-                                              "must be 1 (HF32) for aclnnMhcPreBackwardV2");
-        return false;
-    }
-    return true;
-}
-
 aclnnStatus MhcGradCheckParams(const AclnnMhcPreBackwardParams &params)
 {
     // 1. 检查参数是否为空指针、空tensor
@@ -818,7 +808,6 @@ aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
                    DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
                           gradXPostOptional, hcEps, opImplMode),
                    DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
-    CHECK_RET(MhcGradCheckV2ImplMode(opImplMode), ACLNN_ERR_PARAM_INVALID);
     return MhcPreBackwardGetWorkspaceSizeCommon(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost,
                                                 gammaOptional, gradXPostOptional, hcEps, opImplMode, gradX, gradPhi,
                                                 gradAlpha, gradBias, gradGamma, workspaceSize, executor);
