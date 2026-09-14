@@ -117,12 +117,11 @@ public:
 
         sinGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)sin);
         cosGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)cos);
-        pipe->InitBuffer(ropeQueue_, SINGLE_BUFFER, alignedTotalRopeDim_ * NUM_TWO * sizeof(DTYPE_ROPE_SIN));
-        pipe->InitBuffer(buf_,
-                         (alignedTotalRopeDim_ * sizeof(int32_t) + alignedTotalRopeDim_ * NUM_TWO * sizeof(float)));
-        sin_ = buf_.GetWithOffset<float>(alignedTotalRopeDim_, 0);
-        cos_ = buf_.GetWithOffset<float>(alignedTotalRopeDim_, alignedTotalRopeDim_ * sizeof(float));
-        mask_ = buf_.GetWithOffset<uint32_t>(alignedTotalRopeDim_, alignedTotalRopeDim_ * sizeof(float) * NUM_TWO);
+        pipe->InitBuffer(ropeQueue_, SINGLE_BUFFER, totalRopeDim_ * NUM_TWO * sizeof(DTYPE_ROPE_SIN));
+        pipe->InitBuffer(buf_, (totalRopeDim_ * sizeof(int32_t) + totalRopeDim_ * NUM_TWO * sizeof(float)));
+        sin_ = buf_.GetWithOffset<float>(totalRopeDim_, 0);
+        cos_ = buf_.GetWithOffset<float>(totalRopeDim_, totalRopeDim_ * sizeof(float));
+        mask_ = buf_.GetWithOffset<uint32_t>(totalRopeDim_, totalRopeDim_ * sizeof(float) * NUM_TWO);
 
         sinRepeatTimes_ =
             static_cast<uint8_t>(CeilDiv(alignedRopeDim, static_cast<uint32_t>(B32_DATA_NUM_PER_REPEAT))) - 1;
