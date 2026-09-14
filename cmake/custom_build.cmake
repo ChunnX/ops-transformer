@@ -445,6 +445,9 @@ if (base_aclnn_srcs)
             get_filename_component(name_without_ext ${_src} NAME_WE)
 
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_aclnn_srcs ${base_aclnn_binary_dir}/aclnn_${_op_name}.cpp)
             list(APPEND generate_aclnn_headers ${base_aclnn_binary_dir}/aclnn_${_op_name}.h)
 
@@ -475,6 +478,9 @@ if (base_aclnn_inner_srcs)
         if (is_match)
             get_filename_component(name_without_ext ${_src} NAME_WE)
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_aclnn_inner_srcs ${base_aclnn_binary_dir}/inner/aclnnInner_${_op_name}.cpp)
 
             set(filtered_list)
@@ -504,6 +510,9 @@ if (base_aclnn_exclude_srcs)
         if (is_match)
             get_filename_component(name_without_ext ${_src} NAME_WE)
             string(REGEX REPLACE "_def$" "" _op_name ${name_without_ext})
+            if (${_op_name} STREQUAL ${name_without_ext})
+                continue()
+            endif()
             list(APPEND generate_exclude_proto_srcs    ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
             list(APPEND generate_proto_srcs            ${generate_proto_dir}/exc/${_op_name}_proto.cpp)
             list(APPEND generate_proto_headers         ${generate_proto_dir}/exc/${_op_name}_proto.h)
@@ -1043,7 +1052,7 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${CATLASS_DIR}/include
+    install(DIRECTORY ${CATLASS_DIR}/include/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/catlass/include
     )
     install(DIRECTORY ${BLAZE}

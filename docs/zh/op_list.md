@@ -138,6 +138,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/flash_attn_grad/README.md">flash_attn_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>训练场景下计算注意力的反向输出，即flash_attn的反向计算，需配合flash_attn_metadata前置算子（is_grad_enabled=true）生成的分核metadata使用。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -455,6 +465,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>推理MlaPrologV3WeightNz算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/msa_index_score/README.md">msa_index_score</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算 MSA Index Branch 的 block score，对每个 query token 与 KV sparse block 做 matmul+maxpool 得到重要性分数。</td>
   </tr>
   <tr>
     <td>attention</td>

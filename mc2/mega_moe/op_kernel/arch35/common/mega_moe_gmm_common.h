@@ -76,23 +76,24 @@ struct Config {
     static constexpr uint32_t C0_SIZE_B = IsA8W4 ? 32U : AuxGetC0Size<ElementB>();
     static constexpr uint32_t C0_SIZE_BIAS = AuxGetC0Size<BiasType>();
 
-    using LayoutA = Te::NDExtLayoutPtn;
-    using LayoutC = Te::NDExtLayoutPtn;
-    using LayoutScaleA = Te::ScaleANDLayoutPtn;
-    using LayoutScaleB = Te::ScaleBDNLayoutPtn;
+    using LayoutA = asc::te::nd_ext_layout_ptn;
+    using LayoutC = asc::te::nd_ext_layout_ptn;
+    using LayoutScaleA = asc::te::scalea_nd_layout_ptn;
+    using LayoutScaleB = asc::te::scaleb_dn_layout_ptn;
 
-    using LayoutBias = Te::NDExtLayoutPtn;
+    using LayoutBias = asc::te::nd_ext_layout_ptn;
     using DispatchPolicy =
         Std::conditional_t<IsA8W4, Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit, Blaze::Gemm::MatmulWithScaleMx<>>;
-    using LayoutB = Std::conditional_t<IsA8W4, Te::ZNLayoutPtn,
-                                       Std::conditional_t<IsWeightNZ, Te::ZNLayoutPtn, Te::DNExtLayoutPtn>>;
+    using LayoutB =
+        Std::conditional_t<IsA8W4, asc::te::zn_layout_ptn,
+                           Std::conditional_t<IsWeightNZ, asc::te::zn_layout_ptn, asc::te::dn_ext_layout_ptn>>;
 
-    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE_A>>;
-    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE_B>>;
-    using MakeLayoutScaleA = Te::FrameLayoutFormat<LayoutScaleA, Std::Int<C0_SIZE_SCALE>>;
-    using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<C0_SIZE_SCALE>>;
-    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<C0_SIZE_C>>;
-    using MakeLayoutBias = Te::FrameLayoutFormat<LayoutBias, Std::Int<C0_SIZE_BIAS>>;
+    using MakeLayoutA = asc::te::frame_layout_format<LayoutA, Std::Int<C0_SIZE_A>>;
+    using MakeLayoutB = asc::te::frame_layout_format<LayoutB, Std::Int<C0_SIZE_B>>;
+    using MakeLayoutScaleA = asc::te::frame_layout_format<LayoutScaleA, Std::Int<C0_SIZE_SCALE>>;
+    using MakeLayoutScaleB = asc::te::frame_layout_format<LayoutScaleB, Std::Int<C0_SIZE_SCALE>>;
+    using MakeLayoutC = asc::te::frame_layout_format<LayoutC, Std::Int<C0_SIZE_C>>;
+    using MakeLayoutBias = asc::te::frame_layout_format<LayoutBias, Std::Int<C0_SIZE_BIAS>>;
 
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using LayoutAType = decltype(MakeLayoutA{}(uint32_t{}, uint32_t{}));
@@ -101,6 +102,8 @@ struct Config {
     using LayoutScaleBType = decltype(MakeLayoutScaleB{}(uint32_t{}, uint32_t{}));
     using LayoutCType = decltype(MakeLayoutC{}(uint32_t{}, uint32_t{}));
     using LayoutBiasType = decltype(MakeLayoutBias{}(uint32_t{}, uint32_t{}));
+    using LayoutATrait = Te::get_layout_trait<LayoutAType>;
+    using LayoutScaleATrait = Te::get_layout_trait<LayoutScaleAType>;
 
     using BlockMmad = typename BlockMmadSelector<IsA8W4, Config>::type;
     using BlockPrologue =
@@ -338,6 +341,24 @@ struct Config {
         layouts.bias = MakeLayoutBias{}(1U, config.n);
         return layouts;
     }
+
+    __aicore__ static inline LayoutBundle BuildLayouts(const ProblemConfig &config, const StridedAConfig &aConfig)
+    {
+        LayoutBundle layouts;
+        auto aShape = Te::make_shape(Te::make_shape(Te::_1{}, config.m), Te::make_shape(Te::_1{}, config.k));
+        auto aStride =
+            Te::make_stride(Te::make_stride(Te::_0{}, aConfig.rowStrideElements), Te::make_stride(Te::_0{}, Te::_1{}));
+        layouts.a = Te::make_pattern_layout<LayoutA, LayoutATrait>(aShape, aStride);
+        layouts.b = MakeLayoutB{}(config.k, config.n);
+        auto scaleAShape = Te::make_shape(Te::make_shape(Te::_1{}, config.m), Te::make_shape(Te::_1{}, config.scaleK));
+        auto scaleAStride = Te::make_stride(Te::make_stride(Te::_0{}, aConfig.scaleRowStrideElements),
+                                            Te::make_stride(Te::_0{}, Te::_1{}));
+        layouts.scaleA = Te::make_pattern_layout<LayoutScaleA, LayoutScaleATrait>(scaleAShape, scaleAStride);
+        layouts.scaleB = MakeLayoutScaleB{}(config.scaleK, config.n);
+        layouts.c = MakeLayoutC{}(config.m, config.n);
+        layouts.bias = MakeLayoutBias{}(1U, config.n);
+        return layouts;
+    }
 };
 
 // 统一描述一次 BlockMmad::Init 的可变配置，避免 Context 分散保存并逐字段比较。
@@ -405,7 +426,7 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     if constexpr (!IsWeightNz) {
         bypassWeightL2 = bypassWeightL2 && config.k % 256U == 0U;
     }
-    gmB.SetL2CacheHint(bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    gmB.set_l2_cache_hint(bypassWeightL2 ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
 
     /*
      * ScaleBDN 的连续维是 N，每个 logical N 含 C0_SIZE_SCALE 个 scale。这里检查完整 N 行跨度；
@@ -417,7 +438,7 @@ __aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::Pro
     uint64_t scaleNStrideBytes = static_cast<uint64_t>(config.n) * MatmulConfig::C0_SIZE_SCALE *
                                  sizeof(typename MatmulConfig::ElementMxScaleBType);
     bool bypassScaleL2 = hasNoLaterWeightReuse && scaleNStrideBytes % cacheLineBytes == 0U;
-    gmScaleB.SetL2CacheHint(bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+    gmScaleB.set_l2_cache_hint(bypassScaleL2 ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
 }
 
 // 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。

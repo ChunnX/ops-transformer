@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file allto_allv_quant_grouped_mat_mul_tiling_base.cpp
@@ -174,7 +174,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
     std::string epWorldSizeValueStr = "";
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
         epWorldSizeValueList = {2,  4,  8,   16,
                                 32, 64, 128, 256}; // epWorldSize value only support 2, 4, 8, 16, 32, 64, 128, 256
     } else {
@@ -347,7 +347,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmXShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmXShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmXShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmXShapeInfo.");
     // check dim = 2
@@ -388,7 +388,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmWeightShapeInfo.");
     // check dim
@@ -423,7 +423,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCountsTensorShapeInfo() const
 {
     return ge::GRAPH_SUCCESS;
 }
@@ -524,7 +524,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetMmWeightShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmWeightShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmWeightShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckMmWeightShapeInfo.");
     if (context_->GetOptionalInputShape(MM_WEIGHT_INDEX) == nullptr) {
@@ -561,7 +561,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetGmmYShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmYShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckGmmYShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckGmmYShapeInfo.");
     // check dim
@@ -626,7 +626,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckMmYShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start GetPermuteOutShapeInfo.");
     if (!permuteOutFlag_) {
@@ -639,7 +639,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetPermuteOutShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
+ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckPermuteOutShapeInfo.");
     if (!permuteOutFlag_) {
