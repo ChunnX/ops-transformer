@@ -49,8 +49,8 @@ class AllGatherMxMatmulUrmaImpl {
 public:
     __aicore__ inline AllGatherMxMatmulUrmaImpl() {}
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM,
-                                GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR workspaceGM,
-                                const AllGatherMxMatmulUrmaTilingData *tilingData);
+                                GM_ADDR bScaleGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR gatherOutGM,
+                                GM_ADDR workspaceGM, const AllGatherMxMatmulUrmaTilingData *tilingData);
     __aicore__ inline void Process();
 
     using QuantMatmulKernelImpl = AllGatherQbmmMxKernel<AType, BType, CType, UrmaCommWaitPolicy>;
@@ -65,6 +65,11 @@ private:
 
     __aicore__ inline void AllGatherProcess();
     __aicore__ inline void MatmulProcess();
+
+    __aicore__ inline bool IsCommCore() const;
+    __aicore__ inline bool IsCopyCore() const;
+    __aicore__ inline void CopyDataFromWin(uint32_t round);
+    __aicore__ inline void CopyBytesPingPong(__gm__ int8_t *src, __gm__ int8_t *dst, uint64_t len);
 
     __aicore__ inline GM_ADDR GetWinDataRegionBase();
     __aicore__ inline GM_ADDR GetWinScaleRegionBase();
@@ -93,9 +98,13 @@ private:
     GM_ADDR bScaleGM_{};
     GM_ADDR cGM_{};
     GM_ADDR biasGM_{};
+    GM_ADDR gatherOutGM_{};
 
     uint32_t rankId_{};
     uint32_t rankSize_{};
+    uint32_t blockNum_{};
+    uint32_t copyCoreNum_{};
+    uint32_t copyUbOffset_{};
     uint32_t m_{};
     uint32_t k_{};
     uint32_t n_{};
@@ -118,12 +127,25 @@ private:
     Mc2Kernel::OpStateDump opStateDump_{};
     static constexpr uint8_t POS_COMM_BEFORE = 0U;
     static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
+
+    // ---- gather_out 拷贝（win -> UB -> gather_out）----
+    using CopyGM2UB = decltype(asc::te::make_copy(asc::te::copy_gm_to_ub{}));
+    using CopyUB2GM = decltype(asc::te::make_copy(asc::te::copy_ub_to_gm{}));
+    using MakeLayoutByte =
+        asc::te::frame_layout_format<asc::te::nd_ext_layout_ptn, asc::te::layout_trait_default<int8_t>>;
+    CopyGM2UB copyGM2UB_ = asc::te::make_copy(asc::te::copy_gm_to_ub{});
+    CopyUB2GM copyUB2GM_ = asc::te::make_copy(asc::te::copy_ub_to_gm{});
+
+    static constexpr uint16_t COPY_EVT_ID0 = 0;
+    static constexpr uint16_t COPY_EVT_ID1 = 1;
+    static constexpr uint32_t COPY_CHUNK_BYTES = 32U * 1024U;
+    static constexpr uint32_t COPY_UB_ALIGN = 32U;
 };
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR aScaleGM, GM_ADDR bGM, GM_ADDR bScaleGM, GM_ADDR cGM,
-    GM_ADDR biasGM, GM_ADDR workspaceGM, const AllGatherMxMatmulUrmaTilingData *tilingData)
+    GM_ADDR biasGM, GM_ADDR gatherOutGM, GM_ADDR workspaceGM, const AllGatherMxMatmulUrmaTilingData *tilingData)
 {
     tilingData_ = tilingData;
     hcommCtx_ = hcommCtx;
@@ -133,6 +155,7 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     bScaleGM_ = bScaleGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
+    gatherOutGM_ = gatherOutGM;
 #if MC2_DFX_ENABLE
     opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, tilingData->mmTile.usedCoreNum);
 #endif
@@ -143,6 +166,10 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     ubmemCtx_ = &(hcommCtx_->ubmemCtx);
     rankId_ = udmaCtx_->rankId;
     rankSize_ = udmaCtx_->rankSize;
+    // 核划分：后 rankSize_ 个核通信，前 copyCoreNum_ 个核做 win->UB->gather_out 拷贝
+    blockNum_ = static_cast<uint32_t>(AscendC::GetBlockNum());
+    copyCoreNum_ = blockNum_ - rankSize_;
+    uint32_t commJobIdx = static_cast<uint32_t>(GetBlockIdx()) - copyCoreNum_;
 
     // Rank-major 布局：每个 rank 占完整的 M 行。data + scale 两段连续存放。
     //   Win buffer 内存布局：
@@ -160,7 +187,10 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     auto commScaleBuf = asc::te::make_mem_ptr<asc::te::location::ub, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = asc::te::make_mem_ptr<asc::te::location::ub, uint8_t>(ubOffset);
-    teamBarrier_.Init(barrierBuf.get(), ubmemCtx_, rankSize_, static_cast<uint32_t>(GetBlockIdx()));
+    teamBarrier_.Init(barrierBuf.get(), ubmemCtx_, rankSize_, commJobIdx);
+    // 拷贝双 buffer 紧随 barrier 缓冲之后，按 COPY_UB_ALIGN 对齐
+    ubOffset += BARRIER_FLAG_SIZE;
+    copyUbOffset_ = (ubOffset + COPY_UB_ALIGN - 1) / COPY_UB_ALIGN * COPY_UB_ALIGN;
 
     commTilingData_.splitAxisTileSize = tileM_;  // 每个 tile 搬 tileM 行
     commTilingData_.splitAxisTileCnt = tileCnt_; // head 段 tile 数量
@@ -176,9 +206,9 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::Init(
     scaleKLen_ = scaleKGroups_ * static_cast<uint64_t>(Blaze::Gemm::MXFP_MULTI_BASE_SIZE);
     commTilingScale_.nonSplitAxisSize = scaleKLen_;
     allGatherData_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_, aGM_, commBuf.get(), rankSize_,
-                                               static_cast<uint32_t>(GetBlockIdx()));
-    allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_, aScaleGM_, commScaleBuf.get(), rankSize_,
-                         static_cast<uint32_t>(GetBlockIdx()), dataRegionBytes_);
+                                               commJobIdx);
+    allGatherScale_.Init(udmaCtx_, teamBarrier_, commTilingScale_, aScaleGM_, commScaleBuf.get(), rankSize_, commJobIdx,
+                         dataRegionBytes_);
 }
 
 template <typename AType, typename BType, typename CType>
@@ -273,17 +303,24 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
 
     opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
     for (uint32_t round = 0; round < commTurn_; ++round) {
-        if (static_cast<uint32_t>(GetBlockIdx()) < rankSize_) {
+        if (IsCommCore()) {
             allGatherScale_.Commit();
             allGatherData_.Commit();
             opStateDump_.DoDump(DUMP_FIELD_COMMIT);
             allGatherData_.template Wait<BARRIER_DEVICE>();
             opStateDump_.DoDump(DUMP_FIELD_WAIT);
         }
+        if (IsCopyCore() && round > 0) {
+            CopyDataFromWin(round - 1);
+        }
         AscendC::SyncAll<true>();
         // round 0 对应 dependTileIdx=1，AIC 侧按 dependTileIdx 等待对应的远端 round 数据。
         CrossCoreSetFlag<0x2, PIPE_MTE3>(round + 1);
     }
+    if (IsCopyCore()) {
+        CopyDataFromWin(commTurn_ - 1);
+    }
+    AscendC::SyncAll<true>();
     allGatherScale_.Finalize();
     allGatherData_.Finalize();
     opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
@@ -291,6 +328,88 @@ __aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::AllGather
     // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
     dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
          static_cast<uint64_t>(CacheLine::ENTIRE_DATA_CACHE), static_cast<uint64_t>(DcciDst::CACHELINE_OUT));
+}
+
+template <typename AType, typename BType, typename CType>
+__aicore__ inline bool AllGatherMxMatmulUrmaImpl<AType, BType, CType>::IsCommCore() const
+{
+    return static_cast<uint32_t>(GetBlockIdx()) >= copyCoreNum_;
+}
+
+template <typename AType, typename BType, typename CType>
+__aicore__ inline bool AllGatherMxMatmulUrmaImpl<AType, BType, CType>::IsCopyCore() const
+{
+    return static_cast<uint32_t>(GetBlockIdx()) < copyCoreNum_;
+}
+
+template <typename AType, typename BType, typename CType>
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::CopyDataFromWin(uint32_t round)
+{
+    if (gatherOutGM_ == nullptr) {
+        return;
+    }
+
+    uint64_t rowBytes = dataBytesPerMRow_;
+    uint64_t rankStride = static_cast<uint64_t>(m_) * rowBytes;
+    uint64_t roundStride = static_cast<uint64_t>(tileM_) * rowBytes;
+    uint64_t roundOffset = static_cast<uint64_t>(round) * roundStride;
+    uint32_t tileRows = (round < tileCnt_) ? tileM_ : tailM_;
+    uint64_t roundTotalRows = static_cast<uint64_t>(rankSize_) * tileRows;
+
+    uint64_t core = static_cast<uint64_t>(GetBlockIdx());
+    uint64_t rowsPerCore = roundTotalRows / copyCoreNum_;
+    uint64_t rem = roundTotalRows % copyCoreNum_;
+    uint64_t rowStart = core * rowsPerCore + (core < rem ? core : rem);
+    uint64_t rowEnd = rowStart + rowsPerCore + (core < rem ? 1 : 0);
+    if (rowStart >= rowEnd) {
+        return;
+    }
+
+    __gm__ int8_t *winBase = reinterpret_cast<__gm__ int8_t *>(GetWinDataRegionBase());
+    __gm__ int8_t *outBase = reinterpret_cast<__gm__ int8_t *>(gatherOutGM_);
+
+    uint64_t rankStart = rowStart / tileRows;
+    uint64_t rankEnd = (rowEnd - 1) / tileRows;
+    for (uint64_t r = rankStart; r <= rankEnd; ++r) {
+        uint64_t rowInTileStart = (r == rankStart) ? (rowStart % tileRows) : 0;
+        uint64_t rowInTileEnd = (r == rankEnd) ? ((rowEnd - 1) % tileRows + 1) : tileRows;
+        uint64_t off = r * rankStride + roundOffset + rowInTileStart * rowBytes;
+        uint64_t len = (rowInTileEnd - rowInTileStart) * rowBytes;
+        CopyBytesPingPong(winBase + off, outBase + off, len);
+    }
+}
+
+template <typename AType, typename BType, typename CType>
+__aicore__ inline void AllGatherMxMatmulUrmaImpl<AType, BType, CType>::CopyBytesPingPong(__gm__ int8_t *src,
+                                                                                         __gm__ int8_t *dst, uint64_t len)
+{
+    uint32_t chunk = COPY_CHUNK_BYTES;
+    uint64_t done = 0;
+    SetFlag<HardEvent::MTE3_MTE2>(COPY_EVT_ID0);
+    SetFlag<HardEvent::MTE3_MTE2>(COPY_EVT_ID1);
+    while (done < len) {
+        uint32_t curLen = (len - done) > chunk ? chunk : static_cast<uint32_t>(len - done);
+        uint32_t bufIdx = static_cast<uint32_t>((done / chunk) & 1);
+        uint16_t evt = (bufIdx == 0) ? COPY_EVT_ID0 : COPY_EVT_ID1;
+        uint32_t ubOff = copyUbOffset_ + bufIdx * chunk;
+        uint32_t ubLen = (curLen + COPY_UB_ALIGN - 1) / COPY_UB_ALIGN * COPY_UB_ALIGN;
+
+        auto ubTensor = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::ub, int8_t>(ubOff),
+                                             MakeLayoutByte{}(1, ubLen));
+        auto srcTensor = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(src + done),
+                                              MakeLayoutByte{}(1, curLen));
+        WaitFlag<HardEvent::MTE3_MTE2>(evt);
+        asc::te::copy(copyGM2UB_, ubTensor, srcTensor);
+        SetFlag<HardEvent::MTE2_MTE3>(evt);
+        WaitFlag<HardEvent::MTE2_MTE3>(evt);
+        auto dstTensor = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(dst + done),
+                                              MakeLayoutByte{}(1, curLen));
+        asc::te::copy(copyUB2GM_, dstTensor, ubTensor);
+        SetFlag<HardEvent::MTE3_MTE2>(evt);
+        done += curLen;
+    }
+    WaitFlag<HardEvent::MTE3_MTE2>(COPY_EVT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(COPY_EVT_ID1);
 }
 
 } // namespace Apace
@@ -301,6 +420,6 @@ __global__ __aicore__ void AllGatherQuantMatmulKernel(__gm__ Apace::AivComm::Com
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
     Apace::AllGatherMxMatmulUrmaImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t> impl;
-    impl.Init(hcommCtx, aGM, aScaleGM, bGM, bScaleGM, cGM, biasGM, nullptr, &tilingData);
+    impl.Init(hcommCtx, aGM, aScaleGM, bGM, bScaleGM, cGM, biasGM, nullptr, nullptr, &tilingData);
     impl.Process();
 }
