@@ -84,9 +84,7 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
 constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
 constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 32U;
 constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 8U;
-constexpr uint32_t A5_ALL_CORE_COUNT_BS_THRESHOLD = 128U;
 constexpr uint64_t UB_ALIGN_VAL = 32U;
-constexpr uint32_t UB_ALIGN_INT32_NUM = UB_ALIGN_VAL / sizeof(int32_t);
 constexpr uint32_t RANK_LIST_NUM = 2;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
 constexpr int64_t H_MIN = 1024;
@@ -688,6 +686,11 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     OP_TILING_CHECK((isLayered && (epWorldSize % RANK_NUM_PER_NODE != 0)), // 校验epWorldSize是否是16整数倍
                     OP_LOGE(nodeName, "epWorldSize should be %u Aligned, but got %ld.", RANK_NUM_PER_NODE, epWorldSize),
                     return ge::GRAPH_FAILED);
+    // 参考A2实现: 单超场景(16卡)无跨超通信收益, hierarchy自动退化为fullmesh
+    if (isLayered && (epWorldSize == RANK_NUM_PER_NODE)) {
+        isLayered = false;
+        OP_LOGI(nodeName, "epWorldSize is %ld in single supernode, degrade hierarchy to fullmesh.", epWorldSize);
+    }
     OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
                     OP_LOGE(nodeName, "epRankId is invalid, only support [0, %ld), but got epRankId=%ld.", epWorldSize,
                             *epRankIdPtr),
@@ -1003,15 +1006,15 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
                     return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "MoeDistributeDispatchV2 *globalBsPtr = %ld, bs = %ld, epWorldSize = %u\n", *globalBsPtr, xDim0,
             epWorldSize);
-    OP_TILING_CHECK(
-        (*globalBsPtr != 0) && ((*globalBsPtr < xDim0 * static_cast<int64_t>(epWorldSize)) ||
-                                ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
-        OP_LOGE(nodeName,
-                "globalBS is invalid, only "
-                "support 0 or maxBs(maxBs is the largest bs on all ranks) * epWorldSize, but got globalBS=%ld, "
-                "bs=%ld, epWorldSize=%u.",
-                *globalBsPtr, xDim0, epWorldSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*globalBsPtr != 0) && ((*globalBsPtr < xDim0 * static_cast<int64_t>(epWorldSize)) ||
+                                            ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
+                    OP_LOGE(nodeName,
+                            "globalBS is invalid, only "
+                            "support 0 or maxBs(maxBs is the configured bs capacity per rank) * epWorldSize, but got "
+                            "globalBS=%ld, "
+                            "bs=%ld, epWorldSize=%u.",
+                            *globalBsPtr, xDim0, epWorldSize),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((*globalBsPtr > (xDim0 * static_cast<int64_t>(epWorldSize))) && isActiveMask),
                     OP_LOGE(nodeName,
                             "Different bs on different rank cannot work when isActiveMask=true, globalBS=%ld, "
@@ -1622,10 +1625,16 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t totalExpertNum = sharedExpertRankNum + moeExpertNum;
-    uint32_t bs = tilingData.moeDistributeDispatchV2Info.bs;
-    // kernel侧CumSum控制核最多使用8核，此处按上限估算发送核的UB占用。
-    uint32_t aivUsedCumSum = A5_CUMSUM_MAX_CORE_NUM;
+    uint32_t epWorldSize = tilingData.moeDistributeDispatchV2Info.epWorldSize;
+    uint32_t epRankId = tilingData.moeDistributeDispatchV2Info.epRankId;
+    uint32_t moeExpertRankNum = epWorldSize - sharedExpertRankNum;
+    uint32_t moeExpertNumPerRank = moeExpertNum / moeExpertRankNum;
+    uint32_t rscvStatusNum = epRankId < sharedExpertRankNum ? epWorldSize : epWorldSize * moeExpertNumPerRank;
+    uint32_t aivUsedCumSum = totalExpertNum / 16; // 单核处理16个专家cnt发送
+    aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
     aivUsedCumSum = (aivUsedCumSum >= (aivNum / HALF_NUM)) ? (aivNum / HALF_NUM) : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= A5_CUMSUM_MAX_CORE_NUM) ? A5_CUMSUM_MAX_CORE_NUM : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= rscvStatusNum) ? rscvStatusNum : aivUsedCumSum;
     uint32_t aivUsedAllToAll = aivNum - aivUsedCumSum;
     uint32_t sharedUsedAivNum = 0;
     if (sharedExpertRankNum != 0U) {
@@ -1639,11 +1648,6 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     uint32_t expertMaskBufSize = maskSizePerExpert * Ceil(moeExpertNum, moeUsedAivNum, nodeName) / moeUsedAivNum;
     UbForMoe = UbForMoe + expertMaskBufSize;                                        // expertMaskBuf
     UbForMoe = UbForMoe + Ceil(moeExpertNum * sizeof(int32_t), UB_ALIGN, nodeName); // tokenNumToExpertBuf
-    if (bs < A5_ALL_CORE_COUNT_BS_THRESHOLD) {
-        uint32_t countNumPerCore = Ceil(totalExpertNum, aivNum, nodeName) / aivNum;
-        uint32_t statusCntAlign = Ceil(countNumPerCore, UB_ALIGN_INT32_NUM, nodeName);
-        UbForMoe = UbForMoe + statusCntAlign * UB_ALIGN_VAL; // statusBuf_
-    }
     return UbForMoe;
 }
 

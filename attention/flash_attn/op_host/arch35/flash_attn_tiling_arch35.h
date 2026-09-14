@@ -25,11 +25,12 @@
 namespace optiling {
 namespace flash_attn {
 
-// 4字段 tiling key
+// 5字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
     uint64_t kvLayoutType = 0;
     bool hasAttenMask = false;
+    uint64_t templateId = 0;
     uint64_t config = 0;
 };
 
@@ -49,9 +50,9 @@ struct FaPlatFormInfo {
 
 class FlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
-    {
-    }
+    explicit FlashAttnTilingImpl(gert::TilingContext *context)
+        : FiaTilingBase(context)
+    {}
     ~FlashAttnTilingImpl() override = default;
 
     // protected:
@@ -68,6 +69,7 @@ private:
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
     void UpdateTilingKeyKvLayout();
+    void UpdateTilingKeyTemplateId();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void InitImplParam();

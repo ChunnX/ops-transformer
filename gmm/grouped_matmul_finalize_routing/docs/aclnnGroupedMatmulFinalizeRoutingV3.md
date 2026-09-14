@@ -28,7 +28,7 @@
 - 接口功能：
   GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。
 
-  相较于aclnnGroupedMatmulFinalizeRoutingV2接口，**此接口新增:**
+  相较于aclnnGroupedMatmulFinalizeRoutingV2接口，**此接口新增：**
 
     <!-- npu="A3,910b" id7 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增入参tuningConfigOptional，调优参数。数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。
@@ -139,7 +139,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>INT8，FLOAT8_E5M2，FLOAT8_E4M3FN，FLOAT4_E2M1</td>
       <td>ND</td>
       <td>(m, k)</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>x2</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>INT4，FLOAT8_E5M2，FLOAT8_E4M3FN，FLOAT4_E2M1</td>
       <td>ND</td>
       <td>支持三维</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>scaleOptional</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>INT64，FLOAT8_E8M0</td>
       <td>ND</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>biasOptional</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>FLOAT32，BF16</td>
       <td>ND</td>
       <td>支持二维，维度为(e, n)</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>offsetOptional</td>
@@ -209,7 +209,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>FLOAT32，FLOAT8_E8M0</td>
       <td>ND</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>groupListOptional</td>
@@ -219,7 +219,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>INT64</td>
       <td>ND</td>
       <td>支持一维，维度为(e)</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>sharedInputOptional</td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>BF16</td>
       <td>ND</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>logitOptional</td>
@@ -239,7 +239,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>FLOAT32</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>rowIndexOptional</td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       <td>INT64</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>dtype</td>
@@ -264,7 +264,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     <tr>
       <td>sharedInputWeight</td>
       <td>输入</td>
-      <td>共享专家与moe专家进行combine的系数，sharedInput先与该参数乘，然后在和moe专家结果累加。</td>
+      <td>共享专家与moe专家进行combine的系数，sharedInput先与该参数相乘，然后再与moe专家结果累加。</td>
       <td></td>
       <td>FLOAT32</td>
       <td></td>
@@ -694,8 +694,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       std::vector<float> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
       std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
-      std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
-      std::vector<float> rowIndexHostData(GetShapeSize(rowIndexShape));
+      std::vector<float> logitHostData(GetShapeSize(logitShape));
+      std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
       std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值
       groupListHostData[0] = 1;
@@ -756,7 +756,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       CHECK_RET(ret == ACL_SUCCESS, return ret);
 
       aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-      CHECK_RET(tuningConfig != nullptr, return -1);
+      CHECK_RET(tuningConfig != nullptr, LOG_PRINT("aclCreateIntArray failed.\n"); return -1);
       // 3. 调用CANN算子库API，需要修改为具体的Api名称
       uint64_t workspaceSize = 0;
       aclOpExecutor *executor;
@@ -1003,7 +1003,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       std::vector<float> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
       std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape));
       std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
-      std::vector<int64_t> logitHostData(GetShapeSize(logitShape));
+      std::vector<float> logitHostData(GetShapeSize(logitShape));
       std::vector<int64_t> rowIndexHostData(GetShapeSize(rowIndexShape));
       std::vector<float> outHostData(GetShapeSize(outShape));
       // 对groupList赋值

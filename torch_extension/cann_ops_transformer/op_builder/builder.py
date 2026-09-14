@@ -50,6 +50,9 @@ class OpBuilder(ABC):
             self.register_meta()
         self._initialized = True
 
+    def ensure_initialized(self):
+        self._ensure_initialized()
+
     def get_cann_path(self):
         if ASCEND_HOME_PATH in os.environ and os.path.exists(
             os.environ[ASCEND_HOME_PATH]
@@ -133,7 +136,6 @@ class OpBuilder(ABC):
         args = [
             "-O3",
             "-w",
-            "-std=c++17",
             "-fPIC",
             "-fstack-protector-all",
             "-Wl,-z,relro,-z,now,-z,noexecstack",
@@ -170,6 +172,9 @@ class OpBuilder(ABC):
         if self.name in OpBuilder._loaded_ops:
             return OpBuilder._loaded_ops[self.name]
 
+        # Lazy import avoids pulling arg_check into every builder import path.
+        from cann_ops_transformer.utils.arg_check import wrap_op_module
+
         op_module = load(
             name=self.name,
             sources=self.get_absolute_paths(self.sources()),
@@ -178,6 +183,8 @@ class OpBuilder(ABC):
             extra_ldflags=self.extra_ldflags(),
             verbose=verbose,
         )
+        # Arg type-check proxy; ops can call through load() unchanged.
+        op_module = wrap_op_module(op_module)
         OpBuilder._loaded_ops[self.name] = op_module
 
         return op_module

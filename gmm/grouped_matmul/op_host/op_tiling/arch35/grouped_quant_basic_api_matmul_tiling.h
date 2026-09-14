@@ -47,7 +47,30 @@ protected:
     ge::graphStatus CalL1Tiling();
 
 private:
+    struct L1SearchResult {
+        uint64_t depthA1 = 0UL;
+        uint64_t depthB1 = 0UL;
+        uint64_t stepKa = 0UL;
+        uint64_t stepKb = 0UL;
+        uint32_t scaleFactorA = 0U;
+        uint32_t scaleFactorB = 0U;
+        uint64_t highBwPayload = 0UL;
+        uint64_t totalPayload = 0UL;
+        bool found = false;
+    };
+
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    bool SearchReducedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1, uint64_t baseASize,
+                                        uint64_t baseBSize, L1SearchResult &result);
+    void SearchExpandedThreeBufferTiling(uint64_t initialDepthA1, uint64_t initialDepthB1, uint64_t maxDepthA1,
+                                         uint64_t maxDepthB1, uint64_t baseASize, uint64_t baseBSize,
+                                         L1SearchResult &result);
+    void TryUpdateThreeBufferCandidate(uint64_t candidateDepthA1, uint64_t candidateDepthB1, uint64_t baseASize,
+                                       uint64_t baseBSize, bool requireMinLoadSize, L1SearchResult &result);
+    bool IsBetterThreeBufferCandidate(uint64_t highBwPayload, uint64_t totalPayload,
+                                      const L1SearchResult &result) const;
+    void ApplyThreeBufferSearchResult(const L1SearchResult &result);
+    ge::graphStatus FinalizeStepAndScale();
     uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
     void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleABSize);
     ge::graphStatus CalScaleFactors();
@@ -95,20 +118,23 @@ protected:
     ge::graphStatus PostTiling() override;
     virtual void Reset();
 
-    // S4S4-specific (hide base's same-named; call base then sync s4s4Tiling_)
-    bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
-    bool SetGroupNum(uint32_t groupListIndex);
-    bool SetMKNList();
+    // S4S4-specific (call base then sync s4s4Tiling_)
+    bool SetMKNForS4S4(const gert::Shape &xShape, const gert::Shape &wShape);
+    bool SetGroupNumForS4S4(uint32_t groupListIndex);
+    bool SetMKNListForS4S4();
     bool AnalyzeS4S4();
-    bool CheckS4S4Params();
+    bool CheckS4S4Params() const;
     void CalBasicBlockS4S4();
     ge::graphStatus CalUbDivideS4S4();
     ge::graphStatus CalWorkspaceS4S4();
     uint32_t FindBestSingleN() const;
-    void InitCommonL1TilingFields();
-    ge::graphStatus CalcLeftL1Size(uint64_t &leftL1Size) const;
+    void InitS4S4CommonL1TilingFields();
+    ge::graphStatus CalcS4S4LeftL1Size(uint64_t &leftL1Size) const;
     ge::graphStatus CalL1Tiling();
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    void SetS4S4Params();
+    ge::graphStatus SetArrayParams();
+    void SetMmTilingData();
 
 private:
     struct S4S4BasicTiling {
@@ -144,9 +170,9 @@ private:
     // Shadows base's private tilingData_ (GMMQuantBasicApiTilingData); own type
     GroupedMatmulTilingData::GMMS4S4IntQuantTilingData tilingData_;
     uint64_t int8WeightWs_ = 0UL;
-    uint64_t int8XWs_ = 0UL;      // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
+    uint64_t int8XWs_ = 0UL; // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
     uint64_t mmOutWs_ = 0UL;
-    uint64_t perTokenScaleFillWs_ = 0UL;  // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
+    uint64_t perTokenScaleFillWs_ = 0UL; // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
     bool weightNzC032_ = false;
     // mList_/kList_/nList_ shadow base's private same-named (base private, derived inaccessible)
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};

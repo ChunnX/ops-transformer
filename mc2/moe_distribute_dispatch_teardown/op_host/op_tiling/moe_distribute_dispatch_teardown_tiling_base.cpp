@@ -131,7 +131,7 @@ uint64_t MoeDistributeDispatchTeardownTilingBase::GetTilingKey() const
     return tilingKey;
 }
 
-const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckRequiredAttrValue()
+const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckRequiredAttrValue() const
 {
     auto attrs = context_->GetAttrs();
     auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
@@ -367,11 +367,11 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckInputTensorShapeDim()
                     OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "y",
                                                  std::to_string(yShape->GetStorageShape().GetDimNum()).c_str(), "2"),
                     return false);
-    OP_TILING_CHECK(expertIdsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "expertIds",
-                                                 std::to_string(expertIdsShape->GetStorageShape().GetDimNum()).c_str(),
-                                                 "2"),
-                    return false);
+    OP_TILING_CHECK(
+        expertIdsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "expertIds",
+                                     std::to_string(expertIdsShape->GetStorageShape().GetDimNum()).c_str(), "2"),
+        return false);
     OP_TILING_CHECK(
         commCmdInfoShape->GetStorageShape().GetDimNum() != ONE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "commCmdInfo",
@@ -381,18 +381,18 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckInputTensorShapeDim()
     return true;
 }
 
-const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorShapeDim()
+const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorShapeDim() const
 {
     const gert::StorageShape *expandXOutShape = context_->GetOutputShape(OUTPUT_EXPAND_X_INDEX);
     const gert::StorageShape *dynamicScalesOutShape = context_->GetOutputShape(OUTPUT_DYNAMIC_SCALES_INDEX);
     const gert::StorageShape *assitInfoForCombineOutShape =
         context_->GetOutputShape(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
     const gert::StorageShape *expertTokenNumsOutShape = context_->GetOutputShape(OUTPUT_EXPERT_TOKEN_NUMS_INDEX);
-    OP_TILING_CHECK(expandXOutShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "expandXOut",
-                                                 std::to_string(expandXOutShape->GetStorageShape().GetDimNum()).c_str(),
-                                                 "2"),
-                    return false);
+    OP_TILING_CHECK(
+        expandXOutShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, "expandXOut",
+                                     std::to_string(expandXOutShape->GetStorageShape().GetDimNum()).c_str(), "2"),
+        return false);
     auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
     if (quantMode == PERTOKEN_DYNAMIC_QUANT) {
         OP_TILING_CHECK(dynamicScalesOutShape->GetStorageShape().GetDimNum() != ONE_DIMS,
@@ -498,11 +498,11 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
     auto sharedExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertNum);
     auto yDim0Golden = bs * (k + sharedExpertNum);
     auto yDim0 = yShape->GetStorageShape().GetDim(DIM_ZERO);
-    OP_TILING_CHECK((yDim0Golden != yDim0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "y",
-                                                          (std::string("dim0=") + std::to_string(yDim0)).c_str(),
-                                                          "Dim0 of y must be equal to bs * (k + sharedExpertNum)"),
-                    return false);
+    OP_TILING_CHECK(
+        (yDim0Golden != yDim0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "y", (std::string("dim0=") + std::to_string(yDim0)).c_str(),
+                                              "Dim0 of y must be equal to bs * (k + sharedExpertNum)"),
+        return false);
     int64_t tokenMsgSize1;
     auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
     if (quantMode == UNQUANT) {
@@ -633,22 +633,22 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckInputTensorDataType()
                                   Ops::Base::ToString(context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType()).c_str(),
                                   "float16/bfloat16/int8/fp8/hif8"),
         return false);
-    OP_TILING_CHECK((context_->GetInputDesc(INPUT_EXPERT_IDS_INDEX)->GetDataType() != ge::DT_INT32),
-                    OP_LOGE_FOR_INVALID_DTYPE(
-                        nodeName_, "expertIds",
-                        Ops::Base::ToString(context_->GetInputDesc(INPUT_EXPERT_IDS_INDEX)->GetDataType()).c_str(),
-                        "int32"),
-                    return false);
-    OP_TILING_CHECK((context_->GetInputDesc(INPUT_COMM_CMD_INFO_INDEX)->GetDataType() != ge::DT_INT32),
-                    OP_LOGE_FOR_INVALID_DTYPE(
-                        nodeName_, "commCmdInfo",
-                        Ops::Base::ToString(context_->GetInputDesc(INPUT_COMM_CMD_INFO_INDEX)->GetDataType()).c_str(),
-                        "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        (context_->GetInputDesc(INPUT_EXPERT_IDS_INDEX)->GetDataType() != ge::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName_, "expertIds",
+            Ops::Base::ToString(context_->GetInputDesc(INPUT_EXPERT_IDS_INDEX)->GetDataType()).c_str(), "int32"),
+        return false);
+    OP_TILING_CHECK(
+        (context_->GetInputDesc(INPUT_COMM_CMD_INFO_INDEX)->GetDataType() != ge::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName_, "commCmdInfo",
+            Ops::Base::ToString(context_->GetInputDesc(INPUT_COMM_CMD_INFO_INDEX)->GetDataType()).c_str(), "int32"),
+        return false);
     return true;
 }
 
-const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorDataType()
+const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorDataType() const
 {
     OP_TILING_CHECK((context_->GetOutputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType() !=
                      context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType()),
@@ -660,7 +660,7 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckOutputTensorDataType()
     return true;
 }
 
-const bool MoeDistributeDispatchTeardownTilingBase::CheckRelationTensorDataType()
+const bool MoeDistributeDispatchTeardownTilingBase::CheckRelationTensorDataType() const
 {
     OP_TILING_CHECK((context_->GetOutputDesc(OUTPUT_EXPAND_X_INDEX) == nullptr),
                     OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expandXOut"), return false);

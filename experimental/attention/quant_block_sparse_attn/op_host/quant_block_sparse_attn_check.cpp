@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <string>
 
+#include "graph/utils/type_utils.h"
 #include "quant_block_sparse_attn_check.h"
 #include "quant_block_sparse_attn_tiling.h"
 #include "log/log.h"
@@ -94,7 +95,7 @@ ge::graphStatus CheckInputDtype(const QBSARequiredParaInfo &input, const char *i
     }
     const ge::DataType actualType = input.desc->GetDataType();
     if (actualType != expectedType) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, inputName, std::to_string(static_cast<int32_t>(actualType)),
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, inputName, ge::TypeUtils::DataTypeToSerialString(actualType),
                                   expectedTypeName);
         return ge::GRAPH_FAILED;
     }
@@ -105,8 +106,7 @@ ge::graphStatus CheckMXFP8FullQuantScaleInputs(const QuantBlockSparseAttnParaInf
 {
     if (opParamInfo.kDescale.shape == nullptr || opParamInfo.vDescale.shape == nullptr ||
         opParamInfo.qDescale.shape == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "keyAntiquantScale/valueAntiquantScale/dequantScaleQuery",
-                                              "nullptr",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "k_descale/v_descale/q_descale", "nullptr",
                                               "All must be passed in quant_mode=2 MXFP8 full-quant scenario");
         return ge::GRAPH_FAILED;
     }
@@ -123,7 +123,7 @@ ge::graphStatus CheckKVDtypeConsistency(const QuantBlockSparseAttnParaInfo &opPa
     if (keyType != valueType) {
         OP_LOGE_FOR_INVALID_DTYPE(
             kOpName, "key/value",
-            std::to_string(static_cast<int32_t>(keyType)) + "/" + std::to_string(static_cast<int32_t>(valueType)),
+            ge::TypeUtils::DataTypeToSerialString(keyType) + "/" + ge::TypeUtils::DataTypeToSerialString(valueType),
             "key and value must have the same dtype");
         return ge::GRAPH_FAILED;
     }
@@ -213,29 +213,30 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "query", std::to_string(static_cast<int>(tilingInfo_.qDtype)),
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "query", ge::TypeUtils::DataTypeToSerialString(tilingInfo_.qDtype),
                                   "FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value", std::to_string(static_cast<int>(tilingInfo_.kvDtype)),
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value", ge::TypeUtils::DataTypeToSerialString(tilingInfo_.kvDtype),
                                   "FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.value.desc != nullptr && opParamInfo.value.desc->GetDataType() != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE_FOR_INVALID_DTYPE(
-            kOpName, "value", std::to_string(static_cast<int>(opParamInfo.value.desc->GetDataType())), "FLOAT8_E4M3FN");
+        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "value",
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.value.desc->GetDataType()),
+                                  "FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.sparseIndices.desc != nullptr && opParamInfo.sparseIndices.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "sparse_indices",
-                                  std::to_string(static_cast<int>(opParamInfo.sparseIndices.desc->GetDataType())),
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.sparseIndices.desc->GetDataType()),
                                   "INT32");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.sparseSeqLen.desc != nullptr && opParamInfo.sparseSeqLen.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "sparse_seq_len",
-                                  std::to_string(static_cast<int>(opParamInfo.sparseSeqLen.desc->GetDataType())),
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.sparseSeqLen.desc->GetDataType()),
                                   "INT32");
         return ge::GRAPH_FAILED;
     }
@@ -243,42 +244,46 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
         opParamInfo.attenMask.shape->GetStorageShape().GetShapeSize() > 0 &&
         opParamInfo.attenMask.desc->GetDataType() != ge::DT_UINT8) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "atten_mask",
-                                  std::to_string(static_cast<int>(opParamInfo.attenMask.desc->GetDataType())), "UINT8");
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.attenMask.desc->GetDataType()),
+                                  "UINT8");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.metadata.desc != nullptr && opParamInfo.metadata.tensor != nullptr &&
         opParamInfo.metadata.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "metadata",
-                                  std::to_string(static_cast<int>(opParamInfo.metadata.desc->GetDataType())), "INT32");
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.metadata.desc->GetDataType()),
+                                  "INT32");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.seqUsedKV.desc != nullptr && opParamInfo.seqUsedKV.tensor != nullptr &&
         opParamInfo.seqUsedKV.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "seqused_kv",
-                                  std::to_string(static_cast<int>(opParamInfo.seqUsedKV.desc->GetDataType())), "INT32");
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.seqUsedKV.desc->GetDataType()),
+                                  "INT32");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.blockTable.desc != nullptr && opParamInfo.blockTable.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "block_table",
-                                  std::to_string(static_cast<int>(opParamInfo.blockTable.desc->GetDataType())),
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.blockTable.desc->GetDataType()),
                                   "INT32");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.cuSeqlensQ.desc != nullptr && opParamInfo.cuSeqlensQ.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "cu_seqlens_q",
-                                  std::to_string(static_cast<int>(opParamInfo.cuSeqlensQ.desc->GetDataType())),
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.cuSeqlensQ.desc->GetDataType()),
                                   "INT32");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.attnOut.desc != nullptr && opParamInfo.attnOut.desc->GetDataType() != ge::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "attention_out",
-                                  std::to_string(static_cast<int>(opParamInfo.attnOut.desc->GetDataType())),
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.attnOut.desc->GetDataType()),
                                   "BFLOAT16");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo.lseOut.desc != nullptr && opParamInfo.lseOut.desc->GetDataType() != ge::DT_FLOAT) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "softmax_lse",
-                                  std::to_string(static_cast<int>(opParamInfo.lseOut.desc->GetDataType())), "FLOAT");
+                                  ge::TypeUtils::DataTypeToSerialString(opParamInfo.lseOut.desc->GetDataType()),
+                                  "FLOAT");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -331,15 +336,19 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
             return ge::GRAPH_FAILED;
         }
     } else if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        if (CheckInputDtype(opParamInfo.qDescale, "dequantScaleQuery", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
+        if (CheckInputDtype(opParamInfo.qDescale, "q_descale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
-            CheckInputDtype(opParamInfo.kDescale, "keyAntiquantScale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
+            CheckInputDtype(opParamInfo.kDescale, "k_descale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
-            CheckInputDtype(opParamInfo.vDescale, "valueAntiquantScale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
+            CheckInputDtype(opParamInfo.vDescale, "v_descale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
-            (opParamInfo.pScale.desc != nullptr &&
-             CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
-                 ge::GRAPH_SUCCESS)) {
+            (opParamInfo.pScale.desc != nullptr && opParamInfo.pScale.shape != nullptr &&
+             opParamInfo.pScale.shape->GetStorageShape().GetShapeSize() > 0 &&
+             opParamInfo.pScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0 &&
+             opParamInfo.pScale.desc->GetDataType() != ge::DT_FLOAT)) {
+            OP_LOGE_FOR_INVALID_DTYPE(kOpName, "quantScale1",
+                                      std::to_string(static_cast<int32_t>(opParamInfo.pScale.desc->GetDataType())),
+                                      "FLOAT8_E8M0 or FLOAT");
             return ge::GRAPH_FAILED;
         }
     }
@@ -401,12 +410,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
         tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         if (opParamInfo.metadata.desc == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "metadata", "nullptr",
-                                                  "The metadata tensor must be provided when quant_mode is 1 or 2.");
+                                                  "The metadata tensor must be provided when quant_mode is 1 or 2");
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo.metadata.tensor == nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "metadata", "empty",
-                                                  "The metadata tensor cannot be empty when quant_mode is 1 or 2.");
+                                                  "The metadata tensor cannot be empty when quant_mode is 1 or 2");
             return ge::GRAPH_FAILED;
         }
     }
@@ -473,8 +482,8 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         if (sparseIndicesShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) ||
             sparseIndicesShape.GetDim(1U) != static_cast<int64_t>(tilingInfo_.n1Size)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "sparse_indices", Ops::Base::ToString(sparseIndicesShape),
-                                                  "dim[0] must equal batch size and dim[1] must equal "
-                                                  "query N1 in quant_mode=1 or 2.");
+                                                  "Dim[0] must equal batch size and dim[1] must equal "
+                                                  "query N1 in quant_mode=1 or 2");
             return ge::GRAPH_FAILED;
         }
         if (sparseSeqLenShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) ||
@@ -483,7 +492,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 kOpName, "sparse_seq_len", Ops::Base::ToString(sparseSeqLenShape),
                 "The shape of sparse_seq_len must be [sparse_indices.B, query.N1, sparse_indices.max_Qb] when "
-                "quant_mode is 1 or 2.");
+                "quant_mode is 1 or 2");
             return ge::GRAPH_FAILED;
         }
 
@@ -492,12 +501,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
         if (metadataStorageShape.GetDimNum() != DIM_NUM_1) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 kOpName, "metadata", Ops::Base::ToString(metadataStorageShape),
-                "The metadata tensor must be one-dimensional when quant_mode is 1 or 2.");
+                "The metadata tensor must be one-dimensional when quant_mode is 1 or 2");
             return ge::GRAPH_FAILED;
         }
         if (metadataStorageShape.GetDim(0U) <= 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "metadata", Ops::Base::ToString(metadataStorageShape),
-                                                  "The metadata tensor cannot be empty when quant_mode is 1 or 2.");
+                                                  "The metadata tensor cannot be empty when quant_mode is 1 or 2");
             return ge::GRAPH_FAILED;
         }
     }
@@ -506,7 +515,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 kOpName, "block_table.shape[1]", std::to_string(tilingInfo_.maxBlockNumPerBatch),
                 "The second dimension of block_table must be greater than or equal to max_Kb of sparse_indices (" +
-                    std::to_string(tilingInfo_.sparseCount) + ") when quant_mode is 1.");
+                    std::to_string(tilingInfo_.sparseCount) + ") when quant_mode is 1");
             return ge::GRAPH_FAILED;
         }
     }
@@ -523,12 +532,15 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
                                               "Must be <= " + std::to_string(QBSA_MAX_BATCH_SIZE));
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        if (tilingInfo_.n2Size > QBSA_MAX_N2_SIZE) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n2Size", std::to_string(tilingInfo_.n2Size),
-                                                  "Must be <= " + std::to_string(QBSA_MAX_N2_SIZE));
-            return ge::GRAPH_FAILED;
-        }
+    if (tilingInfo_.gSize > QBSA_MAX_G_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "gSize", std::to_string(tilingInfo_.gSize),
+                                              "Must be <= " + std::to_string(QBSA_MAX_G_SIZE));
+        return ge::GRAPH_FAILED;
+    }
+    if (tilingInfo_.n2Size > QBSA_MAX_N2_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "n2Size", std::to_string(tilingInfo_.n2Size),
+                                              "Must be <= " + std::to_string(QBSA_MAX_N2_SIZE));
+        return ge::GRAPH_FAILED;
     }
     if (tilingInfo_.n1Size % tilingInfo_.n2Size != 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -733,7 +745,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
         if (vDescaleShape.GetDimNum() != DIM_NUM_1 ||
             vDescaleShape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.n2Size)) { // dim0 = n2Size
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "v_descale", Ops::Base::ToString(vDescaleShape),
-                                                  "must be [n2Size].");
+                                                  "must be [n2Size]");
             return ge::GRAPH_FAILED;
         }
     }
@@ -742,7 +754,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
         const gert::Shape &pScaleShape = opParamInfo.pScale.shape->GetStorageShape();
         if (pScaleShape.GetShapeSize() != 0 && (pScaleShape.GetDimNum() != DIM_NUM_1 || pScaleShape.GetDim(0U) != 1)) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "p_scale", Ops::Base::ToString(pScaleShape),
-                                                  "p_scale must be 1D [1] or empty in quant_mode=1.");
+                                                  "p_scale must be 1D [1] or empty in quant_mode=1");
             return ge::GRAPH_FAILED;
         }
     }
@@ -785,8 +797,15 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttenMask() const
         OP_LOGE_WITH_INVALID_ATTR(kOpName, "mask_mode", std::to_string(tilingInfo_.maskModeVal), "0 or 3");
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.maskModeVal == QBSA_MASK_MODE_CAUSAL) {
-        const auto &opParamInfo = tilingInfo_.opParamInfo;
+    const auto &opParamInfo = tilingInfo_.opParamInfo;
+    if (tilingInfo_.maskModeVal == QBSA_MASK_MODE_NONE) {
+        if (opParamInfo.attenMask.shape != nullptr &&
+            opParamInfo.attenMask.shape->GetStorageShape().GetShapeSize() > 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "atten_mask", "provided",
+                                                  "Atten_mask must not be provided when mask_mode=0");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (tilingInfo_.maskModeVal == QBSA_MASK_MODE_CAUSAL) {
         if (opParamInfo.attenMask.shape == nullptr ||
             opParamInfo.attenMask.shape->GetStorageShape().GetShapeSize() <= 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "atten_mask", "nullptr",
@@ -851,11 +870,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
         static_cast<int64_t>(tilingInfo_.dSizeV), QBSA_MXFP8_SCALE_LAST_DIM};
 
     if (CheckInputShape(opParamInfo.query, "query", queryShapeExpect) != ge::GRAPH_SUCCESS ||
-        CheckInputShape(opParamInfo.qDescale, "dequantScaleQuery", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
+        CheckInputShape(opParamInfo.qDescale, "q_descale", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.key, "key", keyShapeExpect) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.value, "value", valueShapeExpect) != ge::GRAPH_SUCCESS ||
-        CheckInputShape(opParamInfo.kDescale, "keyAntiquantScale", keyAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
-        CheckInputShape(opParamInfo.vDescale, "valueAntiquantScale", valueAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
+        CheckInputShape(opParamInfo.kDescale, "k_descale", keyAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
+        CheckInputShape(opParamInfo.vDescale, "v_descale", valueAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     // pScale may be an empty tensor (shape size 0) to indicate default scale 1.0

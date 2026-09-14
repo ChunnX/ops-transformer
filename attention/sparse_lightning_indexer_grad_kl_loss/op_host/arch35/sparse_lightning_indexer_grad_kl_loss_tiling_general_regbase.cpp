@@ -334,12 +334,13 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
             maxS2Val = *std::max_element(actualSeqLenKData.begin(), actualSeqLenKData.end());
             s1Size = maxS1Val;
             s2Size = maxS2Val;
-            OP_CHECK_IF(s1Size > s2Size || t1Size > t2Size || accumS1 > accumS2,
-                        OP_LOGE(opName,
-                                "Query s1Size(%ld), t1Size(%ld) and the sum of seqQLen(%ld) must be small than Key "
-                                "s2Size(%ld), t2Size(%ld) and seqkLen(%ld), respectively.",
-                                s1Size, t1Size, accumS1, s2Size, t2Size, accumS2),
-                        return false);
+            OP_CHECK_IF(
+                s1Size > s2Size || t1Size > t2Size || accumS1 > accumS2,
+                OP_LOGE(opName,
+                        "Query s1Size(%ld), t1Size(%ld) and the sum of seqQLen(%ld) must not be greater than Key "
+                        "s2Size(%ld), t2Size(%ld) and seqkLen(%ld), respectively.",
+                        s1Size, t1Size, accumS1, s2Size, t2Size, accumS2),
+                return false);
             n2Size = keyShape.GetDim(1);
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(1) / n2Size;
@@ -349,8 +350,7 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
             kSize = topKShape.GetDim(2);
             OP_CHECK_IF(
                 kSize > BUFFER_SIZE_BYTE_8K || kSize % BUFFER_SIZE_BYTE_1K > 0,
-                OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.",
-                        kSize),
+                OP_LOGE(opName, "topK(%d) must be less than or equal to 8192 and an integer multiple of 1024.", kSize),
                 return false);
             topKRange = (kSize <= BUFFER_SIZE_BYTE_2K) ? TopKRangeRegbase::RANGE_0_2K : TopKRangeRegbase::RANGE_2K_8K;
             OP_CHECK_IF((gSizeQuery == NQUERY_SIZE_48 && gSizeQueryIndex != NQUERYINDEX_SIZE_24) ||
@@ -378,7 +378,7 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2);
             OP_CHECK_IF(s1Size > s2Size,
-                        OP_LOGE(opName, "Query s1Size(%ld) must be small than Key s2Size(%ld).", s1Size, s2Size),
+                        OP_LOGE(opName, "Query s1Size(%ld) must not be greater than Key s2Size(%ld).", s1Size, s2Size),
                         return false);
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(2) / n2Size;
@@ -388,8 +388,7 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(
             kSize = topKShape.GetDim(3);
             OP_CHECK_IF(
                 kSize > BUFFER_SIZE_BYTE_8K || kSize % BUFFER_SIZE_BYTE_1K > 0,
-                OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.",
-                        kSize),
+                OP_LOGE(opName, "topK(%d) must be less than or equal to 8192 and an integer multiple of 1024.", kSize),
                 return false);
             topKRange = (kSize <= BUFFER_SIZE_BYTE_2K) ? TopKRangeRegbase::RANGE_0_2K : TopKRangeRegbase::RANGE_2K_8K;
             OP_CHECK_IF((gSizeQuery == NQUERY_SIZE_48 && gSizeQueryIndex != NQUERYINDEX_SIZE_24) ||
@@ -468,8 +467,9 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDtype()
     if (sparseIndicesDtype == ge::DT_INT32 && softmaxMaxDtype == ge::DT_FLOAT && softmaxSumDtype == ge::DT_FLOAT) {
         same32 = true;
     } else {
-        OP_LOGW(context_, "InputDtype is fault: sparseIndicesDtype must be int32, but[%s]; softmaxMaxDtype must be \
-                float32, but[%s]; softmaxSumDtype must be float32, but[%s].",
+        OP_LOGW(context_,
+                "Input dtype is invalid: sparseIndicesDtype must be int32, but got [%s]; "
+                "softmaxMaxDtype must be float32, but got [%s]; softmaxSumDtype must be float32, but got [%s].",
                 ge::TypeUtils::DataTypeToSerialString(sparseIndicesDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(softmaxMaxDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(softmaxSumDtype).c_str());
@@ -505,6 +505,19 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
     auto sparseIndicesShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
     auto softmaxMaxShape = context_->GetInputShape(SOFTMAX_MAX_INPUT_INDEX)->GetStorageShape();
     auto softmaxSumShape = context_->GetInputShape(SOFTMAX_SUM_INPUT_INDEX)->GetStorageShape();
+    // 校验sinks：若存在，须为1维且dim[0]=N1（query的N维度）
+    auto sinksShape = context_->GetOptionalInputShape(SINKS_INPUT_INDEX);
+    if (sinksShape != nullptr && sinksShape->GetStorageShape().GetDimNum() != 0) {
+        auto &sinksStorageShape = sinksShape->GetStorageShape();
+        int64_t n1Len = (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') ?
+                            queryShape.GetDim(DIM_NUM_1) :
+                            queryShape.GetDim(DIM_NUM_2);
+        OP_CHECK_IF(sinksStorageShape.GetDimNum() != DIM_NUM_1 || sinksStorageShape.GetDim(DIM_NUM_0) != n1Len,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "sinks dim[0] must equal N1(%ld), but got shape with dimNum(%lu) dim[0](%ld).", n1Len,
+                        sinksStorageShape.GetDimNum(), sinksStorageShape.GetDim(DIM_NUM_0)),
+                    return false);
+    }
     // 下面数字对应shape输入位置
     if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
         int64_t t1Len = queryShape[0];
@@ -910,7 +923,11 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeLayout()
         OP_LOGE(opName, "Layout %s data analyze failed.", inputLayout), return false);
     OP_CHECK_IF(gSizeQuery == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSizeQuery is zero"), return false);
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero"), return false);
-    OP_CHECK_IF(dSizeQuery <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "dSizeQuery  is not support <= 0"), return false);
+    OP_CHECK_IF(dSizeQuery <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "dSizeQuery must be greater than 0"),
+                return false);
+
+    auto sinksShape = context_->GetOptionalInputShape(SINKS_INPUT_INDEX);
+    hasSink = (sinksShape != nullptr && sinksShape->GetStorageShape().GetDimNum() != 0);
     return true;
 }
 
@@ -1279,15 +1296,22 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::PostTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::PostTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 uint64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(hasRope), static_cast<uint8_t>(topKRange),
                               static_cast<uint8_t>(tilingKeyLayout), static_cast<uint8_t>(tilingKeyLayout),
-                              static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic));
+                              static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic),
+                              static_cast<uint8_t>(hasSink));
 }
 
 ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceSize()
@@ -1307,6 +1331,9 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
 
     int64_t usedCoreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
+    if (hasSink) {
+        singlecoreTotalSize += 2 * sizeof(float); // psinkSync: one float per subBlock
+    }
     int64_t multicoreTotalsize = 0;
     if (deterministic) {
         multicoreTotalsize =

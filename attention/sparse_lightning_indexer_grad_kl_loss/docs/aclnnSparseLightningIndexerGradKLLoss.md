@@ -93,8 +93,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize(
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
-    int64_t              pre_tokens,
-    int64_t              next_tokens,
+    int64_t              preTokens,
+    int64_t              nextTokens,
     bool                 deterministic,
     const aclTensor     *dQueryIndex,
     const aclTensor     *dKeyIndex,
@@ -109,7 +109,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize
@@ -343,6 +343,30 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>-</td>
         </tr>
         <tr>
+            <td>preTokens</td>
+            <td>输入</td>
+            <td>左侧mask保留的token数。</td>
+            <td>
+            -
+            </td>
+            <td>INT64</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>nextTokens</td>
+            <td>输入</td>
+            <td>右侧mask保留的token数。</td>
+            <td>
+            -
+            </td>
+            <td>INT64</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
         <td>deterministic</td>
             <td>输入</td>
             <td>确定性计算。</td>
@@ -393,6 +417,26 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>ND</td>
             <td>(1,)</td>
             <td>x</td>
+        </tr>
+        <tr>
+            <td>workspaceSize</td>
+            <td>输出</td>
+            <td>返回需要在Device侧申请的workspace大小。</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>executor</td>
+            <td>输出</td>
+            <td>返回op执行器，包含了算子计算流程。</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         </tbody>
     </table>
@@ -490,6 +534,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
         - 公共约束里入参为空的场景和FAG保持一致。
+    - sparseMode模式说明：
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 740px">
@@ -621,10 +666,9 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
-
-    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
-
-    <term>Ascend 950PR/Ascend 950DT</term>：B、S1、S2均支持泛化。
+    <!-- npu="950" id8 -->
+    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
+    <!-- end id8 -->
 
 ## 调用示例
 

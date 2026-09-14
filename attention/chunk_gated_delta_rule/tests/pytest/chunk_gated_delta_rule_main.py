@@ -7,6 +7,9 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import logging
+
+logger = logging.getLogger(__name__)
 import time
 import torch
 import torch_npu
@@ -18,12 +21,14 @@ import torch.nn.functional as F
 import numpy as np
 import logging
 import os
+import gc
 
 _USE_GRAPH = os.environ.get("USE_GRAPH", "false").lower() in ("true", "1", "yes")
 _ENABLE_PROF = os.environ.get("ENABLE_PROF", "false").lower() in ("true", "1", "yes")
 _SAVE_PT = os.environ.get("SAVE_PT", "false").lower() in ("true", "1", "yes")
 _LOAD_PT = os.environ.get("LOAD_PT", "false").lower() in ("true", "1", "yes")
 _LOAD_PT_FILE = os.environ.get("LOAD_PT_FILE", "")
+SKIP_GOLDEN = os.environ.get("SKIP_GOLDEN", "0") == "1"
 
 if _USE_GRAPH:
     import torchair
@@ -38,6 +43,7 @@ if _USE_GRAPH:
     # 配置图模式 aclgraph config
     config = torchair.CompilerConfig()
     config.mode = "reduce-overhead"
+    config.debug.aclgraph.clone_input = False
     npu_backend = torchair.get_npu_backend(compiler_config=config)
 
 
@@ -147,7 +153,7 @@ def compare_cv(
     # 最大相对误差
     max_re_npu = get_max_re(golden, actual)
     max_re_high_type = get_max_re(golden, golden_high_type)
-    print(f"{max_re_npu=}, {max_re_high_type=}")
+    logger.info(f"{max_re_npu=}, {max_re_high_type=}")
     # 平均相对误差
     avg_re_npu = get_avg_re(golden, actual)
     avg_re_high_type = get_avg_re(golden, golden_high_type)
@@ -162,17 +168,17 @@ def compare_cv(
     rmse_rate = rmse_npu / max(rmse_high_type, err_threshold)
     smra_rate = smra_npu / max(smra_high_type, err_threshold)
     if name is not None:
-        print(f"compare_cv for {name}:")
-    print(
+        logger.info(f"compare_cv for {name}:")
+    logger.info(
         f"\tmax_re_rate={max_re_rate:.3f} ({CV_MAX_RE}), max_re_high_type={max_re_high_type:.3e}"
     )
-    print(
+    logger.info(
         f"\tavg_re_rate={avg_re_rate:.3f} ({CV_AVER_RE}), avg_re_high_type={avg_re_high_type:.3e}"
     )
-    print(
+    logger.info(
         f"\trmse_rate={rmse_rate:.3f} ({CV_RMSE}), rmse_high_type={rmse_high_type:.3e}"
     )
-    print(
+    logger.info(
         f"\tsmra_rate={smra_rate:.3f} ({CV_SMALL_VAL}), smra_high_type={smra_high_type:.3e}"
     )
     result = (
@@ -184,7 +190,7 @@ def compare_cv(
     if not result:
         epsilon = 2.0**-7
         if max_re_npu < epsilon:
-            print(f"\t max_re_npu={max_re_npu} less than {epsilon}.")
+            logger.info(f"\t max_re_npu={max_re_npu} less than {epsilon}.")
             result = True
     return result
 
@@ -222,7 +228,7 @@ def cgdr_golden(
     )
     o_golden = o_golden[0]
     state_golden = state_golden.transpose(-1, -2)
-    print(f"cgdr_golden {use_float64=} time cost: {time.time() - t0} s")
+    logger.info(f"cgdr_golden {use_float64=} time cost: {time.time() - t0} s")
     return o_golden.to(torch.float32).npu(), state_golden.to(torch.float32).npu()
 
 
@@ -249,7 +255,9 @@ def cgdr_benchmark(
 
 
 def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
-    print(f"[cgdr_npu] 运行模式: {'aclgraph' if _USE_GRAPH else 'torch直调'}")
+    logger.info(
+        f"[cgdr_npu] run mode: {'aclgraph' if _USE_GRAPH else 'torch direct call'}"
+    )
     if _USE_GRAPH:
         model = MyModel().npu()
         model = torch.compile(model, backend=npu_backend, dynamic=False)
@@ -271,6 +279,12 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
     o_npu = o_npu.to(torch.float32)
     state_npu = state_npu.to(torch.float32)
     return o_npu, state_npu
+
+
+def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
+    return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(
+        shape, dtype=dtype, device=device
+    )
 
 
 def _pt_filename(
@@ -360,7 +374,7 @@ def _save_input_pt(
         },
     }
     torch.save(data, fpath)
-    print(f"[SAVE_PT] saved input data to {fpath}")
+    logger.info(f"[SAVE_PT] saved input data to {fpath}")
 
 
 def _load_input_pt(
@@ -411,7 +425,7 @@ def _load_input_pt(
         "actual_seq_lengths": data["actual_seq_lengths"].to(dev),
         "g": None if data["g"] is None else data["g"].to(dev),
     }
-    print(f"[LOAD_PT] loaded input data from {fpath}")
+    logger.info(f"[LOAD_PT] loaded input data from {fpath}")
     return loaded
 
 
@@ -428,6 +442,12 @@ def run_chunk_gated_delta_rule_eager(
     has_g=True,
     is_contiguous=True,
     pt_path="",
+    query_datarange=[0, 1],
+    key_datarange=[0, 1],
+    value_datarange=[0, 1],
+    gamma_datarange=[-1, 0],
+    beta_datarange=[0, 1],
+    state_datarange=[0, 1],
 ):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== gen input data start =============================
@@ -464,22 +484,35 @@ def run_chunk_gated_delta_rule_eager(
         else:
             seqlen_list = [seqlen] * B
             T = B * seqlen
-        q = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
-        k = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
-        v = torch.rand((T, nv, dv), dtype=data_type, device="npu:%s" % DEVICE_ID)
+        q = rand_range(
+            (T, nk, dk), query_datarange, data_type, device="npu:%s" % DEVICE_ID
+        )
+        k = rand_range(
+            (T, nk, dk), key_datarange, data_type, device="npu:%s" % DEVICE_ID
+        )
+        v = rand_range(
+            (T, nv, dv), value_datarange, data_type, device="npu:%s" % DEVICE_ID
+        )
         if has_g:
-            g = (
-                torch.rand((T, nv), dtype=torch.float32, device="npu:%s" % DEVICE_ID)
-                * -1.0
+            g = rand_range(
+                (T, nv),
+                gamma_datarange,
+                dtype=torch.float32,
+                device="npu:%s" % DEVICE_ID,
             )
         else:
             g = None
-        beta = torch.rand((T, nv), dtype=data_type, device="npu:%s" % DEVICE_ID)
+        beta = rand_range(
+            (T, nv), beta_datarange, data_type, device="npu:%s" % DEVICE_ID
+        )
         q = torch.nn.functional.normalize(q, p=2, dim=-1)
         k = torch.nn.functional.normalize(k, p=2, dim=-1)
         scale = 1 / (dk**0.5)
-        initial_state = torch.rand(
-            (B, nv, dv, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID
+        initial_state = rand_range(
+            (B, nv, dv, dk),
+            state_datarange,
+            state_data_type,
+            device="npu:%s" % DEVICE_ID,
         )
         if not is_contiguous:
             state_pad = torch.zeros(
@@ -491,7 +524,7 @@ def run_chunk_gated_delta_rule_eager(
             seqlen_list, dtype=torch.int32, device="npu:%s" % DEVICE_ID
         )
     # ======================== gen input data finish =============================
-    print(
+    logger.info(
         f"initial_state: is_contiguous={initial_state.is_contiguous()}, stride={initial_state.stride()}"
     )
 
@@ -523,7 +556,19 @@ def run_chunk_gated_delta_rule_eager(
         for _ in range(5):
             cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
         torch.npu.synchronize()
-        print("PASSED (prof)")
+        logger.info("PASSED (prof)")
+        return True
+
+    if SKIP_GOLDEN:
+        o_npu, state_npu = cgdr_npu(
+            q, k, v, g, beta, scale, initial_state, actual_seq_lengths
+        )
+        del o_npu, state_npu
+        gc.collect()
+        torch.npu.empty_cache()
+        logger.info(
+            "SKIP_GOLDEN=1, skip golden/benchmark/precision check, npu execute finished"
+        )
         return True
 
     # ======================== execute golden/benchmark/npu ================================
@@ -556,19 +601,19 @@ def run_chunk_gated_delta_rule_eager(
     # ======================== check result ================================
     ret = True
     if not compare_cv(o_golden, o_bench, o_npu, name="o"):
-        print("compare o failed.")
+        logger.error("compare o failed.")
         err_o = torch.abs(o_golden - o_npu).flatten()
         idx = torch.argmax(err_o)
-        print(
+        logger.info(
             f"idx={idx}, err_o={err_o[idx]}, o_golden={o_golden.flatten()[idx]}, "
             f"o_npu={o_npu.flatten()[idx]}, o_bench={o_bench.flatten()[idx]}"
         )
         ret = False
     if not compare_cv(state_golden, state_bench, state_npu, name="state"):
-        print("compare state failed.")
+        logger.error("compare state failed.")
         err_s = torch.abs(state_golden - state_npu).flatten()
         idx = torch.argmax(err_s)
-        print(
+        logger.info(
             f"idx={idx}, err_s={err_s[idx]}, state_golden={state_golden.flatten()[idx]}, "
             f"state_npu={state_npu.flatten()[idx]}, state_bench={state_bench.flatten()[idx]}"
         )

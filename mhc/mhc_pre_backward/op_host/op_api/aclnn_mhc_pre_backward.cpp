@@ -8,11 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "aclnn_mhc_pre_backward.h"
+#include "aclnn_mhc_pre_backward_v2.h"
 #include <dlfcn.h>
 #include <new>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include "securec.h"
+#include "log/log.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
@@ -33,6 +37,10 @@ extern "C" {
 
 namespace {
 
+constexpr const char *ACLNN_OP_NAME = "aclnnMhcPreBackwardGetWorkspaceSize";
+constexpr int64_t MHC_PRE_BACKWARD_USE_FP32 = 0;
+constexpr int64_t MHC_PRE_BACKWARD_USE_HF32 = 1;
+
 struct AclnnMhcPreBackwardParams {
     const aclTensor *x = nullptr;
     const aclTensor *phi = nullptr;
@@ -47,6 +55,7 @@ struct AclnnMhcPreBackwardParams {
     const aclTensor *gamma = nullptr;
     const aclTensor *gradXPostOptional = nullptr;
     float hcEps;
+    int64_t opImplMode = MHC_PRE_BACKWARD_USE_FP32;
 
     const aclTensor *gradX = nullptr;
     const aclTensor *gradPhi = nullptr;
@@ -113,9 +122,10 @@ public:
         return *this;
     }
 
-    AclnnMhcPreBackward &SetAttr(float hcEps)
+    AclnnMhcPreBackward &SetAttr(float hcEps, int64_t opImplMode)
     {
         obj_.hcEps = hcEps;
+        obj_.opImplMode = opImplMode;
 
         return *this;
     }
@@ -156,9 +166,8 @@ bool MhcGradCheckInputNotNull(const AclnnMhcPreBackwardParams &params)
            MhcGradCheckInputNotNullImpl(params.gradHIn, "gradHIn") &&
            MhcGradCheckInputNotNullImpl(params.gradHPost, "gradHPost") &&
            MhcGradCheckInputNotNullImpl(params.gradHRes, "gradHRes") &&
-           MhcGradCheckInputNotNullImpl(params.invRms, "invRms") &&
-           MhcGradCheckInputNotNullImpl(params.hMix, "hMix") && MhcGradCheckInputNotNullImpl(params.hPre, "hPre") &&
-           MhcGradCheckInputNotNullImpl(params.hPost, "hPost") &&
+           MhcGradCheckInputNotNullImpl(params.invRms, "invRms") && MhcGradCheckInputNotNullImpl(params.hMix, "hMix") &&
+           MhcGradCheckInputNotNullImpl(params.hPre, "hPre") && MhcGradCheckInputNotNullImpl(params.hPost, "hPost") &&
            (params.gamma == nullptr || MhcGradCheckInputNotNullImpl(params.gamma, "gamma")) &&
            (params.gradXPostOptional == nullptr ||
             MhcGradCheckInputNotNullImpl(params.gradXPostOptional, "gradXPostOptional"));
@@ -222,7 +231,8 @@ bool MhcGradCheckInputDims(const AclnnMhcPreBackwardParams &params)
            (params.gamma == nullptr || CheckDimNum(params.gamma, 2, "gamma")) &&
            CheckDimNum(params.gradHIn, (params.x)->GetViewShape().GetDimNum() - 1, "gradHIn") &&
            CheckDimNum(params.gradHPost, (params.x)->GetViewShape().GetDimNum() - 1, "gradHPost") &&
-           CheckDimNum(params.gradHRes, (params.x)->GetViewShape().GetDimNum(), "gradHRes") &&
+           CheckDimNum(params.gradHRes, (params.x)->GetViewShape().GetDimNum(), "gradHRes", true,
+                       (params.x)->GetViewShape().GetDimNum() - 1) &&
            CheckDimNum(params.invRms, (params.x)->GetViewShape().GetDimNum() - 2, "invRms") &&
            CheckDimNum(params.hMix, (params.x)->GetViewShape().GetDimNum() - 1, "hMix") &&
            CheckDimNum(params.hPre, (params.x)->GetViewShape().GetDimNum() - 1, "hPre") &&
@@ -261,10 +271,28 @@ bool CheckShapeDim(const gert::Shape &shape, uint64_t index, uint64_t expected, 
 {
     if (shape.GetDim(index) != expected) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s, and dim %lu must be %lu, actual is %ld", msg, index, expected,
-            shape.GetDim(index));
+                shape.GetDim(index));
         return false;
     }
     return true;
+}
+
+uint64_t Factorial(uint64_t n)
+{
+    if (n <= 1) {
+        return 1;
+    }
+    uint64_t result = 1;
+    for (uint64_t i = 2; i <= n; i++) {
+        result *= i;
+    }
+    return result;
+}
+
+bool IsAscend910BPlatform()
+{
+    auto socVersion = GetCurrentPlatformInfo().GetSocVersion();
+    return socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93;
 }
 
 bool MhcGradCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t batch, uint64_t sequence, uint64_t dimen,
@@ -284,11 +312,32 @@ bool MhcGradCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t bat
         return false;
     }
 
+    // 从 phi shape 动态读取 fusionSize, 支持 N!+2N 和 N²+2N
+    uint64_t fusionSize = params.phi->GetViewShape().GetDim(0);
+    uint64_t factN = Factorial(numsResidual); // BSN! 形式的 factN = N!
     auto &gradHResShape = params.gradHRes->GetViewShape();
-    if (!CheckShapeDim(gradHResShape, 0, batch, "gradHRes shape must be [B, S, N, N]") ||
-        !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N]") ||
-        !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [B, S, N, N]") ||
-        !CheckShapeDim(gradHResShape, 3, numsResidual, "gradHRes shape must be [B, S, N, N]")) {
+    if (gradHResShape.GetDimNum() == 4) {
+        // [B, S, N, N] (BSNN 形式) - 所有平台都支持, factN = N²
+        if (!CheckShapeDim(gradHResShape, 0, batch, "gradHRes shape must be [B, S, N, N]") ||
+            !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N]") ||
+            !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [B, S, N, N]") ||
+            !CheckShapeDim(gradHResShape, 3, numsResidual, "gradHRes shape must be [B, S, N, N]")) {
+            return false;
+        }
+    } else if (gradHResShape.GetDimNum() == 3) {
+        // [B, S, N!] (BSN! 形式) - 仅 A2 支持, A5 只支持 BSNN
+        if (!IsAscend910BPlatform()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gradHRes shape [B, S, N!] (BSN!) is only supported on A2 platform");
+            return false;
+        }
+        if (!CheckShapeDim(gradHResShape, 0, batch, "gradHRes shape must be [B, S, N, N] or [B, S, N!]") ||
+            !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N] or [B, S, N!]") ||
+            !CheckShapeDim(gradHResShape, 2, factN, "gradHRes shape must be [B, S, N, N] or [B, S, N!]")) {
+            return false;
+        }
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gradHRes shape dim num must be 3 (BSN!) or 4 (BSNN), but got %lu",
+                gradHResShape.GetDimNum());
         return false;
     }
 
@@ -298,11 +347,10 @@ bool MhcGradCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t bat
         return false;
     }
 
-    uint64_t n2Plus2n = numsResidual * numsResidual + 2 * numsResidual;
     auto &hMixShape = params.hMix->GetViewShape();
-    if (!CheckShapeDim(hMixShape, 0, batch, "hMix shape must be [B, S, N^2+2N]") ||
-        !CheckShapeDim(hMixShape, 1, sequence, "hMix shape must be [B, S, N^2+2N]") ||
-        !CheckShapeDim(hMixShape, 2, n2Plus2n, "hMix shape must be [B, S, N^2+2N]")) {
+    if (!CheckShapeDim(hMixShape, 0, batch, "hMix shape must be [B, S, fusionSize]") ||
+        !CheckShapeDim(hMixShape, 1, sequence, "hMix shape must be [B, S, fusionSize]") ||
+        !CheckShapeDim(hMixShape, 2, fusionSize, "hMix shape must be [B, S, fusionSize]")) {
         return false;
     }
 
@@ -354,11 +402,27 @@ bool MhcGradCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, u
         return false;
     }
 
+    // 从 phi shape 动态读取 fusionSize, 支持 N!+2N 和 N²+2N
+    uint64_t fusionSize = params.phi->GetViewShape().GetDim(0);
+    uint64_t factN = Factorial(numsResidual); // BSN! 形式的 factN = N!
     auto &gradHResShape = params.gradHRes->GetViewShape();
-    if (!CheckShapeDim(gradHResShape, 0, t, "gradHRes shape must be [T, N, N]") ||
-        !CheckShapeDim(gradHResShape, 1, numsResidual, "gradHRes shape must be [T, N, N]") ||
-        !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [T, N, N]")) {
-        return false;
+    if (gradHResShape.GetDimNum() == 3) {
+        // [T, N, N] (BSNN 形式) - 所有平台都支持, factN = N²
+        if (!CheckShapeDim(gradHResShape, 0, t, "gradHRes shape must be [T, N, N]") ||
+            !CheckShapeDim(gradHResShape, 1, numsResidual, "gradHRes shape must be [T, N, N]") ||
+            !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [T, N, N]")) {
+            return false;
+        }
+    } else {
+        // [T, N!] (BSN! 形式) - 仅 A2 支持, A5 只支持 BSNN
+        if (!IsAscend910BPlatform()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gradHRes shape [T, N!] (BSN!) is only supported on A2 platform");
+            return false;
+        }
+        if (!CheckShapeDim(gradHResShape, 0, t, "gradHRes shape must be [T, N, N] or [T, N!]") ||
+            !CheckShapeDim(gradHResShape, 1, factN, "gradHRes shape must be [T, N, N] or [T, N!]")) {
+            return false;
+        }
     }
 
     auto &invRmsShape = params.invRms->GetViewShape();
@@ -366,10 +430,9 @@ bool MhcGradCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, u
         return false;
     }
 
-    uint64_t n2Plus2n = numsResidual * numsResidual + 2 * numsResidual;
     auto &hMixShape = params.hMix->GetViewShape();
-    if (!CheckShapeDim(hMixShape, 0, t, "hMix shape must be [T, N^2+2N]") ||
-        !CheckShapeDim(hMixShape, 1, n2Plus2n, "hMix shape must be [T, N^2+2N]")) {
+    if (!CheckShapeDim(hMixShape, 0, t, "hMix shape must be [T, fusionSize]") ||
+        !CheckShapeDim(hMixShape, 1, fusionSize, "hMix shape must be [T, fusionSize]")) {
         return false;
     }
 
@@ -411,16 +474,33 @@ bool MhcGradCheckCommonShape(const AclnnMhcPreBackwardParams &params, uint64_t n
     }
 
     uint64_t nD = numsResidual * dimen;
-    uint64_t n2Plus2n = numsResidual * numsResidual + 2 * numsResidual;
+
     auto &phiShape = params.phi->GetViewShape();
-    if (!CheckShapeDim(phiShape, 0, n2Plus2n, "phi tensor first dim must be n^2+2n") ||
-        !CheckShapeDim(phiShape, 1, nD, "phi tensor second dim must be nD")) {
+    uint64_t fusionSize = phiShape.GetDim(0);
+    // 校验 phi 第一维: 必须是 N!+2N 或 N²+2N
+    uint64_t expectedFusionSizeFactN = Factorial(numsResidual) + 2 * numsResidual;   // N!+2N
+    uint64_t expectedFusionSizeNsq = numsResidual * numsResidual + 2 * numsResidual; // N²+2N
+    if (fusionSize != expectedFusionSizeFactN && fusionSize != expectedFusionSizeNsq) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "phi tensor first dim must be N!+2N (%lu) or N^2+2N (%lu), but got %lu",
+                expectedFusionSizeFactN, expectedFusionSizeNsq, fusionSize);
+        return false;
+    }
+    if (!CheckShapeDim(phiShape, 1, nD, "phi tensor second dim must be nD")) {
+        return false;
+    }
+
+    // Verify hMix fusionSize matches phi
+    auto &hMixShape = params.hMix->GetViewShape();
+    uint64_t hMixLastDim = hMixShape.GetDim(hMixShape.GetDimNum() - 1);
+    if (hMixLastDim != fusionSize) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "hMix last dim must match phi fusionSize %lu, but got %lu", fusionSize,
+                hMixLastDim);
         return false;
     }
 
     auto &gradPhiShape = params.gradPhi->GetViewShape();
-    if (!CheckShapeDim(gradPhiShape, 0, n2Plus2n, "gradPhi shape must be [2N+N^2, N*D]") ||
-        !CheckShapeDim(gradPhiShape, 1, nD, "gradPhi shape must be [2N+N^2, N*D]")) {
+    if (!CheckShapeDim(gradPhiShape, 0, fusionSize, "gradPhi shape first dim must match phi") ||
+        !CheckShapeDim(gradPhiShape, 1, nD, "gradPhi shape second dim must be nD")) {
         return false;
     }
 
@@ -430,7 +510,7 @@ bool MhcGradCheckCommonShape(const AclnnMhcPreBackwardParams &params, uint64_t n
     }
 
     auto &gradBiasShape = params.gradBias->GetViewShape();
-    if (!CheckShapeDim(gradBiasShape, 0, n2Plus2n, "gradBias shape must be [2N+N^2]")) {
+    if (!CheckShapeDim(gradBiasShape, 0, fusionSize, "gradBias shape must match fusionSize")) {
         return false;
     }
 
@@ -494,7 +574,7 @@ bool CheckDtype(const aclTensor *tensor, DataType expected, const char *name, bo
     bool valid = isValidX ? (dtype == DataType::DT_BF16 || dtype == DataType::DT_FLOAT16) : (dtype == expected);
     if (!valid) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s tensor dtype must be %s. actual is [%s].", name,
-            isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
+                isValidX ? "BF16 or FP16" : op::ToString(expected).GetString(), op::ToString(dtype).GetString());
         return false;
     }
     return true;
@@ -509,11 +589,10 @@ bool MhcGradCheckInputDtype(const AclnnMhcPreBackwardParams &params)
            CheckDtype(params.gradHPost, DataType::DT_FLOAT, "gradHPost") &&
            CheckDtype(params.gradHRes, DataType::DT_FLOAT, "gradHRes") &&
            CheckDtype(params.invRms, DataType::DT_FLOAT, "invRms") &&
-           CheckDtype(params.hMix, DataType::DT_FLOAT, "hMix") &&
-           CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
+           CheckDtype(params.hMix, DataType::DT_FLOAT, "hMix") && CheckDtype(params.hPre, DataType::DT_FLOAT, "hPre") &&
            CheckDtype(params.hPost, DataType::DT_FLOAT, "hPost") &&
            (params.gradXPostOptional == nullptr ||
-             CheckDtype(params.gradXPostOptional, params.x->GetDataType(), "gradXPostOptional"));
+            CheckDtype(params.gradXPostOptional, params.x->GetDataType(), "gradXPostOptional"));
 }
 
 bool MhcGradCheckOutputDtype(const AclnnMhcPreBackwardParams &params)
@@ -586,6 +665,13 @@ aclnnStatus MhcGradCheckParams(const AclnnMhcPreBackwardParams &params)
     // 5. 检查数据形状是否支持
     CHECK_RET(MhcGradCheckFormat(params), ACLNN_ERR_PARAM_INVALID);
 
+    // 6. 校验算子实现模式
+    if (params.opImplMode != MHC_PRE_BACKWARD_USE_FP32 && params.opImplMode != MHC_PRE_BACKWARD_USE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode", std::to_string(params.opImplMode).c_str(),
+                                              "must be 0 (FP32) or 1 (HF32)");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     return ACLNN_SUCCESS;
 }
 
@@ -643,17 +729,14 @@ static aclnnStatus mhcPreBackwardCommonProcess(AclnnMhcPreBackwardParams &params
 {
     auto ret = MhcGradCheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
     ret = MhcGradCovertDataContiguous(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    auto outParams =
-        l0op::MhcPreBackward(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.gradHInContiguous,
-                             params.gradHPostContiguous, params.gradHResContiguous, params.invRmsContiguous,
-                             params.hMixContiguous, params.hPreContiguous, params.hPostContiguous,
-                             params.gammaContiguous, params.gradXPostOptionalContiguous, params.hcEps, executor);
+    auto outParams = l0op::MhcPreBackward(
+        params.xContiguous, params.phiContiguous, params.alphaContiguous, params.gradHInContiguous,
+        params.gradHPostContiguous, params.gradHResContiguous, params.invRmsContiguous, params.hMixContiguous,
+        params.hPreContiguous, params.hPostContiguous, params.gammaContiguous, params.gradXPostOptionalContiguous,
+        params.hcEps, params.opImplMode, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
-
     CHECK_RET(CopyOutput(std::get<0>(outParams), params.gradX, executor), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CopyOutput(std::get<1>(outParams), params.gradPhi, executor), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CopyOutput(std::get<2>(outParams), params.gradAlpha, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -663,41 +746,82 @@ static aclnnStatus mhcPreBackwardCommonProcess(AclnnMhcPreBackwardParams &params
     }
     return ACLNN_SUCCESS;
 }
-} // namespace
 
-aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
+static aclnnStatus MhcPreBackwardGetWorkspaceSizeCommon(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
     const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
     const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPostOptional,
-    float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
+    float hcEps, int64_t opImplMode, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
     const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnMhcPreBackward,
-                   DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma,
-                          gradXPostOptional),
-                   DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    if (workspaceSize == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "workspaceSize", "nullptr",
+                                              "output parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (executor == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "executor", "nullptr",
+                                              "output parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     auto uniqueExecutor = CREATE_EXECUTOR();
-
     AclnnMhcPreBackwardParams params = AclnnMhcPreBackward::Create()
                                            .SetInput(x, phi, alpha, gamma)
                                            .SetGradInput(gradHIn, gradHPost, gradHRes)
                                            .SetGradXPostOptional(gradXPostOptional)
                                            .SetForwardInput(invRms, hMix, hPre, hPost)
-                                           .SetAttr(hcEps)
+                                           .SetAttr(hcEps, opImplMode)
                                            .SetOutput(gradX, gradPhi, gradAlpha, gradBias, gradGamma)
                                            .Build();
-
     auto ret = mhcPreBackwardCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
+}
+} // namespace
+
+aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
+    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
+    const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional, const aclTensor *gradXPostOptional,
+    float hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
+    const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    L2_DFX_PHASE_1(aclnnMhcPreBackward,
+                   DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
+                          gradXPostOptional, hcEps),
+                   DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    return MhcPreBackwardGetWorkspaceSizeCommon(
+        x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional, gradXPostOptional, hcEps,
+        MHC_PRE_BACKWARD_USE_FP32, gradX, gradPhi, gradAlpha, gradBias, gradGamma, workspaceSize, executor);
+}
+
+aclnnStatus aclnnMhcPreBackwardV2GetWorkspaceSize(
+    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
+    const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gammaOptional, const aclTensor *gradXPostOptional,
+    float hcEps, int64_t opImplMode, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
+    const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
+    L2_DFX_PHASE_1(aclnnMhcPreBackwardV2,
+                   DFX_IN(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gammaOptional,
+                          gradXPostOptional, hcEps, opImplMode),
+                   DFX_OUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
+    return MhcPreBackwardGetWorkspaceSizeCommon(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost,
+                                                gammaOptional, gradXPostOptional, hcEps, opImplMode, gradX, gradPhi,
+                                                gradAlpha, gradBias, gradGamma, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcPreBackward);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+}
+
+aclnnStatus aclnnMhcPreBackwardV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+{
+    L2_DFX_PHASE_2(aclnnMhcPreBackwardV2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

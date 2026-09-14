@@ -17,7 +17,8 @@
 namespace ops {
 class MhcPreBackward : public OpDef {
 public:
-    explicit MhcPreBackward(const char *name) : OpDef(name)
+    explicit MhcPreBackward(const char *name)
+        : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -114,7 +115,18 @@ public:
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "mhc_pre_backward_apt");
         this->AICore().AddConfig("ascend950", aicConfig);
+        OpAICoreConfig aicoreConfig910b;
+        aicoreConfig910b.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("opFile.value", "mhc_pre_backward");
+        this->AICore().AddConfig("ascend910b", aicoreConfig910b);
+        this->AICore().AddConfig("ascend910_93", aicoreConfig910b);
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
+        this->Attr("op_impl_mode").AttrType(OPTIONAL).Int(0);
     }
 };
 

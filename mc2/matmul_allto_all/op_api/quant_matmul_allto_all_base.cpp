@@ -24,6 +24,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "mc2_log_compat.h"
@@ -321,7 +322,7 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const int
         static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         if (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B) {
             isAllDtypesValid = CheckKCBiasDtypesValid(x1, x2, x1Scale, x2Scale, biasOptional, output);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             isAllDtypesValid = CheckKCQuantDtypesValidA5(x1, x2, x1Scale, x2Scale, biasOptional, output);
         }
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
@@ -477,9 +478,9 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid("quant_matmul_allto_all", x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                                   // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                  // 复制一个x2
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
@@ -513,8 +514,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
     const aclTensor *out = output;
     int64_t worldSize = -1;
-    char *str_group = const_cast<char *>(group);
-    char *str_commMode = const_cast<char *>(commMode);
+    std::string str_group(group);
+    std::string str_commMode(commMode);
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
     commQuantDtype = op::DataType::DT_UNDEFINED;
     // 生成yDtype，图模式需要
@@ -533,9 +534,9 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
 
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
-        x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, str_group,
-        worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
-        transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
+        x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
+        str_group.data(), worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode,
+        commQuantDtype, transposeX1, transposeX2, groupSize, str_commMode.data(), out, workspaceSize, executor);
     OP_LOGD("QuantMatmulAlltoAll, aclnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE_LIBOPAPI_REPORT(
@@ -559,7 +560,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize
         return ACLNN_ERR_INNER;
     }
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

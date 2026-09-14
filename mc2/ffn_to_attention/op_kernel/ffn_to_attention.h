@@ -23,14 +23,8 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "ffn_to_attention_tiling.h"
-#if __has_include("../common/moe_distribute_base.h")
-#include "../common/moe_distribute_base.h"
-#include "../common/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
-
 
 namespace FFNToAttentionImpl {
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
@@ -90,11 +84,10 @@ private:
 };
 
 template <TemplateFFNToAttentionTypeClass>
-__aicore__ inline void
-FFNToAttention<TemplateFFNToAttentionTypeFunc>::Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
-                                                     GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
-                                                     GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
-                                                     const FFNToAttentionTilingData *tilingData)
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Init(
+    GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds, GM_ADDR expertOffsets,
+    GM_ADDR actualTokenNum, GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
+    const FFNToAttentionTilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
@@ -148,9 +141,8 @@ __aicore__ inline GM_ADDR FFNToAttention<TemplateFFNToAttentionTypeFunc>::GetWin
 }
 
 template <TemplateFFNToAttentionTypeClass>
-__aicore__ inline void
-FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct,
-                                                                  uint32_t YOffset)
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadTokenMetaData(
+    ReadTokenMetaDataStruct &metaDataStruct, uint32_t YOffset)
 {
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
         sessionIdsGMTensor_[YOffset]);

@@ -11,39 +11,34 @@
 #ifndef GMM_GEMM_TILE_COPY_L1_TO_BT_HPP
 #define GMM_GEMM_TILE_COPY_L1_TO_BT_HPP
 
-#include "../../../gmm_infra/base_defs.hpp"
+#include "../../../gmm_infra/gmm_base_defs.hpp"
 #include "../../../gmm_infra/arch/gmm_arch.hpp"
 #include "../../../gmm_infra/layout/gmm_layout.hpp"
 #include "../../../gmm_infra/gemm/gmm_gemm_type.hpp"
 
 namespace Catlass::Gemm::Tile {
 
-template <
-    class ArchTag,
-    class L1Type,
-    class L0Type = void
->
+template <class ArchTag, class L1Type, class L0Type = void>
 struct CopyL1ToBT {
-    static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported copy l1 to biasTable buffer, can not find the specialization.");
+    static_assert(DEPENDENT_FALSE<ArchTag>,
+                  "Unsupported copy l1 to biasTable buffer, can not find the specialization.");
 };
 
-template<class ArchTag, class ElementSrc, class ElementDst>
+template <class ArchTag, class ElementSrc, class ElementDst>
 struct CopyL1ToBT<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLayout, AscendC::TPosition::A1>,
-    Catlass::Gemm::GemmType<ElementDst, layout::VectorLayout, AscendC::TPosition::C2>>{
+                  Catlass::Gemm::GemmType<ElementDst, layout::VectorLayout, AscendC::TPosition::C2>> {
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
 
-    static constexpr uint32_t ELE_NUM_PER_C2 =  BYTE_PER_C2 / sizeof(ElementSrc);
+    static constexpr uint32_t ELE_NUM_PER_C2 = BYTE_PER_C2 / sizeof(ElementSrc);
 
     CATLASS_DEVICE
-    CopyL1ToBT(){}
+    CopyL1ToBT() {}
 
     CATLASS_DEVICE
-    void operator()(
-        AscendC::LocalTensor<ElementDst> dstTensor,
-        AscendC::LocalTensor<ElementSrc> srcTensor,
-        LayoutDst layoutDst, LayoutSrc layoutSrc
-    ){
+    void operator()(AscendC::LocalTensor<ElementDst> dstTensor, AscendC::LocalTensor<ElementSrc> srcTensor,
+                    LayoutDst layoutDst, LayoutSrc layoutSrc)
+    {
         AscendC::DataCopyParams intriParams;
         intriParams.blockCount = 1;
         intriParams.blockLen = (layoutDst.shape(0) + ELE_NUM_PER_C2 - 1) / ELE_NUM_PER_C2;
@@ -52,7 +47,6 @@ struct CopyL1ToBT<ArchTag, Catlass::Gemm::GemmType<ElementSrc, layout::VectorLay
         AscendC::DataCopy(dstTensor, srcTensor, intriParams);
     }
 };
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

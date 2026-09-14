@@ -36,8 +36,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
-          bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false>
 class QuantFlashAttnBlockCubeGqaFp8 {
 public:
     /* ============确定L0A的类型============= */
@@ -66,6 +65,7 @@ public:
     static constexpr LayOutTypeEnum LAYOUT = layout;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool USE_DN = useDn;
+    static constexpr InnerMLayout Q_M_LAYOUT = USE_DN ? InnerMLayout::S1_ONLY_LAYOUT : InnerMLayout::GS1_MERGE_LAYOUT;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
     static constexpr GmFormat Q_FORMAT = GmFormat::NGTD;
     static constexpr GmFormat KV_FORMAT = GmFormat::PA_BnNBsD;
@@ -94,14 +94,12 @@ public:
     static constexpr ActualSeqLensMode Q_PARSER_MODE = GetQActSeqMode<LAYOUT>();
     static constexpr ActualSeqLensMode KV_PARSER_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
 
-    using QSeqParserType =
-        typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<Q_PARSER_MODE, int32_t, true>,
-                                  ActualSeqLensParser<Q_PARSER_MODE, int32_t>>::type;
+    using QSeqParserType = typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<Q_PARSER_MODE, int32_t, true>,
+                                                     ActualSeqLensParser<Q_PARSER_MODE, int32_t>>::type;
 
-    using KvSeqParserType =
-        typename std::conditional<(!PAGE_ATTENTION && IS_TND_LAYOUT),
-                                  ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
-                                  ActualSeqLensParser<KV_PARSER_MODE, int32_t>>::type;
+    using KvSeqParserType = typename std::conditional<(!PAGE_ATTENTION && IS_TND_LAYOUT),
+                                                      ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
+                                                      ActualSeqLensParser<KV_PARSER_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_NEEDS_WZH>;
@@ -117,7 +115,7 @@ public:
     QSeqParserType *qSeqParserPtr_ = nullptr;
     KvSeqParserType *kvSeqParserPtr_ = nullptr;
 
-    CopyQueryGmToL1<Q_T, Q_FORMAT> copyQueryGmToL1_;
+    CopyQueryGmToL1<Q_T, Q_FORMAT, L1Format::NZ, Q_M_LAYOUT> copyQueryGmToL1_;
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1_;
 
     /* =====================LocalBuffer变量====================*/
@@ -242,13 +240,25 @@ public:
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-        GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                        .n2Idx = runInfo.realN2Idx,
-                        .gS1Idx = runInfo.gS1Idx,
-                        .dIdx = dOffset,
-                        .gS1DealSize = runInfo.actMSize,
-                        .dDealSize = nopeDealSize};
-        copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
+        if constexpr (USE_DN) {
+            // DN分支下realGSize=1，gS1Idx即s1Idx，gIdx恒为0
+            GmCoordS1Only gmCoord{.bIdx = runInfo.bIdx,
+                                  .n2Idx = runInfo.realN2Idx,
+                                  .gIdx = 0,
+                                  .s1Idx = runInfo.gS1Idx,
+                                  .dIdx = dOffset,
+                                  .s1DealSize = runInfo.actMSize,
+                                  .dDealSize = nopeDealSize};
+            copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
+        } else {
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                    .n2Idx = runInfo.realN2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = dOffset,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = nopeDealSize};
+            copyQueryGmToL1_(l1Tensor, queryGm_, gmCoord);
+        }
     }
 
     __aicore__ inline void CopyQueryTile(const LocalTensor<Q_T> &dstTensor, RunInfoX &runInfo)
@@ -434,8 +444,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
-          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
-          bool useDn = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0, bool useDn = false>
 class QuantFlashAttnBlockCubeGqaFp8Dummy {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;

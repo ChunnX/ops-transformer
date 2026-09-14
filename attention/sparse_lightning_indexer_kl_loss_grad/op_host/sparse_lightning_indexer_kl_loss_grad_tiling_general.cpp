@@ -15,6 +15,7 @@
 
 #include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_metadata_arch22.h"
+#include <cstdint>
 #include <cstring>
 #include <vector>
 #include <tiling/tiling_api.h>
@@ -26,8 +27,35 @@ namespace optiling {
 
 static const int64_t PING_PONG_VALUE = 2L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
+static constexpr int64_t PRIVATE_SCATTER_MAX_RATIO = 128;
+static constexpr int64_t PRIVATE_SCATTER_RATIO_K_MAX = 131072;
+static constexpr int64_t PRIVATE_SCATTER_MAX_B = 64;
+static constexpr int64_t PRIVATE_SCATTER_MAX_AVG_S2 = 32 * 1024;
 
-static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+static int64_t CalcWorkspaceSize(int64_t scatterAddOutSize, int64_t scatterBankNum, int64_t multiCoreBase)
+{
+    return multiCoreBase + scatterAddOutSize * scatterBankNum + static_cast<int64_t>(WORK_SPACE_RESERVE_SIZE);
+}
+
+static bool IsPrivateScatter(int64_t scatterElems, int64_t totalS1, int64_t batchSize, int64_t topK)
+{
+    if (scatterElems <= 0 || totalS1 <= 0 || batchSize <= 0 || topK <= 0) {
+        return false;
+    }
+    if (batchSize > PRIVATE_SCATTER_MAX_B) {
+        return false;
+    }
+    const int64_t avgS2 = scatterElems / batchSize;
+    if (avgS2 > PRIVATE_SCATTER_MAX_AVG_S2) {
+        return false;
+    }
+    if (scatterElems > PRIVATE_SCATTER_MAX_RATIO * totalS1) {
+        return false;
+    }
+    const int64_t kReal = topK < avgS2 ? topK : avgS2;
+    return scatterElems * kReal <= PRIVATE_SCATTER_RATIO_K_MAX * totalS1;
+}
+
 static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32 * 1024;
@@ -253,10 +281,9 @@ bool SparseLightningIndexerKLLossGradTilingBase::AnalyzeLayout()
                     softmaxShape.GetDim(softmaxShape.GetDimNum() - 2) != n2Size ||
                     softmaxShape.GetDim(softmaxShape.GetDimNum() - 1) != kSize,
                 OP_LOGE(opName, "sparse_indices/attn_softmax_l1_norm N2/K shape mismatch."), return false);
-    OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || (kSize != 512 && kSize % BUFFER_SIZE_BYTE_1K != 0),
-                OP_LOGE(opName, "K(%d) should be <=8192 and be 512 or an integer multiple of 1024.", kSize),
+    OP_CHECK_IF(kSize < 1 || kSize > BUFFER_SIZE_BYTE_8K, OP_LOGE(opName, "K(%d) should be in range [1, 8192].", kSize),
                 return false);
-    topkSize = static_cast<TopKRange>(kSize);
+    topkSize = (kSize <= static_cast<int32_t>(BUFFER_SIZE_BYTE_2K)) ? TopKRange::RANGE_0_2K : TopKRange::RANGE_2K_8K;
     return true;
 }
 
@@ -359,11 +386,6 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
         return ge::GRAPH_FAILED;
     }
     initoutput->set_singleCoreSize(static_cast<uint32_t>(singleCoreSize));
-
-    if (totalSize > INT64_MAX / 2) {
-        OP_LOGE(context_, "totalOutputSize(%ld) exceeds safe limit.", totalSize);
-        return ge::GRAPH_FAILED;
-    }
     initoutput->set_totalOutputSize(totalSize);
     return ge::GRAPH_SUCCESS;
 }
@@ -377,7 +399,8 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::DoOpTiling()
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
     context_->SetBlockDim(sliGradkllossMultiCoreParams_->get_coreNum());
 
-    std::vector<int64_t> shapeVec = {1, kSize};
+    int64_t kAlign8Softmax = ((static_cast<int64_t>(kSize) + 7) / 8) * 8;
+    std::vector<int64_t> shapeVec = {1, kAlign8Softmax};
     ge::Shape srcShape(shapeVec);
     int64_t softmaxTmpBufferSize = (kSize > BUFFER_SIZE_BYTE_2K) ? BUFFER_SIZE_BYTE_33K : BUFFER_SIZE_BYTE_32K;
     SoftMaxTilingFunc(srcShape, sizeof(float), softmaxTmpBufferSize, tilingData->vectorParams.softmaxYTilingData);
@@ -398,38 +421,51 @@ uint64_t SparseLightningIndexerKLLossGradTilingBase::GetTilingKey() const
         (keyLayout != nullptr && keyLayout[0] == 'T') ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
     bool hasSequsedQ = context_->GetOptionalInputTensor(SEQUSED_QUERY_INPUT_INDEX) != nullptr;
     bool hasSequsedK = context_->GetOptionalInputTensor(SEQUSED_KEY_INPUT_INDEX) != nullptr;
-    return GET_TPL_TILING_KEY(static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize),
-                              static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
-                              static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
-                              static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic));
+    return GET_TPL_TILING_KEY(
+        static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize), static_cast<uint8_t>(qLayout),
+        static_cast<uint8_t>(kLayout), static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
+        static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic), static_cast<uint8_t>(privateScatter));
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
+    int64_t kAlign16 = ((static_cast<int64_t>(kSize) + 15) / 16) * 16;
     int64_t pSize = static_cast<int64_t>(kSize) * dSizeQuery * sizeof(uint16_t);
     int64_t sySize = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(uint16_t);
-    int64_t bmm1Size = static_cast<int64_t>(gSizeQuery) * kSize * sizeof(float);
-    int64_t bmm2Size = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
-    int64_t reluGradSize = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
-    int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
+    int64_t bmm1Size = static_cast<int64_t>(gSizeQuery) * kAlign16 * sizeof(float);
+    int64_t bmm2Size = static_cast<int64_t>(gSizeQueryIndex) * kAlign16 * sizeof(float);
+    int64_t reluGradSize = static_cast<int64_t>(gSizeQueryIndex) * kAlign16 * sizeof(float);
+    int64_t psySyncSize = (kAlign16 * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
-    int64_t scatterAddOutSize = (tilingKeyLayout == LayoutType::LAYOUT_TND) ?
-                                    accumS2 * dSizeQueryIndex * sizeof(float) :
-                                    static_cast<int64_t>(bSize) * s2Size * dSizeQueryIndex * sizeof(float);
 
+    int64_t scatterElems = (tilingKeyLayout == LayoutType::LAYOUT_TND) ? accumS2 : static_cast<int64_t>(bSize) * s2Size;
+    int64_t scatterAddOutSize =
+        scatterElems * static_cast<int64_t>(dSizeQueryIndex) * static_cast<int64_t>(sizeof(float));
+
+    int64_t coreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t singleCoreTotalSize =
         PING_PONG_VALUE * (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
-    int64_t multiCoreTotalSize = 0;
+    int64_t multiCoreBase = singleCoreTotalSize * coreNum;
+
+    privateScatter = false;
+    int64_t scatterBankNum = 1;
+    int64_t totalS1 = 0;
     if (deterministic) {
-        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) +
-                             scatterAddOutSize * static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
-    } else {
-        multiCoreTotalSize = singleCoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) +
-                             scatterAddOutSize;
+        totalS1 = CalcTotalSize();
+        const int64_t batchSize = static_cast<int64_t>(bSize);
+        privateScatter = IsPrivateScatter(scatterElems, totalS1, batchSize, static_cast<int64_t>(kSize));
+        scatterBankNum = privateScatter ? coreNum : static_cast<int64_t>(SLI_DETER_SCATTER_BANK_NUM);
     }
-    workspaces[0] = static_cast<size_t>(multiCoreTotalSize) + WORK_SPACE_RESERVE_SIZE;
-    OP_LOGW(context_, "workspace size:[%zu], multicoreTotalSize:[%ld]", workspaces[0], multiCoreTotalSize);
+
+    int64_t workspaceSize = CalcWorkspaceSize(scatterAddOutSize, scatterBankNum, multiCoreBase);
+    const int64_t multiCoreTotalSize = multiCoreBase + scatterAddOutSize * scatterBankNum;
+    workspaces[0] = static_cast<size_t>(workspaceSize);
+    OP_LOGW(context_,
+            "workspace size:[%zu], multicoreTotalSize:[%ld], scatterElems:[%ld], totalS1:[%ld], kSize:[%d], "
+            "scatterBankNum:[%ld], privateScatter:[%d]",
+            workspaces[0], multiCoreTotalSize, scatterElems, totalS1, kSize, scatterBankNum,
+            static_cast<int>(privateScatter));
     return ge::GRAPH_SUCCESS;
 }
 

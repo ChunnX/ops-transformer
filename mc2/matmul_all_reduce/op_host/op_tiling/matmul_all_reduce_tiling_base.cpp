@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_base.cc
@@ -112,6 +112,8 @@ void MatmulAllReduceTilingBase::Reset()
     isA16W8_ = false;
     isA16W4_ = false;
     isPerBlock_ = false;
+    biasOnVec_ = false;
+    biasUbCnt_ = 0U;
 }
 
 void MatmulAllReduceTilingBase::CalcAllReduceSendRecvParams()
@@ -234,7 +236,7 @@ uint8_t MatmulAllReduceTilingBase::CalcBufferTypeByWindowSize()
 void MatmulAllReduceTilingBase::setUseBufferType()
 {
     uint8_t buffer_type;
-    if (npuArch_ == NpuArch::DAV_2002) {
+    if (npuArch_ == Ops::Base::DAV_2002) {
         buffer_type = static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
         OP_LOGI(opName_, "Set buffer type to output for non-910B soc.");
     } else if (MutableMc2MsgData().debugMode == MC2_DEBUG_ONLY_AICPU) {
@@ -271,7 +273,7 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
     MutableRCSTilingData().rankN = args_.orgNValue;
     MutableRCSTilingData().rankK = args_.orgKValue;
     MutableRCSTilingData().aicCoreNum = args_.aicCoreNum;
-    if (MutableRCSTilingData().isAdd) {
+    if (MutableRCSTilingData().isAdd || biasOnVec_) {
         CalcUbTiling();
     }
     SetCommQuantScale();
@@ -279,13 +281,13 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
 
 void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
 {
-    if (npuArch_ == NpuArch::DAV_2002) {
+    if (npuArch_ == Ops::Base::DAV_2002) {
         inputSocVersion = SocVersion::SOC310_P;
         OP_LOGD(opName_, "TileCnt enter 310P branch.");
         return;
     }
     // __NPU_ARCH__ == 3510
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         inputSocVersion = SocVersion::SOC950;
         OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
@@ -470,7 +472,10 @@ ge::graphStatus MatmulAllReduceTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulAllReduceTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus MatmulAllReduceTilingBase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
 {
@@ -488,7 +493,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
 
     // __NPU_ARCH__ == 3510
     // 950需要自己申请一块workSpace存放mm的输出
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                    static_cast<uint64_t>(MutableRCSTilingData().rankN) * static_cast<uint64_t>(args_.outputDtypeSize);
     }
@@ -775,10 +780,10 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "antiquantScale/antiquantOffset", "not null",
                                               "antiquantScale and antiquantOffset must be nullptr in A8W8 mode"),
         return ge::GRAPH_FAILED);
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) || (npuArch_ == NpuArch::DAV_3510)) {
+    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) || (npuArch_ == Ops::Base::DAV_3510)) {
         OP_TILING_CHECK(!CheckCommQuantScaleShape(nValue),
                         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "commQuantScale"), return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_2002) {
+    } else if (npuArch_ == Ops::Base::DAV_2002) {
         OP_TILING_CHECK(
             ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "comm_quant_scale", "not null",
@@ -1117,7 +1122,10 @@ bool MatmulAllReduceTilingBase::CalL2TilePara(L2TilePara &tileL2, uint64_t mValu
     return false;
 }
 
-bool MatmulAllReduceTilingBase::HasAntiQuantOffset() const { return mmrCtxInfo_.antiquant_offset != nullptr; }
+bool MatmulAllReduceTilingBase::HasAntiQuantOffset() const
+{
+    return mmrCtxInfo_.antiquant_offset != nullptr;
+}
 void MatmulAllReduceTilingBase::GetScaleMNAndKIdx(const gert::StorageShape *scaleShape, bool isPertoken,
                                                   uint64_t scaleDimNum, uint64_t &MN, uint64_t &K) const
 {
@@ -1506,7 +1514,7 @@ void MatmulAllReduceTilingBase::CalcUbTiling()
     if (commQuantModePtr != nullptr) {
         isPertile = (*commQuantModePtr == 1);
     }
-    uint32_t addX3UbBufFac = ((args_.geCType == ge::DT_BF16) && (npuArch_ != NpuArch::DAV_3510)) || isPertile ?
+    uint32_t addX3UbBufFac = ((args_.geCType == ge::DT_BF16) && (npuArch_ != Ops::Base::DAV_3510)) || isPertile ?
                                  ADD_X3_BF16_UB_BUF_FACTOR :
                                  ADD_X3_FP16_UB_BUF_FACTOR;
     addX3UbBufFac *= isPertile ? sizeof(float) : D_MTYPE_SIZE_MAP.at(args_.cType);
@@ -1515,6 +1523,32 @@ void MatmulAllReduceTilingBase::CalcUbTiling()
     OP_LOGD(context_->GetNodeName(), "The addX3UbCnt=%u, aicoreParams_ubSize=%lu, addX3UbBufFac=%u.", addX3UbCnt,
             aicoreParams_.ubSize, addX3UbBufFac);
     MutableRCSTilingData().addX3UbCnt = addX3UbCnt;
+
+    // biasUbCnt 计算（bias 移至 vec epilogue 累加）
+    // bufFactor 取决于实际 UB buffer 分配数量（kernel 侧 InitBuffer）：
+    //   仅有 bias: inQueueX(double-buffer=2) + biasBuf(1) + outQueueZ(double-buffer=2) = 5
+    //   bias + x3: 上述 + inQueueY(double-buffer=2) = 7
+    // bias 走 TBuf（每个 N-chunk 搬入一次，多行复用），arch35 原生 FP16/BF16 Add，不走 fp32 cast
+    if (biasOnVec_) {
+        constexpr uint32_t DOUBLE_BUFFER_CNT = 2;
+        constexpr uint32_t BIAS_BUF_CNT = 1;
+        uint32_t biasBufFactor = DOUBLE_BUFFER_CNT + BIAS_BUF_CNT + DOUBLE_BUFFER_CNT; // inX + bias + outZ
+        if (MutableRCSTilingData().isAdd) {
+            biasBufFactor += DOUBLE_BUFFER_CNT; // inY for x3
+        }
+        uint32_t biasDtypeSize = D_MTYPE_SIZE_MAP.at(args_.cType);
+        biasBufFactor *= biasDtypeSize;
+        biasUbCnt_ =
+            mc2tiling::AlignDown(static_cast<uint32_t>((aicoreParams_.ubSize) / biasBufFactor), ALIGN_DATA_SIZE);
+        // DataCopyParams.blockLen 为 uint16_t，biasUbCnt * sizeof(T) 不可超过 65535
+        constexpr uint32_t DATACOPY_BLOCKLEN_MAX = 65535;
+        uint32_t maxUbCntByBlockLen = DATACOPY_BLOCKLEN_MAX / biasDtypeSize;
+        if (biasUbCnt_ > maxUbCntByBlockLen) {
+            biasUbCnt_ = mc2tiling::AlignDown(maxUbCntByBlockLen, ALIGN_DATA_SIZE);
+        }
+        OP_LOGD(context_->GetNodeName(), "The biasUbCnt=%u, aicoreParams_ubSize=%lu, biasBufFactor=%u.", biasUbCnt_,
+                aicoreParams_.ubSize, biasBufFactor);
+    }
 }
 ge::graphStatus MatmulAllReduceTilingBase::AnalyzeShapeAttr()
 {
@@ -1547,6 +1581,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
     if (commModeStr == nullptr) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName_, "The input attr comm_mode is nullptr, commMode will use default AICPU.");
+        return ge::GRAPH_SUCCESS;
     }
     if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;

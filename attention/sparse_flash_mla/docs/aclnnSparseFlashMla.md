@@ -27,7 +27,7 @@
 
   `aclnnSparseFlashMla`算子实现基于共享KV（Key=Value）的稀疏注意力计算，支持SWA（Sliding Window Attention）、CSA（Compressed Sparse Attention）、HCA（Heavily Compressed Attention）三类Attention计算场景。该算子适用于大语言模型训练、推理场景，通过滑动窗口和KV压缩机制大幅降低长序列注意力计算的开销。调用时需要使用`aclnnSparseFlashMlaMetadata`生成的任务列表`metadata`。
 
-  **该算子不建议单独使用，建议与aclnnSparseFlashMla算子配合使用，形成完整的工作流。**
+  **该算子不建议单独使用，建议与aclnnSparseFlashMlaMetadata算子配合使用，形成完整的工作流。**
 
   典型调用流程如下：
 
@@ -412,7 +412,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpMaskMode（int64_t）</td>
       <td>输入</td>
       <td>q和cmpKv计算的mask模式。</td>
-      <td>0: No Mask。<br/>3: RightDownCausal模式。cmpKv未传入时该参数取默认值1。</td>
+      <td>0: No Mask。<br/>3: RightDownCausal模式。cmpKv未传入时该参数取默认值0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -689,7 +689,7 @@ aclnnStatus aclnnSparseFlashMla(
 
 - 使用约束
 
-  - SWA稀疏ori_kv场景仅支持SWA模板，仅传入`oriKvOptional`，同时传入`oriSparseIndicesOptional`和`oriTopkLengthOptional`；配套Metadata接口的`oriTopk`为oriSparseIndicesOptional最后一维K，`oriMaskMode`必须为0，`oriWinLeft`和`oriWinRight`为非负数，且`cmpKvOptional`不传入。
+  - SWA稀疏ori_kv场景仅支持SWA模板，仅传入`oriKvOptional`，同时传入`oriSparseIndicesOptional`和`oriTopkLengthOptional`；配套Metadata接口的`oriTopk`为oriSparseIndicesOptional最后一维K，`oriMaskMode`为0/3/4，`oriWinLeft`和`oriWinRight`仅在`oriMaskMode`为4时取非负数，且`cmpKvOptional`不传入。
   - SWA稀疏ori_kv场景下，`oriTopkLengthOptional`的元素表示实际有效索引条目数，取值应在[0, K]范围内。对每个q token和KV head，`oriSparseIndicesOptional`的[0, oriTopkLengthOptional)区间为左对齐的有效索引条目，[oriTopkLengthOptional, K)区间为无效或填充条目，建议填-1；其他场景`oriTopkLengthOptional`传入nullptr或空Tensor。
   - 除`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
   - `metadataOptional`参数必须传入，由`aclnnSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
@@ -897,7 +897,7 @@ int main()
   std::vector<int64_t> metadataShape = {1024};
   std::vector<int64_t> attnOutShape = {T1, N1, D};
   std::vector<int64_t> softmaxLseShape = {T1, N1, 1};
-  // 对全部 5 个输入调用 Contiguous，optional 输入传 shape 为 {0} 的空 tensor。
+  // optional 输入传 shape 为 {0} 的空 tensor。
   std::vector<int64_t> emptyShape = {0};
 
   void* qDeviceAddr = nullptr;

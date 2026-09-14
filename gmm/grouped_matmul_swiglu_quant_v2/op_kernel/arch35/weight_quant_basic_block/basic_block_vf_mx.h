@@ -23,9 +23,7 @@
 #include "kernel_operator_intf.h"
 #endif
 
-namespace MicroAPI = AscendC::MicroAPI;
-using AscendC::VECTOR_REG_WIDTH;
-
+namespace Reg = AscendC::Reg;
 namespace GMMSQWeightQuant {
 
 template <typename xType, typename wType>
