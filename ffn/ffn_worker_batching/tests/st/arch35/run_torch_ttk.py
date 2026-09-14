@@ -70,6 +70,12 @@ import sys
 
 def _register_package(name):
     package = importlib.import_module(name)
+    # Load this vendor's operator explicitly in both the parent and forkserver
+    # workers. Importing only the package root can leave the dispatcher schema
+    # unregistered when entry-point discovery finds a stale installed vendor.
+    # TTK parses the schema before invoking the operator, so lazy loading at
+    # the first call is too late and every CSV case would be API_PARSE_FAIL.
+    importlib.import_module(f"{name}.ops.ffn.ffn_worker_batching")
     if name != "cann_ops_transformer":
         sys.modules.setdefault("cann_ops_transformer", package)
 
