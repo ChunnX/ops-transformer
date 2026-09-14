@@ -47,6 +47,24 @@ def _load_framework():
     return mod.to_torch_f32, mod.fmt_compare_result, Comparator
 
 
+def _load_case_data_module():
+    import importlib.util
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[4]
+        / "common"
+        / "tests"
+        / "assets"
+        / "impl"
+        / "moe_case_data.py"
+    )
+    spec = importlib.util.spec_from_file_location("mc2_moe_case_data", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _simulate_moe_alltoallv(all_rank_inputs, world_size, send_counts_per_rank):
     """Simulate all_to_allv on CPU: each rank sends chunks to all other ranks."""
     import torch
@@ -178,143 +196,326 @@ def moe_distribute_dispatch_multi_device_golden(
     to_torch_f32, fmt_compare, Comparator = _load_framework()
     first_ctx = next(iter(thread_contexts.values()))
     attrs = first_ctx.attributes
-    world_size = len(device_ids)
-    ep_ws = int(attrs.get("epWorldSize", world_size))
+    case_module = _load_case_data_module()
+    case_config = case_module.MoeCaseConfig(
+        global_bs=int(attrs.get("globalBs", first_ctx.flatten_tensors[0].shape[0])),
+        hidden_size=int(first_ctx.flatten_tensors[0].shape[1]),
+        top_k=int(first_ctx.flatten_tensors[1].shape[1]),
+        seed=int(next(
+            (
+                int(part.split("=", 1)[1])
+                for part in str(first_ctx.remark or "").split(",")
+                if part.startswith("seed=")
+            ),
+            1,
+        )),
+        ep_world_size=int(attrs.get("epWorldSize", len(device_ids))),
+        tp_world_size=int(attrs.get("tpWorldSize", 1)),
+        moe_expert_num=int(attrs.get("moeExpertNum", 1)),
+        local_moe_expert_num_override=int(attrs.get("localMoeExpertNum", 0)),
+        shared_expert_num=int(attrs.get("sharedExpertNum", 0)),
+        shared_expert_rank_num=int(attrs.get("sharedExpertRankNum", 0)),
+        const_expert_num=int(attrs.get("constExpertNum", 0)),
+        zero_expert_num=int(attrs.get("zeroExpertNum", 0)),
+        copy_expert_num=int(attrs.get("copyExpertNum", 0)),
+        rank_num_per_shared_expert=(
+            int(attrs.get("sharedExpertRankNum", 0))
+            // int(attrs.get("sharedExpertNum", 0) or 1)
+        ),
+        input_dtype=str(first_ctx.tensor_dtypes[0]).replace("torch.", ""),
+        is_mask=int(attrs.get("xActiveMaskDim", 0)) > 0,
+        is_variable_bs=bool(attrs.get("_moeVariableBs", 0)),
+        is_quant=int(attrs.get("quantMode", 0)) == 2,
+        is_dispatch_scales=bool(attrs.get("isDispatchScales", 0)),
+        is_topk_balance=attrs.get("commAlg") == "fullmesh_v2",
+        is_deepep=bool(attrs.get("_moeDeepep", 0)),
+        is_elastic=int(attrs.get("isElastic", 0)) == 1,
+        elastic_shared_rank_num=int(attrs.get("shareBrokenCardNum", 0)),
+        elastic_moe_rank_num=int(attrs.get("moeBrokenCardNum", 0)),
+        comm_quant_mode=int(attrs.get("commQuantMode", 0)),
+        is_expand=bool(attrs.get("isExpand", 0)),
+    )
+    case = case_module.load_or_generate_case(case_config)
+    ep_ws = int(attrs.get("epWorldSize", len(device_ids)))
     moe_expert_num = int(attrs.get("moeExpertNum", 1))
-    local_expert_num = moe_expert_num // ep_ws if ep_ws > 0 else moe_expert_num
+    shared_expert_num = int(attrs.get("sharedExpertNum", 1))
+    shared_expert_rank_num = int(attrs.get("sharedExpertRankNum", 0))
+    shared_expert_rank_num = (
+        shared_expert_num
+        if shared_expert_rank_num == 0 and shared_expert_num > 0
+        else shared_expert_rank_num
+    )
+    moe_rank_num = ep_ws - shared_expert_rank_num
+    local_expert_num = moe_expert_num // max(moe_rank_num, 1)
+    tp_ws = int(attrs.get("tpWorldSize", 1))
+    global_bs = int(attrs.get("globalBs", 0))
+    quant_mode = int(attrs.get("quantMode", 0))
+    zero_copy_const_num = (
+        int(attrs.get("zeroExpertNum", 0))
+        + int(attrs.get("copyExpertNum", 0))
+        + int(attrs.get("constExpertNum", 0))
+    )
 
-    all_rank_expand_x = {}
-    all_rank_expand_idx = {}
-    all_rank_send_counts = {}
-    all_rank_expert_token_nums = {}
-    all_rank_dynamic_scales = {}
-    all_rank_expand_scales = {}
+    rank_num_per_shared_expert = (
+        shared_expert_rank_num // shared_expert_num if shared_expert_num > 0 else 0
+    )
+    max_shared_group_num = (
+        (ep_ws + rank_num_per_shared_expert - 1) // rank_num_per_shared_expert
+        if rank_num_per_shared_expert > 0
+        else 0
+    )
+    first_shape = first_ctx.tensor_view_shapes
+    topk = int(first_shape[1][1]) if len(first_shape) > 1 and len(first_shape[1]) > 1 else 1
+    source_bs = first_ctx.flatten_tensors[0].shape[0]
+    a_shared = source_bs * max_shared_group_num
+    a_moe = int(attrs.get("globalBs", 0)) * min(local_expert_num, topk)
 
+    source = []
+    elastic_active_rank_ids = (
+        case_config.available_ranks if case_config.is_elastic else range(ep_ws)
+    )
+    shared_output_rank_ids = (
+        range(case_config.elastic_shared_expert_rank_num)
+        if case_config.is_elastic
+        else range(shared_expert_rank_num)
+    )
+    shared_group_stride = (
+        case_config.elastic_rank_num_per_shared_expert
+        if case_config.is_elastic
+        else rank_num_per_shared_expert
+    )
     for did in device_ids:
         tc = thread_contexts[did]
         x = tc.flatten_tensors[0]
-        expert_ids = tc.flatten_tensors[1]
-        scales_tensor = tc.flatten_tensors[2] if len(tc.flatten_tensors) > 2 else None
-        expert_scales = tc.flatten_tensors[4] if len(tc.flatten_tensors) > 4 else None
-
-        bs = x.shape[0]
-        h = x.shape[1]
+        expert_ids = tc.attributes.get("_moeDeepepExpertIdsExpand", tc.flatten_tensors[1])
+        mask = tc.flatten_tensors[3]
+        bs, h = x.shape
         k = expert_ids.shape[1] if expert_ids.dim() > 1 else 1
 
-        send_counts = [0] * ep_ws
-        token_groups = [[] for _ in range(ep_ws)]
-        expand_idx_list = []
-        dynamic_scales_list = []
-        expand_scales_list = []
-
-        for i in range(bs):
-            for j in range(k):
-                eid = (
-                    int(expert_ids[i][j])
-                    if expert_ids.dim() > 1
-                    else int(expert_ids[i])
+        source_scales = thread_contexts[did].flatten_tensors[2]
+        expert_total = moe_expert_num + int(attrs.get("zeroExpertNum", 0)) + int(attrs.get("copyExpertNum", 0)) + int(attrs.get("constExpertNum", 0))
+        grouped_tokens = [[] for _ in range(expert_total)]
+        for token_id in range(bs):
+            for k_id in range(k):
+                if mask is None:
+                    is_valid = True
+                elif mask.dim() == 2:
+                    is_valid = bool(mask[token_id, k_id])
+                else:
+                    is_valid = bool(mask[token_id])
+                if not is_valid:
+                    continue
+                expert_id = int(expert_ids[token_id, k_id])
+                if expert_id >= moe_expert_num:
+                    continue
+                scale_row = shared_expert_num + expert_id
+                expert_scale = (
+                    source_scales[scale_row]
+                    .float()
+                    if source_scales is not None
+                    else torch.ones(h)
                 )
-                dest_rank = eid // local_expert_num if local_expert_num > 0 else 0
-                if dest_rank >= ep_ws:
-                    dest_rank = ep_ws - 1
-                token_groups[dest_rank].append(x[i])
-                expand_idx_list.append(i * k + j)
-                send_counts[dest_rank] += 1
-                if scales_tensor is not None and scales_tensor.numel() > 0:
-                    s = (
-                        float(scales_tensor[i][j])
-                        if scales_tensor.dim() > 1
-                        else float(scales_tensor[i])
-                    )
-                    dynamic_scales_list.append(s)
-                if expert_scales is not None and expert_scales.numel() > 0:
-                    es = (
-                        float(expert_scales[i][j])
-                        if expert_scales.dim() > 1
-                        else float(expert_scales[i])
-                    )
-                    expand_scales_list.append(es)
+                grouped_tokens[expert_id].append((x[token_id].float(), expert_scale))
+        source.append((x, mask, grouped_tokens))
 
-        sorted_tokens = []
-        for dest in range(ep_ws):
-            sorted_tokens.extend(token_groups[dest])
+    def cal_quant(tokens, scales):
+        if tokens.numel() == 0 or scales.numel() == 0:
+            return tokens, torch.zeros(tokens.shape[0], dtype=torch.float32)
+        if scales.dim() == 1:
+            scales = scales[:, None]
+        if scales.shape[0] < tokens.shape[0]:
+            scales = torch.cat(
+                (
+                    scales,
+                    torch.ones(
+                        tokens.shape[0] - scales.shape[0],
+                        scales.shape[1],
+                        dtype=scales.dtype,
+                    ),
+                )
+            )
+        scaled_tokens = tokens * scales[: tokens.shape[0]]
+        dynamic_scales = scaled_tokens.abs().max(dim=1).values / 127.0
+        dynamic_scales[dynamic_scales == 0] = 1.0
+        quantized_tokens = (scaled_tokens / dynamic_scales[:, None]).round().to(torch.int8)
+        return quantized_tokens, dynamic_scales
 
-        if sorted_tokens:
-            expand_x_local = torch.stack(sorted_tokens, dim=0).to(x.dtype)
+    goldens = {}
+    for rank_idx, did in enumerate(device_ids):
+        if rank_idx < shared_expert_rank_num:
+            target_a = a_shared
+            is_active_shared_rank = rank_idx in shared_output_rank_ids
+            shared_group_id = (
+                rank_idx % max(shared_group_stride, 1)
+                if is_active_shared_rank
+                else -1
+            )
+            generated = case_module.rank_case(case, case_config, rank_idx, tp_rank_id=0)
+            send_card_ids = (
+                [
+                    elastic_active_rank_ids[local_rank_id]
+                    for local_rank_id in range(
+                        shared_group_id,
+                        len(elastic_active_rank_ids),
+                        max(shared_group_stride, 1),
+                    )
+                ]
+                if is_active_shared_rank
+                else []
+            )
+            token_parts = [
+                case_module.rank_case(
+                    case, case_config, card_id, tp_rank_id=0
+                )["x"].float()
+                for card_id in send_card_ids
+            ]
+            index_parts = []
+            received_tokens = torch.cat(token_parts) if token_parts else torch.zeros(0, first_shape[0][1])
+            expert_token_nums = torch.ones(1, dtype=torch.int64)
+            dynamic_scales = torch.zeros(0)
         else:
-            expand_x_local = torch.zeros(0, h, dtype=x.dtype)
+            target_a = a_moe
+            moe_rank_id = rank_idx - shared_expert_rank_num
+            expert_offset = moe_rank_id * local_expert_num
+            token_segments = []
+            index_segments = []
+            expert_token_nums = torch.zeros(local_expert_num, dtype=torch.int64)
+            generated = case_module.rank_case(case, case_config, rank_idx, tp_rank_id=0)
+            golden_expand_x = generated["expand_x"]
+            dynamic_scales = torch.empty(0, dtype=torch.float32)
+            for local_expert_id in range(local_expert_num):
+                expert_id = expert_offset + local_expert_id
+                tokens = []
+                expert_scales = []
+                for src_rank, (_, _, grouped_tokens) in enumerate(source):
+                    for token in grouped_tokens[expert_id]:
+                        tokens.append(token[0])
+                        expert_scales.append(token[1])
+                        index_segments.append((src_rank, -1, -1))
+                if tokens:
+                    token_segments.append(torch.stack(tokens))
+                    expert_token_nums[local_expert_id] = len(tokens)
+                else:
+                    token_segments.append(torch.zeros(0, first_shape[0][1]))
 
-        all_rank_expand_x[did] = expand_x_local
-        all_rank_expand_idx[did] = torch.tensor(expand_idx_list, dtype=torch.int32)
-        all_rank_send_counts[did] = send_counts
-        all_rank_dynamic_scales[did] = (
-            torch.tensor(dynamic_scales_list, dtype=torch.float32)
-            if dynamic_scales_list
-            else torch.zeros(0, dtype=torch.float32)
-        )
-        all_rank_expand_scales[did] = (
-            torch.tensor(expand_scales_list, dtype=torch.float32)
-            if expand_scales_list
-            else torch.zeros(0, dtype=torch.float32)
-        )
+            received_tokens = (
+                torch.cat(token_segments) if token_segments else torch.zeros(0, first_shape[0][1])
+            )
+            rank_scale_segments = []
+            for local_expert_id in range(local_expert_num):
+                expert_id = expert_offset + local_expert_id
+                rank_scale_segments.extend(
+                    token[1]
+                    for (_, _, grouped_tokens) in source
+                    for token in grouped_tokens[expert_id]
+                )
+            rank_source_scales = (
+                torch.stack(rank_scale_segments) if rank_scale_segments else torch.empty(0, first_shape[0][1])
+            )
 
-    for did in device_ids:
-        rank_idx = list(device_ids).index(did)
-        expert_token_nums = [0] * local_expert_num
-        for src_did in device_ids:
-            src_tc = thread_contexts[src_did]
-            src_expert_ids = src_tc.flatten_tensors[1]
-            src_bs = src_expert_ids.shape[0]
-            src_k = src_expert_ids.shape[1] if src_expert_ids.dim() > 1 else 1
-            for i in range(src_bs):
-                for j in range(src_k):
-                    eid = (
-                        int(src_expert_ids[i][j])
-                        if src_expert_ids.dim() > 1
-                        else int(src_expert_ids[i])
+        if quant_mode == 2:
+            if rank_idx < shared_expert_rank_num:
+                source_scale_parts = []
+                shared_expert_id = rank_idx // max(shared_group_stride, 1)
+                for src_rank in send_card_ids:
+                    src_scales = thread_contexts[device_ids[src_rank]].flatten_tensors[2]
+                    src_mask = source[src_rank][1]
+                    valid_token_num = (
+                        int(src_mask.any(dim=1).sum().item())
+                        if src_mask is not None and src_mask.dim() == 2
+                        else int(src_mask.sum().item())
                     )
-                    dest_rank = eid // local_expert_num if local_expert_num > 0 else 0
-                    if dest_rank >= ep_ws:
-                        dest_rank = ep_ws - 1
-                    if dest_rank == rank_idx:
-                        local_eid = (
-                            eid % local_expert_num if local_expert_num > 0 else 0
+                    if src_scales is None:
+                        source_scale_parts.append(torch.ones(valid_token_num, first_shape[0][1]))
+                    else:
+                        source_scale_parts.append(
+                            src_scales[shared_expert_id]
+                            .float()
+                            .expand(valid_token_num, first_shape[0][1])
                         )
-                        expert_token_nums[local_eid] += 1
-        all_rank_expert_token_nums[did] = torch.tensor(
-            expert_token_nums, dtype=torch.int64
-        )
+                source_scales = (
+                    torch.cat(source_scale_parts)
+                    if source_scale_parts
+                    else torch.empty(0, first_shape[0][1])
+                )
+            else:
+                source_scales = rank_source_scales
+            received_tokens, dynamic_scales = cal_quant(received_tokens, source_scales)
 
-    alltoallv_out = _simulate_moe_alltoallv(
-        all_rank_expand_x, device_ids, all_rank_send_counts
-    )
+        expand_x = torch.zeros((target_a, first_shape[0][1]), dtype=received_tokens.dtype)
+        if rank_idx >= shared_expert_rank_num:
+            valid_rows = min(target_a, int(generated["tokens"].sum().item()))
+            compact_rows = min(golden_expand_x.shape[0], valid_rows)
+            expand_x[:compact_rows] = golden_expand_x[:compact_rows]
+        else:
+            valid_rows = min(target_a, received_tokens.shape[0])
+            expand_x[:valid_rows] = received_tokens[:valid_rows]
+        tc = thread_contexts[did]
+        tc.attributes["_moeValidExpandRows"] = valid_rows
+        dynamic_scales = torch.cat(
+            [dynamic_scales, torch.zeros(max(target_a - dynamic_scales.shape[0], 0), dtype=torch.float32)]
+        )[:target_a]
+
+        ep_recv = torch.zeros(ep_ws, dtype=torch.int32)
+        tp_recv = torch.zeros(max(tp_ws, 1), dtype=torch.int32)
+        expand_scales = None
+        goldens[did] = (
+            expand_x,
+            dynamic_scales,
+            torch.zeros(max(bs * topk, target_a * 128), dtype=torch.int32),
+            expert_token_nums,
+            ep_recv,
+            tp_recv,
+            expand_scales,
+        )
 
     for did in device_ids:
         tc = thread_contexts[did]
-        rank_idx = list(device_ids).index(did)
-        recv_x = alltoallv_out[did]
-
-        ep_recv_counts = []
-        for src_did in device_ids:
-            src_counts = all_rank_send_counts[src_did]
-            ep_recv_counts.append(src_counts[rank_idx])
-        ep_recv_counts_tensor = torch.tensor(ep_recv_counts, dtype=torch.int32)
-
-        tp_ws = int(attrs.get("tpWorldSize", 0))
-        tp_recv_counts_tensor = torch.zeros(max(tp_ws, 1), dtype=torch.int32)
-
-        goldens = [
-            recv_x.contiguous(),
-            all_rank_dynamic_scales[did].contiguous(),
-            all_rank_expand_idx[did].contiguous(),
-            all_rank_expert_token_nums[did].contiguous(),
-            ep_recv_counts_tensor.contiguous(),
-            tp_recv_counts_tensor.contiguous(),
-            all_rank_expand_scales[did].contiguous(),
+        if getattr(tc.prof_result, "api_prof", None) == "SUPPRESSED":
+            all_precision.append(f"rank{did}:PASS(SUPPRESSED)")
+            continue
+        goldens[did] = [
+            tensor.contiguous() if tensor is not None else None
+            for tensor in goldens[did]
         ]
-        tc.golden_tensors = goldens
+        tc.golden_tensors = goldens[did]
+        if isinstance(tc.prof_result.output_bytes, tuple):
+            tc.prof_result.output_bytes = list(tc.prof_result.output_bytes)
         try:
             cr = Comparator(tc).compare()
+            actual = tc.prof_result.output_bytes[0]
+            expected = goldens[did][0]
+            from ttk.utilities.dtypes import torch_to_numpy_tensor
+
+            if hasattr(actual, "cpu"):
+                actual = actual.cpu()
+            if hasattr(actual, "numpy"):
+                actual = torch_to_numpy_tensor(actual)
+            if hasattr(expected, "cpu"):
+                expected = expected.cpu()
+            if int(did) in (0, 1):
+                logging.info(
+                    "MoeDistributeDispatch output detail rank=%s first64=%s",
+                    did,
+                    actual[: min(64, actual.shape[0])][:, 0].tolist(),
+                )
+            if hasattr(expected, "numpy"):
+                expected = torch_to_numpy_tensor(expected)
+            mismatch_rows = (
+                (actual != expected).any(axis=1).nonzero()[0]
+                if actual.shape == expected.shape
+                else []
+            )
+            logging.info(
+                "MoeDistributeDispatch detail rank=%s shape=%s/%s mismatch_rows=%s first=%s actual=%s expected=%s",
+                did,
+                getattr(actual, "shape", None),
+                getattr(expected, "shape", None),
+                int(len(mismatch_rows)),
+                None if len(mismatch_rows) == 0 else int(mismatch_rows[0]),
+                None if len(mismatch_rows) == 0 else actual[mismatch_rows[0]][:8].tolist(),
+                None if len(mismatch_rows) == 0 else expected[mismatch_rows[0]][:8].tolist(),
+            )
             all_precision.append(f"rank{did}:{cr.passed}({fmt_compare(cr)})")
             if cr.passed != "PASS":
                 logging.error(

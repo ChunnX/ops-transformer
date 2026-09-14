@@ -44,6 +44,13 @@ class AclnnMatmulAlltoAllSpec:
             thread_contexts, device_ids, all_precision
         )
 
+    @staticmethod
+    def compare(*outputs, third_party=None, **kwargs):
+        return _load_impl_module("compare").compare(
+            *outputs, third_party=third_party, **kwargs
+        )
+
+
 
 class MatmulAllToAllE2ESpec:
     """TestSpec for torch_npu.npu_matmul_all_to_all (E2E multi-device path)."""

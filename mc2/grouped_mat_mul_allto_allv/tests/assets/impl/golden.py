@@ -87,7 +87,8 @@ def _generate_gmm_alltoallv_matrix(A_array, exp_per_card, seed):
     return [list(col) for col in zip(*tmp)]
 
 
-def _get_gmm_exp_token_nums(first_ctx, ep_ws):
+def _get_gmm_exp_token_nums(thread_contexts, device_ids, ep_ws):
+    first_ctx = next(iter(thread_contexts.values()))
     exp_per_card = (
         first_ctx.tensor_view_shapes[1][0]
         if len(first_ctx.tensor_view_shapes) > 1
@@ -102,6 +103,38 @@ def _get_gmm_exp_token_nums(first_ctx, ep_ws):
                 seed_val = int(kv[1].strip())
             except ValueError:
                 pass
+    send_counts_by_rank = []
+    for did in device_ids:
+        ctx = thread_contexts[did]
+        counts = ctx.attributes.get("sendCounts", [])
+        if not counts:
+            send_counts_by_rank = None
+            break
+        send_counts_by_rank.append(counts)
+    if send_counts_by_rank:
+        rank_index = {did: idx for idx, did in enumerate(device_ids)}
+        exp_token_nums = []
+        for dest_idx in range(ep_ws):
+            row = []
+            for source_did in device_ids:
+                source_idx = rank_index[source_did]
+                segment = send_counts_by_rank[source_idx][
+                    dest_idx * exp_per_card : (dest_idx + 1) * exp_per_card
+                ]
+                row.extend(segment)
+            exp_token_nums.append(row)
+        return exp_token_nums
+    input_rows_by_rank = []
+    for did in device_ids:
+        ctx = thread_contexts[did]
+        if not ctx.flatten_tensors or ctx.flatten_tensors[0] is None:
+            input_rows_by_rank = None
+            break
+        input_rows_by_rank.append(int(ctx.flatten_tensors[0].shape[0]))
+    if input_rows_by_rank and sum(input_rows_by_rank) > 0:
+        return _generate_gmm_alltoallv_matrix(
+            input_rows_by_rank, exp_per_card, seed_val
+        )
     bsk = first_ctx.tensor_view_shapes[0][0] if first_ctx.tensor_view_shapes else 0
     A_array = [bsk] * ep_ws
     return _generate_gmm_alltoallv_matrix(A_array, exp_per_card, seed_val)
@@ -187,7 +220,8 @@ _next_port_base = [30052]
 def _next_port():
     import threading
 
-    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
+    from ttk.config.loader import get_cascade_config
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", get_cascade_config().hccl_port_range)
     with threading.Lock():
         port = _next_port_base[0]
         _next_port_base[0] += 13
@@ -263,14 +297,7 @@ def run_gmm_alltoallv_cascade(
         result = {}
         for did in device_ids:
             rank_idx = list(device_ids).index(did)
-            recv_total = sum(
-                sum(
-                    expTokenNums[i][
-                        rank_idx * exp_per_card : (rank_idx + 1) * exp_per_card
-                    ]
-                )
-                for i in range(ep_ws)
-            )
+            recv_total = sum(expTokenNums[rank_idx])
             main_t = None
             rank_file = f"{result_path}.did{did}.npz"
             if os.path.exists(rank_file):
@@ -337,7 +364,11 @@ def gmm_alltoallv_cpu_golden(
             src_rank = list(device_ids).index(src_did)
             src_unpermuted = all_unpermuted[src_did]
             is_list = [
-                sum(expTokenNums[src_rank][t * exp_per_card : (t + 1) * exp_per_card])
+                sum(
+                    expTokenNums[t][
+                        src_rank * exp_per_card : (src_rank + 1) * exp_per_card
+                    ]
+                )
                 for t in range(ep_ws)
             ]
             offset = 0
@@ -381,7 +412,7 @@ def gmm_alltoallv_multi_device_golden(thread_contexts, device_ids, all_precision
         if len(first_ctx.tensor_view_shapes) > 1
         else 1
     )
-    expTokenNums = _get_gmm_exp_token_nums(first_ctx, ep_ws)
+    expTokenNums = _get_gmm_exp_token_nums(thread_contexts, device_ids, ep_ws)
     trans_gmm_weight = bool(attrs.get("transGmmWeight", False))
     trans_mm_weight = bool(attrs.get("transMmWeight", False))
 

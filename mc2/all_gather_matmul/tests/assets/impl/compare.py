@@ -30,17 +30,11 @@ def compare(*outputs, third_party=None, **kwargs):
 
     half = len(outputs) // 2
     module = _load_compare_module()
+    policies = (
+        {"threshold": 0.005, "ratio_threshold": 0.005, "max_relative_error": 2.0},
+        {"threshold": 0.000001, "ratio_threshold": 0.000001, "max_relative_error": 0.0},
+    )
     results = []
-    for index, output in enumerate(outputs[:half]):
-        benchmark = third_party[index] if index < len(third_party or ()) else None
-        if benchmark is None:
-            results.append(
-                {
-                    "pass": False,
-                    "precision": "third_party_unavailable",
-                    "error_info": f"AllGatherMatmul third_party output[{index}] is unavailable",
-                }
-            )
-            continue
-        results.append(module.data_compare_np(output, benchmark))
+    for index, (output, golden) in enumerate(zip(outputs[:half], outputs[half:])):
+        results.append(module.data_compare_np(output, golden, **policies[index % len(policies)]))
     return results

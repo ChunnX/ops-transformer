@@ -18,10 +18,14 @@ def _empty_topk_weights_like(tensor):
 
 
 def _get_hccl_comm_name(group, rank_id):
-    if hasattr(group, "get_hccl_comm_name"):
-        return group.get_hccl_comm_name(rank_id, init_comm=False)
-    get_backend = getattr(group, "".join(["_get", "_backend"]))
-    return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
+    get_backend = getattr(group, "get_hccl_comm_name", None)
+    if get_backend is None:
+        backend = group._get_backend(torch.device("npu"))
+        get_backend = backend.get_hccl_comm_name
+    group_name = get_backend(rank_id, init_comm=False)
+    if not group_name:
+        group_name = get_backend(rank_id, init_comm=True)
+    return group_name
 
 
 class MoeDistributeBuffer:
@@ -30,14 +34,14 @@ class MoeDistributeBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
         self.group_name = _get_hccl_comm_name(group, self.rank_id)
+        device_name = torch_npu.npu.get_device_properties(
+            torch_npu.npu.current_device()
+        ).name
+        backend = "channel" if device_name.startswith("Ascend950") else "kfc"
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.world_size,
-            backend={
-                "Ascend910B": "kfc",
-                "Ascend910_93": "kfc",
-                "Ascend950": "channel",
-            },
+            backend=backend,
             customCclBufferSize=ccl_buffer_size,
         )
         self.context = self._ctx_manager.create_context()

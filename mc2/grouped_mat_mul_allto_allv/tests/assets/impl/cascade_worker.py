@@ -160,14 +160,17 @@ def main():
         unpermuted = _unpermute_gmm_a2a(
             gmm_out, exp_per_card, ep_ws, rank, expTokenNums
         ).npu()
-        my_row = expTokenNums[rank]
+        # Match mc2_test get_input_weight():
+        # self.input_splits = gen_output_splits()
+        # self.output_splits = gen_input_splits()
         input_splits = [
-            int(sum(my_row[t * exp_per_card : (t + 1) * exp_per_card]))
-            for t in range(ep_ws)
-        ]
-        output_splits = [
             int(sum(expTokenNums[i][rank * exp_per_card : (rank + 1) * exp_per_card]))
             for i in range(ep_ws)
+        ]
+        my_row = expTokenNums[rank]
+        output_splits = [
+            int(sum(my_row[t * exp_per_card : (t + 1) * exp_per_card]))
+            for t in range(ep_ws)
         ]
         N = gmm_out.shape[1] if gmm_out.dim() > 1 else 1
         a2a_out = torch.empty(

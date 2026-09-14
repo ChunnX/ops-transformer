@@ -78,7 +78,8 @@ _next_port_base = [30013]
 def _next_port():
     import threading
 
-    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", "50000-50100")
+    from ttk.config.loader import get_cascade_config
+    os.environ.setdefault("HCCL_NPU_SOCKET_PORT_RANGE", get_cascade_config().hccl_port_range)
     with threading.Lock():
         port = _next_port_base[0]
         _next_port_base[0] += 13
