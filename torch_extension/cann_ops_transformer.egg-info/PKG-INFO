@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: cann_ops_transformer
+Version: 1.0.0
+Summary: CannOpsTransformer
+Home-page: https://gitcode.com/cann/ops-transformer/tree/master/torch_extension
+Author: CANN
+License: CANN Open Software License Agreement Version 2.0
+Requires-Dist: torch>=2.6.0
+Requires-Dist: torch_npu
+Dynamic: author
+Dynamic: home-page
+Dynamic: license
+Dynamic: requires-dist
+Dynamic: summary
