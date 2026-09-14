@@ -218,7 +218,7 @@
   - 仅在layout_key为PA_BSND时，key、value和key_rope支持0轴非连续。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - Q_N支持1/2/4/8/16/32/64/128。
-  - 参数sparse_block_size支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size。
+  - 参数sparse_block_size支持[1, 128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size。
   - 不支持sinks。
   - key、value和key_rope不支持非连续。
 
