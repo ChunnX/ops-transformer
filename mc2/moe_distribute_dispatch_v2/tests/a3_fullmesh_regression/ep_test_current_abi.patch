@@ -1,0 +1,125 @@
+--- a/core/operations/combine/generation.py
++++ b/core/operations/combine/generation.py
+@@ -58,8 +58,6 @@
+         self.local_moe_expert_num = self.moe_expert_num // self.world_size
+         self.A = min(self.k, self.local_moe_expert_num) * self.global_bs
+         self.sum_bs = sum(self.bs)
+-        if not self.is_layered:
+-            self.param['comm_quant_mode'] = 0
+         # torch.manual_seed(config["random_seed"])
+         # torch.manual_seed(param['seed'])
+         self._init_x()
+@@ -482,6 +480,25 @@
+         self._init_ep_send_counts(is_support_special_expert=is_support_special_expert)
+         self.assist_info_for_combine = self._init_expand_idx(is_support_special_expert=is_support_special_expert)
+         self._init_expand_x_and_expand_scales(self.assist_info_for_combine, is_support_special_expert=is_support_special_expert)
++        if not self.is_layered:
++            # Current A3 fullmesh ABI: packed (source rank, token, topk) triples
++            # in the same expert-major/source-rank-major order as expand_x.
++            triples = [torch.zeros(self.A * 128, dtype=torch.int32) for _ in range(self.world_size)]
++            offsets = self.assist_info_for_combine
++            for src in range(self.world_size):
++                for token in range(self.bs[src]):
++                    for slot in range(self.k):
++                        expert = int(self.expert_ids[src][token, slot])
++                        if expert >= self.moe_expert_num:
++                            continue
++                        if is_support_special_expert and not self.x_active_mask_2ds_with_special_expert[src][token, slot]:
++                            continue
++                        dst, local_expert = divmod(expert, self.local_moe_expert_num)
++                        count_index = local_expert * self.world_size + src
++                        base = int(self.ep_send_counts[dst][count_index - 1]) if count_index else 0
++                        position = base + int(offsets[src][token, slot])
++                        triples[dst][3 * position:3 * position + 3] = torch.tensor([src, token, slot], dtype=torch.int32)
++            self.assist_info_for_combine = tuple(triples)
+         self._init_ori_x(is_support_special_expert)
+         self._init_hierarchy_inner_outer()
+         self.is_support_special_expert = is_support_special_expert
+--- a/core/operations/combine/operation.py
++++ b/core/operations/combine/operation.py
+@@ -71,6 +71,23 @@
+     def _normal_golden(self, case, x_name="x", comm_quant_mode=0):
+         if case.param['dtype'] not in [torch.float16, torch.bfloat16]:
+             raise ValueError(f"Not support dtype: {case.param['dtype']}")
++        if not case.param["is_layered"] and comm_quant_mode == 2:
++            # A3 INT8 communication uses eight-element FP32 block scales,
++            # stores scales in the input dtype and dequantizes back to it.
++            outputs = []
++            for rank in range(config["rank_num_per_server"]):
++                x = getattr(case.attach[rank], x_name)
++                shape = x.shape
++                blocks = x.float().reshape(-1, 8)
++                scales = blocks.abs().amax(dim=-1, keepdim=True) / 127.0
++                scales = torch.where(scales == 0, torch.ones_like(scales), scales)
++                quant = torch.round((blocks / scales).half().float()).clamp(-128, 127)
++                restored = (quant * scales.to(x.dtype).float()).reshape(shape).to(x.dtype)
++                if restored.dim() == 2:
++                    restored = restored.unsqueeze(-2)
++                weights = case.input[rank].expert_scales.unsqueeze(-1).float()
++                outputs.append((restored.float() * weights).sum(dim=-2).to(x.dtype))
++            return outputs
+         if not case.param["is_layered"]:
+             # 是否需要和算子输出类型相同
+             return self._get_math_golden(
+--- a/core/operations/dispatch/operation.py
++++ b/core/operations/dispatch/operation.py
+@@ -100,7 +100,16 @@
+             token_mask_true_num = param.get('token_mask_true_num', [-1] * param.get('world_size'))[rank + param['start_rank']]
+             if token_mask_true_num >= 0:
+                 bs = token_mask_true_num
+-            result &= compare.valid_expand_idx(rank, output.assist_info_for_combine.view(-1)[:bs * k], golden.assist_info_for_combine.view(-1)[:bs * k], bs, k)
++            actual_tokens = golden.expand_x.shape[0]
++            actual_triples = output.assist_info_for_combine.view(-1)[:actual_tokens * 3]
++            expected_triples = golden.assist_info_for_combine.view(-1)[:actual_tokens * 3]
++            triples_match = torch.equal(actual_triples, expected_triples)
++            if not triples_match:
++                self.log.error(f"rank={rank}: source rank/token/topk triples differ")
++            result &= triples_match
++            if golden.expand_scales is not None:
++                result &= torch.equal(output.expand_scales.view(-1)[:actual_tokens],
++                                      golden.expand_scales.view(-1)[:actual_tokens])
+         # performance_info 打印
+         if config["pta_version"] > 1 and param['need_performance_info']:
+             self.log.info(f"rank:{rank}, performance_info :{output.performance_info}")
+--- a/core/operations/_native_operation.py
++++ b/core/operations/_native_operation.py
+@@ -83,6 +83,10 @@
+         self.log.debug(f'Loop:{loop}')
+         for _ in range(loop):
+             output = model(**input.asdict())
++            if loop > 1:
++                # Bound rank skew consistently while exercising window reuse.
++                # This synchronization is outside operator timing (accuracy only).
++                torch.distributed.barrier()
+         return output
+
+     def run_performance(self, model, param, input: Input):
+--- a/core/operations/_native_stages/executor.py
++++ b/core/operations/_native_stages/executor.py
+@@ -2,6 +2,9 @@
+
+ from dataclasses import dataclass
+ import gc
++import json
++import os
++from pathlib import Path
+
+ from .dependencies import native_log_setter
+
+@@ -48,6 +51,16 @@
+             device_output = self.output_class(
+                 *self.operator.forward(device_input, param)
+             )
++            provenance = os.environ.get("EP_TEST_PROVENANCE_PATH")
++            if provenance and task.rank.global_rank == 0:
++                libraries = sorted({line.split()[-1] for line in Path("/proc/self/maps").read_text().splitlines()
++                                    if ".so" in line and ("/vendors/" in line or "libopapi" in line or "liboptiling" in line)})
++                directory = Path(provenance)
++                directory.mkdir(parents=True, exist_ok=True)
++                (directory / (param["case_name"] + ".json")).write_text(json.dumps({
++                    "vendor": os.environ.get("ASCEND_CUSTOM_OPP_PATH"),
++                    "libraries": libraries, "quant_mode": param.get("quant_mode"),
++                    "comm_quant_mode": param.get("comm_quant_mode")}, indent=2))
+             return device_output.cpu()
+         finally:
+             # Drop rank-local NPU tensors before clearing graph caches.  A
