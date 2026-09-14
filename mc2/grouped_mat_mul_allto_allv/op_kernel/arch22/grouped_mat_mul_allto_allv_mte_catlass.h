@@ -31,7 +31,7 @@ namespace MC2KernelTemplate {
 template <typename T, bool WeightTrans, bool IsSharedExpert>
 class CatlassGroupedMatmulOp {
 private:
-    struct IgnoreExpertCompletion {
+    struct IgnoreWaveCompletion {
         __aicore__ inline void operator()(uint32_t) const {}
     };
 
@@ -52,23 +52,19 @@ public:
 
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum)
     {
-        IgnoreExpertCompletion callback;
+        IgnoreWaveCompletion callback;
         ProcessRange<false>(startExpertIdx, expertNum, callback);
     }
 
-    // Process the requested expert range in one CATLASS resource lifetime.
-    // The callback runs on every AIC after that AIC has finished issuing the
-    // expert's tiles, with the expert's hasWork ownership bit telling whether
-    // this core computed any tile. Only experts with work produce a
-    // notification. Every notified expert is a notification boundary; no FIX
-    // drain is needed because the ready flag is emitted from PIPE_FIX, whose
-    // in-order execution makes the preceding L0C->GM stores visible before
-    // the flag reaches the AIV.
-    template <typename ExpertCompletion>
+    // Keep a single CATLASS resource lifetime across experts. Each local
+    // wave contains at most M_GROUPS_PER_WAVE complete M tiles (all N tiles).
+    // The completion callback publishes a monotonic GM boundary after FIX_S;
+    // AIV0 can stage that wave while AIC computes the following wave.
+    template <typename WaveCompletion>
     __aicore__ inline void ProcessExperts(uint32_t startExpertIdx, uint32_t expertNum,
-                                          ExpertCompletion &&onExpertComplete)
+                                          WaveCompletion &&onWaveComplete)
     {
-        ProcessRange<true>(startExpertIdx, expertNum, onExpertComplete);
+        ProcessRange<true>(startExpertIdx, expertNum, onWaveComplete);
     }
 
     __aicore__ inline void Process(uint32_t expertIdx)
@@ -79,8 +75,8 @@ public:
     __aicore__ inline void End() {}
 
 private:
-    template <bool CompleteEachExpert, typename ExpertCompletion>
-    __aicore__ inline void ProcessRange(uint32_t startExpertIdx, uint32_t expertNum, ExpertCompletion &onExpertComplete)
+    template <bool NotifyWaves, typename WaveCompletion>
+    __aicore__ inline void ProcessRange(uint32_t startExpertIdx, uint32_t expertNum, WaveCompletion &onWaveComplete)
     {
         if ASCEND_IS_AIV {
             return;
@@ -92,8 +88,8 @@ private:
             if (startExpertIdx != 0U || expertNum != 1U) {
                 return;
             }
-            Run<CompleteEachExpert>(taskTilingInfo_->BS, taskTilingInfo_->H2, taskTilingInfo_->N2, 0U, 1U, true,
-                                    onExpertComplete);
+            Run<NotifyWaves>(taskTilingInfo_->BS, taskTilingInfo_->H2, taskTilingInfo_->N2, 0U, 1U, true,
+                                    onWaveComplete);
         } else {
             const uint32_t totalExpertNum = static_cast<uint32_t>(taskTilingInfo_->e);
             if (startExpertIdx >= totalExpertNum) {
@@ -103,8 +99,8 @@ private:
             if (actualExpertNum > totalExpertNum - startExpertIdx) {
                 actualExpertNum = totalExpertNum - startExpertIdx;
             }
-            Run<CompleteEachExpert>(taskTilingInfo_->A, taskTilingInfo_->H1, taskTilingInfo_->N1, startExpertIdx,
-                                    actualExpertNum, false, onExpertComplete);
+            Run<NotifyWaves>(taskTilingInfo_->A, taskTilingInfo_->H1, taskTilingInfo_->N1, startExpertIdx,
+                                    actualExpertNum, false, onWaveComplete);
         }
     }
 
@@ -117,17 +113,17 @@ private:
         return tokens;
     }
 
-    template <bool CompleteEachExpert, typename ExpertCompletion>
+    template <bool NotifyWaves, typename WaveCompletion>
     __aicore__ inline void Run(uint32_t m, uint32_t k, uint32_t n, uint32_t startExpertIdx, uint32_t expertNum,
-                               bool isSharedExpert, ExpertCompletion &onExpertComplete)
+                               bool isSharedExpert, WaveCompletion &onWaveComplete)
     {
         using namespace Catlass;
         // Every AIC owns an independent CATLASS resource and processes its
         // strided subset of L1 tiles.
         // Match the arch22 AllToAllMatmul/MatmulAlltoAll compute path.  This
-        // grouped kernel publishes one complete output chunk rather than
-        // consuming per-tile unit events, so FIX_M/M_FIX must guard L0C reuse
-        // and GM visibility before the AIV ready event is emitted.
+        // grouped kernel publishes GM wave progress instead of consuming
+        // per-tile unit events. FIX_M/M_FIX still guard L0C reuse; the
+        // completion callback orders FIX stores before scalar publication.
         constexpr bool enableUnitFlag = false;
 
         using ArchTag = Arch::AtlasA2;
@@ -176,12 +172,6 @@ private:
             uint32_t expertIdx = startExpertIdx + localExpert;
             uint32_t currentM = isSharedExpert ? m : GetExpertTokens(expertIdx);
             uint32_t loopsM = 0U;
-            // True when this AIC owns at least one M tile of the expert. Only
-            // experts with work produce a C2V notification, so an AIC that is
-            // idle for this expert neither publishes a ready flag nor enters
-            // the reverse-credit wait, and the notification budget is not
-            // drained by empty experts.
-            bool hasWork = false;
             if (currentM != 0U) {
                 GemmCoord problemShape{currentM, n, k};
                 LayoutA layoutA{currentM, k};
@@ -210,12 +200,13 @@ private:
                 // mIdx === (coreIdx - startCoreIdx) mod aicCoreNum. Unlike a
                 // flat per-tile stripe, no N tile of a row is ever produced
                 // by another AIC, so the paired AIV can stage the row as soon
-                // as this core signals the expert complete. The AIC/AIV pair
+                // as this core publishes the wave complete. The AIC/AIV pair
                 // derives the same ownership from the same rotation state.
                 const uint32_t startMIdx =
                     coreIdx < startCoreIdx ? coreIdx + aicCoreNum - startCoreIdx : coreIdx - startCoreIdx;
-                hasWork = startMIdx < loopsM;
+                uint32_t ownedTileCount = 0U;
                 for (uint32_t mIdx = startMIdx; mIdx < loopsM; mIdx += aicCoreNum) {
+                    if constexpr (NotifyWaves) { onWaveComplete.MmBegin(expertIdx, loopsN); }
                     for (uint32_t nIdx = 0U; nIdx < loopsN; ++nIdx) {
                         const uint32_t loopIdx = mIdx * loopsN + nIdx;
                         GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
@@ -226,6 +217,14 @@ private:
                         blockMmad(gmA[layoutA.GetOffset(offsetA)], layoutA, gmB[layoutB.GetOffset(offsetB)], layoutB,
                                   gmC[layoutC.GetOffset(offsetC)], layoutC, actualBlockShape);
                     }
+                    if constexpr (NotifyWaves) {
+                        onWaveComplete.MmEnd();
+                        ++ownedTileCount;
+                        if (ownedTileCount % Gmma2avMteTiling::M_GROUPS_PER_WAVE == 0U ||
+                            mIdx + aicCoreNum >= loopsM) {
+                            onWaveComplete.NotifyWaveReady();
+                        }
+                    }
                 }
             }
 
@@ -234,20 +233,10 @@ private:
             groupOffsetC += static_cast<uint64_t>(currentM) * n;
             startCoreIdx = (startCoreIdx + loopsM) % aicCoreNum;
 
-            if constexpr (CompleteEachExpert) {
-                // Per-expert notification with no FIX drain: the flag is set
-                // from PIPE_FIX, so in-order pipe execution guarantees the
-                // L0C->GM stores of this expert are visible to the paired AIV
-                // before the notification arrives. Experts whose tiles are
-                // owned by other cores do not notify; the paired AIV skips
-                // the matching wait, so both counts stay aligned.
-                if (onExpertComplete(expertIdx, hasWork)) {
-                    onExpertComplete.NotifyExpertReady();
-                }
-            }
+
         }
 
-        if constexpr (!CompleteEachExpert) {
+        if constexpr (!NotifyWaves) {
             // The optional shared MM has no expert-ready callback; preserve
             // its final-drain semantics. The
             // synchronous ping-pong policy is drained by BlockMmad's

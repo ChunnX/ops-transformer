@@ -23,6 +23,9 @@
 #include "register/tilingdata_base.h"
 #include "graph/utils/type_utils.h"
 #include <cstring>
+#include <cstdlib>
+#include <cstdio>
+#include <string>
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -34,12 +37,26 @@ using namespace Mc2Tiling::Mc2GroupedMatmul;
 namespace optiling {
 
 namespace {
+
 constexpr uint8_t COMM_MODE_AIV = 2U;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 constexpr uint32_t OP_TYPE_MULTI_PUT = 18U;
 constexpr uint64_t A2_EXPERT_OVERLAP_MAX_RANK_SIZE = 8UL;
 const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
 const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
+
+// Diagnostic rank-delay injection (cross-call race testing). All default 0
+// (= disabled); production kernels only pay one register compare per
+// injection point.
+uint32_t ReadSyncDelayEnv(const char *name)
+{
+    const char *value = std::getenv(name);
+    if (value == nullptr) {
+        return 0U;
+    }
+    return static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
+}
+
 } // namespace
 
 const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
@@ -91,17 +108,11 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::SetMteWorkspaceInfo()
                     return ge::GRAPH_FAILED);
     const uint64_t gmmOutputWorkspaceSize = mc2tiling::AlignUp(
         localParams_.A * localParams_.N1 * dtypeSize, MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
-    const uint64_t cumsumWorkspaceSize =
-        mc2tiling::AlignUp(MC2KernelTemplate::Gmma2avMteTiling::CumsumRegionBytes(localParams_.epWorldSize,
-                                                                                  localParams_.ep),
-                           MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
-    // Local stage-progress slots appended after the cumsum region; the device
-    // derives the same base from cumsumWorkspaceOffset + CumsumRegionBytes().
-    const uint64_t stageProgressWorkspaceSize =
-        mc2tiling::AlignUp(localParams_.aicCoreNum * MC2KernelTemplate::Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES,
-                           MC2KernelTemplate::Gmma2avMteTiling::WORKSPACE_ALIGNMENT);
-    mteWorkspaceSize_ = static_cast<uint64_t>(libApiWorkSpaceSize_) + gmmOutputWorkspaceSize + cumsumWorkspaceSize +
-                        stageProgressWorkspaceSize;
+    // Shared layout: count scratch, Stage->Comm progress, AIC->Stage wave
+    // progress. Each writer owns a cache line; no payload buffer is reused.
+    mteWorkspaceSize_ = static_cast<uint64_t>(libApiWorkSpaceSize_) + gmmOutputWorkspaceSize +
+        MC2KernelTemplate::Gmma2avMteTiling::WaveWorkspaceBytes(
+            localParams_.epWorldSize, localParams_.ep, localParams_.aicCoreNum);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -542,7 +553,30 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return ge::GRAPH_FAILED);
+    if (std::getenv("GMMA2AV_WAVE_TRACE") != nullptr) {
+        std::fprintf(stderr, "[WAVE-TILING] sharedBS=%lu A=%lu E=%lu\n",
+                     taskTiling.BS, taskTiling.A, taskTiling.e);
+    }
+    taskTiling.syncDelayRank = ReadSyncDelayEnv("GMMA2AV_SYNC_DELAY_RANK");
+    taskTiling.syncDelayBeginUs = ReadSyncDelayEnv("GMMA2AV_SYNC_DELAY_BEGIN_US");
+    taskTiling.syncDelayEndUs = ReadSyncDelayEnv("GMMA2AV_SYNC_DELAY_END_US");
     outData.isA3 = static_cast<uint32_t>(isA3_);
+    // Runtime tracing: when requested through GMMA2AV_MTE_TIMER=1, reuse the
+    // shared-expert output (mm_y) as the MTE timer record buffer. The kernel
+    // skips shared matmul in this mode, so mm_y content is otherwise unused.
+    const char *timerEnv = std::getenv("GMMA2AV_MTE_TIMER");
+    const bool timerRequested = timerEnv != nullptr && timerEnv[0] == '1';
+    outData.mteTimerOutput = static_cast<uint32_t>(timerRequested && localParams_.hasSharedMm);
+    if (timerRequested) {
+        if (!localParams_.hasSharedMm) {
+            OP_LOGW(opName_, "GMMA2AV_MTE_TIMER=1 needs shared-expert outputs (mm_x/mm_weight); tracing disabled.");
+        } else {
+            OP_LOGI(opName_,
+                    "MTE tracing enabled: shared-expert output (%lu, %lu) is reused as the timer record buffer.",
+                    localParams_.Bs, localParams_.N2);
+        }
+    }
+
     const uint32_t opType = isA3_ ? OP_TYPE_ALL_TO_ALL : OP_TYPE_MULTI_PUT;
     const std::string &algConfig = isA3_ ? A3_MTE_HCCL_ALG_CONFIG : A2_MTE_HCCL_ALG_CONFIG;
     Mc2CcTilingConfig mc2InitConfig(group, opType, algConfig);
@@ -560,21 +594,24 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
                            MC2KernelTemplate::Gmma2avMteTiling::COUNT_TABLE_ALIGNMENT_BYTES);
     const uint64_t sendCountStagingBytes = MC2KernelTemplate::Gmma2avMteTiling::SEND_COUNT_STAGING_FROM_TAIL -
                                            MC2KernelTemplate::Gmma2avMteTiling::SYNC_REGION_FROM_TAIL;
-    OP_TILING_CHECK(countMatrixBytes > sendCountStagingBytes,
+    OP_TILING_CHECK(MC2KernelTemplate::Gmma2avMteTiling::CCL_BUFFER_COUNT *
+                        MC2KernelTemplate::Gmma2avMteTiling::COUNT_BUFFER_STRIDE > sendCountStagingBytes,
                     OP_LOGE(opName_, "MTE send-count staging requires %lu bytes, but its CCL region has %lu bytes.",
                             countMatrixBytes, sendCountStagingBytes),
                     return ge::GRAPH_FAILED);
-    const uint64_t syncBytes = MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_BYTES;
+    const uint64_t syncBytes = MC2KernelTemplate::Gmma2avMteTiling::CCL_BUFFER_COUNT *
+        MC2KernelTemplate::Gmma2avMteTiling::FIXED_SYNC_BYTES;
     OP_TILING_CHECK(syncBytes > MC2KernelTemplate::Gmma2avMteTiling::CCL_TAIL_SAFETY_BYTES,
                     OP_LOGE(opName_, "MTE fixed sync layout requires %lu bytes, but the CCL tail region has %lu bytes.",
                             syncBytes, MC2KernelTemplate::Gmma2avMteTiling::CCL_TAIL_SAFETY_BYTES),
                     return ge::GRAPH_FAILED);
     const uint64_t dtypeSize = mc2tiling::GetDataTypeSize(opName_, localParams_.gmmYDtype);
     const uint64_t sendBytes = localParams_.A * localParams_.N1 * dtypeSize;
-    // Peers pull the published GMM result directly into their output tensor.
-    // Only sendBytes occupies the window payload; the count table is already
-    // contained in CONTROL_REGION_BYTES alongside the synchronization region.
-    const uint64_t dataAndControlBytes = sendBytes + MC2KernelTemplate::Gmma2avMteTiling::CONTROL_REGION_BYTES;
+    // Two complete payload buffers rotate across invocations. Their stride
+    // derives from the shared window size, never this rank's token count.
+    const uint64_t dataAndControlBytes =
+        MC2KernelTemplate::Gmma2avMteTiling::CCL_BUFFER_COUNT * mc2tiling::AlignUp(sendBytes, 512UL) +
+        MC2KernelTemplate::Gmma2avMteTiling::CONTROL_REGION_BYTES;
     const uint64_t requiredCclBufferSize =
         dataAndControlBytes > MC2KernelTemplate::Gmma2avMteTiling::MIN_CCL_BUFFER_BYTES ?
             dataAndControlBytes :

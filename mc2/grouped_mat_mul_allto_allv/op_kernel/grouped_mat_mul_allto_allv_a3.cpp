@@ -28,14 +28,19 @@ using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
 
-template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS>
-__aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
-                                         GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
-                                         GM_ADDR userWorkspace, const GroupedMatMulAlltoAllvMteTilingData *tilingData,
-                                         AscendC::TPipe *pipe)
+template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS,
+          bool TraceEnabled>
+__aicore__ inline void RunGmmA2avMtePathImpl(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
+                                          GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
+                                          GM_ADDR userWorkspace, const GroupedMatMulAlltoAllvMteTilingData *tilingData,
+                                          AscendC::TPipe *pipe, int64_t kernelEntryCycle)
 {
     const auto *taskTilingInfo = &tilingData->taskTilingInfo;
-    using CommOpType = GmmA2avMteOp<DTYPE_Y>;
+    // The untraced instantiation removes every record/count/flush operation
+    // from the hot loops at compile time; the runtime flag only selects the
+    // instantiation once at kernel entry.
+    using TimerType = typename std::conditional<TraceEnabled, GmmA2avMteTimer, GmmA2avMteNullTimer>::type;
+    using CommOpType = GmmA2avMteOp<DTYPE_Y, TimerType>;
     using ComputeOpType = CatlassGroupedMatmulOp<DTYPE_GMM_X, TILINGKEY_GMM_WEIGHT_TRANS, false>;
     using SharedGmmExpertOpType = CatlassGroupedMatmulOp<DTYPE_GMM_X, TILINGKEY_SHARED_MM_WEIGHT_TRANS, true>;
     using GmmA2avSchedulerType =
@@ -54,15 +59,49 @@ __aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM
         SharedGmmExpertOpType shareComputeOp;
         shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmyOptionalGM, taskTilingInfo);
 
-        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, taskTilingInfo);
+        // AIC cores occupy timer lanes after the AIV lanes; coreIdx is unique
+        // across all AIC cores of the block. mm_y serves as the trace buffer
+        // (timer mode skips the shared matmul that would overwrite it).
+        TimerType aicTimer;
+        TimerType *aicTimerPtr = nullptr;
+        if constexpr (TraceEnabled) {
+            const uint64_t timerBufferBytes =
+                static_cast<uint64_t>(taskTilingInfo->BS) * taskTilingInfo->N2 * sizeof(DTYPE_Y);
+            aicTimer.Init(mmyOptionalGM, timerBufferBytes,
+                          static_cast<uint32_t>(taskTilingInfo->aivCoreNum) + AscendC::GetBlockIdx(),
+                          static_cast<uint32_t>(taskTilingInfo->aivCoreNum + taskTilingInfo->aicCoreNum), true);
+            aicTimerPtr = &aicTimer;
+        }
+        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, taskTilingInfo, cumsumGM, aicTimerPtr,
+                                         static_cast<uint32_t>(TraceEnabled));
     }
 
     if ASCEND_IS_AIV {
         CommOpType commOp;
         commOp.Init(taskTilingInfo, gmmOutputGM, yGM, cumsumGM, pipe, &tilingData->cocTiling,
-                    tilingData->commBufferSize, tilingData->isA3);
+                    tilingData->commBufferSize, tilingData->isA3, mmyOptionalGM,
+                    static_cast<uint32_t>(TraceEnabled), kernelEntryCycle);
 
         GmmA2avSchedulerType::ProcessAiv(commOp, taskTilingInfo);
+    }
+}
+
+template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS>
+__aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
+                                         GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
+                                         GM_ADDR userWorkspace, const GroupedMatMulAlltoAllvMteTilingData *tilingData,
+                                         AscendC::TPipe *pipe, int64_t kernelEntryCycle)
+{
+    if (tilingData->mteTimerOutput != 0U) {
+        RunGmmA2avMtePathImpl<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
+                             TILINGKEY_SHARED_MM_WEIGHT_TRANS, true>(
+            gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, userWorkspace, tilingData,
+            pipe, kernelEntryCycle);
+    } else {
+        RunGmmA2avMtePathImpl<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
+                             TILINGKEY_SHARED_MM_WEIGHT_TRANS, false>(
+            gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, userWorkspace, tilingData,
+            pipe, kernelEntryCycle);
     }
 }
 
@@ -89,17 +128,21 @@ __global__ __aicore__ void grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gm
     // path structure for AIV communication-mode keys.
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     if constexpr (TILINGKEY_COMM_MODE == TILINGKEY_TPL_AIV) {
+        // Capture the kernel-entry cycle before the tiling load so the trace
+        // KERNEL_BEGIN span covers the tiling transfer, not just the timer
+        // initialization point.
+        const int64_t kernelEntryCycle = static_cast<int64_t>(AscendC::GetSystemCycle());
         GET_TILING_DATA_WITH_STRUCT(GroupedMatMulAlltoAllvMteTilingData, tilingData, tilingGM);
         if ASCEND_IS_AIV {
             TPipe pipe;
             RunGmmA2avMtePath<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS, TILINGKEY_SHARED_MM_WEIGHT_TRANS>(
                 gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, userWorkspace, &tilingData,
-                &pipe);
+                &pipe, kernelEntryCycle);
         }
         if ASCEND_IS_AIC {
             RunGmmA2avMtePath<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS, TILINGKEY_SHARED_MM_WEIGHT_TRANS>(
                 gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, userWorkspace, &tilingData,
-                nullptr);
+                nullptr, kernelEntryCycle);
         }
     } else {
         GET_TILING_DATA_WITH_STRUCT(QuantGmmA2avTilingData, tilingData, tilingGM);
