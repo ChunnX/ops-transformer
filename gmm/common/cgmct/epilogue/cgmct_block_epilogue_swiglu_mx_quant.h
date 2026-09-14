@@ -181,6 +181,11 @@ private:
                                               __ubuf__ uint16_t *halfScaleLocalAddr, uint32_t totalScaleInUB,
                                               uint16_t loopNumScale);
 
+    __aicore__ inline void ComputeScaleDynamicDtypeRange(__ubuf__ uint16_t *maxExpAddr,
+                                                         __ubuf__ uint16_t *mxScaleLocalAddr,
+                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
+                                                         uint32_t totalScaleInUB, uint16_t loopNumScale);
+
     __aicore__ inline void ComputeDataForQuantTargetFp8(__ubuf__ bfloat16_t *srcAddr,
                                                         __ubuf__ uint16_t *halfScaleLocalAddr,
                                                         __ubuf__ int8_t *outLocalAddr, uint32_t totalCountInUB,
@@ -561,6 +566,73 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
+__aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeScaleDynamicDtypeRange(
+    __ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t *mxScaleLocalAddr, __ubuf__ uint16_t *halfScaleLocalAddr,
+    uint32_t totalScaleInUB, uint16_t loopNumScale)
+{
+    __VEC_SCOPE__
+    {
+        AscendC::Reg::RegTensor<uint16_t> maxValue;
+        AscendC::Reg::RegTensor<uint16_t> maxExpOnly;
+        AscendC::Reg::RegTensor<uint16_t> roundedMaxExp;
+        AscendC::Reg::RegTensor<uint16_t> sharedExp;
+        AscendC::Reg::RegTensor<uint16_t> scaleValue;
+        AscendC::Reg::RegTensor<uint16_t> reciprocalValue;
+        AscendC::Reg::RegTensor<uint16_t> expMask;
+        AscendC::Reg::RegTensor<uint16_t> addValue;
+        AscendC::Reg::RegTensor<uint16_t> maxExpValue;
+        AscendC::Reg::RegTensor<uint16_t> scaleBias;
+        AscendC::Reg::RegTensor<uint16_t> fp8Nan;
+        AscendC::Reg::RegTensor<uint16_t> zero;
+        AscendC::Reg::RegTensor<uint16_t> nan;
+        AscendC::Reg::RegTensor<uint16_t> special;
+        AscendC::Reg::MaskReg finiteMask;
+        AscendC::Reg::MaskReg zeroMask;
+        AscendC::Reg::MaskReg belowRangeMask;
+        AscendC::Reg::MaskReg specialMask;
+        AscendC::Reg::MaskReg mask;
+
+        AscendC::Reg::Duplicate(expMask, MAX_EXP_FOR_BF16);
+        AscendC::Reg::Duplicate(addValue, 0x003f);
+        AscendC::Reg::Duplicate(maxExpValue, fpEmax_);
+        AscendC::Reg::Duplicate(scaleBias, BF16_EXP_BIAS);
+        AscendC::Reg::Duplicate(fp8Nan, MAX_EXP_FOR_FP8);
+        AscendC::Reg::Duplicate(zero, 0);
+        AscendC::Reg::Duplicate(nan, NAN_CUSTOMIZATION);
+        AscendC::Reg::Duplicate(special, SPECIAL_EXP_THRESHOLD);
+
+        uint32_t remainingScale = totalScaleInUB;
+        for (uint16_t i = 0; i < loopNumScale; ++i) {
+            mask = AscendC::Reg::UpdateMask<uint16_t>(remainingScale);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+                maxValue, maxExpAddr, vlForHalfNumber_);
+            AscendC::Reg::And(maxExpOnly, maxValue, expMask, mask);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(finiteMask, maxExpOnly, expMask, mask);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::LT>(belowRangeMask, maxExpOnly, maxExpValue, mask);
+            AscendC::Reg::Add(roundedMaxExp, maxValue, addValue, mask);
+            AscendC::Reg::And(roundedMaxExp, roundedMaxExp, expMask, mask);
+            AscendC::Reg::Select<uint16_t>(roundedMaxExp, maxExpValue, roundedMaxExp, belowRangeMask);
+            AscendC::Reg::Sub(sharedExp, roundedMaxExp, maxExpValue, mask);
+            AscendC::Reg::ShiftRights(scaleValue, sharedExp, SHR_NUM_FOR_BF16, mask);
+            AscendC::Reg::Select<uint16_t>(scaleValue, scaleValue, fp8Nan, finiteMask);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
+                                   AscendC::Reg::StoreDist::DIST_PACK_B16>(
+                mxScaleLocalAddr, scaleValue, vlForHalfNumber_ >> 1, mask);
+
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::NE>(zeroMask, sharedExp, zero, mask);
+            AscendC::Reg::Compare<uint16_t, AscendC::CMPMODE::EQ>(specialMask, sharedExp, scaleBias, mask);
+            AscendC::Reg::Sub(reciprocalValue, scaleBias, sharedExp, mask);
+            AscendC::Reg::Select<uint16_t>(reciprocalValue, reciprocalValue, nan, finiteMask);
+            AscendC::Reg::Select<uint16_t>(reciprocalValue, reciprocalValue, zero, zeroMask);
+            AscendC::Reg::Select<uint16_t>(reciprocalValue, special, reciprocalValue, specialMask);
+            AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE>(
+                halfScaleLocalAddr, reciprocalValue, vlForHalfNumber_, mask);
+            remainingScale = remainingScale > vlForHalfNumber_ ? remainingScale - vlForHalfNumber_ : 0;
+        }
+    }
+}
+
+QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDataForQuantTargetFp8(
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr, __ubuf__ int8_t *outLocalAddr,
@@ -790,6 +862,12 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     if (params_->scaleAlg == 0) {
         ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
         ComputeScale(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb, loopScaleNum);
+    } else if (params_->scaleAlg == 1) {
+        ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
+        const uint16_t dynamicLoopScaleNum = static_cast<uint16_t>(
+            (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_);
+        ComputeScaleDynamicDtypeRange(maxExpAddr, scaleDst, halfScaleLocalAddr, totalScaleInUb,
+                                      dynamicLoopScaleNum);
     } else {
         ComputeMaxExpCublas(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);
         const uint16_t cublasLoopScaleNum =
