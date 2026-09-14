@@ -362,7 +362,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.h"
 
-// 示例场景：E=1，M=512，K=2048，N=7168。
+// 示例场景：E=1，M=2048，K=128，N=128。
 // x:            [M, K]，FLOAT8_E4M3FN，ND
 // weight:       TensorList{[E, K, N]}，FLOAT8_E4M3FN，FRACTAL_NZ storage
 // weightScale:  TensorList{[E, ceil(K/64), N, 2]}，FLOAT8_E8M0，ND
@@ -423,38 +423,33 @@ ret = aclnnGroupedMatmulSwigluQuantWeightNzV3(workspace, workspaceSize, executor
 aclrtSynchronizeStream(stream);
 ```
 
-### MXFP8 weightNZ 四种 `swigluMode` 及 weight 转置/非转置示例
+### MXFP8 weightNZ ACLNN 示例
 
-示例源码支持以下命令行参数：`swigluMode transposeWeight activateLeft dumpPrefix`。其中 `transposeWeight=0` 表示非转置 weight，`transposeWeight=1` 表示转置 weight；x 始终为非转置输入。四个脚本分别固定一种 `swigluMode`，并在脚本内部依次覆盖两种 weight 形态：
+仓库只保留一个典型的 ACLNN 两段式调用示例：[test_aclnn_grouped_matmul_swiglu_quant_v3_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_nz.cpp)。示例使用 `E=1`、`M=2048`、`K=128`、`N=128`，x 始终为非转置输入，并通过命令行参数覆盖四种 `swigluMode` 以及 weight 的非转置 NZ、转置 ZN 两种布局。
 
-| 示例脚本 | `swigluMode` | 覆盖场景 |
-| --- | ---: | --- |
-| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode0.sh` | 0 | 标准 SwiGLU，非转置/转置 weight |
-| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode1.sh` | 1 | 奇偶交错拆分，非转置/转置 weight |
-| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode2.sh` | 2 | 前后两半拆分，非转置/转置 weight |
-| `test_aclnn_grouped_matmul_swiglu_quant_v3_mode3.sh` | 3 | 固定 alpha=1 的 SiLU，非转置/转置 weight |
+示例命令行参数依次为：`swigluMode transposeWeight activateLeft dumpPrefix [scaleAlg]`。
 
-在已使用 CANN 9.2 设置环境、并将示例源码编译为 `test_v3_modes_92` 后，可运行以下命令。每个脚本都会调用 ACLNN 两段式接口，导出 NPU 的 `output` 和 `outputScale`，再调用 `cpu_golden_swiglu_quant_v3.py` 做对比：
+- `swigluMode`：取值 `0`、`1`、`2` 或 `3`。
+- `transposeWeight`：`0` 表示非转置 NZ weight，`1` 表示转置 ZN weight。
+- `activateLeft`：`0` 或 `1`；mode 1 中该参数不生效。
+- `dumpPrefix`：可选的输出 dump 前缀；不需要 dump 时传空字符串或省略。
+- `scaleAlg`：可选，默认为 `0`，仅支持 `0` 或 `1`。
+
+在 CANN 9.2 环境中编译示例并设置自定义算子包后，可以分别运行以下调用，覆盖四种模式和两种 weight 布局：
 
 ```bash
-export V3_DEMO_BIN=/path/to/test_v3_modes_92
 export CANN_ROOT=/home/developer/Ascend/cann-9.2.0/cann-9.2.0
 export ASCEND_CUSTOM_OPP_PATH=/path/to/packages/vendors/custom_transformer
+export V3_DEMO_BIN=/path/to/test_aclnn_grouped_matmul_swiglu_quant_v3_nz
 
-bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode0.sh
-bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode1.sh
-bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode2.sh
-bash examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_mode3.sh
+${V3_DEMO_BIN} 0 0 1 /tmp/gmm_swiglu_v3_mode0_nz 0
+${V3_DEMO_BIN} 0 1 1 /tmp/gmm_swiglu_v3_mode0_zn 0
+${V3_DEMO_BIN} 1 0 1 /tmp/gmm_swiglu_v3_mode1_nz 0
+${V3_DEMO_BIN} 1 1 1 /tmp/gmm_swiglu_v3_mode1_zn 0
+${V3_DEMO_BIN} 2 0 1 /tmp/gmm_swiglu_v3_mode2_nz 1
+${V3_DEMO_BIN} 2 1 1 /tmp/gmm_swiglu_v3_mode2_zn 1
+${V3_DEMO_BIN} 3 0 1 /tmp/gmm_swiglu_v3_mode3_nz 0
+${V3_DEMO_BIN} 3 1 1 /tmp/gmm_swiglu_v3_mode3_zn 0
 ```
 
-每个模式都会执行 `transposeWeight=0` 和 `transposeWeight=1` 两次调用，示例固定 `activateDim=-1`、`activateLeft=true`、`clampLimit=7.0`、`gluAlpha=1.702`、`gluBias=1.0`，并使用 MXFP8 的 `dequantMode=2`、`quantMode=2`。CPU golden 校验要求相对误差超过 `1e-3` 的数据点数量不超过总数据点数量的 `1e-3`，同时校验 `outputScale`。
-
-如需单独调试某一种模式或某一种 weight 形态，也可以直接调用 C++ 示例：
-
-```bash
-# 参数依次为：swigluMode、transposeWeight、activateLeft、dumpPrefix
-${V3_DEMO_BIN} 0 0 1 /tmp/gmm_swiglu_v3_mode0_t0
-${V3_DEMO_BIN} 0 1 1 /tmp/gmm_swiglu_v3_mode0_t1
-```
-
-当前 V3 的 tiling 和 kernel 仅支持 Ascend 950 的 MXFP8 weightNZ 单入口。已在 CANN 9.2.0 的 Ascend 950 环境完成非转置/转置 weight 与四种 `swigluMode` 的 ACLNN 示例和 CPU golden 校验。
+示例内部固定使用 `dequantMode=2`、`dequantDtype=0`、`quantMode=2`、`groupListType=0`、`activateDim=-1`、`clampLimit=7.0`、`gluAlpha=1.702`、`gluBias=1.0`、`axis=-1`、`roundMode="rint"` 和 `dstTypeMax=0.0`，并调用 `aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize` 与 `aclnnGroupedMatmulSwigluQuantWeightNzV3` 完成两段式执行。

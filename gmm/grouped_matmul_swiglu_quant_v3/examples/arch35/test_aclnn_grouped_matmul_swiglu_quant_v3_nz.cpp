@@ -111,7 +111,7 @@ int main(int argc, char **argv)
         LOG_PRINT("invalid swiglu mode=%ld\n", swigluMode);
         return 2;
     }
-    if (scaleAlg < 0 || scaleAlg > 2) {
+    if (scaleAlg < 0 || scaleAlg > 1) {
         LOG_PRINT("invalid scale_alg=%ld\n", scaleAlg);
         return 2;
     }
