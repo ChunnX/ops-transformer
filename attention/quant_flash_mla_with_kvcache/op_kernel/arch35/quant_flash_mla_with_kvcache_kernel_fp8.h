@@ -67,10 +67,7 @@ public:
     BufferManager<BufferType::UB> ubBufferManager_;
     BufferManager<BufferType::L1> l1BufferManager_;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers_;
-    // bmm2跨核结果双buffer：单buffer时AIC侧WaitCrossCore排在FIX队列中，必须等两个AIV完成上一task的vec2
-    // 才能放行本task的fixpipe，队头阻塞连带后续bmm1的fixpipe，PRELOAD流水退化为每task一次跨核往返；
-    // 双buffer后相邻task的bmm2 fixpipe与AIV vec2错拍重叠，解除FIX队列锁步
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
+    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers_;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers_;
 
     GlobalTensor<int32_t> cacheSeqLensGm_;
@@ -197,7 +194,7 @@ public:
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         l1BufferManager_.Init(pipe_, 524288); // 512 * 1024
         l1PBuffers_.Init(l1BufferManager_, mm2LeftSize);
-        ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize * 2);
+        ubBufferManager_.Init(pipe_, mm1ResultSize * 2 + mm2ResultSize);
         bmm2Buffers_.Init(ubBufferManager_, mm2ResultSize);
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
         workspace = GetUserWorkspace(workspace);
@@ -278,8 +275,6 @@ public:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            // DB双buffer: 两次Get覆盖ping/pong，各预置1个release信用（flag1_翻转两次回到初态）
-            bmm2Buffers_.Get().SetCrossCore();
             bmm2Buffers_.Get().SetCrossCore();
             bmm1Buffers_.Get().SetCrossCore();
             bmm1Buffers_.Get().SetCrossCore();
@@ -291,8 +286,6 @@ public:
         if ASCEND_IS_AIC {
             bmm1Buffers_.Get().WaitCrossCore();
             bmm1Buffers_.Get().WaitCrossCore();
-            // DB双buffer: 两次Get消化ping/pong上末task残留的release信用
-            bmm2Buffers_.Get().WaitCrossCore();
             bmm2Buffers_.Get().WaitCrossCore();
         }
     }
