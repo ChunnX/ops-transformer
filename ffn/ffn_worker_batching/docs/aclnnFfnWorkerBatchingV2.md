@@ -373,6 +373,30 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
 - 确定性计算：
   - aclnnFfnWorkerBatchingV2默认确定性实现。
 
+
+### 异步接收的跨层专家编号
+
+仅`needSchedule=1`且`syncFlag=1`时，`expertNum`表示本卡所有参与层的专家总数，
+`layerNum`必须大于0且整除`expertNum`。各层在本卡的专家数量必须相同，包含共享专家。
+描述符中的`layer_id`必须是本卡参与层的连续零基编号，输入`expert_ids`必须是层内本卡局部专家号，不能预先加层偏移。
+
+```text
+expertsPerLayer = expertNum / layerNum
+newExpertId = layer_id * expertsPerLayer + expert_id
+```
+
+算子按`newExpertId`排序、重排token及scale，并在`groupList`第一列输出该编号；第二列为对应token数。
+`groupList`容量仍为`[expertNum, 2]`。例如`expertNum=8、layerNum=2`时，层0的专家1和层1的专家1分别编号为1和5，不再合并。
+下游需使用同样的跨层编号组织权重，或用整除/取模恢复层号及层内专家号。
+`sessionIds`、`microBatchIds`、`tokenIds`及`expertOffsets`仍表示原始来源位置；`expertOffsets`仍为token的专家选择位置。
+
+仅处理本次ready快照选中的描述符。`expert_id`不在`[0, expertsPerLayer)`内（含原有mask值）时不产生输出；
+`layer_id`不在`[0, layerNum)`内时该描述符的token均被mask，选中描述符仍按接收协议消费清理。
+先检查有效性，再加层偏移，避免`INT32_MAX`等mask值溢出。`schedule_context.common.expert_num`不参与本公式计算。
+
+同步接收（`syncFlag=0`）和NORM（`needSchedule=0`）继续使用原专家号，不解释层号，仍允许`layerNum=0`。
+Host与kernel须使用本次配套构建产物；跨层合批输入仅应使用异步接收模式。
+
 ## 调用示例
 
 完整示例：[test_aclnn_ffn_worker_batching_v2.cpp](../examples/test_aclnn_ffn_worker_batching_v2.cpp)。示例代码如下，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
