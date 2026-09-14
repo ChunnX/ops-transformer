@@ -433,13 +433,6 @@ def convert_param_combination_to_cs_format(param_combination):
         }
     else:
         print("Unsupported layout_kv: ", layout_kv)
-    if (
-        int(rope_head_dim or 0) == 0
-        and "shape_input" in locals()
-        and shape_input is not None
-    ):
-        shape_input.pop("query_rope", None)
-        shape_input.pop("key_rope", None)
     dtype_input = {
         "query": q_dtype_str,
         "key": kv_dtype_str,

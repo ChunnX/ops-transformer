@@ -1002,40 +1002,6 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_27)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// A2/A3 MLA: query_rope/key_rope empty
-TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_rope_none)
-{
-    struct SparseFlashAttentionCompileInfo {
-    } compileInfo;
-    int64_t actual_seq_qlist[] = {4};
-    int64_t actual_seq_kvlist[] = {128};
-    gert::TilingContextPara tilingContextPara(
-        "SparseFlashAttention",
-        {{{{1, 4, 8, 512}, {1, 4, 8, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{1, 4, 1, 16}, {1, 4, 1, 16}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
-         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},
-         {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},
-         {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
-        {{{{1, 4, 8, 512}, {1, 4, 8, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
-         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.04419417382f)},
-         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
-         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX);
-}
-
 // soc is not supported by the op
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_28)
 {

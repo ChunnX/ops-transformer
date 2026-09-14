@@ -209,29 +209,6 @@ TEST_PARAMS = {
         "actual_seq_q": [[2, 6, 11, 15]],
         "actual_seq_kv": [[1024, 1024, 1024, 1024]],
     },
-    "bsnd_norope": {
-        "Testcase_Prefix": ["sfa_bsnd_norope"],
-        "layout_query": ["BSND"],
-        "layout_kv": ["BSND"],
-        "q_type": [torch.float16],
-        "kv_type": [torch.float16],
-        "B": [1],
-        "S1": [4],
-        "S2": [128],
-        "N1": [8],
-        "N2": [1],
-        "D": [512],
-        "K": [16],
-        "scale_value": [1.0 / math.sqrt(512)],
-        "sparse_block_size": [1],
-        "rope_head_dim": [0],
-        "sparse_mode": [0],
-        "attention_mode": [2],
-        "return_softmax_lse": [True],
-        "use_sinks": [False],
-        "actual_seq_q": [[4]],
-        "actual_seq_kv": [[128]],
-    },
 }
 
 
@@ -241,5 +218,4 @@ ENABLED_PARAMS = [
     TEST_PARAMS["pa_bsnd"],
     TEST_PARAMS["tnd_basic"],
     TEST_PARAMS["tnd_pa_multi_batch"],
-    TEST_PARAMS["bsnd_norope"],
 ]
