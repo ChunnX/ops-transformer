@@ -19,6 +19,11 @@ namespace MegaMoeImpl {
 constexpr uint32_t RANK_SYNC_COUNTER_OFFSET_BYTES = 48U * 1024U;
 constexpr uint32_t RANK_SYNC_COUNTER_SLOT_BYTES = 64U;
 
+// MTE route stores the flattened [token, topK] ordinal as int16_t when the all-rank capacity permits it.
+using CompactRouteIndexType = int16_t;
+using WideRouteIndexType = int32_t;
+constexpr int64_t MAX_COMPACT_ROUTE_ITEM_COUNT = 1LL << 15;
+
 enum class MegaMoeActMode : uint8_t {
     SWIGLU = 0U,
     SITU = 1U,

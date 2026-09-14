@@ -346,10 +346,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // compact route 已消除 mask 扫描，只保留一份接收 index batch。
     // Tensor 用途：接收 compact topkIndex 的当前 batch。
     uint32_t validTopkIndexTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    uint32_t routeIndexTypeBytes = static_cast<uint32_t>(CalcRouteIndexTypeBytes(params_.tilingData));
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(bufferConfig.routeItemsPerBatch * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(bufferConfig.routeItemsPerBatch) * routeIndexTypeBytes, static_cast<int64_t>(ALIGN_32));
     scratch.validTopkIndexTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
+        LocalTensor<uint8_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize);
     /*
      * 路由批次 Tensor 后依次放置 copyTmp 环形缓冲区和 32B metaInfo 环形缓冲区。
      * Tensor 用途：DispatchExpertTokens 中的动态 dispatch 环形缓冲区，配合
@@ -482,17 +483,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     const SendMaskBufferConfig &bufferConfig = sendMaskConfig_.bufferConfig;
     int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
 
-    // 按既定顺序落地址。routeItemsPerBatch 按 256 个 item 对齐，因此两个 int32 tensor 均天然满足 256B 对齐。
+    // 按既定顺序落地址。routeItemsPerBatch 按 256 个 item 对齐，两种 index 编码均满足 256B 对齐。
     uint32_t topkIdsTensorAddr = 0;
     uint32_t topkIdsTensorSize = static_cast<uint32_t>(routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
     sendMaskScratch_.topkIdsTensor =
         LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
 
     uint32_t topkIndexTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
+    uint32_t topkIndexTensorSize =
+        static_cast<uint32_t>(routeItemsPerBatch) * static_cast<uint32_t>(CalcRouteIndexTypeBytes(params_.tilingData));
     sendMaskScratch_.topkIndexTensor =
-        LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIdsTensorSize / sizeof(int32_t));
+        LocalTensor<uint8_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize);
 
-    uint32_t resetAddrActual = topkIndexTensorAddr + topkIdsTensorSize;
+    uint32_t resetAddrActual = topkIndexTensorAddr + topkIndexTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetAddrActual, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
     resetBatchElementCount_ = resetBatchElementCount;
