@@ -1622,7 +1622,7 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
                           attenMaskOptional, queryRopeOptional, keyRopeOptional, dScaleQOptional, dScaleKOptional,
                           dScaleVOptional, sinkOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional,
                           qStartIdxOptional, kvStartIdxOptional, scaleValue, keepProb, preTokens, nextTokens, headNum,
-                          inputLayout, innerPrecise, sparseMode, outDtype, pseType, seed, offset),
+                          inputLayout, innerPrecise, sparseMode, outDtype, pseType, softmaxOutLayout, seed, offset),
                    DFX_OUT(softmaxMaxOut, softmaxSumOut, softmaxOutOut, attentionOutOut));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -1738,7 +1738,8 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
                            executor) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
     L2_DFX_PHASE_1(aclnnQuantFlashAttentionScore,
-                   DFX_IN(query, key, value, dScaleQ, dScaleK, dScaleV, pScale, scaleValue, headNum, inputLayout),
+                   DFX_IN(query, key, value, attenMaskOptional, dScaleQ, dScaleK, dScaleV, pScale, scaleValue,
+                          preTokens, nextTokens, headNum, inputLayout, sparseMode),
                    DFX_OUT(softmaxMaxOut, softmaxSumOut, softmaxOutout, attentionOutOut));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
