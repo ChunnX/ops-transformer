@@ -38,7 +38,7 @@ static int64_t ComputeTileLength(int64_t K, int64_t ubSize)
     // UB 划分为 7 块连续 buffer:
     // ub_target_score_in: tileLen * K * dtypeSize
     // ub_index_probs_in:  tileLen * K * dtypeSize
-    // ub_reduce_sum:      max(tileLen, 8) * 8 * dtypeSize  (Brcb 广播展开区，单次固定写 64 个 float)
+    // ub_reduce_sum:      ceil(tileLen, 8) * 8 * dtypeSize  (Brcb 广播展开区，单次固定写 64 个 float)
     // ub_log_P:           tileLen * K * dtypeSize
     // ub_log_Y:           tileLen * K * dtypeSize
     // ub_out:             8 * dtypeSize
