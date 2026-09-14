@@ -17,6 +17,7 @@
 #include "mc2_tiling_utils.h"
 #include "mc2_comm_utils.h"
 #include "securec.h"
+#include <cstdlib>
 
 using namespace ge;
 using namespace AscendC;
@@ -87,14 +88,36 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
                                          apaceTilingData_);
     apaceTilingData_.mc2InitTiling = tilingData->hcclA2avTilingInfo.hcclInitTiling;
     apaceTilingData_.mc2CcTiling = tilingData->hcclA2avTilingInfo.a2avCcTiling;
+    const char *diagEnv = std::getenv("ASCEND_APACE_A2AVGMM_DIAG");
+    if (diagEnv != nullptr) {
+        OP_TILING_CHECK(diagEnv[0] < '0' || diagEnv[0] > '4' || diagEnv[1] != '\0',
+                        OP_LOGE_WITHOUT_REPORT(opName, "ASCEND_APACE_A2AVGMM_DIAG must be one digit in [0,4]."),
+                        return ge::GRAPH_FAILED);
+        apaceTilingData_.diagnosticMode = static_cast<uint32_t>(diagEnv[0] - '0');
+    }
+    const char *traceEnv = std::getenv("ASCEND_APACE_A2AVGMM_TRACE");
+    if (traceEnv != nullptr) {
+        OP_TILING_CHECK((traceEnv[0] != '0' && traceEnv[0] != '1') || traceEnv[1] != '\0',
+                        OP_LOGE_WITHOUT_REPORT(opName, "ASCEND_APACE_A2AVGMM_TRACE must be 0 or 1."),
+                        return ge::GRAPH_FAILED);
+        apaceTilingData_.diagnosticTrace = static_cast<uint32_t>(traceEnv[0] - '0');
+    }
+    if (apaceTilingData_.diagnosticMode != Apace::A2AV_GMM_DIAG_FULL) {
+        OP_LOGW(opName, "APACE DIAGNOSTIC ONLY mode=%u: 1=all-comm, 2=all-comm+sync, "
+                       "3=all-comm+sync+shared-MM, 4=all-comm+sync+routed-GMM. "
+                       "Skipped outputs are invalid; set the same mode on ALL ranks and restart the test process.",
+                apaceTilingData_.diagnosticMode);
+    }
     OP_LOGI(opName,
             "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
             "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u initBarrier=1 "
-            "scaleTransport=same-as-data hcommOrder=scale-wait-data-wait finalBarrier=balanced",
+            "scaleTransport=same-as-data hcommOrder=scale-wait-data-wait finalBarrier=balanced "
+            "blazeLifetime=aic-scoped-v1 commCredit=1 diag=%u trace=%u",
             epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
             apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
             apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset,
-            apaceTilingData_.localMatmul, apaceTilingData_.hasPermuteOut, Apace::A2AV_GMM_HCCL_PARAM_RANK_NUM);
+            apaceTilingData_.localMatmul, apaceTilingData_.hasPermuteOut, Apace::A2AV_GMM_HCCL_PARAM_RANK_NUM,
+            apaceTilingData_.diagnosticMode, apaceTilingData_.diagnosticTrace);
     return ge::GRAPH_SUCCESS;
 }
 

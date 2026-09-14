@@ -26,10 +26,12 @@ if (BUILD_OPEN_PROJECT)  # custom
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
+        # Compile temporary APACE probes; runtime TRACE defaults to zero.
         add_ops_compile_options(
             OP_NAME AlltoAllvQuantGroupedMatMul
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
+                    -UASCENDC_DUMP -DASCENDC_DUMP=1
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(

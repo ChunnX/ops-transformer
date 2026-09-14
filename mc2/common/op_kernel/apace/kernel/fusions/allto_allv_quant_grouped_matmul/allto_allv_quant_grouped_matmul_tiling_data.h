@@ -230,6 +230,16 @@ constexpr uint32_t A2AV_GMM_MAX_SEG_NUM = 256;
 constexpr uint32_t A2AV_GMM_HCCL_PARAM_RANK_NUM = 128;
 static_assert(A2AV_GMM_MAX_RANK_NUM <= A2AV_GMM_HCCL_PARAM_RANK_NUM,
               "APACE rank capacity must fit the HCCL parameter ABI");
+
+// Temporary runtime bisection, identical on every rank. Nonzero modes are
+// diagnostics only: skipped compute outputs must NOT be used as correctness results.
+enum A2avGmmDiagnosticMode : uint32_t {
+    A2AV_GMM_DIAG_FULL = 0,
+    A2AV_GMM_DIAG_COMM_ONLY = 1,
+    A2AV_GMM_DIAG_COMM_SYNC = 2,
+    A2AV_GMM_DIAG_SHARED = 3,
+    A2AV_GMM_DIAG_ROUTED = 4,
+};
 /*!
  * \brief hcomm 版 tiling 数据（host 构建后随 kernel tiling buffer 下发）
  */
@@ -283,6 +293,8 @@ struct hcommA2avQuantGmmTilingData {
     uint32_t mmKBL1{0};
     uint32_t mmScaleKAL1{0};
     uint32_t mmGroupList[1]{0};
+    uint32_t diagnosticMode{A2AV_GMM_DIAG_FULL};
+    uint32_t diagnosticTrace{0};
 };
 
 /*!

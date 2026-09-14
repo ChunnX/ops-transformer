@@ -51,7 +51,7 @@ private:
     ge::graphStatus CheckMmScaleShape() const;
 
 protected:
-    // MX 量化 apace 切换路径（参照 AlltoAllMatmul：MX 时切 hcomm 纯 C 核实现）
+    // MX 量化 apace 切换路径：MIX AIV hcomm + AIC Blaze。
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus PostTiling() override;
     bool CheckApaceImplCapable() const;

@@ -16,8 +16,8 @@
  * “MX 量化切 apace”模式）：
  *   - 通信：AIV0 按 expert 通过 Hccl<>::AlltoAllV 下发变长通信，数据与 scale 各一个句柄，
  *     通信输出按 expert-major / source-rank-minor 布局直接落入接收区；
- *   - 计算：等待当前 expert 通信完成、提交下一 expert 通信后，以“段式分组”消费当前数据，
- *     形成 expert 级通信/计算双缓冲；接收布局无需额外 permute——
+ *   - 计算：AIC 等待当前 expert 通信完成，以“段式分组”消费当前数据；
+ *     AIV 可继续后续 expert 的通信。接收布局无需额外 permute——
  *     每个 (expert, srcRank) 段为独立计算分组（段内 A/scaleA/C 连续），
  *     免去通信后的独立 permute；
  *   - 计算 kernel 复用 apace 分组量化 Matmul（Blaze BlockMmad<GroupedMatmulWithScaleMx>）。
@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "kernel_operator.h"
 #include "lib/hccl/hccl.h"
 #include "blaze/gemm/utils/common_utils.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
@@ -53,6 +54,8 @@ static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIV1_OFFSET = 0U;
 static constexpr uint8_t A2AV_GMM_SYNC_MODE_AIC_BARRIER = 0U;
 static constexpr uint16_t A2AV_GMM_SYNC_FLAG_COMM_DONE = 8U;
 static constexpr uint16_t A2AV_GMM_SYNC_FLAG_AIC_BARRIER = 9U;
+// Disjoint from ready 8/24, barrier 9 and SyncAll's 11/12/13/14/28/29.
+static constexpr uint16_t A2AV_GMM_SYNC_FLAG_COMM_CONSUMED = 10U;
 template <typename T>
 constexpr uint64_t GetA2avHcclDataType()
 {
@@ -115,6 +118,7 @@ public:
                                 GM_ADDR mmWeightGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyGM,
                                 GM_ADDR permuteOutGM, GM_ADDR userWorkspaceGM, GM_ADDR tilingGM)
     {
+        Trace(0U);
         xGM_ = gmmxGM;
         xScaleGM_ = gmmxScaleGM;
         weightGM_ = gmmWeightGM;
@@ -138,14 +142,12 @@ public:
 
         // Match the repository-native HcclA2avOp lifecycle: InitV2 and
         // SetCcTilingV2 run on every MIX sub-core. Only collective launch,
-        // wait and finalize are restricted to AIV; returning before InitV2 on
-        // AIC leaves the MIX task's HCCL context only partially initialized.
+        // wait and finalize are restricted to AIV. Blaze objects are created
+        // later, only within their non-overlapping AIC compute phases.
         hccl_.InitV2(AscendC::GetHcclContext<0>(), &(tilingData_->mc2InitTiling));
         hccl_.SetCcTilingV2(static_cast<uint64_t>(offsetof(hcommA2avQuantGmmTilingData, mc2CcTiling)));
         rankDim_ = hccl_.GetRankDim();
-        if ASCEND_IS_AIC {
-            return;
-        }
+        Trace(1U);
     }
 
     /*!
@@ -155,35 +157,84 @@ public:
     {
         // Do not let AIV0 submit the first collective while another MIX
         // sub-core is still initializing its HCCL context.
+        Trace(10U);
         AscendC::SyncAll<false>();
+        Trace(11U);
         if ASCEND_IS_AIV {
             RunCommunication();
-        } else {
+        } else if (tilingData_->diagnosticMode != A2AV_GMM_DIAG_COMM_ONLY) {
             // Match the native scheduler: shared-expert MM runs on AIC while AIV
             // starts the communication rounds, instead of serializing it after GMM.
-            if (tilingData_->localMatmul != 0U) {
+            if (tilingData_->localMatmul != 0U &&
+                (tilingData_->diagnosticMode == A2AV_GMM_DIAG_FULL ||
+                 tilingData_->diagnosticMode == A2AV_GMM_DIAG_SHARED)) {
+                Trace(20U);
                 RunLocalMatmul();
+                Trace(21U);
                 AicBarrier();
+                Trace(22U);
             }
             for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
+                Trace(30U, expertIdx);
                 WaitCommunicationDone();
-                RunExpertMatmul(expertIdx);
+                AcknowledgeCommunication();
+                // WaitCommunicationDone blocks MTE2, not the scalar pipe.
+                // This marker means the waits were issued, not completed.
+                Trace(31U, expertIdx);
+                if (tilingData_->diagnosticMode == A2AV_GMM_DIAG_FULL ||
+                    tilingData_->diagnosticMode == A2AV_GMM_DIAG_ROUTED) {
+                    RunExpertMatmul(expertIdx);
+                } else {
+                    // Even without a GEMM consumer, drain the MTE2 waits so
+                    // comm+sync diagnostics actually test the hand-off.
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                }
+                Trace(32U, expertIdx);
                 // Keep every AIC on the same expert before reusing the cross-core
                 // communication-ready event for the next expert.
                 AicBarrier();
+                Trace(33U, expertIdx);
             }
         }
 
         // InitV2 ran on every MIX sub-core, so every sub-core must also reach
         // the lifecycle barrier before AIV finalizes HCCL.  Keeping this inside
         // RunCommunication deadlocks AIV after AIC returns from Run().
+        Trace(90U);
         AscendC::SyncAll<false>();
+        Trace(91U);
         if ASCEND_IS_AIV {
+            Trace(92U);
             hccl_.Finalize();
+            Trace(93U);
         }
     }
 
 private:
+    // Opt-in, bounded diagnostics. Print only the first logical MIX block and the
+    // first four / last expert. Missing printf output alone is not evidence
+    // that a stage was never entered (dump buffering / timeout may hide it).
+    // 0/1: Init; 10/11: initial MIX barrier; 20/21: shared MM lifetime;
+    // 22: shared AIC barrier; 30/31: comm wait issue; 32: routed MM/drain;
+    // 33: expert AIC barrier; 40..44: prepare, scale submit/wait, data submit/wait;
+    // 50/51: AIV barrier; 52: notification issued; 53: AIC acknowledgement received;
+    // 90/91: final MIX barrier;
+    // 92/93: Finalize. Only each AFTER marker demonstrates that boundary returned.
+    __aicore__ inline void Trace(uint32_t stage, uint32_t expertIdx = 0U) const
+    {
+        if (tilingData_->diagnosticTrace == 0U || AscendC::GetBlockIdx() >= AscendC::GetTaskRation() ||
+            (expertIdx >= 4U && expertIdx + 1U != tilingData_->expertNum)) {
+            return;
+        }
+        if ASCEND_IS_AIC {
+            AscendC::printf("A2AVGMM_APACE AIC stage=%u expert=%u mode=%u\n", stage, expertIdx,
+                            tilingData_->diagnosticMode);
+        } else {
+            AscendC::printf("A2AVGMM_APACE AIV stage=%u expert=%u mode=%u sub=%u\n", stage, expertIdx,
+                            tilingData_->diagnosticMode, static_cast<uint32_t>(AscendC::GetSubBlockIdx()));
+        }
+    }
+
     __aicore__ inline bool IsCommunicationCore() const
     {
         return AscendC::GetBlockIdx() == 0U;
@@ -204,6 +255,18 @@ private:
         AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIC_BARRIER, PIPE_S>(A2AV_GMM_SYNC_FLAG_AIC_BARRIER);
     }
 
+    __aicore__ inline void AcknowledgeCommunication()
+    {
+        // Use the same pipe as the ready waits. AIV cannot advance until
+        // this AIC has actually consumed both ready tokens.
+        AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
+            A2AV_GMM_SYNC_FLAG_COMM_CONSUMED);
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
+            A2AV_GMM_SYNC_FLAG_COMM_CONSUMED + A2AV_GMM_SYNC_FLAG_AIV1_OFFSET);
+#endif
+    }
+
     __aicore__ inline void RunCommunication()
     {
         for (uint32_t expertIdx = 0; expertIdx < tilingData_->expertNum; ++expertIdx) {
@@ -212,15 +275,27 @@ private:
             }
             // Match A2avGmmScheduler: first make AIV0's wait visible to all
             // AIVs, then both vector sub-blocks notify their paired AIC.
+            Trace(50U, expertIdx);
             AscendC::SyncAll<true>();
-            AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_V>(
-                A2AV_GMM_SYNC_FLAG_COMM_DONE + A2AV_GMM_SYNC_FLAG_AIV1_OFFSET * AscendC::GetSubBlockIdx());
+            Trace(51U, expertIdx);
+            if (tilingData_->diagnosticMode != A2AV_GMM_DIAG_COMM_ONLY) {
+                // Each AIV has IDs 0..15; AIV1's ID 8 maps to AIC ID 24.
+                AscendC::CrossCoreSetFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_V>(A2AV_GMM_SYNC_FLAG_COMM_DONE);
+                Trace(52U, expertIdx);
+                // Bound outstanding notifications to one, even if shared MM
+                // is slow or many experts are empty. Reuse only after the AIC
+                // consumes this ready token; next comm can still overlap GEMM.
+                AscendC::CrossCoreWaitFlag<A2AV_GMM_SYNC_MODE_AIV_TO_AIC, PIPE_S>(
+                    A2AV_GMM_SYNC_FLAG_COMM_CONSUMED);
+                Trace(53U, expertIdx);
+            }
         }
     }
 
     __aicore__ inline void RunExpertCommunication(uint32_t expertIdx)
     {
         PrepareExpertCommunication(expertIdx);
+        Trace(40U, expertIdx);
         // MX scale is an E8M0 byte payload.  The HCCL server validates each
         // collective against the data type used to build its CC tiling, so
         // transport the scale bytes with the same one-byte type as X.  The
@@ -228,11 +303,15 @@ private:
         scaleHandle_ = hccl_.template AlltoAllV<true>(
             xScaleGM_, scaleSendCnt_, scaleSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), scaleRecvGM_,
             scaleRecvCnt_, scaleRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+        Trace(41U, expertIdx);
         hccl_.Wait(scaleHandle_);
+        Trace(42U, expertIdx);
         dataHandle_ = hccl_.template AlltoAllV<true>(
             xGM_, dataSendCnt_, dataSendOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_), dataRecvGM_,
             dataRecvCnt_, dataRecvOff_, static_cast<AscendC::HcclDataType>(xHcclDataType_));
+        Trace(43U, expertIdx);
         hccl_.Wait(dataHandle_);
+        Trace(44U, expertIdx);
     }
 
     __aicore__ inline uint32_t GetSegmentRows(uint32_t segIdx) const
@@ -300,7 +379,17 @@ private:
         params.expertBase = expertIdx;
         params.groupListBase = (firstSegment == 0U) ? 0U : tilingData_->segList[firstSegment - 1U];
         params.gmm = gmm;
-        gmmKernel_(params);
+        if ASCEND_IS_AIC {
+            // BlockMmad seeds fixed HardEvent IDs in its constructor and
+            // drains them in its destructor. Never overlap two such owners.
+            {
+                GmmKernel gmmKernel;
+                gmmKernel(params);
+            }
+            // Finish destructor waits AND the final FIX write before another
+            // BlockMmad instance can reseed events / reuse L0C and L1.
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
     }
 
     __aicore__ inline void RunLocalMatmul()
@@ -332,12 +421,16 @@ private:
         params.expertBase = 0U;
         params.groupListBase = 0U;
         params.gmm = mm;
-        mmKernel_(params);
+        if ASCEND_IS_AIC {
+            {
+                MmKernel mmKernel;
+                mmKernel(params);
+            }
+            AscendC::PipeBarrier<PIPE_ALL>();
+        }
     }
     hcommA2avQuantGmmTilingData *tilingData_{nullptr};
     AscendC::Hccl<ServerType> hccl_;
-    GmmKernel gmmKernel_;
-    MmKernel mmKernel_;
     AscendC::HcclHandle scaleHandle_{0};
     AscendC::HcclHandle dataHandle_{0};
     uint32_t rankDim_{0};
