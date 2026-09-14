@@ -182,9 +182,6 @@ void AttentionWorkerCombineTilingArch35::DoOpTilingFullK(int64_t batchSize, int6
     tilingData->KSplitLoopNum = 1;
 
     tilingKey_ = TILING_KEY_DIVIDE_BS_FP16;
-    if (tokenDtype_ == 1) {
-        tilingKey_ += 1;
-    }
     context_->SetBlockDim(bsCoreNum);
 }
 
