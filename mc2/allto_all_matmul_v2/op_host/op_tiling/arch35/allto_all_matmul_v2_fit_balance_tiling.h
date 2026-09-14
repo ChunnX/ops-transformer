@@ -52,14 +52,20 @@ namespace fit_balance {
 
 // ====== 通信拟合数据: y(us) = slope * x(MB) + intercept, x 为单轮单 rank 总发送量 ======
 // fp4 通信复用 fp8 拟合（按 MB 计与 dtype 无关, 4P 验证点偏差 -0.6%/-0.2%）。
+// calibratedAicNum: 标定时环境的平台 AIC 核数。截距/每轮开销含全体核参与的同步成分,
+// 核数不同的环境（如 32 核 4P）该成分会失真——运行时平台核数与该值不符视为未标定,
+// 自动回退 CoreOccupancyFirstTiling（与未标定卡数的兜底一致）。
+// 注意区分: 守卫比较的是平台核数(环境属性), 不是逐 shape 的 usedCoreNum(随
+// shape 合法变化, 作为公式运行时输入自适应)。
 struct CommFitRow {
     uint32_t rankDim;
     double slopeUsPerMb;
     double interceptUs;
+    uint32_t calibratedAicNum; // 0 = 未标定(配合 slope<=0 兜底)
 };
 static const CommFitRow COMM_FIT_ROWS[] = {
-    {4U, 7.724, 8.91}, // 标定表A-4P: R²=1.0000, 数据范围 [0.387, 99.0] MB, 有效带宽≈0.13MB/μs 恒定
-    {8U, 0.0, 0.0},    // TODO(标定表A-8P): 无 8P 环境, 未标定(该档位自动回退)
+    {4U, 7.724, 8.91, 28U}, // 标定表A-4P@28核: R²=1.0000, 数据范围 [0.387, 99.0] MB, 有效带宽≈0.13MB/μs 恒定
+    {8U, 0.0, 0.0, 0U}, // TODO(标定表A-8P): 无 8P 环境, 未标定(该档位自动回退)
 };
 
 // ====== 每轮通信固定开销(用于轮次上限推导) ======
@@ -100,6 +106,17 @@ inline double FindEffMac(bool isFp4, uint32_t precisionMode)
         }
     }
     return 0.0;
+}
+
+// 核数守卫: 标定的通信截距/每轮开销含"全体核参与同步"的成分, 核数不符则该成分失真。
+// 以 Matmul Tiling(SWAT) 执行时收到的核数为准(多块 shape 的 usedCoreNum 即引擎收到的
+// 平台核数, 天然反映测试侧限核——32 核环境限到 28 后 usedCoreNum=28, 标定仍有效);
+// 不直接读平台信息(限核若经 SetCoreLimit 注入, 平台查询仍是原始核数, 会误判)。
+// 单块微缩 shape(m,n <= baseM/baseN) 的 usedCoreNum 为块内切分值而非平台核数, 守卫
+// 判不匹配回退 CoreOccupancyFirstTiling——该路径对此类 shape 同样输出单轮, 行为等价。
+inline bool CoreCountMatch(const CommFitRow &row, uint64_t usedCoreNum)
+{
+    return (row.calibratedAicNum == 0U) || (usedCoreNum == static_cast<uint64_t>(row.calibratedAicNum));
 }
 
 // ====== 模型与阈值常量 ======
@@ -209,17 +226,23 @@ struct AllToAllFitBalanceResult {
 
 /*!
  * \brief 打包常量与运行时 shape, 生成调度入参
- * \return false 表示拟合数据缺失(含该 precisionMode 档位未标定), 调用方应回退 CoreOccupancyFirstTiling 路径
+ * \return false 表示拟合数据缺失或环境不匹配(该档位未标定 / 核数与标定环境不符),
+ *         调用方应回退 CoreOccupancyFirstTiling 路径
  */
 inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t rankDim, bool isFp4,
                                uint32_t precisionMode, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
                                AllToAllFitBalanceInput &out)
 {
-    if (!DataReady(rankDim, isFp4, precisionMode)) {
+    const CommFitRow *row = FindCommFit(rankDim);
+    if (row == nullptr || row->slopeUsPerMb <= 0.0) {
         return false;
     }
-    const CommFitRow *row = FindCommFit(rankDim);
-    const double effMac = FindEffMac(isFp4, precisionMode);
+    if (FindEffMac(isFp4, precisionMode) <= 0.0) {
+        return false;
+    }
+    if (!CoreCountMatch(*row, usedCoreNum)) {
+        return false;
+    }
     out = AllToAllFitBalanceInput();
     out.m = m;
     out.n = n;
@@ -232,7 +255,7 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
     out.usedCoreNum = usedCoreNum;
     out.comm.slopeUsPerMb = row->slopeUsPerMb;
     out.comm.interceptUs = row->interceptUs;
-    out.mm.effMacPerCycle = effMac;
+    out.mm.effMacPerCycle = FindEffMac(isFp4, precisionMode);
     out.mm.cyclePerUs = A5_CYCLE_PER_US;
     out.mm.coreNum = usedCoreNum;
     out.cfg.enabled = true;
