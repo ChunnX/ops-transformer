@@ -308,7 +308,7 @@
 - `ori_topk_length`表示每个q token和KV head的实际有效索引条目数，取值应在[0, K]范围内。`ori_sparse_indices`的[0, ori_topk_length)区间为左对齐的有效索引条目，[ori_topk_length, K)区间为无效或填充条目，建议填-1。
 - 除`cmp_topk_length`等预留输入可不传或传入空Tensor外，其余已传入Tensor不支持为空。
 - `seqused_cmp_kv`为所有`layout_kv`下的可选输入，显式传入时用于覆盖cmp侧逻辑有效长度；未传时由`cmp_kv` shape、`cu_seqlens_cmp_kv`或PA block table相关语义推导。
-- `cmp_residual_kv`为主接口和metadata前置接口的可选入参；传入后用于按`cmp_len * cmp_ratio + residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
+- `cmp_residual_kv`为主接口和metadata前置接口的可选入参；传入后用于按`cmp_len * cmp_ratio +  residual`恢复cmp侧mask使用的压缩前KV长度，其中`cmp_len`优先来自显式传入的`seqused_cmp_kv`。
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 - Q\_S表示q shape中的S，ORI\_KV\_S表示ori_kv shape中的S，CMP\_KV\_S表示cmp_kv shape中的S；Q\_N表示num\_q\_heads，KV\_N表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T表示q shape中的输入样本序列长度的累加和。
 
