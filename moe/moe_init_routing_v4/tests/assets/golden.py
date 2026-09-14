@@ -24,7 +24,7 @@ import numpy
 from typing import List
 
 
-def MoeInitRoutingV3_input(*input_arrays, **kwargs):
+def MoeInitRoutingV4_input(*input_arrays, **kwargs):
     return tuple(input_arrays)
 
 
@@ -286,11 +286,12 @@ def dynamic_quant_hifp4(x):
     return output_data
 
 
-def _moe_init_routing_v3_numpy(
+def _moe_init_routing_v4_numpy(
     x,
     expert_idx,
     scale,
     offset,
+    topk_weight,
     active_num,
     expert_capacity,
     expert_num,
@@ -368,7 +369,24 @@ def _moe_init_routing_v3_numpy(
             ].astype(numpy.int64)
         else:
             expert_tokens_count = numpy.array([], dtype=numpy.int64)
-        return expanded_x, expanded_row_idx, expert_tokens_count, expanded_scale
+
+        # DropPad uses the same source-to-destination map as expanded_x.
+        expanded_topk_weight = None
+        if topk_weight is not None:
+            topk_weight_flat = numpy.asarray(topk_weight).reshape(-1)
+            expanded_topk_weight = numpy.zeros(
+                (expert_num * expert_capacity, 1), dtype=numpy.float32
+            )
+            expanded_topk_weight[valid_capacity_mask, 0] = topk_weight_flat[
+                sort_row_tmp[valid_capacity_mask]
+            ]
+        return (
+            expanded_x,
+            expanded_row_idx,
+            expert_tokens_count,
+            expanded_scale,
+            expanded_topk_weight,
+        )
 
     expert_idx_in = expert_idx.copy().reshape(-1)
     actual_expert_total_num = numpy.sum(
@@ -787,152 +805,24 @@ def _moe_init_routing_v3_numpy(
             expert_tokens_count = numpy.concatenate(
                 (expert_tokens_count, [[0, 0]]), axis=0
             )
+
+    # Dropless output follows the valid sorted source indices used by expanded_x.
+    expanded_topk_weight = None
+    if topk_weight is not None:
+        topk_weight_flat = numpy.asarray(topk_weight).reshape(-1)
+        effective_count = int(actual_expert_total_num)
+        if int(active_num) > 0:
+            effective_count = min(int(active_num), effective_count)
+        expanded_topk_weight = topk_weight_flat[
+            sorted_expert_indices[:effective_count]
+        ].reshape(-1, 1)
     return (
         expanded_x,
         expanded_row_idx.astype(numpy.int32),
         expert_tokens_count.astype(numpy.int64),
         expanded_scale,
+        expanded_topk_weight,
     )
-
-
-def _expanded_topk_weight(
-    expert_idx,
-    topk_weight,
-    active_num,
-    expert_capacity,
-    expert_num,
-    drop_pad_mode,
-    active_expert_range,
-):
-    """Build V4's topk-weight output with the same source ordering as V3."""
-    if topk_weight is None:
-        return None
-
-    expert_start, expert_end = map(int, active_expert_range)
-    expert_idx_flat = numpy.asarray(expert_idx).reshape(-1)
-    weight_flat = numpy.asarray(topk_weight).reshape(-1)
-    sorted_indices = numpy.argsort(expert_idx_flat, kind="stable")
-    sorted_expert_idx = expert_idx_flat[sorted_indices]
-    valid_mask = (sorted_expert_idx >= expert_start) & (sorted_expert_idx < expert_end)
-
-    if drop_pad_mode == 1:
-        sort_row_tmp = numpy.full(
-            (int(expert_num) * int(expert_capacity)), -1, dtype=numpy.int64
-        )
-        expert_offset = numpy.zeros(int(expert_num), dtype=numpy.int64)
-        for source_index, expert_id_raw in zip(
-            sorted_indices[valid_mask], sorted_expert_idx[valid_mask]
-        ):
-            expert_id = int(expert_id_raw)
-            if expert_id < 0 or expert_id >= int(expert_num):
-                continue
-            slot = int(expert_offset[expert_id])
-            expert_offset[expert_id] += 1
-            if slot < int(expert_capacity):
-                sort_row_tmp[expert_id * int(expert_capacity) + slot] = int(
-                    source_index
-                )
-        valid_capacity = sort_row_tmp >= 0
-        result = numpy.zeros(
-            (int(expert_num) * int(expert_capacity), 1), dtype=numpy.float32
-        )
-        result[valid_capacity, 0] = weight_flat[sort_row_tmp[valid_capacity]]
-        return result
-
-    actual_count = int(numpy.sum(valid_mask))
-    effective_count = (
-        min(int(active_num), actual_count) if int(active_num) > 0 else actual_count
-    )
-    valid_sorted_indices = sorted_indices[valid_mask]
-    return weight_flat[valid_sorted_indices[:effective_count]].reshape(-1, 1)
-
-
-def _moe_init_routing_v4_numpy(
-    x,
-    expert_idx,
-    scale,
-    offset,
-    topk_weight,
-    active_num,
-    expert_capacity,
-    expert_num,
-    drop_pad_mode,
-    expert_tokens_num_type,
-    expert_tokens_num_flag,
-    quant_mode,
-    active_expert_range,
-    row_idx_type,
-):
-    # V4 shares V3's routing/quantization implementation.  Its only extra
-    # result is the topk-weight tensor, and active_num is normalized by V4
-    # tiling to the complete N*K routing length.
-    routing_active_num = int(x.shape[0]) * int(expert_idx.shape[-1])
-    results = _moe_init_routing_v3_numpy(
-        x,
-        expert_idx,
-        scale,
-        offset,
-        routing_active_num,
-        int(expert_capacity),
-        int(expert_num),
-        int(drop_pad_mode),
-        int(expert_tokens_num_type),
-        bool(expert_tokens_num_flag),
-        int(quant_mode),
-        active_expert_range,
-        int(row_idx_type),
-    )
-    return results + (
-        _expanded_topk_weight(
-            expert_idx,
-            topk_weight,
-            routing_active_num,
-            expert_capacity,
-            expert_num,
-            drop_pad_mode,
-            active_expert_range,
-        ),
-    )
-
-
-def MoeInitRoutingV3(*input_arrays, **kwargs):
-    x = input_arrays[0]
-    expert_idx = input_arrays[1]
-    scale = input_arrays[2] if len(input_arrays) > 2 else None
-    offset = input_arrays[3] if len(input_arrays) > 3 else None
-
-    active_num = kwargs.get("active_num", -1)
-    expert_capacity = kwargs.get("expert_capacity", -1)
-    expert_num = kwargs.get("expert_num", 256)
-    drop_pad_mode = kwargs.get("drop_pad_mode", 0)
-    expert_tokens_num_type = kwargs.get("expert_tokens_num_type", 1)
-    expert_tokens_num_flag = kwargs.get("expert_tokens_num_flag", True)
-    quant_mode = kwargs.get("quant_mode", -1)
-    active_expert_range = kwargs.get("active_expert_range", [0, expert_num])
-    row_idx_type = kwargs.get("row_idx_type", 1)
-
-    expanded_x, expanded_row_idx, expert_tokens_count, expanded_scale = (
-        _moe_init_routing_v3_numpy(
-            x,
-            expert_idx,
-            scale,
-            offset,
-            active_num,
-            expert_capacity,
-            expert_num,
-            drop_pad_mode,
-            expert_tokens_num_type,
-            expert_tokens_num_flag,
-            quant_mode,
-            active_expert_range,
-            row_idx_type,
-        )
-    )
-    return expanded_x, expanded_row_idx, expert_tokens_count, expanded_scale
-
-
-def MoeInitRoutingV4_input(*input_arrays, **kwargs):
-    return tuple(input_arrays)
 
 
 def MoeInitRoutingV4(*input_arrays, **kwargs):
@@ -940,6 +830,7 @@ def MoeInitRoutingV4(*input_arrays, **kwargs):
     expert_idx = input_arrays[1]
     scale = input_arrays[2] if len(input_arrays) > 2 else None
     offset = input_arrays[3] if len(input_arrays) > 3 else None
+    active_num = input_arrays[4] if len(input_arrays) > 4 else None
     topk_weight = input_arrays[5] if len(input_arrays) > 5 else None
 
     if scale is not None and numpy.asarray(scale).ndim == 0:
@@ -948,13 +839,20 @@ def MoeInitRoutingV4(*input_arrays, **kwargs):
         offset = None
     expert_num = int(kwargs.get("expert_num", 256))
     active_expert_range = kwargs.get("active_expert_range", [0, expert_num])
+    # V4 currently accepts active_num but processes the complete B*S*K length.
+    # Keep the input in the interface and normalize it until dynamic semantics
+    # are implemented by the operator.
+    active_num = _normalize_v4_active_num(
+        active_num,
+        int(numpy.asarray(x).shape[0]) * int(numpy.asarray(expert_idx).shape[-1]),
+    )
     return _moe_init_routing_v4_numpy(
         numpy.asarray(x),
         numpy.asarray(expert_idx),
         None if scale is None else numpy.asarray(scale),
         None if offset is None else numpy.asarray(offset),
         None if topk_weight is None else numpy.asarray(topk_weight),
-        -1,
+        active_num,
         int(kwargs.get("expert_capacity", -1)),
         expert_num,
         int(kwargs.get("drop_pad_mode", 0)),
@@ -989,6 +887,21 @@ def _to_list(val):
     if hasattr(val, "detach"):
         return val.detach().cpu().tolist()
     return list(val)
+
+
+def _normalize_v4_active_num(active_num, total_length):
+    """Normalize V4's optional active_num to the currently supported value.
+
+    V4 accepts the optional input for interface compatibility, but the current
+    tiling/kernel contract always processes the complete B*S*K routing length.
+    Keep reading the input so the golden mirrors the full API signature, then
+    normalize it to that length until dynamic active_num semantics are added.
+    """
+    if active_num is not None:
+        value = _torch_to_numpy(active_num)
+        if value is not None and numpy.asarray(value).size > 0:
+            _ = numpy.asarray(value).reshape(-1)[0].item()
+    return int(total_length)
 
 
 def _numpy_to_torch(arr, template):
@@ -1057,7 +970,7 @@ def _numpy_to_torch(arr, template):
     return result
 
 
-class MoeInitRoutingV3KernelSpec:
+class MoeInitRoutingV4KernelSpec:
     """Kernel/GEIR spec — compare truncates NPU output to golden's size on shape mismatch.
 
     When all outputs have matching shapes (kernel mode), compare compares normally.
@@ -1252,7 +1165,7 @@ class MoeInitRoutingV3KernelSpec:
         return results[0] if len(results) == 1 else results
 
 
-class E2eMoeInitRoutingV3Spec:
+class E2eMoeInitRoutingBaseSpec:
     """E2E spec for torch_npu.npu_moe_init_routing_v2 — same as ACLNN but with snake_case params."""
 
     tolerance = {
@@ -1290,12 +1203,15 @@ class E2eMoeInitRoutingV3Spec:
         else:
             active_expert_range = [0, int(expert_num)]
 
-        results = _moe_init_routing_v3_numpy(
+        results = _moe_init_routing_v4_numpy(
             x_np,
             expert_idx_np,
             scale_np,
             offset_np,
-            int(active_num),
+            None,
+            _normalize_v4_active_num(
+                active_num, int(x_np.shape[0]) * int(expert_idx_np.shape[-1])
+            ),
             int(expert_capacity),
             int(expert_num),
             int(drop_pad_mode),
@@ -1348,7 +1264,7 @@ class E2eMoeInitRoutingV3Spec:
                 modified = True
 
 
-class AclnnMoeInitRoutingV3Spec:
+class AclnnMoeInitRoutingBaseSpec:
     """ACLNN spec — golden returns actual shape, compare truncates NPU output to golden's size."""
 
     tolerance = {
@@ -1387,11 +1303,12 @@ class AclnnMoeInitRoutingV3Spec:
             else [0, int(expertNum)]
         )
 
-        results = _moe_init_routing_v3_numpy(
+        results = _moe_init_routing_v4_numpy(
             x_np,
             expert_idx_np,
             scale_np,
             offset_np,
+            None,
             int(activeNum),
             int(expertCapacity),
             int(expertNum),
@@ -1592,12 +1509,8 @@ class AclnnMoeInitRoutingV3Spec:
         return results[0] if len(results) == 1 else results
 
 
-class MoeInitRoutingV4KernelSpec(MoeInitRoutingV3KernelSpec):
-    """V4 kernel comparison uses the same rules as the V3 reference."""
-
-
-class AclnnMoeInitRoutingV4Spec(AclnnMoeInitRoutingV3Spec):
-    """V4 ACLNN reference: V3 outputs plus optional topk-weight output."""
+class AclnnMoeInitRoutingV4Spec(AclnnMoeInitRoutingBaseSpec):
+    """V4 ACLNN reference: common outputs plus optional topk-weight output."""
 
     def golden(
         x,
@@ -1653,7 +1566,10 @@ class AclnnMoeInitRoutingV4Spec(AclnnMoeInitRoutingV3Spec):
             scale_np,
             offset_np,
             topk_weight_np,
-            -1,
+            _normalize_v4_active_num(
+                activeNumOptional,
+                int(x_np.shape[0]) * int(expert_idx_np.shape[-1]),
+            ),
             int(_scalar(expertCapacity, -1)),
             expert_num,
             int(_scalar(dropPadMode, 0)),
