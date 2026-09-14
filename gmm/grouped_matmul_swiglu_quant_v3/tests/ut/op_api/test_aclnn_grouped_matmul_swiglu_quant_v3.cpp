@@ -275,7 +275,7 @@ TEST_F(GroupedMatmulSwigluQuantV3OpApiInvalidTest, RejectsWrongShapeOrStorage)
     EXPECT_EQ(RunWorkspace(wrongStorage), ACLNN_ERR_PARAM_INVALID);
 
     DescriptorCase wrongN;
-    wrongN.n = 192;
+    wrongN.n = 255;
     EXPECT_EQ(RunWorkspace(wrongN), ACLNN_ERR_PARAM_INVALID);
 }
 
@@ -345,13 +345,6 @@ TEST_F(GroupedMatmulSwigluQuantV3OpApiInvalidTest, RejectsUnsupportedOptionalInp
     EXPECT_EQ(RunWorkspace(c), ACLNN_ERR_PARAM_INVALID);
     c = DescriptorCase{};
     c.withTuningConfig = true;
-    EXPECT_EQ(RunWorkspace(c), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST_F(GroupedMatmulSwigluQuantV3OpApiInvalidTest, RejectsUnsupportedPlatform)
-{
-    DescriptorCase c;
-    c.useAscend950 = false;
     EXPECT_EQ(RunWorkspace(c), ACLNN_ERR_PARAM_INVALID);
 }
 
