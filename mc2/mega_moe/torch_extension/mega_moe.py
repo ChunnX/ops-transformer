@@ -44,7 +44,7 @@ def _is_pre_quantized_x(
     dispatch_quant_mode: int,
     dispatch_quant_out_dtype: Optional[torch.dtype],
 ) -> bool:
-    # A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 A5 预量化输入。
+    # A2/A3 仍存在 mode=0 且不设置输出类型的历史调用，只有类型也明确时才识别为 950 预量化输入。
     return (
         dispatch_quant_mode == 0
         and _dtype_to_int(dispatch_quant_out_dtype)
