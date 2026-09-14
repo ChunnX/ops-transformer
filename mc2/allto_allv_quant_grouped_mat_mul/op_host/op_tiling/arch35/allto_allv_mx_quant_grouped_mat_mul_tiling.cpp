@@ -64,7 +64,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::GetShapeAttrsInfo()
 bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
 {
     // 参照 AlltoAllMatmul 的 MX 切 apace 策略：
-    // rank 数与段数在当前 APACE tiling 表容量内时切换 hcomm 纯 C 核实现。
+    // rank 数与段数在当前 APACE tiling 表容量内时切换 MIX hcomm/Blaze 实现。
     // permute_out 由 AllToAllV 直接接收到 expert-major 偏移；共享专家复用 Blaze MX GMM。
     if (epWorldSize_ == 0 || epWorldSize_ > A2AV_GMM_MAX_RANK_NUM) {
         return false;
@@ -90,7 +90,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
     OP_LOGI(opName,
             "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
             "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u initBarrier=1 "
-            "scaleTransport=same-as-data diag=first-expert-serial-comm",
+            "scaleTransport=same-as-data hcommOrder=scale-wait-data-wait finalBarrier=balanced",
             epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
             apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
             apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset,
