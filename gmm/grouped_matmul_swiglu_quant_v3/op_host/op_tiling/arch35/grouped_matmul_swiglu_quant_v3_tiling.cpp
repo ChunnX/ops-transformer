@@ -338,11 +338,10 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!CheckShapeAndScale(xShape, xScaleShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
                 OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckOutputShape(), OP_LOGE(context_->GetNodeName(), "output shape validation failed"), return false);
-    // All SwiGLU modes share the Tensor API movement/layout path when K is
-    // 128-aligned.  Mode 1 de-interleaves the continuous 2*N accumulator in
-    // the Blaze vector epilogue; it does not require a separate tiling key.
-    // Unaligned K stays on the CGMCT compatibility path.
-    useTensorApi_ = (inputParams_.kSize % 128U) == 0U;
+    // Mode 1 consumes interleaved columns and therefore always stays on the
+    // CGMCT path.  Modes 0/2/3 can use the Tensor API only when K is 128
+    // aligned; the unaligned cases use the CGMCT compatibility path.
+    useTensorApi_ = swigluMode_ != 1 && (inputParams_.kSize % 128U) == 0U;
     return true;
 }
 
@@ -416,6 +415,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) +
                       (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                       (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
+    OP_LOGI(context_->GetNodeName(),
+            "V3 debug tiling: M=%lu N=%lu K=%lu baseM=%lu baseN=%lu baseK=%lu stepKa=%lu stepKb=%lu "
+            "scaleA=%lu scaleB=%lu kAL1=%u kBL1=%u scaleK=%u mxTypePara=%u tensorApi=%d transB=%d mode=%ld",
+            inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, basicTiling_.baseM, basicTiling_.baseN,
+            basicTiling_.baseK, basicTiling_.stepKa, basicTiling_.stepKb, basicTiling_.scaleFactorA,
+            basicTiling_.scaleFactorB, mm.get_stepKa() * mm.get_baseK(), mm.get_stepKb() * mm.get_baseK(),
+            static_cast<uint32_t>(mm.get_mxTypePara() & 0xffffU), mm.get_mxTypePara(), useTensorApi_, transposeWeight_,
+            swigluMode_);
     return ge::GRAPH_SUCCESS;
 }
 
