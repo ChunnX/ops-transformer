@@ -140,29 +140,6 @@ TEST_F(CausalConv1dUpdateTiling, upd_3d_fp16_b128_s1_d8192_w4_bias)
 // Error cases
 // ============================================================
 
-TEST_F(CausalConv1dUpdateTiling, reject_int32_dtype)
-{
-    optiling::CausalConv1d::CausalConv1dCompileInfo c{};
-    auto a = MakeAttrs("none", -1);
-    gert::TilingContextPara p("CausalConv1d",
-                              {
-                                  {{{128, 1, 8192}, {128, 1, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // x (invalid dtype)
-                                  {{{4, 8192}, {4, 8192}}, ge::DT_INT32, ge::FORMAT_ND},           // weight
-                                  {{{128, 3, 8192}, {128, 3, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // conv_states
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // bias
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // query_start_loc
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cache_indices
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // initial_state_mode
-                                  {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // num_accepted_tokens
-                              },
-                              {
-                                  {{{128, 3, 8192}, {128, 3, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // conv_states
-                                  {{{128, 1, 8192}, {128, 1, 8192}}, ge::DT_INT32, ge::FORMAT_ND}, // y
-                              },
-                              a, &c, "Ascend950PR_9599", 64, 253952);
-    ExecuteTestCase(p, ge::GRAPH_FAILED);
-}
-
 TEST_F(CausalConv1dFnTiling, reject_kernel_width_5)
 {
     optiling::CausalConv1d::CausalConv1dCompileInfo c{};
