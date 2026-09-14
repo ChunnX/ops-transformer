@@ -335,5 +335,6 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomKernel<xType, wType, bia
         ProcessCube();
     }
 }
+
 } // namespace Mc2WeightQuantBatchMatmulV2
 #endif // WEIGHT_QUANT_BATCHMATMUL_V2_CUSTOM_H
