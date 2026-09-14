@@ -86,6 +86,7 @@ public:
     static constexpr uint32_t L0C_BUFFER_ID1 = 11U;
     static constexpr uint32_t L0C_BUFFER_ID2 = 12U;
     static constexpr uint32_t L0C_BUFFER_ID3 = 13U;
+    static constexpr uint32_t L0C_MODE_SYNC_ID = 14U;
 
     // UB
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
@@ -320,8 +321,10 @@ public:
             if (l0cSyncMode_ != L0cSyncMode::NONE) {
                 // Each preceding FIXPIPE already waits for its MMAD. Complete its reads before
                 // a new producer reuses L0C under a different ownership protocol.
-                SetFlag<HardEvent::FIX_M>(EVENT_ID0);
-                WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
+                Mutex::Lock<PIPE_FIX>(L0C_MODE_SYNC_ID);
+                Mutex::Unlock<PIPE_FIX>(L0C_MODE_SYNC_ID);
+                Mutex::Lock<PIPE_M>(L0C_MODE_SYNC_ID);
+                Mutex::Unlock<PIPE_M>(L0C_MODE_SYNC_ID);
             }
             l0cSyncMode_ = nextMode;
         }
