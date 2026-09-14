@@ -99,40 +99,6 @@ __aicore__ inline DedupConfig CreateDedupConfig(const Params &params)
     return config;
 }
 
-// GM 上有序 int32 数组的 lower_bound：返回首个 >= target 的下标。
-__aicore__ inline int32_t DedupLowerBoundGm(__gm__ int32_t *base, int32_t count, int32_t target)
-{
-    int32_t lo = 0;
-    int32_t hi = count;
-    while (lo < hi) {
-        int32_t mid = lo + (hi - lo) / 2;
-        if (ReadGmByPassDCache(base + mid) < target) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo;
-}
-
-// 在专家级前缀（cumsum 的 (e+1)*worldSize-1 位置）上二分定位 globalRow 所属专家。
-__aicore__ inline uint32_t FindDedupExpertByGlobalRow(const LocalTensor<int32_t> &cumsumInfoTensor,
-                                                      uint32_t expertCount, uint32_t worldSize, uint32_t globalRow)
-{
-    uint32_t lo = 0U;
-    uint32_t hi = expertCount;
-    while (lo < hi) {
-        uint32_t mid = lo + (hi - lo) / 2U;
-        uint32_t expertRowEnd = static_cast<uint32_t>(cumsumInfoTensor.GetValue((mid + 1U) * worldSize - 1U));
-        if (expertRowEnd <= globalRow) {
-            lo = mid + 1U;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo;
-}
-
 /*
  * 去重 prepass：扫描 route 槽（[expert][srcRank]，槽内按 topkIndex 升序），为每个接收行写一条
  * rowDesc（布局见 mega_moe_constants.h DEDUP_ROW_*）。
@@ -140,7 +106,7 @@ __aicore__ inline uint32_t FindDedupExpertByGlobalRow(const LocalTensor<int32_t>
  * （历史：v3 曾把 prepass 挪到 AIV0——它在等首 wave GMM1 输出，可与 AIV1 dispatch 完全并行；
  * 但实测大 bs 下 AIV0 早期密集访问 route 窗口触发 aicore trap（机制待与驱动侧对齐，2026-09-09
  * 通宵二分 F 系探针铁证：不调 prepass 不崩/调即崩且崩点在公共段），已回退 AIV1 保稳。）
- * 同一 (srcRank, token) 的所有出现恒落在同一工作项内，槽内二分定界后工作项之间零交叠，无需原子。
+ * 同一 (srcRank, token) 的所有出现恒落在同一工作项内，分段装载流式判界下工作项之间零交叠，无需原子。
  * 依赖：PrepareMoeExpertTokenCountTable 已完成（cumsumInfoTensor 就绪；count epoch 校验到达
  * 即 route 槽到达，是 DispatchRankTokens 沿用的既有契约）。
  * 函数尾部含 AIV1 间栅栏：所有 AIV1 返回后整张 rowDesc 表可读。
