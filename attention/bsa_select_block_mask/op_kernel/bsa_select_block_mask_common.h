@@ -22,11 +22,11 @@
 using namespace AscendC;
 
 constexpr uint8_t SYNC_V1_TO_C1_FLAG[2] = {0, 1};
-constexpr uint8_t SYNC_C1_TO_V1_FLAG[9] = {2, 3, 4, 5, 6, 7, 8, 9, 10};
-constexpr uint32_t SYNC_C1_TO_V1_FLAG_NUMS = 9;
+constexpr uint8_t SYNC_C1_TO_V1_FLAG[2] = {2, 3};
+constexpr uint32_t SYNC_C1_TO_V1_FLAG_NUMS = 2;
 // NZ 快写背压回执环（AIV pass1 消费完 → 放行 AIC 复用同槽）：
-// AIC 发第 i 个 C1_TO_V1 前须先收到第 i-9 个回执，领先幅度钉死 < 9 个 kChunk（一个复用周期）
-constexpr uint8_t SYNC_V2_TO_C2_FLAG[9] = {11, 12, 13, 14, 15, 16, 17, 18, 19};
+// AIC 发第 i 个 C1_TO_V1 前须先收到第 i-N 个回执，领先幅度钉死 < N 个 kChunk（一个复用周期）
+constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {4, 5};
 constexpr uint32_t CV_EXEC_RATIO = 4;
 constexpr uint8_t SYNC_MODE = 2;
 constexpr uint32_t BSA_FIXPIPE_SYNC_ANCHOR_M = 16;
@@ -152,13 +152,13 @@ struct BSAConstInfo {
 };
 
 // score scratch 环形槽偏移（元素单位）：
-//   layout = [aicIdx][ringIdx(10)][chunkRow][K_TILE_COLS]，每 tile = Q_CHUNK_SIZE * K_TILE_COLS
-//   ringIdx = 全局 tile 序号（跨 qChunk 连续）% 10；10 槽 = 9-tile 背压领先 + 1 正在写，
-//   与 SYNC_C1_TO_V1_FLAG_NUMS=9 的 flag 环对齐（scratch 环 ≥ flag 环，无覆写）
+//   layout = [aicIdx][ringIdx(2)][chunkRow][K_TILE_COLS]，每 tile = Q_CHUNK_SIZE * K_TILE_COLS
+//   ringIdx = 全局 tile 序号（跨 qChunk 连续）% 2；2 槽 = 2-tile 背压领先精确满员
+//   （write(t) 守卫 = 本迭代返回的 receipt(t−2)，槽租客恰为 t−2，顺序安全零余量）
 __aicore__ inline uint64_t BSAScratchTileOffset(uint32_t aicIdx, uint32_t qChunkStart, uint32_t kChunkStart,
                                                 uint32_t yBlocks)
 {
-    constexpr uint32_t RING_TILES = 10;
+    constexpr uint32_t RING_TILES = 2;
     const uint32_t ktiles = (yBlocks + K_TILE_COLS - 1) / K_TILE_COLS;
     const uint64_t globalTile = (static_cast<uint64_t>(qChunkStart) / Q_CHUNK_SIZE) * ktiles +
                                 kChunkStart / K_TILE_COLS;

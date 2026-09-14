@@ -138,20 +138,19 @@ __aicore__ inline void BSAVecSmService<BSAT>::InitParams(
 template <typename BSAT>
 __aicore__ inline void BSAVecSmService<BSAT>::InitBuffers(TBuf<> *uBuf_)
 {
-    // ub 划分（softmax 相位约 162.5KB，post 相位约 11KB，合计 < 192KB）
+    // ub 划分（softmax 相位约 161.5KB，post 相位约 11KB，合计 < 192KB）
     uint32_t ubOffset = 0;
     uint32_t chunkSize = Q_CHUNK_SIZE;
 
-    globalMax = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
-    ubOffset += chunkSize * sizeof(T);
-    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
+    // globalMax/globalSum 常驻 pool 服务 carve（[0,185.25KB)）之上的尾区：poolQ/poolK 相位
+    // 会覆写该区间，而 chunk 边界重排（poolQ(c) 先于 finalize(c-1)）后这两个跨相位累积
+    // 状态必须存活到 finalize。每 chunk 由 pass1 首 tile（kChunkStart==0 分支）重新初始化。
+    constexpr uint32_t GLOBAL_STATE_UB_OFFSET = 186 * 1024;
+    globalMax = uBuf_->GetWithOffset<T>(chunkSize, GLOBAL_STATE_UB_OFFSET);
+    globalSum = uBuf_->GetWithOffset<T>(chunkSize, GLOBAL_STATE_UB_OFFSET + chunkSize * sizeof(T));
 
     globalMaxBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);
     ubOffset += chunkSize * FLOAT_DATA_BLOCK_NUM * sizeof(T);
-    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
-
-    globalSum = uBuf_->GetWithOffset<T>(chunkSize, ubOffset);
-    ubOffset += chunkSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     globalSumBroc = uBuf_->GetWithOffset<T>(chunkSize * FLOAT_DATA_BLOCK_NUM, ubOffset);

@@ -435,6 +435,13 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 #endif
 
             // D2: Q chunk loop with dynamic partition (no truncation needed)
+            // chunk 边界重排：poolQ(c)+V1C1(c) 提到 finalize(c-1) 之前——AIC 在 AIV 收尾期间
+            // 完成 Q/K 装载并预产出 t0/t1（填充期无需回执），消除 AIV 每 chunk 的 ramp-up 空转。
+            // UB overlay 安全：poolQ→finalize 靠 ProcessSoftmaxSecondPass 入口 PipeBarrier<PIPE_ALL>；
+            // finalize→tiles 靠 pass1 入口 MTE3_MTE2 / 子带 V_MTE2 屏障。
+            bool hasPrevChunk = false;
+            uint32_t prevQChunkStart = 0;
+            uint32_t prevCurQChunkSize = 0;
             for (uint32_t qChunkStart = startRow; qChunkStart < endRow; qChunkStart += constInfo.qChunkSize) {
                 uint32_t qChunkEnd = BSAMin(qChunkStart + constInfo.qChunkSize, endRow);
                 uint32_t curQChunkSize = qChunkEnd - qChunkStart;
@@ -452,9 +459,23 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                     CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
                 }
 
+                // 上一 chunk 收尾（其 partSum/partMax/globalMax/Sum 已在上轮 tiles 完成，依赖就绪）
+                if (hasPrevChunk) {
+                    ProcessSoftmaxSecondPass(prevQChunkStart, prevCurQChunkSize, batchIdx, headIdx, validXBlocks,
+                                             validYBlocks);
+                }
+
                 ProcessMatmulSoftmax(batchIdx, headIdx, qChunkStart, curQChunkSize, validXBlocks, validYBlocks);
 
-                ProcessSoftmaxSecondPass(qChunkStart, curQChunkSize, batchIdx, headIdx, validXBlocks, validYBlocks);
+                prevQChunkStart = qChunkStart;
+                prevCurQChunkSize = curQChunkSize;
+                hasPrevChunk = true;
+            }
+
+            // 末 chunk 收尾（必须在 TopK 之前：pooledScore 是其输入）
+            if (hasPrevChunk) {
+                ProcessSoftmaxSecondPass(prevQChunkStart, prevCurQChunkSize, batchIdx, headIdx, validXBlocks,
+                                         validYBlocks);
             }
 
 #if 1 // TODO(perf-test): 跳过 TopK + 前置排空，测完恢复
