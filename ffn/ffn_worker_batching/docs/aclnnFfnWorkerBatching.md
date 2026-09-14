@@ -23,13 +23,11 @@
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
-Ascend 950PR/Ascend 950DT（arch35）支持`tokenDtype=0～5`；Atlas A2/A3支持`tokenDtype=0～2`。新增低精度类型仅在arch35上支持。
-
 ## 功能说明
 
 - 接口功能：Attention与FFN分离部署场景下，FFN worker侧的token重排算子。Attention将token按专家路由发送到对应FFN worker的预分配数据区，本接口从该数据区中扫描调度信息，按专家维度聚合并重排token，产出各专家对应的连续token数据块。需要设置`syncFlag`时，请使用[aclnnFfnWorkerBatchingV2](aclnnFfnWorkerBatchingV2.md)。
 
-  **该算子不建议单独使用，建议与FfnWorkerScheduler等算子配合使用，形成完整的工作流。**
+- 计算步骤：
 
     1. 接收Attention侧发送的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea、ControlArea、AttentionArea、FfnArea域。本接口从FfnArea中读取token_info_buf和token_data_buf获取待重排的token数据与描述信息，并获取layer_id、session_id、micro_batch_id、expert_ids等路由信息。
 
@@ -71,7 +69,6 @@ aclnnStatus aclnnFfnWorkerBatchingGetWorkspaceSize(
     int64_t            tokenDtype,
     int64_t            needSchedule,
     int64_t            layerNum,
-    int64_t            syncFlag,
     const aclTensor   *y,
     const aclTensor   *groupList,
     const aclTensor   *sessionIds,
@@ -122,10 +119,10 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>scheduleContext</td>
       <td>输入</td>
       <td>FFN侧接收的调度上下文，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从FfnArea中读取token_info_buf和token_data_buf获取待重排的token数据与描述信息。</td>
-      <td>不支持空tensor。</td>
+      <td>包含的缓冲区地址必须为有效Device地址，生命周期见约束说明。</td>
       <td>INT8</td>
       <td>ND</td>
-      <td>1维，调度上下文结构体占1024字节；若测试中内嵌辅助数据，Tensor长度须包含完整打包数据</td>
+      <td>1维，长度至少1024字节</td>
       <td>×</td>
     </tr>
     <tr>
@@ -185,13 +182,13 @@ aclnnStatus aclnnFfnWorkerBatching(
       <td>数据类型由tokenDtype决定；FP4的逻辑shape仍为(Y, H)，两个元素打包为一个字节。</td>
       <td>FP16、BF16、INT8、支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
       <td>ND</td>
-      <td>2维，(Y, H)，其中Y = A × BS × (topK+1)</td>
+      <td>2维，(Y, H)，其中Y = A × BS × K</td>
       <td>×</td>
     </tr>
     <tr>
       <td>groupList</td>
       <td>输出</td>
-      <td>每个专家处理的token范围。每行格式为 [expert_id, expert_token_num]，未使用的专家填 [0, 0]。</td>
+      <td>各非空专家的token数，按专家ID升序紧凑存放。每行为 [expert_id, expert_token_num]，剩余行填 [0, 0]。</td>
       <td>-</td>
       <td>INT64</td>
       <td>ND</td>
@@ -371,23 +368,6 @@ aclnnStatus aclnnFfnWorkerBatching(
 
 - 确定性计算：
   - aclnnFfnWorkerBatching默认确定性实现。
-
-## arch35低精度类型映射与验证
-
-| tokenDtype | y数据类型 | 每行token字节数 | dynamicScale数据类型 | dynamicScale形状 |
-| --- | --- | --- | --- | --- |
-| 0 | FLOAT16 | 2H | FLOAT32（无有效数据） | (Y) |
-| 1 | BFLOAT16 | 2H | FLOAT32（无有效数据） | (Y) |
-| 2 | INT8 | H | FLOAT32 | (Y) |
-| 3 | FLOAT8_E5M2 | H | FLOAT8_E8M0 | (Y, ceil(H/32)) |
-| 4 | FLOAT8_E4M3FN | H | FLOAT8_E8M0 | (Y, ceil(H/32)) |
-| 5 | FLOAT4_E2M1 | H/2，H为偶数 | FLOAT8_E8M0 | (Y, ceil(H/32)) |
-
-例如H=66时，FP8每行包含66字节token和3字节scale，FP4每行包含33字节token和3字节scale；dynamicScale的shape均为(Y,3)，行尾可另加padding。
-
-- [需求设计文档](arch35_low_precision_design.md)：存储协议、UB规划及分块搬运设计。
-- [验证报告与复现命令](arch35_low_precision_validation.md)：Host UT 32/32、Kernel ST 68/68、ACLNN ST 67/67通过。
-- [逐用例结果](arch35_low_precision_results.csv)与[arch35 ACLNN用例](../tests/st/arch35/test_aclnn_ffn_worker_batching_arch35.csv)。
 
 ## 调用示例
 
@@ -727,7 +707,7 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnFfnWorkerBatchingGetWorkspaceSize(scheduleContextRef, expertNum, maxOutShapeArray, tokenDtype,
-                                                 needSchedule, layerNum, 0 /* syncFlag */, yRef, groupListRef, sessionIdsRef,
+                                                 needSchedule, layerNum, yRef, groupListRef, sessionIdsRef,
                                                  microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
                                                  actualTokenNumRef, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFfnWorkerBatchingGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -809,7 +789,3 @@ int main()
     return 0;
 }
 ```
-
-### arch35 syncFlag
-
-新增可选属性 `sync_flag`（ACLNN 参数 `syncFlag`，位于 `layerNum` 后），默认 0，取值 0/1。仅 arch35 的 `need_schedule=1` 生效：0 等 A 个 session 全 ready；1 从轮询下标循环扫描 micro batch，无数据时等待，有数据时立即处理该次快照中的 ready session。`need_schedule=0` 不改变行为。ACLNN 调用方需用新头文件重新编译。详见 [需求设计](arch35_sync_flag_design.md)。
