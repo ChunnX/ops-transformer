@@ -38,6 +38,20 @@ jobs:
           skip-ssl-verify: true
           token: ${{secrets.GIT_TOKEN}}
       -
+        name: download
+        uses: obs-download
+        with:
+          endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+          bucket: "ascend-ci"
+          access-key: ${{ secrets.AK }}
+          secret-key: ${{ secrets.SK }}
+          key: |
+            ${{ env.obs_path }}/pr_filelist.txt
+            ${{ env.obs_path }}/pr_filelist_mod.txt
+            ${{ env.obs_path }}/update_file_detail.txt
+            ${{ env.obs_path }}/compile.sh
+          path: ${{ steps.process_checkout.outputs.path }}
+      -
         name: compile_acc
         identifier: compile
         uses: build-accelerate
