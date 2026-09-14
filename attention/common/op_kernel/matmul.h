@@ -669,14 +669,11 @@ template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, ui
 __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
                                L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, const MMParam &param,
                                const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>(),
-                               bool tailAtMiddle = false)
+                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
     uint32_t tailK = tailSize ? tailSize : baseK;
-    // tailAtMiddle: 物理执行顺序重排为 baseK, tail, baseK...(尾块提前), 缓解小尾块导致的cube断流;
-    // 逻辑k(偏移/首尾轮判定)与循环序号j解耦
     uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
@@ -691,12 +688,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
     }
 #endif
 
-    for (uint32_t j = 0; j < kLoops; j++) {
-        // 物理序j -> 逻辑k: 0->0, 1->kLoops-1(尾块), j>=2->j-1
-        uint32_t k = j;
-        if (tailAtMiddle && kLoops > 2) {
-            k = (j == 0) ? 0 : ((j == 1) ? (kLoops - 1) : (j - 1));
-        }
+    for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
         auto l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.template Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
