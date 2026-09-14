@@ -146,6 +146,7 @@ private:
     uint64_t recvCapacity_{0};
     uint32_t aivNum_{0};
     uint32_t metadataChunkTokens_{1};
+    uint32_t wqebbCount_{0};
 
     GlobalTensor<XType> xGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
@@ -319,13 +320,13 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::PrepareMultiS
     constexpr uint32_t sgeEntryBytes = 16U;
     constexpr uint32_t wqebbSize = HCOMM_PLAIN_WRITE_WQE_BYTES;
     uint32_t wqeBytes = sqeHeaderBytes + srcNum * sgeEntryBytes;
-    uint32_t wqebbCount = (wqeBytes + wqebbSize - 1U) / wqebbSize;
-    if (preparedWriteCount_ + wqebbCount > HCOMM_BATCH_CAPACITY) {
+    wqebbCount_ = (wqeBytes + wqebbSize - 1U) / wqebbSize;
+    if (preparedWriteCount_ + wqebbCount_ > HCOMM_BATCH_CAPACITY) {
         FlushPreparedWrites(true);
     }
     (void)hcomm_.WriteNbi<config>(activeBatchHandle_, dst, srcDescs, srcNum);
-    preparedWriteCount_ += wqebbCount;
-    ++sqWriteCount_;
+    preparedWriteCount_ += wqebbCount_;
+    sqWriteCount_ += wqebbCount_;
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -393,8 +394,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendRemoteMet
     GM_ADDR tokenAddr = reinterpret_cast<GM_ADDR>(xGm_.GetPhyAddr(static_cast<uint64_t>(recvXIdx) * axisH_));
     GM_ADDR remoteSlotBase = remoteDataBase + dstSlot * perSlotBytes_;
     // After multi-SGE merge, each token produces 1 WQE (was 2 when HasTopkWeight==1).
-    constexpr uint32_t wqesPerToken = 1U;
-    bool drainAfterToken = sqWriteCount_ + wqesPerToken > HCOMM_SQ_MAX_PENDING;
+    bool drainAfterToken = sqWriteCount_ + wqebbCount_ > HCOMM_SQ_MAX_PENDING;
     if constexpr (HasTopkWeight == 1) {
         GM_ADDR weightAddr = reinterpret_cast<GM_ADDR>(topkWeightsGm_.GetPhyAddr(recvXIdx));
         AscendC::BufDesc srcDescs[2] = {{tokenAddr, hAlignSize_}, {weightAddr, sizeof(float)}};
