@@ -92,15 +92,10 @@ constexpr uint32_t FA_TEMPLATE_DN = 1;
 
 // DN 模板路由的共享判定: host tiling 与 flash_attn_metadata(AICPU) 必须使用同一份逻辑,
 // 保证 metadata 的分核 outputLayout 选择与 kernel 模板选择严格一致。
-// 已注册 DN 模板的 D/DV 组合: 等维 64/72/128/256 与 MLA 192/128;
-// mask 与 layout 不设路由限制, 全部 config(0-7) 均可进入 DN。
-// 短 Q 回退: maxSeqQ 不足一个 M 基本块(含 S1<16 分形下限)时回退 ND,
-// 否则扩路由后小 S1 形状会以非法 M 分形进入 DN 导致 aicore 异常。
-inline uint32_t GetFlashAttnTemplateId(uint32_t qkHeadDim, uint32_t vHeadDim, uint32_t maxSeqQ, uint32_t mBaseSize)
+// 全量路由: 所有 case 均走 DN 模板; 接口层已限定 D/DV 注册组合, 此处注册表仅作
+// 未注册维度的防御性回退, mask/layout/S1 大小不设任何路由限制。
+inline uint32_t GetFlashAttnTemplateId(uint32_t qkHeadDim, uint32_t vHeadDim)
 {
-    if (maxSeqQ < mBaseSize) {
-        return FA_TEMPLATE_ND;
-    }
     bool supportedEqualDim =
         (qkHeadDim == vHeadDim) && (qkHeadDim == 64 || qkHeadDim == 72 || qkHeadDim == 128 || qkHeadDim == 256);
     bool supportedMlaDim = (qkHeadDim == 192) && (vHeadDim == 128);

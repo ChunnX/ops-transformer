@@ -431,8 +431,15 @@ public:
                 LocalTensor<KV_T> vL1TileTensor = vL1Tensor[vL1Offset];
 
                 if constexpr (dVBaseSize > 128) {
-                    MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-                        pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    if constexpr (s2BaseSize == 256) {
+                        // s2Base=256 时 MatmulFull 全载单次 L0A 装载 32KB 整槽, 小 M(S1<=16)下会触发
+                        // aicore 异常; 改用切K版分两次装载(每片16KB), 大小 M 行为一致且已全量验证
+                        MatmulBase<Q_T, KV_T, MM_T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    } else {
+                        MatmulFull<Q_T, KV_T, MM_T, 128, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+                            pL1Tensor, vL1TileTensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
+                    }
                 } else {
                     if constexpr (s2BaseSize == 128) {
                         MatmulFull<Q_T, KV_T, MM_T, 128, dVBaseSize, 128, ABLayout::MK, ABLayout::KN>(

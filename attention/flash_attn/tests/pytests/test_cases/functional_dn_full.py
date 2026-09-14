@@ -7,11 +7,11 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""DN 全路由覆盖矩阵: 维度注册表 x 布局 x mask(0/3/4) x GQA x S1边界 x M64 x varlen x PA x FD x sink x scale.
+"""DN 全量路由覆盖矩阵: 维度注册表 x 布局 x mask(0/3/4) x GQA x S1边界 x M64 x varlen x PA x FD x sink x scale.
 
-DN 路由条件(与 host/metadata 共享判定一致): D/DV 属于注册表(等维 64/72/128/256 或 192/128)
-且 maxSeqQ >= mBase(sOuter*2)。S1>=128 的无 mask case 与 S1>=64 的压缩 mask(3/4) case 路由 DN;
-S1 介于 (mBase/2, mBase) 的 mask0 case 与 D256 小 S1 case 按 maxSeqQ<mBase 回退 ND(对照组, 标记 _NDFB)。
+DN 路由条件(与 host/metadata 共享判定一致): 全量路由, 所有 case 均走 DN 模板,
+维度注册表(等维 64/72/128/256 或 192/128)仅作未注册维度的防御性回退。
+历史版本曾有 maxSeqQ<mBase 短Q回退 ND(用例名中 _NDFB 后缀为当时对照标记, 现同样路由 DN)。
 """
 
 DIMS = ((64, 64), (72, 72), (128, 128), (192, 128), (256, 256))

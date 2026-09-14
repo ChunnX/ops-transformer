@@ -195,10 +195,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyTemplateId()
 {
     // templateId: 0=ND模板, 1=DN模板(不合轴 BN1_S1 分核)
     // 判定与 flash_attn_metadata 的 outputLayout 选择共享 fa_tiling_util::GetFlashAttnTemplateId, 两侧严格一致;
-    // maxSeqQ 取 uint32(-1 会被转为大数, 未知长度时不因短Q回退), mBase = sOuter * cvRatio
-    tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(
-        static_cast<uint32_t>(faInfo_->qkHeadDim), static_cast<uint32_t>(faInfo_->vHeadDim),
-        static_cast<uint32_t>(faInfo_->maxSeqQ), sOuterFactor_ * platformInfo_.cvRatio);
+    // 全量路由: 所有 case 均走 DN, 注册表仅作未注册维度的防御性回退
+    tilingKeyInfo_.templateId = fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(faInfo_->qkHeadDim),
+                                                                       static_cast<uint32_t>(faInfo_->vHeadDim));
     dnFlag_ = tilingKeyInfo_.templateId == fa_tiling_util::FA_TEMPLATE_DN;
 }
 

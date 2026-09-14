@@ -219,11 +219,10 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
                                                                 mBaseSize_, s2BaseSize_);
     // DN 模板(不合轴)按 BN1_S1 分核(B轴*N1轴, M轴=纯S1); 判定逻辑与 host UpdateTilingKeyTemplateId
     // 共享 fa_tiling_util::GetFlashAttnTemplateId, 保证 metadata 分核模式与 kernel 模板选择严格一致。
-    // mBase 传 sOuterFactor 乘 CV ratio 后的值, 与 host 侧 sOuterFactor_ * cvRatio 同源。
-    bool dnRouted =
-        optiling::flash_attn::fa_tiling_util::GetFlashAttnTemplateId(
-            static_cast<uint32_t>(headDim_), static_cast<uint32_t>(headDimV_), static_cast<uint32_t>(maxSeqlenQ_),
-            mBaseSize_ * (aivCoreNum_ / aicCoreNum_)) == optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN;
+    // 全量路由: 所有 case 均走 DN, 注册表仅作未注册维度的防御性回退。
+    bool dnRouted = optiling::flash_attn::fa_tiling_util::GetFlashAttnTemplateId(static_cast<uint32_t>(headDim_),
+                                                                                 static_cast<uint32_t>(headDimV_)) ==
+                    optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN;
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
