@@ -94,9 +94,9 @@ Outputs ffn_worker_batching(const at::Tensor &schedule_context, int64_t expert_n
         auto scale_shape = mx ? std::vector<int64_t>{y_rows, scales} : std::vector<int64_t>{y_rows};
         auto dynamic_scale = at::empty(scale_shape, options.dtype(mx ? at::ScalarType::Float8_e8m0fnu : at::kFloat));
         auto actual_token_num = at::empty({1}, options.dtype(at::kLong));
-        // Attribute order follows the updated ACLNN ABI, including sync_flag.
+        // V2 exposes sync_flag; the legacy ACLNN symbol retains its original argument layout.
         at::IntArrayRef shape_attr(max_out_shape);
-        ACLNN_CMD(aclnnFfnWorkerBatching, schedule_context, expert_num, shape_attr, token_dtype, need_schedule,
+        ACLNN_CMD(aclnnFfnWorkerBatchingV2, schedule_context, expert_num, shape_attr, token_dtype, need_schedule,
                   layer_num, sync_flag, y, group_list, session_ids, micro_batch_ids, token_ids, expert_offsets,
                   dynamic_scale, actual_token_num);
         // Expose raw storage to graph passes that cannot handle FP4/E8M0.
