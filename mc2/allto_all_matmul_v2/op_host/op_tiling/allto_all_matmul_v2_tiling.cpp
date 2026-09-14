@@ -18,11 +18,14 @@
 #include <cstdio>
 #include <string>
 #include <cstring>
+#include <vector>
 #include <register/op_def_registry.h>
 #include <register/op_impl_registry.h>
 #include "graph/types.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "mc2_exception_dump.h"
+#include "mc2_hcomm_dfx_dump.h"
+#include "apace/kernel/fusions/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 
 using namespace ge;
 
@@ -66,12 +69,21 @@ inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void 
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
+    std::vector<uint64_t> channelHandles;
     Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AlltoAllMatmulV2",
                                             9U,  // tilingGmArgIdx
                                             8U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
                                      0U,  // contextArgIdx
-                                     9U); // tilingGmArgIdx
+                                     0U,  // argsOffset
+                                     9U,  // tilingGmArgIdx
+                                     &channelHandles);
+    if (!channelHandles.empty()) {
+        Mc2Hcomm::TriggerDeferredDump(channelHandles, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
+                                      "AlltoAllMatmulV2");
+    } else {
+        OP_LOGE("AlltoAllMatmulV2", "No valid channel handle, skip hcomm dump.");
+    }
 }
 
 __attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()

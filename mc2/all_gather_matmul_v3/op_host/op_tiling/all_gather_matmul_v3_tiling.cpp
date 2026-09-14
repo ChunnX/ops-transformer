@@ -30,6 +30,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_v3_tiling_key.h"
 #include "mc2_exception_dump.h"
+#include "mc2_hcomm_dfx_dump.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -893,12 +894,21 @@ inline void AllGatherMatmulV3ExceptionImplWrapper(aclrtExceptionInfo *args, void
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
+    std::vector<uint64_t> channelHandles;
     Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AllGatherMatmulV3",
                                             10U, // tilingGmArgIdx
                                             9U); // workspaceGmArgIdx
     Mc2Exception::Mc2DumpUrmaContext(args, "AllGatherMatmulV3",
-                                     0U,   // contextArgIdx
-                                     10U); // tilingGmArgIdx
+                                     0U,  // contextArgIdx
+                                     0U,  // argsOffset
+                                     10U, // tilingGmArgIdx
+                                     &channelHandles);
+    if (!channelHandles.empty()) {
+        Mc2Hcomm::TriggerDeferredDump(channelHandles, static_cast<int32_t>(aclrtGetDeviceIdFromExceptionInfo(args)),
+                                      "AllGatherMatmulV3");
+    } else {
+        OP_LOGE("AllGatherMatmulV3", "No valid channel handle, skip hcomm dump.");
+    }
 }
 
 __attribute__((constructor)) void RegisterAllGatherMatmulV3ExceptionFunc()
