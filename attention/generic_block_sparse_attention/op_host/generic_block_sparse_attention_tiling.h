@@ -67,6 +67,9 @@ TILING_DATA_FIELD_DEF(uint32_t, fdLseSubStride);
 TILING_DATA_FIELD_DEF(uint32_t, fdPartialCapacity);
 TILING_DATA_FIELD_DEF(uint64_t, fdPartialLseOffset);
 TILING_DATA_FIELD_DEF(uint64_t, fdPartialOOffset);
+// Storage token capacities, not sums of seqused. PA KV counts all physical page tokens.
+TILING_DATA_FIELD_DEF(uint64_t, totalQTokens);
+TILING_DATA_FIELD_DEF(uint64_t, totalKvTokens);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GenericBlockSparseAttention, GenericBlockSparseAttentionTilingData)
 
@@ -130,7 +133,7 @@ private:
     int64_t isPackedGQA_ = 1;
     int64_t softmaxLseFlag_ = 0;
     bool returnSoftmaxlse_ = false;
-    bool blockTablePresent_ = false;
+    bool isPaged_ = false; // Derived only from blockTable input presence.
 
     uint64_t mm1OutSize_ = 0;
     uint64_t smOnlineOutSize_ = 0;
@@ -154,6 +157,8 @@ private:
     // Default = contiguous PA_BBND page size; overwritten when KV is a dim0-strided view.
     uint64_t kStride0_ = 0;
     uint64_t vStride0_ = 0;
+    uint64_t totalQTokens_ = 0;
+    uint64_t totalKvTokens_ = 0;
 
     bool fdStaticEnabled_ = false;
     uint32_t fdLseSubStride_ = 0;

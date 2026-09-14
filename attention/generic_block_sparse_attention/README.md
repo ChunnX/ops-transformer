@@ -199,7 +199,7 @@
     <tr>
       <td>softmaxLseOptional</td>
       <td>输出</td>
-      <td>Softmax log-sum-exp中间结果；当前不支持，须传入nullptr。</td>
+      <td>Softmax log-sum-exp结果；quantType=0时可选输出FLOAT32 [Tq,Nq,1]，关闭时传入nullptr。</td>
       <td>FLOAT</td>
       <td>ND</td>
     </tr>
@@ -207,6 +207,8 @@
 </table>
 
 ## 约束说明
+
+- A5新增TND非PA代码路径（尚未运行构建或设备验证）：layoutQ/layoutKv均为TND，Q/K/V为FLOAT16或BFLOAT16，quantType=0；Q/KV各自必传cu前缀，seqused可选，blockTable必须为空。详见[设计与实现范围](./docs/a5_tnd_non_pa_design.md)。
 
 - 调用前须先执行`aclnnGenericBlockSparseAttentionMetadata`生成`metadataOptional`，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。
 - query/key/value的headDim(D)当前仅支持128；KV页blockSize当前仅支持128，且须等于blockShapeY。

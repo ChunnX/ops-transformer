@@ -1,5 +1,7 @@
 # generic_block_sparse_attention
 
+A5新增TND非PA代码路径（尚未运行构建或设备验证）：`layout_q="TND"`、`layout_kv="TND"`，Q为`[Tq,Nq,128]`，K/V为`[Tkv,Nkv,128]`，仅支持float16/bfloat16、`quant_mode=0`。Q/KV各自必传`cu_seqlens_*`，`seqused_*`可选，`block_table=None`。Metadata调用须使用相同布局及长度输入；支持`return_softmax_lse=True`和既有FD调度。
+
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
@@ -172,8 +174,8 @@ cann_ops_transformer.generic_block_sparse_attention(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的q | bfloat16/float16/float8_e4m3fn | ND | (Q_T, Q_N, D) |
-| k | Tensor | 必选 | 公式中的k | bfloat16/float16/float8_e4m3fn | ND | (num_blocks, block_size, KV_N, D) |
-| v | Tensor | 必选 | 公式中的v | bfloat16/float16/float8_e4m3fn | ND | (num_blocks, block_size, KV_N, D) |
+| k | Tensor | 必选 | 公式中的k | bfloat16/float16/float8_e4m3fn | ND | PA: (num_blocks, block_size, KV_N, D)；A5 TND非PA: (KV_T, KV_N, D) |
+| v | Tensor | 必选 | 公式中的v | bfloat16/float16/float8_e4m3fn | ND | PA: (num_blocks, block_size, KV_N, D)；A5 TND非PA: (KV_T, KV_N, D) |
 | sparse_block_idx | Tensor | 必选 | 每个Q块选择的KV块索引 | int32 | ND | (KV_N, totalQBlocks, topK) |
 | sparse_block_count | Tensor | 必选 | 每个Q块实际保留的KV块数量 | int32 | ND | (KV_N, totalQBlocks) |
 | block_shape | list[int] | 必选 | 稀疏块形状 `[block_x, block_y]` | int64 | - | 长度为2 |
@@ -350,7 +352,7 @@ cann_ops_transformer.generic_block_sparse_attention(
             <ul>
                 <li>tensor_type支持bfloat16、float16、float8_e4m3fn</li>
                 <li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li>
-                <li>当前block_size须等于128且等于block_shape[1]</li>
+                <li>PA的block_size须等于128且等于block_shape[1]；A5 TND非PA的K/V为(KV_T, KV_N, D)</li>
                 <li>非连续Tensor约束：PA_BBND仅dim0支持非连续</li>
             </ul>
         </td>
@@ -389,7 +391,7 @@ cann_ops_transformer.generic_block_sparse_attention(
     <tbody>
         <tr>
             <td>TND</td>
-            <td>PA_BBND</td>
+            <td>PA_BBND；A5 quant_mode=0新增TND</td>
             <td>(Q_T, Q_N, D)</td>
             <td>(Q_T, Q_N, 1)</td>
         </tr>
@@ -829,7 +831,7 @@ quant_mode参数解释见「quant_mode 枚举」。
             <td>
                 <ul>
                     <li>data_type仅支持BOOL</li>
-                    <li>当前仅支持False</li>
+                    <li>quant_mode=0支持False/True；FP8路径仅支持False</li>
                 </ul>
             </td>
             <td>可选属性，默认值为False</td>

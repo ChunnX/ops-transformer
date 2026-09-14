@@ -14,6 +14,7 @@
 #include "kernel_operator.h"
 #include "adv_api/reduce/reduce.h"
 #include "../generic_block_sparse_attention_fd_utils.h"
+#include "gbsa_layout_utils.hpp"
 
 namespace GbsaKernelArch35 {
 
@@ -110,11 +111,16 @@ public:
                                           hasSeqUsedQ, qStorageToken, qTokenInBatch, batchIdx, kvHeadIdx)) {
                 continue;
             }
+            const uint32_t outputHead = kvHeadIdx * groupSize + groupRowStart;
+            BatchSeqInfo qSeq;
+            if (!ReadBatchSeqInfo<Format::TND>(gCuSeqLengths, gSeqUsedQ, hasSeqUsedQ, batchIdx,
+                                               tilingData->totalQTokens, qSeq)) {
+                continue;
+            }
             const uint64_t outputOffset =
-                (static_cast<uint64_t>(qStorageToken) * tilingData->numHeads + kvHeadIdx * groupSize + groupRowStart) *
-                HEAD_DIM;
+                GetTensorOffset<Format::TND>(qSeq, qTokenInBatch, outputHead, tilingData->numHeads, HEAD_DIM);
             const uint64_t lseOutputOffset =
-                static_cast<uint64_t>(qStorageToken) * tilingData->numHeads + kvHeadIdx * groupSize + groupRowStart;
+                GetLseOffset<Format::TND>(qSeq, qTokenInBatch, outputHead, tilingData->numHeads);
             const uint32_t tileElems = rowCount * HEAD_DIM;
             AscendC::Duplicate(oAccUb_, 0.0F, tileElems);
             AscendC::PipeBarrier<PIPE_V>();

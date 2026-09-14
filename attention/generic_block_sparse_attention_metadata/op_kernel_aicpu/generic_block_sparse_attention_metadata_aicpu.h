@@ -33,6 +33,7 @@ public:
 private:
     bool Prepare(CpuKernelContext &ctx);
     bool CheckInputs();
+    bool CheckKvSeqLens() const;
     bool ParseQSeqLens(std::vector<int64_t> &qSeqLens, std::vector<int64_t> &qStorageBlockStarts) const;
     bool ParseValidBlockNums(const std::vector<int64_t> &qSeqLens, const std::vector<int64_t> &qStorageBlockStarts,
                              std::vector<int64_t> &validBlockNums) const;
@@ -43,6 +44,8 @@ private:
     Tensor *sparseBlockCount_ = nullptr;
     Tensor *cuSeqLengths_ = nullptr;
     Tensor *seqUsedQ_ = nullptr;
+    Tensor *cuSeqLengthsKv_ = nullptr;
+    Tensor *seqUsedKv_ = nullptr;
     Tensor *metadata_ = nullptr;
 
     int64_t batchSize_ = 0;

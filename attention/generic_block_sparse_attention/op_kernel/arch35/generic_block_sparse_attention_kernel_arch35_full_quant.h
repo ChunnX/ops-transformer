@@ -295,10 +295,6 @@ public:
                 actualLoopNum++;
             }
             kvSLoopNum = actualLoopNum;
-            if (kvSLoopNum == 0) {
-                continue;
-            }
-
             uint32_t rowNum = groupSize;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
 

@@ -251,7 +251,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
         可选输入，用于变长序列场景。
         <ul>
           <li>layoutKv为TND时必须传入。</li>
-          <li>layoutKv非TND时不传（须为nullptr）。当前仅支持PA_BBND。</li>
+          <li>layoutKv非TND时不传（须为nullptr）；PA_BBND不传此参数。</li>
           <li>layoutKv为BNSD/BSND时：如传入，算子内按该输入指定的实际序列长度处理；如传入nullptr，按key/value的shape中的S处理（当前不支持）。</li>
           <li>元素为前缀和：第0个元素为0，最后一个元素等于各batch KV存储长度之和，后一个元素须≥前一个元素。</li>
         </ul>
@@ -295,7 +295,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>blockTableOptional</td>
       <td>输入</td>
       <td>Block表用于PagedAttention。</td>
-      <td>如配置此输入，则表示使用PagedAttention。当前必须传入，且layoutKv须为PA_BBND。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
+      <td>PA_BBND必须传入此参数；A5 TND非PA必须传入nullptr。详见<a href="#paged-attention相关说明">Paged Attention相关说明</a>。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B, maxNumBlocksPerBatch)</td>
@@ -335,7 +335,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>layoutKv</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>目标支持"TND""BNSD""BSND""PA_BBND""PA_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。当前仅支持"PA_BBND"。</td>
+      <td>目标支持"TND""BNSD""BSND""PA_BBND""PA_BNBD"，详见<a href="#layout对应关系说明">layout对应关系说明</a>。支持"PA_BBND"；A5新增"TND"非PA，仅支持FLOAT16/BFLOAT16、quantType=0。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -433,9 +433,10 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>输入</td>
       <td>是否使能softmaxLse输出的标志位。</td>
       <td>
-    当前仅支持传0
+    quantType=0支持0或1；FP8路径仅支持0。
     <ul>
           <li>0：表示不输出softmaxLse，softmaxLseOptional须传入nullptr</li>
+          <li>1：输出FLOAT32 [Tq,Nq,1]，softmaxLseOptional必传</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -457,7 +458,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
       <td>softmaxLseOptional</td>
       <td>输出</td>
       <td>Softmax计算的log-sum-exp中间结果。</td>
-      <td>当前不支持；returnSoftmaxlse须为0，传入nullptr。</td>
+      <td>quantType=0且returnSoftmaxlse=1时输出FLOAT32 [Tq,Nq,1]；关闭时传入nullptr。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>3</td>
@@ -654,7 +655,7 @@ aclnnStatus aclnnGenericBlockSparseAttention(
   </tbody>
   </table>
 
-当前支持组合：layoutQ="TND" + layoutKv="PA_BBND"。其余layoutQ/layoutKv组合当前不支持。
+当前代码支持组合：layoutQ="TND" + layoutKv="PA_BBND"；A5新增layoutQ="TND" + layoutKv="TND"非PA（FLOAT16/BFLOAT16、quantType=0）。BSND/BNSD等组合尚未开放。新增非PA路径尚未完成构建和设备验证。
 
 query、attentionOut的shape由layoutQ决定：
 
@@ -775,7 +776,7 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
   </tbody>
   </table>
 
-当前必须传入非空blockTable，且layoutKv为PA_BBND。blockTable为nullptr（原始KV）及PA_BNBD当前不支持。
+PA_BBND必须传入非空blockTable。A5 TND非PA的K/V为[totalKTokens,numKeyValueHeads,headDim]，blockTable必须为nullptr；cuSeqLengthsKvOptional必传，sequsedKvOptional可选。PA_BNBD尚不支持。
 
 ### 量化相关说明
 
@@ -958,6 +959,10 @@ key、value的shape由layoutKv及是否使能Paged Cache决定，见<a href="#pa
 当前仅支持maskType=1（算子内置causal，attenMaskOptional须为nullptr，winLeft/winRight为-1）。maskType为0/2/3~5当前不支持。
 
 ### 其他约束
+
+- A5 TND非PA：Q/KV分别必传INT64 [B+1]存储前缀，首项为0、单调不减、末项等于各自T；seqused为可选INT32 [B]，值在[0,对应存储段长度]内。Q/KV前缀数组必须描述相同batch数。
+- TND非PA的ACLNN入口会将Q/K/V归一化为连续张量；直接进入Tiling的非连续Dense描述不支持。稀疏KV块号是batch内逻辑块号，不是物理页号。
+- 本阶段D=128、blockShape=[1,128]、isPackedGQA=1、maskType=1、A5 softmaxPrecision=1。有效KvLen<Qlen时沿用当前空输出语义；空结果O=0，LSE使用-FLT_MAX。
 
 - 确定性计算：aclnnGenericBlockSparseAttention默认确定性实现。
 - 调用前须先执行aclnnGenericBlockSparseAttentionMetadata生成metadataOptional，再调用本接口；metadata须与当前输入/属性配套，每次调用须重新生成。

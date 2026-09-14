@@ -58,6 +58,8 @@ bool GenericBlockSparseAttentionMetadataAicpu::Prepare(CpuKernelContext &ctx)
     sparseBlockCount_ = ctx.Input(static_cast<uint32_t>(ParamId::SPARSE_BLOCK_COUNT));
     cuSeqLengths_ = ctx.Input(static_cast<uint32_t>(ParamId::CU_SEQ_LENGTHS));
     seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::SEQ_USED_Q));
+    cuSeqLengthsKv_ = ctx.Input(static_cast<uint32_t>(ParamId::CU_SEQ_LENGTHS_KV));
+    seqUsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::SEQ_USED_KV));
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::METADATA));
     // An omitted optional input is represented by an empty Tensor in the AICPU context.
     if (!HasTensorData(cuSeqLengths_)) {
@@ -67,13 +69,20 @@ bool GenericBlockSparseAttentionMetadataAicpu::Prepare(CpuKernelContext &ctx)
         seqUsedQ_ = nullptr;
     }
 
+    if (!HasTensorData(cuSeqLengthsKv_)) {
+        cuSeqLengthsKv_ = nullptr;
+    }
+    if (!HasTensorData(seqUsedKv_)) {
+        seqUsedKv_ = nullptr;
+    }
+
     const bool attrsValid =
         GetAttrValue(ctx, "max_q_seq_len", maxQSeqLen_) && GetAttrValue(ctx, "num_q_heads", numQHeads_) &&
         GetAttrValue(ctx, "num_kv_heads", numKvHeads_) && GetAttrValue(ctx, "head_dim", headDim_) &&
         GetAttrValue(ctx, "block_shape_x", blockShapeX_) && GetAttrValue(ctx, "block_shape_y", blockShapeY_) &&
         GetAttrValue(ctx, "is_packed_gqa", isPackedGQA_) && GetAttrValue(ctx, "q_input_layout", qInputLayout_) &&
         GetAttrValue(ctx, "aic_core_num", aicCoreNum_);
-    return attrsValid && CheckInputs();
+    return attrsValid && CheckInputs() && CheckKvSeqLens();
 }
 
 bool GenericBlockSparseAttentionMetadataAicpu::CheckOptionalTensor(const Tensor *tensor, DataType dataType,
@@ -174,6 +183,36 @@ bool GenericBlockSparseAttentionMetadataAicpu::CheckInputs()
         !CheckOptionalTensor(seqUsedQ_, DT_INT32, batchSize_, "seq_used_q")) {
         return false;
     }
+    return true;
+}
+
+bool GenericBlockSparseAttentionMetadataAicpu::CheckKvSeqLens() const
+{
+    if (!CheckOptionalTensor(cuSeqLengthsKv_, DT_INT64, batchSize_ + 1, "cu_seq_lengths_kv") ||
+        !CheckOptionalTensor(seqUsedKv_, DT_INT32, batchSize_, "seq_used_kv")) {
+        return false;
+    }
+    // The public API enforces the layout-specific presence rules. AICPU scheduling
+    // is storage-independent, but validates any supplied KV sequence values.
+    const auto *cu = cuSeqLengthsKv_ == nullptr ? nullptr :
+        static_cast<const int64_t *>(cuSeqLengthsKv_->GetData());
+    const auto *used = seqUsedKv_ == nullptr ? nullptr :
+        static_cast<const int32_t *>(seqUsedKv_->GetData());
+    if (cu != nullptr && cu[0] != 0) {
+        KERNEL_LOG_ERROR("cu_seq_lengths_kv must start at zero.");
+        return false;
+    }
+    for (int64_t b = 0; b < batchSize_; ++b) {
+        if (cu != nullptr && (cu[b] < 0 || cu[b + 1] < cu[b])) {
+            KERNEL_LOG_ERROR("cu_seq_lengths_kv must be nonnegative and nondecreasing.");
+            return false;
+        }
+        if (used != nullptr && (used[b] < 0 || (cu != nullptr && used[b] > cu[b + 1] - cu[b]))) {
+            KERNEL_LOG_ERROR("seq_used_kv must fit the corresponding storage segment.");
+            return false;
+        }
+    }
+    // The main kernel checks cu[B] against the actual KV tensor capacity.
     return true;
 }
 

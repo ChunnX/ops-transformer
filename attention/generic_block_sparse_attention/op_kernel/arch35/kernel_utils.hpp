@@ -25,16 +25,12 @@
 #include "../tla/gbsa_tla_tensor.hpp"
 #include "../tla/gbsa_tla_layout.hpp"
 #include "kernel_operator.h"
+#include "gbsa_layout_utils.hpp"
 #include "lib/matmul_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 namespace GbsaKernelArch35 {
 
-enum class Format {
-    TND = 0,
-    BNSD = 1,
-    BSND = 2
-};
 
 __aicore__ inline uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockShapeX, uint32_t qBaseTile)
 {

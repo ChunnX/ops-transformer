@@ -60,6 +60,8 @@ struct GenericBlockSparseAttentionTilingData {
     uint32_t fdPartialCapacity;
     uint64_t fdPartialLseOffset;
     uint64_t fdPartialOOffset;
+    uint64_t totalQTokens;
+    uint64_t totalKvTokens; // PA: physical page token capacity; Dense: Tkv.
 };
 
 } // namespace GenericBlockSparseAttn

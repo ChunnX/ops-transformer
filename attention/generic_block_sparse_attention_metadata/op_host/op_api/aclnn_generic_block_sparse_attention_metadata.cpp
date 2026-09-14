@@ -83,8 +83,13 @@ aclnnStatus aclnnGenericBlockSparseAttentionMetadataGetWorkspaceSize(
     const aclTensor *seqUsedQContiguous = MakeContiguousOptional(sequsedQOptional, uniqueExecutor.get());
     CHECK_RET(sequsedQOptional == nullptr || seqUsedQContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
+    const aclTensor *cuKvContiguous = MakeContiguousOptional(cuSeqLengthsKvOptional, uniqueExecutor.get());
+    CHECK_RET(cuSeqLengthsKvOptional == nullptr || cuKvContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const aclTensor *seqUsedKvContiguous = MakeContiguousOptional(sequsedKvOptional, uniqueExecutor.get());
+    CHECK_RET(sequsedKvOptional == nullptr || seqUsedKvContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
     const aclTensor *output = l0op::GenericBlockSparseAttentionMetadata(
-        idxContiguous, countContiguous, cuQContiguous, cuSeqLengthsKvOptional, seqUsedQContiguous, sequsedKvOptional,
+        idxContiguous, countContiguous, cuQContiguous, cuKvContiguous, seqUsedQContiguous, seqUsedKvContiguous,
         maxQSeqLen, numQHeads, numKvHeads, headDim, blockShapeX, blockShapeY, isPackedGQA, layoutQ, aicCoreNum,
         metadataOptional, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
