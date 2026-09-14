@@ -1,5 +1,9 @@
 # A3 EP16 泛化回归与性能定位报告（阶段状态）
 
+新增验收要求：任何用例耗时劣化不得超过 1%，每个形状汇总及每轮有效配对均须满足。按此门槛，已推送的 b209dd766 尚未通过性能验收，DeepSeek-V3 和 gpt-oss 两项仍需修复；现有平均收益不代表整体验收通过。自动检查见 `check_performance_gate.py`，原始矩阵的失败结果见 `diagnostics/rawmanual_one_percent_gate.json`。
+
+新增门槛后进行了第二轮 rangeinit 对照，候选与参考各 8 项精度通过，但 2026-09-14 14:46:50～14:51:02 UTC 的设备观察再次发现额外进程与测试重叠；49 次观察中 19 次存在同设备多进程。两侧整批性能均已隔离，不进入验收，业务代码未应用 rangeinit。见 `diagnostics/rangeinit_probe2_status.json`。后续需要独占 EP16 窗口重新配对验证，不按污染数据下结论。
+
 rawmanual 已完成全部 293 项主精度、15 项补充边界、2 项 INT8 连续变输入和 64 项模型性能配对。Dispatch 几何平均耗时下降 19.11%，30/32 项提升，两个 B256/BF16 形状经三轮配对仍有回退；Combine 32/32 项提升，几何平均下降 9.73%，原 7 项大 BF16 回退均已消除。完整数据见 [rawmanual_complete_matrix](../tests/a3_fullmesh_regression/generalization/results/rawmanual_complete_matrix/summary.json)。rangeinit 对照已通过 8 项 B256/BF16 精度，但采集期间出现额外 16 卡、随后 8 卡占用，性能数据全部隔离，不用于验收。其业务改动已撤回，仅保留诊断补丁，等待独占环境继续处理两项剩余回退。
 
 两项 dispatch 回退：DeepSeek-V3/B256/BF16 三轮分别为 -1.06%/-0.79%/-1.64%，汇总 -1.16%；gpt-oss/B256/BF16 为 -1.05%/-4.14%/-1.03%，汇总 -2.07%。其他形状各一轮配对，汇总按形状等权，不将这两项额外复测重复计入模型数量。所有配对均完整覆盖 16 rank，每 rank 100 次目标 kernel，保留最后 50 次。

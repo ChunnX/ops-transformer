@@ -83,6 +83,8 @@ def _collect_run(case_root, case_name, op, keep):
 
 
 def main():
+    from check_performance_gate import evaluate
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--optimized", type=Path, required=True)
@@ -127,6 +129,13 @@ def main():
         json.dumps(details, indent=2) + "\n"
     )
     print(json.dumps(rows, indent=2))
+    gate = evaluate(details, [row["case_name"] for row in rows])
+    (args.output / "performance_gate.json").write_text(
+        json.dumps(gate, indent=2) + "\n"
+    )
+    print(json.dumps({k: v for k, v in gate.items() if k != "cases"}))
+    if gate["status"] != "passed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

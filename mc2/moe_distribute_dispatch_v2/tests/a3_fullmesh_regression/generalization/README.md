@@ -2,6 +2,8 @@
 
 本目录保存模型规格的官方配置快照、固定版本 URL 和 SHA-256，以及确定性用例生成脚本。
 
+验收硬门槛：每个用例的候选耗时相对参考劣化不得超过 1%。比较脚本自动生成 `performance_gate.json`，任一用例的汇总或任一轮配对超过 1% 即返回失败；不能用其他形状的收益或额外较快重复抵消。按未四舍五入的耗时比值判断，恰好 1% 允许通过。缺少用例、rank 或固定采样证据同样不能通过。已发布的 b209dd766 仍有两项超限，属于待修复阶段结果。
+
 当前 `rawmanual` 包已通过全部 293 项主精度和额外 15 项边界、2 项 INT8 连续变输入检查，证据位于 `results/rawmanual_precision` 和 `diagnostics/rawmanual_extra_precision.json`。rawmanual 的 64 项性能配对已完成，见 `results/rawmanual_complete_matrix`，两项 dispatch 回退仍在处理；`results/fix2_first_pass` 是仍有回退的历史候选，不能作为当前收益。最新状态见 [EP16 报告](../../../docs/A3_EP16_GENERALIZATION_REPORT.md)。
 
 模型配置只提供 hidden size、路由专家数和 topK。每 rank token 数、BF16/FP16 输入、INT8 通信模式、掩码和偏载均为测试选择；这些用例不等同于完整模型推理，不包括专家 GEMM、模型权重量化或模型的共享专家计算。
@@ -27,6 +29,12 @@ Mixtral-8x7B 的官方路由专家数为 8，不能满足当前 EP16 专家均�
 性能结果可使用上级比较脚本，它同时支持早期矩阵与本目录的用例清单：
 
     python ../compare_performance.py --baseline <reference-performance-dir> --optimized <candidate-performance-dir> --cases <output-directory>/cases/cases.json --output <comparison-directory>
+
+已有完整或分片性能详情可独立执行门槛检查：
+
+    python ../check_performance_gate.py --details <performance_details.json> --cases <output-directory>/cases/cases.json --output <performance_gate.json>
+
+退出码 0 表示所有预期用例满足门槛，1 表示有超限用例，2 表示证据不完整或格式错误。性能环境受到其他任务干扰时，应保留整批原始记录并单独归档，重新采集；不得通过删点、放宽阈值或选择较快轮次获得通过结果。该门槛只验证输入的性能证据，不替代精度、二进制来源和独占环境检查。
 
 本轮对照使用 `hccl_per_case=0`，实际 HCCL_BUFFSIZE 统一配置为 8192 MiB；此模式下配置文件的固定值优先于用例表中继承模板的 2048 MiB 字段。实际生效值逐 rank 记录在初始化日志，覆盖 Kimi-K2 大 B 等窗口需求较高的模型。精度失败或缺少完整 16 rank profiler 数据时，比较脚本会拒绝生成收益结果。原始 fullmesh_v2 基线存在 BS 分核专家权重漏写，须先应用 `diagnostics/reference_correctness.patch` 构建正确性修复参考包；该补丁不包含计数合并、token 分核或 combine 优化。
 

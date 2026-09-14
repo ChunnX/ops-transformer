@@ -1,0 +1,656 @@
+{
+  "status": "failed",
+  "max_allowed_regression_pct": 1.0,
+  "rule": "Every case aggregate and every chronological paired repeat must meet the limit",
+  "case_count": 64,
+  "failed_cases": [
+    "dispatch_fm2_deepseek_v3_b256_q0",
+    "dispatch_fm2_gpt_oss_120b_b256_q0"
+  ],
+  "cases": [
+    {
+      "case_name": "dispatch_fm2_deepseek_v3_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -19.048942377366117,
+      "paired_regression_pct": [
+        -19.048942377366117
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v3_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -24.769024479317135,
+      "paired_regression_pct": [
+        -24.769024479317135
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v3_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 3,
+      "aggregate_regression_pct": 1.1605459501317084,
+      "paired_regression_pct": [
+        1.05923725549939,
+        0.7869322168341686,
+        1.636440610927603
+      ],
+      "passed": false
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v3_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -0.2375554015337733,
+      "paired_regression_pct": [
+        -0.2375554015337733
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_235b_a22b_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -30.134164741394663,
+      "paired_regression_pct": [
+        -30.134164741394663
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_235b_a22b_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -30.426597299518054,
+      "paired_regression_pct": [
+        -30.426597299518054
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_235b_a22b_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -0.2724886090285539,
+      "paired_regression_pct": [
+        -0.2724886090285539
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_235b_a22b_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -16.428266474667787,
+      "paired_regression_pct": [
+        -16.428266474667787
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_30b_a3b_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -30.719079663846426,
+      "paired_regression_pct": [
+        -30.719079663846426
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_30b_a3b_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -28.70823713090277,
+      "paired_regression_pct": [
+        -28.70823713090277
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_30b_a3b_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -16.181634113527043,
+      "paired_regression_pct": [
+        -16.181634113527043
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_30b_a3b_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -34.86677918294271,
+      "paired_regression_pct": [
+        -34.86677918294271
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_kimi_k2_instruct_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -25.45400513033225,
+      "paired_regression_pct": [
+        -25.45400513033225
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_kimi_k2_instruct_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -22.55437050430087,
+      "paired_regression_pct": [
+        -22.55437050430087
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_kimi_k2_instruct_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.8742324885103745,
+      "paired_regression_pct": [
+        -1.8742324885103745
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_kimi_k2_instruct_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.4497815323968655,
+      "paired_regression_pct": [
+        -1.4497815323968655
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_gpt_oss_120b_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -25.27034055837085,
+      "paired_regression_pct": [
+        -25.27034055837085
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_gpt_oss_120b_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -31.04692228851539,
+      "paired_regression_pct": [
+        -31.04692228851539
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_gpt_oss_120b_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 3,
+      "aggregate_regression_pct": 2.0735337242637764,
+      "paired_regression_pct": [
+        1.048508127850778,
+        4.137241741793951,
+        1.0268447202699038
+      ],
+      "passed": false
+    },
+    {
+      "case_name": "dispatch_fm2_gpt_oss_120b_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -20.49672572252714,
+      "paired_regression_pct": [
+        -20.49672572252714
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_next_80b_a3b_instruct_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -17.91526029476893,
+      "paired_regression_pct": [
+        -17.91526029476893
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_next_80b_a3b_instruct_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -19.981170595045526,
+      "paired_regression_pct": [
+        -19.981170595045526
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_next_80b_a3b_instruct_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -20.539011116151997,
+      "paired_regression_pct": [
+        -20.539011116151997
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_qwen3_next_80b_a3b_instruct_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -39.3006669264367,
+      "paired_regression_pct": [
+        -39.3006669264367
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v2_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -23.748299626404712,
+      "paired_regression_pct": [
+        -23.748299626404712
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v2_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -31.623915880625376,
+      "paired_regression_pct": [
+        -31.623915880625376
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v2_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.9576678742469489,
+      "paired_regression_pct": [
+        -1.9576678742469489
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_deepseek_v2_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -4.684747955433055,
+      "paired_regression_pct": [
+        -4.684747955433055
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_glm_4_5_b8_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -25.542848474256186,
+      "paired_regression_pct": [
+        -25.542848474256186
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_glm_4_5_b8_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -30.6368176221529,
+      "paired_regression_pct": [
+        -30.6368176221529
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_glm_4_5_b256_q0",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -2.602310079173542,
+      "paired_regression_pct": [
+        -2.602310079173542
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "dispatch_fm2_glm_4_5_b256_q2",
+      "operation": "dispatch",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -7.077865687642337,
+      "paired_regression_pct": [
+        -7.077865687642337
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v3_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -14.210522564558847,
+      "paired_regression_pct": [
+        -14.210522564558847
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v3_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -13.118263856395018,
+      "paired_regression_pct": [
+        -13.118263856395018
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v3_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.3121593875397908,
+      "paired_regression_pct": [
+        -1.3121593875397908
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v3_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.5219834278426547,
+      "paired_regression_pct": [
+        -1.5219834278426547
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_235b_a22b_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -14.917371852685513,
+      "paired_regression_pct": [
+        -14.917371852685513
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_235b_a22b_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -15.875317921566335,
+      "paired_regression_pct": [
+        -15.875317921566335
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_235b_a22b_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.8318791830796322,
+      "paired_regression_pct": [
+        -1.8318791830796322
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_235b_a22b_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.9608666865137958,
+      "paired_regression_pct": [
+        -1.9608666865137958
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_30b_a3b_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -21.598800952954832,
+      "paired_regression_pct": [
+        -21.598800952954832
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_30b_a3b_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -17.841773293269814,
+      "paired_regression_pct": [
+        -17.841773293269814
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_30b_a3b_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -2.9790083315445193,
+      "paired_regression_pct": [
+        -2.9790083315445193
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_30b_a3b_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -3.7134167421570052,
+      "paired_regression_pct": [
+        -3.7134167421570052
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_kimi_k2_instruct_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -13.011541766331492,
+      "paired_regression_pct": [
+        -13.011541766331492
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_kimi_k2_instruct_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -13.03830437703576,
+      "paired_regression_pct": [
+        -13.03830437703576
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_kimi_k2_instruct_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -0.9880604686117733,
+      "paired_regression_pct": [
+        -0.9880604686117733
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_kimi_k2_instruct_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -0.9021242721912959,
+      "paired_regression_pct": [
+        -0.9021242721912959
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_gpt_oss_120b_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -23.193307234107095,
+      "paired_regression_pct": [
+        -23.193307234107095
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_gpt_oss_120b_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -20.253755743675896,
+      "paired_regression_pct": [
+        -20.253755743675896
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_gpt_oss_120b_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -4.570164662290599,
+      "paired_regression_pct": [
+        -4.570164662290599
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_gpt_oss_120b_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -5.661845368887719,
+      "paired_regression_pct": [
+        -5.661845368887719
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_next_80b_a3b_instruct_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -18.179318440194837,
+      "paired_regression_pct": [
+        -18.179318440194837
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_next_80b_a3b_instruct_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -16.357694051845893,
+      "paired_regression_pct": [
+        -16.357694051845893
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_next_80b_a3b_instruct_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -2.45621493127105,
+      "paired_regression_pct": [
+        -2.45621493127105
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_qwen3_next_80b_a3b_instruct_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -2.40885678694418,
+      "paired_regression_pct": [
+        -2.40885678694418
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v2_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -16.03719237967878,
+      "paired_regression_pct": [
+        -16.03719237967878
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v2_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -15.123912800080475,
+      "paired_regression_pct": [
+        -15.123912800080475
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v2_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -2.004051793278905,
+      "paired_regression_pct": [
+        -2.004051793278905
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_deepseek_v2_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -2.4487964746855884,
+      "paired_regression_pct": [
+        -2.4487964746855884
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_glm_4_5_b8_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -15.581032266214656,
+      "paired_regression_pct": [
+        -15.581032266214656
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_glm_4_5_b8_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -15.34256212393339,
+      "paired_regression_pct": [
+        -15.34256212393339
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_glm_4_5_b256_q0",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.4671136202843993,
+      "paired_regression_pct": [
+        -1.4671136202843993
+      ],
+      "passed": true
+    },
+    {
+      "case_name": "combine_glm_4_5_b256_q2",
+      "operation": "combine",
+      "paired_repeats": 1,
+      "aggregate_regression_pct": -1.7675252887224824,
+      "paired_regression_pct": [
+        -1.7675252887224824
+      ],
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "precision_passed_performance_excluded_due_to_external_occupancy",
+  "candidate": "rangeinit",
+  "business_source_changed": false,
+  "precision": [
+    {
+      "variant": "rangeinit",
+      "passed": 8
+    },
+    {
+      "variant": "reference_rangeinit",
+      "passed": 8
+    }
+  ],
+  "performance_accepted": false,
+  "observation_count": 49,
+  "overlap_observation_count": 19,
+  "first_overlap_utc": "2026-09-14T14:46:50.083602+00:00",
+  "last_overlap_utc": "2026-09-14T14:51:02.751011+00:00",
+  "sample_overlap_device_count": 16,
+  "raw_archive": "results/failed_profiles/rangeinit_probe2_overlap",
+  "hardware_test_running": false,
+  "requirement": "Every case and paired repeat must have latency regression <= 1 percent"
+}
