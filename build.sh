@@ -32,6 +32,7 @@ VERBOSE="false"
 OOM="false"
 ENABLE_MSSANITIZER=FALSE
 ENABLE_DUMP_CCE=FALSE
+ASCENDC_DEBUG=FALSE
 THREAD_NUM=$(grep -c ^processor /proc/cpuinfo)
 ENABLE_VALGRIND=FALSE
 ENABLE_CREATE_LIB=FALSE
@@ -126,6 +127,7 @@ function help_info() {
                 echo "    --bisheng_flags        Specify bisheng compiler flags (comma-separated for multiple)"
                 echo "    --mssanitizer          Build with mssanitizer mode on the kernel side, with options: '-g --cce-enable-sanitizer'"
                 echo "    --dump_cce             Dump kernel precompiled files"
+                echo "    --ascendc_debug        Enable AscendC/Hcomm kernel debug logs"
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
@@ -378,6 +380,7 @@ function help_info() {
     echo "    --opkernel_aicpu build aicpu kernel"
     echo "    --mssanitizer Build with mssanitizer mode on the kernel side, with options: '-g --cce-enable-sanitizer'"
     echo "    --dump_cce Dump kernel precompiled files"
+    echo "    --ascendc_debug Enable AscendC/Hcomm kernel debug logs"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
     echo "    --opgraph_test build and run opgraph unit tests"
@@ -1326,7 +1329,7 @@ set_example_opt() {
 SUPPORTED_LONG_OPTS=(
   "help" "list_soc" "pkg" "pkg-type=" "static" "jit" "noaicpu" "opkernel_aicpu" "opkernel"
   "experimental" "noexec" "torch_extension" "torch_extension_only" "oom" "make_clean"
-  "mssanitizer" "dump_cce"
+  "mssanitizer" "dump_cce" "ascendc_debug" "ascendc-debug"
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
   "asan" "valgrind" "ubsan" "cov" "clang" "run_example"
@@ -1594,6 +1597,10 @@ assemble_cmake_args() {
     CUSTOM_OPTION="${CUSTOM_OPTION} -DOPS_COMPILE_OPTIONS=${OPS_COMPILE_OPTIONS}"
   fi
 
+  if [[ "${ASCENDC_DEBUG}" == "TRUE" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DASCENDC_DEBUG=ON"
+  fi
+ 
   if [ "${HOST_TILING}" == "true" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_HOST_TILING=ON"
   fi
@@ -2065,6 +2072,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --dump_cce)
         ENABLE_DUMP_CCE=TRUE
+        shift
+        ;;
+    --ascendc_debug|--ascendc-debug)
+        ASCENDC_DEBUG=TRUE
         shift
         ;;
     --opkernel_aicpu)

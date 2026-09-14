@@ -26,6 +26,31 @@ if (BUILD_OPEN_PROJECT)
             c_sec
     )
 
+    # MC2 host DFX APIs are implemented by asc-comm. The custom package's
+    # opmaster target also contains MC2 tiling code that calls these APIs.
+    set(MC2_CLIENT_DFX_LIBRARY "" CACHE FILEPATH
+            "Path to asc-comm's libmc2_client_dfx.so")
+    if(NOT MC2_CLIENT_DFX_LIBRARY)
+        set(_MC2_CLIENT_DFX_DEFAULT
+                "${ASCEND_CANN_PACKAGE_PATH}/lib64/libmc2_client_dfx.so")
+        if(EXISTS "${_MC2_CLIENT_DFX_DEFAULT}")
+            set(MC2_CLIENT_DFX_LIBRARY "${_MC2_CLIENT_DFX_DEFAULT}")
+        else()
+            find_library(MC2_CLIENT_DFX_LIBRARY
+                    NAMES mc2_client_dfx
+                    PATHS
+                        ${ASCEND_CANN_PACKAGE_PATH}/lib64
+                        ${ASCEND_CANN_PACKAGE_PATH}/${CMAKE_SYSTEM_PROCESSOR}-linux/lib64
+                    NO_DEFAULT_PATH
+            )
+        endif()
+    endif()
+    if(NOT MC2_CLIENT_DFX_LIBRARY)
+        message(FATAL_ERROR
+                "libmc2_client_dfx.so is required by MC2 DFX. "
+                "Install it under ${ASCEND_CANN_PACKAGE_PATH}/lib64.")
+    endif()
+
     find_package(alog MODULE)
 
     find_package(unified_dlog MODULE)
@@ -185,6 +210,7 @@ if (BUILD_OPEN_PROJECT)
             -Wl,--no-whole-archive
             acl_rt
             c_sec
+            ${MC2_CLIENT_DFX_LIBRARY}
     )
     set_target_properties(cust_opmaster PROPERTIES OUTPUT_NAME
             cust_opmaster_rt2.0
