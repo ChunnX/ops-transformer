@@ -57,7 +57,7 @@ struct OriginalGraphInfo {
     bool hasBias = false;
     bool hasScale = false;
     bool hasOffset = false;
-    bool hasDequant = false; // 仅拓扑：canndev 非 A5 不吸 dequant，但有边时必须进 pattern 才能匹配
+    bool hasDequant = false;
     bool scaleTranspose = false;
     bool offsetTranspose = false;
 };
@@ -201,6 +201,7 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
     if (info.hasOffset) {
         antiquantOffset = inputs[idx++];
     }
+    // 非 A5：dequant 仅直连保留，不吸收其 Transpose
     ge::es::EsTensorHolder dequantScale = nullptr;
     if (info.hasDequant) {
         dequantScale = inputs[idx++];
@@ -222,8 +223,8 @@ ge::fusion::PatternUniqPtr MakePattern(const std::string &passName, const Origin
 
     const char *group = "";
     std::unique_ptr<ge::fusion::Pattern> pattern;
+    // x3/pertoken/comm_quant 固定 nullptr；dequant 按是否存在透传，避免量化路径丢失
     if (info.opKind == Mc2OpKind::Mar) {
-        // x3/pertoken/comm_quant 固定 nullptr；dequant 仅透传不吸 T
         auto y = ge::es::MatmulAllReduce(x1, transposeX2, bias, nullptr, scaleIn, offsetIn, dequantScale, nullptr,
                                          nullptr, nullptr, group);
         auto graph = graphBuilder.BuildAndReset({y});
@@ -258,16 +259,17 @@ std::vector<ge::fusion::PatternUniqPtr> BuildAllPatterns(const std::string &pass
         for (bool hasBias : {false, true}) {
             for (bool hasScale : {false, true}) {
                 for (bool hasOffset : {false, true}) {
-                    for (bool scaleTranspose : {false, true}) {
-                        if (scaleTranspose && !hasScale) {
-                            continue;
-                        }
-                        for (bool offsetTranspose : {false, true}) {
-                            if (offsetTranspose && !hasOffset) {
+                    for (bool hasDequant : {false, true}) {
+                        for (bool scaleTranspose : {false, true}) {
+                            if (scaleTranspose && !hasScale) {
                                 continue;
                             }
-                            for (bool hasDequant : {false, true}) {
-                                OriginalGraphInfo info{opKind,     hasBias,        hasScale,       hasOffset,
+                            for (bool offsetTranspose : {false, true}) {
+                                if (offsetTranspose && !hasOffset) {
+                                    continue;
+                                }
+                                // bias/scale/offset 可吸 T；dequant 仅直连透传（不吸 T）
+                                OriginalGraphInfo info{opKind,    hasBias,         hasScale,        hasOffset,
                                                        hasDequant, scaleTranspose, offsetTranspose};
                                 patternGraphs.emplace_back(MakePattern(passName, info));
                             }
@@ -442,6 +444,40 @@ bool IsAntiquantDirectConnectAllowed(const std::unique_ptr<ge::fusion::MatchResu
     return true;
 }
 
+bool Mc2HasConnectedInput(const ge::GNode &mc2Node, int32_t inputIdx)
+{
+    ge::TensorDesc desc;
+    return mc2Node.GetInputDesc(inputIdx, desc) == ge::GRAPH_SUCCESS;
+}
+
+int32_t GetDequantInputIdx(const std::string &patternNameStr)
+{
+    const Mc2OpKind opKind = ParseOpKind(patternNameStr);
+    if (IsArnKind(opKind)) {
+        return static_cast<int32_t>(ops::MC2AddRmsNormInputIdx::K_DEQUANT);
+    }
+    return static_cast<int32_t>(ops::MC2InputIdx::K_DEQUANT);
+}
+
+// ES pattern 对 optional 口可能误匹配；以原 MC2 节点是否真有 dequant 边为准
+bool IsDequantPresenceConsistent(const std::unique_ptr<ge::fusion::MatchResult> &matchResult,
+                                 const std::string &patternNameStr)
+{
+    ge::GNode mc2Node;
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+        return false;
+    }
+    const bool patternHasDequant = patternNameStr.find(PATTERN_DEQUANT) != std::string::npos;
+    const bool nodeHasDequant = Mc2HasConnectedInput(mc2Node, GetDequantInputIdx(patternNameStr));
+    if (patternHasDequant != nodeHasDequant) {
+        OPS_LOG_D(PASS_NAME.c_str(),
+                  "Skip pattern=%s: patternHasDequant=%d nodeHasDequant=%d (must be consistent).",
+                  patternNameStr.c_str(), static_cast<int>(patternHasDequant), static_cast<int>(nodeHasDequant));
+        return false;
+    }
+    return true;
+}
+
 bool MeetCore(const std::unique_ptr<ge::fusion::MatchResult> &matchResult, const char *passName)
 {
     int32_t geCompilerVersion = 0;
@@ -471,7 +507,10 @@ bool MeetCore(const std::unique_ptr<ge::fusion::MatchResult> &matchResult, const
     if (!IsAntiquantDirectConnectAllowed(matchResult, patternNameStr)) {
         return false;
     }
-    OPS_LOG_I(passName, "Found One pattern that meets requirements");
+    if (!IsDequantPresenceConsistent(matchResult, patternNameStr)) {
+        return false;
+    }
+    OPS_LOG_I(passName, "Found One pattern that meets requirements, pattern=%s", patternNameStr.c_str());
     return true;
 }
 
@@ -560,6 +599,7 @@ bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder
     if (patternNameStr.find(PATTERN_DEQUANT) != std::string::npos) {
         inputs.rDequantScale = replaceGraphBuilder.CreateInput(inputIdx, "dequant_scale", inputDTypes[inputIdx],
                                                                inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+        ++inputIdx;
     }
     return true;
 }
@@ -621,7 +661,7 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
     bool isTransB = false;
     OP_LOGE_IF(mc2Node.GetAttr("is_trans_b", isTransB) != ge::GRAPH_SUCCESS, nullptr, passName,
                "Get Attr is_trans_b failed.");
-    // 吸收 x2 Transpose 后置反 is_trans_b（对齐 canndev）
+    // 吸收 x2 Transpose 后置反 is_trans_b
     isTransB = !isTransB;
 
     int64_t commTurn = 0;
@@ -636,20 +676,33 @@ ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::Subgrap
         int64_t groupSize = 0;
         OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr group_size failed.");
-        int64_t yDtype = 28;
+        // y_dtype 常为 UNDEFINED：非量化跟随 x1，量化等继承原输出，避免重建后落到 DT_FLOAT
+        int64_t yDtype = static_cast<int64_t>(ge::DT_UNDEFINED);
         OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDtype) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr y_dtype failed.");
+        if (yDtype == static_cast<int64_t>(ge::DT_UNDEFINED)) {
+            ge::TensorDesc x1Desc;
+            if (mc2Node.GetInputDesc(static_cast<int>(ops::MC2InputIdx::K_X1), x1Desc) == ge::GRAPH_SUCCESS &&
+                (x1Desc.GetDataType() == ge::DT_FLOAT16 || x1Desc.GetDataType() == ge::DT_BF16)) {
+                yDtype = static_cast<int64_t>(x1Desc.GetDataType());
+            } else {
+                ge::TensorDesc yDesc;
+                if (mc2Node.GetOutputDesc(0, yDesc) == ge::GRAPH_SUCCESS && yDesc.GetDataType() != ge::DT_UNDEFINED) {
+                    yDtype = static_cast<int64_t>(yDesc.GetDataType());
+                }
+            }
+        }
         int64_t commQuantMode = 0;
         OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr comm_quant_mode failed.");
         ge::AscendString commMode;
         OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, passName,
                    "Get Attr comm_mode failed.");
-        auto y = ge::es::MatmulAllReduce(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, nullptr,
-                                         inputTensors.rAntiquantScale, inputTensors.rAntiquantOffset,
-                                         inputTensors.rDequantScale, nullptr, nullptr, nullptr, group.GetString(),
-                                         reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize,
-                                         groupSize, yDtype, commQuantMode, commMode.GetString());
+        auto y = ge::es::MatmulAllReduce(
+            inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, nullptr, inputTensors.rAntiquantScale,
+            inputTensors.rAntiquantOffset, inputTensors.rDequantScale, nullptr, nullptr, nullptr, group.GetString(),
+            reduceOp.GetString(), isTransA, isTransB, commTurn, antiquantGroupSize, groupSize, yDtype, commQuantMode,
+            commMode.GetString());
         return replaceGraphBuilder.BuildAndReset({y});
     }
 
