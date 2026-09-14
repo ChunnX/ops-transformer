@@ -573,13 +573,13 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
 
     ExpertTokenPosition waveBeginPosition{};
     ExpertTokenPosition gmm1Position{};
-    // GMM2 的滞后消费目标（见循环内注释）；首轮为零位置，GMM2 空转一轮。
+    // GMM2 的滞后消费目标；首轮为零位置，GMM2 空转一轮。
     // 形状门控：滞后收益来自消除 AIC 等激活（随 wave 数放大），代价是流水尾部固定多一个
     // GMM2 wave 深度——小 bs 下 wave 少、尾深占比大，实测 bs2048 净劣化（中位数 +45us）而
     // bs8192 净收益（-820us），故仅在每卡 token 数达到阈值时启用；2048/8192 之间未实测，
     // 阈值取中点偏保守，中间形状合入前需补测。
     const bool gmm2LagActive = commonConfig_.tokenNum >= GMM2_LAG_MIN_TOKEN_NUM;
-    // 三角色整体滞后一拍的缓存：上一 wave 的边界（见循环内注释）。
+    // 三角色整体滞后一拍的缓存：上一 wave 的边界。
     ExpertTokenPosition gmm2PendingWaveEnd{};
     bool hasPendingGmm2Wave = false;
 
@@ -597,15 +597,6 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
-        /*
-         * GMM2/Combine 三角色整体滞后一拍（大 bs 门控）：wave w 的 GMM2/Combine 延至 GMM1(w+1)
-         * 之后执行，用下一 wave 的 GMM1 覆盖 AIC 等激活发布的自旋（AIV0 epilogue 在末批 MMAD
-         * 后仍需一段向量时间才发布 activationToGmm2Flag，紧跟消费同一 wave 会让 AIC 反复自旋）。
-         * 三角色（AIC/AIV0/AIV1）以相同调用序同拍延后：ProcessGmm2Wave 内部的 pairwise tile
-         * 序号、分核游标与 combine 状态在三侧保持一致推进，无需任何游标配平（与统一后的
-         * W4 wave-ahead 路径同款模式）。此前的 AIC 单方滞后在逐 wave dispatch 交错的新调度下
-         * 与 AIV 侧 tile 序号错拍（实测 aic_scalar 0.30->0.54 净劣化），已废弃。
-         */
         ProcessGmm2WithWaveLag(waveEndPosition, gmm2PendingWaveEnd, hasPendingGmm2Wave, gmm2State, combineBufferConfig,
                                gmm2LagActive);
 

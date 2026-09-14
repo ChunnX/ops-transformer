@@ -742,14 +742,7 @@ static ge::graphStatus CheckMaxRecvTokenNum(int64_t maxRecvTokenNum, int64_t top
     return ge::GRAPH_SUCCESS;
 }
 
-/*
- * 容量这一组：单卡 token 数上界、topk 权重预取开关、peermem 窗口大小、能收多少 token。
- * topkWeightsType 归在这里，是因为开了预取之后 peermem 里每个 token 要多存一份 topk 权重，
- * 它直接决定窗口要开多大，所以先把它校验掉，再拿去算下面的容量。
- * MTE 下 numMaxTokensPerRank 传 0 表示按本卡 bs 计算。URMA 使用跨卡对称窗口，host 无法从
- * 本卡 bs 推导全卡一致的容量上界，因此必须显式传入非 0 值。
- */
-
+// 校验 token 容量和通信窗口大小，窗口容量计算包含 topk 权重预取所需空间。
 static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, MegaMoeConfig &config,
                                           const char *nodeName, const MegaMoeAttrShapeContext &shape,
                                           int64_t epWorldSize, int64_t moeExpertPerRank)

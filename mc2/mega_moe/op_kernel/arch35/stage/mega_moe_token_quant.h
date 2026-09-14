@@ -101,14 +101,14 @@ __aicore__ inline void QuantizeTokenToLocal(const LocalTensor<bfloat16_t> &xInTe
     __ubuf__ int8_t *outDataAddr = (__ubuf__ int8_t *)xOutTensor.GetPhyAddr();
     __ubuf__ uint16_t *mxScaleAddr = (__ubuf__ uint16_t *)xOutTensor[config.quantTokenAlignBytes].GetPhyAddr();
 
+    Quant::ComputeMaxExp(srcAddr, maxExpAddr, hiddenDim);
+    Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, config.quantScaleNumAlignPerToken);
     if constexpr (QuantMode == E2M1_QUANT) {
-        Quant::ComputeMaxExp(srcAddr, maxExpAddr, hiddenDim);
-        Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, config.quantScaleNumAlignPerToken);
         Quant::ComputeFp4Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
             srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
     } else {
-        Mxfp8::ComputeFp8Token<bfloat16_t, QuantOutType>(srcAddr, maxExpAddr, mxScaleAddr, halfScaleAddr, outDataAddr,
-                                                         hiddenDim, config.quantScaleNumAlignPerToken);
+        Quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC, AscendC::RoundMode::CAST_RINT>(
+            srcAddr, halfScaleAddr, outDataAddr, hiddenDim);
     }
 }
 
