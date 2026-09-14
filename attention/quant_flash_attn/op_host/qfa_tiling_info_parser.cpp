@@ -270,6 +270,7 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
     int64_t quantModeVal = *opParamInfo_.quantMode;
     using QM = QfaQuantMode;
     if (quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
+        quantModeVal != static_cast<int64_t>(QM::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) &&
         quantModeVal !=
             static_cast<int64_t>(
                 QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
@@ -278,6 +279,7 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
                                               "quant_mode must be 0 "
                                               "(A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) or "
                                               "1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or "
+                                              "3 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) or "
                                               "6 (A8C8_QK_FP8_"
                                               "E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_"
                                               "P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)");

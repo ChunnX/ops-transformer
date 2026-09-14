@@ -18,6 +18,7 @@
 #include "arch35/quant_flash_attn_common_def.h"
 #include "util.h"
 #include "arch35/quant_flash_attn_kernel_mxfp8.h"
+#include "arch35/quant_flash_attn_kernel_mxfp8_fp16.h"
 #include "arch35/quant_flash_attn_kernel_fp8.h"
 #include "arch35/quant_flash_attn_kernel_hif8.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
@@ -90,6 +91,72 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlock, VecFaBlockDummy, VecFdBlockDummy>;
 #else
     using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlockDummy, VecFaBlock, VecFdBlock>;
+#endif
+
+    const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
+        (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+
+    TPipe tPipe;
+    Kernel op;
+    op.Init(query, key, value, sinks, attnMask, cuSeqLensQ, cuSeqLensKv, blockTable, dequantScaleQuery, dequantScaleKey,
+            dequantScaleValue, pScale, softmaxLse, attnOut, workspace, metadata, sequsedQ, sequsedKv, tilingData,
+            &tPipe);
+    op.Process();
+}
+
+// ─────────────────────────────────────────────────────────
+// quant_flash_attn_kernel_mxfp8_fp16: MXFP8 SOFTMAX_FP16 (quant_mode=3)
+// ─────────────────────────────────────────────────────────
+template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
+          bool isFd>
+__aicore__ inline void quant_flash_attn_mxfp8_fp16(
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dequantScaleQuery,
+    __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ,
+    __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
+    __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+{
+    using INPUT_T = fp8_e4m3fn_t;
+    using OUT_T = bfloat16_t;
+
+    fa_base_matmul::ResetIdCounter();
+
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);
+    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]);
+
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(
+        (static_cast<std::underlying_type_t<inferDTemplateType>>(ConfigValue[config].d) + 63) >> 6 << 6);
+    constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(
+        (static_cast<std::underlying_type_t<inferDTemplateType>>(ConfigValue[config].dv) + 63) >> 6 << 6);
+    constexpr bool isDAligned = ConfigValue[config].d != inferDTemplateType::NotAligned &&
+                                static_cast<int32_t>(ConfigValue[config].d) % 64 == 0;
+
+    constexpr bool isFdConst = false;
+    // SOFTMAX_FP16 采用 DN 转置方案 (V^T×P, DN2NZ 随路转置)
+    constexpr bool useDn = true;
+
+    using CubeBlock =
+        BaseApi::QuantFlashAttnBlockCubeMxfp8Fp16<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                                  dTemplateType, dVTemplateType, KvLayoutType, useDn, isDAligned>;
+    using VecFaBlock =
+        BaseApi::QuantFlashAttnBlockVecMxfp8Fp16<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                 hasAttenMask, KvLayoutType, isFdConst, useDn, isDAligned>;
+
+    using CubeBlockDummy =
+        BaseApi::QuantFlashAttnBlockCubeMxfp8Fp16Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                                       dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+    using VecFaBlockDummy =
+        BaseApi::QuantFlashAttnBlockVecMxfp8Fp16Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                      hasAttenMask, KvLayoutType, isFdConst, useDn>;
+
+#ifdef __DAV_C310_CUBE__
+    using Kernel = BaseApi::QuantFlashAttnKernelMxfp8Fp16<CubeBlock, VecFaBlockDummy>;
+#else
+    using Kernel = BaseApi::QuantFlashAttnKernelMxfp8Fp16<CubeBlockDummy, VecFaBlock>;
 #endif
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
@@ -248,6 +315,11 @@ __global__ __aicore__ void quant_flash_attn(
 #if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN)
     if constexpr (quantMode == QFA_MXFP8_FP32_PREFILL || quantMode == QFA_MXFP8_FP32_DECODE) {
         quant_flash_attn_mxfp8<inOutLayoutType, config, quantMode, hasAttenMask, KvLayoutType, isFd>(
+            query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ,
+            cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, workspace, tiling);
+    }
+    if constexpr (quantMode == QFA_MXFP8_FP16) {
+        quant_flash_attn_mxfp8_fp16<inOutLayoutType, config, quantMode, hasAttenMask, KvLayoutType, isFd>(
             query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ,
             cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, workspace, tiling);
     }

@@ -41,7 +41,9 @@ bool QuantFlashAttnTilingImpl::IsCapable()
     if (qfaInfo_ == nullptr) {
         return false;
     }
-    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+    // SOFTMAX_FP16 (quant_mode=3) 复用 MXFP8 tiling 流程, 仅 softmax 精度不同, 由独立 kernel 承载
+    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+        qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP16) {
         return false;
     }
     return true;

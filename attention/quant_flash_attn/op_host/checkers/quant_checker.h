@@ -62,12 +62,15 @@ private:
     ge::graphStatus CheckQDescaleShape(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckQDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckQDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckQDescaleShapeSoftmaxFp16(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleShape(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckKDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckKDescaleShapeSoftmaxFp16(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleShape(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleShapeMxFp8(const QfaTilingInfo &qfaInfo) const;
     ge::graphStatus CheckVDescaleShapeGqaFp8(const QfaTilingInfo &qfaInfo) const;
+    ge::graphStatus CheckVDescaleShapeSoftmaxFp16(const QfaTilingInfo &qfaInfo) const;
 
     // --- MultiPara: descale dtype 校验 ---
     // MxFP8 场景下, q/k/v descale 的 tensor_type 仅支持 FLOAT8_E8M0
