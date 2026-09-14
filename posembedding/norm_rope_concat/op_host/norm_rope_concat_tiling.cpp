@@ -287,6 +287,20 @@ ge::graphStatus NormRopeConcatTiling::ComputeUBTilingStrategy()
         normCoef * (alignedNormDim_ * sizeof(float) + (trainingCoef * 2 * DOUBLE_BUFFER + 1) * sizeof(float));
     avgHeads_ = (compileInfo_.ubSize - ropeCoef * ropeUsedUbSize - normCoef * normUsedUbSize) / oneHeadUbSize;
 
+    OP_LOGD(context_.opName, "=== UB TILING DEBUG ===");
+    OP_LOGD(context_.opName, "ubSize=%ld, dataTypeSize=%ld, alignNum=%ld", (int64_t)compileInfo_.ubSize, (int64_t)dataTypeSize, (int64_t)alignNum);
+    OP_LOGD(context_.opName, "ropeDim=%ld, alignedRopeDim=%ld, alignedRopeDimForRepeat=%ld", (int64_t)ropeDim_, (int64_t)alignedRopeDim_, (int64_t)alignedRopeDimForRepeat);
+    OP_LOGD(context_.opName, "normDim=%ld, alignedNormDim=%ld", (int64_t)normDim_, (int64_t)alignedNormDim_);
+    OP_LOGD(context_.opName, "ropeUsedUbSize=%ld, normUsedUbSize=%ld", (int64_t)ropeUsedUbSize, (int64_t)normUsedUbSize);
+    OP_LOGD(context_.opName, "ropeCoef=%ld, normCoef=%ld, trainingCoef=%ld", (int64_t)ropeCoef, (int64_t)normCoef, (int64_t)trainingCoef);
+    OP_LOGD(context_.opName, "oneHeadUbSize=%ld (P1=%ld + ropeCoef*R=%ld + normCoef*B=%ld)", (int64_t)oneHeadUbSize,
+            (int64_t)(2 * alignedNormDim_ * (int64_t)sizeof(float) + 2 * DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize),
+            (int64_t)(ropeCoef * ropeUsedUbSize),
+            (int64_t)(normCoef * (alignedNormDim_ * (int64_t)sizeof(float) + (trainingCoef * 2 * DOUBLE_BUFFER + 1) * (int64_t)sizeof(float))));
+    OP_LOGD(context_.opName, "avgHeads=%ld, headNum=%ld, splitHeadNum=%ld, tailHeads=%ld",
+            (int64_t)avgHeads_, (int64_t)headNum_, (int64_t)CeilDiv(headNum_, avgHeads_),
+            (int64_t)(headNum_ - (CeilDiv(headNum_, avgHeads_) - 1) * avgHeads_));
+
     avgHeads_ = std::min(avgHeads_, static_cast<int64_t>(AVGHEAD_MAX_NUM));
     avgHeads_ = std::min(avgHeads_, headNum_);
     OP_CHECK_IF(avgHeads_ == 0, OP_LOGE(context_.opName, "input dim is too large"), return ge::GRAPH_FAILED);
