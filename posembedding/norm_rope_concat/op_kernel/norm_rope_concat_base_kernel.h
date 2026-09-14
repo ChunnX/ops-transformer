@@ -85,6 +85,20 @@ __aicore__ inline T CeilAlign(T a, T b)
     return (a + b - 1) / b * b;
 }
 
+__aicore__ inline void VToSSync()
+{
+    event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIDVToS);
+    WaitFlag<HardEvent::V_S>(eventIDVToS);
+}
+
+__aicore__ inline void SToVSync()
+{
+    event_t eventIDSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    SetFlag<HardEvent::S_V>(eventIDSToV);
+    WaitFlag<HardEvent::S_V>(eventIDSToV);
+}
+
 template <RopeType ropeType>
 class RopeOperation {
 public:
@@ -103,7 +117,8 @@ public:
         sinGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)sin);
         cosGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)cos);
         pipe->InitBuffer(ropeQueue_, SINGLE_BUFFER, totalRopeDim_ * NUM_TWO * sizeof(DTYPE_ROPE_SIN));
-        pipe->InitBuffer(buf_, (totalRopeDim_ * sizeof(int32_t) + totalRopeDim_ * NUM_TWO * sizeof(float)));
+        pipe->InitBuffer(buf_,
+                         (totalRopeDim_ * sizeof(int32_t) + totalRopeDim_ * NUM_TWO * sizeof(float)));
         sin_ = buf_.GetWithOffset<float>(totalRopeDim_, 0);
         cos_ = buf_.GetWithOffset<float>(totalRopeDim_, totalRopeDim_ * sizeof(float));
         mask_ = buf_.GetWithOffset<uint32_t>(totalRopeDim_, totalRopeDim_ * sizeof(float) * NUM_TWO);
@@ -115,6 +130,7 @@ public:
             tailNum == B32_DATA_NUM_PER_REPEAT ? 0x5555555555555555 : 0x5555555555555555 & ((1UL << tailNum) - 1);
         uint32_t halfDim = ropeDim_ / NUM_TWO;
         Duplicate(mask_, 0U, alignedRopeDim_);
+        VToSSync();
         if constexpr (ropeType == RopeType::INTERLEAVE) {
             // 0, 1, 2, 3, 4, 5, 6, 7 -> 1, 0, 3, 2, 5, 4, 7, 6
             for (uint32_t i = 0; i < halfDim; ++i) {
@@ -128,6 +144,7 @@ public:
                 mask_.SetValue(halfDim + i, i * SIZE_OF_FLOAT);
             }
         }
+        SToVSync();
         for (int32_t i = 1; i < ropeNum_; ++i) {
             Adds(mask_[i * alignedRopeDim_].ReinterpretCast<int32_t>(), mask_.ReinterpretCast<int32_t>(),
                  static_cast<int32_t>(i * alignedRopeDim_ * NUM_FOUR), alignedRopeDim_);
