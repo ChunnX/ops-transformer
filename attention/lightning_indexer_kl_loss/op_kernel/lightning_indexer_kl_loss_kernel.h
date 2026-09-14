@@ -126,7 +126,8 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::I
     // 因此大小为 8 * align_up(tileLen_, 8)：tileLen_ 非 8 倍数时 repeat*64 会超出 8*tileLen_，
     // 向上取整到 8 的倍数避免写越界踩到后续 ubLogP/ubLogY。
     uint32_t tileElemsAligned = tileLength_ * KAligned_;
-    int64_t reduceSumElems = FLOAT_BLOCK_SIZE * ((tileLength_ + FLOAT_BLOCK_SIZE - 1) / FLOAT_BLOCK_SIZE * FLOAT_BLOCK_SIZE);
+    int64_t reduceSumElems =
+        FLOAT_BLOCK_SIZE * ((tileLength_ + FLOAT_BLOCK_SIZE - 1) / FLOAT_BLOCK_SIZE * FLOAT_BLOCK_SIZE);
     int64_t totalUbElems = tileLength_ * 5 * KAligned_ + reduceSumElems + FLOAT_BLOCK_SIZE;
 
     pipePtr = pipe;
