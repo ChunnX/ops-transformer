@@ -126,10 +126,10 @@ inline TNDRunShape MakeTNDCausalRunShape(const FuzzyBaseInfoParamsRegbase &p, in
         if (s.m < s.n) {
             s.n = s.m;
         }
-        s.kind = 2;
+        s.kind = NUM_TWO;
     } else {
         s.m -= GetTNDRightDownRowShift(s.m, s.n);
-        s.kind = 3;
+        s.kind = NUM_THREE;
     }
     return s;
 }
