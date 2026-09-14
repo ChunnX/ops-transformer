@@ -69,28 +69,34 @@ def preprocessing(fa_param):
     fa_param["k_tensor_old"] = _clone(fa_param["k_tensor"])
     fa_param["k_shape_old"] = copy.deepcopy(fa_param["k_shape"])
 
-    q_new_tensor, q_new_shape = concat_tensor(
-        fa_param["q_tensor"],
-        fa_param["q_shape"],
-        fa_param["q_rope_tensor"],
-        fa_param["q_rope_shape"],
-        numHeads,
-        fa_param["tnd_flag"],
-    )
+    if fa_param.get("q_rope_tensor") is None:
+        q_new_tensor, q_new_shape = fa_param["q_tensor"], fa_param["q_shape"]
+    else:
+        q_new_tensor, q_new_shape = concat_tensor(
+            fa_param["q_tensor"],
+            fa_param["q_shape"],
+            fa_param["q_rope_tensor"],
+            fa_param["q_rope_shape"],
+            numHeads,
+            fa_param["tnd_flag"],
+        )
     if q_new_tensor is not None:
         fa_param["q_tensor"] = q_new_tensor
         fa_param["q_shape"] = q_new_shape
     else:
         print("[ERROR]q tensor的预处理异常，输出空tensor！")
 
-    k_new_tensor, k_new_shape = concat_tensor(
-        fa_param["k_tensor"],
-        fa_param["k_shape"],
-        fa_param["k_rope_tensor"],
-        fa_param["k_rope_shape"],
-        numKeyValueHeads,
-        fa_param["kv_tnd_flag"],
-    )
+    if fa_param.get("k_rope_tensor") is None:
+        k_new_tensor, k_new_shape = fa_param["k_tensor"], fa_param["k_shape"]
+    else:
+        k_new_tensor, k_new_shape = concat_tensor(
+            fa_param["k_tensor"],
+            fa_param["k_shape"],
+            fa_param["k_rope_tensor"],
+            fa_param["k_rope_shape"],
+            numKeyValueHeads,
+            fa_param["kv_tnd_flag"],
+        )
     if k_new_tensor is not None:
         fa_param["k_tensor"] = k_new_tensor
         fa_param["k_shape"] = k_new_shape
@@ -251,13 +257,17 @@ def get_param_fus(input_tensor_dict, params):
     fa_param["bt_dtype"] = trans_input_dtype(params["dtype_input"]["block_table"])
     fa_param["block_table"] = input_tensor_dict["block_table"]
 
-    fa_param["q_rope_shape"] = params["shape_input"]["query_rope"]
-    fa_param["q_rope_dtype"] = trans_input_dtype(params["dtype_input"]["query_rope"])
-    fa_param["q_rope_tensor"] = input_tensor_dict["query_rope"]
+    fa_param["q_rope_shape"] = params["shape_input"].get("query_rope")
+    fa_param["q_rope_dtype"] = trans_input_dtype(
+        params["dtype_input"].get("query_rope", params["dtype_input"]["query"])
+    )
+    fa_param["q_rope_tensor"] = input_tensor_dict.get("query_rope")
 
-    fa_param["k_rope_shape"] = params["shape_input"]["key_rope"]
-    fa_param["k_rope_dtype"] = trans_input_dtype(params["dtype_input"]["key_rope"])
-    fa_param["k_rope_tensor"] = input_tensor_dict["key_rope"]
+    fa_param["k_rope_shape"] = params["shape_input"].get("key_rope")
+    fa_param["k_rope_dtype"] = trans_input_dtype(
+        params["dtype_input"].get("key_rope", params["dtype_input"]["key"])
+    )
+    fa_param["k_rope_tensor"] = input_tensor_dict.get("key_rope")
 
     fa_param["sinks_shape"] = params["shape_input"].get("sinks")
     fa_param["sinks_dtype"] = trans_input_dtype(
@@ -313,6 +323,9 @@ def generate_input_tensors(params):
     ]
     raw = {}
     for key in tensor_keys:
+        if params.get("shape_input", {}).get(key) is None:
+            raw[key] = None
+            continue
         raw[key] = generate_tensor_data.gen_tensor_data(params, key)
 
     sinks = None
@@ -852,18 +865,16 @@ def kv_pa_preprocessing(input_tensor_dict, fa_param, params):
     k_dtype = _k_dtype_map.get(k_dtype_str)
 
     D = fa_param["k_shape_old"][-1]
-    rope_head_dim = fa_param["k_rope_shape"][-1]
+    has_rope = (
+        fa_param.get("_raw_key_rope") is not None
+        and fa_param.get("k_rope_shape") is not None
+    )
+    rope_head_dim = fa_param["k_rope_shape"][-1] if has_rope else 0
 
     B = len(fa_param["actualSeqLengths_kv"])
 
     k_tensor_bsnd = fa_param["_raw_key"].contiguous()
-    k_rope_tensor_bsnd = fa_param["_raw_key_rope"].contiguous()
-    k_rope_bsnd = (
-        fa_param["_raw_key_rope"]
-        if fa_param.get("_raw_key_rope") is not None
-        else fa_param["k_rope_tensor"]
-    )
-    k_rope_bsnd = k_rope_bsnd.contiguous()
+    k_rope_tensor_bsnd = fa_param["_raw_key_rope"].contiguous() if has_rope else None
     blockTableShape = fa_param["bt_shape"]
     k_cache_base = tensor_to_pa(
         k_tensor_bsnd,
@@ -876,17 +887,19 @@ def kv_pa_preprocessing(input_tensor_dict, fa_param, params):
         D,
         k_dtype,
     )
-    k_cache_rope = tensor_to_pa(
-        k_rope_tensor_bsnd,
-        block_table,
-        blockTableShape,
-        B,
-        params["block_num"],
-        blockSize,
-        N,
-        rope_head_dim,
-        k_dtype,
-    )
+    k_cache_rope = None
+    if has_rope:
+        k_cache_rope = tensor_to_pa(
+            k_rope_tensor_bsnd,
+            block_table,
+            blockTableShape,
+            B,
+            params["block_num"],
+            blockSize,
+            N,
+            rope_head_dim,
+            k_dtype,
+        )
 
     input_tensor_dict["key_cache"] = k_cache_base
     input_tensor_dict["value_cache"] = k_cache_base
@@ -909,16 +922,17 @@ def kv_pa_preprocessing(input_tensor_dict, fa_param, params):
         input_tensor_dict["key_cache"] = base_kv_nc
         input_tensor_dict["value_cache"] = base_kv_nc
 
-        base_rope = k_cache_rope
-        blockFusion_rope = torch.zeros(
-            (block_num, blocksize_with_stride * N * rope_head_dim), dtype=k_dtype
-        )
-        rope_flat = base_rope.reshape(block_num, blockSize * N * rope_head_dim)
-        blockFusion_rope[:, : blockSize * N * rope_head_dim] = rope_flat
-        base_kvrope_nc = blockFusion_rope[:, : blockSize * N * rope_head_dim].view(
-            block_num, blockSize, N, rope_head_dim
-        )
-        input_tensor_dict["key_rope_cache"] = base_kvrope_nc
+        if has_rope:
+            base_rope = k_cache_rope
+            blockFusion_rope = torch.zeros(
+                (block_num, blocksize_with_stride * N * rope_head_dim), dtype=k_dtype
+            )
+            rope_flat = base_rope.reshape(block_num, blockSize * N * rope_head_dim)
+            blockFusion_rope[:, : blockSize * N * rope_head_dim] = rope_flat
+            base_kvrope_nc = blockFusion_rope[:, : blockSize * N * rope_head_dim].view(
+                block_num, blockSize, N, rope_head_dim
+            )
+            input_tensor_dict["key_rope_cache"] = base_kvrope_nc
 
 
 def kv_nopa_preprocessing(input_tensor_dict, fa_param):

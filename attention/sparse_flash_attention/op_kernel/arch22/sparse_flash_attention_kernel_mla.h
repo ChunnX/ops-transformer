@@ -446,8 +446,15 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
     valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
-    qRopeGm.SetGlobalBuffer((__gm__ Q_ROPE_T *)queryRope);
-    kRopeGm.SetGlobalBuffer((__gm__ K_ROPE_T *)keyRope);
+    if (queryRope != nullptr) {
+        qRopeGm.SetGlobalBuffer((__gm__ Q_ROPE_T *)queryRope);
+        constInfo.headDimRope = headDimRope;
+    } else {
+        constInfo.headDimRope = 0;
+    }
+    if (keyRope != nullptr) {
+        kRopeGm.SetGlobalBuffer((__gm__ K_ROPE_T *)keyRope);
+    }
 
     attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
     softmaxMaxGm.SetGlobalBuffer((__gm__ T *)softmaxMax);
@@ -675,13 +682,13 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
     info.tndBIdxOffsetForKV = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDim;
 
     if (info.isFirstSInnerLoop) {
-        uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * headDimRope;
+        uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.headDimRope;
         tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * headDim;
-        tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * headDimRope;
+        tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * constInfo.headDimRope;
 
-        uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDimRope;
+        uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * constInfo.headDimRope;
         tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * headDim;
-        tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * headDimRope;
+        tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * constInfo.headDimRope;
         if (constInfo.sparseMode == 3) {
             threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + info.gS1Idx / constInfo.gSize + 1;
         } else {

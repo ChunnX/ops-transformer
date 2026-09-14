@@ -156,10 +156,12 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
+    constInfo.dSizeNope = 512;
+    constInfo.dSizeRope = (queryRope != nullptr) ? 64 : 0;
 
     this->pipe = tPipe;
     vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx,
-                          actualSeqLengthsQ, actualSeqLengths);
+                          actualSeqLengthsQ, actualSeqLengths, constInfo.dSizeRope);
     if ASCEND_IS_AIV {
         constInfo.bSize = this->sharedParams.bSize;
         constInfo.gSize = this->sharedParams.gSize;
@@ -350,7 +352,10 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
-    uint32_t mm1RightSize = constInfo.s2BaseSize * 576 * sizeof(Q_T);
+    const uint32_t kvTokenWidth = constInfo.dSizeNope + constInfo.dSizeRope;
+    // P 复用 rope 槽位，L1 right 宽度固定为 dNope+64
+    constexpr uint32_t D_ROPE_OR_P = 64;
+    uint32_t mm1RightSize = constInfo.s2BaseSize * (constInfo.dSizeNope + D_ROPE_OR_P) * sizeof(Q_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
@@ -382,7 +387,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         bmm1Buffers.Get().SetCrossCore();
     }
 
-    uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
+    uint32_t v0ResSize = constInfo.s2BaseSize * kvTokenWidth * sizeof(Q_T);
     int64_t totalOffset;
     if constexpr (IS_SPLIT_G) {
         totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
@@ -422,7 +427,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.s2Size = sharedParams.s2Size;
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeVInput = sharedParams.dSizeVInput;
-    constInfo.dSizeRope = 64;
+    constInfo.dSizeRope = sharedParams.dSizeRope;
     constInfo.dSizeNope = 512;
     constInfo.tileSize = sharedParams.tileSize;
     constInfo.sparseBlockCount = sharedParams.sparseBlockCount;

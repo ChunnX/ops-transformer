@@ -121,8 +121,8 @@ def check_valid_param(params):
         raise ValueError(f"g=N1/N2 仅支持 {sorted(SUPPORTED_G)}，当前: {N1 // N2}")
     if D != 512:
         raise ValueError(f"D 仅支持 512，当前: {D}")
-    if rope_head_dim != 64:
-        raise ValueError(f"rope_head_dim 仅支持 64，当前: {rope_head_dim}")
+    if rope_head_dim not in (0, 64):
+        raise ValueError(f"rope_head_dim 仅支持 0(None) 或 64，当前: {rope_head_dim}")
     if attention_mode != 2:
         raise ValueError(f"attention_mode 仅支持 2，当前: {attention_mode}")
     if sparse_mode not in (0, 3):

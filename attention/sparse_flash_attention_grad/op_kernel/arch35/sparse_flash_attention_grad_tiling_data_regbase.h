@@ -36,8 +36,6 @@ public:
     int64_t d1;
     int64_t totalSize;
     int64_t selectedBlockCount;
-    int64_t selectedBlockSize;
-    int64_t scatterWsRows;
     int64_t usedCoreNum;
     int64_t formerCoreNum;
     int64_t formerCoreProcessNNum;
@@ -84,14 +82,6 @@ public:
     int64_t get_selectedBlockCount() const
     {
         return selectedBlockCount;
-    }
-    int64_t get_selectedBlockSize() const
-    {
-        return selectedBlockSize;
-    }
-    int64_t get_scatterWsRows() const
-    {
-        return scatterWsRows;
     }
     int64_t get_usedCoreNum() const
     {
@@ -173,14 +163,6 @@ public:
     void set_selectedBlockCount(int64_t selectedBlockCountParam)
     {
         this->selectedBlockCount = selectedBlockCountParam;
-    }
-    void set_selectedBlockSize(int64_t selectedBlockSizeParam)
-    {
-        this->selectedBlockSize = selectedBlockSizeParam;
-    }
-    void set_scatterWsRows(int64_t scatterWsRowsParam)
-    {
-        this->scatterWsRows = scatterWsRowsParam;
     }
     void set_usedCoreNum(int64_t usedCoreNumParam)
     {
