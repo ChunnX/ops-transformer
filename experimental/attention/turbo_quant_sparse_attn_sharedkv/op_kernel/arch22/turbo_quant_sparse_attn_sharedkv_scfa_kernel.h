@@ -84,10 +84,14 @@ public:
 
     __aicore__ inline TurboQuantSparseAttnSharedkvScfaKernel(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-                                __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
-                                __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKV,
-                                __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
-                                __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
+                                __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
+                                __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKV,
+                                __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ,
+                                __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
+                                __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *oriTopkLength,
+                                __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
+                                __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                                 const TurboQuantSparseAttnSharedkvTilingData *__restrict tiling,
                                 __gm__ uint8_t *gmTiling, TPipe *tPipe);
@@ -342,7 +346,7 @@ __aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetActua
 template <typename SAST>
 __aicore__ inline int32_t TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetActualSeqLenKV(uint32_t bIdx)
 {
-    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+    if constexpr (PAGE_ATTENTION) {
         tempLoopInfo.actualSeqKVPrefixSum = static_cast<uint64_t>(bIdx * constInfo.kvSeqSize);
         if (constInfo.actualLenDimsKV == 0) {
             return static_cast<int32_t>(constInfo.kvSeqSize);
@@ -389,12 +393,14 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::UpdateInner
 
 template <typename SAST>
 __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-    __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
-    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, const TurboQuantSparseAttnSharedkvTilingData *__restrict tiling,
-    __gm__ uint8_t *gmTiling, TPipe *tPipe)
+    __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices,
+    __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKV, __gm__ uint8_t *cuSeqlensCmpKV,
+    __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV,
+    __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
+    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    const TurboQuantSparseAttnSharedkvTilingData *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -408,13 +414,13 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Init(
     tilingData = tiling;
     InitTilingData();
     if (KV_LAYOUT_T == SAS_LAYOUT::TND && LAYOUT_T == SAS_LAYOUT::TND) {
-        InitActualSeqLen(cuSeqlensQ, cuSeqlensKV, cuSeqlensCmpKV);
+        InitActualSeqLen(cuSeqlensQ, cuSeqlensOriKV, cuSeqlensCmpKV);
     } else if (KV_LAYOUT_T == SAS_LAYOUT::TND) {
-        InitActualSeqLen(seqUsedQ, cuSeqlensKV, cuSeqlensCmpKV);
-    } else if ((KV_LAYOUT_T == SAS_LAYOUT::PA_ND || KV_LAYOUT_T == SAS_LAYOUT::BSND) && LAYOUT_T == SAS_LAYOUT::TND) {
-        InitActualSeqLen(cuSeqlensQ, seqUsedKV);
-    } else if ((KV_LAYOUT_T == SAS_LAYOUT::PA_ND || KV_LAYOUT_T == SAS_LAYOUT::BSND)) {
-        InitActualSeqLen(seqUsedQ, seqUsedKV);
+        InitActualSeqLen(seqUsedQ, cuSeqlensOriKV, cuSeqlensCmpKV);
+    } else if ((PAGE_ATTENTION || KV_LAYOUT_T == SAS_LAYOUT::BSND) && LAYOUT_T == SAS_LAYOUT::TND) {
+        InitActualSeqLen(cuSeqlensQ, seqUsedOriKV);
+    } else if ((PAGE_ATTENTION || KV_LAYOUT_T == SAS_LAYOUT::BSND)) {
+        InitActualSeqLen(seqUsedQ, seqUsedOriKV);
     }
 
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);

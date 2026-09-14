@@ -34,6 +34,10 @@ std::vector<TensorDesc> Inputs(ge::DataType dtype = ge::DT_BF16)
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND}};
 }
@@ -54,7 +58,8 @@ std::vector<OpAttr> Attrs()
             {"ori_win_left", AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", AnyValue::CreateFrom<std::string>("PA_ND")},
+            {"layout_kv", AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"topk_value_mode", AnyValue::CreateFrom<int64_t>(1)},
             {"return_softmax_lse", AnyValue::CreateFrom<bool>(false)},
             {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(3)}};
 }
@@ -95,6 +100,67 @@ TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsBf16AndFp16Scfa)
     }
 }
 
+TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsPagedKvLayouts)
+{
+    for (const std::string &layout : {"PA_BSND", "PA_BNSD", "PA_ND"}) {
+        auto inputs = Inputs();
+        if (layout == "PA_BNSD") {
+            inputs[1] = {{{65, 1, 128, 512}, {65, 1, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND};
+            inputs[2] = {{{17, 1, 128, 258}, {17, 1, 128, 258}}, ge::DT_UINT8, ge::FORMAT_ND};
+        }
+        TilingInfo info;
+        EXPECT_TRUE(RunTilingCase(inputs, AttrsWith("layout_kv", AnyValue::CreateFrom<std::string>(layout)), info))
+            << layout;
+    }
+}
+
+TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsOriginalFaBlockSizesAndStridedCaches)
+{
+    for (int64_t blockSize : {16, 128, 1024}) {
+        auto inputs = Inputs();
+        inputs[1] = {{{65, blockSize, 1, 512}, {65, blockSize, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND};
+        inputs[2] = {{{17, blockSize, 1, 258}, {17, blockSize, 1, 258}}, ge::DT_UINT8, ge::FORMAT_ND};
+        auto attrs = AttrsWith("ori_kv_stride", AnyValue::CreateFrom<int64_t>(blockSize * 512 + 37));
+        for (auto &attr : attrs) {
+            if (attr.attrName_ == "cmp_kv_stride") {
+                attr.attr_ = AnyValue::CreateFrom<int64_t>(blockSize * 258 + 19);
+            }
+        }
+        TilingInfo info;
+        EXPECT_TRUE(RunTilingCase(inputs, attrs, info)) << blockSize;
+    }
+}
+
+TEST(TurboQuantSparseAttnSharedkvTiling, RejectsInvalidPageBlockSizes)
+{
+    for (int64_t blockSize : {15, 17, 1040}) {
+        auto inputs = Inputs();
+        inputs[1] = {{{65, blockSize, 1, 512}, {65, blockSize, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND};
+        inputs[2] = {{{17, blockSize, 1, 258}, {17, blockSize, 1, 258}}, ge::DT_UINT8, ge::FORMAT_ND};
+        auto attrs = AttrsWith("ori_kv_stride", AnyValue::CreateFrom<int64_t>(blockSize * 512));
+        for (auto &attr : attrs) {
+            if (attr.attrName_ == "cmp_kv_stride") {
+                attr.attr_ = AnyValue::CreateFrom<int64_t>(blockSize * 258);
+            }
+        }
+        TilingInfo info;
+        EXPECT_FALSE(RunTilingCase(inputs, attrs, info)) << blockSize;
+    }
+}
+
+TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsZeroQueryTokens)
+{
+    auto inputs = Inputs();
+    inputs[0] = {{{0, 64, 512}, {0, 64, 512}}, ge::DT_BF16, ge::FORMAT_ND};
+    inputs[4] = {{{0, 1, 512}, {0, 1, 512}}, ge::DT_INT32, ge::FORMAT_ND};
+    std::vector<TensorDesc> outputs = {
+        {{{0, 64, 512}, {0, 64, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},
+    };
+    TilingInfo info;
+    EXPECT_TRUE(RunTilingCaseWithOutputs(inputs, outputs, Attrs(), info));
+}
+
 TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsModelConfiguredSlidingWindow)
 {
     for (int64_t oriWinLeft : {0, 127, 255}) {
@@ -119,7 +185,7 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongTurboQuantContract)
          std::vector<std::pair<std::string, AnyValue>>{{"cmp_ratio", AnyValue::CreateFrom<int64_t>(8)},
                                                        {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(0)},
                                                        {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(1)},
-                                                       {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(33025)},
+                                                       {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(33023)},
                                                        {"ori_mask_mode", AnyValue::CreateFrom<int64_t>(3)},
                                                        {"cmp_mask_mode", AnyValue::CreateFrom<int64_t>(4)},
                                                        {"ori_win_left", AnyValue::CreateFrom<int64_t>(-1)},
@@ -180,12 +246,12 @@ TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongAuxiliaryInput)
     EXPECT_FALSE(RunTilingCase(sequsedQ, Attrs(), sequsedQInfo));
 
     auto wrongSinks = Inputs();
-    wrongSinks[12] = {{{63}, {63}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    wrongSinks[16] = {{{63}, {63}}, ge::DT_FLOAT, ge::FORMAT_ND};
     TilingInfo wrongSinksInfo;
     EXPECT_FALSE(RunTilingCase(wrongSinks, Attrs(), wrongSinksInfo));
 
     auto wrongMetadata = Inputs();
-    wrongMetadata[13] = {{{512}, {512}}, ge::DT_INT32, ge::FORMAT_ND};
+    wrongMetadata[17] = {{{512}, {512}}, ge::DT_INT32, ge::FORMAT_ND};
     TilingInfo wrongMetadataInfo;
     EXPECT_FALSE(RunTilingCase(wrongMetadata, Attrs(), wrongMetadataInfo));
 

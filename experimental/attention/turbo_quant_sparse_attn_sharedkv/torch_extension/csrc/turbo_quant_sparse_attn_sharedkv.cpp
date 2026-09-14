@@ -18,8 +18,9 @@ namespace op_api {
 namespace {
 std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &q, bool returnSoftmaxLse)
 {
-    for (const auto size : q.sizes()) {
-        TORCH_CHECK(size > 0, "All values within query's shape should be greater than 0");
+    TORCH_CHECK(q.dim() == 3, "query must use TND layout");
+    for (int64_t dim = 1; dim < q.dim(); ++dim) {
+        TORCH_CHECK(q.size(dim) > 0, "query's N and D dimensions must be greater than 0");
     }
     at::Tensor attnOut = at::empty(q.sizes(), q.options());
     at::Tensor softmaxLse;
@@ -40,25 +41,33 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
     const c10::optional<at::Tensor> &oriBlockTable, const c10::optional<at::Tensor> &cmpBlockTable,
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensOriKv,
     const c10::optional<at::Tensor> &cuSeqlensCmpKv, const c10::optional<at::Tensor> &sequsedQ,
-    const c10::optional<at::Tensor> &sequsedKv, const c10::optional<at::Tensor> &sinks,
+    const c10::optional<at::Tensor> &sequsedOriKv, const c10::optional<at::Tensor> &sequsedCmpKv,
+    const c10::optional<at::Tensor> &cmpResidualKv, const c10::optional<at::Tensor> &oriTopkLength,
+    const c10::optional<at::Tensor> &cmpTopkLength, const c10::optional<at::Tensor> &sinks,
     const c10::optional<at::Tensor> &metadata, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
-    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ, c10::string_view layoutKv,
-    bool returnSoftmaxLse, int64_t kvQuantMode)
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ,
+    c10::string_view layoutKv, int64_t topkValueMode, bool returnSoftmaxLse, int64_t oriKvStride,
+    int64_t cmpKvStride, int64_t kvQuantMode)
 {
     std::string layoutQStr(layoutQ);
     std::string layoutKvStr(layoutKv);
     auto outputs = ConstructOutputs(q, returnSoftmaxLse);
     at::Tensor attnOut = std::get<0>(outputs);
     at::Tensor softmaxLse = std::get<1>(outputs);
-    int64_t oriKvStride = oriKv.has_value() ? oriKv.value().stride(0) : 0;
-    int64_t cmpKvStride = cmpKv.has_value() ? cmpKv.value().stride(0) : 0;
+    if (oriKv.has_value()) {
+        oriKvStride = oriKv.value().stride(0);
+    }
+    if (cmpKv.has_value()) {
+        cmpKvStride = cmpKv.value().stride(0);
+    }
     char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
     char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
 
     ACLNN_CMD(aclnnTurboQuantSparseAttnSharedkv, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
-              cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedKv, sinks, metadata,
-              softmaxScale, cmpRatio, oriMaskMode, cmpMaskMode, oriKvStride, cmpKvStride, oriWinLeft, oriWinRight,
-              layoutQPtr, layoutKvPtr, returnSoftmaxLse, kvQuantMode, attnOut, softmaxLse);
+              cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv,
+              cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, softmaxScale, cmpRatio, oriMaskMode,
+              cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr, topkValueMode, returnSoftmaxLse,
+              oriKvStride, cmpKvStride, kvQuantMode, attnOut, softmaxLse);
     return {attnOut, softmaxLse};
 }
 

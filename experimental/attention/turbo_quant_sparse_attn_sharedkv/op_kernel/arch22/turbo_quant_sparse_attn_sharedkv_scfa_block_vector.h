@@ -666,7 +666,7 @@ __aicore__ inline int64_t TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Get
         return -1;
     }
     int64_t realKeyGmOffset = 0;
-    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
         int64_t blkTableIdx = realS2Idx / constInfo.paCmpBlockSize;
         int64_t blkTableOffset = realS2Idx % constInfo.paCmpBlockSize;
         int64_t blockId = blkTableIdx < static_cast<int64_t>(blockTableCacheSize) ?
@@ -791,7 +791,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopyIn
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
-    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
         DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
                               (mte2Size - mte3Size) * constInfo.headDim],
                     cmpKvGm_[keyBNBOffset], intriParams, padParams);
@@ -843,7 +843,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopyIn
     }
 
     int64_t keySrcStride = 0;
-    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
         int64_t blkTableSrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) : (keyOffset2 - keyOffset1)) -
                                      constInfo.sparseBlockSize * constInfo.headDim);
         keySrcStride = blkTableSrcStride * sizeof(KV_T);
@@ -874,7 +874,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::CopyIn
         if (keyOffset2 > -1 && keyOffset2 < keyOffset1) {
             startGmOffset = keyOffset2;
         }
-        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
             DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T) +
                                   (mte2Size - mte3Size) * constInfo.headDim],
                         cmpKvGm_[startGmOffset], intriParams, padParams);
@@ -958,7 +958,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Proces
             topkCacheSize = static_cast<uint32_t>(requiredTopkCount);
             hasIndexPrefetch = true;
         }
-        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_ND) {
+        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
             int64_t requiredBlockTableCount =
                 runInfo.cmpS2IdLimit > 0 ?
                     CeilDiv(runInfo.cmpS2IdLimit, static_cast<int64_t>(constInfo.paCmpBlockSize)) :
