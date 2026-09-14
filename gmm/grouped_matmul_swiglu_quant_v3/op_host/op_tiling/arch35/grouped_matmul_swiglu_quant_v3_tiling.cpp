@@ -338,10 +338,11 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!CheckShapeAndScale(xShape, xScaleShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
                 OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckOutputShape(), OP_LOGE(context_->GetNodeName(), "output shape validation failed"), return false);
-    // Modes 0/2/3 share the Tensor API movement/layout path.  Mode 1 needs
-    // the common CGMCT path because its even/odd de-interleave is performed
-    // in the CGMCT vector epilogue.  Unaligned K also stays on CGMCT.
-    useTensorApi_ = swigluMode_ != 1 && (inputParams_.kSize % 128U) == 0U;
+    // All SwiGLU modes share the Tensor API movement/layout path when K is
+    // 128-aligned.  Mode 1 de-interleaves the continuous 2*N accumulator in
+    // the Blaze vector epilogue; it does not require a separate tiling key.
+    // Unaligned K stays on the CGMCT compatibility path.
+    useTensorApi_ = (inputParams_.kSize % 128U) == 0U;
     return true;
 }
 

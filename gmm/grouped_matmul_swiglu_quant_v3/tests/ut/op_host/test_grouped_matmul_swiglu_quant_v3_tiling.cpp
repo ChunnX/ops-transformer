@@ -160,7 +160,7 @@ vector<TilingCase> MakeCases()
                     c.mode = mode;
                     c.k = k;
                     c.scaleAlg = scaleAlg;
-                    c.expectedKey = mode != 1 && k % 128 == 0
+                    c.expectedKey = k % 128 == 0
                                          ? (transpose ? GMM_SWIGLU_QUANT_V3_TENSOR_API_ZN
                                                       : GMM_SWIGLU_QUANT_V3_TENSOR_API_NZ)
                                          : (transpose ? GMM_SWIGLU_QUANT_V3_CGMCT_ZN
