@@ -78,6 +78,13 @@ COLUMN_MAP = {
     'metadata':            None,
     'max_seqlen_q':        'max_seqlen_q',
     'max_seqlen_kv':       'max_seqlen_kv',
+    # ---- 格式3: rel 相对位置偏置列 ----
+    'H':                   'H',
+    'W':                   'W',
+    'rel_h_size':          'H',
+    'rel_w_size':          'W',
+    'rel_mode':            'rel_mode',
+    'rel_range':           'rel_range',
     # ---- 格式2: varlen 测试表 ----
     'testcase_name':       '_key_',
     'enable':              '_enable_',
@@ -121,6 +128,7 @@ KEY_ORDER = [
     'block_table', 'block_size',
     'atten_mask_dtype', 'atten_mask_layout',
     'return_softmax_lse',
+    'H', 'W', 'rel_mode', 'rel_range',
 ]
 
 
@@ -266,7 +274,7 @@ def convert_row(headers, row_values):
             continue
 
         # ---- 整数标量 ----
-        if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'mask_mode', 'block_size',
+        if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'H', 'W', 'mask_mode', 'block_size',
                    'win_left', 'win_right', 'max_seqlen_q', 'max_seqlen_kv'):
             case_dict[key] = [int(float(val))]
 
@@ -279,7 +287,7 @@ def convert_row(headers, row_values):
             case_dict[key] = [DTYPE_MAP.get(val_str.upper(), val_str.lower())]
 
         # ---- 数据范围 (-10,10) → (-10.0, 10.0) ----
-        elif key in ('q_range', 'k_range', 'v_range'):
+        elif key in ('q_range', 'k_range', 'v_range', 'rel_range'):
             r = parse_data_range(val)
             if r is not None:
                 case_dict[key] = [r]
@@ -307,8 +315,8 @@ def convert_row(headers, row_values):
             elif val_str.lower() in ('false', '0', 'no'):
                 case_dict[key] = [False]
 
-        # ---- 字符串透传 (atten_mask_dtype, atten_mask_layout 等) ----
-        elif key in ('atten_mask_dtype', 'atten_mask_layout'):
+        # ---- 字符串透传 (rel_mode, atten_mask_dtype, atten_mask_layout 等) ----
+        elif key in ('rel_mode', 'atten_mask_dtype', 'atten_mask_layout'):
             case_dict[key] = [val_str]
 
     # block_table 由 shape 自动生成
