@@ -143,9 +143,9 @@ struct TilingCase {
         ASSERT_GE(info.tilingDataSize, sizeof(optiling::GMMSwigluQuantV3TilingDataParams));
         const auto *data = reinterpret_cast<const optiling::GMMSwigluQuantV3TilingDataParams *>(info.tilingData.get());
         ASSERT_NE(data, nullptr);
-        EXPECT_EQ(data->gmmSwigluQuantParams.swigluMode, mode);
-        EXPECT_EQ(data->gmmSwigluQuantParams.scaleAlg, static_cast<uint8_t>(scaleAlg));
-        EXPECT_EQ(data->gmmSwigluQuantParams.axis, -1);
+        EXPECT_EQ(data->gmmSwigluQuantParams.get_swigluMode(), mode);
+        EXPECT_EQ(data->gmmSwigluQuantParams.get_scaleAlg(), static_cast<uint8_t>(scaleAlg));
+        EXPECT_EQ(data->gmmSwigluQuantParams.get_axis(), -1);
     }
 };
 
