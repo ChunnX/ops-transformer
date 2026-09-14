@@ -419,7 +419,8 @@ public:
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
                     epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, (gatheredKvSTileIdx == 0), ubSBufId,
-                                          l1PBufId, mm1ToSmFlag, smToMm2Flag);
+                                          l1PBufId, mm1ToSmFlag, smToMm2Flag, qHeadIdx, qSOffset,
+                                          gatheredKvSTileIdx);
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {

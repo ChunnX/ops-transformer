@@ -129,7 +129,7 @@ public:
         // Dump the raw MM2 FixPipe tile before RescaleO.  A Q-tail tile with
         // sub-block 1 is the failing region observed by the golden test.
         if constexpr (FULL_QUANT_HIF8) {
-            if (rowNumCurSubCore < 64 && AscendC::GetSubBlockIdx() == 1) {
+            if (AscendC::GetBlockIdx() == 8 && AscendC::GetSubBlockIdx() == 0) {
             AscendC::printf("[BSA HIF8 DBG] OTmp core=%u sub=%u rows=%u cols=%u buf=%u firstKV=%u lastKV=%u\n",
                             AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
                             colNumCurSubCore, ubOTmpBufId, static_cast<uint32_t>(isFirstKvSTile),
@@ -196,7 +196,7 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
 #if BSA_HIF8_DEBUG_DUMP
             if constexpr (FULL_QUANT_HIF8) {
-                if (rowNumCurSubCore < 64 && AscendC::GetSubBlockIdx() == 1) {
+                if (AscendC::GetBlockIdx() == 8 && AscendC::GetSubBlockIdx() == 0) {
                     AscendC::printf("[BSA HIF8 DBG] O-f32-before-cast core=%u sub=%u rows=%u cols=%u\n",
                                     AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
                                     colNumCurSubCore);
@@ -219,7 +219,7 @@ public:
             auto ubOTensorTla = tla::MakeTensor(goUbTensor16, ubOLayoutTla, Arch::PositionUB{});
 #if BSA_HIF8_DEBUG_DUMP
             if constexpr (FULL_QUANT_HIF8) {
-                if (rowNumCurSubCore < 64 && AscendC::GetSubBlockIdx() == 1) {
+                if (AscendC::GetBlockIdx() == 8 && AscendC::GetSubBlockIdx() == 0) {
                     AscendC::printf("[BSA HIF8 DBG] O-final core=%u sub=%u rows=%u cols=%u\n",
                                     AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
                                     colNumCurSubCore);
