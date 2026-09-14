@@ -44,9 +44,9 @@ if _TORCHAIR_AVAILABLE:
         block_table: Optional[Tensor] = None,
         atten_mask: Optional[Tensor] = None,
         metadata: Optional[Tensor] = None,
-        softmax_scale: float,
-        sparse_q_block_size: int,
-        sparse_kv_block_size: int,
+        softmax_scale: float = 1.0,
+        sparse_q_block_size: int = 128,
+        sparse_kv_block_size: int = 128,
         layout_kv: str = "PA_BNBD",
         layout_q: str = "TND",
         layout_sparse_indices: str = "B_N_Qb_Kb",
@@ -106,13 +106,13 @@ if _TORCHAIR_AVAILABLE:
             .optional_input("block_table", "DT_INT32")
             .optional_input("atten_mask", "DT_UINT8")
             .optional_input("metadata", "DT_INT32")
-            .required_attr("softmax_scale", attr.Float)
-            .required_attr("sparse_q_block_size", attr.Int)
-            .required_attr("sparse_kv_block_size", attr.Int)
-            .required_attr("layout_kv", attr.Str)
-            .required_attr("layout_q", attr.Str)
-            .required_attr("layout_sparse_indices", attr.Str)
-            .required_attr("layout_out", attr.Str)
+            .attr("softmax_scale", attr.Float(1.0))
+            .attr("sparse_q_block_size", attr.Int(128))
+            .attr("sparse_kv_block_size", attr.Int(128))
+            .attr("layout_kv", attr.Str("PA_BNBD"))
+            .attr("layout_q", attr.Str("TND"))
+            .attr("layout_sparse_indices", attr.Str("B_N_Qb_Kb"))
+            .attr("layout_out", attr.Str("TND"))
             .attr("quant_mode", attr.Int(1))
             .attr("mask_mode", attr.Int(3))
             .attr("return_softmax_lse", attr.Bool(False))
@@ -141,9 +141,9 @@ if _TORCHAIR_AVAILABLE:
         block_table: Optional[Tensor] = None,
         atten_mask: Optional[Tensor] = None,
         metadata: Optional[Tensor] = None,
-        softmax_scale: float,
-        sparse_q_block_size: int,
-        sparse_kv_block_size: int,
+        softmax_scale: float = 1.0,
+        sparse_q_block_size: int = 128,
+        sparse_kv_block_size: int = 128,
         layout_kv: str = "PA_BNBD",
         layout_q: str = "TND",
         layout_sparse_indices: str = "B_N_Qb_Kb",

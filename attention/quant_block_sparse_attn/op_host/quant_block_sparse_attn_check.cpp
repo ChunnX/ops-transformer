@@ -386,17 +386,15 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckBlockSize() const
         }
     } else {
         const auto &opParamInfo = tilingInfo_.opParamInfo;
-        if (opParamInfo.qBlockSize == nullptr || opParamInfo.kvBlockSize == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "sparse_q_block_size/sparse_kv_block_size", "nullptr",
-                                                  "Both attributes are required in quant_mode=1");
-            return ge::GRAPH_FAILED;
-        }
-        if (*opParamInfo.qBlockSize != static_cast<int64_t>(QBSA_BLOCK_SIZE) ||
-            *opParamInfo.kvBlockSize != static_cast<int64_t>(QBSA_BLOCK_SIZE)) {
-            OP_LOGE_FOR_INVALID_VALUE(
-                kOpName, "sparse_q_block_size/sparse_kv_block_size",
-                std::to_string(*opParamInfo.qBlockSize) + "/" + std::to_string(*opParamInfo.kvBlockSize),
-                std::to_string(QBSA_BLOCK_SIZE));
+        const int64_t qBlockSize =
+            opParamInfo.qBlockSize == nullptr ? static_cast<int64_t>(QBSA_BLOCK_SIZE) : *opParamInfo.qBlockSize;
+        const int64_t kvBlockSize =
+            opParamInfo.kvBlockSize == nullptr ? static_cast<int64_t>(QBSA_BLOCK_SIZE) : *opParamInfo.kvBlockSize;
+        if (qBlockSize != static_cast<int64_t>(QBSA_BLOCK_SIZE) ||
+            kvBlockSize != static_cast<int64_t>(QBSA_BLOCK_SIZE)) {
+            OP_LOGE_FOR_INVALID_VALUE(kOpName, "sparse_q_block_size/sparse_kv_block_size",
+                                      std::to_string(qBlockSize) + "/" + std::to_string(kvBlockSize),
+                                      std::to_string(QBSA_BLOCK_SIZE));
             return ge::GRAPH_FAILED;
         }
     }

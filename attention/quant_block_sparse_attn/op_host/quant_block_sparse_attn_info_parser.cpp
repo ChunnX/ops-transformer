@@ -308,7 +308,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     }
 
     tilingInfo.softmaxScaleVal = QBSAGetFloatAttr(attrs, QBSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F);
-    tilingInfo.maskModeVal = QBSAGetUintAttr(attrs, QBSA_MASK_MODE_ATTR_INDEX, 0U);
+    tilingInfo.maskModeVal = QBSAGetUintAttr(attrs, QBSA_MASK_MODE_ATTR_INDEX, QBSA_MASK_MODE_CAUSAL);
     tilingInfo.quantModeVal = QBSAGetUintAttr(attrs, QBSA_QUANT_MODE_ATTR_INDEX, QBSA_QUANT_MODE_FP8);
     tilingInfo.layoutQStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
     tilingInfo.layoutKVStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_KV_ATTR_INDEX, "PA_BNBD");
