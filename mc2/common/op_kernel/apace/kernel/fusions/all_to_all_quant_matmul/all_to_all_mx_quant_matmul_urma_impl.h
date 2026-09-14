@@ -34,12 +34,13 @@
 #include "apace/core/aiv_comm/collective_comm_context.h"
 #include "apace/tiling/comm_tiling_data.h"
 #include "apace/core/aiv_comm/barrier/barrier_ubmem.h"
+#include "../../../utils/op_state_dump.h"
 
 namespace Apace {
 
 using namespace AscendC;
 using namespace Blaze::Gemm;
-using AscendC::Te::Get;
+using asc::te::get;
 using namespace Apace::AivComm;
 
 struct UrmaCommWaitPolicy {
@@ -50,7 +51,7 @@ struct UrmaCommWaitPolicy {
 };
 
 // 定义问题形状：[M, N, K, Batch]
-using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
 
 /**
  * @brief All2All-Matmul 核心实现类 (Hcomm GET 版本，计算通信融合)
@@ -70,7 +71,7 @@ public:
      * @brief 初始化算子状态和参数
      */
     __aicore__ inline void Init(__gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM,
-                                GM_ADDR scaleBGM, GM_ADDR cGM, GM_ADDR biasGM,
+                                GM_ADDR scaleBGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR workspaceGM,
                                 const allToAllMatmulTilingData *tilingData);
     /**
      * @brief 执行算子逻辑（包含 AIC/AIV 分离逻辑）
@@ -86,17 +87,17 @@ public:
 
     // Layout 定义
     using LayoutA =
-        typename AscendC::Std::conditional_t<TransA, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
+        typename AscendC::Std::conditional_t<TransA, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
     using LayoutB =
-        typename AscendC::Std::conditional_t<TransB, AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>;
-    using LayoutC = AscendC::Te::NDExtLayoutPtn;
-    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+        typename AscendC::Std::conditional_t<TransB, asc::te::dn_ext_layout_ptn, asc::te::nd_ext_layout_ptn>;
+    using LayoutC = asc::te::nd_ext_layout_ptn;
+    using LayoutBias = asc::te::nd_ext_layout_ptn;
     using BiasType = float;
-    using LayoutScaleA = typename AscendC::Te::FrameLayoutFormat<
-        AscendC::Std::conditional_t<TransA, AscendC::Te::ScaleADNLayoutPtn, AscendC::Te::ScaleANDLayoutPtn>,
+    using LayoutScaleA = typename asc::te::frame_layout_format<
+        AscendC::Std::conditional_t<TransA, asc::te::scalea_dn_layout_ptn, asc::te::scalea_nd_layout_ptn>,
         AscendC::Std::Int<SCALE_C0>>;
-    using LayoutScaleB = typename AscendC::Te::FrameLayoutFormat<
-        AscendC::Std::conditional_t<TransB, AscendC::Te::ScaleBDNLayoutPtn, AscendC::Te::ScaleBNDLayoutPtn>,
+    using LayoutScaleB = typename asc::te::frame_layout_format<
+        AscendC::Std::conditional_t<TransB, asc::te::scaleb_dn_layout_ptn, asc::te::scaleb_nd_layout_ptn>,
         AscendC::Std::Int<SCALE_C0>>;
 
     // 组件定义
@@ -147,7 +148,10 @@ private:
     } baseParams_;
 
     const allToAllMatmulTilingData *tilingData_{nullptr};
-
+    Mc2Kernel::OpStateDump opStateDump_{};
+    static constexpr uint8_t POS_COMM_BEFORE = 0U;
+    static constexpr uint8_t POS_COMP_CUBE_MATMUL_BEFORE = 1U;
+    static constexpr uint8_t POS_COMP_LOCAL_BEFORE = 2U;
     // ---------------- 私有方法 ----------------
     __aicore__ inline void InitBaseParams(const allToAllMatmulTilingData *tilingData);
     __aicore__ inline void SetupParams(const QuantMatmulTilingData *mmTile, Params &out, MatmulMode matmulMode);
@@ -164,7 +168,7 @@ private:
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::Init(
     __gm__ CommContext *hcommCtx, GM_ADDR aGM, GM_ADDR scaleAGM, GM_ADDR bGM, GM_ADDR scaleBGM, GM_ADDR cGM,
-    GM_ADDR biasGM, const allToAllMatmulTilingData *tilingData)
+    GM_ADDR biasGM, GM_ADDR workspaceGM, const allToAllMatmulTilingData *tilingData)
 {
     tilingData_ = tilingData;
     baseParams_.aGm = aGM;
@@ -173,6 +177,9 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     baseParams_.scaleBGm = scaleBGM;
     baseParams_.cGm = cGM;
     baseParams_.biasGm = biasGM;
+#if MC2_DFX_ENABLE
+    opStateDump_.Init(workspaceGM, &tilingData->dumpInfo.workspaceLayout, tilingData->tileQbmmTilingData.usedCoreNum);
+#endif
 
     syncBuffer_ = &(hcommCtx->ubmemCtx);
     udmaCtx_ = &(hcommCtx->udmaCtx);
@@ -183,18 +190,18 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     baseParams_.selfWinAddr = reinterpret_cast<GM_ADDR>(udmaCtx_->commBufferAddrs[baseParams_.rankId]);
     uint32_t ubOffset = 0;
-    auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset); // 用512B
+    auto commBuf = asc::te::make_mem_ptr<asc::te::location::ub, uint8_t>(ubOffset); // 用512B
     ubOffset += COMM_WORKSPACE_SIZE;
-    auto commScaleBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset); // 用512B
+    auto commScaleBuf = asc::te::make_mem_ptr<asc::te::location::ub, uint8_t>(ubOffset); // 用512B
     ubOffset += COMM_WORKSPACE_SIZE;
-    auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
-    teamBarrier_.Init(barrierBuf.Get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
+    auto barrierBuf = asc::te::make_mem_ptr<asc::te::location::ub, uint8_t>(ubOffset);
+    teamBarrier_.Init(barrierBuf.get(), syncBuffer_, baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
     allToAllA_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, tilingData->commTilingData, baseParams_.aGm,
-                                           commBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
+                                           commBuf.get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
     allToAllScaleA_.Init(udmaCtx_, teamBarrier_, tilingData->scaleCommTilingData, baseParams_.scaleAGm,
-                         commScaleBuf.Get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
+                         commScaleBuf.get(), baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()),
                          baseParams_.rankSize * baseParams_.rankDataBytes);
 }
 
@@ -220,12 +227,15 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
 __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA, TransB>::RunAllToAll()
 {
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMM_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_COMMIT));
     for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
         // 必选保证baseParams_.rankSize <= BlockNum
         if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
             allToAllScaleA_.Commit();
             allToAllA_.Commit();
+            opStateDump_.DoDump(DUMP_FIELD_COMMIT);
             allToAllA_.template Wait<BARRIER_DEVICE>(); // scale的通信和a矩阵的通信使用同一channel，因此只需要wait一次
+            opStateDump_.DoDump(DUMP_FIELD_WAIT);
         }
 
         AscendC::SyncAll<true>();
@@ -234,7 +244,7 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 
     allToAllScaleA_.Finalize();
     allToAllA_.Finalize();
-
+    opStateDump_.DoDump(DUMP_FIELD_PHASE, 0, static_cast<uint8_t>(Utils::RT_PHASE_COMM_FINALIZE));
     // 通信接口使用了 channel 内的字段，需要刷新 GM 地址保证跨 kernel launch 的 GM 状态与 aiCore cache 一致
     // 后续通信接口会内置刷 cache 机制，届时可移除此处调用
     dcci(reinterpret_cast<__gm__ void *>(udmaCtx_->commBufferAddrs),
@@ -319,7 +329,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
 {
     Params localParams;
     SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
-    quantMatmulKernelImpl_(localParams);
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMP_LOCAL_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT));
+    quantMatmulKernelImpl_(localParams, opStateDump_);
 }
 
 template <typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -333,7 +344,8 @@ __aicore__ inline void AllToAllMxQuantMatmulUrmaImpl<AType, BType, CType, TransA
     params.mmadParams.cGmAddr = baseParams_.cGm;
     params.localParams.localAGmAddr = baseParams_.aGm;
     params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
-    quantMatmulKernelImpl_(params);
+    opStateDump_.DoDump(DUMP_FIELD_STEP, POS_COMP_CUBE_MATMUL_BEFORE, static_cast<uint8_t>(Utils::RT_PHASE_COMM_WAIT));
+    quantMatmulKernelImpl_(params, opStateDump_);
 }
 
 } // namespace Apace

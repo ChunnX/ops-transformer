@@ -131,6 +131,8 @@ _legacy_map = {
     "lightning_indexer": "attention.lightning_indexer_v2",
     "lightning_indexer_kl_loss": "attention.lightning_indexer_kl_loss",
     "mega_moe": "mc2.mega_moe",
+    "quant_reduce_scatter": "mc2.quant_reduce_scatter",
+    "quant_all_reduce": "mc2.quant_all_reduce",
     "mhc_post": "mhc.mhc_post",
     "mhc_post_backward": "mhc.mhc_post_backward",
     "mhc_pre_sinkhorn": "mhc.mhc_pre_sinkhorn",
@@ -162,6 +164,7 @@ _legacy_map = {
     "block_attention_residuals_backward": "mhc.block_attention_residuals_grad",
     "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
     "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
+    "mla_prolog": "attention.mla_prolog_v3",
 }
 
 if __name__ == "cann_ops_transformer.ops":
