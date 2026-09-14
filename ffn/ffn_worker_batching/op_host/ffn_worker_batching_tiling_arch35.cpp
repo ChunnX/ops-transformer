@@ -296,6 +296,14 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::ParseOptionalAttrs(const gert::Ru
             return ge::GRAPH_FAILED);
         layerNum_ = *layNumPtr;
     }
+    // Only asynchronous RECV interprets layer_num. Keep the legacy NORM/synchronous
+    // contracts (including layer_num=0) unchanged; never divide by their default 0.
+    if (needSchedule_ == 1 && syncFlag_ == 1) {
+        OP_CHECK_IF(
+            layerNum_ == 0 || expertNum % layerNum_ != 0,
+            OP_LOGE(context_->GetNodeName(), "async RECV requires layer_num > 0 and expert_num divisible by layer_num"),
+            return ge::GRAPH_FAILED);
+    }
     // H is stored as uint32 in the runtime context. Check narrowing before
     // deriving payload bytes. FP4 stores two values per byte; MX scale follows
     // the token and uses one byte per 32 logical elements (including tail).
@@ -386,6 +394,7 @@ ge::graphStatus FfnWorkerBatchingTilingArch35::DoOpTiling()
                 return ge::GRAPH_FAILED);
 
     tilingDataPtr_->syncFlag = syncFlag_;
+    tilingDataPtr_->layerNum = (needSchedule_ == 1 && syncFlag_ == 1) ? layerNum_ : 0;
     SplitPrepare();
     SplitSortAndMerge();
     SplitGroupList();

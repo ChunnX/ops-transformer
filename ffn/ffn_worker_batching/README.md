@@ -79,7 +79,7 @@
     <tr>
       <td>layer_num</td>
       <td>属性</td>
-      <td>层数，每层专家独立索引。默认值为0。取值范围为 [0, expert_num]。</td>
+      <td>层数，每层专家独立索引。默认值为0。取值范围为 [0, expert_num]；异步接收时必须大于0且整除expert_num。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
@@ -167,3 +167,5 @@
 | ---- | ---- | ---- |
 | 图模式调用 | [test_geir_ffn_worker_batching.cpp](examples/test_geir_ffn_worker_batching.cpp) | 通过[算子IR](op_graph/ffn_worker_batching_proto.h)构图方式调用FfnWorkerBatching算子。 |
 | aclnn接口 | [test_aclnn_ffn_worker_batching.cpp](examples/test_aclnn_ffn_worker_batching.cpp) | 通过[aclnnFfnWorkerBatching](docs/aclnnFfnWorkerBatching.md)接口方式调用FfnWorkerBatching算子。 |
+
+异步接收（`need_schedule=1、sync_flag=1`）要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。详见[V2异步编号约定](docs/aclnnFfnWorkerBatchingV2.md#异步接收的跨层专家编号)。

@@ -70,6 +70,7 @@ struct FfnWorkerBatchingArch35TilingData {
     // 新字段只在尾部追加。Host/kernel 必须使用同一构建产物。
     int64_t preparePerLoopElements{0};  // ID 缓冲的元素容量；大行按此值分块
     int64_t mergeCountCacheSegments{0}; // 段计数缓存的槽数，每槽占 32B
+    int64_t layerNum{0};                // 仅异步RECV使用；追加字段，Host/kernel需配套构建
 };
 
 #endif // FFN_WB_ARCH35_TILING_DEF_H
