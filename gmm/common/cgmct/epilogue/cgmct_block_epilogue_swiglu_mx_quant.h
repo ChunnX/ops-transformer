@@ -61,6 +61,7 @@ constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
 constexpr int16_t SHR_NUM_FOR_BF16 = 7;
+constexpr int16_t SHR_NUM_FOR_FP32 = 23;
 constexpr uint16_t NAN_CUSTOMIZATION = 0x7f81;
 constexpr uint16_t SPECIAL_EXP_THRESHOLD = 0x0040;
 constexpr uint16_t FP8_E4M3_MAX_EXP = 0x0400; // elem_emax右移7位(BF16E8M7)
@@ -528,7 +529,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::Compare<uint32_t, AscendC::CMPMODE::NE>(nonzeroMask, max32, zero, maskFloat);
             AscendC::Reg::Mul(reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32),
                               reinterpret_cast<AscendC::Reg::RegTensor<float>&>(max32), invMax, maskFloat);
-            AscendC::Reg::ShiftRights(exp32, max32, 23, maskFloat);
+            AscendC::Reg::ShiftRights(exp32, max32, SHR_NUM_FOR_FP32, maskFloat);
             AscendC::Reg::And(mantissa32, max32, mantissaMask, maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::GT>(predicate0, exp32, NUMBER_ZERO, maskFloat);
             AscendC::Reg::CompareScalar<uint32_t, AscendC::CMPMODE::LT>(predicate1, exp32,
@@ -547,7 +548,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
             AscendC::Reg::Pack<uint16_t, uint32_t, AscendC::Reg::HighLowPart::LOWEST>(expOut, extractExp);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::StoreDist::DIST_PACK_B16>(
                 mxScaleLocalAddr + i * vlForHalfNumber_ / 2 / 2, expOut, maskB16);
-            AscendC::Reg::ShiftLefts(extractExp, extractExp, 7, maskFloat);
+            AscendC::Reg::ShiftLefts(extractExp, extractExp, SHR_NUM_FOR_BF16, maskFloat);
             AscendC::Reg::Sub(halfScale, scaleBias, extractExp, maskFloat);
             AscendC::Reg::Select<uint32_t>(halfScale, halfScale, nan, finiteMask);
             AscendC::Reg::Select<uint32_t>(halfScale, halfScale, zero, nonzeroMask);
