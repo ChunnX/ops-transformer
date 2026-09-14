@@ -60,12 +60,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -73,21 +68,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
 
     MaskReg preg_108;
@@ -292,12 +277,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -305,21 +285,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
 
     MaskReg preg_108;
@@ -593,12 +563,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -606,21 +571,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
 
@@ -836,12 +791,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -849,21 +799,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
 
@@ -1199,12 +1139,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     constexpr uint16_t loopNum = ubN >> 3;                                                 // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -1212,21 +1147,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
 
     MaskReg preg_108;
@@ -1426,12 +1351,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     constexpr uint16_t loopNum = ubN >> 3;                                                 // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -1439,21 +1359,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
 
     MaskReg preg_108;
@@ -1713,12 +1623,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     constexpr uint16_t loopNum = ubN >> 3;                                                 // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -1726,21 +1631,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
 
@@ -1951,12 +1846,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     constexpr uint16_t loopNum = ubN >> 3;                                                 // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
@@ -1964,21 +1854,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     RegTensor<float> vreg_x_sum3;
 
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
 
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
 
@@ -2275,32 +2155,17 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     constexpr uint32_t blockStride = (ubN >> 2U) | 0x1U;
     constexpr uint32_t repeatStride = 2U;
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
     RegTensor<float> vreg_x_sum2;
     RegTensor<float> vreg_x_sum3;
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
 
@@ -2580,32 +2445,17 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     constexpr uint32_t blockStride = (ubN >> 2U) | 0x1U;
     constexpr uint32_t repeatStride = 2U;
     RegTensor<float> vreg_x_sum_0;
-    RegTensor<float> vreg_x_sum_1;
-    RegTensor<float> vreg_x_sum_2;
-    RegTensor<float> vreg_x_sum_3;
-    RegTensor<float> vreg_x_sum_4;
-    RegTensor<float> vreg_x_sum_5;
-    RegTensor<float> vreg_x_sum_6;
+    VREG_FLOAT_DECL_6(vreg_x_sum_);
     RegTensor<float> vreg_x_sum_7;
     RegTensor<float> vreg_x_sum0;
     RegTensor<float> vreg_x_sum1;
     RegTensor<float> vreg_x_sum2;
     RegTensor<float> vreg_x_sum3;
     RegTensor<float> vreg_x_exp_0;
-    RegTensor<float> vreg_x_exp_1;
-    RegTensor<float> vreg_x_exp_2;
-    RegTensor<float> vreg_x_exp_3;
-    RegTensor<float> vreg_x_exp_4;
-    RegTensor<float> vreg_x_exp_5;
-    RegTensor<float> vreg_x_exp_6;
+    VREG_FLOAT_DECL_6(vreg_x_exp_);
     RegTensor<float> vreg_x_exp_7;
     RegTensor<float> vreg_x_f32_0;
-    RegTensor<float> vreg_x_f32_1;
-    RegTensor<float> vreg_x_f32_2;
-    RegTensor<float> vreg_x_f32_3;
-    RegTensor<float> vreg_x_f32_4;
-    RegTensor<float> vreg_x_f32_5;
-    RegTensor<float> vreg_x_f32_6;
+    VREG_FLOAT_DECL_6(vreg_x_f32_);
     RegTensor<float> vreg_x_f32_7;
     RegTensor<float> vreg_x_max_f32_b;
     RegTensor<float> vreg_subloop_update;
