@@ -300,3 +300,31 @@ def test_fp16_fold_rounding_remains_numerically_close():
     assert np.linalg.norm(output_error) / np.linalg.norm(reference[0]) < 2e-3
     assert np.max(np.abs(output_error)) / np.max(np.abs(reference[0])) < 2e-3
     np.testing.assert_allclose(folded[1], reference[1], rtol=2e-3, atol=2e-3)
+
+
+def test_mtp_tile_mask_matches_per_token_sliding_window():
+    query_length = 7
+    kv_length = 35
+    window_left = 11
+    tile_query_start = 1
+    tile_query_end = 5
+
+    tile_left = max(kv_length - query_length + tile_query_start - window_left, 0)
+    tile_right = kv_length - query_length + tile_query_end
+    tile_keys = np.arange(tile_left, tile_right + 1)
+
+    tiled_mask = np.empty((tile_query_end - tile_query_start + 1, tile_keys.size), dtype=bool)
+    for row, query_pos in enumerate(range(tile_query_start, tile_query_end + 1)):
+        row_left = max(kv_length - query_length + query_pos - window_left, 0)
+        row_right = kv_length - query_length + query_pos
+        tiled_mask[row] = (tile_keys < row_left) | (tile_keys > row_right)
+
+    reference = np.stack(
+        [
+            (tile_keys < max(kv_length - query_length + query_pos - window_left, 0))
+            | (tile_keys > kv_length - query_length + query_pos)
+            for query_pos in range(tile_query_start, tile_query_end + 1)
+        ]
+    )
+    np.testing.assert_array_equal(tiled_mask, reference)
+    assert np.any(tiled_mask[0] != tiled_mask[-1])

@@ -483,7 +483,32 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Elewis
     // cmp_sparse_indices is capacity-sized and may be padded with -1.  The Cube
     // path still computes the capacity-sized tile, so mask the padded columns
     // before softmax instead of allowing stale merge-cache rows to contribute.
-    if (!info.isOriOnly && constInfo.sparseBlockCount > 0 && info.cmpS2IdLimit > 0) {
+    if (info.isOriOnly) {
+        uint32_t rowBase = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
+        int64_t tileStart = static_cast<int64_t>(info.s2StartPoint) +
+                            static_cast<int64_t>(info.s2Idx) * constInfo.s2BaseSize;
+        for (uint32_t row = 0; row < dealRowCount; ++row) {
+            uint32_t qRel = (rowBase + row) / constInfo.gSize;
+            int64_t queryPos = static_cast<int64_t>(info.s1Idx) + qRel;
+            int64_t maskRight = static_cast<int64_t>(info.actOriS2Size) - static_cast<int64_t>(info.actS1Size) +
+                                queryPos + constInfo.oriWinRight;
+            int64_t maskLeft = maskRight - constInfo.oriWinRight - constInfo.oriWinLeft;
+            if (maskLeft < 0) {
+                maskLeft = 0;
+            }
+            int64_t localLeft = maskLeft - tileStart;
+            int64_t localRight = maskRight - tileStart;
+            if (localLeft > 0) {
+                int64_t leftMaskEnd = Min(localLeft - 1, static_cast<int64_t>(columnCount) - 1);
+                SetInfInBlk(mmResUb[row * columnCount], 1, columnCount, 0, leftMaskEnd);
+            }
+            if (localRight + 1 < static_cast<int64_t>(columnCount)) {
+                int64_t rightMaskStart = Max(localRight + 1, static_cast<int64_t>(0));
+                SetInfInBlk(mmResUb[row * columnCount], 1, columnCount, rightMaskStart,
+                            static_cast<int64_t>(columnCount) - 1);
+            }
+        }
+    } else if (constInfo.sparseBlockCount > 0 && info.cmpS2IdLimit > 0) {
         uint32_t rowBase = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
         for (uint32_t row = 0; row < dealRowCount; ++row) {
             uint32_t mPos = rowBase + row;
