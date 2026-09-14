@@ -53,9 +53,9 @@ public:
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using KV_BUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoX = ConstInfo_t
 
-    TPipe *tPipe = nullptr;
+        TPipe *tPipe = nullptr;
 
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
@@ -399,8 +399,7 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-    __aicore__ inline FANoQuantMlaBlockCubeDummy(ConstInfoX &constInfo){};
+    using ConstInfoX = ConstInfo_t __aicore__ inline FANoQuantMlaBlockCubeDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi
