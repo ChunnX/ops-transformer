@@ -35,6 +35,7 @@
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeDispatchV2A5FullMeshImpl {
 using namespace Mc2Kernel;
+constexpr uint64_t FLAG_MAX = 65536UL;
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL; // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
@@ -50,7 +51,7 @@ constexpr uint32_t RUNPOS_CUMSUMFLAG = 3U;
 constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
 constexpr uint8_t LOCAL_COPY_BUFFER_NUM = 2U;
-constexpr uint8_t MAX_COPY_TOKEN_NUM = 2U;
+constexpr uint8_t MAX_COPY_TOKEN_NUM = 4U;
 constexpr uint32_t DATA_COPY_MAX_BLOCK_COUNT = 4095U;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
@@ -214,7 +215,7 @@ private:
     GM_ADDR statusDataSpaceGM_;
 
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
-    uint64_t loopIndex_{0};
+    uint32_t loopIndex_{0};
     uint32_t syncFlagId_{0};
     uint8_t sendTokenBufNum_{0};
     uint32_t axisBS_{0};
@@ -418,9 +419,10 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     uint64_t hSizeAlignCombine = Ceil(axisH_ * COMBINE_IN_DATA_SIZE, SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_SIZE;
     winDataSizeOffset_ =
         dataState_ * (totalWinSize_ / BUFFER_NUM) + axisMaxBS_ * (axisK_ + sharedExpertNum_) * hSizeAlignCombine;
-    // 	loopIndex_ = opCnt 作为收齐的标志，免去flag清零
+    // 	loopIndex_ 作为收齐的标志，免去flag清零
     LocalTensor<uint64_t> opCntTensor = dataStateBuf.Get<uint64_t>();
-    loopIndex_ = opCntTensor.GetValue(OP_CNT_POSUL);
+    uint64_t loopIndex64 = opCntTensor.GetValue(OP_CNT_POSUL);
+    loopIndex_ = static_cast<uint32_t>(loopIndex64 % FLAG_MAX) + 1U; // FLAG_MAX保证接收侧浮点加法不会有精度问题
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
