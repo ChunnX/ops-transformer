@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include "../../../../attention/common/op_host/fia_tiling_base.h"
+#include "../../common/op_host/fia_tiling_base.h"
 
 namespace optiling {
 namespace quant_flash_attn {

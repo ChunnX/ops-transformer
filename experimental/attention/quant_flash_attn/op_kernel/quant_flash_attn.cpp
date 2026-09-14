@@ -10,12 +10,14 @@
 
 /*!
  * \file quant_flash_attn.cpp
- * \brief QuantFlashAttn kernel 入口（最小骨架，实现留空）
+ * \brief MxFP8 SOFTMAX FP16 最小骨架入口（与主线高精 MxFP8 隔离）
  */
 
 #include "kernel_operator.h"
 #include "arch35/quant_flash_attn_template_tiling_key.h"
-#include "arch35/quant_flash_attn_kernel_mxfp8.h"
+#include "arch35/quant_flash_attn_tiling_data.h"
+
+using namespace optiling;
 
 template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode, bool hasAttenMask, uint8_t KvLayoutType,
           bool isFd>
@@ -27,14 +29,11 @@ __global__ __aicore__ void quant_flash_attn(
     __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
-        (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
+    AscendC::printf("[QuantFlashAttn] SOFTMAX_FP16 kernel entered\n");
 
-    BaseApi::QuantFlashAttnKernelMxfp8 kernel;
-    kernel.Init(tilingData);
-    kernel.Process();
-
+    // TODO(SOFTMAX_FP16 新方案): 在此实现 AIC/AIV 协同的 mm1 / softmax FP16 / mm2 流程
     (void)query;
     (void)key;
     (void)value;
@@ -53,4 +52,5 @@ __global__ __aicore__ void quant_flash_attn(
     (void)attnOut;
     (void)softmaxLse;
     (void)workspace;
+    (void)tiling;
 }

@@ -22,7 +22,7 @@
 #include "../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "qfa_tiling_info_parser.h"
 #include "checkers/qfa_checker.h"
-#include "../../../../attention/common/op_host/fia_tiling_templates_registry.h"
+#include "../../common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;
