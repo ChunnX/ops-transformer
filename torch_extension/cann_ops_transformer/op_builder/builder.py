@@ -8,15 +8,27 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import json
+import logging
 import os
+import shutil
+import socket
 from abc import ABC, abstractmethod
 from typing import List, Union
 import torch
 from torch.utils.cpp_extension import load
 from torch.library import Library
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX fallback
+    fcntl = None
+
 ASCEND_HOME_PATH = "ASCEND_HOME_PATH"
 _as_library = None
+_LOCK_GUARD_NAME = ".compile_guard"
+
+logger = logging.getLogger(__name__)
 
 
 def get_as_library():
@@ -172,10 +184,44 @@ class OpBuilder(ABC):
         if self.name in OpBuilder._loaded_ops:
             return OpBuilder._loaded_ops[self.name]
 
+        build_dir = self._build_directory()
+        if fcntl is not None and build_dir:
+            op_module = self._load_under_guard(verbose, build_dir)
+        else:
+            op_module = self._load_module(verbose)
+
         # Lazy import avoids pulling arg_check into every builder import path.
         from cann_ops_transformer.utils.arg_check import wrap_op_module
 
-        op_module = load(
+        # Arg type-check proxy; ops can call through load() unchanged.
+        op_module = wrap_op_module(op_module)
+        OpBuilder._loaded_ops[self.name] = op_module
+
+        return op_module
+
+    def _load_under_guard(self, verbose, build_dir):
+        """Serialize JIT compiles of the same op with an OS-level flock.
+
+        Unlike torch's FileBaton lock (existence based), flock is released by
+        the kernel when the owning process dies, even on SIGKILL, so a killed
+        compile can never leave a lock that blocks later builds.
+        """
+        os.makedirs(build_dir, exist_ok=True)
+        guard_path = os.path.join(build_dir, _LOCK_GUARD_NAME)
+        with open(guard_path, "a+") as _fd:
+            fcntl.flock(_fd.fileno(), fcntl.LOCK_EX)
+            try:
+                self._clear_stale_build_lock(build_dir)
+            except Exception:
+                logger.warning(
+                    "Failed to clear stale build lock under %s",
+                    build_dir,
+                    exc_info=True,
+                )
+            return self._load_module(verbose)
+
+    def _load_module(self, verbose):
+        return load(
             name=self.name,
             sources=self.get_absolute_paths(self.sources()),
             extra_include_paths=self.get_absolute_paths(self.include_paths()),
@@ -183,8 +229,80 @@ class OpBuilder(ABC):
             extra_ldflags=self.extra_ldflags(),
             verbose=verbose,
         )
-        # Arg type-check proxy; ops can call through load() unchanged.
-        op_module = wrap_op_module(op_module)
-        OpBuilder._loaded_ops[self.name] = op_module
 
-        return op_module
+    def _build_directory(self):
+        """Return torch's JIT build directory for this op, or None."""
+        if os.environ.get("CANN_OPS_LOCK_CLEAN", "1") == "0":
+            return None
+        try:
+            from torch.utils.cpp_extension import _get_build_directory
+
+            build_dir = _get_build_directory(self.name, False)
+        except Exception as e:
+            logger.debug("torch _get_build_directory unavailable: %s", e)
+            build_dir = None
+        if build_dir:
+            return build_dir
+        root = os.path.expanduser(
+            os.environ.get("TORCH_EXTENSIONS_DIR")
+            or os.path.join("~", ".cache", "torch_extensions")
+        )
+        try:
+            from torch.utils.cpp_extension import _get_impl_name
+
+            prefix = _get_impl_name()
+        except Exception as e:
+            logger.debug("torch _get_impl_name unavailable: %s", e)
+            return None
+        return os.path.join(root, prefix, self.name)
+
+    @staticmethod
+    def _pid_alive(pid):
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            return False
+        return pid > 0 and os.path.exists("/proc/%d" % pid)
+
+    def _clear_stale_build_lock(self, build_dir):
+        """Drop torch's FileBaton lock left by a killed JIT compile process.
+
+        The caller must hold the exclusive flock guard for this build dir, so
+        no other rank can be compiling the same op concurrently. The pid
+        checks only guard against third-party code that builds the same dir
+        with torch.utils.cpp_extension.load directly, bypassing this builder.
+        """
+        lock_path = os.path.join(build_dir, "lock")
+        if os.path.isdir(lock_path):
+            pid_file = lock_path + ".pid"
+            if os.path.isfile(pid_file):
+                try:
+                    with open(pid_file, "r") as f:
+                        pid = f.read().strip()
+                except OSError:
+                    return
+                if self._pid_alive(pid):
+                    return
+            shutil.rmtree(lock_path, ignore_errors=True)
+            if os.path.isfile(pid_file):
+                try:
+                    os.remove(pid_file)
+                except OSError:
+                    pass
+            logger.info("Removed stale build lock: %s", lock_path)
+        elif os.path.isfile(lock_path):
+            try:
+                with open(lock_path, "r") as f:
+                    data = json.load(f)
+            except (OSError, ValueError):
+                data = None
+            if isinstance(data, dict) and data.get("pid") is not None:
+                if data.get("host") != socket.gethostname():
+                    return
+                if self._pid_alive(data.get("pid")):
+                    return
+            try:
+                os.remove(lock_path)
+                logger.info("Removed stale build lock: %s", lock_path)
+            except OSError:
+                pass
