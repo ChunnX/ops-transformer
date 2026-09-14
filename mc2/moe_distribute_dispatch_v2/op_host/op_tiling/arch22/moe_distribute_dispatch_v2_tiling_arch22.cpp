@@ -118,9 +118,9 @@ static ge::graphStatus MoeDistributeDispatchA2CheckCommAlg(const gert::TilingCon
 
     OP_LOGI(K_INNER_DEBUG, "commAlg is %s", commAlg);
 
-    if (strcmp(commAlg, "fullmesh") == 0) {
+    if (commAlg != nullptr && strcmp(commAlg, "fullmesh") == 0) {
         return ge::GRAPH_SUCCESS;
-    } else if (strcmp(commAlg, "hierarchy") == 0) {
+    } else if (commAlg != nullptr && strcmp(commAlg, "hierarchy") == 0) {
         isLayered = true;
         return ge::GRAPH_SUCCESS;
     } else {
@@ -798,7 +798,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName)
 {
-    if ((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
+    if ((commAlgPtr != nullptr) && (strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
         (strcmp(commAlgPtr, "fullmesh_v2") != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)) {
         OP_LOGE_WITH_INVALID_ATTR(nodeName, "comm_alg", commAlgPtr,
                                   "\"hierarchy\", \"fullmesh_v1\" or \"fullmesh_v2\"");

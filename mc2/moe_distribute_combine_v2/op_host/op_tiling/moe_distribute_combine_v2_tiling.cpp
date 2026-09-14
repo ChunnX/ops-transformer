@@ -328,7 +328,7 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
 
     OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
                     return ge::GRAPH_FAILED);
-    isLayered = strcmp(commAlgPtr, "hierarchy") == 0;
+    isLayered = (commAlgPtr != nullptr) && (strcmp(commAlgPtr, "hierarchy") == 0);
     if (config.isMc2Context) {
         OP_TILING_CHECK(
             isLayered, OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "does not support comm with context"),
