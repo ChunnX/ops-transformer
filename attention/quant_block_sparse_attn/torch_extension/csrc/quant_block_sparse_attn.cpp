@@ -74,8 +74,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &atten_mask,
     const c10::optional<at::Tensor> &metadata, double softmax_scale, int64_t sparse_block_size_q,
-    int64_t sparse_block_size_kv, std::string layout_q, std::string layout_kv, std::string layout_sparse_indices,
-    std::string layout_out, int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
+    int64_t sparse_block_size_kv, std::string layout_q, std::string layout_kv, std::string layout_out,
+    std::string layout_sparse_indices, int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     const c10::OptionalDeviceGuard device_guard(query.device());
     TORCH_CHECK(layout_kv == "PA_BNBD" && layout_out == "TND", "QBSA supports layout_kv=PA_BNBD and layout_out=TND.");
@@ -193,7 +193,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn(
     ACLNN_CMD(aclnnQuantBlockSparseAttn, query, key, value, q_descale, k_descale, v_descale, sparse_indices,
               sparse_seq_len, *p_scale_arg, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, block_table, atten_mask,
               metadata, softmax_scale, sparse_block_size_q, sparse_block_size_kv, layout_q_ptr, layout_kv_ptr,
-              layout_sparse_indices_ptr, layout_out_ptr, quant_mode, mask_mode, return_softmax_lse, attention_out,
+              layout_out_ptr, layout_sparse_indices_ptr, quant_mode, mask_mode, return_softmax_lse, attention_out,
               softmax_lse);
 
     return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);

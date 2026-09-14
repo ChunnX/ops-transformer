@@ -36,7 +36,7 @@ class _QuantBlockSparseAttnOpBuilder(OpBuilder):
             "Tensor? p_scale=None, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "
             "Tensor? seqused_kv=None, Tensor? block_table=None, Tensor? atten_mask=None, Tensor? metadata=None, "
             "float softmax_scale=1.0, int sparse_block_size_q=128, int sparse_block_size_kv=128, str layout_q='TND', "
-            "str layout_kv='PA_BNBD', str layout_sparse_indices='B_N_Qb_Kb', str layout_out='TND', int quant_mode=1, "
+            "str layout_kv='PA_BNBD', str layout_out='TND', str layout_sparse_indices='B_N_Qb_Kb', int quant_mode=1, "
             "int mask_mode=3, bool return_softmax_lse=False) -> (Tensor, Tensor)",
             "npu_quant_block_sparse_attn_metadata(Tensor sparse_seq_len, int num_heads_q, "
             "int num_heads_kv, int head_dim, *, Tensor? cu_seqlens_q=None, "
@@ -71,8 +71,8 @@ class _QuantBlockSparseAttnOpBuilder(OpBuilder):
             sparse_block_size_kv: int = 128,
             layout_q: str = "TND",
             layout_kv: str = "PA_BNBD",
-            layout_sparse_indices: str = "B_N_Qb_Kb",
             layout_out: str = "TND",
+            layout_sparse_indices: str = "B_N_Qb_Kb",
             quant_mode: int = 1,
             mask_mode: int = 3,
             return_softmax_lse: bool = False,
@@ -159,8 +159,8 @@ def _npu_quant_block_sparse_attn(
     sparse_block_size_kv: int = 128,
     layout_q: str = "TND",
     layout_kv: str = "PA_BNBD",
-    layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
+    layout_sparse_indices: str = "B_N_Qb_Kb",
     quant_mode: int = 1,
     mask_mode: int = 3,
     return_softmax_lse: bool = False,
@@ -188,8 +188,8 @@ def _npu_quant_block_sparse_attn(
         sparse_block_size_kv,
         layout_q,
         layout_kv,
-        layout_sparse_indices,
         layout_out,
+        layout_sparse_indices,
         quant_mode,
         mask_mode,
         return_softmax_lse,
@@ -263,8 +263,8 @@ def quant_block_sparse_attn(
     sparse_block_size_kv: int = 128,
     layout_q: str = "TND",
     layout_kv: str = "PA_BNBD",
-    layout_sparse_indices: str = "B_N_Qb_Kb",
     layout_out: str = "TND",
+    layout_sparse_indices: str = "B_N_Qb_Kb",
     quant_mode: int = 1,
     mask_mode: int = 3,
     return_softmax_lse: bool = False,
@@ -308,8 +308,8 @@ def quant_block_sparse_attn(
         sparse_block_size_kv=sparse_block_size_kv,
         layout_q=layout_q,
         layout_kv=layout_kv,
-        layout_sparse_indices=layout_sparse_indices,
         layout_out=layout_out,
+        layout_sparse_indices=layout_sparse_indices,
         quant_mode=quant_mode,
         mask_mode=mask_mode,
         return_softmax_lse=return_softmax_lse,

@@ -49,8 +49,8 @@ if _TORCHAIR_AVAILABLE:
         sparse_block_size_kv: int = 128,
         layout_q: str = "TND",
         layout_kv: str = "PA_BNBD",
-        layout_sparse_indices: str = "B_N_Qb_Kb",
         layout_out: str = "TND",
+        layout_sparse_indices: str = "B_N_Qb_Kb",
         quant_mode: int = 1,
         mask_mode: int = 3,
         return_softmax_lse: bool = False,
@@ -82,8 +82,8 @@ if _TORCHAIR_AVAILABLE:
                 "sparse_block_size_kv": attr.Int(sparse_block_size_kv),
                 "layout_q": attr.Str(layout_q),
                 "layout_kv": attr.Str(layout_kv),
-                "layout_sparse_indices": attr.Str(layout_sparse_indices),
                 "layout_out": attr.Str(layout_out),
+                "layout_sparse_indices": attr.Str(layout_sparse_indices),
                 "quant_mode": attr.Int(quant_mode),
                 "mask_mode": attr.Int(mask_mode),
                 "return_softmax_lse": attr.Bool(return_softmax_lse),
@@ -111,8 +111,8 @@ if _TORCHAIR_AVAILABLE:
             .attr("sparse_block_size_kv", attr.Int(128))
             .attr("layout_q", attr.Str("TND"))
             .attr("layout_kv", attr.Str("PA_BNBD"))
-            .attr("layout_sparse_indices", attr.Str("B_N_Qb_Kb"))
             .attr("layout_out", attr.Str("TND"))
+            .attr("layout_sparse_indices", attr.Str("B_N_Qb_Kb"))
             .attr("quant_mode", attr.Int(1))
             .attr("mask_mode", attr.Int(3))
             .attr("return_softmax_lse", attr.Bool(False))
@@ -146,8 +146,8 @@ if _TORCHAIR_AVAILABLE:
         sparse_block_size_kv: int = 128,
         layout_q: str = "TND",
         layout_kv: str = "PA_BNBD",
-        layout_sparse_indices: str = "B_N_Qb_Kb",
         layout_out: str = "TND",
+        layout_sparse_indices: str = "B_N_Qb_Kb",
         quant_mode: int = 1,
         mask_mode: int = 3,
         return_softmax_lse: bool = False,
@@ -175,8 +175,8 @@ if _TORCHAIR_AVAILABLE:
             sparse_block_size_kv=sparse_block_size_kv,
             layout_q=layout_q,
             layout_kv=layout_kv,
-            layout_sparse_indices=layout_sparse_indices,
             layout_out=layout_out,
+            layout_sparse_indices=layout_sparse_indices,
             quant_mode=quant_mode,
             mask_mode=mask_mode,
             return_softmax_lse=return_softmax_lse,

@@ -106,8 +106,8 @@ public:
         this->Attr("sparse_block_size_kv").AttrType(OPTIONAL).Int(128);
         this->Attr("layout_q").AttrType(OPTIONAL).String("TND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BNBD");
-        this->Attr("layout_sparse_indices").AttrType(OPTIONAL).String("B_N_Qb_Kb");
         this->Attr("layout_out").AttrType(OPTIONAL).String("TND");
+        this->Attr("layout_sparse_indices").AttrType(OPTIONAL).String("B_N_Qb_Kb");
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
