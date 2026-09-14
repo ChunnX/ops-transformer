@@ -29,7 +29,7 @@ constexpr int32_t NUM_TWO = 2;
 constexpr int32_t NUM_THREE = 3;
 constexpr int32_t NUM_FOUR = 4;
 constexpr int32_t SIZE_OF_FLOAT = 4;
-constexpr size_t MIN_SHARE_BUFFER = 4096;
+constexpr size_t MIN_SHARE_BUFFER = 256;
 
 enum class NormType : uint8_t {
     NONE = 0,
@@ -125,8 +125,8 @@ public:
         mask_ = buf_.GetWithOffset<uint32_t>(alignedTotalRopeDim_, alignedTotalRopeDim_ * sizeof(float) * NUM_TWO);
 
         sinRepeatTimes_ =
-            static_cast<uint8_t>(CeilDiv(alignedRopeDim, static_cast<uint32_t>(B32_DATA_NUM_PER_REPEAT))) - 1;
-        uint32_t tailNum = alignedRopeDim - sinRepeatTimes_ * B32_DATA_NUM_PER_REPEAT;
+            static_cast<uint8_t>(CeilDiv(ropeDim_, static_cast<uint32_t>(B32_DATA_NUM_PER_REPEAT))) - 1;
+        uint32_t tailNum = ropeDim_ - sinRepeatTimes_ * B32_DATA_NUM_PER_REPEAT;
         sinTailMask_[0] =
             tailNum == B32_DATA_NUM_PER_REPEAT ? 0x5555555555555555 : 0x5555555555555555 & ((1UL << tailNum) - 1);
         uint32_t halfDim = ropeDim_ / NUM_TWO;
