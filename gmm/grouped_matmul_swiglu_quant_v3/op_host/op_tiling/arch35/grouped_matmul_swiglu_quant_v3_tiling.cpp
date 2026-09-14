@@ -409,9 +409,13 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     mm.set_dbL0A(2);
     mm.set_dbL0B(2);
     mm.set_dbL0C(basicTiling_.dbL0c);
+    // Preserve the scale-window factors selected by the common MX tiler.
+    // Using the default factor (1) for every K size only works for K=128;
+    // larger 128-aligned K values make the Tensor API consume an incorrect
+    // L1 scale window and can fail during device execution.
     mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) +
                       (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
-                      (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT);
+                      (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
     return ge::GRAPH_SUCCESS;
 }
 
