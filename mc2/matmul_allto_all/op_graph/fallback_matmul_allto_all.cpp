@@ -107,8 +107,8 @@ static ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext *ho
     const int64_t x1QuantMode = (x1QuantModePtr != nullptr ? *x1QuantModePtr : 0);
 
     if (x1QuantMode == X1_MX_QUANT_MODE_NUM && x2QuantMode == X2_MX_QUANT_MODE_NUM) {
-        para.x2Acl = ConvertMmType(x2, false);
         // 适配fusion pass的.t()场景，这里固定传false
+        para.x2Acl = ConvertMmType(x2, false);
     } else {
         // 针对以下场景：
         // x1QuantMode == 0 && x2QuantMode == 0
