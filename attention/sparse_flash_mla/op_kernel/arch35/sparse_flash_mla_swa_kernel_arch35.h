@@ -22,24 +22,10 @@
 #include "kernel_operator.h"
 #include "../sparse_flash_mla_kernel_metadata.h"
 
-#if __has_include("../../common/op_kernel/matmul.h")
-#include "../../common/op_kernel/matmul.h"
-#else
-#include "../common/matmul.h"
-#endif
-#if __has_include("common/buffers_policy_3buff_sfa.h")
+#include "../../../common/op_kernel/matmul.h"
 #include "common/buffers_policy_3buff_sfa.h"
-#endif
-#if __has_include("../../common/op_kernel/FixpipeOut.h")
-#include "../../common/op_kernel/FixpipeOut.h"
-#else
-#include "../common/FixpipeOut.h"
-#endif
-#if __has_include("../../common/op_kernel/CopyInL1.h")
-#include "../../common/op_kernel/CopyInL1.h"
-#else
-#include "../common/CopyInL1.h"
-#endif
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/CopyInL1.h"
 
 #include "kernel_operator_list_tensor_intf.h"
 #include "common/smla_kernel_common_arch35.h"
@@ -338,17 +324,17 @@ __aicore__ inline void SparseFlashMlaSwaKernel<CubeBlockType, VecBlockType>::Ini
     uint32_t combineElemSize =
         gSize * constInfo.dSize +
         FD_MAX_SUM_REGION_NUM * gSize * static_cast<uint32_t>(AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW);
-    if constexpr (IS_BATCH_CONSISTENCY) {
+    if constexpr (!IS_BATCH_CONSISTENCY) {
+        uint32_t fdSlotCount = static_cast<uint32_t>(AttentionCommon::FD_MAX_S2_SPLIT_NUM) *
+                               (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
+        fdStagingBuffer.Init(fdStagingBufferManager, fdSlotCount * combineElemSize * sizeof(float));
+    } else {
         uint32_t intraCoreSlotNum = IS_SPLIT_G ? GetBlockNum() : (GetBlockNum() << 1U);
         uint32_t intraCoreCombineSize = intraCoreSlotNum * combineElemSize * sizeof(float);
         uint32_t crossCoreCombineSize =
             GetBlockNum() * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * combineElemSize * sizeof(float);
         intraCoreCombineBuffer.Init(fdStagingBufferManager, intraCoreCombineSize);
         crossCoreCombineBuffer.Init(fdStagingBufferManager, crossCoreCombineSize);
-    } else {
-        uint32_t fdSlotCount = static_cast<uint32_t>(AttentionCommon::FD_MAX_S2_SPLIT_NUM) *
-                               (IS_SPLIT_G ? (GetBlockNum() >> 1U) : GetBlockNum());
-        fdStagingBuffer.Init(fdStagingBufferManager, fdSlotCount * combineElemSize * sizeof(float));
     }
 }
 

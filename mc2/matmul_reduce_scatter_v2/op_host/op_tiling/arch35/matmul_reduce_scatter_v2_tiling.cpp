@@ -208,6 +208,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    matmulReduceScatterV2TilingData_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
@@ -229,7 +232,8 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 {
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                      TopoType::STANDARD_CARD);
+                                                      TopoType::STANDARD_CARD, SocVersion::SOC950,
+                                                      (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling scatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,

@@ -396,10 +396,10 @@ ge::graphStatus AlltoAllKcQuantMatmulHelper::PostTiling()
  */
 AlltoAllKcQuantMatmulHelper::AlltoAllKcQuantMatmulHelper(
     AllToAllKcQuantMatmulTilingBase &allToAllKcQuantMatmulTilingBase,
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mm_mvalue_len)
-    : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &data),
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen)
+    : Mc2AdaptiveSlidingWindowTiling(allToAllKcQuantMatmulTilingBase.context_, &out),
       tilingProcesser_(allToAllKcQuantMatmulTilingBase),
-      mm_len(mm_mvalue_len)
+      mm_len(mmMvalueLen)
 {}
 
 /**
@@ -554,6 +554,7 @@ void AllToAllKcQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.permuteLen = inferredInfo_.permuteLen;
     tilingInfo.x1ScaleOptionalLen = inferredInfo_.x1ScaleOptionalLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
+    tilingInfo.aicCoreNum = contextInfo_.args_.aicCoreNum;
     tilingInfo.hcclDataType =
         (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.hcclGeType))); // hccl数据类型
     tilingInfo.x1QuantDtype = contextInfo_.x1KcDynQuantDTypeVal;

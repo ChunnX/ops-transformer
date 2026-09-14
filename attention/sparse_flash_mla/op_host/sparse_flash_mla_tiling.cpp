@@ -138,30 +138,30 @@ static const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_INT16, "DT_INT16"},                   // int16 type
     {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
     {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
-    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
     {ge::DT_INT64, "DT_INT64"},                   // int64 type
+    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
     {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
     {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
-    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
     {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
+    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
     {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
     {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
     {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
-    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
     {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
+    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
     {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
     {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
     {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
     {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
-    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
     {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
     {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
     {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
     {ge::DT_STRING, "DT_STRING"},                 // string type
     {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
     {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
-    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
     {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
+    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
     {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
     {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
 };
@@ -646,10 +646,9 @@ size_t SMLAInfoParser::GetAxisIdx(const SMLAAxis &axis, const SMLALayout &layout
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t SMLAInfoParser::GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const
+int64_t SMLAInfoParser::GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const
 {
-    return HasAxis(axis, layout, shape) ? static_cast<uint32_t>(shape.GetDim(GetAxisIdx(axis, layout))) :
-                                          invalidDimValue_;
+    return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
 
 void SMLAInfoParser::SetSMLAShape()
@@ -2323,10 +2322,10 @@ uint64_t SparseFlashMlaTiling::CalcVectorizeKvPhyAddrWorkspaceSize(const SMLATil
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     bool isPa = (tilingInfo->kvLayout == SMLALayout::PA_BBND);
-    uint32_t oriBlocksizeFlag =
-        static_cast<uint32_t>(tilingInfo->oriBlockSize & static_cast<uint32_t>(tilingInfo->oriBlockSize - 1)) == 0;
-    uint32_t cmpBlocksizeFlag =
-        static_cast<uint32_t>(tilingInfo->cmpBlockSize & static_cast<uint32_t>(tilingInfo->cmpBlockSize - 1)) == 0;
+    uint32_t oriBlockSize = static_cast<uint32_t>(tilingInfo->oriBlockSize);
+    uint32_t cmpBlockSize = static_cast<uint32_t>(tilingInfo->cmpBlockSize);
+    uint32_t oriBlocksizeFlag = static_cast<uint32_t>(oriBlockSize & (oriBlockSize - 1)) == 0;
+    uint32_t cmpBlocksizeFlag = static_cast<uint32_t>(cmpBlockSize & (cmpBlockSize - 1)) == 0;
     uint32_t blocksizeFlag = isPa ? ((tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) ?
                                          oriBlocksizeFlag :
                                          (oriBlocksizeFlag != 0 && cmpBlocksizeFlag != 0)) :

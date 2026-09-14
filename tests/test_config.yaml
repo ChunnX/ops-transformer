@@ -70,7 +70,7 @@ examples:
         ut_cov_exclude:
           - examples/mc2/all_gather_add
         test:
-          examples: False
+          examples: True
           ut: False
         options:
           - all_gather_add
@@ -100,7 +100,7 @@ attention:
     ut_cov_exclude:
       - attention/bsa_select_block_mask
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - bsa_select_block_mask
@@ -115,7 +115,7 @@ attention:
     ut_cov_exclude:
       - attention/block_sparse_attention/op_kernel
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - block_sparse_attention
@@ -130,7 +130,7 @@ attention:
     ut_cov_exclude:
       - attention/compressor_grad
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - compressor_grad
@@ -145,7 +145,7 @@ attention:
     ut_cov_exclude:
       - attention/fused_causal_conv1d
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - fused_causal_conv1d
@@ -160,7 +160,7 @@ attention:
     ut_cov_exclude:
       - attention/indexer_quant_cache
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - indexer_quant_cache
@@ -175,7 +175,7 @@ attention:
     ut_cov_exclude:
       - attention/inplace_fused_causal_conv1d
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - inplace_fused_causal_conv1d
@@ -190,7 +190,7 @@ attention:
     ut_cov_exclude:
       - attention/kv_compress_epilog
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - kv_compress_epilog
@@ -205,7 +205,7 @@ attention:
     ut_cov_exclude:
       - attention/sparse_flash_attention_grad
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - sparse_flash_attention_grad
@@ -221,7 +221,7 @@ attention:
       - attention/sparse_flash_mla/tests
       - attention/sparse_flash_mla/op_host/checkers/checker_context.h # 纯数据结构声明头，无函数体，无覆盖率数据
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - sparse_flash_mla
@@ -238,7 +238,7 @@ attention:
       - attention/mixed_quant_sparse_flash_mla/op_api/aclnn_mixed_quant_sparse_flash_mla.h # 纯声明头，无覆盖率数据
       - attention/mixed_quant_sparse_flash_mla/op_api/aclnn_mixed_quant_sparse_flash_mla_inner.h # 纯声明头，无覆盖率数据
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - mixed_quant_sparse_flash_mla
@@ -253,7 +253,7 @@ attention:
     ut_cov_exclude:
       - attention/quant_sparse_flash_mla/tests
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - quant_sparse_flash_mla
@@ -268,7 +268,7 @@ attention:
     ut_cov_exclude:
       - attention/stem_oam_prep_paged_kv
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - stem_oam_prep_paged_kv
@@ -283,7 +283,7 @@ attention:
     ut_cov_exclude:
       - attention/generic_block_sparse_attention/op_kernel
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - generic_block_sparse_attention
@@ -340,7 +340,7 @@ attention:
       - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
-      examples: False
+      examples: True
     options:
       - incre_flash_attention
       - fused_infer_attention_score
@@ -390,7 +390,7 @@ attention:
       - nsa_compress_attention
     test:
       ut: False
-      examples: False
+      examples: True
 
   nsa_compress_attention_infer:
     module: True
@@ -428,7 +428,7 @@ attention:
       - attention/nsa_compress_with_cache/docs
       - attention/nsa_compress_with_cache/README.md
     test:
-        examples: False
+        examples: True
         ut: False
     ut_cov_exclude:
       - attention/nsa_compress_with_cache
@@ -448,7 +448,7 @@ attention:
       - nsa_selected_attention
     test:
       ut: False
-      examples: False
+      examples: True
 
   nsa_selected_attention_grad:
     module: True
@@ -529,7 +529,7 @@ attention:
         - attention/mla_prolog/README.md
       test:
         ut: False
-        examples: False
+        examples: True
       options:
         - mla_prolog
 
@@ -561,7 +561,7 @@ attention:
         - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
-        examples: False
+        examples: True
         ut: True
       options:
         - mla_prolog_v2
@@ -594,7 +594,7 @@ attention:
         - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
-        examples: False
+        examples: True
         ut: True
       options:
         - mla_prolog_v3
@@ -611,7 +611,7 @@ attention:
       - attention/lightning_indexer/tests
       - attention/lightning_indexer/op_host/op_api/aclnn_lightning_indexer.h # 纯声明头，无覆盖率数据
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - lightning_indexer
@@ -626,7 +626,7 @@ attention:
     ut_cov_exclude:
       - attention/lightning_indexer_v2/tests
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - lightning_indexer_v2
@@ -660,7 +660,7 @@ attention:
       - attention/sparse_flash_attention/op_host/op_api/aclnn_sparse_flash_attention.h # 纯声明头，无覆盖率数据
       - attention/sparse_flash_attention/op_host/op_api/aclnn_sparse_flash_attention_v2.h # 纯声明头，无覆盖率数据
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - sparse_flash_attention
@@ -675,7 +675,7 @@ attention:
       - attention/quant_lightning_indexer/tests
       - attention/quant_lightning_indexer/op_host/op_api/aclnn_quant_lightning_indexer.h # 纯声明头，无覆盖率数据
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - quant_lightning_indexer
@@ -690,7 +690,7 @@ attention:
     ut_cov_exclude:
       - attention/quant_lightning_indexer_v2/tests
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - quant_lightning_indexer_v2
@@ -704,7 +704,7 @@ attention:
     ut_cov_exclude:
       - attention/kv_quant_sparse_flash_attention/tests
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - kv_quant_sparse_flash_attention
@@ -720,7 +720,7 @@ attention:
       # tiling_register.cpp （IMPL_OP_OPTILING 静态注册，可执行代码均在 CANN 头文件内联）
       - attention/kv_quant_sparse_flash_attention_v2/op_host/kv_quant_sparse_flash_attention_v2_tiling_register.cpp
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - kv_quant_sparse_flash_attention_v2
@@ -751,7 +751,7 @@ attention:
       - attention/flash_attn/tests
     test:
       ut: True
-      examples: False
+      examples: True
     options:
       - flash_attn
 
@@ -767,7 +767,7 @@ attention:
       - attention/compressor/examples
     test:
       ut: True
-      examples: False
+      examples: True
     options:
       - compressor
 
@@ -783,7 +783,7 @@ attention:
       - attention/quant_compressor/examples
     test:
       ut: True
-      examples: False
+      examples: True
     options:
       - quant_compressor
 
@@ -812,7 +812,7 @@ gmm:
     ut_cov_exclude:
       - gmm/grouped_matmul_activation_quant
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - grouped_matmul_activation_quant
@@ -896,7 +896,7 @@ ffn:
     ut_cov_exclude:
       - ffn/ffn_worker_batching
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - ffn_worker_batching
@@ -939,7 +939,7 @@ ffn:
     ut_cov_exclude:
       - ffn/swin_transformer_ln_qkv_quant
     test:
-        examples: False
+        examples: True
         ut: True
     options:
       - swin_transformer_ln_qkv_quant
@@ -1453,7 +1453,7 @@ posembedding:
     ut_cov_exclude:
       - posembedding/inplace_partial_rotary_mul
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - inplace_partial_rotary_mul
@@ -1497,7 +1497,7 @@ posembedding:
       - posembedding/qkv_rms_norm_rope_cache_with_k_scale/op_kernel
       - posembedding/qkv_rms_norm_rope_cache_with_k_scale/op_host/qkv_rms_norm_rope_cache_with_k_scale_def.cpp
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - qkv_rms_norm_rope_cache_with_k_scale
@@ -1516,7 +1516,7 @@ posembedding:
     # 本算子只出 ascend950 的二进制（op_def 里只 AddConfig("ascend950")），
     # examples 的 --run_example 需要对应 soc 的实机，这里先关掉，由 950 的 ST 覆盖端到端
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - und_gen_qkv_rms_norm_rope_cache
@@ -1537,7 +1537,7 @@ mc2:
         - mc2/all_gather_matmul/op_graph
         - mc2/all_gather_matmul/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - all_gather_matmul
 
@@ -1571,7 +1571,7 @@ mc2:
         - mc2/allto_all_all_gather_batch_mat_mul/op_graph
         - mc2/allto_all_all_gather_batch_mat_mul/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - allto_all_all_gather_batch_mat_mul
 
@@ -1588,7 +1588,7 @@ mc2:
         - mc2/allto_allv_grouped_mat_mul/op_graph
         - mc2/allto_allv_grouped_mat_mul/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - allto_allv_grouped_mat_mul
 
@@ -1605,7 +1605,7 @@ mc2:
         - mc2/allto_allv_quant_grouped_mat_mul/op_graph
         - mc2/allto_allv_quant_grouped_mat_mul/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - allto_allv_quant_grouped_mat_mul
 
@@ -1622,7 +1622,7 @@ mc2:
         - mc2/quant_grouped_mat_mul_allto_allv/op_graph
         - mc2/quant_grouped_mat_mul_allto_allv/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - quant_grouped_mat_mul_allto_allv
 
@@ -1639,7 +1639,7 @@ mc2:
         - mc2/allto_all_matmul/op_graph
         - mc2/allto_all_matmul/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - allto_all_matmul
 
@@ -1656,7 +1656,7 @@ mc2:
         - mc2/batch_mat_mul_reduce_scatter_allto_all/op_graph
         - mc2/batch_mat_mul_reduce_scatter_allto_all/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - batch_mat_mul_reduce_scatter_allto_all
 
@@ -1673,7 +1673,7 @@ mc2:
         - mc2/grouped_mat_mul_all_reduce/op_graph
         - mc2/grouped_mat_mul_all_reduce/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - grouped_mat_mul_all_reduce
 
@@ -1690,7 +1690,7 @@ mc2:
         - mc2/grouped_mat_mul_allto_allv/op_graph
         - mc2/grouped_mat_mul_allto_allv/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - grouped_mat_mul_allto_allv
 
@@ -1709,7 +1709,7 @@ mc2:
         - mc2/inplace_matmul_all_reduce_add_rms_norm/op_graph
         - mc2/inplace_matmul_all_reduce_add_rms_norm/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - inplace_matmul_all_reduce_add_rms_norm
         - matmul_all_reduce_add_rms_norm
@@ -1727,7 +1727,7 @@ mc2:
         - mc2/matmul_all_reduce/op_graph
         - mc2/matmul_all_reduce/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - matmul_all_reduce
 
@@ -1745,7 +1745,7 @@ mc2:
         - mc2/matmul_all_reduce_add_rms_norm/op_graph
         - mc2/matmul_all_reduce_add_rms_norm/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - matmul_all_reduce_add_rms_norm
 
@@ -1763,7 +1763,7 @@ mc2:
         - mc2/matmul_reduce_scatter/op_graph
         - mc2/matmul_reduce_scatter/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - matmul_reduce_scatter
 
@@ -1780,7 +1780,7 @@ mc2:
         - mc2/matmul_allto_all/op_graph
         - mc2/matmul_allto_all/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - matmul_allto_all
 
@@ -1797,7 +1797,7 @@ mc2:
         - mc2/matmul_reduce_scatter_v2/op_graph
         - mc2/matmul_reduce_scatter_v2/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - matmul_reduce_scatter_v2
 
@@ -1813,7 +1813,7 @@ mc2:
         - mc2/mega_moe/op_graph
         - mc2/mega_moe/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - mega_moe
 
@@ -1830,7 +1830,7 @@ mc2:
         - mc2/quant_all_reduce/op_graph
         - mc2/quant_all_reduce/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - quant_all_reduce
 
@@ -1847,7 +1847,7 @@ mc2:
         - mc2/quant_reduce_scatter/op_graph
         - mc2/quant_reduce_scatter/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - quant_reduce_scatter
 
@@ -1864,7 +1864,7 @@ mc2:
         - mc2/distribute_barrier/op_graph
         - mc2/distribute_barrier/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - distribute_barrier
         - distribute_barrier_extend
@@ -1887,7 +1887,7 @@ mc2:
         - mc2/distribute_barrier_extend/op_graph
         - mc2/distribute_barrier_extend/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - distribute_barrier_extend
 
@@ -1902,7 +1902,7 @@ mc2:
       ut_cov_exclude:
         - mc2/elastic_receivable_info_collect
       test:
-        examples: False
+        examples: True
       options:
         - elastic_receivable_info_collect
 
@@ -1917,7 +1917,7 @@ mc2:
       ut_cov_exclude:
         - mc2/elastic_receivable_test
       test:
-        examples: False
+        examples: True
       options:
         - elastic_receivable_test
 
@@ -1933,7 +1933,7 @@ mc2:
         - mc2/ffn_to_attention/op_graph
         - mc2/ffn_to_attention/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - ffn_to_attention
 
@@ -1948,7 +1948,7 @@ mc2:
       ut_cov_exclude:
         - mc2/moe_distribute_buffer_reset
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_buffer_reset
 
@@ -1964,7 +1964,7 @@ mc2:
         - mc2/moe_distribute_combine/op_graph
         - mc2/moe_distribute_combine/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_combine
         - moe_distribute_dispatch
@@ -1982,7 +1982,7 @@ mc2:
         - mc2/moe_distribute_combine_add_rms_norm/op_graph
         - mc2/moe_distribute_combine_add_rms_norm/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_combine_add_rms_norm
         - moe_distribute_dispatch_v2
@@ -2003,7 +2003,7 @@ mc2:
         - mc2/moe_distribute_combine_setup/op_graph
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_combine_setup
 
@@ -2020,7 +2020,7 @@ mc2:
         - mc2/moe_distribute_combine_teardown/op_graph
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_combine_teardown
 
@@ -2038,7 +2038,7 @@ mc2:
         - mc2/moe_distribute_dispatch_setup/op_graph
         - mc2/moe_distribute_dispatch_setup/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_dispatch_setup
         - moe_distribute_dispatch_teardown
@@ -2059,7 +2059,7 @@ mc2:
         - mc2/moe_distribute_dispatch_teardown/op_graph
         - mc2/moe_distribute_dispatch_teardown/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_dispatch_setup
         - moe_distribute_dispatch_teardown
@@ -2078,7 +2078,7 @@ mc2:
         - mc2/moe_distribute_combine_v2/op_graph
         - mc2/moe_distribute_combine_v2/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
@@ -2099,7 +2099,7 @@ mc2:
         - mc2/moe_distribute_combine_v3/op_graph
         - mc2/moe_distribute_combine_v3/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_combine_v3
 
@@ -2115,7 +2115,7 @@ mc2:
         - mc2/moe_distribute_dispatch/op_graph
         - mc2/moe_distribute_dispatch/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
@@ -2132,7 +2132,7 @@ mc2:
         - mc2/moe_distribute_dispatch_v2/op_graph
         - mc2/moe_distribute_dispatch_v2/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_dispatch_v2
         - moe_distribute_dispatch_v3
@@ -2153,7 +2153,7 @@ mc2:
         - mc2/moe_distribute_dispatch_v3/op_graph
         - mc2/moe_distribute_dispatch_v3/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_distribute_dispatch_v3
 
@@ -2169,7 +2169,7 @@ mc2:
         - mc2/moe_update_expert/op_graph
         - mc2/moe_update_expert/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - moe_update_expert
         - moe_distribute_dispatch_v2
@@ -2190,7 +2190,7 @@ mc2:
         - mc2/attention_to_ffn/op_graph
         - mc2/attention_to_ffn/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - attention_to_ffn
 
@@ -2217,7 +2217,7 @@ mhc:
       - mhc/mhc_sinkhorn_backward/examples
       - mhc/mhc_sinkhorn_backward/tests
     test:
-      examples: False
+      examples: True
       ut: True
   mhc_post:
     module: True
@@ -2243,7 +2243,7 @@ mhc:
       - mhc/mhc_pre/examples
       - mhc/mhc_pre/tests
     test:
-      examples: False
+      examples: True
       ut: True
   mhc_pre_backward:
     module: True
@@ -2256,7 +2256,7 @@ mhc:
       - mhc/mhc_pre_backward/examples
       - mhc/mhc_pre_backward/tests
     test:
-      examples: False
+      examples: True
       ut: True
 
   mhc_pre_sinkhorn:
@@ -2270,7 +2270,7 @@ mhc:
       - mhc/mhc_pre_sinkhorn/examples
       - mhc/mhc_pre_sinkhorn/tests
     test:
-      examples: False
+      examples: True
       ut: False
 
   mhc_pre_sinkhorn_backward:
@@ -2339,7 +2339,7 @@ mamba:
     ut_cov_exclude:
       - mamba/causal_conv1d
     test:
-      examples: False
+      examples: True
       ut: False
     options:
       - causal_conv1d

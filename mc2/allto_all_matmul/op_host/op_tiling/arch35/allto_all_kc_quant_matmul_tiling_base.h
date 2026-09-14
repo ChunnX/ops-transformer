@@ -63,7 +63,7 @@ protected:
     void PrintAlltoAllKcQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
 
 private:
-    AlltoAllQuantMatmulTilingData localTilingData_;
+    AlltoAllQuantMatmulTilingData localTilingData_{};
     uint64_t mm_mvalue_len = 0;
     QuantType matmulQuantType_ = QuantType::KC_QUANT;
     void PrintAlltoAllKcQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
@@ -74,7 +74,7 @@ private:
 
 class AlltoAllKcQuantMatmulHelper : public Mc2AdaptiveSlidingWindowTiling {
 public:
-    AlltoAllKcQuantMatmulHelper(AllToAllKcQuantMatmulTilingBase &AllToAllKcQuantMatmulTilingBase,
+    AlltoAllKcQuantMatmulHelper(AllToAllKcQuantMatmulTilingBase &allToAllKcQuantMatmulTilingBase,
                                 DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen);
     const gert::Shape GetX1Shape(const size_t index) override;
     const gert::Shape GetX2Shape(const size_t index) override;
