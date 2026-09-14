@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <vector>
 #include <map>
+ #include <algorithm>
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
 #include <dlfcn.h>
@@ -936,7 +937,7 @@ inline void Mc2DumpTilingAndWorkspace(aclrtExceptionInfo *args, const char *op, 
 }
 
 inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_t contextArgIdx,
-                               uint32_t tilingGmArgIdx = 0U)
+                               uint32_t tilingGmArgIdx = 0U, std::vector<uint64_t> *channelHandles = nullptr)
 {
     if (args == nullptr || op == nullptr) {
         return;
@@ -1008,6 +1009,24 @@ inline void Mc2DumpUrmaContext(aclrtExceptionInfo *args, const char *op, uint32_
     if (rankId >= URMA_MAX_RANK_NUM) {
         OP_LOGE(OP_NAME, "rankId=%u >= URMA_MAX_RANK_NUM=%u, skip peermem dump.", rankId, URMA_MAX_RANK_NUM);
         return;
+    }
+    if (channelHandles != nullptr) {
+        channelHandles->clear();
+        uint32_t rankLimit = std::min<uint32_t>(urmaCtx->udmaCtx.rankSize, URMA_MAX_RANK_NUM);
+        for (uint32_t rank = 0; rank < rankLimit; ++rank) {
+            uint64_t handle = urmaCtx->udmaCtx.channelHandles[rank];
+            if (handle == 0U) {
+                continue;
+            }
+            if (std::find(channelHandles->begin(), channelHandles->end(), handle) == channelHandles->end()) {
+                channelHandles->push_back(handle);
+            }
+        }
+        if (channelHandles->empty()) {
+            OP_LOGE(OP_NAME, "no valid channel handle found in urmaCtx, skip hcomm dump.");
+        } else {
+            OP_LOGE(OP_NAME, "collected %zu valid channel handle(s) from urmaCtx.", channelHandles->size());
+        }
     }
     uint64_t selfWinAddr = urmaCtx->udmaCtx.commBufferAddrs[rankId];
     OP_LOGE(OP_NAME, "selfWinAddr=0x%lx (commBufferAddrs[%u])", selfWinAddr, rankId);
