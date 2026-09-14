@@ -65,10 +65,8 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
         dqkv[2].SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
     }
 
-    if constexpr (IS_ROPE) {
-        dqkRope[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
-        dqkRope[1].SetGlobalBuffer((__gm__ OUTDTYPE *)dkRope);
-    }
+    dqkRope[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
+    dqkRope[1].SetGlobalBuffer((__gm__ OUTDTYPE *)dkRope);
 
     loop = tilingData->postTilingData.qPostBlockFactor;
     inputTotalSize = tilingData->postTilingData.qPostBlockTotal;

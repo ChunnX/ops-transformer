@@ -607,8 +607,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
 
-    if (qRopeTensor != nullptr && kRopeTensor != nullptr && qRopeTensor->GetShapeSize() > 0 &&
-        kRopeTensor->GetShapeSize() > 0) {
+    if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
         OP_LOGD(context_, "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");
         tmpData.ropeEnable = true;
         const gert::Shape &qRopeShape =

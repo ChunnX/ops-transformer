@@ -216,17 +216,15 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR que
     keyGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)key);
     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
     dyGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dy);
-    if constexpr (IS_ROPE) {
-        queryRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)queryRope);
-        keyRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)keyRope);
-    }
+    queryRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)queryRope);
+    keyRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)keyRope);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitCubeBuffer(FagConstInfo &constInfo)
 {
     qL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * HEAD_DIM_ALIGN * sizeof(INPUT_TYPE));
-    // Dy 按 dSizeV 分配，无 rope 时为 512
+    // dSizeV, not HEAD_DIM_ALIGN-64: no-rope D=512 would undersize Dy and overflow into commonL1.
     dYL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * constInfo.commonConstInfo.dSizeV * sizeof(INPUT_TYPE));
     commonL1Buf.Init(*l1BufferManagerPtr, CUBE_BASEM * CUBE_BASEN * sizeof(INPUT_TYPE));
 

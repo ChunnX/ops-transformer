@@ -166,10 +166,8 @@ __aicore__ inline void FAGBlockCubeNLe64<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADD
     keyGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)key);
     valueGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)value);
     dyGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dy);
-    if constexpr (IS_ROPE) {
-        queryRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)queryRope);
-        keyRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)keyRope);
-    }
+    queryRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)queryRope);
+    keyRopeGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)keyRope);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
