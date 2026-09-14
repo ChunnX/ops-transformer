@@ -1,0 +1,163 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+diff --git a/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h b/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h
+index 4cc0aab5f..efece3de9 100644
+--- a/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h
++++ b/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h
+@@ -746,7 +746,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
+     }
+
+     uint32_t maxBs = globalBS_ / epWorldSizeOriginal_;
+-    uint32_t batchTokenNum = Ceil(maxBs, recvAivNum_);
++    // Each receiver keeps bufferNum_ tokens in flight. Send that complete
++    // receive wave together instead of rescanning all indices for each token.
++    uint32_t batchTokenNum = Ceil(maxBs, recvAivNum_ * bufferNum_);
+     uint32_t batchSendCount = 0U;
+     for (uint32_t batchId = 0U; batchId < batchTokenNum && batchSendCount < sendCntNum_; batchId++) {
+         uint32_t firstLoopId = (epRankId_ + batchId) % tokenLoopNum;
+@@ -779,8 +781,8 @@ __aicore__ inline uint32_t MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAll
+     uint32_t tokenOffset, uint32_t currentTokenNum, uint32_t batchId)
+ {
+     LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+-    uint32_t batchBegin = batchId * recvAivNum_;
+-    uint32_t batchEnd = batchBegin + recvAivNum_;
++    uint32_t batchBegin = batchId * recvAivNum_ * bufferNum_;
++    uint32_t batchEnd = batchBegin + recvAivNum_ * bufferNum_;
+     uint32_t batchSendCount = 0U;
+     uint32_t permStride = 1U;
+     if (likely(currentTokenNum > 2U)) {
+@@ -970,8 +972,8 @@ __aicore__ inline uint32_t MoeDistributeCombineV2<CombineMC2TypeFunc>::CheckPack
+         uint32_t currentFlagFloatNum = currentBlockCount * flagPerBlock;
+         uint32_t compareCount = Ceil(currentFlagFloatNum, 64U) * 64U;
+         uint32_t compResultU64Num = Ceil(currentFlagFloatNum, 64U);
+-        Duplicate<float>(flagTensor, float(0), compareCount);
+-        PipeBarrier<PIPE_V>();
++        // Every valid flag is overwritten below. The final padded comparison
++        // bits are ignored by the flagFloatNum clamp, so no scratch clear is needed.
+         SyncFunc<AscendC::HardEvent::V_MTE2>();
+         DataCopyExtParams expFlagCopyParams{static_cast<uint16_t>(currentBlockCount), SPLIT_BLOCK_FLAG_SIZE,
+                                             srcStrideBytes, 0U, 0U};
+diff --git a/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_v2_tiling.cpp b/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_v2_tiling.cpp
+index 4d579ac87..f2f9a3e1b 100644
+--- a/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_v2_tiling.cpp
++++ b/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_v2_tiling.cpp
+@@ -1599,6 +1599,7 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context,
+     winSizeData.isSetFullMeshV2 = isSetFullMeshV2;
+     winSizeData.isLayered = isLayered;
+     winSizeData.isMc2Context = config.isMc2Context;
++    winSizeData.isCombinePacked = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
+     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
+                     OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
+     tilingData.moeDistributeDispatchV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
+diff --git a/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h b/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h
+index 77210f51c..4de5e4130 100644
+--- a/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h
++++ b/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h
+@@ -374,6 +374,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+         expertScaleAlign_ = tokenQuantAlign_ + EXPAND_IDX_INFO;
+     }
+     blockCntPerToken_ = Ceil(hOutSizeAlign_, SPLIT_BLOCK_DATA_SIZE);
++    if constexpr ((QuantMode == UNQUANT) && Std::IsSame<ExpandXOutType, XType>::value) {
++        // Packing reads complete 480-byte blocks, including the metadata tail.
++        hAlignSize_ = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
++    }
+     hCommuSize_ = blockCntPerToken_ * SPLIT_BLOCK_SIZE;
+     axisHCommu_ = hCommuSize_ / sizeof(XOutType);
+     expertPerSizeOnWin_ = axisMaxBS_ * hCommuSize_;
+@@ -789,13 +793,19 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+             outTensorInt32(tripleBase) = epRankId_;
+             outTensorInt32(tripleBase + 1) = tokenIdx;
+             outTensorInt32(tripleBase + 2) = k;
++            if (hasExpertScalesFlag_) {
++                uint32_t scaleOutOffset = (expertScaleAlign_ / SPLIT_BLOCK_DATA_COUNT) * SPLIT_BLOCK_COUNT +
++                                          expertScaleAlign_ % SPLIT_BLOCK_DATA_COUNT;
++                LocalTensor<float> outTensorFloat = outTensor_.template ReinterpretCast<float>();
++                outTensorFloat(slotOffInt32 + scaleOutOffset) = expertScalesTensor_.GetValue(flatIdx);
++            }
+             SyncFunc<AscendC::HardEvent::S_MTE3>();
+
+             DataCopy(dstWinGMTensor, outTensor_[(ki - batchStart) * axisHCommu_], axisHCommu_);
+         }
+         // 批次间等待 MTE3 完成，slot 可安全复用于下一批
+         if (batchEnd < kIterEnd) {
+-            SyncFunc<AscendC::HardEvent::MTE3_S>();
++            SyncFunc<AscendC::HardEvent::MTE3_V>();
+         }
+     }
+ }
+@@ -864,27 +874,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+     TBuf<> smoothScalesBuf, receiveDataCastFloatBuf;
+     expertIdsBufSize_ = Ceil(expertIdsCnt_ * sizeof(int32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256; // 支持compareScalar
+     tpipe_->InitBuffer(inQueue, BUFFER_NUM, hAlignSize_);
+-    tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize_);
+-    if (hasExpertScalesFlag_) {
+-        tpipe_->InitBuffer(expertScalesBuf_, expertIdsBufSize_);
+-    }
+-    bool needMaskCalFlag = (isTokenMaskFlag_ || isExpertMaskFlag_ || zeroComputeExpertNum_ != 0);
+-    if (needMaskCalFlag) {
+-        tpipe_->InitBuffer(gatherMaskTBuf_, expertIdsBufSize_);
+-    }
++    // SendCumSum already owns the routing tensors and two maxSize_ scratch buffers.
++    // Keep the routing tensors live and reuse its scratch for quantization/counting.
+     if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
+-        hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
++        hOutAlignUbSize_ = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
+         tpipe_->InitBuffer(tempBuf, hOutAlignUbSize_);
+-        tpipe_->InitBuffer(receiveDataCastFloatBuf, maxSize_);
+-        tpipe_->InitBuffer(smoothScalesBuf, maxSize_);
++        receiveDataCastFloatBuf = dstExpBuf_;
++        smoothScalesBuf = subExpBuf_;
+         tempTensor_ = tempBuf.Get<XOutType>();
+         floatLocalTemp_ = receiveDataCastFloatBuf.Get<float>();
+         smoothScalesTensor_ = smoothScalesBuf.Get<float>();
+-        dstExpBuf_ = receiveDataCastFloatBuf; // 内存复用
+-        subExpBuf_ = smoothScalesBuf;         // 内存复用
+-    } else if (needMaskCalFlag) {
+-        tpipe_->InitBuffer(dstExpBuf_, maxSize_);
+-        tpipe_->InitBuffer(subExpBuf_, maxSize_);
+     }
+     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf, dynamicScalesOutGMTensor_);
+     if (activeMaskBsCnt_ == 0) {
+@@ -908,31 +907,11 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+                             (activeBS % moeUsedAivNum_ == 0 || moeUsedAivNum_ % activeBS == 0) &&
+                             (scalesCount_ <= axisH_) && (!isExpertMaskFlag_);
+         if (canUseBSMode) {
+-            // BS 模式：分配 CalTokenSendExpertCnt 所需 buffer，再尽可能多分配 outBuf slot
+-            uint32_t calTokenIdxBuffSize = Ceil(axisBS_ * axisK_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+-            bool needMaskCalFlag = (isTokenMaskFlag_ || isExpertMaskFlag_ || zeroComputeExpertNum_ != 0);
+-            TBuf<> calTempBuf;
+-            if (!needMaskCalFlag &&
+-                !((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value))) {
+-                tpipe_->InitBuffer(dstExpBuf_, calTokenIdxBuffSize);
+-                tpipe_->InitBuffer(subExpBuf_, calTokenIdxBuffSize);
+-            }
+-            tpipe_->InitBuffer(calTempBuf, calTokenIdxBuffSize);
+-            workLocalTensor_ = calTempBuf.Get<float>();
++            // Counting scratch and workLocalTensor_ remain available from SendCumSum.
+             CalcSendTokenBufNum(outBuf);
+             SendToMoeExpertByBS(inQueue, outBuf);
+         } else {
+-            // 非BS模式：按token分核（PR5732），CalTokenSendExpertCnt所需buffer + 多slot outBuf
+-            uint32_t calTokenIdxBuffSize = Ceil(axisBS_ * axisK_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+-            bool needMaskCalFlag = (isTokenMaskFlag_ || isExpertMaskFlag_ || zeroComputeExpertNum_ != 0);
+-            if (!needMaskCalFlag &&
+-                !((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value))) {
+-                tpipe_->InitBuffer(dstExpBuf_, calTokenIdxBuffSize);
+-                tpipe_->InitBuffer(subExpBuf_, calTokenIdxBuffSize);
+-            }
+-            TBuf<> calTempBuf;
+-            tpipe_->InitBuffer(calTempBuf, calTokenIdxBuffSize);
+-            workLocalTensor_ = calTempBuf.Get<float>();
++            // Token partition uses the same counting scratch as the BS path.
+             CalcSendTokenBufNum(outBuf);
+             SendToMoeExpert(inQueue, outBuf);
+         }
+# End of archived patch.

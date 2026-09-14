@@ -1,0 +1,1157 @@
+{
+  "status": "passed",
+  "ranks": 16,
+  "calls_per_rank": 32,
+  "pattern": [
+    1,
+    1,
+    -1,
+    -1
+  ],
+  "inter_call_barrier": false,
+  "first_output_cpu_double_benchmark": true,
+  "every_output_sign_symmetry_checked": true,
+  "checks": [
+    [
+      11,
+      32,
+      true
+    ],
+    [
+      7,
+      32,
+      true
+    ],
+    [
+      8,
+      32,
+      true
+    ],
+    [
+      10,
+      32,
+      true
+    ],
+    [
+      0,
+      32,
+      true
+    ],
+    [
+      1,
+      32,
+      true
+    ],
+    [
+      14,
+      32,
+      true
+    ],
+    [
+      5,
+      32,
+      true
+    ],
+    [
+      9,
+      32,
+      true
+    ],
+    [
+      2,
+      32,
+      true
+    ],
+    [
+      3,
+      32,
+      true
+    ],
+    [
+      15,
+      32,
+      true
+    ],
+    [
+      12,
+      32,
+      true
+    ],
+    [
+      6,
+      32,
+      true
+    ],
+    [
+      4,
+      32,
+      true
+    ],
+    [
+      13,
+      32,
+      true
+    ]
+  ],
+  "validation": {
+    "sequence": 0,
+    "case_id": 0,
+    "report": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "legacy_result_0",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_1",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_2",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_3",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_4",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_5",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_6",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_7",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_8",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_9",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_10",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_11",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_12",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_13",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_14",
+          "passed": true,
+          "details": {}
+        },
+        {
+          "name": "legacy_result_15",
+          "passed": true,
+          "details": {}
+        }
+      ],
+      "summary": {
+        "result_count": 16
+      }
+    },
+    "payload": [
+      [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      [
+        {
+          "name": "expandX",
+          "rank": 0,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9943824670936876,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.3611503669927937,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003884306512084717,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014107436210656003,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.02380853525338703,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003884306512084717,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014107436210656003,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.02380853525338703,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 1,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9891910423148711,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.36070795302343195,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003864027509042465,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.001409015441497781,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.02356777911414265,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003864027509042465,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.001409015441497781,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.02356777911414265,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 2,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9938288921079648,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.36143445021413945,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038821441097967374,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014118533211489822,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.02453057799686574,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038821441097967374,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014118533211489822,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.02453057799686574,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 3,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9903742375464764,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.36325623304039695,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038686493654159233,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014189696603140506,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.023909069909922875,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038686493654159233,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014189696603140506,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.023909069909922875,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 4,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9941397698760603,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.3625615710821556,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038833584760783607,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014162561370396703,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024200325202292112,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038833584760783607,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014162561370396703,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024200325202292112,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 5,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9870471098222571,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.36247907884769986,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038556527727431917,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014159339017488276,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.02362849987674016,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038556527727431917,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014159339017488276,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.02362849987674016,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 6,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.988339151842518,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.35852070347917897,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003860699811884836,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014004714979655429,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024369276761416574,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003860699811884836,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014004714979655429,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024369276761416574,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 7,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.985160917464903,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.35885869445998014,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038482848338472772,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014017917752342974,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.023551737100273865,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038482848338472772,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014017917752342974,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.023551737100273865,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 8,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9935826572593802,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.3611762589439839,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003881182254919454,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014108447614999372,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024206288790231893,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003881182254919454,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014108447614999372,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024206288790231893,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 9,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9862198410881213,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.3626015904218364,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003852421254250474,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014164124625852983,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024090881233927292,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003852421254250474,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014164124625852983,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024090881233927292,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 10,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9908027875637807,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.36171481783227527,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038703233889210184,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014129485071573253,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024370436931378237,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038703233889210184,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014129485071573253,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024370436931378237,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 11,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9919605587868783,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.362534129844737,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038748459327612433,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014161489447060038,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.02398138869246143,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038748459327612433,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014161489447060038,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.02398138869246143,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 12,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9816381299576581,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.35790569068381506,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003834523945147102,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0013980691042336526,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.02419646446821788,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003834523945147102,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0013980691042336526,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.02419646446821788,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 13,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9927323807140784,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.35913659149604826,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003877860862164369,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014028773105314385,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024235766917933384,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.003877860862164369,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0014028773105314385,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024235766917933384,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 14,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9954949264357293,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.3602428634604777,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038886520563895677,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.001407198685392491,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024144018653989487,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038886520563895677,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.001407198685392491,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024144018653989487,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "expandX",
+          "rank": 15,
+          "result": true,
+          "error_info": "",
+          "new_benchmark_indicate": {
+            "\u6700\u5927\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.9929894404335498,
+              5.0
+            ],
+            "\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.35744615305716587,
+              1.5
+            ],
+            "\u5747\u65b9\u6839\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              1.0,
+              1.5
+            ],
+            "\u5c0f\u503c\u57df\u6570\u9519\u8bef\u5dee\u6bd4\u4f8b": [
+              true,
+              0.0,
+              2.0
+            ],
+            "Actual_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038788650016935537,
+            "Actual_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0013962740353795542,
+            "Actual_\u5747\u65b9\u6839\u8bef\u5dee": 0.024282831293568327,
+            "Actual_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0,
+            "Benchmark_\u6700\u5927\u76f8\u5bf9\u8bef\u5dee": 0.0038788650016935537,
+            "Benchmark_\u5e73\u5747\u76f8\u5bf9\u8bef\u5dee": 0.0013962740353795542,
+            "Benchmark_\u5747\u65b9\u6839\u8bef\u5dee": 0.024282831293568327,
+            "Benchmark_\u5c0f\u503c\u57df\u6570\u9519\u6570\u91cf": 0
+          },
+          "validation_policy": {
+            "name": "double_benchmark",
+            "double_benchmark": {
+              "max_relative_error_ratio": 5.0,
+              "avg_relative_error_ratio": 1.5,
+              "rmse_ratio": 1.5,
+              "small_value_count_ratio": 2.0,
+              "dtype": {
+                "bfloat16": {
+                  "small_domain": 0.00390625,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float16": {
+                  "small_domain": 0.00048828125,
+                  "absolute_error": 1.52587890625e-05
+                },
+                "float32": {
+                  "small_domain": 6.103515625e-05,
+                  "absolute_error": 9.313225746154785e-10
+                }
+              }
+            }
+          }
+        }
+      ]
+    ],
+    "performance": null,
+    "case_name": "stress_alternating_qwen_next"
+  },
+  "artifact_manifest": "separate_artifact_manifest.json"
+}

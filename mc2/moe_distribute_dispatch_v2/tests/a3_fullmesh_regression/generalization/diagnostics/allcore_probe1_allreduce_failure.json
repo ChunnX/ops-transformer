@@ -1,0 +1,17 @@
+{
+  "failure": "HcclAllreduce initialization before timed operator",
+  "ranks": [
+    9,
+    10,
+    11,
+    12,
+    14
+  ],
+  "aicpu_function": "RunAicpuKfcResInitV2",
+  "error_code": 507018,
+  "target_kernel_rows": 0,
+  "csv_files": 0,
+  "source_unchanged": true,
+  "log": "logs/allcore_probe1_combine_regression_recheck_attempt1.log",
+  "archived_profiles": "results/failed_profiles/allcore_probe1"
+}

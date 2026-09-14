@@ -36,9 +36,12 @@ replace its NPU preflight, HCCL lifecycle, CPU Golden, or precision thresholds.
 
 4. For each variant, select only its installed vendor in
    `ASCEND_CUSTOM_OPP_PATH`, source that vendor's `bin/set_env.bash`, and give it
-   a separate `ASCEND_CACHE_PATH`. Use an isolated OPP overlay: symlink the
-   toolkit's non-vendor resources, create a private `vendors` directory, and
-   set `ASCEND_OPP_PATH` to that overlay. Do not modify system installations.
+   a separate `ASCEND_CACHE_PATH`. Copy the toolkit's non-vendor OPP resources
+   into a private directory, preserving real directories throughout `built-in`;
+   create a private `vendors/config.ini` containing only `load_priority=`.
+   Set `ASCEND_OPP_PATH` to this copy. CANN 9.1.0's host loader can reject a
+   symlinked `built-in` directory and silently miss standard tiling libraries.
+   Do not copy system custom vendors or modify system installations.
    Verify that the package contains device `.o` files, the selected kernel path
    belongs to the expected vendor, and its hash matches the built artifact.
    A `--jit` package alone can fall back to a system binary and is insufficient

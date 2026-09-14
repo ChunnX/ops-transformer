@@ -1,0 +1,45 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+--- a/core/operations/dispatch/operation.py
++++ b/core/operations/dispatch/operation.py
+@@ -9,6 +9,8 @@
+ # -----------------------------------------------------------------------------------------------------------
+
+ from typing import Dict
++import os
++from pathlib import Path
+
+ import torch
+
+@@ -107,9 +109,20 @@
+             if not triples_match:
+                 self.log.error(f"rank={rank}: source rank/token/topk triples differ")
+             result &= triples_match
++            if accuracy_configs is not None:
++                accuracy_configs.append(dict(name="assistInfoForCombine", rank=rank, result=triples_match))
+             if golden.expand_scales is not None:
+-                result &= torch.equal(output.expand_scales.view(-1)[:actual_tokens],
+-                                      golden.expand_scales.view(-1)[:actual_tokens])
++                scales_match = torch.equal(output.expand_scales.view(-1)[:actual_tokens],
++                                           golden.expand_scales.view(-1)[:actual_tokens])
++                result &= scales_match
++                if accuracy_configs is not None:
++                    accuracy_configs.append(dict(name="expandScales", rank=rank, result=scales_match))
++        diagnostic = os.environ.get("EP_TEST_DISPATCH_DUMP")
++        if diagnostic and rank == 0:
++            directory = Path(diagnostic)
++            directory.mkdir(parents=True, exist_ok=True)
++            torch.save({"output": vars(output), "golden": vars(golden), "param": param},
++                       directory / (param["case_name"] + ".pt"))
+         # performance_info 打印
+         if config["pta_version"] > 1 and param['need_performance_info']:
+             self.log.info(f"rank:{rank}, performance_info :{output.performance_info}")
+# End of archived patch.

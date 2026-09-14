@@ -1,0 +1,30 @@
+[
+  {
+    "case_name": "stress_alternating_qwen_next",
+    "bs": 256,
+    "h": 2048,
+    "k": 10,
+    "dtype": "bf16",
+    "world_size": 16,
+    "server_num": 1,
+    "moe_expert_num": 512,
+    "is_performance": false,
+    "loop": 1,
+    "graph_type": 0,
+    "comm_quant_mode": 0,
+    "quant_mode": 0,
+    "comm_alg": "",
+    "zero_expert_num": 0,
+    "copy_expert_num": 0,
+    "const_expert_num": 0,
+    "token_mask_true_num": -1,
+    "is_expert_mask": false,
+    "has_scale": false,
+    "expert_token_nums_type": 0,
+    "need_performance_info": 0,
+    "dis_pattern": "cyclic",
+    "seed": 20260914,
+    "HCCL_BUFFSIZE_fullmesh": 2048,
+    "HCCL_BUFFSIZE_hierarchy": 2048
+  }
+]

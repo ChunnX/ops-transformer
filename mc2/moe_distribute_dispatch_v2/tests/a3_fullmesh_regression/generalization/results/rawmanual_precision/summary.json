@@ -1,0 +1,8 @@
+{
+  "status": "precision_complete",
+  "candidate": "rawmanual",
+  "accuracy_cases": 293,
+  "performance_status": "not_completed",
+  "hccl_buffer_mib": 8192,
+  "performance_followup": "../rawmanual_complete_matrix/summary.json"
+}

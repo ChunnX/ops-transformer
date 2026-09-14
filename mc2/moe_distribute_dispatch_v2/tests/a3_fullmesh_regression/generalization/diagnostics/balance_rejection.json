@@ -1,0 +1,9 @@
+{
+  "candidate": "balance",
+  "accepted": false,
+  "reason": "All 7 large BF16 cases slower than fix2 and reference",
+  "precision_cases": 7,
+  "stream_calls_per_rank": 32,
+  "stream_passed_ranks": 16,
+  "metrics": "balance_combine_vs_reference.csv"
+}

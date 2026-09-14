@@ -1,0 +1,15 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+scan1：7/7精度通过，但7个回退形状全部进一步变慢；拒绝该方案。
+H2048/Qwen3-30B：fix2 102.8837us，scan1 109.5310us，参考85.0345us。
+Scalar时间从fix2约33.19us降到约28.99us，MTE2时间从约32.42us增到约39.20us，总耗时上升。
+结论：减少扫描的局部收益不足以抵消发送顺序改变的影响；不能将最初回退仅归因于扫描次数。
+当前恢复分批优先级，并准备大B非量化3:1收发核比例实验。

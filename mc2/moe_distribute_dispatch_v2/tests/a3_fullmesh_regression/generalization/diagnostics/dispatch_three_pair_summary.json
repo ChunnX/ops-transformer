@@ -1,0 +1,86 @@
+[
+  {
+    "case_name": "dispatch_fm2_deepseek_v3_b256_q0",
+    "baseline_runs_us": [
+      295.911895,
+      295.1916675,
+      295.27916875
+    ],
+    "optimized_runs_us": [
+      297.27844125,
+      296.514625,
+      296.39820625
+    ],
+    "per_pair_reduction_pct": [
+      -0.46180848863814905,
+      -0.44816898498669655,
+      -0.3789761075043696
+    ],
+    "baseline_mean_us": 295.46091041666665,
+    "optimized_mean_us": 296.7304241666667,
+    "mean_reduction_pct": -0.42967232051431825
+  },
+  {
+    "case_name": "dispatch_fm2_kimi_k2_instruct_b256_q0",
+    "baseline_runs_us": [
+      293.70227750000004,
+      296.52623125,
+      294.58527375
+    ],
+    "optimized_runs_us": [
+      302.1303775,
+      302.62004375,
+      302.9786725
+    ],
+    "per_pair_reduction_pct": [
+      -2.869606620602383,
+      -2.0550669242014763,
+      -2.8492255037579017
+    ],
+    "baseline_mean_us": 294.9379275,
+    "optimized_mean_us": 302.5763645833333,
+    "mean_reduction_pct": -2.5898456492454036
+  },
+  {
+    "case_name": "dispatch_fm2_gpt_oss_120b_b256_q0",
+    "baseline_runs_us": [
+      76.60629875,
+      76.4357425,
+      75.5314575
+    ],
+    "optimized_runs_us": [
+      76.877965,
+      75.43225875,
+      75.87241125
+    ],
+    "per_pair_reduction_pct": [
+      -0.35462651822739666,
+      1.3128462119668671,
+      -0.4514062898892224
+    ],
+    "baseline_mean_us": 76.19116625,
+    "optimized_mean_us": 76.06087833333333,
+    "mean_reduction_pct": 0.17100134186049942
+  },
+  {
+    "case_name": "dispatch_fm2_deepseek_v2_b256_q0",
+    "baseline_runs_us": [
+      167.707445,
+      168.17872500000001,
+      167.39888375
+    ],
+    "optimized_runs_us": [
+      173.47710125,
+      172.98123375,
+      173.71287875000002
+    ],
+    "per_pair_reduction_pct": [
+      -3.4403101484254295,
+      -2.8555982630977805,
+      -3.7718262264099467
+    ],
+    "baseline_mean_us": 167.76168458333333,
+    "optimized_mean_us": 173.39040458333335,
+    "mean_reduction_pct": -3.3551880538037926
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "status": "rejected",
+  "precision_cases": 7,
+  "performance_complete_ranks": 16,
+  "stress_calls_per_rank": 32,
+  "reason": "All seven large q0 cases remain slower than repaired reference",
+  "reduction_pct": [
+    -5.889513464111973,
+    -8.35548503722121,
+    -19.88663909669246,
+    -4.461013883759302,
+    -17.082728779306123,
+    -13.137133003180534,
+    -13.438240994308659
+  ],
+  "limitation": "Observer saw two device PIDs perchip during 11:48:41-11:49:04UTC. Last3cases potentiallyaffected; do not report their values as exclusive. First4already lack benefit. Entirebatch diagnostic only."
+}

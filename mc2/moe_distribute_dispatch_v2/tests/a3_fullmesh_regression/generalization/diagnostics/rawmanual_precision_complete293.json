@@ -1,0 +1,35 @@
+{
+  "candidate": "rawmanual",
+  "status": "precision_complete_performance_pending",
+  "unique_accuracy_cases": 293,
+  "ranks": 16,
+  "groups": {
+    "dispatch_accuracy": {
+      "planned": 118,
+      "passed": 118,
+      "failed": 0
+    },
+    "combine_accuracy": {
+      "planned": 118,
+      "passed": 118,
+      "failed": 0
+    },
+    "both_accuracy": {
+      "planned": 8,
+      "passed": 8,
+      "failed": 0
+    },
+    "dispatch_large_accuracy": {
+      "planned": 25,
+      "passed": 25,
+      "failed": 0
+    },
+    "combine_large_accuracy": {
+      "planned": 24,
+      "passed": 24,
+      "failed": 0
+    }
+  },
+  "source_manifest": "rawmanual_artifact_manifest.json",
+  "reuse_from_prior_candidate": false
+}

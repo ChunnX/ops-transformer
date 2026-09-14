@@ -1,0 +1,23 @@
+{
+  "status": "complete_matrix_two_dispatch_regressions",
+  "accuracy_cases": 293,
+  "performance_hccl_buffer_mib": 8192,
+  "performance": {
+    "dispatch": {
+      "cases": 32,
+      "improvements": 30,
+      "regressions": 2,
+      "min_reduction_pct": -2.0735337242637764,
+      "max_reduction_pct": 39.3006669264367,
+      "geometric_reduction_pct": 19.10550504549785
+    },
+    "combine": {
+      "cases": 32,
+      "improvements": 32,
+      "regressions": 0,
+      "min_reduction_pct": 0.9021242721912959,
+      "max_reduction_pct": 23.193307234107095,
+      "geometric_reduction_pct": 9.734606347748109
+    }
+  }
+}

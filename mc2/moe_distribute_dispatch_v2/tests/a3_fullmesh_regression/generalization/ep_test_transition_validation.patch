@@ -1,0 +1,47 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+--- a/core/operations/combine/generation.py
++++ b/core/operations/combine/generation.py
+@@ -89,7 +89,12 @@
+         return True
+
+     def _init_x(self):
+-        self.x = torch.empty((self.sum_bs, self.h), dtype=self.dtype).uniform_(-5, 5).split(self.bs)
++        if self.param.get("case_name", "").startswith("transition_poison_"):
++            # Diagnostic payload: every 32-bit word equals packed ready flag 1.0f.
++            values = torch.full((self.sum_bs, self.h // 2), 0x3F800000, dtype=torch.int32)
++            self.x = values.view(self.dtype).split(self.bs)
++        else:
++            self.x = torch.empty((self.sum_bs, self.h), dtype=self.dtype).uniform_(-5, 5).split(self.bs)
+
+     def _init_expert_ids(self):
+         if self.param['dis_pattern'] == 'cyclic':
+--- a/core/operations/_native_stages/executor.py
++++ b/core/operations/_native_stages/executor.py
+@@ -50,6 +50,9 @@
+             device_input.ep_rank_id = task.rank.global_rank
+             if task.rank.global_rank == 0:
+                 print("EP16_FORWARD", param["case_name"], flush=True)
++            if param.get("case_name", "").startswith("transition_delayed_") and task.rank.global_rank == 0:
++                import time
++                time.sleep(0.1)
+             device_output = self.output_class(
+                 *self.operator.forward(device_input, param)
+             )
+@@ -61,6 +64,7 @@
+                 directory.mkdir(parents=True, exist_ok=True)
+                 (directory / (param["case_name"] + ".json")).write_text(json.dumps({
+                     "vendor": os.environ.get("ASCEND_CUSTOM_OPP_PATH"),
++                    "worker_pid": os.getpid(), "comm_name": resource.comm_name,
+                     "libraries": libraries, "quant_mode": param.get("quant_mode"),
+                     "comm_quant_mode": param.get("comm_quant_mode"), "comm_alg": param.get("comm_alg")}, indent=2))
+             return device_output.cpu()
+# End of archived patch.

@@ -1,0 +1,37 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+diff --git a/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h b/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h
+index 4cc0aab5f..81084f630 100644
+--- a/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h
++++ b/mc2/moe_distribute_combine_v2/op_kernel/arch22/moe_distribute_combine_v2.h
+@@ -746,7 +746,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
+     }
+
+     uint32_t maxBs = globalBS_ / epWorldSizeOriginal_;
+-    uint32_t batchTokenNum = Ceil(maxBs, recvAivNum_);
++    // Each receiver keeps bufferNum_ tokens in flight. Send that complete
++    // receive wave together instead of rescanning all indices for each token.
++    uint32_t batchTokenNum = Ceil(maxBs, recvAivNum_ * bufferNum_);
+     uint32_t batchSendCount = 0U;
+     for (uint32_t batchId = 0U; batchId < batchTokenNum && batchSendCount < sendCntNum_; batchId++) {
+         uint32_t firstLoopId = (epRankId_ + batchId) % tokenLoopNum;
+@@ -779,8 +781,8 @@ __aicore__ inline uint32_t MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAll
+     uint32_t tokenOffset, uint32_t currentTokenNum, uint32_t batchId)
+ {
+     LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+-    uint32_t batchBegin = batchId * recvAivNum_;
+-    uint32_t batchEnd = batchBegin + recvAivNum_;
++    uint32_t batchBegin = batchId * recvAivNum_ * bufferNum_;
++    uint32_t batchEnd = batchBegin + recvAivNum_ * bufferNum_;
+     uint32_t batchSendCount = 0U;
+     uint32_t permStride = 1U;
+     if (likely(currentTokenNum > 2U)) {
+# End of archived patch.

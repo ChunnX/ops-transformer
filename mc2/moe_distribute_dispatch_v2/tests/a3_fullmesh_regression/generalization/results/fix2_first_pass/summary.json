@@ -1,0 +1,23 @@
+{
+  "status": "First paired measurement of fix2; unresolved regressions; not final acceptance",
+  "accuracy_cases": 293,
+  "performance_hccl_buffer_mib": 8192,
+  "performance": {
+    "dispatch": {
+      "cases": 32,
+      "improvements": 28,
+      "regressions": 4,
+      "min_reduction_pct": -3.4403101484254295,
+      "max_reduction_pct": 38.75413678367092,
+      "geometric_reduction_pct": 18.35032668781875
+    },
+    "combine": {
+      "cases": 32,
+      "improvements": 25,
+      "regressions": 7,
+      "min_reduction_pct": -20.9905094257256,
+      "max_reduction_pct": 29.680389733178046,
+      "geometric_reduction_pct": 12.403989141645422
+    }
+  }
+}

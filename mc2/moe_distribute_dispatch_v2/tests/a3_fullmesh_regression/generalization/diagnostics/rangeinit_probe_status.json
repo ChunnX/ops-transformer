@@ -1,0 +1,21 @@
+{
+  "candidate": "rangeinit",
+  "status": "8nonquantprecisionpassed_performanceexcluded_sourcewithdrawn",
+  "records": [
+    {
+      "variant": "reference_rangeinit",
+      "validated_cases": 8,
+      "rank_count": 16
+    },
+    {
+      "variant": "rangeinit",
+      "validated_cases": 8,
+      "rank_count": 16
+    }
+  ],
+  "reason": "Additional16then8deviceprocesses during profiling; no valid exclusivepairedperformance conclusion.",
+  "source_delta": "rangeinit_vs_rawmanual.diff",
+  "source_manifest": "rangeinit_artifact_manifest.json",
+  "business_code_restored": "rawmanual, exactly matching validated source patch",
+  "archived_profiles": "results/failed_profiles/rangeinit_probe1_overlap"
+}

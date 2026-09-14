@@ -1,0 +1,10 @@
+[
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_comm_legacy.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_cv.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_legacy.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_math.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_nn.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_oam.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/opp_complete/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_transformer.so",
+  "/root/workspace/code_develop/O1Deepep/a3_ep16_generalization/reference/install/vendors/a3_reference_fix_transformer/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64/libcust_opmaster_rt2.0.so"
+]

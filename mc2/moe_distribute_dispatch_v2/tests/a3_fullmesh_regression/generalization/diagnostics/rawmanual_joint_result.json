@@ -1,0 +1,31 @@
+{
+  "candidate": "rawmanual",
+  "total_case_records": 28,
+  "transition_cases": 16,
+  "stream_calls_per_rank": 32,
+  "stream_ranks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "performance_cases": 11,
+  "performance_complete_rank_count": 16,
+  "precision_passed": true,
+  "performance_baseline": "q0reference_fixed under opp_complete;q2 historicalreference;fullmatrixwillrefreshboth",
+  "observer_multiple_pid_samples": 0,
+  "log": "logs/rawmanual_joint1_attempt1.log",
+  "status": "probes_passed_full_acceptance_pending"
+}

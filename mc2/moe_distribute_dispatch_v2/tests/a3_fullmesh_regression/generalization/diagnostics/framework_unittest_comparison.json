@@ -1,0 +1,27 @@
+{
+  "prior_failures": [
+    "test_checked_in_tables_match_case_info (test_single_node_cases.SingleNodeNativeCasesTest) (operation='dispatch_combine', path='both_8p_bf16.xlsx')",
+    "test_checked_in_tables_match_case_info (test_single_node_cases.SingleNodeNativeCasesTest) (operation='dispatch_combine', path='combine_8p_bf16.xlsx')",
+    "test_checked_in_tables_match_case_info (test_single_node_cases.SingleNodeNativeCasesTest) (operation='dispatch_combine', path='dispatch_8p_bf16.xlsx')",
+    "test_each_table_is_a_single_machine_accuracy_smoke (test_single_node_cases.SingleNodeNativeCasesTest)",
+    "test_framework_case_info_reproduces_tracked_model_tables (test_mega_moe_dtype_contract.MegaMoeDtypeContractTest)",
+    "test_imports_reference_lists_pool_and_golden_for_data1 (test_import_mega_moe_reference_data.ImportMegaMoeReferenceDataTest)",
+    "test_rejects_target_seed_that_cannot_describe_source_input (test_import_mega_moe_reference_data.ImportMegaMoeReferenceDataTest)",
+    "test_root_mega_moe_smoke_matches_a3_kernel_contract (test_mega_moe_dtype_contract.MegaMoeDtypeContractTest)",
+    "test_shared_fields_are_aligned (test_config_profiles.ConfigProfilesTest) (key='env')",
+    "test_tracked_model_tables_load_through_current_case_reader (test_mega_moe_dtype_contract.MegaMoeDtypeContractTest)"
+  ],
+  "current_failures": [
+    "test_checked_in_tables_match_case_info (test_single_node_cases.SingleNodeNativeCasesTest) (operation='dispatch_combine', path='both_8p_bf16.xlsx')",
+    "test_checked_in_tables_match_case_info (test_single_node_cases.SingleNodeNativeCasesTest) (operation='dispatch_combine', path='combine_8p_bf16.xlsx')",
+    "test_checked_in_tables_match_case_info (test_single_node_cases.SingleNodeNativeCasesTest) (operation='dispatch_combine', path='dispatch_8p_bf16.xlsx')",
+    "test_each_table_is_a_single_machine_accuracy_smoke (test_single_node_cases.SingleNodeNativeCasesTest)",
+    "test_framework_case_info_reproduces_tracked_model_tables (test_mega_moe_dtype_contract.MegaMoeDtypeContractTest)",
+    "test_imports_reference_lists_pool_and_golden_for_data1 (test_import_mega_moe_reference_data.ImportMegaMoeReferenceDataTest)",
+    "test_rejects_target_seed_that_cannot_describe_source_input (test_import_mega_moe_reference_data.ImportMegaMoeReferenceDataTest)",
+    "test_root_mega_moe_smoke_matches_a3_kernel_contract (test_mega_moe_dtype_contract.MegaMoeDtypeContractTest)",
+    "test_shared_fields_are_aligned (test_config_profiles.ConfigProfilesTest) (key='env')",
+    "test_tracked_model_tables_load_through_current_case_reader (test_mega_moe_dtype_contract.MegaMoeDtypeContractTest)"
+  ],
+  "new_failures": []
+}

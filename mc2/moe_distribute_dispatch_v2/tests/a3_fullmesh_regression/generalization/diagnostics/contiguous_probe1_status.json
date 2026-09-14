@@ -1,0 +1,9 @@
+{
+  "candidate": "contiguous",
+  "precision_probe_cases": 7,
+  "precision_passed": 7,
+  "performance_acceptance": "invalid:5of7casesmissingtargetranks;wholebatchnotusedforbenefits",
+  "evidence": "results/contiguous_profile_completeness.json",
+  "stress": "preflight attempts1and2foundnewoccupancyonphysical4..7;attempt3pending",
+  "next": "repeat complete probe underobservedexclusivewindow;no sourceacceptanceyet"
+}

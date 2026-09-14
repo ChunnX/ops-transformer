@@ -1,0 +1,26 @@
+{
+  "candidate": "contiguous",
+  "calls_per_rank": 32,
+  "rank_checks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "pattern": "+,+,-,-",
+  "first_output_cpu_double_benchmark_passed": true,
+  "log": "logs/contiguous_probe1_combine_stream_stress_attempt3.log",
+  "opp": "opp_complete"
+}

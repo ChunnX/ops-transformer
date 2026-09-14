@@ -1,0 +1,56 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+diff --git a/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h b/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h
+index 6bafb2339..bc400b1e0 100644
+--- a/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h
++++ b/mc2/moe_distribute_dispatch_v2/op_kernel/arch22/moe_distribute_dispatch_v2_full_mesh.h
+@@ -376,6 +376,10 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+         expertScaleAlign_ = tokenQuantAlign_ + EXPAND_IDX_INFO;
+     }
+     blockCntPerToken_ = Ceil(hOutSizeAlign_, SPLIT_BLOCK_DATA_SIZE);
++    if constexpr ((QuantMode == UNQUANT) && Std::IsSame<ExpandXOutType, XType>::value) {
++        // Packing reads complete 480-byte blocks, including the metadata tail.
++        hAlignSize_ = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
++    }
+     hCommuSize_ = blockCntPerToken_ * SPLIT_BLOCK_SIZE;
+     axisHCommu_ = hCommuSize_ / sizeof(XOutType);
+     expertPerSizeOnWin_ = axisMaxBS_ * hCommuSize_;
+@@ -812,13 +816,19 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+             outTensorInt32(tripleBase) = epRankId_;
+             outTensorInt32(tripleBase + 1) = tokenIdx;
+             outTensorInt32(tripleBase + 2) = k;
++            if (hasExpertScalesFlag_) {
++                uint32_t scaleOutOffset = (expertScaleAlign_ / SPLIT_BLOCK_DATA_COUNT) * SPLIT_BLOCK_COUNT +
++                                          expertScaleAlign_ % SPLIT_BLOCK_DATA_COUNT;
++                LocalTensor<float> outTensorFloat = outTensor_.template ReinterpretCast<float>();
++                outTensorFloat(slotOffInt32 + scaleOutOffset) = expertScalesTensor_.GetValue(flatIdx);
++            }
+             SyncFunc<AscendC::HardEvent::S_MTE3>();
+
+             DataCopy(dstWinGMTensor, outTensor_[(ki - batchStart) * axisHCommu_], axisHCommu_);
+         }
+         // 批次间等待 MTE3 完成，slot 可安全复用于下一批
+         if (batchEnd < kIterEnd) {
+-            SyncFunc<AscendC::HardEvent::MTE3_S>();
++            SyncFunc<AscendC::HardEvent::MTE3_V>();
+         }
+     }
+ }
+@@ -896,7 +906,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
+         tpipe_->InitBuffer(gatherMaskTBuf_, expertIdsBufSize_);
+     }
+     if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
+-        hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
++        hOutAlignUbSize_ = blockCntPerToken_ * SPLIT_BLOCK_DATA_SIZE;
+         tpipe_->InitBuffer(tempBuf, hOutAlignUbSize_);
+         tpipe_->InitBuffer(receiveDataCastFloatBuf, maxSize_);
+         tpipe_->InitBuffer(smoothScalesBuf, maxSize_);
+# End of archived patch.

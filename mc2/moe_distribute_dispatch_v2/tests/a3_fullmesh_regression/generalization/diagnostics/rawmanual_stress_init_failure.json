@@ -1,0 +1,10 @@
+{
+  "status": "failed_before_target",
+  "candidate": "rawmanual",
+  "suite": "combine_stream_stress",
+  "stage": "HCCL RunAicpuKfcResInitV2",
+  "error_code": 507018,
+  "device_error": "11002 open so failed",
+  "so": "libccl_kernel.so",
+  "log": "logs/rawmanual_probe1_combine_stream_stress_attempt1.log"
+}

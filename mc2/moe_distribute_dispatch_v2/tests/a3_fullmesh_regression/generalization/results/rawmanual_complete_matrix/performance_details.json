@@ -1,0 +1,26 @@
+{
+  "format": "partitioned-records-v1",
+  "records": 64,
+  "parts": [
+    {
+      "path": "performance_details_01.json",
+      "records": 16,
+      "sha256": "86883683345312667a45113ce89769ed2c4e1b3a6ae99521cbb88f8c0c0b2457"
+    },
+    {
+      "path": "performance_details_02.json",
+      "records": 16,
+      "sha256": "934aeb961092f8cbbc43c39d484b3929fb39ed2eda5f484c6d82e791165592a8"
+    },
+    {
+      "path": "performance_details_03.json",
+      "records": 16,
+      "sha256": "86dbeda77c0ce64b679f23a37bc908712e8f7541f9733d41819fbb86052a2248"
+    },
+    {
+      "path": "performance_details_04.json",
+      "records": 16,
+      "sha256": "9828c62f0b97e3e1498f0cea05442cfb3f0e351f28c61d67cfec019b887a1571"
+    }
+  ]
+}

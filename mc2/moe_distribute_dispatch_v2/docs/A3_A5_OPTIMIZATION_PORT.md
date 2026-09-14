@@ -1,8 +1,15 @@
 # A5 dispatch/combine 优化移植到 A3
 
+本文记录 b91 早期移植。当前实现的取舍与后续修复见 [当前设计报告](A3_A5_OPTIMIZATION_DESIGN.md)，完整验收见 [EP16 泛化报告](A3_EP16_GENERALIZATION_REPORT.md)。
+
 已移植可复用的发送、计数合并、打包通知、接收轮转和收发重叠逻辑。A3 EP16
-最终 55 个精度用例全部通过；dispatch 耗时下降 2.74%～26.41%，combine 的
+早期 55 个精度用例全部通过；默认 dispatch 耗时下降 2.74%～26.41%，combine 的
 7 个性能形状下降 4.01%～23.27%，另 1 个形状回退 0.72%。
+
+覆盖纠正：上述 dispatch 用例传入 `comm_alg=""`，没有选择移植发送/计数逻辑所在的
+`fullmesh_v2` 分支，不能用这些结果证明该分支的精度或收益。后续显式 fullmesh_v2
+泛化回归发现 BS 路径漏写专家权重及移植后重复申请 UB 的问题；修复、实际调度键与
+更新后的实测结果见 [EP16 泛化报告](A3_EP16_GENERALIZATION_REPORT.md)。
 
 ## 基线与范围
 

@@ -1,0 +1,17 @@
+{
+  "h_range_inclusive": [
+    512,
+    8192
+  ],
+  "element_bytes": 2,
+  "supported_types": [
+    "float16",
+    "bfloat16"
+  ],
+  "queue_bytes": "ceil(2H/480)*512",
+  "compact_scratch_bytes": "ceil(2H/480)*480 <= align256(4H)",
+  "copy_repeat_max": 35,
+  "checked_hidden_values": 7681,
+  "host_dtype_contract": "expandX onlyBF16/FP16; outputdtypeequalinput",
+  "status": "Arithmetic bounds verified; not a substitute for hardware precision"
+}

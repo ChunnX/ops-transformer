@@ -1,0 +1,9 @@
+{
+  "status": "incomplete_no_accuracy_result",
+  "first_error": "Rank 10 failed RunAicpuKfcResInitV2 before NnopbaseExecutorPrepareParamsExt completed, AICPU 0x2a / 507018",
+  "peer_errors": "MTE invalid GM/cross-device access timeout 0x800000 after peer initialization failure",
+  "code_unchanged_for_retry": true,
+  "journal_validations": 0,
+  "log": "logs/separate_probe1_combine_transition_attempt1.log",
+  "note": "Not counted as an accuracy pass. Root HCCL initialization failure occurs before rank 10 launches candidate kernel; peer failures alone do not establish a kernel-addressing bug."
+}

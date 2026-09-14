@@ -94,7 +94,10 @@ def main():
     rows, details = [], []
     for operation in ("dispatch", "combine"):
         op = "MoeDistribute" + operation.title() + "V2"
-        for case in suites[operation + "performance"]:
+        suite_name = operation + "_performance"
+        if suite_name not in suites:
+            suite_name = operation + "performance"
+        for case in suites[suite_name]:
             baseline = collect(args.baseline, case["case_name"], op, args.keep)
             optimized = collect(args.optimized, case["case_name"], op, args.keep)
             if baseline["run_count"] != optimized["run_count"]:

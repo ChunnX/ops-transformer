@@ -1,0 +1,6 @@
+{
+  "sample_count": 83,
+  "multiple_pid_samples": 4,
+  "errors": [],
+  "limitation": "Sampling every5s does not prove exclusive device ownership between samples; onePID cannot by itself establish task identity."
+}

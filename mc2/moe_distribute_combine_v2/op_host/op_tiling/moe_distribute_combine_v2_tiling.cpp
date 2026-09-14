@@ -1933,10 +1933,10 @@ static void SetA3BufferNum(const uint64_t ubSize, const gert::TilingContext *con
 static bool UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
                       MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config, bool isLayered)
 {
-    // A3 fullmesh uses the same packed communication layout and early-receive
-    // partition as A5. Keep the legacy budget for A2 and hierarchy kernels.
-    bool isA3FullMesh = mc2tiling::GetSocVersion(context) == "Ascend910_93" && !isLayered;
-    if (mc2tiling::GetNpuArch(context) != Ops::Base::DAV_3510 && !isA3FullMesh) {
+    // A3 retains its raw-data/separate-flag protocol after EP16 regression checks.
+    // Its prefetch queues use the original A3 UB budget; A5 keeps the packed budget.
+    bool isA3FullMesh = false;
+    if (mc2tiling::GetNpuArch(context) != Ops::Base::DAV_3510) {
         SetA3BufferNum(ubSize, context, tilingData, config);
         return true;
     }

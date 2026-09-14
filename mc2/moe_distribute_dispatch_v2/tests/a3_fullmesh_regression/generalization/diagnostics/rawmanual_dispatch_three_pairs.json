@@ -1,0 +1,44 @@
+[
+  {
+    "case_name": "dispatch_fm2_deepseek_v3_b256_q0",
+    "paired_runs": [
+      {
+        "reference_us": 294.57718125,
+        "candidate_us": 297.6974525,
+        "reduction_pct": -1.05923725549939
+      },
+      {
+        "reference_us": 294.4758075,
+        "candidate_us": 296.7931325,
+        "reduction_pct": -0.7869322168341686
+      },
+      {
+        "reference_us": 293.89578625,
+        "candidate_us": 298.70521625,
+        "reduction_pct": -1.636440610927603
+      }
+    ],
+    "aggregate_reduction_pct": -1.1605459501317084
+  },
+  {
+    "case_name": "dispatch_fm2_gpt_oss_120b_b256_q0",
+    "paired_runs": [
+      {
+        "reference_us": 76.1651225,
+        "candidate_us": 76.96372,
+        "reduction_pct": -1.048508127850778
+      },
+      {
+        "reference_us": 76.16753375,
+        "candidate_us": 79.31876875,
+        "reduction_pct": -4.137241741793951
+      },
+      {
+        "reference_us": 75.58725625,
+        "candidate_us": 76.36342,
+        "reduction_pct": -1.0268447202699038
+      }
+    ],
+    "aggregate_reduction_pct": -2.0735337242637764
+  }
+]

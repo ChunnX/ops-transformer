@@ -1,0 +1,26 @@
+{
+  "log": "logs/guard_reject1_attempt1.log",
+  "configured_window_mib": 2937,
+  "configured_ranks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "observed_error_code": 561002,
+  "capacity_check_error_observed": true,
+  "validated_positive_case": false,
+  "expected_rejection_observed": true
+}

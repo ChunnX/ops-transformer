@@ -1,0 +1,7 @@
+{
+  "pid": 3521204,
+  "signal": "SIGTERM",
+  "scope": "verified task-owned reference_acceptance worker; supervisor will abort and clean up this task group",
+  "reason": "concurrent device use and incomplete profiler capture; preserve completed293precision",
+  "epoch": 1789390272.1462197
+}

@@ -1,0 +1,269 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+--- a/core/operations/_native_operation.py
++++ b/core/operations/_native_operation.py
+@@ -83,6 +83,10 @@
+         self.log.debug(f'Loop:{loop}')
+         for _ in range(loop):
+             output = model(**input.asdict())
++            if loop > 1:
++                # Bound rank skew consistently while exercising window reuse.
++                # This synchronization is outside operator timing (accuracy only).
++                torch.distributed.barrier()
+         return output
+
+     def run_performance(self, model, param, input: Input):
+--- a/core/operations/_native_stages/executor.py
++++ b/core/operations/_native_stages/executor.py
+@@ -2,6 +2,9 @@
+
+ from dataclasses import dataclass
+ import gc
++import json
++import os
++from pathlib import Path
+
+ from .dependencies import native_log_setter
+
+@@ -45,9 +48,26 @@
+             device_input.group_ep = resource.comm_name
+             device_input.ep_world_size = task.rank.world_size
+             device_input.ep_rank_id = task.rank.global_rank
++            if task.rank.global_rank == 0:
++                print("EP16_FORWARD", param["case_name"], flush=True)
++            if param.get("case_name", "").startswith("transition_delayed_") and task.rank.global_rank == 0:
++                import time
++                time.sleep(0.1)
+             device_output = self.output_class(
+                 *self.operator.forward(device_input, param)
+             )
++            provenance = os.environ.get("EP_TEST_PROVENANCE_PATH")
++            if provenance and task.rank.global_rank == 0:
++                libraries = sorted({line.split()[-1] for line in Path("/proc/self/maps").read_text().splitlines()
++                                    if ".so" in line and ("/vendors/" in line or "libopapi" in line or "liboptiling" in line or "libophost" in line)})
++                directory = Path(provenance)
++                directory.mkdir(parents=True, exist_ok=True)
++                (directory / (param["case_name"] + ".json")).write_text(json.dumps({
++                    "vendor": os.environ.get("ASCEND_CUSTOM_OPP_PATH"),
++                    "worker_pid": os.getpid(), "comm_name": resource.comm_name,
++                    "opp_path": os.environ.get("ASCEND_OPP_PATH"),
++                    "libraries": libraries, "quant_mode": param.get("quant_mode"),
++                    "comm_quant_mode": param.get("comm_quant_mode"), "comm_alg": param.get("comm_alg")}, indent=2))
+             return device_output.cpu()
+         finally:
+             # Drop rank-local NPU tensors before clearing graph caches.  A
+--- a/core/operations/combine/generation.py
++++ b/core/operations/combine/generation.py
+@@ -58,8 +58,6 @@
+         self.local_moe_expert_num = self.moe_expert_num // self.world_size
+         self.A = min(self.k, self.local_moe_expert_num) * self.global_bs
+         self.sum_bs = sum(self.bs)
+-        if not self.is_layered:
+-            self.param['comm_quant_mode'] = 0
+         # torch.manual_seed(config["random_seed"])
+         # torch.manual_seed(param['seed'])
+         self._init_x()
+@@ -91,10 +89,23 @@
+         return True
+
+     def _init_x(self):
+-        self.x = torch.empty((self.sum_bs, self.h), dtype=self.dtype).uniform_(-5, 5).split(self.bs)
++        if self.param.get("case_name", "").startswith("transition_poison_"):
++            # Diagnostic payload: every 32-bit word equals packed ready flag 1.0f.
++            values = torch.full((self.sum_bs, self.h // 2), 0x3F800000, dtype=torch.int32)
++            self.x = values.view(self.dtype).split(self.bs)
++        else:
++            self.x = torch.empty((self.sum_bs, self.h), dtype=self.dtype).uniform_(-5, 5).split(self.bs)
+
+     def _init_expert_ids(self):
+-        if self.param['dis_pattern'] == 'force':
++        if self.param['dis_pattern'] == 'cyclic':
++            # Interleave destination ranks, then local experts. Rank and expert
++            # loads differ by at most one assignment; each token has unique IDs.
++            assignments = torch.arange(self.sum_bs * self.k, dtype=torch.int64)
++            per_rank = self.moe_expert_num // self.world_size
++            expert_ids = ((assignments % self.world_size) * per_rank +
++                          (assignments // self.world_size) % per_rank)
++            self.expert_ids = expert_ids.reshape(self.sum_bs, self.k).to(torch.int32).split(self.bs)
++        elif self.param['dis_pattern'] == 'force':
+             self.expert_ids = self._init_expert_ids_force()
+             self.log.debug(f"force:{self.expert_ids}")
+         elif self.param['dis_pattern'] == 'balance':
+@@ -482,6 +493,25 @@
+         self._init_ep_send_counts(is_support_special_expert=is_support_special_expert)
+         self.assist_info_for_combine = self._init_expand_idx(is_support_special_expert=is_support_special_expert)
+         self._init_expand_x_and_expand_scales(self.assist_info_for_combine, is_support_special_expert=is_support_special_expert)
++        if not self.is_layered:
++            # Current A3 fullmesh ABI: packed (source rank, token, topk) triples
++            # in the same expert-major/source-rank-major order as expand_x.
++            triples = [torch.zeros(self.A * 128, dtype=torch.int32) for _ in range(self.world_size)]
++            offsets = self.assist_info_for_combine
++            for src in range(self.world_size):
++                for token in range(self.bs[src]):
++                    for slot in range(self.k):
++                        expert = int(self.expert_ids[src][token, slot])
++                        if expert >= self.moe_expert_num:
++                            continue
++                        if is_support_special_expert and not self.x_active_mask_2ds_with_special_expert[src][token, slot]:
++                            continue
++                        dst, local_expert = divmod(expert, self.local_moe_expert_num)
++                        count_index = local_expert * self.world_size + src
++                        base = int(self.ep_send_counts[dst][count_index - 1]) if count_index else 0
++                        position = base + int(offsets[src][token, slot])
++                        triples[dst][3 * position:3 * position + 3] = torch.tensor([src, token, slot], dtype=torch.int32)
++            self.assist_info_for_combine = tuple(triples)
+         self._init_ori_x(is_support_special_expert)
+         self._init_hierarchy_inner_outer()
+         self.is_support_special_expert = is_support_special_expert
+--- a/core/operations/combine/operation.py
++++ b/core/operations/combine/operation.py
+@@ -71,6 +71,23 @@
+     def _normal_golden(self, case, x_name="x", comm_quant_mode=0):
+         if case.param['dtype'] not in [torch.float16, torch.bfloat16]:
+             raise ValueError(f"Not support dtype: {case.param['dtype']}")
++        if not case.param["is_layered"] and comm_quant_mode == 2:
++            # A3 INT8 communication uses eight-element FP32 block scales,
++            # stores scales in the input dtype and dequantizes back to it.
++            outputs = []
++            for rank in range(config["rank_num_per_server"]):
++                x = getattr(case.attach[rank], x_name)
++                shape = x.shape
++                blocks = x.float().reshape(-1, 8)
++                scales = blocks.abs().amax(dim=-1, keepdim=True) / 127.0
++                scales = torch.where(scales == 0, torch.ones_like(scales), scales)
++                quant = torch.round((blocks / scales).half().float()).clamp(-128, 127)
++                restored = (quant * scales.to(x.dtype).float()).reshape(shape).to(x.dtype)
++                if restored.dim() == 2:
++                    restored = restored.unsqueeze(-2)
++                weights = case.input[rank].expert_scales.unsqueeze(-1).float()
++                outputs.append((restored.float() * weights).sum(dim=-2).to(x.dtype))
++            return outputs
+         if not case.param["is_layered"]:
+             # 是否需要和算子输出类型相同
+             return self._get_math_golden(
+@@ -98,6 +115,17 @@
+         return golden
+
+     def validate(self, case, accuracy_configs=None):
++        import os
++        from pathlib import Path
++        diagnostic = os.environ.get("EP_TEST_COMBINE_DUMP")
++        if diagnostic:
++            destination = Path(diagnostic)
++            destination.mkdir(parents=True, exist_ok=True)
++            rank = 5
++            torch.save({"output": case.output[rank].x, "golden": case.golden[1][rank].x,
++                        "math_golden": case.golden[0][rank].x, "x": case.attach[rank].x,
++                        "scales": case.input[rank].expert_scales, "param": case.param},
++                       destination / (case.param["case_name"] + "_rank5.pt"))
+         result = []
+         for rank in range(config["rank_num_per_server"]):
+             num = self._get_token_num(case.input[rank].x_active_mask)
+@@ -144,5 +172,32 @@
+ class MoeDistributeCombineV2(MoeDistributeCombineBase):
+     def forward(self, input: Input, param: Dict):
+         model = MOE_DISTRIBUTE_COMBINEV2_MODEL()
++        if param.get("case_name", "").startswith("stress_alternating_"):
++            # Flip both ping-pong halves on reuse; +/- on every call would
++            # leave each half with the same sign and hide stale payload reads.
++            positive = input.expand_x
++            # Prepare once on CPU; the isolated operator package need not provide Neg.
++            negative = (-positive.cpu()).to(positive.device)
++            torch.npu.synchronize()
++            outputs = []
++            kwargs = input.asdict()
++            for iteration in range(32):
++                sign = 1 if (iteration // 2) % 2 == 0 else -1
++                kwargs["expand_x"] = positive if sign == 1 else negative
++                outputs.append((sign, model(**kwargs)))
++            reference = outputs[0][1][0].cpu()
++            for iteration, (sign, value) in enumerate(outputs):
++                actual = value[0].cpu()
++                if not torch.equal(actual, reference * sign):
++                    import os
++                    from pathlib import Path
++                    directory = Path(os.environ["EP_TEST_COMBINE_DUMP"])
++                    directory.mkdir(parents=True, exist_ok=True)
++                    torch.save({"actual": actual, "reference": reference, "sign": sign,
++                                "iteration": iteration, "rank": input.ep_rank_id},
++                               directory / f"stream_failure_rank{input.ep_rank_id}.pt")
++                    raise AssertionError(f"Alternating payload mismatch: rank={input.ep_rank_id}, call={iteration}")
++            print("EP16_STREAM_CHECK", input.ep_rank_id, 32, True, flush=True)
++            return outputs[0][1]
+         output = self.forward_op(model, input, param)
+         return output
+--- a/core/operations/dispatch/operation.py
++++ b/core/operations/dispatch/operation.py
+@@ -9,6 +9,8 @@
+ # -----------------------------------------------------------------------------------------------------------
+
+ from typing import Dict
++import os
++from pathlib import Path
+
+ import torch
+
+@@ -100,7 +102,27 @@
+             token_mask_true_num = param.get('token_mask_true_num', [-1] * param.get('world_size'))[rank + param['start_rank']]
+             if token_mask_true_num >= 0:
+                 bs = token_mask_true_num
+-            result &= compare.valid_expand_idx(rank, output.assist_info_for_combine.view(-1)[:bs * k], golden.assist_info_for_combine.view(-1)[:bs * k], bs, k)
++            actual_tokens = golden.expand_x.shape[0]
++            actual_triples = output.assist_info_for_combine.view(-1)[:actual_tokens * 3]
++            expected_triples = golden.assist_info_for_combine.view(-1)[:actual_tokens * 3]
++            triples_match = torch.equal(actual_triples, expected_triples)
++            if not triples_match:
++                self.log.error(f"rank={rank}: source rank/token/topk triples differ")
++            result &= triples_match
++            if accuracy_configs is not None:
++                accuracy_configs.append(dict(name="assistInfoForCombine", rank=rank, result=triples_match))
++            if golden.expand_scales is not None:
++                scales_match = torch.equal(output.expand_scales.view(-1)[:actual_tokens],
++                                           golden.expand_scales.view(-1)[:actual_tokens])
++                result &= scales_match
++                if accuracy_configs is not None:
++                    accuracy_configs.append(dict(name="expandScales", rank=rank, result=scales_match))
++        diagnostic = os.environ.get("EP_TEST_DISPATCH_DUMP")
++        if diagnostic and rank == 0:
++            directory = Path(diagnostic)
++            directory.mkdir(parents=True, exist_ok=True)
++            torch.save({"output": vars(output), "golden": vars(golden), "param": param},
++                       directory / (param["case_name"] + ".pt"))
+         # performance_info 打印
+         if config["pta_version"] > 1 and param['need_performance_info']:
+             self.log.info(f"rank:{rank}, performance_info :{output.performance_info}")
+--- a/core/runtime/engine.py
++++ b/core/runtime/engine.py
+@@ -524,6 +524,12 @@
+                         raise ValueError(
+                             "duplicate case validation sequence"
+                         )
++                    import dataclasses, json, os
++                    journal = os.environ.get("EP_TEST_RESULT_JOURNAL")
++                    if journal:
++                        with open(journal, "a") as stream:
++                            stream.write(json.dumps({**dataclasses.asdict(validation), "case_name": next(t.case.case_name for t in tasks if t.sequence == validation.sequence)}, default=str) + "\n")
++                    print("EP16_VALIDATED", validation.sequence, validation.report.passed, flush=True)
+                     validations[validation.sequence] = validation
+                     all_passed &= validation.report.passed
+         except Exception:
+--- a/core/runtime/supervision.py
++++ b/core/runtime/supervision.py
+@@ -20,7 +20,7 @@
+ from .contracts import WorkerFailure
+
+
+-RESULT_TIMEOUT_SECONDS = 1800.0
++RESULT_TIMEOUT_SECONDS = 180.0
+ SHUTDOWN_TIMEOUT_SECONDS = 60.0
+ POLL_INTERVAL_SECONDS = 0.2
+
+# End of archived patch.
