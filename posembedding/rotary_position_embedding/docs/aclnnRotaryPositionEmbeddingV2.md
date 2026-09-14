@@ -186,7 +186,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
       <td>rotate</td>
       <td>可选输入</td>
       <td>旋转矩阵</td>
-      <td><ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：与x数据类型一致。</li><li><term>Ascend 950PR/Ascend 950DT</term>：不支持该参数，须传空指针。</li></ul></td>
+      <td><ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持传入有效Tensor，数据类型与x一致。</li><li><term>Ascend 950PR/Ascend 950DT</term>：不支持传入有效Tensor，当前仅支持传入空指针。</li></ul></td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>2</td>
@@ -239,7 +239,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持传入rotate，参数rotate当前支持BFLOAT16、FLOAT16、FLOAT32类型。
   <!-- end id14 -->
   <!-- npu="950" id15 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：不支持rotate参数，rotate须传nullptr，传入有效rotate将报错。
+  - <term>Ascend 950PR/Ascend 950DT</term>：rotate参数当前仅支持传入空指针，传入有效Tensor将报错。
   <!-- end id15 -->
 
 - **返回值：**
@@ -360,7 +360,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
 <!-- npu="950" id11 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-  输入张量x支持BNSD、BSND、SBND、TND排布，不支持rotate参数，rotate须传空指针，传入有效rotate将报错。各参数的shape约束可以描述如下：
+  输入张量x支持BNSD、BSND、SBND、TND排布，rotate参数当前仅支持传入空指针，传入有效Tensor将报错。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播后的shape必须等于x的shape。
