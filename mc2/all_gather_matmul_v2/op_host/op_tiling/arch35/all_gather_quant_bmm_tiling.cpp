@@ -721,10 +721,9 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
 {
     // fit-balance 统一接口(P1 遗留补切: 本类经 DoSplitMTiling 虚分派是第二个消费方);
     // 标定数据+算子钩子在 all_gather_matmul_v2_fit_balance_tiling.h, 回退: kUseApace 置 false。
+    const bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
     uint32_t baseM = 0;
-    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, &baseM);
-
-    bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
+    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, isCcuMode, &baseM);
 
     auto kValue = args_.kValue;
     auto inputDtypeSize = args_.inputDtypeSize;
