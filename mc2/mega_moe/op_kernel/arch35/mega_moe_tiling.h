@@ -232,5 +232,8 @@ struct MegaMoeTilingData {
     bool isSharedQuantIndependent;
     // Appended to retain all existing field offsets; host and kernel packages must match.
     MegaMoeL1Layout a8w4L1Layout;
+    // MTE 通信去重开关（attr comm_alg 转译）：bit0=dispatch 去重（数值恒等），bit1=combine 去重
+    // （生产卡预加权合并，走 prefetch 语义）。0 表示关闭，此时所有路径与无该字段时逐字等价。
+    int32_t dedupMode;
 };
 #endif
