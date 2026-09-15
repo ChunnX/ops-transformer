@@ -45,6 +45,7 @@
 
 #include "mega_moe_tiling.h"
 #include "mega_moe_tiling_key.h"
+#include <type_traits>
 
 using namespace AscendC;
 
@@ -69,37 +70,40 @@ namespace MegaMoeImpl {
 template <typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType,
           int32_t MoeWeight1Format, int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format,
           int32_t SharedWeight2Format, int32_t MoeQuantMode, int32_t SharedQuantMode, int32_t CombineQuantMode,
-          bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
-class MegaMoeMteWave
-    : public MegaMoeA8W8Wave<XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType,
-                             SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
-                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved> {};
+          bool TopkWeightsPrefetch, typename TopkIndexType, bool IsGmm1Interleaved>
+class MegaMoeMteWave : public MegaMoeA8W8Wave<XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode,
+                                              SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format,
+                                              SharedWeight1Format, SharedWeight2Format, CombineQuantMode,
+                                              TopkWeightsPrefetch, TopkIndexType, IsGmm1Interleaved> {};
 
 template <typename XType, typename OutputType, typename TopkWeightsType, int32_t MoeWeight1Format,
           int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format, int32_t SharedWeight2Format,
-          int32_t SharedQuantMode, int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+          int32_t SharedQuantMode, int32_t CombineQuantMode, bool TopkWeightsPrefetch, typename TopkIndexType,
+          bool IsGmm1Interleaved>
 class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, MoeWeight1Format, MoeWeight2Format,
                      SharedWeightType, SharedWeight1Format, SharedWeight2Format, EXPERT_QUANT_OUT_DTYPE_E4M3FN,
-                     SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved>
+                     SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, TopkIndexType, IsGmm1Interleaved>
     : public MegaMoeA8W4Wave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, EXPERT_QUANT_OUT_DTYPE_E4M3FN,
                              SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
-                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch> {};
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, TopkIndexType> {};
 
 template <typename XType, typename OutputType, typename TopkWeightsType, int32_t MoeWeight1Format,
           int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format, int32_t SharedWeight2Format,
-          int32_t SharedQuantMode, int32_t CombineQuantMode, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+          int32_t SharedQuantMode, int32_t CombineQuantMode, bool TopkWeightsPrefetch, typename TopkIndexType,
+          bool IsGmm1Interleaved>
 class MegaMoeMteWave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, MoeWeight1Format, MoeWeight2Format,
                      SharedWeightType, SharedWeight1Format, SharedWeight2Format, EXPERT_QUANT_OUT_DTYPE_E2M1,
-                     SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, IsGmm1Interleaved>
+                     SharedQuantMode, CombineQuantMode, TopkWeightsPrefetch, TopkIndexType, IsGmm1Interleaved>
     : public MegaMoeA4W4Wave<XType, OutputType, TopkWeightsType, fp4x2_e2m1_t, EXPERT_QUANT_OUT_DTYPE_E2M1,
                              SharedWeightType, SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
-                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch> {};
+                             SharedWeight2Format, CombineQuantMode, TopkWeightsPrefetch, TopkIndexType> {};
 
 } // namespace MegaMoeImpl
 #endif
 
 template <typename MoeWeightType, typename SharedWeightType, uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType,
-          uint8_t SharedQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType, bool TopkWeightsPrefetch>
+          uint8_t SharedQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType, bool TopkWeightsPrefetch,
+          uint8_t TopkIndexTypeValue>
 __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
                                     GM_ADDR weight2, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1,
                                     GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedWeight1,
@@ -118,10 +122,12 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
+            using TopkIndexType =
+                typename std::conditional<TopkIndexTypeValue == TILINGKEY_TOPK_INDEX_INT16, int16_t, int32_t>::type;
             MegaMoeImpl::MegaMoeMteWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, MoeWeightType, FORMAT_WEIGHT1,
                                         FORMAT_WEIGHT2, SharedWeightType, FORMAT_SHARED_WEIGHT1, FORMAT_SHARED_WEIGHT2,
                                         DispatchQuantOutType, SharedQuantOutType, CombineQuantOutType,
-                                        TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
+                                        TopkWeightsPrefetch, TopkIndexType, WEIGHT1_INTERLEAVED>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,

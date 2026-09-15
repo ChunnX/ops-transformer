@@ -21,11 +21,11 @@ struct SendMaskConfig {
     uint64_t expertCountWinOffset;
     uint64_t routeIndexAlignSize;
     uint64_t routeIndexWinOffset;
-    bool useCompactRouteIndex;
     MegaMoeSendMaskBufferConfig bufferConfig;
 };
 
-// 装配 MTE 路径唯一的 compact route 发送配置。
+// 装配 MTE 路径的 topK 有效下标发送配置。
+template <typename TopkIndexType>
 __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint32_t aivCoreIdx)
 {
     uint64_t routeIndexWinOffset =
@@ -37,9 +37,10 @@ __aicore__ inline SendMaskConfig CreateSendMaskConfig(const Params &params, uint
                                                           params.tilingData->sendMaskConfigForCoreWithoutExtraExpert;
     return {
         .expertCountWinOffset = expertCountWinOffset,
-        .routeIndexAlignSize = static_cast<uint64_t>(CalcDispatchRouteIndexAlignSize(params.tilingData)),
+        .routeIndexAlignSize = static_cast<uint64_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(params.tilingData->numMaxTokensPerRank) * static_cast<int64_t>(sizeof(TopkIndexType)),
+            static_cast<int64_t>(ALIGN_32))),
         .routeIndexWinOffset = routeIndexWinOffset,
-        .useCompactRouteIndex = UseCompactRouteIndex(params.tilingData->numMaxTokensPerRank, params.tilingData->topK),
         .bufferConfig = bufferConfig};
 }
 
@@ -59,7 +60,7 @@ struct ExpertRouteInfo {
 
 // MTE Wave：把当前 route batch 中命中某专家的全局 topkIndex 压紧后直接写入对端槽。
 // 每个 slot 只保存 index；raw count 在所有 ring 写完成后由 PublishExpertCounts 独立发布。
-template <typename RouteIndexType>
+template <typename TopkIndexType>
 __aicore__ inline void LoadRouteBatch(SendMaskScratch &scratch, GlobalTensor<int32_t> &topkIdsGm, int32_t batchStart,
                                       int32_t validLen)
 {
@@ -67,30 +68,30 @@ __aicore__ inline void LoadRouteBatch(SendMaskScratch &scratch, GlobalTensor<int
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
     DataCopyPad(scratch.topkIdsTensor, topkIdsGm[batchStart], loadParams, loadPad);
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-    LocalTensor<RouteIndexType> topkIndexTensor = scratch.topkIndexTensor.template ReinterpretCast<RouteIndexType>();
-    CreateVecIndex(topkIndexTensor, static_cast<RouteIndexType>(batchStart), validLen);
+    LocalTensor<TopkIndexType> topkIndexTensor = scratch.topkIndexTensor.template ReinterpretCast<TopkIndexType>();
+    CreateVecIndex(topkIndexTensor, static_cast<TopkIndexType>(batchStart), validLen);
 }
 
-template <typename RouteIndexType>
-__aicore__ inline void GatherAndSendExpertCompactRoute(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
-                                                       const SendMaskConfig &config, SendMaskScratch &scratch,
-                                                       const ExpertRouteInfo &routeInfo, int32_t validLen)
+template <typename TopkIndexType>
+__aicore__ inline void GatherAndSendExpertTopkValidIndices(const MoeStageCommonConfig &common, GM_ADDR *winRankAddr,
+                                                           const SendMaskConfig &config, SendMaskScratch &scratch,
+                                                           const ExpertRouteInfo &routeInfo, int32_t validLen)
 {
     const MegaMoeSendMaskBufferConfig &bufferConfig = config.bufferConfig;
     const uint32_t compareMaskBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) / BITS_PER_BYTE;
     TEventID eventId = static_cast<TEventID>(routeInfo.bufferIdx);
     uint32_t slotOffset = routeInfo.bufferIdx * bufferConfig.bufferBytes;
     LocalTensor<uint8_t> compareMaskTensor = scratch.routeRingTensor[slotOffset];
-    LocalTensor<RouteIndexType> topkIndexTensor = scratch.topkIndexTensor.template ReinterpretCast<RouteIndexType>();
-    LocalTensor<RouteIndexType> tokValidIndexTensor =
-        scratch.routeRingTensor[slotOffset + compareMaskBytes].template ReinterpretCast<RouteIndexType>();
+    LocalTensor<TopkIndexType> topkIndexTensor = scratch.topkIndexTensor.template ReinterpretCast<TopkIndexType>();
+    LocalTensor<TopkIndexType> tokValidIndexTensor =
+        scratch.routeRingTensor[slotOffset + compareMaskBytes].template ReinterpretCast<TopkIndexType>();
 
     WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
     uint64_t batchMatchedRouteCount = 0U;
     if (validLen > 0) {
         CompareScalar(compareMaskTensor, scratch.topkIdsTensor, routeInfo.globalExpertId, AscendC::CMPMODE::EQ,
                       validLen);
-        if constexpr (sizeof(RouteIndexType) == sizeof(int16_t)) {
+        if constexpr (sizeof(TopkIndexType) == sizeof(int16_t)) {
             LocalTensor<uint16_t> compareMaskPatternTensor = compareMaskTensor.template ReinterpretCast<uint16_t>();
             GatherMask(tokValidIndexTensor, topkIndexTensor, compareMaskPatternTensor, true,
                        static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
@@ -118,11 +119,11 @@ __aicore__ inline void GatherAndSendExpertCompactRoute(const MoeStageCommonConfi
                              static_cast<uint64_t>(localExpertId * static_cast<int32_t>(common.worldSize) +
                                                    static_cast<int32_t>(common.rankId)) *
                                  config.routeIndexAlignSize +
-                             static_cast<uint64_t>(previousCount) * sizeof(RouteIndexType);
-        GlobalTensor<RouteIndexType> dstRouteIndexGm;
-        dstRouteIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ RouteIndexType *>(winRankAddr[dstRank] + dstOffset));
+                             static_cast<uint64_t>(previousCount) * sizeof(TopkIndexType);
+        GlobalTensor<TopkIndexType> dstRouteIndexGm;
+        dstRouteIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ TopkIndexType *>(winRankAddr[dstRank] + dstOffset));
         DataCopyPad(dstRouteIndexGm, tokValidIndexTensor,
-                    {1U, static_cast<uint32_t>(copiedCount * sizeof(RouteIndexType)), 0U, 0U, 0U});
+                    {1U, static_cast<uint32_t>(copiedCount * sizeof(TopkIndexType)), 0U, 0U, 0U});
     }
     SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
 }
@@ -174,7 +175,7 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
             DataCopyPad<int32_t, PaddingMode::Compact>(dstCountGm, scratch.sendCntAccTensor[ownedOffset],
                                                        countCopyParams);
         } else {
-            // compact route 已发送完成，复用 int32 topkIdsTensor 将非对齐 count 段重排到对齐起点。
+            // topk index 已发送完成，复用 int32 topkIdsTensor 将非对齐 count 段重排到对齐起点。
             for (int32_t expertIdx = 0; expertIdx < segmentExpertCount; ++expertIdx) {
                 scratch.topkIdsTensor.SetValue(expertIdx, scratch.sendCntAccTensor.GetValue(ownedOffset + expertIdx));
             }
@@ -187,13 +188,12 @@ __aicore__ inline void PublishExpertCounts(const MoeStageCommonConfig &common, G
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
 }
 
-// 三条 MTE Wave 路径的唯一 route 入口。专家 ownership 仍使用连续 quotient/remainder 分配，
+// 三条 MTE Wave 路径的唯一 topK 有效下标发送入口。专家 ownership 仍使用连续 quotient/remainder 分配，
 // 因而 count 表可继续按目标 rank 合并成二维 strided copy。
-template <typename RouteIndexType>
-__aicore__ inline void GatherAndSendExpertCompactRoutesImpl(const AivJobContext &job,
-                                                            const MoeStageCommonConfig &common, const Params &params,
-                                                            GM_ADDR *winRankAddr, const SendMaskConfig &config,
-                                                            SendMaskScratch &scratch)
+template <typename TopkIndexType>
+__aicore__ inline void GatherAndSendTopkValidIndices(const AivJobContext &job, const MoeStageCommonConfig &common,
+                                                     const Params &params, GM_ADDR *winRankAddr,
+                                                     const SendMaskConfig &config, SendMaskScratch &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -227,7 +227,7 @@ __aicore__ inline void GatherAndSendExpertCompactRoutesImpl(const AivJobContext 
 
         if (validLen > 0) {
             SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
-            LoadRouteBatch<RouteIndexType>(scratch, topkIdsGm, batchStart, validLen);
+            LoadRouteBatch<TopkIndexType>(scratch, topkIdsGm, batchStart, validLen);
         }
 
         const int32_t batchRingBegin = batchIdx * ownedExpertNum;
@@ -236,7 +236,8 @@ __aicore__ inline void GatherAndSendExpertCompactRoutesImpl(const AivJobContext 
             ExpertRouteInfo routeInfo{.ownedIdx = ownedIdx,
                                       .globalExpertId = globalExpertId,
                                       .bufferIdx = (batchRingBegin + ownedIdx) % bufferConfig.bufferCount};
-            GatherAndSendExpertCompactRoute<RouteIndexType>(common, winRankAddr, config, scratch, routeInfo, validLen);
+            GatherAndSendExpertTopkValidIndices<TopkIndexType>(common, winRankAddr, config, scratch, routeInfo,
+                                                               validLen);
         }
     }
     for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.bufferCount; ++bufferIdx) {
@@ -250,17 +251,6 @@ __aicore__ inline void GatherAndSendExpertCompactRoutesImpl(const AivJobContext 
     // 本 launch epoch = 计数槽值+1(跨卡同步在本阶段之后执行,槽值仍为上一 launch)。
     int32_t arrivalEpoch = ((ReadGmByPassDCache(launchCountSlot) + 1) & 0x7F) | 0x80;
     PublishExpertCounts(common, winRankAddr, config, scratch, ownedExpertBegin, ownedExpertNum, arrivalEpoch);
-}
-
-__aicore__ inline void GatherAndSendExpertCompactRoutes(const AivJobContext &job, const MoeStageCommonConfig &common,
-                                                        const Params &params, GM_ADDR *winRankAddr,
-                                                        const SendMaskConfig &config, SendMaskScratch &scratch)
-{
-    if (config.useCompactRouteIndex) {
-        GatherAndSendExpertCompactRoutesImpl<CompactRouteIndexType>(job, common, params, winRankAddr, config, scratch);
-    } else {
-        GatherAndSendExpertCompactRoutesImpl<WideRouteIndexType>(job, common, params, winRankAddr, config, scratch);
-    }
 }
 
 } // namespace MegaMoeImpl
