@@ -649,15 +649,18 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     }
     tilingData.gradSubBatch = gradSubBatch;
 
-    // SortLib 裸用整块授权 UB —— 预算 = ubSize - 固定保留(5120B 为 SortLib 内部
-    // 固定开销的保守余量, 21B/elem 为元素侧需求
-    uint64_t budget = static_cast<uint64_t>(tilingData.ubSize);
+    // SortLib UB 预算(档2 口径): kernel 在 a2a 登记后 tpipe_->Reset(), 先经
+    // RebuildA2aHookBuffers 重建 a2a 工作缓冲(hcomm 工作区 + status 暂存 + 拷贝
+    // ping-pong 2×32KB, 预留=A2aHookUbReserve), SortLib 再从剩余 UB 分配。
+    // 5120B 为 SortLib 内部固定开销的保守余量, 21B/elem 为元素侧需求
+    uint64_t hookReserve = Mc2Kernel::A2aHookUbReserve(tilingData.rankSize);
+    uint64_t budget = static_cast<uint64_t>(tilingData.ubSize) - hookReserve;
     constexpr uint64_t kSortLibFixedBytes = 5120U; // SortLib 固定开销(与 ubCap 公式内扣一致)
     constexpr uint64_t kMinTileElems = 64U;        // 最小 tile 元素数
     constexpr uint64_t kBytesPerElem = 21U;        // SortLib 每元素 UB 需求(4B值+4B索引+8B键位+...)
     if (budget < kSortLibFixedBytes + kMinTileElems * kBytesPerElem) {
-        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%llu, need>=%llu",
-                (unsigned long long)tilingData.ubSize,
+        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%llu, hookReserve=%llu, need>=%llu",
+                (unsigned long long)tilingData.ubSize, (unsigned long long)hookReserve,
                 (unsigned long long)(kSortLibFixedBytes + kMinTileElems * kBytesPerElem));
         return ge::GRAPH_FAILED;
     }
