@@ -507,9 +507,10 @@ static bool CheckOptionalScalesTensorDim(const gert::TilingContext *context, con
 {
     if (isLayered) {
         const gert::StorageShape *expandScaleStorageShape = context->GetOptionalInputShape(EXPAND_SCALES_INDEX);
-        const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
+        // API 层是 optional，但 hierarchy 路径要求存在；必须先判空，再读取 shape 维数。
         OP_TILING_CHECK(expandScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
                         return false);
+        const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             expandScaleDim != ONE_DIM,
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "expandScales", std::to_string(expandScaleDim).c_str(),

@@ -71,7 +71,7 @@ public:
     constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static uint32_t SRCSTRIDE_BLOCK = 15U;
-    constexpr static uint32_t MAX_LOCAL_BS = 256U;
+    constexpr static uint32_t MAX_LOCAL_BS = 512U;
     constexpr static uint32_t MAGIC_OFFSET = 2U * 1024U * 1024U - 32U * 32U;
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t MB_SIZE = 1024UL * 1024UL;
@@ -79,10 +79,11 @@ public:
     constexpr static uint32_t TBUF_SIZE = 185U * 1024U;
     constexpr static uint32_t TBUF_TEMP_OFFSET = 0U;
     constexpr static uint32_t WEIGHT_VALUE_NUM = 16U; // token(h * sizeof(bf/fp16)) + scale(32B) = (h + 16) * 2B
-    constexpr static uint32_t MAXBS_PER_CORE = 65U;
     constexpr static uint64_t GM2IPC_SYNC_FLAG = 12345UL;
-    constexpr static uint64_t RDMA_TOKEN_ARRIVED_FLAG = 123UL;
-    constexpr static uint64_t RDMA_TOKEN_END_FLAG = 321UL;
+    // Keep the epoch and state in disjoint fields: adding state to magic allows stale END to alias ARRIVED.
+    constexpr static uint32_t RDMA_FLAG_STATE_BITS = 2U;
+    constexpr static uint64_t RDMA_TOKEN_ARRIVED_FLAG = 1UL;
+    constexpr static uint64_t RDMA_TOKEN_END_FLAG = 2UL;
     __aicore__ inline MoeDistributeCombineV2Layered(){};
     __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR sendCount,
                                 GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR XOut, GM_ADDR workspaceGM, TPipe *pipe,
@@ -119,10 +120,14 @@ private:
     __aicore__ inline void DynamicQuantSumToServer(uint32_t copyNum, uint32_t bsIndex);
     __aicore__ inline void SumToServerLocalTensor();
     __aicore__ inline void DynamicQuantProcess(const uint32_t dataOffset);
+    __aicore__ inline uint64_t EncodeRdmaFlag(uint64_t state) const
+    {
+        // 旧 END(e)=321+e 会等于 ARRIVED(e+198)=123+e+198；短流不会覆盖旧长流的高位 token 槽。
+        // 低 2 位只表示状态，高 62 位表示轮次；轮询需精确相等，不能使用 >= 或与 magic 相加。
+        // 这是内部共享内存协议变更：所有 rank 必须使用同版算子并重建通信域，不能热切换混跑。
+        return (magicValue_ << RDMA_FLAG_STATE_BITS) | state;
+    }
     __aicore__ inline void ServerInAdd(const uint32_t targetRankId, const uint32_t offsetIndexStart);
-    __aicore__ inline void SumToWindowAdd(const uint32_t coreNumPerServer, const uint32_t serverId,
-                                          const uint32_t totalCopyLen, const uint32_t targetRankId,
-                                          LocalTensor<uint64_t> rdmaFlagLocal);
     __aicore__ inline void RDMADataSwitch();
     __aicore__ inline void AlltoAllServerDispatch();
     __aicore__ inline void SumToServer();
@@ -213,9 +218,9 @@ private:
     uint32_t tokenNumPerCore_{0};
     uint32_t tokenIndex_{0};
     uint32_t serverNum_{0};
-    uint32_t ipcSliceNodeSize_{0};
-    uint32_t ipcDataSize_{0};
-    uint32_t ipcSliceSize_{0};
+    uint64_t ipcSliceNodeSize_{0};
+    uint64_t ipcDataSize_{0};
+    uint64_t ipcSliceSize_{0};
     uint32_t axisBsAlignSize_{0};
     uint32_t startBs_{0};
     uint32_t endBs_{0};
@@ -266,10 +271,6 @@ private:
     uint32_t scaleNum_{0};
     uint32_t scaleNumAlign_;
     uint32_t scale_granu_;
-
-    uint32_t offsetIndexs_[MAXBS_PER_CORE];
-    uint32_t copyNums_[MAXBS_PER_CORE];
-    uint32_t dataOffsets_[MAXBS_PER_CORE];
 };
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -318,9 +319,6 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     stateOffsetOnWin_ = static_cast<uint64_t>(dataSpaceSize_ + rankId_ * STATE_OFFSET);
     axisHFloatSize_ = axisH_ * static_cast<uint32_t>(sizeof(float));
     axisHExpandXTypeSize_ = axisH_ * static_cast<uint32_t>(sizeof(ExpandXType));
-    uint64_t winSizeMin =
-        moeExpertNum_ * axisBS_ * (axisHExpandXTypeSize_ + EXTRA_TOKEN_INFO_NUM * axisK_ * sizeof(uint32_t)) +
-        IPC_DATA_OFFSET + RDMA_DATA_SIZE; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -406,8 +404,11 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::BuffInit()
 {
-    // 状态tBuf
-    tpipe_->InitBuffer(statusBuf_, worldSize_ * UB_ALIGN);
+    // Only one flag is loaded at a time, including the slot at CACHELINE_SIZE (uint64_t elements).
+    // Do not grow this scratch with EP: 185 KiB + 256 * 32 B would exceed a 192 KiB UB.
+    // CACHELINE_SIZE 在 checkRdmaLocal_ 中是元素下标 64，不是字节偏移：512B 后再预留完整 32B。
+    // 此处是每核 UB 暂存，不是 worldSize 个 rank 的 GM flag 表；缩小它不改变对端可见地址。
+    tpipe_->InitBuffer(statusBuf_, (CACHELINE_SIZE + B64_PER_BLOCK) * sizeof(uint64_t));
 
     // AIVRDMAPostSend函数需要的tBuf
     tpipe_->InitBuffer(rdmaInBuf_, UB_ALIGN_SIZE);
@@ -461,7 +462,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t localShareAddr = shareAddreRank_[rankId_ % SERVER_RANK_SIZE];
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
-        uint32_t rankTokenNum = 0U;
+        uint64_t rankTokenNum = 0U;
         uint64_t targetRankAddr = localShareAddr + static_cast<uint64_t>(dstRankId * ipcSliceSize_ + IPC_DATA_OFFSET);
         dstshareMemGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)(targetRankAddr));
         for (uint32_t expertId = 0U; expertId < localMoeExpertNum_; ++expertId) {
@@ -563,10 +564,9 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     sumHalfLocal_ = tBuf_.GetWithOffset<ExpandXType>(axisH_, fp16baseBuffOffset); // 复用castInFloatLocal
     fp16baseBuffOffset += axisH_ * sizeof(ExpandXType);
 
-    // 16个数取最大值
-    reduceMaxOutTensor_ = tBuf_.GetWithOffset<ExpandXType>(scaleNum_, fp16baseBuffOffset);
-
-    // 将scale利用Brcb函数扩充到H个，至少要256B对齐   复用reduceMaxOutTensor
+    // Brcb writes whole 256-byte repeats. Its compact source must not alias this expanded destination.
+    // FP16 在 Cast(sumHalfLocal_, sumFloatLocal_) 后才广播；小 H 的整 repeat 可能覆盖已失效的
+    // sumFloatLocal_ 前段，但不能覆盖仍存活的 sumHalfLocal_ 和尾部 compact source。
     absScaleTensor_ = tBuf_.GetWithOffset<ExpandXType>(RoundUp(axisHExpandXTypeSize_, VEC_LEN) / sizeof(ExpandXType),
                                                        fp16baseBuffOffset);
 
@@ -574,7 +574,12 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     halfLocal_ = tBuf_.GetWithOffset<half>(axisH_, baseBuffOffset);
 
     baseBuffOffset += sizeof(float) * (axisH_); // 复用sumFloatLocal，但是offset要加上sumFloatLocal大小
-    reduceMaxTensorFloat_ = tBuf_.GetWithOffset<float>(scaleNum_, baseBuffOffset);
+    // FP16 and BF16 are mutually exclusive. Reuse the tail scratch for their compact reduction results.
+    // Round up the source view as Brcb reads eight scales per repeat even for small H.
+    // 该尾部在 sumFloatLocal_ 之后，max -> scale -> Brcb 整段都必须保持独立；仅增加 PIPE_V
+    // 不能修复源/目的别名。GetWithOffset 创建视图，不新增 TPipe buffer，仍在 185 KiB tBuf_ 内。
+    reduceMaxOutTensor_ = tBuf_.GetWithOffset<ExpandXType>(RoundUp(scaleNum_, B16_PER_BLOCK), baseBuffOffset);
+    reduceMaxTensorFloat_ = tBuf_.GetWithOffset<float>(RoundUp(scaleNum_, B32_PER_BLOCK), baseBuffOffset);
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -590,8 +595,20 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         PipeBarrier<PIPE_V>();
         SyncFunc<AscendC::HardEvent::MTE3_V>();
         Muls(scaleData_, reduceMaxOutTensor_, scaleMulVal_, scaleNum_); // 1/scale = dmax / 127
+        SyncFunc<AscendC::HardEvent::V_S>();
+        // Keep the externally visible scale at zero for an all-zero group, but use 1 as the division denominator.
+        // scaleData_ 已保存对外 scale；这里只改 compact scratch，127 * (1/127) 得到安全分母 1。
+        // 不直接钳制所有小值，否则会改变非零组的量化语义；极小非零值的舍入行为仍沿用原算法。
+        for (uint32_t scaleIdx = 0; scaleIdx < scaleNum_; ++scaleIdx) {
+            float scaleValue = static_cast<float>(reduceMaxOutTensor_.GetValue(scaleIdx));
+            if (scaleValue == 0.0f) {
+                reduceMaxOutTensor_.SetValue(scaleIdx, static_cast<ExpandXType>(127.0));
+            }
+        }
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Muls(reduceMaxOutTensor_, reduceMaxOutTensor_, scaleMulVal_, scaleNum_);
         PipeBarrier<PIPE_V>();
-        Brcb(absScaleTensor_, scaleData_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充scale值
+        Brcb(absScaleTensor_, reduceMaxOutTensor_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充安全scale值
         PipeBarrier<PIPE_V>();
 
         Div(sumHalfLocal_, sumHalfLocal_, absScaleTensor_, axisH_); // data_fp16/(1/scale)
@@ -610,13 +627,19 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
         PipeBarrier<PIPE_V>();
         Muls(reduceMaxTensorFloat_, reduceMaxTensorFloat_, scaleMulVal_, scaleNum_); // scale = dmax * 1/127
         PipeBarrier<PIPE_V>();
+        Cast(scaleData_, reduceMaxTensorFloat_, RoundMode::CAST_RINT, scaleNum_); // 保存对外输出scale，零组保持0
+        SyncFunc<AscendC::HardEvent::V_S>();
+        for (uint32_t scaleIdx = 0; scaleIdx < scaleNum_; ++scaleIdx) {
+            if (reduceMaxTensorFloat_.GetValue(scaleIdx) == 0.0f) {
+                reduceMaxTensorFloat_.SetValue(scaleIdx, 1.0f);
+            }
+        }
+        SyncFunc<AscendC::HardEvent::S_V>();
         Brcb(castInFloatLocal_, reduceMaxTensorFloat_, repeatNum_, {1, VEC_LEN / UB_ALIGN}); // 填充fp32的scale值
         PipeBarrier<PIPE_V>();
         Div(sumFloatLocal_, sumFloatLocal_, castInFloatLocal_, axisH_); // data_fp32/(1/scale)
         PipeBarrier<PIPE_V>();
         SyncFunc<AscendC::HardEvent::MTE3_V>();
-        Cast(scaleData_, reduceMaxTensorFloat_, RoundMode::CAST_RINT, scaleNum_); // 1/scale从fp32量化成bf16
-        PipeBarrier<PIPE_V>();
         Cast(halfLocal_, sumFloatLocal_, RoundMode::CAST_RINT, axisH_); // token数据fp32->bf16 四舍六入五成双
         PipeBarrier<PIPE_V>();
         Cast(castDataInt8_, halfLocal_, RoundMode::CAST_RINT, axisH_); // token数据bf16->int8 四舍六入五成双
@@ -645,16 +668,17 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     scaleOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)rdmaAddr); // 16bit
     localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)rdmaAddr);
     LocalTensor<uint64_t> rdmaFlagLocal = statusBuf_.Get<uint64_t>();
-    rdmaFlagLocal(0) = RDMA_TOKEN_ARRIVED_FLAG + magicValue_;
+    rdmaFlagLocal(0) = EncodeRdmaFlag(RDMA_TOKEN_ARRIVED_FLAG);
     PipeBarrier<PIPE_ALL>();
     int offsetPre = 0;
     offsetIndex_ = 0U;
 
-    // 计算offsetIndex,copyNum,dataOffset,scaleOffset
-    uint32_t totalCopyLen = 0;
-    uint32_t processNum_ = 0;
+    uint32_t processTokenNum = 0;
     uint32_t coreSeverId = coreIdx_ % coreNumPerServer;
+    // 各核独占 i % coreNumPerServer 对应的 token。Inner count 是累积计数，有效 token 必须紧凑成前缀；
+    // copyNum <= 0 后本核终止，不能把这一路径扩展为任意带洞 mask 而不修改生产/消费协议。
     uint32_t tokenScaleLen = axisH_ / DOUBLE_TYPE + scaleNumAlign_;
+    DataCopyParams flagCopyParams{1U, static_cast<uint16_t>(sizeof(uint64_t)), 0U, 0U};
 
     // 每个核使用的链路要岔开，不能有冲突
     for (uint32_t i = 0U; i < maxLocalBs_; i++) {
@@ -669,15 +693,30 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
                 break;
             }
             offsetIndex_ = static_cast<uint32_t>(offsetPre);
-
-            offsetIndexs_[processNum_] = offsetIndex_;
-            copyNums_[processNum_] = static_cast<uint32_t>(copyNum);
-            dataOffsets_[processNum_] = dataOffset;
-            totalCopyLen += static_cast<uint32_t>(copyNum);
-            processNum_++;
+            uint32_t offsetIndexStart = offsetIndex_;
+            for (uint32_t copyIdx = 0; copyIdx < static_cast<uint32_t>(copyNum); ++copyIdx) {
+                ServerInAdd(targetRankId, offsetIndexStart);
+            }
+            if constexpr (DynamicQuant && std::is_same<ExpandXTransType, int8_t>::value) {
+                DynamicQuantProcess(dataOffset);
+            } else {
+                PipeBarrier<PIPE_V>();
+                Cast(dataInLocal_, sumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
+                SyncFunc<AscendC::HardEvent::V_MTE3>();
+                DataCopy(localOutWindow_[i * axisH_], dataInLocal_, axisH_);
+            }
+            // 必须先完成 payload 写入再发布 ARRIVED；消费者据此发起 RDMA，flag 不是单纯统计值。
+            PipeBarrier<PIPE_MTE3>();
+            DataCopyPad(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + i], rdmaFlagLocal, flagCopyParams);
+            processTokenNum++;
         }
     }
-    SumToWindowAdd(coreNumPerServer, serverId, totalCopyLen, targetRankId, rdmaFlagLocal);
+    PipeBarrier<PIPE_ALL>();
+    rdmaFlagLocal(0) = EncodeRdmaFlag(RDMA_TOKEN_END_FLAG);
+    // END 写到本核下一次负责的槽位，不读取“下一个 token”的描述；零 token 和末尾均走同一逻辑。
+    // 最早的 END 标记全流有效前缀的末尾，其余核的 END 可更靠后，但不能覆盖其他核的 ARRIVED。
+    uint32_t tokenOffset = coreNumPerServer * processTokenNum + coreSeverId;
+    DataCopyPad(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + tokenOffset], rdmaFlagLocal, flagCopyParams);
     SyncAll<true>();
 }
 
@@ -686,7 +725,7 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     const uint32_t targetRankId, const uint32_t offsetIndexStart)
 {
     uint32_t targetIpcRank = offsetReduceLocal_.GetValue(offsetIndex_) / (globalBs_ * axisK_);
-    uint32_t targetIpcOffset =
+    uint64_t targetIpcOffset =
         offsetReduceLocal_.GetValue(offsetIndex_) % (globalBs_ * axisK_) * (axisH_ + WEIGHT_VALUE_NUM);
 
     uint64_t copyAddr = shareAddreRank_[targetIpcRank % SERVER_RANK_SIZE] +
@@ -709,46 +748,6 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::SumToWindowAdd(
-    const uint32_t coreNumPerServer, const uint32_t serverId, const uint32_t totalCopyLen, const uint32_t targetRankId,
-    LocalTensor<uint64_t> rdmaFlagLocal)
-{
-    uint32_t processTokenNum = 0;
-    uint32_t tokenOffset = 0;
-    uint32_t offsetIndexStart = offsetIndexs_[processTokenNum];
-    offsetIndex_ = offsetIndexs_[processTokenNum];
-    uint32_t copyNum = copyNums_[processTokenNum];
-    uint32_t dataOffset = dataOffsets_[processTokenNum];
-    for (uint32_t i = 0U; i < totalCopyLen; i++) {
-        ServerInAdd(targetRankId, offsetIndexStart);
-        if ((offsetIndex_ - offsetIndexStart) == copyNum) {
-            tokenOffset = coreNumPerServer * processTokenNum + coreIdx_ % coreNumPerServer;
-            if constexpr (DynamicQuant && std::is_same<ExpandXTransType, int8_t>::value) {
-                DynamicQuantProcess(dataOffset);
-            } else {
-                PipeBarrier<PIPE_V>();
-                Cast(dataInLocal_, sumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
-                SyncFunc<AscendC::HardEvent::V_MTE3>();
-                DataCopy(localOutWindow_[tokenOffset * axisH_], dataInLocal_, axisH_); // int8数据+scale值
-            }
-            PipeBarrier<PIPE_MTE3>();
-            DataCopy(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + tokenOffset * B64_PER_BLOCK], rdmaFlagLocal,
-                     B64_PER_BLOCK);
-            processTokenNum++;
-            offsetIndex_ = offsetIndexs_[processTokenNum];
-            copyNum = copyNums_[processTokenNum];
-            dataOffset = dataOffsets_[processTokenNum];
-            offsetIndexStart = offsetIndex_;
-        }
-    }
-    PipeBarrier<PIPE_ALL>();
-    rdmaFlagLocal(0) = RDMA_TOKEN_END_FLAG + magicValue_;
-    tokenOffset = coreNumPerServer * processTokenNum + coreIdx_ % coreNumPerServer;
-    DataCopy(shareFlagGlobal_[(serverId + 1) * SUM_WINDOW_FLAG + tokenOffset * B64_PER_BLOCK], rdmaFlagLocal,
-             B64_PER_BLOCK);
-}
-
-template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::WaitStatusAndDispatch(
     const uint32_t tragRankId, const uint32_t copyLen, const uint32_t copyLenAlign, const uint64_t srcrdmaAddr,
     const uint64_t dstrdmaAddr)
@@ -759,15 +758,19 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     GlobalTensor<ExpandXTransType> aivSrcGlobal;
     GlobalTensor<ExpandXTransType> aivDstGlobal;
     LocalTensor<ExpandXTransType> tmpLowUb = tBuf_.Get<ExpandXTransType>();
+    DataCopyExtParams flagCopyParams{1U, static_cast<uint16_t>(sizeof(uint64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint64_t> flagPadParams{false, 0U, 0U, 0U};
     while (!stopFlag) {
         while (true) {
-            DataCopy(checkRdmaLocal_[CACHELINE_SIZE],
-                     shareFlagGlobal_[(checkServer_ + 1) * SUM_WINDOW_FLAG + copySum * B64_PER_BLOCK], B64_PER_BLOCK);
+            DataCopyPad(checkRdmaLocal_[CACHELINE_SIZE],
+                        shareFlagGlobal_[(checkServer_ + 1) * SUM_WINDOW_FLAG + copySum], flagCopyParams,
+                        flagPadParams);
             PipeBarrier<PIPE_ALL>();
-            if (checkRdmaLocal_.GetValue(CACHELINE_SIZE) == (RDMA_TOKEN_ARRIVED_FLAG + magicValue_)) {
+            // 只接受本轮状态；未清理的其他轮次 flag 继续等待本轮生产者覆盖，不表示到达或结束。
+            if (checkRdmaLocal_.GetValue(CACHELINE_SIZE) == EncodeRdmaFlag(RDMA_TOKEN_ARRIVED_FLAG)) {
                 copySum++;
                 break;
-            } else if (checkRdmaLocal_.GetValue(CACHELINE_SIZE) == (RDMA_TOKEN_END_FLAG + magicValue_) ||
+            } else if (checkRdmaLocal_.GetValue(CACHELINE_SIZE) == EncodeRdmaFlag(RDMA_TOKEN_END_FLAG) ||
                        copySum == maxLocalBs_) {
                 stopFlag = true;
                 break;
@@ -837,6 +840,8 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
 template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFunc>::RDMADataSwitch()
 {
+    // 更新的是下一次调用要读取的持久状态；本次 magicValue_/bufferId_ 成员保持不变，
+    // 后续 Preload/WaitDispatch/SumToServer 仍使用本轮 buffer。这里不是远端接收完成的证明。
     magicGlobal_.SetValue(MAGIC_OFFSET / sizeof(uint64_t), magicValue_ + 1);
     PipeBarrier<PIPE_ALL>();
     AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
@@ -1115,7 +1120,11 @@ __aicore__ inline void MoeDistributeCombineV2Layered<TemplateMC2TypeV2LayeredFun
     if ASCEND_IS_AIV {
         GM2IPC();
         WaitIPC();
-        stepCoreNum_ = aivNum_ - serverNum_;
+        // Use complete producer groups; leave the remainder idle while all cores join the same barriers.
+        // host 已要求 aivNum_ > 2 * serverNum_。向下取整必须同时约束生产核总数与每 server 核数：
+        // AIV=48/S=5 时为 40 个生产核 + 5 个传输核 + 3 个余数核，避免旧版末 3 核访问 server=5。
+        // 余数核不得提前 return；须与两类工作核匹配 SyncAll，之后继续参与公共阶段。
+        stepCoreNum_ = (aivNum_ - serverNum_) / serverNum_ * serverNum_;
         if (coreIdx_ < stepCoreNum_) {
             SumToWindow();
         } else if (coreIdx_ < (stepCoreNum_ + serverNum_)) {
