@@ -10,9 +10,7 @@
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/build)
 
-file(GLOB_RECURSE OP_PROTO_FILES "*.cpp")
-
-add_library(proto_math SHARED ${OP_PROTO_FILES})
+add_library(proto_math SHARED ${CMAKE_CURRENT_SOURCE_DIR}/math_proto_stub.cpp)
 
 target_compile_definitions(proto_math PRIVATE
     _GLIBCXX_USE_CXX11_ABI=0
