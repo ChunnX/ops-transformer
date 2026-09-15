@@ -337,7 +337,7 @@ FragmentTensor 方案通过 `QmmMxBlockMmadFragment` 管理 L1，per-fragment �
 
 - **workspace**：`m × n × sizeof(CType)` 字节（Host 侧申请传入，存放 AIC 计算的 C_i）
 - **win 区**：`rankSize × chunkM × n × sizeof(CType)` 字节（AllToAll PUT 接收缓冲区）
-- **reduceSum UB 缓冲区**：`LocalTensor` 手动 UB 偏移管理（无 TPipe），6 slots 布局：`[sumF32 | inputBF16_A | inputF32_A | inputBF16_B | inputF32_B | outBF16]`，按 float 大小对齐，pingpong 双 buffer 交替（input A/B），N 分段自适应（maxNPerSeg = 180KB / (6 × sizeof(float))，N=12288 分 2 段），逐行同步的 ExecuteReduceSum（曾实现多行批量接口 ExecuteReduceSumBatch，因多行批量+单次 flag 模式存在时序竞态（尾段数据错乱）已删除）
+- **reduceSum UB 缓冲区**：`LocalTensor` 手动 UB 偏移管理（无 TPipe），`ReduceSumForAlltoAll<IOType, SumType=float>` 模板化（IOType 支持 bf16/fp16/fp32，同型免 Cast），UB_SLOT_NUM=6 slots 布局：`[sum | inIO_A | inSum_A | inIO_B | inSum_B | outIO]`，slot 偏移按元素计数记录（无除法），pingpong 双 buffer 交替（`pingPongCount_ & (PINGPONG_NUM-1)`），N 分段自适应（maxSegLen = `AscendC::TOTAL_UB_SIZE` / (6 × sizeof(SumType))，dav-3510 上 248KB），外部传参归纳为 `RsParams` 结构体，逐行同步的 ExecuteReduceSum（曾实现多行批量接口 ExecuteReduceSumBatch，因多行批量+单次 flag 模式存在时序竞态（尾段数据错乱）已删除）
 
 ---
 
@@ -487,16 +487,17 @@ if (isCommBlock) { Finalize<BARRIER_NONE>(); }
 ### 9.4 为什么 reduceSum 用 float32 中间转换累加
 
 - BF16→Cast float32→Add→Cast 回 BF16，精度优先（R=4 时 4 个 rank 累加，float32 中间转换累加误差放大）
+- SumType 为模板参数（默认 float），IOType 支持 bf16/fp16/fp32；IOType == SumType 时免 Cast 直加
 - V 指令数 3 条/rank (Cast+Add+PipeBarrier)，输出 1 次/tile Cast (F32→BF16)
-- UB 布局: 6 slots (sumF32 + 2×(inputBF16+inputF32) + outBF16)，按 float 大小对齐
+- UB 布局: UB_SLOT_NUM=6 slots (sum + 2×(inIO+inSum) + out)，slot 偏移按元素计数（无除法），分段上限 `AscendC::TOTAL_UB_SIZE`
 - 精度验证通过：97/97 case ALL PASS（R=2 + R=4）
 - 性能影响极小：相比 float32 中间转换累加平均 +0.4%（reduceSum 被 AIC 掩盖）
 
 ### 9.5 为什么 reduceSum 用手动 UB 管理（无 TPipe）
 
 参考 ops-transformer 仓的 `ReadRemoteDataAdd` 实现：
-- **LocalTensor + 手动 UB 偏移**：用 `LocalTensor` 偏移寻址管理 buffer 布局 `[sumF32 | inputBF16_A | inputF32_A | inputBF16_B | inputF32_B | outBF16]`
-- **pingpong 双 buffer**：`pingPongCount_ & 1` 交替使用 input A/B 两份 buffer
+- **LocalTensor + 手动 UB 偏移**：用 `LocalTensor` 偏移寻址管理 buffer 布局 `[sum | inIO_A | inSum_A | inIO_B | inSum_B | outIO]`，偏移按各 slot 元素计数记录（索引无除法）
+- **pingpong 双 buffer**：`pingPongCount_ & (PINGPONG_NUM - 1)` 交替使用 input A/B 两份 buffer
 - **多行 block**：一次处理 `rowsPerBlock` 行（UB 容量自适应），减少 GM↔UB 同步次数
 - **所有计算核参与**：前 (28-R) 个 AIV block 参与 reduceSum (rsCoreNum = 28 - rankSize)
 - **性能**：相比旧实现平均 2.01x 加速（msprof Task Duration）

@@ -10,12 +10,14 @@
 
 /*!
  * \file reduce_sum_ref.h
- * \brief 使用 AIV 进行 reduce_sum — pingpong + float32 中间转换累加
+ * \brief 使用 AIV 进行 reduce_sum — pingpong 双 buffer + 高精度中间类型累加
  *
  *   - LocalTensor (VECIN) + GlobalTensor + DataCopy/Cast/Add 实现
- *   - pingpong: input buffer 双份交替 (pingPongCount_ & 1)
- *   - float32 中间转换: BF16→Cast float32→Add→Cast 回 BF16 (精度优先)
- *   - self/received 分离读取
+ *   - pingpong: 输入 slot 双份交替 (pingPongCount_ & (PINGPONG_NUM - 1))
+ *   - 中间类型累加: IOType → Cast SumType → Add → Cast 回 IOType (精度优先);
+ *     IOType == SumType (如 fp32) 时免 Cast 直接累加
+ *   - IOType 支持 bfloat16_t / half / float, SumType 为模板参数控制累加精度 (默认 float)
+ *   - self/received 分离读取; 外部传参统一归纳为 RsParams, Init 一次传入
  *
  * 注: 曾有 ExecuteReduceSumBatch 批量接口, 因多行批量 + 单次 flag 模式存在
  * 时序竞态(尾段数据错乱)已删除; 统一走逐行同步的 ExecuteReduceSum。
@@ -26,6 +28,8 @@
 
 #include "kernel_operator.h"
 
+#include "apace/utils/apace_common_utils.h"
+
 namespace AiVReduceSumImpl {
 
 using namespace AscendC;
@@ -34,152 +38,167 @@ constexpr static uint64_t UB_ALIGN_BYTES = 32UL;
 constexpr int32_t FLAG_ID_NUM_ONE = 1;
 constexpr uint32_t PINGPONG_NUM = 2U;
 
-// 向上取整除法
-__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
-{
-    return (b == 0) ? 0 : (a + b - 1) / b;
-}
-
-template <typename DataType>
+template <typename IOType, typename SumType = float>
 class ReduceSumForAlltoAll {
 public:
     __aicore__ inline ReduceSumForAlltoAll(){};
 
-    __aicore__ inline void Init(uint64_t outputSize, uint64_t stride, uint64_t rankDim, uint64_t rankId,
-                                uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR selfAddr, GM_ADDR dstAddr)
+    // Init 外部传参: 归纳全部一次性输入, 生命周期内不变
+    struct RsParams {
+        GM_ADDR recvWindowAddr{0};  // 通信窗口: 远端 rank PUT 过来的各份部分和
+        GM_ADDR selfPartialAddr{0}; // 本卡 workspace: 本 rank matmul 输出的部分和
+        GM_ADDR outputAddr{0};      // 归约结果输出地址
+        uint64_t rankDim{0};        // 参与归约的 rank 总数
+        uint64_t rankId{0};         // 本 rank 编号
+        uint64_t aivNum{0};         // 参与归约计算的 AIV 核数
+        uint64_t rowStride{0};      // 相邻 rank 部分和的行间距 (元素数)
+        uint64_t nSize{0};          // 每行元素数 (N 轴)
+    };
+
+    __aicore__ inline void Init(const RsParams &params)
     {
-        rankDim_ = rankDim;
-        rankId_ = rankId;
-        aivNum_ = aivNum;
-        strideSize_ = stride;
-        srcAddr_ = srcAddr;
-        selfAddr_ = selfAddr;
-        dstAddr_ = dstAddr;
+        rsParams_ = params;
     }
 
-    __aicore__ inline void ExecuteReduceSum(uint64_t tileM, uint64_t nSize)
+    // 逐行同步 reduce_sum: tileM 行均分到 aivNum 个核, 每行按 N 分段累加 rankDim 份输入
+    __aicore__ inline void ExecuteReduceSum(uint64_t tileM)
     {
-        nSize_ = nSize;
+        // 行长按 32B 对齐后的元素数 (保证各分段 DataCopy/Cast 对齐)
+        uint64_t alignedN = ApaceKernel::CeilDiv(rsParams_.nSize, SEG_ALIGN_ELEMS) * SEG_ALIGN_ELEMS;
 
-        uint64_t rowPaddedBytes =
-            CeilDiv(static_cast<uint64_t>(nSize_ * sizeof(DataType)), UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
-        uint64_t paddingN = rowPaddedBytes / sizeof(DataType);
-
-        // N 分段: 6 slots × float, UB 上限 180KB
-        constexpr uint64_t MAX_UB_BYTES = 180UL * 1024UL;
-        uint64_t maxNPerSeg = MAX_UB_BYTES / (6U * sizeof(float));
-        if (maxNPerSeg > paddingN) {
-            maxNPerSeg = paddingN;
+        // N 分段: UB_SLOT_NUM 个 slot × SumType, 上限 TOTAL_UB_SIZE
+        uint64_t maxSegLen = AscendC::TOTAL_UB_SIZE / (UB_SLOT_NUM * sizeof(SumType));
+        if (maxSegLen > alignedN) {
+            maxSegLen = alignedN;
         }
-        // 对齐到 32B (UB_ALIGN_BYTES / sizeof(float) = 8)
-        maxNPerSeg = (maxNPerSeg / 8U) * 8U;
-        if (maxNPerSeg == 0U) {
-            maxNPerSeg = 8U;
+        maxSegLen = maxSegLen / SEG_ALIGN_ELEMS * SEG_ALIGN_ELEMS;
+        if (maxSegLen == 0U) {
+            maxSegLen = SEG_ALIGN_ELEMS;
         }
 
-        uint32_t startRowId = 0, endRowId = 0, rowNum = 0;
-        SplitToCore(static_cast<uint32_t>(tileM), static_cast<uint32_t>(aivNum_), static_cast<uint32_t>(GetBlockIdx()),
-                    startRowId, endRowId, rowNum);
+        uint32_t startRowIdx = 0;
+        uint32_t rowNumPerCore = 0;
+        SplitRowsToCores(static_cast<uint32_t>(tileM), static_cast<uint32_t>(rsParams_.aivNum),
+                         static_cast<uint32_t>(GetBlockIdx()), startRowIdx, rowNumPerCore);
 
-        constexpr uint64_t TOTAL_UB = 192UL * 1024UL;
-        LocalTensor<float> ubF32{TPosition::VECIN, 0, static_cast<uint32_t>(TOTAL_UB / sizeof(float))};
-        LocalTensor<DataType> ubBF16{TPosition::VECIN, 0, static_cast<uint32_t>(TOTAL_UB / sizeof(DataType))};
+        LocalTensor<SumType> ubSum{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(SumType))};
+        LocalTensor<IOType> ubIO{TPosition::VECIN, 0, static_cast<uint32_t>(AscendC::TOTAL_UB_SIZE / sizeof(IOType))};
 
-        for (uint32_t tileIdx = 0; tileIdx < rowNum; ++tileIdx) {
-            uint32_t tokenIndex = startRowId + tileIdx;
+        for (uint32_t rowIdx = 0; rowIdx < rowNumPerCore; ++rowIdx) {
+            uint32_t tokenIndex = startRowIdx + rowIdx;
 
             // N 分段循环
-            for (uint64_t nStart = 0; nStart < paddingN; nStart += maxNPerSeg) {
-                uint64_t nSegLen = (nStart + maxNPerSeg <= paddingN) ? maxNPerSeg : (paddingN - nStart);
-                uint64_t segSlotBytes = nSegLen * sizeof(float);
-                uint64_t sumOffset = 0;
-                uint64_t bf16Off[PINGPONG_NUM], f32Off[PINGPONG_NUM];
-                bf16Off[0] = sumOffset + segSlotBytes;
-                f32Off[0] = bf16Off[0] + segSlotBytes;
-                bf16Off[1] = f32Off[0] + segSlotBytes;
-                f32Off[1] = bf16Off[1] + segSlotBytes;
-                uint64_t outOff = f32Off[1] + segSlotBytes;
+            for (uint64_t nStart = 0; nStart < alignedN; nStart += maxSegLen) {
+                uint64_t segLen = (nStart + maxSegLen <= alignedN) ? maxSegLen : (alignedN - nStart);
 
-                // 1. 清零 sum (float32 累加器)
-                Duplicate<float>(ubF32[sumOffset / sizeof(float)], static_cast<float>(0.0), nSegLen);
+                // 各 slot 起始元素偏移 (以本类型元素计, 无除法):
+                //   SumType slot 容量 = segLen 元素, IOType slot 容量 = segLen*sizeof(SumType)/sizeof(IOType) 元素
+                uint64_t slotIOElems = segLen * sizeof(SumType) / sizeof(IOType);
+                uint64_t sumElem = SLOT_SUM; // 累加器位于 slot#0
+                uint64_t inIOElem[PINGPONG_NUM], inSumElem[PINGPONG_NUM];
+                for (uint32_t pp = 0; pp < PINGPONG_NUM; ++pp) {
+                    inIOElem[pp] = SLOT_IN_IO[pp] * slotIOElems;
+                    inSumElem[pp] = SLOT_IN_SUM[pp] * segLen;
+                }
+                uint64_t outElem = SLOT_OUT * slotIOElems;
+
+                // 1. 清零 sum (SumType 累加器)
+                Duplicate<SumType>(ubSum[sumElem], static_cast<SumType>(0.0), segLen);
                 PipeBarrier<PIPE_V>();
 
-                // 2. 逐 rank 累加 (pingpong, float32 中间转换)
-                for (uint64_t curRank = 0; curRank < rankDim_; ++curRank) {
-                    uint32_t ppId = pingPongCount_ & 1;
-                    uint64_t rankOffset = curRank * strideSize_;
-                    uint64_t curOffset = rankOffset + static_cast<uint64_t>(tokenIndex) * nSize_ + nStart;
+                // 2. 逐 rank 累加 (pingpong, SumType 中间类型转换)
+                for (uint64_t curRank = 0; curRank < rsParams_.rankDim; ++curRank) {
+                    uint32_t pingPongIdx = pingPongCount_ & (PINGPONG_NUM - 1U);
+                    uint64_t curOffset =
+                        curRank * rsParams_.rowStride + static_cast<uint64_t>(tokenIndex) * rsParams_.nSize + nStart;
 
-                    GM_ADDR dataBaseAddr = (curRank == rankId_) ? selfAddr_ : srcAddr_;
-                    __gm__ DataType *gmPtr =
-                        reinterpret_cast<__gm__ DataType *>(dataBaseAddr + curOffset * sizeof(DataType));
-
-                    // GM → UB (BF16)
-                    GlobalTensor<DataType> gmData;
+                    GM_ADDR dataBaseAddr =
+                        (curRank == rsParams_.rankId) ? rsParams_.selfPartialAddr : rsParams_.recvWindowAddr;
+                    __gm__ IOType *gmPtr = reinterpret_cast<__gm__ IOType *>(dataBaseAddr + curOffset * sizeof(IOType));
+                    GlobalTensor<IOType> gmData;
                     gmData.SetGlobalBuffer(gmPtr);
-                    DataCopy(ubBF16[bf16Off[ppId] / sizeof(DataType)], gmData, nSegLen);
-                    SetFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
-                    WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
 
-                    // Cast BF16 → float32
-                    Cast(ubF32[f32Off[ppId] / sizeof(float)], ubBF16[bf16Off[ppId] / sizeof(DataType)],
-                         RoundMode::CAST_NONE, nSegLen);
-                    PipeBarrier<PIPE_V>();
+                    if constexpr (IsSameType<IOType, SumType>::value) {
+                        // 同型: GM → UB 直入 SumType 输入 slot, 免 Cast
+                        DataCopy(ubSum[inSumElem[pingPongIdx]], gmData, segLen);
+                        SetFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
+                        WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
+                    } else {
+                        // 异型: GM → UB (IOType) → Cast SumType 输入 slot
+                        DataCopy(ubIO[inIOElem[pingPongIdx]], gmData, segLen);
+                        SetFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
+                        WaitFlag<HardEvent::MTE2_V>(FLAG_ID_NUM_ONE);
+                        Cast(ubSum[inSumElem[pingPongIdx]], ubIO[inIOElem[pingPongIdx]], RoundMode::CAST_NONE,
+                             segLen);
+                        PipeBarrier<PIPE_V>();
+                    }
 
-                    // Add sumF32 += inputF32
-                    Add(ubF32[sumOffset / sizeof(float)], ubF32[sumOffset / sizeof(float)],
-                        ubF32[f32Off[ppId] / sizeof(float)], nSegLen);
+                    // Add: sum += input (SumType 累加)
+                    Add(ubSum[sumElem], ubSum[sumElem], ubSum[inSumElem[pingPongIdx]], segLen);
                     SetFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
                     WaitFlag<HardEvent::V_MTE2>(FLAG_ID_NUM_ONE);
 
                     pingPongCount_++;
                 }
 
-                // 3. Cast float32 → BF16 (输出)
+                // 3. 输出: SumType → IOType → GM
                 PipeBarrier<PIPE_V>();
-                Cast(ubBF16[outOff / sizeof(DataType)], ubF32[sumOffset / sizeof(float)], RoundMode::CAST_RINT,
-                     nSegLen);
-                SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
-                WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
-
-                // 4. UB → GM
-                __gm__ DataType *outPtr = reinterpret_cast<__gm__ DataType *>(
-                    dstAddr_ + (static_cast<uint64_t>(tokenIndex) * nSize_ + nStart) * sizeof(DataType));
-                GlobalTensor<DataType> gmOut;
+                __gm__ IOType *outPtr = reinterpret_cast<__gm__ IOType *>(
+                    rsParams_.outputAddr +
+                    (static_cast<uint64_t>(tokenIndex) * rsParams_.nSize + nStart) * sizeof(IOType));
+                GlobalTensor<IOType> gmOut;
                 gmOut.SetGlobalBuffer(outPtr);
-                DataCopy(gmOut, ubBF16[outOff / sizeof(DataType)], nSegLen);
+                if constexpr (IsSameType<IOType, SumType>::value) {
+                    // 同型: 累加结果直接 UB → GM
+                    SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
+                    WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
+                    DataCopy(gmOut, ubSum[sumElem], segLen);
+                } else {
+                    // 异型: Cast 回 IOType 后 UB → GM
+                    Cast(ubIO[outElem], ubSum[sumElem], DOWN_CAST_MODE, segLen);
+                    SetFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
+                    WaitFlag<HardEvent::V_MTE3>(FLAG_ID_NUM_ONE);
+                    DataCopy(gmOut, ubIO[outElem], segLen);
+                }
                 SetFlag<HardEvent::MTE3_V>(FLAG_ID_NUM_ONE);
                 WaitFlag<HardEvent::MTE3_V>(FLAG_ID_NUM_ONE);
             }
         }
     }
 
-
 private:
-    __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t coreId, uint32_t &startId,
-                                       uint32_t &endId, uint32_t &rowNum)
+    // 行均分到各 AIV 核: 前 remainderNum 个核各多分 1 行
+    __aicore__ inline void SplitRowsToCores(uint32_t totalRowNum, uint32_t totalAivNum, uint32_t coreId,
+                                            uint32_t &startRowIdx, uint32_t &rowNumPerCore)
     {
-        rowNum = curSendCnt / curUseAivNum;
-        uint32_t remainderNum = curSendCnt % curUseAivNum;
-        startId = rowNum * coreId;
+        rowNumPerCore = totalRowNum / totalAivNum;
+        uint32_t remainderNum = totalRowNum % totalAivNum;
+        startRowIdx = rowNumPerCore * coreId;
         if (coreId < remainderNum) {
-            rowNum += 1;
-            startId += coreId;
+            rowNumPerCore += 1;
+            startRowIdx += coreId;
         } else {
-            startId += remainderNum;
+            startRowIdx += remainderNum;
         }
-        endId = startId + rowNum;
     }
 
-    GM_ADDR srcAddr_{0};
-    GM_ADDR selfAddr_{0};
-    GM_ADDR dstAddr_{0};
+    // UB slot 布局 (每 slot 容量 segLen 个 SumType 元素, 共 UB_SLOT_NUM 个):
+    //   slot#0: sum 累加器 | slot#1/2: pingpong0 输入 (inIO, inSum) | slot#3/4: pingpong1 | slot#5: 输出
+    constexpr static uint32_t SLOT_SUM = 0U;
+    constexpr static uint32_t SLOT_IN_IO[PINGPONG_NUM] = {1U, 3U};
+    constexpr static uint32_t SLOT_IN_SUM[PINGPONG_NUM] = {2U, 4U};
+    constexpr static uint32_t SLOT_OUT = 5U;
+    constexpr static uint32_t UB_SLOT_NUM = SLOT_OUT + 1U;
 
-    uint64_t rankDim_{0};
-    uint64_t rankId_{0};
-    uint64_t aivNum_{0};
-    uint64_t strideSize_{0};
-    uint64_t nSize_{0};
+    // 分段对齐粒度 (元素数): 保证 segLen × sizeof(IOType/SumType) 均为 32B 整数倍
+    constexpr static uint64_t SEG_ALIGN_ELEMS =
+        UB_ALIGN_BYTES / ((sizeof(IOType) < sizeof(SumType)) ? sizeof(IOType) : sizeof(SumType));
+
+    // 下转 (SumType → IOType) 舍入模式: bf16 用最近偶舍入保持精度, 其余 (fp16 等) 用默认舍入
+    constexpr static RoundMode DOWN_CAST_MODE =
+        IsSameType<IOType, bfloat16_t>::value ? RoundMode::CAST_RINT : RoundMode::CAST_NONE;
+
+    RsParams rsParams_{};
     uint32_t pingPongCount_{0};
 };
 

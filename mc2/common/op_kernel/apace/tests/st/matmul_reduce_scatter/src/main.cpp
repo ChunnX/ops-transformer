@@ -63,6 +63,18 @@ inline uint64_t CeilDiv(uint32_t a, uint32_t b)
     return (a + b - 1) / b;
 }
 
+// reduceSum dtype 扩展编译覆盖: fp16/fp32 暂无运行用例, 借未被调用的设备函数锁定编译兼容
+// (实例化 ReduceSumForAlltoAll<half, float> / <float, float> 的 ExecuteReduceSum 全路径)
+__aicore__ inline void ReduceSumDtypeCompileCheck()
+{
+    AiVReduceSumImpl::ReduceSumForAlltoAll<half, float> reduceSumHalf;
+    AiVReduceSumImpl::ReduceSumForAlltoAll<float, float> reduceSumFloat;
+    reduceSumHalf.Init({});
+    reduceSumFloat.Init({});
+    reduceSumHalf.ExecuteReduceSum(0);
+    reduceSumFloat.ExecuteReduceSum(0);
+}
+
 void printUsage(const std::string &programName)
 {
     std::cerr << "Usage: " << programName << " m k n rankNum [mode] [headMSize]" << std::endl;
