@@ -117,7 +117,7 @@ get_ccl_buffer_size静态方法根据配置参数计算所需的最小HCCL Buffe
 npu_moe_distribute_dispatch_v2 方法将用户参数与缓存的上下文信息合并，调用torch.ops.ascend_ops.MoeDistributeDispatchV2：
 
 - **传入缓存的上下文**：mc2_context、group_name、world_size、rank_id、ccl_buffer_size
-- **传入用户参数**：x、expert_ids、moe_expert_num、quant_mode、comm_alg等
+- **传入用户参数**：不支持、expert_ids、moe_expert_num、quant_mode、comm_alg等
 - **返回输出**：expand_x、dynamic_scales、expand_idx（assist_info）、expert_token_nums、ep_recv_counts、expand_scales
 
 ### 2. C++ Extension层
