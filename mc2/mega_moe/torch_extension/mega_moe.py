@@ -383,6 +383,19 @@ class SymmBuffer:
     def _check_params(self) -> None:
         intermediate_hidden = self.intermediate_hidden
         if "Ascend950" in torch.npu.get_device_name():
+            _check_int_type(self.dispatch_quant_mode, "dispatch_quant_mode")
+            if self.dispatch_quant_mode not in (0, 4):
+                raise ValueError(
+                    "dispatch_quant_mode only supports 0 (pre-quantized passthrough) "
+                    "or 4 (MXFP) on Ascend950, "
+                    f"got {self.dispatch_quant_mode!r} (type: {type(self.dispatch_quant_mode).__name__})."
+                )
+            if _dtype_to_int(self.dispatch_quant_out_dtype) not in (23, 24, 296):
+                raise ValueError(
+                    "dispatch_quant_out_dtype only supports float8_e5m2 (23), "
+                    "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
+                    f"got {self.dispatch_quant_out_dtype!r} (type: {type(self.dispatch_quant_out_dtype).__name__})."
+                )
             _check_int_type(self.combine_quant_mode, "combine_quant_mode")
             if self.combine_quant_mode not in (0, 3, 4):
                 raise ValueError(
