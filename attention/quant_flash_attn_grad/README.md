@@ -1,5 +1,14 @@
 # QuantFlashAttnGrad
 
+## 当前 TND 实现范围
+
+- 支持 `layout_q = layout_kv = TND`、`mask_mode = 0`、`quant_mode = 0`、`N1 = N2`、`D = Dv = 128`、BF16 out/梯度，采用确定性 swizzle 分核。
+- Q、dO、out 和 dQ 为 `[Tq, N, D]`；K、V、dK 和 dV 为 `[Tkv, N, D]`；softmax_lse 为 `[N, Tq]`。
+- `cu_seqlens_q` 和 `cu_seqlens_kv` 必须为 int32 的 `[B + 1]` tensor，首项为 0，严格递增，末项分别等于 Tq 和 Tkv。本阶段不支持空序列、seqused、attn_mask 和 sinks。
+- 调用 `quant_flash_attn_metadata` 时传入相同的 cu_seqlens、布局、head 数和 mask_mode，并启用 `is_grad_enabled=True`。metadata 在 device 侧计算各 batch 实际长度、轮次前缀和 swizzle 参数；host 不读取 cu_seqlens 内容。
+- TND dense 使用 metadata v2 的扩展调度数组。调度行数为 `max(ceil(Sq / 512), min(AIC 核数, ceil(Skv / 512)))`，实际行列数仍独立保存，虚拟行不参与 attention 计算。
+- 可传入真实最大序列长度作为 `max_seqlen_q/kv`，以减少 kernel 的安全循环上界；省略时为 -1，host 使用对应总 token 数作为上界。
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |

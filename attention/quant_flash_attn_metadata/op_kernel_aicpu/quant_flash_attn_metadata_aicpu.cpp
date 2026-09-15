@@ -132,12 +132,38 @@ std::vector<int64_t> QuantFlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tenso
 
 bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
 {
+    if (isGradEnabled_ && (layoutQ_ == "TND" || layoutKv_ == "TND")) {
+        if (layoutQ_ != "TND" || layoutKv_ != "TND" || cuSeqlensQ_ == nullptr ||
+            cuSeqlensKv_ == nullptr || cuSeqlensQ_->GetData() == nullptr || cuSeqlensKv_->GetData() == nullptr) {
+            KERNEL_LOG_ERROR("QuantFAG TND requires both cumulative sequence tensors");
+            return false;
+        }
+        const int64_t count = cuSeqlensQ_->GetTensorShape()->GetDimSize(0);
+        if (count < 2 || cuSeqlensKv_->GetTensorShape()->GetDimSize(0) != count ||
+            (batchSize_ > 0 && batchSize_ != count - 1)) {
+            KERNEL_LOG_ERROR("QuantFAG TND cumulative sequence shape/batch mismatch");
+            return false;
+        }
+        auto qSeq = GetTensorDataAsInt64(cuSeqlensQ_, count);
+        auto kvSeq = GetTensorDataAsInt64(cuSeqlensKv_, count);
+        if (qSeq[0] != 0 || kvSeq[0] != 0) {
+            KERNEL_LOG_ERROR("QuantFAG TND cumulative sequences must start at zero");
+            return false;
+        }
+        for (int64_t i = 1; i < count; ++i) {
+            if (qSeq[i] <= qSeq[i - 1] || kvSeq[i] <= kvSeq[i - 1]) {
+                KERNEL_LOG_ERROR("QuantFAG TND requires positive sequence lengths");
+                return false;
+            }
+        }
+    }
+
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aicCoreMinNum = 1;
-    baseInfo.querySeqSize = maxSeqlenQ_;
-    baseInfo.kvSeqSize = maxSeqlenKv_;
+    baseInfo.querySeqSize = std::max<int64_t>(0, maxSeqlenQ_);
+    baseInfo.kvSeqSize = std::max<int64_t>(0, maxSeqlenKv_);
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
     baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
     if (batchSize_ > 0) {
@@ -291,14 +317,17 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
     }
 
     const bool sparse = maskMode_ == 3 || maskMode_ == 4;
-    sparseData.assign(sparse ? optiling::QUANT_FAG_SPARSE_ARRAY_COUNT : 0, std::vector<int64_t>(bSize));
+    const bool packed = layoutQ_ == "TND" && layoutKv_ == "TND";
+    const bool extendedSchedule = sparse || packed;
+    sparseData.assign(extendedSchedule ? optiling::QUANT_FAG_SPARSE_ARRAY_COUNT : 0, std::vector<int64_t>(bSize));
     roundPrefix.assign(bSize + 1, 0);
     s1OuterList.assign(bSize, 0);
     s2OuterList.assign(bSize, 0);
     for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
         const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(static_cast<uint32_t>(bIdx)));
         const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(static_cast<uint32_t>(bIdx)));
-        if (s1Len <= 0 || s2Len <= 0 || s1Len > maxSeqlenQ_ || s2Len > maxSeqlenKv_) {
+        if (s1Len <= 0 || s2Len <= 0 || (maxSeqlenQ_ >= 0 && s1Len > maxSeqlenQ_) ||
+            (maxSeqlenKv_ >= 0 && s2Len > maxSeqlenKv_)) {
             KERNEL_LOG_ERROR("QuantFAG grad schedule: batch %ld has empty seq (s1 %ld, s2 %ld), swizzle schedule "
                              "requires all batches non-empty",
                              bIdx, s1Len, s2Len);
@@ -308,7 +337,7 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
         const int64_t n = CeilDiv<int64_t>(s2Len, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_N));
         // swizzle 一轮内同一 head 最多 min(k, n) 个核并发, 它们的 dQ 坐标为 (s2o + delta) % m,
         // 要求互不重叠才能保证确定性累加顺序, 故 m >= min(k, n)。
-        if (!sparse && m < std::min(k, n)) {
+        if (!extendedSchedule && m < std::min(k, n)) {
             KERNEL_LOG_ERROR("QuantFAG grad schedule: batch %ld s1Outer %ld < min(aicNum %ld, s2Outer %ld), "
                              "deterministic swizzle schedule is unsafe (s1 %ld, s2 %ld)",
                              bIdx, m, k, n, s1Len, s2Len);
@@ -340,6 +369,16 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
             sparseData[3][bIdx] = scheduleCols;
             sparseData[4][bIdx] = s1Token;
             sparseData[5][bIdx] = s2Token;
+        }
+        if (packed && !sparse) {
+            // Keep a unique dQ row per active core even when Q is shorter than KV.
+            scheduleRows = std::max(m, std::min(k, n));
+            sparseData[0][bIdx] = 0;
+            sparseData[1][bIdx] = 0;
+            sparseData[2][bIdx] = scheduleRows;
+            sparseData[3][bIdx] = scheduleCols;
+            sparseData[4][bIdx] = 0;
+            sparseData[5][bIdx] = 0;
         }
         const int64_t rounds = CeilDiv<int64_t>(scheduleCols * n1, k) * scheduleRows;
         if (rounds > INT32_MAX - roundPrefix[bIdx]) {

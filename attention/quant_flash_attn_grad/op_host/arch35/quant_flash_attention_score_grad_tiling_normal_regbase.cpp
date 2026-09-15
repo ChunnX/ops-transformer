@@ -56,7 +56,7 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
     if (strcmp(inputLayoutQ, "BSND") == 0) {
         // q shape = [B, S, N, D]
         headNum = queryShape->GetStorageShape().GetDim(2);
-    } else if (strcmp(inputLayoutQ, "BNSD") == 0) {
+    } else if (strcmp(inputLayoutQ, "BNSD") == 0 || strcmp(inputLayoutQ, "TND") == 0) {
         // q shape = [B, N, S, D]
         headNum = queryShape->GetStorageShape().GetDim(1);
     } else {
@@ -65,7 +65,20 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsIn
         return ge::GRAPH_FAILED;
     }
 
-    if (strcmp(inputLayoutQ, "BNSD") == 0) {
+    if (strcmp(inputLayoutQ, "TND") == 0) {
+        fBaseParams.layoutType = INPUT_FORMAT_TND;
+        fBaseParams.t1 = queryShape->GetStorageShape().GetDim(0);
+        fBaseParams.t2 = keyShape->GetStorageShape().GetDim(0);
+        fBaseParams.b = context_->GetOptionalInputShape(12)->GetStorageShape().GetDim(0) - 1;
+        fBaseParams.n2 = headNum;
+        fBaseParams.g = 1;
+        fBaseParams.d = queryShape->GetStorageShape().GetDim(2);
+        fBaseParams.d1 = valueShape->GetStorageShape().GetDim(2);
+        auto maxQ = context_->GetAttrs()->GetAttrPointer<int64_t>(5);
+        auto maxKV = context_->GetAttrs()->GetAttrPointer<int64_t>(6);
+        fBaseParams.s1 = maxQ != nullptr && *maxQ > 0 ? std::min(*maxQ, fBaseParams.t1) : fBaseParams.t1;
+        fBaseParams.s2 = maxKV != nullptr && *maxKV > 0 ? std::min(*maxKV, fBaseParams.t2) : fBaseParams.t2;
+    } else if (strcmp(inputLayoutQ, "BNSD") == 0) {
         OP_LOGD(context_, "inputLayout == BNSD queryShape");
         fBaseParams.layoutType = INPUT_FORMAT_BN2GS2D;
         fBaseParams.b = queryShape->GetStorageShape().GetDim(INPUT_DIM_0);
@@ -206,6 +219,13 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::DoSparse()
 {
     fBaseParams.sparseType = GetSparseType(); // 非确定性计算下获取sparseType
     fBaseParams.deterSparseType = GetDeterSparseTilingKey();
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+        fBaseParams.blockOuter = fBaseParams.aicNum;
+        fBaseParams.blockFactor = 1;
+        fBaseParams.maxValidBBLen = 1;
+        return ge::GRAPH_SUCCESS;
+    }
     CalcleDeterParam();
     fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
     if (fBaseParams.isSparse) {
@@ -459,7 +479,8 @@ uint64_t QuantFlashAttentionScoreGradTilingNormalRegbase::DoPreSfmgTiling()
     uint32_t valueDAlign = fBaseParams.sfmgdInner;
 
     int64_t normalAxisSize = 0;
-    normalAxisSize = fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
+    normalAxisSize = fBaseParams.layoutType == INPUT_FORMAT_TND ? fBaseParams.t1 * fBaseParams.n1 :
+        fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1;
 
     int32_t inputSize = FP16_BYTES;
     int32_t outDtypeSize = FP16_BYTES;
@@ -639,6 +660,11 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
         ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d;
     int64_t vSize =
         ((fBaseParams.b * fBaseParams.n2 - 1) * fBaseParams.s2 + AlignTo(fBaseParams.s2, ALIGN128)) * fBaseParams.d1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        qSize = fBaseParams.qSize;
+        kSize = fBaseParams.kSize;
+        vSize = fBaseParams.vSize;
+    }
     if (fBaseParams.queryType != ge::DT_FLOAT) {
         quantFagTilingData_->dq_work_space_offset = workspaceSize;
         // matmal3 q
@@ -668,6 +694,9 @@ ge::graphStatus QuantFlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSiz
         uint64_t sfmgSize = ((fBaseParams.b * fBaseParams.n2 * fBaseParams.g - 1) * fBaseParams.s1 +
                              AlignTo(fBaseParams.s1, ALIGN128)) *
                             BIT_NUMS;
+        if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+            sfmgSize = fBaseParams.t1 * fBaseParams.n1 * BIT_NUMS;
+        }
         workspaceSize = (workspaceSize + static_cast<size_t>(sfmgSize) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 

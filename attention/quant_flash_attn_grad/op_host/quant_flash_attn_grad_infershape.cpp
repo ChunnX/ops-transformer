@@ -13,8 +13,8 @@
  * \brief QuantFlashAttnGrad算子InferShape实现
  * 输出shape严格按规格：
  *   - dq: 按layout‑q解析(BSND‑>[B,Sq,Nq,D] / BNSD‑>[B,Nq,Sq,D] / TND‑>[Tq,Nq,D])
- *   - dk: 与dq同形(dk/dv为Q形状)
- *   - dv: 与dq同形
+ *   - dk: 与key同形
+ *   - dv: 与value同形
  *   - dsink: 一维 [numHeadsQ]
  */
 

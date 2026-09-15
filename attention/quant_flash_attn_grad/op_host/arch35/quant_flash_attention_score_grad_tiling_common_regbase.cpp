@@ -27,6 +27,15 @@ ge::graphStatus CheckSoftmaxLseShape(gert::TilingContext *context, int64_t b, in
         OP_LOGE(context, "CheckSoftmaxLseShape softmaxLse is nullptr");
         return ge::GRAPH_FAILED;
     }
+    auto layout = context->GetAttrs()->GetAttrPointer<char>(7);
+    if (layout != nullptr && std::string(layout) == "TND") {
+        const auto &shape = softmaxLseShape->GetStorageShape();
+        auto query = context->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
+        OP_CHECK_IF(query == nullptr || shape.GetDimNum() != 2 || shape.GetDim(0) != n1 ||
+                        shape.GetDim(1) != query->GetStorageShape().GetDim(0),
+                    OP_LOGE(context, "TND softmaxLse must have shape [N,Tq]"), return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
     auto softmaxLseShapeDim = softmaxLseShape->GetStorageShape().GetDimNum();
     if (softmaxLseShapeDim != 3) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad", "softmaxLse",
@@ -672,6 +681,11 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1 * fBaseParams.d;
     fBaseParams.kSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d;
     fBaseParams.vSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d1;
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        fBaseParams.qSize = fBaseParams.t1 * fBaseParams.n1 * fBaseParams.d;
+        fBaseParams.kSize = fBaseParams.t2 * fBaseParams.n2 * fBaseParams.d;
+        fBaseParams.vSize = fBaseParams.t2 * fBaseParams.n2 * fBaseParams.d1;
+    }
     fBaseParams.dropMaskSize =
         static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2 * fBaseParams.s1;
 
@@ -802,13 +816,14 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
             OP_LOGE_WITH_INVALID_INPUT("QuantFlashAttentionScoreGrad", "query, keyIn, value, dy, attentionIn");
             return ge::GRAPH_FAILED;
         }
-        // 校验query, key, value, dy, attn_out的维度必须为4维
+        // Packed TND inputs have rank 3; padded layouts have rank 4.
         auto attentionInShapeDim = attentionInShape->GetStorageShape().GetDimNum();
         auto queryShapeDim = queryShape->GetStorageShape().GetDimNum();
         auto dyShapeDim = dyShape->GetStorageShape().GetDimNum();
         auto keyShapeDim = keyShape->GetStorageShape().GetDimNum();
         auto valueShapeDim = valueShape->GetStorageShape().GetDimNum();
-        constexpr int64_t EXPECTED_DIM_NUM = 4;
+        const bool isTnd = fBaseParams.layoutType == INPUT_FORMAT_TND;
+        const int64_t EXPECTED_DIM_NUM = isTnd ? 3 : 4;
         if (attentionInShapeDim != EXPECTED_DIM_NUM || queryShapeDim != EXPECTED_DIM_NUM ||
             dyShapeDim != EXPECTED_DIM_NUM || keyShapeDim != EXPECTED_DIM_NUM || valueShapeDim != EXPECTED_DIM_NUM) {
             std::string dimMsg = "{" + std::to_string(attentionInShapeDim) + ", " + std::to_string(queryShapeDim) +
@@ -817,7 +832,7 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("QuantFlashAttentionScoreGrad",
                                                      "query, keyIn, value, dy, attentionIn", dimMsg.c_str(),
                                                      "The shape dim of query, keyIn, value, dy, attentionIn "
-                                                     "must be 4");
+                                                     "must match the layout rank (TND: 3, padded: 4)");
             return ge::GRAPH_FAILED;
         }
         for (uint32_t dimIdx = 0; dimIdx < queryShapeDim; dimIdx++) {
@@ -841,13 +856,15 @@ ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyB
                 return ge::GRAPH_FAILED;
             }
         }
-        if (queryShape->GetStorageShape().GetDim(0) != keyShape->GetStorageShape().GetDim(0) ||
-            queryShape->GetStorageShape().GetDim(3) != keyShape->GetStorageShape().GetDim(3)) {
+        const int64_t sharedAxis = isTnd ? 1 : 0;
+        const int64_t headDimAxis = isTnd ? 2 : 3;
+        if (queryShape->GetStorageShape().GetDim(sharedAxis) != keyShape->GetStorageShape().GetDim(sharedAxis) ||
+            queryShape->GetStorageShape().GetDim(headDimAxis) != keyShape->GetStorageShape().GetDim(headDimAxis)) {
             std::string shapesMsg = "{" + Ops::Base::ToString(keyShape->GetStorageShape()) + ", " +
                                     Ops::Base::ToString(queryShape->GetStorageShape()) + "}";
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 "QuantFlashAttentionScoreGrad", "keyIn, query", shapesMsg.c_str(),
-                "When the dtype of query is HIFLOAT8, b of keyIn and query must be same");
+                "HIFLOAT8 query/key must share head dimension and batch (padded) or heads (TND)");
             return ge::GRAPH_FAILED;
         }
     }

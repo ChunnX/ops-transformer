@@ -203,7 +203,7 @@ class QuantFlashAttnGradTilingKey:
     d_template_num = TilingKeyField(bits=1, values=[128])
     is_n_equal = TilingKeyField(bits=1, values=[1])
     # 0: BSND 1: BNSD 2: TND
-    layout = TilingKeyField(bits=2, values=[0, 1])
+    layout = TilingKeyField(bits=2, values=[0, 1, 2])
     # DeterSparseType: 0: DENSE 3: CAUSAL 4: BAND
     sparse_type = TilingKeyField(bits=2, values=[0, 3, 4])
     # seqused_q / seqused_kv: 每 batch 实际使用的序列长度 (<= 定长 S)。
@@ -221,7 +221,7 @@ def l1_ds(i, j, task_mod2):
 
 def is_var_len():
     """编译期常量: 是否为 seqused varlen 场景。"""
-    return has_seq_used_q == 1 or has_seq_used_kv == 1
+    return layout == 2 or has_seq_used_q == 1 or has_seq_used_kv == 1
 
 
 def meta_get(const_info, tensor_metadata, idx):
@@ -233,17 +233,21 @@ def meta_get(const_info, tensor_metadata, idx):
     return pl.getval(tensor_metadata, const_info.metadata_len + idx)
 
 
-def get_actual_s1_len(const_info, tensor_seqused_q, b_idx):
+def get_actual_s1_len(const_info, tensor_seq_q, b_idx):
     """batch b_idx 的实际 Q 长度; 非 seqused 场景即定长 s1。"""
+    if layout == 2:
+        return pl.getval(tensor_seq_q, b_idx + 1) - pl.getval(tensor_seq_q, b_idx)
     if has_seq_used_q == 1:
-        return pl.getval(tensor_seqused_q, b_idx)
+        return pl.getval(tensor_seq_q, b_idx)
     return const_info.s1_size
 
 
-def get_actual_s2_len(const_info, tensor_seqused_kv, b_idx):
+def get_actual_s2_len(const_info, tensor_seq_kv, b_idx):
     """batch b_idx 的实际 KV 长度; 非 seqused 场景即定长 s2。"""
+    if layout == 2:
+        return pl.getval(tensor_seq_kv, b_idx + 1) - pl.getval(tensor_seq_kv, b_idx)
     if has_seq_used_kv == 1:
-        return pl.getval(tensor_seqused_kv, b_idx)
+        return pl.getval(tensor_seq_kv, b_idx)
     return const_info.s2_size
 
 
@@ -266,10 +270,10 @@ def cal_deter_max_loop_num(const_info, band_info):
 
 def init_index(sfmg_output_offset, const_info):
     start_idx = sfmg_output_offset * const_info.d_size
-    b_idx = start_idx // (const_info.n1_size * const_info.s1_size * const_info.d_size)
-    b_tail = start_idx % (const_info.n1_size * const_info.s1_size * const_info.d_size)
-    n_idx = b_tail // (const_info.s1_size * const_info.d_size)
-    n_tail = b_tail % (const_info.s1_size * const_info.d_size)
+    b_idx = start_idx // (const_info.n1_size * const_info.gm_s1_size * const_info.d_size)
+    b_tail = start_idx % (const_info.n1_size * const_info.gm_s1_size * const_info.d_size)
+    n_idx = b_tail // (const_info.gm_s1_size * const_info.d_size)
+    n_tail = b_tail % (const_info.gm_s1_size * const_info.d_size)
     s1_idx = n_tail // const_info.d_size
     return b_idx, n_idx, s1_idx
 
@@ -326,6 +330,9 @@ def init_dq_workspace(const_info, tensor_info):
             else const_info.q_pre_block_factor
         )
         dq_offset = const_info.core_id_vec * const_info.q_pre_block_factor
+        if layout == 2:
+            remaining = const_info.q_post_block_total - dq_offset
+            init_dq_size = min(const_info.q_pre_block_factor, max(remaining, 0))
         for i in pl.range(0, init_dq_size, 128 * 128):
             size = TS * TS if init_dq_size - i > TS * TS else init_dq_size - i
             pl.set_validshape(dq_tile, [1, size])
@@ -383,7 +390,7 @@ def init_sfmg_workspace(const_info, tensor_info):
             )
             zero_tile = pl.make_tile_group(type=zero_tt, addrs=VAQ_PRE, mutex_ids=[7])
             pl.expands(zero_tile.current(), 0)
-            sfmg_total = const_info.b_size * const_info.n1_size * const_info.s1_size
+            sfmg_total = const_info.gm_b_size * const_info.n1_size * const_info.gm_s1_size
             sfmg_factor = ceil(sfmg_total, const_info.sfmg_used_core_num)
             sfmg_begin = const_info.core_id_vec * sfmg_factor
             sfmg_end = sfmg_begin + sfmg_factor
@@ -404,10 +411,10 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
     with pl.section_vector():
         init_dq_workspace(const_info, tensor_info)
         n_burst = const_info.single_loop_nburst_num
-        num_of_128_in_s1 = (const_info.s1_size + n_burst - 1) // n_burst
+        num_of_128_in_s1 = (const_info.gm_s1_size + n_burst - 1) // n_burst
         s1_residual = (
-            const_info.s1_size % n_burst
-            if const_info.s1_size % n_burst != 0
+            const_info.gm_s1_size % n_burst
+            if const_info.gm_s1_size % n_burst != 0
             else n_burst
         )
 
@@ -453,13 +460,13 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
             # 截断掉避免算出脏 sfmg (顺带省掉这部分搬运与计算)。
             is_row_valid = True
             if has_seq_used_q == 1:
-                s1_remain = pl.getval(tensor_info.tensor_seqused_q, b_idx) - s1_idx
+                s1_remain = pl.getval(tensor_info.tensor_seq_q, b_idx) - s1_idx
                 is_row_valid = s1_remain > 0
                 if cur_n_burst > s1_remain:
                     cur_n_burst = s1_remain if s1_remain > 0 else 1
             pl.set_validshape(y_vec, [cur_n_burst, D_SIZE])
             pl.set_validshape(dx_vec, [cur_n_burst, D_SIZE])
-            if layout == 0:  # BSND
+            if layout == 0 or layout == 2:  # BSND
                 pl.load(
                     y_vec,
                     tensor_info.tensor_attn_out,
@@ -1205,8 +1212,8 @@ def cal_dense_swizzle_deter_index(
     coordinate_info,
     const_info,
     tensor_metadata,
-    tensor_seqused_q,
-    tensor_seqused_kv,
+    tensor_seq_q,
+    tensor_seq_kv,
     flag,
 ):
     """Varlen swizzle based on FAG CalTNDDenseSwizzleIndex.
@@ -1267,7 +1274,7 @@ def cal_dense_swizzle_deter_index(
     col_begin = 0
     s1_token = const_info.s1_token
     s2_token = const_info.s2_token
-    if sparse_type != 0:
+    if sparse_type != 0 or layout == 2:
         row_begin = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_ROW_BEGIN_OFFSET_IDX) + found_b)
         col_begin = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_COL_BEGIN_OFFSET_IDX) + found_b)
         schedule_rows = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_SCHEDULE_ROWS_OFFSET_IDX) + found_b)
@@ -1283,8 +1290,8 @@ def cal_dense_swizzle_deter_index(
     local_col = linear_idx % schedule_cols
     s2_idx = col_begin + local_col
     s1_idx = row_begin + (local_col + delta) % schedule_rows
-    actual_s1 = get_actual_s1_len(const_info, tensor_seqused_q, found_b)
-    actual_s2 = get_actual_s2_len(const_info, tensor_seqused_kv, found_b)
+    actual_s1 = get_actual_s1_len(const_info, tensor_seq_q, found_b)
+    actual_s2 = get_actual_s2_len(const_info, tensor_seq_kv, found_b)
     if s1_idx >= m_b or s2_idx >= n_b:
         return -1
     if sparse_type != 0:
@@ -1463,8 +1470,8 @@ def cal_deter_index(
     const_info,
     band_info,
     tensor_metadata,
-    tensor_seqused_q,
-    tensor_seqused_kv,
+    tensor_seq_q,
+    tensor_seq_kv,
     flag=False,
 ):
     coordinate_info.mask_mode = const_info.mask_mode
@@ -1478,8 +1485,8 @@ def cal_deter_index(
                 coordinate_info,
                 const_info,
                 tensor_metadata,
-                tensor_seqused_q,
-                tensor_seqused_kv,
+                tensor_seq_q,
+                tensor_seq_kv,
                 flag,
             )
         elif sparse_type == 4:
@@ -1542,6 +1549,13 @@ def set_run_info(
     run_info.s1o_idx = coordinate_info.s1_idx
     run_info.s2_cv_begin = run_info.s2o_idx * CUBE_BASEN
     run_info.batch_id = run_info.bo_idx
+    run_info.gm_batch_id = run_info.batch_id
+    run_info.q_start = 0
+    run_info.kv_start = 0
+    if layout == 2:
+        run_info.gm_batch_id = 0
+        run_info.q_start = pl.getval(tensor_info.tensor_seq_q, run_info.batch_id)
+        run_info.kv_start = pl.getval(tensor_info.tensor_seq_kv, run_info.batch_id)
 
     run_info.task_id = task_id
     run_info.task_id_mod2 = task_id % 2
@@ -1550,7 +1564,7 @@ def set_run_info(
     run_info.s2_outer_cur = coordinate_info.s2_outer
     run_info.s1_token = coordinate_info.s1_token
     run_info.s2_token = coordinate_info.s2_token
-    if has_seq_used_q == 1:
+    if has_seq_used_q == 1 or layout == 2:
         s1_remain = coordinate_info.actual_s1_len - run_info.s1o_idx * CUBE_BASEM
         run_info.s1_real_size = CUBE_BASEM if s1_remain > CUBE_BASEM else s1_remain
     else:
@@ -1559,7 +1573,7 @@ def set_run_info(
             if run_info.s1o_idx == const_info.s1_outer - 1
             else CUBE_BASEM
         )
-    if has_seq_used_kv == 1:
+    if has_seq_used_kv == 1 or layout == 2:
         s2_remain = coordinate_info.actual_s2_len - run_info.s2o_idx * CUBE_BASEN
         run_info.s2_real_size = CUBE_BASEN if s2_remain > CUBE_BASEN else s2_remain
     else:
@@ -1652,13 +1666,13 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
 
     pl.set_validshape(q_l1, [TD, real_n])
     pl.set_validshape(do_l1, [TD, real_n])
-    if layout == 0:  # BSND
+    if layout == 0 or layout == 2:  # BSND
         pl.load(
             q_l1,
             tensor_info.tensor_q,
             [
-                run_info.batch_id,
-                run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.gm_batch_id,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                 run_info.n1o_idx,
                 0,
             ],
@@ -1668,8 +1682,8 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
             do_l1,
             tensor_info.tensor_do,
             [
-                run_info.batch_id,
-                run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.gm_batch_id,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                 run_info.n1o_idx,
                 0,
             ],
@@ -1680,9 +1694,9 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
             q_l1,
             tensor_info.tensor_q,
             [
-                run_info.batch_id,
+                run_info.gm_batch_id,
                 run_info.n1o_idx,
-                run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                 0,
             ],
             order=[3, 2],
@@ -1691,9 +1705,9 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
             do_l1,
             tensor_info.tensor_do,
             [
-                run_info.batch_id,
+                run_info.gm_batch_id,
                 run_info.n1o_idx,
-                run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                 0,
             ],
             order=[3, 2],
@@ -1701,13 +1715,13 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
     if not run_info.is_value_reuse and run_info.s1_idx == 0:
         pl.set_validshape(k_l1, [real_m, TD])
         pl.set_validshape(v_l1, [real_m, TD])
-        if layout == 0:  # BSND
+        if layout == 0 or layout == 2:  # BSND
             pl.load(
                 k_l1,
                 tensor_info.tensor_k,
                 [
-                    run_info.batch_id,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.gm_batch_id,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                     run_info.n2o_idx,
                     0,
                 ],
@@ -1717,8 +1731,8 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
                 v_l1,
                 tensor_info.tensor_v,
                 [
-                    run_info.batch_id,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.gm_batch_id,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                     run_info.n2o_idx,
                     0,
                 ],
@@ -1729,9 +1743,9 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
                 k_l1,
                 tensor_info.tensor_k,
                 [
-                    run_info.batch_id,
+                    run_info.gm_batch_id,
                     run_info.n2o_idx,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                     0,
                 ],
                 order=[2, 3],
@@ -1740,9 +1754,9 @@ def iterate_mm_ds_p(mm1_res, mm2_res, const_info, run_info, tensor_info):
                 v_l1,
                 tensor_info.tensor_v,
                 [
-                    run_info.batch_id,
+                    run_info.gm_batch_id,
                     run_info.n2o_idx,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                     0,
                 ],
                 order=[2, 3],
@@ -2198,7 +2212,7 @@ def cal_atten_mask_offset(run_info, const_info):
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
-        run_info.s1o_idx * CUBE_BASEM
+        run_info.q_start + run_info.s1o_idx * CUBE_BASEM
         + run_info.s1_idx * TS
         + const_info.sub_id * first_half_s1
     )
@@ -2212,7 +2226,7 @@ def cal_atten_mask_offset_pre(run_info, const_info):
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
-        run_info.s1o_idx * CUBE_BASEM
+        run_info.q_start + run_info.s1o_idx * CUBE_BASEM
         + run_info.s1_idx * TS
         + const_info.sub_id * first_half_s1
     )
@@ -2228,6 +2242,8 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     current_real_s1 = (
         first_half_s1 if const_info.sub_id == 0 else real_s1 - first_half_s1
     )
+    if layout == 2:
+        current_real_s1 = min(current_real_s1, real_s1 - const_info.sub_id * first_half_s1)
     current_real_s2 = ceil(real_s2, QUANT_S2_BASE_COUNT) * QUANT_S2_BASE_COUNT
 
     lse_vec = tensor_info.lse_vec.next()
@@ -2281,14 +2297,14 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
     # pl.system.bar_all()
     # pl.printf("222 wenyu  \n")
     # pl.dump_data(attn_vec, offsets=[0, 0], shapes=[4,64])
-    if layout == 0 or layout == 1:
+    if layout == 0 or layout == 1 or layout == 2:
         pl.load(
             lse_vec,
             tensor_info.tensor_softmax_lse,
             [
-                run_info.batch_id,
+                run_info.gm_batch_id,
                 run_info.n1o_idx,
-                run_info.s1o_idx * CUBE_BASEM
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEM
                 + run_info.s1_idx * TS
                 + const_info.sub_id * first_half_s1,
             ],
@@ -2298,9 +2314,9 @@ def iterate_p_ds(p_l1_bit8, ds_l1_bit8, sdp_id, const_info, run_info, tensor_inf
             d_vec,
             tensor_info.tensor_workspace_sfmg,
             [
-                run_info.batch_id,
+                run_info.gm_batch_id,
                 run_info.n1o_idx,
-                run_info.s1o_idx * CUBE_BASEM
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEM
                 + run_info.s1_idx * TS
                 + const_info.sub_id * first_half_s1,
             ],
@@ -2385,13 +2401,13 @@ def iterate_mm_ds_k(
 
         pl.set_validshape(k_l1_first, [k_size_first, D_SIZE])
         pl.set_validshape(k_l1_second, [k_size_second, D_SIZE])
-        if layout == 0:  # BSND
+        if layout == 0 or layout == 2:  # BSND
             pl.load(
                 k_l1_first,
                 tensor_info.tensor_k,
                 [
-                    run_info.batch_id,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.gm_batch_id,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                     run_info.n2o_idx,
                     0,
                 ],
@@ -2401,8 +2417,8 @@ def iterate_mm_ds_k(
                 k_l1_second,
                 tensor_info.tensor_k,
                 [
-                    run_info.batch_id,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                    run_info.gm_batch_id,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
                     run_info.n2o_idx,
                     0,
                 ],
@@ -2413,9 +2429,9 @@ def iterate_mm_ds_k(
                 k_l1_first,
                 tensor_info.tensor_k,
                 [
-                    run_info.batch_id,
+                    run_info.gm_batch_id,
                     run_info.n2o_idx,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                     0,
                 ],
                 order=[2, 3],
@@ -2424,9 +2440,9 @@ def iterate_mm_ds_k(
                 k_l1_second,
                 tensor_info.tensor_k,
                 [
-                    run_info.batch_id,
+                    run_info.gm_batch_id,
                     run_info.n2o_idx,
-                    run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
+                    run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS + TS,
                     0,
                 ],
                 order=[2, 3],
@@ -2470,13 +2486,13 @@ def iterate_mm_p_dy(
     pl.move(left_first, p_l1_tensor0, [0, 0])
     pl.move(left_second, p_l1_tensor1, [0, 0])
     pl.set_validshape(do_l1, [real_k, D_SIZE])
-    if layout == 0:  # BSND
+    if layout == 0 or layout == 2:  # BSND
         pl.load(
             do_l1,
             tensor_info.tensor_do_p_dy,
             [
-                run_info.batch_id,
-                run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
+                run_info.gm_batch_id,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
                 run_info.n1o_idx,
                 0,
             ],
@@ -2487,9 +2503,9 @@ def iterate_mm_p_dy(
             do_l1,
             tensor_info.tensor_do_p_dy,
             [
-                run_info.batch_id,
+                run_info.gm_batch_id,
                 run_info.n1o_idx,
-                run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
                 0,
             ],
             order=[2, 3],
@@ -2534,13 +2550,13 @@ def iterate_mm_ds_q(
     pl.move(left_first, ds_l1_tensor0, [0, 0])
     pl.move(left_second, ds_l1_tensor1, [0, 0])
     pl.set_validshape(q_l1, [real_k, D_SIZE])
-    if layout == 0:  # BSND
+    if layout == 0 or layout == 2:  # BSND
         pl.load(
             q_l1,
             tensor_info.tensor_q_ds,
             [
-                run_info.batch_id,
-                run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
+                run_info.gm_batch_id,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
                 run_info.n1o_idx,
                 0,
             ],
@@ -2551,9 +2567,9 @@ def iterate_mm_ds_q(
             q_l1,
             tensor_info.tensor_q_ds,
             [
-                run_info.batch_id,
+                run_info.gm_batch_id,
                 run_info.n1o_idx,
-                run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
+                run_info.q_start + run_info.s1o_idx * CUBE_BASEN + run_info.s1_idx * TS,
                 0,
             ],
             order=[2, 3],
@@ -2597,14 +2613,14 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
         dv_vec = tensor_info.dkv_vec[0]
         pl.set_validshape(dk_vec, [block_count, HALF_D_SIZE])
         pl.set_validshape(dv_vec, [block_count, HALF_D_SIZE])
-        if layout == 0:  # BSND
+        if layout == 0 or layout == 2:  # BSND
             if run_info.kv_need_atomic:
                 pl.store(
                     workspace_dk,
                     dk_vec,
                     [
-                        run_info.batch_id,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.gm_batch_id,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         run_info.n2o_idx,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
@@ -2615,8 +2631,8 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dv,
                     dv_vec,
                     [
-                        run_info.batch_id,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.gm_batch_id,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         run_info.n2o_idx,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
@@ -2628,8 +2644,8 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dk,
                     dk_vec,
                     [
-                        run_info.batch_id,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.gm_batch_id,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         run_info.n2o_idx,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
@@ -2639,8 +2655,8 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dv,
                     dv_vec,
                     [
-                        run_info.batch_id,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.gm_batch_id,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         run_info.n2o_idx,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
@@ -2652,9 +2668,9 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dk,
                     dk_vec,
                     [
-                        run_info.batch_id,
+                        run_info.gm_batch_id,
                         run_info.n2o_idx,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
@@ -2664,9 +2680,9 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dv,
                     dv_vec,
                     [
-                        run_info.batch_id,
+                        run_info.gm_batch_id,
                         run_info.n2o_idx,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
@@ -2677,9 +2693,9 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dk,
                     dk_vec,
                     [
-                        run_info.batch_id,
+                        run_info.gm_batch_id,
                         run_info.n2o_idx,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
@@ -2688,9 +2704,9 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dv,
                     dv_vec,
                     [
-                        run_info.batch_id,
+                        run_info.gm_batch_id,
                         run_info.n2o_idx,
-                        run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
+                        run_info.kv_start + run_info.s2o_idx * CUBE_BASEN + run_info.s2_idx * TS,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
@@ -2702,14 +2718,14 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
 
         pl.set_validshape(dq_vec, [block_count, HALF_D_SIZE])
 
-        if layout == 0:  # BSND
+        if layout == 0 or layout == 2:  # BSND
             if run_info.s2_outer_cur != 1:
                 pl.store(
                     workspace_dq,
                     dq_vec,
                     [
-                        run_info.batch_id,
-                        run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                        run_info.gm_batch_id,
+                        run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                         run_info.n1o_idx,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
@@ -2721,8 +2737,8 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dq,
                     dq_vec,
                     [
-                        run_info.batch_id,
-                        run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                        run_info.gm_batch_id,
+                        run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                         run_info.n1o_idx,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
@@ -2734,9 +2750,9 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dq,
                     dq_vec,
                     [
-                        run_info.batch_id,
+                        run_info.gm_batch_id,
                         run_info.n1o_idx,
-                        run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                        run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
@@ -2747,9 +2763,9 @@ def copy_dqkv2gm(is_kv, run_info, const_info, tensor_info):
                     workspace_dq,
                     dq_vec,
                     [
-                        run_info.batch_id,
+                        run_info.gm_batch_id,
                         run_info.n1o_idx,
-                        run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
+                        run_info.q_start + run_info.s1o_idx * CUBE_BASEM + run_info.s1_idx * TS,
                         const_info.sub_id * HALF_D_SIZE,
                     ],
                     order=[2, 3],
@@ -3432,37 +3448,51 @@ def quant_flash_attn_grad(
                       "QuantFAG: metadata batch mismatch")
         pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_AIC_CORE_NUM_IDX) == pl.get_block_num(),
                       "QuantFAG: metadata AIC core count mismatch")
-        if sparse_type != 0:
+        if sparse_type != 0 or layout == 2:
             pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VERSION_IDX) == 2,
                           "QuantFAG: sparse seqused requires metadata ABI v2")
     # seqused 未使用时不能对空指针建 tensor, 这里退化成指向 metadata, 取值路径已由
     # 编译期 has_seq_used_* 分支消掉。
-    if has_seq_used_q == 1:
-        tensor_seqused_q = pl.make_tensor(seqused_q, [tiling.b], [1], dtype=pl.DT_INT32)
+    if layout == 2:
+        tensor_seq_q = pl.make_tensor(cu_seqlens_q, [tiling.b + 1], [1], dtype=pl.DT_INT32)
+    elif has_seq_used_q == 1:
+        tensor_seq_q = pl.make_tensor(seqused_q, [tiling.b], [1], dtype=pl.DT_INT32)
     else:
-        tensor_seqused_q = tensor_metadata
-    if has_seq_used_kv == 1:
-        tensor_seqused_kv = pl.make_tensor(
+        tensor_seq_q = tensor_metadata
+    if layout == 2:
+        tensor_seq_kv = pl.make_tensor(cu_seqlens_kv, [tiling.b + 1], [1], dtype=pl.DT_INT32)
+    elif has_seq_used_kv == 1:
+        tensor_seq_kv = pl.make_tensor(
             seqused_kv, [tiling.b], [1], dtype=pl.DT_INT32
         )
     else:
-        tensor_seqused_kv = tensor_metadata
+        tensor_seq_kv = tensor_metadata
+    if layout == 2:
+        pl.pto_assert(pl.getval(tensor_seq_q, tiling.b) == tiling.t1,
+                      "QuantFAG: TND query cumulative end does not match Tq")
+        pl.pto_assert(pl.getval(tensor_seq_kv, tiling.b) == tiling.t2,
+                      "QuantFAG: TND KV cumulative end does not match Tkv")
     tensor_attn_mask = pl.make_tensor(
         attn_mask,
         [2048, 2048],
         [2048, 1],
         dtype=pl.DT_INT8,
     )
+    # Single assignment is required here: make_tensor's stride lowering may
+    # otherwise capture the initial SSA version rather than the reassigned value.
+    gm_b = 1 if layout == 2 else tiling.b
+    gm_s1 = tiling.t1 if layout == 2 else tiling.s1
+    gm_s2 = tiling.t2 if layout == 2 else tiling.s2
     tensor_workspace_sfmg = pl.make_tensor(
         workspace + tiling.sfmg_work_space_offset,
-        [tiling.b, tiling.n1, tiling.s1],
-        [tiling.n1 * tiling.s1, tiling.s1, 1],
+        [gm_b, tiling.n1, gm_s1],
+        [tiling.n1 * gm_s1, gm_s1, 1],
         dtype=pl.DT_FP32,
     )
     tensor_workspace_sfmg_flat = pl.make_tensor(
         workspace + tiling.sfmg_work_space_offset,
-        [1, tiling.b * tiling.n1 * tiling.s1],
-        [tiling.b * tiling.n1 * tiling.s1, 1],
+        [1, gm_b * tiling.n1 * gm_s1],
+        [gm_b * tiling.n1 * gm_s1, 1],
         dtype=pl.DT_FP32,
     )
     if has_sink == 1:
@@ -3473,246 +3503,246 @@ def quant_flash_attn_grad(
             dtype=pl.DT_FP32,
         )
 
-    if layout == 0:  # BSND
+    if layout == 0 or layout == 2:  # BSND
         tensor_q = pl.make_tensor(
             q,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_q_ds = pl.make_tensor(
             q,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_k = pl.make_tensor(
             k,
-            [tiling.b, tiling.s2, tiling.n2, tiling.d],
-            [tiling.s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s2, tiling.n2, tiling.d],
+            [gm_s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_v = pl.make_tensor(
             v,
-            [tiling.b, tiling.s2, tiling.n2, tiling.d],
-            [tiling.s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s2, tiling.n2, tiling.d],
+            [gm_s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_do = pl.make_tensor(
             dout,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_do_p_dy = pl.make_tensor(
             dout,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_attn_out = pl.make_tensor(
             attn_out,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_softmax_lse = pl.make_tensor(
             softmax_lse,
-            [tiling.b, tiling.n1, tiling.s1],
-            [tiling.s1 * tiling.n1, tiling.s1, 1],
+            [gm_b, tiling.n1, gm_s1],
+            [gm_s1 * tiling.n1, gm_s1, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dq = pl.make_tensor(
             workspace + tiling.dq_work_space_offset,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dq_flat = pl.make_tensor(
             workspace + tiling.dq_work_space_offset,
-            [1, tiling.b * tiling.s1 * tiling.n1 * tiling.d],
-            [tiling.b * tiling.s1 * tiling.n1 * tiling.d, 1],
+            [1, gm_b * gm_s1 * tiling.n1 * tiling.d],
+            [gm_b * gm_s1 * tiling.n1 * tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_dq_out_flat = pl.make_tensor(
             dq,
-            [1, tiling.b * tiling.s1 * tiling.n1 * tiling.d],
-            [tiling.b * tiling.s1 * tiling.n1 * tiling.d, 1],
+            [1, gm_b * gm_s1 * tiling.n1 * tiling.d],
+            [gm_b * gm_s1 * tiling.n1 * tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_workspace_dk = pl.make_tensor(
             workspace + tiling.dk_work_space_offset,
-            [tiling.b, tiling.s2, tiling.n2, tiling.d],
-            [tiling.s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s2, tiling.n2, tiling.d],
+            [gm_s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dk_flat = pl.make_tensor(
             workspace + tiling.dk_work_space_offset,
-            [1, tiling.b * tiling.s2 * tiling.n2 * tiling.d],
-            [tiling.b * tiling.s2 * tiling.n2 * tiling.d, 1],
+            [1, gm_b * gm_s2 * tiling.n2 * tiling.d],
+            [gm_b * gm_s2 * tiling.n2 * tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_dk_out_flat = pl.make_tensor(
             dk,
-            [1, tiling.b * tiling.s2 * tiling.n2 * tiling.d],
-            [tiling.b * tiling.s2 * tiling.n2 * tiling.d, 1],
+            [1, gm_b * gm_s2 * tiling.n2 * tiling.d],
+            [gm_b * gm_s2 * tiling.n2 * tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_workspace_dv = pl.make_tensor(
             workspace + tiling.dv_work_space_offset,
-            [tiling.b, tiling.s2, tiling.n2, tiling.d],
-            [tiling.s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s2, tiling.n2, tiling.d],
+            [gm_s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dv_flat = pl.make_tensor(
             workspace + tiling.dv_work_space_offset,
-            [1, tiling.b * tiling.s2 * tiling.n2 * tiling.d],
-            [tiling.b * tiling.s2 * tiling.n2 * tiling.d, 1],
+            [1, gm_b * gm_s2 * tiling.n2 * tiling.d],
+            [gm_b * gm_s2 * tiling.n2 * tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_dv_out_flat = pl.make_tensor(
             dv,
-            [1, tiling.b * tiling.s2 * tiling.n2 * tiling.d],
-            [tiling.b * tiling.s2 * tiling.n2 * tiling.d, 1],
+            [1, gm_b * gm_s2 * tiling.n2 * tiling.d],
+            [gm_b * gm_s2 * tiling.n2 * tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dq_out = pl.make_tensor(
             dq,
-            [tiling.b, tiling.s1, tiling.n1, tiling.d],
-            [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s1, tiling.n1, tiling.d],
+            [gm_s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dk_out = pl.make_tensor(
             dk,
-            [tiling.b, tiling.s2, tiling.n2, tiling.d],
-            [tiling.s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s2, tiling.n2, tiling.d],
+            [gm_s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dv_out = pl.make_tensor(
             dv,
-            [tiling.b, tiling.s2, tiling.n2, tiling.d],
-            [tiling.s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
+            [gm_b, gm_s2, tiling.n2, tiling.d],
+            [gm_s2 * tiling.n2 * tiling.d, tiling.n2 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
     elif layout == 1:  # BNSD
         tensor_q = pl.make_tensor(
             q,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_q_ds = pl.make_tensor(
             q,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_k = pl.make_tensor(
             k,
-            [tiling.b, tiling.n2, tiling.s2, tiling.d],
-            [tiling.n2 * tiling.s2 * tiling.d, tiling.s2 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n2, gm_s2, tiling.d],
+            [tiling.n2 * gm_s2 * tiling.d, gm_s2 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_v = pl.make_tensor(
             v,
-            [tiling.b, tiling.n2, tiling.s2, tiling.d],
-            [tiling.n2 * tiling.s2 * tiling.d, tiling.s2 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n2, gm_s2, tiling.d],
+            [tiling.n2 * gm_s2 * tiling.d, gm_s2 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_do = pl.make_tensor(
             dout,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_do_p_dy = pl.make_tensor(
             dout,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=input_dtype,
         )
         tensor_attn_out = pl.make_tensor(
             attn_out,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_softmax_lse = pl.make_tensor(
             softmax_lse,
-            [tiling.b, tiling.n1, tiling.s1],
-            [tiling.n1 * tiling.s1, tiling.s1, 1],
+            [gm_b, tiling.n1, gm_s1],
+            [tiling.n1 * gm_s1, gm_s1, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dq = pl.make_tensor(
             workspace + tiling.dq_work_space_offset,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dk = pl.make_tensor(
             workspace + tiling.dk_work_space_offset,
-            [tiling.b, tiling.n2, tiling.s2, tiling.d],
-            [tiling.n2 * tiling.s2 * tiling.d, tiling.s2 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n2, gm_s2, tiling.d],
+            [tiling.n2 * gm_s2 * tiling.d, gm_s2 * tiling.d, tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dv = pl.make_tensor(
             workspace + tiling.dv_work_space_offset,
-            [tiling.b, tiling.n2, tiling.s2, tiling.d],
-            [tiling.n2 * tiling.s2 * tiling.d, tiling.s2 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n2, gm_s2, tiling.d],
+            [tiling.n2 * gm_s2 * tiling.d, gm_s2 * tiling.d, tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_dq_out = pl.make_tensor(
             dq,
-            [tiling.b, tiling.n1, tiling.s1, tiling.d],
-            [tiling.n1 * tiling.s1 * tiling.d, tiling.s1 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n1, gm_s1, tiling.d],
+            [tiling.n1 * gm_s1 * tiling.d, gm_s1 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dk_out = pl.make_tensor(
             dk,
-            [tiling.b, tiling.n2, tiling.s2, tiling.d],
-            [tiling.n2 * tiling.s2 * tiling.d, tiling.s2 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n2, gm_s2, tiling.d],
+            [tiling.n2 * gm_s2 * tiling.d, gm_s2 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dv_out = pl.make_tensor(
             dv,
-            [tiling.b, tiling.n2, tiling.s2, tiling.d],
-            [tiling.n2 * tiling.s2 * tiling.d, tiling.s2 * tiling.d, tiling.d, 1],
+            [gm_b, tiling.n2, gm_s2, tiling.d],
+            [tiling.n2 * gm_s2 * tiling.d, gm_s2 * tiling.d, tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_workspace_dq_flat = pl.make_tensor(
             workspace + tiling.dq_work_space_offset,
-            [1, tiling.b * tiling.n1 * tiling.s1 * tiling.d],
-            [tiling.b * tiling.n1 * tiling.s1 * tiling.d, 1],
+            [1, gm_b * tiling.n1 * gm_s1 * tiling.d],
+            [gm_b * tiling.n1 * gm_s1 * tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dk_flat = pl.make_tensor(
             workspace + tiling.dk_work_space_offset,
-            [1, tiling.b * tiling.n2 * tiling.s2 * tiling.d],
-            [tiling.b * tiling.n2 * tiling.s2 * tiling.d, 1],
+            [1, gm_b * tiling.n2 * gm_s2 * tiling.d],
+            [gm_b * tiling.n2 * gm_s2 * tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_workspace_dv_flat = pl.make_tensor(
             workspace + tiling.dv_work_space_offset,
-            [1, tiling.b * tiling.n2 * tiling.s2 * tiling.d],
-            [tiling.b * tiling.n2 * tiling.s2 * tiling.d, 1],
+            [1, gm_b * tiling.n2 * gm_s2 * tiling.d],
+            [gm_b * tiling.n2 * gm_s2 * tiling.d, 1],
             dtype=pl.DT_FP32,
         )
         tensor_dq_out_flat = pl.make_tensor(
             dq,
-            [1, tiling.b * tiling.n1 * tiling.s1 * tiling.d],
-            [tiling.b * tiling.n1 * tiling.s1 * tiling.d, 1],
+            [1, gm_b * tiling.n1 * gm_s1 * tiling.d],
+            [gm_b * tiling.n1 * gm_s1 * tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dk_out_flat = pl.make_tensor(
             dk,
-            [1, tiling.b * tiling.n2 * tiling.s2 * tiling.d],
-            [tiling.b * tiling.n2 * tiling.s2 * tiling.d, 1],
+            [1, gm_b * tiling.n2 * gm_s2 * tiling.d],
+            [gm_b * tiling.n2 * gm_s2 * tiling.d, 1],
             dtype=output_dtype,
         )
         tensor_dv_out_flat = pl.make_tensor(
             dv,
-            [1, tiling.b * tiling.n2 * tiling.s2 * tiling.d],
-            [tiling.b * tiling.n2 * tiling.s2 * tiling.d, 1],
+            [1, gm_b * tiling.n2 * gm_s2 * tiling.d],
+            [gm_b * tiling.n2 * gm_s2 * tiling.d, 1],
             dtype=output_dtype,
         )
     core_id_cube = pl.get_block_idx() // pl.get_subblock_num()
@@ -3723,6 +3753,8 @@ def quant_flash_attn_grad(
     scale_ds_value = pl.getval(tensor_ds_scale, 0)
     const_info = pl.make_tuple(
         b_size=tiling.b,
+        gm_b_size=gm_b,
+        gm_s1_size=gm_s1,
         g_size=tiling.g,
         s1_size=tiling.s1,
         s2_size=tiling.s2,
@@ -4082,8 +4114,8 @@ def quant_flash_attn_grad(
         mutex_ids=[2, 3],
     )
     tensor_info = pl.make_tuple(
-        tensor_seqused_q=tensor_seqused_q,
-        tensor_seqused_kv=tensor_seqused_kv,
+        tensor_seq_q=tensor_seq_q,
+        tensor_seq_kv=tensor_seq_kv,
         tensor_workspace_sfmg_flat=tensor_workspace_sfmg_flat,
         tensor_q_descale=tensor_q_descale,
         tensor_k_descale=tensor_k_descale,
@@ -4150,6 +4182,9 @@ def quant_flash_attn_grad(
         2,
         "run_info",
         batch_id=0,
+        gm_batch_id=0,
+        q_start=0,
+        kv_start=0,
         s1_idx=0,
         s2_idx=0,
         bo_idx=0,
@@ -4265,7 +4300,7 @@ def quant_flash_attn_grad(
             )
             * ceil(const_info.s1_size, CUBE_BASEM)
         )
-        if sparse_type != 0:
+        if sparse_type != 0 or layout == 2:
             # Sparse short-Q batches may need virtual rows for collision-free dQ.
             loop_max = (
                 const_info.b_size
@@ -4309,8 +4344,8 @@ def quant_flash_attn_grad(
                     const_info,
                     band_info,
                     tensor_metadata,
-                    tensor_seqused_q,
-                    tensor_seqused_kv,
+                    tensor_seq_q,
+                    tensor_seq_kv,
                     True,
                 )
     next_valid_loop_idx, next_block_idx = cal_deter_index(
@@ -4320,8 +4355,8 @@ def quant_flash_attn_grad(
         const_info,
         band_info,
         tensor_metadata,
-        tensor_seqused_q,
-        tensor_seqused_kv,
+        tensor_seq_q,
+        tensor_seq_kv,
     )
     # with pl.section_cube():
     #     pl.printf("wenyu check2 next_valid_loop_idx : %d next_block_idx : %d \n", next_valid_loop_idx, next_block_idx)
@@ -4336,8 +4371,8 @@ def quant_flash_attn_grad(
                 const_info,
                 band_info,
                 tensor_metadata,
-                tensor_seqused_q,
-                tensor_seqused_kv,
+                tensor_seq_q,
+                tensor_seq_kv,
             )
             run_infos[task_id % 2].is_dkv_completed = False
             run_infos[task_id % 2].is_dq_completed = False
