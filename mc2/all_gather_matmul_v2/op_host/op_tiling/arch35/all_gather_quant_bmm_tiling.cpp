@@ -16,7 +16,7 @@
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
 #include "all_gather_fit_balance_tiling.h"
-#include "all_gather_fit_balance_tiling_apace.h"
+#include "all_gather_matmul_v2_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_comm_utils.h"
@@ -719,11 +719,10 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 
 CutResult AllGatherQuantBmmTiling::GetTilingResult()
 {
-    // fit-balance 引擎已切换 apace 孪生类(P1 遗留补切: 本类经 DoSplitMTiling 虚分派
-    // 是 A 家族老类的第二处活消费方, 首轮 P1 仅切了 AllGatherMatmulTilingV2 路径);
-    // 回退方式: 还原下方两处 Apace 后缀/方法名即可, 老类全程保留。
-    AllGatherMMFitBalanceTilingApace tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTilingResult();
+    // fit-balance 统一接口(P1 遗留补切: 本类经 DoSplitMTiling 虚分派是第二个消费方);
+    // 标定数据+算子钩子在 all_gather_matmul_v2_fit_balance_tiling.h, 回退: kUseApace 置 false。
+    uint32_t baseM = 0;
+    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, &baseM);
 
     bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
 
@@ -738,7 +737,7 @@ CutResult AllGatherQuantBmmTiling::GetTilingResult()
         CommSizeInfo commSize{kValue, inputDtypeSize, args_.rankDim};
         AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {
-        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+        AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
     }
 
     return result;

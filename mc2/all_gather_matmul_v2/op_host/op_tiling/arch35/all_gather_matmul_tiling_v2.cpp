@@ -25,8 +25,7 @@
 #include <vector>
 
 #include "all_gather_matmul_tiling_v2.h"
-#include "all_gather_fit_balance_tiling.h"
-#include "all_gather_fit_balance_tiling_apace.h"
+#include "all_gather_matmul_v2_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -126,17 +125,17 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
-    // fit-balance 引擎已切换 apace 孪生类(逐字段等价, 162 用例 bit 级验证);
-    // 回退方式: 将下面两处 Apace 后缀/方法名还原为老类即可, 老类全程保留。
-    AllGatherMMFitBalanceTilingApace tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    CutResult result = tileFormulate.GetTilingResult();
+    // fit-balance 统一接口(标定数据+算子钩子在 all_gather_matmul_v2_fit_balance_tiling.h,
+    // 公共逻辑在 apace/tiling/fit_based_balance_tiling.h); 回退: 该头文件 kUseApace 置 false。
+    uint32_t baseM = 0;
+    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, &baseM);
 
     bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
     if (isCcuMode) {
         CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
         AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {
-        AdjustCutResultForAICPU(result, args_.mValue, tileFormulate.matmulPerf_.GetBaseM(), opName_);
+        AdjustCutResultForAICPU(result, args_.mValue, baseM, opName_);
     }
 
     return result;
