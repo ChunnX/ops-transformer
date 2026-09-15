@@ -49,7 +49,7 @@ constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
 constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
-const std::set<std::string> SUPPORT_COMM_MODE_DAV3510{"ai_cpu", "ccu", "ccu_peer_only"};
+const std::set<std::string> SUPPORT_COMM_MODE_A5{"ai_cpu", "ccu", "ccu_peer_only"};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt) const
 {
@@ -386,7 +386,7 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
     OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
                     return false);
-    OP_TILING_CHECK(SUPPORT_COMM_MODE_DAV3510.find(commMode) == SUPPORT_COMM_MODE_DAV3510.end(),
+    OP_TILING_CHECK(SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE_A5.end(),
                     OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""), return false);
     return CheckInputScale();
 }

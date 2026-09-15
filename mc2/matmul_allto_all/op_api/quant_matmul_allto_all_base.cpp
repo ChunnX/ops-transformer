@@ -244,19 +244,19 @@ static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, con
 
 // DAV_3510数据类型校验
 // 量化模式下X支持的FP8数据类型（PerToken量化、PerChannel量化）(A5)
-static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_DAV3510 = {op::DataType::DT_FLOAT8_E4M3FN,
+static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT8_E4M3FN,
                                                                                      op::DataType::DT_FLOAT8_E5M2};
 // 量化模式下X支持的FP4和FP8数据类型（MXQuant量化）(A5)
-static const std::initializer_list<op::DataType> X_DTYPE_FP4ANDFP8_SUPPORT_LIST_DAV3510 = {
+static const std::initializer_list<op::DataType> X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
 // 量化模式下Bias支持的数据类型（KC量化、MXQuant量化）(A5)
-static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST_DAV3510 = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT};
 // 量化模式下Scale支持的FP8数据类型（MXQuant量化）(A5)
-static const std::initializer_list<op::DataType> SCALE_DTYPE_FP8_SUPPORT_LIST_DAV3510 = {op::DataType::DT_FLOAT8_E8M0};
+static const std::initializer_list<op::DataType> SCALE_DTYPE_FP8_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT8_E8M0};
 // 量化模式下Scale支持的FP32数据类型（PerToken量化、PerChannel量化）(A5)
-static const std::initializer_list<op::DataType> SCALE_DTYPE_FP32_SUPPORT_LIST_DAV3510 = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> SCALE_DTYPE_FP32_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT};
 // 量化模式下Output支持的数据类型（KC量化、MXQuant量化）(A5)
-static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST_DAV3510 = {
+static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 
 // KC量化场景下，校验所有输入的参数类型是否正确(A5)
@@ -264,19 +264,19 @@ static bool CheckKCQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
                                       const aclTensor *x2Scale, const aclTensor *biasOptional, const aclTensor *output)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1,
-                                             X_DTYPE_FP8_SUPPORT_LIST_DAV3510, KC_SCENE, return false);
+                                             X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2,
-                                             X_DTYPE_FP8_SUPPORT_LIST_DAV3510, KC_SCENE, return false);
+                                             X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale,
-                                             SCALE_DTYPE_FP32_SUPPORT_LIST_DAV3510, KC_SCENE, return false);
+                                             SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale,
-                                             SCALE_DTYPE_FP32_SUPPORT_LIST_DAV3510, KC_SCENE, return false);
+                                             SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
     if (biasOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", biasOptional,
-                                                 BIAS_DTYPE_SUPPORT_LIST_DAV3510, KC_SCENE, return false);
+                                                 BIAS_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
     }
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", output,
-                                             OUTPUT_DTYPE_SUPPORT_LIST_DAV3510, KC_SCENE, return false);
+                                             OUTPUT_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
     return true;
 }
 
@@ -285,9 +285,9 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
                                       const aclTensor *x2Scale, const aclTensor *biasOptional, const aclTensor *output)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1,
-                                             X_DTYPE_FP4ANDFP8_SUPPORT_LIST_DAV3510, MX_SCENE, return false);
+                                             X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2,
-                                             X_DTYPE_FP4ANDFP8_SUPPORT_LIST_DAV3510, MX_SCENE, return false);
+                                             X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (x1->GetDataType() != x2->GetDataType() &&
         (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -299,15 +299,15 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
         return false;
     }
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale,
-                                             SCALE_DTYPE_FP8_SUPPORT_LIST_DAV3510, MX_SCENE, return false);
+                                             SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale,
-                                             SCALE_DTYPE_FP8_SUPPORT_LIST_DAV3510, MX_SCENE, return false);
+                                             SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (biasOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", biasOptional,
-                                                 BIAS_DTYPE_SUPPORT_LIST_DAV3510, MX_SCENE, return false);
+                                                 BIAS_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     }
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", output,
-                                             OUTPUT_DTYPE_SUPPORT_LIST_DAV3510, MX_SCENE, return false);
+                                             OUTPUT_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     return true;
 }
 

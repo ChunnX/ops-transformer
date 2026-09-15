@@ -425,7 +425,7 @@ static ge::graphStatus MoeEpCombineEpilogueTilingFunc(gert::TilingContext *conte
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + maskCalcWorkspaceSize;
 
     uint32_t tplHasTopkWeights = info.hasTopkWeights ? 1 : 0;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_DAV3510);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tplHasTopkWeights, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
 
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);

@@ -112,7 +112,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 
     // FFNToAttentionV2 on A5 uses the URMA communication implementation.
     bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(rankTableMode, TILINGKEY_TPL_DAV3510, TILINGKEY_COMM_URMA);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(rankTableMode, TILINGKEY_TPL_A5, TILINGKEY_COMM_URMA);
     context->SetTilingKey(tilingKey);
     OP_LOGD(context->GetNodeName(), "FFNToAttentionV2 cur case tilingKey is %lu", tilingKey);
 

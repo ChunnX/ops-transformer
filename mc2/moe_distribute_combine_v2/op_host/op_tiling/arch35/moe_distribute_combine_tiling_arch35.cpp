@@ -50,7 +50,7 @@ constexpr uint32_t ATTRS_SHARED_EXPERT_RANK_NUM_INDEX = 9;
 constexpr uint32_t ATTRS_GLOBAL_BS_INDEX = 10;
 constexpr uint32_t ATTRS_COMM_QUANT_MODE_INDEX = 12;
 
-const uint64_t TILING_KEY_BASE_DAV3510 = 1000000000000000000;
+const uint64_t TILING_KEY_BASE_A5 = 1000000000000000000;
 
 constexpr uint32_t HCCL_CMD_ALLGATHER = 6U;
 constexpr uint32_t HCCL_CMD_ALLTOALLV = 8U;
@@ -725,7 +725,7 @@ static void SetTilingKey(gert::TilingContext *context)
     const char *nodeName = context->GetNodeName();
     uint32_t quantMode = TILINGKEY_NO_QUANT;
     uint32_t layeredMode = TILINGKEY_TPL_CCU;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, layeredMode, TILINGKEY_TPL_DAV3510);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, layeredMode, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
 }
@@ -802,7 +802,7 @@ uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(uint32_t commQuantMode
     if (commQuantMode >= INT8_COMM_QUANT) {
         quantMode = commQuantMode;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, hierarchy, TILINGKEY_TPL_DAV3510);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, hierarchy, TILINGKEY_TPL_A5);
     return tilingKey;
 }
 

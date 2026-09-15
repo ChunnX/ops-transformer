@@ -47,7 +47,7 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     const char *serverType = nullptr;
     const char *streamType = nullptr;
     if ((isArch35 && commMode == "ccu")) {
@@ -71,7 +71,7 @@ ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationCo
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     if ((isArch35 && commMode == "ai_cpu")) {
         OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvGenTaskFunc use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);

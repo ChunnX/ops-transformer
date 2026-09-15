@@ -46,7 +46,7 @@ __global__ __aicore__ void ffn_to_attention_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     REGISTER_TILING_DEFAULT(FFNToAttentionV2TilingData);
     TPipe pipe;
 
-    if constexpr (ArchTag == TILINGKEY_TPL_DAV3510) {
+    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(FFNToAttentionV2TilingData, tilingData, tilingGM);
 
         FFNToAttentionUrma<DTYPE_X, RankTableMode> op;

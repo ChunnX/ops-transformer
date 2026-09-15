@@ -69,7 +69,7 @@ static constexpr size_t DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX = 17;
 
 static constexpr uint32_t VERSION_SIZE = 32;
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
-const std::set<std::string> NPUARCH_DAV3510 = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_3510))};
+const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_3510))};
 
 static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
@@ -278,7 +278,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OP_LOGD(context->GetNodeName(), "expandx shape is :%s after infershape.",
             Ops::Base::ToString(*expandXShape).c_str());
 
-    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_DAV3510)) {
+    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
         InferShapeDynamicScalesA5(dynamicScalesShape, scalesShape, *quantMode, a, h);
     } else {
         dynamicScalesShape->SetDimNum(DIM_ONE);
@@ -309,7 +309,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_DAV3510)) {
+        if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
                                                                              (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
@@ -383,7 +383,7 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantMode);
     const auto scalesType = context->GetOptionalInputDataType(DISPATCH_INPUT_SCALES_IDX_INDEX);
     const int64_t *yDtypePtr = nullptr;
-    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_DAV3510)) {
+    if (IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
         yDtypePtr = attrs->GetAttrPointer<int64_t>(DISPATCH_INPUT_ATTR_Y_DTYPE_INDEX);
     }
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;

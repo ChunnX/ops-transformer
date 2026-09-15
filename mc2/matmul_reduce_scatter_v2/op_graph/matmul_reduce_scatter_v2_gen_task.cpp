@@ -27,7 +27,7 @@ constexpr int64_t MAX_CCU_RANKSIZE = 8;
 namespace ops {
 static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) {
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         ge::AscendString comm_mode;
         if (!context->GetStrAttrVal("comm_mode", comm_mode)) {
             OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get comm_mode");
@@ -51,7 +51,7 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
 static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationContext *context,
                                                std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) {
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 GenTaskFunc");
         ge::AscendString comm_mode;
         if (!context->GetStrAttrVal("comm_mode", comm_mode)) {

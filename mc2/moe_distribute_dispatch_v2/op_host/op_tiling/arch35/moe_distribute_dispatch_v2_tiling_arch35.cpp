@@ -936,7 +936,7 @@ static ge::graphStatus GenTilingKey(gert::TilingContext *context, uint32_t quant
     if (isScales) {
         scaleMode = true;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode, fullMesh, commMode, TILINGKEY_TPL_DAV3510);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode, fullMesh, commMode, TILINGKEY_TPL_A5);
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "tilingKey=%lu", tilingKey);
     OP_LOGD(nodeName, "tilingKeyQuantMode=%u", tilingKeyQuantMode);
@@ -1319,7 +1319,7 @@ uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const bool isScales, 
     if (isLayered) {
         templateDispatch = TILINGKEY_ENABLE_HIERARCHY;
     }
-    tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode, templateDispatch, commMode, TILINGKEY_TPL_DAV3510);
+    tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode, templateDispatch, commMode, TILINGKEY_TPL_A5);
     return tilingKey;
 }
 

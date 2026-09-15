@@ -53,7 +53,7 @@ ge::Status AlltoAllMatmulGenTaskCallback(const gert::ExeResGenerationContext *co
 
 static ge::Status AlltoAllMatmulCalcOpParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) {
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
         auto ret = GetCommModeFromAttrs(context, commMode);
         if (ret != ge::GRAPH_SUCCESS) {
@@ -73,7 +73,7 @@ static ge::Status AlltoAllMatmulCalcOpParamFunc(gert::ExeResGenerationContext *c
 static ge::Status AlltoAllMatmulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) {
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         uint8_t commMode = Mc2Comm::COMM_MODE_CCU;
         auto ret = GetCommModeFromAttrs(context, commMode);
         if (ret != ge::GRAPH_SUCCESS) {

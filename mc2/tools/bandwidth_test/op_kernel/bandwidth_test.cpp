@@ -30,11 +30,11 @@ __global__ __aicore__ void bandwidth_test(GM_ADDR context, GM_ADDR x, GM_ADDR ds
                                           GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_DAV3510", BandwidthTestTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", BandwidthTestTilingData);
 
     TPipe pipe;
 
-    if constexpr (ArchTag == TILINGKEY_TPL_DAV3510) {
+    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         BandwidthTest<DTYPE_X, DTYPE_Y> op;
         op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
