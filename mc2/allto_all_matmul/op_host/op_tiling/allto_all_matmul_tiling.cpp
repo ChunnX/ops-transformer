@@ -33,7 +33,7 @@ static ge::graphStatus AlltoAllMatmulTilingFunc(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == Ops::Base::DAV_3510) {
+    if (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201) {
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);

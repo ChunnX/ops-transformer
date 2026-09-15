@@ -203,7 +203,7 @@ __aicore__ inline constexpr uint32_t GetTaskRation()
 #endif
 }
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 310) || (defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201)
 template <typename T>
 __aicore__ inline constexpr bool IsMxType()
 {

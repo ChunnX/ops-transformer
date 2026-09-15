@@ -29,8 +29,10 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllGetWorkspaceSize(const aclTensor *x1, 
 
     auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
     auto socVersion = op::GetCurrentPlatformInfo().GetSocVersion();
-    const char *commMode =
-        (npuArch == Ops::Base::DAV_3510 || socVersion == op::SocVersion::ASCEND910_93) ? "ai_cpu" : "aiv";
+    const char *commMode = (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201 ||
+                            socVersion == op::SocVersion::ASCEND910_93)
+                               ? "ai_cpu"
+                               : "aiv";
 
     return aclnnMatmulAlltoAllBaseGetWorkspaceSize(x1, x2, biasOptional, alltoAllAxesOptional, group, commMode,
                                                    transposeX1, transposeX2, output, workspaceSize, executor);
