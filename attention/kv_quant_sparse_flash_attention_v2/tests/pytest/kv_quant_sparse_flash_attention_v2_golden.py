@@ -28,8 +28,8 @@ def trans_np_hifuint8_tensor_to_float32(in_tensor):
     out_flat = torch.zeros(multi_shape, dtype=torch.float32)
     for i in range(multi_shape):
         # 对齐 NPU 硬件 Cast<hifloat8->float> 实测语义(溢出码点对称):
-        #   111(正溢出,+32768的SSR编码) -> +inf (case 400222: q+ x scale+ 时 NPU max=+inf);
-        #   239(负溢出,-32768的SSR编码) -> -inf (case 400146: q>=0 时 NPU 53行 sum=1.0
+        #   111(正溢出,+32768的SSR编码) -> +inf;
+        #   239(负溢出,-32768的SSR编码) -> -inf
         #     (x=-inf, sinks 赢), scale=0 行 -inf x 0=NaN -> NPU max=NaN; 若 239->NaN 则
         #     全部行都应为 NaN, 与 53 行 sum=1.0 矛盾; 300175 混号 q 的 inf-inf=NaN 同样吻合);
         #   128 -> NaN (case 300027 微型实验).
@@ -1045,8 +1045,8 @@ def bmm1(q_curr, k_sparse, calc_dtype):
         if not (hasattr(torch, "npu") and torch.npu.is_available()):
             return cpu_matmul
         device = torch.device("npu")
-        q_dev = q_curr.to(device=device, dtype=torch.bfloat16)
-        k_dev = k_sparse.to(device=device, dtype=torch.bfloat16)
+        q_dev = q_curr.to(device=device, dtype=torch.bfloat64)
+        k_dev = k_sparse.to(device=device, dtype=torch.bfloat64)
         npu_matmul = torch.matmul(q_dev, k_dev.T).to(torch.float32).cpu()
         keep = torch.isfinite(npu_matmul) & torch.isfinite(cpu_matmul)
         return torch.where(keep, cpu_matmul, npu_matmul)
@@ -1108,8 +1108,6 @@ def _t_increattention_bnsd(fa_param):
     else:
         total_t1 = sum(actualSeqLengths_q)
         lse_shape = [numKeyValueHeads, total_t1, g]
-    # LSE 空行语义与 NPU InitOutputSingleCore 的 Fill 值对齐: sum=0.0(空和), max=-inf(空最大值).
-    # (此前误用 -inf 实证于旧 kernel Fill 尾丢导致的 GM 残留; Fill 修复后 NPU 确定输出 0.0, 见 300166 排查)
     softmax_max_all = torch.full(lse_shape, float("-inf"), dtype=torch.float32)
     softmax_sum_all = torch.zeros(lse_shape, dtype=torch.float32)
 
