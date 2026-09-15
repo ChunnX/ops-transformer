@@ -65,7 +65,6 @@ __simd_vf__ inline void UpdateMinCheckValueVF(__ubuf__ float *dstUb, const float
     RegTensor<float> vregPScale;
     RegTensor<float> vregLnPScale;
     MaskReg pregAll = CreateMask<uint16_t, MaskPattern::ALL>();
-    MaskReg pregGuard;
     Duplicate(vregMin, minValue);
     Duplicate(vregPScale, pScale);
     Ln(vregLnPScale, vregPScale, pregAll);
@@ -73,7 +72,7 @@ __simd_vf__ inline void UpdateMinCheckValueVF(__ubuf__ float *dstUb, const float
         Muls(vregMin, vregMin, scaleValue, pregAll);
     }
     Muls(vregMin, vregMin, INV_LN2, pregAll);
-    Truncate<T, RoundMode::CAST_CEIL>(vregMin, vregMin, preg_108);
+    Truncate<float, RoundMode::CAST_CEIL>(vregMin, vregMin, pregAll);
     Muls(vregMin, vregMin, LN2, pregAll);
     Sub(vregMin, vregMin, vregLnPScale, pregAll);
     StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregMin, pregAll);
