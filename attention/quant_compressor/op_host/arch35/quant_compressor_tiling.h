@@ -268,14 +268,14 @@ public:
     {}
     ~QuantCompressorTiling() = default;
 
-    static ge::graphStatus ConvertContext(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static ge::graphStatus ConvertContext(gert::TilingContext &context, QuantCompressorContext &quantCompressorContext);
     ge::graphStatus RunBigKernelTiling(QuantCompressorTilingData *tilingData);
 
 private:
     static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,
-                                                 QuantCompressorContext &compressorContext);
+                                                 QuantCompressorContext &quantCompressorContext);
 
-    static void ConvertOptionalParams(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static void ConvertOptionalParams(gert::TilingContext &context, QuantCompressorContext &quantCompressorContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
     ge::graphStatus SetPageAttentionInfo() const;

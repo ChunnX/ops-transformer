@@ -765,7 +765,7 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaCmpRatio() const
 
 ge::graphStatus QuantCompressorTiling::CheckSingleParaCoff() const
 {
-    if (CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1057,7 +1057,7 @@ CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForQuantCompressor(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForQuantCompressor(gert::TilingParseContext *const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

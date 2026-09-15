@@ -1003,7 +1003,7 @@ static ge::graphStatus TilingCompressorGrad(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForCompressorGrad(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForCompressorGrad(gert::TilingParseContext *const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
