@@ -206,7 +206,7 @@ private:
     TQue<QuePosition::VECOUT, 1> vecOutQueueSmall_;
 
     TBuf<TPosition::VECCALC> fp32TBuf_;
-    TBuf<TPosition::A1> cubeL1Buf_;
+    TBuf<TPosition::TSCM> cubeL1Buf_;
     LocalTensor<P> xRsL1_;
 
     uint32_t hPreMaxBufLen_;
@@ -291,7 +291,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitUBAndAIVBuffers(InitParam
     gradHResBufLen_ = vecDealChunk_ * N_ * N_;
     hFusionBufLen_ = hPreMaxBufLen_ + hPostMaxBufLen_ + gradHResBufLen_;
     pipe_ = initParams.tPipeIn;
-    // AIC和配对的两个AIV都注册同一块A1，保证mode-4共享L1地址映射一致。
+    // AIC和配对的两个AIV都以TSCM注册同一块L1，保证mode-4共享地址映射一致。
     pipe_->InitBuffer(cubeL1Buf_, tiling_->cubeL1BufferBytes);
     LocalTensor<P> cubeL1Local = cubeL1Buf_.Get<P>();
     uint32_t xRsL1Offset = (tiling_->cubeL1BufferBytes - C1_DIRECT_L1_BUFFER_SIZE) / sizeof(P);
