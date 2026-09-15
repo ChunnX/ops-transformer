@@ -126,7 +126,7 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
     // fit-balance 统一接口(标定数据+算子钩子在 all_gather_matmul_v2_fit_balance_tiling.h,
-    // 公共逻辑在 apace/tiling/fit_based_balance_tiling.h); 回退: 该头文件 kUseApace 置 false。
+    // 公共逻辑在 apace/tiling/fit_balance_tiling.h 第一部分(自由长度分支)); 回退: 该头文件 kUseApace 置 false。
     const bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
     uint32_t baseM = 0;
     CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, isCcuMode, &baseM);
