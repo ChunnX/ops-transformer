@@ -987,7 +987,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
 
         if (aivId_ == 0U) {
             uint32_t scratchTotalEntries = aivNum_ * maxTokensPerAiv_;
-            DataCopyExtParams scratchCopyParams = {1U, scratchTotalEntries * sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyExtParams scratchCopyParams = {1U, static_cast<uint32_t>(scratchTotalEntries * sizeof(int32_t)), 0U, 0U, 0U};
             DataCopyPadExtParams<int32_t> scratchCopyPadParams{false, 0U, 0U, 0U};
             DataCopyPad(tokenRankScratchTensor_, tokenRankScratchGMTensor_, scratchCopyParams, scratchCopyPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
