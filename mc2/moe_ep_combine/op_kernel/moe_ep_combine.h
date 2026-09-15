@@ -324,13 +324,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::InitFlagSourc
     if (aivId_ != 0U) {
         return;
     }
-    LocalTensor<uint64_t> flagTensor = statusTensor_.ReinterpretCast<uint64_t>();
-    Duplicate<uint64_t>(flagTensor, 1U, WIN_ADDR_ALIGN / sizeof(uint64_t));
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    LocalTensor<uint32_t> flagTensor = statusTensor_;
+    // WaitDispatch reduces the first 32 bytes of every 512-byte flag slot and expects each completed slot to
+    // contribute exactly one. Keep only the first uint32_t set; filling the whole block with ones makes a remote
+    // slot contribute multiple times and can let the epilogue consume payload before all channels have completed.
+    Duplicate<uint32_t>(flagTensor, 0U, WIN_ADDR_ALIGN / sizeof(uint32_t));
+    SyncFunc<AscendC::HardEvent::V_S>();
+    flagTensor.SetValue(0, 1U);
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
     // Reinitialize to the same constant for standalone combine as well; no receive/clear path touches this slot.
-    GlobalTensor<uint64_t> flagSource;
-    flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(flagSourceWinAddr_));
-    DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint64_t));
+    GlobalTensor<uint32_t> flagSource;
+    flagSource.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(flagSourceWinAddr_));
+    DataCopy(flagSource, flagTensor, WIN_ADDR_ALIGN / sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
