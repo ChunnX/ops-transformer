@@ -51,10 +51,10 @@ protected:
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMmBgg<TypePack>::Init(__gm__ uint8_t *x, __gm__ uint8_t *weightBeta,
-                                                      __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
-                                                      __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
-                                                      __gm__ uint8_t *workspace,
-                                                      const optiling::KdaInputProjTilingData *__restrict tiling)
+                                                         __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
+                                                         __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
+                                                         __gm__ uint8_t *workspace,
+                                                         const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     x_ = x;
     weightBeta_ = weightBeta;

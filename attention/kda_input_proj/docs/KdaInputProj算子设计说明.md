@@ -61,7 +61,7 @@ torch.ops.custom.npu_kda_input_proj(
 
 - $T$：输入token个数。
 
-| 参数名 | 输入 / 输出 | 数据类型 | 数据格式 | 维度（shape） | 描述 | 
+| 参数名 | 输入 / 输出 | 数据类型 | 数据格式 | 维度（shape） | 描述 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `x` | 输入 | BFLOAT16 | ND | `[T, 7168]` | 隐藏层输入。 |
 | `weight_qkv` | 输入 | FLOAT8_E4M3 | ND | `[4608, 7168]` | qkv投影的权重。 |
@@ -74,11 +74,19 @@ torch.ops.custom.npu_kda_input_proj(
 
 ### 单参数约束
 
+暂无。
+
 ### 存在性约束
+
+暂无。
 
 ### 一致性约束
 
+暂无。
+
 ### 特性交叉约束
+
+暂无。
 
 ## Ascend 950PR/Ascend 950DT调用示例
 
@@ -87,8 +95,12 @@ import torch
 import torch_npu
 import custom_ops
 
+# 安装 torch_ops_extension 后调用（见 torch_ops_extension/build_and_install.sh）
+out = torch.ops.custom.npu_kda_input_proj(
+    x, weight_qkv, weight_beta, weight_gate, weight_g, weight_qkv_scale
+)
 ```
 
 ## 相关接口
 
-更多测试与调用示例见[pytest说明](../tests/pytest/README.md)。
+PyTorch 扩展编译与安装说明见[build_and_install.sh](../torch_ops_extension/build_and_install.sh)。精度与 pytest 用例在后续 PR 合入后提供。

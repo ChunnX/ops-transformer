@@ -24,6 +24,7 @@
 #include "kda_input_proj_qmm_qkv.h"
 #include "kda_input_proj_sigmoid.h"
 #include "../kda_input_proj_tiling_data.h"
+#include "../kda_input_proj_workspace.h"
 
 namespace KdaInputProj {
 
@@ -31,10 +32,10 @@ template <typename TypePack>
 class KdaInputProjKernel {
 public:
     __aicore__ inline KdaInputProjKernel(__gm__ uint8_t *x, __gm__ uint8_t *weightQkv, __gm__ uint8_t *weightBeta,
-                                      __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG, __gm__ uint8_t *weightQkvScale,
-                                      __gm__ uint8_t *qkv, __gm__ uint8_t *beta, __gm__ uint8_t *gate,
-                                      __gm__ uint8_t *g, __gm__ uint8_t *workspace,
-                                      const optiling::KdaInputProjTilingData *__restrict tiling)
+                                         __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
+                                         __gm__ uint8_t *weightQkvScale, __gm__ uint8_t *qkv, __gm__ uint8_t *beta,
+                                         __gm__ uint8_t *gate, __gm__ uint8_t *g, __gm__ uint8_t *workspace,
+                                         const optiling::KdaInputProjTilingData *__restrict tiling)
         : x_(x),
           weightQkv_(weightQkv),
           weightBeta_(weightBeta),
@@ -48,9 +49,13 @@ public:
           workspace_(workspace),
           tiling_(tiling)
     {
+        const auto &base = tiling_->baseParams;
+        __gm__ uint8_t *quantX = workspace_ + KdaInputProjWorkspace::OffsetQuantX();
+        __gm__ uint8_t *scaleX = workspace_ + KdaInputProjWorkspace::OffsetScaleX(base.tSize, base.hiddenSize);
+
         mmBgg_.Init(x_, weightBeta_, weightGate_, weightG_, beta_, gate_, g_, workspace_, tiling_);
-        mxQuant_.Init(x_, workspace_, tiling_);
-        qmmQkv_.Init(weightQkv_, weightQkvScale_, qkv_, workspace_, tiling_);
+        mxQuant_.Init(x_, quantX, scaleX, tiling_);
+        qmmQkv_.Init(quantX, weightQkv_, scaleX, weightQkvScale_, qkv_, tiling_);
         sigmoid_.Init(beta_, gate_, g_, tiling_);
     }
 
@@ -107,6 +112,7 @@ template <typename TypePack>
 __aicore__ inline void KdaInputProjKernel<TypePack>::Process()
 {
     ProcessStage1();
+    // MIX 默认 SyncAll() 是 isAIVOnly=true，只栅栏 AIV；Stage2 的 QMM(AIC) 与 Sigmoid(AIV) 需要全核屏障。
     AscendC::SyncAll<false>();
     ProcessStage2();
 }
