@@ -584,14 +584,6 @@ ge::graphStatus BSATiling::ParseRequiredTensors(gert::TilingContext *bsaContext)
         }
     }
 
-    if (IsHif8Quant(quantMode_)) {
-        if (embeddingSize_ != VALID_EMBEDDING_SIZE_128) {
-            OP_LOGE(bsaContext->GetNodeName(), "quantMode 5 (HIF8 per-tensor) requires headDim=128, but got %u.",
-                    embeddingSize_);
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     return ret;
 }
 
