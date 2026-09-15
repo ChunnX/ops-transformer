@@ -21,19 +21,6 @@
 #include "../../../tla/tensor_bsa.hpp"
 #include "../../../tla/layout_bsa.hpp"
 
-// Staged diagnostics for the HIF8 tail-layout investigation. Keep the switch
-// local to this kernel and enable it only while diagnosing S/P layout issues.
-#ifndef BSA_HIF8_DEBUG_DUMP
-#define BSA_HIF8_DEBUG_DUMP 0
-#endif
-
-// Focused MM1-FixPipe-to-UB probe for generalized case 64.  This is separate
-// from the broad staged dump switch so only the two score rows needed to
-// distinguish MM1 from FusedExpSub are emitted.
-#ifndef BSA_HIF8_DEBUG_S_DUMP
-#define BSA_HIF8_DEBUG_S_DUMP 0
-#endif
-
 namespace NpuArch::Epilogue::Block {
 
 namespace Hif8VF {
@@ -118,17 +105,6 @@ public:
         // into the nZ layout consumed by MM2. maskStartOffset is free after Mask2Idx completes.
         pGatherIndexUbTensor = resource.ubBuf.template GetBufferByByte<uint8_t>(uBufTileHelper.maskStartOffset);
         Hif8VF::InitDnIndexCallVF(pGatherIndexUbTensor);
-#if BSA_HIF8_DEBUG_DUMP
-        // Temporary layout diagnostic: dump one AIV's complete 256-byte QFA index table.
-        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf("[BSA HIF8] QFA DN index table core=%u sub=%u groups=4 count=64\n",
-                            AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx());
-            for (uint32_t indexGroup = 0; indexGroup < 4; ++indexGroup) {
-                AscendC::printf("[BSA HIF8] QFA DN index group=%u\n", indexGroup);
-                AscendC::DumpTensor(pGatherIndexUbTensor[64 * indexGroup], 3501 + indexGroup, 64);
-            }
-        }
-#endif
     }
 
     __aicore__ inline ~BlockEpilogue() {}
@@ -136,8 +112,7 @@ public:
     template <class TensorP>
     __aicore__ inline void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape, uint32_t isFirstKvSTile,
                                       uint32_t ubSBufId, uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
-                                      Arch::CrossCoreFlag smToMm2Flag, uint32_t debugQHead,
-                                      uint32_t debugQSOffset, uint32_t debugKvTile)
+                                      Arch::CrossCoreFlag smToMm2Flag)
     {
         uint32_t nSplit = RoundUp(actualBlockShape.m(), 32) / 2;
         // The HIF8 VF always materializes a fixed 64-Q-lane P slot per AIV,
@@ -180,48 +155,6 @@ public:
         __ubuf__ uint8_t *pGatherIndexUbAddr = (__ubuf__ uint8_t *)pGatherIndexUbTensor.GetPhyAddr();
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-#if BSA_HIF8_DEBUG_S_DUMP
-        // Case 64: head 18, global q=165 is local lane 5 of sub-block 1 in
-        // the qOffset=128 tile.  S is [KV, 64] in this AIV's UB.  Dump the
-        // candidate P-boundary row (KV=186); Cube/L0C itself is not printable.
-        if (debugQHead == 18 && debugQSOffset == 128 && debugKvTile == 0 &&
-            subBlockIdx_ == 1 && actualBlockShape.n() > 186) {
-            AscendC::printf(
-                "[BSA HIF8 S PROBE] core=%u sub=%u head=%u qOffset=%u "
-                "kvTile=%u qRows=%u kvRows=%u targetKv=186 targetLane=5\n",
-                AscendC::GetBlockIdx(), subBlockIdx_, debugQHead, debugQSOffset,
-                debugKvTile, actualBlockShape.m(), actualBlockShape.n());
-            AscendC::DumpTensor(lsUbTensor[ubSBufId][186 * 64], 3611, 64);
-        }
-        // Case 368: global q=1365 is lane 5 of sub-block 0 in the qOffset=1360
-        // tile.  localKv=197 is the P-rounding boundary and localKv=6 is the
-        // row selected by the CPU golden as the maximum.  Dump raw uint32
-        // representations as well as FP32 so one-ULP MM1 differences remain
-        // observable before any vector-side Max/Exp operation.
-        if (debugQHead == 5 && debugQSOffset == 1360 && debugKvTile == 0 &&
-            subBlockIdx_ == 0 && actualBlockShape.n() > 197) {
-            auto sBitsTensor = lsUbTensor[ubSBufId].template ReinterpretCast<uint32_t>();
-            AscendC::printf(
-                "[BSA HIF8 S368 PROBE] core=%u sub=%u head=%u qOffset=%u "
-                "kvTile=%u qRows=%u kvRows=%u targetKv=197 maxKv=6 targetLane=5\n",
-                AscendC::GetBlockIdx(), subBlockIdx_, debugQHead, debugQSOffset,
-                debugKvTile, actualBlockShape.m(), actualBlockShape.n());
-            AscendC::DumpTensor(lsUbTensor[ubSBufId][197 * 64], 3612, 64);
-            AscendC::DumpTensor(sBitsTensor[197 * 64], 3613, 64);
-            AscendC::DumpTensor(lsUbTensor[ubSBufId][6 * 64], 3614, 64);
-            AscendC::DumpTensor(sBitsTensor[6 * 64], 3615, 64);
-        }
-#endif
-#if BSA_HIF8_DEBUG_DUMP
-        // Restrict dumps to a Q tail tile; this isolates the q=191 failure
-        // without flooding every full-tile test with device output.
-        if (AscendC::GetBlockIdx() == 8 && subBlockIdx_ == 0) {
-            AscendC::printf("[BSA HIF8 DBG] S core=%u sub=%u qRows=%u kvRows=%u ubS=%u\n",
-                            AscendC::GetBlockIdx(), subBlockIdx_, actualBlockShape.m(), actualBlockShape.n(), ubSBufId);
-            AscendC::DumpTensor(lsUbTensor[ubSBufId], 3601,
-                                RoundUp(actualBlockShape.n(), C0_NUM_PER_FRACTAL) * 64);
-        }
-#endif
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
         uint32_t mAlignedTile = mRound / 4;
@@ -276,46 +209,6 @@ public:
             }
         }
 
-#if BSA_HIF8_DEBUG_S_DUMP
-        // StoreAlign(DATA_BLOCK_COPY) writes the packed four-row HIF8 result
-        // into eight 32-byte blocks separated by blockStride.  For local
-        // KV=197, i=5 and the four source rows are 5/69/133/197.  Dump all
-        // eight blocks after the VF has persisted them in UB; the target
-        // q-lane is byte 5 of block 6.
-        if (debugQHead == 5 && debugQSOffset == 1360 && debugKvTile == 0 &&
-            subBlockIdx_ == 0 && actualBlockShape.n() > 197) {
-            AscendC::PipeBarrier<PIPE_V>();
-            auto maxBitsTensor = gmUbTensor.template ReinterpretCast<uint32_t>();
-            auto sumBitsTensor = glUbTensor.template ReinterpretCast<uint32_t>();
-            AscendC::printf(
-                "[BSA HIF8 P368 PROBE] localKv=197 i=5 targetBlock=6 targetByte=5 "
-                "blockStride=%u\n", blockStride);
-            AscendC::DumpTensor(gmUbTensor, 3630, 32);
-            AscendC::DumpTensor(maxBitsTensor, 3631, 32);
-            AscendC::DumpTensor(glUbTensor, 3632, 32);
-            AscendC::DumpTensor(sumBitsTensor, 3633, 32);
-            for (uint32_t packedBlock = 0; packedBlock < 8; ++packedBlock) {
-                uint32_t pOffset = 5 * 32 + packedBlock * blockStride * 32;
-                AscendC::printf("[BSA HIF8 P368 PROBE] packedBlock=%u pOffset=%u\n",
-                                packedBlock, pOffset);
-                AscendC::DumpTensor(lpUbTensor[ubSBufId][pOffset], 3620 + packedBlock, 32);
-            }
-        }
-#endif
-
-#if BSA_HIF8_DEBUG_DUMP
-        // Dump the per-query online-softmax reduction state for a Q-tail tile.
-        // gm/gl hold the reduced max and sum before RescaleO computes
-        // LSE = max + ln(sum) - ln(pScale).  These dumps distinguish a
-        // reduction mismatch from the expected one-ULP Ln/Add rounding.
-        if (AscendC::GetBlockIdx() == 8 && subBlockIdx_ == 0) {
-            AscendC::printf("[BSA HIF8 DBG] softmax-reduce core=%u sub=%u qRows=%u\n",
-                            AscendC::GetBlockIdx(), subBlockIdx_, n);
-            AscendC::DumpTensor(gmUbTensor, 3605, n);
-            AscendC::DumpTensor(glUbTensor, 3606, n);
-        }
-#endif
-
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
@@ -346,15 +239,6 @@ public:
         DataCopy(l1PTensorTla.data()[subBlockIdx_ * mRound * nCopyOffset], lpUbTensor[ubSBufId], dataCopyParams);
         DataCopy(l1PTensorTla.data()[mRound * 32 + subBlockIdx_ * mRound * nCopyOffset],
                  lpUbTensor[ubSBufId][blockStride * 32], dataCopyParams);
-#if BSA_HIF8_DEBUG_DUMP
-        if (AscendC::GetBlockIdx() == 8 && subBlockIdx_ == 0) {
-            AscendC::printf("[BSA HIF8 DBG] P-UB core=%u sub=%u qRows=%u kvRows=%u ubS=%u\n",
-                            AscendC::GetBlockIdx(), subBlockIdx_, actualBlockShape.m(), actualBlockShape.n(), ubSBufId);
-            AscendC::DumpTensor(lpUbTensor[ubSBufId], 3602,
-                                RoundUp(actualBlockShape.n(), C0_NUM_PER_FRACTAL) * 64);
-        }
-#endif
-
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
         SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);

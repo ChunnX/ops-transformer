@@ -106,9 +106,6 @@ public:
         } else {
             pQuantScale_ = 16.0f;
         }
-        // AscendC::PRINTF("BSA HIF8 scales core=%u sub=%u hasP=%u q=%f k=%f v=%f p=%f\n",
-        //                 AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), static_cast<uint32_t>(hasPQuantScale_),
-        //                 qDequantScaleValue_, kDequantScaleValue_, vDequantScaleValue_, pQuantScale_);
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_BUF_STAGES];
@@ -419,8 +416,7 @@ public:
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
                     epilogueOnlineSoftmax(l1PTensorTla, actualBlockShapeQK, (gatheredKvSTileIdx == 0), ubSBufId,
-                                          l1PBufId, mm1ToSmFlag, smToMm2Flag, qHeadIdx, qSOffset,
-                                          gatheredKvSTileIdx);
+                                          l1PBufId, mm1ToSmFlag, smToMm2Flag);
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {

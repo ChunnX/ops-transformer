@@ -20,9 +20,6 @@
 #include "../../../attn_infra/bsa_matrix_coord.hpp"
 #include "../../../tla/tensor_bsa.hpp"
 
-#ifndef BSA_HIF8_DEBUG_DUMP
-#define BSA_HIF8_DEBUG_DUMP 0
-#endif
 #include "../../../tla/layout_bsa.hpp"
 
 namespace NpuArch::Epilogue::Block {
@@ -125,20 +122,6 @@ public:
 
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-#if BSA_HIF8_DEBUG_DUMP
-        // Dump the raw MM2 FixPipe tile before RescaleO.  A Q-tail tile with
-        // sub-block 1 is the failing region observed by the golden test.
-        if constexpr (FULL_QUANT_HIF8) {
-            if (AscendC::GetBlockIdx() == 8 && AscendC::GetSubBlockIdx() == 0) {
-            AscendC::printf("[BSA HIF8 DBG] OTmp core=%u sub=%u rows=%u cols=%u buf=%u firstKV=%u lastKV=%u\n",
-                            AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
-                            colNumCurSubCore, ubOTmpBufId, static_cast<uint32_t>(isFirstKvSTile),
-                            static_cast<uint32_t>(isLastKvSTile));
-            AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 3603,
-                                RoundUp(rowNumCurSubCore, 16) * RoundUp(colNumCurSubCore, 16));
-            }
-        }
-#endif
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -194,17 +177,6 @@ public:
                 CopyUbToGmLse(gLseTensorTlaTile, ubLseTensorTla);
             }
             AscendC::PipeBarrier<PIPE_V>();
-#if BSA_HIF8_DEBUG_DUMP
-            if constexpr (FULL_QUANT_HIF8) {
-                if (AscendC::GetBlockIdx() == 8 && AscendC::GetSubBlockIdx() == 0) {
-                    AscendC::printf("[BSA HIF8 DBG] O-f32-before-cast core=%u sub=%u rows=%u cols=%u\n",
-                                    AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
-                                    colNumCurSubCore);
-                    AscendC::DumpTensor(goUbTensor32, 3607,
-                                        rowNumCurSubCore * colStrideCurSubCore);
-                }
-            }
-#endif
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(goUbTensor16, goUbTensor32, AscendC::RoundMode::CAST_RINT,
                               rowNumCurSubCore * colStrideCurSubCore);
@@ -217,17 +189,6 @@ public:
             auto ubOLayoutTla = tla::MakeLayout(tla::MakeShape(rowNumCurSubCore, colNumCurSubCore),
                                                 tla::MakeStride(colStrideCurSubCore, tla::Int<1>{}));
             auto ubOTensorTla = tla::MakeTensor(goUbTensor16, ubOLayoutTla, Arch::PositionUB{});
-#if BSA_HIF8_DEBUG_DUMP
-            if constexpr (FULL_QUANT_HIF8) {
-                if (AscendC::GetBlockIdx() == 8 && AscendC::GetSubBlockIdx() == 0) {
-                    AscendC::printf("[BSA HIF8 DBG] O-final core=%u sub=%u rows=%u cols=%u\n",
-                                    AscendC::GetBlockIdx(), AscendC::GetSubBlockIdx(), rowNumCurSubCore,
-                                    colNumCurSubCore);
-                    AscendC::DumpTensor(goUbTensor32, 3604,
-                                        rowNumCurSubCore * colStrideCurSubCore);
-                }
-            }
-#endif
             copyUbToGmO(gOTensorTlaTile, ubOTensorTla);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
