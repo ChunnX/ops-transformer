@@ -1,0 +1,295 @@
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# Licensed under the CANN Open Software License Agreement Version 2.0.
+# The task calls flash_mla_metadata, then passes its output to flash_mla.
+# metadata is an intermediate output; device selection belongs to the ATK nodes.
+api: pytorch
+api_type: executor_flash_mla
+aclnn_api_type: executor_aclnn_fia_v4
+aclnn_name: aclnnFusedInferAttentionScoreV4
+name: flash_mla_metadata_then_flash_mla
+version: v2.1
+generate: generate_flash_mla
+# ATK generates this many cases per query dtype (fp16, bf16, int8).
+dtype_numbers: 200
+extra_numbers: 0
+# Dimensions below define the workload size; do not impose ATK large-shape quotas.
+shape_distributions: [[0, 1.0]]
+backward: false
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 2.0
+      avg_re_ratio: 1.2
+      root_mean_squared_ratio: 1.2
+  perf: [1.0, 1.0]
+inputs:
+  # Shapes are linked to the dimensions, head count and layouts below.
+  - &query
+    name: query
+    type: tensor
+    required: true
+    backward: false
+    dtypes:
+      values: [fp16, bf16, int8]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+      dim_values:
+        - values: [1, 2, 4]
+        - values: [1, 2, 4, 8, 32]
+        - values: [1, 4, 16, 64, 128]
+        - values: [512]
+      max_length: 1073741824
+    ranges:
+      valid:
+        values: [[-1, 1], [-3, 3]]
+  - &kv
+    <<: *query
+    name: key
+    type: tensors
+    tuple_numbers:
+      values: [1]
+    shapes:
+      dim_numbers:
+        values: [3, 4, 5]
+      dim_values:
+        - values: [1, 2, 4]
+        - values: [1, 15, 16, 17, 127, 128, 129, 255, 256, 257, 1023, 2049]
+        - values: [1, 16, 32, 512]
+        - values: [16, 32, 64, 128, 256, 1024]
+        - values: [16, 32]
+      max_length: 1073741824
+  - <<: *kv
+    name: value
+  - <<: *query
+    name: query_rope
+    dtypes:
+      values: [fp16, bf16]
+    shapes:
+      dim_numbers:
+        values: [3, 4]
+      dim_values:
+        - values: [1, 2, 4]
+        - values: [1, 2, 4, 8, 32]
+        - values: [1, 4, 16, 64, 128]
+        - values: [64]
+      max_length: 1073741824
+  - <<: *kv
+    name: key_rope
+    type: tensor
+    dtypes:
+      values: [fp16, bf16]
+  - &int_attr
+    name: num_heads
+    type: attr
+    required: true
+    dtypes:
+      values: [int]
+    ranges:
+      valid:
+        values: [1, 2, 4, 8, 16, 32, 64, 128]
+  - &optional_tensor
+    name: atten_mask
+    type: tensor
+    required: false
+    backward: false
+    dtypes:
+      values: [bool, int8, uint8]
+    shapes:
+      dim_numbers:
+        values: [1, 2, 3, 4]
+      dim_values:
+        values: [1, 2, 4, 32, 128, 2048]
+      max_length: 16777216
+    ranges:
+      valid:
+        values: [[0, 1], [default]]
+  # Candidate absolute lengths. The constraint links their count/capacity and
+  # writes ATK int64_fixed values, using cumulative lengths for dense TND.
+  - &seq
+    <<: *optional_tensor
+    name: actual_seq_lengths_q
+    dtypes:
+      values: [int64]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1, 2, 4]
+      max_length: 65536
+    ranges:
+      valid:
+        values: [[1], [1, 2], [0, 2], [4], [8], [32]]
+  - <<: *seq
+    name: actual_seq_lengths_kv
+    ranges:
+      valid:
+        values: [[1], [15], [127], [128], [129], [257], [0, 128], [129, 257]]
+  - <<: *optional_tensor
+    name: block_table
+    dtypes:
+      values: [int32]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [1, 2, 4]
+        - values: [1, 2, 4, 8, 32, 64]
+      max_length: 65536
+    ranges:
+      valid:
+        values: [[0, 1]]
+  - &scale_tensor
+    <<: *optional_tensor
+    name: dequant_scale_query
+    dtypes:
+      values: [fp32]
+    shapes:
+      dim_numbers:
+        values: [2, 3]
+      dim_values:
+        values: [1, 2, 4, 16, 32, 64, 128]
+      max_length: 4194304
+    ranges:
+      valid:
+        values: [[0.015625, 0.078125]]
+  - &kv_scale
+    <<: *scale_tensor
+    name: key_antiquant_scale
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [1]
+      max_length: 16
+    ranges:
+      valid:
+        values: [[0.0625]]
+  - <<: *kv_scale
+    name: value_antiquant_scale
+    ranges:
+      valid:
+        values: [[0.03125]]
+  - <<: *int_attr
+    name: scale_value
+    required: false
+    dtypes:
+      values: [double]
+    ranges:
+      valid:
+        values: [0.041666666666666664]
+  - <<: *int_attr
+    name: pre_tokens
+    required: false
+    ranges:
+      valid:
+        values: [63, 127, 2147483647]
+  - <<: *int_attr
+    name: next_tokens
+    required: false
+    ranges:
+      valid:
+        values: [0, 2147483647]
+  - &layout_attr
+    <<: *int_attr
+    name: input_layout
+    required: false
+    dtypes:
+      values: [string]
+    ranges:
+      valid:
+        values: [BSH, BSND, BNSD, TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD]
+  - <<: *int_attr
+    name: num_key_value_heads
+    required: false
+    ranges:
+      valid:
+        values: [1]
+  - <<: *int_attr
+    name: sparse_mode
+    required: false
+    ranges:
+      valid:
+        values: [0, 3, 4, 9]
+  - <<: *int_attr
+    name: inner_precise
+    required: false
+    ranges:
+      valid:
+        values: [0, 1, 2, 3]
+  - <<: *int_attr
+    name: block_size
+    required: false
+    ranges:
+      valid:
+        values: [0, 16, 32, 64, 128, 256, 1024]
+  - &bool_attr
+    <<: *int_attr
+    name: softmax_lse_flag
+    required: false
+    dtypes:
+      values: [bool]
+    ranges:
+      valid:
+        values: [true, false]
+  - &zero_attr
+    <<: *int_attr
+    name: key_antiquant_mode
+    required: false
+    ranges:
+      valid:
+        values: [0]
+  - <<: *zero_attr
+    name: value_antiquant_mode
+  - <<: *zero_attr
+    name: query_quant_mode
+    ranges:
+      valid:
+        values: [0, 3]
+  # Additional flash_mla_metadata attrs. ATK 'default' materializes Python None.
+  # Non-TND sizes and paged KV capacity are made explicit by the constraint.
+  - <<: *int_attr
+    name: batch_size
+    required: false
+    ranges:
+      valid:
+        values: [1, 2, 4, default]
+  - <<: *int_attr
+    name: q_seq_size
+    required: false
+    ranges:
+      valid:
+        values: [1, 2, 4, 8, 32, default]
+  - <<: *int_attr
+    name: kv_seq_size
+    required: false
+    ranges:
+      valid:
+        values: [1, 15, 16, 17, 127, 128, 129, 255, 256, 257, 1023, 2049, default]
+  - <<: *layout_attr
+    name: input_layer
+  - <<: *bool_attr
+    name: has_atten_mask
+  - <<: *zero_attr
+    name: quant_mode
+    ranges:
+      valid:
+        values: [0, 1]
+  # Data preparation controls, not operator attrs.
+  - <<: *layout_attr
+    name: kv_cache_layout
+    ranges:
+      valid:
+        values: [dense, BSH, BNSD, NZ]
+  - <<: *layout_attr
+    name: sequence_mode
+    ranges:
+      valid:
+        values: [explicit, absent, empty, broadcast, extra, offset]
+  - <<: *layout_attr
+    name: input_view
+    ranges:
+      valid:
+        values: [none, query, cache_dim0]
+  - <<: *bool_attr
+    name: shared_kv
