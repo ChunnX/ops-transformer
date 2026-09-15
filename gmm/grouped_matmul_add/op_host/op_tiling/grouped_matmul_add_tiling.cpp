@@ -311,6 +311,19 @@ static ge::graphStatus Tiling4GroupedMatmulAdd(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus Tiling4PointerGroupedMatmulAdd(gert::TilingContext *context)
+{
+    if (!IsAdvancedNpuArch(context)) {
+        OP_LOGE(context->GetNodeName(), "PointerGroupedMatmulAdd is supported only on Ascend 950-class devices.");
+        return ge::GRAPH_FAILED;
+    }
+    GroupedMatmulAddNoQuantTiling gmmAddTiling;
+    OP_CHECK_IF(!gmmAddTiling.SetTiling(context, true),
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Pointer SetTiling failed."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus TilingPrepare4GroupedMatmulAdd(gert::TilingParseContext *context)
 {
     if (IsAdvancedNpuArch(context)) {
@@ -322,5 +335,9 @@ static ge::graphStatus TilingPrepare4GroupedMatmulAdd(gert::TilingParseContext *
 
 IMPL_OP_OPTILING(GroupedMatmulAdd)
     .Tiling(Tiling4GroupedMatmulAdd)
+    .TilingParse<GMMCompileInfo>(TilingPrepare4GroupedMatmulAdd);
+
+IMPL_OP_OPTILING(PointerGroupedMatmulAdd)
+    .Tiling(Tiling4PointerGroupedMatmulAdd)
     .TilingParse<GMMCompileInfo>(TilingPrepare4GroupedMatmulAdd);
 } // namespace optiling

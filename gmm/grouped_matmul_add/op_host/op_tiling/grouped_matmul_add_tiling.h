@@ -38,6 +38,7 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData)
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulAdd, GroupedMatmulAddTilingData)
+REGISTER_TILING_DATA_CLASS(PointerGroupedMatmulAdd, GroupedMatmulAddTilingData)
 
 } // namespace optiling
 
