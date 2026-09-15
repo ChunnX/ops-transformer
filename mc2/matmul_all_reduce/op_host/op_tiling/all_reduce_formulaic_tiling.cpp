@@ -99,9 +99,10 @@ void MMPlusAllReduce::SelectTilingMethod()
     bool kGreaterThanN = clusterInfo_.kValue > clusterInfo_.nValue;
     tilingM_.FitTileLengthContinuous(kGreaterThanN, largeCalcCommRatio, soc310Flag);
     // 310P首地址非对齐时通信很慢，所以把非对齐的短块放到最后
-    bool commBoundNotAligned = ((clusterInfo_.socType == FormulaicSocSeries::SOC310_P) && !tilingM_.cutRes.shortTileAtBack &&
-                                (tilingM_.cutRes.shortTileLen % tilingM_.tileArgs.mAlignLen != 0)) ||
-                               isPerBlock_;
+    bool commBoundNotAligned =
+        ((clusterInfo_.socType == FormulaicSocSeries::SOC310_P) && !tilingM_.cutRes.shortTileAtBack &&
+         (tilingM_.cutRes.shortTileLen % tilingM_.tileArgs.mAlignLen != 0)) ||
+        isPerBlock_;
     if (commBoundNotAligned) {
         tilingM_.cutRes.shortTileAtBack = true; // 非对齐的尾块后置
     }

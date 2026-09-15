@@ -1010,8 +1010,8 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
         }
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P, FormulaicSocSeries::DAV_3510,
-                                                        commMode, isPertileFp8);
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P,
+                                                        FormulaicSocSeries::DAV_3510, commMode, isPertileFp8);
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {

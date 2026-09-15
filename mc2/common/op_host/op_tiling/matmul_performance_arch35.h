@@ -19,7 +19,8 @@
 
 class MatmulPerformanceArch35 : public MatmulPerformanceModel {
 public:
-    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args, FormulaicSocSeries inputSocVersion = FormulaicSocSeries::DAV_3510)
+    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args,
+                                     FormulaicSocSeries inputSocVersion = FormulaicSocSeries::DAV_3510)
         : MatmulPerformanceModel(args, inputSocVersion)
     {
         TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock(inputSocVersion);

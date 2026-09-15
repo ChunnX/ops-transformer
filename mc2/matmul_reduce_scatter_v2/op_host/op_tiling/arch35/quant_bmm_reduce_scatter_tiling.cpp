@@ -1070,7 +1070,8 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
                                                               (commMode_ == TPL_AICPU_COMM_MODE));
         return quantBmmScatterTiling.GetTiling();
     } else {
-        FormulaicSocSeries inputSocVersion = (npuArch_ == Ops::Base::DAV_3510) ? FormulaicSocSeries::DAV_3510 : FormulaicSocSeries::SOC910_B;
+        FormulaicSocSeries inputSocVersion =
+            (npuArch_ == Ops::Base::DAV_3510) ? FormulaicSocSeries::DAV_3510 : FormulaicSocSeries::SOC910_B;
         MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
                                                   false, (commMode_ == TPL_AICPU_COMM_MODE));
         quantBmmScatterTiling.GetTiling();

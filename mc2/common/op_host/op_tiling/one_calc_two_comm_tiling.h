@@ -90,7 +90,8 @@ public:
 
     // Constructor
     explicit OneCalcTwoCommShardHBase(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                      uint64_t batchSize, FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_93)
+                                      uint64_t batchSize,
+                                      FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_93)
         : bmmPerf(args, inputSocVersion),
           epCommPerf(inputEpDim, KernelType::ALL_TO_ALL, inputSocVersion),
           tpCommPerf(inputTpDim, KernelType::ALL_GATHER, inputSocVersion),

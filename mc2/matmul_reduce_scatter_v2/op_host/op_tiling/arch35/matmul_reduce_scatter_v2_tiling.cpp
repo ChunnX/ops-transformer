@@ -256,7 +256,8 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
                                                       (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
-        FormulaicSocSeries inputSocVersion = (npuArch_ == Ops::Base::DAV_3510) ? FormulaicSocSeries::DAV_3510 : FormulaicSocSeries::SOC910_B;
+        FormulaicSocSeries inputSocVersion =
+            (npuArch_ == Ops::Base::DAV_3510) ? FormulaicSocSeries::DAV_3510 : FormulaicSocSeries::SOC910_B;
         MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion, false,
                                           (commMode_ == TPL_AICPU_COMM_MODE));
         scatterTiling.GetTiling();
