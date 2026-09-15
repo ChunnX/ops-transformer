@@ -130,7 +130,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T, U1, U2>::ComputeX()
         PipeBarrier<PIPE_V>();
     }
 
-    if (normType_ == NORM_TYPE_SIGMOID) { // sigmoid
+    if (IsSigmoidNormType(normType_)) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCount_);
         PipeBarrier<PIPE_V>();
@@ -245,10 +245,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T, U1, U2>::SelectTopKExpertSco
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-    bool needRenorm =
-        (normType_ == NORM_TYPE_SIGMOID || normType_ == NORM_TYPE_SOFTPLUS) || // sigmoid/softplus恒做归一化
-        (normType_ == NORM_TYPE_SOFTMAX && renorm_ == 1);                      // softmax + renorm
-    if (needRenorm == 1) {
+    if (ShouldRenormalize(normType_, renorm_)) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
         PipeBarrier<PIPE_V>();
