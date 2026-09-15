@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file vf_add.h
+ * \file key_pool_vf_add.h
  * \brief
  */
 
-#ifndef VF_ADD_H
-#define VF_ADD_H
+#ifndef KEY_POOL_VF_ADD_H
+#define KEY_POOL_VF_ADD_H
 
 #include "kernel_operator.h"
 #include <cstdint>

@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file soft_max.h
+ * \file key_pool_soft_max.h
  * \brief
  */
 
-#ifndef SOFT_MAX_H
-#define SOFT_MAX_H
+#ifndef KEY_POOL_SOFT_MAX_H
+#define KEY_POOL_SOFT_MAX_H
 
-#include "key_pool_comm.h"
+#include "key_pool_comm_arch22.h"
 #include "key_pool_vector_comm.h"
 
 namespace KeyPool {
