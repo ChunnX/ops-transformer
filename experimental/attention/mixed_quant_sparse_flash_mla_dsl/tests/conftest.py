@@ -14,3 +14,9 @@ def pytest_addoption(parser):
     group.addoption('--pt-dir', default=os.environ.get('MQSMLA_PT_DIR'),
                     help='Directory for saved CPU inputs and golden (.pt)')
     group.addoption('--device-id', type=int, default=0, help='NPU device index (default: 0)')
+    group.addoption('--metadata-backend', choices=('aicpu', 'python'),
+                    default=os.environ.get('MQSMLA_METADATA_BACKEND', 'aicpu'),
+                    help='MQSMLA metadata implementation (default: aicpu)')
+    group.addoption('--verify-metadata-backends', action='store_true',
+                    default=os.environ.get('MQSMLA_VERIFY_METADATA_BACKENDS', '0') == '1',
+                    help='Check that Python and AICPU metadata partitions are identical')

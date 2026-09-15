@@ -100,11 +100,11 @@ def prepare_case(params):
     return p, case, expected.reshape(-1, C.D), expected_lse
 
 
-def run_params(params):
-    run_prepared(*prepare_case(params))
+def run_params(params, *, metadata_backend="aicpu"):
+    run_prepared(*prepare_case(params), metadata_backend=metadata_backend)
 
 
-def run_prepared(p, case, expected, expected_lse):
+def run_prepared(p, case, expected, expected_lse, *, metadata_backend="aicpu"):
     """Execute prepared inputs; never regenerate inputs or golden."""
     mode = case["mode"]
     quant_mode = case["quant_mode"]
@@ -149,7 +149,8 @@ def run_prepared(p, case, expected, expected_lse):
     actual, actual_lse = _call_public(
         kwargs, mode, case["t1"],
         omit_win_length=p.get("omit_win_topk_length", False),
-        omit_cmp_length=p.get("omit_cmp_topk_length", False))
+        omit_cmp_length=p.get("omit_cmp_topk_length", False),
+        metadata_backend=metadata_backend)
     if kwargs["return_softmax_lse"]:
         torch.testing.assert_close(actual_lse, expected_lse, rtol=1e-5, atol=1e-5)
     empty_rows = case["len_ori"].reshape(-1) == 0
@@ -196,7 +197,35 @@ def _pa_tensor(pa, row_bytes, *, axis0_noncontiguous=False):
     return result
 
 
-def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=False):
+def _get_metadata_cube_core_num(device):
+    import acl
+
+    with torch.npu.device(device):
+        blocks, status = acl.rt.get_device_info(torch.npu.current_device(), 102)
+    if status != 0:
+        raise RuntimeError(f"ACL Cube core count query failed: {status}")
+    return int(blocks)
+
+
+def _make_metadata_python(rows, device):
+    """Build the same [starts..., counts...] partition with Python-launched torch ops."""
+    blocks = _get_metadata_cube_core_num(device)
+    if not 0 < blocks <= 2147483647 or rows > 2147483647:
+        raise ValueError("rows and core count must fit positive int32 metadata")
+
+    core_ids = torch.arange(blocks, device=device, dtype=torch.int32)
+    rows_per_core = rows // blocks
+    extra_rows = rows % blocks
+    starts = core_ids * rows_per_core + torch.clamp(core_ids, max=extra_rows)
+    counts = torch.full_like(core_ids, rows_per_core)
+    counts[:extra_rows] += 1
+    metadata = torch.cat((starts, counts)).contiguous()
+    print(f"[mqsmla metadata] backend=python rows={rows} blocks={blocks}")
+    return metadata
+
+
+def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=False,
+                 metadata_backend="aicpu"):
     """Run metadata and attention through the installed wheel's torch.ops."""
     # Explicit import surfaces DSL registration failures instead of testing another implementation.
     import cann_ops_transformer.ops.attention.mixed_quant_sparse_flash_mla_dsl  # noqa: F401
@@ -211,11 +240,20 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
         if mode == "ORI_SPARSE":
             cmp_lengths = torch.zeros((t1, 1), dtype=torch.int32,
                                       device=kwargs["q"].device)
-        kwargs["metadata"] = mixed_quant_sparse_flash_mla_metadata(
-            kwargs["win_topk_length"], cmp_lengths,
-            cu_seqlens_q=kwargs["cu_seqlens_q"],
-            num_heads_q=C.N1, num_heads_kv=1, head_dim=C.D,
-            quant_mode=kwargs["quant_mode"], has_cmp_kv=(mode == "ORI_CMP_SPARSE"))
+        if metadata_backend == "python":
+            kwargs["metadata"] = _make_metadata_python(t1, kwargs["q"].device)
+        else:
+            aicpu_metadata = mixed_quant_sparse_flash_mla_metadata(
+                kwargs["win_topk_length"], cmp_lengths,
+                cu_seqlens_q=kwargs["cu_seqlens_q"],
+                num_heads_q=C.N1, num_heads_kv=1, head_dim=C.D,
+                quant_mode=kwargs["quant_mode"], has_cmp_kv=(mode == "ORI_CMP_SPARSE"))
+            kwargs["metadata"] = aicpu_metadata
+            if p["verify_metadata_backends"]:
+                python_metadata = _make_metadata_python(t1, kwargs["q"].device)
+                torch.testing.assert_close(
+                    python_metadata.cpu(), aicpu_metadata.cpu(), rtol=0, atol=0)
+                print("[mqsmla metadata] aicpu/python partition match")
     # Metadata keeps its required length inputs; attention can omit either side.
     if omit_win_length:
         kwargs.pop("win_topk_length")
