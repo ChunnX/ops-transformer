@@ -100,7 +100,7 @@ private:
     static constexpr uint64_t kvHeadNum = 1ULL;
     static constexpr uint64_t headDim = 512ULL;
     static constexpr uint64_t headDimAlign = 512ULL;
-    static constexpr uint64_t headDimRope = 64ULL;
+    static constexpr uint64_t headDimRope = SFAT::hasRope ? 64ULL : 0ULL;
     static constexpr uint32_t msdIterNum = 2U;
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
@@ -446,15 +446,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
     valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
-    if (queryRope == nullptr) {
-        constInfo.headDimRope = 0;
-    } else {
+    if constexpr (SFAT::hasRope) {
         qRopeGm.SetGlobalBuffer((__gm__ Q_ROPE_T *)queryRope);
-        constInfo.headDimRope = headDimRope;
-    }
-    if (keyRope == nullptr) {
-        // rope=none: 不绑定 keyRope
-    } else {
         kRopeGm.SetGlobalBuffer((__gm__ K_ROPE_T *)keyRope);
     }
 
@@ -684,13 +677,13 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
     info.tndBIdxOffsetForKV = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDim;
 
     if (info.isFirstSInnerLoop) {
-        uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * constInfo.headDimRope;
+        uint64_t tndBIdxRopeOffsetForQ = actualSeqQPrefixSum * constInfo.qHeadNum * headDimRope;
         tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * headDim;
-        tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * constInfo.headDimRope;
+        tensorARopeCoreOffset = tndBIdxRopeOffsetForQ + info.gS1Idx * headDimRope;
 
-        uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * constInfo.headDimRope;
+        uint64_t tndBIdxRopeOffsetForK = actualSeqKVPrefixSum * constInfo.kvHeadNum * headDimRope;
         tensorBCoreOffset = info.tndBIdxOffsetForKV + info.n2Idx * headDim;
-        tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * constInfo.headDimRope;
+        tensorBRopeCoreOffset = tndBIdxRopeOffsetForK + info.n2Idx * headDimRope;
         if (constInfo.sparseMode == 3) {
             threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + info.gS1Idx / constInfo.gSize + 1;
         } else {
@@ -747,7 +740,11 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm1(const RunInfo &
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
-        matmulService.ComputeMm1(info, mSplitInfo);
+        if constexpr (SFAT::hasRope) {
+            matmulService.ComputeMm1(info, mSplitInfo);
+        } else {
+            matmulService.ComputeMm1NoRope(info, mSplitInfo);
+        }
         CrossCoreSetFlag<ConstInfo::SFA_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
     }
 }
