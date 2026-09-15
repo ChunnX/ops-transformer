@@ -125,8 +125,9 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
     ubConsumeConfig.nWeightLowBitUbOffset = 0;
     l1ConsumeConfig.l1RealExternalLen = offsetParam.nL1Size;
 
-#if defined(__DAV_310R6__)
+#if defined(__DAV_310R6__) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     uint64_t curVecCoreMte2RealN = offsetParam.nL1Size;
+    const uint64_t subBlockIdx_ = 0;
 #else
     // 初值为一半的nl1
     uint64_t curVecCoreMte2RealN = offsetParam.nL1Size >> 1;
@@ -135,11 +136,12 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
                                   CeilAlign(curVecCoreMte2RealN, static_cast<uint64_t>(BLOCK_CUBE)) :
                                   offsetParam.nL1Size;
     }
+    const uint64_t subBlockIdx_ = AscendC::GetSubBlockIdx();
 #endif
     // 实际值需要根据vec核来确定
     ubConsumeConfig.l1RequireVfComputeRealN =
-        GetSubBlockIdx() == 0 ? curVecCoreMte2RealN : offsetParam.nL1Size - curVecCoreMte2RealN;
-    l1ConsumeConfig.l1SplitTwoVecExternalOffset = GetSubBlockIdx() * curVecCoreMte2RealN;
+        subBlockIdx_ == 0 ? curVecCoreMte2RealN : offsetParam.nL1Size - curVecCoreMte2RealN;
+    l1ConsumeConfig.l1SplitTwoVecExternalOffset = subBlockIdx_ * curVecCoreMte2RealN;
 
     for (uint64_t kMte2Offset = 0; kMte2Offset < offsetParam.kSize; kMte2Offset += vecConfig.ubMte2InnerSize) {
         uint64_t mte2RealK = (kMte2Offset + vecConfig.ubMte2InnerSize) > offsetParam.kSize ?
@@ -179,12 +181,14 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
                             vecConfig>::ComputeBasicBlockAivNdKn(const BasicBlockOffsetParam &offsetParam)
 {
 // nd-kn场景下，搬运消费比为1:1
-#if defined(__DAV_310R6__)
+#if defined(__DAV_310R6__) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201))
     // 此时c:v为1：1, cube所需数据由一个v提供
     uint64_t kMte2BaseSize = offsetParam.kbL1Size;
+    const uint64_t subBlockIdx_ = 0;
 #else
     // 此时c:v为1：2, cube所需数据由两个v提供
     uint64_t kMte2BaseSize = offsetParam.kbL1Size >> 1;
+    const uint64_t subBlockIdx_ = AscendC::GetSubBlockIdx();
 #endif
 
     UbConsumeConfig ubConsumeConfig;
@@ -192,7 +196,7 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
     ubConsumeConfig.l1RequireVfComputeRealN = offsetParam.nL1Size;
     ubConsumeConfig.kWeightLowBitUbOffset = 0;
     ubConsumeConfig.nWeightLowBitUbOffset = 0;
-    l1ConsumeConfig.l1SplitTwoVecExternalOffset = GetSubBlockIdx() * kMte2BaseSize;
+    l1ConsumeConfig.l1SplitTwoVecExternalOffset = subBlockIdx_ * kMte2BaseSize;
 
     for (uint64_t kMte2Offset = 0; kMte2Offset < offsetParam.kSize; kMte2Offset += offsetParam.kbL1Size, cvLoopIdx_++) {
         l1ConsumeConfig.l1RealExternalLen = (kMte2Offset + offsetParam.kbL1Size) > offsetParam.kSize ?
@@ -203,13 +207,13 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
          * 场景2: 当前core为v1, 且l1实际的k值比core v1搬运值大，则mte2实际搬运的k值为两者之差
          * 场景3：当前core为v1, 且l1实际的k值比core v1搬运值小，则mte2无需搬运,设置为0即可
          */
-        uint64_t mte2RealK = GetSubBlockIdx() == 0 ? min(kMte2BaseSize, l1ConsumeConfig.l1RealExternalLen) :
+        uint64_t mte2RealK = subBlockIdx_ == 0 ? min(kMte2BaseSize, l1ConsumeConfig.l1RealExternalLen) :
                              l1ConsumeConfig.l1RealExternalLen > kMte2BaseSize ?
                                                      l1ConsumeConfig.l1RealExternalLen - kMte2BaseSize :
                                                      0;
         vectorCompute_.WaitVToMTE2();
         vectorCompute_.CopyGmToUb(offsetParam.nL1Size, mte2RealK, offsetParam.nOffset,
-                                  kMte2Offset + GetSubBlockIdx() * kMte2BaseSize, offsetParam);
+                                  kMte2Offset + subBlockIdx_ * kMte2BaseSize, offsetParam);
 
         if (cvLoopIdx_ > 1) {
             WaitAicToAiv();
@@ -298,7 +302,9 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
 {
 #ifndef __CCE_KT_TEST__
 #ifndef __DAV_310R6__
+#if (__NPU_ARCH__ != 9201)
     CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
+#endif
 #endif
     CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
 #endif
@@ -311,7 +317,9 @@ WeightQuantMatmulBasicBlock<xType, wType, antiQuantScaleType, biasType, yType, w
 {
 #ifndef __CCE_KT_TEST__
 #if !defined(__DAV_310R6__)
+#if (__NPU_ARCH__ != 9201)
     CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+#endif
 #endif
     CrossCoreSetFlag<SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
 #endif

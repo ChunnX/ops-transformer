@@ -83,6 +83,10 @@ public:
         : socVersion_2201(inputSeries),
           npuArch_(npuArch)
     {
+        // A6(SOC910_96)通信性能参数复用950，在入口归一化，保证通信参数/查表键/socVersion_均按950路径
+        if (inputSocVersion == SocVersion::SOC910_96) {
+            inputSocVersion = SocVersion::SOC950;
+        }
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
