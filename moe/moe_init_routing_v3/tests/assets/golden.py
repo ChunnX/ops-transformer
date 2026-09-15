@@ -948,6 +948,34 @@ def _numpy_to_torch(arr, template):
         x in arr_dtype_name or x in target_dtype_name for x in custom_keywords
     )
     if is_custom_dtype:
+        target_np_dtype_name = target_dtype_name.replace("torch.", "")
+        if arr_dtype_name not in target_np_dtype_name and arr_np.dtype.kind == "f":
+            from ttk.utilities.dtypes import (
+                numpy_float8_e4m3fn,
+                numpy_float8_e5m2,
+                numpy_float8_e8m0,
+                numpy_float4_e2m1,
+                numpy_float4_e1m2,
+                numpy_hifloat8,
+            )
+
+            dtype_map = {
+                "float8_e4m3fn": numpy_float8_e4m3fn,
+                "float8_e5m2": numpy_float8_e5m2,
+                "float8_e8m0": numpy_float8_e8m0,
+                "float8_e8m0fnu": numpy_float8_e8m0,
+                "float4_e2m1": numpy_float4_e2m1,
+                "float4_e1m2": numpy_float4_e1m2,
+                "hifloat8": numpy_hifloat8,
+                "hif8": numpy_hifloat8,
+            }
+            for key, dtype_fn in dtype_map.items():
+                if key in target_np_dtype_name:
+                    try:
+                        arr_np = arr_np.astype(dtype_fn())
+                    except (TypeError, ValueError):
+                        pass
+                    break
         try:
             raw_uint8 = numpy.asarray(arr_np.view(numpy.uint8).copy()).reshape(
                 arr_np.shape
