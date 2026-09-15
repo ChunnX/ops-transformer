@@ -25,9 +25,7 @@ namespace KdaInputProj {
 template <typename TypePack>
 class KdaInputProjSigmoid {
 public:
-    __aicore__ inline KdaInputProjSigmoid()
-    {
-    }
+    __aicore__ inline KdaInputProjSigmoid() {}
 
     __aicore__ inline void Init(__gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
                                 const optiling::KdaInputProjTilingData *__restrict tiling);
@@ -45,8 +43,9 @@ protected:
 };
 
 template <typename TypePack>
-__aicore__ inline void KdaInputProjSigmoid<TypePack>::Init(__gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
-                                                        const optiling::KdaInputProjTilingData *__restrict tiling)
+__aicore__ inline void KdaInputProjSigmoid<TypePack>::Init(__gm__ uint8_t *beta, __gm__ uint8_t *gate,
+                                                           __gm__ uint8_t *g,
+                                                           const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     beta_ = beta;
     gate_ = gate;
@@ -56,8 +55,7 @@ __aicore__ inline void KdaInputProjSigmoid<TypePack>::Init(__gm__ uint8_t *beta,
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjSigmoid<TypePack>::Process()
-{
-}
+{}
 } // namespace KdaInputProj
 
 #endif // KDA_INPUT_PROJ_SIGMOID_H

@@ -93,8 +93,7 @@ static ge::graphStatus CheckRank(const gert::Shape *shape, size_t expectRank, co
 
 static ge::graphStatus CheckDimValue(int64_t dim, const char *tensorName, const char *dimName, const char *opName)
 {
-    OP_CHECK_IF(!IsValidDim(dim),
-                OP_LOGE(opName, "%s.%s=%ld is invalid (expect >0 or -1).", tensorName, dimName, dim),
+    OP_CHECK_IF(!IsValidDim(dim), OP_LOGE(opName, "%s.%s=%ld is invalid (expect >0 or -1).", tensorName, dimName, dim),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -120,8 +119,8 @@ static ge::graphStatus CheckInputShapes(const gert::Shape *xShape, const gert::S
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckWeightQkvScaleShape(const gert::Shape *weightQkvScaleShape, int64_t hiddenSize, int64_t qkvSize,
-                                          bool transWeightQkv, const char *opName)
+static ge::graphStatus CheckWeightQkvScaleShape(const gert::Shape *weightQkvScaleShape, int64_t hiddenSize,
+                                                int64_t qkvSize, bool transWeightQkv, const char *opName)
 {
     if (CheckRank(weightQkvScaleShape, DIM_NUM_THREE, WEIGHT_QKV_SCALE_NAME, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -157,16 +156,16 @@ static ge::graphStatus CheckWeightQkvScaleShape(const gert::Shape *weightQkvScal
         OP_LOGE(opName,
                 "%s.dim0=%ld does not match expected=%ld "
                 "(trans_weight_qkv=%d, %s=[%ld, %ld, %ld], expect=[%ld, %ld, %ld]).",
-                WEIGHT_QKV_SCALE_NAME, dim0, expectDim0, static_cast<int32_t>(transWeightQkv), WEIGHT_QKV_SCALE_NAME, dim0, dim1, dim2,
-                expectDim0, expectDim1, WEIGHT_QKV_SCALE_PACK_NUM);
+                WEIGHT_QKV_SCALE_NAME, dim0, expectDim0, static_cast<int32_t>(transWeightQkv), WEIGHT_QKV_SCALE_NAME,
+                dim0, dim1, dim2, expectDim0, expectDim1, WEIGHT_QKV_SCALE_PACK_NUM);
         return ge::GRAPH_FAILED;
     }
     if (IsKnownDim(dim1) && IsKnownDim(expectDim1) && dim1 != expectDim1) {
         OP_LOGE(opName,
                 "%s.dim1=%ld does not match expected=%ld "
                 "(trans_weight_qkv=%d, %s=[%ld, %ld, %ld], expect=[%ld, %ld, %ld]).",
-                WEIGHT_QKV_SCALE_NAME, dim1, expectDim1, static_cast<int32_t>(transWeightQkv), WEIGHT_QKV_SCALE_NAME, dim0, dim1, dim2,
-                expectDim0, expectDim1, WEIGHT_QKV_SCALE_PACK_NUM);
+                WEIGHT_QKV_SCALE_NAME, dim1, expectDim1, static_cast<int32_t>(transWeightQkv), WEIGHT_QKV_SCALE_NAME,
+                dim0, dim1, dim2, expectDim0, expectDim1, WEIGHT_QKV_SCALE_PACK_NUM);
         return ge::GRAPH_FAILED;
     }
     if (IsKnownDim(dim2) && dim2 != WEIGHT_QKV_SCALE_PACK_NUM) {
@@ -209,9 +208,9 @@ static ge::graphStatus InferOutFeatures(const gert::Shape *weightShape, int64_t 
     const int64_t inFeatures = transWeight ? dim1 : dim0;
     const uint32_t inDimIdx = transWeight ? DIM_IDX_ONE : DIM_IDX_ZERO;
     if (IsKnownDim(inFeatures) && IsKnownDim(xDim1) && inFeatures != xDim1) {
-        OP_LOGE(opName,
-                "%s.dim%u=%ld does not match x.dim1=%ld (trans_weight=%d, %s=[%ld, %ld], x.dim1=%ld).", weightName,
-                inDimIdx, inFeatures, xDim1, static_cast<int32_t>(transWeight), weightName, dim0, dim1, xDim1);
+        OP_LOGE(opName, "%s.dim%u=%ld does not match x.dim1=%ld (trans_weight=%d, %s=[%ld, %ld], x.dim1=%ld).",
+                weightName, inDimIdx, inFeatures, xDim1, static_cast<int32_t>(transWeight), weightName, dim0, dim1,
+                xDim1);
         return ge::GRAPH_FAILED;
     }
 
@@ -296,8 +295,8 @@ static ge::graphStatus InferShapeKdaInputProj(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    if (CheckWeightQkvScaleShape(weightQkvScaleShape, shapeParam.hiddenSize, shapeParam.qkvSize, transAttrs.transWeightQkv,
-                           opName) != ge::GRAPH_SUCCESS) {
+    if (CheckWeightQkvScaleShape(weightQkvScaleShape, shapeParam.hiddenSize, shapeParam.qkvSize,
+                                 transAttrs.transWeightQkv, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -324,7 +323,8 @@ static ge::graphStatus CheckExpectDataType(ge::DataType actual, ge::DataType exp
 
 static ge::graphStatus InferDataTypeKdaInputProj(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("KdaInputProj", "InferDataTypeContext is nullptr!"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("KdaInputProj", "InferDataTypeContext is nullptr!"),
+                return ge::GRAPH_FAILED);
     const char *opName = context->GetNodeName();
 
     // 与 op_def / 设计说明对齐
@@ -340,7 +340,8 @@ static ge::graphStatus InferDataTypeKdaInputProj(gert::InferDataTypeContext *con
         CheckExpectDataType(weightBetaDtype, ge::DT_BF16, WEIGHT_BETA_NAME, opName) != ge::GRAPH_SUCCESS ||
         CheckExpectDataType(weightGateDtype, ge::DT_BF16, WEIGHT_GATE_NAME, opName) != ge::GRAPH_SUCCESS ||
         CheckExpectDataType(weightGDtype, ge::DT_BF16, WEIGHT_G_NAME, opName) != ge::GRAPH_SUCCESS ||
-        CheckExpectDataType(weightQkvScaleDtype, ge::DT_FLOAT8_E8M0, WEIGHT_QKV_SCALE_NAME, opName) != ge::GRAPH_SUCCESS) {
+        CheckExpectDataType(weightQkvScaleDtype, ge::DT_FLOAT8_E8M0, WEIGHT_QKV_SCALE_NAME, opName) !=
+            ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 

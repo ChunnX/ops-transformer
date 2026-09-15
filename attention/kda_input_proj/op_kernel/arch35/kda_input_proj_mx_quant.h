@@ -25,11 +25,9 @@ namespace KdaInputProj {
 template <typename TypePack>
 class KdaInputProjMxQuant {
 public:
-    __aicore__ inline KdaInputProjMxQuant()
-    {
-    }
+    __aicore__ inline KdaInputProjMxQuant() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *workspace,
+    __aicore__ inline void Init(__gm__ uint8_t *x, __gm__ uint8_t *quantX, __gm__ uint8_t *xScale,
                                 const optiling::KdaInputProjTilingData *__restrict tiling);
     __aicore__ inline void Process();
 
@@ -38,22 +36,24 @@ protected:
 
     const optiling::KdaInputProjTilingData *tiling_{nullptr};
     __gm__ uint8_t *x_{nullptr};
-    __gm__ uint8_t *workspace_{nullptr};
+    __gm__ uint8_t *quantX_{nullptr};
+    __gm__ uint8_t *xScale_{nullptr};
 };
 
 template <typename TypePack>
-__aicore__ inline void KdaInputProjMxQuant<TypePack>::Init(__gm__ uint8_t *x, __gm__ uint8_t *workspace,
-                                                        const optiling::KdaInputProjTilingData *__restrict tiling)
+__aicore__ inline void KdaInputProjMxQuant<TypePack>::Init(__gm__ uint8_t *x, __gm__ uint8_t *quantX,
+                                                           __gm__ uint8_t *xScale,
+                                                           const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     x_ = x;
-    workspace_ = workspace;
+    quantX_ = quantX;
+    xScale_ = xScale;
     tiling_ = tiling;
 }
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::Process()
-{
-}
+{}
 } // namespace KdaInputProj
 
 #endif // KDA_INPUT_PROJ_MX_QUANT_H

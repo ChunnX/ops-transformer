@@ -14,11 +14,9 @@
 TORCH_LIBRARY(custom, m)
 {
     m.def("npu_kda_input_proj(Tensor x, Tensor weight_qkv, Tensor weight_beta, Tensor weight_gate, "
-          "Tensor weight_g, *, Tensor weight_qkv_scale, bool trans_weight_qkv=True, "
+          "Tensor weight_g, Tensor weight_qkv_scale, bool trans_weight_qkv=True, "
           "bool trans_weight_beta=True, bool trans_weight_gate=True, bool trans_weight_g=True) "
           "-> (Tensor, Tensor, Tensor, Tensor)");
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
-{
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}
