@@ -42,16 +42,16 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
     // dstTensor = preTensor * expMaxTensor + curTensor
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize); // [m,8]
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
+        // if constexpr (isMlaFullQuant) {
+        //     LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
+        // }
 
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
+            // if constexpr (isMlaFullQuant) {
+            //     Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
+            // }
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
@@ -217,21 +217,22 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
+    constexpr float mlaFullQuantValueRec = 1 / 256.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_max, expMaxUb + i * reduceSize);
         LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_exp_sum, expSumUb + i * reduceSize);
-        if constexpr (isMlaFullQuant) {
-            LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
-        }
+        // if constexpr (isMlaFullQuant) {
+        //     LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vreg_row_max, rowMaxUb + i * reduceSize);
+        // }
         for (uint16_t j = 0; j < dLoops; ++j) {
             LoadAlign(vreg_input_pre, preUb + i * d + j * floatRepSize);
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
-            if constexpr (isMlaFullQuant) {
-                Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
-            }
+            // if constexpr (isMlaFullQuant) {
+            //     Mul(vreg_input_cur, vreg_input_cur, vreg_row_max, preg_all);
+            // }
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
@@ -242,15 +243,15 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
             Div(vreg_div, vreg_add, vreg_exp_sum, preg_all);
-            if constexpr (isMlaFullQuant) {
-                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
-                } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
-                }
-            }
+            // if constexpr (isMlaFullQuant) {
+            //     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+            //         Muls(vreg_div, vreg_div, mlaFullQuantValueRec, preg_all);
+            //     } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
+            //         Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+            //     } else {
+            //         Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
+            //     }
+            // }
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
                                                          preg_all);
         }
@@ -404,6 +405,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
     constexpr uint16_t floatRepSize = 64;
     const uint16_t dLoops = d >> 6;
     constexpr float fp8e4m3MaxValueRec = 1 / 448.0f;
+    constexpr float mlaFullQuantValueRec = 1 / 256.0f;
     constexpr float int8MaxValueRec = 1 / 127.0f;
     constexpr float hifp8MaxValueRec = 1 / 32768.0f;
 
@@ -419,15 +421,15 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
                 Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
             }
             Div(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update);
-            if constexpr (isMlaFullQuant) {
-                if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
-                    Muls(vreg_div, vreg_div, fp8e4m3MaxValueRec, preg_all);
-                } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
-                    Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
-                } else {
-                    Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
-                }
-            }
+            // if constexpr (isMlaFullQuant) {
+            //     if constexpr (IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+            //         Muls(vreg_div, vreg_div, mlaFullQuantValueRec, preg_all);
+            //     } else if constexpr (IsSameType<INPUT_T, int8_t>::value) {
+            //         Muls(vreg_div, vreg_div, int8MaxValueRec, preg_all);
+            //     } else {
+            //         Muls(vreg_div, vreg_div, hifp8MaxValueRec, preg_all);
+            //     }
+            // }
             StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)dstUb + i * d + j * floatRepSize, vreg_div,
                                                          preg_update);
         }
