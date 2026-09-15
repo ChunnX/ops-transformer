@@ -1,7 +1,0 @@
-{
-  "status": "diagnostic_setup_failure",
-  "error": 361001,
-  "operator": "aclnnNeg",
-  "combine_launched": false,
-  "fix": "Prepare the negative tensor once on CPU and transfer it before the stress loop; production package unchanged."
-}

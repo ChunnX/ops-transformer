@@ -1,5 +1,0 @@
-operation,case_name,b,h,k,experts,q,runs,baseline_us,optimized_us,reduction_pct
-combine,combine_deepseek_v3_b8_q2,8,7168,8,256,2,1,23.9341275,21.13568,11.692289597772042
-combine,combine_deepseek_v3_b256_q2,256,7168,8,256,2,1,214.98308624999999,211.967135,1.4028783857409022
-combine,combine_qwen3_30b_a3b_b8_q2,8,2048,8,128,2,1,17.41635875,14.31323625,17.817286291257638
-combine,combine_qwen3_30b_a3b_b256_q2,256,2048,8,128,2,1,94.850365,91.5878925,3.43959930992358

@@ -1,8 +1,0 @@
-{
-  "variant": "rawmanual",
-  "cases": 16,
-  "passed": 16,
-  "ranks_per_case": 16,
-  "log": "logs/rawmanual_probe1_combine_transition_attempt1.log",
-  "notes": "single-call diagnostics on reused communicator; not performance evidence"
-}

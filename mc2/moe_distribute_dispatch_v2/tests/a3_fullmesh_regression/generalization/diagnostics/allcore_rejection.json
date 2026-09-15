@@ -1,9 +1,0 @@
-{
-  "candidate": "allcore",
-  "accepted": false,
-  "accuracy_probes": 7,
-  "stress_calls_per_rank": 32,
-  "passed_ranks": 16,
-  "reason": "Every probe regressed12.07-28.59pct compared with freshly measured reference under repairedOPP",
-  "production_change": "Reverted all40 send/receive scheduling; preserve frozen patch andmanifest"
-}

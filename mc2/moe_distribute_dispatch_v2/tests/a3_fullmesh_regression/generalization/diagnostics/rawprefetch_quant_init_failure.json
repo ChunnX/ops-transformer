@@ -1,9 +1,0 @@
-{
-  "variant": "rawprefetch_quant",
-  "status": "failed_before_target",
-  "operation": "HcclAllreduce",
-  "error_code": 507018,
-  "rank": 7,
-  "log": "logs/rawprefetch_quant1_attempt1.log",
-  "quant_precision_or_performance_proven": false
-}
