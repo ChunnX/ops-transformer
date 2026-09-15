@@ -93,6 +93,7 @@ struct RunInfoX {
 
     uint32_t actSingleLoopS2Size = 0; // S2方向长度
     uint32_t actSingleLoopS2SizeAlign;
+    uint32_t kvL1BufId = 0; // bmm1加载K时使用的L1 buffer id, bmm2复用V时直接使用, 避免轮转推算错位
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
 
@@ -113,12 +114,12 @@ struct CommonConstInfo {
     uint32_t bSize;
     uint64_t t1Size;
     uint64_t t2Size;
-    uint32_t dSize;    // head_dim_qk = 576 (nope 512 + rope 64)
-    uint32_t dSizeV;   // head_dim_v = 512
+    uint32_t dSize;     // head_dim_qk = 576 (nope 512 + rope 64)
+    uint32_t dSizeV;    // head_dim_v = 512
     uint32_t dSizeRope; // rope维度 = dSize - dSizeV = 64
     uint32_t dBasicBlock;
-    uint32_t gSize;   /* MLA下g轴承载Q头数: n1Size / n2Size */
-    uint32_t n2Size;  /* KV_N, MLA固定为1 */
+    uint32_t gSize;  /* MLA下g轴承载Q头数: n1Size / n2Size */
+    uint32_t n2Size; /* KV_N, MLA固定为1 */
     uint32_t realGSize;
     uint32_t realN2Size;
     uint64_t s1Size;
