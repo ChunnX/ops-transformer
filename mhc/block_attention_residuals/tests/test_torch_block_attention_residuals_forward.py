@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """Simple Torch precision test for mhc/block_attention_residuals."""
 
 from __future__ import annotations
@@ -47,37 +57,54 @@ def main():
     args = parser.parse_args()
     if min(args.tokens, args.blocks, args.hidden_size) < 1:
         raise ValueError("tokens, blocks and hidden-size must be positive")
-    storage_blocks = args.storage_blocks if args.storage_blocks is not None else args.blocks * 2
+    storage_blocks = (
+        args.storage_blocks if args.storage_blocks is not None else args.blocks * 2
+    )
     if storage_blocks < args.blocks:
         raise ValueError("storage-blocks (k) must be >= blocks (N)")
     if args.valid_block_num not in (-1, args.blocks):
         raise ValueError("valid-block-num must be -1 or equal to blocks")
 
-    dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[args.dtype]
+    dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[
+        args.dtype
+    ]
     torch.manual_seed(args.seed)
     partial_block = torch.randn(args.tokens, args.hidden_size, dtype=dtype)
-    block_res_storage = torch.randn(args.tokens, storage_blocks, args.hidden_size, dtype=dtype)
+    block_res_storage = torch.randn(
+        args.tokens, storage_blocks, args.hidden_size, dtype=dtype
+    )
     block_res = block_res_storage[:, : args.blocks, :]
     proj_weight = torch.randn(args.hidden_size, dtype=dtype)
     norm_weight = torch.randn(args.hidden_size, dtype=dtype)
-    expected = reference(partial_block, block_res, proj_weight, norm_weight, args.norm_eps)
+    expected = reference(
+        partial_block, block_res, proj_weight, norm_weight, args.norm_eps
+    )
 
     if args.device == "cpu":
         actual = expected
     else:
         import torch_npu  # noqa: F401  # registers the NPU backend
+
         # 已安装 cann_ops_transformer_custom 时避免与仓内 torch_extension 重复注册同一 op。
-        from cann_ops_transformer_custom.ops.mhc.block_attention_residuals import block_attention_residuals
+        from cann_ops_transformer_custom.ops.mhc.block_attention_residuals import (
+            block_attention_residuals,
+        )
 
         device = torch.device(f"npu:{args.device_id}")
         block_res_storage_npu = block_res_storage.to(device)
         block_res_npu = block_res_storage_npu[:, : args.blocks, :]
         if block_res_npu.is_contiguous() and storage_blocks > args.blocks:
-            raise RuntimeError("expected sliced block_res to stay non-contiguous on NPU")
+            raise RuntimeError(
+                "expected sliced block_res to stay non-contiguous on NPU"
+            )
         with torch.no_grad():
             actual = block_attention_residuals(
-                partial_block.to(device), block_res_npu, proj_weight.to(device),
-                norm_weight.to(device), args.valid_block_num, args.norm_eps,
+                partial_block.to(device),
+                block_res_npu,
+                proj_weight.to(device),
+                norm_weight.to(device),
+                args.valid_block_num,
+                args.norm_eps,
             )
         torch.npu.synchronize()
         block_res = block_res_npu
