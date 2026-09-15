@@ -631,6 +631,11 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 if (qsmlaS1NoNeedCalc || qsmlaS2NoNeedCalc) {
                     continue;
                 }
+                if constexpr (!IS_BATCH_CONSISTENCY) {
+                    if (runParam.isCrossCoreSplit) {
+                        runParam.s2SplitIdx = s2SplitIdxCounter++;
+                    }
+                }
                 if constexpr (IS_SPLIT_G) {
                     qsmlaMaxS2LoopCnt -= runParam.s2LoopEndIdx;
                 }
@@ -639,10 +644,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                int64_t safeBaseBlockNum =
-                    runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
-                if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
-                    runParam.s2SplitIdx = s2SplitIdxCounter++;
+                if constexpr (IS_BATCH_CONSISTENCY) {
+                    int64_t safeBaseBlockNum =
+                        runParam.baseBlockNumPerReductionBlock > 0 ? runParam.baseBlockNumPerReductionBlock : 1LL;
+                    if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
+                        runParam.s2SplitIdx = s2SplitIdxCounter++;
+                    }
                 }
                 if (qsmlaNotLastThreeLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 4];
