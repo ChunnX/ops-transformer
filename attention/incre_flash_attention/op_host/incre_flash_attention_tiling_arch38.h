@@ -40,6 +40,9 @@ public:
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus DoSubOpTiling(IncreFlashAttentionContext &ifaContext);
     static ge::graphStatus ConvertContext(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext);
+
+private:
+    bool CheckArch38ScenarioSupported(const IncreFlashAttentionContext &ifaContext) const;
 };
 
 } // namespace arch38
