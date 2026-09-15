@@ -19,6 +19,9 @@ namespace MegaMoeImpl {
 constexpr uint32_t RANK_SYNC_COUNTER_OFFSET_BYTES = 48U * 1024U;
 constexpr uint32_t RANK_SYNC_COUNTER_SLOT_BYTES = 64U;
 
+// MTE send-mask stores the flattened [token, topK] index as int16_t when the all-rank capacity permits it.
+constexpr int64_t MAX_INT16_TOPK_INDEX_COUNT = 1LL << 15;
+
 enum class MegaMoeActMode : uint8_t {
     SWIGLU = 0U,
     SITU = 1U,
