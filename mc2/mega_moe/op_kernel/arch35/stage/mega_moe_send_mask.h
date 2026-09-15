@@ -164,7 +164,7 @@ __aicore__ inline void SendTopkIdsCountForExperts(const WorkRange &ownedExpertRa
     int32_t ownedExpertBegin = static_cast<int32_t>(ownedExpertRange.start);
     int32_t ownedExpertNum = static_cast<int32_t>(ownedExpertRange.count);
     // 本 launch epoch = 计数槽值+1(跨卡同步在本阶段之后执行,槽值仍为上一 launch)。
-    int32_t arrivalEpoch = ((ReadGmByPassDCache(launchCountSlot) + 1) & 0x7F) | 0x80;
+    int32_t arrivalEpoch = ((ReadGmBypassDCache(launchCountSlot) + 1) & 0x7F) | 0x80;
     /*
      * 到达标记内嵌：count 与跨卡同步信号走不同源核/不同通道(MTE3 vs scalar)，互连不保证
      * 到达序，接收端凭同步放行后可能读到在途 count(旧序靠共享 GMM1 时间垫层掩盖)。
