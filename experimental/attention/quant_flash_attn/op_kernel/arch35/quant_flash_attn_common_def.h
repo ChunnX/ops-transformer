@@ -150,4 +150,18 @@ struct RunInfoMxfp8SoftmaxFp16 {
     uint32_t softmaxStateSlot = 0;
 };
 
+// ===== L1 共享布局（AIC/AIV 同偏移，block cube/vector 共同引用）=====
+constexpr uint32_t L1_P_BUFCNT = PRELOAD_TASK_CACHE_SIZE;          // = 3
+
+constexpr uint32_t L1_P_V0_SINGLE_SLOT_SIZE      = 256 * 128; // fp8 [256,128] = 32KB
+constexpr uint32_t L1_P_V1_SINGLE_SLOT_SIZE      = 256 * 128;
+constexpr uint32_t L1_PSCALE_V0_SINGLE_SLOT_SIZE = 1024;      // e8m0 (256×128/32) = 1KB
+constexpr uint32_t L1_PSCALE_V1_SINGLE_SLOT_SIZE = 1024;
+
+constexpr uint32_t L1_P_V0_BASE = 0;
+constexpr uint32_t L1_P_V1_BASE = L1_P_V0_BASE + L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_PSCALE_V0_BASE = L1_P_V1_BASE + L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_PSCALE_V1_BASE = L1_PSCALE_V0_BASE + L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE;
+constexpr uint32_t L1_SHARED_REGION_SIZE = L1_PSCALE_V1_BASE + L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE;
+
 #endif // QUANT_FLASH_ATTN_COMMON_DEF_H_
