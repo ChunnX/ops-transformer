@@ -19,6 +19,8 @@
 #include "kernel_operator.h"
 #include "quant_flash_attn_common_def.h"
 
+using namespace AscendC;
+
 namespace QFA_KERNEL {
 
 template <typename QUANT_T, typename SCALE_T>
@@ -34,6 +36,53 @@ public:
 private:
     static constexpr uint32_t S2_SPLIT_SIZE = S2_SUB_LOOP_SIZE; // 128, C1 subLoop M 轴
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;          // MxFP8 量化组大小（每 32 元素共享 scale）
+
+    // ===== L1 私有区尺寸常量 =====
+    static constexpr uint32_t L1_Q_SINGLE_SLOT_SIZE      = 128 * 256;   // 32KB
+    static constexpr uint32_t L1_Q_BUFCNT                = 2;
+    static constexpr uint32_t L1_QSCALE_SINGLE_SLOT_SIZE = 1024;        // 1KB
+    static constexpr uint32_t L1_QSCALE_BUFCNT           = 2;
+    static constexpr uint32_t L1_K_SINGLE_SLOT_SIZE      = 128 * 128;   // 16KB
+    static constexpr uint32_t L1_K_BUFCNT                = 2;
+    static constexpr uint32_t L1_KSCALE_SINGLE_SLOT_SIZE = 512;         // 512B
+    static constexpr uint32_t L1_KSCALE_BUFCNT           = 2;
+    static constexpr uint32_t L1_V_SINGLE_SLOT_SIZE      = 256 * 128;   // 32KB
+    static constexpr uint32_t L1_V_BUFCNT                = 2;
+    static constexpr uint32_t L1_VSCALE_SINGLE_SLOT_SIZE = 1024;        // 1KB
+    static constexpr uint32_t L1_VSCALE_BUFCNT           = 2;
+    static constexpr uint32_t L1_ONEFILL_V_SIZE          = 144 * 128;   // 18KB
+    static constexpr uint32_t L1_ONEFILL_VSCALE_SIZE     = 576;          // 576B
+    static constexpr uint16_t ONE_FILL_BLOCK_CNT = L1_ONEFILL_V_SIZE / 32;           // 576
+    static constexpr uint16_t ONE_FILL_SCALE_BLOCK_CNT = L1_ONEFILL_VSCALE_SIZE / 32; // 18
+    static constexpr uint16_t FP8_ONE_U16   = 0x3838U;  // fp8 e4m3 1.0, byte pair
+    static constexpr uint16_t E8M0_ONE_U16  = 0x7F7FU;  // e8m0 2^0, byte pair
+
+    // ===== L1 私有区 BASE（从共享区末尾链式推导）=====
+    static constexpr uint32_t L1_Q_BASE = L1_SHARED_REGION_SIZE;
+    static constexpr uint32_t L1_QSCALE_BASE = L1_Q_BASE + L1_Q_BUFCNT * L1_Q_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_K_BASE = L1_QSCALE_BASE + L1_QSCALE_BUFCNT * L1_QSCALE_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_KSCALE_BASE = L1_K_BASE + L1_K_BUFCNT * L1_K_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_V_BASE = L1_KSCALE_BASE + L1_KSCALE_BUFCNT * L1_KSCALE_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_VSCALE_BASE = L1_V_BASE + L1_V_BUFCNT * L1_V_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_ONEFILL_V_BASE = L1_VSCALE_BASE + L1_VSCALE_BUFCNT * L1_VSCALE_SINGLE_SLOT_SIZE;
+    static constexpr uint32_t L1_ONEFILL_VSCALE_BASE = L1_ONEFILL_V_BASE + L1_ONEFILL_V_SIZE;
+
+    // ===== L0 尺寸常量 =====
+    static constexpr uint32_t L0A_MM1_SIZE = 2 * 128 * 128;             // 32KB, K 双缓冲
+    static constexpr uint32_t MM2_L0A_M  = dVBaseSize + ROWSUM_ROWS;    // 128+16 = 144
+    static constexpr uint32_t MM2_L0A_K  = S2_SPLIT_SIZE;               // 128
+    static constexpr uint32_t L0A_MM2_SIZE = MM2_L0A_M * MM2_L0A_K;     // 18KB, V_ext
+    static constexpr uint32_t L0B_Q_SIZE   = 128 * 256;                 // 32KB, Q 常驻
+    static constexpr uint32_t L0B_P_SIZE   = 2 * 128 * 128;             // 32KB, P 双缓冲
+    static constexpr uint32_t L0C_SIZE     = 2 * 128 * 256;             // 256KB, C1+C2 ring
+
+    // ===== L0A BASE =====
+    static constexpr uint32_t L0A_MM1_BASE = 0;
+    static constexpr uint32_t L0A_MM2_BASE = L0A_MM1_BASE + L0A_MM1_SIZE;
+
+    // ===== L0B BASE =====
+    static constexpr uint32_t L0B_Q_BASE = 0;
+    static constexpr uint32_t L0B_P_BASE = L0B_Q_BASE + L0B_Q_SIZE;
 
     const ConstInfo &constInfo_;
 
@@ -70,6 +119,135 @@ private:
     LocalTensor<QUANT_T>  qL0BTensor_;    // L0B, Q 常驻槽 [128,256]
     LocalTensor<QUANT_T>  pL0BTensor_;    // L0B, P 双缓冲 [128,128]×2
     LocalTensor<MM_OUT_T> mmL0CTensor_;   // L0C, C1[128,256]+C2[144,128] ring 双槽 [128,256]×2
+
+public:
+    __aicore__ inline explicit QuantFlashAttnBlockCubeMxfp8SoftmaxFp16(ConstInfo &constInfo)
+        : constInfo_(constInfo) {}
+
+    __aicore__ inline void InitInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                   __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
+                   __gm__ uint8_t *dequantScaleValue)
+    {
+        queryGm_.SetGlobalBuffer((__gm__ QUANT_T *)query);
+        keyGm_.SetGlobalBuffer((__gm__ QUANT_T *)key);
+        valueGm_.SetGlobalBuffer((__gm__ QUANT_T *)value);
+        queryScaleGm_.SetGlobalBuffer((__gm__ SCALE_T *)dequantScaleQuery);
+        keyScaleGm_.SetGlobalBuffer((__gm__ SCALE_T *)dequantScaleKey);
+        valueScaleGm_.SetGlobalBuffer((__gm__ SCALE_T *)dequantScaleValue);
+    }
+
+    __aicore__ inline void InitTensors()
+    {
+        // ===== L1 共享区 =====
+        pL1V0Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_P_V0_BASE,
+                                            L1_P_BUFCNT * L1_P_V0_SINGLE_SLOT_SIZE);
+        pL1V1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_P_V1_BASE,
+                                            L1_P_BUFCNT * L1_P_V1_SINGLE_SLOT_SIZE);
+        pScaleL1V0Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V0_BASE,
+                                                 L1_P_BUFCNT * L1_PSCALE_V0_SINGLE_SLOT_SIZE);
+        pScaleL1V1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_PSCALE_V1_BASE,
+                                                 L1_P_BUFCNT * L1_PSCALE_V1_SINGLE_SLOT_SIZE);
+
+        // ===== L1 私有区 =====
+        qL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_Q_BASE,
+                                          L1_Q_BUFCNT * L1_Q_SINGLE_SLOT_SIZE);
+        qScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_QSCALE_BASE,
+                                               L1_QSCALE_BUFCNT * L1_QSCALE_SINGLE_SLOT_SIZE);
+        kL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_K_BASE,
+                                          L1_K_BUFCNT * L1_K_SINGLE_SLOT_SIZE);
+        kScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_KSCALE_BASE,
+                                               L1_KSCALE_BUFCNT * L1_KSCALE_SINGLE_SLOT_SIZE);
+        vL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_V_BASE,
+                                          L1_V_BUFCNT * L1_V_SINGLE_SLOT_SIZE);
+        vScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_VSCALE_BASE,
+                                               L1_VSCALE_BUFCNT * L1_VSCALE_SINGLE_SLOT_SIZE);
+        oneFillVL1Tensor_ = LocalTensor<QUANT_T>(TPosition::A1, L1_ONEFILL_V_BASE,
+                                                 L1_ONEFILL_V_SIZE);
+        oneFillVScaleL1Tensor_ = LocalTensor<SCALE_T>(TPosition::A1, L1_ONEFILL_VSCALE_BASE,
+                                                      L1_ONEFILL_VSCALE_SIZE);
+
+        // ===== L0A =====
+        mm1L0ATensor_ = LocalTensor<QUANT_T>(TPosition::A2, L0A_MM1_BASE, L0A_MM1_SIZE);
+        mm2L0ATensor_ = LocalTensor<QUANT_T>(TPosition::A2, L0A_MM2_BASE, L0A_MM2_SIZE);
+
+        // ===== L0B =====
+        qL0BTensor_ = LocalTensor<QUANT_T>(TPosition::B2, L0B_Q_BASE, L0B_Q_SIZE);
+        pL0BTensor_ = LocalTensor<QUANT_T>(TPosition::B2, L0B_P_BASE, L0B_P_SIZE);
+
+        // ===== L0C =====
+        mmL0CTensor_ = LocalTensor<MM_OUT_T>(TPosition::CO1, 0U, L0C_SIZE);
+
+        InitOneFillBuffer();
+        InitL0BufferForReduceSum();
+    }
+
+    __aicore__ inline void InitOneFillBuffer()
+    {
+        InitConstValueParams<uint16_t> dataParams(1U, ONE_FILL_BLOCK_CNT, 0U, FP8_ONE_U16);
+        Fill(oneFillVL1Tensor_.template ReinterpretCast<uint16_t>(), dataParams);
+        PipeBarrier<PIPE_MTE2>();
+
+        InitConstValueParams<uint16_t> scaleParams(1U, ONE_FILL_SCALE_BLOCK_CNT, 0U, E8M0_ONE_U16);
+        Fill(oneFillVScaleL1Tensor_.template ReinterpretCast<uint16_t>(), scaleParams);
+        PipeBarrier<PIPE_MTE2>();
+    }
+
+    __aicore__ inline void InitL0BufferForReduceSum()
+    {
+        LoadData2DParamsV2 dataParams;
+        dataParams.mStartPosition = 0U;
+        dataParams.kStartPosition = 0U;
+        dataParams.mStep = MM2_L0A_M / 16U;
+        dataParams.kStep = MM2_L0A_K / 32U;
+        dataParams.srcStride = dataParams.mStep;
+        dataParams.dstStride = dataParams.mStep;
+        dataParams.ifTranspose = false;
+
+        LoadData2DMxParams scaleParams;
+        scaleParams.xStartPosition = 0U;
+        scaleParams.yStartPosition = 0U;
+        scaleParams.xStep = MM2_L0A_M / 16U;
+        scaleParams.yStep = MM2_L0A_K / 32U;
+        scaleParams.srcStride = scaleParams.yStep;
+        scaleParams.dstStride = scaleParams.yStep;
+
+        LoadData(mm2L0ATensor_.template ReinterpretCast<QUANT_T>(),
+                 oneFillVL1Tensor_.template ReinterpretCast<QUANT_T>(),
+                 oneFillVScaleL1Tensor_,
+                 dataParams, scaleParams);
+    }
+
+    __aicore__ inline void ReleaseTensors() {}
+
+    __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
+    {
+#if QFA_SF16_DEBUG_PRINTF
+        AscendC::printf("[C1][AIC%u] loop=%u subLoop=%u\n", constInfo_.aicIdx, runInfo.loop, subLoopIdx);
+#endif
+    }
+
+    __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
+    {
+#if QFA_SF16_DEBUG_PRINTF
+        AscendC::printf("[F1][AIC%u] loop=%u subLoop=%u subBlk=%u\n", constInfo_.aicIdx, runInfo.loop, subLoopIdx,
+                        subBlockId);
+#endif
+    }
+
+    __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    {
+#if QFA_SF16_DEBUG_PRINTF
+        AscendC::printf("[C2][AIC%u] loop=%u vCore=%u\n", constInfo_.aicIdx, runInfo.loop, vCore);
+#endif
+    }
+
+    __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
+    {
+#if QFA_SF16_DEBUG_PRINTF
+        AscendC::printf("[F2][AIC%u] loop=%u vCore=%u\n", constInfo_.aicIdx, runInfo.loop, vCore);
+#endif
+    }
+
 };
 } // namespace QFA_KERNEL
 

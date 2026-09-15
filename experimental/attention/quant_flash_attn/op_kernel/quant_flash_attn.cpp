@@ -34,7 +34,9 @@ __aicore__ inline void quant_flash_attn_mxfp8_softmax_fp16(
 {
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
         (const __gm__ QuantFlashAttnTilingData *__restrict)tiling;
-    QFA_KERNEL::QuantFlashAttnKernelMxfp8SoftmaxFp16 op;
+    using CubeBlock = QFA_KERNEL::QuantFlashAttnBlockCubeMxfp8SoftmaxFp16<QFA_KERNEL::QUANT_T, QFA_KERNEL::SCALE_T>;
+    using VectorBlock = QFA_KERNEL::QuantFlashAttnBlockVectorMxfp8SoftmaxFp16<QFA_KERNEL::QUANT_T, QFA_KERNEL::SCALE_T, QFA_KERNEL::OUT_T>;
+    QFA_KERNEL::QuantFlashAttnKernelMxfp8SoftmaxFp16<CubeBlock, VectorBlock> op;
     op.Init(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale,
             cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, workspace,
             tilingData);

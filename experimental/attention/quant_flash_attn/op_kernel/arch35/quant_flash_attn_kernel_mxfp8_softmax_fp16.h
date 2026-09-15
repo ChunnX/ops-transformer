@@ -32,6 +32,8 @@
 #ifndef QFA_SF16_DEBUG_PRINTF
 #define QFA_SF16_DEBUG_PRINTF 1
 #endif
+#include "quant_flash_attn_block_cube_mxfp8_softmax_fp16.h"
+#include "quant_flash_attn_block_vector_mxfp8_softmax_fp16.h"
 
 using namespace optiling;
 using namespace AscendC;
@@ -40,14 +42,20 @@ using namespace AttentionCommon;
 namespace QFA_KERNEL {
 
 // ===== 类型别名（单模板组合：Q/K/V mxfp8 + softmax fp16 + 输出 bf16）=====
-using Q_T = fp8_e4m3fn_t;   // Q/K/V
+using QUANT_T = fp8_e4m3fn_t; // Q/K/V
 using SCALE_T = fp8_e8m0_t; // QScale/KScale/VScale/pScale
 using SOFTMAX_T = half;     // mm1Res / softmax 中间类型（FP16 方案核心）
 using OUT_T = bfloat16_t;   // 最终输出
 
+template <typename CubeBlockType, typename VectorBlockType>
 class QuantFlashAttnKernelMxfp8SoftmaxFp16 {
 public:
+    __aicore__ inline QuantFlashAttnKernelMxfp8SoftmaxFp16()
+        : cubeBlock_(constInfo_), vectorBlock_() {}
+
     ConstInfo constInfo_;
+    CubeBlockType cubeBlock_;
+    VectorBlockType vectorBlock_;
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData_ = nullptr;
 
     // ============================== GM 输入暂存（阶段二三消费）==============================
@@ -113,6 +121,8 @@ public:
         softmaxLsePtr_ = softmaxLse;
         workspacePtr_ = workspace;
 
+        cubeBlock_.InitInput(query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue);
+
         // metadata 头（AICPU 生成）
         constInfo_.needInitOutput = ((__gm__ uint32_t *)metadata)[QFA_HEAD_NEED_INIT_OUTPUT_INDEX] != 0;
         sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
@@ -140,6 +150,7 @@ public:
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
+            constInfo_.subBlockIdx = 0;
         } else {
             constInfo_.aivIdx = GetBlockIdx();
             constInfo_.aicIdx = GetBlockIdx() / GetSubBlockNum();
@@ -380,7 +391,7 @@ public:
             info.actSingleLoopS2Size = static_cast<uint32_t>(info.actS2Size - s2Cur * S2_BASE_SIZE);
         }
         info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align(info.actSingleLoopS2Size, static_cast<uint32_t>(BYTE_BLOCK / sizeof(Q_T)));
+            AttentionCommon::Align(info.actSingleLoopS2Size, static_cast<uint32_t>(BYTE_BLOCK / sizeof(QUANT_T)));
 
         // S1 切半：V0 处理前半 [0, 128)，V1 处理后半 [128, 256)
         info.vecS1BaseIdx = constInfo_.subBlockIdx * S1_SUB_BLOCK_SIZE;
@@ -468,24 +479,12 @@ public:
     // ============================== 计算空壳（阶段二下沉 block 层，阶段三真实现）==============================
     __aicore__ inline void ComputeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
     {
-#if QFA_SF16_DEBUG_PRINTF
-        AscendC::printf("[C1][AIC%u] loop=%u subLoop=%u\n", constInfo_.aicIdx, runInfo.loop, subLoopIdx);
-#endif
-        // TODO(阶段三): K[128,128]×Q[128,256] → L0C[128,256]，K 流式搬入，Q 首 S2 分块常驻 L1/L0B
-        (void)runInfo;
-        (void)subLoopIdx;
+        cubeBlock_.ComputeMm1(runInfo, subLoopIdx);
     }
 
     __aicore__ inline void FixpipeMm1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx, uint32_t subBlockId)
     {
-#if QFA_SF16_DEBUG_PRINTF
-        AscendC::printf("[F1][AIC%u] loop=%u subLoop=%u subBlk=%u\n", constInfo_.aicIdx, runInfo.loop, subLoopIdx,
-                        subBlockId);
-#endif
-        // TODO(阶段三): L0C[128,256] 沿 S1 切半，随路乘 softmaxScale + cast fp16，单目标搬给 V(subBlockId)
-        (void)runInfo;
-        (void)subLoopIdx;
-        (void)subBlockId;
+        cubeBlock_.FixpipeMm1(runInfo, subLoopIdx, subBlockId);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t subLoopIdx)
@@ -502,22 +501,12 @@ public:
 
     __aicore__ inline void ComputeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
     {
-#if QFA_SF16_DEBUG_PRINTF
-        AscendC::printf("[C2][AIC%u] loop=%u vCore=%u\n", constInfo_.aicIdx, runInfo.loop, vCore);
-#endif
-        // TODO(阶段三): V_ext[144,128]×P[128,128]，K 轴切 subK 轮 L0C 累加，L0A 后 16 行全 1 求 rowsum
-        (void)runInfo;
-        (void)vCore;
+        cubeBlock_.ComputeMm2(runInfo, vCore);
     }
 
     __aicore__ inline void FixpipeMm2(RunInfoMxfp8SoftmaxFp16 &runInfo, uint32_t vCore)
     {
-#if QFA_SF16_DEBUG_PRINTF
-        AscendC::printf("[F2][AIC%u] loop=%u vCore=%u\n", constInfo_.aicIdx, runInfo.loop, vCore);
-#endif
-        // TODO(阶段三): L0C[144,128] 裁为 [129,128]（128 行 PV + 1 行 rowsum）单目标搬给 V(vCore)
-        (void)runInfo;
-        (void)vCore;
+        cubeBlock_.FixpipeMm2(runInfo, vCore);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoMxfp8SoftmaxFp16 &runInfo)
@@ -543,7 +532,13 @@ public:
 
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo_.aicIdx < constInfo_.coreNum) {
+                if ASCEND_IS_AIC {
+                    cubeBlock_.InitTensors();
+                }
                 FlashAttention(sectionIdx);
+                if ASCEND_IS_AIC {
+                    cubeBlock_.ReleaseTensors();
+                }
             }
         }
 
