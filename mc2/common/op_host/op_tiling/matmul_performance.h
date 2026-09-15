@@ -84,12 +84,11 @@ public:
     }
     void SetCalcType(const mc2tiling::TilingArgs &args)
     {
-        if (isNpuArch3510_ &&
-            ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
-             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
-             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
-             (args.aType == matmul_tiling::DataType::DT_FLOAT4_E2M1) ||
-             (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
+        if (isNpuArch3510_ && ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
+                               (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
+                               (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
+                               (args.aType == matmul_tiling::DataType::DT_FLOAT4_E2M1) ||
+                               (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
                    (mmShapeInfo_.socType != SocVersion::SOC910_B)) { // A8W8
@@ -102,9 +101,9 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion inputSocVersion = SocVersion::SOC910_B,
-                                    bool isNpuArch3510 = false)
-        : calcType_(MatmulCalcType::FP16), isNpuArch3510_(isNpuArch3510)
+                                    SocVersion inputSocVersion = SocVersion::SOC910_B, bool isNpuArch3510 = false)
+        : calcType_(MatmulCalcType::FP16),
+          isNpuArch3510_(isNpuArch3510)
     {
         mmShapeInfo_.socType = inputSocVersion; // A5场景由Arch35派生类以占位档位(SOC910_B)传入
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
@@ -126,10 +125,9 @@ public:
 
     std::string GetCalcTypeString()
     {
-        return std::to_string(GetFittingSeriesCode()) + "_" +
-               std::to_string(static_cast<int>(calcType_)) + "_" + std::to_string(mmShapeInfo_.inMatrixADtypeSize) +
-               "_" + std::to_string(mmShapeInfo_.inMatrixBDtypeSize) + "_" +
-               std::to_string(mmShapeInfo_.outMatrixCDtypeSize);
+        return std::to_string(GetFittingSeriesCode()) + "_" + std::to_string(static_cast<int>(calcType_)) + "_" +
+               std::to_string(mmShapeInfo_.inMatrixADtypeSize) + "_" + std::to_string(mmShapeInfo_.inMatrixBDtypeSize) +
+               "_" + std::to_string(mmShapeInfo_.outMatrixCDtypeSize);
     }
     // 根据输入shape，预测cube利用率（取值0 < cubeUtil_ < 1），再用利用率预测耗时
     // 耗时 = M * k * N / 频率 / 每cycle多少计算  /核数 / 利用率

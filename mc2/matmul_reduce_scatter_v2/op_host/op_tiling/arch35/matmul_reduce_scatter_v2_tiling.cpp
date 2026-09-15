@@ -254,9 +254,8 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
                                                       TopoType::EIGHT_P, (commMode_ == TPL_AICPU_COMM_MODE));
         return scatterTiling.GetTiling();
     } else {
-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, SocVersion::SOC910_B,
-                                          false, (commMode_ == TPL_AICPU_COMM_MODE),
-                                          npuArch_ == Ops::Base::DAV_3510);
+        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, SocVersion::SOC910_B, false,
+                                          (commMode_ == TPL_AICPU_COMM_MODE), npuArch_ == Ops::Base::DAV_3510);
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
     }

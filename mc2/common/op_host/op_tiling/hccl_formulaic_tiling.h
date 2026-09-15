@@ -118,7 +118,7 @@ public:
     uint64_t rankTileNum_ = 1;
     double ratioCalcComm_ = 1.0;
     bool noCutFlag_ = false;
-    bool inferFlag_ = false; // 部分逻辑只适配了推理或者训练算子，进行区分
+    bool inferFlag_ = false;     // 部分逻辑只适配了推理或者训练算子，进行区分
     bool isNpuArch3510_ = false; // A5(950系)标志:由调用点经arch判断(DAV_3510)传入,替代原SOC950档位key
 
     // Constructor

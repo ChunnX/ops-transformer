@@ -61,8 +61,7 @@ public:
     }
     // Constructor
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion inputSocVersion = SocVersion::SOC910_B,
-                                  bool isNpuArch3510 = false)
+                                  SocVersion inputSocVersion = SocVersion::SOC910_B, bool isNpuArch3510 = false)
         : isNpuArch3510_(isNpuArch3510)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
