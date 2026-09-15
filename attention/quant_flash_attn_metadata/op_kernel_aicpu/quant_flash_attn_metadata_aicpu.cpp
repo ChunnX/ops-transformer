@@ -208,8 +208,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
     if (quantMode_ == 1 || quantMode_ == 6 || quantMode_ == 0) {
-        baseInfo.queryType = load_balance::DataType::FP8_E4M3FN;
-        baseInfo.kvType = load_balance::DataType::FP8_E4M3FN;
+        baseInfo.queryType = load_balance::DataType::INT8;
+        baseInfo.kvType = load_balance::DataType::INT8;
     }
     uint32_t sOuterFactor = 0;
     uint32_t sInnerFactor = 0;
@@ -223,10 +223,14 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 96U * 1024U * 1024U; // 96: 96MB, 1024: Mb2Kb, 1024:Kb2Mb
-    // param.fdTolerance = 10;             // 10: tolerance block
-    // param.fdLeastBlock = 3;             // 3: least block
-    param.fdOn = true;
+    param.l2Byte = 0;
+    // FD是否切分完全由本metadata算子的SectionStreamK代价模型(CheckChooseWithFd)按shape决策:
+    // mxfp8仅decode布局(layout_q_descale=N2TGD)参与决策(prefill侧主算子tiling未实例化FD模板,需与之对齐);
+    // HIF8/GQA_FP8 tiling恒含isFd, 无条件交由代价模型决策。参数对齐FIA fullquant_mx模板经验值。
+    constexpr int64_t QFA_QUANT_MODE_MXFP8 = 1;
+    param.fdTolerance = 10; // 10: tolerance block
+    param.fdLeastBlock = 2; // 2: least block
+    param.fdOn = (quantMode_ == QFA_QUANT_MODE_MXFP8) ? isDecode : true;
     param.outputLayout = load_balance::OutputLayout::BN2_S1G;
 
     if (isGradEnabled_) {

@@ -121,6 +121,8 @@ void QuantFlashAttnTilingHif8Impl::SplitPolicy()
                                            qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
                                            static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
+    // HIF8无decode专用模板, 恒走DN路径; tiling key恒含isFd, 由运行时metadata(AICPU)决定是否实际切分FD
+    flashDecodeFlag_ = true;
 }
 
 void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyConfig()
@@ -151,7 +153,7 @@ void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyInfo()
     UpdateTilingKeyQuantMode();
     tilingKeyInfo_.hasAttenMask = (qfaInfo_->maskMode != static_cast<int64_t>(MaskMode::NO_MASK));
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.isFd = false;
+    tilingKeyInfo_.isFd = flashDecodeFlag_;
 }
 
 void QuantFlashAttnTilingHif8Impl::UpdateTilingKeyQuantMode()
@@ -185,6 +187,17 @@ void QuantFlashAttnTilingHif8Impl::CalcNumBlocks(uint32_t aicNum)
 void QuantFlashAttnTilingHif8Impl::CalcWorkspaceSize()
 {
     workspaceSize_ = platformInfo_.defaultSysWorkspaceSize;
+
+    if (flashDecodeFlag_) {
+        // 每个核最多有2次写到workspace; ResLse有2份(sum和max), 每行8个float对齐
+        uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
+        uint32_t dSize = qfaInfo_->vHeadDim;
+        uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize;
+        uint32_t fatmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
+        workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float);
+        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
+        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+    }
 
     OP_LOGI(qfaInfo_->opName, "HIF8 Workspaces: %lu", workspaceSize_);
 }
