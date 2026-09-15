@@ -44,7 +44,8 @@ __aicore__ inline QuantProcessConfig CreateQuantProcessConfig(uint32_t tokenHidd
         Ops::Base::CeilAlign(quantScaleValidCountPerToken * static_cast<uint32_t>(sizeof(QuantScaleOutType)),
                              static_cast<uint32_t>(ALIGN_32));
     uint32_t quantTokenScaleAlignBytes = quantTokenAlignBytes + quantScaleAlignBytes;
-    if constexpr (TopkWeightsPrefetch) {
+    // 布局与 host 同式：prefetch 或 tkw=0 的 combine 去重（发送端乘权）都携带权重段。
+    if (TopkWeightsPrefetch || MegaMoeRecordHasTopkWeights(params.tilingData)) {
         uint32_t weightAlignBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(params.tilingData->topK * sizeof(float)),
                                                          static_cast<uint32_t>(ALIGN_32));
         quantTokenScaleAlignBytes += weightAlignBytes;
@@ -134,8 +135,8 @@ __aicore__ inline void QuantizeTokenInUb(const LocalTensor<bfloat16_t> &input,
 // 仅由 AIV 调用，tokenRange 非空；量化指定范围的本卡 token，按逐 token 交织布局写入数据与 scale。
 template <typename TopkWeightsType, bool TopkWeightsPrefetch, typename MoeQuantParams, typename... SharedQuantParams>
 __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const MoeStageCommonConfig &common,
-                                           GM_ADDR topkWeightsAddr, const MoeQuantParams &moeQuant,
-                                           const SharedQuantParams &...sharedQuant)
+                                           GM_ADDR topkWeightsAddr, bool recordHasTopkWeights,
+                                           const MoeQuantParams &moeQuant, const SharedQuantParams &...sharedQuant)
 {
     auto &scratch = moeQuant.scratch;
     const auto &config = moeQuant.config;
@@ -153,7 +154,8 @@ __aicore__ inline void QuantizeLocalTokens(const WorkRange &tokenRange, const Mo
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
         DataCopyPad(xInTensor, scratch.inputGm[static_cast<uint64_t>(tokenIndex) * hiddenDim],
                     {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U}, {true, 0, 0, 0});
-        if constexpr (TopkWeightsPrefetch) {
+        // tkw=0 的 combine 去重同样携带整 token 权重段（发送端乘权语义）；tkw=1 实例常量折叠零开销。
+        if (TopkWeightsPrefetch || recordHasTopkWeights) {
             GM_ADDR tokenTopkWeightsAddr =
                 topkWeightsAddr + static_cast<uint64_t>(tokenIndex) * common.topK * sizeof(TopkWeightsType);
             PrefetchTopkWeights<TopkWeightsType>(tokenTopkWeightsAddr, common.topK, config, scratch, xOutTensor, event);

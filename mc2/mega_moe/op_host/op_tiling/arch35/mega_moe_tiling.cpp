@@ -264,6 +264,8 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             static_cast<uint32_t>(tilingData->isSharedQuantIndependent), tilingData->combineQuantMode,
             tilingData->clampLimit);
     OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
+    OP_LOGD(nodeName, "dedup: dedupMode=%d, topkWeightsPrefetch=%d", tilingData->dedupMode,
+            tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
 
@@ -309,7 +311,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     params.epWorldSize = static_cast<int64_t>(tilingData->epWorldSize);
     params.yDtypeSize = SIZE_BF_16;
     params.elemsPerByte = IsA4W4GmmMode(tilingData->moeGmmMode) ? 2U : 1U;
-    params.topkWeightsPrefetch = tilingData->topkWeightsPrefetch == 1;
+    params.topkWeightsPrefetch = MegaMoeRecordHasTopkWeights(tilingData);
     params.isQuantCombine = tilingData->combineQuantMode != COMBINE_NO_QUANT;
     params.topoType = tilingData->topoType;
     params.serverNum =
@@ -321,6 +323,29 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     OP_LOGD(nodeName, "dispatchRecordAreaSize: {%ld}\n", sizes.dispatchRecordAreaSize);
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", sizes.combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n", exceptionDumpRegionSize + CalcPeermemLeastSize(params));
+}
+
+/*
+ * comm_alg 承载 MTE 通信去重开关（该 attr 历史上强制空串、完全空置，借用它可零签名改动）：
+ * "" 关闭；"dedup" 全开；"dedup_dispatch"/"dedup_combine" 单开（A/B 归因用）。
+ * 返回位掩码 bit0=dispatch bit1=combine；无效串返回 -1，由 CheckCommAlgAttr 拦截。
+ */
+static int64_t GetDedupModeByCommAlg(const gert::TilingContext *context, const MegaMoeConfig &config)
+{
+    auto commAlgPtr = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    if (commAlgPtr == nullptr || std::strcmp(commAlgPtr, "") == 0) {
+        return 0;
+    }
+    if (std::strcmp(commAlgPtr, "dedup") == 0) {
+        return DEDUP_MODE_DISPATCH | DEDUP_MODE_COMBINE;
+    }
+    if (std::strcmp(commAlgPtr, "dedup_dispatch") == 0) {
+        return DEDUP_MODE_DISPATCH;
+    }
+    if (std::strcmp(commAlgPtr, "dedup_combine") == 0) {
+        return DEDUP_MODE_COMBINE;
+    }
+    return -1;
 }
 
 /*
@@ -344,6 +369,8 @@ static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeC
         topkIndexType = TILINGKEY_TOPK_INDEX_INT16;
     }
 
+    // prefetch 位恒等于 attr（不强拉）：tkw=0 的 combine 去重走 tkw0 模板实例 + runtime 分支，
+    // key 无需感知 dedup。
     return GET_TPL_TILING_KEY(
         static_cast<int64_t>(moeWeightDesc->GetDataType()), static_cast<int64_t>(sharedWeightDesc->GetDataType()),
         *dispatchQuantModePtr, EXPERT_QUANT_MODE_MAP.at(expertParams.moe.quantOutDtype),
@@ -548,14 +575,29 @@ static ge::graphStatus CheckAndSetEpWorldSizeAttr(const gert::TilingContext *con
 }
 
 /*
- * 校验通信算法属性；当前仅支持默认的空字符串配置。
+ * 校验通信算法属性；支持默认空串与 MTE 通信去重族（dedup / dedup_dispatch / dedup_combine）。
  */
 static ge::graphStatus CheckCommAlgAttr(const gert::TilingContext *context, const MegaMoeConfig &config,
                                         const char *nodeName)
 {
-    auto commAlgPtr = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    OP_TILING_CHECK(std::strcmp(commAlgPtr, "") != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr, "not support, need empty string"),
+    auto attrs = context->GetAttrs();
+    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    int64_t dedupMode = GetDedupModeByCommAlg(context, config);
+    OP_TILING_CHECK(dedupMode < 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
+                                              "only support \"\", \"dedup\", \"dedup_dispatch\", \"dedup_combine\""),
+                    return ge::GRAPH_FAILED);
+    int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+    OP_TILING_CHECK(dedupMode != 0 && topoType != TOPO_TYPE_MTE,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
+                                              "dedup family only supported with topoType MTE(0)"),
+                    return ge::GRAPH_FAILED);
+    // combine 去重当前只实现非量化 combine 路径；量化 combine 直接报错，不做静默降级。
+    auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>(config.attrCombineQuantModeIndex);
+    int64_t combineQuantMode = combineQuantModePtr == nullptr ? COMBINE_QUANT_OUT_TYPE_NO_QUANT : *combineQuantModePtr;
+    OP_TILING_CHECK((dedupMode & DEDUP_MODE_COMBINE) != 0 && combineQuantMode != COMBINE_QUANT_OUT_TYPE_NO_QUANT,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "commAlg", commAlgPtr,
+                                              "combine dedup requires combineQuantMode=0 (no-quant) for now"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -924,8 +966,13 @@ static ge::graphStatus CheckCclBufferCapacity(const gert::TilingContext *context
 {
     auto attrs = context->GetAttrs();
     int64_t yDtypeSize = ge::GetSizeByDataType(context->GetOutputDesc(config.yIndex)->GetDataType());
+    // 记录布局是否带权重段与最终 tilingData 同式（tkw=1 或 combine 去重）；此处收益门可能尚未
+    // 裁决，按 comm_alg 原始转译算下界偏保守（门只会关位、实际需求只小不大），安全。
+    const int64_t dedupModeForLayout = GetDedupModeByCommAlg(context, config);
+    const bool recordHasWeights = tilingData->topkWeightsPrefetch == 1 ||
+                                  (dedupModeForLayout > 0 && (dedupModeForLayout & DEDUP_MODE_COMBINE) != 0);
     int64_t leastCclBufferSize = CalcLeastCclBufferSize(static_cast<int64_t>(tilingData->numMaxTokensPerRank),
-                                                        yDtypeSize, tilingData, tilingData->topkWeightsPrefetch == 1);
+                                                        yDtypeSize, tilingData, recordHasWeights);
     int64_t cclBufferSize = static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex)));
     OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", std::to_string(cclBufferSize).c_str(),
@@ -1035,12 +1082,12 @@ static uint32_t CalcQuantTokenAndScaleBytes(const MegaMoeTilingData *tilingData,
 }
 
 /*
- * 计算每个 dispatch ring slot 的量化 token 与 scale 拷贝区字节数（prefetch 模式再追加对齐后的 weight）。
+ * 计算每个 dispatch ring slot 的量化 token 与 scale 拷贝区字节数（记录带权重段时再追加，判定统一走 MegaMoeRecordHasTopkWeights）。
  */
 static uint32_t CalcDispatchCopyBufferBytes(const MegaMoeTilingData *tilingData, uint32_t activationElementsPerByte)
 {
     uint32_t copyBufferBytes = CalcQuantTokenAndScaleBytes(tilingData, activationElementsPerByte);
-    if (tilingData->topkWeightsPrefetch == 1) {
+    if (MegaMoeRecordHasTopkWeights(tilingData)) {
         uint32_t weightBytes =
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
         copyBufferBytes += weightBytes;
@@ -1117,6 +1164,13 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeDispatchBufferConfig bufferConfig{};
+    // 去重模式：批内 desc/扇出 meta/活跃表暂存紧跟 dispatch 固定区尾动态落位，
+    // 此处先从自适应预算里扣掉预留，保证暂存区在任意合法规格下不越 UB。
+    if (tilingData->dedupMode != 0 && tilingData->topoType == TOPO_TYPE_MTE) {
+        availableUbBytes = availableUbBytes > MegaMoeImpl::DEDUP_DISPATCH_UB_RESERVE_BYTES ?
+                               availableUbBytes - MegaMoeImpl::DEDUP_DISPATCH_UB_RESERVE_BYTES :
+                               0U;
+    }
     uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->numMaxTokensPerRank);
     uint64_t alignedTotalRouteItems = ops::CeilAlign(sendTotalNum, static_cast<uint64_t>(ALIGN_256));
     uint32_t copyBufferBytes = CalcDispatchCopyBufferBytes(tilingData, activationElementsPerByte);
@@ -2660,6 +2714,77 @@ static MegaMoeL1Layout CalcMegaMoeL1Layout(uint64_t maxGmmK)
 }
 
 /*
+ * comm_alg 去重开关落库 + per-shape 收益/容量门。必须在 bs/h/topK/epWorldSize 全部写入
+ * tilingData 之后、workspace 与自适应 buffer 规划之前调用（两者按 dedupMode 定布局）。
+ */
+static void SetDedupModeParams(const gert::TilingContext *context, const MegaMoeConfig &config,
+                               MegaMoeTilingData *tilingData, const char *nodeName)
+{
+    // 去重开关经 comm_alg 转译落库。combine 去重两种权重语义并存：tkw=1 沿用 prefetch
+    // （激活层乘权、合并与 unpermute 纯加）；tkw=0 时合并阶段在发送端按成员权重乘加，
+    // 权重经记录尾段下发（布局判定统一走 MegaMoeRecordHasTopkWeights，prefetch 位保持 attr
+    // 原值不强拉——强拉会偏离 tkw=0 golden 的乘权位置语义，历史实翻）。
+    tilingData->dedupMode = static_cast<int32_t>(GetDedupModeByCommAlg(context, config));
+    // 去重收益自适应门（纯性能决策，先例 GMM2_LAG_MIN_TOKEN_NUM；dispatch 去重 bit 级等价，
+    // 关闭不改变任何数值结果）：每卡预期节省字节 = bs*topK*重复率*h，重复率由 4P 均匀路由模型
+    // E[distinct ranks] = world*(1-(1-1/world)^topK) 推得。实测盈亏平衡在 4~6MB（S4=3.5MB 微亏
+    // +2.5%、S2=8.1MB 净赢 -15.2%），阈值取 6MB。低于阈值时建表固定成本吃掉通信收益，关闭为优。
+    if (tilingData->dedupMode != 0) {
+        double world = static_cast<double>(tilingData->epWorldSize);
+        double topKf = static_cast<double>(tilingData->topK);
+        double distinctRanks = world * (1.0 - std::pow(1.0 - 1.0 / world, topKf));
+        double dupRatio = 1.0 - distinctRanks / topKf;
+        double savedBytes = static_cast<double>(tilingData->bs) * topKf * dupRatio *
+                            static_cast<double>(tilingData->h);
+        constexpr double DEDUP_MIN_SAVED_BYTES = 6.0 * 1024.0 * 1024.0;
+        // 中档 bs 口袋（实测 2026-09-09）：bs2048 时 savedBytes=40MB 仍复现 +1.0~1.2% 微亏——此档
+        // GMM 计算已能完全遮住 dispatch 通信，省下的字节不在关键路径上，只剩建表成本；bs≥4096
+        // （savedBytes≥80MB）通信重新成为瓶颈，收益回归（-1.6%/-5.4%）。故 bs>1024 时门槛抬到
+        // 60MB（实测 40MB 亏 / 80MB 赢的区间中插）。两阈值均基于 4P 实测，8 卡矩阵后需重校准。
+        constexpr double DEDUP_MID_BS_MIN_SAVED_BYTES = 60.0 * 1024.0 * 1024.0;
+        /*
+         * combine 去重（专家粒度合并版）的收益边界低于纯 dispatch 去重：小 bs 档实测
+         * S4(bs256,h5120,k6,saved=3.56MB) full 组合净赢 -2.8%，而 S1(bs64,saved=1.15MB)
+         * 净亏 +11.7%——combine 位使能（必 tkw=1）时阈值取 3MB（贴 S4 侧保守，边界两侧
+         * 均有实测）。纯 dispatch 维持 6MB（S4 的 dd tkw1 实测 +3.9% 亏，不可放宽）；
+         * 中档 60MB 分界由 PF3(39.8MB,+1.5%)/PF2(79.6MB,-3.7%) 两侧实测支撑，combine
+         * 与 dispatch 同界。数据：2026-09-10 cv2b 门降实验批 + PF 域批（4P）。
+         */
+        constexpr double DEDUP_COMBINE_MIN_SAVED_BYTES = 3.0 * 1024.0 * 1024.0;
+        constexpr int32_t DEDUP_SMALL_BS_LIMIT = 1024;
+        const bool combineDedupOn = (tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0;
+        const bool dispatchDedupOn = (tilingData->dedupMode & DEDUP_MODE_DISPATCH) != 0;
+        /*
+         * 3MB 档只对 full（dispatch+combine 双开）成立：S4(saved=3.56MB) full 实测净赢
+         * （tkw1 -2.6% / tkw0 -3.4%），但 dc 单开在同点亏 +2.9%（2026-09-11 tkw0 矩阵批）——
+         * 没有 dispatch 省发送的叠加时 combine 收益不足以覆盖建表成本。dc 单开沿用 6MB 档
+         * （S2 saved=8.1MB 实测 dc0 -11.9% 保留，S4 关回恒等）。
+         */
+        const bool combineOnly = combineDedupOn && !dispatchDedupOn;
+        const double requiredSavedBytes =
+            (tilingData->bs > DEDUP_SMALL_BS_LIMIT)
+                ? DEDUP_MID_BS_MIN_SAVED_BYTES
+                : ((combineDedupOn && !combineOnly) ? DEDUP_COMBINE_MIN_SAVED_BYTES : DEDUP_MIN_SAVED_BYTES);
+        if (savedBytes < requiredSavedBytes) {
+            OP_LOGI(nodeName, "dedup gate: estimated saved bytes %.0f < required %.0f (bs=%d), disable dedup for this shape",
+                    savedBytes, requiredSavedBytes, tilingData->bs);
+            tilingData->dedupMode = 0;
+        }
+    }
+    // combine 去重 UB 容量护栏：独立 combine 阶段需要行环(≥2)+整行合并发送共 3×行宽，外加固定
+    // 60KiB（成员乒乓/fp32/累加段 + desc 批区），装进 [64KiB,184KiB) 要求 h ≤ 10240。与收益门同为
+    // per-shape 能力开关：超界只关 combine 位（dispatch 去重不受影响），保持"无脑常开"用法可用。
+    if ((tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        constexpr int64_t DEDUP_COMBINE_MAX_H = 10240;
+        if (static_cast<int64_t>(tilingData->h) > DEDUP_COMBINE_MAX_H) {
+            OP_LOGI(nodeName, "dedup gate: h=%d exceeds combine dedup UB capacity limit %ld, disable combine dedup",
+                    static_cast<int32_t>(tilingData->h), DEDUP_COMBINE_MAX_H);
+            tilingData->dedupMode &= ~DEDUP_MODE_COMBINE;
+        }
+    }
+}
+
+/*
  * 在所有校验和资源规划完成后，统一提交 workspace、block dim、tiling key 及诊断信息。
  */
 static ge::graphStatus CommitTilingResult(gert::TilingContext *context, const MegaMoeConfig &config,
@@ -2720,6 +2845,9 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     OP_TILING_CHECK(
         CheckAndSetExpertExecutionParams(context, config, expertParams, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "expert execution parameters are invalid."), return ge::GRAPH_FAILED);
+
+    // 通信去重：comm_alg 转译落库 + per-shape 收益/容量门（依赖 bs/h/topK/epWorldSize 已就位）。
+    SetDedupModeParams(context, config, tilingData, nodeName);
 
     // 容量属性：num_max_tokens_per_rank、max_recv_token_num 和 ccl_buffer_size。
     OP_TILING_CHECK(CheckAndSetCapacityAttrs(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
