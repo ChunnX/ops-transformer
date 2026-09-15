@@ -1128,7 +1128,7 @@ def gen_sparse_indices_bsnd(
         topk_length = None
 
     for i_B in range(B):
-        # CMP and ORI have independent causal bases.  For CMP, arch35
+        # CMP and ORI have independent causal bases. For CMP, arch35
         # reconstructs the pre-compression length solely from CMP inputs.
         is_cmp_kv = seqused_cmp_kv is not None
         if is_cmp_kv:
@@ -1359,8 +1359,6 @@ def gen_ori_kv(
     seqused_q,
     cu_seqlens_ori_kv,
     seqused_ori_kv,
-    seqused_cmp_kv,
-    cmp_residual_kv,
     ori_mask_mode,
     ori_sparse_indices_mode,
     ori_kv_topk_mode,
@@ -1513,9 +1511,7 @@ def gen_cmp_kv(
     cmp_kv_type,
     B,
     S1,
-    S2,
     T1,
-    T2,
     T3,
     N2,
     D,
@@ -1524,9 +1520,7 @@ def gen_cmp_kv(
     block_size2,
     cu_seqlens_q,
     seqused_q,
-    cu_seqlens_ori_kv,
     cu_seqlens_cmp_kv,
-    seqused_ori_kv,
     seqused_cmp_kv,
     cmp_residual_kv,
     cmp_ratio,
@@ -1610,8 +1604,6 @@ def gen_cmp_kv(
         cmp_k_in_pa_shape = cmp_k
     elif layout_kv == "BSND":
         cmp_block_table = None
-        # Keep the legacy full-capacity default, while allowing an independently
-        # supplied CMP actual length to exceed ORI-derived capacity.
         cmp_max_s2 = max(int(length) for length in seqused_cmp_kv)
         cmp_k = (
             torch.rand((B, cmp_max_s2, N2, D)) * (data_range_left - data_range_right)
@@ -1629,12 +1621,12 @@ def gen_cmp_kv(
                 cmp_ratio,
                 B,
                 S1,
-                S2,
+                None,
                 N2,
                 K,
                 None,
                 seqused_q,
-                seqused_ori_kv,
+                None,
                 seqused_cmp_kv,
                 cmp_residual_kv,
                 cmp_mask_mode,
@@ -1651,9 +1643,9 @@ def gen_cmp_kv(
                 K,
                 cu_seqlens_q,
                 seqused_q,
-                cu_seqlens_ori_kv,
+                None,
                 cu_seqlens_cmp_kv,
-                seqused_ori_kv,
+                None,
                 seqused_cmp_kv,
                 cmp_residual_kv,
                 cmp_mask_mode,
@@ -1669,27 +1661,6 @@ def gen_cmp_kv(
         cmp_k,
         cmp_topk_length,
     )
-
-
-def resolve_compressed_actual_lengths(
-    seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-):
-    """Resolve compressed actual lengths exactly as SMLA input generation does."""
-    if seqused_ori_kv is None or cmp_ratio is None:
-        return seqused_cmp_kv, cmp_residual_kv
-    if cmp_ratio < 1:
-        raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
-    if seqused_cmp_kv is None:
-        if torch.is_tensor(seqused_ori_kv):
-            seqused_cmp_kv = seqused_ori_kv // cmp_ratio
-        else:
-            seqused_cmp_kv = [value // cmp_ratio for value in seqused_ori_kv]
-    if cmp_residual_kv is None:
-        if torch.is_tensor(seqused_ori_kv):
-            cmp_residual_kv = seqused_ori_kv % cmp_ratio
-        else:
-            cmp_residual_kv = [value % cmp_ratio for value in seqused_ori_kv]
-    return seqused_cmp_kv, cmp_residual_kv
 
 
 def resolve_query_actual_lengths(layout_q, batch_size, sequence_length, seqused_q):
@@ -1746,63 +1717,9 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     batch_consistency = params.get("batch_consistency", False)
     template_mode = params.get("template_mode")
 
-    # 路由到各算子的逻辑。必须先于Tensor转换和压缩长度推导执行，
-    # 否则SWA会从共享参数中生成无效的cmp_kv相关Tensor。
-    template_idx = 0
-    mapping = {"SWA": 0, "HCA": 1, "CSA": 2, "ORI_SPARSE": 3, "ORI_CMP_SPARSE": 4}
-    if template_mode is not None and template_mode in mapping:
-        template_run_mode = template_mode
-        template_idx = mapping[template_mode]
-        if template_mode == "SWA":
-            cmp_ratio = None
-            K1 = None
-            K = None
-        elif template_mode == "HCA":
-            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-            K1 = None
-            K = None
-        elif template_mode == "CSA":
-            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-            K = int(K) if K is not None else None
-        elif template_mode == "ORI_SPARSE":
-            cmp_ratio = 1
-            K1 = int(K1) if K1 is not None else None
-            K = None
-        elif template_mode == "ORI_CMP_SPARSE":
-            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-            K1 = int(K1) if K1 is not None else None
-            K = int(K) if K is not None else None
-    else:
-        if K is None or K == ["None"]:
-            if cmp_ratio is None:
-                template_idx = 0  # SWA
-                template_run_mode = "SWA"
-            else:
-                template_idx = 1  # HCA
-                template_run_mode = "HCA"
-                cmp_ratio = int(cmp_ratio)
-        else:
-            template_idx = 2  # CSA
-            template_run_mode = "CSA"
-            cmp_ratio = 1 if cmp_ratio is None else int(cmp_ratio)
-            K = int(K)
-
     # 支持外部指定topk_length
     ori_topk_length_override = params.get("ori_topk_length", None)
     cmp_topk_length_override = params.get("cmp_topk_length", None)
-
-    if template_idx == 0:
-        # SWA only consumes ori_kv. Do not materialize or retain any compressed-KV
-        # tensor/shape metadata, even when it was supplied by a shared case source.
-        cmp_mask_mode = 0
-        cmp_kv_type = None
-        T3 = None
-        block_num2 = None
-        block_size2 = None
-        cu_seqlens_cmp_kv = None
-        seqused_cmp_kv = None
-        cmp_residual_kv = None
-        cmp_topk_length_override = None
     if (
         isinstance(ori_topk_length_override, list)
         and len(ori_topk_length_override) == 1
@@ -1925,10 +1842,59 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
+    # 路由到三个算子的逻辑：
+    template_idx = 0
+
+    mapping = {"SWA": 0, "HCA": 1, "CSA": 2, "ORI_SPARSE": 3, "ORI_CMP_SPARSE": 4}
+    if template_mode is not None and template_mode in mapping:
+        template_run_mode = template_mode
+        template_idx = mapping[template_mode]
+        if template_mode == "SWA":
+            cmp_ratio = None
+            K1 = None
+            K = None
+        elif template_mode == "HCA":
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K1 = None
+            K = None
+        elif template_mode == "CSA":
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K = int(K) if K is not None else None
+        elif template_mode == "ORI_SPARSE":
+            cmp_ratio = 1
+            K1 = int(K1) if K1 is not None else None
+            K = None
+        elif template_mode == "ORI_CMP_SPARSE":
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K1 = int(K1) if K1 is not None else None
+            K = int(K) if K is not None else None
+    else:
+        # TODO 删除这部分逻辑 替换所有template_idx
+        if K is None or K == ["None"]:
+            if cmp_ratio is None:
+                template_idx = 0  # SWA
+                template_run_mode = "SWA"
+            else:
+                template_idx = 1  # HCA
+                template_run_mode = "HCA"
+                cmp_ratio = int(cmp_ratio)
+        else:
+            template_idx = 2  # CSA
+            template_run_mode = "CSA"
+            if cmp_ratio == None:
+                cmp_ratio = 1
+            else:
+                cmp_ratio = int(cmp_ratio)
+            K = int(K)
+
     if template_idx in (1, 2, 4):
-        seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
-            seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-        )
+        if layout_kv == "TND" and cu_seqlens_cmp_kv is None:
+            raise ValueError("cu_seqlens_cmp_kv must be provided for TND cmp_kv")
+        if layout_kv != "TND" and seqused_cmp_kv is None:
+            raise ValueError("seqused_cmp_kv must be provided for BSND/PA_BBND cmp_kv")
+        if cmp_mask_mode == 3 and cmp_residual_kv is None:
+            raise ValueError("cmp_residual_kv must be provided when cmp_mask_mode is 3")
+
     print("template_run_mode: ", template_run_mode)
     if layout_kv == "PA_BBND":
         block_size1, block_num1 = int(block_size1), int(block_num1)
@@ -1954,8 +1920,6 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             seqused_q,
             cu_seqlens_ori_kv,
             seqused_ori_kv,
-            seqused_cmp_kv,
-            cmp_residual_kv,
             ori_mask_mode,
             ori_sparse_indices_mode,
             ori_kv_topk_mode,
@@ -1981,9 +1945,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             cmp_kv_type,
             B,
             S1,
-            S2,
             T1,
-            T2,
             T3,
             N2,
             D,
@@ -1992,9 +1954,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             block_size2,
             cu_seqlens_q,
             seqused_q,
-            cu_seqlens_ori_kv,
             cu_seqlens_cmp_kv,
-            seqused_ori_kv,
             seqused_cmp_kv,
             cmp_residual_kv,
             cmp_ratio,
