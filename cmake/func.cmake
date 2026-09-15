@@ -554,7 +554,10 @@ function(add_ops_src_copy)
         if (NOT TARGET ${OPS_UTILS_INC_KERNEL_TARGET})
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
-            set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
+            # A dependency switch must refresh packaged headers even when the
+            # selected source files have older mtimes than the previous stamp.
+            string(SHA256 UTILS_SOURCE_KEY "${BLAZE}|${OPTENSOR_SOURCE_REV}|${TENSOR_API}|${TENSOR_API_REV}")
+            set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy_${UTILS_SOURCE_KEY}.stamp")
             file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS
                 ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*

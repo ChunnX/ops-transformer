@@ -9,12 +9,39 @@
 # ----------------------------------------------------------------------------
 set(OPTENSOR_TAG_ID de3bf6f59b357d6feae7683025557383067b803a)
 
-if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
-  get_filename_component(OPTENSOR_SOURCE_PATH
-                         ${PROJECT_SOURCE_DIR}/../ops-tensor REALPATH)
+# A sibling checkout belongs to its developer. Reuse it only when its Blaze
+# commit and Tensor API gitlink are the exact locked pair; never switch it.
+set(OPTENSOR_USE_LOCAL_SOURCE FALSE)
+get_filename_component(OPTENSOR_LOCAL_SOURCE "${PROJECT_SOURCE_DIR}/../ops-tensor" ABSOLUTE)
+if(EXISTS "${OPTENSOR_LOCAL_SOURCE}/.git")
+  execute_process(COMMAND git -c safe.directory=${OPTENSOR_LOCAL_SOURCE} rev-parse HEAD
+                  WORKING_DIRECTORY "${OPTENSOR_LOCAL_SOURCE}"
+                  RESULT_VARIABLE OPTENSOR_LOCAL_RESULT OUTPUT_VARIABLE OPTENSOR_LOCAL_REV
+                  OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  execute_process(COMMAND git -c safe.directory=${OPTENSOR_LOCAL_SOURCE} ls-tree HEAD include/tensor_api
+                  WORKING_DIRECTORY "${OPTENSOR_LOCAL_SOURCE}"
+                  RESULT_VARIABLE OPTENSOR_LOCAL_GITLINK_RESULT OUTPUT_VARIABLE OPTENSOR_LOCAL_GITLINK
+                  OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  execute_process(COMMAND git -c safe.directory=${OPTENSOR_LOCAL_SOURCE}/include/tensor_api rev-parse HEAD
+                  WORKING_DIRECTORY "${OPTENSOR_LOCAL_SOURCE}/include/tensor_api"
+                  RESULT_VARIABLE OPTENSOR_LOCAL_TENSOR_RESULT OUTPUT_VARIABLE OPTENSOR_LOCAL_TENSOR_REV
+                  OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  if(OPTENSOR_LOCAL_RESULT EQUAL 0 AND OPTENSOR_LOCAL_GITLINK_RESULT EQUAL 0 AND
+     OPTENSOR_LOCAL_TENSOR_RESULT EQUAL 0 AND OPTENSOR_LOCAL_REV STREQUAL OPTENSOR_TAG_ID AND
+     OPTENSOR_LOCAL_GITLINK MATCHES "^160000 commit ${OPTENSOR_LOCAL_TENSOR_REV}[\t ]+include/tensor_api" AND
+     EXISTS "${OPTENSOR_LOCAL_SOURCE}/include/tensor_api/include/tensor_api/tensor.h")
+    set(OPTENSOR_USE_LOCAL_SOURCE TRUE)
+  else()
+    message(STATUS "Ignoring unlocked or incomplete sibling ops-tensor: ${OPTENSOR_LOCAL_SOURCE} "
+                   "(HEAD=${OPTENSOR_LOCAL_REV}, required=${OPTENSOR_TAG_ID}); using the managed dependency")
+  endif()
+endif()
+
+if(OPTENSOR_USE_LOCAL_SOURCE)
+  get_filename_component(OPTENSOR_SOURCE_PATH "${OPTENSOR_LOCAL_SOURCE}" REALPATH)
   message(STATUS "Find ops-tensor source dir: ${OPTENSOR_SOURCE_PATH}")
   get_filename_component(TENSOR_API
-                         ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc REALPATH)
+                         ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
                          ${CANN_3RD_LIB_PATH}/ops-tensor REALPATH)
@@ -66,7 +93,7 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
       OUTPUT_QUIET
     )
     if(NOT SUBMODULE_RESULT EQUAL 0)
-      message(WARNING "ops-tensor submodule update failed: ${SUBMODULE_ERROR}")
+      message(FATAL_ERROR "ops-tensor submodule update failed: ${SUBMODULE_ERROR}")
     else()
       message(STATUS "ops-tensor submodule update")
     endif()
@@ -134,3 +161,29 @@ else()
   endif()
 
 endif()
+
+# Both the copy rules and the include paths must consume this exact pair.
+# Do not fall back to the CANN-installed Tensor API when the submodule is absent.
+execute_process(COMMAND git -c safe.directory=${OPTENSOR_SOURCE_PATH} rev-parse HEAD
+                WORKING_DIRECTORY "${OPTENSOR_SOURCE_PATH}"
+                RESULT_VARIABLE OPTENSOR_REV_RESULT OUTPUT_VARIABLE OPTENSOR_SOURCE_REV
+                OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+execute_process(COMMAND git -c safe.directory=${OPTENSOR_SOURCE_PATH} ls-tree HEAD include/tensor_api
+                WORKING_DIRECTORY "${OPTENSOR_SOURCE_PATH}"
+                RESULT_VARIABLE TENSOR_GITLINK_RESULT OUTPUT_VARIABLE TENSOR_GITLINK ERROR_QUIET)
+execute_process(COMMAND git -c safe.directory=${TENSOR_API} rev-parse HEAD WORKING_DIRECTORY "${TENSOR_API}"
+                RESULT_VARIABLE TENSOR_REV_RESULT OUTPUT_VARIABLE TENSOR_API_REV
+                OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT OPTENSOR_REV_RESULT EQUAL 0 OR NOT OPTENSOR_SOURCE_REV STREQUAL OPTENSOR_TAG_ID OR
+   NOT TENSOR_GITLINK_RESULT EQUAL 0 OR NOT TENSOR_REV_RESULT EQUAL 0 OR
+   NOT TENSOR_GITLINK MATCHES "^160000 commit ${TENSOR_API_REV}[\t ]+include/tensor_api")
+  message(FATAL_ERROR "Blaze/Tensor API revision mismatch: ops-tensor=${OPTENSOR_SOURCE_REV} "
+                      "(required ${OPTENSOR_TAG_ID}), tensor_api=${TENSOR_API_REV}, gitlink=${TENSOR_GITLINK}")
+endif()
+foreach(TENSOR_API_REQUIRED_DIR include/tensor_api impl/tensor_api include/c_api impl/c_api)
+  if(NOT IS_DIRECTORY "${TENSOR_API}/${TENSOR_API_REQUIRED_DIR}")
+    message(FATAL_ERROR "Incomplete Tensor API submodule: ${TENSOR_API}/${TENSOR_API_REQUIRED_DIR}")
+  endif()
+endforeach()
+message(STATUS "Blaze dependency: ${OPTENSOR_SOURCE_PATH}, revision=${OPTENSOR_SOURCE_REV}")
+message(STATUS "Tensor API dependency: ${TENSOR_API}, revision=${TENSOR_API_REV}")
