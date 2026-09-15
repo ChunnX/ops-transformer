@@ -38,6 +38,10 @@ public:
         numTokens_ = tiling_->numTokens;
         numBlocks_ = tiling_->numBlocks;
         hiddenSize_ = tiling_->hiddenSize;
+        blockResStride0_ = tiling_->blockResStride0;
+        if (blockResStride0_ <= 0) {
+            blockResStride0_ = numBlocks_ * hiddenSize_;
+        }
         blockCount_ = tiling_->blockCount;
         normEps_ = tiling_->normEps;
         invHiddenSize_ = tiling_->invHiddenSize;
@@ -167,7 +171,7 @@ private:
         for (uint32_t n = 0; n < blockCount_; ++n) {
             LocalTensor<D_IN> inLocal;
             if (n < numBlocks_) {
-                const int64_t blockBase = tokenIdx * numBlocks_ * hiddenSize_;
+                const int64_t blockBase = tokenIdx * blockResStride0_;
                 inLocal = CopyInRow(blockResGm_, blockBase + static_cast<int64_t>(n) * hiddenSize_);
             } else {
                 inLocal = CopyInRow(partialBlockGm_, tokenIdx * hiddenSize_);
@@ -307,6 +311,7 @@ private:
     int64_t numTokens_{0};
     int64_t numBlocks_{0};
     int64_t hiddenSize_{0};
+    int64_t blockResStride0_{0};
     uint32_t hiddenSizeAlignBf16_{0};
     uint32_t hiddenSizeAlignFp32_{0};
     int64_t blockCount_{0};

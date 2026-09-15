@@ -49,6 +49,90 @@ constexpr uint32_t ELEM_PER_BLK_FP32 = 8U;
 constexpr uint32_t SCALAR_LOCAL_ELEMS = 8U;
 constexpr uint32_t MAX_NUM_BLOCKS = 100U;
 constexpr uint32_t STAGING_ALIGN_BYTES = 512U;
+constexpr size_t DIM_NUM_ONE = 1;
+
+static uint64_t GetStorageShapeStride0(const gert::Shape &storageShape)
+{
+    if (storageShape.GetDimNum() <= DIM_NUM_ONE) {
+        return 0ULL;
+    }
+
+    uint64_t stride0 = 1ULL;
+    for (size_t i = 1; i < storageShape.GetDimNum(); ++i) {
+        int64_t dim = storageShape.GetDim(i);
+        if (dim <= 0) {
+            return 0ULL;
+        }
+        stride0 *= static_cast<uint64_t>(dim);
+    }
+    return stride0;
+}
+
+template <typename StrideT>
+static auto GetStride0FromStrideObject(const StrideT &stride, int) -> decltype(stride.GetDimNum(), stride.GetStride(0),
+                                                                               uint64_t())
+{
+    if (stride.GetDimNum() <= 0) {
+        return 0ULL;
+    }
+    int64_t stride0 = stride.GetStride(0);
+    return stride0 > 0 ? static_cast<uint64_t>(stride0) : 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideObject(const StrideT &, ...)
+{
+    return 0ULL;
+}
+
+template <typename StrideT>
+static auto GetStride0FromStrideScalar(const StrideT &stride, int) -> decltype(stride > 0,
+                                                                               static_cast<uint64_t>(stride))
+{
+    return stride > 0 ? static_cast<uint64_t>(stride) : 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideScalar(const StrideT &, ...)
+{
+    return 0ULL;
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideElement(const StrideT &stride)
+{
+    uint64_t stride0 = GetStride0FromStrideScalar(stride, 0);
+    if (stride0 > 0) {
+        return stride0;
+    }
+    return GetStride0FromStrideObject(stride, 0);
+}
+
+template <typename StrideT>
+static uint64_t GetStride0FromStrideArray(const StrideT *stride)
+{
+    if (stride == nullptr) {
+        return 0ULL;
+    }
+    return GetStride0FromStrideElement(stride[0]);
+}
+
+template <typename ContextT>
+static auto TryGetInputViewStride0(ContextT *context, uint32_t inputIndex,
+                                   int) -> decltype(context->InputIsView(inputIndex),
+                                                    context->GetInputStride(inputIndex), uint64_t())
+{
+    if (!context->InputIsView(inputIndex)) {
+        return 0ULL;
+    }
+    return GetStride0FromStrideArray(context->GetInputStride(inputIndex));
+}
+
+template <typename ContextT>
+static uint64_t TryGetInputViewStride0(ContextT *, uint32_t, ...)
+{
+    return 0ULL;
+}
 
 static inline uint32_t AlignUpU32(uint32_t val, uint32_t align)
 {
@@ -378,6 +462,30 @@ uint32_t BlockAttentionResidualsTiling::DtypeElemsPerBlk() const
     return (inputDtype_ == ge::DT_FLOAT) ? ELEM_PER_BLK_FP32 : ELEM_PER_BLK_BF16;
 }
 
+uint64_t BlockAttentionResidualsTiling::GetBlockResStride0() const
+{
+    uint64_t stride0 = TryGetInputViewStride0(context_, BLOCK_RES_INDEX, 0);
+    if (stride0 > 0) {
+        return stride0;
+    }
+
+    const auto *blockShapeHolder = context_->GetInputShape(BLOCK_RES_INDEX);
+    if (blockShapeHolder == nullptr) {
+        return 0ULL;
+    }
+    const gert::Shape &storageShape = blockShapeHolder->GetStorageShape();
+    stride0 = GetStorageShapeStride0(storageShape);
+    const gert::Shape &originShape = blockShapeHolder->GetOriginShape();
+    if (storageShape.GetDimNum() == BLOCK_RES_DIM && originShape.GetDimNum() == BLOCK_RES_DIM &&
+        storageShape.GetDim(1) != originShape.GetDim(1)) {
+        OP_LOGW(context_->GetNodeName(),
+                "Cannot get block_res stride0 from tiling context stride APIs. Use storage shape to infer "
+                "stride0(%lu) for [T,k,H]->[T,N,H] view.",
+                static_cast<unsigned long>(stride0));
+    }
+    return stride0;
+}
+
 ge::graphStatus BlockAttentionResidualsTiling::AnalyzeShapes()
 {
     const auto &partialBlockShape = context_->GetInputShape(PARTIAL_BLOCK_INDEX)->GetOriginShape();
@@ -402,6 +510,16 @@ ge::graphStatus BlockAttentionResidualsTiling::AnalyzeShapes()
     tilingData_.numTokens = numTokens;
     tilingData_.hiddenSize = hiddenSize;
     tilingData_.numBlocks = numBlocks;
+
+    const uint64_t blockResStride0 = GetBlockResStride0();
+    const uint64_t contigStride0 = static_cast<uint64_t>(numBlocks) * static_cast<uint64_t>(hiddenSize);
+    OP_CHECK_IF(
+        blockResStride0 == 0ULL || blockResStride0 < contigStride0 ||
+            (hiddenSize > 0 && (blockResStride0 % static_cast<uint64_t>(hiddenSize) != 0ULL)),
+        OP_LOGE(context_->GetNodeName(), "block_res stride0(%lu) invalid, require stride0>=N*H(%lu) and stride0%%H==0",
+                static_cast<unsigned long>(blockResStride0), static_cast<unsigned long>(contigStride0)),
+        return ge::GRAPH_FAILED);
+    tilingData_.blockResStride0 = static_cast<int64_t>(blockResStride0);
 
     OP_CHECK_IF(blockShape.GetDim(0) != tilingData_.numTokens,
                 OP_LOGE(context_->GetNodeName(), "T mismatch between partial_block and block_res"),
@@ -477,9 +595,10 @@ ge::graphStatus BlockAttentionResidualsTiling::GetNeedBackward()
 
 void BlockAttentionResidualsTiling::PrintTilingData()
 {
-    OP_LOGD(context_->GetNodeName(), "numTokens=%ld numBlocks=%ld hiddenSize=%ld tokensPerCore=%ld usedCoreNum=%u",
-            tilingData_.numTokens, tilingData_.numBlocks, tilingData_.hiddenSize, tilingData_.tokensPerCore,
-            tilingData_.usedCoreNum);
+    OP_LOGD(context_->GetNodeName(),
+            "numTokens=%ld numBlocks=%ld hiddenSize=%ld blockResStride0=%ld tokensPerCore=%ld usedCoreNum=%u",
+            tilingData_.numTokens, tilingData_.numBlocks, tilingData_.hiddenSize, tilingData_.blockResStride0,
+            tilingData_.tokensPerCore, tilingData_.usedCoreNum);
     OP_LOGD(context_->GetNodeName(),
             "blockCount=%ld wsSizePerToken=%lu normEps=%f tilingKey=%lu N_ub_max=%u "
             "needBackward=%u stagingBytes=%u tokensPerFlush=%u elemsPerToken=%u",

@@ -167,6 +167,62 @@ static aclnnStatus CheckParams(BlockAttentionResidualsParams &params)
     return ACLNN_SUCCESS;
 }
 
+// 仅支持 [T,k,H] 连续存储后沿 block 维切成 [T,N,H]：stride 为 [k*H, H, 1]，k>=N。
+// 该场景 kernel 用 token stride0=k*H 直接读，不转 Contiguous。
+static bool IsBlockResTokenSlicedView(const aclTensor *blockRes)
+{
+    if (blockRes == nullptr || IsContiguous(blockRes)) {
+        return false;
+    }
+    const auto &viewShape = blockRes->GetViewShape();
+    const auto &storageShape = blockRes->GetStorageShape();
+    const auto &viewStrides = blockRes->GetViewStrides();
+    if (viewShape.GetDimNum() != BLOCK_RES_DIM_NUM || storageShape.GetDimNum() != BLOCK_RES_DIM_NUM) {
+        return false;
+    }
+    if (viewStrides.size() < BLOCK_RES_DIM_NUM) {
+        return false;
+    }
+    const int64_t T = viewShape.GetDim(DIM_INDEX_ZERO);
+    const int64_t N = viewShape.GetDim(DIM_INDEX_ONE);
+    const int64_t H = viewShape.GetDim(DIM_INDEX_TWO);
+    if (T < 0 || N < 1 || H <= 0) {
+        return false;
+    }
+    const int64_t stride0 = viewStrides[DIM_INDEX_ZERO];
+    const int64_t stride1 = viewStrides[DIM_INDEX_ONE];
+    const int64_t stride2 = viewStrides[DIM_INDEX_TWO];
+    if (stride2 != 1 || stride1 != H || stride0 < N * H || (stride0 % H) != 0) {
+        return false;
+    }
+    const int64_t storageT = storageShape.GetDim(DIM_INDEX_ZERO);
+    const int64_t k = storageShape.GetDim(DIM_INDEX_ONE);
+    const int64_t storageH = storageShape.GetDim(DIM_INDEX_TWO);
+    return storageT == T && storageH == H && k >= N && k * H == stride0;
+}
+
+static const aclTensor *NormalizeBlockRes(const aclTensor *blockRes, aclOpExecutor *executor)
+{
+    if (blockRes == nullptr || executor == nullptr) {
+        return nullptr;
+    }
+    if (IsContiguous(blockRes)) {
+        return l0op::Contiguous(blockRes, executor);
+    }
+    if (!IsBlockResTokenSlicedView(blockRes)) {
+        return l0op::Contiguous(blockRes, executor);
+    }
+    auto strideView = executor->CreateView(blockRes, blockRes->GetViewShape(), blockRes->GetStorageShape(),
+                                           blockRes->GetViewStrides(), blockRes->GetViewOffset());
+    if (strideView == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for sliced block_res [T,k,H]->[T,N,H] failed.");
+        return nullptr;
+    }
+    OP_LOGD("Keep block_res [T,k,H]->[T,N,H] sliced view without Contiguous, stride0=%ld.",
+            blockRes->GetViewStrides()[DIM_INDEX_ZERO]);
+    return strideView;
+}
+
 static aclnnStatus PreProcess(BlockAttentionResidualsParams &params)
 {
     params.partialBlock->SetOriginalShape(params.partialBlock->GetViewShape());
@@ -211,7 +267,7 @@ aclnnStatus aclnnBlockAttentionResidualsGetWorkspaceSize(const aclTensor *partia
 
     auto partialBlock_ = l0op::Contiguous(partialBlock, uniqueExecutor.get());
     CHECK_RET(partialBlock_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto blockRes_ = l0op::Contiguous(blockRes, uniqueExecutor.get());
+    auto blockRes_ = NormalizeBlockRes(blockRes, uniqueExecutor.get());
     CHECK_RET(blockRes_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto projWeight_ = l0op::Contiguous(projWeight, uniqueExecutor.get());
     CHECK_RET(projWeight_ != nullptr, ACLNN_ERR_INNER_NULLPTR);

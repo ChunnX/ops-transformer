@@ -124,6 +124,7 @@ cann_ops_transformer.block_attention_residuals(
 - 主路径 dtype 必须一致，支持 float16 / bfloat16 / float32。
 - shape 要求：`T >= 0`，`H >= 0`，`1 <= N <= 100`。`T == 0` 或 `H == 0` 时返回对应 shape 的空输出。
 - `block_res.shape[0]`、`block_res.shape[2]` 必须分别等于 `partial_block` 的 $T$、$H$；`proj_weight` 最后一维与 `norm_weight` 长度必须等于 $H$。
+- `block_res` 支持由连续存储 `[T, k, H]`（$k \ge N$）沿 block 维切片得到的非连续 view `[T, N, H]`，算子按 token 维 stride $kH$ 直接读取。
 - `valid_block_num` 为可选预留属性，默认值为 `-1`，当前仅支持传入 `-1`，不参与计算。
 - `norm_eps` 必须为有限正数。
 - `partial_block` 或 `block_res` 含 `NaN`、`Inf`，或平方、乘法及累加发生溢出时，结果可能包含 `NaN` 或 `Inf`。

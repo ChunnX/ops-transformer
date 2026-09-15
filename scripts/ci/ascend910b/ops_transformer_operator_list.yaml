@@ -26,6 +26,7 @@ operator_group_1:
   - grouped_matmul
   - grouped_matmul_swiglu_quant
   - block_attention_residuals_grad
+  - block_attention_residuals
 operator_group_2:
   - mla_prolog_v2
   - mla_prolog_v3

@@ -36,6 +36,7 @@ struct alignas(BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN) BlockAttentionResidualsTi
     uint32_t tokensPerFlush; // staging 可攒 token 数；false 时为 0
     uint32_t elemsPerToken;  // 2*blockCount；false 时可写 0
     int64_t hiddenSizeChunk; // HSLICE 分支的 h 切块大小；非 HSLICE 时可为 0
+    int64_t blockResStride0; // block_res token 维元素 stride；连续时为 N*H，[T,k,H]->[T,N,H] 切片时为 k*H
 };
 #pragma pack(pop)
 #undef BLOCK_ATTENTION_RESIDUALS_TILING_ALIGN
