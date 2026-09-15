@@ -139,7 +139,7 @@ def _npu_all_to_all_quant_matmul(
         x2_scale_dtype,
         y_dtype,
         comm_mode,
-        precision_mode,
+        precision_mode if precision_mode is not None else 0,
     )
     return result
 
