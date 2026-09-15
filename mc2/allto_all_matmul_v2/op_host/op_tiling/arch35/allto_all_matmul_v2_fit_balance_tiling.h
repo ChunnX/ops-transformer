@@ -10,27 +10,16 @@
 
 /*!
  * \file allto_all_matmul_v2_fit_balance_tiling.h
- * \brief AlltoAllMatmulV2 fit-balance 通信切分：算子特有逻辑与拟合数据的唯一维护点
+ * \brief AlltoAllMatmulV2 fit-balance 算子侧唯一维护点（与其他算子同构格式, 迁移方案 §4.9）
  *
- * 架构约定:
- *   - 与算子无关的公共决策算法（时延模型/wave 推导/NoCut 与平衡门控/k 搜索/
- *     尾轮合并）在 apace/tiling/fit_balance_tiling.h，对所有算子复用;
- *   - 本文件只保留本算子特有的内容:
- *       公式: 每轮每行通信字节数(MX data+scale, fp8/fp4)、AllToAll fanout、
- *             总 K 折算、双通道 CommTilingData 组装;
- *       数据: 通信/计算拟合系数与阈值常量（标定完成后回填）。
- *   - op tiling 侧把常量与运行时 shape 打包成 AllToAllFitBalanceInput，
- *     调用本文件的 Schedule() 拿到切分结果，再经 FillCommTilingData() 写回 tilingData。
+ * 内容分区:
+ *   一、客户标定常量区 —— 重新标定后只改本区的 constexpr 值;
+ *   二、标定表组装 —— 仅包装上方常量, 无魔数;
+ *   三、开关与数据就绪 —— 环境变量开关(保留已发布语义) + 标定数据就绪检查;
+ *   四、算子流量公式与组装 —— BuildScheduleInput/Schedule/FillCommTilingData。
  *
- * 数据来源(标定完成后回填, 占位值 <= 0 的档位自动回退 CoreOccupancyFirstTiling 路径):
- *   COMM_FIT_ROWS / ROUND_COST_ROWS <-- 标定计划表A / 表C (按 rankDim)
- *   EFF_MAC_ROWS                     <-- 标定计划表B (按 dtype × precisionMode 分档:
- *                                       mode 0/1 同档(REMOTE/DEFERRED_SYNC, 总 MACs 相同),
- *                                       mode 2 单独一档(GM 累加: local 前置 + atomiadd + 双写 GM 开销))
- *   FB_* 阈值                        <-- 标定计划表E
- * 当前状态: 标卡 4P 已标定并默认启用; 8P 未标定自动回退。
- * 标定计划文档: tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_CALIBRATION_PLAN.md
- * 标定操作手册: tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_CALIBRATION_SKILL.md
+ * 公共引擎在 apace/tiling/fit_balance_tiling.h 三、3.2（wave-packing 求解器, URMA 分支）。
+ * 本算子即 aiv_urma 实现（kernel 仅 URMA）, tiling 无条件走 fit-balance 路径。
  */
 
 #ifndef ALL_TO_ALL_MATMUL_V2_FIT_BALANCE_TILING_H
@@ -44,83 +33,72 @@
 namespace MC2Tiling {
 namespace fit_balance {
 
+namespace fb = apace::fit_balance; // fit-balance 家族公共层
+
 // ============================================================================
-// 拟合数据与阈值常量（唯一维护点）
-// 标卡 4P（Ascend950PR ×4, CANN 9.2.0, usedCoreNum=28, waveM=512）已于
-// 2026-09-09~10 完成全量标定, 结果见 tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_TILING_PLAN.md §6。
+// 一、客户标定常量区 —— 重新标定后只改本区，各常量的物理含义/单位/来源见行尾注释
+//     （当前值 2026-09-09~10 标定, 标定环境与口径见
+//      tiling-plan/ALLTO_ALL_MATMUL_V2_FIT_BALANCE_TILING_PLAN.md 表0/表A/表B/表C）
 // ============================================================================
 
-// ====== 通信拟合数据: y(us) = slope * x(MB) + intercept, x 为单轮单 rank 总发送量 ======
-// fp4 通信复用 fp8 拟合（按 MB 计与 dtype 无关, 4P 验证点偏差 -0.6%/-0.2%）。
-// 注: 截距/每轮开销含全体核参与同步的成分, 与环境核数相关。核数守卫暂未启用——
-// 待与测试侧确认限核机制(SetCoreLimit 仅裁剪计算分核视野, 通信侧 SyncAll/URMA
-// 的参与核数不变, 由此限核模拟 28 核时通信模型会失真; 平台级限核才可复用标定),
-// 确认后再决定守卫取值(平台核数 vs SWAT 收到的核数)。
-struct CommFitRow {
-    uint32_t rankDim;
-    double slopeUsPerMb;
-    double interceptUs;
-};
-static const CommFitRow COMM_FIT_ROWS[] = {
-    {4U, 7.724, 8.91}, // 标定表A-4P@28核: R²=1.0000, 数据范围 [0.387, 99.0] MB, 有效带宽≈0.13MB/μs 恒定
-    {8U, 0.0, 0.0},    // TODO(标定表A-8P): 无 8P 环境, 未标定(该档位自动回退)
+// ---- 1. 通信拟合 · URMA 引擎（4P 已标定; URMA 无 AICPU/CCU 之分, 不按模式拆分）----
+// 标定产出: 单轮通信时延 y(us) = 斜率·x + 截距, x = 单轮单 rank 总发送量(MB)
+//          = (rankDim-1) × mSpan × 每行字节数(MX data+scale 合并)
+constexpr uint32_t A2A_V2_COMM_4P_RANK_DIM = 4;
+constexpr double A2A_V2_COMM_4P_SLOPE_US_PER_MB = 7.724; // 拟合斜率 (us/MB), R²=1.0000
+constexpr double A2A_V2_COMM_4P_INTERCEPT_US = 8.91;     // 拟合截距 (us), 含每轮同步固定开销
+constexpr uint32_t A2A_V2_COMM_8P_RANK_DIM = 8;          // 8P 占位(未标定): 行已接线, slope<=0 时
+constexpr double A2A_V2_COMM_8P_SLOPE_US_PER_MB = 0;     // DataReady=false 自动回退 CoreOccupancyFirst
+constexpr double A2A_V2_COMM_8P_INTERCEPT_US = 0;        // TODO(8P标定): 填实测斜率/截距即生效
+
+// ---- 2. 每轮通信固定开销（轮次上限推导用: maxRounds = totalComm/roundCost）----
+constexpr double A2A_V2_ROUND_COST_4P_US = 4.45;      // 标定表C: R=2/4/8/16 严格线性回归
+constexpr double A2A_V2_ROUND_COST_8P_US = 10.0;      // 未标定缺省值
+constexpr double A2A_V2_ROUND_COST_DEFAULT_US = 10.0; // 查表未命中回退值
+
+// ---- 3. matmul 有效算力（MACs/cycle, 含 cube 利用率; 按 dtype × precisionMode 分档）----
+// mode 0/1 同档(REMOTE/DEFERRED_SYNC 总 MACs 与流水同构); mode 2 单独一档(GM 累加额外开销)
+constexpr double A2A_V2_EFFMAC_FP8_MODE01 = 7490;  // 标定表B-01
+constexpr double A2A_V2_EFFMAC_FP8_MODE2 = 7213;   // 标定表B-2
+constexpr double A2A_V2_EFFMAC_FP4_MODE01 = 14064; // 约为 FP8 的 1.88×
+constexpr double A2A_V2_EFFMAC_FP4_MODE2 = 14055;
+
+// ---- 4. 决策阈值 ----
+constexpr double A2A_V2_CYCLE_PER_US = 1689.6;    // A5 频率: 1.65 cycle/ns
+constexpr double A2A_V2_BALANCE_RATIO = 1.2;      // 通算比低于此值不干预(k=1, 轮次天然贴合计算波)
+constexpr double A2A_V2_TINY_TAIL_RATIO = 0.5;    // 尾轮低于 head×此比例时并入最后一个头轮
+constexpr double A2A_V2_TAIL_MERGE_MARGIN = 0.02; // 尾轮合并定价容差: mergedEst ≤ est×(1+此值)才放行
+constexpr bool A2A_V2_ENABLE_TAIL_MERGE = true;   // 尾轮合并(需 kernel 侧显式轮数, urma impl 已适配)
+constexpr uint64_t A2A_V2_MAX_TILE_CNT = 16;      // 通信轮次硬上限(FFTS 队列限制)
+constexpr uint64_t A2A_V2_MIN_ROUNDS = 3;         // 轮次下限
+
+// ============================================================================
+// 二、标定表组装（勿动: 仅包装上方常量; 新增标定形态时按同 schema 加行）
+// ============================================================================
+
+static const fb::UrmaCommFitRow COMM_FIT_ROWS[] = {
+    {A2A_V2_COMM_4P_RANK_DIM, A2A_V2_COMM_4P_SLOPE_US_PER_MB, A2A_V2_COMM_4P_INTERCEPT_US},
+    {A2A_V2_COMM_8P_RANK_DIM, A2A_V2_COMM_8P_SLOPE_US_PER_MB, A2A_V2_COMM_8P_INTERCEPT_US},
 };
 
-// ====== 每轮通信固定开销(用于轮次上限推导) ======
-struct RoundCostRow {
-    uint32_t rankDim;
-    double roundCostUs;
-};
-static const RoundCostRow ROUND_COST_ROWS[] = {
-    {4U, 4.45}, // 标定表C-4P: R=2/4/8/16 严格线性; 校验 b(表A)=8.91 ≈ 截距4.68+b_round(差2.6%)
-    {8U, 10.0}, // TODO(标定表C-8P): 未标定, 缺省值
+static const fb::RoundCostRow ROUND_COST_ROWS[] = {
+    {A2A_V2_COMM_4P_RANK_DIM, A2A_V2_ROUND_COST_4P_US},
+    {A2A_V2_COMM_8P_RANK_DIM, A2A_V2_ROUND_COST_8P_US},
 };
 
-// ====== 计算有效算力(MACs/cycle, 含 cube 利用率) ======
-// 按 dtype × precisionMode 分档: mode 0/1 同档(REMOTE / DEFERRED_SYNC, 总 MACs 与流水结构
-// 相同, mode 1 的 local 段提前只让实际重叠更好, 模型保守可用); mode 2 单独一档
-// (GM 累加: RunLocalMatmul 前置 + remote 段原子累加 + bias 去除, 存在 MACs 之外的
-// atomiadd/双写 GM 开销, 实测耗时系统性高于纯 MMAD 模型)。
-// precisionMode 含义: 0 = REMOTE 融合(默认), 1 = DEFERRED_SYNC(L0c 累加), 2 = GM 累加。
-struct EffMacRow {
-    bool isFp4;
-    uint32_t precisionMode; // 0/1 一档(填 0), 2 一档(填 2)
-    double effMacPerCycle;
-};
-static const EffMacRow EFF_MAC_ROWS[] = {
-    {false, 0U, 7490.0}, // 标定表B-01: fp8 × mode0/1, 标定用 (n=4096, ka=2048), 离散 14.1%
-    {false, 2U, 7213.0}, // 标定表B-2:  fp8 × mode2(GM 累加), 与 mode0/1 持平(±4%)
-    {true, 0U, 14064.0}, // 标定表B-01: fp4 × mode0/1, 约为 fp8 的 1.88×
-    {true, 2U, 14055.0}, // 标定表B-2:  fp4 × mode2, 与 mode0/1 一致
+static const fb::EffMacRow EFF_MAC_ROWS[] = {
+    {false, 0U, A2A_V2_EFFMAC_FP8_MODE01},
+    {false, 2U, A2A_V2_EFFMAC_FP8_MODE2},
+    {true, 0U, A2A_V2_EFFMAC_FP4_MODE01},
+    {true, 2U, A2A_V2_EFFMAC_FP4_MODE2},
 };
 
-inline double FindEffMac(bool isFp4, uint32_t precisionMode)
-{
-    // mode 0 与 1 共用一档(表 B-01); 归一化后查表, 未命中返回 0 表示缺数据。
-    const uint32_t modeClass = (precisionMode == 2U) ? 2U : 0U;
-    for (const EffMacRow &row : EFF_MAC_ROWS) {
-        if (row.isFp4 == isFp4 && row.precisionMode == modeClass) {
-            return row.effMacPerCycle;
-        }
-    }
-    return 0.0;
-}
+// ============================================================================
+// 三、开关与数据就绪
+// ============================================================================
 
-// ====== 模型与阈值常量 ======
-// 注: 无"总时延下限不切"门控——单轮与多轮由 estTime 竞争决定(首轮通信项即
-// 首块启动延迟), 绝对门限会劣化计算 bound 的小 shape(见 perf 报告 2026-09-12)。
-static const double A5_CYCLE_PER_US = 1689.6;        // A5 频率: 1.65 cycle/ns
-static const double FB_BALANCE_RATIO = 1.2;          // 通算比低于该值不干预(k=1)
-static const double FB_ROUND_COST_DEFAULT_US = 10.0; // roundCost 缺省值
-static const double FB_TINY_TAIL_RATIO = 0.5;        // 尾轮低于 head×该比例时并入最后一个头轮
-static const bool FB_ENABLE_TAIL_MERGE = true;       // 尾轮合并(需 kernel 侧显式轮数, urma impl 已适配)
-static const uint64_t FB_MAX_TILE_CNT = 16UL;        // 通信轮次硬上限
-static const uint64_t FB_MIN_ROUNDS = 3UL;           // 轮次下限
-
-// 环境开关: MC2_ALLTO_ALL_MATMUL_V2_FIT_BALANCE=0 强制关闭(一键回退); 缺省时按标定数据
-// 就绪情况自动启用——数据就绪的 (rankDim, dtype, mode) 档位走 fit-balance, 缺失档位由
-// BuildScheduleInput 返回 false 自动回退 CoreOccupancyFirstTiling。
-// 标定辅助开关 MC2_A2A_V2_CALIB_R1=1 隐含关闭 fit-balance(优先级最高, 保证 R=1 标定口径)。
+// 环境开关: MC2_ALLTO_ALL_MATMUL_V2_FIT_BALANCE=0 强制关闭(一键回退); 缺省按标定数据
+// 就绪情况自动启用。标定辅助开关 MC2_A2A_V2_CALIB_R1=1 隐含关闭(优先级最高, 保证 R=1 标定口径)。
 inline bool IsEnabled()
 {
     const char *r1Env = getenv("MC2_A2A_V2_CALIB_R1");
@@ -131,38 +109,19 @@ inline bool IsEnabled()
     return !((env != nullptr) && (env[0] == '0'));
 }
 
-inline const CommFitRow *FindCommFit(uint32_t rankDim)
-{
-    for (const CommFitRow &row : COMM_FIT_ROWS) {
-        if (row.rankDim == rankDim) {
-            return &row;
-        }
-    }
-    return nullptr;
-}
-
-inline double FindRoundCost(uint32_t rankDim)
-{
-    for (const RoundCostRow &row : ROUND_COST_ROWS) {
-        if (row.rankDim == rankDim) {
-            return row.roundCostUs;
-        }
-    }
-    return FB_ROUND_COST_DEFAULT_US;
-}
-
-// 拟合数据是否就绪(未标定时禁用 fit-balance, 回退现状路径)
+// 拟合数据是否就绪(未标定档位自动回退现状路径)
 inline bool DataReady(uint32_t rankDim, bool isFp4, uint32_t precisionMode)
 {
-    const CommFitRow *row = FindCommFit(rankDim);
+    const fb::UrmaCommFitRow *row =
+        fb::FindUrmaCommFit(COMM_FIT_ROWS, sizeof(COMM_FIT_ROWS) / sizeof(COMM_FIT_ROWS[0]), rankDim);
     if (row == nullptr || row->slopeUsPerMb <= 0.0) {
         return false;
     }
-    return FindEffMac(isFp4, precisionMode) > 0.0;
+    return fb::FindEffMac(EFF_MAC_ROWS, sizeof(EFF_MAC_ROWS) / sizeof(EFF_MAC_ROWS[0]), isFp4, precisionMode) > 0.0;
 }
 
 // ============================================================================
-// 算子特有公式与调度
+// 四、算子流量公式与组装
 // ============================================================================
 
 /*!
@@ -197,16 +156,16 @@ struct AllToAllFitBalanceInput {
     uint64_t usedCoreNum = 1;
 
     // Calibrated models chosen by the op host (see the fitting-data section above).
-    apace::CommLinearModel comm;
-    apace::MatmulTheoryModel mm;
-    apace::FitBalanceConfig cfg;
+    fb::CommLinearModel comm;
+    fb::MatmulTheoryModel mm;
+    fb::FitBalanceConfig cfg;
 };
 
 /*!
  * \brief Scheduling result: the shared cut plus per-channel non-split sizes.
  */
 struct AllToAllFitBalanceResult {
-    apace::FitBalanceCut cut;
+    fb::FitBalanceCut cut;
     uint64_t dataNonSplitAxis = 0;  // bytes per row on the data channel (fp4 packs 2 elements per byte)
     uint64_t scaleNonSplitAxis = 0; // bytes per row on the scale channel
 };
@@ -219,11 +178,14 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
                                uint32_t precisionMode, uint64_t baseM, uint64_t baseN, uint64_t usedCoreNum,
                                AllToAllFitBalanceInput &out)
 {
-    const CommFitRow *row = FindCommFit(rankDim);
+    const fb::UrmaCommFitRow *row =
+        fb::FindUrmaCommFit(COMM_FIT_ROWS, sizeof(COMM_FIT_ROWS) / sizeof(COMM_FIT_ROWS[0]), rankDim);
     if (row == nullptr || row->slopeUsPerMb <= 0.0) {
         return false;
     }
-    if (FindEffMac(isFp4, precisionMode) <= 0.0) {
+    const double effMac =
+        fb::FindEffMac(EFF_MAC_ROWS, sizeof(EFF_MAC_ROWS) / sizeof(EFF_MAC_ROWS[0]), isFp4, precisionMode);
+    if (effMac <= 0.0) {
         return false;
     }
     out = AllToAllFitBalanceInput();
@@ -238,16 +200,18 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
     out.usedCoreNum = usedCoreNum;
     out.comm.slopeUsPerMb = row->slopeUsPerMb;
     out.comm.interceptUs = row->interceptUs;
-    out.mm.effMacPerCycle = FindEffMac(isFp4, precisionMode);
-    out.mm.cyclePerUs = A5_CYCLE_PER_US;
+    out.mm.effMacPerCycle = effMac;
+    out.mm.cyclePerUs = A2A_V2_CYCLE_PER_US;
     out.mm.coreNum = usedCoreNum;
     out.cfg.enabled = true;
-    out.cfg.balanceRatio = FB_BALANCE_RATIO;
-    out.cfg.roundCostUs = FindRoundCost(rankDim);
-    out.cfg.tinyTailRatio = FB_TINY_TAIL_RATIO;
-    out.cfg.enableTailMerge = FB_ENABLE_TAIL_MERGE;
-    out.cfg.maxTileCnt = FB_MAX_TILE_CNT;
-    out.cfg.minRounds = FB_MIN_ROUNDS;
+    out.cfg.balanceRatio = A2A_V2_BALANCE_RATIO;
+    out.cfg.roundCostUs = fb::FindRoundCost(ROUND_COST_ROWS, sizeof(ROUND_COST_ROWS) / sizeof(ROUND_COST_ROWS[0]),
+                                            rankDim, A2A_V2_ROUND_COST_DEFAULT_US);
+    out.cfg.tinyTailRatio = A2A_V2_TINY_TAIL_RATIO;
+    out.cfg.enableTailMerge = A2A_V2_ENABLE_TAIL_MERGE;
+    out.cfg.tailMergeMarginRatio = A2A_V2_TAIL_MERGE_MARGIN;
+    out.cfg.maxTileCnt = A2A_V2_MAX_TILE_CNT;
+    out.cfg.minRounds = A2A_V2_MIN_ROUNDS;
     return true;
 }
 
@@ -257,7 +221,7 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
 inline AllToAllFitBalanceResult Schedule(const AllToAllFitBalanceInput &in)
 {
     AllToAllFitBalanceResult res;
-    apace::FitBalanceScheduleInput core;
+    fb::FitBalanceScheduleInput core;
     core.m = in.m;
     core.n = in.n;
     core.kTotal = static_cast<uint64_t>(in.rankDim) * in.ka;
@@ -270,7 +234,7 @@ inline AllToAllFitBalanceResult Schedule(const AllToAllFitBalanceInput &in)
     core.mm = in.mm;
     core.mm.coreNum = in.usedCoreNum; // compute runs on the cores the matmul tiling picked
     core.cfg = in.cfg;
-    res.cut = apace::FitBalanceSchedule(core);
+    res.cut = fb::FitBalanceSchedule(core);
     res.dataNonSplitAxis = in.isFp4 ? (in.ka / 2UL) : in.ka;
     res.scaleNonSplitAxis = in.ka / MX_GROUP_SIZE;
     return res;

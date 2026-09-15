@@ -19,7 +19,7 @@
  *   四、组装与新旧切换: GetFitBalanceCut(args) 一行调用; kUseApace 置 false 即回老类
  *      （老类 all_gather_fit_balance_tiling.h 原样保留）。
  *
- * 公共逻辑（模型/切分引擎/调度流）在 apace/tiling/fit_based_balance_tiling.h,
+ * 公共逻辑（模型/切分引擎/调度流）在 apace/tiling/fit_balance_tiling.h 三、3.1（自由长度求解器）,
  * 本文件不重复任何公共实现。
  */
 
@@ -132,64 +132,62 @@ constexpr uint32_t AGMM_DEFAULT_BASE_K = 64;  // 非 950 soc 回退 baseK
 // 二、标定表组装（勿动: 仅包装上方常量; 新增标定形态时在此按同 schema 加行）
 // ============================================================================
 
-static const apace::fit_based_balance::CommFitRow AICPU_COMM_FIT_ROWS[] = {
+static const apace::fit_balance::CommFitRow AICPU_COMM_FIT_ROWS[] = {
     {AGMM_COMM_AICPU_4P_KEY,
-     apace::fit_based_balance::MakeLinearCommFit(AGMM_COMM_AICPU_4P_SLOPE_US_PER_MB, AGMM_COMM_AICPU_4P_INTERCEPT_US)},
+     apace::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_4P_SLOPE_US_PER_MB, AGMM_COMM_AICPU_4P_INTERCEPT_US)},
     // 8P 行占位: 标定后取消下行注释即生效(未接线时 8P 走 DEFAULT 回退行+折算缩放)
     // {AGMM_COMM_AICPU_8P_KEY,
-    //  apace::fit_based_balance::MakeLinearCommFit(AGMM_COMM_AICPU_8P_SLOPE_US_PER_MB,
+    //  apace::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_8P_SLOPE_US_PER_MB,
     //  AGMM_COMM_AICPU_8P_INTERCEPT_US)},
 };
 
 // AICPU 未标定 key 的回退行（勿删: rankDim=2/8 等未标定形态依赖此行走折算因子缩放路径）
-static const apace::fit_based_balance::HCCLFittingParameters AICPU_COMM_FIT_DEFAULT = {
-    AGMM_COMM_AICPU_DEF_SMALL_BOUNDARY_MB,
-    AGMM_COMM_AICPU_DEF_LARGE_BOUNDARY_MB,
-    AGMM_COMM_AICPU_DEF_SLOPE_US_PER_MB,
-    AGMM_COMM_AICPU_DEF_INTERCEPT_US,
-    0 /* 抛物线 a: 本行未启用 */,
-    AGMM_COMM_AICPU_DEF_PARABOLIC_B,
-    AGMM_COMM_AICPU_DEF_PARABOLIC_C,
-    AGMM_COMM_AICPU_DEF_INV_BOUNDARY1_US,
-    AGMM_COMM_AICPU_DEF_INV_BOUNDARY2_US,
-    0,
-    0,
-    0 /* 反解抛物线参数: 本行未启用 */};
+static const apace::fit_balance::HCCLFittingParameters AICPU_COMM_FIT_DEFAULT = {AGMM_COMM_AICPU_DEF_SMALL_BOUNDARY_MB,
+                                                                                 AGMM_COMM_AICPU_DEF_LARGE_BOUNDARY_MB,
+                                                                                 AGMM_COMM_AICPU_DEF_SLOPE_US_PER_MB,
+                                                                                 AGMM_COMM_AICPU_DEF_INTERCEPT_US,
+                                                                                 0 /* 抛物线 a: 本行未启用 */,
+                                                                                 AGMM_COMM_AICPU_DEF_PARABOLIC_B,
+                                                                                 AGMM_COMM_AICPU_DEF_PARABOLIC_C,
+                                                                                 AGMM_COMM_AICPU_DEF_INV_BOUNDARY1_US,
+                                                                                 AGMM_COMM_AICPU_DEF_INV_BOUNDARY2_US,
+                                                                                 0,
+                                                                                 0,
+                                                                                 0 /* 反解抛物线参数: 本行未启用 */};
 
-static const apace::fit_based_balance::CommFitTable AICPU_COMM_FIT_TABLE = {
+static const apace::fit_balance::CommFitTable AICPU_COMM_FIT_TABLE = {
     AICPU_COMM_FIT_ROWS, sizeof(AICPU_COMM_FIT_ROWS) / sizeof(AICPU_COMM_FIT_ROWS[0]), AICPU_COMM_FIT_DEFAULT};
 
-static const apace::fit_based_balance::CommFitRow CCU_COMM_FIT_ROWS[] = {
+static const apace::fit_balance::CommFitRow CCU_COMM_FIT_ROWS[] = {
     {AGMM_COMM_CCU_4P_KEY,
-     apace::fit_based_balance::MakeLinearCommFit(AGMM_COMM_CCU_4P_SLOPE_US_PER_MB, AGMM_COMM_CCU_4P_INTERCEPT_US)},
+     apace::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_4P_SLOPE_US_PER_MB, AGMM_COMM_CCU_4P_INTERCEPT_US)},
     // 8P 行占位: 标定后取消下行注释即生效
     // {AGMM_COMM_CCU_8P_KEY,
-    //  apace::fit_based_balance::MakeLinearCommFit(AGMM_COMM_CCU_8P_SLOPE_US_PER_MB, AGMM_COMM_CCU_8P_INTERCEPT_US)},
+    //  apace::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_8P_SLOPE_US_PER_MB, AGMM_COMM_CCU_8P_INTERCEPT_US)},
 };
 
 // CCU 未标定 key 的回退行（当前沿用历史共用值, 待 Ccu 环境重标）
-static const apace::fit_based_balance::HCCLFittingParameters CCU_COMM_FIT_DEFAULT = {
-    AGMM_COMM_CCU_DEF_SMALL_BOUNDARY_MB,
-    AGMM_COMM_CCU_DEF_LARGE_BOUNDARY_MB,
-    AGMM_COMM_CCU_DEF_SLOPE_US_PER_MB,
-    AGMM_COMM_CCU_DEF_INTERCEPT_US,
-    0 /* 抛物线 a: 本行未启用 */,
-    AGMM_COMM_CCU_DEF_PARABOLIC_B,
-    AGMM_COMM_CCU_DEF_PARABOLIC_C,
-    AGMM_COMM_CCU_DEF_INV_BOUNDARY1_US,
-    AGMM_COMM_CCU_DEF_INV_BOUNDARY2_US,
-    0,
-    0,
-    0 /* 反解抛物线参数: 本行未启用 */};
+static const apace::fit_balance::HCCLFittingParameters CCU_COMM_FIT_DEFAULT = {AGMM_COMM_CCU_DEF_SMALL_BOUNDARY_MB,
+                                                                               AGMM_COMM_CCU_DEF_LARGE_BOUNDARY_MB,
+                                                                               AGMM_COMM_CCU_DEF_SLOPE_US_PER_MB,
+                                                                               AGMM_COMM_CCU_DEF_INTERCEPT_US,
+                                                                               0 /* 抛物线 a: 本行未启用 */,
+                                                                               AGMM_COMM_CCU_DEF_PARABOLIC_B,
+                                                                               AGMM_COMM_CCU_DEF_PARABOLIC_C,
+                                                                               AGMM_COMM_CCU_DEF_INV_BOUNDARY1_US,
+                                                                               AGMM_COMM_CCU_DEF_INV_BOUNDARY2_US,
+                                                                               0,
+                                                                               0,
+                                                                               0 /* 反解抛物线参数: 本行未启用 */};
 
-static const apace::fit_based_balance::CommFitTable CCU_COMM_FIT_TABLE = {
+static const apace::fit_balance::CommFitTable CCU_COMM_FIT_TABLE = {
     CCU_COMM_FIT_ROWS, sizeof(CCU_COMM_FIT_ROWS) / sizeof(CCU_COMM_FIT_ROWS[0]), CCU_COMM_FIT_DEFAULT};
 
-static const apace::fit_based_balance::CubeCalcRow CUBE_CALC_ROWS[] = {
+static const apace::fit_balance::CubeCalcRow CUBE_CALC_ROWS[] = {
     {AGMM_MM_KEY_QUANT, AGMM_MM_QUANT_MACS_PER_CYCLE},
 };
 
-static const apace::fit_based_balance::L2ParamRow L2_PARAM_ROWS[] = {
+static const apace::fit_balance::L2ParamRow L2_PARAM_ROWS[] = {
     {AGMM_MM_KEY_FP16,
      {AGMM_L2_FP16_PART_MB, AGMM_L2_FP16_FULL_MB, AGMM_L2_FP16_UTIL_PART, AGMM_L2_FP16_UTIL_FULL,
       AGMM_L2_FP16_UTIL_OUT}},
@@ -198,11 +196,11 @@ static const apace::fit_based_balance::L2ParamRow L2_PARAM_ROWS[] = {
       AGMM_L2_QUANT_UTIL_OUT}},
 };
 
-static const apace::fit_based_balance::BestBaseRow BEST_BASE_ROWS[] = {
-    {apace::fit_based_balance::SocVersion::SOC950, {AGMM_BEST_BASE_M, AGMM_BEST_BASE_N, AGMM_BEST_BASE_K}},
+static const apace::fit_balance::BestBaseRow BEST_BASE_ROWS[] = {
+    {apace::fit_balance::SocVersion::SOC950, {AGMM_BEST_BASE_M, AGMM_BEST_BASE_N, AGMM_BEST_BASE_K}},
 };
 
-static const apace::fit_based_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
+static const apace::fit_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
     CUBE_CALC_ROWS,
     sizeof(CUBE_CALC_ROWS) / sizeof(CUBE_CALC_ROWS[0]),
     AGMM_MM_DEFAULT_MACS_PER_CYCLE,
@@ -221,7 +219,7 @@ static const apace::fit_based_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
 struct AgMmV2Hooks {
     double frontMMTime = 0;
 
-    void EstimateMMCommTime(apace::fit_based_balance::FitBasedBalanceCtx &ctx)
+    void EstimateMMCommTime(apace::fit_balance::FitBasedBalanceCtx &ctx)
     {
         ctx.matmulPerf.FindCubeUtil(ctx.rankTileNum);
         ctx.matmulPerf.GetMatmulGradient();
@@ -239,7 +237,7 @@ struct AgMmV2Hooks {
         ctx.ratioCalcComm = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
 
         uint64_t sizeOfComm = ctx.mmInfo.mValue * ctx.mmInfo.kValue * (ctx.rankDim - 1) /
-                              apace::fit_based_balance::ONE_MBYTE * ctx.commPerf.GetCommDTypeSize();
+                              apace::fit_balance::ONE_MBYTE * ctx.commPerf.GetCommDTypeSize();
         OPS_LOG_D("AllGatherMatmul",
                   "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
                   "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
@@ -249,17 +247,17 @@ struct AgMmV2Hooks {
                   ctx.commPerf.commTimeFactor_, ctx.rankDim, ctx.rankTileNum);
     }
 
-    void SetLongTileLen(apace::fit_based_balance::FitBasedBalanceCtx &ctx)
+    void SetLongTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
     {
         // Long tile should overlap the cost time of local tile
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(frontMMTime);
     }
 
-    void SetShortTileLen(apace::fit_based_balance::FitBasedBalanceCtx &ctx)
+    void SetShortTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
     {
         // Encourage split more if the comm and calc is balanced and the cost of cutLen is sufficiently high
-        bool isCalcCommBalance = ctx.ratioCalcComm < apace::fit_based_balance::CALC_COMM_RATIO;
-        uint64_t cutLen = ctx.tilingM.GetAlignLength() / apace::fit_based_balance::TWO;
+        bool isCalcCommBalance = ctx.ratioCalcComm < apace::fit_balance::CALC_COMM_RATIO;
+        uint64_t cutLen = ctx.tilingM.GetAlignLength() / apace::fit_balance::TWO;
         double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.rankDim);
         double commCost = ctx.commPerf.CommTime(cutLen);
         if (isCalcCommBalance && (mmCost > AGMM_MM_EXPANSION_TIME_US) && (commCost > AGMM_COMM_EXPANSION_TIME_US)) {
@@ -271,7 +269,7 @@ struct AgMmV2Hooks {
         ctx.tilingM.cutRes.numShortTile = 1U;
     }
 
-    void AdjustLongShortTileLen(apace::fit_based_balance::FitBasedBalanceCtx &ctx)
+    void AdjustLongShortTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
     {
         ctx.tilingM.FitTileLengthDiscrete(false, true, true);
         // When the long and short tiles are equal, the long and short pieces become one.
@@ -287,10 +285,10 @@ struct AgMmV2Hooks {
 // 四、边界转换 + 组装与新旧切换
 // ============================================================================
 
-inline apace::fit_based_balance::TilingArgs ToApaceTilingArgs(const mc2tiling::TilingArgs &args)
+inline apace::fit_balance::TilingArgs ToApaceTilingArgs(const mc2tiling::TilingArgs &args)
 {
-    apace::fit_based_balance::TilingArgs out{};
-    out.cmdType = static_cast<apace::fit_based_balance::AicpuComType>(args.cmdType);
+    apace::fit_balance::TilingArgs out{};
+    out.cmdType = static_cast<apace::fit_balance::AicpuComType>(args.cmdType);
     out.rankDim = args.rankDim;
     out.usedCoreNum = args.usedCoreNum;
     out.orgMValue = args.orgMValue;
@@ -326,7 +324,7 @@ inline apace::fit_based_balance::TilingArgs ToApaceTilingArgs(const mc2tiling::T
     return out;
 }
 
-inline CutResult ToLegacyCut(const apace::fit_based_balance::CutResult &cut)
+inline CutResult ToLegacyCut(const apace::fit_balance::CutResult &cut)
 {
     CutResult out{};
     out.shortTileAtBack = cut.shortTileAtBack;
@@ -342,7 +340,7 @@ inline CutResult ToLegacyCut(const apace::fit_based_balance::CutResult &cut)
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
 inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, bool isCcuMode, uint32_t *baseMOut = nullptr)
 {
-    namespace fb = apace::fit_based_balance;
+    namespace fb = apace::fit_balance;
     // 通信拟合数据按引擎分路: commMode 选表(key 四段式不含引擎维度, 分路靠此处选表)
     const fb::CommFitTable &commTable = isCcuMode ? CCU_COMM_FIT_TABLE : AICPU_COMM_FIT_TABLE;
     fb::TilingArgs apaceArgs = ToApaceTilingArgs(args);

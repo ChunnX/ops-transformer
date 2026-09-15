@@ -10,22 +10,23 @@
 
 /*!
  * \file fit_balance_tiling.h
- * \brief fit-balance tiling 家族唯一公共文件（统一两代实现, 见迁移方案 §2.2/§4.9）
+ * \brief fit-balance tiling 家族唯一公共文件（三层结构, 两分支共居, 迁移方案 §2.2/§4.9）
  *
- * 家族结构与分支选择:
- *   - 第一部分【公共主干·自由长度分支】通信引擎 = HCCL AICPU/CCU（每轮固定开销大,
- *     反解最优轮长压轮数, mm 侧可重切）。消费者: 旧通算融合算子的 fit-balance 路径
- *     （agmm_v2 等, 经算子侧标定头 + ctx/钩子注入调用）。
- *   - 第二部分【URMA 拓展分支·wave-packing】通信引擎 = URMA（每轮开销 ~4.5us 近乎免费,
- *     mm 恒最优, 通信按计算波整数倍打包, estTime 竞争决策）。当算子通信模式为
- *     aiv_urma 时走本分支——当前唯一消费方 allto_all_matmul_v2 即 aiv_urma 实现
- *     （其 kernel 仅 URMA、tiling 无条件走本分支）; 多通信模式算子接入时由算子侧
- *     判定 comm_mode 后选分支。
- *   - 两分支互不复用（模型/求解器/输出契约均不同）, 仅共居本文件; 对齐 P5 统一规划
- *     （迁移方案 §2.2 三层结构的单文件形态）。
+ * 分支选择（由通信引擎的每轮固定开销经济性决定, 见迁移方案 §2.2 分支表）:
+ *   - 自由长度分支（3.1 求解器）: HCCL AICPU/CCU 引擎, 每轮开销大 → 反解最优轮长压轮数;
+ *   - wave-packing 拓展分支（3.2 求解器）: URMA 引擎（comm_mode = "aiv_urma"）, 每轮开销
+ *     ~4.5us 近乎免费 → mm 恒最优, 通信按计算波整数倍打包, estTime 竞争决策。
  *
- * 提取来源与等价性: 见各部分头部注释（第一部分 2026-09-14 P0 提取经 162 用例
- * bit 级验证; 第二部分为 v2 已验证代码原样迁入, R1~R6 五轮性能回归基线）。
+ * 三层布局（按依赖顺序编排; 与方案 §2.2 的 L1 模型/L2 求解/L3 切分输出概念对应）:
+ *   零、公共类型与常量（两分支共享词汇）
+ *   一、模型层: 1.1 HCCL 通信模型 / 1.2 URMA 线性模型与其拟合表 schema /
+ *               1.3 matmul 模型（两分支近似式不同——cubeUtil+gradient vs effMac 单常数
+ *               理论式——纯重构下不可合并, 并列保留, 勿强行统一）
+ *   二、切分与输出层: FormPartition + CutResult 适配
+ *   三、求解层: 3.1 自由长度求解器（ctx+钩子注入）/ 3.2 wave-packing 求解器
+ *
+ * 等价性基线: 自由长度分支 2026-09-14 P0 提取经 162 用例 bit 级验证;
+ * wave-packing 分支为 v2 已验证代码（R1~R6 回归）原样迁入, 决策 golden 43 用例 bit 级复验。
  */
 #ifndef __APACE_FIT_BALANCE_TILING_H__
 #define __APACE_FIT_BALANCE_TILING_H__
@@ -44,16 +45,11 @@
 #include "tiling_data_struct_define.h"
 
 namespace apace {
+namespace fit_balance {
 
 // ============================================================================
-// 第一部分【公共主干 · 自由长度分支】通信引擎: HCCL AICPU/CCU
-// （原 fit_based_balance_tiling.h 全量迁入; 提取来源与差异说明见本部分内注释）
+// 零、公共类型与常量（两分支共享词汇: CutResult/TilingArgs/枚举等）
 // ============================================================================
-
-namespace fit_based_balance {
-
-// ============================================================================
-// 一、公共类型与常量（来源: formulaic_tiling_datatype.h + matmul_formulaic_tiling.h 公共部分）
 // ============================================================================
 
 constexpr uint64_t ONE = 1;
@@ -264,7 +260,9 @@ struct TilingArgs {
 };
 
 // ============================================================================
-// 二、通信性能模型（来源: hccl_performance.h/.cpp + hccl_performance_arch35.h/.cpp）
+// 一、模型层
+// ============================================================================
+// ---- 1.1 HCCL 通信模型与拟合表（自由长度分支）----
 // ============================================================================
 
 constexpr uint64_t HCCL_MIN_TILE_LEN = 64 * ONE_KBYTE;
@@ -635,9 +633,76 @@ inline uint64_t HCCLPerformanceArch35::InverseCommTime(double targetTime) const
     return static_cast<uint64_t>(tmpSize * ONE_MBYTE /
                                  (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
 }
-
+// ---- 1.2 URMA 线性通信模型与拟合表 schema（wave-packing 分支）----
+// （v2 allto_all_matmul_v2 已验证代码原样迁入, 逐字节未改; 其模型/调度/门控语义
+//  见 ALLTO_ALL_MATMUL_V2_FIT_BALANCE_TILING_PLAN.md）
 // ============================================================================
-// 三、matmul 性能模型（来源: matmul_performance.h/.cpp + matmul_performance_arch35.h）
+
+/*!
+ * \brief Linear communication latency model: y(us) = slope * x(MB) + intercept(us).
+ */
+struct CommLinearModel {
+    double slopeUsPerMb = 0.0;
+    double interceptUs = 0.0;
+
+    double RoundTimeUs(double roundSizeMb) const
+    {
+        return slopeUsPerMb * roundSizeMb + interceptUs;
+    }
+};
+
+// ====== URMA 拟合表 schema（行数据由算子侧标定头提供, wave-packing 分支专用）======
+struct UrmaCommFitRow { // 原 v2 算子侧 CommFitRow, 更名以区别 HCCL 表行(本表按 rankDim 查, 无 key 字符串)
+    uint32_t rankDim;
+    double slopeUsPerMb;
+    double interceptUs;
+};
+
+struct RoundCostRow {
+    uint32_t rankDim;
+    double roundCostUs;
+};
+
+struct EffMacRow {
+    bool isFp4;
+    uint32_t precisionMode; // 0/1 一档(填 0), 2 一档(填 2)
+    double effMacPerCycle;
+};
+
+inline const UrmaCommFitRow *FindUrmaCommFit(const UrmaCommFitRow *rows, size_t rowCount, uint32_t rankDim)
+{
+    for (size_t i = 0; i < rowCount; ++i) {
+        if (rows[i].rankDim == rankDim) {
+            return &rows[i];
+        }
+    }
+    return nullptr;
+}
+
+// 未命中返回调用方提供的缺省值
+inline double FindRoundCost(const RoundCostRow *rows, size_t rowCount, uint32_t rankDim, double defaultUs)
+{
+    for (size_t i = 0; i < rowCount; ++i) {
+        if (rows[i].rankDim == rankDim) {
+            return rows[i].roundCostUs;
+        }
+    }
+    return defaultUs;
+}
+
+inline double FindEffMac(const EffMacRow *rows, size_t rowCount, bool isFp4, uint32_t precisionMode)
+{
+    // mode 0 与 1 共用一档; 归一化后查表, 未命中返回 0 表示缺数据。
+    const uint32_t modeClass = (precisionMode == 2U) ? 2U : 0U;
+    for (size_t i = 0; i < rowCount; ++i) {
+        if (rows[i].isFp4 == isFp4 && rows[i].precisionMode == modeClass) {
+            return rows[i].effMacPerCycle;
+        }
+    }
+    return 0.0;
+}
+
+// ---- 1.3 matmul 模型（两分支近似式不同, 并列保留）----
 // ============================================================================
 
 namespace MatmulPerformance {
@@ -1060,9 +1125,31 @@ public:
         cubeUtil_ = std::min(MatmulPerformance::MAX_CUBE_UTIL, result);
     }
 };
+/*!
+ * \brief Theoretical matmul latency model: t(us) = MACs / (effMac * cyclePerUs * coreNum).
+ */
+struct MatmulTheoryModel {
+    double effMacPerCycle = 0.0;
+    double cyclePerUs = 1689.6; // A5: 1.65 cycle/ns
+    uint64_t coreNum = 1;
+
+    double TimeUs(uint64_t m, uint64_t n, uint64_t kTotal) const
+    {
+        if ((effMacPerCycle <= 0.0) || (cyclePerUs <= 0.0) || (coreNum == 0UL) || (m == 0UL) || (n == 0UL) ||
+            (kTotal == 0UL)) {
+            return 0.0;
+        }
+        const long double macs =
+            static_cast<long double>(m) * static_cast<long double>(n) * static_cast<long double>(kTotal);
+        const long double denom = static_cast<long double>(effMacPerCycle) * static_cast<long double>(cyclePerUs) *
+                                  static_cast<long double>(coreNum);
+        return static_cast<double>(macs / denom);
+    }
+};
 
 // ============================================================================
-// 四、FormPartition 长短块离散/连续切分引擎（来源: hccl_formulaic_tiling.h/.cpp）
+// 二、切分与输出层（FormPartition + CutResult 适配）
+// ============================================================================
 // ============================================================================
 
 constexpr uint64_t LARGE_NK_BAR_BASE = 32;
@@ -1425,9 +1512,40 @@ inline void FormPartition::MaxTileCntUniform()
     cutRes.numLongTile = totalLen / cutRes.longTileLen;
     CalcBackTile();
 }
+// ============================================================================
+
+// CutResult -> CommTilingData 的切分轴字段（nonSplitAxisSize 由算子侧按自身布局另填）
+// 仅支持 shortTileAtBack == true 的切分（短块前置的通信 bound 切分无法用 head/tail 表达,
+// 调用方应继续直接消费 CutResult）。返回 false 表示切分不可适配。
+inline bool FillCommTilingDataFromCut(const CutResult &cut, CommTilingData &tiling)
+{
+    if (!cut.shortTileAtBack) {
+        return false; // 短块前置无法用 head/tail 表达
+    }
+    tiling.splitAxisTileSize = cut.longTileLen;
+    tiling.splitAxisTileCnt = cut.numLongTile;
+    tiling.splitAxisTailSize = cut.shortTileLen;
+    tiling.splitAxisTailCnt = cut.numShortTile;
+    return true;
+}
+
+// CommTilingData 的切分轴字段 -> CutResult（短块恒后置）
+inline CutResult CutResultFromCommTiling(const CommTilingData &tiling)
+{
+    CutResult cut;
+    cut.shortTileAtBack = true;
+    cut.longTileLen = tiling.splitAxisTileSize;
+    cut.numLongTile = tiling.splitAxisTileCnt;
+    cut.shortTileLen = tiling.splitAxisTailSize;
+    cut.numShortTile = tiling.splitAxisTailCnt;
+    cut.totalTileCnt = cut.numLongTile + cut.numShortTile;
+    return cut;
+}
 
 // ============================================================================
-// 五、统一调度接口（来源: mc2_fit_based_balance_tiling.h/.cpp, 继承式改钩子注入）
+// 三、求解层（两分支求解器）
+// ============================================================================
+// ---- 3.1 自由长度求解器（ctx + 钩子注入, HCCL AICPU/CCU）----
 // ============================================================================
 
 // 调度上下文: 与旧 Mc2FitBasedBalanceTiling 基类的公开成员逐一对应
@@ -1481,82 +1599,7 @@ CutResult Schedule(FitBasedBalanceCtx &ctx, HooksT &hooks)
     }
     return ctx.tilingM.cutRes;
 }
-
-// ============================================================================
-// 六、CutResult ↔ head/tail 适配（L3 输出层）
-// ============================================================================
-
-// CutResult -> CommTilingData 的切分轴字段（nonSplitAxisSize 由算子侧按自身布局另填）
-// 仅支持 shortTileAtBack == true 的切分（短块前置的通信 bound 切分无法用 head/tail 表达,
-// 调用方应继续直接消费 CutResult）。返回 false 表示切分不可适配。
-inline bool FillCommTilingDataFromCut(const CutResult &cut, CommTilingData &tiling)
-{
-    if (!cut.shortTileAtBack) {
-        return false; // 短块前置无法用 head/tail 表达
-    }
-    tiling.splitAxisTileSize = cut.longTileLen;
-    tiling.splitAxisTileCnt = cut.numLongTile;
-    tiling.splitAxisTailSize = cut.shortTileLen;
-    tiling.splitAxisTailCnt = cut.numShortTile;
-    return true;
-}
-
-// CommTilingData 的切分轴字段 -> CutResult（短块恒后置）
-inline CutResult CutResultFromCommTiling(const CommTilingData &tiling)
-{
-    CutResult cut;
-    cut.shortTileAtBack = true;
-    cut.longTileLen = tiling.splitAxisTileSize;
-    cut.numLongTile = tiling.splitAxisTileCnt;
-    cut.shortTileLen = tiling.splitAxisTailSize;
-    cut.numShortTile = tiling.splitAxisTailCnt;
-    cut.totalTileCnt = cut.numLongTile + cut.numShortTile;
-    return cut;
-}
-
-} // namespace fit_based_balance
-
-// ============================================================================
-// 第二部分【URMA 拓展分支 · wave-packing】通信引擎: URMA（comm_mode = "aiv_urma"）
-// （v2 allto_all_matmul_v2 已验证代码原样迁入, 逐字节未改; 其模型/调度/门控语义
-//  见 ALLTO_ALL_MATMUL_V2_FIT_BALANCE_TILING_PLAN.md）
-// ============================================================================
-
-/*!
- * \brief Linear communication latency model: y(us) = slope * x(MB) + intercept(us).
- */
-struct CommLinearModel {
-    double slopeUsPerMb = 0.0;
-    double interceptUs = 0.0;
-
-    double RoundTimeUs(double roundSizeMb) const
-    {
-        return slopeUsPerMb * roundSizeMb + interceptUs;
-    }
-};
-
-/*!
- * \brief Theoretical matmul latency model: t(us) = MACs / (effMac * cyclePerUs * coreNum).
- */
-struct MatmulTheoryModel {
-    double effMacPerCycle = 0.0;
-    double cyclePerUs = 1689.6; // A5: 1.65 cycle/ns
-    uint64_t coreNum = 1;
-
-    double TimeUs(uint64_t m, uint64_t n, uint64_t kTotal) const
-    {
-        if ((effMacPerCycle <= 0.0) || (cyclePerUs <= 0.0) || (coreNum == 0UL) || (m == 0UL) || (n == 0UL) ||
-            (kTotal == 0UL)) {
-            return 0.0;
-        }
-        const long double macs =
-            static_cast<long double>(m) * static_cast<long double>(n) * static_cast<long double>(kTotal);
-        const long double denom = static_cast<long double>(effMacPerCycle) * static_cast<long double>(cyclePerUs) *
-                                  static_cast<long double>(coreNum);
-        return static_cast<double>(macs / denom);
-    }
-};
-
+// ---- 3.2 wave-packing 求解器（estTime k 搜索 + 定价尾轮合并, URMA）----
 /*!
  * \brief Tunables shared by every fit-balance user (values owned by op host headers).
  */
@@ -1566,8 +1609,10 @@ struct FitBalanceConfig {
     double roundCostUs = 10.0;   // fixed cost per extra round when deriving the round cap
     double tinyTailRatio = 0.5;  // tail rounds below this ratio of head are merged into the last head round
     bool enableTailMerge = true; // fold tiny tail rounds (needs kernel-side explicit round count)
-    uint64_t maxTileCnt = 16UL;  // hard cap of communication rounds
-    uint64_t minRounds = 3UL;    // lower bound of the derived round cap
+    double tailMergeMarginRatio =
+        0.02; // 尾轮合并定价容差: mergedEst ≤ est×(1+margin) 才放行(原引擎内常量, 提为算子可配)
+    uint64_t maxTileCnt = 16UL; // hard cap of communication rounds
+    uint64_t minRounds = 3UL;   // lower bound of the derived round cap
 };
 
 /*!
@@ -1825,9 +1870,8 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     //    perf r3/r4 114172 fp4: +0.3% priced, merge measured fine).
     if (in.cfg.enableTailMerge && (cut.tailCnt == 1UL) && (cut.headCnt >= 2UL) &&
         (static_cast<double>(cut.tailSize) <= in.cfg.tinyTailRatio * static_cast<double>(cut.headSize))) {
-        constexpr double kTailMergeMarginRatio = 0.02;
         const double mergedEst = pipelineEst(cut.headCnt - 1UL, cut.headSize, cut.headSize + cut.tailSize);
-        if (mergedEst <= (cut.estTimeUs * (1.0 + kTailMergeMarginRatio))) {
+        if (mergedEst <= (cut.estTimeUs * (1.0 + in.cfg.tailMergeMarginRatio))) {
             cut.headCnt -= 1UL;
             cut.tailSize += cut.headSize; // merged round = head + tail, still prefix-aligned
             cut.rounds = cut.headCnt + 1UL;
@@ -1838,6 +1882,7 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     return cut;
 }
 
+} // namespace fit_balance
 } // namespace apace
 
 #endif // __APACE_FIT_BALANCE_TILING_H__
