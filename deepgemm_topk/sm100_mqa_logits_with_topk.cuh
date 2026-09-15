@@ -114,8 +114,9 @@ CUTLASS_DEVICE void warp_bucket_topk(
     };
 
     // SMEM: g16[0..15] global bins (smem_vals) + per-lane private 16-slot region (smem_idxs)
+    // NOTE: per-lane stride is 17 (coprime with 32 banks) to keep accesses conflict-free.
     uint32_t* g16 = reinterpret_cast<uint32_t*>(smem_vals);
-    uint32_t* priv = reinterpret_cast<uint32_t*>(smem_idxs);   // 32 lanes x 16 bins
+    uint32_t* priv = reinterpret_cast<uint32_t*>(smem_idxs);   // 32 lanes x stride 17
 
     uint32_t kth_value = 0;
     uint32_t definite_count = 0;
@@ -129,7 +130,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
 
         // 1) clear own 16 slots (plain writes, own region)
         #pragma unroll
-        for (int b = 0; b < 16; ++b) priv[lane_idx * 16 + b] = 0;
+        for (int b = 0; b < 16; ++b) priv[lane_idx * 17 + b] = 0;
         __syncwarp();
 
         // 2) each lane counts ALL 16 nibble bins among its own elements (no atomic)
@@ -138,7 +139,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
             uint32_t u = to_sortable(__uint_as_float(load_u32(i)));
             if ((u & prefix_mask) == prefix_val) {
                 uint32_t b = (u >> shift) & 0xF;
-                priv[lane_idx * 16 + b]++;
+                priv[lane_idx * 17 + b]++;
             }
         }
         __syncwarp();
@@ -148,7 +149,7 @@ CUTLASS_DEVICE void warp_bucket_topk(
             uint32_t s = 0;
             #pragma unroll
             for (int l = 0; l < 32; ++l)
-                s += priv[l * 16 + lane_idx];
+                s += priv[l * 17 + lane_idx];
             g16[lane_idx] = s;
         }
         __syncwarp();
@@ -748,7 +749,7 @@ CUTLASS_DEVICE void sm100_mqa_logits_with_topk_core_impl(
     {
         constexpr uint32_t kSegFloats = 1024;
         constexpr uint32_t kCandPerWarp = kSparseCount;
-        const uint32_t kStageBytes = ((kSparseCount + 31) * 4 > 2048) ? ((kSparseCount + 31) * 4) : 2048;
+        const uint32_t kStageBytes = ((kSparseCount + 31) * 4 > 2176) ? ((kSparseCount + 31) * 4) : 2176;
         const uint32_t kPerWarpBytes = kSegFloats * 4 + 256 * 4 + kStageBytes + kCandPerWarp * 4;
 
         constexpr uint32_t kNumCand = kNumTopkWarps * kCandPerWarp;  // 4096
