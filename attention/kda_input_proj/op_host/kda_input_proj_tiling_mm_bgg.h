@@ -34,9 +34,9 @@ namespace optiling {
 class KdaInputProjMmBggTiling {
 public:
     KdaInputProjMmBggTiling(const KdaInputProjTilingInfo &tilingInfo, gert::TilingContext *context)
-        : tilingInfo_(tilingInfo), context_(context)
-    {
-    }
+        : tilingInfo_(tilingInfo),
+          context_(context)
+    {}
 
     ge::graphStatus CalcTiling(KdaInputProjMmBggParams &params) const
     {
@@ -54,11 +54,9 @@ public:
 
         if (tilingInfo_.transWeightBeta != tilingInfo_.transWeightGate ||
             tilingInfo_.transWeightBeta != tilingInfo_.transWeightG) {
-            OP_LOGW(opName,
-                    "MmBgg trans_weight mismatch: beta=%d gate=%d g=%d; Rebalance uses beta layout.",
+            OP_LOGW(opName, "MmBgg trans_weight mismatch: beta=%d gate=%d g=%d; Rebalance uses beta layout.",
                     static_cast<int32_t>(tilingInfo_.transWeightBeta),
-                    static_cast<int32_t>(tilingInfo_.transWeightGate),
-                    static_cast<int32_t>(tilingInfo_.transWeightG));
+                    static_cast<int32_t>(tilingInfo_.transWeightGate), static_cast<int32_t>(tilingInfo_.transWeightG));
         }
 
         uint32_t tTile = 0;
@@ -108,10 +106,10 @@ public:
         params.numBetaTile = tDim * nCntBeta;
         params.numGateTile = tDim * nCntGate;
         params.numGTile = tDim * nCntG;
-        OP_CHECK_IF(params.hiddenstatesL0Tile == 0U,
-                    OP_LOGE(opName, "MmBgg hiddenstatesL0Tile is 0 tTile=%u nTile=%u hiddenstatesTile=%u.", tTile,
-                            nTile, l1K),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            params.hiddenstatesL0Tile == 0U,
+            OP_LOGE(opName, "MmBgg hiddenstatesL0Tile is 0 tTile=%u nTile=%u hiddenstatesTile=%u.", tTile, nTile, l1K),
+            return ge::GRAPH_FAILED);
 
         OP_LOGI(opName,
                 "MmBgg v3-rebalance: T=%u K=%u N=(%u,%u,%u) Ncat=%u aic=%u transB=%d "
@@ -327,10 +325,8 @@ private:
         plat.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, hw.l0BSize);
         plat.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, hw.l0CSize);
         plat.GetCoreMemSize(platform_ascendc::CoreMemType::L2, hw.l2Size);
-        if (hw.l1Size == 0ULL || hw.l0ASize == 0ULL || hw.l0BSize == 0ULL || hw.l0CSize == 0ULL ||
-            hw.l2Size == 0ULL) {
-            OP_LOGE(opName,
-                    "MmBgg GetCoreMemSize returned 0: L1=%lu L0A=%lu L0B=%lu L0C=%lu L2=%lu.",
+        if (hw.l1Size == 0ULL || hw.l0ASize == 0ULL || hw.l0BSize == 0ULL || hw.l0CSize == 0ULL || hw.l2Size == 0ULL) {
+            OP_LOGE(opName, "MmBgg GetCoreMemSize returned 0: L1=%lu L0A=%lu L0B=%lu L0C=%lu L2=%lu.",
                     static_cast<unsigned long>(hw.l1Size), static_cast<unsigned long>(hw.l0ASize),
                     static_cast<unsigned long>(hw.l0BSize), static_cast<unsigned long>(hw.l0CSize),
                     static_cast<unsigned long>(hw.l2Size));
@@ -374,11 +370,9 @@ private:
         uint64_t maxBaseMNWithBuffer = baseMNBufferLimit / kElemAcc / kAlign;
         uint64_t maxBaseBlock =
             std::min(hw.l0ASize / kDb / std::max(minKL0, static_cast<uint64_t>(1)), maxBaseMNWithBuffer);
-        const uint64_t kAlignUnit = (!isATrans || isBTrans) ?
-                                        ((isMemoryBound ? kK256B : kK512B) / dtypeSize) :
-                                        static_cast<uint64_t>(kAlign);
-        const uint64_t maxBaseMNWithKInner =
-            hw.l1Size / (2ULL * kDb * dtypeSize * std::min(kAlignUnit, kAlignValue));
+        const uint64_t kAlignUnit =
+            (!isATrans || isBTrans) ? ((isMemoryBound ? kK256B : kK512B) / dtypeSize) : static_cast<uint64_t>(kAlign);
+        const uint64_t maxBaseMNWithKInner = hw.l1Size / (2ULL * kDb * dtypeSize * std::min(kAlignUnit, kAlignValue));
         maxBaseBlock = std::min(maxBaseBlock, maxBaseMNWithKInner);
         const uint64_t shapeAlign = CeilDivU64(shapeValue, baseAlignUnit) * baseAlignUnit;
         maxBaseBlock = std::min(shapeAlign, FloorAlignU64(maxBaseBlock, baseAlignUnit));
@@ -406,9 +400,10 @@ private:
         const uint64_t mainRound = CeilDivU64(totalRound, usedCoreNum) - 1ULL;
         const uint64_t lastWave = totalRound - usedCoreNum * mainRound;
         const uint64_t totalTailSplit = (lastWave == 0ULL) ? 1ULL : (usedCoreNum / lastWave);
-        const double workPerCore = static_cast<double>(t) * static_cast<double>(nCat) / static_cast<double>(usedCoreNum);
-        if (mainRound == 0ULL ||
-            (static_cast<uint64_t>(baseM) * baseN / std::max(totalTailSplit, static_cast<uint64_t>(1))) < kMinTailBlock) {
+        const double workPerCore =
+            static_cast<double>(t) * static_cast<double>(nCat) / static_cast<double>(usedCoreNum);
+        if (mainRound == 0ULL || (static_cast<uint64_t>(baseM) * baseN /
+                                  std::max(totalTailSplit, static_cast<uint64_t>(1))) < kMinTailBlock) {
             return workPerCore / (static_cast<double>(mainRound + 1ULL) * baseM * baseN);
         }
         const uint64_t tailSplitSqrt = static_cast<uint64_t>(std::sqrt(static_cast<double>(totalTailSplit)));
@@ -447,13 +442,15 @@ private:
                                (1.0 + hw.l2Bw / hw.hbmBw) / static_cast<double>(k);
 
         const uint64_t baseMNBufferLimit = hw.l0CSize;
-        const uint64_t baseMBest = std::min(static_cast<uint64_t>(CeilAlign(t, kAlign)), static_cast<uint64_t>(kCubeMNMax));
+        const uint64_t baseMBest =
+            std::min(static_cast<uint64_t>(CeilAlign(t, kAlign)), static_cast<uint64_t>(kCubeMNMax));
         const uint64_t baseNBest = std::max(
             static_cast<uint64_t>(kAlign),
-            std::min(static_cast<uint64_t>(CeilAlign(nMax, kAlign)),
-                     FloorAlignU64(baseMNBufferLimit / kElemAcc / std::max(baseMBest, static_cast<uint64_t>(1)),
-                                   kAlign)));
-        const double cubeBoundParamBest = (1.0 / static_cast<double>(baseMBest)) + (1.0 / static_cast<double>(baseNBest));
+            std::min(
+                static_cast<uint64_t>(CeilAlign(nMax, kAlign)),
+                FloorAlignU64(baseMNBufferLimit / kElemAcc / std::max(baseMBest, static_cast<uint64_t>(1)), kAlign)));
+        const double cubeBoundParamBest =
+            (1.0 / static_cast<double>(baseMBest)) + (1.0 / static_cast<double>(baseNBest));
         const bool isMemoryBound = cubeBoundParamBest > cubeBoundEdge;
         const uint64_t innerAlignUnit = isMemoryBound ? 128ULL : 64ULL;
         const double fixpBoundEdge =
@@ -474,10 +471,11 @@ private:
             maxBaseN = kAlign;
         }
 
-        uint32_t bestM = static_cast<uint32_t>(std::max(static_cast<uint64_t>(kAlign), std::min(maxBaseM, static_cast<uint64_t>(kCubeMNMax))));
-        uint32_t bestN = static_cast<uint32_t>(std::max(
-            static_cast<uint64_t>(kAlign),
-            std::min(maxBaseN, FloorAlignU64(baseMNBufferLimit / kElemAcc / bestM, baseNAlignUnit))));
+        uint32_t bestM = static_cast<uint32_t>(
+            std::max(static_cast<uint64_t>(kAlign), std::min(maxBaseM, static_cast<uint64_t>(kCubeMNMax))));
+        uint32_t bestN = static_cast<uint32_t>(
+            std::max(static_cast<uint64_t>(kAlign),
+                     std::min(maxBaseN, FloorAlignU64(baseMNBufferLimit / kElemAcc / bestM, baseNAlignUnit))));
         if (bestN == 0U) {
             bestN = kAlign;
         }
@@ -501,7 +499,8 @@ private:
                 if (!JudgeSpace(hw, m32, n32, GetMaxK1(hw, m32, n32))) {
                     continue;
                 }
-                const double curCubeBoundParam = (1.0 / static_cast<double>(curBaseM)) + (1.0 / static_cast<double>(curBaseN));
+                const double curCubeBoundParam =
+                    (1.0 / static_cast<double>(curBaseM)) + (1.0 / static_cast<double>(curBaseN));
                 const double curBalanceRate =
                     GetBalanceRate(t, bp.betaSize, bp.gateSize, bp.gSize, nCat, aicNum, m32, n32);
                 bool skipCond = balanceRate >= kBalanceRateEdge && curCubeBoundParam > cubeBoundParam &&

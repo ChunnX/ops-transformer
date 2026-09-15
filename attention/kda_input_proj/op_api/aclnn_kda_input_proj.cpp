@@ -27,7 +27,7 @@ extern "C" aclnnStatus aclnnInnerKdaInputProjGetWorkspaceSize(
     const aclTensor *gateOut, const aclTensor *gOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerKdaInputProj(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           aclrtStream stream);
+                                              aclrtStream stream);
 
 constexpr int64_t LAST_DIM = 1;
 constexpr int64_t SECOND_LAST_DIM = 2;
@@ -196,20 +196,22 @@ static bool CheckShapeValid(const aclTensor *x, const aclTensor *weightQkv, cons
 
 inline static aclnnStatus CheckInputParams(const aclTensor *x, const aclTensor *weightQkv, const aclTensor *weightBeta,
                                            const aclTensor *weightGate, const aclTensor *weightG,
-                                           const aclTensor *weightQkvScale, const aclTensor *qkvOut, const aclTensor *betaOut,
-                                           const aclTensor *gateOut, const aclTensor *gOut)
+                                           const aclTensor *weightQkvScale, const aclTensor *qkvOut,
+                                           const aclTensor *betaOut, const aclTensor *gateOut, const aclTensor *gOut)
 {
     // 1. 空值校验
-    CHECK_RET(CheckNotNull(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut),
-              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(
+        CheckNotNull(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut),
+        ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 输入类型校验
     CHECK_RET(CheckDtype(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut),
               ACLNN_ERR_PARAM_INVALID);
 
     // 3. format校验，只支持ND
-    CHECK_RET(CheckFormat(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut),
-              ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(
+        CheckFormat(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut),
+        ACLNN_ERR_PARAM_INVALID);
 
     // 4. shape校验：左矩阵K与各权重K对应，输出[M, N]与输入对应
     CHECK_RET(CheckShapeValid(x, weightQkv, weightBeta, weightGate, weightG, qkvOut, betaOut, gateOut, gOut),
@@ -220,13 +222,16 @@ inline static aclnnStatus CheckInputParams(const aclTensor *x, const aclTensor *
 
 } // namespace
 
-extern "C" aclnnStatus aclnnKdaInputProjGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weightQkv, const aclTensor *weightBeta, const aclTensor *weightGate,
-    const aclTensor *weightG, const aclTensor *weightQkvScale, const aclTensor *qkvOut, const aclTensor *betaOut,
-    const aclTensor *gateOut, const aclTensor *gOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+extern "C" aclnnStatus aclnnKdaInputProjGetWorkspaceSize(const aclTensor *x, const aclTensor *weightQkv,
+                                                         const aclTensor *weightBeta, const aclTensor *weightGate,
+                                                         const aclTensor *weightG, const aclTensor *weightQkvScale,
+                                                         const aclTensor *qkvOut, const aclTensor *betaOut,
+                                                         const aclTensor *gateOut, const aclTensor *gOut,
+                                                         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
-    auto ret = CheckInputParams(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut);
+    auto ret =
+        CheckInputParams(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut, gateOut, gOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     bool transQkv = false;
@@ -241,13 +246,13 @@ extern "C" aclnnStatus aclnnKdaInputProjGetWorkspaceSize(
     OP_LOGI("KdaInputProj infer trans from stride: qkv=%d beta=%d gate=%d g=%d.", static_cast<int32_t>(transQkv),
             static_cast<int32_t>(transBeta), static_cast<int32_t>(transGate), static_cast<int32_t>(transG));
 
-    return aclnnInnerKdaInputProjGetWorkspaceSize(x, innerQkv, innerBeta, innerGate, innerG, weightQkvScale, transQkv, transBeta,
-                                               transGate, transG, qkvOut, betaOut, gateOut, gOut, workspaceSize,
-                                               executor);
+    return aclnnInnerKdaInputProjGetWorkspaceSize(x, innerQkv, innerBeta, innerGate, innerG, weightQkvScale, transQkv,
+                                                  transBeta, transGate, transG, qkvOut, betaOut, gateOut, gOut,
+                                                  workspaceSize, executor);
 }
 
 extern "C" aclnnStatus aclnnKdaInputProj(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                      aclrtStream stream)
+                                         aclrtStream stream)
 {
     return aclnnInnerKdaInputProj(workspace, workspaceSize, executor, stream);
 }

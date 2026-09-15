@@ -67,9 +67,8 @@ public:
         const L1Estimate finalEst{kL1, scaleKL1, baseM, baseN};
         const uint64_t finalL1 = CalcUsedL1Size(finalEst, nBufferNum);
         if (finalL1 > l1Size_) {
-            OP_LOGE(opName_,
-                    "QMM L1 overflow: used=%lu l1=%lu base(%lu,%lu,%lu) kL1=%lu scaleKL1=%lu nBuf=%u",
-                    finalL1, l1Size_, baseM, baseN, baseK, kL1, scaleKL1, nBufferNum);
+            OP_LOGE(opName_, "QMM L1 overflow: used=%lu l1=%lu base(%lu,%lu,%lu) kL1=%lu scaleKL1=%lu nBuf=%u", finalL1,
+                    l1Size_, baseM, baseN, baseK, kL1, scaleKL1, nBufferNum);
             return ge::GRAPH_FAILED;
         }
 
@@ -83,8 +82,7 @@ public:
         const uint64_t mCnt = Ops::Base::CeilDiv(m_, baseM);
         const uint64_t nCnt = Ops::Base::CeilDiv(n_, baseN);
         const uint64_t qmmTiles = mCnt * nCnt;
-        const uint32_t qmmUsedAic =
-            static_cast<uint32_t>(std::min(qmmTiles, static_cast<uint64_t>(aicNum_)));
+        const uint32_t qmmUsedAic = static_cast<uint32_t>(std::min(qmmTiles, static_cast<uint64_t>(aicNum_)));
         CalcTailTiles(baseM, baseN, qmmUsedAic, params);
         // 单 M 轮时 B 只扫一遍，kernel replay 还会清 L2；streaming 少占 cache。
         // mCnt>1 时同一核可能沿 M 复用 B，保持 L2 NORMAL。
@@ -318,8 +316,8 @@ private:
                     continue;
                 }
                 // 主关键字 kL1。T=512 上 nBuf=4/kL1=128 比 nBuf=2/kL1=256 慢约 4µs。
-                const uint64_t score = est.kL1 * 1000UL + static_cast<uint64_t>(nBuf) * 10UL +
-                                       (est.scaleKL1 >= k_ ? 1UL : 0UL);
+                const uint64_t score =
+                    est.kL1 * 1000UL + static_cast<uint64_t>(nBuf) * 10UL + (est.scaleKL1 >= k_ ? 1UL : 0UL);
                 if (!found || score > bestScore) {
                     found = true;
                     best = est;

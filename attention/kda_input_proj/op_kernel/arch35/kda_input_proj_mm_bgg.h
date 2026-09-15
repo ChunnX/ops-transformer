@@ -85,10 +85,10 @@ protected:
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMmBgg<TypePack>::Init(__gm__ uint8_t *x, __gm__ uint8_t *weightBeta,
-                                                      __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
-                                                      __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
-                                                      __gm__ uint8_t *workspace,
-                                                      const optiling::KdaInputProjTilingData *__restrict tiling)
+                                                         __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
+                                                         __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
+                                                         __gm__ uint8_t *workspace,
+                                                         const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     workspace_ = workspace;
     tiling_ = tiling;
@@ -140,8 +140,8 @@ __aicore__ inline void KdaInputProjMmBgg<TypePack>::Process()
 template <typename TypePack>
 template <class LayoutB, class DtypeC>
 __aicore__ inline void KdaInputProjMmBgg<TypePack>::ProcessPath(uint32_t pathBegin, uint32_t pathCnt, uint32_t pathN,
-                                                             uint32_t nTile, __gm__ DtypeX *wAddr,
-                                                             __gm__ DtypeC *cAddr)
+                                                                uint32_t nTile, __gm__ DtypeX *wAddr,
+                                                                __gm__ DtypeC *cAddr)
 {
     if (pathCnt == 0U || pathN == 0U || nTile == 0U || wAddr == nullptr || cAddr == nullptr) {
         return;
@@ -177,14 +177,11 @@ __aicore__ inline void KdaInputProjMmBgg<TypePack>::ProcessPath(uint32_t pathBeg
 
     // A 非转置：等价于 kernel_matmul_basic.h 的 MakeLayoutAGm，rowStride = k。
     auto layoutA = AscendC::Te::MakePatternLayout<LayoutA, AscendC::Te::LayoutTraitDefault<>>(
-        AscendC::Te::MakeShape(
-            int64_t{1},
-            AscendC::Te::MakeShape(AscendC::Te::MakeShape(AscendC::Te::_1{}, m64),
-                                   AscendC::Te::MakeShape(AscendC::Te::_1{}, k64))),
-        AscendC::Te::MakeStride(m64 * k64,
-                                AscendC::Te::MakeStride(AscendC::Te::MakeStride(AscendC::Te::_0{}, k64),
-                                                        AscendC::Te::MakeStride(AscendC::Te::_0{},
-                                                                                AscendC::Te::_1{}))));
+        AscendC::Te::MakeShape(int64_t{1}, AscendC::Te::MakeShape(AscendC::Te::MakeShape(AscendC::Te::_1{}, m64),
+                                                                  AscendC::Te::MakeShape(AscendC::Te::_1{}, k64))),
+        AscendC::Te::MakeStride(
+            m64 * k64, AscendC::Te::MakeStride(AscendC::Te::MakeStride(AscendC::Te::_0{}, k64),
+                                               AscendC::Te::MakeStride(AscendC::Te::_0{}, AscendC::Te::_1{}))));
     auto layoutB = MakeLayoutB{}(int64_t{1}, k64, n64);
     auto layoutC = MakeLayoutC{}(int64_t{1}, m64, n64);
     auto layoutBias = MakeLayoutBias{}(int64_t{1}, n64);
@@ -235,8 +232,8 @@ __aicore__ inline void KdaInputProjMmBgg<TypePack>::ProcessPath(uint32_t pathBeg
         auto subC = gmC.Slice(AscendC::Te::MakeCoord(int64_t{0}, AscendC::Te::MakeCoord(coordM, coordN)),
                               AscendC::Te::MakeShape(int64_t{1}, AscendC::Te::MakeShape(shapeM, shapeN)));
         auto gmBlockC = AscendC::Te::Squeeze<0>(subC);
-        auto gmBlockBias = gmBias.Slice(AscendC::Te::MakeCoord(int64_t{0}, coordN),
-                                        AscendC::Te::MakeShape(int64_t{1}, shapeN));
+        auto gmBlockBias =
+            gmBias.Slice(AscendC::Te::MakeCoord(int64_t{0}, coordN), AscendC::Te::MakeShape(int64_t{1}, shapeN));
 
         typename BlockMmad::TupleShape blockShape{shapeM, shapeN, k64, int64_t{1}};
         blockMmad(gmBlockA, gmBlockB, gmBlockBias, gmBlockC, blockShape);

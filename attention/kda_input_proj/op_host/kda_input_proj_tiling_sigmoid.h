@@ -25,9 +25,9 @@
 namespace optiling {
 class KdaInputProjSigmoidTiling {
 public:
-    explicit KdaInputProjSigmoidTiling(const KdaInputProjTilingInfo &tilingInfo) : tilingInfo_(tilingInfo)
-    {
-    }
+    explicit KdaInputProjSigmoidTiling(const KdaInputProjTilingInfo &tilingInfo)
+        : tilingInfo_(tilingInfo)
+    {}
 
     ge::graphStatus CalcTiling(KdaInputProjSigmoidParams &params) const
     {
@@ -35,8 +35,7 @@ public:
         const KdaInputProjBaseParams &bp = tilingInfo_.baseParams;
         const char *opName = tilingInfo_.opName != nullptr ? tilingInfo_.opName : "KdaInputProj";
 
-        const uint64_t elemNumU64 =
-            static_cast<uint64_t>(bp.tSize) * static_cast<uint64_t>(bp.betaSize);
+        const uint64_t elemNumU64 = static_cast<uint64_t>(bp.tSize) * static_cast<uint64_t>(bp.betaSize);
         OP_CHECK_IF(elemNumU64 > UINT32_MAX, OP_LOGE(opName, "Sigmoid elemNum T*N_beta overflow."),
                     return ge::GRAPH_FAILED);
         params.elemNum = static_cast<uint32_t>(elemNumU64);
@@ -72,13 +71,12 @@ public:
             params.tailUbTail = 0;
             return ge::GRAPH_SUCCESS;
         }
-        OP_CHECK_IF(params.ubTile == 0, OP_LOGE(opName, "Sigmoid FillAivSplit ubTile is 0."),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(params.ubTile == 0, OP_LOGE(opName, "Sigmoid FillAivSplit ubTile is 0."), return ge::GRAPH_FAILED);
 
         const uint32_t avail = launchedAiv == 0 ? 1U : launchedAiv;
         const uint64_t bits = static_cast<uint64_t>(params.elemNum) * static_cast<uint64_t>(kFp32Bits);
-        uint32_t coreByBytes = static_cast<uint32_t>(
-            (bits + static_cast<uint64_t>(kMinTilingBits) - 1ULL) / static_cast<uint64_t>(kMinTilingBits));
+        uint32_t coreByBytes = static_cast<uint32_t>((bits + static_cast<uint64_t>(kMinTilingBits) - 1ULL) /
+                                                     static_cast<uint64_t>(kMinTilingBits));
         if (coreByBytes == 0) {
             coreByBytes = 1;
         }
@@ -91,8 +89,7 @@ public:
         // UB tile 不必大于单核工作量：ubTile 取 min(UB 上限, blockTile)，避免按满 UB 申请。
         // blockTile 已 64 对齐，AlignUp 只为兜底。
         params.ubTile = std::min(params.ubTile, AlignUp(params.blockTile, kAlignElem));
-        OP_CHECK_IF(params.ubTile == 0, OP_LOGE(opName, "Sigmoid ubTile is 0 after clamp."),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(params.ubTile == 0, OP_LOGE(opName, "Sigmoid ubTile is 0 after clamp."), return ge::GRAPH_FAILED);
 
         const uint32_t blockNum = CeilDiv(params.elemNum, params.blockTile);
         FillUbLoops(params, blockNum);

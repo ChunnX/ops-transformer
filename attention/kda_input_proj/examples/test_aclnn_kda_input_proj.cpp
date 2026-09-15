@@ -22,14 +22,14 @@
 #include "aclnnop/aclnn_kda_input_proj.h"
 
 #define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)        \
-    do {                               \
+#define LOG_PRINT(message, ...) \
+    do { \
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
@@ -86,9 +86,9 @@ int CreateAclMatmulRhsFromNk(const std::vector<T> &hostData, int64_t nSize, int6
 
     std::vector<int64_t> viewShape = {kSize, nSize};
     std::vector<int64_t> viewStrides = {1, kSize};
-    *tensor = aclCreateTensor(viewShape.data(), static_cast<int64_t>(viewShape.size()), dataType, viewStrides.data(), 0,
-                              ACL_FORMAT_ND, storageShape.data(), static_cast<int64_t>(storageShape.size()),
-                              *deviceAddr);
+    *tensor =
+        aclCreateTensor(viewShape.data(), static_cast<int64_t>(viewShape.size()), dataType, viewStrides.data(), 0,
+                        ACL_FORMAT_ND, storageShape.data(), static_cast<int64_t>(storageShape.size()), *deviceAddr);
     return 0;
 }
 
@@ -173,7 +173,8 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclMatmulRhsFromNk(weightGHost, gSize, hiddenSize, &weightGDevice, ACL_BF16, &weightG);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(weightQkvScaleHost, weightQkvScaleShape, &weightQkvScaleDevice, ACL_FLOAT8_E8M0, &weightQkvScale);
+    ret = CreateAclTensor(weightQkvScaleHost, weightQkvScaleShape, &weightQkvScaleDevice, ACL_FLOAT8_E8M0,
+                          &weightQkvScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(qkvOutHost, qkvOutShape, &qkvOutDevice, ACL_BF16, &qkvOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -186,8 +187,8 @@ int main()
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnKdaInputProjGetWorkspaceSize(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut, betaOut,
-                                         gateOut, gOut, &workspaceSize, &executor);
+    ret = aclnnKdaInputProjGetWorkspaceSize(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkvOut,
+                                            betaOut, gateOut, gOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnKdaInputProjGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     void *workspaceAddr = nullptr;

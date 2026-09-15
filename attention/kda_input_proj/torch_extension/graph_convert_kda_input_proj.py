@@ -25,7 +25,9 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.kda_input_proj.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.kda_input_proj.default
+    )
     def convert_kda_input_proj(
         x: Tensor,
         weight_qkv: Tensor,

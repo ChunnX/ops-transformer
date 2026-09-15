@@ -16,9 +16,11 @@ namespace {
 
 constexpr int64_t DIM_TWO = 2;
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ConstructKdaInputProjOutputs(
-    const at::Tensor &x, const at::Tensor &weight_qkv, const at::Tensor &weight_beta, const at::Tensor &weight_gate,
-    const at::Tensor &weight_g)
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ConstructKdaInputProjOutputs(const at::Tensor &x,
+                                                                                        const at::Tensor &weight_qkv,
+                                                                                        const at::Tensor &weight_beta,
+                                                                                        const at::Tensor &weight_gate,
+                                                                                        const at::Tensor &weight_g)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D [T, hidden], but got ", x.dim(), "D.");
     TORCH_CHECK(x.size(0) > 0 && x.size(1) > 0, "All values within x's shape should be greater than 0.");
@@ -60,7 +62,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> kda_input_proj(
     at::Tensor gate = std::get<2>(outputs);
     at::Tensor g = std::get<3>(outputs);
 
-    ACLNN_CMD(aclnnKdaInputProj, x, weight_qkv, weight_beta, weight_gate, weight_g, weight_qkv_scale, qkv, beta, gate, g);
+    ACLNN_CMD(aclnnKdaInputProj, x, weight_qkv, weight_beta, weight_gate, weight_g, weight_qkv_scale, qkv, beta, gate,
+              g);
     return {qkv, beta, gate, g};
 }
 

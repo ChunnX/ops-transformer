@@ -48,7 +48,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnKdaInputProjGetWorkspace
  * @brief 使用aclnnKdaInputProjGetWorkspaceSize创建的执行器异步执行KdaInputProj。
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnKdaInputProj(void *workspace, uint64_t workspaceSize,
-                                                                  aclOpExecutor *executor, aclrtStream stream);
+                                                                     aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

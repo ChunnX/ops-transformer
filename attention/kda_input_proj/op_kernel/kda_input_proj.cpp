@@ -21,9 +21,10 @@
 
 template <bool TransWeightQkv, bool TransWeightBeta, bool TransWeightGate, bool TransWeightG>
 __global__ __aicore__ void kda_input_proj(__gm__ uint8_t *x, __gm__ uint8_t *weightQkv, __gm__ uint8_t *weightBeta,
-                                      __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG, __gm__ uint8_t *weightQkvScale,
-                                      __gm__ uint8_t *qkv, __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
-                                      __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                          __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
+                                          __gm__ uint8_t *weightQkvScale, __gm__ uint8_t *qkv, __gm__ uint8_t *beta,
+                                          __gm__ uint8_t *gate, __gm__ uint8_t *g, __gm__ uint8_t *workspace,
+                                          __gm__ uint8_t *tiling)
 {
 #if __CCE_AICORE__ == 310
     REGISTER_TILING_DEFAULT(optiling::KdaInputProjTilingData);
@@ -34,7 +35,8 @@ __global__ __aicore__ void kda_input_proj(__gm__ uint8_t *x, __gm__ uint8_t *wei
     __gm__ uint8_t *userWorkspace = AscendC::GetUserWorkspace(workspace);
     KdaInputProj::KdaInputProjKernel<
         KdaInputProj::KdaInputProjType<TransWeightQkv, TransWeightBeta, TransWeightGate, TransWeightG>>
-        op(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkv, beta, gate, g, userWorkspace, tilingData);
+        op(x, weightQkv, weightBeta, weightGate, weightG, weightQkvScale, qkv, beta, gate, g, userWorkspace,
+           tilingData);
     op.Process();
 #endif
 #endif

@@ -76,9 +76,9 @@ protected:
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjQmmQkv<TypePack>::Init(__gm__ uint8_t *quantX, __gm__ uint8_t *weightQkv,
-                                                       __gm__ uint8_t *xScale, __gm__ uint8_t *weightQkvScale,
-                                                       __gm__ uint8_t *qkv,
-                                                       const optiling::KdaInputProjTilingData *__restrict tiling)
+                                                          __gm__ uint8_t *xScale, __gm__ uint8_t *weightQkvScale,
+                                                          __gm__ uint8_t *qkv,
+                                                          const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     quantX_ = quantX;
     weightQkv_ = weightQkv;

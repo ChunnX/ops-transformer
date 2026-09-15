@@ -32,10 +32,10 @@ template <typename TypePack>
 class KdaInputProjKernel {
 public:
     __aicore__ inline KdaInputProjKernel(__gm__ uint8_t *x, __gm__ uint8_t *weightQkv, __gm__ uint8_t *weightBeta,
-                                      __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG, __gm__ uint8_t *weightQkvScale,
-                                      __gm__ uint8_t *qkv, __gm__ uint8_t *beta, __gm__ uint8_t *gate,
-                                      __gm__ uint8_t *g, __gm__ uint8_t *workspace,
-                                      const optiling::KdaInputProjTilingData *__restrict tiling)
+                                         __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG,
+                                         __gm__ uint8_t *weightQkvScale, __gm__ uint8_t *qkv, __gm__ uint8_t *beta,
+                                         __gm__ uint8_t *gate, __gm__ uint8_t *g, __gm__ uint8_t *workspace,
+                                         const optiling::KdaInputProjTilingData *__restrict tiling)
         : x_(x),
           weightQkv_(weightQkv),
           weightBeta_(weightBeta),

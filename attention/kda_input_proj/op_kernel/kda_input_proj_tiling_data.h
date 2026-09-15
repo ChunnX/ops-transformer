@@ -37,19 +37,19 @@ struct alignas(8) KdaInputProjBaseParams {
 //   num*Tile = tDim * nCnt_* ；SetBlockDim = min(aicNum, tileNumAll)
 //   hiddenstatesTile / hiddenstatesL0Tile 由 Host 按 Blaze L1 slot + ComputeL0K 写入
 struct alignas(8) KdaInputProjMmBggParams {
-    uint32_t tTile{0};               // 共用 Cube baseM
-    uint32_t betaTile{0};            // = nTile（与 gateTile/gTile 相同）
-    uint32_t gateTile{0};            // = nTile
-    uint32_t gTile{0};               // = nTile
-    uint32_t tDim{0};                // CeilDiv(T, tTile)
-    uint32_t betaDim{0};             // nCntBeta
-    uint32_t gateDim{0};             // nCntGate
-    uint32_t gDim{0};                // nCntG
-    uint32_t numBetaTile{0};         // tDim * CeilDiv(N_beta, nTile)
+    uint32_t tTile{0};       // 共用 Cube baseM
+    uint32_t betaTile{0};    // = nTile（与 gateTile/gTile 相同）
+    uint32_t gateTile{0};    // = nTile
+    uint32_t gTile{0};       // = nTile
+    uint32_t tDim{0};        // CeilDiv(T, tTile)
+    uint32_t betaDim{0};     // nCntBeta
+    uint32_t gateDim{0};     // nCntGate
+    uint32_t gDim{0};        // nCntG
+    uint32_t numBetaTile{0}; // tDim * CeilDiv(N_beta, nTile)
     uint32_t numGateTile{0};
     uint32_t numGTile{0};
-    uint32_t hiddenstatesTile{0};    // L1 上 K 方向步长
-    uint32_t hiddenstatesL0Tile{0};  // L0 上 K 方向步长
+    uint32_t hiddenstatesTile{0};   // L1 上 K 方向步长
+    uint32_t hiddenstatesL0Tile{0}; // L0 上 K 方向步长
 };
 
 // 占位字段保证非空且 8 字节对齐；后续填真实字段时可替换
@@ -96,14 +96,14 @@ struct alignas(8) KdaInputProjQmmQkvParams {
 //   elemNum  = T * N_beta；aivNum = 实际干活 AIV（对齐后可能小于 launched）
 //   blockTile / ubTile 均 64 对齐；ubLoop/ubTail 为首核，tailUb* 为尾核
 struct alignas(8) KdaInputProjSigmoidParams {
-    uint32_t elemNum{0};     // T * N_beta，展平后总元素数
-    uint32_t aivNum{0};      // 实际干活的 AIV；其余 GetBlockIdx 早退
-    uint32_t blockTile{0};   // 首核元素数，64 对齐
-    uint32_t ubTile{0};      // 单次 UB 元素数，64 对齐；InitBuffer 用它
-    uint32_t ubLoop{0};      // 首核 UB 循环次数
-    uint32_t ubTail{0};      // 首核末次 UB 有效元素数
-    uint32_t tailUbLoop{0};  // 尾核 UB 循环次数
-    uint32_t tailUbTail{0};  // 尾核末次 UB 有效元素数
+    uint32_t elemNum{0};    // T * N_beta，展平后总元素数
+    uint32_t aivNum{0};     // 实际干活的 AIV；其余 GetBlockIdx 早退
+    uint32_t blockTile{0};  // 首核元素数，64 对齐
+    uint32_t ubTile{0};     // 单次 UB 元素数，64 对齐；InitBuffer 用它
+    uint32_t ubLoop{0};     // 首核 UB 循环次数
+    uint32_t ubTail{0};     // 首核末次 UB 有效元素数
+    uint32_t tailUbLoop{0}; // 尾核 UB 循环次数
+    uint32_t tailUbTail{0}; // 尾核末次 UB 有效元素数
 };
 
 struct alignas(8) KdaInputProjTilingData {

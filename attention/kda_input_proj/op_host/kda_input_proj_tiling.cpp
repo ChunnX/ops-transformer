@@ -146,10 +146,10 @@ ge::graphStatus KdaInputProjInfoParser::GetAndCheckAttrParaInfo()
 
 ge::graphStatus KdaInputProjInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.x.shape == nullptr, OP_LOGE(opName_, "Shape of tensor %s is nullptr.", kda_input_proj::X_NAME),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.x.desc == nullptr, OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::X_NAME),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.x.shape == nullptr,
+                OP_LOGE(opName_, "Shape of tensor %s is nullptr.", kda_input_proj::X_NAME), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.x.desc == nullptr,
+                OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::X_NAME), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weightQkv.shape == nullptr,
                 OP_LOGE(opName_, "Shape of tensor %s is nullptr.", kda_input_proj::WEIGHT_QKV_NAME),
                 return ge::GRAPH_FAILED);
@@ -169,14 +169,17 @@ ge::graphStatus KdaInputProjInfoParser::CheckRequiredInOutExistence() const
                 OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::WEIGHT_GATE_NAME),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weightG.shape == nullptr,
-                OP_LOGE(opName_, "Shape of tensor %s is nullptr.", kda_input_proj::WEIGHT_G_NAME), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Shape of tensor %s is nullptr.", kda_input_proj::WEIGHT_G_NAME),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weightG.desc == nullptr,
-                OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::WEIGHT_G_NAME), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::WEIGHT_G_NAME),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weightQkvScale.shape == nullptr,
                 OP_LOGE(opName_, "Shape of tensor %s is nullptr.", kda_input_proj::WEIGHT_QKV_SCALE_NAME),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.weightQkvScale.desc == nullptr,
-                OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::WEIGHT_QKV_SCALE_NAME), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::WEIGHT_QKV_SCALE_NAME),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.qkvOutDesc == nullptr,
                 OP_LOGE(opName_, "Desc of tensor %s is nullptr.", kda_input_proj::QKV_NAME), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.betaOutDesc == nullptr,
@@ -210,11 +213,13 @@ ge::graphStatus KdaInputProjInfoParser::GetAndCheckInOutDataType()
             ge::GRAPH_SUCCESS ||
         CheckExpectDataType(weightGType, ge::DT_BF16, kda_input_proj::WEIGHT_G_NAME, "BF16", opName_) !=
             ge::GRAPH_SUCCESS ||
-        CheckExpectDataType(weightQkvScaleType, ge::DT_FLOAT8_E8M0, kda_input_proj::WEIGHT_QKV_SCALE_NAME, "FLOAT8_E8M0", opName_) !=
-            ge::GRAPH_SUCCESS ||
+        CheckExpectDataType(weightQkvScaleType, ge::DT_FLOAT8_E8M0, kda_input_proj::WEIGHT_QKV_SCALE_NAME,
+                            "FLOAT8_E8M0", opName_) != ge::GRAPH_SUCCESS ||
         CheckExpectDataType(qkvOutType, ge::DT_BF16, kda_input_proj::QKV_NAME, "BF16", opName_) != ge::GRAPH_SUCCESS ||
-        CheckExpectDataType(betaOutType, ge::DT_FLOAT, kda_input_proj::BETA_NAME, "FLOAT", opName_) != ge::GRAPH_SUCCESS ||
-        CheckExpectDataType(gateOutType, ge::DT_BF16, kda_input_proj::GATE_NAME, "BF16", opName_) != ge::GRAPH_SUCCESS ||
+        CheckExpectDataType(betaOutType, ge::DT_FLOAT, kda_input_proj::BETA_NAME, "FLOAT", opName_) !=
+            ge::GRAPH_SUCCESS ||
+        CheckExpectDataType(gateOutType, ge::DT_BF16, kda_input_proj::GATE_NAME, "BF16", opName_) !=
+            ge::GRAPH_SUCCESS ||
         CheckExpectDataType(gOutType, ge::DT_BF16, kda_input_proj::G_NAME, "BF16", opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -262,11 +267,11 @@ ge::graphStatus KdaInputProjInfoParser::GetBaseShapeInfo()
     baseParams_.betaSize = InferOutFeatures(GetWeightLogicShape(opParamInfo_.weightBeta.shape), transBeta);
     baseParams_.gateSize = InferOutFeatures(GetWeightLogicShape(opParamInfo_.weightGate.shape), transGate);
     baseParams_.gSize = InferOutFeatures(GetWeightLogicShape(opParamInfo_.weightG.shape), transG);
-    OP_CHECK_IF(baseParams_.qkvSize == 0 || baseParams_.betaSize == 0 || baseParams_.gateSize == 0 ||
-                    baseParams_.gSize == 0,
-                OP_LOGE(opName_, "output features qkv/beta/gate/g must be >0, got %u/%u/%u/%u.", baseParams_.qkvSize,
-                        baseParams_.betaSize, baseParams_.gateSize, baseParams_.gSize),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        baseParams_.qkvSize == 0 || baseParams_.betaSize == 0 || baseParams_.gateSize == 0 || baseParams_.gSize == 0,
+        OP_LOGE(opName_, "output features qkv/beta/gate/g must be >0, got %u/%u/%u/%u.", baseParams_.qkvSize,
+                baseParams_.betaSize, baseParams_.gateSize, baseParams_.gSize),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -285,8 +290,8 @@ ge::graphStatus KdaInputProjInfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF(
         scaleDim0 != expectScaleDim0 || scaleDim1 != expectScaleDim1 || scaleDim2 != WEIGHT_QKV_SCALE_PACK_NUM,
         OP_LOGE(opName_, "%s shape [%ld, %ld, %ld] does not match expected [%ld, %ld, %ld] (trans_weight_qkv=%d).",
-                kda_input_proj::WEIGHT_QKV_SCALE_NAME, scaleDim0, scaleDim1, scaleDim2, expectScaleDim0, expectScaleDim1,
-                WEIGHT_QKV_SCALE_PACK_NUM, static_cast<int32_t>(transWeightQkv)),
+                kda_input_proj::WEIGHT_QKV_SCALE_NAME, scaleDim0, scaleDim1, scaleDim2, expectScaleDim0,
+                expectScaleDim1, WEIGHT_QKV_SCALE_PACK_NUM, static_cast<int32_t>(transWeightQkv)),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -328,8 +333,7 @@ ge::graphStatus KdaInputProjInfoParser::ParseAndCheck(KdaInputProjTilingInfo &ti
         return ge::GRAPH_FAILED;
     }
     GenerateInfo(tilingInfo);
-    OP_LOGI(opName_,
-            "KdaInputProj parse: T=%u K=%u qkv=%u beta=%u gate=%u g=%u trans(qkv/beta/gate/g)=%d/%d/%d/%d.",
+    OP_LOGI(opName_, "KdaInputProj parse: T=%u K=%u qkv=%u beta=%u gate=%u g=%u trans(qkv/beta/gate/g)=%d/%d/%d/%d.",
             baseParams_.tSize, baseParams_.hiddenSize, baseParams_.qkvSize, baseParams_.betaSize, baseParams_.gateSize,
             baseParams_.gSize, static_cast<int32_t>(tilingInfo.transWeightQkv),
             static_cast<int32_t>(tilingInfo.transWeightBeta), static_cast<int32_t>(tilingInfo.transWeightGate),
@@ -337,7 +341,10 @@ ge::graphStatus KdaInputProjInfoParser::ParseAndCheck(KdaInputProjTilingInfo &ti
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingPrepareForKdaInputProj(gert::TilingParseContext * /* context */) { return ge::GRAPH_SUCCESS; }
+static ge::graphStatus TilingPrepareForKdaInputProj(gert::TilingParseContext * /* context */)
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus KdaInputProjTiling::FillBaseParams(const KdaInputProjTilingInfo &tilingInfo)
 {
@@ -387,15 +394,15 @@ ge::graphStatus KdaInputProjTiling::WriteTilingResult(const KdaInputProjTilingIn
     const uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0U, OP_LOGE(opName, "num of aic obtained is 0."), return ge::GRAPH_FAILED);
 
-    const uint32_t tileNum = tilingData_.mmBggParams.numBetaTile + tilingData_.mmBggParams.numGateTile +
-                             tilingData_.mmBggParams.numGTile;
+    const uint32_t tileNum =
+        tilingData_.mmBggParams.numBetaTile + tilingData_.mmBggParams.numGateTile + tilingData_.mmBggParams.numGTile;
     constexpr uint32_t kAivPerAic = 2U;
     // MxQuant 把行按核号分给 0..usedCoreNum-1，编号超出实际启动核数的那部分行不会有核去处理，
     // quantX 里对应行保持脏数据，Stage2 的 QMM 会照着算出错误的 qkv。所以 blockDim 不能只看
     // mm_bgg 的块数，必须同时够 MxQuant 用。
-    const uint32_t mxQuantAic = static_cast<uint32_t>(
-        (tilingData_.mxQuantParams.usedCoreNum + static_cast<int64_t>(kAivPerAic) - 1) /
-        static_cast<int64_t>(kAivPerAic));
+    const uint32_t mxQuantAic =
+        static_cast<uint32_t>((tilingData_.mxQuantParams.usedCoreNum + static_cast<int64_t>(kAivPerAic) - 1) /
+                              static_cast<int64_t>(kAivPerAic));
     // 与 MatMulV3 usedCoreNum = min(mCnt*nCnt, aicNum) 一致：块数不够时允许不满核。
     const uint32_t needAic = std::max(tileNum, mxQuantAic);
     const uint32_t blockDim = (needAic == 0U) ? 1U : std::min(aicNum, needAic);
@@ -454,5 +461,7 @@ ge::graphStatus TilingForKdaInputProj(gert::TilingContext *context)
     return tiling.DoTiling(&tilingInfo);
 }
 
-IMPL_OP_OPTILING(KdaInputProj).Tiling(TilingForKdaInputProj).TilingParse<KdaInputProjCompileInfo>(TilingPrepareForKdaInputProj);
+IMPL_OP_OPTILING(KdaInputProj)
+    .Tiling(TilingForKdaInputProj)
+    .TilingParse<KdaInputProjCompileInfo>(TilingPrepareForKdaInputProj);
 } // namespace optiling

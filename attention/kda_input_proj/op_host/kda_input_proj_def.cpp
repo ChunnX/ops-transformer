@@ -42,7 +42,7 @@ public:
         this->Input(kda_input_proj::WEIGHT_G_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND}); 
+            .FormatList({ge::FORMAT_ND});
         this->Input(kda_input_proj::WEIGHT_QKV_SCALE_NAME)
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0})

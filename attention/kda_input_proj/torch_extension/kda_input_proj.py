@@ -41,8 +41,12 @@ def _construct_kda_input_proj_outputs(
         raise ValueError("weights must be 2D matmul RHS [K, N].")
     t_size = x.size(0)
     qkv = torch.empty((t_size, weight_qkv.size(1)), dtype=torch.bfloat16, device=device)
-    beta = torch.empty((t_size, weight_beta.size(1)), dtype=torch.float32, device=device)
-    gate = torch.empty((t_size, weight_gate.size(1)), dtype=torch.bfloat16, device=device)
+    beta = torch.empty(
+        (t_size, weight_beta.size(1)), dtype=torch.float32, device=device
+    )
+    gate = torch.empty(
+        (t_size, weight_gate.size(1)), dtype=torch.bfloat16, device=device
+    )
     g = torch.empty((t_size, weight_g.size(1)), dtype=torch.bfloat16, device=device)
     return qkv, beta, gate, g
 
@@ -52,7 +56,9 @@ class KdaInputProjOpBuilder(OpBuilder):
         super().__init__(OP_NAME, category="attention")
 
     def sources(self):
-        local_cpp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "csrc", "kda_input_proj.cpp")
+        local_cpp = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "csrc", "kda_input_proj.cpp"
+        )
         if os.path.isfile(local_cpp):
             return [local_cpp]
         return ["csrc/attention/kda_input_proj.cpp"]

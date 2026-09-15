@@ -61,7 +61,7 @@ cann_ops_transformer.kda_input_proj(
 
 - $T$：输入token个数。
 
-| 参数名 | 输入 / 输出 | 数据类型 | 数据格式 | 维度（shape） | 描述 | 
+| 参数名 | 输入 / 输出 | 数据类型 | 数据格式 | 维度（shape） | 描述 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `x` | 输入 | BFLOAT16 | ND | `[T, 7168]` | 隐藏层输入。 |
 | `weight_qkv` | 输入 | FLOAT8_E4M3 | ND | `[7168, 4608]` | qkv投影权重，matmul RHS `[K, N]`。 |

@@ -1,3 +1,12 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """KdaInputProj beta / gate / g 三路投影的 CPU golden。
 
 对应 Stage1 的 ``Matmul(beta/gate/g)`` 与 Stage2 的 ``Sigmoid``：
@@ -15,7 +24,9 @@ from __future__ import annotations
 import torch
 
 
-def bgg_golden(x: torch.Tensor, w_beta: torch.Tensor, w_gate: torch.Tensor, w_g: torch.Tensor):
+def bgg_golden(
+    x: torch.Tensor, w_beta: torch.Tensor, w_gate: torch.Tensor, w_g: torch.Tensor
+):
     """按硬件语义算 (beta, gate, g)：FP32 累加，gate/g 舍回 bf16。"""
     xf = x.float()
     beta = torch.sigmoid(xf @ w_beta.float())
@@ -24,7 +35,9 @@ def bgg_golden(x: torch.Tensor, w_beta: torch.Tensor, w_gate: torch.Tensor, w_g:
     return beta, gate, g
 
 
-def bgg_golden_hp(x: torch.Tensor, w_beta: torch.Tensor, w_gate: torch.Tensor, w_g: torch.Tensor):
+def bgg_golden_hp(
+    x: torch.Tensor, w_beta: torch.Tensor, w_gate: torch.Tensor, w_g: torch.Tensor
+):
     """float64 高精度参考，不做任何窄化舍入。"""
     xd = x.double()
     beta = torch.sigmoid(xd @ w_beta.double())

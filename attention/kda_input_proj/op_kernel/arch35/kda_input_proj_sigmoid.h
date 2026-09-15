@@ -25,9 +25,7 @@ namespace KdaInputProj {
 template <typename TypePack>
 class KdaInputProjSigmoid {
 public:
-    __aicore__ inline KdaInputProjSigmoid()
-    {
-    }
+    __aicore__ inline KdaInputProjSigmoid() {}
 
     __aicore__ inline void Init(__gm__ uint8_t *beta, const optiling::KdaInputProjTilingData *__restrict tiling);
     __aicore__ inline void Process();
@@ -41,8 +39,7 @@ protected:
     using QueOut = AscendC::TQue<AscendC::QuePosition::VECOUT, 1>;
 
     __aicore__ inline void ProcessAiv();
-    __aicore__ inline uint32_t ExtentOf(uint32_t loopIdx, uint32_t loopNum, uint32_t ubTile,
-                                        uint32_t tailExt) const;
+    __aicore__ inline uint32_t ExtentOf(uint32_t loopIdx, uint32_t loopNum, uint32_t ubTile, uint32_t tailExt) const;
     __aicore__ inline void CopyIn(QueIn &queIn, uint64_t gmOffset, uint32_t extent);
     __aicore__ inline void Compute(QueIn &queIn, QueOut &queOut, uint32_t extent);
     __aicore__ inline void CopyOut(QueOut &queOut, uint64_t gmOffset, uint32_t extent);
@@ -53,7 +50,7 @@ protected:
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjSigmoid<TypePack>::Init(__gm__ uint8_t *beta,
-                                                        const optiling::KdaInputProjTilingData *__restrict tiling)
+                                                           const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     beta_ = beta;
     tiling_ = tiling;
@@ -70,7 +67,7 @@ __aicore__ inline void KdaInputProjSigmoid<TypePack>::Process()
 #ifndef __DAV_CUBE__
 template <typename TypePack>
 __aicore__ inline uint32_t KdaInputProjSigmoid<TypePack>::ExtentOf(uint32_t loopIdx, uint32_t loopNum, uint32_t ubTile,
-                                                               uint32_t tailExt) const
+                                                                   uint32_t tailExt) const
 {
     return (loopIdx + 1U == loopNum) ? tailExt : ubTile;
 }
@@ -114,8 +111,7 @@ __aicore__ inline void KdaInputProjSigmoid<TypePack>::ProcessAiv()
             CopyIn(queIn, nextOff, ExtentOf(i + 1U, loopNum, sp.ubTile, tailExt));
         }
         Compute(queIn, queOut, ExtentOf(i, loopNum, sp.ubTile, tailExt));
-        CopyOut(queOut, blockOff + static_cast<uint64_t>(i) * sp.ubTile,
-                ExtentOf(i, loopNum, sp.ubTile, tailExt));
+        CopyOut(queOut, blockOff + static_cast<uint64_t>(i) * sp.ubTile, ExtentOf(i, loopNum, sp.ubTile, tailExt));
     }
     AscendC::PipeBarrier<PIPE_ALL>();
 }
@@ -157,10 +153,9 @@ __aicore__ inline void KdaInputProjSigmoid<TypePack>::Compute(QueIn &queIn, QueO
         uint32_t remain = extent;
         pregMask = AscendC::Reg::CreateMask<float>();
         AscendC::Reg::Duplicate<float, AscendC::Reg::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1),
-                                                                                   pregMask);
-        const uint16_t vfLoopNum = static_cast<uint16_t>(
-            (extent + (AscendC::VECTOR_REG_WIDTH / sizeof(float)) - 1) /
-            (AscendC::VECTOR_REG_WIDTH / sizeof(float)));
+                                                                                    pregMask);
+        const uint16_t vfLoopNum = static_cast<uint16_t>((extent + (AscendC::VECTOR_REG_WIDTH / sizeof(float)) - 1) /
+                                                         (AscendC::VECTOR_REG_WIDTH / sizeof(float)));
         __local_mem__ float *inAddr = (__local_mem__ float *)in.GetPhyAddr();
         __local_mem__ float *outAddr = (__local_mem__ float *)out.GetPhyAddr();
         for (uint16_t i = 0; i < vfLoopNum; i++) {
