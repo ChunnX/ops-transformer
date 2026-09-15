@@ -61,7 +61,7 @@ TestCases = [
         "cu_seqlens_kv": [],
         "seqused_q": [],
         "seqused_kv": [512],
-        "s2_base_size": 1024,
+        "s2_base_size": 512,
         "block_size": 128,
         "max_block_per_batch": 4,
         "mask_mode": 3,

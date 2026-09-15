@@ -332,10 +332,7 @@ def validate_mxfp8_case(case):
             f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}"
         )
 
-    if case["D"] == 64 and case.get("sparse_kv_block_size") == 128:
-        expected_s2_base_size = 1024
-    else:
-        expected_s2_base_size = 256 if case["D"] == 256 else 512
+    expected_s2_base_size = _expected_s2_base_size(case)
     if case["s2_base_size"] != expected_s2_base_size:
         raise ValueError(
             f"s2_base_size must be {expected_s2_base_size} for MXFP8 D={case['D']}, "
@@ -413,6 +410,17 @@ def _get_sequence_inputs(case):
     }
 
 
+def _expected_s2_base_size(case):
+    if case["D"] == 256:
+        return 256
+    if case["D"] == 64 and case.get("sparse_kv_block_size") == 128:
+        kv_lengths = _get_sequence_inputs(case)["kv_lengths"]
+        sparse_count = math.ceil(max(kv_lengths, default=0) / 128)
+        if sparse_count > 4:
+            return 1024
+    return 512
+
+
 def _normalize_case(case):
     case = dict(case)
     missing_fields = sorted(
@@ -438,13 +446,14 @@ def _normalize_case(case):
     if case["D"] == 256 and case["s2_base_size"] == 512:
         print(f"[Config] {case.get('name', '<unnamed>')}: D256 s2_base_size 512 -> 256")
         case["s2_base_size"] = 256
-    if (
-        case["D"] == 64
-        and case.get("sparse_kv_block_size") == 128
-        and case["s2_base_size"] == 512
-    ):
-        print(f"[Config] {case.get('name', '<unnamed>')}: D64 s2_base_size 512 -> 1024")
-        case["s2_base_size"] = 1024
+    if case["D"] == 64:
+        expected_s2_base_size = _expected_s2_base_size(case)
+        if case["s2_base_size"] != expected_s2_base_size:
+            print(
+                f"[Config] {case.get('name', '<unnamed>')}: D64 s2_base_size "
+                f"{case['s2_base_size']} -> {expected_s2_base_size}"
+            )
+            case["s2_base_size"] = expected_s2_base_size
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         case[name] = sequence_inputs[name].tolist()
