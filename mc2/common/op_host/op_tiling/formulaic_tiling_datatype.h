@@ -39,12 +39,15 @@ constexpr uint64_t MIN_DATA_PAR2 = 6 * ONE_MBYTE;
 constexpr uint64_t MIN_M_SIZE_SOC310P = 512;
 constexpr uint64_t MIN_COMM_RANKDIM = 2;
 
+// A5(950系)在拟合查表键中的序列号(原SOC950枚举序值)。
+// 枚举不再持有950档位后,A5标志(isNpuArch3510)经该常量映射回原序列号,保持拟合表键兼容。
+constexpr int32_t NPUARCH_3510_FITTING_CODE = 4;
+
 enum class SocVersion {
     SOC910_B,
     SOC310_P,
     SOC910_93,
     SOC910_B4,
-    SOC950,
 };
 
 enum class KernelType {

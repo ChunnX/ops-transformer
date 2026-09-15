@@ -664,7 +664,8 @@ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
 {
     CutResult mCutAllreduceOutput;
     SocVersion inputSocVer = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVer);
+    bool isNpuArch3510 = false;
+    SetMCutSocVersion(inputSocVer, isNpuArch3510);
     const gert::StorageShape *commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
@@ -683,7 +684,8 @@ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
         MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_, kernelType, TopoType::EIGHT_P);
         mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
+        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_,
+                                                isNpuArch3510);
         allReduceTilingHcclInst.GetTiling();
         mCutAllreduceOutput = allReduceTilingHcclInst.tilingM_.cutRes;
     }

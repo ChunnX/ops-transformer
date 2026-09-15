@@ -34,8 +34,8 @@ public:
 
     // Constructor
     explicit AllGatherPlusMMV2(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                               SocVersion inputSocVersion = SocVersion::SOC910_B)
-        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
+                               SocVersion inputSocVersion = SocVersion::SOC910_B, bool isNpuArch3510 = false)
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion, isNpuArch3510)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);
         commPerf_.SetCommDTypeSize(clusterInfo_.inMatrixADtypeSize);

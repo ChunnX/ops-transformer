@@ -29,8 +29,9 @@ class AlltoAllMM : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit AlltoAllMM(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                        SocVersion inputSocVersion = SocVersion::SOC950, bool isCommunicationBefore = false)
-        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
+                        SocVersion inputSocVersion = SocVersion::SOC910_B, bool isCommunicationBefore = false,
+                        bool isNpuArch3510 = false)
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion, isNpuArch3510),
           socVersion_(inputSocVersion)
     {
         if (isCommunicationBefore) {

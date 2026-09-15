@@ -62,13 +62,20 @@ public:
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
     uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC;
+    bool isNpuArch3510_ = false; // A5(950系)标志:由调用点经arch判断(DAV_3510)传入,替代原SOC950档位key
+
+    // 拟合查表序列号:A5映射为原SOC950枚举序值(4),保持拟合表键兼容;非A5为档位枚举序值
+    int32_t GetFittingSeriesCode() const
+    {
+        return isNpuArch3510_ ? NPUARCH_3510_FITTING_CODE : static_cast<int32_t>(mmShapeInfo_.socType);
+    }
 
     void SetCyclePerMicroSec(SocVersion inputSocVersion)
     {
         mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
         if (inputSocVersion == SocVersion::SOC310_P) {
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_VERSION310_P;
-        } else if (inputSocVersion == SocVersion::SOC950) {
+        } else if (isNpuArch3510_) { // 原SOC950档
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
             mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_NPUARCH_3510;
         } else {
@@ -77,7 +84,7 @@ public:
     }
     void SetCalcType(const mc2tiling::TilingArgs &args)
     {
-        if ((mmShapeInfo_.socType == SocVersion::SOC950) &&
+        if (isNpuArch3510_ &&
             ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
@@ -95,10 +102,11 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion inputSocVersion = SocVersion::SOC910_B)
-        : calcType_(MatmulCalcType::FP16)
+                                    SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                    bool isNpuArch3510 = false)
+        : calcType_(MatmulCalcType::FP16), isNpuArch3510_(isNpuArch3510)
     {
-        mmShapeInfo_.socType = inputSocVersion;
+        mmShapeInfo_.socType = inputSocVersion; // A5场景由Arch35派生类以占位档位(SOC910_B)传入
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
         mmShapeInfo_.inMatrixADtypeSize = args.inputDtypeSize;
         mmShapeInfo_.inMatrixBDtypeSize = mmShapeInfo_.inMatrixADtypeSize;
@@ -118,7 +126,7 @@ public:
 
     std::string GetCalcTypeString()
     {
-        return std::to_string(static_cast<int>(mmShapeInfo_.socType)) + "_" +
+        return std::to_string(GetFittingSeriesCode()) + "_" +
                std::to_string(static_cast<int>(calcType_)) + "_" + std::to_string(mmShapeInfo_.inMatrixADtypeSize) +
                "_" + std::to_string(mmShapeInfo_.inMatrixBDtypeSize) + "_" +
                std::to_string(mmShapeInfo_.outMatrixCDtypeSize);

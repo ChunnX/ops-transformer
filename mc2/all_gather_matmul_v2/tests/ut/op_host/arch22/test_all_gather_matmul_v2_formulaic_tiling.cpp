@@ -48,17 +48,18 @@ mc2tiling::TilingArgs MakeFormulaicArgs(uint64_t m, uint64_t k, uint64_t n, uint
     return args;
 }
 
-CutResult RunFormulaicTiling(const mc2tiling::TilingArgs &args, uint32_t rankDim, SocVersion soc)
+CutResult RunFormulaicTiling(const mc2tiling::TilingArgs &args, uint32_t rankDim, SocVersion soc,
+                             bool isNpuArch3510 = false)
 {
-    AllGatherPlusMMV2 tileFormulate(args, rankDim, KernelType::ALL_GATHER, soc);
+    AllGatherPlusMMV2 tileFormulate(args, rankDim, KernelType::ALL_GATHER, soc, isNpuArch3510);
     tileFormulate.GetTiling();
     return tileFormulate.tilingM_.cutRes;
 }
 
-TEST(AllGatherMatmulV2FormulaicTilingTest, Soc950A5Basic)
+TEST(AllGatherMatmulV2FormulaicTilingTest, Dav3510A5Basic)
 {
     auto args = MakeFormulaicArgs(512, 8192, 1280, 8);
-    auto cut = RunFormulaicTiling(args, 8, SocVersion::SOC950);
+    auto cut = RunFormulaicTiling(args, 8, SocVersion::SOC910_B, true);
     EXPECT_GT(cut.totalTileCnt, 0U);
 }
 
@@ -132,10 +133,10 @@ TEST(AllGatherMatmulV2FormulaicTilingTest, Soc910BBwGrowthByUtilLargeShape)
     EXPECT_GT(cut.totalTileCnt, 0U);
 }
 
-TEST(AllGatherMatmulV2FormulaicTilingTest, Soc950QuantDtype)
+TEST(AllGatherMatmulV2FormulaicTilingTest, Dav3510QuantDtype)
 {
     auto args = MakeFormulaicArgs(512, 8192, 1280, 8, 32, ge::DT_FLOAT8_E4M3FN);
-    auto cut = RunFormulaicTiling(args, 8, SocVersion::SOC950);
+    auto cut = RunFormulaicTiling(args, 8, SocVersion::SOC910_B, true);
     EXPECT_GT(cut.totalTileCnt, 0U);
 }
 

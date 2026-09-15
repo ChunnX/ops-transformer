@@ -35,16 +35,16 @@ const static map<string, HCCLFittingParameters> ARCH35_FITTING_PARAMETER_MAP = {
     {"4_0_1_8", HCCLFittingParameters{0, 0, 9.2419, 22, 0, 0, 0, 0, 0, 0, 0, 0}}, // 950 allreduce 8p
 };
 
-string HCCLPerformanceArch35::GetCommInfoString(SocVersion socVersion)
+string HCCLPerformanceArch35::GetCommInfoString() const
 {
-    return to_string(static_cast<int>(socVersion)) + "_" + to_string(static_cast<int>(commTypeInfo_.kernelType)) + "_" +
+    return to_string(GetFittingSeriesCode()) + "_" + to_string(static_cast<int>(commTypeInfo_.kernelType)) + "_" +
            to_string(static_cast<int>(commTypeInfo_.topoType)) + "_" +
            to_string(static_cast<int>(commTypeInfo_.rankDim));
 };
 
-void HCCLPerformanceArch35::GetCommArch35Parameters(SocVersion socVersion)
+void HCCLPerformanceArch35::GetCommArch35Parameters()
 {
-    keyToFittingMap_ = GetCommInfoString(socVersion);
+    keyToFittingMap_ = GetCommInfoString();
     if (ARCH35_FITTING_PARAMETER_MAP.find(keyToFittingMap_) != ARCH35_FITTING_PARAMETER_MAP.end()) {
         commEstimatePar_ = ARCH35_FITTING_PARAMETER_MAP.at(keyToFittingMap_);
     } else {

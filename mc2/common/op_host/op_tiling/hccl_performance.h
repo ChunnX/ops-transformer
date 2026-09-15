@@ -36,38 +36,46 @@ public:
     double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
     uint64_t lookUpTileNum_ = 1;  // 数据拟合查表参数
     std::string keyToFittingMap_ = DEFAULT_KEY_FOR_FITTING_MAP;
-    SocVersion socVersion_ = SocVersion::SOC910_B;
+    SocVersion socVersion_ = SocVersion::SOC910_B; // 非A5档位;A5场景保持占位值,判断走isNpuArch3510_
+    bool isNpuArch3510_ = false; // A5(950系)标志:由调用点经arch判断(DAV_3510)传入,替代原SOC950档位key
+
+    // 拟合查表序列号:A5映射为原SOC950枚举序值(4),保持拟合表键兼容;非A5为档位枚举序值
+    int32_t GetFittingSeriesCode() const
+    {
+        return isNpuArch3510_ ? NPUARCH_3510_FITTING_CODE : static_cast<int32_t>(socVersion_);
+    }
 
     void SetCommParametersBaseSocType(SocVersion inputSocVersion)
     {
-        if (inputSocVersion == SocVersion::SOC310_P) {
+        if (isNpuArch3510_) { // 原SOC950档
+            InitParametersForFullMesh();
+        } else if (inputSocVersion == SocVersion::SOC310_P) {
             SetCommMethodVersion310P(); // 310P只支持MatmulAllreduce算子
             socVersion_ = SocVersion::SOC310_P;
         } else if (inputSocVersion == SocVersion::SOC910_93) {
             InitSOC91093();
             socVersion_ = SocVersion::SOC910_93;
-        } else if (inputSocVersion == SocVersion::SOC950) {
-            InitParametersForFullMesh();
-            socVersion_ = SocVersion::SOC950;
         } else {
             InitParametersForFullMesh();
         }
     }
     // Constructor
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion inputSocVersion = SocVersion::SOC910_B)
+                                  SocVersion inputSocVersion = SocVersion::SOC910_B,
+                                  bool isNpuArch3510 = false)
+        : isNpuArch3510_(isNpuArch3510)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
         SetCommParametersBaseSocType(inputSocVersion);
         SetMaxStepSize();
-        keyToFittingMap_ = GetCommMethodString(inputSocVersion);
+        keyToFittingMap_ = GetCommMethodString();
         GetCommEstimateParameters();
     };
-    std::string GetCommMethodString(SocVersion socType)
+    std::string GetCommMethodString() const
     {
-        return std::to_string(static_cast<int>(socType)) + "_" +
+        return std::to_string(GetFittingSeriesCode()) + "_" +
                std::to_string(static_cast<int>(commTypeInfo_.commMethod));
     }
 

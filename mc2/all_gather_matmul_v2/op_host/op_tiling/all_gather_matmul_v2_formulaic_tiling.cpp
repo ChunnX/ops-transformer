@@ -95,7 +95,7 @@ void AllGatherPlusMMV2::SetCommTimeFactorForOther()
 
 void AllGatherPlusMMV2::SetCommTimeFactor()
 {
-    if (clusterInfo_.socType == SocVersion::SOC950) {
+    if (isNpuArch3510_) { // 原SOC950档
         SetCommTimeFactorForA5();
     } else {
         SetCommTimeFactorForOther();

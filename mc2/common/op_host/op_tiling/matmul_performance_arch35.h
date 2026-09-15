@@ -19,25 +19,14 @@
 
 class MatmulPerformanceArch35 : public MatmulPerformanceModel {
 public:
-    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args, SocVersion inputSocVersion = SocVersion::SOC950)
-        : MatmulPerformanceModel(args, inputSocVersion)
+    // A5(950系)专用拟合模型:仅服务于DAV_3510平台,A5内蕴于类本身,不再接收档位key
+    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args)
+        : MatmulPerformanceModel(args, SocVersion::SOC910_B, true)
     {
-        TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock(inputSocVersion);
-        mmShapeInfo_.baseM = bestBaseBlock.baseM;
-        mmShapeInfo_.baseN = bestBaseBlock.baseN;
-        mmShapeInfo_.baseK = bestBaseBlock.baseK;
-    }
-
-    const std::map<SocVersion, TilingBestBaseBlock> TILING_BEST_BASE_MAP{
-        {SocVersion::SOC950, TilingBestBaseBlock{256, 256, 128}},
-    };
-
-    TilingBestBaseBlock GetBestBaseBlock(SocVersion SocVersion)
-    {
-        if (TILING_BEST_BASE_MAP.find(SocVersion) != TILING_BEST_BASE_MAP.end()) {
-            return TILING_BEST_BASE_MAP.at(SocVersion);
-        }
-        return TilingBestBaseBlock{mc2tiling::BASE_BLOCK_M, mc2tiling::BASE_BLOCK_N, mc2tiling::BASE_BLOCK_K};
+        // A5最优base block(原TILING_BEST_BASE_MAP中SOC950档的唯一条目)
+        mmShapeInfo_.baseM = 256;
+        mmShapeInfo_.baseN = 256;
+        mmShapeInfo_.baseK = 128;
     }
 
     void FindCubeUtil(uint64_t rankTileNum)

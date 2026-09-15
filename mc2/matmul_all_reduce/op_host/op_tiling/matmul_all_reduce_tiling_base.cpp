@@ -279,7 +279,7 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
     SetCommQuantScale();
 }
 
-void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
+void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion, bool &isNpuArch3510)
 {
     if (npuArch_ == Ops::Base::DAV_2002) {
         inputSocVersion = SocVersion::SOC310_P;
@@ -288,7 +288,7 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
     }
     // __NPU_ARCH__ == 3510
     if (npuArch_ == Ops::Base::DAV_3510) {
-        inputSocVersion = SocVersion::SOC950;
+        isNpuArch3510 = true; // A5内蕴标志,替代原SOC950档位
         OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
     }
@@ -307,8 +307,10 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
 CutResult MatmulAllReduceTilingBase::GetTilingResult()
 {
     SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
-    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+    bool isNpuArch3510 = false;
+    SetMCutSocVersion(inputSocVersion, isNpuArch3510); // arch判断:3510→A5;否则310P/910B4档位判定
+    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_,
+                                        isNpuArch3510);
     allReduceTilingHccl.GetTiling();
     CutResult mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
