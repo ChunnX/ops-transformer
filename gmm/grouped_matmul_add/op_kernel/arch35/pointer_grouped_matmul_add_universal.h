@@ -501,4 +501,3 @@ private:
 } // namespace Kernel
 } // namespace Gemm
 } // namespace Blaze
-
