@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef MOE_DISTRIBUTE_DISPATCH_TILING_V3_A5
-#define MOE_DISTRIBUTE_DISPATCH_TILING_V3_A5
+#ifndef MOE_DISTRIBUTE_DISPATCH_TILING_V3_DAV3510
+#define MOE_DISTRIBUTE_DISPATCH_TILING_V3_DAV3510
 
 #include "../moe_distribute_dispatch_v3_tiling_base.h"
 namespace optiling {

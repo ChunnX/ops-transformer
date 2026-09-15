@@ -40,7 +40,7 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(GM_ADDR context, GM_ADDR x, 
                                                     GM_ADDR recvScales, GM_ADDR workspace, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchEpilogueTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpDispatchEpilogueTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_DAV3510", MoeEpDispatchEpilogueTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
 

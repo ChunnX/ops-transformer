@@ -48,7 +48,7 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510);
     const char *serverType = nullptr;
     const char *streamType = nullptr;
     if ((isArch35 && commMode == "ccu")) {
@@ -71,7 +71,7 @@ ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510);
     if ((!isArch35) || (isArch35 && commMode == "ai_cpu")) {
         OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);

@@ -208,7 +208,7 @@ ge::Status Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(const gert::ExeResGenerationC
     ++aicore_idx;
 
     // aicpu task
-    const bool useA5AicpuServer = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    const bool useA5AicpuServer = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510);
     const std::string &soName = useA5AicpuServer ? SO_NAME_MC2_SERVER : SO_NAME_LEGACY;
     const std::string &kernelName = useA5AicpuServer ? KERNEL_NAME_MC2_SERVER : KERNEL_NAME_V1;
     OPS_LOG_I(context->GetNodeName(), "Create AICPU KFC task for MC2, so[%s], kernel[%s], useA5AicpuServer[%d].",

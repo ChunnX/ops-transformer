@@ -55,10 +55,10 @@ CutResult RunFormulaicTiling(const mc2tiling::TilingArgs &args, uint32_t rankDim
     return tileFormulate.tilingM_.cutRes;
 }
 
-TEST(AllGatherMatmulV2FormulaicTilingTest, Soc950A5Basic)
+TEST(AllGatherMatmulV2FormulaicTilingTest, SocDav3510A5Basic)
 {
     auto args = MakeFormulaicArgs(512, 8192, 1280, 8);
-    auto cut = RunFormulaicTiling(args, 8, SocVersion::SOC950);
+    auto cut = RunFormulaicTiling(args, 8, SocVersion::DAV_3510);
     EXPECT_GT(cut.totalTileCnt, 0U);
 }
 
@@ -132,10 +132,10 @@ TEST(AllGatherMatmulV2FormulaicTilingTest, Soc910BBwGrowthByUtilLargeShape)
     EXPECT_GT(cut.totalTileCnt, 0U);
 }
 
-TEST(AllGatherMatmulV2FormulaicTilingTest, Soc950QuantDtype)
+TEST(AllGatherMatmulV2FormulaicTilingTest, SocDav3510QuantDtype)
 {
     auto args = MakeFormulaicArgs(512, 8192, 1280, 8, 32, ge::DT_FLOAT8_E4M3FN);
-    auto cut = RunFormulaicTiling(args, 8, SocVersion::SOC950);
+    auto cut = RunFormulaicTiling(args, 8, SocVersion::DAV_3510);
     EXPECT_GT(cut.totalTileCnt, 0U);
 }
 

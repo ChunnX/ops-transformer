@@ -44,7 +44,7 @@ __global__ __aicore__ void moe_ep_combine_epilogue(GM_ADDR context, GM_ADDR x, G
                                                    GM_ADDR workspace, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpCombineEpilogueTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeEpCombineEpilogueTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_DAV3510", MoeEpCombineEpilogueTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpCombineEpilogueTilingData, tilingData, tilingGM);
 #if defined(ENABLE_MOE_EP_COMBINE_EPILOGUE_KERNEL)

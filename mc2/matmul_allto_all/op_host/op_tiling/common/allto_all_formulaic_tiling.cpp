@@ -71,7 +71,7 @@ void AlltoAllMM::SetCommTimeFactor()
         OP_LOGD("AlltoAllMatmul", "Current commTimeFactor is %f", CommTimeFactor);
         commPerf_.ChangeCommTimeFactorByDivision(CommTimeFactor);
     } else {
-        OP_LOGD("AlltoAllMatmul, Current socVersion is SOC950.");
+        OP_LOGD("AlltoAllMatmul, Current socVersion is DAV_3510.");
         // A5上的时间因子AlltoAll暂时定义为2
         commPerf_.ChangeCommTimeFactorByDivision(TWO); // 2x time of factor
     }

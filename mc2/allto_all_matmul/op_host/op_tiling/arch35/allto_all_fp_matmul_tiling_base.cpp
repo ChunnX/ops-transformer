@@ -93,14 +93,14 @@ CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
         TopoType topoType =
             contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
-        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950,
+        // DAV_3510的4卡和8卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::DAV_3510,
                                               commMode);
         return tiling.GetTiling();
     } else {
         OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
         AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                               SocVersion::SOC950, true);
+                                               SocVersion::DAV_3510, true);
         if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
             constexpr uint64_t FP_AICPU_TILING_MAX_NUM = 5;
             alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(FP_AICPU_TILING_MAX_NUM);

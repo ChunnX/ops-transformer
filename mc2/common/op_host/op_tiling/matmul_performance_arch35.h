@@ -19,7 +19,7 @@
 
 class MatmulPerformanceArch35 : public MatmulPerformanceModel {
 public:
-    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args, SocVersion inputSocVersion = SocVersion::SOC950)
+    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args, SocVersion inputSocVersion = SocVersion::DAV_3510)
         : MatmulPerformanceModel(args, inputSocVersion)
     {
         TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock(inputSocVersion);
@@ -29,7 +29,7 @@ public:
     }
 
     const std::map<SocVersion, TilingBestBaseBlock> TILING_BEST_BASE_MAP{
-        {SocVersion::SOC950, TilingBestBaseBlock{256, 256, 128}},
+        {SocVersion::DAV_3510, TilingBestBaseBlock{256, 256, 128}},
     };
 
     TilingBestBaseBlock GetBestBaseBlock(SocVersion SocVersion)

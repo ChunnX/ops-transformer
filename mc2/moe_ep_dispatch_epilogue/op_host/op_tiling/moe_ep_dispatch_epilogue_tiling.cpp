@@ -560,7 +560,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + hitCountBytesAlign512 + jointCountBytesAlign512;
 
     uint64_t tilingKey =
-        GET_TPL_TILING_KEY(TILINGKEY_TPL_A5, cached ? 1U : 0U, hasTopkWeights ? 1U : 0U, info.isMxQuant ? 1U : 0U);
+        GET_TPL_TILING_KEY(TILINGKEY_TPL_DAV3510, cached ? 1U : 0U, hasTopkWeights ? 1U : 0U, info.isMxQuant ? 1U : 0U);
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, hasTopkWeights=%u, isMxQuant=%u", tilingKey,
             blockDim, aivNum, info.cached, hasTopkWeights ? 1U : 0U, info.isMxQuant);

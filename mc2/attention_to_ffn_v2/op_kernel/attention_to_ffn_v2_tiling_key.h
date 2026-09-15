@@ -16,7 +16,7 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 #define TILINGKEY_TPL_A3 1
-#define TILINGKEY_TPL_A5 2
+#define TILINGKEY_TPL_DAV3510 2
 
 // User-facing quant_mode attr values:
 //   0: NO_QUANT
@@ -57,7 +57,7 @@ ASCENDC_TPL_ARGS_DECL(AttentionToFfnV2,
                                             ATTN_FFN_TILINGKEY_OUT_E4M3, ATTN_FFN_TILINGKEY_OUT_E2M1),
                       ASCENDC_TPL_BOOL_DECL(ATTN_FFN_SCALE, 0, 1), ASCENDC_TPL_BOOL_DECL(TILINGKEY_SYNC, 0, 1),
                       ASCENDC_TPL_BOOL_DECL(TILINGKEY_ACTIVE_MASK, 0, 1),
-                      ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5), );
+                      ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_DAV3510), );
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ATTN_FFN_QUANT_MODE, ASCENDC_TPL_UI_LIST,
                                                           ATTN_FFN_TILINGKEY_NO_QUANT, ATTN_FFN_TILINGKEY_PERTOKEN_INT8,
                                                           ATTN_FFN_TILINGKEY_MX, ATTN_FFN_TILINGKEY_MX_CLIP),
@@ -67,6 +67,6 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ATTN_FFN_QUANT_MODE, A
                                      ASCENDC_TPL_BOOL_SEL(ATTN_FFN_SCALE, 0, 1),
                                      ASCENDC_TPL_BOOL_SEL(TILINGKEY_SYNC, 0, 1),
                                      ASCENDC_TPL_BOOL_SEL(TILINGKEY_ACTIVE_MASK, 0, 1),
-                                     ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5), ), );
+                                     ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_DAV3510), ), );
 } // namespace Mc2Tiling
 #endif

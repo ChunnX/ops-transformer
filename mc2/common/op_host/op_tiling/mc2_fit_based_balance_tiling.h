@@ -36,7 +36,7 @@ public:
 
     explicit Mc2FitBasedBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                       TopoType topoType = TopoType::STANDARD_CARD,
-                                      SocVersion socVersion = SocVersion::SOC950)
+                                      SocVersion socVersion = SocVersion::DAV_3510)
         : matmulPerf_(args, socVersion),
           commPerf_(args.rankDim, kernelType, socVersion, topoType),
           tilingM_(args)

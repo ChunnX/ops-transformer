@@ -68,7 +68,7 @@ public:
         mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
         if (inputSocVersion == SocVersion::SOC310_P) {
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_VERSION310_P;
-        } else if (inputSocVersion == SocVersion::SOC950) {
+        } else if (inputSocVersion == SocVersion::DAV_3510) {
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
             mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_NPUARCH_3510;
         } else {
@@ -77,7 +77,7 @@ public:
     }
     void SetCalcType(const mc2tiling::TilingArgs &args)
     {
-        if ((mmShapeInfo_.socType == SocVersion::SOC950) &&
+        if ((mmShapeInfo_.socType == SocVersion::DAV_3510) &&
             ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||

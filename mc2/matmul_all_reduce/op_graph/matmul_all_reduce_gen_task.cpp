@@ -26,7 +26,7 @@
 namespace ops {
 ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) {
         const gert::RuntimeAttrs *attrs = context->GetAttrs();
         OP_TILING_CHECK(
             attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
@@ -48,7 +48,7 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *context,
                                       std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) {
         const gert::RuntimeAttrs *attrs = context->GetAttrs();
         OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."),
                         return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks););

@@ -30,7 +30,7 @@ class MatmulAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MatmulAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                             TopoType topoType = TopoType::STANDARD_CARD,
-                                            SocVersion socVersion = SocVersion::SOC950,
+                                            SocVersion socVersion = SocVersion::DAV_3510,
                                             QuantMode quantMode = QuantMode::NON_QUANT,
                                             uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
         : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion),

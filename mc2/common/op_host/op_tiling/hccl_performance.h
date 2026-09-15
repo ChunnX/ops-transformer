@@ -46,9 +46,9 @@ public:
         } else if (inputSocVersion == SocVersion::SOC910_93) {
             InitSOC91093();
             socVersion_ = SocVersion::SOC910_93;
-        } else if (inputSocVersion == SocVersion::SOC950) {
+        } else if (inputSocVersion == SocVersion::DAV_3510) {
             InitParametersForFullMesh();
-            socVersion_ = SocVersion::SOC950;
+            socVersion_ = SocVersion::DAV_3510;
         } else {
             InitParametersForFullMesh();
         }

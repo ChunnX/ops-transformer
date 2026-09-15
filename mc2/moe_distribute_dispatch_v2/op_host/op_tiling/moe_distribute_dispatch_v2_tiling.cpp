@@ -56,13 +56,13 @@ constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 constexpr int64_t MAX_SHARED_EXPERT_NUM = 4;
 constexpr int64_t MAX_EP_WORLD_SIZE_A3 = 768L; // 384 * 2
-constexpr int64_t MAX_EP_WORLD_SIZE_A5 = 1024L;
+constexpr int64_t MAX_EP_WORLD_SIZE_DAV3510 = 1024L;
 constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr int64_t BS_UPPER_BOUND = 512;
 constexpr int64_t BS_UPPER_BOUND_LAYERED = 256;
 constexpr int64_t FULLMESH_BS_UPPER_BOUND_A3 = 256;
-constexpr int64_t FULLMESH_BS_UPPER_BOUND_A5 = BS_UPPER_BOUND;
+constexpr int64_t FULLMESH_BS_UPPER_BOUND_DAV3510 = BS_UPPER_BOUND;
 constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
 constexpr uint32_t RANK_NUM_PER_NODE = 16U;
 
@@ -675,7 +675,7 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     NpuArch npuArch = mc2tiling::GetNpuArch(context);
     int64_t maxEpworldsize = 0;
     if (npuArch == Ops::Base::DAV_3510) {
-        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A5;
+        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_DAV3510;
     } else {
         maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A3;
     }
@@ -929,7 +929,7 @@ static bool CheckCommAlgAttrs(const gert::TilingContext *context, const char *no
     const int64_t expertIdsDim1 = expertIdStorageShape->GetStorageShape().GetDim(1);
     uint32_t k = static_cast<uint32_t>(expertIdsDim1);
     int64_t fullMeshBsUpperBound =
-        mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 ? FULLMESH_BS_UPPER_BOUND_A5 : FULLMESH_BS_UPPER_BOUND_A3;
+        mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 ? FULLMESH_BS_UPPER_BOUND_DAV3510 : FULLMESH_BS_UPPER_BOUND_A3;
 
     // 检查comm_alg和bs是否冲突
     OP_TILING_CHECK(isSetFullMeshV2 && (bs > fullMeshBsUpperBound),

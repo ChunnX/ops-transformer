@@ -77,7 +77,7 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
 
 CutResult MatmulAllToAllTilingBase::GetTilingResult()
 {
-    SocVersion nowSocVersion = SocVersion::SOC950;
+    SocVersion nowSocVersion = SocVersion::DAV_3510;
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
     if (socVersionStr == "Ascend910_93") {
         nowSocVersion = SocVersion::SOC910_93;

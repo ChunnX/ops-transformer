@@ -288,7 +288,7 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
     }
     // __NPU_ARCH__ == 3510
     if (npuArch_ == Ops::Base::DAV_3510) {
-        inputSocVersion = SocVersion::SOC950;
+        inputSocVersion = SocVersion::DAV_3510;
         OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
     }
@@ -492,7 +492,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
     uint64_t gmcFloat = 0;
 
     // __NPU_ARCH__ == 3510
-    // 950需要自己申请一块workSpace存放mm的输出
+    // DAV_3510需要自己申请一块workSpace存放mm的输出
     if (npuArch_ == Ops::Base::DAV_3510) {
         gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                    static_cast<uint64_t>(MutableRCSTilingData().rankN) * static_cast<uint64_t>(args_.outputDtypeSize);

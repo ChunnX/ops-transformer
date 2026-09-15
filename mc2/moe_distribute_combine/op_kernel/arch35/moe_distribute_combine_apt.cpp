@@ -35,7 +35,7 @@ __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR exper
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
     TPipe pipe;
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
-    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+    if constexpr (ArchTag == TILINGKEY_TPL_DAV3510) {
         MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, QuantMode == TILINGKEY_INT8_QUANT> op;
         op.Init(expandX, expertIds, expandIdx, epSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();

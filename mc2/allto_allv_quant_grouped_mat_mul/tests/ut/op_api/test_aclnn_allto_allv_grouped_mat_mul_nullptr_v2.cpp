@@ -60,7 +60,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_null_gmm_x =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -104,7 +104,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_null_gmm_weight =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -149,7 +149,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_null_gmm_x_scale =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -194,7 +194,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_null_gmm_weight_scale = OP_API_UT(
         aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -238,7 +238,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_not_null_send_tensor =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -283,7 +283,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_not_null_recv_tensor =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -328,7 +328,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_not_null_permuteout_false =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -373,7 +373,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_null_permuteout_true =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,
@@ -418,7 +418,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulV2NullptrTest, aclnnAlltoAllvQuantGrouped
     const char *commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
 
     auto ut_quant_mode_not_vaild =
         OP_API_UT(aclnnAlltoAllvQuantGroupedMatMulV2,

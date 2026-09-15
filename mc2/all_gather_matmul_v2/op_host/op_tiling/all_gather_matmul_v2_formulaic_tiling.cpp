@@ -95,7 +95,7 @@ void AllGatherPlusMMV2::SetCommTimeFactorForOther()
 
 void AllGatherPlusMMV2::SetCommTimeFactor()
 {
-    if (clusterInfo_.socType == SocVersion::SOC950) {
+    if (clusterInfo_.socType == SocVersion::DAV_3510) {
         SetCommTimeFactorForA5();
     } else {
         SetCommTimeFactorForOther();

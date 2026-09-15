@@ -24,7 +24,7 @@ class MMReduceScatterFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MMReduceScatterFitBalanceTiling(
         const mc2tiling::TilingArgs &args, KernelType kernelType, TopoType topoType = TopoType::STANDARD_CARD,
-        SocVersion socVersion = SocVersion::SOC950,
+        SocVersion socVersion = SocVersion::DAV_3510,
         bool isAicpuComm = false) // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
         : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion),
           isAicpuComm_(isAicpuComm)

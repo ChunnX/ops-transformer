@@ -237,7 +237,7 @@ ge::Status Mc2MoeGenTaskOpsUtils::Mc2MoeInsertTask(const gert::ExeResGenerationC
     // 2. aicpu task
     bool needAicpuTesk = IsPlatform910B(nodeName) || NO_AI_CPU_SET.find(opTypeStr) == NO_AI_CPU_SET.end();
     if (needAicpuTesk) {
-        const bool useA5AicpuServer = IsTargetPlatformNpuArch(nodeName, NPUARCH_A5);
+        const bool useA5AicpuServer = IsTargetPlatformNpuArch(nodeName, NPUARCH_DAV3510);
         const std::string &soName = useA5AicpuServer ? SO_NAME_MC2_SERVER : SO_NAME_LEGACY;
         const std::string &kernelName = useA5AicpuServer ? KERNEL_NAME_MC2_SERVER : KERNEL_NAME_V1;
         OPS_LOG_I(nodeName, "Create AICPU KFC task for MC2 MOE, so[%s], kernel[%s], useA5AicpuServer[%d].",

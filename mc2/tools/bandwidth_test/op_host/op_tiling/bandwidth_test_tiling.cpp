@@ -72,7 +72,7 @@ const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
 
 // ============ Tiling Key ============
-constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL; // A5架构base key
+constexpr uint64_t TILING_KEY_BASE_DAV3510 = 2ULL; // A5架构base key
 
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
@@ -275,7 +275,7 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 // 根据NPU架构计算TilingKey
 static uint64_t CalTilingKey()
 {
-    uint64_t archTag = TILING_KEY_BASE_A5;
+    uint64_t archTag = TILING_KEY_BASE_DAV3510;
     uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
     return tilingKey;
 }

@@ -113,7 +113,7 @@ ge::graphStatus SetV2TilingKey(gert::TilingContext *context, uint32_t quantMode,
                                bool isSync, bool isActiveMask)
 {
     const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(quantMode, outDtype, isScales, isSync, isActiveMask, TILINGKEY_TPL_A5);
+        GET_TPL_TILING_KEY(quantMode, outDtype, isScales, isSync, isActiveMask, TILINGKEY_TPL_DAV3510);
     context->SetTilingKey(tilingKey);
     OP_LOGD(context->GetNodeName(), "AttentionToFfnV2 cur case tilingKey is %lu", tilingKey);
     return ge::GRAPH_SUCCESS;

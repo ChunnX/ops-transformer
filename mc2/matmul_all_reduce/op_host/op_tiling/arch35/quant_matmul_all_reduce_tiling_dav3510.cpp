@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file quant_matmul_all_reduce_tiling_950.cc
+ * \file quant_matmul_all_reduce_tiling_dav3510.cpp
  * \brief
  */
-#ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#define _QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
-#include "quant_matmul_all_reduce_tiling_950.h"
+#ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_DAV3510_CC_
+#define _QUANT_MATMUL_ALL_REDUCE_TILING_DAV3510_CC_
+#include "quant_matmul_all_reduce_tiling_dav3510.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "util/math_util.h"
@@ -55,10 +55,10 @@ bool QuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA8W8_ || (scenario_ == AllReduceScenario::FP8HIF8) || (scenario_ == AllReduceScenario::MXFP4) ||
         (scenario_ == AllReduceScenario::MXFP8)) {
-        OP_LOGI(opName_, "Start with matmulAllReduce 950 quant tiling.");
+        OP_LOGI(opName_, "Start with matmulAllReduce DAV_3510 quant tiling.");
         return true;
     }
-    OP_LOGI(opName_, "Skip matmulAllReduce 950 quant tiling as dtype not support.");
+    OP_LOGI(opName_, "Skip matmulAllReduce DAV_3510 quant tiling as dtype not support.");
     return false;
 }
 
@@ -998,7 +998,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
                     isPertileFp8);
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, KernelType::ALL_REDUCE_VIA_TWO_SHOT,
-                                                        TopoType::STANDARD_CARD, SocVersion::SOC950, commMode,
+                                                        TopoType::STANDARD_CARD, SocVersion::DAV_3510, commMode,
                                                         isPertileFp8);
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
@@ -1010,7 +1010,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
         }
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P, SocVersion::SOC950,
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P, SocVersion::DAV_3510,
                                                         commMode, isPertileFp8);
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
@@ -1027,4 +1027,4 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAllReduce, QuantMatmulAllReduceTilingA5
                                    static_cast<int32_t>(Ops::Base::DAV_3510), 0);
 } // namespace optiling
 
-#endif //_QUANT_MATMUL_ALL_REDUCE_TILING_950_CC_
+#endif //_QUANT_MATMUL_ALL_REDUCE_TILING_DAV3510_CC_

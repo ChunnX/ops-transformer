@@ -27,7 +27,7 @@ namespace ops {
 static const size_t ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2 = 13;
 ge::Status MoeDistributeDispatchV2CalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if ((IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) &&
+    if ((IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_DAV3510)) &&
         (Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2) == COMM_ALG_CCU)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 ccu calc param.");
         return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
@@ -44,7 +44,7 @@ ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContex
         OPS_LOG_D(nodeName, "Do A2 mte gen task.");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     }
-    if (IsTargetPlatformNpuArch(nodeName, NPUARCH_A5)) {
+    if (IsTargetPlatformNpuArch(nodeName, NPUARCH_DAV3510)) {
         const std::string commAlg =
             Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2);
         if ((commAlg == COMM_ALG_MTE) || (commAlg == COMM_ALG_FULLMESH_V1) || (commAlg == COMM_ALG_FULLMESH_V2)) {

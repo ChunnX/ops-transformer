@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <kernel_tiling/kernel_tiling.h>
 
-// 910C 950
+// 910C DAV_3510
 struct MoeDistributeCombineSetupInfo {
     uint32_t epWorldSize;
     uint32_t epRankId;

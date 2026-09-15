@@ -121,7 +121,7 @@ CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
     OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
 
-    SocVersion nowSocVersion = SocVersion::SOC950;
+    SocVersion nowSocVersion = SocVersion::DAV_3510;
     if (socVersionStr == "Ascend910_93") {
         nowSocVersion = SocVersion::SOC910_93;
     }

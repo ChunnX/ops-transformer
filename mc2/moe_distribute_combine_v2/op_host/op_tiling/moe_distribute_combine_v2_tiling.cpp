@@ -76,7 +76,7 @@ constexpr uint8_t BUFFER_NUM = 2;
 constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 constexpr int64_t MAX_SHARED_EXPERT_NUM = 4;
 constexpr int64_t MAX_EP_WORLD_SIZE_A3 = 768L; // 384 * 2
-constexpr int64_t MAX_EP_WORLD_SIZE_A5 = 1024L;
+constexpr int64_t MAX_EP_WORLD_SIZE_DAV3510 = 1024L;
 constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 constexpr int64_t EP_RESTRICT_8 = 8;
@@ -270,7 +270,7 @@ static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext 
     NpuArch npuArch = mc2tiling::GetNpuArch(context);
     int64_t maxEpworldsize = 0;
     if (npuArch == Ops::Base::DAV_3510) {
-        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A5;
+        maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_DAV3510;
     } else {
         maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE_A3;
     }
@@ -1685,10 +1685,10 @@ static uint32_t GetA3PartialBufferSizeByFlag(const uint32_t axisBS, const uint32
     return partialBufferSize;
 }
 
-static uint32_t GetFloatAlignSize(uint32_t hFloatSize, uint32_t alignSize, bool isA5FusedQuant)
+static uint32_t GetFloatAlignSize(uint32_t hFloatSize, uint32_t alignSize, bool isDav3510FusedQuant)
 {
     // A5 + INT8/MXFP8 场景按512B对齐，其余场景使用调用方指定的对齐大小
-    if (isA5FusedQuant) {
+    if (isDav3510FusedQuant) {
         alignSize = ALIGNED_LEN * 2U;
     }
     return (hFloatSize + alignSize - 1U) / alignSize * alignSize;
@@ -1709,7 +1709,7 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
     bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
                         (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
-    bool isA5FusedQuant = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 && (isInt8Quant || isMxFp8Quant);
+    bool isDav3510FusedQuant = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 && (isInt8Quant || isMxFp8Quant);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
     uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
@@ -1717,8 +1717,8 @@ static uint64_t GetComputeBufferSize(const gert::TilingContext *context,
     uint32_t maxSizeTokenBuf = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t activeMaskAlignSize = axisBS * ((axisK * sizeof(bool) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN);
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint32_t hFloatAlign32Size = GetFloatAlignSize(hFloatSize, UB_ALIGN, isA5FusedQuant);
-    uint32_t hFloatAlign256Size = GetFloatAlignSize(hFloatSize, ALIGNED_LEN, isA5FusedQuant);
+    uint32_t hFloatAlign32Size = GetFloatAlignSize(hFloatSize, UB_ALIGN, isDav3510FusedQuant);
+    uint32_t hFloatAlign256Size = GetFloatAlignSize(hFloatSize, ALIGNED_LEN, isDav3510FusedQuant);
     uint32_t bsKFloatAlign = (axisBS * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
     uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size;
@@ -1861,20 +1861,20 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     bool isInt8Quant = commQuantMode == INT8_COMM_QUANT;
     bool isMxFp8Quant = (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) ||
                         (commQuantMode == static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT));
-    bool isA5 = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510;
+    bool isDav3510 = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510;
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     uint32_t expandXTypeSize = static_cast<uint32_t>(ge::GetSizeByDataType(expandXDesc->GetDataType()));
     uint32_t hExpandXTypeSize = axisH * expandXTypeSize;
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t hFloatSize = axisH * static_cast<uint32_t>(sizeof(float));
-    uint32_t hFloatAlign32Size = GetFloatAlignSize(hFloatSize, UB_ALIGN, isA5 && (isInt8Quant || isMxFp8Quant));
-    uint32_t hFloatAlign256Size = GetFloatAlignSize(hFloatSize, ALIGNED_LEN, isA5 && (isInt8Quant || isMxFp8Quant));
+    uint32_t hFloatAlign32Size = GetFloatAlignSize(hFloatSize, UB_ALIGN, isDav3510 && (isInt8Quant || isMxFp8Quant));
+    uint32_t hFloatAlign256Size = GetFloatAlignSize(hFloatSize, ALIGNED_LEN, isDav3510 && (isInt8Quant || isMxFp8Quant));
     uint32_t scaleNumAlignSize = 0U;
     uint32_t commDataBytes = hExpandXTypeSize;
     uint64_t quantBufferSize = 0U;
     if (isInt8Quant || isMxFp8Quant) {
         uint32_t scaleBaseCnt =
-            isInt8Quant ? (isA5 ? hFloatAlign256Size / sizeof(float) : hExpandXAlign32Size / expandXTypeSize) : 0U;
+            isInt8Quant ? (isDav3510 ? hFloatAlign256Size / sizeof(float) : hExpandXAlign32Size / expandXTypeSize) : 0U;
         commDataBytes = GetQuantCommDataBytes(axisH, expandXTypeSize, scaleBaseCnt, commQuantMode, scaleNumAlignSize);
         quantBufferSize =
             GetQuantScratchSize(axisH, expandXTypeSize, isMxFp8Quant, hFloatAlign32Size, hFloatAlign256Size);
@@ -1889,13 +1889,13 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     // flag检查和比较复用计算scratch，通信侧只保留清零buffer
     uint32_t clearFlagCount = flagRcvCount * blockCntPerToken * SPLIT_BLOCK_FLAG_COUNT;
     uint32_t clearFlagBufSize = (clearFlagCount * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    if (isA5 && isMxFp8Quant) {
+    if (isDav3510 && isMxFp8Quant) {
         // A5 MXFP8接收端不再分配独立的scaleDiv临时区，预算与kernel保持一致
         scaleNumAlignSize = 0U;
     }
     uint64_t commBufferSize = static_cast<uint64_t>(scaleNumAlignSize) + clearFlagBufSize;
     dispatchBufferSize =
-        isA5 ? GetDispatchBufferSize(tilingData, moeQueueBytes, commDataBytes, packedDataBytes, quantBufferSize) : 0U;
+        isDav3510 ? GetDispatchBufferSize(tilingData, moeQueueBytes, commDataBytes, packedDataBytes, quantBufferSize) : 0U;
     return commBufferSize;
 }
 

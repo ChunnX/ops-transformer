@@ -24,7 +24,7 @@ using namespace std;
 class HCCLPerformanceArch35 : public HCCLPerformanceModel {
 public:
     explicit HCCLPerformanceArch35(uint32_t inputRankDim, KernelType inputKernelType,
-                                   SocVersion socVersion = SocVersion::SOC950,
+                                   SocVersion socVersion = SocVersion::DAV_3510,
                                    TopoType topoType = TopoType::STANDARD_CARD)
         : HCCLPerformanceModel(inputRankDim, inputKernelType, socVersion)
     {

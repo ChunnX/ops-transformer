@@ -591,13 +591,13 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
     return ge::GRAPH_SUCCESS;
 }
 
-static uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, bool isA5)
+static uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, bool isDav3510)
 {
     uint32_t tilingKeyQuantMode = TILINGKEY_NO_QUANT;
     bool scaleMode = false; // A2 & A3
     uint32_t fullMesh = TILINGKEY_NO_FULLMESH;
     uint32_t layeredMode = TILINGKEY_TPL_MTE; // A2
-    uint32_t archTag = isA5 ? TILINGKEY_TPL_A5 : TILINGKEY_TPL_A3;
+    uint32_t archTag = isDav3510 ? TILINGKEY_TPL_DAV3510 : TILINGKEY_TPL_A3;
 
     if (quantMode == STATIC_QUANT_MODE) {
         tilingKeyQuantMode = TILINGKEY_STATIC_QUANT;
