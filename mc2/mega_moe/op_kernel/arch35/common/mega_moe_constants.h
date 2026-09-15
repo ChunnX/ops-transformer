@@ -17,6 +17,12 @@ namespace MegaMoeImpl {
 
 constexpr uint32_t RANK_SYNC_COUNTER_OFFSET_BYTES = 48U * 1024U;
 constexpr uint32_t RANK_SYNC_COUNTER_SLOT_BYTES = 64U;
+// 本卡本次 kernel 的同类核全核同步：AIC 调用时同步全部 AIC，AIV 调用时同步全部 AIV。
+constexpr uint8_t ALL_AICORE_SYNC_MODE = 0;
+// 同一 AI Core 内 AIC 与单个 AIV 的同步，支持双向通知。
+constexpr uint8_t AIC_SINGLE_AIV_SYNC_MODE = 4;
+// 量化完成事件；与 GMM mode 4 独立，避开 SyncAll 的 11--14。
+constexpr uint16_t MTE_QUANT_READY_FLAG = 8;
 
 constexpr int64_t MAX_INT16_TOPK_INDEX_COUNT = 1LL << 15;
 
