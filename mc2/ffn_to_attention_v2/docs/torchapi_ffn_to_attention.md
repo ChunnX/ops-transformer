@@ -231,7 +231,7 @@ ffn_to_attention(buffer, x, session_ids, micro_batch_ids, token_ids, expert_offs
 
 - `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），由`get_buffer_for_ffn_to_attention`内部自动计算，需满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},512) + \mathrm{tokenDataSize},32) + 32\,\mathrm{KiB},\ 2\,\mathrm{MB})$$
 
 其中：
   - `tokenInfoSize = microBatchNum × BS × expertNumPerToken × 4B`

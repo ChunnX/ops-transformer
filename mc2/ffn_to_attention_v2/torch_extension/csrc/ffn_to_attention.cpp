@@ -114,12 +114,10 @@ int64_t GetFFNToAttentionCclBufferSize(const std::vector<int64_t> &tokenInfoTabl
     int64_t tokenDataSize = CheckedMul(CheckedMul(tokenSlots, hs), BYTES_PER_FP16);
     int64_t tokenInfoSize = CeilAlign(CheckedMul(tokenSlots, BYTES_PER_INT32), 512);
     int64_t rawSize = CeilAlign(CheckedAdd(tokenInfoSize, tokenDataSize), 32);
-    // Include all URMA scratch; payload-only sizing is not a valid window capacity.
-    int64_t relayTokenCapacity = maxTokenNum < 0 ? CheckedMul(worldSize, tokenSlots) : maxTokenNum;
-    int64_t relayInfoSize = CheckedMul(relayTokenCapacity, 4 * static_cast<int64_t>(sizeof(uint64_t)));
-    int64_t relayListSize = CheckedMul(worldSize, 2 * static_cast<int64_t>(sizeof(uint64_t)));
+    // Address tables live in operator workspace, not in the registered window.
+    // Keep maxTokenNum as a compatibility argument; it no longer affects window sizing.
     int64_t flagSourceSize = FLAG_SOURCE_RESERVE_BYTES;
-    rawSize = CheckedAdd(rawSize, CheckedAdd(flagSourceSize, CheckedAdd(relayInfoSize, relayListSize)));
+    rawSize = CheckedAdd(rawSize, flagSourceSize);
     return CeilAlign(rawSize, MB_ALIGN);
 }
 
@@ -130,6 +128,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_ffn_to_attention_ccl_buffer_size", &GetFFNToAttentionCclBufferSize,
           pybind11::arg("token_info_table_shape"), pybind11::arg("token_data_shape"), pybind11::arg("world_size"),
           pybind11::arg("max_token_num") = -1,
-          "Complete URMA window size including flag sources and relay metadata; world_size is required");
+          "URMA window size including flag sources; address tables use operator workspace");
 }
 } // namespace op_api

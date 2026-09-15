@@ -52,7 +52,6 @@ constexpr uint32_t METADATA_CHUNK_BUFFER_SIZE = METADATA_CHUNK_TOKEN_NUM * METAD
 constexpr uint32_t REMOTE_ADDRESS_ENTRY_FIELD_NUM = 2U;
 constexpr uint32_t REMOTE_ADDRESS_ENTRY_SIZE = REMOTE_ADDRESS_ENTRY_FIELD_NUM * sizeof(uint64_t);
 constexpr uint32_t ADDRESS_TABLE_BUFFER_SIZE = 40U * 1024U;
-constexpr uint64_t URMA_OPERATOR_WORKSPACE_SIZE = 64UL * 1024UL * 1024UL;
 static constexpr AscendC::UrmaWqeEntry REMOTE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 static constexpr AscendC::UrmaWqeEntry REMOTE_ORDERED_FLAG_WQE_CONFIG = {
@@ -204,14 +203,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
 
     // Follow MoeEpCombine's layout: one independent compact address table per rank, followed by the total-count row
     // and the per-core count matrix. Every core publishes only its own count row.
-    ascendc_assert(maxTokenNum_ <= URMA_OPERATOR_WORKSPACE_SIZE / REMOTE_ADDRESS_ENTRY_SIZE,
-                   "maxTokenNum exceeds the address-table workspace capacity");
     addressTableStridePerRank_ =
         Ceil(maxTokenNum_ * REMOTE_ADDRESS_ENTRY_SIZE, URMA_WIN_ADDR_ALIGN) * URMA_WIN_ADDR_ALIGN;
-    ascendc_assert(
-        addressTableStridePerRank_ == 0U || worldSize_ <= URMA_OPERATOR_WORKSPACE_SIZE / addressTableStridePerRank_,
-        "rank address tables exceed the operator workspace capacity");
-    addressTableWorkspaceAddr_ = workspaceGM;
+    addressTableWorkspaceAddr_ = workspaceGM + tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset;
     uint64_t addressTableWorkspaceBytes = static_cast<uint64_t>(worldSize_) * addressTableStridePerRank_;
     rankCountElements_ = static_cast<uint32_t>(
         Ceil(static_cast<uint64_t>(worldSize_) * sizeof(int32_t), URMA_UB_ALIGN) * URMA_UB_ALIGN / sizeof(int32_t));
@@ -222,13 +216,13 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     perCoreRankCountWorkspaceAddr_ = totalRankCountWorkspaceAddr_ + totalRankCountWorkspaceBytes;
     uint64_t requiredWorkspaceSize = addressTableWorkspaceBytes + totalRankCountWorkspaceBytes +
                                      static_cast<uint64_t>(aivNum_) * perCoreRankCountStride_;
-    ascendc_assert(requiredWorkspaceSize <= URMA_OPERATOR_WORKSPACE_SIZE,
+    ascendc_assert(requiredWorkspaceSize <= tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes,
                    "address-table workspace (%llu) exceeds reserved workspace (%llu)",
                    static_cast<unsigned long long>(requiredWorkspaceSize),
-                   static_cast<unsigned long long>(URMA_OPERATOR_WORKSPACE_SIZE));
+                   static_cast<unsigned long long>(tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes));
 
     // Validate the registered window tail used by flag sources.
-    const uint64_t cclBufferSize = tilingData->ffnToAttentionV2Info.urmaWorkspaceOffset;
+    const uint64_t cclBufferSize = tilingData->ffnToAttentionV2Info.cclBufferSize;
     const uint64_t flagWindowSize = static_cast<uint64_t>(aivNum_) * URMA_FLAG_SLOT_SIZE;
     const uint64_t requiredWindowSize = flagWindowOffset + flagWindowSize;
     ascendc_assert(cclBufferSize >= requiredWindowSize,
@@ -245,7 +239,7 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::I
     localWritesMayAliasInput_ =
         inputAddr < localWindowBegin + tokenWindowEnd && inputAddr + maxTokenNum_ * hSize_ > localWindowBegin;
 
-    tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, hSize_);
+    tpipe_->InitBuffer(xQueue_, URMA_BUFFER_NUM, Ceil(hSize_, static_cast<uint64_t>(URMA_UB_ALIGN)) * URMA_UB_ALIGN);
     tpipe_->InitBuffer(statusBuf_, URMA_UB_ALIGN);
     statusTensor_ = statusBuf_.Get<int32_t>();
     tpipe_->InitBuffer(metadataBuf_, METADATA_CHUNK_BUFFER_SIZE);
@@ -477,7 +471,9 @@ __aicore__ inline void FFNToAttentionUrma<TemplateFFNToAttentionUrmaTypeFunc>::B
     }
 
     // Pass 2: bucket this core's records by rank in UB, then batch-copy each bucket into its rank table.
-    uint32_t entriesPerRank = ADDRESS_TABLE_BUFFER_SIZE / worldSize_ / REMOTE_ADDRESS_ENTRY_SIZE;
+    // Each UB bucket starts on a 32B boundary; GM entries remain tightly packed 16B records.
+    uint32_t bucketBytes = ADDRESS_TABLE_BUFFER_SIZE / worldSize_ / URMA_UB_ALIGN * URMA_UB_ALIGN;
+    uint32_t entriesPerRank = bucketBytes / REMOTE_ADDRESS_ENTRY_SIZE;
     ascendc_assert(entriesPerRank != 0U, "worldSize leaves no room for rank address-table buckets");
     uint32_t groupTokenMax = entriesPerRank < METADATA_CHUNK_TOKEN_NUM ? entriesPerRank : METADATA_CHUNK_TOKEN_NUM;
     LocalTensor<uint64_t> addressEntries = addressTableBuf_.Get<uint64_t>();

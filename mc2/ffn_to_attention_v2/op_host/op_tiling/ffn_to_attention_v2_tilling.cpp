@@ -45,9 +45,8 @@ using namespace Mc2Tiling;
 namespace MC2Tiling {
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
-constexpr size_t REMOTE_RELAY_INFO_FIELD_NUM = 4U;
-constexpr size_t REMOTE_RELAY_INFO_SIZE = REMOTE_RELAY_INFO_FIELD_NUM * sizeof(uint64_t);
-constexpr size_t REMOTE_RELAY_LIST_NUM = 2U;
+constexpr size_t ADDRESS_ENTRY_SIZE = 2U * sizeof(uint64_t);
+constexpr size_t ADDRESS_TABLE_ALIGN = 512U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 constexpr size_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 64LL;
 
@@ -76,7 +75,7 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(context->SetScheduleMode(BATCH_MODE_SCHEDULE) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "failed to enable batch schedule mode"), return ge::GRAPH_FAILED);
 
-    // Payloads are read directly from x. Flag sources and relay metadata occupy the local window tail.
+    // Payloads are read directly from x. Only flag sources occupy the local window tail.
     FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
                     return ge::GRAPH_FAILED);
@@ -87,7 +86,8 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "xShape"),
                     return ge::GRAPH_FAILED);
     const int64_t maxTokenNumDim = xShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(maxTokenNumDim < 0, OP_LOGE(context->GetNodeName(), "x dim0 must be non-negative"),
+    OP_TILING_CHECK(maxTokenNumDim < 0 || maxTokenNumDim > std::numeric_limits<int32_t>::max(),
+                    OP_LOGE(context->GetNodeName(), "x dim0 must fit non-negative int32 rank counts"),
                     return ge::GRAPH_FAILED);
     tilingData->ffnToAttentionV2Info.maxTokenNum = static_cast<uint64_t>(maxTokenNumDim);
 
@@ -97,41 +97,55 @@ ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
     const size_t aivNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.aivNum);
     const size_t maxTokenNum = static_cast<size_t>(tilingData->ffnToAttentionV2Info.maxTokenNum);
     const size_t worldSize = static_cast<size_t>(tilingData->ffnToAttentionV2Info.worldSize);
-    OP_TILING_CHECK(aivNum == 0U, OP_LOGE(context->GetNodeName(), "aivNum must be greater than zero"),
+    OP_TILING_CHECK(aivNum == 0U || worldSize == 0U,
+                    OP_LOGE(context->GetNodeName(), "aivNum and worldSize must be greater than zero"),
                     return ge::GRAPH_FAILED);
     const size_t flagWindowSize = aivNum * URMA_FLAG_SLOT_SIZE;
-    OP_TILING_CHECK(maxTokenNum != 0U && REMOTE_RELAY_INFO_SIZE > std::numeric_limits<size_t>::max() / maxTokenNum,
-                    OP_LOGE(context->GetNodeName(), "metadata relay info window size overflow"),
-                    return ge::GRAPH_FAILED);
-    const size_t relayInfoWindowSize = maxTokenNum * REMOTE_RELAY_INFO_SIZE;
-    const size_t relayListWindowSize = worldSize * sizeof(uint64_t) * REMOTE_RELAY_LIST_NUM;
-    OP_TILING_CHECK(relayInfoWindowSize > std::numeric_limits<size_t>::max() - relayListWindowSize,
-                    OP_LOGE(context->GetNodeName(), "metadata window size overflow"), return ge::GRAPH_FAILED);
-    const size_t metadataWindowSize = relayInfoWindowSize + relayListWindowSize;
-    OP_TILING_CHECK(metadataWindowSize > std::numeric_limits<size_t>::max() - flagWindowSize,
-                    OP_LOGE(context->GetNodeName(), "flag/metadata window size overflow"), return ge::GRAPH_FAILED);
-    const size_t scratchWindowSize = flagWindowSize + metadataWindowSize;
     const auto &info = tilingData->ffnToAttentionV2Info;
+    // Mirror the explicit InitBuffer allocations on AIV0, which also owns the HCOMM buffers.
+    const uint64_t alignedPayloadBytes = (static_cast<uint64_t>(info.H) * sizeof(uint16_t) + 31U) / 32U * 32U;
+    const uint64_t ubCountRowBytes = (static_cast<uint64_t>(worldSize) * sizeof(int32_t) + 31U) / 32U * 32U;
+    const uint64_t requiredUbBytes =
+        2U * alignedPayloadBytes + 32U + 4096U + 40U * 1024U + 3U * ubCountRowBytes + 512U + 256U * 64U;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint64_t availableUbBytes = 0U;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, availableUbBytes);
+    OP_TILING_CHECK(requiredUbBytes > availableUbBytes,
+                    OP_LOGE(context->GetNodeName(), "URMA explicit buffers exceed available UB"),
+                    return ge::GRAPH_FAILED);
     // Shape limits validated by the base tiling bound these products (MB=1, BS<=512, K<=17, HS<=8320).
     const uint64_t tokenSlotNum = static_cast<uint64_t>(info.microBatchNum) * info.BS * info.expertNumPerToken;
     const uint64_t tokenInfoBytes = (tokenSlotNum * sizeof(int32_t) + 511U) / 512U * 512U;
     const uint64_t tokenWindowEnd = tokenInfoBytes + tokenSlotNum * info.HS * sizeof(uint16_t);
-    const uint64_t relayWindowOffset =
+    const uint64_t flagWindowOffset =
         (tokenWindowEnd + URMA_WORKSPACE_ALIGN - 1U) / URMA_WORKSPACE_ALIGN * URMA_WORKSPACE_ALIGN;
-    OP_TILING_CHECK(scratchWindowSize > std::numeric_limits<int64_t>::max() - relayWindowOffset,
-                    OP_LOGE(context->GetNodeName(), "relay window size overflow"), return ge::GRAPH_FAILED);
-    const uint64_t requiredWindowSize = relayWindowOffset + scratchWindowSize;
+    const uint64_t requiredWindowSize = flagWindowOffset + flagWindowSize;
     const auto cclBufferSize = context->GetAttrs()->GetAttrPointer<int64_t>(config.attrCclBufferSizeIndex);
     OP_TILING_CHECK(
         cclBufferSize == nullptr || *cclBufferSize <= 0 || static_cast<uint64_t>(*cclBufferSize) < requiredWindowSize,
-        OP_LOGE(context->GetNodeName(), "ccl_buffer_size must include local flag/relay scratch (%llu bytes)",
+        OP_LOGE(context->GetNodeName(), "ccl_buffer_size must include local flag sources (%llu bytes)",
                 static_cast<unsigned long long>(requiredWindowSize)),
         return ge::GRAPH_FAILED);
-    // Retain the existing system/library reservation, but allocate no operator scratch in workspace.
-    OP_TILING_CHECK(workSpaces[0] > std::numeric_limits<size_t>::max() - RESERVED_WORKSPACE_SIZE,
-                    OP_LOGE(context->GetNodeName(), "workspace size overflow"), return ge::GRAPH_FAILED);
-    tilingData->ffnToAttentionV2Info.urmaWorkspaceOffset = static_cast<uint64_t>(*cclBufferSize);
     workSpaces[0] += RESERVED_WORKSPACE_SIZE;
+    // Keep the library reservation untouched; append an independently sized operator region.
+    const uint64_t rankTableStride =
+        (static_cast<uint64_t>(maxTokenNum) * ADDRESS_ENTRY_SIZE + ADDRESS_TABLE_ALIGN - 1U) / ADDRESS_TABLE_ALIGN *
+        ADDRESS_TABLE_ALIGN;
+    const uint64_t countRowStride = (static_cast<uint64_t>(worldSize) * sizeof(int32_t) + ADDRESS_TABLE_ALIGN - 1U) /
+                                    ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
+    // N <= INT32_MAX and R <= 768 are checked above/by base tiling; C is uint32.
+    const uint64_t tableBytes = rankTableStride * worldSize + (static_cast<uint64_t>(aivNum) + 1U) * countRowStride;
+    OP_TILING_CHECK(
+        workSpaces[0] > std::numeric_limits<size_t>::max() - RESERVED_WORKSPACE_SIZE - (ADDRESS_TABLE_ALIGN - 1U),
+        OP_LOGE(context->GetNodeName(), "workspace size overflow"), return ge::GRAPH_FAILED);
+    const size_t tableOffset = (workSpaces[0] + RESERVED_WORKSPACE_SIZE + ADDRESS_TABLE_ALIGN - 1U) /
+                               ADDRESS_TABLE_ALIGN * ADDRESS_TABLE_ALIGN;
+    OP_TILING_CHECK(tableBytes > std::numeric_limits<size_t>::max() - tableOffset,
+                    OP_LOGE(context->GetNodeName(), "address table workspace size overflow"), return ge::GRAPH_FAILED);
+    tilingData->ffnToAttentionV2Info.cclBufferSize = static_cast<uint64_t>(*cclBufferSize);
+    tilingData->ffnToAttentionV2Info.addressTableWorkspaceOffset = tableOffset;
+    tilingData->ffnToAttentionV2Info.addressTableWorkspaceBytes = tableBytes;
+    workSpaces[0] = tableOffset + static_cast<size_t>(tableBytes);
 
     // FFNToAttentionV2 on A5 uses the URMA communication implementation.
     bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;
