@@ -20,7 +20,7 @@
 #include "mega_moe_arch35.h"
 
 namespace MegaMoeImpl {
-
+      
 constexpr uint32_t GMM2_LAG_MIN_TOKEN_NUM = 4096U;
 
 #define TemplateMegaMoeA8W8WaveTypeClass \
