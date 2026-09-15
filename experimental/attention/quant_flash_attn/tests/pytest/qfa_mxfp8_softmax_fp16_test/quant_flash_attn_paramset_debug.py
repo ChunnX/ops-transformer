@@ -33,9 +33,10 @@ TEST_PARAMS = {
         "p_scale": [1.0],
         "enable_lse": [False],
     },
-    # 多 S2 分块：单行 3 个 S2 块（256+256+188 尾块），验证 isFirstS2Loop/isLastS2Loop 翻转、
-    # softmaxStateSlot 跨块推进、actSingleLoopS2Size=188 尾块、C2/V2 逐块触发
-    "BNSD_B1_QS256_KVS700_Nq1_Nkv1_D128_qm3": {
+    # 多 S2 分块：单行 3 个 S2 块（256+256+192 尾块），验证 isFirstS2Loop/isLastS2Loop 翻转、
+    # softmaxStateSlot 跨块推进、actSingleLoopS2Size=192 尾块、C2/V2 逐块触发
+    # 注：S2 需为 QUANT_GROUP_SIZE(64) 的倍数（golden 生成 reshape 约束）
+    "BNSD_B1_QS256_KVS704_Nq1_Nkv1_D128_qm3": {
         "B": [1],
         "N_q": [1],
         "N_kv": [1],
@@ -43,7 +44,7 @@ TEST_PARAMS = {
         "cu_seqlens_q": [None],
         "cu_seqlens_kv": [None],
         "seqused_q": [[256]],
-        "seqused_kv": [[700]],
+        "seqused_kv": [[704]],
         "enable_pa": [False],
         "kv_cache_layout": [None],
         "block_size": [None],
@@ -127,8 +128,9 @@ TEST_PARAMS = {
         "p_scale": [1.0],
         "enable_lse": [False],
     },
-    # S2 核间切分：单行 8 个 S2 块（2048/256），行数 < 核数触发按块分配 → 8 核各 1 块，
-    # 验证 headS2Split/tailS2Split、NOT_START 快进与 SKIP_REMAINING_S2
+    # 单核多 S2 块顺序执行：单行 8 个 S2 块（2048/256）。
+    # 注：当前 S2 切分策略按 bN2 粒度分配，同一 bN2 的所有 S2 块绑定同一核（不跨核），
+    # 本用例验证单核内 8 块顺序执行、slot 跨 8 块不变（同行 mloop 相同）、C2/V2 逐块触发
     "BNSD_B1_QS256_KVS2048_Nq1_Nkv1_D128_qm3": {
         "B": [1],
         "N_q": [1],
