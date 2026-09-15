@@ -18,11 +18,11 @@
 
 #include "mla_prolog_comm_arch22.h"
 #include "mla_prolog_vector_comm_arch22.h"
-#include "service_matmul_arch22.h"
-#include "service_rms_norm_arch22.h"
 #include "service_dequant_arch22.h"
 #include "service_dynamic_quant_qn_mul_qr_arch22.h"
 #include "service_gather_sin_cos_arch22.h"
+#include "service_matmul_arch22.h"
+#include "service_rms_norm_arch22.h"
 #include "service_rotary_position_embedding_arch22.h"
 #include "service_scatter_cache_arch22.h"
 #include "../mla_prolog_tiling_data.h"
@@ -75,10 +75,9 @@ public:
                                 __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
                                 __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr,
                                 __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
-                                __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *actualSeqLen,
-                                __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut,
-                                __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
-                                __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace);
+                                __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *actualSeqLen, __gm__ uint8_t *kNopeClipAlpha,
+                                __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
+                                __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace);
 
 private:
     __aicore__ inline void CopyGlobalParams();
@@ -262,9 +261,9 @@ private:
     LocalTensor<dequantScaleType> dequantScaleWDkvKrLocal_;
     LocalTensor<rmsNormGammaType> rmsnormGammaCkvLocal_;
     LocalTensor<rmsNormGammaType> rmsnormGammaCqLocal_;
-    LocalTensor<float> smoothScaleCqLocal_;
-    LocalTensor<float> quantScaleCkrLocal_;
     LocalTensor<float> quantScaleCkvLocal_;
+    LocalTensor<float> quantScaleCkrLocal_;
+    LocalTensor<float> smoothScaleCqLocal_;
     LocalTensor<int64_t> stepActualSeqLocal_;
 
     struct ActSeqState {
@@ -1002,9 +1001,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
     curStepVecFrontToken_ = curStepVecFrontListNum_ != 0 ? curStepVecBackToken_ + 1 : curStepVecBackToken_;
 
     aivOffset.curVecToken = blockIdx_ < curStepVecFrontListNum_ ? curStepVecFrontToken_ : curStepVecBackToken_;
-    aivOffset.curBlockTokenOffset = blockIdx_ < curStepVecFrontListNum_ ?
-                                        blockIdx_ * aivOffset.curVecToken :
-                                        blockIdx_ * aivOffset.curVecToken + curStepVecFrontListNum_;
+    aivOffset.curBlockTokenOffset = blockIdx_ < curStepVecFrontListNum_ ? blockIdx_ * aivOffset.curVecToken :
+                                    blockIdx_ * aivOffset.curVecToken + curStepVecFrontListNum_;
     aivOffset.rmsNormCqOffset = baseParams_->headSizeCq * aivOffset.curBlockTokenOffset; //  1536 * idx
     aivOffset.rmsNormCkvOffset =
         (baseParams_->dimHeadRope + baseParams_->headSizeCkv) * aivOffset.curBlockTokenOffset; // (512 + 64) * idx
@@ -1015,11 +1013,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
         aivOffset.mmQnPreDequantResOffset = baseParams_->headSizeQc * aivOffset.curBlockTokenOffset;
         aivOffset.ropeQrOffset = static_cast<int64_t>(baseParams_->dimHeadSizeQc) +
                                  aivOffset.curBlockTokenOffset *
-                                     static_cast<int64_t>(baseParams_->dimHeadRope + baseParams_->dimHeadSizeQc) *
-                                     static_cast<int64_t>(baseParams_->numHeadSize); // 128 + 32 * (128 + 64) * idx
+                                 static_cast<int64_t>(baseParams_->dimHeadRope + baseParams_->dimHeadSizeQc) *
+                                 static_cast<int64_t>(baseParams_->numHeadSize); // 128 + 32 * (128 + 64) * idx
         aivOffset.ropeQrResOffset =
             static_cast<int64_t>(baseParams_->headSizeQr) *
-            (aivOffset.curBlockTokenOffset + batchOffset); // 32 * 64 * idx;    // 按BS合轴切分step
+            (aivOffset.curBlockTokenOffset + batchOffset); // 32 * 64 * idx; 按BS合轴切分step
     }
 
     // 以下的Offset均是与batchOffset无关的，仅初始化一次即可。

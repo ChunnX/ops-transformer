@@ -28,19 +28,6 @@ __aicore__ inline int64_t CeilDiv64(int64_t x, int64_t y)
     return (x + y - 1) / y;
 };
 
-/**
- * @brief PA场景，将inputLocal中的数据scatter到cacheGm，支持ND和Nz cache
- * @param cacheGm 输出tensor
- *     ND [blockNum, blockSize, col]
- *     Nz [blockNum, ceil(col/col0), blockSize, col0]
- * @param inputLocal 输入tensor，[row, col]，一行对应一个token，只支持单行数据处理，row为1
- * @param scatterCacheParams 所需相关参数，包括
-          blockSize KV blocks的大小
-          paTokenIndex 待处理token在cache中的全局index，取值[0, blockNum*blockSize)
-          row 待处理的行数
-          col 待处理的列数，需满足32 bytes对齐
- */
-
 struct ScatterCacheParams {
     int64_t blockSize;
     int64_t paTokenIndex;
@@ -63,6 +50,18 @@ __aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize
     return blockIndex * cacheStride0 + tokenIndexInBlock * tokenStride;
 }
 
+/**
+ * @brief PA场景，将inputLocal中的数据scatter到cacheGm，支持ND和Nz cache
+ * @param cacheGm 输出tensor
+ *     ND [blockNum, blockSize, col]
+ *     Nz [blockNum, ceil(col/col0), blockSize, col0]
+ * @param inputLocal 输入tensor，[row, col]，一行对应一个token，只支持单行数据处理，row为1
+ * @param scatterCacheParams 所需相关参数，包括
+          blockSize KV blocks的大小
+          paTokenIndex 待处理token在cache中的全局index，取值[0, blockNum*blockSize)
+          row 待处理的行数
+          col 待处理的列数，需满足32 bytes对齐
+ */
 template <typename T, bool IS_NZ>
 __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
                                     const ScatterCacheParams &scatterCacheParams)
@@ -85,15 +84,16 @@ __aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalT
 }
 
 template <typename T, bool IS_NZ>
-__aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
-                                             const ScatterCacheParams &scatterCacheParams)
+__aicore__ inline void ScatterCacheUnAligned(
+    const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal, const ScatterCacheParams &scatterCacheParams)
 {
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
     if constexpr (!IS_NZ) {
-        int64_t cacheOffset = GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
-                                             scatterCacheParams.stride, scatterCacheParams.cacheStride0);
+        int64_t cacheOffset = 
+            GetCacheOffset(scatterCacheParams.paTokenIndex, scatterCacheParams.blockSize,
+                           scatterCacheParams.stride, scatterCacheParams.cacheStride0);
         // blockCount, blockLen, srcStride, dstStride
         DataCopyParams dataCopyParams{1, static_cast<uint16_t>(scatterCacheParams.col * sizeof(T)), 0, 0};
         DataCopyPad(cacheGm[cacheOffset], inputLocal, dataCopyParams);
@@ -101,15 +101,14 @@ __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, con
 }
 
 template <typename T, bool IS_NZ>
-__aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
-                                             const ScatterCacheParams &scatterCacheParams, int64_t rowsInCurBatch,
-                                             int64_t cacheOffset, int64_t nextBatchOffset)
+__aicore__ inline void ScatterCacheMultiRows(
+    GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal, const ScatterCacheParams &scatterCacheParams,
+    int64_t rowsInCurBatch, int64_t cacheOffset, int64_t nextBatchOffset)
 {
     if (cacheOffset < 0) {
         return;
     }
     int64_t copyCnt = scatterCacheParams.col * rowsInCurBatch;
-
     if constexpr (!IS_NZ) {
         DataCopy(cacheGm[cacheOffset], inputLocal, copyCnt);
         if (rowsInCurBatch != scatterCacheParams.row) {
@@ -130,9 +129,9 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const Loc
 }
 
 template <typename T, bool IS_NZ>
-__aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageId, int64_t tokenOffsetInPage, int64_t rowsThisStep,
-                                                      bool spill, int64_t nextPageId, int64_t headSize,
-                                                      int64_t cacheStride0, CkvkrParams &ckvkrParams)
+__aicore__ inline void MaterializeOffsetsWithHeadSize(
+    int64_t pageId, int64_t tokenOffsetInPage, int64_t rowsThisStep, bool spill, int64_t nextPageId,
+    int64_t headSize, int64_t cacheStride0, CkvkrParams &ckvkrParams)
 {
     ckvkrParams.rowsInCurBatch = rowsThisStep;
     if constexpr (IS_NZ) {

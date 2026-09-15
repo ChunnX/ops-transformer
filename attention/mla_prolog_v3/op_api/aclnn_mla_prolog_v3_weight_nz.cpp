@@ -208,10 +208,12 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     const int WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT = 3;
     const int WEIGHT_QUANT_MODE_FULL_QUANT_FP8 = 4;
     const int WEIGHT_QUANT_MODE_FULL_QUANT_HIF8 = 5;
+
     const int KV_CACHE_QUANT_MODE_NO_QUANT = 0;
     const int KV_CACHE_QUANT_MODE_PER_TENSOR = 1;
     const int KV_CACHE_QUANT_MODE_PER_CHANNEL = 2;
     const int KV_CACHE_QUANT_MODE_PER_TILE = 3;
+
     if (!CheckWeightQuantModeValidity(weightQuantMode)) {
         return ge::GRAPH_FAILED;
     };

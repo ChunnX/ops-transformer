@@ -267,15 +267,6 @@ struct CastQcQrSplitNParams {
     uint32_t dstStride;
 };
 
-struct DequantQcQrSplitNParams {
-    int64_t mmQnPreDequantOffset;
-    int64_t mmQnPreDequantResOffset;
-    uint32_t inputOffset;
-    uint32_t outputOffset;
-    uint32_t srcStride;
-    uint32_t dstStride;
-};
-
 struct RopeQrSplitNParams {
     int64_t ropeQrOffset;
     int64_t ropeQrResOffset;
@@ -287,6 +278,15 @@ struct RopeQrSplitNParams {
     uint32_t deQuantScaleCqOffset;
     uint32_t sinCosOffset;
     uint32_t ropeCnt;
+};
+
+struct DequantQcQrSplitNParams {
+    int64_t mmQnPreDequantOffset;
+    int64_t mmQnPreDequantResOffset;
+    uint32_t inputOffset;
+    uint32_t outputOffset;
+    uint32_t srcStride;
+    uint32_t dstStride;
 };
 
 struct CkvkrParams {

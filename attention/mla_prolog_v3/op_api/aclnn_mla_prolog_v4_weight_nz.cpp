@@ -227,11 +227,13 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
     };
 
     // do_rope 作为 attr 透传 inner，tiling 通过 do_rope attr 判断 RoPE 开关；
-    // doRope=true 时 ropeSin/ropeCos 不允许为空（nullptr）；
+    // doRope=true 时 ropeSin/ropeCos 不允许为空（null 或空 tensor）；
     // doRope=false 时 ropeSin/ropeCos 必须同时为空，并利用 TensorHolder 将 null 转为空 tensor 传入 inner，
     std::unique_ptr<TensorHolder> ropeSinHolder;
     std::unique_ptr<TensorHolder> ropeCosHolder;
-    auto IsRopeInputEmpty = [](const aclTensor *rope) { return rope == nullptr; };
+    auto IsRopeInputEmpty = [](const aclTensor *rope) {
+        return rope == nullptr || rope->GetViewShape().GetShapeSize() == 0;
+    };
     if (doRope) {
         if (IsRopeInputEmpty(ropeSin)) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
@@ -243,13 +245,11 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         }
     } else {
         if (!IsRopeInputEmpty(ropeSin)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Parameter ropeSin of aclnnMlaPrologV4 required nullptr when doRope is false, but got non-null.");
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
             return ge::GRAPH_FAILED;
         }
         if (!IsRopeInputEmpty(ropeCos)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Parameter ropeCos of aclnnMlaPrologV4 required nullptr when doRope is false, but got non-null.");
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeCos");
             return ge::GRAPH_FAILED;
         }
         ropeSinHolder = std::make_unique<TensorHolder>(ropeSin, aclDataType::ACL_BF16, std::string("ropeSin"));
@@ -257,6 +257,7 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
     }
     auto dequantScaleQNopeHolder =
         TensorHolder(dequantScaleQNopeOutOptional, aclDataType::ACL_FLOAT, std::string("dequantScaleQNopeOut"));
+
     aclDataType queryNormDataType =
         weightQuantMode == WEIGHT_QUANT_MODE_NO_QUANT ? aclDataType::ACL_BF16 : aclDataType::ACL_INT8;
     aclDataType dequantScaleQNormDataType =
@@ -266,6 +267,7 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
     } else if (weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8) {
         queryNormDataType = aclDataType::ACL_HIFLOAT8;
     }
+
     auto queryNormHolder = TensorHolder(queryNormOutOptional, queryNormDataType, std::string("queryNormOut"));
     auto dequantScaleQNormHolder =
         TensorHolder(dequantScaleQNormOutOptional, dequantScaleQNormDataType, std::string("dequantScaleQNormOut"));

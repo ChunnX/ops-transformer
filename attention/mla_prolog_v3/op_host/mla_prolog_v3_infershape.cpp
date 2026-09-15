@@ -114,13 +114,14 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
 
 static bool IsWeightFullQuantFamily(int64_t weightQuantMode)
 {
-    return weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT || weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 ||
+    return weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT ||
+           weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_FP8 ||
            weightQuantMode == WEIGHT_QUANT_MODE_FULL_QUANT_HIF8 ||
            weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT;
 }
 
-static void SetQueryAndRopeShape(const MlaPrologProtoShapeParam &shapeParam, gert::Shape *queryShape,
-                                 gert::Shape *queryRopeShape)
+static void SetQueryAndRopeShape(
+    const MlaPrologProtoShapeParam &shapeParam, gert::Shape *queryShape, gert::Shape *queryRopeShape)
 {
     if (!shapeParam.isBsMerge) {
         queryShape->SetDimNum(DIM_NUM_4); // (B, S, N, Hckv)
