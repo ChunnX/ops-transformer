@@ -519,7 +519,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 
   <!-- end id10 -->
 
-* 支持确定性计算场景。
+* 不支持确定性计算场景。
 
 ## 调用示例
 
