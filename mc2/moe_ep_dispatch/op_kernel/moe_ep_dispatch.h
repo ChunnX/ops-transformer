@@ -86,6 +86,10 @@ constexpr struct UrmaWqeEntry DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 
 constexpr struct UrmaWqeEntry LAST_DATA_CFG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 constexpr struct UrmaWqeEntry NOTIFY_CFG = {.odr = 6, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 
+// 打桩开关: 置 true 时尾核等待全部 slot 状态通知到位后才退出 dispatch, 再进入 epilogue
+// 打桩只等待不清状态, 状态的确认与清理仍保留在 epilogue 的 WaitDispatch 中
+constexpr bool WAIT_DISPATCH_NOTIFY_STUB = false;
+
 template <TemplateMoeEpDispatchTypeClass>
 class MoeEpDispatch {
 public:
@@ -132,6 +136,7 @@ private:
     __aicore__ inline void GetSlotStartNum();
     __aicore__ inline void CopyInMetaInfo(uint32_t tokenId, uint32_t topkOffset);
     __aicore__ inline void SetStatus();
+    __aicore__ inline void WaitDispatchNotify();
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
     __aicore__ inline bool GetCoreAssignment(uint32_t &copyRankStart, uint32_t &copyRankNum, uint32_t &channelIndex,
@@ -1291,6 +1296,43 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
 }
 
 template <TemplateMoeEpDispatchTypeClass>
+__aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WaitDispatchNotify()
+{
+    if constexpr (!WAIT_DISPATCH_NOTIFY_STUB) {
+        return;
+    }
+    if (aivId_ != aivNum_ - 1) { // 尾核等待所有源卡/通道的 slot 状态通知
+        return;
+    }
+
+    uint32_t totalNotifyCnt = epWorldSize_ * dispatchNotifyCount_;
+    uint32_t mask = 1;
+    int32_t sumOfFlag = 0;
+    int32_t commpareFlag = static_cast<int32_t>(totalNotifyCnt);
+    GlobalTensor<int32_t> statusGMTensor;
+    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
+    // 复用 tempBuf_(MAX_BATCH_SIZE): [status: totalNotifyCnt*32B][sum: 32B][reduceTmp]
+    uint32_t statusBytes = totalNotifyCnt * UB_ALIGN;
+    LocalTensor<int32_t> statusTensor = tempBuf_.GetWithOffset<int32_t>(totalNotifyCnt * UB_STRIDE, 0);
+    LocalTensor<int32_t> sumTensor = tempBuf_.GetWithOffset<int32_t>(UB_STRIDE, statusBytes);
+    LocalTensor<float> statusTensorFp32 = statusTensor.template ReinterpretCast<float>();
+    LocalTensor<float> sumTensorFp32 = sumTensor.template ReinterpretCast<float>();
+    uint32_t reduceTmpElems = Ceil(Ceil(totalNotifyCnt, ALIGNED_LEN_256 / sizeof(float)), UB_STRIDE) * UB_STRIDE;
+    LocalTensor<float> reduceTmpTensor = tempBuf_.GetWithOffset<float>(reduceTmpElems, statusBytes + UB_ALIGN);
+    DataCopyParams statusCopyParams = {static_cast<uint16_t>(totalNotifyCnt), 1U,
+                                       static_cast<uint16_t>(STATE_STRIDE), 0U};
+
+    SyncFunc<AscendC::HardEvent::MTE3_V>(); // tempBuf_ 复用前同步
+    while (sumOfFlag != commpareFlag) {     // 状态位check: 全部 notify 到位后才会进入 epilogue
+        DataCopy(statusTensor, statusGMTensor, statusCopyParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        ReduceSum(sumTensorFp32, statusTensorFp32, reduceTmpTensor, mask, totalNotifyCnt, 1);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        sumOfFlag = sumTensor.GetValue(0);
+    }
+}
+
+template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
@@ -1312,6 +1354,7 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         SyncAll<true>();
         WriteToRemoteWindow();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
+        WaitDispatchNotify(); // 打桩: 等到全部状态位到位才退出, 再进入 epilogue
     }
 }
 
