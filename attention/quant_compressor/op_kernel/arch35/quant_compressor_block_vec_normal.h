@@ -302,8 +302,12 @@ __aicore__ inline void QuantCompressorBlockVectorNormal<COMP>::CalcGroupInfo(con
                                                                              Vec1SplitInfo &splitInfo)
 {
     uint32_t aiCoreNum = this->constInfo_.usedCoreNum * 2;
+    // 用所有 loop 中最大的 dealTcNum 计算 dBaseSize，保证跨 loop 时 D 网格一致。
+    // 否则 coff==OVERLAP 跨 loop 的 SaveToWorkSpace/LoadFromWorkSpace 会因 dSplitSize
+    // 不同导致 D 偏移错位（save 写入的位置 load 侧读不到 → cmp_kv 对应 D channel 为 0）。
+    uint32_t refDealTcNum = this->constInfo_.maxDealTcNum > 0U ? this->constInfo_.maxDealTcNum : info.dealTcNum;
     splitInfo.dBaseSize =
-        this->constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
+        this->constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, refDealTcNum)));
     // 32B(8个FP32)对齐的UB列窗口上限。dBaseSize 超过它时 CalcTilingStrategy 会走
     // dSplitSize = dBaseSize/dLoopCount 整数除法拆分，切出的列窗口非32B对齐
     // （DataCopy 的 blockLen/srcGap 整数除法错位 → 行间源偏移错误 → 数据错乱）。

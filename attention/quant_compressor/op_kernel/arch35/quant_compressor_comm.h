@@ -217,6 +217,8 @@ struct ConstInfo {
     uint32_t nSize = 0;
 
     uint64_t dbSize = 0;
+
+    uint32_t maxDealTcNum = 0U; // 所有 loop 中最大的 dealTcNum，用于固定 D 网格，避免跨 loop overlap cache 偏移错位
 };
 
 struct RunInfo {

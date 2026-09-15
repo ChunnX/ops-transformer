@@ -389,10 +389,17 @@ __aicore__ inline uint32_t QuantCompressorKernel<COMP, IS_FULL_LOAD>::GetLoopTim
 {
     // 计算主循环次数
     uint32_t loopTimes = 0;
+    constInfo.maxDealTcNum = 0U;
     BatchInfo batchInfo{};
     SkipInvalidBatch(batchInfo);
     for (; batchInfo.bIdx < constInfo.batchSize; ++loopTimes) {
-        SkipOneLoop(batchInfo);
+        BasicBlockInfo basicBlockInfo = SkipOneLoop(batchInfo);
+        if (basicBlockInfo.dealTcNum > constInfo.maxDealTcNum) {
+            constInfo.maxDealTcNum = basicBlockInfo.dealTcNum;
+        }
+    }
+    if (constInfo.maxDealTcNum == 0U) {
+        constInfo.maxDealTcNum = 1U;
     }
     return loopTimes;
 }
