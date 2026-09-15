@@ -310,6 +310,12 @@ inline const HCCLFittingParameters *FindCommFitParams(const CommFitTable &table,
     return nullptr;
 }
 
+// 组装纯线性拟合行（算子侧标定头用: 两段边界置 0, 任意 x>0 走线性分支 y = k·x + b）
+inline HCCLFittingParameters MakeLinearCommFit(double slopeUsPerMb, double interceptUs)
+{
+    return {0, 0, slopeUsPerMb, interceptUs, 0, 0, 0, 0, 0, 0, 0, 0};
+}
+
 class HCCLPerformanceModel {
 public:
     HCCLFittingParameters commEstimatePar_;
