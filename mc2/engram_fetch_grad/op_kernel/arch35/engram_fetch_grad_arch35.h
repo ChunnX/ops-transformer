@@ -701,7 +701,16 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     indicesBufElements_ = indicesBufSize / sizeof(int32_t);
 
     uint32_t maxByPong = MaxGradRowsPerPing(static_cast<uint32_t>(hiddenBytes_), gradSubBatch_);
-    castBufBytes_ = (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) ? CastBufBytes(hiddenDim_, maxByPong) : 0U;
+    if (inputDtype_ != Mc2Kernel::ENGRAM_DT_FLOAT) {
+        if (inputDtype_ == outputDtype_) {
+            castBufBytes_ = (static_cast<uint32_t>(hiddenDim_) * sizeof(float) + Mc2Kernel::UB_ALIGN - 1U) /
+                            Mc2Kernel::UB_ALIGN * Mc2Kernel::UB_ALIGN; // 单行 fp32
+        } else {
+            castBufBytes_ = CastBufBytes(hiddenDim_, maxByPong);
+        }
+    } else {
+        castBufBytes_ = 0U;
+    }
     accumBufBytes_ = AccumBufBytes(hiddenDim_);
     uniqueEntryBytes_ = UniqueEntryBytes(hiddenDim_, outputDtype_);
     // scatter 重建(常驻三缓冲+entry/grad/cast/accum)必须落在授权 UB 内;
@@ -1641,8 +1650,9 @@ __aicore__ inline void EngramFetchGradArch35::Process()
             uniqueScatter_.SetGradSubBatch(gradSubBatch_);
             uniqueScatter_.SetEntryBufBytes(uniqueEntryBytes_);
 
-            uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
-            uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
+            uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);  // 找出本core的sortentry起点，以及负责的segCount（段内unique数）
+            // PERF-OPT v5: 跳过 gradUnique 清零 —— 有效行 [0, numUnique) 全部由
+            // flush/direct 全覆盖写入; 尾部行无消费者(下游按 numUniqueOut 截断读取)
             // count 后必须保留的全核屏障: scatter 的 LoadCoreRange 跨核读 Count 写入的
             // coreStart/segCount 签到表 —— RunSortHooked 尾部的 SyncAll 发生在 Count
             // 之前, 覆盖不到这里; 缺此屏障存在竞态(实测随机错行)
