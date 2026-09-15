@@ -355,9 +355,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
     // topK 有效下标 route 已消除 mask 扫描，只保留一份接收 index batch。
     // Tensor 用途：接收 topkIndex 的当前 batch。
     uint32_t validTopkIndexTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    constexpr uint32_t topkIndexTypeBytes = static_cast<uint32_t>(sizeof(TopkIndexType));
     uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(bufferConfig.routeItemsPerBatch) * topkIndexTypeBytes, static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(bufferConfig.routeItemsPerBatch) * static_cast<int64_t>(sizeof(TopkIndexType)),
+        static_cast<int64_t>(ALIGN_32));
     scratch.validTopkIndexTensor =
         LocalTensor<uint8_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize);
     /*
