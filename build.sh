@@ -1819,6 +1819,18 @@ while [[ $# -gt 0 ]]; do
         PKG_MODE="cust"
         vendor_name="custom"
         CI_MODE=TRUE
+        if [[ "$ENABLE_OPKERNEL" == "TRUE" ]]; then
+            ENABLE_SMOKE=FLASE
+            parse_changed_files
+            echo "Operators that need custom package compilation:$ops_names"
+            if [ -z "${ops_names}" ]; then
+                log "Info: No custom packages to build for this PR."
+                break
+            fi
+            ops_names="${ops_names%;}"
+            ops_names="${ops_names//;/,}"
+            ascend_op_name="$ops_names"
+        fi
         shift 2
         ;;
     --PR_UT)
