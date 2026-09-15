@@ -63,12 +63,12 @@ public:
     double matmulGradient_ = 1.0;
     uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC;
 
-    void SetCyclePerMicroSec(SocVersion inputSocVersion)
+    void SetCyclePerMicroSec(FormulaicSocSeries inputSocVersion)
     {
         mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
-        if (inputSocVersion == SocVersion::SOC310_P) {
+        if (inputSocVersion == FormulaicSocSeries::SOC310_P) {
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_VERSION310_P;
-        } else if (inputSocVersion == SocVersion::SOC950) {
+        } else if (inputSocVersion == FormulaicSocSeries::DAV_3510) {
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
             mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_NPUARCH_3510;
         } else {
@@ -77,7 +77,7 @@ public:
     }
     void SetCalcType(const mc2tiling::TilingArgs &args)
     {
-        if ((mmShapeInfo_.socType == SocVersion::SOC950) &&
+        if ((mmShapeInfo_.socType == FormulaicSocSeries::DAV_3510) &&
             ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
@@ -85,9 +85,9 @@ public:
              (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
-                   (mmShapeInfo_.socType != SocVersion::SOC910_B)) { // A8W8
+                   (mmShapeInfo_.socType != FormulaicSocSeries::SOC910_B)) { // A8W8
             calcType_ = MatmulCalcType::QUANT;
-        } else if ((mmShapeInfo_.socType == SocVersion::SOC310_P) &&
+        } else if ((mmShapeInfo_.socType == FormulaicSocSeries::SOC310_P) &&
                    (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
             mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;
             calcType_ = MatmulCalcType::ANTI_QUANT;
@@ -95,7 +95,7 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion inputSocVersion = SocVersion::SOC910_B)
+                                    FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B)
         : calcType_(MatmulCalcType::FP16)
     {
         mmShapeInfo_.socType = inputSocVersion;

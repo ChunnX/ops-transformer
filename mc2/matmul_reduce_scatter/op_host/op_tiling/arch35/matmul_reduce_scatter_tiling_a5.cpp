@@ -29,7 +29,7 @@ CutResult MatmulReduceScatterTilingFuncA5::GetCutResult(MatmulReduceScatterTilin
                                                         mc2tiling::TilingArgs &args)
 {
     bool commDeterministic = false;
-    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, SocVersion::SOC950,
+    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, FormulaicSocSeries::DAV_3510,
                                           commDeterministic);
     scatterTilingHccl.GetTiling();
 

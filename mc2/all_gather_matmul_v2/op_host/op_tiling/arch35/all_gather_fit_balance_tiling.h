@@ -27,7 +27,7 @@ public:
 
     explicit AllGatherMMFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                          TopoType topoType = TopoType::STANDARD_CARD,
-                                         SocVersion socVersion = SocVersion::SOC950)
+                                         FormulaicSocSeries socVersion = FormulaicSocSeries::DAV_3510)
         : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion)
     {
         commPerf_.SetCommShapeLen(mmInfo_.kValue);

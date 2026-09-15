@@ -29,7 +29,7 @@ class AlltoAllMM : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit AlltoAllMM(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                        SocVersion inputSocVersion = SocVersion::SOC950, bool isCommunicationBefore = false)
+                        FormulaicSocSeries inputSocVersion = FormulaicSocSeries::DAV_3510, bool isCommunicationBefore = false)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
           socVersion_(inputSocVersion)
     {
@@ -54,7 +54,7 @@ public:
     void SelectTilingMethod() override;
 
 private:
-    SocVersion socVersion_;
+    FormulaicSocSeries socVersion_;
     void SetCommTimeFactor();
     void PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime);
 };

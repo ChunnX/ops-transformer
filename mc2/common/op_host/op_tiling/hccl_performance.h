@@ -36,26 +36,26 @@ public:
     double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
     uint64_t lookUpTileNum_ = 1;  // 数据拟合查表参数
     std::string keyToFittingMap_ = DEFAULT_KEY_FOR_FITTING_MAP;
-    SocVersion socVersion_ = SocVersion::SOC910_B;
+    FormulaicSocSeries socVersion_ = FormulaicSocSeries::SOC910_B;
 
-    void SetCommParametersBaseSocType(SocVersion inputSocVersion)
+    void SetCommParametersBaseSocType(FormulaicSocSeries inputSocVersion)
     {
-        if (inputSocVersion == SocVersion::SOC310_P) {
+        if (inputSocVersion == FormulaicSocSeries::SOC310_P) {
             SetCommMethodVersion310P(); // 310P只支持MatmulAllreduce算子
-            socVersion_ = SocVersion::SOC310_P;
-        } else if (inputSocVersion == SocVersion::SOC910_93) {
+            socVersion_ = FormulaicSocSeries::SOC310_P;
+        } else if (inputSocVersion == FormulaicSocSeries::SOC910_93) {
             InitSOC91093();
-            socVersion_ = SocVersion::SOC910_93;
-        } else if (inputSocVersion == SocVersion::SOC950) {
+            socVersion_ = FormulaicSocSeries::SOC910_93;
+        } else if (inputSocVersion == FormulaicSocSeries::DAV_3510) {
             InitParametersForFullMesh();
-            socVersion_ = SocVersion::SOC950;
+            socVersion_ = FormulaicSocSeries::DAV_3510;
         } else {
             InitParametersForFullMesh();
         }
     }
     // Constructor
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion inputSocVersion = SocVersion::SOC910_B)
+                                  FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
@@ -65,7 +65,7 @@ public:
         keyToFittingMap_ = GetCommMethodString(inputSocVersion);
         GetCommEstimateParameters();
     };
-    std::string GetCommMethodString(SocVersion socType)
+    std::string GetCommMethodString(FormulaicSocSeries socType)
     {
         return std::to_string(static_cast<int>(socType)) + "_" +
                std::to_string(static_cast<int>(commTypeInfo_.commMethod));

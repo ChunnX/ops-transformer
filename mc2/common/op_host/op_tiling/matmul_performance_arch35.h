@@ -19,7 +19,7 @@
 
 class MatmulPerformanceArch35 : public MatmulPerformanceModel {
 public:
-    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args, SocVersion inputSocVersion = SocVersion::SOC950)
+    explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args, FormulaicSocSeries inputSocVersion = FormulaicSocSeries::DAV_3510)
         : MatmulPerformanceModel(args, inputSocVersion)
     {
         TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock(inputSocVersion);
@@ -28,14 +28,14 @@ public:
         mmShapeInfo_.baseK = bestBaseBlock.baseK;
     }
 
-    const std::map<SocVersion, TilingBestBaseBlock> TILING_BEST_BASE_MAP{
-        {SocVersion::SOC950, TilingBestBaseBlock{256, 256, 128}},
+    const std::map<FormulaicSocSeries, TilingBestBaseBlock> TILING_BEST_BASE_MAP{
+        {FormulaicSocSeries::DAV_3510, TilingBestBaseBlock{256, 256, 128}},
     };
 
-    TilingBestBaseBlock GetBestBaseBlock(SocVersion SocVersion)
+    TilingBestBaseBlock GetBestBaseBlock(FormulaicSocSeries FormulaicSocSeries)
     {
-        if (TILING_BEST_BASE_MAP.find(SocVersion) != TILING_BEST_BASE_MAP.end()) {
-            return TILING_BEST_BASE_MAP.at(SocVersion);
+        if (TILING_BEST_BASE_MAP.find(FormulaicSocSeries) != TILING_BEST_BASE_MAP.end()) {
+            return TILING_BEST_BASE_MAP.at(FormulaicSocSeries);
         }
         return TilingBestBaseBlock{mc2tiling::BASE_BLOCK_M, mc2tiling::BASE_BLOCK_N, mc2tiling::BASE_BLOCK_K};
     }

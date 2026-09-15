@@ -663,7 +663,7 @@ WeightQuantMatmulAllReduceTilingA5::WeightQuantMatmulAllReduceTilingA5(gert::Til
 CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
 {
     CutResult mCutAllreduceOutput;
-    SocVersion inputSocVer = SocVersion::SOC910_B;
+    FormulaicSocSeries inputSocVer = FormulaicSocSeries::SOC910_B;
     SetMCutSocVersion(inputSocVer);
     const gert::StorageShape *commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;

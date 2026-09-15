@@ -119,11 +119,11 @@ CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
-    OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+    OP_LOGD(opName_, "Current FormulaicSocSeries is : %s", socVersionStr.c_str());
 
-    SocVersion nowSocVersion = SocVersion::SOC950;
+    FormulaicSocSeries nowSocVersion = FormulaicSocSeries::DAV_3510;
     if (socVersionStr == "Ascend910_93") {
-        nowSocVersion = SocVersion::SOC910_93;
+        nowSocVersion = FormulaicSocSeries::SOC910_93;
     }
     AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
                                            nowSocVersion, true);

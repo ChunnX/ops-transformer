@@ -39,12 +39,12 @@ constexpr uint64_t MIN_DATA_PAR2 = 6 * ONE_MBYTE;
 constexpr uint64_t MIN_M_SIZE_SOC310P = 512;
 constexpr uint64_t MIN_COMM_RANKDIM = 2;
 
-enum class SocVersion {
+enum class FormulaicSocSeries {
     SOC910_B,
     SOC310_P,
     SOC910_93,
     SOC910_B4,
-    SOC950,
+    DAV_3510,
 };
 
 enum class KernelType {
@@ -63,7 +63,7 @@ enum class MatmulCalcType {
 };
 
 struct MatmulParameters {
-    SocVersion socType;
+    FormulaicSocSeries socType;
     uint64_t coreNum;
     uint64_t inMatrixADtypeSize;
     uint64_t inMatrixBDtypeSize;

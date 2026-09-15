@@ -30,7 +30,7 @@ class MatmulAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MatmulAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                             TopoType topoType = TopoType::STANDARD_CARD,
-                                            SocVersion socVersion = SocVersion::SOC950,
+                                            FormulaicSocSeries socVersion = FormulaicSocSeries::DAV_3510,
                                             QuantMode quantMode = QuantMode::NON_QUANT,
                                             uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
         : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion),
@@ -62,7 +62,7 @@ private:
     QuantMode quantMode_;
 };
 
-inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType, SocVersion socVersion,
+inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType, FormulaicSocSeries socVersion,
                                        NpuArch npuArch, QuantMode quantMode, uint8_t commMode = Mc2Comm::COMM_MODE_CCU)
 {
     // 标卡4P 与 8P 均走 Fit Balance tiling，仅拓扑类型不同；统一判定并构造，消除重复逻辑

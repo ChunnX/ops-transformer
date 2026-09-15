@@ -107,7 +107,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSizeBase(
     int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, aclTensor *yOut, aclTensor *rstdOut,
     aclTensor *xOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
+    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == FormulaicSocSeries::ASCEND910B;
     auto retParam = CombineArnCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, tpSendCountsOptional,
                                           expertScales, groupEp, groupTp, xOut, is910B);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -139,7 +139,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormBase(void *workspace, uint64_t wo
                                                     aclrtStream stream)
 {
     aclnnStatus ret = 0;
-    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
+    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == FormulaicSocSeries::ASCEND910B;
     if (is910B) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineAddRmsNorm", "platform", "910B",
                                               "Not support 910B platform");

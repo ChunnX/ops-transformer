@@ -32,7 +32,7 @@ class MMPlusAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit MMPlusAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                             SocVersion inputSocVersion = SocVersion::SOC910_B, bool isPerBlock = false)
+                             FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B, bool isPerBlock = false)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         isPerBlock_ = isPerBlock;
@@ -60,7 +60,7 @@ class MMPlusQuantAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit MMPlusQuantAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion inputSocVersion = SocVersion::SOC910_B)
+                                  FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         inferFlag_ = true;

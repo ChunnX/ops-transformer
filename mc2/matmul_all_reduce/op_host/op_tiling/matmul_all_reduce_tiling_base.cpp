@@ -279,16 +279,16 @@ void MatmulAllReduceTilingBase::DoRCSTiling()
     SetCommQuantScale();
 }
 
-void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
+void MatmulAllReduceTilingBase::SetMCutSocVersion(FormulaicSocSeries &inputSocVersion)
 {
     if (npuArch_ == Ops::Base::DAV_2002) {
-        inputSocVersion = SocVersion::SOC310_P;
+        inputSocVersion = FormulaicSocSeries::SOC310_P;
         OP_LOGD(opName_, "TileCnt enter 310P branch.");
         return;
     }
     // __NPU_ARCH__ == 3510
     if (npuArch_ == Ops::Base::DAV_3510) {
-        inputSocVersion = SocVersion::SOC950;
+        inputSocVersion = FormulaicSocSeries::DAV_3510;
         OP_LOGD(opName_, "TileCnt enter 3510 branch.");
         return;
     }
@@ -297,16 +297,16 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion &inputSocVersion)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t socMemSize = L2_CACHE_SIZE_910_B4;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, socMemSize);
-    inputSocVersion = (socMemSize == L2_CACHE_SIZE_910_B4) ? SocVersion::SOC910_B4 : inputSocVersion;
+    inputSocVersion = (socMemSize == L2_CACHE_SIZE_910_B4) ? FormulaicSocSeries::SOC910_B4 : inputSocVersion;
     if (socMemSize == L2_CACHE_SIZE_910_B4) {
-        inputSocVersion = SocVersion::SOC910_B4;
+        inputSocVersion = FormulaicSocSeries::SOC910_B4;
         OP_LOGD(opName_, "TileCnt enter 910B4 branch.");
     }
 }
 
 CutResult MatmulAllReduceTilingBase::GetTilingResult()
 {
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B;
     SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
     MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
     allReduceTilingHccl.GetTiling();

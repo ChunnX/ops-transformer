@@ -987,7 +987,7 @@ void QuantTilingTransferHelperA5::PrintTilingInputParam(Mc2QuantBatchMatmulInfo 
 CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
 {
     CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B;
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
@@ -998,7 +998,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
                     isPertileFp8);
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, KernelType::ALL_REDUCE_VIA_TWO_SHOT,
-                                                        TopoType::STANDARD_CARD, SocVersion::SOC950, commMode,
+                                                        TopoType::STANDARD_CARD, FormulaicSocSeries::DAV_3510, commMode,
                                                         isPertileFp8);
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
@@ -1010,7 +1010,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
         }
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P, SocVersion::SOC950,
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P, FormulaicSocSeries::DAV_3510,
                                                         commMode, isPertileFp8);
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();

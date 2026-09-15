@@ -244,12 +244,12 @@ aclnnStatus CheckAndHandleCommMode(const char *opName, const char *group, const 
             return ACLNN_ERR_PARAM_INVALID;
         }
         OP_LOGD("The commMode is [%s].", commModeStr);
-    } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
+    } else if (GetCurrentPlatformInfo().GetSocVersion() == FormulaicSocSeries::ASCEND910_93) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) != 0) {
             OP_LOGE_FOR_INVALID_VALUE(opName, "commMode", commModeStr, "\"ai_cpu\"");
             return ACLNN_ERR_PARAM_INVALID;
         }
-    } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+    } else if (GetCurrentPlatformInfo().GetSocVersion() == FormulaicSocSeries::ASCEND910B) {
         if (strncmp(commModeStr, "aiv", maxLength) != 0) {
             OP_LOGE_FOR_INVALID_VALUE(opName, "commMode", commModeStr, "\"aiv\"");
             return ACLNN_ERR_PARAM_INVALID;

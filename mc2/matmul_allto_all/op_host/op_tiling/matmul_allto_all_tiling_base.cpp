@@ -77,10 +77,10 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
 
 CutResult MatmulAllToAllTilingBase::GetTilingResult()
 {
-    SocVersion nowSocVersion = SocVersion::SOC950;
+    FormulaicSocSeries nowSocVersion = FormulaicSocSeries::DAV_3510;
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
     if (socVersionStr == "Ascend910_93") {
-        nowSocVersion = SocVersion::SOC910_93;
+        nowSocVersion = FormulaicSocSeries::SOC910_93;
     }
     AlltoAllMM formulaicTiling(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL, nowSocVersion);
     formulaicTiling.GetTiling();

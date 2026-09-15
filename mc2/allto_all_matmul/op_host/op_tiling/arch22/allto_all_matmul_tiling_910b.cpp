@@ -827,13 +827,13 @@ bool AlltoAllMatmulTiling910b::IsCapable()
     fe::PlatFormInfos &platformInfo = *platformInfoPtr;
     std::string socVersionStr;
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersionStr);
-    OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+    OP_LOGD(opName_, "Current FormulaicSocSeries is : %s", socVersionStr.c_str());
     QuantMode mode = MatmulAlltoAllTilingUtil::GetQuantMode(context_, opName_);
     if (socVersionStr == "Ascend910B") {
         OP_LOGI(opName_, "Start with AllToAllMatmul tiling.");
         return true;
     }
-    OP_LOGD(opName_, "Skip AlltoAllMatmulTiling910b tiling when the SocVersion is unsupported.");
+    OP_LOGD(opName_, "Skip AlltoAllMatmulTiling910b tiling when the FormulaicSocSeries is unsupported.");
     return false;
 }
 

@@ -170,7 +170,7 @@ void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMat
 CutResult MatmulAllReduceTiling310General::GetTilingResult()
 {
     CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_B;
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;

@@ -24,7 +24,7 @@ using namespace std;
 class HCCLPerformanceArch35 : public HCCLPerformanceModel {
 public:
     explicit HCCLPerformanceArch35(uint32_t inputRankDim, KernelType inputKernelType,
-                                   SocVersion socVersion = SocVersion::SOC950,
+                                   FormulaicSocSeries socVersion = FormulaicSocSeries::DAV_3510,
                                    TopoType topoType = TopoType::STANDARD_CARD)
         : HCCLPerformanceModel(inputRankDim, inputKernelType, socVersion)
     {
@@ -33,8 +33,8 @@ public:
         GetCommArch35Parameters(socVersion);
     }
 
-    string GetCommInfoString(SocVersion socVersion);
-    void GetCommArch35Parameters(SocVersion socVersion);
+    string GetCommInfoString(FormulaicSocSeries socVersion);
+    void GetCommArch35Parameters(FormulaicSocSeries socVersion);
     void InitArch35Parameters();
     uint64_t InverseCommTime(double targetTime) const override;
 };

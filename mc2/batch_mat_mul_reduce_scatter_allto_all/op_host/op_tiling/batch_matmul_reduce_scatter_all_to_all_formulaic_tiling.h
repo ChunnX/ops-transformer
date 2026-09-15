@@ -22,7 +22,7 @@
 class ReduceScatterAll2AllBMM : public OneCalcTwoCommBase {
 public:
     explicit ReduceScatterAll2AllBMM(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                     uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+                                     uint64_t batchSize, FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_93)
         : OneCalcTwoCommBase(args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
     {
         epCommPerf.SetCommShapeLen(clusterInfo.nValue / tpDim);
@@ -35,7 +35,7 @@ public:
 class ReduceScatterAll2AllBMMShardH : public OneCalcTwoCommShardHBase {
 public:
     explicit ReduceScatterAll2AllBMMShardH(const mc2tiling::TilingArgs &args, uint64_t inputEpDim, uint64_t inputTpDim,
-                                           uint64_t batchSize, SocVersion inputSocVersion = SocVersion::SOC910_93)
+                                           uint64_t batchSize, FormulaicSocSeries inputSocVersion = FormulaicSocSeries::SOC910_93)
         : OneCalcTwoCommShardHBase(args, inputEpDim, inputTpDim, batchSize, inputSocVersion)
     {
         epCommPerf.SetCommShapeLen(clusterInfo.nValue);
