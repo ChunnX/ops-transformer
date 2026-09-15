@@ -221,20 +221,18 @@ struct AgMmV2Hooks {
 
     void EstimateMMCommTime(apace::fit_balance::FitBasedBalanceCtx &ctx)
     {
-        ctx.matmulPerf.FindCubeUtil(ctx.rankTileNum);
-        ctx.matmulPerf.GetMatmulGradient();
-
-        // Find total matmul time and comm time
-        double totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, ctx.rankDim);
-        double totalTpTime = ctx.commPerf.CommTime(ctx.mmInfo.mValue);
+        // Estimate 骨干(4/5 算子一致的公共片段): 模型刷新 + 总量 + 通算比
+        const auto est = apace::fit_balance::EstimateTotalTimes(ctx, ctx.rankDim);
+        const double totalMatmulTime = est.totalMatmulTime;
+        const double totalTpTime = est.totalTpTime;
         double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.mmInfo.mValue, 1);
         if (std::abs(frontUtil) > 1e-10) {
             frontMMTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, 1) / frontUtil;
         } else {
             frontMMTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, 1);
         }
-        ctx.tilingM.cutRes.shortTileAtBack = true;
-        ctx.ratioCalcComm = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
+        ctx.tilingM.cutRes.shortTileAtBack = true; // AG 特有: 恒后置(其余算子按 bound 判定)
+        // ratioCalcComm 已由 EstimateTotalTimes 设置
 
         uint64_t sizeOfComm = ctx.mmInfo.mValue * ctx.mmInfo.kValue * (ctx.rankDim - 1) /
                               apace::fit_balance::ONE_MBYTE * ctx.commPerf.GetCommDTypeSize();

@@ -1931,6 +1931,61 @@ inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx, uint64_t rankTileNum)
     }
 }
 
+// ---- 以下为多算子共有(非全算子)片段: 算子钩子按需调用即为"开关"(调=走公共逻辑,
+//      不调=写算子自己的), 不设引擎级 bool 开关——片段与算子逻辑在钩子内交错,
+//      引擎级开关无法表达交错顺序且会重演配置汤) ----
+
+// Estimate 骨干（4/5: agmm/rs_v2/all_reduce/matmul_allto_all 一致）:
+// FindCubeUtil + GetMatmulGradient + 总量估计 + 通算比; shortTileAtBack 判定不在此
+// (各算子语义相反: rs_v2 系 mm>=comm→后置, allto_all_matmul 是 comm>mm→后置, agmm 恒后置)。
+// mmRankTileMul: agmm/rs_v2 传 rankDim, all_reduce/matmul_allto_all 传 1;
+// mmTimeScale: matmul_allto_all 的 KC_QUANT 模式传 1.43(其余 1.0);
+// allto_all_matmul 自有拟合模型不适用本片段。
+struct EstimateTimesResult {
+    double totalMatmulTime = 0.0;
+    double totalTpTime = 0.0;
+};
+inline EstimateTimesResult EstimateTotalTimes(FitBasedBalanceCtx &ctx, uint64_t mmRankTileMul, double mmTimeScale = 1.0)
+{
+    ctx.matmulPerf.FindCubeUtil(ctx.rankTileNum);
+    ctx.matmulPerf.GetMatmulGradient();
+    EstimateTimesResult r;
+    r.totalMatmulTime = ctx.matmulPerf.MatmulTime(ctx.mmInfo.mValue, mmRankTileMul) * mmTimeScale;
+    r.totalTpTime = ctx.commPerf.CommTime(ctx.mmInfo.mValue);
+    ctx.ratioCalcComm = (std::max(r.totalTpTime, r.totalMatmulTime) / std::min(r.totalTpTime, r.totalMatmulTime));
+    return r;
+}
+
+// L2 占用判定（3/3 逐字一致: rs_v2/all_reduce/matmul_allto_all, 含 128MB 同值常量）
+inline bool ExceedsL2Cache(const MatmulParameters &mmInfo)
+{
+    constexpr uint64_t L2_CACHE_SIZE = 128UL * ONE_MBYTE;
+    const uint64_t l2UseSize = mmInfo.mValue * mmInfo.kValue * mmInfo.inMatrixADtypeSize +
+                               mmInfo.kValue * mmInfo.nValue * mmInfo.inMatrixBDtypeSize;
+    return l2UseSize > L2_CACHE_SIZE;
+}
+
+// L2 超限鼓励大块: minLen×2（3/5; rs_v2 附加 m>minLen×4 守卫 → mGuardMul=4,
+// all_reduce/matmul_allto_all 无守卫 → mGuardMul=0; agmm/allto_all_matmul 不用）
+inline void ApplyL2MinLenBoost(FormPartition &tilingM, const MatmulParameters &mmInfo, bool exceedsL2,
+                               uint64_t mGuardMul = 0UL)
+{
+    const bool guardOk = (mGuardMul == 0UL) || (mmInfo.mValue > tilingM.GetMinLen() * mGuardMul);
+    if (exceedsL2 && guardOk) {
+        tilingM.SetMinLenByMax(tilingM.GetMinLen() * TWO);
+    }
+}
+
+// 小 shape 整 M 单块装下: minLen 提到 m（2/2 逐字一致: rs_v2/matmul_allto_all;
+// 判据 m×n ≤ 2×coreNum×baseM×baseN; GetBaseM/N 为非 const 成员故 ctx 取非常量引用）
+inline void ApplySmallShapeMinLen(FormPartition &tilingM, FitBasedBalanceCtx &ctx)
+{
+    if (ctx.mmInfo.mValue * ctx.mmInfo.nValue <=
+        ctx.coreNum * ctx.matmulPerf.GetBaseM() * ctx.matmulPerf.GetBaseN() * TWO) {
+        tilingM.SetMinLenByMax(ctx.mmInfo.mValue);
+    }
+}
+
 } // namespace fit_balance
 } // namespace apace
 
