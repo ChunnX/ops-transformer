@@ -1374,6 +1374,37 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
         return;
     }
 
+    if (writeCnt == static_cast<uint32_t>(eqRsvdCnt)) {
+        AscendC::CMPMODE cmpMode =
+            (constInfo.sparsityMode == BSASparseMode::BottomK) ? AscendC::CMPMODE::LE : AscendC::CMPMODE::GE;
+        SToVSync();
+        Compares<half, uint8_t>(cmpMask, xLocal, boundaryHalf, cmpMode, alignLen);
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<half> maskHalf = outValueBuf_.Get<half>();
+        LocalTensor<half> selectHalf = outIndexBuf_.Get<half>();
+        if (constInfo.sparsityMode == BSASparseMode::TopK) {
+            Duplicate<half>(maskHalf, (half)0, alignLen);
+            Duplicate<half>(selectHalf, (half)1, alignLen);
+            PipeBarrier<PIPE_V>();
+            Select<half>(maskHalf, cmpMask, selectHalf, (half)0, SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+        } else {
+            Duplicate<half>(maskHalf, (half)1, alignLen);
+            Duplicate<half>(selectHalf, (half)0, alignLen);
+            PipeBarrier<PIPE_V>();
+            Select<half>(maskHalf, cmpMask, selectHalf, (half)1, SELMODE::VSEL_TENSOR_SCALAR_MODE, alignLen);
+        }
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<uint8_t> maskLocal = maskLocalBuf_.Get<uint8_t>();
+        Cast<uint8_t, half>(maskLocal, maskHalf, RoundMode::CAST_NONE, alignLen);
+        PipeBarrier<PIPE_V>();
+        VToSSync();
+
+        curTileK -= static_cast<int32_t>(writeCnt);
+        return;
+    }
+
     LocalTensor<int32_t> vecIndex = outIndexBuf_.Get<int32_t>();
     SToVSync();
     CreateTopKVecIndex(vecIndex, static_cast<uint32_t>(curTileLen));
