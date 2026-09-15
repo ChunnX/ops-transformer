@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 """
 MC2 (DFX) TilingData 布局计算器 (混合模式)。
 
@@ -22,8 +29,12 @@ import os
 import re
 
 # ====== 动态部分: CANN kernel_tiling.h ======
-CANN_ENV_VARS = ("ASCEND_CANN_PACKAGE_PATH", "ASCEND_HOME_PATH",
-                 "ASCEND_TOOLKIT_HOME", "ASCEND_AICPU_PATH")
+CANN_ENV_VARS = (
+    "ASCEND_CANN_PACKAGE_PATH",
+    "ASCEND_HOME_PATH",
+    "ASCEND_TOOLKIT_HOME",
+    "ASCEND_AICPU_PATH",
+)
 
 # 兜底默认值 (无 CANN 环境时使用; 9.1.0 / 9.2.0 实测一致)
 DEFAULT_MC2_INIT_TILING_SIZE = 64
@@ -35,15 +46,34 @@ DEFAULT_TCUBE_TILING_SIZE = 200
 # RCSTiling — mc2/common/op_kernel/mc2_tiling_struct.h
 # 16×u32 + 3×u64 + 9×u32 = 124B, 按 8 对齐 → 128B
 RCS_MEMBERS = [
-    ("rankDim", 4), ("rankID", 4), ("commtype", 4), ("subtype", 4),
-    ("tileCnt", 4), ("tailM", 4), ("tailCnt", 4), ("biasLen", 4),
-    ("isAdd", 4), ("rankM", 4), ("rankN", 4), ("rankK", 4),
-    ("gatherIndex", 4), ("isTransposeA", 4), ("isTransposeB", 4),
+    ("rankDim", 4),
+    ("rankID", 4),
+    ("commtype", 4),
+    ("subtype", 4),
+    ("tileCnt", 4),
+    ("tailM", 4),
+    ("tailCnt", 4),
+    ("biasLen", 4),
+    ("isAdd", 4),
+    ("rankM", 4),
+    ("rankN", 4),
+    ("rankK", 4),
+    ("gatherIndex", 4),
+    ("isTransposeA", 4),
+    ("isTransposeB", 4),
     ("storageGather", 4),
-    ("nd2NzWorkLen", 8), ("cToFloatLen", 8), ("gatherLen", 8),
-    ("workspaceAddr4", 4), ("aicCoreNum", 4), ("needUbBuffer", 4),
-    ("addX3UbCnt", 4), ("commWorkSpaceSize", 4), ("isInputCommQuantScale", 4),
-    ("dataType", 4), ("commInt8WorkSpace", 4), ("dynamicQuantTempBuffSize", 4),
+    ("nd2NzWorkLen", 8),
+    ("cToFloatLen", 8),
+    ("gatherLen", 8),
+    ("workspaceAddr4", 4),
+    ("aicCoreNum", 4),
+    ("needUbBuffer", 4),
+    ("addX3UbCnt", 4),
+    ("commWorkSpaceSize", 4),
+    ("isInputCommQuantScale", 4),
+    ("dataType", 4),
+    ("commInt8WorkSpace", 4),
+    ("dynamicQuantTempBuffSize", 4),
 ]
 
 # Mc2MatMulV3TilingData — mc2/3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h
@@ -57,9 +87,9 @@ QUANT_FIXED_SIZE = 164
 
 # DFX 统一头部 — mc2/common/op_kernel/apace/utils/op_state_dump_struct.h
 # 当前解析的是 MC2_DFX_ENABLE=1 的 Dump；关闭时 DfxDumpInfo 为空且不会生成这类 DFX Dump。
-WS_SEG_INFO_SIZE = 24             # u64 offset + u64 size + u8 type + u8[7] reserved
+WS_SEG_INFO_SIZE = 24  # u64 offset + u64 size + u8 type + u8[7] reserved
 WS_MAX_SEGMENTS = 8
-WS_LAYOUT_INFO_SIZE = 208         # u64 + 2×u32 + 8×24
+WS_LAYOUT_INFO_SIZE = 208  # u64 + 2×u32 + 8×24
 PEERMEM_DATA_SIZE_OFFSET = WS_LAYOUT_INFO_SIZE
 PEERMEM_LAYOUT_OFFSET = PEERMEM_DATA_SIZE_OFFSET + 8
 DFX_DUMP_INFO_SIZE = PEERMEM_LAYOUT_OFFSET + WS_LAYOUT_INFO_SIZE  # 424B
@@ -81,26 +111,41 @@ APACE_QUANT_MATMUL_SIZE = 64
 # AGMMV2/MMRS/A2AMM 的前缀为 [Mc2InitTiling][Mc2CcTiling][DfxDumpInfo]，
 # 因此 DfxDumpInfo/WorkspaceLayout 位于 offset 576；URMA 算子仍把 DfxDumpInfo 放在 offset 0。
 _GROUND_TRUTH = {
-    "v2.offsets.workspaceLayout": 576, "v2.size": 1848,
-    "fp8.offsets.workspaceLayout": 576, "fp8.size": 2232,
+    "v2.offsets.workspaceLayout": 576,
+    "v2.size": 1848,
+    "fp8.offsets.workspaceLayout": 576,
+    "fp8.size": 2232,
 }
 
 _GT_MRSV2 = {
-    "nonQuant.wsLayoutOffset": 576, "nonQuant.size": 1608,
-    "quant.wsLayoutOffset": 576, "quant.size": 1864,
+    "nonQuant.wsLayoutOffset": 576,
+    "nonQuant.size": 1608,
+    "quant.wsLayoutOffset": 576,
+    "quant.size": 1864,
 }
 
 _GT_A2A = {
-    "nonQuant.wsLayoutOffset": 576, "nonQuant.size": 1560,
-    "quant.wsLayoutOffset": 576, "quant.size": 1816,
-    "apace.wsLayoutOffset": 576, "apace.size": 1112,
+    "nonQuant.wsLayoutOffset": 576,
+    "nonQuant.size": 1560,
+    "quant.wsLayoutOffset": 576,
+    "quant.size": 1816,
+    "apace.wsLayoutOffset": 576,
+    "apace.size": 1112,
 }
 
 PRIM_TYPES = {
-    "uint8_t": (1, 1), "int8_t": (1, 1), "char": (1, 1), "bool": (1, 1),
-    "uint16_t": (2, 2), "int16_t": (2, 2),
-    "uint32_t": (4, 4), "int32_t": (4, 4), "float": (4, 4),
-    "uint64_t": (8, 8), "int64_t": (8, 8), "double": (8, 8),
+    "uint8_t": (1, 1),
+    "int8_t": (1, 1),
+    "char": (1, 1),
+    "bool": (1, 1),
+    "uint16_t": (2, 2),
+    "int16_t": (2, 2),
+    "uint32_t": (4, 4),
+    "int32_t": (4, 4),
+    "float": (4, 4),
+    "uint64_t": (8, 8),
+    "int64_t": (8, 8),
+    "double": (8, 8),
     "size_t": (8, 8),
 }
 
@@ -122,12 +167,14 @@ class HeaderParser:
     """解析 C 头文件中的 struct 定义 / #pragma pack / 数值常量。"""
 
     _STRUCT_RE = re.compile(
-        r"\bstruct\s+(?:alignas\s*\(\s*(\d+)\s*\)\s*)?([A-Za-z_]\w*)\s*\{")
+        r"\bstruct\s+(?:alignas\s*\(\s*(\d+)\s*\)\s*)?([A-Za-z_]\w*)\s*\{"
+    )
     _PACK_RE = re.compile(r"@@PACK@@\(([^\n]*)\)")
     _CONSTEXPR_RE = re.compile(r"\bconstexpr\s+\w+\s+([A-Za-z_]\w*)\s*=\s*([^;]+);")
     _MEMBER_RE = re.compile(
         r"^(?:const\s+)?([A-Za-z_][\w:]*)\s*(\*)?\s*([A-Za-z_]\w*)"
-        r"(?:\s*\[\s*([^\]]*?)\s*\])?\s*(?:=\s*(.*))?$")
+        r"(?:\s*\[\s*([^\]]*?)\s*\])?\s*(?:=\s*(.*))?$"
+    )
 
     def __init__(self):
         self.structs = {}
@@ -157,8 +204,10 @@ class HeaderParser:
 
     def _scan(self, code, path):
         events = [(m.start(), "struct", m) for m in self._STRUCT_RE.finditer(code)]
-        events += [(m.start(), "pack", m.group(1).strip())
-                   for m in self._PACK_RE.finditer(code)]
+        events += [
+            (m.start(), "pack", m.group(1).strip())
+            for m in self._PACK_RE.finditer(code)
+        ]
         events.sort(key=lambda e: e[0])
         pack, stack = None, []
         for _, kind, payload in events:
@@ -189,7 +238,7 @@ class HeaderParser:
             if name in self.structs:
                 continue
             self.structs[name] = {
-                "members": self._parse_members(code[m.end():i - 1], name, path),
+                "members": self._parse_members(code[m.end() : i - 1], name, path),
                 "pack": pack,
                 "alignas": int(m.group(1)) if m.group(1) else None,
                 "file": path,
@@ -203,10 +252,17 @@ class HeaderParser:
                 continue
             m = self._MEMBER_RE.match(decl)
             if not m:
-                raise LayoutError("无法解析成员 '%s' (struct %s, %s)"
-                                  % (decl, struct_name, path))
-            members.append({"type": m.group(1), "ptr": bool(m.group(2)),
-                            "name": m.group(3), "arr": m.group(4)})
+                raise LayoutError(
+                    "无法解析成员 '%s' (struct %s, %s)" % (decl, struct_name, path)
+                )
+            members.append(
+                {
+                    "type": m.group(1),
+                    "ptr": bool(m.group(2)),
+                    "name": m.group(3),
+                    "arr": m.group(4),
+                }
+            )
         return members
 
     def eval_const(self, expr):
@@ -215,9 +271,11 @@ class HeaderParser:
 
         e = strip_suffix(expr.strip())
         for _ in range(8):
+
             def sub(m):
                 v = self.constants.get(m.group(0))
                 return strip_suffix(v) if v is not None else m.group(0)
+
             new = re.sub(r"\b[A-Za-z_]\w*\b", sub, e)
             if new == e:
                 break
@@ -297,12 +355,14 @@ def resolve_cann_root(explicit=None):
             p = os.path.join(c, arch, "include", "kernel_tiling", "kernel_tiling.h")
             if os.path.isfile(p):
                 return c, p
-        hits = sorted(glob.glob(os.path.join(c, "*", "include",
-                                             "kernel_tiling", "kernel_tiling.h")))
+        hits = sorted(
+            glob.glob(
+                os.path.join(c, "*", "include", "kernel_tiling", "kernel_tiling.h")
+            )
+        )
         if hits:
             return c, hits[0]
-    raise LayoutError(
-        "未找到 CANN kernel_tiling.h。已尝试: %s" % (tried,))
+    raise LayoutError("未找到 CANN kernel_tiling.h。已尝试: %s" % (tried,))
 
 
 def _cann_sizes(cann):
@@ -311,10 +371,12 @@ def _cann_sizes(cann):
     parser = HeaderParser()
     parser.parse_file(header)
     comp = LayoutComputer(parser)
-    return (header,
-            comp.struct_layout("Mc2InitTiling")[0],
-            comp.struct_layout("Mc2CcTiling")[0],
-            comp.struct_layout("TCubeTiling")[0])
+    return (
+        header,
+        comp.struct_layout("Mc2InitTiling")[0],
+        comp.struct_layout("Mc2CcTiling")[0],
+        comp.struct_layout("TCubeTiling")[0],
+    )
 
 
 def _base_layout(cann):
@@ -328,10 +390,14 @@ def _base_layout(cann):
         tcube_size = DEFAULT_TCUBE_TILING_SIZE
         if os.environ.get("MC2_LAYOUT_QUIET_FALLBACK") != "1":
             logging.warning("无法从 CANN 环境获取 kernel_tiling.h (%s)", e)
-            logging.warning("使用默认尺寸继续: Mc2InitTiling=%d, Mc2CcTiling=%d, TCubeTiling=%d "
-                            "(9.1.0/9.2.0 实测值; 若 dump 来自其他版本 CANN, 偏移可能不准, "
-                            "请 source 对应 set_env.sh)",
-                            init_size, cc_size, tcube_size)
+            logging.warning(
+                "使用默认尺寸继续: Mc2InitTiling=%d, Mc2CcTiling=%d, TCubeTiling=%d "
+                "(9.1.0/9.2.0 实测值; 若 dump 来自其他版本 CANN, 偏移可能不准, "
+                "请 source 对应 set_env.sh)",
+                init_size,
+                cc_size,
+                tcube_size,
+            )
         headers = ["<默认值 (未找到 CANN 头文件)>"]
 
     rcs_offsets = {}
@@ -363,9 +429,11 @@ def _base_layout(cann):
 
 def _self_check(layout, ground_truth):
     """三个 CANN 基础尺寸均为当前默认值时，对拍源码 ground truth。"""
-    if (layout["tcubeTilingSize"] != DEFAULT_TCUBE_TILING_SIZE or
-            layout.get("initSize") != DEFAULT_MC2_INIT_TILING_SIZE or
-            layout.get("ccSize") != DEFAULT_MC2_CC_TILING_SIZE):
+    if (
+        layout["tcubeTilingSize"] != DEFAULT_TCUBE_TILING_SIZE
+        or layout.get("initSize") != DEFAULT_MC2_INIT_TILING_SIZE
+        or layout.get("ccSize") != DEFAULT_MC2_CC_TILING_SIZE
+    ):
         return
     for path, expect in ground_truth.items():
         node = layout
@@ -373,11 +441,14 @@ def _self_check(layout, ground_truth):
             for key in path.split("."):
                 node = node[key]
         except (KeyError, TypeError):
-            raise LayoutError("布局公式自检失败: 路径 %s 取值失败 (DFX 表或组装公式有误)"
-                              % path)
+            raise LayoutError(
+                "布局公式自检失败: 路径 %s 取值失败 (DFX 表或组装公式有误)" % path
+            )
         if node != expect:
-            raise LayoutError("布局公式自检失败: %s 期望 %d, 实际 %d (DFX 表或组装公式有误)"
-                              % (path, expect, node))
+            raise LayoutError(
+                "布局公式自检失败: %s 期望 %d, 实际 %d (DFX 表或组装公式有误)"
+                % (path, expect, node)
+            )
 
 
 def compute_layout(cann=None):
@@ -408,8 +479,12 @@ def compute_layout(cann=None):
         "workspaceLayout": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
         "peermemDataSize": off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
         "peermemLayout": off_dump_info + PEERMEM_LAYOUT_OFFSET,
-        "mc2InitTiling": off_init, "mc2CcTiling": off_cc, "param": off_param,
-        "dataType": off_data_type, "debugMode": off_debug_mode, "blocks": off_blocks,
+        "mc2InitTiling": off_init,
+        "mc2CcTiling": off_cc,
+        "param": off_param,
+        "dataType": off_data_type,
+        "debugMode": off_debug_mode,
+        "blocks": off_blocks,
     }
     layout = {
         "headers": base["headers"],
@@ -419,10 +494,12 @@ def compute_layout(cann=None):
         "v2": {"size": v2_size, "offsets": dict(head_offsets)},
         "fp8": {"size": fp8_size, "offsets": dict(head_offsets)},
         "rcs": base["rcs"],
-        "workspace": dict(base["workspace"],
-                          layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                          peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
-                          peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET),
+        "workspace": dict(
+            base["workspace"],
+            layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+            peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET,
+        ),
     }
     _self_check(layout, _GROUND_TRUTH)
     return layout
@@ -455,24 +532,35 @@ def compute_mrs_v2_layout(cann=None):
         "initSize": base["initSize"],
         "ccSize": base["ccSize"],
         "tcubeTilingSize": tcube_size,
-        "nonQuant": {"size": nq_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                     "blockOffset": off_blocks},
-        "quant": {"size": q_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                  "blockOffset": off_blocks},
+        "nonQuant": {
+            "size": nq_size,
+            "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "blockOffset": off_blocks,
+        },
+        "quant": {
+            "size": q_size,
+            "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "blockOffset": off_blocks,
+        },
         "offsets": {
             "dumpInfo": off_dump_info,
             "workspaceLayout": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
             "peermemDataSize": off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
             "peermemLayout": off_dump_info + PEERMEM_LAYOUT_OFFSET,
-            "mc2InitTiling": off_init, "mc2CcTiling": off_cc,
-            "param": off_param, "dataType": off_data_type,
-            "debugMode": off_debug_mode, "blocks": off_blocks,
+            "mc2InitTiling": off_init,
+            "mc2CcTiling": off_cc,
+            "param": off_param,
+            "dataType": off_data_type,
+            "debugMode": off_debug_mode,
+            "blocks": off_blocks,
         },
         "rcs": base["rcs"],
-        "workspace": dict(base["workspace"],
-                          layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                          peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
-                          peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET),
+        "workspace": dict(
+            base["workspace"],
+            layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+            peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET,
+        ),
     }
     _self_check(layout, _GT_MRSV2)
     return layout
@@ -511,28 +599,42 @@ def compute_allto_all_layout(cann=None):
         "initSize": base["initSize"],
         "ccSize": base["ccSize"],
         "tcubeTilingSize": tcube_size,
-        "nonQuant": {"size": nq_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                     "blockSize": tcube_size + MMV3_TAIL_SIZE,
-                     "tileOffset": head, "tailOffset": head + tcube_size + MMV3_TAIL_SIZE},
-        "quant": {"size": q_size, "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                  "blockSize": tcube_size + QUANT_FIXED_SIZE,
-                  "tileOffset": head, "tailOffset": head + tcube_size + QUANT_FIXED_SIZE},
-        "apace": {"size": _roundup(apace_local + 4, 8),
-                  "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                  "commOffset": apace_comm, "quantMatmulOffset": apace_qmm,
-                  "localMatmulOffset": apace_local},
+        "nonQuant": {
+            "size": nq_size,
+            "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "blockSize": tcube_size + MMV3_TAIL_SIZE,
+            "tileOffset": head,
+            "tailOffset": head + tcube_size + MMV3_TAIL_SIZE,
+        },
+        "quant": {
+            "size": q_size,
+            "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "blockSize": tcube_size + QUANT_FIXED_SIZE,
+            "tileOffset": head,
+            "tailOffset": head + tcube_size + QUANT_FIXED_SIZE,
+        },
+        "apace": {
+            "size": _roundup(apace_local + 4, 8),
+            "wsLayoutOffset": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            "commOffset": apace_comm,
+            "quantMatmulOffset": apace_qmm,
+            "localMatmulOffset": apace_local,
+        },
         "offsets": {
             "dumpInfo": off_dump_info,
             "workspaceLayout": off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
             "peermemDataSize": off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
             "peermemLayout": off_dump_info + PEERMEM_LAYOUT_OFFSET,
-            "mc2InitTiling": off_init, "mc2CcTiling": off_cc,
+            "mc2InitTiling": off_init,
+            "mc2CcTiling": off_cc,
             "tilingInfo": off_info,
         },
-        "workspace": dict(base["workspace"],
-                          layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
-                          peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
-                          peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET),
+        "workspace": dict(
+            base["workspace"],
+            layoutOffset=off_dump_info + DFX_WORKSPACE_LAYOUT_OFFSET,
+            peermemDataSizeOffset=off_dump_info + PEERMEM_DATA_SIZE_OFFSET,
+            peermemLayoutOffset=off_dump_info + PEERMEM_LAYOUT_OFFSET,
+        ),
     }
     _self_check(layout, _GT_A2A)
     return layout

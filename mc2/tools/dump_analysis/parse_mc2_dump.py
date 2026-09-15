@@ -92,10 +92,21 @@ KIND_ORDER = {
 }
 
 WORKSPACE_SEG_TYPE_NAMES = {
-    0: "LIB_API", 1: "ND2NZ", 2: "GATHER", 3: "GATHER_SCALE1",
-    4: "GATHER_SCALE", 5: "COMM_OUT", 6: "PERMUTE_OUT", 7: "BIAS",
-    8: "MM_RESULT", 9: "RECV_BUF", 10: "COMM_INT8", 11: "DYNAMIC_QUANT",
-    12: "STATE_DUMP", 13: "MM_WORKSPACE", 255: "RESERVED",
+    0: "LIB_API",
+    1: "ND2NZ",
+    2: "GATHER",
+    3: "GATHER_SCALE1",
+    4: "GATHER_SCALE",
+    5: "COMM_OUT",
+    6: "PERMUTE_OUT",
+    7: "BIAS",
+    8: "MM_RESULT",
+    9: "RECV_BUF",
+    10: "COMM_INT8",
+    11: "DYNAMIC_QUANT",
+    12: "STATE_DUMP",
+    13: "MM_WORKSPACE",
+    255: "RESERVED",
 }
 
 WORKSPACE_SEG_DESCRIPTIONS = {
@@ -123,6 +134,7 @@ WORKSPACE_PREVIEW_SIZE = 64
 # scan the same binary or emit the same fallback warning.
 _AIC_CORE_NUM_CACHE = {}
 
+
 def normalize(value):
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
@@ -132,7 +144,9 @@ def resolve_profile(operator_name):
     key = ALIASES.get(key, key)
     if key not in PROFILES:
         choices = ", ".join(profile["name"] for profile in PROFILES.values())
-        raise ValueError(f"不支持的算子名 {operator_name!r}。支持: {choices}; 别名: mmrs/a2amm/agmmv2/agmmv3")
+        raise ValueError(
+            f"不支持的算子名 {operator_name!r}。支持: {choices}; 别名: mmrs/a2amm/agmmv2/agmmv3"
+        )
     return key, PROFILES[key]
 
 
@@ -146,7 +160,10 @@ def classify_file(path):
 def matches_operator(path, profile_key):
     normalized_name = normalize(path.name)
     if profile_key == "alltoallmatmul":
-        return "alltoallmatmul" in normalized_name and "alltoallmatmulv2" not in normalized_name
+        return (
+            "alltoallmatmul" in normalized_name
+            and "alltoallmatmulv2" not in normalized_name
+        )
     if profile_key == "matmulreducescatterv2":
         return "matmulreducescatter" in normalized_name
     return profile_key in normalized_name
@@ -166,7 +183,9 @@ def detect_profile_from_file(path):
         for sibling in path.parent.iterdir():
             if not sibling.is_file() or classify_file(sibling) != "tiling":
                 continue
-            sibling_keys.update(key for key in PROFILES if matches_operator(sibling, key))
+            sibling_keys.update(
+                key for key in PROFILES if matches_operator(sibling, key)
+            )
         matched_keys = sorted(sibling_keys)
     if len(matched_keys) != 1:
         if matched_keys:
@@ -215,7 +234,7 @@ def emit_decimal_byte_preview(lines, data, echo=True):
     append(f"previewAllZero: {not any(data)}")
     append("decimalPreview (each value is one raw uint8 byte):")
     for offset in range(0, len(data), 16):
-        row = data[offset:offset + 16]
+        row = data[offset : offset + 16]
         values = " ".join(f"{value:3d}" for value in row)
         append(f"  byte[{offset:04d}:{offset + len(row):04d}] : {values}")
 
@@ -237,21 +256,37 @@ def infer_aic_core_num(profile, tiling_file):
         data = read_data(tiling_file)
         name = profile["name"]
         if name == "AllGatherMatmulV3":
-            core_num = module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
+            core_num = (
+                module.parse_tiling_data(data).get("mmTile", {}).get("usedCoreNum")
+            )
         elif name == "AlltoAllMatmulV2":
-            core_num = module.parse_tiling_data(data).get("tileQbmmTilingData", {}).get("usedCoreNum")
+            core_num = (
+                module.parse_tiling_data(data)
+                .get("tileQbmmTilingData", {})
+                .get("usedCoreNum")
+            )
         elif name == "AlltoAllMatmul":
             tiling_format = module.detect_tiling_format(data)
             if tiling_format == "apace":
                 result = module.parse_apace_tiling_data(data)
                 core_num = result.get("tileQbmmTilingData", {}).get("usedCoreNum")
             else:
-                info = module.parse_allto_all_matmul_tiling_info(data, module.OFFSET_TILING_INFO)
+                info = module.parse_allto_all_matmul_tiling_info(
+                    data, module.OFFSET_TILING_INFO
+                )
                 core_num = info.get("aicCoreNum")
         else:
-            layout = module.compute_layout() if name == "AllGatherMatmulV2" else module.compute_mrs_v2_layout()
+            layout = (
+                module.compute_layout()
+                if name == "AllGatherMatmulV2"
+                else module.compute_mrs_v2_layout()
+            )
             is_quant = module.detect_quant_mode(data, layout)
-            core_num = module.parse_tiling_data(data, layout, is_quant).get("param", {}).get("aicCoreNum")
+            core_num = (
+                module.parse_tiling_data(data, layout, is_quant)
+                .get("param", {})
+                .get("aicCoreNum")
+            )
     except Exception:
         core_num = None
     finally:
@@ -292,7 +327,7 @@ def operator_suffix(path, profile):
     for candidate in candidates:
         index = lowered.find(candidate.lower())
         if index >= 0:
-            return lowered[index + len(candidate):]
+            return lowered[index + len(candidate) :]
     return lowered
 
 
@@ -345,7 +380,9 @@ def nearest_tiling_file(path, profile, tiling_files):
         for tiling_file in tiling_files:
             sequence = trailing_sequence(tiling_file)
             if sequence is not None:
-                candidates.append((abs(sequence - target_sequence), str(tiling_file), tiling_file))
+                candidates.append(
+                    (abs(sequence - target_sequence), str(tiling_file), tiling_file)
+                )
         if candidates:
             return min(candidates)[2]
     return tiling_files[0] if len(tiling_files) == 1 else None
@@ -356,7 +393,8 @@ def related_tiling_files(path, profile_key):
     if not path.parent.is_dir():
         return []
     return sorted(
-        sibling for sibling in path.parent.iterdir()
+        sibling
+        for sibling in path.parent.iterdir()
         if sibling.is_file()
         and classify_file(sibling) == "tiling"
         and matches_operator(sibling, profile_key)
@@ -373,7 +411,9 @@ def group_tiling_files_by_parent(tiling_files):
     return grouped
 
 
-def workspace_runtime_context(path, profile, tiling_files, core_index, apace_tiling_files):
+def workspace_runtime_context(
+    path, profile, tiling_files, core_index, apace_tiling_files
+):
     """Match one StateDump segment to its nearest sibling TilingData."""
     selected_tiling = nearest_tiling_file(path, profile, tiling_files)
     if selected_tiling is not None:
@@ -392,7 +432,10 @@ def parse_address_table(input_path):
     if byte_size % row_size != 0:
         raise ValueError(f"文件大小 {byte_size} 不是完整 512 字节行的整数倍")
     data = read_data(input_path)
-    table = [struct.unpack_from("<64Q", data, offset) for offset in range(0, len(data), row_size)]
+    table = [
+        struct.unpack_from("<64Q", data, offset)
+        for offset in range(0, len(data), row_size)
+    ]
     nonzero = sum(1 for row in table for value in row if value != 0)
     lines = [
         f"source: {input_path.name}",
@@ -502,7 +545,9 @@ def parse_single_file(input_path, parser):
             parser.error(str(error))
         for line in parsed_lines:
             emit(result_lines, line)
-        save_text_result(output_path, profile, kind, Path(input_path.name), result_lines)
+        save_text_result(
+            output_path, profile, kind, Path(input_path.name), result_lines
+        )
         print(f"saved TXT: {output_path}")
         return 0
 
@@ -516,11 +561,19 @@ def parse_single_file(input_path, parser):
                 f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}",
                 f"fileSize: {input_path.stat().st_size} bytes",
             ]
-            emit_decimal_byte_preview(parsed_lines, read_preview(input_path, WORKSPACE_PREVIEW_SIZE), echo=False)
-            parsed_lines.append("typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
+            emit_decimal_byte_preview(
+                parsed_lines,
+                read_preview(input_path, WORKSPACE_PREVIEW_SIZE),
+                echo=False,
+            )
+            parsed_lines.append(
+                "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值"
+            )
             for line in parsed_lines:
                 emit(result_lines, line)
-            save_text_result(output_path, profile, kind, Path(input_path.name), result_lines)
+            save_text_result(
+                output_path, profile, kind, Path(input_path.name), result_lines
+            )
             print(f"saved TXT: {output_path}")
             return 0
 
@@ -536,18 +589,23 @@ def parse_single_file(input_path, parser):
         if selected_tiling is not None:
             emit(result_lines, f"relatedTilingData: {selected_tiling.name}")
 
-    return_code, output = run_backend(profile, kind, input_path, aic_core_num, use_apace)
+    return_code, output = run_backend(
+        profile, kind, input_path, aic_core_num, use_apace
+    )
     if output:
         for line in output.splitlines():
             emit(result_lines, line)
     if kind == "comm_context":
         file_size = input_path.stat().st_size
         emit(result_lines, "")
-        emit(result_lines, "rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：")
+        emit(
+            result_lines,
+            "rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：",
+        )
         emit(
             result_lines,
             f'python3 "{SCRIPT_DIR / "parse_matrix.py"}" "{input_path}" '
-            f'--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64',
+            f"--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64",
         )
     if return_code != 0:
         emit(result_lines, f"ERROR: backend exited with code {return_code}")
@@ -569,7 +627,9 @@ def main(argv=None):
         "target",
         help="单个 Dump 文件路径；批量解析时填写算子名或别名，例如 AlltoAllMatmul、mmrs",
     )
-    parser.add_argument("dump_dir", nargs="?", help="批量解析的 Dump 根目录，省略时为当前目录")
+    parser.add_argument(
+        "dump_dir", nargs="?", help="批量解析的 Dump 根目录，省略时为当前目录"
+    )
     args = parser.parse_args(argv)
 
     target_path = Path(args.target).expanduser()
@@ -603,12 +663,19 @@ def main(argv=None):
     tiling_files_by_parent = group_tiling_files_by_parent(tiling_files)
     apace_tiling_files = infer_apace_tiling_files(profile, tiling_files)
     core_values = sorted(core_index[2])
-    core_summary = core_values[0] if len(core_values) == 1 else (core_values or "unknown")
+    core_summary = (
+        core_values[0] if len(core_values) == 1 else (core_values or "unknown")
+    )
     console_lines = []
     emit(console_lines, "=" * 88)
-    emit(console_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}")
+    emit(
+        console_lines, f"MC2 dump analysis: {profile['name']} | path: {profile['path']}"
+    )
     emit(console_lines, f"dump dir: {dump_dir}")
-    emit(console_lines, f"matched files: {len(files)} | inferred AIC cores: {core_summary}")
+    emit(
+        console_lines,
+        f"matched files: {len(files)} | inferred AIC cores: {core_summary}",
+    )
     emit(console_lines, f"TXT output: {output_dir}")
     emit(console_lines, "=" * 88)
 
@@ -643,12 +710,25 @@ def main(argv=None):
             if identity is not None and identity[1] != 12:
                 seg_index, seg_type = identity
                 emit(result_lines, f"segIdx: {seg_index}")
-                emit(result_lines, f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})")
-                emit(result_lines, f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}")
+                emit(
+                    result_lines,
+                    f"segType: {seg_type} ({WORKSPACE_SEG_TYPE_NAMES.get(seg_type, 'UNKNOWN')})",
+                )
+                emit(
+                    result_lines,
+                    f"dataMeaning: {WORKSPACE_SEG_DESCRIPTIONS.get(seg_type, '未知 Workspace 段')}",
+                )
                 emit(result_lines, f"fileSize: {path.stat().st_size} bytes")
-                emit_decimal_byte_preview(result_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE))
-                emit(result_lines, "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值")
-                save_text_result(output_path, profile, kind, relative_path, result_lines)
+                emit_decimal_byte_preview(
+                    result_lines, read_preview(path, WORKSPACE_PREVIEW_SIZE)
+                )
+                emit(
+                    result_lines,
+                    "typedViewHint: 使用 parse_matrix.py 并指定 dtype/rows/cols 查看真实数值",
+                )
+                save_text_result(
+                    output_path, profile, kind, relative_path, result_lines
+                )
                 emit(console_lines, f"saved TXT: {output_path}")
                 continue
 
@@ -668,11 +748,14 @@ def main(argv=None):
         if kind == "comm_context":
             file_size = path.stat().st_size
             emit(result_lines, "")
-            emit(result_lines, "rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：")
+            emit(
+                result_lines,
+                "rawDataHint: 如需按十进制查看 comm_context 原始字节，可使用 parse_matrix.py：",
+            )
             emit(
                 result_lines,
                 f'python3 "{SCRIPT_DIR / "parse_matrix.py"}" "{path}" '
-                f'--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64',
+                f"--dtype uint8 --rows 1 --cols {file_size} --row 0 --col-range 0 64",
             )
         if return_code != 0:
             failures += 1

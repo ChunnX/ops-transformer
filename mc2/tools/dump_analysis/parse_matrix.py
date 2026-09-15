@@ -32,20 +32,24 @@ import argparse
 import logging
 import math
 
-logging.basicConfig(level=logging.NOTSET, format="[%(levelname)s] %(message)s", handlers=[logging.StreamHandler()])
+logging.basicConfig(
+    level=logging.NOTSET,
+    format="[%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()],
+)
 
 DEFAULT_PREVIEW_ROWS = 16
 
 DTYPE_INFO = {
-    "fp16":     {"size": 2, "name": "FP16 (IEEE half)"},
-    "bf16":     {"size": 2, "name": "BF16 (bfloat16)"},
+    "fp16": {"size": 2, "name": "FP16 (IEEE half)"},
+    "bf16": {"size": 2, "name": "BF16 (bfloat16)"},
     "fp8_e4m3": {"size": 1, "name": "FP8 E4M3FN"},
     "fp8_e5m2": {"size": 1, "name": "FP8 E5M2"},
     "fp4_e2m1": {"size": 0, "name": "FP4 E2M1 (packed)"},
-    "e8m0":     {"size": 1, "name": "E8M0 (scale exponent)"},
-    "int8":     {"size": 1, "name": "INT8"},
-    "uint8":    {"size": 1, "name": "UINT8"},
-    "fp32":     {"size": 4, "name": "FP32 (IEEE single)"},
+    "e8m0": {"size": 1, "name": "E8M0 (scale exponent)"},
+    "int8": {"size": 1, "name": "INT8"},
+    "uint8": {"size": 1, "name": "UINT8"},
+    "fp32": {"size": 4, "name": "FP32 (IEEE single)"},
 }
 
 
@@ -65,7 +69,7 @@ def fp16_to_float(bits: int) -> float:
     if exp == 0:
         if mant == 0:
             return 0.0 if sign == 0 else -0.0
-        val = (mant / 1024.0) * (2 ** -14)
+        val = (mant / 1024.0) * (2**-14)
     elif exp == 0x1F:
         if mant != 0:
             return float("nan")
@@ -102,11 +106,13 @@ def fp8_e4m3_to_float(b: int) -> float:
     if exp == 0 and mant == 0:
         return 0.0 if sign == 0 else -0.0
     if exp == 0:
-        val = (mant / 8.0) * (2 ** -6)  # subnormal, bias=7
+        val = (mant / 8.0) * (2**-6)  # subnormal, bias=7
     elif exp == 0xF and mant == 0x7:
         return float("nan")
     else:
-        val = (1.0 + mant / 8.0) * (2 ** (exp - 7))  # bias=7, exp=0xF & math<7 is finite
+        val = (1.0 + mant / 8.0) * (
+            2 ** (exp - 7)
+        )  # bias=7, exp=0xF & math<7 is finite
     return -val if sign else val
 
 
@@ -126,7 +132,7 @@ def fp8_e5m2_to_float(b: int) -> float:
     if exp == 0 and mant == 0:
         return 0.0 if sign == 0 else -0.0
     if exp == 0:
-        val = (mant / 4.0) * (2 ** -14)  # subnormal, exponent = 1 - bias = -14
+        val = (mant / 4.0) * (2**-14)  # subnormal, exponent = 1 - bias = -14
     elif exp == 0x1F:
         if mant != 0:
             return float("nan")
@@ -156,7 +162,7 @@ def fp4_e2m1_to_float(nibble: int) -> float:
     if exp == 0 and mant == 0:
         return 0.0 if sign == 0 else -0.0
     if exp == 0:
-        val = (mant / 2.0) * (2 ** 0)  # subnormal, bias=1
+        val = (mant / 2.0) * (2**0)  # subnormal, bias=1
     else:
         val = (1.0 + mant / 2.0) * (2 ** (exp - 1))  # bias=1
     return -val if sign else val
@@ -233,7 +239,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Workspace 段数据解析脚本（支持 fp16/bf16/fp8/fp4/e8m0）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-                epilog="""\
+        epilog="""\
 示例:
   # 解析 COMM_OUT 段 (fp8_e4m3, shape 57086x1536, 只看前 8 行)
   python parse_matrix.py workspace_seg1_type5_*.bin --dtype fp8_e4m3 --rows 57086 --cols 1536 --row-range 0 8
@@ -250,19 +256,46 @@ def main():
         """,
     )
     parser.add_argument("bin_file", help="workspace_seg*_type*_*.bin 文件路径")
-    parser.add_argument("--dtype", required=True, choices=list(DTYPE_INFO.keys()),
-                        help="数据类型")
+    parser.add_argument(
+        "--dtype", required=True, choices=list(DTYPE_INFO.keys()), help="数据类型"
+    )
     parser.add_argument("--rows", type=int, required=True, help="矩阵行数 M")
     parser.add_argument("--cols", type=int, required=True, help="矩阵列数 K")
-    parser.add_argument("--row-range", metavar=("START", "END"), type=int, nargs=2, default=None,
-                        help="显示指定行范围 [start, end)，如 --row-range 5 10")
-    parser.add_argument("--col-range", metavar=("START", "END"), type=int, nargs=2, default=None,
-                        help="显示指定列范围 [start, end)，如 --col-range 5 10")
-    parser.add_argument("--row", type=int, nargs="+", default=None,
-                        help="只显示指定行号（可指定多个，如 --row 0 100 57085）")
-    parser.add_argument("--col", type=int, nargs="+", default=None,
-                        help="只显示指定列号（可指定多个，如 --col 0 63 1535）")
-    parser.add_argument("--transpose", action="store_true", help="按列优先顺序解析（AlltoAll 通信结果布局）")
+    parser.add_argument(
+        "--row-range",
+        metavar=("START", "END"),
+        type=int,
+        nargs=2,
+        default=None,
+        help="显示指定行范围 [start, end)，如 --row-range 5 10",
+    )
+    parser.add_argument(
+        "--col-range",
+        metavar=("START", "END"),
+        type=int,
+        nargs=2,
+        default=None,
+        help="显示指定列范围 [start, end)，如 --col-range 5 10",
+    )
+    parser.add_argument(
+        "--row",
+        type=int,
+        nargs="+",
+        default=None,
+        help="只显示指定行号（可指定多个，如 --row 0 100 57085）",
+    )
+    parser.add_argument(
+        "--col",
+        type=int,
+        nargs="+",
+        default=None,
+        help="只显示指定列号（可指定多个，如 --col 0 63 1535）",
+    )
+    parser.add_argument(
+        "--transpose",
+        action="store_true",
+        help="按列优先顺序解析（AlltoAll 通信结果布局）",
+    )
     args = parser.parse_args()
 
     if args.rows <= 0 or args.cols <= 0:
@@ -280,11 +313,22 @@ def main():
     elem_size = get_element_size(dtype)
     total_elems = args.rows * args.cols
     file_elems = int(len(data) / elem_size)
-    logging.info("数据类型: %s, 元素大小: %.1f B, 矩阵: %dx%d = %d 元素, 文件可容纳: %d 元素",
-                 DTYPE_INFO[dtype]["name"], elem_size, args.rows, args.cols, total_elems, file_elems)
+    logging.info(
+        "数据类型: %s, 元素大小: %.1f B, 矩阵: %dx%d = %d 元素, 文件可容纳: %d 元素",
+        DTYPE_INFO[dtype]["name"],
+        elem_size,
+        args.rows,
+        args.cols,
+        total_elems,
+        file_elems,
+    )
 
     if file_elems < total_elems:
-        logging.warning("文件元素数 %d < 矩阵元素数 %d, 只解析文件中存在的数据", file_elems, total_elems)
+        logging.warning(
+            "文件元素数 %d < 矩阵元素数 %d, 只解析文件中存在的数据",
+            file_elems,
+            total_elems,
+        )
         total_elems = file_elems
 
     # 确定要显示的列
@@ -298,7 +342,9 @@ def main():
     if args.row:
         display_rows = sorted(set(r for r in args.row if 0 <= r < args.rows))
     elif args.row_range:
-        display_rows = list(range(max(args.row_range[0], 0), min(args.row_range[1], args.rows)))
+        display_rows = list(
+            range(max(args.row_range[0], 0), min(args.row_range[1], args.rows))
+        )
     else:
         # 未指定行时固定预览前 16 行，不再通过额外命令行参数控制。
         display_rows = list(range(min(DEFAULT_PREVIEW_ROWS, args.rows)))
@@ -320,8 +366,11 @@ def main():
     for row_index in display_rows:
         row = {}
         for col_index in display_cols:
-            element_index = (col_index * args.rows + row_index) if args.transpose \
+            element_index = (
+                (col_index * args.rows + row_index)
+                if args.transpose
                 else (row_index * args.cols + col_index)
+            )
             if element_index >= total_elems:
                 continue
             value = parse_element(data, dtype, element_index)
@@ -350,7 +399,9 @@ def main():
     print()
 
     # 判断是否使用紧凑模式（指定了行范围且列数较少时，用空格分隔）
-    compact = (args.row_range is not None or args.row is not None) and len(display_cols) <= 64
+    compact = (args.row_range is not None or args.row is not None) and len(
+        display_cols
+    ) <= 64
 
     if compact:
         # 紧凑模式：每个数据用空格分隔
@@ -378,7 +429,7 @@ def main():
         # 表格模式
         header = f"{'row':>6} |"
         for c in display_cols:
-            header += f"{'c'+str(c):>8}"
+            header += f"{'c' + str(c):>8}"
         print(header)
         print("-" * len(header))
 
@@ -395,7 +446,11 @@ def main():
     # 统计信息仅针对本次显示范围，避免大文件被展开为数千万个 Python 对象。
     print()
     print("--- 显示范围统计信息 ---")
-    non_zero = [v for v in selected_values if v != 0 and not (isinstance(v, float) and math.isnan(v))]
+    non_zero = [
+        v
+        for v in selected_values
+        if v != 0 and not (isinstance(v, float) and math.isnan(v))
+    ]
     if not selected_values:
         print("  显示范围内没有可解析元素")
     elif non_zero:
