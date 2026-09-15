@@ -47,7 +47,7 @@ void MMPlusReduceScatter::SetCommTimeFactorForOther()
 
 void MMPlusReduceScatter::SetCommTimeFactor()
 {
-    if (npuArch_ == Ops::Base::DAV_3510) { // A5
+    if (npuArch_ == Ops::Base::DAV_3510 || A5, __NPU_ARCH__ == 9201) { // A5 & A6
         SetCommTimeFactorForA5();
     } else {
         SetCommTimeFactorForOther();
