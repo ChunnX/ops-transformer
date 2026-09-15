@@ -256,14 +256,13 @@ bool GroupedMatmulSwigluQuantV3Tiling950::CheckShapeAndScale(
                 OP_LOGE(context_->GetNodeName(),
                         "weight view must be (E, K, N) or transposed (E, N, K), with N positive and 64 aligned"),
                 return false);
-    // FRACTAL_NZ keeps the logical K block in storage dimension 1 and the
-    // logical N block in storage dimension 2 for the non-transposed view.
-    // For the transposed view the corresponding block sizes are K/32 and
-    // N/16, matching the V2 MXFP8 weight-NZ contract.
+    // FRACTAL_NZ follows the V2 MXFP8 contract: non-transposed (E, K, N)
+    // views use storage (E, ceil(N/32), ceil(K/16), 16, 32), while
+    // transposed (E, N, K) views use (E, ceil(K/32), ceil(N/16), 16, 32).
     const int64_t expectedStorageDim1 = transposeWeight_ ? (k + NZ_C0_SIZE - 1) / NZ_C0_SIZE
-                                                         : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
-    const int64_t expectedStorageDim2 = transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE
                                                          : (n + NZ_C0_SIZE - 1) / NZ_C0_SIZE;
+    const int64_t expectedStorageDim2 = transposeWeight_ ? (n + NZ_K0_SIZE - 1) / NZ_K0_SIZE
+                                                         : (k + NZ_K0_SIZE - 1) / NZ_K0_SIZE;
     OP_CHECK_IF(weightStorageShape.GetDimNum() != WEIGHT_STORAGE_DIM_NUM || weightStorageShape.GetDim(0) != e ||
                     weightStorageShape.GetDim(1) != expectedStorageDim1 ||
                     weightStorageShape.GetDim(2) != expectedStorageDim2 ||
@@ -378,14 +377,33 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     CalBasicBlock();
     basicTiling_.baseM = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseM, static_cast<uint64_t>(128)),
                                                   GmmConstant::CUBE_BLOCK);
-    // The Tensor API accumulates both SwiGLU halves in one L0C tile.  The
-    // common QGMM tiler sizes baseN for a single-N output; cap it here so
-    // baseM * (2 * baseN) remains within the double-buffered L0C capacity.
-    basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, static_cast<uint64_t>(128)),
+    // The CGMCT MX epilogue currently consumes one 32-element C0 block per
+    // vector tile.  Keep the output-half tile at one C0 block so both halves
+    // use the same physical width; this also bounds the Tensor API's
+    // concatenated L0C/UB width to 64 elements.
+    // CGMCT currently needs one C0 output-half tile for its vector epilogue,
+    // while the Tensor API path is safe with a two-C0 tile.  Keep the limits
+    // independent so a CGMCT workaround does not unnecessarily fragment the
+    // Tensor API path.
+    const uint64_t maxBaseN = useTensorApi_ ? 64U : 32U;
+    basicTiling_.baseN = GroupedMatmul::CeilAlign(std::min(basicTiling_.baseN, maxBaseN),
                                                   GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed for V3 MXFP8 weight-NZ"),
                 return ge::GRAPH_FAILED);
+
+    // The common QGMM helper historically derives the MX scale factor with
+    // integer division.  That is sufficient when K is an exact multiple of
+    // the L1 K window, but underestimates the final scale window for cases
+    // such as K=160 with a 128-element L1 window.  V3 must also support the
+    // CGMCT fallback for these K values, so cover the tail scale groups with
+    // ceil-division before exporting TCubeTiling.
+    const uint64_t scaleWindowA = static_cast<uint64_t>(basicTiling_.stepKa) * basicTiling_.baseK;
+    const uint64_t scaleWindowB = static_cast<uint64_t>(basicTiling_.stepKb) * basicTiling_.baseK;
+    basicTiling_.scaleFactorA = static_cast<uint32_t>(std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize,
+                                                                                                      scaleWindowA)));
+    basicTiling_.scaleFactorB = static_cast<uint32_t>(std::max<uint64_t>(1U, GroupedMatmul::CeilDiv(inputParams_.kSize,
+                                                                                                      scaleWindowB)));
 
     auto &mm = tilingData_.mmTilingData;
     mm.set_M(inputParams_.mSize);
@@ -420,14 +438,6 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoLibApiTiling()
     mm.set_mxTypePara((SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) +
                       (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                       (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA);
-    OP_LOGE(context_->GetNodeName(),
-            "V3 debug tiling: M=%lu N=%lu K=%lu baseM=%lu baseN=%lu baseK=%lu stepKa=%lu stepKb=%lu "
-            "scaleA=%lu scaleB=%lu kAL1=%u kBL1=%u scaleK=%u mxTypePara=%u tensorApi=%d transB=%d mode=%ld",
-            inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, basicTiling_.baseM, basicTiling_.baseN,
-            basicTiling_.baseK, basicTiling_.stepKa, basicTiling_.stepKb, basicTiling_.scaleFactorA,
-            basicTiling_.scaleFactorB, mm.get_stepKa() * mm.get_baseK(), mm.get_stepKb() * mm.get_baseK(),
-            static_cast<uint32_t>(mm.get_mxTypePara() & 0xffffU), mm.get_mxTypePara(), useTensorApi_, transposeWeight_,
-            swigluMode_);
     return ge::GRAPH_SUCCESS;
 }
 

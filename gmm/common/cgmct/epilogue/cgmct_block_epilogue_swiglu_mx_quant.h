@@ -56,6 +56,7 @@ constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t MAX_SINGLE_MN = 64 * 256;
+constexpr uint32_t CGMCT_INTERLEAVED_REG_FACTOR = 2;
 constexpr uint32_t PADDED_QUANT_SCALE_SIZE = 64 * 32;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
@@ -198,10 +199,11 @@ private:
 
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
-    __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
+    __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset,
+                                              AscendC::LocalTensor<AscendC::fp8_e8m0_t> &src);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
-    AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
+    AscendC::GlobalTensor<AscendC::fp8_e8m0_t> quantScaleGlobal_;
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
@@ -209,7 +211,7 @@ private:
                                                      MAX_SINGLE_MN};
     AscendC::LocalTensor<int8_t> quantOutput_;
     AscendC::LocalTensor<int8_t> quantScaleOutput_;
-    AscendC::LocalTensor<int8_t> quantScaleBlockOutput_;
+    AscendC::LocalTensor<AscendC::fp8_e8m0_t> quantScaleBlockOutput_;
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
@@ -281,9 +283,9 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                                                 MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t realScaleBlockOffset =
         afterIOAndGluExp + MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
-    quantScaleBlockOutput_ =
-        AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, realScaleBlockOffset,
-                                     params_->baseM / AscendC::GetTaskRation() * AscendC::ONE_BLK_SIZE);
+    quantScaleBlockOutput_ = AscendC::LocalTensor<AscendC::fp8_e8m0_t>(
+        AscendC::TPosition::VECOUT, realScaleBlockOffset,
+        params_->baseM / AscendC::GetTaskRation() * AscendC::ONE_BLK_SIZE);
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -292,7 +294,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 {
     if ASCEND_IS_AIV {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
-        quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
+        quantScaleGlobal_.SetGlobalBuffer(
+            (__gm__ AscendC::fp8_e8m0_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
     }
 }
 
@@ -301,7 +304,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     const ProblemShape &problemShape)
 {
     n_ = Get<MNK_N>(problemShape);
-    scaleN_ = CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    scaleN_ = CeilDiv(static_cast<uint64_t>(n_), static_cast<uint64_t>(64)) * MXFP_MULTI_BASE_SIZE;
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -333,15 +336,26 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
 __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::CopyScaleFromUb2Gm(
-    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src)
+    uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<AscendC::fp8_e8m0_t> &src)
 {
-    AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    auto blockScaleN =
-        CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-    ub2GmParams.blockLen = blockScaleN * sizeof(int8_t);
-    ub2GmParams.blockCount = blockCount;
-    ub2GmParams.dstStride = (scaleN_ - blockScaleN) * sizeof(int8_t);
-    AscendC::DataCopyPad(quantScaleGlobal_[offset], src, ub2GmParams);
+    // scaleBlockN_ is the UB source row pitch (it is based on Align64(singleN)
+    // because ComputeMxQuant also computes the aligned tail).  It is not the
+    // number of valid scale bytes in the public yScale row.  Copy only the
+    // valid groups; otherwise a 32-value tile would copy its padding byte and
+    // the following tile would be addressed past the compact yScale row.
+    constexpr uint64_t scaleGroupSize = MXFP_DIVISOR_SIZE / MXFP_MULTI_BASE_SIZE;
+    auto validScaleN = CeilDiv(static_cast<uint64_t>(singleN_), scaleGroupSize);
+    AscendC::DataCopyExtParams params{1, 0, 0, 0, 0};
+    params.blockCount = blockCount;
+    params.blockLen = static_cast<uint32_t>(validScaleN * sizeof(AscendC::fp8_e8m0_t));
+    // quantScaleBlockOutput_ is laid out with one 32-byte UB row per logical
+    // M row.  Skip the padding at the end of each compact scale row in UB.
+    params.srcStride = static_cast<uint32_t>(
+        CeilDiv((AscendC::ONE_BLK_SIZE - validScaleN) * sizeof(AscendC::fp8_e8m0_t),
+               static_cast<uint64_t>(AscendC::ONE_BLK_SIZE)));
+    params.dstStride = static_cast<uint32_t>((static_cast<uint64_t>(scaleN_) - validScaleN) *
+                                              sizeof(AscendC::fp8_e8m0_t));
+    AscendC::DataCopyPad(quantScaleGlobal_[offset], src, params);
 }
 
 QMM_BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -638,66 +652,68 @@ BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeD
     __ubuf__ bfloat16_t *srcAddr, __ubuf__ uint16_t *halfScaleLocalAddr, __ubuf__ int8_t *outLocalAddr,
     uint32_t totalCountInUB, uint16_t loopNum)
 {
-    uint32_t totalCountInUB2 = totalCountInUB * 2;
+    (void)totalCountInUB;
     using T = bfloat16_t;
+    using U = DataTypeOut;
     __VEC_SCOPE__
     {
-        AscendC::Reg::MaskReg dataMask1, dataMask2, dataMask3, dataMask4;
-        AscendC::Reg::MaskReg maskAll = AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskAll =
+            AscendC::Reg::CreateMask<uint16_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg maskAllB8 =
+            AscendC::Reg::CreateMask<uint8_t, AscendC::Reg::MaskPattern::ALL>();
         AscendC::Reg::RegTensor<uint16_t> halfScaleForMul;
-        AscendC::Reg::RegTensor<float> floatScaleForMul;
-        AscendC::Reg::RegTensor<T> vdExp0, vdExp1, vdExp0Convert, vdExp1Convert;
-        AscendC::Reg::RegTensor<bfloat16_t> vdExp0BF16, vdExp1BF16;
+        AscendC::Reg::RegTensor<T> vdExp0, vdExp1;
         AscendC::Reg::RegTensor<float> vdExp0FP32Zero, vdExp0FP32One, vdExp1FP32Zero, vdExp1FP32One;
-        AscendC::Reg::RegTensor<DataTypeOut> vdExp0FP8Zero, vdExp0FP8One, vdExp1FP8Zero, vdExp1FP8One;
-
+        AscendC::Reg::RegTensor<U> vdExp0FP8Zero, vdExp0FP8One, vdExp1FP8Zero, vdExp1FP8One;
         static constexpr AscendC::Reg::CastTrait castTraitZero = {
             AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
             AscendC::RoundMode::UNKNOWN};
         static constexpr AscendC::Reg::CastTrait castTraitOne = {
             AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::UNKNOWN, AscendC::Reg::MaskMergeMode::ZEROING,
             AscendC::RoundMode::UNKNOWN};
-        static constexpr AscendC::Reg::CastTrait castTrait32to8 = {
+        static constexpr AscendC::Reg::CastTrait castTrait32to80 = {
             AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
             AscendC::RoundMode::CAST_RINT};
+        static constexpr AscendC::Reg::CastTrait castTrait32to81 = {
+            AscendC::Reg::RegLayout::ONE, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_RINT};
+        static constexpr AscendC::Reg::CastTrait castTrait32to82 = {
+            AscendC::Reg::RegLayout::TWO, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_RINT};
+        static constexpr AscendC::Reg::CastTrait castTrait32to83 = {
+            AscendC::Reg::RegLayout::THREE, AscendC::Reg::SatMode::SAT, AscendC::Reg::MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < loopNum; i++) {
-            dataMask1 = AscendC::Reg::UpdateMask<T>(totalCountInUB);
-            dataMask2 = AscendC::Reg::UpdateMask<T>(totalCountInUB);
-            dataMask3 = AscendC::Reg::UpdateMask<T>(totalCountInUB2);
-            dataMask4 = AscendC::Reg::UpdateMask<T>(totalCountInUB2);
             AscendC::Reg::DataCopy<T, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(
-                vdExp0, vdExp1, srcAddr,
-                vlForHalfNumber_ * 2); // copy two chunks from srcAddr to regbase
+                                   AscendC::Reg::LoadDist::DIST_DINTLV_B16>(vdExp0, vdExp1, srcAddr,
+                                                                            vlForHalfNumber_ * CGMCT_INTERLEAVED_REG_FACTOR);
             AscendC::Reg::DataCopy<uint16_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
                                    AscendC::Reg::LoadDist::DIST_E2B_B16>(halfScaleForMul, halfScaleLocalAddr,
                                                                          elementAfterReduce_);
 
-            AscendC::Reg::Mul(vdExp0, vdExp0, (AscendC::Reg::RegTensor<T> &)halfScaleForMul, dataMask1);
-            AscendC::Reg::Mul(vdExp1, vdExp1, (AscendC::Reg::RegTensor<T> &)halfScaleForMul, dataMask1);
-            AscendC::Reg::Interleave(vdExp0, vdExp1, vdExp0, vdExp1);
-            AscendC::Reg::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, dataMask1);
-            AscendC::Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, dataMask1);
-            AscendC::Reg::Interleave(vdExp0FP32Zero, vdExp0FP32One, vdExp0FP32Zero, vdExp0FP32One);
-            AscendC::Reg::Cast<DataTypeOut, float, castTrait32to8>(vdExp0FP8Zero, vdExp0FP32Zero, dataMask3);
-            AscendC::Reg::Cast<DataTypeOut, float, castTrait32to8>(vdExp0FP8One, vdExp0FP32One, dataMask3);
-            AscendC::Reg::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, dataMask2);
-            AscendC::Reg::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, dataMask2);
-            AscendC::Reg::Interleave(vdExp1FP32Zero, vdExp1FP32One, vdExp1FP32Zero, vdExp1FP32One);
-            AscendC::Reg::Cast<DataTypeOut, float, castTrait32to8>(vdExp1FP8Zero, vdExp1FP32Zero, dataMask4);
-            AscendC::Reg::Cast<DataTypeOut, float, castTrait32to8>(vdExp1FP8One, vdExp1FP32One, dataMask4);
-            AscendC::Reg::DataCopy<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp0FP8Zero, OUT_ELE_NUM_ONE_BLK, dataMask3);
-            AscendC::Reg::DataCopy<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp0FP8One, OUT_ELE_NUM_ONE_BLK, dataMask3);
-            AscendC::Reg::DataCopy<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp1FP8Zero, OUT_ELE_NUM_ONE_BLK, dataMask4);
-            AscendC::Reg::DataCopy<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
-                                   AscendC::Reg::StoreDist::DIST_PACK4_B32>(
-                outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp1FP8One, OUT_ELE_NUM_ONE_BLK, dataMask4);
+            AscendC::Reg::Mul(vdExp0, vdExp0, (AscendC::Reg::RegTensor<T> &)halfScaleForMul, maskAll);
+            AscendC::Reg::Mul(vdExp1, vdExp1, (AscendC::Reg::RegTensor<T> &)halfScaleForMul, maskAll);
+            AscendC::Reg::Cast<float, T, castTraitZero>(vdExp0FP32Zero, vdExp0, maskAll);
+            AscendC::Reg::Cast<float, T, castTraitOne>(vdExp0FP32One, vdExp0, maskAll);
+            AscendC::Reg::Cast<float, T, castTraitZero>(vdExp1FP32Zero, vdExp1, maskAll);
+            AscendC::Reg::Cast<float, T, castTraitOne>(vdExp1FP32One, vdExp1, maskAll);
+            AscendC::Reg::Cast<U, float, castTrait32to80>(vdExp0FP8Zero, vdExp0FP32Zero, maskAll);
+            AscendC::Reg::Cast<U, float, castTrait32to82>(vdExp0FP8One, vdExp0FP32One, maskAll);
+            AscendC::Reg::Cast<U, float, castTrait32to81>(vdExp1FP8Zero, vdExp1FP32Zero, maskAll);
+            AscendC::Reg::Cast<U, float, castTrait32to83>(vdExp1FP8One, vdExp1FP32One, maskAll);
+            AscendC::Reg::Add((AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                              (AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                              (AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8One, maskAllB8);
+            AscendC::Reg::Add((AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                              (AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                              (AscendC::Reg::RegTensor<uint8_t> &)vdExp1FP8Zero, maskAllB8);
+            AscendC::Reg::Add((AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                              (AscendC::Reg::RegTensor<uint8_t> &)vdExp0FP8Zero,
+                              (AscendC::Reg::RegTensor<uint8_t> &)vdExp1FP8One, maskAllB8);
+            AscendC::Reg::StoreAlign<int8_t, AscendC::Reg::PostLiteral::POST_MODE_UPDATE,
+                                     AscendC::Reg::StoreDist::DIST_NORM_B8>(
+                outLocalAddr, (AscendC::Reg::RegTensor<int8_t> &)vdExp0FP8Zero,
+                vlForHalfNumber_ * CGMCT_INTERLEAVED_REG_FACTOR, maskAllB8);
         }
     }
     return;
@@ -766,7 +782,9 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 {
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
     uint16_t OneRowRepeatTimes =
-        CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat)); // 一行需要循环的次数，等于n/64
+        CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat));
+    // The cube always produces two ordinary N-wide MMAD results.  Mode 1
+    // changes only the pairing of the two results in the vector epilogue.
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned64 = Align64(nSize); // 64 对齐
 
@@ -780,26 +798,114 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     // swiglu
     __VEC_SCOPE__
     {
+        if (swigluMode_ == 1) {
+            // Mode 1 is defined on the original 2*N-wide GEMM result:
+            //   act  = mm[:, 0::2]
+            //   gate = mm[:, 1::2]
+            // The CGMCT path has already split that result into two ordinary
+            // N-wide MMAD buffers, so a vector de-interleave between the two
+            // buffers is not correct.  Gather the even/odd elements from each
+            // half separately and write the two output portions directly into
+            // the final contiguous row.  This also handles a tile crossing the
+            // boundary between the two MMAD buffers.
+            // Arch35 Arange supports signed 32-bit lanes.  Gather for a
+            // float source consumes the same bits as uint32 offsets, so the
+            // index registers are reinterpreted at the Gather call site.
+            AscendC::Reg::RegTensor<int32_t> laneIndex;
+            AscendC::Reg::RegTensor<int32_t> evenIndex;
+            AscendC::Reg::RegTensor<int32_t> oddIndex;
+            AscendC::Reg::RegTensor<float> swishInput;
+            AscendC::Reg::RegTensor<float> gateInput;
+            AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg6, swishOutput;
+            AscendC::Reg::RegTensor<bfloat16_t> verg7;
+            const uint32_t halfN = static_cast<uint32_t>(nSize / 2);
+            const uint32_t allElements = static_cast<uint32_t>(nSize);
+
+            for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
+                const uint32_t srcRowOffset = static_cast<uint32_t>(mIdx) * nSrcUbAligned;
+                const uint32_t dstRowOffset = static_cast<uint32_t>(mIdx) * nDstUbAligned64;
+                for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) {
+                    const uint32_t outputOffset = static_cast<uint32_t>(vfBlockIdx) * sizePerRepeat;
+                    const uint32_t outputEnd =
+                        outputOffset + sizePerRepeat < allElements ? outputOffset + sizePerRepeat : allElements;
+                    const uint32_t leftEnd = outputEnd < halfN ? outputEnd : halfN;
+                    uint32_t leftCount = leftEnd > outputOffset ? leftEnd - outputOffset : 0;
+                    const uint32_t rightStart = outputOffset > halfN ? outputOffset : halfN;
+                    uint32_t rightCount = outputEnd > rightStart ? outputEnd - rightStart : 0;
+
+                    if (leftCount != 0) {
+                        auto activeMask = AscendC::Reg::UpdateMask<float>(leftCount);
+                        AscendC::Reg::Arange(laneIndex, static_cast<int32_t>(0));
+                        AscendC::Reg::Muls(evenIndex, laneIndex, static_cast<int32_t>(2), activeMask);
+                        AscendC::Reg::Adds(evenIndex, evenIndex, static_cast<int32_t>(outputOffset * 2), activeMask);
+                        AscendC::Reg::Adds(oddIndex, evenIndex, static_cast<int32_t>(1), activeMask);
+                        AscendC::Reg::Gather(swishInput, firstSrc + srcRowOffset,
+                                             (AscendC::Reg::RegTensor<uint32_t> &)evenIndex, activeMask);
+                        AscendC::Reg::Gather(gateInput, firstSrc + srcRowOffset,
+                                             (AscendC::Reg::RegTensor<uint32_t> &)oddIndex, activeMask);
+
+                        AscendC::Reg::Mins(verg1, swishInput, clampLimit_, activeMask);
+                        AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, activeMask);
+                        AscendC::Reg::Exp(verg3, verg2, activeMask);
+                        AscendC::Reg::Adds(verg4, verg3, scalarOne, activeMask);
+                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, activeMask);
+                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, activeMask);
+                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, activeMask);
+                        AscendC::Reg::Adds(gateInput, gateInput, gluBias_, activeMask);
+                        AscendC::Reg::Mul(verg6, swishOutput, gateInput, activeMask);
+                        AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, activeMask);
+                        AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
+                            gluResAddr + dstRowOffset + outputOffset, verg7, activeMask);
+                    }
+
+                    if (rightCount != 0) {
+                        auto activeMask = AscendC::Reg::UpdateMask<float>(rightCount);
+                        const uint32_t localOutputOffset = rightStart - halfN;
+                        AscendC::Reg::Arange(laneIndex, static_cast<int32_t>(0));
+                        AscendC::Reg::Muls(evenIndex, laneIndex, static_cast<int32_t>(2), activeMask);
+                        AscendC::Reg::Adds(evenIndex, evenIndex, static_cast<int32_t>(localOutputOffset * 2), activeMask);
+                        AscendC::Reg::Adds(oddIndex, evenIndex, static_cast<int32_t>(1), activeMask);
+                        AscendC::Reg::Gather(swishInput, secondSrc + srcRowOffset,
+                                             (AscendC::Reg::RegTensor<uint32_t> &)evenIndex, activeMask);
+                        AscendC::Reg::Gather(gateInput, secondSrc + srcRowOffset,
+                                             (AscendC::Reg::RegTensor<uint32_t> &)oddIndex, activeMask);
+
+                        AscendC::Reg::Mins(verg1, swishInput, clampLimit_, activeMask);
+                        AscendC::Reg::Muls(verg2, verg1, -gluAlpha_, activeMask);
+                        AscendC::Reg::Exp(verg3, verg2, activeMask);
+                        AscendC::Reg::Adds(verg4, verg3, scalarOne, activeMask);
+                        AscendC::Reg::Div<float, &DIV_MODE>(swishOutput, verg1, verg4, activeMask);
+                        AscendC::Reg::Mins(gateInput, gateInput, clampLimit_, activeMask);
+                        AscendC::Reg::Maxs(gateInput, gateInput, -clampLimit_, activeMask);
+                        AscendC::Reg::Adds(gateInput, gateInput, gluBias_, activeMask);
+                        AscendC::Reg::Mul(verg6, swishOutput, gateInput, activeMask);
+                        AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, activeMask);
+                        AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
+                            gluResAddr + dstRowOffset + rightStart, verg7, activeMask);
+                    }
+                }
+            }
+        } else {
         for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) { // 需要计算m次
-            uint32_t elementNum = nSize;
             AscendC::Reg::MaskReg mask;
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
+                uint32_t outputOffset = static_cast<uint32_t>(vfBlockIdx) * sizePerRepeat;
+                uint32_t remaining = nSize - outputOffset;
+                uint32_t elementNum = remaining < sizePerRepeat ? remaining : sizePerRepeat;
+                // The vector computation is performed in the MMAD accumulator
+                // type (FP32); keep this mask in the accumulator lane domain
+                // so the PACK_B32 store uses the same register layout as the
+                // existing MX quantization epilogues.
                 mask = AscendC::Reg::UpdateMask<DataTypeIn>(elementNum);
                 AscendC::Reg::RegTensor<bfloat16_t> verg7;
                 AscendC::Reg::RegTensor<float> swishInput, gateInput;
                 AscendC::Reg::RegTensor<float> swigluEvenInput, swigluOddInput;
                 AscendC::Reg::RegTensor<float> verg1, verg2, verg3, verg4, verg6, swishOutput;
 
-                uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
+                uint32_t l0cOutOffset = mIdx * nSrcUbAligned + outputOffset;
                 AscendC::Reg::DataCopy(swishInput, firstSrc + l0cOutOffset);
                 AscendC::Reg::DataCopy(gateInput, secondSrc + l0cOutOffset);
 
-                // V2: standard split SwiGLU.  V3 mode 1 consumes the two
-                // ordinary MMAD halves as one concatenated stream and
-                // de-interleaves its even/odd elements here.  Doing this in
-                // the vector epilogue preserves the ordinary NZ copy path;
-                // an NZ GM->L1 strided copy can skip whole C0 blocks but
-                // cannot reorder individual elements inside a C0 block.
                 if (swigluMode_ == 1) {
                     AscendC::Reg::DeInterleave(swigluEvenInput, swigluOddInput, swishInput, gateInput);
                     swishInput = swigluEvenInput;
@@ -847,8 +953,9 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
                 AscendC::Reg::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, mask);
                 uint32_t dstUbOffset = mIdx * nDstUbAligned64 + vfBlockIdx * sizePerRepeat;
                 AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(gluResAddr + dstUbOffset,
-                                                                                           verg7, mask);
+                                                                                             verg7, mask);
             }
+        }
         }
     }
 
@@ -906,7 +1013,8 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
     __VEC_SCOPE__
     {
         for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-            uint32_t elemNum = scaleBlockN;
+            constexpr uint64_t scaleGroupSize = MXFP_DIVISOR_SIZE / MXFP_MULTI_BASE_SIZE;
+            uint32_t elemNum = CeilDiv(static_cast<uint64_t>(singleN_), scaleGroupSize);
             AscendC::Reg::MaskReg maskScaleN = AscendC::Reg::UpdateMask<int8_t>(elemNum);
             AscendC::Reg::RegTensor<int8_t> vreg0;
             AscendC::Reg::UnalignReg u0, u1;
@@ -937,8 +1045,14 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
 {
     singleM_ = Get<MNK_M>(blockShape);
     singleN_ = Get<MNK_N>(blockShape);
-    scaleBlockN_ =
-        CeilDiv(static_cast<uint64_t>(singleN_), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    // ComputeMxQuant uses Align64(singleN_) as its UB row pitch and emits one
+    // packed scale byte for each 32 values. Keep the source row pitch
+    // separate from the number of valid output scales copied to GM.
+    // ComputeScale emits one byte per 32 values. The public MX scale row
+    // packs two such bytes for every 64 output values, so the UB source row
+    // pitch is ceil(Align64(N), 64) * 2 rather than ceil(N, 64).
+    scaleBlockN_ = CeilDiv(Align64(static_cast<uint64_t>(singleN_)), static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                   MXFP_MULTI_BASE_SIZE;
     blockCoord_ = blockCoord;
     auto halfSingleM = CeilDiv(static_cast<uint64_t>(singleM_), static_cast<uint64_t>(AscendC::GetTaskRation()));
     uint64_t singleMInVec = subBlockIdx_ == 1 ? singleM_ - halfSingleM : halfSingleM;
