@@ -30,7 +30,9 @@ public:
         Mc2OpDef::ConfigureMatmulV2DynamicAicore(aicore_config)
             .ExtendCfgInfo("opFile.value", "all_gather_matmul_v2_apt");
         this->AICore().AddConfig("ascend950", aicore_config);
+        this->AICore().AddConfig("ascend910_96", aicore_config);
         this->MC2().HcclGroup("group");
+        this->MC2().HcclServerType(HcclServerType::AICPU, "ascend910_96");
 
         OpAICoreConfig aicore_config_910b;
         DefineAicoreConfig910bRequiredInputs(aicore_config_910b);

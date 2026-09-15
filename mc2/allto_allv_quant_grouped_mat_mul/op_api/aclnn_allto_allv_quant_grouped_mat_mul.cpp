@@ -468,7 +468,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (notContiguous &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+        (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) { // 只有当非连续时，才会涉及到转连续等情况(A6复用A5处理)
         transGmmWeight = !transGmmWeight;
         // 把非连续gmmWeight转成连续
         transposeGmmWeight = TransGmmWeightTensor(gmmWeight);
@@ -480,7 +481,9 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     }
 
     auto transposeGmmWeightScale = gmmWeightScale;
-    if (notContiguous && gmmWeightScale != nullptr && GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (notContiguous && gmmWeightScale != nullptr &&
+        (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
         transposeGmmWeightScale = TransGmmWeightScaleTensor(gmmWeightScale);
         CHECK_RET(transposeGmmWeightScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
@@ -501,7 +504,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
                                                   "contiguous tensor or transpose disabled");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        if (notContiguous && (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+                              GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
             transMmWeight = !transMmWeight;
             transMmWeightOptional = TransMmWeightOptionalTensor(mmWeightOptional);
             CHECK_RET(transMmWeightOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -512,7 +516,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     auto transMmWeightScaleOptional = mmWeightScaleOptional;
     bool mmWeightScaleNotContiguous = false;
     if (mmWeightScaleOptional != nullptr && mmWeightScaleOptional->GetViewShape().GetDimNum() >= 3 &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
         mmWeightScaleNotContiguous = IsTransposeTwoDims(mmWeightScaleOptional, -2, -3);
         if (mmWeightScaleNotContiguous) {
             transMmWeightScaleOptional = TransMmWeightScaleTensor(mmWeightScaleOptional);
@@ -545,7 +550,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace, uint64_
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+            op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6复用A5路径(handle恒为AICPU)
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
