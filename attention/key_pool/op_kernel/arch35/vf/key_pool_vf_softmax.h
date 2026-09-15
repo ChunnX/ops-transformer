@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file vf_softmax.h
+ * \file key_pool_vf_softmax.h
  * \brief
  */
 
-#ifndef VF_SOFTMAX_H
-#define VF_SOFTMAX_H
+#ifndef KEY_POOL_VF_SOFTMAX_H
+#define KEY_POOL_VF_SOFTMAX_H
 #include "kernel_tensor.h"
 
 constexpr uint32_t BASE_DEAL_SIZE = 4;
@@ -2102,4 +2102,4 @@ __aicore__ inline void SoftmaxDnVF(const LocalTensor<T> &dstTensor, const LocalT
     }
 }
 } // namespace FaVectorApi
-#endif // VF_SOFTMAX_H
+#endif // KEY_POOL_VF_SOFTMAX_H
