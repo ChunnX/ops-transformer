@@ -45,6 +45,16 @@ struct Bmm2ResBuffSel {
 
 namespace BaseApi {
 
+__simd_vf__ inline void CalLnValueVF(__ubuf__ float *dstUb, const float value)
+{
+    RegTensor<float> vregSrc;
+    RegTensor<float> vregDst;
+    MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
+    Duplicate(vregSrc, value);
+    Ln(vregDst, vregSrc, pregAll);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregDst, pregAll);
+}
+
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
@@ -180,9 +190,6 @@ public:
         tPipe_ = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar_ = *((T *)&tmp1);
-        if constexpr (USE_DN) {
-            UpdateMinCheckValue();
-        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -443,6 +450,14 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
+        LocalTensor<float> lnValueUb = commonTBuf_.template Get<float>();
+        TEventID lnValueEventId = GetTPipePtr()->AllocEventID<HardEvent::V_S>();
+        CalLnValueVF((__ubuf__ float *)lnValueUb.GetPhyAddr(), pScaleValue_);
+        SetFlag<HardEvent::V_S>(lnValueEventId);
+        WaitFlag<HardEvent::V_S>(lnValueEventId);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_S>(lnValueEventId);
+        float lnPScale = lnValueUb.GetValue(0);
+
         float min = *((float *)&minValue_);
         if constexpr (USE_DN) {
             min *= constInfo_.scaleValue;
@@ -455,6 +470,7 @@ public:
         } else {
             min = tmp * LN2;
         }
+        min -= lnPScale;
         minValue_ = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
@@ -1021,6 +1037,9 @@ public:
         tPipe_->InitBuffer(stage1OutQue_[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe_->InitBuffer(stage1OutQue_[1], 1, 16640);
         tPipe_->InitBuffer(commonTBuf_, 512);
+        if constexpr (USE_DN) {
+            UpdateMinCheckValue();
+        }
         if constexpr (HAS_MASK) {
             tPipe_->InitBuffer(attenMaskInQue_[0], 1, attenMaskSize); // 256 * 64
         }
