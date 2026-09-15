@@ -269,10 +269,11 @@ struct hcommA2avQuantGmmTilingData {
     uint64_t scaleSendOff[A2AV_GMM_MAX_RANK_NUM]{0};
     uint64_t scaleRecvCnt[A2AV_GMM_MAX_RANK_NUM]{0};
     uint64_t scaleRecvOff[A2AV_GMM_MAX_RANK_NUM]{0};
-    // 段表（expert-major：segIdx = e*W + s）
-    uint32_t segList[A2AV_GMM_MAX_SEG_NUM + 1]{0}; // 段累计行数（kernel 分组列表）
-    uint32_t segAOff[A2AV_GMM_MAX_SEG_NUM]{0};     // 段在数据/scale 接收区的行偏移
-    uint32_t segCOff[A2AV_GMM_MAX_SEG_NUM]{0};     // 段在 gmm_y 输出的行偏移
+    // 段表（expert-major：segIdx = e*W + s）。groupList 只描述逻辑分组，
+    // offset table 只描述物理地址；两者不能互相替代。
+    int64_t sparseGroupList[A2AV_GMM_MAX_SEG_NUM * 2U]{0}; // [expertId, tokenCount]
+    uint64_t aOffsetTable[A2AV_GMM_MAX_SEG_NUM]{0};        // A 的逻辑元素偏移（非打包字节偏移）
+    uint64_t cOffsetTable[A2AV_GMM_MAX_SEG_NUM]{0};        // C 的元素偏移
     uint32_t segSendRows[A2AV_GMM_MAX_SEG_NUM]{0}; // expert-major: [expert][dst rank]
     // GMM 计算 tiling
     uint32_t baseM{0};
@@ -292,7 +293,7 @@ struct hcommA2avQuantGmmTilingData {
     uint32_t mmKAL1{0};
     uint32_t mmKBL1{0};
     uint32_t mmScaleKAL1{0};
-    uint32_t mmGroupList[1]{0};
+    int64_t mmGroupList[1]{0};
     uint32_t diagnosticMode{A2AV_GMM_DIAG_FULL};
     uint32_t diagnosticTrace{0};
 };
@@ -373,21 +374,11 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
     }
 
     // ---- 段表（expert-major：segIdx = e*W + s）----
-    // 接收区 rank-major：src s 区起始行 = sum_{s'<s} sum_e recvCnt(s', e)
-    // 组 e 的段 (s) 数据行偏移 = src 区起始行 + sum_{e'<e} recvCnt(s, e')
+    // 每个 expert 独立通信，接收端直接写到最终 expert-major 行偏移；
+    // groupList 保存 [expertId, tokenCount]，不再编码物理位移。
     // 输出 expert-major：expert e 输出区起始行 = sum_{e'<e} sum_s recvCnt(s, e')
     //                   段 (e, s) 输出行偏移 = expert 起始 + sum_{s'<s} recvCnt(s', e)
-    uint32_t srcStart[A2AV_GMM_MAX_RANK_NUM] = {0};
     uint32_t expertStart[A2AV_GMM_MAX_SEG_NUM] = {0};
-    {
-        uint32_t running = 0;
-        for (uint32_t s = 0; s < rankSize; ++s) {
-            srcStart[s] = running;
-            for (uint32_t e = 0; e < expertNum; ++e) {
-                running += static_cast<uint32_t>(recvAt(s, e));
-            }
-        }
-    }
     {
         uint32_t running = 0;
         for (uint32_t e = 0; e < expertNum; ++e) {
@@ -397,24 +388,18 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
             }
         }
     }
-    uint32_t segCum = 0;
     for (uint32_t e = 0; e < expertNum; ++e) {
         uint32_t srcPrefix = 0; // sum_{s'<s} recvCnt(s', e)，输出侧行偏移
         for (uint32_t s = 0; s < rankSize; ++s) {
             const uint32_t segIdx = e * rankSize + s;
             const uint32_t rows = static_cast<uint32_t>(recvAt(s, e));
             tiling.segSendRows[segIdx] = static_cast<uint32_t>(sendAt(s, e));
-            // 数据/scale 段行偏移（行数相同，scale 每行 scaleKLen 字节）
-            uint32_t ePrefix = 0; // sum_{e'<e} recvCnt(s, e')
-            for (uint32_t e2 = 0; e2 < e; ++e2) {
-                ePrefix += static_cast<uint32_t>(recvAt(s, e2));
-            }
-            tiling.segAOff[segIdx] = srcStart[s] + ePrefix;
-            tiling.segCOff[segIdx] = expertStart[e] + srcPrefix;
+            const uint64_t rowOffset = static_cast<uint64_t>(expertStart[e] + srcPrefix);
+            tiling.sparseGroupList[segIdx * 2U] = static_cast<int64_t>(e);
+            tiling.sparseGroupList[segIdx * 2U + 1U] = static_cast<int64_t>(rows);
+            tiling.aOffsetTable[segIdx] = rowOffset * static_cast<uint64_t>(k);
+            tiling.cOffsetTable[segIdx] = rowOffset * static_cast<uint64_t>(n);
             srcPrefix += rows;
-            segCum += rows;
-            // segList 为包含式累计（list[i] = 前 i+1 段总行数），与 kernel GetGroupRows 语义一致
-            tiling.segList[segIdx] = segCum;
         }
     }
 
@@ -424,10 +409,7 @@ inline void BuildHcommA2avQuantGmmTiling(uint32_t rankSize, uint32_t expertNum, 
     };
     uint32_t maxSegRows = 1;
     for (uint32_t seg = 0; seg < tiling.segNum; ++seg) {
-        // segList is inclusive: entry seg is the cumulative row count through
-        // that segment.  Do not read segList[segNum], which is not populated.
-        const uint32_t prevRows = (seg == 0U) ? 0U : tiling.segList[seg - 1U];
-        const uint32_t rows = tiling.segList[seg] - prevRows;
+        const uint32_t rows = static_cast<uint32_t>(tiling.sparseGroupList[seg * 2U + 1U]);
         maxSegRows = std::max(maxSegRows, rows);
     }
     tiling.baseK = std::min(k, 128U);

@@ -10,16 +10,7 @@
 
 /*!
  * \file qgmm_mx_kernel.h
- * \brief Apace MX 量化分组矩阵乘 kernel（AIC 侧）。
- *
- * 输入约定（AllToAllv 融合场景）：
- *   - A / scaleA 已按 expert-major 连续排布（分组列表为累计行数）；
- *   - B / scaleB 为本 rank 的专家权重，按组连续存放；
- *   - C 输出与 A 行序一致（expert-major）。
- *
- * 调度参考 Blaze GemmUniversal(KernelGroupedMmadWithScaleMx) 的分组迭代：
- * 逐组刷新 ProblemShape，按 BlockSchedulerGmmSwatWithTailSplit 切块，
- * 末组触发尾块二次切分，保证多核负载均衡。
+ * \brief Apace MX grouped-matmul kernel based on Blaze kernel_qgmm_mx.h.
  */
 
 #pragma once
@@ -43,15 +34,15 @@ namespace Kernel {
 using namespace AscendC;
 using namespace Blaze::Gemm;
 
-#define QGMM_MX_KERNEL_CLASS_TEM_PARAMS template <class ProblemShape, class BlockMmad, class BlockScheduler>
-#define QGMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler
+constexpr uint8_t GROUP_LIST_TYPE_OFFSET = 0U;
+constexpr uint8_t GROUP_LIST_TYPE_LENGTH = 1U;
+constexpr uint8_t GROUP_LIST_TYPE_SPARSE = 2U;
+constexpr uint32_t SPARSE_GROUP_LIST_ITEM_STRIDE = 2U;
+constexpr uint32_t SPARSE_GROUP_LIST_TOKEN_OFFSET = 1U;
 
-QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-class QuantGroupedMatmulKernel {
+template <class ProblemShape, class BlockMmad, class BlockScheduler>
+class GroupedMatmulMxKernel {
 public:
-    __aicore__ inline QuantGroupedMatmulKernel() {}
-    __aicore__ inline ~QuantGroupedMatmulKernel() {}
-
     using AType = typename BlockMmad::AType;
     using BType = typename BlockMmad::BType;
     using CType = typename BlockMmad::CType;
@@ -59,16 +50,26 @@ public:
     using LayoutA = typename BlockMmad::LayoutA;
     using LayoutB = typename BlockMmad::LayoutB;
     using LayoutC = typename BlockMmad::LayoutC;
-    static constexpr bool TRANS_A = Blaze::Gemm::IsTrans<LayoutA>::value;
-    static constexpr bool TRANS_B = Blaze::Gemm::IsTrans<LayoutB>::value;
-    static constexpr bool WEIGHT_NZ = Blaze::Gemm::IsWeightNz<LayoutB>::value;
-    static constexpr int64_t C0_SIZE = Blaze::Gemm::IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
-    static constexpr int32_t SCALE_C0 = 2;
-
+    using LayoutScaleB = typename BlockMmad::LayoutScaleB;
+    using BlockMmadParams = typename BlockMmad::Params;
     using BlockShape = typename BlockMmad::BlockShape;
     using BlockCoord = typename BlockScheduler::BlockCoord;
     using SchedulerBlockShape = typename BlockScheduler::BlockShape;
     using SchedulerProblemShape = typename BlockScheduler::ProblemShape;
+
+    static constexpr bool TRANS_A = Blaze::Gemm::IsTrans<LayoutA>::value;
+    static constexpr bool TRANS_B = Blaze::Gemm::IsTrans<LayoutB>::value;
+    static constexpr bool WEIGHT_NZ = Blaze::Gemm::IsWeightNz<LayoutB>::value;
+    static constexpr bool SCALE_NZ = Blaze::Gemm::IsScaleNz<LayoutScaleB>::value;
+    static constexpr int64_t C0_SIZE = Blaze::Gemm::IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
+    static constexpr int32_t SCALE_C0 = 2;
+    static constexpr int64_t BLOCK_CUBE_MASK = Blaze::Gemm::BLOCK_CUBE - 1;
+    static constexpr int64_t SCALE_CACHE_MASK = 0xff;
+
+    static_assert(Blaze::Gemm::IsFp4<AType>() == Blaze::Gemm::IsFp4<BType>(),
+                  "GroupedMatmulMxKernel requires A and B to have the same MX bit width.");
+    static_assert(Std::is_same_v<LayoutA, Te::NDExtLayoutPtn>,
+                  "GroupedMatmulMxKernel only supports non-transposed ND A.");
 
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<C0_SIZE>>;
     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<C0_SIZE>>;
@@ -77,52 +78,46 @@ public:
     using MakeLayoutScaleA =
         Std::conditional_t<TRANS_A, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<SCALE_C0>>,
                            Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<SCALE_C0>>>;
-    using MakeLayoutScaleB =
-        Std::conditional_t<TRANS_B, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<SCALE_C0>>,
-                           Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<SCALE_C0>>>;
+    using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<SCALE_C0>>;
 
-    /*!
-     * \brief GMM 切分参数（host tiling 下发）
-     */
+    struct GroupOffsetTables {
+        // Logical element offsets. FP4 packing is converted exactly once when
+        // the typed GM view is built. Tables are indexed by group-list slot,
+        // not by sparse expert ID. A null table means derive a contiguous
+        // offset from groupList; scaleA follows A's row offset automatically.
+        const __gm__ uint64_t *aOffsetTable{nullptr};
+        const __gm__ uint64_t *cOffsetTable{nullptr};
+    };
+
     struct GMMTiling {
-        uint32_t groupNum;      // 分组数（本 rank 专家数）
-        int64_t n;              // N
-        int64_t k;              // K
-        uint32_t baseM;         // M 方向基础块
-        uint32_t baseN;         // N 方向基础块
-        uint32_t baseK;         // K 方向基础块
-        uint32_t kAL1;          // A 矩阵 L1 K 轴切分
-        uint32_t kBL1;          // B 矩阵 L1 K 轴切分
-        uint32_t scaleKAL1;     // MX 场景 ScaleA/ScaleB 共享 K 窗口（scaleKAL1 == scaleKBL1）
-        uint8_t isBias;         // 预留，当前恒 0
-        uint8_t dbL0C{2};       // L0C 双缓冲
-        uint8_t l1BufferStage{2}; // L1 缓冲级数
+        uint32_t groupNum;
+        int64_t m;
+        int64_t n;
+        int64_t k;
+        uint32_t baseM;
+        uint32_t baseN;
+        uint32_t baseK;
+        uint32_t kAL1;
+        uint32_t kBL1;
+        uint32_t scaleKAL1;
+        uint8_t isBias;
+        uint8_t dbL0C{DOUBLE_BUFFER_COUNT};
+        uint8_t l1BufferStage{DOUBLE_BUFFER_COUNT};
+        // OFFSET: cumulative token end; LENGTH: token count;
+        // SPARSE: repeated [expertId, tokenCount].
+        uint8_t groupListType{GROUP_LIST_TYPE_OFFSET};
     };
 
-    /*!
-     * \brief kernel 顶层参数
-     *
-     * 两种分组模式：
-     *  - expert-major（segW == 0）：A/C 行序与分组列表一致（组 e 行区间 [start_e, start_e + rows_e)），
-     *    B/scaleB 按组 stride 推进，适用 UDMA 直写落窗场景；
-     *  - segment（segW != 0）：groupList 为 W*E 个 (expert, srcRank) 段的累计行数（rank-major 通信输出
-     *    布局直接消费），segIdx = expert * segW + src；段在 A（含 scaleA，行偏移同数据）与 C 的行偏移
-     *    由 segAOff/segCOff 显式给出，B/scaleB 偏移按段所属 expert 推进。
-     */
     struct Params {
-        __gm__ AType *aBasePtr;              // [totalM, K] 量化 A
-        __gm__ fp8_e8m0_t *scaleABasePtr;    // [totalM, scaleKLen] A 的 MX scale
-        __gm__ BType *bBasePtr;              // [groupNum, K, N] / [groupNum, N, K] 权重
-        __gm__ fp8_e8m0_t *scaleBBasePtr;    // 权重 MX scale（布局随 TransB）
-        __gm__ CType *cBasePtr;              // [totalM, N] 输出
-        __gm__ const uint32_t *groupList;    // 累计行数分组列表，长度 groupNum
-        __gm__ const uint32_t *segAOff{nullptr}; // 段模式：段在 A/scaleA 的行偏移表（null = expert-major）
-        __gm__ const uint32_t *segCOff{nullptr}; // 段模式：段在 C 的行偏移表
-        uint32_t segW{0};                    // 段模式 rank 数（0 = expert-major 模式）
-        uint32_t expertBase{0};              // 子批段模式对应的首个 expert
-        uint32_t groupListBase{0};           // groupList[0] 之前的累计行数
-        GMMTiling gmm;
+        // A/B/C/scaleA/scaleB/bias base addresses consumed by BlockMmad.
+        BlockMmadParams mmadParams;
+        GM_ADDR groupListGmAddr{nullptr};
+        GMMTiling gmmParams;
+        GroupOffsetTables groupOffsetTables;
     };
+
+    __aicore__ inline GroupedMatmulMxKernel() {}
+    __aicore__ inline ~GroupedMatmulMxKernel() {}
 
     __aicore__ inline void operator()(const Params &params)
     {
@@ -140,173 +135,193 @@ private:
         if constexpr (!TRANS_A) {
             constexpr uint32_t mTailAlign = 1;
             constexpr uint32_t nTailAlign = TRANS_B ? static_cast<uint32_t>(Blaze::Gemm::BLOCK_CUBE) :
-                                                     static_cast<uint32_t>(C0_SIZE);
+                                                      static_cast<uint32_t>(C0_SIZE);
             scheduler.SetTailAlign(mTailAlign, nTailAlign);
         } else {
             constexpr uint32_t mTailAlign = static_cast<uint32_t>(Blaze::Gemm::Block::INNER_AXIS_MIN_SPLIT_VAL);
-            constexpr uint32_t nTailAlign = TRANS_B ? static_cast<uint32_t>(Blaze::Gemm::BLOCK_CUBE) :
-                                                     static_cast<uint32_t>(Blaze::Gemm::Block::INNER_AXIS_MIN_SPLIT_VAL);
+            constexpr uint32_t nTailAlign =
+                TRANS_B ? static_cast<uint32_t>(Blaze::Gemm::BLOCK_CUBE) :
+                          static_cast<uint32_t>(Blaze::Gemm::Block::INNER_AXIS_MIN_SPLIT_VAL);
             scheduler.SetTailAlign(mTailAlign, nTailAlign);
         }
     }
 
-    __aicore__ inline void BaseMBalance(BlockScheduler &scheduler, int64_t m, int64_t baseM)
+    template <typename TensorB, typename TensorScaleB>
+    __aicore__ inline void SetL2CacheHint(TensorB &gmB, TensorScaleB &gmScaleB, int64_t mSize)
+    {
+        if constexpr (WEIGHT_NZ) {
+            if (curBaseM_ >= mSize) {
+                gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
+                gmScaleB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_NORMAL);
+                gmScaleB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_NORMAL);
+            }
+        } else if constexpr (TRANS_B) {
+            if (curBaseM_ >= mSize && (k_ & SCALE_CACHE_MASK) == 0) {
+                gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
+                gmScaleB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_NORMAL);
+                gmScaleB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_NORMAL);
+            }
+        } else {
+            if (curBaseM_ >= mSize && (n_ & SCALE_CACHE_MASK) == 0 &&
+                (static_cast<int64_t>(baseN_) & SCALE_CACHE_MASK) == 0) {
+                gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
+                gmScaleB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                gmB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_NORMAL);
+                gmScaleB.SetL2CacheHint(Te::CacheMode::CACHE_MODE_NORMAL);
+            }
+        }
+    }
+
+    __aicore__ inline void BaseMBalance(BlockScheduler &scheduler, int64_t m)
     {
         if constexpr (!TRANS_A) {
-            if (m <= 0) {
-                return;
-            }
-            constexpr int64_t blockCubeMask = Blaze::Gemm::BLOCK_CUBE - 1;
-            const int64_t safeBaseM = baseM > 0 ? baseM : static_cast<int64_t>(Blaze::Gemm::BLOCK_CUBE);
+            const int64_t safeBaseM = baseM_ > 0 ? baseM_ : static_cast<int64_t>(Blaze::Gemm::BLOCK_CUBE);
             const int64_t mCnt = (m + safeBaseM - 1) / safeBaseM;
             const int64_t balancedBaseM = (m + mCnt - 1) / mCnt;
-            curBaseM_ = static_cast<uint32_t>((balancedBaseM + blockCubeMask) & ~blockCubeMask);
+            curBaseM_ = static_cast<uint32_t>((balancedBaseM + BLOCK_CUBE_MASK) & ~BLOCK_CUBE_MASK);
             scheduler.UpdateBaseM(curBaseM_);
         }
     }
 
-    __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockScheduler &scheduler)
+    __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockScheduler &scheduler) const
     {
         return (scheduler.GetEndBlockIdx() + 1) <= (AscendC::GetBlockNum() >> 1);
     }
 
-    __aicore__ inline int64_t GetGroupRows(uint32_t groupIdx)
+    template <typename GroupListTensor>
+    __aicore__ inline int64_t GetGroupRows(const GroupListTensor &groupList, uint32_t listIdx)
     {
-        int64_t end = static_cast<int64_t>(groupListGm_[groupIdx]);
-        return end - preGroupOffset_;
+        int64_t rows = 0;
+        if (groupListType_ == GROUP_LIST_TYPE_OFFSET) {
+            const int64_t end = groupList[listIdx];
+            rows = end - preGroupOffset_;
+            preGroupOffset_ = end;
+        } else if (groupListType_ == GROUP_LIST_TYPE_LENGTH) {
+            rows = groupList[listIdx];
+            preGroupOffset_ += rows;
+        } else {
+            rows = groupList[listIdx * SPARSE_GROUP_LIST_ITEM_STRIDE + SPARSE_GROUP_LIST_TOKEN_OFFSET];
+            preGroupOffset_ += rows;
+        }
+        return rows;
     }
 
-    __aicore__ inline void Run(const Params &params)
+    template <typename GroupListTensor>
+    __aicore__ inline uint32_t GetExpertIdx(const GroupListTensor &groupList, uint32_t listIdx) const
     {
-        if ASCEND_IS_AIV {
-            return;
+        if (groupListType_ == GROUP_LIST_TYPE_SPARSE) {
+            return static_cast<uint32_t>(groupList[listIdx * SPARSE_GROUP_LIST_ITEM_STRIDE]);
         }
-        Init(params);
-        if (groupNum_ == 0) {
-            return;
-        }
-        const auto &gmm = params.gmm;
-        BlockScheduler scheduler(gmm.baseM, gmm.baseN, gmm.baseK);
-        SetSchedulerTailAlign(scheduler);
-
-        const uint32_t lastGroupIdx = groupNum_ - 1;
-        for (uint32_t loopIdx = 0; loopIdx < lastGroupIdx; ++loopIdx) {
-            const int64_t groupM = GetGroupRows(loopIdx);
-            const int64_t groupStart = preGroupOffset_;
-            preGroupOffset_ += groupM;
-            if (groupM <= 0) {
-                continue;
-            }
-            BaseMBalance(scheduler, groupM, gmm.baseM);
-            scheduler.UpdateNextProblem(SchedulerProblemShape{groupM, gmm.n, gmm.k, 0});
-            ProcessSingleGroup<false>(params, scheduler, loopIdx, groupM, groupStart);
-        }
-
-        const int64_t groupM = GetGroupRows(lastGroupIdx);
-        const int64_t groupStart = preGroupOffset_;
-        preGroupOffset_ += groupM;
-        if (groupM > 0) {
-            BaseMBalance(scheduler, groupM, gmm.baseM);
-            scheduler.UpdateNextProblem(SchedulerProblemShape{groupM, gmm.n, gmm.k, 0});
-            if (IsLastGroupAndNeedSplit(scheduler)) {
-                scheduler.UpdateTailTile();
-                ProcessSingleGroup<true>(params, scheduler, lastGroupIdx, groupM, groupStart);
-            } else {
-                ProcessSingleGroup<false>(params, scheduler, lastGroupIdx, groupM, groupStart);
-            }
-        }
+        return listIdx;
     }
 
     __aicore__ inline void Init(const Params &params)
     {
-        if ASCEND_IS_AIV {
-            return;
-        }
-        groupListGm_ = params.groupList;
-        groupNum_ = params.gmm.groupNum;
-        n_ = params.gmm.n;
-        k_ = params.gmm.k;
-        curBaseM_ = params.gmm.baseM;
-        baseN_ = params.gmm.baseN;
-        preGroupOffset_ = params.groupListBase;
-        segAOffGm_ = params.segAOff;
-        segCOffGm_ = params.segCOff;
-        segW_ = params.segW;
-        expertBase_ = params.expertBase;
+        const auto &gmm = params.gmmParams;
+        aBasePtr_ = reinterpret_cast<__gm__ AType *>(params.mmadParams.aGmAddr);
+        bBasePtr_ = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
+        cBasePtr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
+        scaleABasePtr_ = reinterpret_cast<__gm__ fp8_e8m0_t *>(params.mmadParams.scaleAGmAddr);
+        scaleBBasePtr_ = reinterpret_cast<__gm__ fp8_e8m0_t *>(params.mmadParams.scaleBGmAddr);
+        biasBasePtr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
+        groupListGmAddr_ = params.groupListGmAddr;
+        offsetTables_ = params.groupOffsetTables;
+        groupNum_ = gmm.groupNum;
+        groupListType_ = gmm.groupListType;
+        n_ = gmm.n;
+        k_ = gmm.k;
+        baseM_ = gmm.baseM;
+        baseN_ = gmm.baseN;
+        curBaseM_ = gmm.baseM;
+        isBias_ = gmm.isBias == 1U;
+        preGroupOffset_ = 0;
+        aOffset_ = 0;
+        scaleAOffset_ = 0;
+        bOffset_ = 0;
+        scaleBOffset_ = 0;
+        biasOffset_ = 0;
+        cOffset_ = 0;
 
-        const BlockShape l0Shape{static_cast<int64_t>(params.gmm.baseM), static_cast<int64_t>(params.gmm.baseN),
-                                 static_cast<int64_t>(params.gmm.baseK), 0};
-        const typename BlockMmad::L1Params l1Params{params.gmm.kAL1, params.gmm.kBL1, params.gmm.scaleKAL1};
-        const typename BlockMmad::MmadParams mmadParams{l0Shape, l1Params, params.gmm.isBias == 1,
-                                                        params.gmm.dbL0C == DOUBLE_BUFFER_COUNT,
-                                                        params.gmm.l1BufferStage};
-        mmadOp_.Init(ProblemShape{0, n_, k_, 0}, mmadParams);
+        if constexpr (!WEIGHT_NZ) {
+            perGroupBOffset_ = n_ * k_;
+        } else if constexpr (TRANS_B) {
+            perGroupBOffset_ = static_cast<int64_t>(
+                Align16(n_) * (Blaze::Gemm::IsFp4<AType>() ? Align64(k_) : Align32(k_)));
+        } else {
+            perGroupBOffset_ = static_cast<int64_t>(
+                (Blaze::Gemm::IsFp4<AType>() ? Align64(n_) : Align32(n_)) * Align16(k_));
+        }
+
+        const BlockShape l0Shape{static_cast<int64_t>(gmm.baseM), static_cast<int64_t>(gmm.baseN),
+                                 static_cast<int64_t>(gmm.baseK), 0};
+        const typename BlockMmad::L1Params l1Params{gmm.kAL1, gmm.kBL1, gmm.scaleKAL1};
+        const typename BlockMmad::MmadParams blockParams{l0Shape, l1Params, isBias_,
+                                                         gmm.dbL0C == DOUBLE_BUFFER_COUNT, gmm.l1BufferStage};
+        const ProblemShape initProblemShape{gmm.m, gmm.n, gmm.k, 0};
+        problemShape_ = initProblemShape;
+        mmadOp_.Init(initProblemShape, blockParams);
+    }
+
+    __aicore__ inline void UpdateBaseOffsets(uint32_t listIdx, uint32_t expertIdx, int64_t groupM)
+    {
+        const int64_t groupStart = preGroupOffset_ - groupM;
+        const int64_t logicalAOffset = offsetTables_.aOffsetTable == nullptr ? groupStart * k_ :
+                                       static_cast<int64_t>(offsetTables_.aOffsetTable[listIdx]);
+        aOffset_ = Blaze::Gemm::IsFp4<AType>() ? (logicalAOffset >> 1) : logicalAOffset;
+        scaleAOffset_ = (logicalAOffset / k_) * GetScaleK(k_);
+
+        bOffset_ = perGroupBOffset_ * static_cast<int64_t>(expertIdx);
+        if constexpr (Blaze::Gemm::IsFp4<BType>()) {
+            bOffset_ >>= 1;
+        }
+        const int64_t scaleK = GetScaleK(k_);
+        if constexpr (SCALE_NZ) {
+            scaleBOffset_ = static_cast<int64_t>(CalScaleNZGmAddrOffset(TRANS_B, expertIdx, n_, scaleK));
+        } else {
+            scaleBOffset_ = static_cast<int64_t>(expertIdx) * n_ * scaleK;
+        }
+        biasOffset_ = static_cast<int64_t>(expertIdx) * n_;
+        cOffset_ = offsetTables_.cOffsetTable == nullptr ? groupStart * n_ :
+                   static_cast<int64_t>(offsetTables_.cOffsetTable[listIdx]);
     }
 
     template <bool isLastGroupAndNeedSplit>
-    __aicore__ inline void ProcessSingleGroup(const Params &params, BlockScheduler &scheduler, uint32_t groupIdx,
-                                              int64_t groupM, int64_t groupStart)
+    __aicore__ inline void ProcessSingleGroup(BlockScheduler &scheduler, uint32_t listIdx, uint32_t expertIdx,
+                                               int64_t groupM)
     {
         BlockCoord blockCoord;
         if (!scheduler.GetNextBlockCoord(blockCoord)) {
             return;
         }
-        const int64_t problemM = groupM;
+        UpdateBaseOffsets(listIdx, expertIdx, groupM);
+        problemShape_ = ProblemShape{groupM, n_, k_, 0};
+        mmadOp_.UpdateParamsForNextProblem(problemShape_);
+
         const int64_t scaleK = GetScaleK(k_);
-        const int64_t baseN = static_cast<int64_t>(baseN_);
-
-        mmadOp_.UpdateParamsForNextProblem(ProblemShape{problemM, n_, k_, 0});
-
-        // 组内偏移：分段模式下 (expert, srcRank) 段的 A/scaleA/C 行偏移由段表显式给出，
-        // B/scaleB 按段所属 expert 推进（segIdx = expert * segW + src）；
-        // expert-major 模式下 A/scaleA/C 按累计行数推进，B/scaleB 按组 stride 推进。
-        // fp4 打包存储（2 个元素 1 字节），A/B 的元素偏移需减半，scale 为 e8m0 不受影响。
-        int64_t aOffset;
-        int64_t scaleAOffset;
-        int64_t bOffset;
-        int64_t scaleBOffset;
-        int64_t cOffset;
-        if (segW_ != 0) {
-            const uint32_t expertIdx = expertBase_ + static_cast<uint32_t>(groupIdx) / segW_;
-            const int64_t aRowOff = static_cast<int64_t>(segAOffGm_[groupIdx]);
-            const int64_t cRowOff = static_cast<int64_t>(segCOffGm_[groupIdx]);
-            aOffset = Blaze::Gemm::IsFp4<AType>() ? ((aRowOff * k_) >> 1) : (aRowOff * k_);
-            scaleAOffset = aRowOff * scaleK;
-            bOffset = static_cast<int64_t>(expertIdx) * k_ * n_;
-            if (Blaze::Gemm::IsFp4<BType>()) {
-                bOffset >>= 1;
-            }
-            scaleBOffset = static_cast<int64_t>(expertIdx) * n_ * scaleK;
-            cOffset = cRowOff * n_;
-        } else {
-            aOffset = groupStart * k_;
-            if (Blaze::Gemm::IsFp4<AType>()) {
-                aOffset >>= 1;
-            }
-            scaleAOffset = groupStart * scaleK;
-            bOffset = static_cast<int64_t>(groupIdx) * k_ * n_;
-            if (Blaze::Gemm::IsFp4<BType>()) {
-                bOffset >>= 1;
-            }
-            scaleBOffset = static_cast<int64_t>(groupIdx) * n_ * scaleK;
-            cOffset = groupStart * n_;
-        }
-
-        auto layoutA = MakeLayoutA{}(problemM, k_);
-        auto layoutScaleA = MakeLayoutScaleA{}(problemM, scaleK);
+        auto layoutA = MakeLayoutA{}(groupM, k_);
+        auto layoutScaleA = MakeLayoutScaleA{}(groupM, scaleK);
         auto layoutB = MakeLayoutB{}(k_, n_);
         auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n_);
-        auto layoutC = MakeLayoutC{}(problemM, n_);
+        auto layoutC = MakeLayoutC{}(groupM, n_);
         auto layoutBias = MakeLayoutBias{}(1, n_);
-        auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(params.aBasePtr + aOffset), layoutA);
-        auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(params.scaleABasePtr + scaleAOffset),
-                                       layoutScaleA);
-        auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(params.bBasePtr + bOffset), layoutB);
-        auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(params.scaleBBasePtr + scaleBOffset),
-                                       layoutScaleB);
-        auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(params.cBasePtr + cOffset), layoutC);
-        auto gmBias =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(static_cast<__gm__ BiasType *>(nullptr)), layoutBias);
+        auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(aBasePtr_ + aOffset_), layoutA);
+        auto gmScaleA =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleABasePtr_ + scaleAOffset_), layoutScaleA);
+        auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bBasePtr_ + bOffset_), layoutB);
+        auto gmScaleB =
+            Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBBasePtr_ + scaleBOffset_), layoutScaleB);
+        auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(cBasePtr_ + cOffset_), layoutC);
+        auto gmBias = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(isBias_ ? biasBasePtr_ + biasOffset_ : nullptr), layoutBias);
+
+        if constexpr (!isLastGroupAndNeedSplit) {
+            SetL2CacheHint(gmB, gmScaleB, groupM);
+        }
 
         do {
             const SchedulerBlockShape schedulerBlockShape = scheduler.GetBlockShape(blockCoord);
@@ -319,14 +334,13 @@ private:
             const int64_t nSplitOffset = Te::Get<MNK_B>(schedulerBlockShape);
             const int64_t mBlockIdx = Te::Get<MNK_M>(blockCoord);
             const int64_t nBlockIdx = Te::Get<MNK_N>(blockCoord);
-            const int64_t blockK = k_;
-            const BlockShape blockShape{blockM, blockN, blockK, 0};
+            const BlockShape blockShape{blockM, blockN, k_, 0};
             const int64_t mPos = mBlockIdx * curBaseM_ + mSplitOffset;
-            const int64_t nPos = nBlockIdx * baseN + nSplitOffset;
+            const int64_t nPos = nBlockIdx * static_cast<int64_t>(baseN_) + nSplitOffset;
 
-            auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, 0), Te::MakeShape(blockM, blockK));
+            auto gmBlockA = gmA.Slice(Te::MakeCoord(mPos, 0), Te::MakeShape(blockM, k_));
             auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mPos, 0), Te::MakeShape(blockM, scaleK));
-            auto gmBlockB = gmB.Slice(Te::MakeCoord(0, nPos), Te::MakeShape(blockK, blockN));
+            auto gmBlockB = gmB.Slice(Te::MakeCoord(0, nPos), Te::MakeShape(k_, blockN));
             auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0, nPos), Te::MakeShape(scaleK, blockN));
             auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0, nPos), Te::MakeShape(1, blockN));
             auto gmBlockC = gmC.Slice(Te::MakeCoord(mPos, nPos), Te::MakeShape(blockM, blockN));
@@ -334,19 +348,79 @@ private:
         } while (scheduler.GetNextBlockCoord(blockCoord));
     }
 
+    __aicore__ inline void Run(const Params &params)
+    {
+        if ASCEND_IS_AIV {
+            return;
+        }
+        Init(params);
+        if (groupNum_ == 0U) {
+            return;
+        }
+
+        const int64_t groupListSize = static_cast<int64_t>(groupNum_) *
+            (groupListType_ == GROUP_LIST_TYPE_SPARSE ? SPARSE_GROUP_LIST_ITEM_STRIDE : 1U);
+        const auto groupListLayout = Te::MakeLayout(Te::MakeShape(groupListSize), Te::MakeStride(1L));
+        const auto groupList = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ int64_t *>(groupListGmAddr_)),
+            groupListLayout);
+        const auto &gmm = params.gmmParams;
+        BlockScheduler scheduler(gmm.baseM, gmm.baseN, gmm.baseK);
+        SetSchedulerTailAlign(scheduler);
+
+        const uint32_t lastGroupIdx = groupNum_ - 1U;
+        for (uint32_t listIdx = 0; listIdx < lastGroupIdx; ++listIdx) {
+            const int64_t groupM = GetGroupRows(groupList, listIdx);
+            if (groupM <= 0) {
+                continue;
+            }
+            BaseMBalance(scheduler, groupM);
+            scheduler.UpdateNextProblem(SchedulerProblemShape{groupM, n_, k_, 0});
+            ProcessSingleGroup<false>(scheduler, listIdx, GetExpertIdx(groupList, listIdx), groupM);
+        }
+
+        const int64_t groupM = GetGroupRows(groupList, lastGroupIdx);
+        if (groupM > 0) {
+            BaseMBalance(scheduler, groupM);
+            scheduler.UpdateNextProblem(SchedulerProblemShape{groupM, n_, k_, 0});
+            const uint32_t expertIdx = GetExpertIdx(groupList, lastGroupIdx);
+            if (IsLastGroupAndNeedSplit(scheduler)) {
+                scheduler.UpdateTailTile();
+                ProcessSingleGroup<true>(scheduler, lastGroupIdx, expertIdx, groupM);
+            } else {
+                ProcessSingleGroup<false>(scheduler, lastGroupIdx, expertIdx, groupM);
+            }
+        }
+    }
+
 private:
     BlockMmad mmadOp_;
-    __gm__ const uint32_t *groupListGm_{nullptr};
-    __gm__ const uint32_t *segAOffGm_{nullptr};
-    __gm__ const uint32_t *segCOffGm_{nullptr};
-    uint32_t segW_{0};
-    uint32_t expertBase_{0};
+    ProblemShape problemShape_{};
+    __gm__ AType *aBasePtr_{nullptr};
+    __gm__ BType *bBasePtr_{nullptr};
+    __gm__ CType *cBasePtr_{nullptr};
+    __gm__ BiasType *biasBasePtr_{nullptr};
+    __gm__ fp8_e8m0_t *scaleABasePtr_{nullptr};
+    __gm__ fp8_e8m0_t *scaleBBasePtr_{nullptr};
+    GM_ADDR groupListGmAddr_{nullptr};
+    GroupOffsetTables offsetTables_{};
+
     int64_t preGroupOffset_{0};
+    int64_t perGroupBOffset_{0};
+    int64_t aOffset_{0};
+    int64_t scaleAOffset_{0};
+    int64_t bOffset_{0};
+    int64_t scaleBOffset_{0};
+    int64_t biasOffset_{0};
+    int64_t cOffset_{0};
     int64_t n_{0};
     int64_t k_{0};
     uint32_t groupNum_{0};
-    uint32_t curBaseM_{0};
+    uint32_t baseM_{0};
     uint32_t baseN_{0};
+    uint32_t curBaseM_{0};
+    uint8_t groupListType_{GROUP_LIST_TYPE_OFFSET};
+    bool isBias_{false};
 };
 
 } // namespace Kernel

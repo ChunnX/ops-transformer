@@ -67,10 +67,23 @@ bool AlltoAllvMXQuantGmmTiling::CheckApaceImplCapable() const
     // 参照 AlltoAllMatmul 的 MX 切 apace 策略：
     // rank 数与段数在当前 APACE tiling 表容量内时切换 MIX hcomm/Blaze 实现。
     // permute_out 由 AllToAllV 直接接收到 expert-major 偏移；共享专家复用 Blaze MX GMM。
-    if (epWorldSize_ == 0 || epWorldSize_ > A2AV_GMM_MAX_RANK_NUM) {
+    if (epWorldSize_ == 0 || epWorldSize_ > A2AV_GMM_MAX_RANK_NUM || e_ == 0) {
         return false;
     }
     if (e_ * epWorldSize_ > Apace::A2AV_GMM_MAX_SEG_NUM) {
+        return false;
+    }
+    const bool xSupported = gmmXDataType_ == ge::DT_FLOAT8_E5M2 || gmmXDataType_ == ge::DT_FLOAT8_E4M3FN ||
+                            gmmXDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool weightSupported = gmmWeightDataType_ == ge::DT_FLOAT8_E5M2 ||
+                                 gmmWeightDataType_ == ge::DT_FLOAT8_E4M3FN ||
+                                 gmmWeightDataType_ == ge::DT_FLOAT4_E2M1;
+    if (!xSupported || !weightSupported) {
+        return false;
+    }
+    const bool xIsFp4 = gmmXDataType_ == ge::DT_FLOAT4_E2M1;
+    const bool weightIsFp4 = gmmWeightDataType_ == ge::DT_FLOAT4_E2M1;
+    if (xIsFp4 != weightIsFp4) {
         return false;
     }
     return true;
@@ -108,13 +121,17 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
                        "Skipped outputs are invalid; set the same mode on ALL ranks and restart the test process.",
                 apaceTilingData_.diagnosticMode);
     }
+    const uint32_t lastSeg = apaceTilingData_.segNum - 1U;
+    const uint64_t totalRecvRows = apaceTilingData_.cOffsetTable[lastSeg] / n1_ +
+                                   static_cast<uint64_t>(apaceTilingData_.sparseGroupList[lastSeg * 2U + 1U]);
     OP_LOGI(opName,
-            "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%u baseM=%u baseN=%u baseK=%u kAL1=%u "
+            "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%lu "
+            "baseM=%u baseN=%u baseK=%u kAL1=%u "
             "scaleRecvOffset=%lu sharedExpert=%u permuteOut=%u hcommParamRankCap=%u initBarrier=1 "
             "scaleTransport=same-as-data hcommOrder=scale-wait-data-wait finalBarrier=balanced "
             "blazeLifetime=aic-scoped-v1 commCredit=1 diag=%u trace=%u",
-            epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum,
-            apaceTilingData_.segList[apaceTilingData_.segNum - 1], apaceTilingData_.baseM, apaceTilingData_.baseN,
+            epWorldSize_, e_, h1_, n1_, static_cast<int>(transGmmWeight_), apaceTilingData_.segNum, totalRecvRows,
+            apaceTilingData_.baseM, apaceTilingData_.baseN,
             apaceTilingData_.baseK, apaceTilingData_.kAL1, apaceTilingData_.scaleRecvOffset,
             apaceTilingData_.localMatmul, apaceTilingData_.hasPermuteOut, Apace::A2AV_GMM_HCCL_PARAM_RANK_NUM,
             apaceTilingData_.diagnosticMode, apaceTilingData_.diagnosticTrace);
