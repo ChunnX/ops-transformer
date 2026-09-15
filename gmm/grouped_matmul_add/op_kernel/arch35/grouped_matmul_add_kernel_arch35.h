@@ -15,14 +15,37 @@
 
 #pragma once
 
+// The CANN 9.1.0 compiler in the frozen 950 validation image exposes the
+// original debug-bus constants, while the ops-tensor revision pinned by this
+// tree expects two later hardware traits. The module is frozen to CANN 9.1,
+// so define the equivalent traits for its 3510 Cube build. They are used only
+// by debug printing and do not alter GMM data or scheduling.
+#if defined(__DAV_CUBE__) && (__NPU_ARCH__ == 3510)
+#include "kernel_operator.h"
+#include "impl/utils/debug/npu_arch_3510/asc_aicore_dump_utils.h"
+namespace __asc_aicore {
+template <AscendC::Hardware Hardware>
+__aicore__ constexpr inline uint32_t get_debug_bus_local_addr_shift()
+{
+    return Hardware == AscendC::Hardware::L1 ? 5U : 0U;
+}
+
+template <AscendC::Hardware Hardware>
+__aicore__ constexpr inline uint64_t get_debug_bus_loop_steplen()
+{
+    return ASC_DEBUG_BUS_CHUNK_BYTES;
+}
+} // namespace __asc_aicore
+#endif
+
 #include "blaze/gemm/block/block_mmad_matmul_basic.h"
 #include "blaze/gemm/block/block_scheduler_grouped_matmul.h"
-#include "blaze/gemm/kernel/kernel_grouped_matmul.h"
+#include "pointer_grouped_matmul_add_universal.h"
 #include "grouped_matmul_add_tiling_data.h"
 
 namespace GroupedMatmulAdd {
 
-template <typename LayoutA, typename LayoutB>
+template <typename LayoutA, typename LayoutB, bool SingleY = true>
 __aicore__ inline void GroupedMatMulAddKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GmmAddTilingDataParams, gmmAddParams, gmmAddParams, tiling);
@@ -30,7 +53,10 @@ __aicore__ inline void GroupedMatMulAddKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
 
     using AType = DTYPE_X;
     using BType = DTYPE_X;
-    using CType = DTYPE_Y;
+    // GroupedMatmulAdd and PointerGroupedMatmulAdd both have an FP32
+    // in-place destination.  Keep the type explicit here: the generated
+    // dtype macro has a different name for the latter's dynamic y_refs_out.
+    using CType = float;
     using BiasType = CType;
     using LayoutC = asc::te::nd_ext_layout_ptn;
     using LayoutBias = asc::te::nd_ext_layout_ptn;
@@ -41,8 +67,8 @@ __aicore__ inline void GroupedMatMulAddKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
                                                     BiasType, LayoutBias>;
     using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmNoQuant;
-    using GroupedMatmulAddKernel =
-        Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using GroupedMatmulAddKernel = Blaze::Gemm::Kernel::GroupedMatmulAddUniversal<
+        ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler, !SingleY>;
     using Params = typename GroupedMatmulAddKernel::Params;
     using GMMTiling = typename GroupedMatmulAddKernel::GMMTiling;
     using BlockSchedulerParams = typename BlockScheduler::Params;
@@ -60,7 +86,7 @@ __aicore__ inline void GroupedMatMulAddKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
                         static_cast<uint32_t>(gmmAddParams.groupListType),
                         1UL, // singleX
                         1UL, // singleWeight
-                        1UL, // singleY
+                        static_cast<uint64_t>(SingleY), // singleY
                         0U,  // hasBias
                         0U}; // weightNoL2Cache
     constexpr uint32_t nTailAlign =
@@ -76,7 +102,7 @@ __aicore__ inline void GroupedMatMulAddKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR
                                          static_cast<int64_t>(mmTilingData.M),
                                          true, // singleX
                                          true, // singleWeight
-                                         true, // singleY
+                                         SingleY,
                                          BlockMmad::TRANS_B,
                                          BlockMmad::WEIGHT_NZ_FORMAT,
                                          static_cast<uint32_t>(sizeof(BType))};
