@@ -57,14 +57,26 @@ struct Bmm2ResBuffSel {
 
 namespace BaseApi {
 
-__simd_vf__ inline void CalLnValueVF(__ubuf__ float *dstUb, const float value)
+template <bool useDn>
+__simd_vf__ inline void UpdateMinCheckValueVF(__ubuf__ float *dstUb, const float minValue, const float scaleValue,
+                                              const float pScale)
 {
-    RegTensor<float> vregSrc;
-    RegTensor<float> vregDst;
-    MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
-    Duplicate(vregSrc, value);
-    Ln(vregDst, vregSrc, pregAll);
-    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregDst, pregAll);
+    RegTensor<float> vregMin;
+    RegTensor<float> vregPScale;
+    RegTensor<float> vregLnPScale;
+    MaskReg pregAll = CreateMask<uint16_t, MaskPattern::ALL>();
+    MaskReg pregGuard;
+    Duplicate(vregMin, minValue);
+    Duplicate(vregPScale, pScale);
+    Ln(vregLnPScale, vregPScale, pregAll);
+    if constexpr (useDn) {
+        Muls(vregMin, vregMin, scaleValue, pregAll);
+    }
+    Muls(vregMin, vregMin, INV_LN2, pregAll);
+    Truncate<T, RoundMode::CAST_CEIL>(vregMin, vregMin, preg_108);
+    Muls(vregMin, vregMin, LN2, pregAll);
+    Sub(vregMin, vregMin, vregLnPScale, pregAll);
+    StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)dstUb, vregMin, pregAll);
 }
 
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -462,27 +474,10 @@ public:
 
     __aicore__ inline void UpdateMinCheckValue()
     {
-        LocalTensor<float> lnValueUb = commonTBuf_.template Get<float>();
-        TEventID lnValueEventId = GetTPipePtr()->AllocEventID<HardEvent::V_S>();
-        CalLnValueVF((__ubuf__ float *)lnValueUb.GetPhyAddr(), pScaleValue_);
-        SetFlag<HardEvent::V_S>(lnValueEventId);
-        WaitFlag<HardEvent::V_S>(lnValueEventId);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_S>(lnValueEventId);
-        float lnPScale = lnValueUb.GetValue(0);
-
-        float min = *((float *)&minValue_);
-        if constexpr (USE_DN) {
-            min *= constInfo_.scaleValue;
-        }
-        float tmp = min * INV_LN2;
-        // int32_t 范围 [-2147483648, 2147483647]，下限约 -2.1e9
-        // 若 tmp 小于 int32 最小值，float 精度丢失，直接原样计算
-        if (tmp > -2147483648.0f) {
-            min = static_cast<int32_t>(tmp) * LN2;
-        } else {
-            min = tmp * LN2;
-        }
-        min -= lnPScale;
+        LocalTensor<float> minValueUb = commonTBuf_.template Get<float>();
+        UpdateMinCheckValueVF<USE_DN>((__ubuf__ float *)minValueUb.GetPhyAddr(), *((float *)&minValue_),
+                                      constInfo_.scaleValue, pScaleValue_);
+        float min = minValueUb.GetValue(0);
         minValue_ = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&min));
     }
 
