@@ -53,8 +53,8 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned64,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned576,
-          DTemplateType dVTemplateType = DTemplateType::Aligned512, uint8_t KvLayoutType = 0,
-          bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned512, uint8_t KvLayoutType = 0, bool useDn = false,
+          bool bmm2Write2Ub = true, bool splitD = false>
 class QuantFlashMlaBlockCubeFp8 {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -101,10 +101,10 @@ public:
     /* =====================核间同步ID==================== */
     // Cross-core sync (CROSS_CORE_SYNC_MODE = 4, AIV0_AIV1_OFFSET = 16)
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-    static constexpr uint32_t CROSSCORE_MM_0 = 0U;   // bmm1 result slot 0
-    static constexpr uint32_t CROSSCORE_MM_1 = 1U;   // bmm1 result slot 1
-    static constexpr uint32_t CROSSCORE_MM_2 = 2U;   // bmm2 result slot 0
-    static constexpr uint32_t CROSSCORE_L1P_0 = 3U;  // L1 P slot 0 (AIV→AIC)
+    static constexpr uint32_t CROSSCORE_MM_0 = 0U;  // bmm1 result slot 0
+    static constexpr uint32_t CROSSCORE_MM_1 = 1U;  // bmm1 result slot 1
+    static constexpr uint32_t CROSSCORE_MM_2 = 2U;  // bmm2 result slot 0
+    static constexpr uint32_t CROSSCORE_L1P_0 = 3U; // L1 P slot 0 (AIV→AIC)
     static constexpr uint32_t CROSSCORE_L1P_1 = 4U;
     static constexpr uint32_t CROSSCORE_L1P_2 = 5U;
 
@@ -268,8 +268,8 @@ public:
     }
 
     __aicore__ inline void InitKVBuffer(uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
-                                         FaGmTensorKV &kvGmTensor, __gm__ uint8_t *gm, uint64_t bnStrides,
-                                         uint64_t n2Strides)
+                                        FaGmTensorKV &kvGmTensor, __gm__ uint8_t *gm, uint64_t bnStrides,
+                                        uint64_t n2Strides)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
@@ -375,6 +375,7 @@ public:
 
         // 加载当前轮的K(含rope)到L1
         LocalTensor<KV_T> kL1Tensor = l1KvBuffers_[kvL1BufId_ * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        runInfo.kvL1BufId = kvL1BufId_;
         Mutex::Lock<PIPE_MTE2>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         uint32_t s2CurSize = runInfo.actSingleLoopS2Size;
         CopyKeyTile(kL1Tensor, runInfo, s2CurSize);
@@ -383,12 +384,11 @@ public:
         {
             // MatMul: Q[64,576] @ K[576,128], K维含rope(方案A单次matmul)
             Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-            LocalTensor<T> l0CSubTensor =
-                l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<T>();
+            LocalTensor<T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<T>();
             MMParam param =
                 MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)s2CurSize, (uint32_t)constInfo_.dSize, false, true);
-            MatmulK<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
-                qL1Tensor, kL1Tensor, mmL0ABuffers_, mmL0BBuffers_, l0CSubTensor, param);
+            MatmulK<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(qL1Tensor, kL1Tensor, mmL0ABuffers_,
+                                                                                   mmL0BBuffers_, l0CSubTensor, param);
 
             Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
             Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
@@ -433,8 +433,7 @@ public:
         uint32_t v1c2CrossCoreSyncIdx = CROSSCORE_L1P_0 + pL1BufId;
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(v1c2CrossCoreSyncIdx + AIV0_AIV1_OFFSET);
-        LocalTensor<INPUT_T> pL1Tensor =
-            l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
+        LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
 
         // b. 如果bmm2写UB: 等待AIV vec2释放UB bmm2 result slot
         if constexpr (BMM2_TOUB) {
@@ -443,11 +442,10 @@ public:
         }
 
         // c. K复用: MLA中V = K_nope, bmm2复用bmm1加载的K buffer
-        //    kvReuseBufId = (kvL1BufId_ + 1) % L1_KV_BUFCNT
-        //    (PRELOAD_N=2时, bmm2复用PRELOAD_N+1次前bmm1加载的K)
-        uint32_t kvReuseBufId = (kvL1BufId_ + 1) % L1_KV_BUFCNT;
-        LocalTensor<KV_T> vL1Tensor =
-            l1KvBuffers_[kvReuseBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
+        //    直接使用bmm1加载时记录的buffer id(任务数少于流水深度时,
+        //    bmm2执行时kvL1BufId_的推进次数与任务序号不再匹配, 状态推算会错位)
+        uint32_t kvReuseBufId = runInfo.kvL1BufId;
+        LocalTensor<KV_T> vL1Tensor = l1KvBuffers_[kvReuseBufId * L1_KV_BUF_BYTES].template ReinterpretCast<KV_T>();
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvReuseBufId);
 
         // d. L0C + Matmul
@@ -511,8 +509,8 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           S1TemplateType s1TemplateType = S1TemplateType::Aligned64,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned576,
-          DTemplateType dVTemplateType = DTemplateType::Aligned512, uint8_t KvLayoutType = 0,
-          bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+          DTemplateType dVTemplateType = DTemplateType::Aligned512, uint8_t KvLayoutType = 0, bool useDn = false,
+          bool bmm2Write2Ub = true, bool splitD = false>
 class QuantFlashMlaBlockCubeFp8Dummy {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
