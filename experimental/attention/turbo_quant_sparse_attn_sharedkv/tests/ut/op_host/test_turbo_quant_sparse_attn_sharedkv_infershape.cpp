@@ -34,6 +34,10 @@ std::vector<TensorDesc> Inputs(ge::DataType dtype = ge::DT_BF16)
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND}};
 }
@@ -54,7 +58,8 @@ std::vector<OpAttr> Attrs(bool returnSoftmaxLse)
             {"ori_win_left", AnyValue::CreateFrom<int64_t>(127)},
             {"ori_win_right", AnyValue::CreateFrom<int64_t>(0)},
             {"layout_q", AnyValue::CreateFrom<std::string>("TND")},
-            {"layout_kv", AnyValue::CreateFrom<std::string>("PA_ND")},
+            {"layout_kv", AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"topk_value_mode", AnyValue::CreateFrom<int64_t>(1)},
             {"return_softmax_lse", AnyValue::CreateFrom<bool>(returnSoftmaxLse)},
             {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(3)}};
 }
@@ -83,7 +88,7 @@ TEST(TurboQuantSparseAttnSharedkvProto, InferDtypeFp16AndBf16)
     ASSERT_NE(func, nullptr);
     for (ge::DataType queryType : {ge::DT_FLOAT16, ge::DT_BF16}) {
         auto faker = gert::InferDataTypeContextFaker();
-        auto holder = faker.NodeIoNum(14, 2)
+        auto holder = faker.NodeIoNum(18, 2)
                           .NodeInputTd(0, queryType, ge::FORMAT_ND, ge::FORMAT_ND)
                           .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
                           .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
