@@ -366,7 +366,7 @@ def attention_to_ffn(
         layer_id (Tensor): Layer ID, shape (1,), dtype int32.
         expert_ids (Tensor): Per-token topK expert indices, shape (1, BS, K), dtype int32.
         expert_rank_table (Tensor): Expert-to-rank mapping table,
-            shape (1, expertNum, expRankTableM), dtype int32.
+            shape (L, expertNum, expRankTableM), dtype int32.
         attn_token_info_table_shape (List[int]): 3-element list.
         moe_expert_num (int): Number of MOE (routed) experts.
         sync_flag (int): Sync flag, 0=async, 1=sync. Default 0.
