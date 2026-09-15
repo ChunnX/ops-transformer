@@ -116,7 +116,8 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::PostTiling()
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(blockNum_);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    workspaces[0] = RESERVERD_WORKSPACE_SIZE;
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    workspaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize();
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
