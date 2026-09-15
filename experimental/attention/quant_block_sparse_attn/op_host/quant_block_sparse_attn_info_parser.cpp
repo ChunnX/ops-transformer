@@ -312,6 +312,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     opParamInfo.layoutKV = attrs->GetAttrPointer<char>(QBSA_LAYOUT_KV_ATTR_INDEX);
     opParamInfo.layoutSparseIndices = attrs->GetAttrPointer<char>(QBSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX);
     opParamInfo.quantMode = attrs->GetAttrPointer<int64_t>(QBSA_QUANT_MODE_ATTR_INDEX);
+    opParamInfo.s2BaseSize = attrs->GetAttrPointer<int64_t>(QBSA_S2_BASE_SIZE_ATTR_INDEX);
 
     if (opParamInfo.quantMode != nullptr && *opParamInfo.quantMode != static_cast<int64_t>(QBSA_QUANT_MODE_FP8) &&
         *opParamInfo.quantMode != static_cast<int64_t>(QBSA_QUANT_MODE_MXFP8_FULL_QUANT)) {
@@ -323,6 +324,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     tilingInfo.softmaxScaleVal = QBSAGetFloatAttr(attrs, QBSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F);
     tilingInfo.maskModeVal = QBSAGetUintAttr(attrs, QBSA_MASK_MODE_ATTR_INDEX, 0U);
     tilingInfo.quantModeVal = QBSAGetUintAttr(attrs, QBSA_QUANT_MODE_ATTR_INDEX, QBSA_QUANT_MODE_FP8);
+    tilingInfo.s2BaseSizeVal = QBSAGetUintAttr(attrs, QBSA_S2_BASE_SIZE_ATTR_INDEX, 512U);
     tilingInfo.layoutQStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
     tilingInfo.layoutKVStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_KV_ATTR_INDEX, "PA_BNBD");
     tilingInfo.layoutSparseIndicesStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
@@ -447,6 +449,12 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
         return ge::GRAPH_FAILED;
     }
     if (ParseKeyValue(tilingInfo, keyShape, valueShape, kDescaleShape, opParamInfo.key.stride) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (tilingInfo.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT && tilingInfo.dSize == 64U &&
+        tilingInfo.s2BaseSizeVal != 512U && tilingInfo.s2BaseSizeVal != 1024U) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "s2_base_size", std::to_string(tilingInfo.s2BaseSizeVal),
+                                              "MXFP8 D=64 only supports 512 or 1024");
         return ge::GRAPH_FAILED;
     }
     if (ParseSparseIndices(tilingInfo, sparseIndicesShape) != ge::GRAPH_SUCCESS) {

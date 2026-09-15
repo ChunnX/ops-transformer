@@ -332,10 +332,10 @@ def validate_mxfp8_case(case):
             f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}"
         )
 
-    expected_s2_base_size = 256 if case["D"] == 256 else 512
-    if case["s2_base_size"] != expected_s2_base_size:
+    valid_s2_base_sizes = {512, 1024} if case["D"] == 64 else ({256} if case["D"] == 256 else {512})
+    if case["s2_base_size"] not in valid_s2_base_sizes:
         raise ValueError(
-            f"s2_base_size must be {expected_s2_base_size} for MXFP8 D={case['D']}, "
+            f"s2_base_size must be one of {sorted(valid_s2_base_sizes)} for MXFP8 D={case['D']}, "
             f"got {case['s2_base_size']}"
         )
 
@@ -435,9 +435,6 @@ def _normalize_case(case):
     if case["D"] == 256 and case["s2_base_size"] == 512:
         print(f"[Config] {case.get('name', '<unnamed>')}: D256 s2_base_size 512 -> 256")
         case["s2_base_size"] = 256
-    if case["D"] == 64 and case["s2_base_size"] == 1024:
-        print(f"[Config] {case.get('name', '<unnamed>')}: D64 s2_base_size 1024 -> 512")
-        case["s2_base_size"] = 512
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         case[name] = sequence_inputs[name].tolist()
@@ -2517,6 +2514,7 @@ def _call_npu_fa_op(
         quant_mode=QUANT_MODE_MXFP8,
         mask_mode=MASK_MODE,
         return_softmax_lse=ENABLE_LSE,
+        s2_base_size=int(CASE["s2_base_size"]),
     )
     torch_npu.npu.synchronize()
     atten_out, lse_out = output
@@ -2535,6 +2533,7 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
         self.quant_mode = QUANT_MODE_MXFP8
         self.mask_mode = MASK_MODE
         self.return_softmax_lse = ENABLE_LSE
+        self.s2_base_size = int(CASE["s2_base_size"])
 
     def forward(
         self,
@@ -2582,6 +2581,7 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
             quant_mode=self.quant_mode,
             mask_mode=self.mask_mode,
             return_softmax_lse=self.return_softmax_lse,
+            s2_base_size=self.s2_base_size,
         )
 
 
@@ -3015,16 +3015,18 @@ def npu_mxfp8_fa(
     )
     if graph:
         logger.info(
-            "[NPU] 调用 QuantBlockSparseAttn 图模式, layout_q=%s, layout_kv=%s",
+            "[NPU] 调用 QuantBlockSparseAttn 图模式, layout_q=%s, layout_kv=%s, s2_base_size=%d",
             layout_q,
             layout_kv,
+            CASE["s2_base_size"],
         )
         atten_out, lse_out = _call_npu_fa_op_graph(*npu_call_args)
     else:
         logger.info(
-            "[NPU] 调用 QuantBlockSparseAttn 单算子, layout_q=%s, layout_kv=%s",
+            "[NPU] 调用 QuantBlockSparseAttn 单算子, layout_q=%s, layout_kv=%s, s2_base_size=%d",
             layout_q,
             layout_kv,
+            CASE["s2_base_size"],
         )
         atten_out, lse_out = _call_npu_fa_op(*npu_call_args)
 

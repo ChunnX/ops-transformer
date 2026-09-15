@@ -91,6 +91,7 @@ def convert_npu_quant_block_sparse_attn(
     quant_mode: int = 1,
     mask_mode: int = 3,
     return_softmax_lse: bool = False,
+    s2_base_size: int = 512,
     meta_outputs: List[TensorSpec] = None,
 ):
     return torchair.ge.custom_op(
@@ -124,6 +125,7 @@ def convert_npu_quant_block_sparse_attn(
             "quant_mode": attr.Int(quant_mode),
             "mask_mode": attr.Int(mask_mode),
             "return_softmax_lse": attr.Bool(return_softmax_lse),
+            "s2_base_size": attr.Int(s2_base_size),
         },
         outputs=["attention_out", "softmax_lse"],
     )

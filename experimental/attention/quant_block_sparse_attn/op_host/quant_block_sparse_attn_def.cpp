@@ -114,6 +114,7 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
+        this->Attr("s2_base_size").AttrType(OPTIONAL).Int(512);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
