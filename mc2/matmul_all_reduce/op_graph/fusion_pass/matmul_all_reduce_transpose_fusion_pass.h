@@ -25,17 +25,6 @@ protected:
 
     ge::fusion::GraphUniqPtr Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
 };
-
-// 对齐 canndev MatmulAllReduceTransposeFusion310PPass：仅 310P，融合逻辑同 base
-class __attribute__((visibility("default"))) MatmulAllReduceTransposeFusion310PPass
-    : public ge::fusion::PatternFusionPass {
-protected:
-    std::vector<ge::fusion::PatternUniqPtr> Patterns() override;
-
-    bool MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
-
-    ge::fusion::GraphUniqPtr Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
-};
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION
 #endif // TRANSFORMER_MATMUL_ALL_REDUCE_TRANSPOSE_FUSION_PASS_H

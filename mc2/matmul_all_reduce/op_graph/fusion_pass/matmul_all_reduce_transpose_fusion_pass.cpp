@@ -25,7 +25,6 @@
 namespace ops {
 namespace {
 const std::string PASS_NAME = "MatmulAllReduceTransposeFusionPass";
-const std::string PASS_NAME_310P = "MatmulAllReduceTransposeFusion310PPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
 const std::string PATTERN_BIAS = "HasBias";
 const std::string PATTERN_SCALE = "HasScale";
@@ -768,32 +767,7 @@ ge::fusion::GraphUniqPtr MatmulAllReduceTransposeFusionPass::Replacement(
     return DoReplacement(matchResult, PASS_NAME.c_str());
 }
 
-std::vector<ge::fusion::PatternUniqPtr> MatmulAllReduceTransposeFusion310PPass::Patterns()
-{
-    OPS_LOG_D(PASS_NAME_310P.c_str(), "Enter Patterns for MatmulAllReduceTransposeFusion310PPass");
-    return BuildAllPatterns(PASS_NAME_310P);
-}
-
-bool MatmulAllReduceTransposeFusion310PPass::MeetRequirements(
-    const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
-{
-    OPS_LOG_D(PASS_NAME_310P.c_str(), "Enter MeetRequirements for MatmulAllReduceTransposeFusion310PPass");
-    // 对齐 canndev 310P：仅支持 310P
-    if (!IsTargetPlatformNpuArch(PASS_NAME_310P.c_str(), NPUARCH_310P)) {
-        OPS_LOG_D(PASS_NAME_310P.c_str(), "Currently only supports NPUARCH 310P.");
-        return false;
-    }
-    return MeetCore(matchResult, PASS_NAME_310P.c_str());
-}
-
-ge::fusion::GraphUniqPtr MatmulAllReduceTransposeFusion310PPass::Replacement(
-    const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
-{
-    return DoReplacement(matchResult, PASS_NAME_310P.c_str());
-}
-
 REG_FUSION_PASS(MatmulAllReduceTransposeFusionPass).Stage(GetPassStage());
-REG_FUSION_PASS(MatmulAllReduceTransposeFusion310PPass).Stage(GetPassStage());
 } // namespace ops
 
 #endif // GRAPH_FUSION_SUPPORT_VERSION
