@@ -726,12 +726,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
                                                         sharedQuantScratch_);
         }
     }
+    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
     if constexpr (g_coreType == AIV) {
         if (sharedExpertNum_ == 0U) {
             SendTopkIdsIndexAndCount(aivJob_);
         }
     }
-    ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
 }
 
 // 输入阶段根据共享专家分工选择同步协议，主流程不展开核参与和 epoch 维护细节。
