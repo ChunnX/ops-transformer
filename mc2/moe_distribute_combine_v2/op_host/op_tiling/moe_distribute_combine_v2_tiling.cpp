@@ -1868,8 +1868,7 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     uint32_t hExpandXAlign32Size = (hExpandXTypeSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t hFloatSize = axisH * static_cast<uint32_t>(sizeof(float));
     uint32_t hFloatAlign32Size = GetFloatAlignSize(hFloatSize, UB_ALIGN, isA5 && (isInt8Quant || isMxFp8Quant));
-    uint32_t hFloatAlign256Size =
-        GetFloatAlignSize(hFloatSize, ALIGNED_LEN, isA5 && (isInt8Quant || isMxFp8Quant));
+    uint32_t hFloatAlign256Size = GetFloatAlignSize(hFloatSize, ALIGNED_LEN, isA5 && (isInt8Quant || isMxFp8Quant));
     uint32_t scaleNumAlignSize = 0U;
     uint32_t commDataBytes = hExpandXTypeSize;
     uint64_t quantBufferSize = 0U;
@@ -1896,8 +1895,7 @@ static uint64_t GetCommBufferSize(const gert::TilingContext *context,
     }
     uint64_t commBufferSize = static_cast<uint64_t>(scaleNumAlignSize) + clearFlagBufSize;
     dispatchBufferSize =
-        isA5 ? GetDispatchBufferSize(tilingData, moeQueueBytes, commDataBytes, packedDataBytes, quantBufferSize) :
-                    0U;
+        isA5 ? GetDispatchBufferSize(tilingData, moeQueueBytes, commDataBytes, packedDataBytes, quantBufferSize) : 0U;
     return commBufferSize;
 }
 

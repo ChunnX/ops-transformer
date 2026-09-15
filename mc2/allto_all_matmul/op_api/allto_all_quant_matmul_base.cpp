@@ -237,13 +237,13 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, int64_
 // DAV_3510数据类型校验
 // 量化模式下X支持的FP16数据类型（PerToken动态量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP16_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT16,
-                                                                                      op::DataType::DT_BF16};
+                                                                                 op::DataType::DT_BF16};
 // 量化模式下Output支持的数据类型（KC动态量化、MXQuant量化）(A5)
 static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 // 量化模式下X支持的FP8数据类型（PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT8_E4M3FN,
-                                                                                     op::DataType::DT_FLOAT8_E5M2};
+                                                                                op::DataType::DT_FLOAT8_E5M2};
 // 量化模式下X支持的FP4和FP8数据类型（MXQuant量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5 = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
@@ -260,10 +260,10 @@ static bool CheckKCDynQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x
                                          int64_t x1QuantDtype, const aclTensor *output,
                                          const aclTensor *alltoAllOutOptional)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, X_DTYPE_FP16_SUPPORT_LIST_A5,
-                                             KCDYN_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2, X_DTYPE_FP8_SUPPORT_LIST_A5,
-                                             KCDYN_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, X_DTYPE_FP16_SUPPORT_LIST_A5, KCDYN_SCENE,
+                                             return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2, X_DTYPE_FP8_SUPPORT_LIST_A5, KCDYN_SCENE,
+                                             return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5,
                                              KCDYN_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_SUPPORT_LIST_A5,
@@ -275,8 +275,8 @@ static bool CheckKCDynQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x
         return false;
     }
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", biasOptional,
-                                                 BIAS_DTYPE_SUPPORT_LIST_A5, KCDYN_SCENE, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5,
+                                                 KCDYN_SCENE, return false);
     }
     if (x1ScaleOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, x1ScaleOptional, KCDYN_SCENE,
@@ -309,11 +309,11 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
                                              SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5,
                                              MX_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_SUPPORT_LIST_A5,
-                                             MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", output, OUTPUT_DTYPE_SUPPORT_LIST_A5, MX_SCENE,
+                                             return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", biasOptional,
-                                                 BIAS_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5,
+                                                 MX_SCENE, return false);
     }
     if (alltoAllOutOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO("aclnnAlltoAllQuantMatmul", x1, alltoAllOutOptional, MX_SCENE,

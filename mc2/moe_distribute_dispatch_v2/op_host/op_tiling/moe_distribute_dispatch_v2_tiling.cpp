@@ -928,9 +928,8 @@ static bool CheckCommAlgAttrs(const gert::TilingContext *context, const char *no
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(config.expertIdsIndex);
     const int64_t expertIdsDim1 = expertIdStorageShape->GetStorageShape().GetDim(1);
     uint32_t k = static_cast<uint32_t>(expertIdsDim1);
-    int64_t fullMeshBsUpperBound = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 ?
-                                       FULLMESH_BS_UPPER_BOUND_A5 :
-                                       FULLMESH_BS_UPPER_BOUND_A3;
+    int64_t fullMeshBsUpperBound =
+        mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510 ? FULLMESH_BS_UPPER_BOUND_A5 : FULLMESH_BS_UPPER_BOUND_A3;
 
     // 检查comm_alg和bs是否冲突
     OP_TILING_CHECK(isSetFullMeshV2 && (bs > fullMeshBsUpperBound),
