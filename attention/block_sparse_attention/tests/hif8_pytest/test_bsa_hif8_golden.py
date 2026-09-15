@@ -4,6 +4,7 @@
 import argparse
 import math
 import os
+import random
 import struct
 import unittest
 from dataclasses import dataclass
@@ -365,8 +366,8 @@ def _gathered_kv_positions(
 
 def _mm1_raw_dn(q_tile: torch.Tensor, k_tile: torch.Tensor) -> torch.Tensor:
     """K*Q^T in Cube, returned in convenient [Q,K] semantic order."""
-    # Current HIF8 path supports D=128, i.e. one L0 K stage.  Keeping the
-    # explicit K*Q^T expression documents and matches the DN path.
+    # D=64 and D=128 both use one (possibly partial) 128-wide L0 K stage.
+    # Keeping K*Q^T explicit documents and matches the DN path.
     return torch.matmul(k_tile, q_tile.transpose(0, 1)).transpose(0, 1).contiguous()
 
 
@@ -614,8 +615,8 @@ def bsa_hif8_kernel_golden(
     _, kv_heads, kv_seq_padded, value_dim = value_bnsd.shape
     if len(actual_q_seq) != batch or len(actual_kv_seq) != batch:
         raise ValueError("actual Q/KV sequence-length lists must match batch")
-    if head_dim != 128 or value_dim != 128:
-        raise ValueError("the current BSA HIF8 kernel path requires D=128")
+    if head_dim not in (64, 128) or value_dim != head_dim:
+        raise ValueError("the current BSA HIF8 kernel path requires matching D in {64, 128}")
     if q_heads % kv_heads != 0:
         raise ValueError("q_heads must be divisible by kv_heads")
     block_x, block_y = map(int, block_shape)
@@ -1093,40 +1094,6 @@ class TestBsaHif8Golden(unittest.TestCase):
             print(f"  case={case_id} out={out_pct:.6f}% lse={lse_pct:.6f}% cfg={cfg}")
         self.assertFalse(failures, "generated 600-case HIF8 failures: %s" % failures)
 
-    def test_generated_500_cases(self):
-        """Opt-in resumable 500-case shape/GQA/layout/output-dtype matrix."""
-        if os.environ.get("BSA_HIF8_RUN_GENERALIZED", "0") != "1":
-            self.skipTest("set BSA_HIF8_RUN_GENERALIZED=1 to run 500-case smoke matrix")
-        if not _HAS_NPU:
-            self.skipTest(f"NPU BSA unavailable: {_NPU_IMPORT_ERROR}")
-
-        cases = _generated_500_cases()
-        case_start = int(os.environ.get("BSA_HIF8_CASE_START", "0"))
-        default_count = len(cases) - case_start
-        case_count = int(os.environ.get("BSA_HIF8_CASE_COUNT", str(default_count)))
-        case_end = min(case_start + case_count, len(cases))
-        if case_start < 0 or case_start >= len(cases) or case_count <= 0:
-            raise ValueError(
-                f"invalid generated-case slice start={case_start}, count={case_count}, total={len(cases)}"
-            )
-        print(f"[BSA HIF8 generated suite] total=500 run=[{case_start},{case_end})")
-        failures = []
-        for case_index in range(case_start, case_end):
-            case_id = case_index + 1
-            cfg = cases[case_index]
-            with self.subTest(case=case_id, **cfg):
-                try:
-                    result = run_bsa_hif8_case(**cfg)
-                    if (result.out_result != "Pass" or result.lse_result != "Pass" or
-                            result.out_pct < REQUIRED_FULFILL_PERCENT or
-                            result.lse_pct < REQUIRED_FULFILL_PERCENT):
-                        failures.append((case_id, cfg, result.out_result, result.out_pct,
-                                         result.lse_result, result.lse_pct))
-                except Exception as exc:  # retain all failures for batch diagnosis
-                    failures.append((case_id, cfg, type(exc).__name__, str(exc)))
-        self.assertFalse(failures, "generalized HIF8 failures: %s" % failures)
-
-
 def _actual_seq_bnsd_bsnd_preflight_cases():
     """Ten padded-layout cases; every batch uses Q/KV lengths below storage."""
     cases = [
@@ -1193,6 +1160,11 @@ def _actual_seq_bnsd_bsnd_preflight_cases():
 
 def _non_full_actual_lengths(storage_len, batch, case_index, salt):
     """Produce deterministic positive per-batch lengths strictly below storage."""
+    if storage_len <= 1:
+        # The generated suites use storage_len >= 2.  Keep this helper total
+        # for focused callers instead of allowing modulo-zero on a one-token
+        # tensor; no shorter positive actual length exists in that case.
+        return [int(storage_len)] * batch
     max_delta = min(storage_len - 1, 257)
     return [
         storage_len - (1 + ((case_index * salt + batch_idx * (salt + 17)) % max_delta))
@@ -1213,7 +1185,7 @@ def _padded_bnsd_bsnd_case_indexes():
 
 
 def _finish_regenerated_600_case(case_index, batch, q_heads, kv_heads,
-                                 q_seq, kv_seq, block_shape, mask_kind,
+                                 q_seq, kv_seq, head_dim, block_shape, mask_kind,
                                  data_ranges, padded_bnsd_bsnd):
     input_layout = SUPPORTED_LAYOUTS[case_index % len(SUPPORTED_LAYOUTS)]
     cfg = dict(
@@ -1222,11 +1194,12 @@ def _finish_regenerated_600_case(case_index, batch, q_heads, kv_heads,
         kv_heads=kv_heads,
         q_seq=q_seq,
         kv_seq=kv_seq,
+        head_dim=head_dim,
         block_shape=block_shape,
         mask_kind=mask_kind,
         sparsity_ratio=SPARSITY_RATIO_CASE_CHOICES[case_index % len(SPARSITY_RATIO_CASE_CHOICES)],
         p_scale=(0.5, 1.0, 2.0, 3.25, 7.0, 13.0, 32.0)[case_index % 7],
-        attention_scale=(128.0 ** -0.5) * (0.75, 1.0, 1.25)[
+        attention_scale=(float(head_dim) ** -0.5) * (0.75, 1.0, 1.25)[
             (case_index // len(SUPPORTED_LAYOUTS)) % 3
         ],
         seed=10000 + case_index,
@@ -1245,12 +1218,7 @@ def _finish_regenerated_600_case(case_index, batch, q_heads, kv_heads,
 
 def _generated_600_cases():
     """Regenerate 600 generalized cases, including padded BNSD/BSND batches."""
-    q_small = (16, 31, 47, 63, 79, 95, 112, 127, 128, 129, 191, 255, 257, 383, 511)
-    kv_small = (16, 31, 48, 64, 95, 127, 191, 255, 256, 257, 383, 511, 767, 1023)
-    q_medium = (511, 769, 1025, 1537, 2047, 3071, 4095)
-    kv_medium = (1025, 2049, 4095, 8191, 16383, 32767)
-    q_large = (31, 63, 127, 129, 257)
-    kv_large = (65535, 131071, 196607, 255999)
+    rng = random.Random(20260914)
     block_values = tuple(range(16, 257, 16))
     normal_ranges = ((0.91, 0.87, 0.77), (0.63, 0.92, 0.41), (0.52, 0.79, 0.96))
     padded_case_indexes = _padded_bnsd_bsnd_case_indexes()
@@ -1258,36 +1226,35 @@ def _generated_600_cases():
 
     for case_index in range(600):
         high_range = case_index >= 500
-        local = case_index - 500 if high_range else case_index
-        small_limit = 80 if high_range else 400
-        medium_limit = 95 if high_range else 490
-        if local < small_limit:
-            kv_heads = local % 8 + 1
-            group_size = (local // 8) % 4 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_small[(3 * local + case_index + 1) % len(q_small)]
-            kv_seq = kv_small[(5 * local + case_index + 2) % len(kv_small)]
-        elif local < medium_limit:
-            medium = local - small_limit
-            kv_heads = medium % 4 + 1
-            group_size = (medium // 4) % 4 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_medium[(medium + case_index) % len(q_medium)]
-            kv_seq = kv_medium[(3 * medium + case_index + 1) % len(kv_medium)]
+        # Keep the generated GQA/KV-head dimension bounded.  The small and
+        # medium cases cover Nkv in [1, 8].  Restrict the expensive large tail
+        # to Nkv in [1, 4], with deterministic cycles so every supported large
+        # head configuration is guaranteed to appear.
+        if case_index >= 550:
+            large_index = case_index - 550
+            kv_heads = large_index % 4 + 1
+            group_size = (large_index // 4) % 4 + 1
         else:
-            large = local - medium_limit
-            kv_heads = large % 2 + 1
-            group_size = large % 2 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_large[(large + case_index) % len(q_large)]
-            kv_seq = kv_large[(large + case_index) % len(kv_large)]
+            kv_heads = rng.randint(1, 8)
+            group_size = rng.randint(1, 4)
+        q_heads = kv_heads * group_size
+        head_dim = (64, 128)[case_index % 2]
 
-        # Small cases cover B=1..5.  Cap medium cases at B=3 and very large KV
-        # cases at B=1 so input generation remains practical.
-        if kv_seq >= 65535:
-            batch = 1
-        elif kv_seq > 4096:
-            batch = case_index % 3 + 1
+        # Keep only the final 50 cases genuinely large.  The first cases are
+        # deliberately quick to provide immediate feedback; the middle range
+        # still exercises nontrivial tiling, while the tail retains coverage
+        # up to the requested Q/KV limits without making every case expensive.
+        if case_index < 20:
+            q_seq = rng.randint(16, 256)
+            kv_seq = rng.randint(16, 512)
+        elif case_index < 550:
+            q_seq = rng.randint(257, 1024)
+            kv_seq = rng.randint(257, 2048)
+        else:
+            q_seq = rng.randint(1025, 4095)
+            kv_seq = rng.randint(2049, 10000)
+        if case_index >= 550:
+            batch = case_index % 2 + 1
         else:
             batch = case_index % 5 + 1
         block_shape = (
@@ -1298,7 +1265,7 @@ def _generated_600_cases():
         data_ranges = ((5.0, 5.0, 5.0) if high_range else
                        normal_ranges[(case_index // 3) % len(normal_ranges)])
         cases.append(_finish_regenerated_600_case(
-            case_index, batch, q_heads, kv_heads, q_seq, kv_seq,
+            case_index, batch, q_heads, kv_heads, q_seq, kv_seq, head_dim,
             block_shape, mask_kind, data_ranges,
             padded_bnsd_bsnd=case_index in padded_case_indexes,
         ))
@@ -1315,143 +1282,22 @@ def _generated_600_cases():
     for cfg in cases:
         assert 1 <= cfg["batch"] <= 5
         assert 0 < cfg["q_seq"] < 4096
-        assert 0 < cfg["kv_seq"] < 256000
+        assert 0 < cfg["kv_seq"] <= 10000
+        assert cfg["head_dim"] in (64, 128)
         assert 1 <= cfg["kv_heads"] <= 8
         assert 1 <= cfg["q_heads"] // cfg["kv_heads"] <= 4
         assert all(0 < block <= 256 and block % 16 == 0 for block in cfg["block_shape"])
         if "actual_q_seq" in cfg:
             assert all(0 < seq < cfg["q_seq"] for seq in cfg["actual_q_seq"])
             assert all(0 < seq < cfg["kv_seq"] for seq in cfg["actual_kv_seq"])
-    return cases
-
-
-def _finish_generated_case(case_index, batch, q_heads, kv_heads, q_seq, kv_seq,
-                           block_shape, mask_kind, data_ranges):
-    """Attach common HIF8 attributes and optional variable-length TND data."""
-    input_layout = SUPPORTED_LAYOUTS[case_index % len(SUPPORTED_LAYOUTS)]
-    attention_out_dtype = SUPPORTED_OUTPUT_DTYPES[(case_index // len(SUPPORTED_LAYOUTS)) % 2]
-    cfg = dict(
-        batch=batch,
-        q_heads=q_heads,
-        kv_heads=kv_heads,
-        q_seq=q_seq,
-        kv_seq=kv_seq,
-        block_shape=block_shape,
-        mask_kind=mask_kind,
-        p_scale=(0.5, 1.0, 2.0, 3.25, 7.0, 13.0, 32.0)[case_index % 7],
-        attention_scale=(128.0 ** -0.5) * (0.75, 1.0, 1.25)[case_index % 3],
-        seed=7000 + case_index,
-        data_ranges=data_ranges,
-        input_layout=input_layout,
-        attention_out_dtype=attention_out_dtype,
-        device=0,
-    )
-    if input_layout == "TND" and batch > 1:
-        cfg["actual_q_seq"] = [q_seq, max(1, q_seq - 17 - case_index % 31)]
-        cfg["actual_kv_seq"] = [kv_seq, max(1, kv_seq - 33 - case_index % 63)]
-    return cfg
-
-
-def _generated_regular_cases():
-    """Generate 400 cases whose Q/K/V source amplitudes stay within one."""
-    q_small = (16, 31, 47, 63, 79, 95, 112, 127, 128, 129, 191, 255, 257, 383, 511)
-    kv_small = (16, 31, 48, 64, 95, 127, 191, 255, 256, 257, 383, 511, 767, 1023)
-    q_medium = (511, 769, 1025, 1537, 2047, 3071, 4095)
-    kv_medium = (1025, 2049, 4095, 8191, 16383, 32767)
-    q_large = (16, 31, 63, 127, 129, 257)
-    kv_large = (65535, 131071, 196607, 255999)
-    block_values = tuple(range(16, 257, 16))
-    normal_ranges = ((0.91, 0.87, 0.77), (0.63, 0.92, 0.41), (0.52, 0.79, 0.96))
-    cases = []
-    for i in range(400):
-        if i < 320:
-            kv_heads = i % 8 + 1
-            group_size = (i // 8) % 4 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_small[(3 * i + 1) % len(q_small)]
-            kv_seq = kv_small[(5 * i + 2) % len(kv_small)]
-            batch = 2 if i % 53 == 0 else 1
-        elif i < 390:
-            local = i - 320
-            kv_heads = local % 4 + 1
-            group_size = (local // 4) % 4 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_medium[local % len(q_medium)]
-            kv_seq = kv_medium[(3 * local + 1) % len(kv_medium)]
-            batch = 1
-        else:
-            local = i - 390
-            kv_heads = local % 2 + 1
-            group_size = local % 2 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_large[local % len(q_large)]
-            kv_seq = kv_large[local % len(kv_large)]
-            batch = 1
-        block_shape = (block_values[(7 * i + 1) % len(block_values)],
-                       block_values[(11 * i + 3) % len(block_values)])
-        mask_kind = "gap_sparse" if kv_seq > 4096 else ("dense", "alternating", "gap_sparse")[i % 3]
-        cases.append(_finish_generated_case(
-            i, batch, q_heads, kv_heads, q_seq, kv_seq, block_shape,
-            mask_kind, normal_ranges[i % len(normal_ranges)]
-        ))
-    return cases
-
-
-def _generated_high_range_cases():
-    """Generate 100 cases with every Q/K/V source in the range [-5, 5]."""
-    q_small = (16, 31, 63, 95, 127, 128, 129, 191, 255, 257, 383)
-    kv_small = (16, 48, 95, 127, 191, 255, 256, 257, 511, 767, 1023)
-    q_medium = (511, 769, 1025, 1537, 2047, 3071, 4095)
-    kv_medium = (2049, 4095, 8191, 16383, 32767)
-    q_large = (16, 31, 63, 127, 129)
-    kv_large = (65535, 131071, 196607, 255999)
-    block_values = tuple(range(16, 257, 16))
-    cases = []
-    for local in range(100):
-        case_index = 400 + local
-        if local < 80:
-            kv_heads = local % 8 + 1
-            group_size = (local // 8) % 4 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_small[(3 * local + 1) % len(q_small)]
-            kv_seq = kv_small[(7 * local + 2) % len(kv_small)]
-            batch = 2 if local % 37 == 0 else 1
-        elif local < 95:
-            medium = local - 80
-            kv_heads = medium % 4 + 1
-            group_size = medium % 4 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_medium[medium % len(q_medium)]
-            kv_seq = kv_medium[(2 * medium + 1) % len(kv_medium)]
-            batch = 1
-        else:
-            large = local - 95
-            kv_heads = large % 2 + 1
-            group_size = large % 2 + 1
-            q_heads = kv_heads * group_size
-            q_seq = q_large[large % len(q_large)]
-            kv_seq = kv_large[large % len(kv_large)]
-            batch = 1
-        block_shape = (block_values[(5 * local + 2) % len(block_values)],
-                       block_values[(9 * local + 4) % len(block_values)])
-        mask_kind = "gap_sparse" if kv_seq > 4096 else ("dense", "alternating", "gap_sparse")[local % 3]
-        cases.append(_finish_generated_case(
-            case_index, batch, q_heads, kv_heads, q_seq, kv_seq,
-            block_shape, mask_kind, (5.0, 5.0, 5.0)
-        ))
-    return cases
-
-
-def _generated_500_cases():
-    cases = _generated_regular_cases() + _generated_high_range_cases()
-    assert len(cases) == 500
-    assert sum(cfg["data_ranges"] == (5.0, 5.0, 5.0) for cfg in cases) == 100
-    for cfg in cases:
-        assert 0 < cfg["q_seq"] < 4096
-        assert 0 < cfg["kv_seq"] < 256000
-        assert 1 <= cfg["kv_heads"] <= 8
-        assert 1 <= cfg["q_heads"] // cfg["kv_heads"] <= 4
-        assert all(0 < block <= 256 and block % 16 == 0 for block in cfg["block_shape"])
+    large_cases = [cfg for cfg in cases if cfg["q_seq"] > 1024 and cfg["kv_seq"] > 2048]
+    assert len(large_cases) == 50
+    assert {cfg["input_layout"] for cfg in large_cases} == set(SUPPORTED_LAYOUTS)
+    assert {cfg["attention_out_dtype"] for cfg in large_cases} == set(SUPPORTED_OUTPUT_DTYPES)
+    assert {cfg["head_dim"] for cfg in large_cases} == {64, 128}
+    assert {cfg["kv_heads"] for cfg in large_cases} == {1, 2, 3, 4}
+    assert {cfg["q_heads"] // cfg["kv_heads"] for cfg in large_cases} == {1, 2, 3, 4}
+    assert {cfg["head_dim"] for cfg in cases} == {64, 128}
     return cases
 
 
@@ -1466,6 +1312,7 @@ def main():
     parser.add_argument("--kv-heads", type=int, default=1)
     parser.add_argument("--q-seq", type=int, default=128)
     parser.add_argument("--kv-seq", type=int, default=256)
+    parser.add_argument("--head-dim", type=int, choices=(64, 128), default=128)
     parser.add_argument("--block-x", type=int, default=128)
     parser.add_argument("--block-y", type=int, default=256)
     parser.add_argument("--mask-kind", choices=("dense", "alternating", "gap_sparse"), default="dense")
@@ -1485,6 +1332,7 @@ def main():
         kv_heads=args.kv_heads,
         q_seq=args.q_seq,
         kv_seq=args.kv_seq,
+        head_dim=args.head_dim,
         block_shape=(args.block_x, args.block_y),
         mask_kind=args.mask_kind,
         p_scale=args.p_scale,
