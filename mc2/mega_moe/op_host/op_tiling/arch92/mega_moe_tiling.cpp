@@ -38,6 +38,14 @@ using namespace AscendC;
 using namespace ge;
 using namespace MegaMoeImpl;
 
+namespace Mc2Tiling {
+static uint64_t GetMegaMoeTilingKey(int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype,
+                                    int64_t combineQuantMode, int64_t commMode, int64_t topkWeightsType)
+{
+    return GET_TPL_TILING_KEY(dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, commMode, topkWeightsType);
+}
+} // namespace Mc2Tiling
+
 namespace optiling {
 namespace {
 constexpr WorkspaceLayoutPolicy HOST_WORKSPACE_LAYOUT = WorkspaceLayoutPolicy::GM_HANDOFF_EXPERT_WAVE;
@@ -308,8 +316,8 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
     int64_t topoType = TILINGKEY_TPL_MTE;
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
 
-    return GET_TPL_TILING_KEY(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode, topoType,
-                              topkWeightsType);
+    return Mc2Tiling::GetMegaMoeTilingKey(static_cast<int64_t>(*dispatchQuantModePtr), opQuantMode, combineQuantMode,
+                                          topoType, topkWeightsType);
 }
 
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, MegaMoeConfig &config,

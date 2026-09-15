@@ -12,26 +12,12 @@
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
-#include "opdev/platform.h"
 #include "aclnn_mega_moe.h"
 
 using namespace op;
 using namespace std;
 
-class AclnnMegaMoeTest : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
-        std::cout << "MegaMoe AclnnMegaMoeTest SetUp" << std::endl;
-    }
-
-    static void TearDownTestCase()
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
-        std::cout << "MegaMoe AclnnMegaMoeTest TearDown" << std::endl;
-    }
-};
+class AclnnMegaMoeTest : public testing::Test {};
 
 static aclnnStatus RunActivationParamCase(const char *activation, const std::vector<float> &activationParams)
 {
@@ -62,18 +48,14 @@ TEST_F(AclnnMegaMoeTest, activation_param_domain)
 {
     constexpr float kMax = std::numeric_limits<float>::max();
 
-    // The op_api layer no longer duplicates activation-parameter validation; it lives on the
-    // tiling side (see ActivationParamValidationWithLargeIntermediateHidden in
-    // test_mega_moe_tiling.cpp), which every aclnn path goes through. Here we only verify that
-    // valid parameter sets are accepted and forwarded to the mocked inner op, which returns
-    // ACLNN_ERR_RUNTIME_ERROR in this test environment. Rejection of invalid parameter sets
-    // (wrong count, NaN/Inf, zero scale) is covered by the arch22 tiling UT.
+    // The op_api layer delegates detailed activation-parameter validation to Host tiling.
+    // Here we only verify that valid parameter sets reach the mocked inner op.
     EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 0.0f, -1.0f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f, -25.0f}), ACLNN_ERR_RUNTIME_ERROR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_context)
 {
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto topk_ids_desc = TensorDesc({128, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 3);
@@ -101,7 +83,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_x)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_x)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto topk_ids_desc = TensorDesc({128, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 3);
@@ -129,7 +111,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_x)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_ids)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_topk_ids)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -157,7 +139,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_ids)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_weights)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_topk_weights)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -185,7 +167,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_weights)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight1)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_weight1)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -213,7 +195,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight1)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight2)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_weight2)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -241,7 +223,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight2)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_y_out)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_y_out)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -269,7 +251,7 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_y_out)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(AclnnMegaMoeTest, ascend950_nullptr_expert_token_nums_out)
+TEST_F(AclnnMegaMoeTest, arch92_nullptr_expert_token_nums_out)
 {
     auto context_desc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);

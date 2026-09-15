@@ -15,7 +15,6 @@
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_executor.h"
-#include "opdev/platform.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 #include "common/op_host/op_api/matmul_util.h"
@@ -28,42 +27,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// 将int4打包为int32输入的Tensor还原回int4
-aclTensorList *ConvertTensorListToInt4(const aclTensorList *input, aclOpExecutor *executor)
-{
-    if (input == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "ConvertTensorListToInt4: input is null.");
-        return nullptr;
-    }
-    if (executor == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "ConvertTensorListToInt4: executor is null.");
-        return nullptr;
-    }
-    constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 每个int32包含8个int4
-    std::vector<aclTensor *> tensors;
-    for (int i = 0; i < input->Size(); i++) {
-        auto tensor = (*input)[i];
-        auto viewShape = tensor->GetViewShape();
-        viewShape[viewShape.GetDimNum() - 1] = viewShape[viewShape.GetDimNum() - 1] * INT4_NUMS_IN_INT32;
-        auto inputTemp = executor->CreateView(tensor, viewShape, tensor->GetViewOffset());
-        if (inputTemp == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: CreateView failed at index %d.", i);
-            return nullptr;
-        }
-        inputTemp->SetDataType(DataType::DT_INT4);
-        inputTemp->SetStorageFormat(Format::FORMAT_FRACTAL_NZ);
-        inputTemp->SetViewFormat(Format::FORMAT_FRACTAL_NZ);
-        tensors.push_back(inputTemp);
-    }
-    aclTensorList *newInput = executor->AllocTensorList(tensors.data(), tensors.size());
-    if (newInput == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER, "ConvertTensorListToInt4: AllocTensorList failed.");
-        return nullptr;
-    }
-    OP_LOGD("The conversion from int32 to int4 is completed.");
-    return newInput;
-}
 
 static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList, aclTensorList *&outList,
                               aclOpExecutor *executor)
@@ -91,9 +54,7 @@ static void CreateEmptyTensorWithFormat(aclDataType dataType, ge::Format format,
     }
 }
 
-// Activation parameter validation (count, finiteness, non-zero scale, etc.) is performed on the
-// host/tiling side (see mega_moe_tiling_arch22.cpp::CheckActivationParamsAttr and the arch35 tiling
-// checks), which every aclnn path goes through. It is intentionally not duplicated here.
+// Activation parameter validation is performed by Host tiling, which every ACLNN path goes through.
 
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
@@ -143,31 +104,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
 
-    // weight scales dtype: arch35 → E8M0, arch22 → UINT64
-    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201;
-    aclDataType weightScalesDtype = isArch22 ? ACL_UINT64 : ACL_FLOAT8_E8M0;
-    CreateEmptyTensor(weightScalesDtype, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(weightScalesDtype, weightScales2Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(weightScalesDtype, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(weightScalesDtype, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
-
-    // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
-            weight1 = ConvertTensorListToInt4(weight1, *executor);
-        }
-        if (weight2 != nullptr && weight2->Size() > 0 && (*weight2)[0]->GetDataType() == DataType::DT_INT32) {
-            weight2 = ConvertTensorListToInt4(weight2, *executor);
-        }
-        if (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0 &&
-            (*sharedWeight1Optional)[0]->GetDataType() == DataType::DT_INT32) {
-            sharedWeight1Optional = ConvertTensorListToInt4(sharedWeight1Optional, *executor);
-        }
-        if (sharedWeight2Optional != nullptr && sharedWeight2Optional->Size() > 0 &&
-            (*sharedWeight2Optional)[0]->GetDataType() == DataType::DT_INT32) {
-            sharedWeight2Optional = ConvertTensorListToInt4(sharedWeight2Optional, *executor);
-        }
-    }
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
 
     // 共享专家权重的dtype/format与MoE权重一致，为空时用MoE权重的dtype和format创建空tensor
     aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0) ?

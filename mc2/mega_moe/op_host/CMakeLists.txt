@@ -22,23 +22,15 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(mega_moe_depends mc2/common mc2/3rd  PARENT_SCOPE)
     set(mega_moe_apt_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_dispatch_v3 PARENT_SCOPE)
 
-    set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-    if ("${CONDITION_UNIT}" STREQUAL "ascend950")
-        add_ops_compile_options(
-            OP_NAME MegaMoe
-            OPTIONS --cce-auto-sync=off
-        )
-    else()
-        add_ops_compile_options(
-            OP_NAME MegaMoe
-            OPTIONS --cce-auto-sync=on
-            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
-            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
-            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v2/op_kernel
-            OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v3/op_kernel
-            OPTIONS -I$ENV{ASCEND_OPP_PATH}/built-in/op_impl/ai_core/tbe/impl/ops_nn/ascendc/common
-        )
-    endif()
+    add_ops_compile_options(
+        OP_NAME MegaMoe
+        OPTIONS --cce-auto-sync=on
+        OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
+        OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
+        OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v2/op_kernel
+        OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/moe_distribute_dispatch_v3/op_kernel
+        OPTIONS -I$ENV{ASCEND_OPP_PATH}/built-in/op_impl/ai_core/tbe/impl/ops_nn/ascendc/common
+    )
 
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE mega_moe ACLNNTYPE aclnn_inner)
