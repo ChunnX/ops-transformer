@@ -126,7 +126,8 @@ void QuantFlashAttnTilingFp8Impl::SplitPolicy()
                                            qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
                                            static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
-    flashDecodeFlag_ = false;
+    // GQA无decode专用模板, 恒走DN路径; tiling key恒含isFd, 由运行时metadata(AICPU)决定是否实际切分FD
+    flashDecodeFlag_ = true;
 }
 
 void QuantFlashAttnTilingFp8Impl::UpdateTilingKeyConfig()
@@ -188,10 +189,6 @@ void QuantFlashAttnTilingFp8Impl::CalcNumBlocks(uint32_t aicNum)
 void QuantFlashAttnTilingFp8Impl::CalcWorkspaceSize()
 {
     size_t sysWorkspaceSize = platformInfo_.defaultSysWorkspaceSize;
-    uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
-    uint32_t dSize = qfaInfo_->vHeadDim;
-    (void)mSize;
-    (void)dSize;
     workspaceSize_ = sysWorkspaceSize;
 
     // GQA 强制 PA 场景
@@ -200,7 +197,17 @@ void QuantFlashAttnTilingFp8Impl::CalcWorkspaceSize()
         workspaceSize_ += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
     }
 
-    // GQA 无 flashDecode 分支
+    if (flashDecodeFlag_) {
+        // 每个核最多有2次写到workspace; ResLse有2份(sum和max), 每行8个float对齐
+        uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
+        uint32_t dSize = qfaInfo_->vHeadDim;
+        uint32_t faTmpAttenGmSize = numBlocks_ * 2 * mSize * dSize;
+        uint32_t fatmpResLseGmSize = numBlocks_ * 2 * mSize * 8;
+        workspaceSize_ += (faTmpAttenGmSize + 2 * fatmpResLseGmSize) * sizeof(float);
+        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.accumOutSize = faTmpAttenGmSize;
+        tilingData_.baseTiling.quantFlashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
+    }
+
     OP_LOGI(qfaInfo_->opName, "GQA Workspaces: %lu", workspaceSize_);
 }
 
@@ -254,7 +261,6 @@ void QuantFlashAttnTilingFp8Impl::SetQFATilingData()
         (qfaInfo_->kvLayout == QfaLayout::TND && cuSeqLenKVFlag_) ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? qfaInfo_->bSize : 0;
     tilingData_.baseTiling.quantFlashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? qfaInfo_->bSize : 0;
-    tilingData_.baseTiling.quantFlashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.quantFlashAttnBaseParams.isSoftMaxLseEnable = qfaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.quantFlashAttnBaseParams.iscuSeqLengthsNull =
         !(cuSeqLenQFlag_ && qfaInfo_->qLayout == QfaLayout::NTD);
@@ -341,7 +347,6 @@ void QuantFlashAttnTilingFp8Impl::PrintAllTilingData()
     OP_LOGD(qfaInfo_->opName, "GQA scaleValue:%f", params.scaleValue);
     OP_LOGD(qfaInfo_->opName, "GQA iscuSeqLengthsNull:%d", params.iscuSeqLengthsNull);
     OP_LOGD(qfaInfo_->opName, "GQA iscuSeqLengthsKVNull:%d", params.iscuSeqLengthsKVNull);
-    OP_LOGD(qfaInfo_->opName, "GQA isKvContinuous:%d", params.isKvContinuous);
     OP_LOGD(qfaInfo_->opName, "GQA isSoftMaxLseEnable:%d", params.isSoftMaxLseEnable);
     OP_LOGD(qfaInfo_->opName, "GQA coreNum:%d", params.coreNum);
     OP_LOGD(qfaInfo_->opName, "GQA outputLayout:%d", params.outputLayout);

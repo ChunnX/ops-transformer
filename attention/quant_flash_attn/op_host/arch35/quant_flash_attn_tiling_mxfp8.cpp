@@ -124,7 +124,9 @@ void QuantFlashAttnTilingImpl::SplitPolicy()
                                            qfaInfo_->winRight, static_cast<uint32_t>(qfaInfo_->qLayout),
                                            static_cast<uint32_t>(qfaInfo_->quantMode), sOuterFactor_, sInnerFactor_);
     CalcNumBlocks(platformInfo_.aicNum);
-    flashDecodeFlag_ = false;
+    // decode场景(S1 != S2, q_descale为N2TGD)开启flash decode: S2核间切分+规约, 提升decode并行度。
+    // 运行时由metadata(AICPU SectionStreamK)决定是否真正切分, 此处仅使能FD链路(workspace/tilingkey)。
+    flashDecodeFlag_ = decodeS1GMerge_;
 }
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()

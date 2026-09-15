@@ -31,6 +31,7 @@ static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
 static constexpr float FLOAT_INF = 3e+99;
 
+static constexpr uint32_t QFA_HEAD_IS_FD_INDEX = 1U;       // AICPU metadata头: 本次调度是否实际启用FD
 static constexpr uint32_t QFA_HEAD_NEED_INIT_OUTPUT_INDEX = 15U;
 
 #define ASCENDC_TPL_5_BW 5
@@ -245,6 +246,7 @@ struct CommonConstInfo {
 
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+    bool enableFlashDecode = false;
 
     StridesConstInfo keyStrides;
     StridesConstInfo valueStrides;
