@@ -884,3 +884,62 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_regbase_fail_03)
         &compileInfo, "Ascend950");
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 10000, "", {});
 }
+
+TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_succ_10_sigmoid_without_renorm)
+{
+    optiling::MoeGatingTopKCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopK",
+        {
+            {{{16, 512}, {16, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 10}, {16, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 10}, {16, 10}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 512}, {16, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(10)},
+            {"k_group", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_select_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo, "Ascend910B");
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1, "", expectWorkspaces);
+}
+
+TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_fail_12_sigmoid_without_renorm_invalid_renorm)
+{
+    optiling::MoeGatingTopKCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopK",
+        {
+            {{{16, 512}, {16, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 10}, {16, 10}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 10}, {16, 10}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 512}, {16, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(10)},
+            {"k_group", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"group_select_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo, "Ascend910B");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 1, "", {});
+}

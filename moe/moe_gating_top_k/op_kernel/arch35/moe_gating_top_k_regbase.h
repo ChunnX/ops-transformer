@@ -624,7 +624,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ComputeX()
         LocalTensor<float> xInLocalTensor = xInQueue_.DeQue<float>();
         ComputeWithSoftMax(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
         xInQueue_.FreeTensor(xInLocalTensor);
-    } else if (tilingData_->normType == 1) {
+    } else if (IsSigmoidNormType(tilingData_->normType)) {
         LocalTensor<T> xInLocalTensor = xInQueue_.DeQue<T>();
         ComputeWithSigmoid(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
         xInQueue_.FreeTensor(xInLocalTensor);
@@ -1427,7 +1427,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::Init(GM_ADDR x, GM_ADDR 
     groupSelectMode_ = tilingData_->groupSelectMode;
     eps_ = tilingData_->eps;
     hashFlag_ = tilingData_->hashFlag == 1;
-    noNorm_ = tilingData_->normType == 0 && tilingData_->renorm == 0;
+    noNorm_ = !ShouldRenormalize(tilingData_->normType, tilingData_->renorm);
 
     xGm_.SetGlobalBuffer((__gm__ T *)x + tilingData_->perCoreRowCount * expertCount_ * blockIdx_, expertCount_);
     if (bias != nullptr) {
