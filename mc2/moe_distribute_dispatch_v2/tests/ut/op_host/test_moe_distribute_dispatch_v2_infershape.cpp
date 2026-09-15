@@ -473,7 +473,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_RtGetSocSpecFail_WithElasti
 // 覆盖 lines 95-101, 262, 239-242
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_PerGroupQuant)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     gert::StorageShape xShape = {{32, 7168}, {}};
@@ -525,7 +525,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_PerGroupQuant)
 // 覆盖 lines 102-105
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_MxQuant)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     gert::StorageShape xShape = {{32, 7168}, {}};
@@ -577,7 +577,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_MxQuant)
 // 覆盖 lines 106-109
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_NoQuant_WithScales)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     gert::StorageShape xShape = {{32, 7168}, {}};
@@ -630,7 +630,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_NoQuant_WithScales)
 // 覆盖 lines 111-112
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_StaticQuant_Else)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     gert::StorageShape xShape = {{32, 7168}, {}};
@@ -682,7 +682,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_StaticQuant_Else)
 // 覆盖 lines 244-247
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_SharedExperts_ElasticInfo)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     gert::StorageShape xShape = {{32, 7168}, {}};
@@ -734,7 +734,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_SharedExperts_ElasticInf
 // 覆盖 lines 290-291
 TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_ExpertScales_NonA2EpRecvCount)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     gert::StorageShape xShape = {{32, 7168}, {}};
@@ -787,7 +787,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A5_ExpertScales_NonA2EpRecv
 // 覆盖 lines 315, 317, 318, 353, 362-367
 TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_StaticQuant_Int8)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     ge::DataType xType = ge::DT_FLOAT16;
@@ -840,7 +840,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_StaticQuant_Int8)
 // 覆盖 lines 322, 323
 TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_PerTokenQuant_E4M3)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     ge::DataType xType = ge::DT_FLOAT16;
@@ -893,7 +893,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_PerTokenQuant_E4M3)
 // 覆盖 lines 329, 330
 TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_PerGroupQuant_E4M3)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     ge::DataType xType = ge::DT_FLOAT16;
@@ -1181,7 +1181,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferShape_A3_NoExpertScalesEpRecv)
 
 TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypeStatic)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
@@ -1226,7 +1226,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypeStatic)
 
 TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypePertoken)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
@@ -1271,7 +1271,7 @@ TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypePertoken)
 
 TEST_F(MoeDistributeDispatchV2Infershape, InferDtype_A5_BadYdtypeMx)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
     ge::DataType xType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;

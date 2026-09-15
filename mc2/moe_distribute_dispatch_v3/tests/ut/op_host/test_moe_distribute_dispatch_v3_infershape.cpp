@@ -892,7 +892,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_RtGetSocSpecFail_WithEl
 // 覆盖 lines 95-100, 253, 231-233
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_PerGroupQuant)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     fe::PlatformInfo platformInfo;
@@ -949,7 +949,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_PerGroupQuant)
 // 覆盖 lines 101-104
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_MxQuant)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     fe::PlatformInfo platformInfo;
@@ -1006,7 +1006,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_MxQuant)
 // 覆盖 lines 106-107
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_NoQuant)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     fe::PlatformInfo platformInfo;
@@ -1063,7 +1063,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_NoQuant)
 // 覆盖 lines 234-238
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_SharedExperts_ElasticInfo)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     fe::PlatformInfo platformInfo;
@@ -1121,7 +1121,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferShape_A5_SharedExperts_Elasti
 // 覆盖 lines 304, 306, 307 (CheckQuantMode STATIC 分支), 340, 348-353
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_StaticQuant_Int8)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     ge::DataType contextType = ge::DT_INT32;
@@ -1179,7 +1179,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_StaticQuant_Int8)
 // 覆盖 lines 311, 312 (CheckQuantMode PERTOKEN 分支)
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_PerTokenQuant_E4M3)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     ge::DataType contextType = ge::DT_INT32;
@@ -1236,7 +1236,7 @@ TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_PerTokenQuant_E4M3)
 // 覆盖 lines 318, 319 (CheckQuantMode PERGROUP/MX 分支)
 TEST_F(MoeDistributeDispatchV3InfershapeTest, InferDtype_A5_PerGroupQuant_E4M3)
 {
-    SetRtSocSpecShortVersion("Ascend950");
+    SetRtSocSpecShortVersion("3510");
     SetRtSocSpecNpuArch("3510");
 
     ge::DataType contextType = ge::DT_INT32;

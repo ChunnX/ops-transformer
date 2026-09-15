@@ -78,7 +78,7 @@ TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test0_SharedExpertWithTp)
          {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
@@ -123,7 +123,7 @@ TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test1_SharedExpertWithTp_
          {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);

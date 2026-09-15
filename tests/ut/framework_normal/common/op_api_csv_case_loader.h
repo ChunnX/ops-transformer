@@ -68,6 +68,7 @@ const std::unordered_map<std::string, aclFormat> ACL_FORMAT{{"UNDEFINED", ACL_FO
 const std::unordered_map<std::string, op::SocVersion> SOC_VERSION{
     {"Ascend910", op::SocVersion::ASCEND910},       {"Ascend910B", op::SocVersion::ASCEND910B},
     {"Ascend910_93", op::SocVersion::ASCEND910_93}, {"Ascend950", op::SocVersion::ASCEND950},
+    {"3510", op::SocVersion::ASCEND950},
     {"Ascend910E", op::SocVersion::ASCEND910E},     {"Ascend310", op::SocVersion::ASCEND310},
     {"Ascend310P", op::SocVersion::ASCEND310P},     {"Ascend310B", op::SocVersion::ASCEND310B},
     {"Ascend310C", op::SocVersion::ASCEND310C},     {"Ascend610LITE", op::SocVersion::ASCEND610LITE},
