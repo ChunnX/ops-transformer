@@ -15,17 +15,8 @@
 #ifndef QUANT_SPARSE_FLASH_MLA_CHECK_H
 #define QUANT_SPARSE_FLASH_MLA_CHECK_H
 
-#include <graph/utils/type_utils.h>
-#include <exe_graph/runtime/tiling_context.h>
-#include <tiling/platform/platform_ascendc.h>
-#include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "log/log.h"
-#include "log/error_code.h"
-#include "err/ops_err.h"
-#include "platform/platform_info.h"
-#include "op_host/tiling_util.h"
 #include "../../sparse_flash_mla/op_host/common/smla_host_common_defs.h"
 
 namespace optiling {
@@ -221,29 +212,29 @@ public:
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
-    void GetInputParaInfo();
     void GetOutputParaInfo();
+    void GetInputParaInfo();
     ge::graphStatus GetAttrParaInfo();
 
     ge::graphStatus GetOpParaInfo();
 
+    void SetQSMLAShape();
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetKvLayout();
-    void SetQSMLAShape();
+    ge::graphStatus GetBatchSize();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
-    ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
     ge::graphStatus GetS1Size();
-    ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
+    ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
-    ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
+    ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
@@ -258,7 +249,7 @@ public:
 
     bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    int64_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
