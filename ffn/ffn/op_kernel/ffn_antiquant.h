@@ -737,7 +737,7 @@ protected:
             realScaleOffset += (offsetK / castWeightCfg.groupSize * castWeightCfg.n);
         }
 
-        // copy scale and offset frome GM
+        // copy scale and offset from GM
         DataCopyPadParams padParams;
         DataCopyParams scaleParams;
         scaleParams.blockLen = castWeightCfg.curBaseN * dataTypeSize;
