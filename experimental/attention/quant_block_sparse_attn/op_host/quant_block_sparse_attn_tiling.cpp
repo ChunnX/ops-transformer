@@ -273,13 +273,9 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
     if (info.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        // D64 仅在最大稀疏 S2 超过 512 时使用 S2=1024。短 S2 保留 S2=512 路径的 C1 双缓冲，
-        // 64-token sparse block 也保留 S2=512，使单 task 的 sparse block 数不超过 MxRunInfo 的 8 槽上限。
-        const uint64_t maxSparseS2 = static_cast<uint64_t>(info.sparseCount) * info.kvBlockSizeVal;
-        const bool useD64S21024 = info.kvBlockSizeVal == 128U && maxSparseS2 > 512U;
+        // D64 对齐 FIA 使用 S2=512/S2_SPLIT=256，保留 C1 UB/L0C 双缓冲。
         const uint32_t config = info.dSize == 64U ?
-            (useD64S21024 ? Config_S1Aligned128_S2Aligned1024_DAligned64_DVAligned64 :
-                           Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64) :
+            Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 :
             (info.dSize == 256U ? Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 :
              Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128);
         tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
