@@ -973,7 +973,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
         // aivId_ * maxTokensPerAiv_, avoiding interleaved cache line false sharing.
         SyncFunc<HardEvent::S_MTE3>();
         {
-            DataCopyExtParams scratchWriteParams = {1U, maxTokensPerAiv_ * sizeof(int32_t), 0U, 0U, 0U};
+            DataCopyExtParams scratchWriteParams = {1U, static_cast<uint32_t>(maxTokensPerAiv_ * sizeof(int32_t)), 0U, 0U, 0U};
             GlobalTensor<int32_t> scratchBlockGM;
             GM_ADDR blockAddr = tokenRankScratchBase_ +
                                 static_cast<uint64_t>(aivId_) * maxTokensPerAiv_ * sizeof(int32_t);
