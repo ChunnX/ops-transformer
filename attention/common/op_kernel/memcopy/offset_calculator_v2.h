@@ -390,7 +390,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
         gmLayout.MakeLayout(b, n2, s2, d);
     }
 
-    __aicore__ inline void Init(const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
+    __aicore__ inline void Init(const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> &parser)
     {
         actualSeqLensKVParser = parser;
     }

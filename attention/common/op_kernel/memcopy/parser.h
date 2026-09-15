@@ -287,6 +287,7 @@ public:
     {
         return cuSeqLensGm.GetValue(cuSeqLensSize);
     }
+
 private:
     GlobalTensor<ACTLEN_T> cuSeqLensGm;
     GlobalTensor<ACTLEN_T> seqUsedGM;
