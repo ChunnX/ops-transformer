@@ -16,7 +16,7 @@
 
 namespace MegaMoeImpl {
 
-// Match the A5 A8W4 token-grained Wave target while using arch92 A8W8 Generic MMAD.
+// Use token-grained Wave scheduling with arch92 A8W8 Generic MMAD.
 constexpr uint32_t ARCH92_GMM1_TILES_PER_JOB_TARGET = 2U;
 
 template <uint32_t TileM>
