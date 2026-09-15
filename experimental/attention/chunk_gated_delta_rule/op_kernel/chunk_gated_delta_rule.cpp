@@ -15,6 +15,7 @@
 
 #include "chunk_gated_delta_rule.h"
 #include "chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_tiling_key.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -34,8 +35,14 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(
     CGDRInitParams initParams{
         query, key, value, beta, initialState, seqlens, gOptional,
         out, finalState};
-    // state 为 float 输入，单一 float 路径
-    CGDR<bfloat16_t, float> op(&pipe, &tilingData);
-    op.Init(initParams, user);
-    op.Process();
+    // gOptional 由 tilingKey 编译期分发
+    if (TILING_KEY_IS(TILING_KEY_CGDR_HAS_G)) {
+        CGDR<bfloat16_t, float, true> op(&pipe, &tilingData);
+        op.Init(initParams, user);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_CGDR_NO_G)) {
+        CGDR<bfloat16_t, float, false> op(&pipe, &tilingData);
+        op.Init(initParams, user);
+        op.Process();
+    }
 }

@@ -92,7 +92,7 @@ __aicore__ inline void CopyCast(
 }
 
 
-template <typename lowType, typename highType>
+template <typename lowType, typename highType, bool hasG>
 class CGDR {
 public:
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleTilingData *tilingData)
@@ -109,7 +109,7 @@ public:
             s1MmFp32_.Init(&tiling_->matmulTilingFp32ToFp32, pipe_);
             s1MmFp32ToBf16_.Init(&tiling_->matmulTilingFp32ToBf16, pipe_);
             stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
-            stage2FloatMT_.Init(&tiling_->matmulTilingStage2, pipe_);
+            stage2MT_.Init(&tiling_->matmulTilingStage2, pipe_);
         }
     }
 
@@ -158,9 +158,8 @@ public:
 
         dataSize = tiling_->t * tiling_->nv;
         beta_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(initParams.beta), dataSize);
-        if (initParams.gOptional != nullptr) {
+        if constexpr (hasG) {
             g_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(initParams.gOptional), dataSize);
-            gFlag_ = true;
         }
 
         // float 路径：state I/O 为 highType(float)
@@ -245,8 +244,8 @@ public:
                 RunStage1(cg);
                 SyncAll<false>();
 
-                RunStage2Float(cg, curState,
-                               finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
+                RunStage2(cg, curState,
+                          finalStateFloat_[bid * tiling_->nv * tiling_->dv * tiling_->dk]);
                 SyncAll<false>();
 
                 RunStage3(cg);
@@ -258,30 +257,30 @@ public:
 private:
     __aicore__ inline void RunStage1(const ChunkGroup& cg)
     {
-        GDRStageOneInitParams initStageOneParams {query_, key_, value_, beta_, g_,
+        GDRStageOneInitParams<lowType, highType> initStageOneParams {query_, key_, value_, beta_, g_,
                                                 gCum_, kCumDecay_, vInnerFloat_, qPrime_, kg_, qkt_,
-                                                stageWsAddr_, stageOneMask_, cg, gFlag_};
+                                                stageWsAddr_, stageOneMask_, cg};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage2Float(ChunkGroup& cg, GlobalTensor<highType> stateIn,
-                                          GlobalTensor<highType> stateOut)
+    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<highType> stateIn,
+                                     GlobalTensor<highType> stateOut)
     {
-        Stage2Float stageTwoFloatOp;
-        StageTwoFloatParams initStageTwoParams{
+        Stage2<lowType, highType, hasG> stageTwoOp;
+        StageTwoParams<lowType, highType> initStageTwoParams{
             qPrime_, vInnerFloat_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
-            attnInter_, bf16State_, bf16VNew_, stageWsAddr_, &stage2FloatMT_, pipe_, &cg,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
-        stageTwoFloatOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
-        stageTwoFloatOp.Process();
+            attnInter_, bf16State_, bf16VNew_, stageWsAddr_, &stage2MT_, pipe_, &cg,
+            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk};
+        stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
+        stageTwoOp.Process();
         pipe_->Reset();
     }
 
     __aicore__ inline void RunStage3(ChunkGroup& cg)
     {
-        Stage3 stageThreeOp;
+        Stage3<hasG> stageThreeOp;
         StageThreeParams initStageThreeParams{
             qkt_, gCum_, bf16VNew_,
             stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
@@ -289,7 +288,7 @@ private:
             attnInter_,
             out_[cg.startPos * tiling_->nv * tiling_->dv],
             &stage3MT_, pipe_, &cg, tiling_->scale,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
+            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
         stageThreeOp.Process();
         pipe_->Reset();
@@ -330,15 +329,14 @@ private:
     TBuf<TPosition::VECCALC> tmpBuff_;  // 构造mask矩阵
 
     // Matmul objects
-    StageOneMmBf16ToFp32 s1MmBf16ToFp32_;   // bf16,bf16 -> fp32 (kk / qk)
-    StageOneMmFp32 s1MmFp32_;               // fp32,fp32 -> fp32 (求逆 / attn@v_beta)
-    StageOneMmFp32ToBf16 s1MmFp32ToBf16_;   // fp32,fp32 -> bf16 (attn@k_cumdecay)
+    StageOneMm<lowType, lowType, highType> s1MmBf16ToFp32_;
+    StageOneMm<highType, highType, highType> s1MmFp32_;
+    StageOneMm<highType, highType, lowType> s1MmFp32ToBf16_;
     StageThreeMT stage3MT_;
-    StageTwoFloatMT stage2FloatMT_;  // float 路径 stage2 专用（bf16 A/B + float C）
+    StageTwoMT<lowType, highType> stage2MT_;
 
     // Stage operators
-    Stage1 stageOneOp_;
-    bool gFlag_ = false;
+    Stage1<lowType, highType, hasG> stageOneOp_;
 };
 
 } // namespace ChunkGatedDeltaRule

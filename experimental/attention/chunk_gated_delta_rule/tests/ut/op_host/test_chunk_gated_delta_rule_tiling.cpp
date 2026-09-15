@@ -40,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include "../../../op_host/chunk_gated_delta_rule_tiling.h"
+#include "../../../op_kernel/chunk_gated_delta_rule_tiling_key.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -109,7 +110,7 @@ TEST_F(ChunkGatedDeltaRuleTilingTest, BasicWithGamma)
                                               },
                                               &compileinfo);
 
-    int64_t expectTilingKey = 0UL;
+    int64_t expectTilingKey = TILING_KEY_CGDR_HAS_G;
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
@@ -152,7 +153,7 @@ TEST_F(ChunkGatedDeltaRuleTilingTest, BasicWithoutGamma)
                                               },
                                               &compileinfo);
 
-    int64_t expectTilingKey = 0UL;
+    int64_t expectTilingKey = TILING_KEY_CGDR_NO_G;
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);

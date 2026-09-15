@@ -48,9 +48,9 @@ struct StageThreeParams {
     int64_t Nk;
     int64_t Dv;
     int64_t Dk;
-    bool gOptional;
 };
 
+template <bool hasG>
 class Stage3 {
 public:
     __aicore__ inline void Init(StageThreeParams *initParams, int32_t coreNum)
@@ -68,7 +68,6 @@ public:
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
         paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
-        gOptional_ = sTP_->gOptional;
         uint64_t workSpaceOffset = 0;
         tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
                                initParams->ws + workSpaceOffset +
@@ -151,7 +150,7 @@ public:
     __aicore__ inline void CalMaskedQKT(GlobalTensor<bfloat16_t> outGM, int nvId, int chunkPos)
     {
         // chunkSize 大小进行自动补齐
-        if (gOptional_) {
+        if constexpr (hasG) {
             AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_);  // 自动补齐
             auto g_cum = inQueue_.DeQue<float>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
@@ -294,7 +293,6 @@ private:
     int32_t curChunkSize_;
     int32_t chunkSize_;
     int32_t coreId_;
-    bool gOptional_;
 };
 
 } // namespace ChunkGatedDeltaRule

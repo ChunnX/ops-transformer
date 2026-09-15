@@ -10,10 +10,10 @@
 
 /*!
  * \file chunk_gated_delta_rule_stage2.h
- * \brief float 路径 stage2：state 递推全程 float，matmul 为 bf16(A/B) × bf16(B) → float(C)。
- *        state / v_new 作 matmul 输入前先 cast 回 bf16（写入 bf16State_ / bf16VNew_）；
- *        attn_inter 以 float 写入 attnInter_（out_ 仍 bf16，由 stage3 汇总后写出）。
- *        本类为 stage2 唯一实现：state 恒 float32 输入，无 bf16 路径、无 tilingKey 分发。
+ * \brief stage2：state 递推全程 highType，matmul 为 lowType(A/B) → highType(C)。
+ *        state / v_new 作 matmul 输入前先 cast 回 lowType（写入 bf16State_ / bf16VNew_）；
+ *        attn_inter 以 highType 写入 attnInter_（out_ 仍 lowType，由 stage3 汇总后写出）。
+ *        hasG 由 tilingKey 编译期分发，不再使用运行时 gOptional 开关。
  */
 #ifndef CHUNK_GATED_DELTA_RULE_STAGE2_H
 #define CHUNK_GATED_DELTA_RULE_STAGE2_H
@@ -26,37 +26,37 @@ namespace ChunkGatedDeltaRule {
 using namespace AscendC;
 using namespace matmul;
 
-// float 路径专用 matmul：A/B 为 bf16（isTrans 可设），C 为 float
-using aT2F = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using bT2F = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
-using cT2F = MatmulType<TPosition::GM, CubeFormat::ND, float>;
-using StageTwoFloatMT = matmul::MatmulImpl<aT2F, bT2F, cT2F>;
+template <typename lowType, typename highType>
+using StageTwoMT = matmul::MatmulImpl<MatmulType<TPosition::GM, CubeFormat::ND, lowType, true>,
+                                      MatmulType<TPosition::GM, CubeFormat::ND, lowType, true>,
+                                      MatmulType<TPosition::GM, CubeFormat::ND, highType>>;
 
-struct StageTwoFloatParams {
-    GlobalTensor<bfloat16_t> qPrime;     // (Nv, Sp, Dk)
-    GlobalTensor<float> vInner;          // (Nv, Sp, Dv)  float v_new（CalVPrime atomic add 目标）
-    GlobalTensor<float> gCum;            // (Nv, Sp)
-    GlobalTensor<bfloat16_t> kCumdecay;  // (Nv, Sp, Dk)
-    GlobalTensor<float> curState;        // (Nv, Dv, Dk)  float
-    GlobalTensor<float> finalState;      // (Nv, Dv, Dk)  float（CalStateNew atomic add 目标）
-    GlobalTensor<bfloat16_t> kg;         // (Nv, Sp, Dk)
-    GlobalTensor<float> attnInter;       // (Sp, Nv, Dv)  float（CalAttnInter 覆盖写目标，替代原 out 字段）
-    GlobalTensor<bfloat16_t> bf16State;  // (Nv, Dv, Dk)  state 的 bf16 影子（CalVPrime/CalAttnInter 的 B 输入）
-    GlobalTensor<bfloat16_t> bf16VNew;   // (Nv, Sp, Dv)  v_new 的 bf16 影子（CalStateNew 的 A 输入）
+template <typename lowType, typename highType>
+struct StageTwoParams {
+    GlobalTensor<lowType> qPrime;      // (Nv, Sp, Dk)
+    GlobalTensor<highType> vInner;     // (Nv, Sp, Dv)  highType v_new（CalVPrime atomic add 目标）
+    GlobalTensor<highType> gCum;       // (Nv, Sp)
+    GlobalTensor<lowType> kCumdecay;   // (Nv, Sp, Dk)
+    GlobalTensor<highType> curState;   // (Nv, Dv, Dk)  highType
+    GlobalTensor<highType> finalState; // (Nv, Dv, Dk)  highType（CalStateNew atomic add 目标）
+    GlobalTensor<lowType> kg;          // (Nv, Sp, Dk)
+    GlobalTensor<highType> attnInter;  // (Sp, Nv, Dv)  highType（CalAttnInter 覆盖写目标）
+    GlobalTensor<lowType> bf16State;   // (Nv, Dv, Dk)  state 的 lowType 影子（CalVPrime/CalAttnInter 的 B 输入）
+    GlobalTensor<lowType> bf16VNew;    // (Nv, Sp, Dv)  v_new 的 lowType 影子（CalStateNew 的 A 输入）
     GM_ADDR ws;
-    StageTwoFloatMT *mm1;
+    StageTwoMT<lowType, highType> *mm1;
     TPipe *pipe;
     ChunkGroup *cg;
     int64_t Nv;
     int64_t Nk;
     int64_t Dv;
     int64_t Dk;
-    bool gOptional;
 };
 
-class Stage2Float {
+template <typename lowType, typename highType, bool hasG>
+class Stage2 {
 public:
-    __aicore__ inline void Init(StageTwoFloatParams *initParams, int32_t coreNum)
+    __aicore__ inline void Init(StageTwoParams<lowType, highType> *initParams, int32_t coreNum)
     {
         sTP_ = initParams;
         pipe_ = sTP_->pipe;
@@ -69,11 +69,9 @@ public:
         Nk_ = sTP_->Nk;
         Dv_ = sTP_->Dv;
         Dk_ = sTP_->Dk;
-        // float 对齐粒度（BLOCK_SIZE/sizeof(float) = 8），用 BLOCK_FLOAT_NUM
-        curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
-        paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(float)) * (BLOCK_SIZE / sizeof(float));
+        curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(highType)) * (BLOCK_SIZE / sizeof(highType));
+        paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(highType)) * (BLOCK_SIZE / sizeof(highType));
         curChunkSize_ = chunkSize_;
-        gOptional_ = sTP_->gOptional;
         InitLocalBuffers();
     }
 
@@ -82,17 +80,14 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        // inQueue_ 同时承载 state CopyIn(Dv*curDk, float) 与 v_new CopyIn(chunkSize*paddedDv, float)
         uint64_t inElem = Std::max((uint64_t)Dv_ * curDk_, (uint64_t)chunkSize_ * paddedDv_);
-        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, inElem * sizeof(float));
-        pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, Dv_ * curDk_ * sizeof(float));
-        // bf16CastQueue_：存 state->bf16 / v_new->bf16 cast 结果供 CopyOut
-        uint64_t bf16CastSize = Std::max((uint64_t)Dv_ * curDk_, (uint64_t)chunkSize_ * paddedDv_) * sizeof(bfloat16_t);
-        pipe_->InitBuffer(bf16CastQueue_, BUFFER_NUM_ONE, bf16CastSize);
-        pipe_->InitBuffer(tmpBuff_, (BLOCK_FLOAT_NUM + NUM_ONE) * sizeof(float));
+        pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, inElem * sizeof(highType));
+        pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, Dv_ * curDk_ * sizeof(highType));
+        uint64_t lowCastSize = Std::max((uint64_t)Dv_ * curDk_, (uint64_t)chunkSize_ * paddedDv_) * sizeof(lowType);
+        pipe_->InitBuffer(bf16CastQueue_, BUFFER_NUM_ONE, lowCastSize);
+        pipe_->InitBuffer(tmpBuff_, (BLOCK_FLOAT_NUM + NUM_ONE) * sizeof(highType));
         uint32_t buffOffset = 0;
-        // 暂存所取的最后一位数
-        lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
+        lastGCum_ = tmpBuff_.GetWithOffset<highType>(static_cast<uint32_t>(NUM_ONE), buffOffset);
     }
 
     __aicore__ inline void Process()
@@ -119,110 +114,86 @@ public:
                     if (GetSubBlockIdx() == 0) {
                         CopyIn(curState, Dv_, Dk_);
                         CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
-                        CopyOutBf16State(sTP_->bf16State[nvId * Dv_ * Dk_]);
+                        CopyOutLowState(sTP_->bf16State[nvId * Dv_ * Dk_]);
                     }
-                    CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6);  // 通知 AIC: bf16State_ 就绪
-                    CrossCoreWaitFlag(0x2);                 // 等 AIC 读完 bf16State_ + CalVPrime 完成(v_new 就绪)
+                    CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6);
+                    CrossCoreWaitFlag(0x2);
                     if (GetSubBlockIdx() == 0) {
-                        CopyOutState(finalState);           // 写 state_old(float)
-                        CastVNewToBf16(sTP_->vInner[nvId * Sp_ * Dv_ + length * Dv_],
-                                       sTP_->bf16VNew[nvId * Sp_ * Dv_ + length * Dv_]);
+                        CopyOutState(finalState);
+                        CastVNewToLow(sTP_->vInner[nvId * Sp_ * Dv_ + length * Dv_],
+                                      sTP_->bf16VNew[nvId * Sp_ * Dv_ + length * Dv_]);
                     }
-                    CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);  // 通知 AIC: state_old 写好 + bf16VNew_ 就绪
-                    CrossCoreWaitFlag(0x4);                 // 等 AIC CalStateNew 完成
+                    CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
+                    CrossCoreWaitFlag(0x4);
                 }
                 if ASCEND_IS_AIC {
-                    uint64_t mm_offset0 = nvId * Sp_ * Dk_ + length * Dk_;
-                    uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
-                    // attnInter 与 stage3 / out_ 共用 (Sp, Nv, Dv) 布局，
-                    // token stride = Nv*Dv，head stride = Dv；此处按 token 起点 + head 偏移寻址。
-                    uint64_t attn_inter_offset = nvId * Dv_ + length * Nv_ * Dv_;
-                    CrossCoreWaitFlag(0x6);                 // 等 AIV cast bf16State_
-                    CalVPrime(sTP_->kCumdecay[mm_offset0], sTP_->bf16State[nvId * Dv_ * Dk_],
-                              sTP_->vInner[mm_offset1]);
-                    CalAttnInter(sTP_->qPrime[mm_offset0], sTP_->bf16State[nvId * Dv_ * Dk_],
-                                 sTP_->attnInter[attn_inter_offset]);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 通知 AIV: bf16State_ 读完 + v_new 就绪
-                    CrossCoreWaitFlag(0x5);                 // 等 AIV 写 state_old + cast bf16VNew_
-                    CalStateNew(sTP_->bf16VNew[mm_offset1], sTP_->kg[mm_offset0], finalState);
+                    uint64_t mmOffset0 = nvId * Sp_ * Dk_ + length * Dk_;
+                    uint64_t mmOffset1 = nvId * Sp_ * Dv_ + length * Dv_;
+                    uint64_t attnInterOffset = nvId * Dv_ + length * Nv_ * Dv_;
+                    CrossCoreWaitFlag(0x6);
+                    CalVPrime(sTP_->kCumdecay[mmOffset0], sTP_->bf16State[nvId * Dv_ * Dk_],
+                              sTP_->vInner[mmOffset1]);
+                    CalAttnInter(sTP_->qPrime[mmOffset0], sTP_->bf16State[nvId * Dv_ * Dk_],
+                                 sTP_->attnInter[attnInterOffset]);
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);
+                    CrossCoreWaitFlag(0x5);
+                    CalStateNew(sTP_->bf16VNew[mmOffset1], sTP_->kg[mmOffset0], finalState);
                     SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                     WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);   // 通知 AIV: state_new 完成
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                 }
             }
         }
     }
 
-    __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
+    __aicore__ inline void CalGCumExp(GlobalTensor<highType> gCum)
     {
-        if (gOptional_) {
-            // 刷新cache
-            DataCacheCleanAndInvalid<float,
+        if constexpr (hasG) {
+            DataCacheCleanAndInvalid<highType,
                                      CacheLine::SINGLE_CACHE_LINE,
                                      DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
-            lastGCum_.SetValue(0, tmpFloat);
+            highType tmpVal = gCum.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, tmpVal);
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
-            Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+            Exp<highType, 0, true>(lastGCum_, lastGCum_, 1);
         } else {
-            lastGCum_.SetValue(0, 1.0f);
+            lastGCum_.SetValue(0, static_cast<highType>(1.0f));
         }
-        float tmpFloat = lastGCum_.GetValue(0);
-        auto stateIn = inQueue_.DeQue<float>();
-        auto stateOut = outQueue_.AllocTensor<float>();
+        highType tmpVal = lastGCum_.GetValue(0);
+        auto stateIn = inQueue_.DeQue<highType>();
+        auto stateOut = outQueue_.AllocTensor<highType>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-        // state_old = state * exp(g_cum[-1])，全程 float（不再 cast 回 bf16）
-        Muls(stateOut, stateIn, tmpFloat, Dv_ * curDk_);
-        // 同步把 float state cast 为 bf16 写到 bf16State_（供 CalVPrime/CalAttnInter 的 B 输入）
-        auto bf16Out = bf16CastQueue_.AllocTensor<bfloat16_t>();
-        Cast(bf16Out, stateIn, RoundMode::CAST_RINT, Dv_ * curDk_);
+        Muls(stateOut, stateIn, tmpVal, Dv_ * curDk_);
+        auto lowOut = bf16CastQueue_.AllocTensor<lowType>();
+        Cast(lowOut, stateIn, RoundMode::CAST_RINT, Dv_ * curDk_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         outQueue_.EnQue(stateOut);
-        bf16CastQueue_.EnQue(bf16Out);
+        bf16CastQueue_.EnQue(lowOut);
         inQueue_.FreeTensor(stateIn);
     }
 
-    __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
-                                        GlobalTensor<bfloat16_t> state,
-                                        GlobalTensor<float> attnInter)
+    __aicore__ inline void CalAttnInter(GlobalTensor<lowType> qPrime,
+                                        GlobalTensor<lowType> state,
+                                        GlobalTensor<highType> attnInter)
     {
-        // 写入目标 attnInter_ 与 stage3 / out_ 共用 (Sp, Nv, Dv) 布局，
-        // C 矩阵 N 维度的 GM 行步长 = Nv*Dv（每行跨过一个完整 token 的所有 head）
-        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_, Dk_, Nv_ * Dv_);   // MNKaKbN
-        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_);                // SingleCoreMNK
-        sTP_->mm1->SetTensorA(qPrime, false);
-        sTP_->mm1->SetTensorB(state, true);
-        sTP_->mm1->IterateAll(attnInter);
-        sTP_->mm1->End();
+        RunMatmul(qPrime, false, state, true, attnInter, curChunkSize_, Dv_, Dk_, 0, Nv_ * Dv_);
     }
 
-    __aicore__ inline void CalVPrime(GlobalTensor<bfloat16_t> kCumdecay,
-                                     GlobalTensor<bfloat16_t> state,
-                                     GlobalTensor<float> vPrime)
+    __aicore__ inline void CalVPrime(GlobalTensor<lowType> kCumdecay,
+                                     GlobalTensor<lowType> state,
+                                     GlobalTensor<highType> vPrime)
     {
-        // v_inner += k_cumdecay @ state.transpose(0, 1) -> float vInner_（atomic add）
-        sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);    // MNK
-        sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
-        sTP_->mm1->SetTensorA(kCumdecay, false);
-        sTP_->mm1->SetTensorB(state, true);
-        sTP_->mm1->IterateAll(vPrime, 1);
-        sTP_->mm1->End();
+        RunMatmul(kCumdecay, false, state, true, vPrime, curChunkSize_, Dv_, Dk_, 1);
     }
 
-    __aicore__ inline void CalStateNew(GlobalTensor<bfloat16_t> vInner,
-                                       GlobalTensor<bfloat16_t> kg,
-                                       GlobalTensor<float> state)
+    __aicore__ inline void CalStateNew(GlobalTensor<lowType> vInner,
+                                       GlobalTensor<lowType> kg,
+                                       GlobalTensor<highType> state)
     {
-        // state_out = v_new.transpose(0, 1) @ kg -> float finalState（atomic add）
-        sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);    // MNK
-        sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_); // SingleCoreMNK
-        sTP_->mm1->SetTensorA(vInner, true);
-        sTP_->mm1->SetTensorB(kg, false);
-        sTP_->mm1->IterateAll(state, 1);
-        sTP_->mm1->End();
+        RunMatmul(vInner, true, kg, false, state, Dv_, Dk_, curChunkSize_, 1);
     }
 
     template <typename inType>
@@ -230,7 +201,7 @@ public:
     {
         LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
         DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)), // 非对齐情况需要补0
+                                   static_cast<uint32_t>(col * sizeof(inType)),
                                    static_cast<uint32_t>(0),
                                    0, 0};
         int padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
@@ -239,45 +210,42 @@ public:
         inQueue_.EnQue(inLocal);
     }
 
-    __aicore__ inline void CopyOutState(GlobalTensor<float> stateNew)
+    __aicore__ inline void CopyOutState(GlobalTensor<highType> stateNew)
     {
-        CopyOut<float>(stateNew, Dv_, Dk_, false);
+        CopyOut<highType>(stateNew, Dv_, Dk_, false);
     }
 
-    // 把 CalGCumExp 中 cast 出的 bf16 state 写到 bf16State_ GM
-    __aicore__ inline void CopyOutBf16State(GlobalTensor<bfloat16_t> dst)
+    __aicore__ inline void CopyOutLowState(GlobalTensor<lowType> dst)
     {
-        auto outLocal = bf16CastQueue_.DeQue<bfloat16_t>();
+        auto outLocal = bf16CastQueue_.DeQue<lowType>();
         DataCopyExtParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(Dv_);
-        copyParams.blockLen = static_cast<uint32_t>(Dk_ * sizeof(bfloat16_t));
+        copyParams.blockLen = static_cast<uint32_t>(Dk_ * sizeof(lowType));
         copyParams.srcStride = static_cast<uint32_t>(0);
         copyParams.dstStride = static_cast<uint32_t>(0);
         DataCopyPad(dst, outLocal, copyParams);
         bf16CastQueue_.FreeTensor(outLocal);
     }
 
-    // CopyIn<float> 当前 chunk v_new(=vInner_) -> Cast bf16 -> CopyOut bf16VNew_
-    __aicore__ inline void CastVNewToBf16(GlobalTensor<float> vNew, GlobalTensor<bfloat16_t> bf16VNew)
+    __aicore__ inline void CastVNewToLow(GlobalTensor<highType> vNew, GlobalTensor<lowType> lowVNew)
     {
-        CopyIn<float>(vNew, curChunkSize_, Dv_);
-        auto vIn = inQueue_.DeQue<float>();
-        auto bf16Out = bf16CastQueue_.AllocTensor<bfloat16_t>();
+        CopyIn<highType>(vNew, curChunkSize_, Dv_);
+        auto vIn = inQueue_.DeQue<highType>();
+        auto lowOut = bf16CastQueue_.AllocTensor<lowType>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-        Cast(bf16Out, vIn, RoundMode::CAST_RINT, curChunkSize_ * paddedDv_);
+        Cast(lowOut, vIn, RoundMode::CAST_RINT, curChunkSize_ * paddedDv_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
-        bf16CastQueue_.EnQue(bf16Out);
+        bf16CastQueue_.EnQue(lowOut);
         inQueue_.FreeTensor(vIn);
-        // CopyOut bf16 -> bf16VNew_
-        auto outLocal = bf16CastQueue_.DeQue<bfloat16_t>();
+        auto outLocal = bf16CastQueue_.DeQue<lowType>();
         DataCopyExtParams copyParams;
         copyParams.blockCount = static_cast<uint16_t>(curChunkSize_);
-        copyParams.blockLen = static_cast<uint32_t>(Dv_ * sizeof(bfloat16_t));
+        copyParams.blockLen = static_cast<uint32_t>(Dv_ * sizeof(lowType));
         copyParams.srcStride = static_cast<uint32_t>(0);
         copyParams.dstStride = static_cast<uint32_t>(0);
-        DataCopyPad(bf16VNew, outLocal, copyParams);
+        DataCopyPad(lowVNew, outLocal, copyParams);
         bf16CastQueue_.FreeTensor(outLocal);
     }
 
@@ -301,13 +269,31 @@ public:
     }
 
 private:
-    StageTwoFloatParams *sTP_;
+    __aicore__ inline void RunMatmul(GlobalTensor<lowType> a, bool transA,
+                                     GlobalTensor<lowType> b, bool transB,
+                                     GlobalTensor<highType> c,
+                                     int64_t m, int64_t n, int64_t k,
+                                     int32_t atomic = 0, int64_t orgN = 0)
+    {
+        if (orgN > 0) {
+            sTP_->mm1->SetOrgShape(m, n, k, k, orgN);
+        } else {
+            sTP_->mm1->SetOrgShape(m, n, k);
+        }
+        sTP_->mm1->SetSingleShape(m, n, k);
+        sTP_->mm1->SetTensorA(a, transA);
+        sTP_->mm1->SetTensorB(b, transB);
+        sTP_->mm1->IterateAll(c, atomic);
+        sTP_->mm1->End();
+    }
+
+    StageTwoParams<lowType, highType> *sTP_;
     TPipe *pipe_;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> bf16CastQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;
-    LocalTensor<float> lastGCum_;
+    LocalTensor<highType> lastGCum_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;
@@ -320,7 +306,6 @@ private:
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;
-    bool gOptional_;
 };
 } // namespace ChunkGatedDeltaRule
 #endif // CHUNK_GATED_DELTA_RULE_STAGE2_H
