@@ -658,7 +658,8 @@ void SMLAInfoParser::SetSMLAShape()
     if (opParamInfo_.oriKv.tensor != nullptr) {
         oriKvShape_ = opParamInfo_.oriKv.tensor->GetStorageShape();
     } else {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q", "Q is nullptr, please check input parameters");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKv", "OriKv is nullptr, please check input parameters");
+        return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         cmpKvShape_ = opParamInfo_.cmpKv.tensor->GetStorageShape();
@@ -675,6 +676,7 @@ void SMLAInfoParser::SetSMLAShape()
         } else {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_sparse_indices",
                                                      "Cmp_sparse_indices is nullptr, please check input parameters");
+            return ge::GRAPH_FAILED;
         }
     }
 
