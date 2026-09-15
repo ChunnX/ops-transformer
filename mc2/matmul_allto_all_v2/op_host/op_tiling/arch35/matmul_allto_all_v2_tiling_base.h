@@ -615,19 +615,14 @@ protected:
         auto x1Dtype = x1Desc->GetDataType();
         auto x2Dtype = x2Desc->GetDataType();
 
-        // M 轴切分（临时硬编码策略，对齐 ST cases.csv 全部用例的 tileCnt=4 形态）：
-        // - m 可被 4 整除：4 个等大 tile（tileM = m/4），无 tail；
-        // - 不可整除：前 3 个 tile 等大（tileM = floor(m/4)），余量整体作为 1 个 tail tile
-        //   （tail = m - 3*floor(m/4)，与 head 至多相差 3 行，尽量接近）；
-        // - m < 4：无法切出非零 head，整体作为单个 tail tile。
-        constexpr uint64_t FIXED_TILE_CNT = 4;
-        const bool mDivisible = (m_ % FIXED_TILE_CNT == 0);
-        uint64_t headMSize = m_ / FIXED_TILE_CNT;
-        uint64_t headTileCnt = mDivisible ? FIXED_TILE_CNT : (FIXED_TILE_CNT - 1);
-        if (headMSize == 0) {
-            headTileCnt = 0;
-        }
-        uint64_t tailMSize = mDivisible ? 0 : (m_ - headTileCnt * headMSize);
+        // M 轴切分策略：按固定 tile 行数 TILE_M_SIZE 切分：
+        // - m >= TILE_M_SIZE：切出 floor(m / TILE_M_SIZE) 个等大 head tile（各 TILE_M_SIZE 行），
+        //   余量 m % TILE_M_SIZE 整体作为 1 个 tail tile（< TILE_M_SIZE 行）；
+        // - m < TILE_M_SIZE：无 head tile，整体作为单个 tail tile（按实际 M 值）。
+        constexpr uint64_t TILE_M_SIZE = 512UL;
+        uint64_t headTileCnt = m_ / TILE_M_SIZE;
+        uint64_t headMSize = (headTileCnt > 0) ? TILE_M_SIZE : 0;
+        uint64_t tailMSize = m_ % TILE_M_SIZE;
         uint64_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
 
         // hccl_buffer_size 容量校验（win 区精确大小）：每个 rank 的 win 区需容纳所有 rank 写来的
