@@ -2207,12 +2207,13 @@ def compute_p_ds(
 
 
 def cal_atten_mask_offset(run_info, const_info):
-    # next boundary: s2 - s1 <= s2_token. For seqused the token is per batch;
-    # otherwise it is the fixed-shape host token.
+    # Mask coordinates are batch-local, including packed TND. q_start/kv_start
+    # are only for GM addressing; metadata supplies the per-batch token.
+    # Next boundary: s2 - s1 <= s2_token.
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
-        run_info.q_start + run_info.s1o_idx * CUBE_BASEM
+        run_info.s1o_idx * CUBE_BASEM
         + run_info.s1_idx * TS
         + const_info.sub_id * first_half_s1
     )
@@ -2226,7 +2227,7 @@ def cal_atten_mask_offset_pre(run_info, const_info):
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
-        run_info.q_start + run_info.s1o_idx * CUBE_BASEM
+        run_info.s1o_idx * CUBE_BASEM
         + run_info.s1_idx * TS
         + const_info.sub_id * first_half_s1
     )

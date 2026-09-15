@@ -106,12 +106,12 @@ static ge::graphStatus ValidateTnd(gert::TilingContext *context, const string &o
                     lse->GetStorageShape().GetDim(0) != dims[0][1] || lse->GetStorageShape().GetDim(1) != dims[0][0],
                 OP_LOGE(opName, "TND LSE must have shape [N,Tq]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(context->GetOptionalInputDesc(SEQUSED_Q) != nullptr ||
-                    context->GetOptionalInputDesc(SEQUSED_KV) != nullptr || context->GetOptionalInputDesc(17) != nullptr,
-                OP_LOGE(opName, "TND does not support seqused or attn_mask."), return ge::GRAPH_FAILED);
+                    context->GetOptionalInputDesc(SEQUSED_KV) != nullptr,
+                OP_LOGE(opName, "TND does not support seqused."), return ge::GRAPH_FAILED);
     auto mode = context->GetAttrs()->GetAttrPointer<int64_t>(MASK_MODE);
     auto quant = context->GetAttrs()->GetAttrPointer<int64_t>(QUANT_MODE_IDX);
-    OP_CHECK_IF((mode != nullptr && *mode != 0) || (quant != nullptr && *quant != 0),
-                OP_LOGE(opName, "TND supports mask_mode=0 and quant_mode=0 only."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((mode != nullptr && *mode != 0 && *mode != 3 && *mode != 4) || (quant != nullptr && *quant != 0),
+                OP_LOGE(opName, "TND supports mask_mode=0/3/4 and quant_mode=0 only."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -322,7 +322,7 @@ uint32_t QuantFlashAttentionScoreGradTilingNormalRegbase::GetDeterSparseTilingKe
 
     // Padded S1 == S2 does not imply equal effective lengths in each batch.
     // The varlen kernel obtains the right-down alignment from metadata.
-    if ((fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) &&
+    if ((fBaseParams.layoutType == INPUT_FORMAT_TND || fBaseParams.hasSequsedQ || fBaseParams.hasSequsedKV) &&
         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
         return static_cast<uint32_t>(DeterSparseType::DETER_BAND);
     }

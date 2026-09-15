@@ -254,13 +254,20 @@ cann_ops_transformer.quant_flash_attn_grad(
 - 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。
 - quant_flash_attn_metadata和quant_flash_attn_grad的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
+### TND 与 mask 0/3/4
+
+- 支持 TND、N1 = N2、D = Dv = 128、quant_mode = 0 的确定性 swizzle；out 和梯度为 BF16，不叠加 seqused、sinks 等可选功能。
+- Q/dO/out/dQ 为 `[Tq, N, D]`，K/V/dK/dV 为 `[Tkv, N, D]`，LSE 为 `[N, Tq]`。两侧 cu_seqlens 必须为 int32 `[B + 1]` Tensor，前导 0，严格递增，末项等于对应总 token 数；不支持零长度。
+- mask 0 不传 attn_mask；mask 3/4 传标准 `[2048, 2048]` int8 压缩上三角 mask。右下对齐使用各 batch 局部长度：mask 3 保留 `j <= i + Lkv - Lq`；mask 4 保留中心 `i + Lkv - Lq` 两侧窗口内的位置，某侧窗口为 `-1` 表示不限窗。mask 0/3 两侧窗口必须为 `-1`。
+- metadata 使用相同 cu_seqlens、布局、head 数、mask 和窗口，设置 `is_grad_enabled=True`；反向行最小容量为 `17 + 9 * B`，使用 ABI v2，核数与主 kernel 一致。
+
 ### seqused 与 mask 3/4
 
-- 本轮适配范围为 BSND/BNSD、Q_N = KV_N（N1 = N2）的确定性计算。输入仍按 padded 形状存储；不支持 TND，`cu_seqlens_q` 和 `cu_seqlens_kv` 必须为 `None`。
+- 本轮适配范围为 BSND/BNSD、Q_N = KV_N（N1 = N2）的确定性计算。输入仍按 padded 形状存储；TND 不支持叠加 seqused，使用本节接口时 `cu_seqlens_q` 和 `cu_seqlens_kv` 必须为 `None`。
 - `seqused_q` 和 `seqused_kv` 是连续的 int32 Tensor，形状为 `[B]`。每项满足 `0 < seqused_q[b] <= Q_S`、`0 < seqused_kv[b] <= KV_S`；零长度暂不支持。可以只传一侧，未传一侧使用该侧 padded 序列长度。
 - 记当前 batch 的有效长度为 `Lq`、`Lkv`，Q/KV 索引为 `i`、`j`。mask 3 保留 `j <= i + Lkv - Lq`；mask 4 保留 `i + Lkv - Lq - win_left <= j <= i + Lkv - Lq + win_right`，并裁剪到有效长度范围。mask 4 的某侧窗口为 `-1` 表示该侧不限窗；mask 0/3 的两侧窗口必须为 `-1`。
 - 每次调用前，用相同的 seqused、batch、头数、layout、`mask_mode` 和窗口生成 metadata，并设置 `is_grad_enabled=True`。metadata 接口的 `max_seqlen_q/kv` 传 padded 长度；反向主接口的同名参数保持 `-1`。
-- metadata 为 int32、形状 `[2, row_size]`。反向行的最小容量：无 seqused 为 16，seqused + mask 0 为 `17 + 3 * B`，seqused + mask 3/4 为 `17 + 9 * B`；实际分配还应满足 metadata 生成接口的前向行容量要求。变长 sparse 使用反向调度 ABI v2，生成 metadata 的核数必须与主 kernel 实际核数一致。
+- metadata 为 int32、形状 `[2, row_size]`。反向行的最小容量：padded 且无 seqused 为 16，seqused + mask 0 为 `17 + 3 * B`，seqused + mask 3/4 为 `17 + 9 * B`；实际分配还应满足 metadata 生成接口的前向行容量要求。变长 sparse 使用反向调度 ABI v2，生成 metadata 的核数必须与主 kernel 实际核数一致。
 
 ### 特性参数组
 
