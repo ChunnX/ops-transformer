@@ -100,11 +100,18 @@ def prepare_case(params):
     return p, case, expected.reshape(-1, C.D), expected_lse
 
 
-def run_params(params, *, metadata_backend="aicpu"):
-    run_prepared(*prepare_case(params), metadata_backend=metadata_backend)
+def run_params(params, *, metadata_backend="aicpu", verify_metadata_backends=False):
+    run_prepared(
+        *prepare_case(params),
+        metadata_backend=metadata_backend,
+        verify_metadata_backends=verify_metadata_backends,
+    )
 
 
-def run_prepared(p, case, expected, expected_lse, *, metadata_backend="aicpu"):
+def run_prepared(
+    p, case, expected, expected_lse, *,
+    metadata_backend="aicpu", verify_metadata_backends=False,
+):
     """Execute prepared inputs; never regenerate inputs or golden."""
     mode = case["mode"]
     quant_mode = case["quant_mode"]
@@ -150,7 +157,8 @@ def run_prepared(p, case, expected, expected_lse, *, metadata_backend="aicpu"):
         kwargs, mode, case["t1"],
         omit_win_length=p.get("omit_win_topk_length", False),
         omit_cmp_length=p.get("omit_cmp_topk_length", False),
-        metadata_backend=metadata_backend)
+        metadata_backend=metadata_backend,
+        verify_metadata_backends=verify_metadata_backends)
     if kwargs["return_softmax_lse"]:
         torch.testing.assert_close(actual_lse, expected_lse, rtol=1e-5, atol=1e-5)
     empty_rows = case["len_ori"].reshape(-1) == 0
@@ -225,7 +233,7 @@ def _make_metadata_python(rows, device):
 
 
 def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=False,
-                 metadata_backend="aicpu"):
+                 metadata_backend="aicpu", verify_metadata_backends=False):
     """Run metadata and attention through the installed wheel's torch.ops."""
     # Explicit import surfaces DSL registration failures instead of testing another implementation.
     import cann_ops_transformer.ops.attention.mixed_quant_sparse_flash_mla_dsl  # noqa: F401
@@ -249,7 +257,7 @@ def _call_public(kwargs, mode, t1, *, omit_win_length=False, omit_cmp_length=Fal
                 num_heads_q=C.N1, num_heads_kv=1, head_dim=C.D,
                 quant_mode=kwargs["quant_mode"], has_cmp_kv=(mode == "ORI_CMP_SPARSE"))
             kwargs["metadata"] = aicpu_metadata
-            if p["verify_metadata_backends"]:
+            if verify_metadata_backends:
                 python_metadata = _make_metadata_python(t1, kwargs["q"].device)
                 torch.testing.assert_close(
                     python_metadata.cpu(), aicpu_metadata.cpu(), rtol=0, atol=0)

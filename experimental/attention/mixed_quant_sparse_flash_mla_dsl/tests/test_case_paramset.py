@@ -4,20 +4,7 @@
 # kv_axis0_noncontiguous统一控制两侧，框架固定padding，默认False。
 # topk_length由测试框架按各侧topk模式自动生成。
 
-TEST_PARAMS = {'prefill': {'Testcase_Name': [None],
-                                 'template_run_mode': ['ORI_CMP_SPARSE'],
-                                 'B': [1],
-                                 'S1': [8192],
-                                 'S2': [32*1024],
-                                 'S2C': [16*1024],
-                                 'K1': [128],
-                                 'K2': [512],
-                                 'ori_kv_topk_mode': ['fullK'],
-                                 'cmp_kv_topk_mode': ['fullK'],
-                                 'block_size1': [128],
-                                 'block_size2': [128],
-                                 'seed': [7],
-                                 'kv_axis0_noncontiguous': [False]},
+TEST_PARAMS = {
                 'decode': {'Testcase_Name': [None],
                                  'template_run_mode': ['ORI_CMP_SPARSE'],
                                  'B': [32],

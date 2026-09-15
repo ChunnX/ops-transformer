@@ -72,12 +72,17 @@ def test_npu_against_cpu_golden(params, request):
         import torch
         torch.npu.set_device(request.config.getoption('device_id'))
     if mode == 'run':
-        run_params(params, metadata_backend=request.config.getoption('metadata_backend'))
+        run_params(
+            params,
+            metadata_backend=request.config.getoption('metadata_backend'),
+            verify_metadata_backends=request.config.getoption('verify_metadata_backends'),
+        )
         return
     from saved_cases import case_path, load_case, save_case
     if mode == 'replay':
         run_prepared(*load_case(params),
-                     metadata_backend=request.config.getoption('metadata_backend'))
+                     metadata_backend=request.config.getoption('metadata_backend'),
+                     verify_metadata_backends=request.config.getoption('verify_metadata_backends'))
         return
     index = request.node.callspec.indices['params']
     path = case_path(request.config.getoption('pt_dir'), _case_id(params, index), index, params)
@@ -86,4 +91,5 @@ def test_npu_against_cpu_golden(params, request):
     del prepared
     if mode == 'save-run':
         run_prepared(*load_case(path),
-                     metadata_backend=request.config.getoption('metadata_backend'))
+                     metadata_backend=request.config.getoption('metadata_backend'),
+                     verify_metadata_backends=request.config.getoption('verify_metadata_backends'))
