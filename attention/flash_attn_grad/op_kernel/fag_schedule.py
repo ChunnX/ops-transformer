@@ -78,7 +78,7 @@ def skip_invalid(constInfo, idx, blockEnd):
         over = pl.min(pl.max(idx + 1 - blockEnd, 0), 1)
         v = pl.min(cur + over, 1)
     if idx >= blockEnd:
-        return -1
+        return pl.astype(-1, pl.DT_INT64)
     return idx
 
 
@@ -96,7 +96,7 @@ def next_work_gidx(
     if swizzle == 0:
         return skip_invalid(constInfo, denseCursor, blockEnd)
     if localIdx >= numBlocks:
-        return -1
+        return pl.astype(-1, pl.DT_INT64)
     return block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx)
 
 
@@ -213,11 +213,13 @@ def block_range_of(constInfo, cBlockIdx, coreNum, blockStart, blockEnd):
     remP = pl.max(tot - cBlockIdx, 0)
     swzPacked = (remP + coreNum - 1) // coreNum
     lin = pl.max(blockEnd - blockStart, 0)
+    # getval 已 widen 成 int64；swizzle 公式仍是 tiling int32。新前端
+    # 要求所有 return 同宽，否则 inlined numBlocks 在 phi 上没有合法类型。
     if constInfo.enableSwizzle:
         if mask_mode == 0:
-            return swzDense
-        return swzPacked
-    return lin
+            return pl.astype(swzDense, pl.DT_INT64)
+        return pl.astype(swzPacked, pl.DT_INT64)
+    return pl.astype(lin, pl.DT_INT64)
 
 
 def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
@@ -227,9 +229,9 @@ def block_idx_of(constInfo, cBlockIdx, coreNum, blockStart, localIdx):
     lin = blockStart + localIdx
     if constInfo.enableSwizzle:
         if mask_mode == 0:
-            return swzDense
-        return swzPacked
-    return lin
+            return pl.astype(swzDense, pl.DT_INT64)
+        return pl.astype(swzPacked, pl.DT_INT64)
+    return pl.astype(lin, pl.DT_INT64)
 
 
 # ==================================================================

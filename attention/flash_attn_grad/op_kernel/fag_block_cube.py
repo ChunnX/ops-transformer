@@ -19,8 +19,12 @@
 每个阶段只做「载入 -> matmul -> 输出」，不含分核逻辑、不含跨核同步 ——
 同步全部由 :mod:`fag_kernel` 的主循环在阶段之间插入。
 
-D 轴分块由 ``D_NCHUNKS[d_align]`` 一次 ``pl.range`` 走完：64/128 一块，
-192/256 两块，768 是 3 窗 × 128+128。编译期只分两处：
+D 轴分块：64/128 一块，192/256 两块，768 是 3 窗 × 128+128。
+C4/C5 驻留 L0C（``d_align<=192``）必须编译期拆 ``acc0`` / ``acc1``，
+不能在 ``pl.range`` 里用 ``i==0`` 选 tensor —— PyPTO 会把 ``at`` 绑成
+同一块，192 的第二段 96 列写进 acc0，flush 的 acc1 是垃圾。
+
+其余编译期分流：
 
 * ``d_align==768``：每窗从 GM 重装，空块 ``next()`` 仍推进
 * ``d_align>192``：C4/C5 每块 atomic 出 GM，否则驻留 L0C
@@ -168,11 +172,11 @@ def iterate_mm_k(
                 order=[3, 1],
             )
     at = acc.next()
-    for i in pl.range(0, D_NCHUNKS[d_align]):
-        dOff = _chunk_off(i)
-        localOff = _chunk_local(i)
-        validD = _chunk_valid_d(dimSize, i)
-        if d_align == 768:
+    if d_align == 768:
+        for i in pl.range(0, D_NCHUNKS[d_align]):
+            dOff = _chunk_off(i)
+            localOff = _chunk_local(i)
+            validD = _chunk_valid_d(dimSize, i)
             if i % 2 == 0:
                 winOff = _chunk_win(i)
                 winW = pl.max(pl.min(_D768_PHYS, dimSize - winOff), 0)
@@ -191,12 +195,44 @@ def iterate_mm_k(
                         [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV, winOff],
                         order=[3, 1],
                     )
+            lt = left.next()
+            rt = right.next()
+            if validD > 0:
+                _mm_k_chunk(
+                    lt, rt, at, l_t, r_t, localOff, validD, runInfo.s2RealSize, i == 0
+                )
+    else:
+        # 64/128/192/256：编译期一块或两块。isFirst 不能绑 pl.range 的 i。
         lt = left.next()
         rt = right.next()
-        if validD > 0:
-            _mm_k_chunk(
-                lt, rt, at, l_t, r_t, localOff, validD, runInfo.s2RealSize, i == 0
-            )
+        w0 = pl.min(D_CHUNK_W0[d_align], dimSize)
+        _mm_k_chunk(
+            lt,
+            rt,
+            at,
+            l_t,
+            r_t,
+            D_CHUNK_OFF0[d_align],
+            w0,
+            runInfo.s2RealSize,
+            True,
+        )
+        if D_NCHUNKS[d_align] > 1:
+            lt1 = left.next()
+            rt1 = right.next()
+            w1 = pl.max(pl.min(D_CHUNK_W1[d_align], dimSize - D_CHUNK_OFF1[d_align]), 0)
+            if w1 > 0:
+                _mm_k_chunk(
+                    lt1,
+                    rt1,
+                    at,
+                    l_t,
+                    r_t,
+                    D_CHUNK_OFF1[d_align],
+                    w1,
+                    runInfo.s2RealSize,
+                    False,
+                )
     pl.move(mm_ub, at, acc_to_vec_mode=pl.AccToVecMode.DualModeSplitM)
 
 
@@ -361,8 +397,6 @@ def iterate_mm_n(
     left,
     right,
     acc0,
-    acc1,
-    isAcc,
     tensor_out,
     tensor_src,
     dimSize,
@@ -370,13 +404,11 @@ def iterate_mm_n(
     outIdx,
     mReal,
 ):
-    """C4/C5 共用：``[S2, S1] @ [S1, dim]``。
+    """C4/C5 写出路径（``d_align>192``）：每块 atomic 出 GM。
 
-    不能对 ``tensor_out`` 写 ``is None``（PyPTO Tensor 参数拒空）。
-    驻留 / 写出只看编译期 ``d_align>192``。BN2 的 C4 把 ``mReal`` 钉成
-    ``CUBE_BASEN``，其余都是 ``s2RealSize``。
+    ``tensor_out`` / ``tensor_src`` 必须是真 Tensor。新前端不允许把
+    ``None`` 默认值再往下传 —— 驻留路径走 ``iterate_mm_n_l0c``。
     """
-    store = d_align > 192
     kReal = runInfo.s1RealSize
     for i in pl.range(0, D_NCHUNKS[d_align]):
         dOff = _chunk_off(i)
@@ -394,29 +426,72 @@ def iterate_mm_n(
                         [srcIdx[0], srcIdx[1], srcIdx[2], winOff],
                         order=[1, 3],
                     )
-        if store:
-            if d_align == 768 or validD > 0:
-                _mm_n_chunk(
-                    left,
-                    right,
-                    acc0,
-                    srcL,
-                    srcR,
-                    tensor_out,
-                    outIdx,
-                    mReal,
-                    kReal,
-                    dOff,
-                    validD,
-                    localOff,
-                )
-        elif validD > 0:
-            if D_NCHUNKS[d_align] == 1:
-                at = acc0.current()
-            else:
-                at = acc0.current() if i == 0 else acc1.current()
+        if d_align == 768 or validD > 0:
+            _mm_n_chunk(
+                left,
+                right,
+                acc0,
+                srcL,
+                srcR,
+                tensor_out,
+                outIdx,
+                mReal,
+                kReal,
+                dOff,
+                validD,
+                localOff,
+            )
+
+
+def iterate_mm_n_l0c(
+    constInfo,
+    runInfo,
+    srcL,
+    srcR,
+    left,
+    right,
+    acc0,
+    acc1,
+    isAcc,
+    dimSize,
+    mReal,
+):
+    """C4/C5 驻留 L0C（``d_align<=192``）。不接收 Tensor 参数。
+
+    acc0/acc1 必须是编译期两路。D=64/128 一块；D=192 是 96+96
+    （Dv=128 时 C5 第二块 validD=32）。
+    """
+    kReal = runInfo.s1RealSize
+    off0 = D_CHUNK_OFF0[d_align]
+    w0 = pl.max(pl.min(D_CHUNK_W0[d_align], dimSize - off0), 0)
+    if w0 > 0:
+        _mm_resident_chunk(
+            left,
+            right,
+            acc0.current(),
+            srcL,
+            srcR,
+            mReal,
+            kReal,
+            off0,
+            w0,
+            isAcc,
+        )
+    if D_NCHUNKS[d_align] > 1:
+        off1 = D_CHUNK_OFF1[d_align]
+        w1 = pl.max(pl.min(D_CHUNK_W1[d_align], dimSize - off1), 0)
+        if w1 > 0:
             _mm_resident_chunk(
-                left, right, at, srcL, srcR, mReal, kReal, dOff, validD, isAcc
+                left,
+                right,
+                acc1.current(),
+                srcL,
+                srcR,
+                mReal,
+                kReal,
+                off1,
+                w1,
+                isAcc,
             )
 
 
@@ -437,23 +512,36 @@ def iterate_mm_dsq(
         mReal = CUBE_BASEN
     else:
         mReal = runInfo.s2RealSize
-    iterate_mm_n(
-        constInfo,
-        runInfo,
-        ds_t_l1,
-        q_t,
-        left,
-        right,
-        acc0,
-        acc1,
-        isAcc,
-        tensor_out,
-        tensor_src,
-        constInfo.dSize,
-        [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q],
-        [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
-        mReal,
-    )
+    if d_align > 192:
+        iterate_mm_n(
+            constInfo,
+            runInfo,
+            ds_t_l1,
+            q_t,
+            left,
+            right,
+            acc0,
+            tensor_out,
+            tensor_src,
+            constInfo.dSize,
+            [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q],
+            [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
+            mReal,
+        )
+    else:
+        iterate_mm_n_l0c(
+            constInfo,
+            runInfo,
+            ds_t_l1,
+            q_t,
+            left,
+            right,
+            acc0,
+            acc1,
+            isAcc,
+            constInfo.dSize,
+            mReal,
+        )
 
 
 def iterate_mm_pdy(
@@ -469,23 +557,36 @@ def iterate_mm_pdy(
     tensor_out=None,
     tensor_src=None,
 ):
-    iterate_mm_n(
-        constInfo,
-        runInfo,
-        p_t_l1,
-        do_t,
-        left,
-        right,
-        acc0,
-        acc1,
-        isAcc,
-        tensor_out,
-        tensor_src,
-        constInfo.dvSize,
-        [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q],
-        [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
-        runInfo.s2RealSize,
-    )
+    if d_align > 192:
+        iterate_mm_n(
+            constInfo,
+            runInfo,
+            p_t_l1,
+            do_t,
+            left,
+            right,
+            acc0,
+            tensor_out,
+            tensor_src,
+            constInfo.dvSize,
+            [runInfo.idx0Q, runInfo.queryOffset, runInfo.idx2Q],
+            [runInfo.idx0KV, runInfo.keyOffset, runInfo.idx2KV],
+            runInfo.s2RealSize,
+        )
+    else:
+        iterate_mm_n_l0c(
+            constInfo,
+            runInfo,
+            p_t_l1,
+            do_t,
+            left,
+            right,
+            acc0,
+            acc1,
+            isAcc,
+            constInfo.dvSize,
+            runInfo.s2RealSize,
+        )
 
 
 def flush_dkv(
