@@ -55,11 +55,14 @@ public:
     static constexpr uint32_t VEC_M_BASE = M_BASE >> 1U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
+    static constexpr bool IS_D64_S2_1024 = D_BASE == 64U && S2_BASE == 1024U;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MX vector currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
-                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
-                  "MX vector requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
+    static_assert(M_BASE == 128U && D_BASE == DV_BASE &&
+                  ((D_BASE == 64U && (S2_BASE == 512U || S2_BASE == 1024U)) ||
+                   (D_BASE == 128U && S2_BASE == 512U) ||
+                   (D_BASE == 256U && S2_BASE == 256U)),
+                  "MX vector requires S1=128 and a supported (S2,D,DV) combination");
     // V2 比 V1 延迟三个 task，四槽状态避免 V1 覆盖尚未被 V2 消费的 softmax 状态。
     static constexpr uint32_t SOFTMAX_BUFFER_NUM = 4U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
@@ -75,12 +78,14 @@ public:
     static constexpr uint32_t STAGE1_OUT_UB_SIZE = VEC_M_BASE * STAGE1_CAST_ROW_STRIDE * sizeof(INPUT_T);
     static constexpr uint32_t PSCALE_SUB_LOOP_UB_SIZE = VEC_M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T);
     static constexpr uint32_t SOFTMAX_STATE_UB_SIZE = VEC_M_BASE * sizeof(float);
+    static constexpr uint32_t C1_BUFFER_NUM = IS_D64_S2_1024 ? 1U : 2U;
+    static constexpr uint32_t STAGE1_QUEUE_NUM = IS_D64_S2_1024 ? 1U : 2U;
     // Include the cross-core C1/C2 allocation made by the kernel. All sizes
     // are multiples of 32 bytes, including optional mask and LSE queues.
     static constexpr uint32_t TOTAL_UB_BYTES =
-        2U * VEC_M_BASE * S2_SPLIT * sizeof(MM_T) +
+        C1_BUFFER_NUM * VEC_M_BASE * S2_SPLIT * sizeof(MM_T) +
         2U * VEC_M_BASE * DV_BASE * sizeof(MM_T) +
-        2U * STAGE1_OUT_UB_SIZE + PSCALE_SUB_LOOP_UB_SIZE +
+        STAGE1_QUEUE_NUM * STAGE1_OUT_UB_SIZE + PSCALE_SUB_LOOP_UB_SIZE +
         (3U * SOFTMAX_BUFFER_NUM + 3U) * SOFTMAX_STATE_UB_SIZE +
         (HAS_LSE ? VEC_M_BASE * sizeof(float) * 8U : 0U) +
         (HAS_ATTEN ? ATTEN_MASK_UB_SIZE : 0U) + (USE_DN ? DN_VSELR_INDEX_SIZE : 0U);
@@ -121,9 +126,10 @@ public:
         if ASCEND_IS_AIV {
             // V2 累计输出：[VEC_M_BASE,dTemplateAlign64] fp32。
             tPipe_->InitBuffer(stage2OutBuf_, VEC_M_BASE * dTemplateAlign64 * sizeof(MM_T));
-            // V1 DN packed P 使用双队列。
-            tPipe_->InitBuffer(stage1OutQue_[0], 1, STAGE1_OUT_UB_SIZE);
-            tPipe_->InitBuffer(stage1OutQue_[1], 1, STAGE1_OUT_UB_SIZE);
+            // D64/S2=1024 的单个 V1 输出为 33 KiB；单队列通过 TQue 事件安全复用。
+            for (uint32_t i = 0U; i < STAGE1_QUEUE_NUM; ++i) {
+                tPipe_->InitBuffer(stage1OutQue_[i], 1, STAGE1_OUT_UB_SIZE);
+            }
             // 单个 S2_SPLIT-column subLoop 的 e8m0 PScale。
             tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, PSCALE_SUB_LOOP_UB_SIZE);
             // 四槽 softmax 状态覆盖 current V1 与延迟三个 task 的 V2。
@@ -250,8 +256,7 @@ public:
 
         const uint32_t softmaxBufIdx = runInfo.mLoop % SOFTMAX_BUFFER_NUM;
         const uint32_t expBufIdx = runInfo.loop % SOFTMAX_BUFFER_NUM;
-        // 每个 task 固定按 subLoop 0/1 使用两个 queue slot；loop * 2 对模 2 恒为 0。
-        constexpr uint32_t stage1Offset = SUB_LOOP;
+        constexpr uint32_t stage1Offset = SUB_LOOP % STAGE1_QUEUE_NUM;
         LocalTensor<float> sumUb = softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> preLoopMaxUb = preLoopMaxBuf_.template Get<float>()[0];
@@ -607,7 +612,7 @@ private:
     GlobalTensor<uint8_t> attenMaskGm_;
     uint32_t attenMaskS2Size_ = 0U;
     TQue<QuePosition::VECIN, 1> attenMaskInQue_;
-    TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
+    TQue<QuePosition::VECOUT, 1> stage1OutQue_[STAGE1_QUEUE_NUM];
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue_;
     TBuf<> stage2OutBuf_;

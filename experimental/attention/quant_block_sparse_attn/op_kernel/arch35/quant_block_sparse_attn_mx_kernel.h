@@ -50,13 +50,20 @@ public:
     static constexpr uint32_t S2_SPLIT = S2_BASE / 2U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static constexpr uint32_t C1_BUFFER_NUM = 2U;
-    using C1Buffers = BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    static constexpr bool IS_D64_S2_1024 = D_BASE == 64U && S2_BASE == 1024U;
+    // A 512x64 C1 subtile produces 128 KiB per AIV. A single cross-core slot leaves
+    // enough UB for V1; its cross-core event serializes reuse between the two subLoops.
+    static constexpr uint32_t C1_BUFFER_NUM = IS_D64_S2_1024 ? 1U : 2U;
+    using C1Buffers = typename std::conditional<IS_D64_S2_1024,
+        BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+        BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>::type;
     static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNBD && IS_PA,
                   "MXFullQuantMode currently only supports TND query and PA_BNBD KV");
-    static_assert(M_BASE == 128U && S2_BASE == (D_BASE == 256U ? 256U : 512U) && D_BASE == DV_BASE &&
-                  (D_BASE == 64U || D_BASE == 128U || D_BASE == 256U),
-                  "MXFullQuantMode requires S1=128, S2=(D256 ? 256 : 512) and D=DV in {64,128,256}");
+    static_assert(M_BASE == 128U && D_BASE == DV_BASE &&
+                  ((D_BASE == 64U && (S2_BASE == 512U || S2_BASE == 1024U)) ||
+                   (D_BASE == 128U && S2_BASE == 512U) ||
+                   (D_BASE == 256U && S2_BASE == 256U)),
+                  "MXFullQuantMode requires S1=128 and a supported (S2,D,DV) combination");
     // C2 延迟两个 task，V2 再延迟一个 task。单 BMM2 UB 作为跨 iteration 的流水寄存器：
     // AIC 执行 C1(i) / C2(i-2)，AIV 执行 V2(i-3) / V1(i)。
     static constexpr uint32_t C2_DELAY = 2U;
@@ -162,9 +169,8 @@ private:
 
     __aicore__ inline void InitMMResBuf()
     {
-        // Two C1 slots allow Fixpipe/V1 overlap for every supported D.
-        // V2 runs before V1 and consumes C2 from the preceding iteration, so
-        // waiting for V1 to release C1 cannot form a cycle with the current C2.
+        // The D64/S2=1024 C1 result is 128 KiB per AIV and therefore uses one slot.
+        // Other configurations keep two slots for Fixpipe/V1 overlap.
         constexpr uint32_t mm1ResultSize = M_BASE / CV_RATIO * S2_BASE * sizeof(MM_T) / 2U;
         constexpr uint32_t mm2ResultSize = M_BASE / CV_RATIO * DV_BASE * sizeof(MM_T);
         // L1 连续保存 P(e4m3) 和 PScale(e8m0)，供 C2 随路反量化。
@@ -382,7 +388,7 @@ private:
         MxRunInfo taskRunInfo[PIPELINE_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
-        // S2_BASE=256/512, kvSparseBlockSize=64/128，按模板计算每个 task 的稀疏块数。
+        // S2_BASE=256/512/1024, kvSparseBlockSize=64/128，按模板计算每个 task 的稀疏块数。
         const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
         // metadata 可包含多个 section；每个 section 为当前 AIC 提供一段独立的 BN1/S1 边界。
         const uint32_t sectionNum = GetBsaSectionNum(metadataGm);
