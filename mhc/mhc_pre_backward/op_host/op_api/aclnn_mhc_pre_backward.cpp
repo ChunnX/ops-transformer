@@ -161,13 +161,16 @@ static bool MhcPreBackwardCheckInputNotNullImpl(const aclTensor *tensor, const c
 
 static bool MhcPreBackwardCheckInputNotNull(const AclnnMhcPreBackwardParams &params)
 {
-    return MhcPreBackwardCheckInputNotNullImpl(params.x, "x") && MhcPreBackwardCheckInputNotNullImpl(params.phi, "phi") &&
+    return MhcPreBackwardCheckInputNotNullImpl(params.x, "x") &&
+           MhcPreBackwardCheckInputNotNullImpl(params.phi, "phi") &&
            MhcPreBackwardCheckInputNotNullImpl(params.alpha, "alpha") &&
            MhcPreBackwardCheckInputNotNullImpl(params.gradHIn, "gradHIn") &&
            MhcPreBackwardCheckInputNotNullImpl(params.gradHPost, "gradHPost") &&
            MhcPreBackwardCheckInputNotNullImpl(params.gradHRes, "gradHRes") &&
-           MhcPreBackwardCheckInputNotNullImpl(params.invRms, "invRms") && MhcPreBackwardCheckInputNotNullImpl(params.hMix, "hMix") &&
-           MhcPreBackwardCheckInputNotNullImpl(params.hPre, "hPre") && MhcPreBackwardCheckInputNotNullImpl(params.hPost, "hPost") &&
+           MhcPreBackwardCheckInputNotNullImpl(params.invRms, "invRms") &&
+           MhcPreBackwardCheckInputNotNullImpl(params.hMix, "hMix") &&
+           MhcPreBackwardCheckInputNotNullImpl(params.hPre, "hPre") &&
+           MhcPreBackwardCheckInputNotNullImpl(params.hPost, "hPost") &&
            (params.gamma == nullptr || MhcPreBackwardCheckInputNotNullImpl(params.gamma, "gamma")) &&
            (params.gradXPostOptional == nullptr ||
             MhcPreBackwardCheckInputNotNullImpl(params.gradXPostOptional, "gradXPostOptional"));
@@ -203,14 +206,17 @@ static bool MhcPreBackwardCheckEmptyTensor(const AclnnMhcPreBackwardParams &para
            MhcPreBackwardCheckEmptyTensorImpl(params.gradHIn, "gradHIn") &&
            MhcPreBackwardCheckEmptyTensorImpl(params.gradHPost, "gradHPost") &&
            MhcPreBackwardCheckEmptyTensorImpl(params.gradHRes, "gradHRes") &&
-           MhcPreBackwardCheckEmptyTensorImpl(params.invRms, "invRms") && MhcPreBackwardCheckEmptyTensorImpl(params.hMix, "hMix") &&
-           MhcPreBackwardCheckEmptyTensorImpl(params.hPre, "hPre") && MhcPreBackwardCheckEmptyTensorImpl(params.hPost, "hPost") &&
+           MhcPreBackwardCheckEmptyTensorImpl(params.invRms, "invRms") &&
+           MhcPreBackwardCheckEmptyTensorImpl(params.hMix, "hMix") &&
+           MhcPreBackwardCheckEmptyTensorImpl(params.hPre, "hPre") &&
+           MhcPreBackwardCheckEmptyTensorImpl(params.hPost, "hPost") &&
            (params.gamma == nullptr || MhcPreBackwardCheckEmptyTensorImpl(params.gamma, "gamma")) &&
            (params.gradXPostOptional == nullptr ||
             MhcPreBackwardCheckEmptyTensorImpl(params.gradXPostOptional, "gradXPostOptional"));
 }
 
-static bool CheckDimNum(const aclTensor *tensor, size_t expected, const char *name, bool isRange = false, size_t expected2 = 0)
+static bool CheckDimNum(const aclTensor *tensor, size_t expected, const char *name, bool isRange = false,
+                        size_t expected2 = 0)
 {
     auto dimNum = tensor->GetViewShape().GetDimNum();
     bool valid = isRange ? (dimNum == expected || dimNum == expected2) : (dimNum == expected);
@@ -295,8 +301,8 @@ static bool IsAscend910BPlatform()
     return socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93;
 }
 
-static bool MhcPreBackwardCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t batch, uint64_t sequence, uint64_t dimen,
-                           uint64_t numsResidual)
+static bool MhcPreBackwardCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t batch, uint64_t sequence,
+                                         uint64_t dimen, uint64_t numsResidual)
 {
     auto &xShape = params.x->GetViewShape();
     if (!CheckShapeDim(xShape, 0, batch, "x tensor shape must be [B, S, N, D]") ||
@@ -388,7 +394,8 @@ static bool MhcPreBackwardCheckBSNDShape(const AclnnMhcPreBackwardParams &params
     return true;
 }
 
-static bool MhcPreBackwardCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, uint64_t dimen, uint64_t numsResidual)
+static bool MhcPreBackwardCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, uint64_t dimen,
+                                        uint64_t numsResidual)
 {
     auto &xShape = params.x->GetViewShape();
     if (!CheckShapeDim(xShape, 0, t, "x tensor shape must be [T, N, D]") ||
@@ -466,7 +473,8 @@ static bool MhcPreBackwardCheckTNDShape(const AclnnMhcPreBackwardParams &params,
     return true;
 }
 
-static bool MhcPreBackwardCheckCommonShape(const AclnnMhcPreBackwardParams &params, uint64_t numsResidual, uint64_t dimen)
+static bool MhcPreBackwardCheckCommonShape(const AclnnMhcPreBackwardParams &params, uint64_t numsResidual,
+                                           uint64_t dimen)
 {
     auto &alphaShape = params.alpha->GetViewShape();
     if (!CheckShapeDim(alphaShape, 0, 3, "alpha tensor shape must be (3)")) {
