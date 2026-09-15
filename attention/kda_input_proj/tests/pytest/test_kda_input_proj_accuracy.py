@@ -1,3 +1,12 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """KdaInputProj 四个输出的端到端精度测试。
 
 一次算子调用同时校验四路输出，golden 全部从 ``x`` 与权重在 CPU 上重算：
@@ -35,7 +44,12 @@ except ImportError:
 
 from kda_input_proj_bgg_golden import bgg_golden, bgg_golden_hp
 from kda_input_proj_mx_quant_golden import mx_quant_golden
-from kda_input_proj_qkv_golden import bf16_ulp_diff, mean_rel_error, qkv_golden, qkv_golden_hp
+from kda_input_proj_qkv_golden import (
+    bf16_ulp_diff,
+    mean_rel_error,
+    qkv_golden,
+    qkv_golden_hp,
+)
 
 HIDDEN_SIZE = 7168
 QKV_SIZE = 4608
@@ -69,15 +83,25 @@ def _make_weights(scale_kind: str = "vary"):
     torch.manual_seed(1234)
     weight_qkv = (torch.randn(HIDDEN_SIZE, QKV_SIZE) * 0.3).to(torch.float8_e4m3fn)
     if scale_kind == "const":
-        weight_qkv_scale = torch.full((HIDDEN_SIZE // MX_SCALE_GROUP_K, QKV_SIZE, 2), 1.0)
+        weight_qkv_scale = torch.full(
+            (HIDDEN_SIZE // MX_SCALE_GROUP_K, QKV_SIZE, 2), 1.0
+        )
     else:
-        exp = torch.randint(120, 132, (HIDDEN_SIZE // MX_SCALE_GROUP_K, QKV_SIZE, 2)).float()
+        exp = torch.randint(
+            120, 132, (HIDDEN_SIZE // MX_SCALE_GROUP_K, QKV_SIZE, 2)
+        ).float()
         weight_qkv_scale = torch.pow(2.0, exp - 127.0)
     # beta/gate/g 权重量级压小，避免 sigmoid 全部饱和到 0/1 而失去分辨力
     weight_beta = (torch.randn(HIDDEN_SIZE, BETA_SIZE) * 0.02).to(torch.bfloat16)
     weight_gate = (torch.randn(HIDDEN_SIZE, GATE_SIZE) * 0.02).to(torch.bfloat16)
     weight_g = (torch.randn(HIDDEN_SIZE, G_SIZE) * 0.02).to(torch.bfloat16)
-    return weight_qkv, weight_qkv_scale.to(torch.float8_e8m0fnu), weight_beta, weight_gate, weight_g
+    return (
+        weight_qkv,
+        weight_qkv_scale.to(torch.float8_e8m0fnu),
+        weight_beta,
+        weight_gate,
+        weight_g,
+    )
 
 
 def _run(x_cpu, weights):
@@ -120,8 +144,10 @@ def _assert_bf16_output(got, golden, golden_hp, name):
         assert (mag[outlier] < 0.01 * row_scale[outlier]).all(), (
             f"[{name}] 存在幅值不可忽略的 >2ULP 离群点"
         )
-    print(f"  [{name}] exact={exact:.5f} outliers={n_outlier}/{budget} "
-          f"rel_mean npu={npu_err:.4e} golden={ref_err:.4e}")
+    print(
+        f"  [{name}] exact={exact:.5f} outliers={n_outlier}/{budget} "
+        f"rel_mean npu={npu_err:.4e} golden={ref_err:.4e}"
+    )
 
 
 def _assert_fp32_output(got, golden, golden_hp, name):
@@ -135,7 +161,9 @@ def _assert_fp32_output(got, golden, golden_hp, name):
     assert npu_err <= max(ref_err * 4.0, 1e-6), (
         f"[{name}] 平均相对误差 {npu_err:.4e} 显著劣于 golden 基线 {ref_err:.4e}"
     )
-    print(f"  [{name}] max_abs={max_abs:.3e} rel_mean npu={npu_err:.4e} golden={ref_err:.4e}")
+    print(
+        f"  [{name}] max_abs={max_abs:.3e} rel_mean npu={npu_err:.4e} golden={ref_err:.4e}"
+    )
 
 
 def _check_all(x, weights, tag):
@@ -159,7 +187,9 @@ def _check_all(x, weights, tag):
 
 # 225/240/256 曾因 QMM L1 回退失效触发 LOAD2D 越界，作为回归点固定下来。
 @pytest.mark.ci
-@pytest.mark.parametrize("t_size", [1, 2, 7, 16, 64, 128, 129, 224, 225, 240, 256, 257, 512, 1000])
+@pytest.mark.parametrize(
+    "t_size", [1, 2, 7, 16, 64, 128, 129, 224, 225, 240, 256, 257, 512, 1000]
+)
 def test_all_outputs_shapes(t_size):
     """扫 T，四路输出同时校验。"""
     weights = _make_weights()
@@ -188,9 +218,9 @@ def test_input_distribution(dist):
     if dist == "normal":
         x = torch.randn(t_size, HIDDEN_SIZE)
     elif dist == "tiny":
-        x = torch.randn(t_size, HIDDEN_SIZE) * 2.0 ** -30
+        x = torch.randn(t_size, HIDDEN_SIZE) * 2.0**-30
     elif dist == "huge":
-        x = torch.randn(t_size, HIDDEN_SIZE) * 2.0 ** 30
+        x = torch.randn(t_size, HIDDEN_SIZE) * 2.0**30
     else:
         x = torch.randn(t_size, HIDDEN_SIZE) * torch.pow(
             2.0, torch.randint(-30, 30, (t_size, 1)).float()

@@ -28,10 +28,10 @@ import numpy as np
 import torch
 
 MX_BLOCK_SIZE = 32
-BF16_EXP_MASK = 0x7F80        # bf16 指数域（含掩掉符号/尾数）
-BF16_INF_NAN_EXP = 0x7F80     # 指数域全 1 -> Inf/NaN
-FP8_E4M3_MAX_EXP = 0x0400     # e4m3 emax=8，编码成 bf16 指数域即 8 << 7
-BF16_EXP_BIAS_BITS = 0x7F00   # 127 << 7，bf16 的 1.0
+BF16_EXP_MASK = 0x7F80  # bf16 指数域（含掩掉符号/尾数）
+BF16_INF_NAN_EXP = 0x7F80  # 指数域全 1 -> Inf/NaN
+FP8_E4M3_MAX_EXP = 0x0400  # e4m3 emax=8，编码成 bf16 指数域即 8 << 7
+BF16_EXP_BIAS_BITS = 0x7F00  # 127 << 7，bf16 的 1.0
 BF16_NAN_CUSTOM = 0x7F81
 E8M0_NAN = 0xFF
 BF16_SHR_NUM = 7
@@ -47,7 +47,9 @@ def _as_bf16_bits(x: torch.Tensor) -> np.ndarray:
 
 def _bits_to_bf16(bits: np.ndarray) -> torch.Tensor:
     """uint16 位模式 -> bf16 张量。"""
-    return torch.from_numpy(np.ascontiguousarray(bits.astype(np.uint16))).view(torch.bfloat16)
+    return torch.from_numpy(np.ascontiguousarray(bits.astype(np.uint16))).view(
+        torch.bfloat16
+    )
 
 
 def mx_quant_golden(x: torch.Tensor, block_size: int = MX_BLOCK_SIZE):
@@ -87,17 +89,25 @@ def mx_quant_golden(x: torch.Tensor, block_size: int = MX_BLOCK_SIZE):
 
     # 4) 倒数 scale（bf16 位模式），零块与 Inf/NaN 块特殊处理
     recip_bits = (np.uint16(BF16_EXP_BIAS_BITS) - shared_exp).astype(np.uint16)
-    recip_bits = np.where(is_inf_nan, np.uint16(BF16_NAN_CUSTOM), recip_bits).astype(np.uint16)
+    recip_bits = np.where(is_inf_nan, np.uint16(BF16_NAN_CUSTOM), recip_bits).astype(
+        np.uint16
+    )
     recip_bits = np.where(shared_exp == 0, np.uint16(0), recip_bits).astype(np.uint16)
 
     # 5) bf16 乘法 -> float -> fp8_e4m3fn（RNE + 饱和）
     recip = _bits_to_bf16(recip_bits).reshape(t_size, num_block, 1)
-    scaled = (x.reshape(t_size, num_block, block_size).float() * recip.float()).to(torch.bfloat16)
+    scaled = (x.reshape(t_size, num_block, block_size).float() * recip.float()).to(
+        torch.bfloat16
+    )
     scaled_f32 = scaled.float()
     # SatMode::SAT：非 NaN 的溢出值钳到 ±448，NaN 保持 NaN
     finite = ~torch.isnan(scaled_f32)
-    scaled_f32 = torch.where(finite, scaled_f32.clamp(-FP8_E4M3_MAX, FP8_E4M3_MAX), scaled_f32)
-    quant_x = scaled_f32.to(torch.float8_e4m3fn).view(torch.uint8).reshape(t_size, k_size)
+    scaled_f32 = torch.where(
+        finite, scaled_f32.clamp(-FP8_E4M3_MAX, FP8_E4M3_MAX), scaled_f32
+    )
+    quant_x = (
+        scaled_f32.to(torch.float8_e4m3fn).view(torch.uint8).reshape(t_size, k_size)
+    )
 
     # scale 按 pack-2 约定排布：奇数块补零列
     pad = num_block % 2
@@ -110,11 +120,15 @@ def mx_quant_golden(x: torch.Tensor, block_size: int = MX_BLOCK_SIZE):
     return quant_x.cpu(), x_scale
 
 
-def dequant_mx(quant_x: torch.Tensor, x_scale: torch.Tensor, block_size: int = MX_BLOCK_SIZE) -> torch.Tensor:
+def dequant_mx(
+    quant_x: torch.Tensor, x_scale: torch.Tensor, block_size: int = MX_BLOCK_SIZE
+) -> torch.Tensor:
     """把 ``(quant_x, x_scale)`` 反量化回 float32，用于端到端 matmul 参考。"""
     t_size, k_size = quant_x.shape
     num_block = k_size // block_size
-    elems = quant_x.view(torch.float8_e4m3fn).float().reshape(t_size, num_block, block_size)
+    elems = (
+        quant_x.view(torch.float8_e4m3fn).float().reshape(t_size, num_block, block_size)
+    )
     scale_byte = x_scale.reshape(t_size, -1)[:, :num_block].to(torch.int32)
     scale = torch.pow(2.0, (scale_byte - 127).float()).reshape(t_size, num_block, 1)
     return (elems * scale).reshape(t_size, k_size)
