@@ -426,9 +426,9 @@ public:
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
         if constexpr (DN_LAYOUT) {
-            // 不合轴(BN1_S1): fdBN2Idx 语义为 bn1 = b*n1, K/V 按 n2 = n1/gSize 共享
-            taskInfo_.bIdx = fd.fdBN2Idx / constInfo_.n1Size;
-            taskInfo_.n1Idx = fd.fdBN2Idx % constInfo_.n1Size;
+            // 不合轴(BN1_S1): fdBN1Idx 语义为 bn1 = b*n1, K/V 按 n2 = n1/gSize 共享
+            taskInfo_.bIdx = fd.fdBN1Idx / constInfo_.n1Size;
+            taskInfo_.n1Idx = fd.fdBN1Idx % constInfo_.n1Size;
             taskInfo_.n2Idx = taskInfo_.n1Idx / constInfo_.gSize;
             taskInfo_.gIdx = taskInfo_.n1Idx % constInfo_.gSize;
             taskInfo_.s1Idx = fd.fdMIdx * mBaseSize;

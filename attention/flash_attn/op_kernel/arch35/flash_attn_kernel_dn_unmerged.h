@@ -578,11 +578,11 @@ public:
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
         bn1Start_ =
-            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN1_START_INDEX, sectionIdx));
         s1OStart_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
         s2OStart_ =
             faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
-        bn1End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
+        bn1End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN1_END_INDEX, sectionIdx));
         s1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
         coreFirstTmpOutWsPos_ = faMetaDataGm_.GetValue(
@@ -596,8 +596,8 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        fdParams_.fdBN2Idx =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        fdParams_.fdBN1Idx =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_BN1_IDX_INDEX, sectionIdx));
         fdParams_.fdMIdx = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
         fdParams_.fdWorkspaceIdx =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));

@@ -216,6 +216,7 @@ namespace FlashAttnKernel {
 
 struct FDparams {
     uint32_t fdCoreEnable;
+    uint32_t fdBN1Idx;
     uint32_t fdBN2Idx;
     uint32_t fdMIdx;
     uint32_t fdS2SplitNum;
