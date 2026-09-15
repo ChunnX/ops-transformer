@@ -18,6 +18,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn/aclnn_base.h"
+#include "acl/acl_rt.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
@@ -47,10 +48,17 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    // 平台参数由 GetCurrentPlatformInfo（硬件）推导，先取出供容量校验和 l0 透传使用
+    // 与主算子 ACLNN tiling 保持一致：优先获取当前线程的有效核数（含 stream 控核）。
+    // 查询失败时，与 opbase InitL2Phase1Context 一样回退到硬件平台核数。
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
-    uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
-    uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
+    uint32_t aicCoreNum = 0;
+    uint32_t aivCoreNum = 0;
+    if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_CUBE_CORE, &aicCoreNum) != ACL_SUCCESS) {
+        aicCoreNum = npuInfo.GetCubeCoreNum();
+    }
+    if (aclrtGetResInCurrentThread(ACL_RT_DEV_RES_VECTOR_CORE, &aivCoreNum) != ACL_SUCCESS) {
+        aivCoreNum = npuInfo.GetVectorCoreNum();
+    }
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
 
     auto ret = FlashMlaWithKvcacheMetadataCheck::ParamsCheck(
@@ -86,7 +94,7 @@ aclnnStatus aclnnFlashMlaWithKvcacheMetadataGetWorkspaceSize(
 
     // l0 函数输入槽位与 meta.txt 定义的 3 输入契约一致：
     //   slot0=cuSeqlensQ, slot1=cacheSeqlens, slot2=sequsedQ
-    // 平台参数 socVersion/aicCoreNum/aivCoreNum 由 GetCurrentPlatformInfo 推导后透传。
+    // 将有效核数透传给 AICPU，任务分配和 metadata header 使用同一组核数。
     auto output =
         l0op::FlashMlaWithKvcacheMetadata(cuSeqlensQContiguous, cacheSeqlensContiguous, sequsedQContiguous, maxSeqlenQ,
                                           maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, maskMode, layoutQ,
