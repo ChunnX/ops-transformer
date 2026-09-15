@@ -375,15 +375,22 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckAndGetAttrsInfo()
     const int64_t* numOutTokensPtr = attrs->GetAttrPointer<int64_t>(PERMUTE_WITH_EP_ARRT_NUM_OUT_TOKENS);
     const bool* paddedModePtr = attrs->GetAttrPointer<bool>(PERMUTE_WITH_EP_ARRT_PADDED_MODE);
 
-    if (rangePtr != nullptr) {
-        if (rangePtr->GetSize() != RANGE_SIZE) {
-            OP_LOGE(context_->GetNodeName(), "the size of range only support 2");
-            return ge::GRAPH_FAILED;
-        }
+    // aclnn 语义（aclnnMoeTokenPermuteWithEp.md）: rangeOptional 为空时忽略 range，
+    // 输出 token 数回退到 num_out_tokens（对应 golden: range 为空时 start=0, end=num_out_tokens）。
+    // 编译/运行链路中"range 未提供"有三种到达形态，均需视为无效:
+    //   1) rangePtr == nullptr（属性未设置）
+    //   2) 空 list（TTK 编译接口对 range=None 传空 ContinuousVector，GetSize()==0）
+    //   3) 默认值 [0, 0]（编译接口对未设置的可选属性填 def 默认值）
+    bool rangeValid = (rangePtr != nullptr) && (rangePtr->GetSize() == RANGE_SIZE);
+    if (rangeValid) {
         const int64_t* rangeList = reinterpret_cast<const int64_t*>(rangePtr->GetData());
         start = rangeList[0];
         end = rangeList[1];
-    } else {
+        if (start == 0 && end == 0) {
+            rangeValid = false; // [0,0] 为默认填充值，语义等同未提供
+        }
+    }
+    if (!rangeValid) {
         start = 0;
         end = *numOutTokensPtr;
     }

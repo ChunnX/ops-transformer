@@ -55,6 +55,17 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_ep(
     }
 
     GET_TILING_DATA(tilingData, tiling);
+    // 空输入保护: n*topK==0 时三个输出均为空 tensor，语义上无任何工作，在 kernel 总入口统一短路。
+    // 后果: 不做保护时 tiling 产生 CoreLoop=0，两个搬运类 Process() 尾部无条件调用的
+    // CopyInIndices(CoreLoop-1=-1) 负偏移访问 GM——未定义行为，950 实测设备侧任务失败
+    // （NO_OUTPUT，TTK bb_l1_0/1/50），且随运行时内存布局可能无症状漂移，不可依赖。
+    // 选择入口防护而非下游修补: 一处覆盖排序/搬运全部阶段及全部 tilingKey 路径（sort 类
+    // 同为"主循环+尾部单独处理"模式，同样依赖 CoreLoop>=1）；替代方案（各 Process 加守卫
+    // 改动面大易漏 / tiling 钳位 CoreLoop>=1 语义扭曲 / tiling 层报错违反"支持空 tensor"
+    // 文档承诺）均不如入口短路。
+    if (tilingData.n * tilingData.topK == 0) {
+        return;
+    }
     if (workspace == nullptr) {
         return;
     }
