@@ -74,17 +74,11 @@ constexpr double L2_SIZE_FULL = 192;  // soc 910B L2 full size
 constexpr double PART_L2_UTIL = 0.85; // cube utilization
 constexpr double FULL_L2_UTIL = 0.75; // cube utilization
 constexpr double NO_L2_UTIL = 0.65;   // cube utilization
-constexpr uint64_t MIN_DATA_PAR1 = 4 * ONE_GBYTE;
-constexpr uint64_t MIN_DATA_PAR2 = 6 * ONE_MBYTE;
-constexpr uint64_t MIN_M_SIZE_SOC310P = 512;
 constexpr uint64_t MIN_COMM_RANKDIM = 2;
 
 enum class SocVersion {
-    SOC910_B,
-    SOC310_P,
-    SOC910_93,
-    SOC910_B4,
-    SOC950,
+    SOC950 = 4, // 值 4 为键约定: 查表 key 前缀 "{soc}_" 的 soc 段沿用旧枚举序(950=4), 勿改;
+                // 引擎仅支持 arch35/950(旧芯片枚举值随旧芯片逻辑剥离, B 家族原位副本保留完整值域)
 };
 
 enum class KernelType {
@@ -119,16 +113,6 @@ struct MatmulParameters {
     double cyclePerMicroSec; // frequency
 };
 
-struct MinMatmulShapeParameters {
-    MinMatmulShapeParameters()
-        : mmMinDataSize1(MIN_DATA_PAR1),
-          mmMinDataSize2(MIN_DATA_PAR2),
-          minMSize(MIN_M_SIZE_SOC310P) {};
-    uint64_t mmMinDataSize1;
-    uint64_t mmMinDataSize2;
-    uint64_t minMSize;
-};
-
 struct L2CacheEstimateParameters {
     uint64_t sizePartL2;
     uint64_t sizeFullL2;
@@ -138,11 +122,7 @@ struct L2CacheEstimateParameters {
 };
 
 enum class HCCLType {
-    FULL_MESH,
-    DOUBLE_RING,
-    SWITCH,
-    RING_RANK2_310P,
-    RING_RANK4_310P,
+    FULL_MESH, // 950 仅全互联一种通信形态(旧芯片环网形态随旧芯片逻辑剥离)
 };
 
 enum class TopoType {
@@ -290,31 +270,28 @@ inline CommEngine ParseCommEngine(const char *commMode)
 // ============================================================================
 // 一、模型层
 // ============================================================================
-// ---- 1.1 HCCL 通信模型与拟合表（自由长度分支）----
-// ============================================================================
+// ---- 1.1 HCCL 通信模型与拟合表（自由长度分支, arch35/950 专用）----
+// 由旧 HCCLPerformanceModel + HCCLPerformanceArch35 合并精简(2026-09-15):
+// 本引擎按设计仅在 arch35(SOC950) 标卡 4P/8P 生效, 旧芯片分支(310P 环网/910_93
+// 双环/基表两段式查表——其结果恒被 arch35 四段式查表覆盖)经 grep 证实 5 个消费
+// 算子零调用后剥离; 老芯片的真实需求由原位保留的 B 家族(mc2/common/op_host/
+// op_tiling)满足。活跃 API 面(5 算子钩子实测): CommTime/InverseCommTime/
+// SetCommShapeLen/SetCommDTypeSize/GetCommDTypeSize/SetCommDtypeSizeExpansionFraction/
+// commTimeFactor_/GetRankTileNum(InitCtx 内部)。
 
-constexpr uint64_t HCCL_MIN_TILE_LEN = 64 * ONE_KBYTE;
-constexpr uint64_t HCCL_MIN_TILE_LEN_COARSE = 2 * ONE_MBYTE;
-constexpr const char *DEFAULT_KEY_FOR_FITTING_MAP = "0_0";
-constexpr double FULL_MESH_TIME_FACTOR = 2.0;
-constexpr uint64_t DOUBLE_RING_RANKTILE = 2;
-constexpr uint64_t RING_TOTAL_STEP_PAR1 = 1;
-constexpr uint64_t RING_TOTAL_STEP_PAR2 = 2;
-constexpr uint64_t RANK_FOUR = 4;
-constexpr uint64_t FITTING_RANK = 8;
-constexpr double LOCAL_REDUCE_FACTOR = 0.4; // 确定性Local ReduceScatter额外耗时参数
+constexpr double FULL_MESH_TIME_FACTOR = 2.0; // allreduce time is 2.0x allgather or reducescatter
+constexpr uint64_t FITTING_RANK = 8;          // 拟合采用 8 die 通信
 
-// ====== 拟合表注入 schema（行数据由算子侧标定头维护） ======
+// ====== 拟合表注入 schema（行数据由算子侧标定头维护）======
 struct CommFitRow {
-    const char *key; // 查表 key, 由模型侧按 key 规则生成（见 GetCommMethodString / GetCommInfoString）
+    const char *key; // 查表 key: "{soc}_{kernelType}_{topoType}_{rankDim}", soc 段恒为 4(SOC950)
     HCCLFittingParameters params;
 };
 
 struct CommFitTable {
     const CommFitRow *rows;
     size_t rowCount;
-    HCCLFittingParameters
-        defaultParams; // key 未命中时的回退行（旧 FITTING_PARAMETER_MAP/ARCH35_MAP 的 DEFAULT_KEY 行内容）
+    HCCLFittingParameters defaultParams; // key 未命中时的回退行 + rankDim 折算因子缩放
 };
 
 // 精确 key 匹配, 未命中返回 nullptr（语义与旧 map::find == end 一致）
@@ -334,51 +311,29 @@ inline HCCLFittingParameters MakeLinearCommFit(double slopeUsPerMb, double inter
     return {0, 0, slopeUsPerMb, interceptUs, 0, 0, 0, 0, 0, 0, 0, 0};
 }
 
-class HCCLPerformanceModel {
+class HCCLPerformanceArch35 {
 public:
     HCCLFittingParameters commEstimatePar_;
     HCCLInfo commTypeInfo_;
     double commTimeFactor_ = 1.0; // allreduce time is 2.0x allgather or reducescatter
     uint64_t lookUpTileNum_ = 1;  // 数据拟合查表参数
-    std::string keyToFittingMap_ = DEFAULT_KEY_FOR_FITTING_MAP;
-    SocVersion socVersion_ = SocVersion::SOC910_B;
+    std::string keyToFittingMap_;
 
-    void SetCommParametersBaseSocType(SocVersion inputSocVersion)
-    {
-        if (inputSocVersion == SocVersion::SOC310_P) {
-            SetCommMethodVersion310P(); // 310P只支持MatmulAllreduce算子
-            socVersion_ = SocVersion::SOC310_P;
-        } else if (inputSocVersion == SocVersion::SOC910_93) {
-            InitSOC91093();
-            socVersion_ = SocVersion::SOC910_93;
-        } else if (inputSocVersion == SocVersion::SOC950) {
-            InitParametersForFullMesh();
-            socVersion_ = SocVersion::SOC950;
-        } else {
-            InitParametersForFullMesh();
-        }
-    }
-    // Constructor
-    HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType, const CommFitTable &fitTable,
-                         SocVersion inputSocVersion = SocVersion::SOC910_B)
+    // Constructor（= 旧 基类构造 + Arch35 构造的净状态; soc 恒 SOC950, key soc 段恒为 4）
+    HCCLPerformanceArch35(uint32_t inputRankDim, KernelType inputKernelType, const CommFitTable &fitTable,
+                          TopoType topoType = TopoType::STANDARD_CARD)
         : fitTable_(fitTable)
     {
         commTypeInfo_.kernelType = inputKernelType; // 区分哪个MC2算子
         commTypeInfo_.rankDim = std::max(static_cast<uint64_t>(inputRankDim), MIN_COMM_RANKDIM); // 并行维度最小为2
         commTypeInfo_.commDtypeSizeExpansionFraction = 1;
-        SetCommParametersBaseSocType(inputSocVersion);
-        SetMaxStepSize();
-        keyToFittingMap_ = GetCommMethodString(inputSocVersion);
-        GetCommEstimateParameters();
+        InitParametersForFullMesh();
+        commTypeInfo_.maxStepSize = 1;
+        InitArch35Parameters();
+        commTypeInfo_.topoType = topoType;
+        GetCommArch35Parameters();
     };
-    std::string GetCommMethodString(SocVersion socType)
-    {
-        return std::to_string(static_cast<int>(socType)) + "_" +
-               std::to_string(static_cast<int>(commTypeInfo_.commMethod));
-    }
 
-    void SetCommMethodVersion310P();
-    void SetMaxStepSize();
     void SetCommShapeLen(uint64_t len)
     {
         commTypeInfo_.commMatrixLen = len;
@@ -399,268 +354,116 @@ public:
     {
         return commTypeInfo_.commDtypeSize;
     }
-    void SetCommTimeFactor(double factor)
+    void ChangeCommTimeFactorByDivision(double factor)
     {
-        commTimeFactor_ = factor;
+        if (factor > 0) {
+            commTimeFactor_ /= factor;
+        }
     }
-    void ChangeCommTimeFactorByDivision(double factor);
-    void SetFullMeshCommTimeFactor();
-    void SetRingCommTimeFactor();
-    void InitParametersForFullMesh();
-    void InitSOC91093();
-    void SetLocalReduceFactor();
-
-    uint64_t GetFullMeshRankTileNum();
-    uint64_t GetRankTileNum();
-    void GetCommEstimateParameters();
-    uint64_t GetMaxStepSize();
-    uint64_t GetLinearThresholdLen();
-    uint64_t GetLinearThresholdLenCoarse();
+    void SetFullMeshCommTimeFactor()
+    {
+        // 通信查表使用总数据量，实际时间 = 总数据量 / rankDim / 带宽; 拟合采用 8 die 通信
+        commTimeFactor_ = FULL_MESH_TIME_FACTOR;
+        ChangeCommTimeFactorByDivision(static_cast<double>(FITTING_RANK) / static_cast<double>(commTypeInfo_.rankDim));
+    }
+    void InitParametersForFullMesh()
+    {
+        commTypeInfo_.commMethod = HCCLType::FULL_MESH;
+        if ((commTypeInfo_.kernelType == KernelType::ALL_GATHER) ||
+            (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER)) {
+            SetFullMeshCommTimeFactor();
+            lookUpTileNum_ = commTypeInfo_.rankDim;
+        }
+    }
+    uint64_t GetFullMeshRankTileNum()
+    {
+        if (commTypeInfo_.kernelType == KernelType::ALL_GATHER) {
+            return commTypeInfo_.rankDim - 1;
+        }
+        return commTypeInfo_.rankDim;
+    }
+    uint64_t GetRankTileNum()
+    {
+        if (commTypeInfo_.kernelType != KernelType::ALL_REDUCE) {
+            return GetFullMeshRankTileNum();
+        }
+        return 1;
+    }
+    void InitArch35Parameters()
+    {
+        if ((commTypeInfo_.kernelType == KernelType::ALL_GATHER) ||
+            (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
+            lookUpTileNum_ = commTypeInfo_.rankDim;
+            commTimeFactor_ = 1;
+        }
+    }
+    std::string GetCommInfoString()
+    {
+        // key = "{soc}_{kernelType}_{topoType}_{rankDim}", soc 段恒为 4(SOC950)
+        return std::string("4_") + std::to_string(static_cast<int>(commTypeInfo_.kernelType)) + "_" +
+               std::to_string(static_cast<int>(commTypeInfo_.topoType)) + "_" +
+               std::to_string(static_cast<int>(commTypeInfo_.rankDim));
+    };
+    void GetCommArch35Parameters()
+    {
+        keyToFittingMap_ = GetCommInfoString();
+        const HCCLFittingParameters *hit = FindCommFitParams(fitTable_, keyToFittingMap_);
+        if (hit != nullptr) {
+            commEstimatePar_ = *hit;
+        } else {
+            commEstimatePar_ = fitTable_.defaultParams;
+            ChangeCommTimeFactorByDivision(static_cast<double>(FITTING_RANK) /
+                                           static_cast<double>(commTypeInfo_.rankDim));
+        }
+    }
 
     // 性能拟合函数
-    double CommTime(uint64_t mSize) const;
-    virtual uint64_t InverseCommTime(double targetTime) const;
-    virtual ~HCCLPerformanceModel() {}
+    double CommTime(uint64_t mSize) const
+    {
+        double commDataSize = mSize * commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes();
+        double tmpSize = commDataSize / ONE_MBYTE;
+        double result = commEstimatePar_.timeToSizeBoundary1;
+        if (tmpSize > commEstimatePar_.sizeToTimeBoundary2) {
+            result = commEstimatePar_.sizeToTimeLinearGradient * tmpSize + commEstimatePar_.sizeToTimeLinearOffset;
+        } else if (tmpSize > commEstimatePar_.sizeToTimeBoundary1) {
+            result = commEstimatePar_.sizeToTimeParabolicPar1 * tmpSize * tmpSize +
+                     commEstimatePar_.sizeToTimeParabolicPar2 * tmpSize + commEstimatePar_.sizeToTimeParabolicPar3;
+        }
+
+        result /= commTimeFactor_;
+        return result;
+    }
+
+    uint64_t InverseCommTime(double targetTime) const
+    {
+        double tmpSize = commEstimatePar_.sizeToTimeBoundary1;
+        if (targetTime > commEstimatePar_.timeToSizeBoundary2) {
+            tmpSize =
+                (targetTime - commEstimatePar_.sizeToTimeLinearOffset) / commEstimatePar_.sizeToTimeLinearGradient;
+        } else if (targetTime > commEstimatePar_.timeToSizeBoundary1) {
+            if (commTypeInfo_.kernelType == KernelType::ALL_REDUCE &&
+                commEstimatePar_.timeToSizeParabolicPar2 != 0.0f) {
+                tmpSize =
+                    (targetTime - commEstimatePar_.timeToSizeParabolicPar3) / commEstimatePar_.timeToSizeParabolicPar2;
+            } else {
+                tmpSize = (-sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
+                                 (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
+                           commEstimatePar_.timeToSizeParabolicPar3);
+                if (commEstimatePar_.timeToSizeParabolicPar3 < 0) {
+                    tmpSize = sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
+                                   (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
+                              commEstimatePar_.timeToSizeParabolicPar3;
+                }
+            }
+        }
+        return static_cast<uint64_t>(tmpSize * ONE_MBYTE /
+                                     (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
+    }
 
 protected:
     const CommFitTable &fitTable_; // 拟合表由构造方注入（算子侧标定头）
 };
 
-inline void HCCLPerformanceModel::SetCommMethodVersion310P()
-{
-    if (commTypeInfo_.rankDim == RANK_FOUR) {
-        commTypeInfo_.commMethod = HCCLType::RING_RANK4_310P;
-        return;
-    }
-    commTypeInfo_.commMethod = HCCLType::RING_RANK2_310P;
-}
-
-inline void HCCLPerformanceModel::ChangeCommTimeFactorByDivision(double factor)
-{
-    if (factor > 0) {
-        commTimeFactor_ /= factor;
-    }
-}
-
-inline void HCCLPerformanceModel::SetFullMeshCommTimeFactor()
-{
-    // 通信查表使用总数据量，实际时间 = 总数据量 / rankDim / 带宽
-    // 拟合采用8 die通信
-    commTimeFactor_ = FULL_MESH_TIME_FACTOR;
-    ChangeCommTimeFactorByDivision(static_cast<double>(FITTING_RANK) / static_cast<double>(commTypeInfo_.rankDim));
-}
-
-inline void HCCLPerformanceModel::SetRingCommTimeFactor()
-{
-    // 通信查表使用总数据量，实际时间 = 总数据量 * 2 * (rankDim - 1) / rankDim /
-    // 带宽 拟合采用8 die通信
-    commTimeFactor_ = FULL_MESH_TIME_FACTOR;
-    double fittingRatio = (static_cast<double>(FITTING_RANK) - 1.0) / static_cast<double>(FITTING_RANK);
-    double currentRatio =
-        (static_cast<double>(commTypeInfo_.rankDim) - 1.0) / static_cast<double>(commTypeInfo_.rankDim);
-    ChangeCommTimeFactorByDivision(currentRatio / fittingRatio);
-}
-
-inline void HCCLPerformanceModel::InitParametersForFullMesh()
-{
-    commTypeInfo_.commMethod = HCCLType::FULL_MESH;
-    if ((commTypeInfo_.kernelType == KernelType::ALL_GATHER) ||
-        (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER)) {
-        SetFullMeshCommTimeFactor();
-        lookUpTileNum_ = commTypeInfo_.rankDim;
-    }
-}
-
-inline void HCCLPerformanceModel::InitSOC91093()
-{
-    commTypeInfo_.commMethod = HCCLType::DOUBLE_RING;
-    SetRingCommTimeFactor();
-    lookUpTileNum_ = commTypeInfo_.rankDim;
-}
-
-inline void HCCLPerformanceModel::SetLocalReduceFactor()
-{
-    // 拟合采用8 die通信
-    // die的数量越多，local累加的步骤就越多
-    double changeFactor =
-        1.0 + LOCAL_REDUCE_FACTOR * static_cast<double>(commTypeInfo_.rankDim) / static_cast<double>(FITTING_RANK);
-    ChangeCommTimeFactorByDivision(changeFactor);
-}
-
-inline uint64_t HCCLPerformanceModel::GetFullMeshRankTileNum()
-{
-    if (commTypeInfo_.kernelType == KernelType::ALL_GATHER) {
-        return commTypeInfo_.rankDim - 1;
-    }
-    return commTypeInfo_.rankDim;
-}
-
-inline uint64_t HCCLPerformanceModel::GetRankTileNum()
-{
-    if (commTypeInfo_.kernelType != KernelType::ALL_REDUCE) {
-        return GetFullMeshRankTileNum();
-    }
-    return 1;
-}
-
-inline void HCCLPerformanceModel::SetMaxStepSize()
-{
-    if (commTypeInfo_.commMethod == HCCLType::DOUBLE_RING) {
-        if (commTypeInfo_.rankDim == MIN_COMM_RANKDIM) { // rankDim = 2 uses full-mesh
-            commTypeInfo_.maxStepSize = 1UL;
-            return;
-        }
-        if (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER) {
-            commTypeInfo_.maxStepSize = commTypeInfo_.rankDim;
-            return;
-        }
-        if (commTypeInfo_.kernelType == KernelType::ALL_GATHER) {
-            commTypeInfo_.maxStepSize = commTypeInfo_.rankDim - 1;
-            return;
-        }
-    }
-    commTypeInfo_.maxStepSize = 1;
-}
-
-inline uint64_t HCCLPerformanceModel::GetMaxStepSize()
-{
-    return commTypeInfo_.maxStepSize;
-}
-
-inline uint64_t HCCLPerformanceModel::GetLinearThresholdLen()
-{
-    uint64_t resultLen =
-        static_cast<uint64_t>(HCCL_MIN_TILE_LEN / (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
-    return resultLen;
-}
-
-inline uint64_t HCCLPerformanceModel::GetLinearThresholdLenCoarse()
-{
-    uint64_t resultLen = static_cast<uint64_t>(
-        HCCL_MIN_TILE_LEN_COARSE / (commTypeInfo_.commMatrixLen * commTypeInfo_.rankDim * GetRealDtypeSizes()));
-    return resultLen;
-}
-
-inline void HCCLPerformanceModel::GetCommEstimateParameters()
-{
-    commEstimatePar_ = fitTable_.defaultParams;
-    const HCCLFittingParameters *hit = FindCommFitParams(fitTable_, keyToFittingMap_);
-    if (hit != nullptr) {
-        commEstimatePar_ = *hit;
-    }
-}
-
-inline double HCCLPerformanceModel::CommTime(uint64_t mSize) const
-{
-    double commDataSize = mSize * commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes();
-    double tmpSize = commDataSize / ONE_MBYTE;
-    double result = commEstimatePar_.timeToSizeBoundary1;
-    if (tmpSize > commEstimatePar_.sizeToTimeBoundary2) {
-        result = commEstimatePar_.sizeToTimeLinearGradient * tmpSize + commEstimatePar_.sizeToTimeLinearOffset;
-    } else if (tmpSize > commEstimatePar_.sizeToTimeBoundary1) {
-        result = commEstimatePar_.sizeToTimeParabolicPar1 * tmpSize * tmpSize +
-                 commEstimatePar_.sizeToTimeParabolicPar2 * tmpSize + commEstimatePar_.sizeToTimeParabolicPar3;
-    }
-
-    result /= commTimeFactor_;
-    return result;
-}
-
-inline uint64_t HCCLPerformanceModel::InverseCommTime(double targetTime) const
-{
-    targetTime *= commTimeFactor_;
-    double tmpSize = commEstimatePar_.sizeToTimeBoundary1;
-    if (targetTime > commEstimatePar_.timeToSizeBoundary2) {
-        tmpSize = (targetTime - commEstimatePar_.sizeToTimeLinearOffset) / commEstimatePar_.sizeToTimeLinearGradient;
-    } else if (targetTime > commEstimatePar_.timeToSizeBoundary1) {
-        if (socVersion_ == SocVersion::SOC950) {
-            tmpSize =
-                (targetTime - commEstimatePar_.timeToSizeParabolicPar3) / commEstimatePar_.timeToSizeParabolicPar2;
-        } else {
-            tmpSize = (-sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
-                             (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
-                       commEstimatePar_.timeToSizeParabolicPar3);
-            if (commEstimatePar_.timeToSizeParabolicPar3 < 0) {
-                tmpSize = sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
-                               (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
-                          commEstimatePar_.timeToSizeParabolicPar3;
-            }
-        }
-    }
-    return static_cast<uint64_t>(tmpSize * ONE_MBYTE /
-                                 (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
-}
-
-// ====== arch35 模型（来源: hccl_performance_arch35.h/.cpp） ======
-class HCCLPerformanceArch35 : public HCCLPerformanceModel {
-public:
-    HCCLPerformanceArch35(uint32_t inputRankDim, KernelType inputKernelType, const CommFitTable &arch35FitTable,
-                          SocVersion socVersion = SocVersion::SOC950, TopoType topoType = TopoType::STANDARD_CARD)
-        : HCCLPerformanceModel(inputRankDim, inputKernelType, arch35FitTable, socVersion)
-    {
-        InitArch35Parameters();
-        commTypeInfo_.topoType = topoType;
-        GetCommArch35Parameters(socVersion);
-    }
-
-    std::string GetCommInfoString(SocVersion socVersion);
-    void GetCommArch35Parameters(SocVersion socVersion);
-    void InitArch35Parameters();
-    uint64_t InverseCommTime(double targetTime) const override;
-};
-
-inline std::string HCCLPerformanceArch35::GetCommInfoString(SocVersion socVersion)
-{
-    return std::to_string(static_cast<int>(socVersion)) + "_" +
-           std::to_string(static_cast<int>(commTypeInfo_.kernelType)) + "_" +
-           std::to_string(static_cast<int>(commTypeInfo_.topoType)) + "_" +
-           std::to_string(static_cast<int>(commTypeInfo_.rankDim));
-};
-
-inline void HCCLPerformanceArch35::GetCommArch35Parameters(SocVersion socVersion)
-{
-    keyToFittingMap_ = GetCommInfoString(socVersion);
-    const HCCLFittingParameters *hit = FindCommFitParams(fitTable_, keyToFittingMap_);
-    if (hit != nullptr) {
-        commEstimatePar_ = *hit;
-    } else {
-        commEstimatePar_ = fitTable_.defaultParams;
-        ChangeCommTimeFactorByDivision(static_cast<double>(FITTING_RANK) / static_cast<double>(commTypeInfo_.rankDim));
-    }
-}
-
-inline void HCCLPerformanceArch35::InitArch35Parameters()
-{
-    if ((commTypeInfo_.kernelType == KernelType::ALL_GATHER) ||
-        (commTypeInfo_.kernelType == KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL)) {
-        lookUpTileNum_ = commTypeInfo_.rankDim;
-        commTimeFactor_ = 1;
-    }
-}
-
-inline uint64_t HCCLPerformanceArch35::InverseCommTime(double targetTime) const
-{
-    double tmpSize = commEstimatePar_.sizeToTimeBoundary1;
-    if (targetTime > commEstimatePar_.timeToSizeBoundary2) {
-        tmpSize = (targetTime - commEstimatePar_.sizeToTimeLinearOffset) / commEstimatePar_.sizeToTimeLinearGradient;
-    } else if (targetTime > commEstimatePar_.timeToSizeBoundary1) {
-        if (commTypeInfo_.kernelType == KernelType::ALL_REDUCE && commEstimatePar_.timeToSizeParabolicPar2 != 0.0f) {
-            tmpSize =
-                (targetTime - commEstimatePar_.timeToSizeParabolicPar3) / commEstimatePar_.timeToSizeParabolicPar2;
-        } else {
-            tmpSize = (-sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
-                             (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
-                       commEstimatePar_.timeToSizeParabolicPar3);
-            if (commEstimatePar_.timeToSizeParabolicPar3 < 0) {
-                tmpSize = sqrt(commEstimatePar_.timeToSizeParabolicPar1 *
-                               (targetTime + commEstimatePar_.timeToSizeParabolicPar2)) +
-                          commEstimatePar_.timeToSizeParabolicPar3;
-            }
-        }
-    }
-    return static_cast<uint64_t>(tmpSize * ONE_MBYTE /
-                                 (commTypeInfo_.commMatrixLen * lookUpTileNum_ * GetRealDtypeSizes()));
-}
 // ---- 1.2 URMA 线性通信模型与拟合表 schema（wave-packing 分支）----
 // （v2 allto_all_matmul_v2 已验证代码原样迁入, 逐字节未改; 其模型/调度/门控语义
 //  见 ALLTO_ALL_MATMUL_V2_FIT_BALANCE_TILING_PLAN.md）
@@ -730,38 +533,17 @@ inline double FindEffMac(const EffMacRow *rows, size_t rowCount, bool isFp4, uin
     return 0.0;
 }
 
-// ---- 1.3 matmul 模型（两分支近似式不同, 并列保留）----
-// ============================================================================
+// ---- 1.3 matmul 模型（自由长度分支的 HCCL 算力/梯度模型; wave-packing 的 effMac
+// 理论式在 1.2 MatmulTheoryModel, 两分支近似式不同并列保留, 勿强行统一）----
+// 由旧 MatmulPerformanceModel + MatmulPerformanceArch35 合并精简(2026-09-15),
+// 剥离 310P/910_B4 分支与 4 参 FindCubeUtil(含其独占的 K 对齐修正链)——
+// 5 个消费算子钩子经 grep 证实仅用 1 参 FindCubeUtil/FindCubeUtilByL2Usage。
 
 namespace MatmulPerformance {
-constexpr double COMPUTES_PER_CYCLE = 4096;
-constexpr double K_UNALIGN_UTIL_RATIO_SOC310P = 0.8;
-constexpr double K_UNALIGN_UTIL_RATIO = 0.7;
-constexpr double K_UNALIGN_UTIL_RATIO_910_B4 = 0.8;
-constexpr uint64_t CACHE_LINE_LEN = 512;
-constexpr double HALF_K_UNALIGN_UTIL_RATIO = 0.5;
-constexpr uint64_t HALF_CACHE_LINE_LEN = 256;
-constexpr uint64_t K_ALIGN_LEN = 128;
-constexpr uint64_t MIN_M_SIZE_FACTOR = 3;
-constexpr uint64_t MARK_CORE_NUM_SOC910B = 20;
-// start: cycle per micro second for different soc version
-constexpr double CYCLE_PER_MICRO_SEC = 1.8 * ONE_KBYTE;
+constexpr double COMPUTES_PER_CYCLE = 4096; // 基础算力(查表未命中回退, 标定头回填同值)
+// start: cycle per micro second (SOC950)
 constexpr double CYCLE_PER_MICRO_SEC_NPUARCH_3510 = 1.65 * ONE_KBYTE;
-constexpr double CYCLE_PER_MICRO_SEC_VERSION310_P = 1.08 * ONE_KBYTE;
-// end: cycle per micro second for different soc version
-constexpr const char *DEFAULT_KEY_FOR_PAR_MAP = "0_0_2_2_2";
-constexpr double UTIL_BY_K_DENOMINATOR_OFFSET_SOC310P = 1.5;
-constexpr double UTIL_BY_K_DENOMINATOR_GRADIENT_SOC310P = 1.25;
-constexpr double UTIL_BY_K_DENOMINATOR_OFFSET_SOC310P_NO_QUANT = 1.5;
-constexpr double UTIL_BY_K_DENOMINATOR_GRADIENT_SOC310P_NO_QUANT = 0.5;
-constexpr uint64_t MIN_MSIZE_QUANT_SOC310P = 1024;
-constexpr uint64_t INT8_DTYPE_SIZE = 1;
-constexpr uint64_t SMALL_RANKTILE = 2;
-constexpr uint64_t BMM_DATASIZE_K_BAR = 2048;
-constexpr uint64_t BMM_DATASIZE_SMALL_K = 16 * ONE_GBYTE;
-constexpr uint64_t BMM_DATASIZE_LARGE_K = 24 * ONE_GBYTE;
-constexpr uint64_t MM_MIN_DATASIZE_NPUARCH_3510 = 5 * ONE_GBYTE;
-constexpr uint64_t MM_MIN_DATASIZE_OTHER_SOC = 10 * ONE_GBYTE; // M * N * K >= 10G
+// end: cycle per micro second
 constexpr double MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL = 1.4;
 constexpr double MNVALUE_THRESHOLD = 820;
 constexpr double KVALUE_THRESHOLD = 1280;
@@ -771,8 +553,9 @@ constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
 } // namespace MatmulPerformance
 
-// ====== 模型参数注入 schema（行数据由算子侧标定头维护） ======
-// key 规则见 MatmulPerformanceModel::GetCalcTypeString: "soc_calcType_aDtype_bDtype_cDtype"
+// ====== 模型参数注入 schema（行数据由算子侧标定头维护）======
+// key 规则见 MatmulPerformanceArch35::GetCalcTypeString: "soc_calcType_aDtype_bDtype_cDtype",
+// soc 段恒为 4(SOC950)
 struct CubeCalcRow {
     const char *key;
     double computesPerCycle;
@@ -793,7 +576,7 @@ struct MatmulPerfTable {
     const CubeCalcRow *cubeCalcRows;
     size_t cubeCalcCount;
     double defaultComputesPerCycle; // key 未命中回退（旧实现为常量 COMPUTES_PER_CYCLE, 由标定头回填同值）
-    // L2 档位查表（旧 L2_PARAMETER_MAP）
+    // L2 档位查表（旧 L2_PARAMETER_MAP; FindCubeUtilByL2Usage 的 diff/maxTileLen 仍消费）
     const L2ParamRow *l2Rows;
     size_t l2Count;
     L2CacheEstimateParameters defaultL2Params; // key 未命中回退（旧 DEFAULT_KEY 行内容 {128, 192, 0.85, 0.75, 0.65}）
@@ -803,49 +586,18 @@ struct MatmulPerfTable {
     TilingBestBaseBlock defaultBaseBlock; // soc 未命中回退（旧实现为 {BASE_BLOCK_M/N/K}, 由标定头回填同值）
 };
 
-class MatmulPerformanceModel {
+class MatmulPerformanceArch35 {
 public:
     MatmulParameters mmShapeInfo_;
     MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
-    uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC;
 
-    void SetCyclePerMicroSec(SocVersion inputSocVersion)
+    // Constructor（= 旧 基类构造 + Arch35 构造的净状态; soc 恒 SOC950, 频率恒 1689.6）
+    MatmulPerformanceArch35(const TilingArgs &args, const MatmulPerfTable &perfTable)
+        : perfTable_(perfTable)
     {
-        mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
-        if (inputSocVersion == SocVersion::SOC310_P) {
-            mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_VERSION310_P;
-        } else if (inputSocVersion == SocVersion::SOC950) {
-            mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
-            mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_NPUARCH_3510;
-        } else {
-            mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
-        }
-    }
-    void SetCalcType(const TilingArgs &args)
-    {
-        if ((mmShapeInfo_.socType == SocVersion::SOC950) &&
-            ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
-             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
-             (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2))) {
-            calcType_ = MatmulCalcType::QUANT;
-        } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
-                   (mmShapeInfo_.socType != SocVersion::SOC910_B)) { // A8W8
-            calcType_ = MatmulCalcType::QUANT;
-        } else if ((mmShapeInfo_.socType == SocVersion::SOC310_P) &&
-                   (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
-            mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;
-            calcType_ = MatmulCalcType::ANTI_QUANT;
-        }
-    }
-    // Constructor
-    MatmulPerformanceModel(const TilingArgs &args, const MatmulPerfTable &perfTable,
-                           SocVersion inputSocVersion = SocVersion::SOC910_B)
-        : calcType_(MatmulCalcType::FP16),
-          perfTable_(perfTable)
-    {
-        mmShapeInfo_.socType = inputSocVersion;
+        mmShapeInfo_.socType = SocVersion::SOC950;
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
         mmShapeInfo_.inMatrixADtypeSize = args.inputDtypeSize;
         mmShapeInfo_.inMatrixBDtypeSize = mmShapeInfo_.inMatrixADtypeSize;
@@ -853,15 +605,31 @@ public:
         mmShapeInfo_.mValue = args.mValue;
         mmShapeInfo_.nValue = args.nValue;
         mmShapeInfo_.kValue = args.kValue;
-        // 获取后续计算用的基本块
+        // 获取后续计算用的基本块(先默认, 再按 arch35 最优基本块覆盖)
         mmShapeInfo_.baseM = BASE_BLOCK_M;
         mmShapeInfo_.baseN = BASE_BLOCK_N;
         mmShapeInfo_.baseK = BASE_BLOCK_K;
         mmShapeInfo_.batchSize = 1UL; // 初始值
         SetCalcType(args);
-        SetCyclePerMicroSec(inputSocVersion);
+        mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC_NPUARCH_3510;
         GetMachineParameters();
+        TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock();
+        mmShapeInfo_.baseM = bestBaseBlock.baseM;
+        mmShapeInfo_.baseN = bestBaseBlock.baseN;
+        mmShapeInfo_.baseK = bestBaseBlock.baseK;
     };
+
+    // 950 量化语义: fp8/HIF8 或 A8W8 量化, 其余按 FP16 建模
+    // （旧实现的 310P A16W8 与 910_B INT8 排除分支随旧芯片逻辑剥离）
+    void SetCalcType(const TilingArgs &args)
+    {
+        if ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
+            (args.aType == matmul_tiling::DataType::DT_FLOAT8_E4M3FN) ||
+            (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2) ||
+            (args.aType == matmul_tiling::DataType::DT_INT8)) {
+            calcType_ = MatmulCalcType::QUANT;
+        }
+    }
 
     std::string GetCalcTypeString()
     {
@@ -870,93 +638,51 @@ public:
                "_" + std::to_string(mmShapeInfo_.inMatrixBDtypeSize) + "_" +
                std::to_string(mmShapeInfo_.outMatrixCDtypeSize);
     }
-    // 根据输入shape，预测cube利用率（取值0 < cubeUtil_ < 1），再用利用率预测耗时
-    // 耗时 = M * k * N / 频率 / 每cycle多少计算  /核数 / 利用率
-    void GetMachineParameters();
-    void CheckKvalueAlignVersion310P();
-    void FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce, uint64_t *maxTileLen = nullptr);
-    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t *maxTileLen = nullptr);
-    double FindCubeUtilQuantVersion310P() const;
-    double FindCubeUtilVersion310P() const;
-    void ChangeCubeUtilByKAlign();
-    void GetMatmulGradient();
-    void SetBatchSize(uint64_t bSize)
+    void GetMachineParameters()
     {
-        mmShapeInfo_.batchSize = bSize;
-    };
-    uint32_t GetBaseM()
-    {
-        return mmShapeInfo_.baseM;
-    };
-    uint32_t GetBaseN()
-    {
-        return mmShapeInfo_.baseN;
-    };
-    // 返回允许切分的最小数据量
-    uint64_t GetLinearThresholdLen(uint64_t rankTileNum);
-    // 性能预测
-    double MatmulTime(uint64_t tileSize, uint64_t rankTileNum);
-    uint64_t InverseMatmulTime(double targetTime, uint64_t rankTileNum);
-    virtual ~MatmulPerformanceModel() {}
-
-protected:
-    const MatmulPerfTable &perfTable_; // 模型参数表由构造方注入（算子侧标定头）
-};
-
-inline void MatmulPerformanceModel::GetMachineParameters()
-{
-    mmShapeInfo_.computesPerCycle = perfTable_.defaultComputesPerCycle;
-    auto key = GetCalcTypeString();
-    for (size_t i = 0; i < perfTable_.cubeCalcCount; ++i) {
-        if (key == perfTable_.cubeCalcRows[i].key) {
-            mmShapeInfo_.computesPerCycle = perfTable_.cubeCalcRows[i].computesPerCycle;
-            return;
+        mmShapeInfo_.computesPerCycle = perfTable_.defaultComputesPerCycle;
+        auto key = GetCalcTypeString();
+        for (size_t i = 0; i < perfTable_.cubeCalcCount; ++i) {
+            if (key == perfTable_.cubeCalcRows[i].key) {
+                mmShapeInfo_.computesPerCycle = perfTable_.cubeCalcRows[i].computesPerCycle;
+                return;
+            }
         }
     }
-}
-
-inline void MatmulPerformanceModel::CheckKvalueAlignVersion310P()
-{
-    if (mmShapeInfo_.kValue % MatmulPerformance::K_ALIGN_LEN != 0) {
-        cubeUtil_ *= MatmulPerformance::K_UNALIGN_UTIL_RATIO_SOC310P;
-    }
-}
-
-inline double MatmulPerformanceModel::FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t *maxTileLen)
-{
-    L2CacheEstimateParameters l2EstimatePar = perfTable_.defaultL2Params;
-    auto key = GetCalcTypeString();
-    for (size_t i = 0; i < perfTable_.l2Count; ++i) {
-        if (key == perfTable_.l2Rows[i].key) {
-            l2EstimatePar = perfTable_.l2Rows[i].params;
-            break;
+    // L2 档位利用率 + 950 调和平均公式(950 专用模型, 调和分支无条件执行)
+    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t *maxTileLen = nullptr)
+    {
+        L2CacheEstimateParameters l2EstimatePar = perfTable_.defaultL2Params;
+        auto key = GetCalcTypeString();
+        for (size_t i = 0; i < perfTable_.l2Count; ++i) {
+            if (key == perfTable_.l2Rows[i].key) {
+                l2EstimatePar = perfTable_.l2Rows[i].params;
+                break;
+            }
         }
-    }
-    uint64_t tmpBaseM = std::min(mmShapeInfo_.baseM, mSize);
-    uint64_t tmpBaseN = mmShapeInfo_.baseN;
-    uint64_t mBlockNum = (mSize + tmpBaseM - 1) / tmpBaseM * rankTileNum;
-    uint64_t nBlockNum = (mmShapeInfo_.nValue + tmpBaseN - 1) / tmpBaseN;
-    uint64_t memUsage =
-        std::min(mBlockNum, mmShapeInfo_.coreNum) * tmpBaseM + std::min(nBlockNum, mmShapeInfo_.coreNum) * tmpBaseN;
-    memUsage = memUsage * mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize / ONE_MBYTE;
-    double tmpUtil;
-    double diff = 0;
-    if (memUsage <= l2EstimatePar.sizePartL2) {
-        tmpUtil = l2EstimatePar.utilPartL2; // 0.85x cube utilization rate
-        diff = l2EstimatePar.sizePartL2 - memUsage;
-    } else if (memUsage <= l2EstimatePar.sizeFullL2) {
-        tmpUtil = l2EstimatePar.utilFullL2; // 0.75x cube utilization rate
-        diff = l2EstimatePar.sizeFullL2 - memUsage;
-    } else {
-        tmpUtil = l2EstimatePar.utilOutL2; // 0.65x cube utilization rate
-    }
-    tmpUtil *= static_cast<double>(std::min(mBlockNum * nBlockNum, mmShapeInfo_.coreNum) /
-                                   static_cast<double>(mmShapeInfo_.coreNum));
+        uint64_t tmpBaseM = std::min(mmShapeInfo_.baseM, mSize);
+        uint64_t tmpBaseN = mmShapeInfo_.baseN;
+        uint64_t mBlockNum = (mSize + tmpBaseM - 1) / tmpBaseM * rankTileNum;
+        uint64_t nBlockNum = (mmShapeInfo_.nValue + tmpBaseN - 1) / tmpBaseN;
+        uint64_t memUsage =
+            std::min(mBlockNum, mmShapeInfo_.coreNum) * tmpBaseM + std::min(nBlockNum, mmShapeInfo_.coreNum) * tmpBaseN;
+        memUsage = memUsage * mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize / ONE_MBYTE;
+        double tmpUtil;
+        double diff = 0;
+        if (memUsage <= l2EstimatePar.sizePartL2) {
+            tmpUtil = l2EstimatePar.utilPartL2; // 0.85x cube utilization rate
+            diff = l2EstimatePar.sizePartL2 - memUsage;
+        } else if (memUsage <= l2EstimatePar.sizeFullL2) {
+            tmpUtil = l2EstimatePar.utilFullL2; // 0.75x cube utilization rate
+            diff = l2EstimatePar.sizeFullL2 - memUsage;
+        } else {
+            tmpUtil = l2EstimatePar.utilOutL2; // 0.65x cube utilization rate
+        }
+        tmpUtil *= static_cast<double>(std::min(mBlockNum * nBlockNum, mmShapeInfo_.coreNum) /
+                                       static_cast<double>(mmShapeInfo_.coreNum));
 
-    /*950
-    cube利用率计算公式：两个输入为M、N的调和平均数和K。MN调和平均数的阈值为820，K阈值为1280，小于这个阈值
-    认为提供负增益，大于这个阈值认为提供正增益，但是正增益最高不超过1.4倍。乘方函数用来缓和增长率，减慢变化速度*/
-    if (mmShapeInfo_.socType == SocVersion::SOC950) {
+        /*950 cube利用率计算公式：两个输入为M、N的调和平均数和K。MN调和平均数的阈值为820，K阈值为1280，
+        小于这个阈值认为提供负增益，大于这个阈值认为提供正增益，但正增益最高不超过1.4倍。*/
         double mnharmonicMean = static_cast<double>(mSize * rankTileNum * mmShapeInfo_.nValue) /
                                 static_cast<double>(mSize * rankTileNum + mmShapeInfo_.nValue);
         double kExponentiated = std::min(
@@ -969,174 +695,19 @@ inline double MatmulPerformanceModel::FindCubeUtilByL2Usage(uint64_t mSize, uint
                 std::pow(MatmulPerformance::MNVALUE_THRESHOLD, MatmulPerformance::FRONT_UTIL_EXPONENT_COEFFICIENT));
         double result = MatmulPerformance::AVERAGE_CUBE_UTIL * kExponentiated * mnExponentiated;
         tmpUtil = std::min(MatmulPerformance::MAX_CUBE_UTIL, result);
-    }
 
-    if (maxTileLen != nullptr) {
-        *maxTileLen = mmShapeInfo_.mValue;
-        uint64_t tmpSize =
-            std::min(mBlockNum + rankTileNum, mmShapeInfo_.coreNum) - std::min(mBlockNum, mmShapeInfo_.coreNum);
-        tmpSize = tmpSize * mmShapeInfo_.inMatrixADtypeSize * tmpBaseM * mmShapeInfo_.kValue / ONE_MBYTE;
-        if (tmpSize > diff && memUsage <= l2EstimatePar.sizeFullL2 && nBlockNum > mmShapeInfo_.coreNum) {
-            *maxTileLen = (mSize + mmShapeInfo_.baseM - 1) / mmShapeInfo_.baseM * mmShapeInfo_.baseM;
-        }
-    }
-    return tmpUtil;
-}
-
-inline double MatmulPerformanceModel::FindCubeUtilQuantVersion310P() const
-{
-    return 1.0 / (MatmulPerformance::UTIL_BY_K_DENOMINATOR_OFFSET_SOC310P +
-                  MatmulPerformance::UTIL_BY_K_DENOMINATOR_GRADIENT_SOC310P * static_cast<double>(ONE_KBYTE) /
-                      static_cast<double>(mmShapeInfo_.kValue));
-}
-
-inline double MatmulPerformanceModel::FindCubeUtilVersion310P() const
-{
-    return 1.0 / (MatmulPerformance::UTIL_BY_K_DENOMINATOR_OFFSET_SOC310P_NO_QUANT +
-                  MatmulPerformance::UTIL_BY_K_DENOMINATOR_GRADIENT_SOC310P_NO_QUANT * static_cast<double>(ONE_KBYTE) /
-                      static_cast<double>(mmShapeInfo_.kValue));
-}
-
-inline void MatmulPerformanceModel::ChangeCubeUtilByKAlign()
-{
-    uint64_t kLength = mmShapeInfo_.kValue * mmShapeInfo_.inMatrixADtypeSize;
-    if (mmShapeInfo_.socType == SocVersion::SOC910_B4) {
-        if (kLength % MatmulPerformance::HALF_CACHE_LINE_LEN != 0) {
-            cubeUtil_ *= MatmulPerformance::K_UNALIGN_UTIL_RATIO_910_B4;
-        }
-        return;
-    }
-
-    if (kLength % MatmulPerformance::HALF_CACHE_LINE_LEN != 0) {
-        cubeUtil_ *= MatmulPerformance::HALF_K_UNALIGN_UTIL_RATIO;
-    } else if (kLength % MatmulPerformance::CACHE_LINE_LEN != 0) {
-        cubeUtil_ *= MatmulPerformance::K_UNALIGN_UTIL_RATIO;
-    }
-}
-
-inline void MatmulPerformanceModel::FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce,
-                                                 uint64_t *maxTileLen)
-{
-    if (mmShapeInfo_.socType == SocVersion::SOC310_P) {
-        if (calcType_ == MatmulCalcType::QUANT) {
-            cubeUtil_ = FindCubeUtilQuantVersion310P();
-        } else {
-            cubeUtil_ = FindCubeUtilVersion310P();
-        }
-        CheckKvalueAlignVersion310P();
-        return;
-    }
-
-    cubeUtil_ = FindCubeUtilByL2Usage(mSize, rankTileNum, maxTileLen);
-
-    if (mmShapeInfo_.socType == SocVersion::SOC950) {
-        double mnharmonicMean = static_cast<double>(mmShapeInfo_.mValue * rankTileNum * mmShapeInfo_.nValue) /
-                                static_cast<double>(mmShapeInfo_.mValue * rankTileNum + mmShapeInfo_.nValue);
-        double kExponentiated = std::min(
-            MatmulPerformance::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
-            std::pow(static_cast<double>(mmShapeInfo_.kValue), MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT) /
-                std::pow(MatmulPerformance::KVALUE_THRESHOLD, MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT));
-        double mnExponentiated = std::min(
-            MatmulPerformance::MAX_PARTICAL_ENHANCEMENT_FACTOR_CUBE_UTIL,
-            std::pow(mnharmonicMean, MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT) /
-                std::pow(MatmulPerformance::MNVALUE_THRESHOLD, MatmulPerformance::CUBE_UTIL_EXPONENT_COEFFICIENT));
-        double result = MatmulPerformance::AVERAGE_CUBE_UTIL * kExponentiated * mnExponentiated;
-        cubeUtil_ = std::min(MatmulPerformance::MAX_CUBE_UTIL, result);
-    }
-
-    if (flagAllReduce) {
-        if (calcType_ == MatmulCalcType::QUANT) { // 全量化
-            return ChangeCubeUtilByKAlign();
-        }
-        if (mmShapeInfo_.kValue % MatmulPerformance::K_ALIGN_LEN != 0) { // 非量化和伪量化
-            cubeUtil_ *= MatmulPerformance::K_UNALIGN_UTIL_RATIO;
-        }
-    }
-}
-
-inline uint64_t MatmulPerformanceModel::GetLinearThresholdLen(uint64_t rankTileNum)
-{
-    uint64_t tmpN = std::max(mmShapeInfo_.baseM, mmShapeInfo_.nValue);
-    uint64_t tmpK = std::max(mmShapeInfo_.baseM, mmShapeInfo_.kValue);
-    bool bmmFlag = (mmShapeInfo_.batchSize > 1 ? true : false);
-    if (bmmFlag) {
-        uint64_t mmMinDataSize = MatmulPerformance::BMM_DATASIZE_LARGE_K;
-        if (mmShapeInfo_.kValue < MatmulPerformance::BMM_DATASIZE_K_BAR) {
-            mmMinDataSize = MatmulPerformance::BMM_DATASIZE_SMALL_K;
-        }
-        return std::max(mmMinDataSize / (tmpN * tmpK * rankTileNum), mmShapeInfo_.baseM);
-    }
-
-    bool discreteFlag = rankTileNum > MatmulPerformance::SMALL_RANKTILE;
-    if (discreteFlag) {
-        return std::max(mmMinDataSize_ / (tmpN * tmpK * rankTileNum), mmShapeInfo_.baseM);
-    }
-
-    uint64_t thresholdSize = 0;
-    MinMatmulShapeParameters minShapePar;
-    bool adaptCoreNumFlag = (mmShapeInfo_.socType != SocVersion::SOC310_P);
-    if (adaptCoreNumFlag) {
-        minShapePar.mmMinDataSize1 =
-            minShapePar.mmMinDataSize1 / MatmulPerformance::MARK_CORE_NUM_SOC910B * mmShapeInfo_.coreNum;
-        minShapePar.mmMinDataSize2 =
-            minShapePar.mmMinDataSize2 / MatmulPerformance::MARK_CORE_NUM_SOC910B * mmShapeInfo_.coreNum;
-        minShapePar.minMSize = MatmulPerformance::MIN_M_SIZE_FACTOR * mmShapeInfo_.baseM;
-    }
-    thresholdSize = std::max(minShapePar.mmMinDataSize1 / (tmpN * tmpK),
-                             minShapePar.mmMinDataSize2 / (tmpN * tmpK / ONE_KBYTE + tmpN));
-    if (rankTileNum > 1) {
-        thresholdSize /= rankTileNum;
-    }
-    thresholdSize = std::max(minShapePar.minMSize, thresholdSize);
-
-    return thresholdSize;
-}
-
-inline void MatmulPerformanceModel::GetMatmulGradient()
-{
-    uint64_t tmpN = std::max(mmShapeInfo_.baseN, mmShapeInfo_.nValue);
-    uint64_t tmpK = std::max(mmShapeInfo_.baseK, mmShapeInfo_.kValue);
-    matmulGradient_ = (tmpN * tmpK) / (mmShapeInfo_.computesPerCycle * mmShapeInfo_.cyclePerMicroSec *
-                                       mmShapeInfo_.coreNum * cubeUtil_);
-}
-
-inline double MatmulPerformanceModel::MatmulTime(uint64_t tileSize, uint64_t rankTileNum)
-{
-    tileSize = std::max(mmShapeInfo_.baseM, tileSize);
-    return static_cast<double>(tileSize) * static_cast<double>(rankTileNum) * matmulGradient_;
-}
-
-inline uint64_t MatmulPerformanceModel::InverseMatmulTime(double targetTime, uint64_t rankTileNum)
-{
-    uint64_t tileSize = static_cast<uint64_t>(targetTime / (static_cast<double>(rankTileNum) * matmulGradient_));
-    tileSize = std::max(mmShapeInfo_.baseM, tileSize);
-    return tileSize;
-}
-
-// ====== arch35 模型（来源: matmul_performance_arch35.h） ======
-class MatmulPerformanceArch35 : public MatmulPerformanceModel {
-public:
-    MatmulPerformanceArch35(const TilingArgs &args, const MatmulPerfTable &perfTable,
-                            SocVersion inputSocVersion = SocVersion::SOC950)
-        : MatmulPerformanceModel(args, perfTable, inputSocVersion)
-    {
-        TilingBestBaseBlock bestBaseBlock = GetBestBaseBlock(inputSocVersion);
-        mmShapeInfo_.baseM = bestBaseBlock.baseM;
-        mmShapeInfo_.baseN = bestBaseBlock.baseN;
-        mmShapeInfo_.baseK = bestBaseBlock.baseK;
-    }
-
-    TilingBestBaseBlock GetBestBaseBlock(SocVersion socVersionIn)
-    {
-        for (size_t i = 0; i < perfTable_.bestBaseCount; ++i) {
-            if (perfTable_.bestBaseRows[i].soc == socVersionIn) {
-                return perfTable_.bestBaseRows[i].block;
+        if (maxTileLen != nullptr) {
+            *maxTileLen = mmShapeInfo_.mValue;
+            uint64_t tmpSize =
+                std::min(mBlockNum + rankTileNum, mmShapeInfo_.coreNum) - std::min(mBlockNum, mmShapeInfo_.coreNum);
+            tmpSize = tmpSize * mmShapeInfo_.inMatrixADtypeSize * tmpBaseM * mmShapeInfo_.kValue / ONE_MBYTE;
+            if (tmpSize > diff && memUsage <= l2EstimatePar.sizeFullL2 && nBlockNum > mmShapeInfo_.coreNum) {
+                *maxTileLen = (mSize + mmShapeInfo_.baseM - 1) / mmShapeInfo_.baseM * mmShapeInfo_.baseM;
             }
         }
-        return perfTable_.defaultBaseBlock;
+        return tmpUtil;
     }
-
-    // 单参版本遮蔽基类 FindCubeUtil（与旧实现一致, arch35 对象只应使用本版本）
+    // arch35 单参版本(消费算子钩子唯一使用的入口)
     void FindCubeUtil(uint64_t rankTileNum)
     {
         double mnharmonicMean = static_cast<double>(mmShapeInfo_.mValue * rankTileNum * mmShapeInfo_.nValue) /
@@ -1152,7 +723,49 @@ public:
         double result = MatmulPerformance::AVERAGE_CUBE_UTIL * kExponentiated * mnExponentiated;
         cubeUtil_ = std::min(MatmulPerformance::MAX_CUBE_UTIL, result);
     }
+    TilingBestBaseBlock GetBestBaseBlock()
+    {
+        for (size_t i = 0; i < perfTable_.bestBaseCount; ++i) {
+            if (perfTable_.bestBaseRows[i].soc == mmShapeInfo_.socType) {
+                return perfTable_.bestBaseRows[i].block;
+            }
+        }
+        return perfTable_.defaultBaseBlock;
+    }
+    void GetMatmulGradient()
+    {
+        uint64_t tmpN = std::max(mmShapeInfo_.baseN, mmShapeInfo_.nValue);
+        uint64_t tmpK = std::max(mmShapeInfo_.baseK, mmShapeInfo_.kValue);
+        matmulGradient_ = (tmpN * tmpK) / (mmShapeInfo_.computesPerCycle * mmShapeInfo_.cyclePerMicroSec *
+                                           mmShapeInfo_.coreNum * cubeUtil_);
+    }
+    uint32_t GetBaseM()
+    {
+        return mmShapeInfo_.baseM;
+    };
+    uint32_t GetBaseN()
+    {
+        return mmShapeInfo_.baseN;
+    };
+    // 性能预测
+    double MatmulTime(uint64_t tileSize, uint64_t rankTileNum)
+    {
+        tileSize = std::max(mmShapeInfo_.baseM, tileSize);
+        return static_cast<double>(tileSize) * static_cast<double>(rankTileNum) * matmulGradient_;
+    }
+    uint64_t InverseMatmulTime(double targetTime, uint64_t rankTileNum)
+    {
+        uint64_t tileSize = static_cast<uint64_t>(targetTime / (static_cast<double>(rankTileNum) * matmulGradient_));
+        tileSize = std::max(mmShapeInfo_.baseM, tileSize);
+        return tileSize;
+    }
+
+protected:
+    const MatmulPerfTable &perfTable_; // 模型参数表由构造方注入（算子侧标定头）
 };
+
+// ---- 1.3b wave-packing 分支的 matmul 理论式(effMac 单常数, 与上方 HCCL 模型并列)----
+
 /*!
  * \brief Theoretical matmul latency model: t(us) = MACs / (effMac * cyclePerUs * coreNum).
  */
@@ -1180,19 +793,14 @@ struct MatmulTheoryModel {
 // ============================================================================
 // ============================================================================
 
+// (2026-09-15 精简: 连续切分路径 FitTileLengthContinuous/SmallFrontTileCheck/
+//  LargeBackTileCheck/CommBoundShortAlign 为 B 家族(公式化)专用, A 家族 5 算子钩子
+//  经 grep 证实零调用, 已随旧芯片逻辑剥离; B 家族原位副本不受影响)
 constexpr uint64_t LARGE_NK_BAR_BASE = 32;
 constexpr uint64_t SMALL_TILECNT_PAR = 2;
-constexpr uint64_t OPT_TILE_CNT = 8;
-constexpr uint64_t OPT_TILE_LEN_RATIO = 2;
-constexpr uint64_t OPT_TILE_LEN_RATIO_SOC310P = 1;
 constexpr double BACKTILE_ALIGN_RATIO = 0.75;
-constexpr uint64_t LARGE_BACKTILE_COMPARE_PAR = 2;
-constexpr uint64_t SOC310_BASE_M = 256;
-constexpr uint64_t SMALL_SHORTTILE_BAR = 512;
-constexpr uint64_t SHORT_ALIGN_DOWN_DIFF = 16;
 constexpr double ALIGN_RATIO_CALC_BOUND = 0.5;
 constexpr double ALIGN_RATIO_COMM_BOUND = 0.75;
-constexpr uint64_t SMALL_SHAPE_BAR = 2048;
 
 // 切分和对齐
 class FormPartition {
@@ -1215,10 +823,6 @@ public:
         NoCutTiling();                  // 初始化为不切分
     };
 
-    void SetBackTileRatio(double newRatio)
-    {
-        backTileRatio = (newRatio > 0) ? newRatio : backTileRatio;
-    };
     void SetMinLenByMax(uint64_t newLen);
     void SetMinLenByMin(uint64_t newLen);
     uint64_t GetMinLen()
@@ -1244,18 +848,13 @@ public:
     void NoCutTiling();
     void MaxTileCntUniform();
 
-    // 离散切分对齐 (AllGatherMatmul和MatmulReduceScatter算子)
+    // 离散切分对齐 (A 家族全部算子的 Adjust 钩子使用)
     void AlignTileSmall();
     void AlignTileLarge();
     void FitTileLengthDiscrete(bool smallDimAlignUp, bool goodLinearityShape, bool localAtFront = false);
-    // 连续切分对齐 (MatmulAllReduce算子)
-    void LargeBackTileCheck(bool soc310Flag, bool largeCalcCommRatio);
     void CalcShortTile();
     void CalcBackTile();
-    void SmallFrontTileCheck(bool soc310Flag, bool kGreaterThanN);
     void RedistributeTile();
-    void CommBoundShortAlign();
-    void FitTileLengthContinuous(bool kGreaterThanN, bool largeCalcCommRatio = true, bool soc310Flag = false);
 };
 
 inline void FormPartition::SetMinLenByMax(uint64_t newLen)
@@ -1398,35 +997,6 @@ inline void FormPartition::NoCutTiling()
     cutRes.longTileLen = totalLen;
 }
 
-inline void FormPartition::LargeBackTileCheck(bool soc310Flag, bool largeCalcCommRatio)
-{
-    bool largeBackTile = cutRes.shortTileLen >= (cutRes.longTileLen + tileArgs.mAlignLen);
-    if (soc310Flag) {
-        largeBackTile = (cutRes.shortTileLen >= (cutRes.longTileLen + SOC310_BASE_M));
-    }
-    if (largeBackTile) {
-        cutRes.longTileLen =
-            (totalLen / cutRes.totalTileCnt + tileArgs.mAlignLen - 1) / tileArgs.mAlignLen * tileArgs.mAlignLen;
-        cutRes.longTileLen = std::min(totalLen, cutRes.longTileLen);
-        cutRes.numLongTile = totalLen / cutRes.longTileLen;
-        CalcBackTile();
-    }
-    if (largeCalcCommRatio) {
-        uint64_t moveLen = cutRes.numLongTile * tileArgs.mAlignLen;
-        largeBackTile = (cutRes.shortTileLen >= (cutRes.longTileLen + tileArgs.mAlignLen)) &&
-                        (cutRes.shortTileLen >= (moveLen + tileArgs.mAlignLen * LARGE_BACKTILE_COMPARE_PAR) &&
-                         (cutRes.shortTileLen <= moveLen * LARGE_BACKTILE_COMPARE_PAR));
-        if (largeBackTile) {
-            cutRes.longTileLen += tileArgs.mAlignLen;
-            cutRes.longTileLen =
-                (cutRes.longTileLen + tileArgs.mAlignLen - 1) / tileArgs.mAlignLen * tileArgs.mAlignLen;
-            cutRes.longTileLen = std::min(totalLen, cutRes.longTileLen);
-            cutRes.numLongTile = totalLen / cutRes.longTileLen;
-            CalcBackTile();
-        }
-    }
-}
-
 inline void FormPartition::CalcShortTile()
 {
     cutRes.numShortTile = 0;
@@ -1449,24 +1019,6 @@ inline void FormPartition::CalcBackTile()
 }
 
 // 据经验值，切分块数较多且每块长度接近matmul临界值时，ETE性能会劣化
-inline void FormPartition::SmallFrontTileCheck(bool soc310Flag, bool kGreaterThanN)
-{
-    uint64_t optimalTileLen = tileArgs.minTileLen * OPT_TILE_LEN_RATIO;
-    if (soc310Flag) {
-        optimalTileLen = tileArgs.minTileLen * OPT_TILE_LEN_RATIO_SOC310P;
-    }
-    bool smallFrontTile = (cutRes.longTileLen < optimalTileLen) && (totalLen > cutRes.longTileLen * OPT_TILE_CNT);
-    bool largeFrontFlag = soc310Flag || (cutRes.shortTileAtBack && kGreaterThanN);
-    if (smallFrontTile && largeFrontFlag) {
-        optimalTileLen = std::max(optimalTileLen, totalLen / OPT_TILE_CNT);
-        optimalTileLen = optimalTileLen / tileArgs.mAlignLen * tileArgs.mAlignLen;
-        cutRes.longTileLen = optimalTileLen;
-        cutRes.longTileLen = std::min(cutRes.longTileLen, totalLen);
-        cutRes.numLongTile = totalLen / cutRes.longTileLen;
-        CalcBackTile();
-    }
-}
-
 inline void FormPartition::RedistributeTile()
 {
     uint64_t tmpBackTileLen = totalLen - cutRes.numLongTile * cutRes.longTileLen;
@@ -1477,37 +1029,6 @@ inline void FormPartition::RedistributeTile()
         cutRes.longTileLen += redistTileLen;
     }
     CalcBackTile();
-}
-
-inline void FormPartition::CommBoundShortAlign()
-{
-    if (cutRes.shortTileAtBack || cutRes.numLongTile > 1) {
-        return;
-    }
-    uint64_t alignDownLen = cutRes.shortTileLen / tileArgs.mAlignLen * tileArgs.mAlignLen;
-    uint64_t alignDownDiff = cutRes.shortTileLen - alignDownLen;
-    uint64_t alignUpLen = (cutRes.shortTileLen + tileArgs.mAlignLen - 1) / tileArgs.mAlignLen * tileArgs.mAlignLen;
-    bool alignUpShortFlag = (alignUpLen <= SMALL_SHORTTILE_BAR && cutRes.longTileLen > SMALL_SHORTTILE_BAR) ||
-                            alignDownDiff <= SHORT_ALIGN_DOWN_DIFF;
-    if (alignUpShortFlag) {
-        cutRes.shortTileLen = alignUpLen;
-    }
-    cutRes.longTileLen = (totalLen - cutRes.shortTileLen + cutRes.numLongTile - 1) / cutRes.numLongTile;
-    cutRes.shortTileLen = totalLen - cutRes.numLongTile * cutRes.longTileLen;
-}
-
-inline void FormPartition::FitTileLengthContinuous(bool kGreaterThanN, bool largeCalcCommRatio, bool soc310Flag)
-{
-    cutRes.numLongTile = (totalLen - static_cast<uint64_t>(static_cast<double>(cutRes.shortTileLen) * backTileRatio)) /
-                         cutRes.longTileLen;
-    cutRes.numLongTile = std::max(cutRes.numLongTile, static_cast<uint64_t>(1));
-    RedistributeTile();
-    SmallFrontTileCheck(soc310Flag, kGreaterThanN);
-    // check totalTileCnt is valid.
-    MaxTileCntUniform();
-
-    LargeBackTileCheck(soc310Flag, largeCalcCommRatio);
-    CommBoundShortAlign();
 }
 
 inline bool FormPartition::SetShortTileLen(bool noCutFlag)
@@ -1589,12 +1110,12 @@ struct FitBasedBalanceCtx {
 };
 
 // 上下文构造 = 旧基类构造函数逐行对应
+// (soc 恒 SOC950: 引擎仅支持 arch35, SocVersion 参数已随旧芯片逻辑剥离)
 inline FitBasedBalanceCtx InitCtx(const TilingArgs &args, KernelType kernelType, const CommFitTable &commTable,
-                                  const MatmulPerfTable &mmTable, TopoType topoType = TopoType::STANDARD_CARD,
-                                  SocVersion socVersion = SocVersion::SOC950)
+                                  const MatmulPerfTable &mmTable, TopoType topoType = TopoType::STANDARD_CARD)
 {
-    FitBasedBalanceCtx ctx{MatmulPerformanceArch35(args, mmTable, socVersion),
-                           HCCLPerformanceArch35(args.rankDim, kernelType, commTable, socVersion, topoType),
+    FitBasedBalanceCtx ctx{MatmulPerformanceArch35(args, mmTable),
+                           HCCLPerformanceArch35(args.rankDim, kernelType, commTable, topoType),
                            FormPartition(args),
                            MatmulParameters{},
                            args.rankDim,

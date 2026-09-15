@@ -342,8 +342,8 @@ inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, fb::CommEngine
     const bool isCcuMode = (commEngine == fb::CommEngine::CCU);
     const fb::CommFitTable &commTable = isCcuMode ? CCU_COMM_FIT_TABLE : AICPU_COMM_FIT_TABLE;
     fb::TilingArgs apaceArgs = ToApaceTilingArgs(args);
-    auto ctx = fb::InitCtx(apaceArgs, fb::KernelType::ALL_GATHER, commTable, MATMUL_PERF_TABLE,
-                           fb::TopoType::STANDARD_CARD, fb::SocVersion::SOC950);
+    auto ctx =
+        fb::InitCtx(apaceArgs, fb::KernelType::ALL_GATHER, commTable, MATMUL_PERF_TABLE, fb::TopoType::STANDARD_CARD);
     ctx.commPerf.SetCommShapeLen(ctx.mmInfo.kValue);
     // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5
     // 此处按"1字节打包2个fp4元素"建模：通信侧用SetCommDTypeSize(1)+ExpansionFraction(2)表达0.5字节/元素
