@@ -4,12 +4,7 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                               |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+| A6（arch92，`ascend910_96`）                                  |    √    |
 
 ## 功能说明
 
@@ -85,8 +80,7 @@
     | A8W4-FP | FLOAT8_E4M3FN        | FLOAT4_E2M1          |
     | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持上表中A8W8-FP场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：不支持上表中A16W16、A8W8-INT、A8W4-INT场景。
+    - arch92 当前版本仅开放A8W8-FP场景；其余场景为后续arch92能力预留，不参与当前Kernel实例化。
 
     <details>
     <summary> A16W16 非量化场景</summary>
@@ -891,22 +885,11 @@
 - **通信域和组网约束**：
   - 所有卡的`epWorldSize`、`cclBufferSize`参数取值需保持一致。
   - 通信域各节点的驱动版本应当相同。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信协议。
+  - arch92当前版本仅支持MTE通信方式。
 - **参数约束**：
-  - **<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>**：
-    - 场景配套矩阵：
-
-      | 场景 | x | weight1 | weight2 | weightScales1 | weightScales2 | bias1 | bias2 | y | dispatchQuantMode | dispatchQuantOutDtype |
-      | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-      | A16W16 | BF16 | BF16 | BF16 | – | – | – | – | BF16 | 0 | – |
-      | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
-      | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
-
-  - **<term>Ascend 950PR/Ascend 950DT</term>**：
-    - `activation`仅支持"swiglu"。
-    - `activation_params`仅支持[]或[clamp]。
+  - **A6（arch92，`ascend910_96`）**：
+    - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"。
+    - `activation_params`的格式由`activation`决定。
     - `BS`（`x`.dim0）支持[1, +∞)，实际上限受`cclBufferSize`约束。算子采用分批处理机制，BS不再受UB容量硬限制，dispatch阶段按固定粒度分批处理。
     - `H`（`x`.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
     - `topK`（`topkIds`.dim1）支持[1, 32]。
@@ -915,7 +898,7 @@
     - `epWorldSize`范围 [2, 1024]。
     - `moeExpertNum`范围 [`epWorldSize`, 2048]，且`moeExpertNum` % `epWorldSize` == 0。
     - `maxRecvTokenNum`范围 [0, `BS` × `epWorldSize` × min(`topK`, `localMoeExpertNum`)]。
-    - `dispatchQuantOutDtype`仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
+    - `dispatchQuantOutDtype`仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）。
     - 当前版本仅支持MXFP量化模式（`dispatchQuantMode` = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
     - `combineQuantMode`取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型
     - `commAlg`必须为空字符串""。
@@ -928,7 +911,7 @@
     - `numMaxTokensPerRank`为0时自动计算；非0时必须等于`BS`。
     - `cclBufferSize`需 >= 全卡软同步预留空间（固定60KB） + mask接收空间 + 量化token缩放因子空间 + combine发送空间。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
-    - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
+    - `weight1`和`weight2`的数据类型必须一致，且当前仅支持FLOAT8_E5M2、FLOAT8_E4M3FN。
     - `topkWeights`数据类型仅支持BF16或FP32。
     - `xActiveMask`和`scales`当前版本不支持非空输入，需传入空指针。
 
@@ -939,8 +922,7 @@
       - `sharedWeight1` shape为(`sharedExpertNumPerRank`, `hiddenDim`, `H`)，`sharedWeight2` shape为(`sharedExpertNumPerRank`, `H`, `hiddenDim`/2)。
       - `sharedWeightScales1` shape为(`sharedExpertNumPerRank`, `hiddenDim`, CeilDiv(`H`, 64), 2)，`sharedWeightScales2` shape为(`sharedExpertNumPerRank`, `H`, CeilDiv(`hiddenDim`/2, 64), 2)。
       - `weightScales1`的dim3和`weightScales2`的dim3必须等于2。
-      - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式。
-      - MXFP场景下，`dispatchQuantOutDtype`=23时`weight1`和`weight2`必须为FLOAT8_E5M2，`dispatchQuantOutDtype`=24时必须为FLOAT8_E4M3FN，`dispatchQuantOutDtype`=296时必须为FLOAT4_E2M1。
+      - MXFP场景下，`dispatchQuantOutDtype`=23时`weight1`和`weight2`必须为FLOAT8_E5M2，`dispatchQuantOutDtype`=24时必须为FLOAT8_E4M3FN。
 
 ## 调用说明
 
