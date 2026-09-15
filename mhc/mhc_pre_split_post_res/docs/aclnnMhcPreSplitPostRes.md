@@ -48,9 +48,9 @@ aclnnStatus aclnnMhcPreSplitPostResGetWorkspaceSize(
     const aclTensor     *phi,
     const aclTensor     *alpha,
     const aclTensor     *bias,
+    double               norm_eps,
     const aclTensor     *h_post_out,
     const aclTensor     *h_res_out,
-    double               norm_eps,
     uint64_t            *workspaceSize,
     aclOpExecutor      **executor)
 ```
