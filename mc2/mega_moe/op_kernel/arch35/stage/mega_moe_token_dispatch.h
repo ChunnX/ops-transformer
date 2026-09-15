@@ -442,7 +442,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
      */
     __gm__ int32_t *launchCountSlot0 =
         reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES);
-    int32_t expectEpoch = (ReadGmByPassDCache(launchCountSlot0) & 0x7F) | 0x80;
+    int32_t expectEpoch = (ReadGmBypassDCache(launchCountSlot0) & 0x7F) | 0x80;
     __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
     for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
         int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
@@ -450,7 +450,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
             int64_t startCycle = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
             }
-            slotValue = AscendC::ReadGmByPassDCache(rawCountGm + slotIdx);
+            slotValue = AscendC::ReadGmBypassDCache(rawCountGm + slotIdx);
         }
         scratch.cumsumInfoTensor.SetValue(slotIdx, slotValue & 0x00FFFFFF);
     }
@@ -472,7 +472,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     __gm__ int32_t *countTableReady =
         reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.flagSendCntCalToUpdParamsPtr) +
         static_cast<uint64_t>(countWorkspace.blockIdx) * INT_CACHELINE;
-    WriteGmByPassDCache(countTableReady, static_cast<int32_t>(1));
+    WriteGmBypassDCache(countTableReady, static_cast<int32_t>(1));
 }
 
 /*
