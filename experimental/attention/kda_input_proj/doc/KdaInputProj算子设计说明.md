@@ -64,11 +64,11 @@ torch.ops.custom.npu_kda_input_proj(
 | 参数名 | 输入 / 输出 | 数据类型 | 数据格式 | 维度（shape） | 描述 | 
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `x` | 输入 | BFLOAT16 | ND | `[T, 7168]` | 隐藏层输入。 |
-| `weight_qkv` | 输入 | FLOAT8_E4M3 | ND | `[7168, 4608]` | qkv投影的权重。 |
+| `weight_qkv` | 输入 | FLOAT8_E4M3 | ND | `[4608, 7168]` | qkv投影的权重。 |
 | `weight_beta` | 输入 | BFLOAT16 | ND | `[12, 7168]` | beta投影的权重。 |
 | `weight_gate` | 输入 | BFLOAT16 | ND | `[1536, 7168]` | gate投影的权重。 |
 | `weight_g` | 输入 | BFLOAT16 | ND | `[1536, 7168]` | g投影的权重。 |
-| `scale_qkv` | 输入 | FLOAT8_E8M0 | ND | `[T, 112, 2]` | qkv投影权重的缩放系数。 |
+| `scale_qkv` | 输入 | FLOAT8_E8M0 | ND | `[4608, 112, 2]` | qkv投影权重的缩放系数。 |
 
 ## 约束说明
 
