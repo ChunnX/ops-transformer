@@ -712,7 +712,6 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communicati
         PipeBarrier<PIPE_MTE3>(); // perExpert 写完再写notifyVal
         DataCopy(notifyGMTensor, notifyLocalTensor, INT64_UB_STRIDE);
     }
-    SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // tempBuf_ 复用
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -806,6 +805,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetSlotStar
     if (aivId_ == 0) { // 0核起始id 均为0
         return;
     }
+    // CalSendCnt writes every AIV's per-rank counters through MTE3. Some AIVs are not assigned a communication
+    // channel and return early from Communication, so the dependency must be enforced by every counter consumer.
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     uint32_t groupCnt = Ceil(aivId_ * epWorldSizeAlign_, perGroupSizeAlign_ * 2);
     uint32_t copyNumPerGroup = perGroupSizeAlign_ * 2 / epWorldSizeAlign_;
     LocalTensor<int32_t> counterTmpTensor = topkIdsBuf_.Get<int32_t>();
