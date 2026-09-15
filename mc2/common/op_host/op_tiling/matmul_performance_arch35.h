@@ -20,13 +20,16 @@
 class MatmulPerformanceArch35 : public MatmulPerformanceModel {
 public:
     // A5(950系)专用拟合模型:仅服务于DAV_3510平台,A5内蕴于类本身,不再接收档位key
+    static constexpr uint64_t A5_BASE_BLOCK_M = 256; // A5最优base block(原TILING_BEST_BASE_MAP中950档)
+    static constexpr uint64_t A5_BASE_BLOCK_N = 256;
+    static constexpr uint64_t A5_BASE_BLOCK_K = 128;
+
     explicit MatmulPerformanceArch35(const mc2tiling::TilingArgs &args)
         : MatmulPerformanceModel(args, SocVersion::SOC910_B, true)
     {
-        // A5最优base block(原TILING_BEST_BASE_MAP中SOC950档的唯一条目)
-        mmShapeInfo_.baseM = 256;
-        mmShapeInfo_.baseN = 256;
-        mmShapeInfo_.baseK = 128;
+        mmShapeInfo_.baseM = A5_BASE_BLOCK_M;
+        mmShapeInfo_.baseN = A5_BASE_BLOCK_N;
+        mmShapeInfo_.baseK = A5_BASE_BLOCK_K;
     }
 
     void FindCubeUtil(uint64_t rankTileNum)
