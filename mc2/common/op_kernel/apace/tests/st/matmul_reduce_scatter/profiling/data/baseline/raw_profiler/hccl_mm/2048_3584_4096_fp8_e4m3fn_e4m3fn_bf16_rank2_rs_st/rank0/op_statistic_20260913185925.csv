@@ -1,0 +1,6 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,RunAicpuIndOpCommInit,AI_CPU,1,54900.38,54900.38,54900.38,54900.38,82.022
+0,HcclLaunchAicpuKernel,AI_CPU,10,10070.593,60.832,1007.059,9330.376,15.046
+0,QuantBatchMatmulV3,AI_CORE,10,910.639,90.407,91.063,95.058,1.361
+0,RunAicpuIndOpThreadInit,AI_CPU,2,838.942,109.342,419.471,729.6,1.253
+0,RunAicpuIndOpChannelInitV2,AI_CPU,1,213.324,213.324,213.324,213.324,0.319
