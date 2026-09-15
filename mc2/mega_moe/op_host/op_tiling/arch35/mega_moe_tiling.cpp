@@ -318,7 +318,7 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
 }
 
 /*
- * 将专家权重类型、dispatch 输入处理模式、量化输出类型、通信拓扑、可选能力和 x 类型编码为 kernel tiling key。
+ * 将专家权重类型、dispatch 输入处理模式、量化输出类型、通信拓扑和可选能力编码为 kernel tiling key。
  */
 static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeConfig &config,
                               const MegaMoeExpertParams &expertParams, const MegaMoeTilingData *tilingData)
@@ -338,8 +338,7 @@ static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeC
         static_cast<int64_t>(moeWeightDesc->GetDataType()), static_cast<int64_t>(sharedWeightDesc->GetDataType()),
         *dispatchQuantModePtr, EXPERT_QUANT_MODE_MAP.at(expertParams.moe.quantOutDtype),
         EXPERT_QUANT_MODE_MAP.at(expertParams.shared.quantOutDtype), static_cast<int64_t>(tilingData->combineQuantMode),
-        topoType, static_cast<int64_t>(tilingData->topkWeightsPrefetch),
-        static_cast<int64_t>(context->GetInputDesc(config.xIndex)->GetDataType()));
+        topoType, static_cast<int64_t>(tilingData->topkWeightsPrefetch));
 }
 
 /*
