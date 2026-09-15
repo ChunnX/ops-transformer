@@ -595,7 +595,7 @@ def cpu_fp8_fullquant_mla_golden(
     V:   使用 K 的 nope 前 512 维 (per-tensor 量化), bmm2 = P @ V
     softmax_scale = 1/sqrt(D) (仅 nope 部分, 不含 rope)
     """
-    softmax_scale = get_softmax_scale(SCALE_VALUE, D)
+    softmax_scale = get_softmax_scale(SCALE_VALUE, D + D_rope)
 
     q_tensor = q_fp8.cpu().to(torch.float32).contiguous()
     k_tensor = k_fp8.cpu().to(torch.float32).contiguous()
@@ -667,7 +667,7 @@ def cpu_fp8_fullquant_mla_golden(
     # K/V per-tensor: deq_k/deq_v 是标量
     deq_k_scalar = deq_k.reshape(-1)[0] if deq_k.numel() == 1 else deq_k
     deq_v_scalar = deq_v.reshape(-1)[0] if deq_v.numel() == 1 else deq_v
-    fp8_e4m3_max = 448.0
+    fp8_e4m3_max = 256.0
 
     for j, (kj, vj) in enumerate(zip(k_blocks, v_blocks)):
         kj = kj.contiguous()
@@ -702,13 +702,12 @@ def cpu_fp8_fullquant_mla_golden(
             s_block = torch.sum(pij, dim=-1, keepdims=True)
 
             # MLA rescale: quantScale = 448 / rowMax_A (与 NPU isMlaFullQuant=true 一致)
-            rowMax_A = torch.exp(m_block - mi_new) + EPSILON
-            quantScale = fp8_e4m3_max / rowMax_A
+            # rowMax_A = torch.exp(m_block - mi_new) + EPSILON
+            quantScale = fp8_e4m3_max
             pij_scaled = (pij * quantScale).to(FP8_DTYPE).to(torch.float32)
 
             # bmm2: P_fp8 @ V, 乘 rowMax_A (deq_v 在最终输出时统一乘)
             bmm2_res = torch.matmul(pij_scaled, vj)
-            bmm2_res = bmm2_res * rowMax_A
 
             # O_flash 累加: O = O * update_mul + bmm2_res
             o_blocks[i] = oi * update_mul + bmm2_res
@@ -1233,7 +1232,7 @@ def npu_fp8_full_quant_mla(
             f"KV_CACHE_LAYOUT must be in {{BnNBsD, BnBsH, NZ}} when ENABLE_PA, got {KV_CACHE_LAYOUT}"
         )
 
-    d_total = D
+    d_total = D + D_rope
     softmax_scale = 1.0 / math.sqrt(d_total)
     out_dtype = OUTPUT_DETYPE
 

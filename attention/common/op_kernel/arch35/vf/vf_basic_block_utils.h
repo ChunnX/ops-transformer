@@ -27,6 +27,7 @@ constexpr uint32_t halfRepSize = 128;
 constexpr uint32_t blockBytesU8 = 32;
 constexpr uint32_t NUM_264 = 264;
 constexpr float fp8e4m3MaxValue = 448.0f;
+constexpr float mlaFullQuantValue = 256.0f;
 constexpr float int8MaxValue = 127.0f;
 constexpr float hifp8MaxValue = 32768.0f;
 constexpr float hifp8ScaleValue = 16.0f;
@@ -103,8 +104,7 @@ constexpr static AscendC::Reg::CastTrait castTraitRintThree = {
 
 #define USE_MLA_FULLQUANT_V1_P(vreg_exp, vreg_rowmax_p, MaskReg) \
     do { \
-        Muls(vreg_exp, vreg_exp, fp8e4m3MaxValue, MaskReg); \
-        Div(vreg_exp, vreg_exp, vreg_rowmax_p, MaskReg); \
+        Muls(vreg_exp, vreg_exp, mlaFullQuantValue, MaskReg); \
     } while (0)
 
 #define USE_MLA_FULLQUANT_V1_P_INT8(vreg_exp, vreg_rowmax_p, MaskReg) \
