@@ -1894,6 +1894,43 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
     return cut;
 }
 
+// ============================================================================
+// 四、公共钩子片段（算子特有钩子中可复用的公共逻辑, P2 算子迁移时优先对齐;
+//     2026-09-15 五算子钩子逐行对比提取, 覆盖率注明各行）
+// ============================================================================
+
+// 短长块等长归一（5/5 算子 Adjust 尾部逐字一致）
+inline void MergeEqualTiles(FormPartition &tilingM)
+{
+    if (tilingM.cutRes.shortTileLen == tilingM.cutRes.longTileLen) {
+        tilingM.cutRes.shortTileLen = 0U;
+        tilingM.cutRes.numShortTile = 0U;
+        tilingM.cutRes.numLongTile++;
+    }
+}
+
+// 线性度好的 shape（k×n 较大, 通信拟合更可信; 4/5 算子一致, agmm 传字面 true,
+// allto_all_matmul 自有离散切分不用）
+inline bool IsGoodLinearityShape(const MatmulParameters &mmInfo)
+{
+    return mmInfo.kValue * mmInfo.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE;
+}
+
+// 双向配平长块（3/5 算子一致: rs_v2 / all_reduce / matmul_allto_all）:
+//   短块后置(计算 bound) → 长块 = 反解通信时长(掩盖短块计算);
+//   短块前置(通信 bound) → 长块 = 反解计算时长(掩盖短块通信)。
+// agmm 不用(其长块掩盖的是 frontMMTime 本地首轮计算); allto_all_matmul 自有模型。
+inline void BalanceLongTileLen(FitBasedBalanceCtx &ctx, uint64_t rankTileNum)
+{
+    if (ctx.tilingM.cutRes.shortTileAtBack) {
+        const double targetTime = ctx.matmulPerf.MatmulTime(ctx.tilingM.cutRes.shortTileLen, rankTileNum);
+        ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(targetTime);
+    } else {
+        const double targetTime = ctx.commPerf.CommTime(ctx.tilingM.cutRes.shortTileLen);
+        ctx.tilingM.cutRes.longTileLen = ctx.matmulPerf.InverseMatmulTime(targetTime, rankTileNum);
+    }
+}
+
 } // namespace fit_balance
 } // namespace apace
 

@@ -272,12 +272,7 @@ struct AgMmV2Hooks {
     void AdjustLongShortTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
     {
         ctx.tilingM.FitTileLengthDiscrete(false, true, true);
-        // When the long and short tiles are equal, the long and short pieces become one.
-        if (ctx.tilingM.cutRes.shortTileLen == ctx.tilingM.cutRes.longTileLen) {
-            ctx.tilingM.cutRes.shortTileLen = 0U;
-            ctx.tilingM.cutRes.numShortTile = 0U;
-            ctx.tilingM.cutRes.numLongTile++;
-        }
+        apace::fit_balance::MergeEqualTiles(ctx.tilingM); // 公共钩子片段(五算子一致的等长归一尾)
     }
 };
 
