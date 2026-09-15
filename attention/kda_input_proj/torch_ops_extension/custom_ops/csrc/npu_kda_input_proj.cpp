@@ -22,7 +22,7 @@ construct_kda_input_proj_output_tensors(const at::Tensor &x)
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_kda_input_proj_npu(
     const at::Tensor &x, const at::Tensor &weight_qkv, const at::Tensor &weight_beta, const at::Tensor &weight_gate,
-    const at::Tensor &weight_g, const const at::Tensor &weight_qkv_scale, bool trans_weight_qkv,
+    const at::Tensor &weight_g, const at::Tensor &weight_qkv_scale, bool trans_weight_qkv,
     bool trans_weight_beta, bool trans_weight_gate, bool trans_weight_g)
 {
     (void)weight_qkv;
@@ -39,7 +39,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_kda_input_proj_np
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_kda_input_proj_meta(
     const at::Tensor &x, const at::Tensor &weight_qkv, const at::Tensor &weight_beta, const at::Tensor &weight_gate,
-    const at::Tensor &weight_g, const const at::Tensor &weight_qkv_scale, bool trans_weight_qkv,
+    const at::Tensor &weight_g, const at::Tensor &weight_qkv_scale, bool trans_weight_qkv,
     bool trans_weight_beta, bool trans_weight_gate, bool trans_weight_g)
 {
     (void)weight_qkv;
