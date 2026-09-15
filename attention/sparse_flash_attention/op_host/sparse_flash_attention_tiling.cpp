@@ -359,7 +359,10 @@ void SFAMlaTiling::CalcUbBmm()
     mmResUbSize_ = sInnerSizeAlign_ * Align(sfaCubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
     bmm2ResUbSize_ = headDimAlign_ * Align(sfaCubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
 
-    qPreSizeMla_ = sfaInfo_->gSize * (headDimAlign_ + sfaInfo_->ropeHeadDim) * sfaInfo_->s1Size;
+    qPreSizeMla_ = sfaInfo_->gSize * (headDimAlign_ + 64U) * sfaInfo_->s1Size;
+    if (sfaInfo_->ropeHeadDim == 0) {
+        qPreSizeMla_ = sfaInfo_->gSize * headDimAlign_ * sfaInfo_->s1Size;
+    }
 }
 
 void SFAMlaTiling::CheckUbSpace()
@@ -497,8 +500,7 @@ void SFAMlaTiling::GetWorkspaceSize()
         workspaceSize_ = libapiSize_;
         constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
         constexpr uint32_t S2_BASE_SIZE = 128; // S2轴基本块大小
-        constexpr uint32_t D_NOPE_SIZE = 512;
-        const uint32_t D_SIZE = D_NOPE_SIZE + sfaInfo_->ropeHeadDim;
+        constexpr uint32_t D_SIZE = 576;
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaInfo_->platformInfo);
         uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
         if (sfaInfo_->gSize > 64) { // N1大于64时切G，相邻两个cube核处理同一个s2Base
@@ -873,7 +875,7 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
                     opName_, "query_rope and key_rope",
                     Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.keyRope.tensor->GetStorageShape()),
-                    "In MHA/GQA situation(attentionMode=0), query_rope and key_rope should be empty tensor"),
+                    "In MHA/GQA situation(attentionMode=0), query_rope and key_rope should be None"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.attentionMode != 2,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "attention_mode",

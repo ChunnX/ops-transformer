@@ -91,7 +91,7 @@ public:
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr, uint32_t qkD);
+    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
 
     __aicore__ inline void IterateBmm1SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -147,13 +147,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     if ASCEND_IS_AIC {
         tPipe = pipe;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
-        if (queryRope != nullptr) {
+        if (queryRope == nullptr) {
+            // rope=none: 不绑定 queryRope
+        } else {
             this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)queryRope);
         }
-        constexpr uint32_t D_NOPE = 512;
-        constexpr uint32_t D_ROPE = 64;
-        const uint32_t qkD = (queryRope != nullptr) ? (D_NOPE + D_ROPE) : D_NOPE;
-        InitLocalBuffer(sfaL1BuffMgr, qkD);
+        InitLocalBuffer(sfaL1BuffMgr);
     }
 }
 
@@ -176,10 +175,9 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uin
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr,
-                                                                        uint32_t qkD)
+__aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr)
 {
-    const uint32_t mm1LeftSize = s1BaseSize * qkD * sizeof(Q_T);
+    constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
     l1QBuffers.Init(sfaL1BuffMgr, mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
@@ -199,7 +197,9 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint
     if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                             constInfo.dSize);
-        if (constInfo.dSizeRope != 0) {
+        if (constInfo.dSizeRope == 0) {
+            // rope=none: 不初始化 queryRope offset
+        } else {
             this->queryRopeGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
                                                     constInfo.s1Size, constInfo.dSizeRope);
         }
@@ -208,7 +208,9 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)sfaActualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize, actualSeqQLen,
                                             constInfo.actualSeqLenSize);
-        if (constInfo.dSizeRope != 0) {
+        if (constInfo.dSizeRope == 0) {
+            // rope=none: 不初始化 queryRope offset
+        } else {
             this->queryRopeGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeRope,
                                                     actualSeqQLen, constInfo.actualSeqLenSize);
         }
@@ -245,8 +247,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
     v0ResGm.WaitCrossCore();
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-    const uint32_t kvTokenWidth = constInfo.dSizeNope + constInfo.dSizeRope;
-    CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, kvTokenWidth, kvTokenWidth);
+    CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 576, // 576: 表示 KV Cache 单 Token 的特征宽度;
+                       576);                                        // 576: 同上
     SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
     WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
 
@@ -303,14 +305,17 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
         uint32_t s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
         uint64_t queryGmOffset =
             this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, s1Coord, 0);
-        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset], runInfo.mRealSize,
-                           constInfo.dSizeNope, constInfo.dSizeNope);
-        if (constInfo.dSizeRope != 0) {
+        if (constInfo.dSizeRope == 0) {
+            CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset], runInfo.mRealSize, 512, 512);
+        } else {
             uint64_t queryRopeGmOffset =
                 this->queryRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, s1Coord, 0);
-            CopyToL1Nd2Nz<Q_T>(inputLeftTensor[Align16Func(runInfo.mRealSize) * constInfo.dSizeNope],
-                               this->queryRopeGm.gmTensor[queryRopeGmOffset], runInfo.mRealSize, constInfo.dSizeRope,
-                               constInfo.dSizeRope);
+            CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset], runInfo.mRealSize,
+                               512,                                                   // 512: Query主维度
+                               512);                                                  // 512: 同上
+            CopyToL1Nd2Nz<Q_T>(inputLeftTensor[Align16Func(runInfo.mRealSize) * 512], // 512: 同上
+                               this->queryRopeGm.gmTensor[queryRopeGmOffset], runInfo.mRealSize, 64,
+                               64); // 64 constInfo.dSize constInfo.mm1Ka
         }
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else {                                      // 非S2的第一次循环直接复用Q

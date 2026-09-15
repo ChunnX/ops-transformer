@@ -894,11 +894,14 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyInSingleKv(int64_t &mte2Size,
     DataCopyPadExtParams<KV_T> padParams;
     DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * 32 * 512 + (mte2Size - mte3Size) * constInfo.headDim],
                 keyGm_[keyBNBOffset * constInfo.headDim], intriParams, padParams);
-    if (constInfo.headDimRope != 0) {
-        intriParams.blockLen = validS2Count * constInfo.headDimRope * sizeof(KV_T);
-        DataCopyPad(ropeMergUb_[mergeMte3Idx % 2 * 32 * 64 + (mte2Size - mte3Size) * constInfo.headDimRope],
-                    keyRopeGm_[keyBNBOffset * constInfo.headDimRope], intriParams, padParams);
+    if (constInfo.headDimRope == 0) {
+        mte2Size += validS2Count;
+        return;
     }
+    intriParams.blockLen = validS2Count * constInfo.headDimRope * sizeof(KV_T);
+
+    DataCopyPad(ropeMergUb_[mergeMte3Idx % 2 * 32 * 64 + (mte2Size - mte3Size) * constInfo.headDimRope],
+                keyRopeGm_[keyBNBOffset * constInfo.headDimRope], intriParams, padParams);
     mte2Size += validS2Count;
 }
 
@@ -937,8 +940,7 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyInKv(int64_t &mte2Size, int64
     }
 
     if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0 ||
-                 (constInfo.headDimRope != 0 && !PAGE_ATTENTION &&
-                  (keyRopeSrcStride >= INT32_MAX || keyRopeSrcStride < 0)) ||
+                 (!PAGE_ATTENTION && (keyRopeSrcStride >= INT32_MAX || keyRopeSrcStride < 0)) ||
                  realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
                  realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit)) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
@@ -959,14 +961,16 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyInKv(int64_t &mte2Size, int64
         DataCopyPad(kvMergUb_[mergeMte3Idx % 2 * 32 * 512 + (mte2Size - mte3Size) * constInfo.headDim],
                     keyGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
 
-        if (constInfo.headDimRope != 0) {
+        if (constInfo.headDimRope == 0) {
+            mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1)) * constInfo.sparseBlockSize;
+        } else {
             intriParams.blockLen = constInfo.sparseBlockSize * constInfo.headDimRope * sizeof(KV_T);
             intriParams.dstStride = 0;
             intriParams.srcStride = keyRopeSrcStride;
             DataCopyPad(ropeMergUb_[mergeMte3Idx % 2 * 32 * 64 + (mte2Size - mte3Size) * constInfo.headDimRope],
                         keyRopeGm_[startGmOffset * constInfo.headDimRope], intriParams, padParams);
+            mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1)) * constInfo.sparseBlockSize;
         }
-        mte2Size += ((keyOffset1 > -1) + (keyOffset2 > -1)) * constInfo.sparseBlockSize;
     }
 }
 
@@ -990,12 +994,13 @@ __aicore__ inline void SFAVectorService<SFAT>::CopyOutMrgeResult(int64_t mte2Siz
     DataCopyPad(kvMergeGm_[runInfo.loop % 4 * 512 * 576 + (s2GmStartOffset + mte3Size) * constInfo.headDim],
                 kvMergUb_[mergeMte3Idx % 2 * 32 * 512], dataCopyParams);
 
-    if (constInfo.headDimRope != 0) {
-        dataCopyParams.blockLen = constInfo.headDimRope * sizeof(KV_T);
-        DataCopyPad(
-            kvMergeGm_[runInfo.loop % 4 * 512 * 576 + 512 * 512 + (s2GmStartOffset + mte3Size) * constInfo.headDimRope],
-            ropeMergUb_[mergeMte3Idx % 2 * 32 * 64], dataCopyParams);
+    if (constInfo.headDimRope == 0) {
+        return;
     }
+    dataCopyParams.blockLen = constInfo.headDimRope * sizeof(KV_T);
+    DataCopyPad(
+        kvMergeGm_[runInfo.loop % 4 * 512 * 576 + 512 * 512 + (s2GmStartOffset + mte3Size) * constInfo.headDimRope],
+        ropeMergUb_[mergeMte3Idx % 2 * 32 * 64], dataCopyParams);
 }
 
 // b s1 k
@@ -1070,7 +1075,9 @@ __aicore__ inline void SFAVectorService<SFAT>::MergeKv(const RunInfo &runInfo)
             DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + s2GmOffset * constInfo.headDim],
                         kvMergUb_, dataCopyParams);
         }
-        if (constInfo.headDimRope != 0) {
+        if (constInfo.headDimRope == 0) {
+            // rope=none: 不填 rope workspace
+        } else {
             dataCopyParams.blockLen = constInfo.headDimRope * sizeof(KV_T);
             for (int64_t s2GmOffset = s2GmStartOffset + mte2Size; s2GmOffset < s2GmLimit; s2GmOffset++) {
                 DataCopyPad(kvMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * 512 * 576 + 512 * constInfo.headDim +

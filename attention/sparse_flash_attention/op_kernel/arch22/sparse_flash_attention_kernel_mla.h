@@ -446,13 +446,15 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
     queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
     keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
     valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
-    if (queryRope != nullptr) {
+    if (queryRope == nullptr) {
+        constInfo.headDimRope = 0;
+    } else {
         qRopeGm.SetGlobalBuffer((__gm__ Q_ROPE_T *)queryRope);
         constInfo.headDimRope = headDimRope;
-    } else {
-        constInfo.headDimRope = 0;
     }
-    if (keyRope != nullptr) {
+    if (keyRope == nullptr) {
+        // rope=none: 不绑定 keyRope
+    } else {
         kRopeGm.SetGlobalBuffer((__gm__ K_ROPE_T *)keyRope);
     }
 

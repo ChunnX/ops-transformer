@@ -269,15 +269,17 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     padParams.leftPadding = 0;
     padParams.rightPadding = combineDimAlign - combineDim;
     padParams.paddingValue = 0;
-    const uint32_t kvTokenWidth = constInfo.dSizeNope + constInfo.dSizeRope;
-    DataCopyPad(kvInUb[startRow * kvTokenWidth], keyGm[keyOffset * constInfo.dSizeNope], intriParams, padParams);
-
-    if (constInfo.dSizeRope != 0) {
-        intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope * sizeof(KV_T);
-        intriParams.dstStride = constInfo.dSizeNope / BUFFER_SIZE_BYTE_32B;
-        DataCopyPad(kvInUb[startRow * kvTokenWidth + constInfo.dSizeNope], keyRopeGm[keyOffset * constInfo.dSizeRope],
-                    intriParams, padParams);
+    DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * 512], intriParams,
+                padParams); // 512: Key特征维度; 576: 局部Buffer行跨度
+    if (constInfo.dSizeRope == 0) {
+        return;
     }
+
+    intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope * sizeof(KV_T);
+    intriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B; // 512: 模型特征维度(dSize)
+    DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], intriParams,
+                padParams); // 576: 局部Buffer行跨度（Leading Dimension）; 512: Key特征维度（dSize）;
+                            // 64：RoPE索引数据每Token/块的行跨度（Stride）
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(
@@ -311,15 +313,19 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAVectorService<TEMPLATE_AR
         if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
             keyOffset = keyOffset1;
         }
-        const uint32_t kvTokenWidth = constInfo.dSizeNope + constInfo.dSizeRope;
-        DataCopyPad(kvInUb[startRow * kvTokenWidth], keyGm[keyOffset * constInfo.dSizeNope], intriParams, padParams);
+        if (constInfo.dSizeRope == 0) {
+            intriParams.dstStride = 64 * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
+            DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * constInfo.dSizeNope], intriParams, padParams);
+        } else {
+            DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * constInfo.dSizeNope], // 576: 局部Buffer行跨度
+                        intriParams, padParams);                                        // combineDimAlign
 
-        if (constInfo.dSizeRope != 0) {
             intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope * sizeof(KV_T);
             intriParams.dstStride = constInfo.dSizeNope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
             intriParams.srcStride = keyRopeSrcStride;
-            DataCopyPad(kvInUb[startRow * kvTokenWidth + constInfo.dSizeNope],
-                        keyRopeGm[keyOffset * constInfo.dSizeRope], intriParams, padParams);
+            // 512: Key特征维度; 576: 局部Buffer行跨度
+            DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * constInfo.dSizeRope], intriParams,
+                        padParams); // combineDimAlign
         }
     }
     return (keyOffset0 > -1) + (keyOffset1 > -1);
@@ -368,8 +374,7 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
     int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-    const uint32_t kvTokenWidth = constInfo.dSizeNope + constInfo.dSizeRope;
-    DataCopy(v0ResGmTensor[s2StartIdx * kvTokenWidth], kvOutUb, dealRow * kvTokenWidth);
+    DataCopy(v0ResGmTensor[s2StartIdx * 576], kvOutUb, dealRow * 576); // 576: KV Cache 每 Token 的特征宽度
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -716,7 +721,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         ;
     }
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    if (keyRope != nullptr) {
+    if (keyRope == nullptr) {
+        // rope=none: 不绑定 keyRope
+    } else {
         keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)(keyRope));
     }
     if (sinks != nullptr) {
@@ -836,7 +843,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
     sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout;
-    sharedParams.dSizeRope = dSizeRope;
+    sharedParams.dSizeRope = 64; // 64: 编码维度
+    if (dSizeRope == 0) {
+        sharedParams.dSizeRope = 0;
+    }
     sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
     sharedParams.dSize = 512;       // 512: 模型特征维度(dSize)
     sharedParams.dSizeVInput = 512; // 512: 模型特征维度(dSize)

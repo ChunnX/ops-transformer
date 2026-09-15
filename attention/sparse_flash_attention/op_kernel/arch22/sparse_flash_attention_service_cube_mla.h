@@ -589,12 +589,19 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
     uint32_t nL1SizeAlign = SFAAlign(N_SPLIT_SIZE, 16U);
     uint32_t nL1Loops = (nSize + N_SPLIT_SIZE - 1) / N_SPLIT_SIZE;
 
-    uint32_t kSize = constInfo.headDim + constInfo.headDimRope;
-    uint32_t kL1Size = (constInfo.headDimRope == 0) ? 256 : 288;
+    uint32_t kL1Size;
+    uint32_t kL0Size;
+    uint32_t kL0Loops;
+    if (constInfo.headDimRope == 0) {
+        kL1Size = 256;
+        kL0Size = 128;
+        kL0Loops = 2; // 512 / 256, 256 / 128
+    } else {
+        kL1Size = 288;
+        kL0Size = 96;
+        kL0Loops = 3; // 576 / 288, 288 / 96
+    }
     uint32_t kL1Loops = 2; // 2 : (D+Dr)/kL1Size
-
-    uint32_t kL0Size = (constInfo.headDimRope == 0) ? 128 : 96;
-    uint32_t kL0Loops = (kL1Size + kL0Size - 1) / kL0Size;
 
     LocalTensor<KV_T> bL1Tensor;
     LocalTensor<KV_T> kRopeTensor;
@@ -773,7 +780,10 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                     mL1Size = mSize - (mL1Loops - 1) * M_SPLIT_SIZE;
                     mL1SizeAlign = SFAAlign(mL1Size, 16U);
                     // mL1SizeAlign<128 kL1=0时需要偏移, 确保qRope能一半拷贝到当前tensor, 一半拷贝到下一个tensor
-                    aL1PaddingSize = (M_SPLIT_SIZE - mL1SizeAlign) * kL1Size;
+                    aL1PaddingSize = (M_SPLIT_SIZE - mL1SizeAlign) * 288;
+                    if (constInfo.headDimRope == 0) {
+                        aL1PaddingSize = (M_SPLIT_SIZE - mL1SizeAlign) * 256;
+                    }
                 }
 
                 // 左矩阵L1选择12块还是34块的index, 由m l1 index决定
@@ -787,7 +797,10 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka]);
                         WaitFlag<HardEvent::MTE1_MTE2>(mte21QPIds[ka + 1]);
                         CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256, 0);
-                        if (constInfo.headDimRope != 0) {
+                        if (constInfo.headDimRope == 0) {
+                            // rope=none: 不搬运 queryRope
+                        } else {
+                            // 由于L1里面是NZ, 这里q rope的偏移为整块q nope切k的后大小, 256为headDim的一半
                             LocalTensor<Q_T> qRopeTensor = aL1Tensor[mL1SizeAlign * 256];
                             CopyInMm1ARopeToL1(qRopeTensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE,
                                                mL1Size);
@@ -796,6 +809,7 @@ __aicore__ inline void SFAMatmulService<SFAT>::ComputeMm1(const RunInfo &info, c
                         CopyInMm1AToL1(aL1Tensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256,
                                        256);
                     } else {
+                        // 32为rope headDim的一半
                         LocalTensor<Q_T> qTmpTensor = aL1Tensor[mL1SizeAlign * 32];
                         CopyInMm1AToL1(qTmpTensor, info, mSplitInfo.nBufferStartM + mL1 * M_SPLIT_SIZE, mL1Size, 256,
                                        256);
