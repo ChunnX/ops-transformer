@@ -21,7 +21,7 @@ struct StrideCase {
     gert::Stride stride;
     int32_t expectedAxis;
 };
-}
+} // namespace
 
 TEST(FlashMlaWithKvcacheStrideTilingTest, ReportsInnermostNoncontiguousAxis)
 {
@@ -40,8 +40,8 @@ TEST(FlashMlaWithKvcacheStrideTilingTest, ReportsInnermostNoncontiguousAxis)
     };
     for (const auto &test : cases) {
         int32_t axis = 0;
-        const auto status = optiling::flash_mla_with_kvcache::CheckTensorContiguous(
-            test.shape.GetDimNum(), test.shape, &test.stride, axis);
+        const auto status = optiling::flash_mla_with_kvcache::CheckTensorContiguous(test.shape.GetDimNum(), test.shape,
+                                                                                    &test.stride, axis);
         EXPECT_EQ(status, test.expectedAxis == -1 ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
         EXPECT_EQ(axis, test.expectedAxis);
     }

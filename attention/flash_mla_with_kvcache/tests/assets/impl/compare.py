@@ -128,7 +128,15 @@ def compare(*outputs):
         npu = COMPARATOR.as_float32(npu_out)
         golden = COMPARATOR.as_float32(golden_out)
         passed = npu.shape == golden.shape and bool(
-            np.all(np.isclose(npu, golden, rtol=0.0, atol=0.1, equal_nan=False)))
-        results.append({"pass": passed, "precision": 100.0 if passed else 0.0,
-                        "error_info": None if passed else "MLA LSE absolute error exceeds 0.1 or shape mismatch"})
+            np.all(np.isclose(npu, golden, rtol=0.0, atol=0.1, equal_nan=False))
+        )
+        results.append(
+            {
+                "pass": passed,
+                "precision": 100.0 if passed else 0.0,
+                "error_info": None
+                if passed
+                else "MLA LSE absolute error exceeds 0.1 or shape mismatch",
+            }
+        )
     return results

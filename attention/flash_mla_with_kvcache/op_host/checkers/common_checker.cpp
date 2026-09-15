@@ -51,13 +51,11 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FlashMlaWithKvcacheTi
 {
     // q/out share the same tri-set; out is required to equal q (no transpose),
     // the pairing itself is enforced by LAYOUT_CONSTRAINT_TABLE below.
-    const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {
-FlashMlaWithKvcacheLayout::TND};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedQLayouts = {FlashMlaWithKvcacheLayout::TND};
     // kv 侧只接受 paged 布局（仅 PA 分页，KvLayoutType 0 连续 KV 永不放行）。
-    const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {
-FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND};
-    const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {
-FlashMlaWithKvcacheLayout::NTD};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedKvLayouts = {FlashMlaWithKvcacheLayout::PA_NZ,
+                                                                       FlashMlaWithKvcacheLayout::PA_BBND};
+    const std::vector<FlashMlaWithKvcacheLayout> supportedOutLayouts = {FlashMlaWithKvcacheLayout::NTD};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) == supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q", LayoutToSerialString(faInfo.qLayout).c_str(),
@@ -67,16 +65,15 @@ FlashMlaWithKvcacheLayout::NTD};
 
     OP_CHECK_IF(
         std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
-            "The value of layout_kv must be PA_NZ or PA_BBND"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+                                              "The value of layout_kv must be PA_NZ or PA_BBND"),
         return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            faInfo.opName, "layout_out", LayoutToSerialString(faInfo.outLayout).c_str(),
-            "The value of layout_out must be NTD");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
+                                              LayoutToSerialString(faInfo.outLayout).c_str(),
+                                              "The value of layout_out must be NTD");
         return ge::GRAPH_FAILED;
     }
 
@@ -313,8 +310,7 @@ struct LayoutConstraintConfig {
 // Only TND queries, paged BBND/NZ cache and NTD output are supported.
 static const std::map<FlashMlaWithKvcacheLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
     {FlashMlaWithKvcacheLayout::TND,
-     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND},
-      {FlashMlaWithKvcacheLayout::NTD}}},
+     {{FlashMlaWithKvcacheLayout::PA_NZ, FlashMlaWithKvcacheLayout::PA_BBND}, {FlashMlaWithKvcacheLayout::NTD}}},
 };
 
 ge::graphStatus CommonChecker::CheckMultiParaLayout(const FlashMlaWithKvcacheTilingInfo &faInfo)

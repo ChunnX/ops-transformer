@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """flash_mla_with_kvcache golden: 参照 flash_attn_golden 架构的独立实现。
 
 算子契约 (flash_mla.txt + 安装包 cann_ops_transformer schema):
@@ -92,9 +102,7 @@ class FlashMlaWithKvcacheGolden:
             )
         # MLA 硬约束: V 宽 = nope 宽, 必须为 512
         if head_dim_v != 512:
-            raise ValueError(
-                f"head_dim_v 必须为 512(MLA 硬约束), got {head_dim_v}"
-            )
+            raise ValueError(f"head_dim_v 必须为 512(MLA 硬约束), got {head_dim_v}")
 
         # KV 布局维度校验与块长/宽提取
         if layout_kv == "PA_NZ":
@@ -113,12 +121,10 @@ class FlashMlaWithKvcacheGolden:
                     f"k_cache last dim must be NZ blk_elem={_NZ_BLK_ELEM}, "
                     f"got {k_cache.shape[-1]}"
                 )
-            block_size = k_cache.shape[3]          # BS
+            block_size = k_cache.shape[3]  # BS
             k_dim = k_cache.shape[2] * k_cache.shape[4]  # DSUB*BLK = 576
             if k_dim != head_dim_qk:
-                raise ValueError(
-                    f"k_cache 宽度 {k_dim} != head_dim_qk({head_dim_qk})"
-                )
+                raise ValueError(f"k_cache 宽度 {k_dim} != head_dim_qk({head_dim_qk})")
         elif layout_kv == "PA_BBND":
             if k_cache.dim() != 4:
                 raise ValueError(
@@ -130,12 +136,10 @@ class FlashMlaWithKvcacheGolden:
                     f"k_cache dim2 (kv heads) must be 1 (MLA 硬约束), "
                     f"got {k_cache.shape[2]}"
                 )
-            block_size = k_cache.shape[1]          # BS
-            k_dim = k_cache.shape[-1]              # D
+            block_size = k_cache.shape[1]  # BS
+            k_dim = k_cache.shape[-1]  # D
             if k_dim != head_dim_qk:
-                raise ValueError(
-                    f"k_cache 宽度 {k_dim} != head_dim_qk({head_dim_qk})"
-                )
+                raise ValueError(f"k_cache 宽度 {k_dim} != head_dim_qk({head_dim_qk})")
         else:  # PA_BNBD
             if k_cache.dim() != 4:
                 raise ValueError(
@@ -147,12 +151,10 @@ class FlashMlaWithKvcacheGolden:
                     f"k_cache dim1 (kv heads) must be 1 (MLA 硬约束), "
                     f"got {k_cache.shape[1]}"
                 )
-            block_size = k_cache.shape[2]          # BS
-            k_dim = k_cache.shape[-1]              # D
+            block_size = k_cache.shape[2]  # BS
+            k_dim = k_cache.shape[-1]  # D
             if k_dim != head_dim_qk:
-                raise ValueError(
-                    f"k_cache 宽度 {k_dim} != head_dim_qk({head_dim_qk})"
-                )
+                raise ValueError(f"k_cache 宽度 {k_dim} != head_dim_qk({head_dim_qk})")
 
         # N 位置随 layout: TND/BNSD 在 dim1, BSND (B,S,N,D) 在 dim2
         if layout_q == "BSND":
@@ -166,7 +168,7 @@ class FlashMlaWithKvcacheGolden:
             "num_heads_q": num_heads_q,
             "head_dim_qk": head_dim_qk,
             "head_dim_v": head_dim_v,
-            "rope_dim": head_dim_qk - head_dim_v,   # = 64
+            "rope_dim": head_dim_qk - head_dim_v,  # = 64
             "block_size": block_size,
             "batch": batch,
             "seq_decl": seq_decl,
@@ -208,9 +210,7 @@ class FlashMlaWithKvcacheGolden:
         返回 (attn_out, softmax_lse); attn_out dtype 同 q, lse float32。
         """
         if device_mode not in ("cpu", "npu"):
-            raise ValueError(
-                f"device_mode must be 'cpu' or 'npu', got {device_mode}"
-            )
+            raise ValueError(f"device_mode must be 'cpu' or 'npu', got {device_mode}")
         layout_out = layout_q if layout_out is None else layout_out
         if layout_kv not in ("PA_NZ", "PA_BBND", "PA_BNBD"):
             raise ValueError(
@@ -257,7 +257,9 @@ class FlashMlaWithKvcacheGolden:
         if seqused_q is not None:
             q_lens = seqused_q.tolist()
         elif cu_q_list is not None:
-            q_lens = [cu_q_list[b + 1] - cu_q_list[b] for b in range(len(cu_q_list) - 1)]
+            q_lens = [
+                cu_q_list[b + 1] - cu_q_list[b] for b in range(len(cu_q_list) - 1)
+            ]
         else:
             q_lens = None
         kv_lens = cache_lens  # PA cache 长度 = cache_seqlens(接口参数)
@@ -267,9 +269,14 @@ class FlashMlaWithKvcacheGolden:
             raise ValueError(f"cache_seqlens must contain {batch} nonnegative lengths")
         if q_lens is not None and len(q_lens) != batch:
             raise ValueError(f"seqused_q must contain {batch} lengths")
-        if layout_q == "TND" and (cu_q_list[0] != 0 or cu_q_list[-1] != q.shape[0]
-                                  or any(a > b for a, b in zip(cu_q_list, cu_q_list[1:]))):
-            raise ValueError("cu_seqlens_q must monotonically cover the TND tensor from 0")
+        if layout_q == "TND" and (
+            cu_q_list[0] != 0
+            or cu_q_list[-1] != q.shape[0]
+            or any(a > b for a, b in zip(cu_q_list, cu_q_list[1:]))
+        ):
+            raise ValueError(
+                "cu_seqlens_q must monotonically cover the TND tensor from 0"
+            )
 
         # 值域校验: seqused_q 不允许超过物理/声明序列长(禁止静默截断或越界错算;
         # 与 loader/backend 的长度校验互补, 违反即清晰报错)
@@ -288,9 +295,7 @@ class FlashMlaWithKvcacheGolden:
         # Resolve auto compute_mode (同 flash golden 口径)
         if q_lens is not None:
             max_sq = max(q_lens, default=0)
-            max_product = max(
-                (sq * skv for sq, skv in zip(q_lens, kv_lens)), default=0
-            )
+            max_product = max((sq * skv for sq, skv in zip(q_lens, kv_lens)), default=0)
         else:
             max_sq = geo["seq_decl"]
             max_skv = max(kv_lens, default=0)
@@ -303,8 +308,17 @@ class FlashMlaWithKvcacheGolden:
 
         # 3. 逐 batch 计算(防 OOM)
         out_native, lse_f32 = self._compute_per_batch(
-            q, k_cache, q_lens, kv_lens, layout_q, cu_q_list,
-            block_table, mask_mode, attn_mask, scale, compute_mode,
+            q,
+            k_cache,
+            q_lens,
+            kv_lens,
+            layout_q,
+            cu_q_list,
+            block_table,
+            mask_mode,
+            attn_mask,
+            scale,
+            compute_mode,
         )
 
         # 4. 输出布局转换 + dtype
@@ -336,8 +350,7 @@ class FlashMlaWithKvcacheGolden:
 
         # 5. softmax_lse (算子契约: TND -> (N, T), 非 TND -> (B, N, S))
         if not return_softmax_lse:
-            softmax_lse = torch.zeros(1, dtype=torch.float32,
-                                      device=attn_out.device)
+            softmax_lse = torch.zeros(1, dtype=torch.float32, device=attn_out.device)
         elif layout_q == "TND":
             softmax_lse = lse_f32.t().contiguous()  # (T, N) -> (N, T)
         else:
@@ -370,7 +383,7 @@ class FlashMlaWithKvcacheGolden:
         """
         N_q = self._geo["num_heads_q"]
         dv = self._geo["head_dim_v"]
-        seq_decl = self._geo["seq_decl"]     # BNSD/BSND 声明序列长(TND=None)
+        seq_decl = self._geo["seq_decl"]  # BNSD/BSND 声明序列长(TND=None)
         group = N_q  # num_heads_kv == 1, 单 KV 头广播到所有 Q 头
 
         if layout_q == "TND":
@@ -384,19 +397,15 @@ class FlashMlaWithKvcacheGolden:
             else:  # BNSD/BSND: 声明长度
                 q_lens = [seq_decl] * B
 
-        is_tnd_out = (layout_q == "TND")
+        is_tnd_out = layout_q == "TND"
         if is_tnd_out:
             total_q = q.shape[0]
-            out_tnd = torch.zeros(total_q, N_q, dv, dtype=q.dtype,
-                                  device=q.device)
-            lse_tnd = torch.zeros(total_q, N_q, dtype=torch.float32,
-                                  device=q.device)
+            out_tnd = torch.zeros(total_q, N_q, dv, dtype=q.dtype, device=q.device)
+            lse_tnd = torch.zeros(total_q, N_q, dtype=torch.float32, device=q.device)
             out = lse = None
         else:
-            out = torch.zeros(B, N_q, seq_decl, dv, dtype=q.dtype,
-                              device=q.device)
-            lse = torch.zeros(B, N_q, seq_decl, dtype=torch.float32,
-                              device=q.device)
+            out = torch.zeros(B, N_q, seq_decl, dv, dtype=q.dtype, device=q.device)
+            lse = torch.zeros(B, N_q, seq_decl, dtype=torch.float32, device=q.device)
             out_tnd = lse_tnd = None
 
         for b in range(B):
@@ -410,29 +419,43 @@ class FlashMlaWithKvcacheGolden:
             if is_tnd_out:
                 phys = cu_q[b + 1] - cu_q[b]
                 if phys > sq:
-                    lse_tnd[q_start + sq: q_start + phys, :] = float("inf")
+                    lse_tnd[q_start + sq : q_start + phys, :] = float("inf")
             elif sq < seq_decl:
                 lse[b, :, sq:] = float("inf")
             if sq <= 0 or skv <= 0:
                 # 空 batch / 空 KV: 算子 LSE 输出 +inf
                 if is_tnd_out:
-                    lse_tnd[q_start:q_start + sq, :] = float("inf")
+                    lse_tnd[q_start : q_start + sq, :] = float("inf")
                 else:
                     lse[b, :, :] = float("inf")
                 continue
 
             q_b, k_b = self._extract_batch_bnsd(
-                q, k_cache, b, sq, skv, layout_q, self._geo["layout_kv"],
-                cu_q, block_table,
+                q,
+                k_cache,
+                b,
+                sq,
+                skv,
+                layout_q,
+                self._geo["layout_kv"],
+                cu_q,
+                block_table,
             )
             # V = K 的 nope 部分 (kv 复用, rope 不参与 V 投影)
             v_b = k_b[..., :dv]
 
             # 单 KV 头 -> 所有 Q 头广播; masked 用右对齐 causal 自构造
-            mask_b = None if (
-                compute_mode == "tiled" and mask_mode == 3
-            ) else self._build_batch_mask(
-                sq, skv, mask_mode, attn_mask, q.device, b,
+            mask_b = (
+                None
+                if (compute_mode == "tiled" and mask_mode == 3)
+                else self._build_batch_mask(
+                    sq,
+                    skv,
+                    mask_mode,
+                    attn_mask,
+                    q.device,
+                    b,
+                )
             )
 
             delta = skv - sq
@@ -440,7 +463,11 @@ class FlashMlaWithKvcacheGolden:
             v_bh = v_b[0, 0, :skv, :]  # (Skv, DV=512)
             # Fold heads into query rows. Each KV tile is widened once for
             # the whole row tile instead of once per head (critical for long KV).
-            per_head_mask = attn_mask is not None and attn_mask.ndim == 4 and attn_mask.shape[1] != 1
+            per_head_mask = (
+                attn_mask is not None
+                and attn_mask.ndim == 4
+                and attn_mask.shape[1] != 1
+            )
             head_step = 1 if per_head_mask else group
             for first in range(0, group, head_step):
                 last = min(first + head_step, group)
@@ -448,14 +475,17 @@ class FlashMlaWithKvcacheGolden:
                 selected_mask = mask_b
                 if per_head_mask:
                     selected_mask = self._build_batch_mask(
-                        sq, skv, mask_mode, attn_mask, q.device, b, head_index=first)
+                        sq, skv, mask_mode, attn_mask, q.device, b, head_index=first
+                    )
                 flat_q = q_heads.reshape(-1, q_heads.shape[-1])
                 if compute_mode == "tiled":
+
                     def mask_fn(qs, qe, ks, ke):
                         positions = torch.arange(qs, qe, device=q.device) % sq
                         if mask_mode == 3:
                             return self._build_mask_mode_mask(
-                                positions, torch.arange(ks, ke, device=q.device), delta)
+                                positions, torch.arange(ks, ke, device=q.device), delta
+                            )
                         if selected_mask is None:
                             return None
                         return selected_mask[:, ks:ke].index_select(0, positions)
@@ -464,20 +494,29 @@ class FlashMlaWithKvcacheGolden:
                         if mask_mode != 3:
                             return 0, skv
                         # A row tile can straddle heads; each head restarts Q.
-                        last_q = sq - 1 if qs // sq != (qe-1) // sq else (qe-1) % sq
+                        last_q = sq - 1 if qs // sq != (qe - 1) // sq else (qe - 1) % sq
                         return 0, last_q + delta + 1
 
-                    o, l = attention_single(flat_q, k_bh, v_bh, scale,
-                                            self.TILE_SIZE, mask_fn, kv_bounds=kv_bounds)
+                    o, l = attention_single(
+                        flat_q,
+                        k_bh,
+                        v_bh,
+                        scale,
+                        self.TILE_SIZE,
+                        mask_fn,
+                        kv_bounds=kv_bounds,
+                    )
                 else:
                     if selected_mask is not None and last - first > 1:
                         selected_mask = selected_mask.repeat(last - first, 1)
-                    o, l = self._compute_full_single(flat_q, k_bh, v_bh, selected_mask, scale)
-                o = o.reshape(last-first, sq, dv)
-                l = l.reshape(last-first, sq)
+                    o, l = self._compute_full_single(
+                        flat_q, k_bh, v_bh, selected_mask, scale
+                    )
+                o = o.reshape(last - first, sq, dv)
+                l = l.reshape(last - first, sq)
                 if is_tnd_out:
-                    out_tnd[q_start:q_start + sq, first:last, :] = o.permute(1, 0, 2)
-                    lse_tnd[q_start:q_start + sq, first:last] = l.T
+                    out_tnd[q_start : q_start + sq, first:last, :] = o.permute(1, 0, 2)
+                    lse_tnd[q_start : q_start + sq, first:last] = l.T
                 else:
                     out[b, first:last, :sq, :] = o
                     lse[b, first:last, :sq] = l
@@ -508,9 +547,9 @@ class FlashMlaWithKvcacheGolden:
         """
         # Q
         if layout_q == "BNSD":
-            q_b = q[b:b + 1, :, :sq, :]
+            q_b = q[b : b + 1, :, :sq, :]
         elif layout_q == "BSND":
-            q_b = q[b:b + 1, :sq, :, :].permute(0, 2, 1, 3)
+            q_b = q[b : b + 1, :sq, :, :].permute(0, 2, 1, 3)
         else:  # TND
             s, e = cu_q[b], cu_q[b + 1]
             q_b = q[s:e].unsqueeze(0).permute(0, 2, 1, 3)
@@ -524,23 +563,32 @@ class FlashMlaWithKvcacheGolden:
 
     def _compute_tiled_single(
         self,
-        q: torch.Tensor,       # (Sq, D) input dtype
-        k: torch.Tensor,       # (Skv, D) input dtype
-        v: torch.Tensor,       # (Skv, DV) input dtype
+        q: torch.Tensor,  # (Sq, D) input dtype
+        k: torch.Tensor,  # (Skv, D) input dtype
+        v: torch.Tensor,  # (Skv, DV) input dtype
         mask: Optional[torch.Tensor],  # (Sq, Skv) bool, True=mask out
         scale: float,
         mask_mode: int = 0,
         delta: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Online softmax with input-dtype Cube operands and FP32 accumulators."""
+
         def mask_fn(qs, qe, ks, ke):
             if mask_mode == 3:
                 q_idx = torch.arange(qs, qe, device=q.device)
                 k_idx = torch.arange(ks, ke, device=q.device)
                 return self._build_mask_mode_mask(q_idx, k_idx, delta)
             return None if mask is None else mask[qs:qe, ks:ke]
-        return attention_single(q, k, v, scale, self.TILE_SIZE, mask_fn,
-                                kv_bounds=(lambda qs, qe: (0, qe + delta)) if mask_mode == 3 else None)
+
+        return attention_single(
+            q,
+            k,
+            v,
+            scale,
+            self.TILE_SIZE,
+            mask_fn,
+            kv_bounds=(lambda qs, qe: (0, qe + delta)) if mask_mode == 3 else None,
+        )
 
     # ==========================================================================
     # Full (non-tiled) golden
@@ -548,16 +596,21 @@ class FlashMlaWithKvcacheGolden:
 
     def _compute_full_single(
         self,
-        q: torch.Tensor,       # (Sq, D) input dtype
-        k: torch.Tensor,       # (Skv, D) input dtype
-        v: torch.Tensor,       # (Skv, DV) input dtype
+        q: torch.Tensor,  # (Sq, D) input dtype
+        k: torch.Tensor,  # (Skv, D) input dtype
+        v: torch.Tensor,  # (Skv, DV) input dtype
         mask: Optional[torch.Tensor],  # (Sq, Skv) bool
         scale: float,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """One-tile mixed-precision reference; exp weights round before PV."""
         return attention_single(
-            q, k, v, scale, max(q.shape[0], k.shape[0], 1),
-            lambda qs, qe, ks, ke: mask, None,
+            q,
+            k,
+            v,
+            scale,
+            max(q.shape[0], k.shape[0], 1),
+            lambda qs, qe, ks, ke: mask,
+            None,
         )
 
     # ==========================================================================
@@ -596,7 +649,10 @@ class FlashMlaWithKvcacheGolden:
             return self._build_mask_mode_mask(q_idx, k_idx, skv - sq)
         if attn_mask is not None:
             if attn_mask.dim() == 4:
-                attn_mask = attn_mask[0 if attn_mask.shape[0] == 1 else batch_index, 0 if attn_mask.shape[1] == 1 else head_index]
+                attn_mask = attn_mask[
+                    0 if attn_mask.shape[0] == 1 else batch_index,
+                    0 if attn_mask.shape[1] == 1 else head_index,
+                ]
             elif attn_mask.dim() == 3:
                 attn_mask = attn_mask[0 if attn_mask.shape[0] == 1 else batch_index]
             return attn_mask[:sq, :skv].to(device=device, dtype=torch.bool)

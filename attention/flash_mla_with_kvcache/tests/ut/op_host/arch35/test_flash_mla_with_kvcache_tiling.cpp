@@ -63,8 +63,9 @@ TEST_P(FlashMlaWithKvcacheArch35TilingTest, tiling)
                     true);
 }
 
-INSTANTIATE_TEST_SUITE_P(FlashMlaWithKvcache, FlashMlaWithKvcacheArch35TilingTest,
-                         testing::ValuesIn(GetCasesFromCsv<FlashMlaWithKvcacheTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-                         PrintCaseInfoString<FlashMlaWithKvcacheTilingUtParam>);
+INSTANTIATE_TEST_SUITE_P(
+    FlashMlaWithKvcache, FlashMlaWithKvcacheArch35TilingTest,
+    testing::ValuesIn(GetCasesFromCsv<FlashMlaWithKvcacheTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
+    PrintCaseInfoString<FlashMlaWithKvcacheTilingUtParam>);
 
 } // namespace FlashMlaWithKvcacheUT

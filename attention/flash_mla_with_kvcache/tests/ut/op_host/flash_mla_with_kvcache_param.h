@@ -75,13 +75,20 @@ struct FlashMlaWithKvcacheTilingUtParam : public FlashMlaWithKvcacheHostUtParamB
         : FlashMlaWithKvcacheHostUtParamBase(csvMap)
     {
         inputInstance.emplace_back(GetTensorGE(csvMap, "q_shape", "q_dtype", "q_format", this->q));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "k_cache_shape", "k_cache_dtype", "k_cache_format", this->k_cache));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "block_table_shape", "block_table_dtype", "block_table_format", this->block_table));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "cache_seqlens_shape", "cache_seqlens_dtype", "cache_seqlens_format", this->cache_seqlens));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "cu_seqlens_q_shape", "cu_seqlens_q_dtype", "cu_seqlens_q_format", this->cu_seqlens_q));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "seqused_q_shape", "seqused_q_dtype", "seqused_q_format", this->seqused_q));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "attn_mask_shape", "attn_mask_dtype", "attn_mask_format", this->attn_mask));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "metadata_shape", "metadata_dtype", "metadata_format", this->metadata));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "k_cache_shape", "k_cache_dtype", "k_cache_format", this->k_cache));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "block_table_shape", "block_table_dtype", "block_table_format", this->block_table));
+        inputInstance.emplace_back(GetTensorGE(csvMap, "cache_seqlens_shape", "cache_seqlens_dtype",
+                                               "cache_seqlens_format", this->cache_seqlens));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "cu_seqlens_q_shape", "cu_seqlens_q_dtype", "cu_seqlens_q_format", this->cu_seqlens_q));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "seqused_q_shape", "seqused_q_dtype", "seqused_q_format", this->seqused_q));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "attn_mask_shape", "attn_mask_dtype", "attn_mask_format", this->attn_mask));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "metadata_shape", "metadata_dtype", "metadata_format", this->metadata));
 
         ApplyStrideFromCsv(csvMap, "k_cache_stride", k_cache);
         if (k_cache.hasStride_) {
@@ -113,7 +120,8 @@ struct FlashMlaWithKvcacheInferShapeUtParam : public FlashMlaWithKvcacheHostUtPa
         : FlashMlaWithKvcacheHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetTensorGE(csvMap, "q_shape", "q_dtype", "q_format", this->q));
-        this->inputInstance.emplace_back(GetTensorGE(csvMap, "k_cache_shape", "k_cache_dtype", "k_cache_format", this->k_cache));
+        this->inputInstance.emplace_back(
+            GetTensorGE(csvMap, "k_cache_shape", "k_cache_dtype", "k_cache_format", this->k_cache));
 
         this->outputInstance.emplace_back(
             GetTensorGE(csvMap, "attn_out_shape", "attn_out_dtype", "attn_out_format", this->attn_out));
