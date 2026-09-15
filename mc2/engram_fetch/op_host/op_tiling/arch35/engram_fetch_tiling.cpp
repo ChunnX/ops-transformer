@@ -43,7 +43,7 @@ constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK_INDEX = 1U;
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 2U;
 constexpr uint32_t ATTR_COMM_BUFFER_SIZE_INDEX = 3U;
 constexpr uint32_t ATTR_WITH_GRAD_INDEX = 4U;
-constexpr uint32_t ATTR_SF_TABLE_ADDR_INDEX = 5U;
+constexpr uint32_t SF_TABLE_INDEX = 3U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -499,7 +499,6 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
     tilingData.commBufferSize = 0;
     tilingData.numSfPacks = 0;
     tilingData.sfElemSize = 0;
-    tilingData.sfTableAddr = 0;
 
     auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
     tilingData.hiddenDim = *hiddenSizePtr;
@@ -525,11 +524,6 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
         }
         ge::DataType sfDtype = fetchedSfDesc->GetDataType();
         tilingData.sfElemSize = ge::GetSizeByDataType(sfDtype);
-    }
-
-    auto sfTableAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_SF_TABLE_ADDR_INDEX);
-    if (sfTableAddrPtr != nullptr) {
-        tilingData.sfTableAddr = static_cast<uint64_t>(*sfTableAddrPtr);
     }
 
     auto platformInfo = context->GetPlatformInfo();
@@ -593,8 +587,6 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     if (isTraining) {
         int64_t numRanks = static_cast<int64_t>(tilingData.rankSize);
         int64_t numTokens = tilingData.numTokens;
-        int64_t hiddenBytes = tilingData.hiddenBytes;
-        int64_t totalRecv = tilingData.totalRecv;
         int64_t aivNum = static_cast<int64_t>(tilingData.aivNum);
         OP_TILING_CHECK(aivNum <= 0, OP_LOGE(nodeName, "aivNum is %ld, must be positive.", aivNum),
                         return ge::GRAPH_FAILED);
@@ -614,15 +606,23 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t perCoreTempSize = numOwnerRanksMax * slotSize;
         int64_t wsSortedIndicesTemp = aivNum * perCoreTempSize;
         int64_t wsPermOutTemp = aivNum * perCoreTempSize;
-        int64_t wsLocalData = totalRecv * hiddenBytes;
-        int64_t wsRecvData = numTokens * hiddenBytes;
-        int64_t wsCounterScratch = 2 * aivNum * UB_ALIGN;
+        int64_t wsCounterScratch = aivNum * UB_ALIGN;
+        constexpr int64_t NOTIFY_SLOT_CNT = 16;
+        int64_t numSendCores = aivNum / 2;
+        if (numSendCores == 0) {
+            numSendCores = 1;
+        }
+        if (numSendCores >= numRanks) {
+            numSendCores = numSendCores / numRanks * numRanks;
+        }
+        int64_t streamsPerCore = (numRanks + numSendCores - 1) / numSendCores;
+        int64_t wsNotifyScratch = numSendCores * streamsPerCore * NOTIFY_SLOT_CNT * UB_ALIGN;
         int64_t wsPartialCounts = aivNum * numRanks * static_cast<int64_t>(sizeof(int32_t));
         int64_t wsFlagScratch = aivNum * UB_ALIGN;
         int64_t wsIndicesReadyFlag = numRanks * static_cast<int64_t>(sizeof(int32_t));
 
-        int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsSortedIndicesTemp + wsPermOutTemp + wsLocalData +
-                          wsRecvData + wsCounterScratch + wsPartialCounts + wsFlagScratch + wsIndicesReadyFlag;
+        int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsSortedIndicesTemp + wsPermOutTemp +
+                          wsCounterScratch + wsNotifyScratch + wsPartialCounts + wsFlagScratch + wsIndicesReadyFlag;
         wsTotal = ((wsTotal + WORKSPACE_ALIGN_2MB - 1) / WORKSPACE_ALIGN_2MB) * WORKSPACE_ALIGN_2MB;
         wsTotal += SYSTEM_NEED_WORKSPACE;
         workSpaces[0] = static_cast<size_t>(wsTotal);

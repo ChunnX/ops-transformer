@@ -3,7 +3,7 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
@@ -227,7 +227,7 @@ ElasticBuffer.engram_fetch(indices) -> Callable
 
 **输入参数**：
 
-- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引，各卡`len(indices)`保持一致。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
+- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引（训练场景各卡`len(indices)`保持一致， 推理场景可以不一致）。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
 
 **输出说明**：
 
@@ -384,7 +384,11 @@ ElasticBuffer.dispatch(
 - **recv_topk_weights** (`Tensor | None`)：表示本卡收到的topK权重。仅当输入 `topk_weights` 不为 `None` 时返回，否则为 `None`。要求为1 维张量，shape为 `(A,)`，数据类型为 `float32`，数据格式为 $ND$，作为 [combine](#combine) 的 `topk_weights` 输入。
 - **handle** (`EPHandle`)：表示dispatch阶段生成的handle对象，包含slot索引、元数据等信息，需传递给 [combine](#combine) 使用。handle的属性如下：
   - **dst_buffer_slot_idx** (`Tensor`)：slot索引，shape为 `(BS, K)`，dtype为 `int32`。
-  - **recv_src_metadata** (`Tensor`)：接收元数据，shape为 `(A, 4)`，dtype为 `int32`。
+  - **recv_src_metadata** (`Tensor`)：接收元数据，shape为 `(A_alloc, 5)`，dtype为 `int32`；仅前 `sum(num_recv_tokens_per_expert)` 行有效。
+  - **recv_rank_offsets** (`Tensor`)：各源EP rank对应metadata行数的排他前缀和，shape为 `(ep_world_size + 1,)`，dtype为 `int32`；rank `r` 的metadata区间为 `[recv_rank_offsets[r], recv_rank_offsets[r + 1])`，最后一个元素等于有效metadata行数。它是下述 packed buffer 尾部的视图，cached模式复用其内容，不再是独立算子输入/输出。
+  - **recv_metadata_buffer** (`Tensor`)：连续一维 `int32` backing tensor，基址要求512B对齐。前 `A_alloc * 5` 个元素保留五列语义；offsets从 `align_up(A_alloc * 5 * 4, 512)` 字节处开始。总字节数为 `align_up(A_alloc * 5 * 4, 512) + align_up((ep_world_size + 1) * 4, 512)`。两段padding不参与计算或精度比较，内容未定义。`recv_src_metadata` 和 `recv_rank_offsets` 必须保持为此buffer的视图。
+
+  底层Dispatch Epilogue、cached输入和Combine仅传完整packed tensor，不能传五列子视图后越过其shape访问尾部；偏移使用分配容量 `A_alloc`，而非有效行数。cached输入输出使用相同容量。旧两tensor句柄需显式打包或重新dispatch，不能混用旧算子包与新wheel；复制到其他设备时先复制完整buffer，再按容量重建视图。请成套重新编译安装算子和wheel（包含 `moe_ep_metadata_layout.h`），并更新JIT缓存。
   - **num_recv_tokens_per_rank** (`Tensor`)：各卡接收token数量，shape为 `(ep_world_size,)`，dtype为 `int32`。
   - **num_recv_tokens_per_expert** (`Tensor`)：每个本地专家接收的token数量，shape为 `(num_local_experts,)`，dtype为 `int64`。
   - **num_experts** (`int`)：专家总数量。
@@ -667,7 +671,7 @@ def train_worker(rank):
 
     # ==================== 生成 embedding 和 indices ====================
     torch.manual_seed(42 + rank)
-    storage = torch.randn(num_entries, hidden, dtype=dtype)
+    storage = torch.randn(num_entries, hidden, dtype=dtype, pin_memory=True)
     total_entries = num_entries * world_size
 
     torch.manual_seed(100 + rank)

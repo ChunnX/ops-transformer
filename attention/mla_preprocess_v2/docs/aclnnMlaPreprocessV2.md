@@ -216,7 +216,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>与输入首次做矩阵乘的降维矩阵。</td>
       <td>-</td>
-      <td>INT8、FLOAT16、BFLOAT16</td>
+      <td>INT8、BFLOAT16</td>
       <td>NZ</td>
       <td>[qLoraDim + keyTotalDim,hiddenSize]</td>
       <td>-</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>权重矩阵。</td>
       <td>-</td>
-      <td>INT8、FLOAT16、BFLOAT16</td>
+      <td>INT8、BFLOAT16</td>
       <td>NZ</td>
       <td>[headNum * (qNoRopeDim + qRopeDim),qLoraDim]</td>
       <td>-</td>
@@ -1262,6 +1262,11 @@ int main() {
   aclDestroyTensor(slotmapping);
   aclDestroyTensor(ctkvScale);
   aclDestroyTensor(qNopeScale);
+  aclDestroyTensor(qOut);
+  aclDestroyTensor(kvCacheOut);
+  aclDestroyTensor(qRopeOut);
+  aclDestroyTensor(krCacheOut);
+  aclDestroyTensor(qDownOut);
 
   // 7. 释放device 资源
   aclrtFree(inputDeviceAddr);
@@ -1288,6 +1293,11 @@ int main() {
   aclrtFree(slotmappingDeviceAddr);
   aclrtFree(ctkvScaleDeviceAddr);
   aclrtFree(qNopeScaleDeviceAddr);
+  aclrtFree(qOutDeviceAddr);
+  aclrtFree(kvCacheOutDeviceAddr);
+  aclrtFree(qRopeOutDeviceAddr);
+  aclrtFree(krCacheOutDeviceAddr);
+  aclrtFree(qDownOutDeviceAddr);
 
   // 8. 释放host 资源
   aclrtFree(inputHostAddr);
@@ -1314,6 +1324,11 @@ int main() {
   aclrtFree(slotmappingHostAddr);
   aclrtFree(ctkvScaleHostAddr);
   aclrtFree(qNopeScaleHostAddr);
+  aclrtFree(qOutHostAddr);
+  aclrtFree(kvCacheOutHostAddr);
+  aclrtFree(qRopeOutHostAddr);
+  aclrtFree(krCacheOutHostAddr);
+  aclrtFree(qDownOutHostAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
