@@ -15,10 +15,9 @@
 #ifndef SPARSE_FLASH_MLA_TILING_H
 #define SPARSE_FLASH_MLA_TILING_H
 
-#include <exe_graph/runtime/tiling_context.h>
 #include "tiling/tiling_api.h"
-#include "err/ops_err.h"
 #include "common/smla_host_common_defs.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
