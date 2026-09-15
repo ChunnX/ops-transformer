@@ -1380,18 +1380,20 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
     uint32_t l1KStride = MhcPreBackwardUtils::CeilAlign(bsBlockSize, CEIL_ALIGN_16);
     uint64_t rowOffset = (bsChunkStart - bsStart) * B32_CUBE_BLOCK_SIZE;
     uint64_t columnOffset = vecIdx * (ND_BLOCK_SIZE / NUMBER_TWO) * l1KStride;
-    Nd2NzParams nd2NzParams;
-    nd2NzParams.ndNum = 1;
-    nd2NzParams.nValue = currentChunkSize;
-    nd2NzParams.dValue = copySizeND;
-    nd2NzParams.srcNdMatrixStride = 0;
-    nd2NzParams.srcDValue = copySizeND;
-    nd2NzParams.dstNzC0Stride = l1KStride;
-    nd2NzParams.dstNzNStride = 1;
-    nd2NzParams.dstNzMatrixStride = 0;
+    DataCopyParams ubToL1Params;
+    ubToL1Params.blockCount = currentChunkSize;
+    ubToL1Params.blockLen = 1;
+    ubToL1Params.srcStride = copySizeND / B32_CUBE_BLOCK_SIZE - 1;
+    ubToL1Params.dstStride = 0;
     SetFlag<HardEvent::V_MTE3>(EVENT_ID3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID3);
-    DataCopy(xRsL1_[columnOffset + rowOffset], gammaOutUb_, nd2NzParams);
+    // MTE3不支持直接复用GM到L1的Nd2Nz搬运。按8个FP32元素的C0块逐组散布，
+    // 每组一次搬运64行、每行32B，在共享L1中显式构造与C1一致的NZ布局。
+    for (uint32_t nOffset = 0; nOffset < copySizeND; nOffset += B32_CUBE_BLOCK_SIZE) {
+        uint64_t nzOffset = columnOffset +
+                            (nOffset / B32_CUBE_BLOCK_SIZE) * l1KStride * B32_CUBE_BLOCK_SIZE + rowOffset;
+        DataCopy(xRsL1_[nzOffset], gammaOutUb_[nOffset], ubToL1Params);
+    }
     SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
     vecOutQueue1_.FreeTensor(gammaOutUb_);
