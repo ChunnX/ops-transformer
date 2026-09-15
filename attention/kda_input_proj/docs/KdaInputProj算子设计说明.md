@@ -95,17 +95,11 @@ import torch
 import torch_npu
 import cann_ops_transformer
 
-<<<<<<< HEAD
-# 安装 torch_ops_extension 后调用（见 torch_ops_extension/build_and_install.sh）
-out = torch.ops.custom.npu_kda_input_proj(
-    x, weight_qkv, weight_beta, weight_gate, weight_g, weight_qkv_scale
-=======
 qkv, beta, gate, g = cann_ops_transformer.kda_input_proj(
     x, weight_qkv, weight_beta, weight_gate, weight_g, weight_qkv_scale=weight_qkv_scale
->>>>>>> 94534bf47 (feat(kda_input_proj): add aclnn API and cann_ops_transformer torch extension)
 )
 ```
 
 ## 相关接口
 
-PyTorch 扩展编译与安装说明见[build_and_install.sh](../torch_ops_extension/build_and_install.sh)。精度与 pytest 用例在后续 PR 合入后提供。
+更多测试与调用示例见[pytest说明](../tests/pytest/README.md)。
