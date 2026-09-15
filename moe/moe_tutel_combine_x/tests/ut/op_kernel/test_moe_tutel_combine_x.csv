@@ -1,0 +1,21 @@
+socVersion,caseName,kernelUtTarget,dtype,tilingKey,batchSize,samples,hidden,eC,expertNum,seed,injectInvalid,sentinelCapacity,hChunkOverride,numBlocks,comment
+Ascend950,fp32_basic,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,16,8,16,4,1,FALSE,FALSE,0,4,key0 fp32 real entry; E=4 C=4; usedCore=4 base=4 big=0
+Ascend950,fp16_basic,MOE_TUTEL_COMBINE_X_KERNEL,float16,0,1,16,8,16,4,2,FALSE,FALSE,0,4,key0 fp16 wrapper; same shape as fp32_basic
+Ascend950,bf16_basic,MOE_TUTEL_COMBINE_X_KERNEL,bfloat16,0,1,16,8,16,4,3,FALSE,FALSE,0,4,key0 bf16 wrapper; same shape as fp32_basic
+Ascend950,fp32_invalid_mix,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,20,16,12,3,4,TRUE,FALSE,0,6,key0 dropped(-1) and overflow(loc>=C) routes; usedCore=6 base=3 big=2
+Ascend950,fp32_multichunk,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,8,200,8,2,5,FALSE,FALSE,64,2,key0 H=200 hChunk=64 -> cnt=4 tail=8; chunk loop + WAR guards
+Ascend950,fp32_sentinel_rescan,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,12,8,16,4,6,FALSE,TRUE,0,4,key0 capacity=eC sentinel; kernel rescans indices -> C=4
+Ascend950,fp32_e_gt_ec_zero,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,10,8,6,8,7,FALSE,FALSE,0,5,key0 E=8 > EC=6 -> C=0 -> all-zero output
+Ascend950,fp32_single_expert,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,8,8,8,1,8,FALSE,FALSE,0,4,key0 E=1 -> C=EC; capacity==eC triggers confirming rescan
+Ascend950,fp16_multichunk_tail,MOE_TUTEL_COMBINE_X_KERNEL,float16,0,1,6,130,12,3,9,TRUE,FALSE,64,3,key0 fp16 H=130 hChunk=64 -> cnt=3 tail=2; invalid routes
+Ascend950,fp32_all_dropped,MOE_TUTEL_COMBINE_X_KERNEL,float32,0,1,9,8,8,0,10,FALSE,FALSE,0,3,key0 expertNum=0 -> all indices -1; E=1 C=EC; all-zero output
+Ascend950,fp32_batch_basic,MOE_TUTEL_COMBINE_X_KERNEL,float32,2,2,6,8,12,3,11,FALSE,FALSE,0,4,key2 fp32 3D B=2; usedCore=4 base=3 big=0
+Ascend950,fp16_batch_invalid,MOE_TUTEL_COMBINE_X_KERNEL,float16,2,3,5,6,10,2,12,TRUE,FALSE,0,4,key2 fp16 B=3 invalid routes; usedCore=4 base=3 big=3
+Ascend950,bf16_batch_multichunk,MOE_TUTEL_COMBINE_X_KERNEL,bfloat16,2,2,4,100,8,2,13,FALSE,FALSE,64,8,key2 bf16 H=100 hChunk=64 -> cnt=2 tail=36; usedCore=8 base=1
+Ascend950,fp32_batch_sentinel,MOE_TUTEL_COMBINE_X_KERNEL,float32,2,2,8,8,16,4,14,FALSE,TRUE,0,4,key2 sentinel capacity; rescan -> C=4
+Ascend950,fp32_empty_zero_fill,MOE_TUTEL_COMBINE_X_KERNEL,float32,1,1,4,8,0,0,15,FALSE,FALSE,0,1,key1 EC=0 -> outTotal=32 zero-fill (sub-path B)
+Ascend950,fp32_empty_s0,MOE_TUTEL_COMBINE_X_KERNEL,float32,1,1,0,8,4,2,16,FALSE,FALSE,0,1,key1 S=0 -> empty output (sub-path A early return)
+Ascend950,fp16_empty_h0,MOE_TUTEL_COMBINE_X_KERNEL,float16,1,1,4,0,4,2,17,FALSE,FALSE,0,1,key1 H=0 -> empty output (sub-path A early return)
+Ascend950,bf16_empty_b0,MOE_TUTEL_COMBINE_X_KERNEL,bfloat16,1,0,4,8,4,2,18,FALSE,FALSE,0,1,key1 B=0 -> empty output (sub-path A early return)
+Ascend950,fp32_empty_b0_ec0,MOE_TUTEL_COMBINE_X_KERNEL,float32,1,0,4,8,0,0,19,FALSE,FALSE,0,1,key1 multi-axis B=0+EC=0 -> outTotal=0 (sub-path A early return)
+Ascend950,fp16_empty_s0_h0,MOE_TUTEL_COMBINE_X_KERNEL,float16,1,1,0,0,4,2,20,FALSE,FALSE,0,1,key1 multi-axis S=0+H=0 -> outTotal=0 (sub-path A early return)
