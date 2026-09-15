@@ -1,0 +1,5 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+1,MatmulReduceScatterV2Mc2AicpuKernel,AI_CPU,10,3977692.625,451.591,397769.262,3973375.812,50.009
+1,MatmulReduceScatterV2,MIX_AIC,10,3975678.854,451.863,397567.885,3971443.407,49.984
+1,RunAicpuIndOpThreadInit,AI_CPU,3,346.294,79.57,115.431,150.9,0.004
+1,RunAicpuIndOpChannelInitV2,AI_CPU,1,224.85,224.85,224.85,224.85,0.003

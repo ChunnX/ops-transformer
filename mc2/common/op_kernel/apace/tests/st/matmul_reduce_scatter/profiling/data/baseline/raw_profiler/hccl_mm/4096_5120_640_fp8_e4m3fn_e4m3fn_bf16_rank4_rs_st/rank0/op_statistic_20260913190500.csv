@@ -1,0 +1,2 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,QuantBatchMatmulV3,AI_CORE,10,432.03,42.415,43.203,48.101,100

@@ -1,0 +1,199 @@
+[TEST] 2026-09-12 09:17:15  测试程序开始
+david_excel/aclnnMatmulReduceScatterV2.xlsx
+xlsx             :david_excel/aclnnMatmulReduceScatterV2.xlsx
+sheet            :level0_4p
+num              :[133, 133]
+scene            :one_hccl
+world_size       :4
+soc              :910D
+weight_same      :0
+ep               :0
+tp               :0
+master_ip        :127.0.0.1
+master_port      :50001
+server_num       :1
+server_index     :0
+dev_num          :0
+mix              :0
+[ { None: None,
+    'bin_name': 'fp8_e4m3fn_fp8_e4m3fn-2048_5120_10240_5120',
+    'block_size': 0,
+    'case_name': '2048_5120_10240_fp8_e4m3fn_e4m3fn_bf16_rank2_rs_st',
+    'dev_num': 0,
+    'graph_type': 'st',
+    'group_size': 4295032864,
+    'input_tensor_dtype': ['fp8_e4m3fn', 'fp8_e4m3fn'],
+    'input_tensor_range': [(1, 8), (1, 8)],
+    'input_tensor_shape': [[2048, 5120], [10240, 5120]],
+    'is_bias': 0,
+    'is_trans_b': 1,
+    'master_ip': '127.0.0.1',
+    'master_port': '50001',
+    'op_name': 'aclnnMatmulReduceScatterV2',
+    'outdtype': 'bf16',
+    'per_block_flag': False,
+    'rank_list0': [],
+    'reduce_op': 2,
+    'save_rank': 0,
+    'scene': 'one_hccl',
+    'seed': 42,
+    'server_index': 0,
+    'server_num': 1,
+    'sheet_name': 'level0_4p',
+    'soc': '910D',
+    'weight_same': 0,
+    'world_size': 2,
+    'x1scale_dtype': 'fp8_e8m0',
+    'x1scale_range': (1, 8),
+    'x1scale_shape': [2048, 80, 2],
+    'x2scale_dtype': 'fp8_e8m0',
+    'x2scale_range': (1, 8),
+    'x2scale_shape': [10240, 80, 2],
+    '备注': 'ST对比基线用例, 补充自 cases.csv row28'}]
+single_server scene!!!!!
+rank list is:  [0, 1, 2, 3]
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 3
+[INFO] device_3 创建HCCL通信链路 
+rank:3 init_process_group success
+rank3 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-12 09:17:25] [WARNING] [919595] profiler.py: Profiler won't be using warmup, this can skew profiler results
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+[2026-09-12 09:17:25] [WARNING] [919595] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-12 09:17:26] [INFO] [921722] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_2048_5120_10240_fp8_e4m3fn_e4m3fn_bf16_rank2_rs_st/huawei_919595_20260912091725464_ascend_pt
+|/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 2
+[INFO] device_2 创建HCCL通信链路 
+rank:2 init_process_group success
+rank2 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-12 09:17:26] [WARNING] [919594] profiler.py: Profiler won't be using warmup, this can skew profiler results
+[2026-09-12 09:17:26] [WARNING] [921722] profiler.py: 4 memory record(s) are incomplete.
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+[2026-09-12 09:17:26] [WARNING] [919594] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+/home/y00845930/mc2_test_0416_back/op_class/common.py:326: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:437.)
+  tensor = torch.from_numpy(array.astype(np.float32)).to(getattr(torch, str(array.dtype))).to(self.device)
+current device: 0
+[INFO] device_0 创建HCCL通信链路 
+rank:0 init_process_group success
+rank0 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-12 09:17:26] [WARNING] [919592] profiler.py: Profiler won't be using warmup, this can skew profiler results
+current device: 1
+[INFO] device_1 创建HCCL通信链路 
+rank:1 init_process_group success
+rank1 hcomm info is : {'default_pg_info': 'group_name_0', 'ep_hcomm_info': None, 'group_ep': None, 'tp_hcomm_info': None, 'group_tp': None}
+[2026-09-12 09:17:26] [WARNING] [919593] profiler.py: Profiler won't be using warmup, this can skew profiler results
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+[2026-09-12 09:17:26] [WARNING] [919593] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py:163: FutureWarning: `torch.distributed._reduce_scatter_base` is a private function and will be deprecated. Please use `torch.distributed.reduce_scatter_tensor` instead.
+  dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+[2026-09-12 09:17:26] [WARNING] [919592] profiler.py: Stop profiler while current state is RECORD_AND_SAVE, perhaps the scheduling cycle has not yet completed.
+[2026-09-12 09:17:26] [INFO] [922639] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_2048_5120_10240_fp8_e4m3fn_e4m3fn_bf16_rank2_rs_st/huawei_919594_20260912091726164_ascend_pt
+|[2026-09-12 09:17:26] [WARNING] [922639] profiler.py: 4 memory record(s) are incomplete.
+[2026-09-12 09:17:26] [INFO] [922699] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_2048_5120_10240_fp8_e4m3fn_e4m3fn_bf16_rank2_rs_st/huawei_919592_20260912091726403_ascend_pt
+|[2026-09-12 09:17:26] [INFO] [922757] profiler.py: Start parsing profiling data in sync mode at: /home/y00845930/mc2_test_0416_back/Profiling_Result_hccl_mm_2048_5120_10240_fp8_e4m3fn_e4m3fn_bf16_rank2_rs_st/huawei_919593_20260912091726411_ascend_pt
+[2026-09-12 09:17:27] [WARNING] [922699] profiler.py: 4 memory record(s) are incomplete.
+|[2026-09-12 09:17:27] [WARNING] [922757] profiler.py: 4 memory record(s) are incomplete.
+////-[2026-09-12 09:17:28] [INFO] [921855] profiler.py: CANN profiling data parsed in a total time of 0:00:02.014412
+-[2026-09-12 09:17:28] [INFO] [922655] profiler.py: CANN profiling data parsed in a total time of 0:00:02.081778
+--[2026-09-12 09:17:29] [INFO] [922768] profiler.py: CANN profiling data parsed in a total time of 0:00:02.039057
+[2026-09-12 09:17:29] [INFO] [921722] profiler.py: All profiling data parsed in a total time of 0:00:03.045535
+[2026-09-12 09:17:29] [INFO] [922858] profiler.py: CANN profiling data parsed in a total time of 0:00:02.038554
+Process Process-4:
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/y00845930/mc2_test_0416_back/mc2_test.py", line 230, in run_mc2_performance_onehccl
+    mc2_op.get_performace('golden', args.soc)  # 小算子性能
+  File "/home/y00845930/mc2_test_0416_back/op_class/common.py", line 211, in get_performace
+    self.get_hccl_mm()
+  File "/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py", line 163, in get_hccl_mm
+    dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/typing_extensions.py", line 3004, in wrapper
+    return arg(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4319, in _reduce_scatter_base
+    return reduce_scatter_tensor(output, input, op, group, async_op)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+    return func(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4286, in reduce_scatter_tensor
+    work = group._reduce_scatter_base(output, input, opts)
+RuntimeError: input tensor must be the same size as output size times world size
+[ERROR] 2026-09-12-09:17:25 (PID:919595, Device:3, RankID:-1) ERR02001 DIST invalid parameter
+\[2026-09-12 09:17:29] [INFO] [922639] profiler.py: All profiling data parsed in a total time of 0:00:03.085615
+[2026-09-12 09:17:29] [INFO] [922699] profiler.py: All profiling data parsed in a total time of 0:00:03.111702
+Process Process-1:
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/y00845930/mc2_test_0416_back/mc2_test.py", line 230, in run_mc2_performance_onehccl
+    mc2_op.get_performace('golden', args.soc)  # 小算子性能
+  File "/home/y00845930/mc2_test_0416_back/op_class/common.py", line 211, in get_performace
+    self.get_hccl_mm()
+  File "/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py", line 163, in get_hccl_mm
+    dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/typing_extensions.py", line 3004, in wrapper
+    return arg(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4319, in _reduce_scatter_base
+    return reduce_scatter_tensor(output, input, op, group, async_op)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+    return func(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4286, in reduce_scatter_tensor
+    work = group._reduce_scatter_base(output, input, opts)
+RuntimeError: input tensor must be the same size as output size times world size
+[ERROR] 2026-09-12-09:17:26 (PID:919592, Device:0, RankID:-1) ERR02001 DIST invalid parameter
+[2026-09-12 09:17:30] [INFO] [922757] profiler.py: All profiling data parsed in a total time of 0:00:03.071502
+Process Process-2:
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/y00845930/mc2_test_0416_back/mc2_test.py", line 230, in run_mc2_performance_onehccl
+    mc2_op.get_performace('golden', args.soc)  # 小算子性能
+  File "/home/y00845930/mc2_test_0416_back/op_class/common.py", line 211, in get_performace
+    self.get_hccl_mm()
+  File "/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py", line 163, in get_hccl_mm
+    dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/typing_extensions.py", line 3004, in wrapper
+    return arg(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4319, in _reduce_scatter_base
+    return reduce_scatter_tensor(output, input, op, group, async_op)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+    return func(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4286, in reduce_scatter_tensor
+    work = group._reduce_scatter_base(output, input, opts)
+RuntimeError: input tensor must be the same size as output size times world size
+[ERROR] 2026-09-12-09:17:26 (PID:919593, Device:1, RankID:-1) ERR02001 DIST invalid parameter
+Process Process-3:
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/y00845930/mc2_test_0416_back/mc2_test.py", line 230, in run_mc2_performance_onehccl
+    mc2_op.get_performace('golden', args.soc)  # 小算子性能
+  File "/home/y00845930/mc2_test_0416_back/op_class/common.py", line 211, in get_performace
+    self.get_hccl_mm()
+  File "/home/y00845930/mc2_test_0416_back/op_class/aclnnMatmulReduceScatterV2.py", line 163, in get_hccl_mm
+    dist._reduce_scatter_base(self.tensor_scatter, output, op=ReduceOp.SUM)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/typing_extensions.py", line 3004, in wrapper
+    return arg(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4319, in _reduce_scatter_base
+    return reduce_scatter_tensor(output, input, op, group, async_op)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+    return func(*args, **kwargs)
+  File "/root/miniconda3/envs/wkc_py310/lib/python3.10/site-packages/torch/distributed/distributed_c10d.py", line 4286, in reduce_scatter_tensor
+    work = group._reduce_scatter_base(output, input, opts)
+RuntimeError: input tensor must be the same size as output size times world size
+[ERROR] 2026-09-12-09:17:26 (PID:919594, Device:2, RankID:-1) ERR02001 DIST invalid parameter
+[TEST] 2026-09-12 09:17:30  测试程序结束
