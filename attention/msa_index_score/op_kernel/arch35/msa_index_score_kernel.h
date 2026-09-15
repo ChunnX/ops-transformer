@@ -39,10 +39,10 @@
 
 #include "../msa_index_score_common.h"
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_310R6_CUBE__)
-#include "msa_block_mmad_arch35.h"
+#include "msa_block_mmad.h"
 #endif
 #include "../arch22/msa_index_score_task.h"
-#include "msa_seg_row_max_epilogue_arch35.h"
+#include "msa_seg_row_max_epilogue.h"
 
 namespace MsaIndexScoreNs {
 
