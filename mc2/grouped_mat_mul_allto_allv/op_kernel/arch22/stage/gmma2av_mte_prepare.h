@@ -16,11 +16,11 @@
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::Init(const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::Init(const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
                             GM_ADDR recvBuffer, GM_ADDR cumsumBuffer, AscendC::TPipe *pipe,
                             const GmmA2avCoCTiling *cocTiling, uint64_t commBufferSize,
-                            uint32_t isA3, GM_ADDR timerBuffer, uint32_t timerEnabled, int64_t kernelEntryCycle)
+                            uint32_t isA3)
 {
     taskTilingInfo_ = taskTilingInfo;
     sendBuffer_ = reinterpret_cast<__gm__ T *>(sendBuffer);
@@ -58,10 +58,6 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::Init(const GroupedMatMulAllto
         cumsumBuffer + Gmma2avMteTiling::ComputeProgressOffset(
             rankSize_, taskTilingInfo_->e, taskTilingInfo_->aicCoreNum));
     coreIdx_ = AscendC::GetBlockIdx();
-    timer_.Init(timerBuffer, static_cast<uint64_t>(taskTilingInfo_->BS) * taskTilingInfo_->N2 * sizeof(T),
-                coreIdx_, taskTilingInfo_->aivCoreNum + taskTilingInfo_->aicCoreNum, timerEnabled != 0U);
-    timer_.RecordAt(1, 0U, kernelEntryCycle);
-    timer_.Record(3, 0U);
     subBlockIdx_ = AscendC::GetSubBlockIdx();
     logicalCoreIdx_ = coreIdx_ / AscendC::GetTaskRation();
     rankWorkerCount_ = static_cast<uint32_t>(taskTilingInfo_->aicCoreNum);
@@ -84,13 +80,12 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::Init(const GroupedMatMulAllto
     pipe->InitBuffer(ubBuffer_, GmmA2avMteDetail::USED_UB_BYTES);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::BeginExpertPipeline()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::BeginExpertPipeline()
 {
     if ASCEND_IS_AIC {
         return;
     }
-    timer_.Record(4, 0U);
     // Role split: subblock 0 stages workspace→window and publishes a
     // local GM progress slot; subblock 1 owns the cross-rank protocol.
     // Both roles enter the common-init rendezvous below, which orders
@@ -107,22 +102,14 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::BeginExpertPipeline()
         StoreSyncFlag(GetComputeProgressSlot(logicalCoreIdx_), 0);
     } else {
         // Clear all flags in this invocation's selected ring buffer.
-        timer_.Record(6, 0U);
         ResetSyncRegion();
-        timer_.Record(7, 0U);
-        timer_.Record(8, 0U);
         PublishLocalCountTable();
-        timer_.Record(9, 0U);
     }
     // All peers must finish clearing their expert mailboxes before any
     // producer can publish into a destination's window this round.
-    timer_.Record(10, 0U);
     PublishAndWaitRankPhase(Gmma2avMteTiling::COUNT_READY_BASE, 1);
-    timer_.Record(11, 0U);
     if (!IsStageAiv()) {
-    timer_.Record(12, 0U);
     BuildDestinationOffsets();
-    timer_.Record(13, 0U);
     }
     LocalAivSync();
     localExpertBaseRows_ = 0UL;
@@ -132,19 +119,17 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::BeginExpertPipeline()
     // All local progress clears must finish before any AIC publishes a
     // wave. AIC joins this once, before constructing its CATLASS pipeline.
     AscendC::SyncAll<false>();
-    timer_.Record(5, 0U);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::Wait(uint32_t startExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::Wait(uint32_t startExpertIdx)
 {
     (void)startExpertIdx;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::End()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::End()
 {
-    timer_.Record(38, 0U);
     if ASCEND_IS_AIV {
         AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
         PublishAndWaitRankPhase(Gmma2avMteTiling::RECV_DONE_BASE, 2);
@@ -157,16 +142,11 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::End()
         // so this cleared acknowledgement cannot be lost during exit skew.
         PublishAndWaitRankPhase(Gmma2avMteTiling::RECV_DONE_BASE, 0);
     }
-    timer_.Record(39, 0U);
-    timer_.Record(40, 0U);
     AscendC::SyncAll<false>();
-    timer_.Record(41, 0U);
-    timer_.Record(2, 0U);
-    timer_.Finish();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishLocalCountTable()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PublishLocalCountTable()
 {
     if (!IsPrimaryAiv()) {
         return;
@@ -183,8 +163,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishLocalCountTable()
     StoreInt32Row(GetCountTable(rank_), local, alignedCountNum);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::BuildDestinationOffsets()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::BuildDestinationOffsets()
 {
     if (IsStageAiv()) {
         return;
@@ -209,8 +189,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::BuildDestinationOffsets()
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::BuildPeerSourceOffsets()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::BuildPeerSourceOffsets()
 {
     if (IsStageAiv() || rankWorkerCount_ == 0U) {
         return;

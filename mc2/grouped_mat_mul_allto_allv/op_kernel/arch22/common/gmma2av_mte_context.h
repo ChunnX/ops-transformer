@@ -15,21 +15,18 @@
 #include "kernel_operator.h"
 #include "../../../../common/op_kernel/moe_distribute_base.h"
 #include "gmma2av_mte_constants.h"
-#include "gmma2av_mte_timer.h"
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType = GmmA2avMteNullTimer>
+template <typename T>
 class GmmA2avMteOp {
 public:
-    using Timer = TimerType;
     __aicore__ inline GmmA2avMteOp() {}
 
     __aicore__ inline void Init(const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
                                 GM_ADDR recvBuffer, GM_ADDR cumsumBuffer, AscendC::TPipe *pipe,
                                 const GmmA2avCoCTiling *cocTiling = nullptr, uint64_t commBufferSize = 0UL,
-                                uint32_t isA3 = 0U, GM_ADDR timerBuffer = 0UL, uint32_t timerEnabled = 0U,
-                                int64_t kernelEntryCycle = 0);
+                                uint32_t isA3 = 0U);
 
     __aicore__ inline void BeginExpertPipeline();
 
@@ -217,7 +214,6 @@ private:
     __aicore__ inline void EndGmToGmCopy();
 
 private:
-    TimerType timer_;
     const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo_{nullptr};
     __gm__ HcclOpResParam *a3WinContext_{nullptr};
     __gm__ AscendC::HcclCombineOpParam *a2WinContext_{nullptr};

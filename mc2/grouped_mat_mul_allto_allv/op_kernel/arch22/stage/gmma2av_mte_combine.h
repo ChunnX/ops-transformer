@@ -16,8 +16,8 @@
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::CommExpertChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::CommExpertChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     if ASCEND_IS_AIC {
         return;
@@ -25,22 +25,14 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::CommExpertChunk(uint32_t star
     if (IsStageAiv() || rankWorkerCount_ == 0U) {
         return;
     }
-    timer_.Record(28, startExpertIdx);
     WaitLocalStageProgress(startExpertIdx, endExpertIdx);
-    timer_.Record(29, startExpertIdx);
-    timer_.Record(30, startExpertIdx);
     PublishChunkReady(startExpertIdx, endExpertIdx);
-    timer_.Record(31, startExpertIdx);
-    timer_.Record(32, startExpertIdx);
     WaitChunkReady(startExpertIdx, endExpertIdx);
-    timer_.Record(33, startExpertIdx);
-    timer_.Record(36, startExpertIdx);
     PullExpertChunk(startExpertIdx, endExpertIdx);
-    timer_.Record(37, startExpertIdx);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishChunkReady(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PublishChunkReady(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     // Comm role only. The old all-AIV drain barrier is replaced by the
     // per-expert stage-progress wait in CommExpertChunk: ExpertReady for
@@ -57,8 +49,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishChunkReady(uint32_t st
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitChunkReady(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitChunkReady(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     // Comm role only. CommExpertChunk orders this after the worker's own
     // outbound publication for the same expert, so a worker never waits
@@ -74,8 +66,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitChunkReady(uint32_t start
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PullExpertChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PullExpertChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     if ASCEND_IS_AIC {
         return;
@@ -83,9 +75,7 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PullExpertChunk(uint32_t star
     if (startExpertIdx == 0U) {
         // The same worker that acquired each source's ready flag loads
         // that source's count table and remains its payload-pull owner.
-        timer_.Record(34, 0U);
         BuildPeerSourceOffsets();
-        timer_.Record(35, 0U);
     }
     const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
     AscendC::LocalTensor<uint32_t> destinationOffsets = GetDestinationOffsetTensor();
@@ -133,8 +123,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PullExpertChunk(uint32_t star
 
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PullPeerExpertFromSource(uint32_t srcRank, uint32_t expertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PullPeerExpertFromSource(uint32_t srcRank, uint32_t expertIdx)
 {
     const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
     AscendC::LocalTensor<uint32_t> destinationOffsets = GetDestinationOffsetTensor();

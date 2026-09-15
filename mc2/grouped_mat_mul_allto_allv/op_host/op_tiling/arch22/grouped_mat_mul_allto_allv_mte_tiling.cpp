@@ -45,18 +45,6 @@ constexpr uint64_t A2_EXPERT_OVERLAP_MAX_RANK_SIZE = 8UL;
 const std::string A3_MTE_HCCL_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
 const std::string A2_MTE_HCCL_ALG_CONFIG = "MultiPut=level0:fullmesh";
 
-// Diagnostic rank-delay injection (cross-call race testing). All default 0
-// (= disabled); production kernels only pay one register compare per
-// injection point.
-uint32_t ReadSyncDelayEnv(const char *name)
-{
-    const char *value = std::getenv(name);
-    if (value == nullptr) {
-        return 0U;
-    }
-    return static_cast<uint32_t>(std::strtoul(value, nullptr, 10));
-}
-
 } // namespace
 
 const std::vector<uint32_t> GroupedMatmulAllToAllvMteTiling::GMM_X_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
@@ -553,29 +541,7 @@ ge::graphStatus GroupedMatmulAllToAllvMteTiling::PostTiling()
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     OP_TILING_CHECK(group == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return ge::GRAPH_FAILED);
-    if (std::getenv("GMMA2AV_WAVE_TRACE") != nullptr) {
-        std::fprintf(stderr, "[WAVE-TILING] sharedBS=%lu A=%lu E=%lu\n",
-                     taskTiling.BS, taskTiling.A, taskTiling.e);
-    }
-    taskTiling.syncDelayRank = ReadSyncDelayEnv("GMMA2AV_SYNC_DELAY_RANK");
-    taskTiling.syncDelayBeginUs = ReadSyncDelayEnv("GMMA2AV_SYNC_DELAY_BEGIN_US");
-    taskTiling.syncDelayEndUs = ReadSyncDelayEnv("GMMA2AV_SYNC_DELAY_END_US");
     outData.isA3 = static_cast<uint32_t>(isA3_);
-    // Runtime tracing: when requested through GMMA2AV_MTE_TIMER=1, reuse the
-    // shared-expert output (mm_y) as the MTE timer record buffer. The kernel
-    // skips shared matmul in this mode, so mm_y content is otherwise unused.
-    const char *timerEnv = std::getenv("GMMA2AV_MTE_TIMER");
-    const bool timerRequested = timerEnv != nullptr && timerEnv[0] == '1';
-    outData.mteTimerOutput = static_cast<uint32_t>(timerRequested && localParams_.hasSharedMm);
-    if (timerRequested) {
-        if (!localParams_.hasSharedMm) {
-            OP_LOGW(opName_, "GMMA2AV_MTE_TIMER=1 needs shared-expert outputs (mm_x/mm_weight); tracing disabled.");
-        } else {
-            OP_LOGI(opName_,
-                    "MTE tracing enabled: shared-expert output (%lu, %lu) is reused as the timer record buffer.",
-                    localParams_.Bs, localParams_.N2);
-        }
-    }
 
     const uint32_t opType = isA3_ ? OP_TYPE_ALL_TO_ALL : OP_TYPE_MULTI_PUT;
     const std::string &algConfig = isA3_ ? A3_MTE_HCCL_ALG_CONFIG : A2_MTE_HCCL_ALG_CONFIG;

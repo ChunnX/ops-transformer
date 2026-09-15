@@ -16,8 +16,8 @@
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::StageExpertPayload(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::StageExpertPayload(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     if ASCEND_IS_AIC {
         return;
@@ -25,8 +25,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::StageExpertPayload(uint32_t s
     PublishLocalChunk(startExpertIdx, endExpertIdx);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishLocalChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PublishLocalChunk(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
     const uint32_t aicCoreNum = rankWorkerCount_;
@@ -44,19 +44,15 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishLocalChunk(uint32_t st
             uint32_t ownedTileIndex = 0U;
             for (uint32_t mIdx = startMIdx; mIdx < loopsM; mIdx += aicCoreNum, ++ownedTileIndex) {
                 if (ownedTileIndex % Gmma2avMteTiling::M_GROUPS_PER_WAVE == 0U) {
-                    timer_.Record(22, static_cast<uint32_t>(computeWaveSequence_ + 1));
                     WaitComputeProgress(++computeWaveSequence_);
-                    timer_.Record(23, static_cast<uint32_t>(computeWaveSequence_));
                 }
                 const uint64_t tileRowStart = static_cast<uint64_t>(mIdx) * tileRows;
                 const uint64_t remaining = expertRows - tileRowStart;
                 const uint64_t tileRowCount = remaining > tileRows ? tileRows : remaining;
                 const uint64_t sourceRow = localExpertBaseRows_ + tileRowStart;
-                timer_.Record(24, expertIdx);
                 CopyGmToGm(sendBuffer_ + sourceRow * taskTilingInfo_->N1,
                            GetOutputData(rank_) + sourceRow * taskTilingInfo_->N1,
                            tileRowCount * taskTilingInfo_->N1);
-                timer_.Record(25, expertIdx);
             }
         }
         localExpertBaseRows_ += expertRows;

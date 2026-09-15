@@ -16,32 +16,31 @@
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishStageProgress(uint32_t expertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PublishStageProgress(uint32_t expertIdx)
 {
-    GmmA2avMteTimerScope<TimerType> trace(timer_, 26, expertIdx);
     if (!IsStageAiv()) {
         return;
     }
     StoreSyncFlag(GetStageProgressSlot(logicalCoreIdx_), static_cast<int64_t>(expertIdx) + 1);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitComputeProgress(int64_t sequence)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitComputeProgress(int64_t sequence)
 {
     // AIC releases its scalar store with DCCI. Read through the normal
     // local memory path, matching the GM-ready poll in mega_moe.
     WaitLocalProgress(GetComputeProgressSlot(logicalCoreIdx_), sequence, false);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitStageProgress(uint32_t producerCore, int64_t boundary)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitStageProgress(uint32_t producerCore, int64_t boundary)
 {
     WaitLocalProgress(GetStageProgressSlot(producerCore), boundary);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitLocalProgress(__gm__ int64_t *slot, int64_t boundary, bool bypassL2)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitLocalProgress(__gm__ int64_t *slot, int64_t boundary, bool bypassL2)
 {
     AscendC::LocalTensor<int64_t> local = GetSyncTensor();
     AscendC::GlobalTensor<int64_t> global;
@@ -69,8 +68,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitLocalProgress(__gm__ int6
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitLocalStageProgress(uint32_t startExpertIdx, uint32_t endExpertIdx)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitLocalStageProgress(uint32_t startExpertIdx, uint32_t endExpertIdx)
 {
     const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
     const uint32_t aicCoreNum = rankWorkerCount_;
@@ -91,8 +90,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitLocalStageProgress(uint32
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::LocalAivSync()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::LocalAivSync()
 {
     // On arch22 SyncAll<true> drains local pipelines and performs an
     // AIV-only inter-core rendezvous. After the Stage/Comm role split
@@ -102,8 +101,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::LocalAivSync()
     AscendC::SyncAll<true>();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishAndWaitRankPhase(uint64_t phaseBase, int64_t flag)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PublishAndWaitRankPhase(uint64_t phaseBase, int64_t flag)
 {
     LocalAivSync();
     if (IsCommAiv() && logicalCoreIdx_ == 0U) {
@@ -122,8 +121,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishAndWaitRankPhase(uint6
     LocalAivSync();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::IsExpertSlotActive(const int32_t *countTable, uint32_t peerRank, uint32_t expertIdx,
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::IsExpertSlotActive(const int32_t *countTable, uint32_t peerRank, uint32_t expertIdx,
                                           uint32_t expertNum) const
 {
     if (expertIdx == 0U || peerRank == rank_) {
@@ -132,8 +131,8 @@ __aicore__ inline bool GmmA2avMteOp<T, TimerType>::IsExpertSlotActive(const int3
     return countTable[static_cast<uint64_t>(peerRank) * expertNum + expertIdx] > 0;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::ResetSyncRegion()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::ResetSyncRegion()
 {
     if (IsStageAiv() || rankWorkerCount_ == 0U) {
         return;
@@ -181,8 +180,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::ResetSyncRegion()
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::PublishExpertReadyRange(uint32_t dstRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::PublishExpertReadyRange(uint32_t dstRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
                                                int64_t flag)
 {
     const uint32_t slotCount = endExpertIdx - startExpertIdx;
@@ -216,8 +215,8 @@ __aicore__ inline bool GmmA2avMteOp<T, TimerType>::PublishExpertReadyRange(uint3
     return true;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishExpertReadyPerFlag(uint32_t dstRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::PublishExpertReadyPerFlag(uint32_t dstRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
                                                  int64_t flag)
 {
     const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
@@ -229,8 +228,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::PublishExpertReadyPerFlag(uin
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::WaitExpertReadyRange(uint32_t srcRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::WaitExpertReadyRange(uint32_t srcRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
                                             int64_t expected)
 {
     const uint32_t slotCount = endExpertIdx - startExpertIdx;
@@ -271,8 +270,8 @@ __aicore__ inline bool GmmA2avMteOp<T, TimerType>::WaitExpertReadyRange(uint32_t
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitExpertReadyPerFlag(uint32_t srcRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitExpertReadyPerFlag(uint32_t srcRank, uint32_t startExpertIdx, uint32_t endExpertIdx,
                                               int64_t expected)
 {
     const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo_->e);
@@ -284,8 +283,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitExpertReadyPerFlag(uint32
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::StoreSyncFlag(__gm__ int64_t *destination, int64_t flag)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::StoreSyncFlag(__gm__ int64_t *destination, int64_t flag)
 {
     AscendC::LocalTensor<int64_t> local = GetSyncTensor();
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID2);
@@ -307,8 +306,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::StoreSyncFlag(__gm__ int64_t 
     AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::WaitSyncFlag(__gm__ int64_t *source, int64_t expected, bool bypassL2)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::WaitSyncFlag(__gm__ int64_t *source, int64_t expected, bool bypassL2)
 {
     AscendC::LocalTensor<int64_t> local = GetSyncTensor();
     AscendC::GlobalTensor<int64_t> global;

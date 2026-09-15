@@ -16,8 +16,8 @@
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::LoadInt32Row(__gm__ int32_t *source, const AscendC::LocalTensor<int32_t> &local,
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::LoadInt32Row(__gm__ int32_t *source, const AscendC::LocalTensor<int32_t> &local,
                                     uint32_t elementCount)
 {
     const uint32_t alignedElementCount = AlignControlElements(elementCount);
@@ -31,8 +31,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::LoadInt32Row(__gm__ int32_t *
     AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::StoreInt32Row(__gm__ int32_t *destination, const AscendC::LocalTensor<int32_t> &local,
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::StoreInt32Row(__gm__ int32_t *destination, const AscendC::LocalTensor<int32_t> &local,
                                      uint32_t elementCount)
 {
     AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID2);
@@ -45,8 +45,8 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::StoreInt32Row(__gm__ int32_t 
     AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::CopyGmToGm(__gm__ T *source, __gm__ T *destination, uint64_t elementCount)
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::CopyGmToGm(__gm__ T *source, __gm__ T *destination, uint64_t elementCount)
 {
     uint32_t moveIdx = 0U;
     BeginGmToGmCopy();
@@ -54,15 +54,15 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::CopyGmToGm(__gm__ T *source, 
     EndGmToGmCopy();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::BeginGmToGmCopy()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::BeginGmToGmCopy()
 {
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::CopyGmToGmSegment(__gm__ T *source, __gm__ T *destination, uint64_t elementCount,
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::CopyGmToGmSegment(__gm__ T *source, __gm__ T *destination, uint64_t elementCount,
                                          uint32_t &moveIdx)
 {
     AscendC::LocalTensor<T> local = ubBuffer_.template Get<T>();
@@ -78,10 +78,6 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::CopyGmToGmSegment(__gm__ T *s
     while (copied < elementCount) {
         const uint32_t current = static_cast<uint32_t>(
             elementCount - copied > ubMoveElements_ ? ubMoveElements_ : elementCount - copied);
-        const int32_t counterBase = IsStageAiv() ? 0 : 4;
-        timer_.AddCounter(counterBase, 1UL);
-        timer_.AddCounter(counterBase + (current == ubMoveElements_ ? 1 : 2), 1UL);
-        timer_.AddCounter(counterBase + 3, static_cast<uint64_t>(current) * sizeof(T));
         const auto eventId = (moveIdx & 1U) != 0U ? EVENT_ID0 : EVENT_ID1;
         AscendC::LocalTensor<T> copyTensor = (moveIdx & 1U) != 0U ? ping : pong;
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
@@ -101,10 +97,9 @@ __aicore__ inline void GmmA2avMteOp<T, TimerType>::CopyGmToGmSegment(__gm__ T *s
     }
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline void GmmA2avMteOp<T, TimerType>::EndGmToGmCopy()
+template <typename T>
+__aicore__ inline void GmmA2avMteOp<T>::EndGmToGmCopy()
 {
-    timer_.AddCounter(IsStageAiv() ? 8 : 9, 1UL);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();

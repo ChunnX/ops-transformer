@@ -16,20 +16,20 @@
 
 namespace MC2KernelTemplate {
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::IsStageAiv() const
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::IsStageAiv() const
 {
     return subBlockIdx_ == 0U;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::IsCommAiv() const
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::IsCommAiv() const
 {
     return subBlockIdx_ != 0U;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::HasExpertWork(uint32_t expertIdx) const
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::HasExpertWork(uint32_t expertIdx) const
 {
     if (rankWorkerCount_ == 0U) {
         return false;
@@ -48,8 +48,8 @@ __aicore__ inline bool GmmA2avMteOp<T, TimerType>::HasExpertWork(uint32_t expert
     return startMIdx < loopsM;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline GM_ADDR GmmA2avMteOp<T, TimerType>::GetWindow(uint32_t rank) const
+template <typename T>
+__aicore__ inline GM_ADDR GmmA2avMteOp<T>::GetWindow(uint32_t rank) const
 {
     if (isA3_) {
         if (rank == rank_) {
@@ -66,8 +66,8 @@ __aicore__ inline GM_ADDR GmmA2avMteOp<T, TimerType>::GetWindow(uint32_t rank) c
                            (GM_ADDR)(a2WinContext_->data[rank].remoteInput.addr);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline uint64_t GmmA2avMteOp<T, TimerType>::GetBufferIndex() const
+template <typename T>
+__aicore__ inline uint64_t GmmA2avMteOp<T>::GetBufferIndex() const
 {
     // Every kernel invocation enters buffer 0. Tiling can be cached, so
     // a host tiling counter must never determine the collective's phase.
@@ -76,63 +76,63 @@ __aicore__ inline uint64_t GmmA2avMteOp<T, TimerType>::GetBufferIndex() const
     return 0UL;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline __gm__ int32_t *GmmA2avMteOp<T, TimerType>::GetCountTable(uint32_t rank) const
+template <typename T>
+__aicore__ inline __gm__ int32_t *GmmA2avMteOp<T>::GetCountTable(uint32_t rank) const
 {
     return reinterpret_cast<__gm__ int32_t *>(GetWindow(rank) + winSize_ -
                                               Gmma2avMteTiling::SEND_COUNT_STAGING_FROM_TAIL +
                                               GetBufferIndex() * Gmma2avMteTiling::COUNT_BUFFER_STRIDE);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline __gm__ T *GmmA2avMteOp<T, TimerType>::GetOutputData(uint32_t rank) const
+template <typename T>
+__aicore__ inline __gm__ T *GmmA2avMteOp<T>::GetOutputData(uint32_t rank) const
 {
     return reinterpret_cast<__gm__ T *>(GetWindow(rank) +
         GetBufferIndex() * Gmma2avMteTiling::PayloadBufferBytes(winSize_));
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T, TimerType>::GetStageProgressSlot(uint32_t producerCore) const
+template <typename T>
+__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T>::GetStageProgressSlot(uint32_t producerCore) const
 {
     return stageProgressBase_ +
            static_cast<uint64_t>(producerCore) *
                (Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES / sizeof(int64_t));
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T, TimerType>::GetComputeProgressSlot(uint32_t producerCore) const
+template <typename T>
+__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T>::GetComputeProgressSlot(uint32_t producerCore) const
 {
     return computeProgressBase_ + static_cast<uint64_t>(producerCore) *
            (Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES / sizeof(int64_t));
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline AscendC::LocalTensor<int32_t> GmmA2avMteOp<T, TimerType>::GetControlTensor()
+template <typename T>
+__aicore__ inline AscendC::LocalTensor<int32_t> GmmA2avMteOp<T>::GetControlTensor()
 {
     return ubBuffer_.template Get<int32_t>()[GmmA2avMteDetail::CONTROL_UB_OFFSET_BYTES / sizeof(int32_t)];
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline AscendC::LocalTensor<int64_t> GmmA2avMteOp<T, TimerType>::GetSyncTensor()
+template <typename T>
+__aicore__ inline AscendC::LocalTensor<int64_t> GmmA2avMteOp<T>::GetSyncTensor()
 {
     return ubBuffer_.template Get<int64_t>()[GmmA2avMteDetail::CONTROL_UB_OFFSET_BYTES / sizeof(int64_t)];
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline AscendC::LocalTensor<uint32_t> GmmA2avMteOp<T, TimerType>::GetDestinationOffsetTensor()
+template <typename T>
+__aicore__ inline AscendC::LocalTensor<uint32_t> GmmA2avMteOp<T>::GetDestinationOffsetTensor()
 {
     return ubBuffer_
         .template Get<uint32_t>()[GmmA2avMteDetail::DESTINATION_OFFSET_UB_OFFSET_BYTES / sizeof(uint32_t)];
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline AscendC::LocalTensor<uint32_t> GmmA2avMteOp<T, TimerType>::GetSourceOffsetTensor()
+template <typename T>
+__aicore__ inline AscendC::LocalTensor<uint32_t> GmmA2avMteOp<T>::GetSourceOffsetTensor()
 {
     return ubBuffer_.template Get<uint32_t>()[GmmA2avMteDetail::SOURCE_OFFSET_UB_OFFSET_BYTES / sizeof(uint32_t)];
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::SafeAdd(uint64_t lhs, uint64_t rhs, uint64_t &result)
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::SafeAdd(uint64_t lhs, uint64_t rhs, uint64_t &result)
 {
     constexpr uint64_t maxValue = ~static_cast<uint64_t>(0U);
     if (lhs > maxValue - rhs) {
@@ -142,8 +142,8 @@ __aicore__ inline bool GmmA2avMteOp<T, TimerType>::SafeAdd(uint64_t lhs, uint64_
     return true;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::SafeMulU32(uint64_t lhs, uint64_t rhs, uint64_t &result)
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::SafeMulU32(uint64_t lhs, uint64_t rhs, uint64_t &result)
 {
     constexpr uint64_t maxU32 = 0xffffffffUL;
     if (lhs > maxU32 || rhs > maxU32) {
@@ -165,8 +165,8 @@ __aicore__ inline bool GmmA2avMteOp<T, TimerType>::SafeMulU32(uint64_t lhs, uint
     return true;
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T, TimerType>::GetFixedSyncSlot(uint32_t windowRank, uint64_t phaseBase, uint64_t index) const
+template <typename T>
+__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T>::GetFixedSyncSlot(uint32_t windowRank, uint64_t phaseBase, uint64_t index) const
 {
     const uint64_t syncOffset =
         winSize_ - Gmma2avMteTiling::SYNC_REGION_FROM_TAIL +
@@ -174,24 +174,24 @@ __aicore__ inline __gm__ int64_t *GmmA2avMteOp<T, TimerType>::GetFixedSyncSlot(u
     return reinterpret_cast<__gm__ int64_t *>(GetWindow(windowRank) + syncOffset);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T, TimerType>::GetExpertReadySlot(uint32_t windowRank, uint32_t sourceRank,
+template <typename T>
+__aicore__ inline __gm__ int64_t *GmmA2avMteOp<T>::GetExpertReadySlot(uint32_t windowRank, uint32_t sourceRank,
                                                      uint32_t expertIdx) const
 {
     const uint64_t expertSlot = static_cast<uint64_t>(sourceRank) * taskTilingInfo_->e + expertIdx;
     return GetFixedSyncSlot(windowRank, Gmma2avMteTiling::EXPERT_READY_BASE, expertSlot);
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline bool GmmA2avMteOp<T, TimerType>::IsPrimaryAiv() const
+template <typename T>
+__aicore__ inline bool GmmA2avMteOp<T>::IsPrimaryAiv() const
 {
     // The Comm subblock of logical core 0 publishes this rank's count
     // table and the rank-level phase flags.
     return logicalCoreIdx_ == 0U && IsCommAiv();
 }
 
-template <typename T, typename TimerType>
-__aicore__ inline uint32_t GmmA2avMteOp<T, TimerType>::AlignControlElements(uint32_t elementCount) const
+template <typename T>
+__aicore__ inline uint32_t GmmA2avMteOp<T>::AlignControlElements(uint32_t elementCount) const
 {
     constexpr uint32_t alignment = GmmA2avMteDetail::CONTROL_MTE_ELEMENTS;
     return (elementCount + alignment - 1U) / alignment * alignment;

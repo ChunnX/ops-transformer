@@ -20,26 +20,17 @@ namespace MC2KernelTemplate {
 template <typename CommOpType, typename ComputationOpType, typename SharedComputationOpType, bool IsNeedMM>
 class GmmA2avMteScheduler {
 private:
-    using TimerType = typename CommOpType::Timer;
-    // arch22-compatible counterpart of A5 NotifyWaveGmm2Ready. FIX_S orders
-    // the L0C->GM stores before publishing progress. Flush the AIC scalar
-    // store through DCache before AIV reads it through MTE2 on arch22.
-    // No L0C->UB instruction and no reverse-credit dependency on AIV1.
     struct AicWaveReadyCallback {
         __gm__ int64_t *slot;
         int64_t sequence{0};
-        TimerType *timer;
-        uint32_t expert{0};
         __aicore__ inline void MmBegin(uint32_t e, uint32_t n) {
-            expert = e;
-            timer->Record(16, e);
-            timer->AddCounter(14, n);
+            (void)e;
+            (void)n;
         }
-        __aicore__ inline void MmEnd() { timer->Record(17, expert); }
+        __aicore__ inline void MmEnd() {}
 
         __aicore__ inline void NotifyWaveReady()
         {
-            timer->Record(18, expert);
             AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
             AscendC::GlobalTensor<int64_t> ready;
@@ -48,36 +39,26 @@ private:
             AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                              AscendC::DcciDst::CACHELINE_OUT>(ready);
             AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
-            timer->Record(19, expert);
         }
     };
 
 public:
     static __aicore__ inline void ProcessAic(ComputationOpType &computeOp, SharedComputationOpType &sharedComputeOp,
                                              const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
-                                             GM_ADDR cumsumBuffer, TimerType *aicTimer, uint32_t timerEnabled)
+                                             GM_ADDR cumsumBuffer)
     {
         if ASCEND_IS_AIC {
-            TimerType nullTimer;
-            if (aicTimer == nullptr) { aicTimer = &nullTimer; }
-            aicTimer->Record(14, 0U);
             auto progress = reinterpret_cast<__gm__ int64_t *>(cumsumBuffer +
                 Gmma2avMteTiling::ComputeProgressOffset(taskTilingInfo->epWorldSize, taskTilingInfo->e,
                                                        taskTilingInfo->aicCoreNum));
             AicWaveReadyCallback callback{progress + static_cast<uint64_t>(AscendC::GetBlockIdx()) *
-                (Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES / sizeof(int64_t)), 0, aicTimer};
-            aicTimer->Record(42, 0U);
+                (Gmma2avMteTiling::STAGE_PROGRESS_SLOT_BYTES / sizeof(int64_t)), 0};
             AscendC::SyncAll<false>();
-            aicTimer->Record(43, 0U);
             computeOp.ProcessExperts(0U, static_cast<uint32_t>(taskTilingInfo->e), callback);
             if constexpr (IsNeedMM) {
-                if (timerEnabled == 0U) { sharedComputeOp.Process(0U, 1U); }
+                sharedComputeOp.Process(0U, 1U);
             }
-            aicTimer->Record(20, 0U);
             AscendC::SyncAll<false>();
-            aicTimer->Record(21, 0U);
-            aicTimer->Record(15, 0U);
-            aicTimer->Finish();
         }
     }
 

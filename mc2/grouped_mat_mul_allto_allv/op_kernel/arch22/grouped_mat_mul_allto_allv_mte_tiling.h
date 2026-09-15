@@ -37,12 +37,6 @@ struct GroupedMatMulAlltoAllvMteTaskTilingInfo {
     uint64_t e;
     uint64_t aivCoreNum;
     uint64_t aicCoreNum;
-    // Diagnostic rank-delay injection, read from GMMA2AV_SYNC_DELAY_* env
-    // vars by the host tiling. All default 0 (disabled): production kernels
-    // only pay one register compare per injection point.
-    uint32_t syncDelayRank;
-    uint32_t syncDelayBeginUs;
-    uint32_t syncDelayEndUs;
     int32_t sendCnt[GMMA2AV_MTE_MAX_COUNT_NUM];
     int32_t recvCnt[GMMA2AV_MTE_MAX_COUNT_NUM];
 };
@@ -70,8 +64,6 @@ struct GroupedMatMulAlltoAllvMteTilingData {
     // Ascend 910_93 and Ascend 910B expose different HCCL window-context
     // layouts for the AIV-driven MTE path.
     uint32_t isA3;
-    // Preserve the serialized size and following member offsets.
-    uint32_t mteTimerOutput;
     GmmA2avCoCTiling cocTiling;
 };
 
