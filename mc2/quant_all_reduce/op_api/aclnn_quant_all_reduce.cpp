@@ -28,16 +28,15 @@
 #include "common/utils/hccl_util.h"
 #include "aclnn_kernels/transdata.h"
 
-extern "C" aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                           const char* group, const char* reduceOp,
-                                                           aclTensor* output, uint64_t* workspaceSize,
-                                                           aclOpExecutor** executor)
+extern "C" aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
+                                                           const char *group, const char *reduceOp, aclTensor *output,
+                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     return ACLNN_SUCCESS;
 }
 
-extern "C" aclnnStatus aclnnQuantAllReduce(void* workspace, uint64_t workspaceSize,
-                                           aclOpExecutor* executor, const aclrtStream stream)
+extern "C" aclnnStatus aclnnQuantAllReduce(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                           const aclrtStream stream)
 {
     return ACLNN_SUCCESS;
 }

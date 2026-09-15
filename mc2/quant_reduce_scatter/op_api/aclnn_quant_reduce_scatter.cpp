@@ -26,14 +26,16 @@
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
 
-extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales, const char* group,
-                                                               const char* reduceOp, aclTensor* output, uint64_t* workspaceSize,
-                                                               aclOpExecutor** executor)
+extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
+                                                               const char *group, const char *reduceOp,
+                                                               aclTensor *output, uint64_t *workspaceSize,
+                                                               aclOpExecutor **executor)
 {
     return ACLNN_SUCCESS;
 }
 
-extern "C" aclnnStatus aclnnQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+extern "C" aclnnStatus aclnnQuantReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                               const aclrtStream stream)
 {
     return ACLNN_SUCCESS;
 }
