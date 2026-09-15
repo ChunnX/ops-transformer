@@ -436,13 +436,12 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
 
     /*
-     * 到达校验：count 槽高 8 位为发送侧写入的 launch epoch(与 rankSync 计数槽同源,见
-     * send_mask.h SendTopkIdsCountForExperts)。跨卡同步信号与 count 数据跨源/跨通道无到达序,
-     * 同步放行不代表 count 已落地——对高位不匹配的槽单槽自旋重读至到达,再掩出低 24 位。
+     * count 的本轮 epoch 代替入口跨卡握手：发送前已等待全部 MoE 量化和对应 index 写回。
+     * 保留的输入 SyncAll 确保所有物理 AIV 已完成入口记账，MoE 尾部 SyncAll 防止 slot 0
+     * 在接收者读取之前被出口更新。逐项检查包括零 count，整表就绪后才计算 cumsum。
      */
-    __gm__ int32_t *launchCountSlot0 =
-        reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES);
-    int32_t expectEpoch = (ReadGmBypassDCache(launchCountSlot0) & 0x7F) | 0x80;
+    auto *launchCountSlot0 = GetMteSyncCountAddress(params.peermemInfo.rankSyncInWorldPtr, 0U);
+    int32_t expectEpoch = static_cast<int32_t>(GetMteCountEpoch(ReadGmBypassDCache(launchCountSlot0)));
     __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
     for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
         int32_t slotValue = scratch.cumsumInfoTensor.GetValue(slotIdx);
