@@ -50,7 +50,11 @@ protected:
     static constexpr uint32_t MAIN_INNER_AXIS_SPLIT_SIZE = 256;
     static constexpr uint32_t MULTIPLE_AIV_TO_AIC = 2;
     static constexpr uint32_t TWO_FACTOR = 2;
-    static constexpr uint32_t ONE_RATIO_TWO = 2;
+    #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+        static constexpr uint32_t AIV_TO_AIC_RATIO = 1;
+    #else
+        static constexpr uint32_t AIV_TO_AIC_RATIO = 2;
+    #endif
 
     // 成员变量定义
     MC2TransposeContext context_;
@@ -170,7 +174,7 @@ template <typename transposeDataType>
 __aicore__ inline void MC2VecTranspose<transposeDataType>::Init(GM_ADDR transposeSrcAddr, GM_ADDR transposeDstAddr)
 {
     tPipe_->Reset();
-    usedCoreNum_ = GetBlockNum() * ONE_RATIO_TWO; // CV(1:2) 先初始化为满核
+    usedCoreNum_ = GetBlockNum() * AIV_TO_AIC_RATIO; // CV(1:2) 先初始化为满核
     getSplitCnt();
 
     tranposeGm_.SetGlobalBuffer((__gm__ transposeDataType *)transposeSrcAddr);

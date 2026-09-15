@@ -505,11 +505,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
 {
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
-    if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
+    if (npuArch_ == Ops::Base::DAV_3510 && std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU_SCHED;
     }
-    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
-    OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
+    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s, commEngine: %d", commMode_, commEngine);
     // 单轮通信量 = 每轮切分的 tileM × K × dtypeSize（对齐 alltoall 口径；mxfp4场景使用int8类型通信，通信量减半）
     uint64_t commKValue = isFp4_ ? (args_.kValue / EVEN_ALIGN) : args_.kValue;
     uint64_t commDtypeSize = isFp4_ ? 1 : args_.inputDtypeSize;
@@ -1108,7 +1107,7 @@ AllGatherQuantBmmHelper::AllGatherQuantBmmHelper(AllGatherQuantBmmTiling &allGat
 {}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 1);
+                                   std::vector<int32_t>({(int32_t)Ops::Base::DAV_3510, (int32_t)Ops::Base::DAV_9201}), 1);
 } // namespace optiling
 
 #endif // _QUANT_MATMUL_ALL_REDUCE_TILING_CC_

@@ -33,7 +33,9 @@ public:
     __aicore__ inline void WaitForVector(uint16_t &crossPingPongID)
     {
         AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + crossPingPongID);
-        AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + crossPingPongID + FLAG_ID_MAX);
+        if (static_cast<uint64_t>(AscendC::GetTaskRation()) != 1) {
+            AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + crossPingPongID + FLAG_ID_MAX);
+        }
     }
     __aicore__ inline void NotifyV2Mte3(uint16_t id)
     {
@@ -43,7 +45,9 @@ public:
     __aicore__ inline void NotifyVector(uint16_t &crossPingPongID)
     {
         AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + crossPingPongID);
-        AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + crossPingPongID + FLAG_ID_MAX);
+        if (static_cast<uint64_t>(AscendC::GetTaskRation()) != 1) {
+            AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + crossPingPongID + FLAG_ID_MAX);
+        }
     }
     template <bool isFirstKLoop>
     __aicore__ inline void AivPerTensor(__ubuf__ l0cDtype *dst, __ubuf__ l0cDtype *l0cOut, float scaleScalar,
@@ -144,13 +148,26 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::Init(const T
     // in core
     uint64_t baseL0c = matmulTiling_->baseM * matmulTiling_->baseN;
     InitAic(aGM, bGM, bias, cGM, baseL0c);
+
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201
+    pipe_->InitBuffer(vecQueMMRes_, BUFFER_NUM, baseL0c * sizeof(l0cDtype));
+#else
     pipe_->InitBuffer(vecQueMMRes_, BUFFER_NUM, baseL0c * sizeof(l0cDtype) / BUFFER_NUM);
+#endif
     mmResPing_ = vecQueMMRes_.template AllocTensor<l0cDtype>();
     mmResPong_ = vecQueMMRes_.template AllocTensor<l0cDtype>();
     if ASCEND_IS_AIV {
-        pipe_->InitBuffer(vecQueAdd_, 1, baseL0c * sizeof(l0cDtype) / BUFFER_NUM);
+        #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201
+            pipe_->InitBuffer(vecQueAdd_, 1, baseL0c * sizeof(l0cDtype));
+        #else
+            pipe_->InitBuffer(vecQueAdd_, 1, baseL0c * sizeof(l0cDtype) / BUFFER_NUM);
+        #endif
         if constexpr (!IsSameType<l0cDtype, cType>::value) {
+        #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201
+            pipe_->InitBuffer(vecQueOut_, BUFFER_NUM, baseL0c * sizeof(cType) / BUFFER_NUM); // 分两次搬运出去
+        #else
             pipe_->InitBuffer(vecQueOut_, BUFFER_NUM, baseL0c * sizeof(cType) / BUFFER_NUM / 2); // 分两次搬运出去
+        #endif
         }
         scaleK_ = DequantBmm::CeilDiv(matmulTiling_->Ka, PER_BLOCK_SIZE);
         scaleM_ = DequantBmm::CeilDiv(matmulTiling_->M, block_->params_.groupSizeM);
@@ -276,7 +293,11 @@ __aicore__ inline void MatMulPerBlock<MATMUL_PERBLOCK_FUNC_PARAMS>::AicBaseMadPr
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams(block_->mmParams_.fixpipeN, block_->mmParams_.fixpipeM,
                                                               block_->mmParams_.fixSrcStride,
                                                               block_->mmParams_.fixpipeD);
-        fixpipeParams.dualDstCtl = block_->mmParams_.fixpipeSplitN ? 2 : 1; // 2 表示 1:2切分N
+        #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 9201
+            fixpipeParams.dualDstCtl = 0;
+        #else
+            fixpipeParams.dualDstCtl = block_->mmParams_.fixpipeSplitN ? 2 : 1; // 2 表示 1:2切分N
+        #endif
         if (needAicWait_) {
             WaitForVector(crossPingPongID_);
         }

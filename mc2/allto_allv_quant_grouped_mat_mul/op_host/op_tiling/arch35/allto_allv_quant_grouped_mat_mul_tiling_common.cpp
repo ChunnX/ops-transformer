@@ -253,6 +253,13 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
     if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+        auto platformInfo = context->GetPlatformInfo();
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
+            // A6(ascend910_96)无CCU引擎，显式ccu直接报错(默认ai_cpu不受影响)
+            OP_LOGE(context->GetNodeName(), "A6 has no CCU engine, commMode 'ccu' is not supported.");
+            return ge::GRAPH_FAILED;
+        }
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else {
         OP_LOGD(context->GetNodeName(), "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.", commModeStr);

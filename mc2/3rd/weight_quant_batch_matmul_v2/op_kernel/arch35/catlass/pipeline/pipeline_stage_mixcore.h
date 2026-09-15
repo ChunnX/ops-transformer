@@ -60,7 +60,9 @@ struct PipelineStageMixCore {
     static void ConsumerWait()
     {
         if constexpr (SubBlockDim == 2) {
+#if (__NPU_ARCH__ != 9201)
             CrossCoreWaitFlag<SyncMode, ConsumerPipeline>(FlagId + FLAG_ID_MAX);
+#endif
         }
         CrossCoreWaitFlag<SyncMode, ConsumerPipeline>(FlagId);
     }
@@ -69,7 +71,9 @@ struct PipelineStageMixCore {
     static void ConsumerRelease()
     {
         if constexpr (SubBlockDim == 2) {
+#if (__NPU_ARCH__ != 9201)
             CrossCoreSetFlag<SyncMode, ConsumerPipeline>(FlagId + FLAG_ID_MAX);
+#endif
         }
         CrossCoreSetFlag<SyncMode, ConsumerPipeline>(FlagId);
     }

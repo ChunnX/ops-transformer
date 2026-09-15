@@ -49,7 +49,11 @@ WeightQuantBatchMatmulV2BasicBlockController<xType, wType, antiQuantScaleType, b
     tiling_ = tilingData;
     curBlockIdx_ = GetBlockIdx();
     if ASCEND_IS_AIV {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+        curBlockIdx_ = AscendC::GetBlockIdx();
+#else
         curBlockIdx_ = curBlockIdx_ / AscendC::GetTaskRation();
+#endif
     }
     wqmmBasicBlock_.UpdateGlobalAddr(reinterpret_cast<__gm__ xType *>(x), reinterpret_cast<__gm__ wType *>(weight),
                                      reinterpret_cast<__gm__ antiQuantScaleType *>(antiquantScale),
