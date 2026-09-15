@@ -222,7 +222,8 @@ static void ExtendWorkspaceForTokenRankScratch(gert::TilingContext *context,
     const size_t expertNumPerToken =
         static_cast<size_t>(info.K) + (static_cast<size_t>(info.expertNum) - info.moeExpertNum);
     const size_t maxTotalSendNum = static_cast<size_t>(info.X) * info.BS * expertNumPerToken;
-    const size_t scratchTableBytes = maxTotalSendNum * sizeof(int32_t);
+    const size_t maxTokensPerAiv = (maxTotalSendNum + info.aivNum - 1U) / info.aivNum;
+    const size_t scratchTableBytes = maxTokensPerAiv * info.aivNum * sizeof(int32_t);
     const auto CeilAlignSize = [](size_t val, size_t align) { return (val + align - 1U) / align * align; };
     const size_t ffnNum = static_cast<size_t>(info.worldSize) - info.attentionWorkerNum;
     const size_t ffnNumAlignSize = CeilAlignSize(ffnNum * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET);
