@@ -193,6 +193,7 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
     config.attrCclBufferSizeIndex = ATTR_CCL_BUFFER_SIZE_INDEX;
     config.isMc2Context = true;
     config.allowMxQuantMode = true;
+    config.allowMultiLayer = true;
 
     auto ret = AttentionToFFNTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -270,6 +271,7 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     config.attrFfnStartRankIdIndex = ATTR_FFN_START_RANK_ID_INDEX;
     config.attrCclBufferSizeIndex = ATTR_CCL_BUFFER_SIZE_INDEX;
     config.isMc2Context = true;
+    config.allowMultiLayer = true;
 
     auto ret = AttentionToFFNTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {

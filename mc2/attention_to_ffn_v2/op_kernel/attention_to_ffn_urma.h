@@ -281,7 +281,7 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::I
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(microBatchIdGMTensor_);
     microBatchId_ = microBatchIdGMTensor_.GetValue(0);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(layerIdGMTensor_);
-    layerId_ = 0;
+    layerId_ = layerIdGMTensor_.GetValue(0);
 
     expertIdsCnt_ = axisX_ * axisBS_ * (axisK_ + sharedExpertNum_);
     expertRankTableCnt_ = expertNum_ * expRankTableM_;

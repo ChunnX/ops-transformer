@@ -707,18 +707,21 @@ static bool CheckXAndExpertIdShapes(const char *nodeName, const int32_t xDim0, c
                                                ", moe_expert_num=" + std::to_string(moeExpertNum) + ")]")
                                                   .c_str()),
                     return false);
-    return true;
-}
-
-static bool CheckExpertRankTableShape(const char *nodeName, const int32_t expertRankTableDim0,
-                                      const int32_t expertRankTableDim1, const int64_t moeExpertNum)
-{
-    OP_TILING_CHECK(
-        expertRankTableDim0 != 1,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_rank_table",
-                                              (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
-                                              "Dim0 of expert_rank_table must be 1"),
+    if(config.allowMultiLayer) {
+        OP_TILING_CHECK(
+            expertRankTableDim0 < 1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_rank_table",
+                                                    (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
+                                                    "Dim0 of expert_rank_table must greater than 0"),
         return false);
+    } else {
+        OP_TILING_CHECK(
+            expertRankTableDim0 != 1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expert_rank_table",
+                                                (std::string("[") + std::to_string(expertRankTableDim0) + "]").c_str(),
+                                                "Dim0 of expert_rank_table must be 1"),
+        return false);
+    }
     OP_TILING_CHECK(
         (expertRankTableDim1 < moeExpertNum) || (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
         OP_LOGE_FOR_INVALID_VALUE(ATTN_FFN_INNER_DEBUG, "expert_rank_table",
