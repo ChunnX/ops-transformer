@@ -27,12 +27,12 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("ori_kv")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("cmp_kv")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_UINT8, ge::DT_UINT8})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
@@ -42,22 +42,22 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cmp_sparse_indices")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("ori_block_table")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cmp_block_table")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cu_seqlens_q")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
@@ -76,18 +76,38 @@ public:
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused_kv")
-            .ParamType(REQUIRED)
+        this->Input("seqused_ori_kv")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("seqused_cmp_kv")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("cmp_residual_kv")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("ori_topk_length")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("cmp_topk_length")
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("sinks")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("metadata")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
@@ -96,20 +116,21 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("softmax_lse")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
-        this->Attr("cmp_ratio").AttrType(REQUIRED).Int(4);
-        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4);  // ori_mask_mode默认值4
-        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3);  // cmp_mask_mode默认值3
-        this->Attr("ori_kv_stride").AttrType(REQUIRED).Int(0);  // stride of ori_kv block in elements
-        this->Attr("cmp_kv_stride").AttrType(REQUIRED).Int(0);  // stride of cmp_kv block in elements
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float(1.0);
+        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(4);
+        this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(4);  // ori_mask_mode默认值4
+        this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(3);  // cmp_mask_mode默认值3
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
         this->Attr("layout_q").AttrType(OPTIONAL).String("TND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_ND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_BSND");
+        this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
+        this->Attr("ori_kv_stride").AttrType(OPTIONAL).Int(0);  // stride of ori_kv block in elements
+        this->Attr("cmp_kv_stride").AttrType(OPTIONAL).Int(0);  // stride of cmp_kv block in bytes
         this->Attr("kv_quant_mode").AttrType(OPTIONAL).Int(3);
 
         OpAICoreConfig aicore_config;
