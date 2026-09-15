@@ -1353,6 +1353,19 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMaskEQ(LocalTen
         LocalTensor<uint16_t> maskLocalU16 = maskLocal.ReinterpretCast<uint16_t>();
         uint32_t evenLen = static_cast<uint32_t>(curTileLen) & ~1U;
 
+        if (writeCnt == static_cast<uint32_t>(curTileLen)) {
+            SToVSync();
+            Duplicate<uint16_t>(maskLocalU16, writeValue == 0 ? 0 : 0x0101, evenLen / 2);
+            PipeBarrier<PIPE_V>();
+            if (evenLen != static_cast<uint32_t>(curTileLen)) {
+                VToSSync();
+                maskLocal.SetValue(evenLen, writeValue);
+            }
+
+            curTileK -= static_cast<int32_t>(writeCnt);
+            return;
+        }
+
         SToVSync();
         Duplicate<uint16_t>(maskLocalU16, defaultValue == 0 ? 0 : 0x0101, evenLen / 2);
         PipeBarrier<PIPE_V>();
