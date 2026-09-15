@@ -729,7 +729,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::GetRecvCoun
     LocalTensor<float> tempFp32 = topkIdsBuf_.GetWithOffset<float>(epWorldSize_ * UB_STRIDE, 0);
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
-    SyncFunc<AscendC::HardEvent::MTE3_V>(); // buf 复用
+    // buf 复用
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    SyncFunc<AscendC::HardEvent::MTE3_V>();
     while (sumOfFlag != commpareFlag) {     // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -1143,9 +1146,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Process()
         CalSendCnt();
         SyncAll<true>();
         Communication();
-        GetRecvCount();
         SendPhase();
         SetStatus();
+        GetRecvCount();
         SyncAll<true>();
         WriteToRemoteWindow();
         diagWriter_.RunPosRecord(MOE_EP_DISPATCH_RUN_POS_URMA_REQUESTS_ISSUE_DONE);
