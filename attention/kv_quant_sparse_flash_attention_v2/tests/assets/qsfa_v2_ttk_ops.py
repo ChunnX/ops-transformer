@@ -16,9 +16,7 @@ from typing import Optional
 
 import torch
 import torch_npu
-from cann_ops_transformer_custom.ops.attention.kv_quant_sparse_flash_attention_v2 import (
-    kv_quant_sparse_flash_attention,
-)
+from cann_ops_transformer.ops import kv_quant_sparse_flash_attention
 
 
 def _get_kv_torch_dtype(kv_dtype):
