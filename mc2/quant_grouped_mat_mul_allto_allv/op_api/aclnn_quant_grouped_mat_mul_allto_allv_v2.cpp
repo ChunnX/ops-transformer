@@ -1,4 +1,4 @@
-/* *
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -13,15 +13,15 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
-#include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
+#include "common/utils/op_mc2.h"
 #include "opdev/common_types.h"
 #include "opdev/format_utils.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 #include "opdev/platform.h"
 #include "securec.h"
 #include <algorithm>
@@ -31,6 +31,13 @@ namespace {
 using namespace op;
 
 #include "mc2_comm_utils.h"
+
+enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
 
 enum class QuantModeType : int64_t {
     NO_QUANT = 0,
@@ -43,18 +50,11 @@ enum class QuantModeType : int64_t {
     DYN_PERTOKEN_QUANT = 7
 };
 
-enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
-
 static constexpr int64_t DIM_TWO = 2;
 static constexpr int64_t DIM_THREE = 3;
 // 转置检测支持的 tensor 维度数范围：至少 2 维（最后两维），最大支持 6 维
-static constexpr uint64_t TRANSPOSE_DETECT_MIN_DIM_NUM = 2;
 static constexpr uint64_t TRANSPOSE_DETECT_MAX_DIM_NUM = 6;
+static constexpr uint64_t TRANSPOSE_DETECT_MIN_DIM_NUM = 2;
 // gmmWeight 转置交换的维度索引（4D 布局的 dim1/dim2）
 static constexpr uint64_t GMM_WEIGHT_SWAP_DIM_1 = 1;
 static constexpr uint64_t GMM_WEIGHT_SWAP_DIM_2 = 2;
@@ -238,14 +238,14 @@ static bool CheckQuantParams(int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, 
 // 检查tensor最后两维是否转置（stride不连续）
 static bool IsTransposeLastTwoDims(const aclTensor *tensor)
 {
-    if (tensor->GetViewShape().GetDimNum() < TRANSPOSE_DETECT_MIN_DIM_NUM ||
-        tensor->GetViewShape().GetDimNum() > TRANSPOSE_DETECT_MAX_DIM_NUM) {
+    if (tensor->GetViewShape().GetDimNum() > TRANSPOSE_DETECT_MAX_DIM_NUM ||
+        tensor->GetViewShape().GetDimNum() < TRANSPOSE_DETECT_MIN_DIM_NUM) {
         return false;
     }
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
     if (tensor->GetViewStrides()[dim2] == 1 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
-        if (tensor->GetViewShape().GetDim(dim1) == 1 && tensor->GetViewShape().GetDim(dim2) == 1) {
+        if (tensor->GetViewShape().GetDim(dim2) == 1 && tensor->GetViewShape().GetDim(dim1) == 1) {
             return false;
         }
         return true;
@@ -276,14 +276,14 @@ static aclnnStatus CheckMxScaleShape(const aclTensor *scale, const char *name)
 // 交换 tensor view 的两个维度（shape + strides），不改变物理数据，基于 aclCreateTensor
 static const aclTensor *SwapTensorDims(const aclTensor *tensor, uint64_t dimA, uint64_t dimB)
 {
-    uint64_t storageShapeDimNum = tensor->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
+    uint64_t storageShapeDim = tensor->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDim(storageShapeDim);
+    for (uint64_t i = 0; i < storageShapeDim; i++) {
         storageDim[i] = tensor->GetStorageShape().GetDim(i);
     }
-    uint64_t viewShapeDimNum = tensor->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
+    uint64_t viewShapeDim = tensor->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDim(viewShapeDim);
+    for (uint64_t i = 0; i < viewShapeDim; i++) {
         viewDim[i] = tensor->GetViewShape().GetDim(i);
     }
     std::swap(viewDim[dimA], viewDim[dimB]);
@@ -292,10 +292,10 @@ static const aclTensor *SwapTensorDims(const aclTensor *tensor, uint64_t dimA, u
     auto origStride = tensor->GetViewStrides();
     std::vector<int64_t> stride(origStride.begin(), origStride.end());
     std::swap(stride[dimA], stride[dimB]);
-    auto offset = tensor->GetViewOffset();
     aclFormat format = aclFormat::ACL_FORMAT_ND;
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, tensor->GetTensor()->GetAddr());
+    auto offset = tensor->GetViewOffset();
+    return aclCreateTensor(viewDim.data(), viewShapeDim, dataType, stride.data(), offset, format, storageDim.data(),
+                           storageShapeDim, tensor->GetTensor()->GetAddr());
 }
 
 // 检测 gmmWeight stride 转置，同时 reshape weight 和 scale（swap dim[1]/dim[2]）
@@ -307,7 +307,7 @@ static aclnnStatus HandleGmmMxTranspose(const aclTensor *&weight, const aclTenso
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous and transGmmWeight is already set!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         transWeight = !transWeight;
         OP_LOGD("gmmWeight transposed detected: transWeight flipped to %d", transWeight);
         weight = SwapTensorDims(weight, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
@@ -327,7 +327,7 @@ static aclnnStatus HandleGmmTtTranspose(const aclTensor *&weight, bool &transWei
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous and transGmmWeight is already set!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         weight = SwapTensorDims(weight, GMM_WEIGHT_SWAP_DIM_1, GMM_WEIGHT_SWAP_DIM_2);
         CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         transWeight = !transWeight;
@@ -345,7 +345,7 @@ static aclnnStatus HandleMmMxTranspose(const aclTensor *&weight, const aclTensor
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mmWeight not contiguous and transMmWeight is already set!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         transWeight = !transWeight;
         OP_LOGD("mmWeight transposed detected: transWeight flipped to %d", transWeight);
         weight = SwapTensorDims(weight, 0, 1);
@@ -365,7 +365,7 @@ static aclnnStatus HandleMmTtTranspose(const aclTensor *&weight, bool &transWeig
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mmWeight not contiguous and transMmWeight is already set!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         weight = SwapTensorDims(weight, 0, 1);
         CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         transWeight = !transWeight;
@@ -408,7 +408,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *commModeStr, uint8_t &comm
 {
     const size_t maxLength = 7UL;
     // 获取通信引擎参数
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
@@ -440,16 +440,16 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     auto retSendAndRecv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(retSendAndRecv == ACLNN_SUCCESS, retSendAndRecv);
     char *strGroup = const_cast<char *>(group);
-    int64_t yDtype = y->GetDataType();
     int64_t mmDtype = mmYOptional == nullptr ? 0 : mmYOptional->GetDataType();
+    int64_t yDtype = y->GetDataType();
     // MX 量化场景通过 stride 检测 weight/scale 的转置状态
     bool isMxQuant = (gmmXQuantMode == static_cast<int64_t>(QuantModeType::MX_QUANT));
     if (isMxQuant) {
         OP_LOGD("MX quant mode: transGmmWeight(input)=%d, transMmWeight(input)=%d", transGmmWeight, transMmWeight);
         // MX Scale Shape 校验
-        auto scaleRet = CheckMxScaleShape(gmmWeightScale, "gmmWeightScale");
+        auto scaleRet = CheckMxScaleShape(mmWeightScaleOptional, "mmWeightScale");
         CHECK_RET(scaleRet == ACLNN_SUCCESS, scaleRet);
-        scaleRet = CheckMxScaleShape(mmWeightScaleOptional, "mmWeightScale");
+        scaleRet = CheckMxScaleShape(gmmWeightScale, "gmmWeightScale");
         CHECK_RET(scaleRet == ACLNN_SUCCESS, scaleRet);
         // 检测 weight stride 转置，同时 reshape weight 和 scale
         auto transRet = HandleGmmMxTranspose(gmmWeight, gmmWeightScale, transGmmWeight);
@@ -458,7 +458,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
             transRet = HandleMmMxTranspose(mmWeightOptional, mmWeightScaleOptional, transMmWeight);
             CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
         }
-        OP_LOGD("Final: transGmmWeight=%d, transMmWeight=%d", transGmmWeight, transMmWeight);
+        OP_LOGD("Final trans info: transGmmWeight=%d, transMmWeight=%d", transGmmWeight, transMmWeight);
     }
     bool isTtQuant = (gmmXQuantMode == static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT));
     if (isTtQuant) {
@@ -495,7 +495,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(void *workspace, uint6
                                                           aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

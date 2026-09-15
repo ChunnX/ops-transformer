@@ -21,15 +21,13 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_constants.h"
+#include "mega_moe_gmm_epilogue_sync.h"
 #include "mega_moe_types.h"
 
 namespace MegaMoeImpl {
 
 using namespace AscendC;
 
-constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
-constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 constexpr uint32_t UINT64_BYTE_OFFSET_SHIFT = 3U;
 
 struct WorkRange {
@@ -239,27 +237,27 @@ __aicore__ inline uint32_t GetWaveEndRowOffsetInExpert(uint64_t expertRowCount, 
 }
 
 // 连续均衡分配 token，前 totalTokens % workerCount 个任务各多处理一个 token。
-__aicore__ inline WorkRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx, uint32_t workerCount)
+__aicore__ inline WorkRange GetBalancedWorkRange(uint32_t totalWorkItems, uint32_t workerIdx, uint32_t workerCount)
 {
     if (workerCount == 0U || workerIdx >= workerCount) {
         return {};
     }
-    uint32_t base = totalTokens / workerCount;
-    uint32_t remainder = totalTokens % workerCount;
+    uint32_t base = totalWorkItems / workerCount;
+    uint32_t remainder = totalWorkItems % workerCount;
     uint32_t extraBefore = workerIdx < remainder ? workerIdx : remainder;
     return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
 }
 
-// 以全局 row 前缀轮转“多一个 token”的首 owner；Dispatch/Combine 共用这一公式。
-__aicore__ inline WorkRange GetRotatedBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx, uint32_t workerCount,
-                                                         uint64_t globalRowPrefix)
+// 以全局任务前缀轮转“多一个任务”的首 owner；Dispatch/Combine 共用这一公式。
+__aicore__ inline WorkRange GetRotatedBalancedWorkRange(uint32_t totalWorkItems, uint32_t workerIdx,
+                                                        uint32_t workerCount, uint64_t globalWorkPrefix)
 {
     if (workerCount == 0U || workerIdx >= workerCount) {
         return {};
     }
-    uint32_t firstOwner = static_cast<uint32_t>(globalRowPrefix % workerCount);
+    uint32_t firstOwner = static_cast<uint32_t>(globalWorkPrefix % workerCount);
     uint32_t logicalWorkerIdx = workerIdx >= firstOwner ? workerIdx - firstOwner : workerIdx + workerCount - firstOwner;
-    return GetBalancedTokenRange(totalTokens, logicalWorkerIdx, workerCount);
+    return GetBalancedWorkRange(totalWorkItems, logicalWorkerIdx, workerCount);
 }
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
@@ -282,46 +280,6 @@ __aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR re
 }
 
 #endif
-
-__aicore__ inline void NotifyCube(uint16_t value = 0)
-{
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
-}
-
-__aicore__ inline void WaitForVector(uint16_t value = 0)
-{
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value);
-}
-
-__aicore__ inline void NotifyVector(uint16_t value = 0)
-{
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
-}
-
-__aicore__ inline void WaitForCube(uint16_t value = 0)
-{
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
-}
-
-template <bool IsPingPong = false>
-__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
-{
-    if (vecSetSyncCom == 0) {
-        return;
-    }
-    if constexpr (g_coreType == AIC) {
-        if constexpr (IsPingPong) {
-            if (vecSetSyncCom == 1) {
-                WaitForVector(1U - pingpongIdx);
-            } else {
-                WaitForVector(pingpongIdx);
-                WaitForVector(1U - pingpongIdx);
-            }
-        } else {
-            WaitForVector();
-        }
-    }
-}
 
 __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t &coreOffset, int32_t align = ALIGN_32)
 {
@@ -508,47 +466,70 @@ __aicore__ inline ExpertTokenRange PlanNextExpertTokenRangeInWave(GM_ADDR expert
     return {plannedPosition, plannedPosition};
 }
 
-// 轮询 GM 中的 int32 flag 直至等于期望值，并在两次读取之间加入短暂退避。
-__aicore__ inline void WaitUntilGmFlagEquals(__gm__ int32_t *flagAddr, int32_t expectedValue,
-                                             int64_t pollBackoffCycles = GM_FLAG_POLL_BACKOFF_CYCLES)
+// 同一 launch 内阶段由 0 单调推进到 1、2；公共输入屏障前由 ResetSyncStatus 清零。
+// 每个 topK 有效下标发送核独占一个 cache line，达到更晚阶段也表示已通过此前阶段。
+// 当前共享并行路径的发送核均为 AIV1，包括共享专家使用 A8W4 的场景。
+__aicore__ inline void SyncTopkValidIndexSendCores(GM_ADDR syncPtr, const AivJobContext &job, int32_t phase)
 {
-    while (AscendC::ReadGmByPassDCache(flagAddr) != expectedValue) {
-        int64_t startCycle = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - startCycle < pollBackoffCycles) {
+    auto *arrivals = reinterpret_cast<__gm__ int32_t *>(syncPtr);
+    WriteGmByPassDCache(arrivals + job.jobIndex * INT_CACHELINE, phase);
+    for (uint32_t peer = 0; peer < job.totalJobs; ++peer) {
+        while (ReadGmByPassDCache(arrivals + peer * INT_CACHELINE) < phase) {
+            const int64_t pollStart = GetSystemCycle();
+            while (GetSystemCycle() - pollStart < GM_FLAG_POLL_BACKOFF_CYCLES) {
+            }
         }
     }
 }
 
-// 轮询 GM 中的 int32 计数直至不小于目标值，并在两次读取之间加入短暂退避。
-__aicore__ inline void WaitUntilGmFlagAtLeast(__gm__ int32_t *flagAddr, int32_t targetValue)
+// 两种同步模式共用跨卡握手；逻辑分工和物理计数槽由调用方明确指定。
+__aicore__ inline int32_t CrossRankHandshakeInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
+                                                        const AivJobContext &syncJob, __gm__ int32_t *syncCount)
 {
-    while (AscendC::ReadGmByPassDCache(flagAddr) < targetValue) {
-        int64_t startCycle = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - startCycle < GM_FLAG_POLL_BACKOFF_CYCLES) {
-        }
-    }
-}
-
-// 全卡同步：各 AIV 按任务分工分摊 rank 握手，末尾执行本卡 AIV 同步。
-__aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
-                                                const AivJobContext &aivJob)
-{
-    if constexpr (g_coreType == AIC) {
-        return;
-    }
-    __gm__ int32_t *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
-    __gm__ int32_t *syncCount = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + 48U * 1024U +
-                                                                   static_cast<uint64_t>(aivJob.jobIndex) * 64U);
-    int32_t count = ReadGmByPassDCache(syncCount) + 1;
-    for (uint32_t rankIdx = aivJob.jobIndex; rankIdx < worldSize; rankIdx += aivJob.totalJobs) {
-        __gm__ int32_t *remoteSyncAddr =
-            reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
+    auto *syncRank = reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr);
+    const int32_t count = ReadGmByPassDCache(syncCount) + 1;
+    for (uint32_t rankIdx = syncJob.jobIndex; rankIdx < worldSize; rankIdx += syncJob.totalJobs) {
+        auto *remoteSyncAddr = reinterpret_cast<__gm__ int32_t *>(g_winRankAddr_[rankIdx]) + rankId * INT_CACHELINE;
         WriteGmByPassDCache(remoteSyncAddr, count);
         GmSignalWaitBarrier(syncRank + rankIdx * INT_CACHELINE, count);
     }
     WriteGmByPassDCache(syncCount, count);
+    return count;
+}
+
+// Caller selects participating AIV cores; this entry performs full-AIV synchronization.
+__aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
+                                                const AivJobContext &aivJob)
+{
+    auto *syncCount =
+        reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES +
+                                           static_cast<uint64_t>(aivJob.jobIndex) * RANK_SYNC_COUNTER_SLOT_BYTES);
+    CrossRankHandshakeInWorldSize(rankSyncInWorldPtr, rankId, worldSize, aivJob, syncCount);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+}
+
+/*
+ * Caller passes a logical block job and the first physical AIV counter of that block.
+ * Only AIV1 participates; core selection belongs to SyncInputAcrossRanks.
+ */
+template <bool Aiv1Only>
+__aicore__ inline void CrossRankSyncInWorldSize(GM_ADDR rankSyncInWorldPtr, uint32_t rankId, uint32_t worldSize,
+                                                const AivJobContext &syncJob, uint32_t firstPhysicalCoreIdx,
+                                                GM_ADDR sendCoreSyncPtr)
+{
+    static_assert(Aiv1Only, "Use the four-argument entry for full-AIV synchronization.");
+    int32_t phase = 0;
+    // All local route producers must finish before publishing rank readiness.
+    SyncTopkValidIndexSendCores(sendCoreSyncPtr, syncJob, ++phase);
+    auto *syncCount =
+        reinterpret_cast<__gm__ int32_t *>(rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES +
+                                           static_cast<uint64_t>(firstPhysicalCoreIdx) * RANK_SYNC_COUNTER_SLOT_BYTES);
+    const int32_t count = CrossRankHandshakeInWorldSize(rankSyncInWorldPtr, rankId, worldSize, syncJob, syncCount);
+    // Handshake updated AIV0; update AIV1 for the later full-AIV output synchronization.
+    WriteGmByPassDCache(syncCount + RANK_SYNC_COUNTER_SLOT_BYTES / sizeof(int32_t), count);
+    PipeBarrier<PIPE_ALL>();
+    SyncTopkValidIndexSendCores(sendCoreSyncPtr, syncJob, ++phase);
 }
 
 template <AscendC::HardEvent event, int32_t eventId>
