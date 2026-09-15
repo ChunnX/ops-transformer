@@ -150,7 +150,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(void *workspace, uint64_t workspaceSize,
                                         aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+            op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6复用A5路径(handle恒为AICPU)
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

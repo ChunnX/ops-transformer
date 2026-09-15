@@ -38,7 +38,12 @@ __global__ __aicore__ void quant_grouped_mat_mul_allto_allv(
     GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR commQuantScaleGM, GM_ADDR yGM,
     GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    // A6(ascend910_96) AIC:AIV为1:1
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     if (workspaceGM == nullptr) {
         return;
     }

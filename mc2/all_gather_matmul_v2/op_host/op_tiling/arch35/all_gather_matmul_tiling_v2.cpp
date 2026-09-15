@@ -46,7 +46,7 @@ static constexpr int64_t CMP_MAX_LEN = 7;
 
 bool AllGatherMatmulTilingV2::IsCapable()
 {
-    if ((npuArch_ == Ops::Base::DAV_3510) && inputIsBf16Fp16_) {
+    if ((npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_9201) && inputIsBf16Fp16_) {
         OP_LOGI(opName_, "Start with AllGatherMatmulTilingV2 tiling.");
         return true;
     }
@@ -213,13 +213,12 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 
 ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
 {
-    // Set hccl comm engine with comm_mode
+    // Set hccl comm engine with comm_mode; A6(DAV_9201)仅支持AICPU通信引擎
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
-    if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
+    if (npuArch_ == Ops::Base::DAV_3510 && std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU_SCHED;
     }
-    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
-    OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
+    OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s, commEngine: %d", commMode_, commEngine);
     // 单轮通信量 = 每轮切分的 tileM × K × dtypeSize（对齐 alltoall 口径），算法表为空时回退默认算法
     uint64_t commDataBytes = tileMValue_ * args_.kValue * args_.inputDtypeSize;
     OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, kValue=%llu, rankDim=%u, commEngine=%u",
@@ -271,5 +270,5 @@ AllGatherMatmulTilingV2::AllGatherMatmulTilingV2(gert::TilingContext *context)
 {}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTilingV2,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
+                                   std::vector<int32_t>({(int32_t)Ops::Base::DAV_3510, (int32_t)Ops::Base::DAV_9201}), 0);
 } // namespace optiling
