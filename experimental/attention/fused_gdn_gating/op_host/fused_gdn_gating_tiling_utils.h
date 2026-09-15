@@ -23,7 +23,7 @@ namespace FusedGdnGating {
 // NPU hardware constants.
 constexpr uint32_t VECTOR_BYTES_PER_ITER = 256;
 constexpr uint32_t DATACOPY_MIN_BYTES = 32;
-constexpr uint32_t BF16_PER_BLOCK = DATACOPY_MIN_BYTES / 2;  // 16
+constexpr uint32_t BF16_PER_BLOCK = DATACOPY_MIN_BYTES / 2; // 16
 constexpr uint32_t MASK_ALIGN_ELEMS = 64;
 
 /// Align count to vector unit width (256 bytes) for given dtype size.
@@ -65,8 +65,7 @@ inline bool CanUseBulkDma(uint32_t numHeads, uint32_t rowsPerIter)
  * ubDim = ceil(numHeads / 16) * 16 (matching kernel DMA_ALIGN_ELEMS).
  * Result clamped to power-of-2, max 128.
  */
-inline uint32_t ComputeRowsPerIter(uint32_t numHeads, uint64_t ubBudget,
-                                    uint32_t ubDim = 0)
+inline uint32_t ComputeRowsPerIter(uint32_t numHeads, uint64_t ubBudget, uint32_t ubDim = 0)
 {
     if (ubDim == 0) {
         // Match the kernel's fp32 compute/mask alignment.
@@ -83,9 +82,9 @@ inline uint32_t ComputeRowsPerIter(uint32_t numHeads, uint64_t ubBudget,
     uint32_t constPerRowBytes = 2 * ubDim * static_cast<uint32_t>(sizeof(float));
 
     // Per-row (per-chunk): 3 bf16/fp16 buffers + 5 fp32 buffers + 1 uint8 mask buffer.
-    uint32_t perRowBytes = 3 * ubDim * static_cast<uint32_t>(sizeof(int16_t))   // a, b, betaOut
-                         + 5 * ubDim * static_cast<uint32_t>(sizeof(float))     // g, x, betaX, tmp, betaFp32
-                         + 1 * maskUbDim * static_cast<uint32_t>(sizeof(uint8_t)); // threshold mask
+    uint32_t perRowBytes = 3 * ubDim * static_cast<uint32_t>(sizeof(int16_t))        // a, b, betaOut
+                           + 5 * ubDim * static_cast<uint32_t>(sizeof(float))        // g, x, betaX, tmp, betaFp32
+                           + 1 * maskUbDim * static_cast<uint32_t>(sizeof(uint8_t)); // threshold mask
 
     if (perRowBytes == 0) {
         return 1;
@@ -97,13 +96,27 @@ inline uint32_t ComputeRowsPerIter(uint32_t numHeads, uint64_t ubBudget,
     }
 
     // Round down to nearest power of 2 (128, 64, 32, ..., 1).
-    if (maxRows >= 128) { return 128; }
-    if (maxRows >= 64)  { return 64;  }
-    if (maxRows >= 32)  { return 32;  }
-    if (maxRows >= 16)  { return 16;  }
-    if (maxRows >= 8)   { return 8;   }
-    if (maxRows >= 4)   { return 4;   }
-    if (maxRows >= 2)   { return 2;   }
+    if (maxRows >= 128) {
+        return 128;
+    }
+    if (maxRows >= 64) {
+        return 64;
+    }
+    if (maxRows >= 32) {
+        return 32;
+    }
+    if (maxRows >= 16) {
+        return 16;
+    }
+    if (maxRows >= 8) {
+        return 8;
+    }
+    if (maxRows >= 4) {
+        return 4;
+    }
+    if (maxRows >= 2) {
+        return 2;
+    }
     return 1;
 }
 

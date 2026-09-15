@@ -24,11 +24,11 @@ namespace ops {
 
 namespace {
 
-constexpr size_t INPUT_A_INDEX     = 1;
-constexpr size_t OUTPUT_G_INDEX    = 0;
+constexpr size_t INPUT_A_INDEX = 1;
+constexpr size_t OUTPUT_G_INDEX = 0;
 constexpr size_t OUTPUT_BETA_INDEX = 1;
-constexpr size_t OUTPUT_DIM_NUM    = 3;
-constexpr int64_t OUTPUT_SEQ_LEN   = 1;
+constexpr size_t OUTPUT_DIM_NUM = 3;
+constexpr int64_t OUTPUT_SEQ_LEN = 1;
 
 } // namespace
 
@@ -48,7 +48,7 @@ static ge::graphStatus InferShapeFusedGdnGating(InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    const int64_t batch    = shapeA->GetDim(0);
+    const int64_t batch = shapeA->GetDim(0);
     const int64_t numHeads = shapeA->GetDim(1);
 
     shapeG->SetDimNum(OUTPUT_DIM_NUM);
@@ -75,8 +75,6 @@ static ge::graphStatus InferDataTypeFusedGdnGating(gert::InferDataTypeContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(FusedGdnGating)
-    .InferShape(InferShapeFusedGdnGating)
-    .InferDataType(InferDataTypeFusedGdnGating);
+IMPL_OP_INFERSHAPE(FusedGdnGating).InferShape(InferShapeFusedGdnGating).InferDataType(InferDataTypeFusedGdnGating);
 
 } // namespace ops

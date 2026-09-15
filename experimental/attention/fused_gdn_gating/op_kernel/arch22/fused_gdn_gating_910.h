@@ -21,26 +21,31 @@ namespace FusedGdnGating {
 using namespace AscendC;
 
 constexpr uint32_t BYTES_PER_BLOCK = 32;
-constexpr uint32_t BF16_PER_BLOCK  = BYTES_PER_BLOCK / sizeof(int16_t);
-constexpr uint32_t FP32_PER_BLOCK  = BYTES_PER_BLOCK / sizeof(float);
+constexpr uint32_t BF16_PER_BLOCK = BYTES_PER_BLOCK / sizeof(int16_t);
+constexpr uint32_t FP32_PER_BLOCK = BYTES_PER_BLOCK / sizeof(float);
 constexpr uint32_t MASK_ALIGN_ELEMS = 64;
 
 constexpr uint32_t DMA_ALIGN_ELEMS = BYTES_PER_BLOCK / sizeof(int16_t);
 
 template <typename T>
-__aicore__ inline T CeilDiv(T a, T b) { return (a + b - 1) / b; }
+__aicore__ inline T CeilDiv(T a, T b)
+{
+    return (a + b - 1) / b;
+}
 
 template <typename T>
-__aicore__ inline T AlignUp(T a, T b) { return CeilDiv(a, b) * b; }
+__aicore__ inline T AlignUp(T a, T b)
+{
+    return CeilDiv(a, b) * b;
+}
 
 template <typename InDtype, typename ParamDtype>
 class KernelFusedGdnGating {
 public:
     __aicore__ inline KernelFusedGdnGating() {}
 
-    __aicore__ inline void Init(GM_ADDR aLogGm, GM_ADDR aGm, GM_ADDR bGm, GM_ADDR dtBiasGm,
-                                GM_ADDR gGm, GM_ADDR betaOutputGm,
-                                const FusedGdnGatingTilingData *tiling, TPipe *pipe)
+    __aicore__ inline void Init(GM_ADDR aLogGm, GM_ADDR aGm, GM_ADDR bGm, GM_ADDR dtBiasGm, GM_ADDR gGm,
+                                GM_ADDR betaOutputGm, const FusedGdnGatingTilingData *tiling, TPipe *pipe)
     {
         pipe_ = pipe;
         numHeads_ = tiling->numHeads;
@@ -50,7 +55,7 @@ public:
         beta_ = tiling->beta;
         threshold_ = tiling->threshold;
 
-        alignedHeadsHalf_  = AlignUp<uint32_t>(numHeads_, MASK_ALIGN_ELEMS);
+        alignedHeadsHalf_ = AlignUp<uint32_t>(numHeads_, MASK_ALIGN_ELEMS);
         alignedHeadsFloat_ = AlignUp<uint32_t>(numHeads_, MASK_ALIGN_ELEMS);
         alignedHeadsMask_ = alignedHeadsFloat_;
         constexpr uint32_t paramAlignElems = BYTES_PER_BLOCK / sizeof(ParamDtype);
@@ -58,12 +63,9 @@ public:
 
         aLogGm_.SetGlobalBuffer(reinterpret_cast<__gm__ ParamDtype *>(aLogGm), numHeads_);
         dtBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ ParamDtype *>(dtBiasGm), numHeads_);
-        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(aGm),
-                             static_cast<uint64_t>(numBatches_) * numHeads_);
-        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(bGm),
-                             static_cast<uint64_t>(numBatches_) * numHeads_);
-        gGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gGm),
-                             static_cast<uint64_t>(numBatches_) * numHeads_);
+        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(aGm), static_cast<uint64_t>(numBatches_) * numHeads_);
+        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(bGm), static_cast<uint64_t>(numBatches_) * numHeads_);
+        gGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gGm), static_cast<uint64_t>(numBatches_) * numHeads_);
         betaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(betaOutputGm),
                                 static_cast<uint64_t>(numBatches_) * numHeads_);
 
@@ -95,13 +97,17 @@ public:
 
         uint32_t blockIdx = GetBlockIdx();
         uint32_t blockNum = GetBlockNum();
-        if (blockNum == 0) { blockNum = 1; }
+        if (blockNum == 0) {
+            blockNum = 1;
+        }
 
         uint32_t totalChunks = CeilDiv<uint32_t>(numBatches_, rowsPerIter_);
         uint32_t chunksPerBlock = CeilDiv<uint32_t>(totalChunks, blockNum);
         uint32_t chunkStart = blockIdx * chunksPerBlock;
         uint32_t chunkEnd = chunkStart + chunksPerBlock;
-        if (chunkEnd > totalChunks) { chunkEnd = totalChunks; }
+        if (chunkEnd > totalChunks) {
+            chunkEnd = totalChunks;
+        }
 
         for (uint32_t chunk = chunkStart; chunk < chunkEnd; ++chunk) {
             ProcessOneChunk(chunk);
@@ -114,8 +120,7 @@ private:
         LocalTensor<ParamDtype> tmpALog = aLogInQue_.template AllocTensor<ParamDtype>();
         dtBiasTensor_ = negExpInQue_.template AllocTensor<float>();
 
-        DataCopyExtParams paramCopyParams{1, static_cast<uint32_t>(numHeads_ * sizeof(ParamDtype)),
-                                          0, 0, 0};
+        DataCopyExtParams paramCopyParams{1, static_cast<uint32_t>(numHeads_ * sizeof(ParamDtype)), 0, 0, 0};
         DataCopyPadExtParams<ParamDtype> paramPadParams{false, 0, 0, static_cast<ParamDtype>(0)};
 
         DataCopyPad(tmpALog, aLogGm_, paramCopyParams, paramPadParams);
@@ -160,7 +165,7 @@ private:
             for (uint32_t r = 0; r < rowsPerIter_; ++r) {
                 const uint32_t off = r * alignedHeadsFloat_;
                 Adds(dtBiasMulti[off], dtBiasPreloaded_, 0.0f, numHeads_);
-                Adds(negExpMulti[off], dtBiasTensor_,    0.0f, numHeads_);
+                Adds(negExpMulti[off], dtBiasTensor_, 0.0f, numHeads_);
             }
             PipeBarrier<PIPE_V>();
         }
@@ -178,7 +183,7 @@ private:
 
         LocalTensor<InDtype> aLocal = aInQue_.template AllocTensor<InDtype>();
         LocalTensor<InDtype> bLocal = bInQue_.template AllocTensor<InDtype>();
-        LocalTensor<float>   gLocal = gOutQue_.template AllocTensor<float>();
+        LocalTensor<float> gLocal = gOutQue_.template AllocTensor<float>();
         LocalTensor<InDtype> betaLocal = betaOutQue_.template AllocTensor<InDtype>();
 
         if (useBulkDma_ && isFullChunk) {
@@ -186,8 +191,7 @@ private:
             const uint32_t rowBytesHalf = numHeads_ * static_cast<uint32_t>(sizeof(InDtype));
             const uint32_t inputDstGap =
                 (alignedHeadsHalf_ - numHeads_) * static_cast<uint32_t>(sizeof(InDtype)) / BYTES_PER_BLOCK;
-            DataCopyExtParams bulkCopyParams{static_cast<uint16_t>(rowsPerIter_),
-                                             rowBytesHalf, 0, inputDstGap, 0};
+            DataCopyExtParams bulkCopyParams{static_cast<uint16_t>(rowsPerIter_), rowBytesHalf, 0, inputDstGap, 0};
             DataCopyPadExtParams<InDtype> bulkPadParams{false, 0, 0, static_cast<InDtype>(0)};
             DataCopyPad(aLocal, aGm_[rowOffset], bulkCopyParams, bulkPadParams);
             DataCopyPad(bLocal, bGm_[rowOffset], bulkCopyParams, bulkPadParams);
@@ -206,16 +210,16 @@ private:
         aLocal = aInQue_.template DeQue<InDtype>();
         bLocal = bInQue_.template DeQue<InDtype>();
 
-        LocalTensor<float> x           = xBuf_.Get<float>();
-        LocalTensor<float> betaX       = betaXBuf_.Get<float>();
+        LocalTensor<float> x = xBuf_.Get<float>();
+        LocalTensor<float> betaX = betaXBuf_.Get<float>();
         LocalTensor<float> softplusTmp = softplusTmpBuf_.Get<float>();
         LocalTensor<uint8_t> thresholdMask = thresholdMaskBuf_.Get<uint8_t>();
-        LocalTensor<float> betaFp32    = betaFp32Buf_.Get<float>();
+        LocalTensor<float> betaFp32 = betaFp32Buf_.Get<float>();
 
         const uint32_t multiCount = validRows * alignedHeadsFloat_;
         const uint32_t maskCount = validRows * alignedHeadsMask_;
 
-        Cast(x,        aLocal, RoundMode::CAST_NONE, multiCount);
+        Cast(x, aLocal, RoundMode::CAST_NONE, multiCount);
         Cast(betaFp32, bLocal, RoundMode::CAST_NONE, multiCount);
         PipeBarrier<PIPE_V>();
 
@@ -284,7 +288,7 @@ private:
         gOutQue_.template EnQue<float>(gLocal);
         betaOutQue_.template EnQue<InDtype>(betaLocal);
 
-        gLocal    = gOutQue_.template DeQue<float>();
+        gLocal = gOutQue_.template DeQue<float>();
         betaLocal = betaOutQue_.template DeQue<InDtype>();
 
         if (useBulkDma_ && isFullChunk) {
@@ -294,11 +298,9 @@ private:
             const uint32_t bSrcGap =
                 (alignedHeadsHalf_ - numHeads_) * static_cast<uint32_t>(sizeof(InDtype)) / BYTES_PER_BLOCK;
             DataCopyExtParams gOutParams{static_cast<uint16_t>(rowsPerIter_),
-                                         numHeads_ * static_cast<uint32_t>(sizeof(float)),
-                                         gSrcGap, 0, 0};
+                                         numHeads_ * static_cast<uint32_t>(sizeof(float)), gSrcGap, 0, 0};
             DataCopyExtParams bOutParams{static_cast<uint16_t>(rowsPerIter_),
-                                         numHeads_ * static_cast<uint32_t>(sizeof(InDtype)),
-                                         bSrcGap, 0, 0};
+                                         numHeads_ * static_cast<uint32_t>(sizeof(InDtype)), bSrcGap, 0, 0};
             DataCopyPad(gGm_[rowOffset], gLocal, gOutParams);
             DataCopyPad(betaGm_[rowOffset], betaLocal, bOutParams);
         } else {
@@ -322,15 +324,15 @@ private:
     GlobalTensor<ParamDtype> dtBiasGm_;
     GlobalTensor<InDtype> aGm_;
     GlobalTensor<InDtype> bGm_;
-    GlobalTensor<float>   gGm_;
+    GlobalTensor<float> gGm_;
     GlobalTensor<InDtype> betaGm_;
 
-    TQue<QuePosition::VECIN,  1> aInQue_;
-    TQue<QuePosition::VECIN,  1> bInQue_;
-    TQue<QuePosition::VECIN,  1> aLogInQue_;
-    TQue<QuePosition::VECIN,  1> dtBiasInQue_;
-    TQue<QuePosition::VECIN,  1> negExpInQue_;
-    TQue<QuePosition::VECIN,  1> dtBiasPreloadQue_;
+    TQue<QuePosition::VECIN, 1> aInQue_;
+    TQue<QuePosition::VECIN, 1> bInQue_;
+    TQue<QuePosition::VECIN, 1> aLogInQue_;
+    TQue<QuePosition::VECIN, 1> dtBiasInQue_;
+    TQue<QuePosition::VECIN, 1> negExpInQue_;
+    TQue<QuePosition::VECIN, 1> dtBiasPreloadQue_;
     TQue<QuePosition::VECOUT, 1> gOutQue_;
     TQue<QuePosition::VECOUT, 1> betaOutQue_;
 
@@ -342,19 +344,19 @@ private:
     TBuf<TPosition::VECCALC> thresholdMaskBuf_;
     TBuf<TPosition::VECCALC> betaFp32Buf_;
 
-    LocalTensor<float> dtBiasTensor_;     // neg_exp(A_log), 1 row
-    LocalTensor<float> dtBiasPreloaded_;  // dt_bias, 1 row
+    LocalTensor<float> dtBiasTensor_;    // neg_exp(A_log), 1 row
+    LocalTensor<float> dtBiasPreloaded_; // dt_bias, 1 row
 
     uint32_t numHeads_{0};
     uint32_t numBatches_{0};
     uint32_t rowsPerIter_{1};
-    bool     useBulkDma_{false};
+    bool useBulkDma_{false};
     uint32_t alignedHeadsHalf_{0};
     uint32_t alignedHeadsFloat_{0};
     uint32_t alignedHeadsMask_{0};
     uint32_t alignedHeadsParam_{0};
-    float    beta_{1.0f};
-    float    threshold_{20.0f};
+    float beta_{1.0f};
+    float threshold_{20.0f};
 };
 
 } // namespace FusedGdnGating

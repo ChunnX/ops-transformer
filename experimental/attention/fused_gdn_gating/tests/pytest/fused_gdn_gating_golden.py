@@ -158,8 +158,12 @@ def check_output_shapes(
     """Validate output shapes and dtypes."""
     assert npu_g.shape == (1, batch, num_heads), f"unexpected g shape: {npu_g.shape}"
     assert npu_g.dtype == torch.float32, f"unexpected g dtype: {npu_g.dtype}"
-    assert npu_beta.shape == (1, batch, num_heads), f"unexpected beta shape: {npu_beta.shape}"
-    assert npu_beta.dtype == dtype, f"unexpected beta dtype: {npu_beta.dtype}, expected {dtype}"
+    assert npu_beta.shape == (1, batch, num_heads), (
+        f"unexpected beta shape: {npu_beta.shape}"
+    )
+    assert npu_beta.dtype == dtype, (
+        f"unexpected beta dtype: {npu_beta.dtype}, expected {dtype}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +208,12 @@ def run_fused_gdn_gating_eager(case):
 
     logger.info(
         "num_heads=%d, batch=%d, dtype=%s, param_dtype=%s, beta=%s, threshold=%s",
-        num_heads, batch, dtype, param_dtype, beta, threshold,
+        num_heads,
+        batch,
+        dtype,
+        param_dtype,
+        beta,
+        threshold,
     )
     logger.info("A_log: shape %s, dtype %s", A_log.shape, A_log.dtype)
     logger.info("a: shape %s, dtype %s", a.shape, a.dtype)

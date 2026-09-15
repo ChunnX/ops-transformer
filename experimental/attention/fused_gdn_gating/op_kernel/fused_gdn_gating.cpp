@@ -18,18 +18,16 @@
 #include "fused_gdn_gating_tiling_key.h"
 
 #if __CCE_AICORE__ == 200
-    #include "fused_gdn_gating_310.h"
+#include "fused_gdn_gating_310.h"
 #else
-    #include "arch22/fused_gdn_gating_910.h"
+#include "arch22/fused_gdn_gating_910.h"
 #endif
 
 using namespace AscendC;
 using namespace FusedGdnGating;
 
-extern "C" __global__ __aicore__ void fused_gdn_gating(
-    GM_ADDR a_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias,
-    GM_ADDR g, GM_ADDR beta_output,
-    GM_ADDR workspace, GM_ADDR tiling_gm)
+extern "C" __global__ __aicore__ void fused_gdn_gating(GM_ADDR a_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias, GM_ADDR g,
+                                                       GM_ADDR beta_output, GM_ADDR workspace, GM_ADDR tiling_gm)
 {
     REGISTER_TILING_DEFAULT(FusedGdnGatingTilingData);
     GET_TILING_DATA(tilingData, tiling_gm);

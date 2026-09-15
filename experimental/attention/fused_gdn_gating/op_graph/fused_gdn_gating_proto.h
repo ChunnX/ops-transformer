@@ -58,6 +58,6 @@ REG_OP(FusedGdnGating)
     .ATTR(threshold, Float, 20.0)
     .OP_END_FACTORY_REG(FusedGdnGating)
 
-}  // namespace ge
+} // namespace ge
 
-#endif  // FUSED_GDN_GATING_PROTO_H_
+#endif // FUSED_GDN_GATING_PROTO_H_

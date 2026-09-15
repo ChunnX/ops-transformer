@@ -25,7 +25,8 @@ constexpr uint32_t ALIGN_FLOAT_NUM = 8;
 constexpr uint32_t DEFAULT_UINT_ZERO = 0;
 constexpr uint32_t DEFAULT_UINT_ONE = 1;
 
-__aicore__ inline void SafeCopyInHalf(AscendC::LocalTensor<half>& dst, const AscendC::GlobalTensor<half>& src, uint32_t gmOffset, uint32_t num)
+__aicore__ inline void SafeCopyInHalf(AscendC::LocalTensor<half> &dst, const AscendC::GlobalTensor<half> &src,
+                                      uint32_t gmOffset, uint32_t num)
 {
     uint32_t blockLen = num / ALIGN_HALF_NUM;
     uint32_t tail = num % ALIGN_HALF_NUM;
@@ -35,13 +36,16 @@ __aicore__ inline void SafeCopyInHalf(AscendC::LocalTensor<half>& dst, const Asc
     }
     if (tail > 0) {
         uint32_t align = blockLen * ALIGN_HALF_NUM;
-        for (uint32_t i = 0; i < tail; ++i) dst.SetValue(align + i, src.GetValue(gmOffset + align + i));
+        for (uint32_t i = 0; i < tail; ++i)
+            dst.SetValue(align + i, src.GetValue(gmOffset + align + i));
         uint32_t padEnd = ((num + ALIGN_HALF_OFFSET) / ALIGN_HALF_NUM) * ALIGN_HALF_NUM;
-        for (uint32_t i = tail; i < padEnd - align; ++i) dst.SetValue(align + i, (half)0.0f);
+        for (uint32_t i = tail; i < padEnd - align; ++i)
+            dst.SetValue(align + i, (half)0.0f);
     }
 }
 
-__aicore__ inline void SafeCopyOutHalf(AscendC::GlobalTensor<half>& dst, const AscendC::LocalTensor<half>& src, uint32_t gmOffset, uint32_t num)
+__aicore__ inline void SafeCopyOutHalf(AscendC::GlobalTensor<half> &dst, const AscendC::LocalTensor<half> &src,
+                                       uint32_t gmOffset, uint32_t num)
 {
     uint32_t blockLen = num / ALIGN_HALF_NUM;
     uint32_t tail = num % ALIGN_HALF_NUM;
@@ -51,11 +55,13 @@ __aicore__ inline void SafeCopyOutHalf(AscendC::GlobalTensor<half>& dst, const A
     }
     if (tail > 0) {
         uint32_t align = blockLen * ALIGN_HALF_NUM;
-        for (uint32_t i = 0; i < tail; ++i) dst.SetValue(gmOffset + align + i, src.GetValue(align + i));
+        for (uint32_t i = 0; i < tail; ++i)
+            dst.SetValue(gmOffset + align + i, src.GetValue(align + i));
     }
 }
 
-__aicore__ inline void SafeCopyOutFloat(AscendC::GlobalTensor<float>& dst, const AscendC::LocalTensor<float>& src, uint32_t gmOffset, uint32_t num)
+__aicore__ inline void SafeCopyOutFloat(AscendC::GlobalTensor<float> &dst, const AscendC::LocalTensor<float> &src,
+                                        uint32_t gmOffset, uint32_t num)
 {
     uint32_t blockLen = num / ALIGN_FLOAT_NUM;
     uint32_t tail = num % ALIGN_FLOAT_NUM;
@@ -65,7 +71,8 @@ __aicore__ inline void SafeCopyOutFloat(AscendC::GlobalTensor<float>& dst, const
     }
     if (tail > 0) {
         uint32_t align = blockLen * ALIGN_FLOAT_NUM;
-        for (uint32_t i = 0; i < tail; ++i) dst.SetValue(gmOffset + align + i, src.GetValue(align + i));
+        for (uint32_t i = 0; i < tail; ++i)
+            dst.SetValue(gmOffset + align + i, src.GetValue(align + i));
     }
 }
 
@@ -73,10 +80,8 @@ class KernelFusedGdnGating310 {
 public:
     __aicore__ inline KernelFusedGdnGating310() {}
 
-    __aicore__ inline void Init(
-        GM_ADDR A_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias,
-        GM_ADDR g, GM_ADDR beta_output,
-        const FusedGdnGating::FusedGdnGatingTilingData* tiling)
+    __aicore__ inline void Init(GM_ADDR A_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias, GM_ADDR g, GM_ADDR beta_output,
+                                const FusedGdnGating::FusedGdnGatingTilingData *tiling)
     {
         this->beta = (tiling->beta < 0.001f || tiling->beta > 100.0f) ? 1.0f : tiling->beta;
         this->inv_beta = (tiling->inv_beta < 0.001f || tiling->inv_beta > 1000.0f) ? 1.0f : tiling->inv_beta;
@@ -89,13 +94,13 @@ public:
         this->linesPerCore = (coreId == tiling->usedCoreNum - 1) ? tiling->tailLength : tiling->alignedLength;
         this->coreGlobalOffset = coreId * tiling->alignedLength;
 
-        this->aLogGm.SetGlobalBuffer((__gm__ half*)A_log);
-        this->aGm.SetGlobalBuffer((__gm__ half*)a);
-        this->bGm.SetGlobalBuffer((__gm__ half*)b);
-        this->dtBiasGm.SetGlobalBuffer((__gm__ half*)dt_bias);
+        this->aLogGm.SetGlobalBuffer((__gm__ half *)A_log);
+        this->aGm.SetGlobalBuffer((__gm__ half *)a);
+        this->bGm.SetGlobalBuffer((__gm__ half *)b);
+        this->dtBiasGm.SetGlobalBuffer((__gm__ half *)dt_bias);
 
-        this->gGm.SetGlobalBuffer((__gm__ float*)g);
-        this->betaOutGm.SetGlobalBuffer((__gm__ half*)beta_output);
+        this->gGm.SetGlobalBuffer((__gm__ float *)g);
+        this->betaOutGm.SetGlobalBuffer((__gm__ half *)beta_output);
 
         this->floatLen = ((this->numHeads + ALIGN_HALF_OFFSET) / ALIGN_HALF_NUM) * ALIGN_HALF_NUM;
         const uint32_t floatBytes = this->floatLen * sizeof(float);
@@ -129,7 +134,8 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (this->linesPerCore == 0 || this->tileRows == 0) return;
+        if (this->linesPerCore == 0 || this->tileRows == 0)
+            return;
 
         AscendC::LocalTensor<half> bufALogHalf = this->inQueueALog.AllocTensor<half>();
         SafeCopyInHalf(bufALogHalf, this->aLogGm, 0, this->numHeads);
@@ -177,13 +183,15 @@ public:
                 bcastDtBias.SetValue(i, dtBiasFloatReady.GetValue(headIdx));
                 bcastExpALog.SetValue(i, tmpFloatALog.GetValue(headIdx));
                 headIdx++;
-                if (headIdx == this->numHeads) headIdx = 0;
+                if (headIdx == this->numHeads)
+                    headIdx = 0;
             }
         }
 
         uint32_t totalTiles = (this->linesPerCore + this->tileRows - 1) / this->tileRows;
         uint32_t tailElements = this->linesPerCore % this->tileRows;
-        if (tailElements == 0) tailElements = this->tileRows;
+        if (tailElements == 0)
+            tailElements = this->tileRows;
 
         for (uint32_t tileIdx = 0; tileIdx < totalTiles; ++tileIdx) {
             uint32_t curElements = (tileIdx == totalTiles - 1) ? tailElements : this->tileRows;
@@ -234,7 +242,7 @@ private:
 
         AscendC::Muls(rB, rB, -1.0f, vecElements);
         AscendC::Maxs(rB, rB, -50.0f, vecElements);
-        AscendC::Mins(rB, rB,  50.0f, vecElements);
+        AscendC::Mins(rB, rB, 50.0f, vecElements);
         AscendC::Exp(rBetaX, rB, vecElements);
         AscendC::Adds(rBetaX, rBetaX, 1.0f, vecElements);
 

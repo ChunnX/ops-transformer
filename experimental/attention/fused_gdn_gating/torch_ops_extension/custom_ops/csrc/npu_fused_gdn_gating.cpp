@@ -25,12 +25,11 @@ const int64_t A_HEADS_DIM = 1;
 // 工具函数，推导输出 g / beta_output 的 shape 与 dtype
 //   - g:           FLOAT [1, batch, num_heads]
 //   - beta_output: 与 b 同 dtype [1, batch, num_heads]
-std::tuple<at::Tensor, at::Tensor> construct_fused_gdn_gating_output_tensors(
-    const at::Tensor &a, const at::Tensor &b)
+std::tuple<at::Tensor, at::Tensor> construct_fused_gdn_gating_output_tensors(const at::Tensor &a, const at::Tensor &b)
 {
     for (auto i = 0; i < a.sizes().size(); i++) {
-        TORCH_CHECK(a.size(i) > 0, "All values within a's shape should be greater than 0, but shape[", i,
-                    "] is ", a.size(i));
+        TORCH_CHECK(a.size(i) > 0, "All values within a's shape should be greater than 0, but shape[", i, "] is ",
+                    a.size(i));
     }
 
     int64_t batch = a.size(A_BATCH_DIM);
@@ -44,9 +43,9 @@ std::tuple<at::Tensor, at::Tensor> construct_fused_gdn_gating_output_tensors(
 }
 
 // step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
-std::tuple<at::Tensor, at::Tensor>
-npu_fused_gdn_gating_npu(const at::Tensor &A_log, const at::Tensor &a, const at::Tensor &b,
-                         const at::Tensor &dt_bias, double beta, double threshold)
+std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_npu(const at::Tensor &A_log, const at::Tensor &a,
+                                                            const at::Tensor &b, const at::Tensor &dt_bias, double beta,
+                                                            double threshold)
 {
     TORCH_CHECK(A_log.dim() == DIM_ONE, "A_log should be 1-D [num_heads], got ", A_log.dim(), "D.");
     TORCH_CHECK(dt_bias.dim() == DIM_ONE, "dt_bias should be 1-D [num_heads], got ", dt_bias.dim(), "D.");
@@ -54,8 +53,8 @@ npu_fused_gdn_gating_npu(const at::Tensor &A_log, const at::Tensor &a, const at:
     TORCH_CHECK(b.dim() == DIM_TWO, "b should be 2-D [batch, num_heads], got ", b.dim(), "D.");
     TORCH_CHECK(b.size(A_BATCH_DIM) == a.size(A_BATCH_DIM) && b.size(A_HEADS_DIM) == a.size(A_HEADS_DIM),
                 "a and b must have the same shape, got a=", a.sizes(), " b=", b.sizes());
-    TORCH_CHECK(a.scalar_type() == b.scalar_type(),
-                "a and b must have the same dtype, got a=", a.scalar_type(), " b=", b.scalar_type());
+    TORCH_CHECK(a.scalar_type() == b.scalar_type(), "a and b must have the same dtype, got a=", a.scalar_type(),
+                " b=", b.scalar_type());
     TORCH_CHECK(A_log.scalar_type() == dt_bias.scalar_type(),
                 "A_log and dt_bias must have the same dtype, got A_log=", A_log.scalar_type(),
                 " dt_bias=", dt_bias.scalar_type());
@@ -81,9 +80,9 @@ npu_fused_gdn_gating_npu(const at::Tensor &A_log, const at::Tensor &a, const at:
 }
 
 // step3, 为META设备实现前向接口
-std::tuple<at::Tensor, at::Tensor>
-npu_fused_gdn_gating_meta(const at::Tensor &A_log, const at::Tensor &a, const at::Tensor &b,
-                          const at::Tensor &dt_bias, double beta, double threshold)
+std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_meta(const at::Tensor &A_log, const at::Tensor &a,
+                                                             const at::Tensor &b, const at::Tensor &dt_bias,
+                                                             double beta, double threshold)
 {
     return construct_fused_gdn_gating_output_tensors(a, b);
 }

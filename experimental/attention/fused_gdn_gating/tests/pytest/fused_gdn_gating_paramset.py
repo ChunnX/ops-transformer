@@ -17,7 +17,9 @@ NUM_HEADS_VALUES = [4, 6, 8, 12, 16, 24, 32, 48, 64, 128]
 BATCH_SIZES = [1, 7, 37, 128, 512, 4096, 16384]
 DTYPES = [torch.bfloat16, torch.float16]
 PARAM_DTYPES = [torch.float32, torch.bfloat16, torch.float16]
-DTYPE_COMBINATIONS = [(dtype, param_dtype) for dtype in DTYPES for param_dtype in PARAM_DTYPES]
+DTYPE_COMBINATIONS = [
+    (dtype, param_dtype) for dtype in DTYPES for param_dtype in PARAM_DTYPES
+]
 
 _DTYPE_NAME = {
     torch.float32: "fp32",
@@ -66,10 +68,15 @@ GROUP_CORE = [
     _make_case(
         f"FGG_CORE_{i:03d}",
         f"core_nh{nh}_b{b}_{_dtype_name(dt)}",
-        nh, b, dt, torch.float32,
+        nh,
+        b,
+        dt,
+        torch.float32,
         soc="910b" if dt == torch.bfloat16 else "all",
     )
-    for i, (nh, b, dt) in enumerate(itertools.product(NUM_HEADS_VALUES, BATCH_SIZES, DTYPES))
+    for i, (nh, b, dt) in enumerate(
+        itertools.product(NUM_HEADS_VALUES, BATCH_SIZES, DTYPES)
+    )
 ]
 
 # ---------------------------------------------------------------------------
@@ -79,8 +86,14 @@ GROUP_NONDEF = [
     _make_case(
         f"FGG_NONDEF_{i:03d}",
         f"nondef_nh{nh}_b{b}",
-        nh, b, torch.bfloat16, torch.float32,
-        beta=0.5, threshold=1.0, force_threshold=True, soc="910b",
+        nh,
+        b,
+        torch.bfloat16,
+        torch.float32,
+        beta=0.5,
+        threshold=1.0,
+        force_threshold=True,
+        soc="910b",
     )
     for i, (nh, b) in enumerate(itertools.product([16, 32, 64], [1, 37]))
 ]
@@ -92,8 +105,12 @@ GROUP_DTYPE = [
     _make_case(
         f"FGG_DTYPE_{i:03d}",
         f"dtype_{_dtype_name(dt)}_{_dtype_name(pdt)}",
-        32, 37, dt, pdt,
-        threshold=2.0, force_threshold=True,
+        32,
+        37,
+        dt,
+        pdt,
+        threshold=2.0,
+        force_threshold=True,
         soc="910b" if dt == torch.bfloat16 or pdt == torch.bfloat16 else "all",
     )
     for i, (dt, pdt) in enumerate(DTYPE_COMBINATIONS)
@@ -106,10 +123,15 @@ GROUP_LARGE = [
     _make_case(
         f"FGG_LARGE_{i:03d}",
         f"large_nh{nh}_b{b}",
-        nh, b, torch.bfloat16, torch.float32,
+        nh,
+        b,
+        torch.bfloat16,
+        torch.float32,
         soc="910b",
     )
-    for i, (nh, b) in enumerate(itertools.product([8, 16, 32, 64], [64, 256, 1024, 4096]))
+    for i, (nh, b) in enumerate(
+        itertools.product([8, 16, 32, 64], [64, 256, 1024, 4096])
+    )
 ]
 
 # ---------------------------------------------------------------------------
@@ -119,7 +141,10 @@ GROUP_BULK = [
     _make_case(
         f"FGG_BULK_{i:03d}",
         f"bulk_nh{nh}",
-        nh, 512, torch.bfloat16, torch.float32,
+        nh,
+        512,
+        torch.bfloat16,
+        torch.float32,
         soc="910b",
     )
     for i, nh in enumerate([16, 32, 48])
@@ -132,7 +157,10 @@ GROUP_FALLBACK = [
     _make_case(
         f"FGG_FALLBACK_{i:03d}",
         f"fallback_nh{nh}",
-        nh, 256, torch.bfloat16, torch.float32,
+        nh,
+        256,
+        torch.bfloat16,
+        torch.float32,
         soc="910b",
     )
     for i, nh in enumerate([6, 12, 24])
@@ -143,8 +171,12 @@ GROUP_FALLBACK = [
 # ---------------------------------------------------------------------------
 GROUP_SMALL = [
     _make_case(
-        "FGG_SMALL_000", "small_batch",
-        32, 8, torch.bfloat16, torch.float32,
+        "FGG_SMALL_000",
+        "small_batch",
+        32,
+        8,
+        torch.bfloat16,
+        torch.float32,
         soc="910b",
     )
 ]
@@ -154,8 +186,12 @@ GROUP_SMALL = [
 # ---------------------------------------------------------------------------
 GROUP_EXTREME = [
     _make_case(
-        "FGG_EXTREME_000", "extreme_large",
-        32, 65536, torch.bfloat16, torch.float32,
+        "FGG_EXTREME_000",
+        "extreme_large",
+        32,
+        65536,
+        torch.bfloat16,
+        torch.float32,
         soc="910b",
     )
 ]
@@ -169,12 +205,20 @@ GROUP_310P = [
     _make_case(
         f"FGG_310P_{i:03d}",
         f"310p_b{b}_nh{nh}_beta{beta}_thr{thr}",
-        nh, b, torch.float16, torch.float16,
-        beta=beta, threshold=thr, force_threshold=True, soc="all",
+        nh,
+        b,
+        torch.float16,
+        torch.float16,
+        beta=beta,
+        threshold=thr,
+        force_threshold=True,
+        soc="all",
     )
-    for i, (b, nh, beta, thr) in enumerate(itertools.product(
-        [1, 7, 37, 128, 512], [4, 8, 16, 32, 64], [0.5, 1.0], [1.0, 20.0]
-    ))
+    for i, (b, nh, beta, thr) in enumerate(
+        itertools.product(
+            [1, 7, 37, 128, 512], [4, 8, 16, 32, 64], [0.5, 1.0], [1.0, 20.0]
+        )
+    )
 ]
 
 # ---------------------------------------------------------------------------

@@ -32,10 +32,8 @@
 using namespace std;
 using FusedGdnGating::FusedGdnGatingTilingData;
 
-extern "C" __global__ __aicore__ void fused_gdn_gating(
-    GM_ADDR a_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias,
-    GM_ADDR g, GM_ADDR beta_output,
-    GM_ADDR workspace, GM_ADDR tiling_gm);
+extern "C" __global__ __aicore__ void fused_gdn_gating(GM_ADDR a_log, GM_ADDR a, GM_ADDR b, GM_ADDR dt_bias, GM_ADDR g,
+                                                       GM_ADDR beta_output, GM_ADDR workspace, GM_ADDR tiling_gm);
 
 template <typename T>
 T *GmAllocWrapper(size_t size)
@@ -61,8 +59,8 @@ void InitTilingData(FusedGdnGatingTilingData *td, uint32_t numHeads, uint32_t nu
 }
 
 void InitInputData(uint8_t *aLogGm, size_t shapeALog, uint8_t *aGm, size_t shapeA, uint8_t *bGm, size_t shapeB,
-                   uint8_t *dtBiasGm, size_t shapeDtBias, uint8_t *gGm, size_t shapeG,
-                   uint8_t *betaOutputGm, size_t shapeBetaOutput)
+                   uint8_t *dtBiasGm, size_t shapeDtBias, uint8_t *gGm, size_t shapeG, uint8_t *betaOutputGm,
+                   size_t shapeBetaOutput)
 {
     memset(aLogGm, 0, shapeALog);
     memset(aGm, 0, shapeA);
@@ -111,8 +109,8 @@ protected:
         workspace = GmAllocWrapper<uint8_t>(allWorkspaceSize);
         tiling = GmAllocWrapper<uint8_t>(tilingSize);
 
-        InitInputData(aLogGm, shapeALog, aGm, shapeA, bGm, shapeB, dtBiasGm, shapeDtBias,
-                      gGm, shapeG, betaOutputGm, shapeBetaOutput);
+        InitInputData(aLogGm, shapeALog, aGm, shapeA, bGm, shapeB, dtBiasGm, shapeDtBias, gGm, shapeG, betaOutputGm,
+                      shapeBetaOutput);
 
         auto params = GetParam();
         FusedGdnGatingTilingData *td = reinterpret_cast<FusedGdnGatingTilingData *>(tiling);
@@ -132,8 +130,7 @@ protected:
     }
 };
 
-INSTANTIATE_TEST_SUITE_P(GeneralTests, FusedGdnGatingKernelTest,
-                         testing::Values(FggTestParams{1}));
+INSTANTIATE_TEST_SUITE_P(GeneralTests, FusedGdnGatingKernelTest, testing::Values(FggTestParams{1}));
 
 TEST_P(FusedGdnGatingKernelTest, RunTest)
 {
@@ -183,8 +180,8 @@ protected:
         workspace = GmAllocWrapper<uint8_t>(allWorkspaceSize);
         tiling = GmAllocWrapper<uint8_t>(tilingSize);
 
-        InitInputData(aLogGm, shapeALog, aGm, shapeA, bGm, shapeB, dtBiasGm, shapeDtBias,
-                      gGm, shapeG, betaOutputGm, shapeBetaOutput);
+        InitInputData(aLogGm, shapeALog, aGm, shapeA, bGm, shapeB, dtBiasGm, shapeDtBias, gGm, shapeG, betaOutputGm,
+                      shapeBetaOutput);
 
         FusedGdnGatingTilingData *td = reinterpret_cast<FusedGdnGatingTilingData *>(tiling);
         td->numHeads = numHeads;

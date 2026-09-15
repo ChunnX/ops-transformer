@@ -85,36 +85,31 @@ public:
         uint64_t workspace_size = 0;
         aclnnStatus aclRet;
         if (nullIdx == 0) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+            auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else if (nullIdx == 1) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(nullptr, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+            auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(nullptr, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else if (nullIdx == 2) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, nullptr, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+            auto ut =
+                OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, nullptr, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else if (nullIdx == 3) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, a, nullptr, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+            auto ut =
+                OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, nullptr, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else if (nullIdx == 4) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, a, b, nullptr, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+            auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, nullptr, 1.0f, 20.0f), OUTPUT(g, betaOutput));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else if (nullIdx == 5) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, betaOutput));
+            auto ut =
+                OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, betaOutput));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else if (nullIdx == 6) {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, nullptr));
+            auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, nullptr));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         } else {
-            auto ut = OP_API_UT(aclnnFusedGdnGating,
-                                INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, nullptr));
+            auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, nullptr));
             aclRet = ut.TestGetWorkspaceSize(&workspace_size);
         }
         return aclRet;
@@ -206,8 +201,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case0)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -225,8 +219,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case1)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -244,8 +237,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case2)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -263,8 +255,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case3)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(aLog, a, b, dtBias, 0.5f, 10.0f), OUTPUT(g, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 0.5f, 10.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
@@ -282,8 +273,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case4)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(nullptr, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(nullptr, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -301,8 +291,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case5)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(nullptr, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -320,8 +309,7 @@ TEST_F(aclnnFusedGdnGating_310P_test, ascend310P_test_opapi_case6)
     auto g = TensorDesc({1, batch, numHeads}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
     auto betaOutput = TensorDesc({1, batch, numHeads}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 1);
 
-    auto ut = OP_API_UT(aclnnFusedGdnGating,
-                        INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
+    auto ut = OP_API_UT(aclnnFusedGdnGating, INPUT(aLog, a, b, dtBias, 1.0f, 20.0f), OUTPUT(g, betaOutput));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);

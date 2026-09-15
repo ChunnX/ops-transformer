@@ -31,16 +31,16 @@ inline void InitFusedGdnGatingTilingData(uint8_t *tiling, FusedGdnGating::FusedG
 #undef GET_TILING_DATA
 #endif
 
-#define GET_TILING_DATA(tilingData, tilingArg)                                     \
-    FusedGdnGating::FusedGdnGatingTilingData tilingData;                           \
+#define GET_TILING_DATA(tilingData, tilingArg) \
+    FusedGdnGating::FusedGdnGatingTilingData tilingData; \
     InitFusedGdnGatingTilingData(reinterpret_cast<uint8_t *>(tilingArg), &tilingData)
 
 #ifdef GET_TILING_DATA_WITH_STRUCT
 #undef GET_TILING_DATA_WITH_STRUCT
 #endif
 
-#define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg)           \
-    tilingStruct tilingData;                                                       \
+#define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg) \
+    tilingStruct tilingData; \
     InitFusedGdnGatingTilingData(reinterpret_cast<uint8_t *>(tilingArg), &tilingData)
 
 #ifdef REGISTER_TILING_DEFAULT
@@ -49,4 +49,4 @@ inline void InitFusedGdnGatingTilingData(uint8_t *tiling, FusedGdnGating::FusedG
 
 #define REGISTER_TILING_DEFAULT(structName)
 
-#endif  // TEST_FUSED_GDN_GATING_TILING_H
+#endif // TEST_FUSED_GDN_GATING_TILING_H

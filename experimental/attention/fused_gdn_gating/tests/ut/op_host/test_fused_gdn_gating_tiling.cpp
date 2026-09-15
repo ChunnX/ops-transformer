@@ -296,8 +296,7 @@ TEST_F(FusedGdnGatingTilingTest, Ascend310PTilingKey)
                                                   {"beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                                   {"threshold", Ops::Transformer::AnyValue::CreateFrom<float>(20.0f)},
                                               },
-                                              &compileinfo,
-                                              "Ascend310P", 8, 196608);
+                                              &compileinfo, "Ascend310P", 8, 196608);
 
     int64_t expectTilingKey = 200000UL;
 
@@ -345,8 +344,7 @@ TEST_F(FusedGdnGatingTilingTest, Ascend310PLargeBatch)
                                                   {"beta", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                                   {"threshold", Ops::Transformer::AnyValue::CreateFrom<float>(20.0f)},
                                               },
-                                              &compileinfo,
-                                              "Ascend310P", 8, 196608);
+                                              &compileinfo, "Ascend310P", 8, 196608);
 
     int64_t expectTilingKey = 200000UL;
 
@@ -389,8 +387,7 @@ TEST_F(FusedGdnGatingTilingTest, Ascend310PNonDefaultAttrs)
                                                   {"beta", Ops::Transformer::AnyValue::CreateFrom<float>(0.5f)},
                                                   {"threshold", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                               },
-                                              &compileinfo,
-                                              "Ascend310P", 8, 196608);
+                                              &compileinfo, "Ascend310P", 8, 196608);
 
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);

@@ -30,10 +30,8 @@ OP_TYPE_REGISTER(FusedGdnGating);
 
 static constexpr FusedGdnGatingOutput kNullOutput{nullptr, nullptr};
 
-FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a,
-                                    const aclTensor *b, const aclTensor *dtBias,
-                                    float beta, float threshold,
-                                    aclOpExecutor *executor)
+FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a, const aclTensor *b,
+                                    const aclTensor *dtBias, float beta, float threshold, aclOpExecutor *executor)
 {
     L0_DFX(FusedGdnGating, aLog, a, b, dtBias, beta, threshold);
 
@@ -41,27 +39,20 @@ FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a,
     const Format format = Format::FORMAT_ND;
 
     auto g = executor->AllocTensor(DataType::DT_FLOAT, format, format);
-    OP_CHECK(g != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "g AllocTensor failed."),
-             return kNullOutput);
+    OP_CHECK(g != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "g AllocTensor failed."), return kNullOutput);
 
     auto betaOutput = executor->AllocTensor(betaDtype, format, format);
-    OP_CHECK(betaOutput != nullptr,
-             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "beta_output AllocTensor failed."),
+    OP_CHECK(betaOutput != nullptr, OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "beta_output AllocTensor failed."),
              return kNullOutput);
 
-    auto ret = INFER_SHAPE(FusedGdnGating,
-                           OP_INPUT(aLog, a, b, dtBias),
-                           OP_OUTPUT(g, betaOutput),
-                           OP_ATTR(beta, threshold));
-    OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return kNullOutput,
-                        "FusedGdnGating InferShape failed.");
+    auto ret =
+        INFER_SHAPE(FusedGdnGating, OP_INPUT(aLog, a, b, dtBias), OP_OUTPUT(g, betaOutput), OP_ATTR(beta, threshold));
+    OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return kNullOutput, "FusedGdnGating InferShape failed.");
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(FusedGdnGating,
-                                      OP_INPUT(aLog, a, b, dtBias),
-                                      OP_OUTPUT(g, betaOutput),
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(FusedGdnGating, OP_INPUT(aLog, a, b, dtBias), OP_OUTPUT(g, betaOutput),
                                       OP_ATTR(beta, threshold));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return kNullOutput,
-        "FusedGdnGating ADD_TO_LAUNCHER_LIST_AICORE failed.");
+                                         "FusedGdnGating ADD_TO_LAUNCHER_LIST_AICORE failed.");
 
     return FusedGdnGatingOutput{g, betaOutput};
 }

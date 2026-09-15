@@ -21,10 +21,8 @@ struct FusedGdnGatingOutput {
     const aclTensor *beta_output;
 };
 
-FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a,
-                                    const aclTensor *b, const aclTensor *dtBias,
-                                    float beta, float threshold,
-                                    aclOpExecutor *executor);
+FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a, const aclTensor *b,
+                                    const aclTensor *dtBias, float beta, float threshold, aclOpExecutor *executor);
 
 } // namespace l0op
 

@@ -87,7 +87,7 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     }
     const auto &storageShape = shapeA->GetStorageShape();
     int64_t numBatches = storageShape.GetDim(0);
-    int64_t numHeads   = storageShape.GetDim(1);
+    int64_t numHeads = storageShape.GetDim(1);
     if (numBatches <= 0 || numHeads <= 0) {
         return ge::GRAPH_FAILED;
     }
@@ -98,9 +98,13 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     auto *attrs = context->GetAttrs();
     if (attrs != nullptr) {
         const float *betaAttr = attrs->GetAttrPointer<float>(0);
-        if (betaAttr != nullptr) { beta = *betaAttr; }
+        if (betaAttr != nullptr) {
+            beta = *betaAttr;
+        }
         const float *thresholdAttr = attrs->GetAttrPointer<float>(1);
-        if (thresholdAttr != nullptr) { threshold = *thresholdAttr; }
+        if (thresholdAttr != nullptr) {
+            threshold = *thresholdAttr;
+        }
     }
 
     // 5. 获取统一的 Tiling 数据结构（host/kernel 共享同一份 plain struct，布局天然一致）
@@ -218,15 +222,26 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
         uint32_t totalChunksForRPI = (numBatchesU32 + rowsPerIter - 1) / rowsPerIter;
         if (numBatchesU32 <= rowsPerIter || totalChunksForRPI < blockDim) {
             uint32_t maxRPI = std::max(1u, numBatchesU32 / blockDim);
-            if      (maxRPI >= 128) { rowsPerIter = 128; }
-            else if (maxRPI >= 64)  { rowsPerIter = 64;  }
-            else if (maxRPI >= 32)  { rowsPerIter = 32;  }
-            else if (maxRPI >= 16)  { rowsPerIter = 16;  }
-            else if (maxRPI >= 8)   { rowsPerIter = 8;   }
-            else if (maxRPI >= 4)   { rowsPerIter = 4;   }
-            else if (maxRPI >= 2)   { rowsPerIter = 2;   }
-            else                    { rowsPerIter = 1;   }
-            if (rowsPerIter > rowsConservative) { rowsPerIter = rowsConservative; }
+            if (maxRPI >= 128) {
+                rowsPerIter = 128;
+            } else if (maxRPI >= 64) {
+                rowsPerIter = 64;
+            } else if (maxRPI >= 32) {
+                rowsPerIter = 32;
+            } else if (maxRPI >= 16) {
+                rowsPerIter = 16;
+            } else if (maxRPI >= 8) {
+                rowsPerIter = 8;
+            } else if (maxRPI >= 4) {
+                rowsPerIter = 4;
+            } else if (maxRPI >= 2) {
+                rowsPerIter = 2;
+            } else {
+                rowsPerIter = 1;
+            }
+            if (rowsPerIter > rowsConservative) {
+                rowsPerIter = rowsConservative;
+            }
         }
 
         const bool bulkDmaBatchOk = (numBatchesU32 > blockDim * rowsPerIter);
