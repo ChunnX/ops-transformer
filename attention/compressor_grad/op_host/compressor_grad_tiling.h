@@ -77,6 +77,7 @@ constexpr uint32_t D_BASE_SIZE = 128; // D 方向分块基大小（UB/L1 物理�
 constexpr uint32_t M_BASE_SIZE = 128; // M 方向分块基大小
 constexpr uint32_t DB_RATIO = 2;      // workspace 双缓冲倍数
 constexpr uint32_t COFF_MAX = 2;      // coff 上限
+constexpr uint32_t WEIGHT_NUM = 2;    // dWkv / dWgate 权重矩阵数量
 
 static const std::string X_NAME = "query";
 static const std::string WKV_NAME = "wkv";
@@ -241,7 +242,6 @@ struct CompressorGradBaseParams {
     uint32_t csSize = 0;               // Compress sequence len
     uint32_t cmpRatio = 4;             // Compress ratio
     uint32_t usedCoreNum = 0;          // 使用核数
-    uint32_t nSize = 0;                // 预留字段（当前未参与 tiling 决策）
     uint64_t stateCacheStrideDim0 = 0; // stateCache第0维的stride
     uint32_t kBaseNum = 0;
     uint32_t kBaseSize = 0;
