@@ -1,0 +1,650 @@
+diff --git a/mc2/mega_moe/op_kernel/arch92/common/mega_moe_stage_debug.h b/mc2/mega_moe/op_kernel/arch92/common/mega_moe_stage_debug.h
+deleted file mode 100644
+index e2e6e7572..000000000
+--- a/mc2/mega_moe/op_kernel/arch92/common/mega_moe_stage_debug.h
++++ /dev/null
+@@ -1,158 +0,0 @@
+-/**
+- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+- * CANN Open Software License Agreement Version 2.0 (the "License").
+- * Please refer to the License for details. You may not use this file except in compliance with the License.
+- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+- * See LICENSE in the root of the software repository for the full text of the License.
+- */
+-
+-#ifndef MEGA_MOE_ARCH92_STAGE_DEBUG_H
+-#define MEGA_MOE_ARCH92_STAGE_DEBUG_H
+-
+-#include "kernel_operator.h"
+-
+-namespace MegaMoeImpl {
+-
+-using namespace AscendC;
+-
+-namespace StageDebug {
+-
+-constexpr unsigned long PRE_DISPATCH_MARKER = 910000UL;
+-constexpr unsigned long DISPATCH_OUTPUT_MARKER = 910001UL;
+-constexpr unsigned long GMM1_OUTPUT_MARKER = 910002UL;
+-constexpr unsigned long SWIGLU_OUTPUT_MARKER = 910003UL;
+-constexpr unsigned long GMM2_OUTPUT_MARKER = 910004UL;
+-constexpr unsigned long COMBINE_OUTPUT_MARKER = 910005UL;
+-constexpr unsigned long SWIGLU_QUANT_OUTPUT_MARKER = 910006UL;
+-constexpr unsigned long GMM2_INPUT_MARKER = 910007UL;
+-constexpr unsigned long GMM2_CONFIG_MARKER = 910012UL;
+-constexpr unsigned long UINT_BIAS = 1000000UL;
+-constexpr uint32_t DATA_SAMPLE_COUNT = 20U;
+-constexpr uint32_t SCALE_SAMPLE_COUNT = 8U;
+-constexpr uint32_t BF16_FORMAT = 0U;
+-constexpr uint32_t BF16_PAIR_FORMAT = 1U;
+-constexpr uint32_t FP8_E4M3_FORMAT = 4U;
+-constexpr uint32_t FP8_E5M2_FORMAT = 5U;
+-constexpr uint32_t CONFIG_FORMAT = 6U;
+-
+-__aicore__ inline void LogHeader(unsigned long marker, uint32_t format, uint32_t rankIdx,
+-                                 uint32_t expertIdx, uint32_t rowIdx)
+-{
+-    set_cond(marker);
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(format));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(AscendC::GetBlockIdx()));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(rankIdx));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(expertIdx));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(rowIdx));
+-}
+-
+-__aicore__ inline void LogGmm2Config(
+-    uint32_t problemM, uint32_t problemN, uint32_t problemK, uint32_t scaleK,
+-    uint32_t actualM, uint32_t actualN, uint32_t actualK, uint32_t tileM, uint32_t tileN,
+-    uint64_t kL1, uint64_t scaleKL1, uint32_t weightLayout, uint32_t mLoc, uint32_t nLoc, uint32_t kLoc,
+-    uint32_t rankIdx, uint32_t expertIdx)
+-{
+-    LogHeader(GMM2_CONFIG_MARKER, CONFIG_FORMAT, rankIdx, expertIdx, 0U);
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(problemM));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(problemN));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(problemK));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(scaleK));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(actualM));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(actualN));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(actualK));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(tileM));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(tileN));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(kL1));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(kL1));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(scaleKL1));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(weightLayout));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(mLoc));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(nLoc));
+-    set_cond(UINT_BIAS + static_cast<unsigned long>(kLoc));
+-}
+-__aicore__ inline void LogRawBf16(GM_ADDR address, uint32_t elementOffset, uint32_t count)
+-{
+-    GM_ADDR elementAddress = address + static_cast<uint64_t>(elementOffset) * sizeof(uint16_t);
+-    __gm__ int32_t *words = reinterpret_cast<__gm__ int32_t *>(elementAddress);
+-    for (uint32_t elementIdx = 0U; elementIdx < count; elementIdx += 2U) {
+-        uint32_t packed = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(words + elementIdx / 2U));
+-        set_cond(static_cast<unsigned long>(packed & 0xFFFFU));
+-        if (elementIdx + 1U < count) {
+-            set_cond(static_cast<unsigned long>((packed >> 16U) & 0xFFFFU));
+-        }
+-    }
+-}
+-
+-__aicore__ inline void LogRawBytes(GM_ADDR address, uint32_t count)
+-{
+-    __gm__ int32_t *words = reinterpret_cast<__gm__ int32_t *>(address);
+-    for (uint32_t elementIdx = 0U; elementIdx < count; elementIdx += sizeof(uint32_t)) {
+-        uint32_t packed = static_cast<uint32_t>(AscendC::ReadGmByPassDCache(words + elementIdx / sizeof(uint32_t)));
+-        uint32_t remaining = count - elementIdx;
+-        uint32_t validBytes = remaining < sizeof(uint32_t) ? remaining : sizeof(uint32_t);
+-        for (uint32_t byteIdx = 0U; byteIdx < validBytes; ++byteIdx) {
+-            set_cond(static_cast<unsigned long>((packed >> (byteIdx * 8U)) & 0xFFU));
+-        }
+-    }
+-}
+-
+-__aicore__ inline void LogBf16(unsigned long marker, GM_ADDR dataAddr, uint32_t rankIdx,
+-                               uint32_t expertIdx, uint32_t rowIdx)
+-{
+-    LogHeader(marker, BF16_FORMAT, rankIdx, expertIdx, rowIdx);
+-    LogRawBf16(dataAddr, 0U, DATA_SAMPLE_COUNT);
+-}
+-
+-__aicore__ inline void LogBf16Pair(unsigned long marker, GM_ADDR firstAddr, GM_ADDR secondAddr,
+-                                   uint32_t rankIdx, uint32_t expertIdx, uint32_t rowIdx)
+-{
+-    LogHeader(marker, BF16_PAIR_FORMAT, rankIdx, expertIdx, rowIdx);
+-    LogRawBf16(firstAddr, 0U, DATA_SAMPLE_COUNT);
+-    LogRawBf16(secondAddr, 0U, DATA_SAMPLE_COUNT);
+-}
+-
+-template <typename DataType>
+-__aicore__ inline void LogFp8Scale(unsigned long marker, GM_ADDR dataAddr, GM_ADDR scaleAddr,
+-                                   uint32_t rankIdx, uint32_t expertIdx, uint32_t rowIdx)
+-{
+-    constexpr uint32_t fp8Format =
+-        AscendC::IsSameType<DataType, fp8_e5m2_t>::value ? FP8_E5M2_FORMAT : FP8_E4M3_FORMAT;
+-    LogHeader(marker, fp8Format, rankIdx, expertIdx, rowIdx);
+-    LogRawBytes(dataAddr, DATA_SAMPLE_COUNT);
+-    LogRawBytes(scaleAddr, SCALE_SAMPLE_COUNT);
+-}
+-
+-template <typename Tensor>
+-__aicore__ inline void LogLocalBf16(unsigned long marker, Tensor data, uint32_t rankIdx,
+-                                    uint32_t expertIdx, uint32_t rowIdx)
+-{
+-    LogHeader(marker, BF16_FORMAT, rankIdx, expertIdx, rowIdx);
+-    auto raw = data.template ReinterpretCast<uint16_t>();
+-    for (uint32_t elementIdx = 0U; elementIdx < DATA_SAMPLE_COUNT; ++elementIdx) {
+-        set_cond(static_cast<unsigned long>(raw.GetValue(elementIdx)));
+-    }
+-}
+-
+-template <typename DataType, typename DataTensor, typename ScaleTensor>
+-__aicore__ inline void LogLocalFp8Scale(unsigned long marker, DataTensor data, ScaleTensor scale,
+-                                        uint32_t rankIdx, uint32_t expertIdx, uint32_t rowIdx)
+-{
+-    constexpr uint32_t fp8Format =
+-        AscendC::IsSameType<DataType, fp8_e5m2_t>::value ? FP8_E5M2_FORMAT : FP8_E4M3_FORMAT;
+-    LogHeader(marker, fp8Format, rankIdx, expertIdx, rowIdx);
+-    auto rawData = data.template ReinterpretCast<uint8_t>();
+-    auto rawScale = scale.template ReinterpretCast<uint8_t>();
+-    for (uint32_t elementIdx = 0U; elementIdx < DATA_SAMPLE_COUNT; ++elementIdx) {
+-        set_cond(static_cast<unsigned long>(rawData.GetValue(elementIdx)));
+-    }
+-    for (uint32_t scaleIdx = 0U; scaleIdx < SCALE_SAMPLE_COUNT; ++scaleIdx) {
+-        set_cond(static_cast<unsigned long>(rawScale.GetValue(scaleIdx)));
+-    }
+-}
+-
+-} // namespace StageDebug
+-} // namespace MegaMoeImpl
+-
+-#endif // MEGA_MOE_ARCH92_STAGE_DEBUG_H
+diff --git a/mc2/mega_moe/op_kernel/arch92/common/mega_moe_types.h b/mc2/mega_moe/op_kernel/arch92/common/mega_moe_types.h
+index 56d7891db..bdcc27df0 100644
+--- a/mc2/mega_moe/op_kernel/arch92/common/mega_moe_types.h
++++ b/mc2/mega_moe/op_kernel/arch92/common/mega_moe_types.h
+@@ -58,9 +58,6 @@ struct GMMAddrInfo {
+     __gm__ int32_t *gmmToEpilogueFlag;
+     __gm__ int32_t *gmm1TileStatus;
+     __gm__ int32_t *sharedExpertGmm2TileCounter;
+-    // Temporary diagnostic identity for the focused arch92 MMAD precision trace.
+-    uint32_t debugRankId = 0xFFFFFFFFU;
+-    uint32_t debugExpertIdx = 0xFFFFFFFFU;
+ };
+ 
+ struct CombineCommParams {
+diff --git a/mc2/mega_moe/op_kernel/arch92/mega_moe.h b/mc2/mega_moe/op_kernel/arch92/mega_moe.h
+index 38bd1fa15..755fedbdd 100644
+--- a/mc2/mega_moe/op_kernel/arch92/mega_moe.h
++++ b/mc2/mega_moe/op_kernel/arch92/mega_moe.h
+@@ -29,7 +29,6 @@
+ #include "common/mega_moe_types.h"
+ #include "common/mega_moe_core_context.h"
+ #include "common/mega_moe_utils.h"
+-#include "common/mega_moe_stage_debug.h"
+ #include "common/mega_moe_mxfp8_utils.h"
+ #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
+ #include "stage/mega_moe_token_quant.h"
+diff --git a/mc2/mega_moe/op_kernel/arch92/mega_moe_a8w8_wave.h b/mc2/mega_moe/op_kernel/arch92/mega_moe_a8w8_wave.h
+index 4e2587600..df6c47735 100644
+--- a/mc2/mega_moe/op_kernel/arch92/mega_moe_a8w8_wave.h
++++ b/mc2/mega_moe/op_kernel/arch92/mega_moe_a8w8_wave.h
+@@ -12,7 +12,6 @@
+ #define MEGA_MOE_ARCH92_A8W8_WAVE_H
+ 
+ #include "mega_moe.h"
+-#include "common/mega_moe_stage_debug.h"
+ 
+ namespace MegaMoeImpl {
+ 
+@@ -183,9 +182,6 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
+                                     TopkWeightsPrefetch, ArchitecturePolicy::USE_GM_HANDOFF>(
+         gmm1Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_, gmmAddrInfo,
+         state, expertIdx, tokenStartIndexInExpert, gmm1TilesPerMGroup);
+-    gmmAddrInfo.debugRankId = gmm1Config_.common.rankId;
+-    gmmAddrInfo.debugExpertIdx = tokenStartIndexInExpert == 0U ? expertIdx : 0xFFFFFFFFU;
+-
+     int32_t unusedVecSync = 0;
+     Gmm1ActivationState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence};
+     void *blockMmadContext = nullptr;
+@@ -212,9 +208,6 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
+                                configureCombineCounter>(
+         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
+         expertIdx, tokenStartIndexInExpert);
+-    gmmAddrInfo.debugRankId = gmm2Config_.common.rankId;
+-    gmmAddrInfo.debugExpertIdx = tokenStartIndexInExpert == 0U ? expertIdx : 0xFFFFFFFFU;
+-
+     int32_t unusedVecSync = 0;
+     Gmm2RuntimeState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence, gmm2PingPongIdx_};
+     Gmm2ExpertLoopState runtimeProblemState = CreateGmm2ExpertLoopState(gmm2Config_);
+@@ -402,9 +395,6 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
+         auto unpermuteBufferConfig = InitTokenUnpermuteBuffers();
+         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
+             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
+-        if (gmm1Config_.common.rankId == 0U && tokenDispatchConfig_.blockJob.jobIndex == 0U) {
+-            StageDebug::LogBf16(StageDebug::COMBINE_OUTPUT_MARKER, params_.y2GmAddr, 0U, 0U, 0U);
+-        }
+     }
+     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+ }
+diff --git a/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm1_activation.h b/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm1_activation.h
+index 728d35251..3f5bc74c1 100644
+--- a/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm1_activation.h
++++ b/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm1_activation.h
+@@ -20,7 +20,6 @@
+ #include "tensor_api/tensor.h"
+ #include "../blaze/epilogue/block_epilogue_activation_mx_quant.h"
+ #include "../common/mega_moe_gmm_common.h"
+-#include "../common/mega_moe_stage_debug.h"
+ 
+ namespace MegaMoeImpl {
+ 
+@@ -220,27 +219,8 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
+         Gmm1AicMmadTileToGmGeneric<BlockMmad>(
+             blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias, workSet.gmC, actualShape, mLoc, nLoc,
+             kLoc, gmBlockA, gmBlockScaleA);
+-        bool debugFirstExpertRow = false;
+-        if constexpr (!IsShared) {
+-            debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
+-                                  gmmAddrInfo.gmm1OutGlobal == params.workspaceInfo.gmm1MmadResPtr &&
+-                                  mLoc == 0U && nLoc == 0U && kLoc == 0U;
+-        }
+-        if (debugFirstExpertRow) {
+-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+-            auto gateOutput = workSet.gmC.Slice(
+-                Te::MakeCoord(mLoc, nLoc),
+-                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+-            auto upOutput = workSet.gmC.Slice(
+-                Te::MakeCoord(mLoc, nLoc + config.outputN),
+-                Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+-            StageDebug::LogBf16Pair(
+-                StageDebug::GMM1_OUTPUT_MARKER,
+-                reinterpret_cast<GM_ADDR>(gateOutput.Data().Get()),
+-                reinterpret_cast<GM_ADDR>(upOutput.Data().Get()),
+-                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+-        }
++        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
++        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+         if constexpr (TopkWeightsPrefetch) {
+             NotifyGmm1TileStatus(gmmAddrInfo, expertIdx, loopIdx);
+         } else {
+@@ -533,20 +513,6 @@ __aicore__ inline void Gmm1AivGmHandoffEpilogueTileGeneric(
+         0};
+     AscendC::SetCtrlSpr<60, 60>(0);
+     activationQuantOp(epilogueShape, epilogueOffset);
+-    if (gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
+-        mLoc == 0U && nLoc == 0U) {
+-        StageDebug::LogLocalBf16(
+-            StageDebug::SWIGLU_OUTPUT_MARKER, activationQuantOp.GetGluResultTensor(),
+-            gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+-        using QuantOutputType = typename ActivationQuantOp::DataTypeOut;
+-        if constexpr (AscendC::IsSameType<QuantOutputType, fp8_e4m3fn_t>::value ||
+-                      AscendC::IsSameType<QuantOutputType, fp8_e5m2_t>::value) {
+-            StageDebug::LogLocalFp8Scale<QuantOutputType>(
+-                StageDebug::SWIGLU_QUANT_OUTPUT_MARKER,
+-                activationQuantOp.GetQuantOutputTensor(), activationQuantOp.GetQuantScaleOutputTensor(),
+-                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+-        }
+-    }
+     NotifyGmm2InputReady<IsWaveFlagGrained>(
+         gmmAddrInfo.activationToGmm2Flag, mLoc / L1_TILE_M_256);
+     AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+diff --git a/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm2_combine.h b/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm2_combine.h
+index 1940dd923..5c52f9e74 100644
+--- a/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm2_combine.h
++++ b/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_gmm2_combine.h
+@@ -25,7 +25,6 @@
+ #include "adv_api/reduce/reduce.h"
+ #include "c_api/asc_simd.h"
+ #include "../common/mega_moe_gmm_common.h"
+-#include "../common/mega_moe_stage_debug.h"
+ #include "../common/mega_moe_utils.h"
+ #include "../common/mega_moe_mxfp8_utils.h"
+ #if __has_include("../../../common/mc2_kernel_utils.h")
+@@ -586,13 +585,6 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
+             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
+         }
+ 
+-        bool debugFirstExpertRow = false;
+-        if constexpr (!IsShared && !IsLayered) {
+-            debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
+-                                  rowOffsetInExpert == 0U &&
+-                                  mLoc == 0U && nLoc == 0U && kLoc == 0U;
+-        }
+-
+         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
+                                                    Get<K_VALUE>(actualShape), 0};
+ 
+@@ -602,33 +594,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
+             Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
+         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
+                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+-        if (debugFirstExpertRow) {
+-            using KernelConfig = typename Config::KernelConfig;
+-            const auto &tilingConfig = config.blockMmadTiling;
+-            using ElementA = typename KernelConfig::ElementAType;
+-            if constexpr (AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value ||
+-                          AscendC::IsSameType<ElementA, fp8_e5m2_t>::value) {
+-                StageDebug::LogFp8Scale<ElementA>(
+-                    StageDebug::GMM2_INPUT_MARKER,
+-                    reinterpret_cast<GM_ADDR>(gmBlockA.Data().Get()),
+-                    reinterpret_cast<GM_ADDR>(gmBlockScaleA.Data().Get()),
+-                    gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+-            }
+-            StageDebug::LogGmm2Config(
+-                config.m, config.n, config.k, config.scaleK,
+-                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape),
+-                tilingConfig.tileM, tilingConfig.tileN, tilingConfig.l1Params.kL1,
+-                tilingConfig.l1Params.scaleKL1, KernelConfig::IS_WEIGHT_NZ ? 1U : 0U,
+-                mLoc, nLoc, kLoc, gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
+-        }
+         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
+-        if (debugFirstExpertRow) {
+-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+-            StageDebug::LogBf16(StageDebug::GMM2_OUTPUT_MARKER,
+-                                reinterpret_cast<GM_ADDR>(gmBlockC.Data().Get()),
+-                                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
+-        }
+         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
+             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
+                                                    gmmAddrInfo);
+@@ -1040,7 +1006,6 @@ __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
+     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
+         weights.weightScales2, context.isPerExpertWeightTensor, expertIdx,
+         static_cast<uint64_t>(expertIdx) * tokenHiddenDim * activationScaleWidth);
+-    gmmAddrInfo.debugExpertIdx = expertIdx;
+     if constexpr (ConfigureCombineCounter) {
+         uint64_t syncSlotOffset = static_cast<uint64_t>(expertIdx) * context.combineSyncSlotCountPerExpert;
+         gmmAddrInfo.gmm2CombineSyncCounter =
+@@ -1151,7 +1116,6 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
+         gmmAddrInfo.gmm2CombineSyncCounter =
+             reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
+             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
+-        gmmAddrInfo.debugExpertIdx = expertIdx;
+     }
+     gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagActivationToGmm2Ptr) +
+                                        Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.activationFlagSlotsPerExpert +
+diff --git a/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_token_dispatch.h b/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_token_dispatch.h
+index e61b8474f..d722cb1c3 100644
+--- a/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_token_dispatch.h
++++ b/mc2/mega_moe/op_kernel/arch92/stage/mega_moe_token_dispatch.h
+@@ -11,7 +11,6 @@
+ #ifndef MEGA_MOE_TOKEN_DISPATCH_H
+ #define MEGA_MOE_TOKEN_DISPATCH_H
+ 
+-#include "../common/mega_moe_stage_debug.h"
+ #include "../common/mega_moe_utils.h"
+ 
+ namespace MegaMoeImpl {
+@@ -218,19 +217,6 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(
+         WaitFlag<AscendC::HardEvent::MTE3_S>(eventId);
+     }
+ 
+-    if constexpr (AscendC::IsSameType<ActivationType, fp8_e4m3fn_t>::value ||
+-                  AscendC::IsSameType<ActivationType, fp8_e5m2_t>::value) {
+-        if (context.common.rankId == 0U && rowDstOffset == 0) {
+-            int32_t tokenIndex = firstTopkIndex / static_cast<int32_t>(context.common.topK);
+-            GM_ADDR source = winRankAddr[remoteRankIdx] + context.quantWinOffset +
+-                             static_cast<uint64_t>(tokenIndex) * context.quantTokenScaleAlignBytes;
+-            StageDebug::LogFp8Scale<ActivationType>(
+-                StageDebug::PRE_DISPATCH_MARKER, source, source + context.quantTokenAlignBytes, 0U, 0U, 0U);
+-            StageDebug::LogFp8Scale<ActivationType>(
+-                StageDebug::DISPATCH_OUTPUT_MARKER, params.workspaceInfo.dispatchRevDataPtr,
+-                params.workspaceInfo.dispatchRevScalePtr, 0U, 0U, 0U);
+-        }
+-    }
+ }
+ 
+ /** 根据当前 core 的专家 row range 定位相交的 source-rank segment。 */
+diff --git a/mc2/mega_moe/tests/decode_arch92_mmad_debug.py b/mc2/mega_moe/tests/decode_arch92_mmad_debug.py
+deleted file mode 100644
+index e23f77ba0..000000000
+--- a/mc2/mega_moe/tests/decode_arch92_mmad_debug.py
++++ /dev/null
+@@ -1,241 +0,0 @@
+-#!/usr/bin/env python3
+-"""Decode focused arch92 MegaMoe BlockMmad stage diagnostics."""
+-
+-import argparse
+-import re
+-import struct
+-from collections import defaultdict
+-from pathlib import Path
+-
+-
+-COND_RE = re.compile(r"MOV_SPR_XN\s+SPR:COND,\s+XN:[^=]+=0x([0-9a-fA-F]+)")
+-SOURCE_RE = re.compile(r"^(.*?instr_log\.dump):\d+:")
+-UINT_BIAS = 1_000_000
+-
+-METADATA_FIELDS = ("payload_format", "physical_block", "rank", "expert", "row")
+-DATA_COUNT = 20
+-SCALE_COUNT = 8
+-CONFIG_FIELDS = (
+-    "problem_m",
+-    "problem_n",
+-    "problem_k",
+-    "scale_k",
+-    "actual_m",
+-    "actual_n",
+-    "actual_k",
+-    "tile_m",
+-    "tile_n",
+-    "k_a_l1",
+-    "k_b_l1",
+-    "scale_k_l1",
+-    "weight_layout",
+-    "m_loc",
+-    "n_loc",
+-    "k_loc",
+-)
+-STAGE_SPECS = {
+-    910000: ("PRE_DISPATCH", "fp8_scale"),
+-    910001: ("DISPATCH_OUTPUT", "fp8_scale"),
+-    910002: ("GMM1_OUTPUT", "bf16_pair"),
+-    910003: ("SWIGLU_OUTPUT", "bf16"),
+-    910004: ("GMM2_OUTPUT", "bf16"),
+-    910005: ("COMBINE_OUTPUT", "bf16"),
+-    910006: ("SWIGLU_QUANT_OUTPUT", "fp8_scale"),
+-    910007: ("GMM2_INPUT", "fp8_scale"),
+-    910012: ("GMM2_CONFIG", "config"),
+-}
+-
+-def decode_uint(raw):
+-    if raw < UINT_BIAS:
+-        raise ValueError(f"expected biased uint, got 0x{raw:x}")
+-    return raw - UINT_BIAS
+-
+-
+-def decode_bf16(raw):
+-    bits = (raw & 0xFFFF) << 16
+-    return struct.unpack(">f", struct.pack(">I", bits))[0]
+-
+-
+-def decode_fp8_e4m3fn(raw):
+-    raw &= 0xFF
+-    sign = -1.0 if raw & 0x80 else 1.0
+-    exponent = (raw >> 3) & 0xF
+-    mantissa = raw & 0x7
+-    if exponent == 0:
+-        return sign * (mantissa / 8.0) * (2.0 ** -6)
+-    if exponent == 0xF and mantissa == 0x7:
+-        return float("nan")
+-    return sign * (1.0 + mantissa / 8.0) * (2.0 ** (exponent - 7))
+-
+-
+-def decode_fp8_e5m2(raw):
+-    raw &= 0xFF
+-    sign = -1.0 if raw & 0x80 else 1.0
+-    exponent = (raw >> 2) & 0x1F
+-    mantissa = raw & 0x3
+-    if exponent == 0:
+-        return sign * (mantissa / 4.0) * (2.0 ** -14)
+-    if exponent == 0x1F:
+-        return sign * float("inf") if mantissa == 0 else float("nan")
+-    return sign * (1.0 + mantissa / 4.0) * (2.0 ** (exponent - 15))
+-
+-
+-def decode_fp8(raw, payload_format):
+-    if payload_format == 4:
+-        return decode_fp8_e4m3fn(raw)
+-    if payload_format == 5:
+-        return decode_fp8_e5m2(raw)
+-    raise ValueError(f"unsupported FP8 format tag: {payload_format}")
+-
+-
+-def decode_e8m0(raw):
+-    raw &= 0xFF
+-    return float("nan") if raw == 0xFF else 2.0 ** (raw - 127)
+-
+-
+-def payload_count(kind):
+-    if kind == "fp8_scale":
+-        return DATA_COUNT + SCALE_COUNT
+-    if kind == "bf16_pair":
+-        return DATA_COUNT * 2
+-    if kind == "bf16":
+-        return DATA_COUNT
+-    if kind == "config":
+-        return len(CONFIG_FIELDS)
+-    raise ValueError(f"unsupported stage kind: {kind}")
+-
+-
+-def read_streams(paths):
+-    streams = defaultdict(list)
+-    for path in paths:
+-        for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+-            match = COND_RE.search(line)
+-            if match is None:
+-                continue
+-            source_match = SOURCE_RE.match(line)
+-            source = source_match.group(1) if source_match else str(path)
+-            streams[source].append(int(match.group(1), 16))
+-    return streams
+-
+-
+-def scan_stream(source, values):
+-    records = []
+-    index = 0
+-    while index < len(values):
+-        marker = values[index]
+-        if marker not in STAGE_SPECS:
+-            index += 1
+-            continue
+-
+-        name, kind = STAGE_SPECS[marker]
+-        metadata_end = index + 1 + len(METADATA_FIELDS)
+-        record_end = metadata_end + payload_count(kind)
+-        metadata_raw = values[index + 1:metadata_end]
+-        payload = values[metadata_end:record_end]
+-        if len(metadata_raw) != len(METADATA_FIELDS) or len(payload) != payload_count(kind):
+-            print(f"WARNING: incomplete record {marker}:{name} in {source}")
+-            break
+-        try:
+-            metadata = {
+-                field: decode_uint(raw)
+-                for field, raw in zip(METADATA_FIELDS, metadata_raw)
+-            }
+-            if kind == "config":
+-                payload = [decode_uint(raw) for raw in payload]
+-        except ValueError as error:
+-            print(f"WARNING: invalid record {marker}:{name} in {source}: {error}")
+-            index += 1
+-            continue
+-        records.append({
+-            "source": source,
+-            "marker": marker,
+-            "name": name,
+-            "kind": kind,
+-            "payload": payload,
+-            **metadata,
+-        })
+-        index = record_end
+-    return records
+-
+-
+-def print_value_table(label, raw_values, decoder, raw_width):
+-    print(f"\n{label}:")
+-    print("index  raw       decoded")
+-    print("-----  --------  ------------")
+-    for index, raw in enumerate(raw_values):
+-        print(f"{index:5d}  0x{raw:0{raw_width}x}  {decoder(raw):.10g}")
+-
+-
+-def print_config(payload):
+-    values = dict(zip(CONFIG_FIELDS, payload))
+-    values["weight_layout"] = {0: "DN", 1: "ZN"}.get(
+-        values["weight_layout"], f"UNKNOWN({values['weight_layout']})"
+-    )
+-    for field in CONFIG_FIELDS:
+-        print(f"{field:14s}: {values[field]}")
+-
+-
+-def print_record(record):
+-    print(f"\n[{record['marker']}] {record['name']}")
+-    print(f"source={record['source']}")
+-    print(
+-        f"physical_block={record['physical_block']} rank={record['rank']} "
+-        f"expert={record['expert']} row={record['row']}"
+-    )
+-    payload = record["payload"]
+-    if record["kind"] == "fp8_scale":
+-        payload_format = record["payload_format"]
+-        print(f"fp8_format={'E4M3FN' if payload_format == 4 else 'E5M2'}")
+-        print_value_table(
+-            "data", payload[:DATA_COUNT],
+-            lambda raw, fmt=payload_format: decode_fp8(raw, fmt), 2
+-        )
+-        print_value_table(
+-            "scale", payload[DATA_COUNT:DATA_COUNT + SCALE_COUNT], decode_e8m0, 2
+-        )
+-    elif record["kind"] == "bf16_pair":
+-        print_value_table("gate", payload[:DATA_COUNT], decode_bf16, 4)
+-        print_value_table("up", payload[DATA_COUNT:], decode_bf16, 4)
+-    elif record["kind"] == "bf16":
+-        print_value_table("data", payload, decode_bf16, 4)
+-    else:
+-        print_config(payload)
+-
+-
+-def print_missing(records):
+-    found = {record["marker"] for record in records}
+-    missing = [
+-        f"{marker}:{STAGE_SPECS[marker][0]}"
+-        for marker in STAGE_SPECS
+-        if marker not in found
+-    ]
+-    if missing:
+-        print(f"\nWARNING: missing records: {', '.join(missing)}")
+-    else:
+-        print("\nAll focused Arch92 MegaMoe stage records were captured.")
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser(
+-        description="Decode arch92 MegaMoe BlockMmad precision diagnostics"
+-    )
+-    parser.add_argument("logs", nargs="+", help="Raw instruction log or grep output files")
+-    args = parser.parse_args()
+-
+-    streams = read_streams(args.logs)
+-    records = [
+-        record
+-        for source, values in streams.items()
+-        for record in scan_stream(source, values)
+-    ]
+-    if not records:
+-        raise SystemExit("No arch92 BlockMmad precision markers were found")
+-
+-    print("=== Arch92 MegaMoe BlockMmad precision diagnostics ===")
+-    for record in sorted(records, key=lambda item: (item["marker"], item["source"])):
+-        print_record(record)
+-    print_missing(records)
+-
+-
+-if __name__ == "__main__":
+-    main()

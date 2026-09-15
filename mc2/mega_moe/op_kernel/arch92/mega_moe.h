@@ -29,7 +29,6 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_core_context.h"
 #include "common/mega_moe_utils.h"
-#include "common/mega_moe_stage_debug.h"
 #include "common/mega_moe_mxfp8_utils.h"
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_token_quant.h"
@@ -99,9 +98,11 @@ protected:
     __aicore__ inline void DispatchBuffInit();
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
-    __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmTileSequence);
+    __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmTileSequence,
+                                                   void *blockMmadContext = nullptr);
     __aicore__ inline void ProcessMoeExpertStages(int32_t &gmTileSequence);
-    __aicore__ inline void ProcessSharedExpertGmm2(int32_t &gmTileSequence);
+    __aicore__ inline void ProcessSharedExpertGmm2(int32_t &gmTileSequence,
+                                                   void *blockMmadContext = nullptr);
     __aicore__ inline void CrossRankSyncInWorldSize();
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
@@ -624,7 +625,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1(int32_t &gmTileSequence)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1(
+    int32_t &gmTileSequence, void *blockMmadContext)
 {
     if (gmm1Config_.blockJob.totalJobs == 0U ||
         gmm1Config_.blockJob.jobIndex >= gmm1Config_.blockJob.totalJobs || sharedExpertNum_ == 0U) {
@@ -660,13 +662,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
                                            QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M,
                                            false>(
             gmm1Config_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
-            runtimeState, sharedExpertIdx);
+            runtimeState, sharedExpertIdx, blockMmadContext);
     }
     EndSync(runtimeState.vecSetSyncCom);
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2(int32_t &gmTileSequence)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2(
+    int32_t &gmTileSequence, void *blockMmadContext)
 {
     uint32_t startBlockIdx = 0U;
     int32_t vecSetSyncCom = 0;
@@ -679,7 +682,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
                                  QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
                                  GMM1_TILE_M, false, false>(
             gmm2Config_, params_, sharedWeightTensorListAddrs_, state, gmmAddrInfo,
-            runtimeState, sharedExpertIdx);
+            runtimeState, sharedExpertIdx, blockMmadContext);
     }
 }
 

@@ -12,11 +12,10 @@
 #define MEGA_MOE_ARCH92_A8W8_WAVE_H
 
 #include "mega_moe.h"
-#include "common/mega_moe_stage_debug.h"
 
 namespace MegaMoeImpl {
 
-// Match the A5 A8W4 token-grained Wave target while using arch92 A8W8 Generic MMAD.
+// Use token-grained Wave scheduling with arch92 A8W8 Generic MMAD.
 constexpr uint32_t ARCH92_GMM1_TILES_PER_JOB_TARGET = 2U;
 
 template <uint32_t TileM>
@@ -73,10 +72,21 @@ private:
     using Gmm2PersistentConfig = GmmKernel::Config<
         false, CombineQuantMode, ActivationQuantOutType, ActivationQuantOutType, bfloat16_t,
         QuantScaleOutType, QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch, false, false, false>;
+    using SharedGmm1PersistentConfig = GmmKernel::Config<
+        false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
+        QuantScaleOutType, IsWeightNz, false, true, false, false>;
+    using SharedGmm2PersistentConfig = GmmKernel::Config<
+        false, COMBINE_NO_QUANT, ActivationQuantOutType, ActivationQuantOutType, bfloat16_t,
+        QuantScaleOutType, QuantScaleOutType, IsWeightNz, false, true, false, false>;
     using Gmm1BlockMmad = typename Gmm1PersistentConfig::BlockMmad;
     using Gmm2BlockMmad = typename Gmm2PersistentConfig::BlockMmad;
+    using SharedGmm1BlockMmad = typename SharedGmm1PersistentConfig::BlockMmad;
+    using SharedGmm2BlockMmad = typename SharedGmm2PersistentConfig::BlockMmad;
     static_assert(Std::IsSame<Gmm1BlockMmad, Gmm2BlockMmad>::value,
                   "arch92 A8W8 wave requires GMM1 and GMM2 to share one BlockMmad type");
+    static_assert(Std::IsSame<Gmm1BlockMmad, SharedGmm1BlockMmad>::value &&
+                      Std::IsSame<Gmm1BlockMmad, SharedGmm2BlockMmad>::value,
+                  "arch92 A8W8 wave requires shared and routed experts to share one BlockMmad type");
     struct EmptyMmadContext {};
     template <typename BlockMmad>
     using MmadContextStorage = std::conditional_t<
@@ -183,9 +193,6 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
                                     TopkWeightsPrefetch, ArchitecturePolicy::USE_GM_HANDOFF>(
         gmm1Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_, gmmAddrInfo,
         state, expertIdx, tokenStartIndexInExpert, gmm1TilesPerMGroup);
-    gmmAddrInfo.debugRankId = gmm1Config_.common.rankId;
-    gmmAddrInfo.debugExpertIdx = tokenStartIndexInExpert == 0U ? expertIdx : 0xFFFFFFFFU;
-
     int32_t unusedVecSync = 0;
     Gmm1ActivationState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence};
     void *blockMmadContext = nullptr;
@@ -212,9 +219,6 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Run
                                configureCombineCounter>(
         gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo, state,
         expertIdx, tokenStartIndexInExpert);
-    gmmAddrInfo.debugRankId = gmm2Config_.common.rankId;
-    gmmAddrInfo.debugExpertIdx = tokenStartIndexInExpert == 0U ? expertIdx : 0xFFFFFFFFU;
-
     int32_t unusedVecSync = 0;
     Gmm2RuntimeState runtimeState{startBlockIdx, unusedVecSync, gmTileSequence, gmm2PingPongIdx_};
     Gmm2ExpertLoopState runtimeProblemState = CreateGmm2ExpertLoopState(gmm2Config_);
@@ -377,8 +381,12 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
     SyncAll<false>();
 
     int32_t gmTileSequence = 0;
+    void *blockMmadContext = nullptr;
+    if constexpr (g_coreType == AIC) {
+        blockMmadContext = static_cast<void *>(&mmadContext_);
+    }
     if (sharedExpertNum_ > 0U) {
-        ProcessSharedExpertGmm1(gmTileSequence);
+        ProcessSharedExpertGmm1(gmTileSequence, blockMmadContext);
     }
 
     CrossRankSyncInWorldSize();
@@ -394,7 +402,7 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
     }
 
     if (sharedExpertNum_ > 0U) {
-        ProcessSharedExpertGmm2(gmTileSequence);
+        ProcessSharedExpertGmm2(gmTileSequence, blockMmadContext);
     }
 
     if constexpr (g_coreType == AIV) {
@@ -402,9 +410,6 @@ __aicore__ inline void MegaMoeArch92A8W8Wave<TemplateMegaMoeArch92TypeFunc>::Pro
         auto unpermuteBufferConfig = InitTokenUnpermuteBuffers();
         UnpermuteTokens<CombineQuantMode, TopkWeightsType, TopkWeightsPrefetch, GMM1_TILE_M>(
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
-        if (gmm1Config_.common.rankId == 0U && tokenDispatchConfig_.blockJob.jobIndex == 0U) {
-            StageDebug::LogBf16(StageDebug::COMBINE_OUTPUT_MARKER, params_.y2GmAddr, 0U, 0U, 0U);
-        }
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }

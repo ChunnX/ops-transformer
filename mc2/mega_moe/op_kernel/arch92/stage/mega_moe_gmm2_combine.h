@@ -25,7 +25,6 @@
 #include "adv_api/reduce/reduce.h"
 #include "c_api/asc_simd.h"
 #include "../common/mega_moe_gmm_common.h"
-#include "../common/mega_moe_stage_debug.h"
 #include "../common/mega_moe_utils.h"
 #include "../common/mega_moe_mxfp8_utils.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")
@@ -586,13 +585,6 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             WaitForGmm2InputReady<IsShared>(gmmAddrInfo, config, mLoc);
         }
 
-        bool debugFirstExpertRow = false;
-        if constexpr (!IsShared && !IsLayered) {
-            debugFirstExpertRow = gmmAddrInfo.debugRankId == 0U && gmmAddrInfo.debugExpertIdx == 0U &&
-                                  rowOffsetInExpert == 0U &&
-                                  mLoc == 0U && nLoc == 0U && kLoc == 0U;
-        }
-
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
 
@@ -602,33 +594,7 @@ __aicore__ inline void Gmm2AicMmadGeneric(BlockMmad &blockMmad, WorkSet &workSet
             Te::MakeCoord(0, nLoc), Te::MakeShape(config.scaleK, Get<N_VALUE>(actualShape)));
         auto gmBlockC = workSet.gmC.Slice(Te::MakeCoord(mLoc, nLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-        if (debugFirstExpertRow) {
-            using KernelConfig = typename Config::KernelConfig;
-            const auto &tilingConfig = config.blockMmadTiling;
-            using ElementA = typename KernelConfig::ElementAType;
-            if constexpr (AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value ||
-                          AscendC::IsSameType<ElementA, fp8_e5m2_t>::value) {
-                StageDebug::LogFp8Scale<ElementA>(
-                    StageDebug::GMM2_INPUT_MARKER,
-                    reinterpret_cast<GM_ADDR>(gmBlockA.Data().Get()),
-                    reinterpret_cast<GM_ADDR>(gmBlockScaleA.Data().Get()),
-                    gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
-            }
-            StageDebug::LogGmm2Config(
-                config.m, config.n, config.k, config.scaleK,
-                Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape),
-                tilingConfig.tileM, tilingConfig.tileN, tilingConfig.l1Params.kL1,
-                tilingConfig.l1Params.scaleKL1, KernelConfig::IS_WEIGHT_NZ ? 1U : 0U,
-                mLoc, nLoc, kLoc, gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx);
-        }
         blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
-        if (debugFirstExpertRow) {
-            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-            StageDebug::LogBf16(StageDebug::GMM2_OUTPUT_MARKER,
-                                reinterpret_cast<GM_ADDR>(gmBlockC.Data().Get()),
-                                gmmAddrInfo.debugRankId, gmmAddrInfo.debugExpertIdx, 0U);
-        }
         if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
             NotifyCombineConsumersOfTileCompletion(rowOffsetInExpert + mLoc, groupSyncSlotLayout,
                                                    gmmAddrInfo);
@@ -1040,7 +1006,6 @@ __aicore__ inline void UpdateWaveGmm2GlobalBuffer(
     gmmAddrInfo.bScaleGlobal = GetExpertWeightAddr<QuantScaleType>(
         weights.weightScales2, context.isPerExpertWeightTensor, expertIdx,
         static_cast<uint64_t>(expertIdx) * tokenHiddenDim * activationScaleWidth);
-    gmmAddrInfo.debugExpertIdx = expertIdx;
     if constexpr (ConfigureCombineCounter) {
         uint64_t syncSlotOffset = static_cast<uint64_t>(expertIdx) * context.combineSyncSlotCountPerExpert;
         gmmAddrInfo.gmm2CombineSyncCounter =
@@ -1151,7 +1116,6 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
         gmmAddrInfo.gmm2CombineSyncCounter =
             reinterpret_cast<__gm__ int32_t *>(workspace.gmm2CombineSyncCounterPtr) +
             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
-        gmmAddrInfo.debugExpertIdx = expertIdx;
     }
     gmmAddrInfo.activationToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagActivationToGmm2Ptr) +
                                        Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.activationFlagSlotsPerExpert +
