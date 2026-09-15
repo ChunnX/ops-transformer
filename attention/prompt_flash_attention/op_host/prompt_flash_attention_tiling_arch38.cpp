@@ -4042,6 +4042,12 @@ bool PromptFlashAttentionTilingArch38::CheckArch38ScenarioSupported(const Contex
                                                                     const PFAShapeInfo &queryShapeInfo,
                                                                     const PFAShapeInfo &valueShapeInfo) const
 {
+    // IFA / MLA / 合轴路径各有自己的门禁，且 queryShapeInfo.n 与 .s 在调用点之前已按 gSize 改写，
+    // 与下面 qs == kvs、qs > 1 等 PFA 约束天然不兼容，此处直接放行
+    if (enableIFA || enableIFAMLA || enablePFAMerge || enablePFAMLA) {
+        return true;
+    }
+
     OP_CHECK_IF((inputLayout != InputLayout::BNSD),
                 OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "only BNSD layout is supported on this platform."),
                 return false);
