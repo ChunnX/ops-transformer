@@ -24,7 +24,7 @@ from atk.tasks.backends.lib_interface.acl_wrapper import (
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
-import hif8_codec
+import hif8_encode_decode
 
 logging = Logger().get_logger()
 HIF8_MAX = 32768.0
@@ -63,20 +63,20 @@ def quantize_hif8(src: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     src = src.to(torch.float32).contiguous()
     max_abs = float(src.abs().max()) if src.numel() else 0.0
     scale = max_abs / HIF8_MAX if max_abs else 1.0
-    encoded = hif8_codec.trans_float_tensor_to_hifuint8(
+    encoded = hif8_encode_decode.trans_float_tensor_to_hifuint8(
         src / scale, round_mode="round", over_mode=True
     )
     return encoded.contiguous(), torch.tensor([scale], dtype=torch.float32)
 
 
 def decode_hif8(src: torch.Tensor) -> torch.Tensor:
-    return hif8_codec.trans_hifuint8_tensor_to_float(
+    return hif8_encode_decode.trans_hifuint8_tensor_to_float(
         src.to(torch.uint8).contiguous(), over_mode=True
     ).to(torch.float32)
 
 
 def cast_hif8(src: torch.Tensor) -> torch.Tensor:
-    bits = hif8_codec.trans_float_tensor_to_hifuint8(
+    bits = hif8_encode_decode.trans_float_tensor_to_hifuint8(
         src.to(torch.float32).contiguous(), round_mode="round", over_mode=True
     )
     return decode_hif8(bits)
@@ -230,6 +230,48 @@ def hif8_attention_block(q_raw, k_raw, v_raw, q_scale, k_scale, v_scale,
     return out, lse
 
 
+def bsa_hif8_reference(q_bits, k_bits, v_bits, mask, block_shape, q_lengths,
+                       kv_lengths, scales, attention_scale, out_dtype, layout):
+    """Reference branch matching ``fp8_test_bsa.py::ref_attention``.
+
+    The ATK CPU node is called twice: the ordinary task is the quantized
+    benchmark path above, while the benchmark task must use the anti-quantized
+    Q/K/V values and a plain block-sparse attention calculation.  HIF8 storage
+    is decoded first and the corresponding dequant scale is applied, exactly
+    like ``q_blk_antiquant = q_blk.astype(float32) * q_deq_scale`` in the
+    reference ATK implementation.
+    """
+    q_raw = decode_hif8(q_bits).to(torch.float32) * _f32(scales[0])
+    k_raw = decode_hif8(k_bits).to(torch.float32) * _f32(scales[1])
+    v_raw = decode_hif8(v_bits).to(torch.float32) * _f32(scales[2])
+    batch, q_heads, q_storage, dim = q_raw.shape
+    kv_heads = k_raw.shape[1]
+    group = q_heads // kv_heads
+    bx, by = (int(x) for x in block_shape)
+    out = torch.zeros((batch, q_heads, q_storage, dim), dtype=torch.float32)
+    lse = torch.zeros((batch, q_heads, q_storage), dtype=torch.float32)
+    for b in range(batch):
+        for qh in range(q_heads):
+            kvh = qh // group
+            for qb in range((q_lengths[b] + bx - 1) // bx):
+                positions = _gather_positions(mask[b, qh, qb], kv_lengths[b], by)
+                index = torch.tensor(positions, dtype=torch.long)
+                q0, q1 = qb * bx, min((qb + 1) * bx, q_lengths[b])
+                q = q_raw[b, qh, q0:q1]
+                k = k_raw[b, kvh].index_select(0, index)
+                v = v_raw[b, kvh].index_select(0, index)
+                scores = (torch.matmul(q, k.transpose(0, 1)) *
+                          _f32(attention_scale)).to(torch.float32)
+                row_lse = torch.logsumexp(scores, dim=-1)
+                p = torch.softmax(scores, dim=-1).to(torch.float32)
+                out[b, qh, q0:q1] = torch.matmul(p, v)
+                lse[b, qh, q0:q1] = row_lse
+    return (
+        _bnsd_to_layout(out.to(out_dtype), layout, q_lengths).to(torch.float32),
+        _lse_to_layout(lse, layout, q_lengths).to(torch.float32),
+    )
+
+
 def bsa_hif8_golden(q_bits, k_bits, v_bits, mask, block_shape, q_lengths,
                     kv_lengths, scales, p_scale, attention_scale, out_dtype, layout):
     q_raw, k_raw, v_raw = decode_hif8(q_bits), decode_hif8(k_bits), decode_hif8(v_bits)
@@ -291,8 +333,8 @@ class Hif8Prepared:
             self.batch, q_storage = int(q_desc.shape[0]), int(q_desc.shape[1])
             self.q_heads, self.dim = int(q_desc.shape[2]), int(q_desc.shape[3])
             kv_storage = int(k_desc.shape[1])
-        if self.dim != 128 or self.q_heads % self.kv_heads:
-            raise ValueError("HIF8 requires D=128 and Nq divisible by Nkv")
+        if self.dim not in (64, 128) or self.q_heads % self.kv_heads:
+            raise ValueError("HIF8 quantMode=5 requires D in {64, 128} and Nq divisible by Nkv")
         self.q_storage, self.kv_storage = q_storage, kv_storage
         self.q_lengths = _as_lengths(kw.get("actualSeqLengths"), q_storage, self.batch)
         self.kv_lengths = _as_lengths(kw.get("actualSeqLengthsKv"), kv_storage, self.batch)
@@ -310,9 +352,9 @@ class Hif8Prepared:
         p_value = P_SCALE_CHOICES[(seed // 17) % len(P_SCALE_CHOICES)]
         ratio = SPARSITY_RATIO_CHOICES[seed % len(SPARSITY_RATIO_CHOICES)]
         gen = torch.Generator().manual_seed(seed)
-        q_src = (torch.rand((self.batch, self.q_heads, q_storage, 128), generator=gen) * 2 - 1) * amp
-        k_src = (torch.rand((self.batch, self.kv_heads, kv_storage, 128), generator=gen) * 2 - 1) * amp
-        v_src = (torch.rand((self.batch, self.kv_heads, kv_storage, 128), generator=gen) * 2 - 1) * amp
+        q_src = (torch.rand((self.batch, self.q_heads, q_storage, self.dim), generator=gen) * 2 - 1) * amp
+        k_src = (torch.rand((self.batch, self.kv_heads, kv_storage, self.dim), generator=gen) * 2 - 1) * amp
+        v_src = (torch.rand((self.batch, self.kv_heads, kv_storage, self.dim), generator=gen) * 2 - 1) * amp
         for b in range(self.batch):
             q_src[b, :, self.q_lengths[b]:] = 0
             k_src[b, :, self.kv_lengths[b]:] = 0
@@ -333,10 +375,10 @@ class Hif8Prepared:
 
     def out_shape(self):
         if self.layout == "TND":
-            return (sum(self.q_lengths), self.q_heads, 128)
+            return (sum(self.q_lengths), self.q_heads, self.dim)
         if self.layout == "BNSD":
-            return (self.batch, self.q_heads, self.q_storage, 128)
-        return (self.batch, self.q_storage, self.q_heads, 128)
+            return (self.batch, self.q_heads, self.q_storage, self.dim)
+        return (self.batch, self.q_storage, self.q_heads, self.dim)
 
     def lse_shape(self):
         if self.layout == "TND":
@@ -345,11 +387,17 @@ class Hif8Prepared:
             return (self.batch, self.q_heads, self.q_storage, 1)
         return (self.batch, self.q_storage, self.q_heads, 1)
 
-    def golden(self):
+    def golden(self, is_benchmark=False):
+        scales = (self.q_scale.item(), self.k_scale.item(), self.v_scale.item())
+        if is_benchmark:
+            return bsa_hif8_reference(
+                self.q_bits_bnsd, self.k_bits_bnsd, self.v_bits_bnsd, self.mask,
+                self.block_shape, self.q_lengths, self.kv_lengths,
+                scales, self.scale_value, self.out_dtype, self.layout,
+            )
         return bsa_hif8_golden(
             self.q_bits_bnsd, self.k_bits_bnsd, self.v_bits_bnsd, self.mask,
-            self.block_shape, self.q_lengths, self.kv_lengths,
-            (self.q_scale.item(), self.k_scale.item(), self.v_scale.item()),
+            self.block_shape, self.q_lengths, self.kv_lengths, scales,
             self.p_scale.item(), self.scale_value, self.out_dtype, self.layout,
         )
 
@@ -363,7 +411,7 @@ class BlockSparseAttentionV3Hif8Api(BaseApi, Hif8Prepared):
         self.prepare(input_data)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-        out, lse = self.golden()
+        out, lse = self.golden(self.task_result.is_benchmark_task)
         return (out, lse) if self.softmax_lse_flag else out
 
 
@@ -380,10 +428,15 @@ class PyAclnnBlockSparseAttentionV3Hif8Api(AclnnBaseApi):
     def init_by_input_data(self, input_data: InputDataset):
         p = self._get_prepared(input_data)
         self.prep = p
-        self.out_npu = torch.zeros(p.out_shape(), dtype=p.out_dtype, device="npu")
+        # These tensors are output buffers and are fully written by aclnn BSA.
+        # ``torch.zeros(..., device="npu")`` launches the unrelated ZerosLike
+        # operator, which is unavailable with the user-readable OPP overlay on
+        # this host.  Empty allocation needs no auxiliary kernel; padded tails
+        # are normalized on CPU in ``after_call`` below.
+        self.out_npu = torch.empty(p.out_shape(), dtype=p.out_dtype, device="npu")
         out_pack = create_acl_tensor(self.out_npu)
         if p.softmax_lse_flag:
-            self.lse_npu = torch.zeros(p.lse_shape(), dtype=torch.float32, device="npu")
+            self.lse_npu = torch.empty(p.lse_shape(), dtype=torch.float32, device="npu")
             lse_pack = create_acl_tensor(self.lse_npu)
         else:
             self.lse_npu, lse_pack = None, TensorPtr()

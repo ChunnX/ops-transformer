@@ -9,11 +9,8 @@ from atk.configs.case_config import CaseConfig
 
 
 LAYOUTS = ("BNSD", "BSND", "TND")
-Q_BOUNDARIES = (1, 15, 16, 17, 63, 64, 65, 127, 128, 129,
-                191, 255, 256, 257, 511, 512, 1023, 2048, 3071)
-KV_BOUNDARIES = (1, 15, 16, 17, 63, 64, 65, 127, 128, 129,
-                 255, 256, 257, 511, 512, 1023, 2048, 4095, 8191, 9999)
 BLOCK_CHOICES = tuple(range(16, 257, 16))
+HEAD_DIM_CHOICES = (64, 128)
 
 
 @GENERATOR_REGISTRY.register("generate_block_sparse_attention_hif8")
@@ -32,23 +29,19 @@ class BlockSparseAttentionHif8Generator(CaseGenerator):
             item.range_values = [int(value)]
             config_list.append(item)
 
-    @staticmethod
-    def _pick_seq(boundaries, upper):
-        if random.random() < 0.8:
-            return random.choice(boundaries)
-        return random.randint(1, upper)
-
     def _generate_params(self):
         self.layout = random.choice(LAYOUTS)
         self.batch = random.randint(1, 5)
+        # ATK's independent generator has no small/medium/large split; retain
+        # the full Nkv coverage here.
         self.kv_heads = random.randint(1, 8)
         self.group = random.randint(1, 4)
         self.q_heads = self.kv_heads * self.group
-        self.dim = 128
+        self.dim = random.choice(HEAD_DIM_CHOICES)
         self.block_x = random.choice(BLOCK_CHOICES)
         self.block_y = random.choice(BLOCK_CHOICES)
-        self.q_storage = self._pick_seq(Q_BOUNDARIES, 4095)
-        self.kv_storage = self._pick_seq(KV_BOUNDARIES, 9999)
+        self.q_storage = random.randint(1, 4095)
+        self.kv_storage = random.randint(1, 10000)
 
         # TND is intrinsically varlen.  For BNSD/BSND, about 30% of cases
         # carry padding; with 250 cases this gives roughly 50 padded cases.
