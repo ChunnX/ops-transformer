@@ -1,8 +1,8 @@
 # stem_indexer — PyTorch 接入层 (TorchNPU/torch_ops_extension)
 
-将 `stem_indexer` 算子桥接到 PyTorch，注册为 `torch.ops.custom.npu_stem_indexer`
-（同时挂载到 `TorchNPU.npu_stem_indexer`），底层调用 ACLNN 接口 `aclnnStemIndexer`；
-元数据接口 `npu_stem_indexer_metadata` 调用 `aclnnStemIndexerMetadata`。
+将 `stem_indexer` 算子桥接到 PyTorch，注册为 `torch.ops.custom.stem_indexer`
+（同时挂载到 `TorchNPU.stem_indexer`），底层调用 ACLNN 接口 `aclnnStemIndexer`；
+元数据接口 `stem_indexer_metadata` 调用 `aclnnStemIndexerMetadata`。
 
 > 结构与配置对齐参考实现 `quant_block_sparse_attn/torch_ops_extension`：编译式 `NpuExtension`
 > （`custom_ops.custom_ops_lib`）+ `TORCH_LIBRARY`/`TORCH_LIBRARY_IMPL` + `EXEC_NPU_CMD_V1`。
@@ -18,7 +18,7 @@ torch_ops_extension/
 └── custom_ops/
     ├── __init__.py             # 导入 custom_ops_lib(.so) + converter，并挂载到 TorchNPU
     ├── csrc/
-    │   ├── ops_def_registration.cpp     # TORCH_LIBRARY(custom): npu_stem_indexer(_metadata) schema
+    │   ├── ops_def_registration.cpp     # TORCH_LIBRARY(custom): stem_indexer(_metadata) schema
     │   ├── ops_common.h / ops_common.cpp # EXEC_NPU_CMD_V1 / ConvertType 基础设施（拷贝）
     │   ├── npu_stem_indexer.cpp         # NPU/Meta 前向实现 + TORCH_LIBRARY_IMPL
     │   └── npu_stem_indexer_metadata.cpp
@@ -52,14 +52,14 @@ python3 setup.py build_ext --inplace
 
 ```python
 import torch, torch_npu
-import custom_ops   # 注册 torch.ops.custom.npu_stem_indexer(_metadata) 并挂载到 torch_npu
+import custom_ops   # 注册 torch.ops.custom.stem_indexer(_metadata) 并挂载到 torch_npu
 
-metadata = torch.ops.custom.npu_stem_indexer_metadata(
-    q_seq_lens, kv_seq_lens, q_heads, kv_heads,
-    causal=True, stem_block_size=128, dim_qkflat=2048, window_size=4,
+metadata = torch.ops.custom.stem_indexer_metadata(
+    seq_used_q, seq_used_kv, num_heads_q, num_heads_kv,
+    causal=True, stem_block_size=128, dim_qk_flat=2048, window_size=4,
 )
-sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
-    qflat, kflat, vbias, q_seq_lens, kv_seq_lens,
+sparse_indices, sparse_seq_len = torch.ops.custom.stem_indexer(
+    q_flat, k_flat, v_bias, seq_used_q, seq_used_kv,
     causal=True, stem_block_size=128, stem_stride=16, alpha=1.0,
     initial_blocks=4, window_size=4,
     k_block_num_rate_medium=0.2, k_block_num_bias_medium=30,
@@ -67,7 +67,7 @@ sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
     topk_score_precision=1,
     num_prompt_tokens=num_prompt_tokens, metadata=metadata,
 )
-# 也可：TorchNPU.npu_stem_indexer(...)
+# 也可：TorchNPU.stem_indexer(...)
 ```
 
 ### 与 stem_indexer pytest 集成
@@ -81,10 +81,10 @@ sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
 - 入参/属性/输出与算子原型 `op_host/stem_indexer_def.cpp` 一一对应。
 - `EXEC_NPU_CMD_V1` 实参按 IR 声明顺序传入（输入→属性→输出）；Python schema 为便于调用将必选张量前置，
   C++ 实现内部已按 IR 顺序重排。
-- `qflat` / `kflat` 为 BF16 `[B, N, Qb/Kb, stem_stride*D]`；`vbias` 为 FP32 `[B, kv_heads, Kb]`；
-  其余 `q_seq_lens` / `kv_seq_lens` / `num_prompt_tokens` / `metadata` 为 INT32，
-  `metadata` 长度按 `16 + B * kv_heads * (36 + 72) * 16` 计算并向上对齐到4096个INT32元素；
+- `q_flat` / `k_flat` 为 BF16 `[B, N, Qb/Kb, stem_stride*D]`；`v_bias` 为 FP32 `[B, num_heads_kv, Kb]`；
+  其余 `seq_used_q` / `seq_used_kv` / `num_prompt_tokens` / `metadata` 为 INT32，
+  `metadata` 长度按 `16 + B * num_heads_kv * (36 + 72) * 16` 计算并向上对齐到4096个INT32元素；
   输出 `sparse_indices` / `sparse_seq_len` 为 INT32。
 - `num_prompt_tokens` / `metadata` 为可选张量（`c10::optional<at::Tensor>`），两条调用通路均将缺省状态传递给
-  OpHost。未提供 `num_prompt_tokens` 时，TilingData记录复用标志，Kernel使用 `kv_seq_lens`；未提供
+  OpHost。未提供 `num_prompt_tokens` 时，TilingData记录复用标志，Kernel使用 `seq_used_kv`；未提供
   `metadata` 时，OpHost Tiling按当前计算要求返回明确的参数错误。

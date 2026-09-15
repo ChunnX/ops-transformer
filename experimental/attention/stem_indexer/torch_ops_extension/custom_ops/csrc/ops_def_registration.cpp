@@ -17,15 +17,15 @@
 //   - 张量 dtype / 属性默认值对齐 op_host/stem_indexer_def.cpp
 TORCH_LIBRARY(custom, m)
 {
-    m.def("npu_stem_indexer(Tensor qflat, Tensor kflat, Tensor vbias, Tensor q_seq_lens, "
-          "Tensor kv_seq_lens, *, "
+    m.def("stem_indexer(Tensor q_flat, Tensor k_flat, Tensor v_bias, Tensor seq_used_q, "
+          "Tensor seq_used_kv, *, "
           "Tensor? num_prompt_tokens=None, Tensor? metadata=None, "
           "bool causal=True, int stem_block_size=128, int stem_stride=16, float alpha=1.0, "
           "int initial_blocks=4, int window_size=4, float k_block_num_rate_medium=0.2, "
           "int k_block_num_bias_medium=30, float k_block_num_rate_large=0.1, "
           "int k_block_num_bias_large=30, int topk_score_precision=1) -> (Tensor, Tensor)");
-    m.def("npu_stem_indexer_metadata(Tensor q_seq_lens, Tensor kv_seq_lens, int q_heads, "
-          "int kv_heads, *, bool causal=True, int stem_block_size=128, int dim_qkflat=2048, "
+    m.def("stem_indexer_metadata(Tensor seq_used_q, Tensor seq_used_kv, int num_heads_q, "
+          "int num_heads_kv, *, bool causal=True, int stem_block_size=128, int dim_qk_flat=2048, "
           "int window_size=4) -> Tensor");
 }
 

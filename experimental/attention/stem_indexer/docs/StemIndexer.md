@@ -13,15 +13,15 @@
 
 ## 功能说明
 
-StemIndexer是推理场景下稀疏Attention的前处理算子，承担块级打分与动态选块职责。对于每个Query Block，算子基于`qflat`与`kflat`的相关性，并叠加Value量值偏置`vbias`（OAM，Output-Aware Metric）进行打分；随后按Position-Decay动态TopK预算选出关键Key Block，输出`sparse_indices`与`sparse_seq_len`供下游Block Sparse Attention算子使用。
+StemIndexer是推理场景下稀疏Attention的前处理算子，承担块级打分与动态选块职责。对于每个Query Block，算子基于`q_flat`与`k_flat`的相关性，并叠加Value量值偏置`v_bias`（OAM，Output-Aware Metric）进行打分；随后按Position-Decay动态TopK预算选出关键Key Block，输出`sparse_indices`与`sparse_seq_len`供下游Block Sparse Attention算子使用。
 
-令$B_s$表示`stem_block_size`，$T_s$表示`stem_stride`，$D$表示原始Q/K Head Dim，$D_f$表示`qflat`和`kflat`的最后一维。当前固定参数为：
+令$B_s$表示`stem_block_size`，$T_s$表示`stem_stride`，$D$表示原始Q/K Head Dim，$D_f$表示`q_flat`和`k_flat`的最后一维。当前固定参数为：
 
 $$
 B_s=128,\quad T_s=16,\quad R=\frac{B_s}{T_s}=8,\quad D=128,\quad D_f=T_sD=2048
 $$
 
-上游预处理将一个包含128个Token的Q/K Block组织为$[R,T_s,D]=[8,16,128]$，沿$R$轴聚合后得到16个代表向量，再展平为长度2048的`qflat`或`kflat`。每个Q代表和K代表均聚合8个Token，因此一次代表向量点积展开后包含$8\times8=64$个Token Pair贡献。
+上游预处理将一个包含128个Token的Q/K Block组织为$[R,T_s,D]=[8,16,128]$，沿$R$轴聚合后得到16个代表向量，再展平为长度2048的`q_flat`或`k_flat`。每个Q代表和K代表均聚合8个Token，因此一次代表向量点积展开后包含$8\times8=64$个Token Pair贡献。
 
 计算公式如下：
 
@@ -33,7 +33,7 @@ $$
 \frac{1}{R^2}=\frac{1}{(B_s/T_s)^2}=\frac{1}{(128/16)^2}=\frac{1}{64}
 $$
 
-其中，$S_{i,j}$表示第$i$个Query Block与第$j$个Key Block的分数，$Q_i$和$K_j$分别表示对应的块级压缩向量，$V_j$表示对应Key Block的`vbias`。Q/K代表的点积结果乘以$1/R^2=1/64$，对每组内部的64个Token Pair贡献进行归一化；完整的$Q_iK_j^T$包含16组代表向量的点积。
+其中，$S_{i,j}$表示第$i$个Query Block与第$j$个Key Block的分数，$Q_i$和$K_j$分别表示对应的块级压缩向量，$V_j$表示对应Key Block的`v_bias`。Q/K代表的点积结果乘以$1/R^2=1/64$，对每组内部的64个Token Pair贡献进行归一化；完整的$Q_iK_j^T$包含16组代表向量的点积。
 
 对第$i$个Query Block，令$\mathcal{V}_i$为当前可见Key Block集合，$\mathcal{S}_i$为固定保留的Sink Block集合，$\mathcal{W}_i$为固定保留的Window Block集合，则普通TopK候选集合为：
 
@@ -55,25 +55,25 @@ $$
 
 主要计算过程如下：
 
-1. `qflat`与`kflat`做矩阵乘，得到每个Query Block与各Key Block的相关性分数。
-2. 乘以$1/R^2$完成聚合尺度归一化，并叠加`vbias`，避免纯QK相关性漏选对输出贡献较大的Key Block。
+1. `q_flat`与`k_flat`做矩阵乘，得到每个Query Block与各Key Block的相关性分数。
+2. 乘以$1/R^2$完成聚合尺度归一化，并叠加`v_bias`，避免纯QK相关性漏选对输出贡献较大的Key Block。
 3. 根据`num_prompt_tokens`计算Position-Decay动态TopK预算$K_i$，并按Query位置进行线性衰减。
 4. 从排除Sink Block和Window Block后的普通候选集合中选择分数最高的$K_i$个Key Block，再按Sink Block、普通TopK结果、Window Block的顺序拼接输出。
 5. 输出选中的Key Block逻辑索引及每个Query Block对应的有效索引数量。
 
 ## 接口说明
 
-该算子通过PyTorch扩展注册为`torch.ops.custom.npu_stem_indexer`。
+该算子通过PyTorch扩展注册为`torch.ops.custom.stem_indexer`。
 
 ### PyTorch接口原型
 
 ```python
-torch.ops.custom.npu_stem_indexer(
-    qflat: Tensor,
-    kflat: Tensor,
-    vbias: Tensor,
-    q_seq_lens: Tensor,
-    kv_seq_lens: Tensor,
+torch.ops.custom.stem_indexer(
+    q_flat: Tensor,
+    k_flat: Tensor,
+    v_bias: Tensor,
+    seq_used_q: Tensor,
+    seq_used_kv: Tensor,
     *,
     num_prompt_tokens: Optional[Tensor] = None,
     metadata: Optional[Tensor] = None,
@@ -100,22 +100,22 @@ torch.ops.custom.npu_stem_indexer(
 - $N_k$：KV Head数量。
 - $D$：原始Q/K Head Dim，当前固定为128。
 - $R$：每个代表向量聚合的Token数，$R=B_s/T_s$，当前固定为8。
-- $D_f$：`qflat`和`kflat`的最后一维，$D_f=T_sD$，当前固定为2048。
-- $Q_{\max}$：最大Query Block数，对应`qflat`第2维。
-- $K_{\max}$：最大KV Block数，对应`kflat`第2维。
-- $Q_b$：第$b$个Batch的有效Query Block数，$Q_b=\lceil L_b^q/B_s\rceil$，其中$L_b^q$为`q_seq_lens[b]`。
-- $K_b$：第$b$个Batch的有效KV Block数，$K_b=\lceil L_b^k/B_s\rceil$，其中$L_b^k$为`kv_seq_lens[b]`。
+- $D_f$：`q_flat`和`k_flat`的最后一维，$D_f=T_sD$，当前固定为2048。
+- $Q_{\max}$：最大Query Block数，对应`q_flat`第2维。
+- $K_{\max}$：最大KV Block数，对应`k_flat`第2维。
+- $Q_b$：第$b$个Batch的有效Query Block数，$Q_b=\lceil L_b^q/B_s\rceil$，其中$L_b^q$为`seq_used_q[b]`。
+- $K_b$：第$b$个Batch的有效KV Block数，$K_b=\lceil L_b^k/B_s\rceil$，其中$L_b^k$为`seq_used_kv[b]`。
 - $K_{b,i}^{\mathrm{vis}}$：考虑Causal语义后，第$b$个Batch中第$i$个Query Block实际可见的KV Block数。
 - $M$：Metadata Tensor的INT32元素数量。
 
 | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度（shape） |
 | :--- | :---: | :--- | :--- | :---: | :---: | :--- |
-| `qflat` | 输入 | Q侧块级压缩表示。 | Kernel按连续布局处理；标准执行路径声明了AutoContiguous。 | BF16 | ND | $(B,N_q,Q_{\max},D_f)$ |
-| `kflat` | 输入 | K侧块级压缩表示。 | 最后一维必须与`qflat`一致。Kernel按连续布局处理；标准执行路径声明了AutoContiguous。 | BF16 | ND | $(B,N_k,K_{\max},D_f)$ |
-| `vbias` | 输入 | Value量值偏置，即OAM项。 | Batch、KV Head和KV Block维度必须与`kflat`一致。 | FLOAT32 | ND | $(B,N_k,K_{\max})$ |
-| `q_seq_lens` | 输入 | 每个Batch中Query的有效Token数，不是Query Block数。 | 算子按$Q_b=\lceil\text{q\_seq\_lens}[b]/B_s\rceil$计算该Batch参与计算的有效Query Block数；不足一个完整Block的尾部Token计为一个有效Block。 | INT32 | ND | $(B)$ |
-| `kv_seq_lens` | 输入 | 每个Batch中KV的有效Token数，不是KV Block数。 | 算子按$K_b=\lceil\text{kv\_seq\_lens}[b]/B_s\rceil$计算该Batch参与计算的有效KV Block数；不足一个完整Block的尾部Token计为一个有效Block。 | INT32 | ND | $(B)$ |
-| `num_prompt_tokens` | 可选输入 | 每个Batch的Prompt Token数。 | 用于Position-Decay动态TopK预算分档；未传入时复用`kv_seq_lens`。 | INT32 | ND | $(B)$ |
+| `q_flat` | 输入 | Q侧块级压缩表示。 | Kernel按连续布局处理；标准执行路径声明了AutoContiguous。 | BF16 | ND | $(B,N_q,Q_{\max},D_f)$ |
+| `k_flat` | 输入 | K侧块级压缩表示。 | 最后一维必须与`q_flat`一致。Kernel按连续布局处理；标准执行路径声明了AutoContiguous。 | BF16 | ND | $(B,N_k,K_{\max},D_f)$ |
+| `v_bias` | 输入 | Value量值偏置，即OAM项。 | Batch、KV Head和KV Block维度必须与`k_flat`一致。 | FLOAT32 | ND | $(B,N_k,K_{\max})$ |
+| `seq_used_q` | 输入 | 每个Batch中Query的有效Token数，不是Query Block数。 | 算子按$Q_b=\lceil\text{seq\_used\_q}[b]/B_s\rceil$计算该Batch参与计算的有效Query Block数；不足一个完整Block的尾部Token计为一个有效Block。 | INT32 | ND | $(B)$ |
+| `seq_used_kv` | 输入 | 每个Batch中KV的有效Token数，不是KV Block数。 | 算子按$K_b=\lceil\text{seq\_used\_kv}[b]/B_s\rceil$计算该Batch参与计算的有效KV Block数；不足一个完整Block的尾部Token计为一个有效Block。 | INT32 | ND | $(B)$ |
+| `num_prompt_tokens` | 可选输入 | 每个Batch的Prompt Token数。 | 用于Position-Decay动态TopK预算分档；未传入时复用`seq_used_kv`。 | INT32 | ND | $(B)$ |
 | `metadata` | 可选输入 | 分核调度信息。 | 接口声明为可选输入，但当前计算必须使用有效Metadata；未传入时Tiling返回参数错误。 | INT32 | ND | $(M)$ |
 | `causal` | 输入属性 | 是否采用Right-down Causal语义。 | 默认值为`true`。 | BOOL | - | - |
 | `stem_block_size` | 输入属性 | 一个Stem Block包含的原始Token数。 | 当前仅支持128，默认值为128。 | INT64 | - | - |
@@ -137,9 +137,9 @@ torch.ops.custom.npu_stem_indexer(
 
 - 该接口支持图模式。
 - 当前仅适配Ascend 950PR/Ascend 950DT，不支持A3、A2及其他产品。
-- `qflat`、`kflat`仅支持BF16、ND格式和4D Tensor。
-- `vbias`仅支持FLOAT32、ND格式和3D Tensor。
-- `q_seq_lens`、`kv_seq_lens`仅支持INT32、ND格式和1D Tensor；传入`num_prompt_tokens`或`metadata`时同样仅支持INT32、ND格式和1D Tensor。
+- `q_flat`、`k_flat`仅支持BF16、ND格式和4D Tensor。
+- `v_bias`仅支持FLOAT32、ND格式和3D Tensor。
+- `seq_used_q`、`seq_used_kv`仅支持INT32、ND格式和1D Tensor；传入`num_prompt_tokens`或`metadata`时同样仅支持INT32、ND格式和1D Tensor。
 - `sparse_indices`、`sparse_seq_len`的数据类型固定为INT32，数据格式为ND。
 - `stem_block_size`固定为128，`stem_stride`固定为16，因此$R=8$、$D_f=2048$。
 - `initial_blocks`固定为4，`window_size`固定为4。
@@ -150,8 +150,8 @@ torch.ops.custom.npu_stem_indexer(
 
 ### 存在性约束
 
-- `qflat`、`kflat`、`vbias`、`q_seq_lens`和`kv_seq_lens`必须传入有效Tensor。
-- `num_prompt_tokens`可以不传；缺省时OpHost在TilingData中记录复用标志，Kernel使用`kv_seq_lens`作为`num_prompt_tokens`。
+- `q_flat`、`k_flat`、`v_bias`、`seq_used_q`和`seq_used_kv`必须传入有效Tensor。
+- `num_prompt_tokens`可以不传；缺省时OpHost在TilingData中记录复用标志，Kernel使用`seq_used_kv`作为`num_prompt_tokens`。
 - `metadata`在接口中声明为可选输入，以支持统一的Optional调用形式；当前计算仍要求传入有效Tensor，缺省时Tiling明确返回参数错误。
 - `metadata`需要由StemIndexerMetadata算子根据本次输入生成，不支持传入空Tensor或与本次输入无关的占位Tensor。
 
@@ -159,19 +159,19 @@ torch.ops.custom.npu_stem_indexer(
 
 - $B$的取值范围为$[1,65536]$，$Q_{\max}$和$K_{\max}$必须大于0。
 - $N_q$仅支持32或64，$N_k$仅支持2、4或8，并满足$N_q\bmod N_k=0$。
-- `qflat`和`kflat`的Batch维、最后一维必须一致，最后一维固定为2048。
-- `vbias`的shape必须为$(B,N_k,K_{\max})$，与`kflat`对应维度一致。
-- `q_seq_lens`和`kv_seq_lens`的shape必须为$(B)$；传入`num_prompt_tokens`时，其shape也必须为$(B)$。
-- `q_seq_lens[b]`应满足$0\leq\text{q\_seq\_lens}[b]\leq Q_{\max}B_s$。
-- `kv_seq_lens[b]`应满足$0\leq\text{kv\_seq\_lens}[b]\leq K_{\max}B_s$。
-- 有效Prompt Token数应为非负值，并满足`effective_num_prompt_tokens[b] >= kv_seq_lens[b]`；其中传入`num_prompt_tokens`时取其值，未传入时`effective_num_prompt_tokens = kv_seq_lens`。
+- `q_flat`和`k_flat`的Batch维、最后一维必须一致，最后一维固定为2048。
+- `v_bias`的shape必须为$(B,N_k,K_{\max})$，与`k_flat`对应维度一致。
+- `seq_used_q`和`seq_used_kv`的shape必须为$(B)$；传入`num_prompt_tokens`时，其shape也必须为$(B)$。
+- `seq_used_q[b]`应满足$0\leq\text{seq\_used\_q}[b]\leq Q_{\max}B_s$。
+- `seq_used_kv[b]`应满足$0\leq\text{seq\_used\_kv}[b]\leq K_{\max}B_s$。
+- 有效Prompt Token数应为非负值，并满足`effective_num_prompt_tokens[b] >= seq_used_kv[b]`；其中传入`num_prompt_tokens`时取其值，未传入时`effective_num_prompt_tokens = seq_used_kv`。
 - `sparse_indices`的shape由输入推导为$(B,N_q,Q_{\max},K_{\max})$；`sparse_seq_len`的shape由输入推导为$(B,N_q,Q_{\max})$。
 - `sparse_indices`有效前缀中的元素为Key Block逻辑索引，第$b$个Batch中的取值范围为$[0,K_b-1]$。
 - `sparse_seq_len`每个元素的取值范围为$[0,K_{b,i}^{\mathrm{vis}}]$，并且不大于对应输出行的$K_{\max}$。
 
 ### 特性交叉约束
 
-- `metadata`必须由与主算子相同的`q_seq_lens`、`kv_seq_lens`、$N_q$、$N_k$、`causal`、`stem_block_size`、$D_f$和`window_size`生成。
+- `metadata`必须由与主算子相同的`seq_used_q`、`seq_used_kv`、$N_q$、$N_k$、`causal`、`stem_block_size`、$D_f$和`window_size`生成。
 - `metadata`最大Section数为$BN_k$。令$C_{\max}$表示最大Section数、$E$表示对齐前所需元素数，则容量$M$按以下公式计算，单位为INT32元素：
 
     $$
@@ -228,8 +228,8 @@ import torch_npu
 import custom_ops
 
 batch_size = 4
-q_heads = 64
-kv_heads = 8
+num_heads_q = 64
+num_heads_kv = 8
 d = 128
 stem_block_size = 128
 stem_stride = 16
@@ -240,51 +240,51 @@ kv_seq_len = k_block_num * stem_block_size
 prompt_token_num = kv_seq_len
 
 torch.manual_seed(0)
-qflat = torch.randn(
+q_flat = torch.randn(
     batch_size,
-    q_heads,
+    num_heads_q,
     q_block_num,
     stem_stride * d,
     dtype=torch.bfloat16,
 ).npu()
-kflat = torch.randn(
+k_flat = torch.randn(
     batch_size,
-    kv_heads,
+    num_heads_kv,
     k_block_num,
     stem_stride * d,
     dtype=torch.bfloat16,
 ).npu()
-vbias = torch.randn(
+v_bias = torch.randn(
     batch_size,
-    kv_heads,
+    num_heads_kv,
     k_block_num,
     dtype=torch.float32,
 ).npu()
-q_seq_lens = torch.full((batch_size,), q_seq_len, dtype=torch.int32).npu()
-kv_seq_lens = torch.full((batch_size,), kv_seq_len, dtype=torch.int32).npu()
+seq_used_q = torch.full((batch_size,), q_seq_len, dtype=torch.int32).npu()
+seq_used_kv = torch.full((batch_size,), kv_seq_len, dtype=torch.int32).npu()
 num_prompt_tokens = torch.full(
     (batch_size,), prompt_token_num, dtype=torch.int32
 ).npu()
 
 # 1. 生成与主算子输入匹配的分核调度Metadata。
-metadata = torch.ops.custom.npu_stem_indexer_metadata(
-    q_seq_lens,
-    kv_seq_lens,
-    q_heads,
-    kv_heads,
+metadata = torch.ops.custom.stem_indexer_metadata(
+    seq_used_q,
+    seq_used_kv,
+    num_heads_q,
+    num_heads_kv,
     causal=True,
     stem_block_size=stem_block_size,
-    dim_qkflat=stem_stride * d,
+    dim_qk_flat=stem_stride * d,
     window_size=4,
 )
 
 # 2. 执行块级打分与动态选块。
-sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
-    qflat,
-    kflat,
-    vbias,
-    q_seq_lens,
-    kv_seq_lens,
+sparse_indices, sparse_seq_len = torch.ops.custom.stem_indexer(
+    q_flat,
+    k_flat,
+    v_bias,
+    seq_used_q,
+    seq_used_kv,
     num_prompt_tokens=num_prompt_tokens,
     metadata=metadata,
     causal=True,
@@ -303,6 +303,6 @@ sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
 
 ## 相关接口
 
-- `npu_stem_indexer_metadata`：根据序列长度、Head配置和Causal属性生成StemIndexer分核调度信息。
+- `stem_indexer_metadata`：根据序列长度、Head配置和Causal属性生成StemIndexer分核调度信息。
 
 更多测试与调用示例见[pytest说明](../tests/pytest/README.md)。

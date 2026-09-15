@@ -28,8 +28,7 @@ from test_stem_indexer_paramset import ENABLED_PARAMS  # noqa: E402
 EXEC_MODE = os.environ.get("STEM_INDEXER_MODE", "eager").strip().lower()
 if EXEC_MODE not in ("eager", "graph"):
     raise ValueError(
-        f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. "
-        "Expected 'eager' or 'graph'."
+        f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. Expected 'eager' or 'graph'."
     )
 _IS_GRAPH_MODE = EXEC_MODE == "graph"
 
@@ -62,7 +61,7 @@ def build_metadata(case, npu_inputs):
     if case["expected_result"] == "FAIL":
         return npu_inputs["metadata"]
     metadata_attrs = stem_indexer_golden.get_metadata_attrs(case)
-    return torch.ops.custom.npu_stem_indexer_metadata(
+    return torch.ops.custom.stem_indexer_metadata(
         npu_inputs["q_seq_lens"],
         npu_inputs["kv_seq_lens"],
         case["q_heads"],
@@ -75,7 +74,7 @@ def call_stem_indexer(case, inputs):
     npu_inputs = move_inputs_to_npu(inputs)
     attrs = stem_indexer_golden.get_call_attrs(case)
     metadata = build_metadata(case, npu_inputs)
-    return torch.ops.custom.npu_stem_indexer(
+    return torch.ops.custom.stem_indexer(
         npu_inputs["qflat"],
         npu_inputs["kflat"],
         npu_inputs["vbias"],

@@ -5,8 +5,8 @@
 基于pytest测试框架，实现StemIndexer算子的功能验证：
 
 - CPU侧：按StemIndexer设计方案实现golden。
-- NPU侧：先通过`torch.ops.custom.npu_stem_indexer_metadata`生成分核信息，再通过
-  `torch.ops.custom.npu_stem_indexer`获取实际结果（接口位于
+- NPU侧：先通过`torch.ops.custom.stem_indexer_metadata`生成分核信息，再通过
+  `torch.ops.custom.stem_indexer`获取实际结果（接口位于
   `experimental/attention/stem_indexer/torch_ops_extension`，由 `custom_ops.py` 加载注册）。
   支持两种调用模式：eager（直接调用算子）和 graph（通过 `torch.compile` + `torchair` 编译为 aclgraph 图）。
   通过环境变量 `STEM_INDEXER_MODE` 切换，默认 `eager`。

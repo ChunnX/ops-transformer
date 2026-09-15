@@ -42,9 +42,9 @@ def move_inputs_to_npu(test_data):
 
 
 def call_stem_indexer(case, npu_inputs):
-    """eager 模式：直接调用 torch.ops.custom.npu_stem_indexer。"""
+    """eager 模式：直接调用 torch.ops.custom.stem_indexer。"""
     metadata = build_metadata(case, npu_inputs)
-    return torch.ops.custom.npu_stem_indexer(
+    return torch.ops.custom.stem_indexer(
         npu_inputs["qflat"],
         npu_inputs["kflat"],
         npu_inputs["vbias"],
