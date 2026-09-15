@@ -797,7 +797,7 @@ int main() {
   std::vector<int64_t> kRopeShape = {totalBatch, 1, 1, hDimRope};
   std::vector<int64_t> cKvShape = {totalBatch, 1, 1, hDimV};
 
-  uint64_t totalEle = totalBatch * 1 * 1;
+  uint64_t totalEle = totalBatch * 1 * 1;  // 本示例中N=1、Skv=1，totalEle = Bkv * N * Skv
   std::vector<int16_t> kvHostData(totalEle * hDimKv, 0);
   std::vector<int16_t> gammaHostData(hDimV, 0);
   std::vector<int16_t> cosHostData(totalEle * hDimRope, 0);
