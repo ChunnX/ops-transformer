@@ -15,31 +15,31 @@ from torchair.ge._ge_graph import Tensor, TensorSpec
 from torchair.ge import attr
 
 
-@register_fx_node_ge_converter(torch.ops.custom.npu_stem_indexer_metadata.default)
-def convert_npu_stem_indexer_metadata(
-    q_seq_lens: Tensor,
-    kv_seq_lens: Tensor,
-    q_heads: int,
-    kv_heads: int,
+@register_fx_node_ge_converter(torch.ops.custom.stem_indexer_metadata.default)
+def convert_stem_indexer_metadata(
+    seq_used_q: Tensor,
+    seq_used_kv: Tensor,
+    num_heads_q: int,
+    num_heads_kv: int,
     *,
     causal: bool = True,
     stem_block_size: int = 128,
-    dim_qkflat: int = 2048,
+    dim_qk_flat: int = 2048,
     window_size: int = 4,
     meta_outputs: List[TensorSpec] = None,
 ):
     return torchair.ge.custom_op(
         "StemIndexerMetadata",
         inputs={
-            "q_seq_lens": q_seq_lens,
-            "kv_seq_lens": kv_seq_lens,
+            "q_seq_lens": seq_used_q,
+            "kv_seq_lens": seq_used_kv,
         },
         attrs={
-            "q_heads": attr.Int(q_heads),
-            "kv_heads": attr.Int(kv_heads),
+            "q_heads": attr.Int(num_heads_q),
+            "kv_heads": attr.Int(num_heads_kv),
             "causal": attr.Bool(causal),
             "stem_block_size": attr.Int(stem_block_size),
-            "dim_qkflat": attr.Int(dim_qkflat),
+            "dim_qkflat": attr.Int(dim_qk_flat),
             "window_size": attr.Int(window_size),
         },
         outputs=["metadata"],

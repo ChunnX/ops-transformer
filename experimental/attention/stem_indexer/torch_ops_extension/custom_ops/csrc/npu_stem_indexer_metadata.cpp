@@ -22,46 +22,46 @@ constexpr int64_t STEM_INDEXER_METADATA_ALIGN_SIZE = 4096;
 
 static int64_t CalcStemIndexerMetadataOutputSize(int64_t batchSize, int64_t kvHeads)
 {
-    TORCH_CHECK(batchSize > 0, "q_seq_lens must contain at least one element.");
-    TORCH_CHECK(kvHeads > 0, "kv_heads must be greater than 0, but got ", kvHeads, ".");
+    TORCH_CHECK(batchSize > 0, "seq_used_q must contain at least one element.");
+    TORCH_CHECK(kvHeads > 0, "num_heads_kv must be greater than 0, but got ", kvHeads, ".");
     const int64_t maxSectionNum = batchSize * kvHeads;
-    const int64_t metadataSize =
-        STEM_INDEXER_METADATA_HEADER_SIZE +
-        maxSectionNum * (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
-            STEM_INDEXER_METADATA_CORE_STRIDE;
+    const int64_t metadataSize = STEM_INDEXER_METADATA_HEADER_SIZE +
+                                 maxSectionNum *
+                                     (STEM_INDEXER_METADATA_AIC_CORE_NUM + STEM_INDEXER_METADATA_AIV_CORE_NUM) *
+                                     STEM_INDEXER_METADATA_CORE_STRIDE;
     return (metadataSize + STEM_INDEXER_METADATA_ALIGN_SIZE - 1) / STEM_INDEXER_METADATA_ALIGN_SIZE *
            STEM_INDEXER_METADATA_ALIGN_SIZE;
 }
 
-at::Tensor npu_stem_indexer_metadata_npu(const at::Tensor &qSeqLens, const at::Tensor &kvSeqLens, int64_t qHeads,
-                                         int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat,
-                                         int64_t windowSize)
+at::Tensor stem_indexer_metadata_npu(const at::Tensor &seqUsedQ, const at::Tensor &seqUsedKv, int64_t numHeadsQ,
+                                     int64_t numHeadsKv, bool causal, int64_t stemBlockSize, int64_t dimQkFlat,
+                                     int64_t windowSize)
 {
-    at::Device outputDevice = qSeqLens.device();
-    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(qSeqLens.size(0), kvHeads);
+    at::Device outputDevice = seqUsedQ.device();
+    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(seqUsedQ.size(0), numHeadsKv);
     at::Tensor output = torch::empty({metadataOutputSize}, torch::dtype(torch::kInt32).device(outputDevice));
 
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
-    EXEC_NPU_CMD_V1(aclnnStemIndexerMetadata, qSeqLens, kvSeqLens, qHeads, kvHeads, causal, stemBlockSize, dimQkflat,
-                    windowSize, output);
+    EXEC_NPU_CMD_V1(aclnnStemIndexerMetadata, seqUsedQ, seqUsedKv, numHeadsQ, numHeadsKv, causal, stemBlockSize,
+                    dimQkFlat, windowSize, output);
     return output;
 }
 
-at::Tensor npu_stem_indexer_metadata_meta(const at::Tensor &qSeqLens, const at::Tensor &kvSeqLens, int64_t qHeads,
-                                          int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat,
-                                          int64_t windowSize)
+at::Tensor stem_indexer_metadata_meta(const at::Tensor &seqUsedQ, const at::Tensor &seqUsedKv, int64_t numHeadsQ,
+                                      int64_t numHeadsKv, bool causal, int64_t stemBlockSize, int64_t dimQkFlat,
+                                      int64_t windowSize)
 {
-    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(qSeqLens.size(0), kvHeads);
-    return torch::empty({metadataOutputSize}, qSeqLens.options().dtype(torch::kInt32));
+    int64_t metadataOutputSize = CalcStemIndexerMetadataOutputSize(seqUsedQ.size(0), numHeadsKv);
+    return torch::empty({metadataOutputSize}, seqUsedQ.options().dtype(torch::kInt32));
 }
 } // namespace custom
 
 TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
 {
-    m.impl("npu_stem_indexer_metadata", &custom::npu_stem_indexer_metadata_npu);
+    m.impl("stem_indexer_metadata", &custom::stem_indexer_metadata_npu);
 }
 
 TORCH_LIBRARY_IMPL(custom, Meta, m)
 {
-    m.impl("npu_stem_indexer_metadata", &custom::npu_stem_indexer_metadata_meta);
+    m.impl("stem_indexer_metadata", &custom::stem_indexer_metadata_meta);
 }

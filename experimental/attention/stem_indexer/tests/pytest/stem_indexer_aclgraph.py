@@ -55,7 +55,7 @@ class StemIndexerNetwork(torch.nn.Module):
         k_block_num_bias_large,
         topk_score_precision,
     ):
-        sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
+        sparse_indices, sparse_seq_len = torch.ops.custom.stem_indexer(
             qflat,
             kflat,
             vbias,
@@ -80,7 +80,7 @@ class StemIndexerNetwork(torch.nn.Module):
 
 def build_metadata(case, npu_inputs):
     metadata_attrs = stem_indexer_golden.get_metadata_attrs(case)
-    return torch.ops.custom.npu_stem_indexer_metadata(
+    return torch.ops.custom.stem_indexer_metadata(
         npu_inputs["q_seq_lens"],
         npu_inputs["kv_seq_lens"],
         case["q_heads"],

@@ -55,7 +55,7 @@ def stem_indexer(
     metadata_mode: str = "auto",
     num_prompt_tokens_mode: str = "provided",
 ):
-    """Generate metadata if needed, then call npu_stem_indexer."""
+    """Generate metadata if needed, then call stem_indexer."""
     _ensure_custom_ops()
     q_heads = int(qflat.shape[1])
     kv_heads = int(kflat.shape[1])
@@ -64,21 +64,21 @@ def stem_indexer(
         num_prompt_tokens = None
 
     if metadata_mode == "auto":
-        metadata = torch.ops.custom.npu_stem_indexer_metadata(
+        metadata = torch.ops.custom.stem_indexer_metadata(
             q_seq_lens,
             kv_seq_lens,
             q_heads,
             kv_heads,
             causal=causal,
             stem_block_size=stem_block_size,
-            dim_qkflat=stem_stride * HEAD_DIM,
+            dim_qk_flat=stem_stride * HEAD_DIM,
             window_size=window_size,
         )
     elif metadata_mode == "none":
         metadata = None
     # "provided": 保留传入的 metadata 原样，不再重建
 
-    return torch.ops.custom.npu_stem_indexer(
+    return torch.ops.custom.stem_indexer(
         qflat,
         kflat,
         vbias,

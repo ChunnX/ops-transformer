@@ -87,14 +87,14 @@ class TestCustomStemIndexer(TestCase):
         q_seq_lens = q_seq_lens.npu()
         kv_seq_lens = kv_seq_lens.npu()
         num_prompt_tokens = num_prompt_tokens.npu()
-        metadata = torch.ops.custom.npu_stem_indexer_metadata(
+        metadata = torch.ops.custom.stem_indexer_metadata(
             q_seq_lens,
             kv_seq_lens,
             q_heads,
             kv_heads,
             causal=causal,
             stem_block_size=stem_block_size,
-            dim_qkflat=head_dim,
+            dim_qk_flat=head_dim,
             window_size=window_size,
         )
 
@@ -114,7 +114,7 @@ class TestCustomStemIndexer(TestCase):
             flush=True,
         )
 
-        npu_indices, npu_seq_len = torch.ops.custom.npu_stem_indexer(
+        npu_indices, npu_seq_len = torch.ops.custom.stem_indexer(
             qflat,
             kflat,
             vbias,

@@ -156,7 +156,7 @@ def _configure_custom_opp_paths():
 
 def _load_custom_ops():
     _configure_custom_opp_paths()
-    if has_npu_stem_indexer_op() and has_npu_stem_indexer_metadata_op():
+    if has_stem_indexer_op() and has_stem_indexer_metadata_op():
         for root in _candidate_roots():
             if root.exists():
                 _load_converter(root)
@@ -166,25 +166,25 @@ def _load_custom_ops():
         if not root.exists():
             continue
         _load_shared_libraries(root)
-        if has_npu_stem_indexer_op() and has_npu_stem_indexer_metadata_op():
+        if has_stem_indexer_op() and has_stem_indexer_metadata_op():
             _load_converter(root)
             return
         _load_python_package(root)
-        if has_npu_stem_indexer_op() and has_npu_stem_indexer_metadata_op():
+        if has_stem_indexer_op() and has_stem_indexer_metadata_op():
             return
 
 
-def has_npu_stem_indexer_op():
+def has_stem_indexer_op():
     try:
-        getattr(torch.ops.custom, "npu_stem_indexer")
+        getattr(torch.ops.custom, "stem_indexer")
     except AttributeError:
         return False
     return True
 
 
-def has_npu_stem_indexer_metadata_op():
+def has_stem_indexer_metadata_op():
     try:
-        getattr(torch.ops.custom, "npu_stem_indexer_metadata")
+        getattr(torch.ops.custom, "stem_indexer_metadata")
     except AttributeError:
         return False
     return True

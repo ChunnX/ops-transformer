@@ -20,13 +20,13 @@ from torchair.ge import attr
 
 # 为自定义算子注册converter，用于torch.compile 场景成图
 # 注意： meta_outputs形参名为固定写法，若写错会影响ge节点的输出dtype与shape推导
-@register_fx_node_ge_converter(torch.ops.custom.npu_stem_indexer.default)
-def convert_npu_stem_indexer(
-    qflat: Tensor,
-    kflat: Tensor,
-    vbias: Tensor,
-    q_seq_lens: Tensor,
-    kv_seq_lens: Tensor,
+@register_fx_node_ge_converter(torch.ops.custom.stem_indexer.default)
+def convert_stem_indexer(
+    q_flat: Tensor,
+    k_flat: Tensor,
+    v_bias: Tensor,
+    seq_used_q: Tensor,
+    seq_used_kv: Tensor,
     *,
     num_prompt_tokens: Optional[Tensor] = None,
     metadata: Optional[Tensor] = None,
@@ -46,11 +46,11 @@ def convert_npu_stem_indexer(
     return torchair.ge.custom_op(
         "StemIndexer",
         inputs={
-            "qflat": qflat,
-            "kflat": kflat,
-            "vbias": vbias,
-            "q_seq_lens": q_seq_lens,
-            "kv_seq_lens": kv_seq_lens,
+            "qflat": q_flat,
+            "kflat": k_flat,
+            "vbias": v_bias,
+            "q_seq_lens": seq_used_q,
+            "kv_seq_lens": seq_used_kv,
             "num_prompt_tokens": num_prompt_tokens,
             "metadata": metadata,
         },
