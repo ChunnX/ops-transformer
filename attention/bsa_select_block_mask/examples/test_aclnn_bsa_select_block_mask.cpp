@@ -111,24 +111,28 @@ int main() {
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-   // 2.构造输入与输出， (以BNSD Layout为例)
-    int32_t batch = 1;
-    int32_t numHeads = 4;
-    int32_t numKHeads = 4;      // 仅支持MHA: N == KN
-    int32_t qSeqlen = 256 * 1024; // 256K
-    int32_t kSeqlen = 256 * 1024; // 256K
-    int32_t headDim = 128;
-    int32_t blockShapeX = 128;
-    int32_t blockShapeY = 128;
+    // 2.构造输入与输出，性能测试用例：BNSD, fp16, B=1, N=1, S1=S2=794880, D=128.
+    int64_t batch = 1;
+    int64_t numHeads = 1;
+    int64_t numKHeads = 1;      // 仅支持MHA: N == KN
+    int64_t qSeqlen = 794880;
+    int64_t kSeqlen = 794880;
+    int64_t headDim = 128;
+    int64_t blockShapeX = 8;
+    int64_t blockShapeY = 8;
+    int64_t postBlockShapeX = 16;
+    int64_t postBlockShapeY = 16;
 
     // 块数量计算
-    int32_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
-    int32_t ceilK = (kSeqlen + blockShapeY - 1) / blockShapeY;
+    int64_t ceilQ = (qSeqlen + blockShapeX - 1) / blockShapeX;
+    int64_t ceilK = (kSeqlen + blockShapeY - 1) / blockShapeY;
+    int64_t postCeilQ = (ceilQ + postBlockShapeX - 1) / postBlockShapeX;
+    int64_t postCeilK = (ceilK + postBlockShapeY - 1) / postBlockShapeY;
 
     // 构建张量Shape
     std::vector<int64_t> qShape = {batch, numHeads, qSeqlen, headDim};
     std::vector<int64_t> kShape = {batch, numKHeads, kSeqlen, headDim};
-    std::vector<int64_t> maskShape = {batch, numHeads, ceilQ, ceilK};
+    std::vector<int64_t> maskShape = {batch, numHeads, postCeilQ, postCeilK};
 
     // 分配并初始化Host数据
     int64_t qSize = GetShapeSize(qShape);
@@ -151,6 +155,8 @@ int main() {
     // 创建aclIntArray属性参数
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
+    std::vector<int64_t> postBlockShapeVec = {postBlockShapeX, postBlockShapeY};
+    aclIntArray *postBlockShapeArr = aclCreateIntArray(postBlockShapeVec.data(), postBlockShapeVec.size());
 
     // 标量与字符串参数配置
     char queryLayoutBuffer[16] = "BNSD";
@@ -168,7 +174,7 @@ int main() {
         qTensor, 
         kTensor, 
         blockShapeArr,
-        nullptr,
+        postBlockShapeArr,
         nullptr,
         nullptr,
         nullptr,
@@ -185,6 +191,10 @@ int main() {
 
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     CHECK_RET(executor != nullptr, LOG_PRINT("executor is null after GetWorkspaceSize\n"); return -1);
+    LOG_PRINT("case: batch=%ld, heads=%ld, qSeqlen=%ld, kSeqlen=%ld, headDim=%ld, block=[%ld,%ld], "
+              "postBlock=[%ld,%ld], sparsity=%.6f, maskShape=[%ld,%ld,%ld,%ld]\n",
+              batch, numHeads, qSeqlen, kSeqlen, headDim, blockShapeX, blockShapeY,
+              postBlockShapeX, postBlockShapeY, sparsity, maskShape[0], maskShape[1], maskShape[2], maskShape[3]);
     LOG_PRINT("Workspace size required: %lu bytes\n", workspaceSize);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
@@ -208,6 +218,18 @@ int main() {
     ret = aclrtMemcpy(maskOutData.data(), maskSize * sizeof(int8_t), maskAddr, maskSize * sizeof(int8_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed.\n"); return ret);
 
+    int64_t selectedCount = 0;
+    uint64_t maskHash = 1469598103934665603ULL;
+    for (int8_t value : maskOutData) {
+        if (value == 1) {
+            ++selectedCount;
+        }
+        maskHash ^= static_cast<uint8_t>(value);
+        maskHash *= 1099511628211ULL;
+    }
+    int64_t expectedTopK = static_cast<int64_t>(std::llround(sparsity * static_cast<double>(maskSize)));
+    LOG_PRINT("selected=%ld expected_topk=%ld mask_fnv1a64=%lu\n", selectedCount, expectedTopK, maskHash);
+
     LOG_PRINT("Execution Success! BlockSparseMask output (first 20 elements):\n");
     int64_t displayCount = (maskSize < 20) ? maskSize : 20;
     for (int64_t i = 0; i < displayCount; i++) {
@@ -221,6 +243,7 @@ int main() {
     aclDestroyTensor(maskTensor);
     
     aclDestroyIntArray(blockShapeArr);
+    aclDestroyIntArray(postBlockShapeArr);
 
     // 7.释放device资源
     aclrtFree(qAddr);
