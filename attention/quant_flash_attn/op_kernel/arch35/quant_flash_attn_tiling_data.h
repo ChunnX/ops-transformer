@@ -34,6 +34,10 @@ constexpr uint32_t QFA_M_END_INDEX = 4;
 constexpr uint32_t QFA_S2_END_INDEX = 5;
 constexpr uint32_t QFA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 6;
 
+// metadata头调试槽位(8..14空闲, 8为32B对齐): kernel侧FD规约实际执行后回写标记, 供host侧确认FD模式真实生效
+constexpr uint32_t QFA_HEAD_FD_EXEC_MARKER_INDEX = 8U;
+constexpr uint32_t QFA_FD_EXEC_MARKER_MAGIC = 0xFD00U;
+
 constexpr uint32_t QFA_FD_BN2_IDX_INDEX = 0;
 constexpr uint32_t QFA_FD_M_IDX_INDEX = 1;
 constexpr uint32_t QFA_FD_WORKSPACE_IDX_INDEX = 2;
@@ -80,7 +84,6 @@ struct QuantFlashAttnBaseParams {
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
-    uint8_t isKvContinuous;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;

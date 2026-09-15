@@ -26,6 +26,9 @@
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm_arch35.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "memory_copy_arch35_quant_flash_attn.h"
+#if __has_include("utils/debug/asc_printf.h")
+#include "utils/debug/asc_printf.h"
+#endif
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -143,6 +146,7 @@ public:
     T negativeFloatScalar_;
     float pScaleValue_{1.0f};
     bool isSkipMask_{false};
+    bool prevTaskWasInit_{false}; // vec2上一任务是否为isFirstS2Loop裸初始化(需在下一次update补乘V descale)
 
     // ==================== Functions ======================
     __aicore__ inline QuantFlashAttnBlockVecGqaFp8(ConstInfoX &constInfo)
@@ -196,10 +200,12 @@ public:
         InitKScaleBuffer(constInfo_.bSize, constInfo_.s2Size, constInfo_.n2Size, constInfo_.blockSize, keyScaleGm_,
                          deqScaleK, constInfo_.kDescaleStrides.bnStride, constInfo_.kDescaleStrides.n2Stride);
         if constexpr (FLASH_DECODE) {
-            accumOutGm_.SetGlobalBuffer((__gm__ float *)workspace);
-            softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
-            softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
-                                            constInfo_.logSumExpSize);
+            if (constInfo_.enableFlashDecode) {
+                accumOutGm_.SetGlobalBuffer((__gm__ float *)workspace);
+                softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
+                softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
+                                                constInfo_.logSumExpSize);
+            }
         }
     }
 
@@ -508,12 +514,9 @@ public:
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         if constexpr (FLASH_DECODE) {
-            if (runInfo.isS2SplitCore) {
+            if (constInfo_.enableFlashDecode && runInfo.isS2SplitCore) {
                 ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
             }
-        }
-
-        if constexpr (FLASH_DECODE) {
             if (!runInfo.isS2SplitCore && constInfo_.isSoftmaxLseEnable) {
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
@@ -563,12 +566,17 @@ public:
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+            prevTaskWasInit_ = true;
         } else {
             LocalTensor<T> expUb = softmaxExpBuf_[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             LocalTensor<T> pScaleUb;
+            // isFirstS2Loop的DataCopy是裸bmm2结果(未乘V descale), 其后的第一个update需isUpdatePre补乘;
+            // 原判定s2Idx==s2BaseSize仅覆盖从s2=0开始的行, FD续算片段从s2中段开始会漏乘导致切分行错误
+            bool needPreDescale = prevTaskWasInit_ || (runInfo.s2Idx == s2BaseSize);
+            prevTaskWasInit_ = false;
 
             if (!runInfo.isLastS2Loop) {
-                if (unlikely(runInfo.s2Idx == s2BaseSize)) {
+                if (unlikely(needPreDescale)) {
                     FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
                         deScaleVValue, deScaleVValue);
@@ -578,15 +586,13 @@ public:
                         deScaleVValue, deScaleVValue);
                 }
             } else {
-                if (unlikely(runInfo.s2Idx == s2BaseSize)) {
-                    LocalTensor<float> sumUb =
-                        this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                LocalTensor<float> sumUb =
+                    this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                if (unlikely(needPreDescale)) {
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
                         deScaleVValue, deScaleVValue);
                 } else {
-                    LocalTensor<float> sumUb =
-                        this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
                     FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                         vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
                         deScaleVValue, deScaleVValue);
@@ -600,6 +606,16 @@ public:
                 LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, deScaleVValue);
             }
+#if __has_include("utils/debug/asc_printf.h")
+            if ((runInfo.isS2SplitCore && runInfo.faTmpOutWsPos < 4) || runInfo.loop < 8) {
+                LocalTensor<float> sumUbP = this->softmaxSumBuf_[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                __asc_aicore::printf((__gm__ const char *)
+                                         "FDV2 aiv=%u sub=%u loop=%u split=%u isFirst=%u mloop=%u sum0=%f v0=%f\n",
+                                     constInfo_.aivIdx, (uint32_t)constInfo_.subBlockIdx, runInfo.loop,
+                                     (uint32_t)runInfo.isS2SplitCore, (uint32_t)runInfo.isFirstS2Loop,
+                                     runInfo.mloop, sumUbP.GetValue(0), vec2ResUb.GetValue(0));
+            }
+#endif
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
@@ -654,7 +670,7 @@ public:
                                                uint32_t mDealSize)
     {
         if constexpr (FLASH_DECODE) {
-            if (runInfo.isS2SplitCore) {
+            if (constInfo_.enableFlashDecode && runInfo.isS2SplitCore) {
                 Bmm2ResForFDCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
             } else {
                 Bmm2ResCastAndCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
@@ -819,6 +835,14 @@ public:
         // 是否要改成halfMRealSize
         int64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize;
         // flashDecodeS2Idx?nBufferStartM?
+#if __has_include("utils/debug/asc_printf.h")
+        if (runInfo.faTmpOutWsPos < 4) {
+            __asc_aicore::printf((__gm__ const char *)
+                                     "FDW_LSE wsPos=%u vecBase=%u m=%u off=%lld sum0=%f max0=%f\n",
+                                 runInfo.faTmpOutWsPos, runInfo.vecMbaseIdx, runInfo.actVecMSize,
+                                 (long long)gmOffset, sumUb.GetValue(0), maxUb.GetValue(0));
+        }
+#endif
         // Copy sum to gm
         BroadCastAndCopyOut(runInfo, sumUb, maxUb, gmOffset, calculateSize);
     }
@@ -832,6 +856,14 @@ public:
         uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo_.dSizeV +
                             (runInfo.vecMbaseIdx + mStartVec) * constInfo_.dSizeV;
 
+#if __has_include("utils/debug/asc_printf.h")
+        if (runInfo.faTmpOutWsPos < 4) {
+            __asc_aicore::printf((__gm__ const char *)
+                                     "FDW_ACC wsPos=%u vecBase=%u mStart=%u mDeal=%u off=%llu v0=%f v1=%f\n",
+                                 runInfo.faTmpOutWsPos, runInfo.vecMbaseIdx, mStartVec, mDealSize,
+                                 (unsigned long long)gmOffset, vec2ResUb.GetValue(0), vec2ResUb.GetValue(1));
+        }
+#endif
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
         dataCopyParams.blockLen = constInfo_.dSizeV * sizeof(T);
@@ -879,6 +911,11 @@ public:
 
         if (constInfo_.isSoftmaxLseEnable) {
             this->tPipe_->InitBuffer(softmaxLseQueue_, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
+        }
+        if constexpr (FLASH_DECODE) {
+            // FD规约前处理: sum/max广播到8份写出workspace, 未初始化时AllocTensor会触发非法地址(AICore 507015)
+            tPipe_->InitBuffer(maxBrdcst_, 1, 2048); // [64, 8]
+            tPipe_->InitBuffer(sumBrdcst_, 1, 2048);
         }
         if constexpr (isFp8) {
             if constexpr (USE_DN) {
