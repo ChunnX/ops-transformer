@@ -294,15 +294,17 @@ private:
             sharedExpertGmm1OutOffset = workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
-            if (tilingData->topoType == TOPO_TYPE_MTE && tilingData->needsIndependentSharedQuant != 0U) {
-                // MTE shared GMM1 统一读取逐 token 交织记录 [Align256(data) | Align32(scale)]。
-                sharedExpertInputOffset = workspaceSize;
-                uint32_t elementsPerByte = IsA4W4GmmMode(tilingData->sharedGmmMode) ? 2U : 1U;
-                int64_t recordBytes =
-                    CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elementsPerByte, 0LL, false);
-                workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * recordBytes,
-                                                      static_cast<int64_t>(ALIGN_512));
-            } else if (tilingData->topoType != TOPO_TYPE_MTE) {
+            if (tilingData->topoType == TOPO_TYPE_MTE) {
+                if (tilingData->isSharedQuantIndependent == 1U) {
+                    // MTE 共享专家使用逐 token 交织记录 [Align256(data) | Align32(scale)]，仅独立量化时分配。
+                    sharedExpertInputOffset = workspaceSize;
+                    uint32_t elementsPerByte = IsA4W4GmmMode(tilingData->sharedGmmMode) ? 2U : 1U;
+                    int64_t recordBytes =
+                        CalcQuantTokenScaleBytes(static_cast<int64_t>(tilingData->h), elementsPerByte, 0LL, false);
+                    workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * recordBytes,
+                                                          static_cast<int64_t>(ALIGN_512));
+                }
+            } else {
                 // URMA layered kernel 仍使用连续 data/scale，两块地址契约保持不变。
                 sharedExpertInputDataOffset = workspaceSize;
                 workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);

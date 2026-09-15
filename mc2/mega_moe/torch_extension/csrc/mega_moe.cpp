@@ -118,6 +118,18 @@ struct MegaMoeTensorInputs {
     const c10::optional<at::Tensor> &maskBuffer;
 };
 
+// 950 的 x 物理存储类型校验，量化模式和类型组合仍由 tiling 校验。
+static void CheckMegaMoeXInput950(const at::Tensor &x, const char *socName)
+{
+    CheckNpuInput(x, "x", socName);
+    const auto xScalarType = x.scalar_type();
+    const bool isPreQuantizedStorage = xScalarType == at::ScalarType::Float8_e5m2 ||
+                                       xScalarType == at::ScalarType::Float8_e4m3fn || xScalarType == at::kByte;
+    const bool isSupportedX = xScalarType == at::kBFloat16 || xScalarType == at::kHalf || isPreQuantizedStorage;
+    TORCH_CHECK(isSupportedX, "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn or uint8 on ",
+                socName, ", but got ", xScalarType, ".");
+}
+
 static void CheckMegaMoeInputsA5(const MegaMoeTensorInputs &inputs, int64_t epWorldSize, int64_t moeExpertNum,
                                  const char *socName)
 {
@@ -135,7 +147,7 @@ static void CheckMegaMoeInputsA5(const MegaMoeTensorInputs &inputs, int64_t epWo
     CheckInputAbsent(inputs.bias2, "l2_bias", socName);
     CheckInputAbsent(inputs.sharedBias1, "shared_l1_bias", socName);
     CheckInputAbsent(inputs.sharedBias2, "shared_l2_bias", socName);
-    CheckNpuInput(inputs.x, "x", socName);
+    CheckMegaMoeXInput950(inputs.x, socName);
     CheckNpuInput(inputs.context, "context", socName);
     CheckNpuInput(inputs.topkIds, "topk_ids", socName);
     CheckNpuInput(inputs.topkWeights, "topk_weights", socName);
@@ -174,13 +186,11 @@ static void CheckMegaMoeInputs(const MegaMoeTensorInputs &inputs, int64_t epWorl
         CheckMegaMoeInputsA5(inputs, epWorldSize, moeExpertNum, socName);
     }
     TORCH_CHECK((inputs.x.dim() == DIM_TWO) && (inputs.topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
-    const auto xScalarType = inputs.x.scalar_type();
-    const bool isPreQuantizedStorage = xScalarType == at::ScalarType::Float8_e5m2 ||
-                                       xScalarType == at::ScalarType::Float8_e4m3fn || xScalarType == at::kByte;
-    const bool isSupportedX = (xScalarType == at::kBFloat16) || (xScalarType == at::kHalf) || isPreQuantizedStorage;
-    TORCH_CHECK(isSupportedX && (inputs.topkIds.scalar_type() == at::kInt),
-                "dtype of x should be bfloat16, float16, float8_e5m2, float8_e4m3fn or uint8, "
-                "dtype of topk_ids should be int.");
+    if (!isAscend950) {
+        TORCH_CHECK(inputs.x.scalar_type() == at::kBFloat16 || inputs.x.scalar_type() == at::kHalf,
+                    "dtype of x should be bfloat16 or float16.");
+    }
+    TORCH_CHECK(inputs.topkIds.scalar_type() == at::kInt, "dtype of topk_ids should be int.");
     if (inputs.maskBuffer.has_value()) {
         const at::Tensor &mask = inputs.maskBuffer.value();
         TORCH_CHECK(mask.scalar_type() == at::kInt, "mask_buffer dtype must be int32.");

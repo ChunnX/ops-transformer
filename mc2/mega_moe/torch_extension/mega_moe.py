@@ -48,6 +48,7 @@ def _logical_hidden_size(
     dispatch_quant_mode: int,
     dispatch_quant_out_dtype: Optional[torch.dtype],
 ):
+    torch._check(x.dim() == 2, lambda: "x must be 2D.")
     return (
         x.size(1) * 2
         if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype)
@@ -169,11 +170,10 @@ class _MegaMoeOpBuilder(OpBuilder):
                 ep_world_size != 0,
                 lambda: (f"ep_world_size should not be 0, {ops_error(ErrCode.VALUE)}."),
             )
-            torch._check(x.dim() == 2, lambda: "x must be 2D.")
-            bs = x.size(0)
             h = _logical_hidden_size(
                 x, dispatch_quant_mode, dispatch_quant_out_dtype
             )
+            bs = x.size(0)
             local_moe_expert_num = moe_expert_num // ep_world_size
             y = x.new_empty((bs, h), dtype=torch.bfloat16)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
@@ -671,20 +671,6 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
-    torch._check(x.dim() == 2, lambda: "x must be 2D.")
-    logical_h = _logical_hidden_size(
-        x,
-        sym_buffer.dispatch_quant_mode,
-        sym_buffer.dispatch_quant_out_dtype,
-    )
-    expected_hidden = sym_buffer.hidden
-    torch._check(
-        logical_h == expected_hidden,
-        lambda expected_hidden=expected_hidden: (
-            f"The logical hidden size of x must equal sym_buffer.hidden "
-            f"({expected_hidden}).{ops_error(ErrCode.VALUE)}"
-        ),
-    )
     shared_quant_dtype_int = _dtype_to_int(
         shared_expert_quant_out_dtype, "shared_expert_quant_out_dtype"
     )
