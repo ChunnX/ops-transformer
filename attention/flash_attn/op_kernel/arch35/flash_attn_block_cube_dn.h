@@ -246,14 +246,6 @@ public:
                                           RunInfo &runInfo)
     {
         uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
-        uint32_t validRowsAlign16 = (runInfo.actMSize + 15) >> 4 << 4;
-        if (validRowsAlign16 != dstStride) {
-            // ND2NZ pads to 16 rows; initialize the extra rows consumed by N32 MMAD/FIXPIPE.
-            InitConstValueParams<uint16_t> paddingParams(static_cast<uint16_t>((dRealSize + 15) >> 4),
-                                                         static_cast<uint16_t>(dstStride - validRowsAlign16),
-                                                         static_cast<uint16_t>(validRowsAlign16), 0);
-            Fill(dstTensor[validRowsAlign16 * 16].template ReinterpretCast<uint16_t>(), paddingParams);
-        }
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
