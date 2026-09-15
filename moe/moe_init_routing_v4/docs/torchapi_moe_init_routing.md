@@ -215,7 +215,6 @@ cann_ops_transformer.moe_init_routing(
 
 - `quant_mode`为-1（不量化透传）时，`x_dtype`支持`torch_npu.hifloat8`、`torch_npu.float4_e2m1fn_x2`。`torch.float8_e5m2`、`torch.float8_e4m3fn`为PyTorch原生dtype，直接作为`x`的数据类型传入即可，无需通过`x_dtype`指定。
 - `quant_mode`为13（INT4动态量化）时，`x_dtype`仅支持`torch_npu.int4`或None。
-- `quant_mode`为1时不支持传入`torch_npu.int4`，INT4动态量化请使用`quant_mode=13`。
 
 ## 返回值说明
 
@@ -235,7 +234,7 @@ cann_ops_transformer.moe_init_routing(
 
 **expanded_scale不同场景下的输出shape和数据类型：**
 
-- 非量化场景下，当`scale`输入时，shape为[NUM_ROWS*K]，前availableIdxNum个元素为有效数据，输出`float32`类型。当输入x数据类型为`float8_e5m2`、`float8_e4m3fn`或`float4_e2m1`（通过`x_dtype`指定）时，如果`scale`输入，则shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出`float8_e8m0`类型。
+- 非量化场景下，当`scale`输入时，shape为[NUM_ROWS*K]，前availableIdxNum个元素为有效数据，输出`float32`类型。当输入x数据类型为`float8_e5m2`、`float8_e4m3fn`或`float4_e2m1`时，如果`scale`输入，则shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出`float8_e8m0`类型。
 - 动态量化场景下，当`scale`输入时，前availableIdxNum个元素为有效数据。
 - 静态量化场景下、HIF8直转量化场景下、HIF8 PERTENSOR量化场景下，输出为空tensor。
 - HIF8 PERTOKEN量化场景下，shape为[NUM_ROWS*K]，输出`float32`类型。
