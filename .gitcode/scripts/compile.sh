@@ -116,7 +116,7 @@ fi
 if [ "${task_name}" == "Pre_Compile" ]; then
     #LOG_DO bash build.sh --PR_PKG ./pr_filelist.txt -j32 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
     #LOG_DO bash build.sh --opkernel -soc=ascend950 ./pr_filelist.txt -j128
-    LOG_DO  bash build.sh --PR_PKG "pr_filelist.txt" --soc=ascend950 -j128
+    bash build.sh --PR_PKG "pr_filelist.txt" --soc=ascend950 --j128
     ret=$?
     if [ $ret -eq 200 ]; then
         LOG_HEAD "NOTE: changed files are not supported in pre_smoke"
