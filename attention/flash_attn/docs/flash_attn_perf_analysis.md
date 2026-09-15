@@ -1,268 +1,233 @@
-# Flash Attention D=256 基本块切块选择的性能建模
+# Flash Attention D=256 性能建模：基本块 (M, N) 的选择
 
-> 适用范围：arch35（ascend950）非量化 FA（Q/K/V 为 fp16/bf16，dV = D = 256）。
-> 对应代码：`attention/flash_attn`（config=4/5）；D=256 切块与 UB 优化正式上库于 [PR #9754](https://gitcode.com/cann/ops-transformer/pull/9754)。
+> 纯理论分析：基于 Ascend 硬件规格与 Flash Attention 的分块计算模型，推导 D=256（Q/K/V 头维为 256，非量化 fp16/bf16，dV = D）条件下基本块 (M, N) 的选择依据。
 
-## 1. 背景与问题
+## 1. 建模目标：Cube Bound
 
-FA kernel 的性能目标是 **cube bound**：让 Mmad（Cube 单元）成为流水线瓶颈，MTE 搬入、Fixpipe 搬出、Vector softmax 全部被 Cube 计算遮挡。能否达到 cube bound，由**基本块的切块大小**决定：
+Flash Attention 在 Ascend 上由多条引擎流水组成：
 
-- **M 维**（`mBaseSize`，Q/gS1 方向每 AIC 承担的块行数，即 bmm 的 M 维）：决定计算/访存比（算术强度）；
-- **N 维**（`s2BaseSize`，KV 序列方向的块大小，即 bmm 的 N 维）：决定 Fixpipe/掩码的每行开销与 L1 KV 流水深度；
-- **D 维**（`dBaseSize`=256 本身不可选，但 BMM2 输出必须按 dV 分块）：决定 L0C 子缓冲占用与轮转深度。
+- **Cube（Mmad）**：bmm1（Q·Kᵀ）与 bmm2（P·V）两个矩阵乘；
+- **MTE**：Q/K/V 从 GM 搬入 L1、L1 到 L0A/L0B 的分形搬运；
+- **Fixpipe**：bmm 结果从 L0C 搬出到 UB；
+- **Vector**：softmax（行 max/exp/sum）与输出的在线累加。
 
-D=64/128 时按"计算/访存比 + L0C 容量"即可选出切块；**D=256 的特殊矛盾**在于：各级存储占用（UB/L1/L0A/L0B/L0C）随 D 近似线性膨胀，候选切块在空间上互相排斥，切块选择变成"计算/访存比阈值 × 存储层次容量上限"的**联合求解**。
+这些引擎中，**只有 Cube 计算不可压缩**——矩阵乘的 FMA 数由问题规模唯一确定；搬入、搬出与 softmax 都可以与其他阶段重叠执行。因此 kernel 的性能上界就是 Cube 满流水，建模目标为 **Cube Bound**：
 
-本文先建立通用时间模型（§3-4），再逐维推导 D=256 的切块选择（§5-7），给出空间核算总表（§8），最后用 PR #9754 的实测数据验证（§9）。
+$$ T_{cube} \ge T_{mte2}, \qquad T_{cube} \ge T_{fixpipe}, \qquad T_{cube} \ge T_{vec} $$
 
-**结论先行**：D=256 最终选择 **M=128（sOuter=64）、N=128（sInner=128）+ BMM2 按 dV/128 splitN**（config=4）；M 方向工作量不足的小规模场景（`gSize × maxSeqQ < 64`）保留 **M=64、N=256**（config=5）。
+即 Cube 永远有数据可算，其余所有阶段的时间都被 Cube 时间完全遮挡。其中 Vector 侧 softmax/累加运行在与 Cube 配对的 Vector 核上，工作量与 M(N+D) 成正比，在实用块大小范围内远小于 $T_{cube}$，不构成额外约束；本文重点分析最紧的 **MTE2（搬入）** 与 **Fixpipe（搬出）** 两个条件。
 
-## 2. 硬件规格（单核）
+## 2. 模型设定
+
+### 2.1 基本块与迭代结构
+
+- **M**：Q 序列方向每次迭代、每个 Cube 核承担的块行数（bmm 的 M 维）；
+- **N**：KV 序列方向的块大小（bmm 的 N 维），一次迭代处理 N 行 KV；
+- **D**：头维（bmm 的 K 维 / bmm2 的输出列数，非量化时 dV = D）。
+
+单次外层迭代（处理一个 KV 块）：
+
+```
+BMM1:   S_Q[M,D] × S_K[D,N] → scores[M,N]
+softmax（online，跨迭代维护行 max/sum）
+BMM2:   P'[M,N] × V[N,D] → 部分输出[M,D]，与历史值在线累加
+```
+
+架构上一个 Cube 核与两个 Vector 核配对（1:2）：Cube 一次算 M 行，两个 Vector 核各负责 M/2 行的 softmax 与累加，**Vector 侧缓冲按 M/2 行计**。
+
+### 2.2 硬件规格（单核）
 
 | 参数 | 取值 | 说明 |
 | --- | --- | --- |
 | CoreNum | 32 | 核数 |
 | Frequency | 1.65 GHz | 主频 |
-| L1 | 512 KB | AIC 侧片上缓存（P/Q/KV 分片） |
-| L0A | 64 KB | 左矩阵 A 缓冲（2×32K 子缓冲） |
-| L0B | 64 KB | 右矩阵 B 缓冲（2×32K 子缓冲） |
-| L0C | 256 KB | cube 输出/累加缓冲（4×64K 子缓冲） |
-| UB | 256 KB | 统一缓冲（可用 248 KB） |
-| L2Capacity | 128 MB | |
-| L2BandWidth | 5.2 TB/s | 折合单核 ~98.5 B/cycle |
-| HBM Size | 128 GB | |
-| HBM BandWidth | 1.6 TB/s | 折合单核 ~30.3 B/cycle |
+| L1 | 512 KB | Q/P'/KV 分片驻留 |
+| L0A / L0B | 64 KB | bmm 左/右矩阵分形缓冲（各 2×32K 子缓冲） |
+| L0C | 256 KB | bmm 结果累加/输出缓冲（轮转槽） |
+| UB | 248 KB（可用） | bmm 结果落点与 Vector 侧全部缓冲 |
+| L2 | 128 MB / 5.2 TB/s | 折合单核 ~98.5 B/cycle |
+| HBM | 128 GB / 1.6 TB/s | 折合单核 ~30.3 B/cycle |
 
-> 单核带宽换算：总带宽 ÷ 核数 ÷ 主频。L2：5.2×10¹² ÷ (32 × 1.65×10⁹) ≈ 98.5 B/cycle；HBM：1.6×10¹² ÷ (32 × 1.65×10⁹) ≈ 30.3 B/cycle。
-> Cube 单周期完成一次 `16×16×16` mma，吞吐 FMA = 4096 FMA/cycle（模型假设）。
+Cube 单周期完成一次 `16×16×16` mma，吞吐 **FMA = 4096 FMA/cycle**（模型假设）。
 
-## 3. 基本块参数与代码映射
+## 3. Cube Bound 的达成条件（性能侧约束）
 
-tiling 侧切块因子与 kernel 侧基本块的映射（**注意方向**：sOuter 是 Q/M 方向，sInner 是 KV/N 方向）：
+### 3.1 时间模型
 
-| tiling 因子 | kernel 参数 | 含义（bmm 视角） | 取值 |
-| --- | --- | --- | --- |
-| sOuter | `mBaseSize = sOuter × CV_RATIO` | M 维：Q/gS1 方向每 AIC 的块行数 | 32 / 64 → M = 64 / 128 |
-| sInner | `s2BaseSize` | N 维：KV 序列方向块大小 | 128 / 256 |
+按**单次迭代总量**计。两个 matmul 的 FMA 总量为 `2·M·N·D`：
 
-CV_RATIO=2（`KERNEL_TYPE_MIX_AIC_1_2`，1 个 AIC 配 2 个 AIV）：AIC 一次迭代计算 `mBaseSize` 行 Q，2 个 AIV 各负责 `M/2` 行的 softmax（Vec1）与输出累加（Vec2）。
+$$ T_{cube} = \frac{2 M N D}{FMA} $$
 
-D=256 的 config 与 (M, N, D) 对应（`op_kernel/utils/flash_attn_common_def.h`，host 侧选择见 `op_host/fa_adjust_sinner_souter.h` / `op_host/arch35/flash_attn_tiling.cpp`）：
+Q 块（`M·D`）仅在首次迭代搬入一次，S2 足够大时被摊薄；K/V 每次迭代搬入 `2·N·D`：
 
-| config | sOuter | sInner | M（=sOuter×2） | N（=sInner） | D / dV | host 选择条件 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 4 | 64 | 128 | 128 | 128 | 256 / 256 | D=256 且 `gSize × maxSeqQ ≥ 64`（prefill 主路径） |
-| 5 | 32 | 256 | 64 | 256 | 256 / 256 | D=256 且 `gSize × maxSeqQ < 64`（小 M 场景） |
+$$ T_{mte2} \approx \frac{2 N D \cdot \text{sizeof}(kv)}{Mix_{bw}}, \qquad Mix_{bw} = h \cdot L2_{bw} + (1-h) \cdot HBM_{bw} $$
 
-单次外层迭代（处理一个 KV 块）的两个 matmul：
+其中 $h$ 为 L2 命中率，$Mix_{bw} \in [30.3,\ 98.5]$ B/cycle。bmm1/bmm2 结果（fp32）由 L0C fixpipe 到 UB：
 
-- BMM1：`S_Q[M,D] × S_K[D,N] → MM1[M,N]`（Q·Kᵀ，L0C fp32 累加）
-- BMM2：`P[M,N] × V[N,dV] → MM2[M,dV]`（attn·V）
+$$ T_{fixpipe} = \frac{(M N + M D) \cdot \text{sizeof}(fp32)}{UB_{bw}} $$
 
-D=256 时 BMM1 沿 K 维（D）拆 2 个 128 tile（`MatmulK<128,128,128>`）；BMM2 沿 N 维（dV）拆 2 个 128 tile（splitN，见 §7）。
+### 3.2 条件一：M 的下限（对 MTE2 的遮挡）
 
-## 4. 时间模型（通用公式）
+$T_{cube} > T_{mte2}$ 两侧约去 N、D（**与 D、N 无关**）：
 
-以下时间均按**单次迭代总量**计（处理一个 N=s2BaseSize 的 KV 块），便于跨阶段一致比较。
+$$ M > \frac{2 \cdot FMA}{Mix_{bw}} = \frac{8192}{Mix_{bw}} $$
 
-### 4.1 Cube 计算时间
+| Mix_bw | M 下限 |
+| --- | --- |
+| 98.5（L2 全命中） | M > 83.2，即 **M ≥ 84** |
+| 30.3（全 HBM 缺失） | M > 270.4，即 **M ≥ 271** |
 
-单次迭代两个 matmul（bmm1 = Q@Kᵀ、bmm2 = P@V，非量化 dV=D），FMA 总量 `2·M·N·D`：
+即：**M < 84 时无论 L2 命中多好都必然 mte2 bound**；M ∈ [84, 271) 时需 L2 命中率满足
 
-$$ T_{cube} = \frac{2 \cdot M \cdot N \cdot D}{FMA} $$
+$$ h \ge \frac{8192/M - 30.3}{98.5 - 30.3} $$
 
-### 4.2 MTE2 搬数时间
+M 越大，对 h 的要求越低（M=96 需 81%，M=128 需 49%，M ≥ 271 起无要求）。
 
-Q 块（`M·D`）仅在首次搬入一次，S2 足够大时被多次迭代摊薄，忽略；K/V 每次迭代搬入（`2·N·D`）：
+### 3.3 条件二：N 的下限（对 Fixpipe 的遮挡）
 
-$$ T_{mte2} \approx \frac{2 \cdot N \cdot D \cdot \text{sizeof}(kvDtype)}{Mix_{bw}} $$
+$T_{cube} > T_{fixpipe}$ 约去 M（**与 M 无关**）：
 
-其中 $Mix_{bw} \in [HBM_{bw},\ L2_{bw})$ 为 L2 命中与 HBM 缺失混合后的有效带宽，$Mix_{bw} = h \cdot L2_{bw} + (1-h) \cdot HBM_{bw}$（h 为 L2 命中率）。
+$$ UB_{bw} > 2 \cdot FMA \cdot \frac{N+D}{N D} = 8192 \cdot \left(\frac{1}{D} + \frac{1}{N}\right) \quad\Longleftrightarrow\quad N > \frac{8192}{UB_{bw} - 8192/D} $$
 
-### 4.3 Fixpipe 时间
+D=256 时 `UB_bw > 32 + 8192/N`：N=128 需 UB_bw > 96，N=256 需 UB_bw > 64。N 越大，bmm2 输出（`M×D`，与 N 无关）被越多 KV 行摊薄，fixpipe 压力越小——**该条件方向上偏好大 N**。（UB_bw 未列入硬件表，见 §8 待补充；若其与 L2 带宽同级（~98.5），则 N ≥ 124 才能满足，N=128 恰好过线。）
 
-bmm1/bmm2 结果由 L0C fixpipe 到 UB（fp32）：
+### 3.4 数值示例（M=128, N=128, D=256）
 
-$$ T_{fixpipe} = \frac{(M N + M D)\cdot \text{sizeof}(fp32)}{UB_{bw}} $$
-
-### 4.4 Cube Bound 条件
-
-FA 目标做到 cube bound，即 cube 为瓶颈：$T_{cube} > T_{mte2}$ 且 $T_{cube} > T_{fixpipe}$。代入上式化简：
-
-$$ \text{（M 条件）}\quad M > \frac{2 \cdot FMA}{Mix_{bw}} = \frac{8192}{Mix_{bw}} \quad \text{—— 与 D、N 无关} $$
-
-$$ \text{（N 条件）}\quad UB_{bw} > 2 \cdot FMA \cdot \frac{N+D}{N \cdot D} = 8192 \cdot \left(\frac{1}{D} + \frac{1}{N}\right) \quad \text{—— 与 M 无关} $$
-
-算术强度视角（与 M 条件等价）：每 KV 字节的 FMA 数为 `M/2` FMA/B，Cube 满吞吐所需供给带宽为 `8192/M` B/cycle。
-
-## 5. M 维（mBaseSize）的选择：访存比定下限，存储容量定上限
-
-### 5.1 计算/访存比阈值
-
-代入 `FMA = 4096`、`sizeof(kvDtype) = 2B`（fp16/bf16）：
-
-| M | cube bound 所需 Mix_bw | 可达性 |
-| --- | --- | --- |
-| 64 | ≥ 128 B/cycle | 超过 L2 上界 98.5 → **任何 L2 命中率下均为 mte2 bound** |
-| 128 | ≥ 64 B/cycle | L2 命中率 h ≥ ~50% 时可达 cube bound |
-| ≥ 271 | ≥ 30.3 B/cycle | 任意带宽下 cube bound，但空间不可行（见 5.2） |
-
-（h=50% 时 Mix_bw = 0.5×98.5 + 0.5×30.3 = 64.4，恰好越过 64 的门槛。）
-
-L2 命中率由 SectionStreamK 的 section 切分保障：按 L2 预算（96MB token 成本）切 section，使同一 section 内各核反复访问的 KV 不被挤出 L2，大 S2 下 h 可稳定超过 50%。
-
-### 5.2 存储容量上限
-
-设 N=128、D=256，考察 M 的空间上界：
-
-| 约束 | 公式 | M=256 时 | 结论 |
-| --- | --- | --- | --- |
-| L0C 子缓冲（BMM1 结果） | `M·N·4 ≤ 64K` | 128K > 64K ✗ | **M ≤ 128** |
-| UB（仅 mmRes+vec2Res） | `2·(M/2)·dV·4 + (M/2)·dV·4` | 256K + 128K > 248K ✗ | M=256 不可行 |
-| L1（P+Q+KV） | `3·M·N·2 + 2·M·D·2 + 4·64K` | 192K+256K+256K = 704K > 512K ✗ | M=256 不可行 |
-
-### 5.3 结论：M=128（sOuter=64）
-
-M=128 是"**超过 mte2 阈值（84）**"与"**L0C/UB/L1 空间可行（≤128）**"的唯一交点：既是不小于 84 的最小可用档位（sOuter 模板只有 32/64 两档），也是空间上界的最大值。此时 BMM1 结果 `128×128×4 = 64K` 恰好填满 1 个 L0C 子缓冲，mask `64×128 = 8K` 恰好填满 1 个 mask buffer，零浪费。
-
-M=64 的 config=5 仅用于 `gSize × maxSeqQ < 64` 的场景：M 方向总行数不足 64，M=128 的块会大面积空跑；此时算术强度由 workload 决定，切块无法改善，改选 N=256 换取 KV 迭代次数减半（见 §6.4）。
-
-### 5.4 单次迭代量化验证（M=128, N=128, D=256）
-
-| 项 | 数值 | 周期数 |
+| 项 | 数值 | 周期 |
 | --- | --- | --- |
 | cube | 2×128×128×256 = 8.39M FMA | **2048** |
-| KV 搬入 | 2×128×256×2 = 131072 B | @98.5: 1330 / @64: 2048（临界）/ @30.3: 4325 |
-| fixpipe 搬出 | (128×128 + 128×256)×4 = 196608 B | @128: 1536 / @96: 2048（临界） |
-| Q 搬入（一次性） | 128×256×2 = 65536 B | S2=4096 时摊薄 ~2K B/iter，可忽略 |
+| KV 搬入 | 131072 B | h=100%: 1330 / h=50%: 2048（临界）/ h=0: 4325 |
+| fixpipe 搬出 | (128²+128×256)×4 = 196608 B | UB_bw=96: 2048（临界）/ =128: 1536 |
 
-对照 (M=64, N=256)：`T_cube` 同为 2048 cycles（M×N 相同），但 KV 搬入 `2×256×256×2 = 262144 B`，即使 100% L2 命中也需 2661 cycles > 2048 → **必然 mte2 bound**。这正是 D=256 必须把 mBaseSize 从 64 提升到 128 的根本原因（PR #9754 演进的最后一步）。
+注意 **D=256 时 fixpipe 搬出量（196.6K/迭代）大于 KV 搬入量（131.1K/迭代）**，fixpipe 是仅次于 MTE2 的第二约束。对照 (M=64, N=256)：`T_cube` 同为 2048（M·N 相同），但 KV 搬入 262144 B，即使 h=100% 也需 2661 cycles > 2048——**M=64 < 84，必然 mte2 bound** 的直接体现。
 
-另注意：D=256 时 fixpipe 搬出量（196.6K/iter）**大于** KV 搬入量（131.1K/iter），fixpipe 是比 MTE2 更紧的第二约束（UB_bw > 96 才能被遮挡，见 §6.1）。
+## 4. 空间约束（容量侧约束）
 
-## 6. N 维（s2BaseSize）的选择：fixpipe 偏好大 N，空间强制 N=128
+各级存储需容纳基本块的工作集，并以多缓冲轮转维持流水重叠。以下按"bmm1 结果缓冲与 bmm2 结果缓冲**各自独立分配**"的常规设计推导（§7 将放宽该假设）。
 
-### 6.1 fixpipe 条件（软约束，偏好大 N）
+### 4.1 L0C：bmm 结果轮转槽
 
-$$ UB_{bw} > 8192 \cdot \left(\frac{1}{256} + \frac{1}{N}\right) \Rightarrow \text{N=128 时 } UB_{bw} > 96,\quad \text{N=256 时 } UB_{bw} > 64 $$
+L0C（256K）以轮转槽容纳 bmm1 结果（`M·N·4`）与 bmm2 结果（`M·D·4`）。取 4 槽、每槽 64K：bmm2 结果可**沿 dV 方向分块**适配槽容量，分块数 $t = \lceil M D \cdot 4 / 64K \rceil$；为保 Cube→Fixpipe 重叠，每迭代消耗的槽数（1 + t）须小于总槽数 4。由此：
 
-N 越大，BMM2 输出（`M×D`，与 N 无关）被更多 KV 行摊薄，fixpipe 每行开销越小——方向上偏好大 N。
+$$ M N \cdot 4 \le 64K \;\Rightarrow\; \mathbf{M N \le 16384}; \qquad t \le 2 \;\Rightarrow\; M D \le 32K \;\Rightarrow\; \mathbf{M \le 128}\ (D{=}256) $$
 
-### 6.2 mask UB（硬约束）
+dV 分块不改变 Mmad 总量（矩阵乘按分块累加），代价是 L0C 轮转深度从 2.0（t=1）降到 4/3（t=2）、fixpipe 调用次数翻倍但总量不变。
 
-mask buffer 固定 `2×8K`（`UB_MASK_BUF_BYTES = 8192`）：每 AIV 的掩码行 = `(M/2) × N × 1B ≤ 8192`，即：
+### 4.2 L1：输入分片驻留
 
-$$ M \cdot N \le 16384 \Rightarrow \text{M=128 时 } N \le 128;\quad \text{M=64 时 } N \le 256 $$
-
-### 6.3 L0C（硬约束）
-
-BMM1 结果 `M×N×4B ≤ 64K` 子缓冲，同样得到 **M·N ≤ 16384**——与 6.2 是同一个界（L0C 64K/4B = mask 8K/(1B×½)），两条约束在 (128,128) 与 (64,256) 两点上恰好同时贴满。
-
-### 6.4 L1 KV 流水深度（软约束，偏好小 N）
-
-KV 的 L1 slot 大小 = `N × D × 2B`（K/V 分片交替占用）：
-
-| N | L1 KV slot | 槽数 | L0B | 流水 |
-| --- | --- | --- | --- | --- |
-| 128 | 64K | 4（`L1_KV_BUFCNT=4`） | 双缓冲 | MTE2→MTE1→M 预取深度足（配合 PRELOAD_N=2） |
-| 256 | 128K | 2（`L1_KV_LARGE_BUF`） | 单缓冲 | 流水深度减半 |
-
-### 6.5 结论：M=128 时 N=128
-
-(M=128, N=256) 同时违反 mask（64×256=16K > 8K）、L0C（128×256×4=128K > 64K）、L1 KV（128K/slot 仅 2 槽）三条约束 → 不可行。(M=64, N=256) 恰好贴着 `M·N = 16K` 的界（mask 32×256=8K、BMM1 64×256×4=64K 均恰好），作为 config=5 保留给小 M 场景；且 N=256 使 KV 迭代次数减半，对 M 受限的 workload 更有利。
-
-## 7. D 维分块：BMM2 splitN 化解 L0C 越界
-
-D=256 时 BMM2 结果 `M × dV × 4 = 128×256×4 = 128K`，超过 L0C 64K 子缓冲 → 直接写出会越界。
-
-**方案（PR #9754 落地形态，`IterateBmm2l0Split`）**：
-
-- `nLoops = ceil(dV/128) = 2`，每次 `MatmulFull<128,128,s2>` 只算 128 列，结果 `128×128×4 = 64K` 恰好 1 个 L0C 子缓冲；
-- 原 `MatmulN` 内部本就按 N-tile 做 2 次 Mmad（写 L0C 的 `[0]` 和 `[64K]` 偏移）→ **拆到外部后 Mmad 次数不变**，只是把内部循环外提到子缓冲轮转层；
-- 每 tile 独立 `Mutex` 加锁 + `FixpipeMm2PartialN`（UB 目的偏移 `n×128`，`dstStride=dV` 不变）。
-
-**代价与收益**：
-
-| 项 | D=128（config=2） | D=256（config=4，splitN） |
+| 分片 | 缓冲 | 大小 |
 | --- | --- | --- |
-| 每 loop L0C 子缓冲消耗 | 2（BMM1 1 + BMM2 1） | 3（BMM1 1 + BMM2 2） |
-| L0C 轮转深度（4 槽/每 loop 消耗） | 2.0 | **1.33** |
-| Mmad 次数 | — | 不变 |
-| Fixpipe 次数/写入量 | 1 次/64K | 2 次/共 128K（同一 UB slot 的不同 N 区域） |
+| Q 块 | 双缓冲 | `2 × M·D·2 = 4MD` |
+| P'（softmax 结果，回写供 bmm2） | 三缓冲 | `3 × M·N·2 = 6MN` |
+| K/V（分时复用同组槽） | 至少双缓冲 | `≥ 2 × 2 × N·D·2 = 4ND`（槽数多则更深） |
 
-L0C 轮转深度从 2.0 降到 1.33 是 splitN 的固有代价（M 管线领先 FIX 管线的余量变小），实测未成为新瓶颈（§9）。
+$$ 4MD + 6MN + 4ND \le 512K $$
 
-**配套的 UB mmRes 槽数**：D>128 时 `UB_MM_RES_BUFCNT = 2`（4×64K = 256K > 248K 放不下），D≤128 时 4 槽。2 槽下用 `mmResBufId_` 单调递增计数器分配 slot，避免 BMM1(L) 与 BMM2(L−2) 映射到相同 slot+flag 产生碰撞。
+### 4.3 UB：结果缓冲与 Vector 侧工作集
 
-**L0A/L0B 并发**：32K 子缓冲×2。BMM1（Q k-tile 32K + K tile 32K）与 BMM2（P 32K + V tile 32K）并发各占 1 → 2/2 恰好满载，零余量；Mmad 完成后立即释放（Set M_MTE1），不死锁。
+| buffer | 大小 |
+| --- | --- |
+| bmm1 结果（fp32，双缓冲） | `2 × (M/2)·N·4 = 4MN` |
+| bmm2 结果（fp32，双缓冲） | `2 × (M/2)·D·4 = 4MD` |
+| P'（bf16，双缓冲，+1 行分形对齐 padding） | `≈ 2 × (M/2)·N·2 = 2MN` |
+| 输出累加暂存（fp32，单缓冲） | `(M/2)·D·4 = 2MD` |
+| 掩码（bool，双缓冲） | `2 × (M/2)·N·1 = MN` |
+| softmax 标量（max/sum/exp 各三缓冲）+ lse（双缓冲）+ 杂项 | `≈ 54M + 512` |
 
-## 8. 空间核算总表
+$$ 7MN + 6MD + 54M + 512 \le 248K\ (253952\,B) $$
 
-### 8.1 UB（config=4：M=128, N=128, D=256，每 AIV）
+### 4.4 L0A/L0B（定性）
 
-| buffer | 公式 | 大小 |
-| --- | --- | --- |
-| mmRes ×2 | `2 × (M/2) × max(N,dV) × 4` | 128K |
-| mask ×2 | 固定 `2 × 8K` | 16K |
-| vec2Res | `(M/2) × Align64(dV) × 4` | 64K |
-| vec1Res ×2 | `2 × (M/2+1) × N × 2`（+1 为 NZ 格式 stride padding） | 32.5K |
-| softmaxMax/Sum/Exp | `3×3 × Align(M/2×4, 256)` | 2.25K |
-| lseOut ×2 | `2 × Align(M/2×8×4, 256)` | 4K |
-| softmaxTmp | 固定 | 0.5K |
-| **合计** | | **247.25K / 248K（余 768B）** |
+各 64K（2×32K 子缓冲）。bmm 输入按 16×16 分形驻留，K 方向（D=256）按 128 分块后，M、N ≤ 128 时每个输入分片恰好 32K 填满一个子缓冲，自然满足；M 或 N 过大将迫使输入侧退化（单缓冲或重复加载），故 L0A/L0B 不单独给出不等式，但支持 M、N ≤ 128 的上界。
 
-mB=128 能放进 UB 的前提是 PR #9754 的两步前置优化（演进早期 UB 同为 247.25K 但 mB=64）：
+## 5. D=256 代入：(M, N) 的可行域
 
-- **vec1Res/vec2Res 动态化**：由硬编码（33024B/32768B）改为按 `(M, N, dV)` 公式推导，小 config 不再为大 config 买单；
-- **mm1Res/mm2Res 合并为 mmRes**：slot 取 `max(mm1, mm2) = (M/2)×max(N,dV)×4`，D=256 时节省 64K；同步上用 2-flag 环形链（同步 ID 标识资源而非操作者）替代两条独立链。
+将 D=256 代入上述约束（分离缓冲设计）：
 
-### 8.2 L1（config=4，每 AIC）
-
-| buffer | 公式 | 大小 |
-| --- | --- | --- |
-| L1_P ×3 | `3 × M×N×2` | 96K |
-| L1_Q ×2 | `2 × M×D×2` | 128K |
-| L1_KV ×4 | `4 × (N×D×2 = 64K)` | 256K |
-| **合计** | | **480K / 512K** |
-
-### 8.3 config=4 vs config=5 总览
-
-| 项 | config=4（M=128, N=128） | config=5（M=64, N=256） |
-| --- | --- | --- |
-| cube bound 可达性 | h ≥ ~50% 可达 | 不可达（需 Mix_bw ≥ 128 > 98.5） |
-| UB | 247.25K / 248K | ~149.75K / 248K |
-| L1 | 480K / 512K（P 96K + Q 128K + KV 256K） | 416K / 512K（P 96K + Q 64K + KV 2×128K） |
-| L1 KV 槽 / L0B | 4 × 64K / 双缓冲 | 2 × 128K / 单缓冲 |
-| L0C 每 loop 消耗 / 深度 | 3 槽 / 1.33 | 3 槽 / 1.33（BMM2 每 tile 仅 32K，半槽浪费） |
-| 适用场景 | prefill（M 工作量充足） | `gSize×maxSeqQ < 64`（decode/小 batch） |
-
-## 9. 实测验证（PR #9754，ascend950）
-
-演进路径（每步均由上述建模驱动）：
-
-1. **vec1Res/vec2Res 动态化** —— UB 按公式精确分配；
-2. **mm1Res/mm2Res 合并 + 2-flag 环形同步** —— D=256 腾出 64K；
-3. **s2: 256 → 128** —— L1 KV 恢复 4×64K 深轮转，BMM1 改用 `MatmulK`；
-4. **mB: 64 → 128 + BMM2 splitN + L0C 4×64K 共享轮转** —— 越过 §5.1 的 84 阈值；L0C 归一避免 D=128/D=256 路径分叉，并恢复 master 执行顺序（先 BMM1 后 BMM2）保住 M/FIX 流水重叠；
-5. **config 重编号** —— 删除死 config，最终 config=4/5。
-
-性能（相对优化前基线）：
-
-| 用例 | 优化前 | 优化后 | 变化 |
+| 约束 | 不等式（D=256） | N=128 | N=256 |
 | --- | --- | --- | --- |
-| D=256 Prefill 4096 | 434.71 us | 245.21 us | **-43.6%** |
-| D=256 Prefill 1024 | 33.03 us | 26.58 us | **-19.5%** |
-| D=256 Decode 1×2048 | 19.74 us | 18.81 us | -4.7% |
-| D=128 Prefill 4096 | 131.77 us | 131.54 us | -0.2%（无退化） |
-| D=128 Prefill 1024 | 17.36 us | 17.25 us | -0.6%（无退化） |
-| D=128 Decode | 11.82 us | 11.52 us | -2.5% |
+| 条件一（MTE2） | M > 8192/Mix_bw | M ≥ 84（h=100%）~ 271（h=0） | 同左 |
+| 条件二（Fixpipe） | N > 8192/(UB_bw−32) | 需 UB_bw > 96 | 需 UB_bw > 64 |
+| L0C | MN ≤ 16384，M ≤ 128 | M ≤ 128 | **M ≤ 64** |
+| L1 | 4MD+6MN+4ND ≤ 512K | M ≤ 219 | M ≤ 102 |
+| UB（分离缓冲） | 7MN+6MD+54M+512 ≤ 248K | **M ≤ 102** | M ≤ 74 |
+| **联合** | | **84 < M ≤ 102** | **M ≤ 64，无 cube bound 窗口** |
 
-D=256 大幅提升且 D=128 无退化，验证了"M=128 越过算术强度阈值 + N=128/D 维 splitN 满足空间约束"的切块选择。
+两点观察：
 
-## 10. 结论
+1. **N=256 被 L0C 锁死**：`MN ≤ 16384` 使 M ≤ 64 < 84，无论其他约束如何放松都到不了 cube bound 阈值。
+2. **N=128 的窗口极窄**：可行域 (84, 102] 紧贴阈值 84——即使取到上界 M=102，也要求 L2 命中率 ≥ 73%，裕度极小。而块大小需按 16 分形对齐、实用档位取 2 的幂（M ∈ {64, 128}）：M=128 超出 UB 上限 102（311K > 248K），M=64 低于阈值 84——**分离缓冲设计下，D=256 在常规档位上不存在 cube bound 可行解**。
 
-- **M 维**：cube bound 要求 `M > 8192/Mix_bw`（L2 全命中下界 84，全 HBM 缺失下界 271）；L0C/UB/L1 空间上界 M ≤ 128。**M=128 是唯一同时满足两者的取值**，配合 section 级 KV 的 L2 复用（h ≥ 50%）达到 cube bound。
-- **N 维**：fixpipe 条件 `UB_bw > 8192(1/D + 1/N)` 偏好大 N，但 mask 8K 与 L0C 64K 共同强制 `M·N ≤ 16384` → M=128 时 **N=128**；M=64 时 N=256（config=5，小 M 场景）。
-- **D 维**：BMM2 按 dV/128 splitN，以 L0C 轮转深度 2.0→1.33 为代价化解 128K 越界，Mmad 次数不变。
-- **D=256 的方法论**：先算每 KV 字节算术强度（M/2 FMA/B）定 M 下限，再逐级核对 L0C→UB→L1 空间上限，最后用 fixpipe/L1 流水深度核对 N 与 D 分块——计算/访存比给出"能选多大"，存储层次给出"只许多大"。
-- **待补充**：UB 带宽 `UB_bw` 实测值，用于 N 条件（6.1 节）的数值封闭；D=256 下 fixpipe 搬出量大于 KV 搬入量，是仅次于 MTE2 的第二约束，值得单独 profiling。
+退而求其次只能取 (64, 256)：空间全部满足（UB 212K、L1 416K），但 M=64 < 84，**注定 mte2 bound**——这就是 D=256 性能远差于 D=128 的理论根源。
+
+## 6. 可行域内 M、N 对性能的影响
+
+上节给出的是不等式（范围而非定值），范围内如何取值，取决于 M、N 各自的性能影响。
+
+### 6.1 M：在可行域内越大越好
+
+- **算术强度**：每 KV 字节的 FMA 数为 `M/2`，M 是唯一的算术强度旋钮。M 越大，条件一越宽松，对 L2 命中率的要求越低（M=102 需 73%，M=128 需 49%），cube bound 越稳；
+- **Q 摊薄**：Q 搬入的摊薄负担相对 cube 时间与 M 无关（两者同随 M 线性增长），不构成偏好；
+- **代价**：尾块浪费（Q 侧总行数不整除 M 时末块空转）与任务粒度变粗。Q 侧行数充足（prefill / 长序列）时代价可忽略；**Q 侧总行数不足 M 时大块大面积空转，必须缩小 M**——此时 M 反正低于 84，cube bound 不可达，属另一种取值逻辑（见 §8）。
+
+结论：**Q 侧行数充足时，M 取可行域上界**。
+
+### 6.2 N：双向影响，且与 M 在 L0C 上耦合
+
+- **大 N 的收益**：条件二（fixpipe）更宽松；KV 迭代次数 `S2/N` 减少，循环与同步开销摊薄；
+- **小 N 的收益**：UB/L0C 中的 MN 项、L1 中的 N·D 项都随 N 收缩；K/V 单个 L1 分片更小（N=128 时 64K/片，可 4 槽深轮转；N=256 时 128K/片，仅 2 槽），MTE2 与 Cube 的重叠更深；S2 不整除 N 时尾块浪费更小。
+
+关键耦合：**L0C 约束 `MN ≤ 16384` 把 M 与 N 绑在同一份预算里**——N 每放大一档，M 的上限就减半。条件一（M ≥ 84）是 cube bound 的唯一入口，而条件二只是"过线即可"（N=128 在 UB_bw ≥ 96 时已满足）。因此选择次序是：**先保 M 过阈值并尽量大，N 在剩余预算内取满足条件二的值**。D=256 下即 N=128、M 取上界。
+
+## 7. 缓冲冗余的发现：bmm1/bmm2 结果共用后，可行域扩大
+
+### 7.1 冗余性论证
+
+§4.3 中 bmm1 结果缓冲（4MN）与 bmm2 结果缓冲（4MD）各自独立双缓冲，但两者的**生命周期并不重叠**：
+
+```
+bmm1(L) 结果 → softmax(L) 消费完毕 → 该 buffer 死亡
+bmm2(L) 结果 → 累加(L) 消费完毕   → 该 buffer 死亡
+```
+
+数据流是环形链 `bmm1 → softmax → bmm2 → 累加 → bmm1(下一轮)`：同一迭代内 softmax 先读完 bmm1 结果、bmm2 才开始产出；bmm2 的结果要到下一轮 softmax 前才被累加读完。因此**两组双缓冲可以共用同一对轮转 slot**，slot 容量取两者的较大值 `(M/2)·max(N,D)·4`。D=256 ≥ N 时，bmm1 结果（`(M/2)·N·4`）完全装得进 bmm2 的 slot——bmm1 的双缓冲（4MN）整体消失。
+
+### 7.2 新的 UB 空间公式
+
+$$ \underbrace{4M \cdot \max(N,D)}_{\text{共用结果缓冲}} + 2MN + 2MD + MN + 54M + 512 \le 248K $$
+
+D=256 且 N ≤ 256 时 $\max(N,D)=D$，化简为：
+
+$$ \mathbf{3MN + 6MD + 54M + 512 \le 248K} \qquad (\text{原 } 7MN + 6MD + \dots) $$
+
+节省量 = 4MN（N ≤ D 时）。对 (M=128, N=128)：节省 64K，UB 占用从 311K（超限）降为 **247.25K ≤ 248K（余 768B）**。
+
+### 7.3 扩大后的可行域与"更好的选择"
+
+| 约束 | N=128 | N=256 |
+| --- | --- | --- |
+| UB（共用缓冲） | **M ≤ 128** | M ≤ 107 |
+| L0C / L1 | M ≤ 128 / M ≤ 219 | **M ≤ 64** / M ≤ 102 |
+| **联合** | **84 < M ≤ 128** | M ≤ 64（仍无窗口） |
+
+与 §6 的结论呼应：
+
+- N=128 的窗口从 (84, 102] 扩大到 **(84, 128]**，恰好把 M=128 档位纳入：对 L2 命中率的要求从 73% 降到 49%，cube bound 从"勉强贴线"变为"有裕度"——**这就是缓冲共用后能选出更好 (M, N) 的量化体现**；
+- N=256 侧不变（被 L0C 的 MN ≤ 16K 锁死在 M ≤ 64），进一步印证 §6.2 的判断：L0C 耦合下 N 必须给 M 让路；
+- 共用的前提是**按结果序而非算子序分配 slot**，并以环形等待保证"bmm1 第 L 轮写入"晚于"bmm2 第 L−2 轮读完"——即空间收益需要同步机制的配合，不是免费的。
+
+## 8. 结论
+
+| 场景 | 选择 | 依据 |
+| --- | --- | --- |
+| D=256，Q 侧行数充足（prefill） | **M=128, N=128** | 落在共用缓冲后的可行域 (84, 128] 上界；L2 命中率 ≥ ~50% 即 cube bound；bmm2 结果按 dV/128 分块适配 L0C 槽 |
+| D=256，Q 侧总行数 < 128（decode/小 batch） | **M=64, N=256** | M 被工作量压低，cube bound 反正不可达（M < 84）；取大 N 换取 KV 迭代次数减半，且 (64,256) 恰好贴住 `MN = 16K` 的 L0C/mask 界，空间无浪费 |
+
+建模方法论小结：
+
+1. **性能条件给下限**：cube bound 等价于 `M > 8192/Mix_bw`（84~271，与 D/N 无关）与 `N > 8192/(UB_bw − 8192/D)`；
+2. **空间约束给上限**：L0C `MN ≤ 16384`、`M ≤ 128`（dV 分块后）；L1 `4MD+6MN+4ND ≤ 512K`；UB 由结果缓冲与 Vector 工作集决定；
+3. **可行域内 M 越大越好**（唯一算术强度旋钮），N 与 M 在 L0C 上共享预算、优先保 M；
+4. **缓冲复用扩大可行域**：bmm1/bmm2 结果生命周期错开、可共用 slot，UB 上界 M ≤ 102 → M ≤ 128，使 cube bound 从临界变为可行——空间优化最终转化为性能选项的解放。
+
+**待补充**：UB 带宽 UB_bw 实测值，用于封闭条件二；D=256 下 fixpipe 搬出量大于 KV 搬入量，值得单独 profiling 验证。
