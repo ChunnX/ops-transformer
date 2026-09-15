@@ -122,8 +122,8 @@ private:
         InitializeActivationBuffers(tilingData);
         InitializeRoutingMetadata(tilingData, expertRecvTokenCountBytes);
         InitializeMteSyncFlags(tilingData);
-        bool isW4Mode = IsW4GmmMode(tilingData->moeGmmMode);
-        InitializeGmmIntermediateBuffers(tilingData, isW4Mode, true);
+        const bool needsReloadCumsum = IsW4GmmMode(tilingData->moeGmmMode);
+        InitializeGmmIntermediateBuffers(tilingData, needsReloadCumsum, true);
         InitializeGmm1TileStatus(tilingData);
         if (tilingData->sharedExpertNum > 0) {
             InitializeSharedExpertGmmOutputs(tilingData);
@@ -216,9 +216,9 @@ private:
                              static_cast<int64_t>(tilingData->sharedExpertNum);
         }
         InitializeRoutingFlags(tilingData);
-        bool hasSharedW4Gmm = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
-        bool isW4Mode = IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm;
-        if (isW4Mode || tilingData->combineQuantMode == COMBINE_NO_QUANT) {
+        const bool isMoeW4 = IsW4GmmMode(tilingData->moeGmmMode);
+        const bool hasSharedW4 = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
+        if (isMoeW4 || hasSharedW4 || tilingData->combineQuantMode == COMBINE_NO_QUANT) {
             flagGmmToEpilogueOffset = workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
@@ -248,9 +248,9 @@ private:
         // URMA activation uses only the first slot of each expert.
         workspaceSize += SIZE_INT_32 * moeExpertCount * INT_CACHELINE;
         InitializeRoutingFlags(tilingData);
-        bool hasSharedW4Gmm = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
-        bool isW4Mode = IsW4GmmMode(tilingData->moeGmmMode) || hasSharedW4Gmm;
-        if (isW4Mode) {
+        const bool isMoeW4 = IsW4GmmMode(tilingData->moeGmmMode);
+        const bool hasSharedW4 = tilingData->sharedExpertNum > 0 && IsW4GmmMode(tilingData->sharedGmmMode);
+        if (isMoeW4 || hasSharedW4) {
             flagGmmToEpilogueOffset = workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
