@@ -102,15 +102,10 @@ void PrintVector(const std::vector<T> &data, const std::string &name, int64_t pr
 
 int main(int argc, char **argv)
 {
-    const int64_t swigluMode = argc > 1 ? std::stoll(argv[1]) : 0;
-    const bool transposeWeight = argc > 2 ? std::stoll(argv[2]) != 0 : false;
-    const bool activateLeft = argc > 3 ? std::stoll(argv[3]) != 0 : true;
-    const std::string dumpPrefix = argc > 4 ? argv[4] : "";
-    const int64_t scaleAlg = argc > 5 ? std::stoll(argv[5]) : 0;
-    if (swigluMode < 0 || swigluMode > 3) {
-        LOG_PRINT("invalid swiglu mode=%ld\n", swigluMode);
-        return 2;
-    }
+    const int64_t swigluMode = 2;
+    const bool transposeWeight = argc > 1 ? std::stoll(argv[1]) != 0 : false;
+    const std::string dumpPrefix = argc > 2 ? argv[2] : "";
+    const int64_t scaleAlg = argc > 3 ? std::stoll(argv[3]) : 0;
     if (scaleAlg < 0 || scaleAlg > 1) {
         LOG_PRINT("invalid scale_alg=%ld\n", scaleAlg);
         return 2;
@@ -227,8 +222,8 @@ int main(int argc, char **argv)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
-        x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 2, 0, 2, 0, nullptr, -1, activateLeft,
-        swigluMode, 7.0, 1.702, 1.0, -1, "rint", scaleAlg, 0.0, output, outputScale, &workspaceSize, &executor);
+        x, weight, weightScale, nullptr, nullptr, xScale, nullptr, groupList, 2, 0, 2, 0, nullptr, swigluMode,
+        7.0, 1.702, 1.0, "rint", scaleAlg, 0.0, output, outputScale, &workspaceSize, &executor);
 
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ret=%d\n", ret); return ret);
     LOG_PRINT("workspaceSize = %lu\n", workspaceSize);

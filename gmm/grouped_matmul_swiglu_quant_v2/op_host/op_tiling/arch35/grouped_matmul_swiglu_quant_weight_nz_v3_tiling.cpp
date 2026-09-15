@@ -10,8 +10,8 @@
 #include "log/log.h"
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_impl_registry.h"
-#include "../grouped_matmul_swiglu_quant_v3_tiling.h"
-#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v3_tiling_key.h"
+#include "../grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
+#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_key.h"
 
 using namespace ge;
 using namespace Ops::Transformer::OpTiling;
@@ -41,14 +41,12 @@ void GroupedMatmulSwigluQuantV3Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
     transposeWeight_ = false;
-    swigluMode_ = 0;
-    activateLeft_ = true;
+    swigluMode_ = SWIGLU_MODE;
     clampLimit_ = 7.0F;
     gluAlpha_ = 1.702F;
     gluBias_ = 1.0F;
     scaleAlg_ = SCALE_ALG_OCP;
     dstTypeMax_ = DEFAULT_DST_TYPE_MAX;
-    axis_ = DEFAULT_AXIS;
     roundMode_ = 0;
     useTensorApi_ = false;
 }
@@ -116,9 +114,7 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     int64_t quantMode = 0;
     bool transposeWeight = false;
     int64_t groupListType = 0;
-    int64_t activateDim = 0;
-    int64_t swigluMode = 0;
-    int64_t axis = DEFAULT_AXIS;
+    int64_t swigluMode = SWIGLU_MODE;
     int64_t scaleAlg = SCALE_ALG_OCP;
     float dstTypeMax = DEFAULT_DST_TYPE_MAX;
     std::string roundMode;
@@ -127,13 +123,10 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
                     !GetAttrInt(attrs, ATTR_INDEX_QUANT_MODE, quantMode) ||
                     !GetAttrBool(attrs, ATTR_INDEX_TRANSPOSE_WEIGHT, transposeWeight) ||
                     !GetAttrInt(attrs, ATTR_INDEX_GROUPLIST_TYPE, groupListType) ||
-                    !GetAttrInt(attrs, ATTR_INDEX_ACTIVATE_DIM, activateDim) ||
                     !GetAttrInt(attrs, ATTR_INDEX_SWIGLU_MODE, swigluMode) ||
-                    !GetAttrBool(attrs, ATTR_INDEX_ACTIVATE_LEFT, activateLeft_) ||
                     !GetAttrFloat(attrs, ATTR_INDEX_CLAMP_LIMIT, clampLimit_) ||
                     !GetAttrFloat(attrs, ATTR_INDEX_GLU_ALPHA, gluAlpha_) ||
                     !GetAttrFloat(attrs, ATTR_INDEX_GLU_BIAS, gluBias_) ||
-                    !GetAttrInt(attrs, ATTR_INDEX_AXIS, axis) ||
                     !GetAttrString(attrs, ATTR_INDEX_ROUND_MODE, roundMode) ||
                     !GetAttrInt(attrs, ATTR_INDEX_SCALE_ALG, scaleAlg) ||
                     !GetAttrFloat(attrs, ATTR_INDEX_DST_TYPE_MAX, dstTypeMax),
@@ -145,19 +138,14 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
     OP_CHECK_IF(groupListType != 0 && groupListType != 1,
                 OP_LOGE(context_->GetNodeName(), "group_list_type must be 0 or 1, but got %ld", groupListType),
                 return false);
-    OP_CHECK_IF(activateDim != -1,
-                OP_LOGE(context_->GetNodeName(), "activate_dim must be -1, but got %ld", activateDim), return false);
-    OP_CHECK_IF(swigluMode < SWIGLU_MODE_MIN || swigluMode > SWIGLU_MODE_MAX,
-                OP_LOGE(context_->GetNodeName(), "swiglu_mode must be in [0, 3], but got %ld", swigluMode),
+    OP_CHECK_IF(swigluMode != SWIGLU_MODE,
+                OP_LOGE(context_->GetNodeName(), "swiglu_mode currently only supports 2, but got %ld", swigluMode),
                 return false);
     OP_CHECK_IF(!std::isfinite(gluAlpha_) || !std::isfinite(gluBias_),
                 OP_LOGE(context_->GetNodeName(), "glu_alpha and glu_bias must be finite"), return false);
-    OP_CHECK_IF(swigluMode != 0 && !IsFinitePositive(clampLimit_),
-                OP_LOGE(context_->GetNodeName(), "clamp_limit must be finite and positive for swiglu_mode %ld",
-                        swigluMode),
+    OP_CHECK_IF(!IsFinitePositive(clampLimit_),
+                OP_LOGE(context_->GetNodeName(), "clamp_limit must be finite and positive for swiglu_mode 2"),
                 return false);
-    OP_CHECK_IF(axis != DEFAULT_AXIS,
-                OP_LOGE(context_->GetNodeName(), "axis must be -1, but got %ld", axis), return false);
     OP_CHECK_IF(roundMode != DEFAULT_ROUND_MODE,
                 OP_LOGE(context_->GetNodeName(), "round_mode must be rint, but got %s", roundMode.c_str()),
                 return false);
@@ -169,7 +157,6 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(), "dst_type_max must be 0.0 for the MXFP8 output path"), return false);
 
     swigluMode_ = swigluMode;
-    axis_ = axis;
     // roundMode is validated above and the only supported value is rint.
     // Encode it explicitly so the V3 tiling payload carries the effective
     // quantization attributes even though the current kernel has one mode.
@@ -337,10 +324,10 @@ bool GroupedMatmulSwigluQuantV3Tiling950::AnalyzeInputs()
     OP_CHECK_IF(!CheckShapeAndScale(xShape, xScaleShape, weightShape, weightNzShape, weightScaleShape, groupListShape),
                 OP_LOGE(context_->GetNodeName(), "shape and scale validation failed"), return false);
     OP_CHECK_IF(!CheckOutputShape(), OP_LOGE(context_->GetNodeName(), "output shape validation failed"), return false);
-    // Mode 1 consumes interleaved columns and therefore always stays on the
-    // CGMCT path.  Modes 0/2/3 can use the Tensor API only when K is 128
-    // aligned; the unaligned cases use the CGMCT compatibility path.
-    useTensorApi_ = swigluMode_ != 1 && (inputParams_.kSize % 128U) == 0U;
+    // The current V3 contract supports only mode 2.  Keep the existing
+    // Tensor API/CGMCT routing split: aligned K uses Tensor API and the
+    // remaining K values use the compatibility path.
+    useTensorApi_ = (inputParams_.kSize % 128U) == 0U;
     return true;
 }
 
@@ -357,17 +344,11 @@ ge::graphStatus GroupedMatmulSwigluQuantV3Tiling950::DoOpTiling()
     tilingData_.gmmSwigluQuantParams.set_isMxWeightNzMultiTensor(0);
     tilingData_.gmmSwigluQuantParams.set_dequantDtype(static_cast<uint8_t>(FLOAT_DEQUANT_DTYPE));
     tilingData_.gmmSwigluQuantParams.set_swigluMode(swigluMode_);
-    tilingData_.gmmSwigluQuantParams.set_activateLeft(static_cast<uint8_t>(activateLeft_));
-    // CANN 9.2's AscendC kernel tiling view is based on the legacy V3
-    // prefix. Carry the MX scale algorithm through the legacy reserved byte
-    // so the kernel remains compatible with both legacy and extended layouts.
-    tilingData_.gmmSwigluQuantParams.set_reserved0(static_cast<uint8_t>(scaleAlg_));
     tilingData_.gmmSwigluQuantParams.set_clampLimit(clampLimit_);
     tilingData_.gmmSwigluQuantParams.set_gluAlpha(gluAlpha_);
     tilingData_.gmmSwigluQuantParams.set_gluBias(gluBias_);
     tilingData_.gmmSwigluQuantParams.set_scaleAlg(scaleAlg_);
     tilingData_.gmmSwigluQuantParams.set_dstTypeMax(dstTypeMax_);
-    tilingData_.gmmSwigluQuantParams.set_axis(axis_);
     tilingData_.gmmSwigluQuantParams.set_roundMode(roundMode_);
     return ge::GRAPH_SUCCESS;
 }

@@ -104,7 +104,6 @@ __aicore__ inline void GmmTensorApiSwigluQuantV3MxFp8Kernel(
                                                    static_cast<uint32_t>(mmTiling_.baseM),
                                                    static_cast<uint32_t>(mmTiling_.baseN)};
     epilogueParams.swigluMode = gmmParams_.swigluMode;
-    epilogueParams.activateLeft = gmmParams_.activateLeft != 0;
     epilogueParams.clampLimit = gmmParams_.clampLimit;
     epilogueParams.gluAlpha = gmmParams_.gluAlpha;
     epilogueParams.gluBias = gmmParams_.gluBias;

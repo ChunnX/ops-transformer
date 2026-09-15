@@ -75,7 +75,6 @@ __aicore__ inline void GmmSwigluAswtV3(
                                    static_cast<uint32_t>(mmTilingData_.baseM),
                                    static_cast<uint32_t>(mmTilingData_.baseN)};
     epilogueArgs.swigluMode = gmmSwigluQuantParams_.swigluMode;
-    epilogueArgs.activateLeft = gmmSwigluQuantParams_.activateLeft != 0;
     epilogueArgs.clampLimit = gmmSwigluQuantParams_.clampLimit;
     epilogueArgs.gluAlpha = gmmSwigluQuantParams_.gluAlpha;
     epilogueArgs.gluBias = gmmSwigluQuantParams_.gluBias;

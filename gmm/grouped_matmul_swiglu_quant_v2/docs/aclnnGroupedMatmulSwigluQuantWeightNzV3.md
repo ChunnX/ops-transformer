@@ -25,7 +25,7 @@
 
 - 接口功能：融合 GroupedMatmul、MXFP8 反量化、SwiGLU 和 MXFP8 量化。该接口是内部 `GroupedMatmulSwigluQuantV3` 算子的 weightNZ 专用 ACLNN 封装，当前仅支持 Ascend 950（arch35）的单 Tensor MXFP8 weightNZ 场景。
 
-- 与 V2 的主要区别：V3 增加了可配置的 SwiGLU 参数，包括 `activateDim`、`activateLeft`、`swigluMode`、`clampLimit`、`gluAlpha` 和 `gluBias`。这些参数只作用于 SwiGLU 计算阶段，不改变 GroupedMatmul 和 MXFP8 量化的数据格式约束。
+- 与 V2 的主要区别：V3 增加了可配置的 SwiGLU 参数 `swigluMode`、`clampLimit`、`gluAlpha` 和 `gluBias`。这些参数只作用于 SwiGLU 计算阶段，不改变 GroupedMatmul 和 MXFP8 量化的数据格式约束；本迭代 `swigluMode` 仅支持取值 2。
 
 - 计算公式：
 
@@ -36,18 +36,14 @@
 
      其中缩放因子按照 MX block 规则在 K 方向对应的 64 元素块上广播。
 
-  3. 按 `activateDim=-1` 和 `activateLeft` 对 `x_i` 拆分，执行 `swigluMode` 对应的 SwiGLU 计算，得到 `swigluOut_i`。
+   3. 沿最后一维前后分半，对前半部分执行带 clamp 和 alpha 的 SiLU，对后半部分执行带 clamp 和 bias 的线性分支，再逐元素相乘，得到 `swigluOut_i`。
   4. 对 `swigluOut_i` 执行 MXFP8 动态量化，输出量化结果 `output` 和 E8M0 格式的 `outputScale`：
 
      $$output, outputScale = DynamicMxQuant(swigluOut_i)$$
 
-- `swigluMode` 取值和计算公式：
+  - `swigluMode` 取值和计算公式：
 
-  - `swigluMode=0`：标准 SwiGLU。沿最后一维将 `x_i` 前后等分；当 `activateLeft=true` 时，`A_i` 为前半部分、`B_i` 为后半部分，当 `activateLeft=false` 时两者互换。
-
-    $$swigluOut_i = Swiglu(x_i) = Swish(A_i) * B_i$$
-
-  - `swigluMode=1`：按奇偶位置交错拆分。`x_glu` 表示 `x_i` 的偶数索引部分，`x_linear` 表示 `x_i` 的奇数索引部分；`activateLeft` 在此模式下不生效。
+  - `swigluMode=2`：沿最后一维前后分半拆分，前半部分为 `x_glu`，后半部分为 `x_linear`。本接口固定采用前半部分作为激活分支。
 
     $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
 
@@ -57,29 +53,7 @@
 
     $$swigluOut_i = out\_glu * (x\_linear + gluBias)$$
 
-  - `swigluMode=2`：沿 `activateDim` 轴前后分半拆分，且不是交错分块。`activateLeft=true` 时 `x_glu` 为前半部分，否则为后半部分。
-
-    $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
-
-    $$x\_linear = x\_linear.clamp(min=-clampLimit, max=clampLimit)$$
-
-    $$out\_glu = x\_glu * sigmoid(gluAlpha * x\_glu)$$
-
-    $$swigluOut_i = out\_glu * (x\_linear + gluBias)$$
-
-  - `swigluMode=3`：沿 `activateDim` 轴前后分半拆分，且不是交错分块。`activateLeft=true` 时激活前半部分，否则激活后半部分；固定使用 `alpha=1`，不添加 bias。
-
-    $$x\_glu = x\_glu * sigmoid(x\_glu)$$
-
-    $$x\_glu = x\_glu.clamp(min=None, max=clampLimit)$$
-
-    $$x\_linear = x\_linear.clamp(min=-clampLimit, max=clampLimit)$$
-
-    $$swigluOut_i = x\_glu * x\_linear$$
-
-    此模式忽略 `gluAlpha` 和 `gluBias`。
-
-  本接口当前固定 `activateDim=-1`、`axis=-1`，具体约束见“约束说明”。
+  本接口当前固定沿最后一维拆分，具体约束见“约束说明”。
 
 ## 函数原型
 
@@ -100,13 +74,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     int64_t quantMode,
     int64_t groupListType,
     const aclIntArray *tuningConfigOptional,
-    int64_t activateDim,
-    bool activateLeft,
     int64_t swigluMode,
     double clampLimit,
     double gluAlpha,
     double gluBias,
-    int64_t axis,
     const char *roundMode,
     int64_t scaleAlg,
     double dstTypeMax,
@@ -167,13 +138,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
       <tr><td>quantMode</td><td>输入</td><td>输出量化模式。</td><td>当前仅支持 2，表示 MX 量化。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>groupListType</td><td>输入</td><td>分组列表解释方式。</td><td>0 表示 cumsum，1 表示 count。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>tuningConfigOptional</td><td>可选输入</td><td>tiling 调优配置。</td><td>当前不支持，必须传 nullptr 或空数组。</td><td>aclIntArray</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>activateDim</td><td>输入</td><td>SwiGLU 拆分维度。</td><td>当前仅支持 -1，表示最后一维。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>activateLeft</td><td>输入</td><td>激活分支选择。</td><td>在 swigluMode 为 0、2、3 时，true 表示拆分后的左分支作为激活分支，false 表示右分支作为激活分支；mode 1 按奇偶位置拆分，此参数不生效。</td><td>BOOL</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>swigluMode</td><td>输入</td><td>SwiGLU 计算模式。</td><td>支持 0、1、2、3。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>clampLimit</td><td>输入</td><td>用于限定 SwiGLU 中间结果的 clamp 范围：x_glu 的上界为 clampLimit，x_linear 的范围为 [-clampLimit, clampLimit]。</td><td>必须为有限且可用 float32 表示的值；swigluMode 为 1、2、3 时还必须大于 0，mode 0 不使用该参数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>gluAlpha</td><td>输入</td><td>SwiGLU alpha 参数。</td><td>用于 swigluMode 为 1、2 的 Sigmoid 输入缩放；必须为有限且可用 float32 表示的值，mode 0、3 不使用该参数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>gluBias</td><td>输入</td><td>SwiGLU bias 参数。</td><td>用于 swigluMode 为 1、2 的线性分支偏置；必须为有限且可用 float32 表示的值，mode 0、3 不使用该参数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
-      <tr><td>axis</td><td>输入</td><td>MX 量化轴。</td><td>当前仅支持 -1，沿最后一维量化。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>swigluMode</td><td>输入</td><td>SwiGLU 计算模式。</td><td>当前仅支持 2：沿最后一维前后分半，前半为激活分支，后半为线性分支。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>clampLimit</td><td>输入</td><td>用于限定 SwiGLU 中间结果的 clamp 范围。</td><td>可选参数；未传入时按 7.0 处理。模式 2 中，激活分支上限为 clampLimit，线性分支范围为 [-clampLimit, clampLimit]；必须为有限正数。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>gluAlpha</td><td>输入</td><td>SwiGLU alpha 参数。</td><td>可选参数；未传入时按 1.702 处理，用于 Sigmoid 输入的缩放；必须为有限且可由 float32 表示的值。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>gluBias</td><td>输入</td><td>SwiGLU bias 参数。</td><td>可选参数；未传入时按 1.0 处理，加在线性分支上；必须为有限且可由 float32 表示的值。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>roundMode</td><td>输入</td><td>MX 量化舍入模式。</td><td>当前仅支持 "rint"；传 nullptr 或空字符串时按默认值处理。</td><td>const char *</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>scaleAlg</td><td>输入</td><td>MX 量化 scale 算法。</td><td>当前接口支持 0（OCP）和 1（cuBLAS）；其他值（包括 2）会报错。</td><td>INT64</td><td>-</td><td>-</td><td>-</td></tr>
       <tr><td>dstTypeMax</td><td>输入</td><td>MX 量化目标类型最大值。</td><td>当前 MXFP8 输出仅支持 0.0。</td><td>DOUBLE</td><td>-</td><td>-</td><td>-</td></tr>
@@ -226,10 +194,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
     <td>weightAssistMatrix、bias、smoothScale 或 tuningConfigOptional 传入了当前场景不支持的内容。</td>
   </tr>
   <tr>
-    <td>activateDim 不为 -1，swigluMode 不在 [0, 3]，或 clampLimit、gluAlpha、gluBias 不满足有限性及 float32 可表示性约束；其中 swigluMode 为 1、2、3 时 clampLimit 还必须大于 0。</td>
+    <td>swigluMode 不等于 2，或 clampLimit、gluAlpha、gluBias 不满足有限性及 float32 可表示性约束；其中 clampLimit 还必须大于 0。</td>
   </tr>
   <tr>
-    <td>axis、roundMode、scaleAlg、dstTypeMax 不满足 MXFP8 场景约束。</td>
+    <td>roundMode、scaleAlg、dstTypeMax 不满足 MXFP8 场景约束。</td>
   </tr>
 </tbody>
 </table>
@@ -332,7 +300,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
           </tbody>
           </table>
 
-        - 当前接口要求 `weight` 和 `weightScale` 的 TensorList 长度均为 1，并要求 `groupList` 长度等于 weight TensorList 长度；因此当前可用场景为 `E=1`。weight Tensor 的逻辑首维、`groupList` 长度和唯一 weight Tensor 的分组数必须一致。
+        - 当前接口要求 `weight` 和 `weightScale` 的 TensorList 长度均为 1；每个唯一 Tensor 内包含 E 个 expert，weight 的逻辑首维和 `groupList` 长度必须均为 E。因此“单 Tensor”表示单个 Tensor 承载全部 expert，并不限制 E 必须为 1。
         - `M` 是 token 数量，`K` 是输入特征维度，`N` 是 SwiGLU 拆分前的输出维度；当前 `M`、`K` 必须大于 0。
         - `N` 必须大于 0 且为 64 的整数倍；SwiGLU 输出维度为 `N / 2`。
         - `weightScale` 的最后一维固定为 2，表示每个 MX block 的 scale 数据。
@@ -344,19 +312,18 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
         - `dequantDtype=0`，表示中间计算使用 `DT_FLOAT`。
         - `groupListType=0` 时，`groupList[i]` 表示累计 token 数，最后一个值不能大于 `M`；`groupListType=1` 时，`groupList[i]` 表示当前 group 的 token 数，所有值之和不能大于 `M`。
         - `weightAssistMatrix`、`bias`、`smoothScale` 和 `tuningConfigOptional` 当前必须为空或 `nullptr`；其中 `weightAssistMatrix` 允许传空 TensorList，`tuningConfigOptional` 允许传空数组。
-        - `activateDim` 当前仅支持 `-1`。
-        - `swigluMode` 当前支持 `[0, 3]`。
-        - `clampLimit` 必须为有限且可表示为 `float32` 的值；当 `swigluMode` 为 1、2 或 3 时还必须大于 0，mode 0 不使用该参数。`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
-        - `axis` 仅支持 `-1`，`roundMode` 仅支持 `"rint"`。
+        - `swigluMode` 当前仅支持 `2`。
+        - `clampLimit` 必须为有限、可表示为 `float32` 且大于 0 的值；`gluAlpha` 和 `gluBias` 必须为可表示为 `float32` 的有限值。
+        - `roundMode` 仅支持 `"rint"`。
         - `scaleAlg=0` 表示 OCP MX 量化，`scaleAlg=1` 表示 cuBLAS MX 量化；本接口不支持 `scaleAlg=2` 或其他值，传入会报错。
         - 对于本接口固定的 MXFP8 输出，`scaleAlg` 只能取 `0` 或 `1`；`dstTypeMax` 只能取 `0.0`。
         - `dstTypeMax` 必须为有限值，当前仅支持 `0.0`。
-        - 执行路径由 `K` 和 `swigluMode` 决定：`swigluMode=1` 始终使用 CGMCT；`swigluMode=0`、`2`、`3` 且 `K` 为 128 对齐时使用 Tensor API；这些模式在 `K` 不满足 128 对齐时使用 CGMCT 兼容路径。非转置 weight 对应 NZ 路径，转置 weight 对应 ZN 路径。
+        - 当 `K` 为 128 对齐时使用 Tensor API，`K` 不满足 128 对齐时使用兼容路径。非转置 weight 对应 NZ 路径，转置 weight 对应 ZN 路径。
   <!-- end id7 -->
 
 ## 调用示例
 
-示例代码如下，仅展示 V3 ACLNN 两段式接口的调用方式。完整的 Tensor 创建、Device 内存管理和资源释放代码请参考[示例源码](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_nz.cpp)。
+示例代码如下，仅展示 V3 ACLNN 两段式接口的调用方式。完整的 Tensor 创建、Device 内存管理和资源释放代码请参考[示例源码](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp)。
 
 ```cpp
 #include "acl/acl.h"
@@ -385,13 +352,10 @@ int64_t dequantDtype = 0;  // DT_FLOAT
 int64_t quantMode = 2;
 int64_t groupListType = 0;
 
-int64_t activateDim = -1;
-bool activateLeft = true;
-int64_t swigluMode = 0;
+int64_t swigluMode = 2;
 double clampLimit = 7.0;
 double gluAlpha = 1.702;
 double gluBias = 1.0;
-int64_t axis = -1;
 const char *roundMode = "rint";
 int64_t scaleAlg = 0;
 double dstTypeMax = 0.0;
@@ -407,9 +371,9 @@ aclnnStatus ret = aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     groupList,
     dequantMode, dequantDtype, quantMode, groupListType,
     nullptr,              // tuningConfigOptional
-    activateDim, activateLeft, swigluMode,
+    swigluMode,
     clampLimit, gluAlpha, gluBias,
-    axis, roundMode, scaleAlg, dstTypeMax,
+    roundMode, scaleAlg, dstTypeMax,
     output, outputScale, &workspaceSize, &executor);
 
 // 根据 workspaceSize 在 Device 侧申请 workspace。
@@ -425,31 +389,23 @@ aclrtSynchronizeStream(stream);
 
 ### MXFP8 weightNZ ACLNN 示例
 
-仓库只保留一个典型的 ACLNN 两段式调用示例：[test_aclnn_grouped_matmul_swiglu_quant_v3_nz.cpp](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_v3_nz.cpp)。示例使用 `E=1`、`M=2048`、`K=128`、`N=128`，x 始终为非转置输入，并通过命令行参数覆盖四种 `swigluMode` 以及 weight 的非转置 NZ、转置 ZN 两种布局。
+仓库只保留一个典型的 ACLNN 两段式调用示例：[test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp](../examples/arch35/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3.cpp)。示例使用 `E=1`、`M=2048`、`K=128`、`N=128`，x 始终为非转置输入，并覆盖 weight 的非转置 NZ、转置 ZN 两种布局。
 
-示例命令行参数依次为：`swigluMode transposeWeight activateLeft dumpPrefix [scaleAlg]`。
+示例命令行参数依次为：`transposeWeight dumpPrefix [scaleAlg]`。
 
-- `swigluMode`：取值 `0`、`1`、`2` 或 `3`。
 - `transposeWeight`：`0` 表示非转置 NZ weight，`1` 表示转置 ZN weight。
-- `activateLeft`：`0` 或 `1`；mode 1 中该参数不生效。
 - `dumpPrefix`：可选的输出 dump 前缀；不需要 dump 时传空字符串或省略。
 - `scaleAlg`：可选，默认为 `0`，仅支持 `0` 或 `1`。
 
-在 CANN 9.2 环境中编译示例并设置自定义算子包后，可以分别运行以下调用，覆盖四种模式和两种 weight 布局：
+在 CANN 9.2 环境中编译示例并设置自定义算子包后，可以分别运行以下调用，覆盖 mode 2 和两种 weight 布局：
 
 ```bash
 export CANN_ROOT=/home/developer/Ascend/cann-9.2.0/cann-9.2.0
 export ASCEND_CUSTOM_OPP_PATH=/path/to/packages/vendors/custom_transformer
-export V3_DEMO_BIN=/path/to/test_aclnn_grouped_matmul_swiglu_quant_v3_nz
+export V3_DEMO_BIN=/path/to/test_aclnn_grouped_matmul_swiglu_quant_weight_nz_v3
 
-${V3_DEMO_BIN} 0 0 1 /tmp/gmm_swiglu_v3_mode0_nz 0
-${V3_DEMO_BIN} 0 1 1 /tmp/gmm_swiglu_v3_mode0_zn 0
-${V3_DEMO_BIN} 1 0 1 /tmp/gmm_swiglu_v3_mode1_nz 0
-${V3_DEMO_BIN} 1 1 1 /tmp/gmm_swiglu_v3_mode1_zn 0
-${V3_DEMO_BIN} 2 0 1 /tmp/gmm_swiglu_v3_mode2_nz 1
-${V3_DEMO_BIN} 2 1 1 /tmp/gmm_swiglu_v3_mode2_zn 1
-${V3_DEMO_BIN} 3 0 1 /tmp/gmm_swiglu_v3_mode3_nz 0
-${V3_DEMO_BIN} 3 1 1 /tmp/gmm_swiglu_v3_mode3_zn 0
+${V3_DEMO_BIN} 0 /tmp/gmm_swiglu_v3_mode2_nz 0
+${V3_DEMO_BIN} 1 /tmp/gmm_swiglu_v3_mode2_zn 1
 ```
 
-示例内部固定使用 `dequantMode=2`、`dequantDtype=0`、`quantMode=2`、`groupListType=0`、`activateDim=-1`、`clampLimit=7.0`、`gluAlpha=1.702`、`gluBias=1.0`、`axis=-1`、`roundMode="rint"` 和 `dstTypeMax=0.0`，并调用 `aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize` 与 `aclnnGroupedMatmulSwigluQuantWeightNzV3` 完成两段式执行。
+示例内部固定使用 `dequantMode=2`、`dequantDtype=0`、`quantMode=2`、`groupListType=0`、`swigluMode=2`、`clampLimit=7.0`、`gluAlpha=1.702`、`gluBias=1.0`、`roundMode="rint"` 和 `dstTypeMax=0.0`，并调用 `aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize` 与 `aclnnGroupedMatmulSwigluQuantWeightNzV3` 完成两段式执行。

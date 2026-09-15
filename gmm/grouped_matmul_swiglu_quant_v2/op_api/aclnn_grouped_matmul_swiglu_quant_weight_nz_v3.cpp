@@ -195,26 +195,21 @@ bool IsRepresentableFloat(double value)
     return std::isfinite(value) && std::fabs(value) <= static_cast<double>(std::numeric_limits<float>::max());
 }
 
-aclnnStatus CheckSwigluAttrs(int64_t activateDim, int64_t swigluMode, double clampLimit, double gluAlpha,
-                             double gluBias, int64_t axis, const char *roundMode, int64_t scaleAlg,
-                             double dstTypeMax)
+aclnnStatus CheckSwigluAttrs(int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias,
+                             const char *roundMode, int64_t scaleAlg, double dstTypeMax)
 {
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        activateDim == gmm_swiglu_quant_v3::DEFAULT_ACTIVATE_DIM, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "activateDim", std::to_string(activateDim),
-                                              "currently only -1 is supported"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        swigluMode >= 0 && swigluMode <= 3, ACLNN_ERR_PARAM_INVALID,
+        swigluMode == 2, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "swigluMode", std::to_string(swigluMode),
-                                              "must be in [0, 3]"));
+                                              "currently only 2 is supported"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         IsRepresentableFloat(clampLimit), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
                                               "must be finite and representable by float32"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        swigluMode == 0 || clampLimit > 0.0, ACLNN_ERR_PARAM_INVALID,
+        clampLimit > 0.0, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "clampLimit", std::to_string(clampLimit),
-                                              "must be greater than 0 when swigluMode is 1, 2 or 3"));
+                                              "must be greater than 0 for swigluMode 2"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         IsRepresentableFloat(gluAlpha), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluAlpha", std::to_string(gluAlpha),
@@ -224,14 +219,10 @@ aclnnStatus CheckSwigluAttrs(int64_t activateDim, int64_t swigluMode, double cla
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "gluBias", std::to_string(gluBias),
                                               "must be finite and representable by float32"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
-        axis == gmm_swiglu_quant_v3::DEFAULT_AXIS, ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "axis", std::to_string(axis),
-                                              "is reserved and currently only supports -1"));
-    GMM_SWIGLU_V3_CHECK_WITH_LOG(
         roundMode == nullptr || roundMode[0] == '\0' || std::strcmp(roundMode, gmm_swiglu_quant_v3::DEFAULT_ROUND_MODE) == 0,
         ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(API_NAME, "roundMode", roundMode == nullptr ? "nullptr" : roundMode,
-                                              "is reserved and currently only supports rint"));
+                                              "MXFP8 currently only supports rint"));
     GMM_SWIGLU_V3_CHECK_WITH_LOG(
         scaleAlg == gmm_swiglu_quant_v3::SCALE_ALG_OCP || scaleAlg == gmm_swiglu_quant_v3::SCALE_ALG_CUBLAS,
         ACLNN_ERR_PARAM_INVALID,
@@ -509,16 +500,14 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensorList *weight, const a
                         const aclTensorList *weightAssistMatrix, const aclTensor *bias, const aclTensor *xScale,
                         const aclTensor *smoothScale, const aclTensor *groupList, int64_t dequantMode,
                         int64_t dequantDtype, int64_t quantMode, int64_t groupListType,
-                        const aclIntArray *tuningConfigOptional, int64_t activateDim, bool activateLeft,
-                        int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias, int64_t axis,
-                        const char *roundMode, int64_t scaleAlg, double dstTypeMax, const aclTensor *output,
-                        const aclTensor *outputScale)
+                        const aclIntArray *tuningConfigOptional, int64_t swigluMode, double clampLimit,
+                        double gluAlpha, double gluBias, const char *roundMode, int64_t scaleAlg,
+                        double dstTypeMax, const aclTensor *output, const aclTensor *outputScale)
 {
-    (void)activateLeft;
     CHECK_RET(CheckOptionalInputs(weightAssistMatrix, bias, smoothScale, tuningConfigOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckSwigluAttrs(activateDim, swigluMode, clampLimit, gluAlpha, gluBias, axis, roundMode, scaleAlg,
-                               dstTypeMax) == ACLNN_SUCCESS,
+    CHECK_RET(CheckSwigluAttrs(swigluMode, clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax) ==
+                  ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckGmmAttrs(dequantMode, dequantDtype, quantMode, groupListType) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
@@ -597,9 +586,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *weightAssistMatrix, const aclTensor *bias, const aclTensor *xScale,
     const aclTensor *smoothScale, const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype,
-    int64_t quantMode, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t activateDim,
-    bool activateLeft, int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias, int64_t axis,
-    const char *roundMode, int64_t scaleAlg, double dstTypeMax, aclTensor *output, aclTensor *outputScale,
+    int64_t quantMode, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t swigluMode,
+    double clampLimit, double gluAlpha, double gluBias, const char *roundMode, int64_t scaleAlg, double dstTypeMax,
+    aclTensor *output, aclTensor *outputScale,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
@@ -611,16 +600,15 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     CHECK_RET(CheckParams(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList,
-                          dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional, activateDim,
-                          activateLeft, swigluMode, clampLimit, gluAlpha, gluBias, axis, roundMode, scaleAlg,
-                          dstTypeMax, output, outputScale) == ACLNN_SUCCESS,
+                           dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional, swigluMode,
+                           clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax, output, outputScale) ==
+                               ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
 
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV3,
                    DFX_IN(x, weight, weightScale, weightAssistMatrix, bias, xScale, smoothScale, groupList,
-                          dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional, activateDim,
-                          activateLeft, swigluMode, clampLimit, gluAlpha, gluBias, axis, roundMode, scaleAlg,
-                          dstTypeMax),
+                           dequantMode, dequantDtype, quantMode, groupListType, tuningConfigOptional, swigluMode,
+                           clampLimit, gluAlpha, gluBias, roundMode, scaleAlg, dstTypeMax),
                    DFX_OUT(output, outputScale));
 
     const aclTensor *xForOp = l0op::Contiguous(x, uniqueExecutor.get());
@@ -646,8 +634,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     auto result = l0op::GroupedMatmulSwigluQuantV3(
         xForOp, weightForOp, weightScaleForOp, xScaleForOp, weightAssistForOp, bias, smoothScale, groupListForOp,
         dequantMode, dequantDtype, quantMode, static_cast<int64_t>(output->GetDataType()), transposeWeight, groupListType,
-        nullptr, activateDim, activateLeft, swigluMode, static_cast<float>(clampLimit), static_cast<float>(gluAlpha),
-        static_cast<float>(gluBias), axis, effectiveRoundMode, scaleAlg, static_cast<float>(dstTypeMax),
+        nullptr, swigluMode, static_cast<float>(clampLimit), static_cast<float>(gluAlpha), static_cast<float>(gluBias),
+        effectiveRoundMode, scaleAlg, static_cast<float>(dstTypeMax),
         uniqueExecutor.get());
     CHECK_RET(result != std::tuple(nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
 

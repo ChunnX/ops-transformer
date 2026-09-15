@@ -23,13 +23,13 @@ extern "C" {
  * @domain aclnn_ops_infer
  *
  * 此接口当前仅支持 Ascend 950（arch35）的单 Tensor MXFP8 weightNZ 场景。
- * x 和 weight 必须为 FLOAT8_E4M3FN 或 FLOAT8_E5M2，weight 必须为 FRACTAL_NZ 格式，
+ * x 和 weight 必须为 FLOAT8_E4M3FN，weight 必须为 FRACTAL_NZ 格式，
  * weight 的逻辑 view 为三维、storage 为五维，weight 和 weightScale 的 TensorList 长度必须均为 1。
  * xScale、weightScale 和 outputScale 必须为 FLOAT8_E8M0，dequantMode 和 quantMode 必须为 2，
  * dequantDtype 必须为 DT_FLOAT。weightAssistMatrix、bias 和 smoothScale 当前不支持。
  *
  * @param [in] x: 激活矩阵。
- * @param [in] weight: FLOAT8_E4M3FN/FLOAT8_E5M2、FRACTAL_NZ 格式的权重矩阵，TensorList 长度为 1。
+ * @param [in] weight: FLOAT8_E4M3FN、FRACTAL_NZ 格式的权重矩阵，TensorList 长度为 1。
  * @param [in] weightScale: FLOAT8_E8M0 权重量化因子，TensorList 长度为 1。
  * @param [in] weightAssistMatrix: 权重辅助矩阵，当前必须为空。
  * @param [in] bias: 偏置，当前必须为 nullptr。
@@ -41,17 +41,14 @@ extern "C" {
  * @param [in] quantMode: 输出量化模式，当前仅支持 2。
  * @param [in] groupListType: groupList 的解释方式。
  * @param [in] tuningConfigOptional: 调优参数。
- * @param [in] activateDim: SwiGLU 拆分维度，当前仅支持 -1。
- * @param [in] activateLeft: 是否激活左半部分。
- * @param [in] swigluMode: SwiGLU 模式，支持 0、1、2、3。
+ * @param [in] swigluMode: SwiGLU 模式，当前仅支持 2。
  * @param [in] clampLimit: SwiGLU clamp 上界，必须大于 0。
  * @param [in] gluAlpha: SwiGLU 的 alpha 参数。
  * @param [in] gluBias: SwiGLU 的 bias 参数。
- * @param [in] axis: MX 量化轴，当前仅支持 -1，表示沿最后一维量化。
  * @param [in] roundMode: MX 量化舍入模式，当前仅支持 "rint"；nullptr 或空字符串按 "rint" 处理。
  * @param [in] scaleAlg: MX 量化 scale 算法，MXFP8 输出支持 0（OCP）和 1（cuBLAS）；2 仅支持 FLOAT4_E2M1，因此本接口传入 2 会报错。
  * @param [in] dstTypeMax: MX 量化目标类型最大值，MXFP8 输出当前仅支持 0.0。
- * @param [out] output: FLOAT8_E4M3FN 量化输出。WeightNZ MXFP8 场景不支持 FLOAT8_E5M2 输出。
+ * @param [out] output: FLOAT8_E4M3FN 量化输出。
  * @param [out] outputScale: FLOAT8_E8M0 输出量化因子。
  * @param [out] workspaceSize: 返回用户需要在 NPU device 侧申请的 workspace 大小。
  * @param [out] executor: 返回 op 执行器，包含算子计算流程。
@@ -61,10 +58,9 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize(
     const aclTensor *x, const aclTensorList *weight, const aclTensorList *weightScale,
     const aclTensorList *weightAssistMatrix, const aclTensor *bias, const aclTensor *xScale,
     const aclTensor *smoothScale, const aclTensor *groupList, int64_t dequantMode, int64_t dequantDtype,
-    int64_t quantMode, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t activateDim,
-    bool activateLeft, int64_t swigluMode, double clampLimit, double gluAlpha, double gluBias, int64_t axis,
-    const char *roundMode, int64_t scaleAlg, double dstTypeMax, aclTensor *output, aclTensor *outputScale,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t quantMode, int64_t groupListType, const aclIntArray *tuningConfigOptional, int64_t swigluMode,
+    double clampLimit, double gluAlpha, double gluBias, const char *roundMode, int64_t scaleAlg, double dstTypeMax,
+    aclTensor *output, aclTensor *outputScale, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV3 的第二段接口，用于执行计算。

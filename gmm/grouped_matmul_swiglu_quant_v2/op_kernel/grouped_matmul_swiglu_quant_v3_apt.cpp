@@ -11,9 +11,10 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "arch35/grouped_matmul_swiglu_quant_v3_mxquant.h"
-#include "arch35/grouped_matmul_tensor_api_swiglu_quant_v3_mxfp8_kernel.h"
-#include "arch35/grouped_matmul_swiglu_quant_v3_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_data.h"
+#include "arch35/grouped_matmul_swiglu_quant_weight_nz_v3_mxquant.h"
+#include "arch35/grouped_matmul_tensor_api_swiglu_quant_weight_nz_v3_mxfp8_kernel.h"
+#include "arch35/grouped_matmul_swiglu_quant_weight_nz_v3_tiling_key.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
@@ -23,6 +24,7 @@ extern "C" __global__ __aicore__ void grouped_matmul_swiglu_quant_v3(
     GM_ADDR workspace, GM_ADDR tiling)
 {
     AscendC::TPipe tPipe;
+    REGISTER_TILING_DEFAULT(GMMSwigluQuantV3TilingDataParams);
     // The CGMCT kernel follows the V2 mixed-core ABI: resolve the user
     // workspace before constructing the AIC/AIV pipeline context.
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);

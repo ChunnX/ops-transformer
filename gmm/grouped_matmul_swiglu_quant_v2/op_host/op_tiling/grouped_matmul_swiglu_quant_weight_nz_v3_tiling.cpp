@@ -6,7 +6,7 @@
 
 #include <vector>
 
-#include "grouped_matmul_swiglu_quant_v3_tiling.h"
+#include "grouped_matmul_swiglu_quant_weight_nz_v3_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 #include "platform/platform_infos_def.h"
 #include "register/op_impl_registry.h"
