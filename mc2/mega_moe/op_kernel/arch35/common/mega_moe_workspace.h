@@ -127,7 +127,7 @@ private:
         InitializeGmm1TileStatus(tilingData);
         if (tilingData->sharedExpertNum > 0) {
             InitializeSharedExpertGmmOutputs(tilingData);
-            if (tilingData->needsIndependentSharedQuant != 0U) {
+            if (tilingData->isSharedQuantIndependent == 1U) {
                 InitializeMteSharedExpertInput(tilingData);
             }
             InitializeSharedExpertActivationBuffers(tilingData);
@@ -359,7 +359,7 @@ private:
 
     HOST_DEVICE void InitializeMteSharedExpertInput(const MegaMoeTilingData *tilingData)
     {
-        // MTE shared GMM1 统一读取逐 token 交织记录 [Align256(data) | Align32(scale)]。
+        // MTE 共享专家使用逐 token 交织数据 [Align256(data) | Align32(scale)]，仅独立量化时分配。
         sharedExpertInputOffset = workspaceSize;
         uint32_t elementsPerByte = IsA4W4GmmMode(tilingData->sharedGmmMode) ? 2U : 1U;
         int64_t recordBytes =
