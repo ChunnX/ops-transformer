@@ -92,9 +92,8 @@ protected:
     __aicore__ inline void EnterSteadyDispatch();
     __aicore__ inline void InitQuantTokenBufferConfig();
     __aicore__ inline UnpermuteBufferConfig InitTokenUnpermuteBuffers();
-    __aicore__ inline void SendTopkIdsIndexAndCount(const AivJobContext &job);
+    __aicore__ inline void SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange);
     __aicore__ inline void ProcessInputPreparationStage();
-    __aicore__ inline void SyncInputAcrossRanks();
     __aicore__ inline void RunGmm2CombineForExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
                                                    uint32_t &startBlockIdx, uint32_t tokenStartIndexInExpert,
                                                    uint32_t sliceTokenCount,
@@ -753,23 +752,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PrepareGmmExpertState(E
     UpdateExpertLoopState(state, expertIdx, expertTokenCount);
 }
 
-// 按发送任务分配专家范围，并依次发送下标和数量；调用方负责选择参与的 AIV。
+// 仅由 AIV 调用：先发送下标，等待本卡 MoE 量化完成，再发送 count。
+// 空专家范围不发送数据，但仍须消费一次量化完成事件。
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCount(const AivJobContext &job)
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendTopkIdsIndexAndCount(const WorkRange &ownedExpertRange)
 {
-    const WorkRange ownedExpertRange =
-        GetBalancedWorkRange(commonConfig_.worldSize * commonConfig_.moeExpertPerRank, job.jobIndex, job.totalJobs);
-    if (ownedExpertRange.count == 0U) {
-        return;
+    if (ownedExpertRange.count > 0U) {
+        SendTopkIdsIndexForExperts(ownedExpertRange, commonConfig_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
     }
-    SendTopkIdsIndexForExperts(ownedExpertRange, commonConfig_, g_winRankAddr_, sendMaskConfig_, sendMaskScratch_);
-    // 专家范围按逻辑任务分配，epoch 始终读取当前物理 AIV 的计数槽。
-    const uint32_t physicalCoreIdx = GetBlockIdx();
-    __gm__ int32_t *launchCountSlot =
-        reinterpret_cast<__gm__ int32_t *>(params_.peermemInfo.rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES +
-                                           static_cast<uint64_t>(physicalCoreIdx) * RANK_SYNC_COUNTER_SLOT_BYTES);
-    SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, launchCountSlot, g_winRankAddr_, sendMaskConfig_,
-                               sendMaskScratch_);
+    // 全部 AIV 消费量化完成事件，空专家任务也参与。
+    CrossCoreWaitFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
+    if (ownedExpertRange.count > 0U) {
+        PipeBarrier<PIPE_MTE3>();
+        auto *launchCountSlot = GetMteSyncCountAddress(params_.peermemInfo.rankSyncInWorldPtr, GetBlockIdx());
+        SendTopkIdsCountForExperts(ownedExpertRange, commonConfig_, launchCountSlot, g_winRankAddr_, sendMaskConfig_,
+                                   sendMaskScratch_);
+    }
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -778,6 +776,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
     SendAndQuantBuffInit();
     PrepareLocalTokens<XType, MoeQuantMode, QuantOutType, ActivationType, TopkWeightsType, TopkWeightsPrefetch>(
         aivJob_, commonConfig_, params_, quantProcessConfig_, params_.peermemInfo.quantTokenScalePtr, quantScratch_);
+    if constexpr (g_coreType == AIV) {
+        // 每个物理 AIV 推进入口轮次一次，空 token 核也参与。
+        AdvanceMteSyncSequence(params_.peermemInfo.rankSyncInWorldPtr, aivCoreIdx_);
+        // 本核 MoE 量化写回完成后，向本卡全 AIV 汇合事件报到。
+        CrossCoreSetFlag<ALL_AICORE_SYNC_MODE, PIPE_MTE3>(MTE_QUANT_READY_FLAG);
+    }
     if constexpr (!SHARED_INPUT_REUSES_MOE_QUANT) {
         if (sharedExpertNum_ > 0U) {
             PrepareLocalTokens<XType, SharedQuantMode, typename SharedQuantConfig::QuantOutType, SharedActivationType,
@@ -786,29 +790,31 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessInputPreparation
         }
     }
     ResetSyncStatus<TopkWeightsPrefetch>(aivJob_, params_, resetBatchElementCount_, resetTensor_);
+
+    // 无共享时由全部 AIV 分配专家；有共享时仅 AIV1 分配，AIV0 保持空范围。
+    WorkRange ownedExpertRange{};
     if constexpr (g_coreType == AIV) {
+        const uint32_t totalExperts = commonConfig_.worldSize * commonConfig_.moeExpertPerRank;
         if (sharedExpertNum_ == 0U) {
-            SendTopkIdsIndexAndCount(aivJob_);
+            ownedExpertRange = GetBalancedWorkRange(totalExperts, aivJob_);
+        } else if (GetSubBlockIdx() == 1U) {
+            ownedExpertRange = GetBalancedWorkRange(totalExperts, {.jobIndex = blockIdx_, .totalJobs = blockNum_});
         }
     }
-}
+    if constexpr (g_coreType == AIV) {
+        PipeBarrier<PIPE_ALL>();
+    }
+    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
-// 输入阶段根据共享专家分工选择同步协议，主流程不展开核参与和 epoch 维护细节。
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SyncInputAcrossRanks()
-{
-    if (sharedExpertNum_ > 0U) {
-        if (GetSubBlockIdx() != 1U) {
-            return;
-        }
-        const AivJobContext syncJob{.jobIndex = blockIdx_, .totalJobs = blockNum_};
-        const uint32_t firstPhysicalCoreIdx = aivCoreIdx_ - GetSubBlockIdx();
-        CrossRankSyncInWorldSize<true>(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, syncJob,
-                                       firstPhysicalCoreIdx, params_.workspaceInfo.flagAiv1TopkValidIndexSyncPtr);
-    } else {
-        if constexpr (g_coreType == AIV) {
-            CrossRankSyncInWorldSize(params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_, aivJob_);
-        }
+    /*
+     * 所有场景统一在输入屏障后发送下标/count，屏障只等待输入准备与 flag 清零。
+     * 共享专家启用时，共享计算与下标/count 发送在屏障后分别推进。
+     * 共享专家使用 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行下标/count 发送。
+     * 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成下标/count 发送后执行共享激活。
+     * count 携带本轮 epoch，接收端逐项确认远端输入就绪；共享计算不等待入口跨卡握手。
+     */
+    if constexpr (g_coreType == AIV) {
+        SendTopkIdsIndexAndCount(ownedExpertRange);
     }
 }
 
@@ -823,29 +829,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWave(Derived &de
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
 
-    // 阶段 1：准备本卡 token/scale 拼接数据，按需附加 topK 权重（BF16 动态量化或 FP8/FP4 预量化直通），
-    // 清零同步状态并准备共享专家输入；无共享专家时在此发送 compact route。
+    // 阶段 1：准备动态量化或预量化输入、清零、本卡输入同步及下标/count 发送。
     exceptionDump_.UpdateStage(MegaMoeImpl::Stage::INPUT_PREPARE);
     ProcessInputPreparationStage();
-    if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-    }
-    SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
-
-    /*
-     * 共享专家启用时，计算与 topK 有效下标发送在公共输入屏障后分别推进。
-     * 共享专家使用 A8W8/A4W4：AIC/AIV0 执行共享 GMM1 和激活，AIV1 执行发送及输入同步。
-     * 共享专家使用 A8W4：AIC/AIV0 执行共享 GMM1 和权重转换，AIV1 完成发送及同步后执行共享激活。
-     * 子组同步只等待 AIV1，避免阻塞正在执行共享计算的 AIV0。
-     */
-    if constexpr (g_coreType == AIV) {
-        if (sharedExpertNum_ > 0U && GetSubBlockIdx() == 1U) {
-            SendTopkIdsIndexAndCount({.jobIndex = blockIdx_, .totalJobs = blockNum_});
-        }
-    }
-    exceptionDump_.UpdateStage(MegaMoeImpl::Stage::CROSS_RANK_SYNC_INPUT);
-    SyncInputAcrossRanks();
-
     // 共享 A8W4 写 GM，由 AIV1 消费；独立事件使剩余 ACK 不阻塞 MoE GMM 启动。
     Gmm1ActivationSync sharedGmm1ActivationSync(1U, GmmEventPair::SHARED_GMM1);
     if (sharedExpertNum_ > 0U) {
