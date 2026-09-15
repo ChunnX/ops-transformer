@@ -43,10 +43,21 @@ namespace agmm_v2_fit_balance {
 
 // ---- 1. 通信拟合（已标定形态: 950 标卡 4P）----
 // 标定产出: 单轮通信时延 y(us) = 斜率·x + 截距, x = 单轮单 rank 发送量(MB)
+// 注: 本组数据 AICPU/CCU 两种通信模式共用(旧 ARCH35 表 key 无通信引擎维度),
+//     模式差异由调用点的 AdjustCutResultForAICPU/CCU 后置修正吸收
+//     (AICPU: 轮数压至 4 减少每轮固定开销; CCU: 按 HCCL buffer 容量上限约束单轮数据量)。
 constexpr const char *AGMM_COMM_4P_KEY =
     "4_1_0_4"; // 查表 key: soc(4=950)_kernelType(1=ALL_GATHER)_topo(0=标卡)_rankDim(4)
 constexpr double AGMM_COMM_4P_SLOPE_US_PER_MB = 5.841842; // 拟合斜率 (us/MB)
 constexpr double AGMM_COMM_4P_INTERCEPT_US = 8.590666;    // 拟合截距 (us), 含每轮同步固定开销
+
+// ---- 1b. 8P 占位（未标定: 常量已定义但表区行未接线, 8P 请求仍走 DEFAULT 回退行+折算缩放。
+//      标定后填入实测值并取消表区该行注释即生效, 不碰任何功能代码。
+//      key 的 topo 段: 本算子调用点 topo 硬编码 STANDARD_CARD(0) 故为 "4_1_0_8";
+//      若将来调用点改为按实际拓扑传 EIGHT_P(1), key 需同步改为 "4_1_1_8"）----
+constexpr const char *AGMM_COMM_8P_KEY = "4_1_0_8"; // soc(4)_kernelType(1)_topo(0)_rankDim(8)
+constexpr double AGMM_COMM_8P_SLOPE_US_PER_MB = 0;  // TODO(8P标定): 填实测拟合斜率 (us/MB)
+constexpr double AGMM_COMM_8P_INTERCEPT_US = 0;     // TODO(8P标定): 填实测拟合截距 (us)
 
 // ---- 2. 通信拟合（未标定形态回退行: rankDim=2/8 等走此行 + rankDim 折算因子缩放, 平台级数据, 通常勿动）----
 constexpr double AGMM_COMM_DEFAULT_SMALL_BOUNDARY_MB = 0.032; // 小包段上界 (MB)
@@ -105,6 +116,9 @@ constexpr uint32_t AGMM_DEFAULT_BASE_K = 64;  // 非 950 soc 回退 baseK
 static const apace::fit_based_balance::CommFitRow ARCH35_COMM_FIT_ROWS[] = {
     {AGMM_COMM_4P_KEY,
      apace::fit_based_balance::MakeLinearCommFit(AGMM_COMM_4P_SLOPE_US_PER_MB, AGMM_COMM_4P_INTERCEPT_US)},
+    // 8P 行占位: 标定后取消下行注释即生效(未接线时 8P 走 DEFAULT 回退行+折算缩放)
+    // {AGMM_COMM_8P_KEY, apace::fit_based_balance::MakeLinearCommFit(AGMM_COMM_8P_SLOPE_US_PER_MB,
+    //                                                                AGMM_COMM_8P_INTERCEPT_US)},
 };
 
 // 未标定 key 的回退行（勿删: rankDim=2/8 等未标定形态依赖此行走折算因子缩放路径）
