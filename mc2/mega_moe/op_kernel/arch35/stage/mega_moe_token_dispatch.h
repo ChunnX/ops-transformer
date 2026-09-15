@@ -437,7 +437,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
 
     /*
      * 到达校验：count 槽高 8 位为发送侧写入的 launch epoch(与 rankSync 计数槽同源,见
-     * send_mask.h PublishExpertCounts)。跨卡同步信号与 count 数据跨源/跨通道无到达序,
+     * send_mask.h SendTopkIdsCountForExperts)。跨卡同步信号与 count 数据跨源/跨通道无到达序,
      * 同步放行不代表 count 已落地——对高位不匹配的槽单槽自旋重读至到达,再掩出低 24 位。
      */
     __gm__ int32_t *launchCountSlot0 =
