@@ -33,12 +33,22 @@ export TORCH_DEVICE_BACKEND_AUTOLOAD=0
 export BSA_CPU_ONLY=0
 export ATK_CUSTOM_OPP_PATH="$CUSTOM/vendors/custom_transformer/op_api/lib/libcust_opapi.so"
 
+TS="$(date +%Y%m%d-%H%M%S)"
+if [ -e ./result ] || [ -e ./atk_output ] || [ -e ./atk.log ]; then
+    mkdir -p "./archive_${TS}"
+    [ -e ./result ]    && mv ./result    "./archive_${TS}/result"
+    [ -e ./atk_output ] && mv ./atk_output "./archive_${TS}/atk_output"
+    [ -e ./atk.log ]   && mv ./atk.log   "./archive_${TS}/atk.log"
+fi
+mkdir -p ./result ./atk_output
+
 # Generate the ATK case JSON, then execute the HIF8 pyaclnn plugin.
 atk case -f op_block_sparse_attention.yaml -p generator_blocksparseattention.py
 # Runtime tiling libraries live under the real CANN OPP tree.  The overlay is
 # needed only by ATK's Python case generator to avoid the unreadable vendor
 # registry on this host.
 export ASCEND_OPP_PATH="$SYSTEM_ASCEND_OPP_PATH"
+
 atk task -c ./result/op_block_sparse_attention/json/all_op_block_sparse_attention.json \
     -n nodes.yaml \
     -p hif8_atk_test_bsa.py \
