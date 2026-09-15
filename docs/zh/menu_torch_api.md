@@ -18,6 +18,8 @@
 - [ffn_to_attention](../../mc2/ffn_to_attention_v2/docs/torchapi_ffn_to_attention.md)
 - [flash_attn](../../attention/flash_attn/docs/torchapi_flash_attn.md)
 - [flash_attn_grad](../../attention/flash_attn_grad/docs/torchapi_flash_attn_grad.md)
+- [flash_mla](../../attention/flash_mla/docs/torchapi_flash_mla.md)
+- [flash_mla_metadata](../../attention/flash_mla_metadata/docs/torchapi_flash_mla_metadata.md)
 - [fused_causal_conv1d](../../attention/fused_causal_conv1d/docs/torchapi_fused_causal_conv1d.md)
 - [fused_causal_conv1d_](../../attention/inplace_fused_causal_conv1d/docs/torchapi_fused_causal_conv1d_.md)
 - [generic_block_sparse_attention](../../attention/generic_block_sparse_attention/docs/torchapi_generic_block_sparse_attention.md)
