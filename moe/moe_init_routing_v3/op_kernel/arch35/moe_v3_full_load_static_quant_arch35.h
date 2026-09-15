@@ -57,8 +57,9 @@ private:
 
     constexpr static Reg::CastTrait castTraitF32ToF16 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
                                                          Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
-    constexpr static Reg::CastTrait castTraitF16ToI8 = {Reg::RegLayout::ZERO, Reg::SatMode::NO_SAT,
-                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+    // Static quantization requires rint-and-clip semantics for values outside the int8 range.
+    constexpr static Reg::CastTrait castTraitF16ToI8 = {Reg::RegLayout::ZERO, Reg::SatMode::SAT,
+                                                        Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 };
 
 template <typename T>
@@ -87,13 +88,21 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
 
-    int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
+    // The EP full-load path scatters one routed row at a time. Allocating buffers for every source row covered by
+    // the core can exceed UB even though ScatterOutXStaticQuant only ever calls Compute(1).
+    int64_t rowLength = this->epFullload_ ? 1 : this->endXRow_ - this->startXRow_ + 1;
 
     int64_t colsAlignBytes = AlignBytes(this->cols_ * rowLength, sizeof(T));
     colsAlignBytes = static_cast<int64_t>(colsAlignBytes * sizeof(float) / sizeof(T));
+    int64_t inputOffsetBytes = IsSameType<T, float>::value ? 0 : colsAlign_ * static_cast<int64_t>(sizeof(T));
+    int64_t inputLayoutBytes = inputOffsetBytes + (rowLength - 1) * inFactor_ * static_cast<int64_t>(sizeof(T)) +
+                               AlignBytes(this->cols_, sizeof(T));
+    colsAlignBytes = Max(colsAlignBytes, AlignBytes(inputLayoutBytes, sizeof(int8_t)));
     this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM, colsAlignBytes);
+    int64_t outputStoreBytes = Ceil(this->cols_, FLOAT_REG_TENSOR_LENGTH) * FLOAT_REG_TENSOR_LENGTH;
+    int64_t outputLayoutBytes = (rowLength - 1) * inFactor_ + outputStoreBytes;
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM,
-                            AlignBytes(this->cols_ * rowLength, sizeof(int8_t)));
+                            AlignBytes(outputLayoutBytes, sizeof(int8_t)));
 }
 
 template <typename T>
@@ -109,8 +118,8 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
         inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + colsAlign_;
     }
 
-    uint16_t repeatTimes = Ceil(this->cols_ * rowLength, FLOAT_REG_TENSOR_LENGTH);
-    uint32_t sreg = static_cast<uint32_t>(this->cols_ * rowLength);
+    uint16_t repeatTimes = Ceil(this->cols_, FLOAT_REG_TENSOR_LENGTH);
+    uint16_t rowCount = static_cast<uint16_t>(rowLength);
     __VEC_SCOPE__
     {
         Reg::RegTensor<float> inReg;
@@ -119,19 +128,24 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
 
         Reg::MaskReg maskRegInLoop;
 
-        for (uint16_t i = 0; i < repeatTimes; i++) {
-            maskRegInLoop = Reg::UpdateMask<float>(sreg);
-            if constexpr (!IsSameType<T, float>::value) {
-                ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, i * FLOAT_REG_TENSOR_LENGTH);
-            } else {
-                Reg::LoadAlign(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
+        for (uint16_t row = 0; row < rowCount; row++) {
+            uint32_t sreg = static_cast<uint32_t>(this->cols_);
+            int64_t rowOffset = row * inFactor_;
+            for (uint16_t i = 0; i < repeatTimes; i++) {
+                int64_t colOffset = i * FLOAT_REG_TENSOR_LENGTH;
+                maskRegInLoop = Reg::UpdateMask<float>(sreg);
+                if constexpr (!IsSameType<T, float>::value) {
+                    ops::LoadOneTensorForDtypeT<T>(inUbAddrCastT, inReg, maskRegInLoop, rowOffset + colOffset);
+                } else {
+                    Reg::LoadAlign(inReg, inUbAddr + rowOffset + colOffset);
+                }
+                Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
+                Reg::Muls(outRegF16, outRegF16, static_cast<half>(scale_), maskRegInLoop);
+                Reg::Adds(outRegF16, outRegF16, static_cast<half>(offset_), maskRegInLoop);
+                Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
+                Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + rowOffset + colOffset, outRegI8,
+                                                                        maskRegInLoop);
             }
-            Reg::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
-            Reg::Muls(outRegF16, outRegF16, static_cast<half>(scale_), maskRegInLoop);
-            Reg::Adds(outRegF16, outRegF16, static_cast<half>(offset_), maskRegInLoop);
-            Reg::Cast<int8_t, half, castTraitF16ToI8>(outRegI8, outRegF16, maskRegInLoop);
-            Reg::StoreAlign<int8_t, Reg::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH, outRegI8,
-                                                                    maskRegInLoop);
         }
     }
 
