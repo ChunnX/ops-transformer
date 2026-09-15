@@ -66,7 +66,8 @@ private:
     void GetMetadataRowInfo(int32_t &dimNum, int64_t &rowSize);
     uint32_t GetFagOffset();
     bool CalDeterSwizzleSchedule(std::vector<int64_t> &roundPrefix, std::vector<int64_t> &s1OuterList,
-                                 std::vector<int64_t> &s2OuterList);
+                                 std::vector<int64_t> &s2OuterList,
+                                 std::vector<std::vector<int64_t>> &sparseData);
     bool GenQuantFagGradMetaData();
 
 private:

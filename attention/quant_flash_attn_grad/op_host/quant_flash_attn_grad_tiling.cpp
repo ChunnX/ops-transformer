@@ -90,6 +90,27 @@ static ge::graphStatus ParseAttrs(gert::TilingContext *context, const string &op
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus ValidateSequsedInput(gert::TilingContext *context, const string &opName,
+                                             int64_t inputIdx, int64_t batchSize)
+{
+    auto desc = context->GetOptionalInputDesc(inputIdx);
+    if (desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    auto shape = context->GetOptionalInputShape(inputIdx);
+    OP_CHECK_IF(shape == nullptr, OP_LOGE(opName, "seqused input %ld requires a shape.", inputIdx),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName, "seqused input %ld must have int32 dtype.", inputIdx), return ge::GRAPH_FAILED);
+    const auto &storageShape = shape->GetStorageShape();
+    OP_CHECK_IF(storageShape.GetDimNum() != 1,
+                OP_LOGE(opName, "seqused input %ld must have rank 1.", inputIdx), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(storageShape.GetDim(0) != batchSize,
+                OP_LOGE(opName, "seqused input %ld must contain one length per batch (%ld).", inputIdx, batchSize),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus ValidateRequiredInputs(gert::TilingContext *context, const string &opName)
 {
     auto queryDesc = context->GetInputDesc(QUERY_IDX);
@@ -132,10 +153,36 @@ static ge::graphStatus ValidateRequiredInputs(gert::TilingContext *context, cons
     OP_CHECK_IF(cuSeqlensKVDesc != nullptr, OP_LOGE(opName, "cuSeqlensKV not support."), return ge::GRAPH_FAILED);
     // sequsedQ/sequsedKV 表示每 batch 实际使用的序列长度, layout 仍为定长 padded BSND/BNSD。
     // 具体的 varlen 分核由 quant_flash_attn_metadata 算子在 device 侧计算后经 metadata 下发。
-    (void)sequsedQDesc;
-    (void)sequsedKVDesc;
+    if (sequsedQDesc != nullptr || sequsedKVDesc != nullptr) {
+        auto queryShape = context->GetInputShape(QUERY_IDX);
+        OP_CHECK_IF(queryShape == nullptr || queryShape->GetStorageShape().GetDimNum() != 4,
+                    OP_LOGE(opName, "seqused requires a rank 4 padded BSND/BNSD query."), return ge::GRAPH_FAILED);
+        const int64_t batchSize = queryShape->GetStorageShape().GetDim(0);
+        if (ValidateSequsedInput(context, opName, SEQUSED_Q, batchSize) != ge::GRAPH_SUCCESS ||
+            ValidateSequsedInput(context, opName, SEQUSED_KV, batchSize) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
     OP_CHECK_IF(sinksDesc != nullptr, OP_LOGE(opName, "sinks not support."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(opName, "metadata must be provided."), return ge::GRAPH_FAILED);
+    auto metadataShape = context->GetOptionalInputShape(METADATA);
+    OP_CHECK_IF(metadataShape == nullptr, OP_LOGE(opName, "metadata requires a shape."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(metadataDesc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName, "metadata must have int32 dtype."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(metadataShape->GetStorageShape().GetDimNum() != 2,
+                OP_LOGE(opName, "metadata must have rank 2."), return ge::GRAPH_FAILED);
+    int64_t requiredMetadataRowSize = 16;
+    if (sequsedQDesc != nullptr || sequsedKVDesc != nullptr) {
+        const int64_t batchSize = context->GetInputShape(QUERY_IDX)->GetStorageShape().GetDim(0);
+        const auto maskMode = context->GetAttrs()->GetAttrPointer<int64_t>(MASK_MODE);
+        const bool isSparse = maskMode != nullptr && (*maskMode == 3 || *maskMode == 4);
+        // Header, batch prefix (B + 1), and two dense or eight sparse B-arrays.
+        requiredMetadataRowSize = 17 + (isSparse ? 9 : 3) * batchSize;
+    }
+    OP_CHECK_IF(metadataShape->GetStorageShape().GetDim(0) != 2 ||
+                    metadataShape->GetStorageShape().GetDim(1) < requiredMetadataRowSize,
+                OP_LOGE(opName, "metadata must have shape [2, row size >= %ld].", requiredMetadataRowSize),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(dqDesc == nullptr, OP_LOGE(opName, "dq must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(dkDesc == nullptr, OP_LOGE(opName, "dk must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(dvDesc == nullptr, OP_LOGE(opName, "dv must be provided."), return ge::GRAPH_FAILED);

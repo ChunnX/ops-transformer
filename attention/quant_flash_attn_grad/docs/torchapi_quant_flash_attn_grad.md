@@ -26,7 +26,7 @@
 - **接口功能**:
 
   `quant_flash_attn_grad`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`QuantFlashAttnGrad`算子完成HIFLOAT8量化场景下的注意力反向梯度计算。该接口为`quant_flash_attn`正向算子的配套反向接口，用于计算Query、Key、Value的梯度（dq、dk、dv）以及sink梯度（dsink）。当前支持HIFLOAT8量化数据类型，支持BSND、BNSD两种数据排布格式。
-   `quant_flash_attn_grad`的元数据生成接口复用`quant_flash_attn_metadata`，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子可选择传入该metadata以优化调度。典型调用流程如下：
+   `quant_flash_attn_grad`的元数据生成接口复用`quant_flash_attn_metadata`，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata以完成调度。典型调用流程如下：
 
   1. 准备`q`、`k`、`v`等输入。
   2. 调用`quant_flash_attn_metadata`生成`metadata`。
@@ -189,7 +189,7 @@ cann_ops_transformer.quant_flash_attn_grad(
 
 > [!NOTE]
 >
-> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前版本仅支持 mask_mode = 0（`ALL`），其他模式暂不支持。
+> 枚举为 `IntEnum`，可直接作为 int 传入底层算子；接口仅支持传入枚举或对应 int 值。当前版本支持 mask_mode = 0、3、4；seqused 场景的约束见下文。
 
 ## 基准信息说明
 
@@ -226,10 +226,10 @@ cann_ops_transformer.quant_flash_attn_grad(
 | seqused_kv | Tensor | 可选 | 指定每batch中kv实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
 | sinks | Tensor | 可选 | sink场景下的输入tensor。当前版本不支持，传None即可 | float32 | ND | (Q_N,) | × |
 | attn_mask | Tensor | 可选 | 掩码矩阵 | int8/uint8/bool | ND | (2048, 2048) | × |
-| metadata | Tensor | 可选 | tiling下沉的aicpu算子输出结果 | int32 | ND | (2, max_schedule_size) | × |
+| metadata | Tensor | 必选 | tiling下沉的aicpu算子输出结果 | int32 | ND | (2, max_schedule_size) | × |
 | quant_mode | int/QuantMode | 必选 | 量化模式，支持传入枚举或对应 int 值，枚举定义见「quant_mode 枚举」 | int32 | - | - | - |
 | softmax_scale | float | 可选 | 缩放系数，默认值为1.0。推荐值：sqrt(head_dim)的倒数 | float32 | - | - | - |
-| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」。当前版本仅支持0 | int32 | - | - | - |
+| mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」。当前版本支持0、3、4 | int32 | - | - | - |
 | win_left | int | 可选 | window左界限，默认值为-1 | int32 | - | - | - |
 | win_right | int | 可选 | window右界限，默认值为-1 | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限，-1表示自动推导。默认值为-1 | int32 | - | - | - |
@@ -253,6 +253,14 @@ cann_ops_transformer.quant_flash_attn_grad(
 - 仅支持BSND或BNSD layout，且layout_q与layout_kv必须保持一致。
 - 参数cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、attn_mask属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。
 - quant_flash_attn_metadata和quant_flash_attn_grad的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由客户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+
+### seqused 与 mask 3/4
+
+- 本轮适配范围为 BSND/BNSD、Q_N = KV_N（N1 = N2）的确定性计算。输入仍按 padded 形状存储；不支持 TND，`cu_seqlens_q` 和 `cu_seqlens_kv` 必须为 `None`。
+- `seqused_q` 和 `seqused_kv` 是连续的 int32 Tensor，形状为 `[B]`。每项满足 `0 < seqused_q[b] <= Q_S`、`0 < seqused_kv[b] <= KV_S`；零长度暂不支持。可以只传一侧，未传一侧使用该侧 padded 序列长度。
+- 记当前 batch 的有效长度为 `Lq`、`Lkv`，Q/KV 索引为 `i`、`j`。mask 3 保留 `j <= i + Lkv - Lq`；mask 4 保留 `i + Lkv - Lq - win_left <= j <= i + Lkv - Lq + win_right`，并裁剪到有效长度范围。mask 4 的某侧窗口为 `-1` 表示该侧不限窗；mask 0/3 的两侧窗口必须为 `-1`。
+- 每次调用前，用相同的 seqused、batch、头数、layout、`mask_mode` 和窗口生成 metadata，并设置 `is_grad_enabled=True`。metadata 接口的 `max_seqlen_q/kv` 传 padded 长度；反向主接口的同名参数保持 `-1`。
+- metadata 为 int32、形状 `[2, row_size]`。反向行的最小容量：无 seqused 为 16，seqused + mask 0 为 `17 + 3 * B`，seqused + mask 3/4 为 `17 + 9 * B`；实际分配还应满足 metadata 生成接口的前向行容量要求。变长 sparse 使用反向调度 ABI v2，生成 metadata 的核数必须与主 kernel 实际核数一致。
 
 ### 特性参数组
 
@@ -535,7 +543,7 @@ mask_mode参数解释
 
 > [!NOTE]
 >
-> 当前版本仅支持mask_mode=0（`ALL`），其他模式暂不支持。
+> 当前版本支持 mask_mode = 0、3、4；mask 3/4 按每个 batch 的有效长度右下对齐。
 
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
@@ -560,7 +568,7 @@ mask_mode参数解释
             <td>
                 <ul>
                     <li>data_type支持int32</li>
-                    <li>当前版本仅支持输入为0</li>
+                    <li>当前版本支持输入为0、3、4</li>
                 </ul>
             </td>
             <td>
@@ -573,7 +581,7 @@ mask_mode参数解释
             </td>
             <td rowspan="3">
                 <ul>
-                    <li>当前版本仅支持mask_mode=0，其他模式暂不支持</li>
+                    <li>seqused 与 mask 3/4 组合仅覆盖 N1=N2 的确定性场景</li>
                 </ul>
             </td>
         </tr>
@@ -631,7 +639,7 @@ mask_mode参数解释
                 <ul>
                     <li>tensor_type支持int32</li>
                     <li>tensor_shape为(B,)</li>
-                    <li>值仅支持非负整数</li>
+                    <li>值仅支持正整数，零长度暂不支持</li>
                     <li>seqused_q中的值需小于等于Q_S</li>
                     <li>seqused_kv中的值需小于等于KV_S</li>
                 </ul>
@@ -796,8 +804,8 @@ mask_mode参数解释
         mask_mode=0,
         win_left=-1,
         win_right=-1,
-        max_seqlen_q=Q_S,
-        max_seqlen_kv=KV_S,
+        max_seqlen_q=-1,
+        max_seqlen_kv=-1,
         layout_q="BSND",
         layout_kv="BSND",
     )

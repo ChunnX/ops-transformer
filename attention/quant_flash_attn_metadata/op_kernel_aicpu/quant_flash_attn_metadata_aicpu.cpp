@@ -273,7 +273,8 @@ int64_t QuantFlashAttnMetadataCpuKernel::CalDeterMaxRound()
 // kernel 端解码见 deter.h 的 CalTNDDenseSwizzleIndex。
 bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_t> &roundPrefix,
                                                              std::vector<int64_t> &s1OuterList,
-                                                             std::vector<int64_t> &s2OuterList)
+                                                             std::vector<int64_t> &s2OuterList,
+                                                             std::vector<std::vector<int64_t>> &sparseData)
 {
     const int64_t k = static_cast<int64_t>(aicCoreNum_);
     const int64_t n1 = static_cast<int64_t>(baseInfo.kvHeadNum);
@@ -289,13 +290,15 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
         return false;
     }
 
+    const bool sparse = maskMode_ == 3 || maskMode_ == 4;
+    sparseData.assign(sparse ? optiling::QUANT_FAG_SPARSE_ARRAY_COUNT : 0, std::vector<int64_t>(bSize));
     roundPrefix.assign(bSize + 1, 0);
     s1OuterList.assign(bSize, 0);
     s2OuterList.assign(bSize, 0);
     for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
         const int64_t s1Len = static_cast<int64_t>(GetS1SeqSize(static_cast<uint32_t>(bIdx)));
         const int64_t s2Len = static_cast<int64_t>(GetS2SeqSize(static_cast<uint32_t>(bIdx)));
-        if (s1Len <= 0 || s2Len <= 0) {
+        if (s1Len <= 0 || s2Len <= 0 || s1Len > maxSeqlenQ_ || s2Len > maxSeqlenKv_) {
             KERNEL_LOG_ERROR("QuantFAG grad schedule: batch %ld has empty seq (s1 %ld, s2 %ld), swizzle schedule "
                              "requires all batches non-empty",
                              bIdx, s1Len, s2Len);
@@ -305,7 +308,7 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
         const int64_t n = CeilDiv<int64_t>(s2Len, static_cast<int64_t>(optiling::QUANT_FAG_CUBE_BASE_N));
         // swizzle 一轮内同一 head 最多 min(k, n) 个核并发, 它们的 dQ 坐标为 (s2o + delta) % m,
         // 要求互不重叠才能保证确定性累加顺序, 故 m >= min(k, n)。
-        if (m < std::min(k, n)) {
+        if (!sparse && m < std::min(k, n)) {
             KERNEL_LOG_ERROR("QuantFAG grad schedule: batch %ld s1Outer %ld < min(aicNum %ld, s2Outer %ld), "
                              "deterministic swizzle schedule is unsafe (s1 %ld, s2 %ld)",
                              bIdx, m, k, n, s1Len, s2Len);
@@ -313,7 +316,37 @@ bool QuantFlashAttnMetadataCpuKernel::CalDeterSwizzleSchedule(std::vector<int64_
         }
         s1OuterList[bIdx] = m;
         s2OuterList[bIdx] = n;
-        roundPrefix[bIdx + 1] = roundPrefix[bIdx] + CeilDiv<int64_t>(n * n1, k) * m;
+        int64_t scheduleRows = m;
+        int64_t scheduleCols = n;
+        if (sparse) {
+            // FAG right-down token correction, using effective batch lengths.
+            // Clamping an unlimited/large window to max(Lq,Lkv) preserves its mask.
+            const int64_t limit = std::max(s1Len, s2Len);
+            const int64_t left = maskMode_ == 3 || winLeft_ == -1 ? limit : std::min<int64_t>(winLeft_, limit);
+            const int64_t right = maskMode_ == 3 ? 0 : (winRight_ == -1 ? limit : std::min<int64_t>(winRight_, limit));
+            const int64_t s1Token = left + s1Len - s2Len;
+            const int64_t s2Token = right - s1Len + s2Len;
+            const int64_t rowBegin = std::max<int64_t>(0, -s2Token) / optiling::QUANT_FAG_CUBE_BASE_M;
+            const int64_t colBegin = std::max<int64_t>(0, -s1Token) / optiling::QUANT_FAG_CUBE_BASE_N;
+            const int64_t rowEnd = CeilDiv<int64_t>(std::min(s1Len, s2Len + s1Token), optiling::QUANT_FAG_CUBE_BASE_M);
+            const int64_t colEnd = CeilDiv<int64_t>(std::min(s2Len, s1Len + s2Token), optiling::QUANT_FAG_CUBE_BASE_N);
+            scheduleCols = colEnd - colBegin;
+            // Empty virtual rows prevent dQ collisions even for short Q / long KV.
+            // Every (head, column) keeps the same core across its entire row sweep.
+            scheduleRows = std::max(rowEnd - rowBegin, std::min(k, scheduleCols));
+            sparseData[0][bIdx] = rowBegin;
+            sparseData[1][bIdx] = colBegin;
+            sparseData[2][bIdx] = scheduleRows;
+            sparseData[3][bIdx] = scheduleCols;
+            sparseData[4][bIdx] = s1Token;
+            sparseData[5][bIdx] = s2Token;
+        }
+        const int64_t rounds = CeilDiv<int64_t>(scheduleCols * n1, k) * scheduleRows;
+        if (rounds > INT32_MAX - roundPrefix[bIdx]) {
+            KERNEL_LOG_ERROR("QuantFAG grad schedule exceeds int32 metadata round capacity");
+            return false;
+        }
+        roundPrefix[bIdx + 1] = roundPrefix[bIdx] + rounds;
     }
     return true;
 }
@@ -340,7 +373,8 @@ bool QuantFlashAttnMetadataCpuKernel::GenQuantFagGradMetaData()
     std::vector<int64_t> roundPrefix;
     std::vector<int64_t> s1OuterList;
     std::vector<int64_t> s2OuterList;
-    if (!CalDeterSwizzleSchedule(roundPrefix, s1OuterList, s2OuterList)) {
+    std::vector<std::vector<int64_t>> sparseData;
+    if (!CalDeterSwizzleSchedule(roundPrefix, s1OuterList, s2OuterList, sparseData)) {
         gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_VALID_INDEX, 0);
         gradMetaData.SetDeterMaxRound(optiling::QUANT_FAG_DETER_MAX_NUM_INDEX, 0);
         return false;
@@ -351,7 +385,8 @@ bool QuantFlashAttnMetadataCpuKernel::GenQuantFagGradMetaData()
     const int64_t roundPrefixBase = static_cast<int64_t>(optiling::QUANT_FAG_ARRAY_BASE_INDEX);
     const int64_t s1OuterBase = roundPrefixBase + bSize + 1; // roundPrefix 有 b+1 项
     const int64_t s2OuterBase = s1OuterBase + bSize;
-    const int64_t needSize = s2OuterBase + bSize;
+    const int64_t sparseBase = s2OuterBase + bSize;
+    const int64_t needSize = sparseBase + static_cast<int64_t>(sparseData.size()) * bSize;
     // 容量校验: 数组区不得越出 metadata 第二行。第二行长度 = 第一行长度 = fagOffset
     const int64_t fagRowSize = static_cast<int64_t>(GetFagOffset());
     if (needSize > fagRowSize) {
@@ -374,6 +409,14 @@ bool QuantFlashAttnMetadataCpuKernel::GenQuantFagGradMetaData()
     for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
         gradMetaData.SetMetaData(static_cast<uint32_t>(s1OuterBase + bIdx), s1OuterList[bIdx]);
         gradMetaData.SetMetaData(static_cast<uint32_t>(s2OuterBase + bIdx), s2OuterList[bIdx]);
+    }
+    gradMetaData.SetMetaData(optiling::QUANT_FAG_SCHEDULE_VERSION_INDEX, sparseData.empty() ? 1 : 2);
+    for (size_t field = 0; field < sparseData.size(); ++field) {
+        const int64_t fieldBase = sparseBase + static_cast<int64_t>(field) * bSize;
+        gradMetaData.SetMetaData(optiling::QUANT_FAG_ROW_BEGIN_OFFSET_INDEX + field, fieldBase);
+        for (int64_t bIdx = 0; bIdx < bSize; ++bIdx) {
+            gradMetaData.SetMetaData(static_cast<uint32_t>(fieldBase + bIdx), sparseData[field][bIdx]);
+        }
     }
     KERNEL_LOG_INFO("QuantFAG grad schedule: batchSize %ld, aicNum %d, loopMax %ld, offsets %ld/%ld/%ld, rowSize %ld",
                     bSize, aicCoreNum_, roundPrefix[batchSize_], roundPrefixBase, s1OuterBase, s2OuterBase,

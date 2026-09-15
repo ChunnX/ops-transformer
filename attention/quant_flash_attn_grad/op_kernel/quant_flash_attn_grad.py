@@ -71,12 +71,19 @@ META_DETER_MAX_NUM_IDX = 0
 META_NEED_INIT_OUTPUT_IDX = 1
 META_BATCH_SIZE_IDX = 2
 META_SCHEDULE_VALID_IDX = 3
-META_AIC_CORE_NUM_IDX = 4  # metadata 生成调度时用的 AIC 核数; kernel 不读, 仅供排查核对
+META_AIC_CORE_NUM_IDX = 4  # Must match the actual mixed-kernel AIC group count.
 # 三个 per-batch 数组的起点由 metadata 算子按 batch 动态排布后写在这几个标量槽位里,
 # kernel 直接读起点, 不重复推导排布公式(否则两侧公式一旦不同步就是静默错读)。
 META_ROUND_PREFIX_OFFSET_IDX = 5
 META_S1_OUTER_OFFSET_IDX = 6
 META_S2_OUTER_OFFSET_IDX = 7
+META_ROW_BEGIN_OFFSET_IDX = 8
+META_COL_BEGIN_OFFSET_IDX = 9
+META_SCHEDULE_ROWS_OFFSET_IDX = 10
+META_SCHEDULE_COLS_OFFSET_IDX = 11
+META_S1_TOKEN_OFFSET_IDX = 12
+META_S2_TOKEN_OFFSET_IDX = 13
+META_SCHEDULE_VERSION_IDX = 14
 
 init_data = [1] * 16
 
@@ -205,12 +212,6 @@ class QuantFlashAttnGradTilingKey:
     has_seq_used_kv = TilingKeyField(bits=1, values=[0, 1])
 
     def is_valid(self, key):
-        sparse_type_v = key[7]
-        has_seq_used_q_v = key[8]
-        has_seq_used_kv_v = key[9]
-        # 第一版 varlen 只支持 dense(mask_mode=0), causal/band 的 per-batch 分段调度待开发
-        if (has_seq_used_q_v == 1 or has_seq_used_kv_v == 1) and sparse_type_v != 0:
-            return False
         return True
 
 
@@ -501,6 +502,8 @@ def presfmg_quant_inner_hif8(const_info, tensor_info):
 def init_coordinate_info(const_info, m_offset, n_offset, coordinate_info):
     coordinate_info.s1_outer = const_info.s1_outer
     coordinate_info.s2_outer = const_info.s2_outer
+    coordinate_info.s1_token = const_info.s1_token
+    coordinate_info.s2_token = const_info.s2_token
     coordinate_info.actual_s1_len = const_info.s1_size
     coordinate_info.actual_s2_len = const_info.s2_size
     coordinate_info.m_offset = m_offset
@@ -1206,8 +1209,14 @@ def cal_dense_swizzle_deter_index(
     tensor_seqused_kv,
     flag,
 ):
-    """varlen(seqused) 确定性 swizzle 分核, 对标 FAG deter.h 的 CalTNDDenseSwizzleIndex。
+    """Varlen swizzle based on FAG CalTNDDenseSwizzleIndex.
 
+    Sparse metadata crops globally masked rows/columns and pads the scheduling
+    height to at least min(core_num, column_count). Removing masked tiles from
+    this schedule preserves both per-round dQ uniqueness and fixed KV ownership.
+
+    Dense scheduling below uses m_b/n_b directly; sparse scheduling substitutes
+    the cropped column count and padded scheduling height from metadata.
     每 batch 的轮数前缀 roundPrefix 由 quant_flash_attn_metadata 算出:
         roundPrefix[b+1] = roundPrefix[b] + ceil(n_b * n1 / k) * m_b
     给定全局轮号 r, 先用前缀查出所属 batch, 再在 batch 内解码:
@@ -1252,12 +1261,40 @@ def cal_dense_swizzle_deter_index(
         return -1
     m_b = pl.getval(tensor_metadata, s1_outer_base + found_b)
     n_b = pl.getval(tensor_metadata, s2_outer_base + found_b)
-    linear_idx = delta // m_b * k + j
-    if linear_idx >= n_b * n1:
+    schedule_rows = m_b
+    schedule_cols = n_b
+    row_begin = 0
+    col_begin = 0
+    s1_token = const_info.s1_token
+    s2_token = const_info.s2_token
+    if sparse_type != 0:
+        row_begin = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_ROW_BEGIN_OFFSET_IDX) + found_b)
+        col_begin = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_COL_BEGIN_OFFSET_IDX) + found_b)
+        schedule_rows = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_SCHEDULE_ROWS_OFFSET_IDX) + found_b)
+        schedule_cols = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_SCHEDULE_COLS_OFFSET_IDX) + found_b)
+        s1_token = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_S1_TOKEN_OFFSET_IDX) + found_b)
+        s2_token = pl.getval(tensor_metadata, meta_base + meta_get(const_info, tensor_metadata, META_S2_TOKEN_OFFSET_IDX) + found_b)
+    if schedule_rows <= 0 or schedule_cols <= 0:
         return -1
-    n1_idx = linear_idx // n_b
-    s2_idx = linear_idx % n_b
-    s1_idx = (s2_idx + delta) % m_b
+    linear_idx = delta // schedule_rows * k + j
+    if linear_idx >= schedule_cols * n1:
+        return -1
+    n1_idx = linear_idx // schedule_cols
+    local_col = linear_idx % schedule_cols
+    s2_idx = col_begin + local_col
+    s1_idx = row_begin + (local_col + delta) % schedule_rows
+    actual_s1 = get_actual_s1_len(const_info, tensor_seqused_q, found_b)
+    actual_s2 = get_actual_s2_len(const_info, tensor_seqused_kv, found_b)
+    if s1_idx >= m_b or s2_idx >= n_b:
+        return -1
+    if sparse_type != 0:
+        # Exact tile/band intersection. Boundary tiles still apply the element mask.
+        q_lo = s1_idx * CUBE_BASEM
+        q_hi = min(q_lo + CUBE_BASEM, actual_s1) - 1
+        kv_lo = s2_idx * CUBE_BASEN
+        kv_hi = min(kv_lo + CUBE_BASEN, actual_s2) - 1
+        if kv_lo > q_hi + s2_token or kv_hi < q_lo - s1_token:
+            return -1
     coordinate_info.batch_id = found_b
     coordinate_info.n2_idx = n1_idx // const_info.g_size
     coordinate_info.g_idx = n1_idx % const_info.g_size
@@ -1265,12 +1302,11 @@ def cal_dense_swizzle_deter_index(
     coordinate_info.s2_idx = s2_idx
     coordinate_info.s1_outer = m_b
     coordinate_info.s2_outer = n_b
-    coordinate_info.actual_s1_len = get_actual_s1_len(
-        const_info, tensor_seqused_q, found_b
-    )
-    coordinate_info.actual_s2_len = get_actual_s2_len(
-        const_info, tensor_seqused_kv, found_b
-    )
+    coordinate_info.actual_s1_len = actual_s1
+    coordinate_info.actual_s2_len = actual_s2
+    coordinate_info.s1_token = s1_token
+    coordinate_info.s2_token = s2_token
+    # This value is only a validity marker in varlen; addressing uses coordinates.
     return (found_b * n1 + n1_idx) * m_b * n_b + s2_idx * m_b + s1_idx
 
 
@@ -1436,7 +1472,7 @@ def cal_deter_index(
     next_valid_index = -1
     for current_round_id in pl.range(round_id, max_loop_num, 1):
         if is_var_len():
-            # varlen 第一版仅支持 dense, 由 tilingkey 的 is_valid 约束 sparse_type == 0
+            # Metadata supplies the per-batch dense or cropped sparse swizzle.
             next_valid_index = cal_dense_swizzle_deter_index(
                 current_round_id,
                 coordinate_info,
@@ -1512,6 +1548,8 @@ def set_run_info(
     # varlen 下每 batch 的 outer/tail 都不同, 统一从 coordinate_info 取 per-block 值。
     # copy_dqkv2gm 只拿得到 run_info, 所以 s2_outer 需要落到 run_info 上。
     run_info.s2_outer_cur = coordinate_info.s2_outer
+    run_info.s1_token = coordinate_info.s1_token
+    run_info.s2_token = coordinate_info.s2_token
     if has_seq_used_q == 1:
         s1_remain = coordinate_info.actual_s1_len - run_info.s1o_idx * CUBE_BASEM
         run_info.s1_real_size = CUBE_BASEM if s1_remain > CUBE_BASEM else s1_remain
@@ -2155,8 +2193,8 @@ def compute_p_ds(
 
 
 def cal_atten_mask_offset(run_info, const_info):
-    # next侧: 有效条件 s2 - s1 <= s2_token, s2_token已由host按右下角校正
-    # mask_mode=3时host下发的s2_token恒等于-(s1_size-s2_size), 与原causal公式等价
+    # next boundary: s2 - s1 <= s2_token. For seqused the token is per batch;
+    # otherwise it is the fixed-shape host token.
     real_s1 = run_info.inner_s1_real_size[run_info.s1_idx]
     first_half_s1 = ceil(real_s1, QUANT_S1_BASE_COUNT) * QUANT_S1_BASE_COUNT // 2
     s1_offset = (
@@ -2165,7 +2203,7 @@ def cal_atten_mask_offset(run_info, const_info):
         + const_info.sub_id * first_half_s1
     )
     s2_offset = run_info.s2_cv_begin + run_info.s2_idx * TS
-    delta = s1_offset - s2_offset + const_info.s2_token
+    delta = s1_offset - s2_offset + run_info.s2_token
     return delta
 
 
@@ -2179,7 +2217,7 @@ def cal_atten_mask_offset_pre(run_info, const_info):
         + const_info.sub_id * first_half_s1
     )
     s2_offset = run_info.s2_cv_begin + run_info.s2_idx * TS
-    delta_pre = const_info.s1_token - (s1_offset - s2_offset)
+    delta_pre = run_info.s1_token - (s1_offset - s2_offset)
     return delta_pre
 
 
@@ -3282,6 +3320,17 @@ def quant_flash_attn_grad(
         [tiling.metadata_len, 1],
         dtype=pl.DT_INT32,
     )
+    if is_var_len():
+        # A stale schedule or a different core count changes the swizzle mapping.
+        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VALID_IDX) == 1,
+                      "QuantFAG: invalid seqused metadata")
+        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_BATCH_SIZE_IDX) == tiling.b,
+                      "QuantFAG: metadata batch mismatch")
+        pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_AIC_CORE_NUM_IDX) == pl.get_block_num(),
+                      "QuantFAG: metadata AIC core count mismatch")
+        if sparse_type != 0:
+            pl.pto_assert(pl.getval(tensor_metadata, tiling.metadata_len + META_SCHEDULE_VERSION_IDX) == 2,
+                          "QuantFAG: sparse seqused requires metadata ABI v2")
     # seqused 未使用时不能对空指针建 tensor, 这里退化成指向 metadata, 取值路径已由
     # 编译期 has_seq_used_* 分支消掉。
     if has_seq_used_q == 1:
@@ -4009,6 +4058,8 @@ def quant_flash_attn_grad(
         s1_real_size=0,
         s2_real_size=0,
         s2_outer_cur=0,
+        s1_token=0,
+        s2_token=0,
         inner_s1_loop_num=0,
         inner_s2_loop_num=0,
         inner_s1_real_size=[0, 0, 0, 0],
@@ -4044,6 +4095,8 @@ def quant_flash_attn_grad(
         g_idx=0,
         s1_outer=0,
         s2_outer=0,
+        s1_token=0,
+        s2_token=0,
         actual_s1_len=0,
         actual_s2_len=0,
         m_offset=0,
@@ -4087,7 +4140,7 @@ def quant_flash_attn_grad(
     # process kernel
 
     alloc_event_id()
-    if sparse_type == 4:
+    if sparse_type == 4 and not is_var_len():
         gen_band_info(const_info, band_info)
     loop_max = 0
     if is_var_len():
@@ -4108,6 +4161,13 @@ def quant_flash_attn_grad(
             )
             * ceil(const_info.s1_size, CUBE_BASEM)
         )
+        if sparse_type != 0:
+            # Sparse short-Q batches may need virtual rows for collision-free dQ.
+            loop_max = (
+                const_info.b_size
+                * ceil(const_info.s2_outer * const_info.n1_size, const_info.core_num)
+                * max(const_info.s1_outer, min(const_info.core_num, const_info.s2_outer))
+            )
     else:
         loop_max = cal_deter_max_loop_num(const_info, band_info)
     # with pl.section_cube():
@@ -4117,7 +4177,7 @@ def quant_flash_attn_grad(
     next_block_idx = 0
     init_coordinate_info(const_info, 0, 0, coordinate_infos[0])
     init_coordinate_info(const_info, 0, 0, coordinate_infos[1])
-    if sparse_type == 4:
+    if sparse_type == 4 and not is_var_len():
         init_coordinate_info(
             const_info, band_info.m_offset, band_info.n_offset, coordinate_infos[0]
         )
