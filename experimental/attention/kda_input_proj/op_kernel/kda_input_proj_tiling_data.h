@@ -20,25 +20,54 @@
 
 namespace optiling {
 
-struct KdaInputProjBaseParams {
-    uint32_t tSize = 0;           // token 个数 T
-    uint32_t hiddenSize = 0;      // 隐藏层维度，如 7168
-    uint32_t qkvSize = 0;         // qkv 投影输出维度，如 4608
-    uint32_t betaSize = 0;        // beta 投影输出维度，如 12
-    uint32_t gateSize = 0;        // gate 投影输出维度，如 1536
-    uint32_t gSize = 0;           // g 投影输出维度，如 1536
-    uint32_t usedCoreNum = 0;     // 使用核数
-    uint32_t aicCoreNum = 0;      // AIC 核数
-    uint32_t aivCoreNum = 0;      // AIV 核数
-    uint32_t transWeightQkv = 1;  // 是否转置 weight_qkv
-    uint32_t transWeightBeta = 1; // 是否转置 weight_beta
-    uint32_t transWeightGate = 1; // 是否转置 weight_gate
-    uint32_t transWeightG = 1;    // 是否转置 weight_g
+#pragma pack(push, 8)
+
+struct alignas(8) KdaInputProjBaseParams {
+    uint32_t tSize = 0;      // token 个数 T
+    uint32_t hiddenSize = 0; // 隐藏层维度，如 7168
+    uint32_t qkvSize = 0;    // qkv 投影输出维度，如 4608
+    uint32_t betaSize = 0;   // beta 投影输出维度，如 12
+    uint32_t gateSize = 0;   // gate 投影输出维度，如 1536
+    uint32_t gSize = 0;      // g 投影输出维度，如 1536
 };
 
-struct KdaInputProjTilingData {
-    KdaInputProjBaseParams baseParams;
+struct alignas(8) KdaInputProjMmBggParams {
+    uint32_t tTile{0};
+    uint32_t betaTile{0};
+    uint32_t gateTile{0};
+    uint32_t gTile{0};
+    uint32_t tDim{0};
+    uint32_t betaDim{0};
+    uint32_t gateDim{0};
+    uint32_t gDim{0};
+    uint32_t numBetaTile{0};
+    uint32_t numGateTile{0};
+    uint32_t numGTile{0};
+    uint32_t reserved{0}; // pad to 8-byte size (11 -> 12 uint32)
 };
+
+// 占位字段保证非空且 8 字节对齐；后续填真实字段时可替换
+struct alignas(8) KdaInputProjMxQuantParams {
+    uint64_t reserved{0};
+};
+
+struct alignas(8) KdaInputProjQmmQkvParams {
+    uint64_t reserved{0};
+};
+
+struct alignas(8) KdaInputProjSigmoidParams {
+    uint64_t reserved{0};
+};
+
+struct alignas(8) KdaInputProjTilingData {
+    KdaInputProjBaseParams baseParams;
+    KdaInputProjMmBggParams mmBggParams;
+    KdaInputProjMxQuantParams mxQuantParams;
+    KdaInputProjQmmQkvParams qmmQkvParams;
+    KdaInputProjSigmoidParams sigmoidParams;
+};
+
+#pragma pack(pop)
 
 } // namespace optiling
 

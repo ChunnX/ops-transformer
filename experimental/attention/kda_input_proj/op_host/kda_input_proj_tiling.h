@@ -78,7 +78,7 @@ public:
     fe::PlatFormInfos *platformInfo = nullptr;
     KdaInputProjParaInfo opParamInfo;
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
-    uint32_t tSize = 0;
+    KdaInputProjBaseParams baseParams; // 与 tiling_data.baseParams 对齐；核数运行时经 platform 获取
     bool transWeightQkv = true;
     bool transWeightBeta = true;
     bool transWeightGate = true;
@@ -115,7 +115,7 @@ private:
     fe::PlatFormInfos *platformInfo_ = nullptr;
     KdaInputProjParaInfo opParamInfo_;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
-    uint32_t tSize_ = 0;
+    KdaInputProjBaseParams baseParams_;
     ge::DataType inputXType_ = ge::DT_BF16;
     ge::DataType inputWeightQkvType_ = ge::DT_FLOAT8_E4M3FN;
     ge::DataType outputQkvType_ = ge::DT_BF16;
@@ -129,8 +129,15 @@ public:
     ge::graphStatus DoTiling(const KdaInputProjTilingInfo *tilingInfo);
 
 private:
+    ge::graphStatus FillBaseParams(const KdaInputProjTilingInfo &tilingInfo);
+    ge::graphStatus CalcModuleTilings(const KdaInputProjTilingInfo &tilingInfo);
+    ge::graphStatus SetTilingKey(const KdaInputProjTilingInfo &tilingInfo);
+    ge::graphStatus WriteTilingResult(const KdaInputProjTilingInfo &tilingInfo);
+
     gert::TilingContext *context_ = nullptr;
     KdaInputProjTilingData tilingData_;
+    uint64_t workspaceSize_ = 0;
+    uint32_t blockDim_ = 0;
 };
 } // namespace optiling
 

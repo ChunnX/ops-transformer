@@ -39,12 +39,19 @@
 #endif
 
 namespace KdaInputProj {
+template <bool TransWeightQkv = true, bool TransWeightBeta = true, bool TransWeightGate = true,
+          bool TransWeightG = true>
 struct KdaInputProjType {
     using DtypeX = DTYPE_X;
     using DtypeQkv = DTYPE_QKV;
     using DtypeBeta = DTYPE_BETA;
     using DtypeGate = DTYPE_GATE;
     using DtypeG = DTYPE_G;
+
+    static constexpr bool TRANS_WEIGHT_QKV = TransWeightQkv;
+    static constexpr bool TRANS_WEIGHT_BETA = TransWeightBeta;
+    static constexpr bool TRANS_WEIGHT_GATE = TransWeightGate;
+    static constexpr bool TRANS_WEIGHT_G = TransWeightG;
 };
 } // namespace KdaInputProj
 

@@ -10,12 +10,16 @@
 
 /*!
  * \file kda_input_proj_tiling.cpp
- * \brief
+ * \brief Orchestrates per-module tiling aligned with kernel components.
  */
 
 #include "kda_input_proj_tiling.h"
 
 #include "../op_kernel/kda_input_proj_template_tiling_key.h"
+#include "kda_input_proj_tiling_mm_bgg.h"
+#include "kda_input_proj_tiling_mx_quant.h"
+#include "kda_input_proj_tiling_qmm_qkv.h"
+#include "kda_input_proj_tiling_sigmoid.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -90,9 +94,57 @@ static ge::graphStatus TilingPrepareForKdaInputProj(gert::TilingParseContext * /
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KdaInputProjTiling::DoTiling(const KdaInputProjTilingInfo *tilingInfo)
+ge::graphStatus KdaInputProjTiling::FillBaseParams(const KdaInputProjTilingInfo &tilingInfo)
+{
+    tilingData_.baseParams = tilingInfo.baseParams;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KdaInputProjTiling::CalcModuleTilings(const KdaInputProjTilingInfo &tilingInfo)
+{
+    // 与 kernel 四组件一一对应；跨模块 workspace / 核数协调在编排层汇总
+    if (KdaInputProjMmBggTiling(tilingInfo).CalcTiling(tilingData_.mmBggParams) != ge::GRAPH_SUCCESS ||
+        KdaInputProjMxQuantTiling(tilingInfo).CalcTiling(tilingData_.mxQuantParams) != ge::GRAPH_SUCCESS ||
+        KdaInputProjQmmQkvTiling(tilingInfo).CalcTiling(tilingData_.qmmQkvParams) != ge::GRAPH_SUCCESS ||
+        KdaInputProjSigmoidTiling(tilingInfo).CalcTiling(tilingData_.sigmoidParams) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KdaInputProjTiling::SetTilingKey(const KdaInputProjTilingInfo &tilingInfo)
+{
+    // 与 ASCENDC_TPL_ARGS_DECL 顺序一致：TRANS_WEIGHT_{QKV,BETA,GATE,G}
+    const uint64_t tilingKey =
+        GET_TPL_TILING_KEY(tilingInfo.transWeightQkv, tilingInfo.transWeightBeta, tilingInfo.transWeightGate,
+                           tilingInfo.transWeightG);
+    context_->SetTilingKey(tilingKey);
+    OP_LOGI(tilingInfo.opName != nullptr ? tilingInfo.opName : "KdaInputProj",
+            "KdaInputProj tilingKey=%lu (trans_qkv=%d, trans_beta=%d, trans_gate=%d, trans_g=%d).", tilingKey,
+            static_cast<int32_t>(tilingInfo.transWeightQkv), static_cast<int32_t>(tilingInfo.transWeightBeta),
+            static_cast<int32_t>(tilingInfo.transWeightGate), static_cast<int32_t>(tilingInfo.transWeightG));
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KdaInputProjTiling::WriteTilingResult(const KdaInputProjTilingInfo &tilingInfo)
 {
     (void)tilingInfo;
+    // TODO: SetBlockDim / SetWorkspaceSizes / 写出 tilingData_
+    (void)blockDim_;
+    (void)workspaceSize_;
+    (void)tilingData_;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KdaInputProjTiling::DoTiling(const KdaInputProjTilingInfo *tilingInfo)
+{
+    OP_CHECK_IF(tilingInfo == nullptr, OPS_REPORT_VECTOR_INNER_ERR("KdaInputProj", "Tiling info is null."),
+                return ge::GRAPH_FAILED);
+
+    if (FillBaseParams(*tilingInfo) != ge::GRAPH_SUCCESS || CalcModuleTilings(*tilingInfo) != ge::GRAPH_SUCCESS ||
+        SetTilingKey(*tilingInfo) != ge::GRAPH_SUCCESS || WriteTilingResult(*tilingInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
