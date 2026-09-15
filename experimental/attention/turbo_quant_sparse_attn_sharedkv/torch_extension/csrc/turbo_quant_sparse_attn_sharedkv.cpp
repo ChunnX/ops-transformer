@@ -15,58 +15,64 @@
 #include "aclnn_common.h"
 
 namespace op_api {
+using OptionalTensor = c10::optional<at::Tensor>;
+using TensorPair = std::tuple<at::Tensor, at::Tensor>;
+
 namespace {
-std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &q, bool returnSoftmaxLse)
+TensorPair ConstructOutputs(const at::Tensor &query, bool returnSoftmaxLse)
 {
-    TORCH_CHECK(q.dim() == 3, "query must use TND layout");
-    for (int64_t dim = 1; dim < q.dim(); ++dim) {
-        TORCH_CHECK(q.size(dim) > 0, "query's N and D dimensions must be greater than 0");
+    TORCH_CHECK(query.dim() == 3, "query must use TND layout");
+    for (int64_t dim = 1; dim < query.dim(); ++dim) {
+        TORCH_CHECK(query.size(dim) > 0, "query's N and D dimensions must be greater than 0");
     }
-    at::Tensor attnOut = at::empty(q.sizes(), q.options());
+    at::Tensor attnOut = at::empty(query.sizes(), query.options());
     at::Tensor softmaxLse;
     if (returnSoftmaxLse) {
-        std::vector<int64_t> lseShape(q.sizes().begin(), q.sizes().end());
+        std::vector<int64_t> lseShape(query.sizes().begin(), query.sizes().end());
         lseShape.back() = 1;
-        softmaxLse = at::empty(lseShape, q.options().dtype(at::kFloat));
+        softmaxLse = at::empty(lseShape, query.options().dtype(at::kFloat));
     } else {
-        softmaxLse = at::empty({0}, q.options().dtype(at::kFloat));
+        softmaxLse = at::empty({0}, query.options().dtype(at::kFloat));
     }
     return {attnOut, softmaxLse};
 }
 } // namespace
 
-std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
-    const at::Tensor &q, const c10::optional<at::Tensor> &oriKv, const c10::optional<at::Tensor> &cmpKv,
-    const c10::optional<at::Tensor> &oriSparseIndices, const c10::optional<at::Tensor> &cmpSparseIndices,
-    const c10::optional<at::Tensor> &oriBlockTable, const c10::optional<at::Tensor> &cmpBlockTable,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensOriKv,
-    const c10::optional<at::Tensor> &cuSeqlensCmpKv, const c10::optional<at::Tensor> &sequsedQ,
-    const c10::optional<at::Tensor> &sequsedOriKv, const c10::optional<at::Tensor> &sequsedCmpKv,
-    const c10::optional<at::Tensor> &cmpResidualKv, const c10::optional<at::Tensor> &oriTopkLength,
-    const c10::optional<at::Tensor> &cmpTopkLength, const c10::optional<at::Tensor> &sinks,
-    const c10::optional<at::Tensor> &metadata, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
-    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ, c10::string_view layoutKv,
-    int64_t topkValueMode, bool returnSoftmaxLse, int64_t oriKvStride, int64_t cmpKvStride, int64_t kvQuantMode)
+TensorPair TurboQuantSparseAttnSharedkv(
+    const at::Tensor &query, const OptionalTensor &originalKv, const OptionalTensor &compressedKv,
+    const OptionalTensor &originalSparseIndices, const OptionalTensor &compressedSparseIndices,
+    const OptionalTensor &originalBlockTable, const OptionalTensor &compressedBlockTable,
+    const OptionalTensor &querySequenceOffsets, const OptionalTensor &originalKvSequenceOffsets,
+    const OptionalTensor &compressedKvSequenceOffsets, const OptionalTensor &usedQueryLengths,
+    const OptionalTensor &usedOriginalKvLengths, const OptionalTensor &usedCompressedKvLengths,
+    const OptionalTensor &compressedKvResidual, const OptionalTensor &originalTopkLengths,
+    const OptionalTensor &compressedTopkLengths, const OptionalTensor &attentionSinks,
+    const OptionalTensor &scheduleMetadata, double scale, int64_t compressionRatio, int64_t originalMaskMode,
+    int64_t compressedMaskMode, int64_t windowLeft, int64_t windowRight, c10::string_view queryLayout,
+    c10::string_view kvLayout, int64_t topkMode, bool returnSoftmaxLse, int64_t originalKvStride,
+    int64_t compressedKvStride, int64_t quantMode)
 {
-    std::string layoutQStr(layoutQ);
-    std::string layoutKvStr(layoutKv);
-    auto outputs = ConstructOutputs(q, returnSoftmaxLse);
+    std::string queryLayoutString(queryLayout);
+    std::string kvLayoutString(kvLayout);
+    auto outputs = ConstructOutputs(query, returnSoftmaxLse);
     at::Tensor attnOut = std::get<0>(outputs);
     at::Tensor softmaxLse = std::get<1>(outputs);
-    if (oriKv.has_value()) {
-        oriKvStride = oriKv.value().stride(0);
+    if (originalKv.has_value()) {
+        originalKvStride = originalKv.value().stride(0);
     }
-    if (cmpKv.has_value()) {
-        cmpKvStride = cmpKv.value().stride(0);
+    if (compressedKv.has_value()) {
+        compressedKvStride = compressedKv.value().stride(0);
     }
-    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
-    char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
+    char *queryLayoutData = const_cast<char *>(queryLayoutString.c_str());
+    char *kvLayoutData = const_cast<char *>(kvLayoutString.c_str());
 
-    ACLNN_CMD(aclnnTurboQuantSparseAttnSharedkv, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
-              cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv,
-              cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, softmaxScale, cmpRatio, oriMaskMode,
-              cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr, topkValueMode, returnSoftmaxLse,
-              oriKvStride, cmpKvStride, kvQuantMode, attnOut, softmaxLse);
+    ACLNN_CMD(aclnnTurboQuantSparseAttnSharedkv, query, originalKv, compressedKv, originalSparseIndices,
+              compressedSparseIndices, originalBlockTable, compressedBlockTable, querySequenceOffsets,
+              originalKvSequenceOffsets, compressedKvSequenceOffsets, usedQueryLengths, usedOriginalKvLengths,
+              usedCompressedKvLengths, compressedKvResidual, originalTopkLengths, compressedTopkLengths, attentionSinks,
+              scheduleMetadata, scale, compressionRatio, originalMaskMode, compressedMaskMode, windowLeft, windowRight,
+              queryLayoutData, kvLayoutData, topkMode, returnSoftmaxLse, originalKvStride, compressedKvStride,
+              quantMode, attnOut, softmaxLse);
     return {attnOut, softmaxLse};
 }
 
