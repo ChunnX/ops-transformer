@@ -18,6 +18,7 @@
 #include <cmath>
 #include "common.h"
 #include "kernel_operator.h"
+#include "moe_gating_top_k_arch35_common.h"
 #include "op_kernel/math_util.h"
 #include "op_kernel/load_store_utils.h"
 #include "basic_api/kernel_operator_utils_intf.h"
@@ -74,6 +75,7 @@ private:
                                                     LocalTensor<T> &yOutTensor, LocalTensor<int32_t> &expertIdxOut,
                                                     LocalTensor<float> &outOutTensor);
 
+    template <bool NEED_RENORM>
     __aicore__ inline void ProcessSingleExpertSigmoid(int64_t batchSize, int64_t numBatches);
     __aicore__ inline void ProcessSingleExpertSoftMaxRenorm(int64_t batchSize, int64_t numBatches);
     __aicore__ inline void ProcessSingleExpertSoftMaxNoRenorm(int64_t batchSize, int64_t numBatches);
@@ -384,7 +386,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
     __ubuf__ float *xNormWithBiasAddr = (__ubuf__ float *)xNormWithBiasTensor.GetPhyAddr();
     __ubuf__ float *biasAddr = (__ubuf__ float *)biasTensor.GetPhyAddr();
 
-    if (normType_ == 1) {
+    if (IsSigmoidNormType(normType_)) {
         ComputeNormSigmoid(xRowAddr, xNormAddr);
     } else if (normType_ == 0) {
         ComputeNormSoftMax(xRowAddr, xNormAddr, xNormWithBiasAddr, biasAddr, duplicateNum);
@@ -665,6 +667,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::CopyOutSingleExpertB
 }
 
 template <typename T>
+template <bool NEED_RENORM>
 __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertSigmoid(int64_t batchSize,
                                                                                        int64_t numBatches)
 {
@@ -706,9 +709,13 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpertS
                 Reg::Exp(vregTmp2, vregTmp1, preg0);
                 Reg::Adds(vregTmp3, vregTmp2, static_cast<float>(1), preg0);
                 Reg::Div<float, &WG_DIV_MODE>(vregNorm, vregOne, vregTmp3, preg0);
-                Reg::Adds(vregSumBcast, vregNorm, eps_, preg0);
-                Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
-                Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                if constexpr (NEED_RENORM) {
+                    Reg::Adds(vregSumBcast, vregNorm, eps_, preg0);
+                    Reg::Div(vregOut, vregNorm, vregSumBcast, preg0);
+                    Reg::Muls(vregOut, vregOut, routedScalingFactor_, preg0);
+                } else {
+                    Reg::Muls(vregOut, vregNorm, routedScalingFactor_, preg0);
+                }
                 Reg::Duplicate(vregZeroIdx, static_cast<int32_t>(0), preg0);
                 ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOut, preg0, i * VL_FLOAT_SIZE);
                 Reg::StoreAlign(expertIdxAddr + i * VL_FLOAT_SIZE, vregZeroIdx, preg0);
@@ -893,8 +900,10 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ProcessSingleExpert(
     int64_t batchSize = Min(batchRows_, curCoreRowCount_);
     int64_t numBatches = CeilDiv(curCoreRowCount_, batchSize);
 
-    if (normType_ == 1) {
-        ProcessSingleExpertSigmoid(batchSize, numBatches);
+    if (normType_ == NORM_TYPE_SIGMOID_NO_RENORM) {
+        ProcessSingleExpertSigmoid<false>(batchSize, numBatches);
+    } else if (normType_ == NORM_TYPE_SIGMOID) {
+        ProcessSingleExpertSigmoid<true>(batchSize, numBatches);
     } else if (normType_ == 0) {
         if (renorm_ == 0) {
             ProcessSingleExpertSoftMaxNoRenorm(batchSize, numBatches);
@@ -927,7 +936,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Init(GM_ADDR x, GM_A
     normType_ = tilingData_->normType;
     renorm_ = tilingData_->renorm;
     outFlag_ = tilingData_->outFlag == 1;
-    noNorm_ = (normType_ == 0 && renorm_ == 0);
+    noNorm_ = !ShouldRenormalize(normType_, renorm_);
     routedScalingFactor_ = tilingData_->routedScalingFactor;
     eps_ = tilingData_->eps;
     batchRows_ = tilingData_->batchRows > 0 ? tilingData_->batchRows : DEFAULT_BATCH_ROWS;

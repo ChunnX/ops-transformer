@@ -174,7 +174,7 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::ComputeX()
                   (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
         PipeBarrier<PIPE_V>();
     }
-    if (normType_ == 1) { // sigmoid
+    if (IsSigmoidNormType(normType_)) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCountAlign_);
         PipeBarrier<PIPE_V>();
@@ -525,8 +525,8 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::SelectTopKExpertScore()
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-    bool needRenorm = (normType_ == 1) ||               // 情况1：sigmoid + renorm
-                      (normType_ == 0 && renorm_ == 1); // 情况3：softmax + renorm
+    // Preserve this path's legacy policy. Host tiling routes Softplus to the without-group kernel.
+    const bool needRenorm = normType_ == NORM_TYPE_SIGMOID || (normType_ == NORM_TYPE_SOFTMAX && renorm_ == 1);
     if (needRenorm) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[32];
