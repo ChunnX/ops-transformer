@@ -481,7 +481,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
         LocalTensor<half> halfLocalTemp = floatLocalTemp.ReinterpretCast<half>();
         LocalTensor<int32_t> int32LocalTemp = floatLocalTemp.ReinterpretCast<int32_t>();
         Cast(int32LocalTemp, floatLocalTemp, RoundMode::CAST_RINT, axisH_);
-        PipeBarrier<PIPE_V>();
         SetDeqScale((half)1.000000e+00f);
         PipeBarrier<PIPE_V>();
         Cast(halfLocalTemp, int32LocalTemp, RoundMode::CAST_ROUND, axisH_);
@@ -566,7 +565,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::Q
     LocalTensor<half> halfLocalTemp = floatLocalTemp.ReinterpretCast<half>();
     LocalTensor<int32_t> int32LocalTemp = floatLocalTemp.ReinterpretCast<int32_t>();
     Cast(int32LocalTemp, floatLocalTemp, RoundMode::CAST_RINT, axisH_);
-    PipeBarrier<PIPE_V>();
     SetDeqScale((half)1.000000e+00f);
     PipeBarrier<PIPE_V>();
     Cast(halfLocalTemp, int32LocalTemp, RoundMode::CAST_ROUND, axisH_);
@@ -950,8 +948,6 @@ __aicore__ inline void AttentionToFfnUrma<TemplateAttentionToFfnUrmaTypeFunc>::P
             DataCopyPad(scratchBlockGM, tokenRankScratchTensor_, scratchWriteParams);
         }
         PipeBarrier<PIPE_MTE3>();
-
-        PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
 
         if (aivId_ == 0U) {
