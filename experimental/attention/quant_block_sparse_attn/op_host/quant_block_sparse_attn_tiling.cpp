@@ -273,16 +273,11 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
     if (info.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        uint32_t config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
-        if (info.dSize == 64U) {
-            config = info.s2BaseSizeVal == 1024U ?
-                Config_S1Aligned128_S2Aligned1024_DAligned64_DVAligned64 :
-                Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
-        } else if (info.dSize == 256U) {
-            config = Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256;
-        }
-        OP_LOGD(kOpName, "MXFP8 tiling config: D=%u, s2BaseSize=%u, config=%u", info.dSize, info.s2BaseSizeVal,
-                config);
+        // D64 对齐 FIA 使用 S2=512/S2_SPLIT=256，保留 C1 UB/L0C 双缓冲。
+        const uint32_t config = info.dSize == 64U ?
+            Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 :
+            (info.dSize == 256U ? Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 :
+             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128);
         tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
                                         info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
                                         config, MXFullQuantMode);

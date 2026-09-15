@@ -76,7 +76,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata, c10::string_view layout_kv,
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
-    int64_t mask_mode, bool return_softmax_lse, int64_t s2_base_size)
+    int64_t mask_mode, bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
@@ -193,7 +193,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sparse_indices, sparse_seq_len, block_table,
                     atten_mask, metadata, softmax_scale, sparse_q_block_size, sparse_kv_block_size, layout_kv_ptr,
                     layout_q_ptr, layout_sparse_indices_ptr, layout_out_ptr, quant_mode, mask_mode, return_softmax_lse,
-                    s2_base_size, attention_out, softmax_lse);
+                    attention_out, softmax_lse);
 
     return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
 }
@@ -208,7 +208,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata, c10::string_view layout_kv,
     c10::string_view layout_q, c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode,
-    int64_t mask_mode, bool return_softmax_lse, int64_t /*s2_base_size*/)
+    int64_t mask_mode, bool return_softmax_lse)
 {
     return construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
 }

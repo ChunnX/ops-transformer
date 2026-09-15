@@ -55,7 +55,6 @@ constexpr uint32_t QBSA_LAYOUT_OUT_ATTR_INDEX = 6U;
 constexpr uint32_t QBSA_QUANT_MODE_ATTR_INDEX = 7U;
 constexpr uint32_t QBSA_MASK_MODE_ATTR_INDEX = 8U;
 constexpr uint32_t QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 9U;
-constexpr uint32_t QBSA_S2_BASE_SIZE_ATTR_INDEX = 10U;
 
 struct QBSARequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc = nullptr;
@@ -99,7 +98,6 @@ struct QuantBlockSparseAttnParaInfo {
     const int64_t *quantMode = nullptr;
     const int64_t *maskMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
-    const int64_t *s2BaseSize = nullptr;
 };
 
 struct QuantBlockSparseAttnTilingInfo {
@@ -129,7 +127,6 @@ struct QuantBlockSparseAttnTilingInfo {
     float softmaxScaleVal = 1.0F;
     uint32_t maskModeVal = 0;
     uint32_t quantModeVal = 1;
-    uint32_t s2BaseSizeVal = 512;
     uint32_t layoutQValue = 0;
     std::string layoutQStr = "TND";
     std::string layoutKVStr = "PA_BNBD";
