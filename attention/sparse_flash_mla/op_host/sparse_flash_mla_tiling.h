@@ -16,11 +16,8 @@
 #define SPARSE_FLASH_MLA_TILING_H
 
 #include <exe_graph/runtime/tiling_context.h>
-#include <tiling/platform/platform_ascendc.h>
-#include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "err/ops_err.h"
-#include "platform/soc_spec.h"
 #include "common/smla_host_common_defs.h"
 
 namespace optiling {
@@ -63,6 +60,7 @@ constexpr uint32_t BYTE_BLOCK = 32;
 // 入参限制常量
 constexpr uint32_t METADATA_LIMIT = 1024;
 constexpr uint32_t DIM_LIMIT = 512;
+constexpr uint32_t TOPK_LIMIT = 8192;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 
 // -----------算子TilingData定义（A2/A3字段顺序 + A5追加字段）---------------
@@ -416,8 +414,8 @@ public:
 
     bool HasAxis(const SMLAAxis &axis, const SMLALayout &layout, const gert::Shape &shape) const;
     size_t GetAxisIdx(const SMLAAxis &axis, const SMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const;
-    static constexpr uint32_t invalidDimValue_ = std::numeric_limits<uint32_t>::min();
+    int64_t GetAxisNum(const gert::Shape &shape, const SMLAAxis &axis, const SMLALayout &layout) const;
+    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
     uint32_t bSize_ = 0;
