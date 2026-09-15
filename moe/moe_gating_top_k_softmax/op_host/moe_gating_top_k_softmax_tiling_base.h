@@ -56,8 +56,8 @@ TILING_DATA_FIELD_DEF(uint32_t, blockNum);
 TILING_DATA_FIELD_DEF(uint32_t, blockFormer);   // 0 dim former block size
 TILING_DATA_FIELD_DEF(uint32_t, blockTail);     // 0 dim tail block size
 TILING_DATA_FIELD_DEF(uint32_t, ubLoop);        // 0 dim loop num
-TILING_DATA_FIELD_DEF(uint32_t, ubFormer);      // size of eash fromer loop
-TILING_DATA_FIELD_DEF(uint32_t, ubFormerAlign); // align size of eash fromer loop
+TILING_DATA_FIELD_DEF(uint32_t, ubFormer);      // size of each former loop
+TILING_DATA_FIELD_DEF(uint32_t, ubFormerAlign); // align size of each former loop
 TILING_DATA_FIELD_DEF(uint32_t, ubTail);        // size of tail loop
 TILING_DATA_FIELD_DEF(uint32_t, ubTailAlign);   // align size of tail loop
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, ubFormerSoftmaxTilingData);

@@ -556,7 +556,7 @@ template <class mmType, bool sync, bool antiquantPerformance>
 __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::DataCopyScaleAndOffset(
     uint32_t curBaseN, uint32_t alignBaseN, uint64_t realScaleOffset)
 {
-    // copy scale and offset frome GM
+    // copy scale and offset from GM
     DataCopyPadParams padParams;
     DataCopyParams scaleParams;
     scaleParams.blockLen = curBaseN * sizeof(BT);
