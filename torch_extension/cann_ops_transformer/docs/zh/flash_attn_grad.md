@@ -188,7 +188,7 @@ cann_ops_transformer.flash_attn_grad(
 - `is_grad_enabled=True`生成的metadata同时包含正向和反向任务切分数据，前向`flash_attn`和反向`flash_attn_grad`均可使用同一份metadata，无需分别生成。
 - `softmax_lse`、`attn_out`必须来自与本次反向计算配置一致的前向调用，尤其是`softmax_scale`和layout必须一致。
 - `sinks`为float32、shape为(N1,)，N1为Query head数；提供时必须与前向`flash_attn`所用sinks一致。不提供时`dsink`为全0。
-- `dsink`为float32、shape为(N1,)，由kernel以fp32原子累加写回；torch接口内部以全0初始化（`at::zeros`）后再累加，直接调用inner aclnn接口时需自行保证该输出清零。
+- `dsink`为float32、shape为(N1,)，逐次运行逐位可复现：kernel 里每个 AIV 子核在 UB 内按 head 精确累加部分和，写成 workspace 中自己独占的槽位行（每 AIV 一行，无原子加）；`sync_all` 后由 AIV0 按固定行序归约成 dsink，读前带一遍读侧预热以避开「紧随栅栏的首次读可能尚未全局可见」的窗口。
 - 当前仅支持单算子模式。
 
 ## 配套接口说明

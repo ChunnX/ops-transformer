@@ -26,8 +26,14 @@ dSink=-\sum_{b,s1,s2} P \cdot dP \cdot \exp(sink-softmax\_lse)
 $$
 
 其中 `dP=dO \cdot V^T`。kernel 按 task（s2 块）在块内把 `P \cdot dP` 逐行乘
-`\exp(sink-softmax\_lse)` 后归约，再以 fp32 atomicAdd 跨核累加到 dsink ——
-与逐 (b, s1, s2) 全量归约等价。
+`\exp(sink-softmax\_lse)` 后归约，再经**确定性归约**得到 `dsink`：
+每个 AIV 子核在本核 UB 里按 lane（lane 序号 == head 序号）精确累加自己的
+部分和（V 管道程序序，逐位确定），主循环末尾把整行普通 store 到 workspace
+中自己独占的槽位行（一行一个 AIV，无并发写者、不用原子加）；`sync_all`
+之后由 AIV0 按固定行序（aiv 0..aivCount-1）归约成 `dsink` —— 写点与读点
+之间隔着整段 post 搬运/计算，读前再做一遍读侧预热（load+store 到 scratch）
+消除「紧随栅栏的首次读可能尚未全局可见」的窗口。结果与逐 (b, s1, s2)
+全量归约等价，且**逐次运行逐位可复现**。
 
 ## 输入输出
 

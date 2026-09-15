@@ -49,8 +49,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FlashAttnGrad(
         dq = at::empty(q.sizes(), q.options());
         dk = at::empty(k.sizes(), k.options());
         dv = at::empty(v.sizes(), v.options());
-        // dsink 由 kernel 以 fp32 atomicAdd 累加，必须先清零；
-        // sinks 为 None 时也返回全 0，保证接口结果有定义。
+        // dsink 由 kernel 固定次序归约后全量写出（每 AIV 槽位行写 workspace，
+        // post 阶段 AIV0 按固定行序归约）；at::zeros 仅为双保险。
         dsink = at::zeros({n1}, q.options().dtype(at::kFloat));
     }
 

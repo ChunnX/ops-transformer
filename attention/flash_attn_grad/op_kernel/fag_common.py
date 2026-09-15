@@ -63,6 +63,16 @@ VECTOR_BASEN = CUBE_BASEN
 
 # 单个 VF 寄存器的 fp32 / fp16 lane 数
 VF_LANES = 64
+# 每个 AI Core 的 vector 子核数：pypto 的 get_subblock_idx() 文档明确子核
+# 编号只有 0/1，host 的 FAG_AICV_RATIO_DEFAULT 同为 2 —— 平台常量。
+# 不能用 pl.get_subblock_num() 在函数级求：AIC 语境恒折叠成 1。
+AIV_PER_CORE = 2
+# dsink 确定性归约的行容量：kernel 把每个 AIV 子核的部分和写成 workspace
+# 的一行（行号 aivIdx = get_block_idx() 的 AIV 全局序号，独占写者），
+# post 阶段由 AIV0 按固定次序（aiv 0..aivCount-1）归约出 dsink。
+# 行数上限覆盖 aicNum<=64 的平台（ascend950 为 36 核 / 72 AIV）；host 对
+# hasSinks 且 2*aicNum > DSINK_ROWS 的场景直接拒绝。
+DSINK_ROWS = 128
 VF_LANES_FP16 = 128
 # ASC attenmask_arch35.h: 压缩 mask 边长 2048，minValue = 0xFF7FFFFF
 ATTEN_MASK_COMPRESS = 2048
@@ -158,6 +168,8 @@ def set_const_info(tiling, coreNum, enableSwizzle):
         n2GS1oS2o=tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         totalBlockNum=tiling.b * tiling.n2 * tiling.gSize * s1Outer * s2Outer,
         gSize=tiling.gSize,
+        # Q 侧 head 总数（= n2*g）。dsink/sinks 都按它索引（headQ）。
+        n1Size=tiling.n2 * tiling.gSize,
         coreNum=coreNum,
         enableSwizzle=enableSwizzle,
         # 布局视图参数(BSND/BNSD 统一四维视图)，见 FlashAttnGradTilingData 注释。

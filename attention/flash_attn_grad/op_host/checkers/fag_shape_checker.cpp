@@ -133,6 +133,12 @@ ge::graphStatus CheckSinks(const char *opName, gert::TilingContext *context, int
     OP_CHECK_IF(shape.GetDim(0) != qN,
                 OP_LOGE(opName, "sinks shape[0] must equal Q head num N1 (%ld), but got %ld.", qN, shape.GetDim(0)),
                 return ge::GRAPH_PARAM_INVALID);
+    // dsink 的确定性两段式规约在每 AIV 的 [1,128] fp32 UB 累加器里按 lane
+    // （lane 序号 == head 序号）累加，N1 > 128 会越出 lane 容量。
+    OP_CHECK_IF(qN > 128,
+                OP_LOGE(opName, "sinks requires Q head num N1 <= 128 (deterministic dsink "
+                                "reduction lane capacity), but got N1=%ld.", qN),
+                return ge::GRAPH_PARAM_INVALID);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -41,7 +41,9 @@ from fag_mem import BN2_CAST_W, BN2_V1_ROWS, POST_ELEMS, PRE_ELEMS
 from fag_vector_api import (
     broadcast_sub_mul_cast_vf,
     cast_p_vf,
+    dsink_acc_vf,
     dsink_partial_vf,
+    dsink_reduce_add_vf,
     fill_zero_fp16_vf,
     fill_zero_vf,
     muls_cast_vf,
@@ -189,7 +191,7 @@ def process_vec3(constInfo, runInfo, subIdx, ds_l1, mm1_ub, mm2_ub, sfmg_ub, nzp
 def process_sink_partial(
     constInfo,
     runInfo,
-    tensor_dsink,
+    acc_ub,
     p_ub,
     dp_ub,
     lse_ub,
@@ -206,10 +208,12 @@ def process_sink_partial(
     CalculateSink 用块内 P·dP 一致）。
     本子核 lane m 对应真实行 queryOffset + subIdx*64 + m；lse 直接借主槽位：
     那里的 lane m+rowShift 正是同一行（与 muls_sel_simple_softmax_vf 的取值
-    口径一致），故不需要额外的 GM 搬运。结果 [1,1] 以 fp32 atomicAdd 落到
-    dsink[headQ] —— 同一 head 的多个 b/s2 块可能在不同核，只能原子累加。
-    dsink GM 由调用方（torch 层 at::zeros）预清零。
+    口径一致），故不需要额外的 GM 搬运。
 
+    部分和累加到本 AIV 独占的 UB 累加器 acc[headQ]（dsink_acc_vf，
+    select 精确 lane 定向，V 管道程序序 → 逐位确定）。主循环结束后由
+    调用方把 acc 整行普通 store 到宽输出 dsink 的本 AIV 行，最终求和
+    由 host 侧（torch 扩展）在 kernel 结束后按固定次序完成。
     rows == 0（尾块里第二个子核无行）时整体跳过，不产生任何写。
     调用方必须保证此时 mm1/mm2 尚未放行给 cube（本块还没被覆写）。
     """
@@ -234,9 +238,50 @@ def process_sink_partial(
         tailCols,
         runInfo.rowShift,
     )
-    pl.set_validshape(sink_part_ub, [1, 1])
-    pl.store(tensor_dsink, sink_part_ub, [0, headQ], atomic=pl.AtomicType.AtomicAdd)
-    pl.set_validshape(sink_part_ub, [1, VECTOR_BASEN])
+    dsink_acc_vf(acc_ub, sink_part_ub, headQ)
+
+
+def process_sink_prime(tensor_slots, tensor_prime, row_ub, aiv_count, n1_size):
+    """dsink 归约前的读侧预热：把每条槽位行读一遍并搬到 scratch。
+
+    实测：SYNCALL 之后 AIV0 第一次读别的 AIV 写下的行可能读到尚未全局
+    可见的值（同一地址第二遍读就是新鲜的）；先做一遍「load + store」的
+    预热再正式归约，可稳定消除该窗口。预热只写 scratch，不回写原槽
+    （避免把 stale 值写回覆盖新鲜数据），语义上无副作用。
+    """
+    nChunks = (n1_size + VECTOR_BASEN - 1) // VECTOR_BASEN
+    for c in pl.range(0, nChunks):
+        w = pl.min(VECTOR_BASEN, n1_size - c * VECTOR_BASEN)
+        for r in pl.range(0, aiv_count):
+            pl.set_validshape(row_ub, [1, w])
+            pl.load(row_ub, tensor_slots, [0, r * n1_size + c * VECTOR_BASEN])
+            pl.system.bar_mte2()
+            pl.set_validshape(row_ub, [1, w])
+            pl.store(tensor_prime, row_ub,
+                     [0, r * n1_size + c * VECTOR_BASEN])
+
+
+def process_sink_reduce(constInfo, tensor_slots, tensor_dsink, acc_ub, row_ub, aiv_count):
+    """dsink 的固定次序归约：acc = slot[0] + slot[1] + ... + slot[aiv_count-1]。
+
+    由 AIV0 在末尾 sync_all 之后单点执行；行序固定 → 括号结构逐位可复现。
+    head 维按 VECTOR_BASEN 分块，尾部 valid_shape 裁剪；acc 初值取第 0 行。
+    """
+    n1Size = constInfo.n1Size
+    nsegs = VECTOR_BASEN // VF_LANES
+    nChunks = (n1Size + VECTOR_BASEN - 1) // VECTOR_BASEN
+    for c in pl.range(0, nChunks):
+        w = pl.min(VECTOR_BASEN, n1Size - c * VECTOR_BASEN)
+        pl.set_validshape(acc_ub, [1, w])
+        pl.load(acc_ub, tensor_slots, [0, c * VECTOR_BASEN])
+        pl.system.bar_mte2()
+        for r in pl.range(1, aiv_count):
+            pl.set_validshape(row_ub, [1, w])
+            pl.load(row_ub, tensor_slots, [0, r * n1Size + c * VECTOR_BASEN])
+            pl.system.bar_mte2()
+            dsink_reduce_add_vf(acc_ub, row_ub, nsegs)
+        pl.set_validshape(acc_ub, [1, w])
+        pl.store(tensor_dsink, acc_ub, [0, c * VECTOR_BASEN])
 
 
 # ==================================================================
