@@ -640,10 +640,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV
                 scalePadParams.rightPadding = 0;
                 scalePadParams.paddingValue = 0;
 
-                // feature搬运从较小地址开始，当keyOffset0 > keyOffset1时
-                // feature顺序被交换(token1→row0, token0→row1)，scale需同步交换
+                // batch一致性场景下，feature和scale均保持token逻辑顺序
+                // 非batch一致性场景下，feature从较小地址开始搬运，scale需同步交换
                 // 尾块中keyOffset1可能为-1（仅1条有效），此时不发生交换
-                bool swapOrder = (keyOffset0 > -1 && keyOffset1 > -1 && keyOffset0 > keyOffset1);
+                bool swapOrder = false;
+                if constexpr (!IS_BATCH_CONSISTENCY) {
+                    swapOrder = (keyOffset0 > -1 && keyOffset1 > -1 && keyOffset0 > keyOffset1);
+                }
                 if (scaleOffset0 >= 0) {
                     uint32_t dstRow = swapOrder ? (startRow + 1) : startRow;
                     DataCopyPad(kvInUb[dstRow * combineDimAlign + dCombineBytes], keyGm[scaleOffset0], scaleParams,
