@@ -47,6 +47,8 @@
 |[dense_lightning_indexer_softmax_lse](../../attention/dense_lightning_indexer_softmax_lse_v2/docs/torchapi_dense_lightning_indexer_softmax_lse.md)| dense场景DenseLightningIndexerGradKlLoss算子计算Softmax输入的一个分支算子。支持压缩注意力（Compressed Attention），并支持通过metadata前置算子进行分核负载均衡。需与`dense_lightning_indexer_softmax_lse_metadata`配套使用。|-|默认确定性实现|
 |[dense_lightning_indexer_softmax_lse_metadata](../../attention/dense_lightning_indexer_softmax_lse_v2/docs/torchapi_dense_lightning_indexer_softmax_lse.md)| dense_lightning_indexer_softmax_lse接口的前置接口，用于计算dense_lightning_indexer_softmax_lse的负载均衡。|-|默认确定性实现|
 |[flash_attn](../../attention/flash_attn/docs/torchapi_flash_attn.md)| 调用`FlashAttn`算子完成共享KV（Key和Value使用同一份输入）的非量化注意力计算，训练推理归一化。需与`flash_attn_metadata`配套使用。 | - | 默认支持确定性计算  |
+|[flash_mla](../../attention/flash_mla/docs/torchapi_flash_mla.md)|完成RoPE分离的MLA前向计算，支持非量化和INT8全量化，需与flash_mla_metadata配套使用。|默认确定性实现|-|
+|[flash_mla_metadata](../../attention/flash_mla_metadata/docs/torchapi_flash_mla_metadata.md)|根据设备序列实长和输入配置生成FlashMla的调度metadata。|默认确定性实现|-|
 |[ffn_to_attention](../../mc2/ffn_to_attention_v2/docs/torchapi_ffn_to_attention.md)| 一个通信域内的FFN节点对Attention节点发送数据并写状态位，以检测通信链路是否正常。 | - | 默认支持确定性计算  |
 |[fused_causal_conv1d](../../attention/fused_causal_conv1d/docs/torchapi_fused_causal_conv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。| - | 默认确定性实现 |
 |[fused_causal_conv1d_](../../attention/inplace_fused_causal_conv1d/docs/torchapi_fused_causal_conv1d_.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性，且支持原地更新。| - | 默认确定性实现 |
