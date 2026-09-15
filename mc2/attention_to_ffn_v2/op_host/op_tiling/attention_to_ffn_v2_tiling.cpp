@@ -50,6 +50,38 @@ constexpr size_t MX_PARAM_PAD_SIZE = 256U;
 constexpr size_t WORKSPACE_ELEMENT_OFFSET = 128U;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1U;
 
+inline size_t CeilAlignSize(size_t val, size_t align)
+{
+    return (val + align - 1U) / align * align;
+}
+
+AttentionToFFNTilingConfig MakeTilingConfig(bool allowMxQuantMode)
+{
+    AttentionToFFNTilingConfig config;
+    config.contextIndex = 0U;
+    config.xIndex = 1U;
+    config.sessionIdIndex = 2U;
+    config.microBatchIdIndex = 3U;
+    config.layerIdIndex = 4U;
+    config.expertIdsIndex = 5U;
+    config.expertRankTableIndex = 6U;
+    config.scalesIndex = 7U;
+    config.activeMaskIndex = 8U;
+    config.attrGroupIndex = ATTR_GROUP_INDEX;
+    config.attrWorldSizeIndex = ATTR_WORLD_SIZE_INDEX;
+    config.attrFfnTokenInfoTableShapeIndex = ATTR_FFN_TOKEN_INFO_SHAPE_INDEX;
+    config.attrFfnTokenDataShapeIndex = ATTR_FFN_TOKEN_DATA_SHAPE_INDEX;
+    config.attrAttnTokenInfoTableShapeIndex = ATTR_ATTN_TOKEN_INFO_SHAPE_INDEX;
+    config.attrMoeExpertNumIndex = ATTR_MOE_EXPERT_NUM_INDEX;
+    config.attrQuantModeIndex = ATTR_QUANT_MODE_INDEX;
+    config.attrSyncFlagIndex = ATTR_SYNC_FLAG_INDEX;
+    config.attrFfnStartRankIdIndex = ATTR_FFN_START_RANK_ID_INDEX;
+    config.attrCclBufferSizeIndex = ATTR_CCL_BUFFER_SIZE_INDEX;
+    config.isMc2Context = true;
+    config.allowMxQuantMode = allowMxQuantMode;
+    return config;
+}
+
 // User-facing quant_mode values that select the MX/MX_CLIP algorithm.
 constexpr uint32_t USER_QUANT_MODE_MX_E5M2 = 3U;
 constexpr uint32_t USER_QUANT_MODE_MX_E4M3 = 4U;
@@ -172,7 +204,6 @@ ge::graphStatus CheckUrmaWinLayout(gert::TilingContext *context, AttentionToFfnV
     const size_t expertNumPerToken =
         static_cast<size_t>(info.K) + (static_cast<size_t>(info.expertNum) - info.moeExpertNum);
     const size_t elemSize = (tilingKeyQuantMode == ATTN_FFN_TILINGKEY_NO_QUANT) ? sizeof(uint16_t) : sizeof(int8_t);
-    const auto CeilAlignSize = [](size_t val, size_t align) { return (val + align - 1U) / align * align; };
     const size_t infoRegionSize =
         CeilAlignSize(static_cast<size_t>(info.attentionWorkerNum) * info.microBatchNum * info.infoTableLastDimNum *
                           sizeof(int32_t),
@@ -224,7 +255,6 @@ static void ExtendWorkspaceForTokenRankScratch(gert::TilingContext *context,
     const size_t maxTotalSendNum = static_cast<size_t>(info.X) * info.BS * expertNumPerToken;
     const size_t maxTokensPerAiv = (maxTotalSendNum + info.aivNum - 1U) / info.aivNum;
     const size_t scratchTableBytes = maxTokensPerAiv * info.aivNum * sizeof(int32_t);
-    const auto CeilAlignSize = [](size_t val, size_t align) { return (val + align - 1U) / align * align; };
     const size_t ffnNum = static_cast<size_t>(info.worldSize) - info.attentionWorkerNum;
     const size_t ffnNumAlignSize = CeilAlignSize(ffnNum * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET);
     const size_t syncStatusRegionBytes = ffnNumAlignSize * info.aivNum;
@@ -237,28 +267,7 @@ ge::graphStatus TilingNewQuantMode(gert::TilingContext *context, uint32_t quantM
 {
     const char *nodeName = context->GetNodeName();
 
-    AttentionToFFNTilingConfig config;
-    config.contextIndex = 0U;
-    config.xIndex = 1U;
-    config.sessionIdIndex = 2U;
-    config.microBatchIdIndex = 3U;
-    config.layerIdIndex = 4U;
-    config.expertIdsIndex = 5U;
-    config.expertRankTableIndex = 6U;
-    config.scalesIndex = 7U;
-    config.activeMaskIndex = 8U;
-    config.attrGroupIndex = ATTR_GROUP_INDEX;
-    config.attrWorldSizeIndex = ATTR_WORLD_SIZE_INDEX;
-    config.attrFfnTokenInfoTableShapeIndex = ATTR_FFN_TOKEN_INFO_SHAPE_INDEX;
-    config.attrFfnTokenDataShapeIndex = ATTR_FFN_TOKEN_DATA_SHAPE_INDEX;
-    config.attrAttnTokenInfoTableShapeIndex = ATTR_ATTN_TOKEN_INFO_SHAPE_INDEX;
-    config.attrMoeExpertNumIndex = ATTR_MOE_EXPERT_NUM_INDEX;
-    config.attrQuantModeIndex = ATTR_QUANT_MODE_INDEX;
-    config.attrSyncFlagIndex = ATTR_SYNC_FLAG_INDEX;
-    config.attrFfnStartRankIdIndex = ATTR_FFN_START_RANK_ID_INDEX;
-    config.attrCclBufferSizeIndex = ATTR_CCL_BUFFER_SIZE_INDEX;
-    config.isMc2Context = true;
-    config.allowMxQuantMode = true;
+    AttentionToFFNTilingConfig config = MakeTilingConfig(true);
 
     auto ret = AttentionToFFNTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -320,27 +329,7 @@ ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
     if (useNewTiling) {
         return TilingNewQuantMode(context, quantMode);
     }
-    AttentionToFFNTilingConfig config;
-    config.contextIndex = 0U;
-    config.xIndex = 1U;
-    config.sessionIdIndex = 2U;
-    config.microBatchIdIndex = 3U;
-    config.layerIdIndex = 4U;
-    config.expertIdsIndex = 5U;
-    config.expertRankTableIndex = 6U;
-    config.scalesIndex = 7U;
-    config.activeMaskIndex = 8U;
-    config.attrGroupIndex = 0U;
-    config.attrWorldSizeIndex = 1U;
-    config.attrFfnTokenInfoTableShapeIndex = 2U;
-    config.attrFfnTokenDataShapeIndex = 3U;
-    config.attrAttnTokenInfoTableShapeIndex = 4U;
-    config.attrMoeExpertNumIndex = 5U;
-    config.attrQuantModeIndex = 6U;
-    config.attrSyncFlagIndex = ATTR_SYNC_FLAG_INDEX;
-    config.attrFfnStartRankIdIndex = ATTR_FFN_START_RANK_ID_INDEX;
-    config.attrCclBufferSizeIndex = ATTR_CCL_BUFFER_SIZE_INDEX;
-    config.isMc2Context = true;
+    AttentionToFFNTilingConfig config = MakeTilingConfig(false);
 
     auto ret = AttentionToFFNTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {
