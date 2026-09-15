@@ -1,18 +1,19 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mx_quant_matmul_allto_all_tiling_base.cpp
  * \brief
  */
 #include "common/utils/op_mc2.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_comm_algo_table.h"
 #include "mc2_log.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
 #include "matmul_allto_all_fit_balance_tiling.h"
@@ -623,9 +624,6 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
                     OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
                             static_cast<int32_t>(contextInfo.args_.geCType)),
                     return ge::GRAPH_FAILED;);
-    Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
-        Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
-                                         Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
     // 获取commMode
     uint8_t engineType = 0;
@@ -633,6 +631,12 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
                                                         engineType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    std::string algoName = Mc2Tiling::SelectAllToAllAlgoName(
+        opName_, contextInfo.group, engineType, inferredInfo.tileM, contextInfo.args_.nValue,
+        contextInfo.args_.outputDtypeSize, contextInfo.args_.rankDim);
+
+    Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
+        Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL, algoName);
 
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
@@ -1013,6 +1017,6 @@ MxQuantMatmulAllToAllTilingBase::MxQuantMatmulAllToAllTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, MxQuantMatmulAllToAllTilingBase,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 2);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 2);
 
 } // namespace MC2Tiling

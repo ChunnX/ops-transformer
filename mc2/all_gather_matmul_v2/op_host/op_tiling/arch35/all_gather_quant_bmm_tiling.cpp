@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_quant_bmm_tiling.cpp
@@ -15,9 +15,11 @@
 #ifndef _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #define _ALL_GATHER_QUANT_BMM_TILING_CPP_
 #include "all_gather_quant_bmm_tiling.h"
+#include "all_gather_comm_algo_table.h"
 #include "all_gather_fit_balance_tiling.h"
 #include "all_gather_hccl_utils.h"
 #include "common/utils/op_mc2.h"
+#include "mc2_comm_algo_selector.h"
 #include "mc2_comm_utils.h"
 #include "mc2_log.h"
 #include "../../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
@@ -501,18 +503,6 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckInput()
 
 ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
 {
-    int index = 0;
-    auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
-    std::string algConfig = "AllGather=level0:fullmesh";
-    // mxfp4场景使用int8类型通信，通信量减半
-    uint32_t hcclDataType;
-    if (isFp4_) {
-        hcclDataType = static_cast<uint32_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8);
-    } else {
-        hcclDataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
-    }
-    Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER),
-                                        algConfig, 0, hcclDataType, hcclDataType);
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
@@ -520,6 +510,26 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     }
     OP_LOGD(opName_, "Tiling SetMc2Hcom commMode_: %s", commMode_);
     OP_LOGD(opName_, "Tiling SetMc2Hcom commEngine: %d", commEngine);
+    // 单轮通信量 = 每轮切分的 tileM × K × dtypeSize（对齐 alltoall 口径；mxfp4场景使用int8类型通信，通信量减半）
+    uint64_t commKValue = isFp4_ ? (args_.kValue / EVEN_ALIGN) : args_.kValue;
+    uint64_t commDtypeSize = isFp4_ ? 1 : args_.inputDtypeSize;
+    uint64_t commDataBytes = tileMValue_ * commKValue * commDtypeSize;
+    OP_LOGI(opName_, "[SetMc2Hcomm] commDataBytes=%llu, tileM=%llu, commKValue=%llu, rankDim=%u, commEngine=%u",
+            commDataBytes, tileMValue_, commKValue, args_.rankDim, commEngine);
+    uint32_t algoCount = 0;
+    const Mc2Hcom::CommAlgoEntry *algoEntries = Mc2Tiling::GetAllGatherCommAlgoTable(algoCount);
+    std::string algConfig =
+        Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group_, commEngine, commDataBytes, args_.rankDim,
+                                                     algoEntries, algoCount, Mc2Tiling::ALLGATHER_DEFAULT_ALGO_NAME);
+    OP_LOGI(opName_, "[SetMc2Hcomm] selected algConfig=%s, group=%s", algConfig.c_str(), group_);
+    uint32_t hcclDataType;
+    if (isFp4_) {
+        hcclDataType = static_cast<uint32_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_UINT8);
+    } else {
+        hcclDataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
+    }
+    Mc2CcTilingConfig mc2CcTilingConfig(group_, static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER),
+                                        algConfig, 0, hcclDataType, hcclDataType);
     mc2CcTilingConfig.SetCommEngine(commEngine);
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ?
                                        static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
@@ -539,13 +549,14 @@ ge::graphStatus AllGatherQuantBmmTiling::DoOpTiling()
     MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     MC2_CHECK_LOG_RET(opName_, CheckInput());
     SetTilingKeyParams();
-    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
-                    return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
     DoSplitMTiling(MutableRCSTilingDataA5());
     if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         PostDoSplitMTiling(MutableRCSTilingDataA5(), GetQuantScene());
     }
+    // 通信配置放在切分之后：单轮通信量依赖切分结果 tileMValue_（对齐 alltoall 先切分后配置的时序）
+    OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling SetHcommCfg failed."),
+                    return ge::GRAPH_FAILED);
     if (args_.nValue != 0) {
         MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
     }
@@ -563,6 +574,42 @@ void AllGatherQuantBmmTiling::SetTilingKeyParams()
     castBias_ = false;
 }
 
+#if MC2_DFX_ENABLE
+void AllGatherQuantBmmTiling::BuildWorkspaceLayout()
+{
+    uint64_t libApiSize = (args_.nValue == 0) ? libApiWorkSpaceSize_ : matmulWs_;
+
+    uint64_t offset = 0;
+    uint32_t idx = 0;
+
+    workspaceLayout_.segments[idx++] = {offset, libApiSize, static_cast<uint8_t>(Utils::WS_SEG_LIB_API), {}};
+    offset += libApiSize;
+
+    if (scale1kSpaceSize_ > 0) {
+        workspaceLayout_.segments[idx++] = {
+            offset, scale1kSpaceSize_, static_cast<uint8_t>(Utils::WS_SEG_GATHER_SCALE1), {}};
+        offset += scale1kSpaceSize_;
+    }
+
+    if (storageA_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, storageA_, static_cast<uint8_t>(Utils::WS_SEG_GATHER), {}};
+        offset += storageA_;
+    }
+
+    if (biasLen_ > 0) {
+        workspaceLayout_.segments[idx++] = {offset, biasLen_, static_cast<uint8_t>(Utils::WS_SEG_BIAS), {}};
+        offset += biasLen_;
+    }
+
+    workspaceLayout_.segments[idx++] = {
+        offset, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
+    offset += Utils::STATE_DUMP_TOTAL_SIZE;
+
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+}
+#endif // MC2_DFX_ENABLE
+
 ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
 {
     MC2_CHECK_LOG_RET(opName_, AllGatherMatmulTilingBase::GetWorkspaceSize());
@@ -574,9 +621,14 @@ ge::graphStatus AllGatherQuantBmmTiling::GetWorkspaceSize()
     } else {
         myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().gatherLen + scale1kSpaceSize_;
     }
-    OP_LOGI(opName_, "Set max workspace size %lu to context", myWorkSpaceSize_);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = myWorkSpaceSize_;
+#if MC2_DFX_ENABLE
+    BuildWorkspaceLayout();
+    // DFX: workspace 尾部追加 64KB 状态打点区
+    workspaces[0] += Utils::STATE_DUMP_TOTAL_SIZE;
+#endif
+    OP_LOGI(opName_, "Set max workspace size %lu to context", workspaces[0]);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -612,7 +664,7 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     }
 
     // Non-A5 platform must use AICPU mode
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     const uint64_t tilingKey =
@@ -679,6 +731,9 @@ void Mc2PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cach
 
 ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    allGatherMatmulTilingDataFp8_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     OP_LOGD(opName_, "The final tiling data size=%zu and context capacity size=%zu ",
             sizeof(AllGatherMatmulTilingDataFp8), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataFp8));
@@ -1005,6 +1060,9 @@ ge::graphStatus AllGatherQuantBmmHelper::PostTiling()
 {
     // 此处需要后续考虑补充相关tiling打印，当前该函数已不存在。
     tilingProcesser_.myWorkSpaceSize_ = std::max(tilingProcesser_.myWorkSpaceSize_, workspaceSize_);
+#if MC2_DFX_ENABLE
+    tilingProcesser_.matmulWs_ = tilingProcesser_.myWorkSpaceSize_;
+#endif
     OP_LOGI(tilingProcesser_.opName_, " set mm workspace size %lu to mc2", tilingProcesser_.myWorkSpaceSize_);
     return ge::GRAPH_SUCCESS;
 }
@@ -1049,8 +1107,8 @@ AllGatherQuantBmmHelper::AllGatherQuantBmmHelper(AllGatherQuantBmmTiling &allGat
       isLocal_(isLocal)
 {}
 // 注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling, static_cast<int32_t>(NpuArch::DAV_3510),
-                                   1);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherQuantBmmTiling,
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 1);
 } // namespace optiling
 
 #endif // _QUANT_MATMUL_ALL_REDUCE_TILING_CC_

@@ -30,15 +30,16 @@
 #include "apace/basic/fragment_tensor/fragment_tensor.h"
 #include "apace/basic/fragment_tensor/fragment_tensor_api.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
+#include "../../../utils/op_state_dump.h"
 
 namespace Apace {
 
 using namespace AscendC;
 
-using LayoutA = AscendC::Te::NDExtLayoutPtn;
-using LayoutB = AscendC::Te::DNExtLayoutPtn;
-using LayoutC = AscendC::Te::NDExtLayoutPtn;
-using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+using LayoutA = asc::te::nd_ext_layout_ptn;
+using LayoutB = asc::te::dn_ext_layout_ptn;
+using LayoutC = asc::te::nd_ext_layout_ptn;
+using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
 
 enum RegionTag {
     HEAD,
@@ -70,13 +71,11 @@ public:
     static constexpr uint32_t DIMS_NUM = 2UL;
 
     // ---- Layout factories ----
-    using MakeLayoutA = AscendC::Te::FrameLayoutFormat<LayoutA, AscendC::Std::Int<kC0Size>>;
-    using MakeLayoutScaleA =
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleANDLayoutPtn, AscendC::Std::Int<kScaleC0>>;
-    using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<kC0Size>>;
-    using MakeLayoutScaleB =
-        AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBDNLayoutPtn, AscendC::Std::Int<kScaleC0>>;
-    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<AscendC::Te::C0_ELEMENT<CType>>>;
+    using MakeLayoutA = asc::te::frame_layout_format<LayoutA, AscendC::Std::Int<kC0Size>>;
+    using MakeLayoutScaleA = asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, AscendC::Std::Int<kScaleC0>>;
+    using MakeLayoutB = asc::te::frame_layout_format<LayoutB, AscendC::Std::Int<kC0Size>>;
+    using MakeLayoutScaleB = asc::te::frame_layout_format<asc::te::scaleb_dn_layout_ptn, AscendC::Std::Int<kScaleC0>>;
+    using MakeLayoutC = asc::te::frame_layout_format<LayoutC, AscendC::Std::Int<asc::te::c0_element<CType>>>;
 
     // ---- Fragment MMAD types ----
     using BlockMmadFragC = Blaze::Gemm::Block::QmmMxBlockMmadFragment<0, false, AType, LayoutA, BType, LayoutB, CType,
@@ -147,16 +146,16 @@ public:
         uint64_t cBytesPerM{0};
     };
 
-    __aicore__ inline void Run(const Params &params);
-    __aicore__ inline void operator()(const Params &params)
+    __aicore__ inline void Run(const Params &params, Mc2Kernel::OpStateDump &opStateDump);
+    __aicore__ inline void operator()(const Params &params, Mc2Kernel::OpStateDump &opStateDump)
     {
-        Run(params);
+        Run(params, opStateDump);
     }
 
 private:
     __aicore__ inline void Init(const Params &params);
     __aicore__ inline void Process(const Params &params, const ProblemShape &problemShape, BlockScheduler &bs,
-                                   BlockMmadFragC &mmadFrag);
+                                   BlockMmadFragC &mmadFrag, Mc2Kernel::OpStateDump &opStateDump);
 
     // ---- L2 cache optimization ----
     template <typename TensorB, typename TensorScaleB>
@@ -254,30 +253,30 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::SetL2Cache(co
                                                                               int64_t baseM, int64_t baseN,
                                                                               TensorB &gmB, TensorScaleB &gmScaleB)
 {
-    const bool fullMBlock = (baseM >= AscendC::Te::Get<Blaze::Gemm::MNK_M>(problemShape));
+    const bool fullMBlock = (baseM >= asc::te::get<Blaze::Gemm::MNK_M>(problemShape));
 
     // B (DN layout): K 轴为 leading dim，对齐 128B 时关闭 L2 cache 以 streaming
     if constexpr (weightNz) {
-        gmB.SetL2CacheHint(fullMBlock ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
-                                        AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        gmB.set_l2_cache_hint(fullMBlock ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
     } else {
         // DN: transB → fast dim = K
-        const bool bAlignForL2Stream = (AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
-        gmB.SetL2CacheHint((fullMBlock && bAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
-                                                               AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        const bool bAlignForL2Stream = (asc::te::get<Blaze::Gemm::MNK_K>(problemShape) & kCacheLineAlignMask) == 0;
+        gmB.set_l2_cache_hint((fullMBlock && bAlignForL2Stream) ? asc::te::cache_mode::disable :
+                                                                  asc::te::cache_mode::normal);
     }
 
     // ScaleB (DN layout): N * scaleC0 bytes 对齐
-    const int64_t scaleNStrideBytes = AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape) * kScaleC0;
+    const int64_t scaleNStrideBytes = asc::te::get<Blaze::Gemm::MNK_N>(problemShape) * kScaleC0;
     const int64_t scaleBaseNStrideBytes = baseN * kScaleC0;
     const bool scaleAlignForL2Stream =
         (scaleNStrideBytes & kCacheLineAlignMask) == 0 && (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
-    gmScaleB.SetL2CacheHint((fullMBlock && scaleAlignForL2Stream) ? AscendC::Te::CacheMode::CACHE_MODE_DISABLE :
-                                                                    AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+    gmScaleB.set_l2_cache_hint((fullMBlock && scaleAlignForL2Stream) ? asc::te::cache_mode::disable :
+                                                                       asc::te::cache_mode::normal);
 }
 
 template <typename AType, typename BType, typename CType>
-__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params)
+__aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Params &params,
+                                                                       Mc2Kernel::OpStateDump &opStateDump)
 {
     Init(params);
 
@@ -318,14 +317,15 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Run(const Par
     // 延迟构建 fragment tensor（head 先建，main/tail 在 Process 中按需建）
     BuildFragmentTensors(params);
 
-    Process(params, problemShape, sch, mmadFrag);
+    Process(params, problemShape, sch, mmadFrag, opStateDump);
 }
 
 template <typename AType, typename BType, typename CType>
 __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const Params &params,
                                                                            const ProblemShape &problemShape,
                                                                            BlockScheduler &sch,
-                                                                           BlockMmadFragC &mmadFrag)
+                                                                           BlockMmadFragC &mmadFrag,
+                                                                           Mc2Kernel::OpStateDump &opStateDump)
 {
     const auto &mmT = *params.mmTile;
     const auto &fp = params.fragParams;
@@ -338,12 +338,13 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     const int64_t mainSectionRows = static_cast<int64_t>(fp.tileCnt) * mainRoundRows;
 
     // B / scaleB / bias 全局共享 tensor
-    auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(bGmAddr_), MakeLayoutB{}(Ki, Ni));
-    auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(scaleBGmAddr_), MakeLayoutScaleB{}(scaleKLen, Ni));
+    auto gmB = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(bGmAddr_), MakeLayoutB{}(Ki, Ni));
+    auto gmScaleB = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(scaleBGmAddr_),
+                                         MakeLayoutScaleB{}(scaleKLen, Ni));
     __gm__ float *biasNull = nullptr;
     __gm__ float *biasPtr = params.isBias ? biasGmAddr_ : biasNull;
-    auto gmBias =
-        Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasPtr), Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
+    auto gmBias = asc::te::make_tensor(asc::te::make_mem_ptr<asc::te::location::gm>(biasPtr),
+                                       asc::te::make_frame_layout<asc::te::nd_ext_layout_ptn>(1L, Ni));
 
     const auto &mTailTile = mmT.mTailTile;
     const auto &nTailTile = mmT.nTailTile;
@@ -353,39 +354,42 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     }
     uint32_t readyTileIdx = 0;
     CrossCoreWaitFlag<0x2, PIPE_MTE2>(0); // dependTileIdx=0 由 AIV 预触发，无需等待。
+    opStateDump.DoDump(DUMP_FIELD_WAIT);
 
-    Te::Coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
+    asc::te::coord<int64_t, int64_t, int64_t, int64_t> blockIdx;
     int64_t mPos = 0L, nPos = 0L;
 
     while (sch.GetTileIdx(blockIdx)) {
         auto singleShape =
             sch.template GetBlockShape<Blaze::Gemm::QuantMode::MX_PERGROUP_MODE,
                                        Blaze::Gemm::QuantMode::MX_PERGROUP_MODE, BlockMmadFragC::weightNz>(blockIdx);
-        int64_t curMtile = Te::Get<0>(singleShape);
-        int64_t curNtile = Te::Get<1>(singleShape);
+        int64_t curMtile = asc::te::get<0>(singleShape);
+        int64_t curNtile = asc::te::get<1>(singleShape);
         if (curMtile <= 0 || curNtile <= 0) {
             break;
         }
+        opStateDump.DoDump(DUMP_FIELD_TURN_INC);
         sch.GetTileCoord(blockIdx, mPos, nPos);
 
         auto ctx = ResolveTileCtx(mPos, headMainRows, mainRoundRows, mainSectionRows, fp.rankSize, fp.commTurn);
         while (readyTileIdx < ctx.dependTileIdx) {
             readyTileIdx++;
             CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+            opStateDump.DoDump(DUMP_FIELD_WAIT);
         }
 
         // Per-tile L2 cache hint
         SetL2Cache(problemShape, curMtile, curNtile, gmB, gmScaleB);
 
-        auto gmBlockB = gmB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(Ki, curNtile));
-        auto gmBlockScaleB = gmScaleB.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(scaleKLen, curNtile));
-        auto gmBlockBias = gmBias.Slice(Te::MakeCoord(0L, nPos), Te::MakeShape(1L, curNtile));
+        auto gmBlockB = gmB.slice(asc::te::make_coord(0L, nPos), asc::te::make_shape(Ki, curNtile));
+        auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0L, nPos), asc::te::make_shape(scaleKLen, curNtile));
+        auto gmBlockBias = gmBias.slice(asc::te::make_coord(0L, nPos), asc::te::make_shape(1L, curNtile));
 
-        auto coordA = Te::MakeCoord(ctx.regionMPos, 0L);
-        auto coordC = Te::MakeCoord(ctx.regionMPos, nPos);
-        auto shapeA = Te::MakeShape(curMtile, Ki);
-        auto shapeScaleA = Te::MakeShape(curMtile, scaleKLen);
-        auto shapeC = Te::MakeShape(curMtile, curNtile);
+        auto coordA = asc::te::make_coord(ctx.regionMPos, 0L);
+        auto coordC = asc::te::make_coord(ctx.regionMPos, nPos);
+        auto shapeA = asc::te::make_shape(curMtile, Ki);
+        auto shapeScaleA = asc::te::make_shape(curMtile, scaleKLen);
+        auto shapeC = asc::te::make_shape(curMtile, curNtile);
 
         // MAIN/TAIL 的 fragment tensor 延迟到首次命中时构建/更新地址。
         if (ctx.region == MAIN) {
@@ -411,6 +415,7 @@ __aicore__ inline void AllGatherQbmmMxKernel<AType, BType, CType>::Process(const
     while (readyTileIdx < fp.commTurn) {
         readyTileIdx++;
         CrossCoreWaitFlag<0x2, PIPE_MTE2>(readyTileIdx);
+        opStateDump.DoDump(DUMP_FIELD_WAIT);
     }
 }
 

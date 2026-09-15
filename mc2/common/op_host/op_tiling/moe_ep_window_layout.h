@@ -21,7 +21,9 @@ namespace Mc2Tiling {
 constexpr uint64_t MOE_EP_UB_ALIGN = 32UL;
 constexpr uint64_t MOE_EP_WIN_ALIGN = 512UL;
 constexpr uint64_t MOE_EP_NOTIFY_TOKEN_LIMIT = 15000UL;
-constexpr uint64_t MOE_EP_COMBINE_CHANNEL_COUNT = 7UL;
+// ElasticBuffer creates at most 64 direct-network channel handles in total. UB-GPeer uses one channel per rank,
+// so reserve whichever completion-flag count is larger without depending on the device context at tiling time.
+constexpr uint64_t MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT = 64UL;
 constexpr uint64_t MOE_EP_MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t MOE_EP_METADATA_DTYPE_SIZE = 4UL;
 constexpr uint32_t MOE_EP_NETWORK_DIRECT = 0U;
@@ -58,6 +60,7 @@ struct MoeEpWindowLayout {
     uint64_t dispatchSlotStateSize;
     uint64_t combineStateWinOffset;
     uint64_t combineStateWinSize;
+    uint64_t combineFlagSourceWinOffset; // Shared 512B constant source, after the receive completion flags.
 
     uint64_t scaleoutRecvDataOffset;
     uint64_t scaleoutRecvDataSize;

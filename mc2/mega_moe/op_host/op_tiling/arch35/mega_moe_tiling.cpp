@@ -213,6 +213,7 @@ void PrintWorkspaceLayout(const struct WorkspaceLayout *layout, const char *node
     OP_LOGD(nodeName, "expertRevTokenNumsOffset:      %ld\n", layout->expertRevTokenNumsOffset);
     OP_LOGD(nodeName, "metaInfoOffset:                %ld\n", layout->metaInfoOffset);
     OP_LOGD(nodeName, "flagActivationToGmm2Offset:    %ld\n", layout->flagActivationToGmm2Offset);
+    OP_LOGD(nodeName, "sharedActivationToGmm2Offset:  %ld\n", layout->sharedActivationToGmm2Offset);
     OP_LOGD(nodeName, "flagDispatchToGmm1Offset:      %ld\n", layout->flagDispatchToGmm1Offset);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsOffset: %ld\n", layout->flagSendCntCalToUpdParamsOffset);
     OP_LOGD(nodeName, "flagGmmToEpilogueOffset:       %ld\n", layout->flagGmmToEpilogueOffset);
@@ -420,8 +421,8 @@ static ge::graphStatus CheckSwiGluOaiActivationParams(const float *activationPar
 }
 
 /*
- * situglu 的 beta 必填：它要进分母，取 0 或非有限值算出来就是 NaN。
- * linear_beta 选填，给了就切到 LINEAR 子模式。
+ * situglu 的 beta 必填：Ascend 950PR/Ascend 950DT 仅支持大于 0 的有限值。
+ * linear_beta 选填，给了就切到 LINEAR 子模式，同样仅支持大于 0 的有限值。
  * 注意个数校验必须排在取值之前：一个参数都不传时 activationParams 是空指针，
  * 先取 activationParams[0] 会直接段错误，而不是干净地报错返回。
  */
@@ -433,15 +434,15 @@ static ge::graphStatus CheckSituGluActivationParams(const float *activationParam
                                               "should be 1 or 2 for situglu"),
                     return ge::GRAPH_FAILED);
     const float beta = activationParams[0];
-    OP_TILING_CHECK(!std::isfinite(beta) || beta == 0.0f,
+    OP_TILING_CHECK(!std::isfinite(beta) || beta <= 0.0f,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_beta", std::to_string(beta).c_str(),
-                                              "should be finite and non-zero"),
+                                              "should be finite and greater than 0"),
                     return ge::GRAPH_FAILED);
     if (paramCount == 2U) {
         const float linearBeta = activationParams[1];
-        OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta == 0.0f,
+        OP_TILING_CHECK(!std::isfinite(linearBeta) || linearBeta <= 0.0f,
                         OP_LOGE_FOR_INVALID_VALUE(nodeName, "situglu_linear_beta", std::to_string(linearBeta).c_str(),
-                                                  "should be finite and non-zero"),
+                                                  "should be finite and greater than 0"),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -702,24 +703,9 @@ static int64_t CalcLeastCclBufferSize(const gert::TilingContext *context, MegaMo
     return leastCclBufferSize;
 }
 
-/*
- * 容量这一组：单卡 token 数上界、topk 权重预取开关、peermem 窗口大小、能收多少 token。
- * topkWeightsType 归在这里，是因为开了预取之后 peermem 里每个 token 要多存一份 topk 权重，
- * 它直接决定窗口要开多大，所以先把它校验掉，再拿去算下面的容量。
- * MTE 下 numMaxTokensPerRank 传 0 表示按本卡 bs 计算。URMA 使用跨卡对称窗口，host 无法从
- * 本卡 bs 推导全卡一致的容量上界，因此必须显式传入非 0 值。
- */
-static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, MegaMoeConfig &config,
-                                          const char *nodeName, const MegaMoeAttrShapeContext &shape,
-                                          int64_t epWorldSize, int64_t moeExpertPerRank)
+static ge::graphStatus CheckNumMaxTokensPerRank(int64_t numMaxTokensPerRank, int64_t topoType,
+                                                const MegaMoeAttrShapeContext &shape, const char *nodeName)
 {
-    auto attrs = context->GetAttrs();
-
-    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
-    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
-                    return ge::GRAPH_FAILED);
-    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
-    const int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
     OP_TILING_CHECK(topoType == TOPO_TYPE_URMA && shape.bs <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "bs", std::to_string(shape.bs).c_str(),
                                               "should be greater than 0 for URMA"),
@@ -737,6 +723,39 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
                                    std::to_string(shape.bs))
                                       .c_str()),
         return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckMaxRecvTokenNum(int64_t maxRecvTokenNum, int64_t topoType, int64_t maxOutputCapacity,
+                                            const char *nodeName)
+{
+    OP_TILING_CHECK(
+        maxRecvTokenNum < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(), ">= 0"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(topoType == TOPO_TYPE_URMA && maxRecvTokenNum > maxOutputCapacity,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
+                        (std::string("should be in [0, ") + std::to_string(maxOutputCapacity) + "] for URMA").c_str()),
+                    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// 校验 token 容量和通信窗口大小，窗口容量计算包含 topk 权重预取所需空间。
+static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, MegaMoeConfig &config,
+                                          const char *nodeName, const MegaMoeAttrShapeContext &shape,
+                                          int64_t epWorldSize, int64_t moeExpertPerRank)
+{
+    auto attrs = context->GetAttrs();
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
+                    return ge::GRAPH_FAILED);
+    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    const int64_t topoType = *attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
+    if (CheckNumMaxTokensPerRank(numMaxTokensPerRank, topoType, shape, nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     if (numMaxTokensPerRank == 0) {
         numMaxTokensPerRank = shape.bs;
     }
@@ -771,17 +790,7 @@ static ge::graphStatus CheckCapacityAttrs(const gert::TilingContext *context, Me
 
     const int64_t maxRecvTokenNum =
         static_cast<int64_t>(*attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex)));
-    OP_TILING_CHECK(
-        maxRecvTokenNum < 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(), ">= 0"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(topoType == TOPO_TYPE_URMA && maxRecvTokenNum > maxOutputCapacity,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-                        (std::string("should be in [0, ") + std::to_string(maxOutputCapacity) + "] for URMA").c_str()),
-                    return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
+    return CheckMaxRecvTokenNum(maxRecvTokenNum, topoType, maxOutputCapacity, nodeName);
 }
 
 static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaMoeConfig &config, const char *nodeName)
@@ -1296,6 +1305,9 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
         uint64_t tokenGroupCount = ops::CeilDiv<uint64_t>(tilingData->bs, L1_TILE_M_256);
         flagElementCount += tokenGroupCount * tilingData->sharedExpertNum * INT_CACHELINE;
+        flagElementCount +=
+            static_cast<uint64_t>(CalcSharedActivationFlagElementsPerExpert(static_cast<int64_t>(tilingData->bs))) *
+            tilingData->sharedExpertNum;
     }
     return flagElementCount;
 }
@@ -1507,7 +1519,8 @@ struct ExpertWeightTensorGroupInputs {
  * 以第 0 项为基准，从第 1 项开始逐项比较。
  */
 static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext *context, const NamedIndex &input,
-                                                       uint32_t expectedDimNum, const char *nodeName)
+                                                       uint32_t expectedDimNum, uint32_t weightDimNum,
+                                                       const char *referenceWeightName, const char *nodeName)
 {
     uint32_t tensorCount = GetDynamicInputTensorCount(context, input.index);
     OP_TILING_CHECK(tensorCount == 0U, OP_LOGE_WITH_INVALID_INPUT(nodeName, input.name), return ge::GRAPH_FAILED);
@@ -1517,8 +1530,12 @@ static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext
     OP_CHECK_NULL_WITH_CONTEXT(context, referenceShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, referenceDesc);
     uint32_t referenceDimNum = referenceShape->GetStorageShape().GetDimNum();
-    OP_TILING_CHECK(referenceDimNum != expectedDimNum,
-                    OP_LOGE(nodeName, "%s[0] must be %uD.", input.name, expectedDimNum), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        referenceDimNum != expectedDimNum,
+        OP_LOGE(nodeName, "%s[0] must have %s %s[0], but got %u and %u dimensions, respectively.", input.name,
+                expectedDimNum == weightDimNum ? "the same number of dimensions as" : "one more dimension than",
+                referenceWeightName, referenceDimNum, weightDimNum),
+        return ge::GRAPH_FAILED);
 
     for (uint32_t tensorIdx = 1; tensorIdx < tensorCount; ++tensorIdx) {
         auto currentShape = context->GetDynamicInputShape(input.index, tensorIdx);
@@ -1527,9 +1544,12 @@ static ge::graphStatus CheckTensorPropertiesWithinList(const gert::TilingContext
         OP_CHECK_NULL_WITH_CONTEXT(context, currentDesc);
 
         uint32_t currentDimNum = currentShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(currentDimNum != expectedDimNum,
-                        OP_LOGE(nodeName, "%s[%u] must be %uD.", input.name, tensorIdx, expectedDimNum),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            currentDimNum != expectedDimNum,
+            OP_LOGE(nodeName,
+                    "%s[%u] is %uD, but %s[0] is %uD; tensors in the same list must have matching dimensions.",
+                    input.name, tensorIdx, currentDimNum, input.name, referenceDimNum),
+            return ge::GRAPH_FAILED);
         bool shapeMismatch = false;
         for (uint32_t dimIdx = 0; dimIdx < referenceDimNum && !shapeMismatch; ++dimIdx) {
             shapeMismatch =
@@ -1557,16 +1577,17 @@ static ge::graphStatus CheckExpertWeightInputGroupLayout(const gert::TilingConte
                                                          const ExpertWeightTensorGroupInputs &inputs,
                                                          uint32_t weightDimNum, const char *nodeName)
 {
-    // scale 比对应的 weight 多一个 multi-base 维度。
+    // The first weight must match the MoE layout; subsequent inputs use weights within their own expert group.
     uint32_t scaleDimNum = weightDimNum + 1U;
-    OP_TILING_CHECK(
-        CheckTensorPropertiesWithinList(context, inputs.weightOne, weightDimNum, nodeName) != ge::GRAPH_SUCCESS ||
-            CheckTensorPropertiesWithinList(context, inputs.weightTwo, weightDimNum, nodeName) != ge::GRAPH_SUCCESS ||
-            CheckTensorPropertiesWithinList(context, inputs.weightScalesOne, scaleDimNum, nodeName) !=
-                ge::GRAPH_SUCCESS ||
-            CheckTensorPropertiesWithinList(context, inputs.weightScalesTwo, scaleDimNum, nodeName) !=
-                ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "%s weight layout is invalid.", inputs.expertTypeName), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckTensorPropertiesWithinList(context, inputs.weightOne, weightDimNum, weightDimNum, "weight1",
+                                                    nodeName) != ge::GRAPH_SUCCESS ||
+                        CheckTensorPropertiesWithinList(context, inputs.weightTwo, weightDimNum, weightDimNum,
+                                                        inputs.weightOne.name, nodeName) != ge::GRAPH_SUCCESS ||
+                        CheckTensorPropertiesWithinList(context, inputs.weightScalesOne, scaleDimNum, weightDimNum,
+                                                        inputs.weightOne.name, nodeName) != ge::GRAPH_SUCCESS ||
+                        CheckTensorPropertiesWithinList(context, inputs.weightScalesTwo, scaleDimNum, weightDimNum,
+                                                        inputs.weightTwo.name, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "%s weight layout is invalid.", inputs.expertTypeName), return ge::GRAPH_FAILED);
 
     // 四个 TensorList 以相同下标表示同一专家，因此长度必须一致；堆叠布局只允许一个 tensor。
     uint32_t weightOneTensorCount = GetDynamicInputTensorCount(context, inputs.weightOne.index);
@@ -1687,7 +1708,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     OP_TILING_CHECK(weightOneColumnCount != weightTwoRowCount || weightOneColumnCount != xColumnCount,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "weight1, weight2 and x", commonMatrixDimensionsString.c_str(),
-                        "The column count of weight1 and the row count of weight2 must equal the column count of x."),
+                        "The column count of weight1 and the row count of weight2 must equal the column count of x"),
                     return ge::GRAPH_FAILED);
 
     const std::string weightRowColumnDimensionsString =
@@ -1695,7 +1716,7 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     OP_TILING_CHECK(weightOneRowCount != weightTwoColumnCount * SWIGLU_GATE_UP_SPLIT_FACTOR,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "weight1 and weight2", weightRowColumnDimensionsString.c_str(),
-                        "The row count of weight1 must equal the column count of weight2 multiplied by 2."),
+                        "The row count of weight1 must equal the column count of weight2 multiplied by 2"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1882,7 +1903,7 @@ static ge::graphStatus CheckWeightScaleTensorDim(const gert::StorageShape *weigh
                         nodeName, weightScaleName,
                         (std::string("matrix dimension=") + std::to_string(weightScaleMatrixDimSize)).c_str(),
                         (std::string("The matrix dimension of ") + weightScaleName + " must equal the row count of " +
-                         weightName + "(" + std::to_string(weightRowCount) + ").")
+                         weightName + "(" + std::to_string(weightRowCount) + ")")
                             .c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(weightScaleGroupDimSize != ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN),
@@ -1891,7 +1912,7 @@ static ge::graphStatus CheckWeightScaleTensorDim(const gert::StorageShape *weigh
                         (std::string("group dimension=") + std::to_string(weightScaleGroupDimSize)).c_str(),
                         (std::string("The group dimension of ") + weightScaleName + " must equal CeilDiv(" +
                          weightName + " column count, INPUT_WEIGHT_SCALES_CEIL_ALIGN) = " +
-                         std::to_string(ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)) + ".")
+                         std::to_string(ops::CeilDiv(weightColumnCount, INPUT_WEIGHT_SCALES_CEIL_ALIGN)))
                             .c_str()),
                     return ge::GRAPH_FAILED);
 
@@ -1935,71 +1956,28 @@ static ge::graphStatus CheckWeightScalesTensorDim(const gert::TilingContext *con
                         weightScalesTwoMultiBaseDimSize != WEIGHT_SCALE_MULTI_BASE_DIM_SIZE,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "weightScales1, weightScales2", scaleMultiBaseDimensionsString.c_str(),
-                        "The per-expert trailing dimension of weightScales1 and weightScales2 must be 2."),
+                        "The per-expert trailing dimension of weightScales1 and weightScales2 must be 2"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-/*
- * 校验基础输入张量的维度：context 为 1D，x / topkIds / topkWeights 为 2D，
- * 并校验三者之间的 dim0 / dim1 一致性。
- */
-static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *context, MegaMoeConfig &config,
-                                                const char *nodeName)
+static ge::graphStatus CheckTensorDimNum(const gert::StorageShape *storageShape, uint32_t expectedDimNum,
+                                         const char *tensorName, const char *invalidDimReason, const char *nodeName)
 {
-    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
-    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "context"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            nodeName, "context", (std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-            "The shape dim of context must be 1D."),
-        return ge::GRAPH_FAILED);
-    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
-    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
-
-    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+    OP_TILING_CHECK(storageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, tensorName), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(storageShape->GetStorageShape().GetDimNum() != expectedDimNum,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "x", (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of x must be 2D."),
+                        nodeName, tensorName,
+                        (std::to_string(storageShape->GetStorageShape().GetDimNum()) + "D").c_str(), invalidDimReason),
                     return ge::GRAPH_FAILED);
-    int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "x dim0 = %ld", xDim0);
-    OP_LOGD(nodeName, "x dim1 = %ld", xDim1);
+    return ge::GRAPH_SUCCESS;
+}
 
-    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
-    OP_TILING_CHECK(topkIdsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "topkIds"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        topkIdsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            nodeName, "topkIds", (std::to_string(topkIdsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-            "The shape dim of topkIds must be 2D."),
-        return ge::GRAPH_FAILED);
-    const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "topkIds dim0 = %ld", topkIdsDim0);
-    OP_LOGD(nodeName, "topkIds dim1 = %ld", topkIdsDim1);
-
-    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(config.topkWeightsIndex);
-    OP_TILING_CHECK(topkWeightsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "topkWeights"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(topkWeightsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "topkWeights",
-                        (std::to_string(topkWeightsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of topkWeights must be 2D."),
-                    return ge::GRAPH_FAILED);
-    const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
-    const int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
-    OP_LOGD(nodeName, "topkWeights dim0 = %ld", topkWeightsDim0);
-    OP_LOGD(nodeName, "topkWeights dim1 = %ld", topkWeightsDim1);
-
+static ge::graphStatus CheckBasicInputShapeRelations(int64_t xDim0, int64_t topkIdsDim0, int64_t topkIdsDim1,
+                                                     int64_t topkWeightsDim0, int64_t topkWeightsDim1,
+                                                     const char *nodeName)
+{
     OP_TILING_CHECK(xDim0 != topkIdsDim0 || xDim0 != topkWeightsDim0,
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         nodeName, "x, topkIds, topkWeights",
@@ -2016,8 +1994,56 @@ static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *conte
             (std::string("[") + std::to_string(topkIdsDim1) + ", " + std::to_string(topkWeightsDim1) + "]").c_str(),
             "The shape [dim1] of topkIds and topkWeights must be equal."),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
+}
+
+/*
+ * 校验基础输入张量的维度：context 为 1D，x / topkIds / topkWeights 为 2D，
+ *
+ * 并校验三者之间的 dim0 / dim1 一致性。
+ */
+static ge::graphStatus CheckBasicInputTensorDim(const gert::TilingContext *context, MegaMoeConfig &config,
+                                                const char *nodeName)
+{
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
+    if (CheckTensorDimNum(contextStorageShape, ONE_DIM, "context", "The shape dim of context must be 1D.", nodeName) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
+    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
+
+    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
+    if (CheckTensorDimNum(xStorageShape, TWO_DIMS, "x", "The shape dim of x must be 2D.", nodeName) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "x dim0 = %ld", xDim0);
+    OP_LOGD(nodeName, "x dim1 = %ld", xDim1);
+
+    const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
+    if (CheckTensorDimNum(topkIdsStorageShape, TWO_DIMS, "topkIds", "The shape dim of topkIds must be 2D.", nodeName) !=
+        ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t topkIdsDim0 = topkIdsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "topkIds dim0 = %ld", topkIdsDim0);
+    OP_LOGD(nodeName, "topkIds dim1 = %ld", topkIdsDim1);
+
+    const gert::StorageShape *topkWeightsStorageShape = context->GetInputShape(config.topkWeightsIndex);
+    if (CheckTensorDimNum(topkWeightsStorageShape, TWO_DIMS, "topkWeights", "The shape dim of topkWeights must be 2D.",
+                          nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    const int64_t topkWeightsDim0 = topkWeightsStorageShape->GetStorageShape().GetDim(0);
+    const int64_t topkWeightsDim1 = topkWeightsStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "topkWeights dim0 = %ld", topkWeightsDim0);
+    OP_LOGD(nodeName, "topkWeights dim1 = %ld", topkWeightsDim1);
+
+    return CheckBasicInputShapeRelations(xDim0, topkIdsDim0, topkIdsDim1, topkWeightsDim0, topkWeightsDim1, nodeName);
 }
 
 /*
@@ -2186,32 +2212,11 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context, M
     return CheckOutputDataType(context, config, nodeName);
 }
 
-static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context, MegaMoeConfig &config,
-                                         const char *nodeName)
+static ge::graphStatus CheckWeightTensorFormat(const gert::TilingContext *context, MegaMoeConfig &config,
+                                               const char *nodeName)
 {
-    auto xDesc = context->GetInputDesc(config.xIndex);
-    auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
-    auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
-
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
-    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
-    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
-
-    auto yDesc = context->GetOutputDesc(config.yIndex);
-    auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
-
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "x format is invalid."), return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "topkIds format is invalid."), return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "topkWeights format is invalid."), return ge::GRAPH_FAILED);
-
     bool isW4 = weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1;
     int64_t dispatchOutType = GetOpQuantModeByAttrDispatchOutType(context, config);
     ge::Format weightOnePrimaryFormat =
@@ -2242,6 +2247,37 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context, Meg
                                                    Ops::Base::ToString(weightTwoDesc->GetStorageFormat()).c_str(),
                                                    "FORMAT_FRACTAL_NZ_C0_32"),
                         return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context, MegaMoeConfig &config,
+                                         const char *nodeName)
+{
+    auto xDesc = context->GetInputDesc(config.xIndex);
+    auto topkIdsDesc = context->GetInputDesc(config.topkIdsIndex);
+    auto topkWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
+
+    auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScales1Index, 0);
+    auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScales2Index, 0);
+
+    auto yDesc = context->GetOutputDesc(config.yIndex);
+    auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
+
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+                    OP_LOGE(nodeName, "x format is invalid."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(topkIdsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName, "topkIds format is invalid."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(topkWeightsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName, "topkWeights format is invalid."), return ge::GRAPH_FAILED);
+
+    if (CheckWeightTensorFormat(context, config, nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
     OP_TILING_CHECK(

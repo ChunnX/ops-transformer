@@ -1,17 +1,18 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_matmul_reduce_scatter_v2.cpp
  * \brief
  */
+#include <cstring>
 #include "securec.h"
 #include "acl/acl.h"
 #include "common/utils/op_mc2.h"
@@ -25,6 +26,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "mc2_log_compat.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
@@ -49,6 +51,8 @@ static constexpr int64_t DIM_NUM_TWO = 2;
 static constexpr int64_t DIM_NUM_ONE = 1;
 static constexpr int64_t AICPU_STRLEN = 6;
 static constexpr int64_t CCU_STRLEN = 3;
+static constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
+static constexpr char GRAPH_CCU_MODE[] = "ccu_graph";
 typedef struct {
     uint32_t id;
     const char *funcName;
@@ -77,7 +81,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 static inline bool IsAscend950(void)
 {
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+    return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
 }
 
 static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, CommType commModeEnum)
@@ -85,9 +89,9 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, CommType co
     if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
         return;
     }
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         switch (commModeEnum) {
             case CommType::AI_CPU:
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
@@ -399,6 +403,12 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor *x1, const a
     CommType commModeEnum = CommType::INVALID;
     auto retCommmode = CheckAndSetCommMode(commMode, commModeEnum);
     CHECK_RET(retCommmode == ACLNN_SUCCESS, retCommmode);
+    if (std::strcmp(commMode, "ai_cpu") != 0 && std::strcmp(commMode, "ccu") != 0 &&
+        std::strcmp(commMode, GRAPH_CCU_MODE) != 0) {
+        OP_LOGE_FOR_INVALID_VALUE("aclnnMatmulReduceScatterV2GetWorkspaceSize", "commMode", commMode,
+                                  "\"ccu\" or \"ai_cpu\"");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (commModeEnum >= CommType::INVALID) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnmatmulReduceScatterV2GetWorkSpaceSize", "commModeEnum", "invalid",
                                               "Does not match any available case, please check the input commMode.");
@@ -449,10 +459,17 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeA5(const aclTensor *x1, const a
         transX2 = TransX2Tensor(x2);
         OP_LOGD("X2 dim0 is %ld, dim1 is %ld.", x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1));
     }
+    // Keep peer-only as an ACLNN-only optimization. Graph execution uses its own comm-mode marker.
+    const char *innerCommMode = commMode;
+    if (std::strcmp(commMode, "ccu") == 0) {
+        innerCommMode = ACLNN_CCU_PEER_ONLY_MODE;
+    } else if (std::strcmp(commMode, GRAPH_CCU_MODE) == 0) {
+        innerCommMode = "ccu";
+    }
     ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
         x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char *>(group), const_cast<char *>(reduceOp),
         transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
-        const_cast<char *>(commMode), output, amaxOutOptional, workspaceSize, executor);
+        const_cast<char *>(innerCommMode), output, amaxOutOptional, workspaceSize, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
         SetNnopbaseHcclServerTypeByArch(*executor, commModeEnum);
         void *args = reinterpret_cast<void *>(static_cast<uintptr_t>(commModeEnum));
@@ -501,7 +518,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(
     (void)MatmulReduceScatterV2IsWeightNZFormat(x2);
     CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 【A2、A3】检查x2矩阵非连续合法性
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode", "x2",
                                                   "non-contiguous", "x2 without transpose must be contiguous.");
@@ -529,11 +546,11 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor *x1, cons
                                                        uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     aclnnStatus ret = ACLNN_ERR_INNER;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         ret = matmulReduceScatterV2GetWorkSpaceSizeA5(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                       reduceOp, commTurn, streamMode, groupSize, commMode, output,
                                                       amaxOutOptional, workspaceSize, executor);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         OP_LOGD("[MatmulReduceScatterV2] NpuArch is 2201, support aiv commmode only.");
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
                                                            reduceOp, commTurn, streamMode, groupSize, commMode, output,
@@ -556,11 +573,11 @@ aclnnStatus aclnnMatmulReduceScatterV2(void *workspace, uint64_t workspaceSize, 
     }
 
     CommType commModeEnum = CommType::INVALID;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
         void *arg = NnopbaseGetUserHandle(executor);
         uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
         commModeEnum = static_cast<CommType>(handleVal);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         commModeEnum = CommType::AIV;
     }
 
