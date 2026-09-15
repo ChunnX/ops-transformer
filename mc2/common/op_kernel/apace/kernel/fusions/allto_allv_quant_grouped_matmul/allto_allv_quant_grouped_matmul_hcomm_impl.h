@@ -111,7 +111,7 @@ public:
      * \brief 初始化 HCCL；通信任务在所有 MIX 子核初始化完成后下发
      *
      * \param[in] tilingGM tiling buffer 首地址：GET_TILING_DATA_WITH_STRUCT 得到的是本地拷贝，
-     *            groupList/A/C offset tables 以 __gm__ 指针按偏移直接引用 tiling buffer
+     *            sparse groupList 以 __gm__ 指针按偏移直接引用 tiling buffer
      */
     __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightGM,
                                 GM_ADDR gmmWeightScaleGM, GM_ADDR mmxGM, GM_ADDR mmxScaleGM,
@@ -135,10 +135,6 @@ public:
         scaleRecvGM_ = userWorkspaceGM + tilingData_->scaleRecvOffset;
         sparseGroupListGm_ = reinterpret_cast<__gm__ int64_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, sparseGroupList));
-        aOffsetTableGm_ = reinterpret_cast<__gm__ const uint64_t *>(
-            tilingGM + offsetof(hcommA2avQuantGmmTilingData, aOffsetTable));
-        cOffsetTableGm_ = reinterpret_cast<__gm__ const uint64_t *>(
-            tilingGM + offsetof(hcommA2avQuantGmmTilingData, cOffsetTable));
         mmGroupListGm_ = reinterpret_cast<__gm__ int64_t *>(
             tilingGM + offsetof(hcommA2avQuantGmmTilingData, mmGroupList));
 
@@ -321,31 +317,47 @@ private:
         return static_cast<uint32_t>(tilingData_->sparseGroupList[segIdx * 2U + 1U]);
     }
 
+    __aicore__ inline uint64_t GetExpertStartRow(uint32_t expertIdx) const
+    {
+        uint64_t rowOffset = 0U;
+        for (uint32_t previousExpert = 0; previousExpert < expertIdx; ++previousExpert) {
+            for (uint32_t peer = 0; peer < tilingData_->rankSize; ++peer) {
+                rowOffset += GetSegmentRows(previousExpert * tilingData_->rankSize + peer);
+            }
+        }
+        return rowOffset;
+    }
+
     __aicore__ inline void PrepareExpertCommunication(uint32_t expertIdx)
     {
         const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ? (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U
                                                              : static_cast<uint64_t>(tilingData_->k);
         const uint64_t scaleAxis = tilingData_->scaleKLen;
         const uint32_t rankSize = rankDim_;
+        uint64_t sendPeerBaseRow = 0U;
+        uint64_t recvRowOffset = GetExpertStartRow(expertIdx);
         for (uint32_t peer = 0; peer < rankSize; ++peer) {
             const uint32_t segIdx = expertIdx * rankSize + peer;
-            uint64_t sendRowOffset = 0U;
+            uint64_t sendExpertOffset = 0U;
             for (uint32_t previousExpert = 0; previousExpert < expertIdx; ++previousExpert) {
-                sendRowOffset += tilingData_->segSendRows[previousExpert * rankSize + peer];
+                sendExpertOffset += tilingData_->segSendRows[previousExpert * rankSize + peer];
             }
             const uint64_t sendRows = tilingData_->segSendRows[segIdx];
             const uint64_t recvRows = GetSegmentRows(segIdx);
             // Receive each expert directly in expert-major order. This is also the
             // externally visible permute_out layout and removes the former AIV permute.
-            const uint64_t recvRowOffset = tilingData_->cOffsetTable[segIdx] / tilingData_->n;
             dataSendCnt_[peer] = sendRows * dataAxis;
-            dataSendOff_[peer] = tilingData_->dataSendOff[peer] + sendRowOffset * dataAxis;
+            dataSendOff_[peer] = (sendPeerBaseRow + sendExpertOffset) * dataAxis;
             dataRecvCnt_[peer] = recvRows * dataAxis;
             dataRecvOff_[peer] = recvRowOffset * dataAxis;
             scaleSendCnt_[peer] = sendRows * scaleAxis;
-            scaleSendOff_[peer] = tilingData_->scaleSendOff[peer] + sendRowOffset * scaleAxis;
+            scaleSendOff_[peer] = (sendPeerBaseRow + sendExpertOffset) * scaleAxis;
             scaleRecvCnt_[peer] = recvRows * scaleAxis;
             scaleRecvOff_[peer] = recvRowOffset * scaleAxis;
+            recvRowOffset += recvRows;
+            for (uint32_t e = 0; e < tilingData_->expertNum; ++e) {
+                sendPeerBaseRow += tilingData_->segSendRows[e * rankSize + peer];
+            }
         }
     }
 
@@ -361,6 +373,9 @@ private:
         if (gmm.m == 0) {
             return;
         }
+        const uint64_t expertStartRow = GetExpertStartRow(expertIdx);
+        const uint64_t dataAxis = tilingData_->isMxFp4 != 0U ?
+            (static_cast<uint64_t>(tilingData_->k) + 1U) / 2U : static_cast<uint64_t>(tilingData_->k);
         gmm.n = tilingData_->n;
         gmm.k = tilingData_->k;
         gmm.baseM = tilingData_->baseM;
@@ -375,16 +390,15 @@ private:
         gmm.groupListType = Apace::Kernel::GROUP_LIST_TYPE_SPARSE;
 
         typename GmmKernel::Params params;
-        params.mmadParams.aGmAddr = dataRecvGM_;
-        params.mmadParams.scaleAGmAddr = scaleRecvGM_;
+        params.mmadParams.aGmAddr = dataRecvGM_ + expertStartRow * dataAxis;
+        params.mmadParams.scaleAGmAddr = scaleRecvGM_ + expertStartRow * tilingData_->scaleKLen;
         params.mmadParams.bGmAddr = weightGM_;
         params.mmadParams.scaleBGmAddr = weightScaleGM_;
-        params.mmadParams.cGmAddr = yGM_;
+        params.mmadParams.cGmAddr = yGM_ + expertStartRow * tilingData_->n * sizeof(CType);
         params.mmadParams.biasGmAddr = nullptr;
         const uint32_t firstSegment = expertIdx * tilingData_->rankSize;
         params.groupListGmAddr = reinterpret_cast<GM_ADDR>(sparseGroupListGm_ + firstSegment * 2U);
-        params.groupOffsetTables.aOffsetTable = aOffsetTableGm_ + firstSegment;
-        params.groupOffsetTables.cOffsetTable = cOffsetTableGm_ + firstSegment;
+        params.groupOffsetTables = {};
         params.gmmParams = gmm;
         if ASCEND_IS_AIC {
             // BlockMmad seeds fixed HardEvent IDs in its constructor and
@@ -455,8 +469,6 @@ private:
     GM_ADDR scaleRecvGM_{nullptr};
     // Group metadata __gm__ pointers reference the serialized tiling buffer.
     __gm__ int64_t *sparseGroupListGm_{nullptr};
-    __gm__ const uint64_t *aOffsetTableGm_{nullptr};
-    __gm__ const uint64_t *cOffsetTableGm_{nullptr};
     __gm__ int64_t *mmGroupListGm_{nullptr};
 
     // AlltoAllV 本地参数表（元素计）

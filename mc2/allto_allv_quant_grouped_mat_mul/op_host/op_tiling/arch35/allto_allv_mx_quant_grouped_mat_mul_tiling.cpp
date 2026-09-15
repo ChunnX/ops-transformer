@@ -121,9 +121,10 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::BuildApaceTiling()
                        "Skipped outputs are invalid; set the same mode on ALL ranks and restart the test process.",
                 apaceTilingData_.diagnosticMode);
     }
-    const uint32_t lastSeg = apaceTilingData_.segNum - 1U;
-    const uint64_t totalRecvRows = apaceTilingData_.cOffsetTable[lastSeg] / n1_ +
-                                   static_cast<uint64_t>(apaceTilingData_.sparseGroupList[lastSeg * 2U + 1U]);
+    uint64_t totalRecvRows = 0U;
+    for (uint32_t segIdx = 0U; segIdx < apaceTilingData_.segNum; ++segIdx) {
+        totalRecvRows += static_cast<uint64_t>(apaceTilingData_.sparseGroupList[segIdx * 2U + 1U]);
+    }
     OP_LOGI(opName,
             "apace tiling: W=%lu E=%lu K=%lu N=%lu transB=%d segNum=%u totalRecv=%lu "
             "baseM=%u baseN=%u baseK=%u kAL1=%u "
