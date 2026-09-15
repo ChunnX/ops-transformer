@@ -19,6 +19,7 @@
 #endif
 #include "kda_input_proj_template_tiling_key.h"
 
+template <bool TransWeightQkv, bool TransWeightBeta, bool TransWeightGate, bool TransWeightG>
 __global__ __aicore__ void kda_input_proj(__gm__ uint8_t *x, __gm__ uint8_t *weightQkv, __gm__ uint8_t *weightBeta,
                                       __gm__ uint8_t *weightGate, __gm__ uint8_t *weightG, __gm__ uint8_t *scaleQkv,
                                       __gm__ uint8_t *qkv, __gm__ uint8_t *beta, __gm__ uint8_t *gate, __gm__ uint8_t *g,
@@ -31,8 +32,9 @@ __global__ __aicore__ void kda_input_proj(__gm__ uint8_t *x, __gm__ uint8_t *wei
     GET_TILING_DATA_WITH_STRUCT(optiling::KdaInputProjTilingData, tilingDataIn, tiling);
     const optiling::KdaInputProjTilingData *__restrict tilingData = &tilingDataIn;
     __gm__ uint8_t *userWorkspace = AscendC::GetUserWorkspace(workspace);
-    KdaInputProj::KdaInputProjKernel<KdaInputProj::KdaInputProjType> op(x, weightQkv, weightBeta, weightGate, weightG, scaleQkv, qkv,
-                                                           beta, gate, g, userWorkspace, tilingData);
+    KdaInputProj::KdaInputProjKernel<
+        KdaInputProj::KdaInputProjType<TransWeightQkv, TransWeightBeta, TransWeightGate, TransWeightG>>
+        op(x, weightQkv, weightBeta, weightGate, weightG, scaleQkv, qkv, beta, gate, g, userWorkspace, tilingData);
     op.Process();
 #endif
 #endif
