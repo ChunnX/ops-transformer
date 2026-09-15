@@ -43,7 +43,7 @@ constexpr uint32_t X1_SCALE_INDEX = 3;
 constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
-constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024;                 // 校验HCCL BUFF空间大小
+constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024; // 校验HCCL BUFF空间大小
 constexpr uint64_t MB_BYTES = 1024ULL * 1024;
 } // namespace
 
@@ -51,21 +51,22 @@ namespace optiling {
 
 void AllGatherV2DecodeTilingData(int32_t code, CoCTiling &tilingData)
 {
-    tilingData.commDataSplit = code & COMMDATASPLIT_MASK;
-    code >>= COMMDATASPLIT_BNUM;
-    tilingData.commNpuSplit = code & COMMNPUSPLIT_MASK;
-    code >>= COMMNPUSPLIT_BNUM;
-    tilingData.commDirect = code & COMMDIRECT_MASK;
-    code >>= COMMDIRECT_BNUM;
-    tilingData.ubMoveNum = (code & UBMOVENUM_MASK) * HALF_KBYTE;
-    code >>= UBMOVENUM_BNUM;
-    tilingData.pValue = code & PVALUE_MASK;
-    code >>= PVALUE_BNUM;
-    tilingData.swizzlCount = code & SWIZZLCOUNT_MASK;
-    code >>= SWIZZLCOUNT_BNUM;
-    tilingData.swizzlDirect = code & SWIZZLDIRECT_MASK;
-    code >>= SWIZZLDIRECT_BNUM;
-    tilingData.m0 = (code & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
+    uint32_t packedCode = static_cast<uint32_t>(code);
+    tilingData.commDataSplit = packedCode & COMMDATASPLIT_MASK;
+    packedCode >>= COMMDATASPLIT_BNUM;
+    tilingData.commNpuSplit = packedCode & COMMNPUSPLIT_MASK;
+    packedCode >>= COMMNPUSPLIT_BNUM;
+    tilingData.commDirect = packedCode & COMMDIRECT_MASK;
+    packedCode >>= COMMDIRECT_BNUM;
+    tilingData.ubMoveNum = (packedCode & UBMOVENUM_MASK) * HALF_KBYTE;
+    packedCode >>= UBMOVENUM_BNUM;
+    tilingData.pValue = packedCode & PVALUE_MASK;
+    packedCode >>= PVALUE_BNUM;
+    tilingData.swizzlCount = packedCode & SWIZZLCOUNT_MASK;
+    packedCode >>= SWIZZLCOUNT_BNUM;
+    tilingData.swizzlDirect = packedCode & SWIZZLDIRECT_MASK;
+    packedCode >>= SWIZZLDIRECT_BNUM;
+    tilingData.m0 = (packedCode & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
     tilingData.k0 = DEFAULT_COL;
     tilingData.n0 = tilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
     tilingData.mLoop = CeilDev(tilingData.m, tilingData.m0);
@@ -281,9 +282,8 @@ void AllGatherV2MatmulNPU91093EightRankFP16Tiling(CoCTiling &cocTilingData)
     DealTilingParamByBuffSize(cocTilingData);
 }
 
-static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingContext *context,
-                                                                   AllGatherMatmulAIVModeInfo &info,
-                                                                   CoCTiling &coctiling)
+static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(const gert::TilingContext *context,
+                                                                   AllGatherMatmulAIVModeInfo &info)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -305,7 +305,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingC
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::TilingContext *context,
+static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(const gert::TilingContext *context,
                                                                     AllGatherMatmulAIVModeInfo &info,
                                                                     CoCTiling &coctiling)
 {
@@ -320,11 +320,11 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
 
     const auto aType = context->GetInputTensor(A_INDEX)->GetDataType();
     const auto bType = context->GetInputTensor(B_INDEX)->GetDataType();
-    OP_TILING_CHECK(aType != bType,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1/x2",
-                                                          Ops::Base::ToString(aType).c_str(),
-                                                          "The dtypes of x1 and x2 must be the same"),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        aType != bType,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1/x2", Ops::Base::ToString(aType).c_str(),
+                                              "The dtypes of x1 and x2 must be the same"),
+        return GRAPH_FAILED);
 
     if (aType == ge::DT_INT4 && bType == ge::DT_INT4) {
         OP_TILING_CHECK(K % 2 != 0 || N % 2 != 0,
@@ -367,7 +367,7 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckShapeAndSetTiling(gert::Tiling
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(gert::TilingContext *context,
+static ge::graphStatus AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(const gert::TilingContext *context,
                                                                          AllGatherMatmulAIVModeInfo &info,
                                                                          CoCTiling &coctiling)
 {
@@ -383,8 +383,7 @@ static ge::graphStatus AllGatherMatmulAIVModeGetPlatformInfoAndSetTiling(gert::T
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus PrintfTilingData(gert::TilingContext *context, AllGatherMatmulAIVModeInfo &info,
-                                        CoCTiling &coctiling)
+static ge::graphStatus PrintfTilingData(AllGatherMatmulAIVModeInfo &info, CoCTiling &coctiling)
 {
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.M=%u", info.M);
     OP_LOGD("AllgatherMatmulV2AIVMode", "TilingData info.N=%u", info.N);
@@ -467,7 +466,7 @@ static bool CheckDtypeX1(gert::TilingContext *context)
     return true;
 }
 
-static bool CheckDtypeX2(gert::TilingContext *context, AllGatherMatmulAIVModeInfo &info, ge::DataType yType)
+static bool CheckDtypeX2(const gert::TilingContext *context, AllGatherMatmulAIVModeInfo &info, ge::DataType yType)
 {
     const gert::Tensor *x2Scale = context->GetInputTensor(X2_SCALE_INDEX);
     if (x2Scale == nullptr) {
@@ -485,7 +484,7 @@ static bool CheckDtypeX2(gert::TilingContext *context, AllGatherMatmulAIVModeInf
     return false;
 }
 
-bool SetTilingDataA3(CoCTiling &cocTilingData, AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
+bool SetTilingDataA3(CoCTiling &cocTilingData, const AllGatherMatmulAIVModeInfo &info, int64_t rankSize)
 {
     if (rankSize == RANKSIZE_FOUR && info.quantFlag) {
         AllGatherV2MatmulNPU91093FourRankINT8Tiling(cocTilingData);
@@ -558,7 +557,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     CoCTiling &coctiling = tilingData->cocTiling;
     OP_LOGI(nodeName, "AllGatherMatmulAIVMode get CoCTiling info.");
 
-    OP_TILING_CHECK(AllGatherMatmulAIVModeCheckAttrAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(AllGatherMatmulAIVModeCheckAttrAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "AllGatherMatmulAIVMode CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(AllGatherMatmulAIVModeCheckShapeAndSetTiling(context, info, coctiling) != ge::GRAPH_SUCCESS,
@@ -576,9 +575,9 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName);
     if (cclRet == ge::GRAPH_SUCCESS) {
         OP_TILING_CHECK(hcclBuffSize < CCL_BUFFER_MIN_BYTES,
-            OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
-                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
     }
@@ -677,7 +676,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
                         return ge::GRAPH_FAILED);
     }
 
-    PrintfTilingData(context, info, coctiling);
+    PrintfTilingData(info, coctiling);
     OP_LOGI(nodeName, "Leave AllGatherMatmulAIVMode tiling func.");
     return ge::GRAPH_SUCCESS;
 }

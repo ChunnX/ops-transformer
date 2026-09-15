@@ -16,7 +16,7 @@
 
 #include "opdev/data_type_utils.h"
 #include "opdev/op_log.h"
-#include "../generic_block_sparse_attention_metadata.h"
+#include "../generic_block_sparse_attention_metadata_tiling.h"
 
 namespace {
 constexpr int64_t GBSA_METADATA_DIM_NUM = 1;
@@ -307,11 +307,23 @@ aclnnStatus CheckGbsaSeqLengthInputs(const aclTensor *cuSeqLengthsOptional, cons
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengths is required for TND query.");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    const bool kvSeqLengthsRequired = GbsaIsLayout(kvInputLayout, "TND") || GbsaIsLayout(kvInputLayout, "PA_BBND") ||
-                                      GbsaIsLayout(kvInputLayout, "PA_BNBD");
-    if (kvSeqLengthsRequired && !GbsaTensorValid(cuSeqLengthsKvOptional)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengthsKv is required for TND or paged KV.");
-        return ACLNN_ERR_PARAM_INVALID;
+    const bool isPaKv = GbsaIsLayout(kvInputLayout, "PA_BBND") || GbsaIsLayout(kvInputLayout, "PA_BNBD");
+    if (GbsaIsLayout(kvInputLayout, "TND")) {
+        if (!GbsaTensorValid(cuSeqLengthsKvOptional)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cuSeqLengthsKv is required for TND KV.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (isPaKv) {
+        // FA-style PA: sequsedKv required; cuSeqLengthsKv only for TND.
+        if (!GbsaTensorValid(seqUsedKvOptional)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "seqUsedKv is required for paged KV.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (GbsaTensorValid(cuSeqLengthsKvOptional)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "cuSeqLengthsKv must be empty when layoutKv is PA, only supported in TND layout.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     aclnnStatus status =
         CheckGbsaOptionalSeqLength(cuSeqLengthsOptional, batch, ACL_INT64, batch + 1, "INT64", "cuSeqLengths");

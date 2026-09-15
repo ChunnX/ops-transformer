@@ -34,6 +34,7 @@ constexpr int V_DEQUANT_SCALE_INDEX = 9;
 constexpr int P_QUANT_SCALE_INDEX = 10;
 constexpr int CU_SEQ_LENGTHS_Q_INDEX = 11;
 constexpr int CU_SEQ_LENGTHS_KV_INDEX = 12;
+constexpr int SEQUSED_KV_INDEX = 14;
 constexpr int BLOCK_TABLE_INDEX = 15;
 
 // Must match METADATA_TOTAL_SIZE in the AICPU / kernel metadata protocol.
@@ -327,6 +328,12 @@ static ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *c
 
     uint64_t expectedStride = 1;
     for (size_t i = shape.GetDimNum() - 1; i >= 1; --i) {
+        const int64_t dimSize = shape.GetDim(i);
+        // size<=1 axes are not used in addressing; PyTorch often leaves non-canonical strides
+        // (e.g. Nkv=1). Skip so dim0-strided KV is not falsely rejected.
+        if (dimSize <= 1) {
+            continue;
+        }
         const uint64_t actualStride = static_cast<uint64_t>(stride->GetStride(i));
         if (actualStride != expectedStride) {
             OP_LOGE(context->GetNodeName(),
@@ -336,10 +343,7 @@ static ge::graphStatus ValidatePagedBbndDim0OnlyNonContig(gert::TilingContext *c
                     static_cast<unsigned long long>(expectedStride));
             return ge::GRAPH_FAILED;
         }
-        expectedStride *= static_cast<uint64_t>(shape.GetDim(i));
-        if (i == 1) {
-            break;
-        }
+        expectedStride *= static_cast<uint64_t>(dimSize);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -566,10 +570,7 @@ ge::graphStatus GBSATiling::CalculateWorkSpace(gert::TilingContext *context)
         uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
         pipelineWorkspaceSize = mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + identityIdxSize;
     } else {
-        uint32_t dtypeSize = (dataType_ == ge::DT_FLOAT8_E4M3FN) ? 1 : 2;
-        uint64_t perTaskWorkspace = static_cast<uint64_t>(topK_) * blockShapeY_ * embeddingSize_ * dtypeSize * 2;
-        uint64_t identityIdxSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
-        pipelineWorkspaceSize = identityIdxSize + static_cast<uint64_t>(blockDim_) * perTaskWorkspace;
+        pipelineWorkspaceSize = static_cast<uint64_t>(topK_) * sizeof(int32_t);
     }
 
     uint64_t userWorkspaceSize = pipelineWorkspaceSize;
@@ -670,14 +671,19 @@ ge::graphStatus GBSATiling::CheckReservedOptionalInputs(gert::TilingContext *con
 
 ge::graphStatus GBSATiling::CheckCuSeqLengths(gert::TilingContext *context)
 {
-    // layoutQ is fixed to TND and layoutKv is fixed to PA_BBND (validated in GetInputLayout),
-    // so cuSeqLengthsQ/Kv are required to locate per-batch token ranges on device.
+    // layoutQ is fixed to TND and layoutKv is fixed to PA_BBND (validated in GetInputLayout).
+    // Q uses cuSeqLengthsQ; PA KV uses sequsedKv (FA-style: cuSeqLengthsKv only for TND).
     if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_Q_INDEX) == nullptr) {
         OP_LOGE(context->GetNodeName(), "cuSeqLengthsQ cannot be empty when layoutQ is TND.");
         return ge::GRAPH_FAILED;
     }
-    if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_KV_INDEX) == nullptr) {
-        OP_LOGE(context->GetNodeName(), "cuSeqLengthsKv cannot be empty when layoutKv is PA_BBND.");
+    if (context->GetOptionalInputTensor(SEQUSED_KV_INDEX) == nullptr) {
+        OP_LOGE(context->GetNodeName(), "sequsedKv cannot be empty when layoutKv is PA_BBND.");
+        return ge::GRAPH_FAILED;
+    }
+    if (context->GetOptionalInputTensor(CU_SEQ_LENGTHS_KV_INDEX) != nullptr) {
+        OP_LOGE(context->GetNodeName(),
+                "cuSeqLengthsKv must be empty when layoutKv is PA_BBND, only supported in TND layout.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

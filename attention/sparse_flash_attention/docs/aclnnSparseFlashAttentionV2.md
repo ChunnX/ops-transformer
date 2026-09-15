@@ -60,7 +60,7 @@ aclnnStatus aclnnSparseFlashAttentionV2GetWorkspaceSize(
     int64_t             nextTokens,
     int64_t             attentionMode,
     bool                returnSoftmaxLse,
-    const aclTensor     *attentionOutOut,
+    const aclTensor     *attentionOut,
     const aclTensor     *softmaxMaxOut,
     const aclTensor     *softmaxSumOut,
     uint64_t            *workspaceSize,
@@ -272,7 +272,7 @@ aclnnStatus aclnnSparseFlashAttentionV2(
       <td>输入</td>
       <td>代表缩放系数。</td>
       <td>-</td>
-      <td>FLOAT16</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
