@@ -82,11 +82,6 @@ public:
     static constexpr uint32_t L0A_BUFFER_ID1 = 7U;
     static constexpr uint32_t L0B_BUFFER_ID0 = 8U;
     static constexpr uint32_t L0B_BUFFER_ID1 = 9U;
-    static constexpr uint32_t L0C_BUFFER_ID0 = 10U;
-    static constexpr uint32_t L0C_BUFFER_ID1 = 11U;
-    static constexpr uint32_t L0C_BUFFER_ID2 = 12U;
-    static constexpr uint32_t L0C_BUFFER_ID3 = 13U;
-    static constexpr uint32_t L0C_MODE_SYNC_ID = 14U;
 
     // UB
     static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
@@ -250,7 +245,15 @@ public:
     __aicore__ inline void CopyQuerySlice(const LocalTensor<Q_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                           RunInfo &runInfo)
     {
-        uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
+        uint32_t dstStride = (runInfo.actMSize + 31) >> 5 << 5;
+        uint32_t validRowsAlign16 = (runInfo.actMSize + 15) >> 4 << 4;
+        if (validRowsAlign16 != dstStride) {
+            // ND2NZ pads to 16 rows; initialize the extra rows consumed by N32 MMAD/FIXPIPE.
+            InitConstValueParams<uint16_t> paddingParams(static_cast<uint16_t>((dRealSize + 15) >> 4),
+                                                         static_cast<uint16_t>(dstStride - validRowsAlign16),
+                                                         static_cast<uint16_t>(validRowsAlign16), 0);
+            Fill(dstTensor[validRowsAlign16 * 16].template ReinterpretCast<uint16_t>(), paddingParams);
+        }
         FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
         GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
@@ -307,29 +310,6 @@ public:
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(mm1SyncIdx + AIV0_AIV1_OFFSET);
     }
 
-    enum class L0cSyncMode : uint8_t {
-        NONE,
-        SOFTWARE,
-        UNIT_FLAG
-    };
-    L0cSyncMode l0cSyncMode_ = L0cSyncMode::NONE;
-
-    __aicore__ inline void SetL0cSyncMode(bool useUnitFlag)
-    {
-        const L0cSyncMode nextMode = useUnitFlag ? L0cSyncMode::UNIT_FLAG : L0cSyncMode::SOFTWARE;
-        if (nextMode != l0cSyncMode_) {
-            if (l0cSyncMode_ != L0cSyncMode::NONE) {
-                // Each preceding FIXPIPE already waits for its MMAD. Complete its reads before
-                // a new producer reuses L0C under a different ownership protocol.
-                Mutex::Lock<PIPE_FIX>(L0C_MODE_SYNC_ID);
-                Mutex::Unlock<PIPE_FIX>(L0C_MODE_SYNC_ID);
-                Mutex::Lock<PIPE_M>(L0C_MODE_SYNC_ID);
-                Mutex::Unlock<PIPE_M>(L0C_MODE_SYNC_ID);
-            }
-            l0cSyncMode_ = nextMode;
-        }
-    }
-
     // CANN 9.1/3510 internal lowering, restricted to the two non-quantized DN calls below.
     // Retain the SDK FIX barrier and parameter validation; only LOOP3 writes are hoisted.
     __aicore__ inline void FixpipeDnFixedLoop(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &srcTensor,
@@ -346,15 +326,15 @@ public:
     }
 
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<MM_T> &dstTensor, const LocalTensor<MM_T> &l0C,
-                                        RunInfo &runInfo, uint32_t s2Size, uint32_t unitFlag)
+                                        RunInfo &runInfo, uint32_t s2Size)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5;
-        fixpipeParams.mSize = s2Size;
+        fixpipeParams.mSize = (s2Size + 15) >> 4 << 4;
         fixpipeParams.srcStride = (fixpipeParams.mSize + 15) >> 4 << 4;
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
         fixpipeParams.dualDstCtl = 2;
-        fixpipeParams.unitFlag = unitFlag;
+        fixpipeParams.unitFlag = UNITFLAG_EN_OUTER_LAST;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -413,18 +393,12 @@ public:
         for (uint32_t s2Offset = 0; s2Offset < runInfo.actSingleLoopS2Size; s2Offset += MM1_S2_SPLIT_SIZE) {
             uint32_t s2Size =
                 AttentionCommon::Min(MM1_S2_SPLIT_SIZE, static_cast<uint32_t>(runInfo.actSingleLoopS2Size) - s2Offset);
-            // Only publish units that FIXPIPE reads exactly; dual-AIV output requires N32.
-            const bool useUnitFlag = (s2Size % 16U == 0U) && (runInfo.actMSize % 32U == 0U);
-            SetL0cSyncMode(useUnitFlag);
-            if (!useUnitFlag) {
-                Mutex::Lock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-            }
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             // Mmad K=D 精确累加; LoadData 搬运宽度按分形粒度对齐(对齐D=原值, D=72→80与Nd2Nz写入组数一致)
             uint32_t ldK = ((constInfo_.dSize + 15) >> 4) << 4;
-            MMParam param =
-                MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize, constInfo_.dSize, false,
-                            true, true, true, useUnitFlag ? UNITFLAG_EN_OUTER_LAST : 0U, s2Size, ldK, 0);
+            MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (runInfo.actMSize + 31U) >> 5U << 5U,
+                                        constInfo_.dSize, false, true, true, true, UNITFLAG_EN_OUTER_LAST,
+                                        (s2Size + 15U) >> 4U << 4U, ldK, 0);
             if constexpr (MM1_S2_SPLIT_SIZE < s2BaseSize && dBaseSize <= MM1_K_SPLIT_SIZE) {
                 if (s2Offset != 0) {
                     MatmulBmm1ReuseQ(kL1Tensor[s2Offset * 16U], l0CSubTensor, param);
@@ -436,19 +410,10 @@ public:
                 MatmulK<KV_T, Q_T, MM_T, MM1_S2_SPLIT_SIZE, mBaseSize, MM1_K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
                     kL1Tensor[s2Offset * 16U], qL1Tensor, mmL0APolicy_, mmL0BPolicy_, l0CSubTensor, param);
             }
-            if (!useUnitFlag) {
-                Mutex::Unlock<PIPE_M>(L0C_BUFFER_ID0 + l0cBufId_);
-                Mutex::Lock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-            }
 
             // singleM keeps the full L1 row stride; realM limits each L0/MMAD tile.
             uint32_t ubRowStride = ((runInfo.actMSize + 31U) >> 5U << 5U) / CV_RATIO;
-            FixpipeMm1Dn(mm1ResUbTensor[s2Offset * ubRowStride], l0CSubTensor, runInfo, s2Size,
-                         useUnitFlag ? UNITFLAG_EN_OUTER_LAST : 0U);
-
-            if (!useUnitFlag) {
-                Mutex::Unlock<PIPE_FIX>(L0C_BUFFER_ID0 + l0cBufId_);
-            }
+            FixpipeMm1Dn(mm1ResUbTensor[s2Offset * ubRowStride], l0CSubTensor, runInfo, s2Size);
             l0cBufId_ = (l0cBufId_ + 1) % L0C_BUFCNT;
         }
         Mutex::Unlock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
@@ -493,7 +458,6 @@ public:
         Mutex::Lock<PIPE_MTE1>(KV_L1_BUFFER_ID0 + kvL1BufId_);
         {
             // Drain the physical NZ extent, including the DV tail padded to 16.
-            SetL0cSyncMode(true);
             LocalTensor<MM_T> l0CSubTensor = l0CBuffers_[l0cBufId_ * L0C_BUF_BYTES].template ReinterpretCast<MM_T>();
             uint32_t ldK = AttentionCommon::Align(runInfo.actSingleLoopS2Size, 16U);
             MMParam param = {constInfo_.dSizeV,

@@ -764,6 +764,11 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
                                       UNITFLAG_ENABLE;
         }
         Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+        if (param.unitFlag != 0 && k + 1 < kLoops &&
+            ((mmadParams.m + 15U) >> 4U) * ((mmadParams.n + 15U) >> 4U) < 10U) {
+            // UnitFlag=2 does not serialize small-tile K accumulation on the same L0C units.
+            PipeBarrier<PIPE_M>();
+        }
 
         l0aBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
         l0bBuffer.template Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
