@@ -14,9 +14,15 @@ from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
 FA_METADATA_OP_NAME = "flash_attn_metadata"
 METADATA_STRIDE = 16
-AIC_NUM = torch.npu.get_device_properties().cube_core_num
-AIV_NUM = torch.npu.get_device_properties().vector_core_num
-FAG_METADATA_SIZE = 121  # FAG (Flash Attn Grad) metadata size, in int32 elements
+FAG_METADATA_SIZE = 412  # FAG (Flash Attn Grad) metadata size, in int32 elements
+
+
+def _get_npu_core_nums():
+    try:
+        properties = torch.npu.get_device_properties()
+        return properties.cube_core_num, properties.vector_core_num
+    except Exception:
+        return 128, 128
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
@@ -41,8 +47,9 @@ def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
     align_size = 4096
     head_size = 1 * METADATA_STRIDE
-    fa_size = AIC_NUM * METADATA_STRIDE * batch_size * num_heads_kv
-    fd_size = AIV_NUM * METADATA_STRIDE * batch_size * num_heads_kv
+    aic_num, aiv_num = _get_npu_core_nums()
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
 
     metadata_size = head_size + fa_size + fd_size
     metadata_size += FAG_METADATA_SIZE  # FAG (Flash Attn Grad) metadata size
@@ -135,20 +142,22 @@ class FlashAttenOpBuilder(OpBuilder):
             if layout_q == "TND":
                 t_size = q.size(0)
                 n_size = q.size(1)
-                d_size = v.size(2)
                 softmax_out_size = (n_size, t_size)
             elif layout_q == "BSND":
                 b_size = q.size(0)
                 s_size = q.size(1)
                 n_size = q.size(2)
-                d_size = v.size(3)
                 softmax_out_size = (b_size, n_size, s_size)
             else:
                 b_size = q.size(0)
                 n_size = q.size(1)
                 s_size = q.size(2)
-                d_size = v.size(3)
                 softmax_out_size = (b_size, n_size, s_size)
+
+            if layout_kv == "PA_NZ":
+                d_size = v.size(-3) * v.size(-1)
+            else:
+                d_size = v.size(-1)
 
             if layout_out == "TND":
                 torch._check(
@@ -170,8 +179,8 @@ class FlashAttenOpBuilder(OpBuilder):
                 attention_out_size = (b_size, s_size, n_size, d_size)
 
             return (
-                torch.empty(attention_out_size, dtype=q.dtype, device="meta"),
-                torch.empty(softmax_out_size, dtype=torch.float, device="meta"),
+                torch.empty(attention_out_size, dtype=q.dtype, device=q.device),
+                torch.empty(softmax_out_size, dtype=torch.float, device=q.device),
             )
 
 

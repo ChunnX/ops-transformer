@@ -88,8 +88,9 @@ class _MegaMoeOpBuilder(OpBuilder):
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
             'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
             "float? activation_clamp=None, Dict(str, float)? activation_params=None, "
-            "int? dispatch_quant_out_dtype=None,  "
-            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
+            "int? dispatch_quant_out_dtype=None, int? shared_expert_quant_out_dtype=None, "
+            "int? weight1_type=None, int? weight2_type=None, "
+            "int? shared_weight1_type=None, int? shared_weight2_type=None, int? topo_type=None, "
             "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
         )
 
@@ -126,8 +127,11 @@ class _MegaMoeOpBuilder(OpBuilder):
             activation_clamp=None,
             activation_params=None,
             dispatch_quant_out_dtype=None,
+            shared_expert_quant_out_dtype=None,
             weight1_type=None,
             weight2_type=None,
+            shared_weight1_type=None,
+            shared_weight2_type=None,
             topo_type=None,
             rank_num_per_server=None,
             topk_weights_type=0,
@@ -180,8 +184,11 @@ def _npu_mega_moe(
     activation_clamp=None,
     activation_params=None,
     dispatch_quant_out_dtype=None,
+    shared_expert_quant_out_dtype=None,
     weight1_type=None,
     weight2_type=None,
+    shared_weight1_type=None,
+    shared_weight2_type=None,
     topo_type=None,
     rank_num_per_server=None,
     topk_weights_type=0,
@@ -220,8 +227,11 @@ def _npu_mega_moe(
         activation,
         activation_params_list,
         dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype,
         weight1_type,
         weight2_type,
+        shared_weight1_type,
+        shared_weight2_type,
         topo_type,
         rank_num_per_server,
         topk_weights_type,
@@ -260,6 +270,14 @@ class _MegaMoeCclBufferSizeParams:
         )
 
 
+def _check_int_type(value, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(
+            f"{name} must be of type int, "
+            f"got {type(value).__name__} (value: {value!r})."
+        )
+
+
 class SymmBuffer:
     def __init__(
         self,
@@ -278,6 +296,19 @@ class SymmBuffer:
     ):
         # Metadata
         self.group = group
+        self.num_experts = num_experts
+        self.max_recv_token_num = max_recv_token_num
+        self.num_max_tokens_per_rank = num_max_tokens_per_rank
+        self.num_topk = num_topk
+        self.hidden = hidden
+        self.intermediate_hidden = intermediate_hidden
+        self.dispatch_quant_mode = dispatch_quant_mode
+        self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
+        self.combine_quant_mode = combine_quant_mode
+        self.comm_alg = comm_alg
+        self.topk_weights_type = topk_weights_type
+        self._check_params()
+
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
             self.rank_id, init_comm=False
@@ -311,20 +342,46 @@ class SymmBuffer:
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
-        self.num_experts = num_experts
-        self.max_recv_token_num = max_recv_token_num
-        self.num_max_tokens_per_rank = num_max_tokens_per_rank
-        self.num_topk = num_topk
-        self.hidden = hidden
-        self.intermediate_hidden = intermediate_hidden
-        self.dispatch_quant_mode = dispatch_quant_mode
-        self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
-        self.combine_quant_mode = combine_quant_mode
-        self.comm_alg = comm_alg
-        self.topk_weights_type = topk_weights_type
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
         self.mask_buffer = None
+
+    def _check_params(self) -> None:
+        intermediate_hidden = self.intermediate_hidden
+        if "Ascend950" in torch.npu.get_device_name():
+            _check_int_type(self.dispatch_quant_mode, "dispatch_quant_mode")
+            if self.dispatch_quant_mode != 4:
+                raise ValueError(
+                    "dispatch_quant_mode only supports 4 (MXFP) on Ascend950, "
+                    f"got {self.dispatch_quant_mode!r} (type: {type(self.dispatch_quant_mode).__name__})."
+                )
+            if _dtype_to_int(self.dispatch_quant_out_dtype) not in (23, 24, 296):
+                raise ValueError(
+                    "dispatch_quant_out_dtype only supports float8_e5m2 (23), "
+                    "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
+                    f"got {self.dispatch_quant_out_dtype!r} (type: {type(self.dispatch_quant_out_dtype).__name__})."
+                )
+            _check_int_type(self.combine_quant_mode, "combine_quant_mode")
+            if self.combine_quant_mode not in (0, 3, 4):
+                raise ValueError(
+                    "combine_quant_mode only supports 0, 3 or 4 on Ascend950, "
+                    f"got {self.combine_quant_mode!r} (type: {type(self.combine_quant_mode).__name__})."
+                )
+            _check_int_type(self.topk_weights_type, "topk_weights_type")
+            if self.topk_weights_type not in (0, 1):
+                raise ValueError(
+                    "topk_weights_type only supports 0 or 1 on Ascend950, "
+                    f"got {self.topk_weights_type!r} (type: {type(self.topk_weights_type).__name__})."
+                )
+            # arch35 checks the full GMM1 output width: 2 * intermediate_hidden.
+            _check_int_type(intermediate_hidden, "intermediate_hidden")
+            if not (
+                256 <= intermediate_hidden <= 4096 and intermediate_hidden % 128 == 0
+            ):
+                raise ValueError(
+                    "intermediate_hidden must be in [256, 4096] and a multiple of 128 "
+                    f"on Ascend950, got {intermediate_hidden!r} (type: {type(intermediate_hidden).__name__})."
+                )
 
     def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
         return torch.zeros(ep_world_size, dtype=torch.int32, device=self.context.device)
@@ -470,17 +527,20 @@ _TORCH_DTYPE_TO_INT = {  # torch枚举
 }
 
 
-def _dtype_to_int(dtype):
+def _dtype_to_int(dtype, arg_name="dispatch_quant_out_dtype"):
     if dtype is None:
         return None
     if isinstance(dtype, int):
         return dtype
     if isinstance(dtype, torch.dtype):
         if dtype not in _TORCH_DTYPE_TO_INT:
-            raise TypeError(f"Unsupported dispatch_quant_out_dtype: {dtype}.")
+            raise TypeError(
+                f"Unsupported {arg_name}: {dtype!r} (type: {type(dtype).__name__})."
+            )
         return _TORCH_DTYPE_TO_INT[dtype]
     raise TypeError(
-        f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}."
+        f"{arg_name} must be torch.dtype or int, "
+        f"got {dtype!r} (type: {type(dtype).__name__})."
     )
 
 
@@ -565,6 +625,9 @@ def mega_moe(
     activation_params: Optional[Dict[str, float]] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
+    shared_expert_quant_out_dtype: Optional[torch.dtype] = None,
+    shared_weight1_type: Optional[int] = None,
+    shared_weight2_type: Optional[int] = None,
     shared_l1_weights: Optional[List[torch.Tensor]] = None,
     shared_l2_weights: Optional[List[torch.Tensor]] = None,
     shared_l1_weights_sf: Optional[List[torch.Tensor]] = None,
@@ -572,6 +635,9 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
+    shared_quant_dtype_int = _dtype_to_int(
+        shared_expert_quant_out_dtype, "shared_expert_quant_out_dtype"
+    )
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
@@ -603,8 +669,11 @@ def mega_moe(
         activation_clamp=activation_clamp,
         activation_params=activation_params,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype=shared_quant_dtype_int,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
+        shared_weight1_type=shared_weight1_type,
+        shared_weight2_type=shared_weight2_type,
         topo_type=sym_buffer.topo_type,
         rank_num_per_server=sym_buffer.rank_num_per_server,
         topk_weights_type=sym_buffer.topk_weights_type,

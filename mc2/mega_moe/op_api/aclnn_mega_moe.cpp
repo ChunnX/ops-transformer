@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <string>
@@ -17,6 +17,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_executor.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "aclnn/aclnn_base.h"
 #include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
@@ -105,10 +106,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
     const aclTensorList *sharedBias2Optional, const aclTensor *maskBufferOptional, int64_t moeExpertNum,
     int64_t epWorldSize, int64_t cclBufferSize, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
-    int64_t dispatchQuantOutDtype, int64_t combineQuantMode, const char *commAlg, int64_t numMaxTokensPerRank,
-    const char *activation, const aclFloatArray *activationParams, int64_t topoType, int64_t rankNumPerServer,
-    int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    int64_t dispatchQuantOutDtype, int64_t sharedExpertQuantOutDtype, int64_t combineQuantMode, const char *commAlg,
+    int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams, int64_t topoType,
+    int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -146,7 +147,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
 
     // weight scales dtype: arch35 → E8M0, arch22 → UINT64
-    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201;
+    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201;
     aclDataType weightScalesDtype = isArch22 ? ACL_UINT64 : ACL_FLOAT8_E8M0;
     CreateEmptyTensor(weightScalesDtype, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(weightScalesDtype, weightScales2Optional, tmpScaleList, *executor);
@@ -154,7 +155,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(weightScalesDtype, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
 
     // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_2201) {
         if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
             weight1 = ConvertTensorListToInt4(weight1, *executor);
         }
@@ -171,7 +172,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         }
     }
 
-    // 共享专家权重的dtype/format与MoE权重一致，为空时用MoE权重的dtype和format创建空tensor
+    // shared weight 为空时，使用 MoE weight 的 dtype/format 创建占位 tensor 以完成原型匹配。
     aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0) ?
                                       static_cast<aclDataType>((*weight1)[0]->GetDataType()) :
                                       ACL_FLOAT8_E4M3FN;
@@ -198,9 +199,9 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
         maskBufferOptional, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
-        dispatchQuantOutDtype, combineQuantMode, commAlgData, numMaxTokensPerRank, activationValue.data(),
-        activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, yOut,
-        expertTokenNumsOut, workspaceSize, executor);
+        dispatchQuantOutDtype, sharedExpertQuantOutDtype, combineQuantMode, commAlgData, numMaxTokensPerRank,
+        activationValue.data(), activationParams, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
+        topkWeightsType, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

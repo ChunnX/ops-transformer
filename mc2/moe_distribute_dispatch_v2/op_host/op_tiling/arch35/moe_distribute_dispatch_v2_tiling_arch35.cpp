@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_v2_tiling_arch35.cpp
@@ -1080,7 +1080,7 @@ uint64_t MoeDistributeDispatchTilingA5::GetTilingKey() const
 
 bool MoeDistributeDispatchTilingA5::IsCapable()
 {
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         const char *nodeName = context_->GetNodeName();
         OP_LOGD(nodeName, "Do MoeDistributeDispatchTilingA5 tiling.");
         return true;
@@ -1242,13 +1242,15 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     auto attrs = context->GetAttrs();
     const char *nodeName = context->GetNodeName();
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMM_ALG_INDEX));
-    OP_LOGD(nodeName, "Set 'commAlg' as '%s'", commAlgPtr);
+    if (commAlgPtr != nullptr) {
+        OP_LOGD(nodeName, "Set 'commAlg' as '%s'", commAlgPtr);
+    }
     // 检查 commAlg 参数合法性校验
     bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
-    bool isFullmeshV1 = (std::strcmp(commAlgPtr, "fullmesh_v1") == 0);
-    bool isFullmeshV2 = (std::strcmp(commAlgPtr, "fullmesh_v2") == 0);
+    bool isFullmeshV1 = !isNullOrEmpty && (std::strcmp(commAlgPtr, "fullmesh_v1") == 0);
+    bool isFullmeshV2 = !isNullOrEmpty && (std::strcmp(commAlgPtr, "fullmesh_v2") == 0);
     bool isMte = isFullmeshV1 || isFullmeshV2;
-    bool isCcu = std::strcmp(commAlgPtr, "ccu") == 0;
+    bool isCcu = !isNullOrEmpty && (std::strcmp(commAlgPtr, "ccu") == 0);
     OP_TILING_CHECK(!(isNullOrEmpty || isMte || isCcu),
                     OP_LOGE(nodeName,
                             "Invalid parameter: 'commAlg'='%s'. "
