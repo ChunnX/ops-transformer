@@ -241,9 +241,7 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     isInputTopkWeight_ = tilingData->isInputTopkWeight;
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
-        expertCountElements_ = ((actualExpertNum_ + 1) < expertNum_) ?
-                                   (actualExpertNum_ + 1) * EXERPT_TOKENS_KEY_VALUE :
-                                   expertNum_ * EXERPT_TOKENS_KEY_VALUE;
+        expertCountElements_ = expertNum_ * EXERPT_TOKENS_KEY_VALUE;
     } else {
         expertCountElements_ = actualExpertNum_;
     }
@@ -576,7 +574,6 @@ __aicore__ inline void MoeV3FullLoadBase<T>::CopyExpertCountToOutput()
                 actualExpertTotalNum_ += expertCount;
             }
         }
-        expertCountElements_ = Min(expertCountElements_, static_cast<int64_t>((expertOffset + 1) * KEY_VALUE_MODE));
     } else if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
         for (int64_t i = 0; i < actualExpertNum_; i++) {
             int64_t expertCount = static_cast<int64_t>(expertCountLocal.GetValue(i));
