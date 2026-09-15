@@ -72,7 +72,8 @@ static ge::graphStatus InferShape4MoeTokenPermuteWithEp(gert::InferShapeContext 
         sortedIndices->SetDim(0U, sortedIndicesLen);
     }
 
-    // 与 tiling 侧语义对齐: range 未提供（nullptr / 空 list / 默认值 [0,0]）时回退 num_out_tokens
+    // 与 tiling 侧语义对齐: range 未提供（nullptr / 空 list / size != 2）时回退 num_out_tokens
+    // （兼容性修复）; [0,0] 默认值形态按原版语义走 range 分支（环绕公式得全量），保持 A2 兼容
     bool rangeValid = (rangePtr != nullptr) && (rangePtr->GetSize() == DIM_TWO);
     int64_t start = 0;
     int64_t end = 0;
@@ -80,9 +81,6 @@ static ge::graphStatus InferShape4MoeTokenPermuteWithEp(gert::InferShapeContext 
         const int64_t *RangeList = reinterpret_cast<const int64_t *>(rangePtr->GetData());
         start = RangeList[0];
         end = RangeList[1];
-        if (start == 0 && end == 0) {
-            rangeValid = false; // [0,0] 为默认填充值，语义等同未提供
-        }
     }
     if (!rangeValid) {
         start = 0;

@@ -375,20 +375,17 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::CheckAndGetAttrsInfo()
     const int64_t* numOutTokensPtr = attrs->GetAttrPointer<int64_t>(PERMUTE_WITH_EP_ARRT_NUM_OUT_TOKENS);
     const bool* paddedModePtr = attrs->GetAttrPointer<bool>(PERMUTE_WITH_EP_ARRT_PADDED_MODE);
 
-    // aclnn 语义（aclnnMoeTokenPermuteWithEp.md）: rangeOptional 为空时忽略 range，
-    // 输出 token 数回退到 num_out_tokens（对应 golden: range 为空时 start=0, end=num_out_tokens）。
-    // 编译/运行链路中"range 未提供"有三种到达形态，均需视为无效:
-    //   1) rangePtr == nullptr（属性未设置）
+    // 兼容性修复（非语义修改）: range 为空 list / size != 2 时按未提供处理，回退 num_out_tokens。
+    // 真实链路中"range 未提供"有两种到达形态会被此兼容覆盖（910 原版对这两种形态直接报错拒绝）:
+    //   1) rangePtr == nullptr（属性未设置，走下方回退分支）
     //   2) 空 list（TTK 编译接口对 range=None 传空 ContinuousVector，GetSize()==0）
-    //   3) 默认值 [0, 0]（编译接口对未设置的可选属性填 def 默认值）
+    // 注意: [0, 0]（def 默认值形态）按原版语义走 range 分支（start=0/end=0 → 下游环绕公式
+    // 得到全量输出），与 910 行为一致——该场景 num_out_tokens 不生效为已知文档偏离，保持 A2 兼容。
     bool rangeValid = (rangePtr != nullptr) && (rangePtr->GetSize() == RANGE_SIZE);
     if (rangeValid) {
         const int64_t* rangeList = reinterpret_cast<const int64_t*>(rangePtr->GetData());
         start = rangeList[0];
         end = rangeList[1];
-        if (start == 0 && end == 0) {
-            rangeValid = false; // [0,0] 为默认填充值，语义等同未提供
-        }
     }
     if (!rangeValid) {
         start = 0;
