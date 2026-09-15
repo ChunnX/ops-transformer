@@ -16,7 +16,7 @@
  *   一、客户标定常量区 —— **重新标定后只改本区的 constexpr 值**，其余分区勿动;
  *   二、标定表组装 —— 仅包装上方常量，无任何魔数;
  *   三、算子特有钩子（原派生类 override 的逐行拷贝）;
- *   四、组装与新旧切换: GetFitBalanceCut(args) 一行调用; kUseApace 置 false 即回老类
+ *   四、组装与新旧切换: GetFitBalanceCut(args) 一行调用; kUseNewEngine 置 false 即回老类
  *      （老类 all_gather_fit_balance_tiling.h 原样保留）。
  *
  * 公共逻辑（模型/切分引擎/调度流）在 apace/tiling/fit_balance_tiling.h 三、3.1（自由长度求解器）,
@@ -132,62 +132,63 @@ constexpr uint32_t AGMM_DEFAULT_BASE_K = 64;  // 非 950 soc 回退 baseK
 // 二、标定表组装（勿动: 仅包装上方常量; 新增标定形态时在此按同 schema 加行）
 // ============================================================================
 
-static const apace::fit_balance::CommFitRow AICPU_COMM_FIT_ROWS[] = {
+static const mc2tiling::fit_balance::CommFitRow AICPU_COMM_FIT_ROWS[] = {
     {AGMM_COMM_AICPU_4P_KEY,
-     apace::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_4P_SLOPE_US_PER_MB, AGMM_COMM_AICPU_4P_INTERCEPT_US)},
+     mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_4P_SLOPE_US_PER_MB, AGMM_COMM_AICPU_4P_INTERCEPT_US)},
     // 8P 行占位: 标定后取消下行注释即生效(未接线时 8P 走 DEFAULT 回退行+折算缩放)
     // {AGMM_COMM_AICPU_8P_KEY,
-    //  apace::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_8P_SLOPE_US_PER_MB,
+    //  mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_AICPU_8P_SLOPE_US_PER_MB,
     //  AGMM_COMM_AICPU_8P_INTERCEPT_US)},
 };
 
 // AICPU 未标定 key 的回退行（勿删: rankDim=2/8 等未标定形态依赖此行走折算因子缩放路径）
-static const apace::fit_balance::HCCLFittingParameters AICPU_COMM_FIT_DEFAULT = {AGMM_COMM_AICPU_DEF_SMALL_BOUNDARY_MB,
-                                                                                 AGMM_COMM_AICPU_DEF_LARGE_BOUNDARY_MB,
-                                                                                 AGMM_COMM_AICPU_DEF_SLOPE_US_PER_MB,
-                                                                                 AGMM_COMM_AICPU_DEF_INTERCEPT_US,
-                                                                                 0 /* 抛物线 a: 本行未启用 */,
-                                                                                 AGMM_COMM_AICPU_DEF_PARABOLIC_B,
-                                                                                 AGMM_COMM_AICPU_DEF_PARABOLIC_C,
-                                                                                 AGMM_COMM_AICPU_DEF_INV_BOUNDARY1_US,
-                                                                                 AGMM_COMM_AICPU_DEF_INV_BOUNDARY2_US,
-                                                                                 0,
-                                                                                 0,
-                                                                                 0 /* 反解抛物线参数: 本行未启用 */};
+static const mc2tiling::fit_balance::HCCLFittingParameters AICPU_COMM_FIT_DEFAULT = {
+    AGMM_COMM_AICPU_DEF_SMALL_BOUNDARY_MB,
+    AGMM_COMM_AICPU_DEF_LARGE_BOUNDARY_MB,
+    AGMM_COMM_AICPU_DEF_SLOPE_US_PER_MB,
+    AGMM_COMM_AICPU_DEF_INTERCEPT_US,
+    0 /* 抛物线 a: 本行未启用 */,
+    AGMM_COMM_AICPU_DEF_PARABOLIC_B,
+    AGMM_COMM_AICPU_DEF_PARABOLIC_C,
+    AGMM_COMM_AICPU_DEF_INV_BOUNDARY1_US,
+    AGMM_COMM_AICPU_DEF_INV_BOUNDARY2_US,
+    0,
+    0,
+    0 /* 反解抛物线参数: 本行未启用 */};
 
-static const apace::fit_balance::CommFitTable AICPU_COMM_FIT_TABLE = {
+static const mc2tiling::fit_balance::CommFitTable AICPU_COMM_FIT_TABLE = {
     AICPU_COMM_FIT_ROWS, sizeof(AICPU_COMM_FIT_ROWS) / sizeof(AICPU_COMM_FIT_ROWS[0]), AICPU_COMM_FIT_DEFAULT};
 
-static const apace::fit_balance::CommFitRow CCU_COMM_FIT_ROWS[] = {
+static const mc2tiling::fit_balance::CommFitRow CCU_COMM_FIT_ROWS[] = {
     {AGMM_COMM_CCU_4P_KEY,
-     apace::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_4P_SLOPE_US_PER_MB, AGMM_COMM_CCU_4P_INTERCEPT_US)},
+     mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_4P_SLOPE_US_PER_MB, AGMM_COMM_CCU_4P_INTERCEPT_US)},
     // 8P 行占位: 标定后取消下行注释即生效
     // {AGMM_COMM_CCU_8P_KEY,
-    //  apace::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_8P_SLOPE_US_PER_MB, AGMM_COMM_CCU_8P_INTERCEPT_US)},
+    //  mc2tiling::fit_balance::MakeLinearCommFit(AGMM_COMM_CCU_8P_SLOPE_US_PER_MB, AGMM_COMM_CCU_8P_INTERCEPT_US)},
 };
 
 // CCU 未标定 key 的回退行（当前沿用历史共用值, 待 Ccu 环境重标）
-static const apace::fit_balance::HCCLFittingParameters CCU_COMM_FIT_DEFAULT = {AGMM_COMM_CCU_DEF_SMALL_BOUNDARY_MB,
-                                                                               AGMM_COMM_CCU_DEF_LARGE_BOUNDARY_MB,
-                                                                               AGMM_COMM_CCU_DEF_SLOPE_US_PER_MB,
-                                                                               AGMM_COMM_CCU_DEF_INTERCEPT_US,
-                                                                               0 /* 抛物线 a: 本行未启用 */,
-                                                                               AGMM_COMM_CCU_DEF_PARABOLIC_B,
-                                                                               AGMM_COMM_CCU_DEF_PARABOLIC_C,
-                                                                               AGMM_COMM_CCU_DEF_INV_BOUNDARY1_US,
-                                                                               AGMM_COMM_CCU_DEF_INV_BOUNDARY2_US,
-                                                                               0,
-                                                                               0,
-                                                                               0 /* 反解抛物线参数: 本行未启用 */};
+static const mc2tiling::fit_balance::HCCLFittingParameters CCU_COMM_FIT_DEFAULT = {AGMM_COMM_CCU_DEF_SMALL_BOUNDARY_MB,
+                                                                                   AGMM_COMM_CCU_DEF_LARGE_BOUNDARY_MB,
+                                                                                   AGMM_COMM_CCU_DEF_SLOPE_US_PER_MB,
+                                                                                   AGMM_COMM_CCU_DEF_INTERCEPT_US,
+                                                                                   0 /* 抛物线 a: 本行未启用 */,
+                                                                                   AGMM_COMM_CCU_DEF_PARABOLIC_B,
+                                                                                   AGMM_COMM_CCU_DEF_PARABOLIC_C,
+                                                                                   AGMM_COMM_CCU_DEF_INV_BOUNDARY1_US,
+                                                                                   AGMM_COMM_CCU_DEF_INV_BOUNDARY2_US,
+                                                                                   0,
+                                                                                   0,
+                                                                                   0 /* 反解抛物线参数: 本行未启用 */};
 
-static const apace::fit_balance::CommFitTable CCU_COMM_FIT_TABLE = {
+static const mc2tiling::fit_balance::CommFitTable CCU_COMM_FIT_TABLE = {
     CCU_COMM_FIT_ROWS, sizeof(CCU_COMM_FIT_ROWS) / sizeof(CCU_COMM_FIT_ROWS[0]), CCU_COMM_FIT_DEFAULT};
 
-static const apace::fit_balance::CubeCalcRow CUBE_CALC_ROWS[] = {
+static const mc2tiling::fit_balance::CubeCalcRow CUBE_CALC_ROWS[] = {
     {AGMM_MM_KEY_QUANT, AGMM_MM_QUANT_MACS_PER_CYCLE},
 };
 
-static const apace::fit_balance::L2ParamRow L2_PARAM_ROWS[] = {
+static const mc2tiling::fit_balance::L2ParamRow L2_PARAM_ROWS[] = {
     {AGMM_MM_KEY_FP16,
      {AGMM_L2_FP16_PART_MB, AGMM_L2_FP16_FULL_MB, AGMM_L2_FP16_UTIL_PART, AGMM_L2_FP16_UTIL_FULL,
       AGMM_L2_FP16_UTIL_OUT}},
@@ -196,11 +197,11 @@ static const apace::fit_balance::L2ParamRow L2_PARAM_ROWS[] = {
       AGMM_L2_QUANT_UTIL_OUT}},
 };
 
-static const apace::fit_balance::BestBaseRow BEST_BASE_ROWS[] = {
-    {apace::fit_balance::SocVersion::SOC950, {AGMM_BEST_BASE_M, AGMM_BEST_BASE_N, AGMM_BEST_BASE_K}},
+static const mc2tiling::fit_balance::BestBaseRow BEST_BASE_ROWS[] = {
+    {mc2tiling::fit_balance::SocVersion::SOC950, {AGMM_BEST_BASE_M, AGMM_BEST_BASE_N, AGMM_BEST_BASE_K}},
 };
 
-static const apace::fit_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
+static const mc2tiling::fit_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
     CUBE_CALC_ROWS,
     sizeof(CUBE_CALC_ROWS) / sizeof(CUBE_CALC_ROWS[0]),
     AGMM_MM_DEFAULT_MACS_PER_CYCLE,
@@ -219,10 +220,10 @@ static const apace::fit_balance::MatmulPerfTable MATMUL_PERF_TABLE = {
 struct AgMmV2Hooks {
     double frontMMTime = 0;
 
-    void EstimateMMCommTime(apace::fit_balance::FitBasedBalanceCtx &ctx)
+    void EstimateMMCommTime(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
     {
         // Estimate 骨干(4/5 算子一致的公共片段): 模型刷新 + 总量 + 通算比
-        const auto est = apace::fit_balance::EstimateTotalTimes(ctx, ctx.rankDim);
+        const auto est = mc2tiling::fit_balance::EstimateTotalTimes(ctx, ctx.rankDim);
         const double totalMatmulTime = est.totalMatmulTime;
         const double totalTpTime = est.totalTpTime;
         double frontUtil = ctx.matmulPerf.FindCubeUtilByL2Usage(ctx.mmInfo.mValue, 1);
@@ -235,7 +236,7 @@ struct AgMmV2Hooks {
         // ratioCalcComm 已由 EstimateTotalTimes 设置
 
         uint64_t sizeOfComm = ctx.mmInfo.mValue * ctx.mmInfo.kValue * (ctx.rankDim - 1) /
-                              apace::fit_balance::ONE_MBYTE * ctx.commPerf.GetCommDTypeSize();
+                              mc2tiling::fit_balance::ONE_MBYTE * ctx.commPerf.GetCommDTypeSize();
         OPS_LOG_D("AllGatherMatmul",
                   "Input shape {M, N, K} = {%lu, %lu, %lu}, cubeUtil_ %f, sizeOfComm %lu, "
                   "totalMatmulTime %f, totalCommTime %f, minTileSize %lu, mAlignLen %lu, commTimeFactor_ %f, "
@@ -245,17 +246,17 @@ struct AgMmV2Hooks {
                   ctx.commPerf.commTimeFactor_, ctx.rankDim, ctx.rankTileNum);
     }
 
-    void SetLongTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
+    void SetLongTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
     {
         // Long tile should overlap the cost time of local tile
         ctx.tilingM.cutRes.longTileLen = ctx.commPerf.InverseCommTime(frontMMTime);
     }
 
-    void SetShortTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
+    void SetShortTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
     {
         // Encourage split more if the comm and calc is balanced and the cost of cutLen is sufficiently high
-        bool isCalcCommBalance = ctx.ratioCalcComm < apace::fit_balance::CALC_COMM_RATIO;
-        uint64_t cutLen = ctx.tilingM.GetAlignLength() / apace::fit_balance::TWO;
+        bool isCalcCommBalance = ctx.ratioCalcComm < mc2tiling::fit_balance::CALC_COMM_RATIO;
+        uint64_t cutLen = ctx.tilingM.GetAlignLength() / mc2tiling::fit_balance::TWO;
         double mmCost = ctx.matmulPerf.MatmulTime(cutLen, ctx.rankDim);
         double commCost = ctx.commPerf.CommTime(cutLen);
         if (isCalcCommBalance && (mmCost > AGMM_MM_EXPANSION_TIME_US) && (commCost > AGMM_COMM_EXPANSION_TIME_US)) {
@@ -267,10 +268,10 @@ struct AgMmV2Hooks {
         ctx.tilingM.cutRes.numShortTile = 1U;
     }
 
-    void AdjustLongShortTileLen(apace::fit_balance::FitBasedBalanceCtx &ctx)
+    void AdjustLongShortTileLen(mc2tiling::fit_balance::FitBasedBalanceCtx &ctx)
     {
         ctx.tilingM.FitTileLengthDiscrete(false, true, true);
-        apace::fit_balance::MergeEqualTiles(ctx.tilingM); // 公共钩子片段(五算子一致的等长归一尾)
+        mc2tiling::fit_balance::MergeEqualTiles(ctx.tilingM); // 公共钩子片段(五算子一致的等长归一尾)
     }
 };
 
@@ -278,10 +279,10 @@ struct AgMmV2Hooks {
 // 四、边界转换 + 组装与新旧切换
 // ============================================================================
 
-inline apace::fit_balance::TilingArgs ToApaceTilingArgs(const mc2tiling::TilingArgs &args)
+inline mc2tiling::fit_balance::TilingArgs ToEngineTilingArgs(const mc2tiling::TilingArgs &args)
 {
-    apace::fit_balance::TilingArgs out{};
-    out.cmdType = static_cast<apace::fit_balance::AicpuComType>(args.cmdType);
+    mc2tiling::fit_balance::TilingArgs out{};
+    out.cmdType = static_cast<mc2tiling::fit_balance::AicpuComType>(args.cmdType);
     out.rankDim = args.rankDim;
     out.usedCoreNum = args.usedCoreNum;
     out.orgMValue = args.orgMValue;
@@ -317,7 +318,7 @@ inline apace::fit_balance::TilingArgs ToApaceTilingArgs(const mc2tiling::TilingA
     return out;
 }
 
-inline CutResult ToLegacyCut(const apace::fit_balance::CutResult &cut)
+inline CutResult ToLegacyCut(const mc2tiling::fit_balance::CutResult &cut)
 {
     CutResult out{};
     out.shortTileAtBack = cut.shortTileAtBack;
@@ -329,27 +330,27 @@ inline CutResult ToLegacyCut(const apace::fit_balance::CutResult &cut)
     return out;
 }
 
-// apace 路径: 上下文构造 + 算子后置初始化(= 老类构造函数体逐行对应) + 统一调度
+// 统一引擎路径: 上下文构造 + 算子后置初始化(= 老类构造函数体逐行对应) + 统一调度
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
-namespace fb = apace::fit_balance; // fit-balance 家族公共层
+namespace fb = mc2tiling::fit_balance; // fit-balance 家族公共层
 
-inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
-                               uint32_t *baseMOut = nullptr)
+inline CutResult ScheduleFitBalance(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
+                                    uint32_t *baseMOut = nullptr)
 {
     // 通信拟合数据按引擎分路: commMode 选表(key 四段式不含引擎维度, 分路靠此处选表)。
     // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(命中时按 AICPU 表处理, 与
     // 三引擎统一分派模式兼容——未来支持 URMA 的算子在此改走 wave-packing 分支即可)
     const bool isCcuMode = (commEngine == fb::CommEngine::CCU);
     const fb::CommFitTable &commTable = isCcuMode ? CCU_COMM_FIT_TABLE : AICPU_COMM_FIT_TABLE;
-    fb::TilingArgs apaceArgs = ToApaceTilingArgs(args);
+    fb::TilingArgs engineArgs = ToEngineTilingArgs(args);
     auto ctx =
-        fb::InitCtx(apaceArgs, fb::KernelType::ALL_GATHER, commTable, MATMUL_PERF_TABLE, fb::TopoType::STANDARD_CARD);
+        fb::InitCtx(engineArgs, fb::KernelType::ALL_GATHER, commTable, MATMUL_PERF_TABLE, fb::TopoType::STANDARD_CARD);
     ctx.commPerf.SetCommShapeLen(ctx.mmInfo.kValue);
     // mxfp4(DT_FLOAT4_E2M1)每元素占0.5字节，uint64_t无法表达0.5
     // 此处按"1字节打包2个fp4元素"建模：通信侧用SetCommDTypeSize(1)+ExpansionFraction(2)表达0.5字节/元素
     // (复用HCCL现成子字节机制，CommTime/InverseCommTime/GetLinearThresholdLen均经GetRealDtypeSizes()取0.5)；
     // matmul侧inMatrixADtypeSize置1(L2占用按2x高估，避免0导致memUsage/kLength退化为0)。
-    if (apaceArgs.geAType == ge::DataType::DT_FLOAT4_E2M1) {
+    if (engineArgs.geAType == ge::DataType::DT_FLOAT4_E2M1) {
         ctx.commPerf.SetCommDTypeSize(1);
         ctx.commPerf.SetCommDtypeSizeExpansionFraction(AGMM_FP4_EXPANSION_RATIO);
         ctx.matmulPerf.mmShapeInfo_.inMatrixADtypeSize = 1;
@@ -378,15 +379,15 @@ inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, fb::CommEngine
 }
 
 // 新旧切换开关: 置 false 并重新编译即整体回退老类路径（出问题时的回退手段）
-constexpr bool kUseApace = true;
+constexpr bool kUseNewEngine = true;
 
 // 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表; 三引擎
-// 统一分派模式——调用点用 apace::fit_balance::ParseCommEngine(commMode_) 解析后传入）
+// 统一分派模式——调用点用 mc2tiling::fit_balance::ParseCommEngine(commMode_) 解析后传入）
 inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
                                   uint32_t *baseMOut = nullptr)
 {
-    if (kUseApace) {
-        return ScheduleApace(args, commEngine, baseMOut);
+    if (kUseNewEngine) {
+        return ScheduleFitBalance(args, commEngine, baseMOut);
     }
     AllGatherMMFitBalanceTiling tileFormulate(args, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
     if (baseMOut != nullptr) {

@@ -55,7 +55,7 @@ protected:
         platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
         aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
 
-        // Cache the full platform profile from the tiling context so the apace
+        // Cache the full platform profile from the tiling context so the quant matmul
         // matmul engine can use it without querying the global singleton.
         quantPlatformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
         quantPlatformInfo_.aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -742,8 +742,8 @@ protected:
             }
         }
         if (!fitBalanceUsed) {
-            apace::CoreOccupancyFirstTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
-                                                               td->scaleCommTilingData);
+            mc2tiling::CoreOccupancyFirstTiling::GetCommTilingData(m_, n_, ka, mm, td->commTilingData,
+                                                                   td->scaleCommTilingData);
 
             // MXFP4 打包存储(2 个 fp4 占 1 字节)，数据通信的 K 轴字节数需减半；
             // scale 仍是 e8m0(每 32 元素 1 字节)，不受 fp4 影响。

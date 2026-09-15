@@ -17,7 +17,7 @@
  *   二、标定表组装 —— 仅包装上方常量, 无魔数;
  *   三、开关与数据就绪 —— 环境变量开关(保留已发布语义) + 标定数据就绪检查;
  *   四、组装 —— 类型别名+转发: AllToAll+MX+URMA 的流量公式与内核契约已在
- *      apace 三、3.2 预制(ScheduleAllToAllMxUrma/FillMxDualChannelCommTiling)。
+ *      公共引擎三、3.2 预制(ScheduleAllToAllMxUrma/FillMxDualChannelCommTiling)。
  *
  * 公共引擎在 apace/tiling/fit_balance_tiling.h 三、3.2（wave-packing 求解器, URMA 分支）。
  * 本算子即 aiv_urma 实现（kernel 仅 URMA）, tiling 无条件走 fit-balance 路径。
@@ -34,7 +34,7 @@
 namespace MC2Tiling {
 namespace fit_balance {
 
-namespace fb = apace::fit_balance; // fit-balance 家族公共层
+namespace fb = mc2tiling::fit_balance; // fit-balance 家族公共层
 
 // ============================================================================
 // 一、客户标定常量区 —— 重新标定后只改本区，各常量的物理含义/单位/来源见行尾注释
@@ -122,7 +122,7 @@ inline bool DataReady(uint32_t rankDim, bool isFp4, uint32_t precisionMode)
 }
 
 // ============================================================================
-// 四、组装（AllToAll+MX+URMA 的算子无关部分已在 apace 三、3.2 预制,
+// 四、组装（AllToAll+MX+URMA 的算子无关部分已在公共引擎三、3.2 预制,
 //     本节仅保留算子侧类型别名与转发; 公开符号签名不变, 调用点零改动）
 
 using AllToAllFitBalanceInput = fb::AllToAllMxUrmaInput;
@@ -173,7 +173,7 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
     return true;
 }
 
-// 调度与结果回填 = apace 预制直通(流量折叠/双通道内核契约均与算子无关)
+// 调度与结果回填 = 公共引擎预制直通(流量折叠/双通道内核契约均与算子无关)
 inline AllToAllFitBalanceResult Schedule(const AllToAllFitBalanceInput &in)
 {
     return fb::ScheduleAllToAllMxUrma(in);

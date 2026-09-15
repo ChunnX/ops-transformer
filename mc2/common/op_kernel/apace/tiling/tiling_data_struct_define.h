@@ -10,7 +10,7 @@
 
 /*!
  * \file tiling_data_struct_define.h
- * \brief Apace tiling 公共数据结构定义（CommTilingData）
+ * \brief fit-balance 体系 tiling 公共数据结构定义（CommTilingData）
  *
  * 该结构体同时被 host 端切分算法和 kernel 端通信实现使用，
  * 提供简化的 5 字段格式，足以支撑集合通信操作。

@@ -50,7 +50,7 @@
 #include "tiling/tiling_api.h"
 #include "tiling_data_struct_define.h"
 
-namespace apace {
+namespace mc2tiling {
 namespace fit_balance {
 
 // ============================================================================
@@ -1617,6 +1617,6 @@ inline void ApplySmallShapeMinLen(FormPartition &tilingM, FitBasedBalanceCtx &ct
 }
 
 } // namespace fit_balance
-} // namespace apace
+} // namespace mc2tiling
 
 #endif // __APACE_FIT_BALANCE_TILING_H__

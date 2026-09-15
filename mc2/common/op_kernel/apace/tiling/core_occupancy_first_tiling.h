@@ -31,7 +31,7 @@
 #include "matmul_tiling/quant_matmul_tiling_data.h"
 #include "../utils/apace_constant.h"
 
-namespace apace {
+namespace mc2tiling {
 
 class CoreOccupancyFirstTiling {
 public:
@@ -97,4 +97,4 @@ public:
     }
 };
 
-} // namespace apace
+} // namespace mc2tiling
