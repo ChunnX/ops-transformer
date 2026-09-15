@@ -186,10 +186,10 @@ ge::graphStatus QuantCompressorTiling::SetPageAttentionInfo()
 
 ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo()
 {
-    workspaceParams_->dbWorkspaceRatio = 2; // 2: dbWorkspaceRatio
+    workspaceParams_->dbWorkspaceRatio = DB_WORKSPACE_RATIO;
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
-    if (coff == 2) { // 2: overlap
+    if (coff == COFF_VALUE_2) {
         workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
     }
 
@@ -209,7 +209,8 @@ ge::graphStatus QuantCompressorTiling::SetTemplateId()
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
         // 4: max S; 256: max tokensize
-        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
+        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= FULL_LOAD_MAX_SEQ_SIZE &&
+            baseParams_->tokenSize <= FULL_LOAD_MAX_TOKEN_SIZE) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
@@ -475,9 +476,11 @@ void QuantCompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNu
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
         oss << to_string(expectNumberList[i]);
-        if (i + 2 < expectNumberList.size()) {
+        const size_t nextOffset = i + 1;
+        const size_t secondOffset = nextOffset + 1;
+        if (secondOffset < expectNumberList.size()) {
             oss << ", ";
-        } else if (i + 1 < expectNumberList.size()) {
+        } else if (nextOffset < expectNumberList.size()) {
             oss << " or ";
         }
     }

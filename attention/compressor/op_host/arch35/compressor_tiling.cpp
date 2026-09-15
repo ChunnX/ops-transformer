@@ -184,10 +184,10 @@ ge::graphStatus CompressorTiling::SetPageAttentionInfo()
 
 ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
 {
-    workspaceParams_->dbWorkspaceRatio = 2;
+    workspaceParams_->dbWorkspaceRatio = DB_WORKSPACE_RATIO;
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
     workspaceParams_->mm1ScoreResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
-    if (coff == 2) {
+    if (coff == COFF_VALUE_2) {
         workspaceParams_->vec1TailCacheSize = baseParams_->cmpRatio * baseParams_->headDim;
     }
     workspaceParams_->vec1ResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * baseParams_->nSize;
@@ -207,7 +207,8 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
+        if (context_->layout == LayoutType::LAYOUT_BSH && baseParams_->seqSize <= FULL_LOAD_MAX_SEQ_SIZE &&
+            baseParams_->tokenSize <= FULL_LOAD_MAX_TOKEN_SIZE) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
         return ge::GRAPH_SUCCESS;
@@ -480,9 +481,11 @@ void CompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNumberL
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
         oss << to_string(expectNumberList[i]);
-        if (i + 2 < expectNumberList.size()) {
+        const size_t nextOffset = i + 1;
+        const size_t secondOffset = nextOffset + 1;
+        if (secondOffset < expectNumberList.size()) {
             oss << ", ";
-        } else if (i + 1 < expectNumberList.size()) {
+        } else if (nextOffset < expectNumberList.size()) {
             oss << " or ";
         }
     }
@@ -914,7 +917,6 @@ ge::graphStatus CompressorTiling::LogErrorShapeConsistency(const std::string &na
 ge::graphStatus CompressorTiling::CheckShapeConsistency() const
 {
     auto coffD = coff * baseParams_->headDim;
-    uint32_t stateNum = 2;
     if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency(STATE_BLOCK_TABLE_NAME, context_->stateBlockTable.shape,
                                                       COMPRESSOR_DIM_INDEX_0, "batchSize", baseParams_->batchSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency(CU_SEQLENS_NAME, context_->cuSeqlens.shape,
@@ -934,7 +936,7 @@ ge::graphStatus CompressorTiling::CheckShapeConsistency() const
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency(STATE_CACHE_NAME, context_->stateCache.shape,
                                                       COMPRESSOR_DIM_INDEX_2, "2*coff*headDim",
-                                                      stateNum * static_cast<uint32_t>(coffD)) ||
+                                                      STATE_CACHE_NUM * static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency(APE_NAME, context_->ape.shape, COMPRESSOR_DIM_INDEX_1,
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency(APE_NAME, context_->ape.shape, COMPRESSOR_DIM_INDEX_0,

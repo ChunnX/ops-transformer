@@ -81,6 +81,11 @@ constexpr uint32_t MIN_BLOCK_SIZE = 1;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 constexpr uint32_t MAX_CMPRATIO_SIZE = 128;
 constexpr uint32_t MIN_CMPRATIO_SIZE = 2;
+constexpr uint32_t DB_WORKSPACE_RATIO = 2;
+constexpr uint32_t COFF_VALUE_2 = 2;
+constexpr uint32_t FULL_LOAD_MAX_SEQ_SIZE = 4;
+constexpr uint32_t FULL_LOAD_MAX_TOKEN_SIZE = 256;
+constexpr uint32_t STATE_CACHE_NUM = 2;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
