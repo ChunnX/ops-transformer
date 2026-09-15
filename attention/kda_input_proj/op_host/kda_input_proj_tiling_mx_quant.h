@@ -30,14 +30,14 @@
 
 namespace optiling {
 namespace kda_input_proj_mx_quant {
-constexpr int64_t MX_BLOCK_SIZE = 32L;  // MX 量化块大小，与 kernel blockSize 一致
+constexpr int64_t MX_BLOCK_SIZE = 32L; // MX 量化块大小，与 kernel blockSize 一致
 constexpr int64_t SLICE_SIZE_256 = 256L;
 constexpr int64_t SLICE_SIZE_512 = 512L;
 constexpr int64_t BLOCKS_PER_SLICE = SLICE_SIZE_256 / MX_BLOCK_SIZE; // 一个 256 切片含 8 个 32-block
 constexpr int64_t DB_BUFFER = 2L;
-constexpr int64_t VF_LEN_16 = 128L;      // 与 kernel 的 scale buffer 对齐粒度一致
+constexpr int64_t VF_LEN_16 = 128L; // 与 kernel 的 scale buffer 对齐粒度一致
 constexpr int64_t RESERVED_UB_SIZE = 2048L;
-constexpr int64_t ROUND_MODE_RINT = 4L;  // 与 kernel Cast 的 RoundMode::CAST_RINT 对应
+constexpr int64_t ROUND_MODE_RINT = 4L; // 与 kernel Cast 的 RoundMode::CAST_RINT 对应
 constexpr float LOAD_BALANCE_THRESHOLD = 0.75F;
 
 inline int64_t CeilDiv(int64_t a, int64_t b)
@@ -92,8 +92,7 @@ public:
                     return ge::GRAPH_FAILED);
         // kernel 的 CopyIn/CopyOut 按 32 元素块搬运，量化轴必须整块划分
         OP_CHECK_IF(colNum % MX_BLOCK_SIZE != 0L,
-                    OP_LOGE(opName, "MxQuant requires hiddenSize=%ld to be a multiple of %ld.", colNum,
-                            MX_BLOCK_SIZE),
+                    OP_LOGE(opName, "MxQuant requires hiddenSize=%ld to be a multiple of %ld.", colNum, MX_BLOCK_SIZE),
                     return ge::GRAPH_FAILED);
 
         int64_t maxUbBlockNum = 0L;
@@ -123,8 +122,7 @@ public:
             params.rowNormalBlockNum = rowNormalBlockNum;
             params.rowTailLen = rowNum - rowNormalBlockNum * (rowTileNum - 1L);
             OP_CHECK_IF(params.rowTailLen <= 0L || params.usedCoreNum > totalCoreNum,
-                        OP_LOGE(opName,
-                                "MxQuant full-row split invalid: used=%ld aiv=%ld rowNorm=%ld rowTail=%ld.",
+                        OP_LOGE(opName, "MxQuant full-row split invalid: used=%ld aiv=%ld rowNorm=%ld rowTail=%ld.",
                                 params.usedCoreNum, totalCoreNum, params.rowNormalBlockNum, params.rowTailLen),
                         return ge::GRAPH_FAILED);
             params.maxUbBlockNum = maxUbBlockNum;
@@ -151,10 +149,9 @@ public:
 
         int64_t rowTileNum = 1L;
         int64_t colTileNum = 1L;
-        OP_CHECK_IF(SplitCores(totalCoreNum, rowBlockLoopNum, colBlockLoopNum, rowTileNum, colTileNum) !=
-                        ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName, "MxQuant failed to split cores for [%ld, %ld].", rowNum, colNum),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            SplitCores(totalCoreNum, rowBlockLoopNum, colBlockLoopNum, rowTileNum, colTileNum) != ge::GRAPH_SUCCESS,
+            OP_LOGE(opName, "MxQuant failed to split cores for [%ld, %ld].", rowNum, colNum), return ge::GRAPH_FAILED);
 
         int64_t rowNormalBlockNum = CeilDiv(rowBlockLoopNum, rowTileNum);
         int64_t colNormalBlockNum = CeilDiv(colBlockLoopNum, colTileNum);
@@ -269,12 +266,11 @@ private:
 
         constexpr size_t COL_TILE_IDX = 1U;
         constexpr size_t DELTA_IDX = 2U;
-        std::sort(candidates.begin(), candidates.end(),
-                  [](const std::vector<int64_t> &a, const std::vector<int64_t> &b) {
-                      // delta 相同时优先切行（colTileNum 更小），减少 scale 尾块拼接
-                      return std::make_pair(a[DELTA_IDX], a[COL_TILE_IDX]) <
-                             std::make_pair(b[DELTA_IDX], b[COL_TILE_IDX]);
-                  });
+        std::sort(
+            candidates.begin(), candidates.end(), [](const std::vector<int64_t> &a, const std::vector<int64_t> &b) {
+                // delta 相同时优先切行（colTileNum 更小），减少 scale 尾块拼接
+                return std::make_pair(a[DELTA_IDX], a[COL_TILE_IDX]) < std::make_pair(b[DELTA_IDX], b[COL_TILE_IDX]);
+            });
 
         rowTileNum = candidates[0][0];
         colTileNum = candidates[0][COL_TILE_IDX];

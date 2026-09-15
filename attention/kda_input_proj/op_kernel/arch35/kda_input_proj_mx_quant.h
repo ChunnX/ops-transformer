@@ -185,8 +185,8 @@ private:
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::Init(__gm__ uint8_t *x, __gm__ uint8_t *quantX,
-                                                        __gm__ uint8_t *xScale,
-                                                        const optiling::KdaInputProjTilingData *__restrict tiling)
+                                                           __gm__ uint8_t *xScale,
+                                                           const optiling::KdaInputProjTilingData *__restrict tiling)
 {
     tiling_ = tiling;
     if ASCEND_IS_AIC {
@@ -244,7 +244,8 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::InitUbLayout()
 }
 
 template <typename TypePack>
-__aicore__ inline void KdaInputProjMxQuant<TypePack>::ParseTilingData(const optiling::KdaInputProjMxQuantParams *tilingData)
+__aicore__ inline void KdaInputProjMxQuant<TypePack>::ParseTilingData(
+    const optiling::KdaInputProjMxQuantParams *tilingData)
 {
     blockSize_ = tilingData->blockSize;
     totalCoreNum_ = tilingData->totalCoreNum;
@@ -360,8 +361,8 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::Process()
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::CopyIn(int64_t dim0LoopIdx, int64_t dim1LoopIdx,
-                                                          int64_t ubFactorRowNum, int64_t ubFactorColNum,
-                                                          int64_t ubFactorColBlockNum, int64_t bufSlot)
+                                                             int64_t ubFactorRowNum, int64_t ubFactorColNum,
+                                                             int64_t ubFactorColBlockNum, int64_t bufSlot)
 {
     int64_t scaleIsNotOdd = ubFactorColBlockNum % DIGIT_TWO;
 
@@ -379,13 +380,12 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::CopyIn(int64_t dim0LoopIdx
     int64_t offset = dim0LoopIdx * ubFactorRowNormalBlockNum_ * colNum_ + dim1LoopIdx * ubFactorColNormalBlockLen_;
     const bool contiguous = (ubFactorColNum == colNum_) && (padRightNum == 0) && (scaleIsNotOdd == 0);
     if (contiguous) {
-        DataCopy(xLocal_[bufSlot], xGm_[offset],
-                 static_cast<uint32_t>(ubFactorRowNum * ubFactorColNum));
+        DataCopy(xLocal_[bufSlot], xGm_[offset], static_cast<uint32_t>(ubFactorRowNum * ubFactorColNum));
     } else {
-        DataCopyExtParams copyInParam = {static_cast<uint16_t>(ubFactorRowNum),
-                                         static_cast<uint32_t>(ubFactorColNum * sizeof(DtypeX)),
-                                         static_cast<uint32_t>((colNum_ - ubFactorColNum) * sizeof(DtypeX)),
-                                         static_cast<uint32_t>(scaleIsNotOdd * sizeof(DtypeX)), static_cast<uint32_t>(0)};
+        DataCopyExtParams copyInParam = {
+            static_cast<uint16_t>(ubFactorRowNum), static_cast<uint32_t>(ubFactorColNum * sizeof(DtypeX)),
+            static_cast<uint32_t>((colNum_ - ubFactorColNum) * sizeof(DtypeX)),
+            static_cast<uint32_t>(scaleIsNotOdd * sizeof(DtypeX)), static_cast<uint32_t>(0)};
         DataCopyPadExtParams<DtypeX> padParams = {true, static_cast<uint8_t>(0), static_cast<uint8_t>(padRightNum),
                                                   static_cast<DtypeX>(0)};
         DataCopyPad(xLocal_[bufSlot], xGm_[offset], copyInParam, padParams);
@@ -395,8 +395,8 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::CopyIn(int64_t dim0LoopIdx
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::CopyOut(int64_t dim0LoopIdx, int64_t dim1LoopIdx,
-                                                           int64_t ubFactorRowNum, int64_t ubFactorColNum,
-                                                           int64_t ubFactorColBlockNum, int64_t bufSlot)
+                                                              int64_t ubFactorRowNum, int64_t ubFactorColNum,
+                                                              int64_t ubFactorColBlockNum, int64_t bufSlot)
 {
     int64_t scaleIsNotOdd = ubFactorColBlockNum % DIGIT_TWO;
 
@@ -404,8 +404,7 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::CopyOut(int64_t dim0LoopId
 
     int64_t offset = dim0LoopIdx * ubFactorRowNormalBlockNum_ * colNum_ + dim1LoopIdx * ubFactorColNormalBlockLen_;
     if ((ubFactorColNum == colNum_) && (scaleIsNotOdd == 0)) {
-        DataCopy(yGm_[offset], yLocal_[bufSlot],
-                 static_cast<uint32_t>(ubFactorRowNum * ubFactorColNum));
+        DataCopy(yGm_[offset], yLocal_[bufSlot], static_cast<uint32_t>(ubFactorRowNum * ubFactorColNum));
     } else {
         DataCopyExtParams copyOutParamY = {
             static_cast<uint16_t>(ubFactorRowNum), static_cast<uint32_t>(ubFactorColNum * sizeof(uint8_t)),
@@ -430,8 +429,8 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::CopyOut(int64_t dim0LoopId
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::ComputeMaxExpOcpBf16(__ubuf__ bfloat16_t *xLocalAddr,
-                                                                        __ubuf__ uint16_t *maxExpAddr,
-                                                                        uint16_t loopNum2VF)
+                                                                           __ubuf__ uint16_t *maxExpAddr,
+                                                                           uint16_t loopNum2VF)
 {
     __VEC_SCOPE__
     {
@@ -464,9 +463,9 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::ComputeMaxExpOcpBf16(__ubu
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::ComputeScaleOcp(__ubuf__ uint16_t *maxExpAddr,
-                                                                   __ubuf__ uint16_t *mxScaleLocalAddr,
-                                                                   __ubuf__ uint16_t *recipScaleLocalAddr,
-                                                                   uint16_t loopNum1VF, uint32_t totalScaleInUB)
+                                                                      __ubuf__ uint16_t *mxScaleLocalAddr,
+                                                                      __ubuf__ uint16_t *recipScaleLocalAddr,
+                                                                      uint16_t loopNum1VF, uint32_t totalScaleInUB)
 {
     __VEC_SCOPE__
     {
@@ -526,8 +525,8 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::ComputeScaleOcp(__ubuf__ u
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::ComputeData(__ubuf__ bfloat16_t *xLocalAddr,
-                                                               __ubuf__ uint16_t *recipScaleLocalAddr,
-                                                               __ubuf__ int8_t *yLocalAddr, uint16_t loopNum2VF)
+                                                                  __ubuf__ uint16_t *recipScaleLocalAddr,
+                                                                  __ubuf__ int8_t *yLocalAddr, uint16_t loopNum2VF)
 {
     __VEC_SCOPE__
     {
@@ -594,7 +593,7 @@ __aicore__ inline void KdaInputProjMxQuant<TypePack>::ComputeData(__ubuf__ bfloa
 
 template <typename TypePack>
 __aicore__ inline void KdaInputProjMxQuant<TypePack>::Compute(int64_t ubFactorRowBlockNum, int64_t ubFactorColBlockNum,
-                                                           int64_t bufSlot)
+                                                              int64_t bufSlot)
 {
     WaitFlag<HardEvent::MTE2_V>(EvtMte2V(bufSlot));
     WaitFlag<HardEvent::MTE3_V>(EvtMte3V(bufSlot));

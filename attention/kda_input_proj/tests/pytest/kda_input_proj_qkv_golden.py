@@ -1,3 +1,12 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """CPU golden for the DynamicMxQuant -> QuantMatmul(qkv) path of KdaInputProj.
 
 qkv = dequant(quant_x, x_scale) @ dequant(weight_qkv, weight_qkv_scale)，fp32 累加后转 bf16。
@@ -30,7 +39,9 @@ def _expand_scale_b(weight_qkv_scale: torch.Tensor, k: int) -> torch.Tensor:
     return s.repeat_interleave(MX_BLOCK, dim=0)[:k, :]
 
 
-def qkv_golden(quant_x, x_scale, weight_qkv, weight_qkv_scale, out_dtype=torch.bfloat16):
+def qkv_golden(
+    quant_x, x_scale, weight_qkv, weight_qkv_scale, out_dtype=torch.bfloat16
+):
     k = quant_x.shape[1]
     a = quant_x.to(torch.float32) * _expand_scale_a(x_scale, k)
     b = weight_qkv.to(torch.float32) * _expand_scale_b(weight_qkv_scale, k)
