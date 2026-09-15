@@ -75,9 +75,10 @@ public:
                                 __gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
                                 __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr,
                                 __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
-                                __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *actualSeqLen, __gm__ uint8_t *kNopeClipAlpha,
-                                __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
-                                __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace);
+                                __gm__ uint8_t *smoothScaleCq, __gm__ uint8_t *actualSeqLen,
+                                __gm__ uint8_t *kNopeClipAlpha, __gm__ uint8_t *queryOut, __gm__ uint8_t *queryRopeOut,
+                                __gm__ uint8_t *dequantScaleQNopeOut, __gm__ uint8_t *queryNormOut,
+                                __gm__ uint8_t *dequantScaleQNormOut, __gm__ uint8_t *workspace);
 
 private:
     __aicore__ inline void CopyGlobalParams();
@@ -1001,8 +1002,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
     curStepVecFrontToken_ = curStepVecFrontListNum_ != 0 ? curStepVecBackToken_ + 1 : curStepVecBackToken_;
 
     aivOffset.curVecToken = blockIdx_ < curStepVecFrontListNum_ ? curStepVecFrontToken_ : curStepVecBackToken_;
-    aivOffset.curBlockTokenOffset = blockIdx_ < curStepVecFrontListNum_ ? blockIdx_ * aivOffset.curVecToken :
-                                    blockIdx_ * aivOffset.curVecToken + curStepVecFrontListNum_;
+    aivOffset.curBlockTokenOffset = blockIdx_ < curStepVecFrontListNum_ ?
+                                        blockIdx_ * aivOffset.curVecToken :
+                                        blockIdx_ * aivOffset.curVecToken + curStepVecFrontListNum_;
     aivOffset.rmsNormCqOffset = baseParams_->headSizeCq * aivOffset.curBlockTokenOffset; //  1536 * idx
     aivOffset.rmsNormCkvOffset =
         (baseParams_->dimHeadRope + baseParams_->headSizeCkv) * aivOffset.curBlockTokenOffset; // (512 + 64) * idx
@@ -1013,11 +1015,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ComputeAivOffset(AivOffset &a
         aivOffset.mmQnPreDequantResOffset = baseParams_->headSizeQc * aivOffset.curBlockTokenOffset;
         aivOffset.ropeQrOffset = static_cast<int64_t>(baseParams_->dimHeadSizeQc) +
                                  aivOffset.curBlockTokenOffset *
-                                 static_cast<int64_t>(baseParams_->dimHeadRope + baseParams_->dimHeadSizeQc) *
-                                 static_cast<int64_t>(baseParams_->numHeadSize); // 128 + 32 * (128 + 64) * idx
-        aivOffset.ropeQrResOffset =
-            static_cast<int64_t>(baseParams_->headSizeQr) *
-            (aivOffset.curBlockTokenOffset + batchOffset); // 32 * 64 * idx; 按BS合轴切分step
+                                     static_cast<int64_t>(baseParams_->dimHeadRope + baseParams_->dimHeadSizeQc) *
+                                     static_cast<int64_t>(baseParams_->numHeadSize); // 128 + 32 * (128 + 64) * idx
+        aivOffset.ropeQrResOffset = static_cast<int64_t>(baseParams_->headSizeQr) *
+                                    (aivOffset.curBlockTokenOffset + batchOffset); // 32 * 64 * idx; 按BS合轴切分step
     }
 
     // 以下的Offset均是与batchOffset无关的，仅初始化一次即可。

@@ -138,10 +138,11 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
  * @param deQuantScale 量化参数；最终使用shape[row,8]
  */
 template <typename T, typename C, typename O, bool enableDequant = false, bool doRope = true>
-__aicore__ inline void RotaryPosEmbPerHead(
-    LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm, const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-    LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, int64_t strideScale,
-    GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(), LocalTensor<float> deQuantScale = LocalTensor<float>())
+__aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
+                                           const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
+                                           LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, int64_t strideScale,
+                                           GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
+                                           LocalTensor<float> deQuantScale = LocalTensor<float>())
 {
     // 在 BS = 1 场景可能存在有row为零的情况，提前返回减少运算
     if (ropeParams.row == 0U) {

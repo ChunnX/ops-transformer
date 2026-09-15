@@ -30,8 +30,8 @@ struct ScatterCacheParams {
     int64_t tokenIndex;
 };
 
-__aicore__ inline int64_t GetCacheOffset(
-    int64_t paTokenIndex, int64_t blockSize, int64_t tokenStride, int64_t cacheStride0)
+__aicore__ inline int64_t GetCacheOffset(int64_t paTokenIndex, int64_t blockSize, int64_t tokenStride,
+                                         int64_t cacheStride0)
 {
     if (blockSize <= 0) {
         return paTokenIndex * cacheStride0;
@@ -69,9 +69,9 @@ __aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, con
 }
 
 template <typename T, bool IS_NZ>
-__aicore__ inline void ScatterCacheMultiRows(
-    GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal, const ScatterCacheParams &scatterCacheParams,
-    int64_t rowsInCurBatch, int64_t cacheOffset, int64_t nextBatchOffset)
+__aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
+                                             const ScatterCacheParams &scatterCacheParams, int64_t rowsInCurBatch,
+                                             int64_t cacheOffset, int64_t nextBatchOffset)
 {
     if (cacheOffset < 0) {
         return;
