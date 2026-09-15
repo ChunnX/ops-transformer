@@ -397,7 +397,9 @@ __aicore__ inline void KeyPoolKernelPerf<COMP>::CalcSplitCoreInfo()
 
     constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
     constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim;
-    constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
+    // History-expanded Norm rows must keep the Host-planned per-core stride,
+    // even when SetBaseSize shrinks the current-token Cube tile.
+    constInfo.vec1ResSize = tilingData_->workspaceParams.vec1ResSize;
 
     constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
 }
