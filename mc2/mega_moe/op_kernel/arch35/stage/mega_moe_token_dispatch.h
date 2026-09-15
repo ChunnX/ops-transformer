@@ -441,7 +441,7 @@ __aicore__ inline void PrepareMoeExpertTokenCountTable(const MoeStageCommonConfi
      * 同步放行不代表 count 已落地——对高位不匹配的槽单槽自旋重读至到达,再掩出低 24 位。
      */
     __gm__ int32_t *launchCountSlot0 =
-        reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + 48U * 1024U);
+        reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.rankSyncInWorldPtr + RANK_SYNC_COUNTER_OFFSET_BYTES);
     int32_t expectEpoch = (ReadGmByPassDCache(launchCountSlot0) & 0x7F) | 0x80;
     __gm__ int32_t *rawCountGm = reinterpret_cast<__gm__ int32_t *>(params.peermemInfo.expertCountRecvPtr);
     for (uint32_t slotIdx = 0U; slotIdx < rawCountElementCount; ++slotIdx) {
@@ -520,9 +520,10 @@ __aicore__ inline void ExportCompactExpertTokenCounts(const MoeStageCommonConfig
     }
 
     uint64_t countOffset = GetExpertCountWorkspaceOffset(countWorkspace, common.moeExpertPerRank, 0U, true);
-    GlobalTensor<int32_t> expertRevTokenNums;
-    expertRevTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.expertRevTokenNumsPtr));
-    DataCopyPad(scratch.expertTokenNumsOutTensor, expertRevTokenNums[countOffset],
+    GlobalTensor<int32_t> expertRecvTokenCount;
+    expertRecvTokenCount.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.expertRecvTokenCountPtr));
+    DataCopyPad(scratch.expertTokenNumsOutTensor, expertRecvTokenCount[countOffset],
                 {1U, common.moeExpertPerRank * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U}, {true, 0U, 0U, 0U});
     SyncFuncStatic<HardEvent::MTE2_MTE3, SYNC_EVENT_ID2>();
 
