@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file vec_op.h
+ * \file nsa_vec_op.h
  * \brief
  */
 

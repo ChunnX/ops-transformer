@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file common_header.h
+ * \file gsag_common_header.h
  * \brief Flags / layout / RunTimeInfo for GenericBlockSparseAttentionGrad (design §3.5 / §4.1).
  */
 

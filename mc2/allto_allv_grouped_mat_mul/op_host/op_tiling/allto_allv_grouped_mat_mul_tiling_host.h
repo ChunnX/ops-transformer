@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file allto_allv_grouped_mat_mul_tiling.h
+ * \file allto_allv_grouped_mat_mul_tiling_host.h
  * \brief
  */
-#ifndef MC2_ALLTO_ALLV_GROUPED_MATMUL_TILING_STRUCT_H
-#define MC2_ALLTO_ALLV_GROUPED_MATMUL_TILING_STRUCT_H
+#ifndef MC2_ALLTO_ALLV_GROUPED_MATMUL_TILING_HOST_H
+#define MC2_ALLTO_ALLV_GROUPED_MATMUL_TILING_HOST_H
 
 #include <string>
 #include <numeric>

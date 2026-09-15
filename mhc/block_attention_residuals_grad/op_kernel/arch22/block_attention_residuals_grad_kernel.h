@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file arch22/block_attention_residuals_grad.h
+ * \file arch22/block_attention_residuals_grad_kernel.h
  * \brief block_attention_residuals_grad kernel: B-axis split, outer B, inner N, H intact.
  *
  * Loop (per core):
@@ -22,8 +22,8 @@
  *   core 0: ReduceAndWriteWeights (cross-core sum, write grad_norm_weight / grad_proj_weight)
  */
 
-#ifndef BLOCK_ATTENTION_RESIDUALS_GRAD_H
-#define BLOCK_ATTENTION_RESIDUALS_GRAD_H
+#ifndef BLOCK_ATTENTION_RESIDUALS_GRAD_KERNEL_H
+#define BLOCK_ATTENTION_RESIDUALS_GRAD_KERNEL_H
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -696,4 +696,4 @@ __aicore__ inline void BlockAttentionResidualsGrad<T>::Process()
 }
 
 } // namespace NsBlockAttentionResidualsGrad
-#endif // BLOCK_ATTENTION_RESIDUALS_GRAD_H
+#endif // BLOCK_ATTENTION_RESIDUALS_GRAD_KERNEL_H

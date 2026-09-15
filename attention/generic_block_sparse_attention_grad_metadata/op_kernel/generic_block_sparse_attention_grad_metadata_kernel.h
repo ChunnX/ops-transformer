@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file generic_block_sparse_attention_grad_metadata.h
+ * \file generic_block_sparse_attention_grad_metadata_kernel.h
  * \brief Metadata layout shared by AICPU host and device kernel.
  *
  * Metadata length is dynamic: requiredElems = TASK_LIST_OFFSET + B * num_q_heads * J * TASK_ENTRY_SIZE.
  * Callers must allocate a 1-D int64 tensor with shape[0] >= CalcGsagMetadataSize(...).
  */
 
-#ifndef GENERIC_SPARSE_ATTENTION_GRAD_METADATA_H
-#define GENERIC_SPARSE_ATTENTION_GRAD_METADATA_H
+#ifndef GENERIC_BLOCK_SPARSE_ATTENTION_GRAD_METADATA_KERNEL_H
+#define GENERIC_BLOCK_SPARSE_ATTENTION_GRAD_METADATA_KERNEL_H
 
 #include <cstdint>
 
@@ -106,4 +106,4 @@ struct GsagMetadataHeader {
 static_assert(GSAG_METADATA_HEADER_SIZE * sizeof(GSAG_METADATA_T) >= sizeof(detail::GsagMetadataHeader));
 } // namespace optiling
 
-#endif // GENERIC_SPARSE_ATTENTION_GRAD_METADATA_H
+#endif // GENERIC_BLOCK_SPARSE_ATTENTION_GRAD_METADATA_KERNEL_H

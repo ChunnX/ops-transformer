@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file key_pool_tiling.h
+ * \file key_pool_tiling_arch22.h
  * \brief
  */
 
-#ifndef KEY_POOL_TILING_H
-#define KEY_POOL_TILING_H
+#ifndef KEY_POOL_TILING_ARCH22_H
+#define KEY_POOL_TILING_ARCH22_H
 
 #include <cstdint>
 #include <string>
@@ -24,8 +24,8 @@
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
-#include "../../op_kernel/arch35/key_pool_template_tiling_key.h"
-#include "../../op_kernel/arch35/key_pool_tiling_data.h"
+#include "../../op_kernel/arch22/key_pool_template_tiling_key.h"
+#include "../../op_kernel/arch22/key_pool_tiling_data.h"
 #include "platform/platform_info.h"
 
 #ifdef ASCENDC_OP_TEST
@@ -33,6 +33,7 @@
 #else
 #define CMP_EXTERN_C
 #endif
+// #define DAY0_SCOPE
 
 namespace optiling {
 
@@ -73,8 +74,6 @@ constexpr uint32_t MIN_HIDDEN_SIZE = 1024;
 constexpr uint32_t ALIGN_FACTOR_HIDDEN_SIZE = 512;
 constexpr uint32_t MIN_BLOCK_SIZE = 1;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024;
-constexpr uint32_t MAX_CMPRATIO_SIZE = 128;
-constexpr uint32_t MIN_CMPRATIO_SIZE = 2;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -118,7 +117,7 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {GATE_WEIGHT_NAME, {KEY_POOL_DIM_NUM_2}},
     {STATE_CACHE_NAME, {KEY_POOL_DIM_NUM_3}},
     {APE_NAME, {KEY_POOL_DIM_NUM_2}},
-    {CACHE_BLOCK_TABLE_NAME, {KEY_POOL_DIM_NUM_2, KEY_POOL_DIM_NUM_1}},
+    {CACHE_BLOCK_TABLE_NAME, {KEY_POOL_DIM_NUM_2}},
     {CU_SEQLENS_NAME, {KEY_POOL_DIM_NUM_1}},
     {SEQUSED_NAME, {KEY_POOL_DIM_NUM_1}},
     {START_POS_NAME, {KEY_POOL_DIM_NUM_1}},
@@ -195,14 +194,17 @@ enum class TemplateId : uint8_t {
 };
 
 CMP_EXTERN_C ge::graphStatus TilingKeyPool(gert::TilingContext *context);
-
+#ifdef DAY0_SCOPE
+const std::vector<int> CMP_RATIO{4, 128};
+#else
+const std::vector<int> CMP_RATIO{2, 4, 8, 16, 32, 64, 128};
+#endif
 const std::vector<uint32_t> HEAD_DIM{128, 512};
 
 struct KeyPoolContext {
     const char *opName;
     const char *opType;
     fe::PlatFormInfos *platformInfo;
-    int batchConsistency;
 
     RequiredParaInfo hidden_states;
     RequiredParaInfo wk;

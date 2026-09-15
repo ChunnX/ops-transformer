@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file soft_max.h
+ * \file key_pool_soft_max.h
  * \brief
  */
 
-#ifndef SOFT_MAX_H
-#define SOFT_MAX_H
+#ifndef KEY_POOL_SOFT_MAX_H
+#define KEY_POOL_SOFT_MAX_H
 
-#include "compressor_comm_arch22.h"
-#include "compressor_vector_comm.h"
+#include "key_pool_comm_arch22.h"
+#include "key_pool_vector_comm.h"
 
-namespace Compressor {
+namespace KeyPool {
 /**
  * @brief ColumnSoftMax 对矩阵按列进行SoftMax
  * @param dstLocal 输出tensor [row, col]，支持和srcLocal是同一块空间
@@ -46,6 +46,6 @@ __aicore__ inline void ColumnSoftMax(const LocalTensor<float> &dstLocal, const L
     MatDivVec(dstLocal, dstLocal, shareTmpUb, {row, col, dtypeMask, dLoop, dRemain, repeatStride});
 }
 
-} // namespace Compressor
+} // namespace KeyPool
 
 #endif

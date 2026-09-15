@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file vf_mul.h
+ * \file key_pool_vf_mul.h
  * \brief
  */
 
-#ifndef VF_MUL_H
-#define VF_MUL_H
+#ifndef KEY_POOL_VF_MUL_H
+#define KEY_POOL_VF_MUL_H
 
 #include "kernel_operator.h"
 #include <cstdint>

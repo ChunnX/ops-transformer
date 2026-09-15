@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
-#include "common_header.h"
-#include "vector_api/vf_cast_nd2nz.h"
+#include "gsag_common_header.h"
+#include "vector_api/gsag_vf_cast_nd2nz.h"
 using namespace AscendC;
 
 namespace GSAG_ARC35 {

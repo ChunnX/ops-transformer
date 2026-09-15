@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file addr_compute.h
+ * \file gsag_addr_compute.h
  * \brief Metadata-driven task scheduling for GSAG (design §3.1.2 / §4.2).
  *        Atomic unit (b,n2,j) stays on one AIC; g=0..G-1 continuous.
  *        Each sparse J block (BlockY) is further tiled by baseM (S1) and baseN (S2<=128).
@@ -17,8 +17,8 @@
  */
 
 #pragma once
-#include "common_header.h"
-#include "../../../generic_block_sparse_attention_grad_metadata/op_kernel/generic_block_sparse_attention_grad_metadata.h"
+#include "gsag_common_header.h"
+#include "../../../generic_block_sparse_attention_grad_metadata/op_kernel/generic_block_sparse_attention_grad_metadata_kernel.h"
 
 using namespace AscendC;
 using namespace optiling;

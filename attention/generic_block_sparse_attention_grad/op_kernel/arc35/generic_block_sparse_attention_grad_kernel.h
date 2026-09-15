@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file generic_block_sparse_attention_grad.h
+ * \file generic_block_sparse_attention_grad_kernel.h
  * \brief Arch35 Process / CubeProcess / VectorProcess for GenericBlockSparseAttentionGrad
 
  *        (design §3.5: Pre once → Preload[Gather+MM12](N) || NotFirst[Vec+MM345](N-1) → Post).
  */
 #pragma once
-#include "common_header.h"
-#include "addr_compute.h"
-#include "cube_op.h"
-#include "vec_op.h"
+#include "gsag_common_header.h"
+#include "gsag_addr_compute.h"
+#include "gsag_cube_op.h"
+#include "gsag_vec_op.h"
 using namespace AscendC;
 
 namespace GSAG_ARC35 {

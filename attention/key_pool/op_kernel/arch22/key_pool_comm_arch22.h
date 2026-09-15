@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file key_pool_comm.h
+ * \file key_pool_comm_arch22.h
  * \brief
  */
 
-#ifndef KEY_POOL_COMM_H
-#define KEY_POOL_COMM_H
+#ifndef KEY_POOL_COMM_ARCH22_H
+#define KEY_POOL_COMM_ARCH22_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
