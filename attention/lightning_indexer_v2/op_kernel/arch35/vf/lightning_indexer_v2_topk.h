@@ -78,7 +78,8 @@ public:
                                                    s2SeqLen);
             }
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, LIV2Common::Align(topK, (uint32_t)256)); // 256：拷贝长度对齐大小
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal,
+                              LIV2Common::Align(topK, (uint32_t)256)); // 256：拷贝长度对齐大小
         } else {
             if (loopIdx == 0) {
                 liV2Topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
