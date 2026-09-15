@@ -95,7 +95,8 @@ protected:
     virtual ge::graphStatus GetSparseUnpadBlockInfo() {};
     virtual bool GetBlockInfoOfBNS4TND() {};
     void FillBlockInfoLoadBalance(std::vector<std::vector<int64_t>> &totalBlockInfo,
-                                  std::vector<std::vector<float>> &acturalBlockInfo);
+                                  std::vector<std::vector<uint64_t>> &actualBlockCost,
+                                  std::vector<std::vector<uint64_t>> &validBlockCount);
     void GetParseS1S2OuterInfo(int64_t (*parseInfo)[ARRAY_LENGTH]);
     bool CheckSparseLeftAndRight(int64_t s1oDimIdx, int64_t s2IdxLeft, int64_t s2IdxRight, int64_t bIdx = 0,
                                  int64_t blockIdx = 0);

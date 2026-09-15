@@ -1664,16 +1664,18 @@ protected:
     bool GetBlockInfoOfBNS4TND() override
     {
         std::vector<std::vector<int64_t>> totalBlockInfo(fBaseParams.b, std::vector<int64_t>(TOTAL_BLOCK_DIMENSION));
-        std::vector<std::vector<float>> acturalBlockInfo(fBaseParams.b + NUM_TWO,
-                                                         std::vector<float>(fBaseParams.s2Outer));
-        FillBlockInfoLoadBalance(totalBlockInfo, acturalBlockInfo);
+        std::vector<std::vector<uint64_t>> actualBlockCost(fBaseParams.b + NUM_TWO,
+                                                           std::vector<uint64_t>(fBaseParams.s2Outer));
+        std::vector<std::vector<uint64_t>> validBlockCount(fBaseParams.b, std::vector<uint64_t>(fBaseParams.s2Outer));
+        FillBlockInfoLoadBalance(totalBlockInfo, actualBlockCost, validBlockCount);
 
-        float maxBlockNumPerCore = BinarySearchMaxBlockNumPerCore(acturalBlockInfo);
+        uint64_t maxCostPerCore = BinarySearchMaxCostPerCore(actualBlockCost);
 
         int64_t blockStarts[CORE_LIST_NUM];
         int64_t blockEnds[CORE_LIST_NUM];
 
-        if (!CaclePerCoreBlockInfo(totalBlockInfo, acturalBlockInfo, maxBlockNumPerCore, blockStarts, blockEnds)) {
+        if (!CalculatePerCoreBlockInfo(totalBlockInfo, actualBlockCost, validBlockCount, maxCostPerCore, blockStarts,
+                                       blockEnds)) {
             return false;
         }
 
@@ -1688,8 +1690,22 @@ protected:
         }
         std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
         std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
-        fBaseParams.maxValidBBLen = std::ceil(maxBlockNumPerCore);
         return true;
+    }
+
+    uint64_t BinarySearchMaxCostPerCore(const std::vector<std::vector<uint64_t>> &actualBlockCost)
+    {
+        uint64_t left = actualBlockCost[fBaseParams.b + 1][0];
+        uint64_t right = actualBlockCost[fBaseParams.b][0];
+        while (left < right) {
+            uint64_t mid = left + (right - left) / NUM_TWO;
+            if (IsCostPartitionPossible(actualBlockCost, mid)) {
+                right = mid;
+            } else {
+                left = mid + 1;
+            }
+        }
+        return left;
     }
 
     float BinarySearchMaxBlockNumPerCore(const std::vector<std::vector<float>> &acturalBlockInfo)
@@ -1708,11 +1724,15 @@ protected:
         return right;
     }
 
-    bool CaclePerCoreBlockInfo(const std::vector<std::vector<int64_t>> &totalBlockInfo,
-                               const std::vector<std::vector<float>> &acturalBlockInfo, const float maxBlockNumPerCore,
-                               int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM])
+    bool CalculatePerCoreBlockInfo(const std::vector<std::vector<int64_t>> &totalBlockInfo,
+                                   const std::vector<std::vector<uint64_t>> &actualBlockCost,
+                                   const std::vector<std::vector<uint64_t>> &validBlockCount,
+                                   const uint64_t maxCostPerCore, int64_t (&blockStarts)[CORE_LIST_NUM],
+                                   int64_t (&blockEnds)[CORE_LIST_NUM])
     {
-        float currentSum = 0;
+        uint64_t currentCost = 0;
+        uint64_t currentValidBlockCount = 0;
+        uint64_t maxValidBlockCount = 0;
         int64_t coreIdx = 0;
         uint64_t tndS1S2PrefixSumTmp = 0;
         uint64_t tndS1S2AlignPrefixSumTmp = 0;
@@ -1723,25 +1743,29 @@ protected:
                 int64_t actualS1Outer =
                     (fBaseParams.actualSeqQlen[b] + fBaseParams.s1CvInner - 1) / fBaseParams.s1CvInner;
                 for (int64_t j = 0; j < fBaseParams.s2Outer; j++) {
-                    float num = acturalBlockInfo[b][j];
-                    if (coreIdx >= CORE_LIST_NUM) {
+                    uint64_t cost = actualBlockCost[b][j];
+                    uint64_t blockCount = validBlockCount[b][j];
+                    if (coreIdx >= fBaseParams.aicNum) {
                         OP_LOGD("GetBlockInfoOfBNS4TND", " Not support BN2S2.");
                         return false;
-                    } else if (currentSum + num > maxBlockNumPerCore) {
-                        OP_LOGD("GetBlockInfoOfBNS4TND", " blockIdx = %ld: actualBlock = %f", coreIdx, currentSum);
+                    } else if (cost > maxCostPerCore - currentCost) {
+                        OP_LOGD("GetBlockInfoOfBNS4TND", " blockIdx = %ld: cost = %lu", coreIdx, currentCost);
                         int64_t preBatchBlockNum = b == 0 ? 0 : totalBlockInfo[b - 1][1];
                         int64_t preNGBlockNum = n * totalBlockInfo[b][0];
                         int64_t preS2BlockNum = j * actualS1Outer;
                         blockEnds[coreIdx] = preBatchBlockNum + preNGBlockNum + preS2BlockNum;
                         blockStarts[coreIdx + 1] = blockEnds[coreIdx];
+                        maxValidBlockCount = std::max(maxValidBlockCount, currentValidBlockCount);
                         coreIdx += 1;
-                        currentSum = num;
+                        currentCost = cost;
+                        currentValidBlockCount = blockCount;
                         tndBaseInfo.tndStartBIdx[coreIdx] = b;
                         tndBaseInfo.tndS1S2PrefixSum[coreIdx] = tndS1S2PrefixSumTmp;
                         tndBaseInfo.tndS1S2AlignPrefixSum[coreIdx] = tndS1S2AlignPrefixSumTmp;
                         tndBaseInfo.tndPrefixSum[coreIdx] = tndPrefixSumTmp;
                     } else {
-                        currentSum += num;
+                        currentCost += cost;
+                        currentValidBlockCount += blockCount;
                     }
                 }
             }
@@ -1758,10 +1782,12 @@ protected:
                 SetTndSwizzleParam(b, s1OuterTmp, s2OuterTmp);
             }
         }
-        OP_LOGD("GetBlockInfoOfBNS4TND", " blockIdx = %ld: actualBlock = %f", coreIdx, currentSum);
+        OP_LOGD("GetBlockInfoOfBNS4TND", " blockIdx = %ld: cost = %lu", coreIdx, currentCost);
         blockStarts[0] = 0;
         blockEnds[coreIdx] = totalBlockInfo[fBaseParams.b - 1][1];
+        maxValidBlockCount = std::max(maxValidBlockCount, currentValidBlockCount);
         fBaseParams.blockOuter = coreIdx + 1;
+        fBaseParams.maxValidBBLen = static_cast<int64_t>(maxValidBlockCount);
         return true;
     }
 
@@ -1860,6 +1886,30 @@ protected:
                     if (needCoreNum > fBaseParams.aicNum) {
                         return false;
                     }
+                }
+            }
+        }
+        return true;
+    }
+
+    bool IsCostPartitionPossible(const std::vector<std::vector<uint64_t>> &actualBlockCost, const uint64_t possibleMax)
+    {
+        uint64_t currentCost = 0;
+        uint64_t needCoreNum = 1;
+        int64_t n2g = fBaseParams.n2 * fBaseParams.g;
+        int64_t bn2g = fBaseParams.b * n2g;
+        for (int64_t i = 0; i < bn2g; i++) {
+            int64_t b = i / n2g;
+            for (int64_t j = 0; j < fBaseParams.s2Outer; j++) {
+                uint64_t cost = actualBlockCost[b][j];
+                if (cost > possibleMax - currentCost) {
+                    needCoreNum++;
+                    currentCost = cost;
+                } else {
+                    currentCost += cost;
+                }
+                if (needCoreNum > fBaseParams.aicNum) {
+                    return false;
                 }
             }
         }

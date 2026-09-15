@@ -2118,10 +2118,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetSparsePrefixBlock
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::FillBlockInfoLoadBalance(
-    std::vector<std::vector<int64_t>> &totalBlockInfo, std::vector<std::vector<float>> &acturalBlockInfo)
+    std::vector<std::vector<int64_t>> &totalBlockInfo, std::vector<std::vector<uint64_t>> &actualBlockCost,
+    std::vector<std::vector<uint64_t>> &validBlockCount)
 {
-    acturalBlockInfo[fBaseParams.b][0] = 0;
-    acturalBlockInfo[fBaseParams.b + 1][0] = 0;
+    actualBlockCost[fBaseParams.b][0] = 0;
+    actualBlockCost[fBaseParams.b + 1][0] = 0;
     OP_LOGD("FillBlockInfoLoadBalance", "SparseMode %u, find band index %u", fBaseParams.sparseMode,
             fBaseParams.bandIdx);
 
@@ -2149,30 +2150,40 @@ void FlashAttentionScoreGradTilingNormalRegbase::FillBlockInfoLoadBalance(
         // unpad 场景下s2Outer是按照最大的s2计算得到的
         for (int64_t j = 0; j < fBaseParams.s2Outer; j++) {
             if (fBaseParams.cvS2Inner * j >= actualS2Len) {
-                acturalBlockInfo[i][j] = 0;
+                actualBlockCost[i][j] = 0;
+                validBlockCount[i][j] = 0;
             } else {
-                int64_t leftIntersectionPoint = std::max(int64_t(fBaseParams.cvS2Inner * j) - actualCalcS2Token, 0L);
                 int64_t cvBlockTail = fBaseParams.cvS2Inner * (j + 1) > actualS2Len ?
                                           actualS2Len - fBaseParams.cvS2Inner * j :
                                           fBaseParams.cvS2Inner;
-
-                float acturalS1Begin = static_cast<float>(
-                    leftIntersectionPoint > int64_t(actualS1Len) ? actualS1Len : leftIntersectionPoint);
-                float acturalS1End = static_cast<float>(std::min(
-                    int64_t(actualS1Len), std::max(fBaseParams.cvS2Inner * j + cvBlockTail + actualCalcS1Token, 0L)));
-                if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && (acturalS1Begin >= acturalS1End)) {
+                int64_t s2IdxLeft = fBaseParams.cvS2Inner * j;
+                int64_t s2IdxRight = s2IdxLeft + cvBlockTail;
+                uint64_t alignedS1Size = 0;
+                uint64_t columnValidBlockCount = 0;
+                // Keep each S2 column indivisible and model its Cube work with aligned M x N tile areas.
+                for (int64_t s1oIdx = 0; s1oIdx < actualS1Outer; s1oIdx++) {
+                    bool isValid = fBaseParams.attenMaskOptional == EMPTY_TENSOR ||
+                                   CheckUnpadSparseLeftAndRight(s1oIdx, s2IdxLeft, s2IdxRight, i);
+                    if (!isValid) {
+                        continue;
+                    }
+                    int64_t s1IdxLeft = s1oIdx * fBaseParams.s1CvInner;
+                    int64_t realS1Size = std::min(fBaseParams.s1CvInner, actualS1Len - s1IdxLeft);
+                    alignedS1Size +=
+                        static_cast<uint64_t>(AlignTo(realS1Size, static_cast<int64_t>(ConstAxisTemplateNum::NUM16)));
+                    columnValidBlockCount++;
+                }
+                if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && columnValidBlockCount == 0) {
                     fBaseParams.isInvalidCol = true;
                 }
-                float acturalS1Num = acturalS1Begin > acturalS1End ? 0 : acturalS1End - acturalS1Begin;
-                float acturalS2Num = static_cast<float>(cvBlockTail);
-                acturalBlockInfo[i][j] = acturalS1Num / static_cast<float>(fBaseParams.s1CvInner) +
-                                         acturalS2Num / static_cast<float>(fBaseParams.cvS2Inner);
-
-                acturalBlockInfo[fBaseParams.b][0] += acturalBlockInfo[i][j] * fBaseParams.n2 * fBaseParams.g;
-                acturalBlockInfo[fBaseParams.b + 1][0] =
-                    acturalBlockInfo[fBaseParams.b + 1][0] < acturalBlockInfo[i][j] ?
-                        acturalBlockInfo[i][j] :
-                        acturalBlockInfo[fBaseParams.b + 1][0];
+                uint64_t alignedS2Size =
+                    static_cast<uint64_t>(AlignTo(cvBlockTail, static_cast<int64_t>(ConstAxisTemplateNum::NUM16)));
+                actualBlockCost[i][j] = alignedS1Size * alignedS2Size;
+                validBlockCount[i][j] = columnValidBlockCount;
+                actualBlockCost[fBaseParams.b][0] +=
+                    actualBlockCost[i][j] * static_cast<uint64_t>(fBaseParams.n2 * fBaseParams.g);
+                actualBlockCost[fBaseParams.b + 1][0] =
+                    std::max(actualBlockCost[fBaseParams.b + 1][0], actualBlockCost[i][j]);
             }
         }
 
