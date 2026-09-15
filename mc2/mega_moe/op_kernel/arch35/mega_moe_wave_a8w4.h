@@ -66,6 +66,8 @@ private:
     using MegaMoeBase::tokenDispatchConfig_;
     using MegaMoeBase::tokenDispatchScratch_;
     using MegaMoeBase::waveCombineScratch_;
+    using MegaMoeBase::waveCombineDedupScratch_;
+    using MegaMoeBase::waveCombineDedupState_;
     __aicore__ inline bool IsPositionWithinWave(const ExpertTokenPosition &position, uint32_t waveMGroupCount) const
     {
         return position.expertIdx < commonConfig_.moeExpertPerRank && waveMGroupCount < mGroupsPerWave_;
@@ -237,6 +239,8 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm2
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         DrainCombineRowBuffers(combineRowSequence, combineBufferConfig.rowBufferCount);
+    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        DrainCombineRowBuffersDedup(combineRowSequence, combineBufferConfig.rowBufferCount, waveCombineDedupState_);
     }
 }
 
@@ -259,9 +263,18 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     uint64_t gmm2Count = 0U;
     DispatchBuffInit();
     PrepareMoeExpertTokenCountTable<true>(commonConfig_, countWorkspace_, params_, tokenDispatchScratch_);
+    if (tokenDispatchConfig_.dedup.dedupMode != 0) {
+        // 去重建表：route 槽到达保证与 count epoch 校验同源；函数尾部含 AIV1 间栅栏。
+        BuildDedupRowDescTable(tokenDispatchConfig_.dedup, commonConfig_, gmmExecutionConfig_.blockJob,
+                               syncWorkspaceLayout_, params_, tokenDispatchScratch_);
+    }
     WaveCombineBufferConfig combineBufferConfig{};
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         combineBufferConfig = InitWaveCombineBuffers<CombineQuantMode>(commonConfig_, waveCombineScratch_);
+    } else if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) != 0) {
+        // 非量化 combine 去重：专家粒度独立消费（基类 RunGmm2CombineForExpert 内接入）。
+        combineBufferConfig =
+            InitWaveCombineBuffersDedup<false>(commonConfig_, waveCombineScratch_, waveCombineDedupScratch_);
     }
     uint32_t combineRowSequence = 0U;
 
@@ -271,7 +284,10 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::Process
     GMMAddrInfo gmm2AddrInfo{};
     gmm1AddrInfo.gmm1ActivationSync = &gmm1ActivationSync;
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
+        // 去重 combine：专家粒度独立消费，不参与 per-tile credit 握手（挂上会因 AIV1 缺 ACK 而挂死）。
+        if ((params_.tilingData->dedupMode & DEDUP_MODE_COMBINE) == 0) {
+            gmm2AddrInfo.gmm2CombineSync = &gmm2CombineSync;
+        }
     }
 
     // MoE GMM1 与 GMM2 沿用同一分核游标，按 tile 顺序持续滚动。
