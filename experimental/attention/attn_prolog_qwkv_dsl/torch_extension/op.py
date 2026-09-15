@@ -148,7 +148,10 @@ def _run_npu(
 
     q_flat = torch.empty((t, n_heads * (d // 2)), dtype=torch.uint8, device=dev)
     dsc_flat = torch.empty((t, n_heads * groups), dtype=torch.uint8, device=dev)
-    w_out = torch.empty((t, n_heads), dtype=torch.float32, device=dev)
+    # Under w_k_split the cores sharing a T-tile accumulate into w with a GM
+    # atomic add, so it has to start at zero.
+    w_alloc = torch.zeros if op.p.w_k_split else torch.empty
+    w_out = w_alloc((t, n_heads), dtype=torch.float32, device=dev)
 
     # The W path reduces x straight into L0C with no vector hop, so a short last
     # row tile makes x_l1's actual shape shorter than base_m and that propagates

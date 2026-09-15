@@ -145,16 +145,31 @@ W_SCHED = os.environ.get("APQ_W_SCHED", "wfirst")
 # exist purely to attribute wall time to a pipe.  "" is the real kernel.
 PROBE = os.environ.get("APQ_PROBE", "")
 
-# L2 retention hints.  ``wqb`` is re-read by every core and wants to stay in L2;
-# ``x`` is streamed once per row and does not.
-L2_Q = int(os.environ.get("APQ_L2_Q", 1))
+# L2 retention hints.  At one tile/core, caching Q-path weights in L2 is a
+# wash.  At two-plus tiles/core the same hint *hurts*: T=8192 went 144 us
+# (ctl=1) -> 139 us (ctl=0).  Plan.l2_q therefore defaults to 0 when the
+# core owns more than one T-tile; APQ_L2_Q still overrides.  ``x`` is
+# streamed once and does not want L2.
+L2_Q = int(os.environ["APQ_L2_Q"]) if "APQ_L2_Q" in os.environ else None
 L2_W = int(os.environ.get("APQ_L2_W", 1))
+# Issue the next tile's ``qr`` load after the last Q mmad of this tile so it
+# overlaps the last head's vector epilogue.  Default on when a core has more
+# than one T-tile.  APQ_PREFETCH=0/1 overrides.
+PREFETCH = int(os.environ["APQ_PREFETCH"]) if "APQ_PREFETCH" in os.environ else None
 UNIT_FLAG = int(os.environ.get("APQ_UNIT_FLAG", 0))
 # Split the head axis over leftover AICs when T-tiles alone cannot fill the
 # chip.  T>=4096 (32 T-tiles) keeps the original T-only schedule so the 75%
 # MFU path is unchanged.  APQ_HEAD_SPLIT=0 restores the old 1-core-per-T-tile
 # launch for A/B.
 HEAD_SPLIT = int(os.environ.get("APQ_HEAD_SPLIT", 1))
+# Split the W path's K reduction across the cores that share a T-tile and sum
+# the partials with a GM atomic add.  Letting one leader per tile own the whole
+# reduction leaves it reading the entire x tile alone: at T=72 that is 1388 KB
+# on the leader against 268 KB on each of the other 31 cores, and the wall
+# clock is the leader.  Requires ``w`` to be zeroed before launch.
+W_K_SPLIT = int(os.environ.get("APQ_W_K_SPLIT", 1))
+# wqb L1 window for a core that owns exactly one Q head; see Plan._pick_k_l1_q.
+SINGLE_HEAD_K_L1_Q = 256
 
 L1_BYTES = 512 * 1024
 L0AB_BYTES = 64 * 1024
@@ -216,23 +231,37 @@ class Plan:
         self.rows_vec = self.base_m // 2
         self.n_tiles = ceil_div(t, self.base_m)
         self._plan_head_split()
+        # See the L2_Q / PREFETCH comments at module level.
+        self.l2_q = L2_Q if L2_Q is not None else (0 if self.n_tiles > CUBE_CORES else 1)
+        self.prefetch = (
+            PREFETCH if PREFETCH is not None else (1 if self.n_tiles > CUBE_CORES else 0)
+        )
 
-        # W path always produces the full (T_tile, N) tile: splitting it to
-        # N=1 per core turns the BF16 GEMM into a GEMV and, worse, makes
-        # every AIC read the whole ``x`` tile from HBM.  When heads are
-        # split, only the h_block==0 core of each T-tile runs W
-        # (``w_leader_only``); the others skip it so ``x`` is read once.
+        # W path always produces the full (T_tile, N) tile: splitting it over
+        # N turns the BF16 GEMM into a GEMV and makes every AIC read the whole
+        # ``x`` tile.  Split the K reduction instead: the ``n_head_blocks``
+        # cores that share a T-tile each take ``dim / n_head_blocks`` columns
+        # and atomic-add their partial into ``w``, so ``x`` is still read once
+        # but spread over every core.  Without heads to split (T >= 4096) the
+        # T-tiles already balance and one core owns the whole reduction.
         self.base_n_w = n_heads
-        self.w_leader_only = self.n_head_blocks > 1
+        self.w_k_split = (
+            bool(W_K_SPLIT) and self.n_head_blocks > 1 and dim % self.n_head_blocks == 0
+        )
+        self.k_block = dim // self.n_head_blocks if self.w_k_split else dim
+        self.w_leader_only = self.n_head_blocks > 1 and not self.w_k_split
         self.k_l1_w = self._pick_k_l1_w()
         self.base_k_w = self._pick_base_k_w()
         self.step_k_w = self.k_l1_w // self.base_k_w
-        self.k_l1_tiles_w = ceil_div(dim, self.k_l1_w)
+        self.k_l1_tiles_w = ceil_div(self.k_block, self.k_l1_w)
         self.w_interleaved = self.k_l1_tiles_w % self.heads_per_block == 0
         # Interleaving W under Q only pays when this core has enough Q heads
         # to hide the ``x`` traffic.  A 1-head leader cannot hide 1.25 MB, so
-        # it runs W as one contiguous reduction instead.
-        self.w_separate = self.w_leader_only and self.heads_per_block <= 8
+        # it runs W as one contiguous reduction instead; a K slice is small
+        # enough that it does not need hiding either.
+        self.w_separate = self.w_k_split or (
+            self.w_leader_only and self.heads_per_block <= 8
+        )
         self.w_per_head = (
             0
             if self.w_separate
@@ -284,19 +313,23 @@ class Plan:
         self.used_cores = min(CUBE_CORES, self.n_tiles * self.n_head_blocks)
 
     def _pick_k_l1_w(self) -> int:
-        """Largest <=256 K window dividing dim whose window count divides heads_per_block.
+        """Largest <=256 K window dividing this core's slice of the reduction.
 
-        dim=5120, heads_per_block=32 gives 160: exactly one window per Q head.
-        With a 1-head block the same search picks 256, fewer, fatter bursts.
+        The slice is ``k_block``: the whole ``dim`` for a leader, or
+        ``dim / n_head_blocks`` under ``w_k_split``.  A leader additionally
+        needs its window count to divide ``heads_per_block`` so the fills can
+        interleave under the Q heads; dim=5120 with 32 heads gives 160, one
+        window per head.  A K slice is retired in one go, so it only needs the
+        fattest window that fits.
         """
         forced = int(os.environ.get("APQ_K_L1_W", 0))
         if forced:
             return forced
         best = 0
         for k in range(32, 257, 32):
-            if self.dim % k:
+            if self.k_block % k:
                 continue
-            if (self.dim // k) % self.heads_per_block == 0:
+            if self.w_k_split or (self.k_block // k) % self.heads_per_block == 0:
                 best = k
         return best if best else 128
 
@@ -320,7 +353,20 @@ class Plan:
         return make_partition_tiler((rows, cols), (self.base_m, cols))
 
     def _pick_k_l1_q(self) -> int:
-        """Largest K window that keeps double-buffered wqb plus resident qr in L1."""
+        """Largest K window that keeps double-buffered wqb plus resident qr in L1.
+
+        Largest is right whenever a core owns several heads: the depth-2
+        ``wqb_l1`` then overlaps head h+1's fill with head h's mmads, and
+        fatter windows mean fewer, longer bursts.  A core holding a single
+        head has no next head to overlap with, so one window per head means
+        the first mmad waits for all 164 KB of ``wqb``.  Capping the window
+        pipelines the fill against the mmads inside the head instead;
+        measured at T=72, 11.04 -> 10.33 us.  ``APQ_K_L1_Q`` overrides.
+        """
+        forced = int(os.environ.get("APQ_K_L1_Q", 0))
+        if forced:
+            return forced
+        cap = SINGLE_HEAD_K_L1_Q if self.heads_per_block == 1 else self.q_lora
         resident = self.base_m * ceil_div(self.q_lora, MX_K_ALIGN) * MX_K_ALIGN
         resident += self.base_m * scale_l1_len(self.q_lora)
         # Leave room for the W path staging buffers.
@@ -334,7 +380,7 @@ class Plan:
                 step += 1
                 continue
             need = D_WQB * self.base_n_q * (k_l1 + scale_l1_len(k_l1))
-            if need > budget:
+            if need > budget or k_l1 > cap:
                 break
             if self.q_lora % k_l1 == 0:
                 best = k_l1
@@ -468,7 +514,7 @@ class CubeQ:
             self.qr_l1,
             tile_view(qr_gm, (p.base_m, p.qr_k_l1), (tile, 0)),
             engine=self.eng_nd2nz,
-            l2_cache_ctl=L2_Q,
+            l2_cache_ctl=p.l2_q,
         )
         mem_copy(
             self.scale_qr_l1,
@@ -478,7 +524,7 @@ class CubeQ:
                 (tile, 0, 0),
             ),
             engine=self.eng_scale_a,
-            l2_cache_ctl=L2_Q,
+            l2_cache_ctl=p.l2_q,
         )
 
     @jit
@@ -493,13 +539,13 @@ class CubeQ:
                 self.wqb_l1,
                 tile_view(wqb_gm, (p.base_n_q, p.k_l1_q), (head, kw)),
                 engine=self.eng_nd2nz,
-                l2_cache_ctl=L2_Q,
+                l2_cache_ctl=p.l2_q,
             )
             mem_copy(
                 self.scale_wqb_l1,
                 tile_view(descale_wqb_gm, (p.base_n_q, groups, MX_PAIR), (head, kw, 0)),
                 engine=self.eng_scale_b,
-                l2_cache_ctl=L2_Q,
+                l2_cache_ctl=p.l2_q,
             )
             for kk in range_constexpr(p.step_k_q):
                 k_l0 = kw * p.step_k_q + kk
@@ -595,12 +641,18 @@ class CubeW:
             self.ww_l1.release(ww_ready)
 
     @jit
-    def _fill_window(self, x_gm, ww_gm, tile, h_block, kw):
+    def _fill_window(self, x_gm, ww_gm, tile, k_base, kw):
+        """Stage K window ``k_base + kw`` of ``x`` and ``ww`` into L1.
+
+        ``k_base`` is this core's offset into the reduction, in windows: zero
+        for a leader that owns the whole ``dim``, ``h_block * k_l1_tiles_w``
+        under ``w_k_split``.
+        """
         p = self.p
         x_slot = self.x_l1.acquire()
         mem_copy(
             x_slot,
-            tile_view(x_gm, (p.base_m, p.k_l1_w), (tile, kw)),
+            tile_view(x_gm, (p.base_m, p.k_l1_w), (tile, k_base + kw)),
             engine=self.eng_nd2nz,
             l2_cache_ctl=L2_W,
         )
@@ -608,7 +660,7 @@ class CubeW:
         ww_slot = self.ww_l1.acquire()
         mem_copy(
             ww_slot,
-                tile_view(ww_gm, (p.base_n_w, p.k_l1_w), (0, kw)),
+                tile_view(ww_gm, (p.base_n_w, p.k_l1_w), (0, k_base + kw)),
             engine=self.eng_nd2nz,
             l2_cache_ctl=L2_W,
         )
@@ -644,13 +696,13 @@ class CubeW:
             self.ww_l1.release(ww_ready)
 
     @jit
-    def gemm_full(self, x_gm, ww_gm, tile, l0c_slot):
-        """All K windows of W as one reduction; used when Q cannot hide them."""
+    def gemm_full(self, x_gm, ww_gm, tile, k_base, l0c_slot):
+        """This core's whole K slice as one reduction; used when Q cannot hide it."""
         p = self.p
-        self._fill_window(x_gm, ww_gm, tile, 0, 0)
+        self._fill_window(x_gm, ww_gm, tile, k_base, 0)
         for kw in range_constexpr(p.k_l1_tiles_w):
             if const_expr(kw + 1 < p.k_l1_tiles_w):
-                self._fill_window(x_gm, ww_gm, tile, 0, kw + 1)
+                self._fill_window(x_gm, ww_gm, tile, k_base, kw + 1)
             x_ready = self.x_l1.wait()
             ww_ready = self.ww_l1.wait()
             for kk in range_constexpr(p.step_k_w):
@@ -664,7 +716,9 @@ class CubeW:
     @jit
     def store(self, w_gm, tile, h_block, softmax_scale, l0c_slot):
         # softmax_scale folded into the fixpipe DEQSCALE register: the W path
-        # never touches the vector unit.
+        # never touches the vector unit.  Under w_k_split this tile holds only
+        # one core's share of the K reduction, so the store accumulates;
+        # scaling each partial is equivalent because the scale is a constant.
         p = self.p
         self.l0c.commit(l0c_slot)
         ready = self.l0c.wait()
@@ -674,6 +728,7 @@ class CubeW:
             engine=self.eng_fp,
             deq_scale_val=softmax_scale,
             l2_cache_ctl=L2_W,
+            atomic_add=p.w_k_split,
         )
         self.l0c.release(ready)
 
@@ -960,7 +1015,8 @@ class attn_prolog_qwkv_kernel:
         subblock = get_subblock_id()
 
         n_work = p.n_tiles * p.n_head_blocks
-        for work in range(get_block_idx(), n_work, get_block_num()):
+        first_work = get_block_idx()
+        for work in range(first_work, n_work, get_block_num()):
             tile = work // p.n_head_blocks
             h_block = work % p.n_head_blocks
             # One tiler per distinct row width: the split is balanced over axis 0
@@ -985,16 +1041,27 @@ class attn_prolog_qwkv_kernel:
             else:
                 cos_half = None
                 sin_half = None
+            # ``qr`` is on the first-mmad critical path; LUT/sin/cos only need
+            # to be in UB before the first epilogue, so they go second and can
+            # ride MTE2 under the first head's cube work.  Later tiles skip
+            # ``load_qr`` when the previous tile already prefetched it.
+            if (not const_expr(p.prefetch)) or work == first_work:
+                cube_q.load_qr(qr, descale_qr, tile)
             vec.load_tile_constants(lut, cos_half, sin_half)
-
-            cube_q.load_qr(qr, descale_qr, tile)
             # ``w_leader_only`` is compile-time (depends on T).  The leader
             # path is the only one allowed to acquire the W L0C: a runtime
             # if around commit/release is read as a second writer.
             if const_expr(not p.w_leader_only) or h_block == 0:
-                w_slot = cube_w.l0c.acquire()
+                # The separate-W path retires the L0C before the head loop, so
+                # under APQ_PROBE=no_w its acquire/release interval would hold
+                # no data op at all and no sync could be emitted for it.
+                if const_expr(not (PROBE == "no_w" and p.w_separate)):
+                    w_slot = cube_w.l0c.acquire()
+                else:
+                    w_slot = None
                 if const_expr(p.w_separate) and const_expr(PROBE != "no_w"):
-                    cube_w.gemm_full(x, ww, tile, w_slot)
+                    w_k_base = h_block * p.k_l1_tiles_w if const_expr(p.w_k_split) else 0
+                    cube_w.gemm_full(x, ww, tile, w_k_base, w_slot)
                     cube_w.store(w, tile, 0, softmax_scale, w_slot)
                     w_slot = None
                 if const_expr(W_SCHED == "wpipe") and const_expr(PROBE != "no_w") and const_expr(not p.w_separate):
@@ -1010,6 +1077,12 @@ class attn_prolog_qwkv_kernel:
                             x, ww, tile, local_head, 0, w_slot
                         )
                     cube_q.gemm_head(wqb, descale_wqb, head)
+                    if const_expr(p.prefetch) and local_head == p.heads_per_block - 1:
+                        next_work = work + get_block_num()
+                        if next_work < n_work:
+                            next_tile = next_work // p.n_head_blocks
+                            if next_tile != tile:
+                                cube_q.load_qr(qr, descale_qr, next_tile)
                     if (
                         const_expr(PROBE != "no_w")
                         and const_expr(W_SCHED == "wafter")
@@ -1043,13 +1116,19 @@ class attn_prolog_qwkv_kernel:
                     )
                 if const_expr(PROBE != "no_w") and const_expr(not p.w_separate):
                     cube_w.store(w, tile, 0, softmax_scale, w_slot)
-                elif const_expr(PROBE == "no_w"):
+                elif const_expr(PROBE == "no_w") and const_expr(not p.w_separate):
                     cube_w.l0c.commit(w_slot)
                     cube_w.l0c.release(cube_w.l0c.wait())
             else:
                 for local_head in range(p.heads_per_block):
                     head = h_block * p.heads_per_block + local_head
                     cube_q.gemm_head(wqb, descale_wqb, head)
+                    if const_expr(p.prefetch) and local_head == p.heads_per_block - 1:
+                        next_work = work + get_block_num()
+                        if next_work < n_work:
+                            next_tile = next_work // p.n_head_blocks
+                            if next_tile != tile:
+                                cube_q.load_qr(qr, descale_qr, next_tile)
                     cube_q.drain_to_vec(cv_ub, split_cv)
                     vec.epilogue(cv_ub, rows)
                     vec.store(

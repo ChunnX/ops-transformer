@@ -65,6 +65,9 @@ def test_plan_fits_on_chip_memory():
     assert p.k_l1_q % p.base_k_q == 0
     assert p.w_interleaved and p.w_per_head >= 1
     assert p.k_l1_tiles_w == p.heads_per_block * p.w_per_head or p.w_separate
+    # 32 T-tiles already fill the chip, so there is no head split and no K
+    # split: one core owns the whole reduction, as it has since the 75% run.
+    assert not p.w_k_split and p.k_block == p.dim
     assert p.dim == p.k_l1_tiles_w * p.k_l1_w
     assert p.n_head_blocks == 1 and p.heads_per_block == N
     assert p.used_cores == 32
@@ -87,7 +90,12 @@ def test_plan_splits_heads_to_fill_the_chip():
         assert p.used_cores == n_tiles * n_hb
         assert p.used_cores == 32
         assert p.base_n_w == N
-        assert p.w_leader_only == (n_hb > 1)
+        # Split heads means the K reduction is split too, so every core runs
+        # its own slice of W and no core is left owning the whole x tile.
+        assert p.w_k_split == (n_hb > 1)
+        assert not p.w_leader_only
+        assert p.k_block == DIM // n_hb
+        assert p.k_block == p.k_l1_tiles_w * p.k_l1_w
         if p.w_separate:
             assert p.w_per_head == 0
         else:
@@ -96,6 +104,15 @@ def test_plan_splits_heads_to_fill_the_chip():
         assert p.bytes_used[name] <= cap, (name, p.bytes_used)
     assert p.bytes_used["UB"] <= UB_BYTES
     assert p.rows_vec * 2 == p.base_m
+
+
+def test_plan_large_t_defaults_disable_q_l2_and_enable_prefetch():
+    """Two-plus tiles/core: L2 hint on wqb/qr hurts; prefetch hides the tile gap."""
+    small = Plan(4096, DIM, Q_LORA, N, D, DR)
+    assert small.l2_q == 1 and small.prefetch == 0
+    big = Plan(8192, DIM, Q_LORA, N, D, DR)
+    assert big.l2_q == 0 and big.prefetch == 1
+    assert big.n_tiles == 64 and big.used_cores == 32
 
 
 def test_plan_rejects_unsupported_geometry():

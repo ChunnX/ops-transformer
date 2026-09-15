@@ -18,7 +18,9 @@
 - **Q 路**：MXFP8 GEMM（`qr @ wqb^T`）→ reshape 成 `(T, N, D)` → 对尾部 `Dr` 维做 inplace RoPE → 沿 `D` 做 MXFP4 量化（数据 E2M1，scale E8M0）。
 - **W 路**：BF16 GEMM（`x @ ww^T`）再乘标量 `softmax_scale`，输出 FP32。
 
-当前实现只覆盖冻结几何 `dim=5120, q_lora=1280, N=32, D=128, Dr=64`；可变轴是 token 数 `T`。`T < 4096` 时按 head 轴再切，把 32 个 AIC 填满；`T ≥ 4096` 只切 `T`。W 路由每个 T-tile 的 `h_block==0` 核作为 leader 计算，其余核只跑 Q。
+当前实现只覆盖冻结几何 `dim=5120, q_lora=1280, N=32, D=128, Dr=64`；可变轴是 token 数 `T`。`T < 4096` 时按 head 轴再切，把 32 个 AIC 填满；`T ≥ 4096` 只切 `T`。
+
+head 轴被切时，W 路的 `K`（即 `dim`）也按同样的份数切开：共享一个 T-tile 的 `n_head_blocks` 个核各算 `dim / n_head_blocks` 列的部分和，再用 GM atomic add 归约到 `w`。这样 `x` 整体仍只读一遍，但流量摊到了每个核上——若改由单个 leader 核独包整个归约，它一个核就要读完整个 `x` tile（`T=72` 下 leader 1388 KB 对其余核各 268 KB），而墙上时间由最慢的核决定。`T ≥ 4096` 时 T-tile 本身已经均衡，不再切 `K`，单核独占整个归约。
 
 Q 路公式：
 
