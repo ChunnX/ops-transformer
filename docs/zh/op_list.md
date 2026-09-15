@@ -1796,6 +1796,5 @@
     <td>AI Core</td>
     <td>输入understand段与generate段两路QKV融合张量，按cat_indices重排后拆分Q、K、V；对Q、K分别用两段各自的权重执行RMSNorm并做MRoPE多轴旋转位置编码，输出q；K、V按slot_mapping散写更新分页k_cache与v_cache。</td>
   </tr>
-  
 </tbody>
 </table>
