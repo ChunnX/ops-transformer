@@ -703,12 +703,20 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->InitBuffer(calEndBuf_, UB_ALIGN);
     uint64_t beiginUbAddr = (calBeginBuf_.Get<uint8_t>()).GetPhyAddr();
     uint64_t endUbAddr = (calEndBuf_.Get<uint8_t>()).GetPhyAddr();
-    uint64_t remainUbSize = totalUbSize_ - (endUbAddr - beiginUbAddr + UB_ALIGN);
+    uint64_t usedUbSize = endUbAddr - beiginUbAddr + UB_ALIGN;
+    uint64_t remainUbSize = usedUbSize < totalUbSize_ ? totalUbSize_ - usedUbSize : 0;
 
     sendTokenBufNum_ = remainUbSize / hCommuSize_;
     if (sendTokenBufNum_ > VALID_EVENT_FLAG_NUM)
         sendTokenBufNum_ = VALID_EVENT_FLAG_NUM;
     if (sendTokenBufNum_ == 0) {
+        // Counts are no longer needed after MTE3 finishes reading statusBuf_.
+        // Reuse it only when the remaining UB cannot hold a complete token.
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+        sendTokenBufNum_ = statusCntAlign_ * UB_ALIGN / hCommuSize_;
+        sendTokenBufNum_ = sendTokenBufNum_ > VALID_EVENT_FLAG_NUM ? VALID_EVENT_FLAG_NUM : sendTokenBufNum_;
+        outBuf = statusBuf_;
+        outTensor_ = outBuf.Get<XOutType>();
         return;
     }
 
