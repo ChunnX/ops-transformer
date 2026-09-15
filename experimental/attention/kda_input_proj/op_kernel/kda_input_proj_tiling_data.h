@@ -52,7 +52,20 @@ struct alignas(8) KdaInputProjMxQuantParams {
 };
 
 struct alignas(8) KdaInputProjQmmQkvParams {
-    uint64_t reserved{0};
+    uint32_t kL1 = 0;
+    uint32_t scaleKL1 = 0;
+    uint16_t baseM = 0;
+    uint16_t baseN = 0;
+    uint16_t baseK = 0;
+    uint16_t mTailTile = 0;
+    uint16_t nTailTile = 0;
+    uint16_t mBaseTailSplitCnt = 1;
+    uint16_t nBaseTailSplitCnt = 1;
+    uint16_t mTailMain = 0;
+    uint16_t nTailMain = 0;
+    uint8_t nBufferNum = 0;
+    uint8_t dbL0C = 0;
+    uint8_t reserved[4] = {0}; // pad to 8-byte size
 };
 
 struct alignas(8) KdaInputProjSigmoidParams {

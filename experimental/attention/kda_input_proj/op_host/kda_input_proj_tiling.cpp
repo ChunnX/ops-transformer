@@ -16,6 +16,7 @@
 #include "kda_input_proj_tiling.h"
 
 #include "../op_kernel/kda_input_proj_template_tiling_key.h"
+#include "../op_kernel/kda_input_proj_workspace.h"
 #include "kda_input_proj_tiling_mm_bgg.h"
 #include "kda_input_proj_tiling_mx_quant.h"
 #include "kda_input_proj_tiling_qmm_qkv.h"
@@ -112,6 +113,13 @@ ge::graphStatus KdaInputProjTiling::CalcModuleTilings(const KdaInputProjTilingIn
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus KdaInputProjTiling::FillWorkspace(const KdaInputProjTilingInfo &tilingInfo)
+{
+    const auto &base = tilingInfo.baseParams;
+    workspaceSize_ = KdaInputProj::KdaInputProjWorkspace::TotalBytes(base.tSize, base.hiddenSize);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus KdaInputProjTiling::SetTilingKey(const KdaInputProjTilingInfo &tilingInfo)
 {
     // 与 ASCENDC_TPL_ARGS_DECL 顺序一致：TRANS_WEIGHT_{QKV,BETA,GATE,G}
@@ -128,10 +136,20 @@ ge::graphStatus KdaInputProjTiling::SetTilingKey(const KdaInputProjTilingInfo &t
 
 ge::graphStatus KdaInputProjTiling::WriteTilingResult(const KdaInputProjTilingInfo &tilingInfo)
 {
-    (void)tilingInfo;
-    // TODO: SetBlockDim / SetWorkspaceSizes / 写出 tilingData_
+    uint32_t sysWorkspaceSize = 0U;
+    auto *platformInfo = context_->GetPlatformInfo();
+    if (platformInfo != nullptr) {
+        sysWorkspaceSize = platform_ascendc::PlatformAscendC(platformInfo).GetLibApiWorkSpaceSize();
+    }
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_IF(workspaces == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(tilingInfo.opName != nullptr ? tilingInfo.opName : "KdaInputProj",
+                                            "GetWorkspaceSizes returned nullptr."),
+                return ge::GRAPH_FAILED);
+    workspaces[0] = static_cast<size_t>(workspaceSize_) + static_cast<size_t>(sysWorkspaceSize);
+
+    // TODO: SetBlockDim / 写出 tilingData_
     (void)blockDim_;
-    (void)workspaceSize_;
     (void)tilingData_;
     return ge::GRAPH_SUCCESS;
 }
@@ -142,7 +160,8 @@ ge::graphStatus KdaInputProjTiling::DoTiling(const KdaInputProjTilingInfo *tilin
                 return ge::GRAPH_FAILED);
 
     if (FillBaseParams(*tilingInfo) != ge::GRAPH_SUCCESS || CalcModuleTilings(*tilingInfo) != ge::GRAPH_SUCCESS ||
-        SetTilingKey(*tilingInfo) != ge::GRAPH_SUCCESS || WriteTilingResult(*tilingInfo) != ge::GRAPH_SUCCESS) {
+        FillWorkspace(*tilingInfo) != ge::GRAPH_SUCCESS || SetTilingKey(*tilingInfo) != ge::GRAPH_SUCCESS ||
+        WriteTilingResult(*tilingInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
