@@ -426,8 +426,48 @@ def dsink_partial_vf(
     vf.store_align(sink_part_ub, vregNeg, pregOne)
 
 
-# ---- pre: 清零 ----
+@pl.vector_function
+def dsink_acc_vf(acc_ub, sink_part_ub, head_q: pl.DT_INT64):
+    """把本 task 的标量部分和（sink_part 的 lane 0）精确累加到 acc 的 lane head_q。
 
+    select 逐 lane 二选一：命中 lane 写 acc+s、其余 lane 原样保留 acc ——
+    无舍入副作用，与「对 GM 的 fp32 atomicAdd」数值完全等价，但完全在
+    UB/寄存器内完成（V 管道程序序，逐位确定）。替代原先对 GM 的
+    atomicAdd：其落盘与对清零值的可见性都不被 sync_all 保证，实测两类
+    竞态都会丢/错部分和。acc 是本 AIV 独占的 [1, VECTOR_BASEN] fp32，
+    调用方保证 head_q < VECTOR_BASEN（host 校验 N1<=128）。
+    """
+    pregFull = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    # 广播本 task 的标量部分和（sink_part lane 0）
+    vregS = vf.load_align(sink_part_ub, 0, dist=pl.LoadDist.BRC_B32)
+    # one-hot：lane 序号 == head_q
+    vregLane = vf.arange(0, dtype=pl.DT_FP32)
+    vregH = vf.full(head_q, dtype=pl.DT_FP32)
+    pregHot = vf.eq(vregLane, vregH, pregFull)
+    vregAcc = vf.load_align(acc_ub, 0)
+    vregSum = vf.add(vregAcc, vregS, pregFull)
+    vregNew = vf.select(vregSum, vregAcc, pregHot)
+    vf.store_align(acc_ub, vregNew, pregFull)
+
+
+# ---- dsink 归约：AIV0 按固定次序把各 AIV 的部分和行累加 ----
+# post 阶段在 sync_all 之后由 AIV0 调用。行序固定（aiv 0..aivCount-1），
+# 括号结构逐次运行完全一致 → 逐位可复现。每行 load 后显式 bar_mte2：
+# mutex 的 rls 只表示指令下发，紧接的 vlds 可能先于 DMA 落数。
+
+
+@pl.vector_function
+def dsink_reduce_add_vf(acc_ub, row_ub, nsegs: pl.DT_INT64):
+    """逐行累加：acc += row（扁平 nsegs 段 fp32，V 管道程序序）。"""
+    pregFull = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    for i in pl.range(0, nsegs):
+        vregAcc = vf.load_align(acc_ub, i * VF_LANES)
+        vregRow = vf.load_align(row_ub, i * VF_LANES)
+        vregSum = vf.add(vregAcc, vregRow, pregFull)
+        vf.store_align(acc_ub + i * VF_LANES, vregSum, pregFull)
+
+
+# ---- pre: 清零 ----
 
 @pl.vector_function
 def fill_zero_vf(dst_ub, nvecs: pl.DT_INT64):

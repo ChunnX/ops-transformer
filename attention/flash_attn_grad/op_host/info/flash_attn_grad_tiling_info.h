@@ -127,7 +127,8 @@ struct FagParsedInfo {
     bool hasAttenMask = false;
     bool hasSeqused = false;
     // sinks 是否提供。不占 tilingkey：kernel 只在主循环里多一个标量分支，
-    // 命中时按 head 原子累加 dsink（见 op_kernel/fag_block_vec.py）。
+    // 命中时按 head 在 UB 里精确累加，行写宽输出由 host 求和
+    // （见 op_kernel/fag_block_vec.py 与 torch_extension/csrc）。
     bool hasSinks = false;
 
     // 布局视图参数：把 BSND/BNSD 折叠成同一种四维紧凑视图，使 kernel 只需
@@ -175,6 +176,10 @@ struct FagWorkspacePlan {
     FagWorkspaceSegment dq; // B*S1*N1*D  fp32（N1 = N2*G）
     FagWorkspaceSegment dk; // B*S2*N2*D  fp32
     FagWorkspaceSegment dv; // B*S2*N2*Dv fp32
+    // dsink 确定性归约的槽位区：aivNum 行 × N1 列 fp32（每 AIV 独占一行
+    // 写部分和），后跟同大的 prime scratch 半边（读侧预热目标，内容是垃圾）。
+    // kernel 用实际 AIV 数索引；放在 dv 段与 128 行对齐垫之后。
+    FagWorkspaceSegment dsink;
     size_t totalSize = 0;
 };
 

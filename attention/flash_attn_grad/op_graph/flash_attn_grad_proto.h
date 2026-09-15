@@ -47,8 +47,10 @@ namespace ge {
 * @li dk: A tensor. Type is float16, bfloat16. The gradient of key.
 * @li dv: A tensor. Type is float16, bfloat16. The gradient of value.
 * @li dsink: A 1D tensor of shape (N1,). Type is float32. The gradient of sinks,
-* accumulated with fp32 atomicAdd, so the caller must zero-initialize it before
-* the kernel runs (or leave it absent together with sinks).
+* produced deterministically: each AIV accumulates its partials in UB, writes one
+* row of an exclusive workspace slot, and after sync_all AIV0 reduces the slots in
+* fixed order (a small reader-side warm-up pass precedes the loads because the
+* first read right after the barrier may not observe other cores' stores yet).
 
 * @par Attributes:
 * Nine attributes, including:
