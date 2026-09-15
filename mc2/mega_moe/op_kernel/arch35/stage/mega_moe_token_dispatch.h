@@ -309,11 +309,8 @@ __aicore__ inline uint32_t FindDispatchSourceRank(const MoeStageCommonConfig &co
 
 /*
  * 搬运当前物理 AIV1 在一个专家内负责的连续 row。
- * 该范围先按 source-rank prefix 拆段，再从 topk index 槽搬运 token/metadata；全部 rank
- *
- * 段完成后，
-
- * * 按实际覆盖行数累加 GMM1 tile ready。AtomicAdd 允许同一 tile 被多个 range 分段发布。
+ * 该范围先按 source-rank prefix 拆段，再从 compact index 槽搬运 token/metadata；全部 rank 段完成后，
+ * 按实际覆盖行数累加 GMM1 tile ready。AtomicAdd 允许同一 tile 被多个 range 分段发布。
  */
 template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, uint32_t PipelineTileM,
           bool TopkWeightsPrefetch>
