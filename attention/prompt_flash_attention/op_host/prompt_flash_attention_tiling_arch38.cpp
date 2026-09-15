@@ -4077,9 +4077,10 @@ bool PromptFlashAttentionTilingArch38::CheckArch38ScenarioSupported(const Contex
 
     const int64_t nQ = *contextKeyParams.headsNumber;
     const int64_t nKV = (*contextKeyParams.numKeyValueHeads > 0) ? *contextKeyParams.numKeyValueHeads : nQ;
-    OP_CHECK_IF(((nQ > ARCH38_SUPPORTED_MAX_N) || (nKV > ARCH38_SUPPORTED_MAX_N)),
+    OP_CHECK_IF(((nQ <= 0) || (nQ > ARCH38_SUPPORTED_MAX_N) || (nKV <= 0) || (nKV > ARCH38_SUPPORTED_MAX_N)),
                 OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
-                                            "head num must be <= %ld, but numHeads = %ld, numKeyValueHeads = %ld.",
+                                            "head num must be in (0, %ld], but numHeads = %ld, "
+                                            "numKeyValueHeads = %ld.",
                                             ARCH38_SUPPORTED_MAX_N, nQ, nKV),
                 return false);
 

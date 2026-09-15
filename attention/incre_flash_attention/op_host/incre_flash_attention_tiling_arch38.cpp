@@ -219,7 +219,7 @@ bool IFATilingArch38::CheckArch38ScenarioSupported(const IncreFlashAttentionCont
 
     // BNSD_BSND shares the BNSD input layout, it only transposes the output, same as PFA's SetInputLayout
     const std::string layoutStr = (ifaContext.layOut == nullptr) ? "" : std::string(ifaContext.layOut);
-    OP_CHECK_IF(((layoutStr != "BNSD") && (layoutStr != "BNSD_BSND")),
+    OP_CHECK_IF((layoutStr != "BNSD"),
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "only BNSD layout is supported on this platform."), return false);
 
     OP_CHECK_IF(((ifaContext.query.shape == nullptr) || (ifaContext.key.shape == nullptr) ||
@@ -251,9 +251,9 @@ bool IFATilingArch38::CheckArch38ScenarioSupported(const IncreFlashAttentionCont
     const int64_t nKV = ((ifaContext.kvHeadNums != nullptr) && (*ifaContext.kvHeadNums != 0U)) ?
                             static_cast<int64_t>(*ifaContext.kvHeadNums) :
                             nQ;
-    OP_CHECK_IF(((nQ <= 1) || (nQ > ARCH38_IFA_SUPPORTED_MAX_N) || (nKV <= 1) || (nKV > ARCH38_IFA_SUPPORTED_MAX_N)),
+    OP_CHECK_IF(((nQ <= 0) || (nQ > ARCH38_IFA_SUPPORTED_MAX_N) || (nKV <= 0) || (nKV > ARCH38_IFA_SUPPORTED_MAX_N)),
                 OPS_REPORT_VECTOR_INNER_ERR(opName,
-                                            "head num must be in (1, %ld], but numHeads = %ld, "
+                                            "head num must be in (0, %ld], but numHeads = %ld, "
                                             "numKeyValueHeads = %ld.",
                                             ARCH38_IFA_SUPPORTED_MAX_N, nQ, nKV),
                 return false);
