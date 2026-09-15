@@ -487,6 +487,8 @@ public:
         std::string contextTag = groupName + "engram_embedding";
         CheckContextTag(contextTag);
 
+        std::lock_guard<std::mutex> lock(gEngramSharedBufferMutex);
+
         uint64_t ctxSize = 0;
         void *ctx = nullptr;
         auto hcclRet = HcclEngineCtxGetFunc(resources.hcclComm, contextTag.c_str(), CommEngine::COMM_ENGINE_AIV, &ctx,
@@ -503,26 +505,31 @@ public:
                 throw;
             }
             resources.contextTensor = CreateCommContextTensor(resources.context);
+            // 首次创建: 注册内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放。
+            // 入池成功前不解除 guard 所有权，入池抛异常时由 guard 析构兜底释放自建 buffer，防资源失联。
+            try {
+                EngramSharedBufferEntry &entry = gEngramSharedBuffers[contextTag];
+                entry.hostBufPtr = resources.hostBufPtr;
+                entry.deviceBufPtr = resources.deviceBufPtr;
+                entry.memHandle = resources.memHandle;
+                entry.external = (externalHostPtr != nullptr);
+                entry.externalRegistered = resources.externalRegistered;
+                entry.registeredBytes =
+                    resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
+                entry.commBufferSize = resources.commBufferSize;
+                entry.context = resources.context;
+            } catch (...) {
+                ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
+                            contextTag.c_str());
+                throw;
+            }
             guard.Release();
-            // 首次创建: 注册内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放
-            std::lock_guard<std::mutex> lock(gEngramSharedBufferMutex);
-            EngramSharedBufferEntry &entry = gEngramSharedBuffers[contextTag];
-            entry.hostBufPtr = resources.hostBufPtr;
-            entry.deviceBufPtr = resources.deviceBufPtr;
-            entry.memHandle = resources.memHandle;
-            entry.external = (externalHostPtr != nullptr);
-            entry.externalRegistered = resources.externalRegistered;
-            entry.registeredBytes =
-                resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
-            entry.commBufferSize = resources.commBufferSize;
-            entry.context = resources.context;
             return resources;
         }
         // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：注册内存与 channel 均无反注册接口，
         // 由进程级共享池按 tag 复用，Destroy 不释放。
         EngramSharedBufferEntry entry;
         {
-            std::lock_guard<std::mutex> lock(gEngramSharedBufferMutex);
             auto iter = gEngramSharedBuffers.find(contextTag);
             TORCH_CHECK(iter != gEngramSharedBuffers.end(), "Engram comm context of group '", contextTag,
                         "' exists but its buffer is missing from the shared pool; an earlier build on this "
@@ -543,6 +550,8 @@ public:
         }
         if (entry.hostBufPtr == nullptr) {
             // ctx 已存在但存储尚未注册(先前仅 barrier 初始化)：补注册一次并回填共享池
+            GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
+            ValidateRankSize(resources.context.rankSize);
             HostBufferGuard guard;
             try {
                 SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes);
@@ -554,17 +563,22 @@ public:
                 throw;
             }
             resources.contextTensor = CreateCommContextTensor(resources.context);
+            try {
+                EngramSharedBufferEntry &poolEntry = gEngramSharedBuffers[contextTag];
+                poolEntry.hostBufPtr = resources.hostBufPtr;
+                poolEntry.deviceBufPtr = resources.deviceBufPtr;
+                poolEntry.memHandle = resources.memHandle;
+                poolEntry.external = (externalHostPtr != nullptr);
+                poolEntry.externalRegistered = resources.externalRegistered;
+                poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
+                poolEntry.commBufferSize = resources.commBufferSize;
+                poolEntry.context = resources.context;
+            } catch (...) {
+                ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
+                            contextTag.c_str());
+                throw;
+            }
             guard.Release();
-            std::lock_guard<std::mutex> lock(gEngramSharedBufferMutex);
-            EngramSharedBufferEntry &poolEntry = gEngramSharedBuffers[contextTag];
-            poolEntry.hostBufPtr = resources.hostBufPtr;
-            poolEntry.deviceBufPtr = resources.deviceBufPtr;
-            poolEntry.memHandle = resources.memHandle;
-            poolEntry.external = (externalHostPtr != nullptr);
-            poolEntry.externalRegistered = resources.externalRegistered;
-            poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
-            poolEntry.commBufferSize = resources.commBufferSize;
-            poolEntry.context = resources.context;
             return resources;
         }
         if (externalHostPtr != nullptr) {
@@ -802,6 +816,7 @@ private:
     {
         uint32_t rankId = resources.context.rankId;
         uint32_t rankSize = resources.context.rankSize;
+        TORCH_CHECK(rankSize > 0, "rankSize must be positive, got ", rankSize);
         bool hasUbGPeer = false;
         for (auto &entry : rankLinkMap_) {
             if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
