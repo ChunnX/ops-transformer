@@ -245,7 +245,7 @@ static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, con
 // DAV_3510数据类型校验
 // 量化模式下X支持的FP8数据类型（PerToken量化、PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_DAV3510 = {op::DataType::DT_FLOAT8_E4M3FN,
-                                                                                op::DataType::DT_FLOAT8_E5M2};
+                                                                                     op::DataType::DT_FLOAT8_E5M2};
 // 量化模式下X支持的FP4和FP8数据类型（MXQuant量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP4ANDFP8_SUPPORT_LIST_DAV3510 = {
     op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT4_E2M1};
