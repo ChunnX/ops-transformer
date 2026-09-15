@@ -70,7 +70,7 @@ public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = 64;
     static constexpr uint32_t s2BaseSize = 128;
-    static constexpr uint32_t dBaseSize = 576;
+    static constexpr uint32_t dBaseSize = HAS_ROPE ? 576 : 512;
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline SFAMatmulService(){};
@@ -147,9 +147,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     if ASCEND_IS_AIC {
         tPipe = pipe;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
-        if (queryRope == nullptr) {
-            // rope=none: 不绑定 queryRope
-        } else {
+        if constexpr (HAS_ROPE) {
             this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)queryRope);
         }
         InitLocalBuffer(sfaL1BuffMgr);
@@ -197,22 +195,18 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint
     if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                             constInfo.dSize);
-        if (constInfo.dSizeRope == 0) {
-            // rope=none: 不初始化 queryRope offset
-        } else {
+        if constexpr (HAS_ROPE) {
             this->queryRopeGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
-                                                    constInfo.s1Size, constInfo.dSizeRope);
+                                                    constInfo.s1Size, 64);
         }
     } else { // SFA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)sfaActualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize, actualSeqQLen,
                                             constInfo.actualSeqLenSize);
-        if (constInfo.dSizeRope == 0) {
-            // rope=none: 不初始化 queryRope offset
-        } else {
-            this->queryRopeGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeRope,
-                                                    actualSeqQLen, constInfo.actualSeqLenSize);
+        if constexpr (HAS_ROPE) {
+            this->queryRopeGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, 64, actualSeqQLen,
+                                                    constInfo.actualSeqLenSize);
         }
     }
 }
@@ -247,20 +241,25 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
     v0ResGm.WaitCrossCore();
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-    CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 576, // 576: 表示 KV Cache 单 Token 的特征宽度;
-                       576);                                        // 576: 同上
+    if constexpr (HAS_ROPE) {
+        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 576, // 576: 表示 KV Cache 单 Token 的特征宽度;
+                           576);                                        // 576: 同上
+    } else {
+        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, 512, 512);
+    }
     SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
     WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
 
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
+    constexpr uint32_t mm1SingleK = HAS_ROPE ? 576U : 512U;
     MMParam param = {
-        static_cast<uint32_t>(runInfo.mRealSize),                         // singleM
-        static_cast<uint32_t>(runInfo.s2RealSize),                        // singleN
-        static_cast<uint32_t>(constInfo.dSizeNope + constInfo.dSizeRope), // singleK
-        0,                                                                // isLeftTranspose
-        1                                                                 // isRightTranspose
+        static_cast<uint32_t>(runInfo.mRealSize),  // singleM
+        static_cast<uint32_t>(runInfo.s2RealSize), // singleN
+        mm1SingleK,                                // singleK
+        0,                                         // isLeftTranspose
+        1                                          // isRightTranspose
     };
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
@@ -305,14 +304,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
         uint32_t s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
         uint64_t queryGmOffset =
             this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, s1Coord, 0);
-        if (constInfo.dSizeRope == 0) {
-            CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset], runInfo.mRealSize, 512, 512);
-        } else {
+        CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset], runInfo.mRealSize, 512, 512);
+        if constexpr (HAS_ROPE) {
             uint64_t queryRopeGmOffset =
                 this->queryRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, s1Coord, 0);
-            CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[queryGmOffset], runInfo.mRealSize,
-                               512,                                                   // 512: Query主维度
-                               512);                                                  // 512: 同上
             CopyToL1Nd2Nz<Q_T>(inputLeftTensor[Align16Func(runInfo.mRealSize) * 512], // 512: 同上
                                this->queryRopeGm.gmTensor[queryRopeGmOffset], runInfo.mRealSize, 64,
                                64); // 64 constInfo.dSize constInfo.mm1Ka
