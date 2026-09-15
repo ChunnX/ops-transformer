@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <limits>
+#include <cstddef>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/types.h>
@@ -34,6 +35,7 @@
 #include "mc2_log.h"
 #include "ffn_to_attension_v2_tiling.h"
 #include "../../op_kernel/ffn_to_attention_v2_tiling.h"
+#include "../../../ffn_to_attention/op_kernel/ffn_to_attention_tiling.h"
 #include "../../op_kernel/ffn_to_attention_v2_tilling_key.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
@@ -43,6 +45,38 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace MC2Tiling {
+// Base tiling writes the V1 prefix; V2 overwrites its two trailing slots after
+// the base call and appends workspace fields. Full V1/V2 sizes need not match.
+#define CHECK_FFN_TILING_PREFIX(field) \
+    static_assert(offsetof(FFNToAttentionV2Info, field) == offsetof(FFNToAttentionInfo, field), \
+                  "FFNToAttention V1/V2 shared field offset mismatch: " #field)
+CHECK_FFN_TILING_PREFIX(H);
+CHECK_FFN_TILING_PREFIX(A);
+CHECK_FFN_TILING_PREFIX(microBatchNum);
+CHECK_FFN_TILING_PREFIX(BS);
+CHECK_FFN_TILING_PREFIX(expertNumPerToken);
+CHECK_FFN_TILING_PREFIX(HS);
+CHECK_FFN_TILING_PREFIX(aivNum);
+CHECK_FFN_TILING_PREFIX(worldSize);
+CHECK_FFN_TILING_PREFIX(isInputRankTable);
+CHECK_FFN_TILING_PREFIX(windowType);
+#undef CHECK_FFN_TILING_PREFIX
+static_assert(offsetof(FFNToAttentionV2Info, maxTokenNum) == offsetof(FFNToAttentionInfo, totalUbSize),
+              "FFNToAttention base UB slot offset mismatch");
+static_assert(offsetof(FFNToAttentionV2Info, cclBufferSize) == offsetof(FFNToAttentionInfo, totalWinSize),
+              "FFNToAttention base window slot offset mismatch");
+static_assert(offsetof(FFNToAttentionV2Info, addressTableWorkspaceOffset) >= sizeof(FFNToAttentionInfo),
+              "FFNToAttention V2 extension overlaps base tiling");
+static_assert(offsetof(FFNToAttentionV2TilingData, mc2InitTiling) ==
+                      offsetof(FFNToAttentionTilingData, mc2InitTiling) &&
+                  offsetof(FFNToAttentionV2TilingData, mc2CcTiling1) ==
+                      offsetof(FFNToAttentionTilingData, mc2CcTiling1) &&
+                  offsetof(FFNToAttentionV2TilingData, ffnToAttentionV2Info) ==
+                      offsetof(FFNToAttentionTilingData, ffnToAttentionInfo),
+              "FFNToAttention V1/V2 base tiling offsets mismatch");
+static_assert(sizeof(FFNToAttentionV2TilingData) >= sizeof(FFNToAttentionTilingData),
+              "FFNToAttention V2 tiling cannot contain base tiling");
+
 constexpr size_t URMA_FLAG_SLOT_SIZE = 32U;
 constexpr size_t URMA_WORKSPACE_ALIGN = 32U;
 constexpr size_t ADDRESS_ENTRY_SIZE = 2U * sizeof(uint64_t);
