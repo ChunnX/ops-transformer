@@ -61,7 +61,7 @@ namespace MegaMoeImpl {
 template <typename XType, typename OutputType, typename TopkWeightsType, typename MoeWeightType,
           int32_t MoeWeight1Format, int32_t MoeWeight2Format, typename SharedWeightType, int32_t SharedWeight1Format,
           int32_t SharedWeight2Format, int32_t MoeQuantMode, int32_t SharedQuantMode, int32_t CombineQuantMode,
-          bool TopkWeightsPrefetch, typename TopkIndexType, bool IsGmm1Interleaved>
+          bool TopkWeightsPrefetch, typename TopkIndexType>
 class MegaMoeMteWave
     : public MegaMoeA8W8Wave<XType, OutputType, TopkWeightsType, MoeWeightType, MoeQuantMode, SharedWeightType,
                              SharedQuantMode, MoeWeight1Format, MoeWeight2Format, SharedWeight1Format,
