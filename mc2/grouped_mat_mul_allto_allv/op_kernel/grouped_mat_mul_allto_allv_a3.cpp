@@ -29,10 +29,10 @@ using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS>
-__aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
-                                         GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
-                                         GM_ADDR userWorkspace, const GroupedMatMulAlltoAllvMteTilingData *tilingData,
-                                         AscendC::TPipe *pipe)
+__aicore__ inline void RunGmmA2avMtePathImpl(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
+                                          GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
+                                          GM_ADDR userWorkspace, const GroupedMatMulAlltoAllvMteTilingData *tilingData,
+                                          AscendC::TPipe *pipe)
 {
     const auto *taskTilingInfo = &tilingData->taskTilingInfo;
     using CommOpType = GmmA2avMteOp<DTYPE_Y>;
@@ -54,7 +54,7 @@ __aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM
         SharedGmmExpertOpType shareComputeOp;
         shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmyOptionalGM, taskTilingInfo);
 
-        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, taskTilingInfo, tilingData->expertChunkRows);
+        GmmA2avSchedulerType::ProcessAic(computeOp, shareComputeOp, taskTilingInfo, cumsumGM);
     }
 
     if ASCEND_IS_AIV {
@@ -62,8 +62,19 @@ __aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM
         commOp.Init(taskTilingInfo, gmmOutputGM, yGM, cumsumGM, pipe, &tilingData->cocTiling,
                     tilingData->commBufferSize, tilingData->isA3);
 
-        GmmA2avSchedulerType::ProcessAiv(commOp, taskTilingInfo, tilingData->expertChunkRows);
+        GmmA2avSchedulerType::ProcessAiv(commOp, taskTilingInfo);
     }
+}
+
+template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS>
+__aicore__ inline void RunGmmA2avMtePath(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
+                                         GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM,
+                                         GM_ADDR userWorkspace, const GroupedMatMulAlltoAllvMteTilingData *tilingData,
+                                         AscendC::TPipe *pipe)
+{
+    RunGmmA2avMtePathImpl<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS,
+                         TILINGKEY_SHARED_MM_WEIGHT_TRANS>(
+        gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, userWorkspace, tilingData, pipe);
 }
 
 template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS,

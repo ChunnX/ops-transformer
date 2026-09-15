@@ -31,7 +31,7 @@ namespace MC2KernelTemplate {
 template <typename T, bool WeightTrans, bool IsSharedExpert>
 class CatlassGroupedMatmulOp {
 private:
-    struct IgnoreExpertCompletion {
+    struct IgnoreWaveCompletion {
         __aicore__ inline void operator()(uint32_t) const {}
     };
 
@@ -52,25 +52,19 @@ public:
 
     __aicore__ inline void Process(uint32_t startExpertIdx, uint32_t expertNum)
     {
-        IgnoreExpertCompletion callback;
+        IgnoreWaveCompletion callback;
         ProcessRange<false>(startExpertIdx, expertNum, callback);
     }
 
-    // Process the requested expert range in one CATLASS resource lifetime.
-    // The callback runs on every AIC after that AIC has finished issuing the
-    // expert's tiles. It is also called for an empty expert, allowing the
-    // caller to keep an identical expert-ready protocol on every rank. The
-    // callback returns whether this expert closes a chunk; only then does the
-    // caller drain the FIX pipe and invoke NotifyChunkReady(). Draining once
-    // per expert would break the MTE1->MAC->FIX pipeline between every pair of
-    // experts and cost a full cold-restart chain per expert, which profiling
-    // showed dominates large-token cases (volume-proportional, independent of
-    // chunk count).
-    template <typename ExpertCompletion>
+    // Keep a single CATLASS resource lifetime across experts. Each local
+    // wave contains at most M_GROUPS_PER_WAVE complete M tiles (all N tiles).
+    // The completion callback publishes a monotonic GM boundary after FIX_S;
+    // AIV0 can stage that wave while AIC computes the following wave.
+    template <typename WaveCompletion>
     __aicore__ inline void ProcessExperts(uint32_t startExpertIdx, uint32_t expertNum,
-                                          ExpertCompletion &&onExpertComplete)
+                                          WaveCompletion &&onWaveComplete)
     {
-        ProcessRange<true>(startExpertIdx, expertNum, onExpertComplete);
+        ProcessRange<true>(startExpertIdx, expertNum, onWaveComplete);
     }
 
     __aicore__ inline void Process(uint32_t expertIdx)
@@ -81,8 +75,8 @@ public:
     __aicore__ inline void End() {}
 
 private:
-    template <bool CompleteEachExpert, typename ExpertCompletion>
-    __aicore__ inline void ProcessRange(uint32_t startExpertIdx, uint32_t expertNum, ExpertCompletion &onExpertComplete)
+    template <bool NotifyWaves, typename WaveCompletion>
+    __aicore__ inline void ProcessRange(uint32_t startExpertIdx, uint32_t expertNum, WaveCompletion &onWaveComplete)
     {
         if ASCEND_IS_AIV {
             return;
@@ -94,8 +88,8 @@ private:
             if (startExpertIdx != 0U || expertNum != 1U) {
                 return;
             }
-            Run<CompleteEachExpert>(taskTilingInfo_->BS, taskTilingInfo_->H2, taskTilingInfo_->N2, 0U, 1U, true,
-                                    onExpertComplete);
+            Run<NotifyWaves>(taskTilingInfo_->BS, taskTilingInfo_->H2, taskTilingInfo_->N2, 0U, 1U, true,
+                                    onWaveComplete);
         } else {
             const uint32_t totalExpertNum = static_cast<uint32_t>(taskTilingInfo_->e);
             if (startExpertIdx >= totalExpertNum) {
@@ -105,8 +99,8 @@ private:
             if (actualExpertNum > totalExpertNum - startExpertIdx) {
                 actualExpertNum = totalExpertNum - startExpertIdx;
             }
-            Run<CompleteEachExpert>(taskTilingInfo_->A, taskTilingInfo_->H1, taskTilingInfo_->N1, startExpertIdx,
-                                    actualExpertNum, false, onExpertComplete);
+            Run<NotifyWaves>(taskTilingInfo_->A, taskTilingInfo_->H1, taskTilingInfo_->N1, startExpertIdx,
+                                    actualExpertNum, false, onWaveComplete);
         }
     }
 
@@ -119,31 +113,17 @@ private:
         return tokens;
     }
 
-    template <typename BlockMmad>
-    __aicore__ inline void DrainExpertOutput(BlockMmad &blockMmad)
-    {
-        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
-            blockMmad.SynchronizeBlock();
-        }
-        // Do not consume BlockMmad's private FIX_M event: the next tile (or
-        // its destructor) owns that event. A FIX-pipe barrier drains this
-        // expert's final GM store while preserving the reusable resource. It
-        // is also a no-op when this AIC has no tile, so empty experts cannot
-        // wait on an event that was never produced.
-        AscendC::PipeBarrier<PIPE_FIX>();
-    }
-
-    template <bool CompleteEachExpert, typename ExpertCompletion>
+    template <bool NotifyWaves, typename WaveCompletion>
     __aicore__ inline void Run(uint32_t m, uint32_t k, uint32_t n, uint32_t startExpertIdx, uint32_t expertNum,
-                               bool isSharedExpert, ExpertCompletion &onExpertComplete)
+                               bool isSharedExpert, WaveCompletion &onWaveComplete)
     {
         using namespace Catlass;
         // Every AIC owns an independent CATLASS resource and processes its
         // strided subset of L1 tiles.
         // Match the arch22 AllToAllMatmul/MatmulAlltoAll compute path.  This
-        // grouped kernel publishes one complete output chunk rather than
-        // consuming per-tile unit events, so FIX_M/M_FIX must guard L0C reuse
-        // and GM visibility before the AIV ready event is emitted.
+        // grouped kernel publishes GM wave progress instead of consuming
+        // per-tile unit events. FIX_M/M_FIX still guard L0C reuse; the
+        // completion callback orders FIX stores before scalar publication.
         constexpr bool enableUnitFlag = false;
 
         using ArchTag = Arch::AtlasA2;
@@ -179,11 +159,11 @@ private:
                 groupOffsetC += static_cast<uint64_t>(tokens) * n;
                 if (tokens != 0U) {
                     // A sub-range must use the same first-core rotation as a
-                    // full [0, E) invocation. Replaying only the lightweight
-                    // scheduler state avoids recomputing preceding experts.
-                    GemmCoord previousProblemShape{tokens, n, k};
-                    blockScheduler.Update(previousProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
-                    startCoreIdx = (startCoreIdx + blockScheduler.GetCoreLoops()) % aicCoreNum;
+                    // full [0, E) invocation. The rotation advances by the
+                    // expert's M-tile count (loopsM), matching the M-row
+                    // striped ownership below.
+                    const uint32_t loopsM = (tokens + L1TileShape::M - 1U) / L1TileShape::M;
+                    startCoreIdx = (startCoreIdx + loopsM) % aicCoreNum;
                 }
             }
         }
@@ -191,14 +171,15 @@ private:
         for (uint32_t localExpert = 0U; localExpert < expertNum; ++localExpert) {
             uint32_t expertIdx = startExpertIdx + localExpert;
             uint32_t currentM = isSharedExpert ? m : GetExpertTokens(expertIdx);
-            uint32_t coreLoops = 0U;
+            uint32_t loopsM = 0U;
             if (currentM != 0U) {
                 GemmCoord problemShape{currentM, n, k};
                 LayoutA layoutA{currentM, k};
                 LayoutB layoutB{k, n};
                 LayoutC layoutC{currentM, n};
                 blockScheduler.Update(problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
-                coreLoops = blockScheduler.GetCoreLoops();
+                loopsM = blockScheduler.loopsMN.row();
+                const uint32_t loopsN = blockScheduler.loopsMN.column();
                 AscendC::GlobalTensor<T> gmA;
                 AscendC::GlobalTensor<T> gmB;
                 AscendC::GlobalTensor<T> gmC;
@@ -214,41 +195,48 @@ private:
                     gmB.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                 }
 
-                // Continue the tile-to-core sequence across expert boundaries.
-                // This is the allocation used by CATLASS GroupedMatmulSliceM;
-                // restarting every small-M expert at core 0 leaves most AICs idle
-                // and does not follow the resource/event progression expected by
-                // the grouped kernel.
-                const uint32_t startLoopIdx =
+                // M-row striped ownership: this AIC computes complete output
+                // rows (all N tiles) of the M tiles whose index satisfies
+                // mIdx === (coreIdx - startCoreIdx) mod aicCoreNum. Unlike a
+                // flat per-tile stripe, no N tile of a row is ever produced
+                // by another AIC, so the paired AIV can stage the row as soon
+                // as this core publishes the wave complete. The AIC/AIV pair
+                // derives the same ownership from the same rotation state.
+                const uint32_t startMIdx =
                     coreIdx < startCoreIdx ? coreIdx + aicCoreNum - startCoreIdx : coreIdx - startCoreIdx;
-                for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += aicCoreNum) {
-                    GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
-                    GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
-                    MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, 0};
-                    MatrixCoord offsetB{0, blockCoord.n() * L1TileShape::N};
-                    MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
-                    blockMmad(gmA[layoutA.GetOffset(offsetA)], layoutA, gmB[layoutB.GetOffset(offsetB)], layoutB,
-                              gmC[layoutC.GetOffset(offsetC)], layoutC, actualBlockShape);
+                uint32_t ownedTileCount = 0U;
+                for (uint32_t mIdx = startMIdx; mIdx < loopsM; mIdx += aicCoreNum) {
+                    if constexpr (NotifyWaves) { onWaveComplete.MmBegin(expertIdx, loopsN); }
+                    for (uint32_t nIdx = 0U; nIdx < loopsN; ++nIdx) {
+                        const uint32_t loopIdx = mIdx * loopsN + nIdx;
+                        GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
+                        GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
+                        MatrixCoord offsetA{blockCoord.m() * L1TileShape::M, 0};
+                        MatrixCoord offsetB{0, blockCoord.n() * L1TileShape::N};
+                        MatrixCoord offsetC{blockCoord.m() * L1TileShape::M, blockCoord.n() * L1TileShape::N};
+                        blockMmad(gmA[layoutA.GetOffset(offsetA)], layoutA, gmB[layoutB.GetOffset(offsetB)], layoutB,
+                                  gmC[layoutC.GetOffset(offsetC)], layoutC, actualBlockShape);
+                    }
+                    if constexpr (NotifyWaves) {
+                        onWaveComplete.MmEnd();
+                        ++ownedTileCount;
+                        if (ownedTileCount % Gmma2avMteTiling::M_GROUPS_PER_WAVE == 0U ||
+                            mIdx + aicCoreNum >= loopsM) {
+                            onWaveComplete.NotifyWaveReady();
+                        }
+                    }
                 }
             }
 
             groupOffsetA += static_cast<uint64_t>(currentM) * k;
             groupOffsetB += static_cast<uint64_t>(k) * n;
             groupOffsetC += static_cast<uint64_t>(currentM) * n;
-            startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
+            startCoreIdx = (startCoreIdx + loopsM) % aicCoreNum;
 
-            if constexpr (CompleteEachExpert) {
-                // Drain the FIX pipe only at chunk boundaries, right before
-                // the paired AIV is notified, so experts inside a chunk keep
-                // uninterrupted CATLASS pipelining inside each chunk.
-                if (onExpertComplete(expertIdx)) {
-                    DrainExpertOutput(blockMmad);
-                    onExpertComplete.NotifyChunkReady();
-                }
-            }
+
         }
 
-        if constexpr (!CompleteEachExpert) {
+        if constexpr (!NotifyWaves) {
             // The optional shared MM has no expert-ready callback; preserve
             // its final-drain semantics. The
             // synchronous ping-pong policy is drained by BlockMmad's

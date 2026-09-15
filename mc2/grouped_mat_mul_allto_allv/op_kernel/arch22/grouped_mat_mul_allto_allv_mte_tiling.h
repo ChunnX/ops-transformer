@@ -23,10 +23,6 @@ namespace MC2KernelTemplate {
 constexpr uint32_t GMMA2AV_MTE_MAX_COUNT_NUM = 1024U;
 constexpr uint32_t GMMA2AV_MTE_MAX_RANK_SIZE = 128U;
 
-// Zero closes only at the final expert, including any trailing empty experts.
-constexpr uint32_t GMMA2AV_MTE_SINGLE_CHUNK = 0U;
-constexpr uint32_t GMMA2AV_MTE_DENSE_EXPERT_CHUNK_ROWS = 1536U;
-
 // The AIV-driven MTE path only consumes the fields below. Keep this definition
 // local instead of inheriting TaskTilingInfo from the legacy implementation.
 struct GroupedMatMulAlltoAllvMteTaskTilingInfo {
@@ -68,13 +64,6 @@ struct GroupedMatMulAlltoAllvMteTilingData {
     // Ascend 910_93 and Ascend 910B expose different HCCL window-context
     // layouts for the AIV-driven MTE path.
     uint32_t isA3;
-    // Preserve the serialized size and following member offsets.
-    uint32_t reserved;
-    // Expert-overlap pipeline granularity: consecutive experts are batched
-    // into one synchronization stage until their cumulative local GMM rows
-    // reach this threshold (boundary snapped to an expert end). Zero selects
-    // one chunk ending at the final expert. Host tiling derives this from counts.
-    uint32_t expertChunkRows;
     GmmA2avCoCTiling cocTiling;
 };
 
@@ -116,26 +105,71 @@ constexpr uint64_t SYNC_REGION_FROM_TAIL = CCL_TAIL_SAFETY_BYTES;
 constexpr uint64_t SYNC_SLOT_BYTES = 64UL;
 constexpr uint32_t MAX_RANK_SIZE = GMMA2AV_MTE_MAX_RANK_SIZE;
 constexpr uint32_t MAX_COUNT_NUM = GMMA2AV_MTE_MAX_COUNT_NUM;
-// Version 2 keeps the byte offsets but stores an int64_t epoch in each slot.
-constexpr uint32_t FIXED_SYNC_LAYOUT_VERSION = 2U;
-constexpr int64_t MAX_SYNC_EPOCH = 0x7ffffffffffffffeLL;
 
+// Local (non-CCL) stage-progress region appended after the cumsum region in
+// the operator workspace. One cache-line slot per AIC logical core: the Stage
+// subblock of core c is the single writer of slot c, every Comm subblock is a
+// reader. The value is the last staged expert index + 1 (monotonic).
+constexpr uint64_t STAGE_PROGRESS_SLOT_BYTES = SYNC_SLOT_BYTES;
+
+// Byte size of the serialized cumsum region. Shared by the host workspace
+// allocation and the device-side address derivation so the appended
+// stage-progress region cannot drift between them. [host, aicore] dual
+// target: plain helpers called from __aicore__ code are emitted as
+// host-only symbols and fail the device link (undefined symbol).
+#if defined(__CCE__)
+#define GMMA2AV_MTE_HOST_DEVICE __forceinline__ [host, aicore]
+#else
+#define GMMA2AV_MTE_HOST_DEVICE
+#endif
+GMMA2AV_MTE_HOST_DEVICE constexpr uint64_t CumsumRegionBytes(uint64_t rankSize, uint64_t expertNum)
+{
+    const uint64_t countBytes = rankSize * expertNum * sizeof(int32_t);
+    return (countBytes + COUNT_TABLE_ALIGNMENT_BYTES - 1UL) / COUNT_TABLE_ALIGNMENT_BYTES *
+           COUNT_TABLE_ALIGNMENT_BYTES;
+}
+// A5-style bounded compute waves on arch22: one M group contains one
+// complete M tile per AIC (all N tiles). Expert tails end a wave early.
+constexpr uint32_t M_GROUPS_PER_WAVE = 1U;
+GMMA2AV_MTE_HOST_DEVICE constexpr uint64_t ProgressRegionBytes(uint64_t aicCoreNum)
+{
+    return (aicCoreNum * STAGE_PROGRESS_SLOT_BYTES + WORKSPACE_ALIGNMENT - 1UL) /
+           WORKSPACE_ALIGNMENT * WORKSPACE_ALIGNMENT;
+}
+GMMA2AV_MTE_HOST_DEVICE constexpr uint64_t ComputeProgressOffset(uint64_t rankSize, uint64_t expertNum,
+                                                                uint64_t aicCoreNum)
+{
+    return CumsumRegionBytes(rankSize, expertNum) + ProgressRegionBytes(aicCoreNum);
+}
+GMMA2AV_MTE_HOST_DEVICE constexpr uint64_t WaveWorkspaceBytes(uint64_t rankSize, uint64_t expertNum,
+                                                            uint64_t aicCoreNum)
+{
+    return CumsumRegionBytes(rankSize, expertNum) + 2UL * ProgressRegionBytes(aicCoreNum);
+}
 // Byte offsets within the fixed synchronization region.  Region bases do not
 // depend on the current rank size or expert count, so persistent HCCL windows
 // can safely be reused by cases with different shapes.
-constexpr uint64_t EPOCH_BASE = 0UL;
-constexpr uint64_t COUNT_READY_BASE = EPOCH_BASE + SYNC_SLOT_BYTES;
+// Each invocation clears its selected buffer; End clears COUNT_READY again.
+constexpr uint64_t COUNT_READY_BASE = 0UL;
 constexpr uint64_t EXPERT_READY_BASE = COUNT_READY_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
-constexpr uint64_t COMPLETION_BASE = EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES;
-constexpr uint64_t ACK_BASE = COMPLETION_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
-constexpr uint64_t FIXED_SYNC_BYTES = ACK_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
+constexpr uint64_t RECV_DONE_BASE = EXPERT_READY_BASE + static_cast<uint64_t>(MAX_COUNT_NUM) * SYNC_SLOT_BYTES;
+constexpr uint64_t FIXED_SYNC_BYTES = RECV_DONE_BASE + static_cast<uint64_t>(MAX_RANK_SIZE) * SYNC_SLOT_BYTES;
+
+constexpr uint64_t CCL_BUFFER_COUNT = 2UL;
+constexpr uint64_t COUNT_BUFFER_STRIDE = static_cast<uint64_t>(MAX_COUNT_NUM) * sizeof(int32_t);
+GMMA2AV_MTE_HOST_DEVICE constexpr uint64_t PayloadBufferBytes(uint64_t windowBytes)
+{
+    return windowBytes > CONTROL_REGION_BYTES ?
+        ((windowBytes - CONTROL_REGION_BYTES) / CCL_BUFFER_COUNT / 512UL) * 512UL : 0UL;
+}
+static_assert(CCL_BUFFER_COUNT * COUNT_BUFFER_STRIDE <=
+              SEND_COUNT_STAGING_FROM_TAIL - SYNC_REGION_FROM_TAIL, "Count buffers must fit");
 
 static_assert(SYNC_SLOT_BYTES == 64UL, "Every synchronization slot must occupy one cache line");
 static_assert(COUNT_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Count-ready region must be slot aligned");
 static_assert(EXPERT_READY_BASE % SYNC_SLOT_BYTES == 0UL, "Expert-ready region must be slot aligned");
-static_assert(COMPLETION_BASE % SYNC_SLOT_BYTES == 0UL, "Completion region must be slot aligned");
-static_assert(ACK_BASE % SYNC_SLOT_BYTES == 0UL, "Acknowledgement region must be slot aligned");
-static_assert(FIXED_SYNC_BYTES <= SYNC_REGION_FROM_TAIL,
+static_assert(RECV_DONE_BASE % SYNC_SLOT_BYTES == 0UL, "Receive-done region must be slot aligned");
+static_assert(CCL_BUFFER_COUNT * FIXED_SYNC_BYTES <= SYNC_REGION_FROM_TAIL,
               "Fixed synchronization layout must fit in the reserved CCL tail region");
 } // namespace Gmma2avMteTiling
 
