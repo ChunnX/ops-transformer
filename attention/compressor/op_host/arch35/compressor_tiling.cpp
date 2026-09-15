@@ -182,7 +182,7 @@ ge::graphStatus CompressorTiling::SetPageAttentionInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetWorkSpaceInfo()
+ge::graphStatus CompressorTiling::SetWorkSpaceInfo() const
 {
     workspaceParams_->dbWorkspaceRatio = DB_WORKSPACE_RATIO;
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
@@ -200,7 +200,7 @@ ge::graphStatus CompressorTiling::SetScenarioInfo() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetTemplateId()
+ge::graphStatus CompressorTiling::SetTemplateId() const
 {
     if (context_->templateId == TemplateId::EMPTY_X) {
         return ge::GRAPH_SUCCESS;
@@ -216,7 +216,7 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetFullLoadSplitInfo()
+ge::graphStatus CompressorTiling::SetFullLoadSplitInfo() const
 {
     innerSplitParams_->mBaseSize = 256;              // 256:核间切分，M轴基本块大小
     innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2

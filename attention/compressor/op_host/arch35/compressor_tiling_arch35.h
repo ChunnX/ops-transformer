@@ -275,11 +275,11 @@ private:
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
     ge::graphStatus SetPageAttentionInfo();
-    ge::graphStatus SetWorkSpaceInfo();
+    ge::graphStatus SetWorkSpaceInfo() const;
     ge::graphStatus SetScenarioInfo() const;
-    ge::graphStatus SetTemplateId();
+    ge::graphStatus SetTemplateId() const;
     ge::graphStatus SetInnerSplitInfo();
-    ge::graphStatus SetFullLoadSplitInfo();
+    ge::graphStatus SetFullLoadSplitInfo() const;
     ge::graphStatus SetNormalSplitInfo();
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus CheckSinglePara() const;
