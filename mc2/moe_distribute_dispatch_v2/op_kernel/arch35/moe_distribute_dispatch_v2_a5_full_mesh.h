@@ -74,7 +74,7 @@ public:
                                 GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
                                 GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
                                 GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchV2TilingData *tilingData);
+                                __gm__ MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -82,13 +82,13 @@ private:
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void InitElasticInfo();
     __aicore__ inline void SetDataStatus();
-    __aicore__ inline void SetTilingData(const MoeDistributeDispatchV2TilingData *tilingData);
+    __aicore__ inline void SetTilingData(__ubuf__ MoeDistributeDispatchV2Info *tilingInfo);
     __aicore__ inline void CalValidBSCnt(LocalTensor<bool> maskStrideTensor);
     __aicore__ inline void CalValidExpIdx(LocalTensor<bool> maskInputTensor);
     __aicore__ inline void GenerateGatherMaskTensor(uint32_t maskCnt);
     __aicore__ inline void MaskZeroComputeExpert(uint32_t maskCnt);
     __aicore__ inline void ZeroComputeExpertMaskCal();
-    __aicore__ inline void SetTilingDataAndCal(const MoeDistributeDispatchV2TilingData *tilingData);
+    __aicore__ inline void SetTilingDataAndCal(__ubuf__ MoeDistributeDispatchV2Info *tilingInfo);
     __aicore__ inline void SendToSharedExpert(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void SendToMoeExpert(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void SendToMoeExpertLoop(TQue<QuePosition::VECIN, 1> inQueue, uint32_t validTokenNum,
@@ -204,6 +204,7 @@ private:
     TBuf<> performanceFlagBuf_;
     TBuf<> calBeginBuf_;
     TBuf<> calEndBuf_;
+    TBuf<TPosition::VECCALC> tilingUbBuf_;
     GM_ADDR expandXOutGM_;
     GM_ADDR expandScalesOutGM_;
     GM_ADDR sendCountsOutGM_;
@@ -314,40 +315,39 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SetTilingData(
-    const MoeDistributeDispatchV2TilingData *tilingData)
+    __ubuf__ MoeDistributeDispatchV2Info *tilingInfo)
 {
-    axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
-    axisH_ = tilingData->moeDistributeDispatchV2Info.h;
-    epWorldSizeOriginal_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-    epRankIdOriginal_ = tilingData->moeDistributeDispatchV2Info.epRankId;
-    hasElasticInfoFlag_ = tilingData->moeDistributeDispatchV2Info.hasElasticInfo;
-    hasExpertScalesFlag_ = tilingData->moeDistributeDispatchV2Info.hasExpertScales;
-    isPerformanceFlag_ = tilingData->moeDistributeDispatchV2Info.isPerformance;
-    epRankId_ = tilingData->moeDistributeDispatchV2Info.epRankId;
-    globalBS_ = tilingData->moeDistributeDispatchV2Info.globalBs;
-    epWorldSize_ = tilingData->moeDistributeDispatchV2Info.epWorldSize;
-    sharedExpertRankNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertRankNum;
-    moeExpertNum_ = tilingData->moeDistributeDispatchV2Info.moeExpertNum;
-    sharedExpertNum_ = tilingData->moeDistributeDispatchV2Info.sharedExpertNum;
-    expertTokenNumsType_ = tilingData->moeDistributeDispatchV2Info.expertTokenNumsType;
-    zeroComputeExpertNum_ = tilingData->moeDistributeDispatchV2Info.zeroComputeExpertNum;
-    isTokenMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isTokenMask;
-    isExpertMaskFlag_ = tilingData->moeDistributeDispatchV2Info.isExpertMask;
-    axisK_ = tilingData->moeDistributeDispatchV2Info.k;
-    aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
-    scaleInBytes_ =
-        tilingData->moeDistributeDispatchV2Info.scalesCol * tilingData->moeDistributeDispatchV2Info.scalesTypeSize;
-    scalesCount_ = tilingData->moeDistributeDispatchV2Info.scalesCount;
+    axisBS_ = tilingInfo->bs;
+    axisH_ = tilingInfo->h;
+    epWorldSizeOriginal_ = tilingInfo->epWorldSize;
+    epRankIdOriginal_ = tilingInfo->epRankId;
+    hasElasticInfoFlag_ = tilingInfo->hasElasticInfo;
+    hasExpertScalesFlag_ = tilingInfo->hasExpertScales;
+    isPerformanceFlag_ = tilingInfo->isPerformance;
+    epRankId_ = tilingInfo->epRankId;
+    globalBS_ = tilingInfo->globalBs;
+    epWorldSize_ = tilingInfo->epWorldSize;
+    sharedExpertRankNum_ = tilingInfo->sharedExpertRankNum;
+    moeExpertNum_ = tilingInfo->moeExpertNum;
+    sharedExpertNum_ = tilingInfo->sharedExpertNum;
+    expertTokenNumsType_ = tilingInfo->expertTokenNumsType;
+    zeroComputeExpertNum_ = tilingInfo->zeroComputeExpertNum;
+    isTokenMaskFlag_ = tilingInfo->isTokenMask;
+    isExpertMaskFlag_ = tilingInfo->isExpertMask;
+    axisK_ = tilingInfo->k;
+    aivNum_ = tilingInfo->aivNum;
+    scaleInBytes_ = tilingInfo->scalesCol * tilingInfo->scalesTypeSize;
+    scalesCount_ = tilingInfo->scalesCount;
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
-    maxSize_ = tilingData->moeDistributeDispatchV2Info.maxSizeForUbBuffer;
-    totalUbSize_ = tilingData->moeDistributeDispatchV2Info.totalUbSize;
+    maxSize_ = tilingInfo->maxSizeForUbBuffer;
+    totalUbSize_ = tilingInfo->totalUbSize;
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTypeFunc>::SetTilingDataAndCal(
-    const MoeDistributeDispatchV2TilingData *tilingData)
+    __ubuf__ MoeDistributeDispatchV2Info *tilingInfo)
 {
-    SetTilingData(tilingData);
+    SetTilingData(tilingInfo);
     copyInAxisH_ = axisH_;
     copyOutAxisH_ = axisH_;
     if constexpr (Std::IsSame<ExpandXOutType, fp4x2_e2m1_t>::value ||
@@ -420,15 +420,43 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
     GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
     GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchV2TilingData *tilingData)
+    __gm__ MoeDistributeDispatchV2TilingData *tilingData)
 {
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
     tpipe_ = pipe;
+    // calBeginBuf_ 作为 UB 基址标记，最先分配
     tpipe_->InitBuffer(calBeginBuf_, UB_ALIGN);
     aivId_ = GetBlockIdx();
-    totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    ctx_.InitAndCheck(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize, totalWinSize_, tpipe_,
-                      expandXOut);
+
+    // ---- 只把 moeDistributeDispatchV2Info 从 GM 拷贝到 UB（不拷贝 Mc2InitTiling / Mc2CcTiling）----
+    using TilingInfoType = MoeDistributeDispatchV2Info;
+    constexpr uint32_t tilingInfoSize = sizeof(TilingInfoType);
+    constexpr uint32_t tilingInfoAlignedSize = (tilingInfoSize + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
+
+    tpipe_->InitBuffer(tilingUbBuf_, tilingInfoAlignedSize);
+    LocalTensor<uint8_t> tilingUbTensor = tilingUbBuf_.Get<uint8_t>();
+
+    // 计算 moeDistributeDispatchV2Info 在 tiling struct 中的偏移
+    constexpr uint32_t infoOffset = offsetof(MoeDistributeDispatchV2TilingData, moeDistributeDispatchV2Info);
+
+    GlobalTensor<uint8_t> tilingGmTensor;
+    tilingGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(tilingData) + infoOffset, tilingInfoAlignedSize);
+
+    // 用对齐长度整块搬运，省去 DataCopyPad 的 padding 开销
+    DataCopyParams copyParams{1U, static_cast<uint32_t>(tilingInfoAlignedSize), 0U, 0U};
+    DataCopy(tilingUbTensor, tilingGmTensor, copyParams);
+
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+
+    // 直接用 __ubuf__ MoeDistributeDispatchV2Info* 指向 UB 缓冲区
+    __ubuf__ TilingInfoType *tilingInfoLocal =
+        reinterpret_cast<__ubuf__ TilingInfoType *>(tilingUbTensor.GetPhyAddr());
+    // ---- 拷贝结束 ----
+
+    // 提取 tiling 字段到成员变量
+    totalWinSize_ = static_cast<uint64_t>(tilingInfoLocal->totalWinSizeEp);
+    ctx_.InitAndCheck(mc2Context, tilingInfoLocal->epWorldSize, totalWinSize_, tpipe_, expandXOut);
     xGMTensor_.SetGlobalBuffer((__gm__ XInType *)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
@@ -437,7 +465,10 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     expandIdxGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(expandIdxOut));
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t *)(elasticInfo));
     scalesGMTensor_.SetGlobalBuffer((__gm__ float *)scales);
-    SetTilingDataAndCal(tilingData);
+    SetTilingDataAndCal(tilingInfoLocal);
+
+    // tilingUbBuf_ 仅占 ~160B，作为成员变量保留，不做 Reset 回收
+    // 避免 Reset + 重建 calBeginBuf_ 的开销
     if (hasExpertScalesFlag_) {
         expertScalesGMTensor_.SetGlobalBuffer((__gm__ float *)expertScales);
         expandScalesOutGM_ = expandScalesOut;
