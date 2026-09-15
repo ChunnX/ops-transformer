@@ -1,0 +1,3 @@
+case_name,expectResult,q_dtype,k_cache_dtype,expect_attn_out_dtype,expect_softmax_lse_dtype
+dtype_FLOAT16,SUCCESS,FLOAT16,FLOAT16,FLOAT16,FLOAT32
+dtype_BF16,SUCCESS,BF16,BF16,BF16,FLOAT32

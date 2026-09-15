@@ -147,18 +147,18 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FlashMlaWit
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    OP_CHECK_IF(faInfo.maxSeqQ < -1,
+    OP_CHECK_IF(faInfo.maxSeqQ != -1,
                 OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "max_seqlen_q", std::to_string(faInfo.maxSeqQ).c_str(),
-                                          "= -1 or >= 0"),
+                                          "= -1 (or omitted)"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FlashMlaWithKvcacheTilingInfo &faInfo)
 {
-    OP_CHECK_IF(faInfo.maxSeqKv < -1,
+    OP_CHECK_IF(faInfo.maxSeqKv != -1,
                 OP_LOGE_FOR_INVALID_VALUE(faInfo.opName, "max_seqlen_kv", std::to_string(faInfo.maxSeqKv).c_str(),
-                                          "= -1 or >= 0"),
+                                          "= -1 (or omitted)"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
