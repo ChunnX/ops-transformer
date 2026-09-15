@@ -172,7 +172,7 @@ ge::graphStatus QuantCompressorTiling::SetBaseInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetPageAttentionInfo()
+ge::graphStatus QuantCompressorTiling::SetPageAttentionInfo() const
 {
     pageAttentionParams_->blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     pageAttentionParams_->blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
@@ -184,7 +184,7 @@ ge::graphStatus QuantCompressorTiling::SetPageAttentionInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo()
+ge::graphStatus QuantCompressorTiling::SetWorkSpaceInfo() const
 {
     workspaceParams_->dbWorkspaceRatio = DB_WORKSPACE_RATIO;
     workspaceParams_->mm1KvResSize = innerSplitParams_->mBaseSize * baseParams_->headDim * coff;
@@ -201,7 +201,7 @@ ge::graphStatus QuantCompressorTiling::SetScenarioInfo() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetTemplateId()
+ge::graphStatus QuantCompressorTiling::SetTemplateId() const
 {
     if (context_->templateId == TemplateId::EMPTY_X) {
         return ge::GRAPH_SUCCESS;
@@ -218,7 +218,7 @@ ge::graphStatus QuantCompressorTiling::SetTemplateId()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetFullLoadSplitInfo()
+ge::graphStatus QuantCompressorTiling::SetFullLoadSplitInfo() const
 {
     innerSplitParams_->mBaseSize = 256;              // 256:核间切分，M轴基本块大小
     innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
@@ -264,14 +264,14 @@ ge::graphStatus QuantCompressorTiling::SetFullLoadSplitInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetNormalSplitInfo()
+ge::graphStatus QuantCompressorTiling::SetNormalSplitInfo() const
 {
     innerSplitParams_->mBaseSize = 256;        // 256:核间切分，M轴基本块大小
     innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::SetInnerSplitInfo()
+ge::graphStatus QuantCompressorTiling::SetInnerSplitInfo() const
 {
     if (context_->templateId == TemplateId::FULL_LOAD) {
         return SetFullLoadSplitInfo();

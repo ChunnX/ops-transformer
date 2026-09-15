@@ -278,13 +278,13 @@ private:
     static void ConvertOptionalParams(gert::TilingContext &context, QuantCompressorContext &compressorContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
-    ge::graphStatus SetPageAttentionInfo();
-    ge::graphStatus SetWorkSpaceInfo();
+    ge::graphStatus SetPageAttentionInfo() const;
+    ge::graphStatus SetWorkSpaceInfo() const;
     ge::graphStatus SetScenarioInfo() const;
-    ge::graphStatus SetTemplateId();
-    ge::graphStatus SetInnerSplitInfo();
-    ge::graphStatus SetFullLoadSplitInfo();
-    ge::graphStatus SetNormalSplitInfo();
+    ge::graphStatus SetTemplateId() const;
+    ge::graphStatus SetInnerSplitInfo() const;
+    ge::graphStatus SetFullLoadSplitInfo() const;
+    ge::graphStatus SetNormalSplitInfo() const;
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
     // ================================通用检查辅助函数==================================

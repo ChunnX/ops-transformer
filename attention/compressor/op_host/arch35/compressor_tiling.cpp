@@ -170,7 +170,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetPageAttentionInfo()
+ge::graphStatus CompressorTiling::SetPageAttentionInfo() const
 {
     pageAttentionParams_->blockNum = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     pageAttentionParams_->blockSize = context_->stateCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
@@ -262,14 +262,14 @@ ge::graphStatus CompressorTiling::SetFullLoadSplitInfo() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetNormalSplitInfo()
+ge::graphStatus CompressorTiling::SetNormalSplitInfo() const
 {
     innerSplitParams_->mBaseSize = 256;        // 256:核间切分，M轴基本块大小
     innerSplitParams_->dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::SetInnerSplitInfo()
+ge::graphStatus CompressorTiling::SetInnerSplitInfo() const
 {
     if (context_->templateId == TemplateId::FULL_LOAD) {
         return SetFullLoadSplitInfo();
@@ -467,7 +467,7 @@ ge::graphStatus CompressorTiling::CheckAttrValueSupport(const T *attrValue, cons
 template <typename T>
 std::string to_string(const T &value)
 {
-    if (std::is_same_v<T, bool>) {
+    if constexpr (std::is_same_v<T, bool>) {
         return value ? "true" : "false";
     } else {
         return std::to_string(value);

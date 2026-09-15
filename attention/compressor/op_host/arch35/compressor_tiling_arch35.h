@@ -274,13 +274,13 @@ private:
     static void ConvertOptionalParams(gert::TilingContext &context, CompressorContext &compressorContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
-    ge::graphStatus SetPageAttentionInfo();
+    ge::graphStatus SetPageAttentionInfo() const;
     ge::graphStatus SetWorkSpaceInfo() const;
     ge::graphStatus SetScenarioInfo() const;
     ge::graphStatus SetTemplateId() const;
-    ge::graphStatus SetInnerSplitInfo();
+    ge::graphStatus SetInnerSplitInfo() const;
     ge::graphStatus SetFullLoadSplitInfo() const;
-    ge::graphStatus SetNormalSplitInfo();
+    ge::graphStatus SetNormalSplitInfo() const;
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus GenTilingKey() const;
