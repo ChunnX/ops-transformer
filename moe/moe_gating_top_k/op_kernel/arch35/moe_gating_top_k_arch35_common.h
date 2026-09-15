@@ -39,6 +39,24 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 // t >= 该值时直接 ln(1+t)(舍入相对误差 ~2^-24/t <= 2^-16), 均远小于比对阈值 2^-13
 constexpr float LOG1P_TAYLOR_THRESHOLD = 0.00390625f;
 
+constexpr int64_t NORM_TYPE_SOFTMAX = 0;
+constexpr int64_t NORM_TYPE_SIGMOID = 1;
+constexpr int64_t NORM_TYPE_SOFTPLUS = 2;
+constexpr int64_t NORM_TYPE_SIGMOID_NO_RENORM = 3;
+
+__aicore__ inline bool IsSigmoidNormType(int64_t normType)
+{
+    return normType == NORM_TYPE_SIGMOID || normType == NORM_TYPE_SIGMOID_NO_RENORM;
+}
+
+// Keep the legacy behavior for normType 0, 1 and 2. The new normType 3
+// explicitly selects Sigmoid without renormalizing the selected scores.
+__aicore__ inline bool ShouldRenormalize(int64_t normType, int64_t renorm)
+{
+    return normType == NORM_TYPE_SIGMOID || normType == NORM_TYPE_SOFTPLUS ||
+           (normType == NORM_TYPE_SOFTMAX && renorm == 1);
+}
+
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
 {
     if (bytes == 0) {
@@ -105,8 +123,8 @@ __aicore__ inline void SetWaitFlag(HardEvent evt)
 namespace MoeGatingTopK {
 
 template <typename T>
-__aicore__ inline void SmallKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                            __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+__aicore__ inline void SmallKAlignEVFNoNorm(__ubuf__ float* inputAddr, __ubuf__ uint32_t* mrgSortAddr,
+                                            __ubuf__ T* outputAddr, __ubuf__ uint32_t* expertIdxAddr, uint32_t k,
                                             float routedScalingFactor)
 {
     __VEC_SCOPE__
@@ -125,8 +143,8 @@ __aicore__ inline void SmallKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ 
 }
 
 template <typename T>
-__aicore__ inline void SmallKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                              __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+__aicore__ inline void SmallKAlignEVFWithNorm(__ubuf__ float* inputAddr, __ubuf__ uint32_t* mrgSortAddr,
+                                              __ubuf__ T* outputAddr, __ubuf__ uint32_t* expertIdxAddr, uint32_t k,
                                               float eps, float routedScalingFactor)
 {
     __VEC_SCOPE__
@@ -151,8 +169,8 @@ __aicore__ inline void SmallKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf_
 }
 
 template <typename T>
-__aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                            __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+__aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float* inputAddr, __ubuf__ uint32_t* mrgSortAddr,
+                                            __ubuf__ T* outputAddr, __ubuf__ uint32_t* expertIdxAddr, uint32_t k,
                                             float routedScalingFactor)
 {
     __VEC_SCOPE__
@@ -176,8 +194,8 @@ __aicore__ inline void LargeKAlignEVFNoNorm(__ubuf__ float *inputAddr, __ubuf__ 
 }
 
 template <typename T>
-__aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float *inputAddr, __ubuf__ uint32_t *mrgSortAddr,
-                                              __ubuf__ T *outputAddr, __ubuf__ uint32_t *expertIdxAddr, uint32_t k,
+__aicore__ inline void LargeKAlignEVFWithNorm(__ubuf__ float* inputAddr, __ubuf__ uint32_t* mrgSortAddr,
+                                              __ubuf__ T* outputAddr, __ubuf__ uint32_t* expertIdxAddr, uint32_t k,
                                               float eps, float routedScalingFactor)
 {
     uint32_t k1 = k;

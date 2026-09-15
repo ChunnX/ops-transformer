@@ -138,6 +138,10 @@ def _softmax_numpy(x, axis=-1):
     return y / x_sum
 
 
+def _should_renormalize(norm_type, renorm):
+    return norm_type in (1, 2) or (norm_type == 0 and renorm == 1)
+
+
 class AclnnMoeGatingTopKTestSpec:
     @staticmethod
     def golden(
@@ -167,7 +171,7 @@ class AclnnMoeGatingTopKTestSpec:
 
         if normType == 0:
             x = _softmax_torch(x, -1)
-        elif normType == 1:
+        elif normType in (1, 3):
             x = 1 / (1 + numpy.exp(-x.numpy()))
             x = torch.from_numpy(x).to(torch.float32)
         elif normType == 2:
@@ -203,7 +207,7 @@ class AclnnMoeGatingTopKTestSpec:
 
         y = torch.gather(original_x, 1, indices)
 
-        if normType != 0 or renorm != 0:
+        if _should_renormalize(normType, renorm):
             y = y / (y.sum(dim=-1, keepdim=True) + eps)
         y = y * routedScalingFactor
 
@@ -252,7 +256,7 @@ class AclnnMoeGatingTopKV2TestSpec:
 
         if normType == 0:
             x = _softmax_torch(x, -1)
-        elif normType == 1:
+        elif normType in (1, 3):
             x = 1 / (1 + torch.exp(-x))
         elif normType == 2:
             x = torch.sqrt(torch.nn.functional.softplus(x))
@@ -287,7 +291,7 @@ class AclnnMoeGatingTopKV2TestSpec:
 
         y = torch.gather(original_x, 1, indices)
 
-        if normType != 0 or renorm != 0:
+        if _should_renormalize(normType, renorm):
             y = y / (y.sum(dim=-1, keepdim=True) + eps)
         y = y * routedScalingFactor
 
@@ -333,7 +337,7 @@ class MoeGatingTopKTestSpec:
 
         if norm_type == 0:
             x = _softmax_numpy(x, -1)
-        elif norm_type == 1:
+        elif norm_type in (1, 3):
             x = 1 / (1 + numpy.exp(-x))
         elif norm_type == 2:
             # 数值稳定 softplus: sqrt(max(x,0) + log1p(exp(-|x|))), 避免大 |x| 溢出/吸收
@@ -369,7 +373,7 @@ class MoeGatingTopKTestSpec:
 
         y = numpy.take_along_axis(original_x, indices, axis=1)
 
-        if norm_type != 0 or renorm != 0:
+        if _should_renormalize(norm_type, renorm):
             y = y / (numpy.sum(y, axis=-1, keepdims=True) + eps)
         y = y * routed_scaling_factor
 

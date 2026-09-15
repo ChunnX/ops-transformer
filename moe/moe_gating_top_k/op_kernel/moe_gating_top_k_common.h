@@ -19,7 +19,7 @@
 
 namespace MoeGatingTopK {
 using namespace AscendC;
-const float MIN_FP32 = *(float *)(&F32_NEG_INF);
+const float MIN_FP32 = *(float*)(&F32_NEG_INF);
 constexpr int32_t FLOAT32_NEG_INF = 0xFF800000; // -inf -2139095040
 constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
 constexpr int64_t BLOCK_BYTES = 32;
@@ -41,6 +41,20 @@ constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 constexpr int64_t NORM_TYPE_SOFTMAX = 0;
 constexpr int64_t NORM_TYPE_SIGMOID = 1;
 constexpr int64_t NORM_TYPE_SOFTPLUS = 2;
+constexpr int64_t NORM_TYPE_SIGMOID_NO_RENORM = 3;
+
+__aicore__ inline bool IsSigmoidNormType(int64_t normType)
+{
+    return normType == NORM_TYPE_SIGMOID || normType == NORM_TYPE_SIGMOID_NO_RENORM;
+}
+
+// Keep the legacy behavior for normType 0, 1 and 2. The new normType 3
+// explicitly selects Sigmoid without renormalizing the selected scores.
+__aicore__ inline bool ShouldRenormalize(int64_t normType, int64_t renorm)
+{
+    return normType == NORM_TYPE_SIGMOID || normType == NORM_TYPE_SOFTPLUS ||
+           (normType == NORM_TYPE_SOFTMAX && renorm == 1);
+}
 
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
