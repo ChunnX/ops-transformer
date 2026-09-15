@@ -1734,7 +1734,10 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
 
     const double totalCommUs = in.comm.RoundTimeUs(CalcRoundSizeMb(in, in.m));
     const double totalMmUs = in.mm.TimeUs(in.m, in.n, in.kTotal);
-    cut.ratioCalcComm = CalcCommCalcRatio(totalCommUs, totalMmUs);
+    // 诊断字段(ratioCalcComm/estTimeUsK1)在下方 makeCut/singleCut 的对象替换中会丢失,
+    // 先存局部量, 每个替换点回填(决策字段不受影响)。
+    const double ratioCalcDiag = CalcCommCalcRatio(totalCommUs, totalMmUs);
+    cut.ratioCalcComm = ratioCalcDiag;
 
     // Emit a cut from a head size (headCnt full rounds + one tail round).
     auto makeCut = [&in](uint64_t head) {
@@ -1785,7 +1788,8 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         return pipelineEst(in.m / head, head, in.m % head);
     };
 
-    cut.estTimeUsK1 = estTime(waveM);
+    const double estK1Diag = estTime(waveM);
+    cut.estTimeUsK1 = estK1Diag;
 
     // Degenerate fast path: a single wave already covers the whole M range, so
     // the finest cut degenerates to a single round anyway.
@@ -1799,13 +1803,17 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         cut.noCut = true;
         cut.chosenK = 0UL;
         cut.estTimeUs = totalCommUs + totalMmUs;
+        cut.ratioCalcComm = ratioCalcDiag;
+        cut.estTimeUsK1 = estK1Diag;
         return cut;
     }
     // Balanced: rounds naturally match compute waves, keep the k = 1 behaviour.
     if (cut.ratioCalcComm < in.cfg.balanceRatio) {
         cut = makeCut(waveM);
         cut.chosenK = 1UL;
-        cut.estTimeUs = cut.estTimeUsK1;
+        cut.estTimeUs = estK1Diag; // 原 cut.estTimeUsK1 此前恒为 0(makeCut 重置), 修复后语义=作者本意
+        cut.ratioCalcComm = ratioCalcDiag;
+        cut.estTimeUsK1 = estK1Diag;
         return cut;
     }
 
@@ -1843,11 +1851,15 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         cut = singleCut();
         cut.noCut = true;
         cut.estTimeUs = totalCommUs + totalMmUs;
+        cut.ratioCalcComm = ratioCalcDiag;
+        cut.estTimeUsK1 = estK1Diag;
         return cut;
     }
     cut = makeCut(bestHead);
     cut.chosenK = bestHead / waveM;
     cut.estTimeUs = bestTime;
+    cut.ratioCalcComm = ratioCalcDiag;
+    cut.estTimeUsK1 = estK1Diag;
     cut.noCut = (cut.rounds <= 1UL); // single round may legitimately win the estTime search
 
     // Tiny-tail merge: fold a sub-threshold tail round into the last head
