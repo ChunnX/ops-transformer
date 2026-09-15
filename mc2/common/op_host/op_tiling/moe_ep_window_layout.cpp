@@ -68,7 +68,10 @@ ge::graphStatus CalcMoeEpWindowLayout(const MoeEpWindowLayoutParams &params, Moe
     layout.slotWinStateOffset = layout.cntWinStateOffset + layout.cntWinStateSize;
     layout.dispatchSlotStateSize = layout.dispatchNotifyCount * epWorldSize * MOE_EP_WIN_ALIGN;
     layout.payloadWinStateOffset = layout.slotWinStateOffset + layout.dispatchSlotStateSize;
-    layout.payloadWinStateSize = layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
+    // payloadWinState is consumed only by the direct dispatch template. Keeping this unused hole in the hybrid
+    // layout shifts every combine state/data address and breaks the original hybrid window contract.
+    layout.payloadWinStateSize =
+        params.networkMode == MOE_EP_NETWORK_HYBRID ? 0UL : layout.dispatchNotifyCount * MOE_EP_WIN_ALIGN;
     layout.combineStateWinOffset = layout.payloadWinStateOffset + layout.payloadWinStateSize;
     const uint64_t combineFlagCount =
         epWorldSize > MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT ? epWorldSize : MOE_EP_COMBINE_CHANNEL_HANDLE_COUNT;
