@@ -16,7 +16,8 @@
  *   一、客户标定常量区 —— 重新标定后只改本区的 constexpr 值;
  *   二、标定表组装 —— 仅包装上方常量, 无魔数;
  *   三、开关与数据就绪 —— 环境变量开关(保留已发布语义) + 标定数据就绪检查;
- *   四、算子流量公式与组装 —— BuildScheduleInput/Schedule/FillCommTilingData。
+ *   四、组装 —— 类型别名+转发: AllToAll+MX+URMA 的流量公式与内核契约已在
+ *      apace 三、3.2 预制(ScheduleAllToAllMxUrma/FillMxDualChannelCommTiling)。
  *
  * 公共引擎在 apace/tiling/fit_balance_tiling.h 三、3.2（wave-packing 求解器, URMA 分支）。
  * 本算子即 aiv_urma 实现（kernel 仅 URMA）, tiling 无条件走 fit-balance 路径。
@@ -121,54 +122,11 @@ inline bool DataReady(uint32_t rankDim, bool isFp4, uint32_t precisionMode)
 }
 
 // ============================================================================
-// 四、算子流量公式与组装
-// ============================================================================
+// 四、组装（AllToAll+MX+URMA 的算子无关部分已在 apace 三、3.2 预制,
+//     本节仅保留算子侧类型别名与转发; 公开符号签名不变, 调用点零改动）
 
-/*!
- * \brief Per-row bytes shipped by one AllToAll round (data + scale channels merged).
- *
- * MX quantised layouts (ka is per-rank K, ka % 64 == 0 is enforced by the op):
- *   data : fp8 -> ka * 1B ; fp4 -> ka / 2B (two elements packed per byte)
- *   scale: ceil(ka / 64) groups * 2B
- */
-inline double CalcPerRowBytes(uint64_t ka, bool isFp4)
-{
-    const double dataBytes = isFp4 ? (static_cast<double>(ka) / 2.0) : static_cast<double>(ka);
-    const double scaleBytes = static_cast<double>((ka + 63UL) / 64UL) * 2.0;
-    return dataBytes + scaleBytes;
-}
-
-/*!
- * \brief Op-facing input: SWAT matmul tiling result + calibrated models.
- */
-struct AllToAllFitBalanceInput {
-    // Per-rank problem shape (m is per-rank M, ka is per-rank K).
-    uint64_t m = 0;
-    uint64_t n = 0;
-    uint64_t ka = 0;
-    uint32_t rankDim = 1;
-    bool isFp4 = false;
-    uint32_t precisionMode = 0; // 0 REMOTE / 1 DEFERRED_SYNC / 2 GM 累加, 决定 effMac 分档
-
-    // Matmul tiling result from QuantMatmulTilingSwat.
-    uint64_t baseM = 256;
-    uint64_t baseN = 256;
-    uint64_t usedCoreNum = 1;
-
-    // Calibrated models chosen by the op host (see the fitting-data section above).
-    fb::CommLinearModel comm;
-    fb::MatmulTheoryModel mm;
-    fb::FitBalanceConfig cfg;
-};
-
-/*!
- * \brief Scheduling result: the shared cut plus per-channel non-split sizes.
- */
-struct AllToAllFitBalanceResult {
-    fb::FitBalanceCut cut;
-    uint64_t dataNonSplitAxis = 0;  // bytes per row on the data channel (fp4 packs 2 elements per byte)
-    uint64_t scaleNonSplitAxis = 0; // bytes per row on the scale channel
-};
+using AllToAllFitBalanceInput = fb::AllToAllMxUrmaInput;
+using AllToAllFitBalanceResult = fb::AllToAllMxUrmaResult;
 
 /*!
  * \brief 打包常量与运行时 shape, 生成调度入参
@@ -215,44 +173,16 @@ inline bool BuildScheduleInput(uint64_t m, uint64_t n, uint64_t ka, uint32_t ran
     return true;
 }
 
-/*!
- * \brief 运行共享 fit-balance 核心决策（AllToAll 量化 Matmul 融合语义）。
- */
+// 调度与结果回填 = apace 预制直通(流量折叠/双通道内核契约均与算子无关)
 inline AllToAllFitBalanceResult Schedule(const AllToAllFitBalanceInput &in)
 {
-    AllToAllFitBalanceResult res;
-    fb::FitBalanceScheduleInput core;
-    core.m = in.m;
-    core.n = in.n;
-    core.kTotal = static_cast<uint64_t>(in.rankDim) * in.ka;
-    core.baseM = in.baseM;
-    core.baseN = in.baseN;
-    core.usedCoreNum = in.usedCoreNum;
-    core.commFanout = (in.rankDim > 1U) ? (static_cast<uint64_t>(in.rankDim) - 1UL) : 1UL;
-    core.perRowBytes = CalcPerRowBytes(in.ka, in.isFp4);
-    core.comm = in.comm;
-    core.mm = in.mm;
-    core.mm.coreNum = in.usedCoreNum; // compute runs on the cores the matmul tiling picked
-    core.cfg = in.cfg;
-    res.cut = fb::FitBalanceSchedule(core);
-    res.dataNonSplitAxis = in.isFp4 ? (in.ka / 2UL) : in.ka;
-    res.scaleNonSplitAxis = in.ka / MX_GROUP_SIZE;
-    return res;
+    return fb::ScheduleAllToAllMxUrma(in);
 }
 
-/*!
- * \brief Write the scheduling result into the kernel-side dual-channel CommTilingData.
- */
 inline void FillCommTilingData(const AllToAllFitBalanceResult &res, CommTilingData &dataTiling,
                                CommTilingData &scaleTiling)
 {
-    dataTiling.splitAxisTileSize = res.cut.headSize;
-    dataTiling.splitAxisTileCnt = res.cut.headCnt;
-    dataTiling.splitAxisTailSize = res.cut.tailSize;
-    dataTiling.splitAxisTailCnt = res.cut.tailCnt;
-    dataTiling.nonSplitAxisSize = res.dataNonSplitAxis;
-    scaleTiling = dataTiling;
-    scaleTiling.nonSplitAxisSize = res.scaleNonSplitAxis;
+    fb::FillMxDualChannelCommTiling(res, dataTiling, scaleTiling);
 }
 
 } // namespace fit_balance

@@ -133,10 +133,11 @@ CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
     // fit-balance 统一接口(标定数据+算子钩子在 all_gather_matmul_v2_fit_balance_tiling.h,
     // 公共逻辑在 apace/tiling/fit_balance_tiling.h 第一部分(自由长度分支)); 回退: 该头文件 kUseApace 置 false。
-    const bool isCcuMode = (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0);
+    // 三引擎统一分派: ParseCommEngine 解析 comm_mode 后传入(本算子仅 HCCL 两引擎可达)
+    const auto commEngine = apace::fit_balance::ParseCommEngine(commMode_);
     uint32_t baseM = 0;
-    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, isCcuMode, &baseM);
-    if (isCcuMode) {
+    CutResult result = agmm_v2_fit_balance::GetFitBalanceCut(args_, commEngine, &baseM);
+    if (commEngine == apace::fit_balance::CommEngine::CCU) {
         CommSizeInfo commSize{args_.kValue, args_.inputDtypeSize, args_.rankDim};
         AdjustCutResultForCCU(result, args_.mValue, commSize, opName_);
     } else {

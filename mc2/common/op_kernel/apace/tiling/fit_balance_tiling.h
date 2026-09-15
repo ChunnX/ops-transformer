@@ -25,6 +25,11 @@
  *   二、切分与输出层: FormPartition + CutResult 适配
  *   三、求解层: 3.1 自由长度求解器（ctx+钩子注入）/ 3.2 wave-packing 求解器
  *
+ * 统一引擎分派（三引擎接入结构完全一致, 见 CommEngine/ParseCommEngine）:
+ *   同时支持多通信模式的算子按同一模式接入——AIV_URMA 走 wave-packing 分支
+ *   （三、3.2 + AllToAll URMA 预制）, CCU/AICPU 走自由长度分支（三、3.1 +
+ *   各引擎拟合表）; 每引擎一组标定常量 + 一张表 + 一个分派点, 无任何引擎特殊路径。
+ *
  * 等价性基线: 自由长度分支 2026-09-14 P0 提取经 162 用例 bit 级验证;
  * wave-packing 分支为 v2 已验证代码（R1~R6 回归）原样迁入, 决策 golden 43 用例 bit 级复验。
  */
@@ -36,6 +41,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 // ge::DataType 经 register/tilingdata_base.h 与 tiling/tiling_api.h 的既有链路提供
@@ -258,6 +264,28 @@ struct TilingArgs {
     matmul_tiling::DataType cType;
     matmul_tiling::DataType biasType;
 };
+
+// ====== 通信引擎枚举与解析（三引擎统一分派的公共词汇）======
+enum class CommEngine {
+    AICPU,
+    CCU,
+    AIV_URMA,
+};
+
+// comm_mode 属性解析: "aiv_urma"→AIV_URMA, "ccu"→CCU, 其余(含空指针/默认"ai_cpu")→AICPU
+inline CommEngine ParseCommEngine(const char *commMode)
+{
+    if (commMode == nullptr) {
+        return CommEngine::AICPU;
+    }
+    if (strncmp(commMode, "aiv_urma", 8U) == 0) {
+        return CommEngine::AIV_URMA;
+    }
+    if (strncmp(commMode, "ccu", 3U) == 0) {
+        return CommEngine::CCU;
+    }
+    return CommEngine::AICPU;
+}
 
 // ============================================================================
 // 一、模型层
@@ -1892,6 +1920,87 @@ inline FitBalanceCut FitBalanceSchedule(const FitBalanceScheduleInput &in)
         }
     }
     return cut;
+}
+
+// ====== AllToAll→MX 量化 Matmul 的 URMA 预制（wave-packing 分支的算子无关部分;
+//      所有"通信前置 AllToAll + MX 量化计算"的 URMA 算子共用, 当前消费方
+//      allto_all_matmul_v2; 输出侧 AllToAll(quant_matmul_all_to_all 系)流量方向
+//      相反, 不适用本预制）======
+struct AllToAllMxUrmaInput {
+    // Per-rank problem shape (m is per-rank M, ka is per-rank K).
+    uint64_t m = 0;
+    uint64_t n = 0;
+    uint64_t ka = 0;
+    uint32_t rankDim = 1;
+    bool isFp4 = false;
+    uint32_t precisionMode = 0; // 0 REMOTE / 1 DEFERRED_SYNC / 2 GM 累加, 决定 effMac 分档
+
+    // Matmul tiling result from QuantMatmulTilingSwat.
+    uint64_t baseM = 256;
+    uint64_t baseN = 256;
+    uint64_t usedCoreNum = 1;
+
+    // Calibrated models chosen by the op host (算子侧标定头查表填充).
+    CommLinearModel comm;
+    MatmulTheoryModel mm;
+    FitBalanceConfig cfg;
+};
+
+struct AllToAllMxUrmaResult {
+    FitBalanceCut cut;
+    uint64_t dataNonSplitAxis = 0;  // bytes per row on the data channel (fp4 packs 2 elements per byte)
+    uint64_t scaleNonSplitAxis = 0; // bytes per row on the scale channel
+};
+
+/*!
+ * \brief Per-row bytes shipped by one AllToAll round (data + scale channels merged).
+ *
+ * MX quantised layouts (ka is per-rank K, ka % 64 == 0 is enforced by the op):
+ *   data : fp8 -> ka * 1B ; fp4 -> ka / 2B (two elements packed per byte)
+ *   scale: ceil(ka / 64) groups * 2B
+ */
+inline double MxPerRowBytes(uint64_t ka, bool isFp4)
+{
+    const double dataBytes = isFp4 ? (static_cast<double>(ka) / 2.0) : static_cast<double>(ka);
+    const double scaleBytes = static_cast<double>((ka + 63UL) / 64UL) * 2.0;
+    return dataBytes + scaleBytes;
+}
+
+// AllToAll 语义的流量折叠与调度: fanout = rankDim-1, kTotal = rankDim×ka,
+// 单轮单 rank 发送量 = fanout × mSpan × 每行字节数
+inline AllToAllMxUrmaResult ScheduleAllToAllMxUrma(const AllToAllMxUrmaInput &in)
+{
+    AllToAllMxUrmaResult res;
+    FitBalanceScheduleInput core;
+    core.m = in.m;
+    core.n = in.n;
+    core.kTotal = static_cast<uint64_t>(in.rankDim) * in.ka;
+    core.baseM = in.baseM;
+    core.baseN = in.baseN;
+    core.usedCoreNum = in.usedCoreNum;
+    core.commFanout = (in.rankDim > 1U) ? (static_cast<uint64_t>(in.rankDim) - 1UL) : 1UL;
+    core.perRowBytes = MxPerRowBytes(in.ka, in.isFp4);
+    core.comm = in.comm;
+    core.mm = in.mm;
+    core.mm.coreNum = in.usedCoreNum; // compute runs on the cores the matmul tiling picked
+    core.cfg = in.cfg;
+    res.cut = FitBalanceSchedule(core);
+    res.dataNonSplitAxis = in.isFp4 ? (in.ka / 2UL) : in.ka;
+    res.scaleNonSplitAxis = in.ka / 32UL; // MX group size 32: scale 字节数 = ka/64组×2B
+    return res;
+}
+
+// 双通道 CommTilingData 回填(data/scale 共享切分轴, 非切分轴各自)
+inline void FillMxDualChannelCommTiling(const AllToAllMxUrmaResult &res, CommTilingData &dataTiling,
+                                        CommTilingData &scaleTiling)
+{
+    dataTiling.splitAxisTileSize = res.cut.headSize;
+    dataTiling.splitAxisTileCnt = res.cut.headCnt;
+    dataTiling.splitAxisTailSize = res.cut.tailSize;
+    dataTiling.splitAxisTailCnt = res.cut.tailCnt;
+    dataTiling.nonSplitAxisSize = res.dataNonSplitAxis;
+    scaleTiling = dataTiling;
+    scaleTiling.nonSplitAxisSize = res.scaleNonSplitAxis;
 }
 
 // ============================================================================

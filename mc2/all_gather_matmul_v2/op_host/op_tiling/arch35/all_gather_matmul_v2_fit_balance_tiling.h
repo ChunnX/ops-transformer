@@ -331,10 +331,15 @@ inline CutResult ToLegacyCut(const apace::fit_balance::CutResult &cut)
 
 // apace 路径: 上下文构造 + 算子后置初始化(= 老类构造函数体逐行对应) + 统一调度
 // baseMOut(可空): 回传 matmul 基本块(调用点 AdjustCutResultForAICPU 需要)
-inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, bool isCcuMode, uint32_t *baseMOut = nullptr)
+namespace fb = apace::fit_balance; // fit-balance 家族公共层
+
+inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
+                               uint32_t *baseMOut = nullptr)
 {
-    namespace fb = apace::fit_balance;
-    // 通信拟合数据按引擎分路: commMode 选表(key 四段式不含引擎维度, 分路靠此处选表)
+    // 通信拟合数据按引擎分路: commMode 选表(key 四段式不含引擎维度, 分路靠此处选表)。
+    // 本算子 kernel 仅 HCCL 两引擎, AIV_URMA 不可达(命中时按 AICPU 表处理, 与
+    // 三引擎统一分派模式兼容——未来支持 URMA 的算子在此改走 wave-packing 分支即可)
+    const bool isCcuMode = (commEngine == fb::CommEngine::CCU);
     const fb::CommFitTable &commTable = isCcuMode ? CCU_COMM_FIT_TABLE : AICPU_COMM_FIT_TABLE;
     fb::TilingArgs apaceArgs = ToApaceTilingArgs(args);
     auto ctx = fb::InitCtx(apaceArgs, fb::KernelType::ALL_GATHER, commTable, MATMUL_PERF_TABLE,
@@ -375,11 +380,13 @@ inline CutResult ScheduleApace(const mc2tiling::TilingArgs &args, bool isCcuMode
 // 新旧切换开关: 置 false 并重新编译即整体回退老类路径（出问题时的回退手段）
 constexpr bool kUseApace = true;
 
-// 对外唯一入口：两个 GetTilingResult 调用点共用（isCcuMode = commMode 是否为 "ccu", 决定通信拟合选表）
-inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, bool isCcuMode, uint32_t *baseMOut = nullptr)
+// 对外唯一入口：两个 GetTilingResult 调用点共用（commEngine 决定通信拟合选表; 三引擎
+// 统一分派模式——调用点用 apace::fit_balance::ParseCommEngine(commMode_) 解析后传入）
+inline CutResult GetFitBalanceCut(const mc2tiling::TilingArgs &args, fb::CommEngine commEngine,
+                                  uint32_t *baseMOut = nullptr)
 {
     if (kUseApace) {
-        return ScheduleApace(args, isCcuMode, baseMOut);
+        return ScheduleApace(args, commEngine, baseMOut);
     }
     AllGatherMMFitBalanceTiling tileFormulate(args, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
     if (baseMOut != nullptr) {
