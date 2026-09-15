@@ -322,9 +322,9 @@ static uint64_t CalcTilingKey(const gert::TilingContext *context, const MegaMoeE
     if (tilingData->topoType == TOPO_TYPE_URMA) {
         topoType = TILINGKEY_TPL_URMA;
     }
-    int64_t topkIndexType = TILINGKEY_TOPK_INDEX_INT16;
-    if (topoType == TILINGKEY_TPL_MTE && !UseInt16TopkIndex(tilingData->numMaxTokensPerRank, tilingData->topK)) {
-        topkIndexType = TILINGKEY_TOPK_INDEX_INT32;
+    int64_t topkIndexType = TILINGKEY_TOPK_INDEX_INT32;
+    if (topoType == TILINGKEY_TPL_MTE && UseInt16TopkIndex(tilingData->numMaxTokensPerRank, tilingData->topK)) {
+        topkIndexType = TILINGKEY_TOPK_INDEX_INT16;
     }
 
     return GET_TPL_TILING_KEY(
