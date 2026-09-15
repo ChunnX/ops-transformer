@@ -1,0 +1,45 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file kda_input_proj_tiling_data.h
+ * \brief
+ */
+
+#ifndef KDA_INPUT_PROJ_TILING_DATA_H
+#define KDA_INPUT_PROJ_TILING_DATA_H
+
+#include <cstdint>
+
+namespace optiling {
+
+struct KdaInputProjBaseParams {
+    uint32_t tSize = 0;           // token 个数 T
+    uint32_t hiddenSize = 0;      // 隐藏层维度，如 7168
+    uint32_t qkvSize = 0;         // qkv 投影输出维度，如 4608
+    uint32_t betaSize = 0;        // beta 投影输出维度，如 12
+    uint32_t gateSize = 0;        // gate 投影输出维度，如 1536
+    uint32_t gSize = 0;           // g 投影输出维度，如 1536
+    uint32_t usedCoreNum = 0;     // 使用核数
+    uint32_t aicCoreNum = 0;      // AIC 核数
+    uint32_t aivCoreNum = 0;      // AIV 核数
+    uint32_t transWeightQkv = 1;  // 是否转置 weight_qkv
+    uint32_t transWeightBeta = 1; // 是否转置 weight_beta
+    uint32_t transWeightGate = 1; // 是否转置 weight_gate
+    uint32_t transWeightG = 1;    // 是否转置 weight_g
+};
+
+struct KdaInputProjTilingData {
+    KdaInputProjBaseParams baseParams;
+};
+
+} // namespace optiling
+
+#endif // KDA_INPUT_PROJ_TILING_DATA_H
