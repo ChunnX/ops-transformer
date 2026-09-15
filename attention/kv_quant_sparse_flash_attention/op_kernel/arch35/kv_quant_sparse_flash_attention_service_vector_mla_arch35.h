@@ -795,6 +795,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(Run
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, qsfaVec2CalcSize);
 }
 
+// AscendC::Fill 刷 GM: CleanOutput 阶段(早于 InitLocalBuffer)调用, TPipe 栈全空闲,
+// Fill 内部自取栈缓冲并自带 PipeBarrier<PIPE_MTE3> 排空, 无需外部事件同步(参照 flash_attention_score 用法)
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
 {
@@ -813,27 +815,28 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(Co
         uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
         if (constInfo.aivIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
-            GlobalTensor<OUTPUT_T> attentionOutEodGm = this->attentionOutGm[constInfo.aivIdx * singleCoreSize];
-            AscendC::Fill<OUTPUT_T>(attentionOutEodGm, singleInitOutputSize, static_cast<OUTPUT_T>(0));
+            GlobalTensor<OUTPUT_T> attentionOutInitGm = this->attentionOutGm[constInfo.aivIdx * singleCoreSize];
+            AscendC::Fill<OUTPUT_T>(attentionOutInitGm, singleInitOutputSize, static_cast<OUTPUT_T>(0));
         }
     }
 #if KVQSFA_VERSION >= 2
     if (constInfo.returnSoftmaxLse) {
-        uint64_t totalLseSize = 0;
+        uint64_t totalReturnSoftmaxSize = 0;
         if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
-            totalLseSize = constInfo.bSize * constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
+            totalReturnSoftmaxSize = constInfo.bSize * constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
         } else if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-            totalLseSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
+            totalReturnSoftmaxSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize; // (N2,T1,G)
         }
-        if (coreNum != 0 && totalLseSize > 0) {
-            uint64_t singleCoreLseSize = (totalLseSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
-            uint64_t tailLseSize = totalLseSize - constInfo.aivIdx * singleCoreLseSize;
-            uint64_t singleInitLseSize = tailLseSize < singleCoreLseSize ? tailLseSize : singleCoreLseSize;
-            if (constInfo.aivIdx * singleCoreLseSize < totalLseSize && singleInitLseSize > 0) {
-                GlobalTensor<float> softmaxSumEodGm = this->softmaxSumGm[constInfo.aivIdx * singleCoreLseSize];
-                GlobalTensor<float> softmaxMaxEodGm = this->softmaxMaxGm[constInfo.aivIdx * singleCoreLseSize];
-                AscendC::Fill<float>(softmaxSumEodGm, singleInitLseSize, static_cast<float>(0.0));
-                AscendC::Fill<float>(softmaxMaxEodGm, singleInitLseSize,
+        if (coreNum != 0 && totalReturnSoftmaxSize > 0) {
+            uint64_t singleCoreSoftmaxSize = (totalReturnSoftmaxSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
+            uint64_t tailSoftmaxSize = totalReturnSoftmaxSize - constInfo.aivIdx * singleCoreSoftmaxSize;
+            uint64_t singleInitSoftmaxSize =
+                tailSoftmaxSize < singleCoreSoftmaxSize ? tailSoftmaxSize : singleCoreSoftmaxSize;
+            if (constInfo.aivIdx * singleCoreSoftmaxSize < totalReturnSoftmaxSize && singleInitSoftmaxSize > 0) {
+                GlobalTensor<float> softmaxSumInitGm = this->softmaxSumGm[constInfo.aivIdx * singleCoreSoftmaxSize];
+                GlobalTensor<float> softmaxMaxInitGm = this->softmaxMaxGm[constInfo.aivIdx * singleCoreSoftmaxSize];
+                AscendC::Fill<float>(softmaxSumInitGm, singleInitSoftmaxSize, static_cast<float>(0));
+                AscendC::Fill<float>(softmaxMaxInitGm, singleInitSoftmaxSize,
                                      static_cast<float>(-std::numeric_limits<float>::infinity()));
             }
         }

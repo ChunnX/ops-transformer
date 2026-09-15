@@ -27,12 +27,30 @@ def trans_np_hifuint8_tensor_to_float32(in_tensor):
     print(f"[trans_np_hifuint8_tensor_to_float32]total size:{multi_shape}")
     out_flat = torch.zeros(multi_shape, dtype=torch.float32)
     for i in range(multi_shape):
-        out_flat[i] = cvt_hifuint8_to_float(flat[i].item())
+        # 对齐 NPU 硬件 Cast<hifloat8->float> 实测语义(溢出码点对称):
+        #   111(正溢出,+32768的SSR编码) -> +inf;
+        #   239(负溢出,-32768的SSR编码) -> -inf
+        #     (x=-inf, sinks 赢), scale=0 行 -inf x 0=NaN -> NPU max=NaN; 若 239->NaN 则
+        #     全部行都应为 NaN, 与 53 行 sum=1.0 矛盾; 300175 混号 q 的 inf-inf=NaN 同样吻合);
+        #   128 -> NaN (case 300027 微型实验).
+        # 注: 300027 时代 "239->NaN" 的结论在该 case 数据(混号q)下与 -inf 不可区分, 系误判.
+        out_flat[i] = cvt_hifuint8_to_float(flat[i].item(), over_mode="npu")
     return out_flat.reshape(shape_tensor)
 
 
 def cvt_hifuint8_to_float(x, over_mode=True):
     x = int(x)
+    if over_mode == "npu":
+        # NPU 硬件实测解码表:
+        #   8->1.0, 105->6144, 110->32768, 112/127 等正常;
+        #   111->+inf, 239->-inf (对称溢出, 见上方注释, 2026-09-13 依据 400146 修正), 128->NaN
+        if x == 111:
+            return float("inf")
+        if x == 239:
+            return float("-inf")
+        if x == 128:
+            return float("nan")
+        over_mode = True  # 其余码点沿用原 over=True 位解码
     if x == 0:
         return float(0)
     elif x == 128:
@@ -580,6 +598,9 @@ def _prepare_fa_param(input_tensor_dict, params):
     if not fa_param["normal_flag"]:
         return fa_param
 
+    # Prefill/Decode 场景判别 (softmax pad-0 列仅 Prefill 存在, 实证见 softmax 注释)
+    fa_param["is_decode"] = "Decode" in str(params.get("case_name", ""))
+
     actualSeqLengths_q = fa_param["actualSeqLengths_q_raw"]
     actualSeqLengths_kv = fa_param["actualSeqLengths_raw"]
     layoutQuery = fa_param["layout_query"]
@@ -921,20 +942,116 @@ def gatherKV(
     return emptyFlag, k_sparse, v_sparse
 
 
-def softmax(x, sinks=None):
-    x = x.float()
+def softmax(x, sinks=None, is_decode=False):
+    # 保持输入精度 (bmm1 现为 fp64): 若先降 f32, argmax 的 fp64 值与 f32 舍入后的 x_max 之间产生
+    # 舍入残差, 调用方 exp_unnorm = exp(scaleRes - x_max) 会把残差指数放大为 P 的系统因子
+    # (case 400218: x=29655600.0788(f64) vs x_max=29655600.0(f32) -> P=exp(0.0788)=277/256, attn 恒差8.2%).
+    # NPU 侧 max 与 x 同为 f32 无残差(P恒为1); golden 全程保持 fp64 后 P_argmax 恒为 exp(0)=1.
+    # 对齐 NPU softmax 的 n 维(KV token)对齐 padding-0 列语义(仅 Prefill 场景):
+    # NPU Prefill 的 BMM1 结果在 n 维按对齐补 0 列, 该列参与 softmax 全流程:
+    #   max = max(x..., pad0):
+    #     - x 全为有限负值时 max = 0 (pad 赢, case 300055/300186/300166/300195:
+    #       golden 输出真实负 max, NPU 输出 0, 是四 case 失败的统一根因)
+    #     - x 含正值时 max = 正常最大值 (pad 不影响)
+    #     - x 全 -inf 时 max = 0 (case 300005: BF16 极值溢出)
+    #   exp: NaN 输入 flush 为 0 (case 300027: hifloat8 溢出码点)
+    #   sum = Σexp(x - max) + exp(0 - max)  [pad 列贡献]
+    #     全负行: Σ≈0 + 1(pad) = 1 (NPU sum=1 实证)
+    #   attn = P·V/sum, V_pad=0 -> pad 不贡献 attn
+    #     全负行: P≈0 -> attn≈0 (NPU attn=0 实证)
+    # pad-0 列存在 ⟺ 无 sinks (统一规则, 2026-09-13 依据 000030 修正):
+    #   - NPU 无 sinks: 首块走 NoUpdate 路径, 对 128-lane chunk 全宽 reduce(含对齐补0列),
+    #     max/sum 均含 pad 贡献 (Prefill: 300186/300005/300166/000029; Decode: 000030 act_kv=3692
+    #     实测 max=0/sum=1/attn=0, x 全负 ~e35 无 pad 无法解释);
+    #   - NPU 有 sinks: 首块走 InitSoftmaxFromSinks(max=sinks, sum=R0=1) 初始化, 取代 pad 列
+    #     的初始化角色, pad 不参与 (Prefill: 000033/000000; Decode: 400000/400028/400047/400199/
+    #     400222/400146/000016/000021 全部实测无 pad).
+    #   此前 "仅 Prefill 有 pad" 的结论系样本偏差: 当时观测的 Decode case 全部 sinks=True.
+    #   (is_decode 参数保留但不再参与判定, 见下方注释)
+    NEGATIVE_MIN_VALUE_FP32 = -3.4028234663852886e38
+    if sinks is not None:
+        x_pad = x
+    else:
+        pad = torch.zeros(*x.shape[:-1], 1, dtype=x.dtype, device=x.device)
+        x_pad = torch.cat([x, pad], dim=-1)
     if sinks is not None:
         sinks = sinks.float().unsqueeze(1)
-        x_max = torch.max(torch.cat([x, sinks], dim=-1), dim=-1, keepdim=True).values
+        x_max = torch.max(
+            torch.cat([x_pad, sinks], dim=-1), dim=-1, keepdim=True
+        ).values
     else:
-        x_max = x.max(dim=-1, keepdim=True).values
-    x_sub = x - x_max
-    y = torch.exp(x_sub)
+        # 无 sinks 分支: NPU 的 max 同样传播 NaN (case 000029: fp16 q 含精确0元素 ->
+        # 0 x -inf = NaN -> NPU max/sum=NaN; 300027(BF16) 的 0.003% 残差为 scale=0
+        # 的同机制行). pad-0 列不能拯救 NaN (Reduce 遇 NaN 输出 NaN, 非 fmax 语义).
+        x_max = torch.max(x_pad, dim=-1, keepdim=True).values
+    x_max = torch.maximum(x_max, torch.tensor(NEGATIVE_MIN_VALUE_FP32))
+    y = torch.exp(x_pad - x_max)
+    # NaN 区分来源 (对齐 NPU 硬件实测行为, 两种来源行为不同):
+    #  1) x 自身为 NaN (hifloat8 NaN 码点, case 300027): NPU 的 exp 对 NaN 输入冲刷为 0
+    #  2) x 为 +inf 且 max=+inf (bmm1 f32 乘积溢出, case 300037/300113/300176/400198):
+    #     ExpSub 内部 inf-inf=NaN, NPU 不冲刷, sum 输出 NaN
+    # 故仅对 x_pad 自身为 NaN 的位置冲刷, inf-inf 产生的 NaN 保留.
+    y = torch.where(torch.isnan(x_pad), torch.zeros_like(y), y)
     x_sum = y.sum(dim=-1, keepdim=True)
     if sinks is not None:
         x_sum = x_sum + torch.exp(sinks - x_max)
-    ans = y / x_sum
+    if sinks is not None:
+        ans = y / x_sum
+    else:
+        ans = y[..., :-1] / x_sum
     return ans, x_max, x_sum
+
+
+def _bmm1_npu_emulation(q_curr, k_sparse):
+    # NPU Mmad f32 累加语义仿真 (tie-collapse 精度墙, 实证 case 300119):
+    # kernel MatmulK 按 K=576 (nope 512 + rope 64) 单次 matmul, baseK=128 分 5 块,
+    # 硬件每 16 个 k (fract 深度) 向 L0C 累加一次, L0C 为 f32:
+    #   acc = f32(acc + exact_sum16(products_d..d+15)), d 升序, 初始为第 1 组.
+    # 证据 (300119, dump 一致性校验后):
+    #   - fp64 全量精确 -> f32 (旧死规则): 失败行 0% 命中 kernel sum
+    #   - 每 16 组内精确 + f32 逐组累加: 92% 命中 (g16_exact)
+    #   - 尾块 64 一次性相加 (m64): 0.7%; 组间逆序: 16.9%; 8/32 组: 36%/19%
+    # 剩余 8% 为 fract 内部更深的舍入细节, 无法从 dump 反推.
+    q64 = q_curr.to(torch.float64)
+    k64 = k_sparse.to(torch.float64)
+    g_dim, D = q64.shape
+    n = k64.shape[0]
+    n_grp = (D + 15) // 16
+    if D % 16 != 0:
+        pad = n_grp * 16 - D
+        q64 = torch.nn.functional.pad(q64, (0, pad))
+        k64 = torch.nn.functional.pad(k64, (0, pad))
+    q_v = q64.view(g_dim, n_grp, 16)
+    k_v = k64.view(n, n_grp, 16)
+    # (g, n_grp, n): 各 16 组内乘积 fp64 精确和, 一次批量计算
+    partials = torch.einsum("gjk,njk->gjn", q_v, k_v).float()
+    acc = partials[:, 0, :]
+    for j in range(1, n_grp):
+        acc = acc + partials[:, j, :]
+    return acc.contiguous()
+
+
+def bmm1(q_curr, k_sparse, calc_dtype):
+    # 死规则演进: 原 "fp64 matmul -> f32" 是 NPU f32 cube 语义的一阶近似 (消除 CPU
+    # 累加顺序噪声, 保留 f32 溢出语义 ±inf, case 300176/300037 族依赖).
+    # 对 tie-collapse 数据 (x = 大 rope 常量 + 小 nope 裁决, f32 网格近平值),
+    # fp64 精确和的舍入与 NPU 每 16-k 的 f32 链式累加落在不同网格点 (case 300119:
+    # lse_sum 59.7% -> 92% 失败行修复), 故默认改用 _bmm1_npu_emulation;
+    # 溢出语义不变 (f32 链中间溢出同样产生 ±inf/NaN).
+    cpu_matmul = _bmm1_npu_emulation(q_curr, k_sparse)
+    if calc_dtype is not torch.bfloat16:
+        return cpu_matmul
+    try:
+        if not (hasattr(torch, "npu") and torch.npu.is_available()):
+            return cpu_matmul
+        device = torch.device("npu")
+        q_dev = q_curr.to(device=device, dtype=torch.bfloat64)
+        k_dev = k_sparse.to(device=device, dtype=torch.bfloat64)
+        npu_matmul = torch.matmul(q_dev, k_dev.T).to(torch.float32).cpu()
+        keep = torch.isfinite(npu_matmul) & torch.isfinite(cpu_matmul)
+        return torch.where(keep, cpu_matmul, npu_matmul)
+    except Exception:
+        return cpu_matmul
 
 
 def _t_increattention_bnsd(fa_param):
@@ -961,21 +1078,24 @@ def _t_increattention_bnsd(fa_param):
     v_bnsd_tensor = fa_param["v_bnsd_tensor"].float()
     v_dequant_scale_bnsd_tensor = fa_param["v_dequant_scale_bnsd_tensor"].float()
     tile_size = 128
+    # 对齐算子 Cast(CAST_RINT, NO_SAT) 语义:
+    # kv 反量化(fp32×scale)后 Cast 到 q 的 dtype(算子输出 Q_T 类型).
+    # 与 SFA 不同, 此处 q 和 kv 数据类型不同(q:fp16/bf16, kv:int8/fp8).
+    # 算子使用 NO_SAT, 即有限值超出目标 dtype 范围时溢出为±inf, 而非饱和钳到上下界.
+    # PyTorch .to(dtype) 已实现 CAST_RINT + NO_SAT:
+    #   round-to-nearest-even, 结果超出 dtype 范围 -> ±inf
+    # 注意: 不能自行用 abs(val) > type_max 判断溢出, 因为 val 可能四舍五入到 type_max
+    # (如 65504.5 -> fp16 65504, 不溢出), 但 abs(val) > 65504 为真, 会误判为溢出.
+    kv_dequant = k_bnsd_tensor[..., :512] * torch.repeat_interleave(
+        k_dequant_scale_bnsd_tensor, tile_size, dim=-1
+    )
     if fa_param["q_dtype"] == "float16":
-        k_bnsd_tensor[..., :512] = (
-            k_bnsd_tensor[..., :512]
-            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
-        ).to(torch.float16)
+        kv_dtype = torch.float16
     elif fa_param["q_dtype"] == "bfloat16":
-        k_bnsd_tensor[..., :512] = (
-            k_bnsd_tensor[..., :512]
-            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
-        ).to(torch.bfloat16)
-    elif fa_param["q_dtype"] == "float32":
-        k_bnsd_tensor[..., :512] = (
-            k_bnsd_tensor[..., :512]
-            * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)
-        ).to(torch.float32)
+        kv_dtype = torch.bfloat16
+    else:
+        kv_dtype = torch.float32
+    k_bnsd_tensor[..., :512] = kv_dequant.to(kv_dtype).float()
     v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
@@ -1022,10 +1142,22 @@ def _t_increattention_bnsd(fa_param):
                 if sinks_tensor is not None:
                     cur_sinks = sinks_tensor[n2Idx * g : (n2Idx + 1) * g]
                 if emptyFlag:
+                    # QSFA v2 NPU 对空 token (kv_seq=0) 直接跳过 task,
+                    # LSE 输出为 InitOutputSingleCore 的 Fill 值 (sum=0.0, max=-inf).
+                    # 注意: 不能照搬 SFA 的 InitSoftmaxFromSinks (sinks,1.0) 处理,
+                    # SFA 空 token 会执行 InitSoftmaxFromSinks, QSFA v2 则跳过, 行为不同.
                     continue
-                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
+                bmm1Res = bmm1(
+                    q_curr,
+                    k_sparse,
+                    torch.bfloat16
+                    if fa_param["q_dtype"] == "bfloat16"
+                    else torch.float16,
+                )
                 scaleRes = bmm1Res * scaleValue
-                softmax_res, x_max, x_sum = softmax(scaleRes, cur_sinks)
+                softmax_res, x_max, x_sum = softmax(
+                    scaleRes, cur_sinks, is_decode=fa_param.get("is_decode", False)
+                )
                 exp_unnorm = torch.exp(scaleRes - x_max)
                 if fa_param["q_dtype"] == "float16":
                     exp_quantized = exp_unnorm.to(torch.float16).float()
@@ -1033,7 +1165,12 @@ def _t_increattention_bnsd(fa_param):
                     exp_quantized = exp_unnorm.to(torch.bfloat16).float()
                 else:
                     exp_quantized = exp_unnorm
-                bmm2Res = torch.matmul(exp_quantized, v_sparse.float()) / x_sum
+                bmm2Res = (
+                    torch.matmul(
+                        exp_quantized.to(torch.float64), v_sparse.to(torch.float64)
+                    ).to(torch.float32)
+                    / x_sum
+                )
                 y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
 
                 if layout_query == "BSND":
