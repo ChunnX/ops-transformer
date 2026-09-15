@@ -1,0 +1,11 @@
+# Basic Concepts
+-   [Two-Phase APIs](./two_phase_api.md)
+-   [Data Structures](./data_structures.md)
+-   [Data Types](./data_types.md)
+-   [Data Formats](./data_formats.md)
+-   [non-contiguous tensor](./non_contiguous_tensors.md)
+-   [Broadcast Relationship](./broadcast_relationship.md)
+-   [deduction relationship](./deduction_relationship.md)
+-   [conversion relationship](./conversion_relationship.md)
+-   [Quantization Introduction](./quantization_introduction.md)
+-   [Sparse Mode Introduction](./sparse_mode_parameter_description.md)
