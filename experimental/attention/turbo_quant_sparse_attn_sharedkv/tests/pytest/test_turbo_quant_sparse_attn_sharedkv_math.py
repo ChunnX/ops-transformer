@@ -70,7 +70,9 @@ def _dequant_byte_lut(slots, scales):
     byte_lut = _make_tq4_byte_lut()
     packed_pairs = byte_lut[slots[:, :PACKED_BYTES]].view(np.uint16)
     centroids = _bf16_bits_to_float32(packed_pairs.reshape(slots.shape[0], HEAD_DIM))
-    scaled = centroids * np.asarray(scales, dtype=np.float16).astype(np.float32)[:, None]
+    scaled = (
+        centroids * np.asarray(scales, dtype=np.float16).astype(np.float32)[:, None]
+    )
     return _float32_to_bf16_bits(scaled)
 
 
@@ -313,7 +315,9 @@ def test_mtp_tile_mask_matches_per_token_sliding_window():
     tile_right = kv_length - query_length + tile_query_end
     tile_keys = np.arange(tile_left, tile_right + 1)
 
-    tiled_mask = np.empty((tile_query_end - tile_query_start + 1, tile_keys.size), dtype=bool)
+    tiled_mask = np.empty(
+        (tile_query_end - tile_query_start + 1, tile_keys.size), dtype=bool
+    )
     for row, query_pos in enumerate(range(tile_query_start, tile_query_end + 1)):
         row_left = max(kv_length - query_length + query_pos - window_left, 0)
         row_right = kv_length - query_length + query_pos

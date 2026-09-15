@@ -46,12 +46,9 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {METADATA_NAME, {ge::DT_INT32}}};
 
 const std::map<std::string, std::vector<SASLayout>> LAYOUT_SUPPORT_MAP = {
-    {QUERY_NAME, {SASLayout::BSND, SASLayout::TND}},
-    {ORI_KV_NAME, {SASLayout::PA_BSND, SASLayout::PA_BNSD}},
-    {CMP_KV_NAME, {SASLayout::PA_BSND, SASLayout::PA_BNSD}},
-    {ATTEN_OUT_NAME, {SASLayout::BSND, SASLayout::TND}},
-    {ORI_SPARSE_INDICES, {SASLayout::BSND, SASLayout::TND}},
-    {CMP_SPARSE_INDICES, {SASLayout::BSND, SASLayout::TND}},
+    {QUERY_NAME, {SASLayout::BSND, SASLayout::TND}},         {ORI_KV_NAME, {SASLayout::PA_BSND, SASLayout::PA_BNSD}},
+    {CMP_KV_NAME, {SASLayout::PA_BSND, SASLayout::PA_BNSD}}, {ATTEN_OUT_NAME, {SASLayout::BSND, SASLayout::TND}},
+    {ORI_SPARSE_INDICES, {SASLayout::BSND, SASLayout::TND}}, {CMP_SPARSE_INDICES, {SASLayout::BSND, SASLayout::TND}},
 };
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
@@ -774,7 +771,7 @@ ge::graphStatus TQSASInfoParser::GetActualseqInfo()
         if (opParamInfo_.sequsedKv.tensor != nullptr) {
             if (qLayout_ == SASLayout::BSND) {
                 if (opParamInfo_.sequsedKv.tensor->GetShapeSize() != bSize_) {
-                            OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u, but got %ld.", bSize_,
+                    OP_LOGE(opName_, "seqused_ori_kv's dimension should be equal to %u, but got %ld.", bSize_,
                             opParamInfo_.sequsedKv.tensor->GetShapeSize());
                     return ge::GRAPH_FAILED;
                 }
@@ -1389,14 +1386,14 @@ ge::graphStatus TQSASTilingCheck::CheckFeatureShape() const
                 return ge::GRAPH_FAILED);
     uint64_t minOriKvStride = static_cast<uint64_t>(oriBlockSize_) * n2Size_ * oriKvHeadDim_;
     uint64_t minCmpKvStride = static_cast<uint64_t>(cmpBlockSize_) * n2Size_ * TQ4_SLOT_SIZE;
-    OP_CHECK_IF(sasInfo_.oriKvStride0 < minOriKvStride,
-                OP_LOGE(opName_, "ori_kv stride must cover one physical cache block (at least %lu elements).",
-                        minOriKvStride),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sasInfo_.cmpKvStride0 < minCmpKvStride,
-                OP_LOGE(opName_, "cmp_kv stride must cover one physical cache block (at least %lu bytes).",
-                        minCmpKvStride),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        sasInfo_.oriKvStride0 < minOriKvStride,
+        OP_LOGE(opName_, "ori_kv stride must cover one physical cache block (at least %lu elements).", minOriKvStride),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        sasInfo_.cmpKvStride0 < minCmpKvStride,
+        OP_LOGE(opName_, "cmp_kv stride must cover one physical cache block (at least %lu bytes).", minCmpKvStride),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpKvType_ != ge::DT_UINT8, OP_LOGE(opName_, "cmp_kv must be DT_UINT8."), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(*opParamInfo_.oriMaskMode != 4,

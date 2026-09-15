@@ -155,16 +155,13 @@ private:
     static constexpr uint32_t TQ4_DEQUANT_BATCH_ROWS =
         TQ4_FAST_BF16 ? TQ4_FAST_DEQUANT_BATCH_ROWS :
                         (ConstInfo::BUFFER_SIZE_BYTE_32K - TQ4_RAW_BUFFER_BYTES) / TQ4_SLOW_DEQUANT_BYTES_PER_ROW;
-    static constexpr uint32_t TQ4_PACKED_BATCH_BYTES =
-        TQ4_FAST_BF16 ? TQ4_DEQUANT_BATCH_ROWS * TQ4_PACKED_BYTES : 0U;
+    static constexpr uint32_t TQ4_PACKED_BATCH_BYTES = TQ4_FAST_BF16 ? TQ4_DEQUANT_BATCH_ROWS * TQ4_PACKED_BYTES : 0U;
     static constexpr uint32_t TQ4_WORK_BYTES =
         TQ4_FAST_BF16 ? 0U : TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(float);
     static constexpr uint32_t TQ4_LOOKUP_ELEMENT_COUNT =
-        TQ4_FAST_BF16 ? TQ4_DEQUANT_BATCH_ROWS * TQ4_PACKED_BYTES :
-                        TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM;
+        TQ4_FAST_BF16 ? TQ4_DEQUANT_BATCH_ROWS * TQ4_PACKED_BYTES : TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM;
     static constexpr uint32_t TQ4_SIGNED_BYTES = TQ4_LOOKUP_ELEMENT_COUNT * sizeof(half);
-    static constexpr uint32_t TQ4_INDEX_BYTES =
-        TQ4_FAST_BF16 ? 0U : TQ4_LOOKUP_ELEMENT_COUNT * sizeof(int32_t);
+    static constexpr uint32_t TQ4_INDEX_BYTES = TQ4_FAST_BF16 ? 0U : TQ4_LOOKUP_ELEMENT_COUNT * sizeof(int32_t);
     static constexpr uint32_t TQ4_SIGNED_OFFSET = TQ4_PACKED_BATCH_BYTES + TQ4_WORK_BYTES;
     static constexpr uint32_t TQ4_INDEX_OFFSET = TQ4_SIGNED_OFFSET + TQ4_SIGNED_BYTES;
     static constexpr uint32_t TQ4_RAW_OFFSET = TQ4_INDEX_OFFSET + TQ4_INDEX_BYTES;
@@ -193,17 +190,14 @@ private:
     static_assert(!TQ4_FAST_BF16 ||
                       TQ4_DEQUANT_BATCH_ROWS * TQ4_HEAD_DIM * sizeof(float) <= ConstInfo::BUFFER_SIZE_BYTE_32K,
                   "TQ4 BF16 scale work exceeds outputBuff1");
-    static_assert(!TQ4_FAST_BF16 ||
-                      TQ4_LOOKUP_ELEMENT_COUNT * sizeof(int32_t) <= ConstInfo::BUFFER_SIZE_BYTE_32K,
+    static_assert(!TQ4_FAST_BF16 || TQ4_LOOKUP_ELEMENT_COUNT * sizeof(int32_t) <= ConstInfo::BUFFER_SIZE_BYTE_32K,
                   "TQ4 BF16 indices exceed outputBuff1");
     static_assert(TQ4_SCALE_GATHER_INDEX_OFFSET + TQ4_SCALE_GATHER_INDEX_BYTES <= ConstInfo::BUFFER_SIZE_BYTE_256B,
                   "TQ4 scale gather indices overlap tqCentBuff");
     static_assert(TQ4_SCALE_CARRIER_BYTES + TQ4_DEQUANT_BATCH_ROWS * sizeof(half) <= TQ4_SIGNED_BYTES,
                   "TQ4 scale extraction exceeds signed-code scratch");
-    static_assert((TQ4_FAST_BF16 &&
-                   TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_PACKED_BATCH_BYTES) ||
-                      (!TQ4_FAST_BF16 &&
-                       TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_INDEX_BYTES),
+    static_assert((TQ4_FAST_BF16 && TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_PACKED_BATCH_BYTES) ||
+                      (!TQ4_FAST_BF16 && TQ4_SCALE_BROADCAST_OFFSET + TQ4_SCALE_BROADCAST_BYTES <= TQ4_INDEX_BYTES),
                   "TQ4 scale broadcast exceeds index scratch");
     static_assert(TQ4_TOPK_CACHE_BYTES <= TQ4_BLOCK_TABLE_CACHE_OFFSET, "TQ4 index caches overlap in v0ValidSizeBuff");
     static constexpr T SOFTMAX_MIN_NUM = -2e38;
@@ -298,16 +292,14 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::InitBu
                     uint32_t bits;
                 } highCentroid;
                 highCentroid.value = centroids.GetValue(high ^ 8U);
-                uint32_t highBits =
-                    (highCentroid.bits + 0x7FFFU + ((highCentroid.bits >> 16U) & 1U)) >> 16U;
+                uint32_t highBits = (highCentroid.bits + 0x7FFFU + ((highCentroid.bits >> 16U) & 1U)) >> 16U;
                 for (uint32_t low = 0; low < 16U; ++low) {
                     union {
                         float value;
                         uint32_t bits;
                     } lowCentroid;
                     lowCentroid.value = centroids.GetValue(low ^ 8U);
-                    uint32_t lowBits =
-                        (lowCentroid.bits + 0x7FFFU + ((lowCentroid.bits >> 16U) & 1U)) >> 16U;
+                    uint32_t lowBits = (lowCentroid.bits + 0x7FFFU + ((lowCentroid.bits >> 16U) & 1U)) >> 16U;
                     byteLut.SetValue(high * 16U + low, (highBits << 16U) | lowBits);
                 }
             }
@@ -485,8 +477,8 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Elewis
     // before softmax instead of allowing stale merge-cache rows to contribute.
     if (info.isOriOnly) {
         uint32_t rowBase = mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
-        int64_t tileStart = static_cast<int64_t>(info.s2StartPoint) +
-                            static_cast<int64_t>(info.s2Idx) * constInfo.s2BaseSize;
+        int64_t tileStart =
+            static_cast<int64_t>(info.s2StartPoint) + static_cast<int64_t>(info.s2Idx) * constInfo.s2BaseSize;
         for (uint32_t row = 0; row < dealRowCount; ++row) {
             uint32_t qRel = (rowBase + row) / constInfo.gSize;
             int64_t queryPos = static_cast<int64_t>(info.s1Idx) + qRel;
@@ -780,8 +772,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaBlockVector<SAST>::Dequan
     LocalTensor<half> slotHalf = slots.template ReinterpretCast<half>();
     LocalTensor<half> scaleCarriers = signedCodes;
     LocalTensor<half> scalesFp16 = signedCodes[TQ4_SCALE_CARRIER_BYTES / sizeof(half)];
-    LocalTensor<float> scalesFp32 =
-        TQ4_FAST_BF16 ? tmpBuff1.Get<float>() : indices.template ReinterpretCast<float>();
+    LocalTensor<float> scalesFp32 = TQ4_FAST_BF16 ? tmpBuff1.Get<float>() : indices.template ReinterpretCast<float>();
     LocalTensor<float> scalesBrcb = scalesFp32[TQ4_SCALE_BROADCAST_OFFSET / sizeof(float)];
     LocalTensor<uint32_t> scaleGatherIndices =
         tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];

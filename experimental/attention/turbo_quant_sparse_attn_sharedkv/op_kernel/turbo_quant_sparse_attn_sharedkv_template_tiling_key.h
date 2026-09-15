@@ -41,7 +41,7 @@ ASCENDC_TPL_ARGS_DECL(TurboQuantSparseAttnSharedkv, // 算子OpType
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(FLASH_DECODE, 0),
                                      ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, SAS_LAYOUT_TND),
                                      ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, SAS_LAYOUT_PA_BSND,
-                                                         SAS_LAYOUT_PA_BNSD),
+                                                          SAS_LAYOUT_PA_BNSD),
                                      ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST, SCFA_TEMPLATE)));
 
 #endif // TURBO_QUANT_SPARSE_ATTN_SHAREDKV_TEMPLATE_TILING_KEY_H

@@ -45,9 +45,8 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
     const c10::optional<at::Tensor> &cmpResidualKv, const c10::optional<at::Tensor> &oriTopkLength,
     const c10::optional<at::Tensor> &cmpTopkLength, const c10::optional<at::Tensor> &sinks,
     const c10::optional<at::Tensor> &metadata, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
-    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ,
-    c10::string_view layoutKv, int64_t topkValueMode, bool returnSoftmaxLse, int64_t oriKvStride,
-    int64_t cmpKvStride, int64_t kvQuantMode)
+    int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ, c10::string_view layoutKv,
+    int64_t topkValueMode, bool returnSoftmaxLse, int64_t oriKvStride, int64_t cmpKvStride, int64_t kvQuantMode)
 {
     std::string layoutQStr(layoutQ);
     std::string layoutKvStr(layoutKv);
