@@ -68,6 +68,8 @@ public:
     static constexpr uint32_t DN_VSELR_GROUP_SIZE = DN_VSELR_INDEX_SIZE / DN_VSELR_GROUP_NUM;
     static constexpr uint32_t ATTEN_MASK_UB_SIZE = S2_SPLIT * VEC_M_BASE;
     static constexpr uint32_t MASK_COPY_BLOCK_BYTES = 32U;
+    // CTRL[60] 控制 Cast 溢出模式来源：0 使用指令 CastTrait::SatMode，1 使用全局 CTRL[48]。
+    static constexpr uint32_t CAST_SAT_MODE_CTRL_BIT = 60U;
     // VF 输出的 P 使用 DN packed layout：每个 AIV 处理 VEC_M_BASE 行，每行 S2_SPLIT 个 P 元素，
     // 并额外保留 S2_SPLIT / MX_SCALE_GROUP 个元素作为行内 padding/重排空间。
     static constexpr uint32_t STAGE1_CAST_ROW_STRIDE = S2_SPLIT + S2_SPLIT / MX_SCALE_GROUP;
@@ -359,10 +361,14 @@ private:
                                      const MxConstInfo &constInfo, uint32_t s2CalcSize)
     {
         static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
+        // V1 的 FP32->E4M3 量化需按 CastTrait::SAT 饱和到有限值；调用后恢复，避免影响 V2 FP32->BF16。
+        const int64_t originalOverflowMode = AscendC::GetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>();
+        AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(0);
         FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, IS_UPDATE, VF_HAS_ATTEN, S2_SPLIT, SUB_LOOP>(
             stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
             s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), pScaleValue_, negativeFloatScalar_, preLoopMaxUb,
             preLoopSumUb, firstLoopSumUb);
+        AscendC::SetCtrlSpr<CAST_SAT_MODE_CTRL_BIT, CAST_SAT_MODE_CTRL_BIT>(originalOverflowMode);
     }
 
     template <bool VF_HAS_ATTEN, uint32_t SUB_LOOP>
