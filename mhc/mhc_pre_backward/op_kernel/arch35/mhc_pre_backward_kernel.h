@@ -925,6 +925,9 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
 {
     if (GetBlockIdx() >= v1UsedCubeCoreNum_) {
+        // Init seeds ownership tokens on every AIC. Inactive AICs must consume them as well, otherwise the
+        // unpaired events can leak into a later launch and corrupt the L1/L0 pipeline state.
+        cubeCompute_.End();
         return;
     }
     bool enableHf32 = tiling_->implMode == MHC_PRE_BACKWARD_IMPL_MODE_HF32;
