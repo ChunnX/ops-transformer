@@ -365,7 +365,7 @@ aclnnStatus aclnnFfnWorkerBatchingV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+完整示例：[test_aclnn_ffn_worker_batching_v2.cpp](../examples/test_aclnn_ffn_worker_batching_v2.cpp)。示例代码如下，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -540,6 +540,8 @@ int main()
     scheduleContext.common.micro_batch_size = 8;
     scheduleContext.common.selected_expert_num = 9; // topK + 1
     scheduleContext.common.expert_num = 8;
+    scheduleContext.common.attn_to_ffn_token_size = 512;
+    scheduleContext.common.ffn_to_attn_token_size = 512;
     scheduleContext.common.schedule_mode = 0; // Ffn only
     scheduleContext.control.run_flag = 1;     // running
     scheduleContext.ffn.polling_index = 0;
@@ -550,9 +552,9 @@ int main()
     int64_t BS = scheduleContext.common.micro_batch_size;   // micro batch size
     int64_t K = scheduleContext.common.selected_expert_num; // topK + 1
     int64_t H = 4096;                                       // hidden size
-    // 本例为FP16，源行步长必须覆盖H个元素；不能用固定512字节代替载荷长度。
-    scheduleContext.common.attn_to_ffn_token_size = static_cast<uint32_t>(H * sizeof(int16_t));
-    scheduleContext.common.ffn_to_attn_token_size = scheduleContext.common.attn_to_ffn_token_size;
+    scheduleContext.common.attn_to_ffn_token_size = H * sizeof(int16_t);
+    scheduleContext.common.ffn_to_attn_token_size = H * sizeof(int16_t);
+    scheduleContext.ffn.out_num = A;
     int64_t Y = A * BS * K;
     std::vector<int64_t> maxOutShapeValue = {A, BS, K, H};
     int64_t tokenDtype = 0;   // FP16
@@ -642,8 +644,6 @@ int main()
     scheduleContext.ffn.micro_batch_ids_buf_size = idsBufSize;
     scheduleContext.ffn.layer_ids_buf = reinterpret_cast<uint64_t>(layerIdsBuf);
     scheduleContext.ffn.layer_ids_buf_size = idsBufSize;
-    // NORM只消费前out_num个session；本例全部A个session有效。
-    scheduleContext.ffn.out_num = static_cast<uint32_t>(A);
 
     std::vector<int8_t> hostCtxData(1024, 0);
     std::memcpy(hostCtxData.data(), &scheduleContext, sizeof(ScheduleContext));
@@ -703,9 +703,9 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     ret = aclnnFfnWorkerBatchingV2GetWorkspaceSize(scheduleContextRef, expertNum, maxOutShapeArray, tokenDtype,
-                                                 needSchedule, layerNum, 0 /* syncFlag */, yRef, groupListRef, sessionIdsRef,
-                                                 microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
-                                                 actualTokenNumRef, &workspaceSize, &executor);
+                                                   needSchedule, layerNum, 0, yRef, groupListRef, sessionIdsRef,
+                                                   microBatchIdsRef, tokenIdsRef, expertOffsetsRef, dynamicScaleRef,
+                                                   actualTokenNumRef, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFfnWorkerBatchingV2GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -736,6 +736,18 @@ int main()
         LOG_PRINT("group_list[%ld] = [expert_id=%ld, token_num=%ld]\n", i, groupListHost[i * 2],
                   groupListHost[i * 2 + 1]);
     }
+
+    CHECK_RET(actualTokenNum == Y, LOG_PRINT("unexpected token count\n"); return 1);
+    for (int64_t i = 0; i < expertNum; ++i) {
+        CHECK_RET(groupListHost[i * 2] == i && groupListHost[i * 2 + 1] == Y / expertNum,
+                  LOG_PRINT("unexpected expert group\n");
+                  return 1);
+    }
+    std::vector<int16_t> yHost(Y * H);
+    ret = aclrtMemcpy(yHost.data(), tokenDataSize, yDeviceAddr, tokenDataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    CHECK_RET(yHost == hostTokenData, LOG_PRINT("unexpected token data\n"); return 1);
+    LOG_PRINT("PASS: token count, expert groups and token data\n");
 
     // 6. 释放aclTensor与aclIntArray
     aclDestroyTensor(scheduleContextRef);
