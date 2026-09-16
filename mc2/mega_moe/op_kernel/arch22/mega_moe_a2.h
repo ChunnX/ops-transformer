@@ -50,7 +50,6 @@ using namespace AscendC;
 #include "utils/block_epilogue_pertoken_v2.hpp"
 // A2 kernel
 #include "mega_moe_kernel_a2.hpp"
-#include "mega_moe_kernel_a2_bf16.hpp"
 #include "mega_moe_kernel_a2_bf16_w4a8.hpp"
 
 namespace MegaMoeA2Impl {
@@ -408,8 +407,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     } else {
         epilogueCoreNum = static_cast<uint32_t>(aivNum_); // 所有 AIV 参与
         epilogueGranularity = (expertPerRank_ > 2) ? static_cast<uint32_t>(expertPerRank_ - 2) : 1u;
-        using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2BF16<BlockMmad, BlockScheduler, ElementGroupList,
-                                                               BlockEpilogue1, BlockEpilogue2>;
+        using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2<BlockMmad, BlockScheduler, ElementGroupList, BlockEpilogue1,
+                                                           BlockEpilogue2, false>;
         typename MatmulKernel::Params params{problemShape,
                                              static_cast<uint32_t>(epWorldSize_),
                                              static_cast<uint32_t>(listLen_),
