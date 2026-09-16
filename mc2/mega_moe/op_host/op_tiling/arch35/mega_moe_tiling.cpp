@@ -201,35 +201,10 @@ static int64_t GetSingleExpertTensorDimSize(const gert::StorageShape *tensorShap
 } // namespace
 
 /*
- * 输出问题规模、执行模式以及各阶段自适应缓冲区配置，供 tiling 诊断使用。
+ * 输出各阶段的 UB 分批及缓冲区配置。
  */
-void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
+static void PrintMegaMoeBufferConfigs(const MegaMoeTilingData *tilingData, const char *nodeName)
 {
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
-    OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-
-    // 问题规模、专家拓扑及执行模式。
-    OP_LOGD(nodeName,
-            "shape: bs=%u, numMaxTokensPerRank=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, "
-            "isPerExpertWeightTensor=%d",
-            tilingData->bs, tilingData->numMaxTokensPerRank, tilingData->h, tilingData->hiddenDim, tilingData->topK,
-            tilingData->maxOutputSize, tilingData->isPerExpertWeightTensor);
-    OP_LOGD(nodeName,
-            "topology: moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, blockAivNum=%u, "
-            "blockNumPerEP=%u, topoType=%ld, rankNumPerServer=%u",
-            tilingData->moeExpertPerRank, tilingData->sharedExpertNum, tilingData->epWorldSize, tilingData->aicNum,
-            tilingData->blockAivNum, tilingData->blockNumPerEP, tilingData->topoType, tilingData->rankNumPerServer);
-    OP_LOGD(nodeName,
-            "mode: moeGmmMode=%u, sharedGmmMode=%u, isSharedQuantIndependent=%u, combineQuantMode=%ld, "
-            "clampLimit=%f",
-            static_cast<uint32_t>(tilingData->moeGmmMode), static_cast<uint32_t>(tilingData->sharedGmmMode),
-            static_cast<uint32_t>(tilingData->isSharedQuantIndependent), tilingData->combineQuantMode,
-            tilingData->clampLimit);
-    OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
-    OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
-    OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
-
-    // 各阶段的 UB 分批及缓冲区配置。
     const auto &dispatchConfig = tilingData->dispatchBufferConfig;
     OP_LOGD(nodeName, "dispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
             dispatchConfig.routeItemsPerBatch, dispatchConfig.routeBatchCount, dispatchConfig.bufferCount,
@@ -262,6 +237,38 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.tokensPerBatch, unpermuteTailChunkConfig.inputBufferCount,
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
+}
+
+/*
+ * 输出问题规模、执行模式以及各阶段自适应缓冲区配置，供 tiling 诊断使用。
+ */
+void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
+{
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
+    OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
+
+    // 问题规模、专家拓扑及执行模式。
+    OP_LOGD(nodeName,
+            "shape: bs=%u, numMaxTokensPerRank=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u, "
+            "isPerExpertWeightTensor=%d",
+            tilingData->bs, tilingData->numMaxTokensPerRank, tilingData->h, tilingData->hiddenDim, tilingData->topK,
+            tilingData->maxOutputSize, tilingData->isPerExpertWeightTensor);
+    OP_LOGD(nodeName,
+            "topology: moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, blockAivNum=%u, "
+            "blockNumPerEP=%u, topoType=%ld, rankNumPerServer=%u",
+            tilingData->moeExpertPerRank, tilingData->sharedExpertNum, tilingData->epWorldSize, tilingData->aicNum,
+            tilingData->blockAivNum, tilingData->blockNumPerEP, tilingData->topoType, tilingData->rankNumPerServer);
+    OP_LOGD(nodeName,
+            "mode: moeGmmMode=%u, sharedGmmMode=%u, isSharedQuantIndependent=%u, combineQuantMode=%ld, "
+            "clampLimit=%f",
+            static_cast<uint32_t>(tilingData->moeGmmMode), static_cast<uint32_t>(tilingData->sharedGmmMode),
+            static_cast<uint32_t>(tilingData->isSharedQuantIndependent), tilingData->combineQuantMode,
+            tilingData->clampLimit);
+    OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
+    OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
+    OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
+
+    PrintMegaMoeBufferConfigs(tilingData, nodeName);
 }
 
 /*
@@ -2539,6 +2546,21 @@ static ge::graphStatus CheckAndSetExpertExecutionParams(const gert::TilingContex
 }
 
 /*
+ * 校验并设置 token 容量属性，同时检查 CCL 缓冲区容量。
+ */
+static ge::graphStatus CheckAndSetCapacityAttrs(const gert::TilingContext *context, const MegaMoeConfig &config,
+                                               MegaMoeTilingData *tilingData, const char *nodeName)
+{
+    OP_TILING_CHECK(CheckAndSetMaxTokensPerRankAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "maximum tokens per rank is invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAndSetMaxRecvTokenNumAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "maximum received token count is invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckCclBufferCapacity(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "CCL buffer capacity is insufficient."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+/*
  * 读取并校验平台 AIC/AIV 数量与 UB 容量，同时写入 kernel 分核所需字段。
  */
 static ge::graphStatus CheckAndSetPlatformParams(gert::TilingContext *context, MegaMoeTilingData *tilingData,
@@ -2620,12 +2642,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         OP_LOGE(nodeName, "expert execution parameters are invalid."), return ge::GRAPH_FAILED);
 
     // 容量属性：num_max_tokens_per_rank、max_recv_token_num 和 ccl_buffer_size。
-    OP_TILING_CHECK(CheckAndSetMaxTokensPerRankAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "maximum tokens per rank is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckAndSetMaxRecvTokenNumAttr(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "maximum received token count is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckCclBufferCapacity(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "CCL buffer capacity is insufficient."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAndSetCapacityAttrs(context, config, tilingData, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "capacity attributes are invalid."), return ge::GRAPH_FAILED);
 
     // 平台与资源规划。
     uint32_t aicNum = 0U;
