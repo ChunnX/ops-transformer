@@ -27,74 +27,66 @@
 
 - **计算公式**：
 
-    记 token 数为 $T$（BSND 格式下 $T=B\times S$），超连接路数为 $N$，hidden size 为 $D$。
+    以下公式按保留 B、S 前导维的 `[B,S,...]` 形式表示；`[T,...]` 形式将 `B*S` 展平为 `T`，后续维度保持不变。
 
     RMSNorm_0：
 
     $$
-    x_{1,t,d} =
-    \operatorname{Cast}_{dtype(h\_out)}
-    \left(
-    \frac{h\_out_{t,d}}
-    {\sqrt{\frac{1}{D}\sum_{i=0}^{D-1}h\_out_{t,i}^{2}+norm\_eps}}
-    \cdot gamma\_0_d
-    \right)
+    \begin{aligned}
+    h\_out\_fp32_{b,s,d} &= \operatorname{FP32}(h\_out_{b,s,d}), \\
+    inv\_rms\_0_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}h\_out\_fp32_{b,s,i}^{2}+norm\_eps\right), \\
+    x\_1_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(h\_out\_fp32_{b,s,d}\cdot inv\_rms\_0_{b,s}\cdot gamma\_0_d\right).
+    \end{aligned}
     $$
 
     MHC_Post：
 
     $$
-    x^{raw}_{2,t,n,d} =
-    h\_post_{t,n}\cdot x_{1,t,d}
-    +\sum_{j=0}^{N-1}h\_res_{t,j,n}\cdot residual_{t,j,d}
+    \begin{aligned}
+    term1_{b,s,n,d} &= \operatorname{FP32}(h\_post_{b,s,n})\cdot \operatorname{FP32}(x\_1_{b,s,d}), \\
+    term2_{b,s,n,d} &= \sum_{j=0}^{N-1}\operatorname{FP32}(h\_res_{b,s,j,n})\cdot \operatorname{FP32}(residual_{b,s,j,d}), \\
+    x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(term1_{b,s,n,d}+term2_{b,s,n,d}\right).
+    \end{aligned}
     $$
+
+    其中 `j` 为归约 head，`n` 为输出 head。
 
     当 `gamma_2` 非空时，在 $N\times D$ 维执行 RMSNorm_mid；为空时跳过：
 
     $$
-    x_{2,t,n,d} =
-    \operatorname{Cast}_{dtype(h\_out)}
-    \left(
-    \frac{x^{raw}_{2,t,n,d}}
-    {\sqrt{\frac{1}{ND}\sum_{k=0}^{ND-1}(x^{raw}_{2,t,k})^2+norm\_eps}}
-    \cdot gamma\_2_{n,d}
-    \right)
+    \begin{aligned}
+    x\_2\_flat &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+    inv\_rms\_mid_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_flat_{b,s,k}^{2}+norm\_eps\right), \\
+    x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\operatorname{reshape}\left(x\_2\_flat\cdot inv\_rms\_mid\cdot gamma\_2,[B,S,N,D]\right)_{b,s,n,d}\right).
+    \end{aligned}
     $$
+
+    当 `gamma_2` 为空时，跳过本阶段，`x_2` 保持 MHC_Post 的输出；随后固定保存 $x\_2\_out=x\_2$。
 
     MHC_Pre（PreOnly）：
 
     $$
-    inv\_rms_{pre,t} =
-    \frac{1}
-    {\sqrt{\frac{1}{ND}\sum_{k=0}^{ND-1}x_{2,t,k}^{2}+mhc\_pre\_norm\_eps}}
-    $$
-
-    $$
-    x_{pre,t,n} =
-    \left(\sum_{k=0}^{ND-1}x_{2,t,k}\cdot phi_{n,k}\right)
-    \cdot inv\_rms_{pre,t}
-    $$
-
-    $$
-    h_{pre,t,n}=\sigma(alpha\cdot x_{pre,t,n}+bias_n)+hc\_eps
-    $$
-
-    $$
-    h_{in,t,d}=\sum_{n=0}^{N-1}h_{pre,t,n}\cdot x_{2,t,n,d}
+    \begin{aligned}
+    x\_2\_rs &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+    inv\_rms\_pre_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_rs_{b,s,k}^{2}+mhc\_pre\_norm\_eps\right), \\
+    proj\_w &= phi^T, \\
+    x\_pre &= (x\_2\_rs\cdot proj\_w)\cdot inv\_rms\_pre, \\
+    h\_pre_{b,s,n} &= \operatorname{sigmoid}(alpha\cdot x\_pre_{b,s,n}+bias_n)+hc\_eps, \\
+    h\_in_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\sum_{n=0}^{N-1}h\_pre_{b,s,n}\cdot \operatorname{FP32}(x\_2_{b,s,n,d})\right).
+    \end{aligned}
     $$
 
     RMSNorm_1：
 
     $$
-    h_{in\_f32,t,d}=
-    \frac{h_{in,t,d}}
-    {\sqrt{\frac{1}{D}\sum_{i=0}^{D-1}h_{in,t,i}^{2}+norm\_eps}}
-    \cdot gamma\_1_d
+    \begin{aligned}
+    h\_in\_rms_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}\operatorname{FP32}(h\_in_{b,s,i})^{2}+norm\_eps\right), \\
+    h\_in\_f32_{b,s,d} &= \operatorname{FP32}(h\_in_{b,s,d})\cdot h\_in\_rms_{b,s}\cdot \operatorname{FP32}(gamma\_1_d), \\
+    h\_in\_prime &= \operatorname{Cast}_{dtype(h\_out)}(h\_in\_f32).
+    \end{aligned}
     $$
 
-    $$
-    h_{in\_prime}=\operatorname{Cast}_{dtype(h\_out)}(h_{in\_f32})
-    $$
+    `norm_eps` 用于 RMSNorm_0、RMSNorm_mid 和 RMSNorm_1，`mhc_pre_norm_eps` 仅用于 MHC_Pre 归一化，`hc_eps` 仅用于 pre 门控。三者均按 FLOAT 精度参与计算。
 
 ## 函数原型
 
@@ -230,4 +222,3 @@ cann_ops_transformer.mhc_sandwich_norm_post_preonly(
     ```
 
 - TorchAir 图模式调用：暂不支持。
-

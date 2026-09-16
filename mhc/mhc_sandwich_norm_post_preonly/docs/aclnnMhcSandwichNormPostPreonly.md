@@ -41,65 +41,72 @@
 
 - 计算公式：
 
+以下公式按保留B、S前导维的`[B,S,...]`形式表示；`[T,...]`形式将`B*S`展平为`T`，后续维度保持不变。
+
 **阶段1：RMSNorm_0**
 
 $$
-x_{1,(b,s,d)} =
-\frac{h_{out,(b,s,d)}}
-{\sqrt{\frac{1}{D}\sum_{i=0}^{D-1}(h_{out,(b,s,i)})^2+\epsilon_{norm}}}
-\cdot\gamma_{0,(d)}
+\begin{aligned}
+h\_out\_fp32_{b,s,d} &= \operatorname{FP32}(h\_out_{b,s,d}), \\
+inv\_rms\_0_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}h\_out\_fp32_{b,s,i}^{2}+norm\_eps\right), \\
+x\_1_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(h\_out\_fp32_{b,s,d}\cdot inv\_rms\_0_{b,s}\cdot gamma\_0_d\right).
+\end{aligned}
 $$
 
 **阶段2：MHC_Post**
 
 $$
-x_{2,(b,s,n,d)} =
-h_{post,(b,s,n)}\cdot x_{1,(b,s,d)}
-+\sum_{j=0}^{N-1}
-\left(h_{res,(b,s,j,n)}\cdot residual_{(b,s,j,d)}\right)
+\begin{aligned}
+term1_{b,s,n,d} &= \operatorname{FP32}(h\_post_{b,s,n})\cdot \operatorname{FP32}(x\_1_{b,s,d}), \\
+term2_{b,s,n,d} &= \sum_{j=0}^{N-1}\operatorname{FP32}(h\_res_{b,s,j,n})\cdot \operatorname{FP32}(residual_{b,s,j,d}), \\
+x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(term1_{b,s,n,d}+term2_{b,s,n,d}\right).
+\end{aligned}
 $$
+
+其中`j`为归约head，`n`为输出head。
 
 **阶段2.5：RMSNorm_mid（可选）**
 
+当 `gamma2Optional` 非空时：
+
 $$
 \begin{aligned}
-x_{2,rs}&=\operatorname{reshape}(x_2,[B,S,N\times D]) \\
-\gamma_2\ne\varnothing:\quad
-x_{2,(b,s,n,d)}&=
-\frac{x_{2,rs,(b,s,n\times d)}}
-{\sqrt{\frac{1}{N\times D}\sum_{i=0}^{N\times D-1}(x_{2,rs,(b,s,i)})^2+\epsilon_{norm}}}
-\cdot\gamma_{2,(n\times d)}
+x\_2\_flat &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+inv\_rms\_mid_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_flat_{b,s,k}^{2}+norm\_eps\right), \\
+x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\operatorname{reshape}\left(x\_2\_flat\cdot inv\_rms\_mid\cdot gamma\_2,[B,S,N,D]\right)_{b,s,n,d}\right).
 \end{aligned}
+$$
+
+当 `gamma2Optional` 为空时，跳过本阶段，`x_2` 保持MHC_Post的输出；随后固定保存：
+
+$$
+x\_2\_out=x\_2.
 $$
 
 **阶段3：MHC_Pre（PreOnly）**
 
 $$
 \begin{aligned}
-\operatorname{invRms}_{pre}
-&=\frac{1}
-{\sqrt{\frac{1}{N\times D}\sum_{k=0}^{N\times D-1}(x_{2,rs,(b,s,k)})^2
-+\epsilon_{mhc\_pre}}} \\
-x_{pre}&=(x_{2,rs}\cdot\phi^T)\cdot\operatorname{invRms}_{pre} \\
-h_{pre}&=\sigma(\alpha_0\cdot x_{pre}+bias)+\epsilon_{hc} \\
-h_{in}&=\sum_{n=0}^{N-1}h_{pre,(b,s,n)}\cdot x_{2,(b,s,n,:)}
+x\_2\_rs &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+inv\_rms\_pre_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_rs_{b,s,k}^{2}+mhc\_pre\_norm\_eps\right), \\
+proj\_w &= phi^T, \\
+x\_pre &= (x\_2\_rs\cdot proj\_w)\cdot inv\_rms\_pre, \\
+h\_pre_{b,s,n} &= \operatorname{sigmoid}(alpha\_0\cdot x\_pre_{b,s,n}+bias_n)+hc\_eps, \\
+h\_in_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\sum_{n=0}^{N-1}h\_pre_{b,s,n}\cdot \operatorname{FP32}(x\_2_{b,s,n,d})\right).
 \end{aligned}
 $$
 
 **阶段4：RMSNorm_1**
 
 $$
-h_{in\_f32,(b,s,d)}=
-\frac{h_{in,(b,s,d)}}
-{\sqrt{\frac{1}{D}\sum_{i=0}^{D-1}(h_{in,(b,s,i)})^2+\epsilon_{norm}}}
-\cdot\gamma_{1,(d)}
+\begin{aligned}
+h\_in\_rms_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}\operatorname{FP32}(h\_in_{b,s,i})^{2}+norm\_eps\right), \\
+h\_in\_f32_{b,s,d} &= \operatorname{FP32}(h\_in_{b,s,d})\cdot h\_in\_rms_{b,s}\cdot \operatorname{FP32}(gamma\_1_d), \\
+h\_in\_prime &= \operatorname{Cast}_{dtype(h\_out)}(h\_in\_f32).
+\end{aligned}
 $$
 
-$$
-h_{in\_prime}=\operatorname{Cast}_{dtype(h_{out})}(h_{in\_f32})
-$$
-
-其中，$\epsilon_{norm}$、$\epsilon_{mhc\_pre}$ 和 $\epsilon_{hc}$ 分别对应接口参数 `normEps`、`mhcPreNormEps` 和 `hcEps`。
+`norm_eps`、`mhc_pre_norm_eps` 和 `hc_eps` 在接口中分别对应 `normEps`、`mhcPreNormEps` 和 `hcEps`。`norm_eps` 用于RMSNorm_0、RMSNorm_mid和RMSNorm_1，`mhc_pre_norm_eps` 仅用于MHC_Pre归一化，`hc_eps` 仅用于pre门控。三者均按FLOAT精度参与计算。
 
 ## 函数原型
 

@@ -15,6 +15,47 @@
 
 - **算子功能**：融合MHC Sandwich结构中的RMSNorm_0、MHC_Post、可选RMSNorm_mid、MHC_Pre（PreOnly）和RMSNorm_1，输出下一层输入、MHC_Post中间结果以及可选的FLOAT32计算结果。
 
+- **计算公式**：以下公式按 `[B,S,...]` 形式表示；`[T,...]` 形式将 `B*S` 展平为 `T`，后续维度保持不变。
+
+  $$
+  \begin{aligned}
+  h\_out\_fp32_{b,s,d} &= \operatorname{FP32}(h\_out_{b,s,d}), \\
+  inv\_rms\_0_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}h\_out\_fp32_{b,s,i}^{2}+norm\_eps\right), \\
+  x\_1_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(h\_out\_fp32_{b,s,d}\cdot inv\_rms\_0_{b,s}\cdot gamma\_0_d\right), \\
+  term1_{b,s,n,d} &= \operatorname{FP32}(h\_post_{b,s,n})\cdot \operatorname{FP32}(x\_1_{b,s,d}), \\
+  term2_{b,s,n,d} &= \sum_{j=0}^{N-1}\operatorname{FP32}(h\_res_{b,s,j,n})\cdot \operatorname{FP32}(residual_{b,s,j,d}), \\
+  x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(term1_{b,s,n,d}+term2_{b,s,n,d}\right).
+  \end{aligned}
+  $$
+
+  其中 `j` 为归约 head，`n` 为输出 head。当 `gamma_2` 非空时执行可选 RMSNorm_mid：
+
+  $$
+  \begin{aligned}
+  x\_2\_flat &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+  inv\_rms\_mid_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_flat_{b,s,k}^{2}+norm\_eps\right), \\
+  x\_2_{b,s,n,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\operatorname{reshape}\left(x\_2\_flat\cdot inv\_rms\_mid\cdot gamma\_2,[B,S,N,D]\right)_{b,s,n,d}\right).
+  \end{aligned}
+  $$
+
+  `gamma_2` 为空时跳过 RMSNorm_mid，随后固定保存 $x\_2\_out=x\_2$。MHC_Pre（PreOnly）与 RMSNorm_1 为：
+
+  $$
+  \begin{aligned}
+  x\_2\_rs &= \operatorname{reshape}(\operatorname{FP32}(x\_2),[B,S,N\cdot D]), \\
+  inv\_rms\_pre_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{N D}\sum_{k=0}^{ND-1}x\_2\_rs_{b,s,k}^{2}+mhc\_pre\_norm\_eps\right), \\
+  proj\_w &= phi^T, \\
+  x\_pre &= (x\_2\_rs\cdot proj\_w)\cdot inv\_rms\_pre, \\
+  h\_pre_{b,s,n} &= \operatorname{sigmoid}(alpha\_0\cdot x\_pre_{b,s,n}+bias_n)+hc\_eps, \\
+  h\_in_{b,s,d} &= \operatorname{Cast}_{dtype(h\_out)}\left(\sum_{n=0}^{N-1}h\_pre_{b,s,n}\cdot \operatorname{FP32}(x\_2_{b,s,n,d})\right), \\
+  h\_in\_rms_{b,s} &= \operatorname{rsqrt}\left(\frac{1}{D}\sum_{i=0}^{D-1}\operatorname{FP32}(h\_in_{b,s,i})^{2}+norm\_eps\right), \\
+  h\_in\_f32_{b,s,d} &= \operatorname{FP32}(h\_in_{b,s,d})\cdot h\_in\_rms_{b,s}\cdot \operatorname{FP32}(gamma\_1_d), \\
+  h\_in\_prime &= \operatorname{Cast}_{dtype(h\_out)}(h\_in\_f32).
+  \end{aligned}
+  $$
+
+  `norm_eps` 用于RMSNorm_0、RMSNorm_mid和RMSNorm_1，`mhc_pre_norm_eps` 仅用于MHC_Pre归一化，`hc_eps` 仅用于pre门控，三者均按FLOAT精度参与计算。
+
 ## 参数说明
 
   <table style="table-layout: auto; width: 100%">
