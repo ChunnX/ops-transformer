@@ -10,6 +10,20 @@
 
 if(UT_TEST_ALL OR OP_HOST_UT)
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    if(TARGET ${OP_INFERSHAPE_MODULE_NAME}_cases_obj)
+        file(GLOB_RECURSE QBSA_INFERENCE_CASES CONFIGURE_DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/inference/test_*.cpp
+        )
+        target_sources(${OP_INFERSHAPE_MODULE_NAME}_cases_obj PRIVATE ${QBSA_INFERENCE_CASES})
+    endif()
+
+    add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    if(TARGET ${OP_TILING_MODULE_NAME}_cases_obj)
+        file(GLOB QBSA_COMMON_TILING_CASES CONFIGURE_DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/tiling_common/test_*.cpp
+        )
+        target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE ${QBSA_COMMON_TILING_CASES})
+    endif()
 endif()
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)

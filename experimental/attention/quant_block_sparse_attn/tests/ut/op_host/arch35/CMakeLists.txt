@@ -10,4 +10,12 @@
 
 if(UT_TEST_ALL OR OP_HOST_UT)
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    list(FIND ARCH_DIRECTORY "arch35" QBSA_ARCH35_INDEX)
+    if(NOT QBSA_ARCH35_INDEX EQUAL -1 AND TARGET ${OP_TILING_MODULE_NAME}_cases_obj)
+        file(GLOB_RECURSE QBSA_ARCH35_TILING_CASES CONFIGURE_DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/qbsa_fp8/test_*_tiling.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/qbsa_mxfp8/test_*_tiling.cpp
+        )
+        target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE ${QBSA_ARCH35_TILING_CASES})
+    endif()
 endif()

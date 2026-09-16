@@ -15,11 +15,11 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "quant_block_sparse_attn_template_tiling_key.h"
-#include "quant_block_sparse_attn_common.h"
-#include "arch35/quant_block_sparse_attn_tiling_data.h"
-#include "arch35/quant_block_sparse_attn_kernel.h"
-#include "arch35/quant_block_sparse_attn_mx_kernel.h"
+#include "arch35/common/quant_block_sparse_attn_common.h"
+#include "arch35/common/quant_block_sparse_attn_tiling_data.h"
+#include "arch35/common/quant_block_sparse_attn_tiling_key_registry.h"
+#include "arch35/qbsa_fp8/quant_block_sparse_attn_kernel.h"
+#include "arch35/qbsa_mxfp8/quant_block_sparse_attn_mx_kernel.h"
 
 using namespace AscendC;
 using namespace optiling;
@@ -93,20 +93,19 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaIsPa = true;
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
-    if constexpr (QUANT_MODE == MXFullQuantMode) {
+    if constexpr (QUANT_MODE == QBSA_MXFP8_QUANT_MODE) {
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
-        static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
-                      "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
+        static_assert(Config == QBSA_MXFP8_CONFIG, "MXFP8 must use the S1=128, S2=512, D=128 and DV=128 config");
         QBSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                         S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
                         RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
-    } else if constexpr (QUANT_MODE == FP8QuantMode) {
-        static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
-                      "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");
+    } else if constexpr (QUANT_MODE == QBSA_FP8_QUANT_MODE) {
+        static_assert(Config == QBSA_FP8_CONFIG, "FP8 must use the S1=128, S2=256, D=128 and DV=128 config");
         QBSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                      S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
                      RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     } else {
-        static_assert(QUANT_MODE == FP8QuantMode || QUANT_MODE == MXFullQuantMode, "Unsupported QBSA quant mode");
+        static_assert(QUANT_MODE == QBSA_FP8_QUANT_MODE || QUANT_MODE == QBSA_MXFP8_QUANT_MODE,
+                      "Unsupported QBSA quant mode");
     }
 }
