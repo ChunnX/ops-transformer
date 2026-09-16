@@ -50,7 +50,6 @@
 #include "tiling/tiling_api.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h" // 全局 CutResult(引擎与算子侧共用, 勿在引擎内再定义副本)
 #include "op_host/op_tiling/matmul_formulaic_tiling.h" // mc2tiling::TilingArgs(同上)
-#include "tiling_data_struct_define.h"
 
 namespace mc2tiling {
 namespace fit_balance {
@@ -913,36 +912,6 @@ inline void FormPartition::MaxTileCntUniform()
     cutRes.numLongTile = totalLen / cutRes.longTileLen;
     CalcBackTile();
 }
-// ============================================================================
-
-// CutResult -> CommTilingData 的切分轴字段（nonSplitAxisSize 由算子侧按自身布局另填）
-// 仅支持 shortTileAtBack == true 的切分（短块前置的通信 bound 切分无法用 head/tail 表达,
-// 调用方应继续直接消费 CutResult）。返回 false 表示切分不可适配。
-inline bool FillCommTilingDataFromCut(const CutResult &cut, CommTilingData &tiling)
-{
-    if (!cut.shortTileAtBack) {
-        return false; // 短块前置无法用 head/tail 表达
-    }
-    tiling.splitAxisTileSize = cut.longTileLen;
-    tiling.splitAxisTileCnt = cut.numLongTile;
-    tiling.splitAxisTailSize = cut.shortTileLen;
-    tiling.splitAxisTailCnt = cut.numShortTile;
-    return true;
-}
-
-// CommTilingData 的切分轴字段 -> CutResult（短块恒后置）
-inline CutResult CutResultFromCommTiling(const CommTilingData &tiling)
-{
-    CutResult cut;
-    cut.shortTileAtBack = true;
-    cut.longTileLen = tiling.splitAxisTileSize;
-    cut.numLongTile = tiling.splitAxisTileCnt;
-    cut.shortTileLen = tiling.splitAxisTailSize;
-    cut.numShortTile = tiling.splitAxisTailCnt;
-    cut.totalTileCnt = cut.numLongTile + cut.numShortTile;
-    return cut;
-}
-
 // ============================================================================
 // 三、求解层（两分支求解器）
 // ============================================================================
