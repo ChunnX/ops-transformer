@@ -26,6 +26,8 @@
 #include "quant_lightning_indexer_v2_service_cube_arch35.h"
 #include "../quant_lightning_indexer_v2_metadata.h"
 
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_tnd_padding.h"
+
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 using namespace matmul;
@@ -833,7 +835,8 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessBaseBlock(uint32_t loop, uin
         matmulService.ComputeMm1(runInfo);
     } else {
         if (runInfo.needTndPadding) {
-            vectorService.DoTndPadding(runInfo);
+            LIV2Common::DoTndPadding(runInfo, constInfo.sparseCount, constInfo.returnValue, constInfo.NEG_INF_BFLOAT,
+                                     constInfo.kHeadNum, constInfo.INVALID_IDX, EVENT_ID6, indiceOutGm, valueOutGm);
         }
         vectorService.ProcessVec1(runInfo);
         if (runInfo.isLastS2InnerLoop) { // 本核s2last

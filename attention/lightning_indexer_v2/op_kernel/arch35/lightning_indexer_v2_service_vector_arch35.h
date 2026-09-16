@@ -63,7 +63,6 @@ public:
                                               GlobalTensor<float> valueOutGm, GlobalTensor<int32_t> blockTableGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
-    __aicore__ inline void DoTndPadding(const LIV2Common::RunInfo &runInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -293,29 +292,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
-    }
-}
-
-template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::DoTndPadding(const LIV2Common::RunInfo &runInfo)
-{
-    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset = runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.topk;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.topk;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
-
-    if (constInfo_.returnValueFlag) {
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-
-        GlobalTensor<uint32_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint32_t> valueOut = valueOutGmTmp[paddingOffset];
-
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_FLOAT);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
     }
 }
 

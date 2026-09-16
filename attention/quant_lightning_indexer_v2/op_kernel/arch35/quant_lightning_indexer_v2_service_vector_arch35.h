@@ -73,7 +73,6 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
     __aicore__ inline void InitLDBuffers(TPipe *pipe, const struct QLIV2Common::LdSplitCoreInfo &ldInfo);
-    __aicore__ inline void DoTndPadding(const QLIV2Common::RunInfo &runInfo);
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
@@ -405,29 +404,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1
     }
 }
 
-template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunInfo &runInfo)
-{
-    uint32_t paddingLen = runInfo.curCuSeqlensQ - runInfo.curSequsedQ;
-    uint64_t paddingOffset =
-        runInfo.indiceOutOffset + runInfo.curSequsedQ * constInfo_.kHeadNum * constInfo_.sparseCount;
-    uint64_t dealSize = paddingLen * constInfo_.kHeadNum * constInfo_.sparseCount;
-    GlobalTensor<int32_t> indiceOutPaddingStart = indiceOutGm[paddingOffset];
-    AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
-
-    if (constInfo_.returnValue) {
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-
-        GlobalTensor<uint16_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-        GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
-
-        AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
-        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
-    }
-}
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo,
                                                         LocalTensor<SCALE_T> &kScaleUB, int64_t batchId,

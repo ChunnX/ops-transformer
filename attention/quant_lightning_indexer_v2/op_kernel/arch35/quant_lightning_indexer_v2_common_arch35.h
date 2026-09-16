@@ -14,8 +14,15 @@
  */
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
+
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_common_defs.h"
+
 using namespace AscendC;
 namespace QLIV2Common {
+using LIV2Common::Align;
+using LIV2Common::CeilDiv;
+using LIV2Common::Max;
+using LIV2Common::Min;
 using FP8E4M3 = fp8_e4m3fn_t;
 using FP4E2M1 = fp4x2_e2m1_t;
 using FP8E8M0 = fp8_e8m0_t;
@@ -191,42 +198,6 @@ struct SplitCoreInfo {
     bool isCoreEnable = false;
 };
 
-template <typename T>
-__aicore__ inline T Align(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
-}
-
-template <typename T1, typename T2>
-__aicore__ inline T1 Min(T1 a, T2 b)
-{
-    return (a > b) ? (b) : (a);
-}
-
-template <typename T1, typename T2>
-__aicore__ inline T1 Max(T1 a, T2 b)
-{
-    return (a > b) ? (a) : (b);
-}
-
-template <typename T>
-__aicore__ inline T CeilDiv(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
-}
 } // namespace QLIV2Common
-
-// bank冲突优化
-// david 256KB bank layout
-// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
-// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
-#define UB_BLOCK 32 // 32B
-#define UB_BANK_GROUPS 8
-#define UB_BANKS 2
-#define UB_BANK_DEPTH 512
-
-#define UB_BANK_GROUP_STRIDE UB_BLOCK                               // 32B
-#define UB_BANK_STRIDE (UB_BANK_GROUPS * UB_BLOCK)                  // 256B
-#define UB_BANK_DEPTH_STRIDE (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK) // 512B
 
 #endif // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

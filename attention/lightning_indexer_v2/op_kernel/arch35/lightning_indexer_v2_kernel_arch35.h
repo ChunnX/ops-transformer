@@ -26,6 +26,8 @@
 #include "lightning_indexer_v2_service_cube_arch35.h"
 #include "../lightning_indexer_v2_metadata.h"
 
+#include "common/lightning_indexer_v2_tnd_padding.h"
+
 namespace LIV2Kernel {
 using namespace LIV2Common;
 using namespace matmul;
@@ -785,7 +787,8 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
     if ASCEND_IS_AIV {
         if (runInfo.needTndPadding) {
-            vectorService.DoTndPadding(runInfo);
+            LIV2Common::DoTndPadding(runInfo, constInfo.topk, constInfo.returnValueFlag, constInfo.NEG_INF_FLOAT,
+                                     constInfo.kHeadNum, constInfo.INVALID_IDX, EVENT_ID6, indiceOutGm, valueOutGm);
         }
     }
 }
