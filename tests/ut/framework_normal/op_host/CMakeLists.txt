@@ -37,6 +37,12 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   ## add ONNX plugin ut cases static lib: libtransformer_op_onnx_ut_cases.a
   add_onnx_ut_modules(${OP_ONNX_MODULE_NAME})
 
+  # Common ONNX plugins are not individual operator directories, so they are
+  # not discovered by op_add_ut_subdirectory. Add their parser tests here.
+  if(EXISTS "${PROJECT_SOURCE_DIR}/common/tests/ut/framework/CMakeLists.txt")
+    add_subdirectory(${PROJECT_SOURCE_DIR}/common/tests/ut/framework common_onnx_plugin_ut)
+  endif()
+
   ## add ophost source so: libophost_transformer_ut.so
   add_library(${OPHOST_NAME}_ut SHARED
       $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_infer_obj>>
