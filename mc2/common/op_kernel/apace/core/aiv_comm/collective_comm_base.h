@@ -132,6 +132,9 @@ public:
             return;
         }
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
+            if( i == targetRankCnt_){
+                trap();
+            }
             uint32_t targetRankId = targetRankStart_ + i;
             static_cast<Impl *>(this)->template DoWait<BarrierMode>(targetRankId);
         }
