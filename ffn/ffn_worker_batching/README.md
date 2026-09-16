@@ -19,7 +19,7 @@
 
     1. 对`expert_ids_in`中所有token的专家ID进行排序（被mask的token初始化为大值），生成gather索引。
     2. 多核并行按gather索引从`token_data`中提取token的hidden states和dynamic scale，同时查表得到对应的`session_id`、`micro_batch_id`、`token_id`。
-    3. 单核扫描排序后的专家ID序列，查找跳变点，生成`group_list`（每个专家处理的token起止偏移）。
+    3. 根据排序后的专家ID序列统计各专家的token数，生成`group_list`（每行包含专家ID和该专家的token数）。
 
     其中 $Y = A \times BS \times (K+1)$，$A$ 为Attention worker数量，$BS$ 为micro batch size，$K+1$ 为topK加共享专家数。
 
@@ -79,7 +79,14 @@
     <tr>
       <td>layer_num</td>
       <td>属性</td>
-      <td>层数，每层专家独立索引。默认值为0。取值范围为 [0, expert_num]。</td>
+      <td>层数，每层专家独立索引。默认值为0。取值范围为 [0, expert_num]；异步接收时必须大于0且整除expert_num。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>sync_flag</td>
+      <td>属性</td>
+      <td>默认0，取值0/1。仅<term>Ascend 950PR/Ascend 950DT</term>的need_schedule=1时sync_flag=1生效：0等待当前micro batch的全部session就绪；1循环扫描micro batch，首次发现ready session即处理该micro batch。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
@@ -93,7 +100,7 @@
     <tr>
       <td>group_list</td>
       <td>输出</td>
-      <td>每个专家处理的token范围，shape为 [expert_num, 2]。每行格式为 [expert_id, expert_token_num]，未使用的专家填 [0, 0]。示例：[[1, 20], [10, 40], [22, 15], ...]。</td>
+      <td>各非空专家的token数，shape为 [expert_num, 2]。按专家ID升序紧凑存放，每行为 [expert_id, expert_token_num]，剩余行填 [0, 0]。</td>
       <td>INT64</td>
       <td>ND</td>
     </tr>
@@ -150,6 +157,7 @@
 - 参数M（micro batch数量，取自schedule_context.common.micro_batch_num）支持 ≤ 64。
 - 输出token数上限 Y = A × BS × (topK+1)，其中 A、BS、topK+1 分别为 max_out_shape 的第 1、2、3 维；Y 支持泛化，无硬上限（受内存限制）。
 - 精度口径为二进制一致（非计算类算子：整数索引排序 + 原样字节搬运，无浮点运算）。
+- <term>Ascend 950PR/Ascend 950DT</term>异步接收（`need_schedule=1、sync_flag=1`）要求`layer_num>0`且整除`expert_num`，按`layer_id * (expert_num / layer_num) + expert_id`生成跨层专家号进行排序、token重排和`group_list`统计。同步接收与NORM仍使用原专家号。
 
 ## 调用说明
 

@@ -72,6 +72,9 @@ public:
         this->Attr("token_dtype").AttrType(OPTIONAL).Int(0);   // 0: FP16 1: BF16 2: dynamic_quant_int8
         this->Attr("need_schedule").AttrType(OPTIONAL).Int(0); // 0: only batching; 1: recv and batching
         this->Attr("layer_num").AttrType(OPTIONAL).Int(0);
+        // 公共声明生成图属性及aclnnInner参数；新增调度语义仅由arch35实现。
+        // 保持原有属性索引；手写ACLNN V1补0，V2才对外暴露syncFlag，避免破坏旧ABI。
+        this->Attr("sync_flag").AttrType(OPTIONAL).Int(0); // arch35: 0 wait all, 1 consume ready
 
         this->AICore().AddConfig("ascend910_93").AddConfig("ascend910b");
 

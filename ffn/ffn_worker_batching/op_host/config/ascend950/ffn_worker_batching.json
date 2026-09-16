@@ -131,6 +131,11 @@
                     "name": "layer_num",
                     "dtype": "int",
                     "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "int",
+                    "value": null
                 }
             ]
         },
@@ -264,6 +269,11 @@
                     "name": "layer_num",
                     "dtype": "int",
                     "value": null
+                },
+                {
+                    "name": "sync_flag",
+                    "dtype": "int",
+                    "value": null
                 }
             ]
         },
@@ -395,6 +405,11 @@
                 },
                 {
                     "name": "layer_num",
+                    "dtype": "int",
+                    "value": null
+                },
+                {
+                    "name": "sync_flag",
                     "dtype": "int",
                     "value": null
                 }
