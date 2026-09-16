@@ -174,12 +174,10 @@ public:
                                       AscendC::GlobalTensor<int32_t> gSparseBlockIdx, GemmCoord actualOriShape,
                                       uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                       uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                                      uint64_t &l0Stage,
-                                      Arch::CrossCoreFlag mm1ToSmFlag, uint64_t deqScalar = 0)
+                                      uint64_t &l0Stage, Arch::CrossCoreFlag mm1ToSmFlag)
     {
         using CopyL0CToDst = typename TileCopy::template CopyL0CToDst<TensorS>;
-        CopyL0CToDst copyL0CToDstSub0;
-        CopyL0CToDst copyL0CToDstSub1;
+        CopyL0CToDst copyL0CToDst;
 
         const uint32_t bufId = static_cast<uint32_t>(l0Stage++ % L0_STAGES);
         const uint32_t l0AEventId = bufId;
@@ -281,23 +279,21 @@ public:
 
                 uint32_t mFixPAligned8 = RoundUp(l0TileMAct, 8);
                 if constexpr (FULL_QUANT_HIF8) {
-                    // Scaled Fixpipe is issued separately for the two AIVs. K * Q^T stores Q on the N axis of
-                    // L0C, so split N into the same two portions consumed by the DN softmax.
+                    // NO_QUANT SPLIT_N: one dual-destination Fixpipe serves both AIVs. K * Q^T
+                    // stores Q on the N axis of L0C, so the split is along N: the hardware writes
+                    // columns 0..n/2-1 into AIV0 and n/2..n-1 into AIV1, both at the same UB
+                    // offsets given by ubSTensor's per-AIV stride. nSize is the full per-block Q
+                    // width, which is what ubSTensor now declares, and the dequantization is done
+                    // by the online-softmax epilogue instead of by the Fixpipe.
                     uint32_t nFixPAligned32 = RoundUp(qSTile, 32);
-                    uint32_t nPerSubCore = nFixPAligned32 / 2;
                     auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
-                                                    tla::MakeShape(mFixPAligned8, nPerSubCore));
-                    auto l0CTensorTlaTileSub0 =
-                        GetTile(l0CTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(mFixPAligned8, nPerSubCore));
-                    auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla, tla::MakeCoord(0, nPerSubCore),
-                                                        tla::MakeShape(mFixPAligned8, nPerSubCore));
-                    copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
-                    copyL0CToDstSub1(ubSTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
+                                                    tla::MakeShape(mFixPAligned8, nFixPAligned32));
+                    copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
                 } else {
                     uint32_t nFixPAligned8 = RoundUp(qSTile, 8);
                     auto ubSTensorTlaTile = GetTile(ubSTensor, tla::MakeCoord(mL0Itr * L0_TILE_M, 0),
                                                     tla::MakeShape(mFixPAligned8, nFixPAligned8));
-                    copyL0CToDstSub0(ubSTensorTlaTile, l0CTensorTla);
+                    copyL0CToDst(ubSTensorTlaTile, l0CTensorTla);
                 }
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             }

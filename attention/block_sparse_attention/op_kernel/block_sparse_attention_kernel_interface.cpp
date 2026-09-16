@@ -505,9 +505,15 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     using L1TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapeQK = Shape<Int<256>, Int<128>, Int<128>>;
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQKHif8<true>;
+    // NO_QUANT (not PER_TENSOR): the fixpipe must not dequantize. A scalar-dequant
+    // Fixpipe cannot use the hardware dual-destination mode, so PER_TENSOR forced
+    // the caller to slice L0C and issue one single-dst Fixpipe per AIV (four per
+    // base block instead of two). With NO_QUANT the dequant moves to the vector
+    // side of the two epilogues and the fixpipe keeps dualDstCtl=2, matching QFA
+    // HIF8 and the FP16 path.
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
                                                          LayoutS, void, mm1L0C2UBMode, false,
-                                                         Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+                                                         Gemm::Tile::ScaleGranularity::NO_QUANT>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
 
@@ -525,7 +531,7 @@ __global__ __aicore__ void BsaInferInterfaceHIF8FullQuant(
     using TileCopyPV =
         Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
                                           void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M, false,
-                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+                                          Gemm::Tile::ScaleGranularity::NO_QUANT>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
                                                   ElementOTmp, void, TileCopyPV>;
 

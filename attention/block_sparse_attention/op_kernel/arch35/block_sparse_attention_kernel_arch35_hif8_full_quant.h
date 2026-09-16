@@ -86,9 +86,6 @@ public:
         qDequantScaleValue_ = gQDequantScale.GetValue(0);
         kDequantScaleValue_ = gKDequantScale.GetValue(0);
         vDequantScaleValue_ = gVDequantScale.GetValue(0);
-        float mm1ScaleValue = qDequantScaleValue_ * kDequantScaleValue_ * scaleValue_;
-        mm1DeqScalar_ = static_cast<uint64_t>(*reinterpret_cast<uint32_t *>(&mm1ScaleValue));
-        vDeqScalar_ = static_cast<uint64_t>(*reinterpret_cast<uint32_t *>(&vDequantScaleValue_));
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
         AscendC::GlobalTensor<ElementLse> gLse;
@@ -130,9 +127,14 @@ public:
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        // MM1 Fixpipe has already applied qScale * kScale * attentionScale.
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, 1.0f, pQuantScale_, uBufTileHelper_);
-        EpilogueRescaleO epilogueRescaleO(resource, uBufTileHelper_, pQuantScale_);
+        // MM1 dequantization is applied by the online softmax: the Fixpipe now runs with
+        // NO_QUANT so that it can use the hardware dual-destination mode. The multiply order
+        // matches the former Fixpipe scalar (qScale * kScale, then * attentionScale).
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, qDequantScaleValue_ * kDequantScaleValue_ * scaleValue_,
+                                                    pQuantScale_, uBufTileHelper_);
+        // MM2 dequantization is applied by the rescale-O epilogue, after the running sum has
+        // been normalized by gl.
+        EpilogueRescaleO epilogueRescaleO(resource, uBufTileHelper_, pQuantScale_, vDequantScaleValue_);
 #endif
         uint32_t qSTileNumPerFullXBlock = CeilDiv(blockShapeX_, qBaseTile_);
         // Calculate strides based on layout
@@ -384,23 +386,33 @@ public:
                     uint32_t ubSBufId = gatheredKvSTileIdx % UB_S_BUF_STAGES;
                     uint32_t sShapeRow = 0;
                     uint32_t sShapeCol = 0;
+                    int64_t sStrideRow = 1;
                     if constexpr (transposedMm1) {
-                        // S has shape [kvSTileSizeAct, RoundUp(rowNum, 32) / 2], rowmajor in UB, has stride [64, 1].
-                        // It is a special design for transposed mm1.
+                        // S is [RoundUp(kvSTileSizeAct, 16), RoundUp(qBaseTile_, 32)] rowmajor in UB
+                        // with stride [64, 1]. The column extent is the *full* per-block Q width
+                        // because that is what the Fixpipe is told as nSize; the 64 is the per-AIV
+                        // S buffer pitch that becomes dstStride. The right half of every row is
+                        // never materialized: with dualDstCtl=2 the hardware writes columns 0..63
+                        // into AIV0 and 64..127 into AIV1 at the same UB offsets, so a single
+                        // Fixpipe serves both AIVs. This is why the tile copy must be
+                        // SPLIT_N + NO_QUANT; a scalar-dequant Fixpipe cannot use dualDstCtl=2.
                         sShapeRow = RoundUp(kvSTileSizeAct, 16);
-                        sShapeCol = 64;
+                        sShapeCol = RoundUp(qBaseTile_, 32);
+                        sStrideRow = 64;
                     } else {
                         sShapeRow = rowNumRound;
                         sShapeCol = RoundUp(kvSTileSizeAct, 16);
+                        sStrideRow = static_cast<int64_t>(sShapeCol);
                     }
-                    auto ubSLayoutTla = tla::MakeLayout<ElementS, LayoutS>(sShapeRow, sShapeCol);
+                    auto ubSLayoutTla = tla::MakeLayout(tla::MakeShape(sShapeRow, sShapeCol),
+                                                        tla::MakeStride(sStrideRow, tla::Int<1>{}));
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayoutTla, Arch::PositionUB{});
                     uint32_t Mm1ToSmFlagId = ubSBufId;
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
 #ifdef __DAV_CUBE__
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                l0Stage, mm1ToSmFlag, mm1DeqScalar_);
+                                l0Stage, mm1ToSmFlag);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
@@ -437,7 +449,12 @@ public:
                     uint32_t Mm2ToReFlagId = ubOTmpBufId + UB_S_BUF_STAGES + pL1BufNum_;
 #ifdef __DAV_CUBE__
                     uint32_t l1PBufId = gatheredKvSTileIdxDe % pL1BufNum_;
-                    auto ubOTmpLayoutTla = tla::MakeLayout<ElementOTmp, LayoutOTmp>(rowNumRound, embedRound);
+                    // The row extent is the full Q base tile that MM2 hands to the Fixpipe as mSize
+                    // (not rowNumRound, which tracks the real, possibly tail, Q tile). Only the
+                    // stride matters for addressing: both AIVs write their half at the same UB
+                    // offsets. cubeBlockShapePV already uses qBaseTile_ for the same reason.
+                    auto ubOTmpLayoutTla =
+                        tla::MakeLayout<ElementOTmp, LayoutOTmp>(RoundUp(qBaseTile_, 32), embedRound);
                     auto ubOTmpTensorTla =
                         tla::MakeTensor(ubOTmpTensor[ubOTmpBufId], ubOTmpLayoutTla, Arch::PositionUB{});
                     uint32_t smToMm2FlagId = l1PBufId + UB_S_BUF_STAGES;
@@ -446,7 +463,7 @@ public:
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], cubeBlockShapePV,
                                 gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                l0Stage, smToMm2Flag, mm2ToReFlag, vDeqScalar_);
+                                l0Stage, smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
@@ -688,8 +705,6 @@ private:
     float qDequantScaleValue_{1.0f};
     float kDequantScaleValue_{1.0f};
     float vDequantScaleValue_{1.0f};
-    uint64_t mm1DeqScalar_{0};
-    uint64_t vDeqScalar_{0};
     bool hasPQuantScale_;
     float pQuantScale_;
     // mask2idx tile info
