@@ -62,7 +62,7 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(const aclTensor *commContext, c
                                                  const aclTensor *recvCounts, const aclTensor *recvLocalEntry,
                                                  const aclTensor *numRecv, aclTensor *gradUniqueOut,
                                                  aclTensor *uniqueLocalEntryOut, aclTensor *numUniqueOut,
-                                                 int64_t numEntriesPerRank, int64_t commBufferSize,
+                                                 int64_t numEntriesPerRank, int64_t commBufferSize, int64_t fetchMode,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto retParam = CheckParams(commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
@@ -70,7 +70,7 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(const aclTensor *commContext, c
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = aclnnInnerEngramFetchGradGetWorkspaceSize(
         commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv, numEntriesPerRank,
-        commBufferSize, gradUniqueOut, uniqueLocalEntryOut, numUniqueOut, workspaceSize, executor);
+        commBufferSize, fetchMode, gradUniqueOut, uniqueLocalEntryOut, numUniqueOut, workspaceSize, executor);
     return ret;
 }
 

@@ -71,6 +71,11 @@ public:
     {
         gradSubBatch_ = batch;
     }
+    // local(fetch_mode=1)模式: entry 即全量表行号, 偏移置 0
+    __aicore__ inline void SetEntryOffset(int32_t offset)
+    {
+        entryOffset_ = offset;
+    }
     __aicore__ inline void SetEntryBufBytes(uint32_t bytes)
     {
         entryBufBytes_ = bytes;
@@ -187,6 +192,7 @@ private:
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
     int32_t numEntriesPerRank_{0};
+    int32_t entryOffset_{0}; // 全局 entry -> 本 rank entry 的减基(rankId*numEntriesPerRank, local 模式为 0)
     int64_t hiddenDim_{0};
     int64_t hiddenBytes_{0};
     uint32_t inRowStride_{0};   // GM 行字节数向 32B 上取整（UB 内行排布 stride）
@@ -238,6 +244,7 @@ __aicore__ inline void EngramFetchGradUnique::Init(uint32_t aivId, uint32_t tota
     rankId_ = rankId;
     numRanks_ = numRanks;
     numEntriesPerRank_ = numEntriesPerRank;
+    entryOffset_ = static_cast<int32_t>(static_cast<int64_t>(rankId) * static_cast<int64_t>(numEntriesPerRank));
     hiddenDim_ = hiddenDim;
     hiddenBytes_ = hiddenBytes;
     inRowStride_ =
@@ -1187,9 +1194,8 @@ __aicore__ inline uint32_t EngramFetchGradUnique::ProcessBatchUnique(uint32_t cu
         prevEntry = entry;
         if (isNewUnique) {
             inclusiveSum++;
-            UniqueUb().SetValue(
-                tileUniqueCnt,
-                static_cast<int32_t>(static_cast<int64_t>(entry) - static_cast<int64_t>(rankId_) * numEntriesPerRank_));
+            UniqueUb().SetValue(tileUniqueCnt,
+                                static_cast<int32_t>(static_cast<int64_t>(entry) - static_cast<int64_t>(entryOffset_)));
             tileUniqueCnt++;
         }
         int32_t compactIdx = runningOffset + inclusiveSum - 1;

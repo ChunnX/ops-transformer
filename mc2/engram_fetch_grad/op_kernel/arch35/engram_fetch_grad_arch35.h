@@ -77,6 +77,13 @@ public:
 
     __aicore__ inline void Process();
 
+    // fetch_mode=1(全量本NPU): 反向无跨rank梯度交换, entry即本表行号(无rank偏移)
+    __aicore__ inline void SetLocalMode()
+    {
+        isLocalMode_ = true;
+        uniqueScatter_.SetEntryOffset(0);
+    }
+
 private:
     __aicore__ inline void WriteNbiChecked(uint64_t handle, GM_ADDR dst, GM_ADDR src, uint64_t len);
     __aicore__ inline void DrainChecked(uint64_t handle);
@@ -161,6 +168,7 @@ private:
     uint32_t pendingHandleCount_{0};
     uint64_t pendingHandles_[Mc2Kernel::MAX_PENDING_HANDLES]{0};
     bool creditReadInFlight_{false};
+    bool isLocalMode_{false};
     bool isSender_{false};
     bool isReceiver_{false};
     bool isFlagCore_{false};
@@ -1530,6 +1538,59 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrierWait()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        if (isLocalMode_) {
+            // fetch_mode=1: 全量表在本 rank, 反向零通信。
+            // fetch_train_local 产出的反向上下文为退化形态: perm=恒等, numRecv=numTokens,
+            // recvLocalEntry=indices(token序), 故 gradFetched 本身即"接收序"梯度,
+            // 免 UnsortGrad/ExchangeGrad, 直接进入 排序+去重+FP32聚合。
+            recvGradGM_ = gradFetchedGM_;
+            GlobalTensor<int32_t> numRecvGM;
+            numRecvGM.SetGlobalBuffer((__gm__ int32_t *)numRecvOutGM_);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(numRecvGM);
+            uint32_t numRecv = static_cast<uint32_t>(numRecvGM.GetValue(0));
+            if (numRecv == 0) {
+                uniqueScatter_.WriteNumUniqueZero(numUniqueOutGM_);
+            } else {
+                // local 模式无 a2a 交换: 直接 SortLib 排序(NoOpHook, 不驱动 a2a 流水);
+                // 排列 companion 由 SortInvoke 作为 sortedIndices 输出生成, 无需预初始化
+                tpipe_->Reset();
+                SortLib::SortParams p;
+                p.numTileData = sortNumTileData_;
+                p.tileCount = (numRecv + p.numTileData - 1U) / p.numTileData;
+                p.activeCores = (p.tileCount < totalBlocks_) ? p.tileCount : totalBlocks_;
+                p.tmpUbSize = sortTmpUbSize_;
+                p.totalElements = static_cast<int64_t>(numRecv);
+                p.isSingleCore = 0;
+                SortLib::SortInvoke<int32_t, int32_t, uint32_t, false>(
+                    tpipe_, (__gm__ int32_t *)recvLocalEntryOutGM_, (__gm__ int32_t *)recvLocalEntryOutGM_,
+                    (__gm__ int32_t *)sortCompanionGM_, (__gm__ char *)sortWorkspaceGm_, p);
+
+                tpipe_->Reset();
+                tpipe_->InitBuffer(entryBuf_, uniqueEntryBytes_);
+                tpipe_->InitBuffer(gradBuf_, Mc2Kernel::GRAD_BUF_BYTES);
+                if (castBufBytes_ > 0U) {
+                    tpipe_->InitBuffer(castFp32Buf_, castBufBytes_);
+                } else {
+                    tpipe_->InitBuffer(castFp32Buf_, Mc2Kernel::UB_ALIGN);
+                }
+                tpipe_->InitBuffer(accumBuf_, accumBufBytes_);
+                uniqueScatter_.SetCastBuf(castFp32Buf_);
+                uniqueScatter_.SetAccumBuf(accumBuf_);
+                uniqueScatter_.SetGradSubBatch(gradSubBatch_);
+                uniqueScatter_.SetEntryBufBytes(uniqueEntryBytes_);
+
+                uniqueScatter_.CountUniquesParallel(numRecv, recvLocalEntryOutGM_, coreStartGM_, segCountGM_);
+                uniqueScatter_.ZeroGradUnique(numRecv, gradUniqueOutGM_);
+                // 正常路径此处为 FinishExchangeGrad(): 其收尾 SyncAll 保证各核 CountUniquesParallel
+                // 写入的 coreStart/segCount(GM) 对 RunScatterCast 可见; local 模式无通信, 仅保留该同步
+                SyncAll<true>();
+                uniqueScatter_.RunScatterCast(numRecv, recvLocalEntryOutGM_, uniqueLocalEntryOutGM_, numUniqueOutGM_,
+                                              gradUniqueOutGM_, recvGradGM_, coreStartGM_, segCountGM_,
+                                              sortCompanionGM_);
+            }
+            return;
+        }
+
         InitFlagsAndDispls();
         ClearWinCounters();
         SyncAll<true>();

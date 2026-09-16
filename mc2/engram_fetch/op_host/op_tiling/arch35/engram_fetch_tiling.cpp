@@ -43,6 +43,10 @@ constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK_INDEX = 1U;
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 2U;
 constexpr uint32_t ATTR_COMM_BUFFER_SIZE_INDEX = 3U;
 constexpr uint32_t ATTR_WITH_GRAD_INDEX = 4U;
+constexpr uint32_t ATTR_FETCH_MODE_INDEX = 5U;
+
+constexpr int64_t ENGRAM_FETCH_MODE_SLICED = 0;
+constexpr int64_t ENGRAM_FETCH_MODE_LOCAL = 1;
 constexpr uint32_t SF_TABLE_INDEX = 3U;
 
 constexpr uint32_t DIM_ONE = 1U;
@@ -565,24 +569,37 @@ static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramF
 /**
  * @brief 设置tiling key
  */
-static void SetTilingKey(gert::TilingContext *context, bool isTraining)
+static void SetTilingKey(gert::TilingContext *context, bool isTraining, bool isLocalMode)
 {
     const char *nodeName = context->GetNodeName();
-    const uint64_t tilingKey =
-        isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE) : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE);
+    uint64_t tilingKey;
+    if (isTraining) {
+        tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_LOCAL_MODE)
+                                : GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE);
+    } else {
+        tilingKey = isLocalMode ? GET_TPL_TILING_KEY(ENGRAM_FETCH_LOCAL_MODE)
+                                : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE);
+    }
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d).", tilingKey, isTraining);
+    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, isLocalMode=%d).", tilingKey, isTraining,
+            isLocalMode);
 }
 
 /**
  * @brief 设置workspace大小
  */
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFetchTilingData &tilingData,
-                                    bool isTraining)
+                                    bool isTraining, bool isLocalMode)
 {
     const char *nodeName = context->GetNodeName();
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+
+    // local 模式：全量表在本 rank，无 a2a 交换，无需额外 workspace 区域
+    if (isLocalMode) {
+        workSpaces[0] = SYSTEM_NEED_WORKSPACE;
+        return ge::GRAPH_SUCCESS;
+    }
 
     if (isTraining) {
         int64_t numRanks = static_cast<int64_t>(tilingData.rankSize);
@@ -638,11 +655,20 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return ge::GRAPH_FAILED);
 
     bool isTraining = false;
+    bool isLocalMode = false;
     auto attrs = context->GetAttrs();
     if (attrs != nullptr) {
         auto withGradPtr = attrs->GetAttrPointer<int64_t>(ATTR_WITH_GRAD_INDEX);
         if (withGradPtr != nullptr && *withGradPtr != 0) {
             isTraining = true;
+        }
+        auto fetchModePtr = attrs->GetAttrPointer<int64_t>(ATTR_FETCH_MODE_INDEX);
+        if (fetchModePtr != nullptr) {
+            OP_TILING_CHECK(*fetchModePtr != ENGRAM_FETCH_MODE_SLICED && *fetchModePtr != ENGRAM_FETCH_MODE_LOCAL,
+                            OP_LOGE_FOR_INVALID_VALUE(nodeName, "fetch_mode",
+                                                      std::to_string(*fetchModePtr).c_str(), "[0, 1]"),
+                            return ge::GRAPH_FAILED);
+            isLocalMode = (*fetchModePtr == ENGRAM_FETCH_MODE_LOCAL);
         }
     }
 
@@ -670,15 +696,15 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "set tiling data failed."), return ge::GRAPH_FAILED);
 
     // 5. set tiling key
-    SetTilingKey(context, isTraining);
+    SetTilingKey(context, isTraining, isLocalMode);
 
     // 6. set workspace
-    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, isTraining) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, isTraining, isLocalMode) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "set workspace failed."), return ge::GRAPH_FAILED);
 
     // 7. print info
     PrintEngramFetchTilingData(tilingData, nodeName);
-    OP_LOGI(nodeName, "EngramFetch tiling end. (isTraining=%d)", isTraining);
+    OP_LOGI(nodeName, "EngramFetch tiling end. (isTraining=%d, isLocalMode=%d)", isTraining, isLocalMode);
     return ge::GRAPH_SUCCESS;
 }
 

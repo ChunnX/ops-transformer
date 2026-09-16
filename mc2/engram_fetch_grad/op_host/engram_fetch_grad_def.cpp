@@ -51,6 +51,7 @@ public:
 
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
         this->Attr("comm_buffer_size").AttrType(REQUIRED).Int();
+        this->Attr("fetch_mode").AttrType(OPTIONAL).Int();
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)
