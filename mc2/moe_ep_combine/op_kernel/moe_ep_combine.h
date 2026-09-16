@@ -71,7 +71,6 @@ static constexpr uint32_t HCOMM_PLAIN_WRITE_WQE_BYTES = 64;
 static constexpr uint32_t HCOMM_BATCH_BUFFER_BYTES = HCOMM_BATCH_CAPACITY * HCOMM_PLAIN_WRITE_WQE_BYTES;
 constexpr uint64_t UB_ALIGN = 32UL;
 static constexpr uint32_t META_CHUNK_TOKEN_MAX = 2048U;
-static constexpr uint32_t METADATA_BUFFER_NUM = 2U;
 static constexpr struct UrmaWqeEntry DEFAULT_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 0, .inlineEn = 0};
 static constexpr struct UrmaWqeEntry DEFAULT_CQE_WQE_CONFIG = {.odr = 5, .fence = 1, .se = 0, .cqe = 1, .inlineEn = 0};
 // Keep the final flag ordered after payload writes without requesting an unconsumed CQE on every invocation.
@@ -159,8 +158,7 @@ private:
     TBuf<> hcommBuf_;
     TBuf<TPosition::VECOUT> hcommBatchBuf_;
 
-    TBuf<> metadataBuf_[METADATA_BUFFER_NUM]; // 发送阶段recvSrcMetadata的UB双缓冲
-    AscendC::TEventID metadataCopyEvent_[METADATA_BUFFER_NUM];
+    TBuf<> metadataBuf_; // 发送阶段recvSrcMetadata的UB缓冲，批量搬运避免GetValue
 
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
     using HcommBatchHandle = AscendC::BatchHandle<AscendC::ChannelHandle>;
@@ -247,10 +245,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR 
     metadataChunkTokens_ = (metadataChunkTokens_ == 0U) ? 1U : metadataChunkTokens_;
     uint32_t metadataChunkBytes =
         Ceil(static_cast<uint64_t>(metadataChunkTokens_) * RECV_META_FIELDS * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    for (uint32_t i = 0U; i < METADATA_BUFFER_NUM; ++i) {
-        tpipe_->InitBuffer(metadataBuf_[i], metadataChunkBytes);
-        metadataCopyEvent_[i] = tpipe_->AllocEventID<AscendC::HardEvent::MTE2_S>();
-    }
+    tpipe_->InitBuffer(metadataBuf_, metadataChunkBytes);
     tpipe_->InitBuffer(readStateBuf_, WIN_ADDR_ALIGN);
     statusTensor_ = readStateBuf_.Get<uint32_t>();
     diagWriter_.RunPosRecord(MOE_EP_COMBINE_RUN_POS_INIT_DONE);
@@ -434,50 +429,29 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessRemote
     }
     BeginPreparedWrites(targetRank, channelIndex);
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
-    LocalTensor<int32_t> metadataLocal[METADATA_BUFFER_NUM];
-    for (uint32_t i = 0U; i < METADATA_BUFFER_NUM; ++i) {
-        metadataLocal[i] = metadataBuf_[i].Get<int32_t>();
-    }
+    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
     const DataCopyPadExtParams<int32_t> padParams{false, 0U, 0U, 0U};
     GM_ADDR remoteDataBase = GetUrmaWinAddrByRankId(targetRank, combineDataWinOffset_);
     GM_ADDR remoteStateBase = GetUrmaStateAddrByRankId(targetRank, combineStateWinOffset_);
     uint64_t tokenBytes = static_cast<uint64_t>(axisH_) * sizeof(XType);
 
-    uint64_t chunkStart = rangeBegin;
-    uint64_t chunkEnd = (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
-    uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
-    DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
-    DataCopyPad(metadataLocal[0], recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(metadataCopyEvent_[0]);
-
-    for (uint32_t chunkIndex = 0U; chunkStart < rangeEnd; ++chunkIndex) {
-        uint32_t bufferIndex = chunkIndex % METADATA_BUFFER_NUM;
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(metadataCopyEvent_[bufferIndex]);
-
-        // Start the next metadata copy before issuing the current chunk's WQEs so MTE2 and scalar work overlap.
-        uint64_t nextChunkStart = chunkEnd;
-        if (nextChunkStart < rangeEnd) {
-            uint64_t nextChunkEnd =
-                (nextChunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : nextChunkStart + metadataChunkTokens_;
-            uint32_t nextChunkCount = static_cast<uint32_t>(nextChunkEnd - nextChunkStart);
-            uint32_t nextBufferIndex = (bufferIndex + 1U) % METADATA_BUFFER_NUM;
-            DataCopyExtParams nextCopyParams{1U, nextChunkCount * metaBytesPerToken, 0U, 0U, 0U};
-            DataCopyPad(metadataLocal[nextBufferIndex], recvSrcMetadataGm_[nextChunkStart * RECV_META_FIELDS],
-                        nextCopyParams, padParams);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(metadataCopyEvent_[nextBufferIndex]);
-        }
+    for (uint64_t chunkStart = rangeBegin; chunkStart < rangeEnd; chunkStart += metadataChunkTokens_) {
+        uint64_t chunkEnd =
+            (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
+        uint32_t chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+        DataCopyExtParams copyParams{1U, chunkCount * metaBytesPerToken, 0U, 0U, 0U};
+        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], copyParams, padParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         for (uint32_t i = 0; i < chunkCount; ++i) {
             uint32_t metaOffset = i * RECV_META_FIELDS;
-            int32_t srcTokenIdx = metadataLocal[bufferIndex].GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
-            int32_t srcTopKIdx = metadataLocal[bufferIndex].GetValue(metaOffset + META_TOPK_IDX_OFFSET);
-            int32_t recvXIdx = metadataLocal[bufferIndex].GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
+            int32_t srcTokenIdx = metadataLocal.GetValue(metaOffset + META_TOKEN_IDX_OFFSET);
+            int32_t srcTopKIdx = metadataLocal.GetValue(metaOffset + META_TOPK_IDX_OFFSET);
+            int32_t recvXIdx = metadataLocal.GetValue(metaOffset + META_RECV_X_IDX_OFFSET);
             SendRemoteMetadataSlot(static_cast<uint32_t>(recvXIdx), srcTokenIdx, srcTopKIdx, remoteDataBase,
                                    remoteStateBase, tokenBytes);
         }
-        chunkStart = nextChunkStart;
-        chunkEnd = (chunkStart + metadataChunkTokens_ > rangeEnd) ? rangeEnd : chunkStart + metadataChunkTokens_;
-        chunkCount = static_cast<uint32_t>(chunkEnd - chunkStart);
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
     }
 }
 
