@@ -149,11 +149,6 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, const char *nod
             nodeName, "worldSize", std::to_string(worldSize).c_str(),
             (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(MAX_WORLD_SIZE) + "]").c_str()),
         return false);
-    OP_TILING_CHECK(tokenInfoTableShape[INDEX_ZERO] != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName, "tokenInfoTableShape",
-                        (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str(), "dim0=1"),
-                    return false);
     OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] > BS_UPPER_BOUND) ||
                         (tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] <= 0),
                     OP_LOGE_FOR_INVALID_VALUE(
