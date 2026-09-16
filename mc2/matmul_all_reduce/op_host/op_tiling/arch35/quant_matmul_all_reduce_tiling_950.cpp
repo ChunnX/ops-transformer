@@ -1013,8 +1013,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         allReduceTilingHccl.SetIsAlign(isAlign);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion_2201, isPerBlock_,
-                                            npuArch_);
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, npuArch_, isPerBlock_);
         allReduceTilingHccl.GetTiling();
         mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     }

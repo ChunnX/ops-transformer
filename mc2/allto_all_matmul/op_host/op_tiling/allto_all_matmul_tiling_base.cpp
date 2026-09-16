@@ -125,7 +125,7 @@ CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
     SocVersion_2201 socVersion_2201 =
         (socVersionStr == "Ascend910_93") ? SocVersion_2201::SOC910_93 : SocVersion_2201::SOC910_B;
     AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                           socVersion_2201, true, npuArch);
+                                           npuArch, true, socVersion_2201);
     alltoallMatmulTileFormulate.GetTiling();
     return alltoallMatmulTileFormulate.tilingM_.cutRes;
 }

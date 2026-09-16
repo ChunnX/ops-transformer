@@ -325,11 +325,11 @@ CutResult WeightQuantMatmulAllReduceTiling::GetTilingResult()
     const gert::StorageShape *commQuantScaleSecondShape = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleFirstShape != nullptr) && (commQuantScaleSecondShape != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, npuArch_);
+        MMPlusQuantAllReduce quantAllReduceHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, npuArch_, Ops::Base::DAV_2201, inputSocVer);
         quantAllReduceHccl.GetTiling();
         mCutAllreduceVal = quantAllReduceHccl.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
+        MMPlusAllReduce allReduceHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, Ops::Base::DAV_2201, isPerBlock_, inputSocVer);
         allReduceHccl.GetTiling();
         mCutAllreduceVal = allReduceHccl.tilingM_.cutRes;
     }

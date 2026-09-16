@@ -683,8 +683,7 @@ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
         MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_, kernelType, TopoType::EIGHT_P);
         mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else {
-        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_,
-                                                npuArch_);
+        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, npuArch_, isPerBlock_);
         allReduceTilingHcclInst.GetTiling();
         mCutAllreduceOutput = allReduceTilingHcclInst.tilingM_.cutRes;
     }

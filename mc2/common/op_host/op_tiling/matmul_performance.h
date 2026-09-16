@@ -96,8 +96,8 @@ public:
     }
     // Constructor
     explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
-                                    SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B,
-                                    NpuArch npuArch = Ops::Base::DAV_2201)
+                                    NpuArch npuArch = Ops::Base::DAV_2201,
+                                    SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
         : calcType_(MatmulCalcType::FP16),
           npuArch_(npuArch)
     {

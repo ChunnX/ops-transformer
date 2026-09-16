@@ -26,7 +26,7 @@ public:
     // A5专用通信拟合模型:仅服务于DAV_3510平台,A5内蕴于类本身,不再接收档位key
     explicit HCCLPerformanceArch35(uint32_t inputRankDim, KernelType inputKernelType,
                                    TopoType topoType = TopoType::STANDARD_CARD)
-        : HCCLPerformanceModel(inputRankDim, inputKernelType, SocVersion_2201::SOC910_B, Ops::Base::DAV_3510)
+        : HCCLPerformanceModel(inputRankDim, inputKernelType, Ops::Base::DAV_3510)
     {
         InitArch35Parameters();
         commTypeInfo_.topoType = topoType;

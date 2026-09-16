@@ -78,8 +78,8 @@ public:
     }
     // Constructor
     explicit HCCLPerformanceModel(uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion_2201 inputSeries = SocVersion_2201::SOC910_B,
-                                  NpuArch npuArch = Ops::Base::DAV_2201)
+                                  NpuArch npuArch = Ops::Base::DAV_2201,
+                                  SocVersion_2201 inputSeries = SocVersion_2201::SOC910_B)
         : socVersion_2201(inputSeries),
           npuArch_(npuArch)
     {

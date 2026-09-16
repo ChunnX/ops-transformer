@@ -32,9 +32,9 @@ class MMPlusAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit MMPlusAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                             SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B, bool isPerBlock = false,
-                             NpuArch npuArch = Ops::Base::DAV_2201)
-        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, socVersion_2201, npuArch)
+                             NpuArch npuArch = Ops::Base::DAV_2201, bool isPerBlock = false,
+                             SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, npuArch, socVersion_2201)
     {
         isPerBlock_ = isPerBlock;
         inferFlag_ = true;
@@ -61,9 +61,9 @@ class MMPlusQuantAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
     explicit MMPlusQuantAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
-                                  SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B,
-                                  NpuArch npuArch = Ops::Base::DAV_2201)
-        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, socVersion_2201, npuArch)
+                                  NpuArch npuArch = Ops::Base::DAV_2201,
+                                  SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, npuArch, socVersion_2201)
     {
         inferFlag_ = true;
         commPerf_.SetCommShapeLen(args.nValue);

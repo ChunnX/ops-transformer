@@ -22,7 +22,7 @@ public:
     // Constructor
     explicit AllGatherPlusMMA2A3(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
                                  SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
-        : AllGatherPlusMM(args, inputRankDim, inputKernelType, socVersion_2201)
+        : AllGatherPlusMM(args, inputRankDim, inputKernelType, Ops::Base::DAV_2201, socVersion_2201)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);
         commPerf_.SetCommDTypeSize(clusterInfo_.inMatrixADtypeSize);

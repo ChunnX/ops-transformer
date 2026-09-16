@@ -31,8 +31,8 @@ CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTil
     SocVersion_2201 socVersion_2201 =
         (tilingData.socParam.isA3 == 0) ? SocVersion_2201::SOC910_B : SocVersion_2201::SOC910_93;
     bool commDeterministic = (socVersion_2201 == SocVersion_2201::SOC910_B) ? IsDeterministic() : false;
-    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, socVersion_2201,
-                                          commDeterministic);
+    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, Ops::Base::DAV_2201,
+                                          commDeterministic, false, socVersion_2201);
     scatterTilingHccl.GetTiling();
 
     return scatterTilingHccl.tilingM_.cutRes;
