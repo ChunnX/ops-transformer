@@ -49,7 +49,8 @@ std::string AllGatherMatmulTilingA2A3::GetAlgConfig(Mc2Tiling::AllGatherMatmulTi
 CutResult AllGatherMatmulTilingA2A3::GetCutResult(Mc2Tiling::AllGatherMatmulTilingData &tilingData,
                                                   mc2tiling::TilingArgs &args)
 {
-    SocVersion2201 inputSocVersion = (tilingData.socParam.isA3 == 0) ? SocVersion2201::SOC910_B : SocVersion2201::SOC910_93;
+    SocVersion2201 inputSocVersion =
+        (tilingData.socParam.isA3 == 0) ? SocVersion2201::SOC910_B : SocVersion2201::SOC910_93;
     AllGatherPlusMMA2A3 tileFormulate(args, args.rankDim, KernelType::ALL_GATHER, inputSocVersion);
     tileFormulate.GetTiling();
     CutResult mCutGather = tileFormulate.tilingM_.cutRes;
