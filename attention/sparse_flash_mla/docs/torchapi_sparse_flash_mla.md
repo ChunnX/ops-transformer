@@ -200,7 +200,7 @@ cann_ops_transformer.sparse_flash_mla(
 | sinks | Tensor | 可选 | 表示各注意力头设置独立可学习虚拟偏移项，用于维持长文本推理时的稳定性。 | float32 | ND | (q_n,) |
 | metadata | Tensor | 必选 | 由`sparse_flash_mla_metadata`生成的分核信息。 | int32 | ND | (1024,) |
 | softmax_scale | float | 可选 | QK矩阵乘后的缩放系数。默认值为1.0。 | float32 | - | - |
-| cmp_ratio | int32 | 可选 | 压缩倍率，取值范围1-128。；SWA场景固定为1，CSA和HCA场景取值1-128。默认值为1。 | int32 | - | - |
+| cmp_ratio | int32 | 可选 | 压缩倍率，取值范围1-128。SWA场景固定为1，CSA和HCA场景取值1-128。默认值为1。 | int32 | - | - |
 | ori_mask_mode | int32 | 可选 | `q`与`ori_kv`的mask模式。0：No mask。3：rightDownCausal模式。4：sliding window模式。默认值为4。 | int32 | - | - |
 | cmp_mask_mode | int32 | 可选 | `q`与`cmp_kv`的mask模式。0：No mask。3：rightDownCausal模式。默认值为3。 | int32 | - | - |
 | ori_win_left | int32 | 可选 | `ori_kv`滑动窗口左边界，表示`q`和`ori_kv`计算中`q`对历史token计算的数量，取值为-1或不小于0。-1表示不限制。默认值为-1。 | int32 | - | - |

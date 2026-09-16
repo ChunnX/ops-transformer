@@ -26,7 +26,7 @@ FFN算子核心计算过程如上图所示，计算主要由matmul1 -> 激活函
 
 1. float16场景，innerPrecise=1时，为高性能场景，此时matmul1在CubeCore上的计算输出、vector上激活函数输入输出均为float16类型；计算过程为：matmul1(float16) -> 激活函数(float16) -> matmul2(float16)；
 2. float16场景，innerPrecise=0时，为高精度场景，此时matmul1在CubeCore上的计算输出、vector上激活函数输入输出均为float32类型，之后在vector上调用Cast高阶api转为float16输出到workspace（matmul2的输入为float16）；计算过程为：matmul1(float32) -> 激活函数(float32) -> Cast(float16) -> matmul2(float16)；
-3. bfloat16场景，matmul1在CubeCore上的计算输出、vector上激活函数输入输出均为float32类型，之后在vector上调用Cast高阶api转为bfloat16输出到workspace（matmul2的输入为bfloat16）计算过程为：matmul1(float32) -> 激活函数(float32) -> Cast(bfloat16) -> matmul2(bfloat16)；。
+3. bfloat16场景，matmul1在CubeCore上的计算输出、vector上激活函数输入输出均为float32类型，之后在vector上调用Cast高阶api转为bfloat16输出到workspace（matmul2的输入为bfloat16）计算过程为：matmul1(float32) -> 激活函数(float32) -> Cast(bfloat16) -> matmul2(bfloat16)。
 
 三种场景，后两种场景的计算过程相同，因此非量化划分为两个模板：高性能模板(1)、高精度模板(2/3)。
 
