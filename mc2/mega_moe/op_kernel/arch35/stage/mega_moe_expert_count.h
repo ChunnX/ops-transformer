@@ -14,7 +14,9 @@
 #include "kernel_operator.h"
 #include "../common/mega_moe_constants.h"
 #include "../common/mega_moe_utils.h"
-#include "simt_api/asc_simt.h"
+#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
+#include "simt_api/common_functions.h"
+#endif
 
 namespace MegaMoeImpl {
 
@@ -85,19 +87,21 @@ __aicore__ inline void WaitForCountTable(const AscendC::GlobalTensor<int32_t> &c
     }
 }
 
+#if defined(MEGA_MOE_ENABLE_COUNT_SIMT)
 // 按线程编号步进处理 count；当前项就绪后写入 UB，再处理下一项。
 template <uint32_t ThreadCount>
-__simt_vf__ __launch_bounds__(ThreadCount) inline void WaitForCountTableSimtVF(__gm__ int32_t *countGm,
+__simt_vf__ __launch_bounds__(ThreadCount) inline void WaitForCountTableSimtVF(const __gm__ int32_t *countGm,
                                                                                __ubuf__ int32_t *counts,
                                                                                uint32_t elementCount,
                                                                                uint32_t expectedSyncRoundTag)
 {
+    const volatile __gm__ int32_t *countTable = countGm;
     for (uint32_t index = threadIdx.x; index < elementCount; index += blockDim.x) {
         uint32_t value;
-        // ldcg 绕过 SIMT Data Cache；仅重读尚未匹配本轮标签的当前项。
-        while (((value = static_cast<uint32_t>(asc_ldcg(countGm + index))) & 0xFF000000U) != expectedSyncRoundTag) {
-            asc_nop(); // 短暂退避，降低 GM 轮询频率。
-        }
+        // volatile 读取远端更新的 GM count，仅重试尚未匹配本轮标签的当前项。
+        do {
+            value = static_cast<uint32_t>(countTable[index]);
+        } while ((value & 0xFF000000U) != expectedSyncRoundTag);
         counts[index] = static_cast<int32_t>(value & 0x00FFFFFFU);
     }
 }
@@ -107,8 +111,8 @@ __simt_vf__ __launch_bounds__(ThreadCount) inline void WaitForCountTableSimtVF(_
 // 调用处替换为 WaitForCountTableSimt<>(...)；默认最大 1024 线程。
 // 调用方保证在 AIV 上执行，且 elementCount > 0。
 template <uint32_t ThreadCount = 1024U>
-__aicore__ inline void WaitForCountTableSimt(__gm__ int32_t *countGm, __ubuf__ int32_t *counts, uint32_t elementCount,
-                                             uint32_t expectedSyncRoundTag)
+__aicore__ inline void WaitForCountTableSimt(const __gm__ int32_t *countGm, __ubuf__ int32_t *counts,
+                                             uint32_t elementCount, uint32_t expectedSyncRoundTag)
 {
     // launch bounds 决定寄存器预算；实际线程数按表长向上对齐到一个 warp，最大为 ThreadCount。
     const uint32_t alignedThreadCount = (elementCount + 31U) / 32U * 32U;
@@ -119,6 +123,7 @@ __aicore__ inline void WaitForCountTableSimt(__gm__ int32_t *countGm, __ubuf__ i
     asc_vf_call<WaitForCountTableSimtVF<ThreadCount>>(dim3(threadCount), countGm, counts, elementCount,
                                                       expectedSyncRoundTag);
 }
+#endif
 
 /*
  * MegaMoe count 表的融合版本：先复用 int32 prefix-scan，再在同一次 VF 中提取每个专家的累计尾值
