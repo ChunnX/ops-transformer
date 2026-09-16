@@ -62,8 +62,6 @@ public:
         uint8_t nBufferNum = L1_TWO_BUFFER;
         CalcNBufferNum(baseM, baseN, baseK, stepKa, stepKb, initScaleKL1, kL1, scaleKL1, nBufferNum);
 
-        // 兜底：L1 超配在设备上只会表现为 LOAD2D 读越界（aicore error 507015），很难定位，
-        // 这里在 host 侧把它拦成明确的 tiling 失败。
         const L1Estimate finalEst{kL1, scaleKL1, baseM, baseN};
         const uint64_t finalL1 = CalcUsedL1Size(finalEst, nBufferNum);
         if (finalL1 > l1Size_) {
@@ -130,9 +128,7 @@ private:
         const uint64_t nAlign = transWeight_ ? CUBE_BLOCK : L1_ALIGN_SIZE;
         const uint64_t kAlign = MXFP_DIVISOR_SIZE;
 
-        // 保持 256 级基本块。T=8、N=4608 时 nCnt=18，故意不满 28 AIC。
-        // 旧逻辑为填核把 baseN 折成 128（36 tile），BF16 搬出从 512B 掉到 256B，
-        // 且 A 沿 N 方向多扫一遍。P92 / 内置 QBMM 都是 baseN=256、18 核做事。
+        // 保持 256 级基本块。T=8、N=4608 时 nCnt=18
         baseM = Ops::Base::CeilAlign(std::min(m_, BASIC_BLOCK_256), mAlign);
         baseN = Ops::Base::CeilAlign(std::min(n_, BASIC_BLOCK_256), nAlign);
         baseK = Ops::Base::CeilAlign(std::min(k_, BASIC_BLOCK_128), kAlign);
@@ -260,8 +256,7 @@ private:
         if (fullCover <= params.scaleKL1) {
             return params.scaleKL1;
         }
-        // params 是按值传入的副本，必须先存下原值：否则赋值后两个分支返回的都是
-        // fullCover，放不下时的回退失效，会让 L1 超配并触发 LOAD2D 读越界。
+
         const uint64_t fallback = params.scaleKL1;
         params.scaleKL1 = fullCover;
         return CanFitL1BufferNum(params, l1BufferNum) ? fullCover : fallback;
@@ -299,8 +294,6 @@ private:
     void CalcNBufferNum(uint64_t baseM, uint64_t baseN, uint64_t baseK, uint64_t stepKa, uint64_t stepKb,
                         uint64_t initScaleKL1, uint64_t &kL1, uint64_t &scaleKL1, uint8_t &nBufferNum) const
     {
-        // 旧逻辑优先 4-buffer，会把 stepK=4（kL1=512）折成 kL1=256 来塞满 4 槽。
-        // T=8 的 QMM 是扫 W_qkv 的 MTE2 墙，更大的 kL1 包比多一两个 L1 槽更重要。
         const uint64_t kAlign = std::max(baseK, L2_ALIGN_SIZE);
         const uint64_t kL1Max = Ops::Base::FloorAlign(k_, kAlign);
         L1Estimate best{};
@@ -315,7 +308,6 @@ private:
                 if (!TryL1Config(baseM, baseN, cand, initScaleKL1, nBuf, est)) {
                     continue;
                 }
-                // 主关键字 kL1。T=512 上 nBuf=4/kL1=128 比 nBuf=2/kL1=256 慢约 4µs。
                 const uint64_t score =
                     est.kL1 * 1000UL + static_cast<uint64_t>(nBuf) * 10UL + (est.scaleKL1 >= k_ ? 1UL : 0UL);
                 if (!found || score > bestScore) {
