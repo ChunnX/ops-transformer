@@ -86,7 +86,8 @@ public:
                                                   (args.aType == matmul_tiling::DataType::DT_FLOAT4_E1M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
-                   (mmShapeInfo_.socVersion_2201 != SocVersion_2201::SOC910_B)) { // A8W8
+                   ((npuArch_ != Ops::Base::DAV_2201) ||
+                    (mmShapeInfo_.socVersion_2201 != SocVersion_2201::SOC910_B))) { // A8W8:A5/310P档已迁出枚举,arch判定
             calcType_ = MatmulCalcType::QUANT;
         } else if ((npuArch_ == Ops::Base::DAV_2002) && (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
             mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;

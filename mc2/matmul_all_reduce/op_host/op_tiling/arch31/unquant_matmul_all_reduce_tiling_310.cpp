@@ -181,7 +181,7 @@ CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
     const gert::StorageShape *commQuantScaleTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleOne != nullptr) && (commQuantScaleTwo != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceHcclTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVer);
+        MMPlusQuantAllReduce quantAllReduceHcclTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVer, npuArch_);
         quantAllReduceHcclTiling.GetTiling();
         mCutAllreduceRet = quantAllReduceHcclTiling.tilingM_.cutRes;
     } else {

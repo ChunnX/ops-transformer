@@ -62,6 +62,8 @@ public:
             SetCommMethodVersion310P();
         } else if (npuArch_ == Ops::Base::DAV_2201) { // A2/A3系:910B/910_93/B4
             SetCommParametersBySocType();
+        } else { // 未识别arch兜底,语义同原catch-all
+            InitParametersForFullMesh();
         }
     }
 
