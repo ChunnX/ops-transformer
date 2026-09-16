@@ -212,8 +212,10 @@ def _compute_core(prepared):
       稳定排序的输出顺序只取决于元素间的比较结果；int32→int64 是严格单调映射，
       比较结果不变，故 order/rank 逐位一致（实测 50 组随机 trial 双向一致）；
       tf.gather 对 int32/int64 索引结果一致，int32 // 标量整除原生合法；
-      rank 输出 dtype 的算子规格（固定 INT32，SE 6.5/def.cpp）由出口 _finalize_outputs
-      统一执行——属输出 dtype 规格化而非计算，本函数返回 argsort 原生秩。
+      rank 的算子输出规格（固定 INT32，SE 6.5/def.cpp）由 TF 契约天然满足：
+      tf.argsort 输出恒为 int32（TF 契约，实测 50 组随机 trial 验证），本函数返回的
+      rank 天然即规格 dtype，无需出口再 cast；依赖 TF 该契约，若未来 TF 版本变更
+      argsort 输出 dtype，TTK binary 比对会立即暴露。
     返回 (permute_tokens, rank, permute_probs)；probs 缺省时第三项为 None。
     """
     # topK 与 totalLength（indices 1 维时 topK=1，2 维时 topK=dim(1)，SE 1.2）
@@ -257,13 +259,6 @@ def _compute_core(prepared):
     return permute_tokens, rank, permute_probs
 
 
-def _finalize_outputs(permute_tokens, rank, permute_probs):
-    """出口规格化：sorted_indices 固定 INT32（算子输出规格，SE 6.5/def.cpp——排序秩与
-    输入 dtype 无关）。属输出 dtype 管理而非计算，故置于出口而非 _compute_core。
-    """
-    return permute_tokens, tf.cast(rank, tf.int32), permute_probs
-
-
 def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
     """golden 流完整管线：numpy 入 -> [numpy, numpy, numpy|None] 出。
 
@@ -273,7 +268,7 @@ def _run_numpy_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode)
         _numpy_to_tf(tokens), _numpy_to_tf(indices), _optional_probs(_numpy_to_tf(probs)),
         num_out_tokens, _normalize_range(range_), padded_mode,
     )
-    pt, si, pp = _finalize_outputs(*_compute_core(prepared))
+    pt, si, pp = _compute_core(prepared)
     return [_tf_to_numpy(pt), _tf_to_numpy(si), _tf_to_numpy(pp)]
 
 
@@ -288,7 +283,7 @@ def _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, pa
 def _run_framework_flow(tokens, indices, probs, num_out_tokens, range_, padded_mode):
     """third_party 流完整管线：框架 Tensor/numpy 入 -> [tf, tf, tf|None] 出。"""
     prepared = _prepare_framework_inputs(tokens, indices, probs, num_out_tokens, range_, padded_mode)
-    return list(_finalize_outputs(*_compute_core(prepared)))
+    return list(_compute_core(prepared))
 
 
 class MoeTokenPermuteWithEpTfTestSpec:
@@ -330,7 +325,7 @@ class MoeTokenPermuteWithEpTfTestSpec:
             )
 
         def __call__(self, **kwargs):
-            return list(_finalize_outputs(*_compute_core(self._prepared)))
+            return list(_compute_core(self._prepared))
 
     third_party = {"tf": ThirdPartyImpl}
     tolerance = _TOLERANCE
@@ -379,7 +374,7 @@ class AclnnMoeTokenPermuteWithEpTfTestSpec:
             )
 
         def __call__(self, **kwargs):
-            return list(_finalize_outputs(*_compute_core(self._prepared)))
+            return list(_compute_core(self._prepared))
 
     third_party = {"tf": ThirdPartyImpl}
     tolerance = _TOLERANCE
