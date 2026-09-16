@@ -26,8 +26,7 @@ std::tuple<at::Tensor, at::Tensor> MakeOutputs(const at::Tensor &hOut, const at:
     }
     return {
         at::empty_symint({hOut.sym_size(0), hOut.sym_size(1), hOut.sym_size(2)}, hOut.options()),
-        at::empty_symint(
-            {hOut.sym_size(0), hOut.sym_size(1), residual.sym_size(2), hOut.sym_size(2)}, hOut.options()),
+        at::empty_symint({hOut.sym_size(0), hOut.sym_size(1), residual.sym_size(2), hOut.sym_size(2)}, hOut.options()),
     };
 }
 } // namespace
@@ -43,8 +42,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> MhcSandwichNormPostPreonly(
     if (returnHInF32) {
         hInF32 = at::empty_symint(hInPrime.sym_sizes(), hOut.options().dtype(at::kFloat));
     }
-    ACLNN_CMD(aclnnMhcSandwichNormPostPreonly, hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0,
-              gamma1, gamma2, normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrime, x2Out, hInF32);
+    ACLNN_CMD(aclnnMhcSandwichNormPostPreonly, hOut, residual, hPost, hRes, phi, alpha0, bias, gamma1, gamma0, gamma2,
+              normEps, mhcPreNormEps, hcEps, returnHInF32, hInPrime, x2Out, hInF32);
     return {hInPrime, x2Out, hInF32};
 }
 

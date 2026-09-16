@@ -27,7 +27,7 @@
 
 ## 调用说明
 
-| 调用方式 | 说明 |
-| --- | --- |
-| ACLNN 接口 | [aclnnMhcSandwichNormPostPreonly](docs/aclnnMhcSandwichNormPostPreonly.md) |
-| PyTorch 接口 | [mhc_sandwich_norm_post_preonly](docs/torchapi_mhc_sandwich_norm_post_preonly.md) |
+| 调用方式 | 调用样例 | 说明 |
+| --- | --- | --- |
+| aclnn调用 | [test_aclnn_mhc_sandwich_norm_post_preonly](examples/test_aclnn_mhc_sandwich_norm_post_preonly.cpp) | 通过[aclnnMhcSandwichNormPostPreonly](docs/aclnnMhcSandwichNormPostPreonly.md)接口调用MhcSandwichNormPostPreonly算子。 |
+| PyTorch调用 | - | 通过[mhc_sandwich_norm_post_preonly](docs/torchapi_mhc_sandwich_norm_post_preonly.md)接口调用MhcSandwichNormPostPreonly算子。 |

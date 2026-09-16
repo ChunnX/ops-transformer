@@ -30,9 +30,8 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
     const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0,
     const aclTensor *gamma1, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
-    bool returnHInF32,
-    const aclTensor *hInPrime, const aclTensor *x2Out, const aclTensor *hInF32, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    bool returnHInF32, const aclTensor *hInPrime, const aclTensor *x2Out, const aclTensor *hInF32,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
 
@@ -68,24 +67,9 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
         CHECK_COND(gamma2Optional != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous gamma2 failed.");
     }
 
-    bool ok = MhcSandwichNormPostPreonlyl0op::MhcSandwichNormPostPreonly(hOut,
-        residual,
-        hPost,
-        hRes,
-        phi,
-        alpha0,
-        bias,
-        gamma0,
-        gamma1,
-        gamma2Optional,
-        normEps,
-        mhcPreNormEps,
-        hcEps,
-        returnHInF32,
-        hInPrime,
-        x2Out,
-        hInF32,
-        uniqueExecutor.get());
+    bool ok = MhcSandwichNormPostPreonlyl0op::MhcSandwichNormPostPreonly(
+        hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0, gamma1, gamma2Optional, normEps, mhcPreNormEps, hcEps,
+        returnHInF32, hInPrime, x2Out, hInF32, uniqueExecutor.get());
 
     CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
 
@@ -98,21 +82,21 @@ static aclnnStatus MhcSandwichNormPostPreonlyCommonProcess(
 
 aclnnStatus aclnnMhcSandwichNormPostPreonlyGetWorkspaceSize(
     const aclTensor *hOut, const aclTensor *residual, const aclTensor *hPost, const aclTensor *hRes,
-    const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma0,
-    const aclTensor *gamma1, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps, double hcEps,
-    bool returnHInF32, const aclTensor *hInPrime, const aclTensor *x2Out, const aclTensor *hInF32,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *phi, const aclTensor *alpha0, const aclTensor *bias, const aclTensor *gamma1,
+    const aclTensor *gamma0Optional, const aclTensor *gamma2Optional, double normEps, double mhcPreNormEps,
+    double hcEps, bool returnHInF32, const aclTensor *hInPrimeOut, const aclTensor *x2Out,
+    const aclTensor *hInF32OutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnMhcSandwichNormPostPreonly,
-                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0, gamma1, gamma2Optional),
-                   DFX_OUT(hInPrime, x2Out, hInF32));
-    return MhcSandwichNormPostPreonlyCommonProcess(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0,
-        gamma1, gamma2Optional, normEps, mhcPreNormEps, hcEps, returnHInF32,
-        hInPrime, x2Out, hInF32, workspaceSize, executor);
+                   DFX_IN(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma1, gamma0Optional, gamma2Optional),
+                   DFX_OUT(hInPrimeOut, x2Out, hInF32OutOptional));
+    return MhcSandwichNormPostPreonlyCommonProcess(hOut, residual, hPost, hRes, phi, alpha0, bias, gamma0Optional,
+                                                   gamma1, gamma2Optional, normEps, mhcPreNormEps, hcEps, returnHInF32,
+                                                   hInPrimeOut, x2Out, hInF32OutOptional, workspaceSize, executor);
 }
 
 aclnnStatus aclnnMhcSandwichNormPostPreonly(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                   aclrtStream stream)
+                                            aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcSandwichNormPostPreonly);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
