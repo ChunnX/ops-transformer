@@ -101,7 +101,6 @@
           <li>quantMode=2、3、4、5、6、7、8、9、11、12、14、15、16、17：支持FLOAT16、BFLOAT16;</li>
           <li>quantMode=13：支持FLOAT32、BFLOAT16;</li>
           <li>以上类型需同时满足下文的产品支持限制：A2/A3仅支持quantMode=-1、0、1，且非量化输入仅支持FLOAT16、BFLOAT16、FLOAT32、INT8；其余列出的类型和量化模式仅950支持。</li>
-          <li><term>Ascend 950PR/Ascend 950DT</term>在quantMode=1时仅为兼容历史调用允许INT8输入，此时expandedXOut和expandedScaleOut无意义，不应使用。</li>
           </ul></td>
         <td>ND</td>
       </tr>
@@ -243,7 +242,7 @@
   - rowIdxType仅支持取值为0（gather索引）。
   - activeExpertRangeOptional必须为[0, expertNum]。
   - expertTokensNumType仅支持取值为1（count模式）。
-  - quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
+  - quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。
   - expandedXOut必须是3D Tensor，shape为[expertNum, expertCapacity, H]。
 
 - 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。

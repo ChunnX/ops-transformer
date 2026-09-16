@@ -490,7 +490,7 @@ bool CheckBatchDimBroadcast(size_t batch1DimNum, size_t batch2DimNum, const op::
 // bmm 相对于 mm 取坐标需偏移
 int64_t GetOffSet(int64_t DimNum)
 {
-    int64_t rightMove = 0;
+    bool rightMove = false;
     // bmm DimNum 为 3, mm DimNum 为 2 ，bmm需要相对于mm向后偏移一位取行列值，默认rightMove为 0
     rightMove = DimNum == 3 ? 1 : 0;
     return rightMove;
@@ -524,7 +524,7 @@ bool NeedToConvertBias(const aclTensor *self, const aclTensor *mat1, const aclTe
 {
     int64_t mat1DimNum = static_cast<int64_t>(mat1->GetViewShape().GetDimNum());
     // rightMove to distinguish different shape of mm and bmm
-    int64_t rightMove = 0;
+    bool rightMove = false;
     rightMove = GetOffSet(mat1DimNum);
 
     TensorInfo Tensor_matl = {mat1, mat1->GetDataType(), Format::FORMAT_ND};
@@ -546,7 +546,7 @@ bool NeedToConvertBias(const aclTensor *self, const aclTensor *mat1, const aclTe
     if (selfDimNum == 1) {
         canBeBiasFlag = (mat2->GetViewShape().GetDim(1 + rightMove) == self->GetViewShape().GetDim(0)) &&
                         CheckDtypeSupportBias(self, mat1, mat2) && batchIsOne;
-        // When input tensor is a 2 dimentional tensor
+        // When input tensor is a 2 dimensional tensor
     } else if (selfDimNum == 2) {
         canBeBiasFlag = (selfShape.GetDim(0) == 1) && (selfShape.GetDim(1) == mat2Shape.GetDim(1 + rightMove)) &&
                         CheckDtypeSupportBias(self, mat1, mat2) && batchIsOne;
@@ -567,8 +567,8 @@ bool GetNzSplitKFlag(const aclTensor *self, const aclTensor *mat2, const Format 
     op::Shape mat2Shape = mat2->GetViewShape();
     int64_t selfDimNum = static_cast<int64_t>(selfShape.GetDimNum());
     // rightMove to distinguish different shape of mm and bmm
-    int64_t rightMove = 0;
-    rightMove = GetOffSet(selfDimNum);
+    bool rightMove = false;
+    rightMove = (GetOffSet(selfDimNum) != 0);
 
     int64_t m = selfShape.GetDim(rightMove);
     int64_t k = selfShape.GetDim(rightMove + 1);
@@ -583,8 +583,8 @@ bool IsSplitk(const TensorInfo *self, const TensorInfo *mat2)
     op::Shape mat2Shape = mat2->tensor->GetViewShape();
     int64_t selfDimNum = static_cast<int64_t>(selfShape.GetDimNum());
     // rightMove to distinguish different shape of mm and bmm
-    int64_t rightMove = 0;
-    rightMove = GetOffSet(selfDimNum);
+    bool rightMove = false;
+    rightMove = (GetOffSet(selfDimNum) != 0);
     bool NzSplitKFlag = true;
     // only apply on mm now
     if (!rightMove) {
@@ -609,10 +609,10 @@ bool IsFormatSupportNd(const aclTensor *self, const aclTensor *mat2)
         op::Shape mat2Shape = mat2->GetViewShape();
         int64_t dimNum = selfShape.GetDimNum();
         auto isAligin = [selfShape, mat2Shape, dimNum]() {
-            return (!(static_cast<uint64_t>(selfShape.GetDim(dimNum - 2)) & 0x0000000F)) &&
-                   (!(static_cast<uint64_t>(selfShape.GetDim(dimNum - 1)) & 0x0000000F)) &&
-                   (!(static_cast<uint64_t>(mat2Shape.GetDim(dimNum - 2)) & 0x0000000F)) &&
-                   (!(static_cast<uint64_t>(mat2Shape.GetDim(dimNum - 1)) & 0x0000000F));
+            return ((static_cast<uint64_t>(selfShape.GetDim(dimNum - 2)) & 0x0000000F) == 0U) &&
+                   ((static_cast<uint64_t>(selfShape.GetDim(dimNum - 1)) & 0x0000000F) == 0U) &&
+                   ((static_cast<uint64_t>(mat2Shape.GetDim(dimNum - 2)) & 0x0000000F) == 0U) &&
+                   ((static_cast<uint64_t>(mat2Shape.GetDim(dimNum - 1)) & 0x0000000F) == 0U);
         };
         if (isAligin() && self->GetDataType() == op::DataType::DT_FLOAT16) {
             return true;
