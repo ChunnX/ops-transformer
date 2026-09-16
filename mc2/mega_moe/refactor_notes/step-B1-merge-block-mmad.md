@@ -102,6 +102,27 @@ their contents (`CopyL0CToGmPerChannel`, both `MmadAtlas*` policies) are what th
 implementation needs — no upstream behaviour was dropped, because master's only change to
 this header was the include rewrite.
 
+## Codegen impact
+
+| | |
+|---|---|
+| B1 relative to the master-sync baseline | **12 / 15 kernels changed** |
+| Unchanged | the three w4a8 objects (`8642b7…`, `b0a23f9…`, `fd9010…`) |
+
+Measured with the fingerprint method described in `step-B5-unify-a2-kernels.md`
+(`.text`/`.rodata` bytes hashed per kernel object, all 15 objects of the
+`ascend910b` package, keyed by object name).
+
+The BlockMmad merge does not reach the w4a8 path — that kernel keeps its own
+file and its own `BlockMmad` instantiation — so those three objects staying
+byte-identical is the expected result. It doubles as a control: it shows the
+method does not manufacture differences.
+
+For the other twelve kernels this step is **not** codegen-neutral. A merged
+`BlockMmad` is a rewrite of a template shared by every path, and re-emitting it
+shifts register allocation and scheduling. Its equivalence is argued from the
+source merge, not proven from bytes.
+
 ## Verification
 
 - `bash build.sh --pkg --soc=ascend910b --ops=mega_moe` — green, 76 targets, 0 errors.
